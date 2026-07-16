@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PF2e Rules Browser</title>
+<style>
+:root{
+  --bg:#12161d; --panel:#1a212b; --panel2:#161c25; --border:#2a3442; --border-soft:#222c39;
+  --text:#ddd6c8; --text-dim:#9aa3ad; --text-faint:#6b7683;
+  --crimson:#b3392e; --crimson-deep:#8a2019; --gold:#c9a959;
+  --trait:#58180d; --trait-unc:#98513d; --trait-rare:#16325c; --trait-uniq:#54166e; --trait-size:#3b5c7b; --trait-align:#3b7b59;
+  --row-h:46px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,select{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:5px 8px}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--crimson);outline-offset:1px}
+a{color:var(--gold)}
+.app{display:grid;grid-template-columns:220px minmax(300px,420px) 1fr;height:100vh}
+
+/* ---------- sidebar ---------- */
+.sidebar{background:var(--panel2);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+.brand{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+.brand h1{font:700 17px/1.2 'Palatino Linotype','Iowan Old Style',Palatino,Georgia,serif;letter-spacing:.02em}
+.brand h1 span{color:var(--crimson)}
+.brand p{font-size:11px;color:var(--text-faint);margin-top:2px}
+.cats{overflow-y:auto;flex:1;padding:6px 0}
+.cat{display:flex;justify-content:space-between;align-items:center;width:100%;padding:7px 16px;text-align:left;color:var(--text-dim);border-left:3px solid transparent}
+.cat:hover{background:var(--panel);color:var(--text)}
+.cat.active{background:var(--panel);color:var(--text);border-left-color:var(--crimson)}
+.cat .n{font-size:11px;color:var(--text-faint);font-variant-numeric:tabular-nums}
+.status{padding:8px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);min-height:32px}
+
+/* ---------- list pane ---------- */
+.listpane{border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+.toolbar{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.toolbar input[type=search]{flex:1 1 140px;min-width:120px}
+.toolbar select{max-width:130px}
+.toolbar .lvl{width:58px}
+.shardbar{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px}
+.shardbar .lab{color:var(--text-faint);margin-right:4px}
+.chip{padding:2px 8px;border:1px solid var(--border);border-radius:10px;font-size:11px;color:var(--text-dim)}
+.chip:hover{border-color:var(--crimson);color:var(--text)}
+.chip.on{background:var(--crimson-deep);border-color:var(--crimson);color:#fff}
+.count{padding:5px 12px;font-size:11px;color:var(--text-faint);border-bottom:1px solid var(--border-soft)}
+.vlist{flex:1;overflow-y:auto;position:relative}
+.vspacer{position:relative;width:100%}
+.row{position:absolute;left:0;right:0;height:var(--row-h);padding:5px 12px;border-bottom:1px solid var(--border-soft);cursor:pointer;overflow:hidden}
+.row:hover{background:#202a37}
+.row.sel{background:#232f3f;box-shadow:inset 3px 0 0 var(--crimson)}
+.row .t{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.row .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .lv{font-size:11px;color:var(--gold);white-space:nowrap;font-variant-numeric:tabular-nums}
+.row .sub{font-size:11px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.empty{padding:24px 16px;color:var(--text-faint);font-size:13px}
+
+/* ---------- detail pane ---------- */
+.detail{overflow-y:auto;min-height:0;padding:22px 28px 60px;background:var(--bg)}
+.detail .placeholder{color:var(--text-faint);font-size:13px;margin-top:40px;text-align:center}
+.sb{max-width:760px;margin:0 auto;font-family:'Palatino Linotype','Iowan Old Style',Palatino,Georgia,serif;font-size:15px;line-height:1.5}
+.sb-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;border-bottom:3px solid var(--crimson);padding-bottom:4px}
+.sb-head h2{font-size:24px;letter-spacing:.01em;text-transform:uppercase;font-weight:700}
+.sb-head .lvl{font-size:15px;font-weight:700;white-space:nowrap;text-transform:uppercase;color:var(--text)}
+.traits{margin:8px 0 4px;display:flex;flex-wrap:wrap;gap:3px}
+.trait{background:var(--trait);color:#eee;border:1px solid #d8c483;padding:1px 8px;font:600 11px/1.6 system-ui,sans-serif;text-transform:uppercase;letter-spacing:.03em}
+.trait.uncommon{background:var(--trait-unc)}.trait.rare{background:var(--trait-rare)}.trait.unique{background:var(--trait-uniq)}
+.trait.size{background:var(--trait-size)}
+.kv{margin:2px 0}
+.kv b{font-weight:700}
+.hr{border:none;border-top:1px solid var(--crimson);margin:8px 0}
+.src{font:italic 12px/1.4 system-ui,sans-serif;color:var(--text-faint);margin:6px 0 2px}
+.desc{margin-top:10px}
+.desc p{margin:.55em 0}
+.desc ul,.desc ol{margin:.55em 0 .55em 1.4em}
+.desc hr{border:none;border-top:1px solid var(--border);margin:10px 0}
+.desc h1,.desc h2,.desc h3,.desc h4{font-size:16px;margin:.8em 0 .3em;color:var(--gold)}
+.desc table{border-collapse:collapse;margin:.6em 0;font-size:13px;font-family:system-ui,sans-serif}
+.desc td,.desc th{border:1px solid var(--border);padding:3px 8px}
+.desc strong{color:#efe8d8}
+.ref{color:var(--gold);text-decoration:underline dotted;cursor:pointer}
+.dice{font-family:ui-monospace,Consolas,monospace;font-size:.93em;color:#d8b46a}
+.act{font-weight:700;color:var(--crimson);font-size:.9em;letter-spacing:.02em}
+.npc-items h3{font-family:system-ui,sans-serif;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);margin:14px 0 4px}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .sidebar{flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border)}
+  .brand{display:none}.status{display:none}
+  .cats{display:flex;flex-direction:row;padding:0}
+  .cat{white-space:nowrap;border-left:none;border-bottom:3px solid transparent}
+  .cat.active{border-bottom-color:var(--crimson)}
+  .cat .n{display:none}
+  .listpane{border-right:none}
+  .detail{position:fixed;inset:0;z-index:10;display:none;padding:16px}
+  .detail.open{display:block}
+  .backbtn{display:inline-block!important}
+}
+.backbtn{display:none;margin-bottom:10px;color:var(--gold);font-family:system-ui,sans-serif;font-size:13px}
+@media (prefers-reduced-motion:no-preference){.row,.cat,.chip{transition:background .1s,color .1s,border-color .1s}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <div class="brand"><h1>PF2e <span>Rules Browser</span></h1><p>Remaster compendium</p></div>
+    <div class="cats" id="cats"></div>
+    <div class="status" id="status">Loading manifest…</div>
+  </nav>
+  <section class="listpane">
+    <div class="toolbar" id="toolbar" hidden>
+      <input type="search" id="q" placeholder="Search name…" aria-label="Search by name">
+      <input type="number" id="lvlMin" class="lvl" placeholder="Lv ≥" aria-label="Minimum level">
+      <input type="number" id="lvlMax" class="lvl" placeholder="Lv ≤" aria-label="Maximum level">
+      <select id="rarity" aria-label="Rarity"><option value="">Rarity</option><option>common</option><option>uncommon</option><option>rare</option><option>unique</option></select>
+      <input type="text" id="trait" list="traitList" placeholder="Trait…" aria-label="Trait filter" style="width:110px">
+      <datalist id="traitList"></datalist>
+      <select id="source" aria-label="Source"><option value="">Source</option></select>
+    </div>
+    <div class="shardbar" id="shardbar" hidden></div>
+    <div class="count" id="count"></div>
+    <div class="vlist" id="vlist"><div class="vspacer" id="vspacer"></div></div>
+  </section>
+  <section class="detail" id="detail">
+    <button class="backbtn" id="backbtn">&larr; Back to list</button>
+    <div class="placeholder">Select a category, then an entry.</div>
+  </section>
+</div>
+
+<script>
+'use strict';
+/* ============================ state ============================ */
+const S = {
+  manifest:null,
+  cache:{},            // type -> entries[]   (npc: merged loaded shards)
+  npcLoaded:new Set(), // loaded shard levels
+  npcSel:new Set(),    // selected shard levels
+  cat:null,
+  filtered:[],
+  selId:null,
+  fetching:new Set(),
+};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const cap = s => s ? s.charAt(0).toUpperCase()+s.slice(1) : s;
+const CAT_LABELS = {npc:'Creatures (NPC)', melee:'Attacks (Melee)', kit:'Kits', effect:'Effects'};
+const catLabel = t => CAT_LABELS[t] || cap(t).replace(/([a-z])([A-Z])/g,'$1 $2');
+const status = m => $('status').textContent = m;
+
+/* ============================ inline Foundry token renderer ============================ */
+const ACTION_GLYPH = {1:'[one-action]',2:'[two-actions]',3:'[three-actions]',reaction:'[reaction]',free:'[free-action]'};
+function parseParts(body){ // "reflex|dc:20|basic" -> {_:[reflex],dc:20,basic:true}
+  const out = {_:[]};
+  for (const part of body.split('|')) {
+    const i = part.indexOf(':');
+    if (i === -1) { if (part) out[part.trim()] = true, out._.push(part.trim()); }
+    else out[part.slice(0,i).trim().toLowerCase()] = part.slice(i+1).trim();
+  }
+  return out;
+}
+function renderInline(html){
+  if (!html) return '';
+  let s = String(html);
+
+  // strip scripts/styles outright (defense-in-depth; data is from the pf2e repo)
+  s = s.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'')
+       .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi,'')
+       .replace(/javascript:/gi,'');
+
+  // @UUID[...]{Label}  /  @UUID[Compendium.pf2e.pack.Item.Name]
+  s = s.replace(/@UUID\[([^\]]+)\](?:\{([^}]*)\})?/g, (_, ref, label) => {
+    const segs = ref.split('.');
+    const name = label || segs[segs.length-1] || ref;
+    return `<a class="ref" data-ref="${esc(ref)}" data-name="${esc(label||segs[segs.length-1]||'')}">${esc(name)}</a>`;
+  });
+
+  // @Damage[6d6[fire]]{label} / @Damage[(2d8+6)[bludgeoning]] / multi-part with commas
+  s = s.replace(/@Damage\[((?:[^[\]]|\[[^\]]*\])*)\](?:\{([^}]*)\})?/g, (_, body, label) => {
+    if (label) return `<span class="dice">${esc(label)}</span>`;
+    const parts = [];
+    const re = /\(?([^,()[\]]+)\)?\[([^\]]*)\]/g; let m;
+    while ((m = re.exec(body))) parts.push(`${m[1].trim()} ${m[2].split(',').join(' ')}`.trim());
+    return `<span class="dice">${esc(parts.length ? parts.join(' plus ') : body.replace(/\[|\]/g,' ').trim())}</span>`;
+  });
+
+  // @Check[reflex|dc:20|basic] / @Check[type:flat|dc:4] / @Check[athletics|against:...]
+  s = s.replace(/@Check\[([^\]]+)\](?:\{([^}]*)\})?/g, (_, body, label) => {
+    if (label) return esc(label);
+    const p = parseParts(body);
+    const type = p.type || p._[0] || 'check';
+    const bits = [];
+    if (p.dc && /^\d+$/.test(String(p.dc))) bits.push(`DC ${p.dc}`);
+    if (p.basic) bits.push('basic');
+    bits.push(cap(type));
+    if (['reflex','fortitude','will'].includes(String(type).toLowerCase())) bits.push('save');
+    else if (String(type).toLowerCase()==='flat') bits.push('check');
+    return esc(bits.join(' '));
+  });
+
+  // @Template[burst|distance:20] / @Template[type:emanation|distance:30]{label}
+  s = s.replace(/@Template\[([^\]]+)\](?:\{([^}]*)\})?/g, (_, body, label) => {
+    if (label) return esc(label);
+    const p = parseParts(body);
+    const type = p.type || p._[0] || 'area';
+    return esc(p.distance ? `${p.distance}-foot ${type}` : type);
+  });
+
+  // @Localize[...] -> drop
+  s = s.replace(/@Localize\[[^\]]*\]/g,'');
+
+  // [[/r 1d20+7 #Label]]{Label} / [[/br ...]] / [[/gmr ...]]
+  s = s.replace(/\[\[\/[a-z]*r\s+([^\]#]*?)(?:\s*#[^\]]*)?\]\](?:\{([^}]*)\})?/gi,
+    (_, roll, label) => `<span class="dice">${esc(label || roll.replace(/\{|\}|\[[^\]]*\]/g,'').trim())}</span>`);
+
+  // action glyphs <span class="action-glyph">1</span> style already HTML; also @actionglyph? Foundry uses <span class="action-glyph">
+  s = s.replace(/<span class="action-glyph">\s*([123rRfFaAdD][^<]*)\s*<\/span>/g, (_, g) => {
+    const key = g.trim().toLowerCase();
+    const map = {'1':'[one-action]','2':'[two-actions]','3':'[three-actions]','a':'[one-action]','d':'[two-actions]','t':'[three-actions]','r':'[reaction]','f':'[free-action]','reaction':'[reaction]','free':'[free-action]'};
+    return `<span class="act">${map[key]||('['+esc(g)+']')}</span>`;
+  });
+
+  // Any other unknown @Token[...]{Label} -> Label; @Token[...] -> humanized body
+  s = s.replace(/@[A-Za-z]+\[([^\]]*)\]\{([^}]*)\}/g, (_, __, label) => esc(label));
+  s = s.replace(/@[A-Za-z]+\[([^\]]*)\]/g, (_, body) => esc(body.split('|')[0].split('.').pop()));
+
+  return s;
+}
+
+/* ============================ fetch layer ============================ */
+async function fetchJSON(path){
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+  return r.json();
+}
+async function loadCategory(type){
+  if (S.cache[type] || S.fetching.has(type)) return;
+  S.fetching.add(type);
+  const meta = S.manifest[type];
+  status(`Loading ${catLabel(type)} (${meta.sizeMB} MB)…`);
+  try {
+    const data = await fetchJSON(`data/${meta.file}`);
+    S.cache[type] = data;
+    status(`${catLabel(type)}: ${data.length.toLocaleString()} entries.`);
+  } finally { S.fetching.delete(type); }
+}
+async function loadNpcShard(level){
+  const key = `npc:${level}`;
+  if (S.npcLoaded.has(level) || S.fetching.has(key)) return;
+  S.fetching.add(key);
+  const shard = S.manifest.npc.shards[level];
+  if (!shard) { S.fetching.delete(key); return; }
+  status(`Loading creatures level ${level} (${shard.sizeMB} MB)…`);
+  try {
+    const data = await fetchJSON(`data/${shard.file}`);
+    S.cache.npc = (S.cache.npc || []).concat(data);
+    S.npcLoaded.add(level);
+    status(`Creatures loaded: ${S.cache.npc.length.toLocaleString()}.`);
+  } finally { S.fetching.delete(key); }
+}
+
+/* ============================ entry helpers ============================ */
+const rarityOf = e => e.system?.traits?.rarity || 'common';
+const traitsOf = e => e.system?.traits?.value || [];
+const sourceOf = e => e.system?.publication?.title || e.system?.details?.publication?.title || e.sourcePack || '';
+const levelOf = e => e.level ?? e.system?.level?.value ?? null;
+
+/* ============================ filtering + list ============================ */
+function applyFilters(){
+  const type = S.cat;
+  const all = S.cache[type] || [];
+  const q = $('q').value.trim().toLowerCase();
+  const lmin = $('lvlMin').value === '' ? -Infinity : +$('lvlMin').value;
+  const lmax = $('lvlMax').value === '' ?  Infinity : +$('lvlMax').value;
+  const rar = $('rarity').value;
+  const trait = $('trait').value.trim().toLowerCase();
+  const src = $('source').value;
+  S.filtered = all.filter(e => {
+    if (q && !e.name.toLowerCase().includes(q)) return false;
+    const lv = levelOf(e);
+    if ((lmin !== -Infinity || lmax !== Infinity)) { if (lv === null || lv < lmin || lv > lmax) return false; }
+    if (rar && rarityOf(e) !== rar) return false;
+    if (trait && !traitsOf(e).some(t => t.includes(trait))) return false;
+    if (src && sourceOf(e) !== src) return false;
+    return true;
+  });
+  S.filtered.sort((a,b) => (levelOf(a)??99) - (levelOf(b)??99) || a.name.localeCompare(b.name));
+  $('count').textContent = `${S.filtered.length.toLocaleString()} of ${all.length.toLocaleString()} entries`;
+  renderVirtual(true);
+}
+function rebuildFilterOptions(){
+  const all = S.cache[S.cat] || [];
+  const traits = new Set(), sources = new Set();
+  for (const e of all) { for (const t of traitsOf(e)) traits.add(t); const s = sourceOf(e); if (s) sources.add(s); }
+  $('traitList').innerHTML = [...traits].sort().map(t=>`<option value="${esc(t)}">`).join('');
+  const cur = $('source').value;
+  $('source').innerHTML = '<option value="">Source</option>' + [...sources].sort().map(s=>`<option${s===cur?' selected':''}>${esc(s)}</option>`).join('');
+}
+
+/* virtualized list */
+const ROW_H = 46;
+function renderVirtual(reset){
+  const vlist = $('vlist'), sp = $('vspacer');
+  if (reset) vlist.scrollTop = 0;
+  sp.style.height = (S.filtered.length * ROW_H) + 'px';
+  const start = Math.max(0, Math.floor(vlist.scrollTop / ROW_H) - 5);
+  const end = Math.min(S.filtered.length, start + Math.ceil(vlist.clientHeight / ROW_H) + 10);
+  let html = '';
+  for (let i = start; i < end; i++) {
+    const e = S.filtered[i];
+    const lv = levelOf(e);
+    const tr = traitsOf(e).slice(0,4).join(', ');
+    html += `<div class="row${e._id===S.selId?' sel':''}" style="top:${i*ROW_H}px" data-i="${i}">
+      <div class="t"><span class="nm">${esc(e.name)}</span>${lv!==null?`<span class="lv">Lv ${lv}</span>`:''}</div>
+      <div class="sub">${esc([cap(rarityOf(e))!=='Common'?rarityOf(e):'', tr, sourceOf(e)].filter(Boolean).join(' · '))}</div></div>`;
+  }
+  if (!S.filtered.length) html = `<div class="empty">${(S.cache[S.cat]||[]).length ? 'No entries match the current filters.' : (S.cat==='npc' ? 'Pick one or more creature levels above to load them.' : 'No entries loaded.')}</div>`;
+  sp.innerHTML = html;
+}
+$('vlist').addEventListener('scroll', () => renderVirtual(false));
+window.addEventListener('resize', () => renderVirtual(false));
+$('vspacer').addEventListener('click', ev => {
+  const row = ev.target.closest('.row'); if (!row) return;
+  openDetail(S.filtered[+row.dataset.i]);
+});
+
+/* ============================ detail rendering ============================ */
+function traitBadges(e){
+  const r = rarityOf(e);
+  const sizes = ['tiny','small','medium','large','huge','gargantuan'];
+  const sizeVal = e.system?.traits?.size?.value;
+  let h = '<div class="traits">';
+  if (r !== 'common') h += `<span class="trait ${esc(r)}">${esc(r)}</span>`;
+  if (sizeVal) h += `<span class="trait size">${esc(sizeVal)}</span>`;
+  for (const t of traitsOf(e)) h += `<span class="trait${sizes.includes(t)?' size':''}">${esc(t)}</span>`;
+  return h + '</div>';
+}
+const kv = (label, val) => (val === null || val === undefined || val === '') ? '' : `<div class="kv"><b>${label}</b> ${val}</div>`;
+const num = v => (v === null || v === undefined) ? null : (typeof v === 'object' ? v.value : v);
+const sign = n => n >= 0 ? `+${n}` : `${n}`;
+
+function headBlock(e, typeName){
+  const lv = levelOf(e);
+  return `<div class="sb-head"><h2>${esc(e.name)}</h2><span class="lvl">${esc(typeName)}${lv!==null?' '+lv:''}</span></div>`;
+}
+function srcLine(e){
+  const s = sourceOf(e);
+  return s ? `<div class="src">${esc(s)}</div>` : '';
+}
+function descBlock(e){
+  const d = e.system?.description?.value || e.system?.details?.publicNotes || '';
+  return d ? `<hr class="hr"><div class="desc">${renderInline(d)}</div>` : '';
+}
+
+function renderSpell(e){
+  const sys = e.system || {};
+  const cast = num(sys.time);
+  const rng = num(sys.range);
+  const area = sys.area ? `${sys.area.value}-foot ${sys.area.type}` : null;
+  const tgt = num(sys.target);
+  const dur = sys.duration ? [num(sys.duration), sys.duration.sustained ? '(sustained)' : ''].filter(Boolean).join(' ') : null;
+  const def = sys.defense?.save ? `${sys.defense.save.basic ? 'basic ' : ''}${cap(sys.defense.save.statistic || '')}` : (sys.defense?.passive ? cap(num(sys.defense.passive)) : null);
+  const isFocus = (sys.traits?.value||[]).includes('focus') || sys.category === 'focus';
+  const isRitual = !!sys.ritual || sys.category === 'ritual';
+  const label = isRitual ? 'Ritual' : isFocus ? 'Focus' : 'Spell';
+  let heighten = '';
+  const h = sys.heightening;
+  if (h?.levels) heighten = Object.entries(h.levels).map(([lvl,eff]) =>
+      `<div class="kv"><b>Heightened (${lvl})</b> ${renderInline(Object.values(eff).map(v => typeof v==='string'?v:(v?.value??'')).filter(Boolean).join('; '))}</div>`).join('');
+  else if (h?.interval) heighten = `<div class="kv"><b>Heightened (+${h.interval})</b> ${renderInline(Object.entries(h.damage||{}).map(([,d])=>d).join(', ') || JSON.stringify(h.effect||'').replace(/"/g,''))}</div>`;
+  return headBlock(e, label) + traitBadges(e) + srcLine(e)
+    + kv('Cast', esc(cast)) + kv('Range', esc(rng)) + kv('Area', esc(area)) + kv('Targets', esc(tgt))
+    + kv('Defense', esc(def)) + kv('Duration', esc(dur))
+    + descBlock(e) + (heighten ? '<hr class="hr">' + heighten : '');
+}
+
+function renderNpc(e){
+  const sys = e.system || {}, attr = sys.attributes || {}, abil = sys.abilities || {}, saves = sys.saves || {};
+  const per = sys.perception ? sign(num(sys.perception.mod ?? sys.perception)) : (attr.perception ? sign(num(attr.perception)) : null);
+  const senses = (sys.perception?.senses || sys.traits?.senses?.value || sys.traits?.senses || []).map?.(s => typeof s==='string'?s:(s.type||''))?.filter(Boolean).join(', ') || '';
+  const langs = (sys.details?.languages?.value || []).join(', ');
+  const skills = Object.entries(sys.skills || {}).map(([k,v]) => `${cap(k)} ${sign(num(v.base ?? v.mod ?? v))}`).join(', ');
+  const abilLine = ['str','dex','con','int','wis','cha'].map(k => abil[k] ? `<b>${cap(k)}</b> ${sign(num(abil[k].mod))}` : '').filter(Boolean).join(', ');
+  const ac = num(attr.ac);
+  const hp = attr.hp ? `${num(attr.hp.max ?? attr.hp)}${attr.hp.details ? ' ('+esc(attr.hp.details)+')' : ''}` : null;
+  const savesLine = ['fortitude','reflex','will'].map(k => saves[k] ? `<b>${cap(k)}</b> ${sign(num(saves[k]))}` : '').filter(Boolean).join(', ');
+  const speeds = attr.speed ? [ `${num(attr.speed)} feet`, ...(attr.speed.otherSpeeds||[]).map(s=>`${s.type} ${s.value} feet`) ].join(', ') : null;
+  const imm = (attr.immunities||[]).map(i=>i.type||i).join(', ');
+  const res = (attr.resistances||[]).map(r=>`${r.type||r}${r.value?' '+r.value:''}`).join(', ');
+  const weak = (attr.weaknesses||[]).map(w=>`${w.type||w}${w.value?' '+w.value:''}`).join(', ');
+
+  /* embedded items: group */
+  const groups = {action:[], melee:[], ranged:[], spellcasting:[], spell:[], other:[]};
+  for (const it of e.items || []) {
+    if (it.type === 'melee') (it.system?.weaponType?.value === 'ranged' ? groups.ranged : groups.melee).push(it);
+    else if (it.type === 'action') groups.action.push(it);
+    else if (it.type === 'spellcastingEntry') groups.spellcasting.push(it);
+    else if (it.type === 'spell') groups.spell.push(it);
+    else groups.other.push(it);
+  }
+  const strike = it => {
+    const s = it.system || {};
+    const bonus = num(s.bonus);
+    const dmg = Object.values(s.damageRolls || {}).map(d => `${d.damage} ${d.damageType}`).join(' plus ');
+    const tr = (s.traits?.value || []).join(', ');
+    return `<div class="kv"><b>${esc(it.name)}</b> ${bonus!==null?sign(bonus):''}${tr?` (${esc(tr)})`:''}${dmg?`, <b>Damage</b> <span class="dice">${esc(dmg)}</span>`:''}</div>`;
+  };
+  const actionBlock = it => {
+    const s = it.system || {};
+    const glyph = s.actionType?.value === 'reaction' ? '[reaction]' : s.actionType?.value === 'free' ? '[free-action]' : (s.actions?.value ? ACTION_GLYPH[s.actions.value] : '');
+    return `<div class="kv"><b>${esc(it.name)}</b> ${glyph?`<span class="act">${glyph}</span> `:''}${renderInline(s.description?.value || '')}</div>`;
+  };
+  const spellsByEntry = groups.spellcasting.map(sc => {
+    const mine = groups.spell.filter(sp => sp.system?.location?.value === sc._id);
+    const byRank = {};
+    for (const sp of mine) { const r = sp.system?.location?.heightenedLevel ?? sp.system?.level?.value ?? 0; (byRank[r] ||= []).push(sp.name); }
+    const dc = num(sc.system?.spelldc?.dc), atk = num(sc.system?.spelldc?.value);
+    const ranks = Object.keys(byRank).sort((a,b)=>b-a).map(r => `<b>${r==0?'Cantrips':'Rank '+r}</b> ${byRank[r].sort().map(esc).join(', ')}`).join('; ');
+    return `<div class="kv"><b>${esc(sc.name)}</b>${dc?` DC ${dc}`:''}${atk?`, attack ${sign(atk)}`:''}${ranks?'; '+ranks:''}</div>`;
+  }).join('');
+
+  return headBlock(e, 'Creature') + traitBadges(e) + srcLine(e)
+    + kv('Perception', per !== null ? esc(per) + (senses ? '; ' + esc(senses) : '') : (senses ? esc(senses) : null))
+    + kv('Languages', esc(langs)) + kv('Skills', esc(skills))
+    + (abilLine ? `<div class="kv">${abilLine}</div>` : '')
+    + '<hr class="hr">'
+    + kv('AC', esc(ac)) + (savesLine ? `<div class="kv">${savesLine}</div>` : '')
+    + kv('HP', hp) + kv('Immunities', esc(imm)) + kv('Resistances', esc(res)) + kv('Weaknesses', esc(weak))
+    + '<hr class="hr">'
+    + kv('Speed', esc(speeds))
+    + (groups.melee.length ? '<div class="npc-items"><h3>Melee Strikes</h3>' + groups.melee.map(strike).join('') + '</div>' : '')
+    + (groups.ranged.length ? '<div class="npc-items"><h3>Ranged Strikes</h3>' + groups.ranged.map(strike).join('') + '</div>' : '')
+    + (spellsByEntry ? '<div class="npc-items"><h3>Spellcasting</h3>' + spellsByEntry + '</div>' : '')
+    + (groups.action.length ? '<div class="npc-items"><h3>Abilities</h3>' + groups.action.map(actionBlock).join('') + '</div>' : '')
+    + (sys.details?.publicNotes ? `<hr class="hr"><div class="desc">${renderInline(sys.details.publicNotes)}</div>` : '');
+}
+
+function renderGeneric(e){
+  const sys = e.system || {};
+  const extras =
+      kv('Price', sys.price?.value ? esc(Object.entries(sys.price.value).map(([c,v])=>`${v} ${c}`).join(', ')) : null)
+    + kv('Usage', esc(num(sys.usage))) + kv('Bulk', esc(num(sys.bulk)))
+    + kv('Category', esc(sys.category)) + kv('Group', esc(num(sys.group)))
+    + kv('Damage', sys.damage?.dice ? `<span class="dice">${esc(`${sys.damage.dice}${sys.damage.die||''} ${sys.damage.damageType||''}`)}</span>` : null)
+    + kv('Hands', esc(num(sys.usage)?.match?.(/held-in-(\w+)/)?.[1] ? null : null))
+    + kv('AC Bonus', esc(num(sys.acBonus))) + kv('Dex Cap', esc(num(sys.dexCap)))
+    + kv('Prerequisites', (sys.prerequisites?.value||[]).map(p=>esc(p.value)).join(', ') || null)
+    + kv('Actions', sys.actionType?.value && sys.actionType.value!=='passive' ? `<span class="act">${ACTION_GLYPH[sys.actions?.value] || ACTION_GLYPH[sys.actionType.value] || esc(sys.actionType.value)}</span>` : null)
+    + kv('Trigger', sys.trigger?.value ? renderInline(sys.trigger.value) : null);
+  return headBlock(e, catLabel(e.type)) + traitBadges(e) + srcLine(e) + extras + descBlock(e);
+}
+
+function openDetail(e){
+  if (!e) return;
+  S.selId = e._id;
+  const html = e.type === 'spell' ? renderSpell(e) : e.type === 'npc' ? renderNpc(e) : renderGeneric(e);
+  const det = $('detail');
+  det.innerHTML = '<button class="backbtn" id="backbtn">&larr; Back to list</button><article class="sb">' + html + '</article>';
+  det.classList.add('open');
+  det.scrollTop = 0;
+  $('backbtn').onclick = () => det.classList.remove('open');
+  renderVirtual(false);
+}
+/* cross-reference clicks: try to resolve by name across loaded caches */
+$('detail').addEventListener('click', ev => {
+  const a = ev.target.closest('a.ref'); if (!a) return;
+  ev.preventDefault();
+  const name = a.dataset.name?.toLowerCase();
+  if (!name) return;
+  for (const type of Object.keys(S.cache)) {
+    const hit = S.cache[type].find(x => x.name.toLowerCase() === name);
+    if (hit) { openDetail(hit); return; }
+  }
+  status(`"${a.dataset.name}" isn't in a loaded category yet.`);
+});
+
+/* ============================ npc shard bar ============================ */
+function renderShardBar(){
+  const bar = $('shardbar');
+  if (S.cat !== 'npc') { bar.hidden = true; return; }
+  bar.hidden = false;
+  const shards = S.manifest.npc.shards;
+  const levels = Object.keys(shards).map(Number).sort((a,b)=>a-b);
+  bar.innerHTML = '<span class="lab">Creature level:</span>'
+    + levels.map(l => `<button class="chip${S.npcSel.has(l)?' on':''}" data-lvl="${l}">${l}</button>`).join('')
+    + `<button class="chip" data-lvl="all">All (${S.manifest.npc.sizeMB} MB)</button>`;
+}
+$('shardbar').addEventListener('click', async ev => {
+  const b = ev.target.closest('.chip'); if (!b) return;
+  const shards = S.manifest.npc.shards;
+  const levels = b.dataset.lvl === 'all' ? Object.keys(shards).map(Number) : [+b.dataset.lvl];
+  for (const l of levels) S.npcSel.add(l);
+  renderShardBar();
+  for (const l of levels) { try { await loadNpcShard(l); } catch(err){ status(`Failed: ${err.message}`); } applyFilters(); }
+  rebuildFilterOptions();
+});
+
+/* ============================ category switching ============================ */
+async function selectCategory(type){
+  S.cat = type; S.selId = null;
+  document.querySelectorAll('.cat').forEach(el => el.classList.toggle('active', el.dataset.type === type));
+  $('toolbar').hidden = false;
+  $('q').value = ''; $('lvlMin').value = ''; $('lvlMax').value = ''; $('rarity').value = ''; $('trait').value = ''; $('source').value = '';
+  $('detail').classList.remove('open');
+  renderShardBar();
+  if (type === 'npc') {
+    S.cache.npc = S.cache.npc || [];
+    applyFilters(); rebuildFilterOptions();
+  } else {
+    try { await loadCategory(type); } catch(err){ status(`Failed to load: ${err.message}`); S.cache[type] = S.cache[type] || []; }
+    if (S.cat !== type) return; // user switched away mid-fetch
+    applyFilters(); rebuildFilterOptions();
+  }
+}
+for (const el of ['q','lvlMin','lvlMax']) $(el).addEventListener('input', applyFilters);
+for (const el of ['rarity','trait','source']) $(el).addEventListener('input', applyFilters);
+
+/* ============================ boot ============================ */
+(async function init(){
+  try {
+    S.manifest = await fetchJSON('data/manifest.json');
+  } catch (err) {
+    status('Could not load data/manifest.json — serve this file from a static server next to the data folder. ' + err.message);
+    return;
+  }
+  const PRIORITY = ['spell','feat','npc','action','equipment','weapon','armor','consumable','condition','ancestry','heritage','background','class','deity'];
+  const types = Object.keys(S.manifest).sort((a,b) => {
+    const ia = PRIORITY.indexOf(a), ib = PRIORITY.indexOf(b);
+    return (ia===-1?99:ia)-(ib===-1?99:ib) || a.localeCompare(b);
+  });
+  $('cats').innerHTML = types.map(t =>
+    `<button class="cat" data-type="${esc(t)}"><span>${esc(catLabel(t))}</span><span class="n">${S.manifest[t].count.toLocaleString()}</span></button>`).join('');
+  $('cats').addEventListener('click', ev => {
+    const b = ev.target.closest('.cat'); if (b) selectCategory(b.dataset.type);
+  });
+  status(`${types.length} categories · ${types.reduce((n,t)=>n+S.manifest[t].count,0).toLocaleString()} entries indexed.`);
+})();
+</script>
+</body>
+</html>
