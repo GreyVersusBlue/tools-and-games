@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>greyversusblue</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --charcoal: #1B1D24;
+    --slate-blue: #3E6690;
+    --warm-grey: #8C8E96;
+    --mist: #ECEDF1;
+    --ember: #C9793D;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--charcoal);
+    color: var(--mist);
+    font-family: 'IBM Plex Sans', sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  /* --- HERO: the seam --- */
+  .hero {
+    position: relative;
+    min-height: 66vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .seam-bg {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      115deg,
+      var(--warm-grey) 0%,
+      var(--warm-grey) 42%,
+      var(--charcoal) 42%,
+      var(--charcoal) 58%,
+      var(--slate-blue) 58%,
+      var(--slate-blue) 100%
+    );
+    opacity: 0.16;
+  }
+
+  .seam-line {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      115deg,
+      transparent 49.6%,
+      var(--ember) 49.9%,
+      var(--ember) 50.1%,
+      transparent 50.4%
+    );
+    opacity: 0.55;
+    animation: seamPulse 6s ease-in-out infinite;
+  }
+
+  @keyframes seamPulse {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 0.65; }
+  }
+
+  .hero-content {
+    position: relative;
+    text-align: center;
+    padding: 2rem;
+    z-index: 1;
+  }
+
+  .wordmark {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: clamp(2.4rem, 8vw, 5.2rem);
+    letter-spacing: -0.02em;
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .wordmark .grey { color: var(--warm-grey); }
+  .wordmark .versus {
+    color: var(--ember);
+    font-size: 0.5em;
+    align-self: center;
+    margin: 0 0.15em;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+  }
+  .wordmark .blue { color: var(--slate-blue); }
+
+  .tagline {
+    margin-top: 1.1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    letter-spacing: 0.06em;
+    color: var(--warm-grey);
+    text-transform: uppercase;
+  }
+
+  /* --- MAIN --- */
+  main {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 5rem;
+  }
+
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ember);
+    margin-bottom: 1.25rem;
+    display: block;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1.1rem;
+    margin-bottom: 3.5rem;
+  }
+
+  .card {
+    position: relative;
+    background: #22242D;
+    border: 1px solid #33353F;
+    border-radius: 3px;
+    padding: 1.5rem;
+    transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--warm-grey);
+    transition: background 0.2s ease;
+  }
+
+  .card.tone-blue::before { background: var(--slate-blue); }
+  .card.tone-grey::before { background: var(--warm-grey); }
+
+  .card:hover, .card:focus-within {
+    transform: translateX(3px);
+    background: #262933;
+    border-color: #454854;
+  }
+
+  .card:focus-within { outline: 2px solid var(--ember); outline-offset: 2px; }
+
+  .card a {
+    display: block;
+    outline: none;
+  }
+
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.5rem;
+  }
+
+  .card-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 500;
+    font-size: 1.15rem;
+  }
+
+  .card-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--warm-grey);
+    white-space: nowrap;
+    margin-left: 0.75rem;
+  }
+
+  .card-desc {
+    font-size: 0.9rem;
+    color: #B6B8C0;
+  }
+
+  footer {
+    text-align: center;
+    padding: 2rem 1.5rem 3rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: #55575F;
+    letter-spacing: 0.04em;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .seam-line { animation: none; opacity: 0.5; }
+    .card { transition: none; }
+  }
+
+  @media (max-width: 480px) {
+    .wordmark { flex-direction: column; }
+    .wordmark .versus { margin: 0.1em 0; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="hero">
+    <div class="seam-bg"></div>
+    <div class="seam-line"></div>
+    <div class="hero-content">
+      <div class="wordmark">
+        <span class="grey">grey</span><span class="versus">vs</span><span class="blue">blue</span>
+      </div>
+      <p class="tagline">a workshop of small built things</p>
+    </div>
+  </div>
+
+  <main>
+    <span class="section-label">Games &amp; Worlds</span>
+    <div class="grid">
+
+      <div class="card tone-blue">
+        <a href="/absalom-inheritance/">
+          <div class="card-top">
+            <span class="card-title">The Absalom Inheritance</span>
+            <span class="card-tag">CRPG</span>
+          </div>
+          <p class="card-desc">An isometric crawler built on PF2e Remaster rules.</p>
+        </a>
+      </div>
+
+      <div class="card tone-grey">
+        <a href="/corner-and-kettle/">
+          <div class="card-top">
+            <span class="card-title">Corner &amp; Kettle</span>
+            <span class="card-tag">Sim</span>
+          </div>
+          <p class="card-desc">Run your own coffee shop, one order at a time.</p>
+        </a>
+      </div>
+
+      <div class="card tone-blue">
+        <a href="/daredevil/">
+          <div class="card-top">
+            <span class="card-title">Daredevil</span>
+            <span class="card-tag">Narrative RPG</span>
+          </div>
+          <p class="card-desc">Stuntman Duke Harlan chases the next big stunt.</p>
+        </a>
+      </div>
+
+      <div class="card tone-grey">
+        <a href="/torchbearer/">
+          <div class="card-top">
+            <span class="card-title">Torchbearer</span>
+            <span class="card-tag">Adventure Engine</span>
+          </div>
+          <p class="card-desc">A Pathfinder 2e Remaster adventure, playable solo.</p>
+        </a>
+      </div>
+
+      <div class="card tone-blue">
+        <a href="/sports-bar-sim/">
+          <div class="card-top">
+            <span class="card-title">Sports Bar Sim</span>
+            <span class="card-tag">Management Sim</span>
+          </div>
+          <p class="card-desc">Inventory, staff, TVs, and promotions — build the bar up season by season.</p>
+        </a>
+      </div>
+
+    </div>
+
+    <span class="section-label">School Tools</span>
+    <div class="grid">
+
+      <div class="card tone-grey">
+        <a href="/schedule-browser/">
+          <div class="card-top">
+            <span class="card-title">Schedule Browser</span>
+            <span class="card-tag">Utility</span>
+          </div>
+          <p class="card-desc">Browse and search East Middle's schedule data by teacher, room, or period.</p>
+        </a>
+      </div>
+
+      <div class="card tone-blue">
+        <a href="/layout-visualizer/">
+          <div class="card-top">
+            <span class="card-title">School Layout Visualizer</span>
+            <span class="card-tag">Utility</span>
+          </div>
+          <p class="card-desc">A hyperlinked map of teachers, rooms, and clusters.</p>
+        </a>
+      </div>
+
+    </div>
+  </main>
+
+  <footer>
+    greyversusblue.com — built one file at a time
+  </footer>
+
+</body>
+</html>
