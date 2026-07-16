@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image → PDF Assembler</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #6c8ef5;
+    --accent2: #a78bfa;
+    --text: #e8eaf6;
+    --text-dim: #7b82a8;
+    --success: #4ade80;
+    --warn: #fbbf24;
+    --danger: #f87171;
+    --radius: 10px;
+    --mono: 'JetBrains Mono', 'Fira Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem 4rem;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+
+  header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    background: linear-gradient(120deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.4rem;
+  }
+
+  header p {
+    color: var(--text-dim);
+    font-size: 0.875rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    width: 100%;
+    max-width: 680px;
+    margin-bottom: 1.25rem;
+  }
+
+  .card-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin-bottom: 1rem;
+  }
+
+  /* Drop Zone */
+  #drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 2.5rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+
+  #drop-zone:hover, #drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(108, 142, 245, 0.05);
+  }
+
+  #drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  #drop-zone .icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+    display: block;
+  }
+
+  #drop-zone .label {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.3rem;
+  }
+
+  #drop-zone .sublabel {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+  }
+
+  /* Controls row */
+  .controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex: 1;
+    min-width: 160px;
+  }
+
+  label {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+
+  select, input[type="text"] {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    width: 100%;
+    transition: border-color 0.15s;
+    font-family: inherit;
+  }
+
+  select:focus, input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .toggle-group {
+    display: flex;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .toggle-group label {
+    flex: 1;
+    text-align: center;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+  }
+
+  .toggle-group input[type="radio"] { display: none; }
+
+  .toggle-group input[type="radio"]:checked + label {
+    background: var(--accent);
+    color: white;
+  }
+
+  /* File list */
+  #file-count {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-bottom: 0.75rem;
+  }
+
+  #file-count span {
+    color: var(--accent);
+    font-weight: 600;
+    font-family: var(--mono);
+  }
+
+  #file-list {
+    list-style: none;
+    max-height: 260px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+  }
+
+  #file-list:empty::after {
+    content: 'No files loaded yet.';
+    display: block;
+    color: var(--text-dim);
+    text-align: center;
+    padding: 1.5rem;
+    font-family: inherit;
+  }
+
+  #file-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  #file-list li:last-child { border-bottom: none; }
+  #file-list li:hover { background: var(--surface2); }
+
+  #file-list .seq {
+    color: var(--text-dim);
+    min-width: 2.5rem;
+    text-align: right;
+  }
+
+  #file-list .type-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .badge-png { background: rgba(108, 142, 245, 0.2); color: var(--accent); }
+  .badge-svg { background: rgba(167, 139, 250, 0.2); color: var(--accent2); }
+
+  .filename { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Progress */
+  #progress-wrap {
+    display: none;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  #progress-wrap.visible { display: flex; }
+
+  #progress-bar-bg {
+    background: var(--surface2);
+    border-radius: 999px;
+    height: 8px;
+    overflow: hidden;
+  }
+
+  #progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 999px;
+    width: 0%;
+    transition: width 0.2s;
+  }
+
+  #progress-label {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.25rem;
+    flex-wrap: wrap;
+  }
+
+  button {
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 0.6rem 1.25rem;
+    border: none;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+
+  button:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+  button:active:not(:disabled) { transform: translateY(0); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  #btn-generate {
+    background: linear-gradient(120deg, var(--accent), var(--accent2));
+    color: white;
+    flex: 1;
+  }
+
+  #btn-clear {
+    background: var(--surface2);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+
+  /* Error/Info messages */
+  #msg {
+    font-size: 0.8rem;
+    padding: 0.6rem 0.85rem;
+    border-radius: 6px;
+    display: none;
+    margin-top: 0.5rem;
+  }
+
+  #msg.error { display: block; background: rgba(248, 113, 113, 0.12); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3); }
+  #msg.info { display: block; background: rgba(74, 222, 128, 0.1); color: var(--success); border: 1px solid rgba(74, 222, 128, 0.3); }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Image → PDF Assembler</h1>
+  <p>Combine PNG &amp; SVG files into a single PDF — runs entirely in your browser</p>
+</header>
+
+<!-- Drop zone -->
+<div class="card">
+  <div class="card-title">1 · Select Files</div>
+  <div id="drop-zone">
+    <input type="file" id="file-input" accept=".png,.svg" multiple>
+    <span class="icon">📂</span>
+    <div class="label">Drop files here or click to browse</div>
+    <div class="sublabel">Accepts .png and .svg · No file size limit</div>
+  </div>
+</div>
+
+<!-- Controls -->
+<div class="card">
+  <div class="card-title">2 · Sort &amp; Layout Options</div>
+  <div class="controls">
+
+    <div class="control-group">
+      <label>Sort order</label>
+      <div class="toggle-group">
+        <input type="radio" name="sort" id="sort-num" value="numeric" checked>
+        <label for="sort-num">Numeric (2…265)</label>
+        <input type="radio" name="sort" id="sort-alpha" value="alpha">
+        <label for="sort-alpha">Alphabetical</label>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>Page size</label>
+      <select id="page-size">
+        <option value="original" selected>Match image size</option>
+        <option value="letter">Letter (8.5 × 11")</option>
+        <option value="a4">A4 (210 × 297 mm)</option>
+        <option value="legal">Legal (8.5 × 14")</option>
+        <option value="tabloid">Tabloid (11 × 17")</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>Orientation (fixed sizes only)</label>
+      <div class="toggle-group">
+        <input type="radio" name="orient" id="orient-port" value="portrait" checked>
+        <label for="orient-port">Portrait</label>
+        <input type="radio" name="orient" id="orient-land" value="landscape">
+        <label for="orient-land">Landscape</label>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>Output filename</label>
+      <input type="text" id="filename" value="assembled.pdf" placeholder="assembled.pdf">
+    </div>
+
+  </div>
+</div>
+
+<!-- File list -->
+<div class="card">
+  <div class="card-title">3 · File Queue</div>
+  <div id="file-count">Load files above to see the sort order preview.</div>
+  <ul id="file-list"></ul>
+</div>
+
+<!-- Generate -->
+<div class="card">
+  <div class="card-title">4 · Generate PDF</div>
+  <div id="progress-wrap">
+    <div id="progress-bar-bg"><div id="progress-bar"></div></div>
+    <div id="progress-label">Ready</div>
+  </div>
+  <div id="msg"></div>
+  <div class="btn-row" style="margin-top:1rem;">
+    <button id="btn-clear">Clear files</button>
+    <button id="btn-generate" disabled>Generate PDF</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const dropZone   = document.getElementById('drop-zone');
+  const fileInput  = document.getElementById('file-input');
+  const fileList   = document.getElementById('file-list');
+  const fileCount  = document.getElementById('file-count');
+  const btnGen     = document.getElementById('btn-generate');
+  const btnClear   = document.getElementById('btn-clear');
+  const progressWrap = document.getElementById('progress-wrap');
+  const progressBar  = document.getElementById('progress-bar');
+  const progressLabel = document.getElementById('progress-label');
+  const msg        = document.getElementById('msg');
+
+  let loadedFiles = [];   // Array of File objects
+
+  // ── Drag-over styling ──────────────────────────────────────────────────────
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    handleFiles([...e.dataTransfer.files]);
+  });
+  fileInput.addEventListener('change', () => handleFiles([...fileInput.files]));
+
+  // Sort-order radio changes → re-render list
+  document.querySelectorAll('input[name="sort"]').forEach(r => r.addEventListener('change', renderList));
+
+  // ── File ingestion ─────────────────────────────────────────────────────────
+  function handleFiles(files) {
+    const valid = files.filter(f => /\.(png|svg)$/i.test(f.name));
+    if (valid.length === 0) { showMsg('No PNG or SVG files found in selection.', 'error'); return; }
+    clearMsg();
+    // Merge (allow multiple file-input calls)
+    const existingNames = new Set(loadedFiles.map(f => f.name));
+    const newOnes = valid.filter(f => !existingNames.has(f.name));
+    loadedFiles.push(...newOnes);
+    renderList();
+  }
+
+  // ── Numeric sort: extract leading number from filename ─────────────────────
+  function extractLeadingNumber(name) {
+    const m = name.match(/^(\d+)/);
+    return m ? parseInt(m[1], 10) : Infinity;
+  }
+
+  function getSortedFiles() {
+    const mode = document.querySelector('input[name="sort"]:checked').value;
+    const copy = [...loadedFiles];
+    if (mode === 'numeric') {
+      copy.sort((a, b) => extractLeadingNumber(a.name) - extractLeadingNumber(b.name) || a.name.localeCompare(b.name));
+    } else {
+      copy.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    }
+    return copy;
+  }
+
+  // ── Render the file queue list ─────────────────────────────────────────────
+  function renderList() {
+    fileList.innerHTML = '';
+    const sorted = getSortedFiles();
+    if (sorted.length === 0) {
+      fileCount.innerHTML = 'Load files above to see the sort order preview.';
+      btnGen.disabled = true;
+      return;
+    }
+    const pngCount = sorted.filter(f => /\.png$/i.test(f.name)).length;
+    const svgCount = sorted.filter(f => /\.svg$/i.test(f.name)).length;
+    fileCount.innerHTML = `<span>${sorted.length}</span> files loaded — <span>${pngCount}</span> PNG, <span>${svgCount}</span> SVG`;
+    btnGen.disabled = false;
+
+    sorted.forEach((file, i) => {
+      const li   = document.createElement('li');
+      const ext  = /\.svg$/i.test(file.name) ? 'svg' : 'png';
+      li.innerHTML = `
+        <span class="seq">${i + 1}</span>
+        <span class="type-badge badge-${ext}">${ext.toUpperCase()}</span>
+        <span class="filename">${file.name}</span>
+      `;
+      fileList.appendChild(li);
+    });
+  }
+
+  // ── Clear ──────────────────────────────────────────────────────────────────
+  btnClear.addEventListener('click', () => {
+    loadedFiles = [];
+    fileInput.value = '';
+    renderList();
+    clearMsg();
+    progressWrap.classList.remove('visible');
+  });
+
+  // ── Page size helpers ──────────────────────────────────────────────────────
+  const PAGE_SIZES = {
+    letter:  [215.9, 279.4],  // mm
+    a4:      [210,   297],
+    legal:   [215.9, 355.6],
+    tabloid: [279.4, 431.8],
+  };
+
+  function pxToMm(px) { return px * 25.4 / 96; }
+
+  // ── Generate PDF ───────────────────────────────────────────────────────────
+  btnGen.addEventListener('click', generatePDF);
+
+  async function generatePDF() {
+    clearMsg();
+    const sorted    = getSortedFiles();
+    const pageMode  = document.getElementById('page-size').value;
+    const orient    = document.querySelector('input[name="orient"]:checked').value;
+    let   outName   = document.getElementById('filename').value.trim() || 'assembled.pdf';
+    if (!/\.pdf$/i.test(outName)) outName += '.pdf';
+
+    btnGen.disabled = true;
+    btnClear.disabled = true;
+    progressWrap.classList.add('visible');
+    setProgress(0, `Preparing 0 / ${sorted.length}…`);
+
+    // jsPDF is loaded via CDN as window.jspdf
+    const { jsPDF } = window.jspdf;
+
+    let pdf = null;
+
+    try {
+      for (let i = 0; i < sorted.length; i++) {
+        const file = sorted[i];
+        const isSVG = /\.svg$/i.test(file.name);
+
+        setProgress(Math.round(i / sorted.length * 100), `Processing ${i + 1} / ${sorted.length}: ${file.name}`);
+        // Yield to UI
+        await new Promise(r => setTimeout(r, 0));
+
+        if (isSVG) {
+          // ── SVG → Canvas → PNG → PDF ─────────────────────────────────────
+          // Rasterize the SVG via a blob URL painted onto a canvas.
+          // No external library required.
+          const text   = await file.text();
+          const parser = new DOMParser();
+          const svgEl  = parser.parseFromString(text, 'image/svg+xml').documentElement;
+
+          // Resolve natural size from width/height attrs or viewBox
+          let svgW = parseFloat(svgEl.getAttribute('width'))  || 0;
+          let svgH = parseFloat(svgEl.getAttribute('height')) || 0;
+          const vb = svgEl.getAttribute('viewBox');
+          if (vb) {
+            const parts = vb.trim().split(/[\s,]+/).map(Number);
+            if (parts.length === 4) {
+              if (!svgW) svgW = parts[2];
+              if (!svgH) svgH = parts[3];
+            }
+          }
+          if (!svgW) svgW = 800;
+          if (!svgH) svgH = 600;
+
+          // Ensure the SVG has explicit dimensions so the browser renders it at full size
+          svgEl.setAttribute('width',  svgW);
+          svgEl.setAttribute('height', svgH);
+
+          // Render at 2× for sharpness
+          const SCALE   = 2;
+          const canvasW = Math.round(svgW * SCALE);
+          const canvasH = Math.round(svgH * SCALE);
+
+          const dataURL = await svgToDataURL(svgEl, canvasW, canvasH);
+
+          const wMm = pxToMm(svgW);
+          const hMm = pxToMm(svgH);
+          const [pgW, pgH] = resolvePageDimsMm(pageMode, orient, wMm, hMm);
+
+          if (!pdf) {
+            pdf = new jsPDF({ orientation: pgW >= pgH ? 'l' : 'p', unit: 'mm', format: [pgW, pgH], compress: true });
+          } else {
+            pdf.addPage([pgW, pgH], pgW >= pgH ? 'l' : 'p');
+          }
+
+          const scaleX = pgW / wMm;
+          const scaleY = pgH / hMm;
+          const scale  = Math.min(scaleX, scaleY);
+          const dW     = wMm * scale;
+          const dH     = hMm * scale;
+          const offX   = (pgW - dW) / 2;
+          const offY   = (pgH - dH) / 2;
+
+          pdf.addImage(dataURL, 'PNG', offX, offY, dW, dH, undefined, 'FAST');
+
+        } else {
+          // ── PNG path ─────────────────────────────────────────────────────
+          const dataURL = await fileToDataURL(file);
+          const [imgW, imgH] = await getImageDimensions(dataURL);
+          const wMm = pxToMm(imgW);
+          const hMm = pxToMm(imgH);
+          const [pgW, pgH] = resolvePageDimsMm(pageMode, orient, wMm, hMm);
+
+          if (!pdf) {
+            pdf = new jsPDF({ orientation: pgW >= pgH ? 'l' : 'p', unit: 'mm', format: [pgW, pgH], compress: true });
+          } else {
+            pdf.addPage([pgW, pgH], pgW >= pgH ? 'l' : 'p');
+          }
+
+          // Scale image to fit page (keeping aspect ratio, centered)
+          const scaleX = pgW / wMm;
+          const scaleY = pgH / hMm;
+          const scale  = Math.min(scaleX, scaleY);
+          const dW     = wMm * scale;
+          const dH     = hMm * scale;
+          const offX   = (pgW - dW) / 2;
+          const offY   = (pgH - dH) / 2;
+
+          pdf.addImage(dataURL, 'PNG', offX, offY, dW, dH, undefined, 'FAST');
+        }
+      }
+
+      setProgress(100, 'Finalizing…');
+      await new Promise(r => setTimeout(r, 50));
+
+      pdf.save(outName);
+      setProgress(100, `✓ Done! Saved as "${outName}"`);
+      showMsg(`PDF saved: ${outName}  (${sorted.length} pages)`, 'info');
+
+    } catch (err) {
+      console.error(err);
+      showMsg('Error generating PDF: ' + err.message, 'error');
+      setProgress(0, 'Failed.');
+    }
+
+    btnGen.disabled = false;
+    btnClear.disabled = false;
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function resolvePageDimsMm(mode, orient, naturalW, naturalH) {
+    if (mode === 'original') return [naturalW, naturalH];
+    let [w, h] = PAGE_SIZES[mode];
+    if (orient === 'landscape' && h > w) [w, h] = [h, w];
+    if (orient === 'portrait'  && w > h) [w, h] = [h, w];
+    return [w, h];
+  }
+
+  function fileToDataURL(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload  = () => res(r.result);
+      r.onerror = () => rej(new Error('Could not read file: ' + file.name));
+      r.readAsDataURL(file);
+    });
+  }
+
+  function getImageDimensions(dataURL) {
+    return new Promise((res, rej) => {
+      const img = new Image();
+      img.onload  = () => res([img.naturalWidth, img.naturalHeight]);
+      img.onerror = () => rej(new Error('Could not load image'));
+      img.src = dataURL;
+    });
+  }
+
+  // Rasterize an SVG element to a PNG data URL via canvas.
+  // svgEl: an SVGSVGElement (already has width/height set)
+  // canvasW, canvasH: pixel dimensions of the output canvas
+  function svgToDataURL(svgEl, canvasW, canvasH) {
+    return new Promise((res, rej) => {
+      // Serialize the SVG to a string, then make a blob URL
+      const serializer = new XMLSerializer();
+      const svgStr = serializer.serializeToString(svgEl);
+      const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width  = canvasW;
+          canvas.height = canvasH;
+          const ctx = canvas.getContext('2d');
+          // White background so transparency renders cleanly in PDF
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvasW, canvasH);
+          ctx.drawImage(img, 0, 0, canvasW, canvasH);
+          URL.revokeObjectURL(url);
+          res(canvas.toDataURL('image/png'));
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          rej(e);
+        }
+      };
+      img.onerror = (e) => {
+        URL.revokeObjectURL(url);
+        rej(new Error('Failed to load SVG as image: ' + svgEl.getAttribute('width') + 'x' + svgEl.getAttribute('height')));
+      };
+      img.src = url;
+    });
+  }
+
+  function setProgress(pct, label) {
+    progressBar.style.width  = pct + '%';
+    progressLabel.textContent = label;
+  }
+
+  function showMsg(text, type) {
+    msg.textContent = text;
+    msg.className   = type;
+  }
+
+  function clearMsg() {
+    msg.textContent = '';
+    msg.className   = '';
+  }
+
+})();
+</script>
+</body>
+</html>

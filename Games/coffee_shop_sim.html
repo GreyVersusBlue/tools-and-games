@@ -1,0 +1,2401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Corner &amp; Kettle — Coffee Shop Sim</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Quicksand:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --cream:#F5EDE1;
+  --cream-dark:#e9dcc7;
+  --espresso:#3B2418;
+  --espresso-soft:#5b3a29;
+  --latte:#C89B6D;
+  --copper:#B5651D;
+  --sage:#7C9070;
+  --sage-dark:#5f7256;
+  --cloud:#FFFDF8;
+  --ticket:#fbf6ea;
+  --shadow: rgba(59,36,24,0.25);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;}
+body{
+  font-family:'Quicksand',sans-serif;
+  background:var(--espresso);
+  color:var(--espresso);
+  overflow-x:hidden;
+}
+#game{
+  max-width:1100px;
+  margin:0 auto;
+  background:var(--cream);
+  min-height:100vh;
+  position:relative;
+  box-shadow:0 0 40px rgba(0,0,0,0.5);
+}
+
+/* ---------- HEADER ---------- */
+#topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:10px 18px;
+  background:var(--espresso);
+  color:var(--cream);
+  font-family:'Quicksand',sans-serif;
+  font-weight:700;
+  flex-wrap:wrap;
+  gap:8px;
+}
+#topbar h1{
+  font-family:'Kalam',cursive;
+  font-size:1.5rem;
+  margin:0;
+  color:var(--cream);
+  letter-spacing:0.5px;
+}
+.stat{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  background:rgba(255,255,255,0.08);
+  padding:6px 12px;
+  border-radius:20px;
+  font-size:0.9rem;
+}
+.stat b{color:#ffd699;}
+#dayclock{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+#clockbar{
+  width:120px;height:8px;background:rgba(255,255,255,0.2);border-radius:4px;overflow:hidden;
+}
+#clockbar-fill{
+  height:100%;width:0%;background:linear-gradient(90deg,#ffd699,#ff9b6a);transition:width 0.3s linear;
+}
+
+/* ---------- SKY / QUEUE ---------- */
+#skystrip{
+  position:relative;
+  height:150px;
+  overflow:hidden;
+  transition:background 1s linear;
+  border-bottom:4px solid var(--espresso);
+}
+#queueRow{
+  position:absolute;
+  bottom:0;left:0;right:0;
+  height:110px;
+  display:flex;
+  align-items:flex-end;
+  padding:0 16px;
+  gap:10px;
+}
+.customer{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  cursor:pointer;
+  transition:transform 0.2s;
+  flex-shrink:0;
+}
+.customer:hover{transform:translateY(-4px);}
+.customer.served{
+  animation:walkoff 0.6s forwards;
+}
+@keyframes walkoff{
+  to{transform:translateX(140px) translateY(-10px);opacity:0;}
+}
+.customer .bubble{
+  background:var(--cloud);
+  border:2px solid var(--espresso);
+  border-radius:10px;
+  padding:3px 5px;
+  display:flex;
+  gap:2px;
+  margin-bottom:4px;
+  font-size:11px;
+  white-space:nowrap;
+  box-shadow:2px 2px 0 var(--shadow);
+}
+.customer .patience{
+  width:36px;height:5px;background:rgba(0,0,0,0.15);border-radius:3px;overflow:hidden;margin-top:3px;
+}
+.customer .patience-fill{
+  height:100%;background:var(--sage);transition:width 0.3s linear;
+}
+.customer.accepted{outline:3px dashed var(--copper);outline-offset:3px;border-radius:8px;}
+.customer .regularName{
+  background:var(--copper);color:var(--cream);
+  font-family:'Kalam',cursive;font-weight:700;font-size:10px;
+  padding:1px 7px;border-radius:8px;margin-bottom:3px;
+  box-shadow:1px 1px 0 var(--shadow);white-space:nowrap;
+}
+.customer.regular .patience-fill{background:var(--copper);}
+
+/* ---------- MAIN COUNTER AREA ---------- */
+#counterArea{
+  display:flex;
+  gap:14px;
+  padding:14px 16px;
+  flex-wrap:wrap;
+}
+#slotsPanel{
+  flex:1 1 340px;
+  min-width:300px;
+}
+#slots{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+  gap:12px;
+  margin-bottom:10px;
+}
+.slot{
+  min-width:0;
+  background:var(--cream-dark);
+  border:2px solid var(--latte);
+  border-radius:14px;
+  padding:10px;
+  min-height:230px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  position:relative;
+  cursor:pointer;
+}
+.slot.focused{
+  border-color:var(--copper);
+  box-shadow:0 0 0 3px rgba(181,101,29,0.25);
+}
+.slot.serving{
+  animation:slotServed 0.5s ease forwards;
+  pointer-events:none;
+}
+@keyframes slotServed{
+  0%{opacity:1;transform:scale(1) translateY(0);}
+  60%{opacity:1;transform:scale(1.04) translateY(-2px);}
+  100%{opacity:0;transform:scale(0.92) translateY(-16px);}
+}
+.slot.empty{
+  justify-content:center;
+  opacity:0.6;
+  font-style:italic;
+  color:#7a6a56;
+}
+.slot .ticket{
+  background:var(--ticket);
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  border:1px dashed #b7a98c;
+  padding:6px 8px;
+  border-radius:4px;
+  width:100%;
+  margin-bottom:8px;
+}
+.slot .ticket .want{display:flex;flex-direction:column;gap:2px;margin-top:4px;}
+.slot .ticket .want li{list-style:none;}
+.slot .ticket .want li.done{
+  text-decoration:line-through;
+  opacity:0.5;
+}
+.slot .ticket .want li.done::before{content:"✓ ";}
+.slot .ticket .want li:not(.done)::before{content:"• ";}
+.cupwrap{
+  width:100px;height:120px;display:flex;align-items:flex-end;justify-content:center;
+}
+.cupwrap svg{max-width:100%;height:auto;}
+.slotbtnrow{display:flex;flex-wrap:wrap;gap:6px;width:100%;margin-top:auto;padding-top:8px;}
+.slot .servebtn{
+  flex:1 1 60px;
+  min-width:0;
+  padding:6px;
+  border:none;
+  border-radius:8px;
+  background:var(--sage);
+  color:white;
+  font-family:'Quicksand';
+  font-weight:700;
+  cursor:pointer;
+}
+.slot .servebtn:hover{background:var(--sage-dark);}
+.slot .servebtn:disabled{background:#c9c2b3;cursor:not-allowed;}
+.slot .discardbtn{
+  flex:1 1 60px;
+  min-width:0;
+  white-space:nowrap;
+  padding:6px 8px;
+  border:none;
+  border-radius:8px;
+  background:#a24a3a;
+  color:white;
+  font-family:'Quicksand';
+  font-weight:700;
+  cursor:pointer;
+  font-size:0.8rem;
+}
+.slot .discardbtn:hover{background:#872f21;}
+.slot .clearbtn{
+  position:absolute;top:6px;right:8px;
+  background:none;border:none;color:#a25;
+  font-size:11px;cursor:pointer;text-decoration:underline;
+}
+.slot.baristaWorking{
+  border-color:var(--sage-dark);
+  animation:baristaPulse 1.4s ease-in-out infinite;
+}
+@keyframes baristaPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(124,144,112,0.0);}
+  50%{box-shadow:0 0 0 4px rgba(124,144,112,0.45);}
+}
+.baristaChip{
+  position:absolute;top:-10px;left:50%;transform:translateX(-50%);
+  background:var(--sage-dark);color:#fff;
+  font-size:10px;font-weight:700;font-family:'Quicksand';
+  padding:2px 8px;border-radius:10px;white-space:nowrap;
+  box-shadow:1px 1px 0 var(--shadow);z-index:2;
+  display:flex;align-items:center;gap:4px;
+}
+.baristaChip .cupdots{letter-spacing:1px;font-size:9px;}
+
+/* ---------- STATIONS (all visible, no tabs) ---------- */
+#stationsPanel{
+  flex:1 1 380px;
+  min-width:300px;
+  background:var(--cream-dark);
+  border:2px solid var(--latte);
+  border-radius:14px;
+  padding:10px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.stationBlock{
+  background:var(--cream);
+  border:2px solid var(--espresso);
+  border-radius:10px;
+  padding:8px 10px;
+}
+.stationBlock h3{
+  margin:0 0 6px 0;
+  font-family:'Kalam',cursive;
+  font-size:1.05rem;
+  color:var(--espresso);
+}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px;}
+.actionbtn{
+  padding:8px 10px;
+  border:none;
+  border-radius:10px;
+  background:var(--espresso);
+  color:var(--cream);
+  font-family:'Quicksand';
+  font-weight:600;
+  font-size:0.85rem;
+  cursor:pointer;
+  display:flex;align-items:center;gap:6px;
+}
+.actionbtn:hover{background:var(--espresso-soft);}
+.actionbtn.selected{outline:2px solid var(--copper);}
+.actionbtn:disabled{background:#b6ab99;cursor:not-allowed;}
+.progresswrap{
+  width:100%;height:10px;background:#e2d8c3;border-radius:5px;overflow:hidden;margin-top:8px;
+}
+.progressfill{
+  height:100%;width:0%;background:var(--copper);transition:width 0.05s linear;
+}
+.draghint{font-size:0.75rem;color:#6b5a44;margin-top:6px;}
+
+/* ---------- CHALKBOARD ---------- */
+#chalkToggle{
+  position:fixed;right:18px;bottom:18px;
+  background:var(--espresso);color:var(--cream);
+  border:none;border-radius:50%;width:56px;height:56px;font-size:1.4rem;
+  cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4);z-index:50;
+}
+#muteToggle{
+  position:fixed;right:82px;bottom:18px;
+  background:var(--espresso-soft);color:var(--cream);
+  border:none;border-radius:50%;width:44px;height:44px;font-size:1.1rem;
+  cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.4);z-index:50;
+}
+#newGameBtn{
+  display:block;margin:0 0 14px 0;width:100%;
+  font-family:'Quicksand';font-weight:700;font-size:0.8rem;
+  background:#a24a3a;color:#fdf6e3;border:none;border-radius:8px;
+  padding:8px 10px;cursor:pointer;
+}
+#newGameBtn:hover{background:#872f21;}
+#chalkboard{
+  position:fixed;top:0;right:-380px;width:340px;height:100%;
+  background:#1f2b22;color:#f2ead7;
+  padding:20px;overflow-y:auto;
+  transition:right 0.35s ease;
+  z-index:49;
+  border-left:6px solid #6b4a2b;
+}
+#chalkboard.open{right:0;}
+#chalkboard h2{
+  font-family:'Kalam',cursive;font-size:1.6rem;margin-top:0;color:#fdf6e3;
+  border-bottom:2px dashed #7a8a6f;padding-bottom:8px;
+}
+.chalk-item{
+  font-family:'Kalam',cursive;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:8px 4px;border-bottom:1px dashed rgba(255,255,255,0.15);
+  font-size:1.05rem;
+}
+.chalk-item.locked{opacity:0.55;}
+.chalk-item button{
+  font-family:'Quicksand';font-weight:700;font-size:0.75rem;
+  background:#e0b969;color:#2b1c10;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;
+}
+.chalk-item button:disabled{background:#6b6255;color:#ccc;cursor:not-allowed;}
+.chalk-section{margin-top:14px;font-family:'Quicksand';text-transform:uppercase;font-size:0.75rem;letter-spacing:1px;color:#a9b79c;}
+
+/* ---------- MODAL ---------- */
+#modalOverlay{
+  position:fixed;inset:0;background:rgba(30,20,12,0.7);
+  display:none;align-items:center;justify-content:center;z-index:100;
+}
+#modalOverlay.show{display:flex;}
+#modalBox{
+  background:var(--cream);border-radius:16px;padding:26px;max-width:380px;text-align:center;
+  box-shadow:0 10px 40px rgba(0,0,0,0.5);
+}
+#modalBox h2{font-family:'Kalam',cursive;font-size:2rem;margin-top:0;}
+#modalBox .bigmoney{font-family:'Space Mono';font-size:1.8rem;color:var(--copper);margin:10px 0;}
+#modalBox .daysummary{
+  text-align:left;background:var(--cream-dark);border-radius:10px;padding:10px 14px;
+  margin-top:6px;font-size:0.92rem;display:flex;flex-direction:column;gap:4px;
+}
+#modalBox .daysummary b{color:var(--copper);}
+#modalBox button{
+  margin-top:14px;padding:10px 20px;border:none;border-radius:10px;
+  background:var(--sage);color:white;font-weight:700;font-family:'Quicksand';cursor:pointer;font-size:1rem;
+}
+
+/* ---------- Toast ---------- */
+#toastWrap{
+  position:fixed;top:70px;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;gap:6px;z-index:60;pointer-events:none;
+}
+.toast{
+  background:var(--espresso);color:var(--cream);padding:8px 16px;border-radius:20px;
+  font-weight:700;font-size:0.9rem;opacity:0;animation:toastpop 2.2s ease forwards;
+}
+@keyframes toastpop{
+  0%{opacity:0;transform:translateY(-6px);}
+  10%{opacity:1;transform:translateY(0);}
+  80%{opacity:1;}
+  100%{opacity:0;}
+}
+
+/* ---------- STATION TABS ---------- */
+#stationTabs{
+  display:flex;
+  gap:6px;
+  overflow-x:auto;
+  padding-bottom:4px;
+  position:sticky;
+  top:0;
+  background:var(--cream-dark);
+  z-index:3;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+#stationTabs::-webkit-scrollbar{display:none;}
+.stationTab{
+  flex:0 0 auto;
+  border:2px solid var(--espresso);
+  background:var(--cream);
+  color:var(--espresso);
+  font-family:'Quicksand';
+  font-weight:700;
+  font-size:0.8rem;
+  padding:6px 10px;
+  border-radius:20px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.stationTab.active{
+  background:var(--espresso);
+  color:var(--cream);
+}
+.stationTab .needdot{
+  display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:var(--copper);margin-left:4px;vertical-align:middle;
+}
+
+@media (max-width:640px){
+  #chalkboard{width:88vw;right:-90vw;}
+  #slots{grid-template-columns:repeat(2, 1fr);}
+  .slot{min-height:200px;padding:8px;}
+  .cupwrap{width:80px;height:100px;}
+  #counterArea{padding:10px;gap:10px;}
+  #stationsPanel{min-width:0;}
+  .actionbtn{font-size:0.8rem;padding:8px;}
+  #topbar h1{font-size:1.2rem;}
+  .stat{font-size:0.8rem;padding:4px 9px;}
+}
+</style>
+</head>
+<body>
+<div id="game">
+
+  <div id="topbar">
+    <h1>☕ Corner &amp; Kettle</h1>
+    <div id="dayclock">
+      <span id="phaseLabel" class="stat">Dawn</span>
+      <div id="clockbar"><div id="clockbar-fill"></div></div>
+    </div>
+    <div class="stat">Day <b id="dayNum">1</b></div>
+    <div class="stat">💰 <b id="moneyLabel">0</b></div>
+    <div class="stat">🔥 Streak <b id="comboLabel">0</b></div>
+    <div class="stat" id="shieldStat" style="display:none;">🛡️ <b id="shieldLabel">0</b></div>
+    <div class="stat" title="Reputation">⭐ <b id="repLabel">3</b></div>
+  </div>
+  <div id="dailyModifierBanner" class="stat" style="display:none;margin:6px 16px 0;background:rgba(0,0,0,0.15);border-radius:10px;padding:6px 12px;color:var(--cream);width:fit-content;"></div>
+
+
+  <div id="skystrip">
+    <div id="queueRow"></div>
+  </div>
+
+  <div id="counterArea">
+    <div id="slotsPanel">
+      <div id="slots"></div>
+      <div class="draghint">Tap a customer above to take their order into an open station. Tap a station to focus it, then use the category tabs below to build their drink — a dot on a tab means the ticket still needs something from it.</div>
+    </div>
+
+    <div id="stationsPanel">
+      <div id="stationTabs"></div>
+      <div id="stationsAll"></div>
+    </div>
+  </div>
+
+</div>
+
+<button id="chalkToggle" title="Menu board">📋</button>
+<button id="muteToggle" title="Mute sounds">🔊</button>
+<div id="chalkboard">
+  <h2>Menu Board</h2>
+  <button id="newGameBtn" title="Erase saved progress and start over">🗑️ New Game</button>
+  <div id="chalkContent"></div>
+</div>
+
+<div id="modalOverlay">
+  <div id="modalBox">
+    <h2 id="modalTitle">Shift Complete!</h2>
+    <div id="modalBody"></div>
+    <button id="modalBtn">Start Next Shift</button>
+  </div>
+</div>
+
+<div id="toastWrap"></div>
+
+<script>
+/* =========================================================
+   CORNER & KETTLE — coffee shop sim
+   ========================================================= */
+
+/* ---------- DATA ---------- */
+
+const MILKS = [
+  {id:'whole', name:'Whole Milk', color:'#fff6e8'},
+  {id:'oat', name:'Oat Milk', color:'#f0e2c4'},
+  {id:'almond', name:'Almond Milk', color:'#f3ead6'},
+  {id:'skim', name:'Skim Milk', color:'#fbfbf5'},
+];
+
+const SYRUPS = [
+  {id:'vanilla', name:'Vanilla', color:'#e8d9a8', cost:0},
+  {id:'caramel', name:'Caramel', color:'#c98a3a', cost:0},
+  {id:'mocha', name:'Mocha', color:'#4a2a1c', cost:35},
+  {id:'hazelnut', name:'Hazelnut', color:'#a97449', cost:60},
+  {id:'peppermint', name:'Peppermint', color:'#6fae87', cost:90},
+];
+
+const TOPPINGS = [
+  {id:'whip', name:'Whipped Cream', cost:0},
+  {id:'cinnamon', name:'Cinnamon Dust', cost:0},
+  {id:'caramelDrizzle', name:'Caramel Drizzle', cost:40},
+  {id:'chocoDrizzle', name:'Chocolate Drizzle', cost:40},
+  {id:'sprinkles', name:'Sprinkles', cost:75},
+];
+
+// base liquid colors
+const BASE_COLORS = {
+  espresso:'#3b2418',
+  drip:'#5a3a24',
+  tea:'#8a6a2e',
+  frappeBase:'#c7a679'
+};
+
+const RECIPES = [
+  {id:'drip', name:'House Drip', icon:'☕', category:'hot', base:'drip', shots:0, needsMilk:false, price:30, unlockCost:0},
+  {id:'americano', name:'Americano', icon:'☕', category:'hot', base:'espresso', shots:2, needsMilk:false, price:38, unlockCost:0},
+  {id:'latte', name:'Latte', icon:'🥛', category:'hot', base:'espresso', shots:1, needsMilk:true, price:45, unlockCost:0},
+  {id:'cappuccino', name:'Cappuccino', icon:'🫧', category:'hot', base:'espresso', shots:1, needsMilk:true, price:45, unlockCost:0},
+  {id:'icedcoffee', name:'Iced Coffee', icon:'🧊', category:'iced', base:'drip', shots:0, needsMilk:false, ice:true, price:38, unlockCost:0},
+  {id:'mocha', name:'Mocha', icon:'🍫', category:'hot', base:'espresso', shots:1, needsMilk:true, requiredSyrup:'mocha', price:55, unlockCost:120},
+  {id:'caramelmac', name:'Caramel Macchiato', icon:'🍮', category:'hot', base:'espresso', shots:1, needsMilk:true, requiredSyrup:'caramel', price:55, unlockCost:150},
+  {id:'icedvanilla', name:'Iced Vanilla Latte', icon:'🥤', category:'iced', base:'espresso', shots:1, needsMilk:true, ice:true, requiredSyrup:'vanilla', price:58, unlockCost:180},
+  {id:'frappe', name:'Frappe', icon:'🥶', category:'blended', base:'frappeBase', shots:1, needsMilk:true, blended:true, price:65, unlockCost:250},
+  {id:'chai', name:'Chai Latte', icon:'🍂', category:'hot', base:'tea', shots:0, needsMilk:true, price:48, unlockCost:200},
+  // ---- Menu R&D chain: each requires the previous to already be unlocked ----
+  {id:'coldbrew', name:'Cold Brew', icon:'🧊', category:'iced', base:'drip', shots:0, needsMilk:false, ice:true, price:42, unlockCost:150},
+  {id:'nitrocoldbrew', name:'Nitro Cold Brew', icon:'🌫️', category:'iced', base:'drip', shots:0, needsMilk:false, ice:true, price:54, unlockCost:220, requires:'coldbrew'},
+  {id:'affogato', name:'Affogato', icon:'🍨', category:'hot', base:'espresso', shots:2, needsMilk:false, price:62, unlockCost:280, requires:'nitrocoldbrew'},
+  // ---- Equipment-gated recipes: unlocked automatically by buying the matching machine tier ----
+  {id:'ristretto', name:'Ristretto', icon:'🥃', category:'hot', base:'espresso', shots:1, needsMilk:false, price:42, unlockCost:0, equipmentGated:'espresso2'},
+  {id:'doppio', name:'Doppio', icon:'🥃', category:'hot', base:'espresso', shots:2, needsMilk:false, price:58, unlockCost:0, equipmentGated:'espresso3'},
+];
+
+const FOODS = [
+  {id:'croissant', name:'Croissant', icon:'🥐', price:28, unlockCost:0},
+  {id:'bagel', name:'Bagel', icon:'🥯', price:26, unlockCost:0},
+  {id:'muffin', name:'Muffin', icon:'🧁', price:30, unlockCost:100},
+  {id:'cookie', name:'Cookie', icon:'🍪', price:22, unlockCost:100},
+];
+
+const PHASES = [
+  {name:'Dawn', sky:['#2c2a4a','#a86a5b'], mixWeights:{simple:0.8,specialty:0.1,food:0.1}, spawnMs:6500},
+  {name:'Morning Rush', sky:['#f7c98b','#fef3d8'], mixWeights:{simple:0.55,specialty:0.3,food:0.15}, spawnMs:4200},
+  {name:'Afternoon', sky:['#9ec7e0','#e7f3f7'], mixWeights:{simple:0.35,specialty:0.45,food:0.2}, spawnMs:5200},
+  {name:'Evening', sky:['#3a3760','#7a5a72'], mixWeights:{simple:0.4,specialty:0.25,food:0.35}, spawnMs:5800},
+];
+const SHIFT_MS = PHASES.length * 34000; // total shift duration
+const PHASE_MS = SHIFT_MS / PHASES.length;
+
+// ---- Difficulty scaling by day ----
+// Day 1 stays exactly at baseline tuning; each following day nudges spawn
+// rate up and patience down slightly, capped at a floor so it never becomes
+// impossible.
+function spawnFactor(){
+  const base = Math.max(0.6, 1 - (state.day-1)*0.05);
+  return Math.max(0.25, base * shopSpawnFactorMult());
+}
+function patienceFactor(){
+  const base = Math.max(0.75, 1 - (state.day-1)*0.03);
+  return base * shopPatienceMult();
+}
+
+// ---- Station slot upgrades (chalkboard purchase) ----
+const STATION_UPGRADES = [
+  {toSlots:3, cost:350},
+  {toSlots:4, cost:800},
+];
+
+// ---- Barista Assistants (hireable staff) ----
+// Each barista claims ONE station at a time, completes its steps one by one,
+// and auto-serves the order when it's finished. Hire up to BARISTA_MAX;
+// each hire costs more. Juniors can be promoted to Seniors (faster steps).
+const BARISTA_MAX = 3;
+const BARISTA_HIRE_COSTS = [400, 700, 1100]; // cost of 1st, 2nd, 3rd hire
+const BARISTA_PROMOTE_COST = 500;
+const BARISTA_TIERS = {
+  1:{name:'Junior Barista', intervalMs:3200, mistakeChance:0.16, wage:35},
+  2:{name:'Senior Barista', intervalMs:1800, mistakeChance:0.04, wage:70},
+};
+const BARISTA_NAMES = ['Pip','Juno','Casey','Rowan','Sage','Milo'];
+
+// Juniors can only be trusted with straightforward drinks; Seniors handle anything.
+function orderComplexity(order){
+  if(order.isFood) return 'food';
+  const r = RECIPES.find(x=>x.id===order.recipeId);
+  return (r.requiredSyrup || r.blended) ? 'specialty' : 'simple';
+}
+function baristaCanHandle(barista, order){
+  if(barista.spec==='bar' && order.isFood) return false;
+  if(barista.spec==='kitchen' && !order.isFood) return false;
+  if(barista.level>=2) return true;
+  return orderComplexity(order)==='simple';
+}
+// Baristas tire out over the course of a shift: up to 35% slower by the end.
+function baristaFatigueFactor(){
+  return 1 + 0.35 * Math.min(1, state.shiftElapsed/SHIFT_MS);
+}
+
+// ---- Loyalty Program upgrades (bigger regular-customer bonuses) ----
+const LOYALTY_UPGRADES = [
+  {level:1, name:'Loyalty Cards', cost:250, tipBonus:0.15, patienceBonus:0.15},
+  {level:2, name:'VIP Program', cost:600, tipBonus:0.30, patienceBonus:0.30},
+];
+
+// ---- Streak Insurance (protects combo from one missed order) ----
+const SHIELD_BASE_COST = 150;
+const SHIELD_COST_STEP = 50;
+const SHIELD_MAX_HELD = 3;
+
+const PRESET_MAX = 6;
+
+// ---- Named regulars ----
+const REGULAR_NAMES = ['Nora','Gideon','Talia','Otis','Marisol','Beckett','Ivy','Desmond'];
+const REGULAR_CHANCE = 1/8;
+
+/* ---------- SHOP UPGRADES (Equipment / Ambiance / Business) ---------- */
+const EQUIPMENT_UPGRADES = [
+  {id:'espresso2', name:'Dual-Boiler Espresso Machine', cost:300, desc:'Pull shots faster & unlocks Ristretto'},
+  {id:'espresso3', name:'Commercial Espresso Rig', cost:650, requires:'espresso2', desc:'Even faster shots & unlocks Doppio'},
+  {id:'grinder', name:'Precision Grinder', cost:220, desc:'-30% barista mistake chance shop-wide'},
+  {id:'pos2', name:'Second Register', cost:260, desc:'Customers hold onto patience better while queued'},
+  {id:'generator', name:'Backup Generator', cost:200, desc:'Blunts Equipment Breakdown events'},
+  {id:'foodprep', name:'Food Prep Upgrade', cost:240, desc:'Fewer food mistakes, +tips on food orders'},
+];
+const AMBIANCE_UPGRADES = [
+  {id:'seating', name:'Seating Expansion', cost:180, desc:'+1 max queue length'},
+  {id:'music', name:'Music System', cost:150, desc:'Shop-wide +patience & +tips'},
+  {id:'decor', name:'Cozy Décor', cost:200, desc:'Shop-wide +tips'},
+  {id:'sign', name:'Storefront Sign', cost:150, desc:'Risk upgrade: more customers, faster pace'},
+];
+const BUSINESS_UPGRADES = [
+  {id:'franchise', name:'Second Location', cost:5000, reqReputation:80, desc:'Prestige goal — permanent +10% income'},
+];
+const MARKETING_COST = 120;
+const MARKETING_DURATION_MS = 20000;
+const PRESTIGE_MIN_DAY = 6;
+
+// ---- Reputation (0-100, shown as 1-5 stars) ----
+function reputationStars(){ return Math.max(1, Math.min(5, Math.round(state.reputation/20))); }
+function adjustReputation(delta){ state.reputation = Math.max(0, Math.min(100, Math.round((state.reputation+delta)*10)/10)); }
+
+// ---- Upgrade effect helpers ----
+function hasUpgrade(id){ return state.upgrades.has(id); }
+function queueMax(){ return QUEUE_MAX + (hasUpgrade('seating') ? 1 : 0); }
+function espressoDurationMs(){
+  if(hasUpgrade('espresso3')) return 220;
+  if(hasUpgrade('espresso2')) return 320;
+  return 500;
+}
+function outageActive(){ return !!(state.activeEvent && state.activeEvent.id==='outage'); }
+function stationDurationMult(){
+  if(outageActive()) return hasUpgrade('generator') ? 1.2 : 1.8;
+  return 1;
+}
+function mistakeReduceFactor(barista){
+  let f = 1;
+  if(hasUpgrade('grinder')) f *= 0.7;
+  if(barista && barista.trained) f *= 0.7;
+  return f;
+}
+function shopPatienceMult(){
+  let m = 1;
+  if(hasUpgrade('pos2')) m *= 1.12;
+  if(hasUpgrade('music')) m *= 1.10;
+  return m;
+}
+function shopTipMult(){
+  let m = 1;
+  if(hasUpgrade('music')) m *= 1.05;
+  if(hasUpgrade('decor')) m *= 1.08;
+  if(hasUpgrade('foodprep')) m *= 1.03;
+  if(hasUpgrade('franchise')) m *= 1.10;
+  if(state.prestigeLevel) m *= (1 + 0.05*state.prestigeLevel);
+  return m;
+}
+function shopSpawnFactorMult(){
+  let m = 1;
+  if(hasUpgrade('sign')) m *= 0.80;
+  if(state.marketingRemaining>0) m *= 0.6;
+  const dm = getActiveDailyModifier();
+  if(dm && dm.spawnMult) m *= dm.spawnMult;
+  if(state.activeEvent && state.activeEvent.id==='rush') m *= 0.45;
+  if(state.activeEvent && state.activeEvent.id==='outage') m *= 1.25;
+  return m;
+}
+
+/* ---------- DAILY MODIFIERS ---------- */
+const DAILY_MODIFIERS = [
+  {id:'icedMonday', name:'Iced Drink Day', desc:'More iced orders today, +10% tips on iced drinks', tipBonusIced:0.10},
+  {id:'pastryRush', name:'Pastry Rush', desc:'More food orders today, +10% tips on food', tipBonusFood:0.10},
+  {id:'quietDay', name:'Quiet Day', desc:'Fewer customers, but +15% tips', spawnMult:1.3, tipBonusAll:0.15},
+  {id:'regularsDay', name:"Regulars' Day", desc:'More named regulars stopping by today', regularChanceMult:2},
+  null, null, null,
+];
+function getActiveDailyModifier(){
+  return DAILY_MODIFIERS.find(m=>m && m.id===state.dailyModifierId) || null;
+}
+function rollDailyModifier(){
+  const m = rand(DAILY_MODIFIERS);
+  state.dailyModifierId = m ? m.id : null;
+}
+
+/* ---------- RANDOM EVENTS ---------- */
+const RANDOM_EVENTS = [
+  {id:'rush', name:'Rush Hour Surge', desc:'A wave of customers is coming through!'},
+  {id:'critic', name:'Food Critic Visit', desc:'A critic slipped into the queue — nail their order!'},
+  {id:'outage', name:'Equipment Breakdown', desc:'Power flickers — stations are running slow.'},
+  {id:'birthday', name:"Regular's Birthday", desc:'One of your regulars is celebrating today.'},
+];
+function fireRandomEvent(){
+  state.eventFiredThisShift = true;
+  const ev = rand(RANDOM_EVENTS);
+  state.dayStats.events.push(ev.name);
+  if(ev.id==='rush'){
+    state.activeEvent = {id:'rush', until: state.shiftElapsed + 15000};
+    toast(`📣 ${ev.name}: ${ev.desc}`);
+  } else if(ev.id==='outage'){
+    const mitigated = hasUpgrade('generator');
+    state.activeEvent = {id:'outage', until: state.shiftElapsed + (mitigated ? 7000 : 13000)};
+    toast(mitigated ? `⚡ ${ev.name} — the backup generator kept things mostly steady` : `⚡ ${ev.name}! ${ev.desc}`);
+  } else if(ev.id==='critic'){
+    const order = generateOrder();
+    order.isCritic = true;
+    order.patienceMax = Math.round(order.patienceMax*1.6);
+    order.patience = order.patienceMax;
+    state.queue.unshift(order);
+    toast(`🎩 ${ev.name}! ${ev.desc}`);
+  } else if(ev.id==='birthday'){
+    const names = Object.keys(state.regulars);
+    const name = names.length ? rand(names) : null;
+    const order = generateOrder();
+    if(name){ order.isRegular = true; order.regularName = name; }
+    order.isBirthday = true;
+    order.patienceMax = Math.round(order.patienceMax*1.3);
+    order.patience = order.patienceMax;
+    state.queue.unshift(order);
+    toast(`🎂 ${ev.name}! Make ${name||'them'} happy for a bonus.`);
+  }
+  renderAll();
+}
+
+/* ---------- STATE ---------- */
+
+let state = {
+  day:1,
+  money:60,
+  combo:0,
+  bestCombo:0,
+  shiftStartTime:null,
+  shiftElapsed:0,
+  shiftRunning:true,
+  unlockedRecipes: new Set(['drip','americano','latte','cappuccino','icedcoffee']),
+  unlockedSyrups: new Set(['vanilla','caramel']),
+  unlockedToppings: new Set(['whip','cinnamon']),
+  unlockedFoods: new Set(['croissant','bagel']),
+  queue: [], // waiting customers {id, recipeId, custom:{milk,syrup,toppings:[],ice}, food:bool, patience, patienceMax, sprite}
+  slots: [null, null], // active {customer, cup} — length grows via station upgrades
+  focusedSlot: 0,
+  nextCustomerId: 1,
+  spawnTimer: null,
+  regulars: {}, // name -> persistent favorite order content
+  muted: false,
+  dayStats: { drinksServed:0, foodServed:0, totalTips:0, accuracySum:0, accuracyCount:0, wagesPaid:0, bestTip:0, bestTipName:'', worstMiss:null, events:[], repDelta:0 },
+  baristas: [], // {id, name, level, targetSlot:null, acc:0, spec:null, trained:false, working:true}
+  stationTab: 'base',
+  loyaltyLevel: 0,
+  comboShields: 0,
+  shieldsPurchased: 0,
+  presets: [], // {id, name, cup:{base,shots,milk,milkSteamed,syrup,toppings,ice,blended}}
+  reputation: 50, // 0-100, shown as 1-5 stars
+  upgrades: new Set(), // purchased equipment/ambiance/business upgrade ids
+  marketingRemaining: 0,
+  prestigeLevel: 0,
+  dailyModifierId: null,
+  activeEvent: null, // {id, until}
+  eventFiredThisShift: false,
+  eventTriggerAt: 0,
+};
+
+const QUEUE_MAX = 5;
+const SAVE_KEY = 'cornerKettleSave_v1';
+
+/* ---------- UTIL ---------- */
+function rand(arr){return arr[Math.floor(Math.random()*arr.length)];}
+function randInt(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+function fmtMoney(n){return n.toFixed(0);}
+function toast(msg){
+  const el = document.createElement('div');
+  el.className='toast';
+  el.textContent = msg;
+  document.getElementById('toastWrap').appendChild(el);
+  setTimeout(()=>el.remove(), 2300);
+}
+
+/* ---------- SOUND (WebAudio, no external files) ---------- */
+let audioCtx = null;
+function getAudioCtx(){
+  if(audioCtx) return audioCtx;
+  try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }
+  catch(e){ audioCtx = null; }
+  return audioCtx;
+}
+function beep(freq, duration, type, vol, delay){
+  if(state.muted) return;
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  try{
+    const t0 = ctx.currentTime + (delay||0);
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type||'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    gain.gain.setValueAtTime(vol||0.15, t0);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0+duration);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0+duration+0.02);
+  }catch(e){}
+}
+function soundShot(){ beep(880,0.1,'square',0.12); beep(700,0.1,'square',0.08,0.07); }
+function soundSteam(){ beep(320,0.28,'sawtooth',0.06); beep(260,0.2,'sawtooth',0.05,0.12); }
+function soundBlend(){ beep(150,0.15,'sawtooth',0.09); beep(170,0.15,'sawtooth',0.08,0.08); beep(140,0.15,'sawtooth',0.07,0.16); }
+function playServeSound(happy){
+  if(happy){ beep(660,0.12,'sine',0.16); beep(990,0.16,'sine',0.14,0.09); }
+  else { beep(320,0.2,'sine',0.12); beep(260,0.22,'sine',0.1,0.08); }
+}
+
+function getUnlockedRecipeList(){
+  return RECIPES.filter(r=>state.unlockedRecipes.has(r.id));
+}
+function getUnlockedFoodList(){
+  return FOODS.filter(f=>state.unlockedFoods.has(f.id));
+}
+
+/* ---------- PIXEL CUSTOMER SPRITE ---------- */
+// 10 cols x 14 rows grid. h=hair s=skin S=shirt p=pants b=shoe e=eye .=empty
+const SPRITE_PATTERN = [
+"..hhhhhh..",
+".hhhhhhhh.",
+".hssssssh.",
+".hs.ee.sh.",
+".hssssssh.",
+"..ssssss..",
+"..SSSSSS..",
+".SSSSSSSS.",
+".SSSSSSSS.",
+".SSSSSSSS.",
+"..pppppp..",
+"..pppppp..",
+"..pp..pp..",
+"..bb..bb..",
+];
+const HAIR_COLORS = ['#2b1c14','#5a3a22','#8a6a3d','#1a1a1a','#7a4a30','#c98a4a'];
+const SKIN_COLORS = ['#f0c9a0','#d9a066','#8a5a34','#c98a5a','#f5dcc0','#a8683c'];
+const SHIRT_COLORS = ['#7C9070','#B5651D','#5c7a9e','#a85a6b','#5f7256','#c2864a','#4a6a7a'];
+const PANTS_COLORS = ['#3b2418','#2c2c3a','#5a4a3a','#232323'];
+
+function makeSpriteSvg(px){
+  const hair = rand(HAIR_COLORS), skin = rand(SKIN_COLORS), shirt = rand(SHIRT_COLORS), pants = rand(PANTS_COLORS);
+  const size = px || 6;
+  let rects = '';
+  for(let r=0;r<SPRITE_PATTERN.length;r++){
+    const row = SPRITE_PATTERN[r];
+    for(let c=0;c<row.length;c++){
+      const ch = row[c];
+      if(ch==='.') continue;
+      let color;
+      if(ch==='h') color=hair;
+      else if(ch==='s') color=skin;
+      else if(ch==='e') color='#2a1a10';
+      else if(ch==='S') color=shirt;
+      else if(ch==='p') color=pants;
+      else if(ch==='b') color='#1c1208';
+      rects += `<rect x="${c*size}" y="${r*size}" width="${size}" height="${size}" fill="${color}"/>`;
+    }
+  }
+  const w = 10*size, h = SPRITE_PATTERN.length*size;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="image-rendering:pixelated;">${rects}</svg>`;
+}
+
+/* ---------- ORDER GENERATION ---------- */
+// Builds just the "what do they want" part of an order (no id/patience/sprite).
+// Extracted so it can be reused both for one-off orders and for generating
+// a named regular's persistent favorite the first time they appear.
+function generateOrderContent(phase){
+  const dm = getActiveDailyModifier();
+  const roll = Math.random();
+  const w = phase.mixWeights;
+  let foodWeight = w.food;
+  if(dm && dm.id==='pastryRush') foodWeight = Math.min(0.7, w.food*1.7);
+  let kind;
+  if(roll < foodWeight) kind='food';
+  else if(roll < foodWeight + w.specialty) kind='specialty';
+  else kind='simple';
+
+  let isFood = kind==='food' && getUnlockedFoodList().length>0;
+  if(isFood){
+    const food = rand(getUnlockedFoodList());
+    return { isFood:true, foodId: food.id, price: food.price };
+  }
+
+  let pool = getUnlockedRecipeList();
+  let simplePool = pool.filter(r=>!r.requiredSyrup && !r.blended);
+  let specialtyPool = pool.filter(r=>r.requiredSyrup || r.blended);
+  let recipe;
+  if(kind==='specialty' && specialtyPool.length>0) recipe = rand(specialtyPool);
+  else recipe = rand(simplePool.length? simplePool : pool);
+
+  const custom = {};
+  if(recipe.needsMilk){
+    custom.milk = rand(MILKS).id;
+  }
+  if(recipe.requiredSyrup){
+    custom.syrup = recipe.requiredSyrup;
+  } else if(Math.random()<0.35 && state.unlockedSyrups.size>0){
+    custom.syrup = rand([...state.unlockedSyrups]);
+  }
+  custom.toppings = [];
+  const toppingsAvail = [...state.unlockedToppings];
+  if(Math.random()<0.4 && toppingsAvail.length>0){
+    custom.toppings.push(rand(toppingsAvail));
+  }
+  custom.ice = !!recipe.ice;
+  if(dm && dm.id==='icedMonday' && !recipe.blended && !custom.ice && Math.random()<0.55){
+    custom.ice = true;
+  }
+
+  return { isFood:false, recipeId: recipe.id, custom, price: recipe.price };
+}
+
+function cloneOrderContent(content){
+  if(content.isFood) return { isFood:true, foodId: content.foodId, price: content.price };
+  return {
+    isFood:false,
+    recipeId: content.recipeId,
+    price: content.price,
+    custom: {
+      milk: content.custom.milk,
+      syrup: content.custom.syrup,
+      toppings: [...content.custom.toppings],
+      ice: content.custom.ice,
+    }
+  };
+}
+
+function generateOrder(){
+  const phase = PHASES[currentPhaseIndex()];
+
+  const dm0 = getActiveDailyModifier();
+  const regularChance = REGULAR_CHANCE * (dm0 && dm0.regularChanceMult ? dm0.regularChanceMult : 1);
+  let isRegular = false, regularName = null, content;
+  if(Math.random() < regularChance){
+    regularName = rand(REGULAR_NAMES);
+    isRegular = true;
+    if(!state.regulars[regularName]){
+      state.regulars[regularName] = generateOrderContent(phase);
+    }
+    content = cloneOrderContent(state.regulars[regularName]);
+  } else {
+    content = generateOrderContent(phase);
+  }
+
+  const pf = patienceFactor();
+  let pMax = content.isFood
+    ? Math.round(randInt(28,40) * pf)
+    : Math.round(randInt(35,55) * pf);
+  if(isRegular && state.loyaltyLevel>0){
+    pMax = Math.round(pMax * (1 + LOYALTY_UPGRADES[state.loyaltyLevel-1].patienceBonus));
+  }
+
+  return {
+    id: state.nextCustomerId++,
+    ...content,
+    patienceMax: pMax,
+    patience: pMax,
+    spriteHtml: makeSpriteSvg(),
+    isRegular,
+    regularName,
+  };
+}
+
+function orderIconsHtml(order){
+  if(order.isFood){
+    const f = FOODS.find(x=>x.id===order.foodId);
+    return `<span>${f.icon}</span>`;
+  }
+  const r = RECIPES.find(x=>x.id===order.recipeId);
+  let s = `<span>${r.icon}</span>`;
+  if(order.custom.milk){
+    const m = MILKS.find(x=>x.id===order.custom.milk);
+    s += `<span title="${m.name}">🥛</span>`;
+  }
+  if(order.custom.syrup){
+    s += `<span title="syrup">💧</span>`;
+  }
+  order.custom.toppings.forEach(()=> s += `<span>✨</span>`);
+  if(order.custom.ice) s += `<span>🧊</span>`;
+  return s;
+}
+
+// Returns an ordered list of {label, check(slot)->bool} describing everything
+// this order needs. Used both for the ticket checklist and for scoring.
+function getOrderRequirements(order){
+  if(order.isFood){
+    const f = FOODS.find(x=>x.id===order.foodId);
+    return [{label: f.name, check: slot => slot.foodPlated === order.foodId}];
+  }
+  const r = RECIPES.find(x=>x.id===order.recipeId);
+  const reqs = [];
+  let baseLabel;
+  if(r.base==='espresso') baseLabel = r.shots>0 ? `${r.shots} espresso shot${r.shots>1?'s':''}` : 'Espresso base';
+  else if(r.base==='drip') baseLabel = 'Drip coffee';
+  else if(r.base==='tea') baseLabel = 'Steeped tea';
+  else if(r.base==='frappeBase') baseLabel = 'Blended base';
+  else baseLabel = 'Base';
+  reqs.push({label: baseLabel, check: slot => slot.cup.base===r.base && (r.shots ? slot.cup.shots>=r.shots : true)});
+
+  if(r.needsMilk){
+    const m = MILKS.find(x=>x.id===order.custom.milk);
+    const needsSteamed = !order.custom.ice && !r.blended;
+    reqs.push({
+      label: `${m.name}${needsSteamed ? ', steamed' : ''}`,
+      check: slot => slot.cup.milk===order.custom.milk && (needsSteamed ? slot.cup.milkSteamed : true)
+    });
+  }
+  if(order.custom.syrup){
+    const s = SYRUPS.find(x=>x.id===order.custom.syrup);
+    reqs.push({label: s.name+' syrup', check: slot => slot.cup.syrup===order.custom.syrup});
+  }
+  order.custom.toppings.forEach(t=>{
+    const top = TOPPINGS.find(x=>x.id===t);
+    reqs.push({label: top.name, check: slot => slot.cup.toppings.includes(t)});
+  });
+  if(order.custom.ice || r.blended){
+    reqs.push({label: r.blended? 'Blended':'Iced', check: slot => r.blended ? slot.cup.blended : slot.cup.ice});
+  }
+  return reqs;
+}
+
+function orderDescriptionHtml(order, slot){
+  const r = order.isFood ? null : RECIPES.find(x=>x.id===order.recipeId);
+  const title = order.isFood ? FOODS.find(x=>x.id===order.foodId).name : r.name;
+  const reqs = getOrderRequirements(order);
+  const items = reqs.map(req=>{
+    const done = slot ? req.check(slot) : false;
+    return `<li class="${done?'done':''}">${req.label}</li>`;
+  }).join('');
+  return `<b>${title}</b><ul class="want">${items}</ul>`;
+}
+
+/* ---------- CUP STATE / SVG ---------- */
+function newCup(){
+  return {
+    base:null, // 'espresso','drip','tea','frappeBase'
+    shots:0,
+    milk:null,
+    milkSteamed:false,
+    syrup:null,
+    toppings:[],
+    ice:false,
+    blended:false,
+  };
+}
+
+function cupSvg(cup){
+  const w=100,h=130;
+  let liquidColor = '#e9e2d3';
+  let liquidTop = 40;
+  if(cup.base){
+    liquidColor = BASE_COLORS[cup.base] || '#5a3a24';
+  }
+  if(cup.milk){
+    const m = MILKS.find(x=>x.id===cup.milk);
+    liquidColor = mixColor(liquidColor, m.color, cup.milkSteamed?0.45:0.35);
+  }
+  if(cup.syrup){
+    const s = SYRUPS.find(x=>x.id===cup.syrup);
+    liquidColor = mixColor(liquidColor, s.color, 0.18);
+  }
+  let fillLevel = cup.base ? 92 : (cup.milk? 92: 20);
+  const liquidHeight = (fillLevel/100) * 82;
+  const liquidY = 112 - liquidHeight;
+
+  let foam = '';
+  if(cup.milk && cup.milkSteamed && !cup.ice){
+    foam = `<ellipse cx="50" cy="${liquidY}" rx="34" ry="7" fill="#fffdf6" opacity="0.95"/>`;
+  }
+  let ice = '';
+  if(cup.ice || cup.blended){
+    let cubes='';
+    const n = cup.blended? 0 : 4;
+    for(let i=0;i<n;i++){
+      const cx = 30+i*12+randSeed(i)*4;
+      const cy = liquidY+10+ (i%2)*14;
+      cubes += `<rect x="${cx}" y="${cy}" width="10" height="10" rx="2" fill="#dff2f5" opacity="0.55" stroke="#bfe0e6" stroke-width="1"/>`;
+    }
+    ice = cubes;
+  }
+  let whip = '';
+  if(cup.toppings.includes('whip')){
+    whip = `<path d="M28 ${liquidY-2} q6 -14 12 -2 q6 -14 12 0 q6 -14 12 -2 q4 -10 8 0 l0 10 l-44 0 z" fill="#fffdf8" stroke="#eee0c8" stroke-width="1"/>`;
+  }
+  let drizzle = '';
+  if(cup.toppings.includes('caramelDrizzle')){
+    drizzle += `<path d="M20 ${liquidY-4} q15 8 10 16 M35 ${liquidY-8} q15 10 8 20 M55 ${liquidY-4} q15 8 8 18" stroke="#c98a3a" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  }
+  if(cup.toppings.includes('chocoDrizzle')){
+    drizzle += `<path d="M25 ${liquidY-6} q12 10 4 18 M45 ${liquidY-10} q12 10 4 20 M60 ${liquidY-6} q10 8 4 16" stroke="#4a2a1c" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+  }
+  let cinnamon='';
+  if(cup.toppings.includes('cinnamon')){
+    cinnamon = `<g opacity="0.7">
+      <circle cx="35" cy="${liquidY-1}" r="1.4" fill="#a5652b"/>
+      <circle cx="45" cy="${liquidY+1}" r="1.4" fill="#a5652b"/>
+      <circle cx="55" cy="${liquidY-2}" r="1.4" fill="#a5652b"/>
+      <circle cx="40" cy="${liquidY+3}" r="1.2" fill="#a5652b"/>
+      <circle cx="60" cy="${liquidY+2}" r="1.2" fill="#a5652b"/>
+    </g>`;
+  }
+  let sprinkles='';
+  if(cup.toppings.includes('sprinkles')){
+    const cols=['#e15b64','#f8b400','#4bc0c8','#845ec2'];
+    for(let i=0;i<8;i++){
+      sprinkles += `<rect x="${25+i*6}" y="${liquidY-3-((i%3)*2)}" width="3" height="1.5" fill="${cols[i%cols.length]}" transform="rotate(${i*20} ${25+i*6} ${liquidY-3})"/>`;
+    }
+  }
+  let straw='';
+  if(cup.ice || cup.blended){
+    straw = `<rect x="66" y="6" width="6" height="60" rx="2" fill="#ff6b81"/><rect x="66" y="6" width="6" height="8" rx="2" fill="#e34d63"/>`;
+  }
+  let steam='';
+  if(cup.base && !cup.ice && !cup.blended){
+    steam = `<g class="steamg" opacity="0.5">
+      <path d="M40 30 q-6 -10 0 -18 q6 -8 0 -16" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M58 30 q6 -10 0 -18 q-6 -8 0 -16" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/>
+    </g>`;
+  }
+
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
+    ${steam}
+    <path d="M22 40 L28 116 Q50 124 72 116 L78 40 Z" fill="#fff" stroke="#3B2418" stroke-width="2.5"/>
+    <clipPath id="cupclip"><path d="M22 40 L28 116 Q50 124 72 116 L78 40 Z"/></clipPath>
+    <g clip-path="url(#cupclip)">
+      <rect x="18" y="${liquidY}" width="64" height="60" fill="${liquidColor}"/>
+      ${ice}
+      ${foam}
+      ${cinnamon}
+      ${drizzle}
+      ${sprinkles}
+      ${whip}
+    </g>
+    <path d="M22 40 L28 116 Q50 124 72 116 L78 40 Z" fill="none" stroke="#3B2418" stroke-width="2.5"/>
+    <ellipse cx="50" cy="40" rx="28" ry="6" fill="none" stroke="#3B2418" stroke-width="2"/>
+    <path d="M78 48 q16 2 14 20 q-2 16 -16 16" fill="none" stroke="#3B2418" stroke-width="3"/>
+    ${straw}
+  </svg>`;
+}
+function randSeed(i){ return ((i*137)%7)/7; }
+function mixColor(c1, c2, amt){
+  const a = hexToRgb(c1), b = hexToRgb(c2);
+  if(!a||!b) return c1;
+  const r = Math.round(a.r + (b.r-a.r)*amt);
+  const g = Math.round(a.g + (b.g-a.g)*amt);
+  const bl = Math.round(a.b + (b.b-a.b)*amt);
+  return `rgb(${r},${g},${bl})`;
+}
+function hexToRgb(hex){
+  if(hex.startsWith('rgb')){
+    const m = hex.match(/\d+/g).map(Number);
+    return {r:m[0],g:m[1],b:m[2]};
+  }
+  const h = hex.replace('#','');
+  const bigint = parseInt(h.length===3? h.split('').map(c=>c+c).join(''):h,16);
+  return {r:(bigint>>16)&255, g:(bigint>>8)&255, b:bigint&255};
+}
+
+/* ---------- RENDER: QUEUE ---------- */
+function renderQueue(){
+  const row = document.getElementById('queueRow');
+  row.innerHTML='';
+  state.queue.slice(0,queueMax()).forEach((c)=>{
+    const div = document.createElement('div');
+    div.className='customer';
+    if(c._servedAnim) div.className+=' served';
+    if(c.isRegular) div.className += ' regular';
+    const pct = Math.max(0, (c.patience/c.patienceMax))*100;
+    div.innerHTML = `
+      ${c.isRegular ? `<div class="regularName">${c.regularName}</div>` : ''}
+      <div class="bubble">${orderIconsHtml(c)}</div>
+      ${c.spriteHtml}
+      <div class="patience"><div class="patience-fill" style="width:${pct}%"></div></div>
+    `;
+    div.onclick = ()=> tryAcceptCustomer(c.id);
+    row.appendChild(div);
+  });
+}
+
+/* ---------- SLOTS ---------- */
+function renderSlots(){
+  const wrap = document.getElementById('slots');
+  wrap.innerHTML='';
+  state.slots.forEach((slot, idx)=>{
+    const div = document.createElement('div');
+    div.className = 'slot' + (idx===state.focusedSlot? ' focused':'') + (!slot? ' empty':'') + (slot && slot.serving? ' serving':'');
+    if(!slot){
+      div.innerHTML = `Station ${idx+1}<br><small>tap a waiting customer</small>`;
+      div.onclick = ()=>{ state.focusedSlot = idx; renderAll(); };
+      wrap.appendChild(div);
+      return;
+    }
+    const order = slot.customer;
+    const canServe = slot.food ? true : cupMatchesEnough(slot.cup, order);
+    const worker = state.baristas.find(b=>b.targetSlot===idx);
+    if(worker) div.className += ' baristaWorking';
+    div.innerHTML = `
+      ${worker ? `<div class="baristaChip">🧑‍🍳 ${worker.name} is on it…</div>` : ''}
+      <button class="clearbtn" title="release order back to queue">release</button>
+      <div class="ticket">${orderDescriptionHtml(order, slot)}</div>
+      <div class="cupwrap">${ slot.food ? `<div style="font-size:64px">${FOODS.find(f=>f.id===order.foodId).icon}</div>` : cupSvg(slot.cup) }</div>
+      <div class="slotbtnrow">
+        <button class="discardbtn" title="dump the cup and start over">🗑️ Dump</button>
+        <button class="servebtn" ${canServe? '':'disabled'}>Serve</button>
+      </div>
+    `;
+    div.querySelector('.clearbtn').onclick = (e)=>{ e.stopPropagation(); releaseSlot(idx); };
+    div.querySelector('.discardbtn').onclick = (e)=>{ e.stopPropagation(); discardCup(idx); };
+    div.querySelector('.servebtn').onclick = (e)=>{ e.stopPropagation(); serveSlot(idx); };
+    div.onclick = ()=>{ state.focusedSlot = idx; renderAll(); };
+    wrap.appendChild(div);
+  });
+}
+
+function cupMatchesEnough(cup, order){
+  if(!cup.base) return false;
+  const recipe = RECIPES.find(r=>r.id===order.recipeId);
+  if(recipe.needsMilk && !cup.milk) return false;
+  return true; // partial credit handled in scoring; just need a real drink attempted
+}
+
+/* ---------- STATIONS (all sections visible at once) ---------- */
+function currentSlot(){
+  return state.slots[state.focusedSlot];
+}
+
+// Tab definitions. needsWork(slot) drives the little "still needed" dot.
+const STATION_TAB_DEFS = [
+  {id:'base', label:'☕ Base', needsWork: slot=>{
+    if(slot.food) return false;
+    const r = RECIPES.find(x=>x.id===slot.customer.recipeId);
+    return !(slot.cup.base===r.base && (r.shots ? slot.cup.shots>=r.shots : true));
+  }},
+  {id:'milk', label:'🥛 Milk', needsWork: slot=>{
+    if(slot.food) return false;
+    const o = slot.customer, r = RECIPES.find(x=>x.id===o.recipeId);
+    if(!r.needsMilk) return false;
+    const needsSteamed = !o.custom.ice && !r.blended;
+    return !(slot.cup.milk===o.custom.milk && (needsSteamed ? slot.cup.milkSteamed : true));
+  }},
+  {id:'blend', label:'🥶 Blend', needsWork: slot=>{
+    if(slot.food) return false;
+    const r = RECIPES.find(x=>x.id===slot.customer.recipeId);
+    return !!r.blended && !slot.cup.blended;
+  }},
+  {id:'syrup', label:'💧 Syrup', needsWork: slot=>{
+    if(slot.food) return false;
+    const o = slot.customer;
+    return !!o.custom.syrup && slot.cup.syrup!==o.custom.syrup;
+  }},
+  {id:'toppings', label:'✨ Top', needsWork: slot=>{
+    if(slot.food) return false;
+    return slot.customer.custom.toppings.some(t=>!slot.cup.toppings.includes(t));
+  }},
+  {id:'food', label:'🍪 Food', needsWork: slot=>{
+    return !!slot.food && slot.foodPlated !== slot.customer.foodId;
+  }},
+  {id:'presets', label:'⭐ Presets', needsWork: ()=>false},
+];
+
+function renderStationTabs(slot){
+  const bar = document.getElementById('stationTabs');
+  bar.innerHTML = STATION_TAB_DEFS.map(t=>{
+    const dot = (slot && t.needsWork(slot)) ? '<span class="needdot"></span>' : '';
+    return `<button class="stationTab ${state.stationTab===t.id?'active':''}" data-tab="${t.id}">${t.label}${dot}</button>`;
+  }).join('');
+  bar.querySelectorAll('.stationTab').forEach(btn=>{
+    btn.onclick = ()=>{ state.stationTab = btn.dataset.tab; renderStationsAll(); };
+  });
+}
+
+function stationBlockHtml(tab, slot){
+  const cup = slot.cup;
+  switch(tab){
+    case 'presets':
+      if(slot.food) return `<div class="stationBlock"><h3>⭐ Presets</h3><div class="draghint">Presets are for drinks — this is a food order.</div></div>`;
+      return `
+    <div class="stationBlock">
+      <h3>⭐ Presets</h3>
+      <div class="draghint">Save a drink build to instantly re-apply it later.</div>
+      <div class="btnrow" style="margin-top:6px;">
+        ${state.presets.map(p=>`
+          <button class="actionbtn" data-apply-preset="${p.id}">⭐ ${p.name}</button>
+        `).join('')}
+        <button class="actionbtn" id="btnSavePreset">💾 Save Current</button>
+      </div>
+      ${state.presets.length ? `<div class="btnrow" style="margin-top:6px;">
+        ${state.presets.map(p=>`<button class="actionbtn" data-delete-preset="${p.id}" style="opacity:0.7;">✕ ${p.name}</button>`).join('')}
+      </div>` : ''}
+    </div>`;
+    case 'base':
+      return `
+    <div class="stationBlock">
+      <h3>☕ Base</h3>
+      <div class="btnrow">
+        <button class="actionbtn" id="btnEspresso">☕ Pull Espresso Shot</button>
+        <button class="actionbtn" id="btnDrip">🫖 Brew Drip Coffee</button>
+        <button class="actionbtn" id="btnTea">🍵 Steep Tea</button>
+      </div>
+      <div class="draghint">Shots in cup: ${cup.shots} ${cup.base? '· base: '+cup.base : ''}</div>
+      <div class="progresswrap"><div class="progressfill" id="baseProgress"></div></div>
+    </div>`;
+    case 'milk':
+      return `
+    <div class="stationBlock">
+      <h3>🥛 Milk</h3>
+      <div class="btnrow">${MILKS.map(m=>
+        `<button class="actionbtn ${cup.milk===m.id?'selected':''}" data-milk="${m.id}">${m.name}</button>`
+      ).join('')}</div>
+      <div class="btnrow" style="margin-top:8px;">
+        <button class="actionbtn" id="btnSteam" ${!cup.milk?'disabled':''}>🔥 Steam Milk</button>
+        <button class="actionbtn" id="btnColdPour" ${!cup.milk?'disabled':''}>🥶 Pour Cold</button>
+        <button class="actionbtn" id="btnIce">🧊 ${cup.ice? 'Remove Ice':'Add Ice'}</button>
+      </div>
+      <div class="progresswrap"><div class="progressfill" id="milkProgress"></div></div>
+    </div>`;
+    case 'blend':
+      return `
+    <div class="stationBlock">
+      <h3>🥶 Blend</h3>
+      <div class="draghint">For frozen drinks — add a base + milk first, then blend with ice.</div>
+      <div class="btnrow" style="margin-top:8px;">
+        <button class="actionbtn" id="btnAddBlendIce">🧊 Add Ice</button>
+        <button class="actionbtn" id="btnBlend">🥤 Blend!</button>
+      </div>
+      <div class="progresswrap"><div class="progressfill" id="blendProgress"></div></div>
+    </div>`;
+    case 'syrup':
+      return `
+    <div class="stationBlock">
+      <h3>💧 Syrup</h3>
+      <div class="btnrow">${SYRUPS.filter(s=>state.unlockedSyrups.has(s.id)).map(s=>
+        `<button class="actionbtn ${cup.syrup===s.id?'selected':''}" data-syrup="${s.id}">💧 ${s.name}</button>`
+      ).join('')}${cup.syrup? `<button class="actionbtn" id="btnClearSyrup">✕ Remove Syrup</button>`:''}</div>
+    </div>`;
+    case 'toppings':
+      return `
+    <div class="stationBlock">
+      <h3>✨ Toppings</h3>
+      <div class="draghint">Tap a topping to add it. Tap again to remove it.</div>
+      <div class="btnrow" style="margin-top:6px;">${TOPPINGS.filter(t=>state.unlockedToppings.has(t.id)).map(t=>
+        `<button class="actionbtn ${cup.toppings.includes(t.id)?'selected':''}" data-topping="${t.id}">✨ ${t.name}</button>`
+      ).join('')}</div>
+      <div class="draghint">On cup: ${cup.toppings.map(t=>TOPPINGS.find(x=>x.id===t).name).join(', ')||'none'}</div>
+    </div>`;
+    case 'food':
+      return `
+    <div class="stationBlock">
+      <h3>🍪 Food</h3>
+      <div class="btnrow">${getUnlockedFoodList().map(f=>
+        `<button class="actionbtn ${slot.foodPlated===f.id?'selected':''}" data-food="${f.id}">${f.icon} Plate ${f.name}</button>`
+      ).join('')}</div>
+      <div class="draghint">Only useful when serving a food order.</div>
+    </div>`;
+  }
+  return '';
+}
+
+function renderStationsAll(){
+  const content = document.getElementById('stationsAll');
+  const slot = currentSlot();
+  renderStationTabs(slot);
+
+  if(!slot){
+    content.innerHTML = `<div class="draghint">No order in this station yet. Tap a waiting customer above to start one here.</div>`;
+    return;
+  }
+  content.innerHTML = stationBlockHtml(state.stationTab, slot);
+  attachStationHandlers();
+}
+
+function attachStationHandlers(){
+  const slot = currentSlot();
+  if(!slot) return;
+  const cup = slot.cup;
+
+  const saveBtn = document.getElementById('btnSavePreset');
+  if(saveBtn) saveBtn.onclick = saveCurrentAsPreset;
+  document.querySelectorAll('[data-apply-preset]').forEach(btn=>{
+    btn.onclick = ()=> applyPreset(btn.dataset.applyPreset);
+  });
+  document.querySelectorAll('[data-delete-preset]').forEach(btn=>{
+    btn.onclick = (e)=>{ e.stopPropagation(); deletePreset(btn.dataset.deletePreset); };
+  });
+
+  const eb = document.getElementById('btnEspresso');
+  const db = document.getElementById('btnDrip');
+  const tb = document.getElementById('btnTea');
+  if(eb) eb.onclick = ()=> runProgress('baseProgress', espressoDurationMs()*stationDurationMult(), ()=>{
+    cup.base='espresso'; cup.shots++; toast('Pulled a shot ☕'); soundShot(); renderAll();
+  });
+  if(db) db.onclick = ()=> runProgress('baseProgress', 350*stationDurationMult(), ()=>{
+    cup.base='drip'; toast('Brewed drip coffee'); renderAll();
+  });
+  if(tb) tb.onclick = ()=> runProgress('baseProgress', 400*stationDurationMult(), ()=>{
+    cup.base='tea'; toast('Steeped tea 🍵'); renderAll();
+  });
+
+  document.querySelectorAll('[data-milk]').forEach(btn=>{
+    btn.onclick = ()=>{ cup.milk = btn.dataset.milk; cup.milkSteamed=false; renderAll(); };
+  });
+  const steamBtn = document.getElementById('btnSteam');
+  const coldBtn = document.getElementById('btnColdPour');
+  const iceBtn = document.getElementById('btnIce');
+  if(steamBtn) steamBtn.onclick = ()=> runProgress('milkProgress', 900*stationDurationMult(), ()=>{
+    cup.milkSteamed = true; toast('Steamed the milk 🔥'); soundSteam(); renderAll();
+  });
+  if(coldBtn) coldBtn.onclick = ()=>{ cup.milkSteamed=false; toast('Poured cold milk'); renderAll(); };
+  if(iceBtn) iceBtn.onclick = ()=>{ cup.ice = !cup.ice; renderAll(); };
+
+  const addIce = document.getElementById('btnAddBlendIce');
+  const blend = document.getElementById('btnBlend');
+  if(addIce) addIce.onclick = ()=>{ cup._blendIce=true; toast('Added ice to blender'); };
+  if(blend) blend.onclick = ()=> runProgress('blendProgress', 1100*stationDurationMult(), ()=>{
+    cup.blended = true; cup.base = cup.base || 'frappeBase'; toast('Blended! 🥤'); soundBlend(); renderAll();
+  });
+
+  document.querySelectorAll('[data-syrup]').forEach(btn=>{
+    btn.onclick = ()=>{ cup.syrup = btn.dataset.syrup; renderAll(); };
+  });
+  const clearBtn = document.getElementById('btnClearSyrup');
+  if(clearBtn) clearBtn.onclick = ()=>{ cup.syrup=null; renderAll(); };
+
+  document.querySelectorAll('[data-topping]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const t = btn.dataset.topping;
+      const i = cup.toppings.indexOf(t);
+      if(i===-1){ cup.toppings.push(t); toast('Added topping ✨'); }
+      else { cup.toppings.splice(i,1); toast('Removed topping'); }
+      renderAll();
+    };
+  });
+
+  document.querySelectorAll('[data-food]').forEach(btn=>{
+    btn.onclick = ()=>{
+      slot.food = true;
+      slot.foodPlated = btn.dataset.food;
+      toast('Plated it!');
+      renderAll();
+    };
+  });
+}
+
+function runProgress(elId, duration, cb){
+  const el = document.getElementById(elId);
+  if(!el){ cb(); return; }
+  let start = performance.now();
+  function step(now){
+    let pct = Math.min(100, ((now-start)/duration)*100);
+    el.style.width = pct+'%';
+    if(pct<100) requestAnimationFrame(step);
+    else cb();
+  }
+  requestAnimationFrame(step);
+}
+
+/* ---------- ACCEPT / RELEASE / SERVE ---------- */
+function tryAcceptCustomer(custId){
+  const emptyIdx = state.slots.findIndex(s=>s===null);
+  if(emptyIdx===-1){ toast('All stations are busy!'); return; }
+  const custIdx = state.queue.findIndex(c=>c.id===custId);
+  if(custIdx===-1) return;
+  const order = state.queue[custIdx];
+  state.queue.splice(custIdx,1);
+  state.slots[emptyIdx] = {
+    customer: order,
+    cup: newCup(),
+    food: order.isFood || false,
+    foodPlated: null,
+  };
+  state.focusedSlot = emptyIdx;
+  state.stationTab = order.isFood ? 'food' : 'base';
+  spawnReplacementIfNeeded();
+  renderAll();
+}
+
+function releaseSlot(idx){
+  const slot = state.slots[idx];
+  if(!slot) return;
+  state.queue.unshift(slot.customer);
+  state.slots[idx]=null;
+  renderAll();
+}
+
+function discardCup(idx){
+  const slot = state.slots[idx];
+  if(!slot) return;
+  slot.cup = newCup();
+  slot.foodPlated = null;
+  toast('Dumped it — starting fresh');
+  renderAll();
+}
+
+function serveSlot(idx){
+  const slot = state.slots[idx];
+  if(!slot || slot.serving) return;
+  const order = slot.customer;
+  let earned = 0;
+  let happy = true;
+  let ratio = 1;
+  let title = '';
+
+  if(slot.food){
+    const f = FOODS.find(x=>x.id===order.foodId);
+    title = f.name;
+    const correct = slot.foodPlated === order.foodId;
+    earned = correct? order.price : Math.round(order.price*0.4);
+    happy = correct;
+    ratio = correct ? 1 : 0.4;
+    state.dayStats.foodServed++;
+  } else {
+    const recipe = RECIPES.find(r=>r.id===order.recipeId);
+    title = recipe.name;
+    const reqs = getOrderRequirements(order);
+    const doneCount = reqs.filter(req=>req.check(slot)).length;
+    ratio = reqs.length? doneCount/reqs.length : 1;
+    happy = ratio>=0.999;
+    earned = Math.round(recipe.price * (0.35 + 0.65*ratio));
+    state.dayStats.drinksServed++;
+  }
+  state.dayStats.accuracySum += ratio;
+  state.dayStats.accuracyCount++;
+
+  let shieldUsed = false;
+  if(happy){ state.combo++; if(state.combo>state.bestCombo) state.bestCombo=state.combo; }
+  else if(state.comboShields>0){ state.comboShields--; shieldUsed = true; }
+  else state.combo = 0;
+
+  const loyaltyTipBonus = state.loyaltyLevel>0 ? LOYALTY_UPGRADES[state.loyaltyLevel-1].tipBonus : 0;
+  const patienceRatio = Math.max(0, order.patience/order.patienceMax);
+  const tipBase = earned * 0.25 * patienceRatio;
+  const comboMult = Math.min(0.40, state.combo * 0.02);
+  const comboBonus = Math.round(tipBase * comboMult);
+  const regularBonus = (order.isRegular && happy) ? Math.round(tipBase * (0.25 + loyaltyTipBonus)) : 0;
+
+  const dm = getActiveDailyModifier();
+  let dmMult = 1;
+  if(dm){
+    if(dm.tipBonusAll) dmMult += dm.tipBonusAll;
+    if(dm.tipBonusIced && !slot.food && order.custom && order.custom.ice) dmMult += dm.tipBonusIced;
+    if(dm.tipBonusFood && slot.food) dmMult += dm.tipBonusFood;
+  }
+  let tip = Math.round((Math.round(tipBase) + comboBonus + regularBonus) * shopTipMult() * dmMult);
+
+  let eventBonus = 0;
+  if(happy && order.isCritic){ eventBonus = earned; adjustReputation(8); }
+  else if(order.isCritic){ adjustReputation(-5); }
+  if(happy && order.isBirthday){ eventBonus += Math.round(earned*0.5); }
+  earned += tip + eventBonus;
+
+  adjustReputation(happy ? 0.4 : -0.8);
+  state.dayStats.repDelta = Math.round((state.reputation-50)*10)/10;
+
+  state.money += earned;
+  state.dayStats.totalTips += tip + eventBonus;
+  if(tip+eventBonus > state.dayStats.bestTip){ state.dayStats.bestTip = tip+eventBonus; state.dayStats.bestTipName = title; }
+  if(!happy && (!state.dayStats.worstMiss || ratio < state.dayStats.worstMiss.ratio)){
+    state.dayStats.worstMiss = { name: title, ratio };
+  }
+
+  let msg = happy? `Served! +${earned}` : `Served (not quite right) +${earned}`;
+  const extras = [];
+  if(comboBonus>0) extras.push(`+${comboBonus} combo bonus`);
+  if(regularBonus>0) extras.push(`+${regularBonus} regular bonus`);
+  if(order.isCritic && happy) extras.push('critic loved it 🎩');
+  if(order.isBirthday && happy) extras.push('birthday bonus 🎂');
+  if(shieldUsed) extras.push('streak shield used 🛡️');
+  if(extras.length) msg += ` (${extras.join(', ')})`;
+  if(happy) msg += ' 🔥';
+  toast(msg);
+  playServeSound(happy);
+
+  slot.serving = true;
+  renderAll();
+  setTimeout(()=>{
+    state.slots[idx] = null;
+    renderAll();
+  }, 500);
+}
+
+/* ---------- SPAWN / PATIENCE LOOP ---------- */
+function spawnReplacementIfNeeded(){
+  if(state.queue.length < queueMax() && state.shiftRunning){
+    // handled by interval; nothing forced here
+  }
+}
+function spawnCustomer(){
+  if(!state.shiftRunning) return;
+  if(state.queue.length >= queueMax()) return;
+  state.queue.push(generateOrder());
+  renderQueue();
+}
+
+function tickPatience(){
+  state.queue.forEach(c=>{ c.patience = Math.max(0, c.patience - 0.5); });
+  renderQueue();
+}
+
+/* ---------- BARISTA ASSISTANT ---------- */
+// Performs exactly one still-missing step of an order (in the same order the
+// ticket checklist shows them), mutating the cup directly. Called on a timer
+// once the Barista Assistant upgrade is purchased.
+function autoAssistStep(slot){
+  const order = slot.customer;
+  if(slot.food){
+    if(slot.foodPlated !== order.foodId){ slot.foodPlated = order.foodId; return true; }
+    return false;
+  }
+  const r = RECIPES.find(x=>x.id===order.recipeId);
+  const cup = slot.cup;
+
+  if(!(cup.base===r.base && (r.shots ? cup.shots>=r.shots : true))){
+    cup.base = r.base;
+    if(r.shots) cup.shots = r.shots;
+    if(r.base==='frappeBase') cup.blended = true;
+    return true;
+  }
+  if(r.needsMilk){
+    const needsSteamed = !order.custom.ice && !r.blended;
+    if(!(cup.milk===order.custom.milk && (needsSteamed ? cup.milkSteamed : true))){
+      cup.milk = order.custom.milk;
+      if(needsSteamed) cup.milkSteamed = true;
+      return true;
+    }
+  }
+  if(order.custom.syrup && cup.syrup !== order.custom.syrup){
+    cup.syrup = order.custom.syrup;
+    return true;
+  }
+  for(const t of order.custom.toppings){
+    if(!cup.toppings.includes(t)){ cup.toppings.push(t); return true; }
+  }
+  if((order.custom.ice || r.blended) && !(r.blended ? cup.blended : cup.ice)){
+    if(r.blended) cup.blended = true; else cup.ice = true;
+    return true;
+  }
+  return false;
+}
+
+// A barista who fumbles gets one detail wrong right before serving —
+// they went through the motions but didn't double check the ticket.
+function baristaFumble(slot){
+  const order = slot.customer;
+  if(slot.food){
+    const alts = getUnlockedFoodList().filter(f=>f.id!==order.foodId);
+    if(!alts.length) return false;
+    slot.foodPlated = rand(alts).id;
+    return true;
+  }
+  const cup = slot.cup;
+  const options = [];
+  if(cup.syrup) options.push(()=>{ cup.syrup = null; });
+  if(cup.toppings.length) options.push(()=>{ cup.toppings.pop(); });
+  if(cup.milk){
+    const alts = MILKS.filter(m=>m.id!==cup.milk);
+    if(alts.length) options.push(()=>{ cup.milk = rand(alts).id; });
+  }
+  if(!options.length) return false;
+  rand(options)();
+  return true;
+}
+
+function orderIsComplete(slot){
+  const reqs = getOrderRequirements(slot.customer);
+  return reqs.every(req=>req.check(slot));
+}
+
+function claimedSlotIndexes(exceptBaristaId){
+  return new Set(state.baristas
+    .filter(b=>b.id!==exceptBaristaId && b.targetSlot!==null)
+    .map(b=>b.targetSlot));
+}
+
+// One tick of work for a single barista: keep working the claimed slot,
+// or claim a new one. Serves automatically once the order is complete.
+function runBaristaTick(barista){
+  // Validate current claim
+  if(barista.targetSlot!==null){
+    const slot = state.slots[barista.targetSlot];
+    if(!slot || slot.serving){ barista.targetSlot = null; }
+  }
+  // Claim a slot if idle: pick the unclaimed active order with least patience left
+  if(barista.targetSlot===null){
+    const claimed = claimedSlotIndexes(barista.id);
+    let best = -1, bestPatience = Infinity;
+    state.slots.forEach((slot, idx)=>{
+      if(!slot || slot.serving || claimed.has(idx)) return;
+      if(!baristaCanHandle(barista, slot.customer)) return;
+      const p = slot.customer.patience;
+      if(p < bestPatience){ bestPatience = p; best = idx; }
+    });
+    if(best===-1) return false;
+    barista.targetSlot = best;
+  }
+  const idx = barista.targetSlot;
+  const slot = state.slots[idx];
+  if(!slot){ barista.targetSlot=null; return false; }
+
+  // Work exactly one step on this cup only
+  const worked = autoAssistStep(slot);
+
+  // Auto-serve when everything on the ticket is done
+  if(orderIsComplete(slot)){
+    barista.targetSlot = null;
+    const tier = BARISTA_TIERS[barista.level];
+    const effMistakeChance = tier.mistakeChance * mistakeReduceFactor(barista) * (slot.food && hasUpgrade('foodprep') ? 0.8 : 1);
+    const fumbled = Math.random() < effMistakeChance && baristaFumble(slot);
+    toast(fumbled ? `${barista.name} rushed the order 😬` : `${barista.name} served the order ☕`);
+    serveSlot(idx);
+    return true;
+  }
+  if(worked) renderAll();
+  return worked;
+}
+
+/* ---------- PRESETS ---------- */
+function saveCurrentAsPreset(){
+  const slot = currentSlot();
+  if(!slot || slot.food){ toast('Build a drink first, then save it as a preset'); return; }
+  if(state.presets.length >= PRESET_MAX){ toast(`Preset slots full (max ${PRESET_MAX}) — delete one first`); return; }
+  const name = window.prompt('Name this preset (e.g. "Oat Vanilla Latte"):');
+  if(!name) return;
+  const cup = slot.cup;
+  state.presets.push({
+    id: 'p'+Date.now(),
+    name: name.slice(0,24),
+    cup: {
+      base: cup.base, shots: cup.shots, milk: cup.milk, milkSteamed: cup.milkSteamed,
+      syrup: cup.syrup, toppings: [...cup.toppings], ice: cup.ice, blended: cup.blended,
+    }
+  });
+  toast('Preset saved ⭐');
+  renderAll();
+}
+
+function applyPreset(id){
+  const slot = currentSlot();
+  if(!slot || slot.food) return;
+  const preset = state.presets.find(p=>p.id===id);
+  if(!preset) return;
+  const src = preset.cup;
+  slot.cup = { base: src.base, shots: src.shots, milk: src.milk, milkSteamed: src.milkSteamed,
+    syrup: src.syrup, toppings: [...src.toppings], ice: src.ice, blended: src.blended };
+  toast(`Applied "${preset.name}"`);
+  renderAll();
+}
+
+function deletePreset(id){
+  state.presets = state.presets.filter(p=>p.id!==id);
+  renderAll();
+}
+
+/* ---------- CHALKBOARD / UNLOCKS ---------- */
+function renderChalkboard(){
+  const el = document.getElementById('chalkContent');
+  let html = `<div class="chalk-section">Reputation: ${'⭐'.repeat(reputationStars())}${'☆'.repeat(5-reputationStars())} <small>(${Math.round(state.reputation)}/100)</small></div>`;
+  const dmChalk = getActiveDailyModifier();
+  html += `<div class="chalk-item"><span>📅 Today: <small>${dmChalk ? `${dmChalk.name} — ${dmChalk.desc}` : 'No special modifier'}</small></span></div>`;
+  if(state.activeEvent){
+    const evDef = RANDOM_EVENTS.find(e=>e.id===state.activeEvent.id);
+    html += `<div class="chalk-item"><span>🔔 Event active: <small>${evDef?evDef.name:state.activeEvent.id}</small></span></div>`;
+  }
+  html += '<div class="chalk-section">Drinks (Menu R&amp;D)</div>';
+  RECIPES.forEach(r=>{
+    const unlocked = state.unlockedRecipes.has(r.id);
+    if(r.equipmentGated){
+      if(unlocked){
+        html += `<div class="chalk-item"><span>${r.icon} ${r.name} <small>($${r.price})</small></span><span>✓</span></div>`;
+      } else {
+        const eq = EQUIPMENT_UPGRADES.find(u=>u.id===r.equipmentGated);
+        html += `<div class="chalk-item locked"><span>${r.icon} ${r.name} <small>(requires ${eq?eq.name:'equipment upgrade'})</small></span><span>🔒</span></div>`;
+      }
+      return;
+    }
+    const prereqOk = !r.requires || state.unlockedRecipes.has(r.requires);
+    html += `<div class="chalk-item ${unlocked?'':'locked'}">
+      <span>${r.icon} ${r.name} <small>($${r.price})${r.requires && !unlocked ? ` — requires ${RECIPES.find(x=>x.id===r.requires).name}` : ''}</small></span>
+      ${unlocked ? '<span>✓</span>' : `<button data-unlock-recipe="${r.id}" ${(state.money<r.unlockCost||!prereqOk)?'disabled':''}>Unlock $${r.unlockCost}</button>`}
+    </div>`;
+  });
+  html += '<div class="chalk-section">Food</div>';
+  FOODS.forEach(f=>{
+    const unlocked = state.unlockedFoods.has(f.id);
+    html += `<div class="chalk-item ${unlocked?'':'locked'}">
+      <span>${f.icon} ${f.name} <small>($${f.price})</small></span>
+      ${unlocked ? '<span>✓</span>' : `<button data-unlock-food="${f.id}" ${state.money<f.unlockCost?'disabled':''}>Unlock $${f.unlockCost}</button>`}
+    </div>`;
+  });
+  html += '<div class="chalk-section">Stations</div>';
+  const nextStation = STATION_UPGRADES.find(u=>u.toSlots > state.slots.length);
+  if(nextStation){
+    html += `<div class="chalk-item">
+      <span>🛠️ Station Slot #${nextStation.toSlots}</span>
+      <button data-unlock-station="${nextStation.toSlots}" ${state.money<nextStation.cost?'disabled':''}>Unlock $${nextStation.cost}</button>
+    </div>`;
+  } else {
+    html += `<div class="chalk-item"><span>🛠️ Stations (${state.slots.length}/${state.slots.length})</span><span>✓</span></div>`;
+  }
+  html += '<div class="chalk-section">Equipment</div>';
+  EQUIPMENT_UPGRADES.forEach(u=>{
+    const owned = hasUpgrade(u.id);
+    const prereqOk = !u.requires || hasUpgrade(u.requires);
+    html += `<div class="chalk-item ${owned?'':'locked'}">
+      <span>⚙️ ${u.name} <small>${u.desc}${u.requires && !owned ? ` — requires ${EQUIPMENT_UPGRADES.find(x=>x.id===u.requires).name}` : ''}</small></span>
+      ${owned ? '<span>✓</span>' : `<button data-unlock-equipment="${u.id}" ${(state.money<u.cost||!prereqOk)?'disabled':''}>Unlock $${u.cost}</button>`}
+    </div>`;
+  });
+
+  html += '<div class="chalk-section">Ambiance &amp; Capacity</div>';
+  AMBIANCE_UPGRADES.forEach(u=>{
+    const owned = hasUpgrade(u.id);
+    html += `<div class="chalk-item ${owned?'':'locked'}">
+      <span>🎵 ${u.name} <small>${u.desc}</small></span>
+      ${owned ? '<span>✓</span>' : `<button data-unlock-ambiance="${u.id}" ${state.money<u.cost?'disabled':''}>Unlock $${u.cost}</button>`}
+    </div>`;
+  });
+
+  html += '<div class="chalk-section">Business</div>';
+  html += `<div class="chalk-item"><span>📣 Marketing Campaign <small>+customers for ${MARKETING_DURATION_MS/1000}s, costs $${MARKETING_COST}</small></span>
+    ${state.marketingRemaining>0
+      ? `<span>active (${Math.ceil(state.marketingRemaining/1000)}s)</span>`
+      : `<button data-launch-marketing="1" ${(state.money<MARKETING_COST||!state.shiftRunning)?'disabled':''}>Launch $${MARKETING_COST}</button>`}
+  </div>`;
+  BUSINESS_UPGRADES.forEach(u=>{
+    const owned = hasUpgrade(u.id);
+    const repOk = !u.reqReputation || state.reputation>=u.reqReputation;
+    html += `<div class="chalk-item ${owned?'':'locked'}">
+      <span>🏪 ${u.name} <small>${u.desc}${u.reqReputation && !owned ? ` — needs ${u.reqReputation} reputation` : ''}</small></span>
+      ${owned ? '<span>✓</span>' : `<button data-unlock-business="${u.id}" ${(state.money<u.cost||!repOk)?'disabled':''}>Unlock $${u.cost}</button>`}
+    </div>`;
+  });
+  if(state.day >= PRESTIGE_MIN_DAY){
+    html += `<div class="chalk-item"><span>🔁 Prestige &amp; Reopen <small>(level ${state.prestigeLevel}, resets progress for a permanent +5% income each level)</small></span>
+      <button data-prestige="1">Reopen</button>
+    </div>`;
+  }
+
+  html += '<div class="chalk-section">Staff</div>';
+  const totalWages = state.baristas.reduce((sum,b)=> sum + BARISTA_TIERS[b.level].wage, 0);
+  if(state.baristas.length){
+    html += `<div class="chalk-item"><span><small>💵 Wages due at end of shift: <b>$${totalWages}</b></small></span></div>`;
+  }
+  state.baristas.forEach(b=>{
+    const tier = BARISTA_TIERS[b.level];
+    const specNote = b.spec==='bar' ? ', bar specialist' : b.spec==='kitchen' ? ', kitchen specialist' : '';
+    const gateNote = b.spec ? specNote : (b.level<2 ? ', simple drinks only' : ', handles anything');
+    html += `<div class="chalk-item">
+      <span>🧑‍🍳 ${b.name} <small>(${tier.name}${gateNote}, step every ${(tier.intervalMs/1000).toFixed(1)}s, ${Math.round(tier.mistakeChance*100*mistakeReduceFactor(b))}% mistake chance, $${tier.wage}/day wage)</small></span>
+      ${b.level<2
+        ? `<button data-promote-barista="${b.id}" ${state.money<BARISTA_PROMOTE_COST?'disabled':''}>Promote $${BARISTA_PROMOTE_COST}</button>`
+        : '<span>✓</span>'}
+    </div>`;
+    html += `<div class="chalk-item"><span><small>↳ Training, specialization &amp; scheduling for ${b.name}</small></span>
+      <span>
+        ${b.trained ? '<small>trained ✓</small>' : `<button data-train-barista="${b.id}" ${state.money<300?'disabled':''}>Train $300</button>`}
+        <button data-spec-barista="${b.id}" data-spec-val="bar" ${b.spec==='bar'?'disabled':''}>Bar</button>
+        <button data-spec-barista="${b.id}" data-spec-val="kitchen" ${b.spec==='kitchen'?'disabled':''}>Kitchen</button>
+        <button data-spec-barista="${b.id}" data-spec-val="" ${!b.spec?'disabled':''}>Generalist</button>
+        <button data-schedule-barista="${b.id}">${b.working===false ? 'Off today — Call in' : 'Working — Give day off'}</button>
+      </span>
+    </div>`;
+  });
+  if(state.baristas.length < BARISTA_MAX){
+    const hireCost = BARISTA_HIRE_COSTS[state.baristas.length];
+    html += `<div class="chalk-item">
+      <span>🧑‍🍳 Hire Junior Barista <small>(simple drinks only, ${Math.round(BARISTA_TIERS[1].mistakeChance*100)}% mistake chance, $${BARISTA_TIERS[1].wage}/day wage)</small></span>
+      <button data-hire-barista="1" ${state.money<hireCost?'disabled':''}>Hire $${hireCost}</button>
+    </div>`;
+  } else {
+    html += `<div class="chalk-item"><span>🧑‍🍳 Staff (${BARISTA_MAX}/${BARISTA_MAX})</span><span>✓</span></div>`;
+  }
+
+  html += '<div class="chalk-section">Loyalty Program</div>';
+  const nextLoyalty = LOYALTY_UPGRADES.find(u=>u.level > state.loyaltyLevel);
+  if(state.loyaltyLevel>0){
+    const cur = LOYALTY_UPGRADES[state.loyaltyLevel-1];
+    html += `<div class="chalk-item"><span>💳 ${cur.name} (active)</span><span>✓</span></div>`;
+  }
+  if(nextLoyalty){
+    html += `<div class="chalk-item">
+      <span>💳 ${nextLoyalty.name} <small>(regulars: +${Math.round(nextLoyalty.tipBonus*100)}% tip, +${Math.round(nextLoyalty.patienceBonus*100)}% patience)</small></span>
+      <button data-unlock-loyalty="${nextLoyalty.level}" ${state.money<nextLoyalty.cost?'disabled':''}>Unlock $${nextLoyalty.cost}</button>
+    </div>`;
+  }
+
+  html += '<div class="chalk-section">Streak Insurance</div>';
+  const shieldCost = SHIELD_BASE_COST + state.shieldsPurchased*SHIELD_COST_STEP;
+  html += `<div class="chalk-item"><span>🛡️ Shields held: ${state.comboShields}/${SHIELD_MAX_HELD}</span>
+    <button data-buy-shield="1" ${(state.money<shieldCost || state.comboShields>=SHIELD_MAX_HELD)?'disabled':''}>Buy $${shieldCost}</button>
+  </div>`;
+
+  html += '<div class="chalk-section">Syrups</div>';
+  SYRUPS.forEach(s=>{
+    const unlocked = state.unlockedSyrups.has(s.id);
+    html += `<div class="chalk-item ${unlocked?'':'locked'}">
+      <span>💧 ${s.name}</span>
+      ${unlocked ? '<span>✓</span>' : `<button data-unlock-syrup="${s.id}" ${state.money<s.cost?'disabled':''}>Unlock $${s.cost}</button>`}
+    </div>`;
+  });
+  html += '<div class="chalk-section">Toppings</div>';
+  TOPPINGS.forEach(t=>{
+    const unlocked = state.unlockedToppings.has(t.id);
+    html += `<div class="chalk-item ${unlocked?'':'locked'}">
+      <span>✨ ${t.name}</span>
+      ${unlocked ? '<span>✓</span>' : `<button data-unlock-topping="${t.id}" ${state.money<t.cost?'disabled':''}>Unlock $${t.cost}</button>`}
+    </div>`;
+  });
+  el.innerHTML = html;
+
+  el.querySelectorAll('[data-unlock-recipe]').forEach(b=> b.onclick=()=> doUnlock('recipe', b.dataset.unlockRecipe));
+  el.querySelectorAll('[data-unlock-food]').forEach(b=> b.onclick=()=> doUnlock('food', b.dataset.unlockFood));
+  el.querySelectorAll('[data-unlock-syrup]').forEach(b=> b.onclick=()=> doUnlock('syrup', b.dataset.unlockSyrup));
+  el.querySelectorAll('[data-unlock-topping]').forEach(b=> b.onclick=()=> doUnlock('topping', b.dataset.unlockTopping));
+  el.querySelectorAll('[data-unlock-station]').forEach(b=> b.onclick=()=> doUnlock('station', b.dataset.unlockStation));
+  el.querySelectorAll('[data-hire-barista]').forEach(b=> b.onclick=()=> doUnlock('hireBarista', null));
+  el.querySelectorAll('[data-promote-barista]').forEach(b=> b.onclick=()=> doUnlock('promoteBarista', b.dataset.promoteBarista));
+  el.querySelectorAll('[data-unlock-loyalty]').forEach(b=> b.onclick=()=> doUnlock('loyalty', b.dataset.unlockLoyalty));
+  el.querySelectorAll('[data-buy-shield]').forEach(b=> b.onclick=()=> doUnlock('shield', null));
+  el.querySelectorAll('[data-unlock-equipment]').forEach(b=> b.onclick=()=> doUnlock('equipment', b.dataset.unlockEquipment));
+  el.querySelectorAll('[data-unlock-ambiance]').forEach(b=> b.onclick=()=> doUnlock('ambiance', b.dataset.unlockAmbiance));
+  el.querySelectorAll('[data-unlock-business]').forEach(b=> b.onclick=()=> doUnlock('business', b.dataset.unlockBusiness));
+  el.querySelectorAll('[data-launch-marketing]').forEach(b=> b.onclick=()=> doUnlock('marketing', null));
+  el.querySelectorAll('[data-prestige]').forEach(b=> b.onclick=()=> doUnlock('prestige', null));
+  el.querySelectorAll('[data-train-barista]').forEach(b=> b.onclick=()=> doUnlock('trainBarista', b.dataset.trainBarista));
+  el.querySelectorAll('[data-spec-barista]').forEach(b=> b.onclick=()=> doUnlock('specBarista', b.dataset.specBarista, b.dataset.specVal));
+  el.querySelectorAll('[data-schedule-barista]').forEach(b=> b.onclick=()=> doUnlock('scheduleBarista', b.dataset.scheduleBarista));
+}
+
+function doUnlock(type, id, extra){
+  let cost=0;
+  if(type==='recipe'){
+    const r=RECIPES.find(x=>x.id===id);
+    if(r.equipmentGated){ toast('This recipe unlocks automatically with the matching equipment.'); renderAll(); return; }
+    if(r.requires && !state.unlockedRecipes.has(r.requires)){ toast(`Unlock ${RECIPES.find(x=>x.id===r.requires).name} first`); renderAll(); return; }
+    cost=r.unlockCost; if(state.money>=cost){ state.money-=cost; state.unlockedRecipes.add(id); }
+  }
+  if(type==='food'){ const f=FOODS.find(x=>x.id===id); cost=f.unlockCost; if(state.money>=cost){ state.money-=cost; state.unlockedFoods.add(id); } }
+  if(type==='syrup'){ const s=SYRUPS.find(x=>x.id===id); cost=s.cost; if(state.money>=cost){ state.money-=cost; state.unlockedSyrups.add(id); } }
+  if(type==='topping'){ const t=TOPPINGS.find(x=>x.id===id); cost=t.cost; if(state.money>=cost){ state.money-=cost; state.unlockedToppings.add(id); } }
+  if(type==='station'){
+    const toSlots = parseInt(id,10);
+    const upgrade = STATION_UPGRADES.find(u=>u.toSlots===toSlots);
+    if(upgrade && state.money>=upgrade.cost && state.slots.length<toSlots){
+      state.money -= upgrade.cost;
+      while(state.slots.length<toSlots) state.slots.push(null);
+    }
+  }
+  if(type==='hireBarista'){
+    if(state.baristas.length < BARISTA_MAX){
+      const hireCost = BARISTA_HIRE_COSTS[state.baristas.length];
+      if(state.money >= hireCost){
+        state.money -= hireCost;
+        const usedNames = new Set(state.baristas.map(b=>b.name));
+        const name = BARISTA_NAMES.find(n=>!usedNames.has(n)) || 'Barista';
+        state.baristas.push({ id:'b'+Date.now(), name, level:1, targetSlot:null, acc:0, spec:null, trained:false, working:true });
+        toast(`${name} joined the team! 🧑‍🍳`);
+        renderAll();
+        return;
+      }
+    }
+  }
+  if(type==='promoteBarista'){
+    const b = state.baristas.find(x=>x.id===id);
+    if(b && b.level<2 && state.money>=BARISTA_PROMOTE_COST){
+      state.money -= BARISTA_PROMOTE_COST;
+      b.level = 2;
+      toast(`${b.name} promoted to Senior Barista! 🎉`);
+      renderAll();
+      return;
+    }
+  }
+  if(type==='loyalty'){
+    const level = parseInt(id,10);
+    const upgrade = LOYALTY_UPGRADES.find(u=>u.level===level);
+    if(upgrade && state.money>=upgrade.cost && state.loyaltyLevel<level){
+      state.money -= upgrade.cost;
+      state.loyaltyLevel = level;
+      toast(`${upgrade.name} unlocked!`);
+      renderAll();
+      return;
+    }
+  }
+  if(type==='shield'){
+    const cost = SHIELD_BASE_COST + state.shieldsPurchased*SHIELD_COST_STEP;
+    if(state.money>=cost && state.comboShields<SHIELD_MAX_HELD){
+      state.money -= cost;
+      state.comboShields++;
+      state.shieldsPurchased++;
+      toast('Streak shield purchased 🛡️');
+      renderAll();
+      return;
+    }
+  }
+  if(type==='equipment'){
+    const u = EQUIPMENT_UPGRADES.find(x=>x.id===id);
+    if(u && !hasUpgrade(id) && state.money>=u.cost && (!u.requires || hasUpgrade(u.requires))){
+      state.money -= u.cost;
+      state.upgrades.add(id);
+      if(id==='espresso2') state.unlockedRecipes.add('ristretto');
+      if(id==='espresso3') state.unlockedRecipes.add('doppio');
+      toast(`${u.name} installed! ⚙️`);
+      renderAll();
+      return;
+    }
+  }
+  if(type==='ambiance'){
+    const u = AMBIANCE_UPGRADES.find(x=>x.id===id);
+    if(u && !hasUpgrade(id) && state.money>=u.cost){
+      state.money -= u.cost;
+      state.upgrades.add(id);
+      toast(`${u.name} added! 🎵`);
+      renderAll();
+      return;
+    }
+  }
+  if(type==='business'){
+    const u = BUSINESS_UPGRADES.find(x=>x.id===id);
+    if(u && !hasUpgrade(id) && state.money>=u.cost && (!u.reqReputation || state.reputation>=u.reqReputation)){
+      state.money -= u.cost;
+      state.upgrades.add(id);
+      toast(`${u.name} opened! 🏪`);
+      renderAll();
+      return;
+    }
+  }
+  if(type==='marketing'){
+    if(state.marketingRemaining<=0 && state.money>=MARKETING_COST && state.shiftRunning){
+      state.money -= MARKETING_COST;
+      state.marketingRemaining = MARKETING_DURATION_MS;
+      toast('Marketing campaign launched! 📣');
+      renderAll();
+      return;
+    }
+  }
+  if(type==='prestige'){
+    if(state.day>=PRESTIGE_MIN_DAY && window.confirm('Reopen the shop? This resets day, money, and most upgrades, but keeps a permanent income bonus.')){
+      doPrestige();
+      return;
+    }
+  }
+  if(type==='trainBarista'){
+    const b = state.baristas.find(x=>x.id===id);
+    if(b && !b.trained && state.money>=300){
+      state.money -= 300;
+      b.trained = true;
+      toast(`${b.name} completed training! 🎓`);
+      renderAll();
+      return;
+    }
+  }
+  if(type==='specBarista'){
+    const b = state.baristas.find(x=>x.id===id);
+    if(b){
+      b.spec = extra || null;
+      toast(`${b.name} is now ${extra ? `a ${extra} specialist` : 'a generalist'}`);
+      renderAll();
+      return;
+    }
+  }
+  if(type==='scheduleBarista'){
+    const b = state.baristas.find(x=>x.id===id);
+    if(b){
+      b.working = b.working===false ? true : false;
+      toast(`${b.name} is ${b.working ? 'working' : 'off'} today`);
+      renderAll();
+      return;
+    }
+  }
+  toast('Unlocked!');
+  renderAll();
+}
+
+function doPrestige(){
+  state.prestigeLevel++;
+  state.day = 1;
+  state.money = 60 + state.prestigeLevel*20;
+  state.combo = 0; state.bestCombo = 0;
+  state.shiftElapsed = 0; state.shiftRunning = true;
+  state.queue = [];
+  state.slots = [null, null];
+  state.unlockedRecipes = new Set(['drip','americano','latte','cappuccino','icedcoffee']);
+  state.unlockedSyrups = new Set(['vanilla','caramel']);
+  state.unlockedToppings = new Set(['whip','cinnamon']);
+  state.unlockedFoods = new Set(['croissant','bagel']);
+  state.baristas = [];
+  state.loyaltyLevel = 0;
+  state.comboShields = 0;
+  state.shieldsPurchased = 0;
+  state.upgrades = new Set();
+  state.reputation = 50;
+  state.marketingRemaining = 0;
+  state.activeEvent = null;
+  state.eventFiredThisShift = false;
+  state.eventTriggerAt = randInt(SHIFT_MS*0.2, SHIFT_MS*0.7);
+  rollDailyModifier();
+  state.dayStats = { drinksServed:0, foodServed:0, totalTips:0, accuracySum:0, accuracyCount:0, wagesPaid:0, bestTip:0, bestTipName:'', worstMiss:null, events:[], repDelta:0 };
+  toast(`Reopened with prestige level ${state.prestigeLevel}! Permanent income boost active. 🔁`);
+  renderAll();
+}
+
+/* ---------- DAY / SHIFT ---------- */
+function currentPhaseIndex(){
+  const idx = Math.floor(state.shiftElapsed / PHASE_MS);
+  return Math.min(idx, PHASES.length-1);
+}
+function renderClock(){
+  const idx = currentPhaseIndex();
+  const phase = PHASES[idx];
+  document.getElementById('phaseLabel').textContent = phase.name;
+  const pct = Math.min(100, (state.shiftElapsed/SHIFT_MS)*100);
+  document.getElementById('clockbar-fill').style.width = pct+'%';
+  const t0 = hexToRgb(PHASES[idx].sky[0]), t1 = hexToRgb(PHASES[idx].sky[1]);
+  document.getElementById('skystrip').style.background = `linear-gradient(180deg, ${PHASES[idx].sky[0]}, ${PHASES[idx].sky[1]})`;
+}
+
+let lastTick = null;
+let spawnAcc = 0;
+function gameLoop(ts){
+  if(lastTick===null) lastTick = ts;
+  const dt = ts - lastTick;
+  lastTick = ts;
+  if(state.shiftRunning){
+    state.shiftElapsed += dt;
+    spawnAcc += dt;
+    const phase = PHASES[currentPhaseIndex()];
+    const effectiveSpawnMs = phase.spawnMs * spawnFactor();
+    if(spawnAcc > effectiveSpawnMs){
+      spawnAcc = 0;
+      spawnCustomer();
+    }
+    state.baristas.forEach(b=>{
+      if(b.working===false) return;
+      b.acc = (b.acc||0) + dt;
+      const outageMult = outageActive() ? (hasUpgrade('generator') ? 1.15 : 1.6) : 1;
+      const iv = BARISTA_TIERS[b.level].intervalMs * baristaFatigueFactor() * outageMult;
+      if(b.acc > iv){
+        b.acc = 0;
+        runBaristaTick(b);
+      }
+    });
+    if(state.marketingRemaining>0){
+      state.marketingRemaining = Math.max(0, state.marketingRemaining - dt);
+    }
+    if(state.activeEvent && state.shiftElapsed >= state.activeEvent.until){
+      state.activeEvent = null;
+    }
+    if(!state.eventFiredThisShift && state.shiftElapsed >= state.eventTriggerAt){
+      fireRandomEvent();
+    }
+    if(state.shiftElapsed >= SHIFT_MS){
+      endShift();
+    }
+    renderClock();
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+function endShift(){
+  state.shiftRunning = false;
+  const ds = state.dayStats;
+  const avgAccuracy = ds.accuracyCount ? Math.round((ds.accuracySum/ds.accuracyCount)*100) : 100;
+
+  const wages = state.baristas.reduce((sum,b)=> sum + BARISTA_TIERS[b.level].wage, 0);
+  ds.wagesPaid = wages;
+  state.money -= wages;
+
+  document.getElementById('modalTitle').textContent = `Day ${state.day} Complete!`;
+  document.getElementById('modalBody').innerHTML = `
+    <div>You earned</div>
+    <div class="bigmoney">$${fmtMoney(state.money)}</div>
+    <div class="daysummary">
+      <div>☕ Drinks served: <b>${ds.drinksServed}</b></div>
+      <div>🍪 Food served: <b>${ds.foodServed}</b></div>
+      <div>🎯 Avg. order accuracy: <b>${avgAccuracy}%</b></div>
+      <div>💵 Tips earned: <b>$${fmtMoney(ds.totalTips)}</b></div>
+      ${wages>0 ? `<div>🧑‍🍳 Staff wages paid: <b>-$${fmtMoney(wages)}</b></div>` : ''}
+      <div>🔥 Best streak: <b>${state.bestCombo}</b></div>
+      ${ds.bestTip>0 ? `<div>💰 Biggest tip: <b>$${ds.bestTip}</b> (${ds.bestTipName})</div>` : ''}
+      ${ds.worstMiss ? `<div>😬 Worst miss: <b>${ds.worstMiss.name}</b> (${Math.round(ds.worstMiss.ratio*100)}% right)</div>` : ''}
+      <div>⭐ Reputation: <b>${Math.round(state.reputation)}/100</b> (${ds.repDelta>=0?'+':''}${ds.repDelta} today)</div>
+      ${ds.events.length ? `<div>🔔 Events today: <b>${ds.events.join(', ')}</b></div>` : ''}
+    </div>
+  `;
+  document.getElementById('modalOverlay').classList.add('show');
+  saveState();
+}
+
+document.getElementById('modalBtn').onclick = ()=>{
+  document.getElementById('modalOverlay').classList.remove('show');
+  state.day++;
+  state.shiftElapsed = 0;
+  state.combo = 0;
+  state.bestCombo = 0;
+  state.shiftRunning = true;
+  state.queue = [];
+  state.slots = state.slots.map(()=>null); // clear cups but keep station count
+  state.baristas.forEach(b=>{ b.targetSlot = null; b.acc = 0; });
+  state.marketingRemaining = 0;
+  state.activeEvent = null;
+  state.eventFiredThisShift = false;
+  state.eventTriggerAt = randInt(SHIFT_MS*0.2, SHIFT_MS*0.7);
+  rollDailyModifier();
+  state.dayStats = { drinksServed:0, foodServed:0, totalTips:0, accuracySum:0, accuracyCount:0, wagesPaid:0, bestTip:0, bestTipName:'', worstMiss:null, events:[], repDelta:0 };
+  renderAll();
+};
+
+/* ---------- CHALKBOARD TOGGLE ---------- */
+document.getElementById('chalkToggle').onclick = ()=>{
+  document.getElementById('chalkboard').classList.toggle('open');
+};
+
+/* ---------- MUTE TOGGLE ---------- */
+document.getElementById('muteToggle').onclick = ()=>{
+  state.muted = !state.muted;
+  document.getElementById('muteToggle').textContent = state.muted ? '🔇' : '🔊';
+  saveState();
+};
+
+/* ---------- NEW GAME ---------- */
+document.getElementById('newGameBtn').onclick = ()=>{
+  if(window.confirm('Start a new game? This clears all saved progress (day, money, unlocks).')){
+    clearSave();
+    window.location.reload();
+  }
+};
+
+/* ---------- SAVE / LOAD ---------- */
+function saveState(){
+  try{
+    const data = {
+      day: state.day,
+      money: state.money,
+      unlockedRecipes: [...state.unlockedRecipes],
+      unlockedSyrups: [...state.unlockedSyrups],
+      unlockedToppings: [...state.unlockedToppings],
+      unlockedFoods: [...state.unlockedFoods],
+      stationCount: state.slots.length,
+      muted: state.muted,
+      regulars: state.regulars,
+      baristas: state.baristas.map(b=>({id:b.id, name:b.name, level:b.level, spec:b.spec||null, trained:!!b.trained, working:b.working!==false})),
+      loyaltyLevel: state.loyaltyLevel,
+      comboShields: state.comboShields,
+      shieldsPurchased: state.shieldsPurchased,
+      presets: state.presets,
+      reputation: state.reputation,
+      upgrades: [...state.upgrades],
+      prestigeLevel: state.prestigeLevel,
+      dailyModifierId: state.dailyModifierId,
+      eventFiredThisShift: state.eventFiredThisShift,
+      eventTriggerAt: state.eventTriggerAt,
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  }catch(e){ /* localStorage unavailable — ignore */ }
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw) return false;
+    const data = JSON.parse(raw);
+    if(typeof data.day==='number') state.day = data.day;
+    if(typeof data.money==='number') state.money = data.money;
+    if(Array.isArray(data.unlockedRecipes)) state.unlockedRecipes = new Set(data.unlockedRecipes);
+    if(Array.isArray(data.unlockedSyrups)) state.unlockedSyrups = new Set(data.unlockedSyrups);
+    if(Array.isArray(data.unlockedToppings)) state.unlockedToppings = new Set(data.unlockedToppings);
+    if(Array.isArray(data.unlockedFoods)) state.unlockedFoods = new Set(data.unlockedFoods);
+    const stationCount = (typeof data.stationCount==='number' && data.stationCount>=2) ? data.stationCount : 2;
+    state.slots = new Array(stationCount).fill(null);
+    state.muted = !!data.muted;
+    if(data.regulars && typeof data.regulars==='object') state.regulars = data.regulars;
+    if(Array.isArray(data.baristas)){
+      state.baristas = data.baristas.map(b=>({
+        id:b.id, name:b.name, level:(b.level===2?2:1), targetSlot:null, acc:0,
+        spec: (b.spec==='bar'||b.spec==='kitchen') ? b.spec : null,
+        trained: !!b.trained,
+        working: b.working!==false,
+      }));
+    } else if(typeof data.baristaLevel==='number' && data.baristaLevel>0){
+      // migrate old single-barista save: one hire at the saved tier
+      state.baristas = [{id:'b_migrated', name:BARISTA_NAMES[0], level:(data.baristaLevel>=2?2:1), targetSlot:null, acc:0, spec:null, trained:false, working:true}];
+    }
+    if(typeof data.loyaltyLevel==='number') state.loyaltyLevel = data.loyaltyLevel;
+    if(typeof data.comboShields==='number') state.comboShields = data.comboShields;
+    if(typeof data.shieldsPurchased==='number') state.shieldsPurchased = data.shieldsPurchased;
+    if(Array.isArray(data.presets)) state.presets = data.presets;
+    // ---- new-system migration defaults (old saves won't have these) ----
+    state.reputation = (typeof data.reputation==='number') ? data.reputation : 50;
+    state.upgrades = Array.isArray(data.upgrades) ? new Set(data.upgrades) : new Set();
+    state.prestigeLevel = (typeof data.prestigeLevel==='number') ? data.prestigeLevel : 0;
+    state.dailyModifierId = (typeof data.dailyModifierId==='string' || data.dailyModifierId===null) ? data.dailyModifierId : null;
+    state.eventFiredThisShift = !!data.eventFiredThisShift;
+    state.eventTriggerAt = (typeof data.eventTriggerAt==='number') ? data.eventTriggerAt : randInt(SHIFT_MS*0.2, SHIFT_MS*0.7);
+    state.marketingRemaining = 0;
+    state.activeEvent = null;
+    return true;
+  }catch(e){ return false; }
+}
+
+function clearSave(){
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){ /* ignore */ }
+}
+
+/* ---------- MASTER RENDER ---------- */
+function renderAll(){
+  document.getElementById('dayNum').textContent = state.day;
+  document.getElementById('moneyLabel').textContent = fmtMoney(state.money);
+  document.getElementById('comboLabel').textContent = state.combo;
+  const shieldStat = document.getElementById('shieldStat');
+  if(shieldStat){
+    shieldStat.style.display = state.comboShields>0 ? 'flex' : 'none';
+    document.getElementById('shieldLabel').textContent = state.comboShields;
+  }
+  const repLabel = document.getElementById('repLabel');
+  if(repLabel) repLabel.textContent = reputationStars();
+  const dmBanner = document.getElementById('dailyModifierBanner');
+  if(dmBanner){
+    const dm = getActiveDailyModifier();
+    if(dm){ dmBanner.style.display='block'; dmBanner.textContent = `📅 ${dm.name}: ${dm.desc}`; }
+    else dmBanner.style.display = 'none';
+  }
+  renderQueue();
+  renderSlots();
+  renderStationsAll();
+  renderChalkboard();
+  saveState();
+}
+
+/* ---------- INIT ---------- */
+function init(){
+  const hadSave = loadState();
+  if(!hadSave){
+    rollDailyModifier();
+    state.eventTriggerAt = randInt(SHIFT_MS*0.2, SHIFT_MS*0.7);
+  }
+  const muteBtn = document.getElementById('muteToggle');
+  if(muteBtn) muteBtn.textContent = state.muted ? '🔇' : '🔊';
+  for(let i=0;i<3;i++) state.queue.push(generateOrder());
+  renderAll();
+  renderClock();
+  setInterval(tickPatience, 1000);
+  requestAnimationFrame(gameLoop);
+}
+init();
+
+// Debug/test hook only — not used by the game UI itself.
+if(typeof window !== 'undefined'){
+  window.__CK_DEBUG__ = {
+    get state(){ return state; },
+    doUnlock, fireRandomEvent, generateOrder, tryAcceptCustomer, orderIsComplete,
+    autoAssistStep, serveSlot, saveState, loadState, queueMax,
+    MARKETING_COST, SAVE_KEY, RANDOM_EVENTS, DAILY_MODIFIERS,
+  };
+}
+
+</script>
+</body>
+</html>

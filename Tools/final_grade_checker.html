@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Final Grade Checker</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #f5f4f0;
+    color: #1a1a1a;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+  @media print {
+    body { background: #fff; padding: 0.5rem; }
+    .no-print { display: none !important; }
+    .student-card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; margin-bottom: 0.5rem; padding: 0.75rem 1rem; }
+    .note-bar, .legend, .import-panel { display: none; }
+  }
+  .page-header { text-align: center; margin-bottom: 1.5rem; }
+  .page-header h1 { font-size: 1.6rem; font-weight: 700; color: #1a3a5c; letter-spacing: -0.5px; }
+  .page-header p { font-size: 0.85rem; color: #666; margin-top: 0.3rem; }
+  .header-actions { display: flex; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+
+  .btn { padding: 6px 14px; border: 1px solid #c8d8e8; border-radius: 6px; background: #fff; color: #1a3a5c; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+  .btn:hover { background: #eef3f8; border-color: #1a3a5c; }
+  .btn:active { background: #d8e8f3; }
+  .btn-primary { background: #1a3a5c; color: #fff; border-color: #1a3a5c; }
+  .btn-primary:hover { background: #153050; }
+  .btn-danger { color: #a33; border-color: #e0d0d0; }
+  .btn-danger:hover { background: #fff0f0; border-color: #c44; }
+  .btn-green { background: #1a6b3a; color: #fff; border-color: #1a6b3a; }
+  .btn-green:hover { background: #155530; }
+  .btn-red { background: #7a1a1a; color: #fff; border-color: #7a1a1a; }
+  .btn-red:hover { background: #601515; }
+
+  .container { max-width: 1020px; margin: 0 auto; }
+
+  .import-panel { background: #fff; border: 1.5px dashed #b0c8e0; border-radius: 10px; padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; }
+  .import-panel h2 { font-size: 0.9rem; font-weight: 700; color: #1a3a5c; margin-bottom: 2px; }
+  .import-panel p { font-size: 0.78rem; color: #666; margin-bottom: 0.75rem; }
+  .import-textarea { width: 100%; height: 110px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.78rem; font-family: 'Consolas','Courier New',monospace; color: #1a1a1a; background: #fafafa; resize: vertical; outline: none; transition: border-color 0.15s; line-height: 1.5; }
+  .import-textarea:focus { border-color: #1a3a5c; background: #fff; }
+  .import-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }
+  .import-status { font-size: 0.78rem; color: #555; flex: 1; min-width: 120px; }
+  .import-status.ok   { color: #2d7a3a; font-weight: 600; }
+  .import-status.warn { color: #b45000; font-weight: 600; }
+  .import-status.err  { color: #a33;    font-weight: 600; }
+
+  .student-card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 1.1rem 1.4rem; margin-bottom: 0.85rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .card-top { display: flex; align-items: center; gap: 0.85rem; margin-bottom: 0.85rem; flex-wrap: wrap; }
+  .student-num { font-size: 0.75rem; font-weight: 700; color: #fff; background: #1a3a5c; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .name-input-wrap { flex: 1; min-width: 160px; }
+  .name-input-wrap label { font-size: 0.68rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 3px; }
+  .name-input { width: 100%; padding: 5px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; color: #1a1a1a; background: #fafafa; outline: none; transition: border-color 0.15s; }
+  .name-input:focus { border-color: #1a3a5c; background: #fff; }
+  .name-readonly { font-size: 0.95rem; font-weight: 600; color: #1a1a1a; padding: 4px 0; }
+
+  .grades-row { display: flex; align-items: flex-start; gap: 0.75rem; flex-wrap: wrap; }
+  .quarters-section { display: flex; gap: 0.75rem; flex-wrap: wrap; flex: 1; }
+  .quarter-wrap { display: flex; flex-direction: column; align-items: center; min-width: 72px; }
+  .quarter-wrap label { font-size: 0.68rem; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; white-space: nowrap; }
+  .grade-input { width: 72px; padding: 8px 6px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; font-weight: 600; text-align: center; color: #1a1a1a; background: #fafafa; outline: none; transition: border-color 0.15s, background 0.15s; }
+  .grade-input:focus { border-color: #1a3a5c; background: #fff; }
+  .grade-input.input-error { border-color: #c0392b; background: #fff5f5; }
+  .grade-readonly { width: 72px; padding: 8px 6px; border: 1px solid #e8e8e8; border-radius: 6px; font-size: 1rem; font-weight: 600; text-align: center; color: #333; background: #f5f5f5; }
+  .letter-badge { margin-top: 6px; width: 72px; height: 28px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.5px; transition: all 0.15s; }
+
+  .divider { width: 1px; background: #e5e5e5; align-self: stretch; margin: 0 0.15rem; flex-shrink: 0; }
+  .results-section { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+  .result-box { background: #f5f4f0; border: 1px solid #e0e0e0; border-radius: 8px; padding: 0.55rem 0.85rem; min-width: 148px; width: 148px; }
+  .result-box.winner { border-color: #1a3a5c; background: #eef3f8; }
+  .result-box .result-label { font-size: 0.63rem; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+  .result-box.winner .result-label { color: #1a3a5c; }
+  .result-row { display: flex; align-items: baseline; gap: 8px; }
+  .result-box .result-pct { font-size: 1rem; font-weight: 700; color: #1a1a1a; }
+  .result-box .result-letter { font-size: 0.92rem; font-weight: 700; }
+  .result-box .winner-tag { font-size: 0.58rem; font-weight: 700; color: #fff; background: #1a3a5c; border-radius: 3px; padding: 1px 5px; display: inline-block; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .pending-note { font-size: 0.68rem; color: #999; font-style: italic; margin-top: 2px; }
+  .filled-count { font-size: 0.68rem; color: #aaa; margin-top: 4px; }
+  .filled-count.all-filled { color: #2d7a3a; font-weight: 600; }
+  .missing-badge { width: 72px; height: 38px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 600; color: #b45000; background: #fff3e0; border: 1px dashed #e0a060; text-align: center; line-height: 1.2; }
+
+  .grade-A { background: #d4edda; color: #155724; }
+  .grade-B { background: #d1ecf1; color: #0c5460; }
+  .grade-C { background: #fff3cd; color: #856404; }
+  .grade-D { background: #ffe5cc; color: #7c4700; }
+  .grade-F { background: #f8d7da; color: #721c24; }
+  .grade-empty { background: #f0f0f0; color: #aaa; }
+  .grade-error { background: #f8d7da; color: #721c24; }
+
+  .note-bar { background: #eef3f8; border: 1px solid #c8d8e8; border-radius: 8px; padding: 0.7rem 1rem; margin-top: 1rem; font-size: 0.8rem; color: #1a3a5c; line-height: 1.6; }
+  .note-bar strong { font-weight: 700; }
+  .legend { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; justify-content: center; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: #555; }
+  .legend-dot { width: 14px; height: 14px; border-radius: 3px; }
+
+  @media (max-width: 680px) {
+    .grades-row { flex-direction: column; }
+    .divider { width: 100%; height: 1px; margin: 0.25rem 0; }
+    .results-section { flex-direction: row; }
+    .result-box { min-width: 130px; width: auto; flex: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="page-header">
+    <h1>Final Grade Checker</h1>
+    <p>Manual entry or paste from your grade export. Grades calculate automatically.</p>
+    <div class="header-actions no-print">
+      <button class="btn btn-danger" id="clear-all-btn">Clear All</button>
+      <button class="btn btn-green" id="export-excel-btn" onclick="exportExcel()">Export Excel</button>
+      <button class="btn btn-red"   id="export-pdf-btn"   onclick="exportPDF()">Export PDF</button>
+      <button class="btn" onclick="window.print()">Print</button>
+    </div>
+  </div>
+
+  <div class="import-panel no-print">
+    <h2>Paste Grade Export</h2>
+    <p>Paste rows directly from your grade system. Each row should have a student ID, name, section, grade level, and four quarter grades like <code>C(73.28)</code>. The system average column at the end is ignored.</p>
+    <textarea class="import-textarea" id="import-area" placeholder="Paste your grade data here, then click Import..."></textarea>
+    <div class="import-actions">
+      <button class="btn btn-primary" onclick="doImport()">Import</button>
+      <button class="btn" onclick="document.getElementById('import-area').value=''; setStatus('','')">Clear paste area</button>
+      <div class="import-status" id="import-status"></div>
+    </div>
+  </div>
+
+  <div id="students-container"></div>
+
+  <div class="note-bar no-print">
+    <strong>Which grade to use?</strong> Per Carroll County grading policy, award the <strong>higher</strong> of the two methods — the highlighted box is the one to report.<br>
+    <strong>Quality Points:</strong> Each quarter letter converts to a point value (A=4, B=3, C=2, D=1, F=0). Those four values are averaged, then converted back to a letter.<br>
+    <strong>Percentage Average:</strong> The four raw percentages are averaged directly, then converted using the 10-point scale (rounds up from .5).
+  </div>
+  <div class="legend no-print">
+    <div class="legend-item"><div class="legend-dot grade-A"></div> A (90–100)</div>
+    <div class="legend-item"><div class="legend-dot grade-B"></div> B (80–89)</div>
+    <div class="legend-item"><div class="legend-dot grade-C"></div> C (70–79)</div>
+    <div class="legend-item"><div class="legend-dot grade-D"></div> D (60–69)</div>
+    <div class="legend-item"><div class="legend-dot grade-F"></div> F (below 60)</div>
+  </div>
+</div>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js"></script>
+
+<script>
+// ── Grade math ──────────────────────────────────────────────
+function getLetter(score) {
+  if (score === null || score === undefined || score === '') return null;
+  const n = parseFloat(score);
+  if (isNaN(n)) return null;
+  const t = Math.round(n * 10);
+  if (t >= 895) return 'A';
+  if (t >= 795) return 'B';
+  if (t >= 695) return 'C';
+  if (t >= 595) return 'D';
+  return 'F';
+}
+function getQP(l) { return ({A:4,B:3,C:2,D:1,F:0})[l] ?? null; }
+function qpToFinalLetter(avgQP) {
+  const t = Math.round(avgQP * 10);
+  if (t >= 35) return 'A'; if (t >= 25) return 'B';
+  if (t >= 15) return 'C'; if (t >= 5)  return 'D';
+  return 'F';
+}
+function gradeClass(l) { return l ? 'grade-'+l : 'grade-empty'; }
+const letterColor = {A:'#155724',B:'#0c5460',C:'#856404',D:'#7c4700',F:'#721c24'};
+const rankMap = {A:4,B:3,C:2,D:1,F:0};
+
+// ── Shared data store (for export) ──────────────────────────
+// Each entry: { name, scores:[q1,q2,q3,q4], qpFinal, qpAvg, pctFinal, pctAvg, winner }
+let currentStudents = [];
+
+function calcFinals(scores) {
+  const validScores  = scores.filter(s => s !== null);
+  const validLetters = validScores.map(getLetter);
+  if (validScores.length < 4) return null;
+  const avgQP   = validLetters.map(getQP).reduce((a,b)=>a+b,0) / 4;
+  const qpFinal = qpToFinalLetter(avgQP);
+  const pctAvg  = validScores.reduce((a,b)=>a+b,0) / 4;
+  const pctFinal= getLetter(pctAvg);
+  const winner  = (rankMap[qpFinal]??-1) >= (rankMap[pctFinal]??-1) ? 'QP' : 'PCT';
+  return { avgQP, qpFinal, pctAvg, pctFinal, winner };
+}
+
+// ── Export: Excel ────────────────────────────────────────────
+function exportExcel() {
+  if (currentStudents.length === 0) { alert('No student data to export.'); return; }
+
+  const wb = XLSX.utils.book_new();
+  const rows = [];
+
+  // Header row
+  rows.push([
+    '#', 'Student Name',
+    'Q1', 'Q2', 'Q3', 'Q4',
+    'QP Avg', 'QP Grade',
+    'Pct Avg', 'Pct Grade',
+    'Final Grade', 'Method Used'
+  ]);
+
+  currentStudents.forEach((s, i) => {
+    const f = calcFinals(s.scores);
+    rows.push([
+      i + 1,
+      s.name || `Student ${i+1}`,
+      s.scores[0] !== null ? s.scores[0] : 'Missing',
+      s.scores[1] !== null ? s.scores[1] : 'Missing',
+      s.scores[2] !== null ? s.scores[2] : 'Missing',
+      s.scores[3] !== null ? s.scores[3] : 'Missing',
+      f ? parseFloat(f.avgQP.toFixed(2)) : '—',
+      f ? f.qpFinal  : '—',
+      f ? parseFloat(f.pctAvg.toFixed(1)) : '—',
+      f ? f.pctFinal : '—',
+      f ? (f.winner === 'QP' ? f.qpFinal : f.pctFinal) : '—',
+      f ? (f.winner === 'QP' ? 'Quality Points' : 'Pct. Average') : '—'
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // Column widths
+  ws['!cols'] = [
+    {wch:4},{wch:30},{wch:9},{wch:9},{wch:9},{wch:9},
+    {wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:16}
+  ];
+
+  // Style helpers — openpyxl-style cell addressing
+  const headerFill = { patternType:'solid', fgColor:{rgb:'1A3A5C'} };
+  const headerFont = { bold:true, color:{rgb:'FFFFFF'}, sz:11 };
+  const centerAlign = { horizontal:'center', vertical:'center' };
+
+  // Apply header styles
+  const hdrCols = ['A','B','C','D','E','F','G','H','I','J','K','L'];
+  hdrCols.forEach(col => {
+    const cell = ws[col+'1'];
+    if (!cell) return;
+    cell.s = { fill: headerFill, font: headerFont, alignment: centerAlign };
+  });
+
+  // Grade colour fills
+  const gradeFills = {
+    A: { patternType:'solid', fgColor:{rgb:'D4EDDA'} },
+    B: { patternType:'solid', fgColor:{rgb:'D1ECF1'} },
+    C: { patternType:'solid', fgColor:{rgb:'FFF3CD'} },
+    D: { patternType:'solid', fgColor:{rgb:'FFE5CC'} },
+    F: { patternType:'solid', fgColor:{rgb:'F8D7DA'} },
+  };
+  const gradeTextColors = { A:'155724', B:'0C5460', C:'856404', D:'7C4700', F:'721C24' };
+  const winnerFill = { patternType:'solid', fgColor:{rgb:'EEF3F8'} };
+  const winnerFont = { bold:true, color:{rgb:'1A3A5C'} };
+
+  currentStudents.forEach((s, i) => {
+    const row = i + 2; // 1-indexed, row 1 is header
+    const f = calcFinals(s.scores);
+
+    // Alternate row banding
+    const bandFill = i % 2 === 0
+      ? { patternType:'solid', fgColor:{rgb:'F9F9F9'} }
+      : { patternType:'solid', fgColor:{rgb:'FFFFFF'} };
+
+    // Number & name cells
+    ['A','B'].forEach(col => {
+      const cell = ws[col+row];
+      if (cell) cell.s = { fill: bandFill, alignment: col==='A' ? centerAlign : {vertical:'center'} };
+    });
+
+    // Quarter score cells
+    ['C','D','E','F'].forEach((col, qi) => {
+      const cell = ws[col+row];
+      if (!cell) return;
+      const score = s.scores[qi];
+      const letter = score !== null ? getLetter(score) : null;
+      cell.s = {
+        fill: letter ? gradeFills[letter] : bandFill,
+        font: letter ? { color:{rgb: gradeTextColors[letter]||'000000'}, bold:true } : {},
+        alignment: centerAlign,
+        numFmt: score !== null ? '0.00' : null
+      };
+    });
+
+    if (f) {
+      // QP avg
+      const qpAvgCell = ws['G'+row];
+      if (qpAvgCell) qpAvgCell.s = { fill: bandFill, alignment: centerAlign, numFmt:'0.00' };
+
+      // QP grade
+      const qpLetCell = ws['H'+row];
+      if (qpLetCell) qpLetCell.s = {
+        fill: gradeFills[f.qpFinal] || bandFill,
+        font: { bold:true, color:{rgb: gradeTextColors[f.qpFinal]||'000000'} },
+        alignment: centerAlign
+      };
+
+      // Pct avg
+      const pctAvgCell = ws['I'+row];
+      if (pctAvgCell) pctAvgCell.s = { fill: bandFill, alignment: centerAlign, numFmt:'0.0' };
+
+      // Pct grade
+      const pctLetCell = ws['J'+row];
+      if (pctLetCell) pctLetCell.s = {
+        fill: gradeFills[f.pctFinal] || bandFill,
+        font: { bold:true, color:{rgb: gradeTextColors[f.pctFinal]||'000000'} },
+        alignment: centerAlign
+      };
+
+      // Final grade — winner highlighted
+      const finalLetter = f.winner === 'QP' ? f.qpFinal : f.pctFinal;
+      const finalCell = ws['K'+row];
+      if (finalCell) finalCell.s = {
+        fill: winnerFill,
+        font: { ...winnerFont, sz:12, color:{rgb: gradeTextColors[finalLetter]||'000000'} },
+        alignment: centerAlign
+      };
+
+      // Method used
+      const methodCell = ws['L'+row];
+      if (methodCell) methodCell.s = { fill: winnerFill, font: winnerFont, alignment: centerAlign };
+    } else {
+      ['G','H','I','J','K','L'].forEach(col => {
+        const cell = ws[col+row];
+        if (cell) cell.s = { fill: bandFill, alignment: centerAlign };
+      });
+    }
+  });
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Final Grades');
+  XLSX.writeFile(wb, 'final_grades.xlsx');
+}
+
+// ── Export: PDF ──────────────────────────────────────────────
+function exportPDF() {
+  if (currentStudents.length === 0) { alert('No student data to export.'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+
+  const navy   = [26, 58, 92];
+  const white  = [255, 255, 255];
+  const gradeColors = {
+    A: { bg:[212,237,218], text:[21,87,36] },
+    B: { bg:[209,236,241], text:[12,84,96] },
+    C: { bg:[255,243,205], text:[133,100,4] },
+    D: { bg:[255,229,204], text:[124,71,0] },
+    F: { bg:[248,215,218], text:[114,28,36] },
+  };
+  const winnerBg   = [238,243,248];
+  const winnerText = [26,58,92];
+  const bandBg     = [249,249,249];
+
+  // Title
+  doc.setFillColor(...navy);
+  doc.rect(40, 30, doc.internal.pageSize.width - 80, 36, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(...white);
+  doc.text('Final Grade Report', doc.internal.pageSize.width / 2, 54, { align: 'center' });
+
+  // Subtitle
+  const now = new Date();
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Generated ${now.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}`, doc.internal.pageSize.width / 2, 78, { align: 'center' });
+
+  // Build table rows
+  const tableRows = currentStudents.map((s, i) => {
+    const f = calcFinals(s.scores);
+    const fmt = v => v !== null ? v.toFixed(2) : 'Missing';
+    const finalLetter = f ? (f.winner === 'QP' ? f.qpFinal : f.pctFinal) : '—';
+    const methodLabel = f ? (f.winner === 'QP' ? 'Qual. Pts' : 'Pct. Avg') : '—';
+    return [
+      i + 1,
+      s.name || `Student ${i+1}`,
+      fmt(s.scores[0]), fmt(s.scores[1]), fmt(s.scores[2]), fmt(s.scores[3]),
+      f ? f.avgQP.toFixed(2) : '—',
+      f ? f.qpFinal  : '—',
+      f ? f.pctAvg.toFixed(1)+'%' : '—',
+      f ? f.pctFinal : '—',
+      finalLetter,
+      methodLabel
+    ];
+  });
+
+  doc.autoTable({
+    startY: 90,
+    margin: { left: 40, right: 40 },
+    head: [[
+      '#', 'Student Name',
+      'Q1', 'Q2', 'Q3', 'Q4',
+      'QP Avg', 'QP', 'Pct Avg', 'Pct',
+      'Final', 'Method'
+    ]],
+    body: tableRows,
+    theme: 'plain',
+    styles: {
+      fontSize: 9,
+      cellPadding: { top:5, bottom:5, left:5, right:5 },
+      valign: 'middle',
+      overflow: 'linebreak',
+    },
+    headStyles: {
+      fillColor: navy,
+      textColor: white,
+      fontStyle: 'bold',
+      fontSize: 9,
+      halign: 'center',
+    },
+    columnStyles: {
+      0:  { halign:'center', cellWidth:22 },
+      1:  { halign:'left',   cellWidth:110 },
+      2:  { halign:'center', cellWidth:46 },
+      3:  { halign:'center', cellWidth:46 },
+      4:  { halign:'center', cellWidth:46 },
+      5:  { halign:'center', cellWidth:46 },
+      6:  { halign:'center', cellWidth:44 },
+      7:  { halign:'center', cellWidth:28 },
+      8:  { halign:'center', cellWidth:46 },
+      9:  { halign:'center', cellWidth:28 },
+      10: { halign:'center', cellWidth:34 },
+      11: { halign:'center', cellWidth:54 },
+    },
+    didParseCell(data) {
+      if (data.section === 'head') return;
+      const col = data.column.index;
+      const si  = data.row.index;
+      const s   = currentStudents[si];
+      if (!s) return;
+      const f = calcFinals(s.scores);
+
+      // Quarter score cells (cols 2–5)
+      if (col >= 2 && col <= 5) {
+        const score = s.scores[col - 2];
+        if (score !== null) {
+          const letter = getLetter(score);
+          if (letter && gradeColors[letter]) {
+            data.cell.styles.fillColor  = gradeColors[letter].bg;
+            data.cell.styles.textColor  = gradeColors[letter].text;
+            data.cell.styles.fontStyle  = 'bold';
+          }
+        } else {
+          data.cell.styles.textColor = [180, 80, 0];
+          data.cell.styles.fontStyle = 'italic';
+        }
+      }
+
+      // QP grade (col 7)
+      if (col === 7 && f) {
+        const gc = gradeColors[f.qpFinal];
+        if (gc) { data.cell.styles.fillColor=gc.bg; data.cell.styles.textColor=gc.text; data.cell.styles.fontStyle='bold'; }
+      }
+      // Pct grade (col 9)
+      if (col === 9 && f) {
+        const gc = gradeColors[f.pctFinal];
+        if (gc) { data.cell.styles.fillColor=gc.bg; data.cell.styles.textColor=gc.text; data.cell.styles.fontStyle='bold'; }
+      }
+      // Final grade (col 10) — winner style
+      if (col === 10 && f) {
+        const finalLetter = f.winner === 'QP' ? f.qpFinal : f.pctFinal;
+        const gc = gradeColors[finalLetter];
+        data.cell.styles.fillColor = winnerBg;
+        data.cell.styles.textColor = gc ? gc.text : winnerText;
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.fontSize  = 10;
+      }
+      // Method (col 11)
+      if (col === 11 && f) {
+        data.cell.styles.fillColor = winnerBg;
+        data.cell.styles.textColor = winnerText;
+        data.cell.styles.fontStyle = 'bold';
+      }
+      // Row banding on non-colored cells
+      if (![2,3,4,5,7,9,10,11].includes(col)) {
+        if (si % 2 === 0) data.cell.styles.fillColor = bandBg;
+      }
+    },
+  });
+
+  // Legend at bottom
+  const finalY = doc.lastAutoTable.finalY + 18;
+  if (finalY < doc.internal.pageSize.height - 60) {
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...navy);
+    doc.text('Grade Scale:', 40, finalY);
+    const grades = [['A','90–100'],['B','80–89'],['C','70–79'],['D','60–69'],['F','<60']];
+    let lx = 100;
+    grades.forEach(([letter, range]) => {
+      const gc = gradeColors[letter];
+      doc.setFillColor(...gc.bg);
+      doc.roundedRect(lx, finalY-9, 56, 13, 2, 2, 'F');
+      doc.setTextColor(...gc.text);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${letter}: ${range}`, lx+4, finalY);
+      lx += 64;
+    });
+    doc.setTextColor(120,120,120);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Final grade = higher of Quality Points or Percentage Average method.', 40, finalY + 18);
+  }
+
+  doc.save('final_grades.pdf');
+}
+
+// ── State ────────────────────────────────────────────────────
+let mode = 'manual';
+const MANUAL_COUNT = 5;
+
+// ── Import ───────────────────────────────────────────────────
+function setStatus(msg, cls) {
+  const el = document.getElementById('import-status');
+  el.textContent = msg;
+  el.className = 'import-status' + (cls ? ' ' + cls : '');
+}
+
+function parseGradeToken(tok) {
+  if (!tok || tok.trim() === '') return null;
+  const m = tok.match(/\(([0-9.]+)\)/);
+  if (m) return parseFloat(m[1]);
+  const n = parseFloat(tok);
+  return isNaN(n) ? null : n;
+}
+
+function parsePastedData(raw) {
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const students = [], warnings = [];
+  lines.forEach((line, li) => {
+    const cols = line.split(/\t|  +/).map(c => c.trim()).filter(c => c.length > 0);
+    if (cols.length < 6) { warnings.push(`Row ${li+1}: not enough columns (skipped)`); return; }
+    const name = cols[1];
+    const q1 = parseGradeToken(cols[4]);
+    const q2 = parseGradeToken(cols[5]);
+    const q3 = parseGradeToken(cols[6]);
+    const q4 = parseGradeToken(cols[7]);
+    if ([q1,q2,q3,q4].every(v => v === null)) { warnings.push(`Row ${li+1} (${name}): no grade data (skipped)`); return; }
+    const missing = [q1,q2,q3,q4].filter(v => v === null).length;
+    if (missing > 0) warnings.push(`Row ${li+1} (${name}): ${missing} quarter(s) missing`);
+    students.push({ name, scores:[q1,q2,q3,q4] });
+  });
+  return { students, warnings };
+}
+
+function doImport() {
+  const raw = document.getElementById('import-area').value.trim();
+  if (!raw) { setStatus('Nothing to import.', 'warn'); return; }
+  const { students, warnings } = parsePastedData(raw);
+  if (students.length === 0) { setStatus('Could not parse any students. Check the format and try again.', 'err'); return; }
+  mode = 'import';
+  currentStudents = students;
+  renderImportedStudents(students);
+  let msg = `Imported ${students.length} student${students.length>1?'s':''}.`;
+  if (warnings.length) msg += ` ${warnings.length} warning(s): ${warnings[0]}${warnings.length>1?' …':''}`;
+  setStatus(msg, warnings.length ? 'warn' : 'ok');
+}
+
+// ── Render: Imported cards ───────────────────────────────────
+function renderImportedStudents(students) {
+  const container = document.getElementById('students-container');
+  container.innerHTML = '';
+  students.forEach((s, i) => container.appendChild(buildImportCard(s, i)));
+  document.getElementById('clear-all-btn').onclick = () => switchToManual();
+}
+
+function buildImportCard(student, i) {
+  const card = document.createElement('div');
+  card.className = 'student-card';
+  const scores = student.scores;
+  const letters = scores.map(s => s !== null ? getLetter(s) : null);
+
+  const quartersHtml = [0,1,2,3].map(qi => {
+    const s = scores[qi], l = letters[qi];
+    if (s === null) return `<div class="quarter-wrap"><label>Quarter ${qi+1}</label><div class="missing-badge">Missing</div></div>`;
+    return `<div class="quarter-wrap">
+      <label>Quarter ${qi+1}</label>
+      <div class="grade-readonly">${s.toFixed(2)}</div>
+      <div class="letter-badge ${gradeClass(l)}">${l}</div>
+    </div>`;
+  }).join('');
+
+  const f = calcFinals(scores);
+  let qpHtml = '', avgHtml = '';
+  if (f) {
+    const qpWin = f.winner === 'QP', avgWin = !qpWin;
+    qpHtml = `<div class="result-box${qpWin?' winner':''}">
+      <div class="result-label">Quality Points</div>
+      <div class="result-row">
+        <div class="result-pct">avg ${f.avgQP.toFixed(2)} pts</div>
+        <div class="result-letter" style="color:${letterColor[f.qpFinal]||'#333'}">${f.qpFinal}</div>
+      </div>${qpWin?'<div class="winner-tag">★ Use this</div>':''}
+    </div>`;
+    avgHtml = `<div class="result-box${avgWin?' winner':''}">
+      <div class="result-label">Pct. Average</div>
+      <div class="result-row">
+        <div class="result-pct">${f.pctAvg.toFixed(1)}%</div>
+        <div class="result-letter" style="color:${letterColor[f.pctFinal]||'#333'}">${f.pctFinal}</div>
+      </div>${avgWin?'<div class="winner-tag">★ Use this</div>':''}
+    </div>`;
+  } else {
+    const m = 4 - scores.filter(s=>s!==null).length;
+    const note = `<div class="pending-note">${m} quarter(s) missing</div>`;
+    qpHtml  = `<div class="result-box"><div class="result-label">Quality Points</div><div class="result-pct" style="color:#aaa">—</div>${note}</div>`;
+    avgHtml = `<div class="result-box"><div class="result-label">Pct. Average</div><div class="result-pct" style="color:#aaa">—</div></div>`;
+  }
+
+  card.innerHTML = `
+    <div class="card-top">
+      <div class="student-num">${i+1}</div>
+      <div class="name-input-wrap"><div class="name-readonly">${escHtml(student.name)}</div></div>
+    </div>
+    <div class="grades-row">
+      <div class="quarters-section">${quartersHtml}</div>
+      <div class="divider"></div>
+      <div class="results-section">${qpHtml}${avgHtml}</div>
+    </div>`;
+  return card;
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Render: Manual cards ─────────────────────────────────────
+function switchToManual() {
+  mode = 'manual';
+  document.getElementById('import-area').value = '';
+  setStatus('','');
+  currentStudents = Array.from({length: MANUAL_COUNT}, (_,i) => ({ name:'', scores:[null,null,null,null] }));
+  renderManualCards();
+  document.getElementById('clear-all-btn').onclick = clearAllManual;
+}
+
+function renderManualCards() {
+  const container = document.getElementById('students-container');
+  container.innerHTML = '';
+  for (let i = 0; i < MANUAL_COUNT; i++) container.appendChild(buildManualCard(i));
+  attachManualListeners();
+}
+
+function buildManualCard(i) {
+  const card = document.createElement('div');
+  card.className = 'student-card'; card.id = `card-${i}`;
+  card.innerHTML = `
+    <div class="card-top">
+      <div class="student-num">${i+1}</div>
+      <div class="name-input-wrap">
+        <label for="name-${i}">Student name (optional)</label>
+        <input class="name-input" type="text" id="name-${i}" placeholder="Student ${i+1}" data-student="${i}">
+      </div>
+      <button class="btn btn-danger no-print" style="font-size:0.75rem;padding:5px 11px;" onclick="clearManualStudent(${i})">Clear row</button>
+    </div>
+    <div class="grades-row">
+      <div class="quarters-section">
+        ${[1,2,3,4].map(q=>`
+          <div class="quarter-wrap">
+            <label for="q${q}-${i}">Quarter ${q}</label>
+            <input class="grade-input" type="number" id="q${q}-${i}" min="0" max="100" step="0.1" placeholder="—"
+              data-student="${i}" data-quarter="${q-1}" tabindex="${i*5+q}">
+            <div class="letter-badge grade-empty" id="badge-${i}-${q-1}">—</div>
+          </div>`).join('')}
+      </div>
+      <div class="divider"></div>
+      <div class="results-section">
+        <div class="result-box" id="qp-box-${i}">
+          <div class="result-label">Quality Points</div>
+          <div class="result-row">
+            <div class="result-pct" id="qp-avg-${i}">—</div>
+            <div class="result-letter" id="qp-letter-${i}" style="color:#aaa">—</div>
+          </div>
+          <div class="pending-note" id="qp-note-${i}"></div>
+        </div>
+        <div class="result-box" id="avg-box-${i}">
+          <div class="result-label">Pct. Average</div>
+          <div class="result-row">
+            <div class="result-pct" id="avg-pct-${i}">—</div>
+            <div class="result-letter" id="avg-letter-${i}" style="color:#aaa">—</div>
+          </div>
+          <div class="pending-note" id="avg-note-${i}"></div>
+        </div>
+      </div>
+    </div>
+    <div class="filled-count" id="filled-${i}"></div>`;
+  return card;
+}
+
+function attachManualListeners() {
+  document.querySelectorAll('.grade-input').forEach(inp => {
+    inp.addEventListener('input', () => updateManual(parseInt(inp.dataset.student)));
+    inp.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const all = Array.from(document.querySelectorAll('.grade-input, .name-input'));
+      const idx = all.indexOf(inp);
+      if (idx >= 0 && idx < all.length-1) all[idx+1].focus();
+    });
+  });
+  document.querySelectorAll('.name-input').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const si = parseInt(inp.dataset.student);
+      if (currentStudents[si]) currentStudents[si].name = inp.value;
+    });
+  });
+}
+
+function updateManual(si) {
+  const inputs = document.querySelectorAll(`.grade-input[data-student="${si}"]`);
+  const scores = [], letters = [];
+  let filledCount = 0;
+
+  inputs.forEach((inp, qi) => {
+    const val = inp.value.trim();
+    const badge = document.getElementById(`badge-${si}-${qi}`);
+    if (val === '') {
+      badge.textContent='—'; badge.className='letter-badge grade-empty';
+      inp.classList.remove('input-error'); scores.push(null); letters.push(null);
+    } else {
+      const n = parseFloat(val);
+      if (isNaN(n)||n<0||n>100) {
+        badge.textContent='!'; badge.className='letter-badge grade-error';
+        inp.classList.add('input-error'); scores.push(null); letters.push(null);
+      } else {
+        inp.classList.remove('input-error');
+        const l = getLetter(n);
+        badge.textContent=l; badge.className='letter-badge '+gradeClass(l);
+        scores.push(n); letters.push(l); filledCount++;
+      }
+    }
+  });
+
+  // Sync to data store
+  if (currentStudents[si]) currentStudents[si].scores = scores;
+
+  const filledEl = document.getElementById(`filled-${si}`);
+  if (filledCount===0) { filledEl.textContent=''; filledEl.className='filled-count'; }
+  else if (filledCount<4) { filledEl.textContent=`${filledCount} of 4 quarters entered — need all 4 for final grade`; filledEl.className='filled-count'; }
+  else { filledEl.textContent='All 4 quarters entered'; filledEl.className='filled-count all-filled'; }
+
+  const qpBox=document.getElementById(`qp-box-${si}`), avgBox=document.getElementById(`avg-box-${si}`);
+  const qpAvgEl=document.getElementById(`qp-avg-${si}`), qpLetEl=document.getElementById(`qp-letter-${si}`);
+  const qpNoteEl=document.getElementById(`qp-note-${si}`);
+  const avgPctEl=document.getElementById(`avg-pct-${si}`), avgLetEl=document.getElementById(`avg-letter-${si}`);
+  const avgNoteEl=document.getElementById(`avg-note-${si}`);
+
+  qpBox.classList.remove('winner'); avgBox.classList.remove('winner');
+  qpBox.querySelectorAll('.winner-tag').forEach(t=>t.remove());
+  avgBox.querySelectorAll('.winner-tag').forEach(t=>t.remove());
+
+  if (letters.filter(l=>l!==null).length < 4) {
+    qpAvgEl.textContent='—'; qpLetEl.textContent='—'; qpLetEl.style.color='#aaa';
+    qpNoteEl.textContent=filledCount>0?'Enter all 4 quarters':'';
+    avgPctEl.textContent='—'; avgLetEl.textContent='—'; avgLetEl.style.color='#aaa';
+    avgNoteEl.textContent=filledCount>0?'Enter all 4 quarters':'';
+    return;
+  }
+
+  const f = calcFinals(scores);
+  if (!f) return;
+
+  qpAvgEl.textContent='avg '+f.avgQP.toFixed(2)+' pts';
+  qpLetEl.textContent=f.qpFinal; qpLetEl.style.color=letterColor[f.qpFinal]||'#333';
+  qpNoteEl.textContent='';
+  avgPctEl.textContent=f.pctAvg.toFixed(1)+'%';
+  avgLetEl.textContent=f.pctFinal; avgLetEl.style.color=letterColor[f.pctFinal]||'#333';
+  avgNoteEl.textContent='';
+
+  const winnerBox = f.winner==='QP' ? qpBox : avgBox;
+  winnerBox.classList.add('winner');
+  const tag=document.createElement('div'); tag.className='winner-tag'; tag.textContent='★ Use this';
+  winnerBox.appendChild(tag);
+}
+
+function clearManualStudent(i) {
+  document.querySelectorAll(`.grade-input[data-student="${i}"]`).forEach(inp=>{inp.value='';inp.classList.remove('input-error');});
+  const n=document.getElementById(`name-${i}`); if(n) n.value='';
+  if (currentStudents[i]) currentStudents[i] = { name:'', scores:[null,null,null,null] };
+  updateManual(i);
+}
+function clearAllManual() { for(let i=0;i<MANUAL_COUNT;i++) clearManualStudent(i); }
+
+// ── Boot ─────────────────────────────────────────────────────
+currentStudents = Array.from({length: MANUAL_COUNT}, () => ({ name:'', scores:[null,null,null,null] }));
+document.getElementById('clear-all-btn').onclick = clearAllManual;
+renderManualCards();
+</script>
+</body>
+</html>

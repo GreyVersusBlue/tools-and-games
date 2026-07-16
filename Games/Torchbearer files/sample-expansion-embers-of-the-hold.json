@@ -1,0 +1,199 @@
+{
+  "pack": {
+    "id": "embers-of-the-hold",
+    "name": "Embers of the Hold (Sample Expansion)",
+    "version": "1.0.0",
+    "author": "Torchbearer — worked example",
+    "type": "content",
+    "description": "A worked example of every pack collection: the orc ancestry, a background, shared feats, a new spell, a monster, a companion, and a two-battle mini-adventure."
+  },
+
+  "ancestries": [
+    {
+      "id": "orc", "name": "Orc", "hp": 10, "size": "Medium", "speed": 25,
+      "boosts": ["str", "free"], "flaws": [],
+      "traits": ["orc", "humanoid"], "languages": ["Common", "Orcish"],
+      "senses": ["darkvision"],
+      "desc": "Born of hard country and harder history, orcs meet the world chin-first and expect it to blink.",
+      "heritages": [
+        { "id": "hold-scarred-orc", "name": "Hold-Scarred Orc",
+          "desc": "You wear your survivals proudly. Your maximum HP increases by 2, and pain is an old acquaintance.",
+          "effects": [ { "bonus": { "target": "hp", "value": 2, "type": "untyped" } } ] },
+        { "id": "badlands-orc", "name": "Badlands Orc",
+          "desc": "Raised under a hateful sun. You gain fire resistance equal to half your level (minimum 1).",
+          "effects": [ { "resist": { "type": "fire", "value": "halfLevel" } } ] },
+        { "id": "deep-orc", "name": "Deep Orc",
+          "desc": "Cave-born and cave-canny. You are trained in one additional skill of your choice.",
+          "effects": [ { "trainSkill": "choice" } ] }
+      ]
+    }
+  ],
+
+  "backgrounds": [
+    { "id": "hold-smith", "name": "Hold Smith",
+      "boosts": [["str", "int"], ["free"]],
+      "skills": ["crafting"], "lore": "Smithing Lore",
+      "feat": "quick-repair",
+      "desc": "You learned that iron only respects patience, and people are mostly iron." }
+  ],
+
+  "feats": [
+    { "id": "orc-ferocity", "name": "Orc Ferocity", "type": "ancestry", "ancestry": "orc",
+      "level": 1, "actions": "reaction", "traits": ["orc"],
+      "desc": "Refuse the ground. You are hard to finish, dying with less finality than most.",
+      "effects": [ { "special": "diehard" } ] },
+    { "id": "iron-fists", "name": "Iron Fists", "type": "ancestry", "ancestry": "orc",
+      "level": 1,
+      "desc": "Your knuckles are a family heirloom. +1 circumstance bonus to initiative when a brawl is clearly coming.",
+      "effects": [ { "bonus": { "target": "initiative", "value": 1, "type": "circumstance" } } ] },
+    { "id": "hold-mark", "name": "Hold Mark", "type": "ancestry", "ancestry": "orc",
+      "level": 1,
+      "desc": "You bear your hold's brand and its obligations. You are trained in Athletics and gain Hold Lore.",
+      "effects": [ { "trainSkill": "athletics" }, { "grantLore": "Hold Lore" } ] },
+    { "id": "furious-focus", "name": "Furious Focus", "type": "class", "classes": ["fighter"],
+      "level": 2, "actions": 2, "traits": ["flourish"],
+      "desc": "Channel fury into precision: a two-handed Power Attack whose miss doesn't count against your multiple attack penalty. (Uses the Power Attack engine hook; flavor differs.)",
+      "effects": [ { "special": "power-attack" } ] },
+    { "id": "ember-ward", "name": "Ember Ward", "type": "skill", "level": 1,
+      "prereq": { "skill": { "crafting": "T" } },
+      "desc": "A smith's respect for fire. You gain fire resistance equal to half your level.",
+      "effects": [ { "resist": { "type": "fire", "value": "halfLevel" } } ] }
+  ],
+
+  "spells": [
+    { "id": "stone-lance", "name": "Stone Lance", "rank": 1,
+      "traditions": ["primal", "arcane"], "actions": 2, "range": 60,
+      "traits": ["attack", "earth"],
+      "desc": "The ground volunteers a spear and you provide the throw.",
+      "attackRoll": true,
+      "rankEffects": {
+        "1": { "damage": [ { "formula": "2d6", "type": "piercing" } ] },
+        "2": { "damage": [ { "formula": "3d6", "type": "piercing" } ] }
+      } }
+  ],
+
+  "items": [
+    { "id": "hold-cleaver", "name": "Hold Cleaver", "category": "weapon",
+      "prof": "martial", "group": "axe", "hands": 1,
+      "damage": "1d8", "damageType": "slashing", "traits": ["sweep", "thrown-10"], "bulk": 1 }
+  ],
+
+  "monsters": [
+    { "id": "cinder-wretch", "name": "Cinder Wretch", "level": 1,
+      "traits": ["undead", "fire"], "size": "Medium",
+      "ac": 16, "hp": 22, "speed": 25, "perception": 6,
+      "saves": { "fort": 8, "ref": 7, "will": 5 },
+      "immunities": ["void", "poison"],
+      "weaknesses": [ { "type": "cold", "value": 3 } ],
+      "resistances": [ { "type": "fire", "value": 5 } ],
+      "attacks": [ { "name": "Charred Claw", "bonus": 9, "damage": "1d8+3", "damageType": "slashing",
+                     "range": 1, "traits": ["agile"] },
+                   { "name": "Spat Ember", "bonus": 8, "damage": "1d6+2", "damageType": "fire", "range": 6 } ],
+      "desc": "What remains when a forge-fire is fed the wrong fuel and remembers it." },
+    { "id": "forge-tyrant", "name": "The Forge-Tyrant", "level": 4, "boss": true,
+      "traits": ["undead", "fire"], "size": "Large",
+      "ac": 21, "hp": 58, "speed": 25, "perception": 11,
+      "saves": { "fort": 12, "ref": 8, "will": 11 },
+      "immunities": ["void", "poison"],
+      "weaknesses": [ { "type": "cold", "value": 5 } ],
+      "resistances": [ { "type": "fire", "value": 8 } ],
+      "attacks": [ { "name": "Anvil Maul", "bonus": 14, "damage": "2d8+6", "damageType": "bludgeoning",
+                     "range": 1, "onCrit": [ { "c": "prone", "v": 1 } ] } ],
+      "powers": [ { "name": "Bellows Blast", "cost": 2, "cooldown": 3, "type": "aoe",
+                    "save": "reflex", "dc": 21, "radius": 3,
+                    "damage": "2d6", "damageType": "fire",
+                    "onFail": [ { "c": "persistent", "v": 1 } ],
+                    "flavor": "The Tyrant inhales through its ribs and the whole room becomes a forge." } ],
+      "desc": "The hold's master smith, dead a century, still working. It never liked apprentices." }
+  ],
+
+  "companions": [
+    { "id": "grash", "name": "Grash One-Tusk", "subtitle": "Orc Fighter 3",
+      "ac": 20, "hp": 50, "speed": 25, "perception": 9,
+      "saves": { "fort": 11, "ref": 9, "will": 7 }, "initSkill": 9,
+      "attacks": [ { "name": "Greataxe", "bonus": 11, "damage": "1d12+4", "damageType": "slashing", "range": 1 } ],
+      "abilities": [],
+      "desc": "Last apprentice of the old hold. Owes the Tyrant a debt, and intends to pay it in iron." }
+  ],
+
+  "adventures": [
+    { "id": "embers", "name": "Embers of the Hold", "level": 3, "start": "gates",
+      "blurb": "An abandoned orc hold's forge has relit itself, and the smoke smells like grudges. A short two-battle sample adventure.",
+      "companionsOffered": ["grash"],
+      "scenes": {
+
+        "gates": { "kicker": "The Hold", "title": "Smoke Over Karn-Buruk",
+          "text": ["The hold of Karn-Buruk has stood empty for a hundred years, which makes the smoke rising from its forge-chimney a matter of professional interest. At the shattered gates, an orc with one tusk and a greataxe watches the smoke the way other people watch a debt collector's door.",
+            "\"Forge doesn't light itself,\" Grash says, not looking at you. \"And the old master never let a fire go out while there was work owed. I'd call that a hint.\""],
+          "companionChoice": true,
+          "choices": [
+            { "text": "Study the gate carvings for the hold's history.",
+              "check": { "skill": "crafting", "altSkill": "society", "dc": 17,
+                         "success": "carvings-good", "failure": "carvings-bad" },
+              "once": true, "flagOnce": "read-gates" },
+            { "text": "Enter the hold and follow the smoke.", "goto": "forge-hall-approach" } ] },
+
+        "carvings-good": { "kicker": "The Hold", "title": "The Debt Ledger",
+          "text": ["The gate carvings are a ledger as much as a history: every smith who served, every work-debt owed and paid. The final entry is unfinished — the master's own mark beside a debt with no payment line.",
+            "You understand the shape of it now. Whatever works the forge isn't angry. It's <em>owed</em>. Named debts can be settled — and settling them tends to take the fight out of the dead.",
+            "(You will begin the final battle with the Forge-Tyrant weakened.)"],
+          "onEnter": { "flag": "knows-debt" },
+          "choices": [ { "text": "Enter the hold and follow the smoke.", "goto": "forge-hall-approach" } ] },
+
+        "carvings-bad": { "kicker": "The Hold", "title": "Weathered Past Reading",
+          "text": ["A century of badlands wind has sanded the ledger to suggestion. You learn that orcs lived here, worked iron, and carved very small — none of which was in doubt.",
+            "Grash grunts. \"Old writing. Old debts. Same thing, mostly.\""],
+          "choices": [ { "text": "Enter the hold and follow the smoke.", "goto": "forge-hall-approach" } ] },
+
+        "forge-hall-approach": { "kicker": "The Hold", "title": "The Warming Dark",
+          "text": ["Inside, the hold is cold stone and colder silence — until the third corridor, where the air begins, impossibly, to warm. Ember-light breathes at the far end like a sleeping animal.",
+            "Things move in that light. Man-shaped, char-black, glowing at the joints: the old work crew, still on shift."],
+          "choices": [ { "text": "Clear the corridor.", "combat": "enc-corridor",
+                         "victory": "forge-door", "defeat": "gameover",
+                         "combatLabel": "⚔ Battle: The Night Shift" } ] },
+
+        "forge-door": { "kicker": "The Hold", "title": "The Forge Master's Door",
+          "text": ["Beyond the fallen wretches, the great forge doors stand ajar, breathing heat. Through the gap: a Large shape working an anvil with terrible patience, striking iron that has been finished for a hundred years.",
+            "Grash rolls his shoulders. \"That's him. That's the master.\" A pause. \"He always said the work outlives the worker. I don't think he meant it as a threat.\""],
+          "choices": [ { "text": "Enter the forge and end the shift.", "combat": "enc-forge",
+                         "victory": "epilogue", "defeat": "gameover",
+                         "combatLabel": "⚔ Final Battle: The Forge-Tyrant" } ] },
+
+        "epilogue": { "kicker": "Epilogue", "title": "The Fire Banked", "ending": true,
+          "text": ["The Forge-Tyrant comes apart at the joints, ember by ember, and the great fire behind it sinks at last to a bed of quiet coals. Grash stands over the anvil a long moment, then picks up the master's hammer and hangs it on its hook — the small, correct gesture of a shift properly ended.",
+            "\"Debt's paid,\" he says. Whether he means the Tyrant's or his own, he doesn't say, and you don't ask.",
+            "🔥 THE HOLD SLEEPS — a sample adventure, completed. Now go write a bigger one."],
+          "choices": [ { "text": "Finish the chronicle.", "goto": "END" } ] },
+
+        "gameover": { "kicker": "The Chronicle Ends", "title": "Fed to the Forge", "ending": true, "gameover": true,
+          "text": ["The hold is patient and the fire is hungry, and tonight the old master takes on new apprentices.",
+            "☠ Your hero has fallen. Forge another — carefully, this time."],
+          "choices": [ { "text": "Return to the title.", "goto": "END" } ] }
+      },
+
+      "encounters": {
+        "enc-corridor": { "name": "The Night Shift", "w": 12, "h": 7,
+          "terrain": { "walls": [[0,0],[1,0],[2,0],[9,0],[10,0],[11,0],[0,6],[1,6],[10,6],[11,6],[5,2],[6,4]],
+                       "diff": [[4,3],[7,2],[8,5],[3,5]] },
+          "pcStarts": [[1,3],[1,2],[2,3],[1,4]],
+          "foes": [
+            { "monster": "cinder-wretch", "x": 8, "y": 2 },
+            { "monster": "cinder-wretch", "x": 9, "y": 4 },
+            { "monster": "cinder-wretch", "x": 10, "y": 3, "minParty": 2 } ],
+          "intro": "Char-black figures rise from the ember-light, joints glowing like banked coals. Rubble (difficult terrain) litters the old corridor." },
+        "enc-forge": { "name": "The Forge-Tyrant's Shift", "w": 11, "h": 9,
+          "terrain": { "walls": [[0,0],[10,0],[0,8],[10,8],[5,3],[5,5],[3,0],[7,0]],
+                       "diff": [[4,4],[6,4],[5,4],[2,6],[8,2]] },
+          "pcStarts": [[1,4],[1,3],[2,4],[1,5]],
+          "foes": [
+            { "monster": "forge-tyrant", "x": 8, "y": 4 },
+            { "monster": "cinder-wretch", "x": 7, "y": 2 },
+            { "monster": "cinder-wretch", "x": 7, "y": 6, "minParty": 2 } ],
+          "bossFlags": { "knows-debt": {
+            "applyToBoss": [ { "c": "enfeebled", "v": 1, "dur": 99 } ],
+            "log": "You name the unpaid debt from the gate ledger as you enter — and the Tyrant's hammer-arm falters, the words settling on it like rust. (Enfeebled 1.)" } },
+          "intro": "The forge roars at the Tyrant's back. The anvil island (walls) splits the floor; slag pools glow underfoot (difficult terrain)." }
+      }
+    }
+  ]
+}

@@ -1,0 +1,185 @@
+{
+  "pack": {
+    "id": "thornwake-vigil",
+    "name": "The Long Vigil at Thornwake Bridge",
+    "version": "1.0.0",
+    "author": "Devon",
+    "type": "adventure",
+    "description": "A level 3 one-shot: two mercenary companies have refought the same five minutes on a haunted bridge for fifty years. A skill-driven investigation opens a genuine third option — end the vigil with a blade, or end it by finally being believed."
+  },
+
+  "items": [
+    { "id": "vane-saber", "name": "Vane Family Saber", "category": "weapon",
+      "prof": "martial", "group": "sword", "hands": 1,
+      "damage": "1d8", "damageType": "slashing", "traits": ["agile", "versatile-p"], "bulk": 1,
+      "desc": "Regimental issue, engraved with a name its last owner spent fifty years trying to live down." }
+  ],
+
+  "monsters": [
+    { "id": "duskmantle-picket", "name": "Duskmantle Picket", "level": 1,
+      "traits": ["undead", "spirit"], "size": "Medium",
+      "ac": 17, "hp": 24, "speed": 25, "perception": 7,
+      "saves": { "fort": 7, "ref": 7, "will": 6 },
+      "immunities": ["void", "mental", "poison"],
+      "weaknesses": [ { "type": "vitality", "value": 2 } ],
+      "attacks": [ { "name": "Notched Saber", "bonus": 8, "damage": "1d8+3", "damageType": "slashing",
+                     "range": 1, "traits": ["agile"] } ],
+      "desc": "Duskmantle Free Company, still dressing ranks nobody called for. The uniform remembers the drill better than the man does." },
+
+    { "id": "ashguard-marksman", "name": "Ashguard Marksman", "level": 1,
+      "traits": ["undead", "spirit"], "size": "Medium",
+      "ac": 16, "hp": 18, "speed": 25, "perception": 9,
+      "saves": { "fort": 6, "ref": 9, "will": 5 },
+      "immunities": ["void", "mental", "poison"],
+      "weaknesses": [ { "type": "vitality", "value": 2 } ],
+      "attacks": [ { "name": "Phantom Longbow", "bonus": 9, "damage": "1d8+2", "damageType": "piercing",
+                     "range": 10, "traits": ["deadly-d10"] } ],
+      "desc": "Ashguard Company kept its marksmen at range in life. In death it hasn't occurred to them to change tactics." },
+
+    { "id": "colonel-yorick-vane", "name": "Colonel Yorick Vane", "level": 4, "boss": true,
+      "traits": ["undead", "spirit"], "size": "Medium",
+      "ac": 21, "hp": 58, "speed": 25, "perception": 11,
+      "saves": { "fort": 11, "ref": 9, "will": 13 },
+      "immunities": ["void", "mental", "poison"],
+      "weaknesses": [ { "type": "vitality", "value": 5 } ],
+      "attacks": [ { "name": "Saber of the Last Order", "bonus": 14, "damage": "2d8+6", "damageType": "slashing",
+                     "range": 1, "traits": ["agile"], "onCrit": [ { "c": "frightened", "v": 1, "dur": 2 } ] } ],
+      "powers": [ { "name": "The Charge Sounded Again", "cost": 2, "cooldown": 3, "type": "aoe",
+                    "save": "will", "dc": 21, "radius": 3, "damage": "2d6", "damageType": "sonic",
+                    "onFail": [ { "c": "frightened", "v": 1 } ], "onCritFail": [ { "c": "frightened", "v": 2 } ],
+                    "flavor": "A bugle nobody is holding sounds the charge again, and the note lands like a blow." } ],
+      "desc": "He has given the same order every night for fifty years and it has never once occurred to him to check whether it was right. Command is a hard habit to break, even from inside a grave." }
+  ],
+
+  "companions": [
+    { "id": "mercy-vane", "name": "Mercy Vane", "subtitle": "Human Cleric (Vigil-Keeper) 3",
+      "ac": 19, "hp": 42, "speed": 25, "perception": 9,
+      "saves": { "fort": 9, "ref": 7, "will": 11 }, "initSkill": 9,
+      "attacks": [ { "name": "Lantern Mace", "bonus": 9, "damage": "1d6+3", "damageType": "bludgeoning", "range": 1 } ],
+      "abilities": [ { "id": "mv-heal", "name": "Lantern-Light", "cost": 2, "type": "heal",
+                       "heal": "2d8+14", "range": 6, "uses": 3,
+                       "flavor": "She unhoods the lantern at her belt and the light closes wounds like stitches." } ],
+      "desc": "Last of the Vane line still walking, though she didn't know it was her line until a locket confirmed it. She's been visiting this bridge her whole life without knowing why. Now she does." }
+  ],
+
+  "adventures": [
+    { "id": "thornwake", "name": "The Long Vigil at Thornwake Bridge", "level": 3, "start": "start",
+      "blurb": "Two companies have refought the same five minutes for fifty years. Learn why, and you may not have to finish it with a blade.",
+      "companionsOffered": ["mercy-vane"],
+      "scenes": {
+
+        "start": { "kicker": "The Bridge", "title": "Where the Fog Never Lifts",
+          "text": ["Thornwake Bridge has stood for two centuries and been fought over for one of them. Fifty years ago the Ashguard Company met the Duskmantle Free Company here under orders nobody survived to countermand, and the two sides have been finishing the argument every night since. The fog never lifts off the span; it just gets tired around dawn.",
+            "At the bridgehead, cairns of dressed stone mark where someone once tried to bury the dead properly. Whoever they were, they gave up."],
+          "companionChoice": true,
+          "choices": [
+            { "text": "Read the marker stones before crossing.",
+              "check": { "skill": "society", "altSkill": "religion", "dc": 16,
+                         "success": "marker-good", "failure": "marker-bad" },
+              "once": true, "flagOnce": "read-markers" },
+            { "text": "Cross onto the bridge. The fog is thickest at the center — that's usually where the truth is too.",
+              "goto": "bridge-fog" } ] },
+
+        "marker-good": { "kicker": "The Bridge", "title": "Two Names, One Order",
+          "text": ["The stones aren't grave markers so much as a ledger of blame: Ashguard on the left face, Duskmantle on the right, and between them a single line cut deeper than the rest — <em>\"By order of Col. Y. Vane, both companies advanced.\"</em> Someone gave an order that killed everyone who heard it, on both sides, at once.",
+            "You have names now. Names are a start. (Found: a lesser healing potion, tucked in the cairn by whoever carved the last line.)"],
+          "onEnter": { "flag": "knows-truth", "items": ["healing-potion-lesser"] },
+          "choices": [ { "text": "Cross onto the bridge.", "goto": "bridge-fog" } ] },
+
+        "marker-bad": { "kicker": "The Bridge", "title": "Weather and Argument",
+          "text": ["Fifty years of fog has worn the lettering to guesswork. You can tell two companies fought here, and that somebody, later, felt strongly enough about it to carve their opinion into stone. That's most of what history usually gives you anyway."],
+          "choices": [ { "text": "Cross onto the bridge.", "goto": "bridge-fog" } ] },
+
+        "bridge-fog": { "kicker": "The Bridge", "title": "The Fog Remembers Marching",
+          "text": ["Halfway across, the fog thickens past reason and the temperature drops the way it does near old grief. Shapes resolve out of the grey: soldiers in rotted coats, dressing ranks with the patient precision of men who have had fifty years to get the drill right.",
+            "They haven't noticed you yet. That won't last."],
+          "choices": [ { "text": "Engage the pickets before they form ranks.", "combat": "enc-vanguard",
+                         "victory": "midspan", "defeat": "gameover",
+                         "combatLabel": "⚔ Battle: The Vanguard's Watch" } ] },
+
+        "midspan": { "kicker": "The Bridge", "title": "What the Vanguard Carried",
+          "text": ["The pickets go down for good this time — actually down, not just resting between shifts — and among the wreckage of coat and rust you find a locket, sealed shut with fifty years of verdigris, and a strip of paper gone soft as cloth.",
+            "It might be worth prying open. It might just be somebody's mother."],
+          "choices": [
+            { "text": "Force the locket and read what's left of the paper.",
+              "check": { "skill": "medicine", "altSkill": "society", "dc": 18,
+                         "success": "midspan-good", "failure": "midspan-bad" },
+              "once": true, "flagOnce": "read-journal" },
+            { "text": "Leave it be and keep moving.", "goto": "vigil-approach" } ] },
+
+        "midspan-good": { "kicker": "The Bridge", "title": "The Order Nobody Wanted",
+          "text": ["The paper is a field report, unsent: Col. Vane, writing to a superior who was probably also dead within the hour, admitting he'd ordered the joint advance because he'd misread the enemy's position and panicked rather than say so in front of two companies at once. He signed it. He never got to send it.",
+            "Fifty years of re-fighting the same five minutes, and the man in charge of both sides has been carrying that unsent confession the whole time."],
+          "onEnter": { "flag": "knows-truth" },
+          "choices": [ { "text": "Continue toward the center of the bridge.", "goto": "vigil-approach" } ] },
+
+        "midspan-bad": { "kicker": "The Bridge", "title": "Rust and Silence",
+          "text": ["The locket won't budge and the paper crumbles at a touch, giving up nothing but a smell like old pennies. Whatever it knew, it's keeping it."],
+          "choices": [ { "text": "Continue toward the center of the bridge.", "goto": "vigil-approach" } ] },
+
+        "vigil-approach": { "kicker": "The Bridge", "title": "The Man Who Won't Stop Ordering the Charge",
+          "text": ["At the crown of the bridge stands an officer who is mostly still a man, saber raised, mouth shaping the same three words on a fifty-year loop. Behind him the fog keeps trying to become an army and mostly succeeding.",
+            "This is Colonel Yorick Vane, who has been giving the order to advance every night since the night it killed everyone who took it."],
+          "choices": [
+            { "text": "Say his name, and what he wrote in that unsent report.",
+              "if": "knows-truth",
+              "check": { "skill": "diplomacy", "altSkill": "religion", "dc": 19,
+                         "success": "epilogue-peace", "failure": "vigil-fight-enraged" } },
+            { "text": "Draw steel. Some vigils only end one way.", "combat": "enc-colonel",
+              "victory": "epilogue-battle", "defeat": "gameover",
+              "combatLabel": "⚔ Final Battle: The Colonel's Last Order" } ] },
+
+        "vigil-fight-enraged": { "kicker": "The Bridge", "title": "Denial, Refought",
+          "text": ["For one long second the Colonel almost hears you — the saber wavers, the loop nearly breaks. Then fifty years of habit wins and he screams the order louder, as if volume were the same thing as being right.",
+            "The fog answers him. It always does."],
+          "choices": [ { "text": "Finish what the parley couldn't.", "combat": "enc-colonel",
+                         "victory": "epilogue-battle", "defeat": "gameover",
+                         "combatLabel": "⚔ Final Battle: The Colonel's Last Order" } ] },
+
+        "epilogue-peace": { "kicker": "Epilogue", "title": "Stand Down", "ending": true,
+          "text": ["The saber drops before the loop finishes. For the first time in fifty years, Colonel Yorick Vane hears the order given back to him and does not repeat it — he simply stops, an old man's face surfacing through the rot for just a moment, and says, very quietly, \"Oh. Oh, I see.\"",
+            "The fog doesn't lift so much as exhale. Behind him, two companies' worth of soldiers stand down rank by rank and simply aren't, the way a held breath simply isn't, once you finally let it go.",
+            "🌫 THE VIGIL ENDS — Thornwake Bridge, for the first time in half a century, is only a bridge."],
+          "onEnter": { "items": ["vane-saber"] },
+          "choices": [ { "text": "Finish the chronicle.", "goto": "END" } ] },
+
+        "epilogue-battle": { "kicker": "Epilogue", "title": "The Order, Finally Countermanded", "ending": true,
+          "text": ["The Colonel comes apart the way old rope does — not all at once, but every fiber giving up in its own time — and when the last of him goes, the fog goes with it. Both companies' dead settle into the stones like sediment, done arguing at last.",
+            "Whether they're at peace or just outnumbered, the bridge doesn't ask and neither do you.",
+            "🌫 THE VIGIL ENDS — by the sword this time. It worked anyway."],
+          "onEnter": { "items": ["vane-saber"] },
+          "choices": [ { "text": "Finish the chronicle.", "goto": "END" } ] },
+
+        "gameover": { "kicker": "The Chronicle Ends", "title": "One More Name on the Stones", "ending": true, "gameover": true,
+          "text": ["The fog has been collecting names for fifty years and isn't precious about where the next one comes from.",
+            "☠ Your hero has fallen. Someone else can finish the vigil."],
+          "choices": [ { "text": "Return to the title.", "goto": "END" } ] }
+      },
+
+      "encounters": {
+        "enc-vanguard": { "name": "The Vanguard's Watch", "w": 13, "h": 7,
+          "terrain": { "walls": [[0,0],[1,0],[11,0],[12,0],[0,6],[1,6],[11,6],[12,6],[5,2],[7,4]],
+                       "diff": [[3,3],[4,1],[8,5],[9,2]] },
+          "pcStarts": [[1,3],[1,2],[2,3],[1,4]],
+          "foes": [
+            { "monster": "duskmantle-picket", "x": 9, "y": 2 },
+            { "monster": "duskmantle-picket", "x": 10, "y": 4 },
+            { "monster": "ashguard-marksman", "x": 11, "y": 3, "minParty": 2 } ],
+          "intro": "The fog resolves into ranks mid-dress, and then the ranks notice you. Broken masonry (walls) and drifts of grave-fog (difficult terrain) litter the span." },
+
+        "enc-colonel": { "name": "The Colonel's Last Order", "w": 11, "h": 9,
+          "terrain": { "walls": [[0,0],[10,0],[0,8],[10,8],[5,3],[5,5],[3,0],[7,0]],
+                       "diff": [[4,4],[6,4],[5,4],[2,6],[8,2]] },
+          "pcStarts": [[1,4],[1,3],[2,4],[1,5]],
+          "foes": [
+            { "monster": "colonel-yorick-vane", "x": 8, "y": 4 },
+            { "monster": "duskmantle-picket", "x": 7, "y": 2 },
+            { "monster": "ashguard-marksman", "x": 7, "y": 6, "minParty": 2 } ],
+          "bossFlags": { "knows-truth": {
+            "applyToBoss": [ { "c": "enfeebled", "v": 1, "dur": 99 } ],
+            "log": "You say his name — Yorick Vane — and read back his own unsent confession. The Colonel's saber-arm falters, just slightly, under the weight of being known. (Enfeebled 1.)" } },
+          "intro": "The Colonel's honor guard falls in around him out of habit. Somewhere below the fog, a bugle that hasn't existed in fifty years is still warm." }
+      }
+    }
+  ]
+}

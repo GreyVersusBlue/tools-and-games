@@ -1,0 +1,1939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Fourth Quarter — Sports Bar Sim</title>
+<style>
+:root{
+  --bg:#120d09; --panel:#221912; --panel2:#2a1f16; --line:#3d2f21;
+  --amber:#e8a33d; --amberdim:#a5762f; --neon:#ff4e42; --chalk:#f2e9dc;
+  --muted:#8a7a66; --green:#58b368; --red:#e05548; --blue:#5aa7d6;
+  --disp:Impact,'Arial Narrow Bold','Franklin Gothic Medium',sans-serif;
+  --mono:'Consolas','Courier New',monospace;
+  --body:'Segoe UI',system-ui,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--chalk);font-family:var(--body);min-height:100vh;
+  background-image:radial-gradient(ellipse at 50% -10%, #2a1c10 0%, var(--bg) 60%);}
+button{font-family:inherit;cursor:pointer}
+h1,h2,h3{font-family:var(--disp);letter-spacing:.04em;text-transform:uppercase;font-weight:normal}
+
+/* ===== score bug header ===== */
+#scorebug{display:flex;align-items:stretch;gap:0;border-bottom:3px solid var(--amber);
+  background:linear-gradient(#241a10,#1a120b);position:sticky;top:0;z-index:20;box-shadow:0 3px 14px #000a}
+.bug{padding:8px 14px;border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;min-width:86px}
+.bug .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+.bug .val{font-family:var(--mono);font-size:19px;color:var(--amber);font-weight:bold;white-space:nowrap}
+.bug.brand{min-width:200px}
+.bug.brand .val{font-family:var(--disp);color:var(--chalk);font-size:21px;letter-spacing:.05em}
+.bug.brand .lbl{color:var(--amberdim)}
+#liveBadge{display:none;align-items:center;gap:7px;margin-left:auto;padding:0 16px}
+#liveBadge .dot{width:10px;height:10px;border-radius:50%;background:var(--neon);animation:blink 1s steps(2) infinite}
+#liveBadge span{font-family:var(--disp);color:var(--neon);font-size:18px;letter-spacing:.15em}
+@keyframes blink{50%{opacity:.25}}
+#cash.hurt{color:var(--red)}
+
+/* ===== layout ===== */
+#app{max-width:1180px;margin:0 auto;padding:16px}
+.grid{display:grid;grid-template-columns:1fr 340px;gap:16px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.panel>.hd{background:var(--panel2);padding:8px 12px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between}
+.panel>.hd h2{font-size:16px;color:var(--amber)}
+.panel>.bd{padding:12px}
+.hint{color:var(--muted);font-size:12px;line-height:1.45}
+
+/* ===== tabs ===== */
+#tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+#tabs button{background:var(--panel);border:1px solid var(--line);color:var(--muted);
+  padding:8px 16px;border-radius:6px 6px 0 0;font-family:var(--disp);font-size:15px;
+  letter-spacing:.06em;text-transform:uppercase}
+#tabs button.on{background:var(--panel2);color:var(--amber);border-color:var(--amber)}
+
+/* ===== tables ===== */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);
+  text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}
+td{padding:6px;border-bottom:1px solid #2b2115;vertical-align:middle}
+td.num,th.num{text-align:right;font-family:var(--mono)}
+tr.local td{color:var(--amber)}
+
+/* ===== controls ===== */
+.btn{background:var(--amber);color:#1a1207;border:none;padding:9px 18px;border-radius:5px;
+  font-family:var(--disp);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
+.btn:hover{background:#f7b954}
+.btn:disabled{background:#5d4d33;color:#2c2417;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--amber);border:1px solid var(--amberdim)}
+.btn.ghost:hover{border-color:var(--amber)}
+.btn.small{font-size:13px;padding:5px 10px}
+.btn.danger{background:var(--red);color:#fff}
+.stepper{display:inline-flex;align-items:center;gap:4px}
+.stepper button{min-width:26px;height:26px;padding:0 5px;border-radius:4px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--amber);font-size:12px;font-weight:bold;font-family:var(--mono)}
+.stepper .qty{font-family:var(--mono);min-width:34px;text-align:center;font-size:14px}
+input.par{width:52px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;
+  color:var(--text);font-family:var(--mono);font-size:13px;padding:3px 5px;text-align:right}
+.parbtn{white-space:nowrap}
+input[type=range]{width:110px;accent-color:var(--amber);vertical-align:middle}
+.money{color:var(--green);font-family:var(--mono)}
+.bad{color:var(--red)}.good{color:var(--green)}.warn{color:var(--amber)}
+.pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;border:1px solid var(--line);color:var(--muted)}
+.pill.hot{border-color:var(--neon);color:var(--neon)}
+.pill.on{border-color:var(--green);color:var(--green)}
+
+/* ===== night mode ===== */
+#nightWrap{display:none}
+#ticker,#replayTicker{background:#0b0805;border:1px solid var(--line);border-radius:8px;height:380px;
+  overflow-y:auto;padding:12px;font-family:var(--mono);font-size:13.5px;line-height:1.7}
+#ticker .t,#replayTicker .t{color:var(--amberdim);margin-right:8px}
+#ticker .ev,#replayTicker .ev{color:var(--neon)}
+#ticker .g,#replayTicker .g{color:var(--green)}
+#ticker .b,#replayTicker .b{color:var(--red)}
+#ticker .hl,#replayTicker .hl{color:var(--amber)}
+#ticker div,#replayTicker div{border-bottom:1px dotted #1e150d;padding:1px 0}
+.gauges{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}
+.gauge{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;text-align:center}
+.gauge .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+.gauge .val{font-family:var(--mono);font-size:24px;color:var(--amber);font-weight:bold}
+.moodbar{height:8px;background:#3a2c1d;border-radius:4px;margin-top:6px;overflow:hidden}
+.moodbar>div{height:100%;background:var(--green);width:70%;transition:width .4s}
+
+/* ===== modal ===== */
+#modalBack{display:none;position:fixed;inset:0;background:#000a;z-index:50;align-items:center;justify-content:center;padding:16px}
+#modal{background:var(--panel);border:2px solid var(--amber);border-radius:10px;max-width:560px;width:100%;
+  box-shadow:0 0 60px #e8a33d33;max-height:92vh;display:flex;flex-direction:column}
+#modal .hd{background:var(--panel2);padding:12px 16px;border-bottom:1px solid var(--line);flex:none}
+#modal .hd h2{color:var(--neon);font-size:20px}
+#modal .bd{padding:16px;font-size:14px;line-height:1.6;overflow-y:auto;flex:1 1 auto;min-height:0}
+#modal .choices{display:flex;flex-direction:column;gap:8px;padding:0 16px 16px;flex:none}
+#modal .choices button{text-align:left;background:var(--panel2);border:1px solid var(--line);
+  color:var(--chalk);padding:10px 14px;border-radius:6px;font-size:14px}
+#modal .choices button:hover{border-color:var(--amber)}
+#modal .choices .sub{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+
+/* ===== box score ===== */
+#boxscore .row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted #2b2115;font-size:14px}
+#boxscore .row.total{border-top:2px solid var(--amber);border-bottom:none;font-family:var(--disp);font-size:18px;padding-top:8px}
+#boxscore .sec{font-family:var(--disp);color:var(--amber);text-transform:uppercase;font-size:13px;
+  letter-spacing:.1em;margin:12px 0 4px}
+.centerbtns{display:flex;gap:10px;justify-content:center;margin-top:14px}
+
+/* misc */
+.flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spread{display:flex;justify-content:space-between;align-items:center}
+.mt{margin-top:10px}.mb{margin-bottom:10px}
+#preview .line{display:flex;justify-content:space-between;padding:3px 0;font-size:13px;border-bottom:1px dotted #2b2115}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel2);
+  border:1px solid var(--amber);color:var(--amber);padding:9px 20px;border-radius:20px;
+  font-size:13px;display:none;z-index:60}
+.neonSign{font-family:var(--disp);font-size:13px;color:var(--neon);text-shadow:0 0 8px var(--neon);letter-spacing:.2em}
+
+/* ===== back office (settings) ===== */
+#settingsBtn{margin-left:auto;align-self:center;margin-right:12px;width:34px;height:34px;border-radius:6px;
+  background:transparent;border:1px solid var(--line);color:var(--muted);font-size:17px;line-height:1}
+#settingsBtn:hover{color:var(--amber);border-color:var(--amber)}
+#liveBadge{margin-left:0;margin-right:12px}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px dotted #2b2115}
+.setrow .lbl2{font-size:14px}
+.setrow .sub{color:var(--muted);font-size:11.5px;margin-top:2px;line-height:1.4}
+.setrow .ctl{white-space:nowrap}
+textarea.saveio{width:100%;min-height:110px;background:#0b0805;color:var(--chalk);border:1px solid var(--line);
+  border-radius:6px;font-family:var(--mono);font-size:11px;padding:8px;margin-top:8px;resize:vertical}
+.btn.danger.armed{background:#8f231a;color:#fff;border:1px solid var(--neon)}
+</style>
+</head>
+<body>
+
+<div id="scorebug">
+  <div class="bug brand"><span class="lbl neonSign">THE FOURTH QUARTER</span><span class="val" id="dayLabel">Day 1 · Mon</span></div>
+  <div class="bug"><span class="lbl">Cash</span><span class="val" id="cash">$0</span></div>
+  <div class="bug"><span class="lbl">Reputation</span><span class="val" id="rep">0</span></div>
+  <div class="bug"><span class="lbl">Seats</span><span class="val" id="seats">0</span></div>
+  <div class="bug"><span class="lbl">TVs</span><span class="val" id="tvs">0</span></div>
+  <button id="settingsBtn" title="Back Office — settings">⚙</button>
+  <div id="liveBadge"><div class="dot"></div><span>LIVE</span></div>
+</div>
+
+<div id="app">
+
+  <!-- ============ PLANNING ============ -->
+  <div id="planWrap">
+    <div id="tabs">
+      <button data-tab="stock" class="on">Stock Order</button>
+      <button data-tab="menu">Menu &amp; Prices</button>
+      <button data-tab="staff">Staff</button>
+      <button data-tab="bar">The Bar</button>
+      <button data-tab="promo">Promotions</button>
+      <button data-tab="regulars">Regulars</button>
+      <button data-tab="league">League</button>
+    </div>
+    <div class="grid">
+      <div>
+        <div class="panel" id="tab-stock">
+          <div class="hd"><h2>Stock Order</h2><span class="hint">Delivered before open. Food spoils — check shelf life.</span></div>
+          <div class="bd"><table id="stockTable"></table>
+            <div class="spread mt"><span class="hint">Order total: <span class="money" id="orderTotal">$0</span> <span id="orderSavings" class="hint"></span></span>
+            <span><button class="btn small ghost" id="fillPar" title="Adds enough of each item to bring on-hand + cart up to its Par target">Fill All to Par</button>
+            <button class="btn small" id="placeOrder">Place Order</button></span></div>
+            <div id="distPanel"></div>
+          </div>
+        </div>
+        <div class="panel" id="tab-menu" style="display:none">
+          <div class="hd"><h2>Menu &amp; Prices</h2><span class="hint">Raise prices for margin, lower for crowds.</span></div>
+          <div class="bd"><table id="menuTable"></table></div>
+        </div>
+        <div class="panel" id="tab-staff" style="display:none">
+          <div class="hd"><h2>Tonight's Crew</h2><span class="hint">Wages paid nightly. Skill = speed &amp; fewer mistakes.</span></div>
+          <div class="bd">
+            <table id="staffTable"></table>
+            <div class="sec" style="font-family:var(--disp);color:var(--amber);margin:14px 0 4px;text-transform:uppercase;font-size:13px;letter-spacing:.1em">Applicants</div>
+            <table id="applicantTable"></table>
+          </div>
+        </div>
+        <div class="panel" id="tab-bar" style="display:none">
+          <div class="hd"><h2>The Bar</h2><span class="hint">Screens pull crowds on game nights.</span></div>
+          <div class="bd" id="barPanel"></div>
+        </div>
+        <div class="panel" id="tab-promo" style="display:none">
+          <div class="hd"><h2>Promotions</h2><span class="hint">One theme per night. Ads run for multiple nights.</span></div>
+          <div class="bd" id="promoPanel"></div>
+        </div>
+        <div class="panel" id="tab-regulars" style="display:none">
+          <div class="hd"><h2>The Regulars</h2><span class="hint">Earned with good nights. Lost with bad ones.</span></div>
+          <div class="bd" id="regularsPanel"></div>
+        </div>
+        <div class="panel" id="tab-league" style="display:none">
+          <div class="hd"><h2>Mid-Atlantic Football Association</h2><span class="hint">Fairview's team is your meal ticket.</span></div>
+          <div class="bd">
+            <h3 style="font-size:13px;color:var(--muted);margin-bottom:4px">STANDINGS</h3>
+            <table id="standingsTable"></table>
+            <h3 style="font-size:13px;color:var(--muted);margin:14px 0 4px">THIS WEEK</h3>
+            <table id="weekTable"></table>
+            <h3 style="font-size:13px;color:var(--muted);margin:14px 0 4px">ACROSS TOWN</h3>
+            <div id="rivalBlock"></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="panel" id="previewPanel">
+          <div class="hd"><h2>Tonight</h2><span id="nightPill" class="pill">quiet</span></div>
+          <div class="bd">
+            <div id="preview"></div>
+            <button class="btn mt" id="openBar" style="width:100%">Open the Doors</button>
+            <div class="hint mt" id="warnings"></div>
+          </div>
+        </div>
+        <div class="panel mt" style="margin-top:16px">
+          <div class="hd"><h2>Pantry</h2></div>
+          <div class="bd"><table id="pantryTable"></table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ NIGHT ============ -->
+  <div id="nightWrap">
+    <div class="gauges">
+      <div class="gauge"><span class="lbl">Hour</span><span class="val" id="gHour">5 PM</span></div>
+      <div class="gauge"><span class="lbl">In the Bar</span><span class="val" id="gCrowd">0</span></div>
+      <div class="gauge"><span class="lbl">Night Revenue</span><span class="val money" id="gRev">$0</span></div>
+      <div class="gauge"><span class="lbl">Crowd Mood</span><span class="val" id="gMood">—</span>
+        <div class="moodbar"><div id="moodFill"></div></div></div>
+    </div>
+    <div id="ticker"></div>
+    <div class="centerbtns">
+      <button class="btn ghost small" data-speed="1">1×</button>
+      <button class="btn ghost small" data-speed="2">2×</button>
+      <button class="btn ghost small" data-speed="4">4×</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ MODAL ============ -->
+<div id="modalBack">
+  <div id="modal">
+    <div class="hd"><h2 id="modalTitle"></h2></div>
+    <div class="bd" id="modalBody"></div>
+    <div class="choices" id="modalChoices"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   THE FOURTH QUARTER — sports bar management sim, Sprint 10
+   (1: core loop/league · 2: promos/ads/event pacing · 3: venue tiers ·
+    4: tradeoff upgrade tree · 5: regulars · 6: bulk orders/par levels ·
+    7: rival bar · 8: back office · 9: distributors · 10: playoffs +
+    off-season — 4-team bracket, championship stakes, lean weeks,
+    rolling seasons)
+   ===================================================================== */
+
+// ---------- static data ----------
+const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const TEAMS = [
+  {id:"FVM", name:"Fairview Mules",       local:true},
+  {id:"HCS", name:"Harbor City Sharks",   rival:true},
+  {id:"IRB", name:"Iron Ridge Bulldogs"},
+  {id:"CPK", name:"Capital Kings"},
+  {id:"PVA", name:"Port Vernon Admirals"},
+  {id:"RSR", name:"Redstone Rattlers"},
+  {id:"LKL", name:"Lakeshore Loons"},
+  {id:"SMS", name:"Summit Stags"},
+];
+const ITEMS = [
+  {id:"wings",  name:"Wing Basket",  unit:"basket", cost:3.2, base:9,  shelf:3,  food:true},
+  {id:"burger", name:"Smash Burger", unit:"burger", cost:3.8, base:11, shelf:4,  food:true},
+  {id:"nachos", name:"Loaded Nachos",unit:"tray",   cost:2.5, base:8,  shelf:5,  food:true},
+  {id:"fries",  name:"Basket o' Fries",unit:"basket",cost:1.2, base:5, shelf:7,  food:true},
+  {id:"keg",    name:"Beer (keg)",   unit:"keg",    cost:185, base:6,  shelf:14, drink:"beer",  servings:100},
+  {id:"liquor", name:"Well Liquor",  unit:"bottle", cost:60,  base:8,  shelf:999,drink:"liquor",servings:25},
+  {id:"soda",   name:"Soda (case)",  unit:"case",   cost:25,  base:3,  shelf:999,drink:"soda",  servings:50},
+];
+const ROLES = {
+  cook:      {name:"Cook",      per:12, does:"food"},
+  server:    {name:"Server",    per:14, does:"patrons"},
+  bartender: {name:"Bartender", per:26, does:"drinks"},
+};
+const VENUES=[
+  {tier:0,name:"The Corner Tap",     seats:40,  tvMax:4,  tvFull:4,  rent:110, buzz:1,    price:0,     moveNights:0,
+   blurb:"A shoebox with good bones. Where it all starts."},
+  {tier:1,name:"The Fieldhouse",     seats:72,  tvMax:7,  tvFull:6,  rent:210, buzz:1.3,  price:5500,  moveNights:1,
+   blurb:"Old rec-center space off the strip. Room to breathe, and a real stage in the corner."},
+  {tier:2,name:"Midtown Draft Hall", seats:115, tvMax:10, tvFull:9,  rent:360, buzz:1.65, price:15000, moveNights:1,
+   blurb:"High ceilings, foot traffic, twenty taps' worth of backbar. Rent to match."},
+  {tier:3,name:"The Fourth Quarter", seats:170, tvMax:14, tvFull:12, rent:560, buzz:2.05, price:34000, moveNights:2,
+   blurb:"The destination bar. Your name on the marquee — if you can carry the rent."},
+];
+const FIRST=["Marge","Tino","Dee","Rocco","Priya","Sal","June","Marcus","Kat","Otis","Lena","Gus","Wanda","Ray","Bess","Hank","Nadia","Cole","Iris","Moe"];
+const LAST=["Kowalski","Vega","Trout","Okafor","Bright","Muller","Santos","Pike","Delgado","Frye","Hobbs","Nakamura","Bell","Crane","Ives"];
+const HOUR_W=[0.07,0.11,0.15,0.17,0.17,0.15,0.11,0.07]; // shares of the night, 5pm..12am
+const HH_W  =[0.13,0.16,0.15,0.15,0.14,0.12,0.09,0.06]; // happy-hour front-loaded night
+const BASE_CROWD={Mon:45,Tue:36,Wed:50,Thu:62,Fri:90,Sat:98,Sun:76};
+
+// ---------- promotions ----------
+const PROMOS=[
+  {id:"wingnight", name:"Wing Night", cost:0,
+   desc:"Wings 40% off. Packs the room and drains the walk-in — volume over margin.",
+   avail:()=>stockOf("wings")>0, unavail:"No wings in stock."},
+  {id:"trivia", name:"Trivia Night", cost:75,
+   desc:"$75 host fee. Turns a dead weeknight into a crowd that lingers and keeps ordering rounds."},
+  {id:"karaoke", name:"Karaoke Night", cost:60,
+   desc:"$60 host fee. Big draw, volatile mood — one great singer or one unbearable one. Needs a stage.",
+   avail:()=>S.venue.tier>=1, unavail:"No stage at the Corner Tap."},
+  {id:"happyhour", name:"Happy Hour", cost:0,
+   desc:"Drinks 25% off, 5–7 PM. Front-loads the night and squeezes early drink margins."},
+  {id:"watchparty", name:"Watch Party", cost:50,
+   desc:"$50 in giveaways and decorations. Boosts a game night's draw — beer flows harder.",
+   avail:()=>showableGamesTonight().length>0, unavail:"No game on your screens tonight."},
+];
+const ADS=[
+  {id:"flyers", name:"Flyer Run",           cost:40,  days:3, mult:1.08, desc:"Windshields and corkboards. Small bump, 3 nights."},
+  {id:"social", name:"Social Push",         cost:90,  days:5, mult:1.12, desc:"A week of posts and boosted reach. 5 nights."},
+  {id:"radio",  name:"Drive-Time Radio Spot",cost:250, days:7, mult:1.2,  desc:"The whole county hears your name. 7 nights."},
+];
+function promo(){return PROMOS.find(p=>p.id===S.promoTonight)||null}
+function adMult(){return S.ads.reduce((m,a)=>m*(ADS.find(x=>x.id===a.id).mult),1)}
+
+// ---------- distributors (Sprint 9) ----------
+// every supply house cuts both ways. loyalty builds with one house and dies at the door.
+const DISTRIBUTORS=[
+  {id:"county", name:"County Line Provisions", mult:1,    fee:0,   minOrder:0,   dropFee:0,
+   pro:"No fees, no minimums — the truck that always comes.",
+   con:"List price is list price."},
+  {id:"cask",   name:"Cask & Carton Wholesale", mult:0.90, fee:110, minOrder:120, dropFee:25,
+   pro:"Everything 10% under list.",
+   con:"$110/week account fee (billed Mondays), and orders under $120 draw a $25 drop charge."},
+  {id:"gold",   name:"Gold Standard Provisions", mult:1.12, fee:0,   minOrder:0,   dropFee:0, appealBonus:0.08,
+   pro:"Premium sourcing — food appeal up 8 points, so you can charge more without losing plates.",
+   con:"Everything costs 12% over list. Quality isn't cheap."},
+];
+const BULK_SMALL=[[10,0.04],[25,0.06],[100,0.10]]; // per-unit thresholds: food
+const BULK_BIG  =[[3, 0.04],[6, 0.06],[12, 0.10]]; // kegs, bottles, cases (25+ servings/unit)
+function dist(){return DISTRIBUTORS.find(d=>d.id===(S.dist&&S.dist.id))||DISTRIBUTORS[0]}
+function bulkTiersFor(it){return (it.servings||1)>=25?BULK_BIG:BULK_SMALL}
+function bulkOff(it,qty){let o=0; for(const [m,x] of bulkTiersFor(it)) if(qty>=m)o=x; return o}
+function loyaltyOff(){return Math.min(0.05,Math.floor(((S.dist&&S.dist.spend)||0)/1000)*0.01)}
+function unitCost(it,qty){return it.cost*dist().mult*(1-bulkOff(it,qty))*(1-loyaltyOff())}
+function orderCost(){return ITEMS.reduce((s,it)=>s+S.order[it.id]*unitCost(it,S.order[it.id]),0)}
+let distArm=null;
+function setDistributor(id){
+  const d=DISTRIBUTORS.find(x=>x.id===id); if(!d)return;
+  if(S.dist.id===id){toast("That's already your house account.");return;}
+  if(loyaltyOff()>0&&distArm!==id){
+    distArm=id; ui.stock();
+    toast(`Switching forfeits your −${Math.round(loyaltyOff()*100)}% loyalty. Click again to sign with ${d.name}.`);
+    return;
+  }
+  distArm=null;
+  S.dist={id,spend:0};
+  save(); ui.plan(); toast(`${d.name} runs your deliveries now.`);
+}
+
+// ---------- tradeoff upgrades ----------
+// every upgrade helps AND hurts. gear rides in the truck when you move (unlike the patio).
+const UPGRADES=[
+  {id:"pos", name:"POS System", cost:800, fee:25, tier:0,
+   pro:"Servers ring 20% faster — the floor moves.",
+   con:"$25/night service contract, forever."},
+  {id:"training", name:"Staff Training Program", cost:600, fee:0, tier:0,
+   pro:"Whole crew works 15% faster.",
+   con:"Certified staff expect it: all wages up 15%."},
+  {id:"walkin", name:"Commercial Walk-In", cost:1000, fee:18, tier:0,
+   pro:"Fresh food lasts 2 extra days on the shelf.",
+   con:"$18/night in compressor power."},
+  {id:"premiumtv", name:"Premium Screens", cost:1400, fee:0, tier:1,
+   pro:"Each TV pulls like 1¼ — full game-night draw with fewer screens.",
+   con:"When one dies, the rush replacement runs $450, not $250."},
+  {id:"crafttaps", name:"Craft Tap Wall", cost:1600, fee:0, tier:1,
+   pro:"Draft pours command 25% more per pint.",
+   con:"Finicky lines: a blown tap costs $260 to patch, not $120."},
+  {id:"kitchenline", name:"Kitchen Line Expansion", cost:2200, fee:20, tier:2,
+   pro:"Cooks push 30% more plates an hour.",
+   con:"$20/night in gas and hood maintenance."},
+];
+function upg(id){return S.upgrades.includes(id)}
+function upgradeFees(){return UPGRADES.reduce((s,u)=>s+(upg(u.id)?u.fee:0),0)}
+function effWage(st){return Math.round(st.wage*(upg("training")?1.15:1)*wageMult())}
+function tapRepairCost(){return upg("crafttaps")?260:120}
+function tvRepairCost(){return upg("premiumtv")?450:250}
+function buyUpgrade(id){
+  const u=UPGRADES.find(x=>x.id===id); if(!u)return;
+  if(upg(id)){toast("Already installed.");return;}
+  if(S.venue.tier<u.tier){toast(`${VENUES[u.tier].name} or bigger — no room for it here.`);return;}
+  if(S.cash<u.cost){toast("Can't cover the install.");return;}
+  S.cash-=u.cost; S.upgrades.push(id);
+  save(); ui.plan(); ui.bug(); toast(`${u.name} installed.`);
+}
+
+// ---------- regulars ----------
+// named patrons you earn with good nights. they anchor rep and spend reliably —
+// and they hold grudges: stock out their usual or run an ugly floor and they drift.
+function regularCap(){return 3+S.venue.tier*2}
+function mkRegular(){
+  const foods=ITEMS.filter(i=>i.food);
+  const teamId=rnd()<0.55?"FVM":pick(TEAMS.filter(t=>!t.local)).id;
+  return {id:Math.random().toString(36).slice(2,8),
+    name:pick(FIRST)+" "+pick(LAST),
+    order:pick(foods).id, team:teamId, loyalty:55, visits:0, since:S.day};
+}
+function addRegular(){ // debug/test + endNight hook
+  if(S.regulars.length>=regularCap())return null;
+  const r=mkRegular(); S.regulars.push(r); return r;
+}
+function regularShows(r){
+  const theirGame=gamesTonight().some(g=>g.home===r.team||g.away===r.team)
+    && showableGamesTonight().some(g=>g.home===r.team||g.away===r.team);
+  const p=0.5 + r.loyalty/250 + (theirGame?0.25:0) + S.rep/500;
+  return rnd()<Math.min(0.95,p);
+}
+function regularCrowdMult(){return 1+Math.min(0.12,S.regulars.length*0.012)}
+
+// ---------- the rival bar ----------
+// The End Zone across town wants your crowd. Its buzz (10–95) drifts nightly:
+// your great nights bleed it, your ugly nights and dark move-nights feed it.
+const RIVAL={name:"The End Zone", owner:"Vic Marlowe"};
+function rivalPressure(){ // crowd drag when their buzz outruns your name
+  return Math.max(0,Math.min(0.15,(S.rival.buzz-S.rep)*0.003));
+}
+function rivalMult(){
+  let m=1-rivalPressure();
+  // uncountered broadcast exclusive on a league night you'd otherwise draw on
+  if(S.rival.exclusive&&!localGameTonight()&&showableGamesTonight().length&&S.promoTonight!=="watchparty")
+    m*=0.88;
+  return m;
+}
+function rivalWord(){
+  const b=S.rival.buzz;
+  return b>=70?"packed nightly":b>=55?"drawing crowds":b>=40?"holding steady":"struggling";
+}
+function bestStaff(){
+  return [...S.staff].sort((a,b)=>b.skill-a.skill||b.wage-a.wage)[0];
+}
+function shakiestRegular(){
+  return [...S.regulars].sort((a,b)=>a.loyalty-b.loyalty)[0];
+}
+
+// ---------- difficulty scaling (Sprint 13) ----------
+// a campaign that rolls past one championship needs a knob: rent creeps,
+// labor gets pricier, and the rival gets hungrier as MAFA seasons pile up.
+// every curve caps out so a long campaign stays hard, not unwinnable.
+function seasonNum(){return (S.league&&S.league.season)||1}
+function rentMult(){return 1+Math.min(0.6,0.1*(seasonNum()-1))}      // +10%/season, caps +60% (season 7+)
+function wageMult(){return 1+Math.min(0.4,0.06*(seasonNum()-1))}     // +6%/season, caps +40% (season 8+)
+function effRent(){return Math.round(S.venue.rent*rentMult())}
+function rivalPowerChance(){return 0.06+Math.min(0.06,0.01*(seasonNum()-1))} // caps 12% (season 7+)
+function rivalPowerRange(){const b=Math.min(6,seasonNum()-1);return [8+b,15+b];}
+function rivalFloorBoost(){return Math.min(12,2*(seasonNum()-1))}    // scrappier comeback floor, caps +12 (season 7+)
+
+// ---------- rng ----------
+function rnd(){return Math.random()}
+function ri(a,b){return a+Math.floor(rnd()*(b-a+1))}
+function pick(a){return a[Math.floor(rnd()*a.length)]}
+
+// ---------- state ----------
+let S=null;
+function newGame(){
+  S={
+    day:1, cash:1500, rep:35, phase:"plan",
+    venue:venueState(0),
+    tvs:2, leaguePass:false, patio:false, upgrades:[], regulars:[],
+    rival:{buzz:45, exclusive:false},
+    dist:{id:"county", spend:0},
+    promoTonight:null, ads:[], eventCooldowns:{},
+    prices:{}, pantry:[], order:{}, pars:{},
+    staff:[
+      mkStaff("cook",2,70,"Marge Kowalski"),
+      mkStaff("server",2,60,"Tino Vega"),
+    ],
+    applicants:[], league:mkLeague(),
+    stats:{nights:0, lifetimeRev:0, bestNight:0},
+  };
+  ITEMS.forEach(it=>{S.prices[it.id]=it.base; S.order[it.id]=0;});
+  // starter pantry
+  addStock("wings",20); addStock("burger",15); addStock("fries",25);
+  addStock("nachos",10); addStock("keg",2); addStock("soda",1); addStock("liquor",1);
+  rollApplicants();
+  save();
+}
+function mkStaff(role,skill,wage,name){
+  return {id:Math.random().toString(36).slice(2,8), role, skill, wage,
+    name:name|| (pick(FIRST)+" "+pick(LAST))};
+}
+function rollApplicants(){
+  S.applicants=[];
+  for(let i=0;i<3;i++){
+    const role=pick(Object.keys(ROLES));
+    const skill=ri(1,Math.min(5,2+Math.floor(S.rep/25)));
+    const wage=Math.round((40+skill*22+ri(-6,10))/5)*5;
+    S.applicants.push(mkStaff(role,skill,wage));
+  }
+}
+
+// ---------- league ----------
+function mkWeeks(){
+  // simple round-robin over 14 weeks (7 opponents x2)
+  const ids=TEAMS.map(t=>t.id);
+  const weeks=[];
+  const n=ids.length;
+  for(let r=0;r<(n-1)*2;r++){
+    const games=[];
+    // circle method
+    const arr=ids.slice(1);
+    const rot=r%(n-1);
+    const rotated=arr.slice(rot).concat(arr.slice(0,rot));
+    const lineup=[ids[0]].concat(rotated);
+    for(let i=0;i<n/2;i++){
+      const a=lineup[i], b=lineup[n-1-i];
+      games.push(r<n-1?{home:a,away:b}:{home:b,away:a});
+    }
+    weeks.push(games);
+  }
+  // assign game days within week: Thu(1) Sun(2) Mon(1)
+  weeks.forEach(gs=>{
+    const slots=["Thu","Sun","Sun","Mon"];
+    gs.forEach((g,i)=>{g.day=slots[i%slots.length]; g.played=false;});
+  });
+  return weeks;
+}
+function mkLeague(){
+  const teams=TEAMS.map(t=>({...t,w:0,l:0}));
+  return {teams,weeks:mkWeeks(),week:0,season:1,history:[]};
+}
+function team(id){return S.league.teams.find(t=>t.id===id)}
+function localTeam(){return S.league.teams.find(t=>t.local)}
+function weekday(){return DAYS[(S.day-1)%7]}
+function currentWeek(){return S.league.weeks[S.league.week]||[]}
+function gamesTonight(){return currentWeek().filter(g=>g.day===weekday()&&!g.played)}
+function localGameTonight(){
+  return gamesTonight().find(g=>g.home==="FVM"||g.away==="FVM");
+}
+function showableGamesTonight(){
+  // local team games always broadcast locally; others need League Pass
+  const gs=gamesTonight();
+  return gs.filter(g=>(g.home==="FVM"||g.away==="FVM")||S.leaguePass);
+}
+function winStreak(){
+  const t=localTeam(); return Math.min(5,t.streak||0);
+}
+
+// ---------- playoffs & off-season (Sprint 10) ----------
+// 14 regular weeks, then a 4-team bracket: semifinals (Thu + Sun), the
+// championship the Sunday after — higher seed hosts, bracket games don't
+// touch the standings. Then the league goes dark: an off-season of quiet
+// nights before fresh schedules. One long campaign, season after season.
+const OFFSEASON_NIGHTS=15; // championship lands on a Sunday; 15 mornings later a new season opens on a Monday
+function regWeeksCount(){return (TEAMS.length-1)*2}
+function seasonPhase(){
+  if(S.league.offDays!=null)return "offseason";
+  return S.league.week>=regWeeksCount()?"playoffs":"regular";
+}
+function seedOrder(){return [...S.league.teams].sort((a,b)=>b.w-a.w||a.l-b.l)}
+function leagueAdvance(){
+  // housekeeping whenever the week pointer moves (also run on load, so saves
+  // stranded at a season boundary pick up the bracket). idempotent.
+  // returns a team id the night a champion is crowned, else null.
+  const L=S.league,R=regWeeksCount();
+  if(L.week===R&&L.weeks.length===R){           // regular season done — seed the semis
+    const seeds=seedOrder().slice(0,4);
+    L.seeds=seeds.map(t=>t.id);
+    L.weeks.push([
+      {home:seeds[1].id,away:seeds[2].id,day:"Thu",played:false,playoff:"semi"},
+      {home:seeds[0].id,away:seeds[3].id,day:"Sun",played:false,playoff:"semi"},
+    ]);
+  }else if(L.week===R+1&&L.weeks.length===R+1){ // semis done — set the final, higher seed hosts
+    const w=L.weeks[R].map(g=>g.winner)
+      .sort((a,b)=>L.seeds.indexOf(a)-L.seeds.indexOf(b));
+    L.weeks.push([{home:w[0],away:w[1],day:"Sun",played:false,playoff:"final"}]);
+  }else if(L.week>=R+2&&!L.champion){           // final done — crown a champion, lights out league-wide
+    const g=L.weeks[R+1][0];
+    L.champion=g.winner;
+    (L.history=L.history||[]).push({season:L.season||1,champion:g.winner});
+    L.offDays=OFFSEASON_NIGHTS;
+    if(g.winner==="FVM")S.rep=Math.min(100,S.rep+4);              // title town — your name rides the parade
+    if(g.winner==="HCS")S.rival.buzz=Math.min(95,S.rival.buzz+6); // Vic's place becomes THE Sharks bar
+    return g.winner;
+  }
+  return null;
+}
+function offseasonTick(){
+  // one tick per elapsed morning (nextDay and dark move-nights both count)
+  if(S.league.offDays==null)return;
+  S.league.offDays--;
+  if(S.league.offDays<=0)startNewSeason();
+}
+function startNewSeason(){
+  const L=S.league;
+  L.season=(L.season||1)+1;
+  L.teams.forEach(t=>{t.w=0;t.l=0;t.streak=0;});
+  L.weeks=mkWeeks(); L.week=0;
+  delete L.offDays; delete L.champion; delete L.seeds;
+  S.rival.buzz=Math.min(95,S.rival.buzz+3); // Vic doesn't rest in the off-season either
+  const rp=Math.round((rentMult()-1)*100), wp=Math.round((wageMult()-1)*100);
+  toast(`Fresh schedules on the corkboard — MAFA Season ${L.season} kicks off.`+
+    (rp||wp?` Rent +${rp}%, wages +${wp}% from here.`:""));
+}
+
+// ---------- pantry ----------
+function addStock(id,qty){
+  const it=ITEMS.find(i=>i.id===id);
+  const shelf=it.shelf+(it.food&&upg("walkin")?2:0);
+  S.pantry.push({id,qty,left:shelf, servings:(it.servings||1)*qty});
+}
+function stockOf(id){
+  return S.pantry.filter(p=>p.id===id).reduce((s,p)=>s+p.servings,0);
+}
+function consume(id,n){
+  let need=n;
+  for(const p of S.pantry){
+    if(p.id!==id||p.servings<=0)continue;
+    const take=Math.min(p.servings,need);
+    p.servings-=take; need-=take;
+    if(need<=0)break;
+  }
+  return n-need; // actually consumed
+}
+function spoilTick(){
+  const spoiled=[];
+  S.pantry.forEach(p=>{p.left--;});
+  S.pantry=S.pantry.filter(p=>{
+    if(p.servings<=0)return false;
+    if(p.left<=0){spoiled.push(p);return false;}
+    return true;
+  });
+  return spoiled;
+}
+
+// ---------- crowd model ----------
+function nightForecast(){
+  const wd=weekday();
+  let base=BASE_CROWD[wd];
+  const lg=localGameTonight();
+  const shows=showableGamesTonight();
+  let gameMult=1, label="quiet night";
+  if(lg){
+    gameMult=1.9; label="Mules game night";
+    if((lg.home==="HCS"||lg.away==="HCS")) gameMult=2.2, label="RIVALRY NIGHT";
+    if(lg.playoff==="semi") gameMult=2.4, label="PLAYOFF NIGHT";
+    if(lg.playoff==="final") gameMult=2.9, label="CHAMPIONSHIP NIGHT";
+  }else if(shows.length){
+    gameMult=1.3; label="league game on";
+    if(shows.some(g=>g.playoff==="final")) gameMult=1.6, label="championship on your screens";
+    else if(shows.some(g=>g.playoff)) gameMult=1.45, label="playoff game on";
+  }
+  else if(gamesTonight().length){label="games on — no feed"; }
+  else if(seasonPhase()==="offseason"){label="off-season";}
+  const tvEff=S.tvs*(upg("premiumtv")?1.25:1);
+  gameMult=1+(gameMult-1)*Math.min(1,tvEff/(S.venue.tvFull||4)); // TVs gate the draw; bigger rooms need more screens
+  const repMult=0.6+S.rep/125;
+  const streakMult=1+winStreak()*0.05;
+  let promoMult=1;
+  const wd2=weekday();
+  switch(S.promoTonight){
+    case "wingnight": promoMult=1.25; break;
+    case "trivia": promoMult=(wd2==="Mon"||wd2==="Tue"||wd2==="Wed")?1.5:1.15; break;
+    case "karaoke": promoMult=(wd2==="Fri"||wd2==="Sat")?1.3:1.15; break;
+    case "happyhour": promoMult=1.1; break;
+    case "watchparty": promoMult=(lg||shows.length)?1.25:1; break;
+  }
+  const crowd=Math.round(base*(S.venue.buzz||1)*gameMult*repMult*(lg?streakMult:1)*promoMult*adMult()*regularCrowdMult()*rivalMult());
+  return {crowd,label,lg,shows,gameNight:!!(lg||shows.length)};
+}
+
+// ---------- economy helpers ----------
+function appeal(id){
+  const it=ITEMS.find(i=>i.id===id);
+  const p=S.prices[id];
+  const lapsed=N&&N.goldLapsed; // goldshortage event let the sourcing bonus lapse for the night
+  const bonus=(it.food&&!lapsed&&dist().appealBonus)||0; // Gold Standard's premium sourcing
+  return Math.max(0.35,Math.min(1.3, 1-0.55*(p-it.base)/it.base + bonus));
+}
+function crewCap(role){
+  let mult=upg("training")?1.15:1;
+  if(role==="server"&&upg("pos"))mult*=1.2;
+  if(role==="cook"&&upg("kitchenline"))mult*=1.3;
+  return S.staff.filter(s=>s.role===role)
+    .reduce((s,st)=>s+ROLES[role].per*(0.75+st.skill*0.12),0)*mult;
+}
+
+// ---------- night simulation ----------
+let N=null; // night runtime
+function beginNight(){
+  if(S.phase!=="plan")return;
+  const f=nightForecast();
+  S.phase="night";
+  N={hour:0, crowd:0, rev:0, revFood:0, revDrink:0, mood:0.72, served:0, lost:0,
+     arrivalsTotal:0, forecast:f, log:[], events:[], pendingEvent:null,
+     tvBroken:false, tapBroken:false, leftEarly:false, wageBill:S.staff.reduce((s,x)=>s+effWage(x),0)};
+  // which regulars are in tonight — they'll drift in over the first few hours
+  N.regsIn=S.regulars.filter(regularShows).map(r=>r.id);
+  N.regStockout=new Set(); N.regSpend=0;
+  // countering a rival exclusive with a watch party — decided now, cashed in at endNight
+  N.beatExclusive=!!(S.rival.exclusive&&!localGameTonight()&&showableGamesTonight().length&&S.promoTonight==="watchparty");
+  // some nights are chill, some are disasters
+  const chaos=rnd();
+  N.eventBudget = chaos<0.40?0 : chaos<0.74?1 : chaos<0.92?2 : 3;
+  const pr=promo();
+  if(pr&&pr.cost>0){S.cash-=pr.cost; N.promoCost=pr.cost;}
+  ui.enterNight();
+  logLine(`Doors open at ${S.venue.name}. ${f.label==="quiet night"?"Slow one on the books.":f.label+"."}`,"hl");
+  if(pr)logLine(`Tonight's theme: ${pr.name}.`,"hl");
+  if(S.rival.exclusive&&!localGameTonight()&&showableGamesTonight().length){
+    if(S.promoTonight==="watchparty")logLine(`${RIVAL.name} bought tonight's broadcast exclusive — but your Watch Party is louder. Head to head.`,"hl");
+    else logLine(`${RIVAL.name} locked up tonight's league broadcast. You can feel the pull across town.`,"b");
+  }
+  if(f.lg){
+    const opp=f.lg.home==="FVM"?team(f.lg.away):team(f.lg.home);
+    if(f.lg.playoff)logLine(f.lg.playoff==="final"
+      ?`MAFA CHAMPIONSHIP. Sixty minutes between the Mules and the banner.`
+      :`MAFA Semifinal — win and the Mules play for it all.`,"ev");
+    logLine(`Mules ${f.lg.home==="FVM"?"host":"travel to"} the ${opp.name}. Kickoff 7 PM.`,"hl");
+  }
+  runClock();
+}
+let clockTimer=null, speed=1;
+function runClock(){
+  stopClock();
+  clockTimer=setInterval(()=>{ if(!N.pendingEvent) nightTick(); }, 2400/speed);
+}
+function stopClock(){ if(clockTimer){clearInterval(clockTimer);clockTimer=null;} }
+
+function nightTick(){
+  if(!N||N.hour>=8){endNight();return;}
+  const h=N.hour;
+  const f=N.forecast;
+  // arrivals
+  let arrivals=Math.round(f.crowd*(S.promoTonight==="happyhour"?HH_W:HOUR_W)[h]*(0.85+rnd()*0.3));
+  if(N.leftEarly&&h>=5) arrivals=Math.round(arrivals*0.35);
+  if(N.tvBroken&&f.gameNight) arrivals=Math.round(arrivals*0.6);
+  const seats=S.venue.seats+(S.patio?10:0);
+  N.waiting=N.waiting||0;
+  arrivals=Math.max(0,Math.min(arrivals,seats-N.waiting));
+  N.waiting+=arrivals; N.arrivalsTotal+=arrivals;
+
+  // service capacity this hour
+  const patronCap=Math.round(crewCap("server"));
+  const foodCap=Math.round(crewCap("cook"));
+  let drinkCap=Math.round(crewCap("bartender"));
+  if(drinkCap===0) drinkCap=Math.round(crewCap("server")*0.5); // servers cover the taps, badly
+
+  const servedPatrons=Math.min(N.waiting,patronCap);
+  N.waiting-=servedPatrons;
+  // half the still-unserved give up and walk out
+  const unserved=Math.floor(N.waiting*0.5);
+  N.waiting-=unserved;
+  N.crowd=N.waiting+servedPatrons;
+
+  // food orders
+  const wing=S.promoTonight==="wingnight";
+  let foodOrders=Math.round(servedPatrons*(wing?0.65:0.5));
+  foodOrders=Math.min(foodOrders,foodCap);
+  let foodSold=0, foodRev=0, stockouts=new Set();
+  for(let i=0;i<foodOrders;i++){
+    const options=ITEMS.filter(it=>it.food&&stockOf(it.id)>0);
+    if(!options.length){stockouts.add("kitchen");break;}
+    const weights=options.map(it=>(wing&&it.id==="wings")?appeal(it.id)*3:appeal(it.id));
+    let r=rnd()*weights.reduce((a,b)=>a+b,0), sel=options[0];
+    for(let j=0;j<options.length;j++){r-=weights[j]; if(r<=0){sel=options[j];break;}}
+    const eff=(wing&&sel.id==="wings")?1.35:appeal(sel.id);
+    if(rnd()<eff){ consume(sel.id,1); foodSold++;
+      foodRev+=S.prices[sel.id]*((wing&&sel.id==="wings")?0.6:1); }
+  }
+
+  // drinks
+  let perPatron=f.gameNight?2.3:1.8;
+  if(S.promoTonight==="trivia")perPatron+=0.4;
+  if(S.promoTonight==="watchparty")perPatron+=0.3;
+  let drinkOrders=Math.round(servedPatrons*perPatron*(0.9+rnd()*0.2));
+  drinkOrders=Math.min(drinkOrders,drinkCap*1); // cap per hour
+  let drinkRev=0, drinksSold=0;
+  const beerShare=(f.gameNight?0.72:0.62)+(S.promoTonight==="watchparty"?0.08:0);
+  const hhOff=(S.promoTonight==="happyhour"&&h<2)?0.75:1;
+  for(let i=0;i<drinkOrders;i++){
+    let kind=rnd();
+    let id = kind<beerShare?"keg" : kind<0.85?"liquor":"soda";
+    if(id==="keg"&&N.tapBroken) id="liquor";
+    if(stockOf(id)<=0){
+      // fall through preference order
+      id=["keg","liquor","soda"].find(x=>stockOf(x)>0 && !(x==="keg"&&N.tapBroken));
+      if(!id){stockouts.add("bar");break;}
+    }
+    const craft=(id==="keg"&&upg("crafttaps"))?1.25:1;
+    consume(id,1); drinksSold++; drinkRev+=S.prices[id]*hhOff*craft;
+  }
+
+  N.revFood+=foodRev; N.revDrink+=drinkRev; N.rev+=foodRev+drinkRev;
+  N.served+=servedPatrons; N.lost+=unserved;
+
+  // mood drift
+  let dm=0;
+  if(unserved>0) dm-=0.05*Math.min(1,unserved/10);
+  if(stockouts.size) dm-=0.06;
+  if(N.tvBroken&&f.gameNight) dm-=0.05;
+  if(foodSold>0&&stockouts.size===0&&unserved===0) dm+=0.025;
+  N.mood=Math.max(0.15,Math.min(1,N.mood+dm));
+
+  // flavor log
+  const hourLabel=hourName(h);
+  if(arrivals>0){
+    const rung=(foodRev+drinkRev).toFixed(0);
+    logLine(pick([
+      `${hourLabel} — ${arrivals} through the door, ${N.crowd} in the room. $${rung} rung up.`,
+      `${hourLabel} — ${arrivals} more find a seat. ${N.crowd} bodies in the room now. $${rung} on the books.`,
+      `${hourLabel} — door swings ${arrivals} times. ${N.crowd} in the house, $${rung} rung up this hour.`,
+    ]));
+  }else{
+    logLine(pick([
+      `${hourLabel} — nobody new. ${N.crowd} nursing their drinks.`,
+      `${hourLabel} — quiet at the door. ${N.crowd} holding down their stools.`,
+      `${hourLabel} — no new faces. ${N.crowd} still working through their tabs.`,
+    ]));
+  }
+  if(unserved>4) logLine(`Floor's drowning — ${unserved} tables waving for service.`,"b");
+  if(stockouts.has("kitchen")) logLine(`Kitchen 86'd everything. Angry stomachs out there.`,"b");
+  if(stockouts.has("bar")) logLine(`Bar is DRY. That's a sports bar sin.`,"b");
+
+  // game beats
+  if(f.lg&&!N.gameDone){
+    if(h===2) logLine(`Kickoff! The room turns to the screens.`,"hl");
+    if(h===4){
+      // halftime blowout check
+      if(rnd()<0.18&&!N.leftEarly){N.leftEarly=true;
+        logLine(`It's a blowout by halftime. Jerseys start filing out early.`,"ev");}
+    }
+    if(h===6){N.gameDone=true; resolveLocalGame(f.lg);}
+  }
+
+  // regulars drift in over hours 1–3, take their usual stool, and always get served
+  if(h>=1&&h<=3){
+    const due=N.regsIn.filter((id,i)=>i%3===h-1);
+    for(const id of due){
+      const r=S.regulars.find(x=>x.id===id); if(!r)continue;
+      r.visits++; N.arrivalsTotal++; N.crowd++;
+      let foodPart=0, drinkPart=0, snubbed=false;
+      if(stockOf(r.order)>0){consume(r.order,1); foodPart=S.prices[r.order];}
+      else{snubbed=true; N.regStockout.add(id); N.mood=Math.max(0.15,N.mood-0.02);}
+      for(let d=0;d<2;d++){
+        let id2=(N.tapBroken||stockOf("keg")<=0)?(stockOf("liquor")>0?"liquor":stockOf("soda")>0?"soda":null):"keg";
+        if(!id2){N.regStockout.add(id);break;}
+        const craft=(id2==="keg"&&upg("crafttaps"))?1.25:1;
+        consume(id2,1); drinkPart+=S.prices[id2]*craft;
+      }
+      N.revFood+=foodPart; N.revDrink+=drinkPart;
+      N.rev+=foodPart+drinkPart; N.regSpend+=foodPart+drinkPart; N.served++;
+      if(!snubbed){N.mood=Math.min(1,N.mood+0.01);
+        logLine(`${r.name} takes the usual stool. ${ITEMS.find(i=>i.id===r.order).name}, no menu needed.`,"g");}
+      else logLine(`${r.name} came in for the usual — and you're out. That look says everything.`,"b");
+    }
+  }
+
+  // karaoke swing
+  if(S.promoTonight==="karaoke"&&h===3&&!N.karaokeDone){
+    N.karaokeDone=true;
+    const roll=rnd();
+    if(roll<0.45){N.mood=Math.min(1,N.mood+0.14);S.rep=Math.min(100,S.rep+1);
+      logLine(`Somebody just NAILED an 80s power ballad. The whole bar is singing along.`,"g");}
+    else if(roll<0.75){logLine(`Karaoke's rolling along. Mostly in tune.`,"hl");}
+    else{N.mood=Math.max(0.15,N.mood-0.12);
+      logLine(`A man has been screaming the same chorus for nine minutes. Tables are emptying.`,"b");}
+  }
+
+  // random events
+  maybeEvent(h);
+
+  N.hour++;
+  ui.night();
+  if(N.hour>=8&&!N.pendingEvent) endNight();
+}
+function hourName(h){const hh=17+h; const ampm=hh>=12?"PM":"AM"; const d=((hh-1)%12)+1; return `${d} ${hh>=24?"AM":ampm}`;}
+
+function resolveLocalGame(g){
+  const opp=g.home==="FVM"?g.away:g.home;
+  const t=localTeam(), o=team(opp);
+  const pWin=0.5+((t.streak||0)-(o.streak||0))*0.04+(g.home==="FVM"?0.07:-0.05);
+  const win=rnd()<Math.max(0.2,Math.min(0.8,pWin));
+  applyResult(g,win?"FVM":opp);
+  if(win){
+    logLine(`FINAL: Mules win! The room ERUPTS. Another round all around.`,"g");
+    N.mood=Math.min(1,N.mood+0.12); N.postWin=true;
+  }else{
+    logLine(`FINAL: Mules drop it to ${o.name}. Tabs close early tonight.`,"b");
+    N.mood=Math.max(0.15,N.mood-0.1);
+  }
+  if(g.playoff){
+    if(win&&g.playoff==="final"){N.mood=Math.min(1,N.mood+0.12);
+      logLine(`THE MULES ARE MAFA CHAMPIONS! Strangers hugging strangers. Nobody's going home.`,"g");}
+    else if(win)logLine(`The Mules punch their ticket to the championship!`,"g");
+    else logLine(g.playoff==="final"
+      ?`So close to the banner. The room files out quiet.`
+      :`Season's over for the Mules. Long winter ahead.`,"b");
+  }
+  if(N.rivalBet){
+    if(win){S.cash+=300;N.betWon=300;S.rival.buzz=Math.max(10,S.rival.buzz-5);S.rep=Math.min(100,S.rep+2);
+      logLine(`${RIVAL.owner} peels off three hundred and leaves without a word. The room loves every second.`,"g");}
+    else{pay(300);S.rival.buzz=Math.min(95,S.rival.buzz+5);
+      logLine(`${RIVAL.owner} pockets your $300 with a grin you'll be seeing in your sleep.`,"b");}
+  }
+}
+function applyResult(g,winner){
+  g.played=true; g.winner=winner;
+  const h=team(g.home), a=team(g.away);
+  const w=team(winner), l=winner===g.home?a:h;
+  if(!g.playoff){w.w++; l.l++;} // bracket games are for the banner, not the standings
+  w.streak=(w.streak||0)+1; l.streak=0;
+}
+function simOtherGames(){
+  gamesTonight().filter(g=>!g.played).forEach(g=>{
+    const h=team(g.home),a=team(g.away);
+    const pHome=0.53+((h.streak||0)-(a.streak||0))*0.04;
+    applyResult(g,rnd()<pHome?g.home:g.away);
+  });
+}
+
+// ---------- events ----------
+const EVENTS=[
+  {id:"tap", cd:4, when:()=>!N.tapBroken&&stockOf("keg")>0, weight:2,
+   title:"Keg Tap Blows",
+   body:"The main tap line just burst — beer's spraying the backbar and the line to the kegs is dead.",
+   choices:[
+     {label:()=>`Emergency repair — $${tapRepairCost()}`, sub:"Beer keeps flowing.", act(){pay(tapRepairCost());logLine("Repair guy patches the line. Beer's back.","g");}},
+     {label:"Leave it for tonight", sub:"No draft beer the rest of the night.", act(){N.tapBroken=true;logLine("Taps are dead. Liquor and soda only.","b");N.mood-=0.08;}},
+   ]},
+  {id:"tv", cd:3, when:()=>N.forecast.gameNight&&!N.tvBroken&&S.tvs>0, weight:2,
+   title:"Screen Goes Dark",
+   body:"Your biggest TV just died with the game on. The room groans in unison.",
+   choices:[
+     {label:()=>`Rush replacement — $${tvRepairCost()}`, sub:"Back on before the next snap.", act(){pay(tvRepairCost());logLine("New screen up in minutes. Crisis averted.","g");}},
+     {label:"Crowd around the small ones", sub:"Fewer folks stick around, mood dips.", act(){N.tvBroken=true;N.mood-=0.1;logLine("Half the room can't see the game. Some head home.","b");}},
+   ]},
+  {id:"rowdy", cd:2, when:()=>N.forecast.gameNight&&N.crowd>12, weight:2,
+   title:"Rival Fans Get Loud",
+   body:"A table of away-team fans is talking trash and it's escalating fast.",
+   choices:[
+     {label:"Show them the door", sub:"Lose a few tabs, keep the peace. Rep up.", act(){N.crowd=Math.max(0,N.crowd-6);S.rep=Math.min(100,S.rep+2);logLine("You walk the loudmouths out. Regulars nod approvingly.","g");}},
+     {label:"Let it ride", sub:"60% it simmers down. 40% chairs fly.", act(){
+        if(rnd()<0.4){pay(180);S.rep=Math.max(0,S.rep-4);N.mood-=0.15;
+          logLine("Chairs fly. $180 in damages and everyone's rattled.","b");}
+        else logLine("They talk themselves out. Crisis averted, barely.","g");}},
+   ]},
+  {id:"inspect", cd:7, when:()=>true, weight:1,
+   title:"Health Inspector",
+   body:"A clipboard walks in during the rush. Everything in your walk-in is about to be examined.",
+   choices:[
+     {label:"Open the kitchen", sub:"Pass if nothing's near-spoiled.", act(){
+        const risky=S.pantry.some(p=>ITEMS.find(i=>i.id===p.id).food&&p.left<=1);
+        if(risky){pay(200);S.rep=Math.max(0,S.rep-5);logLine("Inspector flags aging stock. $200 fine, word gets around.","b");}
+        else{S.rep=Math.min(100,S.rep+3);logLine("Spotless. Inspector leaves impressed. Rep up.","g");}}},
+   ]},
+  {id:"regbday", cd:6, when:()=>S.regulars.length>0&&N.regsIn.length>0, weight:1,
+   title:"A Regular's Big Night",
+   body:"One of your regulars is celebrating a birthday at the corner stool, and half the bar knows it.",
+   choices:[
+     {label:"Round on the house — $35", sub:"The whole crew of regulars remembers this.", act(){
+        pay(35);N.mood=Math.min(1,N.mood+0.08);
+        S.regulars.forEach(r=>{if(N.regsIn.includes(r.id))r.loyalty=Math.min(100,r.loyalty+12);});
+        logLine("Glasses up. That's how you keep a stool warm for years.","g");}},
+     {label:"Just drop the check with a candle in the nachos", sub:"Cheap, a little deflating.", act(){
+        S.regulars.forEach(r=>{if(N.regsIn.includes(r.id))r.loyalty-=3;});
+        logLine("A lone candle gutters in the nacho cheese. The moment passes.","b");}},
+   ]},
+  {id:"poachstaff", cd:8, when:()=>S.rival.buzz>=50&&S.staff.some(s=>s.skill>=3), weight:1,
+   title:"Poaching Call",
+   body:()=>`${RIVAL.owner} from ${RIVAL.name} just offered ${bestStaff().name} a fat raise to jump ship. They're standing by the phone, waiting on your answer.`,
+   choices:[
+     {label:()=>{const s=bestStaff();return `Match it — ${s.name} up to $${Math.round(s.wage*1.2/5)*5}/night`;},
+      sub:"They stay. The raise is permanent.",
+      act(){const s=bestStaff(); s.wage=Math.round(s.wage*1.2/5)*5;
+        logLine(`${s.name} hangs up on ${RIVAL.owner} mid-pitch. Their next check is heavier.`,"g");}},
+     {label:"Shake hands, wish them luck", sub:"Lose them mid-shift. The End Zone gets stronger.",
+      act(){const s=bestStaff(); S.staff=S.staff.filter(x=>x.id!==s.id);
+        S.rival.buzz=Math.min(95,S.rival.buzz+5); N.mood=Math.max(0.15,N.mood-0.05);
+        logLine(`${s.name} unties the apron and walks. ${RIVAL.name} just got better.`,"b");}},
+   ]},
+  {id:"poachregular", cd:7, when:()=>S.rival.buzz>=45&&S.regulars.length>0, weight:1,
+   title:"Free Tab Across Town",
+   body:()=>`Word is ${RIVAL.name} is comping ${shakiestRegular().name}'s whole crew tonight. That corner stool is looking awful empty.`,
+   choices:[
+     {label:()=>`Comp ${shakiestRegular().name}'s next night — $25`, sub:"Loyalty up. Vic's play fizzles.",
+      act(){pay(25);const r=shakiestRegular();r.loyalty=Math.min(100,r.loyalty+10);
+        S.rival.buzz=Math.max(10,S.rival.buzz-2);
+        logLine(`${r.name} hears about the comp. "${RIVAL.name}? Never heard of it."`,"g");}},
+     {label:"Your bar speaks for itself", sub:"Maybe. Or maybe they like free beer.",
+      act(){const r=shakiestRegular();r.loyalty-=15;S.rival.buzz=Math.min(95,S.rival.buzz+3);
+        logLine(`${r.name}'s stool sits empty. Across town, ${RIVAL.owner} pours them another.`,"b");}},
+   ]},
+  {id:"rivalbet", cd:10, when:()=>{const lg=N.forecast.lg;return !!lg&&(lg.home==="HCS"||lg.away==="HCS")&&!N.gameDone;}, weight:2,
+   title:"Vic's Wager",
+   body:`${RIVAL.owner} strolls in wearing Sharks teal, slaps $300 on the bar, and says the Mules don't have it tonight.`,
+   choices:[
+     {label:"Shake on it — $300 on the Mules", sub:"Win: his cash, his pride. Lose: $300 and the story.",
+      act(){N.rivalBet=true;logLine(`Handshake. $600 sits under the register until the final whistle.`,"hl");}},
+     {label:"Keep it friendly", sub:"No stakes tonight.",
+      act(){logLine(`You slide the cash back across the bar. ${RIVAL.owner} smirks and orders a well whiskey.`,"hl");}},
+   ]},
+  {id:"hero", cd:5, when:()=>N.forecast.gameNight, weight:1,
+   title:"A Legend Walks In",
+   body:"A retired Mules linebacker just sat down at the bar. Phones are already out.",
+   choices:[
+     {label:"First round's on the house", sub:"Costs a little, the story spreads.", act(){pay(40);S.rep=Math.min(100,S.rep+4);N.mood+=0.1;logLine("He raises a glass to the room. This story will be told for years.","g");}},
+     {label:"Treat him like anyone else", sub:"He appreciates the quiet. Small rep bump.", act(){S.rep=Math.min(100,S.rep+1);logLine("He drinks in peace and tips well.","g");}},
+   ]},
+  {id:"soundcrash", cd:6, when:()=>S.venue.tier>=3&&N.forecast.gameNight&&!N.soundBroken, weight:1,
+   title:"Sound System Meltdown",
+   body:"The flagship's premium AV rig cuts out mid-broadcast — no commentary, no crowd mic, just dead air over a packed room.",
+   choices:[
+     {label:"Rush the AV tech — $650", sub:"Back up before the buzz fades.", act(){pay(650);logLine("The tech reboots the rack. Sound's back, crowd barely notices.","g");}},
+     {label:"Run the house PA", sub:"Flat and tinny. The room feels it.", act(){N.soundBroken=true;N.mood=Math.max(0.15,N.mood-0.12);logLine("Dead air replaced by a tinny house speaker. Energy drains out of the room.","b");}},
+   ]},
+  {id:"vipdouble", cd:7, when:()=>S.venue.tier>=3&&N.forecast.gameNight, weight:1,
+   title:"VIP Suite Double-Booked",
+   body:"Two parties both swear they reserved the suite for tonight's game, and neither one's backing down.",
+   choices:[
+     {label:"Comp both — squeeze them in ($60)", sub:"Tight fit, but everybody's happy.", act(){pay(60);S.rep=Math.min(100,S.rep+1);logLine("You wedge in an extra table and comp a round. Both parties leave grinning.","g");}},
+     {label:"Turn the smaller party away", sub:"Save the seats, make an enemy.", act(){N.crowd=Math.max(0,N.crowd-5);S.rep=Math.max(0,S.rep-2);logLine("One party storms out muttering about Yelp. The suite holds, barely.","b");}},
+   ]},
+  {id:"shortdelivery", cd:6, when:()=>S.pantry.some(p=>p.servings>0), weight:2,
+   title:"Truck Breaks Down",
+   body:()=>`${dist().name}'s driver calls — the truck threw a belt on the highway and tonight's order is coming up short.`,
+   choices:[
+     {label:"Pay for a rush courier — $90", sub:"Full delivery makes it in before doors.", act(){pay(90);logLine("A rented van pulls up twenty minutes later, order intact.","g");}},
+     {label:"Work with what's on the shelf", sub:"Something's going to run thin tonight.", act(){
+        const lots=S.pantry.filter(p=>p.servings>0);
+        if(lots.length){
+          const p=pick(lots); const it=ITEMS.find(i=>i.id===p.id);
+          const cut=Math.max(1,Math.ceil(p.servings*0.3));
+          p.servings=Math.max(0,p.servings-cut);
+          logLine(`You make do. ${it.name} runs thinner than planned tonight.`,"b");
+        }else logLine("You make do without the rest of the order.","b");
+     }},
+   ]},
+  {id:"caskstrike", cd:9, when:()=>S.dist&&S.dist.id==="cask", weight:1,
+   title:"Warehouse Walkout",
+   body:"Cask & Carton's loading dock crew is picketing over hours. Your rep says deliveries could slip for weeks unless someone smooths things over.",
+   choices:[
+     {label:"Pay the solidarity surcharge — $150", sub:"Deliveries keep rolling on schedule.", act(){pay(150);logLine("The check clears and your truck keeps its slot at the dock.","g");}},
+     {label:"Ride it out", sub:"Deliveries slip. Your account standing takes a hit.", act(){
+        S.dist.spend=Math.max(0,S.dist.spend-1000);
+        logLine("Your orders slip to the back of the queue. Loyalty standing takes a step back.","b");
+     }},
+   ]},
+  {id:"ticketholders", cd:5, when:()=>N.forecast.lg&&!!N.forecast.lg.playoff, weight:1,
+   title:"Ticket Holders Pregame Here",
+   body:"A pack of fans with tickets to tonight's game are pregaming hard — big tabs, loud energy, gone the second the game gets close.",
+   choices:[
+     {label:"Pour heavy, cash in now", sub:"Big tabs now, some of the room clears out early.", act(){
+        S.cash+=150;N.crowd=Math.max(0,N.crowd-Math.round(N.crowd*0.12));
+        logLine("Tabs run high and fast. Then a wave of them heads for the arena, right on cue.","g");}},
+     {label:"Pace them, keep them till tip-off", sub:"Slower tabs, but they stick around.", act(){N.mood=Math.min(1,N.mood+0.05);logLine("You slow-walk the rounds. They stay through the pregame and into the broadcast.","g");}},
+   ]},
+  {id:"vicbuyout", cd:20, when:()=>N.forecast.lg&&N.forecast.lg.playoff==="final", weight:1,
+   title:"Vic's Last Play",
+   body:()=>`${RIVAL.owner} corners you at the bar with a check, offering to buy tonight's broadcast rights so ${RIVAL.name} gets the exclusive championship feed instead.`,
+   choices:[
+     {label:"Laugh him out the door", sub:"Your screens keep the game. Rep up.", act(){S.rival.buzz=Math.max(10,S.rival.buzz-3);S.rep=Math.min(100,S.rep+1);logLine(`${RIVAL.owner} pockets the check and slinks out. Your marquee keeps the title fight.`,"g");}},
+     {label:"Take the money — $500", sub:"Easy cash. Word gets around you sold the big night.", act(){S.cash+=500;S.rival.buzz=Math.min(95,S.rival.buzz+10);S.rep=Math.max(0,S.rep-6);logLine(`You pocket the check. By last call, everyone knows whose name is on that feed now.`,"b");}},
+   ]},
+  {id:"offreno", cd:10, when:()=>seasonPhase()==="offseason", weight:1,
+   title:"Doors Are Quiet — Crew's Got Downtime",
+   body:"With no games on, the floor crew's antsy. Someone floats fixing the place up while the room's empty.",
+   choices:[
+     {label:"Deep clean & touch-ups — $300", sub:"The place shines. Word travels before the new season starts.", act(){pay(300);S.rep=Math.min(100,S.rep+3);logLine("Grout, brass, and a fresh coat later, the place looks like new money. Rep up.","g");}},
+     {label:"Let the downtime ride", sub:"Save the cash, skip the shine.", act(){logLine("The mop closet waits for another day. Nobody seems to mind.","hl");}},
+   ]},
+  {id:"goldshortage", cd:7, when:()=>S.dist&&S.dist.id==="gold"&&!N.goldLapsed, weight:1,
+   title:"The Good Stuff Ran Out",
+   body:"Gold Standard's rep calls: the premium cut that makes your menu sing didn't make tonight's truck. The kitchen's working with the backup case.",
+   choices:[
+     {label:"Overnight it in — $120", sub:"Menu tastes exactly like it's priced tonight.", act(){pay(120);logLine("A courier hands off a cooler at the back door. Nobody at the bar ever knows.","g");}},
+     {label:"Cook around it tonight", sub:"The kitchen makes do — the premium edge is gone till tomorrow's truck.", act(){N.goldLapsed=true;N.mood=Math.max(0.15,N.mood-0.04);logLine("The kitchen improvises. Good enough, but regulars can tell the difference.","b");}},
+   ]},
+  {id:"regreferral", cd:6, when:()=>S.regulars.length>0&&N.regsIn.length>0, weight:1,
+   title:"New Face at the Bar",
+   body:()=>`${S.regulars.find(x=>N.regsIn.includes(x.id)).name} brought a friend along tonight, talking you up the whole way in. The friend's sizing up the room.`,
+   choices:[
+     {label:"Comp the friend's first round — $20", sub:"A good first impression, and the regular remembers the gesture.", act(){
+        pay(20);N.mood=Math.min(1,N.mood+0.04);
+        const r=S.regulars.find(x=>N.regsIn.includes(x.id)); if(r)r.loyalty=Math.min(100,r.loyalty+6);
+        logLine("The newcomer's first round is on the house. Their friend beams — that's how you earn a second visit.","g");}},
+     {label:"Let them run their own tab", sub:"No cost, no fuss.", act(){
+        logLine("The friend settles up like anyone else. A perfectly fine first night.","hl");}},
+   ]},
+  {id:"regfavor", cd:8, when:()=>S.regulars.length>0&&N.regsIn.length>0, weight:1,
+   title:"Can It Wait Till Payday?",
+   body:()=>`${shakiestRegular().name} is short tonight and asks if the tab can carry till payday.`,
+   choices:[
+     {label:"Sure, I'll run a tab", sub:"Loyalty jumps — but there's a real chance it never gets squared.", act(){
+        const r=shakiestRegular();
+        r.loyalty=Math.min(100,r.loyalty+10);
+        if(rnd()<0.3){logLine(`${r.name} never quite settles that tab. You let it go.`,"b");}
+        else{S.cash+=15;logLine(`${r.name} squares up next visit, embarrassed it took so long. Good faith, repaid.`,"g");}}},
+     {label:"Cash only, like always", sub:"No risk, but it stings a little.", act(){
+        const r=shakiestRegular(); r.loyalty=Math.max(0,r.loyalty-4);
+        logLine("You hold the line on the house rule. Fair, but not warm.","hl");}},
+   ]},
+  {id:"proposal", cd:6, when:()=>N.crowd>=8, weight:1,
+   title:"A Ring at the Bar",
+   body:"A regular-looking patron just leaned over and asked, very quietly, if you'd help them propose tonight.",
+   choices:[
+     {label:"Comp the champagne, hype the room — $30", sub:"The whole bar gets in on it. Great story, small cost.", act(){
+        pay(30);S.rep=Math.min(100,S.rep+2);N.mood=Math.min(1,N.mood+0.1);
+        logLine("The room erupts when she says yes. Somebody's already posting the video.","g");}},
+     {label:"Keep it low-key, respect their privacy", sub:"Quieter, but still a nice moment.", act(){
+        S.rep=Math.min(100,S.rep+1);
+        logLine("A quiet toast at the end of the bar. They slip out before last call, grinning.","g");}},
+   ]},
+  {id:"newsspot", cd:8, when:()=>N.forecast.gameNight, weight:1,
+   title:"Local News Wants a Clip",
+   body:"A local news van is parked out front — they want thirty seconds of game-night atmosphere for the evening broadcast.",
+   choices:[
+     {label:"Let them film — free publicity", sub:"Rep bump, but the crew and cameras slow service for a few minutes.", act(){
+        S.rep=Math.min(100,S.rep+3);N.mood=Math.max(0.15,N.mood-0.03);
+        logLine("Cameras weave through the crowd for a minute of B-roll. Free advertising, if a little disruptive.","g");}},
+     {label:"Politely decline", sub:"No fuss, no footage.", act(){
+        logLine("You wave the crew off. They shrug and try the sports bar across town.","hl");}},
+   ]},
+];
+function maybeEvent(h){
+  if(N.pendingEvent)return;
+  if(h<1||h>6)return;
+  if(N.events.length>=N.eventBudget)return;
+  if(rnd()>0.4)return;
+  const pool=EVENTS.filter(e=>e.when()&&!N.events.includes(e.id)
+    &&S.day>=(S.eventCooldowns[e.id]||0));
+  if(!pool.length)return;
+  const ev=pick(pool);
+  N.events.push(ev.id);
+  S.eventCooldowns[ev.id]=S.day+(ev.cd||2);
+  N.pendingEvent=ev;
+  logLine(`⚠ ${ev.title}!`,"ev");
+  ui.showEvent(ev);
+}
+function resolveEvent(idx){
+  if(!N||!N.pendingEvent)return;
+  const ev=N.pendingEvent;
+  ev.choices[idx].act();
+  N.pendingEvent=null;
+  ui.hideModal(); ui.night(); ui.bug();
+}
+function pay(n){S.cash-=n; if(N)N.expenses=(N.expenses||0)+n;}
+
+// ---------- end of night ----------
+function endNight(){
+  stopClock();
+  simOtherGames();
+  // wages + rent
+  const wages=N.wageBill, rent=effRent(), pass=S.leaguePass&&weekday()==="Mon"?140:0,
+        fees=upgradeFees(), distFee=(dist().fee&&weekday()==="Mon")?dist().fee:0;
+  S.cash+=N.rev; S.cash-=wages+rent+pass+fees+distFee;
+  // rep drift from mood & service
+  const serveRate=(N.served+N.lost)>0?N.served/(N.served+N.lost):1;
+  let dRep=Math.round((serveRate-0.75)*14+(N.mood-0.6)*6);
+  if(N.postWin)dRep+=1;
+  if(dRep>0)dRep=Math.round(dRep*Math.max(0.15,1-S.rep/110));
+  // regulars anchor your name — a full bench of them cushions bad-night rep hits
+  if(dRep<0)dRep=Math.round(dRep*(1-Math.min(0.4,S.regulars.length*0.05)));
+  dRep=Math.max(-5,Math.min(5,dRep));
+  S.rep=Math.max(0,Math.min(100,S.rep+dRep));
+  // regular loyalty drift
+  const goodNight=serveRate>=0.8&&N.mood>=0.5;
+  const uglyNight=serveRate<0.6||N.mood<0.35;
+  N.regLost=[];
+  S.regulars.forEach(r=>{
+    if(N.regsIn.includes(r.id)){
+      if(N.regStockout.has(r.id))r.loyalty-=8;
+      else if(goodNight)r.loyalty+=3;
+      if(uglyNight)r.loyalty-=5;
+    }else r.loyalty-=1; // slow drift when they stay home
+    r.loyalty=Math.min(100,r.loyalty);
+  });
+  S.regulars=S.regulars.filter(r=>{
+    if(r.loyalty>0)return true;
+    N.regLost.push(r.name);
+    S.rep=Math.max(0,S.rep-1);
+    return false;
+  });
+  // a great, busy night can mint a new regular
+  N.regGained=null;
+  if(S.regulars.length<regularCap()&&goodNight&&N.arrivalsTotal>=18&&rnd()<0.35){
+    const r=addRegular(); if(r)N.regGained=r;
+  }
+  // rival buzz drift — your nights move their needle
+  let dRival=ri(-1,1);
+  if(goodNight&&N.arrivalsTotal>=18)dRival-=2;
+  if(uglyNight)dRival+=2;
+  if(N.beatExclusive){dRival-=4;S.rep=Math.min(100,S.rep+1);
+    logLine(`Word gets around: you out-drew ${RIVAL.name} on their own exclusive.`,"g");}
+  if(S.rival.buzz<35+rivalFloorBoost())dRival+=1; // you can only humble them so far — Vic scraps back, harder in later seasons
+  if(S.rival.buzz>80)dRival-=1;      // and hype that hot always cools a little
+  S.rival.buzz=Math.max(10,Math.min(95,S.rival.buzz+dRival));
+  N.dRival=dRival;
+  // spoilage
+  const spoiled=spoilTick();
+  // stats
+  S.stats.nights++; S.stats.lifetimeRev+=N.rev;
+  S.stats.bestNight=Math.max(S.stats.bestNight,N.rev);
+  // week rollover: the week advances when all its games are played
+  N.champ=null;
+  if(currentWeek().length&&currentWeek().every(g=>g.played)){S.league.week++; N.champ=leagueAdvance();}
+  N.summary={wages,rent,pass,fees,distFee,dRep,spoiled,
+    net:N.rev-wages-rent-pass-fees-distFee-(N.expenses||0)-(N.promoCost||0)+(N.betWon||0)};
+  S.phase="report";
+  save();
+  ui.boxScore();
+}
+function nextDay(){
+  S.day++; S.phase="plan";
+  offseasonTick();
+  S.promoTonight=null;
+  S.ads.forEach(a=>a.daysLeft--);
+  S.ads=S.ads.filter(a=>a.daysLeft>0);
+  if(rnd()<0.5||S.applicants.length<2)rollApplicants();
+  // sometimes Vic makes a move of his own
+  if(rnd()<rivalPowerChance()){const[pMin,pMax]=rivalPowerRange();S.rival.buzz=Math.min(95,S.rival.buzz+ri(pMin,pMax));
+    toast(`${RIVAL.name} just ${pick(["finished a renovation","poached a chef from the city","landed a write-up in the county paper"])}. Buzz across town.`);}
+  // a hot rival snaps up broadcast exclusives on non-Mules league nights
+  S.rival.exclusive = !localGameTonight()&&gamesTonight().length>0&&S.rival.buzz>=55&&rnd()<0.35;
+  ITEMS.forEach(it=>S.order[it.id]=0);
+  N=null;
+  save();
+  ui.plan(); ui.bug();
+  if(S.cash<0) toast("You're in the red. Cut costs or pull a big night, fast.");
+}
+
+// ---------- ordering / staff / bar actions ----------
+function placeOrder(){
+  const goods=orderCost();
+  if(goods<=0){toast("Nothing on the order sheet.");return;}
+  const d=dist();
+  const drop=(d.minOrder&&goods<d.minOrder)?d.dropFee:0;
+  const total=goods+drop;
+  if(total>S.cash){toast("Distributor wants cash you don't have.");return;}
+  S.cash-=total;
+  S.dist.spend=(S.dist.spend||0)+goods; // loyalty builds on goods, not fees
+  ITEMS.forEach(it=>{ if(S.order[it.id]>0){addStock(it.id,S.order[it.id]); S.order[it.id]=0;} });
+  save(); ui.plan(); ui.bug();
+  toast(drop?`Delivery's in — plus ${d.name}'s $${drop} small-order drop charge.`:"Delivery's in the walk-in.");
+}
+function setPar(id,qty){
+  const q=Math.max(0,Math.floor(+qty||0));
+  if(q>0)S.pars[id]=q; else delete S.pars[id];
+  save();
+}
+function fillToPar(id){
+  // Tops the cart up so on-hand + cart covers each item's par (in servings).
+  const targets=id?ITEMS.filter(it=>it.id===id):ITEMS;
+  let added=0, cost=0;
+  targets.forEach(it=>{
+    const par=S.pars[it.id]||0; if(par<=0)return;
+    const per=it.servings||1;
+    const covered=stockOf(it.id)+S.order[it.id]*per;
+    const deficit=par-covered; if(deficit<=0)return;
+    const units=Math.ceil(deficit/per);
+    S.order[it.id]+=units; added+=units;
+    cost+=units*unitCost(it,S.order[it.id]); // fills qualify for bulk breaks like any order
+  });
+  if(added>0){ui.stock(); toast(`Par fill: +${added} unit${added>1?"s":""} in the cart ($${cost.toFixed(0)}).`);}
+  else toast(id?"Already at par (counting the cart).":"Everything's at par (counting the cart).");
+  return added;
+}
+function hire(id){
+  const a=S.applicants.find(x=>x.id===id); if(!a)return;
+  S.applicants=S.applicants.filter(x=>x.id!==id);
+  S.staff.push(a); save(); ui.plan(); toast(`${a.name} joins the crew.`);
+}
+function fire(id){
+  const s=S.staff.find(x=>x.id===id); if(!s)return;
+  S.staff=S.staff.filter(x=>x.id!==id); save(); ui.plan(); toast(`${s.name} turns in the apron.`);
+}
+function schedulePromo(id){
+  if(S.promoTonight===id){S.promoTonight=null;}
+  else{
+    const p=PROMOS.find(x=>x.id===id);
+    if(p.avail&&!p.avail()){toast(p.unavail||"Can't run that tonight.");return;}
+    if(p.cost>S.cash){toast("Can't cover the host fee.");return;}
+    S.promoTonight=id;
+  }
+  save(); ui.plan();
+}
+function buyAd(id){
+  const ad=ADS.find(a=>a.id===id);
+  if(S.ads.some(a=>a.id===id)){toast("That campaign's already running.");return;}
+  if(S.cash<ad.cost){toast("Not enough cash for that campaign.");return;}
+  S.cash-=ad.cost;
+  S.ads.push({id,daysLeft:ad.days});
+  save(); ui.plan(); ui.bug(); toast(`${ad.name} is live for ${ad.days} nights.`);
+}
+function buyTV(){
+  if(S.tvs>=S.venue.tvMax){toast("No wall space left in this venue.");return;}
+  if(S.cash<300){toast("Need $300 for a screen.");return;}
+  S.cash-=300; S.tvs++; save(); ui.plan(); ui.bug();
+}
+function toggleLeaguePass(){
+  S.leaguePass=!S.leaguePass; save(); ui.plan();
+  toast(S.leaguePass?"League Pass active — $140 billed Mondays.":"League Pass cancelled.");
+}
+function buyPatio(){
+  if(S.patio){toast("Patio's already built.");return;}
+  if(S.cash<900){toast("Need $900 for the patio build-out.");return;}
+  S.cash-=900; S.patio=true; save(); ui.plan(); ui.bug(); toast("Patio open — +10 seats.");
+}
+
+function venueState(tier){
+  const v=VENUES[tier];
+  return {tier,name:v.name,seats:v.seats,tvMax:v.tvMax,tvFull:v.tvFull,rent:v.rent,buzz:v.buzz};
+}
+function moveVenue(tier){
+  if(S.phase!=="plan")return;
+  const v=VENUES[tier];
+  if(!v){return;}
+  if(tier<=S.venue.tier){toast("You've outgrown that room. No going back.");return;}
+  if(S.cash<v.price){toast(`The bank won't touch it. You need $${v.price.toLocaleString()} up front.`);return;}
+  S.cash-=v.price;
+  const report={from:S.venue.name,to:v.name,price:v.price,nights:v.moveNights,rent:0,pass:0,spoiled:[]};
+  S.venue=venueState(tier);
+  S.patio=false;          // the build-out stays with the old landlord
+  S.promoTonight=null;    // tonight's plans are off — you're moving
+  S.rival.exclusive=false;
+  // regulars don't love change: dark doors + a new address cost loyalty; some don't follow
+  report.regLost=[];
+  S.regulars.forEach(r=>{r.loyalty-=10+8*v.moveNights;});
+  S.regulars=S.regulars.filter(r=>{
+    if(r.loyalty>0)return true;
+    report.regLost.push(r.name); return false;
+  });
+  for(let n=0;n<v.moveNights;n++)closedNight(report);
+  save(); ui.plan(); ui.bug(); ui.moveReport(report);
+}
+function closedNight(report){
+  // a dark night: the league plays on, rent's still due, food keeps aging
+  simOtherGames();
+  if(currentWeek().length&&currentWeek().every(g=>g.played)){S.league.week++;
+    const c=leagueAdvance(); if(c)report.champ=c;}
+  offseasonTick();
+  const dnRent=effRent(); S.cash-=dnRent; report.rent+=dnRent;
+  const uf=upgradeFees(); S.cash-=uf; report.fees=(report.fees||0)+uf;
+  if(S.leaguePass&&weekday()==="Mon"){S.cash-=140;report.pass+=140;}
+  if(dist().fee&&weekday()==="Mon"){S.cash-=dist().fee;report.distFee=(report.distFee||0)+dist().fee;}
+  const sp=spoilTick(); report.spoiled.push(...sp);
+  S.rival.buzz=Math.min(95,S.rival.buzz+1); report.rivalGain=(report.rivalGain||0)+1;
+  S.ads.forEach(a=>a.daysLeft--); S.ads=S.ads.filter(a=>a.daysLeft>0);
+  S.day++;
+}
+
+// ---------- save/load ----------
+function save(){try{localStorage.setItem("fourthquarter-save",JSON.stringify(S));}catch(e){}}
+
+// ---------- settings (Sprint 8) ----------
+// Separate localStorage key so preferences survive a progress reset.
+const SETTINGS_KEY="fourthquarter-settings";
+let SET={speed:1};
+function loadSettings(){
+  try{const raw=localStorage.getItem(SETTINGS_KEY);
+    if(raw){const s=JSON.parse(raw); if(s&&typeof s==="object")SET={...SET,...s};}
+  }catch(e){}
+  if(![1,2,4].includes(SET.speed))SET.speed=1;
+}
+function saveSettings(){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(SET));}catch(e){}}
+function exportSave(){return JSON.stringify(S);}
+function importSave(json){
+  let s; try{s=JSON.parse(json);}catch(e){return {ok:false,err:"That's not valid JSON."};}
+  if(!s||typeof s!=="object"||typeof s.day!=="number"||!s.venue||!Array.isArray(s.staff)
+     ||!Array.isArray(s.pantry)||!s.prices)
+    return {ok:false,err:"That doesn't look like a Fourth Quarter save."};
+  try{localStorage.setItem("fourthquarter-save",JSON.stringify(s));}catch(e){}
+  load(); // runs the legacy-save patcher + venue rehydrate on whatever came in
+  save(); ui.plan(); ui.bug();
+  return {ok:true};
+}
+function resetProgress(){
+  try{localStorage.removeItem("fourthquarter-save");}catch(e){}
+  N=null; stopClock();
+  newGame(); ui.plan(); ui.bug();
+}
+function load(){
+  try{const raw=localStorage.getItem("fourthquarter-save");
+    if(raw){S=JSON.parse(raw); if(S.phase!=="plan"){S.phase="plan";}
+      if(!("promoTonight" in S))S.promoTonight=null;
+      if(!S.ads)S.ads=[];
+      if(!S.eventCooldowns)S.eventCooldowns={};
+      if(!S.upgrades)S.upgrades=[];
+      if(!S.regulars)S.regulars=[];
+      if(!S.pars)S.pars={};
+      if(!S.rival)S.rival={buzz:45, exclusive:false};
+      if(!S.dist)S.dist={id:"county", spend:0};
+      if(!S.league.season)S.league.season=1;
+      if(!S.league.history)S.league.history=[];
+      leagueAdvance(); // pre-Sprint-10 saves parked at week 14 pick up the bracket
+      if(S.venue.tier===undefined){ // legacy saves were always the Corner Tap
+        const tvs=S.tvs; S.venue=venueState(0); S.tvs=Math.min(tvs,S.venue.tvMax);
+      }else{S.venue=venueState(S.venue.tier);} // pick up rebalanced numbers
+      return true;}
+  }catch(e){}
+  return false;
+}
+
+// ---------- logging / toast ----------
+function logLine(txt,cls){
+  if(!N)return;
+  N.log.push({txt,cls,hour:Math.min(7,N.hour)});
+  const el=document.getElementById("ticker");
+  if(el){const d=document.createElement("div");
+    d.innerHTML=`<span class="t">[${hourName(Math.min(7,N.hour))}]</span><span class="${cls||""}">${txt}</span>`;
+    el.appendChild(d); el.scrollTop=el.scrollHeight;}
+}
+let toastT=null;
+function toast(msg){
+  const el=document.getElementById("toast"); if(!el)return;
+  el.textContent=msg; el.style.display="block";
+  clearTimeout(toastT); toastT=setTimeout(()=>el.style.display="none",2600);
+}
+
+// ---------- UI ----------
+const $=s=>document.querySelector(s);
+const ui={
+  bug(){
+    $("#dayLabel").textContent=`Day ${S.day} · ${weekday()}`;
+    const c=$("#cash"); c.textContent="$"+Math.round(S.cash).toLocaleString();
+    c.classList.toggle("hurt",S.cash<0);
+    $("#rep").textContent=Math.round(S.rep);
+    $("#seats").textContent=S.venue.seats+(S.patio?10:0);
+    $("#tvs").textContent=S.tvs;
+  },
+  plan(){
+    $("#planWrap").style.display="block";
+    $("#nightWrap").style.display="none";
+    $("#liveBadge").style.display="none";
+    this.stock(); this.menu(); this.staff(); this.bar(); this.promo(); this.regulars(); this.league(); this.preview(); this.pantry();
+  },
+  regulars(){
+    const el=$("#regularsPanel"); if(!el)return;
+    const head=`<div class="hint mb">Run great, busy nights and locals start claiming stools — up to <b>${regularCap()}</b> in this room (bigger venues hold more).
+      They show up on their own, spend without looking at a menu, spread your name, and steady your rep on bad nights.
+      But 86 their usual order, run an ugly floor, or go dark for a move, and they drift. At zero loyalty they're gone — and word gets around.</div>`;
+    if(!S.regulars.length){el.innerHTML=head+`<div class="hint">No regulars yet. Big nights, well run — that's how you earn them.</div>`;return;}
+    el.innerHTML=head+`<table><tr><th>Name</th><th>Usual</th><th>Team</th><th class="num">Visits</th><th>Loyalty</th></tr>`+
+      S.regulars.map(r=>{
+        const t=TEAMS.find(x=>x.id===r.team);
+        const pct=Math.max(0,Math.min(100,Math.round(r.loyalty)));
+        const col=pct>=60?"var(--green)":pct>=30?"var(--amber)":"var(--red)";
+        return `<tr><td>${r.name}</td>
+          <td>${ITEMS.find(i=>i.id===r.order).name}</td>
+          <td>${t.id}${t.local?" ●":""}</td>
+          <td class="num">${r.visits}</td>
+          <td><div class="moodbar" style="margin-top:0;width:90px"><div style="width:${pct}%;background:${col}"></div></div></td></tr>`;
+      }).join("")+`</table>`;
+  },
+  stock(){
+    const t=$("#stockTable");
+    t.innerHTML=`<tr><th>Item</th><th class="num">Cost</th><th class="num">Shelf</th><th class="num">On hand</th><th>Order</th><th>Par</th></tr>`+
+      ITEMS.map(it=>{
+        const eff=it.cost*dist().mult*(1-loyaltyOff());
+        const tiers=bulkTiersFor(it).map(([m,x])=>`${m}+ −${Math.round(x*100)}%`).join(" · ");
+        const cls=eff<it.cost-0.005?"good":eff>it.cost+0.005?"warn":"money";
+        return `<tr>
+        <td>${it.name}<span class="hint"> /${it.unit}${it.servings?` (${it.servings} servings)`:""}</span></td>
+        <td class="num ${cls}" title="List $${it.cost} · bulk breaks: ${tiers}">$${(Math.round(eff*100)/100).toLocaleString()}</td>
+        <td class="num">${it.shelf>90?"—":it.shelf+"d"}</td>
+        <td class="num">${stockOf(it.id)}</td>
+        <td><span class="stepper">
+          <button data-ord="${it.id}" data-d="-100">-100</button>
+          <button data-ord="${it.id}" data-d="-10">-10</button>
+          <button data-ord="${it.id}" data-d="-1">-1</button>
+          <span class="qty" id="q-${it.id}">${S.order[it.id]}</span>
+          <button data-ord="${it.id}" data-d="1">+1</button>
+          <button data-ord="${it.id}" data-d="10">+10</button>
+          <button data-ord="${it.id}" data-d="100">+100</button></span></td>
+        <td class="parbtn"><input class="par" type="number" min="0" step="1" value="${S.pars[it.id]||""}"
+          placeholder="—" data-par="${it.id}" title="Target servings to keep on hand">
+          <button class="btn small ghost" data-fillpar="${it.id}" title="Add enough to the cart to hit this item's par">→Par</button></td>
+      </tr>`;}).join("");
+    this.orderTotal();
+    this.distributor();
+  },
+  distributor(){
+    const el=$("#distPanel"); if(!el)return;
+    const spend=(S.dist&&S.dist.spend)||0;
+    const off=loyaltyOff();
+    const next=off>=0.05?null:(Math.floor(spend/1000)+1)*1000;
+    const loyaltyLine=off>0
+      ?`House account with <b>${dist().name}</b>: $${Math.round(spend).toLocaleString()} spent — <span class="good">−${Math.round(off*100)}% loyalty</span>${next?` <span class="hint">($${(next-Math.round(spend)).toLocaleString()} to the next 1%)</span>`:" <span class='hint'>(maxed)</span>"}`
+      :`House account with <b>${dist().name}</b>: $${Math.round(spend).toLocaleString()} spent${next?` <span class="hint">($${(next-Math.round(spend)).toLocaleString()} to your first −1% loyalty)</span>`:""}`;
+    el.innerHTML=`
+      <div style="font-family:var(--disp);color:var(--amber);text-transform:uppercase;font-size:13px;letter-spacing:.1em;margin:16px 0 6px">Distributor</div>
+      <div class="hint mb">Bulk breaks on every order: food 10+/25+/100+ units, kegs &amp; cases 3+/6+/12+ — for −4/−6/−10%.
+        Every $1,000 spent with one house earns another 1% off (to −5%). Switch houses and the loyalty dies at the door.</div>
+      <div class="hint mb">${loyaltyLine}</div>
+      ${DISTRIBUTORS.map(d=>{
+        const active=S.dist.id===d.id, armed=distArm===d.id;
+        return `<div class="spread mb"><div><b>${d.name}</b>
+          ${active?'<span class="pill on">YOUR HOUSE</span>':""}
+          <div class="hint"><span class="good">▲</span> ${d.pro}</div>
+          <div class="hint"><span class="bad">▼</span> ${d.con}</div></div>
+          ${active?"":`<button class="btn small ${armed?"danger":"ghost"}" data-dist="${d.id}">${armed?"Confirm switch":"Sign with them"}</button>`}
+        </div>`;}).join("")}`;
+  },
+  orderTotal(){
+    let tot=0, list=0;
+    ITEMS.forEach(it=>{tot+=S.order[it.id]*unitCost(it,S.order[it.id]); list+=S.order[it.id]*it.cost;});
+    $("#orderTotal").textContent="$"+tot.toFixed(0);
+    const sv=$("#orderSavings"); if(sv){
+      const d=dist(), diff=list-tot;
+      let txt=diff>0.5?`−$${diff.toFixed(0)} off list`:diff<-0.5?`+$${(-diff).toFixed(0)} premium`:"";
+      if(d.minOrder&&tot>0&&tot<d.minOrder)txt+=(txt?" · ":"")+`+$${d.dropFee} drop charge under $${d.minOrder}`;
+      sv.textContent=txt?`(${txt})`:"";
+      sv.className="hint "+(diff>0.5?"good":diff<-0.5?"warn":"");
+    }
+  },
+  menu(){
+    $("#menuTable").innerHTML=`<tr><th>Item</th><th>Price</th><th class="num">Charging</th><th class="num">Appeal</th></tr>`+
+      ITEMS.map(it=>{
+        const a=appeal(it.id);
+        const cls=a>1?"good":a<0.7?"bad":"";
+        return `<tr><td>${it.name}</td>
+        <td><input type="range" min="${Math.max(1,Math.round(it.base*0.6))}" max="${Math.round(it.base*1.8)}" step="0.5" value="${S.prices[it.id]}" data-price="${it.id}"></td>
+        <td class="num money">$${S.prices[it.id].toFixed(2)}</td>
+        <td class="num ${cls}">${Math.round(a*100)}%</td></tr>`;}).join("");
+  },
+  staff(){
+    $("#staffTable").innerHTML=`<tr><th>Name</th><th>Role</th><th class="num">Skill</th><th class="num">Wage/night</th><th></th></tr>`+
+      S.staff.map(s=>`<tr><td>${s.name}</td><td>${ROLES[s.role].name}</td>
+        <td class="num">${"★".repeat(s.skill)}${"☆".repeat(5-s.skill)}</td>
+        <td class="num money">$${effWage(s)}${upg("training")?'<span class="hint" title="Staff Training Program">*</span>':""}</td>
+        <td><button class="btn small ghost" data-fire="${s.id}">Let go</button></td></tr>`).join("")||"<tr><td colspan=5 class='hint'>Nobody on payroll.</td></tr>";
+    $("#applicantTable").innerHTML=S.applicants.length?`<tr><th>Name</th><th>Role</th><th class="num">Skill</th><th class="num">Wage</th><th></th></tr>`+
+      S.applicants.map(a=>`<tr><td>${a.name}</td><td>${ROLES[a.role].name}</td>
+        <td class="num">${"★".repeat(a.skill)}${"☆".repeat(5-a.skill)}</td>
+        <td class="num money">$${effWage(a)}</td>
+        <td><button class="btn small" data-hire="${a.id}">Hire</button></td></tr>`).join("")
+      :"<tr><td class='hint'>No applications today. Better rep attracts better people.</td></tr>";
+  },
+  bar(){
+    $("#barPanel").innerHTML=`
+      <div class="spread mb"><div><b>${S.venue.name}</b><div class="hint">Rent $${effRent()}/night${rentMult()>1?` <span class="warn">(season ${seasonNum()} creep)</span>`:""} · ${S.venue.seats}${S.patio?"+10":""} seats · up to ${S.venue.tvMax} TVs</div></div></div>
+      <div class="spread mb"><div>TVs: <b>${S.tvs}</b> / ${S.venue.tvMax} <div class="hint">More screens = bigger game-night draw (full pull at ${S.venue.tvFull} in this room).</div></div>
+        <button class="btn small" id="buyTV">Add TV — $300</button></div>
+      <div class="spread mb"><div>League Pass <span class="pill ${S.leaguePass?"on":""}">${S.leaguePass?"ACTIVE":"OFF"}</span>
+        <div class="hint">Shows non-Mules league games. $140/week, billed Mondays.</div></div>
+        <button class="btn small ghost" id="togglePass">${S.leaguePass?"Cancel":"Subscribe"}</button></div>
+      <div class="spread"><div>Patio Seating ${S.patio?'<span class="pill on">BUILT</span>':""}
+        <div class="hint">+10 seats for the overflow crowd.</div></div>
+        ${S.patio?"":'<button class="btn small" id="buyPatio">Build — $900</button>'}</div>
+      <div style="font-family:var(--disp);color:var(--amber);text-transform:uppercase;font-size:13px;letter-spacing:.1em;margin:16px 0 6px">Upgrades</div>
+      <div class="hint mb">Every improvement cuts both ways. Gear rides in the truck when you move.</div>
+      ${UPGRADES.map(u=>{
+        const owned=upg(u.id), locked=S.venue.tier<u.tier;
+        return `<div class="spread mb"><div><b>${u.name}</b> <span class="hint">$${u.cost.toLocaleString()}${u.fee?` + $${u.fee}/night`:""}</span>
+          ${owned?'<span class="pill on">INSTALLED</span>':locked?`<span class="pill">needs ${VENUES[u.tier].name}</span>`:""}
+          <div class="hint"><span class="good">▲</span> ${u.pro}</div>
+          <div class="hint"><span class="bad">▼</span> ${u.con}</div></div>
+          ${owned?"":`<button class="btn small" data-upg="${u.id}" ${locked?"disabled":""}>Install</button>`}
+        </div>`;}).join("")}
+      <div style="font-family:var(--disp);color:var(--amber);text-transform:uppercase;font-size:13px;letter-spacing:.1em;margin:16px 0 6px">Real Estate</div>
+      <div class="hint mb">Bigger rooms draw bigger crowds — and bigger rent. Moving is one-way, the patio stays behind, and the doors go dark while you haul the kegs.</div>
+      ${VENUES.map(v=>{
+        const here=v.tier===S.venue.tier, past=v.tier<S.venue.tier;
+        return `<div class="spread mb"><div><b>${v.name}</b>
+          ${here?'<span class="pill on">HOME</span>':past?'<span class="pill">outgrown</span>':""}
+          <div class="hint">${v.seats} seats · up to ${v.tvMax} TVs (draw peaks at ${v.tvFull}) · rent $${Math.round(v.rent*rentMult())}/night</div>
+          <div class="hint">${v.blurb}</div></div>
+          ${!here&&!past?`<button class="btn small" data-move="${v.tier}">Move — $${v.price.toLocaleString()}${v.moveNights?` <span style="font-family:var(--body);font-size:10px">+${v.moveNights} dark night${v.moveNights>1?"s":""}</span>`:""}</button>`:""}
+        </div>`;}).join("")}`;
+    const tv=$("#buyTV"); if(tv)tv.onclick=buyTV;
+    const tp=$("#togglePass"); if(tp)tp.onclick=toggleLeaguePass;
+    const bp=$("#buyPatio"); if(bp)bp.onclick=buyPatio;
+  },
+  promo(){
+    const themes=PROMOS.map(p=>{
+      const on=S.promoTonight===p.id;
+      const blocked=p.avail&&!p.avail();
+      return `<div class="spread mb"><div><b>${p.name}</b>${p.cost?` <span class="hint">$${p.cost}</span>`:""}
+        ${on?'<span class="pill on">TONIGHT</span>':""}${blocked?'<span class="pill">unavailable</span>':""}
+        <div class="hint">${p.desc}</div></div>
+        <button class="btn small ${on?"":"ghost"}" data-promo="${p.id}" ${blocked&&!on?"disabled":""}>${on?"Cancel":"Run tonight"}</button></div>`;
+    }).join("");
+    const ads=ADS.map(a=>{
+      const run=S.ads.find(x=>x.id===a.id);
+      return `<div class="spread mb"><div><b>${a.name}</b> <span class="hint">$${a.cost}</span>
+        ${run?`<span class="pill on">${run.daysLeft} night${run.daysLeft>1?"s":""} left</span>`:""}
+        <div class="hint">${a.desc}</div></div>
+        <button class="btn small" data-ad="${a.id}" ${run?"disabled":""}>Buy</button></div>`;
+    }).join("");
+    document.getElementById("promoPanel").innerHTML=
+      `<div style="font-family:var(--disp);color:var(--amber);text-transform:uppercase;font-size:13px;letter-spacing:.1em;margin-bottom:6px">Tonight's Theme</div>${themes}
+       <div style="font-family:var(--disp);color:var(--amber);text-transform:uppercase;font-size:13px;letter-spacing:.1em;margin:14px 0 6px">Advertising</div>${ads}`;
+  },
+  league(){
+    const L=S.league, phase=seasonPhase();
+    const rows=[...L.teams].sort((a,b)=>b.w-a.w||a.l-b.l);
+    $("#standingsTable").innerHTML=
+      `<tr><td colspan="4" class="hint">MAFA Season ${L.season||1}${L.champion?` · Champions: <b>${team(L.champion).name}</b>`:phase==="playoffs"?' · <span class="warn">Playoffs</span>':""}${rentMult()>1?` · <span class="warn">rent +${Math.round((rentMult()-1)*100)}% / wages +${Math.round((wageMult()-1)*100)}% (season creep)</span>`:""}</td></tr>`+
+      `<tr><th>Team</th><th class="num">W</th><th class="num">L</th><th class="num">Streak</th></tr>`+
+      rows.map(t=>`<tr class="${t.local?"local":""}"><td>${t.name}${t.local?" ●":""}${L.seeds&&L.seeds.includes(t.id)?` <span class="pill">seed ${L.seeds.indexOf(t.id)+1}</span>`:""}</td>
+        <td class="num">${t.w}</td><td class="num">${t.l}</td><td class="num">${t.streak?`W${t.streak}`:"—"}</td></tr>`).join("");
+    const wk=currentWeek();
+    const champs=(L.history||[]).length?`<div class="hint mt">Past champions: ${L.history.map(h=>`S${h.season} ${team(h.champion).id}`).join(" · ")}</div>`:"";
+    const tag=g=>g.playoff?`<span class="pill hot">${g.playoff==="final"?"FINAL":"SEMI"}</span> `:"";
+    $("#weekTable").innerHTML=wk.length?
+      (phase==="playoffs"?`<tr><td colspan="3" class="hint">MAFA Playoffs — ${wk.some(g=>g.playoff==="final")?"the championship. Winner hangs the banner.":"semifinals. Win or go home."}</td></tr>`:"")+
+      `<tr><th>Day</th><th>Matchup</th><th>Result</th></tr>`+
+      wk.map(g=>`<tr><td>${g.day}</td><td>${tag(g)}${team(g.away).name} @ ${team(g.home).name}</td>
+        <td>${g.played?`<b>${team(g.winner).id}</b> win`:(g.day===weekday()?'<span class="warn">tonight</span>':"—")}</td></tr>`).join("")
+      :`<tr><td class='hint'>${phase==="offseason"
+        ?`Off-season. Season ${(L.season||1)+1} kicks off in ${L.offDays} night${L.offDays===1?"":"s"} — quiet rooms, same rent. The regulars still know where the good stools are.${champs}`
+        :"No games this week."}</td></tr>`;
+    const rb=S.rival, pct=Math.round(rb.buzz);
+    const col=pct>=70?"var(--red)":pct>=45?"var(--amber)":"var(--green)";
+    $("#rivalBlock").innerHTML=`
+      <div class="spread mb"><div><b>${RIVAL.name}</b> <span class="hint">${RIVAL.owner}'s place — ${rivalWord()}</span>
+        ${rb.exclusive?'<span class="pill hot">EXCLUSIVE TONIGHT</span>':""}
+        <div class="hint">Their buzz drags your draw when it outruns your rep${rivalPressure()>0?` <span class="bad">(−${Math.round(rivalPressure()*100)}% right now)</span>`:" (no drag right now)"}.
+        Out-draw them, win Vic's wagers, and counter their exclusives to bleed it. Ugly nights and dark doors feed it.</div></div>
+        <div style="min-width:110px;text-align:right"><span class="hint">buzz ${pct}</span>
+        <div class="moodbar" style="margin-top:4px;width:110px"><div style="width:${pct}%;background:${col}"></div></div></div>
+      </div>`;
+  },
+  preview(){
+    const f=nightForecast();
+    const pill=$("#nightPill");
+    pill.textContent=f.label;
+    pill.className="pill"+(f.lg?" hot":f.shows.length?" on":"");
+    const wages=S.staff.reduce((s,x)=>s+effWage(x),0);
+    const fees=upgradeFees();
+    const rows=[
+      ["Forecast crowd","~"+f.crowd+" over the night"],
+      ["Seats",S.venue.seats+(S.patio?10:0)],
+      ["Crew wages","$"+wages],
+      ["Rent","$"+effRent()],
+      ...(fees?[["Upkeep","$"+fees]]:[]),
+      ...((dist().fee&&weekday()==="Mon")?[["Distributor account (weekly)","$"+dist().fee]]:[]),
+      ["Regulars",S.regulars.length?S.regulars.length+" / "+regularCap()+" on the books":"—"],
+      ...(seasonPhase()==="offseason"?[["League",`Off-season — Season ${(S.league.season||1)+1} in ${S.league.offDays} night${S.league.offDays===1?"":"s"}`]]:[]),
+      ["Mules streak",winStreak()?("W"+winStreak()+" — town's buzzing"):"—"],
+      ["Theme",promo()?promo().name:"—"],
+      ["Ads running",S.ads.length?S.ads.map(a=>ADS.find(x=>x.id===a.id).name).join(", "):"—"],
+      ["Across town",RIVAL.name+" — "+rivalWord()+(rivalPressure()>0?` <span class="bad">(−${Math.round(rivalPressure()*100)}% draw)</span>`:"")],
+    ];
+    $("#preview").innerHTML=rows.map(r=>`<div class="line"><span class="hint">${r[0]}</span><span>${r[1]}</span></div>`).join("");
+    const warn=[];
+    if(!S.staff.some(s=>s.role==="cook"))warn.push("No cook — kitchen's closed tonight.");
+    if(!S.staff.some(s=>s.role==="server"))warn.push("No server — nobody's taking orders.");
+    if(!S.staff.some(s=>s.role==="bartender"))warn.push("No bartender — servers pour at half speed.");
+    if(f.gameNight&&stockOf("keg")<Math.round(f.crowd*1.2))warn.push("Beer's thin for a game night.");
+    if(gamesTonight().length&&!showableGamesTonight().length)warn.push("Games on tonight but you can't show them — no League Pass.");
+    if(seasonPhase()==="offseason"&&S.leaguePass)warn.push("Off-season: League Pass still bills $140 on Mondays. Cancel it if cash is tight.");
+    if(S.rival.exclusive&&!localGameTonight()&&showableGamesTonight().length)
+      warn.push(S.promoTonight==="watchparty"
+        ?`${RIVAL.name} claimed tonight's broadcast as an exclusive — your Watch Party goes head-to-head.`
+        :`${RIVAL.name} claimed tonight's broadcast as an exclusive. Counter with a Watch Party or eat the hit.`);
+    $("#warnings").innerHTML=warn.map(w=>`<div class="bad">⚠ ${w}</div>`).join("");
+  },
+  pantry(){
+    const groups={};
+    S.pantry.forEach(p=>{(groups[p.id]=groups[p.id]||[]).push(p);});
+    const rows=Object.keys(groups).map(id=>{
+      const it=ITEMS.find(i=>i.id===id);
+      const tot=groups[id].reduce((s,p)=>s+p.servings,0);
+      const soonest=Math.min(...groups[id].map(p=>p.left));
+      const cls=soonest<=1?"bad":soonest<=2?"warn":"";
+      return `<tr><td>${it.name}</td><td class="num">${tot}</td>
+        <td class="num ${cls}">${soonest>90?"—":soonest+"d"}</td></tr>`;
+    });
+    $("#pantryTable").innerHTML=`<tr><th>Item</th><th class="num">Servings</th><th class="num">Expires</th></tr>`+
+      (rows.join("")||"<tr><td colspan=3 class='hint'>Bare shelves.</td></tr>");
+  },
+  enterNight(){
+    $("#planWrap").style.display="none";
+    $("#nightWrap").style.display="block";
+    $("#liveBadge").style.display="flex";
+    $("#ticker").innerHTML="";
+    this.night();
+  },
+  night(){
+    if(!N)return;
+    $("#gHour").textContent=hourName(Math.min(7,N.hour));
+    $("#gCrowd").textContent=N.crowd;
+    $("#gRev").textContent="$"+Math.round(N.rev);
+    const pct=Math.round(N.mood*100);
+    $("#gMood").textContent=pct>=80?"Electric":pct>=60?"Good":pct>=40?"Restless":"Ugly";
+    $("#moodFill").style.width=pct+"%";
+    $("#moodFill").style.background=pct>=60?"var(--green)":pct>=40?"var(--amber)":"var(--red)";
+    this.bug();
+  },
+  showEvent(ev){
+    stopClock();
+    $("#modalTitle").textContent=ev.title;
+    $("#modalBody").textContent=typeof ev.body==="function"?ev.body():ev.body;
+    $("#modalChoices").innerHTML=ev.choices.map((c,i)=>
+      `<button data-choice="${i}">${typeof c.label==="function"?c.label():c.label}<span class="sub">${c.sub||""}</span></button>`).join("");
+    $("#modalBack").style.display="flex";
+  },
+  hideModal(){ $("#modalBack").style.display="none"; if(S.phase==="night")runClock(); },
+  moveReport(r){
+    const spoilTxt=r.spoiled.length?r.spoiled.map(p=>{
+      const it=ITEMS.find(i=>i.id===p.id);return `${p.servings} ${it.name}`;}).join(", "):"none";
+    $("#modalTitle").textContent="Moving Day";
+    $("#modalBody").innerHTML=`<div id="boxscore">
+      <p style="margin-bottom:10px">You hand back the keys to <b>${r.from}</b> and hang your sign at <b>${r.to}</b>.${r.nights?` The doors stayed dark for ${r.nights} night${r.nights>1?"s":""} while the trucks rolled.`:""}</p>
+      <div class="row"><span>Purchase</span><span class="bad">−$${r.price.toLocaleString()}</span></div>
+      <div class="row"><span>Rent while closed</span><span class="bad">−$${r.rent}</span></div>
+      ${r.pass?`<div class="row"><span>League Pass (weekly)</span><span class="bad">−$${r.pass}</span></div>`:""}
+      ${r.fees?`<div class="row"><span>Upgrade upkeep</span><span class="bad">−$${r.fees}</span></div>`:""}
+      ${r.distFee?`<div class="row"><span>${dist().name} account (weekly)</span><span class="bad">−$${r.distFee}</span></div>`:""}
+      <div class="row"><span>Spoiled in the move</span><span class="${r.spoiled.length?"bad":"hint"}">${spoilTxt}</span></div>
+      ${r.regLost&&r.regLost.length?`<div class="row"><span>Regulars who didn't follow</span><span class="bad">${r.regLost.join(", ")}</span></div>`:""}
+      ${r.rivalGain?`<div class="row"><span>${RIVAL.name} while you were dark</span><span class="bad">buzz +${r.rivalGain}</span></div>`:""}
+      ${r.champ?`<div class="row"><span>MAFA Champion (crowned while you were dark)</span><span>${team(r.champ).name}</span></div>`:""}
+      <div class="row"><span>Left behind</span><span class="hint">the patio, and whoever's still arguing about the jukebox</span></div>
+    </div>`;
+    $("#modalChoices").innerHTML=`<button data-close="1"><b>Open the new place →</b></button>`;
+    $("#modalBack").style.display="flex";
+  },
+  boxScore(){
+    stopClock();
+    const s=N.summary;
+    const rate=N.served+N.lost>0?Math.round(100*N.served/(N.served+N.lost)):100;
+    const spoilTxt=s.spoiled.length?s.spoiled.map(p=>{
+      const it=ITEMS.find(i=>i.id===p.id);return `${p.servings} ${it.name}`;}).join(", "):"none";
+    $("#modalTitle").textContent="Night "+S.day+" — Box Score";
+    $("#modalBody").innerHTML=`<div id="boxscore">
+      <div class="sec">Revenue</div>
+      <div class="row"><span>Kitchen</span><span class="money">$${Math.round(N.revFood)}</span></div>
+      <div class="row"><span>Bar</span><span class="money">$${Math.round(N.revDrink)}</span></div>
+      <div class="sec">Costs</div>
+      <div class="row"><span>Wages</span><span class="bad">−$${s.wages}</span></div>
+      <div class="row"><span>Rent</span><span class="bad">−$${s.rent}</span></div>
+      ${s.pass?`<div class="row"><span>League Pass (weekly)</span><span class="bad">−$${s.pass}</span></div>`:""}
+      ${s.fees?`<div class="row"><span>Upgrade upkeep</span><span class="bad">−$${s.fees}</span></div>`:""}
+      ${s.distFee?`<div class="row"><span>${dist().name} account (weekly)</span><span class="bad">−$${s.distFee}</span></div>`:""}
+      ${N.promoCost?`<div class="row"><span>${promo()?promo().name:"Promotion"}</span><span class="bad">−$${N.promoCost}</span></div>`:""}
+      ${N.expenses?`<div class="row"><span>Incidents</span><span class="bad">−$${N.expenses}</span></div>`:""}
+      ${N.betWon?`<div class="row"><span>Vic's wager</span><span class="money">+$${N.betWon}</span></div>`:""}
+      <div class="row total"><span>Net</span><span class="${s.net>=0?"good":"bad"}">${s.net>=0?"+":"−"}$${Math.abs(Math.round(s.net))}</span></div>
+      <div class="sec">The Crowd</div>
+      <div class="row"><span>Patrons through the door</span><span>${N.arrivalsTotal}</span></div>
+      <div class="row"><span>Service rate</span><span class="${rate>=90?"good":rate>=70?"warn":"bad"}">${rate}%</span></div>
+      <div class="row"><span>Reputation</span><span class="${s.dRep>=0?"good":"bad"}">${s.dRep>=0?"+":""}${s.dRep} → ${Math.round(S.rep)}</span></div>
+      <div class="row"><span>Regulars in tonight</span><span>${N.regsIn.length}${N.regSpend?` <span class="money">($${Math.round(N.regSpend)})</span>`:""}</span></div>
+      ${N.regGained?`<div class="row"><span>New regular</span><span class="good">${N.regGained.name} — ${ITEMS.find(i=>i.id===N.regGained.order).name} type</span></div>`:""}
+      ${N.regLost&&N.regLost.length?`<div class="row"><span>Regulars lost</span><span class="bad">${N.regLost.join(", ")}</span></div>`:""}
+      <div class="row"><span>${RIVAL.name} buzz</span><span class="${N.dRival>0?"bad":N.dRival<0?"good":""}">${N.dRival>0?"+":""}${N.dRival} → ${S.rival.buzz}</span></div>
+      ${N.champ?`<div class="row"><span>MAFA Champion</span><span class="${N.champ==="FVM"?"good":N.champ==="HCS"?"bad":""}">${team(N.champ).name}${N.champ==="FVM"?" — the town is yours":N.champ==="HCS"?" — Vic will not shut up about this":""}</span></div>`:""}
+      <div class="sec">Overnight</div>
+      <div class="row"><span>Spoiled stock</span><span class="${s.spoiled.length?"bad":"hint"}">${spoilTxt}</span></div>
+    </div>`;
+    $("#modalChoices").innerHTML=`<button data-viewlog="1">↩ Replay tonight's play-by-play</button>
+      <button data-nextday="1"><b>Open tomorrow's ledger →</b></button>`;
+    $("#modalBack").style.display="flex";
+  },
+  nightLog(){
+    stopClock();
+    const lines=(N&&N.log||[]).map(l=>
+      `<div><span class="t">[${hourName(l.hour)}]</span><span class="${l.cls||""}">${l.txt}</span></div>`).join("");
+    $("#modalTitle").textContent="Night "+S.day+" — Play-by-Play";
+    $("#modalBody").innerHTML=`<div id="replayTicker">${lines||"<div class='hint'>Quiet one — nothing logged.</div>"}</div>`;
+    $("#modalChoices").innerHTML=`<button data-backtobox="1">← Back to Box Score</button>
+      <button data-nextday="1"><b>Open tomorrow's ledger →</b></button>`;
+    $("#modalBack").style.display="flex";
+  },
+  settings(){
+    resetArmed=false;
+    $("#modalTitle").textContent="Back Office";
+    $("#modalBody").innerHTML=`
+      <div class="setrow">
+        <div><div class="lbl2">Night clock speed</div><div class="sub">Default pace when the doors open. Remembered between sessions.</div></div>
+        <span class="ctl">${[1,2,4].map(v=>`<button class="btn small ${speed===v?"":"ghost"}" data-speed="${v}">${v}×</button>`).join(" ")}</span>
+      </div>
+      <div class="setrow">
+        <div><div class="lbl2">Export save</div><div class="sub">Back up the books — copy the text or download a file.</div></div>
+        <button class="btn small ghost ctl" data-exportsave="1">Show</button>
+      </div>
+      <div id="exportWrap" style="display:none">
+        <textarea class="saveio" id="exportBox" readonly></textarea>
+        <div class="spread mt"><span class="hint">Day ${S.day} · ${S.venue.name}</span>
+          <span><button class="btn small ghost" data-copysave="1">Copy</button>
+          <button class="btn small ghost" data-dlsave="1">Download</button></span></div>
+      </div>
+      <div class="setrow">
+        <div><div class="lbl2">Import save</div><div class="sub">Paste an exported save. Replaces the current game.</div></div>
+        <button class="btn small ghost ctl" data-importtoggle="1">Paste</button>
+      </div>
+      <div id="importWrap" style="display:none">
+        <textarea class="saveio" id="importBox" placeholder='Paste the exported save JSON here…'></textarea>
+        <div class="spread mt"><span class="hint bad" id="importMsg"></span>
+          <button class="btn small" data-importsave="1">Load It</button></div>
+      </div>
+      <div class="setrow" style="border-bottom:none">
+        <div><div class="lbl2">Reset progress</div><div class="sub">Tear up the lease — deletes the save, back to Day 1 at The Corner Tap. No undo.</div></div>
+        <button class="btn small danger ctl" data-reset="1">New Game</button>
+      </div>`;
+    $("#modalChoices").innerHTML=`<button data-close="1"><b>Back to the floor</b></button>`;
+    $("#modalBack").style.display="flex";
+  },
+};
+
+// ---------- wiring ----------
+function wire(){
+  document.addEventListener("click",e=>{
+    const t=e.target.closest("button"); if(!t)return;
+    if(t.dataset.tab){
+      document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b===t));
+      ["stock","menu","staff","bar","promo","regulars","league"].forEach(id=>{
+        $("#tab-"+id).style.display=id===t.dataset.tab?"block":"none";});
+    }
+    if(t.dataset.ord){
+      const id=t.dataset.ord, d=+t.dataset.d;
+      S.order[id]=Math.max(0,S.order[id]+d);
+      $("#q-"+id).textContent=S.order[id]; ui.orderTotal();
+    }
+    if(t.dataset.fillpar)fillToPar(t.dataset.fillpar);
+    if(t.dataset.dist)setDistributor(t.dataset.dist);
+    if(t.dataset.hire)hire(t.dataset.hire);
+    if(t.dataset.promo)schedulePromo(t.dataset.promo);
+    if(t.dataset.ad)buyAd(t.dataset.ad);
+    if(t.dataset.fire)fire(t.dataset.fire);
+    if(t.dataset.upg)buyUpgrade(t.dataset.upg);
+    if(t.dataset.move!==undefined)moveVenue(+t.dataset.move);
+    if(t.dataset.close){ $("#modalBack").style.display="none"; ui.plan(); ui.bug(); }
+    if(t.dataset.choice!==undefined)resolveEvent(+t.dataset.choice);
+    if(t.dataset.viewlog){ ui.nightLog(); }
+    if(t.dataset.backtobox){ ui.boxScore(); }
+    if(t.dataset.nextday){ $("#modalBack").style.display="none"; nextDay(); }
+    if(t.dataset.speed){ speed=+t.dataset.speed; SET.speed=speed; saveSettings();
+      if(S.phase==="night"&&N&&!N.pendingEvent)runClock();
+      syncSpeedBtns(); }
+    if(t.dataset.exportsave){ const w=$("#exportWrap");
+      const show=w.style.display==="none"; w.style.display=show?"block":"none";
+      if(show)$("#exportBox").value=exportSave(); }
+    if(t.dataset.copysave){ const b=$("#exportBox"); b.select();
+      let ok=false; try{ok=document.execCommand("copy");}catch(e){}
+      toast(ok?"Save copied to clipboard.":"Copy blocked — select the text and copy it manually."); }
+    if(t.dataset.dlsave){ try{
+        const blob=new Blob([exportSave()],{type:"application/json"});
+        const a=document.createElement("a");
+        a.href=URL.createObjectURL(blob); a.download=`fourth-quarter-day${S.day}.json`;
+        a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+      }catch(e){toast("Download blocked here — use Copy instead.");} }
+    if(t.dataset.importtoggle){ const w=$("#importWrap");
+      w.style.display=w.style.display==="none"?"block":"none"; }
+    if(t.dataset.importsave){ const r=importSave($("#importBox").value);
+      if(r.ok){ $("#modalBack").style.display="none";
+        toast(`Books loaded — Day ${S.day} at ${S.venue.name}.`); }
+      else $("#importMsg").textContent=r.err; }
+    if(t.dataset.reset){
+      if(!resetArmed){ resetArmed=true; t.textContent="Click again — wipe it all"; t.classList.add("armed"); }
+      else { resetArmed=false; $("#modalBack").style.display="none"; resetProgress();
+        toast("Fresh books. Day 1 at The Corner Tap."); } }
+  });
+  document.addEventListener("input",e=>{
+    if(e.target.dataset&&e.target.dataset.price){
+      S.prices[e.target.dataset.price]=+e.target.value;
+      ui.menu(); save();
+    }
+    if(e.target.dataset&&e.target.dataset.par){
+      setPar(e.target.dataset.par,e.target.value); // no re-render — keeps focus in the input
+    }
+  });
+  $("#placeOrder").onclick=placeOrder;
+  $("#fillPar").onclick=()=>fillToPar();
+  $("#openBar").onclick=beginNight;
+  $("#settingsBtn").onclick=()=>{
+    if(S.phase!=="plan"){toast("Finish the night first — the back office can wait.");return;}
+    ui.settings();
+  };
+}
+let resetArmed=false;
+function syncSpeedBtns(){
+  document.querySelectorAll("[data-speed]").forEach(b=>{
+    b.classList.toggle("ghost",+b.dataset.speed!==speed);});
+}
+
+// ---------- boot ----------
+function boot(){
+  loadSettings(); speed=SET.speed;
+  if(!load())newGame();
+  wire(); syncSpeedBtns(); ui.bug(); ui.plan();
+}
+document.addEventListener("DOMContentLoaded",boot);
+
+// ---------- debug/test API ----------
+window.Game={
+  get state(){return S}, get night(){return N},
+  newGame, beginNight, nightTick, resolveEvent, endNight, nextDay,
+  placeOrder, hire, fire, buyTV, toggleLeaguePass, buyPatio, schedulePromo, buyAd, moveVenue, buyUpgrade,
+  get venues(){return VENUES}, get upgradeDefs(){return UPGRADES},
+  upgradeFees, effWage, crewCap,
+  addRegular, regularCap, get regulars(){return S.regulars},
+  get rival(){return S.rival}, setRivalBuzz(n){S.rival.buzz=Math.max(10,Math.min(95,n));},
+  rivalPressure, rivalMult, get eventDefs(){return EVENTS},
+  stockOf, nightForecast, save, load, setPar, fillToPar,
+  seasonPhase, leagueAdvance, startNewSeason, offseasonTick, regWeeksCount,
+  get league(){return S.league},
+  get distributors(){return DISTRIBUTORS}, get dist(){return S.dist},
+  setDistributor, loyaltyOff, orderCost,
+  unitCost:(id,q)=>unitCost(ITEMS.find(i=>i.id===id),q),
+  bulkOff:(id,q)=>bulkOff(ITEMS.find(i=>i.id===id),q),
+  appeal,
+  exportSave, importSave, resetProgress,
+  get settings(){return SET}, saveSettings, loadSettings,
+  get speed(){return speed},
+  seasonNum, rentMult, wageMult, effRent, rivalPowerChance, rivalPowerRange, rivalFloorBoost,
+  get ui(){return ui},
+  fastNight(){ // synchronous full night for tests
+    if(S.phase!=="night")beginNight();
+    stopClock();
+    let guard=0;
+    while(S.phase==="night"&&guard++<40){
+      if(N.pendingEvent)resolveEvent(0);
+      else nightTick();
+    }
+    if(N&&N.pendingEvent)resolveEvent(0);
+  },
+};
+</script>
+</body>
+</html>

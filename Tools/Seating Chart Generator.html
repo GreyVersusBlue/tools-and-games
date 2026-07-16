@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seating Chart Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Spline+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4f1ea;
+    --card:#fbf9f4;
+    --ink:#16242f;
+    --blue:#1d3b53;
+    --blue-soft:#dbe4ec;
+    --teal:#4f8a82;
+    --teal-deep:#3a6f68;
+    --teal-soft:#d8e7e3;
+    --gold:#c9912b;
+    --line:#d9d2c4;
+    --warn:#b4472f;
+    --shadow:0 1px 2px rgba(22,36,47,.08), 0 6px 18px rgba(22,36,47,.07);
+    --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{
+    font-family:'Spline Sans', -apple-system, "Segoe UI", sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    font-size:15px;
+    line-height:1.4;
+  }
+  h1,h2,h3{font-family:'Fraunces', Georgia, serif; font-weight:600; margin:0;}
+  button{font-family:inherit;}
+  .app{display:flex; min-height:100vh;}
+
+  /* ---------- sidebar ---------- */
+  .sidebar{
+    width:340px; flex:0 0 340px;
+    background:var(--card);
+    border-right:1px solid var(--line);
+    display:flex; flex-direction:column;
+    height:100vh; position:sticky; top:0;
+  }
+  .brand{padding:18px 20px 14px; border-bottom:1px solid var(--line);}
+  .brand h1{font-size:21px; color:var(--blue); letter-spacing:.2px;}
+  .brand p{margin:4px 0 0; font-size:12.5px; color:#6b6457;}
+  .side-scroll{overflow-y:auto; padding:16px 20px 28px; flex:1;}
+
+  .block{margin-bottom:22px;}
+  .block > h2{
+    font-size:14px; text-transform:uppercase; letter-spacing:.9px;
+    color:var(--teal-deep); font-family:'Spline Sans',sans-serif; font-weight:700;
+    margin-bottom:9px; display:flex; align-items:center; gap:8px;
+  }
+  .block > h2 .count{
+    font-weight:600; color:#8a8270; background:#efe9dc; border-radius:20px;
+    padding:1px 9px; font-size:11.5px; letter-spacing:.3px;
+  }
+
+  label.field{display:block; font-size:12.5px; color:#6b6457; margin:8px 0 4px;}
+  textarea, input[type=text], select{
+    width:100%; padding:8px 10px; border:1px solid var(--line);
+    border-radius:8px; background:#fff; color:var(--ink); font-size:14px;
+  }
+  textarea{resize:vertical; min-height:64px; line-height:1.35;}
+  textarea:focus, input:focus, select:focus{outline:2px solid var(--teal-soft); border-color:var(--teal);}
+
+  .btn{
+    border:1px solid var(--blue); background:var(--blue); color:#fff;
+    padding:8px 12px; border-radius:8px; cursor:pointer; font-size:13.5px; font-weight:600;
+    transition:transform .05s ease, background .15s ease;
+  }
+  .btn:hover{background:#163046;}
+  .btn:active{transform:translateY(1px);}
+  .btn.ghost{background:#fff; color:var(--blue); border-color:var(--line);}
+  .btn.ghost:hover{background:#f0ece2; border-color:var(--blue-soft);}
+  .btn.teal{background:var(--teal); border-color:var(--teal);}
+  .btn.teal:hover{background:var(--teal-deep);}
+  .btn.sm{padding:5px 9px; font-size:12.5px;}
+  .btn.danger{background:#fff;color:var(--warn);border-color:#e6c5bd;}
+  .btn.danger:hover{background:#fbeae6;}
+  .row{display:flex; gap:8px; flex-wrap:wrap;}
+  .row.tight{gap:6px;}
+
+  /* section tabs */
+  .sections{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;}
+  .sec-tab{
+    border:1px solid var(--line); background:#fff; color:var(--ink);
+    padding:6px 11px; border-radius:20px; cursor:pointer; font-size:13px; font-weight:600;
+  }
+  .sec-tab.active{background:var(--blue); color:#fff; border-color:var(--blue);}
+  .sec-tab:hover:not(.active){background:#f0ece2;}
+
+  /* roster list */
+  .roster{display:flex; flex-direction:column; gap:5px; margin-top:10px;}
+  .stu{
+    display:flex; align-items:center; gap:8px; background:#fff;
+    border:1px solid var(--line); border-radius:8px; padding:6px 8px;
+  }
+  .stu.flagged{border-color:var(--gold); box-shadow:inset 3px 0 0 var(--gold);}
+  .stu .nm{flex:1; font-size:13.5px; font-weight:500;}
+  .stu .note{font-size:11.5px; color:#8a8270; font-style:italic;}
+  .icon-btn{
+    border:none; background:none; cursor:pointer; font-size:14px; line-height:1;
+    color:#9a917e; padding:3px; border-radius:6px;
+  }
+  .icon-btn:hover{background:#efe9dc; color:var(--ink);}
+  .icon-btn.on{color:var(--gold);}
+
+  .pair{
+    display:flex; align-items:center; gap:6px; background:#fff;
+    border:1px solid var(--line); border-radius:8px; padding:5px 8px; font-size:13px; margin-bottom:5px;
+  }
+  .pair .pp{flex:1;}
+  .pair.apart{border-left:3px solid var(--warn);}
+  .pair.together{border-left:3px solid var(--teal);}
+
+  .hint{font-size:11.5px; color:#8a8270; margin-top:6px; line-height:1.4;}
+  .privacy{
+    margin-top:14px; font-size:11.5px; color:#6b6457; background:#eef4f2;
+    border:1px solid var(--teal-soft); border-radius:8px; padding:9px 11px;
+  }
+
+  /* ---------- main / floor ---------- */
+  .main{flex:1; display:flex; flex-direction:column; min-width:0; height:100vh;}
+  .toolbar{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:14px 22px; border-bottom:1px solid var(--line); background:var(--card);
+  }
+  .toolbar .grp{display:flex; gap:6px; align-items:center;}
+  .toolbar .sep{width:1px; height:26px; background:var(--line); margin:0 4px;}
+  .toolbar .spacer{flex:1;}
+  .toolbar .mini{width:48px; padding:6px 6px; text-align:center;}
+  .status{font-size:12.5px; color:#6b6457; margin-left:2px;}
+  .status b{color:var(--blue);}
+  .status .bad{color:var(--warn); font-weight:600;}
+  .status .good{color:var(--teal-deep); font-weight:600;}
+
+  .stage{flex:1; overflow:auto; padding:22px; background:
+     radial-gradient(circle at 1px 1px, #e2dccd 1px, transparent 0) 0 0 / 22px 22px,
+     var(--paper);}
+  .floor{
+    position:relative; width:1280px; min-height:760px; margin:0 auto;
+    background:#fffdf8; border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow);
+  }
+  .front-bar{
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    background:var(--blue); color:#fff; font-weight:700; letter-spacing:2px;
+    font-size:12px; padding:6px 26px; border-radius:7px;
+  }
+  .desk{
+    position:absolute; width:106px; height:70px;
+    background:#fff; border:1.5px solid var(--blue-soft); border-radius:10px;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    cursor:grab; user-select:none; box-shadow:var(--shadow); padding:4px;
+    transition:border-color .12s ease, box-shadow .12s ease;
+  }
+  .desk:hover{border-color:var(--teal);}
+  .desk.empty{background:#fbf9f4; border-style:dashed; color:#aaa194;}
+  .desk.empty .placeholder{font-size:11.5px;}
+  .desk.assigned{background:var(--teal-soft); border-color:var(--teal);}
+  .desk.flagged{border-color:var(--gold); box-shadow:0 0 0 2px rgba(201,145,43,.35), var(--shadow);}
+  .desk.sel-target{border-color:var(--teal-deep); box-shadow:0 0 0 3px var(--teal-soft);}
+  .desk .who{font-size:13px; font-weight:600; line-height:1.15; color:var(--ink); cursor:grab;}
+  .desk .delx{
+    position:absolute; top:-8px; right:-8px; width:20px; height:20px; border-radius:50%;
+    background:#fff; border:1px solid var(--line); color:#9a917e; font-size:12px;
+    line-height:1; display:none; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .desk:hover .delx{display:flex;}
+  .desk .selnote{position:absolute; bottom:-6px; left:50%; transform:translateX(-50%);
+    background:var(--gold); color:#fff; font-size:9px; font-weight:700; padding:1px 6px; border-radius:8px; display:none;}
+  .desk.selected .selnote{display:block;}
+  .desk.selected{box-shadow:0 0 0 3px var(--gold);}
+
+  /* unassigned pool */
+  .pool-wrap{border-top:1px solid var(--line); background:var(--card); padding:12px 22px; max-height:160px; overflow-y:auto;}
+  .pool-head{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+  .pool-head h3{font-size:14px; color:var(--blue);}
+  .pool-head .pc{font-size:12px; color:#8a8270; background:#efe9dc; padding:1px 9px; border-radius:20px;}
+  .pool{display:flex; flex-wrap:wrap; gap:7px; min-height:34px;}
+  .chip{
+    background:#fff; border:1px solid var(--blue-soft); border-radius:18px;
+    padding:5px 12px; font-size:13px; font-weight:600; cursor:grab; user-select:none;
+  }
+  .chip.flagged{border-color:var(--gold); box-shadow:inset 3px 0 0 var(--gold);}
+  .chip:hover{border-color:var(--teal);}
+  .chip.selected{background:var(--gold); color:#fff; border-color:var(--gold);}
+  .pool.drop-hot{outline:2px dashed var(--teal); outline-offset:3px; border-radius:8px;}
+  .pool-empty{color:#aaa194; font-size:13px; font-style:italic;}
+
+  .legend{font-size:12px; color:#6b6457; display:flex; gap:16px; align-items:center; margin-left:auto;}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .sw{width:13px; height:13px; border-radius:4px; display:inline-block;}
+
+  /* ---------- dark theme ---------- */
+  [data-theme="dark"]{
+    --paper:#0f161c; --card:#18222c; --ink:#e8eef3;
+    --blue:#5b8db4; --blue-soft:#2b3a48;
+    --teal:#5ea69c; --teal-deep:#7cc0b6; --teal-soft:#22403a;
+    --gold:#d6a23f; --line:#2b3744;
+    --shadow:0 1px 2px rgba(0,0,0,.45),0 8px 22px rgba(0,0,0,.4);
+  }
+  [data-theme="dark"] textarea,
+  [data-theme="dark"] input[type=text],
+  [data-theme="dark"] select{ background:#0e1820; color:var(--ink); }
+  [data-theme="dark"] .stu,
+  [data-theme="dark"] .pair,
+  [data-theme="dark"] .chip{ background:#0e1820; }
+  [data-theme="dark"] .btn:hover{ background:#4d7ea4; }
+  [data-theme="dark"] .btn.ghost{ background:#0e1820; color:#cfe0ee; }
+  [data-theme="dark"] .btn.ghost:hover{ background:#16222c; }
+  [data-theme="dark"] .btn.danger{ background:#0e1820; color:#e69b86; border-color:#5a3a33; }
+  [data-theme="dark"] .btn.danger:hover{ background:#241715; }
+  [data-theme="dark"] .sec-tab{ background:#0e1820; color:var(--ink); }
+  [data-theme="dark"] .sec-tab:hover:not(.active){ background:#16222c; }
+  [data-theme="dark"] .stage{ background:radial-gradient(circle at 1px 1px,#1d2730 1px,transparent 0) 0 0/22px 22px, var(--paper); }
+  [data-theme="dark"] .floor{ background:#121b22; }
+  [data-theme="dark"] .desk{ background:#16222c; color:var(--ink); }
+  [data-theme="dark"] .desk .who{ color:var(--ink); }
+  [data-theme="dark"] .desk.empty{ background:#121b22; color:#5f6e79; }
+  [data-theme="dark"] .desk.assigned{ background:var(--teal-soft); border-color:var(--teal); }
+  [data-theme="dark"] .block > h2 .count,
+  [data-theme="dark"] .pool-head .pc{ background:#22303b; color:#9fb0bd; }
+  [data-theme="dark"] .icon-btn{ color:#7e8d98; }
+  [data-theme="dark"] .icon-btn:hover{ background:#22303b; }
+  [data-theme="dark"] .privacy{ background:#10241e; border-color:var(--teal-soft); color:#b9c8d2; }
+  [data-theme="dark"] .desk-ctrl{ background:#16222c; }
+  [data-theme="dark"] .hint,
+  [data-theme="dark"] .stu .note,
+  [data-theme="dark"] .status,
+  [data-theme="dark"] .brand p,
+  [data-theme="dark"] .legend,
+  [data-theme="dark"] label.field,
+  [data-theme="dark"] .pool-empty{ color:#93a3ae; }
+
+  /* ---------- desk controls / pin / picker ---------- */
+  .desk-ctrls{ position:absolute; top:-11px; right:-7px; display:none; gap:3px; }
+  .desk:hover .desk-ctrls{ display:flex; }
+  .desk-ctrl{
+    width:21px; height:21px; border-radius:50%; background:var(--card);
+    border:1px solid var(--line); color:#9a917e; font-size:12px; line-height:1;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;
+  }
+  .desk-ctrl:hover{ color:var(--ink); }
+  .desk-ctrl.on{ color:var(--gold); border-color:var(--gold); }
+  .desk.locked{ border-color:var(--teal-deep); border-width:2px; }
+  .lockbadge{
+    position:absolute; top:-8px; left:-6px; background:var(--teal-deep); color:#fff;
+    font-size:9px; font-weight:700; letter-spacing:.3px; padding:1px 6px; border-radius:8px;
+  }
+  @keyframes pickpulse{
+    0%{ box-shadow:0 0 0 0 rgba(201,145,43,.65); }
+    70%{ box-shadow:0 0 0 16px rgba(201,145,43,0); }
+    100%{ box-shadow:0 0 0 0 rgba(201,145,43,0); }
+  }
+  .desk.picked{ border-color:var(--gold); animation:pickpulse 1.1s ease-out 2; z-index:30; }
+
+  @media print{
+    .sidebar,.toolbar,.pool-wrap{display:none !important;}
+    .app,.main,.stage{display:block; height:auto; overflow:visible;}
+    .stage{padding:0; background:#fff;}
+    .floor{box-shadow:none; border:none; width:100%; page-break-inside:avoid;}
+    .desk .delx{display:none !important;}
+    body{background:#fff;}
+    .print-title{display:block !important;}
+  }
+  .print-title{display:none; text-align:center; font-family:'Fraunces',serif; font-size:20px; margin:0 0 8px; color:var(--blue);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>Seating Chart Generator</h1>
+      <p>Build it once, shuffle it whenever you like.</p>
+    </div>
+    <div class="side-scroll">
+
+      <div class="block">
+        <h2>Class Sections</h2>
+        <div class="sections" id="sectionTabs"></div>
+        <div class="row tight">
+          <input type="text" id="newSectionName" placeholder="New section name">
+          <button class="btn sm ghost" onclick="addSection()">Add</button>
+          <button class="btn sm danger" onclick="renameSection()">Rename</button>
+          <button class="btn sm danger" onclick="deleteSection()">Delete</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>Roster <span class="count" id="rosterCount">0</span></h2>
+        <label class="field">Paste names (one per line) or type one and add</label>
+        <textarea id="nameInput" placeholder="Ada Lovelace&#10;Marco Polo&#10;Mansa Musa"></textarea>
+        <div class="row tight" style="margin-top:8px;">
+          <button class="btn sm teal" onclick="addNames()">Add to roster</button>
+          <button class="btn sm ghost" onclick="sortRoster()">Sort A&ndash;Z</button>
+        </div>
+        <div class="roster" id="rosterList"></div>
+        <p class="hint">Click the flag to mark a student who needs a specific spot (front row, away from the door, and so on). Flagged desks show a gold outline. Click the pencil to add a private note.</p>
+      </div>
+
+      <div class="block">
+        <h2>Keep Apart</h2>
+        <div class="row tight">
+          <select id="apartA"></select>
+          <select id="apartB"></select>
+          <button class="btn sm ghost" onclick="addPair('apart')">Add</button>
+        </div>
+        <div id="apartList" style="margin-top:9px;"></div>
+        <p class="hint">These two will never land in neighboring desks when you auto-assign.</p>
+      </div>
+
+      <div class="block">
+        <h2>Put Together</h2>
+        <div class="row tight">
+          <select id="togA"></select>
+          <select id="togB"></select>
+          <button class="btn sm ghost" onclick="addPair('together')">Add</button>
+        </div>
+        <div id="togList" style="margin-top:9px;"></div>
+        <p class="hint">These two will sit next to each other. Chain several pairs to build a pod (A with B, B with C).</p>
+      </div>
+
+      <div class="privacy">
+        <b>Privacy:</b> everything you enter stays in your browser. Nothing is uploaded anywhere. Use <b>Save file</b> to keep a copy on your computer, and <b>Open file</b> to load it back later.
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <div class="main">
+    <div class="toolbar">
+      <div class="grp">
+        <button class="btn sm" onclick="addDesk()">+ Desk</button>
+        <button class="btn sm ghost" onclick="addRow()">+ Row of</button>
+        <input class="mini" id="rowCount" type="text" value="6" title="Seats in this row">
+        <span class="status">seats</span>
+        <button class="btn sm ghost" onclick="addPod()">+ Pod of 4</button>
+      </div>
+      <div class="grp">
+        <button class="btn sm ghost" onclick="makeGrid()">Make grid</button>
+        <input class="mini" id="gridCols" type="text" value="6" title="Columns">
+        <span style="color:#9a917e;">&times;</span>
+        <input class="mini" id="gridRows" type="text" value="5" title="Rows">
+      </div>
+      <div class="sep"></div>
+      <div class="grp">
+        <button class="btn sm teal" onclick="autoAssign()">Auto-assign</button>
+        <button class="btn sm ghost" onclick="autoAssign()">Shuffle</button>
+        <button class="btn sm ghost" onclick="clearSeats()">Clear seats</button>
+        <button class="btn sm danger" onclick="clearDesks()">Remove desks</button>
+      </div>
+      <div class="sep"></div>
+      <div class="grp">
+        <button class="btn sm ghost" onclick="undo()" title="Undo (Ctrl+Z)">&#8630; Undo</button>
+        <button class="btn sm ghost" onclick="pickStudent()" title="Cold-call a random seated student">Pick a student</button>
+      </div>
+      <div class="sep"></div>
+      <div class="grp">
+        <button class="btn sm ghost" id="darkBtn" onclick="toggleDark()">Dark mode</button>
+        <button class="btn sm ghost" onclick="window.print()">Print</button>
+        <button class="btn sm ghost" onclick="saveFile()">Save file</button>
+        <button class="btn sm ghost" onclick="document.getElementById('importFile').click()">Open file</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none" onchange="openFile(event)">
+      </div>
+      <span class="spacer"></span>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="stage">
+      <h2 class="print-title" id="printTitle"></h2>
+      <div class="floor" id="floor">
+        <div class="front-bar">FRONT OF ROOM &nbsp;&middot;&nbsp; BOARD</div>
+      </div>
+    </div>
+
+    <div class="pool-wrap">
+      <div class="pool-head">
+        <h3>Not yet seated</h3>
+        <span class="pc" id="poolCount">0</span>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--teal-soft);border:1px solid var(--teal)"></i> seated</span>
+          <span><i class="sw" style="background:#fff;border:1px solid var(--gold)"></i> flagged</span>
+          <span>Tip: tap a name, then tap a desk</span>
+        </div>
+      </div>
+      <div class="pool" id="pool" ondragover="poolDragOver(event)" ondragleave="poolDragLeave(event)" ondrop="poolDrop(event)" onclick="poolClick(event)"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   State
+============================================================ */
+const GRID = 22;            // snap grid in px
+const DESK_W = 106, DESK_H = 70;
+const NEIGHBOR_DIST = 142;  // centers closer than this = neighbors
+
+let state = { sections: [], active: null, theme:'light' };
+let selectedStudent = null;     // studentId currently picked up (tap-to-place)
+let dragStudentId = null;       // html5 drag payload
+let dragFromDeskId = null;
+
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+/* ---- undo, dark mode, cold-call picker ---- */
+let undoStack=[];
+function pushUndo(){ undoStack.push(JSON.stringify(state)); if(undoStack.length>60) undoStack.shift(); }
+function undo(){
+  if(!undoStack.length) return;
+  state=JSON.parse(undoStack.pop());
+  if(!sec()) state.active=state.sections[0].id;
+  selectedStudent=null; applyTheme(); renderAll();
+}
+function toggleDark(){ state.theme = (state.theme==='dark')?'light':'dark'; applyTheme(); }
+function applyTheme(){
+  const dark = state.theme==='dark';
+  document.documentElement.setAttribute('data-theme', dark?'dark':'light');
+  const b=document.getElementById('darkBtn'); if(b) b.textContent = dark?'Light mode':'Dark mode';
+}
+let pickedSet=new Set(), pickedSection=null, lastPicked=null;
+function pickStudent(){
+  const s=sec();
+  const seated=Object.entries(s.assign);
+  if(!seated.length){ alert('No one is seated yet. Assign some students first.'); return; }
+  if(pickedSection!==s.id){ pickedSet=new Set(); pickedSection=s.id; }
+  let pool=seated.filter(([d,sid])=>!pickedSet.has(sid));
+  if(!pool.length){ pickedSet=new Set(); pool=seated; }       // new round once everyone has been called
+  const [deskId,sid]=pool[Math.floor(Math.random()*pool.length)];
+  pickedSet.add(sid); lastPicked=sid;
+  renderFloor();
+  const el=[...document.querySelectorAll('.desk')].find(e=>e.dataset.id===deskId);
+  if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  document.getElementById('status').innerHTML = baseStatus()+` &middot; <span class="good">Picked: ${esc(nameOf(sid))}</span>`;
+}
+function rotateDesk(id){ pushUndo(); const d=sec().desks.find(x=>x.id===id); d.rot=((d.rot||0)+90)%360; renderFloor(); }
+function toggleLock(id){ pushUndo(); const d=sec().desks.find(x=>x.id===id); d.locked=!d.locked; renderFloor(); }
+
+function seed(){
+  ["Honors","Academic","Foundational"].forEach(n=>{
+    state.sections.push(newSection(n));
+  });
+  state.active = state.sections[0].id;
+}
+function newSection(name){
+  return { id:uid(), name, students:[], apart:[], together:[], desks:[], assign:{} };
+}
+function sec(){ return state.sections.find(s=>s.id===state.active); }
+function studentById(id){ return sec().students.find(s=>s.id===id); }
+
+/* ============================================================
+   Sections
+============================================================ */
+function renderSections(){
+  const wrap = document.getElementById('sectionTabs');
+  wrap.innerHTML='';
+  state.sections.forEach(s=>{
+    const b=document.createElement('button');
+    b.className='sec-tab'+(s.id===state.active?' active':'');
+    b.textContent=s.name;
+    b.onclick=()=>{ state.active=s.id; selectedStudent=null; lastPicked=null; renderAll(); };
+    wrap.appendChild(b);
+  });
+}
+function addSection(){
+  const inp=document.getElementById('newSectionName');
+  const name=(inp.value||'').trim() || ('Section '+(state.sections.length+1));
+  pushUndo();
+  const s=newSection(name); state.sections.push(s); state.active=s.id;
+  inp.value=''; renderAll();
+}
+function renameSection(){
+  const name=prompt('Rename this section:', sec().name);
+  if(name && name.trim()){ pushUndo(); sec().name=name.trim(); renderAll(); }
+}
+function deleteSection(){
+  if(state.sections.length===1){ alert('Keep at least one section.'); return; }
+  if(!confirm('Delete the "'+sec().name+'" section and everything in it?')) return;
+  pushUndo();
+  state.sections=state.sections.filter(s=>s.id!==state.active);
+  state.active=state.sections[0].id; renderAll();
+}
+
+/* ============================================================
+   Roster
+============================================================ */
+function addNames(){
+  const box=document.getElementById('nameInput');
+  const lines=box.value.split('\n').map(t=>t.trim()).filter(Boolean);
+  if(!lines.length) return;
+  pushUndo();
+  lines.forEach(nm=> sec().students.push({id:uid(), name:nm, note:'', flag:false}));
+  box.value=''; renderAll();
+}
+function removeStudent(id){
+  pushUndo();
+  const s=sec();
+  s.students=s.students.filter(x=>x.id!==id);
+  s.apart=s.apart.filter(p=>!p.includes(id));
+  s.together=s.together.filter(p=>!p.includes(id));
+  for(const d in s.assign){ if(s.assign[d]===id) delete s.assign[d]; }  // free the seat, keep the desk
+  if(selectedStudent===id) selectedStudent=null;
+  renderAll();
+}
+function toggleFlag(id){ pushUndo(); studentById(id).flag=!studentById(id).flag; renderAll(); }
+function editNote(id){
+  const st=studentById(id);
+  const n=prompt('Private note for '+st.name+' (stays on your computer only):', st.note||'');
+  if(n!==null){ pushUndo(); st.note=n.trim(); renderAll(); }
+}
+function sortRoster(){
+  pushUndo();
+  sec().students.sort((a,b)=>a.name.localeCompare(b.name));
+  renderAll();
+}
+function renderRoster(){
+  const list=document.getElementById('rosterList');
+  list.innerHTML='';
+  sec().students.forEach(st=>{
+    const row=document.createElement('div');
+    row.className='stu'+(st.flag?' flagged':'');
+    row.innerHTML=`
+      <span class="nm">${esc(st.name)}${st.note?` <span class="note">(${esc(st.note)})</span>`:''}</span>
+      <button class="icon-btn ${st.flag?'on':''}" title="Flag for a specific spot" onclick="toggleFlag('${st.id}')">&#9873;</button>
+      <button class="icon-btn" title="Private note" onclick="editNote('${st.id}')">&#9998;</button>
+      <button class="icon-btn" title="Remove" onclick="removeStudent('${st.id}')">&times;</button>`;
+    list.appendChild(row);
+  });
+  document.getElementById('rosterCount').textContent=sec().students.length;
+}
+
+/* ============================================================
+   Constraint pairs
+============================================================ */
+function fillSelect(id){
+  const el=document.getElementById(id);
+  const cur=el.value;
+  el.innerHTML='';
+  sec().students.forEach(st=>{
+    const o=document.createElement('option'); o.value=st.id; o.textContent=st.name; el.appendChild(o);
+  });
+  if([...el.options].some(o=>o.value===cur)) el.value=cur;
+}
+function addPair(kind){
+  const a=document.getElementById(kind==='apart'?'apartA':'togA').value;
+  const b=document.getElementById(kind==='apart'?'apartB':'togB').value;
+  if(!a||!b||a===b){ alert('Pick two different students.'); return; }
+  const list=kind==='apart'?sec().apart:sec().together;
+  if(list.some(p=>(p[0]===a&&p[1]===b)||(p[0]===b&&p[1]===a))) return;
+  pushUndo();
+  list.push([a,b]);
+  // a pair cannot be both apart and together
+  if(kind==='apart') sec().together=sec().together.filter(p=>!((p[0]===a&&p[1]===b)||(p[0]===b&&p[1]===a)));
+  else sec().apart=sec().apart.filter(p=>!((p[0]===a&&p[1]===b)||(p[0]===b&&p[1]===a)));
+  renderAll();
+}
+function removePair(kind,i){
+  pushUndo();
+  if(kind==='apart') sec().apart.splice(i,1); else sec().together.splice(i,1);
+  renderAll();
+}
+function nameOf(id){ const s=studentById(id); return s?s.name:'(removed)'; }
+function renderPairs(){
+  const ap=document.getElementById('apartList'); ap.innerHTML='';
+  sec().apart.forEach((p,i)=>{
+    const d=document.createElement('div'); d.className='pair apart';
+    d.innerHTML=`<span class="pp">${esc(nameOf(p[0]))} &nbsp;&#8212;&nbsp; ${esc(nameOf(p[1]))}</span>
+      <button class="icon-btn" onclick="removePair('apart',${i})">&times;</button>`;
+    ap.appendChild(d);
+  });
+  const tg=document.getElementById('togList'); tg.innerHTML='';
+  sec().together.forEach((p,i)=>{
+    const d=document.createElement('div'); d.className='pair together';
+    d.innerHTML=`<span class="pp">${esc(nameOf(p[0]))} &nbsp;+&nbsp; ${esc(nameOf(p[1]))}</span>
+      <button class="icon-btn" onclick="removePair('together',${i})">&times;</button>`;
+    tg.appendChild(d);
+  });
+}
+
+/* ============================================================
+   Desks: add / layout / move
+============================================================ */
+function snap(v){ return Math.round(v/GRID)*GRID; }
+function nextSpot(){
+  // find a free-ish spot scanning a grid
+  const s=sec();
+  const startY=110;
+  for(let y=startY;y<700;y+=DESK_H+24){
+    for(let x=40;x<1140;x+=DESK_W+24){
+      if(!s.desks.some(d=>Math.abs(d.x-x)<DESK_W && Math.abs(d.y-y)<DESK_H)) return {x:snap(x),y:snap(y)};
+    }
+  }
+  return {x:snap(40+Math.random()*200), y:snap(120+Math.random()*200)};
+}
+function addDesk(){ pushUndo(); const p=nextSpot(); sec().desks.push({id:uid(),x:p.x,y:p.y}); renderFloor(); refreshStatus(); }
+function addRow(){
+  let n=parseInt(document.getElementById('rowCount').value)||6;
+  n=Math.max(1,Math.min(14,n));
+  pushUndo();
+  const s=sec();
+  const y = s.desks.length? snap(Math.max(...s.desks.map(d=>d.y))+DESK_H+24) : 110;
+  const totalW=n*DESK_W+(n-1)*22;
+  let x=snap(Math.max(30,(1280-totalW)/2));
+  for(let i=0;i<n;i++){ s.desks.push({id:uid(),x:snap(x),y:y}); x+=DESK_W+22; }
+  renderFloor(); refreshStatus();
+}
+function addPod(){
+  pushUndo();
+  const s=sec();
+  const p=nextSpot();
+  const off=[[0,0],[DESK_W+10,0],[0,DESK_H+10],[DESK_W+10,DESK_H+10]];
+  off.forEach(o=> s.desks.push({id:uid(),x:snap(p.x+o[0]),y:snap(p.y+o[1])}));
+  renderFloor(); refreshStatus();
+}
+function makeGrid(){
+  let cols=parseInt(document.getElementById('gridCols').value)||6;
+  let rows=parseInt(document.getElementById('gridRows').value)||5;
+  cols=Math.max(1,Math.min(12,cols)); rows=Math.max(1,Math.min(10,rows));
+  pushUndo();
+  const s=sec(); s.desks=[]; s.assign={};
+  const totalW=cols*DESK_W+(cols-1)*22;
+  const startX=snap(Math.max(30,(1280-totalW)/2));
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      s.desks.push({id:uid(), x:snap(startX+c*(DESK_W+22)), y:snap(110+r*(DESK_H+24))});
+    }
+  }
+  renderFloor(); refreshStatus();
+}
+function removeDesk(id){
+  pushUndo();
+  const s=sec();
+  s.desks=s.desks.filter(d=>d.id!==id);
+  delete s.assign[id];
+  renderFloor(); refreshStatus();
+}
+function clearDesks(){
+  if(!confirm('Remove all desks from this section?')) return;
+  pushUndo();
+  sec().desks=[]; sec().assign={}; renderFloor(); refreshStatus();
+}
+function clearSeats(){ pushUndo(); sec().assign={}; selectedStudent=null; renderAll(); }
+
+/* ============================================================
+   Neighbor map + auto-assign solver
+============================================================ */
+function centers(desks){
+  const c={}; desks.forEach(d=> c[d.id]={x:d.x+DESK_W/2, y:d.y+DESK_H/2}); return c;
+}
+function neighborMap(){
+  const desks=sec().desks; const c=centers(desks); const m={};
+  desks.forEach(d=>m[d.id]=[]);
+  for(let i=0;i<desks.length;i++){
+    for(let j=i+1;j<desks.length;j++){
+      const a=desks[i], b=desks[j];
+      const dist=Math.hypot(c[a.id].x-c[b.id].x, c[a.id].y-c[b.id].y);
+      if(dist<=NEIGHBOR_DIST){ m[a.id].push(b.id); m[b.id].push(a.id); }
+    }
+  }
+  return m;
+}
+// union-find for together groups
+function groups(){
+  const parent={}; sec().students.forEach(s=>parent[s.id]=s.id);
+  const find=x=>{ while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; };
+  const union=(a,b)=>{ parent[find(a)]=find(b); };
+  sec().together.forEach(([a,b])=>{ if(parent[a]&&parent[b]) union(a,b); });
+  const g={};
+  sec().students.forEach(s=>{ const r=find(s.id); (g[r]=g[r]||[]).push(s.id); });
+  return Object.values(g);
+}
+function apartMap(){
+  const m={}; sec().students.forEach(s=>m[s.id]=new Set());
+  sec().apart.forEach(([a,b])=>{ if(m[a]) m[a].add(b); if(m[b]) m[b].add(a); });
+  return m;
+}
+function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+
+function tryOnce(nbrs, apart, freeDesks, toPlace, seedDesk, seedStudent){
+  const idset=new Set(toPlace);
+  const blocks=shuffle(groups().map(g=>shuffle(g.slice())));
+  // members needing a seat keep their group reference so pinned partners still pull them close
+  const order=[];
+  blocks.forEach(b=> b.forEach(id=>{ if(idset.has(id)) order.push({id, group:b}); }));
+  const free=new Set(freeDesks);
+  const studentDesk=Object.assign({}, seedStudent);   // studentId -> deskId
+  const deskStudent=Object.assign({}, seedDesk);       // deskId -> studentId
+
+  function ok(sid, did){
+    for(const m of apart[sid]){
+      const md=studentDesk[m];
+      if(md && nbrs[did].includes(md)) return false;
+    }
+    return true;
+  }
+  for(const item of order){
+    const sid=item.id;
+    const placedMates=item.group.filter(g=>g!==sid && studentDesk[g]);
+    let cands=[...free].filter(did=>ok(sid,did));
+    if(placedMates.length){
+      const need=cands.filter(did=> placedMates.some(m=> nbrs[did].includes(studentDesk[m]) ));
+      if(need.length) cands=need; else return null;
+    }
+    if(!cands.length) return null;
+    const pick=cands[Math.floor(Math.random()*cands.length)];
+    studentDesk[sid]=pick; deskStudent[pick]=sid; free.delete(pick);
+  }
+  return deskStudent;
+}
+function validate(assign, nbrs, apart){
+  for(const [a,b] of sec().apart){
+    const da=Object.keys(assign).find(d=>assign[d]===a);
+    const db=Object.keys(assign).find(d=>assign[d]===b);
+    if(da&&db&&nbrs[da].includes(db)) return false;
+  }
+  return true;
+}
+function autoAssign(){
+  const s=sec();
+  if(!s.students.length){ alert('Add some students first.'); return; }
+  if(!s.desks.length){ alert('Add some desks first. Try "Make grid".'); return; }
+  pushUndo();
+  const nbrs=neighborMap(); const apart=apartMap();
+
+  // pinned (locked) seats stay exactly where they are
+  const seedDesk={}, seedStudent={}, lockedSids=new Set(), lockedDesks=new Set();
+  s.desks.forEach(d=>{
+    if(d.locked){
+      lockedDesks.add(d.id);
+      const sid=s.assign[d.id];
+      if(sid){ seedDesk[d.id]=sid; seedStudent[sid]=d.id; lockedSids.add(sid); }
+    }
+  });
+  const freeDesks=s.desks.filter(d=>!lockedDesks.has(d.id)).map(d=>d.id);
+  const toPlace=s.students.filter(st=>!lockedSids.has(st.id)).map(st=>st.id);
+
+  let best=null;
+  for(let i=0;i<800;i++){
+    const a=tryOnce(nbrs, apart, freeDesks, toPlace, seedDesk, seedStudent);
+    if(a){ best=a; if(validate(a,nbrs,apart)) break; }
+  }
+  if(!best){
+    // last resort: fill ignoring constraints so the teacher still gets a chart
+    best=Object.assign({}, seedDesk);
+    const ds=shuffle(freeDesks.slice()); const st=shuffle(toPlace.slice());
+    for(let i=0;i<Math.min(ds.length,st.length);i++) best[ds[i]]=st[i];
+  }
+  s.assign=best;
+  selectedStudent=null;
+  renderAll();
+  reportConstraints();
+}
+function reportConstraints(){
+  const nbrs=neighborMap();
+  const apartOK = sec().apart.every(([a,b])=>{
+    const da=Object.keys(sec().assign).find(d=>sec().assign[d]===a);
+    const db=Object.keys(sec().assign).find(d=>sec().assign[d]===b);
+    return !(da&&db&&nbrs[da].includes(db));
+  });
+  const togOK = sec().together.every(([a,b])=>{
+    const da=Object.keys(sec().assign).find(d=>sec().assign[d]===a);
+    const db=Object.keys(sec().assign).find(d=>sec().assign[d]===b);
+    return da&&db&&nbrs[da].includes(db);
+  });
+  const msg=document.getElementById('status');
+  let extra='';
+  if(!apartOK) extra+=' <span class="bad">Some keep-apart pairs could not be separated.</span>';
+  if(!togOK) extra+=' <span class="bad">Some put-together pairs could not be seated next to each other.</span>';
+  if(apartOK&&togOK && (sec().apart.length||sec().together.length)) extra=' <span class="good">All seating rules met.</span>';
+  msg.innerHTML=baseStatus()+extra;
+}
+
+/* ============================================================
+   Rendering the floor
+============================================================ */
+function renderFloor(){
+  const floor=document.getElementById('floor');
+  // clear desks but keep front bar
+  [...floor.querySelectorAll('.desk')].forEach(d=>d.remove());
+  const s=sec();
+  s.desks.forEach(d=>{
+    const sid=s.assign[d.id];
+    const st=sid?studentById(sid):null;
+    const el=document.createElement('div');
+    el.className='desk '+(st?'assigned':'empty')+(st&&st.flag?' flagged':'')+(d.locked?' locked':'')+(selectedStudent&&!st?' sel-target':'');
+    el.style.left=d.x+'px'; el.style.top=d.y+'px';
+    el.style.transform=(d.rot? 'rotate('+d.rot+'deg)':'');
+    el.dataset.id=d.id;
+    const body = st ? `<span class="who" draggable="true">${esc(st.name)}</span>`
+                    : `<span class="placeholder">empty</span>`;
+    el.innerHTML = body
+      + `<span class="selnote">moving</span>`
+      + (d.locked?`<span class="lockbadge">pinned</span>`:``)
+      + `<span class="desk-ctrls">`
+      +   `<button class="desk-ctrl" data-act="rot" title="Rotate desk">&#8635;</button>`
+      +   `<button class="desk-ctrl ${d.locked?'on':''}" data-act="lock" title="Pin this seat so Shuffle keeps it">&#9679;</button>`
+      +   `<button class="desk-ctrl" data-act="del" title="Remove this desk">&times;</button>`
+      + `</span>`;
+    if(st && selectedStudent===sid) el.classList.add('selected');
+    if(st && lastPicked===sid) el.classList.add('picked');
+    // desk control buttons
+    el.querySelectorAll('.desk-ctrl').forEach(b=>{
+      b.addEventListener('pointerdown',ev=>ev.stopPropagation());
+      b.addEventListener('click',ev=>{
+        ev.stopPropagation();
+        const a=b.dataset.act;
+        if(a==='del') removeDesk(d.id);
+        else if(a==='rot') rotateDesk(d.id);
+        else if(a==='lock') toggleLock(d.id);
+      });
+    });
+    // tap to place / pick up
+    el.addEventListener('click',ev=> deskClick(ev, d.id));
+    // drag desk to move (pointer)
+    el.addEventListener('pointerdown',ev=> deskPointerDown(ev, d.id, el));
+    // html5 drag of the seated student
+    const who=el.querySelector('.who');
+    if(who){
+      who.addEventListener('dragstart',ev=>{ dragStudentId=sid; dragFromDeskId=d.id; ev.dataTransfer.setData('text/plain',sid); ev.stopPropagation(); });
+    }
+    // desk is a drop target for students
+    el.addEventListener('dragover',ev=>{ ev.preventDefault(); });
+    el.addEventListener('drop',ev=>{ ev.preventDefault(); deskDrop(ev, d.id); });
+    floor.appendChild(el);
+  });
+}
+
+/* ----- moving desks with pointer ----- */
+let moving=null;
+function deskPointerDown(ev, id, el){
+  if(ev.target.closest('.desk-ctrl') || ev.target.classList.contains('who')) return; // controls / student drag
+  if(ev.button!==0) return;
+  const d=sec().desks.find(x=>x.id===id);
+  const floorRect=document.getElementById('floor').getBoundingClientRect();
+  moving={id, el, dx:ev.clientX-(floorRect.left+d.x), dy:ev.clientY-(floorRect.top+d.y), floorRect, moved:false, snap0:JSON.stringify(state)};
+  el.setPointerCapture(ev.pointerId);
+  el.style.cursor='grabbing'; el.style.zIndex=50;
+}
+document.addEventListener('pointermove',ev=>{
+  if(!moving) return;
+  const x=ev.clientX-moving.floorRect.left-moving.dx;
+  const y=ev.clientY-moving.floorRect.top-moving.dy;
+  moving.moved=true;
+  moving.el.style.left=Math.max(0,Math.min(1280-DESK_W,x))+'px';
+  moving.el.style.top=Math.max(0,Math.min(900-DESK_H,y))+'px';
+});
+document.addEventListener('pointerup',ev=>{
+  if(!moving) return;
+  if(moving.moved){
+    undoStack.push(moving.snap0); if(undoStack.length>60) undoStack.shift();
+    const d=sec().desks.find(x=>x.id===moving.id);
+    d.x=snap(parseFloat(moving.el.style.left));
+    d.y=snap(parseFloat(moving.el.style.top));
+  }
+  moving.el.style.zIndex=''; moving.el.style.cursor='grab';
+  moving=null;
+  renderFloor();
+});
+
+/* ----- tap-to-place ----- */
+function deskClick(ev, deskId){
+  if(moving && moving.moved) return; // was a drag
+  const s=sec();
+  const here=s.assign[deskId];
+  if(selectedStudent){
+    pushUndo();
+    // place selected here
+    if(here && here!==selectedStudent){
+      // swap: find where selected currently is
+      const fromDesk=Object.keys(s.assign).find(d=>s.assign[d]===selectedStudent);
+      if(fromDesk){ s.assign[fromDesk]=here; } // move displaced student to selected's old desk
+      else { /* selected came from pool */ }
+      s.assign[deskId]=selectedStudent;
+      if(!fromDesk){ /* displaced student goes to pool if no slot */ }
+    } else {
+      const fromDesk=Object.keys(s.assign).find(d=>s.assign[d]===selectedStudent);
+      if(fromDesk) delete s.assign[fromDesk];
+      s.assign[deskId]=selectedStudent;
+    }
+    selectedStudent=null;
+    renderAll();
+  } else if(here){
+    selectedStudent=here; renderAll();
+  }
+}
+
+/* ----- html5 drop on desk ----- */
+function deskDrop(ev, deskId){
+  const s=sec();
+  const sid=dragStudentId; if(!sid) return;
+  pushUndo();
+  const occupant=s.assign[deskId];
+  const fromDesk=dragFromDeskId;
+  if(occupant && occupant!==sid){
+    if(fromDesk){ s.assign[fromDesk]=occupant; } else { /* occupant returns to pool */ }
+    s.assign[deskId]=sid;
+  } else {
+    if(fromDesk) delete s.assign[fromDesk];
+    s.assign[deskId]=sid;
+  }
+  dragStudentId=null; dragFromDeskId=null;
+  renderAll();
+}
+
+/* ============================================================
+   Pool (unassigned)
+============================================================ */
+function renderPool(){
+  const pool=document.getElementById('pool'); pool.innerHTML='';
+  const s=sec();
+  const seated=new Set(Object.values(s.assign));
+  const un=s.students.filter(st=>!seated.has(st.id));
+  if(!un.length){ pool.innerHTML='<span class="pool-empty">Everyone has a seat.</span>'; }
+  un.forEach(st=>{
+    const c=document.createElement('div');
+    c.className='chip'+(st.flag?' flagged':'')+(selectedStudent===st.id?' selected':'');
+    c.textContent=st.name; c.draggable=true; c.dataset.id=st.id;
+    c.addEventListener('dragstart',ev=>{ dragStudentId=st.id; dragFromDeskId=null; ev.dataTransfer.setData('text/plain',st.id); });
+    c.addEventListener('click',ev=>{ ev.stopPropagation(); selectedStudent = (selectedStudent===st.id?null:st.id); renderAll(); });
+    pool.appendChild(c);
+  });
+  document.getElementById('poolCount').textContent=un.length;
+}
+function poolClick(ev){
+  // tapping empty pool area with a selected (seated) student unseats them
+  if(selectedStudent){
+    const s=sec();
+    const fromDesk=Object.keys(s.assign).find(d=>s.assign[d]===selectedStudent);
+    if(fromDesk){ pushUndo(); delete s.assign[fromDesk]; }
+    selectedStudent=null; renderAll();
+  }
+}
+function poolDragOver(ev){ ev.preventDefault(); document.getElementById('pool').classList.add('drop-hot'); }
+function poolDragLeave(ev){ document.getElementById('pool').classList.remove('drop-hot'); }
+function poolDrop(ev){
+  ev.preventDefault(); document.getElementById('pool').classList.remove('drop-hot');
+  const s=sec(); if(dragFromDeskId){ pushUndo(); delete s.assign[dragFromDeskId]; }
+  dragStudentId=null; dragFromDeskId=null; renderAll();
+}
+
+/* ============================================================
+   Status + save/load
+============================================================ */
+function baseStatus(){
+  const s=sec();
+  const seated=Object.keys(s.assign).length;
+  return `<b>${s.name}</b> &middot; ${s.students.length} students &middot; ${s.desks.length} desks &middot; ${seated} seated`;
+}
+function refreshStatus(){ document.getElementById('status').innerHTML=baseStatus(); }
+
+function saveFile(){
+  const data=JSON.stringify(state,null,2);
+  const blob=new Blob([data],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  const d=new Date();
+  a.download=`seating-charts-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+function openFile(ev){
+  const f=ev.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const obj=JSON.parse(r.result);
+      if(!obj.sections || !Array.isArray(obj.sections)) throw new Error('bad');
+      state=obj; if(!state.active||!sec()) state.active=state.sections[0].id;
+      if(!state.theme) state.theme='light';
+      undoStack=[]; pickedSet=new Set(); pickedSection=null; lastPicked=null;
+      selectedStudent=null; applyTheme(); renderAll();
+    }catch(e){ alert('That file did not look like a saved seating chart.'); }
+  };
+  r.readAsText(f); ev.target.value='';
+}
+
+/* ============================================================
+   Util + boot
+============================================================ */
+function esc(s){ return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderAll(){
+  renderSections();
+  renderRoster();
+  fillSelect('apartA'); fillSelect('apartB'); fillSelect('togA'); fillSelect('togB');
+  renderPairs();
+  renderFloor();
+  renderPool();
+  refreshStatus();
+  document.getElementById('printTitle').textContent='Seating Chart \u2013 '+sec().name;
+}
+
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey) && (e.key==='z'||e.key==='Z')){
+    const tag=(e.target.tagName||'').toLowerCase();
+    if(tag==='input'||tag==='textarea'||tag==='select') return; // let text fields handle their own undo
+    e.preventDefault(); undo();
+  }
+});
+
+seed();
+applyTheme();
+renderAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Fracture Cycle — A Dota 2 Lore CYOA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0c0a13;
+    --void-2:#141020;
+    --panel:#1a1526;
+    --rule: rgba(196,178,150,0.16);
+    --parchment:#e6ddc9;
+    --parchment-dim:#a89e8c;
+    --radiant:#e8c468;
+    --radiant-dim: rgba(232,196,104,0.35);
+    --dire:#a4293b;
+    --dire-dim: rgba(164,41,59,0.35);
+    --ley:#4fd1c5;
+    --ley-dim: rgba(79,209,197,0.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(232,196,104,0.06), transparent 60%),
+      radial-gradient(ellipse 900px 500px at 85% 110%, rgba(164,41,59,0.08), transparent 60%),
+      var(--void);
+    color:var(--parchment);
+    font-family:'EB Garamond', serif;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding:32px 16px 80px;
+  }
+  .app{
+    width:100%;
+    max-width:960px;
+    display:grid;
+    grid-template-columns:1fr;
+    gap:20px;
+  }
+  header.game-header{
+    text-align:center;
+    padding:8px 0 18px;
+    border-bottom:1px solid var(--rule);
+  }
+  header.game-header .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.25em;
+    text-transform:uppercase;
+    color:var(--ley);
+    opacity:0.8;
+  }
+  header.game-header h1{
+    font-family:'Cinzel', serif;
+    font-weight:900;
+    font-size:clamp(28px, 5vw, 44px);
+    letter-spacing:0.04em;
+    margin:6px 0 4px;
+    background:linear-gradient(90deg, var(--radiant), var(--parchment) 45%, var(--dire));
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
+  header.game-header .sub{
+    font-style:italic;
+    color:var(--parchment-dim);
+    font-size:15px;
+  }
+
+  /* Aegis fracture signature visual */
+  .aegis-wrap{
+    display:flex;
+    justify-content:center;
+    padding:6px 0 4px;
+  }
+  .aegis-wrap svg{ width:220px; height:64px; overflow:visible; }
+  .aegis-crack{
+    stroke:var(--ley);
+    stroke-width:1.6;
+    fill:none;
+    filter:drop-shadow(0 0 3px var(--ley-dim));
+    stroke-dasharray:240;
+    transition:stroke-dashoffset 900ms ease, stroke 700ms ease;
+  }
+  .aegis-frag{
+    fill:none;
+    stroke-width:1;
+    opacity:0.5;
+    transition:opacity 500ms ease, stroke 700ms ease;
+  }
+
+  .status-bar{
+    display:grid;
+    grid-template-columns:1.3fr 1fr 1fr;
+    gap:14px;
+    padding:14px 16px;
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-radius:2px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+  }
+  .status-block .label{
+    color:var(--parchment-dim);
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    font-size:10px;
+    margin-bottom:6px;
+  }
+  .align-track{
+    position:relative;
+    height:6px;
+    border-radius:3px;
+    background:linear-gradient(90deg, var(--dire), rgba(255,255,255,0.08) 50%, var(--radiant));
+    margin-top:8px;
+  }
+  .align-marker{
+    position:absolute;
+    top:-4px;
+    width:2px;
+    height:14px;
+    background:var(--parchment);
+    box-shadow:0 0 6px rgba(230,221,201,0.8);
+    transition:left 500ms ease;
+  }
+  .favor-rows div{ display:flex; justify-content:space-between; margin-top:3px; }
+  .favor-rows span:last-child{ color:var(--parchment); }
+  .frag-list{ display:flex; gap:8px; flex-wrap:wrap; margin-top:2px; }
+  .frag-chip{
+    padding:2px 8px;
+    border:1px solid var(--rule);
+    border-radius:10px;
+    font-size:10px;
+    color:var(--parchment-dim);
+  }
+  .frag-chip.have{
+    color:var(--void);
+    background:var(--ley);
+    border-color:var(--ley);
+  }
+
+  .story-panel{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-radius:2px;
+    padding:clamp(20px,4vw,40px);
+    min-height:340px;
+    position:relative;
+  }
+  .story-panel::before{
+    content:"";
+    position:absolute; inset:0;
+    border:1px solid transparent;
+    background:linear-gradient(135deg, var(--radiant-dim), transparent 30%, transparent 70%, var(--dire-dim)) border-box;
+    -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity:0.5;
+    pointer-events:none;
+  }
+  .node-title{
+    font-family:'Cinzel', serif;
+    font-weight:700;
+    font-size:clamp(19px,2.6vw,25px);
+    color:var(--radiant);
+    margin:0 0 14px;
+    letter-spacing:0.02em;
+  }
+  .node-title.dire-tone{ color:var(--dire); }
+  .node-text p{
+    font-size:18px;
+    line-height:1.65;
+    color:var(--parchment);
+    margin:0 0 14px;
+  }
+  .node-text em{ color:var(--ley); font-style:italic; }
+
+  .choices{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    margin-top:26px;
+  }
+  .choice-btn{
+    text-align:left;
+    background:rgba(230,221,201,0.03);
+    border:1px solid var(--rule);
+    color:var(--parchment);
+    font-family:'EB Garamond', serif;
+    font-size:16px;
+    padding:13px 16px;
+    border-radius:2px;
+    cursor:pointer;
+    transition:border-color 200ms ease, background 200ms ease, transform 120ms ease;
+    display:flex;
+    gap:10px;
+    align-items:baseline;
+  }
+  .choice-btn:hover{
+    border-color:var(--ley);
+    background:rgba(79,209,197,0.06);
+    transform:translateX(2px);
+  }
+  .choice-btn:focus-visible{
+    outline:2px solid var(--ley);
+    outline-offset:2px;
+  }
+  .choice-mark{ color:var(--ley); font-family:'JetBrains Mono', monospace; font-size:13px; flex-shrink:0; }
+
+  .locked-note{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    color:var(--parchment-dim);
+    font-style:normal;
+    margin-top:2px;
+  }
+
+  .restart-row{ display:flex; justify-content:center; margin-top:8px; }
+  .restart-btn{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    background:none;
+    border:1px solid var(--rule);
+    color:var(--parchment-dim);
+    padding:10px 20px;
+    border-radius:2px;
+    cursor:pointer;
+    transition:color 200ms ease, border-color 200ms ease;
+  }
+  .restart-btn:hover{ color:var(--ley); border-color:var(--ley); }
+
+  .ending-tag{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.15em;
+    text-transform:uppercase;
+    color:var(--ley);
+    margin-bottom:10px;
+    display:inline-block;
+  }
+
+  @media (max-width:640px){
+    .status-bar{ grid-template-columns:1fr; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ transition:none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="game-header">
+    <div class="eyebrow">a lore-inspired interactive fiction</div>
+    <h1>THE FRACTURE CYCLE</h1>
+    <div class="sub">Two Ancients. One Aegis. A soul with no name yet.</div>
+  </header>
+
+  <div class="aegis-wrap">
+    <svg viewBox="0 0 220 64">
+      <path id="aegisCrack" class="aegis-crack" d="M10,32 L55,28 L80,40 L110,20 L140,44 L165,26 L210,32"/>
+      <circle id="fragR" class="aegis-frag" cx="55" cy="28" r="4" stroke="#e8c468"/>
+      <circle id="fragD" class="aegis-frag" cx="110" cy="20" r="4" stroke="#a4293b"/>
+      <circle id="fragI" class="aegis-frag" cx="165" cy="26" r="4" stroke="#4fd1c5"/>
+    </svg>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-block">
+      <div class="label">Allegiance</div>
+      <div id="alignLabel" style="font-size:13px;">Unaligned</div>
+      <div class="align-track"><div class="align-marker" id="alignMarker" style="left:50%;"></div></div>
+    </div>
+    <div class="status-block">
+      <div class="label">Favor</div>
+      <div class="favor-rows">
+        <div><span>Radiant Court</span><span id="favR">0</span></div>
+        <div><span>Dire Court</span><span id="favD">0</span></div>
+        <div><span>The Invoker</span><span id="favI">0</span></div>
+      </div>
+    </div>
+    <div class="status-block">
+      <div class="label">Aegis Fragments</div>
+      <div class="frag-list">
+        <div class="frag-chip" id="chipR">Radiant</div>
+        <div class="frag-chip" id="chipD">Dire</div>
+        <div class="frag-chip" id="chipI">Invoker</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="story-panel">
+    <div class="node-title" id="nodeTitle"></div>
+    <div class="node-text" id="nodeText"></div>
+    <div class="choices" id="choices"></div>
+  </div>
+
+  <div class="restart-row">
+    <button class="restart-btn" id="restartBtn">Begin the Cycle Anew</button>
+  </div>
+
+</div>
+
+<script>
+(function(){
+
+  const initialState = () => ({
+    align: 0,          // -5 dire .. +5 radiant
+    favor: { radiant:0, dire:0, invoker:0 },
+    fragments: [],     // 'radiant' | 'dire' | 'invoker'
+    visited: { radiant:false, dire:false, invoker:false },
+    mainPath: null
+  });
+
+  let state = initialState();
+  let currentId = 'intro';
+
+  function hasFrag(f){ return state.fragments.includes(f); }
+  function addFrag(f){ if(!hasFrag(f)) state.fragments.push(f); }
+
+  // ---------- STORY DATA ----------
+  const nodes = {
+
+    intro: {
+      title: "The Bridge Between",
+      text: `<p>Before you have a name, you have a place: the seam of light and shadow where the world's two halves almost touch. This is the <em>Fundamental Plane</em>, older than either court, where the boundary between Radiant and Dire wears thin enough to walk.</p>
+      <p>Something woke you here. Not a god — the Ancients themselves don't wake things, they only anchor them. Whatever pulled you into being wants a witness, or a weapon, or both.</p>
+      <p>Three roads lead away from the seam. Gold light spills down one, low crimson fire down another, and the third is lit by nothing you recognize — a shifting, arcane color that keeps changing its mind.</p>`,
+      choices: [
+        { label:"Walk toward the gold light — the Radiant Sanctuary", mark:"I", next:"radiant_gate", effect:s=>{s.mainPath='radiant'; s.visited.radiant=true;} },
+        { label:"Walk toward the crimson fire — the Dire Wildwoods", mark:"II", next:"dire_gate", effect:s=>{s.mainPath='dire'; s.visited.dire=true;} },
+        { label:"Follow the shifting color — a lone tower, humming with runes", mark:"III", next:"invoker_gate", effect:s=>{s.mainPath='invoker'; s.visited.invoker=true;} }
+      ]
+    },
+
+    // ---------------- RADIANT BRANCH ----------------
+    radiant_gate: {
+      title:"The Radiant Sanctuary",
+      text:`<p>The gate is a colonnade of ancient trees grown deliberately into archways, their bark scarred with old wards. Beyond it, terraces climb toward a temple that seems to be built from captured sunrise.</p>
+      <p>A patrol has already spotted you — three scouts in the leathers of the Sanctuary Guard, led by a woman with a crescent-blade strapped to her back. She doesn't draw it. Yet.</p>
+      <p>"Nothing walks out of the seam without a reason," she says. "State yours, or give me one."</p>`,
+      choices:[
+        {label:"Help the patrol finish their sweep of the tree-line before answering her", mark:"a", next:"radiant_patrol", effect:s=>{s.favor.radiant+=1;}},
+        {label:"Answer honestly: you don't know why you exist, only that you were called", mark:"b", next:"radiant_patrol", effect:s=>{s.favor.radiant+=1; s.favor.invoker+=1;}}
+      ]
+    },
+    radiant_patrol: {
+      title:"Mirana's Scout",
+      text:`<p>Whichever way you answered, it earns you a nod rather than a blade. "I'm Ishri," the scout-leader says. "Under Mirana's banner, technically. Mostly I keep idiots from wandering into the tree-line and setting off the wards meant for Dire raiders."</p>
+      <p>She studies you a beat longer than is comfortable. "The Court's been arguing about an old thing for three nights running. A shard of something. If you're what woke because of it, the Zealot Council will want to look at you before you look at anything else."</p>
+      <p>She leads you up through the terraces. At the temple steps, a tall figure crackling faintly with restrained lightning waits — <em>Zeus</em>, self-appointed judge of anything that crosses the Sanctuary's threshold uninvited.</p>`,
+      choices:[
+        {label:"Continue to the Council", mark:"→", next:"radiant_zeus"}
+      ]
+    },
+    radiant_zeus: {
+      title:"The Judgment of Zeus",
+      text:`<p>"Another orphan of the seam," Zeus says, not unkindly, thunder rolling somewhere behind his teeth. "Tell me true, and tell me once — did something send you, or did you simply fall into being, the way weeds do?"</p>
+      <p>It's not really a question about your origin. It's a test of what you'll say under a god's patience.</p>`,
+      choices:[
+        {label:"Tell him the plain truth — you don't know, and pretending otherwise would be a lie", mark:"a", next:"radiant_council", effect:s=>{s.align+=1; s.favor.radiant+=2;}},
+        {label:"Shape the truth into something more useful — imply you were sent as an omen", mark:"b", next:"radiant_council", effect:s=>{s.align+=1; s.favor.radiant+=1;}}
+      ]
+    },
+    radiant_council:{
+      title:"The Zealot Council",
+      text:`<p>Whatever you said, it's enough. Zeus steps aside, and the Council — a loose ring of Radiant heroes who show up for this sort of thing when it suits them — lays out what the arguing has been about.</p>
+      <p>An <em>Aegis Shard</em> has begun to hum, buried since before the first Ancients were planted. Legend says it split three ways in the old Cataclysm: one piece drank Radiant light, one drank Dire hunger, and one was simply... invoked, claimed by no side, kept by a wizard who does not attend councils.</p>
+      <p>"If it's waking," says Ishri, "someone should decide what it wakes into. Better us than the Wildwoods." She presses something small and warm into your hand — a fragment, gold as the temple steps. <strong>You now carry the Radiant Fragment.</strong></p>
+      <p>"There's a market at Roseleaf, on the seam's far edge, where both courts pretend to be civil. That's where the rumor's loudest now. Go. Listen. Decide what you are before the Shard decides for you."</p>`,
+      choices:[
+        {label:"Head for the Roseleaf Bazaar", mark:"→", next:"hub_bazaar", effect:s=>{addFrag('radiant');}}
+      ]
+    },
+
+    // ---------------- DIRE BRANCH ----------------
+    dire_gate:{
+      title:"The Dire Wildwoods",
+      text:`<p>The crimson light isn't fire, you realize once you're close — it's the color the Wildwoods' canopy turns when enough blood-magic has soaked into the roots. The trees here don't grow toward the sun; they grow toward each other, knotting into walls.</p>
+      <p>A shape peels off the dark before you're ten steps in — not flesh exactly, more like a rumor of a person wearing a demon's outline. One of <em>Terrorblade's</em> agents, the kind sent to watch the border rather than guard it.</p>
+      <p>"New thing," it says, voice like two voices arguing. "The Wildwoods don't do charity. You want to walk further in, you belong to someone by the time you do."</p>`,
+      choices:[
+        {label:"Pledge loose fealty to Terrorblade's line — for now", mark:"a", next:"dire_agent", effect:s=>{s.align-=1; s.favor.dire+=2;}},
+        {label:"Refuse to belong to anyone, and demand equal terms instead", mark:"b", next:"dire_agent", effect:s=>{s.align-=1; s.favor.dire+=1; s.favor.invoker+=1;}}
+      ]
+    },
+    dire_agent:{
+      title:"Equal Terms, or None",
+      text:`<p>The agent's outline flickers — something like amusement. "Bold, for a thing that isn't a week old." It doesn't kill you, which in the Wildwoods counts as a warm welcome. "There's a rivalry that needs settling before anyone higher up will waste breath on you. Shadow Fiend's been raiding the border shrines that belong, technically, to no one. Terrorblade wants it stopped. Or claimed. Either works."</p>
+      <p>You find the raider at the third shrine, mid-theft, arms full of stolen reliquary bones, three screaming souls already bottled at his belt.</p>`,
+      choices:[
+        {label:"Continue toward the confrontation", mark:"→", next:"dire_rivalry"}
+      ]
+    },
+    dire_rivalry:{
+      title:"Shrine of Stolen Souls",
+      text:`<p>Shadow Fiend doesn't bother threatening you first — he just grins, all teeth and captured screaming. "Whatever you are, you're new, and new things are cheap souls. Come collect one, if you think you can."</p>
+      <p>You could end this the way the Wildwoods expects. Or you could see what he actually wants, which might be worth more than his death.</p>`,
+      choices:[
+        {label:"Drive him off the shrine by force — claim it for the Dire line outright", mark:"a", next:"dire_council", effect:s=>{s.align-=2; s.favor.dire+=2;}},
+        {label:"Offer him a cut of whatever the Aegis Shard turns out to be worth, if he backs off now", mark:"b", next:"dire_council", effect:s=>{s.align-=1; s.favor.dire+=1; s.favor.invoker+=1;}}
+      ]
+    },
+    dire_council:{
+      title:"The Dire Court Takes Notice",
+      text:`<p>News like that travels fast in the Wildwoods — not because anyone's loyal, but because everyone's watching everyone else for weakness. You're brought, more dragged than invited, before a loose gathering of Dire heroes who'd never call themselves a council, because councils imply rules.</p>
+      <p>"An Aegis Shard fragment's been sleeping under the old raiding routes for an age," someone rasps from the dark — you don't catch who. "Ours is the hunger-piece. It doesn't glow. It <em>wants</em>." A cold, black-edged fragment is dropped into your hands, and it does, in fact, want something, though it hasn't decided what yet. <strong>You now carry the Dire Fragment.</strong></p>
+      <p>"Roseleaf Bazaar. Half the seam's rumors end up there because both courts are too proud to admit they shop at the same market. Go make yourself useful."</p>`,
+      choices:[
+        {label:"Head for the Roseleaf Bazaar", mark:"→", next:"hub_bazaar", effect:s=>{addFrag('dire');}}
+      ]
+    },
+
+    // ---------------- INVOKER BRANCH ----------------
+    invoker_gate:{
+      title:"The Unclaimed Tower",
+      text:`<p>The tower belongs to neither court, which is either why it's still standing or why no one's bothered to knock it down. Its door opens before you knock, which you take, correctly, as a warning rather than an invitation.</p>
+      <p>Inside, an old sorcerer — <em>Carl</em>, though he introduces himself by none of his many names — is mid-argument with three glowing motes of orb-light that orbit his hands like unruly students. "You're the thing from the seam," he says, without turning. "Good. I need a second opinion on an experiment neither Quas, Wex, nor Exort will settle honestly."</p>`,
+      choices:[
+        {label:"Ask what the experiment is before agreeing to anything", mark:"→", next:"invoker_fundamental"}
+      ]
+    },
+    invoker_fundamental:{
+      title:"Quas, Wex, Exort",
+      text:`<p>"Three fundamentals," Carl says, "three ways of shaping the same raw current. Quas is patience made cold. Wex is speed made lightning. Exort is force made fire. Every invocation I've ever cast is just an argument between the three of them, resolved a heartbeat before it kills me."</p>
+      <p>He offers you a choice of which current to carry a taste of, "so the tower stops being the only thing that remembers you exist."</p>`,
+      choices:[
+        {label:"Take a taste of Quas — patience, ice, the long view", mark:"a", next:"invoker_riddle", effect:s=>{s.favor.invoker+=2;}},
+        {label:"Take a taste of Exort — force, fire, the short answer", mark:"b", next:"invoker_riddle", effect:s=>{s.favor.invoker+=1; s.align-=1;}}
+      ]
+    },
+    invoker_riddle:{
+      title:"The Tower's Price",
+      text:`<p>"Nothing from this tower is free," Carl says, not unkindly, "not even a taste." He poses it like a riddle rather than a demand: <em>"A shard split three ways cannot be whole again by force, nor by devotion, nor by accident. What's the fourth way?"</em></p>`,
+      choices:[
+        {label:"Answer: \"By agreement — someone has to choose to set it down.\"", mark:"a", next:"invoker_result", effect:s=>{s.favor.invoker+=2;}},
+        {label:"Refuse the riddle outright: \"I didn't come here to be taught. I came to be told what's happening.\"", mark:"b", next:"invoker_result", effect:s=>{s.favor.invoker-=1; s.align-=1;}}
+      ]
+    },
+    invoker_result:{
+      title:"What the Tower Knows",
+      text:`<p>Carl's expression — whichever answer you gave — settles into something between approval and pity. "The shard you're circling has been three pieces since the Cataclysm. One drank light. One drank hunger. The last one I kept, because someone unaligned had to, or the courts would have gone to war over the crumbs alone."</p>
+      <p>He presses a fragment into your palm, arcane and restless, changing color the way his experiments never quite finish arguing. <strong>You now carry the Invoker Fragment.</strong></p>
+      <p>"Roseleaf Bazaar. Both courts already suspect the other is close to whole again. Go listen before you go acting."</p>`,
+      choices:[
+        {label:"Head for the Roseleaf Bazaar", mark:"→", next:"hub_bazaar", effect:s=>{addFrag('invoker');}}
+      ]
+    },
+
+    // ---------------- HUB ----------------
+    hub_bazaar:{
+      title:"Roseleaf Bazaar",
+      text:`<p>Roseleaf sits exactly on the seam, which is the only reason Radiant coin and Dire scrip both spend here without anyone starting a fight about it. The rumor is louder than any single stall: <em>the Aegis Shard is waking, and something is going to have to answer for it soon.</em></p>
+      <p>You could push on toward wherever the Shard's pull is strongest right now — or you could spend time here first, tracking down whichever of the three powers you haven't yet stood in front of, in case their piece of the puzzle matters later.</p>`,
+      choices:[
+        {label:"There's no time to waste — head straight for the Shard's pull", mark:"a", next:"core_approach"},
+        {label:"Spend time at Roseleaf gathering what you're missing", mark:"b", next:"side_hub"}
+      ]
+    },
+
+    side_hub:{
+      title:"Unfinished Business",
+      text:`<p>Roseleaf's back alleys are where the seam's business actually gets done — quiet meetings, quieter debts. If any of the three powers still don't know your face, this is where you'd find their local contact.</p>`,
+      choices: (()=>{
+        const opts = [];
+        if(!state.visited.radiant) opts.push({label:"Seek out a Radiant contact", mark:"→", next:"side_radiant", effect:s=>{s.visited.radiant=true;}});
+        if(!state.visited.dire) opts.push({label:"Seek out a Dire contact", mark:"→", next:"side_dire", effect:s=>{s.visited.dire=true;}});
+        if(!state.visited.invoker) opts.push({label:"Seek out the Invoker's apprentice", mark:"→", next:"side_invoker", effect:s=>{s.visited.invoker=true;}});
+        opts.push({label:"Enough waiting — head for the Shard's pull", mark:"→", next:"core_approach"});
+        return opts;
+      })
+    },
+    side_radiant:{
+      title:"A Radiant Contact",
+      text:`<p>A Sanctuary courier, more diplomat than soldier, meets you in a back room strung with paper lanterns. She's heard of you — everyone in Roseleaf has, by now — and she's willing to trade the Radiant Court's remaining goodwill for a promise you're not sure you can keep: that whatever you do with the Shard, you'll do it somewhere the Sanctuary can watch.</p>
+      <p>You don't fully agree, but you don't fully refuse either, and that's apparently enough to loosen her hand. <strong>You now carry the Radiant Fragment.</strong></p>`,
+      choices:[{label:"Return to the bazaar's back alleys", mark:"→", next:"side_hub", effect:s=>{addFrag('radiant'); s.favor.radiant+=1;}}]
+    },
+    side_dire:{
+      title:"A Dire Contact",
+      text:`<p>The Dire contact doesn't meet you so much as ambush you pleasantly, cornering you between two stalls with a knife she never quite draws. "Word is you're collecting. Word is everyone's collecting." She names a price for the hunger-piece — nothing you have, only something you'll owe — and you take the deal because the alternative is leaving empty-handed.</p>
+      <p><strong>You now carry the Dire Fragment.</strong></p>`,
+      choices:[{label:"Return to the bazaar's back alleys", mark:"→", next:"side_hub", effect:s=>{addFrag('dire'); s.favor.dire+=1;}}]
+    },
+    side_invoker:{
+      title:"The Invoker's Apprentice",
+      text:`<p>Carl's apprentice is younger than you expected and twice as tired, muttering about a master who "sends people to do the things he's too polite to do himself." She doesn't test you with a riddle. She just hands the fragment over, arcane light flickering uncertainly. "He said you'd come eventually. He's usually right about that sort of thing, which is the most annoying part of working for him."</p>
+      <p><strong>You now carry the Invoker Fragment.</strong></p>`,
+      choices:[{label:"Return to the bazaar's back alleys", mark:"→", next:"side_hub", effect:s=>{addFrag('invoker'); s.favor.invoker+=1;}}]
+    },
+
+    // ---------------- FINALE ----------------
+    core_approach:{
+      title:"The Ancient's Core",
+      text:`<p>Whatever pull the Shard has, it isn't subtle once you follow it — a hollow beneath the seam itself, roots from both Radiant and Dire soil tangled together around a socket clearly built to hold three pieces at once, and currently holding none.</p>
+      <p>You carry ${'${fragCount}'} of them. Whatever you decide here, it will not be undone by the next Cycle, or the one after.</p>`,
+      dynamic:true,
+      choices:[{label:"Approach the socket", mark:"→", next:"core_confrontation"}]
+    },
+
+    core_confrontation:{
+      title:"The Choice at the Socket",
+      text:`<p>The socket hums, waiting on you the way the seam waited on you at the very beginning — like it already half-knows what you'll do, and is only being polite about letting you do it.</p>`,
+      dynamic:true,
+      choices: (()=>{
+        const opts = [];
+        if(state.align>=2) opts.push({label:"Set only the Radiant light into the socket — let the Ancients answer to the Sanctuary", mark:"a", next:"end_radiant"});
+        if(state.align<=-2) opts.push({label:"Set only the Dire hunger into the socket — let the Wildwoods claim the Cycle", mark:"b", next:"end_dire"});
+        if(state.favor.invoker>=3 || (state.align>-2 && state.align<2)) opts.push({label:"Refuse to let either court own the Shard — bind it to no one, the Invoker's way", mark:"c", next:"end_convergence"});
+        if(state.fragments.length===3) opts.push({label:"Set all three fragments into the socket at once", mark:"d", next:"end_ascension"});
+        opts.push({label:"Force the socket open with whatever you're carrying, and see what happens", mark:"e", next:"end_corruption"});
+        return opts;
+      })
+    },
+
+    // ---------------- ENDINGS ----------------
+    end_radiant:{
+      ending:true,
+      title:"Ending: The Sanctuary's Dawn",
+      text:`<p>The socket drinks the light you offer and gives back a glow that reaches every terrace of the Sanctuary at once. Zeus feels it before anyone tells him; Mirana's scouts stop mid-patrol, looking up. The Wildwoods, for the first time in longer than anyone alive remembers, goes quiet — not defeated, just watchful.</p>
+      <p>You are not a soldier of the Radiant Court. You're something older than that now: the reason the Cycle tilted, gently, toward the sun. Whether that's mercy or just a different kind of weight, history — and the Dire Court — will decide later.</p>`
+    },
+    end_dire:{
+      ending:true,
+      title:"Ending: The Wildwoods' Hunger",
+      text:`<p>The socket doesn't glow when it drinks the hunger-piece. It <em>settles</em>, the way something starving finally stops shaking. Somewhere in the Wildwoods, Terrorblade smiles without needing to be told why. Somewhere in the Sanctuary, Zeus feels the seam list sideways and calls a Council that will accomplish nothing.</p>
+      <p>You didn't choose cruelty. You chose the side that was hungrier, and let the Cycle answer to that instead of pretending hunger isn't also a kind of truth.</p>`
+    },
+    end_convergence:{
+      ending:true,
+      title:"Ending: The Fourth Way",
+      text:`<p>You don't set anything into the socket. Instead you do the thing Carl's riddle was circling the whole time: you choose, out loud, in front of the socket and the seam and whatever's listening, that no court gets to own this. The socket doesn't fill with light or hunger. It simply stops humming, satisfied in a way neither court will ever quite forgive.</p>
+      <p>Carl, wherever he is, probably already knew this was how it would end. It's the most annoying part of knowing him.</p>`
+    },
+    end_ascension:{
+      ending:true,
+      title:"Ending: The Threefold Aegis",
+      text:`<p>All three fragments — light, hunger, and the current that refuses to pick a side — go into the socket together, and for one impossible moment the seam isn't a boundary at all. It's a single thing, arguing with itself the way Carl's fundamentals always have, and somehow that argument is the whole point.</p>
+      <p>Neither court fully understands what just happened. You're not sure you do either. But the Cycle didn't tilt toward anyone — it just got a little bit wiser, and a little bit stranger, and that might be the rarest outcome the seam has ever produced.</p>`
+    },
+    end_corruption:{
+      ending:true,
+      title:"Ending: What the Socket Wasn't Ready For",
+      text:`<p>You force it, because waiting has never been your strength and the Shard was never going to wait politely for you to earn the right kind of ending. The socket takes what you're carrying and gives back something none of the old stories mention — not light, not hunger, not balance. Just a crack, spreading slowly through the seam itself.</p>
+      <p>Neither court notices immediately. They will. The Fracture Cycle doesn't end here so much as it starts over, somewhere worse, with someone else waking up at the seam wondering why.</p>`
+    }
+  };
+
+  // ---------------- ENGINE ----------------
+  const titleEl = document.getElementById('nodeTitle');
+  const textEl = document.getElementById('nodeText');
+  const choicesEl = document.getElementById('choices');
+  const alignLabel = document.getElementById('alignLabel');
+  const alignMarker = document.getElementById('alignMarker');
+  const favR = document.getElementById('favR');
+  const favD = document.getElementById('favD');
+  const favI = document.getElementById('favI');
+  const chipR = document.getElementById('chipR');
+  const chipD = document.getElementById('chipD');
+  const chipI = document.getElementById('chipI');
+  const crack = document.getElementById('aegisCrack');
+  const fragR = document.getElementById('fragR');
+  const fragD = document.getElementById('fragD');
+  const fragI = document.getElementById('fragI');
+
+  function alignmentWord(v){
+    if(v<=-4) return "Dire Sworn";
+    if(v<=-2) return "Dire Leaning";
+    if(v<0) return "Dire Curious";
+    if(v===0) return "Unaligned";
+    if(v<2) return "Radiant Curious";
+    if(v<4) return "Radiant Leaning";
+    return "Radiant Sworn";
+  }
+
+  function renderStatus(){
+    const clamped = Math.max(-5, Math.min(5, state.align));
+    const pct = ((clamped+5)/10)*100;
+    alignMarker.style.left = pct+'%';
+    alignLabel.textContent = alignmentWord(state.align);
+    favR.textContent = state.favor.radiant;
+    favD.textContent = state.favor.dire;
+    favI.textContent = state.favor.invoker;
+    chipR.classList.toggle('have', hasFrag('radiant'));
+    chipD.classList.toggle('have', hasFrag('dire'));
+    chipI.classList.toggle('have', hasFrag('invoker'));
+
+    const dashLen = 240;
+    const progress = Math.min(1, state.fragments.length/3);
+    crack.style.strokeDashoffset = String(dashLen*(1-progress));
+    const blend = clamped/5; // -1..1
+    let crackColor = '#4fd1c5';
+    if(blend>0.3) crackColor = '#e8c468';
+    else if(blend<-0.3) crackColor = '#a4293b';
+    crack.style.stroke = crackColor;
+    fragR.style.opacity = hasFrag('radiant') ? '1':'0.25';
+    fragD.style.opacity = hasFrag('dire') ? '1':'0.25';
+    fragI.style.opacity = hasFrag('invoker') ? '1':'0.25';
+  }
+
+  function render(){
+    const node = nodes[currentId];
+    titleEl.textContent = node.title;
+    titleEl.className = 'node-title' + (state.align<=-2 && !node.ending ? ' dire-tone':'');
+    let html = node.text;
+    if(node.dynamic){
+      html = html.replace('${fragCount}', String(state.fragments.length));
+    }
+    textEl.innerHTML = html;
+
+    choicesEl.innerHTML = '';
+
+    if(node.ending){
+      const tag = document.createElement('div');
+      tag.className='ending-tag';
+      tag.textContent = 'Cycle Complete';
+      choicesEl.appendChild(tag);
+      return;
+    }
+
+    const opts = typeof node.choices === 'function' ? node.choices() : node.choices;
+    opts.forEach(opt=>{
+      const btn = document.createElement('button');
+      btn.className = 'choice-btn';
+      btn.innerHTML = '<span class="choice-mark">'+ (opt.mark||'→') +'</span><span>'+opt.label+'</span>';
+      btn.addEventListener('click', ()=>{
+        if(opt.effect) opt.effect(state);
+        currentId = opt.next;
+        renderStatus();
+        render();
+        window.scrollTo({top:0, behavior:'smooth'});
+      });
+      choicesEl.appendChild(btn);
+    });
+  }
+
+  document.getElementById('restartBtn').addEventListener('click', ()=>{
+    state = initialState();
+    currentId = 'intro';
+    renderStatus();
+    render();
+    window.scrollTo({top:0, behavior:'smooth'});
+  });
+
+  renderStatus();
+  render();
+
+})();
+</script>
+</body>
+</html>
