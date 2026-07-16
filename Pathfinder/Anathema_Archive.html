@@ -45,6 +45,10 @@ a{color:var(--gold)}
 .chip{padding:2px 8px;border:1px solid var(--border);border-radius:10px;font-size:11px;color:var(--text-dim)}
 .chip:hover{border-color:var(--crimson);color:var(--text)}
 .chip.on{background:var(--crimson-deep);border-color:var(--crimson);color:#fff}
+.scopebtn{flex:0 0 auto;padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--text-dim);white-space:nowrap}
+.scopebtn:hover{border-color:var(--crimson);color:var(--text)}
+.scopebtn.restricted{background:var(--crimson-deep);border-color:var(--crimson);color:#fff}
+.cattag{color:var(--text-faint);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.03em;margin-right:4px}
 .count{padding:5px 12px;font-size:11px;color:var(--text-faint);border-bottom:1px solid var(--border-soft)}
 .vlist{flex:1;overflow-y:auto;position:relative}
 .vspacer{position:relative;width:100%}
@@ -81,9 +85,17 @@ a{color:var(--gold)}
 .desc td,.desc th{border:1px solid var(--border);padding:3px 8px}
 .desc strong{color:#efe8d8}
 .ref{color:var(--gold);text-decoration:underline dotted;cursor:pointer}
+.ref.loading{opacity:.55;cursor:progress}
 .dice{font-family:ui-monospace,Consolas,monospace;font-size:.93em;color:#d8b46a}
 .act{font-weight:700;color:var(--crimson);font-size:.9em;letter-spacing:.02em}
 .npc-items h3{font-family:system-ui,sans-serif;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);margin:14px 0 4px}
+.ability{margin:0 0 12px}
+.ability:last-child{margin-bottom:0}
+.ability-head{margin-bottom:2px}
+.ability .desc{margin-top:0}
+.ability .desc p{margin:.4em 0}
+.ability .desc p:first-child{margin-top:0}
+.ability .desc hr{margin:6px 0;border-top:1px solid var(--border-soft)}
 @media (max-width:900px){
   .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   .sidebar{flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border)}
@@ -109,10 +121,11 @@ a{color:var(--gold)}
     <div class="status" id="status">Loading manifest…</div>
   </nav>
   <section class="listpane">
-    <div class="toolbar" id="toolbar" hidden>
+    <div class="toolbar" id="toolbar">
+      <button id="scopeBtn" class="scopebtn" type="button"></button>
       <input type="search" id="q" placeholder="Search name…" aria-label="Search by name">
-      <input type="number" id="lvlMin" class="lvl" placeholder="Lv ≥" aria-label="Minimum level">
-      <input type="number" id="lvlMax" class="lvl" placeholder="Lv ≤" aria-label="Maximum level">
+      <input type="number" id="lvlMin" class="lvl" min="-1" placeholder="Lv ≥" aria-label="Minimum level">
+      <input type="number" id="lvlMax" class="lvl" min="-1" placeholder="Lv ≤" aria-label="Maximum level">
       <select id="rarity" aria-label="Rarity"><option value="">Rarity</option><option>common</option><option>uncommon</option><option>rare</option><option>unique</option></select>
       <input type="text" id="trait" list="traitList" placeholder="Trait…" aria-label="Trait filter" style="width:110px">
       <datalist id="traitList"></datalist>
@@ -131,15 +144,19 @@ a{color:var(--gold)}
 <script>
 'use strict';
 /* ============================ state ============================ */
+const ALL = '__all__';
 const S = {
   manifest:null,
   cache:{},            // type -> entries[]   (npc: merged loaded shards)
   npcLoaded:new Set(), // loaded shard levels
   npcSel:new Set(),    // selected shard levels
-  cat:null,
+  cat:ALL,             // ALL = search everything; otherwise a manifest type = restricted scope
   filtered:[],
   selId:null,
   fetching:new Set(),
+  allRequested:false,  // whether we've kicked off loading every category for global search
+  history:[],          // stack of previously-viewed entries, for the back button
+  curEntry:null,        // entry currently shown in the detail pane
 };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -266,9 +283,18 @@ const sourceOf = e => e.system?.publication?.title || e.system?.details?.publica
 const levelOf = e => e.level ?? e.system?.level?.value ?? null;
 
 /* ============================ filtering + list ============================ */
+function collectScopedEntries(){
+  if (S.cat !== ALL) return S.cache[S.cat] || [];
+  const out = [];
+  for (const t of Object.keys(S.manifest)) {
+    const arr = S.cache[t];
+    if (!arr) continue;
+    for (const e of arr) { e._cat = t; out.push(e); }
+  }
+  return out;
+}
 function applyFilters(){
-  const type = S.cat;
-  const all = S.cache[type] || [];
+  const all = collectScopedEntries();
   const q = $('q').value.trim().toLowerCase();
   const lmin = $('lvlMin').value === '' ? -Infinity : +$('lvlMin').value;
   const lmax = $('lvlMax').value === '' ?  Infinity : +$('lvlMax').value;
@@ -289,7 +315,7 @@ function applyFilters(){
   renderVirtual(true);
 }
 function rebuildFilterOptions(){
-  const all = S.cache[S.cat] || [];
+  const all = collectScopedEntries();
   const traits = new Set(), sources = new Set();
   for (const e of all) { for (const t of traitsOf(e)) traits.add(t); const s = sourceOf(e); if (s) sources.add(s); }
   $('traitList').innerHTML = [...traits].sort().map(t=>`<option value="${esc(t)}">`).join('');
@@ -310,11 +336,15 @@ function renderVirtual(reset){
     const e = S.filtered[i];
     const lv = levelOf(e);
     const tr = traitsOf(e).slice(0,4).join(', ');
+    const catTag = S.cat === ALL ? `<span class="cattag">${esc(catLabel(e._cat))}</span>` : '';
     html += `<div class="row${e._id===S.selId?' sel':''}" style="top:${i*ROW_H}px" data-i="${i}">
-      <div class="t"><span class="nm">${esc(e.name)}</span>${lv!==null?`<span class="lv">Lv ${lv}</span>`:''}</div>
+      <div class="t"><span class="nm">${catTag}${esc(e.name)}</span>${lv!==null?`<span class="lv">Lv ${lv}</span>`:''}</div>
       <div class="sub">${esc([cap(rarityOf(e))!=='Common'?rarityOf(e):'', tr, sourceOf(e)].filter(Boolean).join(' · '))}</div></div>`;
   }
-  if (!S.filtered.length) html = `<div class="empty">${(S.cache[S.cat]||[]).length ? 'No entries match the current filters.' : (S.cat==='npc' ? 'Pick one or more creature levels above to load them.' : 'No entries loaded.')}</div>`;
+  if (!S.filtered.length) {
+    const loading = S.fetching.size > 0;
+    html = `<div class="empty">${loading ? 'Loading…' : (S.cat==='npc' ? 'Pick one or more creature levels above to load them.' : (S.cat===ALL ? 'No entries loaded yet — try selecting some creature levels above, or wait for categories to finish loading.' : 'No entries match the current filters.'))}</div>`;
+  }
   sp.innerHTML = html;
 }
 $('vlist').addEventListener('scroll', () => renderVirtual(false));
@@ -352,6 +382,63 @@ function descBlock(e){
   return d ? `<hr class="hr"><div class="desc">${renderInline(d)}</div>` : '';
 }
 
+/* shared value formatters */
+const RANKS = ['untrained','trained','expert','master','legendary'];
+const rank = n => RANKS[num(n) ?? 0] || null;
+const ord = n => { const v = n % 100; return n + (v >= 11 && v <= 13 ? 'th' : ({1:'st',2:'nd',3:'rd'}[n % 10] || 'th')); };
+const SIZE_NAMES = {tiny:'Tiny', sm:'Small', med:'Medium', lg:'Large', huge:'Huge', grg:'Gargantuan'};
+const fmtPrice = sys => sys?.price?.value ? Object.entries(sys.price.value).filter(([,v])=>v).map(([c,v])=>`${v} ${c}`).join(', ') : null;
+const fmtBulk = sys => { const b = num(sys?.bulk); return b == null ? null : b === 0 ? '—' : b === 0.1 ? 'L' : String(b); };
+const fmtUsage = sys => { const u = num(sys?.usage); return u ? String(u).replace(/-/g,' ') : null; };
+const handsOf = sys => { const m = String(num(sys?.usage)||'').match(/held-in-(one|two)(-plus)?-hands?/); return m ? (m[1]==='two'?'2':m[2]?'1+':'1') : null; };
+const STRIKING = {1:'striking',2:'greater striking',3:'major striking'};
+const RESILIENT = {1:'resilient',2:'greater resilient',3:'major resilient'};
+function runesLine(sys, kind){
+  const r = sys?.runes; if (!r) return null;
+  const parts = [];
+  if (num(r.potency)) parts.push(`+${num(r.potency)} potency`);
+  if (kind === 'weapon' && num(r.striking)) parts.push(STRIKING[num(r.striking)]);
+  if (kind === 'armor' && num(r.resilient)) parts.push(RESILIENT[num(r.resilient)]);
+  for (const p of (r.property || [])) if (p) parts.push(String(p).replace(/([a-z])([A-Z])/g,'$1 $2').toLowerCase());
+  return parts.length ? parts.join(', ') : null;
+}
+/* damage shapes seen in spell/heighten data: {value:"2d4"}, {"0":{formula,damageType}}, plain string */
+function fmtDamageObj(v){
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v.value === 'string' || typeof v.value === 'number') return String(v.value);
+  const parts = Object.values(v).map(d =>
+    typeof d === 'string' ? d :
+    d && (d.formula || d.value) ? `${d.formula || d.value} ${d.damageType || ''}`.trim() : ''
+  ).filter(Boolean);
+  return parts.join(' plus ');
+}
+const H_LABELS = {area:'Area', damage:'Damage', range:'Range', target:'Targets', targets:'Targets',
+  time:'Cast', duration:'Duration', defense:'Defense', traits:'Traits', description:''};
+function fmtHeightenVal(field, v){
+  if (v == null) return '';
+  if (field === 'damage') { const d = fmtDamageObj(v); return d ? `<span class="dice">${renderInline(esc(d))}</span>` : ''; }
+  if (field === 'description') return renderInline(typeof v === 'string' ? v : (num(v) ?? ''));
+  if (typeof v === 'string' || typeof v === 'number') return renderInline(esc(v));
+  if (field === 'area' && v.value != null) return esc(`${v.value}-foot ${v.type || 'area'}`);
+  if (field === 'duration') return esc([num(v), v.sustained ? '(sustained)' : ''].filter(Boolean).join(' '));
+  if (field === 'traits') return esc((v.value || []).join(', '));
+  const inner = num(v);
+  return inner == null ? '' : renderInline(esc(inner));
+}
+function heightenFields(eff){
+  const keys = Object.keys(eff || {});
+  const labeled = [], trailing = [];
+  for (const k of keys) {
+    const val = fmtHeightenVal(k, eff[k]);
+    if (!val) continue;
+    const label = H_LABELS[k] ?? cap(k);
+    if (label === '') trailing.push(`<div class="desc" style="margin-top:2px">${val}</div>`); // description text
+    else labeled.push(`<b style="font-weight:600;font-style:italic">${label}</b> ${val}`);
+  }
+  return labeled.join('; ') + trailing.join('');
+}
+
 function renderSpell(e){
   const sys = e.system || {};
   const cast = num(sys.time);
@@ -365,9 +452,16 @@ function renderSpell(e){
   const label = isRitual ? 'Ritual' : isFocus ? 'Focus' : 'Spell';
   let heighten = '';
   const h = sys.heightening;
-  if (h?.levels) heighten = Object.entries(h.levels).map(([lvl,eff]) =>
-      `<div class="kv"><b>Heightened (${lvl})</b> ${renderInline(Object.values(eff).map(v => typeof v==='string'?v:(v?.value??'')).filter(Boolean).join('; '))}</div>`).join('');
-  else if (h?.interval) heighten = `<div class="kv"><b>Heightened (+${h.interval})</b> ${renderInline(Object.entries(h.damage||{}).map(([,d])=>d).join(', ') || JSON.stringify(h.effect||'').replace(/"/g,''))}</div>`;
+  if (h?.levels) heighten = Object.entries(h.levels)
+    .sort((a,b) => +a[0] - +b[0])
+    .map(([lvl, eff]) => `<div class="kv"><b>Heightened (${ord(+lvl)})</b> ${heightenFields(eff)}</div>`).join('');
+  else if (h?.interval) {
+    const bits = [];
+    const dmg = fmtHeightenVal('damage', h.damage);
+    if (dmg) bits.push(`The damage increases by ${dmg}`);
+    if (h.area) bits.push(`the area increases by ${h.area} feet`);
+    heighten = `<div class="kv"><b>Heightened (+${h.interval})</b> ${bits.join('; ') || renderInline(String(num(h.effect) ?? ''))}</div>`;
+  }
   return headBlock(e, label) + traitBadges(e) + srcLine(e)
     + kv('Cast', esc(cast)) + kv('Range', esc(rng)) + kv('Area', esc(area)) + kv('Targets', esc(tgt))
     + kv('Defense', esc(def)) + kv('Duration', esc(dur))
@@ -408,7 +502,8 @@ function renderNpc(e){
   const actionBlock = it => {
     const s = it.system || {};
     const glyph = s.actionType?.value === 'reaction' ? '[reaction]' : s.actionType?.value === 'free' ? '[free-action]' : (s.actions?.value ? ACTION_GLYPH[s.actions.value] : '');
-    return `<div class="kv"><b>${esc(it.name)}</b> ${glyph?`<span class="act">${glyph}</span> `:''}${renderInline(s.description?.value || '')}</div>`;
+    const body = renderInline(s.description?.value || '').replace(/<p>\s*<\/p>/gi, '').trim();
+    return `<div class="ability"><div class="ability-head"><b>${esc(it.name)}</b>${glyph?` <span class="act">${glyph}</span>`:''}</div>${body?`<div class="desc">${body}</div>`:''}</div>`;
   };
   const spellsByEntry = groups.spellcasting.map(sc => {
     const mine = groups.spell.filter(sp => sp.system?.location?.value === sc._id);
@@ -438,46 +533,251 @@ function renderNpc(e){
 function renderGeneric(e){
   const sys = e.system || {};
   const extras =
-      kv('Price', sys.price?.value ? esc(Object.entries(sys.price.value).map(([c,v])=>`${v} ${c}`).join(', ')) : null)
-    + kv('Usage', esc(num(sys.usage))) + kv('Bulk', esc(num(sys.bulk)))
+      kv('Price', esc(fmtPrice(sys)))
+    + kv('Usage', esc(fmtUsage(sys))) + kv('Bulk', esc(fmtBulk(sys)))
     + kv('Category', esc(sys.category)) + kv('Group', esc(num(sys.group)))
-    + kv('Damage', sys.damage?.dice ? `<span class="dice">${esc(`${sys.damage.dice}${sys.damage.die||''} ${sys.damage.damageType||''}`)}</span>` : null)
-    + kv('Hands', esc(num(sys.usage)?.match?.(/held-in-(\w+)/)?.[1] ? null : null))
-    + kv('AC Bonus', esc(num(sys.acBonus))) + kv('Dex Cap', esc(num(sys.dexCap)))
     + kv('Prerequisites', (sys.prerequisites?.value||[]).map(p=>esc(p.value)).join(', ') || null)
     + kv('Actions', sys.actionType?.value && sys.actionType.value!=='passive' ? `<span class="act">${ACTION_GLYPH[sys.actions?.value] || ACTION_GLYPH[sys.actionType.value] || esc(sys.actionType.value)}</span>` : null)
     + kv('Trigger', sys.trigger?.value ? renderInline(sys.trigger.value) : null);
   return headBlock(e, catLabel(e.type)) + traitBadges(e) + srcLine(e) + extras + descBlock(e);
 }
 
-function openDetail(e){
-  if (!e) return;
-  S.selId = e._id;
-  const html = e.type === 'spell' ? renderSpell(e) : e.type === 'npc' ? renderNpc(e) : renderGeneric(e);
+/* ---- equipment family ---- */
+function itemCommons(sys){
+  return kv('Price', esc(fmtPrice(sys))) + kv('Usage', esc(fmtUsage(sys))) + kv('Bulk', esc(fmtBulk(sys)));
+}
+function renderWeapon(e){
+  const sys = e.system || {};
+  const d = sys.damage || {};
+  const dmg = d.dice && d.die ? `${d.dice}${d.die}${d.damageType ? ' ' + d.damageType : ''}` : (d.damageType || null);
+  const pers = d.persistent ? ` plus ${d.persistent.number}${d.persistent.faces ? 'd'+d.persistent.faces : ''} persistent ${d.persistent.type}` : '';
+  return headBlock(e, 'Weapon') + traitBadges(e) + srcLine(e)
+    + itemCommons(sys)
+    + kv('Category', esc(sys.category)) + kv('Group', esc(num(sys.group)))
+    + kv('Damage', dmg ? `<span class="dice">${esc(dmg + pers)}</span>` : null)
+    + kv('Hands', esc(handsOf(sys)))
+    + kv('Range', num(sys.range) ? esc(`${num(sys.range)} feet`) : null)
+    + kv('Reload', num(sys.reload) != null && num(sys.reload) !== '' ? esc(String(num(sys.reload))) : null)
+    + kv('Runes', esc(runesLine(sys, 'weapon')))
+    + descBlock(e);
+}
+function renderArmor(e){
+  const sys = e.system || {};
+  const pen = v => { const n = num(v); return n == null || n === 0 ? null : String(n); };
+  return headBlock(e, 'Armor') + traitBadges(e) + srcLine(e)
+    + itemCommons(sys)
+    + kv('Category', esc(sys.category)) + kv('Group', esc(num(sys.group)))
+    + kv('AC Bonus', num(sys.acBonus) != null ? esc(sign(num(sys.acBonus))) : null)
+    + kv('Dex Cap', num(sys.dexCap) != null ? esc(sign(num(sys.dexCap))) : null)
+    + kv('Check Penalty', esc(pen(sys.checkPenalty)))
+    + kv('Speed Penalty', pen(sys.speedPenalty) ? esc(`${pen(sys.speedPenalty)} feet`) : null)
+    + kv('Strength', num(sys.strength) != null ? esc(sign(num(sys.strength))) : null)
+    + kv('Runes', esc(runesLine(sys, 'armor')))
+    + descBlock(e);
+}
+function renderEquipment(e){
+  const sys = e.system || {};
+  const uses = sys.uses && num(sys.uses.max) ? `${num(sys.uses.value) ?? num(sys.uses.max)}/${num(sys.uses.max)}` : null;
+  return headBlock(e, catLabel(e.type)) + traitBadges(e) + srcLine(e)
+    + itemCommons(sys)
+    + kv('Category', esc(sys.category))
+    + kv('Uses', esc(uses))
+    + kv('Runes', esc(runesLine(sys, 'weapon') || runesLine(sys, 'armor')))
+    + descBlock(e);
+}
+
+/* ---- character options ---- */
+const refLink = (uuid, name) => `<a class="ref" data-ref="${esc(uuid||'')}" data-name="${esc(name||'')}">${esc(name || (uuid||'').split('.').pop())}</a>`;
+function fmtBoostSlot(slot){
+  const v = slot?.value || [];
+  if (!v.length) return null;
+  return v.length >= 6 ? 'Free' : v.map(a => cap(a)).join(' or ');
+}
+function boostsLine(obj){
+  const slots = Object.keys(obj || {}).sort((a,b)=>+a-+b).map(k => fmtBoostSlot(obj[k])).filter(Boolean);
+  return slots.length ? slots.join(', ') : null;
+}
+function renderClass(e){
+  const sys = e.system || {};
+  const key = (sys.keyAbility?.value || []).map(cap).join(' or ') || null;
+  const profGroup = (obj, labels) => Object.entries(obj || {})
+    .map(([k,v]) => { const r = rank(v?.rank ?? v); const name = labels?.[k] || cap(k); return r && r !== 'untrained' ? `${name} ${r}` : null; })
+    .filter(Boolean).join(', ') || null;
+  const saves = ['fortitude','reflex','will'].map(k => sys.savingThrows?.[k] != null ? `${cap(k)} ${rank(sys.savingThrows[k])}` : null).filter(Boolean).join(', ') || null;
+  const skills = sys.trainedSkills ? [
+      (sys.trainedSkills.value || []).map(cap).join(', '),
+      num(sys.trainedSkills.additional) ? `plus ${num(sys.trainedSkills.additional)} additional` : ''
+    ].filter(Boolean).join(', ') || null : null;
+  return headBlock(e, 'Class') + traitBadges(e) + srcLine(e)
+    + kv('Key Attribute', esc(key))
+    + kv('Hit Points', num(sys.hp) != null ? esc(`${num(sys.hp)} plus your Constitution modifier per level`) : null)
+    + kv('Perception', esc(rank(sys.perception)))
+    + kv('Saving Throws', esc(saves))
+    + kv('Attacks', esc(profGroup(sys.attacks)))
+    + kv('Defenses', esc(profGroup(sys.defenses)))
+    + kv('Skills', esc(skills))
+    + kv('Class DC', sys.classDC != null ? esc(rank(sys.classDC)) : null)
+    + kv('Spellcasting', num(sys.spellcasting) ? esc(rank(sys.spellcasting)) : null)
+    + descBlock(e);
+}
+function renderAncestry(e){
+  const sys = e.system || {};
+  const langs = [
+      (sys.languages?.value || []).map(cap).join(', '),
+      num(sys.additionalLanguages?.count) ? `plus ${num(sys.additionalLanguages.count)} additional` : ''
+    ].filter(Boolean).join(', ') || null;
+  return headBlock(e, 'Ancestry') + traitBadges(e) + srcLine(e)
+    + kv('Hit Points', esc(num(sys.hp)))
+    + kv('Size', esc(SIZE_NAMES[num(sys.size)] || cap(num(sys.size))))
+    + kv('Speed', num(sys.speed) != null ? esc(`${num(sys.speed)} feet`) : null)
+    + kv('Attribute Boosts', esc(boostsLine(sys.boosts)))
+    + kv('Attribute Flaw', esc(boostsLine(sys.flaws)))
+    + kv('Languages', esc(langs))
+    + kv('Vision', esc(num(sys.vision) && num(sys.vision) !== 'normal' ? cap(num(sys.vision)) : null))
+    + descBlock(e);
+}
+function renderHeritage(e){
+  const sys = e.system || {};
+  const anc = sys.ancestry?.name ? refLink(sys.ancestry.uuid, sys.ancestry.name) : null;
+  return headBlock(e, 'Heritage') + traitBadges(e) + srcLine(e)
+    + kv('Ancestry', anc)
+    + descBlock(e);
+}
+function renderBackground(e){
+  const sys = e.system || {};
+  const skills = [
+      (sys.trainedSkills?.value || []).map(cap).join(', '),
+      (sys.trainedSkills?.lore || (sys.trainedLore ? [sys.trainedLore] : [])).map(l => `${cap(l)}${/lore/i.test(l)?'':' Lore'}`).join(', ')
+    ].filter(Boolean).join(', ') || null;
+  const feats = Object.values(sys.items || {}).map(it => refLink(it.uuid, it.name)).join(', ') || null;
+  return headBlock(e, 'Background') + traitBadges(e) + srcLine(e)
+    + kv('Attribute Boosts', esc(boostsLine(sys.boosts)))
+    + kv('Skills', esc(skills))
+    + kv('Feat', feats)
+    + descBlock(e);
+}
+
+const RENDERERS = {
+  spell: renderSpell, npc: renderNpc,
+  weapon: renderWeapon, armor: renderArmor, equipment: renderEquipment, consumable: renderEquipment,
+  class: renderClass, ancestry: renderAncestry, heritage: renderHeritage, background: renderBackground,
+};
+
+function goBack(){
+  if (S.history.length) { openDetail(S.history.pop(), { isBack:true }); return; }
   const det = $('detail');
-  det.innerHTML = '<button class="backbtn" id="backbtn">&larr; Back to list</button><article class="sb">' + html + '</article>';
+  det.classList.remove('open');
+  S.curEntry = null;
+  writeHash(null); // back to the bare category in the URL
+}
+function openDetail(e, opts={}){
+  if (!e) return;
+  const { fromRef=false, isBack=false } = opts;
+  if (fromRef && S.curEntry) S.history.push(S.curEntry);
+  if (!fromRef && !isBack) S.history = []; // fresh pick from the list starts a new trail
+  S.curEntry = e;
+  S.selId = e._id;
+  const html = (RENDERERS[e.type] || renderGeneric)(e);
+  const det = $('detail');
+  const backLabel = S.history.length ? `&larr; Back to ${esc(S.history[S.history.length-1].name)}` : '&larr; Back to list';
+  det.innerHTML = `<button class="backbtn" id="backbtn">${backLabel}</button><article class="sb">` + html + '</article>';
   det.classList.add('open');
   det.scrollTop = 0;
-  $('backbtn').onclick = () => det.classList.remove('open');
+  $('backbtn').onclick = goBack;
+  writeHash(e);
   renderVirtual(false);
 }
-/* cross-reference clicks: try to resolve by name across loaded caches */
-$('detail').addEventListener('click', ev => {
+/* ============================ cross-reference resolution ============================ */
+/* Pack-name → manifest-type hints. Checked in order; first regex match wins.
+   Empty array = pack is known to hold nothing we index (skip fetch, fail fast).
+   No match (null) = unknown pack → fall back to searching every category. */
+const PACK_TYPE_HINTS = [
+  [/effects/,               ['effect']],          // feat-effects, spell-effects, bestiary-effects…
+  [/bestiary|npc|-actors/,  ['npc']],
+  [/spells/,                ['spell']],
+  [/feats/,                 ['feat']],
+  [/conditionitems/,        ['condition']],
+  [/equipment/,             ['equipment','weapon','armor','consumable','shield','kit','backpack','treasure']],
+  [/^actions|actionspf2e/,  ['action']],
+  [/ancestryfeatures|ancestries/, ['ancestry']],
+  [/heritages/,             ['heritage']],
+  [/backgrounds/,           ['background']],
+  [/classfeatures/,         ['classfeature']],
+  [/classes/,               ['class']],
+  [/deities/,               ['deity']],
+  [/hazards/,               ['hazard']],
+  [/journals|criticaldeck|rollable|macros/, []],
+];
+function parseRef(ref){
+  // "Compendium.pf2e.<pack>.<Doc>.<idOrName>" — Doc segment absent in some older data.
+  const segs = String(ref || '').split('.');
+  let pack = '', doc = '', key = segs[segs.length - 1] || '';
+  if (segs[0] === 'Compendium') { pack = segs[2] || ''; if (segs.length >= 5) doc = segs[3]; }
+  return { pack, doc, key };
+}
+function candidateTypes(pack, doc){
+  const known = Object.keys(S.manifest || {});
+  if (doc === 'Actor') return known.includes('npc') ? ['npc'] : [];
+  for (const [re, types] of PACK_TYPE_HINTS) if (re.test(pack)) return types.filter(t => known.includes(t));
+  return null; // unknown pack → search everything
+}
+function findLoaded(key, name, types){
+  const pools = types ?? Object.keys(S.cache);
+  const kl = String(key || '').toLowerCase(), nl = String(name || '').toLowerCase();
+  for (const t of pools) {
+    const arr = S.cache[t]; if (!arr) continue;
+    const hit = arr.find(x => x._id === key)
+      || arr.find(x => { const n = x.name.toLowerCase(); return (kl && n === kl) || (nl && n === nl); });
+    if (hit) return hit;
+  }
+  return null;
+}
+async function resolveRef(ref, name){
+  const { pack, doc, key } = parseRef(ref);
+  const label = name || key || 'reference';
+  const types = candidateTypes(pack, doc); // null = unknown → all
+  // 1. already loaded? Try inferred categories first, then every loaded cache.
+  let hit = findLoaded(key, name, types) || findLoaded(key, name, null);
+  if (hit) { openDetail(hit, { fromRef:true }); return; }
+  if (types && !types.length) { status(`"${label}" points at unindexed content (${pack}).`); return; }
+  // 2. creatures live in level shards — never fetch all 27 blind; point at the chips.
+  if (types && types.length === 1 && types[0] === 'npc') {
+    status(`"${label}" is a creature that isn't loaded — open Creatures and pick its level chip to load it.`);
+    return;
+  }
+  // 3. fetch the inferred categories (or, for unknown packs, every non-npc category),
+  //    reusing loadCategory's cache/in-flight guards; stop at the first hit.
+  const toLoad = (types ?? Object.keys(S.manifest)).filter(t => t !== 'npc' && !S.cache[t]);
+  if (toLoad.length) status(`Loading reference "${label}"…`);
+  for (const t of toLoad) {
+    try { await loadCategory(t); } catch (_) { /* keep trying the rest */ }
+    hit = findLoaded(key, name, [t]);
+    if (hit) break;
+  }
+  hit = hit || findLoaded(key, name, null);
+  if (hit) {
+    openDetail(hit, { fromRef:true });
+    // In All-Categories scope the freshly loaded data legitimately joins the search pool;
+    // in a restricted scope the list reads only S.cache[S.cat], so it's untouched either way.
+    if (S.cat === ALL) { applyFilters(); rebuildFilterOptions(); }
+    return;
+  }
+  status(`Couldn't find "${label}" in the compendium data.`);
+}
+$('detail').addEventListener('click', async ev => {
   const a = ev.target.closest('a.ref'); if (!a) return;
   ev.preventDefault();
-  const name = a.dataset.name?.toLowerCase();
-  if (!name) return;
-  for (const type of Object.keys(S.cache)) {
-    const hit = S.cache[type].find(x => x.name.toLowerCase() === name);
-    if (hit) { openDetail(hit); return; }
-  }
-  status(`"${a.dataset.name}" isn't in a loaded category yet.`);
+  if (a.classList.contains('loading')) return; // ignore double-clicks mid-resolve
+  a.classList.add('loading');
+  try { await resolveRef(a.dataset.ref, a.dataset.name); }
+  catch (err) { status(`Couldn't open reference: ${err.message}`); }
+  finally { a.classList.remove('loading'); } // node may be detached by rerender; harmless
 });
 
 /* ============================ npc shard bar ============================ */
 function renderShardBar(){
   const bar = $('shardbar');
-  if (S.cat !== 'npc') { bar.hidden = true; return; }
+  if (S.cat !== 'npc' && S.cat !== ALL) { bar.hidden = true; return; }
   bar.hidden = false;
   const shards = S.manifest.npc.shards;
   const levels = Object.keys(shards).map(Number).sort((a,b)=>a-b);
@@ -489,6 +789,23 @@ $('shardbar').addEventListener('click', async ev => {
   const b = ev.target.closest('.chip'); if (!b) return;
   const shards = S.manifest.npc.shards;
   const levels = b.dataset.lvl === 'all' ? Object.keys(shards).map(Number) : [+b.dataset.lvl];
+  const isDeselect = levels.every(l => S.npcSel.has(l));
+  if (isDeselect) {
+    const removeSet = new Set(levels);
+    for (const l of levels) { S.npcSel.delete(l); S.npcLoaded.delete(l); }
+    S.cache.npc = (S.cache.npc || []).filter(e => !removeSet.has(levelOf(e)));
+    if (S.selId && !S.cache.npc.some(e => e._id === S.selId)) {
+      S.selId = null; S.curEntry = null; S.history = [];
+      const det = $('detail');
+      det.classList.remove('open');
+      det.innerHTML = '<button class="backbtn" id="backbtn">&larr; Back to list</button><div class="placeholder">Select a category, then an entry.</div>';
+      $('backbtn').onclick = goBack;
+    }
+    renderShardBar();
+    applyFilters();
+    rebuildFilterOptions();
+    return;
+  }
   for (const l of levels) S.npcSel.add(l);
   renderShardBar();
   for (const l of levels) { try { await loadNpcShard(l); } catch(err){ status(`Failed: ${err.message}`); } applyFilters(); }
@@ -496,16 +813,56 @@ $('shardbar').addEventListener('click', async ev => {
 });
 
 /* ============================ category switching ============================ */
+function resetNpcShards(){
+  // leaving the creatures scope drops any level shards that were loaded for it,
+  // so they don't silently keep filtering things the next time creatures are viewed.
+  S.cache.npc = [];
+  S.npcLoaded.clear();
+  S.npcSel.clear();
+}
+function updateScopeBtn(){
+  const btn = $('scopeBtn');
+  if (S.cat === ALL) {
+    btn.textContent = 'Searching: All categories';
+    btn.classList.remove('restricted');
+    btn.title = 'Currently searching every category';
+  } else {
+    btn.textContent = `Only search: ${catLabel(S.cat)}`;
+    btn.classList.add('restricted');
+    btn.title = 'Click to search everything again';
+  }
+}
+$('scopeBtn').addEventListener('click', () => { if (S.cat !== ALL) selectCategory(ALL); });
+async function ensureAllLoaded(){
+  if (S.allRequested) return;
+  S.allRequested = true;
+  const types = Object.keys(S.manifest).filter(t => t !== 'npc');
+  status('Loading all categories for search…');
+  await Promise.all(types.map(async t => {
+    try { await loadCategory(t); } catch(err){ status(`Failed to load ${catLabel(t)}: ${err.message}`); }
+    if (S.cat === ALL) { applyFilters(); rebuildFilterOptions(); }
+  }));
+  if (S.cat === ALL) status('All categories loaded — search everything is ready.');
+}
 async function selectCategory(type){
+  const leavingNpc = S.cat === 'npc' && type !== 'npc';
   S.cat = type; S.selId = null;
   document.querySelectorAll('.cat').forEach(el => el.classList.toggle('active', el.dataset.type === type));
-  $('toolbar').hidden = false;
-  $('q').value = ''; $('lvlMin').value = ''; $('lvlMax').value = ''; $('rarity').value = ''; $('trait').value = ''; $('source').value = '';
+  updateScopeBtn();
+  // category-specific filters reset on every scope change; the free-text search query
+  // stays put since it's meant to keep searching as the user narrows or widens scope.
+  $('lvlMin').value = ''; $('lvlMax').value = ''; $('rarity').value = ''; $('trait').value = ''; $('source').value = '';
+  if (leavingNpc) resetNpcShards();
   $('detail').classList.remove('open');
+  S.curEntry = null; S.history = [];
+  writeHash(null);
   renderShardBar();
   if (type === 'npc') {
     S.cache.npc = S.cache.npc || [];
     applyFilters(); rebuildFilterOptions();
+  } else if (type === ALL) {
+    applyFilters(); rebuildFilterOptions();
+    ensureAllLoaded();
   } else {
     try { await loadCategory(type); } catch(err){ status(`Failed to load: ${err.message}`); S.cache[type] = S.cache[type] || []; }
     if (S.cat !== type) return; // user switched away mid-fetch
@@ -514,6 +871,88 @@ async function selectCategory(type){
 }
 for (const el of ['q','lvlMin','lvlMax']) $(el).addEventListener('input', applyFilters);
 for (const el of ['rarity','trait','source']) $(el).addEventListener('input', applyFilters);
+for (const el of ['lvlMin','lvlMax']) $(el).addEventListener('input', ev => {
+  if (ev.target.value !== '' && +ev.target.value < -1) ev.target.value = '-1';
+});
+
+/* ============================ hash routing ============================ */
+/* #category            — scope only
+   #category/NameOr_id  — open an entry (name is URI-encoded; _id also accepted)
+   #npc/<level>/NameOr_id — creatures carry their shard level so links restore.
+   Written with history.replaceState (no hashchange feedback loop, no history spam);
+   hashchange still handles pasted/edited URLs. */
+function writeHash(e){
+  const seg = encodeURIComponent;
+  let h;
+  if (e) h = e.type === 'npc' && levelOf(e) !== null
+      ? `#npc/${levelOf(e)}/${seg(e.name)}`
+      : `#${seg(e.type)}/${seg(e.name)}`;
+  else h = S.cat === ALL ? '' : `#${seg(S.cat)}`;
+  const url = location.pathname + location.search + h;
+  try { history.replaceState(null, '', url); } catch (_) {}
+}
+async function applyHash(){
+  const raw = location.hash.replace(/^#/, '');
+  if (!raw) return false;
+  const segs = raw.split('/').map(s => { try { return decodeURIComponent(s); } catch (_) { return s; } });
+  const cat = segs[0];
+  if (!S.manifest[cat]) { status(`Unknown category in link: "${cat}"`); return false; }
+  if (S.cat !== cat) await selectCategory(cat);
+  let key = null;
+  if (cat === 'npc') {
+    // 3-segment form carries the shard level; 2-segment degrades to a chip hint
+    if (segs.length >= 3 && segs[1] !== '' && !isNaN(+segs[1])) {
+      const lvl = +segs[1]; key = segs[2];
+      if (S.manifest.npc.shards[lvl]) {
+        S.npcSel.add(lvl); renderShardBar();
+        try { await loadNpcShard(lvl); } catch (err) { status(`Failed to load creature level ${lvl}: ${err.message}`); return false; }
+        applyFilters(); rebuildFilterOptions();
+      }
+    } else if (segs.length === 2) {
+      key = segs[1];
+      const hit = findLoaded(key, key, ['npc']);
+      if (!hit) { status(`"${key}" is a creature — pick its level chip above to load it.`); return true; }
+    }
+  } else if (segs.length >= 2) key = segs.slice(1).join('/');
+  if (!key) return true;
+  const hit = findLoaded(key, key, [cat]);
+  if (hit) openDetail(hit);
+  else status(`Couldn't find "${key}" in ${catLabel(cat)}.`);
+  return true;
+}
+window.addEventListener('hashchange', () => { applyHash(); });
+
+/* ============================ keyboard navigation ============================ */
+function scrollRowIntoView(i){
+  const vlist = $('vlist');
+  const top = i * ROW_H, bot = top + ROW_H;
+  if (top < vlist.scrollTop) vlist.scrollTop = top;
+  else if (bot > vlist.scrollTop + vlist.clientHeight) vlist.scrollTop = bot - vlist.clientHeight;
+}
+document.addEventListener('keydown', ev => {
+  const tag = ev.target.tagName;
+  const inField = tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
+  if (ev.key === 'Escape') {
+    if (inField) { ev.target.blur(); return; }
+    if (S.curEntry || S.history.length) { ev.preventDefault(); goBack(); }
+    return;
+  }
+  if (inField) return;
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+    if (!S.filtered.length) return;
+    ev.preventDefault();
+    const cur = S.filtered.findIndex(e => e._id === S.selId);
+    const next = cur === -1
+      ? (ev.key === 'ArrowDown' ? 0 : S.filtered.length - 1)
+      : Math.min(S.filtered.length - 1, Math.max(0, cur + (ev.key === 'ArrowDown' ? 1 : -1)));
+    S.selId = S.filtered[next]._id;
+    scrollRowIntoView(next);
+    renderVirtual(false);
+  } else if (ev.key === 'Enter') {
+    const cur = S.filtered.find(e => e._id === S.selId);
+    if (cur) { ev.preventDefault(); openDetail(cur); }
+  }
+});
 
 /* ============================ boot ============================ */
 (async function init(){
@@ -528,12 +967,17 @@ for (const el of ['rarity','trait','source']) $(el).addEventListener('input', ap
     const ia = PRIORITY.indexOf(a), ib = PRIORITY.indexOf(b);
     return (ia===-1?99:ia)-(ib===-1?99:ib) || a.localeCompare(b);
   });
-  $('cats').innerHTML = types.map(t =>
+  const total = types.reduce((n,t)=>n+S.manifest[t].count,0);
+  $('cats').innerHTML =
+    `<button class="cat active" data-type="${ALL}"><span>All Categories</span><span class="n">${total.toLocaleString()}</span></button>`
+    + types.map(t =>
     `<button class="cat" data-type="${esc(t)}"><span>${esc(catLabel(t))}</span><span class="n">${S.manifest[t].count.toLocaleString()}</span></button>`).join('');
   $('cats').addEventListener('click', ev => {
     const b = ev.target.closest('.cat'); if (b) selectCategory(b.dataset.type);
   });
-  status(`${types.length} categories · ${types.reduce((n,t)=>n+S.manifest[t].count,0).toLocaleString()} entries indexed.`);
+  status(`${types.length} categories · ${total.toLocaleString()} entries indexed.`);
+  updateScopeBtn();
+  if (!(await applyHash())) selectCategory(ALL);
 })();
 </script>
 </body>
