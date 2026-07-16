@@ -199,6 +199,11 @@
     font-size: 0.9rem;
     color: #E8C9B5;
   }
+  
+  #p-seal {
+  cursor: pointer;
+  user-select: none; /* Prevents text highlighting when clicked quickly */
+}
 
   /* ---------- Town services (straight, clerkly notices) ---------- */
   .services .notice {
@@ -286,13 +291,17 @@
       <span class="seal" aria-hidden="true">G</span>
     </a>
 	<a class="notice" href="Pathfinder/Anathema_Archive.html">
-      <span class="pin" aria-hidden="true"></span>
-      <div class="eyebrow">QUEST POSTED</div>
-      <h3>Anathema Archive</h3>
-      <p class="desc">A quick search tool to look up Pathfinder rules and details.</p>
-      <div class="reward">REWARD: <b>KNOWLEDGE &amp; CLARITY</b> · UTILITY</div>
-      <span class="seal" aria-hidden="true">P</span>
-    </a>
+  <span class="pin" aria-hidden="true"></span>
+  <div class="eyebrow">QUEST POSTED</div>
+  <h3>Anathema Archive</h3>
+  <p class="desc">A quick search tool to look up Pathfinder rules and details.</p>
+  <div class="reward">REWARD: <b>KNOWLEDGE &amp; CLARITY</b> · UTILITY</div>
+  <!-- 1. Added id="p-seal" and inline onclick to prevent navigating away -->
+  <span class="seal" id="p-seal" aria-hidden="true" onclick="event.preventDefault(); event.stopPropagation();">P</span>
+</a>
+
+<audio id="easter-egg-audio" src="Audio/thepwhatnow.mp3"></audio>
+
   </div>
 
   <div class="plaque">TOWN SERVICES — POSTED BY THE SCHOOLHOUSE</div>
@@ -330,5 +339,18 @@
   </div>
 
   <footer>GREYVERSUSBLUE.COM — EVERY QUEST HERE IS NOT ACTUALLY FINISHED</footer>
+  
+  <script>
+  document.getElementById('p-seal').addEventListener('click', function() {
+    const audio = document.getElementById('easter-egg-audio');
+    
+    // Reset to start in case they click it multiple times rapidly
+    audio.currentTime = 0; 
+    audio.play().catch(error => {
+      console.log("Playback failed. This is usually due to browser autoplay policies. Click somewhere on the page first!", error);
+    });
+  });
+</script>
+  
 </body>
 </html>
