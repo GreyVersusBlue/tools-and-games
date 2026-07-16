@@ -1,0 +1,259 @@
+{
+  "action": {
+    "count": 1379,
+    "file": "action.json",
+    "sizeMB": 1.25
+  },
+  "ammo": {
+    "count": 204,
+    "file": "ammo.json",
+    "sizeMB": 0.25
+  },
+  "ancestry": {
+    "count": 50,
+    "file": "ancestry.json",
+    "sizeMB": 0.07
+  },
+  "armor": {
+    "count": 202,
+    "file": "armor.json",
+    "sizeMB": 0.31
+  },
+  "army": {
+    "count": 22,
+    "file": "army.json",
+    "sizeMB": 0.09
+  },
+  "background": {
+    "count": 501,
+    "file": "background.json",
+    "sizeMB": 0.73
+  },
+  "backpack": {
+    "count": 46,
+    "file": "backpack.json",
+    "sizeMB": 0.07
+  },
+  "campaignFeature": {
+    "count": 115,
+    "file": "campaignFeature.json",
+    "sizeMB": 0.14
+  },
+  "class": {
+    "count": 27,
+    "file": "class.json",
+    "sizeMB": 0.12
+  },
+  "condition": {
+    "count": 44,
+    "file": "condition.json",
+    "sizeMB": 0.04
+  },
+  "consumable": {
+    "count": 1670,
+    "file": "consumable.json",
+    "sizeMB": 2.48
+  },
+  "deity": {
+    "count": 480,
+    "file": "deity.json",
+    "sizeMB": 0.87
+  },
+  "equipment": {
+    "count": 2323,
+    "file": "equipment.json",
+    "sizeMB": 3.45
+  },
+  "familiar": {
+    "count": 5,
+    "file": "familiar.json",
+    "sizeMB": 0.01
+  },
+  "feat": {
+    "count": 7360,
+    "file": "feat.json",
+    "sizeMB": 7.19
+  },
+  "hazard": {
+    "count": 1221,
+    "file": "hazard.json",
+    "sizeMB": 3.09
+  },
+  "heritage": {
+    "count": 326,
+    "file": "heritage.json",
+    "sizeMB": 0.24
+  },
+  "kit": {
+    "count": 2,
+    "file": "kit.json",
+    "sizeMB": 0.0
+  },
+  "npc": {
+    "count": 6393,
+    "sharded": true,
+    "shards": {
+      "-1": {
+        "count": 225,
+        "file": "npcs/npc-level-minus1.json",
+        "sizeMB": 1.12
+      },
+      "0": {
+        "count": 139,
+        "file": "npcs/npc-level-0.json",
+        "sizeMB": 0.76
+      },
+      "1": {
+        "count": 504,
+        "file": "npcs/npc-level-1.json",
+        "sizeMB": 3.42
+      },
+      "2": {
+        "count": 514,
+        "file": "npcs/npc-level-2.json",
+        "sizeMB": 3.98
+      },
+      "3": {
+        "count": 522,
+        "file": "npcs/npc-level-3.json",
+        "sizeMB": 4.63
+      },
+      "4": {
+        "count": 467,
+        "file": "npcs/npc-level-4.json",
+        "sizeMB": 4.46
+      },
+      "5": {
+        "count": 452,
+        "file": "npcs/npc-level-5.json",
+        "sizeMB": 5.14
+      },
+      "6": {
+        "count": 393,
+        "file": "npcs/npc-level-6.json",
+        "sizeMB": 4.26
+      },
+      "7": {
+        "count": 402,
+        "file": "npcs/npc-level-7.json",
+        "sizeMB": 5.07
+      },
+      "8": {
+        "count": 358,
+        "file": "npcs/npc-level-8.json",
+        "sizeMB": 4.67
+      },
+      "9": {
+        "count": 314,
+        "file": "npcs/npc-level-9.json",
+        "sizeMB": 4.83
+      },
+      "10": {
+        "count": 266,
+        "file": "npcs/npc-level-10.json",
+        "sizeMB": 4.17
+      },
+      "11": {
+        "count": 246,
+        "file": "npcs/npc-level-11.json",
+        "sizeMB": 4.63
+      },
+      "12": {
+        "count": 193,
+        "file": "npcs/npc-level-12.json",
+        "sizeMB": 3.52
+      },
+      "13": {
+        "count": 231,
+        "file": "npcs/npc-level-13.json",
+        "sizeMB": 4.1
+      },
+      "14": {
+        "count": 188,
+        "file": "npcs/npc-level-14.json",
+        "sizeMB": 3.33
+      },
+      "15": {
+        "count": 176,
+        "file": "npcs/npc-level-15.json",
+        "sizeMB": 3.7
+      },
+      "16": {
+        "count": 152,
+        "file": "npcs/npc-level-16.json",
+        "sizeMB": 3.19
+      },
+      "17": {
+        "count": 139,
+        "file": "npcs/npc-level-17.json",
+        "sizeMB": 3.01
+      },
+      "18": {
+        "count": 162,
+        "file": "npcs/npc-level-18.json",
+        "sizeMB": 3.63
+      },
+      "19": {
+        "count": 99,
+        "file": "npcs/npc-level-19.json",
+        "sizeMB": 2.99
+      },
+      "20": {
+        "count": 114,
+        "file": "npcs/npc-level-20.json",
+        "sizeMB": 3.57
+      },
+      "21": {
+        "count": 52,
+        "file": "npcs/npc-level-21.json",
+        "sizeMB": 1.59
+      },
+      "22": {
+        "count": 38,
+        "file": "npcs/npc-level-22.json",
+        "sizeMB": 1.22
+      },
+      "23": {
+        "count": 31,
+        "file": "npcs/npc-level-23.json",
+        "sizeMB": 1.33
+      },
+      "24": {
+        "count": 11,
+        "file": "npcs/npc-level-24.json",
+        "sizeMB": 0.32
+      },
+      "25": {
+        "count": 5,
+        "file": "npcs/npc-level-25.json",
+        "sizeMB": 0.15
+      }
+    },
+    "sizeMB": 86.8
+  },
+  "shield": {
+    "count": 118,
+    "file": "shield.json",
+    "sizeMB": 0.16
+  },
+  "spell": {
+    "count": 1802,
+    "file": "spell.json",
+    "sizeMB": 2.88
+  },
+  "treasure": {
+    "count": 153,
+    "file": "treasure.json",
+    "sizeMB": 0.07
+  },
+  "vehicle": {
+    "count": 99,
+    "file": "vehicle.json",
+    "sizeMB": 0.2
+  },
+  "weapon": {
+    "count": 980,
+    "file": "weapon.json",
+    "sizeMB": 1.73
+  }
+}
