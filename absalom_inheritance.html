@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Absalom Inheritance — A PF2e Remaster Isometric CRPG</title>
+<style>
+/* ============================================================
+   THE ABSALOM INHERITANCE — UI LAYER
+   Dark basalt + gold-leaf accent. Serif display for lore,
+   utility sans for numbers and dice math.
+   ============================================================ */
+:root{
+  --bg:        #0c0b10;   /* basalt black          */
+  --panel:     #16141d;   /* raised stone          */
+  --panel-2:   #1e1b27;   /* inset stone           */
+  --line:      #2c2838;   /* mortar seams          */
+  --gold:      #d4a843;   /* gold leaf             */
+  --gold-dim:  #8a6f2e;
+  --ink:       #d8d3c8;   /* parchment ink         */
+  --ink-dim:   #8f8a80;
+  --crit:      #7fd48a;   /* crit success green    */
+  --succ:      #b9d47f;
+  --fail:      #d49a7f;
+  --cfail:     #d4657f;   /* crit fail rose        */
+  --hp:        #b03a48;
+  --focus:     #7fa9d4;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html,body{height:100%; overflow:hidden;}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Segoe UI", system-ui, sans-serif; font-size:14px;
+  display:grid; grid-template-columns:260px 1fr 320px; grid-template-rows:100vh;
+}
+h1,h2,h3,.serif{font-family:Georgia,"Times New Roman",serif;}
+
+/* ---------- panels ---------- */
+.panel{
+  background:var(--panel); border-left:1px solid var(--line); border-right:1px solid var(--line);
+  padding:14px; overflow-y:auto; display:flex; flex-direction:column; gap:12px;
+}
+.panel::-webkit-scrollbar{width:8px;} .panel::-webkit-scrollbar-thumb{background:var(--line);}
+.rule{border:none; border-top:1px solid var(--line); position:relative; margin:2px 0;}
+.rule::after{content:"◆"; color:var(--gold-dim); font-size:8px; position:absolute; top:-6px; left:50%; transform:translateX(-50%); background:var(--panel); padding:0 6px;}
+.eyebrow{font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--gold);}
+#char-name{font-size:20px; color:var(--ink); letter-spacing:.02em;}
+.subtle{color:var(--ink-dim); font-size:12px;}
+
+/* ---------- stat blocks ---------- */
+.statrow{display:flex; justify-content:space-between; align-items:baseline; padding:2px 0;}
+.statrow b{color:var(--gold); font-variant-numeric:tabular-nums;}
+.barwrap{background:var(--panel-2); border:1px solid var(--line); height:16px; position:relative;}
+.barfill{height:100%; background:linear-gradient(180deg,#c9505e,var(--hp)); transition:width .35s;}
+.barlabel{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; text-shadow:0 1px 2px #000;}
+
+/* ---------- action pips ---------- */
+#actions{display:flex; gap:8px; align-items:center;}
+.pip{
+  width:26px; height:26px; border:1px solid var(--gold-dim); transform:rotate(45deg);
+  background:var(--panel-2); transition:background .2s, box-shadow .2s;
+}
+.pip.on{background:var(--gold); box-shadow:0 0 10px rgba(212,168,67,.55);}
+
+/* ---------- spell / command buttons ---------- */
+button{
+  font-family:inherit; font-size:13px; color:var(--ink); background:var(--panel-2);
+  border:1px solid var(--line); padding:7px 10px; cursor:pointer; text-align:left;
+  display:flex; justify-content:space-between; gap:8px; width:100%;
+  transition:border-color .15s, background .15s;
+}
+button:hover:not(:disabled){border-color:var(--gold); background:#262233;}
+button:disabled{opacity:.35; cursor:not-allowed;}
+button.armed{border-color:var(--gold); background:#2b2412; box-shadow:inset 0 0 0 1px var(--gold);}
+button .cost{color:var(--gold); white-space:nowrap; font-size:11px; letter-spacing:.05em;}
+.btncol{display:flex; flex-direction:column; gap:6px;}
+
+/* ---------- slots ---------- */
+.slots{display:flex; gap:6px;}
+.slot-gem{width:14px; height:14px; border:1px solid var(--gold-dim); border-radius:50%; background:var(--panel-2);}
+.slot-gem.full{background:var(--gold); box-shadow:0 0 6px rgba(212,168,67,.6);}
+.slot-gem.focus.full{background:var(--focus); border-color:var(--focus); box-shadow:0 0 6px rgba(127,169,212,.6);}
+
+/* ---------- canvas stage ---------- */
+#stage{position:relative; background:radial-gradient(ellipse at 50% 30%, #14121c 0%, var(--bg) 70%);}
+canvas{display:block; width:100%; height:100%; cursor:crosshair;}
+#mode-banner{
+  position:absolute; top:12px; left:50%; transform:translateX(-50%);
+  font-size:11px; letter-spacing:.3em; text-transform:uppercase; color:var(--ink-dim);
+  border:1px solid var(--line); background:rgba(12,11,16,.8); padding:5px 16px; pointer-events:none;
+}
+#mode-banner.combat{color:var(--gold); border-color:var(--gold-dim);}
+#hint{
+  position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+  font-size:12px; color:var(--ink-dim); background:rgba(12,11,16,.8);
+  border:1px solid var(--line); padding:5px 14px; pointer-events:none; max-width:80%;
+  text-align:center;
+}
+
+/* ---------- log ---------- */
+#log{flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:4px;}
+.log-entry{border-left:2px solid var(--line); padding:4px 0 4px 10px; font-size:13px; line-height:1.45;}
+.log-entry.narrative{border-color:var(--gold-dim); font-family:Georgia,serif; color:var(--ink); font-style:italic;}
+.log-entry.dice{border-color:var(--focus);}
+.log-entry .math{
+  display:block; font-family:Consolas,monospace; font-size:11.5px; color:var(--ink-dim); margin-top:2px;
+}
+.deg-3{color:var(--crit); font-weight:bold;} .deg-2{color:var(--succ);}
+.deg-1{color:var(--fail);} .deg-0{color:var(--cfail); font-weight:bold;}
+
+/* ---------- modals ---------- */
+.modal-veil{
+  position:fixed; inset:0; background:rgba(5,4,8,.72); display:none;
+  align-items:center; justify-content:center; z-index:50;
+}
+.modal-veil.open{display:flex;}
+.modal{
+  width:min(560px, 92vw); background:var(--panel); border:1px solid var(--gold-dim);
+  box-shadow:0 0 0 6px rgba(212,168,67,.06), 0 24px 60px #000; padding:22px;
+}
+.modal h2{color:var(--gold); font-size:18px; margin-bottom:4px;}
+.modal p{margin:10px 0; line-height:1.6; font-family:Georgia,serif;}
+.modal .close-row{display:flex; justify-content:flex-end; margin-top:14px;}
+.modal .close-row button{width:auto;}
+
+/* ---------- inventory ---------- */
+#inv-grid{display:grid; grid-template-columns:repeat(4, 78px); gap:8px; margin:14px 0;}
+.inv-slot{
+  width:78px; height:78px; background:var(--panel-2); border:1px dashed var(--line);
+  display:flex; align-items:center; justify-content:center; position:relative;
+}
+.inv-slot.dragover{border-color:var(--gold); background:#241f2f;}
+.inv-item{
+  width:68px; height:68px; border:1px solid var(--gold-dim); background:#211d2b;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+  cursor:grab; user-select:none; text-align:center;
+}
+.inv-item:active{cursor:grabbing;}
+.inv-item .glyph{font-size:22px;}
+.inv-item .iname{font-size:9.5px; color:var(--ink-dim); line-height:1.1; padding:0 2px;}
+.inv-item .ibulk{font-size:9px; color:var(--gold);}
+#inv-drop{
+  border:1px dashed var(--cfail); color:var(--cfail); padding:10px; text-align:center;
+  font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+}
+#inv-drop.dragover{background:rgba(212,101,127,.12);}
+#bulk-readout{font-size:12px;}
+#bulk-readout b{color:var(--gold);}
+#bulk-readout.over b{color:var(--cfail);}
+kbd{border:1px solid var(--line); padding:0 5px; border-radius:3px; font-size:11px; background:var(--panel-2);}
+</style>
+</head>
+<body>
+
+<!-- ================= LEFT PANEL : CHARACTER SHEET ================= -->
+<aside class="panel" id="left-panel">
+  <div>
+    <div class="eyebrow">Pathfinder Society · Absalom</div>
+    <h1 id="char-name" class="serif">Vesper Quill</h1>
+    <div class="subtle">Human Wizard 1 · Trained proficiency +3 (level 1 + 2)</div>
+  </div>
+  <hr class="rule">
+
+  <div>
+    <div class="eyebrow">Hit Points</div>
+    <div class="barwrap"><div class="barfill" id="hp-bar" style="width:100%"></div>
+      <div class="barlabel" id="hp-label">15 / 15</div></div>
+  </div>
+
+  <div>
+    <div class="statrow"><span>Armor Class</span><b id="ac-val">15</b></div>
+    <div class="statrow"><span>Fortitude</span><b>+4</b></div>
+    <div class="statrow"><span>Reflex</span><b>+5</b></div>
+    <div class="statrow"><span>Will</span><b>+6</b></div>
+    <div class="statrow"><span>Spell DC / Attack</span><b>17 / +7</b></div>
+    <div class="statrow"><span>Speed</span><b>25 ft</b></div>
+  </div>
+  <hr class="rule">
+
+  <div>
+    <div class="eyebrow">Actions Remaining</div>
+    <div id="actions" style="margin-top:8px">
+      <div class="pip on" id="pip0"></div>
+      <div class="pip on" id="pip1"></div>
+      <div class="pip on" id="pip2"></div>
+      <span class="subtle" id="action-note" style="margin-left:6px">Exploration</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="eyebrow">Spell Slots · Rank 1</div>
+    <div class="slots" style="margin-top:6px">
+      <div class="slot-gem full" id="slot0"></div>
+      <div class="slot-gem full" id="slot1"></div>
+    </div>
+    <div class="eyebrow" style="margin-top:10px">Focus Pool</div>
+    <div class="slots" style="margin-top:6px">
+      <div class="slot-gem focus full" id="focus0"></div>
+    </div>
+  </div>
+  <hr class="rule">
+
+  <div class="btncol">
+    <div class="eyebrow">Combat Commands</div>
+    <button id="btn-strike">Strike — Dagger +5 (1d4 P)<span class="cost">◆</span></button>
+    <button id="btn-splash">Rousing Splash <i class="subtle">(cantrip)</i><span class="cost">◆◆</span></button>
+    <button id="btn-breathe">Breathe Fire <i class="subtle">(rank 1)</i><span class="cost">◆◆</span></button>
+    <button id="btn-fang">Force Fang <i class="subtle">(focus)</i><span class="cost">◆</span></button>
+    <button id="btn-potion">Drink Healing Potion<span class="cost">◆</span></button>
+    <button id="btn-end">End Turn<span class="cost">↻</span></button>
+  </div>
+
+  <div class="btncol" style="margin-top:auto">
+    <button id="btn-inv">Open Satchel (Inventory)<span class="cost">I</span></button>
+  </div>
+</aside>
+
+<!-- ================= CENTER : ISOMETRIC STAGE ================= -->
+<main id="stage">
+  <canvas id="game"></canvas>
+  <div id="mode-banner">Exploration Mode</div>
+  <div id="hint">Click a lit tile to walk. Approach the carved pillars to read them.</div>
+</main>
+
+<!-- ================= RIGHT PANEL : INTERACTION LOG ================= -->
+<aside class="panel" id="right-panel">
+  <div>
+    <div class="eyebrow">Interaction Log</div>
+    <div class="subtle">Narration & exact dice math</div>
+  </div>
+  <hr class="rule">
+  <div id="log"></div>
+</aside>
+
+<!-- ================= MODALS ================= -->
+<div class="modal-veil" id="lore-veil">
+  <div class="modal">
+    <h2 id="lore-title" class="serif">—</h2>
+    <div id="lore-body"></div>
+    <div class="close-row"><button onclick="closeModal('lore-veil')">Close ✕</button></div>
+  </div>
+</div>
+
+<div class="modal-veil" id="inv-veil">
+  <div class="modal">
+    <h2 class="serif">Satchel</h2>
+    <div class="subtle">Drag items between slots. Drag onto the red seam to discard.
+      Encumbered above <b>5 Bulk</b> (5 + STR modifier 0). Light (L) items count 0.1 each.</div>
+    <div id="inv-grid"></div>
+    <div id="inv-drop">Discard — drop item here</div>
+    <div id="bulk-readout" style="margin-top:10px">Carried Bulk: <b id="bulk-val">—</b> / 5</div>
+    <div class="close-row"><button onclick="closeModal('inv-veil')">Close ✕</button></div>
+  </div>
+</div>
+
+<div class="modal-veil" id="end-veil">
+  <div class="modal">
+    <h2 id="end-title" class="serif">—</h2>
+    <div id="end-body"></div>
+    <div class="close-row"><button onclick="location.reload()">Restart ↻</button></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================================
+   SECTION 1 — PF2e REMASTER RULES ENGINE
+   ----------------------------------------------------------------------------
+   Rules-lawyer notes baked into this build:
+   • Proficiency (Remaster, Player Core p.407): bonus = level + rank value.
+     Trained rank = +2, so a level-1 Trained check = 1 + 2 = +3.
+   • Degrees of Success (Player Core p.404):
+       total >= DC + 10  → CRITICAL SUCCESS
+       total >= DC       → SUCCESS
+       total <= DC - 10  → CRITICAL FAILURE
+       otherwise         → FAILURE
+     A natural 20 improves the degree one step; a natural 1 worsens it one step.
+   • Multiple Attack Penalty (MAP): −5 on the 2nd attack, −10 on the 3rd+
+     (dagger is Agile, which would be −4/−8; we keep the non-agile −5/−10 per
+     the spec's request for "standard" math and note it here).
+   • Basic Saves: crit success = no damage, success = half, failure = full,
+     crit failure = double.
+   • "Burning Hands" was RENAMED "Breathe Fire" in the Remaster (Player Core).
+     2d6 fire, 15-foot cone, basic Reflex save. Implemented under its legal name.
+   • "Force Fang" is, strictly, a MAGUS focus spell (Secrets of Magic). It is
+     included per the design spec: 1 action, no attack roll (unerring force,
+     like Magic Missile), 1d4+1 force, costs 1 Focus Point.
+   • Diagonal movement (Player Core p.421): 1st diagonal = 5 ft, 2nd = 10 ft,
+     alternating. The A* below carries diagonal parity inside its node state
+     so path costs are exactly rules-legal.
+   ============================================================================ */
+
+const DC_STANDARD = 15;         // Level-1 standard DC (GM Core DC-by-level table)
+const DEG = { CRIT_FAIL:0, FAIL:1, SUCC:2, CRIT_SUCC:3 };
+const DEG_NAME = ["CRITICAL FAILURE","Failure","Success","CRITICAL SUCCESS"];
+
+function d(n){ return 1 + Math.floor(Math.random()*n); }
+
+function rollDice(count, size){
+  const rolls = [];
+  for(let i=0;i<count;i++) rolls.push(d(size));
+  return { rolls, total: rolls.reduce((a,b)=>a+b,0) };
+}
+
+/** Core degree-of-success calculator, including nat 1 / nat 20 step shifts. */
+function degreeOfSuccess(die, total, dc){
+  let deg;
+  if(total >= dc+10) deg = DEG.CRIT_SUCC;
+  else if(total >= dc) deg = DEG.SUCC;
+  else if(total <= dc-10) deg = DEG.CRIT_FAIL;
+  else deg = DEG.FAIL;
+  if(die === 20) deg = Math.min(DEG.CRIT_SUCC, deg+1);
+  if(die === 1)  deg = Math.max(DEG.CRIT_FAIL, deg-1);
+  return deg;
+}
+
+/** Roll a d20 check, log the full breakdown, return {die,total,deg}. */
+function check(label, bonus, dc){
+  const die = d(20);
+  const total = die + bonus;
+  const deg = degreeOfSuccess(die, total, dc);
+  logDice(label,
+    `d20(${die}) ${bonus>=0?"+":""}${bonus} = ${total} vs DC ${dc}`,
+    deg);
+  return { die, total, deg };
+}
+
+/** Basic save damage scaling (Player Core p.406). */
+function basicSaveDamage(deg, dmg){
+  if(deg === DEG.CRIT_SUCC) return 0;
+  if(deg === DEG.SUCC)      return Math.floor(dmg/2);
+  if(deg === DEG.FAIL)      return dmg;
+  return dmg*2; // critical failure
+}
+
+/* ============================================================================
+   SECTION 2 — MAP DATA
+   The ruin beneath the Ascendant Court. Legend:
+   '#' wall  '.' floor  'G' sealed gate  'P'/'Q' lore pillars
+   'E' Shattered Sentinel spawn  '@' player spawn  'T' the Inheritance (goal)
+   ============================================================================ */
+const MAP_SRC = [
+"######################",
+"#########....#########",
+"#########.TT.#########",
+"#########....#########",
+"#########....#########",
+"##########GG##########",
+"#....................#",
+"#....................#",
+"#......E......E......#",
+"#....................#",
+"#...##..........##...#",
+"#...##..........##...#",
+"#..P..............Q..#",
+"#....................#",
+"#...##..........##...#",
+"#...##..........##...#",
+"#....................#",
+"#....................#",
+"#....................#",
+"#.........@..........#",
+"#....................#",
+"######################",
+];
+const GW = MAP_SRC[0].length, GH = MAP_SRC.length;
+
+const T = { FLOOR:0, WALL:1, GATE:2, PILLAR:3, TREASURE:4 };
+const map = [];               // map[y][x] -> tile type
+const pillarAt = {};          // "x,y" -> pillar id 'P' | 'Q'
+const spawns = { player:null, enemies:[] };
+
+for(let y=0;y<GH;y++){
+  map.push([]);
+  for(let x=0;x<GW;x++){
+    const c = MAP_SRC[y][x];
+    let t = T.FLOOR;
+    if(c==='#') t = T.WALL;
+    else if(c==='G') t = T.GATE;
+    else if(c==='P'||c==='Q'){ t = T.PILLAR; pillarAt[x+","+y]=c; }
+    else if(c==='T') t = T.TREASURE;
+    else if(c==='E') spawns.enemies.push({x,y});
+    else if(c==='@') spawns.player = {x,y};
+    map[y].push(t);
+  }
+}
+
+/* ============================================================================
+   SECTION 3 — GAME STATE & ACTORS
+   ============================================================================ */
+const state = {
+  mode: "explore",            // "explore" | "combat" | "over"
+  gateOpen: false,
+  pillarsRead: { P:false, Q:false },
+  pending: null,              // armed command: "strike"|"splash"|"breathe"|"fang"
+  turnQueue: [],              // initiative order (actor refs)
+  turnIdx: 0,
+  busy: false,                // input lock during animation / enemy turns
+  explored: new Set(),        // fog-of-war memory
+  visible: new Set(),         // recomputed each frame from player LoS
+};
+
+const player = {
+  id:"player", name:"Vesper Quill", isPC:true,
+  x: spawns.player.x, y: spawns.player.y,
+  hp:15, hpMax:15,             // Wizard 6 + CON 1 + Human ancestry 8
+  ac:15,                       // 10 + DEX 2 + Trained unarmored (+3)
+  saves:{ fort:4, ref:5, will:6 },
+  attackBonus:5,               // dagger: Trained +3, finesse → DEX +2
+  spellAttack:7, spellDC:17,   // Trained +3 + INT +4
+  perception:5,                // Trained +3 + WIS +1  (initiative)
+  speed:25,
+  slots:2, focus:1,
+  map:0,                       // Multiple Attack Penalty counter (this turn)
+  actions:3,
+  dead:false,
+};
+
+function makeSentinel(n, sx, sy){
+  /* "Shattered Sentinel" — Creature 0 construct (animated rubble).
+     Statline tuned to the Level-0 benchmarks in GM Core's Building Creatures. */
+  return {
+    id:"sent"+n, name:"Shattered Sentinel "+n, isPC:false,
+    x:sx, y:sy, hp:17, hpMax:17, ac:14,
+    saves:{ fort:6, ref:4, will:2 },
+    attackBonus:6, dmg:{n:1,s:6,plus:2},   // fist +6, 1d6+2 bludgeoning
+    perception:4, speed:25, map:0, actions:3, dead:false,
+  };
+}
+const enemies = spawns.enemies.map((s,i)=>makeSentinel(i+1, s.x, s.y));
+const actors = [player, ...enemies];
+
+const actorAt = (x,y)=>actors.find(a=>!a.dead && a.x===x && a.y===y);
+
+/** A tile blocks MOVEMENT if wall/pillar/closed gate or an occupying creature. */
+function blocksMove(x,y, ignoreActor){
+  if(x<0||y<0||x>=GW||y>=GH) return true;
+  const t = map[y][x];
+  if(t===T.WALL || t===T.PILLAR) return true;
+  if(t===T.GATE && !state.gateOpen) return true;
+  const a = actorAt(x,y);
+  if(a && a!==ignoreActor) return true;
+  return false;
+}
+/** A tile blocks SIGHT if wall/pillar/closed gate (creatures don't block sight). */
+function blocksSight(x,y){
+  if(x<0||y<0||x>=GW||y>=GH) return true;
+  const t = map[y][x];
+  return t===T.WALL || t===T.PILLAR || (t===T.GATE && !state.gateOpen);
+}
+
+/* ============================================================================
+   SECTION 4 — GEOMETRY: PF2e DISTANCE, LINE OF SIGHT, A* PATHFINDING
+   ============================================================================ */
+
+/** PF2e distance in feet between two squares (diagonals 5-10-5). */
+function feetBetween(ax,ay,bx,by){
+  const dx = Math.abs(ax-bx), dy = Math.abs(ay-by);
+  const diag = Math.min(dx,dy), straight = Math.max(dx,dy)-diag;
+  return straight*5 + diag*5 + Math.floor(diag/2)*5;
+}
+const isAdjacent = (a,b)=>feetBetween(a.x,a.y,b.x,b.y) <= 5 && (a.x!==b.x||a.y!==b.y);
+
+/** Bresenham line-of-sight between square centers. */
+function hasLoS(ax,ay,bx,by){
+  let x0=ax, y0=ay;
+  const dx = Math.abs(bx-ax), dy = -Math.abs(by-ay);
+  const sx = ax<bx?1:-1, sy = ay<by?1:-1;
+  let err = dx+dy;
+  while(true){
+    if(!(x0===ax&&y0===ay) && !(x0===bx&&y0===by) && blocksSight(x0,y0)) return false;
+    if(x0===bx && y0===by) return true;
+    const e2 = 2*err;
+    if(e2>=dy){ err+=dy; x0+=sx; }
+    if(e2<=dx){ err+=dx; y0+=sy; }
+  }
+}
+
+/** Recompute visible set: 30 ft radius + LoS from the player. */
+function computeVision(){
+  state.visible.clear();
+  for(let y=0;y<GH;y++) for(let x=0;x<GW;x++){
+    if(feetBetween(player.x,player.y,x,y) <= 30 && hasLoS(player.x,player.y,x,y)){
+      const k = x+","+y;
+      state.visible.add(k);
+      state.explored.add(k);
+    }
+  }
+}
+
+/**
+ * A* pathfinding, 8-directional, with RULES-LEGAL diagonal costs.
+ * Node state = (x, y, diagonal parity). Parity 0 → next diagonal costs 5 ft;
+ * parity 1 → next diagonal costs 10 ft. This makes g() exact per Player Core.
+ */
+function findPath(sx, sy, tx, ty, mover){
+  if(blocksMove(tx,ty,mover)) return null;
+  const startKey = sx+","+sy+",0";
+  const open = new Map();      // key -> node
+  const closed = new Set();
+  const h = (x,y)=>feetBetween(x,y,tx,ty);
+  open.set(startKey, {x:sx,y:sy,p:0,g:0,f:h(sx,sy),parent:null});
+
+  const DIRS = [
+    [ 1, 0,false],[-1, 0,false],[0, 1,false],[0,-1,false],
+    [ 1, 1,true ],[ 1,-1,true ],[-1, 1,true ],[-1,-1,true ],
+  ];
+  while(open.size){
+    // pop lowest-f node (grid is 22×22 — linear scan is fine)
+    let cur=null, curKey=null;
+    for(const [k,n] of open) if(!cur || n.f<cur.f){ cur=n; curKey=k; }
+    open.delete(curKey);
+    closed.add(curKey);
+
+    if(cur.x===tx && cur.y===ty){
+      const path=[]; let n=cur;
+      while(n){ path.unshift({x:n.x,y:n.y,g:n.g}); n=n.parent; }
+      return path;                      // path[i].g = cumulative feet
+    }
+    for(const [dx,dy,diag] of DIRS){
+      const nx=cur.x+dx, ny=cur.y+dy;
+      if(blocksMove(nx,ny,mover)) continue;
+      // no cutting corners: a diagonal step requires both orthogonal squares open
+      if(diag && (blocksMove(cur.x+dx,cur.y,mover) || blocksMove(cur.x,cur.y+dy,mover))) continue;
+      const stepCost = diag ? (cur.p===0?5:10) : 5;
+      const np = diag ? (cur.p^1) : cur.p;
+      const key = nx+","+ny+","+np;
+      if(closed.has(key)) continue;
+      const g = cur.g + stepCost;
+      const existing = open.get(key);
+      if(!existing || g < existing.g){
+        open.set(key, {x:nx,y:ny,p:np,g, f:g+h(nx,ny), parent:cur});
+      }
+    }
+  }
+  return null;
+}
+
+/* ============================================================================
+   SECTION 5 — ISOMETRIC RENDERER (vanilla canvas, geometric primitives)
+   ============================================================================ */
+const cv = document.getElementById("game");
+const ctx = cv.getContext("2d");
+const ISO = { W:56, H:28 };            // tile diamond width/height (2:1)
+let originX=0, originY=0;
+
+function resize(){
+  cv.width = cv.clientWidth * devicePixelRatio;
+  cv.height = cv.clientHeight * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  originX = cv.clientWidth/2;
+  originY = (cv.clientHeight - (GW+GH)*ISO.H/2)/2 + 40;
+}
+window.addEventListener("resize", resize);
+
+const isoX = (x,y)=> originX + (x-y)*ISO.W/2;
+const isoY = (x,y)=> originY + (x+y)*ISO.H/2;
+
+/** Inverse projection: screen px → grid square (rounded). */
+function screenToGrid(px,py){
+  const rx = (px-originX)/(ISO.W/2), ry = (py-originY)/(ISO.H/2);
+  return { x: Math.round((rx+ry)/2), y: Math.round((ry-rx)/2) };
+}
+
+function diamond(cx,cy,w,h){
+  ctx.beginPath();
+  ctx.moveTo(cx, cy-h/2); ctx.lineTo(cx+w/2, cy);
+  ctx.lineTo(cx, cy+h/2); ctx.lineTo(cx-w/2, cy);
+  ctx.closePath();
+}
+
+/** Extruded prism: top diamond at height ht, with left/right faces. */
+function prism(x,y,ht,topC,leftC,rightC,scale=1){
+  const cx=isoX(x,y), cy=isoY(x,y);
+  const w=ISO.W*scale, h=ISO.H*scale;
+  // left face
+  ctx.fillStyle=leftC; ctx.beginPath();
+  ctx.moveTo(cx-w/2,cy); ctx.lineTo(cx,cy+h/2);
+  ctx.lineTo(cx,cy+h/2-ht); ctx.lineTo(cx-w/2,cy-ht); ctx.closePath(); ctx.fill();
+  // right face
+  ctx.fillStyle=rightC; ctx.beginPath();
+  ctx.moveTo(cx+w/2,cy); ctx.lineTo(cx,cy+h/2);
+  ctx.lineTo(cx,cy+h/2-ht); ctx.lineTo(cx+w/2,cy-ht); ctx.closePath(); ctx.fill();
+  // top
+  ctx.fillStyle=topC; diamond(cx,cy-ht,w,h); ctx.fill();
+  ctx.strokeStyle="rgba(0,0,0,.35)"; ctx.lineWidth=1; ctx.stroke();
+}
+
+let hoverTile=null;
+
+function render(){
+  ctx.clearRect(0,0,cv.clientWidth,cv.clientHeight);
+  computeVision();
+
+  // Pass 1 — floor tiles (painter order back→front)
+  for(let y=0;y<GH;y++) for(let x=0;x<GW;x++){
+    const k=x+","+y;
+    const vis=state.visible.has(k), seen=state.explored.has(k);
+    if(!vis && !seen) continue;                    // FOG: never seen → void
+    const t=map[y][x];
+    if(t===T.WALL) continue;                       // drawn as prisms in pass 2
+    const cx=isoX(x,y), cy=isoY(x,y);
+    let fill = ((x+y)%2===0) ? "#241f2e" : "#282334";
+    if(t===T.TREASURE) fill = "#3a2f14";
+    if(t===T.GATE) fill = state.gateOpen ? "#20303a" : "#141019";
+    diamond(cx,cy,ISO.W,ISO.H);
+    ctx.fillStyle=fill; ctx.fill();
+    ctx.strokeStyle = vis ? "rgba(212,168,67,.10)" : "rgba(80,75,95,.15)";
+    ctx.stroke();
+    if(!vis){ ctx.fillStyle="rgba(12,11,16,.62)"; ctx.fill(); }  // FOG: memory dim
+    if(vis && t===T.TREASURE){
+      ctx.fillStyle="#d4a843";
+      diamond(cx,cy-8,14,7); ctx.fill();           // the Inheritance casket
+      prism(x,y,0,"transparent","transparent","transparent",0); // no-op keeps order clear
+    }
+  }
+
+  // hover highlight
+  if(hoverTile && state.visible.has(hoverTile.x+","+hoverTile.y)
+     && !blocksMove(hoverTile.x,hoverTile.y,player)){
+    diamond(isoX(hoverTile.x,hoverTile.y), isoY(hoverTile.x,hoverTile.y), ISO.W, ISO.H);
+    ctx.strokeStyle="#d4a843"; ctx.lineWidth=1.5; ctx.stroke(); ctx.lineWidth=1;
+  }
+
+  // Pass 2 — depth-sorted solids: walls, pillars, gate doors, actors
+  const solids=[];
+  for(let y=0;y<GH;y++) for(let x=0;x<GW;x++){
+    const k=x+","+y;
+    if(!state.visible.has(k) && !state.explored.has(k)) continue;
+    const t=map[y][x];
+    if(t===T.WALL)   solids.push({x,y,kind:"wall"});
+    if(t===T.PILLAR) solids.push({x,y,kind:"pillar",id:pillarAt[k]});
+    if(t===T.GATE && !state.gateOpen) solids.push({x,y,kind:"gate"});
+  }
+  for(const a of actors) if(!a.dead && state.visible.has(a.x+","+a.y))
+    solids.push({x:a.x,y:a.y,kind:"actor",actor:a});
+  solids.sort((s1,s2)=>(s1.x+s1.y)-(s2.x+s2.y));
+
+  for(const s of solids){
+    const dim = !state.visible.has(s.x+","+s.y);
+    ctx.globalAlpha = dim ? .35 : 1;
+    if(s.kind==="wall")   prism(s.x,s.y,26,"#3a3448","#231f2d","#2c2738");
+    if(s.kind==="gate")   prism(s.x,s.y,30,"#4a3b18","#332a12","#3d3115");
+    if(s.kind==="pillar"){
+      prism(s.x,s.y,40,"#4d4560","#312b40","#3b3450",0.72);
+      const done = state.pillarsRead[s.id];
+      ctx.fillStyle = done ? "#8a6f2e" : "#d4a843";
+      diamond(isoX(s.x,s.y), isoY(s.x,s.y)-46, 12, 6); ctx.fill();  // gold capstone
+    }
+    if(s.kind==="actor"){
+      const a=s.actor, cx=isoX(a.x,a.y), cy=isoY(a.x,a.y);
+      if(a.isPC){
+        prism(a.x,a.y,20,"#3f6ea8","#26456b","#315687",0.55);
+        ctx.fillStyle="#d4a843"; diamond(cx,cy-27,10,5); ctx.fill(); // gold circlet
+      }else{
+        prism(a.x,a.y,18,"#8a3a46","#57242c","#6e2e38",0.55);
+        ctx.fillStyle="#e0c56a";                                     // sentinel eye
+        ctx.beginPath(); ctx.arc(cx,cy-12,2.6,0,Math.PI*2); ctx.fill();
+      }
+      // HP bar
+      const w=34, pct=Math.max(0,a.hp/a.hpMax);
+      ctx.fillStyle="#0c0b10"; ctx.fillRect(cx-w/2, cy-(a.isPC?38:34), w, 5);
+      ctx.fillStyle = a.isPC ? "#4f9e5f" : "#b03a48";
+      ctx.fillRect(cx-w/2+1, cy-(a.isPC?38:34)+1, (w-2)*pct, 3);
+      // active-turn marker
+      if(state.mode==="combat" && state.turnQueue[state.turnIdx]===a){
+        ctx.strokeStyle="#d4a843"; ctx.lineWidth=1.5;
+        diamond(cx, cy, ISO.W*.9, ISO.H*.9); ctx.stroke(); ctx.lineWidth=1;
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  requestAnimationFrame(render);
+}
+
+/* ============================================================================
+   SECTION 6 — LOG & UI REFRESH
+   ============================================================================ */
+const logEl = document.getElementById("log");
+function logNarrative(text){
+  const div=document.createElement("div");
+  div.className="log-entry narrative"; div.textContent=text;
+  logEl.appendChild(div); logEl.scrollTop=logEl.scrollHeight;
+}
+function logDice(label, math, deg){
+  const div=document.createElement("div");
+  div.className="log-entry dice";
+  div.innerHTML = `<span>${label} — <span class="deg-${deg}">${DEG_NAME[deg]}</span></span>
+                   <span class="math">${math}</span>`;
+  logEl.appendChild(div); logEl.scrollTop=logEl.scrollHeight;
+}
+function logInfo(text){
+  const div=document.createElement("div");
+  div.className="log-entry"; div.textContent=text;
+  logEl.appendChild(div); logEl.scrollTop=logEl.scrollHeight;
+}
+function logDamage(label, math){
+  const div=document.createElement("div");
+  div.className="log-entry dice";
+  div.innerHTML = `<span>${label}</span><span class="math">${math}</span>`;
+  logEl.appendChild(div); logEl.scrollTop=logEl.scrollHeight;
+}
+
+function refreshUI(){
+  document.getElementById("hp-label").textContent = `${player.hp} / ${player.hpMax}`;
+  document.getElementById("hp-bar").style.width = Math.max(0,100*player.hp/player.hpMax)+"%";
+  for(let i=0;i<3;i++)
+    document.getElementById("pip"+i).classList.toggle("on",
+      state.mode!=="combat" || (state.turnQueue[state.turnIdx]===player && player.actions>i));
+  document.getElementById("action-note").textContent =
+    state.mode==="combat"
+      ? (state.turnQueue[state.turnIdx]===player ? `${player.actions} left (MAP −${Math.min(player.map*5,10)})` : "Enemy turn…")
+      : "Exploration";
+  document.getElementById("slot0").classList.toggle("full", player.slots>=1);
+  document.getElementById("slot1").classList.toggle("full", player.slots>=2);
+  document.getElementById("focus0").classList.toggle("full", player.focus>=1);
+  document.getElementById("mode-banner").textContent =
+    state.mode==="combat" ? "⚔ Encounter Mode — 3-Action Economy" : "Exploration Mode";
+  document.getElementById("mode-banner").classList.toggle("combat", state.mode==="combat");
+
+  const myTurn = state.mode==="combat" && state.turnQueue[state.turnIdx]===player && !state.busy;
+  const A = player.actions;
+  document.getElementById("btn-strike").disabled  = !myTurn || A<1;
+  document.getElementById("btn-splash").disabled  = !myTurn || A<2;
+  document.getElementById("btn-breathe").disabled = !myTurn || A<2 || player.slots<1;
+  document.getElementById("btn-fang").disabled    = !myTurn || A<1 || player.focus<1;
+  document.getElementById("btn-potion").disabled  = !(myTurn && A>=1) && state.mode==="combat"
+                                                    || !inventory.some(i=>i.id==="potion");
+  if(state.mode!=="combat")
+    document.getElementById("btn-potion").disabled = !inventory.some(i=>i.id==="potion");
+  document.getElementById("btn-end").disabled     = !myTurn;
+}
+function setHint(t){ document.getElementById("hint").textContent = t; }
+function openModal(id){ document.getElementById(id).classList.add("open"); }
+function closeModal(id){ document.getElementById(id).classList.remove("open"); }
+
+/* ============================================================================
+   SECTION 7 — MOVEMENT, TURNS, COMBAT ACTIONS
+   ============================================================================ */
+const sleep = ms=>new Promise(r=>setTimeout(r,ms));
+
+/** Animate an actor along a path (array of {x,y,g}). */
+async function walkPath(actor, path){
+  state.busy = true;
+  const startedInExplore = state.mode === "explore";
+  for(let i=1;i<path.length;i++){
+    actor.x = path[i].x; actor.y = path[i].y;
+    refreshUI();
+    await sleep(90);
+    if(actor.isPC) checkTriggers();          // aggro / treasure checks mid-stride
+    if(state.mode==="over") return;
+    // Initiative interrupts movement: if exploration turned into an encounter
+    // mid-walk, the PC stops in place and rolls initiative from there.
+    if(actor.isPC && startedInExplore && state.mode==="combat") break;
+  }
+  state.busy = false;
+}
+
+/** Player clicks a tile: explore-walk, or combat Stride(s). */
+async function tryMoveTo(tx,ty){
+  const path = findPath(player.x, player.y, tx, ty, player);
+  if(!path){ setHint("No path — the way is blocked."); return; }
+  const feet = path[path.length-1].g;
+
+  if(state.mode==="explore"){
+    await walkPath(player, path);
+    return;
+  }
+  // ENCOUNTER MODE: Stride costs 1 action per 25 ft of Speed used.
+  const actionsNeeded = Math.ceil(feet / player.speed);
+  if(actionsNeeded > player.actions){
+    setHint(`Too far: ${feet} ft needs ${actionsNeeded} actions (you have ${player.actions}).`);
+    return;
+  }
+  player.actions -= actionsNeeded;
+  logInfo(`Stride ×${actionsNeeded} — ${feet} ft of movement (Speed 25).`);
+  await walkPath(player, path);
+  refreshUI();
+  if(player.actions===0) endPlayerTurn();
+}
+
+/** Roll initiative (Perception) for everyone, sort descending, begin combat. */
+function startCombat(){
+  if(state.mode==="combat") return;
+  state.mode="combat";
+  logNarrative("Rubble shudders upright into humanoid shapes — the vault's sentinels still keep their post.");
+  const rolls = actors.filter(a=>!a.dead).map(a=>{
+    const die=d(20), total=die+a.perception;
+    logDice(`Initiative — ${a.name}`, `Perception: d20(${die}) +${a.perception} = ${total}`, DEG.SUCC);
+    return {a,total};
+  });
+  rolls.sort((r1,r2)=>r2.total-r1.total || (r1.a.isPC?-1:1)); // PC wins ties (house call)
+  state.turnQueue = rolls.map(r=>r.a);
+  state.turnIdx = -1;
+  nextTurn();
+}
+
+function endPlayerTurn(){
+  if(state.mode!=="combat") return;
+  disarm();
+  nextTurn();
+}
+
+async function nextTurn(){
+  if(state.mode!=="combat") return;
+  // victory check
+  if(enemies.every(e=>e.dead)){
+    state.mode="explore";
+    logNarrative("The last sentinel collapses into inert stone. Silence returns to the vault.");
+    player.map=0; player.actions=3; refreshUI();
+    setHint("The way to the gate is clear.");
+    return;
+  }
+  state.turnIdx = (state.turnIdx+1) % state.turnQueue.length;
+  const actor = state.turnQueue[state.turnIdx];
+  if(actor.dead){ nextTurn(); return; }
+  actor.actions = 3; actor.map = 0;    // 3-Action Economy + MAP resets each turn
+  refreshUI();
+  if(actor.isPC){
+    setHint("Your turn: 3 actions. Stride (click a tile), Strike, or cast.");
+  }else{
+    await enemyTurn(actor);
+  }
+}
+
+/** Resolve one Strike: attack roll vs AC, MAP, crit doubles damage. */
+function resolveStrike(attacker, target, label, bonus, dmgSpec){
+  const mapPen = Math.min(attacker.map*5, 10);
+  const eff = bonus - mapPen;
+  const r = check(`${label} vs ${target.name} (AC ${target.ac})`, eff, target.ac);
+  attacker.map++;
+  if(r.deg >= DEG.SUCC){
+    const dice = rollDice(dmgSpec.n, dmgSpec.s);
+    let dmg = dice.total + dmgSpec.plus;
+    let math = `${dmgSpec.n}d${dmgSpec.s}(${dice.rolls.join("+")})` +
+               (dmgSpec.plus?` +${dmgSpec.plus}`:"") + ` = ${dmg}`;
+    if(r.deg===DEG.CRIT_SUCC){ dmg*=2; math += ` ×2 (crit) = ${dmg}`; }
+    applyDamage(target, dmg, math, dmgSpec.type||"damage");
+  }
+  refreshUI();
+}
+
+function applyDamage(target, dmg, math, type){
+  target.hp -= dmg;
+  logDamage(`→ ${target.name} takes ${dmg} ${type}`, math + `  |  HP ${Math.max(0,target.hp)}/${target.hpMax}`);
+  if(target.hp<=0){
+    target.dead=true; target.hp=0;
+    if(target.isPC){ defeat(); }
+    else logNarrative(`${target.name} shatters into gravel and gold dust.`);
+  }
+  refreshUI();
+}
+
+function applyHealing(target, amt, math){
+  const before=target.hp;
+  target.hp = Math.min(target.hpMax, target.hp+amt);
+  logDamage(`→ ${target.name} regains ${target.hp-before} HP`, math + `  |  HP ${target.hp}/${target.hpMax}`);
+  refreshUI();
+}
+
+/* ---------- player command arming ---------- */
+function disarm(){
+  state.pending=null;
+  document.querySelectorAll("button.armed").forEach(b=>b.classList.remove("armed"));
+}
+function arm(cmd, btnId, hint){
+  if(state.pending===cmd){ disarm(); setHint("Command cancelled."); return; }
+  disarm(); state.pending=cmd;
+  document.getElementById(btnId).classList.add("armed");
+  setHint(hint);
+}
+document.getElementById("btn-strike").onclick = ()=>arm("strike","btn-strike","Strike (◆): click an adjacent enemy.");
+document.getElementById("btn-fang").onclick   = ()=>arm("fang","btn-fang","Force Fang (◆, 1 Focus): click an enemy within 30 ft — no attack roll, unerring force.");
+document.getElementById("btn-breathe").onclick= ()=>arm("breathe","btn-breathe","Breathe Fire (◆◆, expends a rank-1 slot): click a direction — 15-ft cone, basic Reflex DC 17.");
+document.getElementById("btn-splash").onclick = ()=>{
+  // Rousing Splash (cantrip, ◆◆): self-target here. Restores minor HP and would
+  // end persistent fire damage; healing die kept small per cantrip power budget.
+  if(player.actions<2) return;
+  player.actions-=2; disarm();
+  const dice=rollDice(1,4);
+  logInfo("Cast Rousing Splash (◆◆) — a conjured wave crashes over you.");
+  applyHealing(player, dice.total, `1d4(${dice.rolls[0]}) = ${dice.total}`);
+  if(player.actions===0) endPlayerTurn(); else refreshUI();
+};
+document.getElementById("btn-end").onclick = endPlayerTurn;
+document.getElementById("btn-potion").onclick = ()=>{
+  const idx = inventory.findIndex(i=>i.id==="potion");
+  if(idx<0) return;
+  if(state.mode==="combat"){
+    if(state.turnQueue[state.turnIdx]!==player || player.actions<1) return;
+    player.actions-=1;   // Interact (◆) — potion treated as already drawn
+    logInfo("Interact (◆): drink Minor Healing Potion.");
+  } else logInfo("You drink a Minor Healing Potion.");
+  inventory.splice(idx,1); buildInventory();
+  const dice=rollDice(1,8);
+  applyHealing(player, dice.total, `1d8(${dice.rolls[0]}) = ${dice.total}`);
+  if(state.mode==="combat" && player.actions===0) endPlayerTurn(); else refreshUI();
+};
+
+/* ---------- targeted resolutions ---------- */
+function playerStrike(target){
+  if(!isAdjacent(player,target)){ setHint("Not adjacent — Stride closer first."); return; }
+  player.actions-=1; disarm();
+  resolveStrike(player, target, "Strike — Dagger", player.attackBonus, {n:1,s:4,plus:0,type:"piercing"});
+  afterPlayerAction();
+}
+function playerFang(target){
+  if(feetBetween(player.x,player.y,target.x,target.y)>30 || !hasLoS(player.x,player.y,target.x,target.y)){
+    setHint("No line of effect within 30 ft."); return;
+  }
+  player.actions-=1; player.focus-=1; disarm();
+  // Force Fang: unerring bolt — no attack roll, no save (cf. Magic Missile).
+  const dice=rollDice(1,4);
+  const dmg=dice.total+1;
+  logInfo("Cast Force Fang (◆, 1 Focus Point) — a fang of pure force streaks out, unerring.");
+  applyDamage(target, dmg, `1d4(${dice.rolls[0]}) +1 = ${dmg}`, "force");
+  afterPlayerAction();
+}
+function playerBreatheFire(tx,ty){
+  player.actions-=2; player.slots-=1; disarm();
+  logInfo("Cast Breathe Fire (◆◆, rank-1 slot) — a 15-foot cone of flame. (Remaster name for Burning Hands.)");
+  // Cone approximation: enemies within 15 ft whose bearing from the caster is
+  // within ±45° of the clicked direction. Basic Reflex vs spell DC 17.
+  const ang = Math.atan2(ty-player.y, tx-player.x);
+  const dice = rollDice(2,6);
+  let hitAny=false;
+  for(const e of enemies){
+    if(e.dead) continue;
+    if(feetBetween(player.x,player.y,e.x,e.y)>15) continue;
+    let da = Math.atan2(e.y-player.y, e.x-player.x) - ang;
+    while(da>Math.PI)da-=2*Math.PI; while(da<-Math.PI)da+=2*Math.PI;
+    if(Math.abs(da) > Math.PI/4 + 0.01) continue;
+    if(!hasLoS(player.x,player.y,e.x,e.y)) continue;
+    hitAny=true;
+    const r = check(`${e.name} — basic Reflex save`, e.saves.ref, player.spellDC);
+    const dealt = basicSaveDamage(r.deg, dice.total);
+    if(dealt>0) applyDamage(e, dealt,
+      `2d6(${dice.rolls.join("+")}) = ${dice.total} → ${DEG_NAME[r.deg]} → ${dealt}`, "fire");
+    else logDamage(`→ ${e.name} takes no damage`, `critical success on the save`);
+  }
+  if(!hitAny) logInfo("The flames scorch empty stone — no creature in the cone.");
+  afterPlayerAction();
+}
+function afterPlayerAction(){
+  refreshUI();
+  if(state.mode==="combat" && player.actions<=0) endPlayerTurn();
+}
+
+/* ---------- enemy AI: Stride toward PC, Strike when adjacent ---------- */
+async function enemyTurn(e){
+  state.busy=true;
+  await sleep(400);
+  while(e.actions>0 && !e.dead && !player.dead && state.mode==="combat"){
+    if(isAdjacent(e,player)){
+      e.actions-=1;
+      resolveStrike(e, player, `${e.name} — Fist`, e.attackBonus, {n:1,s:6,plus:2,type:"bludgeoning"});
+      if(player.dead) return;
+      await sleep(500);
+    }else{
+      // Stride: path to the nearest open square adjacent to the player.
+      let best=null;
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+        if(!dx&&!dy) continue;
+        const ax=player.x+dx, ay=player.y+dy;
+        if(blocksMove(ax,ay,e)) continue;
+        const p=findPath(e.x,e.y,ax,ay,e);
+        if(p && (!best || p[p.length-1].g < best[best.length-1].g)) best=p;
+      }
+      if(!best){ break; }                       // boxed in — end turn
+      e.actions-=1;
+      // truncate path to the 25 ft this Stride allows
+      let cut=best.length-1;
+      while(cut>0 && best[cut].g > e.speed) cut--;
+      const leg=best.slice(0,cut+1);
+      logInfo(`${e.name} Strides ${leg[leg.length-1].g} ft.`);
+      await walkPath(e, leg);
+      state.busy=true;
+      await sleep(200);
+    }
+  }
+  state.busy=false;
+  nextTurn();
+}
+
+function defeat(){
+  state.mode="over";
+  document.getElementById("end-title").textContent="Dying — the Vault Keeps Its Secret";
+  document.getElementById("end-body").innerHTML =
+    "<p>Vesper falls at 0 HP and gains the dying 1 condition. With no ally to Administer First Aid, the ruin reclaims its silence.</p><p class='subtle'>(Full dying/recovery-check rules are out of scope for this vignette — a rules-lawyer confession.)</p>";
+  openModal("end-veil");
+}
+function victory(){
+  state.mode="over";
+  document.getElementById("end-title").textContent="The Absalom Inheritance";
+  document.getElementById("end-body").innerHTML =
+    "<p>Inside the casket: a founder's deed, sealed the day the Starstone fell — title to a sliver of the Ascendant Court itself, made out to whichever heir could pass the sentinels and read the pillars true.</p><p>You are, as of this moment, minor landed gentry of Absalom. The paperwork will take decades.</p>";
+  openModal("end-veil");
+}
+
+/* ============================================================================
+   SECTION 8 — INTERACTION TRIGGERS (pillars, gate, aggro, treasure)
+   ============================================================================ */
+const LORE = {
+  P: { title:"The Western Pillar — The Bequest",
+       body:`<p>Chisel-work in pre-Absalom Kelish, gold leaf still bright in the grooves:</p>
+             <p>"I, Sarvel of the First Landing, leave what I carried up from the sea to the heir with wit enough to find it. The city above will grow fat and forgetful. Let this vault stay lean and patient."</p>
+             <p class="subtle">A recess below the text is shaped like half of a two-piece seal.</p>` },
+  Q: { title:"The Eastern Pillar — The Condition",
+       body:`<p>The same hand, generations older, the letters shakier:</p>
+             <p>"The sentinels do not guard the gold. They guard the question: will the heir read both stones before forcing the gate? Patience was ever the family's rarest coin."</p>
+             <p class="subtle">The second half of the seal glows faintly as you finish reading. Somewhere ahead, stone grinds against stone.</p>` },
+};
+
+function readPillar(id){
+  if(state.pillarsRead[id]) { logInfo("You have already read this pillar."); return; }
+  state.pillarsRead[id]=true;
+  const l=LORE[id];
+  document.getElementById("lore-title").textContent=l.title;
+  document.getElementById("lore-body").innerHTML=l.body;
+  openModal("lore-veil");
+  logNarrative(`You study the ${id==="P"?"western":"eastern"} pillar. Old words, older intent.`);
+  if(state.pillarsRead.P && state.pillarsRead.Q){
+    state.gateOpen=true;
+    logNarrative("Both halves of the seal flare gold. The gate's counterweights release — the way north stands open.");
+    setHint("The gate is open. The Inheritance waits beyond.");
+  }
+}
+
+/** Called on each step and each click-resolution. */
+function checkTriggers(){
+  // Aggro: any living sentinel that can see the PC within 30 ft starts combat.
+  if(state.mode==="explore"){
+    for(const e of enemies){
+      if(!e.dead && feetBetween(e.x,e.y,player.x,player.y)<=30 && hasLoS(e.x,e.y,player.x,player.y)){
+        startCombat(); break;
+      }
+    }
+  }
+  // Treasure: standing on the casket tiles wins (only reachable once gate is open).
+  if(state.mode!=="over" && map[player.y][player.x]===T.TREASURE) victory();
+}
+
+/* ============================================================================
+   SECTION 9 — INVENTORY (drag & drop, Bulk per Player Core p.271)
+   L = light Bulk. 10 L = 1 Bulk. Encumbered above 5 + STR mod (0) = 5 Bulk.
+   ============================================================================ */
+let inventory = [
+  { id:"dagger",   name:"Dagger",              glyph:"🗡", bulk:"L", slot:0 },
+  { id:"longsword",name:"Longsword (heirloom)", glyph:"⚔", bulk:1,  slot:1 },
+  { id:"potion",   name:"Minor Healing Potion", glyph:"🧪", bulk:"L", slot:2 },
+  { id:"potion2",  name:"Minor Healing Potion", glyph:"🧪", bulk:"L", slot:3, alias:"potion" },
+  { id:"book",     name:"Spellbook",            glyph:"📖", bulk:1,  slot:4 },
+  { id:"rations",  name:"Rations (1 week)",     glyph:"🥖", bulk:"L", slot:5 },
+];
+// second potion shares the "potion" use-id
+inventory.forEach(i=>{ if(i.alias) i.id=i.alias; });
+
+const INV_SLOTS = 8;
+function bulkValue(b){ return b==="L" ? 0.1 : b; }
+function totalBulk(){
+  // Per RAW, sum whole Bulk; every 10 L = 1 Bulk; leftover L under 10 rounds down.
+  const whole = inventory.filter(i=>i.bulk!=="L").reduce((a,i)=>a+i.bulk,0);
+  const lights = inventory.filter(i=>i.bulk==="L").length;
+  return whole + Math.floor(lights/10) + (lights%10)/10; // show tenths for the UI
+}
+function buildInventory(){
+  const grid=document.getElementById("inv-grid");
+  grid.innerHTML="";
+  for(let s=0;s<INV_SLOTS;s++){
+    const cell=document.createElement("div");
+    cell.className="inv-slot"; cell.dataset.slot=s;
+    cell.addEventListener("dragover",ev=>{ev.preventDefault();cell.classList.add("dragover");});
+    cell.addEventListener("dragleave",()=>cell.classList.remove("dragover"));
+    cell.addEventListener("drop",ev=>{
+      ev.preventDefault(); cell.classList.remove("dragover");
+      const from=+ev.dataTransfer.getData("text/plain");
+      const item=inventory.find(i=>i.slot===from);
+      if(!item) return;
+      const occupant=inventory.find(i=>i.slot===s);
+      if(occupant) occupant.slot=from;   // swap
+      item.slot=s;
+      buildInventory();
+    });
+    const item=inventory.find(i=>i.slot===s);
+    if(item){
+      const el=document.createElement("div");
+      el.className="inv-item"; el.draggable=true;
+      el.innerHTML=`<div class="glyph">${item.glyph}</div>
+        <div class="iname">${item.name}</div>
+        <div class="ibulk">Bulk ${item.bulk}</div>`;
+      el.addEventListener("dragstart",ev=>ev.dataTransfer.setData("text/plain",s));
+      cell.appendChild(el);
+    }
+    grid.appendChild(cell);
+  }
+  const drop=document.getElementById("inv-drop");
+  drop.ondragover=ev=>{ev.preventDefault();drop.classList.add("dragover");};
+  drop.ondragleave=()=>drop.classList.remove("dragover");
+  drop.ondrop=ev=>{
+    ev.preventDefault(); drop.classList.remove("dragover");
+    const from=+ev.dataTransfer.getData("text/plain");
+    const idx=inventory.findIndex(i=>i.slot===from);
+    if(idx>=0){ logInfo(`Discarded: ${inventory[idx].name}.`); inventory.splice(idx,1); buildInventory(); }
+  };
+  const tb=totalBulk();
+  const readout=document.getElementById("bulk-readout");
+  document.getElementById("bulk-val").textContent=tb.toFixed(1);
+  readout.classList.toggle("over", tb>5);
+  refreshUI();
+}
+document.getElementById("btn-inv").onclick=()=>{ buildInventory(); openModal("inv-veil"); };
+window.addEventListener("keydown",e=>{
+  if(e.key==="i"||e.key==="I"){
+    const v=document.getElementById("inv-veil");
+    v.classList.contains("open") ? closeModal("inv-veil") : (buildInventory(),openModal("inv-veil"));
+  }
+  if(e.key==="Escape") document.querySelectorAll(".modal-veil.open").forEach(m=>{
+    if(m.id!=="end-veil") m.classList.remove("open");
+  });
+});
+
+/* ============================================================================
+   SECTION 10 — INPUT & BOOT
+   ============================================================================ */
+cv.addEventListener("mousemove",ev=>{
+  const r=cv.getBoundingClientRect();
+  hoverTile=screenToGrid(ev.clientX-r.left, ev.clientY-r.top);
+});
+cv.addEventListener("click", async ev=>{
+  if(state.busy || state.mode==="over") return;
+  const r=cv.getBoundingClientRect();
+  const g=screenToGrid(ev.clientX-r.left, ev.clientY-r.top);
+  if(g.x<0||g.y<0||g.x>=GW||g.y>=GH) return;
+  const key=g.x+","+g.y;
+
+  // Armed combat commands resolve first
+  if(state.pending){
+    const target=actorAt(g.x,g.y);
+    if(state.pending==="strike"){ if(target&&!target.isPC) playerStrike(target); else setHint("Pick an enemy."); return; }
+    if(state.pending==="fang"){   if(target&&!target.isPC) playerFang(target);   else setHint("Pick an enemy."); return; }
+    if(state.pending==="breathe"){ playerBreatheFire(g.x,g.y); return; }
+  }
+
+  // Pillars: read when the PC is within 5 ft (Interact range)
+  if(map[g.y]&&map[g.y][g.x]===T.PILLAR){
+    if(feetBetween(player.x,player.y,g.x,g.y)<=5) readPillar(pillarAt[key]);
+    else setHint("Move adjacent to the pillar to read it.");
+    return;
+  }
+  // Closed gate
+  if(map[g.y][g.x]===T.GATE && !state.gateOpen){
+    setHint("The gate is sealed by a two-part sigil. Perhaps the pillars…");
+    logInfo("The gate does not move. Two empty seal-recesses flank it.");
+    return;
+  }
+  // Combat: only act on your own turn
+  if(state.mode==="combat" && state.turnQueue[state.turnIdx]!==player) return;
+  // Fog: don't pathfind into the void
+  if(!state.explored.has(key)){ setHint("You can't see a path into the dark."); return; }
+  await tryMoveTo(g.x,g.y);
+  checkTriggers();
+});
+
+/* ---- boot ---- */
+resize();
+buildInventory();
+logNarrative("Beneath the Ascendant Court, the family letter led you true: a vault older than the Starstone Cathedral, air thick with rock dust and patience.");
+logInfo("Goal: read both pillars to open the northern gate, then claim the Inheritance. Sentinels wake if you stray within 30 ft of them.");
+refreshUI();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
