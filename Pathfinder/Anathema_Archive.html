@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<!-- FABLE-PROGRESS v1
+DONE: 1 (sort selector: level/name/price/source, priceCp helper, persists across cats, null-price/level last)
+      2 (multi-trait AND chips #traitchips; input commits on Enter/change; detail badges data-trait clickable, mobile returns to list; reset on scope change like old single filter)
+      3 (tradition + spelltype selects, spellFacetsActive()=spell scope or ALL-with-spells; non-spells excluded when facet set; "Rank:" level-bar label + "Rk" row label in spell contexts; Cantrip head label)
+      4 (srcModeBtn toggle, isRemaster: publication.remaster flag else REMASTER_TITLES allowlist; persisted aa.remasterOnly)
+      5 (star in headBlock, BOOK='bookmarks' pseudo-cat, stubs {_bm:true} resolved via openBookmark lazy category/shard load; export/import JSON in #bmbar; persisted aa.bookmarks; #bookmarks hash scope allowed)
+      6 (encounter panel #encbar in npc scope or when non-empty; row + buttons and stat-block button; XP_BY_DELTA table, budgets Trivial..Extreme with per-char adj 10/15/20/30/40; persisted aa.encounter)
+      7 (deepBtn toggles S.deepSearch; descText() strips tags, cached e.__desc; 150ms debounce only when on; ALL scope triggers ensureAllLoaded)
+      8 (rebrand: title + brand header "Anathema Archive", subtitle kept)
+IN PROGRESS: none — all eight roadmap items complete
+NEXT STEP: no roadmap remains; next session should adopt a new roadmap (proposals in session-1 closing summary) or polish
+NOTES: Tested via jsdom harness (mock fetch, fixtures, 94 assertions) covering all baseline regressions (level bar, shard sync, runes, hash links, kbd nav, vlist) + every feature.
+- Item 6: roadmap listed per-char budget adj "±20/±30/±40"; implemented full GM Core set 10/15/20/30/40 (Trivial/Low/Moderate/Severe/Extreme) since the roadmap's three numbers map to the top three tiers. Delta < -4 scores 0 XP; delta > +4 flags "Beyond Extreme".
+- Trait chip matching uses substring includes() like the original single filter (chip "fire" also matches "firearm"). Exact-match option noted for future polish.
+- Bookmarked entries hash as their real category (#equipment/Name etc.); #bookmarks is scope-only, mirroring the Runes convention.
+- Sort "Price" option is always visible (harmless no-op outside equipment-family: all-null prices fall back to name order).
+-->
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anathema Archive</title>
+<style>
+:root{
+  --bg:#12161d; --panel:#1a212b; --panel2:#161c25; --border:#2a3442; --border-soft:#222c39;
+  --text:#ddd6c8; --text-dim:#9aa3ad; --text-faint:#6b7683;
+  --crimson:#b3392e; --crimson-deep:#8a2019; --gold:#c9a959;
+  --trait:#58180d; --trait-unc:#98513d; --trait-rare:#16325c; --trait-uniq:#54166e; --trait-size:#3b5c7b; --trait-align:#3b7b59;
+  --row-h:46px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,select{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:5px 8px}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--crimson);outline-offset:1px}
+a{color:var(--gold)}
+.app{display:grid;grid-template-columns:220px minmax(300px,420px) 1fr;height:100vh}
+
+/* ---------- sidebar ---------- */
+.sidebar{background:var(--panel2);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+.brand{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+.brand h1{font:700 17px/1.2 'Palatino Linotype','Iowan Old Style',Palatino,Georgia,serif;letter-spacing:.02em}
+.brand h1 span{color:var(--crimson)}
+.brand p{font-size:11px;color:var(--text-faint);margin-top:2px}
+.cats{overflow-y:auto;flex:1;padding:6px 0}
+.cat{display:flex;justify-content:space-between;align-items:center;width:100%;padding:7px 16px;text-align:left;color:var(--text-dim);border-left:3px solid transparent}
+.cat:hover{background:var(--panel);color:var(--text)}
+.cat.active{background:var(--panel);color:var(--text);border-left-color:var(--crimson)}
+.cat .n{font-size:11px;color:var(--text-faint);font-variant-numeric:tabular-nums}
+.status{padding:8px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);min-height:32px}
+
+/* ---------- list pane ---------- */
+.listpane{border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+.toolbar{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.toolbar input[type=search]{flex:1 1 140px;min-width:120px}
+.toolbar select{max-width:130px}
+.shardbar{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px}
+.shardbar .lab{color:var(--text-faint);margin-right:4px}
+.chip{padding:2px 8px;border:1px solid var(--border);border-radius:10px;font-size:11px;color:var(--text-dim)}
+.chip:hover{border-color:var(--crimson);color:var(--text)}
+.chip.on{background:var(--crimson-deep);border-color:var(--crimson);color:#fff}
+.chip.anchor{outline:1px solid var(--gold);outline-offset:1px}
+.chip.clearbtn{color:var(--gold);border-color:var(--gold)}
+.traitchips{padding:6px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px}
+.traitchips .lab{color:var(--text-faint);margin-right:4px}
+.traitchips .chip .x{margin-left:5px;color:var(--gold);font-weight:700}
+.bmbar{padding:6px 12px;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:center;font-size:12px}
+.bmbar .lab{color:var(--text-faint)}
+.encbar{border-bottom:1px solid var(--border);font-size:12px}
+.enchead{display:block;width:100%;text-align:left;padding:7px 12px;color:var(--gold);font-weight:600}
+.enchead:hover{background:var(--panel2)}
+#encBody{padding:4px 12px 10px}
+.encrow{display:flex;align-items:center;gap:6px;padding:2px 0}
+.encrow .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.encrow .lv{color:var(--gold);font-variant-numeric:tabular-nums}
+.encrow button{padding:0 6px;border:1px solid var(--border);border-radius:3px;color:var(--text-dim)}
+.encrow button:hover{border-color:var(--crimson);color:var(--text)}
+.encparty{display:flex;gap:10px;align-items:center;margin:6px 0 4px;flex-wrap:wrap}
+.encparty label{color:var(--text-faint)}
+.encparty input{width:52px;padding:2px 6px}
+.encsum{margin-top:4px;color:var(--text)}
+.encsum b{color:var(--gold)}
+.encadd{position:absolute;right:8px;bottom:4px;padding:0 7px;border:1px solid var(--border);border-radius:3px;font-size:12px;color:var(--text-dim);background:var(--panel)}
+.encadd:hover{border-color:var(--crimson);color:var(--text)}
+.encaddbtn{font-family:system-ui,sans-serif;margin:6px 0}
+.star{font-size:22px;line-height:1;color:var(--text-faint);flex:0 0 auto;padding:0 2px}
+.star:hover{color:var(--gold)}
+.star.on{color:var(--gold)}
+.trait[data-trait]{cursor:pointer}
+.trait[data-trait]:hover{outline:1px solid var(--gold);outline-offset:1px}
+.scopebtn{flex:0 0 auto;padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--text-dim);white-space:nowrap}
+.scopebtn:hover{border-color:var(--crimson);color:var(--text)}
+.scopebtn.restricted{background:var(--crimson-deep);border-color:var(--crimson);color:#fff}
+.cattag{color:var(--text-faint);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.03em;margin-right:4px}
+.count{padding:5px 12px;font-size:11px;color:var(--text-faint);border-bottom:1px solid var(--border-soft)}
+.vlist{flex:1;overflow-y:auto;position:relative}
+.vspacer{position:relative;width:100%}
+.row{position:absolute;left:0;right:0;height:var(--row-h);padding:5px 12px;border-bottom:1px solid var(--border-soft);cursor:pointer;overflow:hidden}
+.row:hover{background:#202a37}
+.row.sel{background:#232f3f;box-shadow:inset 3px 0 0 var(--crimson)}
+.row .t{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.row .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .lv{font-size:11px;color:var(--gold);white-space:nowrap;font-variant-numeric:tabular-nums}
+.row .sub{font-size:11px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.empty{padding:24px 16px;color:var(--text-faint);font-size:13px}
+
+/* ---------- detail pane ---------- */
+.detail{overflow-y:auto;min-height:0;padding:22px 28px 60px;background:var(--bg)}
+.detail .placeholder{color:var(--text-faint);font-size:13px;margin-top:40px;text-align:center}
+.sb{max-width:760px;margin:0 auto;font-family:'Palatino Linotype','Iowan Old Style',Palatino,Georgia,serif;font-size:15px;line-height:1.5}
+.sb-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;border-bottom:3px solid var(--crimson);padding-bottom:4px}
+.sb-head h2{font-size:24px;letter-spacing:.01em;text-transform:uppercase;font-weight:700}
+.sb-head .lvl{font-size:15px;font-weight:700;white-space:nowrap;text-transform:uppercase;color:var(--text)}
+.traits{margin:8px 0 4px;display:flex;flex-wrap:wrap;gap:3px}
+.trait{background:var(--trait);color:#eee;border:1px solid #d8c483;padding:1px 8px;font:600 11px/1.6 system-ui,sans-serif;text-transform:uppercase;letter-spacing:.03em}
+.trait.uncommon{background:var(--trait-unc)}.trait.rare{background:var(--trait-rare)}.trait.unique{background:var(--trait-uniq)}
+.trait.size{background:var(--trait-size)}
+.kv{margin:2px 0}
+.kv b{font-weight:700}
+.hr{border:none;border-top:1px solid var(--crimson);margin:8px 0}
+.src{font:italic 12px/1.4 system-ui,sans-serif;color:var(--text-faint);margin:6px 0 2px}
+.desc{margin-top:10px}
+.desc p{margin:.55em 0}
+.desc ul,.desc ol{margin:.55em 0 .55em 1.4em}
+.desc hr{border:none;border-top:1px solid var(--border);margin:10px 0}
+.desc h1,.desc h2,.desc h3,.desc h4{font-size:16px;margin:.8em 0 .3em;color:var(--gold)}
+.desc table{border-collapse:collapse;margin:.6em 0;font-size:13px;font-family:system-ui,sans-serif}
+.desc td,.desc th{border:1px solid var(--border);padding:3px 8px}
+.desc strong{color:#efe8d8}
+.ref{color:var(--gold);text-decoration:underline dotted;cursor:pointer}
+.ref.loading{opacity:.55;cursor:progress}
+.dice{font-family:ui-monospace,Consolas,monospace;font-size:.93em;color:#d8b46a}
+.act{font-weight:700;color:var(--crimson);font-size:.9em;letter-spacing:.02em}
+.npc-items h3{font-family:system-ui,sans-serif;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);margin:14px 0 4px}
+.ability{margin:0 0 12px}
+.ability:last-child{margin-bottom:0}
+.ability-head{margin-bottom:2px}
+.ability .desc{margin-top:0}
+.ability .desc p{margin:.4em 0}
+.ability .desc p:first-child{margin-top:0}
+.ability .desc hr{margin:6px 0;border-top:1px solid var(--border-soft)}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .sidebar{flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border)}
+  .brand{display:none}.status{display:none}
+  .cats{display:flex;flex-direction:row;padding:0}
+  .cat{white-space:nowrap;border-left:none;border-bottom:3px solid transparent}
+  .cat.active{border-bottom-color:var(--crimson)}
+  .cat .n{display:none}
+  .listpane{border-right:none}
+  .detail{position:fixed;inset:0;z-index:10;display:none;padding:16px}
+  .detail.open{display:block}
+  .backbtn{display:inline-block!important}
+}
+.backbtn{display:none;margin-bottom:10px;color:var(--gold);font-family:system-ui,sans-serif;font-size:13px}
+@media (prefers-reduced-motion:no-preference){.row,.cat,.chip{transition:background .1s,color .1s,border-color .1s}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <div class="brand"><h1>Anathema <span>Archive</span></h1><p>Remaster compendium</p></div>
+    <div class="cats" id="cats"></div>
+    <div class="status" id="status">Loading manifest…</div>
+  </nav>
+  <section class="listpane">
+    <div class="toolbar" id="toolbar">
+      <button id="scopeBtn" class="scopebtn" type="button"></button>
+      <input type="search" id="q" placeholder="Search name…" aria-label="Search by name">
+      <select id="rarity" aria-label="Rarity"><option value="">Rarity</option><option>common</option><option>uncommon</option><option>rare</option><option>unique</option></select>
+      <input type="text" id="trait" list="traitList" placeholder="Trait…" aria-label="Trait filter" style="width:110px">
+      <datalist id="traitList"></datalist>
+      <select id="source" aria-label="Source"><option value="">Source</option></select>
+      <button id="deepBtn" class="scopebtn" type="button" title="Also match text inside descriptions (not just names)">Search descriptions</button>
+      <button id="srcModeBtn" class="scopebtn" type="button" title="Toggle between all publications and Remaster-era publications only">All sources</button>
+      <select id="tradition" aria-label="Tradition" hidden><option value="">Tradition</option><option>arcane</option><option>divine</option><option>occult</option><option>primal</option></select>
+      <select id="spelltype" aria-label="Spell type" hidden><option value="">Type</option><option>spell</option><option>cantrip</option><option>focus</option><option>ritual</option></select>
+      <select id="sort" aria-label="Sort order" title="Sort order">
+        <option value="level">Sort: Level</option>
+        <option value="name">Sort: Name A–Z</option>
+        <option value="price">Sort: Price</option>
+        <option value="source">Sort: Source</option>
+      </select>
+    </div>
+    <div class="traitchips" id="traitchips" hidden></div>
+    <div class="bmbar" id="bmbar" hidden>
+      <span class="lab">Bookmarks:</span>
+      <button class="chip" id="bmExport" title="Download bookmarks as JSON">Export JSON</button>
+      <button class="chip" id="bmImport" title="Merge bookmarks from a JSON file">Import JSON</button>
+      <input type="file" id="bmFile" accept="application/json,.json" hidden>
+    </div>
+    <div class="encbar" id="encbar" hidden>
+      <button id="encToggle" class="enchead" title="Show or hide the encounter builder">Encounter <span id="encN"></span> <span id="encCaret">&#9656;</span></button>
+      <div id="encBody" hidden></div>
+    </div>
+    <div class="shardbar" id="shardbar" hidden></div>
+    <div class="count" id="count"></div>
+    <div class="vlist" id="vlist"><div class="vspacer" id="vspacer"></div></div>
+  </section>
+  <section class="detail" id="detail">
+    <button class="backbtn" id="backbtn">&larr; Back to list</button>
+    <div class="placeholder">Select a category, then an entry.</div>
+  </section>
+</div>
+
+<script>
+'use strict';
+/* ============================ state ============================ */
+const ALL = '__all__';
+const RUNES = 'runes'; // virtual category: equipment whose usage is "etched-onto-…"
+const BOOK = 'bookmarks'; // pseudo-category: starred entries across categories
+const S = {
+  manifest:null,
+  cache:{},            // type -> entries[]   (npc: merged loaded shards)
+  npcLoaded:new Set(), // loaded shard levels
+  lvlAnchor:null,      // level-range selection: first-clicked chip ("arrival")
+  lvlRange:null,       // [lo,hi] once a second chip completes the range ("departure")
+  cat:ALL,             // ALL = search everything; otherwise a manifest type = restricted scope
+  filtered:[],
+  selId:null,
+  fetching:new Set(),
+  allRequested:false,  // whether we've kicked off loading every category for global search
+  history:[],          // stack of previously-viewed entries, for the back button
+  curEntry:null,       // entry currently shown in the detail pane
+  sort:'level',        // 'level' | 'name' | 'price' | 'source' — persists across categories
+  traits:[],           // committed trait filters (AND logic); the input box is a live extra term
+  remasterOnly:false,  // source-mode toggle; persisted in localStorage ('aa.remasterOnly')
+  bookmarks:[],        // [{type, level, name, _id}] — persisted in localStorage ('aa.bookmarks')
+  enc:{list:[], partyLevel:1, partySize:4}, // encounter builder — persisted ('aa.encounter')
+  encOpen:false,
+  deepSearch:false,    // extend the name search into stripped description text
+};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const cap = s => s ? s.charAt(0).toUpperCase()+s.slice(1) : s;
+const CAT_LABELS = {npc:'Creatures (NPC)', melee:'Attacks (Melee)', kit:'Kits', effect:'Effects', [RUNES]:'Runes', [BOOK]:'Bookmarked'};
+const catLabel = t => CAT_LABELS[t] || cap(t).replace(/([a-z])([A-Z])/g,'$1 $2');
+const status = m => $('status').textContent = m;
+
+/* ============================ inline Foundry token renderer ============================ */
+const ACTION_GLYPH = {1:'[one-action]',2:'[two-actions]',3:'[three-actions]',reaction:'[reaction]',free:'[free-action]'};
+function parseParts(body){ // "reflex|dc:20|basic" -> {_:[reflex],dc:20,basic:true}
+  const out = {_:[]};
+  for (const part of body.split('|')) {
+    const i = part.indexOf(':');
+    if (i === -1) { if (part) out[part.trim()] = true, out._.push(part.trim()); }
+    else out[part.slice(0,i).trim().toLowerCase()] = part.slice(i+1).trim();
+  }
+  return out;
+}
+function renderInline(html){
+  if (!html) return '';
+  let s = String(html);
+
+  // strip scripts/styles outright (defense-in-depth; data is from the pf2e repo)
+  s = s.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'')
+       .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi,'')
+       .replace(/javascript:/gi,'');
+
+  // @UUID[...]{Label}  /  @UUID[Compendium.pf2e.pack.Item.Name]
+  s = s.replace(/@UUID\[([^\]]+)\](?:\{([^}]*)\})?/g, (_, ref, label) => {
+    const segs = ref.split('.');
+    const name = label || segs[segs.length-1] || ref;
+    return `<a class="ref" data-ref="${esc(ref)}" data-name="${esc(label||segs[segs.length-1]||'')}">${esc(name)}</a>`;
+  });
+
+  // @Damage[6d6[fire]]{label} / @Damage[(2d8+6)[bludgeoning]] / multi-part with commas
+  s = s.replace(/@Damage\[((?:[^[\]]|\[[^\]]*\])*)\](?:\{([^}]*)\})?/g, (_, body, label) => {
+    if (label) return `<span class="dice">${esc(label)}</span>`;
+    const parts = [];
+    const re = /\(?([^,()[\]]+)\)?\[([^\]]*)\]/g; let m;
+    while ((m = re.exec(body))) parts.push(`${m[1].trim()} ${m[2].split(',').join(' ')}`.trim());
+    return `<span class="dice">${esc(parts.length ? parts.join(' plus ') : body.replace(/\[|\]/g,' ').trim())}</span>`;
+  });
+
+  // @Check[reflex|dc:20|basic] / @Check[type:flat|dc:4] / @Check[athletics|against:...]
+  s = s.replace(/@Check\[([^\]]+)\](?:\{([^}]*)\})?/g, (_, body, label) => {
+    if (label) return esc(label);
+    const p = parseParts(body);
+    const type = p.type || p._[0] || 'check';
+    const bits = [];
+    if (p.dc && /^\d+$/.test(String(p.dc))) bits.push(`DC ${p.dc}`);
+    if (p.basic) bits.push('basic');
+    bits.push(cap(type));
+    if (['reflex','fortitude','will'].includes(String(type).toLowerCase())) bits.push('save');
+    else if (String(type).toLowerCase()==='flat') bits.push('check');
+    return esc(bits.join(' '));
+  });
+
+  // @Template[burst|distance:20] / @Template[type:emanation|distance:30]{label}
+  s = s.replace(/@Template\[([^\]]+)\](?:\{([^}]*)\})?/g, (_, body, label) => {
+    if (label) return esc(label);
+    const p = parseParts(body);
+    const type = p.type || p._[0] || 'area';
+    return esc(p.distance ? `${p.distance}-foot ${type}` : type);
+  });
+
+  // @Localize[...] -> drop
+  s = s.replace(/@Localize\[[^\]]*\]/g,'');
+
+  // [[/r 1d20+7 #Label]]{Label} / [[/br ...]] / [[/gmr ...]]
+  s = s.replace(/\[\[\/[a-z]*r\s+([^\]#]*?)(?:\s*#[^\]]*)?\]\](?:\{([^}]*)\})?/gi,
+    (_, roll, label) => `<span class="dice">${esc(label || roll.replace(/\{|\}|\[[^\]]*\]/g,'').trim())}</
