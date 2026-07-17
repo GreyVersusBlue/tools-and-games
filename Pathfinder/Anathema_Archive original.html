@@ -1,27 +1,9 @@
 <!DOCTYPE html>
-<!-- FABLE-PROGRESS v1
-DONE: 1 (sort selector: level/name/price/source, priceCp helper, persists across cats, null-price/level last)
-      2 (multi-trait AND chips #traitchips; input commits on Enter/change; detail badges data-trait clickable, mobile returns to list; reset on scope change like old single filter)
-      3 (tradition + spelltype selects, spellFacetsActive()=spell scope or ALL-with-spells; non-spells excluded when facet set; "Rank:" level-bar label + "Rk" row label in spell contexts; Cantrip head label)
-      4 (srcModeBtn toggle, isRemaster: publication.remaster flag else REMASTER_TITLES allowlist; persisted aa.remasterOnly)
-      5 (star in headBlock, BOOK='bookmarks' pseudo-cat, stubs {_bm:true} resolved via openBookmark lazy category/shard load; export/import JSON in #bmbar; persisted aa.bookmarks; #bookmarks hash scope allowed)
-      6 (encounter panel #encbar in npc scope or when non-empty; row + buttons and stat-block button; XP_BY_DELTA table, budgets Trivial..Extreme with per-char adj 10/15/20/30/40; persisted aa.encounter)
-      7 (deepBtn toggles S.deepSearch; descText() strips tags, cached e.__desc; 150ms debounce only when on; ALL scope triggers ensureAllLoaded)
-      8 (rebrand: title + brand header "Anathema Archive", subtitle kept)
-IN PROGRESS: none — all eight roadmap items complete
-NEXT STEP: no roadmap remains; next session should adopt a new roadmap (proposals in session-1 closing summary) or polish
-NOTES: Tested via jsdom harness (mock fetch, fixtures, 94 assertions) covering all baseline regressions (level bar, shard sync, runes, hash links, kbd nav, vlist) + every feature.
-- Item 6: roadmap listed per-char budget adj "±20/±30/±40"; implemented full GM Core set 10/15/20/30/40 (Trivial/Low/Moderate/Severe/Extreme) since the roadmap's three numbers map to the top three tiers. Delta < -4 scores 0 XP; delta > +4 flags "Beyond Extreme".
-- Trait chip matching uses substring includes() like the original single filter (chip "fire" also matches "firearm"). Exact-match option noted for future polish.
-- Bookmarked entries hash as their real category (#equipment/Name etc.); #bookmarks is scope-only, mirroring the Runes convention.
-- Sort "Price" option is always visible (harmless no-op outside equipment-family: all-null prices fall back to name order).
--->
-
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Anathema Archive</title>
+<title>PF2e Rules Browser</title>
 <style>
 :root{
   --bg:#12161d; --panel:#1a212b; --panel2:#161c25; --border:#2a3442; --border-soft:#222c39;
@@ -57,40 +39,12 @@ a{color:var(--gold)}
 .toolbar{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .toolbar input[type=search]{flex:1 1 140px;min-width:120px}
 .toolbar select{max-width:130px}
+.toolbar .lvl{width:58px}
 .shardbar{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px}
 .shardbar .lab{color:var(--text-faint);margin-right:4px}
 .chip{padding:2px 8px;border:1px solid var(--border);border-radius:10px;font-size:11px;color:var(--text-dim)}
 .chip:hover{border-color:var(--crimson);color:var(--text)}
 .chip.on{background:var(--crimson-deep);border-color:var(--crimson);color:#fff}
-.chip.anchor{outline:1px solid var(--gold);outline-offset:1px}
-.chip.clearbtn{color:var(--gold);border-color:var(--gold)}
-.traitchips{padding:6px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px}
-.traitchips .lab{color:var(--text-faint);margin-right:4px}
-.traitchips .chip .x{margin-left:5px;color:var(--gold);font-weight:700}
-.bmbar{padding:6px 12px;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:center;font-size:12px}
-.bmbar .lab{color:var(--text-faint)}
-.encbar{border-bottom:1px solid var(--border);font-size:12px}
-.enchead{display:block;width:100%;text-align:left;padding:7px 12px;color:var(--gold);font-weight:600}
-.enchead:hover{background:var(--panel2)}
-#encBody{padding:4px 12px 10px}
-.encrow{display:flex;align-items:center;gap:6px;padding:2px 0}
-.encrow .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.encrow .lv{color:var(--gold);font-variant-numeric:tabular-nums}
-.encrow button{padding:0 6px;border:1px solid var(--border);border-radius:3px;color:var(--text-dim)}
-.encrow button:hover{border-color:var(--crimson);color:var(--text)}
-.encparty{display:flex;gap:10px;align-items:center;margin:6px 0 4px;flex-wrap:wrap}
-.encparty label{color:var(--text-faint)}
-.encparty input{width:52px;padding:2px 6px}
-.encsum{margin-top:4px;color:var(--text)}
-.encsum b{color:var(--gold)}
-.encadd{position:absolute;right:8px;bottom:4px;padding:0 7px;border:1px solid var(--border);border-radius:3px;font-size:12px;color:var(--text-dim);background:var(--panel)}
-.encadd:hover{border-color:var(--crimson);color:var(--text)}
-.encaddbtn{font-family:system-ui,sans-serif;margin:6px 0}
-.star{font-size:22px;line-height:1;color:var(--text-faint);flex:0 0 auto;padding:0 2px}
-.star:hover{color:var(--gold)}
-.star.on{color:var(--gold)}
-.trait[data-trait]{cursor:pointer}
-.trait[data-trait]:hover{outline:1px solid var(--gold);outline-offset:1px}
 .scopebtn{flex:0 0 auto;padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--text-dim);white-space:nowrap}
 .scopebtn:hover{border-color:var(--crimson);color:var(--text)}
 .scopebtn.restricted{background:var(--crimson-deep);border-color:var(--crimson);color:#fff}
@@ -162,7 +116,7 @@ a{color:var(--gold)}
 <body>
 <div class="app">
   <nav class="sidebar">
-    <div class="brand"><h1>Anathema <span>Archive</span></h1><p>Remaster compendium</p></div>
+    <div class="brand"><h1>PF2e <span>Rules Browser</span></h1><p>Remaster compendium</p></div>
     <div class="cats" id="cats"></div>
     <div class="status" id="status">Loading manifest…</div>
   </nav>
@@ -170,31 +124,12 @@ a{color:var(--gold)}
     <div class="toolbar" id="toolbar">
       <button id="scopeBtn" class="scopebtn" type="button"></button>
       <input type="search" id="q" placeholder="Search name…" aria-label="Search by name">
+      <input type="number" id="lvlMin" class="lvl" min="-1" placeholder="Lv ≥" aria-label="Minimum level">
+      <input type="number" id="lvlMax" class="lvl" min="-1" placeholder="Lv ≤" aria-label="Maximum level">
       <select id="rarity" aria-label="Rarity"><option value="">Rarity</option><option>common</option><option>uncommon</option><option>rare</option><option>unique</option></select>
       <input type="text" id="trait" list="traitList" placeholder="Trait…" aria-label="Trait filter" style="width:110px">
       <datalist id="traitList"></datalist>
       <select id="source" aria-label="Source"><option value="">Source</option></select>
-      <button id="deepBtn" class="scopebtn" type="button" title="Also match text inside descriptions (not just names)">Search descriptions</button>
-      <button id="srcModeBtn" class="scopebtn" type="button" title="Toggle between all publications and Remaster-era publications only">All sources</button>
-      <select id="tradition" aria-label="Tradition" hidden><option value="">Tradition</option><option>arcane</option><option>divine</option><option>occult</option><option>primal</option></select>
-      <select id="spelltype" aria-label="Spell type" hidden><option value="">Type</option><option>spell</option><option>cantrip</option><option>focus</option><option>ritual</option></select>
-      <select id="sort" aria-label="Sort order" title="Sort order">
-        <option value="level">Sort: Level</option>
-        <option value="name">Sort: Name A–Z</option>
-        <option value="price">Sort: Price</option>
-        <option value="source">Sort: Source</option>
-      </select>
-    </div>
-    <div class="traitchips" id="traitchips" hidden></div>
-    <div class="bmbar" id="bmbar" hidden>
-      <span class="lab">Bookmarks:</span>
-      <button class="chip" id="bmExport" title="Download bookmarks as JSON">Export JSON</button>
-      <button class="chip" id="bmImport" title="Merge bookmarks from a JSON file">Import JSON</button>
-      <input type="file" id="bmFile" accept="application/json,.json" hidden>
-    </div>
-    <div class="encbar" id="encbar" hidden>
-      <button id="encToggle" class="enchead" title="Show or hide the encounter builder">Encounter <span id="encN"></span> <span id="encCaret">&#9656;</span></button>
-      <div id="encBody" hidden></div>
     </div>
     <div class="shardbar" id="shardbar" hidden></div>
     <div class="count" id="count"></div>
@@ -210,33 +145,23 @@ a{color:var(--gold)}
 'use strict';
 /* ============================ state ============================ */
 const ALL = '__all__';
-const RUNES = 'runes'; // virtual category: equipment whose usage is "etched-onto-…"
-const BOOK = 'bookmarks'; // pseudo-category: starred entries across categories
 const S = {
   manifest:null,
   cache:{},            // type -> entries[]   (npc: merged loaded shards)
   npcLoaded:new Set(), // loaded shard levels
-  lvlAnchor:null,      // level-range selection: first-clicked chip ("arrival")
-  lvlRange:null,       // [lo,hi] once a second chip completes the range ("departure")
+  npcSel:new Set(),    // selected shard levels
   cat:ALL,             // ALL = search everything; otherwise a manifest type = restricted scope
   filtered:[],
   selId:null,
   fetching:new Set(),
   allRequested:false,  // whether we've kicked off loading every category for global search
   history:[],          // stack of previously-viewed entries, for the back button
-  curEntry:null,       // entry currently shown in the detail pane
-  sort:'level',        // 'level' | 'name' | 'price' | 'source' — persists across categories
-  traits:[],           // committed trait filters (AND logic); the input box is a live extra term
-  remasterOnly:false,  // source-mode toggle; persisted in localStorage ('aa.remasterOnly')
-  bookmarks:[],        // [{type, level, name, _id}] — persisted in localStorage ('aa.bookmarks')
-  enc:{list:[], partyLevel:1, partySize:4}, // encounter builder — persisted ('aa.encounter')
-  encOpen:false,
-  deepSearch:false,    // extend the name search into stripped description text
+  curEntry:null,        // entry currently shown in the detail pane
 };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const cap = s => s ? s.charAt(0).toUpperCase()+s.slice(1) : s;
-const CAT_LABELS = {npc:'Creatures (NPC)', melee:'Attacks (Melee)', kit:'Kits', effect:'Effects', [RUNES]:'Runes', [BOOK]:'Bookmarked'};
+const CAT_LABELS = {npc:'Creatures (NPC)', melee:'Attacks (Melee)', kit:'Kits', effect:'Effects'};
 const catLabel = t => CAT_LABELS[t] || cap(t).replace(/([a-z])([A-Z])/g,'$1 $2');
 const status = m => $('status').textContent = m;
 
@@ -356,190 +281,9 @@ const rarityOf = e => e.system?.traits?.rarity || 'common';
 const traitsOf = e => e.system?.traits?.value || [];
 const sourceOf = e => e.system?.publication?.title || e.system?.details?.publication?.title || e.sourcePack || '';
 const levelOf = e => e.level ?? e.system?.level?.value ?? null;
-/* localStorage wrappers — storage can be unavailable (private mode, file://) */
-const store = {
-  get(k){ try { return localStorage.getItem(k); } catch (_) { return null; } },
-  set(k,v){ try { localStorage.setItem(k,v); } catch (_) {} },
-};
-/* Remaster detection: explicit flag when present, else title allowlist */
-const REMASTER_TITLES = new Set(['Player Core','Player Core 2','GM Core','Monster Core','Monster Core 2',
-  'NPC Core','Howl of the Wild','War of Immortals','Divine Mysteries','Battlecry!']);
-function isRemaster(e){
-  const pub = e.system?.publication || e.system?.details?.publication;
-  if (pub && typeof pub.remaster === 'boolean') return pub.remaster;
-  return REMASTER_TITLES.has(sourceOf(e));
-}
-/* ---- bookmarks ---- */
-function loadBookmarks(){
-  try { const raw = JSON.parse(store.get('aa.bookmarks') || '[]');
-        S.bookmarks = Array.isArray(raw) ? raw.filter(b => b && b._id && b.name && b.type) : []; }
-  catch (_) { S.bookmarks = []; }
-}
-function saveBookmarks(){
-  store.set('aa.bookmarks', JSON.stringify(S.bookmarks));
-  const n = $('bmCount'); if (n) n.textContent = S.bookmarks.length ? S.bookmarks.length.toLocaleString() : '';
-}
-const isBookmarked = e => S.bookmarks.some(b => b._id === e._id);
-function toggleBookmark(e){
-  if (isBookmarked(e)) S.bookmarks = S.bookmarks.filter(b => b._id !== e._id);
-  else S.bookmarks.push({ type: e.type, level: levelOf(e), name: e.name, _id: e._id });
-  saveBookmarks();
-  const st = document.querySelector('#detail .star');
-  if (st && S.curEntry && S.curEntry._id === e._id) {
-    st.classList.toggle('on', isBookmarked(e));
-    st.textContent = isBookmarked(e) ? '\u2605' : '\u2606';
-    st.title = isBookmarked(e) ? 'Remove bookmark' : 'Bookmark this entry';
-  }
-  if (S.cat === BOOK) { applyFilters(); rebuildFilterOptions(); }
-}
-/* open a bookmark stub: lazy-load whatever category/shard holds the real entry */
-async function openBookmark(b){
-  try {
-    if (b.type === 'npc') {
-      if (b.level != null && S.manifest.npc.shards[b.level]) await loadNpcShard(b.level);
-    } else if (S.manifest[b.type]) await loadCategory(b.type);
-  } catch (err) { status(`Couldn't load "${b.name}": ${err.message}`); return; }
-  const hit = findLoaded(b._id, b.name, S.manifest[b.type] ? [b.type] : null) || findLoaded(b._id, b.name, null);
-  if (hit) openDetail(hit);
-  else status(`Couldn't find bookmarked "${b.name}" — it may have been renamed in the data.`);
-}
-/* ---- encounter XP calculator (PF2e GM Core budgets) ---- */
-const XP_BY_DELTA = {'-4':10,'-3':15,'-2':20,'-1':30,'0':40,'1':60,'2':80,'3':120,'4':160};
-const creatureXP = delta => delta < -4 ? 0 : delta > 4 ? null : XP_BY_DELTA[String(delta)];
-/* base budget for 4 characters + adjustment per character above/below 4 */
-const BUDGETS = [['Trivial',40,10],['Low',60,15],['Moderate',80,20],['Severe',120,30],['Extreme',160,40]];
-function loadEncounter(){
-  try { const raw = JSON.parse(store.get('aa.encounter') || 'null');
-        if (raw && Array.isArray(raw.list)) S.enc = {
-          list: raw.list.filter(c => c && c._id && c.name && c.level != null).map(c => ({...c, count: Math.max(1, +c.count || 1)})),
-          partyLevel: Math.min(20, Math.max(1, +raw.partyLevel || 1)),
-          partySize: Math.min(12, Math.max(1, +raw.partySize || 4)),
-        }; }
-  catch (_) {}
-}
-const saveEncounter = () => store.set('aa.encounter', JSON.stringify(S.enc));
-function addToEncounter(e){
-  if (!e || levelOf(e) === null) return;
-  const hit = S.enc.list.find(c => c._id === e._id);
-  if (hit) hit.count++;
-  else S.enc.list.push({ _id: e._id, name: e.name, level: levelOf(e), count: 1 });
-  saveEncounter();
-  renderEncounter();
-  status(`Added ${e.name} to the encounter.`);
-}
-function encTotals(){
-  let total = 0, over = false;
-  for (const c of S.enc.list) {
-    const xp = creatureXP(c.level - S.enc.partyLevel);
-    if (xp === null) over = true; else total += xp * c.count;
-  }
-  const adj = S.enc.partySize - 4;
-  const budgets = BUDGETS.map(([name, base, per]) => [name, base + per * adj]);
-  let label = 'Beyond Extreme';
-  for (const [name, b] of budgets) if (total <= b) { label = name; break; }
-  if (over) label = 'Beyond Extreme';
-  return { total, budgets, label, over };
-}
-function renderEncounter(){
-  $('encbar').hidden = !(S.cat === 'npc' || S.enc.list.length);
-  const n = S.enc.list.reduce((a,c) => a + c.count, 0);
-  $('encN').textContent = n ? `(${n})` : '';
-  $('encCaret').innerHTML = S.encOpen ? '&#9662;' : '&#9656;';
-  const body = $('encBody');
-  body.hidden = !S.encOpen;
-  if (!S.encOpen) return;
-  const { total, budgets, label, over } = encTotals();
-  body.innerHTML =
-    (S.enc.list.length ? S.enc.list.map((c,i) =>
-      `<div class="encrow"><span class="nm">${esc(c.name)}</span><span class="lv">Lv ${c.level}</span>`
-      + `<button data-enc="dec" data-i="${i}" title="One fewer">&minus;</button><span>${c.count}</span>`
-      + `<button data-enc="inc" data-i="${i}" title="One more">+</button>`
-      + `<button data-enc="del" data-i="${i}" title="Remove">&times;</button></div>`).join('')
-      : '<div class="encrow" style="color:var(--text-faint)">No creatures yet — use the + on a row or the button in a stat block.</div>')
-    + `<div class="encparty"><label>Party level <input type="number" id="encLvl" min="1" max="20" value="${S.enc.partyLevel}"></label>`
-    + `<label>Party size <input type="number" id="encSize" min="1" max="12" value="${S.enc.partySize}"></label>`
-    + (S.enc.list.length ? `<button class="chip" data-enc="clear" title="Empty the encounter">Clear</button>` : '') + '</div>'
-    + `<div class="encsum"><b>${total} XP</b> — ${esc(label)}${over ? ' (a creature is more than 4 levels above the party)' : ''}<br>`
-    + `<span style="color:var(--text-faint)">${budgets.map(([nm,b]) => `${nm} ${b}`).join(' · ')}</span></div>`;
-}
-$('encToggle').addEventListener('click', () => { S.encOpen = !S.encOpen; renderEncounter(); });
-$('encbar').addEventListener('click', ev => {
-  const b = ev.target.closest('[data-enc]'); if (!b) return;
-  const i = +b.dataset.i, c = S.enc.list[i];
-  if (b.dataset.enc === 'inc') c.count++;
-  else if (b.dataset.enc === 'dec') { if (c.count > 1) c.count--; else S.enc.list.splice(i,1); }
-  else if (b.dataset.enc === 'del') S.enc.list.splice(i,1);
-  else if (b.dataset.enc === 'clear') S.enc.list = [];
-  saveEncounter(); renderEncounter();
-});
-$('encbar').addEventListener('input', ev => {
-  if (ev.target.id === 'encLvl') S.enc.partyLevel = Math.min(20, Math.max(1, +ev.target.value || 1));
-  else if (ev.target.id === 'encSize') S.enc.partySize = Math.min(12, Math.max(1, +ev.target.value || 4));
-  else return;
-  saveEncounter();
-  const { total, budgets, label, over } = encTotals();
-  const sum = $('encBody').querySelector('.encsum');
-  if (sum) sum.innerHTML = `<b>${total} XP</b> — ${esc(label)}${over ? ' (a creature is more than 4 levels above the party)' : ''}<br>`
-    + `<span style="color:var(--text-faint)">${budgets.map(([nm,b]) => `${nm} ${b}`).join(' · ')}</span>`;
-});
-const TRADITIONS = ['arcane','divine','occult','primal'];
-const traditionsOf = e => {
-  const tr = e.system?.traits?.traditions || [], tv = traitsOf(e);
-  return TRADITIONS.filter(t => tr.includes(t) || tv.includes(t));
-};
-const spellTypeOf = e => {
-  const sys = e.system || {};
-  if (sys.ritual || sys.category === 'ritual') return 'ritual';
-  if (traitsOf(e).includes('focus') || sys.category === 'focus') return 'focus';
-  if (traitsOf(e).includes('cantrip')) return 'cantrip';
-  return 'spell';
-};
-/* spell facets only make sense with spells in scope */
-const spellFacetsActive = () => S.cat === 'spell' || (S.cat === ALL && !!S.cache.spell);
-function updateSpellFacets(){
-  const on = spellFacetsActive();
-  $('tradition').hidden = !on;
-  $('spelltype').hidden = !on;
-  if (!on) { $('tradition').value = ''; $('spelltype').value = ''; }
-}
-/* total price in copper for sorting; null when the entry has no price at all */
-const priceCp = e => {
-  const v = e.system?.price?.value;
-  if (!v || typeof v !== 'object') return null;
-  return (v.cp||0) + (v.sp||0)*10 + (v.gp||0)*100 + (v.pp||0)*1000;
-};
-const byName = (a,b) => a.name.localeCompare(b.name);
-const SORTS = {
-  level:  (a,b) => (levelOf(a)??99) - (levelOf(b)??99) || byName(a,b),
-  name:   byName,
-  price:  (a,b) => { const pa = priceCp(a), pb = priceCp(b);           // no price → last
-                     if (pa === null && pb === null) return byName(a,b);
-                     if (pa === null) return 1; if (pb === null) return -1;
-                     return pa - pb || byName(a,b); },
-  source: (a,b) => sourceOf(a).localeCompare(sourceOf(b)) || byName(a,b),
-};
 
 /* ============================ filtering + list ============================ */
-/* stripped, lowercased description text, cached per entry for full-text search */
-function descText(e){
-  if (e.__desc === undefined) {
-    const d = e.system?.description?.value || e.system?.details?.publicNotes || '';
-    e.__desc = String(d).replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').toLowerCase();
-  }
-  return e.__desc;
-}
-/* Runes are equipment entries whose usage is "etched-onto-a-weapon"/"etched-onto-armor"
-   (potency, striking, resilient, and property runes all carry it; talismans are
-   "affixed-to-…" and stay out). */
-const isRune = e => /etched-onto/.test(String(num(e.system?.usage) ?? ''));
-/* The selected level set: a lone anchor, or every level in the completed range. */
-function selectedLevels(){
-  if (S.lvlRange) { const out = []; for (let l = S.lvlRange[0]; l <= S.lvlRange[1]; l++) out.push(l); return out; }
-  return S.lvlAnchor !== null ? [S.lvlAnchor] : [];
-}
 function collectScopedEntries(){
-  if (S.cat === BOOK) return S.bookmarks.map(b => ({ ...b, _bm: true }));
-  if (S.cat === RUNES) return (S.cache.equipment || []).filter(isRune);
   if (S.cat !== ALL) return S.cache[S.cat] || [];
   const out = [];
   for (const t of Object.keys(S.manifest)) {
@@ -552,27 +296,21 @@ function collectScopedEntries(){
 function applyFilters(){
   const all = collectScopedEntries();
   const q = $('q').value.trim().toLowerCase();
-  const sel = selectedLevels();
-  const lvlSet = sel.length ? new Set(sel) : null;
+  const lmin = $('lvlMin').value === '' ? -Infinity : +$('lvlMin').value;
+  const lmax = $('lvlMax').value === '' ?  Infinity : +$('lvlMax').value;
   const rar = $('rarity').value;
-  const live = $('trait').value.trim().toLowerCase();
-  const terms = live && !S.traits.includes(live) ? S.traits.concat(live) : S.traits;
+  const trait = $('trait').value.trim().toLowerCase();
   const src = $('source').value;
-  const deep = S.deepSearch;
-  const trad = spellFacetsActive() ? $('tradition').value : '';
-  const stype = spellFacetsActive() ? $('spelltype').value : '';
   S.filtered = all.filter(e => {
-    if (q && !e.name.toLowerCase().includes(q) && !(deep && descText(e).includes(q))) return false;
-    if (lvlSet) { const lv = levelOf(e); if (lv === null || !lvlSet.has(lv)) return false; }
+    if (q && !e.name.toLowerCase().includes(q)) return false;
+    const lv = levelOf(e);
+    if ((lmin !== -Infinity || lmax !== Infinity)) { if (lv === null || lv < lmin || lv > lmax) return false; }
     if (rar && rarityOf(e) !== rar) return false;
-    if (terms.length) { const ts = traitsOf(e); if (!terms.every(c => ts.some(t => t.includes(c)))) return false; }
+    if (trait && !traitsOf(e).some(t => t.includes(trait))) return false;
     if (src && sourceOf(e) !== src) return false;
-    if (S.remasterOnly && !isRemaster(e)) return false;
-    if (trad && (e.type !== 'spell' || !traditionsOf(e).includes(trad))) return false;
-    if (stype && (e.type !== 'spell' || spellTypeOf(e) !== stype)) return false;
     return true;
   });
-  S.filtered.sort(SORTS[S.sort] || SORTS.level);
+  S.filtered.sort((a,b) => (levelOf(a)??99) - (levelOf(b)??99) || a.name.localeCompare(b.name));
   $('count').textContent = `${S.filtered.length.toLocaleString()} of ${all.length.toLocaleString()} entries`;
   renderVirtual(true);
 }
@@ -583,44 +321,7 @@ function rebuildFilterOptions(){
   $('traitList').innerHTML = [...traits].sort().map(t=>`<option value="${esc(t)}">`).join('');
   const cur = $('source').value;
   $('source').innerHTML = '<option value="">Source</option>' + [...sources].sort().map(s=>`<option${s===cur?' selected':''}>${esc(s)}</option>`).join('');
-  renderLevelBar(); // level chips depend on what's loaded in scope; refresh alongside the facets
-  updateSpellFacets();
-  const rc = $('runesCount');
-  if (rc && S.cache.equipment && !rc.textContent)
-    rc.textContent = S.cache.equipment.filter(isRune).length.toLocaleString();
 }
-
-/* multi-trait filter chips (AND logic). Commit from the input (Enter / datalist
-   pick) or by clicking a trait badge in the detail pane. */
-function renderTraitChips(){
-  const box = $('traitchips');
-  if (!S.traits.length) { box.hidden = true; box.innerHTML = ''; return; }
-  box.hidden = false;
-  box.innerHTML = '<span class="lab">Traits:</span>'
-    + S.traits.map(t => `<button class="chip on" data-trait="${esc(t)}" title="Remove trait filter">${esc(t)}<span class="x">&times;</span></button>`).join('');
-}
-function addTraitFilter(t){
-  t = String(t || '').trim().toLowerCase();
-  if (!t || S.traits.includes(t)) return;
-  S.traits.push(t);
-  renderTraitChips();
-  applyFilters();
-}
-$('traitchips').addEventListener('click', ev => {
-  const b = ev.target.closest('.chip'); if (!b) return;
-  S.traits = S.traits.filter(t => t !== b.dataset.trait);
-  renderTraitChips();
-  applyFilters();
-});
-$('trait').addEventListener('change', () => {          // datalist pick or blur-commit
-  if ($('trait').value.trim()) { addTraitFilter($('trait').value); $('trait').value = ''; applyFilters(); }
-});
-$('trait').addEventListener('keydown', ev => {
-  if (ev.key === 'Enter' && $('trait').value.trim()) {
-    ev.preventDefault();
-    addTraitFilter($('trait').value); $('trait').value = ''; applyFilters();
-  }
-});
 
 /* virtualized list */
 const ROW_H = 46;
@@ -637,12 +338,12 @@ function renderVirtual(reset){
     const tr = traitsOf(e).slice(0,4).join(', ');
     const catTag = S.cat === ALL ? `<span class="cattag">${esc(catLabel(e._cat))}</span>` : '';
     html += `<div class="row${e._id===S.selId?' sel':''}" style="top:${i*ROW_H}px" data-i="${i}">
-      <div class="t"><span class="nm">${catTag}${esc(e.name)}</span>${lv!==null?`<span class="lv">${e.type==='spell'?'Rk':'Lv'} ${lv}</span>`:''}</div>
-      <div class="sub">${esc([cap(rarityOf(e))!=='Common'?rarityOf(e):'', tr, sourceOf(e)].filter(Boolean).join(' · '))}</div>${S.cat==='npc'?`<button class="encadd" data-id="${esc(e._id)}" title="Add to encounter">+</button>`:''}</div>`;
+      <div class="t"><span class="nm">${catTag}${esc(e.name)}</span>${lv!==null?`<span class="lv">Lv ${lv}</span>`:''}</div>
+      <div class="sub">${esc([cap(rarityOf(e))!=='Common'?rarityOf(e):'', tr, sourceOf(e)].filter(Boolean).join(' · '))}</div></div>`;
   }
   if (!S.filtered.length) {
     const loading = S.fetching.size > 0;
-    html = `<div class="empty">${loading ? 'Loading…' : (S.cat==='npc' ? 'Pick a level above to load creatures — click once for a single level, click a second chip to select the whole range between them.' : (S.cat===ALL ? 'No entries loaded yet — select creature levels above, or wait for categories to finish loading.' : 'No entries match the current filters.'))}</div>`;
+    html = `<div class="empty">${loading ? 'Loading…' : (S.cat==='npc' ? 'Pick one or more creature levels above to load them.' : (S.cat===ALL ? 'No entries loaded yet — try selecting some creature levels above, or wait for categories to finish loading.' : 'No entries match the current filters.'))}</div>`;
   }
   sp.innerHTML = html;
 }
@@ -650,8 +351,6 @@ $('vlist').addEventListener('scroll', () => renderVirtual(false));
 window.addEventListener('resize', () => renderVirtual(false));
 $('vspacer').addEventListener('click', ev => {
   const row = ev.target.closest('.row'); if (!row) return;
-  const add = ev.target.closest('.encadd');
-  if (add) { addToEncounter(S.filtered[+row.dataset.i]); return; }
   openDetail(S.filtered[+row.dataset.i]);
 });
 
@@ -663,7 +362,7 @@ function traitBadges(e){
   let h = '<div class="traits">';
   if (r !== 'common') h += `<span class="trait ${esc(r)}">${esc(r)}</span>`;
   if (sizeVal) h += `<span class="trait size">${esc(sizeVal)}</span>`;
-  for (const t of traitsOf(e)) h += `<span class="trait${sizes.includes(t)?' size':''}" data-trait="${esc(t)}" title="Filter by ${esc(t)}" role="button" tabindex="0">${esc(t)}</span>`;
+  for (const t of traitsOf(e)) h += `<span class="trait${sizes.includes(t)?' size':''}">${esc(t)}</span>`;
   return h + '</div>';
 }
 const kv = (label, val) => (val === null || val === undefined || val === '') ? '' : `<div class="kv"><b>${label}</b> ${val}</div>`;
@@ -672,9 +371,7 @@ const sign = n => n >= 0 ? `+${n}` : `${n}`;
 
 function headBlock(e, typeName){
   const lv = levelOf(e);
-  const on = isBookmarked(e);
-  return `<div class="sb-head"><h2>${esc(e.name)}</h2><span class="lvl">${esc(typeName)}${lv!==null?' '+lv:''}</span>`
-    + `<button class="star${on?' on':''}" title="${on?'Remove bookmark':'Bookmark this entry'}" aria-label="Bookmark">${on?'\u2605':'\u2606'}</button></div>`;
+  return `<div class="sb-head"><h2>${esc(e.name)}</h2><span class="lvl">${esc(typeName)}${lv!==null?' '+lv:''}</span></div>`;
 }
 function srcLine(e){
   const s = sourceOf(e);
@@ -752,8 +449,7 @@ function renderSpell(e){
   const def = sys.defense?.save ? `${sys.defense.save.basic ? 'basic ' : ''}${cap(sys.defense.save.statistic || '')}` : (sys.defense?.passive ? cap(num(sys.defense.passive)) : null);
   const isFocus = (sys.traits?.value||[]).includes('focus') || sys.category === 'focus';
   const isRitual = !!sys.ritual || sys.category === 'ritual';
-  const isCantrip = (sys.traits?.value||[]).includes('cantrip');
-  const label = isRitual ? 'Ritual' : isFocus ? 'Focus' : isCantrip ? 'Cantrip' : 'Spell';
+  const label = isRitual ? 'Ritual' : isFocus ? 'Focus' : 'Spell';
   let heighten = '';
   const h = sys.heightening;
   if (h?.levels) heighten = Object.entries(h.levels)
@@ -819,7 +515,6 @@ function renderNpc(e){
   }).join('');
 
   return headBlock(e, 'Creature') + traitBadges(e) + srcLine(e)
-    + `<button class="chip encaddbtn" title="Add this creature to the encounter builder">+ Add to encounter</button>`
     + kv('Perception', per !== null ? esc(per) + (senses ? '; ' + esc(senses) : '') : (senses ? esc(senses) : null))
     + kv('Languages', esc(langs)) + kv('Skills', esc(skills))
     + (abilLine ? `<div class="kv">${abilLine}</div>` : '')
@@ -977,7 +672,6 @@ function goBack(){
 }
 function openDetail(e, opts={}){
   if (!e) return;
-  if (e._bm) { openBookmark(e); return; }
   const { fromRef=false, isBack=false } = opts;
   if (fromRef && S.curEntry) S.history.push(S.curEntry);
   if (!fromRef && !isBack) S.history = []; // fresh pick from the list starts a new trail
@@ -1071,20 +765,6 @@ async function resolveRef(ref, name){
   status(`Couldn't find "${label}" in the compendium data.`);
 }
 $('detail').addEventListener('click', async ev => {
-  const st = ev.target.closest('.star');
-  if (st) { if (S.curEntry) toggleBookmark(S.curEntry); return; }
-  const ea = ev.target.closest('.encaddbtn');
-  if (ea) { addToEncounter(S.curEntry); return; }
-  const badge = ev.target.closest('.trait[data-trait]');
-  if (badge) {
-    addTraitFilter(badge.dataset.trait);
-    if (window.matchMedia('(max-width:900px)').matches) { // return to the list on mobile
-      $('detail').classList.remove('open');
-      S.curEntry = null; S.history = [];
-      writeHash(null);
-    }
-    return;
-  }
   const a = ev.target.closest('a.ref'); if (!a) return;
   ev.preventDefault();
   if (a.classList.contains('loading')) return; // ignore double-clicks mid-resolve
@@ -1094,79 +774,52 @@ $('detail').addEventListener('click', async ev => {
   finally { a.classList.remove('loading'); } // node may be detached by rerender; harmless
 });
 
-/* ============================ universal level bar ============================ */
-/* One level filter for every category, hotel-booking style:
-   click a chip to select that single level (the anchor, gold-outlined);
-   click a second chip to select everything between them inclusive;
-   click the anchor again to clear; click any chip after a completed range
-   to start a fresh selection. Selection persists across category changes.
-   In Creatures / All scope the selection also drives shard loading. */
-function levelBarLevels(){
-  const set = new Set();
-  if (S.cat === 'npc' || S.cat === ALL)
-    for (const k of Object.keys(S.manifest.npc.shards)) set.add(+k);
-  for (const e of collectScopedEntries()) { const l = levelOf(e); if (l !== null) set.add(+l); }
-  for (const l of selectedLevels()) set.add(l); // keep persisted picks visible even off-scope
-  return [...set].sort((a,b)=>a-b);
-}
-function renderLevelBar(){
+/* ============================ npc shard bar ============================ */
+function renderShardBar(){
   const bar = $('shardbar');
-  const levels = levelBarLevels();
-  if (!levels.length) { bar.hidden = true; return; } // level-less categories: no bar
+  if (S.cat !== 'npc' && S.cat !== ALL) { bar.hidden = true; return; }
   bar.hidden = false;
-  const sel = new Set(selectedLevels());
-  const tip = l => l === S.lvlAnchor ? 'Clear level selection'
-    : sel.size && !S.lvlRange ? 'Select every level between this and the first pick'
-    : 'Select this level (click a second chip to make a range)';
-  bar.innerHTML = `<span class="lab">${S.cat === 'spell' ? 'Rank:' : 'Level:'}</span>`
-    + levels.map(l => `<button class="chip${sel.has(l)?' on':''}${l===S.lvlAnchor?' anchor':''}" data-lvl="${l}" title="${tip(l)}">${l}</button>`).join('')
-    + (sel.size ? '<button class="chip clearbtn" data-lvl="clear" title="Clear level selection">Clear</button>' : '');
+  const shards = S.manifest.npc.shards;
+  const levels = Object.keys(shards).map(Number).sort((a,b)=>a-b);
+  bar.innerHTML = '<span class="lab">Creature level:</span>'
+    + levels.map(l => `<button class="chip${S.npcSel.has(l)?' on':''}" data-lvl="${l}">${l}</button>`).join('')
+    + `<button class="chip" data-lvl="all">All (${S.manifest.npc.sizeMB} MB)</button>`;
 }
 $('shardbar').addEventListener('click', async ev => {
   const b = ev.target.closest('.chip'); if (!b) return;
-  if (b.dataset.lvl === 'clear') { S.lvlAnchor = null; S.lvlRange = null; }
-  else {
-    const l = +b.dataset.lvl;
-    if (S.lvlAnchor === null)     { S.lvlAnchor = l; }                    // first click: anchor
-    else if (l === S.lvlAnchor)   { S.lvlAnchor = null; S.lvlRange = null; } // anchor again: clear all
-    else if (S.lvlRange === null) { S.lvlRange = [Math.min(S.lvlAnchor, l), Math.max(S.lvlAnchor, l)]; } // second click: range
-    else                          { S.lvlAnchor = l; S.lvlRange = null; }  // range done: start fresh
-  }
-  renderLevelBar();
-  applyFilters(); rebuildFilterOptions();
-  await syncNpcShards();
-});
-
-/* Keep loaded creature shards matched to the level selection (npc/ALL scope only):
-   unload shards that fell out of the selection, fetch the ones that joined it. */
-async function syncNpcShards(){
-  if (S.cat !== 'npc' && S.cat !== ALL) return;
   const shards = S.manifest.npc.shards;
-  const want = new Set(selectedLevels().filter(l => shards[l]));
-  const drop = [...S.npcLoaded].filter(l => !want.has(l));
-  if (drop.length) {
-    const ds = new Set(drop);
-    for (const l of drop) S.npcLoaded.delete(l);
-    S.cache.npc = (S.cache.npc || []).filter(e => !ds.has(levelOf(e)));
-    if (S.selId && S.curEntry?.type === 'npc' && !S.cache.npc.some(e => e._id === S.selId)) {
+  const levels = b.dataset.lvl === 'all' ? Object.keys(shards).map(Number) : [+b.dataset.lvl];
+  const isDeselect = levels.every(l => S.npcSel.has(l));
+  if (isDeselect) {
+    const removeSet = new Set(levels);
+    for (const l of levels) { S.npcSel.delete(l); S.npcLoaded.delete(l); }
+    S.cache.npc = (S.cache.npc || []).filter(e => !removeSet.has(levelOf(e)));
+    if (S.selId && !S.cache.npc.some(e => e._id === S.selId)) {
       S.selId = null; S.curEntry = null; S.history = [];
       const det = $('detail');
       det.classList.remove('open');
       det.innerHTML = '<button class="backbtn" id="backbtn">&larr; Back to list</button><div class="placeholder">Select a category, then an entry.</div>';
       $('backbtn').onclick = goBack;
     }
-    applyFilters(); rebuildFilterOptions();
-  }
-  for (const l of [...want].sort((a,b)=>a-b)) {
-    if (S.npcLoaded.has(l)) continue;
-    try { await loadNpcShard(l); } catch (err) { status(`Failed: ${err.message}`); }
-    if (S.cat !== 'npc' && S.cat !== ALL) return; // user switched scope mid-fetch
+    renderShardBar();
     applyFilters();
+    rebuildFilterOptions();
+    return;
   }
+  for (const l of levels) S.npcSel.add(l);
+  renderShardBar();
+  for (const l of levels) { try { await loadNpcShard(l); } catch(err){ status(`Failed: ${err.message}`); } applyFilters(); }
   rebuildFilterOptions();
-}
+});
 
 /* ============================ category switching ============================ */
+function resetNpcShards(){
+  // leaving the creatures scope drops any level shards that were loaded for it,
+  // so they don't silently keep filtering things the next time creatures are viewed.
+  S.cache.npc = [];
+  S.npcLoaded.clear();
+  S.npcSel.clear();
+}
 function updateScopeBtn(){
   const btn = $('scopeBtn');
   if (S.cat === ALL) {
@@ -1192,97 +845,34 @@ async function ensureAllLoaded(){
   if (S.cat === ALL) status('All categories loaded — search everything is ready.');
 }
 async function selectCategory(type){
+  const leavingNpc = S.cat === 'npc' && type !== 'npc';
   S.cat = type; S.selId = null;
   document.querySelectorAll('.cat').forEach(el => el.classList.toggle('active', el.dataset.type === type));
   updateScopeBtn();
-  // rarity/trait/source reset on every scope change; the free-text search query and
-  // the level selection persist so you can keep the same level band across categories.
-  $('rarity').value = ''; $('trait').value = ''; $('source').value = '';
-  S.traits = []; renderTraitChips();
-  $('tradition').value = ''; $('spelltype').value = '';
-  updateSpellFacets();
+  // category-specific filters reset on every scope change; the free-text search query
+  // stays put since it's meant to keep searching as the user narrows or widens scope.
+  $('lvlMin').value = ''; $('lvlMax').value = ''; $('rarity').value = ''; $('trait').value = ''; $('source').value = '';
+  if (leavingNpc) resetNpcShards();
   $('detail').classList.remove('open');
   S.curEntry = null; S.history = [];
   writeHash(null);
-  renderLevelBar();
-  $('bmbar').hidden = type !== BOOK;
-  renderEncounter();
-  if (type === BOOK) {
-    applyFilters(); rebuildFilterOptions();
-  } else if (type === 'npc') {
+  renderShardBar();
+  if (type === 'npc') {
     S.cache.npc = S.cache.npc || [];
     applyFilters(); rebuildFilterOptions();
-    syncNpcShards(); // persisted level picks auto-load their shards on entry
   } else if (type === ALL) {
     applyFilters(); rebuildFilterOptions();
-    syncNpcShards();
     ensureAllLoaded();
-  } else if (type === RUNES) {
-    try { await loadCategory('equipment'); } catch (err) { status(`Failed to load: ${err.message}`); S.cache.equipment = S.cache.equipment || []; }
-    if (S.cat !== RUNES) return; // user switched away mid-fetch
-    applyFilters(); rebuildFilterOptions();
   } else {
     try { await loadCategory(type); } catch(err){ status(`Failed to load: ${err.message}`); S.cache[type] = S.cache[type] || []; }
     if (S.cat !== type) return; // user switched away mid-fetch
     applyFilters(); rebuildFilterOptions();
   }
 }
-let qTimer = null;
-$('q').addEventListener('input', () => {
-  if (!S.deepSearch) { applyFilters(); return; }
-  clearTimeout(qTimer);
-  qTimer = setTimeout(applyFilters, 150);
-});
-$('deepBtn').addEventListener('click', () => {
-  S.deepSearch = !S.deepSearch;
-  $('deepBtn').classList.toggle('restricted', S.deepSearch);
-  if (S.deepSearch && S.cat === ALL) ensureAllLoaded(); // may need every category's text
-  applyFilters();
-});
-for (const el of ['rarity','trait','source','tradition','spelltype']) $(el).addEventListener('input', applyFilters);
-$('sort').addEventListener('input', () => { S.sort = $('sort').value; applyFilters(); });
-function updateSrcModeBtn(){
-  const b = $('srcModeBtn');
-  b.textContent = S.remasterOnly ? 'Remaster only' : 'All sources';
-  b.classList.toggle('restricted', S.remasterOnly);
-}
-$('srcModeBtn').addEventListener('click', () => {
-  S.remasterOnly = !S.remasterOnly;
-  store.set('aa.remasterOnly', S.remasterOnly ? '1' : '0');
-  updateSrcModeBtn();
-  applyFilters();
-});
-
-/* bookmark export / import */
-$('bmExport').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(S.bookmarks, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'anathema-bookmarks.json';
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-});
-$('bmImport').addEventListener('click', () => $('bmFile').click());
-$('bmFile').addEventListener('change', () => {
-  const f = $('bmFile').files[0]; if (!f) return;
-  const rd = new FileReader();
-  rd.onload = () => {
-    try {
-      const arr = JSON.parse(rd.result);
-      if (!Array.isArray(arr)) throw new Error('not a JSON array');
-      const have = new Set(S.bookmarks.map(b => b._id));
-      let added = 0;
-      for (const b of arr) if (b && b._id && b.name && b.type && !have.has(b._id)) {
-        S.bookmarks.push({ type: b.type, level: b.level ?? null, name: b.name, _id: b._id });
-        have.add(b._id); added++;
-      }
-      saveBookmarks();
-      if (S.cat === BOOK) { applyFilters(); rebuildFilterOptions(); }
-      status(`Imported ${added} bookmark${added === 1 ? '' : 's'}.`);
-    } catch (err) { status(`Import failed: ${err.message}`); }
-    $('bmFile').value = '';
-  };
-  rd.readAsText(f);
+for (const el of ['q','lvlMin','lvlMax']) $(el).addEventListener('input', applyFilters);
+for (const el of ['rarity','trait','source']) $(el).addEventListener('input', applyFilters);
+for (const el of ['lvlMin','lvlMax']) $(el).addEventListener('input', ev => {
+  if (ev.target.value !== '' && +ev.target.value < -1) ev.target.value = '-1';
 });
 
 /* ============================ hash routing ============================ */
@@ -1306,7 +896,7 @@ async function applyHash(){
   if (!raw) return false;
   const segs = raw.split('/').map(s => { try { return decodeURIComponent(s); } catch (_) { return s; } });
   const cat = segs[0];
-  if (cat !== RUNES && cat !== BOOK && !S.manifest[cat]) { status(`Unknown category in link: "${cat}"`); return false; }
+  if (!S.manifest[cat]) { status(`Unknown category in link: "${cat}"`); return false; }
   if (S.cat !== cat) await selectCategory(cat);
   let key = null;
   if (cat === 'npc') {
@@ -1314,7 +904,7 @@ async function applyHash(){
     if (segs.length >= 3 && segs[1] !== '' && !isNaN(+segs[1])) {
       const lvl = +segs[1]; key = segs[2];
       if (S.manifest.npc.shards[lvl]) {
-        S.lvlAnchor = lvl; S.lvlRange = null; renderLevelBar();
+        S.npcSel.add(lvl); renderShardBar();
         try { await loadNpcShard(lvl); } catch (err) { status(`Failed to load creature level ${lvl}: ${err.message}`); return false; }
         applyFilters(); rebuildFilterOptions();
       }
@@ -1325,7 +915,7 @@ async function applyHash(){
     }
   } else if (segs.length >= 2) key = segs.slice(1).join('/');
   if (!key) return true;
-  const hit = findLoaded(key, key, [cat === RUNES ? 'equipment' : cat]);
+  const hit = findLoaded(key, key, [cat]);
   if (hit) openDetail(hit);
   else status(`Couldn't find "${key}" in ${catLabel(cat)}.`);
   return true;
@@ -1378,23 +968,14 @@ document.addEventListener('keydown', ev => {
     return (ia===-1?99:ia)-(ib===-1?99:ib) || a.localeCompare(b);
   });
   const total = types.reduce((n,t)=>n+S.manifest[t].count,0);
-  loadBookmarks();
-  loadEncounter();
-  renderEncounter();
-  const runesBtn = `<button class="cat" data-type="${RUNES}" title="Equipment etched onto weapons or armor"><span>Runes</span><span class="n" id="runesCount"></span></button>`;
-  const bookBtn = `<button class="cat" data-type="${BOOK}" title="Starred entries across categories"><span>Bookmarked</span><span class="n" id="bmCount">${S.bookmarks.length ? S.bookmarks.length.toLocaleString() : ''}</span></button>`;
   $('cats').innerHTML =
-    `<button class="cat active" data-type="${ALL}"><span>All Categories</span><span class="n">${total.toLocaleString()}</span></button>` + bookBtn
+    `<button class="cat active" data-type="${ALL}"><span>All Categories</span><span class="n">${total.toLocaleString()}</span></button>`
     + types.map(t =>
-    `<button class="cat" data-type="${esc(t)}"><span>${esc(catLabel(t))}</span><span class="n">${S.manifest[t].count.toLocaleString()}</span></button>`
-    + (t === 'equipment' ? runesBtn : '')).join('')
-    + (types.includes('equipment') ? '' : runesBtn);
+    `<button class="cat" data-type="${esc(t)}"><span>${esc(catLabel(t))}</span><span class="n">${S.manifest[t].count.toLocaleString()}</span></button>`).join('');
   $('cats').addEventListener('click', ev => {
     const b = ev.target.closest('.cat'); if (b) selectCategory(b.dataset.type);
   });
   status(`${types.length} categories · ${total.toLocaleString()} entries indexed.`);
-  S.remasterOnly = store.get('aa.remasterOnly') === '1';
-  updateSrcModeBtn();
   updateScopeBtn();
   if (!(await applyHash())) selectCategory(ALL);
 })();
