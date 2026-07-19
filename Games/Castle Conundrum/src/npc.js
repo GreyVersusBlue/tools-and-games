@@ -1,88 +1,114 @@
-// npc.js — NPC class driven by data/npcs.json.
-// Bodies are labeled placeholder capsules until real character models are supplied;
-// swapping in a real model is just setting "modelPath" in npcs.json.
-
-import * as THREE from 'three';
-import { loadModel } from './assets.js';
-
-export class NPC {
-  constructor(def, scene, polyhavenBase) {
-    this.def = def;
-    this.id = def.id;
-    this.name = def.name;
-    this.scene = scene;
-    this.polyhavenBase = polyhavenBase;
-
-    this.group = new THREE.Group();
-    this.group.position.set(...def.position);
-    this.group.rotation.y = THREE.MathUtils.degToRad(def.facing || 0);
-    this.group.userData.npc = this;
-    scene.add(this.group);
-
-    this.patrol = def.patrol ? def.patrol.map((p) => new THREE.Vector3(...p)) : null;
-    this.patrolIndex = 0;
-    this.patrolSpeed = 1.1;
-
-    this.dialogueState = 'default'; // 'default' | 'hasKeystone' | 'afterVictory'
-  }
-
-  async build() {
-    if (this.def.modelPath) {
-      const model = await loadModel(this.def.modelPath);
-      this.group.add(model);
-    } else {
-      // Placeholder: capsule body + head sphere, distinct color per NPC
-      const color = new THREE.Color(this.def.placeholder?.color || '#888888');
-      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8 });
-
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.85, 6, 12), mat);
-      body.position.y = 0.75;
-      body.castShadow = true;
-      this.group.add(body);
-
-      const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22, 14, 12),
-        new THREE.MeshStandardMaterial({ color: 0xd9b38c, roughness: 0.9 })
-      );
-      head.position.y = 1.55;
-      head.castShadow = true;
-      this.group.add(head);
-
-      const held = this.def.placeholder?.heldProp;
-      if (held) {
-        const prop = await loadModel(this.polyhavenBase + held);
-        // rough hand position; tune per prop later
-        prop.position.set(0.42, 0.9, 0.1);
-        prop.rotation.z = THREE.MathUtils.degToRad(-20);
-        this.group.add(prop);
+{
+  "npcs": [
+    {
+      "id": "guard",
+      "name": "Guard",
+      "role": "gatekeeper",
+      "modelPath": null,
+      "placeholder": {
+        "color": "#8a2f2f",
+        "heldProp": "ornate_medieval_mace_1k.gltf/ornate_medieval_mace_1k.gltf"
+      },
+      "position": [
+        1.6,
+        0,
+        10.2
+      ],
+      "facing": 0,
+      "patrol": null,
+      "dialogue": {
+        "default": [
+          "Halt. None pass the gate without the Keystone.",
+          "The old Scholar in the hall guards its secret behind one of his infernal riddles. Best of luck \u2014 I've never solved one."
+        ],
+        "hasKeystone": [
+          "Well, I'll be. The Keystone itself.",
+          "A deal's a deal. Stand back \u2014 this gate hasn't moved in years."
+        ],
+        "afterVictory": [
+          "Go on then. The road's yours."
+        ]
+      }
+    },
+    {
+      "id": "scholar",
+      "name": "Scholar",
+      "role": "riddler",
+      "modelPath": null,
+      "placeholder": {
+        "color": "#2f4f8a",
+        "heldProp": null
+      },
+      "position": [
+        0.8,
+        0,
+        -9.6
+      ],
+      "facing": 200,
+      "patrol": null,
+      "dialogue": {
+        "default": [
+          "Ah, a visitor. You want the Keystone, no doubt. Everyone does.",
+          "It is yours \u2014 if your wit is sharper than your sword. Answer me this\u2026",
+          "{RIDDLE}"
+        ],
+        "hasKeystone": [
+          "The Keystone suits you. Now go bother the Guard \u2014 he owes me three answers and a chicken."
+        ],
+        "afterVictory": [
+          "The gate stands open. A mind well used is worth ten keys."
+        ]
+      }
+    },
+    {
+      "id": "wizard",
+      "name": "Wandering Wizard",
+      "role": "atmosphere",
+      "modelPath": null,
+      "placeholder": {
+        "color": "#5a2f8a",
+        "heldProp": null
+      },
+      "position": [
+        -6,
+        0,
+        2
+      ],
+      "facing": 90,
+      "patrol": [
+        [
+          -6,
+          0,
+          2
+        ],
+        [
+          -6,
+          0,
+          -3
+        ],
+        [
+          -2,
+          0,
+          -4
+        ],
+        [
+          -2,
+          0,
+          3
+        ]
+      ],
+      "dialogue": {
+        "default": [
+          "Hmm? Oh, don't mind me. I'm counting the stones. There are more every time.",
+          "The Scholar's riddles? Child's play. I simply choose not to answer them. On principle."
+        ],
+        "hasKeystone": [
+          "You solved it? Fascinating. I was *this* close, you know."
+        ],
+        "afterVictory": [
+          "An open gate is just a wall that gave up. Ponder that."
+        ]
       }
     }
-  }
-
-  /** Lines for the current dialogue state, with riddle token untouched (ui/quest handles it). */
-  getDialogueLines() {
-    const d = this.def.dialogue;
-    return d[this.dialogueState] || d.default;
-  }
-
-  update(dt, playerPos) {
-    if (!this.patrol || this.talking) return;
-    const target = this.patrol[this.patrolIndex];
-    const toTarget = new THREE.Vector3().subVectors(target, this.group.position);
-    toTarget.y = 0;
-    const dist = toTarget.length();
-    if (dist < 0.15) {
-      this.patrolIndex = (this.patrolIndex + 1) % this.patrol.length;
-      return;
-    }
-    toTarget.normalize();
-    this.group.position.addScaledVector(toTarget, this.patrolSpeed * dt);
-    this.group.rotation.y = Math.atan2(toTarget.x, toTarget.z);
-  }
-
-  facePlayer(playerPos) {
-    const dx = playerPos.x - this.group.position.x;
-    const dz = playerPos.z - this.group.position.z;
-    this.group.rotation.y = Math.atan2(dx, dz);
-  }
+  ]
 }
