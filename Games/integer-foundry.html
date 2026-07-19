@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Integer Foundry</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap');
+
+:root{
+  --iron-0:#161310;
+  --iron-1:#211c17;
+  --iron-2:#2c2620;
+  --iron-3:#3a3229;
+  --seam:#4a4033;
+  --copper:#ff7a3d;
+  --copper-dim:#a34e26;
+  --slag:#4fd8c4;
+  --slag-dim:#2d7d72;
+  --paper:#e8ddd0;
+  --paper-dim:#9c9082;
+  --danger:#c1543a;
+  --good:#7cae6f;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--iron-0);color:var(--paper);
+  font-family:'Inter',system-ui,sans-serif; overflow-x:hidden;}
+
+body{
+  background-image:
+    radial-gradient(ellipse at 20% -10%, rgba(255,122,61,0.08), transparent 55%),
+    radial-gradient(ellipse at 90% 110%, rgba(79,216,196,0.06), transparent 55%);
+}
+
+.display{font-family:'Oswald',sans-serif; letter-spacing:0.03em; text-transform:uppercase;}
+.mono{font-family:'JetBrains Mono',monospace;}
+
+/* ---------- Top bar ---------- */
+#topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 22px; background:linear-gradient(180deg, var(--iron-1), var(--iron-0));
+  border-bottom:1px solid var(--seam);
+  position:sticky; top:0; z-index:50;
+}
+#topbar h1{font-size:22px; margin:0; color:var(--paper);}
+#topbar h1 span{color:var(--copper);}
+#stats{display:flex; gap:26px; align-items:center;}
+.stat{display:flex; flex-direction:column; align-items:flex-end;}
+.stat .label{font-size:10px; color:var(--paper-dim); letter-spacing:0.08em; text-transform:uppercase;}
+.stat .val{font-size:19px; font-weight:700; color:var(--copper);}
+.stat .val.slag{color:var(--slag);}
+
+/* ---------- Layout ---------- */
+#main{display:flex; gap:0; max-width:1400px; margin:0 auto; align-items:flex-start;}
+#factory-wrap{flex:1; padding:22px; min-width:0;}
+#sidebar{width:340px; padding:22px 22px 22px 0; flex-shrink:0;}
+
+@media (max-width:980px){
+  #main{flex-direction:column;}
+  #sidebar{width:100%; padding:0 16px 16px;}
+  #factory-wrap{padding:16px;}
+}
+
+/* ---------- Grid ---------- */
+#grid-frame{
+  background:var(--iron-1); border:1px solid var(--seam); border-radius:4px;
+  padding:14px; box-shadow: inset 0 0 40px rgba(0,0,0,0.4);
+}
+#grid{
+  display:grid; gap:3px;
+  background:var(--iron-0);
+}
+.cell{
+  position:relative; aspect-ratio:1/1; background:var(--iron-2);
+  border:1px solid var(--iron-3); border-radius:2px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; user-select:none; transition:background 0.12s, border-color 0.12s;
+  min-width:0;
+}
+.cell:hover{border-color:var(--copper-dim);}
+.cell.empty:hover{background:var(--iron-3);}
+
+.cell .dir-arrow{
+  position:absolute; font-size:11px; color:var(--paper-dim); opacity:0.55;
+  pointer-events:none;
+}
+.dir-arrow.N{top:2px; left:50%; transform:translateX(-50%);}
+.dir-arrow.E{right:2px; top:50%; transform:translateY(-50%);}
+.dir-arrow.S{bottom:2px; left:50%; transform:translateX(-50%);}
+.dir-arrow.W{left:2px; top:50%; transform:translateY(-50%);}
+
+.cell .icon{font-size:15px; color:var(--paper-dim); pointer-events:none;}
+.cell.source .icon{color:var(--slag);}
+.cell.sink{background:var(--iron-3);}
+.cell.sink .icon{color:var(--copper);}
+.cell.merger .icon, .cell.splitter .icon{color:var(--copper);}
+.cell.belt{background:var(--iron-2);}
+
+.cell .op-label{position:absolute; bottom:3px; right:4px; font-size:9px; color:var(--paper-dim); pointer-events:none;}
+
+.packet{
+  font-family:'JetBrains Mono',monospace; font-weight:700; font-size:12px;
+  background:radial-gradient(circle at 35% 30%, #ffd39b, var(--copper) 60%, var(--copper-dim));
+  color:#241203; padding:3px 6px; border-radius:10px;
+  box-shadow:0 0 8px rgba(255,122,61,0.65), 0 0 2px rgba(255,255,255,0.4) inset;
+  animation:pop 0.18s ease-out; pointer-events:none; z-index:2;
+  max-width:88%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+@keyframes pop{from{transform:scale(0.5); opacity:0.4;} to{transform:scale(1); opacity:1;}}
+
+.sink-target{
+  position:absolute; top:2px; left:0; right:0; text-align:center;
+  font-size:9px; color:var(--paper-dim); font-family:'JetBrains Mono',monospace;
+  pointer-events:none;
+}
+.cell.blocked-flash{background:rgba(193,84,58,0.35) !important;}
+.cell.reward-flash{background:rgba(124,174,111,0.4) !important;}
+.cell.reject-flash{background:rgba(193,84,58,0.4) !important;}
+
+/* ---------- Palette ---------- */
+#palette{
+  background:var(--iron-1); border:1px solid var(--seam); border-radius:4px;
+  padding:14px; margin-top:16px;
+}
+#palette h2, .panel h2{
+  font-size:13px; margin:0 0 10px; color:var(--paper-dim); letter-spacing:0.1em;
+  text-transform:uppercase; font-family:'Oswald',sans-serif;
+}
+#tools{display:grid; grid-template-columns:repeat(4,1fr); gap:6px;}
+.tool-btn{
+  background:var(--iron-2); border:1px solid var(--iron-3); border-radius:3px;
+  color:var(--paper); font-size:10px; padding:8px 3px; text-align:center;
+  cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;
+  font-family:'Inter',sans-serif;
+}
+.tool-btn .icon{font-size:16px;}
+.tool-btn:hover{border-color:var(--copper-dim);}
+.tool-btn.active{border-color:var(--copper); background:var(--iron-3); box-shadow:0 0 0 1px var(--copper) inset;}
+.tool-btn.locked{opacity:0.35; cursor:not-allowed;}
+.tool-btn .cost{font-size:8px; color:var(--slag);}
+#tool-hint{font-size:11px; color:var(--paper-dim); margin-top:8px; line-height:1.5;}
+
+/* ---------- Sidebar panels ---------- */
+.panel{
+  background:var(--iron-1); border:1px solid var(--seam); border-radius:4px;
+  padding:14px; margin-bottom:16px;
+}
+.shop-item{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:8px 4px; border-bottom:1px solid var(--iron-2); gap:8px;
+}
+.shop-item:last-child{border-bottom:none;}
+.shop-item .info{display:flex; flex-direction:column; min-width:0;}
+.shop-item .name{font-size:12.5px; color:var(--paper);}
+.shop-item .desc{font-size:10.5px; color:var(--paper-dim);}
+.buy-btn{
+  background:var(--iron-3); border:1px solid var(--copper-dim); color:var(--copper);
+  font-family:'JetBrains Mono',monospace; font-size:11px; padding:5px 9px; border-radius:3px;
+  cursor:pointer; white-space:nowrap; flex-shrink:0;
+}
+.buy-btn:hover:not(:disabled){background:var(--copper-dim); color:#1a0d05;}
+.buy-btn:disabled{opacity:0.35; cursor:not-allowed; color:var(--paper-dim); border-color:var(--iron-3);}
+
+#prestige-btn{
+  width:100%; padding:11px; background:linear-gradient(180deg, var(--slag), var(--slag-dim));
+  border:none; border-radius:3px; color:#04211d; font-family:'Oswald',sans-serif;
+  font-weight:600; letter-spacing:0.05em; text-transform:uppercase; font-size:13px; cursor:pointer;
+}
+#prestige-btn:disabled{background:var(--iron-3); color:var(--paper-dim); cursor:not-allowed;}
+#prestige-info{font-size:10.5px; color:var(--paper-dim); margin-top:8px; line-height:1.5;}
+
+#log{
+  max-height:130px; overflow-y:auto; font-size:11px; color:var(--paper-dim);
+  font-family:'JetBrains Mono',monospace; display:flex; flex-direction:column-reverse; gap:3px;
+}
+#log div span{color:var(--copper);}
+
+#toast{
+  position:fixed; top:70px; left:50%; transform:translateX(-50%);
+  background:var(--iron-2); border:1px solid var(--copper); color:var(--paper);
+  padding:12px 20px; border-radius:4px; font-size:13px; z-index:200;
+  opacity:0; pointer-events:none; transition:opacity 0.3s;
+  box-shadow:0 6px 20px rgba(0,0,0,0.5);
+}
+#toast.show{opacity:1;}
+
+.tag{
+  display:inline-block; font-size:9px; padding:1px 6px; border-radius:8px;
+  background:var(--iron-3); color:var(--slag); margin-left:6px; font-family:'JetBrains Mono',monospace;
+}
+
+footer{text-align:center; padding:24px; font-size:11px; color:var(--paper-dim); font-family:'JetBrains Mono',monospace;}
+footer a{color:var(--copper); text-decoration:none;}
+
+#reset-link{position:fixed; bottom:10px; right:14px; font-size:10px; color:var(--paper-dim); cursor:pointer; font-family:'JetBrains Mono',monospace; opacity:0.5;}
+#reset-link:hover{opacity:1;}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1 class="display">Integer <span>Foundry</span></h1>
+  <div id="stats">
+    <div class="stat"><span class="label">Ingots</span><span class="val" id="stat-ingots">0</span></div>
+    <div class="stat"><span class="label">Orders filled</span><span class="val slag" id="stat-orders">0</span></div>
+    <div class="stat"><span class="label">Multiplier</span><span class="val slag" id="stat-mult">×1.00</span></div>
+  </div>
+</div>
+
+<div id="main">
+  <div id="factory-wrap">
+    <div id="grid-frame">
+      <div id="grid"></div>
+    </div>
+    <div id="palette">
+      <h2>Fabricators</h2>
+      <div id="tools"></div>
+      <div id="tool-hint">Select a fabricator, then click a grid cell to place it. Click a placed piece to rotate its output. Select "Clear" to remove a piece (partial refund).</div>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div class="panel">
+      <h2>Foundry Log</h2>
+      <div id="log"></div>
+    </div>
+    <div class="panel">
+      <h2>Shop</h2>
+      <div id="shop"></div>
+    </div>
+    <div class="panel">
+      <h2>Meltdown</h2>
+      <button id="prestige-btn">Trigger Meltdown</button>
+      <div id="prestige-info"></div>
+    </div>
+  </div>
+</div>
+
+<footer>Built for greyversusblue.com &middot; progress saves automatically to this browser &middot; <span id="reset-link-inline" style="cursor:pointer; text-decoration:underline;">wipe save</span></footer>
+<div id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ===================== CONFIG ===================== */
+
+const DIRS = ['N','E','S','W'];
+const DIR_VEC = {N:[0,-1], E:[1,0], S:[0,1], W:[-1,0]};
+const DIR_ARROW = {N:'\u25B2', E:'\u25B6', S:'\u25BC', W:'\u25C0'};
+
+const TILE_DEFS = {
+  belt:     {label:'Belt',      icon:'\u2504', unlockKey:null},
+  source:   {label:'Source',    icon:'\u25C9', unlockKey:null},
+  sink:     {label:'Sink',      icon:'\u25A3', unlockKey:null},
+  add1:     {label:'+1',        icon:'+1',  op:v=>v+1,  unlockKey:null},
+  sub1:     {label:'-1',        icon:'-1',  op:v=>Math.max(0,v-1), unlockKey:'sub1'},
+  mul2:     {label:'\u00D72',   icon:'\u00D72', op:v=>v*2, unlockKey:'mul2'},
+  div2:     {label:'\u00F72',   icon:'\u00F72', op:v=>Math.floor(v/2), unlockKey:'div2'},
+  merge_add:{label:'Merge +',   icon:'\u2295', merge:'add', unlockKey:'merge_add'},
+  merge_mul:{label:'Merge \u00D7', icon:'\u2297', merge:'mul', unlockKey:'merge_mul'},
+  split:    {label:'Split',     icon:'\u2AF9', unlockKey:'split'},
+};
+
+const BASE_COLS = 8, BASE_ROWS = 6;
+const TICK_MS = 550;
+const SAVE_KEY = 'integer-foundry-save-v1';
+const MAX_OFFLINE_SECONDS = 4*3600;
+
+/* ===================== STATE ===================== */
+
+let state = null;
+
+function freshState(){
+  return {
+    cols: BASE_COLS, rows: BASE_ROWS,
+    grid: makeEmptyGrid(BASE_COLS, BASE_ROWS),
+    ingots: 0,
+    ordersFilled: 0,
+    lifetimeIngots: 0,
+    prestigeMult: 1,
+    prestigeCount: 0,
+    unlocked: {sub1:false, mul2:false, div2:false, merge_add:false, merge_mul:false, split:false,
+               sink2:false, sink3:false, grid2:false, grid3:false, fastSource:false},
+    sourceIntervalTicks: 3,
+    sinks: [ {target: randomTarget(0)} ],
+    tool: 'belt',
+    lastSave: Date.now(),
+    recentIngotsPerSec: 0,
+    log: [],
+  };
+}
+
+function makeEmptyGrid(cols, rows){
+  const g = [];
+  for(let y=0;y<rows;y++){
+    const row = [];
+    for(let x=0;x<cols;x++){
+      row.push({type:null, dir:'E', packet:null, mergeBuf:[], sourceTimer:0, sinkIndex:null});
+    }
+    g.push(row);
+  }
+  return g;
+}
+
+function randomTarget(difficultyBoost){
+  const ceil = Math.min(300, 5 + difficultyBoost*3 + Math.floor(Math.random()*8));
+  return Math.max(2, Math.floor(Math.random()*ceil)+1);
+}
+
+/* ===================== SAVE / LOAD ===================== */
+
+function save(){
+  try{
+    state.lastSave = Date.now();
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+  }catch(e){ /* storage unavailable, ignore */ }
+}
+
+function load(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  }catch(e){ return null; }
+}
+
+function applyOfflineProgress(loaded){
+  const elapsedMs = Date.now() - (loaded.lastSave || Date.now());
+  const elapsedSec = Math.min(MAX_OFFLINE_SECONDS, Math.max(0, elapsedMs/1000));
+  if(elapsedSec > 30 && loaded.recentIngotsPerSec > 0){
+    const earned = Math.floor(loaded.recentIngotsPerSec * elapsedSec * 0.5);
+    if(earned > 0){
+      loaded.ingots += earned;
+      loaded.lifetimeIngots += earned;
+      setTimeout(()=>showToast(`Welcome back. The foundry produced ${fmt(earned)} ingots while you were away.`), 400);
+    }
+  }
+}
+
+/* ===================== FORMAT ===================== */
+
+function fmt(n){
+  n = Math.floor(n);
+  if(n < 100000) return n.toLocaleString('en-US');
+  const units = ['','K','M','B','T','Qa','Qi'];
+  let tier = 0;
+  let v = n;
+  while(v >= 1000 && tier < units.length-1){ v/=1000; tier++; }
+  return v.toFixed(v<10?2:1) + units[tier];
+}
+
+/* ===================== INIT ===================== */
+
+function init(){
+  const loaded = load();
+  if(loaded){
+    state = Object.assign(freshState(), loaded);
+    // ensure grid dims/shape intact
+    if(!state.grid || !state.grid.length){ state.grid = makeEmptyGrid(state.cols, state.rows); }
+    applyOfflineProgress(state);
+  } else {
+    state = freshState();
+    logMsg('Foundry commissioned. Place a Source and a Sink to begin.');
+  }
+  buildPaletteUI();
+  buildShopUI();
+  renderGrid();
+  updateStatsUI();
+  setInterval(tick, TICK_MS);
+  setInterval(save, 8000);
+  window.addEventListener('beforeunload', save);
+}
+
+/* ===================== LOG / TOAST ===================== */
+
+function logMsg(msg){
+  state.log.unshift({t:Date.now(), msg});
+  state.log = state.log.slice(0,40);
+  renderLog();
+}
+
+function renderLog(){
+  const el = document.getElementById('log');
+  el.innerHTML = state.log.slice(0,25).map(e=>`<div>${escapeHtml(e.msg)}</div>`).join('');
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+let toastTimer = null;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+
+/* ===================== PALETTE ===================== */
+
+const PALETTE_ORDER = ['source','belt','sink','add1','sub1','mul2','div2','merge_add','merge_mul','split','erase'];
+
+function isUnlocked(key){
+  if(!key) return true;
+  return !!state.unlocked[key];
+}
+
+function buildPaletteUI(){
+  const wrap = document.getElementById('tools');
+  wrap.innerHTML = '';
+  PALETTE_ORDER.forEach(key=>{
+    const btn = document.createElement('div');
+    btn.className = 'tool-btn';
+    btn.dataset.tool = key;
+    if(key === 'erase'){
+      btn.innerHTML = `<span class="icon">\u2715</span><span>Clear</span>`;
+    } else {
+      const def = TILE_DEFS[key];
+      const locked = !isUnlocked(def.unlockKey);
+      if(locked) btn.classList.add('locked');
+      btn.innerHTML = `<span class="icon">${def.icon}</span><span>${def.label}</span>`;
+    }
+    btn.addEventListener('click', ()=>selectTool(key));
+    wrap.appendChild(btn);
+  });
+  refreshPaletteActive();
+}
+
+function refreshPaletteActive(){
+  document.querySelectorAll('.tool-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.tool === state.tool);
+    if(b.dataset.tool !== 'erase'){
+      const def = TILE_DEFS[b.dataset.tool];
+      b.classList.toggle('locked', !isUnlocked(def.unlockKey));
+    }
+  });
+}
+
+function selectTool(key){
+  if(key !== 'erase' && !isUnlocked(TILE_DEFS[key].unlockKey)){
+    showToast('Unlock this fabricator in the Shop first.');
+    return;
+  }
+  state.tool = key;
+  refreshPaletteActive();
+}
+
+/* ===================== GRID RENDER ===================== */
+
+function renderGrid(){
+  const gridEl = document.getElementById('grid');
+  gridEl.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
+  gridEl.innerHTML = '';
+  const maxDim = Math.max(state.cols, state.rows);
+  const cellPx = Math.max(30, Math.min(58, Math.floor(560/maxDim)));
+  for(let y=0;y<state.rows;y++){
+    for(let x=0;x<state.cols;x++){
+      const cell = state.grid[y][x];
+      const div = document.createElement('div');
+      div.className = 'cell ' + (cell.type ? cell.type : 'empty');
+      div.dataset.x = x; div.dataset.y = y;
+      div.style.width = cellPx+'px';
+
+      if(cell.type && cell.type !== 'sink'){
+        const arrow = document.createElement('div');
+        arrow.className = 'dir-arrow ' + cell.dir;
+        arrow.textContent = DIR_ARROW[cell.dir];
+        div.appendChild(arrow);
+      }
+
+      if(cell.type === 'sink'){
+        const sinkIdx = cell.sinkIndex;
+        const t = state.sinks[sinkIdx] ? state.sinks[sinkIdx].target : '-';
+        const tgt = document.createElement('div');
+        tgt.className = 'sink-target';
+        tgt.textContent = 'NEEDS ' + t;
+        div.appendChild(tgt);
+        const icon = document.createElement('div');
+        icon.className = 'icon'; icon.textContent = '\u25A3';
+        div.appendChild(icon);
+      } else if(cell.type && TILE_DEFS[cell.type]){
+        const icon = document.createElement('div');
+        icon.className = 'icon';
+        icon.textContent = TILE_DEFS[cell.type].icon;
+        if(cell.type === 'source' || cell.type === 'belt'){
+          // keep icon subtle, packet shown separately
+        }
+        div.appendChild(icon);
+      }
+
+      if(cell.packet){
+        const p = document.createElement('div');
+        p.className = 'packet';
+        p.textContent = cell.packet.value;
+        div.appendChild(p);
+      }
+
+      div.addEventListener('click', ()=>onCellClick(x,y));
+      gridEl.appendChild(div);
+    }
+  }
+}
+
+function onCellClick(x,y){
+  const cell = state.grid[y][x];
+  const tool = state.tool;
+
+  if(tool === 'erase'){
+    if(cell.type){
+      logMsg(`Removed ${TILE_DEFS[cell.type] ? TILE_DEFS[cell.type].label : cell.type} at (${x},${y}).`);
+      state.grid[y][x] = {type:null, dir:'E', packet:null, mergeBuf:[], sourceTimer:0, sinkIndex:null};
+      renderGrid();
+      save();
+    }
+    return;
+  }
+
+  if(cell.type === tool){
+    // rotate
+    const idx = DIRS.indexOf(cell.dir);
+    cell.dir = DIRS[(idx+1)%DIRS.length];
+    renderGrid();
+    return;
+  }
+
+  if(cell.type){
+    showToast('Cell occupied. Select "Clear" to remove it first.');
+    return;
+  }
+
+  // placing new
+  placeTile(x,y,tool);
+}
+
+function countPlacedSinks(){
+  let n=0;
+  for(let y=0;y<state.rows;y++) for(let x=0;x<state.cols;x++) if(state.grid[y][x].type==='sink') n++;
+  return n;
+}
+
+function maxSinkSlots(){
+  let n=1;
+  if(state.unlocked.sink2) n=2;
+  if(state.unlocked.sink3) n=3;
+  return n;
+}
+
+function usedSinkIndices(){
+  const used = new Set();
+  for(let y=0;y<state.rows;y++) for(let x=0;x<state.cols;x++){
+    const c = state.grid[y][x];
+    if(c.type === 'sink' && c.sinkIndex !== null) used.add(c.sinkIndex);
+  }
+  return used;
+}
+
+function placeTile(x,y,tool){
+  const cell = state.grid[y][x];
+  if(tool === 'sink'){
+    const placed = countPlacedSinks();
+    if(placed >= maxSinkSlots()){
+      showToast('No free sink slots. Unlock more in the Shop.');
+      return;
+    }
+    const used = usedSinkIndices();
+    let freeIndex = 0;
+    while(used.has(freeIndex)) freeIndex++;
+    cell.type = 'sink';
+    cell.sinkIndex = freeIndex;
+    if(!state.sinks[freeIndex]) state.sinks[freeIndex] = {target: randomTarget(state.ordersFilled)};
+  } else if(tool === 'merge_add' || tool === 'merge_mul'){
+    cell.type = tool; cell.dir = 'E'; cell.mergeBuf = [];
+  } else {
+    cell.type = tool; cell.dir = 'E';
+  }
+  renderGrid();
+  save();
+}
+
+/* ===================== SIMULATION ===================== */
+
+function inBounds(x,y){ return x>=0 && y>=0 && x<state.cols && y<state.rows; }
+
+function tick(){
+  const g = state.grid;
+  // Snapshot movement decisions using a "claims" map to avoid double-writes
+  const moves = []; // {fromX,fromY,toX,toY,value}
+  const spawns = []; // {x,y,value}
+  const arrivalsAtSink = []; // {x,y,value}
+  const arrivalsAtMerger = []; // {x,y,value,fromDir}
+  const arrivalsAtOperator = []; // {x,y,value}
+  const staying = new Set(); // "x,y" of cells whose packet doesn't move this tick (blocked or merger hold)
+
+  // 1. Sources: spawn if empty and timer elapsed
+  for(let y=0;y<state.rows;y++){
+    for(let x=0;x<state.cols;x++){
+      const c = g[y][x];
+      if(c.type === 'source'){
+        if(!c.packet){
+          c.sourceTimer = (c.sourceTimer||0) + 1;
+          const interval = state.unlocked.fastSource ? 2 : state.sourceIntervalTicks;
+          if(c.sourceTimer >= interval){
+            c.sourceTimer = 0;
+            c.packet = {value: 1};
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Determine desired moves for every tile currently holding a packet
+  // Build a fresh occupancy map reflecting CURRENT packets to detect destination conflicts.
+  const destClaims = {}; // key "x,y" -> true if claimed this tick
+
+  // Sort so that we process in a stable order (top-left to bottom-right)
+  const movers = [];
+  for(let y=0;y<state.rows;y++){
+    for(let x=0;x<state.cols;x++){
+      const c = g[y][x];
+      if(c.packet && c.type && c.type !== 'sink'){
+        movers.push({x,y});
+      }
+    }
+  }
+
+  movers.forEach(({x,y})=>{
+    const c = g[y][x];
+    const [dx,dy] = DIR_VEC[c.dir];
+    const tx = x+dx, ty = y+dy;
+    if(!inBounds(tx,ty)){ staying.add(x+','+y); return; }
+    const target = g[ty][tx];
+    const key = tx+','+ty;
+
+    if(!target.type){
+      // moving onto empty floor - not allowed (packets only travel on fabricators)
+      staying.add(x+','+y);
+      return;
+    }
+    if(target.type === 'sink'){
+      if(destClaims[key]){ staying.add(x+','+y); return; }
+      destClaims[key] = true;
+      arrivalsAtSink.push({x:tx,y:ty,value:c.packet.value, fromX:x, fromY:y});
+      return;
+    }
+    if(target.type === 'merge_add' || target.type === 'merge_mul'){
+      // multiple packets CAN arrive at merger same tick (that's the point), so no destClaims block here,
+      // but cap buffer at 2 pending
+      arrivalsAtMerger.push({x:tx,y:ty,value:c.packet.value, fromX:x, fromY:y});
+      return;
+    }
+    if(target.type === 'split'){
+      if(destClaims[key]){ staying.add(x+','+y); return; }
+      destClaims[key] = true;
+      arrivalsAtOperator.push({x:tx,y:ty,value:c.packet.value, fromX:x, fromY:y, kind:'split'});
+      return;
+    }
+    if(target.packet){
+      // occupied by a packet already sitting there -> blocked (congestion)
+      staying.add(x+','+y);
+      return;
+    }
+    if(destClaims[key]){ staying.add(x+','+y); return; }
+    destClaims[key] = true;
+    arrivalsAtOperator.push({x:tx,y:ty,value:c.packet.value, fromX:x, fromY:y, kind:'normal'});
+  });
+
+  // 3. Clear source tiles of packets that moved (we'll rebuild packet placement below)
+  // Remove packets from movers that are NOT staying
+  movers.forEach(({x,y})=>{
+    if(!staying.has(x+','+y)){
+      g[y][x].packet = null;
+    }
+  });
+
+  // 4. Apply arrivals at plain operator/belt/source/split tiles
+  arrivalsAtOperator.forEach(({x,y,value,kind})=>{
+    const c = g[y][x];
+    let v = value;
+    if(kind==='normal' && c.type && TILE_DEFS[c.type] && TILE_DEFS[c.type].op){
+      v = TILE_DEFS[c.type].op(v);
+    }
+    c.packet = {value: v};
+    if(kind === 'split'){
+      // try to also emit a duplicate in the perpendicular direction if possible next tick handled naturally
+      // simple version: split just forwards same value (acts like a belt) - duplication handled via secondary emit below
+      c._splitPending = true;
+    }
+  });
+
+  // Handle splitter duplication: emit a second packet to the "other" open neighbor if empty fabricator exists
+  for(let y=0;y<state.rows;y++){
+    for(let x=0;x<state.cols;x++){
+      const c = g[y][x];
+      if(c.type === 'split' && c._splitPending){
+        c._splitPending = false;
+        // find a neighbor (not the dir it's about to output to) that is a fabricator with no packet
+        const primary = c.dir;
+        for(const d of DIRS){
+          if(d === primary) continue;
+          const [dx,dy] = DIR_VEC[d];
+          const nx=x+dx, ny=y+dy;
+          if(inBounds(nx,ny)){
+            const n = g[ny][nx];
+            if(n.type && n.type!=='sink' && !n.packet && n.type!=='merge_add' && n.type!=='merge_mul'){
+              n.packet = {value: c.packet.value};
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 5. Handle merger buffers
+  // group arrivalsAtMerger by target cell
+  const mergerHits = {};
+  arrivalsAtMerger.forEach(a=>{
+    const key = a.x+','+a.y;
+    if(!mergerHits[key]) mergerHits[key] = [];
+    mergerHits[key].push(a.value);
+  });
+  Object.keys(mergerHits).forEach(key=>{
+    const [mx,my] = key.split(',').map(Number);
+    const c = g[my][mx];
+    if(!c.mergeBuf) c.mergeBuf = [];
+    mergerHits[key].forEach(v=>{
+      if(c.mergeBuf.length < 2) c.mergeBuf.push(v);
+    });
+  });
+  // resolve any merger with 2 buffered values (only if output cell not already holding a packet)
+  for(let y=0;y<state.rows;y++){
+    for(let x=0;x<state.cols;x++){
+      const c = g[y][x];
+      if((c.type==='merge_add' || c.type==='merge_mul') && c.mergeBuf && c.mergeBuf.length>=2 && !c.packet){
+        const a = c.mergeBuf.shift();
+        const b = c.mergeBuf.shift();
+        const val = c.type==='merge_add' ? (a+b) : (a*b);
+        c.packet = {value: val};
+      }
+    }
+  }
+
+  // 6. Resolve sink arrivals (reward or reject)
+  arrivalsAtSink.forEach(({x,y,value})=>{
+    const c = g[y][x];
+    const sink = state.sinks[c.sinkIndex];
+    if(!sink) return;
+    if(value === sink.target){
+      const reward = Math.max(1, sink.target) * 2 * state.prestigeMult;
+      state.ingots += reward;
+      state.lifetimeIngots += reward;
+      state.ordersFilled += 1;
+      flashCell(x,y,'reward-flash');
+      logMsg(`Order filled: ${value} \u2192 +${fmt(reward)} ingots`);
+      sink.target = randomTarget(state.ordersFilled);
+    } else {
+      flashCell(x,y,'reject-flash');
+      logMsg(`Rejected ${value} at sink (needed ${sink.target}).`);
+    }
+  });
+
+  updateRecentRate();
+  renderGrid();
+  updateStatsUI();
+  buildShopUI();
+}
+
+let rateWindow = [];
+function updateRecentRate(){
+  // sample ingots roughly every tick to estimate per-second production for offline calc
+  rateWindow.push(state.ingots);
+  if(rateWindow.length > 40) rateWindow.shift();
+  if(rateWindow.length >= 2){
+    const delta = rateWindow[rateWindow.length-1] - rateWindow[0];
+    const seconds = (rateWindow.length-1) * (TICK_MS/1000);
+    state.recentIngotsPerSec = seconds>0 ? Math.max(0, delta/seconds) : 0;
+  }
+}
+
+function flashCell(x,y,cls){
+  renderGrid();
+  const idx = y*state.cols + x;
+  const el = document.getElementById('grid').children[idx];
+  if(el){
+    el.classList.add(cls);
+    setTimeout(()=>el.classList.remove(cls), 350);
+  }
+}
+
+/* ===================== STATS UI ===================== */
+
+function updateStatsUI(){
+  document.getElementById('stat-ingots').textContent = fmt(state.ingots);
+  document.getElementById('stat-orders').textContent = fmt(state.ordersFilled);
+  document.getElementById('stat-mult').textContent = '\u00D7' + state.prestigeMult.toFixed(2);
+}
+
+/* ===================== SHOP ===================== */
+
+const SHOP_ITEMS = [
+  {key:'sub1', name:'Subtractor (-1)', desc:'Unlocks the -1 fabricator.', cost:s=>30, unlocked:s=>s.unlocked.sub1, buy:s=>{s.unlocked.sub1=true;}},
+  {key:'mul2', name:'Doubler (\u00D72)', desc:'Unlocks the \u00D72 fabricator.', cost:s=>80, unlocked:s=>s.unlocked.mul2, buy:s=>{s.unlocked.mul2=true;}},
+  {key:'div2', name:'Halver (\u00F72)', desc:'Unlocks the \u00F72 fabricator (rounds down).', cost:s=>140, unlocked:s=>s.unlocked.div2, buy:s=>{s.unlocked.div2=true;}},
+  {key:'merge_add', name:'Adder Merge', desc:'Combines two lines into one, sum of values.', cost:s=>220, unlocked:s=>s.unlocked.merge_add, buy:s=>{s.unlocked.merge_add=true;}},
+  {key:'merge_mul', name:'Multiplier Merge', desc:'Combines two lines into one, product of values.', cost:s=>420, unlocked:s=>s.unlocked.merge_mul, buy:s=>{s.unlocked.merge_mul=true;}},
+  {key:'split', name:'Splitter', desc:'Duplicates a value onto a second line.', cost:s=>300, unlocked:s=>s.unlocked.split, buy:s=>{s.unlocked.split=true;}},
+  {key:'fastSource', name:'Rapid Feed', desc:'Sources spawn ingots faster.', cost:s=>250, unlocked:s=>s.unlocked.fastSource, buy:s=>{s.unlocked.fastSource=true;}},
+  {key:'sink2', name:'Second Sink Slot', desc:'Place a second order sink.', cost:s=>350, unlocked:s=>s.unlocked.sink2, buy:s=>{s.unlocked.sink2=true;}},
+  {key:'sink3', name:'Third Sink Slot', desc:'Place a third order sink.', cost:s=>900, unlocked:s=>s.unlocked.sink3, buy:s=>{s.unlocked.sink3=true;}},
+  {key:'grid2', name:'Expand Floor I', desc:'Grow the factory floor.', cost:s=>500, unlocked:s=>s.unlocked.grid2, buy:s=>{s.unlocked.grid2=true; growGrid(2,1);}},
+  {key:'grid3', name:'Expand Floor II', desc:'Grow the factory floor again.', cost:s=>1600, unlocked:s=>s.unlocked.grid3, buy:s=>{s.unlocked.grid3=true; growGrid(2,1);}},
+];
+
+function growGrid(addCols, addRows){
+  const newCols = state.cols + addCols;
+  const newRows = state.rows + addRows;
+  const newGrid = makeEmptyGrid(newCols, newRows);
+  for(let y=0;y<state.rows;y++){
+    for(let x=0;x<state.cols;x++){
+      newGrid[y][x] = state.grid[y][x];
+    }
+  }
+  state.grid = newGrid;
+  state.cols = newCols;
+  state.rows = newRows;
+}
+
+function buildShopUI(){
+  const wrap = document.getElementById('shop');
+  wrap.innerHTML = '';
+  SHOP_ITEMS.forEach(item=>{
+    if(item.unlocked(state)) return; // already bought, hide
+    const cost = item.cost(state);
+    const row = document.createElement('div');
+    row.className = 'shop-item';
+    row.innerHTML = `<div class="info"><div class="name">${item.name}</div><div class="desc">${item.desc}</div></div>
+      <button class="buy-btn" ${state.ingots < cost ? 'disabled' : ''}>${fmt(cost)}</button>`;
+    row.querySelector('button').addEventListener('click', ()=>{
+      if(state.ingots >= cost){
+        state.ingots -= cost;
+        item.buy(state);
+        logMsg(`Purchased: ${item.name}`);
+        buildPaletteUI();
+        buildShopUI();
+        renderGrid();
+        updateStatsUI();
+        save();
+      }
+    });
+    wrap.appendChild(row);
+  });
+  if(wrap.children.length === 0){
+    wrap.innerHTML = '<div style="font-size:11.5px; color:var(--paper-dim);">Everything currently available has been purchased. Trigger a Meltdown for more permanent growth.</div>';
+  }
+  updatePrestigeUI();
+}
+
+/* ===================== PRESTIGE ===================== */
+
+function prestigeGain(){
+  return Math.sqrt(Math.max(0,state.lifetimeIngots)) / 60;
+}
+
+function updatePrestigeUI(){
+  const gain = prestigeGain();
+  const btn = document.getElementById('prestige-btn');
+  const canPrestige = state.lifetimeIngots >= 500;
+  btn.disabled = !canPrestige;
+  document.getElementById('prestige-info').textContent =
+    canPrestige
+      ? `Reset your factory and current ingots for a permanent +${gain.toFixed(2)}\u00D7 production multiplier (lifetime ingots carry the bonus forward).`
+      : `Earn 500 lifetime ingots to unlock your first Meltdown.`;
+}
+
+document.getElementById('prestige-btn').addEventListener('click', ()=>{
+  if(state.lifetimeIngots < 500) return;
+  const gain = prestigeGain();
+  if(!confirm(`Trigger Meltdown? Your factory layout and current ingots reset, but you gain a permanent \u00D7${(1+gain).toFixed(2)} multiplier on all future orders.`)) return;
+  const newMult = state.prestigeMult + gain;
+  const lifetime = state.lifetimeIngots;
+  const prestigeCount = state.prestigeCount + 1;
+  state = freshState();
+  state.prestigeMult = newMult;
+  state.lifetimeIngots = lifetime;
+  state.prestigeCount = prestigeCount;
+  logMsg(`Meltdown #${prestigeCount} complete. New multiplier: \u00D7${newMult.toFixed(2)}`);
+  buildPaletteUI();
+  buildShopUI();
+  renderGrid();
+  updateStatsUI();
+  save();
+});
+
+/* ===================== RESET ===================== */
+
+function wipeSave(){
+  if(!confirm('Wipe all Integer Foundry progress in this browser? This cannot be undone.')) return;
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  state = freshState();
+  logMsg('Save wiped. Starting fresh.');
+  buildPaletteUI();
+  buildShopUI();
+  renderGrid();
+  updateStatsUI();
+}
+document.getElementById('reset-link-inline').addEventListener('click', wipeSave);
+
+/* ===================== START ===================== */
+
+init();
+
+})();
+</script>
+</body>
+</html>
