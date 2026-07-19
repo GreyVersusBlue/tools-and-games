@@ -1,0 +1,37 @@
+{
+  "id": "ls_0023",
+  "address": "801 Terrace View Dr",
+  "neighborhood": "nb_maple_terrace",
+  "tier": "mid",
+  "price": 439000,
+  "beds": 5,
+  "baths": 3,
+  "sqft": 2600,
+  "features": [
+    "in-law suite",
+    "cul-de-sac",
+    "solar panels"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Solar lease transfers to buyer \u2014 $140/mo, 14 years left",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 0,
+      "disclosureRequired": true,
+      "topic": "hoa"
+    },
+    {
+      "desc": "In-law suite kitchenette on shared 15-amp circuit",
+      "discovery": "inspection",
+      "severity": "moderate",
+      "repairCost": 2400,
+      "disclosureRequired": false,
+      "topic": "electrical"
+    }
+  ],
+  "listingAgentId": "ag_chuck_brandt",
+  "daysOnMarket": 16,
+  "blurb": "Five bedrooms and an in-law suite on the quietest cul-de-sac in the Terrace. Ask about the solar lease. Really.",
+  "condition": 0.7
+}

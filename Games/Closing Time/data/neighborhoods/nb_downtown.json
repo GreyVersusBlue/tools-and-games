@@ -1,0 +1,20 @@
+{
+  "id": "nb_downtown",
+  "name": "Downtown Alder Falls",
+  "identity": "urban",
+  "vibe": "Lofts over storefronts, a courthouse clocktower, parking disputes as a way of life.",
+  "basePriceIndex": 1.05,
+  "priceTrend": 0.005,
+  "trendVolatility": 0.009,
+  "schoolQuality": 3,
+  "amenities": [
+    "riverwalk",
+    "restaurants",
+    "commuter rail to the city"
+  ],
+  "buyerDemand": 1.0,
+  "knowledgeNotes": [
+    "Condo docs and HOA reserves matter more than granite counters.",
+    "Rail commuters pay a premium for anything within five blocks of the station."
+  ]
+}

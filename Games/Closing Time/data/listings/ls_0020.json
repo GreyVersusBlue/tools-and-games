@@ -1,0 +1,29 @@
+{
+  "id": "ls_0020",
+  "address": "44 Petrie Shore Rd",
+  "neighborhood": "nb_lake_petrie",
+  "tier": "luxury",
+  "price": 720000,
+  "beds": 4,
+  "baths": 3,
+  "sqft": 2900,
+  "features": [
+    "permitted boathouse",
+    "wraparound deck",
+    "guest suite"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Septic sized for 3 bedrooms, not 4",
+      "discovery": "inspection",
+      "severity": "moderate",
+      "repairCost": 12500,
+      "disclosureRequired": true,
+      "topic": "sewer"
+    }
+  ],
+  "listingAgentId": "ag_marisol_vega",
+  "daysOnMarket": 46,
+  "blurb": "The lake house people mean when they say 'lake house.' Boathouse permits framed on the wall, which tells you about the neighbors.",
+  "condition": 0.8
+}

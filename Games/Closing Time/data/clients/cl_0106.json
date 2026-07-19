@@ -1,0 +1,51 @@
+{
+  "id": "cl_0106",
+  "name": "Dr. Yusuf & Amina Okonkwo",
+  "type": "seller",
+  "archetype": "upsizers",
+  "tier": "mid",
+  "budget": 0,
+  "patience": 6,
+  "statedReqs": {
+    "notes": "Selling the downtown loft; twins on the way. Deadline is biological and non-negotiable."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "They've already bought in Maple Terrace with a bridge loan \u2014 every week unsold costs them real money, more than they've admitted.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "carryingCostPerWeek": 900
+      }
+    }
+  ],
+  "intro": "Organized to a fault, nesting at industrial scale. Amina has staged the loft herself. It shows. Beautifully.",
+  "referredBy": null,
+  "sellerListing": {
+    "neighborhood": "nb_downtown",
+    "tier": "mid",
+    "baseValue": 402000,
+    "condition": 0.9,
+    "address": "Unit 9C, Courthouse Lofts",
+    "beds": 2,
+    "baths": 2,
+    "sqft": 1400,
+    "features": [
+      "clocktower view",
+      "deeded parking",
+      "custom built-ins"
+    ],
+    "issues": [
+      {
+        "desc": "Clocktower bells: hourly, 7am\u201310pm",
+        "discovery": "visible",
+        "severity": "cosmetic",
+        "repairCost": 0,
+        "disclosureRequired": false
+      }
+    ]
+  }
+}

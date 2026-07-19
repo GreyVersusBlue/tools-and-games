@@ -1,0 +1,29 @@
+{
+  "id": "ls_0007",
+  "address": "230 Fernwell Ave",
+  "neighborhood": "nb_maple_terrace",
+  "tier": "mid",
+  "price": 415000,
+  "beds": 4,
+  "baths": 3,
+  "sqft": 2440,
+  "features": [
+    "renovated 2023",
+    "home office",
+    "EV charger"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Renovation drywall hides older aluminum branch wiring",
+      "discovery": "inspection",
+      "severity": "dealbreaker",
+      "repairCost": 13500,
+      "disclosureRequired": true,
+      "topic": "electrical"
+    }
+  ],
+  "listingAgentId": "ag_denny_kessler",
+  "daysOnMarket": 4,
+  "blurb": "Turnkey renovation, staged within an inch of its life. Photos almost suspiciously good.",
+  "condition": 0.85
+}

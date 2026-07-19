@@ -1,0 +1,37 @@
+{
+  "id": "ls_0016",
+  "address": "Unit 4B, The Granary",
+  "neighborhood": "nb_downtown",
+  "tier": "starter",
+  "price": 246000,
+  "beds": 1,
+  "baths": 1,
+  "sqft": 780,
+  "features": [
+    "river view",
+    "doorman",
+    "two blocks to rail"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "HOA reserves underfunded; special assessment likely",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 6000,
+      "disclosureRequired": true,
+      "topic": "hoa"
+    },
+    {
+      "desc": "Neighbor's dog audible through east wall",
+      "discovery": "question",
+      "severity": "cosmetic",
+      "repairCost": 0,
+      "disclosureRequired": false,
+      "topic": "neighbors"
+    }
+  ],
+  "listingAgentId": "ag_priya_natesan",
+  "daysOnMarket": 14,
+  "blurb": "Sunrise over the river from the fourth floor. Read the condo docs \u2014 Priya has them tabbed.",
+  "condition": 0.8
+}

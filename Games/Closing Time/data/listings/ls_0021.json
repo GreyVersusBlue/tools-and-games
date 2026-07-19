@@ -1,0 +1,37 @@
+{
+  "id": "ls_0021",
+  "address": "2 Inlet Path",
+  "neighborhood": "nb_lake_petrie",
+  "tier": "starter",
+  "price": 259000,
+  "beds": 2,
+  "baths": 1,
+  "sqft": 980,
+  "features": [
+    "seasonal lake view",
+    "wood stove",
+    "big screened porch"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Crawlspace pests \u2014 evidence of raccoon tenancy",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 3200,
+      "disclosureRequired": true,
+      "topic": "pests"
+    },
+    {
+      "desc": "Road unplowed by county in winter",
+      "discovery": "question",
+      "severity": "cosmetic",
+      "repairCost": 0,
+      "disclosureRequired": false,
+      "topic": "neighbors"
+    }
+  ],
+  "listingAgentId": "ag_ruth_okafor",
+  "daysOnMarket": 18,
+  "blurb": "Sweet little cottage two rows back from the water. Winter access is 'an adventure.'",
+  "condition": 0.6
+}

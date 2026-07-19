@@ -1,0 +1,20 @@
+{
+  "id": "nb_brackenridge",
+  "name": "Brackenridge Heights",
+  "identity": "luxury",
+  "vibe": "Stone estates behind old hedges. The HOA newsletter has a masthead. Deals move quietly, through people.",
+  "basePriceIndex": 2.6,
+  "priceTrend": 0.001,
+  "trendVolatility": 0.004,
+  "schoolQuality": 5,
+  "amenities": [
+    "country club",
+    "private lake access",
+    "gated lanes"
+  ],
+  "buyerDemand": 0.7,
+  "knowledgeNotes": [
+    "Luxury buyers don't negotiate price. They negotiate terms and pride.",
+    "Homes here sit for months, then sell in a weekend to someone's college roommate."
+  ]
+}

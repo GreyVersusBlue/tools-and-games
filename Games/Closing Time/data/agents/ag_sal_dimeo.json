@@ -1,0 +1,29 @@
+{
+  "id": "ag_sal_dimeo",
+  "name": "Sal DiMeo",
+  "brokerageId": "bk_hearthstone",
+  "negotiationStyle": "lowballer",
+  "rivalryFlag": true,
+  "tolerance": 0.06,
+  "counterAggression": 0.8,
+  "dirtyTricks": false,
+  "bio": "Twenty years of opening every negotiation with an insulting number and a shrug. It works more than it should.",
+  "dialogueHooks": {
+    "greeting": [
+      "Sal DiMeo. I'll save us both time \u2014 your people are asking too much.",
+      "Kid. Sal DiMeo. Let's talk real numbers, not zillow numbers."
+    ],
+    "counter": [
+      "That's cute. Here's what my client will actually pay.",
+      "I've seen this house. I've smelled this house. Adjust accordingly."
+    ],
+    "accept": [
+      "Fine. Don't tell anyone I went this high.",
+      "Deal. You're less green than you look."
+    ],
+    "reject": [
+      "We're done here. Call me when gravity applies to your pricing.",
+      "Nope. My guy walks. He's got three other addresses in his pocket."
+    ]
+  }
+}

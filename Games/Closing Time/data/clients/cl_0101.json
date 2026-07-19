@@ -1,0 +1,60 @@
+{
+  "id": "cl_0101",
+  "name": "Nadia Ferreira",
+  "type": "seller",
+  "archetype": "relocating-seller",
+  "tier": "mid",
+  "budget": 0,
+  "patience": 7,
+  "statedReqs": {
+    "notes": "Job transfer in 10 weeks. Wants speed over top dollar, but won't say the floor out loud."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "Her real floor is 8% under ask \u2014 below that she'd rather rent it out and deal with tenants from another state.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "floorPct": 0.92
+      }
+    }
+  ],
+  "intro": "Selling the Fernwell house she renovated herself. Every scratch on those floors has a story and a defensiveness.",
+  "referredBy": null,
+  "sellerListing": {
+    "neighborhood": "nb_maple_terrace",
+    "tier": "mid",
+    "baseValue": 398000,
+    "condition": 0.8,
+    "address": "212 Fernwell Ave",
+    "beds": 4,
+    "baths": 2.5,
+    "sqft": 2300,
+    "features": [
+      "renovated kitchen",
+      "home office",
+      "corner lot"
+    ],
+    "issues": [
+      {
+        "desc": "Deck boards soft at the far corner",
+        "discovery": "visible",
+        "severity": "moderate",
+        "repairCost": 2600,
+        "disclosureRequired": false,
+        "topic": "water"
+      },
+      {
+        "desc": "Water heater at year 14 of a 12-year life",
+        "discovery": "inspection",
+        "severity": "moderate",
+        "repairCost": 1800,
+        "disclosureRequired": true,
+        "topic": "water"
+      }
+    ]
+  }
+}

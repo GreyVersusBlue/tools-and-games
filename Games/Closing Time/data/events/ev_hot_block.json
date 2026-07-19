@@ -1,0 +1,14 @@
+{
+  "id": "ev_hot_block",
+  "name": "Block Buzz",
+  "mode": "either",
+  "phase": "weekly",
+  "weight": 6,
+  "minDay": 7,
+  "text": "A food magazine writes up a neighborhood. Prices there develop opinions of themselves.",
+  "effect": {
+    "handler": "neighborhoodBuzz",
+    "trendBoost": 0.006,
+    "weeks": 4
+  }
+}

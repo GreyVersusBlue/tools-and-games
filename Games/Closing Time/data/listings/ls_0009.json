@@ -1,0 +1,44 @@
+{
+  "id": "ls_0009",
+  "address": "61 Crucible Row",
+  "neighborhood": "nb_old_foundry",
+  "tier": "starter",
+  "price": 232000,
+  "beds": 2,
+  "baths": 2,
+  "sqft": 1180,
+  "features": [
+    "exposed brick",
+    "rooftop deck",
+    "walk to taproom row"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Flip: cabinet doors misaligned, outlets loose",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 1500,
+      "disclosureRequired": false
+    },
+    {
+      "desc": "No final inspection on the rooftop deck",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 3800,
+      "disclosureRequired": true,
+      "topic": "permits"
+    },
+    {
+      "desc": "Party-wall moisture staining behind fresh paint",
+      "discovery": "inspection",
+      "severity": "moderate",
+      "repairCost": 6000,
+      "disclosureRequired": true,
+      "topic": "water"
+    }
+  ],
+  "listingAgentId": "ag_denny_kessler",
+  "daysOnMarket": 15,
+  "blurb": "Freshly flipped rowhome with a deck made for golden hour. Permit history sold separately. (Joking.) (Ask.)",
+  "condition": 0.6
+}

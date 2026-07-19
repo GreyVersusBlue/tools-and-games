@@ -1,0 +1,13 @@
+{
+  "id": "ev_inspector_backlog",
+  "name": "Inspector Backlog",
+  "mode": "either",
+  "phase": "underContract",
+  "weight": 6,
+  "minDay": 1,
+  "text": "Every inspector in the county is booked. Your contingency clock, however, is not.",
+  "effect": {
+    "handler": "deadlineSqueeze",
+    "extraDays": 3
+  }
+}

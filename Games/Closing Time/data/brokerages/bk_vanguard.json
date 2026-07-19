@@ -1,0 +1,17 @@
+{
+  "id": "bk_vanguard",
+  "name": "Vanguard Estates Group",
+  "commissionSplit": 0.75,
+  "reputationRequirement": 60,
+  "leadFlow": 2,
+  "perks": [
+    "luxury-tier client access",
+    "Brackenridge network invitations",
+    "your face on a bus bench"
+  ],
+  "recruits": true,
+  "recruitRepThreshold": 65,
+  "signingBonus": 12000,
+  "pitch": "We don't advertise. We introduce. Bring us a reputation and we'll bring you rooms you couldn't get into alone.",
+  "personality": "exclusive"
+}

@@ -1,0 +1,44 @@
+{
+  "id": "ls_0001",
+  "address": "114 Spindle St",
+  "neighborhood": "nb_carver_mill",
+  "tier": "starter",
+  "price": 168000,
+  "beds": 3,
+  "baths": 1,
+  "sqft": 1120,
+  "features": [
+    "fenced yard",
+    "detached garage",
+    "new water heater"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Roof shingles curling at the south edge",
+      "discovery": "visible",
+      "severity": "moderate",
+      "repairCost": 6500,
+      "disclosureRequired": false,
+      "topic": "roof"
+    },
+    {
+      "desc": "Original 1958 sewer lateral, partially root-blocked",
+      "discovery": "inspection",
+      "severity": "dealbreaker",
+      "repairCost": 11000,
+      "disclosureRequired": true,
+      "topic": "sewer"
+    },
+    {
+      "desc": "Kitchen linoleum peeling in corners",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 800,
+      "disclosureRequired": false
+    }
+  ],
+  "listingAgentId": "ag_sal_dimeo",
+  "daysOnMarket": 24,
+  "blurb": "Solid brick rancher one block off the mill trail. Priced for a buyer with a paintbrush and optimism.",
+  "condition": 0.55
+}

@@ -1,0 +1,14 @@
+{
+  "id": "ev_brokerage_recruit_axiom",
+  "name": "Axiom Comes Calling",
+  "mode": "either",
+  "phase": "any",
+  "weight": 6,
+  "minDay": 15,
+  "minRep": 35,
+  "text": "An Axiom Partners recruiter emails: subject line 'Your Numbers (Impressive) (Let's Talk)'.",
+  "effect": {
+    "handler": "brokerageRecruit",
+    "brokerageId": "bk_axiom"
+  }
+}

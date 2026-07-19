@@ -1,0 +1,35 @@
+{
+  "id": "ls_0012",
+  "address": "3 Slag Ct",
+  "neighborhood": "nb_old_foundry",
+  "tier": "starter",
+  "price": 199000,
+  "beds": 2,
+  "baths": 1,
+  "sqft": 940,
+  "features": [
+    "gut-renovated bath",
+    "new windows"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Rear wall bows outward half an inch",
+      "discovery": "inspection",
+      "severity": "dealbreaker",
+      "repairCost": 16000,
+      "disclosureRequired": true,
+      "topic": "foundation"
+    },
+    {
+      "desc": "No closets in second bedroom",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 1200,
+      "disclosureRequired": false
+    }
+  ],
+  "listingAgentId": "ag_chuck_brandt",
+  "daysOnMarket": 42,
+  "blurb": "Cozy two-bed with a brand-new bath. Chuck calls the rear wall 'character.' Get it inspected.",
+  "condition": 0.45
+}

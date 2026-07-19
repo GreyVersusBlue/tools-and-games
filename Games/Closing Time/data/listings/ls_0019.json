@@ -1,0 +1,37 @@
+{
+  "id": "ls_0019",
+  "address": "18 Petrie Shore Rd",
+  "neighborhood": "nb_lake_petrie",
+  "tier": "mid",
+  "price": 498000,
+  "beds": 3,
+  "baths": 2,
+  "sqft": 1650,
+  "features": [
+    "private dock",
+    "lake frontage",
+    "stone fireplace"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Dock built 1994, never permitted",
+      "discovery": "question",
+      "severity": "dealbreaker",
+      "repairCost": 9000,
+      "disclosureRequired": true,
+      "topic": "permits"
+    },
+    {
+      "desc": "Shoreline erosion at the northeast corner",
+      "discovery": "visible",
+      "severity": "moderate",
+      "repairCost": 7500,
+      "disclosureRequired": false,
+      "topic": "water"
+    }
+  ],
+  "listingAgentId": "ag_sal_dimeo",
+  "daysOnMarket": 39,
+  "blurb": "Year-round lake cottage with a dock of, let's say, informal provenance.",
+  "condition": 0.6
+}

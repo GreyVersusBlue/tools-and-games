@@ -1,0 +1,14 @@
+{
+  "id": "ev_rate_spike",
+  "name": "Rate Spike",
+  "mode": "either",
+  "phase": "weekly",
+  "weight": 7,
+  "minDay": 7,
+  "text": "The Fed sneezes; mortgage rates catch a cold. Buyers everywhere recalculate what they can afford.",
+  "effect": {
+    "handler": "rateShift",
+    "deltaMin": 0.3,
+    "deltaMax": 0.6
+  }
+}

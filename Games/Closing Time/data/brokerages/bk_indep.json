@@ -1,0 +1,11 @@
+{
+  "id": "bk_indep",
+  "name": "Independent (Your Own Shingle)",
+  "commissionSplit": 1.0,
+  "reputationRequirement": 0,
+  "leadFlow": 0,
+  "perks": [],
+  "recruits": false,
+  "pitch": "No split, no support, no safety net. Your name on the sign \u2014 and the sign is a lawn sign you bought yourself.",
+  "personality": "none"
+}

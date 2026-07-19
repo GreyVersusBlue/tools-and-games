@@ -1,0 +1,67 @@
+{
+  "id": "cl_0104",
+  "name": "Constance Hale-Whitmore",
+  "type": "seller",
+  "archetype": "estate-executor",
+  "tier": "luxury",
+  "budget": 0,
+  "patience": 9,
+  "statedReqs": {
+    "notes": "Executor for her late aunt's Brackenridge estate. Three siblings, three opinions, one power of attorney: hers."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "A sibling keeps threatening to contest any 'lowball' sale \u2014 offers above $650k make the family noise vanish; below it, expect delays.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "familyFloor": 650000
+      }
+    }
+  ],
+  "intro": "Practical, brisk, quietly grieving. Wants this handled with dignity and preferably before Thanksgiving.",
+  "referredBy": null,
+  "sellerListing": {
+    "neighborhood": "nb_brackenridge",
+    "tier": "luxury",
+    "baseValue": 705000,
+    "condition": 0.65,
+    "address": "11 Hedgerow Ln",
+    "beds": 5,
+    "baths": 3.5,
+    "sqft": 3600,
+    "features": [
+      "conservatory",
+      "original millwork",
+      "club-adjacent"
+    ],
+    "issues": [
+      {
+        "desc": "Conservatory glazing fogged \u2014 seals gone",
+        "discovery": "visible",
+        "severity": "moderate",
+        "repairCost": 9000,
+        "disclosureRequired": false,
+        "topic": "water"
+      },
+      {
+        "desc": "Boiler original to 1987",
+        "discovery": "question",
+        "severity": "moderate",
+        "repairCost": 14000,
+        "disclosureRequired": false,
+        "topic": "hvac"
+      },
+      {
+        "desc": "Aunt's 40 years of belongings still inside",
+        "discovery": "visible",
+        "severity": "cosmetic",
+        "repairCost": 4000,
+        "disclosureRequired": false
+      }
+    ]
+  }
+}

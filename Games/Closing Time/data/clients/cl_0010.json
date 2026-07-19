@@ -1,0 +1,33 @@
+{
+  "id": "cl_0010",
+  "name": "Ambrose Petty",
+  "type": "buyer",
+  "archetype": "eccentric",
+  "tier": "mid",
+  "budget": 390000,
+  "patience": 12,
+  "statedReqs": {
+    "minBeds": 2,
+    "mustFeatures": [],
+    "neighborhoods": [
+      "nb_downtown",
+      "nb_old_foundry"
+    ],
+    "notes": "'Something with a story.' Budget flexible. Timeline geological."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "Writes ghost stories. Bells, murals, mill history, raccoon tenancy \u2014 'issues' with narrative value ADD fit for him.",
+      "type": "secretMustHave",
+      "revealOn": {
+        "trigger": "issueSeverity",
+        "value": "cosmetic"
+      },
+      "data": {
+        "quirkBonus": true
+      }
+    }
+  ],
+  "intro": "Novelist. Patient as sediment. The rare client who gets happier the weirder the showing goes.",
+  "referredBy": null
+}

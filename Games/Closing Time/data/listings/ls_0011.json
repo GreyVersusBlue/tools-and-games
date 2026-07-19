@@ -1,0 +1,37 @@
+{
+  "id": "ls_0011",
+  "address": "12 Annealing Ln",
+  "neighborhood": "nb_old_foundry",
+  "tier": "mid",
+  "price": 305000,
+  "beds": 3,
+  "baths": 2,
+  "sqft": 1600,
+  "features": [
+    "corner unit",
+    "garage bay",
+    "artist loft ceiling"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Converted garage bay has no heat",
+      "discovery": "visible",
+      "severity": "moderate",
+      "repairCost": 4000,
+      "disclosureRequired": false,
+      "topic": "hvac"
+    },
+    {
+      "desc": "Old foundry fill soil \u2014 radon reading borderline",
+      "discovery": "inspection",
+      "severity": "moderate",
+      "repairCost": 2200,
+      "disclosureRequired": true,
+      "topic": "water"
+    }
+  ],
+  "listingAgentId": "ag_sal_dimeo",
+  "daysOnMarket": 27,
+  "blurb": "Former workshop conversion with ceilings for days. Sal priced it 'to move,' which for Sal means slowly.",
+  "condition": 0.65
+}

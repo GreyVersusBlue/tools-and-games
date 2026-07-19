@@ -1,0 +1,36 @@
+{
+  "id": "ls_0006",
+  "address": "17 Orchard Loop",
+  "neighborhood": "nb_maple_terrace",
+  "tier": "mid",
+  "price": 349900,
+  "beds": 3,
+  "baths": 2,
+  "sqft": 1890,
+  "features": [
+    "screened porch",
+    "mature trees",
+    "pool club eligibility"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Roof at end of life \u2014 insurer flagged it",
+      "discovery": "inspection",
+      "severity": "moderate",
+      "repairCost": 12000,
+      "disclosureRequired": true,
+      "topic": "roof"
+    },
+    {
+      "desc": "Backyard oak dropping limbs on the shed",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 1200,
+      "disclosureRequired": false
+    }
+  ],
+  "listingAgentId": "ag_chuck_brandt",
+  "daysOnMarket": 19,
+  "blurb": "Charming colonial with pool-club eligibility. Chuck will mention the pool club four times. Minimum.",
+  "condition": 0.7
+}

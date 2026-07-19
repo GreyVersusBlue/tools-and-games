@@ -1,0 +1,37 @@
+{
+  "id": "ls_0004",
+  "address": "88 Weaver Way",
+  "neighborhood": "nb_carver_mill",
+  "tier": "starter",
+  "price": 214900,
+  "beds": 4,
+  "baths": 2,
+  "sqft": 1540,
+  "features": [
+    "primary suite addition",
+    "shed",
+    "fresh paint"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Addition built without permits in 2019",
+      "discovery": "question",
+      "severity": "dealbreaker",
+      "repairCost": 7000,
+      "disclosureRequired": true,
+      "topic": "permits"
+    },
+    {
+      "desc": "Gutter downspouts drain toward foundation",
+      "discovery": "visible",
+      "severity": "moderate",
+      "repairCost": 1800,
+      "disclosureRequired": false,
+      "topic": "water"
+    }
+  ],
+  "listingAgentId": "ag_denny_kessler",
+  "daysOnMarket": 8,
+  "blurb": "Biggest starter in the Mill \u2014 the addition makes it. Ask the listing agent anything. He loves questions.",
+  "condition": 0.65
+}

@@ -1,0 +1,14 @@
+{
+  "id": "ev_low_appraisal",
+  "name": "Low Appraisal",
+  "mode": "buyer",
+  "phase": "underContract",
+  "weight": 14,
+  "minDay": 1,
+  "text": "The appraisal comes back under contract price. The bank's number is the bank's number.",
+  "effect": {
+    "handler": "appraisalGap",
+    "gapPctMin": 0.03,
+    "gapPctMax": 0.08
+  }
+}

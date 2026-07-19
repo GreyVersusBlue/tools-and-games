@@ -1,0 +1,33 @@
+{
+  "id": "cl_0009",
+  "name": "The Brandts (no relation, they say)",
+  "type": "buyer",
+  "archetype": "skeptics",
+  "tier": "mid",
+  "budget": 340000,
+  "patience": 5,
+  "statedReqs": {
+    "minBeds": 3,
+    "mustFeatures": [],
+    "neighborhoods": [
+      "nb_maple_terrace",
+      "nb_old_foundry"
+    ],
+    "notes": "Burned by an agent before. Fact-check everything. Everything."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "If you disclose an issue before they find it, trust (and patience) jumps. If they find one you glossed over, they're gone.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "issueSeverity",
+        "value": "moderate"
+      },
+      "data": {
+        "honestyWeight": 2.5
+      }
+    }
+  ],
+  "intro": "A couple who arrive with printouts. They've already seen every listing online, including two that sold last year.",
+  "referredBy": null
+}

@@ -1,0 +1,14 @@
+{
+  "id": "ev_brokerage_recruit_vanguard",
+  "name": "Vanguard Sends a Card",
+  "mode": "either",
+  "phase": "any",
+  "weight": 4,
+  "minDay": 30,
+  "minRep": 65,
+  "text": "A thick cream envelope, hand-addressed. Vanguard Estates Group requests the pleasure of a conversation.",
+  "effect": {
+    "handler": "brokerageRecruit",
+    "brokerageId": "bk_vanguard"
+  }
+}

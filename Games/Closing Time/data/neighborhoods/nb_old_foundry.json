@@ -1,0 +1,20 @@
+{
+  "id": "nb_old_foundry",
+  "name": "Old Foundry",
+  "identity": "up-and-coming",
+  "vibe": "Warehouses turning into taprooms, rowhomes half-renovated. Every third house is a flip; some are good.",
+  "basePriceIndex": 0.86,
+  "priceTrend": 0.011,
+  "trendVolatility": 0.012,
+  "schoolQuality": 2,
+  "amenities": [
+    "taproom row",
+    "artist studios",
+    "new bike lanes"
+  ],
+  "buyerDemand": 1.15,
+  "knowledgeNotes": [
+    "Check the permit history on every flip. Every single one.",
+    "Prices are climbing but appraisers are six months behind the market."
+  ]
+}

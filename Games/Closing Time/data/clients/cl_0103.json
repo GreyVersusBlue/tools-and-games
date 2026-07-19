@@ -1,0 +1,59 @@
+{
+  "id": "cl_0103",
+  "name": "Derrick Ostrowski",
+  "type": "seller",
+  "archetype": "impatient-flipper",
+  "tier": "mid",
+  "budget": 0,
+  "patience": 4,
+  "statedReqs": {
+    "notes": "Flipper carrying two loans. Needs this Foundry flip gone yesterday. Allergic to the word 'inspection.'"
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "He knows about the moisture issue behind the paint and hasn't disclosed it. Push him to disclose: lose speed, save your license and rep.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "topic",
+        "value": "water"
+      },
+      "data": {
+        "disclosureConflict": true
+      }
+    }
+  ],
+  "intro": "Fast-talking, spreadsheet in one hand, phone in the other. Will pressure you to 'keep the listing clean.'",
+  "referredBy": null,
+  "sellerListing": {
+    "neighborhood": "nb_old_foundry",
+    "tier": "mid",
+    "baseValue": 272000,
+    "condition": 0.65,
+    "address": "59 Crucible Row",
+    "beds": 2,
+    "baths": 2,
+    "sqft": 1150,
+    "features": [
+      "exposed brick",
+      "new kitchen",
+      "rooftop rough-in"
+    ],
+    "issues": [
+      {
+        "desc": "Party-wall moisture behind fresh paint",
+        "discovery": "inspection",
+        "severity": "moderate",
+        "repairCost": 6500,
+        "disclosureRequired": true,
+        "topic": "water"
+      },
+      {
+        "desc": "Cabinet hardware already loosening",
+        "discovery": "visible",
+        "severity": "cosmetic",
+        "repairCost": 500,
+        "disclosureRequired": false
+      }
+    ]
+  }
+}

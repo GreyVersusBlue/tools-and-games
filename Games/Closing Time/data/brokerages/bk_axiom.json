@@ -1,0 +1,17 @@
+{
+  "id": "bk_axiom",
+  "name": "Axiom Partners",
+  "commissionSplit": 0.65,
+  "reputationRequirement": 30,
+  "leadFlow": 3,
+  "perks": [
+    "mid-market and luxury leads",
+    "in-house marketing team (+1 photo tier free)",
+    "closing coordinator (paperwork actions cost half a slot)"
+  ],
+  "recruits": true,
+  "recruitRepThreshold": 35,
+  "signingBonus": 4000,
+  "pitch": "We track numbers you didn't know you had. Hit them and the leads get better. Miss them and we'll talk about your funnel.",
+  "personality": "corporate"
+}

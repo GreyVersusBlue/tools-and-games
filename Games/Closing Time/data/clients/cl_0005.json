@@ -1,0 +1,45 @@
+{
+  "id": "cl_0005",
+  "name": "Simone Adjei",
+  "type": "buyer",
+  "archetype": "relocator",
+  "tier": "mid",
+  "budget": 470000,
+  "patience": 4,
+  "statedReqs": {
+    "minBeds": 3,
+    "mustFeatures": [
+      "rail commute"
+    ],
+    "neighborhoods": [
+      "nb_downtown"
+    ],
+    "notes": "Starts new job downtown in five weeks. Patience is a rumor."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "Company relo package will actually cover up to $510k \u2014 she's negotiating you like she negotiates everything.",
+      "type": "stretchBudget",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "newBudget": 510000
+      }
+    },
+    {
+      "desc": "Any flooding history is disqualifying \u2014 she left a flooded condo in her last city and won't repeat it.",
+      "type": "secretDealbreaker",
+      "revealOn": {
+        "trigger": "topic",
+        "value": "water"
+      },
+      "data": {
+        "topic": "water"
+      }
+    }
+  ],
+  "intro": "Hospital administrator relocating for a promotion. Answers emails during showings. Respects competence, notices its absence.",
+  "referredBy": null
+}

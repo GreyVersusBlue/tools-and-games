@@ -1,0 +1,14 @@
+{
+  "id": "ev_cold_feet_seller",
+  "name": "Seller Cold Feet",
+  "mode": "seller",
+  "phase": "underContract",
+  "weight": 8,
+  "minDay": 1,
+  "text": "Your seller 'slept on it' and woke up wanting to un-sell the house.",
+  "effect": {
+    "handler": "coldFeet",
+    "walkChance": 0.25,
+    "schmoozeSaves": true
+  }
+}

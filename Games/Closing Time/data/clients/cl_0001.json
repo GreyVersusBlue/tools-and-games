@@ -1,0 +1,45 @@
+{
+  "id": "cl_0001",
+  "name": "Dana & Marcus Webb",
+  "type": "buyer",
+  "archetype": "first-timers",
+  "tier": "starter",
+  "budget": 195000,
+  "patience": 7,
+  "statedReqs": {
+    "minBeds": 3,
+    "mustFeatures": [
+      "fenced yard"
+    ],
+    "neighborhoods": [
+      "nb_carver_mill"
+    ],
+    "notes": "Firm budget. Dog named Biscuit. Extremely firm budget."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "Will stretch to $215k for a garage \u2014 Marcus restores bikes and hasn't mentioned it because Dana thinks the hobby is over.",
+      "type": "stretchBudget",
+      "revealOn": {
+        "trigger": "feature",
+        "value": "detached garage"
+      },
+      "data": {
+        "newBudget": 215000
+      }
+    },
+    {
+      "desc": "Dana's dad had a house with foundation problems; anything foundation-related is an instant walk, no matter how minor.",
+      "type": "secretDealbreaker",
+      "revealOn": {
+        "trigger": "topic",
+        "value": "foundation"
+      },
+      "data": {
+        "topic": "foundation"
+      }
+    }
+  ],
+  "intro": "First-time buyers, pre-approved, terrified in the normal way. Dana has a spreadsheet. Marcus has opinions he hasn't shared with Dana yet.",
+  "referredBy": null
+}

@@ -1,0 +1,13 @@
+{
+  "id": "ev_competing_offer",
+  "name": "Competing Offer Surfaces",
+  "mode": "buyer",
+  "phase": "offerPending",
+  "weight": 12,
+  "minDay": 1,
+  "text": "Another offer lands on the table while yours is out. The listing agent sounds delighted.",
+  "effect": {
+    "handler": "competingOffer",
+    "pressurePct": 0.03
+  }
+}

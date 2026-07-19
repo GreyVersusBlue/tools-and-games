@@ -1,0 +1,44 @@
+{
+  "id": "cl_0003",
+  "name": "Priyanka & Josh Malhotra-Reed",
+  "type": "buyer",
+  "archetype": "growing-family",
+  "tier": "mid",
+  "budget": 420000,
+  "patience": 6,
+  "statedReqs": {
+    "minBeds": 4,
+    "mustFeatures": [],
+    "neighborhoods": [
+      "nb_maple_terrace"
+    ],
+    "notes": "'Good schools' stated approximately eleven times."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "'Good schools' actually means their son is struggling at his current school and they won't admit they need a district change by fall.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "deadlineDay": 45,
+        "patiencePenaltyPerWeekAfter": 1
+      }
+    },
+    {
+      "desc": "Josh works nights \u2014 a bedroom away from street noise matters more than he's said.",
+      "type": "secretDealbreaker",
+      "revealOn": {
+        "trigger": "topic",
+        "value": "neighbors"
+      },
+      "data": {
+        "topic": "neighbors"
+      }
+    }
+  ],
+  "intro": "Dual-income, pre-approved above ask, radiating a very specific urgency they insist isn't there.",
+  "referredBy": null
+}

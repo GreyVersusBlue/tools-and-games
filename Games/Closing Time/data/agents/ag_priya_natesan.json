@@ -1,0 +1,29 @@
+{
+  "id": "ag_priya_natesan",
+  "name": "Priya Natesan",
+  "brokerageId": "bk_axiom",
+  "negotiationStyle": "by-the-book",
+  "rivalryFlag": true,
+  "tolerance": 0.03,
+  "counterAggression": 0.5,
+  "dirtyTricks": false,
+  "bio": "Scrupulously honest, terrifyingly prepared. Brings comps in a binder with tabs. Respects agents who disclose early.",
+  "dialogueHooks": {
+    "greeting": [
+      "Priya Natesan, Axiom. I've pulled six comps and a flood map. Shall we?",
+      "Good to meet you. I assume you've already reviewed the disclosure package. I have. Twice."
+    ],
+    "counter": [
+      "Comp-supported counter attached. Page four, highlighted.",
+      "My clients will move exactly as far as the data moves. No further."
+    ],
+    "accept": [
+      "Clean numbers, clean deal. My favorite kind. Accepted.",
+      "Accepted. And \u2014 noted for the record \u2014 you disclosed that furnace issue unprompted. I remember things like that."
+    ],
+    "reject": [
+      "The numbers don't support it and I won't pretend otherwise. We decline.",
+      "Declined. Nothing personal. Everything numerical."
+    ]
+  }
+}

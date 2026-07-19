@@ -1,0 +1,29 @@
+{
+  "id": "ag_marisol_vega",
+  "name": "Marisol Vega",
+  "brokerageId": "bk_vanguard",
+  "negotiationStyle": "stonewall",
+  "rivalryFlag": true,
+  "tolerance": 0.02,
+  "counterAggression": 0.9,
+  "dirtyTricks": false,
+  "bio": "Handles half of Brackenridge Heights. Speaks quietly, never twice. Getting a counter from her is a compliment.",
+  "dialogueHooks": {
+    "greeting": [
+      "Marisol Vega. My clients are not in a hurry. Are yours?",
+      "I represent the house you're calling about. The price is the price."
+    ],
+    "counter": [
+      "One counter. This is it.",
+      "My clients have authorized exactly one adjustment. Here it is."
+    ],
+    "accept": [
+      "Accepted. Congratulations \u2014 few people hear me say that.",
+      "We have an agreement. My clients expect a flawless close. So do I."
+    ],
+    "reject": [
+      "No. The property will still be here. The offer won't need to be.",
+      "Declined. Do come back when you're serious."
+    ]
+  }
+}

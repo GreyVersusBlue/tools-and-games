@@ -1,0 +1,45 @@
+{
+  "id": "cl_0004",
+  "name": "Theo Grandy",
+  "type": "buyer",
+  "archetype": "investor",
+  "tier": "starter",
+  "budget": 210000,
+  "patience": 5,
+  "statedReqs": {
+    "minBeds": 2,
+    "mustFeatures": [],
+    "neighborhoods": [
+      "nb_carver_mill",
+      "nb_old_foundry"
+    ],
+    "notes": "Cash. Wants 'numbers, not vibes.'"
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "Tolerates dealbreaker-tier issues if the discount is right \u2014 repair costs are just line items to him.",
+      "type": "secretMustHave",
+      "revealOn": {
+        "trigger": "issueSeverity",
+        "value": "dealbreaker"
+      },
+      "data": {
+        "ignoresIssues": true,
+        "discountExpected": 0.12
+      }
+    },
+    {
+      "desc": "Will not buy anything with unresolved permit problems \u2014 got burned in a past flip. Permits are the one paperwork he fears.",
+      "type": "secretDealbreaker",
+      "revealOn": {
+        "trigger": "topic",
+        "value": "permits"
+      },
+      "data": {
+        "topic": "permits"
+      }
+    }
+  ],
+  "intro": "Third-generation landlord, first-generation spreadsheet user. Talks cap rates at you unprompted.",
+  "referredBy": null
+}

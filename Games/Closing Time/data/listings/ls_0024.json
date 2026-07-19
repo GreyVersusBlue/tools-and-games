@@ -1,0 +1,38 @@
+{
+  "id": "ls_0024",
+  "address": "23 Founders Gate",
+  "neighborhood": "nb_brackenridge",
+  "tier": "luxury",
+  "price": 1385000,
+  "beds": 6,
+  "baths": 5.5,
+  "sqft": 5600,
+  "features": [
+    "ballroom-sized great room",
+    "wine cellar",
+    "staff apartment",
+    "gated"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Wine cellar humidity system failed; mold remediation done 2024",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 8000,
+      "disclosureRequired": true,
+      "topic": "water"
+    },
+    {
+      "desc": "Original owner's murals: preservation easement in deed",
+      "discovery": "inspection",
+      "severity": "dealbreaker",
+      "repairCost": 0,
+      "disclosureRequired": true,
+      "topic": "permits"
+    }
+  ],
+  "listingAgentId": "ag_marisol_vega",
+  "daysOnMarket": 203,
+  "blurb": "The Founders Gate estate. Two hundred days on market because the right buyer hasn't been introduced yet. Marisol is patient.",
+  "condition": 0.75
+}

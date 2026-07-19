@@ -1,0 +1,14 @@
+{
+  "id": "ev_client_life",
+  "name": "Life Happens",
+  "mode": "buyer",
+  "phase": "any",
+  "weight": 8,
+  "minDay": 5,
+  "text": "A client's life intervenes \u2014 a transfer, a breakup, a surprise third kid. Their timeline just changed.",
+  "effect": {
+    "handler": "patienceShift",
+    "deltaMin": -2,
+    "deltaMax": 2
+  }
+}

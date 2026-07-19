@@ -1,0 +1,49 @@
+{
+  "id": "cl_0002",
+  "name": "Ernest Falk",
+  "type": "buyer",
+  "archetype": "downsizer",
+  "tier": "mid",
+  "budget": 360000,
+  "patience": 10,
+  "statedReqs": {
+    "minBeds": 2,
+    "mustFeatures": [
+      "first-floor primary"
+    ],
+    "neighborhoods": [
+      "nb_maple_terrace",
+      "nb_downtown"
+    ],
+    "notes": "Selling the family colonial. In no hurry, or so he says."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "'No hurry' is cover \u2014 his knees are shot and stairs are becoming unsafe. A true single-level or elevator building would close him fast.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "patienceBonus": 3,
+        "urgentFeatures": [
+          "first-floor primary"
+        ]
+      }
+    },
+    {
+      "desc": "Secretly hopes to stay walkable to the Maple Terrace farmers market where he knows everyone.",
+      "type": "secretMustHave",
+      "revealOn": {
+        "trigger": "feature",
+        "value": "walk to market"
+      },
+      "data": {
+        "fitBonus": 25
+      }
+    }
+  ],
+  "intro": "Retired shop teacher, widower, drives a truck older than you. Says he'll 'know it when he sees it.'",
+  "referredBy": null
+}

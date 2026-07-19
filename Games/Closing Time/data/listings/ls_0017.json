@@ -1,0 +1,36 @@
+{
+  "id": "ls_0017",
+  "address": "Unit 12A, Courthouse Lofts",
+  "neighborhood": "nb_downtown",
+  "tier": "mid",
+  "price": 389000,
+  "beds": 2,
+  "baths": 2,
+  "sqft": 1350,
+  "features": [
+    "clocktower view",
+    "parking spot",
+    "gym"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Clocktower bells: hourly, 7am\u201310pm",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 0,
+      "disclosureRequired": false
+    },
+    {
+      "desc": "In-unit washer drain line recalled model",
+      "discovery": "inspection",
+      "severity": "moderate",
+      "repairCost": 2800,
+      "disclosureRequired": true,
+      "topic": "water"
+    }
+  ],
+  "listingAgentId": "ag_chuck_brandt",
+  "daysOnMarket": 22,
+  "blurb": "Two-bed loft with a deeded parking spot, which downtown is basically a second bedroom.",
+  "condition": 0.8
+}

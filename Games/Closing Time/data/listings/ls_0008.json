@@ -1,0 +1,36 @@
+{
+  "id": "ls_0008",
+  "address": "5 Hollis Green",
+  "neighborhood": "nb_maple_terrace",
+  "tier": "mid",
+  "price": 329000,
+  "beds": 3,
+  "baths": 1.5,
+  "sqft": 1710,
+  "features": [
+    "original hardwoods",
+    "big lot",
+    "walk to market"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Single bathroom on bedroom level \u2014 tub drains slow",
+      "discovery": "question",
+      "severity": "cosmetic",
+      "repairCost": 700,
+      "disclosureRequired": false,
+      "topic": "water"
+    },
+    {
+      "desc": "Estate sale: quirky 1970s wallpaper throughout",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 2500,
+      "disclosureRequired": false
+    }
+  ],
+  "listingAgentId": "ag_ruth_okafor",
+  "daysOnMarket": 33,
+  "blurb": "Estate sale, first time on market in 51 years. Bring vision; the wallpaper brings everything else.",
+  "condition": 0.6
+}

@@ -1,0 +1,36 @@
+{
+  "id": "ls_0005",
+  "address": "402 Maple Terrace Dr",
+  "neighborhood": "nb_maple_terrace",
+  "tier": "mid",
+  "price": 372000,
+  "beds": 4,
+  "baths": 2.5,
+  "sqft": 2180,
+  "features": [
+    "walk to elementary",
+    "finished basement",
+    "two-car garage"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "HVAC is 22 years old and wheezing",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 8500,
+      "disclosureRequired": false,
+      "topic": "hvac"
+    },
+    {
+      "desc": "Hairline settling crack over the garage lintel",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 600,
+      "disclosureRequired": false
+    }
+  ],
+  "listingAgentId": "ag_priya_natesan",
+  "daysOnMarket": 6,
+  "blurb": "The school-boundary unicorn. Expect company at the showing.",
+  "condition": 0.75
+}

@@ -1,0 +1,36 @@
+{
+  "id": "ls_0002",
+  "address": "27 Loom Ct",
+  "neighborhood": "nb_carver_mill",
+  "tier": "starter",
+  "price": 189500,
+  "beds": 3,
+  "baths": 1.5,
+  "sqft": 1260,
+  "features": [
+    "updated kitchen",
+    "covered porch",
+    "corner lot"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Basement smells faintly of mildew after rain",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 4200,
+      "disclosureRequired": true,
+      "topic": "water"
+    },
+    {
+      "desc": "Two bedroom windows painted shut",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 400,
+      "disclosureRequired": false
+    }
+  ],
+  "listingAgentId": "ag_ruth_okafor",
+  "daysOnMarket": 11,
+  "blurb": "Cheerful cape with a kitchen redone in 2022. The porch swing conveys, per the seller, 'obviously.'",
+  "condition": 0.7
+}

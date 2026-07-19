@@ -1,0 +1,14 @@
+{
+  "id": "ev_ruth_referral",
+  "name": "A Word From Ruth",
+  "mode": "either",
+  "phase": "any",
+  "weight": 5,
+  "minDay": 12,
+  "minRep": 20,
+  "text": "Ruth Okafor calls: 'I'm too busy for a lovely couple I met. They're yours if you don't make me regret it.'",
+  "effect": {
+    "handler": "bonusReferral",
+    "sourceName": "Ruth Okafor"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "id": "cl_0006",
+  "name": "Bev & Lou Castellano",
+  "type": "buyer",
+  "archetype": "dreamers",
+  "tier": "luxury",
+  "budget": 800000,
+  "patience": 9,
+  "statedReqs": {
+    "minBeds": 4,
+    "mustFeatures": [
+      "lake access"
+    ],
+    "neighborhoods": [
+      "nb_lake_petrie",
+      "nb_brackenridge"
+    ],
+    "notes": "Sold a restaurant chain. Want 'the lake house people mean when they say lake house.'"
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "Lou can't swim. The dock is for show; a great deck and sunset view outrank actual water access.",
+      "type": "secretMustHave",
+      "revealOn": {
+        "trigger": "feature",
+        "value": "wraparound deck"
+      },
+      "data": {
+        "fitBonus": 30
+      }
+    },
+    {
+      "desc": "Bev will walk from anything with septic problems \u2014 she ran restaurants; she knows what that smell costs.",
+      "type": "secretDealbreaker",
+      "revealOn": {
+        "trigger": "topic",
+        "value": "sewer"
+      },
+      "data": {
+        "topic": "sewer"
+      }
+    }
+  ],
+  "intro": "Cheerfully loaded, gloriously indecisive. Every showing ends with 'we love it!' and no offer. Yet.",
+  "referredBy": null
+}

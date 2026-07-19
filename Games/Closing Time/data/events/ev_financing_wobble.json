@@ -1,0 +1,14 @@
+{
+  "id": "ev_financing_wobble",
+  "name": "Financing Wobble",
+  "mode": "buyer",
+  "phase": "underContract",
+  "weight": 10,
+  "minDay": 1,
+  "text": "Your buyer's lender flags a 'document irregularity.' Everyone stays calm. Loudly.",
+  "effect": {
+    "handler": "financingWobble",
+    "failChance": 0.35,
+    "delayDays": 3
+  }
+}

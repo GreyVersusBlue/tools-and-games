@@ -1,0 +1,20 @@
+{
+  "id": "nb_carver_mill",
+  "name": "Carver Mill",
+  "identity": "starter",
+  "vibe": "Postwar brick ranchers and vinyl-sided capes near the old textile mill. Honest houses, honest problems.",
+  "basePriceIndex": 0.78,
+  "priceTrend": 0.004,
+  "trendVolatility": 0.006,
+  "schoolQuality": 2,
+  "amenities": [
+    "mill trail",
+    "corner groceries",
+    "VFW hall"
+  ],
+  "buyerDemand": 0.9,
+  "knowledgeNotes": [
+    "Sewer laterals from the 50s are the silent killer here.",
+    "Anything under $200k gets investor offers within a week."
+  ]
+}

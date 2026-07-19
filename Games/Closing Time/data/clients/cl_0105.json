@@ -1,0 +1,67 @@
+{
+  "id": "cl_0105",
+  "name": "Ray Petrie Jr.",
+  "type": "seller",
+  "archetype": "lake-legacy",
+  "tier": "mid",
+  "budget": 0,
+  "patience": 8,
+  "statedReqs": {
+    "notes": "Yes, THAT Petrie. Selling the last family cottage on the lake his great-grandfather named. The whole shore is watching."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "He'll take less from a buyer who won't tear it down \u2014 a teardown offer, however rich, triggers a crisis of conscience and a delay.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "teardownAversion": true
+      }
+    }
+  ],
+  "intro": "Affable, guilt-ridden, keeps saying 'it's just a house' in a voice that says it isn't.",
+  "referredBy": null,
+  "sellerListing": {
+    "neighborhood": "nb_lake_petrie",
+    "tier": "mid",
+    "baseValue": 455000,
+    "condition": 0.55,
+    "address": "6 Petrie Shore Rd",
+    "beds": 3,
+    "baths": 1.5,
+    "sqft": 1400,
+    "features": [
+      "100ft lake frontage",
+      "original stone fireplace",
+      "permitted dock"
+    ],
+    "issues": [
+      {
+        "desc": "Foundation piers need re-leveling",
+        "discovery": "inspection",
+        "severity": "dealbreaker",
+        "repairCost": 13000,
+        "disclosureRequired": true,
+        "topic": "foundation"
+      },
+      {
+        "desc": "Kitchen last updated when Nixon resigned",
+        "discovery": "visible",
+        "severity": "cosmetic",
+        "repairCost": 18000,
+        "disclosureRequired": false
+      },
+      {
+        "desc": "Bats in the boathouse eaves",
+        "discovery": "question",
+        "severity": "moderate",
+        "repairCost": 2000,
+        "disclosureRequired": true,
+        "topic": "pests"
+      }
+    ]
+  }
+}

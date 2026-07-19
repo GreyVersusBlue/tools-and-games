@@ -1,0 +1,29 @@
+{
+  "id": "ls_0018",
+  "address": "310 Riverwalk Ter",
+  "neighborhood": "nb_downtown",
+  "tier": "mid",
+  "price": 452000,
+  "beds": 3,
+  "baths": 2.5,
+  "sqft": 1780,
+  "features": [
+    "townhome",
+    "roof terrace",
+    "rail commute"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Ground-floor flex room floods in hundred-year storms \u2014 two so far this decade",
+      "discovery": "inspection",
+      "severity": "dealbreaker",
+      "repairCost": 14000,
+      "disclosureRequired": true,
+      "topic": "water"
+    }
+  ],
+  "listingAgentId": "ag_denny_kessler",
+  "daysOnMarket": 7,
+  "blurb": "Riverwalk townhome with a roof terrace. 'Water views,' says the listing. Mm-hm.",
+  "condition": 0.75
+}

@@ -1,0 +1,28 @@
+{
+  "id": "ls_0015",
+  "address": "7 Ashcombe Ct",
+  "neighborhood": "nb_brackenridge",
+  "tier": "luxury",
+  "price": 690000,
+  "beds": 4,
+  "baths": 3,
+  "sqft": 3200,
+  "features": [
+    "first-floor primary",
+    "garden rooms",
+    "club-adjacent"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Dated everything \u2014 1998 called, wants its brass back",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 45000,
+      "disclosureRequired": false
+    }
+  ],
+  "listingAgentId": "ag_ruth_okafor",
+  "daysOnMarket": 51,
+  "blurb": "The cheapest way into the Heights. Cosmetically frozen in 1998; structurally excellent.",
+  "condition": 0.7
+}

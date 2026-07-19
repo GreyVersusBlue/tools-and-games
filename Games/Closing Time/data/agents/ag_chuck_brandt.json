@@ -1,0 +1,29 @@
+{
+  "id": "ag_chuck_brandt",
+  "name": "Chuck 'The Handshake' Brandt",
+  "brokerageId": "bk_hearthstone",
+  "negotiationStyle": "charmer",
+  "rivalryFlag": true,
+  "tolerance": 0.05,
+  "counterAggression": 0.4,
+  "dirtyTricks": true,
+  "bio": "Your first mentor, technically. Now he calls you 'champ' while quietly slipping escalation clauses past you.",
+  "dialogueHooks": {
+    "greeting": [
+      "CHAMP! Look at you, doing deals. Proud of you. Now let's talk about how you're about to overpay.",
+      "Kid! Remember when I taught you the lockbox codes? Good times. Anyway, my sellers are FIRM."
+    ],
+    "counter": [
+      "Between us? Take the counter. I'd hate to see you lose this one, champ.",
+      "I'm doing you a favor with this number. Frame it."
+    ],
+    "accept": [
+      "Attaboy! See, this is why I taught you everything you know. Not everything I know.",
+      "Deal! Drinks on you when you're famous."
+    ],
+    "reject": [
+      "Champ. Champ champ champ. No. But hey \u2014 great hustle.",
+      "It's a no. Someday you'll thank me. Probably not today."
+    ]
+  }
+}

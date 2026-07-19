@@ -1,0 +1,67 @@
+{
+  "id": "cl_0102",
+  "name": "Gil & Rosa Marchetti",
+  "type": "seller",
+  "archetype": "downsizing-sellers",
+  "tier": "starter",
+  "budget": 0,
+  "patience": 10,
+  "statedReqs": {
+    "notes": "44 years in the house. Emotionally priced. Every offer will feel like an insult at first."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "What they actually want is a buyer who'll love the garden \u2014 a personal letter or a family buyer is worth $10k of price to them.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "sentimentDiscount": 10000
+      }
+    }
+  ],
+  "intro": "Retiring to be near grandkids. Rosa interviews you about your grandmother. Have an answer.",
+  "referredBy": null,
+  "sellerListing": {
+    "neighborhood": "nb_carver_mill",
+    "tier": "starter",
+    "baseValue": 205000,
+    "condition": 0.6,
+    "address": "31 Spindle St",
+    "beds": 3,
+    "baths": 1.5,
+    "sqft": 1300,
+    "features": [
+      "legendary garden",
+      "covered porch",
+      "garage"
+    ],
+    "issues": [
+      {
+        "desc": "Roof at 19 years, one leak patched",
+        "discovery": "question",
+        "severity": "moderate",
+        "repairCost": 7800,
+        "disclosureRequired": true,
+        "topic": "roof"
+      },
+      {
+        "desc": "Garden shed leans companionably",
+        "discovery": "visible",
+        "severity": "cosmetic",
+        "repairCost": 600,
+        "disclosureRequired": false
+      },
+      {
+        "desc": "Original fuse box, 60-amp service",
+        "discovery": "inspection",
+        "severity": "dealbreaker",
+        "repairCost": 8500,
+        "disclosureRequired": true,
+        "topic": "electrical"
+      }
+    ]
+  }
+}

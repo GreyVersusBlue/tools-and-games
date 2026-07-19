@@ -1,0 +1,14 @@
+{
+  "id": "ev_rate_dip",
+  "name": "Rate Dip",
+  "mode": "either",
+  "phase": "weekly",
+  "weight": 6,
+  "minDay": 7,
+  "text": "Rates tick down. Your phone remembers how to ring.",
+  "effect": {
+    "handler": "rateShift",
+    "deltaMin": -0.5,
+    "deltaMax": -0.2
+  }
+}

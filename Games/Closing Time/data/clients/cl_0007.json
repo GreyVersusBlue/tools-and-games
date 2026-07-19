@@ -1,0 +1,44 @@
+{
+  "id": "cl_0007",
+  "name": "Marguerite Ellison-Voss",
+  "type": "buyer",
+  "archetype": "luxury",
+  "tier": "luxury",
+  "budget": 1400000,
+  "patience": 8,
+  "statedReqs": {
+    "minBeds": 5,
+    "mustFeatures": [],
+    "neighborhoods": [
+      "nb_brackenridge"
+    ],
+    "notes": "Referred through 'people.' Interviewing agents, including you, whether you noticed or not."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "The interview: she drops small factual errors about properties to see if you correct her. Honesty scores; flattery ends careers.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 2
+      },
+      "data": {
+        "honestyWeight": 2.0
+      }
+    },
+    {
+      "desc": "Wants the Founders Gate estate specifically but won't say so \u2014 mention its history and watch.",
+      "type": "secretMustHave",
+      "revealOn": {
+        "trigger": "feature",
+        "value": "wine cellar"
+      },
+      "data": {
+        "fitBonus": 40,
+        "targetListing": "ls_0024"
+      }
+    }
+  ],
+  "intro": "Family money, museum board, terrifying diction. Marisol Vega expects to represent her. That's the game.",
+  "referredBy": null
+}

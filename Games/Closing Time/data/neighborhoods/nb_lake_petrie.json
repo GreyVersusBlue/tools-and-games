@@ -1,0 +1,20 @@
+{
+  "id": "nb_lake_petrie",
+  "name": "Lake Petrie",
+  "identity": "waterfront-mixed",
+  "vibe": "Cottages that became year-round homes, docks in varying stages of legality, spectacular sunsets.",
+  "basePriceIndex": 1.35,
+  "priceTrend": 0.006,
+  "trendVolatility": 0.014,
+  "schoolQuality": 3,
+  "amenities": [
+    "lake access",
+    "boat launch",
+    "seasonal ice cream stand"
+  ],
+  "buyerDemand": 1.05,
+  "knowledgeNotes": [
+    "Half the docks were never permitted. Ask before your buyer falls in love.",
+    "Waterfront appraisals swing wildly \u2014 comps are apples to speedboats."
+  ]
+}

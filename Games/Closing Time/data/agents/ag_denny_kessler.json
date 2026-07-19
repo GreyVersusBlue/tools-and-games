@@ -1,0 +1,29 @@
+{
+  "id": "ag_denny_kessler",
+  "name": "Denny Kessler",
+  "brokerageId": "bk_axiom",
+  "negotiationStyle": "shark",
+  "rivalryFlag": true,
+  "tolerance": 0.04,
+  "counterAggression": 0.85,
+  "dirtyTricks": true,
+  "bio": "Plays dirty and keeps score. Manufactures competing offers, poaches clients at open houses, smiles constantly.",
+  "dialogueHooks": {
+    "greeting": [
+      "Denny Kessler. Heard good things. Well \u2014 heard things.",
+      "Oh, you're the agent on this one? Fun. This'll be fun."
+    ],
+    "counter": [
+      "Counter's attached. Also, just so you know, we have another offer. Do we? Wouldn't you like to know.",
+      "Tick tock. My clients have options. Some of them even exist."
+    ],
+    "accept": [
+      "Accepted! No hard feelings about the other stuff. There will be other stuff.",
+      "Deal. You got lucky. I'll allow it \u2014 once."
+    ],
+    "reject": [
+      "Pass. And hey \u2014 tell your client I'm around if they ever want representation with... reach.",
+      "Declined. Watch the deadline on your next one. Deadlines are slippery things."
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "bk_hearthstone",
+  "name": "Hearthstone Realty",
+  "commissionSplit": 0.55,
+  "reputationRequirement": 0,
+  "leadFlow": 2,
+  "perks": [
+    "1 free lead every Monday",
+    "reputation floor of 10",
+    "office coffee (adequate)"
+  ],
+  "recruits": true,
+  "recruitRepThreshold": 0,
+  "signingBonus": 0,
+  "pitch": "Family-run since 1987. We won't make you rich, but we won't let you starve, and Deb at the front desk knows everyone.",
+  "personality": "folksy"
+}

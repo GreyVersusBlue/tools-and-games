@@ -1,0 +1,37 @@
+{
+  "id": "ls_0014",
+  "address": "40 Pemberly Chase",
+  "neighborhood": "nb_brackenridge",
+  "tier": "luxury",
+  "price": 875000,
+  "beds": 4,
+  "baths": 3.5,
+  "sqft": 3900,
+  "features": [
+    "heated pool",
+    "chef's kitchen",
+    "gatehouse"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Pool heater original to 2005",
+      "discovery": "question",
+      "severity": "cosmetic",
+      "repairCost": 5500,
+      "disclosureRequired": false,
+      "topic": "hvac"
+    },
+    {
+      "desc": "Underground oil tank decommissioned but undocumented",
+      "discovery": "inspection",
+      "severity": "dealbreaker",
+      "repairCost": 18000,
+      "disclosureRequired": true,
+      "topic": "water"
+    }
+  ],
+  "listingAgentId": "ag_marisol_vega",
+  "daysOnMarket": 120,
+  "blurb": "Understated by Brackenridge standards, which still means a gatehouse.",
+  "condition": 0.75
+}

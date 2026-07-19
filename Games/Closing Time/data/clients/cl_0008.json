@@ -1,0 +1,44 @@
+{
+  "id": "cl_0008",
+  "name": "Kofi Amankwah",
+  "type": "buyer",
+  "archetype": "first-timer",
+  "tier": "starter",
+  "budget": 178000,
+  "patience": 6,
+  "statedReqs": {
+    "minBeds": 2,
+    "mustFeatures": [],
+    "neighborhoods": [
+      "nb_carver_mill",
+      "nb_old_foundry"
+    ],
+    "notes": "Nurse, night shifts. Wants quiet and a short drive to Mercy General."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "Sleeps days \u2014 noise topics (bells, taprooms, barky dogs) are dealbreakers he's too polite to enforce until it's too late.",
+      "type": "secretDealbreaker",
+      "revealOn": {
+        "trigger": "topic",
+        "value": "neighbors"
+      },
+      "data": {
+        "topic": "neighbors"
+      }
+    },
+    {
+      "desc": "Saving a second down payment to bring his mother over \u2014 a legal in-law option or 2nd unit potential is quietly worth everything.",
+      "type": "secretMustHave",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "fitBonus": 25
+      }
+    }
+  ],
+  "intro": "Kind, exhausted, decisive when it counts. Will trust your word exactly once. Make it count.",
+  "referredBy": null
+}

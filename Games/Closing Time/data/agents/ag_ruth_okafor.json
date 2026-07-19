@@ -1,0 +1,29 @@
+{
+  "id": "ag_ruth_okafor",
+  "name": "Ruth Okafor",
+  "brokerageId": "bk_indep",
+  "negotiationStyle": "mentor",
+  "rivalryFlag": false,
+  "tolerance": 0.05,
+  "counterAggression": 0.3,
+  "dirtyTricks": false,
+  "bio": "Independent, semi-retired, beloved. Sends you clients she doesn't have time for. Expects you to earn it.",
+  "dialogueHooks": {
+    "greeting": [
+      "Ruth Okafor. I've heard about you \u2014 mostly good, which at your stage is remarkable.",
+      "Ah, the new one. Let's make this painless. Painless deals are how careers get built."
+    ],
+    "counter": [
+      "Here's a fair counter, and a free lesson: never make your first offer your best one.",
+      "Countering \u2014 gently. Your client can afford this, and mine deserves it."
+    ],
+    "accept": [
+      "Accepted. Handled well. I may send someone your way.",
+      "That's a deal. You listened more than you talked. Keep that."
+    ],
+    "reject": [
+      "No \u2014 and if you think about why, you'll write a better offer next time.",
+      "Declined, dear. Sleep on it and call me tomorrow."
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "ev_lowball_walkin",
+  "name": "Open House Lowballer",
+  "mode": "seller",
+  "phase": "openHouse",
+  "weight": 10,
+  "minDay": 1,
+  "text": "A visitor corners you by the kitchen island with a verbal offer, cash, 'today only,' well under ask.",
+  "effect": {
+    "handler": "openHouseLowball",
+    "pctOfAskMin": 0.82,
+    "pctOfAskMax": 0.9
+  }
+}

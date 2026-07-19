@@ -1,0 +1,38 @@
+{
+  "id": "ls_0013",
+  "address": "1 Hedgerow Ln",
+  "neighborhood": "nb_brackenridge",
+  "tier": "luxury",
+  "price": 1150000,
+  "beds": 5,
+  "baths": 4.5,
+  "sqft": 4800,
+  "features": [
+    "stone facade",
+    "library",
+    "four-car garage",
+    "lake rights"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Slate roof: 30 tiles cracked, specialist repair",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 24000,
+      "disclosureRequired": false,
+      "topic": "roof"
+    },
+    {
+      "desc": "HOA reviewing lake-rights transfer terms",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 0,
+      "disclosureRequired": true,
+      "topic": "hoa"
+    }
+  ],
+  "listingAgentId": "ag_marisol_vega",
+  "daysOnMarket": 88,
+  "blurb": "A Brackenridge estate that has outlived four owners and intends to outlive four more. Shown by appointment and reputation.",
+  "condition": 0.8
+}

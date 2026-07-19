@@ -1,0 +1,14 @@
+{
+  "id": "ev_poach_attempt",
+  "name": "Poaching Attempt",
+  "mode": "either",
+  "phase": "any",
+  "weight": 8,
+  "minDay": 10,
+  "text": "Denny Kessler ran into one of your clients at a coffee shop. 'Total coincidence.' He gave them his card and a better story.",
+  "effect": {
+    "handler": "poachAttempt",
+    "agentId": "ag_denny_kessler",
+    "resistBase": 0.5
+  }
+}

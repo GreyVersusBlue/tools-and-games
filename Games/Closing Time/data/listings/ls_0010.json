@@ -1,0 +1,29 @@
+{
+  "id": "ls_0010",
+  "address": "74 Crucible Row",
+  "neighborhood": "nb_old_foundry",
+  "tier": "mid",
+  "price": 289000,
+  "beds": 3,
+  "baths": 2.5,
+  "sqft": 1520,
+  "features": [
+    "restored facade",
+    "new mechanicals",
+    "permit binder on counter"
+  ],
+  "hiddenIssues": [
+    {
+      "desc": "Street parking contested during taproom hours",
+      "discovery": "question",
+      "severity": "cosmetic",
+      "repairCost": 0,
+      "disclosureRequired": false,
+      "topic": "neighbors"
+    }
+  ],
+  "listingAgentId": "ag_priya_natesan",
+  "daysOnMarket": 9,
+  "blurb": "The rare Foundry flip with a full permit binder. Priya will quiz you on it, affectionately.",
+  "condition": 0.85
+}

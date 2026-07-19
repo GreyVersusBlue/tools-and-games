@@ -1,0 +1,14 @@
+{
+  "id": "ev_inspection_surprise",
+  "name": "Inspection Surprise",
+  "mode": "either",
+  "phase": "underContract",
+  "weight": 12,
+  "minDay": 1,
+  "text": "The inspector emerges from the crawlspace holding something and wearing an expression.",
+  "effect": {
+    "handler": "inspectionSurprise",
+    "costMin": 1500,
+    "costMax": 9000
+  }
+}

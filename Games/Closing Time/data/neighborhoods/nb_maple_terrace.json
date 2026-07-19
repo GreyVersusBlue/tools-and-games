@@ -1,0 +1,20 @@
+{
+  "id": "nb_maple_terrace",
+  "name": "Maple Terrace",
+  "identity": "established",
+  "vibe": "Tree-lined streets, four-square colonials, block parties with a sign-up sheet. Turnover is low and personal.",
+  "basePriceIndex": 1.0,
+  "priceTrend": 0.002,
+  "trendVolatility": 0.003,
+  "schoolQuality": 4,
+  "amenities": [
+    "Maple Terrace Elementary",
+    "farmers market",
+    "pool club with a waitlist"
+  ],
+  "buyerDemand": 1.1,
+  "knowledgeNotes": [
+    "Listings here sell on school-boundary maps, not square footage.",
+    "The pool club waitlist transfers with the house. People care. A lot."
+  ]
+}

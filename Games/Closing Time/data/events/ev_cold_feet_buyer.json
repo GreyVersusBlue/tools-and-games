@@ -1,0 +1,14 @@
+{
+  "id": "ev_cold_feet_buyer",
+  "name": "Buyer Cold Feet",
+  "mode": "buyer",
+  "phase": "underContract",
+  "weight": 8,
+  "minDay": 1,
+  "text": "Your buyer calls at 9pm 'just to talk.' Nothing good starts that way.",
+  "effect": {
+    "handler": "coldFeet",
+    "walkChance": 0.3,
+    "schmoozeSaves": true
+  }
+}
