@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Golden Hour — a beach walk</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./libs/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="overlay">
+  <div id="overlay-card">
+    <h1>Golden Hour</h1>
+    <p class="sub">a beach walk</p>
+    <p class="hint">
+      <span class="desktop-hint"><b>Click to begin</b> &middot; WASD / arrows to walk &middot; mouse to look &middot; Esc to release</span>
+      <span class="mobile-hint"><b>Tap to begin</b> &middot; drag to look &middot; hold bottom of screen to walk</span>
+    </p>
+    <p class="tiny">Sound on recommended &mdash; the ocean is generated live.</p>
+  </div>
+</div>
+<div id="vignette"></div>
+<div id="mute-btn" title="Toggle sound">&#128266;</div>
+<canvas id="scene"></canvas>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
