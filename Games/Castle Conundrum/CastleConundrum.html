@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Castle Conundrum</title>
+  <link rel="stylesheet" href="./src/ui.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- Loading screen -->
+  <div id="loading-screen">
+    <div class="loading-inner">
+      <h1>Castle Conundrum</h1>
+      <div id="loading-bar-track"><div id="loading-bar"></div></div>
+      <p id="loading-status">Summoning stonework…</p>
+    </div>
+  </div>
+
+  <!-- Click-to-start / pointer lock prompt -->
+  <div id="start-overlay" class="hidden">
+    <div class="panel">
+      <h1>Castle Conundrum</h1>
+      <p>Solve the Scholar's riddle. Earn the Keystone. Convince the Guard to open the gate.</p>
+      <p class="controls-hint">WASD — move &nbsp;·&nbsp; Mouse — look &nbsp;·&nbsp; Shift — sprint &nbsp;·&nbsp; E — talk / interact</p>
+      <button id="start-button">Enter the Castle</button>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="crosshair" class="hidden">·</div>
+
+  <div id="quest-tracker" class="hidden">
+    <div class="tracker-title">Quest</div>
+    <div id="quest-objective">Find someone who knows how to open the gate.</div>
+  </div>
+
+  <div id="interact-prompt" class="hidden">Press <b>E</b> to talk</div>
+
+  <!-- Dialogue -->
+  <div id="dialogue-box" class="hidden">
+    <div id="dialogue-name"></div>
+    <div id="dialogue-text"></div>
+    <div id="dialogue-continue">▸ E / click to continue</div>
+  </div>
+
+  <!-- Riddle input -->
+  <div id="riddle-overlay" class="hidden">
+    <div class="panel">
+      <h2>The Scholar's Riddle</h2>
+      <p id="riddle-text"></p>
+      <input id="riddle-input" type="text" autocomplete="off" placeholder="Your answer…" />
+      <div class="riddle-buttons">
+        <button id="riddle-submit">Answer</button>
+        <button id="riddle-cancel">Step away</button>
+      </div>
+      <p id="riddle-feedback"></p>
+    </div>
+  </div>
+
+  <!-- Victory -->
+  <div id="victory-screen" class="hidden">
+    <div class="panel">
+      <h1>The Gate Opens</h1>
+      <p>The Guard steps aside as the great gate swings wide. The castle's conundrum is conquered.</p>
+      <button id="restart-button">Play Again</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
