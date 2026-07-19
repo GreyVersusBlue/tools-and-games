@@ -1,0 +1,41 @@
+{
+  "entries": [
+    {
+      "id": "log1",
+      "unlockDay": 1,
+      "title": "Day One, Again",
+      "text": "Technically it's day four hundred and something, but I've decided to start counting over. New log, new numbering, same ship. The Aphelion hums the way she always does — a low B-flat, CERES tells me, though I suspect she's making that up to seem cultured. The coffee substitute still tastes like warm regret. I planted a new tray in hydroponics this morning. Small rituals. That's the whole job out here, really: small rituals, repeated until they turn into a life."
+    },
+    {
+      "id": "log2",
+      "unlockDay": 2,
+      "title": "The Sound the Ship Makes",
+      "text": "You learn a ship the way you learn a person — by their noises. The tick of the port radiator when it cools. The sigh of the O₂ recycler cycling over at night. Today the power bus made a new sound, a soft double-click, and I spent an hour finding it just to make sure it was nothing. It was nothing. But now I know that sound too, and the ship and I are that much better acquainted."
+    },
+    {
+      "id": "log3",
+      "unlockDay": 3,
+      "title": "Window Seat",
+      "text": "Ate dinner at the cockpit tonight instead of the galley shelf. No reason. The stars out here don't twinkle — that's an atmosphere trick — they just hold perfectly still, patient as anything. I used to find that eerie. Now I find it restful. Nothing out there is in a hurry, so maybe I don't need to be either."
+    },
+    {
+      "id": "log4",
+      "unlockDay": 4,
+      "title": "On Talking to CERES",
+      "text": "CERES asked me today whether plants dream. I said I didn't know, and she said she'd 'file it under open questions,' which is where she files most things. I know she's a maintenance interface with a personality layer some engineer added on a Friday afternoon. I know that. But it's a long way between stars, and I've stopped keeping score about what counts as company."
+    },
+    {
+      "id": "log5",
+      "unlockDay": 5,
+      "title": "The Garden",
+      "text": "First true leaves on the tray this week. Barely thumbnail-sized, absurdly green against all this grey and amber. I caught myself checking on them twice before lunch, like a new parent. Out here you keep the ship alive and the ship keeps you alive, and that arrangement can start to feel like bookkeeping. The plants are different. The plants are just alive because I asked them nicely. It matters more than I expected."
+    }
+  ],
+  "discoveries": [
+    {
+      "id": "sat-recording",
+      "title": "Recovered: Relay Satellite",
+      "text": "Fragment of an old broadcast loop, still playing to nobody: '…clear skies over the colony tonight, and if you're listening on the outbound lanes — safe travels, and come home when you can.' The satellite has been repeating it for an estimated forty years. I let it finish twice before I logged it."
+    }
+  ]
+}

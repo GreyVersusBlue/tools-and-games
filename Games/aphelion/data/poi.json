@@ -1,0 +1,13 @@
+{
+  "pois": [
+    {
+      "id": "sat-recording",
+      "name": "Derelict relay satellite",
+      "pos": [14, 4, -22],
+      "scanTime": 2.5,
+      "yields": { "parts": 2, "curio": "Forty-year broadcast loop" },
+      "discoveryId": "sat-recording",
+      "ceresMsg": "Salvage logged: two serviceable components and one very patient radio. Filed under 'things worth drifting for.'"
+    }
+  ]
+}

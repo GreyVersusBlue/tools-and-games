@@ -1,0 +1,46 @@
+{
+  "systems": [
+    {
+      "id": "power",
+      "name": "Power Distribution",
+      "decayPerHour": 2.2,
+      "panel": { "room": "systems", "pos": [-2.94, 1.5, -5.5], "rotY": 1.5708 },
+      "steps": [
+        "Open the distribution panel",
+        "Swap the drained cell for a fresh one",
+        "Re-seat the bus couplers",
+        "Close the panel"
+      ],
+      "doneMsg": "Power bus rebalanced. The lights feel a little braver already.",
+      "lowMsg": "Power distribution is easing toward yellow. No rush — but the cells would appreciate a visit."
+    },
+    {
+      "id": "oxygen",
+      "name": "O₂ Recycler",
+      "decayPerHour": 1.7,
+      "panel": { "room": "systems", "pos": [2.94, 1.5, -4.2], "rotY": -1.5708 },
+      "steps": [
+        "Unlatch the recycler housing",
+        "Pull the saturated CO₂ scrubber",
+        "Slot in a clean scrubber cartridge",
+        "Latch the housing shut"
+      ],
+      "doneMsg": "Scrubber swapped. Take a deep breath — that one's on the house.",
+      "lowMsg": "The O₂ recycler's scrubber is getting saturated. The air will turn stale before it turns dangerous."
+    },
+    {
+      "id": "hull",
+      "name": "Hull Integrity",
+      "decayPerHour": 1.2,
+      "panel": { "room": "airlock", "pos": [-2.94, 1.5, 7.5], "rotY": 1.5708 },
+      "steps": [
+        "Run the micro-fracture scan",
+        "Heat the sealant applicator",
+        "Bead sealant along the flagged seam",
+        "Verify the pressure differential"
+      ],
+      "doneMsg": "Seam sealed. The old girl holds together for another season.",
+      "lowMsg": "Micro-abrasion is adding up on the outer hull. A bead of sealant when you have a moment."
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "hull": { "min": [-3, 0, -14], "max": [3, 3, 10] },
+  "rooms": [
+    { "id": "cockpit",  "name": "Cockpit",              "zMin": -14, "zMax": -8, "lightPos": [0, 2.7, -11], "lightColor": "0xffd9a0" },
+    { "id": "systems",  "name": "Systems Bay",          "zMin": -8,  "zMax": -2, "lightPos": [0, 2.7, -5],  "lightColor": "0xffc98a" },
+    { "id": "quarters", "name": "Quarters & Hydroponics","zMin": -2,  "zMax": 6,  "lightPos": [0, 2.7, 2],   "lightColor": "0xffd9a0" },
+    { "id": "airlock",  "name": "Airlock",              "zMin": 6,   "zMax": 10, "lightPos": [0, 2.7, 8],   "lightColor": "0xcfe3ff" }
+  ],
+  "partitions": [ -8, -2, 6 ],
+  "doorHalfWidth": 0.9
+}

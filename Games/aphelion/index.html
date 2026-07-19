@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aphelion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #f0e6d2;        /* warm cream text */
+    --ink-dim: #9a917d;
+    --amber: #ffb367;      /* ship-panel amber */
+    --ceres: #7fd4c1;      /* AI voice teal */
+    --void: #0b0e14;
+    --panel: rgba(16, 20, 28, 0.82);
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --serif: 'Lora', Georgia, serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: var(--void); }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: fixed; top: 18px; left: 18px;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-dim);
+    user-select: none; pointer-events: none;
+    opacity: 0.9;
+  }
+  .gauge { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .gauge label { width: 44px; letter-spacing: 0.08em; }
+  .bar { width: 110px; height: 4px; background: rgba(240,230,210,0.12); border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.6s ease, background 0.6s ease; }
+  .bar i.low { background: #e08f5f; }
+  #daybox { margin-top: 10px; letter-spacing: 0.12em; color: var(--ink-dim); }
+  #inv { margin-top: 4px; letter-spacing: 0.06em; }
+
+  /* ---------- Interaction prompt ---------- */
+  #prompt {
+    position: fixed; left: 50%; bottom: 14%; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 13px; color: var(--ink);
+    background: var(--panel); padding: 8px 16px; border-radius: 4px;
+    border: 1px solid rgba(255,179,103,0.25);
+    letter-spacing: 0.04em; opacity: 0; transition: opacity 0.2s ease;
+    pointer-events: none; text-align: center; max-width: 70vw;
+  }
+  #prompt.show { opacity: 1; }
+  #prompt .key { color: var(--amber); }
+
+  /* ---------- Crosshair ---------- */
+  #dot {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 4px; height: 4px; border-radius: 50%;
+    background: rgba(240,230,210,0.55); pointer-events: none;
+  }
+
+  /* ---------- CERES toasts ---------- */
+  #toasts {
+    position: fixed; right: 18px; top: 18px; width: 280px;
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  }
+  .toast {
+    font-family: var(--mono); font-size: 12px; line-height: 1.55;
+    background: var(--panel); color: var(--ink);
+    border-left: 2px solid var(--ceres);
+    padding: 10px 12px; border-radius: 3px;
+    opacity: 0; transform: translateY(-4px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+  }
+  .toast.show { opacity: 1; transform: none; }
+  .toast .who { color: var(--ceres); letter-spacing: 0.1em; font-size: 10px; display: block; margin-bottom: 3px; }
+  .toast.ship .who { color: var(--amber); }
+  .toast.ship { border-left-color: var(--amber); }
+
+  /* ---------- Logbook ---------- */
+  #logbook {
+    position: fixed; inset: 0; display: none;
+    background: rgba(7, 9, 13, 0.88);
+    backdrop-filter: blur(3px);
+    z-index: 20;
+  }
+  #logbook.open { display: flex; align-items: center; justify-content: center; }
+  #logbook .book {
+    width: min(640px, 88vw); max-height: 76vh; overflow-y: auto;
+    background: #12151d; border: 1px solid rgba(255,179,103,0.18);
+    border-radius: 6px; padding: 40px 48px;
+  }
+  #logbook h1 {
+    font-family: var(--mono); font-weight: 500; font-size: 13px;
+    letter-spacing: 0.25em; color: var(--amber); margin-bottom: 28px;
+  }
+  .entry { margin-bottom: 32px; }
+  .entry .stamp { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); letter-spacing: 0.1em; margin-bottom: 8px; }
+  .entry h2 { font-family: var(--serif); font-weight: 500; font-size: 19px; color: var(--ink); margin-bottom: 8px; }
+  .entry p { font-family: var(--serif); font-size: 15px; line-height: 1.75; color: rgba(240,230,210,0.85); }
+  .entry.locked { opacity: 0.35; }
+  .entry.locked p { font-style: italic; }
+  #logbook .hint { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); text-align: center; margin-top: 8px; }
+
+  /* ---------- Fade / title ---------- */
+  #fade {
+    position: fixed; inset: 0; background: var(--void);
+    opacity: 1; transition: opacity 1.4s ease; pointer-events: none; z-index: 30;
+  }
+  #title {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: var(--void); z-index: 40; cursor: pointer;
+  }
+  #title h1 {
+    font-family: var(--serif); font-weight: 400; font-size: 42px;
+    letter-spacing: 0.35em; color: var(--ink); text-indent: 0.35em;
+  }
+  #title p { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); letter-spacing: 0.12em; }
+  #title .go {
+    margin-top: 22px; font-family: var(--mono); font-size: 12px;
+    color: var(--amber); letter-spacing: 0.2em;
+    border: 1px solid rgba(255,179,103,0.4); padding: 10px 26px; border-radius: 3px;
+  }
+  #title.hidden { display: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: 0.01s !important; }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="hud">
+    <div class="gauge"><label>PWR</label><div class="bar"><i id="bar-power" style="width:100%"></i></div></div>
+    <div class="gauge"><label>O₂</label><div class="bar"><i id="bar-oxygen" style="width:100%"></i></div></div>
+    <div class="gauge"><label>HULL</label><div class="bar"><i id="bar-hull" style="width:100%"></i></div></div>
+    <div id="daybox">DAY 1 · 08:00</div>
+    <div id="inv"></div>
+  </div>
+
+  <div id="dot"></div>
+  <div id="prompt"></div>
+  <div id="toasts"></div>
+
+  <div id="logbook">
+    <div class="book">
+      <h1>PERSONAL LOG — S.V. APHELION</h1>
+      <div id="entries"></div>
+      <div class="hint">TAB to close</div>
+    </div>
+  </div>
+
+  <div id="fade"></div>
+
+  <div id="title">
+    <h1>APHELION</h1>
+    <p>a quiet life, far from anywhere</p>
+    <div class="go">CLICK TO BOARD</div>
+    <p style="margin-top:26px">WASD move · mouse look · E interact · TAB logbook</p>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
