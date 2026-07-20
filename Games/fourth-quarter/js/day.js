@@ -4,7 +4,7 @@
 // Walk into a ring, press E, manage in a panel, close, keep walking.
 
 import * as THREE from "three";
-import { stationRing, ROOM, PASS_FOOD, DOOR } from "./world.js";
+import { stationRing, ROOM, KITCHEN, DOOR } from "./world.js";
 import { MENU } from "./engine.js";
 import * as C from "./campaign.js";
 
@@ -22,9 +22,9 @@ export class DayPhase {
     this.cart = {};
     this.stations = [
       { id: "stock", label: "Stock Order", key: "STOCK", color: 0xe8a33d,
-        pos: new THREE.Vector3(PASS_FOOD.x - 0.9, 0, PASS_FOOD.z), open: () => this.stockPanel() },
+        pos: new THREE.Vector3((KITCHEN.x0 + KITCHEN.x1) / 2, 0, -7.2), open: () => this.stockPanel() },
       { id: "crew", label: "The Crew", key: "CREW", color: 0x5aa7d6,
-        pos: new THREE.Vector3(-2, 0, -2.9), open: () => this.crewPanel() },
+        pos: new THREE.Vector3(-2, 0, -2.1), open: () => this.crewPanel() },
       { id: "promo", label: "Tonight's Theme", key: "THEME", color: 0xff4e42,
         pos: new THREE.Vector3(-3.2, 0, ROOM.z - 1.2), open: () => this.promoPanel() },
       { id: "door", label: "Open the Doors", key: "OPEN", color: 0x58b368,
@@ -44,6 +44,7 @@ export class DayPhase {
       if (e.code === "Escape" && this.panelOpen()) this.closePanel();
     });
     $("#panelBody").addEventListener("click", e => this.panelClick(e));
+    $("#panelFoot").addEventListener("click", e => this.panelClick(e));
   }
 
   setVisible(v) { this.group.visible = v; }

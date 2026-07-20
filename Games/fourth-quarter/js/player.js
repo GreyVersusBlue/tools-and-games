@@ -4,7 +4,7 @@
 // E at the highlighted patron: hand it over — boss deliveries tip better.
 
 import * as THREE from "three";
-import { colliders, ROOM, PASS_FOOD, PASS_DRINK } from "./world.js";
+import { colliders, inBounds, PASS_FOOD, PASS_DRINK } from "./world.js";
 import { glow } from "./materials.js";
 import { itemMesh } from "./patrons.js";
 import { MENU } from "./engine.js";
@@ -130,7 +130,7 @@ export class Player {
     const p = this.cam.position;
     const tryAxis = (dx, dz) => {
       const nx = p.x + dx, nz = p.z + dz;
-      if (Math.abs(nx) > ROOM.x - RADIUS || Math.abs(nz) > ROOM.z - RADIUS) return;
+      if (!inBounds(nx, nz, RADIUS)) return;
       for (const b of colliders) {
         if (nx > b.min.x - RADIUS && nx < b.max.x + RADIUS &&
             nz > b.min.z - RADIUS && nz < b.max.z + RADIUS) return;

@@ -5,7 +5,7 @@
 
 import * as THREE from "three";
 import { NightEngine, hourName } from "./engine.js";
-import { buildWorld, drawBroadcast, PASS_FOOD, PASS_DRINK, seats } from "./world.js";
+import { buildWorld, drawBroadcast, PASS_FOOD_SHELF, PASS_DRINK_SHELF, seats } from "./world.js";
 import { Patron, Server, itemMesh } from "./patrons.js";
 import { Player } from "./player.js";
 import { DayPhase } from "./day.js";
@@ -102,6 +102,7 @@ function beginNight() {
   const pd = C.promoDef(campaign);
   if (pd.id !== "none") tick(`Tonight's theme: ${pd.name}.`, "hl");
   save();
+  renderer.domElement.requestPointerLock(); // still inside the click gesture — no extra click needed
 }
 
 // ---- HUD ----
@@ -169,10 +170,9 @@ function syncPassDisplays() {
   for (const tk of engine.tickets) {
     if (tk.state === "ready" && !passDisplays.has(tk.id)) {
       const m = itemMesh(tk.itemId);
-      const base = tk.kind === "food" ? PASS_FOOD : PASS_DRINK;
+      const shelf = tk.kind === "food" ? PASS_FOOD_SHELF : PASS_DRINK_SHELF;
       const n = [...passDisplays.values()].filter(x => x.userData.kind === tk.kind).length;
-      m.position.set(base.x + (tk.kind === "food" ? 0 : (n % 4) * 0.3 - 0.45),
-        1.06, base.z + (tk.kind === "food" ? (n % 4) * 0.4 - 0.6 : -0.35));
+      m.position.set(shelf.x + (n % 4) * 0.38 - 0.57, shelf.y, shelf.z);
       m.userData.kind = tk.kind;
       scene.add(m);
       passDisplays.set(tk.id, m);

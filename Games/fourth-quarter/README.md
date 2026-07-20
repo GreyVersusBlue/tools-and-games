@@ -1,8 +1,9 @@
 # The Fourth Quarter — 3D (Sprint 3D-2: The Day Phase)
 
 A full day loop, first-person. **Days**: the room sits empty in daylight and
-you manage at four glowing stations — stock at the kitchen pass, the crew at
-the bar, tonight's theme at the corkboard, and the front door to open up.
+you manage at four glowing stations — stock back in the kitchen (through the
+doorway behind the bar), the crew at the bar, tonight's theme at the corkboard,
+and the front door to open up.
 **Nights**: patrons, tickets, your servers, and you on the floor. **Close**:
 box score, wages and rent come out of the till, tomorrow's ledger.
 
@@ -57,35 +58,34 @@ engine's result, and Mules fans bounce when they win.
 - `js/day.js` — day-phase controller: station rings + management panels.
 - Tests: `node test/smoke-engine.mjs` and `node test/smoke-campaign.mjs`
   (~250 checks combined).
-- `js/world.js` — Corner Tap geometry, seats, colliders, pass counters, TVs,
-  neon sign, lights.
+- `js/world.js` — Corner Tap geometry: main room + back-of-house kitchen
+  (doorway east of the bar, pass-through window where food lands), seats,
+  colliders + walkable-bounds union, TVs, neon sign, day/night light rigs.
 - `js/patrons.js` — patron + server NPC state machines.
 - `js/player.js` — pointer-lock movement, collision, pick-up/deliver.
 - `js/materials.js` — the texture registry (below).
 - `js/main.js` — loop, HUD, overlays, broadcast theater.
 
-## Poly Haven shopping list
+## Textures
 
-Every surface reads from `js/materials.js`. For each asset below, download the
-**2K JPG** maps, rename them `diffuse.jpg`, `normal.jpg` (the `_nor_gl` map),
-and `rough.jpg`, and drop them in the matching folder. Then set
-`USE_TEXTURES = true` at the top of `materials.js`. Missing files fall back to
-the placeholder color silently, so you can do this piecemeal.
+`js/materials.js` references the exact Poly Haven 2K filenames as downloaded —
+no renaming needed. Drop each asset's files into its `textures/<key>/` folder:
 
-| Folder (`textures/<key>/`) | Poly Haven asset | Used on |
+| Folder | Asset | Files |
 |---|---|---|
-| `floorWood`   | **wood_floor_deck** | main floor |
-| `wallPlaster` | **painted_plaster_wall** | south + west walls |
-| `wallBrick`   | **red_brick_plaster_patch_02** | north wall behind the bar |
-| `barTop`      | **dark_wooden_planks** | bar counter, back shelf, kitchen pass |
-| `tableTop`    | **wood_table_001** | table tops |
-| `ceiling`     | **concrete_wall_008** | ceiling |
-| `kitchenTile` | **kitchen_wood** | east (kitchen) wall |
-| `leather`     | **brown_leather** | stool seats |
-| `metal`       | **brushed_concrete** | reserved for metal props |
+| `floorWood`   | wood_floor_deck | diff / nor_gl / **arm** |
+| `wallPlaster` | painted_plaster_wall | diff / nor_gl / **arm** |
+| `wallBrick`   | red_brick_plaster_patch_02 | diff / nor_gl / rough |
+| `barTop`      | dark_wooden_planks | diff / nor_gl / **arm** |
+| `tableTop`    | wood_table_001 | diff / nor_gl / rough |
+| `ceiling`     | concrete_wall_008 | diff / nor_gl / **arm** |
+| `kitchenTile` | wood_planks | diff / nor_gl / **arm** |
+| `leather`     | brown_leather | **albedo** / nor_gl / rough |
+| `metal`       | brushed_concrete | diff / nor_gl / rough |
 
-If a slug has drifted on polyhaven.com, anything in the same family works —
-the registry only cares about the three filenames.
+**arm** files pack AO/roughness/metalness into one image (R/G/B) and get wired
+to all three material slots automatically. `USE_TEXTURES` is now `true`; any
+missing file just falls back to that surface's placeholder color.
 
 ## Roadmap (next sprints)
 
