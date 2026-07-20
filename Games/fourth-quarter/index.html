@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Fourth Quarter — On the Floor</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+
+<!-- score bug -->
+<div id="scorebug">
+  <div class="bug brand"><span class="lbl neonSign">THE FOURTH QUARTER</span><span class="val" id="hDay">Day 1 · Mon</span></div>
+  <div class="bug"><span class="lbl">Cash</span><span class="val" id="hCash">$0</span></div>
+  <div class="bug"><span class="lbl">Hour</span><span class="val" id="hHour">DAY</span></div>
+  <div class="bug"><span class="lbl">In the Bar</span><span class="val" id="hCrowd">—</span></div>
+  <div class="bug"><span class="lbl">Mood — <span id="hMood">—</span></span>
+    <div class="moodbar"><div id="hMoodFill"></div></div></div>
+  <div class="bug speeds">
+    <button data-speed="1" class="on">1×</button>
+    <button data-speed="2">2×</button>
+  </div>
+</div>
+
+<!-- feed + prompts -->
+<div id="ticker"></div>
+<div id="crosshair">·</div>
+<div id="prompt"></div>
+<div id="prompt-flash"></div>
+<div id="controls-hint">WASD move · mouse look · Shift hustle · E interact · Esc closes panels</div>
+
+<!-- management panel (day stations) -->
+<div id="panelOverlay" class="overlay" style="display:none">
+  <div class="card panel">
+    <div class="panelHd"><h1 id="panelTitle"></h1><button id="panelClose" title="Close">✕</button></div>
+    <div id="panelBody"></div>
+    <div id="panelFoot"></div>
+  </div>
+</div>
+
+<!-- start overlay -->
+<div id="startOverlay" class="overlay">
+  <div class="card">
+    <h1>THE FOURTH QUARTER</h1>
+    <p class="tag" id="startTag">Day 1 at The Corner Tap</p>
+    <p>Days are for the books: walk to the glowing stations to order stock at the
+    <b>kitchen pass</b>, hire at the <b>bar</b>, pin a theme to the <b>corkboard</b>,
+    then open the doors. Nights are for the floor — and nothing lands like the boss
+    running orders himself.</p>
+    <p class="dim">WASD to move · mouse to look · E to interact · Shift to hustle</p>
+    <button id="startBtn">Take the Floor</button>
+    <button id="wipeBtn" class="ghost">New Game (wipe save)</button>
+  </div>
+</div>
+
+<!-- box score overlay -->
+<div id="boxOverlay" class="overlay" style="display:none">
+  <div class="card">
+    <h1 id="boxTitle">Box Score</h1>
+    <div id="boxBody"></div>
+    <button id="nextDayBtn">Tomorrow's Ledger</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
