@@ -49,6 +49,18 @@ button{font-family:var(--disp);cursor:pointer;letter-spacing:.06em;text-transfor
 #controls-hint{position:fixed;right:14px;bottom:12px;z-index:10;color:var(--muted);
   font-size:11px;letter-spacing:.05em;pointer-events:none}
 
+/* stove/tap timing-bar minigame */
+#qte{position:fixed;left:50%;bottom:150px;transform:translateX(-50%);z-index:10;
+  display:flex;flex-direction:column;align-items:center;gap:5px;pointer-events:none}
+#qteLabel{font-family:var(--disp);font-size:14px;color:var(--amber);letter-spacing:.1em;
+  text-shadow:0 2px 5px #000}
+#qteTrack{position:relative;width:230px;height:16px;background:#1c130bdd;
+  border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#qteZone{position:absolute;top:0;bottom:0;background:#58b36877;
+  border-left:2px solid var(--green);border-right:2px solid var(--green)}
+#qteMarker{position:absolute;top:-2px;bottom:-2px;width:4px;margin-left:-2px;
+  background:var(--neon);box-shadow:0 0 8px var(--neon)}
+
 /* overlays */
 .overlay{position:fixed;inset:0;z-index:20;background:#000b;display:flex;
   align-items:center;justify-content:center;padding:16px}

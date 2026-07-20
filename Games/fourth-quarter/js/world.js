@@ -23,9 +23,13 @@ export const PASS_DRINK = new THREE.Vector3(0.2, 0, -2.85);   // east end of the
 // where ready items physically sit (spread along x)
 export const PASS_FOOD_SHELF  = new THREE.Vector3(5.35, 1.12, -5.5);
 export const PASS_DRINK_SHELF = new THREE.Vector3(-0.3, 1.16, -3.8);
+// where the player actually cooks/pours — distinct from the pickup counters above
+export const STOVE_STATION = new THREE.Vector3(6.1, 0, -7.7);   // in front of the kitchen stove
+export const TAP_STATION   = new THREE.Vector3(-5.5, 0, -2.85); // west end of the bar front
 
 export const seats = [];
 export const colliders = [];
+export const UPGRADES_STATION = new THREE.Vector3(-6.6, 0, -1.6);
 
 /** Walkable test: main room ∪ kitchen ∪ the doorway corridor joining them. */
 export function inBounds(x, z, r = 0.3) {
@@ -170,6 +174,13 @@ export function buildWorld(scene) {
     addSeat(x, -3.05, x, -2.4);
   }
 
+  const stoveRing = stationRing(0xff5a2b);
+  stoveRing.position.set(STOVE_STATION.x, 0.02, STOVE_STATION.z); stoveRing.scale.setScalar(0.7);
+  g.add(stoveRing);
+  const tapRing = stationRing(0x5aa7d6);
+  tapRing.position.set(TAP_STATION.x, 0.02, TAP_STATION.z); tapRing.scale.setScalar(0.7);
+  g.add(tapRing);
+
   // ---- tables ----
   const tableSpots = [[-5, 0.9], [-1.6, 0.9], [1.9, 0.9], [-5, 3.4], [-1.6, 3.4], [4.9, 2.6]];
   for (const [tx, tz] of tableSpots) table4(g, tx, tz);
@@ -198,6 +209,19 @@ export function buildWorld(scene) {
     note.rotation.z = (Math.random() - 0.5) * 0.2; note.rotation.y = Math.PI;
     g.add(note);
   }
+
+  // ---- upgrade crates (workshop station, west wall) ----
+  const crateM = mat("metal");
+  const crate1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 0.6), crateM);
+  crate1.position.set(UPGRADES_STATION.x, 0.3, UPGRADES_STATION.z - 0.5);
+  crate1.castShadow = true; g.add(crate1); blockCollider(crate1, 0.06);
+  const crate2 = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.55), flat(0x5a4632, 0.8));
+  crate2.position.set(UPGRADES_STATION.x + 0.5, 0.25, UPGRADES_STATION.z - 0.35);
+  crate2.rotation.y = 0.3; crate2.castShadow = true; g.add(crate2); blockCollider(crate2, 0.06);
+  const toolSign = makeLabel("UPGRADES", 0x9a6fb5);
+  toolSign.scale.multiplyScalar(0.55);
+  toolSign.position.set(UPGRADES_STATION.x + 0.2, 1.35, UPGRADES_STATION.z - 0.9);
+  g.add(toolSign);
 
   // ---- lights: night rig (warm pendants) vs day rig (flat daylight) ----
   const nightRig = new THREE.Group(), dayRig = new THREE.Group();

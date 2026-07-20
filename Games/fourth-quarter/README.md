@@ -25,6 +25,11 @@ python3 -m http.server 8000
 ## Controls
 
 - **WASD** move · **mouse** look (click to grab the cursor) · **Shift** hustle
+- **E** at the glowing **STOVE** (in the kitchen) or **TAPS** (west end of the
+  bar): if there's an order cooking/pouring, starts a timing-bar minigame — hit
+  **E** again with the marker in the green zone to finish it instantly (and
+  tag it for a small tip bonus); miss and it still shaves time off. Walking
+  away cancels it for free.
 - **E** at the glowing **KITCHEN** or **BAR PICK-UP** counters: take the oldest
   ready order. A red marker appears over its customer.
 - **E** next to the marked customer: hand it over. Boss service = +$2 flat tip,
@@ -42,27 +47,39 @@ engine's result, and Mules fans bounce when they win.
 - **Stock** — buy servings per item at wholesale; the night eats the shelves.
   86'd items get ordered around; fully bare shelves send patrons back out the
   door. Unsold stock carries over (no spoilage yet — that's a later sprint).
-- **Crew** — up to 3 servers; each has a speed (ticket-clearing pace) and a
-  nightly wage. Applicants reroll every morning.
+- **Crew** — up to 3 staff, each a **cook**, **server**, or **bartender** with
+  a skill (1–5) driving wage and effectiveness. Cooks/bartenders push prep
+  speed on their side of the ticket (no cook on shift = kitchen's closed, no
+  food sells at all); servers are the walking NPCs who fetch and deliver.
+  Applicants reroll every morning.
+- **Upgrades** — 5 permanent, both-edged installs at the crate station: POS
+  System, Staff Training, Craft Tap Wall, Premium Screens, Rush Expediting.
+  Each helps (faster feet, faster prep, pricier beer, bigger draw) and costs
+  nightly upkeep, charged forever once bought.
 - **Theme** — Wing Night (crowd up, wings 40% off), Happy Hour (crowd up a
   little, drinks 25% off before 7), Watch Party ($50, big draw — game nights
   only, dead money otherwise).
-- Rent is **$110/night**, always. Wages, rent, and theme costs settle at close.
+- Rent is **$110/night**, always. Wages, rent, upgrade upkeep, and theme costs
+  settle at close.
 
 ## Files
 
 - `js/engine.js` — pure night sim (arrivals, tickets, prep, tips, mood, game
-  beats, stock consumption, promo pricing). No three.js.
+  beats, stock consumption, promo pricing, cook/bartender prep-speed
+  multipliers, the player's stove/tap minigame hooks). No three.js.
 - `js/campaign.js` — the books between nights: cash, calendar, stock orders,
-  payroll, promos, settlement, persistence. Also pure.
-- `js/day.js` — day-phase controller: station rings + management panels.
-- Tests: `node test/smoke-engine.mjs` and `node test/smoke-campaign.mjs`
-  (~250 checks combined).
+  payroll + roles, promos, upgrades, settlement, persistence. Also pure.
+- `js/day.js` — day-phase controller: station rings + management panels
+  (Stock, Crew, Theme, Upgrades, Door).
+- Tests: `node test/smoke-engine.mjs` and `node test/smoke-campaign.mjs`.
 - `js/world.js` — Corner Tap geometry: main room + back-of-house kitchen
   (doorway east of the bar, pass-through window where food lands), seats,
-  colliders + walkable-bounds union, TVs, neon sign, day/night light rigs.
-- `js/patrons.js` — patron + server NPC state machines.
-- `js/player.js` — pointer-lock movement, collision, pick-up/deliver.
+  colliders + walkable-bounds union, TVs, neon sign, day/night light rigs,
+  stove/tap minigame stations, upgrade crates.
+- `js/patrons.js` — patron + server NPC state machines (bartenders stick to
+  drink tickets).
+- `js/player.js` — pointer-lock movement, collision, pick-up/deliver, and the
+  stove/tap timing-bar minigame.
 - `js/materials.js` — the texture registry (below).
 - `js/main.js` — loop, HUD, overlays, broadcast theater.
 
@@ -89,8 +106,8 @@ missing file just falls back to that surface's placeholder color.
 
 ## Roadmap (next sprints)
 
-1. **Venue ladder** — distinct rooms per tier, upgrades as visible props
-   (POS terminal on the bar, craft tap wall, kitchen line through the pass).
+1. **Venue ladder** — distinct rooms per tier; upgrade tiering can hook back
+   in once this exists.
 2. **Full campaign port** — league standings, regulars, rival bar,
-   distributors, spoilage, events as floor moments, re-balanced for the 3D
-   serving loop.
+   distributors, spoilage (which would unlock a Commercial Walk-In-style
+   upgrade), events as floor moments, re-balanced for the 3D serving loop.

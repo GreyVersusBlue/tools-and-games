@@ -40,7 +40,7 @@ export function itemMesh(itemId) {
   return grp;
 }
 
-function personMesh(shirtColor, isServer = false) {
+export function personMesh(shirtColor, isServer = false) {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.78, 10), flat(shirtColor, 0.9));
   body.position.y = 0.75; body.castShadow = true; g.add(body);
@@ -182,12 +182,13 @@ export class Patron {
 
 // ---------------------------------------------------------------- Server NPC
 export class Server {
-  constructor(scene, engine, name, homeX, speed = SERVER_WALK) {
+  constructor(scene, engine, name, homeX, speed = SERVER_WALK, role = "server") {
     this.engine = engine;
     this.scene = scene;
     this.name = name;
+    this.role = role;
     this.speed = speed;
-    this.mesh = personMesh(0x2f2a24, true);
+    this.mesh = personMesh(role === "bartender" ? 0x2f4a5a : 0x2f2a24, true);
     this.home = new THREE.Vector3(homeX, 0, -2.2);
     this.mesh.position.copy(this.home);
     scene.add(this.mesh);
@@ -200,8 +201,8 @@ export class Server {
     const m = this.mesh;
     switch (this.state) {
       case "idle": {
-        // grab the oldest unclaimed ready ticket
-        const ready = this.engine.readyUnclaimed();
+        // grab the oldest unclaimed ready ticket — bartenders stick to drinks
+        const ready = this.engine.readyUnclaimed(this.role === "bartender" ? "drink" : undefined);
         if (ready.length) {
           const tk = ready.sort((a, b) => a.placedAt - b.placedAt)[0];
           if (this.engine.claim(tk.id, "server:" + this.name)) {

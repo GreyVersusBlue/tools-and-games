@@ -5,8 +5,8 @@
 
 import * as THREE from "three";
 import { NightEngine, hourName } from "./engine.js";
-import { buildWorld, drawBroadcast, PASS_FOOD_SHELF, PASS_DRINK_SHELF, seats } from "./world.js";
-import { Patron, Server, itemMesh } from "./patrons.js";
+import { buildWorld, drawBroadcast, PASS_FOOD_SHELF, PASS_DRINK_SHELF, seats, KITCHEN } from "./world.js";
+import { Patron, Server, itemMesh, personMesh } from "./patrons.js";
 import { Player } from "./player.js";
 import { DayPhase } from "./day.js";
 import * as C from "./campaign.js";
@@ -43,7 +43,7 @@ let campaign = C.loadCampaign(localStorage) || C.newCampaign();
 const save = () => C.saveCampaign(campaign, localStorage);
 
 let phase = "day"; // day | night | report
-let engine = null, patrons = [], patronsById = new Map(), servers = [], passDisplays = new Map();
+let engine = null, patrons = [], patronsById = new Map(), servers = [], cookMeshes = [], passDisplays = new Map();
 let broadcast = null, started = false, speed = 1;
 
 const player = new Player(camera, renderer.domElement, null);
@@ -89,12 +89,25 @@ function beginNight() {
     seats: 30,
     stock: campaign.stock,        // shared — the night eats the shelves
     promo: C.promoDef(campaign).id,
+    foodMult: C.roleMult(campaign, "cook"),
+    drinkMult: C.roleMult(campaign, "bartender"),
+    beerMult: C.beerMult(campaign),
   });
   player.engine = engine;
   seats.forEach(s => (s.taken = false));
   patrons = []; patronsById = new Map();
   const spread = [0.4, -3.4, 2.6];
-  servers = campaign.staff.map((s, i) => new Server(scene, engine, s.name.split(" ")[0], spread[i % 3], s.speed));
+  const floorStaff = campaign.staff.filter(s => s.role !== "cook");
+  servers = floorStaff.map((s, i) => new Server(scene, engine, s.name.split(" ")[0], spread[i % 3], s.speed * C.speedMult(campaign, s.role), s.role));
+  cookMeshes = campaign.staff.filter(s => s.role === "cook").map((s, i) => {
+    const m = personMesh(0x8a6a42, true);
+    m.position.set((KITCHEN.x0 + KITCHEN.x1) / 2 - 0.6 + i * 0.5, 0, KITCHEN.z0 + 1.3);
+    m.rotation.y = Math.PI;
+    scene.add(m);
+    return m;
+  });
+  if (!C.hasCook(campaign)) tick("No cook on shift — the kitchen's closed tonight.", "b");
+  if (!C.hasBartender(campaign)) tick("No bartender — servers are covering the taps, badly.", "b");
   passDisplays = new Map();
   broadcast = { gameNight: engine.gameNight, started: false, finished: false, win: null, mules: 0, sharks: 0, clockText: "Q1 15:00", flicker: 0, tick: 0 };
   $("#ticker").innerHTML = "";
@@ -227,11 +240,13 @@ function showBoxScore() {
     <div class="row"><span>Wages</span><span class="bad">−$${books.wages}</span></div>
     <div class="row"><span>Rent</span><span class="bad">−$${books.rent}</span></div>
     ${books.promoCost ? `<div class="row"><span>Theme</span><span class="bad">−$${books.promoCost}</span></div>` : ""}
+    ${books.upgFees ? `<div class="row"><span>Upgrade upkeep</span><span class="bad">−$${books.upgFees}</span></div>` : ""}
     <div class="row total"><span>Net</span><span class="${books.net >= 0 ? "good" : "bad"}">${books.net >= 0 ? "+" : "−"}$${Math.abs(books.net)}</span></div>
     <div class="row"><span>Cash</span><span class="${campaign.cash >= 0 ? "money" : "bad"}">$${Math.round(campaign.cash)}</span></div>
     <div class="sec">The Floor</div>
     <div class="row"><span>Orders served</span><span>${s.served}</span></div>
     <div class="row"><span>Run by the boss</span><span class="${s.bossServes ? "good" : ""}">${s.bossServes}</span></div>
+    <div class="row"><span>Cooked/poured by hand</span><span class="${s.crafted ? "good" : ""}">${s.crafted}</span></div>
     <div class="row"><span>Walkouts</span><span class="${s.walkouts ? "bad" : ""}">${s.walkouts}${empt ? ` (${empt} found bare shelves)` : ""}</span></div>
     <div class="row"><span>Service rate</span><span class="${s.serviceRate >= 90 ? "good" : s.serviceRate >= 70 ? "warn" : "bad"}">${s.serviceRate}%</span></div>
     ${engine.gameNight ? `<div class="sec">The Game</div>
@@ -242,8 +257,9 @@ function showBoxScore() {
 $("#nextDayBtn").addEventListener("click", () => {
   for (const p of patrons) if (p.state !== "gone") scene.remove(p.mesh);
   for (const sv of servers) { sv.dropCarry(); scene.remove(sv.mesh); }
+  for (const m of cookMeshes) scene.remove(m);
   for (const m of passDisplays.values()) scene.remove(m);
-  patrons = []; servers = []; passDisplays = new Map();
+  patrons = []; servers = []; cookMeshes = []; passDisplays = new Map();
   engine = null; player.engine = null;
   enterDay();
 });

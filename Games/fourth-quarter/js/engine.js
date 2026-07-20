@@ -50,6 +50,8 @@ export class NightEngine {
    *  seats        — venue seat cap (spawns pause when full)
    *  stock        — {itemId: servings}; mutated as tickets fire. Omit for infinite.
    *  promo        — 'none'|'wingnight'|'happyhour'|'watchparty'
+   *  foodMult     — cook prep-speed multiplier; 0 = kitchen's closed (no cook on shift)
+   *  drinkMult    — bartender prep-speed multiplier; 0.55 default = servers cover the taps, badly
    */
   constructor(opts = {}) {
     this.crowdTarget = opts.crowdTarget ?? 46;
@@ -58,13 +60,16 @@ export class NightEngine {
     this.seats       = opts.seats ?? 30;
     this.stock       = opts.stock ?? null;
     this.promo       = opts.promo ?? "none";
+    this.foodMult    = opts.foodMult ?? 1;
+    this.drinkMult   = opts.drinkMult ?? 1;
+    this.beerMult    = opts.beerMult ?? 1;
 
     this.t = 0;                 // sim seconds elapsed
     this.hour = 0;              // 0..8
     this.done = false;
     this.mood = 0.7;            // 0..1 room mood
     this.revenue = 0; this.tips = 0;
-    this.served = 0; this.walkouts = 0; this.bossServes = 0;
+    this.served = 0; this.walkouts = 0; this.bossServes = 0; this.crafted = 0;
     this.inBar = 0;             // agents currently seated/entering (3D layer maintains)
     this.spawnDebt = 0;         // fractional arrivals accumulator
     this.tickets = [];          // {id, patronId, itemId, kind, placedAt, readyAt, state:'prep'|'ready'|'carried'|'done'|'dead', claimedBy}
@@ -132,7 +137,10 @@ export class NightEngine {
     return ev;
   }
 
-  inStock(itemId) { return !this.stock || (this.stock[itemId] || 0) > 0; }
+  inStock(itemId) {
+    if (MENU[itemId].kind === "food" && this.foodMult <= 0) return false; // no cook = kitchen's closed
+    return !this.stock || (this.stock[itemId] || 0) > 0;
+  }
 
   /** Tonight's shelf price for an item, given the promo and current hour. */
   price(itemId) {
@@ -140,6 +148,7 @@ export class NightEngine {
     let p = item.price;
     if (this.promo === "wingnight" && itemId === "wings") p *= 0.6;
     if (this.promo === "happyhour" && item.kind === "drink" && this.hour < 2) p *= 0.75;
+    if (itemId === "beer") p *= this.beerMult;
     return Math.round(p * 100) / 100;
   }
 
@@ -149,9 +158,11 @@ export class NightEngine {
     if (!this.inStock(itemId)) return null;
     if (this.stock) this.stock[itemId]--;
     const item = MENU[itemId];
+    const mult = item.kind === "food" ? this.foodMult : this.drinkMult;
+    const prepSec = ri(item.prep[0], item.prep[1]) / Math.max(0.2, mult);
     const tk = {
       id: ++_tid, patronId, itemId, kind: item.kind, price: this.price(itemId),
-      placedAt: this.t, readyAt: this.t + ri(item.prep[0], item.prep[1]),
+      placedAt: this.t, readyAt: this.t + prepSec,
       state: "prep", claimedBy: null,
     };
     this.tickets.push(tk);
@@ -181,6 +192,24 @@ export class NightEngine {
     return foods.length ? pickFood() : null;
   }
 
+  /** Oldest still-cooking/pouring ticket of a kind — what the player's stove/tap
+   *  minigame targets. Doesn't care who (if anyone) is claimed to carry it later. */
+  oldestPrep(kind) {
+    const list = this.tickets.filter(t => t.state === "prep" && t.kind === kind);
+    return list.length ? list.sort((a, b) => a.placedAt - b.placedAt)[0] : null;
+  }
+
+  /** Player worked a ticket by hand at the stove/tap. A clean hit finishes it
+   *  right now (flagged for a small tip bonus on delivery); a miss still shaves
+   *  real time off it — showing up and trying beats standing around. */
+  workTicket(ticketId, hit) {
+    const tk = this.tickets.find(t => t.id === ticketId);
+    if (!tk || tk.state !== "prep") return null;
+    if (hit) { tk.readyAt = this.t; tk.playerCrafted = true; }
+    else tk.readyAt = Math.max(this.t + 1, tk.readyAt - 6);
+    return tk;
+  }
+
   claim(ticketId, carrierId) {
     const tk = this.tickets.find(t => t.id === ticketId);
     if (!tk || tk.state !== "ready" || tk.claimedBy) return null;
@@ -198,6 +227,7 @@ export class NightEngine {
     const waited = this.t - tk.placedAt;
     const speedFactor = clamp(1 - waited / (PATIENCE * 1.4), 0.1, 1); // fast service tips better
     let tip = Math.round(shelfPrice * (0.12 + 0.13 * speedFactor) * this.mood * 100) / 100;
+    if (tk.playerCrafted) { tip += 0.75; this.crafted++; }
     if (byBoss) { tip += BOSS_TIP; this.bossServes++; this.mood = clamp(this.mood + BOSS_MOOD); }
     this.revenue += shelfPrice; this.tips += tip; this.served++;
     this.mood = clamp(this.mood + 0.004);
@@ -222,7 +252,7 @@ export class NightEngine {
     const totalSeen = this.served + this.walkouts;
     return {
       revenue: Math.round(this.revenue), tips: Math.round(this.tips * 100) / 100,
-      served: this.served, walkouts: this.walkouts, bossServes: this.bossServes,
+      served: this.served, walkouts: this.walkouts, bossServes: this.bossServes, crafted: this.crafted,
       serviceRate: totalSeen ? Math.round(100 * this.served / (this.served + this.walkouts)) : 100,
       mood: this.mood, game: this.game,
       total: Math.round(this.revenue + this.tips),

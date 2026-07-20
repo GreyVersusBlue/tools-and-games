@@ -4,7 +4,7 @@
 // E at the highlighted patron: hand it over — boss deliveries tip better.
 
 import * as THREE from "three";
-import { colliders, inBounds, PASS_FOOD, PASS_DRINK } from "./world.js";
+import { colliders, inBounds, PASS_FOOD, PASS_DRINK, STOVE_STATION, TAP_STATION } from "./world.js";
 import { glow } from "./materials.js";
 import { itemMesh } from "./patrons.js";
 import { MENU } from "./engine.js";
@@ -24,6 +24,11 @@ export class Player {
     this.marker = null;       // floating marker over the target patron
     this.onPrompt = () => {};
     this.onInteract = () => {};
+    this.qte = null;          // active stove/tap timing-bar minigame, if any
+    this.qteEl = document.querySelector("#qte");
+    this.qteLabelEl = document.querySelector("#qteLabel");
+    this.qteZoneEl = document.querySelector("#qteZone");
+    this.qteMarkerEl = document.querySelector("#qteMarker");
 
     dom.addEventListener("click", () => { if (!this.locked) dom.requestPointerLock(); });
     document.addEventListener("pointerlockchange", () => { this.locked = document.pointerLockElement === dom; });
@@ -48,8 +53,47 @@ export class Player {
     return null;
   }
 
+  nearStove() { return this.pos.distanceTo(new THREE.Vector3(STOVE_STATION.x, EYE, STOVE_STATION.z)) < 1.6; }
+  nearTap()   { return this.pos.distanceTo(new THREE.Vector3(TAP_STATION.x, EYE, TAP_STATION.z)) < 1.6; }
+
+  // ---------------------------------------------------------------- stove/tap minigame
+  startQte(station, tk) {
+    const center = 0.3 + Math.random() * 0.4;
+    this.qte = { station, ticketId: tk.id, pos: 0, dir: 1, speed: 1.8,
+      zoneStart: center - 0.08, zoneEnd: center + 0.08 };
+    this.qteLabelEl.textContent = station === "stove" ? "SEAR IT" : "POUR IT";
+    this.qteZoneEl.style.left = (this.qte.zoneStart * 100) + "%";
+    this.qteZoneEl.style.width = ((this.qte.zoneEnd - this.qte.zoneStart) * 100) + "%";
+    this.qteEl.style.display = "flex";
+  }
+  cancelQte() { this.qte = null; this.qteEl.style.display = "none"; }
+  scoreQte() {
+    const q = this.qte;
+    const hit = q.pos >= q.zoneStart && q.pos <= q.zoneEnd;
+    const tk = this.engine.workTicket(q.ticketId, hit);
+    this.cancelQte();
+    if (!tk) return { msg: "Someone else already got to it." };
+    return hit
+      ? { msg: `${q.station === "stove" ? "Perfect sear!" : "Clean pour!"} Order's flying.`, good: true }
+      : { msg: "Rough one — still shaved some time off it." };
+  }
+
   tryInteract(scene, patronsById) {
+    if (this.qte) return this.scoreQte();
+
     if (!this.ticket) {
+      if (this.nearStove()) {
+        const tk = this.engine.oldestPrep("food");
+        if (!tk) return { msg: "Nothing on the line to cook." };
+        this.startQte("stove", tk);
+        return { msg: "Work it — hit E in the zone!" };
+      }
+      if (this.nearTap()) {
+        const tk = this.engine.oldestPrep("drink");
+        if (!tk) return { msg: "Nothing to pour." };
+        this.startQte("tap", tk);
+        return { msg: "Work it — hit E in the zone!" };
+      }
       const station = this.nearPass();
       if (!station) return null;
       const ready = this.engine.readyUnclaimed(station);
@@ -89,14 +133,24 @@ export class Player {
     if (this.marker && this.markerOn) { this.markerOn.mesh.remove(this.marker); }
     this.marker = null; this.markerOn = null;
     this.ticket = null;
+    if (this.qte) this.cancelQte();
   }
 
   promptText(patronsById) {
+    if (this.qte) return "E — HIT IT!";
     if (this.ticket) {
       const p = patronsById.get(this.ticket.patronId);
       if (p && this.pos.distanceTo(new THREE.Vector3(p.pos.x, EYE, p.pos.z)) < 1.5)
         return "E — hand it over";
       return `Carrying ${MENU[this.ticket.itemId].name} → marked customer`;
+    }
+    if (this.nearStove()) {
+      const tk = this.engine.oldestPrep("food");
+      return tk ? "E — work the line (cook)" : "Stove's quiet — nothing to cook";
+    }
+    if (this.nearTap()) {
+      const tk = this.engine.oldestPrep("drink");
+      return tk ? "E — pour a round" : "Taps are quiet — nothing to pour";
     }
     const st = this.nearPass();
     if (st) {
@@ -107,6 +161,17 @@ export class Player {
   }
 
   update(dt) {
+    if (this.qte) {
+      const q = this.qte;
+      const stillNear = q.station === "stove" ? this.nearStove() : this.nearTap();
+      if (!stillNear) { this.cancelQte(); }
+      else {
+        q.pos += q.dir * q.speed * dt;
+        if (q.pos >= 1) { q.pos = 1; q.dir = -1; }
+        if (q.pos <= 0) { q.pos = 0; q.dir = 1; }
+        this.qteMarkerEl.style.left = (q.pos * 100) + "%";
+      }
+    }
     this.cam.rotation.order = "YXZ";
     this.cam.rotation.y = this.yaw;
     this.cam.rotation.x = this.pitch;
