@@ -81,5 +81,30 @@ ok(r4 && e4.revenue === MENU.beer.price, "revenue books item price exactly");
 ok(e4.tips >= BOSS_TIP, "tips include boss bonus");
 ok(e4.deliver(t4.id, true) === null, "double delivery rejected");
 
+// --- role prep-speed multipliers (foodMult/drinkMult) ---
+seed(17);
+const eNoCook = new NightEngine({ foodMult: 0, drinkMult: 1 });
+ok(eNoCook.inStock("wings") === false, "foodMult 0 (no cook) takes food off the menu entirely");
+ok(eNoCook.placeTicket(1, "wings") === null, "can't place a ticket for an unstaffed kitchen");
+ok(eNoCook.inStock("beer") === true, "drinks unaffected by foodMult");
+ok(eNoCook.chooseOrder(0) === null || MENU[eNoCook.chooseOrder(0)].kind === "drink",
+  "chooseOrder never offers food with no cook on shift");
+
+const eFast = new NightEngine({ foodMult: 2 });
+const eSlow = new NightEngine({ foodMult: 0.5 });
+seed(1); const tFast = eFast.placeTicket(1, "wings");
+seed(1); const tSlow = eSlow.placeTicket(1, "wings");
+ok((tFast.readyAt - tFast.placedAt) < (tSlow.readyAt - tSlow.placedAt),
+  "higher foodMult means shorter prep time for the same roll");
+
+const eNoBartender = new NightEngine({ drinkMult: 0.55 });
+ok(eNoBartender.inStock("beer") === true, "no bartender still sells drinks (servers cover it)");
+const tSlowDrink = eNoBartender.placeTicket(1, "beer");
+const eFullBar = new NightEngine({ drinkMult: 1 });
+seed(1); const tSlowD2 = eNoBartender.placeTicket(2, "beer");
+seed(1); const tFullD = eFullBar.placeTicket(2, "beer");
+ok((tSlowD2.readyAt - tSlowD2.placedAt) > (tFullD.readyAt - tFullD.placedAt),
+  "servers covering the taps without a bartender pour slower than a staffed bar");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

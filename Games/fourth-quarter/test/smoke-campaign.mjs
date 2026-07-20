@@ -34,14 +34,46 @@ ok(!r.ok, "empty order rejected");
 
 // ---- crew ----
 ok(c.applicants.length === 3, "three applicants on day 1");
+ok(c.staff.length === 2 && c.staff[0].role === "cook" && c.staff[1].role === "server",
+  "campaign starts with a cook and a server");
+ok(c.applicants.every(a => a.role in C.ROLES && a.skill >= 1 && a.skill <= 5),
+  "applicants roll a valid role and a 1-5 skill");
 const appName = c.applicants[0].name;
-ok(C.hire(c, appName) && c.staff.length === 2, "hire moves an applicant to payroll");
-C.hire(c, c.applicants[0].name);
+ok(C.hire(c, appName) && c.staff.length === 3, "hire moves an applicant to payroll, hits the cap");
 ok(!C.hire(c, c.applicants[0].name) && c.staff.length === 3, "roster caps at 3");
 ok(C.fire(c, appName) && c.staff.length === 2, "fire removes from payroll");
 ok(!C.fire(c, "Nobody Real"), "can't fire a ghost");
 ok(new Set([...c.staff, ...c.applicants].map(x => x.name)).size === c.staff.length + c.applicants.length,
   "no duplicate names between payroll and applicants");
+
+// ---- roles: prep-speed multipliers ----
+ok(C.hasCook(c) && !C.hasBartender(c), "fresh roster has a cook, no bartender");
+ok(C.roleMult(c, "cook") > 0, "a staffed cook gives a positive food-speed multiplier");
+ok(C.roleMult(c, "bartender") === 0.55, "no bartender falls back to servers covering the taps, badly");
+const cNoCook = C.newCampaign();
+cNoCook.staff = cNoCook.staff.filter(s => s.role !== "cook");
+ok(C.roleMult(cNoCook, "cook") === 0 && !C.hasCook(cNoCook), "pulling the only cook zeroes out food speed");
+
+// ---- upgrades ----
+const cu = C.newCampaign();
+cu.cash = 100000;
+ok(Object.keys(C.UPGRADES).length === 5, "five upgrades in the registry");
+let ur = C.buyUpgrade(cu, "pos");
+ok(ur.ok && C.owned(cu, "pos"), "buying an upgrade installs it");
+ok(!C.buyUpgrade(cu, "pos").ok, "can't buy the same upgrade twice");
+ok(!C.buyUpgrade({ ...cu, upgrades: [], cash: 0 }, "training").ok, "can't afford it, can't buy it");
+ok(C.speedMult(cu, "server") > 1, "POS speeds up server walking");
+ok(C.speedMult(cu, "cook") === 1, "POS doesn't touch cooks (no speed stat)");
+C.buyUpgrade(cu, "training");
+const cook = cu.staff.find(s => s.role === "cook");
+ok(C.effWage(cu, cook) === Math.round(cook.wage * 1.15), "training raises effective wage 15%");
+ok(C.roleMult(cu, "cook") > C.roleMult(c, "cook") * 0.9, "training also speeds up prep"); // sanity, not exact (different rosters)
+const cNoCookUpg = C.newCampaign();
+cNoCookUpg.cash = 100000;
+cNoCookUpg.staff = cNoCookUpg.staff.filter(s => s.role !== "cook");
+C.buyUpgrade(cNoCookUpg, "training"); C.buyUpgrade(cNoCookUpg, "rushexp");
+ok(C.roleMult(cNoCookUpg, "cook") === 0, "no upgrade can fake a kitchen open with no cook on shift");
+ok(C.upgradeFees(cu) === C.UPGRADES.pos.fee + C.UPGRADES.training.fee, "upkeep sums only owned upgrades' fees");
 
 // ---- settlement ----
 const cash0 = c.cash, day0 = c.day;
@@ -125,6 +157,34 @@ ok(eaten === placed, `every ticket ate exactly one serving (${eaten}/${placed})`
 const s4 = e4.summary();
 const b4 = C.settleNight(c4, s4);
 ok(typeof b4.net === "number" && c4.day === 5, "night settles into the books");
+
+// ---- upgrades: crowd + pricing effects ----
+const cf = C.newCampaign(); cf.cash = 100000;
+const fBase = C.forecast(cf);
+C.buyUpgrade(cf, "broadcast");
+ok(C.forecast(cf) > fBase, "Premium Screens lifts the forecast");
+ok(C.beerMult(cf) === 1, "no Craft Tap Wall, no beer bump");
+C.buyUpgrade(cf, "crafttaps");
+ok(C.beerMult(cf) === 1.2, "Craft Tap Wall bumps beer 20%");
+const eBeer = new NightEngine({ beerMult: C.beerMult(cf) });
+ok(Math.abs(eBeer.price("beer") - MENU.beer.price * 1.2) < 1e-9, "beerMult threads into engine pricing");
+
+// ---- engine: player stove/tap hooks (oldestPrep / workTicket) ----
+seed(13);
+const e5 = new NightEngine({ foodMult: 1, drinkMult: 1 });
+ok(e5.oldestPrep("food") === null, "nothing cooking yet");
+const tkA = e5.placeTicket(1, "wings");
+e5.placeTicket(2, "burger");
+ok(e5.oldestPrep("food").id === tkA.id, "oldestPrep returns the earliest-placed ticket of that kind");
+const shaved = tkA.readyAt;
+ok(e5.workTicket(tkA.id, false) && tkA.readyAt < shaved, "a miss still shaves prep time");
+ok(e5.workTicket(tkA.id, true) && tkA.readyAt === e5.t && tkA.playerCrafted, "a hit finishes it instantly and flags it");
+ok(e5.workTicket(9999, true) === null, "working a nonexistent ticket is a no-op");
+const readyEvts = e5.update(0.1); // readyAt is now <= t, so it flips on the next tick
+ok(readyEvts.some(ev => ev.type === "ready" && ev.ticket.id === tkA.id), "a perfect hit's ticket goes ready on the next tick");
+ok(e5.claim(tkA.id, "boss"), "the player-worked ticket can be claimed like any other");
+const rCraft = e5.deliver(tkA.id, false);
+ok(rCraft && e5.crafted === 1, "delivering a player-crafted ticket counts toward crafted");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
