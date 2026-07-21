@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { flat, glow } from "./materials.js";
 import { seats, DOOR, DOOR_OUT, PASS_FOOD, PASS_DRINK } from "./world.js";
 import { MENU } from "./engine.js";
+import * as audio from "./audio.js";
 
 const ITEM_COLORS = { wings: 0xd97a2b, burger: 0x9c6b3f, nachos: 0xe3c14f, fries: 0xf0d264, beer: 0xe8a33d, soda: 0x5aa7d6 };
 const SHIRTS = [0x5a6b8c, 0x6b8c5a, 0x8c5a6b, 0x7a7a7a, 0x8c7a5a, 0x4f7d7d];
@@ -105,6 +106,7 @@ export class Patron {
     }
     if (!ticket) { this.emptyShelves = true; this.stormOut(); return; }
     this.ticket = ticket;
+    audio.playSfx("orderDing");
     this.bubbleMesh = bubble(itemId);
     this.mesh.add(this.bubbleMesh);
     this.state = "waiting";
@@ -126,6 +128,7 @@ export class Patron {
     this.releaseSeat();
     this.state = "leaving";
     this.engine.walkout(this.id);
+    audio.playSfx("stormOut");
   }
 
   releaseSeat() { if (this.seat) { this.seat.taken = false; this.seat = null; } }
@@ -229,7 +232,7 @@ export class Server {
         m.lookAt(p.pos.x, m.position.y, p.pos.z);
         if (stepToward(m.position, p.pos, this.speed * dt, 0.75)) {
           const res = this.engine.deliver(this.ticket.id, false);
-          if (res) p.receive(this.ticket.itemId);
+          if (res) { p.receive(this.ticket.itemId); audio.playSfx("cashRegister", 0.7); }
           this.dropCarry(); this.ticket = null; this.state = "idle";
         }
         break;

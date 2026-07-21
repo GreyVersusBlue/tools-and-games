@@ -10,6 +10,7 @@ import { Patron, Server, itemMesh, personMesh } from "./patrons.js";
 import { Player } from "./player.js";
 import { DayPhase } from "./day.js";
 import * as C from "./campaign.js";
+import * as audio from "./audio.js";
 
 const $ = s => document.querySelector(s);
 
@@ -64,6 +65,7 @@ function setLighting(night) {
 
 function enterDay() {
   phase = "day";
+  audio.stopLoop("barBed", 1.2);
   setLighting(false);
   day.setVisible(true);
   camera.position.set(0, 1.62, 3.4);
@@ -114,6 +116,7 @@ function beginNight() {
   tick(`Doors open. ${engine.gameNight ? "Mules game tonight — kickoff 7 PM." : "No game — just the regulars and the jukebox."}`, "hl");
   const pd = C.promoDef(campaign);
   if (pd.id !== "none") tick(`Tonight's theme: ${pd.name}.`, "hl");
+  audio.startLoop("barBed", 0.35);
   save();
   renderer.domElement.requestPointerLock(); // still inside the click gesture — no extra click needed
 }
@@ -206,17 +209,22 @@ function handleEvents(evts) {
         patrons.push(p); patronsById.set(p.id, p);
         break;
       }
-      case "kickoff": broadcast.started = true; break;
+      case "ready": audio.playSfx("ticketReady"); break;
+      case "kickoff": broadcast.started = true; audio.playSfx("stingerKickoff"); break;
       case "final": {
         broadcast.finished = true; broadcast.win = e.win;
         settleScore(e.win);
+        audio.playSfx("stingerFinal");
+        // no crowd-cheer asset yet (see audio.js TODO) — a win only gets the
+        // whistle sting; a loss additionally gets the groan
+        if (!e.win) audio.playSfx("crowdGroan");
         if (e.win) for (const p of patrons) if (p.state !== "gone" && p.mulesFan) p.cheer = 2.5;
         break;
       }
       case "impatient": {
         const p = patronsById.get(e.ticket.patronId);
         if (p && p.state === "waiting") {
-          p.stormOut();
+          p.stormOut(); // plays its own sound — see Patron.stormOut()
           tick("A table gave up waiting and walked. That stings.", "b");
         }
         break;
@@ -255,6 +263,7 @@ function showBoxScore() {
   document.exitPointerLock();
 }
 $("#nextDayBtn").addEventListener("click", () => {
+  audio.playSfx("uiClick");
   for (const p of patrons) if (p.state !== "gone") scene.remove(p.mesh);
   for (const sv of servers) { sv.dropCarry(); scene.remove(sv.mesh); }
   for (const m of cookMeshes) scene.remove(m);
@@ -266,6 +275,7 @@ $("#nextDayBtn").addEventListener("click", () => {
 
 // ---- speed buttons ----
 document.querySelectorAll("[data-speed]").forEach(b => b.addEventListener("click", () => {
+  audio.playSfx("uiClick");
   speed = +b.dataset.speed;
   document.querySelectorAll("[data-speed]").forEach(x => x.classList.toggle("on", x === b));
 }));
@@ -275,11 +285,13 @@ $("#startTag").textContent = campaign.stats.nights
   ? `Day ${campaign.day} at The Corner Tap — the books remember.`
   : "Day 1 at The Corner Tap";
 $("#startBtn").addEventListener("click", () => {
+  audio.playSfx("uiClick");
   $("#startOverlay").style.display = "none";
   started = true;
   renderer.domElement.requestPointerLock();
 });
 $("#wipeBtn").addEventListener("click", () => {
+  audio.playSfx("uiClick");
   campaign = C.resetCampaign(localStorage);
   save();
   $("#startTag").textContent = "Day 1 at The Corner Tap";

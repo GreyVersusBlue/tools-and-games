@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { stationRing, ROOM, KITCHEN, DOOR, UPGRADES_STATION } from "./world.js";
 import { MENU } from "./engine.js";
 import * as C from "./campaign.js";
+import * as audio from "./audio.js";
 
 const $ = s => document.querySelector(s);
 
@@ -79,12 +80,17 @@ export class DayPhase {
   }
 
   show(title, html, footer = "") {
+    const wasOpen = this.panelOpen();
     $("#panelTitle").textContent = title;
     $("#panelBody").innerHTML = html;
     $("#panelFoot").innerHTML = footer;
     $("#panelOverlay").style.display = "flex";
+    if (!wasOpen) audio.playSfx("uiOpen"); // re-renders of an already-open panel (e.g. after a hire) don't replay it
   }
-  closePanel() { $("#panelOverlay").style.display = "none"; }
+  closePanel() {
+    $("#panelOverlay").style.display = "none";
+    audio.playSfx("uiClose");
+  }
 
   // ---------------------------------------------------------------- panels
   stockPanel() {
@@ -197,6 +203,7 @@ export class DayPhase {
   panelClick(e) {
     const t = e.target.closest("button, .promoCard");
     if (!t) return;
+    audio.playSfx("uiClick");
     const c = this.getC();
     if (t.dataset.buyupg) {
       const r = C.buyUpgrade(c, t.dataset.buyupg);

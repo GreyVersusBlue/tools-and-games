@@ -8,6 +8,7 @@ import { colliders, inBounds, PASS_FOOD, PASS_DRINK, STOVE_STATION, TAP_STATION 
 import { glow } from "./materials.js";
 import { itemMesh } from "./patrons.js";
 import { MENU } from "./engine.js";
+import * as audio from "./audio.js";
 
 const EYE = 1.62, RADIUS = 0.3, SPEED = 3.1, SPRINT = 4.6;
 
@@ -65,13 +66,18 @@ export class Player {
     this.qteZoneEl.style.left = (this.qte.zoneStart * 100) + "%";
     this.qteZoneEl.style.width = ((this.qte.zoneEnd - this.qte.zoneStart) * 100) + "%";
     this.qteEl.style.display = "flex";
+    audio.startLoop(station === "stove" ? "sizzle" : "pour", 0.55);
   }
-  cancelQte() { this.qte = null; this.qteEl.style.display = "none"; }
+  cancelQte() {
+    if (this.qte) audio.stopLoop(this.qte.station === "stove" ? "sizzle" : "pour", 0.3);
+    this.qte = null; this.qteEl.style.display = "none";
+  }
   scoreQte() {
     const q = this.qte;
     const hit = q.pos >= q.zoneStart && q.pos <= q.zoneEnd;
     const tk = this.engine.workTicket(q.ticketId, hit);
-    this.cancelQte();
+    this.cancelQte(); // stops the sizzle/pour loop before the hit/miss stinger
+    audio.playSfx(hit ? "qteHit" : "qteMiss");
     if (!tk) return { msg: "Someone else already got to it." };
     return hit
       ? { msg: `${q.station === "stove" ? "Perfect sear!" : "Clean pour!"} Order's flying.`, good: true }
@@ -122,6 +128,7 @@ export class Player {
     const res = this.engine.deliver(this.ticket.id, true);
     if (res) {
       p.receive(this.ticket.itemId);
+      audio.playSfx("cashRegister");
       this.clearCarry();
       return { msg: `Boss service! ${res.item.name} lands — $${res.item.price} + $${res.tip.toFixed(2)} tip.`, good: true };
     }
