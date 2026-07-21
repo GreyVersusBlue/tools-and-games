@@ -9,6 +9,7 @@ import { buildWorld, drawBroadcast, PASS_FOOD_SHELF, PASS_DRINK_SHELF, seats, KI
 import { Patron, Server, itemMesh, personMesh } from "./patrons.js";
 import { Player } from "./player.js";
 import { DayPhase } from "./day.js";
+import { DevPanel } from "./dev.js";
 import * as C from "./campaign.js";
 import * as audio from "./audio.js";
 
@@ -38,10 +39,10 @@ addEventListener("resize", () => {
 });
 
 // ---- world, campaign, phases ----
-const { tvs, nightRig, dayRig } = buildWorld(scene);
-
 let campaign = C.loadCampaign(localStorage) || C.newCampaign();
 const save = () => C.saveCampaign(campaign, localStorage);
+
+let { group: worldGroup, tvs, nightRig, dayRig } = buildWorld(scene, campaign.venue);
 
 let phase = "day"; // day | night | report
 let engine = null, patrons = [], patronsById = new Map(), servers = [], cookMeshes = [], passDisplays = new Map();
@@ -56,11 +57,35 @@ player.onInteract = () => {
   }
 };
 
-const day = new DayPhase(scene, () => campaign, { save, openDoors: beginNight, flash });
+const day = new DayPhase(scene, () => campaign, { save, openDoors: beginNight, flash, onMove: rebuildVenue, closedNight });
 
 function setLighting(night) {
   nightRig.visible = night; dayRig.visible = !night;
   scene.background.copy(night ? NIGHT_BG : DAY_BG);
+}
+
+/** Tear down the current room and build the new venue's — called right after
+ *  a successful moveVenue(). Only ever fires during the day phase (moves
+ *  happen at the Real Estate desk), so there's no active night sim/patrons
+ *  to clean up here. */
+function rebuildVenue() {
+  scene.remove(worldGroup);
+  const built = buildWorld(scene, campaign.venue);
+  worldGroup = built.group; tvs = built.tvs; nightRig = built.nightRig; dayRig = built.dayRig;
+  setLighting(false); // still day phase right after a move
+  day.rebuildStations();
+  camera.position.set(0, 1.62, 3.4);
+}
+
+/** A closed "moving in" night: bills land, no patrons, day counter advances.
+ *  Stays in the day phase throughout — there's no night sim to run. */
+function closedNight() {
+  const books = C.settleDarkNight(campaign);
+  save();
+  const billed = Math.round(books.wages + books.rent + books.upgFees);
+  tick(`Closed for the move. −$${billed} in bills, doors stay shut tonight.`, "b");
+  if (campaign.darkNightsLeft === 0) tick(`Ready to open at ${C.venueDef(campaign).name} tomorrow.`, "hl");
+  updateHUD();
 }
 
 function enterDay() {
@@ -88,7 +113,7 @@ function beginNight() {
     crowdTarget: C.forecast(campaign),
     gameNight: C.isGameNight(campaign),
     hourLenSec: 45,
-    seats: 30,
+    seats: C.venueDef(campaign).seats,
     stock: campaign.stock,        // shared — the night eats the shelves
     promo: C.promoDef(campaign).id,
     foodMult: C.roleMult(campaign, "cook"),
@@ -264,14 +289,35 @@ function showBoxScore() {
 }
 $("#nextDayBtn").addEventListener("click", () => {
   audio.playSfx("uiClick");
+  teardownNightMeshes();
+  enterDay();
+});
+
+/** Clear out patron/server/cook meshes and null the night engine — shared by
+ *  the normal Tomorrow's Ledger flow and a dev-menu reset triggered mid-night. */
+function teardownNightMeshes() {
   for (const p of patrons) if (p.state !== "gone") scene.remove(p.mesh);
   for (const sv of servers) { sv.dropCarry(); scene.remove(sv.mesh); }
   for (const m of cookMeshes) scene.remove(m);
   for (const m of passDisplays.values()) scene.remove(m);
   patrons = []; servers = []; cookMeshes = []; passDisplays = new Map();
   engine = null; player.engine = null;
+}
+
+/** Full wipe — shared by the start-screen wipe button and the dev menu's
+ *  reset. Always rebuilds the room too, since progress could be reset from
+ *  any venue tier, not just the Corner Tap. */
+function resetProgress() {
+  teardownNightMeshes();
+  campaign = C.resetCampaign(localStorage);
+  save();
+  rebuildVenue();
+  $("#startTag").textContent = "Day 1 at The Corner Tap";
   enterDay();
-});
+  flash("Fresh books. Day 1.", true);
+}
+
+const dev = new DevPanel(() => campaign, { save, flash, rebuild: rebuildVenue, resetProgress });
 
 // ---- speed buttons ----
 document.querySelectorAll("[data-speed]").forEach(b => b.addEventListener("click", () => {
@@ -292,11 +338,7 @@ $("#startBtn").addEventListener("click", () => {
 });
 $("#wipeBtn").addEventListener("click", () => {
   audio.playSfx("uiClick");
-  campaign = C.resetCampaign(localStorage);
-  save();
-  $("#startTag").textContent = "Day 1 at The Corner Tap";
-  flash("Fresh books. Day 1.", true);
-  enterDay();
+  resetProgress();
 });
 
 // ---- loop ----
@@ -317,7 +359,7 @@ renderer.setAnimationLoop(() => {
     } else if (phase === "day") {
       day.update(dt);
     }
-    if (!day.panelOpen()) player.update(dt);
+    if (!day.panelOpen() && !dev.isOpen()) player.update(dt);
     hudT += dt;
     if (hudT > 0.12) { hudT = 0; updateHUD(); updateBroadcast(0.12 * (phase === "night" ? speed : 1)); }
   }

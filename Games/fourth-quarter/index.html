@@ -34,7 +34,7 @@
   <div id="qteLabel"></div>
   <div id="qteTrack"><div id="qteZone"></div><div id="qteMarker"></div></div>
 </div>
-<div id="controls-hint">WASD move · mouse look · Shift hustle · E interact · Esc closes panels</div>
+<div id="controls-hint">WASD move · mouse look · Shift hustle · E interact · Esc closes panels · ` dev menu</div>
 
 <!-- management panel (day stations) -->
 <div id="panelOverlay" class="overlay" style="display:none">
@@ -42,6 +42,14 @@
     <div class="panelHd"><h1 id="panelTitle"></h1><button id="panelClose" title="Close">✕</button></div>
     <div id="panelBody"></div>
     <div id="panelFoot"></div>
+  </div>
+</div>
+
+<!-- dev / debug menu — press ` (backquote) to toggle from any phase -->
+<div id="devOverlay" class="overlay" style="display:none">
+  <div class="card panel">
+    <div class="panelHd"><h1>Dev Menu</h1><button id="devClose" title="Close">✕</button></div>
+    <div id="devBody"></div>
   </div>
 </div>
 

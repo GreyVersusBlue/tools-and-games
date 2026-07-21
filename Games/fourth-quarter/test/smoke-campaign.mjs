@@ -32,6 +32,45 @@ ok(!r.ok && c.stock.beer === beer0 + 10, "can't order past the till");
 r = C.placeOrder(c, {});
 ok(!r.ok, "empty order rejected");
 
+// ---- venue ladder ----
+ok(c.venue === "cornerTap" && c.darkNightsLeft === 0, "fresh campaign starts at the Corner Tap");
+ok(!C.canMoveVenue(c), "can't afford the Fieldhouse on day-1 cash");
+const fBefore = C.forecast(c);
+c.cash = 5500;
+let mv = C.moveVenue(c);
+ok(mv.ok && c.venue === "fieldhouse" && c.cash === 0, "move to Fieldhouse charges the full cost");
+ok(c.darkNightsLeft === 1, "Fieldhouse move sets a 1-night dark countdown");
+ok(C.forecast(c) > fBefore, "Fieldhouse's buzz multiplier lifts the forecast over the Corner Tap");
+mv = C.moveVenue(c);
+ok(!mv.ok, "can't afford Midtown right after paying for the Fieldhouse");
+c.cash = 900;
+const dn = C.settleDarkNight(c, Math.random);
+ok(dn.net < 0 && c.cash < 900 && c.darkNightsLeft === 0, "dark night charges bills with zero revenue and counts down");
+ok(dn.rent === C.RENT, "dark night still bills full rent");
+c.cash = 999999;
+mv = C.moveVenue(c); mv = C.moveVenue(c);
+ok(c.venue === "flagship", "moving twice more reaches the flagship");
+mv = C.moveVenue(c);
+ok(!mv.ok && c.venue === "flagship", "no further move exists past the flagship");
+ok(C.nextVenue(c) === null, "nextVenue is null once you're at the top of the ladder");
+
+// ---- dev/debug helpers ----
+const cashBefore = c.cash;
+C.devAddCash(c, 250.5);
+ok(c.cash === Math.round((cashBefore + 250.5) * 100) / 100, "devAddCash adds and rounds");
+C.devSetDay(c, 42);
+ok(c.day === 42, "devSetDay sets an absolute day");
+C.devSetDay(c, -5);
+ok(c.day === 1, "devSetDay clamps below day 1");
+ok(C.devWarpVenue(c, "fieldhouse") && c.venue === "fieldhouse" && c.darkNightsLeft === 0,
+  "devWarpVenue jumps for free with no dark nights, even downward from flagship");
+ok(!C.devWarpVenue(c, "not-a-venue"), "devWarpVenue rejects a bogus id");
+c.darkNightsLeft = 2;
+C.devClearDarkNights(c);
+ok(c.darkNightsLeft === 0, "devClearDarkNights zeroes the countdown");
+C.devFillStock(c, 500);
+ok(Object.values(c.stock).every(v => v === 500), "devFillStock tops off every item");
+
 // ---- crew ----
 ok(c.applicants.length === 3, "three applicants on day 1");
 ok(c.staff.length === 2 && c.staff[0].role === "cook" && c.staff[1].role === "server",

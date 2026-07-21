@@ -24,6 +24,65 @@ export const PROMOS = {
                desc: "$50 in giveaways. Big draw on a game night — dead money on any other." },
 };
 
+// ---------- venue ladder (one-way moves; the 3D room itself lives in world.js) ----------
+// Each tier: seats feeds NightEngine's cap, buzzMult lifts forecast(), darkNights
+// is how many closed nights (rent/wages/upkeep still due, no revenue) it takes
+// to move in before the doors can reopen.
+export const VENUES = {
+  cornerTap:  { id: "cornerTap",  name: "The Corner Tap",     order: 0, cost: 0,     seats: 30, buzzMult: 1.00, darkNights: 0,
+                desc: "Where you started. Six tables, six stools, one stove, one tap." },
+  fieldhouse: { id: "fieldhouse", name: "The Fieldhouse",     order: 1, cost: 5500,  seats: 44, buzzMult: 1.15, darkNights: 1,
+                desc: "Room to breathe — a second stove keeps the kitchen from choking on a rush." },
+  midtown:    { id: "midtown",    name: "Midtown Draft Hall", order: 2, cost: 15000, seats: 60, buzzMult: 1.30, darkNights: 1,
+                desc: "A real draft wall — three taps instead of one changes the whole rhythm of the bar." },
+  flagship:   { id: "flagship",   name: "The Fourth Quarter", order: 3, cost: 34000, seats: 80, buzzMult: 1.50, darkNights: 2,
+                desc: "The flagship. Three stoves, a four-tap draft wall, and a room that finally looks the part." },
+};
+export const VENUE_ORDER = ["cornerTap", "fieldhouse", "midtown", "flagship"];
+
+export function venueDef(c) { return VENUES[c.venue] ?? VENUES.cornerTap; }
+export function nextVenue(c) {
+  const i = VENUE_ORDER.indexOf(c.venue);
+  return (i >= 0 && i < VENUE_ORDER.length - 1) ? VENUES[VENUE_ORDER[i + 1]] : null;
+}
+export function canMoveVenue(c) {
+  const nv = nextVenue(c);
+  return !!nv && c.cash >= nv.cost;
+}
+/** Sign the lease: one-way, cash-gated, kicks off the dark-night countdown. */
+export function moveVenue(c) {
+  const nv = nextVenue(c);
+  if (!nv) return { ok: false, err: "Already at the flagship — nowhere left to climb." };
+  if (c.cash < nv.cost) return { ok: false, err: "Can't cover the move." };
+  c.cash -= nv.cost;
+  c.venue = nv.id;
+  c.darkNightsLeft = nv.darkNights;
+  return { ok: true, venue: nv };
+}
+/** A closed "moving in" night: bills still land, no revenue, no patrons. */
+export function settleDarkNight(c, rand = Math.random) {
+  const wages = wageBill(c);
+  const upgFees = upgradeFees(c);
+  const net = -(wages + RENT + upgFees);
+  c.cash = Math.round((c.cash - wages - RENT - upgFees) * 100) / 100;
+  c.day++;
+  c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
+  rollApplicants(c, rand);
+  return { wages, rent: RENT, upgFees, net };
+}
+
+// ---------- dev/debug helpers — a debug menu only, never part of normal play ----------
+export function devAddCash(c, amount) { c.cash = Math.round((c.cash + amount) * 100) / 100; }
+export function devSetDay(c, day) { c.day = Math.max(1, Math.round(day)); }
+/** Instant, free, no dark nights — for testing a tier without grinding to it. */
+export function devWarpVenue(c, venueId) {
+  if (!(venueId in VENUES)) return false;
+  c.venue = venueId; c.darkNightsLeft = 0;
+  return true;
+}
+export function devClearDarkNights(c) { c.darkNightsLeft = 0; }
+export function devFillStock(c, amount = 500) { for (const id in c.stock) c.stock[id] = amount; }
+
 // ---------- upgrades (both-edged: every one helps AND costs upkeep) ----------
 // No venue ladder yet in the 3D port, so nothing's tier-gated — all five are
 // buyable from day one. Effects thread through campaign.js math (speedMult,
@@ -114,6 +173,7 @@ export function hasBartender(c) { return c.staff.some(s => s.role === "bartender
 export function newCampaign() {
   const c = {
     day: 1, cash: 900,
+    venue: "cornerTap", darkNightsLeft: 0,
     stock: { wings: 24, burger: 16, nachos: 14, fries: 30, beer: 90, soda: 40 }, // servings
     staff: [mkStaff("cook", 2, 70, "Marge Kowalski"), mkStaff("server", 2, 60, "Tino Vega")],
     applicants: [],
@@ -137,7 +197,7 @@ export function forecast(c) {
   const base = BASE_CROWD[weekday(c)];
   const game = isGameNight(c) ? 1.5 : 1;
   const upgMult = owned(c, "broadcast") ? 1.15 : 1;
-  return Math.round(base * game * promoDef(c).crowd * upgMult);
+  return Math.round(base * game * promoDef(c).crowd * upgMult * venueDef(c).buzzMult);
 }
 
 export function rollApplicants(c, rand = Math.random) {
@@ -217,6 +277,8 @@ export function loadCampaign(storage) {
     if (!c.applicants) c.applicants = [];
     if (!c.upgrades) c.upgrades = [];
     if (!c.stats) c.stats = { nights: 0, bestNight: 0, lifetimeNet: 0 };
+    if (!(c.venue in VENUES)) c.venue = "cornerTap";
+    if (typeof c.darkNightsLeft !== "number") c.darkNightsLeft = 0;
     if (!(c.promoTonight in PROMOS)) c.promoTonight = "none";
     for (const s of c.staff) if (!s.role) { s.role = "server"; if (!s.skill) s.skill = 2; }
     for (const a of c.applicants) if (!a.role) { a.role = "server"; if (!a.skill) a.skill = 2; }
