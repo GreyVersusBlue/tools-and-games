@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Adventure Log — greyversusblue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400&family=Oswald:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#120a07;
+    --void-deep:#080403;
+    --parchment:#ecdcb4;
+    --parchment-panel:#f2e6c4;
+    --parchment-dark:#d8c290;
+    --parchment-line:#b89a5e;
+    --ink:#241a10;
+    --ink-soft:#5c4a30;
+    --oxblood:#7c1421;
+    --oxblood-deep:#3c0a10;
+    --gold:#b8862f;
+    --gold-bright:#eec872;
+    --ember:#e2703a;
+    --brass:#8a6423;
+    --sage:#57662f;
+    --slate:#33505f;
+    --dustrose:#a04b45;
+  }
+  *{box-sizing:border-box;}
+  html{ scroll-behavior:smooth; }
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 0%, rgba(226,112,58,.14), transparent 60%),
+      radial-gradient(ellipse 80% 60% at 50% 100%, rgba(124,20,33,.12), transparent 65%),
+      var(--void);
+    color:var(--ink);
+    font-family:'Crimson Pro', serif;
+    font-size:18px;
+    line-height:1.6;
+    overflow-x:hidden;
+  }
+  a{ color:var(--oxblood); }
+
+  .embers{ position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+  .ember{
+    position:absolute; bottom:-5%; width:3px; height:3px; border-radius:50%;
+    background:var(--ember); box-shadow:0 0 6px 2px rgba(226,112,58,.6);
+    animation:drift linear infinite; opacity:0;
+  }
+  @keyframes drift{
+    0%{ transform:translateY(0) translateX(0); opacity:0; }
+    8%{ opacity:.85; }
+    100%{ transform:translateY(-110vh) translateX(var(--drift-x, 30px)); opacity:0; }
+  }
+
+  .tome{
+    position:relative; z-index:1; max-width:960px; margin:3rem auto;
+    background:var(--parchment);
+    box-shadow:0 30px 60px -15px rgba(0,0,0,.65), 0 0 0 1px var(--void-deep);
+    border:10px solid var(--brass);
+    border-image: linear-gradient(135deg, var(--gold-bright), var(--brass) 30%, #5e441b 60%, var(--gold-bright)) 1;
+  }
+  .corner{ position:absolute; width:26px; height:26px; border:3px solid var(--gold-bright); z-index:2; opacity:.9; }
+  .corner.tl{ top:-10px; left:-10px; border-right:none; border-bottom:none; }
+  .corner.tr{ top:-10px; right:-10px; border-left:none; border-bottom:none; }
+  .corner.bl{ bottom:-10px; left:-10px; border-right:none; border-top:none; }
+  .corner.br{ bottom:-10px; right:-10px; border-left:none; border-top:none; }
+
+  header.masthead{
+    background:
+      radial-gradient(ellipse 70% 120% at 50% -20%, rgba(226,112,58,.35), transparent 60%),
+      linear-gradient(180deg, var(--oxblood-deep), var(--oxblood) 55%, var(--oxblood-deep));
+    color:var(--parchment); padding:3rem 1.5rem 3rem; text-align:center; position:relative; overflow:hidden;
+  }
+  header.masthead::before{
+    content:""; position:absolute; inset:0;
+    background:repeating-linear-gradient(115deg, rgba(255,255,255,.025) 0 2px, transparent 2px 5px);
+    pointer-events:none;
+  }
+  .site-tag{
+    font-family:'Oswald',sans-serif; letter-spacing:.3em; text-transform:uppercase;
+    font-size:.7rem; opacity:.7; margin-bottom:1rem; position:relative;
+  }
+  .site-tag a{ color:var(--parchment); text-decoration:none; border-bottom:1px solid rgba(234,224,200,.4); }
+
+  h1.title{
+    font-family:'Cinzel',serif; font-weight:900; font-size:clamp(2.4rem, 6vw, 4rem);
+    margin:.2rem 0 .7rem; letter-spacing:.04em; position:relative; display:inline-block;
+    background:linear-gradient(100deg, var(--gold-bright) 0%, #fff6dd 12%, var(--gold-bright) 24%, var(--parchment) 45%);
+    background-size:250% 100%;
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 3px 0 rgba(0,0,0,.5));
+    animation:foilsweep 2.4s ease-out 1;
+  }
+  @keyframes foilsweep{ 0%{ background-position:100% 0; } 100%{ background-position:0% 0; } }
+
+  .flourish{ width:220px; max-width:60%; height:auto; margin:0 auto 1rem; opacity:.85; }
+  .flourish path, .flourish line{ stroke:var(--gold-bright); }
+
+  .subtitle{ font-style:italic; font-size:1.08rem; color:var(--parchment-dark); max-width:36rem; margin:0 auto; position:relative; }
+
+  nav.tabs{ display:flex; justify-content:center; background:var(--oxblood-deep); }
+  nav.tabs button{
+    flex:1; max-width:280px;
+    font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:.14em; font-size:.82rem;
+    padding:1rem 1rem .9rem; background:transparent; border:none; border-top:3px solid transparent;
+    color:rgba(236,220,180,.55); cursor:pointer; transition:color .2s, border-color .2s, background .2s;
+  }
+  nav.tabs button.active{ color:var(--gold-bright); background:rgba(184,134,47,.1); border-top-color:var(--gold-bright); }
+  nav.tabs button:not(.active):hover{ color:var(--parchment); }
+
+  main{ position:relative; padding:2.8rem 2rem 4rem; }
+  section.panel{ display:none; }
+  section.panel.active{ display:block; animation:fadein .4s ease; }
+  @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  .section-lede{ text-align:center; color:var(--ink-soft); max-width:38rem; margin:0 auto 2.6rem; font-style:italic; }
+
+  .campaign{
+    display:grid; grid-template-columns:20px 1fr;
+    background:linear-gradient(160deg, var(--parchment-panel), var(--parchment-dark));
+    border:1px solid var(--parchment-line);
+    box-shadow:0 10px 24px -8px rgba(36,26,16,.35), inset 0 0 0 1px rgba(255,255,255,.15);
+    margin-bottom:2.2rem; position:relative; isolation:isolate;
+  }
+  .campaign .spine{
+    background:
+      repeating-linear-gradient(180deg, rgba(255,255,255,.18) 0 2px, transparent 2px 9px),
+      var(--spine-color, var(--oxblood));
+  }
+  .stud{
+    position:absolute; width:9px; height:9px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--gold-bright), var(--brass) 70%);
+    box-shadow:0 1px 2px rgba(0,0,0,.5);
+  }
+  .stud.s1{ top:10px; left:32px; } .stud.s2{ top:10px; right:10px; }
+  .stud.s3{ bottom:10px; left:32px; } .stud.s4{ bottom:10px; right:10px; }
+
+  .body{ padding:1.8rem 2rem 2rem; }
+  .campaign.coming-soon{ filter:saturate(.7); }
+
+  .campaign-head{
+    display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:.6rem 1rem;
+    border-bottom:2px solid var(--parchment-line); padding-bottom:.7rem; margin-bottom:1rem;
+  }
+  .campaign-title{
+    font-family:'Cinzel',serif; font-weight:700; font-size:1.6rem; color:var(--oxblood-deep); margin:0;
+    text-shadow:0 1px 0 rgba(255,255,255,.4);
+  }
+  .ribbon{
+    font-family:'Oswald',sans-serif; font-size:.68rem; letter-spacing:.14em; text-transform:uppercase;
+    padding:.32rem .7rem; color:#fff; background:var(--dustrose);
+    box-shadow:0 2px 6px rgba(0,0,0,.3); white-space:nowrap;
+  }
+  .ribbon.sequel{ background:var(--slate); }
+
+  .pill-row{ display:flex; flex-wrap:wrap; gap:.45rem; margin-bottom:1.1rem; }
+  .pill{
+    font-family:'Oswald',sans-serif; font-size:.68rem; letter-spacing:.09em; text-transform:uppercase;
+    padding:.28rem .6rem; border:1px solid var(--ink-soft); color:var(--ink-soft);
+    background:rgba(255,255,255,.4);
+  }
+  .pill.status-completed{ border-color:var(--sage); color:var(--sage); }
+  .pill.status-soon{ border-color:var(--dustrose); color:var(--dustrose); }
+
+  .blurb{ margin:0 0 1.2rem; }
+
+  .roster{
+    background:rgba(124,20,33,.06); border-left:3px solid var(--gold);
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.06); padding:.8rem 1.1rem;
+  }
+  .roster h4{
+    font-family:'Oswald',sans-serif; font-size:.7rem; letter-spacing:.15em; text-transform:uppercase;
+    color:var(--oxblood); margin:0 0 .45rem;
+  }
+  .roster ul{ margin:0; padding-left:1.2rem; }
+  .roster li{ margin-bottom:.2rem; }
+  .roster a{ text-decoration:none; border-bottom:1px dotted var(--oxblood); }
+
+  .scenario{
+    position:relative; padding:1.2rem 1.4rem 1.2rem 3rem;
+    background:linear-gradient(160deg, var(--parchment-panel), var(--parchment-dark));
+    border:1px solid var(--parchment-line);
+    box-shadow:0 8px 18px -8px rgba(36,26,16,.3);
+    margin-bottom:1.2rem;
+  }
+  .seal{
+    position:absolute; left:-2px; top:50%; transform:translateY(-50%);
+    width:44px; height:44px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--dustrose), var(--oxblood-deep) 75%);
+    border:2px solid var(--gold-bright); box-shadow:0 3px 6px rgba(0,0,0,.4);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Cinzel',serif; color:var(--gold-bright); font-size:.85rem; font-weight:700;
+  }
+  .scenario-title{ font-family:'Cinzel',serif; font-weight:700; font-size:1.2rem; color:var(--slate); margin:0 0 .2rem; }
+  .scenario-meta{
+    font-family:'Oswald',sans-serif; font-size:.7rem; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--ink-soft); margin-bottom:.4rem;
+  }
+  .scenario-note{ margin:0; color:var(--ink-soft); }
+  .scenario-note a{ text-decoration:none; border-bottom:1px dotted var(--slate); color:var(--slate); }
+
+  footer{
+    text-align:center; padding:2rem 1rem 2.4rem;
+    font-family:'Oswald',sans-serif; font-size:.75rem; letter-spacing:.08em;
+    color:var(--parchment-dark); background:var(--oxblood-deep);
+  }
+  footer a{ color:var(--gold-bright); text-decoration:none; }
+
+  @media (prefers-reduced-motion:no-preference){
+    .campaign, .scenario{ transition:transform .18s ease, box-shadow .18s ease; }
+    .campaign:hover, .scenario:hover{ transform:translateY(-3px); box-shadow:0 14px 26px -10px rgba(36,26,16,.45); }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .ember{ display:none; }
+    h1.title{ animation:none; background-position:0 0; }
+  }
+  @media (max-width:600px){
+    .tome{ margin:0; border-width:6px; }
+    main{ padding:2rem 1.1rem 3rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="embers" id="embers"></div>
+
+<div class="tome">
+  <span class="corner tl"></span><span class="corner tr"></span>
+  <span class="corner bl"></span><span class="corner br"></span>
+
+  <header class="masthead">
+    <div class="site-tag"><a href="index.html">greyversusblue.com</a> — TTRPG CV</div>
+    <h1 class="title">The Adventure Log</h1>
+    <svg class="flourish" viewBox="0 0 220 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <line x1="0" y1="12" x2="85" y2="12" stroke-width="1.5"/>
+      <path d="M95 12 L110 3 L125 12 L110 21 Z" stroke-width="1.5"/>
+      <line x1="135" y1="12" x2="220" y2="12" stroke-width="1.5"/>
+    </svg>
+    <p class="subtitle">Campaigns run from behind the screen, and scenarios played from the other side of the table.</p>
+  </header>
+
+  <nav class="tabs">
+    <button class="active" data-panel="gm">As Game Master</button>
+    <button data-panel="player">As Player</button>
+  </nav>
+
+  <main>
+    <section class="panel active" id="gm">
+      <p class="section-lede">Full campaigns run start to finish (or in progress) as GM, roughly in the order they hit the table.</p>
+
+      <article class="campaign" style="--spine-color:var(--oxblood)">
+        <div class="spine"></div>
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="body">
+          <div class="campaign-head">
+            <h3 class="campaign-title">Rise of the Runelords</h3>
+          </div>
+          <div class="pill-row">
+            <span class="pill">Pathfinder 2e Remaster</span>
+            <span class="pill">Levels 1–20</span>
+            <span class="pill status-completed">Completed</span>
+          </div>
+          <p class="blurb">A goblin raid on the sleepy coastal town of Sandpoint unravels into the return of Karzoug, Runelord of Greed — and a reckoning seven thousand years in the making.</p>
+          <div class="roster">
+            <h4>Party Roster</h4>
+            <ul>
+              <li><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a> — Iruxi Investigator</li>
+              <li>Rendak Stonejaw — Dwarf Fighter <span style="opacity:.6">(filler)</span></li>
+              <li>Sable Voss — Elf Witch <span style="opacity:.6">(filler)</span></li>
+              <li>Perrin Loxley — Halfling Ranger <span style="opacity:.6">(filler)</span></li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <article class="campaign" style="--spine-color:var(--slate)">
+        <div class="spine"></div>
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="body">
+          <div class="campaign-head">
+            <h3 class="campaign-title">Shattered Star</h3>
+          </div>
+          <div class="pill-row">
+            <span class="pill">Pathfinder 2e Remaster</span>
+            <span class="pill">Levels 1–20</span>
+            <span class="pill status-completed">Completed</span>
+          </div>
+          <p class="blurb">Four shards of an ancient artifact, four rival factions racing to claim them, and a Horn of Change that could remake the Inner Sea itself.</p>
+          <div class="roster">
+            <h4>Party Roster</h4>
+            <ul>
+              <li>Orsin Vale — Human Magus <span style="opacity:.6">(filler)</span></li>
+              <li>Tessek Ombrikar — Kobold Alchemist <span style="opacity:.6">(filler)</span></li>
+              <li>Vela Marchetti — Half-Elf Bard <span style="opacity:.6">(filler)</span></li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <article class="campaign coming-soon" style="--spine-color:var(--dustrose)">
+        <div class="spine"></div>
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="body">
+          <div class="campaign-head">
+            <h3 class="campaign-title">Return of the Runelords</h3>
+            <span class="ribbon sequel">Sequel · Coming Soon</span>
+          </div>
+          <div class="pill-row">
+            <span class="pill">Pathfinder 2e Remaster</span>
+            <span class="pill status-soon">Coming Soon</span>
+          </div>
+          <p class="blurb">Direct sequel to Rise of the Runelords. Details under wraps until session zero.</p>
+        </div>
+      </article>
+
+      <article class="campaign coming-soon" style="--spine-color:var(--sage)">
+        <div class="spine"></div>
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="body">
+          <div class="campaign-head">
+            <h3 class="campaign-title">Seven Dooms for Sandpoint</h3>
+            <span class="ribbon">Coming Soon</span>
+          </div>
+          <div class="pill-row">
+            <span class="pill">Pathfinder 2e Remaster</span>
+            <span class="pill status-soon">Coming Soon</span>
+          </div>
+          <p class="blurb">Sandpoint's luck runs out again. Details under wraps until session zero.</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel" id="player">
+      <p class="section-lede">One-shots and side scenarios played as a player, not run.</p>
+
+      <div class="scenario">
+        <div class="seal">L</div>
+        <div class="scenario-title">The Lost Vault of Tanglebriar</div>
+        <div class="scenario-meta">One-shot · PF2e</div>
+        <p class="scenario-note">Played as <a href="characters.html#atruivian-monk">the Atruivian Monk</a> — filler entry, replace with real scenario notes.</p>
+      </div>
+
+      <div class="scenario">
+        <div class="seal">C</div>
+        <div class="scenario-title">Cradle of Ash</div>
+        <div class="scenario-meta">Side Scenario · PF2e</div>
+        <p class="scenario-note">Played as <a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a> — filler entry, replace with real scenario notes.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a href="characters.html">→ Character Showcase</a> &nbsp;·&nbsp; <a href="index.html">← Back to greyversusblue.com</a>
+  </footer>
+</div>
+
+<script>
+  const buttons = document.querySelectorAll('nav.tabs button');
+  const panels = document.querySelectorAll('section.panel');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.panel).classList.add('active');
+    });
+  });
+
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const field = document.getElementById('embers');
+    const COUNT = 16;
+    for (let i = 0; i < COUNT; i++) {
+      const e = document.createElement('div');
+      e.className = 'ember';
+      e.style.left = (Math.random() * 100) + 'vw';
+      e.style.setProperty('--drift-x', (Math.random() * 80 - 40) + 'px');
+      e.style.animationDuration = (7 + Math.random() * 8) + 's';
+      e.style.animationDelay = (Math.random() * 10) + 's';
+      field.appendChild(e);
+    }
+  }
+</script>
+
+</body>
+</html>

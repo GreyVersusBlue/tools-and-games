@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Character Muster — greyversusblue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400&family=Oswald:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#120a07;
+    --void-deep:#080403;
+    --parchment:#ecdcb4;
+    --parchment-panel:#f2e6c4;
+    --parchment-dark:#d8c290;
+    --parchment-line:#b89a5e;
+    --ink:#241a10;
+    --ink-soft:#5c4a30;
+    --oxblood:#7c1421;
+    --oxblood-deep:#3c0a10;
+    --gold:#b8862f;
+    --gold-bright:#eec872;
+    --ember:#e2703a;
+    --brass:#8a6423;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 0%, rgba(226,112,58,.14), transparent 60%),
+      radial-gradient(ellipse 80% 60% at 50% 100%, rgba(124,20,33,.12), transparent 65%),
+      var(--void);
+    color:var(--ink);
+    font-family:'Crimson Pro', serif;
+    font-size:18px;
+    line-height:1.6;
+    overflow-x:hidden;
+  }
+  a{ color:var(--oxblood); }
+
+  .embers{ position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+  .ember{
+    position:absolute; bottom:-5%; width:3px; height:3px; border-radius:50%;
+    background:var(--ember); box-shadow:0 0 6px 2px rgba(226,112,58,.6);
+    animation:drift linear infinite; opacity:0;
+  }
+  @keyframes drift{
+    0%{ transform:translateY(0) translateX(0); opacity:0; }
+    8%{ opacity:.85; }
+    100%{ transform:translateY(-110vh) translateX(var(--drift-x, 30px)); opacity:0; }
+  }
+
+  .tome{
+    position:relative; z-index:1; max-width:1040px; margin:3rem auto;
+    background:var(--parchment);
+    box-shadow:0 30px 60px -15px rgba(0,0,0,.65), 0 0 0 1px var(--void-deep);
+    border:10px solid var(--brass);
+    border-image: linear-gradient(135deg, var(--gold-bright), var(--brass) 30%, #5e441b 60%, var(--gold-bright)) 1;
+  }
+  .corner{ position:absolute; width:26px; height:26px; border:3px solid var(--gold-bright); z-index:2; opacity:.9; }
+  .corner.tl{ top:-10px; left:-10px; border-right:none; border-bottom:none; }
+  .corner.tr{ top:-10px; right:-10px; border-left:none; border-bottom:none; }
+  .corner.bl{ bottom:-10px; left:-10px; border-right:none; border-top:none; }
+  .corner.br{ bottom:-10px; right:-10px; border-left:none; border-top:none; }
+
+  header.masthead{
+    background:
+      radial-gradient(ellipse 70% 120% at 50% -20%, rgba(226,112,58,.35), transparent 60%),
+      linear-gradient(180deg, var(--oxblood-deep), var(--oxblood) 55%, var(--oxblood-deep));
+    color:var(--parchment); padding:3rem 1.5rem 3rem; text-align:center; position:relative; overflow:hidden;
+  }
+  header.masthead::before{
+    content:""; position:absolute; inset:0;
+    background:repeating-linear-gradient(115deg, rgba(255,255,255,.025) 0 2px, transparent 2px 5px);
+    pointer-events:none;
+  }
+  .site-tag{
+    font-family:'Oswald',sans-serif; letter-spacing:.3em; text-transform:uppercase;
+    font-size:.7rem; opacity:.7; margin-bottom:1rem; position:relative;
+  }
+  .site-tag a{ color:var(--parchment); text-decoration:none; border-bottom:1px solid rgba(234,224,200,.4); }
+
+  h1.title{
+    font-family:'Cinzel',serif; font-weight:900; font-size:clamp(2.4rem, 6vw, 4rem);
+    margin:.2rem 0 .7rem; letter-spacing:.04em; position:relative; display:inline-block;
+    background:linear-gradient(100deg, var(--gold-bright) 0%, #fff6dd 12%, var(--gold-bright) 24%, var(--parchment) 45%);
+    background-size:250% 100%;
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 3px 0 rgba(0,0,0,.5));
+    animation:foilsweep 2.4s ease-out 1;
+  }
+  @keyframes foilsweep{ 0%{ background-position:100% 0; } 100%{ background-position:0% 0; } }
+
+  .flourish{ width:220px; max-width:60%; height:auto; margin:0 auto 1rem; opacity:.85; }
+  .flourish path, .flourish line{ stroke:var(--gold-bright); }
+
+  .subtitle{ font-style:italic; font-size:1.08rem; color:var(--parchment-dark); max-width:36rem; margin:0 auto; position:relative; }
+
+  main{ position:relative; padding:2.8rem 2rem 4rem; }
+
+  .muster{ display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:2.2rem; }
+
+  .dossier{
+    background:linear-gradient(160deg, var(--parchment-panel), var(--parchment-dark));
+    border:1px solid var(--parchment-line);
+    box-shadow:0 10px 24px -8px rgba(36,26,16,.35), inset 0 0 0 1px rgba(255,255,255,.15);
+    scroll-margin-top:2rem;
+    position:relative;
+  }
+  .stud{
+    position:absolute; width:9px; height:9px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--gold-bright), var(--brass) 70%);
+    box-shadow:0 1px 2px rgba(0,0,0,.5); z-index:3;
+  }
+  .stud.s1{ top:8px; left:8px; } .stud.s2{ top:8px; right:8px; }
+  .stud.s3{ bottom:8px; left:8px; } .stud.s4{ bottom:8px; right:8px; }
+
+  .dossier-banner{
+    background:
+      radial-gradient(ellipse 90% 140% at 50% -30%, rgba(226,112,58,.3), transparent 60%),
+      linear-gradient(180deg, var(--oxblood), var(--oxblood-deep));
+    color:var(--parchment); padding:1.3rem 1.5rem 1.15rem; position:relative;
+  }
+  .dossier-banner::after{ content:""; position:absolute; left:0; right:0; bottom:-4px; height:4px; background:var(--gold-bright); }
+
+  .medallion{
+    width:56px; height:56px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--oxblood-deep), #1c0508 75%);
+    border:2px solid var(--gold-bright);
+    box-shadow:0 3px 8px rgba(0,0,0,.5), inset 0 0 8px rgba(0,0,0,.6);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Cinzel',serif; font-weight:700; font-size:1.35rem; color:var(--gold-bright);
+    float:right; margin-left:1rem;
+  }
+  .dossier-name{ font-family:'Cinzel',serif; font-weight:700; font-size:1.6rem; margin:0 0 .15rem; }
+  .dossier-class{
+    font-family:'Oswald',sans-serif; font-size:.78rem; letter-spacing:.11em; text-transform:uppercase;
+    color:var(--parchment-dark);
+  }
+
+  .dossier-body{ padding:1.5rem 1.5rem 1.6rem; }
+
+  .pill-row{ display:flex; flex-wrap:wrap; gap:.45rem; margin-bottom:1.1rem; }
+  .pill{
+    font-family:'Oswald',sans-serif; font-size:.66rem; letter-spacing:.09em; text-transform:uppercase;
+    padding:.26rem .55rem; border:1px solid var(--ink-soft); color:var(--ink-soft); background:rgba(255,255,255,.4);
+  }
+
+  .campaign-tags{ font-size:.85rem; color:var(--ink-soft); margin-bottom:1.1rem; }
+  .campaign-tags a{ text-decoration:none; border-bottom:1px dotted var(--oxblood); }
+
+  .feature-box{
+    background:rgba(124,20,33,.07);
+    border:1px solid var(--parchment-line); border-left:4px solid var(--gold);
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.06);
+    padding:.85rem 1.05rem; margin-top:1.1rem;
+  }
+  .feature-box h4{
+    font-family:'Oswald',sans-serif; font-size:.7rem; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--oxblood); margin:0 0 .4rem;
+  }
+  .feature-box p{ margin:0; font-style:italic; }
+
+  .placeholder-flag{
+    display:inline-block; margin-top:1rem; font-family:'Oswald',sans-serif; font-size:.65rem;
+    letter-spacing:.08em; text-transform:uppercase; color:#9c8a6e;
+  }
+
+  footer{
+    text-align:center; padding:2rem 1rem 2.4rem;
+    font-family:'Oswald',sans-serif; font-size:.75rem; letter-spacing:.08em;
+    color:var(--parchment-dark); background:var(--oxblood-deep);
+  }
+  footer a{ color:var(--gold-bright); text-decoration:none; }
+
+  @media (prefers-reduced-motion:no-preference){
+    .dossier{ transition:transform .18s ease, box-shadow .18s ease; }
+    .dossier:hover{ transform:translateY(-3px); box-shadow:0 14px 26px -10px rgba(36,26,16,.45); }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .ember{ display:none; }
+    h1.title{ animation:none; background-position:0 0; }
+  }
+  @media (max-width:600px){
+    .tome{ margin:0; border-width:6px; }
+    main{ padding:2rem 1.1rem 3rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="embers" id="embers"></div>
+
+<div class="tome">
+  <span class="corner tl"></span><span class="corner tr"></span>
+  <span class="corner bl"></span><span class="corner br"></span>
+
+  <header class="masthead">
+    <div class="site-tag"><a href="index.html">greyversusblue.com</a> — TTRPG CV</div>
+    <h1 class="title">Character Muster</h1>
+    <svg class="flourish" viewBox="0 0 220 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <line x1="0" y1="12" x2="85" y2="12" stroke-width="1.5"/>
+      <path d="M95 12 L110 3 L125 12 L110 21 Z" stroke-width="1.5"/>
+      <line x1="135" y1="12" x2="220" y2="12" stroke-width="1.5"/>
+    </svg>
+    <p class="subtitle">Every PC who's sat at the table — pulled from campaigns run and scenarios played.</p>
+  </header>
+
+  <main>
+    <div class="muster">
+
+      <article class="dossier" id="kaeta-jadeharbor">
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="dossier-banner">
+          <div class="medallion">KJ</div>
+          <h3 class="dossier-name">Kaeta Jadeharbor</h3>
+          <div class="dossier-class">Iruxi Investigator</div>
+        </div>
+        <div class="dossier-body">
+          <div class="pill-row">
+            <span class="pill">Empiricism Method</span>
+            <span class="pill">Level 20</span>
+          </div>
+          <div class="campaign-tags">
+            Appeared in: <a href="campaigns.html">Rise of the Runelords</a> (GM'd), <a href="campaigns.html">Cradle of Ash</a> (scenario)
+          </div>
+          <p>A dockside investigator out of a filler placeholder harbor town, pulled into Sandpoint's troubles by a client who never came back for her report. Placeholder backstory — replace with the real hook.</p>
+          <div class="feature-box">
+            <h4>Signature Move</h4>
+            <p>Pursue a Lead — placeholder flavor text describing her signature Investigator trick.</p>
+          </div>
+          <span class="placeholder-flag">Filler entry — replace with real character</span>
+        </div>
+      </article>
+
+      <article class="dossier" id="atruivian-monk">
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="dossier-banner">
+          <div class="medallion">?</div>
+          <h3 class="dossier-name">— Name Pending —</h3>
+          <div class="dossier-class">Atruivian Monk</div>
+        </div>
+        <div class="dossier-body">
+          <div class="pill-row">
+            <span class="pill">Ancestry: Atruivian</span>
+            <span class="pill">Class: Monk</span>
+          </div>
+          <div class="campaign-tags">
+            Appeared in: <a href="campaigns.html">The Lost Vault of Tanglebriar</a> (scenario)
+          </div>
+          <p>Placeholder dossier for the Atruivian monk — drop in the real name, backstory, and stance/style once you've got the details.</p>
+          <div class="feature-box">
+            <h4>Signature Move</h4>
+            <p>Placeholder — swap in a signature stance, style, or feat.</p>
+          </div>
+          <span class="placeholder-flag">Filler entry — replace with real character</span>
+        </div>
+      </article>
+
+    </div>
+  </main>
+
+  <footer>
+    <a href="campaigns.html">← Adventure Log</a> &nbsp;·&nbsp; <a href="index.html">Back to greyversusblue.com</a>
+  </footer>
+</div>
+
+<script>
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const field = document.getElementById('embers');
+    const COUNT = 16;
+    for (let i = 0; i < COUNT; i++) {
+      const e = document.createElement('div');
+      e.className = 'ember';
+      e.style.left = (Math.random() * 100) + 'vw';
+      e.style.setProperty('--drift-x', (Math.random() * 80 - 40) + 'px');
+      e.style.animationDuration = (7 + Math.random() * 8) + 's';
+      e.style.animationDelay = (Math.random() * 10) + 's';
+      field.appendChild(e);
+    }
+  }
+</script>
+
+</body>
+</html>
