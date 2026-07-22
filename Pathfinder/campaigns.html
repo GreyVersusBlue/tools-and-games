@@ -202,6 +202,47 @@
   .scenario-note{ margin:0; color:var(--ink-soft); }
   .scenario-note a{ text-decoration:none; border-bottom:1px dotted var(--slate); color:var(--slate); }
 
+  .org-header{
+    font-family:'Cinzel',serif; font-weight:700; font-size:1rem; color:var(--oxblood-deep);
+    text-transform:uppercase; letter-spacing:.16em; text-align:center; margin:2.6rem 0 1.3rem;
+  }
+  .org-header:first-of-type{ margin-top:.4rem; }
+
+  .view-toggle{ display:flex; justify-content:center; gap:.6rem; margin:0 0 2.2rem; }
+  .view-toggle-btn{
+    font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:.1em; font-size:.72rem;
+    padding:.5rem 1.1rem; background:rgba(124,20,33,.06); border:1px solid var(--parchment-line);
+    color:var(--ink-soft); cursor:pointer; transition:background .2s, color .2s, border-color .2s;
+  }
+  .view-toggle-btn.active{ background:var(--oxblood); color:var(--parchment); border-color:var(--oxblood-deep); }
+  .view-toggle-btn:not(.active):hover{ border-color:var(--oxblood); color:var(--oxblood); }
+  .view-panel{ display:none; }
+  .view-panel.active{ display:block; animation:fadein .3s ease; }
+
+  .scenario-group{
+    background:linear-gradient(160deg, var(--parchment-panel), var(--parchment-dark));
+    border:1px solid var(--parchment-line);
+    box-shadow:0 8px 18px -8px rgba(36,26,16,.3);
+    margin-bottom:1.6rem; padding:1.3rem 1.6rem 1.5rem; scroll-margin-top:2rem;
+  }
+  .scenario-group-head{
+    display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:.4rem 1rem;
+    border-bottom:2px solid var(--parchment-line); padding-bottom:.6rem; margin-bottom:.9rem;
+  }
+  .scenario-group-head h4{ font-family:'Cinzel',serif; font-size:1.25rem; margin:0; color:var(--oxblood-deep); }
+  .scenario-group-head h4 a{ text-decoration:none; color:inherit; border-bottom:1px dotted var(--oxblood); }
+  .log-summary{ font-family:'Oswald',sans-serif; font-size:.68rem; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft); }
+  .log-totals{ font-family:'Oswald',sans-serif; font-size:.66rem; letter-spacing:.04em; color:var(--ink-soft); text-align:right; margin-top:.7rem; }
+
+  table.chronicle{ width:100%; border-collapse:collapse; font-size:.92rem; }
+  table.chronicle th{
+    font-family:'Oswald',sans-serif; font-size:.62rem; letter-spacing:.08em; text-transform:uppercase;
+    text-align:left; color:var(--ink-soft); border-bottom:1px solid var(--parchment-line); padding:.35rem .5rem;
+  }
+  table.chronicle td{ padding:.35rem .5rem; border-bottom:1px solid rgba(184,154,94,.35); vertical-align:top; }
+  table.chronicle tr:last-child td{ border-bottom:none; }
+  table.chronicle td.num{ white-space:nowrap; font-family:'Oswald',sans-serif; font-size:.85rem; }
+
   footer{
     text-align:center; padding:2rem 1rem 2.4rem;
     font-family:'Oswald',sans-serif; font-size:.75rem; letter-spacing:.08em;
@@ -267,7 +308,7 @@
           <div class="roster">
             <h4>Party Roster</h4>
             <ul>
-              <li><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a> — Iruxi Investigator</li>
+              <li><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></li>
               <li>Rendak Stonejaw — Dwarf Fighter <span style="opacity:.6">(filler)</span></li>
               <li>Sable Voss — Elf Witch <span style="opacity:.6">(filler)</span></li>
               <li>Perrin Loxley — Halfling Ranger <span style="opacity:.6">(filler)</span></li>
@@ -336,18 +377,231 @@
     <section class="panel" id="player">
       <p class="section-lede">One-shots and side scenarios played as a player, not run.</p>
 
-      <div class="scenario">
-        <div class="seal">L</div>
-        <div class="scenario-title">The Lost Vault of Tanglebriar</div>
-        <div class="scenario-meta">One-shot · PF2e</div>
-        <p class="scenario-note">Played as <a href="characters.html#atruivian-monk">the Atruivian Monk</a> — filler entry, replace with real scenario notes.</p>
+      <div class="view-toggle">
+        <button class="view-toggle-btn active" data-view="by-character">By Character</button>
+        <button class="view-toggle-btn" data-view="chronological">Chronological</button>
       </div>
 
-      <div class="scenario">
+      <div class="view-panel active" id="view-by-character">
+
+      <h3 class="org-header">Pathfinder Society</h3>
+
+      <div class="scenario-group" id="kaeta-jadeharbor-log">
+        <div class="scenario-group-head">
+          <h4><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></h4>
+          <span class="log-summary">19 scenarios · 76 XP</span>
+        </div>
+        <table class="chronicle">
+          <thead><tr><th>Scenario</th><th>XP</th><th>Gold</th><th>Reputation</th></tr></thead>
+          <tbody>
+            <tr><td>7-07: Draconic Folly</td><td class="num">4</td><td class="num">220 gp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>7-03: A Foot in the Door</td><td class="num">4</td><td class="num">150 gp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>6-18: Symposium of a Fallen God</td><td class="num">4</td><td class="num">150 gp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>6-16: The Heart of the City</td><td class="num">4</td><td class="num">150 gp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>6-15: Lost and Forgotten</td><td class="num">4</td><td class="num">100 gp</td><td>Envoys' Alliance +4, Grand Archive +2</td></tr>
+            <tr><td>5-16: A Lie Told to Strangers</td><td class="num">4</td><td class="num">64 gp</td><td>Envoys' Alliance +4, Vigilant Seal +2</td></tr>
+            <tr><td>6-13: All That Glitters</td><td class="num">4</td><td class="num">64 gp</td><td>Envoys' Alliance +6, Grand Archive +2</td></tr>
+            <tr><td>4-13: Within the Prairies</td><td class="num">4</td><td class="num">66 gp 4 sp</td><td>Envoys' Alliance +6, Verdant Wheel +2</td></tr>
+            <tr><td>6-05: Silver Bark, Golden Blades</td><td class="num">4</td><td class="num">39 gp 6 sp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>6-04: An Enkindled Carnival</td><td class="num">4</td><td class="num">39 gp 6 sp</td><td>Envoys' Alliance +4, Vigilant Seal +2, Verdant Wheel +2</td></tr>
+            <tr><td>5-12: Mischief in the Maze</td><td class="num">4</td><td class="num">22 gp 4 sp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>5-14: Poisonous Council</td><td class="num">4</td><td class="num">80 gp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>2-21: In Pursuit of Water</td><td class="num">4</td><td class="num">22 gp 4 sp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>1-07: Flooded King's Court</td><td class="num">4</td><td class="num">22 gp 4 sp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>3-13: Guardian's Covenant</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>2-16: Freedom for Wishes</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>5-10: The Crocodile's Smile</td><td class="num">4</td><td class="num">39 gp 6 sp</td><td>Envoys' Alliance +4</td></tr>
+            <tr><td>5-08: Protecting the Firelight</td><td class="num">4</td><td class="num">80 gp</td><td>Envoys' Alliance +2</td></tr>
+            <tr><td>5-07: Sewer Dragon Crisis</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Envoys' Alliance +4, Radiant Oath +2</td></tr>
+          </tbody>
+        </table>
+        <div class="log-totals">Totals: 1,353 gp 6 sp · Envoys' Alliance +78 · Grand Archive +4 · Vigilant Seal +4 · Verdant Wheel +4 · Radiant Oath +2</div>
+      </div>
+
+      <div class="scenario-group" id="ryn-log">
+        <div class="scenario-group-head">
+          <h4><a href="characters.html#ryn">Ryn</a></h4>
+          <span class="log-summary">7 scenarios · 28 XP</span>
+        </div>
+        <table class="chronicle">
+          <thead><tr><th>Scenario</th><th>XP</th><th>Gold</th><th>Reputation</th></tr></thead>
+          <tbody>
+            <tr><td>7-18: Freedom on the Sea</td><td class="num">4</td><td class="num">38 gp</td><td>Grand Archive +4</td></tr>
+            <tr><td>7-09: The Chitterwood Walks, Pt. 2 — The Battle of Logas</td><td class="num">4</td><td class="num">22 gp</td><td>Grand Archive +4</td></tr>
+            <tr><td>7-09: The Chitterwood Walks, Pt. 1 — Scrambling the Tribes</td><td class="num">4</td><td class="num">22 gp</td><td>Grand Archive +4, Verdant Wheel +2, Envoys' Alliance +2</td></tr>
+            <tr><td>7-01: Enough is Enough</td><td class="num">4</td><td class="num">22 gp</td><td>Grand Archive +4</td></tr>
+            <tr><td>6-00: Salt of the Ocean</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Grand Archive +4</td></tr>
+            <tr><td>6-01: Year of Immortal Influence</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Grand Archive +4</td></tr>
+            <tr><td>5-13: Thick as Thieves</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Grand Archive +4</td></tr>
+          </tbody>
+        </table>
+        <div class="log-totals">Totals: 147 gp 2 sp · Grand Archive +28 · Verdant Wheel +2 · Envoys' Alliance +2</div>
+      </div>
+
+      <div class="scenario-group" id="timun-dunvol-log">
+        <div class="scenario-group-head">
+          <h4><a href="characters.html#timun-dunvol">Timun Dunvol</a></h4>
+          <span class="log-summary">5 scenarios (1 holding) · 16 XP</span>
+        </div>
+        <table class="chronicle">
+          <thead><tr><th>Scenario</th><th>XP</th><th>Gold</th><th>Reputation</th></tr></thead>
+          <tbody>
+            <tr><td>Special 4-99: Blessings of the Forest</td><td class="num">4</td><td class="num">22 gp 4 sp</td><td>Grand Archive +4</td></tr>
+            <tr><td>2-23: An Agent's Obligation <span style="opacity:.6">(holding for Level 3)</span></td><td class="num">0</td><td class="num">—</td><td>—</td></tr>
+            <tr><td>5-05: Island of the Vibrant Dead</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Grand Archive +4, Vigilant Seal +2</td></tr>
+            <tr><td>5-04: Necessary Introductions</td><td class="num">4</td><td class="num">15 gp 6 sp</td><td>Grand Archive +4</td></tr>
+            <tr><td>Beginner Box: Upper Dungeon <span style="opacity:.6">(double ACP)</span></td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Grand Archive +4</td></tr>
+          </tbody>
+        </table>
+        <div class="log-totals">Totals: 66 gp 8 sp · Grand Archive +16 · Vigilant Seal +2</div>
+      </div>
+
+      <div class="scenario" id="checkers-log">
         <div class="seal">C</div>
-        <div class="scenario-title">Cradle of Ash</div>
-        <div class="scenario-meta">Side Scenario · PF2e</div>
-        <p class="scenario-note">Played as <a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a> — filler entry, replace with real scenario notes.</p>
+        <div class="scenario-title">The Great Toy Heist</div>
+        <div class="scenario-meta">PFS Scenario</div>
+        <p class="scenario-note">Played as <a href="characters.html#checkers">Checkers</a>.</p>
+      </div>
+
+      <div class="scenario" id="pharasmas-echoing-toll-log">
+        <div class="seal">S</div>
+        <div class="scenario-title">7-20: The Strings of Hell</div>
+        <div class="scenario-meta">PFS Scenario · 4 XP · 14 gp · Grand Archive +4</div>
+        <p class="scenario-note">Played as <a href="characters.html#pharasmas-echoing-toll">Pharasma's Echoing Toll</a>.</p>
+      </div>
+
+      <h3 class="org-header">Starfinder Society</h3>
+
+      <div class="scenario-group" id="pip-log">
+        <div class="scenario-group-head">
+          <h4><a href="characters.html#pip">Pip</a></h4>
+          <span class="log-summary">5 scenarios · 20 XP</span>
+        </div>
+        <table class="chronicle">
+          <thead><tr><th>Scenario</th><th>XP</th><th>Credits</th></tr></thead>
+          <tbody>
+            <tr><td>1-04: The Great Absalom Relay</td><td class="num">4</td><td class="num">220 cr</td></tr>
+            <tr><td>1-05: Sloughscar Summit</td><td class="num">4</td><td class="num">220 cr</td></tr>
+            <tr><td>1-03: Disaster at Dreamlink Labs</td><td class="num">4</td><td class="num">140 cr</td></tr>
+            <tr><td>1-02: Mystery of the Frozen Moon</td><td class="num">4</td><td class="num">140 cr</td></tr>
+            <tr><td>1-01: Intro</td><td class="num">4</td><td class="num">140 cr</td></tr>
+          </tbody>
+        </table>
+        <div class="log-totals">Totals: 860 credits</div>
+      </div>
+
+      <div class="scenario-group" id="sannu-log">
+        <div class="scenario-group-head">
+          <h4><a href="characters.html#sannu">Sannu</a></h4>
+          <span class="log-summary">3 scenarios · 12 XP</span>
+        </div>
+        <table class="chronicle">
+          <thead><tr><th>Scenario</th><th>XP</th><th>Credits</th></tr></thead>
+          <tbody>
+            <tr><td>1-14: The Beasts of Bo, Part One</td><td class="num">4</td><td class="num">140 cr</td></tr>
+            <tr><td>1-10: Rites of Rekindling</td><td class="num">4</td><td class="num">140 cr</td></tr>
+            <tr><td>1-08: Compliance Protocol</td><td class="num">4</td><td class="num">140 cr</td></tr>
+          </tbody>
+        </table>
+        <div class="log-totals">Totals: 420 credits</div>
+      </div>
+
+      <div class="scenario-group" id="ten-click-log">
+        <div class="scenario-group-head">
+          <h4><a href="characters.html#ten-click">Ten-Click</a></h4>
+          <span class="log-summary">2 scenarios · 8 XP</span>
+        </div>
+        <table class="chronicle">
+          <thead><tr><th>Scenario</th><th>XP</th><th>Credits</th></tr></thead>
+          <tbody>
+            <tr><td>1-20: Magic Unleashed</td><td class="num">4</td><td class="num">380 cr</td></tr>
+            <tr><td>1-17: Corpse Fleet Conflict</td><td class="num">4</td><td class="num">380 cr</td></tr>
+          </tbody>
+        </table>
+        <div class="log-totals">Totals: 760 credits</div>
+      </div>
+
+      <div class="scenario" id="gus-sterling-log">
+        <div class="seal">G</div>
+        <div class="scenario-title">1-26: Final Gambit Part 2</div>
+        <div class="scenario-meta">SFS Scenario</div>
+        <p class="scenario-note">Played as <a href="characters.html#gus-sterling">Gus Sterling</a>.</p>
+      </div>
+
+      </div>
+
+      <div class="view-panel" id="view-chronological">
+
+        <h3 class="org-header">Pathfinder Society</h3>
+        <div class="scenario-group">
+          <div class="scenario-group-head">
+            <h4>Chronicle Order</h4>
+            <span class="log-summary">33 scenarios · 124 XP tallied</span>
+          </div>
+          <table class="chronicle">
+            <thead><tr><th>Character</th><th>Scenario</th><th>XP</th><th>Reward</th><th>Reputation</th></tr></thead>
+            <tbody>
+              <tr><td><a href="characters.html#timun-dunvol">Timun Dunvol</a></td><td>Beginner Box: Upper Dungeon <span style="opacity:.6">(double ACP)</span></td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Grand Archive +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>1-07: Flooded King's Court</td><td class="num">4</td><td class="num">22 gp 4 sp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>2-16: Freedom for Wishes</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>2-21: In Pursuit of Water</td><td class="num">4</td><td class="num">22 gp 4 sp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#timun-dunvol">Timun Dunvol</a></td><td>2-23: An Agent's Obligation <span style="opacity:.6">(holding)</span></td><td class="num">0</td><td class="num">—</td><td>—</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>3-13: Guardian's Covenant</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>4-13: Within the Prairies</td><td class="num">4</td><td class="num">66 gp 4 sp</td><td>Envoys' Alliance +6, Verdant Wheel +2</td></tr>
+              <tr><td><a href="characters.html#timun-dunvol">Timun Dunvol</a></td><td>Special 4-99: Blessings of the Forest</td><td class="num">4</td><td class="num">22 gp 4 sp</td><td>Grand Archive +4</td></tr>
+              <tr><td><a href="characters.html#timun-dunvol">Timun Dunvol</a></td><td>5-04: Necessary Introductions</td><td class="num">4</td><td class="num">15 gp 6 sp</td><td>Grand Archive +4</td></tr>
+              <tr><td><a href="characters.html#timun-dunvol">Timun Dunvol</a></td><td>5-05: Island of the Vibrant Dead</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Grand Archive +4, Vigilant Seal +2</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>5-07: Sewer Dragon Crisis</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Envoys' Alliance +4, Radiant Oath +2</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>5-08: Protecting the Firelight</td><td class="num">4</td><td class="num">80 gp</td><td>Envoys' Alliance +2</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>5-10: The Crocodile's Smile</td><td class="num">4</td><td class="num">39 gp 6 sp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>5-12: Mischief in the Maze</td><td class="num">4</td><td class="num">22 gp 4 sp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#ryn">Ryn</a></td><td>5-13: Thick as Thieves</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Grand Archive +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>5-14: Poisonous Council</td><td class="num">4</td><td class="num">80 gp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>5-16: A Lie Told to Strangers</td><td class="num">4</td><td class="num">64 gp</td><td>Envoys' Alliance +4, Vigilant Seal +2</td></tr>
+              <tr><td><a href="characters.html#ryn">Ryn</a></td><td>6-00: Salt of the Ocean</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Grand Archive +4</td></tr>
+              <tr><td><a href="characters.html#ryn">Ryn</a></td><td>6-01: Year of Immortal Influence</td><td class="num">4</td><td class="num">14 gp 4 sp</td><td>Grand Archive +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>6-04: An Enkindled Carnival</td><td class="num">4</td><td class="num">39 gp 6 sp</td><td>Envoys' Alliance +4, Vigilant Seal +2, Verdant Wheel +2</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>6-05: Silver Bark, Golden Blades</td><td class="num">4</td><td class="num">39 gp 6 sp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>6-13: All That Glitters</td><td class="num">4</td><td class="num">64 gp</td><td>Envoys' Alliance +6, Grand Archive +2</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>6-15: Lost and Forgotten</td><td class="num">4</td><td class="num">100 gp</td><td>Envoys' Alliance +4, Grand Archive +2</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>6-16: The Heart of the City</td><td class="num">4</td><td class="num">150 gp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>6-18: Symposium of a Fallen God</td><td class="num">4</td><td class="num">150 gp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#ryn">Ryn</a></td><td>7-01: Enough is Enough</td><td class="num">4</td><td class="num">22 gp</td><td>Grand Archive +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>7-03: A Foot in the Door</td><td class="num">4</td><td class="num">150 gp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></td><td>7-07: Draconic Folly</td><td class="num">4</td><td class="num">220 gp</td><td>Envoys' Alliance +4</td></tr>
+              <tr><td><a href="characters.html#ryn">Ryn</a></td><td>7-09: The Chitterwood Walks, Pt. 1 — Scrambling the Tribes</td><td class="num">4</td><td class="num">22 gp</td><td>Grand Archive +4, Verdant Wheel +2, Envoys' Alliance +2</td></tr>
+              <tr><td><a href="characters.html#ryn">Ryn</a></td><td>7-09: The Chitterwood Walks, Pt. 2 — The Battle of Logas</td><td class="num">4</td><td class="num">22 gp</td><td>Grand Archive +4</td></tr>
+              <tr><td><a href="characters.html#ryn">Ryn</a></td><td>7-18: Freedom on the Sea</td><td class="num">4</td><td class="num">38 gp</td><td>Grand Archive +4</td></tr>
+              <tr><td><a href="characters.html#pharasmas-echoing-toll">Pharasma's Echoing Toll</a></td><td>7-20: The Strings of Hell</td><td class="num">4</td><td class="num">14 gp</td><td>Grand Archive +4</td></tr>
+              <tr><td><a href="characters.html#checkers">Checkers</a></td><td>The Great Toy Heist <span style="opacity:.6">(unnumbered)</span></td><td class="num">—</td><td class="num">—</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="org-header">Starfinder Society</h3>
+        <div class="scenario-group">
+          <div class="scenario-group-head">
+            <h4>Chronicle Order</h4>
+            <span class="log-summary">11 scenarios · 40 XP tallied</span>
+          </div>
+          <table class="chronicle">
+            <thead><tr><th>Character</th><th>Scenario</th><th>XP</th><th>Credits</th></tr></thead>
+            <tbody>
+              <tr><td><a href="characters.html#pip">Pip</a></td><td>1-01: Intro</td><td class="num">4</td><td class="num">140 cr</td></tr>
+              <tr><td><a href="characters.html#pip">Pip</a></td><td>1-02: Mystery of the Frozen Moon</td><td class="num">4</td><td class="num">140 cr</td></tr>
+              <tr><td><a href="characters.html#pip">Pip</a></td><td>1-03: Disaster at Dreamlink Labs</td><td class="num">4</td><td class="num">140 cr</td></tr>
+              <tr><td><a href="characters.html#pip">Pip</a></td><td>1-04: The Great Absalom Relay</td><td class="num">4</td><td class="num">220 cr</td></tr>
+              <tr><td><a href="characters.html#pip">Pip</a></td><td>1-05: Sloughscar Summit</td><td class="num">4</td><td class="num">220 cr</td></tr>
+              <tr><td><a href="characters.html#sannu">Sannu</a></td><td>1-08: Compliance Protocol</td><td class="num">4</td><td class="num">140 cr</td></tr>
+              <tr><td><a href="characters.html#sannu">Sannu</a></td><td>1-10: Rites of Rekindling</td><td class="num">4</td><td class="num">140 cr</td></tr>
+              <tr><td><a href="characters.html#sannu">Sannu</a></td><td>1-14: The Beasts of Bo, Part One</td><td class="num">4</td><td class="num">140 cr</td></tr>
+              <tr><td><a href="characters.html#ten-click">Ten-Click</a></td><td>1-17: Corpse Fleet Conflict</td><td class="num">4</td><td class="num">380 cr</td></tr>
+              <tr><td><a href="characters.html#ten-click">Ten-Click</a></td><td>1-20: Magic Unleashed</td><td class="num">4</td><td class="num">380 cr</td></tr>
+              <tr><td><a href="characters.html#gus-sterling">Gus Sterling</a></td><td>1-26: Final Gambit Part 2</td><td class="num">—</td><td class="num">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+
       </div>
     </section>
   </main>
@@ -366,6 +620,17 @@
       panels.forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById(btn.dataset.panel).classList.add('active');
+    });
+  });
+
+  const viewButtons = document.querySelectorAll('.view-toggle-btn');
+  const viewPanels = document.querySelectorAll('.view-panel');
+  viewButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      viewButtons.forEach(b => b.classList.remove('active'));
+      viewPanels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('view-' + btn.dataset.view).classList.add('active');
     });
   });
 

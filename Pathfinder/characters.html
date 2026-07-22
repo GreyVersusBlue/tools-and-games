@@ -167,6 +167,39 @@
     letter-spacing:.08em; text-transform:uppercase; color:#9c8a6e;
   }
 
+  .class-line{
+    font-family:'Oswald',sans-serif; font-size:.74rem; letter-spacing:.05em;
+    color:var(--ink-soft); margin:-.3rem 0 1rem;
+  }
+
+  .ability-grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:.4rem; margin-bottom:.85rem; }
+  .ability{
+    text-align:center; background:rgba(184,134,47,.14); border:1px solid var(--parchment-line);
+    padding:.32rem .2rem;
+  }
+  .ability .stat-label{
+    display:block; font-family:'Oswald',sans-serif; font-size:.6rem; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--ink-soft);
+  }
+  .ability .stat-val{
+    display:block; font-family:'Cinzel',serif; font-weight:700; font-size:.95rem; color:var(--oxblood);
+  }
+
+  .vitals-row{
+    display:flex; flex-wrap:wrap; gap:.4rem 1.1rem; margin-bottom:1rem;
+    font-family:'Oswald',sans-serif; font-size:.72rem; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--ink-soft);
+  }
+  .vitals-row .vital-val{
+    font-family:'Cinzel',serif; font-weight:700; color:var(--oxblood); font-size:1rem;
+    letter-spacing:0; text-transform:none; margin-left:.3rem;
+  }
+
+  .feature-box.signature ul{ margin:0; padding-left:1.05rem; }
+  .feature-box.signature li{ margin-bottom:.3rem; }
+  .feature-box.signature li:last-child{ margin-bottom:0; }
+  .weapon-line{ font-style:normal !important; }
+
   footer{
     text-align:center; padding:2rem 1rem 2.4rem;
     font-family:'Oswald',sans-serif; font-size:.75rem; letter-spacing:.08em;
@@ -215,46 +248,408 @@
         <div class="dossier-banner">
           <div class="medallion">KJ</div>
           <h3 class="dossier-name">Kaeta Jadeharbor</h3>
-          <div class="dossier-class">Iruxi Investigator</div>
+          <div class="dossier-class">Pathfinder Society Character</div>
         </div>
         <div class="dossier-body">
           <div class="pill-row">
-            <span class="pill">Empiricism Method</span>
-            <span class="pill">Level 20</span>
+            <span class="pill">PFS</span>
+          </div>
+          <div class="class-line">Human Aiuvarin (Elf) Monk 7 · Storm Survivor · Irori</div>
+          <div class="ability-grid">
+            <div class="ability"><span class="stat-label">Str</span><span class="stat-val">+3</span></div>
+            <div class="ability"><span class="stat-label">Dex</span><span class="stat-val">+4</span></div>
+            <div class="ability"><span class="stat-label">Con</span><span class="stat-val">+1</span></div>
+            <div class="ability"><span class="stat-label">Int</span><span class="stat-val">+1</span></div>
+            <div class="ability"><span class="stat-label">Wis</span><span class="stat-val">+4</span></div>
+            <div class="ability"><span class="stat-label">Cha</span><span class="stat-val">+0</span></div>
+          </div>
+          <div class="vitals-row">
+            <span>HP<span class="vital-val">85</span></span>
+            <span>AC<span class="vital-val">26</span></span>
+            <span>Perc<span class="vital-val">+17</span></span>
+            <span>Fort<span class="vital-val">+14*</span></span>
           </div>
           <div class="campaign-tags">
-            Appeared in: <a href="campaigns.html">Rise of the Runelords</a> (GM'd), <a href="campaigns.html">Cradle of Ash</a> (scenario)
+            Appeared in: <a href="campaigns.html">Rise of the Runelords</a> (GM'd)
           </div>
-          <p>A dockside investigator out of a filler placeholder harbor town, pulled into Sandpoint's troubles by a client who never came back for her report. Placeholder backstory — replace with the real hook.</p>
+          <div class="feature-box signature">
+            <h4>Signature Moves</h4>
+            <ul>
+              <li>Flurry of Blows into Tiger Stance — striking wounding tiger claws that stack bleed</li>
+              <li>Stunning Blows: a hit from either Flurry strike can stun the target outright</li>
+              <li>Path to Perfection (Fortitude): successes become crit successes</li>
+              <li>+1 returning striking javelin for ranged work, Treat Wounds to patch the party</li>
+            </ul>
+          </div>
           <div class="feature-box">
-            <h4>Signature Move</h4>
-            <p>Pursue a Lead — placeholder flavor text describing her signature Investigator trick.</p>
+            <h4>Pathfinder Society Record</h4>
+            <p>19 scenarios logged · 76 XP · <a href="campaigns.html#kaeta-jadeharbor-log">full chronicle →</a></p>
           </div>
-          <span class="placeholder-flag">Filler entry — replace with real character</span>
+          <span class="placeholder-flag">Backstory pending</span>
         </div>
       </article>
 
-      <article class="dossier" id="atruivian-monk">
+      <article class="dossier" id="checkers">
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="dossier-banner">
-          <div class="medallion">?</div>
-          <h3 class="dossier-name">— Name Pending —</h3>
-          <div class="dossier-class">Atruivian Monk</div>
+          <div class="medallion">CH</div>
+          <h3 class="dossier-name">Checkers</h3>
+          <div class="dossier-class">Pathfinder Society Character</div>
         </div>
         <div class="dossier-body">
           <div class="pill-row">
-            <span class="pill">Ancestry: Atruivian</span>
-            <span class="pill">Class: Monk</span>
+            <span class="pill">PFS</span>
+          </div>
+          <div class="class-line">Poppet (Wishborn) Bard 2 · Entertainer</div>
+          <div class="ability-grid">
+            <div class="ability"><span class="stat-label">Str</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Dex</span><span class="stat-val">-1</span></div>
+            <div class="ability"><span class="stat-label">Con</span><span class="stat-val">+2</span></div>
+            <div class="ability"><span class="stat-label">Int</span><span class="stat-val">+3</span></div>
+            <div class="ability"><span class="stat-label">Wis</span><span class="stat-val">+1</span></div>
+            <div class="ability"><span class="stat-label">Cha</span><span class="stat-val">+4</span></div>
+          </div>
+          <div class="vitals-row">
+            <span>HP<span class="vital-val">26</span></span>
+            <span>AC<span class="vital-val">14</span></span>
+            <span>Perc<span class="vital-val">+7</span></span>
           </div>
           <div class="campaign-tags">
-            Appeared in: <a href="campaigns.html">The Lost Vault of Tanglebriar</a> (scenario)
+            Played in: <a href="campaigns.html#checkers-log">The Great Toy Heist</a>
           </div>
-          <p>Placeholder dossier for the Atruivian monk — drop in the real name, backstory, and stance/style once you've got the details.</p>
+          <div class="feature-box signature">
+            <h4>Signature Moves</h4>
+            <ul>
+              <li>Bon Mot to shut down a foe's Perception and Will saves before the fight even starts</li>
+              <li>Fear, Dizzying Colors, and Biting Words for battlefield control and ranged sonic damage</li>
+              <li>Wishborn Poppet: crit-succeeds on saves vs. emotion and fear effects</li>
+              <li>A small wooden puppet who plays like a much bigger threat</li>
+            </ul>
+          </div>
+          <span class="placeholder-flag">Backstory pending</span>
+        </div>
+      </article>
+
+      <article class="dossier" id="gus-sterling">
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="dossier-banner">
+          <div class="medallion">GS</div>
+          <h3 class="dossier-name">Gus Sterling</h3>
+          <div class="dossier-class">Starfinder Society Character</div>
+        </div>
+        <div class="dossier-body">
+          <div class="pill-row">
+            <span class="pill">SFS</span>
+          </div>
+          <div class="class-line">Human (Skilled Human) Solarian 5 · Electrician · Eloritu</div>
+          <div class="ability-grid">
+            <div class="ability"><span class="stat-label">Str</span><span class="stat-val">+4</span></div>
+            <div class="ability"><span class="stat-label">Dex</span><span class="stat-val">+3</span></div>
+            <div class="ability"><span class="stat-label">Con</span><span class="stat-val">+3</span></div>
+            <div class="ability"><span class="stat-label">Int</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Wis</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Cha</span><span class="stat-val">+3</span></div>
+          </div>
+          <div class="vitals-row">
+            <span>HP<span class="vital-val">78</span></span>
+            <span>AC<span class="vital-val">22</span></span>
+            <span>Perc<span class="vital-val">+9</span></span>
+          </div>
+          <div class="campaign-tags">
+            Played in: <a href="campaigns.html#gus-sterling-log">1-26: Final Gambit Part 2</a>
+          </div>
+          <div class="feature-box signature">
+            <h4>Signature Moves</h4>
+            <ul>
+              <li>Graviton-attuned solar weapon and solar shield, reforged between fights for the right damage type</li>
+              <li>Nimbus Surge punishes anyone who tries to move or shoot near him</li>
+              <li>Plasma Ejection and Stellar Rush for AoE burst and battlefield repositioning</li>
+              <li>Shield Block plus Stellar Resilience make him hard to lock down or knock out</li>
+            </ul>
+          </div>
+          <span class="placeholder-flag">Backstory pending</span>
+        </div>
+      </article>
+
+      <article class="dossier" id="pharasmas-echoing-toll">
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="dossier-banner">
+          <div class="medallion">PT</div>
+          <h3 class="dossier-name">Pharasma's Echoing Toll</h3>
+          <div class="dossier-class">Pathfinder Society Character</div>
+        </div>
+        <div class="dossier-body">
+          <div class="pill-row">
+            <span class="pill">PFS</span>
+          </div>
+          <div class="class-line">Contemplative (Manifested) Psychic 1 · Magical Merchant · Eloritu</div>
+          <div class="ability-grid">
+            <div class="ability"><span class="stat-label">Str</span><span class="stat-val">-1</span></div>
+            <div class="ability"><span class="stat-label">Dex</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Con</span><span class="stat-val">+2</span></div>
+            <div class="ability"><span class="stat-label">Int</span><span class="stat-val">+3</span></div>
+            <div class="ability"><span class="stat-label">Wis</span><span class="stat-val">+2</span></div>
+            <div class="ability"><span class="stat-label">Cha</span><span class="stat-val">+3</span></div>
+          </div>
+          <div class="vitals-row">
+            <span>HP<span class="vital-val">14</span></span>
+            <span>AC<span class="vital-val">13</span></span>
+            <span>Perc<span class="vital-val">+4</span></span>
+            <span>Fly Spd<span class="vital-val">20 ft.</span></span>
+          </div>
+          <div class="campaign-tags">
+            Played in: <a href="campaigns.html#pharasmas-echoing-toll-log">7-20: The Strings of Hell</a>
+          </div>
+          <div class="feature-box signature">
+            <h4>Signature Moves</h4>
+            <ul>
+              <li>Unleash Psyche fuels a burst of amped-up damage right before it exhausts them</li>
+              <li>Kinetic Ram, telekinetic rend, and daze for reliable ranged psychic pressure</li>
+              <li>Restore the Mind and Thoughtsense (vague) keep the party topped off and aware</li>
+              <li>A floating, brain-heavy aberration obsessed with the exact vibration a soul makes at death</li>
+            </ul>
+          </div>
           <div class="feature-box">
-            <h4>Signature Move</h4>
-            <p>Placeholder — swap in a signature stance, style, or feat.</p>
+            <h4>Pathfinder Society Record</h4>
+            <p>1 scenario logged · 4 XP · 14 gp · Grand Archive +4</p>
           </div>
-          <span class="placeholder-flag">Filler entry — replace with real character</span>
+          <div class="feature-box">
+            <h4>Who They Are</h4>
+            <p>Toll's mind is tuned to the exact cosmic vibration a soul makes when it crosses into Pharasma's Boneyard. To them the universe is a vast symphony, and death is just the percussion keeping time — so they drift across Golarion as a detached, curious scholar of fate, studying why souls end up where they do.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="dossier" id="pip">
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="dossier-banner">
+          <div class="medallion">P</div>
+          <h3 class="dossier-name">Pip</h3>
+          <div class="dossier-class">Starfinder Society Character</div>
+        </div>
+        <div class="dossier-body">
+          <div class="pill-row">
+            <span class="pill">SFS</span>
+          </div>
+          <div class="class-line">Skittermander (Everwhelp) Operative 2 · War-Hardened Hero · Meyel</div>
+          <div class="ability-grid">
+            <div class="ability"><span class="stat-label">Str</span><span class="stat-val">+1</span></div>
+            <div class="ability"><span class="stat-label">Dex</span><span class="stat-val">+4</span></div>
+            <div class="ability"><span class="stat-label">Con</span><span class="stat-val">+2</span></div>
+            <div class="ability"><span class="stat-label">Int</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Wis</span><span class="stat-val">-1</span></div>
+            <div class="ability"><span class="stat-label">Cha</span><span class="stat-val">+3</span></div>
+          </div>
+          <div class="vitals-row">
+            <span>HP<span class="vital-val">26</span></span>
+            <span>AC<span class="vital-val">19</span></span>
+            <span>Perc<span class="vital-val">+5</span></span>
+            <span>Reflex<span class="vital-val">+10</span></span>
+          </div>
+          <div class="campaign-tags">
+            Played in: <a href="campaigns.html#pip-log">Starfinder Society chronicle</a>
+          </div>
+          <div class="feature-box signature">
+            <h4>Signature Moves</h4>
+            <ul>
+              <li>Aim + rotating pistol/boom pistol for precision damage that shreds cover</li>
+              <li>Kill Steal lets an ally's near-kill turn into a free follow-up shot from Pip</li>
+              <li>Six arms and Clinging Bite make close-quarters grappling surprisingly easy</li>
+              <li>A six-armed skittermander operative — small, fast, and always aiming at someone</li>
+            </ul>
+          </div>
+          <div class="feature-box">
+            <h4>Starfinder Society Record</h4>
+            <p>5 scenarios logged · 20 XP · 860 credits · <a href="campaigns.html#pip-log">full chronicle →</a></p>
+          </div>
+          <span class="placeholder-flag">Backstory pending</span>
+        </div>
+      </article>
+
+      <article class="dossier" id="ryn">
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="dossier-banner">
+          <div class="medallion">R</div>
+          <h3 class="dossier-name">Ryn</h3>
+          <div class="dossier-class">Pathfinder Society Character</div>
+        </div>
+        <div class="dossier-body">
+          <div class="pill-row">
+            <span class="pill">PFS</span>
+          </div>
+          <div class="class-line">Kobold (Spellhorn) Bard 3 · Barkeep · Shelyn</div>
+          <div class="ability-grid">
+            <div class="ability"><span class="stat-label">Str</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Dex</span><span class="stat-val">+1</span></div>
+            <div class="ability"><span class="stat-label">Con</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Int</span><span class="stat-val">+3</span></div>
+            <div class="ability"><span class="stat-label">Wis</span><span class="stat-val">+1</span></div>
+            <div class="ability"><span class="stat-label">Cha</span><span class="stat-val">+4</span></div>
+          </div>
+          <div class="vitals-row">
+            <span>HP<span class="vital-val">30</span></span>
+            <span>AC<span class="vital-val">18</span></span>
+            <span>Perc<span class="vital-val">+8</span></span>
+            <span>Perform<span class="vital-val">+11</span></span>
+          </div>
+          <div class="campaign-tags">
+            Played in: <a href="campaigns.html#ryn-log">Pathfinder Society chronicle</a>
+          </div>
+          <div class="feature-box signature">
+            <h4>Signature Moves</h4>
+            <ul>
+              <li>Bon Mot opens fights by tanking a foe's Perception and Will saves</li>
+              <li>Vomit swarm, grim tendrils, and revealing light back up the party face's social kit with real damage</li>
+              <li>Cringe punishes anyone who lands a critical hit on this small, spiky bartender</li>
+              <li>A kobold barkeep turned bard, equally comfortable talking a room down or hexing it</li>
+            </ul>
+          </div>
+          <div class="feature-box">
+            <h4>Pathfinder Society Record</h4>
+            <p>7 scenarios logged · 28 XP · 147 gp 2 sp · <a href="campaigns.html#ryn-log">full chronicle →</a></p>
+          </div>
+          <span class="placeholder-flag">Backstory pending</span>
+        </div>
+      </article>
+
+      <article class="dossier" id="timun-dunvol">
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="dossier-banner">
+          <div class="medallion">TD</div>
+          <h3 class="dossier-name">Timun Dunvol</h3>
+          <div class="dossier-class">Pathfinder Society Character</div>
+        </div>
+        <div class="dossier-body">
+          <div class="pill-row">
+            <span class="pill">PFS</span>
+          </div>
+          <div class="class-line">Halfling (Gutsy) Investigator 2 · Printer · Desna</div>
+          <div class="ability-grid">
+            <div class="ability"><span class="stat-label">Str</span><span class="stat-val">-1</span></div>
+            <div class="ability"><span class="stat-label">Dex</span><span class="stat-val">+2</span></div>
+            <div class="ability"><span class="stat-label">Con</span><span class="stat-val">+2</span></div>
+            <div class="ability"><span class="stat-label">Int</span><span class="stat-val">+4</span></div>
+            <div class="ability"><span class="stat-label">Wis</span><span class="stat-val">+1</span></div>
+            <div class="ability"><span class="stat-label">Cha</span><span class="stat-val">+1</span></div>
+          </div>
+          <div class="vitals-row">
+            <span>HP<span class="vital-val">26</span></span>
+            <span>AC<span class="vital-val">18</span></span>
+            <span>Perc<span class="vital-val">+7</span></span>
+            <span>Reflex<span class="vital-val">+8</span></span>
+          </div>
+          <div class="campaign-tags">
+            Played in: <a href="campaigns.html#timun-dunvol-log">Pathfinder Society chronicle</a>
+          </div>
+          <div class="feature-box signature">
+            <h4>Signature Moves</h4>
+            <ul>
+              <li>Devise a Stratagem locks in an attack roll ahead of time, using Int instead of Str/Dex</li>
+              <li>Strategic Strike piles on precision damage whenever that gambit pays off</li>
+              <li>Pursue a Lead keeps a running circumstance bonus across nearly every skill in play</li>
+              <li>Keen Eyes and Halfling Luck round out a halfling built to notice everything and shrug off bad rolls</li>
+            </ul>
+          </div>
+          <div class="feature-box">
+            <h4>Pathfinder Society Record</h4>
+            <p>5 scenarios logged (1 holding for Level 3) · 16 XP · 66 gp 8 sp · <a href="campaigns.html#timun-dunvol-log">full chronicle →</a></p>
+          </div>
+          <span class="placeholder-flag">Backstory pending</span>
+        </div>
+      </article>
+
+      <article class="dossier" id="ten-click">
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="dossier-banner">
+          <div class="medallion">TC</div>
+          <h3 class="dossier-name">Ten-Click</h3>
+          <div class="dossier-class">Starfinder Society Character</div>
+        </div>
+        <div class="dossier-body">
+          <div class="pill-row">
+            <span class="pill">SFS</span>
+          </div>
+          <div class="class-line">Formian (Queen's Court) Envoy 3 · Doctor · Hylax</div>
+          <div class="ability-grid">
+            <div class="ability"><span class="stat-label">Str</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Dex</span><span class="stat-val">+2</span></div>
+            <div class="ability"><span class="stat-label">Con</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Int</span><span class="stat-val">+2</span></div>
+            <div class="ability"><span class="stat-label">Wis</span><span class="stat-val">+2</span></div>
+            <div class="ability"><span class="stat-label">Cha</span><span class="stat-val">+3</span></div>
+          </div>
+          <div class="vitals-row">
+            <span>HP<span class="vital-val">30</span></span>
+            <span>AC<span class="vital-val">19</span></span>
+            <span>Perc<span class="vital-val">+7</span></span>
+            <span>Medicine<span class="vital-val">+9</span></span>
+          </div>
+          <div class="campaign-tags">
+            Played in: <a href="campaigns.html#ten-click-log">Starfinder Society chronicle</a>
+          </div>
+          <div class="feature-box signature">
+            <h4>Signature Moves</h4>
+            <ul>
+              <li>Get 'Em! and Keep On Keeping On! keep the whole party hitting harder and healing better</li>
+              <li>Battle Medicine and Ward Medic turn Ten-Click into a field medic who can patch two people at once</li>
+              <li>Grenade kit (frag, incendiary, electromag) covers whatever damage type a fight calls for</li>
+              <li>A formian doctor who lost their hive to an attack and now searches the stars for a new colony</li>
+            </ul>
+          </div>
+          <div class="feature-box">
+            <h4>Starfinder Society Record</h4>
+            <p>2 scenarios logged · 8 XP · 760 credits · <a href="campaigns.html#ten-click-log">full chronicle →</a></p>
+          </div>
+          <div class="feature-box">
+            <h4>Who They Are</h4>
+            <p>Ten-Click served as medical attendant to their hive's queen until an unknown force attacked the colony, leaving them the sole survivor and unable to save the rest. Now they search the stars for a new colony, trying to make right what they couldn't prevent.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="dossier" id="sannu">
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="dossier-banner">
+          <div class="medallion">S</div>
+          <h3 class="dossier-name">Sannu</h3>
+          <div class="dossier-class">Starfinder Society Character</div>
+        </div>
+        <div class="dossier-body">
+          <div class="pill-row">
+            <span class="pill">SFS</span>
+          </div>
+          <div class="class-line">Pahtra (Meyel's Chosen) Solarian 2 · Trooper · Meyel</div>
+          <div class="ability-grid">
+            <div class="ability"><span class="stat-label">Str</span><span class="stat-val">+4</span></div>
+            <div class="ability"><span class="stat-label">Dex</span><span class="stat-val">+3</span></div>
+            <div class="ability"><span class="stat-label">Con</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Int</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Wis</span><span class="stat-val">+1</span></div>
+            <div class="ability"><span class="stat-label">Cha</span><span class="stat-val">+1</span></div>
+          </div>
+          <div class="vitals-row">
+            <span>HP<span class="vital-val">28</span></span>
+            <span>AC<span class="vital-val">19</span></span>
+            <span>Perc<span class="vital-val">+7</span></span>
+            <span>Athletics<span class="vital-val">+8</span></span>
+          </div>
+          <div class="campaign-tags">
+            Played in: <a href="campaigns.html#sannu-log">Starfinder Society chronicle</a>
+          </div>
+          <div class="feature-box signature">
+            <h4>Signature Moves</h4>
+            <ul>
+              <li>Photon-attuned solar weapon and solar flare, reforged on the fly to fit the fight</li>
+              <li>Shattering Impact sacrifices the weapon for one massive, size-upgraded hit</li>
+              <li>Stellar Rush closes distance fast and can blind or reposition anyone caught in the burst</li>
+              <li>A feline pahtra trooper with natural jaws as a backup weapon and Meyel's own luck backing every crit fail save</li>
+            </ul>
+          </div>
+          <div class="feature-box">
+            <h4>Starfinder Society Record</h4>
+            <p>3 scenarios logged · 12 XP · 420 credits · <a href="campaigns.html#sannu-log">full chronicle →</a></p>
+          </div>
+          <span class="placeholder-flag">Backstory pending</span>
         </div>
       </article>
 
