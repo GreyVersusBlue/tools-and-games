@@ -1,48 +1,52 @@
 import { gameState } from '../engine/state.js';
 import { runDaySimulation } from '../engine/simulation.js';
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Tab Navigation
-  const tabs = document.querySelectorAll('.tab-btn');
-  const views = document.querySelectorAll('.view');
+// 1. Tab Navigation
+const tabs = document.querySelectorAll('.tab-btn');
+const views = document.querySelectorAll('.view');
 
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
-      views.forEach(v => v.classList.remove('active'));
-      
-      tab.classList.add('active');
-      document.getElementById(`view-${tab.dataset.tab}`).classList.add('active');
-    });
+tabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    tabs.forEach(t => t.classList.remove('active'));
+    views.forEach(v => v.classList.remove('active'));
+    
+    tab.classList.add('active');
+    document.getElementById(`view-${tab.dataset.tab}`).classList.add('active');
   });
+});
 
-  // Render Map Grid
-  const mapGrid = document.getElementById('map-grid');
+// 2. Render Map Grid
+const mapGrid = document.getElementById('map-grid');
+if (mapGrid && gameState.map && gameState.map.tiles) {
   gameState.map.tiles.forEach(tile => {
     const el = document.createElement('div');
     el.className = `tile ${tile.type}`;
     el.textContent = tile.slotType ? `[${tile.slotType}]` : tile.type;
     mapGrid.appendChild(el);
   });
+}
 
-  // Update Top Bar UI
-  function updateUI() {
-    document.getElementById('ui-day').textContent = gameState.day;
-    document.getElementById('ui-gold').textContent = Math.round(gameState.gold);
-    document.getElementById('ui-rep').textContent = gameState.reputation;
-  }
+// 3. Update Top Bar UI
+function updateUI() {
+  document.getElementById('ui-day').textContent = gameState.day;
+  document.getElementById('ui-gold').textContent = Math.round(gameState.gold);
+  document.getElementById('ui-rep').textContent = gameState.reputation;
+}
 
-  // Handle Ticket Price Input
-  const ticketInput = document.getElementById('ticket-price');
+// 4. Handle Ticket Price Input
+const ticketInput = document.getElementById('ticket-price');
+if (ticketInput) {
   ticketInput.value = gameState.ticketPrice;
   ticketInput.addEventListener('change', (e) => {
     gameState.ticketPrice = parseFloat(e.target.value) || 0;
   });
+}
 
-  // Run Day Button
-  const runBtn = document.getElementById('btn-run-day');
-  const reportBox = document.getElementById('day-report');
+// 5. Run Day Button
+const runBtn = document.getElementById('btn-run-day');
+const reportBox = document.getElementById('day-report');
 
+if (runBtn) {
   runBtn.addEventListener('click', () => {
     const result = runDaySimulation();
     updateUI();
@@ -58,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <p><strong>Net Profit:</strong> $${result.netProfit.toFixed(2)}</p>
     `;
   });
+}
 
-  updateUI();
-});
+// Initial UI Refresh
+updateUI();
