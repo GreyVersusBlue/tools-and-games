@@ -325,6 +325,28 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(goldenSatSum / N > morningSatSum / N, 'scheduling a night_owl performer into Golden Hour yields better average satisfaction than scheduling the same act into Morning Procession');
 }
 
+// --- simulateDay: two prima donnas sharing a block sulk without throwing,
+//     and the log names the actual block label (regression test — this
+//     previously read a nonexistent `block.block.label`, since the
+//     for-of destructuring already unwraps `block` to the TIME_BLOCKS
+//     entry itself) ---
+{
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'stage', 3, 0).state;
+  s = State.buildPlot(s, 'stage', 7, 3).state;
+  s = State.contractPerformer(s, 'perf_jouster_2').state; // prima_donna, popularity 9
+  s = State.contractPerformer(s, 'perf_magician_1').state; // prima_donna, popularity 7
+  s = State.assignSchedule(s, 'midday', '3_0', 'perf_jouster_2').state;
+  s = State.assignSchedule(s, 'midday', '7_3', 'perf_magician_1').state;
+
+  let result;
+  let threw = false;
+  try { result = simulateDay(s, 42); } catch (e) { threw = true; console.error(e); }
+  assert(!threw, 'simulateDay does not throw when two prima donnas share a time block on different stages');
+  assert(result.log.some(line => /sulked through Midday/.test(line)), 'the sulking log line names the actual block label, not "undefined" or "[object Object]"');
+  assert(result.log.some(line => line.includes('Master Aldric of the Hollow') && line.includes('Dame Ysolde Ironback')), 'the sulking log line names both the sulking performer and the rival they lost the bill to');
+}
+
 // --- state actions: buildPlot cash/error handling & free placement (Stage 3) ---
 {
   let s = State.createInitialState();

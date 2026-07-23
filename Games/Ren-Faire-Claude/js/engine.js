@@ -287,7 +287,7 @@ export function simulateDay(state, seed) {
       if (e.perf.quirk === 'prima_donna') {
         const rival = withPerf.find(o => o !== e && o.perf.popularity >= e.perf.popularity);
         if (rival) {
-          log.push(`${e.perf.name} sulked through ${block.block.label} sharing the bill with ${rival.perf.name}.`);
+          log.push(`${e.perf.name} sulked through ${block.label} sharing the bill with ${rival.perf.name}.`);
           e._sulking = true;
         }
       }

@@ -28,7 +28,7 @@ npm install
 npm test
 ```
 
-342 checks: pure engine/state logic (RNG determinism, terrain/grid data
+345 checks: pure engine/state logic (RNG determinism, terrain/grid data
 integrity, buildable-structure catalog integrity, terrain-driven cost/
 capacity quoting, stage-adjacency effects on sightline/traffic, scheduling
 conflicts, day-simulation invariants, attendance responding sensibly to
@@ -46,6 +46,8 @@ rollover cycle, a 50-day fuzz run with no throws/NaNs), plus a DOM boot
 check covering tab-switching, the full build-placement flow (confirmed to
 never offer a ghost cell past the current fence line), the grounds-status
 line naming the current tier and next expansion, a vendor
-hire-under-contract/let-go-early flow, and a full 3-day weekend
+hire-under-contract/let-go-early flow, a full 3-day weekend
 walkthrough ending at the weekend-end summary screen and rolling into
-Weekend 2.
+Weekend 2, and a regression test for a post-ship crash fix (two
+prima-donna performers sharing a time block previously threw; see
+HANDOFF.md).

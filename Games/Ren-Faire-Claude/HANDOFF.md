@@ -11,6 +11,22 @@ category of "backstage drama" random events gated on roster composition,
 and the first quirk (`night_owl`) whose effect actually depends on which
 time block a performer is playing.
 
+**Post-Stage-9 hotfix:** a pre-existing crash (present since whichever
+earlier stage added the prima-donna sulking check — not something Stage 9
+introduced) was reported and fixed: `simulateDay`'s prima-donna penalty
+loop read `block.block.label`, but the `for (const { block, stageEntries }
+of blockBreakdown)` destructuring already unwraps `block` to the actual
+TIME_BLOCKS entry, so `.block` on it was `undefined` and `.label` on that
+threw. It only surfaced once two `prima_donna`-quirked performers were
+contracted AND scheduled into the same time block on different stages
+(e.g. Sir Corwin/Dame Ysolde + Master Aldric) — a combination no earlier
+stage's tests happened to exercise. Fixed to just `block.label`; added a
+regression test that schedules exactly that two-prima-donna scenario and
+asserts both that `simulateDay` doesn't throw and that the log names the
+real block ("sulked through Midday...", not "undefined" or
+"[object Object]"). Smoke suite is now 345 checks (was 342 as originally
+shipped this stage).
+
 ## What was built this stage
 
 - **`js/data.js`** — `PERFORMERS` grew from 10 to 15 (a third musician and
@@ -123,7 +139,16 @@ win-condition state.
   (`hasChaosProne`/`hasVendor`).
 
 **Dead end / thing to know about before you repeat it:**
-- None this stage.
+- Post-ship: a user hit a crash in the prima-donna sulking log line
+  (`block.block.label` — should've been `block.label`, a pre-existing
+  bug from whichever earlier stage added that check, not introduced this
+  stage). No smoke test exercised two `prima_donna` performers scheduled
+  into the same block on different stages, so it shipped undetected
+  across several stages. Fixed, and a regression test for exactly that
+  scenario was added. Lesson: a code path can be untouched by a stage's
+  own diff and still be worth a smoke check if the stage's new content
+  (more performers, in this case) makes an old, previously-rare
+  combination more likely to occur in actual play.
 
 ## Changelog
 
