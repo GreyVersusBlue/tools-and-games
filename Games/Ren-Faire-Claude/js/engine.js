@@ -3,7 +3,7 @@
 // this module for the math. That split is what makes the smoke tests able
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
-import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
+import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS } from './data.js';
 
 // ---------- seeded RNG (mulberry32) ----------
 // Deterministic given a numeric seed so tests can assert exact outputs.
@@ -64,6 +64,35 @@ export function effectiveVendorCost(state, vendorId) {
 // field retrofitted.
 export function isSeasonUnlocked(state, unlockSeason) {
   return state.season >= (unlockSeason || 1);
+}
+
+// ---------- grounds expansion (Stage 8) ----------
+// The largest GRID_EXPANSIONS entry the player's current weekend
+// (state.season) has reached — i.e. how much of the authored TERRAIN_ROWS
+// grid is actually buildable/visible right now. GRID_EXPANSIONS[0] is
+// always the Weekend-1 baseline, so this never returns undefined even for
+// a save at season 1 (or a pre-Stage-8 save with no migration needed,
+// since season already defaults to 1).
+export function currentGridSize(state) {
+  const unlocked = GRID_EXPANSIONS.filter(g => isSeasonUnlocked(state, g.unlockSeason));
+  return unlocked[unlocked.length - 1] || GRID_EXPANSIONS[0];
+}
+
+// The next fence line still ahead of the player, or null once every
+// GRID_EXPANSIONS entry has been reached. Used to show "next expansion"
+// hints in the UI the same way AD_CAMPAIGNS/CONTRACT_OPTIONS show locked
+// tiers.
+export function nextGridExpansion(state) {
+  return GRID_EXPANSIONS.find(g => !isSeasonUnlocked(state, g.unlockSeason)) || null;
+}
+
+// Whether (x,y) sits within the currently-unlocked grounds — distinct from
+// terrainAt() returning non-null, since TERRAIN_ROWS is authored at full
+// size but a cell can be past the current fence line before its
+// GRID_EXPANSIONS tier unlocks.
+export function isWithinCurrentGrid(state, x, y) {
+  const size = currentGridSize(state);
+  return Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < size.cols && y < size.rows;
 }
 
 // Aggregates the most recent `count` simulateDay() results (a completed
@@ -167,7 +196,31 @@ export const QUIRKS = {
     desc: 'Raises the odds of a "Rowdy Crowd" event on days they perform.',
     popularityMult: 1.0,
   },
+  // Stage 9: the first quirk whose effect actually depends on WHICH block
+  // they're playing, not just whether they're playing at all — see
+  // effectivePopularity() below, which is the only place blockId matters.
+  night_owl: {
+    label: 'Night Owl',
+    desc: '+20% draw in Golden Hour; \u221210% draw in Morning Procession; no change midday/afternoon.',
+    goldenMult: 1.2,
+    morningMult: 0.9,
+  },
 };
+
+// Effective popularity for a performer in a given time block, quirks
+// applied. Exported (and pulled out of simulateDay's old inline closure)
+// so it's independently testable — night_owl is the first quirk whose
+// effect depends on WHICH block is passed in, so this needed to stop being
+// a private nested function.
+export function effectivePopularity(perf, blockId) {
+  let mult = 1;
+  if (perf.quirk === 'crowd_pleaser') mult *= QUIRKS.crowd_pleaser.popularityMult;
+  if (perf.quirk === 'night_owl') {
+    if (blockId === 'golden') mult *= QUIRKS.night_owl.goldenMult;
+    else if (blockId === 'morning') mult *= QUIRKS.night_owl.morningMult;
+  }
+  return perf.popularity * mult;
+}
 
 // ---------- scheduling ----------
 // schedule shape: { [blockId]: { [stageId]: performerId } }
@@ -209,13 +262,6 @@ export function simulateDay(state, seed) {
   if (builtStages.length === 0) warnings.push('No stages built — the grounds have nothing to draw a crowd.');
   if (builtFoodVendorPlots.length > 0 && hiredVendorObjs.length === 0) {
     warnings.push('Stall plots are built but no vendors are hired to run them.');
-  }
-
-  // --- effective popularity per performer for today (quirks applied) ---
-  function effectivePopularity(perf, blockId) {
-    let mult = 1;
-    if (perf.quirk === 'crowd_pleaser') mult *= QUIRKS.crowd_pleaser.popularityMult;
-    return perf.popularity * mult;
   }
 
   // --- per-block, per-stage draw weight ---
@@ -304,6 +350,12 @@ export function simulateDay(state, seed) {
   const ctx = {
     hasChaosProne: rosterPerformers.some(p => p.quirk === 'chaos_prone' && isScheduledAnywhere(state.schedule, p.id)),
     hasVendor: hiredVendorObjs.length > 0,
+    // Stage 9: "backstage drama" events gated on roster composition rather
+    // than a single quirk/vendor flag.
+    hasMultiplePrimaDonnas: rosterPerformers.filter(p => p.quirk === 'prima_donna').length >= 2,
+    hasTwoMusicians: rosterPerformers.filter(p => p.role === 'musician' && isScheduledAnywhere(state.schedule, p.id)).length >= 2,
+    hasFalconerScheduled: rosterPerformers.some(p => p.role === 'falconer' && isScheduledAnywhere(state.schedule, p.id)),
+    bigRoster: rosterPerformers.length >= 5,
   };
   const events = rollEvents(rng, ctx);
   let eventCashDelta = 0, eventRepDelta = 0, eventSatDelta = 0;
@@ -347,12 +399,28 @@ function isScheduledAnywhere(schedule, performerId) {
   return false;
 }
 
+// Every `requires` string any EVENT_POOL entry uses must have an entry
+// here — see the EVENT_POOL integrity test in tests/smoke.mjs, which
+// walks EVENT_POOL and asserts exactly that. Exported so a future stage
+// adding a new gated event can't silently typo a requires string: an
+// unrecognized one now makes that event ineligible (fails closed) instead
+// of the old inline if/else chain's fallback of treating it as always
+// eligible (fails open) — a bug that happened to be harmless while only
+// two requires strings existed, but wouldn't have stayed harmless forever.
+export const EVENT_REQUIREMENTS = {
+  hasChaosProne: (ctx) => ctx.hasChaosProne,
+  hasVendor: (ctx) => ctx.hasVendor,
+  hasMultiplePrimaDonnas: (ctx) => ctx.hasMultiplePrimaDonnas,
+  hasTwoMusicians: (ctx) => ctx.hasTwoMusicians,
+  hasFalconerScheduled: (ctx) => ctx.hasFalconerScheduled,
+  bigRoster: (ctx) => ctx.bigRoster,
+};
+
 function rollEvents(rng, ctx) {
   const eligible = EVENT_POOL.filter(e => {
     if (!e.requires) return true;
-    if (e.requires === 'hasChaosProne') return ctx.hasChaosProne;
-    if (e.requires === 'hasVendor') return ctx.hasVendor;
-    return true;
+    const check = EVENT_REQUIREMENTS[e.requires];
+    return check ? check(ctx) : false;
   });
   const totalWeight = eligible.reduce((s, e) => s + e.weight, 0);
   const events = [];
@@ -399,5 +467,23 @@ export const EVENT_EFFECTS = {
   sellout_stall: (rng) => ({
     cashDelta: 45, repDelta: 0, satisfactionDelta: 2,
     message: 'One of the stalls sold clean out by mid-afternoon — brisk business.',
+  }),
+  // Stage 9 additions — "backstage drama" events (see EVENT_REQUIREMENTS
+  // above for what gates each one).
+  diva_standoff: (rng) => ({
+    cashDelta: 0, repDelta: -1, satisfactionDelta: -4,
+    message: 'Two prima donnas traded icy words backstage \u2014 word of the standoff spread through the crowd.',
+  }),
+  musicians_jam: (rng) => ({
+    cashDelta: 0, repDelta: 1, satisfactionDelta: 6,
+    message: 'Two musicians struck up an unplanned duet between sets \u2014 the crowd lingered to listen.',
+  }),
+  falconer_show: (rng) => ({
+    cashDelta: 30, repDelta: 1, satisfactionDelta: 5,
+    message: 'A hawk swooped low over the crowd mid-show \u2014 gasps, then applause, then a few coins tossed.',
+  }),
+  gossip_wagon: (rng) => ({
+    cashDelta: 0, repDelta: 0, satisfactionDelta: 3,
+    message: 'With so many acts camped together, the tiring house buzzed with shared stories \u2014 morale stayed high all day.',
   }),
 };

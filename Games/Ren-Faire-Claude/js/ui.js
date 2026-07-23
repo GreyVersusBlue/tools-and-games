@@ -1,8 +1,8 @@
 // ui.js — turns state into HTML strings. No event listeners live here;
 // main.js wires all interaction via event delegation on #content.
 
-import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked } from './engine.js';
+import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS } from './data.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -204,9 +204,15 @@ export function renderBackstage(state, warn) {
 // gets a ghost button quoting cost via quoteBuild() — clicking one fires
 // data-action="placeAt" through the same delegation main.js already uses.
 function renderGroundsMap(state, pendingBuild) {
+  // Stage 8: only render the grounds the player has actually reached — the
+  // full TERRAIN_ROWS/GRID extent is authored ahead of time, but cells past
+  // the current fence line (see currentGridSize) aren't shown or buildable
+  // yet. The map footprint (and the CSS grid it sits in) simply grows once
+  // a new GRID_EXPANSIONS tier unlocks.
+  const size = currentGridSize(state);
   const cells = [];
-  for (let y = 0; y < GRID.rows; y++) {
-    for (let x = 0; x < GRID.cols; x++) {
+  for (let y = 0; y < size.rows; y++) {
+    for (let x = 0; x < size.cols; x++) {
       const terrain = terrainAt(x, y) || 'clearing';
       cells.push(`<div class="terrain-cell" data-terrain="${terrain}" style="grid-column:${x + 1};grid-row:${y + 1};"></div>`);
     }
@@ -224,8 +230,8 @@ function renderGroundsMap(state, pendingBuild) {
   let ghostMarkers = '';
   if (pendingBuild) {
     const ghosts = [];
-    for (let y = 0; y < GRID.rows; y++) {
-      for (let x = 0; x < GRID.cols; x++) {
+    for (let y = 0; y < size.rows; y++) {
+      for (let x = 0; x < size.cols; x++) {
         if (occupied.has(`${x},${y}`)) continue;
         const quote = quoteBuild(pendingBuild, x, y);
         if (!quote) continue;
@@ -237,9 +243,22 @@ function renderGroundsMap(state, pendingBuild) {
   }
 
   return `
-    <div class="grounds-map" style="--cols:${GRID.cols};--rows:${GRID.rows};">${cells.join('')}${builtMarkers}${ghostMarkers}</div>
+    <div class="grounds-map" style="--cols:${size.cols};--rows:${size.rows};">${cells.join('')}${builtMarkers}${ghostMarkers}</div>
     <p class="map-legend mono">\u{1F3D4}\ufe0f hill &middot; \u{1F332} woods &middot; \u{1F3DE}\ufe0f path &middot; \u{1F33E} clearing</p>
   `;
+}
+
+// Stage 8: a small status line above the map naming the current grounds
+// tier and, if there's more to reach, when the next one unlocks — same
+// "locked hint" spirit as renderMarketing/renderBackstage's contract tiers,
+// but for the grid footprint itself rather than a single purchasable item.
+function renderGroundsStatus(state) {
+  const size = currentGridSize(state);
+  const next = nextGridExpansion(state);
+  const nextHint = next
+    ? `<span class="hint-tag">${next.label} (${next.cols}\u00d7${next.rows}) unlocks Weekend ${next.unlockSeason}</span>`
+    : `<span class="hint-tag">Full grounds explored</span>`;
+  return `<p class="hint grounds-status"><strong>${size.label}</strong> \u2014 ${size.cols}\u00d7${size.rows} cells. ${nextHint}</p>`;
 }
 
 // Build palette: pick a structure kind, then tap an open cell on the map
@@ -320,6 +339,7 @@ export function renderFairFloor(state, conflicts, pendingBuild) {
     <section class="panel">
       <h2>The Grounds</h2>
       <p class="flavor">Dirt paths, old woods, and a good hill for a stage \u2014 build what the faire needs.</p>
+      ${renderGroundsStatus(state)}
       ${mapHtml}
       ${paletteHtml}
       <h3>Built So Far</h3>
@@ -396,17 +416,19 @@ function renderUnlockNotice(state) {
   const items = [
     ...AD_CAMPAIGNS.filter(c => c.unlockSeason === nextSeason).map(c => `${c.name} campaign`),
     ...Object.values(CONTRACT_OPTIONS).filter(o => o.unlockSeason === nextSeason).map(o => `${o.label} contracts`),
+    ...GRID_EXPANSIONS.filter(g => g.unlockSeason === nextSeason).map(g => `${g.label} grounds expansion (${g.cols}\u00d7${g.rows})`),
   ];
   if (!items.length) return '';
   return `<p class="hint unlock-note">New this weekend: ${items.join(', ')} unlocked!</p>`;
 }
 
 function pct(n) { return `${Math.round(n * 100)}%`; }
-function quirkTitle(id) { return { crowd_pleaser: 'Crowd Pleaser', prima_donna: 'Prima Donna', chaos_prone: 'Chaos-Prone' }[id] || id; }
+function quirkTitle(id) { return { crowd_pleaser: 'Crowd Pleaser', prima_donna: 'Prima Donna', chaos_prone: 'Chaos-Prone', night_owl: 'Night Owl' }[id] || id; }
 function quirkDesc(id) {
   return {
     crowd_pleaser: 'Draws 15% better wherever they play.',
     prima_donna: 'Sulks if sharing a block with an equally popular act.',
     chaos_prone: 'Raises the odds of a Rowdy Crowd event.',
+    night_owl: '+20% draw in Golden Hour, \u221210% in Morning Procession.',
   }[id] || '';
 }

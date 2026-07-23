@@ -25,21 +25,49 @@ export const TIME_BLOCKS = [
 // plots are built nearby — see engine.js computePlotAttributes(). This
 // file stays data-only: the grid, a terrain legend, and per-terrain base
 // modifiers are all just content.
-export const GRID = { cols: 10, rows: 7 };
+//
+// Stage 8: GRID is now the full authored terrain extent (the biggest the
+// grounds ever get). The grounds a player can actually build on grow over
+// time — see GRID_EXPANSIONS below and engine.js's currentGridSize(state).
+// Keeping the whole terrain map authored up front (rather than generating
+// new rows/cols on the fly) means terrainAt()/TERRAIN_ROWS stay simple,
+// pure, and state-independent, same as every stage before this one — only
+// the *bounds a build is allowed within* become state-aware.
+export const GRID = { cols: 14, rows: 10 };
 
 // One character per cell, legend below. Two path lines cross at (3,2),
-// which is why Market Crossing Stage sits there.
+// which is why Market Crossing Stage sits there. Columns 10-13 and rows
+// 7-9 are the Stage 8 expansion territory — not buildable until unlocked
+// (see GRID_EXPANSIONS), but authored now so the map never needs new
+// terrain content generated later.
 export const TERRAIN_ROWS = [
-  'CCHHHHCCWW',
-  'CCHHHHCCWW',
-  'PPPPPPPPPP',
-  'CCCCCCCCWW',
-  'CWWPWWCCWW',
-  'CWWPWWCCCC',
-  'CCCPCCCCCC',
+  'CCHHHHCCWWWWCC',
+  'CCHHHHCCWWWWCC',
+  'PPPPPPPPPPPPPP',
+  'CCCCCCCCWWHHCC',
+  'CWWPWWCCWWHHCC',
+  'CWWPWWCCCCWWCC',
+  'CCCPCCCCCCWWCC',
+  'CCCPCCCCCCCCCC',
+  'HHHPHHCCWWWWCC',
+  'CCCPCCCCCCCCCC',
 ];
 
 export const TERRAIN_LEGEND = { C: 'clearing', H: 'hill', W: 'woods', P: 'path' };
+
+// How much of the authored TERRAIN_ROWS grid is actually buildable right
+// now. Each entry is a hard fence line at (cols, rows) — everything inside
+// it is fair game, everything outside is "past the fence" until the
+// player reaches `unlockSeason` (a weekend number, same field/meaning as
+// AD_CAMPAIGNS/CONTRACT_OPTIONS use it). Must be sorted ascending by
+// unlockSeason, and the first entry MUST be { unlockSeason: 1, cols: 10,
+// rows: 7 } — that's the exact Stage 1-7 footprint, so an existing save
+// (or a fresh one) at Weekend 1 sees precisely the grounds it always has.
+export const GRID_EXPANSIONS = [
+  { unlockSeason: 1, cols: 10, rows: 7, label: 'Home Grounds' },
+  { unlockSeason: 2, cols: 12, rows: 8, label: 'East Meadow' },
+  { unlockSeason: 4, cols: 14, rows: 10, label: 'Deep Woods Trail' },
+];
 
 // Base sightline/shade/traffic for a plot sitting on each terrain type,
 // before any adjacency effects from nearby built plots are applied.
@@ -124,6 +152,14 @@ export const PERFORMERS = [
   { id: 'perf_livinghist_1', name: 'The Cooper\u2019s Guild Camp', role: 'livingHistory', cost: 90, popularity: 3, quirk: null },
   { id: 'perf_livinghist_2', name: "The Physick's Tent", role: 'livingHistory', cost: 100, popularity: 3, quirk: 'crowd_pleaser' },
   { id: 'perf_falconer_1', name: 'Wren of the Mews', role: 'falconer', cost: 170, popularity: 6, quirk: null },
+  // Stage 9 additions — content-pool filler, plus two `night_owl` holders
+  // (see engine.js QUIRKS.night_owl / effectivePopularity) so a Golden
+  // Hour-favoring lineup is an actual choice a player can build toward.
+  { id: 'perf_musician_3', name: 'Rosalind Quicksilver', role: 'musician', cost: 175, popularity: 6, quirk: 'night_owl' },
+  { id: 'perf_magician_2', name: 'Vesper Nightshade', role: 'magician', cost: 240, popularity: 7, quirk: 'night_owl' },
+  { id: 'perf_jester_3', name: 'Bramblewit', role: 'jester', cost: 120, popularity: 5, quirk: null },
+  { id: 'perf_falconer_2', name: 'Talon of the Greenwood', role: 'falconer', cost: 190, popularity: 6, quirk: 'crowd_pleaser' },
+  { id: 'perf_livinghist_3', name: "The Chandler\u2019s Row", role: 'livingHistory', cost: 85, popularity: 3, quirk: null },
 ];
 
 // Vendor pool (food + craft). `takeRate` is the fraction of gross the vendor
@@ -138,6 +174,11 @@ export const VENDORS = [
   { id: 'vend_glass', name: "Gaffer's Glass", type: 'craft', cost: 70, quality: 8, avgTicket: 30 },
   { id: 'vend_blades', name: 'Ravensmoor Blades', type: 'craft', cost: 90, quality: 6, avgTicket: 40 },
   { id: 'vend_trinkets', name: 'Pixie & Pauper Trinkets', type: 'craft', cost: 40, quality: 5, avgTicket: 12 },
+  // Stage 9 additions — content-pool filler, same shape as the original 8.
+  { id: 'vend_mead', name: "Meadow\u2019s Gold Mead", type: 'food', cost: 95, quality: 7, avgTicket: 10 },
+  { id: 'vend_pretzel', name: 'Twisted Bread Cart', type: 'food', cost: 70, quality: 6, avgTicket: 6 },
+  { id: 'vend_woodcarve', name: 'Oakenshield Woodcarving', type: 'craft', cost: 55, quality: 6, avgTicket: 18 },
+  { id: 'vend_herbalist', name: "The Herbwife\u2019s Basket", type: 'craft', cost: 45, quality: 7, avgTicket: 15 },
 ];
 
 // Random event pool. Each entry has a `weight` (relative chance per day),
@@ -151,4 +192,11 @@ export const EVENT_POOL = [
   { id: 'evt_noble_visit', weight: 1, effectId: 'noble_visit' },
   { id: 'evt_rowdy_crowd', weight: 2, effectId: 'rowdy_crowd', requires: 'hasChaosProne' },
   { id: 'evt_sellout_stall', weight: 2, effectId: 'sellout_stall', requires: 'hasVendor' },
+  // Stage 9 additions — "backstage drama" events, gated on roster
+  // composition rather than a single quirk/vendor flag. See engine.js's
+  // EVENT_REQUIREMENTS for what each `requires` string actually checks.
+  { id: 'evt_diva_standoff', weight: 2, effectId: 'diva_standoff', requires: 'hasMultiplePrimaDonnas' },
+  { id: 'evt_musicians_jam', weight: 2, effectId: 'musicians_jam', requires: 'hasTwoMusicians' },
+  { id: 'evt_falconer_show', weight: 2, effectId: 'falconer_show', requires: 'hasFalconerScheduled' },
+  { id: 'evt_gossip_wagon', weight: 1, effectId: 'gossip_wagon', requires: 'bigRoster' },
 ];

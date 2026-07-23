@@ -3,8 +3,8 @@
 // NEW state (no in-place mutation), so ui.js can just re-render after every
 // action and tests can assert on plain objects.
 
-import { CONFIG, TIME_BLOCKS, GRID, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
-import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked } from './engine.js';
+import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
+import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isWithinCurrentGrid } from './engine.js';
 
 const SAVE_KEY = 'renn-faire-sim-save-v1';
 
@@ -52,8 +52,8 @@ function clone(state) {
 // just validates the cell, charges for it, and records the new plot.
 export function buildPlot(state, kind, x, y) {
   if (!STRUCTURE_TYPES[kind]) return { state, error: 'Unknown structure type.' };
-  if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= GRID.cols || y >= GRID.rows) {
-    return { state, error: 'That spot is off the grounds.' };
+  if (!isWithinCurrentGrid(state, x, y)) {
+    return { state, error: 'That spot is past the fence line \u2014 expand the grounds first.' };
   }
   const quote = quoteBuild(kind, x, y);
   if (!quote) return { state, error: 'Nothing can be built there.' };

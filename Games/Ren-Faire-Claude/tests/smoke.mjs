@@ -19,8 +19,8 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend } = await import(path.join(root, 'js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS } = await import(path.join(root, 'js/data.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS } = await import(path.join(root, 'js/engine.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, EVENT_POOL } = await import(path.join(root, 'js/data.js'));
 const State = await import(path.join(root, 'js/state.js'));
 
 // --- RNG determinism ---
@@ -95,6 +95,71 @@ const State = await import(path.join(root, 'js/state.js'));
   const usedChars = new Set(TERRAIN_ROWS.join(''));
   for (const ch of usedChars) assert(TERRAIN_LEGEND[ch], `terrain char "${ch}" used in the grid resolves in TERRAIN_LEGEND`);
   for (const name of Object.values(TERRAIN_LEGEND)) assert(TERRAIN_BASE[name], `terrain type "${name}" has a TERRAIN_BASE entry`);
+}
+
+// --- grounds expansion catalog integrity (Stage 8) ---
+{
+  assert(GRID_EXPANSIONS.length >= 2, 'GRID_EXPANSIONS has at least a baseline and one real expansion');
+  assert(GRID_EXPANSIONS[0].unlockSeason === 1, 'the first GRID_EXPANSIONS entry unlocks at Weekend 1 (always available)');
+  assert(GRID_EXPANSIONS[0].cols === 10 && GRID_EXPANSIONS[0].rows === 7, 'the Weekend-1 baseline matches the original Stage 1-7 grounds footprint exactly');
+  for (let i = 1; i < GRID_EXPANSIONS.length; i++) {
+    const prev = GRID_EXPANSIONS[i - 1], cur = GRID_EXPANSIONS[i];
+    assert(cur.unlockSeason > prev.unlockSeason, `GRID_EXPANSIONS[${i}] unlocks strictly later than GRID_EXPANSIONS[${i - 1}]`);
+    assert(cur.cols >= prev.cols && cur.rows >= prev.rows && (cur.cols > prev.cols || cur.rows > prev.rows), `GRID_EXPANSIONS[${i}] is strictly bigger than GRID_EXPANSIONS[${i - 1}]`);
+  }
+  const last = GRID_EXPANSIONS[GRID_EXPANSIONS.length - 1];
+  assert(last.cols === GRID.cols && last.rows === GRID.rows, 'the final GRID_EXPANSIONS tier matches the full authored GRID/TERRAIN_ROWS extent');
+}
+
+// --- effectivePopularity: quirk multipliers, including night_owl's
+//     block-conditional behavior (Stage 9) ---
+{
+  const plain = { popularity: 10, quirk: null };
+  assert(effectivePopularity(plain, 'midday') === 10, 'a quirkless performer\u2019s effective popularity is just their base popularity');
+
+  const pleaser = { popularity: 10, quirk: 'crowd_pleaser' };
+  assert(effectivePopularity(pleaser, 'midday') === 10 * QUIRKS.crowd_pleaser.popularityMult, 'crowd_pleaser applies its multiplier regardless of block');
+  assert(effectivePopularity(pleaser, 'golden') === effectivePopularity(pleaser, 'morning'), 'crowd_pleaser\u2019s boost does not vary by block');
+
+  const owl = { popularity: 10, quirk: 'night_owl' };
+  assert(effectivePopularity(owl, 'golden') === 10 * QUIRKS.night_owl.goldenMult, 'night_owl draws better in Golden Hour');
+  assert(effectivePopularity(owl, 'morning') === 10 * QUIRKS.night_owl.morningMult, 'night_owl draws worse in Morning Procession');
+  assert(effectivePopularity(owl, 'midday') === 10, 'night_owl has no effect in Midday');
+  assert(effectivePopularity(owl, 'afternoon') === 10, 'night_owl has no effect in Afternoon');
+  assert(effectivePopularity(owl, undefined) === 10, 'night_owl has no effect with no block context (ambient/overall popularity calc)');
+  assert(effectivePopularity(owl, 'golden') > effectivePopularity(owl, 'morning'), 'night_owl draws strictly better in Golden Hour than in Morning Procession');
+}
+
+// --- random event catalog integrity (Stage 9: backstage drama events) ---
+{
+  const ids = EVENT_POOL.map(e => e.id);
+  assert(new Set(ids).size === ids.length, 'all EVENT_POOL ids are unique');
+  for (const e of EVENT_POOL) {
+    assert(EVENT_EFFECTS[e.effectId], `${e.id}'s effectId "${e.effectId}" has a matching EVENT_EFFECTS entry`);
+    assert(e.weight > 0, `${e.id} has a positive weight`);
+    if (e.requires) {
+      assert(EVENT_REQUIREMENTS[e.requires], `${e.id}'s requires "${e.requires}" has a matching EVENT_REQUIREMENTS entry (fails closed otherwise, not open)`);
+    }
+  }
+  // an unrecognized requires string must fail closed (ineligible), not
+  // silently fall back to "always eligible" the way the pre-Stage-9
+  // if/else chain did.
+  assert(EVENT_REQUIREMENTS.nonsense === undefined, 'EVENT_REQUIREMENTS has no entry for an unrecognized requires string, by construction');
+
+  const rng = makeRng(1);
+  const ctxAllFalse = { hasChaosProne: false, hasVendor: false, hasMultiplePrimaDonnas: false, hasTwoMusicians: false, hasFalconerScheduled: false, bigRoster: false };
+  for (const [key, check] of Object.entries(EVENT_REQUIREMENTS)) {
+    assert(check(ctxAllFalse) === false, `EVENT_REQUIREMENTS.${key} is false against an all-false ctx`);
+    assert(check({ ...ctxAllFalse, [key]: true }) === true, `EVENT_REQUIREMENTS.${key} is true once its own ctx flag is set`);
+  }
+
+  for (const effectId of ['diva_standoff', 'musicians_jam', 'falconer_show', 'gossip_wagon']) {
+    const result = EVENT_EFFECTS[effectId](rng);
+    assert(typeof result.message === 'string' && result.message.length > 0, `${effectId} produces a non-empty message`);
+    assert(typeof result.cashDelta === 'number' && typeof result.repDelta === 'number' && typeof result.satisfactionDelta === 'number', `${effectId} produces numeric deltas`);
+  }
+  assert(EVENT_EFFECTS.diva_standoff(rng).satisfactionDelta < 0, 'diva_standoff is a net-negative event (backstage drama souring the day)');
+  assert(EVENT_EFFECTS.musicians_jam(rng).satisfactionDelta > 0, 'musicians_jam is a net-positive event');
 }
 
 // --- schedule validation ---
@@ -239,6 +304,27 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(withActSum / N > noActSum / N, 'a scheduled popular performer raises average attendance over an empty stage');
 }
 
+// --- simulateDay: night_owl's block-conditional draw shows up in satisfaction (Stage 9) ---
+{
+  let golden = State.createInitialState();
+  golden = State.buildPlot(golden, 'stage', 3, 0).state;
+  golden = State.contractPerformer(golden, 'perf_musician_3').state; // night_owl
+  golden = State.assignSchedule(golden, 'golden', '3_0', 'perf_musician_3').state;
+
+  let morning = State.createInitialState();
+  morning = State.buildPlot(morning, 'stage', 3, 0).state;
+  morning = State.contractPerformer(morning, 'perf_musician_3').state; // night_owl
+  morning = State.assignSchedule(morning, 'morning', '3_0', 'perf_musician_3').state;
+
+  let goldenSatSum = 0, morningSatSum = 0;
+  const N = 30;
+  for (let i = 0; i < N; i++) {
+    goldenSatSum += simulateDay(golden, i).satisfaction;
+    morningSatSum += simulateDay(morning, i).satisfaction;
+  }
+  assert(goldenSatSum / N > morningSatSum / N, 'scheduling a night_owl performer into Golden Hour yields better average satisfaction than scheduling the same act into Morning Procession');
+}
+
 // --- state actions: buildPlot cash/error handling & free placement (Stage 3) ---
 {
   let s = State.createInitialState();
@@ -259,7 +345,7 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(elsewhere.state.builtPlots.length === 2, 'both structures now exist independently');
 
   const offGrid = State.buildPlot(afterBuild, 'stage', -1, 0);
-  assert(offGrid.error && /off the grounds/i.test(offGrid.error), 'buildPlot refuses an off-grid cell');
+  assert(offGrid.error && /fence line/i.test(offGrid.error), 'buildPlot refuses an off-grid cell');
 
   const unknownKind = State.buildPlot(afterBuild, 'castle', 5, 5);
   assert(unknownKind.error && /unknown structure/i.test(unknownKind.error), 'buildPlot refuses an unknown structure kind');
@@ -631,6 +717,38 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(vendorSeasonContractNow.state.vendorContracts.vend_cider.commitDaysRemaining === CONTRACT_OPTIONS.season.commitDays, 'a signed vendor Season Contract starts with its full commitment length');
 }
 
+// --- season-gated grounds expansion (Stage 8) ---
+{
+  let s = State.createInitialState();
+  const homeSize = currentGridSize(s);
+  assert(homeSize.label === 'Home Grounds' && homeSize.cols === 10 && homeSize.rows === 7, 'a fresh Weekend-1 game starts on the Home Grounds footprint');
+  assert(nextGridExpansion(s).label === 'East Meadow', 'a fresh game\u2019s next expansion is East Meadow');
+
+  assert(isWithinCurrentGrid(s, 9, 6) === true, 'the Home Grounds\u2019 far corner (9,6) is buildable at Weekend 1');
+  assert(isWithinCurrentGrid(s, 10, 0) === false, 'a cell just past the Weekend-1 fence line (10,0) is not yet buildable');
+
+  const tooFarOut = State.buildPlot(s, 'stage', 11, 3);
+  assert(tooFarOut.error && /fence line/i.test(tooFarOut.error), 'buildPlot refuses a cell past the current fence line with a clear error');
+  assert(tooFarOut.state === s, 'a refused off-grounds build does not mutate state');
+
+  // fast-forward to Weekend 2 (3 days) to unlock the East Meadow
+  for (let i = 0; i < 3; i++) {
+    const r = State.nextDay(s);
+    s = r.state.phase === 'weekendEnd' ? State.startNextWeekend(r.state).state : r.state;
+  }
+  assert(s.season === 2, 'walking forward one weekend from Weekend 1 reaches Weekend 2');
+  const meadowSize = currentGridSize(s);
+  assert(meadowSize.label === 'East Meadow' && meadowSize.cols === 12 && meadowSize.rows === 8, 'reaching Weekend 2 unlocks the East Meadow (12\u00d78) footprint');
+  assert(isWithinCurrentGrid(s, 11, 3) === true, 'a cell that was off-grounds at Weekend 1 (11,3) becomes buildable once East Meadow unlocks');
+
+  const meadowBuild = State.buildPlot(s, 'stage', 11, 3);
+  assert(meadowBuild.error === null, 'buildPlot succeeds in the newly-unlocked East Meadow once Weekend 2 is reached');
+
+  const stillTooFarOut = State.buildPlot(meadowBuild.state, 'stage', 13, 9);
+  assert(stillTooFarOut.error && /fence line/i.test(stillTooFarOut.error), 'a cell in the not-yet-unlocked Deep Woods Trail tier is still refused at Weekend 2');
+  assert(nextGridExpansion(meadowBuild.state).label === 'Deep Woods Trail', 'Deep Woods Trail is the next expansion still ahead at Weekend 2');
+}
+
 // --- 50-day fuzz run: engine should never throw or produce NaN/negatives ---
 {
   let s = State.createInitialState();
@@ -701,12 +819,17 @@ const State = await import(path.join(root, 'js/state.js'));
   fairFloorTabBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   assert(doc.querySelector('.grounds-map'), 'Fair Floor shows the grounds map');
   assert(!doc.querySelector('.plot-marker.ghost'), 'no ghost placement cells before a structure kind is selected');
+  assert(doc.querySelector('.grounds-status')?.textContent.includes('Home Grounds'), 'the grounds-status line shows Home Grounds at Weekend 1');
+  assert(doc.querySelector('.grounds-status')?.textContent.includes('East Meadow'), 'the grounds-status line names East Meadow as the next expansion at Weekend 1');
 
   const stageBtn = doc.querySelector('[data-action="selectBuild"][data-kind="stage"]');
   assert(!!stageBtn, 'the build palette has a Stage option');
   stageBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   const ghostCell = doc.querySelector('.plot-marker.ghost');
   assert(!!ghostCell, 'selecting a structure kind reveals ghost placement cells on the map');
+  const ghostXs = [...doc.querySelectorAll('.plot-marker.ghost')].map(el => Number(el.dataset.x));
+  const ghostYs = [...doc.querySelectorAll('.plot-marker.ghost')].map(el => Number(el.dataset.y));
+  assert(Math.max(...ghostXs) < 10 && Math.max(...ghostYs) < 7, 'no ghost placement cell is offered past the Weekend-1 fence line (10\u00d77)');
 
   const cashBefore = doc.querySelector('#ledger .ledger-item .ledger-label.mono')?.textContent;
   ghostCell.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
