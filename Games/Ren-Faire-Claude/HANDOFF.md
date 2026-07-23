@@ -3,171 +3,141 @@
 Living document, updated in place each stage. Older stage summaries get
 condensed into the changelog at the bottom rather than kept as prose above.
 
-## Status as of Stage 10
+## Status as of Stage 12
 
-**Playable end-to-end.** Everything from Stages 1–9 still works. This
-stage was a direct response to a reported soft lock ("placed a lot of
-food/craft stalls, couldn't start the day, no error text") plus four
-specific feature requests: a per-kind stall vacancy tracker, a
-planning-then-commit construction flow (with move/delete/demolish/
-relocate), individual vendor-to-stall assignment (with an auto-fill
-button), and the ability to rename built structures.
+**Playable end-to-end.** Everything from Stages 1–11 still works. This
+stage reshaped the map/building system on direct player feedback: a
+real path *network* instead of one line, a hard requirement that
+everything built sits on or beside that network, and stages that are
+now physically bigger than every other structure kind.
 
-**On the soft lock itself:** direct stress-testing (build far more
-stalls than hireable vendors, then open the gates) never reproduced a
-hard block — "Open the Gates" was never actually disabled in the
-pre-Stage-10 code; it always ran and just printed a warning about
-unstaffed stalls. What *was* a real bug: `hireVendor`'s cap summed food
-and craft stalls into one shared pool, so it was possible to over-hire
-one kind against the other kind's stall count with no error at all.
-Fixed as part of this stage's stall-kind split (below); the new vacancy
-tracker should make this whole class of confusion visible going
-forward regardless of what the original trigger actually was.
+**What changed, concretely:**
+- **Stages are now 2x2**, anchored at `(x,y)` like before but occupying
+  four cells. Every other kind (food/craft/demo) stays 1x1. This is the
+  first kind-specific footprint the game has ever had, and it's now
+  load-bearing everywhere a plot's position is checked: occupancy,
+  grid-fence bounds, stage-to-stage spacing, and the new path-frontage
+  rule below all operate over a plot's *whole* footprint, not just its
+  anchor cell.
+- **Path frontage.** Every buildable kind now needs at least one
+  footprint cell sitting ON a path tile (food/craft/demo can straddle
+  one) or directly beside one (orthogonal neighbor only — a diagonal
+  touch doesn't count). A stage/demo camp still can't sit ON the path
+  (Stage 11's rule, unchanged), so for those two kinds this only ever
+  resolves via the "beside" half of the check.
+- **A real path network, not one line.** The row-2 artery still runs
+  the full width, but there's now a second north-south spur (column
+  10) plus a short eastward connector (row 7, columns 10–13) so the
+  Stage 8 grounds-expansion territory (East Meadow / Deep Woods Trail)
+  actually has path frontage to build against once unlocked, instead
+  of being stranded the moment it opens up.
 
 ## What was built this stage
 
-- **`js/data.js`** — three new `CONFIG` constants: `demolishFeeMult`
-  (0.3 — the fraction of a plot's build cost charged to tear it down
-  once committed), `relocateDiscountMult` (0.85 — on top of the
-  demolition fee, what a relocated plot pays for its new site, as a
-  discount off building fresh there), and `maxPlotNameLength` (40, for
-  `renamePlot`).
-- **`js/engine.js`** — new `STALL_KIND_BY_VENDOR_TYPE` (`{food: 'food',
-  craft: 'vendor'}`) is the one place that translates between a
-  VENDORS entry's `type` vocabulary and a built plot's `kind`
-  vocabulary for the same two stall categories; both the hire cap and
-  the vacancy tracker read through it rather than duplicating the
-  mapping. New `stallSummary(state)` returns `{food, vendor}`, each
-  `{total, filled}` — the vacancy tracker's data source.
-  `computePlotAttributes` now ignores plots still in `'planning'`
-  status when computing nearby-stage adjacency (a plan hasn't been
-  built yet, so it can't steal sightline or send traffic).
-  `simulateDay` now filters `builtStages`/`builtFoodVendorPlots` to
-  `status === 'built'` (a plan draws no crowd and seats no vendor), and
-  splits vendor revenue from vendor cost: every *hired* vendor still
-  draws wages (`vendorCosts`, unchanged), but only a vendor actually
-  *seated* at a built stall sells anything (`activeVendorObjs`) — a
-  hired-but-unseated vendor is now pure cost, surfaced as an explicit
-  warning (`"N hired vendor(s) are not assigned to a stall..."`) rather
-  than a silent shortfall.
-- **`js/state.js`** — the biggest change this stage.
-  - `buildPlot` (the old instant place-and-pay action) is kept exactly
-    as before for backward compatibility, just with `status: 'built'`
-    and (for food/vendor kinds) `assignedVendorId: null` added to the
-    plot record it produces, so it composes with everything new.
-  - New planning → commit flow: `placePlot(state, kind, x, y)` lays a
-    plot down for free with `status: 'planning'` (ids come from a new
-    `state.nextPlotId` counter — `plot_1`, `plot_2`, ... — decoupled
-    from `(x,y)` specifically so relocating a plot later never orphans
-    a schedule or vendor-assignment reference to it).
-    `commitPlot(state, plotId)` charges the plot's cost and flips it to
-    `'built'`. `commitAllPlots(state)` is an all-or-nothing bulk commit
-    for every currently-planning plot (charges the combined total once,
-    or refuses with the number needed) — built directly for the
-    "placed a lot of stalls at once" scenario in the report.
-    `deletePlanningPlot`/`movePlanningPlot` are the free operations
-    available only while `status === 'planning'`.
-  - `demolishPlot(state, plotId)` tears down a *built* plot for
-    `CONFIG.demolishFeeMult × cost` (any seated vendor is unassigned,
-    not fired — they stay hired and can be reseated).
-    `relocatePlot(state, plotId, x, y)` moves a built plot for the
-    demolition fee plus `CONFIG.relocateDiscountMult × ⟨new site's
-    cost⟩`; the plot keeps its id/name/vendor assignment throughout.
-  - `renamePlot(state, plotId, newName)` sets a custom name (trimmed,
-    capped at `CONFIG.maxPlotNameLength`, rejecting blank) and flips a
-    new `customName` flag so a later relocate's terrain-based
-    auto-naming leaves it alone.
-  - `hireVendor` now caps food and craft hiring *separately* (the bug
-    described above) using `STALL_KIND_BY_VENDOR_TYPE`, and — new —
-    auto-seats a freshly hired vendor into the first open matching
-    built stall, so the common case ("hire someone, they start
-    working") needs no extra click. `fireVendor` now also clears
-    whatever plot the fired vendor was seated at.
-  - New assignment layer: `assignVendorToPlot`/`unassignVendorFromPlot`
-    for manual reseating (a vendor can only be seated at one stall;
-    assigning them elsewhere automatically clears their old seat), and
-    `autoFillStalls(state)` — deterministic, no RNG — matches every
-    hired-but-unseated vendor to an open stall of the right kind, for
-    cleanup after a demolition/relocation leaves someone unseated.
-  - `loadState` migration: a pre-Stage-10 save's plots get `status:
-    'built'` (they were all functionally already-built under the old
-    model) and `assignedVendorId: null` backfilled, `nextPlotId`
-    defaults to 1, and — importantly — already-hired vendors get
-    auto-seated into their already-built matching stalls on load, so an
-    old save's economics don't silently break just from loading it in
-    the new version.
-- **`js/ui.js`** — Backstage gained a `renderStallSummary` block (the
-  "N/M filled" gauges for Food/Craft Stalls, plus the Auto-Fill Stalls
-  button) and each hired vendor's row now shows `seated: ⟨stall name⟩`
-  or a warning that they're earning nothing; unhired-vendor rows show
-  "No open ⟨kind⟩ stalls" instead of hire buttons once that kind is
-  capped, rather than letting the click fail silently. Fair Floor's
-  plot cards (`renderPlotCard`) are now status-aware: a `'planning'`
-  card shows Commit/Move/Rename/Delete, a `'built'` one shows
-  Relocate/Rename/Demolish, and food/vendor cards get either a
-  "seated by ⟨name⟩ + Unassign" line or a `<select>` to seat an open,
-  matching, hired-but-unseated vendor. A new commit-all banner appears
-  above the plot grid whenever anything is still just a plan.
-  `renderGroundsMap` gained a `pendingMove` parameter that reuses the
-  exact same ghost-cell mechanism as fresh placement (excluding the
-  moving plot's own current cell) to drive both `movePlanningPlot` and
-  `relocatePlot` through the map — no new interaction pattern, just the
-  existing one pointed at a different action.
-- **`js/main.js`** — new `ui.pendingMove` (mirrors `ui.pendingBuild`,
-  cleared on tab switch/nextDay/startNextWeekend/reset) plus action
-  handlers for `commitPlot`/`commitAll`/`deletePlanningPlot`/
-  `selectMove`/`cancelMove`/`moveTo`/`demolishPlot`/`unassignVendor`/
-  `autoFillStalls`, and a `renamePlot` handler that uses a plain
-  `window.prompt()` (consistent with the existing reset button's
-  `confirm()`, no new UI chrome needed). A new `assignVendor` `change`
-  handler alongside the existing schedule-select one.
-- **`css/style.css`** — `.plot-card.planning`/`.plot-marker.planning`
-  (dashed gold) visually distinguish a plan from a built structure on
-  both the map and the card grid; `.plot-marker.moving` outlines the
-  plot currently being relocated; `.commit-banner` and `.stall-summary`
-  /`.stall-gauge` are small new blocks, no layout system changes.
-- **`tests/smoke.mjs`** — 422 checks now (was 345): a full pure-logic
-  block covering `placePlot`/`commitPlot`/`commitAllPlots` (including
-  the all-or-nothing refusal case) /`deletePlanningPlot`/
-  `movePlanningPlot`/`demolishPlot`/`relocatePlot` (fee math verified
-  exactly against `CONFIG.demolishFeeMult`/`relocateDiscountMult`)/
-  `renamePlot` (including that a custom name survives a later
-  relocate)/the split food-vs-craft hire cap/`assignVendorToPlot`/
-  `unassignVendorFromPlot`/`autoFillStalls`/the demolish-and-fire
-  unseat-not-fire behavior/the seated-vs-unseated revenue split in
-  `simulateDay`, plus a dedicated `loadState` migration test that seeds
-  a hand-built pre-Stage-10 save shape directly into `localStorage` and
-  asserts the migration backfills status/assignment/counter correctly.
-  The existing Stage 3/7 DOM walkthrough was updated in place for the
-  new placeAt-is-free/commit-charges-money flow (it now finds and
-  clicks each plot's Commit button before asserting cash changed or
-  before trying to hire against it).
+- **`js/data.js`** — `STRUCTURE_TYPES.stage` gained `footprint: { w: 2,
+  h: 2 }`; every other kind has no `footprint` field and defaults to
+  1x1 via `engine.js`'s `footprintFor()`. `PLACEMENT_RULES` gained
+  `requiresPathFrontage: ['stage', 'food', 'vendor', 'demo']` — an
+  explicit kind list (not a bare boolean) so a future stage could
+  exempt one kind without touching engine logic. `TERRAIN_ROWS` grew a
+  second north-south path spur at column 10 (rows 2–9) and an eastward
+  connector along row 7 (columns 10–13); everything else in the
+  authored map is untouched.
+- **`js/engine.js`** — new footprint primitives: `footprintFor(kind)`
+  (kind → `{w,h}`, defaulting to 1x1), `footprintCells(x,y,w,h)` (pure
+  cell enumerator), `plotFootprintCells(plot)` (reads a *built* plot's
+  own stored `w`/`h`, falling back to `footprintFor(plot.kind)` only for
+  a fixture/legacy record that predates the field — deliberately never
+  re-derives a real plot's size from today's `STRUCTURE_TYPES`, since a
+  later footprint change must never reshape something already on the
+  grounds), and `isFootprintWithinCurrentGrid(state, kind, x, y)` (the
+  state-aware fence-line check, extended to every footprint cell).
+  `hasPathFrontage(cells)` checks every cell in a footprint for a path
+  tile on itself or an orthogonal (non-diagonal, non-interior) neighbor.
+  `quoteBuild` now refuses a footprint that would run off the authored
+  map's edge (returns `null`) and returns `w`/`h` alongside its existing
+  fields. `isLegalPlacement` was rewritten around the footprint: terrain
+  bounds/bans, occupancy (now a full footprint-vs-footprint overlap
+  check via `plotFootprintCells`, not a single-cell match), Stage 11's
+  stage-spacing rule (now checked cell-to-cell across both footprints),
+  then the new frontage check — in that order, first failure wins.
+- **`js/state.js`** — `buildPlot`/`placePlot`/`movePlanningPlot`/
+  `relocatePlot` all switched their bounds check to
+  `isFootprintWithinCurrentGrid` and dropped their old single-cell
+  occupancy pre-check (folded into `isLegalPlacement`'s overlap check
+  now, so there's exactly one place that logic lives). `buildPlot`/
+  `placePlot` stamp `w`/`h` onto the plot record at creation time from
+  `footprintFor(kind)` — this is the "own stored size" `
+  plotFootprintCells` reads, not a re-derivation. `loadState` backfills
+  `w: 1, h: 1` onto every pre-Stage-12 plot unconditionally (even a
+  stage — every plot really was 1x1 before this stage existed), never
+  the kind's *current* footprint.
+- **`js/ui.js`** — `renderGroundsMap`'s occupied-cell set now covers a
+  plot's whole footprint (`plotFootprintCells`), so a ghost/blocked
+  marker can never render on top of a cell a bigger structure already
+  covers. Built markers span their real footprint via CSS grid
+  `span`. A ghost/blocked preview also spans its prospective kind's
+  full footprint — except the one case where a footprint would run
+  past the currently-rendered grid edge, which renders as a single
+  blocked cell (spanning past the visible grid would draw outside it).
+  Map legend gained a one-line reminder of both new rules.
+- **`css/style.css`** — bigger glyph size for `.plot-marker.kind-stage`
+  so a spanning 2x2 marker doesn't look like a stretched 1x1 icon.
+
+## Backlog (unchanged priority from Stage 9 on, still ahead)
+
+Crowd-flow-as-a-system, a structure cap/cost curve, and a win
+condition remain the leading backlog items — this stage was requested
+ahead of them and didn't touch any of the three. Also still standing:
+more/different legality rules (stall-to-stall spacing, a demo camp
+cap, terrain bans for stalls) as an optional future extension, not
+requested yet.
+
+
+- **`tests/smoke.mjs`** — 441 checks now (was 422): a pure-logic block
+  covering both rules directly against `isLegalPlacement` (terrain ban
+  for stage/demo, allowed for food/vendor, adjacent-stage refusal,
+  distance-2 allowed, `excludeId` self-exemption, a still-planning
+  stage counting for spacing), an end-to-end block confirming
+  `placePlot`/`buildPlot`/`movePlanningPlot`/`relocatePlot` all surface
+  the same refusals through state.js, and a DOM check that an illegal
+  cell renders as `.plot-marker.blocked` with an explanatory title
+  while a legal one still renders as a clickable ghost.
 
 ## What the next stage needs
 
-Read `js/state.js`'s planning/commit/move/demolish/relocate/assign
-functions together — they're one cohesive feature even though they
-touch a lot of surface area. `js/engine.js`'s `STALL_KIND_BY_VENDOR_TYPE`
-is the thing to reach for anywhere else vendor-type ↔ stall-kind needs
-translating.
+`js/data.js`'s `PLACEMENT_RULES` is the one place to extend for any
+new placement restriction; `js/engine.js`'s `isLegalPlacement` is the
+one place that reads it and is already wired into every placement path
+in `state.js`, so a new rule added to `PLACEMENT_RULES` needs no
+further plumbing unless its *shape* differs from a terrain ban or a
+same-kind spacing rule (e.g. a rule involving two different kinds, or
+a distance rule that isn't Chebyshev, would need its own branch in
+`isLegalPlacement`).
 
 **Next logical chunks, roughly in the order I'd tackle them:**
 
-1. **Build-time legality rules.** Still deliberately relaxed since
-   Stage 3 (any kind on any terrain) — unchanged this stage.
-2. **Crowd flow / bottlenecks as their own system.** Unchanged
+1. **Crowd flow / bottlenecks as their own system.** Unchanged
    candidate from prior stages.
-3. **A cap or cost curve on total structures.** Still nothing stopping
+2. **A cap or cost curve on total structures.** Still nothing stopping
    a player from tiling the whole unlocked grid if they have the cash
-   — though the demolish/relocate fees at least make *undoing* an
-   overbuild cost something now, which didn't exist before this stage.
-4. **A hard end to the game / a win condition.** Unchanged.
-5. **A drag-to-reorder or true click-and-drag move**, if the current
+   — demolish/relocate fees make *undoing* an overbuild cost something,
+   and this stage's legality rules stop a few of the worst layouts
+   outright, but there's still no economic pressure against simply
+   building everything everywhere.
+3. **A hard end to the game / a win condition.** Unchanged.
+4. **A drag-to-reorder or true click-and-drag move**, if the current
    "click Move, then tap a new cell" two-step ever feels clunky in
-   practice — it reuses the existing ghost-cell mechanism on purpose to
-   avoid new interaction patterns, but a direct drag would be a bigger,
-   separate lift.
-6. **More content-pool filler**, same standing option as always.
+   practice.
+5. **More content-pool filler**, same standing option as always.
+6. **More legality rules**, if any of these feel worth adding:
+   minimum spacing for food/craft stalls from each other (currently
+   unrestricted), a hard cap on demo camps, or terrain-specific bans
+   for food/vendor (e.g. no stall deep in the woods) — none of these
+   were added this stage since the report/backlog only asked for
+   "legality rules" in the abstract and the two shipped here were the
+   most obviously-missing ones (blocking the one path through the
+   grounds, and stacking two stages on the same spot's neighbors).
 
 **Things intentionally deferred (kickoff doc explicitly allows this):**
 weather, rival faires, animal handling beyond the falconer performer role,
@@ -179,39 +149,39 @@ win-condition state.
 ## Retro
 
 **Went well:**
-- Keeping `buildPlot` around unchanged (just tagging its output with
-  `status: 'built'`) instead of rewriting every call site to the new
-  `placePlot`+`commitPlot` two-step meant the entire pre-existing test
-  suite (345 checks) needed zero behavioral changes — only the one DOM
-  walkthrough that actually exercises the *live UI's* placement flow
-  needed updating, since that's the one place that changed. Old and new
-  construction paths produce the exact same plot shape, so nothing
-  downstream (engine, UI, save format) needs to know which path a given
-  plot came from.
-- Auto-seating a vendor on hire (rather than requiring a separate
-  manual assignment click every time) turned what could've been a
-  fiddly two-step "hire, then remember to go assign them" flow into
-  "hire, done" for the common case, while still leaving manual
-  reassign/unassign and Auto-Fill Stalls available for the messier
-  cases (post-demolition cleanup, deliberately reshuffling who runs
-  which stall).
-- Decoupling plot ids from `(x, y)` (via the new `nextPlotId` counter,
-  used only by the new `placePlot` path) up front avoided a whole class
-  of bug: the old `${x}_${y}` id scheme would have orphaned a stage's
-  schedule entries the moment it was relocated to new coordinates.
-  Worth remembering for any future stage that makes a previously-static
-  identifier mutable.
+- Keeping the new rules in one small `PLACEMENT_RULES` data table plus
+  one pure `isLegalPlacement` reader mirrors exactly how
+  `TERRAIN_BUILD_MODIFIERS`/`quoteBuild` are structured — no new
+  architectural pattern, so wiring it into four different state.js
+  actions was a one-line addition to each rather than a refactor.
+- Making a still-`'planning'` stage count for spacing (unlike
+  `computePlotAttributes`, which ignores planning plots) was decided
+  deliberately up front rather than discovered as a bug later — the
+  scenario it prevents (lay out two stages touching, then
+  `commitAllPlots` them both at once) is exactly the kind of one-shot
+  bulk action Stage 10 added, so it needed to be caught at `placePlot`
+  time, not just at commit time.
+- Rendering illegal cells as a visible blocked marker (rather than
+  just omitting the ghost) cost one extra branch in an already-short
+  loop and meaningfully improves the "why can't I build here" moment,
+  consistent with this account's general preference for surfacing
+  reasons rather than silent refusals (see Stage 10's whole reason for
+  existing).
 
 **Dead end / thing to know about before you repeat it:**
-- First pass at the DOM smoke-test fix for the new commit flow grabbed
-  `built.builtPlots[0]` assuming it'd be the just-committed plot — but
-  array order is push order, not "most recently touched," so it
-  actually grabbed an unrelated still-planning plot from earlier in the
-  same test and produced a confusingly-wrong failure message rather
-  than a crash. Fixed by finding the plot by its known `(x, y)`
-  instead. Lesson: when a test builds up multiple plots across several
-  state transitions, always re-find the one you care about by an
-  identifying property rather than trusting array position.
+- First pass at the new DOM test for the blocked marker reused a
+  `stageBtn` element reference captured near the top of the DOM test
+  block, before several renders had already happened. Since
+  `main.js`'s `render()` replaces `#content.innerHTML` wholesale on
+  every action, that reference was long detached from the live
+  document by the time it was clicked again, so the click fired but
+  never reached the delegated listener on `#content` — no error, just
+  a silently-missing ghost/blocked marker and a confusing failed
+  assertion. Fixed by re-querying `doc.querySelector(...)` fresh
+  immediately before each click, same as every other click in this
+  test file already does. Lesson: never hold onto a DOM element
+  reference across a render boundary in this test harness — always
+  re-query right before use.
 
 ## Changelog
 
@@ -324,3 +294,72 @@ win-condition state.
   and an `EVENT_POOL`/`EVENT_REQUIREMENTS`/`EVENT_EFFECTS` integrity block.
   Backlog now leads with build-time legality rules, crowd-flow-as-a-system,
   a structure cap/cost curve, and a win condition.
+- **Stage 10** — soft-lock investigation + four requested features: direct
+  stress-testing found "Open the Gates" was never actually disabled, but did
+  find a real latent bug — `hireVendor`'s cap summed food+craft stalls into
+  one shared pool instead of capping each separately — fixed via new
+  `STALL_KIND_BY_VENDOR_TYPE`. Shipped: (1) a per-kind "N/M filled" stall
+  vacancy tracker (`stallSummary`); (2) a planning→commit construction flow
+  (`placePlot`/`commitPlot`/`commitAllPlots`/`deletePlanningPlot`/
+  `movePlanningPlot` free and reversible pre-commit, paid `demolishPlot`/
+  `relocatePlot` for already-built plots, plot ids decoupled from `(x,y)`
+  via `state.nextPlotId`); (3) individual vendor-to-stall seating
+  (`assignVendorToPlot`/`unassignVendorFromPlot`/`autoFillStalls`, with
+  `hireVendor` auto-seating on hire); (4) `renamePlot`. `simulateDay` now
+  splits vendor cost (every hired vendor draws wages) from vendor revenue
+  (only a seated vendor sells anything). `buildPlot` kept unchanged for
+  backward compatibility, so the full pre-existing suite needed no
+  rewrites. `loadState` migrates pre-Stage-10 saves. 422-check smoke suite
+  (was 345). Backlog next led with build-time legality rules,
+  crowd-flow-as-a-system, a structure cap/cost curve, and a win condition.
+- **Stage 11** — build-time legality rules: new `PLACEMENT_RULES` data
+  table (a stage/demo camp can't be built on the path; two stages can't
+  sit directly touching, Chebyshev distance 1) read by a new pure
+  `isLegalPlacement(kind, x, y, builtPlots, excludeId)`, wired into
+  `buildPlot`/`placePlot`/`movePlanningPlot`/`relocatePlot`. A
+  still-planning stage counts for the spacing check (unlike
+  `computePlotAttributes`'s adjacency math, which ignores planning
+  plots) so two planned stages can't be laid out touching and then
+  bulk-committed together. `renderGroundsMap`'s ghost-cell loop now
+  renders an illegal cell as a non-interactive `.plot-marker.blocked`
+  marker with the refusal reason in its title, rather than just
+  omitting the ghost. 441-check smoke suite (was 422), including a pure
+  `isLegalPlacement` block, an end-to-end state.js block, and a DOM
+  check for the blocked marker and its title. Backlog now leads with
+  crowd-flow-as-a-system, a structure cap/cost curve, and a win
+  condition; also floats more/different legality rules (stall-to-stall
+  spacing, demo camp cap, terrain bans for stalls) as a standing
+  option, not requested this stage.
+- **Stage 12** — bigger stage footprints + a real path network + a
+  path-frontage requirement, on direct player feedback. `STRUCTURE_TYPES.
+  stage` gained a `footprint: {w:2,h:2}` (everything else stays 1x1);
+  new engine.js primitives `footprintFor`/`footprintCells`/
+  `plotFootprintCells`/`isFootprintWithinCurrentGrid` make a plot's
+  whole footprint (not just its anchor) the unit every placement check
+  operates over — bounds, occupancy, and Stage 11's stage-spacing rule
+  all became footprint-aware. New `hasPathFrontage(cells)` requires
+  every built kind to sit on or beside a path tile (orthogonal
+  neighbor only); `isLegalPlacement` gained this as its final check.
+  `TERRAIN_ROWS` grew a second north-south path spur (column 10) plus
+  an eastward connector (row 7, columns 10-13) so the Stage 8 expansion
+  territory has path frontage to build against once unlocked, instead
+  of being stranded. `buildPlot`/`placePlot` now stamp `w`/`h` onto
+  each plot at creation time (read back by `plotFootprintCells` rather
+  than re-derived from current `STRUCTURE_TYPES`, so a later footprint
+  change can never reshape something already built); `loadState`
+  backfills `w:1,h:1` onto every pre-Stage-12 plot unconditionally.
+  `renderGroundsMap` renders built/ghost/blocked markers spanning their
+  real footprint via CSS grid `span`. Existing stage-spacing tests
+  needed new coordinates (a 2x2 footprint changes what "adjacent" vs
+  "overlapping" means at the old 1-cell-apart anchors), but no
+  existing behavior changed beyond that. 467-check smoke suite (was
+  441): 26 new checks covering footprint primitives, the map-edge and
+  fence-line footprint bounds checks, path frontage (bare function,
+  `isLegalPlacement` integration, and end-to-end through `buildPlot`),
+  footprint-vs-footprint occupancy (anchor cell AND non-anchor cell of
+  an existing stage both correctly refuse a second plot), and the
+  pre-Stage-12 save migration. Backlog unchanged from Stage 9 on:
+  crowd-flow-as-a-system, a structure cap/cost curve, and a win
+  condition still lead; more/different legality rules remain a
+  standing, not-yet-requested option.
+

@@ -4,7 +4,7 @@
 // action and tests can assert on plain objects.
 
 import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
-import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isWithinCurrentGrid, STALL_KIND_BY_VENDOR_TYPE } from './engine.js';
+import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE } from './engine.js';
 
 const SAVE_KEY = 'renn-faire-sim-save-v1';
 
@@ -60,16 +60,18 @@ function clone(state) {
 // downstream needs to know which path a given plot came from.
 export function buildPlot(state, kind, x, y) {
   if (!STRUCTURE_TYPES[kind]) return { state, error: 'Unknown structure type.' };
-  if (!isWithinCurrentGrid(state, x, y)) {
+  if (!isFootprintWithinCurrentGrid(state, kind, x, y)) {
     return { state, error: 'That spot is past the fence line \u2014 expand the grounds first.' };
   }
   const quote = quoteBuild(kind, x, y);
   if (!quote) return { state, error: 'Nothing can be built there.' };
-  if (state.builtPlots.some(p => p.x === x && p.y === y)) return { state, error: 'Something is already built there.' };
+  const legal = isLegalPlacement(kind, x, y, state.builtPlots);
+  if (!legal.ok) return { state, error: legal.reason };
   if (state.cash < quote.cost) return { state, error: `Not enough cash (need $${quote.cost}).` };
   const next = clone(state);
   next.cash -= quote.cost;
-  const plot = { id: `${x}_${y}`, kind, x, y, name: quote.name, cost: quote.cost, status: 'built', customName: false };
+  const { w, h } = footprintFor(kind);
+  const plot = { id: `${x}_${y}`, kind, x, y, w, h, name: quote.name, cost: quote.cost, status: 'built', customName: false };
   if (kind === 'stage') plot.capacity = quote.capacity;
   if (kind === 'food' || kind === 'vendor') plot.assignedVendorId = null;
   next.builtPlots.push(plot);
@@ -86,16 +88,18 @@ export function buildPlot(state, kind, x, y) {
 // (and being stuck with) whatever cell was clicked first.
 export function placePlot(state, kind, x, y) {
   if (!STRUCTURE_TYPES[kind]) return { state, error: 'Unknown structure type.' };
-  if (!isWithinCurrentGrid(state, x, y)) {
+  if (!isFootprintWithinCurrentGrid(state, kind, x, y)) {
     return { state, error: 'That spot is past the fence line \u2014 expand the grounds first.' };
   }
   const quote = quoteBuild(kind, x, y);
   if (!quote) return { state, error: 'Nothing can be built there.' };
-  if (state.builtPlots.some(p => p.x === x && p.y === y)) return { state, error: 'Something is already there.' };
+  const legal = isLegalPlacement(kind, x, y, state.builtPlots);
+  if (!legal.ok) return { state, error: legal.reason };
   const next = clone(state);
   const id = `plot_${next.nextPlotId}`;
   next.nextPlotId += 1;
-  const plot = { id, kind, x, y, name: quote.name, cost: quote.cost, status: 'planning', customName: false };
+  const { w, h } = footprintFor(kind);
+  const plot = { id, kind, x, y, w, h, name: quote.name, cost: quote.cost, status: 'planning', customName: false };
   if (kind === 'stage') plot.capacity = quote.capacity;
   if (kind === 'food' || kind === 'vendor') plot.assignedVendorId = null;
   next.builtPlots.push(plot);
@@ -141,10 +145,11 @@ export function movePlanningPlot(state, plotId, x, y) {
   const plot = state.builtPlots.find(p => p.id === plotId);
   if (!plot) return { state, error: 'No such plot.' };
   if (plot.status !== 'planning') return { state, error: 'Only an un-built plan can be moved for free \u2014 relocate a built plot instead.' };
-  if (!isWithinCurrentGrid(state, x, y)) return { state, error: 'That spot is past the fence line.' };
-  if (state.builtPlots.some(p => p.id !== plotId && p.x === x && p.y === y)) return { state, error: 'Something is already there.' };
+  if (!isFootprintWithinCurrentGrid(state, plot.kind, x, y)) return { state, error: 'That spot is past the fence line.' };
   const quote = quoteBuild(plot.kind, x, y);
   if (!quote) return { state, error: 'Nothing can be built there.' };
+  const legal = isLegalPlacement(plot.kind, x, y, state.builtPlots, plotId);
+  if (!legal.ok) return { state, error: legal.reason };
   const next = clone(state);
   const np = next.builtPlots.find(p => p.id === plotId);
   np.x = x; np.y = y; np.cost = quote.cost;
@@ -176,10 +181,11 @@ export function relocatePlot(state, plotId, x, y) {
   const plot = state.builtPlots.find(p => p.id === plotId);
   if (!plot) return { state, error: 'No such plot.' };
   if (plot.status !== 'built') return { state, error: 'Move it for free while it is still a plan.' };
-  if (!isWithinCurrentGrid(state, x, y)) return { state, error: 'That spot is past the fence line.' };
-  if (state.builtPlots.some(p => p.id !== plotId && p.x === x && p.y === y)) return { state, error: 'Something is already there.' };
+  if (!isFootprintWithinCurrentGrid(state, plot.kind, x, y)) return { state, error: 'That spot is past the fence line.' };
   const quote = quoteBuild(plot.kind, x, y);
   if (!quote) return { state, error: 'Nothing can be built there.' };
+  const legal = isLegalPlacement(plot.kind, x, y, state.builtPlots, plotId);
+  if (!legal.ok) return { state, error: legal.reason };
   const demolishFee = Math.round(plot.cost * CONFIG.demolishFeeMult);
   const rebuildCost = Math.round(quote.cost * CONFIG.relocateDiscountMult);
   const total = demolishFee + rebuildCost;
@@ -526,7 +532,12 @@ export function loadState() {
     // plots that predate the field.
     let needsAutoSeat = false;
     parsed.builtPlots = (parsed.builtPlots || []).map(p => {
-      const withStatus = { customName: false, ...p, status: p.status || 'built' };
+      // Stage 12: every plot from before this stage was built 1x1 — even a
+      // stage, since footprint didn't exist yet — so a missing w/h always
+      // backfills to 1, never to the current (now 2x2) STRUCTURE_TYPES
+      // footprint. Reshaping an old stage to 2x2 on load could suddenly
+      // overlap something the player already built right next to it.
+      const withStatus = { customName: false, w: 1, h: 1, ...p, status: p.status || 'built' };
       if ((withStatus.kind === 'food' || withStatus.kind === 'vendor') && withStatus.assignedVendorId === undefined) {
         withStatus.assignedVendorId = null;
         needsAutoSeat = true;

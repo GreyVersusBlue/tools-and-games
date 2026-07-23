@@ -2,7 +2,7 @@
 // main.js wires all interaction via event delegation on #content.
 
 import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, STALL_KIND_BY_VENDOR_TYPE } from './engine.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -259,13 +259,19 @@ function renderGroundsMap(state, pendingBuild, pendingMove) {
     }
   }
 
+  // Stage 12: occupancy now covers a plot's WHOLE footprint (a 2x2 stage
+  // claims 4 cells), not just its anchor — otherwise a ghost/blocked marker
+  // could render right on top of a cell a bigger structure already covers.
   const movingPlot = pendingMove ? state.builtPlots.find(p => p.id === pendingMove.plotId) : null;
-  const occupied = new Set(
-    state.builtPlots.filter(p => !movingPlot || p.id !== movingPlot.id).map(p => `${p.x},${p.y}`)
-  );
+  const occupied = new Set();
+  for (const p of state.builtPlots) {
+    if (movingPlot && p.id === movingPlot.id) continue;
+    for (const c of plotFootprintCells(p)) occupied.add(`${c.x},${c.y}`);
+  }
   const builtMarkers = state.builtPlots.map(p => {
     const glyph = STRUCTURE_TYPES[p.kind]?.icon || '?';
-    const style = `grid-column:${p.x + 1};grid-row:${p.y + 1};`;
+    const w = p.w || 1, h = p.h || 1;
+    const style = `grid-column:${p.x + 1} / span ${w};grid-row:${p.y + 1} / span ${h};`;
     const attrs = computePlotAttributes(p, state.builtPlots);
     const statusWord = p.status === 'planning' ? 'planned, not yet built' : 'built';
     const title = `${p.name} \u2014 ${statusWord} (sightline ${pct(attrs.sightline)}, shade ${pct(attrs.shade)}, traffic ${pct(attrs.traffic)})`;
@@ -278,12 +284,32 @@ function renderGroundsMap(state, pendingBuild, pendingMove) {
   const ghostKind = pendingMove ? pendingMove.kind : pendingBuild;
   if (ghostKind) {
     const ghosts = [];
+    const excludeId = pendingMove ? pendingMove.plotId : undefined;
+    const { w: gw, h: gh } = footprintFor(ghostKind);
     for (let y = 0; y < size.rows; y++) {
       for (let x = 0; x < size.cols; x++) {
         if (occupied.has(`${x},${y}`)) continue;
+        const style = `grid-column:${x + 1} / span ${gw};grid-row:${y + 1} / span ${gh};`;
+        // Stage 12: a footprint bigger than 1x1 can hang off the currently-
+        // unlocked grounds even when its anchor is on-grid — render that as
+        // a blocked cell (1x1, since spanning past the visible grid would
+        // draw outside it) rather than silently skipping it.
+        if (x + gw > size.cols || y + gh > size.rows) {
+          ghosts.push(`<div class="plot-marker blocked" style="grid-column:${x + 1};grid-row:${y + 1};" title="That would run past the fence line \u2014 expand the grounds first.">\u2715</div>`);
+          continue;
+        }
         const quote = quoteBuild(ghostKind, x, y);
         if (!quote) continue;
-        const style = `grid-column:${x + 1};grid-row:${y + 1};`;
+        // Stage 11/12: an illegal footprint (path under a stage/demo, too
+        // close to another stage, no path frontage, or overlapping a
+        // neighbor cell of a bigger structure) is shown as a non-interactive
+        // blocked marker rather than silently omitted, so the player can see
+        // *why* it's off-limits instead of just not finding a "+" there.
+        const legal = isLegalPlacement(ghostKind, x, y, state.builtPlots, excludeId);
+        if (!legal.ok) {
+          ghosts.push(`<div class="plot-marker blocked" style="${style}" title="${legal.reason}">\u2715</div>`);
+          continue;
+        }
         if (pendingMove) {
           ghosts.push(`<button class="plot-marker ghost" style="${style}" title="Move here \u2014 ${quote.name}" data-action="moveTo" data-plot="${pendingMove.plotId}" data-x="${x}" data-y="${y}">\u2794</button>`);
         } else {
@@ -297,6 +323,7 @@ function renderGroundsMap(state, pendingBuild, pendingMove) {
   return `
     <div class="grounds-map" style="--cols:${size.cols};--rows:${size.rows};">${cells.join('')}${builtMarkers}${ghostMarkers}</div>
     <p class="map-legend mono">\u{1F3D4}\ufe0f hill &middot; \u{1F332} woods &middot; \u{1F3DE}\ufe0f path &middot; \u{1F33E} clearing</p>
+    <p class="map-legend mono">Everything built must sit on or beside a path &middot; \u{1F3AD} stages need a clear 2\u00d72</p>
   `;
 }
 

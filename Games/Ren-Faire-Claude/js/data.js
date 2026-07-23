@@ -41,22 +41,27 @@ export const TIME_BLOCKS = [
 // the *bounds a build is allowed within* become state-aware.
 export const GRID = { cols: 14, rows: 10 };
 
-// One character per cell, legend below. Two path lines cross at (3,2),
-// which is why Market Crossing Stage sits there. Columns 10-13 and rows
-// 7-9 are the Stage 8 expansion territory — not buildable until unlocked
-// (see GRID_EXPANSIONS), but authored now so the map never needs new
-// terrain content generated later.
+// One character per cell, legend below. The grounds are threaded by a real
+// path *network*, not one line: the row-2 artery runs the full width, a
+// north-south spur at col 3 drops off it ("Market Crossing" sits where
+// they cross, at (3,2)), and a second north-south spur at col 10 (Stage 12)
+// carries that same artery out east — with a short eastward connector
+// along row 7 (cols 10-13) so the Stage 8 expansion territory (cols 10-13,
+// rows 7-9) actually has path frontage to build against, instead of being
+// stranded once unlocked. Columns 10-13 and rows 7-9 are that expansion
+// territory — not buildable until unlocked (see GRID_EXPANSIONS), but
+// authored now so the map never needs new terrain content generated later.
 export const TERRAIN_ROWS = [
   'CCHHHHCCWWWWCC',
   'CCHHHHCCWWWWCC',
   'PPPPPPPPPPPPPP',
-  'CCCCCCCCWWHHCC',
-  'CWWPWWCCWWHHCC',
-  'CWWPWWCCCCWWCC',
-  'CCCPCCCCCCWWCC',
-  'CCCPCCCCCCCCCC',
-  'HHHPHHCCWWWWCC',
-  'CCCPCCCCCCCCCC',
+  'CCCCCCCCWWPHCC',
+  'CWWPWWCCWWPHCC',
+  'CWWPWWCCCCPWCC',
+  'CCCPCCCCCCPWCC',
+  'CCCPCCCCCCPPPP',
+  'HHHPHHCCWWPWCC',
+  'CCCPCCCCCCPCCC',
 ];
 
 export const TERRAIN_LEGEND = { C: 'clearing', H: 'hill', W: 'woods', P: 'path' };
@@ -88,8 +93,16 @@ export const TERRAIN_BASE = {
 // Stage 3 lets the player build any of these four kinds on any open grid
 // cell, so this is now a small catalog of *kinds*, not specific sites.
 // `baseCapacity` only applies to stage (the only kind with an attendance cap).
+// `footprint` (Stage 12): how many grid cells a built structure actually
+// occupies, anchored at its (x,y). A stage is a real show site — trussing,
+// backstage curtain, a crowd apron — so it spans 2x2 instead of the single
+// cell every other kind still uses; that size difference is now load-
+// bearing (it eats more of the grounds, is harder to fit a path-frontage
+// requirement against, and collides with more neighbors for the stage-
+// spacing rule below). Any kind without an explicit `footprint` defaults to
+// 1x1 via engine.js's footprintFor().
 export const STRUCTURE_TYPES = {
-  stage: { label: 'Stage', icon: '\u{1F3AD}', baseCost: 850, baseCapacity: 220 },
+  stage: { label: 'Stage', icon: '\u{1F3AD}', baseCost: 850, baseCapacity: 220, footprint: { w: 2, h: 2 } },
   food: { label: 'Food Stall', icon: '\u{1F357}', baseCost: 480 },
   vendor: { label: 'Craft Stall', icon: '\u{1F6D2}', baseCost: 480 },
   demo: { label: 'Demo Camp', icon: '\u{1F985}', baseCost: 350 },
@@ -111,6 +124,41 @@ export const TERRAIN_BUILD_MODIFIERS = {
 // ${KIND_NOUN[kind]}`, e.g. a stage built on a hill becomes "Hilltop Stage".
 export const TERRAIN_NAME = { clearing: 'Green', hill: 'Hilltop', woods: 'Grove', path: 'Crossing' };
 export const KIND_NOUN = { stage: 'Stage', food: 'Stall', vendor: 'Bazaar', demo: 'Camp' };
+
+// Stage 11: build-time legality rules. Terrain/kind combos and structure
+// spacing that are refused outright at place/move/relocate time, on top of
+// (not instead of) the cost/capacity terrain modifiers above and the
+// adjacency sightline/traffic math in engine.js's computePlotAttributes.
+// Deliberately small and data-only, same pattern as TERRAIN_BUILD_MODIFIERS,
+// so a future stage can extend either list without touching engine logic.
+export const PLACEMENT_RULES = {
+  // Kinds that refuse to be built on a given terrain outright. A stage or
+  // demo camp squarely blocking the one thoroughfare through the grounds
+  // isn't a cost tradeoff, it's just not allowed; a food/craft stall is
+  // still fine on the path (roadside stalls are exactly what a real faire's
+  // path is lined with).
+  terrainBans: {
+    stage: ['path'],
+    demo: ['path'],
+  },
+  // Minimum Chebyshev (king-move) distance required between two stages,
+  // built or still-planning — 1 means two stages can't sit directly
+  // touching (including diagonally). Checked cell-to-cell across each
+  // stage's full 2x2 footprint (Stage 12), not just anchor-to-anchor. This
+  // is a hard floor underneath the existing soft sightline penalty
+  // (ADJACENCY_RADIUS=2 in engine.js), which still applies on top of it for
+  // anything farther than this.
+  minStageSpacing: 1,
+  // Stage 12: "build along the paths" — every buildable kind needs at
+  // least one cell of its footprint sitting ON a path (food/craft/demo can
+  // straddle one) or directly beside one (orthogonal neighbor only, not
+  // diagonal). A stage/demo can never sit ON the path (see terrainBans
+  // above), so for those two this only ever resolves via the "beside"
+  // half of the check. Kept as an explicit kind list rather than a bare
+  // boolean so a future stage could exempt one kind without touching
+  // engine.js's hasPathFrontage().
+  requiresPathFrontage: ['stage', 'food', 'vendor', 'demo'],
+};
 
 // Marketing/advertising campaigns (Stage 4). Only one campaign can be
 // running at a time — launching one costs cash up front, its

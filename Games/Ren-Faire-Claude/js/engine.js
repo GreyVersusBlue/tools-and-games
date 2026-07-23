@@ -3,7 +3,7 @@
 // this module for the math. That split is what makes the smoke tests able
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
-import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS } from './data.js';
+import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES } from './data.js';
 
 // ---------- seeded RNG (mulberry32) ----------
 // Deterministic given a numeric seed so tests can assert exact outputs.
@@ -147,6 +147,72 @@ export function chebyshevDistance(a, b) {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
+// ---------- structure footprints (Stage 12) ----------
+// How many cells a structure kind occupies, anchored at (x,y). Falls back
+// to 1x1 for any kind without an explicit STRUCTURE_TYPES[kind].footprint
+// (every kind except stage, today) so old content/saves never need a
+// retrofit. `footprintCells` is the pure enumerator both quoteBuild and
+// isLegalPlacement build on; a plot's OWN footprint should be read off its
+// stored `w`/`h` (set at build time) rather than re-derived from
+// STRUCTURE_TYPES, since a later stage changing a kind's footprint must
+// never reshape plots that already exist on the grounds.
+export function footprintFor(kind) {
+  const type = STRUCTURE_TYPES[kind];
+  return (type && type.footprint) || { w: 1, h: 1 };
+}
+
+export function footprintCells(x, y, w, h) {
+  const cells = [];
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) cells.push({ x: x + dx, y: y + dy });
+  }
+  return cells;
+}
+
+// A built plot's actual footprint, honoring its stored w/h when present
+// (falls back to the kind's current footprint for a pre-Stage-12 save,
+// which loadState migrates to explicit 1x1 anyway).
+export function plotFootprintCells(plot) {
+  const w = plot.w || footprintFor(plot.kind).w;
+  const h = plot.h || footprintFor(plot.kind).h;
+  return footprintCells(plot.x, plot.y, w, h);
+}
+
+// Whether every cell of `kind`'s footprint at (x,y) sits within the
+// currently-unlocked grounds (state-aware — see isWithinCurrentGrid/
+// currentGridSize above). A footprint that would poke past the fence line
+// on ANY cell, not just its anchor, is refused.
+export function isFootprintWithinCurrentGrid(state, kind, x, y) {
+  const { w, h } = footprintFor(kind);
+  return footprintCells(x, y, w, h).every(c => isWithinCurrentGrid(state, c.x, c.y));
+}
+
+function orthogonalNeighbors(cell) {
+  return [
+    { x: cell.x + 1, y: cell.y },
+    { x: cell.x - 1, y: cell.y },
+    { x: cell.x, y: cell.y + 1 },
+    { x: cell.x, y: cell.y - 1 },
+  ];
+}
+
+// Whether any cell of a footprint sits ON a path tile, or directly beside
+// one (orthogonal neighbor only — a diagonal touch doesn't count as
+// frontage). A neighbor that's itself part of the same footprint is
+// skipped (it's interior to the structure, not a street it fronts onto).
+export function hasPathFrontage(cells) {
+  const key = (c) => `${c.x},${c.y}`;
+  const own = new Set(cells.map(key));
+  for (const c of cells) {
+    if (terrainAt(c.x, c.y) === 'path') return true;
+    for (const n of orthogonalNeighbors(c)) {
+      if (own.has(key(n))) continue;
+      if (terrainAt(n.x, n.y) === 'path') return true;
+    }
+  }
+  return false;
+}
+
 const ADJACENCY_RADIUS = 2;
 const NEARBY_STAGE_SIGHTLINE_PENALTY = 0.1; // per nearby built stage, stages only
 const NEARBY_STAGE_TRAFFIC_BONUS = 0.05; // per nearby built stage, food/vendor/demo only
@@ -193,11 +259,66 @@ export function quoteBuild(kind, x, y) {
   const type = STRUCTURE_TYPES[kind];
   const terrain = terrainAt(x, y);
   if (!type || !terrain) return null;
+  // Stage 12: a multi-cell footprint (currently just stage's 2x2) must sit
+  // entirely on the authored map — a cell hanging off TERRAIN_ROWS' edge
+  // isn't buildable even if the anchor cell itself is fine. Cost/capacity
+  // still price off the anchor cell's terrain only (a stage straddling two
+  // terrain types doesn't get split pricing) — deliberately simple.
+  const { w, h } = footprintFor(kind);
+  if (footprintCells(x, y, w, h).some(c => !terrainAt(c.x, c.y))) return null;
   const mod = TERRAIN_BUILD_MODIFIERS[terrain];
   const cost = Math.round((type.baseCost * mod.costMult) / 10) * 10;
   const capacity = kind === 'stage' ? Math.round(type.baseCapacity * mod.capacityMult) : undefined;
   const name = `${TERRAIN_NAME[terrain]} ${KIND_NOUN[kind]}`;
-  return { kind, x, y, terrain, cost, capacity, name };
+  return { kind, x, y, w, h, terrain, cost, capacity, name };
+}
+
+// Stage 11: build-time legality — on top of (not instead of) whatever
+// quoteBuild() charges. Checked wherever a plot's kind/position is set or
+// changed (placePlot/buildPlot/movePlanningPlot/relocatePlot in state.js),
+// so an illegal siting is refused before any money moves. Pure function;
+// `builtPlots` is state.builtPlots (any status — a planning stage still
+// "claims" its spot for spacing purposes, same as it claims its cell for
+// the occupancy check state.js already does). `excludeId` lets a plot being
+// moved/relocated ignore its own current position when checking distance to
+// itself. Returns { ok, reason } rather than throwing — callers surface
+// `reason` as the same kind of error string quoteBuild-adjacent checks use.
+export function isLegalPlacement(kind, x, y, builtPlots, excludeId) {
+  const { w, h } = footprintFor(kind);
+  const cells = footprintCells(x, y, w, h);
+  if (cells.some(c => !terrainAt(c.x, c.y))) {
+    return { ok: false, reason: 'That doesn\u2019t fit within the surveyed grounds.' };
+  }
+  const banned = PLACEMENT_RULES.terrainBans[kind];
+  if (banned && cells.some(c => banned.includes(terrainAt(c.x, c.y)))) {
+    const label = STRUCTURE_TYPES[kind] ? STRUCTURE_TYPES[kind].label : kind;
+    return { ok: false, reason: `A ${label} can't block the path \u2014 try a nearby clearing, hill, or woods instead.` };
+  }
+  // Stage 12: occupancy is now a footprint-vs-footprint overlap check (any
+  // status counts, same as before — a still-"planning" plot claims its
+  // cells too), not a single (x,y) match.
+  const others = (builtPlots || []).filter(p => p && p.id !== excludeId);
+  const overlaps = others.some(p => {
+    const oCells = plotFootprintCells(p);
+    return cells.some(c => oCells.some(o => o.x === c.x && o.y === c.y));
+  });
+  if (overlaps) return { ok: false, reason: 'Something is already built there.' };
+  if (kind === 'stage') {
+    const tooClose = others.some(p => {
+      if (p.kind !== 'stage') return false;
+      const oCells = plotFootprintCells(p);
+      return cells.some(c => oCells.some(o => chebyshevDistance(c, o) <= PLACEMENT_RULES.minStageSpacing));
+    });
+    if (tooClose) {
+      return { ok: false, reason: 'Too close to another stage \u2014 give show sites more room to breathe.' };
+    }
+  }
+  const requiresFrontage = (PLACEMENT_RULES.requiresPathFrontage || []).includes(kind);
+  if (requiresFrontage && !hasPathFrontage(cells)) {
+    const label = STRUCTURE_TYPES[kind] ? STRUCTURE_TYPES[kind].label : kind;
+    return { ok: false, reason: `A ${label} needs to sit on or beside a path \u2014 nothing gets built away from the thoroughfare.` };
+  }
+  return { ok: true, reason: null };
 }
 
 // Quirk effects are looked up by id rather than storing functions in data.js,

@@ -19,8 +19,8 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE } = await import(path.join(root, 'js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, EVENT_POOL } = await import(path.join(root, 'js/data.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage } = await import(path.join(root, 'js/engine.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL } = await import(path.join(root, 'js/data.js'));
 const State = await import(path.join(root, 'js/state.js'));
 
 // --- RNG determinism ---
@@ -749,7 +749,13 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(isWithinCurrentGrid(s, 9, 6) === true, 'the Home Grounds\u2019 far corner (9,6) is buildable at Weekend 1');
   assert(isWithinCurrentGrid(s, 10, 0) === false, 'a cell just past the Weekend-1 fence line (10,0) is not yet buildable');
 
-  const tooFarOut = State.buildPlot(s, 'stage', 11, 3);
+  // Stage 12: a stage's footprint is 2x2, so the anchor picked here has to
+  // clear the WHOLE footprint against each tier, not just its own cell.
+  // (8,6)-(9,7) straddles the Home-Grounds/East-Meadow boundary (row 7 is
+  // new at East Meadow) and sits beside the new col-10 path spur for
+  // frontage; (11,8)-(12,9) clears Deep Woods Trail but still overflows
+  // East Meadow's row cap.
+  const tooFarOut = State.buildPlot(s, 'stage', 8, 6);
   assert(tooFarOut.error && /fence line/i.test(tooFarOut.error), 'buildPlot refuses a cell past the current fence line with a clear error');
   assert(tooFarOut.state === s, 'a refused off-grounds build does not mutate state');
 
@@ -761,12 +767,12 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(s.season === 2, 'walking forward one weekend from Weekend 1 reaches Weekend 2');
   const meadowSize = currentGridSize(s);
   assert(meadowSize.label === 'East Meadow' && meadowSize.cols === 12 && meadowSize.rows === 8, 'reaching Weekend 2 unlocks the East Meadow (12\u00d78) footprint');
-  assert(isWithinCurrentGrid(s, 11, 3) === true, 'a cell that was off-grounds at Weekend 1 (11,3) becomes buildable once East Meadow unlocks');
+  assert(isWithinCurrentGrid(s, 9, 7) === true, 'a cell that was off-grounds at Weekend 1 (9,7) becomes buildable once East Meadow unlocks');
 
-  const meadowBuild = State.buildPlot(s, 'stage', 11, 3);
+  const meadowBuild = State.buildPlot(s, 'stage', 8, 6);
   assert(meadowBuild.error === null, 'buildPlot succeeds in the newly-unlocked East Meadow once Weekend 2 is reached');
 
-  const stillTooFarOut = State.buildPlot(meadowBuild.state, 'stage', 13, 9);
+  const stillTooFarOut = State.buildPlot(meadowBuild.state, 'stage', 11, 8);
   assert(stillTooFarOut.error && /fence line/i.test(stillTooFarOut.error), 'a cell in the not-yet-unlocked Deep Woods Trail tier is still refused at Weekend 2');
   assert(nextGridExpansion(meadowBuild.state).label === 'Deep Woods Trail', 'Deep Woods Trail is the next expansion still ahead at Weekend 2');
 }
@@ -818,7 +824,7 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(plot.id.startsWith('plot_'), 'placePlot ids come from the nextPlotId counter, not the (x,y) scheme buildPlot uses');
 
   const dupPlace = State.placePlot(s, 'food', 3, 0);
-  assert(dupPlace.error && /already there/i.test(dupPlace.error), 'placePlot refuses an already-occupied cell');
+  assert(dupPlace.error && /already built/i.test(dupPlace.error), 'placePlot refuses an already-occupied cell');
 
   const commitRes = State.commitPlot(s, plot.id);
   assert(commitRes.error === null, 'commitPlot succeeds once affordable');
@@ -874,11 +880,11 @@ const State = await import(path.join(root, 'js/state.js'));
   s = State.placePlot(s, 'stage', 3, 0).state;
   const plot = s.builtPlots[0];
 
-  const movedElsewhere = State.movePlanningPlot(s, plot.id, 5, 1);
+  const movedElsewhere = State.movePlanningPlot(s, plot.id, 5, 3);
   assert(movedElsewhere.error === null, 'movePlanningPlot succeeds on an open cell');
   assert(movedElsewhere.state.cash === s.cash, 'movePlanningPlot is free');
   const movedPlot = movedElsewhere.state.builtPlots.find(p => p.id === plot.id);
-  assert(movedPlot.x === 5 && movedPlot.y === 1, 'movePlanningPlot actually updates the plot\u2019s position');
+  assert(movedPlot.x === 5 && movedPlot.y === 3, 'movePlanningPlot actually updates the plot\u2019s position');
   assert(movedPlot.id === plot.id, 'movePlanningPlot keeps the same plot id after moving (id is decoupled from x,y)');
 
   const deleted = State.deletePlanningPlot(movedElsewhere.state, plot.id);
@@ -928,7 +934,7 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(relocatedPlot.x === 8 && relocatedPlot.y === 3, 'relocatePlot updates the plot\u2019s position');
   assert(relocatedPlot.id === origPlot.id, 'relocatePlot keeps the same plot id (schedule references to it stay valid)');
 
-  const poorRelocate = State.relocatePlot({ ...s2, cash: 0 }, origPlot.id, 9, 3);
+  const poorRelocate = State.relocatePlot({ ...s2, cash: 0 }, origPlot.id, 6, 3);
   assert(poorRelocate.error && /not enough cash/i.test(poorRelocate.error), 'relocatePlot refuses when cash can\u2019t cover the combined cost');
 }
 
@@ -1072,6 +1078,188 @@ const State = await import(path.join(root, 'js/state.js'));
 
 
 // ---------------------------------------------------------------------
+// Stage 11: build-time legality rules — terrain bans (stage/demo can't
+// block the path) and a minimum stage-to-stage spacing.
+// ---------------------------------------------------------------------
+{
+  // (x=0,y=2) sits on the path (row 2 is all 'P'). A food/craft stall is
+  // still fine there; a stage or demo camp is not.
+  assert(terrainAt(0, 2) === 'path', 'sanity check: (0,2) is path terrain, as the legality tests below assume');
+  const stageOnPath = isLegalPlacement('stage', 0, 2, []);
+  assert(stageOnPath.ok === false && /path/i.test(stageOnPath.reason), 'isLegalPlacement refuses a stage on the path');
+  const demoOnPath = isLegalPlacement('demo', 0, 2, []);
+  assert(demoOnPath.ok === false, 'isLegalPlacement refuses a demo camp on the path');
+  const foodOnPath = isLegalPlacement('food', 0, 2, []);
+  assert(foodOnPath.ok === true, 'isLegalPlacement allows a food stall on the path (roadside stalls are fine)');
+  const vendorOnPath = isLegalPlacement('vendor', 0, 2, []);
+  assert(vendorOnPath.ok === true, 'isLegalPlacement allows a craft stall on the path too');
+
+  // Stage 12: a stage anchored at (0,0) now occupies the 2x2 block
+  // (0,0)-(1,1). (2,0) doesn't overlap that block but its nearest cell is
+  // still Chebyshev distance 1 from it — too close for two stages. (4,0)
+  // clears minStageSpacing. A 1x1 kind at (2,1) sits right beside the same
+  // stage (and has path frontage via its own south neighbor) to prove the
+  // spacing rule only fires stage-to-stage.
+  const existingStage = [{ id: 'plot_1', kind: 'stage', x: 0, y: 0, status: 'built' }];
+  const tooClose = isLegalPlacement('stage', 2, 0, existingStage);
+  assert(tooClose.ok === false && /too close/i.test(tooClose.reason), 'isLegalPlacement refuses a second stage directly adjacent to an existing one');
+  const farEnough = isLegalPlacement('stage', 4, 0, existingStage);
+  assert(farEnough.ok === true, 'isLegalPlacement allows a second stage once it clears minStageSpacing');
+  const nonStageNearby = isLegalPlacement('food', 2, 1, existingStage);
+  assert(nonStageNearby.ok === true, 'the stage-spacing rule only applies between two stages, not other kinds');
+
+  // A plot excluded by id (the one being moved/relocated) doesn't count
+  // against its own new position.
+  const selfCheck = isLegalPlacement('stage', 0, 0, existingStage, 'plot_1');
+  assert(selfCheck.ok === true, 'isLegalPlacement ignores the plot\u2019s own current position when excludeId matches it');
+
+  // A still-"planning" stage claims its spot for spacing purposes too, so
+  // two planned-but-uncommitted stages can't be planned right next to
+  // each other and then committed together.
+  const planningStage = [{ id: 'plot_2', kind: 'stage', x: 0, y: 0, status: 'planning' }];
+  const tooCloseToPlan = isLegalPlacement('stage', 2, 0, planningStage);
+  assert(tooCloseToPlan.ok === false && /too close/i.test(tooCloseToPlan.reason), 'isLegalPlacement treats a still-planning stage as claiming its spot for spacing purposes');
+}
+
+{
+  // End-to-end: state.js's placePlot/buildPlot/movePlanningPlot/relocatePlot
+  // all surface the same refusal, not just the pure isLegalPlacement helper.
+  let s = State.createInitialState();
+  const placeOnPath = State.placePlot(s, 'stage', 0, 2);
+  assert(placeOnPath.error && /path/i.test(placeOnPath.error), 'placePlot refuses a stage sited on the path');
+
+  const buildOnPath = State.buildPlot(s, 'demo', 1, 2);
+  assert(buildOnPath.error && /path/i.test(buildOnPath.error), 'buildPlot refuses a demo camp sited on the path');
+
+  const foodOnPath2 = State.placePlot(s, 'food', 2, 2);
+  assert(foodOnPath2.error === null, 'placePlot still allows a food stall on the path');
+
+  s = State.placePlot(s, 'stage', 0, 0).state;
+  const first = s.builtPlots[0];
+  const tooCloseCommit = State.placePlot(s, 'stage', 2, 0); // adjacent to (0,0)'s 2x2 footprint, not overlapping it
+  assert(tooCloseCommit.error && /too close/i.test(tooCloseCommit.error), 'placePlot refuses a second stage placed too close to the first');
+  const farStage = State.placePlot(s, 'stage', 4, 0);
+  assert(farStage.error === null, 'placePlot allows a second stage once it is far enough away');
+
+  // movePlanningPlot: moving the first stage next to another built stage
+  // should be refused; relocatePlot mirrors it for an already-built one.
+  s = farStage.state;
+  const secondStage = s.builtPlots.find(p => p.x === 4 && p.y === 0);
+  const moveTooClose = State.movePlanningPlot(s, first.id, 2, 0); // distance 1 from the second stage's footprint at (4,0)-(5,1)
+  assert(moveTooClose.error && /too close/i.test(moveTooClose.error), 'movePlanningPlot refuses moving a stage too close to another one');
+
+  let committed = State.commitPlot(s, first.id).state;
+  committed = State.commitPlot(committed, secondStage.id).state;
+  const builtFirst = committed.builtPlots.find(p => p.x === 0 && p.y === 0);
+  const relocateTooClose = State.relocatePlot(committed, builtFirst.id, 2, 0);
+  assert(relocateTooClose.error && /too close/i.test(relocateTooClose.error), 'relocatePlot refuses relocating a built stage too close to another built stage');
+}
+
+// ---------------------------------------------------------------------
+// Stage 12: bigger stage footprints (2x2 vs everything else's 1x1), a
+// real path network (a second north-south spur + eastward connector, not
+// just one line), and a path-frontage requirement on every built kind.
+// ---------------------------------------------------------------------
+{
+  assert(footprintFor('stage').w === 2 && footprintFor('stage').h === 2, 'a stage\u2019s footprint is 2x2');
+  assert(footprintFor('food').w === 1 && footprintFor('food').h === 1, 'a food stall stays 1x1');
+  assert(footprintFor('vendor').w === 1 && footprintFor('vendor').h === 1, 'a craft stall stays 1x1');
+  assert(footprintFor('demo').w === 1 && footprintFor('demo').h === 1, 'a demo camp stays 1x1');
+  assert(footprintFor('unknownKind').w === 1 && footprintFor('unknownKind').h === 1, 'footprintFor defaults to 1x1 for an unrecognized kind');
+
+  const cells = footprintCells(3, 4, 2, 2);
+  assert(cells.length === 4 && cells.some(c => c.x === 4 && c.y === 5), 'footprintCells enumerates every cell of a w\u00d7h block anchored at (x,y)');
+
+  // A plot record with no stored w/h (a pre-Stage-12 fixture, or the
+  // stage-spacing test fixtures above) falls back to its KIND\u2019s current
+  // footprint rather than assuming 1x1.
+  const legacyStagePlot = { id: 'plot_x', kind: 'stage', x: 2, y: 2 };
+  assert(plotFootprintCells(legacyStagePlot).length === 4, 'plotFootprintCells falls back to footprintFor(kind) when w/h are missing');
+  const explicitPlot = { id: 'plot_y', kind: 'stage', x: 2, y: 2, w: 1, h: 1 };
+  assert(plotFootprintCells(explicitPlot).length === 1, 'plotFootprintCells honors an explicitly-stored (smaller) w/h over the kind\u2019s current footprint');
+}
+
+{
+  // quoteBuild now refuses a footprint that would hang off the authored
+  // TERRAIN_ROWS edge even when the anchor cell itself is fine.
+  const edgeQuote = quoteBuild('stage', 13, 9); // anchor is valid terrain, but (14,9)/(13,10)/(14,10) run off the 14x10 map
+  assert(edgeQuote === null, 'quoteBuild refuses a stage footprint that runs off the authored map edge');
+  const okQuote = quoteBuild('food', 13, 9); // a 1x1 kind at the same anchor is fine
+  assert(okQuote !== null, 'quoteBuild still allows a 1x1 kind at the map\u2019s far corner');
+
+  // isFootprintWithinCurrentGrid: a footprint straddling the fence line is
+  // refused even though its anchor cell alone would pass isWithinCurrentGrid.
+  const s0 = State.createInitialState(); // Weekend 1, Home Grounds (10x7)
+  assert(isWithinCurrentGrid(s0, 9, 6) === true, 'sanity check: (9,6) alone is inside Home Grounds');
+  assert(isFootprintWithinCurrentGrid(s0, 'stage', 9, 6) === false, 'a 2x2 stage anchored at the Home Grounds\u2019 far corner still hangs off two edges');
+  assert(isFootprintWithinCurrentGrid(s0, 'food', 9, 6) === true, 'a 1x1 kind at the same corner is fine');
+}
+
+{
+  // Path frontage: hasPathFrontage() directly, then isLegalPlacement's
+  // integration of it, then the same rule surfacing through buildPlot.
+  assert(hasPathFrontage([{ x: 6, y: 2 }]) === true, 'a cell ON the path has frontage (trivially)');
+  assert(hasPathFrontage([{ x: 6, y: 1 }]) === true, 'a cell directly beside the path (south neighbor) has frontage');
+  assert(hasPathFrontage([{ x: 6, y: 0 }]) === false, 'a cell two rows from the path (no direct neighbor) has no frontage');
+  // A neighbor that's part of the SAME footprint doesn't count as frontage
+  // (it's interior, not a street the structure fronts onto).
+  const interiorOnly = footprintCells(5, 6, 2, 2); // nowhere near any path or path-adjacent cell
+  assert(hasPathFrontage(interiorOnly) === false, 'a footprint stranded away from any path has no frontage');
+
+  // (6,0) is a clearing two rows from the path with no path-adjacent
+  // neighbor in any direction \u2014 a 1x1 kind there is refused for lacking
+  // frontage (distinct from a terrain ban, which is what blocks stage/demo
+  // ON the path itself).
+  assert(terrainAt(6, 0) === 'clearing', 'sanity check: (6,0) is clearing, not path, and not adjacent to any path cell');
+  const strandedFood = isLegalPlacement('food', 6, 0, []);
+  assert(strandedFood.ok === false && /path/i.test(strandedFood.reason), 'isLegalPlacement refuses a food stall with no path frontage');
+  const frontedFood = isLegalPlacement('food', 6, 1, []); // south neighbor (6,2) is path
+  assert(frontedFood.ok === true, 'isLegalPlacement allows the same kind one row closer, where it fronts the path');
+
+  const strandedBuild = State.buildPlot(State.createInitialState(), 'food', 6, 0);
+  assert(strandedBuild.error && /path/i.test(strandedBuild.error), 'buildPlot surfaces the same path-frontage refusal end to end');
+}
+
+{
+  // Footprint occupancy: a second structure can't be anchored on ANY cell
+  // of an already-built stage's 2x2 block, not just its anchor cell.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'stage', 3, 0).state; // occupies (3,0),(4,0),(3,1),(4,1)
+  const onAnchor = State.buildPlot(s, 'food', 3, 0);
+  assert(onAnchor.error && /already built/i.test(onAnchor.error), 'a second plot can\u2019t anchor on the stage\u2019s own anchor cell');
+  const onFarCorner = State.buildPlot(s, 'food', 4, 1);
+  assert(onFarCorner.error && /already built/i.test(onFarCorner.error), 'a second plot can\u2019t anchor on a NON-anchor cell of the stage\u2019s footprint either');
+  const beside = State.buildPlot(s, 'food', 5, 1); // just outside the footprint, with frontage via (5,2)
+  assert(beside.error === null, 'a plot just outside the stage\u2019s footprint (with its own frontage) is fine');
+
+  // The built stage record itself carries its footprint size, so a save
+  // round-trip (or any later footprint math) knows it's 2x2 without
+  // re-deriving it from STRUCTURE_TYPES.
+  const builtStage = s.builtPlots.find(p => p.x === 3 && p.y === 0);
+  assert(builtStage.w === 2 && builtStage.h === 2, 'a built stage plot stores its own w/h at build time');
+}
+
+{
+  // loadState migration: a pre-Stage-12 save had every plot at 1x1
+  // (including stages, since footprint didn't exist yet) \u2014 loading it
+  // must never retroactively balloon an old stage to today's 2x2 and
+  // risk it overlapping something the player already built beside it.
+  const legacySave = {
+    day: 4, season: 1, weekendDay: 1, cash: 1000, reputation: 50, ticketPrice: 16,
+    builtPlots: [
+      { id: '3_0', kind: 'stage', x: 3, y: 0, name: 'Green Stage', cost: 850, capacity: 220 }, // no status, no w/h — pre-Stage-12 shape
+    ],
+    roster: [], contracts: {}, hiredVendors: [], vendorContracts: {},
+    schedule: {}, activeCampaign: null, campaignCooldowns: {}, phase: 'plan', lastResult: null, history: [], nextPlotId: 1,
+  };
+  globalThis.localStorage.setItem('renn-faire-sim-save-v1', JSON.stringify(legacySave));
+  const migrated = State.loadState();
+  const migratedPlot = migrated.builtPlots[0];
+  assert(migratedPlot.w === 1 && migratedPlot.h === 1, 'loadState migrates a pre-Stage-12 plot to explicit 1x1, never the kind\u2019s current (bigger) footprint');
+  globalThis.localStorage.removeItem('renn-faire-sim-save-v1');
+}
+
+// ---------------------------------------------------------------------
 {
   // jsdom does not execute <script type="module"> tags (a long-standing
   // jsdom limitation), so instead of relying on index.html's own script
@@ -1135,6 +1323,15 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(doc.querySelector('.plot-marker.built'), 'Stage 10: committing turns the planning marker into a built one');
   const cashAfterCommit = doc.querySelector('#ledger .ledger-item .ledger-label.mono')?.textContent;
   assert(cashAfterCommit !== cashBefore, 'Stage 10: cash on hand changes once the plot is actually committed');
+
+  // Stage 11: with a committed stage now on the map, selecting Stage again
+  // shows a blocked marker (not a clickable ghost) on the cell directly
+  // touching it, with a reason in its title.
+  click(doc.querySelector('[data-action="selectBuild"][data-kind="stage"]')); // re-select Stage build mode
+  const blockedCell = doc.querySelector('.plot-marker.blocked');
+  assert(!!blockedCell, 'Stage 11: an illegal cell (too close to the just-built stage) renders as a blocked marker, not a ghost');
+  assert(/too close/i.test(blockedCell.getAttribute('title')), 'Stage 11: the blocked marker\u2019s title explains why the cell is refused');
+  click(doc.querySelector('[data-action="cancelBuild"]')); // deselect before choosing Food Stall next
 
   // Stage 7/10: build (place + commit) a food plot, then hire a vendor under
   // a Weekend Package through the actual Backstage buttons, confirming the

@@ -13,10 +13,10 @@ account's other GitHub Pages projects.
 
 - `index.html` — shell + font links
 - `css/style.css` — all styling (parchment/forest/wine/gold design system)
-- `js/data.js` — content: the grounds grid/terrain legend (authored at its full Stage 8 extent, 14×10), a `GRID_EXPANSIONS` unlock schedule for how much of that grid is actually buildable at a given weekend, buildable structure types (stage/food/vendor/demo) with terrain cost/capacity modifiers, performers (15, as of Stage 9), vendors (12, as of Stage 9), ad/marketing campaigns, one shared contract-type catalog (Day Rate/Weekend Package/Season Contract) used by both performers and, as of Stage 7, vendors, and the random event pool (including Stage 9's roster-composition-gated "backstage drama" events) — each campaign, contract, and grounds-expansion tier tagged with the weekend (`unlockSeason`) it becomes available, config (including `seasonLength`, days per weekend, and, as of Stage 10, `demolishFeeMult`/`relocateDiscountMult`/`maxPlotNameLength`). No logic.
-- `js/engine.js` — pure simulation math (RNG, scheduling validation, terrain/adjacency lookup, build-cost quoting, campaign lookup, contract-aware performer AND vendor cost, season-unlock checks, the currently-unlocked grounds size and next expansion (Stage 8), quirk-aware performer popularity including the block-conditional `night_owl` quirk (Stage 9), the `EVENT_REQUIREMENTS` gating map for random events, weekend-summary aggregation, day simulation, and, as of Stage 10, `stallSummary`/`STALL_KIND_BY_VENDOR_TYPE` for the per-kind stall vacancy tracker). No DOM.
-- `js/state.js` — the game-state object and the actions that change it (immutable-style: every action returns a new state). Also owns localStorage save/load, performer AND vendor contract commitments, the weekend/season boundary (`nextDay` hard-stops into a `weekendEnd` phase at the end of each weekend; `startNextWeekend` rolls over into the next one), and gates construction against the currently-unlocked grounds footprint rather than the grid's full authored extent. As of Stage 10: a planning → commit construction flow (`placePlot`/`commitPlot`/`commitAllPlots`/`deletePlanningPlot`/`movePlanningPlot`, all free/reversible until committed) plus paid `demolishPlot`/`relocatePlot`/`renamePlot` for already-built plots, individual vendor-to-stall seating (`assignVendorToPlot`/`unassignVendorFromPlot`/`autoFillStalls`), and a `hireVendor` hiring cap now split correctly between food and craft stalls (previously one shared pool).
-- `js/ui.js` — state → HTML string rendering. No event listeners.
+- `js/data.js` — content: the grounds grid/terrain legend (authored at its full extent, 14×10, now threaded by a real path network — the row-2 artery plus a col-3 spur and, as of Stage 12, a second col-10 spur with an eastward connector so the grounds-expansion territory has path frontage), a `GRID_EXPANSIONS` unlock schedule for how much of that grid is actually buildable at a given weekend, buildable structure types (stage/food/vendor/demo) with terrain cost/capacity modifiers and, as of Stage 12, a `footprint` (stage is 2×2; everything else defaults to 1×1), a `PLACEMENT_RULES` table (terrain bans, minimum stage-to-stage spacing, and, as of Stage 12, `requiresPathFrontage`), performers (15, as of Stage 9), vendors (12, as of Stage 9), ad/marketing campaigns, one shared contract-type catalog (Day Rate/Weekend Package/Season Contract) used by both performers and, as of Stage 7, vendors, and the random event pool (including Stage 9's roster-composition-gated "backstage drama" events) — each campaign, contract, and grounds-expansion tier tagged with the weekend (`unlockSeason`) it becomes available, config (including `seasonLength`, days per weekend, and, as of Stage 10, `demolishFeeMult`/`relocateDiscountMult`/`maxPlotNameLength`). No logic.
+- `js/engine.js` — pure simulation math (RNG, scheduling validation, terrain/adjacency lookup, build-cost quoting, campaign lookup, contract-aware performer AND vendor cost, season-unlock checks, the currently-unlocked grounds size and next expansion (Stage 8), quirk-aware performer popularity including the block-conditional `night_owl` quirk (Stage 9), the `EVENT_REQUIREMENTS` gating map for random events, weekend-summary aggregation, day simulation, `stallSummary`/`STALL_KIND_BY_VENDOR_TYPE` for the per-kind stall vacancy tracker (Stage 10), `isLegalPlacement` — the terrain-ban/stage-spacing/path-frontage check sitting alongside `quoteBuild` as the other half of "can this be built here", and, as of Stage 12, the footprint primitives everything above now runs on: `footprintFor`/`footprintCells`/`plotFootprintCells`/`isFootprintWithinCurrentGrid` and `hasPathFrontage`). No DOM.
+- `js/state.js` — the game-state object and the actions that change it (immutable-style: every action returns a new state). Also owns localStorage save/load, performer AND vendor contract commitments, the weekend/season boundary (`nextDay` hard-stops into a `weekendEnd` phase at the end of each weekend; `startNextWeekend` rolls over into the next one), and gates construction against the currently-unlocked grounds footprint rather than the grid's full authored extent. A planning → commit construction flow (`placePlot`/`commitPlot`/`commitAllPlots`/`deletePlanningPlot`/`movePlanningPlot`, all free/reversible until committed) plus paid `demolishPlot`/`relocatePlot`/`renamePlot` for already-built plots, individual vendor-to-stall seating (`assignVendorToPlot`/`unassignVendorFromPlot`/`autoFillStalls`), and a `hireVendor` hiring cap split correctly between food and craft stalls. `buildPlot`/`placePlot`/`movePlanningPlot`/`relocatePlot` all check `isLegalPlacement` and refuse an illegal siting before any money moves; as of Stage 12 their bounds checks are footprint-aware (`isFootprintWithinCurrentGrid`) and `buildPlot`/`placePlot` stamp each plot's own `w`/`h` onto its record at creation time. `loadState` migrates old saves, including (Stage 12) backfilling `w:1,h:1` onto every pre-Stage-12 plot regardless of kind.
+- `js/ui.js` — state → HTML string rendering. No event listeners. `renderGroundsMap`'s ghost-cell loop renders an illegal open cell as a non-interactive `.plot-marker.blocked` marker (with the refusal reason in its title) instead of just omitting the ghost there; as of Stage 12, built/ghost/blocked markers span their real multi-cell footprint via CSS grid `span`, and occupancy checks cover a plot's whole footprint rather than just its anchor cell.
 - `js/main.js` — the only file that touches `document`. Owns the mutable "current state" reference, wires DOM events, re-renders after every action.
 - `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test`)
 - `HANDOFF.md` — status, what's next, and retro notes for whoever (or whatever model) picks this up next
@@ -28,7 +28,7 @@ npm install
 npm test
 ```
 
-422 checks: pure engine/state logic (RNG determinism, terrain/grid data
+467 checks: pure engine/state logic (RNG determinism, terrain/grid data
 integrity, buildable-structure catalog integrity, terrain-driven cost/
 capacity quoting, stage-adjacency effects on sightline/traffic, scheduling
 conflicts, day-simulation invariants, attendance responding sensibly to
@@ -42,16 +42,32 @@ including the block-conditional `night_owl` quirk (unit-tested directly,
 plus a `simulateDay`-level Golden-Hour-vs-Morning satisfaction check), an
 `EVENT_POOL`/`EVENT_REQUIREMENTS`/`EVENT_EFFECTS` integrity block covering
 the Stage 9 "backstage drama" events, the weekend hard-stop/summary/
-rollover cycle, a 50-day fuzz run with no throws/NaNs, and, as of Stage 10,
-the full planning→commit→move→demolish→relocate→rename plot lifecycle, the
+rollover cycle, a 50-day fuzz run with no throws/NaNs, the full
+planning→commit→move→demolish→relocate→rename plot lifecycle, the
 split food/craft hire cap, individual vendor seating/auto-fill, the
-seated-vs-unseated revenue split, and a `loadState` migration test for
-pre-Stage-10 saves), plus a DOM boot check covering tab-switching, the
-full build-placement flow (confirmed to never offer a ghost cell past the
-current fence line, and, as of Stage 10, that placement is free until a
-Commit click actually charges for it), the grounds-status line naming the
-current tier and next expansion, a vendor hire-under-contract/let-go-early
-flow (including auto-seating), a full 3-day weekend walkthrough ending at
-the weekend-end summary screen and rolling into Weekend 2, and a
-regression test for a post-ship crash fix (two prima-donna performers
-sharing a time block previously threw; see HANDOFF.md).
+seated-vs-unseated revenue split, a `loadState` migration test for
+pre-Stage-10 saves, `isLegalPlacement` (terrain bans, stage-spacing, the
+`excludeId` self-exemption, and a still-planning stage counting for
+spacing) checked both directly and end-to-end through
+`buildPlot`/`placePlot`/`movePlanningPlot`/`relocatePlot`, and, as of
+Stage 12, a dedicated footprint/path-frontage block: `footprintFor`/
+`footprintCells`/`plotFootprintCells` defaults and overrides, `quoteBuild`
+refusing a footprint that runs off the authored map edge,
+`isFootprintWithinCurrentGrid` catching a footprint that clears its own
+anchor but still hangs off the fence line, `hasPathFrontage` (on-path,
+beside-path, two-away, and footprint-interior-neighbor cases),
+`isLegalPlacement`'s frontage integration end-to-end through `buildPlot`,
+footprint-vs-footprint occupancy (a second plot refused on both the
+anchor AND a non-anchor cell of an existing stage), and a `loadState`
+migration test confirming a pre-Stage-12 stage backfills to 1×1, never
+today's 2×2 — plus a DOM boot check covering tab-switching, the full
+build-placement flow (confirmed to never offer a ghost cell past the
+current fence line, that placement is free until a Commit click actually
+charges for it, and that an illegal cell renders as a blocked marker with
+an explanatory title while a legal one still renders as a clickable
+ghost), the grounds-status line naming the current tier and next
+expansion, a vendor hire-under-contract/let-go-early flow (including
+auto-seating), a full 3-day weekend walkthrough ending at the weekend-end
+summary screen and rolling into Weekend 2, and a regression test for a
+post-ship crash fix (two prima-donna performers sharing a time block
+previously threw; see HANDOFF.md).

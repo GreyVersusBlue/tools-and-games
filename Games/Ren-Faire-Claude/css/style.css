@@ -165,6 +165,9 @@ h1, h2, h3, h4 {
   padding: 0;
   cursor: pointer;
 }
+/* Stage 12: a spanning marker (a 2x2 stage) gets a bigger glyph so it reads
+   as one bigger thing rather than a stretched 1x1 icon. */
+.plot-marker.kind-stage { font-size: 1.6rem; }
 .plot-marker:hover { background: var(--parchment); }
 .plot-marker.built {
   background: var(--gold);
@@ -183,6 +186,13 @@ h1, h2, h3, h4 {
   box-shadow: 0 0 0 2px dashed var(--gold);
 }
 .plot-marker.moving { outline: 2px dashed var(--wine); outline-offset: 1px; }
+.plot-marker.blocked {
+  background: rgba(122, 32, 32, 0.18);
+  box-shadow: 0 0 0 1px dashed var(--wine);
+  color: var(--wine);
+  cursor: not-allowed;
+  font-weight: 700;
+}
 .map-legend { color: var(--slate); margin: 0 0 0.8rem; font-size: 0.75rem; }
 
 .build-palette { margin-bottom: 1rem; }
