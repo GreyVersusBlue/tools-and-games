@@ -1,0 +1,282 @@
+/* ---------- design tokens ---------- */
+:root {
+  --parchment: #ECE1C4;
+  --parchment-dark: #DCCEA6;
+  --ink: #2B2118;
+  --forest: #38523B;
+  --forest-dark: #263A28;
+  --wine: #7A2331;
+  --gold: #B8862B;
+  --gold-bright: #D8A83E;
+  --slate: #46606B;
+  --line: rgba(43, 33, 24, 0.22);
+
+  --font-display: 'Cinzel', serif;
+  --font-body: 'Crimson Pro', serif;
+  --font-mono: 'Space Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--parchment);
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(184, 134, 43, 0.08), transparent 40%),
+    radial-gradient(circle at 85% 90%, rgba(56, 82, 59, 0.10), transparent 45%);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: 0.03em;
+  color: var(--forest-dark);
+  margin: 0 0 0.5em;
+}
+
+.mono { font-family: var(--font-mono); font-size: 0.9em; }
+
+#app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1rem 3rem;
+}
+
+/* ---------- header / ledger bar ---------- */
+.app-title {
+  text-align: center;
+  padding: 1.4rem 0 0.6rem;
+}
+.app-title h1 {
+  font-size: 2.1rem;
+  margin-bottom: 0.15em;
+}
+.app-title .subtitle {
+  font-family: var(--font-body);
+  font-style: italic;
+  color: var(--slate);
+  font-size: 1rem;
+}
+
+#ledger {
+  display: flex;
+  justify-content: space-around;
+  background: var(--forest-dark);
+  color: var(--parchment);
+  border-radius: 10px;
+  padding: 0.7rem 0.5rem;
+  box-shadow: 0 3px 0 var(--line);
+}
+.ledger-item { display: flex; flex-direction: column; align-items: center; }
+.ledger-label { font-family: var(--font-display); font-size: 1.15rem; }
+.ledger-sub { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gold-bright); }
+
+/* ---------- tabs ---------- */
+#tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin: 1rem 0 0;
+}
+.tab-btn {
+  flex: 1;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  padding: 0.6rem 0.4rem;
+  background: var(--parchment-dark);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: var(--forest-dark);
+  cursor: pointer;
+}
+.tab-btn.active {
+  background: var(--parchment);
+  box-shadow: 0 -2px 0 var(--gold) inset;
+}
+.tab-btn:hover { background: var(--parchment); }
+
+/* ---------- content panel ---------- */
+#content {
+  background: var(--parchment);
+  border: 1px solid var(--line);
+  border-radius: 0 0 10px 10px;
+  padding: 1.2rem;
+}
+.panel .flavor { color: var(--slate); font-style: italic; margin-top: -0.3em; }
+.hint { color: var(--slate); font-size: 0.9rem; }
+.warn { color: var(--wine); font-weight: 600; }
+
+/* ---------- office ---------- */
+.field-row { display: flex; align-items: center; gap: 0.7rem; margin: 1rem 0; }
+.field-row label { font-family: var(--font-display); font-size: 0.9rem; min-width: 7em; }
+.field-row input[type=range] { flex: 1; accent-color: var(--wine); }
+
+.ledger-table { width: 100%; border-collapse: collapse; margin-top: 0.8rem; }
+.ledger-table td { padding: 0.4rem 0.3rem; border-bottom: 1px dashed var(--line); }
+.ledger-table td:last-child { text-align: right; }
+.ledger-table .total-row td { font-weight: 700; border-bottom: none; border-top: 2px solid var(--ink); }
+
+/* ---------- backstage tables ---------- */
+.roster-table { width: 100%; border-collapse: collapse; margin: 0.6rem 0 1.2rem; }
+.roster-table th { text-align: left; font-family: var(--font-display); font-size: 0.8rem; color: var(--slate); border-bottom: 1px solid var(--line); padding: 0.3rem; }
+.roster-table td { padding: 0.45rem 0.3rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.roster-table tr.is-contracted { background: rgba(56, 82, 59, 0.08); }
+.quirk-tag {
+  display: inline-block;
+  margin-left: 0.5em;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  background: var(--gold);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  cursor: help;
+}
+
+/* ---------- fair floor: grounds map ---------- */
+.grounds-map {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-rows: repeat(var(--rows), 32px);
+  gap: 2px;
+  background: var(--forest-dark);
+  border-radius: 8px;
+  padding: 4px;
+  margin: 0.8rem 0 0.3rem;
+}
+.terrain-cell { border-radius: 3px; }
+.terrain-cell[data-terrain="clearing"] { background: #C9BC93; }
+.terrain-cell[data-terrain="hill"] { background: #B7A15B; }
+.terrain-cell[data-terrain="woods"] { background: #2F4A31; }
+.terrain-cell[data-terrain="path"] { background: #8C6B45; }
+.plot-marker {
+  border: none;
+  border-radius: 5px;
+  background: rgba(236, 225, 196, 0.9);
+  box-shadow: 0 0 0 1px var(--line);
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+.plot-marker:hover { background: var(--parchment); }
+.plot-marker.built {
+  background: var(--gold);
+  box-shadow: 0 0 0 2px var(--forest);
+  cursor: default;
+}
+.plot-marker.ghost {
+  background: rgba(56, 82, 59, 0.25);
+  box-shadow: 0 0 0 1px dashed var(--forest);
+  color: var(--forest-dark);
+  font-weight: 700;
+}
+.plot-marker.ghost:hover { background: var(--gold-bright); }
+.map-legend { color: var(--slate); margin: 0 0 0.8rem; font-size: 0.75rem; }
+
+.build-palette { margin-bottom: 1rem; }
+.palette-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.4rem; }
+.palette-buttons .btn.active { background: var(--gold); color: var(--ink); }
+
+.warn-tag, .hint-tag {
+  display: inline-block;
+  margin-left: 0.5em;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  padding: 0.05em 0.4em;
+}
+.warn-tag { background: var(--wine); color: var(--parchment); }
+.hint-tag { background: var(--forest); color: var(--parchment); }
+
+.plot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.8rem; margin: 0.8rem 0 1.4rem; }
+.plot-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem;
+  background: var(--parchment-dark);
+  display: flex; flex-direction: column; gap: 0.4rem;
+}
+.plot-card.built { border-color: var(--forest); background: rgba(56, 82, 59, 0.12); }
+.plot-card-head { display: flex; justify-content: space-between; align-items: baseline; }
+.plot-card-head h4 { margin: 0; font-size: 1rem; }
+.plot-kind { font-size: 0.7rem; text-transform: uppercase; color: var(--slate); }
+.plot-desc { font-size: 0.88rem; margin: 0; flex: 1; }
+.plot-stats { font-size: 0.75rem; color: var(--slate); }
+.built-tag { font-family: var(--font-display); font-size: 0.75rem; color: var(--forest); }
+
+.schedule-table { width: 100%; border-collapse: collapse; margin-top: 0.6rem; }
+.schedule-table th, .schedule-table td { border: 1px solid var(--line); padding: 0.4rem; font-size: 0.85rem; }
+.schedule-table select { width: 100%; font-family: var(--font-body); padding: 0.2rem; }
+
+/* ---------- buttons ---------- */
+.btn {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  background: var(--forest);
+  color: var(--parchment);
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1rem;
+  cursor: pointer;
+}
+.btn:hover { background: var(--forest-dark); }
+.btn.small { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
+.btn.danger { background: var(--wine); }
+.btn.primary { background: var(--gold); color: var(--ink); font-size: 1rem; padding: 0.7rem 1.4rem; }
+.run-bar { text-align: center; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+
+/* ---------- report ticket stub (signature element) ---------- */
+.ticket-stub {
+  position: relative;
+  max-width: 480px;
+  margin: 0.5rem auto;
+  background: var(--parchment);
+  border: 2px dashed var(--wine);
+  border-radius: 4px;
+  padding: 1.4rem 1.6rem;
+}
+.ticket-notch {
+  position: absolute;
+  top: 50%;
+  width: 20px; height: 20px;
+  background: var(--parchment);
+  border: 2px dashed var(--wine);
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+.ticket-notch.left { left: -12px; }
+.ticket-notch.right { right: -12px; }
+.ticket-stub h2 { text-align: center; font-size: 1.3rem; }
+.ticket-row { display: flex; justify-content: space-between; padding: 0.15rem 0; }
+.ticket-row.total { font-size: 1.1rem; font-weight: 700; }
+.ticket-row .good { color: var(--forest); }
+.ticket-row .bad { color: var(--wine); }
+.ticket-stub hr { border: none; border-top: 1px dashed var(--line); margin: 0.5rem 0; }
+.flavor-log { font-style: italic; color: var(--slate); margin-top: 0.8rem; }
+.ticket-stub .btn { display: block; width: 100%; margin-top: 1.2rem; }
+
+/* ---------- footer ---------- */
+#footer {
+  text-align: center;
+  margin-top: 1rem;
+}
+#resetBtn {
+  background: none;
+  border: none;
+  color: var(--slate);
+  text-decoration: underline;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 560px) {
+  body { font-size: 16px; }
+  .roster-table th:nth-child(2), .roster-table td:nth-child(2) { display: none; }
+}
