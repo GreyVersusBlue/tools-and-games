@@ -1,0 +1,10 @@
+{
+  "width": 10,
+  "height": 10,
+  "tiles": [
+    { "x": 0, "y": 0, "type": "trees", "elevation": 1, "shade": true, "buildable": false },
+    { "x": 1, "y": 0, "type": "clearing", "elevation": 0, "shade": false, "buildable": true, "slotType": "stage" },
+    { "x": 2, "y": 0, "type": "path", "elevation": 0, "shade": false, "buildable": false },
+    { "x": 3, "y": 0, "type": "hill", "elevation": 2, "shade": false, "buildable": true, "slotType": "vendor" }
+  ]
+}

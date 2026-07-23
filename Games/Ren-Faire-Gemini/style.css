@@ -1,0 +1,95 @@
+:root {
+  --bg-color: #f4efe6;
+  --panel-bg: #fffbf3;
+  --primary: #4a2e18;
+  --accent: #8c2d19;
+  --border: #d3c4a9;
+}
+
+body {
+  font-family: 'Georgia', serif;
+  background-color: var(--bg-color);
+  color: var(--primary);
+  margin: 0;
+  padding: 20px;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid var(--primary);
+  padding-bottom: 10px;
+}
+
+.tabs {
+  margin: 20px 0;
+}
+
+.tab-btn {
+  background: var(--border);
+  border: none;
+  padding: 10px 20px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-right: 5px;
+}
+
+.tab-btn.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.view {
+  display: none;
+  background: var(--panel-bg);
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.view.active {
+  display: block;
+}
+
+.primary-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-top: 15px;
+}
+
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(5, 60px);
+  gap: 5px;
+  margin-top: 15px;
+}
+
+.tile {
+  width: 60px;
+  height: 60px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.tile.trees { background-color: #cce3c1; }
+.tile.path { background-color: #e8d8b7; }
+.tile.hill { background-color: #d1bc93; }
+.tile.clearing { background-color: #e2f0d9; }
+
+.report-box {
+  margin-top: 20px;
+  padding: 15px;
+  background: #eef5e8;
+  border: 1px solid #7ea86d;
+}
+
+.hidden { display: none; }
