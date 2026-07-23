@@ -94,14 +94,17 @@ export const AD_CAMPAIGNS = [
   { id: 'ad_proclamation', name: 'Kingdom Proclamation', desc: 'A royal proclamation read at every market cross in the shire. Slow to arrange, hard to beat.', cost: 900, attendanceMult: 1.4, durationDays: 3, cooldownDays: 6, unlockSeason: 2 },
 ];
 
-// Contract types for performers (Stage 5). `open` is the no-commitment day
-// rate — pay the listed cost, release anytime for free (this was the only
-// option through Stage 4). `weekend` locks the performer in for
-// `commitDays` at a discount off the listed rate; releasing early, before
-// the commitment runs out, costs a cancellation fee
+// Contract types for performers (Stage 5) — and, as of Stage 7, vendors
+// too (see engine.js's effectiveVendorCost / state.js's hireVendor). `open`
+// is the no-commitment day rate — pay the listed cost, release anytime for
+// free (this was the only option through Stage 4). `weekend` locks the
+// contractee in for `commitDays` at a discount off the listed rate;
+// releasing early, before the commitment runs out, costs a cancellation fee
 // (cancelFeeMult \u00d7 dailyCost \u00d7 days still owed on the commitment).
 // `season` (Stage 6) is a longer, deeper-discount commitment spanning two
 // full weekends, gated behind `unlockSeason` the same way AD_CAMPAIGNS are.
+// Kept as one shared catalog rather than a duplicated vendor-only copy —
+// performers and vendors are contracted via the exact same deal shapes.
 export const CONTRACT_OPTIONS = {
   open: { id: 'open', label: 'Day Rate', priceMult: 1.0, commitDays: 0, cancelFeeMult: 0, unlockSeason: 1 },
   weekend: { id: 'weekend', label: 'Weekend Package', priceMult: 0.85, commitDays: 3, cancelFeeMult: 0.5, unlockSeason: 1 },

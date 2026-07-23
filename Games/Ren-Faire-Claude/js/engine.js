@@ -46,6 +46,16 @@ export function effectivePerformerCost(state, performerId) {
   return contract ? contract.dailyCost : perf.cost;
 }
 
+// Stage 7: vendors can now be signed under the same CONTRACT_OPTIONS deals
+// as performers (see state.js's hireVendor). Mirrors effectivePerformerCost
+// exactly — a vendor with no contract record falls back to the listed cost.
+export function effectiveVendorCost(state, vendorId) {
+  const vendor = vendorById(vendorId);
+  if (!vendor) return 0;
+  const contract = state.vendorContracts && state.vendorContracts[vendorId];
+  return contract ? contract.dailyCost : vendor.cost;
+}
+
 // ---------- season/progression (Stage 6) ----------
 // Whether an item gated by `unlockSeason` (an AD_CAMPAIGNS entry or a
 // CONTRACT_OPTIONS entry) is available yet at the given state's current
@@ -286,7 +296,7 @@ export function simulateDay(state, seed) {
   // --- ticket revenue & costs ---
   const ticketRevenue = attendance * state.ticketPrice;
   const performerCosts = rosterPerformers.reduce((s, p) => s + effectivePerformerCost(state, p.id), 0);
-  const vendorCosts = hiredVendorObjs.reduce((s, v) => s + v.cost, 0);
+  const vendorCosts = hiredVendorObjs.reduce((s, v) => s + effectiveVendorCost(state, v.id), 0);
   const overhead = 150 + builtStages.length * 20; // grounds upkeep scales a little with built stages
   const costs = performerCosts + vendorCosts + overhead;
 

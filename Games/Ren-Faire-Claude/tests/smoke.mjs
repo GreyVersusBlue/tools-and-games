@@ -19,7 +19,7 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, campaignById, effectivePerformerCost, isSeasonUnlocked, summarizeWeekend } = await import(path.join(root, 'js/engine.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend } = await import(path.join(root, 'js/engine.js'));
 const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS } = await import(path.join(root, 'js/data.js'));
 const State = await import(path.join(root, 'js/state.js'));
 
@@ -365,6 +365,89 @@ const State = await import(path.join(root, 'js/state.js'));
 }
 
 {
+  // Stage 7: hireVendor defaults to the open day rate, same shape as
+  // contractPerformer — same cost and free-release behavior.
+  const vend = VENDORS.find(v => v.id === 'vend_cider');
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'food', 6, 2).state;
+  s = State.hireVendor(s, 'vend_cider').state;
+  assert(s.vendorContracts.vend_cider.contractId === 'open', 'hireVendor defaults to the open day-rate contract');
+  assert(s.vendorContracts.vend_cider.dailyCost === vend.cost, 'the open day rate charges exactly the listed vendor cost');
+  assert(effectiveVendorCost(s, 'vend_cider') === vend.cost, 'effectiveVendorCost matches the listed cost under an open contract');
+
+  const cashBefore = s.cash;
+  const released = State.fireVendor(s, 'vend_cider');
+  assert(released.fee === 0, 'letting go of an open day-rate vendor charges no cancellation fee');
+  assert(released.state.cash === cashBefore, 'no cash changes hands when firing an open day-rate vendor');
+}
+
+{
+  // Stage 7: Weekend Package for a vendor — discounted daily rate, real
+  // commitment, and a cancellation fee for breaking it early. Mirrors the
+  // performer Weekend Package test exactly.
+  const vend = VENDORS.find(v => v.id === 'vend_cider');
+  const option = CONTRACT_OPTIONS.weekend;
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'food', 6, 2).state;
+  const { state: signed, error } = State.hireVendor(s, 'vend_cider', 'weekend');
+  assert(error === null, 'hireVendor accepts the weekend contract type');
+  const expectedRate = Math.round(vend.cost * option.priceMult);
+  assert(signed.vendorContracts.vend_cider.dailyCost === expectedRate, 'the vendor Weekend Package charges the discounted daily rate');
+  assert(signed.vendorContracts.vend_cider.dailyCost < vend.cost, 'the vendor Weekend Package rate is cheaper than the listed cost');
+  assert(signed.vendorContracts.vend_cider.commitDaysRemaining === option.commitDays, 'the vendor Weekend Package starts with its full commitment length');
+
+  const cashBefore = signed.cash;
+  const earlyRelease = State.fireVendor(signed, 'vend_cider');
+  const expectedFee = Math.round(expectedRate * option.commitDays * option.cancelFeeMult);
+  assert(earlyRelease.fee === expectedFee, 'breaking a vendor Weekend Package early charges the expected cancellation fee');
+  assert(earlyRelease.state.cash === cashBefore - expectedFee, 'the vendor cancellation fee is actually deducted from cash');
+
+  const unknownContract = State.hireVendor(s, 'vend_cider', 'lifetime');
+  assert(unknownContract.error && /unknown contract/i.test(unknownContract.error), 'hireVendor refuses an unrecognized contract type');
+}
+
+{
+  // Stage 7: nextDay ticks a vendor's Weekend Package commitment down; once
+  // it reaches zero, the vendor stays hired but firing them is free again.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'food', 6, 2).state;
+  s = State.hireVendor(s, 'vend_cider', 'weekend').state;
+  assert(s.vendorContracts.vend_cider.commitDaysRemaining === 3, 'vendor starts with 3 committed days');
+
+  s = State.nextDay(s).state;
+  assert(s.vendorContracts.vend_cider.commitDaysRemaining === 2, 'nextDay ticks the vendor commitment down by one');
+  assert(s.hiredVendors.includes('vend_cider'), 'the vendor remains hired while committed');
+
+  s = State.nextDay(s).state;
+  s = State.nextDay(s).state;
+  assert(s.vendorContracts.vend_cider.commitDaysRemaining === 0, 'the vendor commitment reaches zero after its full duration');
+  assert(s.hiredVendors.includes('vend_cider'), 'the vendor is NOT auto-removed once the commitment ends');
+
+  const freeRelease = State.fireVendor(s, 'vend_cider');
+  assert(freeRelease.fee === 0, 'once the vendor commitment has run out, firing them is free again');
+}
+
+{
+  // Stage 7: simulateDay's vendor wages reflect the contracted daily rate,
+  // not the listed cost, once a discounted Weekend Package is signed.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'food', 6, 2).state;
+  s = State.hireVendor(s, 'vend_cider', 'weekend').state;
+  const result = simulateDay(s, 7);
+  const expectedRate = Math.round(VENDORS.find(v => v.id === 'vend_cider').cost * CONTRACT_OPTIONS.weekend.priceMult);
+  assert(result.vendorCosts === expectedRate, 'simulateDay charges the vendor Weekend Package\\u2019s discounted rate, not the listed cost');
+}
+
+{
+  // Stage 7: vendor contracts are season-gated exactly like performer
+  // contracts — a Season Contract refuses before Weekend 3.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'food', 6, 2).state;
+  const tooEarly = State.hireVendor(s, 'vend_cider', 'season');
+  assert(tooEarly.error && /unlocks in weekend 3/i.test(tooEarly.error), 'hireVendor refuses a vendor Season Contract before Weekend 3');
+}
+
+{
   // launchCampaign: cash/error handling, one-at-a-time, cooldowns (Stage 4)
   let s = State.createInitialState();
   const before = s.cash;
@@ -540,6 +623,12 @@ const State = await import(path.join(root, 'js/state.js'));
   const seasonContractNow = State.contractPerformer(s, 'perf_jouster_1', 'season');
   assert(seasonContractNow.error === null, 'contractPerformer succeeds for a Season Contract once Weekend 3 is reached');
   assert(seasonContractNow.state.contracts.perf_jouster_1.commitDaysRemaining === CONTRACT_OPTIONS.season.commitDays, 'a signed Season Contract starts with its full commitment length');
+
+  // Stage 7: the same unlock applies to a vendor Season Contract.
+  let sv = State.buildPlot(s, 'food', 6, 2).state;
+  const vendorSeasonContractNow = State.hireVendor(sv, 'vend_cider', 'season');
+  assert(vendorSeasonContractNow.error === null, 'hireVendor succeeds for a vendor Season Contract once Weekend 3 is reached');
+  assert(vendorSeasonContractNow.state.vendorContracts.vend_cider.commitDaysRemaining === CONTRACT_OPTIONS.season.commitDays, 'a signed vendor Season Contract starts with its full commitment length');
 }
 
 // --- 50-day fuzz run: engine should never throw or produce NaN/negatives ---
@@ -626,10 +715,32 @@ const State = await import(path.join(root, 'js/state.js'));
   const cashAfter = doc.querySelector('#ledger .ledger-item .ledger-label.mono')?.textContent;
   assert(cashAfter !== cashBefore, 'cash on hand changed after paying to build the placed structure');
 
+  const click = (el) => el.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+
+  // Stage 7: build a food plot, then hire a vendor under a Weekend Package
+  // through the actual Backstage buttons, confirming the contract-type
+  // button, running-commitment tag, and Let go button all wire correctly.
+  const foodBtn = doc.querySelector('[data-action="selectBuild"][data-kind="food"]');
+  assert(!!foodBtn, 'the build palette has a Food Stall option');
+  click(foodBtn);
+  const foodGhost = doc.querySelector('.plot-marker.ghost');
+  assert(!!foodGhost, 'selecting Food Stall reveals ghost placement cells');
+  click(foodGhost);
+
+  const backstageTabBtn2 = doc.querySelector('[data-tab="backstage"]');
+  click(backstageTabBtn2);
+  const weekendHireBtn = doc.querySelector('[data-action="hireVendor"][data-contract="weekend"]');
+  assert(!!weekendHireBtn, 'a Weekend Package hire button is present for an uncontracted vendor');
+  click(weekendHireBtn);
+  assert(doc.querySelector('#content').innerHTML.includes('Weekend Package'), 'the hired vendor row shows its Weekend Package contract label');
+  const letGoBtn = doc.querySelector('[data-action="fireVendor"]');
+  assert(!!letGoBtn, 'a Let go button appears for the newly hired vendor');
+  click(letGoBtn);
+  assert(doc.querySelector('#content').innerHTML.includes('cancellation fee'), 'letting a Weekend Package vendor go early flashes the cancellation-fee message');
+
   // Stage 6: walk through a full 3-day weekend via the actual DOM buttons and
   // confirm the weekend-end summary screen appears on schedule, then that
   // starting the next weekend rolls the ledger over.
-  const click = (el) => el.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   for (let day = 1; day <= 3; day++) {
     const gatesBtn = doc.querySelector('[data-action="openGates"]');
     assert(!!gatesBtn, `Open the Gates button is present on weekend day ${day}`);

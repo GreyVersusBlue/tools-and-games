@@ -3,111 +3,97 @@
 Living document, updated in place each stage. Older stage summaries get
 condensed into the changelog at the bottom rather than kept as prose above.
 
-## Status as of Stage 6
+## Status as of Stage 7
 
-**Playable end-to-end, now with a real weekend/season structure.**
-Everything from Stages 1–5 still works. New this stage: a weekend is a
-hard 3-day arc (Fri/Sat/Sun) that ends in a **weekend-end summary screen**
-instead of silently rolling into the next weekend, and reaching later
-weekends **unlocks new content**: the Kingdom Proclamation ad campaign
-(Weekend 2+) and the Season Contract performer-contract tier (Weekend 3+).
+**Playable end-to-end.** Everything from Stages 1–6 still works. New this
+stage: vendors are contracted under the exact same deal shapes performers
+are — Day Rate, Weekend Package, and (Weekend 3+) Season Contract — instead
+of a flat always-open hire/fire.
 
 ## What was built this stage
 
-- **`js/data.js`** — added `CONFIG.seasonLength = 3` (days per weekend).
-  Every `AD_CAMPAIGNS` entry and `CONTRACT_OPTIONS` entry gained an
-  `unlockSeason` field (existing three campaigns and two contract types all
-  `unlockSeason: 1`, i.e. available from the start — fully backward
-  compatible). Added one new campaign, `ad_proclamation` ("Kingdom
-  Proclamation", `unlockSeason: 2`, the biggest attendance boost yet), and
-  one new contract type, `season` ("Season Contract", `unlockSeason: 3`,
-  deeper discount and longer commitment than the Weekend Package —
-  `priceMult: 0.72`, `commitDays: 6`, `cancelFeeMult: 0.6`).
-- **`js/engine.js`** — added `isSeasonUnlocked(state, unlockSeason)` (a
-  missing/undefined `unlockSeason` defaults to 1, so nothing needed
-  retrofitting) and `summarizeWeekend(history, count)`, a pure aggregator
-  that takes the trailing `count` entries of `state.history` and returns
-  total attendance, total net cash, average satisfaction, summed
-  reputation delta, and the best/worst day by `cashDelta` — this is the
-  entire weekend-summary screen's data.
-- **`js/state.js`** — added `season: 1` to initial state. Reworked
-  `nextDay`: it still ticks contracts/campaigns exactly once per call (same
-  logic as Stage 4/5, unchanged), but if the day that just elapsed was the
-  weekend's last day (`weekendDay >= CONFIG.seasonLength`), it stops there
-  and sets `phase = 'weekendEnd'` instead of advancing
-  `day`/`weekendDay`/`season` — those three only move once the player calls
-  the new `startNextWeekend(state)` action, which does no ticking of its
-  own (that already happened in the `nextDay` call that produced
-  `weekendEnd`) and just rolls `day += 1, weekendDay = 1, season += 1,
-  phase = 'plan'`. `contractPerformer` and `launchCampaign` both gained an
-  `isSeasonUnlocked` check up front, refusing with "X unlocks in Weekend
-  N" if the season requirement isn't met yet. `loadState` migrates old
-  saves missing `season` to `season: 1`.
-- **`js/ui.js`** — new `renderWeekendEnd(state, summary)`: a ticket-stub
-  styled screen (reusing the report screen's visual language) showing
-  total attendance, average crowd mood, a per-day attendance/net line for
-  each of the weekend's days, the weekend's total net and reputation
-  change, an unlock notice if anything new unlocks next weekend, and a
-  "Begin Weekend N+1" button. `renderMarketing` now shows a locked,
-  dashed-border card ("Unlocks in Weekend N") for any campaign not yet
-  reachable instead of a normal Launch card. `renderBackstage`'s
-  uncontracted-performer row now filters contract-type buttons down to
-  unlocked ones only, with a small hint tag naming the next one to unlock.
-  `renderLedger` now shows "Weekend N" as the headline instead of a bare
-  day count (day count moved to the subline).
-- **`js/main.js`** — `render()` gained a branch for `phase === 'weekendEnd'`
-  (tabs cleared, `UI.renderWeekendEnd` shown, computing the summary via
-  `summarizeWeekend(state.history, CONFIG.seasonLength)`), and
-  `handleAction` gained a `startNextWeekend` case. No changes to `wire()`
-  or the delegation pattern.
-- **`css/style.css`** — `.campaign-card.locked` (dashed border, dimmed) and
-  `.unlock-note` (gold, centered); the weekend-summary screen otherwise
-  reuses `.ticket-stub`'s existing styling with no new rules needed.
-- **`tests/smoke.mjs`** — 231 checks now (was 177): catalog-integrity
-  checks for the new `unlockSeason` fields, unit tests for
-  `isSeasonUnlocked` and `summarizeWeekend`, a full nextDay hard-stop →
-  `weekendEnd` → `startNextWeekend` cycle test, season-gating tests for
-  both the new campaign and the new contract type (refused too early,
-  succeeds once the weekend threshold is walked forward to), an update to
-  the 50-day fuzz loop so it calls `startNextWeekend` whenever it lands on
-  `weekendEnd` (otherwise the day counter would stall at the first weekend
-  boundary), and a DOM-level walkthrough of a full 3-day weekend via the
-  actual Open the Gates / Next Day buttons ending at the weekend-summary
-  screen and rolling into Weekend 2.
+- **`js/data.js`** — no new content catalog. `CONTRACT_OPTIONS`'s doc
+  comment was updated to note it's now a *shared* catalog (performers and
+  vendors both key into it) rather than performer-only; no field or value
+  changes, so this alone is zero-risk to anything Stage 1–6 already relies
+  on.
+- **`js/engine.js`** — added `effectiveVendorCost(state, vendorId)`,
+  mirroring `effectivePerformerCost` exactly: returns the contracted daily
+  rate if `state.vendorContracts[vendorId]` exists, else the vendor's
+  listed `cost`. `simulateDay`'s `vendorCosts` total now calls this instead
+  of reading `v.cost` directly, so a discounted vendor actually pays less
+  in the daily ledger and report, the same way a discounted performer
+  already did.
+- **`js/state.js`** — added `vendorContracts: {}` to initial state (and to
+  `clone()`'s deep-copy list — applying the Stage 4 clone-bug lesson
+  proactively, same as Stage 5 and 6 did). `hireVendor(state, vendorId,
+  contractId='open')` gained the `contractId` param (default keeps every
+  old 2-arg call site working untouched), an `isSeasonUnlocked` check
+  identical to `contractPerformer`'s, and now records
+  `vendorContracts[vendorId] = { contractId, dailyCost,
+  commitDaysRemaining }`. `fireVendor(state, vendorId)` now mirrors
+  `releasePerformer`: charges a cancellation fee
+  (`cancelFeeMult × dailyCost × commitDaysRemaining`) if let go before a
+  commitment lapses, returns it as `fee` for the UI to flash, and is free
+  once the commitment has run its course. `nextDay` ticks
+  `vendorContracts` commitments down in its own loop, right alongside the
+  existing performer-contract tick (same "ticks once per elapsed day,
+  never auto-removes on lapse" invariant). `loadState` migrates old saves
+  missing `vendorContracts` to `{}`.
+- **`js/ui.js`** — `renderBackstage`'s vendor rows now mirror the performer
+  rows exactly: an uncontracted vendor shows one button per unlocked
+  contract type (with the discounted rate in the label) plus a "next
+  unlock" hint tag if a tier is still season-gated; a contracted vendor
+  shows its contract label and either a running-commitment warning tag
+  (with days left) or a plain hint tag once free, and a Let go button.
+  `renderOffice`'s ledger total now sums vendor cost via
+  `effectiveVendorCost` instead of the flat listed cost. The Vendors &
+  Stalls section hint now mentions the shared contract options.
+- **`js/main.js`** — `hireVendor` action now passes
+  `el.dataset.contract || 'open'` through to `State.hireVendor` (same
+  pattern as the existing `contract` action for performers). `fireVendor`
+  now flashes a cancellation-fee message when `res.fee > 0`, mirroring the
+  `release` action.
+- **`tests/smoke.mjs`** — 259 checks now (was 231): a full open→signed
+  weekend-package→early-release→fee-charged cycle for vendors (mirroring
+  the performer version line for line), a nextDay tick-down test
+  confirming a vendor is never auto-removed once its commitment lapses, a
+  `simulateDay` test confirming vendor wages reflect the contracted rate,
+  a season-gating test refusing a vendor Season Contract before Weekend 3
+  and succeeding once the existing Weekend-3 walk-forward test reaches it,
+  and a DOM-level test that builds a food plot, clicks an actual Weekend
+  Package hire button in Backstage, confirms the contract label renders,
+  clicks Let Go, and confirms the cancellation-fee flash appears.
 
 ## What the next stage needs
 
-Read `js/data.js`'s `CONFIG.seasonLength` and the `unlockSeason` fields on
-`AD_CAMPAIGNS`/`CONTRACT_OPTIONS` first, then `engine.js`'s
-`isSeasonUnlocked`/`summarizeWeekend`, then `state.js`'s `nextDay` /
-`startNextWeekend` split — that's the entire weekend-boundary mechanism.
-`ui.js`'s `renderWeekendEnd` and the `weekendEnd`-phase branch in
-`main.js`'s `render()` show how it's drawn.
+Read `js/engine.js`'s `effectiveVendorCost` and `js/state.js`'s
+`hireVendor`/`fireVendor` first — they're the whole feature, built by
+copying the already-proven `effectivePerformerCost` /
+`contractPerformer`/`releasePerformer` pattern from Stage 5 with `vendor`
+substituted for `performer` almost everywhere. `ui.js`'s vendor rows in
+`renderBackstage` show how the display side mirrors the performer rows.
 
 **Next logical chunks, roughly in the order I'd tackle them:**
 
-1. **Vendor contract depth, mirroring performers.** Still open from Stage
-   5's backlog — vendors are still a flat hire/fire. The `CONTRACT_OPTIONS`
-   pattern (and now the `unlockSeason` gating pattern too) could extend to
-   `hireVendor`/`fireVendor` with the hard parts already solved twice over.
-2. **Grounds expansion as a season unlock.** The season-unlock plumbing
-   built this stage (`isSeasonUnlocked`, locked-card UI pattern) is
-   generic — a natural next use is unlocking more of the 10×7 grid (or a
-   larger grid entirely) at a later weekend, rather than gating only
-   campaigns/contracts. This would need `GRID`/`terrainAt`/`quoteBuild` to
-   become season-aware (currently pure functions of `(x,y)` only, no
-   `state` parameter) — a bigger change than this stage's additive one,
-   flagged here rather than attempted alongside it.
-3. **More stalls/performers, backstage drama events.** Content pools are
+1. **Grounds expansion as a season unlock.** Still open from Stage 6's
+   backlog — the season-unlock plumbing (`isSeasonUnlocked`, locked-card UI
+   pattern) is generic and now proven twice over (campaigns, and both
+   performer and vendor contracts), but `GRID`/`terrainAt`/`quoteBuild` are
+   still pure `(x,y) => value` functions with no `state` parameter, so
+   gating grid size behind a season would mean threading `state` through
+   them and their `ui.js` call sites — a bigger, different-shaped change,
+   still worth doing on its own.
+2. **More stalls/performers, backstage drama events.** Content pools are
    still small (10/8/6/4 campaigns/3 contract tiers) — low-risk filler
    whenever a stage needs a smaller task.
-4. **Build-time legality rules.** Right now any kind can be built on any
+3. **Build-time legality rules.** Right now any kind can be built on any
    terrain (deliberately relaxed since Stage 3 — see that stage's retro).
-5. **Crowd flow / bottlenecks as their own system.** Real positions and
+4. **Crowd flow / bottlenecks as their own system.** Real positions and
    free placement both exist to build this on. Still substantial work.
-6. **A cap or cost curve on total structures.** Nothing currently stops a
+5. **A cap or cost curve on total structures.** Nothing currently stops a
    player from tiling the entire 70-cell grid if they have the cash.
-7. **A hard end to the game / a win condition.** `season` now increments
+6. **A hard end to the game / a win condition.** `season` still increments
    forever with no ceiling — there's no "campaign complete" state, just an
    ever-growing weekend counter. Worth deciding whether that's the design
    (an endless-weekends sim) or whether a fixed number of weekends with a
@@ -116,49 +102,39 @@ Read `js/data.js`'s `CONFIG.seasonLength` and the `unlockSeason` fields on
 **Things intentionally deferred (kickoff doc explicitly allows this):**
 weather, rival faires, animal handling beyond the falconer performer role,
 deep reputation splits (currently one scalar 0–100), true contract-price
-*negotiation* (Stage 5's deferral, still open). Also deferred this stage
-specifically: grounds expansion as a season unlock (see next-chunk #2
-above — the unlock plumbing is ready, but making the grid itself
-season-aware is a separate, larger change) and any kind of end-of-game /
-win-condition state.
+*negotiation* (still open since Stage 5 — what exists is a fixed choice
+between published deals, not haggling, and that's true for vendors now
+too). Also still deferred: grounds expansion as a season unlock (see
+next-chunk #1) and any kind of end-of-game / win-condition state.
 
 ## Retro
 
 **Went well:**
-- Splitting `nextDay` (ticks once per elapsed day, stops at `weekendEnd`)
-  from a new `startNextWeekend` (rolls the counters over, no ticking)
-  meant the tick-once-per-day invariant from Stage 4/5 needed zero changes
-  — it was tempting to fold the season rollover into `nextDay` itself with
-  an `if (weekendDay > seasonLength)` branch that both ticks *and* rolls
-  over in one call, but that would have made "how many times has a
-  commitment/cooldown ticked" depend on which branch fired, which is
-  exactly the kind of subtle asymmetry Stage 4's clone bug punished once
-  already. Two small functions with one clear job each avoided it.
-- Giving `AD_CAMPAIGNS`/`CONTRACT_OPTIONS` entries an `unlockSeason` field
-  that defaults to 1 when absent (via `isSeasonUnlocked`'s `|| 1` fallback)
-  meant zero migration was needed for the five pre-existing entries — same
-  "new field defaults to old behavior" pattern that made Stage 5's
-  `contractId` parameter and Stage 4's additive fields land cleanly.
-- Writing the season-gating test as "refused before the threshold, then
-  walk the state forward with real `nextDay`/`startNextWeekend` calls and
-  confirm it succeeds after" (rather than just constructing a state object
-  with `season: 3` by hand) exercises the actual rollover path the player
-  will walk through, not just the gate check in isolation.
+- Copying the Stage 5 performer-contract pattern for vendors almost
+  mechanically — same field names (`contractId`/`dailyCost`/
+  `commitDaysRemaining`), same function shapes
+  (`effectiveXCost`/`XContract-or-hireX`/`releaseX-or-fireX`), same
+  `isSeasonUnlocked` gating call — meant there was no new design to do,
+  just a faithful port. The two systems now sharing one `CONTRACT_OPTIONS`
+  catalog (rather than a duplicated vendor-only copy) also means a future
+  balance change or new tier only needs to happen once.
+- Applying the "deep-copy every new state field in `clone()`" lesson from
+  Stage 4's cash bug before writing a single test this time — added
+  `vendorContracts` to `clone()` in the same edit that added it to
+  `createInitialState()`, rather than as an afterthought once a test caught
+  a shared-reference bug.
+- Writing the vendor tests as close mirrors of the existing performer
+  tests (same structure, same assertions, `vendor`/`vend_cider` swapped in
+  for `performer`/`perf_jouster_1`) made it fast to confirm nothing about
+  the vendor path diverges from the already-trusted performer path, and
+  made any accidental divergence easy to spot by diffing the two test
+  blocks.
 
 **Dead end / thing to know about before you repeat it:**
-- First pass at the fuzz-run update only added `startNextWeekend` handling
-  inside the loop's success path without checking `s.phase` on literally
-  every iteration — the loop has no concept of which iteration number
-  corresponds to a weekend boundary, it just asks `nextDay` what phase came
-  back and reacts to that. Simpler once written as "if weekendEnd,
-  immediately also call startNextWeekend" every single iteration, rather
-  than trying to precompute which iterations would need it.
-- Held off on making `GRID`/`terrainAt`/`quoteBuild` season-aware (to gate
-  grounds expansion behind a season unlock) once it became clear that
-  would mean threading `state` through several currently-pure
-  `(x, y) => value` functions that `ui.js` calls in tight loops while
-  rendering the grid — a real change, but a different-shaped one than this
-  stage's additive unlocks, and better done on its own. See next-chunk #2.
+- None this stage — this was the cleanest port of the six so far, likely
+  because Stage 5 had already done the hard design thinking (contract
+  shapes, fee math, the "never auto-remove on lapse" rule) and this stage
+  only had to apply it to a second entity type.
 
 ## Changelog
 
@@ -221,3 +197,18 @@ win-condition state.
   cycle and a DOM-level 3-day weekend walkthrough. Backlog now leads with
   vendor contract depth and making the grounds grid season-aware for a
   future expansion unlock.
+- **Stage 7** — vendor contract depth, mirroring performers: vendors are
+  now hired under the same shared `CONTRACT_OPTIONS` catalog performers
+  use (Day Rate/Weekend Package/Season Contract) instead of a flat
+  always-open hire/fire; new `effectiveVendorCost` engine helper (mirrors
+  `effectivePerformerCost`) feeds `simulateDay`'s vendor wage total and the
+  Office ledger; `hireVendor(state, vendorId, contractId='open')` gained
+  the contract param plus season-unlock gating, `fireVendor` now charges a
+  cancellation fee for breaking an active commitment early (mirrors
+  `releasePerformer`); `nextDay` ticks `vendorContracts` commitments down
+  alongside performer contracts; Backstage's vendor rows now show the same
+  contract-type buttons/running-commitment tags/Let go flow as the
+  performer roster; 259-check smoke suite (was 231), including a full
+  vendor sign to commit to lapse to free-release cycle and a DOM-level
+  Weekend Package hire/let-go test. Backlog now leads with grounds
+  expansion as a season unlock and small content-pool filler.

@@ -20,6 +20,7 @@ export function createInitialState() {
     roster: [],
     contracts: {}, // performerId -> { contractId, dailyCost, commitDaysRemaining }
     hiredVendors: [],
+    vendorContracts: {}, // vendorId -> { contractId, dailyCost, commitDaysRemaining } (Stage 7)
     schedule: Object.fromEntries(TIME_BLOCKS.map(b => [b.id, {}])),
     activeCampaign: null, // { id, name, attendanceMult, daysRemaining, cooldownDays } or null
     campaignCooldowns: {}, // campaignId -> days remaining before it can be relaunched
@@ -36,6 +37,7 @@ function clone(state) {
     roster: [...state.roster],
     contracts: Object.fromEntries(Object.entries(state.contracts).map(([k, v]) => [k, { ...v }])),
     hiredVendors: [...state.hiredVendors],
+    vendorContracts: Object.fromEntries(Object.entries(state.vendorContracts).map(([k, v]) => [k, { ...v }])),
     schedule: Object.fromEntries(Object.entries(state.schedule).map(([k, v]) => [k, { ...v }])),
     activeCampaign: state.activeCampaign ? { ...state.activeCampaign } : null,
     campaignCooldowns: { ...state.campaignCooldowns },
@@ -112,21 +114,47 @@ export function releasePerformer(state, performerId) {
   return { state: next, error: null, fee };
 }
 
-export function hireVendor(state, vendorId) {
+// `contractId` mirrors contractPerformer exactly (Stage 7): 'open' (the
+// default) is the no-commitment day rate at the listed cost; 'weekend'/
+// 'season' lock the vendor in at a discount for CONTRACT_OPTIONS[id].commitDays,
+// tracked via state.vendorContracts[vendorId].commitDaysRemaining.
+export function hireVendor(state, vendorId, contractId = 'open') {
   const vendor = vendorById(vendorId);
   if (!vendor) return { state, error: 'Unknown vendor.' };
   if (state.hiredVendors.includes(vendorId)) return { state, error: 'Already hired.' };
   const vendorPlotsBuilt = state.builtPlots.filter(p => p.kind === 'food' || p.kind === 'vendor').length;
   if (state.hiredVendors.length >= vendorPlotsBuilt) return { state, error: 'Build a stall plot first — no open stalls.' };
+  const option = CONTRACT_OPTIONS[contractId];
+  if (!option) return { state, error: 'Unknown contract type.' };
+  if (!isSeasonUnlocked(state, option.unlockSeason)) {
+    return { state, error: `${option.label} unlocks in Weekend ${option.unlockSeason}.` };
+  }
   const next = clone(state);
   next.hiredVendors.push(vendorId);
+  next.vendorContracts[vendorId] = {
+    contractId,
+    dailyCost: Math.round(vendor.cost * option.priceMult),
+    commitDaysRemaining: option.commitDays,
+  };
   return { state: next, error: null };
 }
 
+// Mirrors releasePerformer exactly: free for an open day-rate, or once a
+// commitment has run its course; breaking an active commitment early
+// charges a cancellation fee against the days still owed, returned as
+// `fee` (0 when none applies) so the UI can flash the amount.
 export function fireVendor(state, vendorId) {
   const next = clone(state);
+  const contract = next.vendorContracts[vendorId];
+  let fee = 0;
+  if (contract && contract.commitDaysRemaining > 0) {
+    const option = CONTRACT_OPTIONS[contract.contractId];
+    fee = Math.round(contract.dailyCost * contract.commitDaysRemaining * (option?.cancelFeeMult || 0));
+    next.cash -= fee;
+  }
+  delete next.vendorContracts[vendorId];
   next.hiredVendors = next.hiredVendors.filter(id => id !== vendorId);
-  return { state: next, error: null };
+  return { state: next, error: null, fee };
 }
 
 export function assignSchedule(state, blockId, stageId, performerId) {
@@ -209,6 +237,11 @@ export function nextDay(state) {
     const contract = next.contracts[id];
     if (contract.commitDaysRemaining > 0) contract.commitDaysRemaining -= 1;
   }
+  // Stage 7: vendor contracts tick down exactly the same way.
+  for (const id of Object.keys(next.vendorContracts)) {
+    const contract = next.vendorContracts[id];
+    if (contract.commitDaysRemaining > 0) contract.commitDaysRemaining -= 1;
+  }
 
   // Tick down any existing cooldowns first, then resolve the active
   // campaign (if any) — a campaign that expires today starts its own fresh
@@ -276,6 +309,7 @@ export function loadState() {
     const parsed = JSON.parse(raw);
     if (typeof parsed.cash !== 'number' || typeof parsed.day !== 'number') return null;
     if (typeof parsed.season !== 'number') parsed.season = 1; // pre-Stage-6 save
+    if (!parsed.vendorContracts) parsed.vendorContracts = {}; // pre-Stage-7 save
     return parsed;
   } catch (e) {
     return null;

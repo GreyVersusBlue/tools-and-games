@@ -76,7 +76,7 @@ function handleAction(action, el) {
       if (res.fee > 0) ui.flash = `Broke the Weekend Package early \u2014 $${res.fee} cancellation fee.`;
       break;
     case 'hireVendor':
-      res = State.hireVendor(state, id);
+      res = State.hireVendor(state, id, el.dataset.contract || 'open');
       if (res.error) ui.flash = res.error; else state = res.state;
       break;
     case 'launchCampaign':
@@ -86,6 +86,7 @@ function handleAction(action, el) {
     case 'fireVendor':
       res = State.fireVendor(state, id);
       state = res.state;
+      if (res.fee > 0) ui.flash = `Let a contracted vendor go early \u2014 $${res.fee} cancellation fee.`;
       break;
     case 'openGates':
       res = State.runDay(state);

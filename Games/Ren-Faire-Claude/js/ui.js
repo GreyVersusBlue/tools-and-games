@@ -2,7 +2,7 @@
 // main.js wires all interaction via event delegation on #content.
 
 import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, effectivePerformerCost, isSeasonUnlocked } from './engine.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -38,7 +38,7 @@ export function renderTabs(activeTab, phase) {
 export function renderOffice(state, warn) {
   const builtCount = state.builtPlots.length;
   const rosterCost = state.roster.reduce((s, id) => s + effectivePerformerCost(state, id), 0);
-  const vendorCost = state.hiredVendors.map(vendorById).reduce((s, v) => s + (v?.cost || 0), 0);
+  const vendorCost = state.hiredVendors.reduce((s, id) => s + effectiveVendorCost(state, id), 0);
   const overhead = 150 + state.builtPlots.filter(p => p.kind === 'stage').length * 20;
   return `
     <section class="panel">
@@ -144,15 +144,36 @@ export function renderBackstage(state, warn) {
 
   const vendorRows = VENDORS.map(v => {
     const hired = state.hiredVendors.includes(v.id);
+    const costCell = hired ? `${money(effectiveVendorCost(state, v.id))}/day` : `${money(v.cost)}/day`;
+    let actionCell;
+    if (hired) {
+      const contract = state.vendorContracts[v.id];
+      const option = CONTRACT_OPTIONS[contract.contractId];
+      const lockNote = contract.commitDaysRemaining > 0
+        ? `<span class="warn-tag" title="Letting them go before the commitment ends charges a cancellation fee">${option.label} \u2014 ${contract.commitDaysRemaining} day${contract.commitDaysRemaining === 1 ? '' : 's'} left</span>`
+        : `<span class="hint-tag">${option.label}</span>`;
+      actionCell = `${lockNote}<br><button class="btn small danger" data-action="fireVendor" data-id="${v.id}">Let go</button>`;
+    } else {
+      const buttons = Object.values(CONTRACT_OPTIONS)
+        .filter(opt => isSeasonUnlocked(state, opt.unlockSeason))
+        .map(opt => {
+          const rate = Math.round(v.cost * opt.priceMult);
+          const label = opt.priceMult < 1 ? `${opt.label} (${money(rate)}/day)` : opt.label;
+          return `<button class="btn small" data-action="hireVendor" data-id="${v.id}" data-contract="${opt.id}">${label}</button>`;
+        }).join('');
+      const nextUnlock = Object.values(CONTRACT_OPTIONS)
+        .filter(opt => !isSeasonUnlocked(state, opt.unlockSeason))
+        .sort((a, b) => a.unlockSeason - b.unlockSeason)[0];
+      const lockedHint = nextUnlock ? `<br><span class="hint-tag">${nextUnlock.label} unlocks Weekend ${nextUnlock.unlockSeason}</span>` : '';
+      actionCell = buttons + lockedHint;
+    }
     return `
       <tr class="${hired ? 'is-contracted' : ''}">
         <td>${v.name}</td>
         <td class="mono">${v.type}</td>
         <td class="mono">${'\u2605'.repeat(Math.round(v.quality / 2))}</td>
-        <td class="mono">${money(v.cost)}/day</td>
-        <td>${hired
-          ? `<button class="btn small danger" data-action="fireVendor" data-id="${v.id}">Let go</button>`
-          : `<button class="btn small" data-action="hireVendor" data-id="${v.id}">Hire</button>`}</td>
+        <td class="mono">${costCell}</td>
+        <td>${actionCell}</td>
       </tr>`;
   }).join('');
 
@@ -168,7 +189,7 @@ export function renderBackstage(state, warn) {
       </table>
 
       <h3>Vendors &amp; Stalls</h3>
-      <p class="hint">Stalls only sell if you've built the plot for them on the Fair Floor first.</p>
+      <p class="hint">Stalls only sell if you've built the plot for them on the Fair Floor first. Same contract options as performers: Day Rate has no commitment, longer packages are cheaper per day but cost a fee to break early.</p>
       <table class="roster-table">
         <thead><tr><th>Vendor</th><th>Type</th><th>Quality</th><th>Cost</th><th></th></tr></thead>
         <tbody>${vendorRows}</tbody>
