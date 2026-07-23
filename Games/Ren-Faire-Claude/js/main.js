@@ -25,7 +25,7 @@ function render() {
   $('#tabs').innerHTML = UI.renderTabs(ui.activeTab, state.phase);
   const conflicts = validateSchedule(state.schedule);
   let panel = '';
-  if (ui.activeTab === 'office') panel = UI.renderOffice(state);
+  if (ui.activeTab === 'office') panel = UI.renderOffice(state, ui.flash);
   else if (ui.activeTab === 'backstage') panel = UI.renderBackstage(state, ui.flash);
   else panel = UI.renderFairFloor(state, conflicts, ui.pendingBuild);
 
@@ -59,15 +59,20 @@ function handleAction(action, el) {
       break;
     }
     case 'contract':
-      res = State.contractPerformer(state, id);
+      res = State.contractPerformer(state, id, el.dataset.contract || 'open');
       if (res.error) ui.flash = res.error; else state = res.state;
       break;
     case 'release':
       res = State.releasePerformer(state, id);
       state = res.state;
+      if (res.fee > 0) ui.flash = `Broke the Weekend Package early \u2014 $${res.fee} cancellation fee.`;
       break;
     case 'hireVendor':
       res = State.hireVendor(state, id);
+      if (res.error) ui.flash = res.error; else state = res.state;
+      break;
+    case 'launchCampaign':
+      res = State.launchCampaign(state, id);
       if (res.error) ui.flash = res.error; else state = res.state;
       break;
     case 'fireVendor':

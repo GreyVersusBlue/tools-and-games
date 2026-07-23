@@ -77,6 +77,30 @@ export const TERRAIN_BUILD_MODIFIERS = {
 export const TERRAIN_NAME = { clearing: 'Green', hill: 'Hilltop', woods: 'Grove', path: 'Crossing' };
 export const KIND_NOUN = { stage: 'Stage', food: 'Stall', vendor: 'Bazaar', demo: 'Camp' };
 
+// Marketing/advertising campaigns (Stage 4). Only one campaign can be
+// running at a time — launching one costs cash up front, its
+// `attendanceMult` applies to attendance for `durationDays`, and once it
+// ends that specific campaign can't be relaunched until `cooldownDays` have
+// passed. Deliberately non-stacking: there is no way to have two campaigns'
+// multipliers apply on the same day, which keeps the attendance formula in
+// engine.js simple (one multiplier, or none).
+export const AD_CAMPAIGNS = [
+  { id: 'ad_flyers', name: 'Flyer Run', desc: 'A few riders post bills in the nearest towns. Cheap, quick, modest.', cost: 120, attendanceMult: 1.08, durationDays: 1, cooldownDays: 1 },
+  { id: 'ad_crier', name: 'Town Crier', desc: 'A hired crier works the market squares for days on end.', cost: 280, attendanceMult: 1.16, durationDays: 2, cooldownDays: 2 },
+  { id: 'ad_broadside', name: 'Regional Broadside', desc: 'Printed notices carried by wagon to every shire nearby.', cost: 550, attendanceMult: 1.28, durationDays: 3, cooldownDays: 4 },
+];
+
+// Contract types for performers (Stage 5). `open` is the no-commitment day
+// rate — pay the listed cost, release anytime for free (this was the only
+// option through Stage 4). `weekend` locks the performer in for
+// `commitDays` at a discount off the listed rate; releasing early, before
+// the commitment runs out, costs a cancellation fee
+// (cancelFeeMult \u00d7 dailyCost \u00d7 days still owed on the commitment).
+export const CONTRACT_OPTIONS = {
+  open: { id: 'open', label: 'Day Rate', priceMult: 1.0, commitDays: 0, cancelFeeMult: 0 },
+  weekend: { id: 'weekend', label: 'Weekend Package', priceMult: 0.85, commitDays: 3, cancelFeeMult: 0.5 },
+};
+
 // Performer pool. `quirk` is a small effect tag the engine looks up by id —
 // see engine.js QUIRKS for what each one actually does.
 export const PERFORMERS = [

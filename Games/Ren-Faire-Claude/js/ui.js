@@ -1,8 +1,8 @@
 // ui.js — turns state into HTML strings. No event listeners live here;
 // main.js wires all interaction via event delegation on #content.
 
-import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, STRUCTURE_TYPES } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild } from './engine.js';
+import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, effectivePerformerCost } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -35,15 +35,16 @@ export function renderTabs(activeTab, phase) {
   return tabs.map(t => `<button class="tab-btn${t.id === activeTab ? ' active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('');
 }
 
-export function renderOffice(state) {
+export function renderOffice(state, warn) {
   const builtCount = state.builtPlots.length;
-  const rosterCost = state.roster.map(performerById).reduce((s, p) => s + (p?.cost || 0), 0);
+  const rosterCost = state.roster.reduce((s, id) => s + effectivePerformerCost(state, id), 0);
   const vendorCost = state.hiredVendors.map(vendorById).reduce((s, v) => s + (v?.cost || 0), 0);
   const overhead = 150 + state.builtPlots.filter(p => p.kind === 'stage').length * 20;
   return `
     <section class="panel">
       <h2>The Ledger Desk</h2>
       <p class="flavor">Set tonight's admission price and see what the books say you're carrying.</p>
+      ${warn ? `<p class="warn">${warn}</p>` : ''}
 
       <div class="field-row">
         <label for="ticketPrice">Ticket price</label>
@@ -59,7 +60,40 @@ export function renderOffice(state) {
       </table>
 
       <p class="hint">${builtCount} plot${builtCount === 1 ? '' : 's'} built on the grounds. Head to <strong>Fair Floor</strong> to build stages and stalls, and <strong>Backstage</strong> to contract acts.</p>
+
+      ${renderMarketing(state)}
     </section>
+  `;
+}
+
+// One campaign runs at a time (non-stacking). A card shows what it costs
+// and does; once launched it shows a running countdown, and once it ends
+// it shows a cooldown countdown before that same campaign can fire again.
+function renderMarketing(state) {
+  const cards = AD_CAMPAIGNS.map(c => {
+    const isActive = state.activeCampaign?.id === c.id;
+    const cooldown = state.campaignCooldowns[c.id] || 0;
+    const disabled = !!state.activeCampaign || cooldown > 0;
+    let status = '';
+    if (isActive) {
+      const d = state.activeCampaign.daysRemaining;
+      status = `<span class="campaign-tag running">running \u2014 ${d} day${d === 1 ? '' : 's'} left</span>`;
+    } else if (cooldown > 0) {
+      status = `<span class="campaign-tag cooldown">cooldown \u2014 ${cooldown} day${cooldown === 1 ? '' : 's'}</span>`;
+    }
+    return `
+      <div class="campaign-card${isActive ? ' is-active' : ''}">
+        <div class="campaign-head"><strong>${c.name}</strong><span class="mono">${money(c.cost)}</span></div>
+        <p class="flavor">${c.desc}</p>
+        <p class="hint mono">+${Math.round((c.attendanceMult - 1) * 100)}% draw for ${c.durationDays} day${c.durationDays === 1 ? '' : 's'}</p>
+        ${status}
+        <button class="btn small" data-action="launchCampaign" data-id="${c.id}" ${disabled ? 'disabled' : ''}>Launch</button>
+      </div>`;
+  }).join('');
+  return `
+    <h3>Marketing</h3>
+    <p class="hint">One campaign at a time \u2014 launching one costs cash up front and boosts attendance while it runs.</p>
+    <div class="campaign-grid">${cards}</div>
   `;
 }
 
@@ -67,15 +101,30 @@ export function renderBackstage(state, warn) {
   const rows = PERFORMERS.map(p => {
     const contracted = state.roster.includes(p.id);
     const quirkLabel = p.quirk ? `<span class="quirk-tag" title="${quirkDesc(p.quirk)}">${quirkTitle(p.quirk)}</span>` : '';
+    const costCell = contracted ? `${money(effectivePerformerCost(state, p.id))}/day` : `${money(p.cost)}/day`;
+    let actionCell;
+    if (contracted) {
+      const contract = state.contracts[p.id];
+      const option = CONTRACT_OPTIONS[contract.contractId];
+      const lockNote = contract.commitDaysRemaining > 0
+        ? `<span class="warn-tag" title="Releasing before the commitment ends charges a cancellation fee">${option.label} \u2014 ${contract.commitDaysRemaining} day${contract.commitDaysRemaining === 1 ? '' : 's'} left</span>`
+        : `<span class="hint-tag">${option.label}</span>`;
+      actionCell = `${lockNote}<br><button class="btn small danger" data-action="release" data-id="${p.id}">Release</button>`;
+    } else {
+      const buttons = Object.values(CONTRACT_OPTIONS).map(opt => {
+        const rate = Math.round(p.cost * opt.priceMult);
+        const label = opt.priceMult < 1 ? `${opt.label} (${money(rate)}/day)` : opt.label;
+        return `<button class="btn small" data-action="contract" data-id="${p.id}" data-contract="${opt.id}">${label}</button>`;
+      }).join('');
+      actionCell = buttons;
+    }
     return `
       <tr class="${contracted ? 'is-contracted' : ''}">
         <td>${p.name}${quirkLabel}</td>
         <td class="mono">${p.role}</td>
         <td class="mono">${'\u2605'.repeat(Math.round(p.popularity / 2))}</td>
-        <td class="mono">${money(p.cost)}/day</td>
-        <td>${contracted
-          ? `<button class="btn small danger" data-action="release" data-id="${p.id}">Release</button>`
-          : `<button class="btn small" data-action="contract" data-id="${p.id}">Contract</button>`}</td>
+        <td class="mono">${costCell}</td>
+        <td>${actionCell}</td>
       </tr>`;
   }).join('');
 
@@ -97,6 +146,7 @@ export function renderBackstage(state, warn) {
     <section class="panel">
       <h2>The Tiring House</h2>
       <p class="flavor">Contract the acts who'll carry the day, and staff for the stalls you've built.</p>
+      <p class="hint">Day Rate has no commitment \u2014 release anytime for free. Weekend Package is cheaper per day but locks the act in; breaking it early costs a fee.</p>
       ${warn ? `<p class="warn">${warn}</p>` : ''}
       <table class="roster-table">
         <thead><tr><th>Performer</th><th>Role</th><th>Draw</th><th>Cost</th><th></th></tr></thead>
@@ -256,6 +306,7 @@ export function renderReport(state, result) {
       <div class="ticket-notch right"></div>
       <h2>Day ${result.day} \u2014 Closed the Gates</h2>
       <div class="ticket-row"><span>Attendance</span><span class="mono">${result.attendance.toLocaleString()}</span></div>
+      ${result.campaignActive ? `<div class="ticket-row"><span>${result.campaignActive}</span><span class="mono">+${Math.round((result.adFactor - 1) * 100)}% draw</span></div>` : ''}
       <div class="ticket-row"><span>Crowd mood</span><span class="mono">${satLabel} (${result.satisfaction}/100)</span></div>
       <hr>
       <div class="ticket-row"><span>Ticket revenue</span><span class="mono">${money(result.ticketRevenue)}</span></div>

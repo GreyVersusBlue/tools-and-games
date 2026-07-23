@@ -210,6 +210,28 @@ h1, h2, h3, h4 {
 .plot-stats { font-size: 0.75rem; color: var(--slate); }
 .built-tag { font-family: var(--font-display); font-size: 0.75rem; color: var(--forest); }
 
+.campaign-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.8rem; margin: 0.8rem 0 0.4rem; }
+.campaign-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem;
+  background: var(--parchment-dark);
+  display: flex; flex-direction: column; gap: 0.4rem;
+}
+.campaign-card.is-active { border-color: var(--forest); background: rgba(56, 82, 59, 0.12); }
+.campaign-head { display: flex; justify-content: space-between; align-items: baseline; }
+.campaign-tag {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  padding: 0.05em 0.4em;
+}
+.campaign-tag.running { background: var(--forest); color: var(--parchment); }
+.campaign-tag.cooldown { background: var(--slate); color: var(--parchment); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:disabled:hover { background: var(--forest); }
+
 .schedule-table { width: 100%; border-collapse: collapse; margin-top: 0.6rem; }
 .schedule-table th, .schedule-table td { border: 1px solid var(--line); padding: 0.4rem; font-size: 0.85rem; }
 .schedule-table select { width: 100%; font-family: var(--font-body); padding: 0.2rem; }

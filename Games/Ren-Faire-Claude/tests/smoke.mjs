@@ -19,8 +19,8 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild } = await import(path.join(root, 'js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN } = await import(path.join(root, 'js/data.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, campaignById, effectivePerformerCost } = await import(path.join(root, 'js/engine.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS } = await import(path.join(root, 'js/data.js'));
 const State = await import(path.join(root, 'js/state.js'));
 
 // --- RNG determinism ---
@@ -60,6 +60,32 @@ const State = await import(path.join(root, 'js/state.js'));
     assert(TERRAIN_BUILD_MODIFIERS[terrainName], `terrain "${terrainName}" has a TERRAIN_BUILD_MODIFIERS entry`);
     assert(TERRAIN_NAME[terrainName], `terrain "${terrainName}" has a TERRAIN_NAME entry for auto-naming`);
   }
+}
+
+// --- ad campaign catalog integrity (Stage 4) ---
+{
+  assert(AD_CAMPAIGNS.length > 0, 'AD_CAMPAIGNS is non-empty');
+  const ids = AD_CAMPAIGNS.map(c => c.id);
+  assert(new Set(ids).size === ids.length, 'all AD_CAMPAIGNS ids are unique');
+  for (const c of AD_CAMPAIGNS) {
+    assert(c.cost > 0, `${c.id} has a positive cost`);
+    assert(c.attendanceMult > 1, `${c.id} attendanceMult is a boost (>1)`);
+    assert(Number.isInteger(c.durationDays) && c.durationDays > 0, `${c.id} has a positive integer durationDays`);
+    assert(Number.isInteger(c.cooldownDays) && c.cooldownDays > 0, `${c.id} has a positive integer cooldownDays`);
+    assert(campaignById(c.id) === c, `campaignById finds ${c.id} by id`);
+  }
+  assert(campaignById('nonsense') === undefined, 'campaignById returns undefined for an unknown id');
+}
+
+// --- contract option catalog integrity (Stage 5) ---
+{
+  assert(CONTRACT_OPTIONS.open, 'CONTRACT_OPTIONS has an "open" (day rate) entry');
+  assert(CONTRACT_OPTIONS.weekend, 'CONTRACT_OPTIONS has a "weekend" (Weekend Package) entry');
+  assert(CONTRACT_OPTIONS.open.commitDays === 0, 'the open day-rate carries no commitment');
+  assert(CONTRACT_OPTIONS.open.cancelFeeMult === 0, 'the open day-rate has no cancellation fee');
+  assert(CONTRACT_OPTIONS.weekend.priceMult < 1, 'the Weekend Package is discounted off the listed rate');
+  assert(CONTRACT_OPTIONS.weekend.commitDays > 0, 'the Weekend Package carries a real commitment');
+  assert(CONTRACT_OPTIONS.weekend.cancelFeeMult > 0, 'breaking a Weekend Package early has a real cancellation fee');
 }
 
 // --- map/terrain data integrity ---
@@ -256,6 +282,78 @@ const State = await import(path.join(root, 'js/state.js'));
 }
 
 {
+  // contractPerformer defaults to the open day rate (Stage 5) — same cost
+  // and free-release behavior as before contracts existed.
+  const perf = PERFORMERS.find(p => p.id === 'perf_jouster_1');
+  let s = State.createInitialState();
+  s = State.contractPerformer(s, 'perf_jouster_1').state;
+  assert(s.contracts.perf_jouster_1.contractId === 'open', 'contractPerformer defaults to the open day-rate contract');
+  assert(s.contracts.perf_jouster_1.dailyCost === perf.cost, 'the open day rate charges exactly the listed cost');
+  assert(effectivePerformerCost(s, 'perf_jouster_1') === perf.cost, 'effectivePerformerCost matches the listed cost under an open contract');
+
+  const cashBefore = s.cash;
+  const released = State.releasePerformer(s, 'perf_jouster_1');
+  assert(released.fee === 0, 'releasing an open day-rate contract charges no cancellation fee');
+  assert(released.state.cash === cashBefore, 'no cash changes hands when releasing an open day-rate contract');
+}
+
+{
+  // Weekend Package: discounted daily rate, real commitment, and a
+  // cancellation fee for breaking it early (Stage 5).
+  const perf = PERFORMERS.find(p => p.id === 'perf_jouster_1');
+  const option = CONTRACT_OPTIONS.weekend;
+  let s = State.createInitialState();
+  const { state: signed, error } = State.contractPerformer(s, 'perf_jouster_1', 'weekend');
+  assert(error === null, 'contractPerformer accepts the weekend contract type');
+  const expectedRate = Math.round(perf.cost * option.priceMult);
+  assert(signed.contracts.perf_jouster_1.dailyCost === expectedRate, 'the Weekend Package charges the discounted daily rate');
+  assert(signed.contracts.perf_jouster_1.dailyCost < perf.cost, 'the Weekend Package rate is cheaper than the listed day rate');
+  assert(signed.contracts.perf_jouster_1.commitDaysRemaining === option.commitDays, 'the Weekend Package starts with its full commitment length');
+
+  const cashBefore = signed.cash;
+  const earlyRelease = State.releasePerformer(signed, 'perf_jouster_1');
+  const expectedFee = Math.round(expectedRate * option.commitDays * option.cancelFeeMult);
+  assert(earlyRelease.fee === expectedFee, 'breaking a Weekend Package early charges the expected cancellation fee');
+  assert(earlyRelease.state.cash === cashBefore - expectedFee, 'the cancellation fee is actually deducted from cash');
+
+  const unknownContract = State.contractPerformer(s, 'perf_jouster_1', 'lifetime');
+  assert(unknownContract.error && /unknown contract/i.test(unknownContract.error), 'contractPerformer refuses an unrecognized contract type');
+}
+
+{
+  // nextDay ticks a Weekend Package's commitment down; once it reaches
+  // zero, the performer stays on the roster (contracts persist day to day,
+  // same as Stage 1-4) but releasing them is free again (Stage 5).
+  let s = State.createInitialState();
+  s = State.contractPerformer(s, 'perf_jouster_1', 'weekend').state;
+  assert(s.contracts.perf_jouster_1.commitDaysRemaining === 3, 'starts with 3 committed days');
+
+  s = State.nextDay(s).state;
+  assert(s.contracts.perf_jouster_1.commitDaysRemaining === 2, 'nextDay ticks the commitment down by one');
+  assert(s.roster.includes('perf_jouster_1'), 'the performer remains on the roster while committed');
+
+  s = State.nextDay(s).state;
+  s = State.nextDay(s).state;
+  assert(s.contracts.perf_jouster_1.commitDaysRemaining === 0, 'the commitment reaches zero after its full duration');
+  assert(s.roster.includes('perf_jouster_1'), 'the performer is NOT auto-removed once the commitment ends');
+
+  const freeRelease = State.releasePerformer(s, 'perf_jouster_1');
+  assert(freeRelease.fee === 0, 'once the commitment has run out, releasing is free again');
+}
+
+{
+  // simulateDay's performer wages reflect the contracted daily rate, not
+  // the listed cost, once a discounted Weekend Package is signed (Stage 5).
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'stage', 3, 0).state;
+  s = State.contractPerformer(s, 'perf_jouster_1', 'weekend').state;
+  s = State.assignSchedule(s, 'midday', '3_0', 'perf_jouster_1').state;
+  const result = simulateDay(s, 7);
+  const expectedRate = Math.round(PERFORMERS.find(p => p.id === 'perf_jouster_1').cost * CONTRACT_OPTIONS.weekend.priceMult);
+  assert(result.performerCosts === expectedRate, 'simulateDay charges the Weekend Package\u2019s discounted rate, not the listed cost');
+}
+
+{
   // vendor hiring requires an open stall plot
   let s = State.createInitialState();
   const noPlot = State.hireVendor(s, 'vend_cider');
@@ -264,6 +362,71 @@ const State = await import(path.join(root, 'js/state.js'));
   s = State.buildPlot(s, 'food', 6, 2).state;
   const withPlot = State.hireVendor(s, 'vend_cider');
   assert(withPlot.error === null, 'hireVendor succeeds once a stall plot exists');
+}
+
+{
+  // launchCampaign: cash/error handling, one-at-a-time, cooldowns (Stage 4)
+  let s = State.createInitialState();
+  const before = s.cash;
+  const { state: launched, error } = State.launchCampaign(s, 'ad_flyers');
+  assert(error === null, 'launchCampaign succeeds when affordable and nothing else is running');
+  assert(launched.cash === before - AD_CAMPAIGNS.find(c => c.id === 'ad_flyers').cost, 'launchCampaign deducts the campaign cost');
+  assert(s.cash === before, 'launchCampaign does not mutate the original state object (immutability)');
+  assert(launched.activeCampaign.id === 'ad_flyers', 'the launched campaign becomes activeCampaign');
+  assert(launched.activeCampaign.daysRemaining === campaignById('ad_flyers').durationDays, 'activeCampaign starts with its full duration');
+
+  const secondWhileRunning = State.launchCampaign(launched, 'ad_crier');
+  assert(secondWhileRunning.error && /still running/i.test(secondWhileRunning.error), 'launchCampaign refuses a second campaign while one is already running');
+
+  const unknown = State.launchCampaign(s, 'ad_nonsense');
+  assert(unknown.error && /unknown campaign/i.test(unknown.error), 'launchCampaign refuses an unknown campaign id');
+
+  const broke = { ...State.createInitialState(), cash: 0 };
+  const brokeRes = State.launchCampaign(broke, 'ad_flyers');
+  assert(brokeRes.error && /not enough cash/i.test(brokeRes.error), 'launchCampaign refuses when cash is insufficient');
+}
+
+{
+  // nextDay ticks the active campaign down and then applies its cooldown
+  // (Stage 4) — ad_flyers runs 1 day, cools down 1 day.
+  let s = State.createInitialState();
+  s = State.launchCampaign(s, 'ad_flyers').state;
+  assert(s.activeCampaign.daysRemaining === 1, 'ad_flyers starts with 1 day remaining');
+
+  s = State.nextDay(s).state;
+  assert(s.activeCampaign === null, 'ad_flyers expires after its single day of duration');
+  assert(s.campaignCooldowns.ad_flyers === 1, 'ad_flyers enters its 1-day cooldown the moment it expires');
+
+  const stillCoolingDown = State.launchCampaign(s, 'ad_flyers');
+  assert(stillCoolingDown.error && /before it can run again/i.test(stillCoolingDown.error), 'launchCampaign refuses while the campaign is still cooling down');
+
+  s = State.nextDay(s).state;
+  assert(s.campaignCooldowns.ad_flyers === undefined, 'the cooldown clears once its days are up');
+
+  const readyAgain = State.launchCampaign(s, 'ad_flyers');
+  assert(readyAgain.error === null, 'ad_flyers can be relaunched once its cooldown has fully ticked down');
+}
+
+{
+  // simulateDay: an active campaign's multiplier raises average attendance
+  let noAd = State.createInitialState();
+  noAd = State.buildPlot(noAd, 'stage', 3, 0).state;
+
+  let withAd = State.createInitialState();
+  withAd = State.buildPlot(withAd, 'stage', 3, 0).state;
+  withAd = State.launchCampaign(withAd, 'ad_broadside').state; // biggest boost, easiest to detect over jitter
+
+  let noAdSum = 0, withAdSum = 0;
+  const N = 20;
+  for (let i = 0; i < N; i++) {
+    noAdSum += simulateDay(noAd, i).attendance;
+    withAdSum += simulateDay(withAd, i).attendance;
+  }
+  assert(withAdSum / N > noAdSum / N, 'a running ad campaign raises average attendance over having none active');
+
+  const result = simulateDay(withAd, 1);
+  assert(result.campaignActive === 'Regional Broadside', 'simulateDay reports the active campaign\u2019s name');
+  assert(result.adFactor === campaignById('ad_broadside').attendanceMult, 'simulateDay reports the exact adFactor applied');
 }
 
 {

@@ -3,7 +3,7 @@
 // this module for the math. That split is what makes the smoke tests able
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
-import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN } from './data.js';
+import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
 
 // ---------- seeded RNG (mulberry32) ----------
 // Deterministic given a numeric seed so tests can assert exact outputs.
@@ -31,6 +31,20 @@ export function clamp(n, lo, hi) {
 // needs one just reads it straight from that array.
 export function performerById(id) { return PERFORMERS.find(p => p.id === id); }
 export function vendorById(id) { return VENDORS.find(v => v.id === id); }
+export function campaignById(id) { return AD_CAMPAIGNS.find(c => c.id === id); }
+
+// A contracted performer's actual daily rate depends on which contract type
+// they were signed under (Stage 5) — a Weekend Package pays less per day
+// than the listed cost, an open day-rate pays the listed cost exactly.
+// Falls back to the listed cost for a performer with no contract record
+// (shouldn't normally happen if they're on the roster, but keeps this safe
+// to call defensively).
+export function effectivePerformerCost(state, performerId) {
+  const perf = performerById(performerId);
+  if (!perf) return 0;
+  const contract = state.contracts && state.contracts[performerId];
+  return contract ? contract.dailyCost : perf.cost;
+}
 
 // ---------- faire grounds map ----------
 // Terrain lookup by grid cell. Returns null for out-of-bounds/unknown cells.
@@ -200,8 +214,9 @@ export function simulateDay(state, seed) {
   const baseAttendance = 150 + state.reputation * 4;
   const priceFactor = clamp(1 - (state.ticketPrice - 16) / 40, 0.55, 1.35);
   const popularityFactor = 1 + Math.min(1.2, totalScheduledPopularity / 55);
+  const adFactor = state.activeCampaign ? state.activeCampaign.attendanceMult : 1;
   const jitter = 0.9 + rng() * 0.2;
-  const attendance = Math.max(0, Math.round(baseAttendance * priceFactor * popularityFactor * jitter));
+  const attendance = Math.max(0, Math.round(baseAttendance * priceFactor * popularityFactor * adFactor * jitter));
 
   // --- satisfaction (attendance-weighted across block/stage slots) ---
   let satWeightSum = 0;
@@ -241,7 +256,7 @@ export function simulateDay(state, seed) {
 
   // --- ticket revenue & costs ---
   const ticketRevenue = attendance * state.ticketPrice;
-  const performerCosts = rosterPerformers.reduce((s, p) => s + p.cost, 0);
+  const performerCosts = rosterPerformers.reduce((s, p) => s + effectivePerformerCost(state, p.id), 0);
   const vendorCosts = hiredVendorObjs.reduce((s, v) => s + v.cost, 0);
   const overhead = 150 + builtStages.length * 20; // grounds upkeep scales a little with built stages
   const costs = performerCosts + vendorCosts + overhead;
@@ -278,6 +293,8 @@ export function simulateDay(state, seed) {
     satisfaction: Math.round(satisfaction),
     reputationDelta,
     scheduledCount,
+    adFactor,
+    campaignActive: state.activeCampaign ? state.activeCampaign.name : null,
     events,
     log,
     warnings,

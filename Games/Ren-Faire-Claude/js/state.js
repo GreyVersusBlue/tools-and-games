@@ -3,8 +3,8 @@
 // NEW state (no in-place mutation), so ui.js can just re-render after every
 // action and tests can assert on plain objects.
 
-import { CONFIG, TIME_BLOCKS, GRID, STRUCTURE_TYPES } from './data.js';
-import { simulateDay, performerById, vendorById, validateSchedule, terrainAt, quoteBuild } from './engine.js';
+import { CONFIG, TIME_BLOCKS, GRID, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
+import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild } from './engine.js';
 
 const SAVE_KEY = 'renn-faire-sim-save-v1';
 
@@ -17,8 +17,11 @@ export function createInitialState() {
     ticketPrice: CONFIG.ticketPrice.start,
     builtPlots: [],
     roster: [],
+    contracts: {}, // performerId -> { contractId, dailyCost, commitDaysRemaining }
     hiredVendors: [],
     schedule: Object.fromEntries(TIME_BLOCKS.map(b => [b.id, {}])),
+    activeCampaign: null, // { id, name, attendanceMult, daysRemaining, cooldownDays } or null
+    campaignCooldowns: {}, // campaignId -> days remaining before it can be relaunched
     phase: 'plan', // 'plan' -> 'report' -> 'plan' ...
     lastResult: null,
     history: [], // array of past simulateDay() results, oldest first
@@ -30,8 +33,11 @@ function clone(state) {
     ...state,
     builtPlots: state.builtPlots.map(p => ({ ...p })),
     roster: [...state.roster],
+    contracts: Object.fromEntries(Object.entries(state.contracts).map(([k, v]) => [k, { ...v }])),
     hiredVendors: [...state.hiredVendors],
     schedule: Object.fromEntries(Object.entries(state.schedule).map(([k, v]) => [k, { ...v }])),
+    activeCampaign: state.activeCampaign ? { ...state.activeCampaign } : null,
+    campaignCooldowns: { ...state.campaignCooldowns },
     history: [...state.history],
   };
 }
@@ -58,17 +64,40 @@ export function buildPlot(state, kind, x, y) {
   return { state: next, error: null };
 }
 
-export function contractPerformer(state, performerId) {
+// `contractId` picks the deal (see data.js's CONTRACT_OPTIONS): 'open' (the
+// default) is the no-commitment day rate at the listed cost; 'weekend'
+// locks the performer in at a discount for CONTRACT_OPTIONS.weekend.commitDays,
+// tracked via state.contracts[performerId].commitDaysRemaining.
+export function contractPerformer(state, performerId, contractId = 'open') {
   const perf = performerById(performerId);
   if (!perf) return { state, error: 'Unknown performer.' };
   if (state.roster.includes(performerId)) return { state, error: 'Already contracted.' };
+  const option = CONTRACT_OPTIONS[contractId];
+  if (!option) return { state, error: 'Unknown contract type.' };
   const next = clone(state);
   next.roster.push(performerId);
+  next.contracts[performerId] = {
+    contractId,
+    dailyCost: Math.round(perf.cost * option.priceMult),
+    commitDaysRemaining: option.commitDays,
+  };
   return { state: next, error: null };
 }
 
+// Releasing is free for an open day-rate, or once a Weekend Package's
+// commitment has run its course. Breaking a still-active Weekend Package
+// early charges a cancellation fee against the days still owed on it —
+// returned as `fee` (0 when none applies) so the UI can flash the amount.
 export function releasePerformer(state, performerId) {
   const next = clone(state);
+  const contract = next.contracts[performerId];
+  let fee = 0;
+  if (contract && contract.commitDaysRemaining > 0) {
+    const option = CONTRACT_OPTIONS[contract.contractId];
+    fee = Math.round(contract.dailyCost * contract.commitDaysRemaining * (option?.cancelFeeMult || 0));
+    next.cash -= fee;
+  }
+  delete next.contracts[performerId];
   next.roster = next.roster.filter(id => id !== performerId);
   // pull them out of the schedule too
   for (const blockId of Object.keys(next.schedule)) {
@@ -76,7 +105,7 @@ export function releasePerformer(state, performerId) {
       if (next.schedule[blockId][stageId] === performerId) delete next.schedule[blockId][stageId];
     }
   }
-  return { state: next, error: null };
+  return { state: next, error: null, fee };
 }
 
 export function hireVendor(state, vendorId) {
@@ -111,6 +140,29 @@ export function unassignSchedule(state, blockId, stageId) {
   return { state: next, error: null };
 }
 
+// Only one campaign may run at a time (non-stacking, per the kickoff doc's
+// ad-campaign pattern), and each campaign kind has its own cooldown after it
+// finishes — both checked here rather than left to the UI, so a stale
+// button click can't sneak a second campaign in.
+export function launchCampaign(state, campaignId) {
+  const campaign = campaignById(campaignId);
+  if (!campaign) return { state, error: 'Unknown campaign.' };
+  if (state.activeCampaign) return { state, error: `${state.activeCampaign.name} is still running \u2014 wait for it to finish.` };
+  const cooldown = state.campaignCooldowns[campaignId] || 0;
+  if (cooldown > 0) return { state, error: `${campaign.name} needs ${cooldown} more day${cooldown === 1 ? '' : 's'} before it can run again.` };
+  if (state.cash < campaign.cost) return { state, error: `Not enough cash (need $${campaign.cost}).` };
+  const next = clone(state);
+  next.cash -= campaign.cost;
+  next.activeCampaign = {
+    id: campaign.id,
+    name: campaign.name,
+    attendanceMult: campaign.attendanceMult,
+    daysRemaining: campaign.durationDays,
+    cooldownDays: campaign.cooldownDays,
+  };
+  return { state: next, error: null };
+}
+
 export function setTicketPrice(state, price) {
   const clamped = Math.max(CONFIG.ticketPrice.min, Math.min(CONFIG.ticketPrice.max, Math.round(price)));
   const next = clone(state);
@@ -140,6 +192,31 @@ export function nextDay(state) {
   // persist day-to-day on purpose — replanning from zero every day would
   // make a multi-day run tedious. See HANDOFF.md backlog for a "reset
   // schedule each weekend" toggle if that turns out to be too sticky.
+
+  // Tick down any active performer commitments (Weekend Package contracts)
+  // — this only shortens how much longer breaking the deal would cost a
+  // cancellation fee; it never removes the performer from the roster.
+  for (const id of Object.keys(next.contracts)) {
+    const contract = next.contracts[id];
+    if (contract.commitDaysRemaining > 0) contract.commitDaysRemaining -= 1;
+  }
+
+  // Tick down any existing cooldowns first, then resolve the active
+  // campaign (if any) — a campaign that expires today starts its own fresh
+  // cooldown below, and that fresh value must NOT get decremented again in
+  // this same call.
+  for (const id of Object.keys(next.campaignCooldowns)) {
+    const remaining = next.campaignCooldowns[id] - 1;
+    if (remaining <= 0) delete next.campaignCooldowns[id];
+    else next.campaignCooldowns[id] = remaining;
+  }
+  if (next.activeCampaign) {
+    next.activeCampaign.daysRemaining -= 1;
+    if (next.activeCampaign.daysRemaining <= 0) {
+      next.campaignCooldowns[next.activeCampaign.id] = next.activeCampaign.cooldownDays;
+      next.activeCampaign = null;
+    }
+  }
   return { state: next };
 }
 
