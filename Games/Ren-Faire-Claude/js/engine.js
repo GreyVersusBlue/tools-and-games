@@ -33,6 +33,25 @@ export function performerById(id) { return PERFORMERS.find(p => p.id === id); }
 export function vendorById(id) { return VENDORS.find(v => v.id === id); }
 export function campaignById(id) { return AD_CAMPAIGNS.find(c => c.id === id); }
 
+// Stage 10: a VENDORS entry's `type` ('food'/'craft') and a built plot's
+// `kind` ('food'/'vendor') use different vocabularies for the same two
+// stall categories — this is the one place that translates between them,
+// so hireVendor's cap check and the assignment/vacancy-tracker logic never
+// have to spell the mapping out inline.
+export const STALL_KIND_BY_VENDOR_TYPE = { food: 'food', craft: 'vendor' };
+
+// Vacancy tracker (Stage 10): for each stall kind, how many committed plots
+// exist and how many currently have a vendor seated. Pure read of
+// state.builtPlots — used by both the Backstage "N/M filled" display and
+// hireVendor's per-kind hiring cap.
+export function stallSummary(state) {
+  const summarize = (kind) => {
+    const plots = state.builtPlots.filter(p => p.kind === kind && p.status === 'built');
+    return { total: plots.length, filled: plots.filter(p => p.assignedVendorId).length };
+  };
+  return { food: summarize('food'), vendor: summarize('vendor') };
+}
+
 // A contracted performer's actual daily rate depends on which contract type
 // they were signed under (Stage 5) — a Weekend Package pays less per day
 // than the listed cost, an open day-rate pays the listed cost exactly.
@@ -143,7 +162,10 @@ const NEARBY_STAGE_TRAFFIC_BONUS = 0.05; // per nearby built stage, food/vendor/
 // look them up in. Pure function; never mutates its arguments.
 export function computePlotAttributes(plot, builtPlots) {
   const base = TERRAIN_BASE[terrainAt(plot.x, plot.y)] || TERRAIN_BASE.clearing;
-  const others = (builtPlots || []).filter(p => p && p.id !== plot.id);
+  // Stage 10: a plot still sitting in "planning" (placed but not yet
+  // committed/paid for) doesn't functionally exist on the grounds yet, so
+  // it neither steals sightline from a nearby stage nor sends it traffic.
+  const others = (builtPlots || []).filter(p => p && p.id !== plot.id && p.status !== 'planning');
   const nearbyStages = others.filter(o => o.kind === 'stage' && chebyshevDistance(plot, o) <= ADJACENCY_RADIUS).length;
 
   let sightline = base.sightline;
@@ -254,14 +276,27 @@ export function simulateDay(state, seed) {
   const log = [];
   const warnings = [];
 
-  const builtStages = state.builtPlots.filter(p => p.kind === 'stage');
-  const builtFoodVendorPlots = state.builtPlots.filter(p => p.kind === 'food' || p.kind === 'vendor');
+  // Stage 10: a plot still in "planning" hasn't been paid for or committed
+  // yet, so it doesn't draw a crowd, seat a vendor, or affect anything else
+  // gameplay-side until it's actually built.
+  const builtStages = state.builtPlots.filter(p => p.kind === 'stage' && p.status === 'built');
+  const builtFoodVendorPlots = state.builtPlots.filter(p => (p.kind === 'food' || p.kind === 'vendor') && p.status === 'built');
   const rosterPerformers = state.roster.map(performerById).filter(Boolean);
   const hiredVendorObjs = state.hiredVendors.map(vendorById).filter(Boolean);
+  // Stage 10: hiring a vendor and seating them at a specific stall are now
+  // two different things — a hired-but-unseated vendor still draws wages
+  // (see vendorCosts below) but sells nothing, so only vendors actually
+  // assigned to a built stall count toward revenue/satisfaction.
+  const seatedVendorIds = new Set(builtFoodVendorPlots.filter(p => p.assignedVendorId).map(p => p.assignedVendorId));
+  const activeVendorObjs = hiredVendorObjs.filter(v => seatedVendorIds.has(v.id));
 
   if (builtStages.length === 0) warnings.push('No stages built — the grounds have nothing to draw a crowd.');
   if (builtFoodVendorPlots.length > 0 && hiredVendorObjs.length === 0) {
     warnings.push('Stall plots are built but no vendors are hired to run them.');
+  }
+  const unseated = hiredVendorObjs.length - activeVendorObjs.length;
+  if (unseated > 0) {
+    warnings.push(`${unseated} hired vendor${unseated === 1 ? ' is' : 's are'} not assigned to a stall and earning nothing today.`);
   }
 
   // --- per-block, per-stage draw weight ---
@@ -330,7 +365,7 @@ export function simulateDay(state, seed) {
   // --- vendor revenue ---
   let vendorGrossTotal = 0;
   let houseVendorRevenue = 0;
-  for (const vendor of hiredVendorObjs) {
+  for (const vendor of activeVendorObjs) {
     const conversion = 0.12 * (vendor.quality / 7);
     const buyers = Math.round(attendance * conversion);
     const gross = buyers * vendor.avgTicket;
@@ -349,7 +384,7 @@ export function simulateDay(state, seed) {
   // --- random events ---
   const ctx = {
     hasChaosProne: rosterPerformers.some(p => p.quirk === 'chaos_prone' && isScheduledAnywhere(state.schedule, p.id)),
-    hasVendor: hiredVendorObjs.length > 0,
+    hasVendor: activeVendorObjs.length > 0,
     // Stage 9: "backstage drama" events gated on roster composition rather
     // than a single quirk/vendor flag.
     hasMultiplePrimaDonnas: rosterPerformers.filter(p => p.quirk === 'prima_donna').length >= 2,

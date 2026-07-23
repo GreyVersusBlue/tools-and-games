@@ -10,7 +10,7 @@ import { validateSchedule, summarizeWeekend } from './engine.js';
 import { CONFIG } from './data.js';
 
 let state = State.loadState() || State.createInitialState();
-const ui = { activeTab: 'office', flash: null, pendingBuild: null };
+const ui = { activeTab: 'office', flash: null, pendingBuild: null, pendingMove: null };
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -35,7 +35,7 @@ function render() {
   let panel = '';
   if (ui.activeTab === 'office') panel = UI.renderOffice(state, ui.flash);
   else if (ui.activeTab === 'backstage') panel = UI.renderBackstage(state, ui.flash);
-  else panel = UI.renderFairFloor(state, conflicts, ui.pendingBuild);
+  else panel = UI.renderFairFloor(state, conflicts, ui.pendingBuild, ui.pendingMove);
 
   $('#content').innerHTML = `
     ${panel}
@@ -62,10 +62,71 @@ function handleAction(action, el) {
     case 'placeAt': {
       const x = Number(el.dataset.x);
       const y = Number(el.dataset.y);
-      res = State.buildPlot(state, el.dataset.kind, x, y);
+      // Stage 10: fresh placement is free and non-final — see placePlot.
+      res = State.placePlot(state, el.dataset.kind, x, y);
       if (res.error) { ui.flash = res.error; } else { state = res.state; ui.pendingBuild = null; }
       break;
     }
+    case 'commitPlot':
+      res = State.commitPlot(state, id);
+      if (res.error) ui.flash = res.error; else state = res.state;
+      break;
+    case 'commitAll':
+      res = State.commitAllPlots(state);
+      if (res.error) { ui.flash = res.error; } else { state = res.state; ui.flash = `Committed ${res.count} plot${res.count === 1 ? '' : 's'} for $${res.total}.`; }
+      break;
+    case 'deletePlanningPlot':
+      res = State.deletePlanningPlot(state, id);
+      if (res.error) ui.flash = res.error; else state = res.state;
+      break;
+    case 'selectMove':
+      ui.pendingMove = { plotId: id, kind: el.dataset.kind };
+      ui.pendingBuild = null;
+      render();
+      return;
+    case 'cancelMove':
+      ui.pendingMove = null;
+      render();
+      return;
+    case 'moveTo': {
+      const x = Number(el.dataset.x);
+      const y = Number(el.dataset.y);
+      const plot = state.builtPlots.find(p => p.id === el.dataset.plot);
+      res = plot && plot.status === 'planning'
+        ? State.movePlanningPlot(state, el.dataset.plot, x, y)
+        : State.relocatePlot(state, el.dataset.plot, x, y);
+      if (res.error) {
+        ui.flash = res.error;
+      } else {
+        state = res.state;
+        ui.pendingMove = null;
+        if (res.fee) ui.flash = `Relocated \u2014 $${res.fee} spent on demolition and a discounted rebuild.`;
+      }
+      break;
+    }
+    case 'demolishPlot':
+      res = State.demolishPlot(state, id);
+      state = res.state;
+      if (res.fee > 0) ui.flash = `Demolished \u2014 $${res.fee} teardown fee.`;
+      break;
+    case 'renamePlot': {
+      const plot = state.builtPlots.find(p => p.id === id);
+      if (!plot) return;
+      const proposed = window.prompt('New name for this plot:', plot.name);
+      if (proposed === null) return;
+      res = State.renamePlot(state, id, proposed);
+      if (res.error) ui.flash = res.error; else state = res.state;
+      break;
+    }
+    case 'unassignVendor':
+      res = State.unassignVendorFromPlot(state, id);
+      if (res.error) ui.flash = res.error; else state = res.state;
+      break;
+    case 'autoFillStalls':
+      res = State.autoFillStalls(state);
+      state = res.state;
+      ui.flash = res.filled > 0 ? `Seated ${res.filled} vendor${res.filled === 1 ? '' : 's'}.` : 'No open stalls and unseated vendors to match up right now.';
+      break;
     case 'contract':
       res = State.contractPerformer(state, id, el.dataset.contract || 'open');
       if (res.error) ui.flash = res.error; else state = res.state;
@@ -97,12 +158,14 @@ function handleAction(action, el) {
       state = res.state;
       ui.activeTab = 'office';
       ui.pendingBuild = null;
+      ui.pendingMove = null;
       break;
     case 'startNextWeekend':
       res = State.startNextWeekend(state);
       state = res.state;
       ui.activeTab = 'office';
       ui.pendingBuild = null;
+      ui.pendingMove = null;
       break;
     default:
       return;
@@ -116,6 +179,7 @@ function wire() {
     if (!btn) return;
     ui.activeTab = btn.dataset.tab;
     ui.pendingBuild = null;
+    ui.pendingMove = null;
     render();
   });
 
@@ -141,6 +205,14 @@ function wire() {
         : State.unassignSchedule(state, block, stage);
       if (res.error) ui.flash = res.error; else state = res.state;
       render();
+      return;
+    }
+    if (target.dataset.action === 'assignVendor') {
+      const vendorId = target.value;
+      if (!vendorId) return;
+      const res = State.assignVendorToPlot(state, target.dataset.plot, vendorId);
+      if (res.error) ui.flash = res.error; else state = res.state;
+      render();
     }
   });
 
@@ -149,6 +221,7 @@ function wire() {
     state = State.resetSave();
     ui.activeTab = 'office';
     ui.pendingBuild = null;
+    ui.pendingMove = null;
     render();
   });
 }

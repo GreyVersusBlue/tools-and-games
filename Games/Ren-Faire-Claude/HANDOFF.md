@@ -3,109 +3,171 @@
 Living document, updated in place each stage. Older stage summaries get
 condensed into the changelog at the bottom rather than kept as prose above.
 
-## Status as of Stage 9
+## Status as of Stage 10
 
-**Playable end-to-end.** Everything from Stages 1–8 still works. New this
-stage: content-pool filler (5 more performers, 4 more vendors) plus a new
-category of "backstage drama" random events gated on roster composition,
-and the first quirk (`night_owl`) whose effect actually depends on which
-time block a performer is playing.
+**Playable end-to-end.** Everything from Stages 1–9 still works. This
+stage was a direct response to a reported soft lock ("placed a lot of
+food/craft stalls, couldn't start the day, no error text") plus four
+specific feature requests: a per-kind stall vacancy tracker, a
+planning-then-commit construction flow (with move/delete/demolish/
+relocate), individual vendor-to-stall assignment (with an auto-fill
+button), and the ability to rename built structures.
 
-**Post-Stage-9 hotfix:** a pre-existing crash (present since whichever
-earlier stage added the prima-donna sulking check — not something Stage 9
-introduced) was reported and fixed: `simulateDay`'s prima-donna penalty
-loop read `block.block.label`, but the `for (const { block, stageEntries }
-of blockBreakdown)` destructuring already unwraps `block` to the actual
-TIME_BLOCKS entry, so `.block` on it was `undefined` and `.label` on that
-threw. It only surfaced once two `prima_donna`-quirked performers were
-contracted AND scheduled into the same time block on different stages
-(e.g. Sir Corwin/Dame Ysolde + Master Aldric) — a combination no earlier
-stage's tests happened to exercise. Fixed to just `block.label`; added a
-regression test that schedules exactly that two-prima-donna scenario and
-asserts both that `simulateDay` doesn't throw and that the log names the
-real block ("sulked through Midday...", not "undefined" or
-"[object Object]"). Smoke suite is now 345 checks (was 342 as originally
-shipped this stage).
+**On the soft lock itself:** direct stress-testing (build far more
+stalls than hireable vendors, then open the gates) never reproduced a
+hard block — "Open the Gates" was never actually disabled in the
+pre-Stage-10 code; it always ran and just printed a warning about
+unstaffed stalls. What *was* a real bug: `hireVendor`'s cap summed food
+and craft stalls into one shared pool, so it was possible to over-hire
+one kind against the other kind's stall count with no error at all.
+Fixed as part of this stage's stall-kind split (below); the new vacancy
+tracker should make this whole class of confusion visible going
+forward regardless of what the original trigger actually was.
 
 ## What was built this stage
 
-- **`js/data.js`** — `PERFORMERS` grew from 10 to 15 (a third musician and
-  magician, another jester, a second falconer, a third living-history
-  camp — two of the new five carry the new `night_owl` quirk).
-  `VENDORS` grew from 8 to 12 (two more food carts, two more craft
-  stalls). `EVENT_POOL` gained four new "backstage drama" entries
-  (`evt_diva_standoff`, `evt_musicians_jam`, `evt_falconer_show`,
-  `evt_gossip_wagon`), each gated by a `requires` string keyed to roster
-  composition rather than a single quirk/vendor flag.
-- **`js/engine.js`** — added `QUIRKS.night_owl` (+20% draw in Golden Hour,
-  −10% in Morning Procession, no change midday/afternoon — the first
-  quirk whose effect varies by block). Pulled `effectivePopularity`
-  out of `simulateDay`'s old private nested closure into a proper
-  module-level exported function, since it needed to become independently
-  testable once its behavior started depending on the `blockId` argument
-  it always accepted but never used. `simulateDay`'s event `ctx` gained
-  four new flags (`hasMultiplePrimaDonnas`, `hasTwoMusicians`,
-  `hasFalconerScheduled`, `bigRoster`) computed from the roster/schedule,
-  feeding the new events. `rollEvents`' old requires-check was an if/else
-  chain that silently defaulted to "always eligible" for any unrecognized
-  `requires` string — harmless while only two ever existed, but a real
-  landmine for a fourth stage of new events. Replaced it with an exported
-  `EVENT_REQUIREMENTS` lookup map (`requires` string → predicate function)
-  that fails closed (ineligible) on an unrecognized key instead, and added
-  the four new predicates plus the two pre-existing ones to it. Four new
-  `EVENT_EFFECTS` entries for the new events.
-- **`js/ui.js`** — `quirkTitle`/`quirkDesc` (the Backstage roster's
-  quirk-tag tooltip) gained a `night_owl` entry. No other UI changes —
-  new performers/vendors render through the exact same table rows the
-  original ten/eight already did, and new events flow through the exact
-  same report log line every other event already used.
-- **`js/main.js`** — untouched. Nothing about this stage needed a new
-  action or a new UI affordance.
-- **`tests/smoke.mjs`** — 342 checks now (was 282): a dedicated
-  `effectivePopularity` unit-test block covering crowd_pleaser (block-
-  independent) and night_owl (golden/morning/midday/afternoon/no-block-
-  context) directly against the pure function; a `simulateDay`-level
-  integration test confirming the *same* night_owl performer scheduled
-  into Golden Hour yields better average satisfaction than the same
-  performer scheduled into Morning Procession, averaged over 30 seeds to
-  smooth jitter (same pattern as the existing ticket-price/attendance
-  tests); an `EVENT_POOL`/`EVENT_REQUIREMENTS`/`EVENT_EFFECTS` integrity
-  block confirming every `requires` string used actually has a matching
-  predicate, every predicate is false against an all-false ctx and true
-  once its own flag is set, every `effectId` has a matching effect
-  function, and that the four new effects produce well-shaped
-  cash/rep/satisfaction deltas with the expected sign (diva_standoff net-
-  negative, musicians_jam net-positive).
+- **`js/data.js`** — three new `CONFIG` constants: `demolishFeeMult`
+  (0.3 — the fraction of a plot's build cost charged to tear it down
+  once committed), `relocateDiscountMult` (0.85 — on top of the
+  demolition fee, what a relocated plot pays for its new site, as a
+  discount off building fresh there), and `maxPlotNameLength` (40, for
+  `renamePlot`).
+- **`js/engine.js`** — new `STALL_KIND_BY_VENDOR_TYPE` (`{food: 'food',
+  craft: 'vendor'}`) is the one place that translates between a
+  VENDORS entry's `type` vocabulary and a built plot's `kind`
+  vocabulary for the same two stall categories; both the hire cap and
+  the vacancy tracker read through it rather than duplicating the
+  mapping. New `stallSummary(state)` returns `{food, vendor}`, each
+  `{total, filled}` — the vacancy tracker's data source.
+  `computePlotAttributes` now ignores plots still in `'planning'`
+  status when computing nearby-stage adjacency (a plan hasn't been
+  built yet, so it can't steal sightline or send traffic).
+  `simulateDay` now filters `builtStages`/`builtFoodVendorPlots` to
+  `status === 'built'` (a plan draws no crowd and seats no vendor), and
+  splits vendor revenue from vendor cost: every *hired* vendor still
+  draws wages (`vendorCosts`, unchanged), but only a vendor actually
+  *seated* at a built stall sells anything (`activeVendorObjs`) — a
+  hired-but-unseated vendor is now pure cost, surfaced as an explicit
+  warning (`"N hired vendor(s) are not assigned to a stall..."`) rather
+  than a silent shortfall.
+- **`js/state.js`** — the biggest change this stage.
+  - `buildPlot` (the old instant place-and-pay action) is kept exactly
+    as before for backward compatibility, just with `status: 'built'`
+    and (for food/vendor kinds) `assignedVendorId: null` added to the
+    plot record it produces, so it composes with everything new.
+  - New planning → commit flow: `placePlot(state, kind, x, y)` lays a
+    plot down for free with `status: 'planning'` (ids come from a new
+    `state.nextPlotId` counter — `plot_1`, `plot_2`, ... — decoupled
+    from `(x,y)` specifically so relocating a plot later never orphans
+    a schedule or vendor-assignment reference to it).
+    `commitPlot(state, plotId)` charges the plot's cost and flips it to
+    `'built'`. `commitAllPlots(state)` is an all-or-nothing bulk commit
+    for every currently-planning plot (charges the combined total once,
+    or refuses with the number needed) — built directly for the
+    "placed a lot of stalls at once" scenario in the report.
+    `deletePlanningPlot`/`movePlanningPlot` are the free operations
+    available only while `status === 'planning'`.
+  - `demolishPlot(state, plotId)` tears down a *built* plot for
+    `CONFIG.demolishFeeMult × cost` (any seated vendor is unassigned,
+    not fired — they stay hired and can be reseated).
+    `relocatePlot(state, plotId, x, y)` moves a built plot for the
+    demolition fee plus `CONFIG.relocateDiscountMult × ⟨new site's
+    cost⟩`; the plot keeps its id/name/vendor assignment throughout.
+  - `renamePlot(state, plotId, newName)` sets a custom name (trimmed,
+    capped at `CONFIG.maxPlotNameLength`, rejecting blank) and flips a
+    new `customName` flag so a later relocate's terrain-based
+    auto-naming leaves it alone.
+  - `hireVendor` now caps food and craft hiring *separately* (the bug
+    described above) using `STALL_KIND_BY_VENDOR_TYPE`, and — new —
+    auto-seats a freshly hired vendor into the first open matching
+    built stall, so the common case ("hire someone, they start
+    working") needs no extra click. `fireVendor` now also clears
+    whatever plot the fired vendor was seated at.
+  - New assignment layer: `assignVendorToPlot`/`unassignVendorFromPlot`
+    for manual reseating (a vendor can only be seated at one stall;
+    assigning them elsewhere automatically clears their old seat), and
+    `autoFillStalls(state)` — deterministic, no RNG — matches every
+    hired-but-unseated vendor to an open stall of the right kind, for
+    cleanup after a demolition/relocation leaves someone unseated.
+  - `loadState` migration: a pre-Stage-10 save's plots get `status:
+    'built'` (they were all functionally already-built under the old
+    model) and `assignedVendorId: null` backfilled, `nextPlotId`
+    defaults to 1, and — importantly — already-hired vendors get
+    auto-seated into their already-built matching stalls on load, so an
+    old save's economics don't silently break just from loading it in
+    the new version.
+- **`js/ui.js`** — Backstage gained a `renderStallSummary` block (the
+  "N/M filled" gauges for Food/Craft Stalls, plus the Auto-Fill Stalls
+  button) and each hired vendor's row now shows `seated: ⟨stall name⟩`
+  or a warning that they're earning nothing; unhired-vendor rows show
+  "No open ⟨kind⟩ stalls" instead of hire buttons once that kind is
+  capped, rather than letting the click fail silently. Fair Floor's
+  plot cards (`renderPlotCard`) are now status-aware: a `'planning'`
+  card shows Commit/Move/Rename/Delete, a `'built'` one shows
+  Relocate/Rename/Demolish, and food/vendor cards get either a
+  "seated by ⟨name⟩ + Unassign" line or a `<select>` to seat an open,
+  matching, hired-but-unseated vendor. A new commit-all banner appears
+  above the plot grid whenever anything is still just a plan.
+  `renderGroundsMap` gained a `pendingMove` parameter that reuses the
+  exact same ghost-cell mechanism as fresh placement (excluding the
+  moving plot's own current cell) to drive both `movePlanningPlot` and
+  `relocatePlot` through the map — no new interaction pattern, just the
+  existing one pointed at a different action.
+- **`js/main.js`** — new `ui.pendingMove` (mirrors `ui.pendingBuild`,
+  cleared on tab switch/nextDay/startNextWeekend/reset) plus action
+  handlers for `commitPlot`/`commitAll`/`deletePlanningPlot`/
+  `selectMove`/`cancelMove`/`moveTo`/`demolishPlot`/`unassignVendor`/
+  `autoFillStalls`, and a `renamePlot` handler that uses a plain
+  `window.prompt()` (consistent with the existing reset button's
+  `confirm()`, no new UI chrome needed). A new `assignVendor` `change`
+  handler alongside the existing schedule-select one.
+- **`css/style.css`** — `.plot-card.planning`/`.plot-marker.planning`
+  (dashed gold) visually distinguish a plan from a built structure on
+  both the map and the card grid; `.plot-marker.moving` outlines the
+  plot currently being relocated; `.commit-banner` and `.stall-summary`
+  /`.stall-gauge` are small new blocks, no layout system changes.
+- **`tests/smoke.mjs`** — 422 checks now (was 345): a full pure-logic
+  block covering `placePlot`/`commitPlot`/`commitAllPlots` (including
+  the all-or-nothing refusal case) /`deletePlanningPlot`/
+  `movePlanningPlot`/`demolishPlot`/`relocatePlot` (fee math verified
+  exactly against `CONFIG.demolishFeeMult`/`relocateDiscountMult`)/
+  `renamePlot` (including that a custom name survives a later
+  relocate)/the split food-vs-craft hire cap/`assignVendorToPlot`/
+  `unassignVendorFromPlot`/`autoFillStalls`/the demolish-and-fire
+  unseat-not-fire behavior/the seated-vs-unseated revenue split in
+  `simulateDay`, plus a dedicated `loadState` migration test that seeds
+  a hand-built pre-Stage-10 save shape directly into `localStorage` and
+  asserts the migration backfills status/assignment/counter correctly.
+  The existing Stage 3/7 DOM walkthrough was updated in place for the
+  new placeAt-is-free/commit-charges-money flow (it now finds and
+  clicks each plot's Commit button before asserting cash changed or
+  before trying to hire against it).
 
 ## What the next stage needs
 
-Read `js/engine.js`'s `EVENT_REQUIREMENTS`/`EVENT_EFFECTS` and
-`effectivePopularity` first — that's the whole feature.
-`js/data.js`'s `EVENT_POOL` shows how a new event's `requires` string
-wires up (it must have a matching `EVENT_REQUIREMENTS` entry, checked by
-smoke.mjs, or it's dead-on-arrival ineligible by design).
+Read `js/state.js`'s planning/commit/move/demolish/relocate/assign
+functions together — they're one cohesive feature even though they
+touch a lot of surface area. `js/engine.js`'s `STALL_KIND_BY_VENDOR_TYPE`
+is the thing to reach for anywhere else vendor-type ↔ stall-kind needs
+translating.
 
 **Next logical chunks, roughly in the order I'd tackle them:**
 
-1. **Build-time legality rules.** Right now any kind can be built on any
-   terrain (deliberately relaxed since Stage 3 — see that stage's retro).
-   Worth deciding whether this is still the right call now that the
-   grounds have grown to up to 140 cells (Stage 8) — more room may mean
-   less need to relax the rule for space reasons.
-2. **Crowd flow / bottlenecks as their own system.** Real positions and
-   free placement both exist to build this on. Still substantial work.
-3. **A cap or cost curve on total structures.** Nothing currently stops a
-   player from tiling the entire currently-unlocked grid if they have the
-   cash — up to 140 cells at full expansion.
-4. **A hard end to the game / a win condition.** `season` still increments
-   forever with no ceiling, and grounds expansion also caps out at
-   Weekend 4 with nothing new to reach after. Worth deciding whether
-   that's the design (an endless-weekends sim) or whether a fixed number
-   of weekends with a final scorecard is wanted.
-5. **More content-pool filler**, if a future stage needs a smaller task:
-   PERFORMERS/VENDORS/EVENT_POOL can all keep growing following this
-   stage's pattern (new roster entries + new roster-composition-gated
-   events via `EVENT_REQUIREMENTS`).
+1. **Build-time legality rules.** Still deliberately relaxed since
+   Stage 3 (any kind on any terrain) — unchanged this stage.
+2. **Crowd flow / bottlenecks as their own system.** Unchanged
+   candidate from prior stages.
+3. **A cap or cost curve on total structures.** Still nothing stopping
+   a player from tiling the whole unlocked grid if they have the cash
+   — though the demolish/relocate fees at least make *undoing* an
+   overbuild cost something now, which didn't exist before this stage.
+4. **A hard end to the game / a win condition.** Unchanged.
+5. **A drag-to-reorder or true click-and-drag move**, if the current
+   "click Move, then tap a new cell" two-step ever feels clunky in
+   practice — it reuses the existing ghost-cell mechanism on purpose to
+   avoid new interaction patterns, but a direct drag would be a bigger,
+   separate lift.
+6. **More content-pool filler**, same standing option as always.
 
 **Things intentionally deferred (kickoff doc explicitly allows this):**
 weather, rival faires, animal handling beyond the falconer performer role,
@@ -117,38 +179,39 @@ win-condition state.
 ## Retro
 
 **Went well:**
-- Pulling `effectivePopularity` out of `simulateDay`'s private closure
-  into a proper exported function paid for itself immediately — it made
-  `night_owl` directly unit-testable with plain objects (no state/schedule
-  scaffolding needed) rather than only observable indirectly through a
-  full `simulateDay` run. Worth remembering for future quirks: if a
-  quirk's effect depends on anything beyond "is this performer playing at
-  all," the function computing it probably needs to not be a private
-  nested closure.
-- Fixing `rollEvents`' silent "unrecognized requires → always eligible"
-  fallback while adding new requires strings, rather than leaving it and
-  hoping none of the four new ones would ever typo-collide with nothing.
-  It was free to fix (a lookup map isn't more code than an if/else chain)
-  and turns a whole class of future typo into a loud, test-caught failure
-  instead of a silent one.
-- Choosing roster-*composition* gates (two prima donnas, two scheduled
-  musicians, a scheduled falconer, a big roster) rather than single-quirk
-  gates for the new events kept them feeling like "backstage drama"
-  (things that emerge from who you've hired and scheduled together)
-  rather than just more copies of the existing single-flag pattern
-  (`hasChaosProne`/`hasVendor`).
+- Keeping `buildPlot` around unchanged (just tagging its output with
+  `status: 'built'`) instead of rewriting every call site to the new
+  `placePlot`+`commitPlot` two-step meant the entire pre-existing test
+  suite (345 checks) needed zero behavioral changes — only the one DOM
+  walkthrough that actually exercises the *live UI's* placement flow
+  needed updating, since that's the one place that changed. Old and new
+  construction paths produce the exact same plot shape, so nothing
+  downstream (engine, UI, save format) needs to know which path a given
+  plot came from.
+- Auto-seating a vendor on hire (rather than requiring a separate
+  manual assignment click every time) turned what could've been a
+  fiddly two-step "hire, then remember to go assign them" flow into
+  "hire, done" for the common case, while still leaving manual
+  reassign/unassign and Auto-Fill Stalls available for the messier
+  cases (post-demolition cleanup, deliberately reshuffling who runs
+  which stall).
+- Decoupling plot ids from `(x, y)` (via the new `nextPlotId` counter,
+  used only by the new `placePlot` path) up front avoided a whole class
+  of bug: the old `${x}_${y}` id scheme would have orphaned a stage's
+  schedule entries the moment it was relocated to new coordinates.
+  Worth remembering for any future stage that makes a previously-static
+  identifier mutable.
 
 **Dead end / thing to know about before you repeat it:**
-- Post-ship: a user hit a crash in the prima-donna sulking log line
-  (`block.block.label` — should've been `block.label`, a pre-existing
-  bug from whichever earlier stage added that check, not introduced this
-  stage). No smoke test exercised two `prima_donna` performers scheduled
-  into the same block on different stages, so it shipped undetected
-  across several stages. Fixed, and a regression test for exactly that
-  scenario was added. Lesson: a code path can be untouched by a stage's
-  own diff and still be worth a smoke check if the stage's new content
-  (more performers, in this case) makes an old, previously-rare
-  combination more likely to occur in actual play.
+- First pass at the DOM smoke-test fix for the new commit flow grabbed
+  `built.builtPlots[0]` assuming it'd be the just-committed plot — but
+  array order is push order, not "most recently touched," so it
+  actually grabbed an unrelated still-planning plot from earlier in the
+  same test and produced a confusingly-wrong failure message rather
+  than a crash. Fixed by finding the plot by its known `(x, y)`
+  instead. Lesson: when a test builds up multiple plots across several
+  state transitions, always re-find the one you care about by an
+  identifying property rather than trusting array position.
 
 ## Changelog
 

@@ -13,9 +13,9 @@ account's other GitHub Pages projects.
 
 - `index.html` — shell + font links
 - `css/style.css` — all styling (parchment/forest/wine/gold design system)
-- `js/data.js` — content: the grounds grid/terrain legend (authored at its full Stage 8 extent, 14×10), a `GRID_EXPANSIONS` unlock schedule for how much of that grid is actually buildable at a given weekend, buildable structure types (stage/food/vendor/demo) with terrain cost/capacity modifiers, performers (15, as of Stage 9), vendors (12, as of Stage 9), ad/marketing campaigns, one shared contract-type catalog (Day Rate/Weekend Package/Season Contract) used by both performers and, as of Stage 7, vendors, and the random event pool (including Stage 9's roster-composition-gated "backstage drama" events) — each campaign, contract, and grounds-expansion tier tagged with the weekend (`unlockSeason`) it becomes available, config (including `seasonLength`, days per weekend). No logic.
-- `js/engine.js` — pure simulation math (RNG, scheduling validation, terrain/adjacency lookup, build-cost quoting, campaign lookup, contract-aware performer AND vendor cost, season-unlock checks, the currently-unlocked grounds size and next expansion (Stage 8), quirk-aware performer popularity including the block-conditional `night_owl` quirk (Stage 9), the `EVENT_REQUIREMENTS` gating map for random events, weekend-summary aggregation, day simulation). No DOM.
-- `js/state.js` — the game-state object and the actions that change it (immutable-style: every action returns a new state). Also owns localStorage save/load, performer AND vendor contract commitments, the weekend/season boundary (`nextDay` hard-stops into a `weekendEnd` phase at the end of each weekend; `startNextWeekend` rolls over into the next one), and gates `buildPlot` against the currently-unlocked grounds footprint rather than the grid's full authored extent.
+- `js/data.js` — content: the grounds grid/terrain legend (authored at its full Stage 8 extent, 14×10), a `GRID_EXPANSIONS` unlock schedule for how much of that grid is actually buildable at a given weekend, buildable structure types (stage/food/vendor/demo) with terrain cost/capacity modifiers, performers (15, as of Stage 9), vendors (12, as of Stage 9), ad/marketing campaigns, one shared contract-type catalog (Day Rate/Weekend Package/Season Contract) used by both performers and, as of Stage 7, vendors, and the random event pool (including Stage 9's roster-composition-gated "backstage drama" events) — each campaign, contract, and grounds-expansion tier tagged with the weekend (`unlockSeason`) it becomes available, config (including `seasonLength`, days per weekend, and, as of Stage 10, `demolishFeeMult`/`relocateDiscountMult`/`maxPlotNameLength`). No logic.
+- `js/engine.js` — pure simulation math (RNG, scheduling validation, terrain/adjacency lookup, build-cost quoting, campaign lookup, contract-aware performer AND vendor cost, season-unlock checks, the currently-unlocked grounds size and next expansion (Stage 8), quirk-aware performer popularity including the block-conditional `night_owl` quirk (Stage 9), the `EVENT_REQUIREMENTS` gating map for random events, weekend-summary aggregation, day simulation, and, as of Stage 10, `stallSummary`/`STALL_KIND_BY_VENDOR_TYPE` for the per-kind stall vacancy tracker). No DOM.
+- `js/state.js` — the game-state object and the actions that change it (immutable-style: every action returns a new state). Also owns localStorage save/load, performer AND vendor contract commitments, the weekend/season boundary (`nextDay` hard-stops into a `weekendEnd` phase at the end of each weekend; `startNextWeekend` rolls over into the next one), and gates construction against the currently-unlocked grounds footprint rather than the grid's full authored extent. As of Stage 10: a planning → commit construction flow (`placePlot`/`commitPlot`/`commitAllPlots`/`deletePlanningPlot`/`movePlanningPlot`, all free/reversible until committed) plus paid `demolishPlot`/`relocatePlot`/`renamePlot` for already-built plots, individual vendor-to-stall seating (`assignVendorToPlot`/`unassignVendorFromPlot`/`autoFillStalls`), and a `hireVendor` hiring cap now split correctly between food and craft stalls (previously one shared pool).
 - `js/ui.js` — state → HTML string rendering. No event listeners.
 - `js/main.js` — the only file that touches `document`. Owns the mutable "current state" reference, wires DOM events, re-renders after every action.
 - `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test`)
@@ -28,7 +28,7 @@ npm install
 npm test
 ```
 
-345 checks: pure engine/state logic (RNG determinism, terrain/grid data
+422 checks: pure engine/state logic (RNG determinism, terrain/grid data
 integrity, buildable-structure catalog integrity, terrain-driven cost/
 capacity quoting, stage-adjacency effects on sightline/traffic, scheduling
 conflicts, day-simulation invariants, attendance responding sensibly to
@@ -42,12 +42,16 @@ including the block-conditional `night_owl` quirk (unit-tested directly,
 plus a `simulateDay`-level Golden-Hour-vs-Morning satisfaction check), an
 `EVENT_POOL`/`EVENT_REQUIREMENTS`/`EVENT_EFFECTS` integrity block covering
 the Stage 9 "backstage drama" events, the weekend hard-stop/summary/
-rollover cycle, a 50-day fuzz run with no throws/NaNs), plus a DOM boot
-check covering tab-switching, the full build-placement flow (confirmed to
-never offer a ghost cell past the current fence line), the grounds-status
-line naming the current tier and next expansion, a vendor
-hire-under-contract/let-go-early flow, a full 3-day weekend
-walkthrough ending at the weekend-end summary screen and rolling into
-Weekend 2, and a regression test for a post-ship crash fix (two
-prima-donna performers sharing a time block previously threw; see
-HANDOFF.md).
+rollover cycle, a 50-day fuzz run with no throws/NaNs, and, as of Stage 10,
+the full planning→commit→move→demolish→relocate→rename plot lifecycle, the
+split food/craft hire cap, individual vendor seating/auto-fill, the
+seated-vs-unseated revenue split, and a `loadState` migration test for
+pre-Stage-10 saves), plus a DOM boot check covering tab-switching, the
+full build-placement flow (confirmed to never offer a ghost cell past the
+current fence line, and, as of Stage 10, that placement is free until a
+Commit click actually charges for it), the grounds-status line naming the
+current tier and next expansion, a vendor hire-under-contract/let-go-early
+flow (including auto-seating), a full 3-day weekend walkthrough ending at
+the weekend-end summary screen and rolling into Weekend 2, and a
+regression test for a post-ship crash fix (two prima-donna performers
+sharing a time block previously threw; see HANDOFF.md).

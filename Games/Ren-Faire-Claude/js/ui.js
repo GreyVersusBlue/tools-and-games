@@ -2,7 +2,7 @@
 // main.js wires all interaction via event delegation on #content.
 
 import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion } from './engine.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, STALL_KIND_BY_VENDOR_TYPE } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -105,6 +105,27 @@ function renderMarketing(state) {
   `;
 }
 
+// Stage 10: "N/M filled" tracker — shows how many committed stalls of each
+// kind actually have a vendor seated, so it's obvious at a glance whether
+// there's room to hire, and whether any already-hired vendor is sitting
+// idle. This is also what makes the hard hire cap (see state.js's
+// hireVendor) legible instead of just a rejected click.
+function renderStallSummary(state) {
+  const summary = stallSummary(state);
+  const gauge = (label, kind) => {
+    const { filled, total } = summary[kind];
+    const full = total > 0 && filled >= total;
+    return `<div class="stall-gauge${full ? ' full' : ''}">${label} <span class="mono">${filled}/${total} filled</span></div>`;
+  };
+  return `
+    <div class="stall-summary">
+      ${gauge('Food Stalls', 'food')}
+      ${gauge('Craft Stalls', 'vendor')}
+      <button class="btn small" data-action="autoFillStalls">Auto-Fill Stalls</button>
+    </div>
+  `;
+}
+
 export function renderBackstage(state, warn) {
   const rows = PERFORMERS.map(p => {
     const contracted = state.roster.includes(p.id);
@@ -142,6 +163,7 @@ export function renderBackstage(state, warn) {
       </tr>`;
   }).join('');
 
+  const summary = stallSummary(state);
   const vendorRows = VENDORS.map(v => {
     const hired = state.hiredVendors.includes(v.id);
     const costCell = hired ? `${money(effectiveVendorCost(state, v.id))}/day` : `${money(v.cost)}/day`;
@@ -152,20 +174,33 @@ export function renderBackstage(state, warn) {
       const lockNote = contract.commitDaysRemaining > 0
         ? `<span class="warn-tag" title="Letting them go before the commitment ends charges a cancellation fee">${option.label} \u2014 ${contract.commitDaysRemaining} day${contract.commitDaysRemaining === 1 ? '' : 's'} left</span>`
         : `<span class="hint-tag">${option.label}</span>`;
-      actionCell = `${lockNote}<br><button class="btn small danger" data-action="fireVendor" data-id="${v.id}">Let go</button>`;
+      const seatedPlot = state.builtPlots.find(p => p.assignedVendorId === v.id);
+      const seatNote = seatedPlot
+        ? `<span class="hint-tag" title="Currently selling from this stall">seated: ${seatedPlot.name}</span>`
+        : `<span class="warn-tag" title="Hired and drawing wages, but not selling anything today">not seated \u2014 earning nothing</span>`;
+      actionCell = `${lockNote} ${seatNote}<br><button class="btn small danger" data-action="fireVendor" data-id="${v.id}">Let go</button>`;
     } else {
-      const buttons = Object.values(CONTRACT_OPTIONS)
-        .filter(opt => isSeasonUnlocked(state, opt.unlockSeason))
-        .map(opt => {
-          const rate = Math.round(v.cost * opt.priceMult);
-          const label = opt.priceMult < 1 ? `${opt.label} (${money(rate)}/day)` : opt.label;
-          return `<button class="btn small" data-action="hireVendor" data-id="${v.id}" data-contract="${opt.id}">${label}</button>`;
-        }).join('');
-      const nextUnlock = Object.values(CONTRACT_OPTIONS)
-        .filter(opt => !isSeasonUnlocked(state, opt.unlockSeason))
-        .sort((a, b) => a.unlockSeason - b.unlockSeason)[0];
-      const lockedHint = nextUnlock ? `<br><span class="hint-tag">${nextUnlock.label} unlocks Weekend ${nextUnlock.unlockSeason}</span>` : '';
-      actionCell = buttons + lockedHint;
+      const stallKind = STALL_KIND_BY_VENDOR_TYPE[v.type];
+      const kindLabel = v.type === 'food' ? 'food' : 'craft';
+      const { filled, total } = summary[stallKind];
+      if (filled >= total) {
+        actionCell = total === 0
+          ? `<span class="warn-tag">Build a ${kindLabel} stall first</span>`
+          : `<span class="warn-tag">No open ${kindLabel} stalls</span>`;
+      } else {
+        const buttons = Object.values(CONTRACT_OPTIONS)
+          .filter(opt => isSeasonUnlocked(state, opt.unlockSeason))
+          .map(opt => {
+            const rate = Math.round(v.cost * opt.priceMult);
+            const label = opt.priceMult < 1 ? `${opt.label} (${money(rate)}/day)` : opt.label;
+            return `<button class="btn small" data-action="hireVendor" data-id="${v.id}" data-contract="${opt.id}">${label}</button>`;
+          }).join('');
+        const nextUnlock = Object.values(CONTRACT_OPTIONS)
+          .filter(opt => !isSeasonUnlocked(state, opt.unlockSeason))
+          .sort((a, b) => a.unlockSeason - b.unlockSeason)[0];
+        const lockedHint = nextUnlock ? `<br><span class="hint-tag">${nextUnlock.label} unlocks Weekend ${nextUnlock.unlockSeason}</span>` : '';
+        actionCell = buttons + lockedHint;
+      }
     }
     return `
       <tr class="${hired ? 'is-contracted' : ''}">
@@ -189,7 +224,8 @@ export function renderBackstage(state, warn) {
       </table>
 
       <h3>Vendors &amp; Stalls</h3>
-      <p class="hint">Stalls only sell if you've built the plot for them on the Fair Floor first. Same contract options as performers: Day Rate has no commitment, longer packages are cheaper per day but cost a fee to break early.</p>
+      <p class="hint">Stalls only sell if you've built the plot for them on the Fair Floor first, hired a matching vendor, and seated them there \u2014 hiring auto-seats them into an open stall, but check Fair Floor if you've been moving people around.</p>
+      ${renderStallSummary(state)}
       <table class="roster-table">
         <thead><tr><th>Vendor</th><th>Type</th><th>Quality</th><th>Cost</th><th></th></tr></thead>
         <tbody>${vendorRows}</tbody>
@@ -203,7 +239,12 @@ export function renderBackstage(state, warn) {
 // `pendingBuild` (a structure kind, or null) is set, every open cell also
 // gets a ghost button quoting cost via quoteBuild() — clicking one fires
 // data-action="placeAt" through the same delegation main.js already uses.
-function renderGroundsMap(state, pendingBuild) {
+// `pendingMove` (Stage 10): { plotId, kind } while relocating an existing
+// plot (planning or built) — reuses the exact same ghost-cell mechanism as
+// fresh placement, just excluding the plot's own current cell (so it's a
+// legal target for a same-cell no-op, though there's little reason to) and
+// wiring ghosts to `moveTo` instead of `placeAt`.
+function renderGroundsMap(state, pendingBuild, pendingMove) {
   // Stage 8: only render the grounds the player has actually reached — the
   // full TERRAIN_ROWS/GRID extent is authored ahead of time, but cells past
   // the current fence line (see currentGridSize) aren't shown or buildable
@@ -218,25 +259,36 @@ function renderGroundsMap(state, pendingBuild) {
     }
   }
 
-  const occupied = new Set(state.builtPlots.map(p => `${p.x},${p.y}`));
+  const movingPlot = pendingMove ? state.builtPlots.find(p => p.id === pendingMove.plotId) : null;
+  const occupied = new Set(
+    state.builtPlots.filter(p => !movingPlot || p.id !== movingPlot.id).map(p => `${p.x},${p.y}`)
+  );
   const builtMarkers = state.builtPlots.map(p => {
     const glyph = STRUCTURE_TYPES[p.kind]?.icon || '?';
     const style = `grid-column:${p.x + 1};grid-row:${p.y + 1};`;
     const attrs = computePlotAttributes(p, state.builtPlots);
-    const title = `${p.name} \u2014 built (sightline ${pct(attrs.sightline)}, shade ${pct(attrs.shade)}, traffic ${pct(attrs.traffic)})`;
-    return `<div class="plot-marker kind-${p.kind} built" style="${style}" title="${title}">${glyph}</div>`;
+    const statusWord = p.status === 'planning' ? 'planned, not yet built' : 'built';
+    const title = `${p.name} \u2014 ${statusWord} (sightline ${pct(attrs.sightline)}, shade ${pct(attrs.shade)}, traffic ${pct(attrs.traffic)})`;
+    const statusClass = p.status === 'planning' ? 'planning' : 'built';
+    const movingClass = movingPlot && movingPlot.id === p.id ? ' moving' : '';
+    return `<div class="plot-marker kind-${p.kind} ${statusClass}${movingClass}" style="${style}" title="${title}">${glyph}</div>`;
   }).join('');
 
   let ghostMarkers = '';
-  if (pendingBuild) {
+  const ghostKind = pendingMove ? pendingMove.kind : pendingBuild;
+  if (ghostKind) {
     const ghosts = [];
     for (let y = 0; y < size.rows; y++) {
       for (let x = 0; x < size.cols; x++) {
         if (occupied.has(`${x},${y}`)) continue;
-        const quote = quoteBuild(pendingBuild, x, y);
+        const quote = quoteBuild(ghostKind, x, y);
         if (!quote) continue;
         const style = `grid-column:${x + 1};grid-row:${y + 1};`;
-        ghosts.push(`<button class="plot-marker ghost" style="${style}" title="${quote.name} \u2014 ${money(quote.cost)}" data-action="placeAt" data-kind="${pendingBuild}" data-x="${x}" data-y="${y}">+</button>`);
+        if (pendingMove) {
+          ghosts.push(`<button class="plot-marker ghost" style="${style}" title="Move here \u2014 ${quote.name}" data-action="moveTo" data-plot="${pendingMove.plotId}" data-x="${x}" data-y="${y}">\u2794</button>`);
+        } else {
+          ghosts.push(`<button class="plot-marker ghost" style="${style}" title="${quote.name} \u2014 ${money(quote.cost)}" data-action="placeAt" data-kind="${pendingBuild}" data-x="${x}" data-y="${y}">+</button>`);
+        }
       }
     }
     ghostMarkers = ghosts.join('');
@@ -280,34 +332,104 @@ function renderBuildPalette(pendingBuild) {
   `;
 }
 
-export function renderFairFloor(state, conflicts, pendingBuild) {
-  const mapHtml = renderGroundsMap(state, pendingBuild);
-  const paletteHtml = renderBuildPalette(pendingBuild);
+// Stage 10: shown instead of the build palette while relocating an existing
+// plot — same "tap a spot on the map above" pattern, just for a plot that
+// already exists rather than a fresh one.
+function renderMoveBanner(state, pendingMove) {
+  const plot = state.builtPlots.find(p => p.id === pendingMove.plotId);
+  if (!plot) return '';
+  const costNote = plot.status === 'planning'
+    ? 'free while it\u2019s still just a plan'
+    : 'costs a demolition fee plus a discounted rebuild at the new spot';
+  return `
+    <div class="build-palette">
+      <p class="hint">Moving <strong>${plot.name}</strong> (${costNote}) \u2014 tap a new spot on the map above.</p>
+      <div class="palette-buttons"><button class="btn small danger" data-action="cancelMove">Cancel</button></div>
+    </div>
+  `;
+}
+
+// Stage 10: a single plot card, aware of whether the plot is still a
+// free/movable "plan" or already committed and functioning. Food/vendor
+// (craft) plots also get an inline vendor-seating control once built.
+function renderPlotCard(state, p) {
+  const attrs = computePlotAttributes(p, state.builtPlots);
+  const isPlanning = p.status === 'planning';
+  const adjacencyNote = !isPlanning && attrs.nearbyStages > 0
+    ? (p.kind === 'stage'
+      ? `<span class="warn-tag" title="Nearby built stages are stepping on this one's sightlines">crowded \u2212${attrs.nearbyStages * 10}% sightline</span>`
+      : `<span class="hint-tag" title="A nearby built stage sends its crowd this way">near a stage +${attrs.nearbyStages * 5}% traffic</span>`)
+    : '';
+
+  let vendorNote = '';
+  if (!isPlanning && (p.kind === 'food' || p.kind === 'vendor')) {
+    if (p.assignedVendorId) {
+      const v = vendorById(p.assignedVendorId);
+      vendorNote = `<p class="plot-vendor hint">Staffed by <strong>${v ? v.name : p.assignedVendorId}</strong> <button class="btn small danger" data-action="unassignVendor" data-id="${p.id}">Unassign</button></p>`;
+    } else {
+      const vendorType = p.kind === 'food' ? 'food' : 'craft';
+      const seatedElsewhere = new Set(state.builtPlots.filter(o => o.assignedVendorId).map(o => o.assignedVendorId));
+      const openVendors = state.hiredVendors
+        .map(vendorById)
+        .filter(v => v && v.type === vendorType && !seatedElsewhere.has(v.id));
+      if (openVendors.length > 0) {
+        const options = openVendors.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+        vendorNote = `<div class="plot-vendor">
+          <select data-action="assignVendor" data-plot="${p.id}"><option value="">\u2014 seat a vendor \u2014</option>${options}</select>
+        </div>`;
+      } else {
+        vendorNote = `<p class="plot-vendor hint">No hired, unseated ${vendorType} vendors \u2014 hire one on Backstage.</p>`;
+      }
+    }
+  }
+
+  const demolishFee = Math.round(p.cost * CONFIG.demolishFeeMult);
+  const actionButtons = isPlanning
+    ? `
+      <button class="btn small" data-action="commitPlot" data-id="${p.id}">Commit \u2014 ${money(p.cost)}</button>
+      <button class="btn small" data-action="selectMove" data-id="${p.id}" data-kind="${p.kind}">Move</button>
+      <button class="btn small" data-action="renamePlot" data-id="${p.id}">Rename</button>
+      <button class="btn small danger" data-action="deletePlanningPlot" data-id="${p.id}">Delete</button>
+    `
+    : `
+      <button class="btn small" data-action="selectMove" data-id="${p.id}" data-kind="${p.kind}">Relocate</button>
+      <button class="btn small" data-action="renamePlot" data-id="${p.id}">Rename</button>
+      <button class="btn small danger" data-action="demolishPlot" data-id="${p.id}">Demolish \u2014 ${money(demolishFee)}</button>
+    `;
+
+  return `
+    <div class="plot-card ${isPlanning ? 'planning' : 'built'}" data-kind="${p.kind}">
+      <div class="plot-card-head">
+        <h4>${p.name}</h4>
+        <span class="plot-kind">${p.kind}${isPlanning ? ' \u00b7 planned' : ''}</span>
+      </div>
+      <div class="plot-stats mono">
+        ${p.kind === 'stage' ? `sightline ${pct(attrs.sightline)} &middot; shade ${pct(attrs.shade)} &middot; traffic ${pct(attrs.traffic)} &middot; cap ${p.capacity}` : `traffic ${pct(attrs.traffic)}`}
+        ${adjacencyNote}
+      </div>
+      ${vendorNote}
+      <div class="plot-actions">${actionButtons}</div>
+      <span class="built-tag">${isPlanning ? `Planned \u2014 ${money(p.cost)} to commit` : `Built for ${money(p.cost)}`}</span>
+    </div>`;
+}
+
+export function renderFairFloor(state, conflicts, pendingBuild, pendingMove) {
+  const mapHtml = renderGroundsMap(state, pendingMove ? null : pendingBuild, pendingMove);
+  const paletteHtml = pendingMove ? renderMoveBanner(state, pendingMove) : renderBuildPalette(pendingBuild);
+
+  const planningPlots = state.builtPlots.filter(p => p.status === 'planning');
+  const commitBanner = planningPlots.length > 0
+    ? `<div class="commit-banner">
+        <span>${planningPlots.length} plot${planningPlots.length === 1 ? '' : 's'} still just a plan \u2014 ${money(planningPlots.reduce((s, p) => s + p.cost, 0))} to commit them all</span>
+        <button class="btn small primary" data-action="commitAll">Commit All</button>
+      </div>`
+    : '';
 
   const plotRows = state.builtPlots.length === 0
-    ? `<p class="hint">Nothing built yet \u2014 pick a structure above and tap a spot on the map.</p>`
-    : state.builtPlots.map(p => {
-      const attrs = computePlotAttributes(p, state.builtPlots);
-      const adjacencyNote = attrs.nearbyStages > 0
-        ? (p.kind === 'stage'
-          ? `<span class="warn-tag" title="Nearby built stages are stepping on this one's sightlines">crowded \u2212${attrs.nearbyStages * 10}% sightline</span>`
-          : `<span class="hint-tag" title="A nearby built stage sends its crowd this way">near a stage +${attrs.nearbyStages * 5}% traffic</span>`)
-        : '';
-      return `
-        <div class="plot-card built" data-kind="${p.kind}">
-          <div class="plot-card-head">
-            <h4>${p.name}</h4>
-            <span class="plot-kind">${p.kind}</span>
-          </div>
-          <div class="plot-stats mono">
-            ${p.kind === 'stage' ? `sightline ${pct(attrs.sightline)} &middot; shade ${pct(attrs.shade)} &middot; traffic ${pct(attrs.traffic)} &middot; cap ${p.capacity}` : `traffic ${pct(attrs.traffic)}`}
-            ${adjacencyNote}
-          </div>
-          <span class="built-tag">Built for ${money(p.cost)}</span>
-        </div>`;
-    }).join('');
+    ? `<p class="hint">Nothing planned yet \u2014 pick a structure above and tap a spot on the map.</p>`
+    : state.builtPlots.map(p => renderPlotCard(state, p)).join('');
 
-  const builtStages = state.builtPlots.filter(p => p.kind === 'stage');
+  const builtStages = state.builtPlots.filter(p => p.kind === 'stage' && p.status === 'built');
 
   const scheduleGrid = builtStages.length === 0
     ? `<p class="hint">Build at least one stage to start scheduling acts.</p>`
@@ -343,6 +465,7 @@ export function renderFairFloor(state, conflicts, pendingBuild) {
       ${mapHtml}
       ${paletteHtml}
       <h3>Built So Far</h3>
+      ${commitBanner}
       <div class="plot-grid">${plotRows}</div>
 
       <h3>Today's Schedule</h3>

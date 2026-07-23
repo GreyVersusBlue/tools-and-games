@@ -19,7 +19,7 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS } = await import(path.join(root, 'js/engine.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE } = await import(path.join(root, 'js/engine.js'));
 const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, EVENT_POOL } = await import(path.join(root, 'js/data.js'));
 const State = await import(path.join(root, 'js/state.js'));
 
@@ -801,9 +801,276 @@ const State = await import(path.join(root, 'js/state.js'));
 }
 
 // ---------------------------------------------------------------------
-// Section 2: DOM boot test (jsdom) — index.html loads, main.js runs, key
-// elements exist, tab-switching works, and the Stage 3 build-placement
-// flow (pick a kind, tap an open cell) works end to end.
+// Stage 10: planning → commit construction, move/demolish/relocate/
+// rename, and individual vendor ↔ stall assignment (incl. auto-fill and
+// the per-kind hire cap that replaces the old shared food+craft pool).
+// ---------------------------------------------------------------------
+{
+  // placePlot is free and non-final; commitPlot is what actually charges.
+  let s = State.createInitialState();
+  const cashStart = s.cash;
+  const placed = State.placePlot(s, 'stage', 3, 0);
+  assert(placed.error === null, 'placePlot succeeds on an open, in-bounds cell');
+  s = placed.state;
+  assert(s.cash === cashStart, 'placePlot does not charge anything');
+  const plot = s.builtPlots.find(p => p.x === 3 && p.y === 0);
+  assert(!!plot && plot.status === 'planning', 'a freshly placed plot has status "planning"');
+  assert(plot.id.startsWith('plot_'), 'placePlot ids come from the nextPlotId counter, not the (x,y) scheme buildPlot uses');
+
+  const dupPlace = State.placePlot(s, 'food', 3, 0);
+  assert(dupPlace.error && /already there/i.test(dupPlace.error), 'placePlot refuses an already-occupied cell');
+
+  const commitRes = State.commitPlot(s, plot.id);
+  assert(commitRes.error === null, 'commitPlot succeeds once affordable');
+  assert(commitRes.state.cash === cashStart - plot.cost, 'commitPlot charges exactly the plot\u2019s quoted cost');
+  assert(commitRes.state.builtPlots.find(p => p.id === plot.id).status === 'built', 'commitPlot flips status to "built"');
+
+  const doubleCommit = State.commitPlot(commitRes.state, plot.id);
+  assert(doubleCommit.error && /already built/i.test(doubleCommit.error), 'commitPlot refuses a plot that is already built');
+
+  const broke = { ...s, cash: 0 };
+  const brokeCommit = State.commitPlot(broke, plot.id);
+  assert(brokeCommit.error && /not enough cash/i.test(brokeCommit.error), 'commitPlot refuses when cash is insufficient');
+}
+
+{
+  // A planning plot doesn't count toward gameplay yet — no crowd draw, no
+  // adjacency effect on neighbors, not schedulable in any meaningful way.
+  let s = State.createInitialState();
+  s = State.placePlot(s, 'stage', 3, 0).state;
+  const result = simulateDay(s, 3);
+  assert(result.warnings.some(w => /no stages built/i.test(w)), 'simulateDay treats a still-planning stage as not built yet');
+}
+
+{
+  // commitAllPlots: all-or-nothing bulk commit, exactly the scenario behind
+  // the reported soft lock (several stalls placed in one sitting).
+  let s = State.createInitialState();
+  const noneToCommit = State.commitAllPlots(s);
+  assert(noneToCommit.error && /nothing is waiting/i.test(noneToCommit.error), 'commitAllPlots refuses when nothing is planned');
+
+  s = State.placePlot(s, 'food', 6, 2).state;
+  s = State.placePlot(s, 'vendor', 7, 2).state;
+  const planningIds = s.builtPlots.map(p => p.id);
+  const total = s.builtPlots.reduce((sum, p) => sum + p.cost, 0);
+
+  const tooPoor = { ...s, cash: 1 };
+  const cantAfford = State.commitAllPlots(tooPoor);
+  assert(cantAfford.error && cantAfford.error.includes(`$${total}`), 'commitAllPlots refuses (all-or-nothing) when the combined total is unaffordable');
+  assert(cantAfford.state.builtPlots.every(p => p.status === 'planning'), 'a refused commitAllPlots leaves every plot untouched in planning');
+
+  const cashBefore = s.cash;
+  const committed = State.commitAllPlots(s);
+  assert(committed.error === null, 'commitAllPlots succeeds once the combined total is affordable');
+  assert(committed.count === 2, 'commitAllPlots reports how many plots it committed');
+  assert(committed.state.cash === cashBefore - total, 'commitAllPlots charges the exact combined total, once');
+  assert(planningIds.every(id => committed.state.builtPlots.find(p => p.id === id).status === 'built'), 'every previously-planning plot is now built');
+}
+
+{
+  // deletePlanningPlot / movePlanningPlot: free while still a plan; refused
+  // once committed (demolishPlot/relocatePlot are the paid equivalents).
+  let s = State.createInitialState();
+  s = State.placePlot(s, 'stage', 3, 0).state;
+  const plot = s.builtPlots[0];
+
+  const movedElsewhere = State.movePlanningPlot(s, plot.id, 5, 1);
+  assert(movedElsewhere.error === null, 'movePlanningPlot succeeds on an open cell');
+  assert(movedElsewhere.state.cash === s.cash, 'movePlanningPlot is free');
+  const movedPlot = movedElsewhere.state.builtPlots.find(p => p.id === plot.id);
+  assert(movedPlot.x === 5 && movedPlot.y === 1, 'movePlanningPlot actually updates the plot\u2019s position');
+  assert(movedPlot.id === plot.id, 'movePlanningPlot keeps the same plot id after moving (id is decoupled from x,y)');
+
+  const deleted = State.deletePlanningPlot(movedElsewhere.state, plot.id);
+  assert(deleted.error === null, 'deletePlanningPlot succeeds on a planning plot');
+  assert(deleted.state.builtPlots.length === 0, 'deletePlanningPlot actually removes the plot');
+  assert(deleted.state.cash === s.cash, 'deletePlanningPlot refunds nothing because nothing was ever charged');
+
+  let built = State.placePlot(s, 'stage', 8, 3).state;
+  built = State.commitPlot(built, built.builtPlots.find(p => p.x === 8 && p.y === 3).id).state;
+  const builtPlot = built.builtPlots.find(p => p.x === 8 && p.y === 3);
+  const cantMove = State.movePlanningPlot(built, builtPlot.id, 9, 3);
+  assert(cantMove.error && /relocate a built plot instead/i.test(cantMove.error), 'movePlanningPlot refuses a plot that is already built');
+  const cantDelete = State.deletePlanningPlot(built, builtPlot.id);
+  assert(cantDelete.error && /demolish a built plot instead/i.test(cantDelete.error), 'deletePlanningPlot refuses a plot that is already built');
+}
+
+{
+  // demolishPlot / relocatePlot: the paid equivalents for a committed plot.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'stage', 3, 0).state;
+  const plot = s.builtPlots[0];
+  const expectedFee = Math.round(plot.cost * CONFIG.demolishFeeMult);
+
+  const cashBefore = s.cash;
+  const demolished = State.demolishPlot(s, plot.id);
+  assert(demolished.error === null, 'demolishPlot succeeds on a built plot');
+  assert(demolished.fee === expectedFee, 'demolishPlot charges CONFIG.demolishFeeMult of the original build cost');
+  assert(demolished.state.cash === cashBefore - expectedFee, 'the demolition fee is actually deducted');
+  assert(demolished.state.builtPlots.length === 0, 'demolishPlot removes the plot');
+
+  let onlyPlanning = State.createInitialState();
+  onlyPlanning = State.placePlot(onlyPlanning, 'stage', 3, 0).state;
+  const refusedDemolish = State.demolishPlot(onlyPlanning, onlyPlanning.builtPlots[0].id);
+  assert(refusedDemolish.error && /delete it instead/i.test(refusedDemolish.error), 'demolishPlot refuses a plot that is still just a plan');
+
+  let s2 = State.createInitialState();
+  s2 = State.buildPlot(s2, 'stage', 3, 0).state;
+  const origPlot = s2.builtPlots[0];
+  const quote = quoteBuild('stage', 8, 3);
+  const expectedTotal = Math.round(origPlot.cost * CONFIG.demolishFeeMult) + Math.round(quote.cost * CONFIG.relocateDiscountMult);
+  const cashBeforeRelocate = s2.cash;
+  const relocated = State.relocatePlot(s2, origPlot.id, 8, 3);
+  assert(relocated.error === null, 'relocatePlot succeeds onto a different open cell');
+  assert(relocated.fee === expectedTotal, 'relocatePlot charges the demolition fee plus the discounted rebuild cost');
+  assert(relocated.state.cash === cashBeforeRelocate - expectedTotal, 'relocatePlot actually deducts the combined total');
+  const relocatedPlot = relocated.state.builtPlots.find(p => p.id === origPlot.id);
+  assert(relocatedPlot.x === 8 && relocatedPlot.y === 3, 'relocatePlot updates the plot\u2019s position');
+  assert(relocatedPlot.id === origPlot.id, 'relocatePlot keeps the same plot id (schedule references to it stay valid)');
+
+  const poorRelocate = State.relocatePlot({ ...s2, cash: 0 }, origPlot.id, 9, 3);
+  assert(poorRelocate.error && /not enough cash/i.test(poorRelocate.error), 'relocatePlot refuses when cash can\u2019t cover the combined cost');
+}
+
+{
+  // renamePlot: works on both planning and built plots, and sticks through
+  // a later move (customName protects it from the terrain auto-name).
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'stage', 3, 0).state;
+  const plot = s.builtPlots[0];
+  const emptyName = State.renamePlot(s, plot.id, '   ');
+  assert(emptyName.error && /cannot be empty/i.test(emptyName.error), 'renamePlot refuses a blank/whitespace-only name');
+
+  const renamed = State.renamePlot(s, plot.id, 'The Jousting Green');
+  assert(renamed.error === null, 'renamePlot succeeds with a real name');
+  assert(renamed.state.builtPlots[0].name === 'The Jousting Green', 'renamePlot actually sets the new name');
+  assert(renamed.state.builtPlots[0].customName === true, 'renamePlot flags the plot as customName so relocation won\u2019t overwrite it');
+
+  const relocatedAfterRename = State.relocatePlot(renamed.state, plot.id, 8, 3);
+  assert(relocatedAfterRename.state.builtPlots[0].name === 'The Jousting Green', 'a custom name survives a later relocate');
+
+  const longName = 'x'.repeat(100);
+  const capped = State.renamePlot(s, plot.id, longName);
+  assert(capped.state.builtPlots[0].name.length === CONFIG.maxPlotNameLength, 'renamePlot caps an overly long name at CONFIG.maxPlotNameLength');
+}
+
+{
+  // hireVendor's per-kind cap (Stage 10 fix for the shared food+craft pool)
+  // plus auto-seating on hire.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'vendor', 6, 2).state; // a CRAFT stall, not food
+  const foodHire = State.hireVendor(s, 'vend_cider'); // vend_cider is type "food"
+  assert(foodHire.error && /no open food stalls/i.test(foodHire.error), 'Stage 10: a built craft stall does NOT let a food vendor be hired (the old shared-pool bug)');
+  const craftHire = State.hireVendor(s, 'vend_leather'); // type "craft"
+  assert(craftHire.error === null, 'a craft vendor hires fine against a built craft stall');
+  assert(craftHire.state.builtPlots[0].assignedVendorId === 'vend_leather', 'hireVendor auto-seats the newly hired vendor into the open matching stall');
+
+  const summary = stallSummary(craftHire.state);
+  assert(summary.vendor.total === 1 && summary.vendor.filled === 1, 'stallSummary reports the craft stall as 1/1 filled after the auto-seated hire');
+  assert(summary.food.total === 0 && summary.food.filled === 0, 'stallSummary reports zero food stalls (none built)');
+
+  const secondCraftHire = State.hireVendor(craftHire.state, 'vend_glass');
+  assert(secondCraftHire.error && /no open craft stalls/i.test(secondCraftHire.error), 'hireVendor refuses a second craft vendor once the single craft stall is already filled');
+}
+
+{
+  // assignVendorToPlot / unassignVendorFromPlot / autoFillStalls.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'food', 6, 2).state;
+  s = State.buildPlot(s, 'food', 7, 2).state;
+  const [plotA, plotB] = s.builtPlots;
+
+  s = State.hireVendor(s, 'vend_cider').state; // auto-seats at plotA
+  assert(s.builtPlots.find(p => p.id === plotA.id).assignedVendorId === 'vend_cider', 'the first hired food vendor is auto-seated at the first open food plot');
+
+  const notHired = State.assignVendorToPlot(s, plotB.id, 'vend_leather');
+  assert(notHired.error && /has not been hired/i.test(notHired.error), 'assignVendorToPlot refuses a vendor that has not been hired yet');
+
+  s = State.hireVendor(s, 'vend_piepeddler').state; // auto-seats at plotB (the only open food plot left)
+  assert(s.builtPlots.find(p => p.id === plotB.id).assignedVendorId === 'vend_piepeddler', 'the second hired food vendor is auto-seated at the remaining open food plot');
+
+  const alreadySeated = State.assignVendorToPlot(s, plotA.id, 'vend_piepeddler');
+  assert(alreadySeated.error && /already has a vendor/i.test(alreadySeated.error), 'assignVendorToPlot refuses to double-seat a stall that already has a vendor');
+
+  const unassigned = State.unassignVendorFromPlot(s, plotA.id);
+  assert(unassigned.error === null, 'unassignVendorFromPlot succeeds');
+  assert(unassigned.state.builtPlots.find(p => p.id === plotA.id).assignedVendorId === null, 'unassignVendorFromPlot actually clears the seat');
+  assert(unassigned.state.hiredVendors.includes('vend_cider'), 'unassigning does not fire the vendor \u2014 they stay hired, just unseated');
+
+  const reassigned = State.assignVendorToPlot(unassigned.state, plotA.id, 'vend_cider');
+  assert(reassigned.error === null, 'a now-unseated vendor can be manually reassigned back to an open stall');
+
+  // autoFillStalls: unseat everyone, add a third food stall, then confirm
+  // it fills every open stall/vendor pair deterministically.
+  let fillTest = State.buildPlot(reassigned.state, 'food', 8, 2).state;
+  fillTest = State.unassignVendorFromPlot(fillTest, plotA.id).state;
+  fillTest = State.unassignVendorFromPlot(fillTest, plotB.id).state;
+  const autoFilled = State.autoFillStalls(fillTest);
+  assert(autoFilled.filled === 2, 'autoFillStalls seats every unseated hired vendor into an open matching stall');
+  assert(autoFilled.state.builtPlots.filter(p => p.kind === 'food' && p.assignedVendorId).length === 2, 'autoFillStalls actually wrote the assignments back onto the plots');
+  const noMoreToFill = State.autoFillStalls(autoFilled.state);
+  assert(noMoreToFill.filled === 0, 'autoFillStalls is a no-op once there is nothing left to match up');
+}
+
+{
+  // Demolishing a plot with a seated vendor unseats them (rather than firing
+  // them outright) — they stay hired and can be reassigned or auto-filled.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'food', 6, 2).state;
+  s = State.hireVendor(s, 'vend_cider').state;
+  const plot = s.builtPlots[0];
+  assert(plot.assignedVendorId === 'vend_cider', 'sanity check: the vendor is seated before demolition');
+  const demolished = State.demolishPlot(s, plot.id);
+  assert(demolished.state.hiredVendors.includes('vend_cider'), 'demolishing a stall does not fire its seated vendor');
+  assert(demolished.state.builtPlots.length === 0, 'the demolished plot is gone');
+
+  // Fire also clears the seat, symmetrically.
+  let s2 = State.createInitialState();
+  s2 = State.buildPlot(s2, 'food', 6, 2).state;
+  s2 = State.hireVendor(s2, 'vend_cider').state;
+  const fired = State.fireVendor(s2, 'vend_cider');
+  assert(fired.state.builtPlots[0].assignedVendorId === null, 'firing a seated vendor clears their stall\u2019s assignment');
+}
+
+{
+  // Only a vendor actually seated at a built stall earns revenue/wages the
+  // stall depends on \u2014 an unseated hired vendor is pure cost, and this is
+  // surfaced as a warning so it's never a silent soft lock again.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'stage', 3, 0).state;
+  s = State.buildPlot(s, 'food', 6, 2).state;
+  s = State.buildPlot(s, 'food', 7, 2).state;
+  s = State.hireVendor(s, 'vend_cider').state; // seats at the first food plot; second stays open
+  const result = simulateDay(s, 11);
+  assert(!result.warnings.some(w => /not assigned to a stall/i.test(w)), 'no "unseated vendor" warning when every hired vendor is seated');
+  assert(result.warnings.some(w => /stall plots are built/i.test(w)) === false, 'no "no vendors hired" warning once at least one vendor is hired and seated');
+
+  s = State.hireVendor(s, 'vend_piepeddler').state; // seats at the second food plot
+  const unassign = State.unassignVendorFromPlot(s, s.builtPlots.find(p => p.assignedVendorId === 'vend_piepeddler').id);
+  const result2 = simulateDay(unassign.state, 11);
+  assert(result2.warnings.some(w => /1 hired vendor is not assigned/i.test(w)), 'simulateDay warns when a hired vendor is not seated anywhere');
+}
+
+// --- Stage 10: loadState migration for pre-Stage-10 saves ---
+{
+  globalThis.localStorage = makeMemoryStorage();
+  const legacySave = {
+    day: 5, season: 1, weekendDay: 2, cash: 1000, reputation: 50, ticketPrice: 16,
+    builtPlots: [
+      { id: '6_2', kind: 'food', x: 6, y: 2, name: 'Green Stall', cost: 480 }, // no status, no assignedVendorId — pre-Stage-10 shape
+    ],
+    roster: [], contracts: {}, hiredVendors: ['vend_cider'], vendorContracts: { vend_cider: { contractId: 'open', dailyCost: 120, commitDaysRemaining: 0 } },
+    schedule: {}, activeCampaign: null, campaignCooldowns: {}, phase: 'plan', lastResult: null, history: [],
+  };
+  globalThis.localStorage.setItem('renn-faire-sim-save-v1', JSON.stringify(legacySave));
+  const migrated = State.loadState();
+  assert(migrated.builtPlots[0].status === 'built', 'loadState migrates a pre-Stage-10 plot straight to status "built"');
+  assert(migrated.builtPlots[0].assignedVendorId === 'vend_cider', 'loadState auto-seats an already-hired vendor into their matching already-built stall on migration');
+  assert(typeof migrated.nextPlotId === 'number', 'loadState backfills nextPlotId for a pre-Stage-10 save');
+  globalThis.localStorage.removeItem('renn-faire-sim-save-v1');
+}
+
+
 // ---------------------------------------------------------------------
 {
   // jsdom does not execute <script type="module"> tags (a long-standing
@@ -856,28 +1123,41 @@ const State = await import(path.join(root, 'js/state.js'));
   const cashBefore = doc.querySelector('#ledger .ledger-item .ledger-label.mono')?.textContent;
   ghostCell.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   assert(!doc.querySelector('.plot-marker.ghost'), 'placing a structure exits placement mode (no more ghost cells)');
-  assert(doc.querySelector('.plot-marker.built'), 'the newly built structure appears as a built marker on the map');
-  const cashAfter = doc.querySelector('#ledger .ledger-item .ledger-label.mono')?.textContent;
-  assert(cashAfter !== cashBefore, 'cash on hand changed after paying to build the placed structure');
+  assert(doc.querySelector('.plot-marker.planning'), 'Stage 10: a freshly placed structure appears as a planning marker, not a built one, until committed');
+  const cashAfterPlace = doc.querySelector('#ledger .ledger-item .ledger-label.mono')?.textContent;
+  assert(cashAfterPlace === cashBefore, 'Stage 10: placing a structure is free \u2014 cash does not change until it is committed');
 
   const click = (el) => el.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
 
-  // Stage 7: build a food plot, then hire a vendor under a Weekend Package
-  // through the actual Backstage buttons, confirming the contract-type
-  // button, running-commitment tag, and Let go button all wire correctly.
+  const commitStageBtn = doc.querySelector('.plot-card[data-kind="stage"] [data-action="commitPlot"]');
+  assert(!!commitStageBtn, 'Stage 10: a planning plot\u2019s card has a Commit button');
+  click(commitStageBtn);
+  assert(doc.querySelector('.plot-marker.built'), 'Stage 10: committing turns the planning marker into a built one');
+  const cashAfterCommit = doc.querySelector('#ledger .ledger-item .ledger-label.mono')?.textContent;
+  assert(cashAfterCommit !== cashBefore, 'Stage 10: cash on hand changes once the plot is actually committed');
+
+  // Stage 7/10: build (place + commit) a food plot, then hire a vendor under
+  // a Weekend Package through the actual Backstage buttons, confirming the
+  // contract-type button, running-commitment tag, seat status, and Let go
+  // button all wire correctly.
   const foodBtn = doc.querySelector('[data-action="selectBuild"][data-kind="food"]');
   assert(!!foodBtn, 'the build palette has a Food Stall option');
   click(foodBtn);
   const foodGhost = doc.querySelector('.plot-marker.ghost');
   assert(!!foodGhost, 'selecting Food Stall reveals ghost placement cells');
   click(foodGhost);
+  const commitFoodBtn = doc.querySelector('.plot-card[data-kind="food"] [data-action="commitPlot"]');
+  assert(!!commitFoodBtn, 'Stage 10: the newly placed food plot has its own Commit button');
+  click(commitFoodBtn);
 
   const backstageTabBtn2 = doc.querySelector('[data-tab="backstage"]');
   click(backstageTabBtn2);
+  assert(doc.querySelector('.stall-summary')?.textContent.includes('Food Stalls'), 'Stage 10: Backstage shows the Food Stalls vacancy gauge');
   const weekendHireBtn = doc.querySelector('[data-action="hireVendor"][data-contract="weekend"]');
-  assert(!!weekendHireBtn, 'a Weekend Package hire button is present for an uncontracted vendor');
+  assert(!!weekendHireBtn, 'a Weekend Package hire button is present for an uncontracted vendor once a matching stall is committed');
   click(weekendHireBtn);
   assert(doc.querySelector('#content').innerHTML.includes('Weekend Package'), 'the hired vendor row shows its Weekend Package contract label');
+  assert(doc.querySelector('#content').innerHTML.includes('seated:'), 'Stage 10: hiring auto-seats the vendor, shown on their roster row');
   const letGoBtn = doc.querySelector('[data-action="fireVendor"]');
   assert(!!letGoBtn, 'a Let go button appears for the newly hired vendor');
   click(letGoBtn);

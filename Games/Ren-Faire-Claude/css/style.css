@@ -178,6 +178,11 @@ h1, h2, h3, h4 {
   font-weight: 700;
 }
 .plot-marker.ghost:hover { background: var(--gold-bright); }
+.plot-marker.planning {
+  background: rgba(184, 134, 43, 0.25);
+  box-shadow: 0 0 0 2px dashed var(--gold);
+}
+.plot-marker.moving { outline: 2px dashed var(--wine); outline-offset: 1px; }
 .map-legend { color: var(--slate); margin: 0 0 0.8rem; font-size: 0.75rem; }
 
 .build-palette { margin-bottom: 1rem; }
@@ -203,12 +208,31 @@ h1, h2, h3, h4 {
   display: flex; flex-direction: column; gap: 0.4rem;
 }
 .plot-card.built { border-color: var(--forest); background: rgba(56, 82, 59, 0.12); }
+.plot-card.planning { border-color: var(--gold); border-style: dashed; background: rgba(184, 134, 43, 0.08); }
 .plot-card-head { display: flex; justify-content: space-between; align-items: baseline; }
 .plot-card-head h4 { margin: 0; font-size: 1rem; }
 .plot-kind { font-size: 0.7rem; text-transform: uppercase; color: var(--slate); }
 .plot-desc { font-size: 0.88rem; margin: 0; flex: 1; }
 .plot-stats { font-size: 0.75rem; color: var(--slate); }
+.plot-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.plot-vendor { font-size: 0.8rem; margin: 0; }
+.plot-vendor select { width: 100%; font-family: var(--font-body); padding: 0.25rem; }
 .built-tag { font-family: var(--font-display); font-size: 0.75rem; color: var(--forest); }
+
+.commit-banner {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.6rem;
+  flex-wrap: wrap;
+  background: rgba(184, 134, 43, 0.18);
+  border: 1px dashed var(--gold);
+  border-radius: 8px;
+  padding: 0.5rem 0.8rem;
+  margin: 0.6rem 0;
+  font-size: 0.85rem;
+}
+
+.stall-summary { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; margin: 0.6rem 0 1rem; }
+.stall-gauge { font-size: 0.8rem; background: var(--parchment-dark); border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.7rem; }
+.stall-gauge.full { border-color: var(--wine); }
 
 .campaign-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.8rem; margin: 0.8rem 0 0.4rem; }
 .campaign-card {

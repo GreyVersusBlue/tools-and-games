@@ -9,6 +9,12 @@ export const CONFIG = {
   wristbandCut: 0.65, // fraction of a food/craft sale that goes to the house
   blocksPerDay: 4,
   seasonLength: 3, // days per weekend/season (Fri/Sat/Sun) — see Stage 6
+  // Stage 10: planning → commit construction flow. Placing a plot is free
+  // and non-final ("planning"); commitPlot charges the cost and makes it
+  // real. Once real, tearing it down or moving it costs money instead.
+  demolishFeeMult: 0.3, // tearing down a committed plot costs this fraction of what it cost to build
+  relocateDiscountMult: 0.85, // relocating a committed plot pays the demolish fee above PLUS this fraction of the new site's build cost
+  maxPlotNameLength: 40, // cap on a custom name via renamePlot
 };
 
 export const TIME_BLOCKS = [
