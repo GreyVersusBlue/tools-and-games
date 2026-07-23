@@ -6,7 +6,8 @@
 
 import * as State from './state.js';
 import * as UI from './ui.js';
-import { validateSchedule } from './engine.js';
+import { validateSchedule, summarizeWeekend } from './engine.js';
+import { CONFIG } from './data.js';
 
 let state = State.loadState() || State.createInitialState();
 const ui = { activeTab: 'office', flash: null, pendingBuild: null };
@@ -19,6 +20,13 @@ function render() {
   if (state.phase === 'report' && state.lastResult) {
     $('#tabs').innerHTML = '';
     $('#content').innerHTML = UI.renderReport(state, state.lastResult);
+    return;
+  }
+
+  if (state.phase === 'weekendEnd') {
+    $('#tabs').innerHTML = '';
+    const summary = summarizeWeekend(state.history, CONFIG.seasonLength);
+    $('#content').innerHTML = UI.renderWeekendEnd(state, summary);
     return;
   }
 
@@ -85,6 +93,12 @@ function handleAction(action, el) {
       break;
     case 'nextDay':
       res = State.nextDay(state);
+      state = res.state;
+      ui.activeTab = 'office';
+      ui.pendingBuild = null;
+      break;
+    case 'startNextWeekend':
+      res = State.startNextWeekend(state);
       state = res.state;
       ui.activeTab = 'office';
       ui.pendingBuild = null;

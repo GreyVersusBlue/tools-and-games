@@ -4,14 +4,15 @@
 // action and tests can assert on plain objects.
 
 import { CONFIG, TIME_BLOCKS, GRID, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
-import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild } from './engine.js';
+import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked } from './engine.js';
 
 const SAVE_KEY = 'renn-faire-sim-save-v1';
 
 export function createInitialState() {
   return {
     day: 1,
-    weekendDay: 1, // 1=Fri, 2=Sat, 3=Sun (labeling only; the loop itself doesn't hard-stop)
+    season: 1, // weekend number (Stage 6) — gates campaigns/contracts via unlockSeason
+    weekendDay: 1, // 1=Fri, 2=Sat, 3=Sun; hard-stops at CONFIG.seasonLength (see nextDay)
     cash: CONFIG.startingCash,
     reputation: CONFIG.startingReputation,
     ticketPrice: CONFIG.ticketPrice.start,
@@ -74,6 +75,9 @@ export function contractPerformer(state, performerId, contractId = 'open') {
   if (state.roster.includes(performerId)) return { state, error: 'Already contracted.' };
   const option = CONTRACT_OPTIONS[contractId];
   if (!option) return { state, error: 'Unknown contract type.' };
+  if (!isSeasonUnlocked(state, option.unlockSeason)) {
+    return { state, error: `${option.label} unlocks in Weekend ${option.unlockSeason}.` };
+  }
   const next = clone(state);
   next.roster.push(performerId);
   next.contracts[performerId] = {
@@ -147,6 +151,9 @@ export function unassignSchedule(state, blockId, stageId) {
 export function launchCampaign(state, campaignId) {
   const campaign = campaignById(campaignId);
   if (!campaign) return { state, error: 'Unknown campaign.' };
+  if (!isSeasonUnlocked(state, campaign.unlockSeason)) {
+    return { state, error: `${campaign.name} unlocks in Weekend ${campaign.unlockSeason}.` };
+  }
   if (state.activeCampaign) return { state, error: `${state.activeCampaign.name} is still running \u2014 wait for it to finish.` };
   const cooldown = state.campaignCooldowns[campaignId] || 0;
   if (cooldown > 0) return { state, error: `${campaign.name} needs ${cooldown} more day${cooldown === 1 ? '' : 's'} before it can run again.` };
@@ -182,20 +189,22 @@ export function runDay(state, seed = Date.now() ^ (state.day * 7919)) {
   return { state: next, result };
 }
 
+// Stage 6: a weekend is CONFIG.seasonLength days (Fri/Sat/Sun). Every day
+// that passes still ticks contracts/campaigns exactly as before, but when
+// the day that just finished was the LAST day of the weekend, nextDay stops
+// short of actually advancing day/weekendDay/season — it parks in a new
+// 'weekendEnd' phase instead, so the UI can show a weekend summary. The
+// player then calls startNextWeekend() to actually roll over into the next
+// weekend. This keeps "one tick per elapsed day" happening exactly once per
+// nextDay() call (no double-ticking) while still giving the season boundary
+// its own beat.
 export function nextDay(state) {
   const next = clone(state);
-  next.day += 1;
-  next.weekendDay = ((next.weekendDay % 3) + 1);
-  next.phase = 'plan';
   next.lastResult = null;
-  // roster, built plots, hired vendors, ticket price, and schedule all
-  // persist day-to-day on purpose — replanning from zero every day would
-  // make a multi-day run tedious. See HANDOFF.md backlog for a "reset
-  // schedule each weekend" toggle if that turns out to be too sticky.
 
-  // Tick down any active performer commitments (Weekend Package contracts)
-  // — this only shortens how much longer breaking the deal would cost a
-  // cancellation fee; it never removes the performer from the roster.
+  // Tick down any active performer commitments (Weekend Package/Season
+  // Contract) — this only shortens how much longer breaking the deal would
+  // cost a cancellation fee; it never removes the performer from the roster.
   for (const id of Object.keys(next.contracts)) {
     const contract = next.contracts[id];
     if (contract.commitDaysRemaining > 0) contract.commitDaysRemaining -= 1;
@@ -217,6 +226,36 @@ export function nextDay(state) {
       next.activeCampaign = null;
     }
   }
+
+  if (next.weekendDay >= CONFIG.seasonLength) {
+    // Today was the weekend's last day — hold here for the summary screen
+    // rather than silently rolling into a new weekend. day/weekendDay/season
+    // only advance once the player confirms via startNextWeekend().
+    next.phase = 'weekendEnd';
+    return { state: next };
+  }
+
+  next.day += 1;
+  next.weekendDay += 1;
+  next.phase = 'plan';
+  // roster, built plots, hired vendors, ticket price, and schedule all
+  // persist day-to-day on purpose — replanning from zero every day would
+  // make a multi-day run tedious. See HANDOFF.md backlog for a "reset
+  // schedule each weekend" toggle if that turns out to be too sticky.
+  return { state: next };
+}
+
+// Rolls the game over into the next weekend once the player has seen the
+// weekend-end summary. No contract/campaign ticking happens here — that
+// already happened, once, in the nextDay() call that produced the
+// 'weekendEnd' phase. This just advances the day/weekendDay/season counters
+// and returns to the plan phase.
+export function startNextWeekend(state) {
+  const next = clone(state);
+  next.day += 1;
+  next.weekendDay = 1;
+  next.season += 1;
+  next.phase = 'plan';
   return { state: next };
 }
 
@@ -236,6 +275,7 @@ export function loadState() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (typeof parsed.cash !== 'number' || typeof parsed.day !== 'number') return null;
+    if (typeof parsed.season !== 'number') parsed.season = 1; // pre-Stage-6 save
     return parsed;
   } catch (e) {
     return null;

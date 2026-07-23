@@ -46,6 +46,35 @@ export function effectivePerformerCost(state, performerId) {
   return contract ? contract.dailyCost : perf.cost;
 }
 
+// ---------- season/progression (Stage 6) ----------
+// Whether an item gated by `unlockSeason` (an AD_CAMPAIGNS entry or a
+// CONTRACT_OPTIONS entry) is available yet at the given state's current
+// weekend (state.season). Missing/undefined unlockSeason defaults to 1
+// (available from the very first weekend) so old content never needs the
+// field retrofitted.
+export function isSeasonUnlocked(state, unlockSeason) {
+  return state.season >= (unlockSeason || 1);
+}
+
+// Aggregates the most recent `count` simulateDay() results (a completed
+// weekend's worth of history) into the totals shown on the weekend-end
+// summary screen. Pure — takes the plain history array, never touches
+// state directly. Returns a zeroed shape if history is empty so callers
+// never have to null-check before rendering.
+export function summarizeWeekend(history, count) {
+  const days = (history || []).slice(-count);
+  if (days.length === 0) {
+    return { days: [], totalAttendance: 0, totalNet: 0, avgSatisfaction: 0, repDelta: 0, bestDay: null, worstDay: null };
+  }
+  const totalAttendance = days.reduce((s, d) => s + d.attendance, 0);
+  const totalNet = days.reduce((s, d) => s + d.cashDelta, 0);
+  const avgSatisfaction = Math.round(days.reduce((s, d) => s + d.satisfaction, 0) / days.length);
+  const repDelta = days.reduce((s, d) => s + d.reputationDelta, 0);
+  const bestDay = days.reduce((a, b) => (b.cashDelta > a.cashDelta ? b : a));
+  const worstDay = days.reduce((a, b) => (b.cashDelta < a.cashDelta ? b : a));
+  return { days, totalAttendance, totalNet, avgSatisfaction, repDelta, bestDay, worstDay };
+}
+
 // ---------- faire grounds map ----------
 // Terrain lookup by grid cell. Returns null for out-of-bounds/unknown cells.
 export function terrainAt(x, y) {

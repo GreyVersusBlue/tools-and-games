@@ -2,7 +2,7 @@
 // main.js wires all interaction via event delegation on #content.
 
 import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, effectivePerformerCost } from './engine.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, effectivePerformerCost, isSeasonUnlocked } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -11,8 +11,8 @@ export function renderLedger(state) {
   const weekendNames = ['', 'Friday', 'Saturday', 'Sunday'];
   return `
     <div class="ledger-item">
-      <span class="ledger-label">Day ${state.day}</span>
-      <span class="ledger-sub">${weekendNames[state.weekendDay]}</span>
+      <span class="ledger-label">Weekend ${state.season}</span>
+      <span class="ledger-sub">${weekendNames[state.weekendDay]} &middot; Day ${state.day}</span>
     </div>
     <div class="ledger-item">
       <span class="ledger-label mono">${money(state.cash)}</span>
@@ -71,6 +71,14 @@ export function renderOffice(state, warn) {
 // it shows a cooldown countdown before that same campaign can fire again.
 function renderMarketing(state) {
   const cards = AD_CAMPAIGNS.map(c => {
+    if (!isSeasonUnlocked(state, c.unlockSeason)) {
+      return `
+        <div class="campaign-card locked">
+          <div class="campaign-head"><strong>${c.name}</strong><span class="mono">?</span></div>
+          <p class="flavor">A bigger campaign than the faire can arrange yet.</p>
+          <span class="hint-tag">Unlocks in Weekend ${c.unlockSeason}</span>
+        </div>`;
+    }
     const isActive = state.activeCampaign?.id === c.id;
     const cooldown = state.campaignCooldowns[c.id] || 0;
     const disabled = !!state.activeCampaign || cooldown > 0;
@@ -111,12 +119,18 @@ export function renderBackstage(state, warn) {
         : `<span class="hint-tag">${option.label}</span>`;
       actionCell = `${lockNote}<br><button class="btn small danger" data-action="release" data-id="${p.id}">Release</button>`;
     } else {
-      const buttons = Object.values(CONTRACT_OPTIONS).map(opt => {
-        const rate = Math.round(p.cost * opt.priceMult);
-        const label = opt.priceMult < 1 ? `${opt.label} (${money(rate)}/day)` : opt.label;
-        return `<button class="btn small" data-action="contract" data-id="${p.id}" data-contract="${opt.id}">${label}</button>`;
-      }).join('');
-      actionCell = buttons;
+      const buttons = Object.values(CONTRACT_OPTIONS)
+        .filter(opt => isSeasonUnlocked(state, opt.unlockSeason))
+        .map(opt => {
+          const rate = Math.round(p.cost * opt.priceMult);
+          const label = opt.priceMult < 1 ? `${opt.label} (${money(rate)}/day)` : opt.label;
+          return `<button class="btn small" data-action="contract" data-id="${p.id}" data-contract="${opt.id}">${label}</button>`;
+        }).join('');
+      const nextUnlock = Object.values(CONTRACT_OPTIONS)
+        .filter(opt => !isSeasonUnlocked(state, opt.unlockSeason))
+        .sort((a, b) => a.unlockSeason - b.unlockSeason)[0];
+      const lockedHint = nextUnlock ? `<br><span class="hint-tag">${nextUnlock.label} unlocks Weekend ${nextUnlock.unlockSeason}</span>` : '';
+      actionCell = buttons + lockedHint;
     }
     return `
       <tr class="${contracted ? 'is-contracted' : ''}">
@@ -324,6 +338,46 @@ export function renderReport(state, result) {
       <button class="btn" data-action="nextDay">Next Day \u2192</button>
     </div>
   `;
+}
+
+// Stage 6: shown when phase === 'weekendEnd', in place of the tabs/panel.
+// `summary` comes from engine.js's summarizeWeekend(state.history,
+// CONFIG.seasonLength) — main.js computes it and passes it in, keeping this
+// function a pure state->HTML renderer like everything else here.
+export function renderWeekendEnd(state, summary) {
+  const netClass = summary.totalNet >= 0 ? 'good' : 'bad';
+  const dayRows = summary.days.map(d => `
+    <div class="ticket-row"><span>Day ${d.day}</span><span class="mono">${d.attendance.toLocaleString()} in \u00b7 ${d.cashDelta >= 0 ? '+' : ''}${money(d.cashDelta)}</span></div>
+  `).join('');
+  return `
+    <div class="ticket-stub weekend-summary">
+      <div class="ticket-notch left"></div>
+      <div class="ticket-notch right"></div>
+      <h2>Weekend ${state.season} \u2014 Gates Closed for the Season</h2>
+      <div class="ticket-row"><span>Total attendance</span><span class="mono">${summary.totalAttendance.toLocaleString()}</span></div>
+      <div class="ticket-row"><span>Average crowd mood</span><span class="mono">${summary.avgSatisfaction}/100</span></div>
+      <hr>
+      ${dayRows}
+      <hr>
+      <div class="ticket-row total"><span>Weekend net</span><span class="mono ${netClass}">${summary.totalNet >= 0 ? '+' : ''}${money(summary.totalNet)}</span></div>
+      <div class="ticket-row"><span>Reputation</span><span class="mono ${summary.repDelta >= 0 ? 'good' : 'bad'}">${summary.repDelta >= 0 ? '+' : ''}${summary.repDelta}</span></div>
+      ${renderUnlockNotice(state)}
+      <button class="btn primary" data-action="startNextWeekend">Begin Weekend ${state.season + 1} \u2192</button>
+    </div>
+  `;
+}
+
+// Flags anything that unlocks specifically at the START of next weekend, so
+// the player notices new options the moment they become available rather
+// than discovering them buried in the Office/Backstage panels.
+function renderUnlockNotice(state) {
+  const nextSeason = state.season + 1;
+  const items = [
+    ...AD_CAMPAIGNS.filter(c => c.unlockSeason === nextSeason).map(c => `${c.name} campaign`),
+    ...Object.values(CONTRACT_OPTIONS).filter(o => o.unlockSeason === nextSeason).map(o => `${o.label} contracts`),
+  ];
+  if (!items.length) return '';
+  return `<p class="hint unlock-note">New this weekend: ${items.join(', ')} unlocked!</p>`;
 }
 
 function pct(n) { return `${Math.round(n * 100)}%`; }

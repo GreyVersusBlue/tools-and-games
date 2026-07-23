@@ -19,7 +19,7 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, campaignById, effectivePerformerCost } = await import(path.join(root, 'js/engine.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, campaignById, effectivePerformerCost, isSeasonUnlocked, summarizeWeekend } = await import(path.join(root, 'js/engine.js'));
 const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS } = await import(path.join(root, 'js/data.js'));
 const State = await import(path.join(root, 'js/state.js'));
 
@@ -448,6 +448,100 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(afterNext.schedule.midday['3_0'] === 'perf_jouster_1', 'nextDay preserves the prior schedule');
 }
 
+// --- season/progression catalog integrity (Stage 6) ---
+{
+  for (const c of AD_CAMPAIGNS) {
+    assert(typeof c.unlockSeason === 'number' && c.unlockSeason >= 1, `${c.id} has a valid unlockSeason`);
+  }
+  for (const opt of Object.values(CONTRACT_OPTIONS)) {
+    assert(typeof opt.unlockSeason === 'number' && opt.unlockSeason >= 1, `${opt.id} has a valid unlockSeason`);
+  }
+  assert(AD_CAMPAIGNS.some(c => c.unlockSeason > 1), 'at least one campaign is gated behind a later weekend');
+  assert(Object.values(CONTRACT_OPTIONS).some(o => o.unlockSeason > 1), 'at least one contract type is gated behind a later weekend');
+  assert(CONTRACT_OPTIONS.open.unlockSeason === 1, 'the Day Rate contract is available from Weekend 1');
+  assert(CONTRACT_OPTIONS.season.priceMult < CONTRACT_OPTIONS.weekend.priceMult, 'the Season Contract is a deeper discount than the Weekend Package');
+  assert(CONTRACT_OPTIONS.season.commitDays > CONTRACT_OPTIONS.weekend.commitDays, 'the Season Contract carries a longer commitment than the Weekend Package');
+}
+
+// --- isSeasonUnlocked (Stage 6) ---
+{
+  const s1 = { season: 1 };
+  const s3 = { season: 3 };
+  assert(isSeasonUnlocked(s1, 1) === true, 'a Weekend-1 item is unlocked in Weekend 1');
+  assert(isSeasonUnlocked(s1, 2) === false, 'a Weekend-2 item is NOT unlocked in Weekend 1');
+  assert(isSeasonUnlocked(s3, 2) === true, 'a Weekend-2 item is unlocked once Weekend 3 is reached');
+  assert(isSeasonUnlocked(s1, undefined) === true, 'a missing unlockSeason defaults to available (treated as 1)');
+}
+
+// --- nextDay hard-stops at the end of a weekend (Stage 6) ---
+{
+  let s = State.createInitialState();
+  assert(s.season === 1 && s.weekendDay === 1, 'a fresh game starts on Weekend 1, day 1 of the weekend');
+
+  s = State.nextDay(s).state;
+  assert(s.weekendDay === 2 && s.phase === 'plan' && s.season === 1, 'day 1\u21922 of a weekend advances normally');
+
+  s = State.nextDay(s).state;
+  assert(s.weekendDay === 3 && s.phase === 'plan' && s.season === 1, 'day 2\u21923 of a weekend advances normally');
+
+  const beforeLastTick = s.day;
+  s = State.nextDay(s).state;
+  assert(s.phase === 'weekendEnd', 'nextDay stops at weekendEnd after the weekend\u2019s final day');
+  assert(s.day === beforeLastTick && s.weekendDay === 3 && s.season === 1, 'day/weekendDay/season do NOT advance yet while parked in weekendEnd');
+
+  s = State.startNextWeekend(s).state;
+  assert(s.season === 2 && s.weekendDay === 1 && s.phase === 'plan', 'startNextWeekend rolls over into the next weekend');
+  assert(s.day === beforeLastTick + 1, 'startNextWeekend advances the day counter exactly once');
+}
+
+// --- summarizeWeekend (Stage 6) ---
+{
+  const empty = summarizeWeekend([], 3);
+  assert(empty.days.length === 0 && empty.totalAttendance === 0 && empty.totalNet === 0, 'summarizeWeekend returns a zeroed shape for empty history');
+
+  const history = [
+    { day: 1, attendance: 100, cashDelta: 50, satisfaction: 60, reputationDelta: 1 },
+    { day: 2, attendance: 200, cashDelta: -20, satisfaction: 80, reputationDelta: 2 },
+    { day: 3, attendance: 150, cashDelta: 30, satisfaction: 70, reputationDelta: -1 },
+  ];
+  const summary = summarizeWeekend(history, 3);
+  assert(summary.days.length === 3, 'summarizeWeekend takes exactly the requested trailing slice');
+  assert(summary.totalAttendance === 450, 'summarizeWeekend sums attendance across the weekend');
+  assert(summary.totalNet === 60, 'summarizeWeekend sums cashDelta across the weekend');
+  assert(summary.avgSatisfaction === 70, 'summarizeWeekend averages satisfaction across the weekend');
+  assert(summary.repDelta === 2, 'summarizeWeekend sums reputationDelta across the weekend');
+  assert(summary.bestDay.day === 1, 'summarizeWeekend identifies the best day by cashDelta');
+  assert(summary.worstDay.day === 2, 'summarizeWeekend identifies the worst day by cashDelta');
+
+  const longerHistory = [...history, { day: 4, attendance: 90, cashDelta: 10, satisfaction: 55, reputationDelta: 0 }];
+  const trailing = summarizeWeekend(longerHistory, 3);
+  assert(trailing.days[0].day === 2, 'summarizeWeekend only looks at the trailing `count` entries, not the whole history');
+}
+
+// --- season-gated contracts and campaigns (Stage 6) ---
+{
+  let s = State.createInitialState();
+  const tooEarly = State.contractPerformer(s, 'perf_jouster_1', 'season');
+  assert(tooEarly.error && /unlocks in weekend 3/i.test(tooEarly.error), 'contractPerformer refuses a Season Contract before Weekend 3');
+
+  const proclamationEarly = State.launchCampaign(s, 'ad_proclamation');
+  assert(proclamationEarly.error && /unlocks in weekend 2/i.test(proclamationEarly.error), 'launchCampaign refuses Kingdom Proclamation before Weekend 2');
+
+  // fast-forward to Weekend 3 by walking the day/weekend boundaries forward
+  for (let i = 0; i < 6; i++) {
+    const r = State.nextDay(s);
+    s = r.state.phase === 'weekendEnd' ? State.startNextWeekend(r.state).state : r.state;
+  }
+  assert(s.season === 3, 'walking forward 6 days from Weekend 1 day 1 reaches Weekend 3');
+
+  const proclamationNow = State.launchCampaign(s, 'ad_proclamation');
+  assert(proclamationNow.error === null, 'launchCampaign succeeds for Kingdom Proclamation once Weekend 2+ is reached');
+
+  const seasonContractNow = State.contractPerformer(s, 'perf_jouster_1', 'season');
+  assert(seasonContractNow.error === null, 'contractPerformer succeeds for a Season Contract once Weekend 3 is reached');
+  assert(seasonContractNow.state.contracts.perf_jouster_1.commitDaysRemaining === CONTRACT_OPTIONS.season.commitDays, 'a signed Season Contract starts with its full commitment length');
+}
+
 // --- 50-day fuzz run: engine should never throw or produce NaN/negatives ---
 {
   let s = State.createInitialState();
@@ -466,6 +560,7 @@ const State = await import(path.join(root, 'js/state.js'));
       if (Number.isNaN(result.cashDelta) || Number.isNaN(result.satisfaction)) ok = false;
       if (result.attendance < 0) ok = false;
       s = State.nextDay(next).state;
+      if (s.phase === 'weekendEnd') s = State.startNextWeekend(s).state;
     } catch (e) {
       ok = false;
       console.error(e);
@@ -530,6 +625,26 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(doc.querySelector('.plot-marker.built'), 'the newly built structure appears as a built marker on the map');
   const cashAfter = doc.querySelector('#ledger .ledger-item .ledger-label.mono')?.textContent;
   assert(cashAfter !== cashBefore, 'cash on hand changed after paying to build the placed structure');
+
+  // Stage 6: walk through a full 3-day weekend via the actual DOM buttons and
+  // confirm the weekend-end summary screen appears on schedule, then that
+  // starting the next weekend rolls the ledger over.
+  const click = (el) => el.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  for (let day = 1; day <= 3; day++) {
+    const gatesBtn = doc.querySelector('[data-action="openGates"]');
+    assert(!!gatesBtn, `Open the Gates button is present on weekend day ${day}`);
+    click(gatesBtn);
+    assert(doc.querySelector('.ticket-stub') && !doc.querySelector('.weekend-summary'), `day ${day}'s report is a normal ticket stub, not the weekend summary`);
+    click(doc.querySelector('[data-action="nextDay"]'));
+  }
+  assert(doc.querySelector('.weekend-summary'), 'the third day\u2019s Next Day click surfaces the weekend-end summary screen');
+  assert(!doc.querySelector('[data-tab]'), 'tabs are hidden on the weekend-end summary screen');
+
+  const beginBtn = doc.querySelector('[data-action="startNextWeekend"]');
+  assert(!!beginBtn, 'the weekend-end screen has a Begin Next Weekend button');
+  click(beginBtn);
+  assert(doc.querySelector('#ledger').innerHTML.includes('Weekend 2'), 'starting the next weekend updates the ledger to Weekend 2');
+  assert(doc.querySelector('[data-tab]'), 'tabs reappear once the next weekend begins');
 
   dom.window.close();
 }

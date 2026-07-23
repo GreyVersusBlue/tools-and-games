@@ -8,6 +8,7 @@ export const CONFIG = {
   ticketPrice: { min: 8, max: 28, start: 16 },
   wristbandCut: 0.65, // fraction of a food/craft sale that goes to the house
   blocksPerDay: 4,
+  seasonLength: 3, // days per weekend/season (Fri/Sat/Sun) — see Stage 6
 };
 
 export const TIME_BLOCKS = [
@@ -84,10 +85,13 @@ export const KIND_NOUN = { stage: 'Stage', food: 'Stall', vendor: 'Bazaar', demo
 // passed. Deliberately non-stacking: there is no way to have two campaigns'
 // multipliers apply on the same day, which keeps the attendance formula in
 // engine.js simple (one multiplier, or none).
+// `unlockSeason` (Stage 6) gates a campaign behind reaching that weekend
+// number (state.season) — 1 means available from the very first weekend.
 export const AD_CAMPAIGNS = [
-  { id: 'ad_flyers', name: 'Flyer Run', desc: 'A few riders post bills in the nearest towns. Cheap, quick, modest.', cost: 120, attendanceMult: 1.08, durationDays: 1, cooldownDays: 1 },
-  { id: 'ad_crier', name: 'Town Crier', desc: 'A hired crier works the market squares for days on end.', cost: 280, attendanceMult: 1.16, durationDays: 2, cooldownDays: 2 },
-  { id: 'ad_broadside', name: 'Regional Broadside', desc: 'Printed notices carried by wagon to every shire nearby.', cost: 550, attendanceMult: 1.28, durationDays: 3, cooldownDays: 4 },
+  { id: 'ad_flyers', name: 'Flyer Run', desc: 'A few riders post bills in the nearest towns. Cheap, quick, modest.', cost: 120, attendanceMult: 1.08, durationDays: 1, cooldownDays: 1, unlockSeason: 1 },
+  { id: 'ad_crier', name: 'Town Crier', desc: 'A hired crier works the market squares for days on end.', cost: 280, attendanceMult: 1.16, durationDays: 2, cooldownDays: 2, unlockSeason: 1 },
+  { id: 'ad_broadside', name: 'Regional Broadside', desc: 'Printed notices carried by wagon to every shire nearby.', cost: 550, attendanceMult: 1.28, durationDays: 3, cooldownDays: 4, unlockSeason: 1 },
+  { id: 'ad_proclamation', name: 'Kingdom Proclamation', desc: 'A royal proclamation read at every market cross in the shire. Slow to arrange, hard to beat.', cost: 900, attendanceMult: 1.4, durationDays: 3, cooldownDays: 6, unlockSeason: 2 },
 ];
 
 // Contract types for performers (Stage 5). `open` is the no-commitment day
@@ -96,9 +100,12 @@ export const AD_CAMPAIGNS = [
 // `commitDays` at a discount off the listed rate; releasing early, before
 // the commitment runs out, costs a cancellation fee
 // (cancelFeeMult \u00d7 dailyCost \u00d7 days still owed on the commitment).
+// `season` (Stage 6) is a longer, deeper-discount commitment spanning two
+// full weekends, gated behind `unlockSeason` the same way AD_CAMPAIGNS are.
 export const CONTRACT_OPTIONS = {
-  open: { id: 'open', label: 'Day Rate', priceMult: 1.0, commitDays: 0, cancelFeeMult: 0 },
-  weekend: { id: 'weekend', label: 'Weekend Package', priceMult: 0.85, commitDays: 3, cancelFeeMult: 0.5 },
+  open: { id: 'open', label: 'Day Rate', priceMult: 1.0, commitDays: 0, cancelFeeMult: 0, unlockSeason: 1 },
+  weekend: { id: 'weekend', label: 'Weekend Package', priceMult: 0.85, commitDays: 3, cancelFeeMult: 0.5, unlockSeason: 1 },
+  season: { id: 'season', label: 'Season Contract', priceMult: 0.72, commitDays: 6, cancelFeeMult: 0.6, unlockSeason: 3 },
 };
 
 // Performer pool. `quirk` is a small effect tag the engine looks up by id —

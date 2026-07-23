@@ -219,6 +219,8 @@ h1, h2, h3, h4 {
   display: flex; flex-direction: column; gap: 0.4rem;
 }
 .campaign-card.is-active { border-color: var(--forest); background: rgba(56, 82, 59, 0.12); }
+.campaign-card.locked { opacity: 0.6; border-style: dashed; }
+.unlock-note { color: var(--gold); font-weight: 700; text-align: center; }
 .campaign-head { display: flex; justify-content: space-between; align-items: baseline; }
 .campaign-tag {
   display: inline-block;
