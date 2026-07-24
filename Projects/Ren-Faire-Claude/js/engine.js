@@ -3,7 +3,7 @@
 // this module for the math. That split is what makes the smoke tests able
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
-import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES } from './data.js';
+import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE } from './data.js';
 
 // ---------- seeded RNG (mulberry32) ----------
 // Deterministic given a numeric seed so tests can assert exact outputs.
@@ -315,6 +315,123 @@ export function computeFootTraffic(builtPlots) {
   return result;
 }
 
+// ---------- reachability (Stage 17: crowd-flow-as-a-system, phase 2 —
+// reachability-gated draw) ----------
+// Stage 14 taught every built stall its own *relative siting* (terrain +
+// nearby-stage/demo adjacency) as a foot-traffic multiplier — but that math
+// is blind to one very real fairgoer behavior: distance from the gate. A
+// stage or stall tucked in the far back corner of the grounds draws fewer
+// casual passersby than an identically-sited one near the entrance, even
+// when their local terrain/adjacency numbers match exactly.
+//
+// computePathDistances() is a plain 4-directional BFS, along 'path' tiles
+// only, out from the authored ENTRANCE. TERRAIN_ROWS/GRID/ENTRANCE are all
+// static authored content (never state-dependent), so this result never
+// changes across a save or a render and is safe to compute once and cache
+// at module scope — the same "state-independent, computed once" spirit as
+// terrainAt()/quoteBuild() before it. Returns a Map keyed by "x,y" -> hop
+// count from the gate.
+let _pathDistanceCache = null;
+export function computePathDistances() {
+  if (_pathDistanceCache) return _pathDistanceCache;
+  const dist = new Map();
+  const key = (x, y) => `${x},${y}`;
+  if (terrainAt(ENTRANCE.x, ENTRANCE.y) === 'path') {
+    dist.set(key(ENTRANCE.x, ENTRANCE.y), 0);
+    const queue = [[ENTRANCE.x, ENTRANCE.y]];
+    while (queue.length) {
+      const [x, y] = queue.shift();
+      const d = dist.get(key(x, y));
+      for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+        const nx = x + dx, ny = y + dy;
+        if (terrainAt(nx, ny) !== 'path') continue;
+        const nk = key(nx, ny);
+        if (dist.has(nk)) continue;
+        dist.set(nk, d + 1);
+        queue.push([nx, ny]);
+      }
+    }
+  }
+  _pathDistanceCache = dist;
+  return dist;
+}
+
+// Shortest gate-to-plot walk, in path-tile hops, along whichever of a
+// plot's own footprint cells has path frontage (mirrors hasPathFrontage's
+// neighbor logic exactly — every kind that can legally be built at all is
+// required to have frontage, so this always resolves to a finite number for
+// a real built plot). Returns Infinity only if the grounds' path network
+// were ever authored disconnected from ENTRANCE — a content bug, not a
+// player-reachable state, so callers don't need to special-case it further
+// than computeReachability's mean/clamp math already handles gracefully.
+export function reachabilityDistance(plot) {
+  const dist = computePathDistances();
+  let best = Infinity;
+  for (const c of plotFootprintCells(plot)) {
+    if (dist.has(`${c.x},${c.y}`)) best = Math.min(best, dist.get(`${c.x},${c.y}`));
+    for (const n of orthogonalNeighbors(c)) {
+      const d = dist.get(`${n.x},${n.y}`);
+      if (d !== undefined && d < best) best = d;
+    }
+  }
+  return best;
+}
+
+// Deliberately narrower than foot traffic's 0.6x-1.6x band: this is a
+// second, independent siting signal layered on top of foot traffic (not a
+// replacement for it), so it nudges rather than dominates. Same relative-
+// to-the-day's-average shape as computeFootTraffic: a single built plot of
+// a kind always resolves to exactly 1x (mean == its own distance), so a
+// fresh save's first stage/stall is completely unaffected — only relative
+// gate-distance among *multiple* built plots ever moves this number.
+const REACHABILITY_MIN_MULT = 0.8;
+const REACHABILITY_MAX_MULT = 1.2;
+
+// Grouped by audience type — stages compared only to other built stages,
+// food/vendor stalls compared only to other built stalls (the exact same
+// grouping computeFootTraffic already uses for its own mean) — rather than
+// one pooled mean across every built plot on the grounds. Two reasons:
+// (1) it's the more meaningful comparison anyway ("central among stages"
+// and "central among stalls" are each their own real question a player
+// asks); (2) it preserves the same backward-compatible guarantee every
+// stage since 14 has kept — a single built plot of a kind is unaffected by
+// what's built elsewhere, since mean == its own distance == mult of exactly
+// 1 within its own group, regardless of how far away a plot of the OTHER
+// group happens to sit.
+function reachabilityGroup(plots) {
+  const result = {};
+  if (plots.length === 0) return result;
+  const withDist = plots.map(p => ({ id: p.id, distance: reachabilityDistance(p) }));
+  // The authored path network isn't fully connected everywhere (see
+  // HANDOFF's Stage 17 retro — the col-3 spur has a gap at row 3 that
+  // leaves it unreachable from ENTRANCE by any path-tile walk, even though
+  // hasPathFrontage's own terrain-only check has always let a plot build
+  // against it). A plot with no finite walk to the gate at all can't be
+  // meaningfully averaged in with ones that do — one Infinity would blow
+  // up the mean and distort every other plot's score — so it's excluded
+  // from the mean and pinned straight to the worst multiplier instead:
+  // genuinely cut off from the gate is, definitionally, as bad as siting
+  // gets.
+  const reachable = withDist.filter(p => Number.isFinite(p.distance));
+  const unreachable = withDist.filter(p => !Number.isFinite(p.distance));
+  for (const p of unreachable) result[p.id] = { distance: Infinity, mult: REACHABILITY_MIN_MULT };
+  if (reachable.length === 0) return result;
+  const mean = reachable.reduce((s, p) => s + p.distance, 0) / reachable.length;
+  for (const p of reachable) {
+    // Closer than the group's average gate-walk -> above 1x; farther -> below.
+    const raw = mean > 0 ? 1 + (mean - p.distance) / (mean * 2) : 1;
+    result[p.id] = { distance: p.distance, mult: clamp(raw, REACHABILITY_MIN_MULT, REACHABILITY_MAX_MULT) };
+  }
+  return result;
+}
+
+export function computeReachability(builtPlots) {
+  const built = (builtPlots || []).filter(p => p && p.status === 'built');
+  const stages = built.filter(p => p.kind === 'stage');
+  const stalls = built.filter(p => p.kind === 'food' || p.kind === 'vendor');
+  return { ...reachabilityGroup(stages), ...reachabilityGroup(stalls) };
+}
+
 // Quotes what building a given structure kind at (x,y) would cost/seat,
 // before anything is actually built — the single source of truth for that
 // math, used both by state.js's buildPlot action and ui.js's build-preview
@@ -408,10 +525,18 @@ export function isLegalPlacement(kind, x, y, builtPlots, excludeId) {
   if (cells.some(c => !terrainAt(c.x, c.y))) {
     return { ok: false, reason: 'That doesn\u2019t fit within the surveyed grounds.' };
   }
+  // Stage 18: message is now built from whichever terrain actually hit and
+  // what's still allowed, rather than a hardcoded "try clearing/hill/woods"
+  // string — that fixed suggestion would be wrong (and self-contradicting)
+  // now that hill is banned for stalls but the ideal terrain for a stage.
   const banned = PLACEMENT_RULES.terrainBans[kind];
-  if (banned && cells.some(c => banned.includes(terrainAt(c.x, c.y)))) {
-    const label = STRUCTURE_TYPES[kind] ? STRUCTURE_TYPES[kind].label : kind;
-    return { ok: false, reason: `A ${label} can't block the path \u2014 try a nearby clearing, hill, or woods instead.` };
+  if (banned) {
+    const hitTerrain = cells.map(c => terrainAt(c.x, c.y)).find(t => banned.includes(t));
+    if (hitTerrain) {
+      const label = STRUCTURE_TYPES[kind] ? STRUCTURE_TYPES[kind].label : kind;
+      const allowed = Object.values(TERRAIN_LEGEND).filter(t => !banned.includes(t));
+      return { ok: false, reason: `A ${label} can't be built on ${hitTerrain} \u2014 try ${allowed.join(', ')} instead.` };
+    }
   }
   // Stage 12: occupancy is now a footprint-vs-footprint overlap check (any
   // status counts, same as before — a still-"planning" plot claims its
@@ -430,6 +555,35 @@ export function isLegalPlacement(kind, x, y, builtPlots, excludeId) {
     });
     if (tooClose) {
       return { ok: false, reason: 'Too close to another stage \u2014 give show sites more room to breathe.' };
+    }
+  }
+  // Stage 18: same-kind stall spacing — mirrors the stage-spacing check
+  // above, but only between two stalls of the SAME kind (see PLACEMENT_RULES
+  // comment for why). Any status counts toward this, same reasoning as the
+  // stage check: a still-planning stall claims its spacing too.
+  if ((PLACEMENT_RULES.stallSpacingKinds || []).includes(kind) && PLACEMENT_RULES.minStallSpacing != null) {
+    const tooClose = others.some(p => {
+      if (p.kind !== kind) return false;
+      const oCells = plotFootprintCells(p);
+      return cells.some(c => oCells.some(o => chebyshevDistance(c, o) <= PLACEMENT_RULES.minStallSpacing));
+    });
+    if (tooClose) {
+      const label = STRUCTURE_TYPES[kind] ? STRUCTURE_TYPES[kind].label : kind;
+      return { ok: false, reason: `Two ${label}s can't crowd the same corner \u2014 spread them out a little.` };
+    }
+  }
+  // Stage 18: a hard cap on how many of a kind can be built or still
+  // planned at once (see PLACEMENT_RULES.maxBuiltByKind). Counts any
+  // status — otherwise a player could lay out several planning-status
+  // plots past the cap and bulk-commit them past it in one shot via
+  // commitAllPlots, the same bypass the stage-spacing check already guards
+  // against.
+  const maxByKind = PLACEMENT_RULES.maxBuiltByKind || {};
+  if (maxByKind[kind] != null) {
+    const existingCount = others.filter(p => p.kind === kind).length;
+    if (existingCount >= maxByKind[kind]) {
+      const label = STRUCTURE_TYPES[kind] ? STRUCTURE_TYPES[kind].label : kind;
+      return { ok: false, reason: `The grounds can only support ${maxByKind[kind]} ${label}s at once.` };
     }
   }
   const requiresFrontage = (PLACEMENT_RULES.requiresPathFrontage || []).includes(kind);
@@ -540,6 +694,10 @@ export function simulateDay(state, seed) {
   }
 
   // --- per-block, per-stage draw weight ---
+  // Stage 17: computed once here (rather than inside computeVendorRevenue's
+  // own footTraffic call below) so a stage's draw weight and a stall's
+  // sales both read the exact same day's reachability numbers.
+  const reachability = computeReachability(state.builtPlots);
   let scheduledCount = 0;
   const blockBreakdown = TIME_BLOCKS.map(block => {
     const stagesInBlock = state.schedule[block.id] || {};
@@ -549,11 +707,23 @@ export function simulateDay(state, seed) {
       if (perf) scheduledCount++;
       const drawPop = perf ? effectivePopularity(perf, block.id) : 1.2; // ambient draw, empty stage
       const attrs = computePlotAttributes(stage, state.builtPlots);
-      const weight = (attrs.traffic * 0.45 + (drawPop / 10) * 0.55);
-      return { stage, attrs, perf, drawPop, weight };
+      const reachMult = reachability[stage.id] ? reachability[stage.id].mult : 1;
+      const weight = (attrs.traffic * 0.45 + (drawPop / 10) * 0.55) * reachMult;
+      return { stage, attrs, perf, drawPop, weight, reachMult };
     });
     return { block, stageEntries };
   });
+
+  // Only worth remarking on when two built stages' gate-walk actually
+  // differs noticeably today — mirrors the vendor-stall spread log below.
+  if (builtStages.length > 1) {
+    const byReach = builtStages.map(s => ({ stage: s, mult: reachability[s.id] ? reachability[s.id].mult : 1 }));
+    const nearest = byReach.reduce((a, b) => (b.mult > a.mult ? b : a));
+    const farthest = byReach.reduce((a, b) => (b.mult < a.mult ? b : a));
+    if (nearest.stage.id !== farthest.stage.id && nearest.mult / farthest.mult >= 1.3) {
+      log.push(`${nearest.stage.name} pulled a bigger walk-up crowd being close to the gate, while ${farthest.stage.name} sat too far back to catch as many passersby.`);
+    }
+  }
 
   // --- prima donna satisfaction penalty check ---
   for (const { block, stageEntries } of blockBreakdown) {
@@ -608,6 +778,10 @@ export function simulateDay(state, seed) {
   // day's total attendance — a well-sited stall (path frontage, near a
   // packed stage or a demo camp) genuinely outsells an identically-good
   // vendor stuck in a dead corner of the grounds.
+  // Stage 17: reachability is a second, independent siting signal (distance
+  // from the gate) layered on top of foot traffic — combined, then clamped
+  // once more so the two 0.6x-1.6x / 0.8x-1.2x bands stacking multiplicatively
+  // can never run away past a sane overall range for a single stall's day.
   const footTraffic = computeFootTraffic(state.builtPlots);
   const plotByVendorId = new Map(builtFoodVendorPlots.filter(p => p.assignedVendorId).map(p => [p.assignedVendorId, p]));
   let vendorGrossTotal = 0;
@@ -616,16 +790,18 @@ export function simulateDay(state, seed) {
   for (const vendor of activeVendorObjs) {
     const plot = plotByVendorId.get(vendor.id);
     const trafficMult = plot && footTraffic[plot.id] ? footTraffic[plot.id].mult : 1;
+    const reachMult = plot && reachability[plot.id] ? reachability[plot.id].mult : 1;
+    const sitingMult = clamp(trafficMult * reachMult, 0.5, 1.8);
     const conversion = 0.12 * (vendor.quality / 7);
-    const buyers = Math.round(attendance * conversion * trafficMult);
+    const buyers = Math.round(attendance * conversion * sitingMult);
     const gross = buyers * vendor.avgTicket;
     vendorGrossTotal += gross;
     houseVendorRevenue += gross * CONFIG.wristbandCut;
     satisfaction = clamp(satisfaction + (vendor.quality - 6) * 0.4, 0, 100);
     if (plot) {
-      const entry = { vendor, plot, mult: trafficMult };
-      if (!bestStall || trafficMult > bestStall.mult) bestStall = entry;
-      if (!worstStall || trafficMult < worstStall.mult) worstStall = entry;
+      const entry = { vendor, plot, mult: sitingMult };
+      if (!bestStall || sitingMult > bestStall.mult) bestStall = entry;
+      if (!worstStall || sitingMult < worstStall.mult) worstStall = entry;
     }
   }
   // Only worth remarking on when the spread between the best- and
@@ -686,6 +862,7 @@ export function simulateDay(state, seed) {
     adFactor,
     campaignActive: state.activeCampaign ? state.activeCampaign.name : null,
     footTraffic,
+    reachability,
     events,
     log,
     warnings,

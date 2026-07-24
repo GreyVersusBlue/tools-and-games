@@ -186,6 +186,16 @@ h1, h2, h3, h4 {
   box-shadow: 0 0 0 2px dashed var(--gold);
 }
 .plot-marker.moving { outline: 2px dashed var(--wine); outline-offset: 1px; }
+/* Stage 17: the front gate marker — non-interactive, sits under any built
+   marker/ghost that might share its cell (z-index below .plot-marker's
+   default stacking, same DOM-order-based layering every other marker uses). */
+.gate-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  pointer-events: none;
+}
 .plot-marker.blocked {
   background: rgba(122, 32, 32, 0.18);
   box-shadow: 0 0 0 1px dashed var(--wine);

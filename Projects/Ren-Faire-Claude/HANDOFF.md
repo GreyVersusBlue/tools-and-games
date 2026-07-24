@@ -3,231 +3,235 @@
 Living document, updated in place each stage. Older stage summaries get
 condensed into the changelog at the bottom rather than kept as prose above.
 
-## Status as of Stage 16
+## Status as of Stage 18
 
-**Playable end-to-end.** Everything from Stages 1–15 still works. This
-stage ships the first of the two backlog items that had sat fully
-untouched since Stage 9: **a win condition** (deeper crowd-flow — guest
-agents, path congestion — remains the other one, still open).
+**Playable end-to-end.** Everything from Stages 1–17 still works. This
+stage ships **three more build-time legality rules** — all three were
+standing, explicitly-named "not yet requested" options in the Stage 17
+backlog (and the Stage 11/12 backlog before that): a hill ban for
+food/craft stalls, same-kind stall-to-stall spacing, and a hard cap on
+demo camps. **True guest-agent/pathfinding simulation** remains the one
+fully-untouched backlog item from Stage 9 on; **a drag-to-reorder move**
+and **retuning the Stage 16 win/loss thresholds** also remain standing,
+not-yet-requested options.
 
 **What changed, concretely:**
-- **A one-time "Legendary Faire" victory milestone.** New
-  `CONFIG.winCondition` (`{ seasonTarget: 6, minReputation: 70, minCash:
-  4000 }`): reach the END of Weekend 6 (or later) with reputation and
-  cash both at or above those marks, and the faire earns a celebratory
-  milestone screen. This is **not** a hard stop — the player clicks
-  "Continue the Faire" and drops straight into the normal weekend-end
-  summary, same save, same numbers, nothing about the sandbox changes.
-  A new `victoryAchieved` flag on state guarantees it only ever fires
-  once per save, so a later weekend that still clears every threshold
-  doesn't refire it.
-- **A real loss condition: bankruptcy.** New `CONFIG.bankruptcyFloor`
-  (-1500). If cash crosses at/under that floor after a day resolves, the
-  faire is bankrupt — first time cash has ever had a floor at all; before
-  this stage a save could spiral arbitrarily negative forever with no
-  consequence beyond the ledger looking bad. The player still sees that
-  day's normal report ticket (so they see what went wrong), and the run
-  actually ends the next time they click through — a terminal "The Faire
-  Folds" screen with a "Start a New Faire" button (the same reset path as
-  the header's Reset button, minus the confirmation dialog since the run
-  is already over).
-- **Both conditions are pure predicates first.** `engine.js` gained
-  `checkBankruptcy(cash)` and `checkWinCondition(state)` — trivial,
-  independently testable functions with zero side effects. All the
-  actual state-machine work (when to check, how to flag, how to route)
-  lives in `state.js`, same separation of concerns as every other stage.
-- **Two new phases, same rendering pattern as `weekendEnd`.** `'victory'`
-  and `'gameOver'` both hide the tabs and take over `#content` with a
-  ticket-stub-styled screen (gold-accented border for victory, wine for
-  game over) — no new UI pattern, just two more entries in main.js's
-  existing phase dispatch.
+- **Food/craft stalls can no longer be built on a hill.** New
+  `data.js` `PLACEMENT_RULES.terrainBans.food`/`.vendor` entries (both
+  `['hill']`) — a cart-based stall needs level ground, unlike a stage
+  (hill is already its *best* terrain — highest sightline, a
+  `capacityMult` bonus) or a demo camp (a fixed living-history/falconer
+  site, not a cart). This is the first terrain ban that isn't about the
+  path, so `isLegalPlacement`'s refusal message is no longer a hardcoded
+  "try a nearby clearing, hill, or woods" string (which would now be
+  self-contradicting for a stall) — it's built from whichever terrain
+  actually hit and whatever terrain is still allowed for that kind.
+- **Two stalls of the same kind can't crowd the same corner.** New
+  `PLACEMENT_RULES.stallSpacingKinds` (`['food', 'vendor']`) and
+  `minStallSpacing` (1) — two food stalls, or two craft stalls, can't sit
+  directly touching. A food stall right beside a craft stall is still
+  fine (a real market-row layout); the rule is same-kind only, mirroring
+  `minStageSpacing`'s existing shape exactly (same footprint-cell-to-
+  footprint-cell check, same "a still-planning plot claims its spot too"
+  rule, so laying out several same-kind plans crowded together and bulk-
+  committing them can't dodge it).
+- **Demo camps are capped at 3 at once.** New
+  `PLACEMENT_RULES.maxBuiltByKind` (`{ demo: 3 }`) — a demo camp is a
+  living-history reenactor or a falconer's mews, a real person/animal on
+  site rather than a purchased structure, so the faire only has so many
+  to field regardless of how much open ground is left. Keyed by kind
+  (not a bare `demo`-specific field) so a future stage could cap
+  something else the same way with no new code path. Counts any status
+  (built or still-planning), same reasoning as the other two rules above.
+  Unlike the two rules above, this cap isn't spatial — it blocks *every*
+  cell at once once reached, not just some — so it's also the first
+  legality rule surfaced directly in the build palette (`renderBuildPalette`
+  now shows "N/cap built" instead of a price once a capped kind is maxed
+  out) rather than only discoverable by trying a cell.
+- **The grounds-map legend gained a line** noting the new stall hill ban,
+  next to the existing path-frontage/stage-footprint hint.
 
 ## What was built this stage
 
-- **`js/data.js`** — two new `CONFIG` entries: `bankruptcyFloor` (-1500)
-  and `winCondition` (`{ seasonTarget: 6, minReputation: 70, minCash:
-  4000 }`). No other authored content changed.
-- **`js/engine.js`** — `checkBankruptcy(cash)` (pure, `cash <=
-  CONFIG.bankruptcyFloor`) and `checkWinCondition(state)` (pure, reads
-  `state.season`/`reputation`/`cash` against `CONFIG.winCondition`;
-  deliberately ignorant of `victoryAchieved` — that guard lives in
-  state.js, not here).
-- **`js/state.js`** — `createInitialState` gained two new fields:
-  `bankrupt` (false) and `victoryAchieved` (false). `runDay` now sets
-  `next.bankrupt = checkBankruptcy(next.cash)` after applying the day's
-  cashDelta — phase still goes to `'report'` as normal either way, so the
-  fatal day's own ticket always shows first. `nextDay` checks
-  `state.bankrupt` FIRST, before any of its usual contract/campaign
-  ticking: if true, it short-circuits straight to `phase: 'gameOver'` and
-  freezes day/weekendDay right there (a second `nextDay` call on an
-  already-`gameOver` state is a stable no-op, confirmed by test). If not
-  bankrupt, `nextDay` proceeds exactly as before, except at the existing
-  weekend-boundary check (`weekendDay >= CONFIG.seasonLength`) it now also
-  calls `checkWinCondition` — if true and `!next.victoryAchieved`, it sets
-  `victoryAchieved = true` and `phase = 'victory'` instead of
-  `'weekendEnd'`. New `acknowledgeVictory(state)` action: clones, sets
-  `phase = 'weekendEnd'`, returns — the one and only way out of the
-  victory screen, and it changes nothing else (cash/reputation/
-  victoryAchieved all pass through untouched), so the weekend-end summary
-  and `startNextWeekend` flow afterward work exactly as they always have.
-  `loadState` migrates pre-Stage-16 saves missing either new field to
-  `false`.
-- **`js/ui.js`** — new `renderVictory(state)` and `renderGameOver(state)`,
-  both reusing the existing `.ticket-stub` shell (dashed border, two side
-  notches) that `renderReport`/`renderWeekendEnd` already use. Victory
-  shows weekend/reputation/cash against the configured thresholds and a
-  "Continue the Faire" button (`data-action="acknowledgeVictory"`); game
-  over shows the same three numbers as a post-mortem and a "Start a New
-  Faire" button (`data-action="newFaire"`).
-- **`js/main.js`** — `render()` gained two more early-return phase checks
-  (`'victory'` → `UI.renderVictory`, `'gameOver'` → `UI.renderGameOver`),
-  slotted in next to the existing `'report'`/`'weekendEnd'` ones, same
-  pattern. `handleAction`'s switch gained `'acknowledgeVictory'` (calls
-  `State.acknowledgeVictory`) and `'newFaire'` (calls `State.resetSave()`
-  directly, no confirm — the run is already over, unlike the header Reset
-  button which still confirms mid-game).
-- **`css/style.css`** — two small ticket-stub border-color overrides,
-  `.victory-stub` (gold) and `.gameover-stub` (wine); no new layout rules.
-- **`tests/smoke.mjs`** — 573 checks now (was 532): a pure-logic block
-  for `checkBankruptcy`/`checkWinCondition` at and around their
-  thresholds; a state-level bankruptcy block (`runDay` flagging
-  `bankrupt` only once the floor is actually crossed, the fatal day's
-  report ticket still showing normally, `nextDay` routing to `gameOver`
-  and freezing day/weekendDay, a repeat `nextDay` call staying put, a
-  healthy day never flagging); a state-level victory block (firing
-  exactly at a weekend boundary that clears every threshold,
-  `victoryAchieved` flipping, day/weekendDay/season staying put same as
-  `weekendEnd` does, `acknowledgeVictory` dropping into `weekendEnd`
-  without touching cash/reputation, a normal `startNextWeekend` after
-  that, a later weekend that still clears every threshold NOT refiring
-  once already achieved, and falling one point short of any single
-  threshold correctly skipping victory); a `loadState` migration test for
-  pre-Stage-16 saves; the existing 50-day fuzz run updated to treat
-  victory (acknowledge-then-proceed) and bankruptcy (stop early) as
-  legitimate outcomes of a long random run rather than test failures —
-  this was a real, necessary fix, not just an addition, since the fuzz
-  run's original loop only knew about `weekendEnd` and would have gotten
-  stuck the first time a long run organically won or went bankrupt; and
-  two DOM boot tests that preload a save already parked in `gameOver`/
-  `victory` (rather than grinding out real days) and confirm the right
-  screen renders plus its one button does the right thing.
+- **`js/data.js`** — `PLACEMENT_RULES.terrainBans` gained `food: ['hill']`
+  and `vendor: ['hill']`; new `PLACEMENT_RULES.stallSpacingKinds`
+  (`['food', 'vendor']`) and `minStallSpacing` (1); new
+  `PLACEMENT_RULES.maxBuiltByKind` (`{ demo: 3 }`). No other authored
+  content changed — no new fields on a saved plot, no save migration.
+- **`js/engine.js`** — `isLegalPlacement`'s terrain-ban check now builds
+  its refusal message from the actual hit terrain and `TERRAIN_LEGEND`
+  rather than a hardcoded path-specific string; a new same-kind stall-
+  spacing check sits right after the existing stage-spacing check (same
+  shape, generalized to whichever kind is in `stallSpacingKinds`); a new
+  per-kind build-count check (`maxBuiltByKind`) sits just before the
+  path-frontage check. All three read straight off `PLACEMENT_RULES` —
+  no new exported functions were needed, `isLegalPlacement` is still the
+  single entry point every caller already used.
+- **`js/ui.js`** — `renderBuildPalette` shows "N/cap built" (with a title
+  explaining the cap) instead of the usual escalating-price tag once a
+  capped kind's count (built + planning) reaches its
+  `PLACEMENT_RULES.maxBuiltByKind` limit; new import of `PLACEMENT_RULES`
+  from `data.js`. `renderGroundsMap`'s legend gained one line about the
+  stall hill ban. No changes were needed to the existing blocked-marker
+  rendering — it already surfaces whatever `reason` string
+  `isLegalPlacement` returns, generically, so all three new refusals show
+  up there for free.
+- **`tests/smoke.mjs`** — 629 checks now (was 599): a `PLACEMENT_RULES`
+  data-integrity block for all three new entries; a hill-ban block (food
+  and craft both refused on hill, stage and demo both still allowed, the
+  message not suggesting hill as an alternative, checked directly and
+  end-to-end through `buildPlot`); a stall-spacing block (same-kind too-
+  close refused, cross-kind allowed, a still-planning stall claiming its
+  spacing, the `excludeId` self-exemption, checked directly and end-to-
+  end through `buildPlot`); a demo-cap block (three build fine, a fourth
+  refused, still-planning demos counting toward the cap, a different kind
+  unaffected, checked directly and end-to-end through
+  `buildPlot`/`placePlot`); and two DOM checks (the build palette shows
+  "3/3 built" once the demo cap is reached, with no ghost cell offered
+  anywhere for that kind; a hill cell renders as a blocked marker naming
+  the hill ban when Food Stall is selected). Fixing roughly a dozen
+  pre-existing test fixtures that incidentally collided with the new
+  rules (two food stalls that used to sit directly adjacent as pure
+  occupancy-check scaffolding, or anchored on a hill cell for the same
+  reason) took longer than writing the new checks — see the Retro below.
 
-## Backlog (win condition now shipped; one backlog item remains untouched)
+## Backlog (three more legality rules now shipped; guest-agent simulation remains)
 
-**A win/loss condition is now shipped** (this stage). **Deeper
-crowd-flow** (guest agents, path congestion, reachability-gated stage
-draw — Stage 14's foot-traffic multiplier is still attribute-based, not
-simulated) remains the one fully-untouched backlog item from the original
-Stage 9 list. More/different legality rules (stall-to-stall spacing, a
-demo camp cap, terrain-specific stall bans) also remain a standing,
-not-yet-requested option, as does a drag-to-reorder/true click-and-drag
-move.
+**Hill ban / stall spacing / demo cap are now shipped** (this stage) —
+the three standing, explicitly-named options from the Stage 17 backlog.
+**True guest-agent/pathfinding simulation** (individual guests actually
+walking the grounds, path congestion emerging from where crowds bunch
+up) remains open as a considerably bigger lift than anything shipped so
+far — everything through Stage 18 is still attribute/multiplier math,
+not agents. A drag-to-reorder/true click-and-drag move, more content-
+pool filler, and retuning the Stage 16 win/loss thresholds after real
+play all remain standing, not-yet-requested options, unchanged from
+Stage 17.
 
 ## What the next stage needs
 
-Both new thresholds live in one place: `CONFIG.bankruptcyFloor` and
-`CONFIG.winCondition` — retune either independently if real play shows
--1500 is too forgiving/punishing, or if Weekend 6/70 reputation/$4000
-turns out too easy or too hard to reach. They're independent of each
-other and of the escalating-build-cost/upkeep rates (Stages 13/15), so no
-cross-tuning is required, but a future stage tightening the economy
-should sanity-check both thresholds still make sense afterward.
-`checkBankruptcy`/`checkWinCondition` are the only two functions that
-know these thresholds — any future stage adding a second win condition
-(a "best faire in the land" reputation-only track, say) or a softer
-bankruptcy warning (a low-cash alert before the hard floor) should add a
-sibling predicate next to these rather than overloading either one.
+`PLACEMENT_RULES.maxBuiltByKind` is a plain `{ kind: cap }` map — a
+future stage capping a second kind (say, a stage cap, or a craft-stall
+cap) just adds another entry; `isLegalPlacement`'s check already reads
+the map generically and needs no changes. The same is true of
+`stallSpacingKinds`/`minStallSpacing` for a third kind that should get
+same-kind spacing.
 
-**Next logical chunks, roughly in the order I'd tackle them:**
+**The demo cap is the first legality rule that isn't spatial** — every
+other rule (terrain bans, stage spacing, stall spacing, path frontage)
+can be discovered by trying a specific cell, so the existing blocked-
+marker-on-hover pattern was enough on its own. A hard count cap blocks
+every cell at once, which is why this stage also surfaced it directly in
+the build palette rather than leaving it purely cell-discoverable. A
+future stage adding another non-spatial rule (something gated on total
+cash spent, or total roster size, say) should probably follow the same
+"surface it in the palette/relevant panel, not just the map" instinct.
 
-1. **Deeper crowd-flow** (guest agents, path congestion, reachability-
-   gated stage draw), if Stage 14's attribute-based foot traffic turns
-   out to be insufficient after real playtesting. Unchanged from Stage 9.
-2. **A drag-to-reorder or true click-and-drag move**, if the current
-   "click Move, then tap a new cell" two-step ever feels clunky.
-   Unchanged.
-3. **More content-pool filler**, same standing option as always.
-4. **More legality rules**, same standing options as before (stall-to-
-   stall spacing, a demo camp cap, terrain-specific stall bans) — none
-   requested yet.
-5. **Retuning the win/loss thresholds** after real play, per the section
-   above — not urgent, but worth a look once someone has actually played
-   several weekends.
-
-**Things intentionally deferred (kickoff doc explicitly allows this):**
-weather, rival faires, animal handling beyond the falconer performer
-role, deep reputation splits (currently one scalar 0–100), and true
-contract-price *negotiation* (a fixed choice between published deals, not
-haggling).
+**A ready-made test-fixture trap for future stages:** several existing
+smoke-test fixtures used two food stalls built directly adjacent (or
+anchored on a hill cell) purely as generic occupancy-check scaffolding,
+with no relation to the actual rule under test. Adding a new placement
+rule can silently break fixtures like that in a completely unrelated
+part of the suite — when a new rule ships, grep the test file for every
+existing call to the kind(s) it touches, not just the tests written
+specifically for it.
 
 ## Wishlist (not yet scoped, no priority order)
 
-Held over from the Stage 14 kickoff prompt for future stages to draw
-from:
-
-- **Guest archetypes** — a small set of visitor types (families,
-  foodies, thrill-seekers) with different draws; a natural input to
-  deeper crowd-flow work.
-- **Weather/random days** — rained-out days hurting outdoor stages
-  more than covered stalls; fits the existing `EVENT_POOL` random-
-  event architecture.
-- **Staff besides performers/vendors** — security, gate staff, an
-  announcer/mayor — a third contractable role reusing the existing
-  `CONTRACT_OPTIONS` pattern already built twice.
-- **Multi-stage story arcs for performers** — a tournament or a
-  running storyline across a weekend's three days, giving
-  `TIME_BLOCKS` scheduling some narrative continuity.
-- **Photo-mode/postcard export** — pure polish; a "share your faire"
-  screenshot feature of the grounds map.
-- **A second, deeper win track** — e.g. a reputation-only "best faire
-  in the land" milestone independent of cash, now that the first
-  win-condition plumbing (`checkWinCondition`/`victoryAchieved`/the
-  `'victory'` phase) exists to extend rather than rebuild.
+Unchanged from Stage 17 — still held over from the Stage 14 kickoff
+prompt: guest archetypes, weather/random days, a third contractable
+staff role (security/gate staff/an announcer), multi-stage performer
+story arcs, a photo-mode/postcard export, and a second, deeper win track
+(e.g. a reputation-only milestone independent of cash).
 
 ## Retro
 
 **Went well:**
-- Treating the win condition as a celebration, not an ending, kept the
-  change small and low-risk: no new "are we allowed to keep playing?"
-  logic anywhere else in the codebase, no new save shape beyond one
-  boolean flag, and zero risk of accidentally locking a player out of
-  their own sandbox save.
-- Writing `checkBankruptcy`/`checkWinCondition` as trivial pure functions
-  first, entirely separate from when/how state.js acts on them, made
-  both trivial to unit-test in isolation before touching any state-
-  machine wiring at all.
-- Reusing the exact `.ticket-stub` shell for both new screens (just a
-  border-color override) meant zero new CSS layout, and both screens
-  automatically got the notch/dashed-border/centered-heading treatment
-  for free.
+- All three rules reused `PLACEMENT_RULES`'s existing data-only shape
+  exactly — no new exported engine functions, no new stored plot fields,
+  no save migration. The stage-spacing pattern Stage 11 established
+  (small data table + one check in `isLegalPlacement`, any status counts,
+  `excludeId` self-exemption) turned out to generalize cleanly to a
+  second axis (stalls) and a completely different shape of rule (a count
+  cap, not a spatial one) with almost no new plumbing.
+- Rewriting the terrain-ban message to be generated (hit terrain +
+  "what's still allowed") rather than hardcoded paid for itself
+  immediately — the old message would have told a player refused for
+  building a food stall on a hill to "try a nearby clearing, hill, or
+  woods instead," recommending the very terrain that just refused them.
 
 **Dead end / thing to know about before you repeat it:**
-- First pass at the bankruptcy state-level test assumed a state with "no
-  plots built" would net a small loss on any given day, so a modest
-  starting deficit (floor minus $5,000) would stay ruined after a day
-  resolved. Wrong — this game's attendance/ticket-revenue formula pays
-  out based on reputation alone, with no stage required to draw a crowd,
-  so a single day can swing several thousand dollars positive even with
-  zero structures built. Had to push the test's starting deficit far
-  deeper (floor minus $50,000) to make the "stays bankrupt regardless of
-  the day's own cashDelta" assertion actually safe. Worth remembering for
-  any future stage's tests that construct an already-ruined state: don't
-  assume a plot-less day is a cheap day.
-- The pre-existing 50-day fuzz run needed an actual code change, not just
-  new assertions alongside it — its loop only knew how to route through
-  `weekendEnd`, so the first time a long random run organically hit
-  either new terminal-ish phase it would have silently gotten stuck (the
-  loop keeps looping, `runDay`/`nextDay` keep getting called against a
-  `victory`/`gameOver` state that never advances day, and the final
-  `day === 51` assertion would just fail with no explanation). Since both
-  outcomes are now legitimate, the fix was to teach the fuzz loop to
-  acknowledge victory and continue, or break early and accept a
-  bankruptcy ending — not to suppress or avoid triggering either
-  condition.
+- The bulk of this stage's time went into fixing pre-existing test
+  fixtures, not writing the new feature or its own tests. Several tests
+  elsewhere in the suite used two adjacent food stalls, or a food stall
+  anchored on a known-hill cell, purely as generic "build two things"
+  or "build on top of something" scaffolding — completely unrelated to
+  placement legality. The new hill ban and stall-spacing rules broke
+  roughly a dozen of these in ways that had nothing to do with what
+  those tests were actually checking. The fix each time was the same:
+  swap the incidental kind for one the new rule doesn't touch (`demo`
+  has no hill ban and no spacing rule, so it was the safe substitute
+  throughout) rather than relitigating the fixture's actual intent.
+  Worth remembering for any future placement rule: grep for every
+  existing call to the kind(s) about to be restricted, not just the
+  tests written specifically for the new rule.
+- First pass at the stage-on-hill sanity check (confirming a stage is
+  still allowed on a hill) anchored at a cell where the stage's 2×2
+  footprint spilled onto the path row below it — tripping the *existing*
+  path ban, not testing anything about the new hill ban. Moved the
+  anchor up one row so the whole footprint stays on hill.
 
 ## Changelog
 
 
+- **Stage 17** — reachability-gated draw, the specific sub-item the
+  backlog had named alongside "deeper crowd-flow" since Stage 9. New
+  `data.js` `ENTRANCE` (`{x:0, y:2}`, the row-2 artery's western end);
+  new `engine.js` `computePathDistances()` (memoized BFS along path
+  tiles from `ENTRANCE`), `reachabilityDistance(plot)`, and
+  `computeReachability(builtPlots)` (a 0.8×-1.2× gate-distance
+  multiplier, scored separately for stages vs. stalls so a lone built
+  plot of either kind is always exactly 1×); wired into `simulateDay`
+  alongside Stage 14's foot-traffic multiplier (not replacing it) for
+  both stage draw-weight and vendor stall sales. Building the BFS
+  surfaced a real pre-existing terrain-authoring bug — the col-3 path
+  spur has a gap at row 3, disconnecting it from the gate — handled
+  gracefully (pinned to the worst multiplier, excluded from its group's
+  mean) rather than fixed, and flagged for whichever future stage does
+  true pathfinding. New `.gate-marker` on the grounds map; a "gate
+  reach" tag on plot cards for stages AND stalls. 599-check smoke suite
+  (was 573). Backlog: reachability-gated draw shipped; true guest-agent/
+  pathfinding/path-congestion simulation remains the one fully-untouched
+  piece of "deeper crowd-flow." Delivered as renn-faire-sim-stage17.zip.
+- **Stage 16** — win/loss conditions, the first of the two backlog items
+  that had sat fully untouched since Stage 9. New `CONFIG.winCondition`
+  (`{seasonTarget:6, minReputation:70, minCash:4000}`) and
+  `CONFIG.bankruptcyFloor` (-1500); new pure `checkBankruptcy(cash)`/
+  `checkWinCondition(state)`; `runDay` flags a new `bankrupt` field the
+  moment cash crosses the floor (that day's report ticket still shows
+  normally first); `nextDay` checks `bankrupt` first and routes to a
+  terminal `'gameOver'` phase, and separately checks `checkWinCondition`
+  at the existing weekend-boundary check, routing to a one-time
+  `'victory'` phase (guarded by a new `victoryAchieved` flag) instead of
+  `'weekendEnd'` the first time every threshold is met. New
+  `acknowledgeVictory` action drops from `'victory'` into the normal
+  `'weekendEnd'` screen untouched otherwise — win is a celebration, not an
+  ending. New `renderVictory`/`renderGameOver` reuse the existing
+  `.ticket-stub` shell (gold/wine border accents). `loadState` migrates
+  pre-Stage-16 saves missing either field to `false`. 573-check smoke
+  suite (was 532) — pure threshold tests, state-level bankruptcy/victory
+  flow tests, a `loadState` migration test, and 2 DOM boot tests that
+  preload a save already parked in `gameOver`/`victory`; the pre-existing
+  50-day fuzz run needed an actual fix (not just new assertions) since its
+  loop only knew how to route through `weekendEnd` and would have gotten
+  stuck the first time a long run organically won or went bankrupt.
+  Dead end worth knowing: a "no plots built" day can still swing several
+  thousand dollars positive (attendance/ticket revenue pays out on
+  reputation alone, no stage required), so a bankruptcy test needs a much
+  deeper starting deficit than intuition suggests to stay ruined. Backlog:
+  win/loss condition shipped; deeper crowd-flow (guest agents, path
+  congestion, reachability-gated stage draw) remains the one fully-
+  untouched backlog item. Delivered as renn-faire-sim-stage16.zip.
 - **Stage 15** — escalating build cost, the other half of the old
   "structure cap or cost curve" backlog item Stage 13's upkeep only
   partly addressed. New `CONFIG.escalatingBuildCostRate` (0.15);

@@ -1,8 +1,8 @@
 // ui.js — turns state into HTML strings. No event listeners live here;
 // main.js wires all interaction via event delegation on #content.
 
-import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll } from './engine.js';
+import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES } from './data.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -250,7 +250,7 @@ export function renderBackstage(state, warn) {
 // fresh placement, just excluding the plot's own current cell (so it's a
 // legal target for a same-cell no-op, though there's little reason to) and
 // wiring ghosts to `moveTo` instead of `placeAt`.
-function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic) {
+function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachability) {
   // Stage 8: only render the grounds the player has actually reached — the
   // full TERRAIN_ROWS/GRID extent is authored ahead of time, but cells past
   // the current fence line (see currentGridSize) aren't shown or buildable
@@ -263,6 +263,12 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic) {
       const terrain = terrainAt(x, y) || 'clearing';
       cells.push(`<div class="terrain-cell" data-terrain="${terrain}" style="grid-column:${x + 1};grid-row:${y + 1};"></div>`);
     }
+  }
+  // Stage 17: the gate itself, so a player can see at a glance which cells
+  // in the grounds map below actually sit close to it.
+  let gateMarker = '';
+  if (ENTRANCE.y < size.rows && ENTRANCE.x < size.cols) {
+    gateMarker = `<div class="gate-marker" style="grid-column:${ENTRANCE.x + 1};grid-row:${ENTRANCE.y + 1};" title="Front Gate \u2014 every guest's walk starts here">\u26f2</div>`;
   }
 
   // Stage 12: occupancy now covers a plot's WHOLE footprint (a 2x2 stage
@@ -283,7 +289,12 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic) {
     const footNote = (p.status === 'built' && (p.kind === 'food' || p.kind === 'vendor') && footTraffic && footTraffic[p.id])
       ? `, foot traffic ${footTraffic[p.id].mult.toFixed(2)}x`
       : '';
-    const title = `${p.name} \u2014 ${statusWord} (sightline ${pct(attrs.sightline)}, shade ${pct(attrs.shade)}, traffic ${pct(attrs.traffic)}${footNote})`;
+    // Stage 17: reachability applies to built stages too (not just stalls),
+    // so it's noted alongside foot traffic rather than folded into it.
+    const reachNote = (p.status === 'built' && reachability && reachability[p.id])
+      ? `, ${reachability[p.id].mult.toFixed(2)}x gate reach`
+      : '';
+    const title = `${p.name} \u2014 ${statusWord} (sightline ${pct(attrs.sightline)}, shade ${pct(attrs.shade)}, traffic ${pct(attrs.traffic)}${footNote}${reachNote})`;
     const statusClass = p.status === 'planning' ? 'planning' : 'built';
     const movingClass = movingPlot && movingPlot.id === p.id ? ' moving' : '';
     return `<div class="plot-marker kind-${p.kind} ${statusClass}${movingClass}" style="${style}" title="${title}">${glyph}</div>`;
@@ -330,9 +341,10 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic) {
   }
 
   return `
-    <div class="grounds-map" style="--cols:${size.cols};--rows:${size.rows};">${cells.join('')}${builtMarkers}${ghostMarkers}</div>
+    <div class="grounds-map" style="--cols:${size.cols};--rows:${size.rows};">${cells.join('')}${gateMarker}${builtMarkers}${ghostMarkers}</div>
     <p class="map-legend mono">\u{1F3D4}\ufe0f hill &middot; \u{1F332} woods &middot; \u{1F3DE}\ufe0f path &middot; \u{1F33E} clearing</p>
     <p class="map-legend mono">Everything built must sit on or beside a path &middot; \u{1F3AD} stages need a clear 2\u00d72</p>
+    <p class="map-legend mono">\u{1F357}\u{1F6D2} stalls can't be built on a hill \u2014 that ground is stage/demo only</p>
   `;
 }
 
@@ -358,9 +370,21 @@ function renderBuildPalette(state, pendingBuild) {
   const buttons = Object.entries(STRUCTURE_TYPES).map(([kind, type]) => {
     const builtCount = countBuiltOfKind(state.builtPlots, kind);
     const escalated = Math.round((type.baseCost * Math.pow(1 + CONFIG.escalatingBuildCostRate, builtCount)) / 10) * 10;
-    const priceTag = builtCount > 0
-      ? `<span class="mono" title="${builtCount} already built \u2014 the next one costs more">from ${money(escalated)}</span>`
-      : `<span class="mono">from ${money(escalated)}</span>`;
+    // Stage 18: a kind with a maxBuiltByKind cap (currently just demo camps)
+    // shows how many are already claimed instead of/alongside the price —
+    // unlike the spatial legality rules (spacing, terrain bans), this cap
+    // isn't discoverable by trying a cell, since it blocks every cell at
+    // once once reached.
+    const cap = PLACEMENT_RULES.maxBuiltByKind ? PLACEMENT_RULES.maxBuiltByKind[kind] : null;
+    // any status (built or still-planning) counts toward the cap, same as
+    // isLegalPlacement itself checks.
+    const claimedCount = (state.builtPlots || []).filter(p => p.kind === kind).length;
+    const atCap = cap != null && claimedCount >= cap;
+    const priceTag = atCap
+      ? `<span class="mono" title="The grounds can only support ${cap} ${type.label}s at once">${claimedCount}/${cap} built</span>`
+      : builtCount > 0
+        ? `<span class="mono" title="${builtCount} already built \u2014 the next one costs more">from ${money(escalated)}</span>`
+        : `<span class="mono">from ${money(escalated)}</span>`;
     return `
     <button class="btn small ${pendingBuild === kind ? 'active' : ''}" data-action="selectBuild" data-kind="${kind}">
       ${type.icon} ${type.label} ${priceTag}
@@ -398,7 +422,7 @@ function renderMoveBanner(state, pendingMove) {
 // Stage 10: a single plot card, aware of whether the plot is still a
 // free/movable "plan" or already committed and functioning. Food/vendor
 // (craft) plots also get an inline vendor-seating control once built.
-function renderPlotCard(state, p, footTraffic) {
+function renderPlotCard(state, p, footTraffic, reachability) {
   const attrs = computePlotAttributes(p, state.builtPlots);
   const isPlanning = p.status === 'planning';
   const adjacencyNote = !isPlanning && attrs.nearbyStages > 0
@@ -417,6 +441,13 @@ function renderPlotCard(state, p, footTraffic) {
   const footEntry = !isPlanning && footTraffic && footTraffic[p.id];
   const footTrafficTag = footEntry
     ? `<span class="${footEntry.mult >= 1.05 ? 'hint-tag' : footEntry.mult <= 0.95 ? 'warn-tag' : 'hint-tag'}" title="How this stall's placement compares to the grounds\u2019 average foot traffic today">${footEntry.mult.toFixed(2)}x foot traffic</span>`
+    : '';
+  // Stage 17: reachability applies to stages too (unlike foot traffic,
+  // which only ever tracked food/vendor stalls), so this checks reachability
+  // directly rather than piggybacking on footEntry's kind restriction.
+  const reachEntry = !isPlanning && reachability && reachability[p.id];
+  const reachabilityTag = reachEntry
+    ? `<span class="${reachEntry.mult >= 1.03 ? 'hint-tag' : reachEntry.mult <= 0.97 ? 'warn-tag' : 'hint-tag'}" title="How close a walk from the front gate this spot is, vs. the grounds\u2019 average built stage/stall today">${reachEntry.mult.toFixed(2)}x gate reach</span>`
     : '';
 
   let vendorNote = '';
@@ -473,6 +504,7 @@ function renderPlotCard(state, p, footTraffic) {
         ${adjacencyNote}
         ${demoNote}
         ${footTrafficTag}
+        ${reachabilityTag}
       </div>
       ${vendorNote}
       <div class="plot-actions">${actionButtons}</div>
@@ -485,7 +517,10 @@ export function renderFairFloor(state, conflicts, pendingBuild, pendingMove) {
   // tooltips and the plot cards below, rather than each recomputing it —
   // it's a pure function of state.builtPlots, so one call is all this needs.
   const footTraffic = computeFootTraffic(state.builtPlots);
-  const mapHtml = renderGroundsMap(state, pendingMove ? null : pendingBuild, pendingMove, footTraffic);
+  // Stage 17: same "computed once, threaded through" pattern as footTraffic
+  // — reachability is a pure function of state.builtPlots too.
+  const reachability = computeReachability(state.builtPlots);
+  const mapHtml = renderGroundsMap(state, pendingMove ? null : pendingBuild, pendingMove, footTraffic, reachability);
   const paletteHtml = pendingMove ? renderMoveBanner(state, pendingMove) : renderBuildPalette(state, pendingBuild);
 
   const planningPlots = state.builtPlots.filter(p => p.status === 'planning');
@@ -499,7 +534,7 @@ export function renderFairFloor(state, conflicts, pendingBuild, pendingMove) {
 
   const plotRows = state.builtPlots.length === 0
     ? `<p class="hint">Nothing planned yet \u2014 pick a structure above and tap a spot on the map.</p>`
-    : state.builtPlots.map(p => renderPlotCard(state, p, footTraffic)).join('');
+    : state.builtPlots.map(p => renderPlotCard(state, p, footTraffic, reachability)).join('');
 
   const builtStages = state.builtPlots.filter(p => p.kind === 'stage' && p.status === 'built');
 

@@ -19,8 +19,8 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition } = await import(path.join(root, 'js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL } = await import(path.join(root, 'js/data.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability } = await import(path.join(root, 'js/engine.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE } = await import(path.join(root, 'js/data.js'));
 const State = await import(path.join(root, 'js/state.js'));
 
 // --- RNG determinism ---
@@ -364,6 +364,72 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(shares.stage1 === undefined, 'computeFootTraffic never includes a stage in its result');
 }
 
+// --- Stage 17: computePathDistances (BFS from ENTRANCE) ---
+{
+  const dist = computePathDistances();
+  assert(dist.get(`${ENTRANCE.x},${ENTRANCE.y}`) === 0, 'ENTRANCE itself is distance 0');
+  assert(terrainAt(ENTRANCE.x, ENTRANCE.y) === 'path', 'ENTRANCE sits on a path tile, as the BFS requires');
+  // The row-2 artery runs the grid's full authored width (Stage 8/12 both
+  // rely on this), so the far east end should be exactly GRID.cols-1 hops.
+  assert(dist.get(`${GRID.cols - 1},2`) === GRID.cols - 1, 'the row-2 artery is a straight, fully-connected walk from end to end');
+  // A non-path cell never appears in the distance map at all.
+  assert(dist.get('0,0') === undefined, 'a non-path cell (a hill/woods/clearing tile) never gets a BFS distance');
+  // Same object every call \u2014 the terrain map is static, so this is safe
+  // to memoize (see the "computed once" comment above the function).
+  assert(computePathDistances() === dist, 'computePathDistances() memoizes its result across calls');
+  // Content note (see HANDOFF's Stage 17 retro): the col-3 spur has an
+  // authoring gap at row 3, leaving rows 4+ of that spur unreachable from
+  // ENTRANCE by any path-tile walk, even though the tiles are still 'path'
+  // terrain and still legally buildable-against per hasPathFrontage. This
+  // assertion pins that discovery down as a known, tested fact rather than
+  // a silent surprise for a future stage to re-debug from scratch.
+  assert(dist.get('3,2') === 3 && dist.get('3,4') === undefined, 'the col-3 spur is disconnected from the gate at row 3 \u2014 a pre-existing terrain-authoring gap, not a Stage 17 bug');
+}
+
+// --- Stage 17: reachabilityDistance + computeReachability ---
+{
+  // A stage built right on the row-2 artery, one built far down the col-10
+  // spur \u2014 same kind (stage), so they're compared against each other's
+  // mean directly, and the artery one should read as closer to the gate.
+  const nearStage = { id: 'nearStage', kind: 'stage', x: 2, y: 1, w: 2, h: 2, status: 'built' }; // fronts row 2 at x=2..3
+  const farStage = { id: 'farStage', kind: 'stage', x: 9, y: 8, w: 2, h: 2, status: 'built' }; // deep down the col-10 spur
+  assert(reachabilityDistance(nearStage) < reachabilityDistance(farStage), 'a stage built near the gate resolves to a shorter gate-walk than one built far down a spur');
+
+  const reach = computeReachability([nearStage, farStage]);
+  assert(reach.nearStage.mult > 1 && reach.farStage.mult < 1, 'the near-gate stage scores above 1x and the far one below, relative to each other');
+  for (const key of Object.keys(reach)) {
+    assert(reach[key].mult >= 0.8 && reach[key].mult <= 1.2, `${key}\u2019s reachability multiplier stays within the documented 0.8x-1.2x clamp`);
+  }
+
+  // A single built plot of a kind is always exactly 1x \u2014 mirrors
+  // computeFootTraffic's same backward-compatible guarantee.
+  const solo = computeReachability([nearStage]);
+  assert(solo.nearStage.mult === 1, 'a lone built plot of a kind always has a reachability multiplier of exactly 1');
+
+  // Stages and stalls are scored against their OWN kind-group's mean, not
+  // pooled together \u2014 so a lone stall's score is untouched by a stage
+  // built elsewhere, even a very differently-sited one.
+  const soloStall = { id: 'soloStall', kind: 'food', x: 6, y: 2, status: 'built' }; // right on the artery
+  const grouped = computeReachability([farStage, soloStall]);
+  assert(grouped.soloStall.mult === 1, 'a lone stall\u2019s reachability is unaffected by an unrelated stage built elsewhere (stages/stalls scored in separate groups)');
+
+  // A still-planning plot doesn't functionally exist on the grounds yet
+  // (same rule every other siting mechanic already follows) \u2014 excluded
+  // entirely, from both the result and the mean.
+  const planningStage = { id: 'planStage', kind: 'stage', x: 2, y: 1, w: 2, h: 2, status: 'planning' };
+  const withPlanning = computeReachability([nearStage, planningStage]);
+  assert(withPlanning.nearStage.mult === 1 && withPlanning.planStage === undefined, 'a planning plot is excluded from computeReachability entirely');
+
+  // A plot built against the disconnected col-3 spur (see the BFS test
+  // above) has no finite gate-walk at all \u2014 it's pinned straight to the
+  // worst multiplier rather than corrupting the group's mean with Infinity.
+  const cutOffStall = { id: 'cutOff', kind: 'food', x: 4, y: 5, status: 'built' }; // fronts the col-3 spur at (3,5), past the row-3 gap
+  assert(!Number.isFinite(reachabilityDistance(cutOffStall)), 'a plot fronting the disconnected col-3 spur has no finite path-distance to the gate');
+  const withCutOff = computeReachability([soloStall, cutOffStall]);
+  assert(withCutOff.cutOff.mult === 0.8, 'a gate-unreachable plot is pinned to the worst (0.8x) reachability multiplier, not NaN or Infinity');
+  assert(Number.isFinite(withCutOff.soloStall.mult) && withCutOff.soloStall.mult > 0, 'the OTHER (reachable) plot in the group is unaffected by the unreachable one\u2019s distance');
+}
+
 // --- simulateDay: basic shape & determinism ---
 {
   let s = State.createInitialState();
@@ -483,7 +549,10 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(afterBuild.builtPlots[0].id === '3_0', 'the built plot gets an id derived from its cell');
   assert(afterBuild.builtPlots[0].capacity === quote.capacity, 'the built stage stores its terrain-adjusted capacity');
 
-  const dup = State.buildPlot(afterBuild, 'food', 3, 0);
+  // demo, not food: (3,0) is a hill cell, and Stage 18 banned food/vendor
+  // stalls from hills \u2014 using demo here keeps this test isolated to the
+  // occupancy check it's actually named for.
+  const dup = State.buildPlot(afterBuild, 'demo', 3, 0);
   assert(dup.error && /already built/i.test(dup.error), 'buildPlot refuses to build on an already-occupied cell, regardless of kind');
 
   const elsewhere = State.buildPlot(afterBuild, 'food', 6, 2);
@@ -503,12 +572,13 @@ const State = await import(path.join(root, 'js/state.js'));
 
 // --- Stage 15: escalating build cost, end to end through the state actions ---
 {
-  // (2,3) and (3,3) are both clearing cells with path frontage onto row 2.
+  // (2,3) and (5,3) are both clearing cells with path frontage onto row 2,
+  // spaced far enough apart to clear Stage 18's same-kind stall spacing rule.
   let s = State.createInitialState();
   let r1 = State.buildPlot(s, 'food', 2, 3);
   assert(r1.error === null, 'first food stall builds normally');
   const firstCost = r1.state.builtPlots[0].cost;
-  const r2 = State.buildPlot(r1.state, 'food', 3, 3);
+  const r2 = State.buildPlot(r1.state, 'food', 5, 3);
   assert(r2.error === null, 'second food stall builds normally');
   const secondCost = r2.state.builtPlots[1].cost;
   assert(secondCost > firstCost, 'buildPlot: a second built food stall costs more than the first, via escalating build cost');
@@ -530,7 +600,7 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(r.error === null, 'first food stall plans for free');
   const planCost1 = r.state.builtPlots[0].cost;
   s = r.state;
-  r = State.placePlot(s, 'food', 3, 3);
+  r = State.placePlot(s, 'food', 5, 3);
   assert(r.error === null, 'second food stall also plans for free');
   const planCost2 = r.state.builtPlots[1].cost;
   s = r.state;
@@ -539,7 +609,7 @@ const State = await import(path.join(root, 'js/state.js'));
 
   const sequential = State.createInitialState();
   const seq1 = State.buildPlot(sequential, 'food', 2, 3);
-  const seq2 = State.buildPlot(seq1.state, 'food', 3, 3);
+  const seq2 = State.buildPlot(seq1.state, 'food', 5, 3);
   const sequentialTotal = seq1.state.builtPlots[0].cost + seq2.state.builtPlots[1].cost;
 
   const batchRes = State.commitAllPlots(s);
@@ -1112,7 +1182,9 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(!!plot && plot.status === 'planning', 'a freshly placed plot has status "planning"');
   assert(plot.id.startsWith('plot_'), 'placePlot ids come from the nextPlotId counter, not the (x,y) scheme buildPlot uses');
 
-  const dupPlace = State.placePlot(s, 'food', 3, 0);
+  // demo, not food: (3,0) is a hill cell, banned for food stalls since
+  // Stage 18 \u2014 demo keeps this test isolated to the occupancy check.
+  const dupPlace = State.placePlot(s, 'demo', 3, 0);
   assert(dupPlace.error && /already built/i.test(dupPlace.error), 'placePlot refuses an already-occupied cell');
 
   const commitRes = State.commitPlot(s, plot.id);
@@ -1270,9 +1342,11 @@ const State = await import(path.join(root, 'js/state.js'));
 
 {
   // assignVendorToPlot / unassignVendorFromPlot / autoFillStalls.
+  // Row 2 is path the whole way across; these three sit 3 cells apart so
+  // Stage 18's same-kind stall spacing rule doesn't block any of them.
   let s = State.createInitialState();
-  s = State.buildPlot(s, 'food', 6, 2).state;
-  s = State.buildPlot(s, 'food', 7, 2).state;
+  s = State.buildPlot(s, 'food', 1, 2).state;
+  s = State.buildPlot(s, 'food', 4, 2).state;
   const [plotA, plotB] = s.builtPlots;
 
   s = State.hireVendor(s, 'vend_cider').state; // auto-seats at plotA
@@ -1297,7 +1371,7 @@ const State = await import(path.join(root, 'js/state.js'));
 
   // autoFillStalls: unseat everyone, add a third food stall, then confirm
   // it fills every open stall/vendor pair deterministically.
-  let fillTest = State.buildPlot(reassigned.state, 'food', 8, 2).state;
+  let fillTest = State.buildPlot(reassigned.state, 'food', 7, 2).state;
   fillTest = State.unassignVendorFromPlot(fillTest, plotA.id).state;
   fillTest = State.unassignVendorFromPlot(fillTest, plotB.id).state;
   const autoFilled = State.autoFillStalls(fillTest);
@@ -1334,7 +1408,7 @@ const State = await import(path.join(root, 'js/state.js'));
   let s = State.createInitialState();
   s = State.buildPlot(s, 'stage', 3, 0).state;
   s = State.buildPlot(s, 'food', 6, 2).state;
-  s = State.buildPlot(s, 'food', 7, 2).state;
+  s = State.buildPlot(s, 'food', 9, 2).state;
   s = State.hireVendor(s, 'vend_cider').state; // seats at the first food plot; second stays open
   const result = simulateDay(s, 11);
   assert(!result.warnings.some(w => /not assigned to a stall/i.test(w)), 'no "unseated vendor" warning when every hired vendor is seated');
@@ -1394,7 +1468,9 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(tooClose.ok === false && /too close/i.test(tooClose.reason), 'isLegalPlacement refuses a second stage directly adjacent to an existing one');
   const farEnough = isLegalPlacement('stage', 4, 0, existingStage);
   assert(farEnough.ok === true, 'isLegalPlacement allows a second stage once it clears minStageSpacing');
-  const nonStageNearby = isLegalPlacement('food', 2, 1, existingStage);
+  // demo, not food: (2,1) is a hill cell, banned for food/vendor since
+  // Stage 18 \u2014 demo isn't, so this stays a pure stage-spacing test.
+  const nonStageNearby = isLegalPlacement('demo', 2, 1, existingStage);
   assert(nonStageNearby.ok === true, 'the stage-spacing rule only applies between two stages, not other kinds');
 
   // A plot excluded by id (the one being moved/relocated) doesn't count
@@ -1442,6 +1518,109 @@ const State = await import(path.join(root, 'js/state.js'));
   const builtFirst = committed.builtPlots.find(p => p.x === 0 && p.y === 0);
   const relocateTooClose = State.relocatePlot(committed, builtFirst.id, 2, 0);
   assert(relocateTooClose.error && /too close/i.test(relocateTooClose.error), 'relocatePlot refuses relocating a built stage too close to another built stage');
+}
+
+// ---------------------------------------------------------------------
+// Stage 18: three more legality rules on the same PLACEMENT_RULES/
+// isLegalPlacement pattern Stage 11/12 established — a hill ban for
+// food/vendor stalls, same-kind stall spacing, and a demo camp cap.
+// ---------------------------------------------------------------------
+{
+  // data integrity: the new PLACEMENT_RULES entries exist and are shaped
+  // as isLegalPlacement expects.
+  assert(Array.isArray(PLACEMENT_RULES.terrainBans.food) && PLACEMENT_RULES.terrainBans.food.includes('hill'), 'PLACEMENT_RULES bans food stalls from hill terrain');
+  assert(Array.isArray(PLACEMENT_RULES.terrainBans.vendor) && PLACEMENT_RULES.terrainBans.vendor.includes('hill'), 'PLACEMENT_RULES bans craft stalls from hill terrain too');
+  assert(Array.isArray(PLACEMENT_RULES.stallSpacingKinds) && PLACEMENT_RULES.stallSpacingKinds.includes('food') && PLACEMENT_RULES.stallSpacingKinds.includes('vendor'), 'PLACEMENT_RULES applies stall spacing to both food and craft stalls');
+  assert(typeof PLACEMENT_RULES.minStallSpacing === 'number', 'PLACEMENT_RULES defines a numeric minStallSpacing');
+  assert(PLACEMENT_RULES.maxBuiltByKind && PLACEMENT_RULES.maxBuiltByKind.demo === 3, 'PLACEMENT_RULES caps demo camps at 3');
+}
+
+{
+  // Hill ban: a food/craft stall can't be built on a hill; a stage and a
+  // demo camp both still can (a stage's best terrain, a demo's fixed camp
+  // site). (2,1) is a hill cell with path frontage via its south neighbor.
+  assert(terrainAt(2, 1) === 'hill', 'sanity check: (2,1) is a hill cell');
+  const foodOnHill = isLegalPlacement('food', 2, 1, []);
+  assert(foodOnHill.ok === false && /hill/i.test(foodOnHill.reason), 'isLegalPlacement refuses a food stall on a hill');
+  const vendorOnHill = isLegalPlacement('vendor', 2, 1, []);
+  assert(vendorOnHill.ok === false && /hill/i.test(vendorOnHill.reason), 'isLegalPlacement refuses a craft stall on a hill too');
+  // (2,0) anchors a full 2x2 hill footprint \u2014 (2,1) alone would have the
+  // stage's footprint spill onto the path row at (2,2)/(3,2), which is a
+  // separate, correct refusal (stage still can't touch the path) that
+  // isn't what this check is testing.
+  const stageOnHill = isLegalPlacement('stage', 2, 0, []);
+  assert(stageOnHill.ok === true, 'a stage is still allowed on a hill \u2014 the ban is stall-specific');
+  const demoOnHill = isLegalPlacement('demo', 2, 1, []);
+  assert(demoOnHill.ok === true, 'a demo camp is still allowed on a hill \u2014 the ban is stall-specific');
+  // The refusal message suggests terrain that's actually still open, not a
+  // stale "try a hill" leftover from the old hardcoded path-ban message.
+  assert(!/try.*hill/i.test(foodOnHill.reason), 'the hill-ban message doesn\u2019t suggest hill as an alternative');
+
+  const buildOnHill = State.buildPlot(State.createInitialState(), 'food', 2, 1);
+  assert(buildOnHill.error && /hill/i.test(buildOnHill.error), 'buildPlot surfaces the same hill-ban refusal end to end');
+}
+
+{
+  // Same-kind stall spacing: two food stalls (or two craft stalls) can't
+  // sit within minStallSpacing of each other, but a food stall right next
+  // to a craft stall is fine \u2014 the rule is same-kind only.
+  const existingFood = [{ id: 'plot_1', kind: 'food', x: 6, y: 2, status: 'built' }];
+  const tooCloseFood = isLegalPlacement('food', 7, 2, existingFood);
+  assert(tooCloseFood.ok === false && /crowd/i.test(tooCloseFood.reason), 'isLegalPlacement refuses a second food stall directly beside an existing one');
+  const farEnoughFood = isLegalPlacement('food', 9, 2, existingFood);
+  assert(farEnoughFood.ok === true, 'isLegalPlacement allows a second food stall once it clears minStallSpacing');
+  const vendorBeside = isLegalPlacement('vendor', 7, 2, existingFood);
+  assert(vendorBeside.ok === true, 'a craft stall right beside an existing food stall is fine \u2014 spacing is same-kind only');
+
+  const existingVendor = [{ id: 'plot_2', kind: 'vendor', x: 6, y: 2, status: 'built' }];
+  const tooCloseVendor = isLegalPlacement('vendor', 7, 2, existingVendor);
+  assert(tooCloseVendor.ok === false && /crowd/i.test(tooCloseVendor.reason), 'isLegalPlacement refuses a second craft stall directly beside an existing one too');
+
+  // A still-planning stall claims its spacing too, same rule the stage
+  // check already follows.
+  const planningFood = [{ id: 'plot_3', kind: 'food', x: 6, y: 2, status: 'planning' }];
+  const tooCloseToPlan = isLegalPlacement('food', 7, 2, planningFood);
+  assert(tooCloseToPlan.ok === false && /crowd/i.test(tooCloseToPlan.reason), 'isLegalPlacement treats a still-planning stall as claiming its spot for spacing purposes');
+
+  // excludeId: a stall being moved/relocated doesn\u2019t count against its own new spot.
+  const selfCheck = isLegalPlacement('food', 6, 2, existingFood, 'plot_1');
+  assert(selfCheck.ok === true, 'isLegalPlacement ignores the stall\u2019s own current position when excludeId matches it');
+
+  const placedFood = State.placePlot(State.createInitialState(), 'food', 6, 2).state;
+  const tooCloseBuild = State.buildPlot(placedFood, 'food', 7, 2);
+  assert(tooCloseBuild.error && /crowd/i.test(tooCloseBuild.error), 'buildPlot surfaces the same stall-spacing refusal end to end');
+}
+
+{
+  // Demo camp cap: the 4th demo camp is refused regardless of open,
+  // legal ground, even though nothing else about the site is a problem.
+  // (0,1), (2,1), (6,1), (9,1) are all row-1 cells with frontage via their
+  // shared south neighbor (row 2 is path the whole way across), leaving
+  // (3,1)/(4,1) free for the stage footprint used below.
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'demo', 0, 1).state;
+  s = State.buildPlot(s, 'demo', 2, 1).state;
+  s = State.buildPlot(s, 'demo', 6, 1).state;
+  assert(s.builtPlots.filter(p => p.kind === 'demo').length === 3, 'three demo camps build normally, right up to the cap');
+  const fourth = State.buildPlot(s, 'demo', 9, 1);
+  assert(fourth.error && /can only support/i.test(fourth.error), 'buildPlot refuses a 4th demo camp once the cap is reached');
+  assert(s.builtPlots.filter(p => p.kind === 'demo').length === 3, 'the refused 4th demo camp was not actually added to state');
+
+  // Still-planning demo camps count toward the cap too, closing the same
+  // bulk-commit loophole the stage-spacing/stall-spacing rules already
+  // close \u2014 planning 4 and committing them together can\u2019t bypass it.
+  let planned = State.createInitialState();
+  planned = State.placePlot(planned, 'demo', 0, 1).state;
+  planned = State.placePlot(planned, 'demo', 2, 1).state;
+  planned = State.placePlot(planned, 'demo', 6, 1).state;
+  const fourthPlan = State.placePlot(planned, 'demo', 9, 1);
+  assert(fourthPlan.error && /can only support/i.test(fourthPlan.error), 'placePlot refuses a 4th planning-status demo camp once the cap is reached');
+
+  // A different kind is unaffected by the demo cap. (3,0) is a known-good
+  // path-fronted stage site used throughout this suite; its footprint
+  // (3,0)-(4,1) doesn't touch any of the three demo cells above.
+  const stageAfterDemos = State.buildPlot(s, 'stage', 3, 0);
+  assert(stageAfterDemos.error === null, 'the demo cap doesn\u2019t block building other kinds');
 }
 
 // ---------------------------------------------------------------------
@@ -1512,13 +1691,16 @@ const State = await import(path.join(root, 'js/state.js'));
 {
   // Footprint occupancy: a second structure can't be anchored on ANY cell
   // of an already-built stage's 2x2 block, not just its anchor cell.
+  // demo, not food: the stage's whole 2x2 block sits on hill terrain, and
+  // Stage 18 banned food/vendor stalls from hills \u2014 demo isn't banned
+  // there, keeping this test isolated to footprint occupancy.
   let s = State.createInitialState();
   s = State.buildPlot(s, 'stage', 3, 0).state; // occupies (3,0),(4,0),(3,1),(4,1)
-  const onAnchor = State.buildPlot(s, 'food', 3, 0);
+  const onAnchor = State.buildPlot(s, 'demo', 3, 0);
   assert(onAnchor.error && /already built/i.test(onAnchor.error), 'a second plot can\u2019t anchor on the stage\u2019s own anchor cell');
-  const onFarCorner = State.buildPlot(s, 'food', 4, 1);
+  const onFarCorner = State.buildPlot(s, 'demo', 4, 1);
   assert(onFarCorner.error && /already built/i.test(onFarCorner.error), 'a second plot can\u2019t anchor on a NON-anchor cell of the stage\u2019s footprint either');
-  const beside = State.buildPlot(s, 'food', 5, 1); // just outside the footprint, with frontage via (5,2)
+  const beside = State.buildPlot(s, 'demo', 5, 1); // just outside the footprint, with frontage via (5,2)
   assert(beside.error === null, 'a plot just outside the stage\u2019s footprint (with its own frontage) is fine');
 
   // The built stage record itself carries its footprint size, so a save
@@ -1662,6 +1844,55 @@ const State = await import(path.join(root, 'js/state.js'));
 }
 
 // ---------------------------------------------------------------------
+// Stage 17: reachability-gated draw \u2014 gate-distance drives both stall
+// sales and stage draw-weight at the simulateDay level.
+// ---------------------------------------------------------------------
+{
+  // Same technique as the Stage 14 sHigh/sLow test above: TWO food stalls
+  // built in every state (so reachability actually has something to
+  // compare against \u2014 a truly solo stall is pinned to exactly 1x by
+  // design), only one vendor hired, auto-seating at whichever stall was
+  // built first. No stage in either state, so there's no stage-adjacency
+  // traffic bonus to muddy which effect moved the numbers \u2014 gate distance
+  // is the only variable in play. Both cells sit directly on the row-2
+  // artery itself (food/craft stalls are allowed on path \u2014 see
+  // PLACEMENT_RULES.terrainBans), so their foot-traffic terrain/adjacency
+  // numbers are identical and only their gate-distance differs.
+  let sNear = State.createInitialState();
+  sNear = State.buildPlot(sNear, 'food', 1, 2).state; // built first \u2014 auto-seat lands here, 1 hop from ENTRANCE
+  sNear = State.buildPlot(sNear, 'food', 9, 2).state; // 9 hops from ENTRANCE
+  sNear = State.hireVendor(sNear, 'vend_cider').state;
+  const resultNear = simulateDay(sNear, 1);
+
+  let sFar = State.createInitialState();
+  sFar = State.buildPlot(sFar, 'food', 9, 2).state; // built first this time \u2014 auto-seat lands here instead
+  sFar = State.buildPlot(sFar, 'food', 1, 2).state;
+  sFar = State.hireVendor(sFar, 'vend_cider').state;
+  const resultFar = simulateDay(sFar, 1);
+
+  const nearSeated = sNear.builtPlots.find(p => p.assignedVendorId);
+  const farSeated = sFar.builtPlots.find(p => p.assignedVendorId);
+  assert(nearSeated.x === 1 && farSeated.x === 9, 'sanity check: each scenario auto-seated the vendor at the stall built first');
+  assert(resultNear.footTraffic[nearSeated.id].mult === 1 && resultFar.footTraffic[farSeated.id].mult === 1, 'with no stage in play, both stalls\u2019 terrain/adjacency traffic is identical \u2014 gate distance is the only variable left');
+  assert(resultNear.reachability[nearSeated.id].mult > 1, 'the near-gate stall scores above 1x reachability');
+  assert(resultFar.reachability[farSeated.id].mult < 1, 'the far-from-gate stall scores below 1x reachability');
+  assert(resultNear.attendance === resultFar.attendance, 'attendance itself is unaffected by a stall\u2019s distance from the gate (same seed/roster/schedule)');
+  assert(resultNear.vendorRevenue > resultFar.vendorRevenue, 'the same vendor earns more house revenue at a stall sited near the gate than one far from it');
+
+  // Same idea, one level up: a single state with TWO built stages (no
+  // schedule, no vendors \u2014 isolating reachability's effect on stage
+  // draw-weight from every other factor) sited near vs. far from the gate.
+  let stageBoth = State.createInitialState();
+  stageBoth = State.buildPlot(stageBoth, 'stage', 3, 0).state; // fronts (3,2)/(4,2), 3 hops from ENTRANCE
+  stageBoth = State.buildPlot(stageBoth, 'stage', 8, 0).state; // fronts (8,2)/(9,2), 8 hops from ENTRANCE
+  const nearStagePlot = stageBoth.builtPlots.find(p => p.x === 3);
+  const farStagePlot = stageBoth.builtPlots.find(p => p.x === 8);
+  const resultStageBoth = simulateDay(stageBoth, 1);
+  assert(resultStageBoth.reachability[nearStagePlot.id].mult > 1, 'a stage built near the gate scores above 1x reachability');
+  assert(resultStageBoth.reachability[farStagePlot.id].mult < 1, 'a stage built far from the gate scores below 1x reachability');
+}
+
+// ---------------------------------------------------------------------
 {
   // jsdom does not execute <script type="module"> tags (a long-standing
   // jsdom limitation), so instead of relying on index.html's own script
@@ -1697,6 +1928,7 @@ const State = await import(path.join(root, 'js/state.js'));
   const fairFloorTabBtn = doc.querySelector('[data-tab="fairfloor"]');
   fairFloorTabBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   assert(doc.querySelector('.grounds-map'), 'Fair Floor shows the grounds map');
+  assert(doc.querySelector('.gate-marker'), 'Stage 17: the front gate marker renders on the grounds map');
   assert(!doc.querySelector('.plot-marker.ghost'), 'no ghost placement cells before a structure kind is selected');
   assert(doc.querySelector('.grounds-status')?.textContent.includes('Home Grounds'), 'the grounds-status line shows Home Grounds at Weekend 1');
   assert(doc.querySelector('.grounds-status')?.textContent.includes('East Meadow'), 'the grounds-status line names East Meadow as the next expansion at Weekend 1');
@@ -1725,6 +1957,7 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(doc.querySelector('.plot-marker.built'), 'Stage 10: committing turns the planning marker into a built one');
   const cashAfterCommit = doc.querySelector('#ledger .ledger-item .ledger-label.mono')?.textContent;
   assert(cashAfterCommit !== cashBefore, 'Stage 10: cash on hand changes once the plot is actually committed');
+  assert(doc.querySelector('.plot-card[data-kind="stage"]')?.textContent.includes('gate reach'), 'Stage 17: a built stage\u2019s card shows its gate-reach tag');
 
   // Stage 11: with a committed stage now on the map, selecting Stage again
   // shows a blocked marker (not a clickable ghost) on the cell directly
@@ -1796,6 +2029,55 @@ const State = await import(path.join(root, 'js/state.js'));
   click(beginBtn);
   assert(doc.querySelector('#ledger').innerHTML.includes('Weekend 2'), 'starting the next weekend updates the ledger to Weekend 2');
   assert(doc.querySelector('[data-tab]'), 'tabs reappear once the next weekend begins');
+
+  dom.window.close();
+}
+
+// ---------------------------------------------------------------------
+// Stage 18: DOM-level checks for the demo-cap palette indicator and the
+// hill-ban blocked marker, driven end to end through main.js like the
+// gameOver/victory tests below \u2014 a save preloaded with 3 built demo
+// camps, rather than clicking through placing three of them by hand.
+// ---------------------------------------------------------------------
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
+    .replace(/<link[^>]*fonts\.g[^>]*>/g, '')
+    .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+
+  let capSave = State.createInitialState();
+  capSave = State.buildPlot(capSave, 'demo', 0, 1).state;
+  capSave = State.buildPlot(capSave, 'demo', 2, 1).state;
+  capSave = State.buildPlot(capSave, 'demo', 6, 1).state;
+  const storage = makeMemoryStorage();
+  storage.setItem('renn-faire-sim-save-v1', JSON.stringify(capSave));
+
+  const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.localStorage = storage;
+  globalThis.confirm = () => true;
+
+  await import(path.join(root, 'js/main.js') + `?t=${Date.now()}`);
+  const doc = dom.window.document;
+  const click = (el) => el.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+
+  const fairFloorTabBtn = doc.querySelector('[data-tab="fairfloor"]');
+  click(fairFloorTabBtn);
+  assert(doc.querySelector('.map-legend')?.textContent.includes('hill'), 'Stage 18: the grounds-map legend mentions the stall hill ban');
+
+  const demoBtn = doc.querySelector('[data-action="selectBuild"][data-kind="demo"]');
+  assert(!!demoBtn, 'the build palette has a Demo Camp option');
+  assert(demoBtn.textContent.includes('3/3 built'), 'Stage 18: with the cap already reached, the Demo Camp palette button shows "3/3 built" instead of a price');
+  click(demoBtn);
+  assert(!doc.querySelector('.plot-marker.ghost'), 'Stage 18: no ghost cell is offered anywhere once a kind is at its build cap');
+  const cappedBlocked = [...doc.querySelectorAll('.plot-marker.blocked')].find(el => /can only support/i.test(el.getAttribute('title')));
+  assert(!!cappedBlocked, 'Stage 18: a blocked marker explains the demo cap refusal');
+  click(doc.querySelector('[data-action="cancelBuild"]'));
+
+  const foodBtn = doc.querySelector('[data-action="selectBuild"][data-kind="food"]');
+  click(foodBtn);
+  const hillBlocked = [...doc.querySelectorAll('.plot-marker.blocked')].find(el => /hill/i.test(el.getAttribute('title')));
+  assert(!!hillBlocked, 'Stage 18: selecting Food Stall shows a blocked marker on a hill cell, with the hill ban explained in its title');
 
   dom.window.close();
 }

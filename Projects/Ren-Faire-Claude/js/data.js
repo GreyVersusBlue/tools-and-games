@@ -102,6 +102,15 @@ export const TERRAIN_ROWS = [
 
 export const TERRAIN_LEGEND = { C: 'clearing', H: 'hill', W: 'woods', P: 'path' };
 
+// Stage 17: the front gate — where every guest's walk across the grounds
+// starts. Sits on the row-2 artery's western end, the only edge of the path
+// network that has been on the map since Stage 1 (the row-2 artery has
+// always run the full authored width). Authored here as data, read by
+// engine.js's path-distance BFS — never moves on its own, but living as a
+// named constant (not a magic literal in engine.js) means a future stage
+// could relocate it, or add a second gate, without touching the BFS logic.
+export const ENTRANCE = { x: 0, y: 2 };
+
 // How much of the authored TERRAIN_ROWS grid is actually buildable right
 // now. Each entry is a hard fence line at (cols, rows) — everything inside
 // it is fair game, everything outside is "past the fence" until the
@@ -167,15 +176,33 @@ export const KIND_NOUN = { stage: 'Stage', food: 'Stall', vendor: 'Bazaar', demo
 // adjacency sightline/traffic math in engine.js's computePlotAttributes.
 // Deliberately small and data-only, same pattern as TERRAIN_BUILD_MODIFIERS,
 // so a future stage can extend either list without touching engine logic.
+//
+// Stage 18 extends this same data-only pattern three ways (all three were
+// standing "not yet requested" options since Stage 11/12): a terrain ban for
+// stalls (not just stage/demo), same-kind stall spacing, and a demo camp
+// cap. None of the three needed a single new field on a saved plot, and
+// engine.js's isLegalPlacement reads all of it generically — see the
+// comments there.
 export const PLACEMENT_RULES = {
-  // Kinds that refuse to be built on a given terrain outright. A stage or
-  // demo camp squarely blocking the one thoroughfare through the grounds
-  // isn't a cost tradeoff, it's just not allowed; a food/craft stall is
-  // still fine on the path (roadside stalls are exactly what a real faire's
-  // path is lined with).
+  // Kinds that refuse to be built on a given terrain outright.
+  // - A stage or demo camp squarely blocking the one thoroughfare through
+  //   the grounds isn't a cost tradeoff, it's just not allowed; a food/craft
+  //   stall is still fine on the path (roadside stalls are exactly what a
+  //   real faire's path is lined with).
+  // - Stage 18: a food or craft stall also can't be built on a hill — a
+  //   cart-based stall needs level ground to wheel in and set up on, unlike
+  //   a stage (which already treats hill as its BEST terrain, highest
+  //   sightline and a capacityMult bonus) or a demo camp (a fixed
+  //   living-history/falconer site, not a cart). This is the first terrain
+  //   ban that isn't about the path, and the first time hill and path
+  //   aren't just "cost more/less" — a hill is now stage/demo-only ground,
+  //   the path is stage/demo-*excluded* ground, and clearing/woods stay
+  //   open to everything.
   terrainBans: {
     stage: ['path'],
     demo: ['path'],
+    food: ['hill'],
+    vendor: ['hill'],
   },
   // Minimum Chebyshev (king-move) distance required between two stages,
   // built or still-planning — 1 means two stages can't sit directly
@@ -185,6 +212,24 @@ export const PLACEMENT_RULES = {
   // (ADJACENCY_RADIUS=2 in engine.js), which still applies on top of it for
   // anything farther than this.
   minStageSpacing: 1,
+  // Stage 18: which kinds get a same-kind spacing floor, and how much. Only
+  // between two stalls of the SAME kind (two food stalls, or two craft
+  // stalls) — a food stall right beside a craft stall is still fine and
+  // even desirable (that's a real food-court/market-row layout); the point
+  // is to stop five identical carts from walling off one corner of the
+  // grounds, not to break up variety. Same 1-cell-touching floor as
+  // minStageSpacing, checked the same footprint-cell-to-footprint-cell way
+  // (stalls are 1x1, so today this is just cell-to-cell, but it stays
+  // footprint-correct if a stall footprint ever grows).
+  stallSpacingKinds: ['food', 'vendor'],
+  minStallSpacing: 1,
+  // Stage 18: a hard cap on how many of a kind can be built (or still
+  // planned) at once. A demo camp is a living-history reenactor or a
+  // falconer's mews — a real person/animal on site, not a purchased
+  // structure — so the faire only has so many to field regardless of how
+  // much room is left on the grounds. Keyed by kind so a future stage can
+  // cap something else the same way without a new code path.
+  maxBuiltByKind: { demo: 3 },
   // Stage 12: "build along the paths" — every buildable kind needs at
   // least one cell of its footprint sitting ON a path (food/craft/demo can
   // straddle one) or directly beside one (orthogonal neighbor only, not
