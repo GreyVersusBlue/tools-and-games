@@ -4,7 +4,7 @@
 // action and tests can assert on plain objects.
 
 import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
-import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE } from './engine.js';
+import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE, previewCommitAll, checkBankruptcy, checkWinCondition } from './engine.js';
 
 const SAVE_KEY = 'renn-faire-sim-save-v1';
 
@@ -28,6 +28,8 @@ export function createInitialState() {
     lastResult: null,
     history: [], // array of past simulateDay() results, oldest first
     nextPlotId: 1, // Stage 10: counter for placePlot's ids, decoupled from (x,y) so relocating a plot never orphans its schedule/assignment references
+    bankrupt: false, // Stage 16: set true by runDay() the moment cash crosses CONFIG.bankruptcyFloor; nextDay() reads it once, on the player's next click, to route to the 'gameOver' phase
+    victoryAchieved: false, // Stage 16: set true the first time checkWinCondition() passes at a weekend boundary, so the milestone only fires once per save
   };
 }
 
@@ -63,7 +65,7 @@ export function buildPlot(state, kind, x, y) {
   if (!isFootprintWithinCurrentGrid(state, kind, x, y)) {
     return { state, error: 'That spot is past the fence line \u2014 expand the grounds first.' };
   }
-  const quote = quoteBuild(kind, x, y);
+  const quote = quoteBuild(kind, x, y, state.builtPlots);
   if (!quote) return { state, error: 'Nothing can be built there.' };
   const legal = isLegalPlacement(kind, x, y, state.builtPlots);
   if (!legal.ok) return { state, error: legal.reason };
@@ -91,7 +93,7 @@ export function placePlot(state, kind, x, y) {
   if (!isFootprintWithinCurrentGrid(state, kind, x, y)) {
     return { state, error: 'That spot is past the fence line \u2014 expand the grounds first.' };
   }
-  const quote = quoteBuild(kind, x, y);
+  const quote = quoteBuild(kind, x, y, state.builtPlots);
   if (!quote) return { state, error: 'Nothing can be built there.' };
   const legal = isLegalPlacement(kind, x, y, state.builtPlots);
   if (!legal.ok) return { state, error: legal.reason };
@@ -106,14 +108,26 @@ export function placePlot(state, kind, x, y) {
   return { state: next, error: null };
 }
 
+// Stage 15: a planning plot's stored `cost` was only ever an estimate taken
+// at placePlot time — since escalating build cost prices off how many
+// *built* same-kind plots exist, and only built ones count, that estimate
+// can go stale if other same-kind plots get built (or committed) in the
+// meantime. commitPlot always re-quotes against the live builtPlots list
+// right before charging, so the price charged matches the live "Commit —
+// $X" number the UI shows (ui.js's renderPlotCard re-quotes the same way),
+// not whatever was true back when the plot was first placed.
 export function commitPlot(state, plotId) {
   const plot = state.builtPlots.find(p => p.id === plotId);
   if (!plot) return { state, error: 'No such plot.' };
   if (plot.status !== 'planning') return { state, error: 'That plot is already built.' };
-  if (state.cash < plot.cost) return { state, error: `Not enough cash (need $${plot.cost}).` };
+  const quote = quoteBuild(plot.kind, plot.x, plot.y, state.builtPlots);
+  const cost = quote ? quote.cost : plot.cost;
+  if (state.cash < cost) return { state, error: `Not enough cash (need $${cost}).` };
   const next = clone(state);
-  next.cash -= plot.cost;
-  next.builtPlots.find(p => p.id === plotId).status = 'built';
+  next.cash -= cost;
+  const np = next.builtPlots.find(p => p.id === plotId);
+  np.status = 'built';
+  np.cost = cost;
   return { state: next, error: null };
 }
 
@@ -121,15 +135,28 @@ export function commitPlot(state, plotId) {
 // lock: several stalls placed in one sitting. All-or-nothing rather than
 // partial, so the player always knows exactly what they paid for in one
 // glance rather than having to work out which subset got skipped.
+// Stage 15: several planning plots of the *same* kind committed together
+// must escalate against each other in commit order (list order here) —
+// otherwise a player could sidestep the whole escalating-cost mechanic by
+// planning a cluster of, say, five stages before committing any of them,
+// since every one of those quotes would've been taken while zero stages
+// were yet built. A scratch pass (a shallow copy of builtPlots, flipping
+// each committed plot to 'built' as it goes) works out the real total
+// first, without touching real cash/state, so an unaffordable batch is
+// still rejected up front exactly like before.
 export function commitAllPlots(state) {
-  const planning = state.builtPlots.filter(p => p.status === 'planning');
-  if (planning.length === 0) return { state, error: 'Nothing is waiting to be committed.', count: 0, total: 0 };
-  const total = planning.reduce((s, p) => s + p.cost, 0);
+  const planningIds = state.builtPlots.filter(p => p.status === 'planning').map(p => p.id);
+  if (planningIds.length === 0) return { state, error: 'Nothing is waiting to be committed.', count: 0, total: 0 };
+  const { total, costs } = previewCommitAll(state.builtPlots);
   if (state.cash < total) return { state, error: `Not enough cash to commit everything (need $${total}).`, count: 0, total };
   const next = clone(state);
   next.cash -= total;
-  for (const p of next.builtPlots) if (p.status === 'planning') p.status = 'built';
-  return { state: next, error: null, count: planning.length, total };
+  for (const id of planningIds) {
+    const np = next.builtPlots.find(p => p.id === id);
+    np.status = 'built';
+    np.cost = costs[id];
+  }
+  return { state: next, error: null, count: planningIds.length, total };
 }
 
 export function deletePlanningPlot(state, plotId) {
@@ -146,7 +173,7 @@ export function movePlanningPlot(state, plotId, x, y) {
   if (!plot) return { state, error: 'No such plot.' };
   if (plot.status !== 'planning') return { state, error: 'Only an un-built plan can be moved for free \u2014 relocate a built plot instead.' };
   if (!isFootprintWithinCurrentGrid(state, plot.kind, x, y)) return { state, error: 'That spot is past the fence line.' };
-  const quote = quoteBuild(plot.kind, x, y);
+  const quote = quoteBuild(plot.kind, x, y, state.builtPlots, plotId);
   if (!quote) return { state, error: 'Nothing can be built there.' };
   const legal = isLegalPlacement(plot.kind, x, y, state.builtPlots, plotId);
   if (!legal.ok) return { state, error: legal.reason };
@@ -182,7 +209,10 @@ export function relocatePlot(state, plotId, x, y) {
   if (!plot) return { state, error: 'No such plot.' };
   if (plot.status !== 'built') return { state, error: 'Move it for free while it is still a plan.' };
   if (!isFootprintWithinCurrentGrid(state, plot.kind, x, y)) return { state, error: 'That spot is past the fence line.' };
-  const quote = quoteBuild(plot.kind, x, y);
+  // Stage 15: exclude this plot's own (already 'built') record from its own
+  // relocate quote — otherwise it would count against itself and inflate
+  // its own new price by one escalation step for no reason.
+  const quote = quoteBuild(plot.kind, x, y, state.builtPlots, plotId);
   if (!quote) return { state, error: 'Nothing can be built there.' };
   const legal = isLegalPlacement(plot.kind, x, y, state.builtPlots, plotId);
   if (!legal.ok) return { state, error: legal.reason };
@@ -426,6 +456,11 @@ export function runDay(state, seed = Date.now() ^ (state.day * 7919)) {
   next.lastResult = result;
   next.history.push(result);
   next.phase = 'report';
+  // Stage 16: flag bankruptcy the moment it happens, but still show today's
+  // report ticket as normal — the player sees what went wrong before the
+  // run actually ends. nextDay() checks this flag first and routes to the
+  // 'gameOver' phase instead of continuing, the next time they click on.
+  next.bankrupt = checkBankruptcy(next.cash);
   return { state: next, result };
 }
 
@@ -439,6 +474,17 @@ export function runDay(state, seed = Date.now() ^ (state.day * 7919)) {
 // nextDay() call (no double-ticking) while still giving the season boundary
 // its own beat.
 export function nextDay(state) {
+  // Stage 16: a day that just crossed the bankruptcy floor (flagged by
+  // runDay) ends the run the moment the player moves on from that day's
+  // report — no further contract/campaign ticking, no new day. Checked
+  // before cloning-and-continuing so a bankrupt state can never sneak
+  // through into 'weekendEnd'/'plan'.
+  if (state.bankrupt) {
+    const next = clone(state);
+    next.phase = 'gameOver';
+    return { state: next };
+  }
+
   const next = clone(state);
   next.lastResult = null;
 
@@ -477,6 +523,15 @@ export function nextDay(state) {
     // rather than silently rolling into a new weekend. day/weekendDay/season
     // only advance once the player confirms via startNextWeekend().
     next.phase = 'weekendEnd';
+    // Stage 16: check the win condition right at this same boundary, before
+    // the weekend-end summary shows. Only ever fires once per save (guarded
+    // by victoryAchieved) — acknowledgeVictory() below drops back into the
+    // normal 'weekendEnd' phase afterward, so hitting the milestone doesn't
+    // interrupt the sandbox, just celebrates it once.
+    if (!next.victoryAchieved && checkWinCondition(next)) {
+      next.victoryAchieved = true;
+      next.phase = 'victory';
+    }
     return { state: next };
   }
 
@@ -504,6 +559,16 @@ export function startNextWeekend(state) {
   return { state: next };
 }
 
+// Stage 16: dismisses the one-time victory banner and drops into the
+// normal weekend-end summary screen — the save, cash, reputation, and
+// victoryAchieved flag are all untouched, so the milestone can't refire
+// and the player picks up exactly where the sandbox left off.
+export function acknowledgeVictory(state) {
+  const next = clone(state);
+  next.phase = 'weekendEnd';
+  return { state: next };
+}
+
 // ---------- persistence ----------
 export function saveState(state) {
   try {
@@ -523,6 +588,8 @@ export function loadState() {
     if (typeof parsed.season !== 'number') parsed.season = 1; // pre-Stage-6 save
     if (!parsed.vendorContracts) parsed.vendorContracts = {}; // pre-Stage-7 save
     if (typeof parsed.nextPlotId !== 'number') parsed.nextPlotId = 1; // pre-Stage-10 save
+    if (typeof parsed.bankrupt !== 'boolean') parsed.bankrupt = false; // pre-Stage-16 save
+    if (typeof parsed.victoryAchieved !== 'boolean') parsed.victoryAchieved = false; // pre-Stage-16 save
 
     // Stage 10: planning/build status + per-plot vendor seating are new
     // fields. Every pre-existing plot was, functionally, already "built"

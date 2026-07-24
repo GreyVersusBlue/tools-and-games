@@ -318,6 +318,11 @@ h1, h2, h3, h4 {
 .ticket-stub hr { border: none; border-top: 1px dashed var(--line); margin: 0.5rem 0; }
 .flavor-log { font-style: italic; color: var(--slate); margin-top: 0.8rem; }
 .ticket-stub .btn { display: block; width: 100%; margin-top: 1.2rem; }
+/* Stage 16: win/loss screens reuse the ticket-stub shell, just with a
+   border accent matching the outcome instead of the neutral wine dash. */
+.victory-stub { border-color: var(--gold-bright); }
+.victory-stub .ticket-notch { border-color: var(--gold-bright); }
+.gameover-stub { border-color: var(--wine); }
 
 /* ---------- footer ---------- */
 #footer {

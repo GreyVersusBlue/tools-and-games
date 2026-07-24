@@ -19,7 +19,7 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage } = await import(path.join(root, 'js/engine.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition } = await import(path.join(root, 'js/engine.js'));
 const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL } = await import(path.join(root, 'js/data.js'));
 const State = await import(path.join(root, 'js/state.js'));
 
@@ -194,6 +194,67 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(foodQuote.capacity === undefined, 'non-stage kinds have no capacity in their quote');
 }
 
+// --- Stage 15: countBuiltOfKind + quoteBuild's escalating build cost ---
+{
+  assert(countBuiltOfKind([], 'stage') === 0, 'countBuiltOfKind is 0 for an empty list');
+  assert(countBuiltOfKind(undefined, 'stage') === 0, 'countBuiltOfKind handles a missing plot list');
+
+  const builtA = { id: 'a', kind: 'food', x: 6, y: 2, status: 'built' };
+  const builtB = { id: 'b', kind: 'food', x: 6, y: 3, status: 'built' };
+  const planningC = { id: 'c', kind: 'food', x: 6, y: 4, status: 'planning' };
+  const builtStage = { id: 'd', kind: 'stage', x: 3, y: 0, status: 'built' };
+  const pool = [builtA, builtB, planningC, builtStage];
+
+  assert(countBuiltOfKind(pool, 'food') === 2, 'countBuiltOfKind counts only built plots of the given kind');
+  assert(countBuiltOfKind(pool, 'food', 'a') === 1, 'countBuiltOfKind excludes the given id (for relocating a plot against itself)');
+  assert(countBuiltOfKind(pool, 'stage') === 1, 'countBuiltOfKind is kind-specific');
+
+  // No builtPlots arg (or an empty one) means zero escalation, exactly like
+  // pre-Stage-15 behavior — every existing call site/test that doesn't pass
+  // one still prices flat off terrain alone.
+  const bare = quoteBuild('food', 6, 2);
+  assert(bare.builtCount === 0 && bare.escalationMult === 1, 'quoteBuild with no builtPlots arg has zero escalation (backward compatible)');
+
+  const oneBuilt = quoteBuild('food', 6, 3, [builtA]);
+  assert(oneBuilt.builtCount === 1, 'quoteBuild counts one already-built same-kind plot');
+  assert(oneBuilt.cost > bare.cost, 'a second food stall costs more than the first once one is already built');
+  assert(Math.abs(oneBuilt.escalationMult - (1 + CONFIG.escalatingBuildCostRate)) < 1e-9, 'escalationMult is (1+rate)^builtCount');
+
+  const twoBuilt = quoteBuild('food', 6, 4, [builtA, builtB]);
+  assert(twoBuilt.cost > oneBuilt.cost, 'a third food stall costs more than the second (escalation compounds)');
+  const expectedMult = Math.pow(1 + CONFIG.escalatingBuildCostRate, 2);
+  assert(Math.abs(twoBuilt.escalationMult - expectedMult) < 1e-9, 'escalationMult compounds as (1+rate)^builtCount for a 2nd already-built plot');
+
+  // planning plots never count toward escalation, mirroring plotUpkeep's rule
+  const withPlanning = quoteBuild('food', 6, 4, [builtA, planningC]);
+  assert(withPlanning.builtCount === 1, 'a still-planning same-kind plot does not count toward escalation');
+
+  // a different kind entirely (stage) is unaffected by two built food stalls
+  const stageQuote = quoteBuild('stage', 3, 0, [builtA, builtB]);
+  assert(stageQuote.builtCount === 0, 'escalation is kind-specific \u2014 built food stalls don\u2019t escalate a stage\u2019s price');
+
+  // excludeId lets a plot's own already-built record be omitted from its
+  // own relocate/move quote, so it never inflates its own price
+  const selfQuote = quoteBuild('food', 6, 5, [builtA], 'a');
+  assert(selfQuote.builtCount === 0, 'excludeId omits that plot from its own count (for relocating it)');
+}
+
+// --- Stage 16: checkBankruptcy / checkWinCondition (pure) ---
+{
+  assert(checkBankruptcy(CONFIG.bankruptcyFloor) === true, 'checkBankruptcy is true exactly AT the floor');
+  assert(checkBankruptcy(CONFIG.bankruptcyFloor + 1) === false, 'checkBankruptcy is false one dollar above the floor');
+  assert(checkBankruptcy(CONFIG.bankruptcyFloor - 1) === true, 'checkBankruptcy is true below the floor');
+  assert(checkBankruptcy(CONFIG.startingCash) === false, 'checkBankruptcy is false at a healthy starting cash balance');
+
+  const w = CONFIG.winCondition;
+  const base = { season: w.seasonTarget, reputation: w.minReputation, cash: w.minCash };
+  assert(checkWinCondition(base) === true, 'checkWinCondition passes when every threshold is met exactly');
+  assert(checkWinCondition({ ...base, season: w.seasonTarget - 1 }) === false, 'checkWinCondition fails one weekend short of the target');
+  assert(checkWinCondition({ ...base, reputation: w.minReputation - 1 }) === false, 'checkWinCondition fails one reputation point short');
+  assert(checkWinCondition({ ...base, cash: w.minCash - 1 }) === false, 'checkWinCondition fails one dollar short of the cash minimum');
+  assert(checkWinCondition({ ...base, season: w.seasonTarget + 4 }) === true, 'checkWinCondition still passes well past the target weekend');
+}
+
 // --- computePlotAttributes: bounds and terrain lookup ---
 {
   assert(chebyshevDistance({ x: 0, y: 0 }, { x: 2, y: 1 }) === 2, 'chebyshevDistance is the max of the axis deltas');
@@ -238,6 +299,69 @@ const State = await import(path.join(root, 'js/state.js'));
   const bazaarBare = computePlotAttributes(bazaarPlot, []);
   const bazaarNearStage = computePlotAttributes(bazaarPlot, [crossingStage]);
   assert(bazaarNearStage.traffic > bazaarBare.traffic, 'a nearby built stage raises a food/vendor/demo plot\u2019s traffic');
+}
+
+// --- Stage 14: computePlotAttributes' demo-camp traffic bonus ---
+{
+  const demoCamp = { id: '3_2_demo', kind: 'demo', x: 3, y: 2 };
+  const farDemo = { id: '9_9_demo', kind: 'demo', x: 9, y: 9 };
+  const foodPlot = { id: '2_2', kind: 'food', x: 2, y: 2 };
+  const stagePlot = { id: '2_2s', kind: 'stage', x: 2, y: 2 };
+
+  const bare = computePlotAttributes(foodPlot, []);
+  assert(bare.nearbyDemos === 0, 'a food plot has zero nearby demo camps with nothing built');
+
+  const nearDemo = computePlotAttributes(foodPlot, [demoCamp]);
+  assert(nearDemo.nearbyDemos === 1, 'nearbyDemos counts the one built demo camp in range');
+  assert(nearDemo.traffic > bare.traffic, 'a nearby built demo camp raises a food/vendor plot\u2019s traffic');
+
+  const withFarDemo = computePlotAttributes(foodPlot, [farDemo]);
+  assert(withFarDemo.nearbyDemos === 0, 'a demo camp far outside the adjacency radius does not count as nearby');
+
+  // A demo camp's traffic bonus is food/vendor-only \u2014 it doesn't touch a
+  // stage's sightline math (only nearbyStages does that).
+  const stageBare = computePlotAttributes(stagePlot, []);
+  const stageNearDemo = computePlotAttributes(stagePlot, [demoCamp]);
+  assert(stageNearDemo.sightline === stageBare.sightline, 'a nearby demo camp does not affect a stage\u2019s sightline');
+}
+
+// --- Stage 14: computeFootTraffic ---
+{
+  assert(Object.keys(computeFootTraffic([])).length === 0, 'computeFootTraffic returns nothing with no built plots');
+  assert(Object.keys(computeFootTraffic(undefined)).length === 0, 'computeFootTraffic handles an undefined plot list');
+
+  // A single built stall's foot traffic is always exactly average (mult 1)
+  // no matter where it sits \u2014 there's nothing to compare it against yet.
+  // This is also the regression guarantee: a lone stall's economics must
+  // come out identical to the pre-Stage-14 flat formula.
+  const soloStall = { id: 'solo', kind: 'food', x: 8, y: 5, status: 'built', cost: 480 };
+  const solo = computeFootTraffic([soloStall]);
+  assert(solo.solo && solo.solo.mult === 1, 'a lone built stall always has a foot-traffic multiplier of exactly 1');
+
+  // A stall still in "planning" isn't really on the grounds yet \u2014 it's
+  // excluded from the result AND from the mean the other stalls are
+  // measured against (mirrors every other planning-plot rule already in
+  // the engine).
+  const planningStall = { id: 'plan', kind: 'food', x: 1, y: 1, status: 'planning', cost: 480 };
+  const withPlanning = computeFootTraffic([soloStall, planningStall]);
+  assert(withPlanning.solo.mult === 1 && withPlanning.plan === undefined, 'a planning stall is excluded from computeFootTraffic entirely');
+
+  // Two stalls, one clearly better-sited (near a built stage) than the
+  // other (isolated woods) \u2014 the better one should sell better, the
+  // worse one worse, both bounded within the documented clamp.
+  const crossingStage = { id: 'stage1', kind: 'stage', x: 3, y: 0, status: 'built', cost: 850 };
+  const goodStall = { id: 'good', kind: 'food', x: 4, y: 2, status: 'built', cost: 480 }; // adjacent to the stage
+  const badStall = { id: 'bad', kind: 'food', x: 9, y: 9, status: 'built', cost: 480 }; // far away, alone
+  const shares = computeFootTraffic([crossingStage, goodStall, badStall]);
+  assert(shares.good.mult > 1, 'a well-sited stall (near a built stage) earns a foot-traffic multiplier above 1');
+  assert(shares.bad.mult < 1, 'a poorly-sited, isolated stall earns a foot-traffic multiplier below 1');
+  for (const key of Object.keys(shares)) {
+    assert(shares[key].mult >= 0.6 && shares[key].mult <= 1.6, `${key}\u2019s foot-traffic multiplier stays within the documented clamp`);
+  }
+
+  // Stage kind is never included in the result \u2014 only food/vendor stalls
+  // have a foot-traffic multiplier at all.
+  assert(shares.stage1 === undefined, 'computeFootTraffic never includes a stage in its result');
 }
 
 // --- simulateDay: basic shape & determinism ---
@@ -375,6 +499,72 @@ const State = await import(path.join(root, 'js/state.js'));
   const broke = { ...State.createInitialState(), cash: 0 };
   const brokeRes = State.buildPlot(broke, 'stage', 3, 0);
   assert(brokeRes.error && /not enough cash/i.test(brokeRes.error), 'buildPlot refuses when cash is insufficient');
+}
+
+// --- Stage 15: escalating build cost, end to end through the state actions ---
+{
+  // (2,3) and (3,3) are both clearing cells with path frontage onto row 2.
+  let s = State.createInitialState();
+  let r1 = State.buildPlot(s, 'food', 2, 3);
+  assert(r1.error === null, 'first food stall builds normally');
+  const firstCost = r1.state.builtPlots[0].cost;
+  const r2 = State.buildPlot(r1.state, 'food', 3, 3);
+  assert(r2.error === null, 'second food stall builds normally');
+  const secondCost = r2.state.builtPlots[1].cost;
+  assert(secondCost > firstCost, 'buildPlot: a second built food stall costs more than the first, via escalating build cost');
+  assert(secondCost === Math.round(firstCost * (1 + CONFIG.escalatingBuildCostRate) / 10) * 10, 'the escalated cost matches (1+rate) times the base, rounded to the nearest $10');
+
+  // a different kind (stage) is unaffected by the two built food stalls
+  const stageAfterFoods = State.buildPlot(r2.state, 'stage', 3, 0);
+  const bareStageQuote = quoteBuild('stage', 3, 0);
+  assert(stageAfterFoods.state.builtPlots.find(p => p.kind === 'stage').cost === bareStageQuote.cost, 'building a stage after two food stalls is unaffected \u2014 escalation is kind-specific');
+}
+
+// --- Stage 15: commitAllPlots escalates a same-kind batch against each
+// other in commit order, closing the loophole where planning several
+// same-kind plots before committing any would otherwise let every one of
+// them quote at "1st built" pricing ---
+{
+  let s = State.createInitialState();
+  let r = State.placePlot(s, 'food', 2, 3);
+  assert(r.error === null, 'first food stall plans for free');
+  const planCost1 = r.state.builtPlots[0].cost;
+  s = r.state;
+  r = State.placePlot(s, 'food', 3, 3);
+  assert(r.error === null, 'second food stall also plans for free');
+  const planCost2 = r.state.builtPlots[1].cost;
+  s = r.state;
+  // Both still quote at "nothing built yet" pricing since neither is committed
+  assert(planCost1 === planCost2, 'two planning-status food stalls quote identically \u2014 neither counts as built yet');
+
+  const sequential = State.createInitialState();
+  const seq1 = State.buildPlot(sequential, 'food', 2, 3);
+  const seq2 = State.buildPlot(seq1.state, 'food', 3, 3);
+  const sequentialTotal = seq1.state.builtPlots[0].cost + seq2.state.builtPlots[1].cost;
+
+  const batchRes = State.commitAllPlots(s);
+  assert(batchRes.error === null, 'commitAllPlots succeeds for an affordable batch');
+  assert(batchRes.count === 2, 'commitAllPlots commits both planning plots');
+  assert(batchRes.total === sequentialTotal, 'committing two same-kind plans together charges the same total as building them one at a time, not the flat sum of their stale planning-time quotes');
+  const committedCosts = batchRes.state.builtPlots.map(p => p.cost).sort((a, b) => a - b);
+  assert(committedCosts[0] < committedCosts[1], 'the two committed plots end up with escalating costs, not identical stale ones');
+}
+
+// --- Stage 15: relocatePlot excludes the plot's own built record from its
+// own new-site quote (otherwise it would inflate its own relocate price) ---
+{
+  let s = State.createInitialState();
+  s = State.buildPlot(s, 'food', 2, 3).state;
+  const lonePlot = s.builtPlots[0];
+  // Relocating the only built food stall to a fresh spot should quote at
+  // "0 already built" (excluding itself), not "1 already built".
+  const relocateQuoteExcludingSelf = quoteBuild('food', 3, 3, s.builtPlots, lonePlot.id);
+  const bareQuote = quoteBuild('food', 3, 3);
+  assert(relocateQuoteExcludingSelf.cost === bareQuote.cost, 'a lone built plot relocating to a new site is quoted as if it were the first of its kind, not the second');
+
+  const relocated = State.relocatePlot(s, lonePlot.id, 3, 3);
+  assert(relocated.error === null, 'relocatePlot succeeds');
+  assert(relocated.state.builtPlots[0].cost === bareQuote.cost, 'the relocated plot\u2019s stored cost reflects excluding itself from escalation');
 }
 
 {
@@ -685,6 +875,98 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(s.day === beforeLastTick + 1, 'startNextWeekend advances the day counter exactly once');
 }
 
+// --- Stage 16: bankruptcy (loss condition) ---
+{
+  let s = State.createInitialState();
+  assert(s.bankrupt === false, 'a fresh game starts not-bankrupt');
+
+  // Start already ruinously deep in the hole — deep enough that even a
+  // fully healthy day's ticket revenue (there's no plots built here to
+  // suppress attendance/ticket sales, only stage-dependent extras) can't
+  // possibly bring cash back above the floor — so runDay's result is
+  // guaranteed to land at/under it regardless of the day's own cashDelta.
+  const ruined = { ...s, cash: CONFIG.bankruptcyFloor - 50000 };
+  const { state: afterRuin } = State.runDay(ruined, 11);
+  assert(afterRuin.bankrupt === true, 'runDay flags bankrupt once cash is already at/under the floor');
+  assert(afterRuin.phase === 'report', 'a bankrupt day still shows the normal report ticket first, not gameOver directly');
+
+  // nextDay(), called from that report screen, is what actually routes to
+  // the terminal gameOver phase — and does so WITHOUT ticking day/weekendDay
+  // or any contracts/campaigns further.
+  const dayBefore = afterRuin.day, weekendDayBefore = afterRuin.weekendDay;
+  const ended = State.nextDay(afterRuin).state;
+  assert(ended.phase === 'gameOver', 'nextDay routes to gameOver once the prior day left the state bankrupt');
+  assert(ended.day === dayBefore && ended.weekendDay === weekendDayBefore, 'nextDay does not advance day/weekendDay once the run has ended in bankruptcy');
+
+  // Calling nextDay again on an already-gameOver state is a stable no-op
+  // (still bankrupt, still gameOver) rather than throwing or resurrecting.
+  const endedAgain = State.nextDay(ended).state;
+  assert(endedAgain.phase === 'gameOver', 'nextDay on an already-gameOver state stays in gameOver');
+
+  // A healthy day, by contrast, never sets the flag.
+  const { state: healthyAfter } = State.runDay(s, 5);
+  assert(healthyAfter.bankrupt === false, 'a normal day with healthy cash never flags bankrupt');
+}
+
+// --- Stage 16: the win condition (one-time victory milestone) ---
+{
+  const w = CONFIG.winCondition;
+  // Craft a state sitting one day short of the win-condition weekend, with
+  // reputation/cash already past both thresholds, so the very next
+  // weekend-boundary tick is the one that should fire victory.
+  let s = {
+    ...State.createInitialState(),
+    season: w.seasonTarget,
+    weekendDay: CONFIG.seasonLength, // today is the weekend's last day
+    reputation: w.minReputation,
+    cash: w.minCash,
+  };
+  const afterLastDay = State.nextDay(s).state;
+  assert(afterLastDay.phase === 'victory', 'nextDay fires the victory phase at the weekend boundary once every threshold is met');
+  assert(afterLastDay.victoryAchieved === true, 'victoryAchieved flips true the moment the milestone fires');
+  assert(afterLastDay.season === w.seasonTarget && afterLastDay.weekendDay === CONFIG.seasonLength, 'day/weekendDay/season do NOT advance yet while parked in victory, same as weekendEnd');
+
+  const acked = State.acknowledgeVictory(afterLastDay).state;
+  assert(acked.phase === 'weekendEnd', 'acknowledgeVictory drops into the normal weekend-end summary screen');
+  assert(acked.victoryAchieved === true, 'acknowledgeVictory leaves victoryAchieved set (so it cannot refire)');
+  assert(acked.cash === afterLastDay.cash && acked.reputation === afterLastDay.reputation, 'acknowledgeVictory does not alter cash/reputation \u2014 purely a phase transition');
+
+  const rolledOver = State.startNextWeekend(acked).state;
+  assert(rolledOver.phase === 'plan' && rolledOver.season === w.seasonTarget + 1, 'the sandbox continues normally into the next weekend after victory is acknowledged');
+
+  // Reaching (or re-passing) the threshold again on a later weekend must
+  // NOT refire victory now that victoryAchieved is already true.
+  let s2 = { ...rolledOver, weekendDay: CONFIG.seasonLength };
+  const secondBoundary = State.nextDay(s2).state;
+  assert(secondBoundary.phase === 'weekendEnd', 'a later weekend boundary that still meets every threshold does not refire victory once already achieved');
+
+  // And falling short of any one threshold at the target weekend simply
+  // proceeds to the normal weekendEnd screen, no victory.
+  let short = {
+    ...State.createInitialState(),
+    season: w.seasonTarget,
+    weekendDay: CONFIG.seasonLength,
+    reputation: w.minReputation - 1,
+    cash: w.minCash,
+  };
+  const notYet = State.nextDay(short).state;
+  assert(notYet.phase === 'weekendEnd', 'falling one reputation point short at the target weekend does not fire victory');
+  assert(notYet.victoryAchieved === false, 'victoryAchieved stays false when the threshold is not actually met');
+}
+
+// --- Stage 16: loadState migration for pre-Stage-16 saves ---
+{
+  const preStage16 = State.createInitialState();
+  delete preStage16.bankrupt;
+  delete preStage16.victoryAchieved;
+  const raw = JSON.stringify(preStage16);
+  globalThis.localStorage = { getItem: () => raw, setItem: () => {}, removeItem: () => {} };
+  const migrated = State.loadState();
+  assert(migrated.bankrupt === false, 'loadState backfills bankrupt:false onto a pre-Stage-16 save');
+  assert(migrated.victoryAchieved === false, 'loadState backfills victoryAchieved:false onto a pre-Stage-16 save');
+  delete globalThis.localStorage;
+}
+
 // --- summarizeWeekend (Stage 6) ---
 {
   const empty = summarizeWeekend([], 3);
@@ -789,13 +1071,20 @@ const State = await import(path.join(root, 'js/state.js'));
   s = State.assignSchedule(s, 'midday', '3_0', 'perf_jouster_1').state;
 
   let ok = true;
+  let endedEarly = false;
   for (let i = 0; i < 50; i++) {
     try {
       const { state: next, result } = State.runDay(s, i * 31 + 7);
       if (Number.isNaN(result.cashDelta) || Number.isNaN(result.satisfaction)) ok = false;
       if (result.attendance < 0) ok = false;
       s = State.nextDay(next).state;
+      // Stage 16: victory and bankruptcy are now legitimate outcomes of a
+      // long random run, not failures of the fuzz test itself. Victory
+      // acknowledges-then-proceeds exactly like a player would; bankruptcy
+      // is terminal for this save, so the loop stops early on purpose.
+      if (s.phase === 'victory') s = State.acknowledgeVictory(s).state;
       if (s.phase === 'weekendEnd') s = State.startNextWeekend(s).state;
+      if (s.phase === 'gameOver') { endedEarly = true; break; }
     } catch (e) {
       ok = false;
       console.error(e);
@@ -803,7 +1092,7 @@ const State = await import(path.join(root, 'js/state.js'));
     }
   }
   assert(ok, '50-day fuzz run completes with no throws, no NaNs, no negative attendance');
-  assert(s.day === 51, '50-day fuzz run advanced the day counter the expected number of times');
+  assert(s.day === 51 || (endedEarly && s.phase === 'gameOver'), '50-day fuzz run advanced the day counter the expected number of times, or ended early in a legitimate bankruptcy');
 }
 
 // ---------------------------------------------------------------------
@@ -1260,6 +1549,119 @@ const State = await import(path.join(root, 'js/state.js'));
 }
 
 // ---------------------------------------------------------------------
+// Stage 13: daily upkeep. A built plot costs CONFIG.upkeepRate of its own
+// stored `cost` every day; a planning (uncommitted) plot costs nothing.
+// ---------------------------------------------------------------------
+{
+  const builtStage = { id: 'p1', kind: 'stage', x: 0, y: 0, cost: 850, status: 'built' };
+  assert(plotUpkeep(builtStage) === Math.round(850 * CONFIG.upkeepRate), 'plotUpkeep is CONFIG.upkeepRate of a built plot\u2019s stored cost');
+
+  const planningStage = { id: 'p2', kind: 'stage', x: 2, y: 2, cost: 850, status: 'planning' };
+  assert(plotUpkeep(planningStage) === 0, 'plotUpkeep is 0 for a still-planning plot, same as every other gameplay effect');
+
+  assert(plotUpkeep(null) === 0, 'plotUpkeep is 0 for a missing/undefined plot');
+
+  const foodStall = { id: 'p3', kind: 'food', x: 5, y: 5, cost: 480, status: 'built' };
+  const total = totalUpkeep([builtStage, planningStage, foodStall]);
+  assert(total === plotUpkeep(builtStage) + plotUpkeep(foodStall), 'totalUpkeep sums only built plots, ignoring planning ones');
+  assert(totalUpkeep([]) === 0 && totalUpkeep(undefined) === 0, 'totalUpkeep handles an empty or missing plot list');
+
+  // A pricier build (e.g. a hilltop stage vs. a clearing food stall)
+  // costs more, so it costs more to maintain \u2014 no separate authored
+  // table needed, upkeep just rides along with the stored cost.
+  const hillStage = { id: 'p4', kind: 'stage', x: 0, y: 0, cost: 1060, status: 'built' }; // 850 * 1.25 hill mult, rounded
+  assert(plotUpkeep(hillStage) > plotUpkeep(builtStage), 'a pricier (e.g. hill-terrain) build costs more upkeep than a cheaper one of the same kind');
+}
+
+{
+  // simulateDay-level: upkeep is a real, separate line item in the ledger,
+  // it scales with how many plots are actually built (not planning), and
+  // the flat baseOverhead no longer depends on stage count.
+  let s = State.createInitialState();
+  const before = simulateDay(s, 1);
+  assert(before.upkeep === 0 && before.overhead === CONFIG.baseOverhead, 'simulateDay reports zero upkeep and flat baseOverhead with nothing built yet');
+
+  s = State.buildPlot(s, 'stage', 3, 0).state; // 2x2 footprint, occupies (3,0)-(4,1)
+  const afterStage = simulateDay(s, 1);
+  const builtStagePlot = s.builtPlots.find(p => p.kind === 'stage');
+  assert(afterStage.upkeep === Math.round(builtStagePlot.cost * CONFIG.upkeepRate), 'simulateDay\u2019s upkeep matches plotUpkeep for the one built stage');
+  assert(afterStage.overhead === CONFIG.baseOverhead, 'overhead stays flat regardless of what\u2019s built \u2014 stage-count scaling moved into upkeep');
+  assert(afterStage.costs === afterStage.performerCosts + afterStage.vendorCosts + afterStage.upkeep + afterStage.overhead, 'simulateDay\u2019s total costs line includes upkeep alongside wages and overhead');
+
+  s = State.buildPlot(s, 'food', 6, 1).state; // path-fronted clearing cell, 1x1
+  const afterTwo = simulateDay(s, 1);
+  assert(afterTwo.upkeep > afterStage.upkeep, 'upkeep grows as more plots get built');
+
+  // A planning (not yet committed) plot must not add to the day\u2019s
+  // upkeep bill \u2014 mirrors it drawing no crowd/seating anything either.
+  const planResult = State.placePlot(s, 'demo', 1, 1);
+  assert(planResult.error === null, 'sanity check: the planning-plot fixture itself placed legally');
+  s = planResult.state;
+  const withPlanning = simulateDay(s, 1);
+  assert(withPlanning.upkeep === afterTwo.upkeep, 'a still-planning plot contributes nothing to the day\u2019s upkeep total');
+}
+
+// ---------------------------------------------------------------------
+// Stage 14: crowd-flow-as-a-system, phase 1 \u2014 foot traffic drives vendor
+// revenue at the simulateDay level, not just as a standalone pure function.
+// ---------------------------------------------------------------------
+{
+  // Regression guarantee: with only ONE stall built, its foot-traffic
+  // multiplier is always exactly 1 (see the computeFootTraffic tests
+  // above), so its economics must come out bit-for-bit identical to the
+  // pre-Stage-14 flat formula \u2014 placement-driven traffic should never
+  // change a solo stall's numbers.
+  let solo = State.createInitialState();
+  solo = State.buildPlot(solo, 'stage', 3, 0).state;
+  solo = State.buildPlot(solo, 'food', 6, 1).state; // (6,1): clearing, no stage-adjacency bonus at anchor distance 3
+  solo = State.hireVendor(solo, 'vend_cider').state; // quality 8, avgTicket 9, food
+  const soloResult = simulateDay(solo, 1);
+  const soloPlot = solo.builtPlots.find(p => p.kind === 'food');
+  assert(soloResult.footTraffic[soloPlot.id].mult === 1, 'a lone built stall\u2019s foot-traffic multiplier is exactly 1 inside a real simulateDay run');
+  const conversion = 0.12 * (8 / 7);
+  const expectedBuyers = Math.round(soloResult.attendance * conversion * 1);
+  const expectedGross = expectedBuyers * 9;
+  const expectedRevenue = Math.round(expectedGross * CONFIG.wristbandCut);
+  assert(soloResult.vendorRevenue === expectedRevenue, 'a lone stall\u2019s vendorRevenue matches the pre-Stage-14 flat conversion formula exactly');
+
+  // Two identically-built food stalls, one clearly better-sited (built at
+  // (6,1), clearing) than the other (built at (9,3), isolated woods) \u2014
+  // build order controls which cell hireVendor's auto-seat lands a fresh
+  // vendor on (the first open stall of that kind), so building the
+  // high-traffic cell first seats there; building the low-traffic cell
+  // first seats there instead. Same roster/schedule/ticket price/rng seed
+  // in both, so attendance itself must come out identical \u2014 isolating
+  // placement as the only thing that can move vendor revenue.
+  let sHigh = State.createInitialState();
+  sHigh = State.buildPlot(sHigh, 'stage', 3, 0).state;
+  sHigh = State.buildPlot(sHigh, 'food', 6, 1).state; // built first \u2014 auto-seat lands here
+  sHigh = State.buildPlot(sHigh, 'food', 9, 3).state;
+  sHigh = State.hireVendor(sHigh, 'vend_cider').state;
+  const resultHigh = simulateDay(sHigh, 1);
+
+  let sLow = State.createInitialState();
+  sLow = State.buildPlot(sLow, 'stage', 3, 0).state;
+  sLow = State.buildPlot(sLow, 'food', 9, 3).state; // built first this time \u2014 auto-seat lands here instead
+  sLow = State.buildPlot(sLow, 'food', 6, 1).state;
+  sLow = State.hireVendor(sLow, 'vend_cider').state;
+  const resultLow = simulateDay(sLow, 1);
+
+  assert(resultHigh.attendance === resultLow.attendance, 'attendance itself is unaffected by which stall a vendor is seated at (same seed/roster/schedule)');
+  assert(resultHigh.vendorRevenue > resultLow.vendorRevenue, 'the same vendor earns more house revenue seated at the better-trafficked stall than the worse one');
+
+  // With two vendors seated at differently-trafficked stalls in the same
+  // day, a noticeable spread (\u2265 1.3x) surfaces as a named flavor-log line.
+  let sBoth = State.createInitialState();
+  sBoth = State.buildPlot(sBoth, 'stage', 3, 0).state;
+  sBoth = State.buildPlot(sBoth, 'food', 6, 1).state; // high-traffic, auto-seats vend_cider
+  sBoth = State.buildPlot(sBoth, 'food', 9, 3).state; // low-traffic, auto-seats vend_piepeddler
+  sBoth = State.hireVendor(sBoth, 'vend_cider').state;
+  sBoth = State.hireVendor(sBoth, 'vend_piepeddler').state;
+  const resultBoth = simulateDay(sBoth, 1);
+  assert(resultBoth.log.some(l => l.includes('pulled a lively crowd')), 'a noticeable foot-traffic spread between two staffed stalls surfaces as a flavor-log line');
+}
+
+// ---------------------------------------------------------------------
 {
   // jsdom does not execute <script type="module"> tags (a long-standing
   // jsdom limitation), so instead of relying on index.html's own script
@@ -1346,6 +1748,18 @@ const State = await import(path.join(root, 'js/state.js'));
   const commitFoodBtn = doc.querySelector('.plot-card[data-kind="food"] [data-action="commitPlot"]');
   assert(!!commitFoodBtn, 'Stage 10: the newly placed food plot has its own Commit button');
   click(commitFoodBtn);
+  // Stage 14: the lone food stall's card shows its foot-traffic tag (always
+  // 1.00x with nothing else built to compare it against).
+  assert(doc.querySelector('.plot-card[data-kind="food"]').textContent.includes('1.00x foot traffic'), 'Stage 14: a built food stall\u2019s card shows its foot-traffic multiplier');
+
+  // Stage 15: with one food stall now committed, the build palette's price
+  // tag for Food Stall should reflect the escalated (pricier) next build,
+  // not the flat STRUCTURE_TYPES base cost.
+  const foodPaletteBtn = doc.querySelector('[data-action="selectBuild"][data-kind="food"]');
+  const foodPaletteQuoteMatch = foodPaletteBtn.textContent.match(/from \$([\d,]+)/);
+  assert(!!foodPaletteQuoteMatch, 'Stage 15: the Food Stall palette button shows a "from $X" price');
+  const foodPaletteQuote = Number(foodPaletteQuoteMatch[1].replace(/,/g, ''));
+  assert(foodPaletteQuote > STRUCTURE_TYPES.food.baseCost, 'Stage 15: the palette\u2019s Food Stall price is above the flat base cost now that one is already built');
 
   const backstageTabBtn2 = doc.querySelector('[data-tab="backstage"]');
   click(backstageTabBtn2);
@@ -1355,6 +1769,10 @@ const State = await import(path.join(root, 'js/state.js'));
   click(weekendHireBtn);
   assert(doc.querySelector('#content').innerHTML.includes('Weekend Package'), 'the hired vendor row shows its Weekend Package contract label');
   assert(doc.querySelector('#content').innerHTML.includes('seated:'), 'Stage 10: hiring auto-seats the vendor, shown on their roster row');
+  // Stage 14: with only one food stall built, its foot-traffic multiplier
+  // is always exactly 1 (see the engine-level regression test above) \u2014
+  // confirms the Backstage seat note actually renders the tag end to end.
+  assert(doc.querySelector('#content').innerHTML.includes('1.00x traffic'), 'Stage 14: the seated stall\u2019s foot-traffic multiplier renders on the Backstage vendor row');
   const letGoBtn = doc.querySelector('[data-action="fireVendor"]');
   assert(!!letGoBtn, 'a Let go button appears for the newly hired vendor');
   click(letGoBtn);
@@ -1378,6 +1796,75 @@ const State = await import(path.join(root, 'js/state.js'));
   click(beginBtn);
   assert(doc.querySelector('#ledger').innerHTML.includes('Weekend 2'), 'starting the next weekend updates the ledger to Weekend 2');
   assert(doc.querySelector('[data-tab]'), 'tabs reappear once the next weekend begins');
+
+  dom.window.close();
+}
+
+// ---------------------------------------------------------------------
+// Stage 16: gameOver and victory screens render correctly and their
+// buttons work, driven end to end through main.js exactly like a browser.
+// Each preloads localStorage with a save already parked in that phase
+// (rather than grinding out real days) so the test is fast and exercises
+// main.js's render() dispatch + button wiring directly.
+// ---------------------------------------------------------------------
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
+    .replace(/<link[^>]*fonts\.g[^>]*>/g, '')
+    .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+
+  const gameOverSave = { ...State.createInitialState(), cash: -1800, season: 2, weekendDay: 1, reputation: 22, phase: 'gameOver', bankrupt: true };
+  const storage = makeMemoryStorage();
+  storage.setItem('renn-faire-sim-save-v1', JSON.stringify(gameOverSave));
+
+  const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.localStorage = storage;
+  globalThis.confirm = () => true;
+
+  await import(path.join(root, 'js/main.js') + `?t=${Date.now()}`);
+  const doc = dom.window.document;
+
+  assert(!doc.querySelector('[data-tab]'), 'gameOver phase hides the tabs');
+  assert(doc.querySelector('.gameover-stub'), 'a gameOver save renders the game-over ticket stub on boot');
+  assert(doc.querySelector('#content').innerHTML.includes('The Faire Folds'), 'the game-over screen shows its headline');
+  const newFaireBtn = doc.querySelector('[data-action="newFaire"]');
+  assert(!!newFaireBtn, 'the game-over screen has a Start a New Faire button');
+  newFaireBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  assert(doc.querySelector('#ledger').innerHTML.includes('Weekend 1'), 'clicking Start a New Faire resets the ledger back to Weekend 1');
+  assert(doc.querySelector('[data-tab]'), 'tabs reappear once a fresh faire starts');
+  assert(!doc.querySelector('.gameover-stub'), 'the game-over screen is gone after starting a new faire');
+
+  dom.window.close();
+}
+
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
+    .replace(/<link[^>]*fonts\.g[^>]*>/g, '')
+    .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+
+  const w = CONFIG.winCondition;
+  const victorySave = { ...State.createInitialState(), cash: w.minCash + 500, season: w.seasonTarget, weekendDay: CONFIG.seasonLength, reputation: w.minReputation + 5, phase: 'victory', victoryAchieved: true };
+  const storage = makeMemoryStorage();
+  storage.setItem('renn-faire-sim-save-v1', JSON.stringify(victorySave));
+
+  const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.localStorage = storage;
+  globalThis.confirm = () => true;
+
+  await import(path.join(root, 'js/main.js') + `?t=${Date.now()}`);
+  const doc = dom.window.document;
+
+  assert(!doc.querySelector('[data-tab]'), 'victory phase hides the tabs');
+  assert(doc.querySelector('.victory-stub'), 'a victory save renders the victory ticket stub on boot');
+  assert(doc.querySelector('#content').innerHTML.includes('Legendary Faire'), 'the victory screen shows its headline');
+  const continueBtn = doc.querySelector('[data-action="acknowledgeVictory"]');
+  assert(!!continueBtn, 'the victory screen has a Continue the Faire button');
+  continueBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  assert(doc.querySelector('.weekend-summary'), 'acknowledging victory drops into the normal weekend-end summary screen');
+  assert(doc.querySelector(`[data-action="startNextWeekend"]`)?.textContent.includes(String(w.seasonTarget + 1)), 'the weekend-end screen after victory still offers to begin the next weekend normally');
 
   dom.window.close();
 }

@@ -23,6 +23,18 @@ function render() {
     return;
   }
 
+  if (state.phase === 'victory') {
+    $('#tabs').innerHTML = '';
+    $('#content').innerHTML = UI.renderVictory(state);
+    return;
+  }
+
+  if (state.phase === 'gameOver') {
+    $('#tabs').innerHTML = '';
+    $('#content').innerHTML = UI.renderGameOver(state);
+    return;
+  }
+
   if (state.phase === 'weekendEnd') {
     $('#tabs').innerHTML = '';
     const summary = summarizeWeekend(state.history, CONFIG.seasonLength);
@@ -163,6 +175,16 @@ function handleAction(action, el) {
     case 'startNextWeekend':
       res = State.startNextWeekend(state);
       state = res.state;
+      ui.activeTab = 'office';
+      ui.pendingBuild = null;
+      ui.pendingMove = null;
+      break;
+    case 'acknowledgeVictory':
+      res = State.acknowledgeVictory(state);
+      state = res.state;
+      break;
+    case 'newFaire':
+      state = State.resetSave();
       ui.activeTab = 'office';
       ui.pendingBuild = null;
       ui.pendingMove = null;

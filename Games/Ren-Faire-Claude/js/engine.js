@@ -133,6 +133,22 @@ export function summarizeWeekend(history, count) {
   return { days, totalAttendance, totalNet, avgSatisfaction, repDelta, bestDay, worstDay };
 }
 
+// Stage 16: loss condition. Pure so tests can assert on plain numbers
+// without needing a whole state object.
+export function checkBankruptcy(cash) {
+  return cash <= CONFIG.bankruptcyFloor;
+}
+
+// Stage 16: win condition. True once the faire has reached (or passed) the
+// target weekend with reputation and cash both at or above the configured
+// minimums. Reads `state.season`/`reputation`/`cash` only — deliberately
+// ignorant of `victoryAchieved`, so callers decide when/whether to act on a
+// true result (state.js only fires it once, via the victoryAchieved flag).
+export function checkWinCondition(state) {
+  const w = CONFIG.winCondition;
+  return state.season >= w.seasonTarget && state.reputation >= w.minReputation && state.cash >= w.minCash;
+}
+
 // ---------- faire grounds map ----------
 // Terrain lookup by grid cell. Returns null for out-of-bounds/unknown cells.
 export function terrainAt(x, y) {
@@ -216,6 +232,14 @@ export function hasPathFrontage(cells) {
 const ADJACENCY_RADIUS = 2;
 const NEARBY_STAGE_SIGHTLINE_PENALTY = 0.1; // per nearby built stage, stages only
 const NEARBY_STAGE_TRAFFIC_BONUS = 0.05; // per nearby built stage, food/vendor/demo only
+// Stage 14: a demo camp draws its own lingering crowd (a falconer, a living-
+// history camp) that spills over onto nearby stalls the same way a stage's
+// crowd does — a slightly bigger per-camp bonus than a stage's, since
+// drawing foot traffic to nearby stalls is a demo camp's whole mechanical
+// purpose today (it has no capacity/revenue of its own). Food/vendor stalls
+// only — a demo doesn't boost another demo, and a stage's sightline math is
+// untouched by nearby demo camps.
+const NEARBY_DEMO_TRAFFIC_BONUS = 0.07;
 
 // Derives a built (or hypothetical) plot's real sightline/shade/traffic from
 // its terrain plus which OTHER plots are currently built nearby:
@@ -223,6 +247,8 @@ const NEARBY_STAGE_TRAFFIC_BONUS = 0.05; // per nearby built stage, food/vendor/
 //    (overlapping crowds/noise/tree cover between two show sites)
 //  - a food/vendor/demo plot within ADJACENCY_RADIUS of a built stage gains
 //    traffic (people spilling out of a show walk past it)
+//  - a food/vendor plot within ADJACENCY_RADIUS of a built demo camp also
+//    gains traffic (Stage 14 — see NEARBY_DEMO_TRAFFIC_BONUS above)
 // `builtPlots` is the array of full plot objects (state.builtPlots) — not
 // ids, since Stage 3 plots are player-built records with no catalog to
 // look them up in. Pure function; never mutates its arguments.
@@ -233,6 +259,7 @@ export function computePlotAttributes(plot, builtPlots) {
   // it neither steals sightline from a nearby stage nor sends it traffic.
   const others = (builtPlots || []).filter(p => p && p.id !== plot.id && p.status !== 'planning');
   const nearbyStages = others.filter(o => o.kind === 'stage' && chebyshevDistance(plot, o) <= ADJACENCY_RADIUS).length;
+  const nearbyDemos = others.filter(o => o.kind === 'demo' && chebyshevDistance(plot, o) <= ADJACENCY_RADIUS).length;
 
   let sightline = base.sightline;
   let traffic = base.traffic;
@@ -241,21 +268,87 @@ export function computePlotAttributes(plot, builtPlots) {
   } else if (nearbyStages > 0) {
     traffic = clamp(traffic + nearbyStages * NEARBY_STAGE_TRAFFIC_BONUS, 0, 1);
   }
+  if ((plot.kind === 'food' || plot.kind === 'vendor') && nearbyDemos > 0) {
+    traffic = clamp(traffic + nearbyDemos * NEARBY_DEMO_TRAFFIC_BONUS, 0, 1);
+  }
 
   return {
     sightline: Math.round(sightline * 100) / 100,
     shade: Math.round(base.shade * 100) / 100,
     traffic: Math.round(traffic * 100) / 100,
     nearbyStages,
+    nearbyDemos,
   };
+}
+
+// ---------- foot traffic (Stage 14: crowd-flow-as-a-system, phase 1) ----------
+// Every built food/vendor stall already carries a `traffic` attribute
+// (terrain + nearby-stage/demo adjacency, above) — through Stage 13 that
+// number was purely cosmetic for a stall: only a STAGE's traffic fed into
+// anything (its draw-weight share of a time block). This is what actually
+// wires stall placement into the economy: each stall's traffic, relative to
+// the day's average across every built stall, becomes a sales multiplier —
+// a corner stall on a busy path next to a packed stage sells better than
+// one tucked alone in the deep woods, and that's now a real number instead
+// of just a stat on a tooltip.
+//
+// Deliberately relative (mult ~1.0 = "an average day's stall"), not
+// absolute, so a lone stall's economics are completely unaffected (mean ==
+// its own traffic == mult of exactly 1) and the overall economy doesn't
+// swing just because the player built more or fewer stalls — only *where*
+// they sit relative to each other moves the needle. Clamped to a fairly
+// narrow band: this is meant to reward good siting, not let a pathological
+// layout zero out or multiply a stall's sales many times over.
+const FOOT_TRAFFIC_MIN_MULT = 0.6;
+const FOOT_TRAFFIC_MAX_MULT = 1.6;
+
+export function computeFootTraffic(builtPlots) {
+  const stalls = (builtPlots || []).filter(p => p && p.status === 'built' && (p.kind === 'food' || p.kind === 'vendor'));
+  const result = {};
+  if (stalls.length === 0) return result;
+  const withTraffic = stalls.map(p => ({ id: p.id, traffic: computePlotAttributes(p, builtPlots).traffic }));
+  const mean = withTraffic.reduce((s, p) => s + p.traffic, 0) / withTraffic.length;
+  for (const p of withTraffic) {
+    const raw = mean > 0 ? p.traffic / mean : 1;
+    result[p.id] = { traffic: p.traffic, mult: clamp(raw, FOOT_TRAFFIC_MIN_MULT, FOOT_TRAFFIC_MAX_MULT) };
+  }
+  return result;
 }
 
 // Quotes what building a given structure kind at (x,y) would cost/seat,
 // before anything is actually built — the single source of truth for that
 // math, used both by state.js's buildPlot action and ui.js's build-preview
+// Stage 13: daily upkeep. A single built plot's daily cost is just
+// CONFIG.upkeepRate of its own stored `cost` — that field is set once at
+// build/commit/relocate time (see state.js) and already bakes in kind,
+// terrain, and footprint, so upkeep needs no separate authored table.
+// Deliberately returns 0 for a still-"planning" plot — same rule every
+// other gameplay effect (crowd draw, adjacency, seating) already follows:
+// a plan isn't real until it's committed.
+export function plotUpkeep(plot) {
+  if (!plot || plot.status !== 'built') return 0;
+  return Math.round(plot.cost * CONFIG.upkeepRate);
+}
+
+export function totalUpkeep(builtPlots) {
+  return (builtPlots || []).reduce((sum, p) => sum + plotUpkeep(p), 0);
+}
+
+// Stage 15: how many already-*built* plots of a given kind exist, optionally
+// excluding one plot id (used by relocatePlot/movePlanningPlot so a plot
+// being repositioned never counts against its own price). Pure; a
+// still-'planning' plot never counts, same rule plotUpkeep already follows.
+export function countBuiltOfKind(builtPlots, kind, excludeId) {
+  return (builtPlots || []).filter(p => p.status === 'built' && p.kind === kind && p.id !== excludeId).length;
+}
+
 // tooltips so the number a player sees matches what they're charged.
 // Returns null for an unknown kind or an off-grid/unrecognized cell.
-export function quoteBuild(kind, x, y) {
+// Stage 15: builtPlots/excludeId are optional (default: no escalation) so
+// every pre-Stage-15 call site and test that doesn't pass them keeps
+// pricing exactly as before. Passing state.builtPlots is what makes the
+// Nth built structure of a kind cost more than the first.
+export function quoteBuild(kind, x, y, builtPlots = [], excludeId = null) {
   const type = STRUCTURE_TYPES[kind];
   const terrain = terrainAt(x, y);
   if (!type || !terrain) return null;
@@ -267,10 +360,36 @@ export function quoteBuild(kind, x, y) {
   const { w, h } = footprintFor(kind);
   if (footprintCells(x, y, w, h).some(c => !terrainAt(c.x, c.y))) return null;
   const mod = TERRAIN_BUILD_MODIFIERS[terrain];
-  const cost = Math.round((type.baseCost * mod.costMult) / 10) * 10;
+  const builtCount = countBuiltOfKind(builtPlots, kind, excludeId);
+  const escalationMult = Math.pow(1 + CONFIG.escalatingBuildCostRate, builtCount);
+  const cost = Math.round((type.baseCost * mod.costMult * escalationMult) / 10) * 10;
   const capacity = kind === 'stage' ? Math.round(type.baseCapacity * mod.capacityMult) : undefined;
   const name = `${TERRAIN_NAME[terrain]} ${KIND_NOUN[kind]}`;
-  return { kind, x, y, w, h, terrain, cost, capacity, name };
+  return { kind, x, y, w, h, terrain, cost, capacity, name, builtCount, escalationMult };
+}
+
+// Stage 15: prices out committing every 'planning' plot in `builtPlots`
+// together, one at a time in list order, against a scratch copy — so
+// several same-kind plans committed as a batch escalate against each
+// other exactly like committing them one by one would (see state.js's
+// commitAllPlots). Pure and read-only; used both by commitAllPlots itself
+// and by ui.js's "Commit All" total, so the number a player sees always
+// matches what they'll actually be charged. Returns { total, costs } where
+// costs maps plotId -> the price that plot would be charged in this batch.
+export function previewCommitAll(builtPlots) {
+  const planningIds = (builtPlots || []).filter(p => p.status === 'planning').map(p => p.id);
+  const scratch = (builtPlots || []).map(p => ({ ...p }));
+  const costs = {};
+  let total = 0;
+  for (const id of planningIds) {
+    const p = scratch.find(pp => pp.id === id);
+    const quote = quoteBuild(p.kind, p.x, p.y, scratch);
+    const cost = quote ? quote.cost : p.cost;
+    costs[id] = cost;
+    total += cost;
+    p.status = 'built';
+  }
+  return { total, costs };
 }
 
 // Stage 11: build-time legality — on top of (not instead of) whatever
@@ -484,23 +603,47 @@ export function simulateDay(state, seed) {
   if (overCapacityHit) warnings.push('At least one stage overflowed its capacity — some folks were turned away from the best view.');
 
   // --- vendor revenue ---
+  // Stage 14: a seated vendor's buyer count now scales with their OWN
+  // stall's foot-traffic multiplier (computeFootTraffic), not just the
+  // day's total attendance — a well-sited stall (path frontage, near a
+  // packed stage or a demo camp) genuinely outsells an identically-good
+  // vendor stuck in a dead corner of the grounds.
+  const footTraffic = computeFootTraffic(state.builtPlots);
+  const plotByVendorId = new Map(builtFoodVendorPlots.filter(p => p.assignedVendorId).map(p => [p.assignedVendorId, p]));
   let vendorGrossTotal = 0;
   let houseVendorRevenue = 0;
+  let bestStall = null, worstStall = null;
   for (const vendor of activeVendorObjs) {
+    const plot = plotByVendorId.get(vendor.id);
+    const trafficMult = plot && footTraffic[plot.id] ? footTraffic[plot.id].mult : 1;
     const conversion = 0.12 * (vendor.quality / 7);
-    const buyers = Math.round(attendance * conversion);
+    const buyers = Math.round(attendance * conversion * trafficMult);
     const gross = buyers * vendor.avgTicket;
     vendorGrossTotal += gross;
     houseVendorRevenue += gross * CONFIG.wristbandCut;
     satisfaction = clamp(satisfaction + (vendor.quality - 6) * 0.4, 0, 100);
+    if (plot) {
+      const entry = { vendor, plot, mult: trafficMult };
+      if (!bestStall || trafficMult > bestStall.mult) bestStall = entry;
+      if (!worstStall || trafficMult < worstStall.mult) worstStall = entry;
+    }
+  }
+  // Only worth remarking on when the spread between the best- and
+  // worst-sited stalls today is actually noticeable.
+  if (bestStall && worstStall && bestStall.vendor.id !== worstStall.vendor.id && bestStall.mult / worstStall.mult >= 1.3) {
+    log.push(`${bestStall.vendor.name} pulled a lively crowd from its ${bestStall.plot.name} spot, while ${worstStall.vendor.name} saw barely anyone drift past its ${worstStall.plot.name}.`);
   }
 
   // --- ticket revenue & costs ---
   const ticketRevenue = attendance * state.ticketPrice;
   const performerCosts = rosterPerformers.reduce((s, p) => s + effectivePerformerCost(state, p.id), 0);
   const vendorCosts = hiredVendorObjs.reduce((s, v) => s + effectiveVendorCost(state, v.id), 0);
-  const overhead = 150 + builtStages.length * 20; // grounds upkeep scales a little with built stages
-  const costs = performerCosts + vendorCosts + overhead;
+  // Stage 13: real per-plot upkeep (any built kind, not just stages)
+  // replaces the old flat "+20/stage" stand-in; overhead is now just the
+  // flat cost of running the grounds at all, independent of what's built.
+  const overhead = CONFIG.baseOverhead;
+  const upkeep = totalUpkeep(state.builtPlots);
+  const costs = performerCosts + vendorCosts + upkeep + overhead;
 
   // --- random events ---
   const ctx = {
@@ -534,7 +677,7 @@ export function simulateDay(state, seed) {
     attendance,
     ticketRevenue: Math.round(ticketRevenue),
     vendorRevenue: Math.round(houseVendorRevenue),
-    performerCosts, vendorCosts, overhead,
+    performerCosts, vendorCosts, upkeep, overhead,
     costs: Math.round(costs),
     cashDelta,
     satisfaction: Math.round(satisfaction),
@@ -542,6 +685,7 @@ export function simulateDay(state, seed) {
     scheduledCount,
     adFactor,
     campaignActive: state.activeCampaign ? state.activeCampaign.name : null,
+    footTraffic,
     events,
     log,
     warnings,

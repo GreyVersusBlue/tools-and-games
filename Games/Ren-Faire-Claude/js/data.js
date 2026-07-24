@@ -15,6 +15,42 @@ export const CONFIG = {
   demolishFeeMult: 0.3, // tearing down a committed plot costs this fraction of what it cost to build
   relocateDiscountMult: 0.85, // relocating a committed plot pays the demolish fee above PLUS this fraction of the new site's build cost
   maxPlotNameLength: 40, // cap on a custom name via renamePlot
+  // Stage 13: daily upkeep. Every *built* (not planning) plot costs this
+  // fraction of its own stored `cost` every day, staffed or not — see
+  // engine.js's plotUpkeep/totalUpkeep. Deriving upkeep from a plot's own
+  // cost (already set once at build/relocate time) means it automatically
+  // reflects kind, terrain, and footprint with no new authored table to
+  // keep in sync — a 2x2 stage costs more to build than a food stall, so
+  // it costs more to maintain, same as a hilltop build already costs more
+  // than a clearing build via TERRAIN_BUILD_MODIFIERS above.
+  upkeepRate: 0.025,
+  // Flat daily cost of running the grounds at all, independent of what's
+  // built on them (gate staff, general insurance, etc). Stage 13 split
+  // this out from the old `150 + stages*20` overhead formula — the
+  // per-stage scaling term is now real per-plot upkeep instead.
+  baseOverhead: 150,
+  // Stage 15: escalating build cost. Each additional *built* structure of
+  // the same kind compounds the next one's price by this fraction — the
+  // 1st stage prices at the terrain-adjusted base, the 2nd built stage
+  // prices at base*(1+rate), the 3rd at base*(1+rate)^2, etc. Complements
+  // Stage 13's upkeep (ongoing cost of what you already have) with
+  // pressure at construction time (cost of getting more of the same
+  // kind) — see engine.js's quoteBuild. Only *built* plots count, same
+  // "not real until committed" rule upkeep already follows — laying out
+  // several planning-status stalls doesn't escalate each other's price.
+  escalatingBuildCostRate: 0.15,
+  // Stage 16: win/loss conditions. If cash falls at or below this after a
+  // day resolves, the faire is bankrupt and the run ends (see engine.js's
+  // checkBankruptcy / state.js's runDay+nextDay). Deliberately well below
+  // zero rather than exactly 0 — a single bad day dipping slightly
+  // negative shouldn't end the run; sustained, serious insolvency should.
+  bankruptcyFloor: -1500,
+  // Reach the END of this weekend (i.e. season has advanced to at least
+  // seasonTarget) with reputation and cash at least these values, and the
+  // faire earns a one-time "Legendary Faire" milestone (see engine.js's
+  // checkWinCondition) — celebratory, not a hard stop; the player
+  // acknowledges it and keeps playing the same save afterward.
+  winCondition: { seasonTarget: 6, minReputation: 70, minCash: 4000 },
 };
 
 export const TIME_BLOCKS = [
