@@ -39,6 +39,7 @@ export class DayPhase {
       st.ring.position.x = st.pos.x; st.ring.position.z = st.pos.z;
       this.group.add(st.ring);
     }
+    this.scene = scene;   // rebuildStations() needs it if the group ever detaches
     scene.add(this.group);
     this.t = 0;
 
@@ -52,6 +53,28 @@ export class DayPhase {
 
   setVisible(v) { this.group.visible = v; }
   panelOpen() { return $("#panelOverlay").style.display === "flex"; }
+
+  /**
+   * Re-seat the station rings after main.js tears the venue down and rebuilds it.
+   *
+   * main.js's rebuildVenue() has always called this; the method never existed, so
+   * "New Game (wipe save)" and every venue move threw `day.rebuildStations is not
+   * a function` and abandoned the rest of rebuildVenue — which is why the camera
+   * never got reset to the spawn point on those paths.
+   *
+   * It reads as a no-op today and that is correct: buildWorld() ignores the venue
+   * argument main.js passes it, so ROOM/KITCHEN/DOOR are the same metres at every
+   * tier and the rings are already where they belong. rebuildVenue() only removes
+   * worldGroup, so this.group survives on the scene. The moment a tier gets its
+   * own floor plan, this is the hook that has to know about it.
+   */
+  rebuildStations() {
+    for (const st of this.stations) {
+      st.ring.position.x = st.pos.x;
+      st.ring.position.z = st.pos.z;
+    }
+    if (!this.group.parent) this.scene.add(this.group);
+  }
 
   update(dt) {
     this.t += dt;
