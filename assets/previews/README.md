@@ -4,6 +4,13 @@ Drop a screenshot in here and it appears automatically — the board attaches
 each preview only if the file actually loads, so a missing one leaves the
 notice looking exactly as it does today. No HTML edit needed.
 
+**All seven listed below now exist.** They were not taken by hand:
+`Tools/board-check` plays each game into a real gameplay frame
+(`npm run previews`), and `npm run promote` turns a chosen frame into both this
+330×200 JPEG and the 1200×630 share card in `assets/og/`. If a game's look
+changes, re-run those two rather than screenshotting manually — the specs below
+are enforced by the promote step.
+
 ## Filenames the board is already asking for
 
 | File | Quest |
