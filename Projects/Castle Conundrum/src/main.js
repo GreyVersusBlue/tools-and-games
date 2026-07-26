@@ -42,7 +42,7 @@ async function init() {
   const player = new PlayerController(camera, renderer.domElement, () => castle.colliders);
 
   // --- Interaction + quest ---
-  const interaction = new InteractionSystem(camera, npcs, ui);
+  const interaction = new InteractionSystem(camera, npcs, ui, scene);
   const quest = new QuestManager(riddleData, npcs, ui, castle, { lock: () => player.lock() });
   interaction.onInteract = (npc) => {
     npc.facePlayer(camera.position);
