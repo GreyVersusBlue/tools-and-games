@@ -1,0 +1,6 @@
+node_modules/
+three-0.160.0/
+three-0.169.0/
+shots/
+candidates/
+package-lock.json

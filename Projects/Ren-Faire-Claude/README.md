@@ -77,6 +77,10 @@ account's other GitHub Pages projects.
   acting on — the grounds panel while a build/move is pending, the tab panel
   otherwise, never both.
 - `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test`)
+- `package.json` / `package-lock.json` / `.gitignore` — dev-only. They exist
+  solely so `npm test` can install jsdom; nothing in them runs on the static
+  GitHub Pages deploy, and nothing in `index.html` imports from them. Keep
+  them: deleting them takes the 675-check suite with them.
 - `HANDOFF.md` — status, what's next, and retro notes for whoever (or whatever model) picks this up next
 
 ## Running the tests

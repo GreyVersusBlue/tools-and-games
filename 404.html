@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<meta name="description" content="This notice has been torn down — greyversusblue.">
+<title>Torn Down — greyversusblue</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@500;700&family=Alegreya:ital,wght@0,400;0,500;1,400&family=Alegreya+SC:wght@400;500&display=swap');
+
+  :root {
+    --wood: #3B2A1A;
+    --wood-light: #4A3524;
+    --wood-dark: #2C1F12;
+    --parchment: #F1E6C8;
+    --parchment-edge: #D9C79A;
+    --ink: #33291B;
+    --ink-soft: #5E5138;
+    --wax: #7E2A20;
+    --brass: #B08D3E;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background:
+      repeating-linear-gradient(90deg,
+        var(--wood) 0px, var(--wood-light) 55px, var(--wood) 110px,
+        var(--wood-dark) 112px, var(--wood-dark) 114px),
+      var(--wood);
+    color: var(--ink);
+    font-family: 'Alegreya', serif;
+    line-height: 1.5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1.2rem;
+    text-align: center;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  /* The scrap still pinned to the board */
+  .scrap {
+    position: relative;
+    width: min(420px, 100%);
+    padding: 2.4rem 1.4rem 3.2rem;
+    transform: rotate(-1.8deg);
+  }
+  .scrap::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,252,238,0.7) 0%, rgba(255,252,238,0) 60%),
+      radial-gradient(ellipse at 85% 100%, rgba(150,120,60,0.28) 0%, rgba(150,120,60,0) 55%),
+      var(--parchment);
+    border: 1px solid var(--parchment-edge);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.6);
+    /* a ragged tear across the bottom — most of the notice is gone */
+    clip-path: polygon(0 0, 100% 0,
+      100% 62%, 93% 74%, 87% 63%, 79% 79%, 71% 66%, 62% 84%,
+      54% 68%, 46% 87%, 38% 70%, 29% 82%, 21% 67%, 13% 78%, 6% 65%, 0 76%);
+  }
+  .pin {
+    position: absolute;
+    top: -9px; left: 50%;
+    width: 18px; height: 18px;
+    margin-left: -9px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #E8E4DC, #8A857B 55%, #4A463F);
+    box-shadow: 0 3px 5px rgba(0,0,0,0.55);
+  }
+  .eyebrow {
+    font-family: 'Alegreya SC', serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.26em;
+    color: var(--wax);
+  }
+  .code {
+    font-family: 'Grenze Gotisch', serif;
+    font-weight: 700;
+    font-size: clamp(3.4rem, 14vw, 5.2rem);
+    line-height: 1;
+    margin: 0.3rem 0 0.2rem;
+    color: var(--ink);
+    text-shadow: 0 1px 0 rgba(255,250,230,0.5);
+  }
+  .scrap .torn-line {
+    font-family: 'Alegreya', serif;
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 1.02rem;
+  }
+
+  .below {
+    margin-top: 2.4rem;
+    max-width: 480px;
+  }
+  .below p {
+    font-style: italic;
+    color: #CBB88C;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  }
+  .home {
+    display: inline-block;
+    margin-top: 1.3rem;
+    font-family: 'Alegreya SC', serif;
+    font-size: 0.9rem;
+    letter-spacing: 0.22em;
+    color: #2C1F12;
+    background: linear-gradient(180deg, #D8B968, var(--brass));
+    border: 1px solid #7A5E24;
+    border-radius: 3px;
+    padding: 0.45rem 1.4rem;
+    box-shadow: inset 0 1px 0 rgba(255,250,220,0.6), 0 3px 8px rgba(0,0,0,0.5);
+    transition: transform 0.14s ease;
+  }
+  .home:hover { transform: translateY(-2px); }
+  .home:focus-visible { outline: 2px solid var(--parchment); outline-offset: 3px; }
+
+  .paths {
+    margin-top: 1.6rem;
+    font-family: 'Alegreya SC', serif;
+    font-size: 0.74rem;
+    letter-spacing: 0.16em;
+    color: #9C8A61;
+  }
+  .paths a { border-bottom: 1px solid rgba(176,141,62,0.4); padding-bottom: 1px; }
+  .paths a:hover { color: #E8D5A3; }
+  .paths span { opacity: 0.55; margin: 0 0.5rem; }
+
+  @media (prefers-reduced-motion: reduce) { .home { transition: none; } }
+</style>
+</head>
+<body>
+
+  <div class="scrap">
+    <span class="pin" aria-hidden="true"></span>
+    <div class="eyebrow">NOTICE TORN DOWN</div>
+    <h1 class="code">404</h1>
+    <p class="torn-line">Only the top half is still pinned.</p>
+  </div>
+
+  <div class="below">
+    <p>Somebody took this one and never brought it back. The barkeep says that happens.</p>
+    <a class="home" href="/">RETURN TO THE BOARD</a>
+    <div class="paths">
+      <a href="/#quests">Quests</a><span>·</span><a href="/#pathfinder">Pathfinder</a><span>·</span><a href="/#services">Town Services</a>
+    </div>
+  </div>
+
+</body>
+</html>

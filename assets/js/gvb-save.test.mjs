@@ -1,0 +1,185 @@
+// gvb-save.test.mjs — node assets/js/gvb-save.test.mjs
+// Plain-Node smoke suite, same shape as the other projects on this site:
+// a tiny assert() counter, no framework. Exercises everything that does not
+// need a DOM (storage round-trip, versioning, migration, validation,
+// envelope serialize/deserialize, autosave throttling).
+
+import { createSaveSlot, defaultStorage } from "./gvb-save.js";
+
+let pass = 0, fail = 0;
+function assert(cond, msg) {
+  if (cond) pass++;
+  else { fail++; console.error("FAIL: " + msg); }
+}
+
+function stubStorage(seed = {}) {
+  const mem = new Map(Object.entries(seed));
+  return {
+    getItem: k => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: k => mem.delete(k),
+    _dump: () => Object.fromEntries(mem)
+  };
+}
+
+const baseOpts = storage => ({
+  game: "test-sim",
+  key: "test-save",
+  version: 2,
+  storage,
+  defaults: { day: 1, cash: 100, staff: [] },
+  validate: s => s && typeof s.day === "number" && Array.isArray(s.staff),
+  migrate: (s, from) => {
+    if (from < 2) s.upgrades = s.upgrades || [];
+    return s;
+  }
+});
+
+// --- fresh() hands back an independent copy of defaults ---
+{
+  const slot = createSaveSlot(baseOpts(stubStorage()));
+  const a = slot.fresh(), b = slot.fresh();
+  a.cash = 999;
+  assert(b.cash === 100, "fresh() must deep-copy defaults, not share them");
+  assert(slot.fresh().cash === 100, "defaults survive mutation of a fresh copy");
+}
+
+// --- save / load round-trip ---
+{
+  const store = stubStorage();
+  const slot = createSaveSlot(baseOpts(store));
+  const state = slot.fresh();
+  state.day = 12;
+  state.staff.push({ role: "server" });
+  assert(slot.save(state) === true, "save() reports success");
+  const back = slot.load();
+  assert(back && back.day === 12, "loaded state keeps its day");
+  assert(back.staff.length === 1, "loaded state keeps its array contents");
+  assert(!("__v" in back), "the version marker is stripped before the game sees it");
+}
+
+// --- empty and corrupt storage never throw ---
+{
+  const slot = createSaveSlot(baseOpts(stubStorage()));
+  assert(slot.load() === null, "empty storage loads as null");
+}
+{
+  const slot = createSaveSlot(baseOpts(stubStorage({ "test-save": "{not json" })));
+  assert(slot.load() === null, "corrupt JSON loads as null instead of throwing");
+}
+{
+  const slot = createSaveSlot(baseOpts(stubStorage({ "test-save": '{"day":"soon"}' })));
+  assert(slot.load() === null, "a save that fails validate() is refused");
+}
+
+// --- migration runs when the stored version is behind ---
+{
+  const old = JSON.stringify({ day: 4, staff: [], __v: 1 });
+  const slot = createSaveSlot(baseOpts(stubStorage({ "test-save": old })));
+  const back = slot.load();
+  assert(back !== null, "a v1 save still loads under v2");
+  assert(Array.isArray(back.upgrades), "migrate() filled in the field v1 lacked");
+}
+
+// --- a migration that throws is treated as an unreadable save ---
+{
+  const opts = baseOpts(stubStorage({ "test-save": '{"day":4,"staff":[],"__v":1}' }));
+  opts.migrate = () => { throw new Error("boom"); };
+  const slot = createSaveSlot(opts);
+  assert(slot.load() === null, "a throwing migration degrades to null, not a crash");
+}
+
+// --- export envelope ---
+{
+  const slot = createSaveSlot(baseOpts(stubStorage()));
+  const state = slot.fresh();
+  state.day = 7;
+  const text = slot.serialize(state);
+  const env = JSON.parse(text);
+  assert(env.format === "gvb-save", "envelope is tagged");
+  assert(env.game === "test-sim", "envelope names the game");
+  assert(env.version === 2, "envelope carries the schema version");
+  assert(typeof env.savedAt === "string", "envelope is timestamped");
+  assert(env.state.day === 7, "envelope carries the state");
+
+  const back = slot.deserialize(text);
+  assert(back && back.day === 7, "deserialize() round-trips the state");
+}
+
+// --- imports are refused when they belong to a different game ---
+{
+  const mine = createSaveSlot(baseOpts(stubStorage()));
+  const other = createSaveSlot({ ...baseOpts(stubStorage()), game: "some-other-sim" });
+  const foreign = other.serialize({ day: 3, staff: [] });
+  assert(mine.deserialize(foreign) === null, "a save from another game is refused");
+}
+
+// --- an older exported file still imports, via the same migration path ---
+{
+  const slot = createSaveSlot(baseOpts(stubStorage()));
+  const oldFile = JSON.stringify({
+    format: "gvb-save", game: "test-sim", version: 1,
+    savedAt: "2026-01-01T00:00:00.000Z",
+    state: { day: 9, staff: [] }
+  });
+  const back = slot.deserialize(oldFile);
+  assert(back && back.day === 9, "a v1 export file imports under v2");
+  assert(Array.isArray(back.upgrades), "the export path runs migrate() too");
+}
+
+// --- deserialize rejects junk ---
+{
+  const slot = createSaveSlot(baseOpts(stubStorage()));
+  assert(slot.deserialize("hello") === null, "non-JSON text is refused");
+  assert(slot.deserialize("[]") === null, "an array is not a save");
+  assert(slot.deserialize('{"format":"gvb-save","game":"test-sim","version":2,"state":{"day":"x"}}') === null,
+    "an envelope holding invalid state is refused");
+}
+
+// --- reset clears storage and hands back a fresh state ---
+{
+  const store = stubStorage();
+  const slot = createSaveSlot(baseOpts(store));
+  slot.save({ day: 40, staff: [] });
+  const after = slot.reset();
+  assert(store.getItem("test-save") === null, "reset() clears the key");
+  assert(after.day === 1, "reset() returns a fresh state");
+}
+
+// --- a storage that refuses writes fails soft ---
+{
+  const hostile = {
+    getItem: () => null,
+    setItem: () => { throw new Error("QuotaExceededError"); },
+    removeItem: () => { throw new Error("nope"); }
+  };
+  const slot = createSaveSlot({ ...baseOpts(hostile) });
+  assert(slot.save({ day: 1, staff: [] }) === false, "a full quota returns false, not a throw");
+  assert(slot.reset().day === 1, "reset() survives a hostile storage");
+}
+
+// --- autosave coalesces writes ---
+{
+  const store = stubStorage();
+  const slot = createSaveSlot(baseOpts(store));
+  let day = 1;
+  const auto = slot.autosave(() => ({ day, staff: [] }), 10);
+  auto.mark(); day = 2;
+  auto.mark(); day = 3;
+  auto.mark();
+  assert(store.getItem("test-save") === null, "autosave does not write on every mark");
+  auto.flush();
+  assert(JSON.parse(store.getItem("test-save")).day === 3, "flush writes the latest state once");
+  auto.stop();
+}
+
+// --- defaultStorage() degrades to memory when localStorage is absent ---
+{
+  const s = defaultStorage();
+  assert(typeof s.getItem === "function", "defaultStorage() always returns something usable");
+  s.setItem("k", "v");
+  assert(s.getItem("k") === "v", "the memory fallback stores and retrieves");
+}
+
+console.log(`\ngvb-save: ${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
