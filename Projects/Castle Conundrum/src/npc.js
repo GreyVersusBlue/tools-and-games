@@ -1,114 +1,113 @@
-{
-  "npcs": [
-    {
-      "id": "guard",
-      "name": "Guard",
-      "role": "gatekeeper",
-      "modelPath": null,
-      "placeholder": {
-        "color": "#8a2f2f",
-        "heldProp": "ornate_medieval_mace_1k.gltf/ornate_medieval_mace_1k.gltf"
-      },
-      "position": [
-        1.6,
-        0,
-        10.2
-      ],
-      "facing": 0,
-      "patrol": null,
-      "dialogue": {
-        "default": [
-          "Halt. None pass the gate without the Keystone.",
-          "The old Scholar in the hall guards its secret behind one of his infernal riddles. Best of luck \u2014 I've never solved one."
-        ],
-        "hasKeystone": [
-          "Well, I'll be. The Keystone itself.",
-          "A deal's a deal. Stand back \u2014 this gate hasn't moved in years."
-        ],
-        "afterVictory": [
-          "Go on then. The road's yours."
-        ]
-      }
-    },
-    {
-      "id": "scholar",
-      "name": "Scholar",
-      "role": "riddler",
-      "modelPath": null,
-      "placeholder": {
-        "color": "#2f4f8a",
-        "heldProp": null
-      },
-      "position": [
-        0.8,
-        0,
-        -9.6
-      ],
-      "facing": 200,
-      "patrol": null,
-      "dialogue": {
-        "default": [
-          "Ah, a visitor. You want the Keystone, no doubt. Everyone does.",
-          "It is yours \u2014 if your wit is sharper than your sword. Answer me this\u2026",
-          "{RIDDLE}"
-        ],
-        "hasKeystone": [
-          "The Keystone suits you. Now go bother the Guard \u2014 he owes me three answers and a chicken."
-        ],
-        "afterVictory": [
-          "The gate stands open. A mind well used is worth ten keys."
-        ]
-      }
-    },
-    {
-      "id": "wizard",
-      "name": "Wandering Wizard",
-      "role": "atmosphere",
-      "modelPath": null,
-      "placeholder": {
-        "color": "#5a2f8a",
-        "heldProp": null
-      },
-      "position": [
-        -6,
-        0,
-        2
-      ],
-      "facing": 90,
-      "patrol": [
-        [
-          -6,
-          0,
-          2
-        ],
-        [
-          -6,
-          0,
-          -3
-        ],
-        [
-          -2,
-          0,
-          -4
-        ],
-        [
-          -2,
-          0,
-          3
-        ]
-      ],
-      "dialogue": {
-        "default": [
-          "Hmm? Oh, don't mind me. I'm counting the stones. There are more every time.",
-          "The Scholar's riddles? Child's play. I simply choose not to answer them. On principle."
-        ],
-        "hasKeystone": [
-          "You solved it? Fascinating. I was *this* close, you know."
-        ],
-        "afterVictory": [
-          "An open gate is just a wall that gave up. Ponder that."
-        ]
+// npc.js — placeholder-bodied NPCs: patrol/idle movement, facing, dialogue state.
+// Every npc in data/npcs.json currently has modelPath: null, so build() falls back
+// to a coloured capsule-and-head placeholder tinted by placeholder.color. If a real
+// rigged model is ever assigned via modelPath, it's used instead — swapping in a
+// real model later is a data change, not a code change.
+
+import * as THREE from 'three';
+import { loadModel } from './assets.js';
+
+const PATROL_SPEED = 1.1; // m/s
+const WAYPOINT_EPS = 0.05;
+
+export class NPC {
+  constructor(def, scene, polyhavenBase) {
+    this.def = def;
+    this.scene = scene;
+    this.polyhavenBase = polyhavenBase;
+
+    this.id = def.id;
+    this.name = def.name;
+    this.talking = false;
+    this.dialogueState = 'default';
+
+    this.group = new THREE.Group();
+    this.group.position.set(...def.position);
+    this.group.rotation.y = THREE.MathUtils.degToRad(def.facing || 0);
+
+    this._waypoints = (def.patrol || []).map((p) => new THREE.Vector3(...p));
+    this._waypointIndex = 0;
+  }
+
+  async build() {
+    if (this.def.modelPath) {
+      this.group.add(await loadModel(this.def.modelPath));
+    } else {
+      this.group.add(this._buildPlaceholderBody());
+      if (this.def.placeholder?.heldProp) {
+        const prop = await loadModel(this.polyhavenBase + this.def.placeholder.heldProp);
+        this._attachHeldProp(prop);
       }
     }
-  ]
+    this.scene.add(this.group);
+    return this;
+  }
+
+  _buildPlaceholderBody() {
+    const color = this.def.placeholder?.color || '#888888';
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+    const body = new THREE.Group();
+
+    const robe = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.32, 1.1, 12), mat);
+    robe.position.y = 0.55;
+    robe.castShadow = true;
+    body.add(robe);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 10), mat);
+    head.position.y = 1.28;
+    head.castShadow = true;
+    body.add(head);
+
+    body.userData.isPlaceholder = true;
+    return body;
+  }
+
+  /** Scale the loaded prop to a hand-sized prop and hang it off the body's right side. */
+  _attachHeldProp(prop) {
+    const box = new THREE.Box3().setFromObject(prop);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const longest = Math.max(size.x, size.y, size.z);
+    if (longest > 0.0001) prop.scale.setScalar(0.6 / longest);
+
+    box.setFromObject(prop);
+    const center = box.getCenter(new THREE.Vector3());
+    prop.position.sub(center);
+    prop.position.add(new THREE.Vector3(0.3, 0.85, 0.05));
+    prop.rotation.y = Math.PI / 2;
+    prop.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+
+    this.group.add(prop);
+  }
+
+  /** Called every frame from main.js's render loop. */
+  update(dt, camPos) {
+    if (this.talking || this._waypoints.length === 0) return;
+
+    const target = this._waypoints[this._waypointIndex];
+    const to = new THREE.Vector3().subVectors(target, this.group.position);
+    to.y = 0;
+    const dist = to.length();
+
+    if (dist < WAYPOINT_EPS) {
+      this._waypointIndex = (this._waypointIndex + 1) % this._waypoints.length;
+      return;
+    }
+
+    to.normalize();
+    this.group.position.addScaledVector(to, Math.min(PATROL_SPEED * dt, dist));
+    this.group.rotation.y = Math.atan2(to.x, to.z);
+  }
+
+  /** Turn to face the player. Called once by main.js when interaction starts. */
+  facePlayer(camPos) {
+    const dir = new THREE.Vector3().subVectors(camPos, this.group.position);
+    dir.y = 0;
+    if (dir.lengthSq() < 0.0001) return;
+    this.group.rotation.y = Math.atan2(dir.x, dir.z);
+  }
+
+  getDialogueLines() {
+    return this.def.dialogue[this.dialogueState];
+  }
 }

@@ -5,7 +5,7 @@
       "name": "Guard",
       "role": "gatekeeper",
       "modelPath": null,
-      "placeholder": { "color": "#8a2f2f", "heldProp": "ornate_medieval_mace/ornate_medieval_mace_1k.gltf" },
+      "placeholder": { "color": "#8a2f2f", "heldProp": "ornate_medieval_mace_1k.gltf/ornate_medieval_mace_1k.gltf" },
       "position": [1.6, 0, 10.2],
       "facing": 0,
       "patrol": null,
