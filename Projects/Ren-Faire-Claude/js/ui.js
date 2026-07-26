@@ -1,29 +1,44 @@
 // ui.js — turns state into HTML strings. No event listeners live here;
 // main.js wires all interaction via event delegation on #content.
 
-import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability } from './engine.js';
+import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW } from './data.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
 export function renderLedger(state) {
   const repLabel = state.reputation >= 75 ? 'Renowned' : state.reputation >= 50 ? 'Well-regarded' : state.reputation >= 25 ? 'Modest' : 'Struggling';
   const weekendNames = ['', 'Friday', 'Saturday', 'Sunday'];
+  const rep = Math.round(state.reputation);
+  // Stage 19: grounds draw is the headline new mechanic, so it gets a
+  // permanent slot in the HUD rather than living only in the day report.
+  // A player needs to be able to watch this number move as they build.
+  const draw = computeGroundsDraw(state.builtPlots);
+  const drawPct = ((draw.mult - GROUNDS_DRAW.floor) / (GROUNDS_DRAW.ceiling - GROUNDS_DRAW.floor)) * 100;
+  const cashClass = state.cash < 0 ? ' bad' : '';
   return `
     <div class="ledger-item">
       <span class="ledger-label">Weekend ${state.season}</span>
-      <span class="ledger-sub">${weekendNames[state.weekendDay]} &middot; Day ${state.day}</span>
+      <span class="ledger-sub">${weekendNames[state.weekendDay] || ''} &middot; Day ${state.day}</span>
     </div>
     <div class="ledger-item">
-      <span class="ledger-label mono">${money(state.cash)}</span>
+      <span class="ledger-label mono${cashClass}">${money(state.cash)}</span>
       <span class="ledger-sub">on hand</span>
     </div>
     <div class="ledger-item">
-      <span class="ledger-label">${Math.round(state.reputation)}</span>
+      <span class="ledger-label mono">${rep}</span>
       <span class="ledger-sub">${repLabel}</span>
+      <span class="meter ${rep >= 70 ? 'is-high' : rep < 35 ? 'is-low' : ''}"><i style="width:${clampPct(rep)}%"></i></span>
+    </div>
+    <div class="ledger-item" title="How much of a crowd the built grounds pull on their own, before reputation, price, or the bill. An empty field sits at ${GROUNDS_DRAW.floor.toFixed(2)}x; every built stage, staffed stall, and demo camp raises it, with diminishing returns.">
+      <span class="ledger-label mono">${draw.mult.toFixed(2)}&times;</span>
+      <span class="ledger-sub">grounds draw</span>
+      <span class="meter ${drawPct >= 66 ? 'is-high' : drawPct < 12 ? 'is-low' : ''}"><i style="width:${clampPct(drawPct)}%"></i></span>
     </div>
   `;
 }
+
+function clampPct(n) { return Math.max(0, Math.min(100, Math.round(n))); }
 
 export function renderTabs(activeTab, phase) {
   if (phase !== 'plan') return '';
@@ -36,36 +51,84 @@ export function renderTabs(activeTab, phase) {
 }
 
 export function renderOffice(state, warn) {
-  const builtCount = state.builtPlots.length;
   const rosterCost = state.roster.reduce((s, id) => s + effectivePerformerCost(state, id), 0);
   const vendorCost = state.hiredVendors.reduce((s, id) => s + effectiveVendorCost(state, id), 0);
   const overhead = CONFIG.baseOverhead;
   const upkeep = totalUpkeep(state.builtPlots);
+  const fixedNut = rosterCost + vendorCost + upkeep + overhead;
+  // Stage 19: with a per-guest cost in play, the useful thing to tell the
+  // player is not just "what you owe" but "how many people have to walk
+  // through the gate before you stop losing money" — the break-even gate.
+  const perGuestMargin = state.ticketPrice - CONFIG.perGuestCost;
+  const breakEven = perGuestMargin > 0 ? Math.ceil(fixedNut / perGuestMargin) : null;
+  const satDelta = priceSatisfactionDelta(state.ticketPrice);
+
   return `
     <section class="panel">
       <h2>The Ledger Desk</h2>
-      <p class="flavor">Set tonight's admission price and see what the books say you're carrying.</p>
+      <p class="flavor">Set today's admission and see what the books say you're carrying.</p>
       ${warn ? `<p class="warn">${warn}</p>` : ''}
 
       <div class="field-row">
         <label for="ticketPrice">Ticket price</label>
         <input type="range" id="ticketPrice" min="${CONFIG.ticketPrice.min}" max="${CONFIG.ticketPrice.max}" value="${state.ticketPrice}">
-        <span class="mono">${money(state.ticketPrice)}</span>
+        <span class="price-readout" id="priceReadout">${money(state.ticketPrice)}</span>
       </div>
+      ${renderPriceCurve(state)}
+      <p class="hint">${priceAdvice(state.ticketPrice, satDelta)}</p>
 
       <table class="ledger-table">
         <tr><td>Contracted performers</td><td class="mono">${money(rosterCost)}/day</td></tr>
         <tr><td>Hired stalls</td><td class="mono">${money(vendorCost)}/day</td></tr>
-        <tr><td>Plot upkeep</td><td class="mono">${money(upkeep)}/day</td></tr>
+        <tr><td>Plot upkeep <span class="hint">(${Math.round(CONFIG.upkeepRate * 100)}% of build cost, staffed or not)</span></td><td class="mono">${money(upkeep)}/day</td></tr>
         <tr><td>Grounds overhead</td><td class="mono">${money(overhead)}/day</td></tr>
-        <tr class="total-row"><td>Daily nut before a single ticket sells</td><td class="mono">${money(rosterCost + vendorCost + upkeep + overhead)}</td></tr>
+        <tr class="total-row"><td>Fixed nut before a single ticket sells</td><td class="mono">${money(fixedNut)}</td></tr>
       </table>
-
-      <p class="hint">${builtCount} plot${builtCount === 1 ? '' : 's'} built on the grounds (upkeep runs ${CONFIG.upkeepRate * 100}% of build cost per plot, per day, whether it's staffed or not). Head to <strong>Fair Floor</strong> to build stages and stalls, and <strong>Backstage</strong> to contract acts.</p>
+      <table class="ledger-table">
+        <tr><td>Cost per guest through the gate <span class="hint">(water, waste, gate staff, per-head insurance)</span></td><td class="mono">${money(CONFIG.perGuestCost)}</td></tr>
+        <tr><td>Margin per guest at ${money(state.ticketPrice)} admission</td><td class="mono ${perGuestMargin > 0 ? '' : 'neg'}">${money(perGuestMargin)}</td></tr>
+        <tr class="total-row"><td>Break-even gate</td><td class="mono">${breakEven === null ? 'never at this price' : `${breakEven.toLocaleString()} guests`}</td></tr>
+      </table>
+      <p class="hint">Stall revenue lands on top of that and can carry a thin gate \u2014 but only from stalls that actually have a vendor seated in them.</p>
 
       ${renderMarketing(state)}
     </section>
   `;
+}
+
+// A sparkline of the real ticket-revenue-per-guest curve the simulation
+// uses, with the player's current price and the curve's peak both marked.
+// The point is to make the shape visible: through Stage 18 this curve rose
+// all the way to the maximum price, so the slider had one correct answer
+// and no reason to exist. Showing the curve is how a player learns it
+// doesn't any more.
+function renderPriceCurve(state) {
+  const bars = [];
+  let peak = CONFIG.ticketPrice.min;
+  for (let p = CONFIG.ticketPrice.min; p <= CONFIG.ticketPrice.max; p++) {
+    if (ticketRevenueIndex(p) > ticketRevenueIndex(peak)) peak = p;
+  }
+  const max = ticketRevenueIndex(peak);
+  for (let p = CONFIG.ticketPrice.min; p <= CONFIG.ticketPrice.max; p++) {
+    const h = Math.max(4, Math.round((ticketRevenueIndex(p) / max) * 100));
+    const cls = p === state.ticketPrice ? 'at' : p === peak ? 'peak' : '';
+    bars.push(`<i class="${cls}" style="height:${h}%" title="${money(p)} \u2014 gate takings index ${(ticketRevenueIndex(p) / max * 100).toFixed(0)}"></i>`);
+  }
+  return `
+    <div class="price-panel">
+      <div class="price-curve" title="Gate takings per guest across the price range. Green marks the peak; gold marks where you are.">${bars.join('')}</div>
+      <div class="price-axis">
+        <span>${money(CONFIG.ticketPrice.min)}</span>
+        <span>gate takings per guest &middot; peak at <b>${money(peak)}</b></span>
+        <span>${money(CONFIG.ticketPrice.max)}</span>
+      </div>
+    </div>`;
+}
+
+function priceAdvice(price, satDelta) {
+  if (satDelta <= -6) return `Steep. The gate takes more per head, but the crowd notices \u2014 roughly ${Math.abs(Math.round(satDelta))} points off the day's mood, and mood is what reputation is built from.`;
+  if (satDelta >= 3) return `A bargain gate. Thin margins today, but the crowd arrives happy and word travels.`;
+  return `About what folk expect to pay. Sliding either way trades cash against goodwill.`;
 }
 
 // One campaign runs at a time (non-stacking). A card shows what it costs
@@ -159,7 +222,7 @@ export function renderBackstage(state, warn) {
       <tr class="${contracted ? 'is-contracted' : ''}">
         <td>${p.name}${quirkLabel}</td>
         <td class="mono">${p.role}</td>
-        <td class="mono">${'\u2605'.repeat(Math.round(p.popularity / 2))}</td>
+        <td class="mono stars">${'\u2605'.repeat(Math.round(p.popularity / 2))}</td>
         <td class="mono">${costCell}</td>
         <td>${actionCell}</td>
       </tr>`;
@@ -212,7 +275,7 @@ export function renderBackstage(state, warn) {
       <tr class="${hired ? 'is-contracted' : ''}">
         <td>${v.name}</td>
         <td class="mono">${v.type}</td>
-        <td class="mono">${'\u2605'.repeat(Math.round(v.quality / 2))}</td>
+        <td class="mono stars">${'\u2605'.repeat(Math.round(v.quality / 2))}</td>
         <td class="mono">${costCell}</td>
         <td>${actionCell}</td>
       </tr>`;
@@ -341,24 +404,55 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachab
   }
 
   return `
-    <div class="grounds-map" style="--cols:${size.cols};--rows:${size.rows};">${cells.join('')}${gateMarker}${builtMarkers}${ghostMarkers}</div>
-    <p class="map-legend mono">\u{1F3D4}\ufe0f hill &middot; \u{1F332} woods &middot; \u{1F3DE}\ufe0f path &middot; \u{1F33E} clearing</p>
-    <p class="map-legend mono">Everything built must sit on or beside a path &middot; \u{1F3AD} stages need a clear 2\u00d72</p>
-    <p class="map-legend mono">\u{1F357}\u{1F6D2} stalls can't be built on a hill \u2014 that ground is stage/demo only</p>
+    <div class="plat-sheet">
+      <div class="grounds-map" style="--cols:${size.cols};--rows:${size.rows};">${cells.join('')}${gateMarker}${builtMarkers}${ghostMarkers}</div>
+      ${COMPASS_ROSE}
+    </div>
+    <p class="map-legend mono">Everything built must sit on or beside a path &middot; \u{1F3AD} stages need a clear 2\u00d72 &middot; \u{1F357}\u{1F6D2} stalls can't take hill ground</p>
   `;
 }
 
-// Stage 8: a small status line above the map naming the current grounds
-// tier and, if there's more to reach, when the next one unlocks — same
-// "locked hint" spirit as renderMarketing/renderBackstage's contract tiers,
-// but for the grid footprint itself rather than a single purchasable item.
-function renderGroundsStatus(state) {
+// A plat sheet gets a compass rose. Inline SVG rather than a glyph so it
+// inherits the sheet's ink colour and stays crisp at any cell size.
+const COMPASS_ROSE = `
+  <svg class="compass" viewBox="0 0 40 40" aria-hidden="true">
+    <circle cx="20" cy="20" r="15" fill="none" stroke="#6B5433" stroke-width="0.8"/>
+    <path d="M20 3 L23.2 18.2 L20 21 L16.8 18.2 Z" fill="#6B5433"/>
+    <path d="M20 37 L16.8 21.8 L20 19 L23.2 21.8 Z" fill="#6B5433" opacity="0.45"/>
+    <path d="M37 20 L21.8 23.2 L19 20 L21.8 16.8 Z" fill="#6B5433" opacity="0.3"/>
+    <path d="M3 20 L18.2 16.8 L21 20 L18.2 23.2 Z" fill="#6B5433" opacity="0.3"/>
+    <text x="20" y="12" text-anchor="middle" font-size="6" fill="#F2E6C6" font-family="serif">N</text>
+  </svg>`;
+
+// Stage 19: the site plan is now a permanent fixture beside the desk rather
+// than a section buried inside the Fair Floor tab, so it gets its own
+// top-level renderer. Everything that is *about the ground itself* — the
+// map, which grounds tier is unlocked, and the build palette — lives here;
+// everything that is paperwork about what sits on it (plot cards, the day's
+// schedule) stays in renderFairFloor.
+export function renderGroundsPanel(state, pendingBuild, pendingMove, warn) {
+  const footTraffic = computeFootTraffic(state.builtPlots);
+  const reachability = computeReachability(state.builtPlots);
   const size = currentGridSize(state);
   const next = nextGridExpansion(state);
-  const nextHint = next
-    ? `<span class="hint-tag">${next.label} (${next.cols}\u00d7${next.rows}) unlocks Weekend ${next.unlockSeason}</span>`
-    : `<span class="hint-tag">Full grounds explored</span>`;
-  return `<p class="hint grounds-status"><strong>${size.label}</strong> \u2014 ${size.cols}\u00d7${size.rows} cells. ${nextHint}</p>`;
+  const mapHtml = renderGroundsMap(state, pendingMove ? null : pendingBuild, pendingMove, footTraffic, reachability);
+  const paletteHtml = pendingMove ? renderMoveBanner(state, pendingMove) : renderBuildPalette(state, pendingBuild);
+  const built = state.builtPlots.filter(p => p.status === 'built').length;
+  const planned = state.builtPlots.length - built;
+  return `
+    <div class="plat">
+      <div class="plat-head">
+        <span class="plat-title">${size.label}</span>
+        <span class="plat-sub">${size.cols}&times;${size.rows} &middot; ${built} built${planned > 0 ? ` &middot; ${planned} planned` : ''}</span>
+      </div>
+      ${mapHtml}
+      ${warn ? `<p class="warn">${warn}</p>` : ''}
+      <p class="hint grounds-status">${next
+        ? `<span class="hint-tag">${next.label} (${next.cols}\u00d7${next.rows}) unlocks Weekend ${next.unlockSeason}</span>`
+        : `<span class="hint-tag">Full grounds explored</span>`}</p>
+      ${paletteHtml}
+    </div>
+  `;
 }
 
 // Build palette: pick a structure kind, then tap an open cell on the map
@@ -512,16 +606,13 @@ function renderPlotCard(state, p, footTraffic, reachability) {
     </div>`;
 }
 
-export function renderFairFloor(state, conflicts, pendingBuild, pendingMove) {
-  // Stage 14: computed once per render and threaded through to both the map
-  // tooltips and the plot cards below, rather than each recomputing it —
-  // it's a pure function of state.builtPlots, so one call is all this needs.
+export function renderFairFloor(state, conflicts, warn) {
+  // Stage 19: the map, grounds status, and build palette moved out to
+  // renderGroundsPanel (they are permanently visible now). What remains
+  // here is the paperwork about what has been placed: the plot roster and
+  // the day's running order.
   const footTraffic = computeFootTraffic(state.builtPlots);
-  // Stage 17: same "computed once, threaded through" pattern as footTraffic
-  // — reachability is a pure function of state.builtPlots too.
   const reachability = computeReachability(state.builtPlots);
-  const mapHtml = renderGroundsMap(state, pendingMove ? null : pendingBuild, pendingMove, footTraffic, reachability);
-  const paletteHtml = pendingMove ? renderMoveBanner(state, pendingMove) : renderBuildPalette(state, pendingBuild);
 
   const planningPlots = state.builtPlots.filter(p => p.status === 'planning');
   const commitAllTotal = planningPlots.length > 0 ? previewCommitAll(state.builtPlots).total : 0;
@@ -533,7 +624,7 @@ export function renderFairFloor(state, conflicts, pendingBuild, pendingMove) {
     : '';
 
   const plotRows = state.builtPlots.length === 0
-    ? `<p class="hint">Nothing planned yet \u2014 pick a structure above and tap a spot on the map.</p>`
+    ? `<p class="hint">Nothing on the grounds yet. Pick a structure in the build palette beside the map, then tap an open spot.</p>`
     : state.builtPlots.map(p => renderPlotCard(state, p, footTraffic, reachability)).join('');
 
   const builtStages = state.builtPlots.filter(p => p.kind === 'stage' && p.status === 'built');
@@ -548,7 +639,7 @@ export function renderFairFloor(state, conflicts, pendingBuild, pendingMove) {
       <tbody>
         ${TIME_BLOCKS.map(block => `
           <tr>
-            <td>${block.label}</td>
+            <td title="${heatNote(block)}">${block.label}${heatPips(block)}</td>
             ${builtStages.map(stage => {
               const currentId = state.schedule[block.id]?.[stage.id] || '';
               const options = state.roster.map(performerById).filter(Boolean)
@@ -562,15 +653,14 @@ export function renderFairFloor(state, conflicts, pendingBuild, pendingMove) {
             }).join('')}
           </tr>`).join('')}
       </tbody>
-    </table>`;
+    </table>
+    <p class="hint">Sun pips mark the hot blocks. A shaded grove stage is worth more to the crowd then; an open hilltop is better in the cool blocks, where its long sightlines carry.</p>`;
 
   return `
     <section class="panel">
       <h2>The Grounds</h2>
-      <p class="flavor">Dirt paths, old woods, and a good hill for a stage \u2014 build what the faire needs.</p>
-      ${renderGroundsStatus(state)}
-      ${mapHtml}
-      ${paletteHtml}
+      <p class="flavor">What stands on the plan, and who plays where today.</p>
+      ${warn ? `<p class="warn">${warn}</p>` : ''}
       <h3>Built So Far</h3>
       ${commitBanner}
       <div class="plot-grid">${plotRows}</div>
@@ -582,15 +672,42 @@ export function renderFairFloor(state, conflicts, pendingBuild, pendingMove) {
   `;
 }
 
+// Stage 19: a compact visual for a time block's `heat`, so the shade/
+// sightline tradeoff introduced this stage is discoverable from the
+// schedule table rather than only from the manual.
+function heatPips(block) {
+  const n = Math.max(0, Math.min(3, Math.round((block.heat || 0) * 3)));
+  return '<span class="heat-pip"></span>'.repeat(n);
+}
+function heatNote(block) {
+  const h = block.heat || 0;
+  if (h >= 0.85) return 'Full sun \u2014 shade counts for a lot here, open hilltops bake.';
+  if (h >= 0.5) return 'Warm \u2014 shade counts for something.';
+  return 'Cool light \u2014 shade barely matters; sightlines carry the block.';
+}
+
+// Stage 19: attendance is now the product of five separate terms
+// (reputation, price, the bill, the campaign, and the grounds themselves).
+// Presenting the result as a bare number teaches nothing, so the report
+// shows which levers actually produced today's crowd.
+function renderDrawBreakdown(result) {
+  const parts = [];
+  if (result.groundsDraw) parts.push(`grounds <b>${result.groundsDraw.mult.toFixed(2)}\u00d7</b>`);
+  if (typeof result.priceMult === 'number') parts.push(`price <b>${result.priceMult.toFixed(2)}\u00d7</b>`);
+  if (result.scheduledCount) parts.push(`<b>${result.scheduledCount}</b> act${result.scheduledCount === 1 ? '' : 's'} on the bill`);
+  if (result.priceSatDelta) parts.push(`gate mood <b>${result.priceSatDelta > 0 ? '+' : ''}${result.priceSatDelta}</b>`);
+  if (!parts.length) return '';
+  return `<div class="draw-breakdown">${parts.join('<span>&middot;</span>')}</div>`;
+}
+
 export function renderReport(state, result) {
   const netClass = result.cashDelta >= 0 ? 'good' : 'bad';
   const satLabel = result.satisfaction >= 75 ? 'Delighted' : result.satisfaction >= 55 ? 'Content' : result.satisfaction >= 35 ? 'Grumbling' : 'Miserable';
   return `
     <div class="ticket-stub">
-      <div class="ticket-notch left"></div>
-      <div class="ticket-notch right"></div>
       <h2>Day ${result.day} \u2014 Closed the Gates</h2>
       <div class="ticket-row"><span>Attendance</span><span class="mono">${result.attendance.toLocaleString()}</span></div>
+      ${renderDrawBreakdown(result)}
       ${result.campaignActive ? `<div class="ticket-row"><span>${result.campaignActive}</span><span class="mono">+${Math.round((result.adFactor - 1) * 100)}% draw</span></div>` : ''}
       <div class="ticket-row"><span>Crowd mood</span><span class="mono">${satLabel} (${result.satisfaction}/100)</span></div>
       <hr>
@@ -599,6 +716,7 @@ export function renderReport(state, result) {
       <div class="ticket-row"><span>Performer wages</span><span class="mono">-${money(result.performerCosts)}</span></div>
       <div class="ticket-row"><span>Stall staffing</span><span class="mono">-${money(result.vendorCosts)}</span></div>
       <div class="ticket-row"><span>Plot upkeep</span><span class="mono">-${money(result.upkeep)}</span></div>
+      <div class="ticket-row"><span>Hosting the crowd <span class="hint">(${result.attendance.toLocaleString()} &times; ${money(CONFIG.perGuestCost)})</span></span><span class="mono">-${money(result.guestCosts || 0)}</span></div>
       <div class="ticket-row"><span>Grounds overhead</span><span class="mono">-${money(result.overhead)}</span></div>
       <hr>
       <div class="ticket-row total"><span>Net</span><span class="mono ${netClass}">${result.cashDelta >= 0 ? '+' : ''}${money(result.cashDelta)}</span></div>
@@ -623,8 +741,6 @@ export function renderWeekendEnd(state, summary) {
   `).join('');
   return `
     <div class="ticket-stub weekend-summary">
-      <div class="ticket-notch left"></div>
-      <div class="ticket-notch right"></div>
       <h2>Weekend ${state.season} \u2014 Gates Closed for the Season</h2>
       <div class="ticket-row"><span>Total attendance</span><span class="mono">${summary.totalAttendance.toLocaleString()}</span></div>
       <div class="ticket-row"><span>Average crowd mood</span><span class="mono">${summary.avgSatisfaction}/100</span></div>
@@ -662,8 +778,6 @@ export function renderVictory(state) {
   const w = CONFIG.winCondition;
   return `
     <div class="ticket-stub victory-stub">
-      <div class="ticket-notch left"></div>
-      <div class="ticket-notch right"></div>
       <h2>\u2728 A Legendary Faire \u2728</h2>
       <p class="flavor-log">Word has spread the length of the shire. By Weekend ${state.season}, the faire stands ${Math.round(state.reputation)} reputation strong with ${money(state.cash)} in the coffers \u2014 past every mark that matters (Weekend ${w.seasonTarget}+, ${w.minReputation}+ reputation, ${money(w.minCash)}+ cash).</p>
       <div class="ticket-row"><span>Weekend</span><span class="mono">${state.season}</span></div>
@@ -681,8 +795,6 @@ export function renderVictory(state) {
 export function renderGameOver(state) {
   return `
     <div class="ticket-stub gameover-stub">
-      <div class="ticket-notch left"></div>
-      <div class="ticket-notch right"></div>
       <h2>The Faire Folds</h2>
       <p class="flavor-log">The coffers ran dry \u2014 ${money(state.cash)} on hand by Weekend ${state.season}, ${['', 'Friday', 'Saturday', 'Sunday'][state.weekendDay]}. Creditors have called in what's owed, and there's no shire left willing to extend credit. The grounds close for good.</p>
       <div class="ticket-row"><span>Final weekend</span><span class="mono">${state.season}</span></div>

@@ -1,355 +1,897 @@
-/* ---------- design tokens ---------- */
-:root {
-  --parchment: #ECE1C4;
-  --parchment-dark: #DCCEA6;
-  --ink: #2B2118;
-  --forest: #38523B;
-  --forest-dark: #263A28;
-  --wine: #7A2331;
-  --gold: #B8862B;
-  --gold-bright: #D8A83E;
-  --slate: #46606B;
-  --line: rgba(43, 33, 24, 0.22);
+/* ============================================================
+   Faire Weekend — Stage 19 visual rebuild.
 
-  --font-display: 'Cinzel', serif;
-  --font-body: 'Crimson Pro', serif;
-  --font-mono: 'Space Mono', monospace;
+   Direction: "the night before gates open." Through Stage 18 this was a
+   parchment page — cream background, Roman-caps display serif, gold accent,
+   one narrow centred column. That reads as a document *about* a faire. A
+   management sim wants an operations room: dark chrome that recedes, a
+   dense readable HUD, and one luminous thing on the table — the site plan.
+
+   The grounds map is the signature element and the only place this design
+   spends any boldness. Everything around it is deliberately quiet.
+   ============================================================ */
+
+:root {
+  /* --- surfaces, darkest to lightest --- */
+  --pitch: #14110E;        /* page ground */
+  --bark: #211C17;         /* panel bodies */
+  --bark-raised: #2E271F;  /* inputs, buttons, raised rows */
+  --bark-line: #3E3529;    /* hairlines between things */
+
+  /* --- ink --- */
+  --vellum: #EFE3C8;       /* primary text on dark */
+  --vellum-dim: #A79878;   /* secondary text, labels */
+  --vellum-faint: #93846A; /* disabled, tertiary — Stage 20: raised from #6F6450, which measured 2.9-3.1:1 against panel backgrounds (fails WCAG AA 4.5:1 for the small text it's used on: tab labels, table headers, HUD sub-labels). This tone holds 4.6:1+ everywhere it appears. */
+  --wine-text: #CD6677;    /* Stage 20: wine (#A33547) as small text on dark backgrounds measured 2.54:1 — fails badly for the one color meant to flag a loss. This is the same hue lightened to 4.5:1+, used only where wine is text on a dark ground; --wine itself is unchanged for borders/backgrounds/hover states. */
+
+  /* --- accents --- */
+  --brass: #D2A24C;        /* primary accent: heraldic gold */
+  --lantern: #F0B252;      /* highlight / hover glow */
+  --wine: #A33547;         /* negative, danger, refusal */
+  --moss: #7FA255;         /* positive, gains */
+
+  /* --- the map is the bright thing in the room --- */
+  --map-mat: #F2E6C6;      /* the plat's paper, behind the terrain */
+  --t-clearing: #93A052;
+  --t-hill: #BC9C52;
+  --t-woods: #33512F;
+  --t-path: #A57B4C;
+
+  --font-display: 'Grenze Gotisch', 'Cinzel', serif;
+  --font-body: 'Fraunces', Georgia, serif;
+  --font-ui: 'Barlow Semi Condensed', system-ui, sans-serif;
+
+  --cell: 46px;
+  --radius: 4px;
 }
 
 * { box-sizing: border-box; }
 
+html { -webkit-text-size-adjust: 100%; }
+
 body {
   margin: 0;
-  background: var(--parchment);
+  min-height: 100vh;
+  background: var(--pitch);
+  /* Lamplight falling across the table from the upper left. */
   background-image:
-    radial-gradient(circle at 20% 10%, rgba(184, 134, 43, 0.08), transparent 40%),
-    radial-gradient(circle at 85% 90%, rgba(56, 82, 59, 0.10), transparent 45%);
-  color: var(--ink);
+    radial-gradient(1200px 700px at 12% -10%, rgba(240, 178, 82, 0.10), transparent 60%),
+    radial-gradient(900px 600px at 95% 110%, rgba(127, 162, 85, 0.07), transparent 60%);
+  background-attachment: fixed;
+  color: var(--vellum);
   font-family: var(--font-body);
-  font-size: 18px;
-  line-height: 1.45;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
-h1, h2, h3, h4 {
+h1, h2, h3 {
   font-family: var(--font-display);
-  letter-spacing: 0.03em;
-  color: var(--forest-dark);
-  margin: 0 0 0.5em;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--vellum);
+  margin: 0 0 0.4em;
+  line-height: 1.15;
 }
+h2 { font-size: 1.7rem; }
+h3 {
+  font-size: 1.15rem;
+  color: var(--brass);
+  margin-top: 1.6rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--bark-line);
+}
+h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; letter-spacing: 0.01em; }
 
-.mono { font-family: var(--font-mono); font-size: 0.9em; }
+/* Numbers everywhere should line up in columns. */
+.mono {
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
 
 #app {
-  max-width: 900px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 0 1rem 3rem;
+  padding: 0 1.1rem 6.5rem;
 }
 
-/* ---------- header / ledger bar ---------- */
-.app-title {
-  text-align: center;
-  padding: 1.4rem 0 0.6rem;
+/* ============================================================
+   HUD — persistent status bar
+   ============================================================ */
+#hud {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  gap: 1.4rem;
+  margin: 0 -1.1rem 1.1rem;
+  padding: 0.55rem 1.4rem;
+  background: linear-gradient(180deg, #241E18, #1A1611);
+  border-bottom: 1px solid var(--bark-line);
+  box-shadow: 0 10px 24px -14px #000;
 }
-.app-title h1 {
-  font-size: 2.1rem;
-  margin-bottom: 0.15em;
+
+.wordmark {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-right: 1.4rem;
+  border-right: 1px solid var(--bark-line);
+  flex-shrink: 0;
 }
-.app-title .subtitle {
-  font-family: var(--font-body);
-  font-style: italic;
-  color: var(--slate);
-  font-size: 1rem;
+.wordmark h1 {
+  font-size: 1.55rem;
+  margin: 0;
+  color: var(--brass);
+  line-height: 1;
+}
+.wordmark .subtitle {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--vellum-faint);
+  margin-top: 0.25rem;
 }
 
 #ledger {
   display: flex;
-  justify-content: space-around;
-  background: var(--forest-dark);
-  color: var(--parchment);
-  border-radius: 10px;
-  padding: 0.7rem 0.5rem;
-  box-shadow: 0 3px 0 var(--line);
-}
-.ledger-item { display: flex; flex-direction: column; align-items: center; }
-.ledger-label { font-family: var(--font-display); font-size: 1.15rem; }
-.ledger-sub { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gold-bright); }
-
-/* ---------- tabs ---------- */
-#tabs {
-  display: flex;
-  gap: 0.4rem;
-  margin: 1rem 0 0;
-}
-.tab-btn {
+  align-items: center;
+  gap: 1.6rem;
   flex: 1;
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  padding: 0.6rem 0.4rem;
-  background: var(--parchment-dark);
-  border: 1px solid var(--line);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  color: var(--forest-dark);
-  cursor: pointer;
+  flex-wrap: wrap;
 }
-.tab-btn.active {
-  background: var(--parchment);
-  box-shadow: 0 -2px 0 var(--gold) inset;
+.ledger-item { display: flex; flex-direction: column; min-width: 0; }
+.ledger-label {
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--vellum);
 }
-.tab-btn:hover { background: var(--parchment); }
-
-/* ---------- content panel ---------- */
-#content {
-  background: var(--parchment);
-  border: 1px solid var(--line);
-  border-radius: 0 0 10px 10px;
-  padding: 1.2rem;
-}
-.panel .flavor { color: var(--slate); font-style: italic; margin-top: -0.3em; }
-.hint { color: var(--slate); font-size: 0.9rem; }
-.warn { color: var(--wine); font-weight: 600; }
-
-/* ---------- office ---------- */
-.field-row { display: flex; align-items: center; gap: 0.7rem; margin: 1rem 0; }
-.field-row label { font-family: var(--font-display); font-size: 0.9rem; min-width: 7em; }
-.field-row input[type=range] { flex: 1; accent-color: var(--wine); }
-
-.ledger-table { width: 100%; border-collapse: collapse; margin-top: 0.8rem; }
-.ledger-table td { padding: 0.4rem 0.3rem; border-bottom: 1px dashed var(--line); }
-.ledger-table td:last-child { text-align: right; }
-.ledger-table .total-row td { font-weight: 700; border-bottom: none; border-top: 2px solid var(--ink); }
-
-/* ---------- backstage tables ---------- */
-.roster-table { width: 100%; border-collapse: collapse; margin: 0.6rem 0 1.2rem; }
-.roster-table th { text-align: left; font-family: var(--font-display); font-size: 0.8rem; color: var(--slate); border-bottom: 1px solid var(--line); padding: 0.3rem; }
-.roster-table td { padding: 0.45rem 0.3rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.roster-table tr.is-contracted { background: rgba(56, 82, 59, 0.08); }
-.quirk-tag {
-  display: inline-block;
-  margin-left: 0.5em;
-  font-size: 0.65rem;
+.ledger-label.good { color: var(--moss); }
+.ledger-label.bad { color: var(--wine-text); }
+.ledger-sub {
+  font-family: var(--font-ui);
+  font-size: 0.66rem;
   text-transform: uppercase;
-  background: var(--gold);
-  color: var(--ink);
-  border-radius: 4px;
-  padding: 0.1em 0.4em;
-  cursor: help;
+  letter-spacing: 0.13em;
+  color: var(--vellum-faint);
+  white-space: nowrap;
 }
 
-/* ---------- fair floor: grounds map ---------- */
+/* A meter is more legible at a glance than a bare number for the two values
+   that are really ratios: reputation (0–100) and the grounds-draw
+   multiplier the player is trying to grow. */
+.meter {
+  width: 108px;
+  height: 5px;
+  margin-top: 0.32rem;
+  background: #0F0D0A;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.meter > i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--brass), var(--lantern));
+  transition: width 0.35s ease;
+}
+.meter.is-low > i { background: linear-gradient(90deg, #7A2733, var(--wine)); }
+.meter.is-high > i { background: linear-gradient(90deg, #5F7F40, var(--moss)); }
+
+/* ============================================================
+   Board — persistent map beside the tabbed desk
+   ============================================================ */
+#board {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(340px, 1fr);
+  gap: 1.1rem;
+  align-items: start;
+}
+/* Report / weekend / victory / game-over screens take the whole board. */
+#board.is-fullwidth { grid-template-columns: minmax(0, 1fr); }
+#board.is-fullwidth #grounds { display: none; }
+
+#grounds { position: sticky; top: 4.8rem; }
+#desk { min-width: 0; }
+
+/* ============================================================
+   SIGNATURE: the grounds map, drawn as a surveyor's plat
+   ============================================================ */
+.plat {
+  background: linear-gradient(180deg, #2A231B, #1F1A15);
+  border: 1px solid var(--bark-line);
+  border-radius: 6px;
+  padding: 0.7rem;
+  box-shadow: 0 18px 40px -26px #000;
+}
+
+.plat-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.1rem 0.25rem 0.6rem;
+}
+.plat-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  color: var(--brass);
+  line-height: 1;
+}
+.plat-sub {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--vellum-faint);
+  text-align: right;
+}
+
+/* The paper the plan is drawn on: a double rule, the way a real plat sheet
+   is bordered, with the compass rose tucked into the corner. */
+.plat-sheet {
+  position: relative;
+  background: var(--map-mat);
+  border: 3px double #6B5433;
+  border-radius: 3px;
+  padding: 12px;
+}
+.compass {
+  position: absolute;
+  right: 9px;
+  bottom: 7px;
+  width: 40px;
+  height: 40px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .grounds-map {
   display: grid;
-  grid-template-columns: repeat(var(--cols), 1fr);
-  grid-template-rows: repeat(var(--rows), 32px);
-  gap: 2px;
-  background: var(--forest-dark);
-  border-radius: 8px;
-  padding: 4px;
-  margin: 0.8rem 0 0.3rem;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  grid-template-rows: repeat(var(--rows), var(--cell));
+  gap: 1px;
+  background: #6B5433;
+  border: 1px solid #6B5433;
 }
-.terrain-cell { border-radius: 3px; }
-.terrain-cell[data-terrain="clearing"] { background: #C9BC93; }
-.terrain-cell[data-terrain="hill"] { background: #B7A15B; }
-.terrain-cell[data-terrain="woods"] { background: #2F4A31; }
-.terrain-cell[data-terrain="path"] { background: #8C6B45; }
+
+/* --- terrain, each with its own texture rather than a flat fill --- */
+.terrain-cell { position: relative; }
+.terrain-cell[data-terrain="clearing"] {
+  background-color: var(--t-clearing);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.13) 1px, transparent 1.4px);
+  background-size: 9px 9px;
+}
+.terrain-cell[data-terrain="hill"] {
+  background-color: var(--t-hill);
+  background-image: repeating-linear-gradient(58deg, rgba(94, 68, 26, 0.24) 0 1px, transparent 1px 7px);
+}
+.terrain-cell[data-terrain="woods"] {
+  background-color: var(--t-woods);
+  background-image:
+    radial-gradient(rgba(126, 168, 106, 0.5) 1.6px, transparent 2px),
+    radial-gradient(rgba(18, 36, 20, 0.55) 1.6px, transparent 2px);
+  background-size: 11px 11px, 11px 11px;
+  background-position: 0 0, 5px 6px;
+}
+.terrain-cell[data-terrain="path"] {
+  background-color: var(--t-path);
+  background-image: repeating-linear-gradient(90deg, rgba(255, 240, 214, 0.16) 0 1px, transparent 1px 5px);
+}
+
+/* --- structures render as raised tokens sitting ON the plan --- */
 .plot-marker {
+  position: relative;
+  z-index: 2;
   border: none;
-  border-radius: 5px;
-  background: rgba(236, 225, 196, 0.9);
-  box-shadow: 0 0 0 1px var(--line);
-  font-size: 1rem;
+  border-radius: var(--radius);
+  font-size: 1.35rem;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+  margin: 2px;
   cursor: pointer;
+  font-family: var(--font-ui);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
-/* Stage 12: a spanning marker (a 2x2 stage) gets a bigger glyph so it reads
-   as one bigger thing rather than a stretched 1x1 icon. */
-.plot-marker.kind-stage { font-size: 1.6rem; }
-.plot-marker:hover { background: var(--parchment); }
+.plot-marker.kind-stage { font-size: 2rem; }
+
 .plot-marker.built {
-  background: var(--gold);
-  box-shadow: 0 0 0 2px var(--forest);
+  background: linear-gradient(180deg, #F4DFAE, #D9BC7F);
+  box-shadow: 0 2px 0 #7A5E2E, 0 4px 9px -3px rgba(0, 0, 0, 0.55);
+  border: 1px solid #7A5E2E;
+  cursor: default;
+}
+.plot-marker.planning {
+  background: rgba(242, 230, 198, 0.42);
+  border: 2px dashed #7A5E2E;
+  box-shadow: none;
   cursor: default;
 }
 .plot-marker.ghost {
-  background: rgba(56, 82, 59, 0.25);
-  box-shadow: 0 0 0 1px dashed var(--forest);
-  color: var(--forest-dark);
-  font-weight: 700;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px dashed rgba(58, 44, 20, 0.65);
+  color: #3A2C14;
+  font-size: 1.2rem;
+  font-weight: 600;
 }
-.plot-marker.ghost:hover { background: var(--gold-bright); }
-.plot-marker.planning {
-  background: rgba(184, 134, 43, 0.25);
-  box-shadow: 0 0 0 2px dashed var(--gold);
+.plot-marker.ghost:hover,
+.plot-marker.ghost:focus-visible {
+  background: var(--lantern);
+  border-style: solid;
+  transform: scale(1.06);
+  box-shadow: 0 3px 10px -2px rgba(0, 0, 0, 0.5);
+  outline: none;
 }
-.plot-marker.moving { outline: 2px dashed var(--wine); outline-offset: 1px; }
-/* Stage 17: the front gate marker — non-interactive, sits under any built
-   marker/ghost that might share its cell (z-index below .plot-marker's
-   default stacking, same DOM-order-based layering every other marker uses). */
+.plot-marker.blocked {
+  background: repeating-linear-gradient(45deg, rgba(163, 53, 71, 0.26) 0 4px, transparent 4px 8px);
+  border: 1px solid rgba(163, 53, 71, 0.5);
+  color: rgba(122, 26, 40, 0.8);
+  font-size: 0.85rem;
+  cursor: not-allowed;
+}
+.plot-marker.moving {
+  outline: 2px solid var(--wine);
+  outline-offset: 1px;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+@keyframes pulse { 50% { outline-color: var(--lantern); } }
+
 .gate-marker {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
+  font-size: 1.4rem;
   pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
-.plot-marker.blocked {
-  background: rgba(122, 32, 32, 0.18);
-  box-shadow: 0 0 0 1px dashed var(--wine);
-  color: var(--wine);
-  cursor: not-allowed;
-  font-weight: 700;
+
+.map-legend {
+  font-family: var(--font-ui);
+  font-size: 0.74rem;
+  color: var(--vellum-faint);
+  margin: 0.45rem 0 0;
+  line-height: 1.45;
 }
-.map-legend { color: var(--slate); margin: 0 0 0.8rem; font-size: 0.75rem; }
+.grounds-status { margin: 0.7rem 0 0; }
 
-.build-palette { margin-bottom: 1rem; }
-.palette-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.4rem; }
-.palette-buttons .btn.active { background: var(--gold); color: var(--ink); }
+/* ============================================================
+   Tabs & panels
+   ============================================================ */
+#tabs { display: flex; gap: 2px; }
+.tab-btn {
+  flex: 1;
+  font-family: var(--font-ui);
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  padding: 0.7rem 0.5rem;
+  background: #1B1712;
+  border: 1px solid var(--bark-line);
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  color: var(--vellum-faint);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.tab-btn:hover { color: var(--vellum); background: #241E18; }
+.tab-btn.active {
+  background: var(--bark);
+  color: var(--brass);
+  box-shadow: inset 0 2px 0 var(--brass);
+}
 
-.warn-tag, .hint-tag {
+#content {
+  background: var(--bark);
+  border: 1px solid var(--bark-line);
+  border-radius: 0 0 6px 6px;
+  padding: 1.3rem 1.4rem 1.5rem;
+}
+#board.is-fullwidth #content { border: none; background: none; padding: 0; }
+
+.panel > h2:first-child { margin-bottom: 0.1em; }
+.flavor {
+  font-style: italic;
+  color: var(--vellum-dim);
+  margin: 0 0 1.1rem;
+}
+.hint { color: var(--vellum-dim); font-size: 0.9rem; }
+.warn {
+  color: #F0A7B0;
+  background: rgba(163, 53, 71, 0.16);
+  border-left: 3px solid var(--wine);
+  padding: 0.55rem 0.75rem;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+}
+
+.hint-tag, .warn-tag {
   display: inline-block;
-  margin-left: 0.5em;
+  font-family: var(--font-ui);
   font-size: 0.7rem;
-  border-radius: 4px;
-  padding: 0.05em 0.4em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border-radius: 3px;
+  padding: 0.12em 0.45em;
+  white-space: nowrap;
 }
-.warn-tag { background: var(--wine); color: var(--parchment); }
-.hint-tag { background: var(--forest); color: var(--parchment); }
+.hint-tag { background: rgba(210, 162, 76, 0.16); color: var(--brass); }
+.warn-tag { background: rgba(163, 53, 71, 0.2); color: #E58E9B; }
+.quirk-tag {
+  display: inline-block;
+  margin-left: 0.45em;
+  font-family: var(--font-ui);
+  font-size: 0.64rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--brass);
+  color: #20190C;
+  border-radius: 3px;
+  padding: 0.1em 0.4em;
+  cursor: help;
+}
 
-.plot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.8rem; margin: 0.8rem 0 1.4rem; }
-.plot-card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.7rem;
-  background: var(--parchment-dark);
-  display: flex; flex-direction: column; gap: 0.4rem;
+/* ============================================================
+   Buttons
+   ============================================================ */
+.btn {
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.5rem 0.9rem;
+  background: var(--bark-raised);
+  color: var(--vellum);
+  border: 1px solid var(--bark-line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
-.plot-card.built { border-color: var(--forest); background: rgba(56, 82, 59, 0.12); }
-.plot-card.planning { border-color: var(--gold); border-style: dashed; background: rgba(184, 134, 43, 0.08); }
-.plot-card-head { display: flex; justify-content: space-between; align-items: baseline; }
-.plot-card-head h4 { margin: 0; font-size: 1rem; }
-.plot-kind { font-size: 0.7rem; text-transform: uppercase; color: var(--slate); }
-.plot-desc { font-size: 0.88rem; margin: 0; flex: 1; }
-.plot-stats { font-size: 0.75rem; color: var(--slate); }
-.plot-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-.plot-vendor { font-size: 0.8rem; margin: 0; }
-.plot-vendor select { width: 100%; font-family: var(--font-body); padding: 0.25rem; }
-.built-tag { font-family: var(--font-display); font-size: 0.75rem; color: var(--forest); }
+.btn:hover:not(:disabled) { background: #3A3126; border-color: var(--brass); }
+.btn.small { font-size: 0.78rem; padding: 0.32rem 0.6rem; }
+.btn.primary {
+  background: linear-gradient(180deg, var(--lantern), var(--brass));
+  color: #201804;
+  border-color: #8C6620;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.btn.primary:hover:not(:disabled) { background: linear-gradient(180deg, #FFC469, var(--lantern)); }
+.btn.danger { color: #E58E9B; border-color: rgba(163, 53, 71, 0.45); }
+.btn.danger:hover:not(:disabled) { background: rgba(163, 53, 71, 0.24); border-color: var(--wine); }
+.btn.active { background: var(--brass); color: #201804; border-color: var(--lantern); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+:focus-visible { outline: 2px solid var(--lantern); outline-offset: 2px; }
+
+/* ============================================================
+   Office: pricing + ledger + campaigns
+   ============================================================ */
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 1rem 0 0.4rem;
+}
+.field-row label {
+  font-family: var(--font-ui);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--vellum-dim);
+  min-width: 7.5em;
+}
+input[type=range] {
+  flex: 1;
+  accent-color: var(--brass);
+  background: transparent;
+}
+select {
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  background: var(--bark-raised);
+  color: var(--vellum);
+  border: 1px solid var(--bark-line);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.4rem;
+  max-width: 100%;
+}
+.price-readout {
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--brass);
+  min-width: 3.2em;
+  text-align: right;
+}
+
+/* A tiny inline chart of the actual revenue curve the simulation uses, so
+   the price slider reads as a curve with a peak rather than a number that
+   only goes up. */
+.price-curve {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 42px;
+  margin: 0.2rem 0 0.1rem;
+}
+.price-curve > i {
+  flex: 1;
+  background: var(--bark-raised);
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+}
+.price-curve > i.at { background: var(--brass); }
+.price-curve > i.peak { background: var(--moss); }
+.price-panel { margin-bottom: 0.6rem; }
+.price-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: var(--vellum-faint);
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--bark-line);
+}
+.price-axis b { color: var(--moss); }
+
+.ledger-table { width: 100%; border-collapse: collapse; margin-top: 0.8rem; }
+.ledger-table td {
+  padding: 0.42rem 0.2rem;
+  border-bottom: 1px solid var(--bark-line);
+  font-size: 0.94rem;
+}
+.ledger-table td:last-child { text-align: right; font-family: var(--font-ui); font-variant-numeric: tabular-nums; }
+.ledger-table td.neg { color: var(--wine-text); }
+.ledger-table .total-row td {
+  font-weight: 700;
+  color: var(--brass);
+  border-bottom: none;
+  border-top: 2px solid var(--brass);
+  padding-top: 0.55rem;
+}
+
+.campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 0.7rem;
+}
+.campaign-card {
+  background: #1A1610;
+  border: 1px solid var(--bark-line);
+  border-radius: 5px;
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.campaign-card.is-active { border-color: var(--brass); box-shadow: inset 0 0 0 1px rgba(210, 162, 76, 0.3); }
+.campaign-card.locked { opacity: 0.5; }
+.campaign-card .flavor { margin: 0; font-size: 0.86rem; }
+.campaign-head { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
+.campaign-head strong { font-family: var(--font-ui); font-size: 0.95rem; }
+.campaign-tag {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.campaign-tag.running { color: var(--moss); }
+.campaign-tag.cooldown { color: var(--vellum-faint); }
+.campaign-card .btn { margin-top: auto; }
+
+/* ============================================================
+   Backstage tables
+   ============================================================ */
+.roster-table { width: 100%; border-collapse: collapse; margin: 0.6rem 0 1rem; }
+.roster-table th {
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--vellum-faint);
+  border-bottom: 1px solid var(--bark-line);
+  padding: 0.4rem 0.35rem;
+}
+.roster-table td {
+  padding: 0.55rem 0.35rem;
+  border-bottom: 1px solid #29231C;
+  vertical-align: middle;
+  font-size: 0.93rem;
+}
+.roster-table tr.is-contracted { background: rgba(210, 162, 76, 0.07); }
+.roster-table tr.is-contracted td:first-child { box-shadow: inset 3px 0 0 var(--brass); }
+.roster-table td .btn { margin: 0.12rem 0.15rem 0.12rem 0; }
+.stars { color: var(--brass); letter-spacing: 0.1em; }
+
+.stall-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  background: #1A1610;
+  border: 1px solid var(--bark-line);
+  border-radius: 5px;
+  padding: 0.55rem 0.75rem;
+  margin: 0.6rem 0;
+}
+.stall-gauge { font-family: var(--font-ui); font-size: 0.84rem; color: var(--vellum-dim); }
+.stall-gauge .mono { color: var(--vellum); }
+.stall-gauge.full .mono { color: var(--moss); }
+
+/* ============================================================
+   Fair floor: build palette, plot cards, schedule
+   ============================================================ */
+.build-palette {
+  background: #1A1610;
+  border: 1px solid var(--bark-line);
+  border-radius: 5px;
+  padding: 0.7rem 0.8rem;
+  margin-top: 0.7rem;
+}
+.build-palette .hint { margin: 0 0 0.55rem; }
+.palette-buttons { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 
 .commit-banner {
-  display: flex; justify-content: space-between; align-items: center; gap: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
   flex-wrap: wrap;
-  background: rgba(184, 134, 43, 0.18);
-  border: 1px dashed var(--gold);
-  border-radius: 8px;
-  padding: 0.5rem 0.8rem;
-  margin: 0.6rem 0;
-  font-size: 0.85rem;
+  background: rgba(210, 162, 76, 0.12);
+  border: 1px dashed var(--brass);
+  border-radius: 5px;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.8rem;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
 }
 
-.stall-summary { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; margin: 0.6rem 0 1rem; }
-.stall-gauge { font-size: 0.8rem; background: var(--parchment-dark); border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.7rem; }
-.stall-gauge.full { border-color: var(--wine); }
-
-.campaign-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.8rem; margin: 0.8rem 0 0.4rem; }
-.campaign-card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.7rem;
-  background: var(--parchment-dark);
-  display: flex; flex-direction: column; gap: 0.4rem;
+.plot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.7rem; }
+.plot-card {
+  background: #1A1610;
+  border: 1px solid var(--bark-line);
+  border-left: 3px solid var(--brass);
+  border-radius: 5px;
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
 }
-.campaign-card.is-active { border-color: var(--forest); background: rgba(56, 82, 59, 0.12); }
-.campaign-card.locked { opacity: 0.6; border-style: dashed; }
-.unlock-note { color: var(--gold); font-weight: 700; text-align: center; }
-.campaign-head { display: flex; justify-content: space-between; align-items: baseline; }
-.campaign-tag {
-  display: inline-block;
-  align-self: flex-start;
+.plot-card.planning { border-left-style: dashed; border-left-color: var(--vellum-faint); }
+.plot-card[data-kind="stage"] { border-left-color: var(--lantern); }
+.plot-card[data-kind="demo"] { border-left-color: var(--moss); }
+.plot-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.plot-kind {
+  font-family: var(--font-ui);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--vellum-faint);
+  white-space: nowrap;
+}
+.plot-stats {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--vellum-dim);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.45rem;
+  align-items: center;
+}
+.plot-actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: auto; }
+.plot-vendor { margin: 0; font-size: 0.85rem; }
+.built-tag {
+  font-family: var(--font-ui);
   font-size: 0.7rem;
-  border-radius: 4px;
-  padding: 0.05em 0.4em;
+  color: var(--vellum-faint);
+  letter-spacing: 0.04em;
 }
-.campaign-tag.running { background: var(--forest); color: var(--parchment); }
-.campaign-tag.cooldown { background: var(--slate); color: var(--parchment); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn:disabled:hover { background: var(--forest); }
 
 .schedule-table { width: 100%; border-collapse: collapse; margin-top: 0.6rem; }
-.schedule-table th, .schedule-table td { border: 1px solid var(--line); padding: 0.4rem; font-size: 0.85rem; }
-.schedule-table select { width: 100%; font-family: var(--font-body); padding: 0.2rem; }
-
-/* ---------- buttons ---------- */
-.btn {
-  font-family: var(--font-display);
-  font-size: 0.85rem;
-  background: var(--forest);
-  color: var(--parchment);
-  border: none;
-  border-radius: 6px;
-  padding: 0.55rem 1rem;
-  cursor: pointer;
+.schedule-table th {
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--vellum-faint);
+  text-align: left;
+  padding: 0.4rem 0.35rem;
+  border-bottom: 1px solid var(--bark-line);
 }
-.btn:hover { background: var(--forest-dark); }
-.btn.small { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
-.btn.danger { background: var(--wine); }
-.btn.primary { background: var(--gold); color: var(--ink); font-size: 1rem; padding: 0.7rem 1.4rem; }
-.run-bar { text-align: center; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.schedule-table td {
+  padding: 0.45rem 0.35rem;
+  border-bottom: 1px solid #29231C;
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+}
+.schedule-table td:first-child { color: var(--vellum-dim); white-space: nowrap; }
+/* Stage 19: a sun pip on a time-block row tells the player at a glance
+   which blocks punish an unshaded hilltop stage. */
+.heat-pip {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  margin-left: 0.35em;
+  vertical-align: middle;
+  background: var(--lantern);
+}
 
-/* ---------- report ticket stub (signature element) ---------- */
+/* ============================================================
+   Ticket stub — day report, weekend summary, victory, game over
+   ============================================================ */
 .ticket-stub {
   position: relative;
-  max-width: 480px;
+  max-width: 620px;
   margin: 0.5rem auto;
-  background: var(--parchment);
-  border: 2px dashed var(--wine);
-  border-radius: 4px;
-  padding: 1.4rem 1.6rem;
+  background: linear-gradient(180deg, #F5EAD0, #E4D4AE);
+  color: #241C10;
+  border-radius: 6px;
+  padding: 1.6rem 1.8rem 1.5rem;
+  box-shadow: 0 22px 50px -22px #000;
 }
-.ticket-notch {
+/* Torn perforation along the top and bottom edges. */
+.ticket-stub::before,
+.ticket-stub::after {
+  content: '';
   position: absolute;
-  top: 50%;
-  width: 20px; height: 20px;
-  background: var(--parchment);
-  border: 2px dashed var(--wine);
-  border-radius: 50%;
-  transform: translateY(-50%);
+  left: 0; right: 0;
+  height: 8px;
+  background-image: radial-gradient(circle at 6px 0, transparent 5px, var(--pitch) 5px);
+  background-size: 12px 8px;
 }
-.ticket-notch.left { left: -12px; }
-.ticket-notch.right { right: -12px; }
-.ticket-stub h2 { text-align: center; font-size: 1.3rem; }
-.ticket-row { display: flex; justify-content: space-between; padding: 0.15rem 0; }
-.ticket-row.total { font-size: 1.1rem; font-weight: 700; }
-.ticket-row .good { color: var(--forest); }
-.ticket-row .bad { color: var(--wine); }
-.ticket-stub hr { border: none; border-top: 1px dashed var(--line); margin: 0.5rem 0; }
-.flavor-log { font-style: italic; color: var(--slate); margin-top: 0.8rem; }
-.ticket-stub .btn { display: block; width: 100%; margin-top: 1.2rem; }
-/* Stage 16: win/loss screens reuse the ticket-stub shell, just with a
-   border accent matching the outcome instead of the neutral wine dash. */
-.victory-stub { border-color: var(--gold-bright); }
-.victory-stub .ticket-notch { border-color: var(--gold-bright); }
-.gameover-stub { border-color: var(--wine); }
-
-/* ---------- footer ---------- */
-#footer {
+.ticket-stub::before { top: -1px; transform: scaleY(-1); }
+.ticket-stub::after { bottom: -1px; }
+.ticket-stub h2 {
+  font-family: var(--font-display);
+  color: #4A2F14;
   text-align: center;
-  margin-top: 1rem;
+  font-size: 1.9rem;
+  margin-bottom: 0.1em;
 }
+.ticket-notch { display: none; } /* superseded by the perforation above */
+.ticket-stub hr { border: none; border-top: 1px dashed rgba(74, 47, 20, 0.4); margin: 0.8rem 0; }
+.ticket-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.22rem 0;
+  font-family: var(--font-ui);
+  font-size: 0.94rem;
+}
+.ticket-row > span:first-child { color: #6B5230; }
+.ticket-row .mono { color: #241C10; }
+.ticket-row.total {
+  font-size: 1.25rem;
+  font-weight: 700;
+  border-top: 2px solid #4A2F14;
+  margin-top: 0.4rem;
+  padding-top: 0.5rem;
+}
+.ticket-row .good { color: #3F6B2E; }
+.ticket-row .bad { color: #8E2231; }
+.ticket-stub .warn {
+  color: #7C1E2C;
+  background: rgba(163, 53, 71, 0.12);
+  border-left-color: #8E2231;
+}
+.flavor-log {
+  font-family: var(--font-body);
+  font-style: italic;
+  color: #5A452A;
+  border-top: 1px dashed rgba(74, 47, 20, 0.4);
+  padding-top: 0.7rem;
+  margin-top: 0.9rem;
+  line-height: 1.6;
+}
+.ticket-stub .btn { display: block; width: 100%; margin-top: 1.1rem; }
+.unlock-note {
+  background: rgba(63, 107, 46, 0.15);
+  border-left: 3px solid #3F6B2E;
+  color: #35521F;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+}
+.victory-stub { box-shadow: 0 0 0 2px var(--brass), 0 22px 60px -18px rgba(240, 178, 82, 0.5); }
+.gameover-stub { background: linear-gradient(180deg, #D8CBB0, #BFB094); box-shadow: 0 0 0 2px #7A2733, 0 22px 50px -22px #000; }
+
+/* A breakdown of what actually produced the day's crowd — Stage 19 added
+   grounds draw and price elasticity as attendance terms, and an
+   unexplained number is a worse teacher than a shown one. */
+.draw-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.5rem;
+  font-family: var(--font-ui);
+  font-size: 0.76rem;
+  color: #6B5230;
+  margin: 0.15rem 0 0.5rem;
+}
+.draw-breakdown b { color: #241C10; font-weight: 600; }
+
+/* ============================================================
+   Footer + primary action
+   ============================================================ */
+#footer { text-align: center; margin-top: 1.6rem; }
 #resetBtn {
+  font-family: var(--font-ui);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   background: none;
   border: none;
-  color: var(--slate);
-  text-decoration: underline;
+  color: var(--vellum-faint);
   cursor: pointer;
-  font-family: var(--font-body);
-  font-size: 0.8rem;
+  padding: 0.4rem;
+}
+#resetBtn:hover { color: var(--wine); }
+
+/* The primary action lives in a fixed bar so it stays reachable no matter
+   how far down a long Backstage table the player has scrolled. */
+.run-bar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 45;
+  display: flex;
+  justify-content: center;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(180deg, rgba(20, 17, 14, 0), rgba(20, 17, 14, 0.94) 38%);
+  pointer-events: none;
+}
+.run-bar .btn {
+  pointer-events: auto;
+  font-size: 1.05rem;
+  padding: 0.7rem 2.6rem;
+  box-shadow: 0 10px 28px -10px rgba(240, 178, 82, 0.6);
 }
 
-@media (max-width: 560px) {
-  body { font-size: 16px; }
-  .roster-table th:nth-child(2), .roster-table td:nth-child(2) { display: none; }
+/* ============================================================
+   Responsive + accessibility
+   ============================================================ */
+@media (max-width: 1080px) {
+  :root { --cell: 38px; }
+  #board { grid-template-columns: minmax(0, 1fr); }
+  #grounds { position: static; }
+}
+@media (max-width: 720px) {
+  :root { --cell: 30px; }
+  body { font-size: 15px; }
+  #hud { flex-direction: column; gap: 0.6rem; padding: 0.6rem 1rem; }
+  .wordmark { border-right: none; border-bottom: 1px solid var(--bark-line); padding: 0 0 0.5rem; }
+  #ledger { gap: 1rem; justify-content: space-between; }
+  .ledger-label { font-size: 1.1rem; }
+  .plat-sheet { padding: 7px; overflow-x: auto; }
+  #content { padding: 1rem; }
+  .plot-grid, .campaign-grid { grid-template-columns: 1fr; }
+  .roster-table { font-size: 0.86rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

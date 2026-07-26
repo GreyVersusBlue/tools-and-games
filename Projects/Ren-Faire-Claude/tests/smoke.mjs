@@ -19,8 +19,8 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability } = await import(path.join(root, 'js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE } = await import(path.join(root, 'js/data.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights } = await import(path.join(root, 'js/engine.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW } = await import(path.join(root, 'js/data.js'));
 const State = await import(path.join(root, 'js/state.js'));
 
 // --- RNG determinism ---
@@ -1768,7 +1768,8 @@ const State = await import(path.join(root, 'js/state.js'));
   const builtStagePlot = s.builtPlots.find(p => p.kind === 'stage');
   assert(afterStage.upkeep === Math.round(builtStagePlot.cost * CONFIG.upkeepRate), 'simulateDay\u2019s upkeep matches plotUpkeep for the one built stage');
   assert(afterStage.overhead === CONFIG.baseOverhead, 'overhead stays flat regardless of what\u2019s built \u2014 stage-count scaling moved into upkeep');
-  assert(afterStage.costs === afterStage.performerCosts + afterStage.vendorCosts + afterStage.upkeep + afterStage.overhead, 'simulateDay\u2019s total costs line includes upkeep alongside wages and overhead');
+  assert(afterStage.costs === afterStage.performerCosts + afterStage.vendorCosts + afterStage.upkeep + afterStage.overhead + afterStage.guestCosts, 'simulateDay\u2019s total costs line includes upkeep and per-guest cost alongside wages and overhead');
+  assert(afterStage.guestCosts === Math.round(afterStage.attendance * CONFIG.perGuestCost), 'Stage 19: per-guest cost is attendance \u00d7 CONFIG.perGuestCost');
 
   s = State.buildPlot(s, 'food', 6, 1).state; // path-fronted clearing cell, 1x1
   const afterTwo = simulateDay(s, 1);
@@ -1930,7 +1931,19 @@ const State = await import(path.join(root, 'js/state.js'));
   assert(doc.querySelector('.grounds-map'), 'Fair Floor shows the grounds map');
   assert(doc.querySelector('.gate-marker'), 'Stage 17: the front gate marker renders on the grounds map');
   assert(!doc.querySelector('.plot-marker.ghost'), 'no ghost placement cells before a structure kind is selected');
-  assert(doc.querySelector('.grounds-status')?.textContent.includes('Home Grounds'), 'the grounds-status line shows Home Grounds at Weekend 1');
+  // Stage 19: the grounds tier label moved from the status line into the
+  // plat sheet's own title cartouche; the status line now carries only the
+  // next-unlock hint.
+  assert(doc.querySelector('.plat-title')?.textContent.includes('Home Grounds'), 'Stage 19: the plat title names the current grounds tier');
+  assert(doc.querySelector('.grounds-status')?.textContent.includes('unlocks Weekend'), 'the grounds-status line shows when the next expansion unlocks');
+  // Stage 19: the site plan is persistent, not a Fair-Floor-only panel.
+  doc.querySelector('[data-tab="office"]').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  assert(doc.querySelector('.grounds-map'), 'Stage 19: the grounds map stays visible from the Office tab');
+  assert(doc.querySelector('#grounds .grounds-map'), 'Stage 19: the map lives in its own #grounds section, outside the tab panel');
+  assert(doc.querySelector('#content').innerHTML.includes('Ledger Desk'), 'the Office panel still renders beside the persistent map');
+  assert(doc.querySelector('.price-curve'), 'Stage 19: the Office shows the ticket-revenue curve');
+  assert(doc.querySelector('#ledger').textContent.includes('grounds draw'), 'Stage 19: the HUD carries a permanent grounds-draw readout');
+  doc.querySelector('[data-tab="fairfloor"]').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   assert(doc.querySelector('.grounds-status')?.textContent.includes('East Meadow'), 'the grounds-status line names East Meadow as the next expansion at Weekend 1');
 
   const stageBtn = doc.querySelector('[data-action="selectBuild"][data-kind="stage"]');
@@ -2151,6 +2164,147 @@ const State = await import(path.join(root, 'js/state.js'));
   dom.window.close();
 }
 
+// ---------------------------------------------------------------------
+// Section 1f: Stage 19 — grounds draw, price elasticity, block quality
+// ---------------------------------------------------------------------
+
+// --- computeGroundsDraw (pure) ---
+{
+  const empty = computeGroundsDraw([]);
+  assert(empty.points === 0, 'empty grounds generate zero draw points');
+  assert(empty.mult === GROUNDS_DRAW.floor, 'empty grounds sit exactly at the draw floor');
+
+  const planning = computeGroundsDraw([{ id: 'a', kind: 'stage', status: 'planning' }]);
+  assert(planning.points === 0, 'a planning-status plot contributes no draw \u2014 it is not on the grounds yet');
+
+  const oneStage = computeGroundsDraw([{ id: 'a', kind: 'stage', status: 'built' }]);
+  assert(oneStage.points === GROUNDS_DRAW.points.stage, 'one built stage contributes its full point value');
+  assert(oneStage.mult > GROUNDS_DRAW.floor, 'building a single stage lifts the grounds above the empty-field floor');
+
+  const emptyStall = computeGroundsDraw([{ id: 'b', kind: 'food', status: 'built', assignedVendorId: null }]);
+  assert(emptyStall.points === 0, 'an unstaffed stall draws nobody \u2014 same rule stall revenue already follows');
+  const staffedStall = computeGroundsDraw([{ id: 'b', kind: 'food', status: 'built', assignedVendorId: 'v1' }]);
+  assert(staffedStall.points === GROUNDS_DRAW.points.food, 'a staffed stall does contribute draw');
+
+  // Diminishing returns: the 2nd structure is worth more than the 20th.
+  const ladder = (n) => computeGroundsDraw(Array.from({ length: n }, (_, i) => ({ id: 's' + i, kind: 'stage', status: 'built' }))).mult;
+  const firstStep = ladder(2) - ladder(1);
+  const laterStep = ladder(12) - ladder(11);
+  assert(firstStep > laterStep, 'grounds draw has diminishing returns \u2014 an early structure moves the needle more than a late one');
+  assert(ladder(60) <= GROUNDS_DRAW.ceiling + 1e-9, 'grounds draw is capped at its ceiling no matter how much is built');
+  assert(computeGroundsDraw([{ id: 'z', kind: 'nonsense', status: 'built' }]).points === 0, 'an unknown kind contributes nothing rather than NaN');
+}
+
+// --- price elasticity + the ticket-revenue curve (pure) ---
+{
+  assert(priceFactor(CONFIG.priceAnchor) === 1, 'the anchor price is exactly neutral for attendance');
+  assert(priceFactor(CONFIG.ticketPrice.max) < priceFactor(CONFIG.ticketPrice.min), 'a higher price suppresses attendance more than a lower one');
+
+  const prices = [];
+  for (let p = CONFIG.ticketPrice.min; p <= CONFIG.ticketPrice.max; p++) prices.push(p);
+  const peak = prices.reduce((a, b) => (ticketRevenueIndex(b) > ticketRevenueIndex(a) ? b : a));
+  // THE point of Stage 19's elasticity change: through Stage 18 this peaked
+  // at exactly ticketPrice.max, which made the slider a solved problem.
+  assert(peak > CONFIG.ticketPrice.min && peak < CONFIG.ticketPrice.max,
+    'the ticket-revenue curve peaks strictly inside the slider, so neither extreme is the automatic answer');
+
+  assert(priceSatisfactionDelta(CONFIG.priceAnchor) === 0, 'pricing at the anchor is satisfaction-neutral');
+  assert(priceSatisfactionDelta(CONFIG.ticketPrice.max) < 0, 'gouging costs crowd satisfaction');
+  assert(priceSatisfactionDelta(CONFIG.ticketPrice.min) > 0, 'a bargain gate earns goodwill');
+  assert(Math.abs(priceSatisfactionDelta(CONFIG.priceAnchor + 5)) > Math.abs(priceSatisfactionDelta(CONFIG.priceAnchor - 5)),
+    'the penalty for overcharging outweighs the bonus for undercharging by the same margin');
+}
+
+// --- blockQualityWeights: shade only counts while the sun is out ---
+{
+  for (const block of TIME_BLOCKS) {
+    const w = blockQualityWeights(block);
+    const sum = w.sightline + w.shade + w.pop;
+    assert(Math.abs(sum - 1) < 1e-9, `quality weights sum to 1 in ${block.id}`);
+    assert(typeof block.heat === 'number' && block.heat >= 0 && block.heat <= 1, `${block.id} authors a heat value in 0..1`);
+  }
+  const hottest = TIME_BLOCKS.reduce((a, b) => (b.heat > a.heat ? b : a));
+  const coolest = TIME_BLOCKS.reduce((a, b) => (b.heat < a.heat ? b : a));
+  assert(blockQualityWeights(hottest).shade > blockQualityWeights(coolest).shade, 'shade matters more in the hottest block than the coolest');
+  assert(blockQualityWeights(coolest).sightline > blockQualityWeights(hottest).sightline, 'the weight shade gives up in a cool block rolls into sightline');
+  assert(blockQualityWeights({}).sightline === 0.55, 'a block with no authored heat falls back to full-heat weighting');
+
+  // The payoff: a hilltop (high sightline, no shade) and a grove (low
+  // sightline, deep shade) should now swap places across the day. That
+  // trade is the whole reason this function exists.
+  const hill = TERRAIN_BASE.hill, woods = TERRAIN_BASE.woods;
+  const score = (t, block) => { const w = blockQualityWeights(block); return t.sightline * w.sightline + t.shade * w.shade; };
+  assert(score(hill, coolest) > score(woods, coolest), 'a hilltop stage beats a grove stage in the coolest block');
+  assert(score(woods, hottest) - score(hill, hottest) > score(woods, coolest) - score(hill, coolest),
+    'the grove closes the gap on the hilltop as the day heats up \u2014 terrain choice is schedule-dependent');
+}
+
+// ---------------------------------------------------------------------
+// Section 1g: Stage 19 significance tests.
+//
+// These are deliberately different in kind from everything above. The rest
+// of the suite asserts that a mechanic is *correctly implemented*; these
+// assert that it is *strategically load-bearing*. Stage 18 shipped with a
+// fully green suite and a dominant "build nothing, charge maximum" strategy,
+// because no test ever asked whether the numbers mattered. Each assertion
+// here is a design invariant: if one starts failing, a tuning change has
+// quietly made part of the game pointless.
+// ---------------------------------------------------------------------
+{
+  const base = () => ({
+    day: 1, season: 1, cash: 20000, reputation: 55, ticketPrice: CONFIG.priceAnchor,
+    builtPlots: [], roster: [], hiredVendors: [], schedule: {}, contracts: {}, vendorContracts: {},
+    activeCampaign: null, campaignCooldowns: {}, history: [],
+  });
+  const avg = (state, key, n = 120) => {
+    let total = 0;
+    for (let i = 0; i < n; i++) total += simulateDay(state, 77000 + i)[key];
+    return total / n;
+  };
+
+  // 1. Opening the gates on an empty field must LOSE money. This is the
+  //    single invariant Stage 18 violated hardest: an empty field earned
+  //    about +$5,400 a day, more than a fully built faire cost to construct.
+  const emptyField = base();
+  assert(avg(emptyField, 'cashDelta') < 0, 'SIGNIFICANCE: an empty field loses money \u2014 doing nothing is not a viable strategy');
+  assert(avg(emptyField, 'reputationDelta') < 0, 'SIGNIFICANCE: an empty field bleeds reputation as well as cash');
+
+  // 2. Building must measurably grow the crowd, not just re-slice it.
+  let built = base();
+  built = State.buildPlot(built, 'stage', 3, 0).state;
+  const stagePlot = built.builtPlots.find(p => p.kind === 'stage');
+  assert(avg(built, 'attendance') > avg(emptyField, 'attendance') * 1.5,
+    'SIGNIFICANCE: building a stage substantially grows attendance \u2014 the grounds are an input to the crowd, not just a container for it');
+
+  // 3. Neither end of the ticket slider is the automatic answer.
+  const cheap = { ...built, ticketPrice: CONFIG.ticketPrice.min };
+  const dear = { ...built, ticketPrice: CONFIG.ticketPrice.max };
+  const mid = { ...built, ticketPrice: CONFIG.priceAnchor };
+  assert(avg(mid, 'cashDelta') > avg(dear, 'cashDelta'), 'SIGNIFICANCE: maxing the ticket price is NOT cash-optimal');
+  assert(avg(mid, 'cashDelta') > avg(cheap, 'cashDelta'), 'SIGNIFICANCE: bottoming out the ticket price is not cash-optimal either');
+  assert(avg(cheap, 'satisfaction') > avg(dear, 'satisfaction'), 'SIGNIFICANCE: price is a real cash-vs-goodwill trade, not free money');
+
+  // 4. Fixed costs have to be big enough to notice. If the daily nut is
+  //    rounding error against revenue, every cost mechanic in the game
+  //    (upkeep, contracts, cancellation fees, the bankruptcy floor) is
+  //    decorative — which is exactly what Stage 18 shipped.
+  const bigDay = simulateDay(built, 4242);
+  assert(bigDay.costs > (bigDay.ticketRevenue + bigDay.vendorRevenue) * 0.25,
+    'SIGNIFICANCE: daily costs are a meaningful share of revenue, not a rounding error');
+
+  // 5. Upkeep on a built-out grounds has to be visible in the ledger.
+  let sprawl = base();
+  for (const [k, x, y] of [['stage', 3, 0], ['stage', 8, 4], ['food', 2, 3], ['vendor', 4, 5], ['demo', 6, 5]]) {
+    const r = State.buildPlot(sprawl, k, x, y);
+    if (!r.error) sprawl = r.state;
+  }
+  assert(totalUpkeep(sprawl.builtPlots) > CONFIG.baseOverhead * 0.1,
+    'SIGNIFICANCE: upkeep on a developed grounds is a real line item next to fixed overhead');
+
+  // 6. Siting still has to beat noise once everything else is equal.
+  assert(stagePlot && stagePlot.capacity < 400, 'SIGNIFICANCE: stage capacity is low enough that a successful faire eventually has to build a second stage');
+}
+
 function makeMemoryStorage() {
   const store = new Map();
   return {
@@ -2162,5 +2316,59 @@ function makeMemoryStorage() {
 }
 
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Section 20: CSS contrast regression (Stage 20)
+//
+// Stage 19's HANDOFF flagged that no browser was available to review the
+// visual rebuild, so nothing had actually checked whether its color tokens
+// were readable. A static WCAG contrast audit found two: --vellum-faint
+// (2.9-3.1:1 against the panel backgrounds it's used as small text on —
+// tab labels, table headers, HUD sub-labels) and --wine used as text on
+// dark backgrounds (2.54:1 for the "bad"/"neg" ledger values — the one
+// color meant to flag a loss). Both were retuned to hold >=4.5:1 (WCAG AA
+// for normal-size text). This block parses the actual tokens out of
+// style.css so a future edit that quietly darkens them again fails here
+// instead of waiting for the next "no browser available" stage.
+{
+  const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
+  const tokenValue = (name) => {
+    const m = css.match(new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6})`));
+    assert(m, `--${name} is defined in style.css`);
+    return m ? m[1] : '#000000';
+  };
+  const hexToRgb = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const linear = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const luminance = ([r, g, b]) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  const contrastRatio = (hex1, hex2) => {
+    const l1 = luminance(hexToRgb(hex1)), l2 = luminance(hexToRgb(hex2));
+    const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const AA_NORMAL = 4.5;
+
+  const vellumFaint = tokenValue('vellum-faint');
+  const wineText = tokenValue('wine-text');
+  const bark = tokenValue('bark');           // .plat/#content panel body
+  const cardBg = '#1A1610';                  // build-palette/plot-card/campaign-card body, hardcoded in CSS
+  const hudBottom = '#1A1611';               // #hud gradient's darker stop, hardcoded in CSS
+
+  assert(contrastRatio(vellumFaint, bark) >= AA_NORMAL,
+    `--vellum-faint (${vellumFaint}) holds AA contrast against --bark (${bark}) — was 2.91:1 pre-Stage-20`);
+  assert(contrastRatio(vellumFaint, cardBg) >= AA_NORMAL,
+    `--vellum-faint (${vellumFaint}) holds AA contrast against card backgrounds (${cardBg})`);
+  assert(contrastRatio(wineText, bark) >= AA_NORMAL,
+    `--wine-text (${wineText}) holds AA contrast against --bark (${bark}) — --wine itself was 2.54:1 pre-Stage-20`);
+  assert(contrastRatio(wineText, hudBottom) >= AA_NORMAL,
+    `--wine-text (${wineText}) holds AA contrast against the HUD background (${hudBottom})`);
+
+  // Guard the call sites too, not just the tokens: the two places that
+  // specifically needed the brighter red should reference --wine-text,
+  // not the original --wine (which stays as-is for borders/backgrounds).
+  assert(/\.ledger-label\.bad\s*\{\s*color:\s*var\(--wine-text\)/.test(css),
+    '.ledger-label.bad reads --wine-text, not the low-contrast --wine, for its text color');
+  assert(/\.ledger-table td\.neg\s*\{\s*color:\s*var\(--wine-text\)/.test(css),
+    '.ledger-table td.neg reads --wine-text, not the low-contrast --wine, for its text color');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

@@ -3,185 +3,183 @@
 Living document, updated in place each stage. Older stage summaries get
 condensed into the changelog at the bottom rather than kept as prose above.
 
-## Status as of Stage 18
+## Status as of Stage 20
 
-**Playable end-to-end.** Everything from Stages 1–17 still works. This
-stage ships **three more build-time legality rules** — all three were
-standing, explicitly-named "not yet requested" options in the Stage 17
-backlog (and the Stage 11/12 backlog before that): a hill ban for
-food/craft stalls, same-kind stall-to-stall spacing, and a hard cap on
-demo camps. **True guest-agent/pathfinding simulation** remains the one
-fully-untouched backlog item from Stage 9 on; **a drag-to-reorder move**
-and **retuning the Stage 16 win/loss thresholds** also remain standing,
-not-yet-requested options.
+**Playable end-to-end, no new mechanics this stage.** Stage 19 rebuilt the
+whole economy and the whole interface in one pass, and flagged its own
+biggest risk in its own retro: *no browser was available in the build
+sandbox, so the visual work was reviewed by reading rather than by
+looking.* This stage went back and actually checked that, by the only
+means available in a browser-less sandbox — a computed audit rather than
+a fresh guess.
 
-**What changed, concretely:**
-- **Food/craft stalls can no longer be built on a hill.** New
-  `data.js` `PLACEMENT_RULES.terrainBans.food`/`.vendor` entries (both
-  `['hill']`) — a cart-based stall needs level ground, unlike a stage
-  (hill is already its *best* terrain — highest sightline, a
-  `capacityMult` bonus) or a demo camp (a fixed living-history/falconer
-  site, not a cart). This is the first terrain ban that isn't about the
-  path, so `isLegalPlacement`'s refusal message is no longer a hardcoded
-  "try a nearby clearing, hill, or woods" string (which would now be
-  self-contradicting for a stall) — it's built from whichever terrain
-  actually hit and whatever terrain is still allowed for that kind.
-- **Two stalls of the same kind can't crowd the same corner.** New
-  `PLACEMENT_RULES.stallSpacingKinds` (`['food', 'vendor']`) and
-  `minStallSpacing` (1) — two food stalls, or two craft stalls, can't sit
-  directly touching. A food stall right beside a craft stall is still
-  fine (a real market-row layout); the rule is same-kind only, mirroring
-  `minStageSpacing`'s existing shape exactly (same footprint-cell-to-
-  footprint-cell check, same "a still-planning plot claims its spot too"
-  rule, so laying out several same-kind plans crowded together and bulk-
-  committing them can't dodge it).
-- **Demo camps are capped at 3 at once.** New
-  `PLACEMENT_RULES.maxBuiltByKind` (`{ demo: 3 }`) — a demo camp is a
-  living-history reenactor or a falconer's mews, a real person/animal on
-  site rather than a purchased structure, so the faire only has so many
-  to field regardless of how much open ground is left. Keyed by kind
-  (not a bare `demo`-specific field) so a future stage could cap
-  something else the same way with no new code path. Counts any status
-  (built or still-planning), same reasoning as the other two rules above.
-  Unlike the two rules above, this cap isn't spatial — it blocks *every*
-  cell at once once reached, not just some — so it's also the first
-  legality rule surfaced directly in the build palette (`renderBuildPalette`
-  now shows "N/cap built" instead of a price once a capped kind is maxed
-  out) rather than only discoverable by trying a cell.
-- **The grounds-map legend gained a line** noting the new stall hill ban,
-  next to the existing path-frontage/stage-footprint hint.
+**What was checked.** Every `color:` declaration in `css/style.css` was
+paired with the actual background it renders against (panel body, card
+body, HUD gradient, or the light ticket-stub) and run through the real
+WCAG relative-luminance formula, not eyeballed. Twenty-some pairs were
+checked; eighteen already passed comfortably (14.8:1 for primary body text
+down to a worst-case 4.3:1 on the one pair that's WCAG-AA-large-only by
+design). Two failed outright:
 
-## What was built this stage
+- **`--vellum-faint` (`#6F6450`), used as small text on dark panels** —
+  wordmark subtitle, HUD sub-labels, inactive tab labels, every table
+  header (schedule/roster/ledger), plot-card kind tags, the map legend,
+  campaign cooldown tags — measured **2.9–3.1:1** against the panel and
+  card backgrounds it actually sits on. WCAG AA requires 4.5:1 for text
+  this size; none of it qualifies for the 3.0:1 large-text exception.
+  This wasn't a one-off — it's the single token this build uses for
+  *every* secondary label across the whole dark interface, so the miss
+  was systemic rather than local.
+- **`--wine`, used as text color for negative values** (`.ledger-label.bad`
+  in the HUD, `.ledger-table td.neg` in the Office) — measured **2.54:1**
+  against the dark backgrounds it sits on. This is the color whose entire
+  job is telling the player their cash just went negative; a 2.54:1 red on
+  near-black is the one place illegibility would actually cost someone
+  the game.
 
-- **`js/data.js`** — `PLACEMENT_RULES.terrainBans` gained `food: ['hill']`
-  and `vendor: ['hill']`; new `PLACEMENT_RULES.stallSpacingKinds`
-  (`['food', 'vendor']`) and `minStallSpacing` (1); new
-  `PLACEMENT_RULES.maxBuiltByKind` (`{ demo: 3 }`). No other authored
-  content changed — no new fields on a saved plot, no save migration.
-- **`js/engine.js`** — `isLegalPlacement`'s terrain-ban check now builds
-  its refusal message from the actual hit terrain and `TERRAIN_LEGEND`
-  rather than a hardcoded path-specific string; a new same-kind stall-
-  spacing check sits right after the existing stage-spacing check (same
-  shape, generalized to whichever kind is in `stallSpacingKinds`); a new
-  per-kind build-count check (`maxBuiltByKind`) sits just before the
-  path-frontage check. All three read straight off `PLACEMENT_RULES` —
-  no new exported functions were needed, `isLegalPlacement` is still the
-  single entry point every caller already used.
-- **`js/ui.js`** — `renderBuildPalette` shows "N/cap built" (with a title
-  explaining the cap) instead of the usual escalating-price tag once a
-  capped kind's count (built + planning) reaches its
-  `PLACEMENT_RULES.maxBuiltByKind` limit; new import of `PLACEMENT_RULES`
-  from `data.js`. `renderGroundsMap`'s legend gained one line about the
-  stall hill ban. No changes were needed to the existing blocked-marker
-  rendering — it already surfaces whatever `reason` string
-  `isLegalPlacement` returns, generically, so all three new refusals show
-  up there for free.
-- **`tests/smoke.mjs`** — 629 checks now (was 599): a `PLACEMENT_RULES`
-  data-integrity block for all three new entries; a hill-ban block (food
-  and craft both refused on hill, stage and demo both still allowed, the
-  message not suggesting hill as an alternative, checked directly and
-  end-to-end through `buildPlot`); a stall-spacing block (same-kind too-
-  close refused, cross-kind allowed, a still-planning stall claiming its
-  spacing, the `excludeId` self-exemption, checked directly and end-to-
-  end through `buildPlot`); a demo-cap block (three build fine, a fourth
-  refused, still-planning demos counting toward the cap, a different kind
-  unaffected, checked directly and end-to-end through
-  `buildPlot`/`placePlot`); and two DOM checks (the build palette shows
-  "3/3 built" once the demo cap is reached, with no ghost cell offered
-  anywhere for that kind; a hill cell renders as a blocked marker naming
-  the hill ban when Food Stall is selected). Fixing roughly a dozen
-  pre-existing test fixtures that incidentally collided with the new
-  rules (two food stalls that used to sit directly adjacent as pure
-  occupancy-check scaffolding, or anchored on a hill cell for the same
-  reason) took longer than writing the new checks — see the Retro below.
+**The fix.** Both tokens were lightened along their existing hue (same
+warm tan, same wine red — this is a luminance correction, not a palette
+change) to the minimum value that clears 4.5:1 against every background
+each one is actually used on: `--vellum-faint` → `#93846A` (4.6–4.9:1),
+and a new `--wine-text` (`#CD6677`, 4.5–4.6:1) introduced specifically for
+text-on-dark use so `--wine` itself is untouched everywhere it's a border,
+a background tint, or a hover state — none of which carry the same
+contrast obligation and all of which already read fine. Everything else
+audited (the ticket-stub's light-background palette, button states, the
+plot-marker terrain overlays) was already comfortably within spec and was
+left alone.
 
-## Backlog (three more legality rules now shipped; guest-agent simulation remains)
+**Guarded against regression.** A new smoke-suite section parses the
+actual hex values back out of `style.css` and re-runs the same WCAG
+contrast math the audit used, plus checks that the two fixed call sites
+reference `--wine-text` rather than the original `--wine`. If a future
+stage darkens either token again, or a new call site quietly reaches for
+`--wine` on a dark background instead of `--wine-text`, this fails instead
+of waiting for the next "no browser available" caveat. 675 → **684
+checks**.
 
-**Hill ban / stall spacing / demo cap are now shipped** (this stage) —
-the three standing, explicitly-named options from the Stage 17 backlog.
-**True guest-agent/pathfinding simulation** (individual guests actually
-walking the grounds, path congestion emerging from where crowds bunch
-up) remains open as a considerably bigger lift than anything shipped so
-far — everything through Stage 18 is still attribute/multiplier math,
-not agents. A drag-to-reorder/true click-and-drag move, more content-
-pool filler, and retuning the Stage 16 win/loss thresholds after real
-play all remain standing, not-yet-requested options, unchanged from
-Stage 17.
+**What this stage did not do.** It did not attempt layout, spacing, or
+information-density review — those genuinely need eyes on a rendered
+page (or a real screenshot tool), not arithmetic, and remain an open item
+below. It also did not touch any game mechanic, balance number, or the
+Stage 19 economy rework; nothing in `data.js`, `engine.js`, or `state.js`
+changed.
+
+## Backlog
+
+Unchanged from Stage 19, plus one addition:
+
+- **Layout/spacing/density review still needs real eyes on a rendered
+  page.** This stage's audit was contrast-only because that's the one
+  visual property checkable by computation alone; whether the new
+  permanent-map layout actually reads well at 1080px/720px, whether
+  anything overlaps or crowds, is still an open question the moment a
+  browser (or a screenshot-capable tool) is available.
+- `perGuestCost`, `upkeepRate`, and `winCondition`/`bankruptcyFloor` are
+  still the three economy numbers most likely to need adjusting after
+  real play (unchanged from Stage 19 — nothing here touched them).
+- **True guest-agent/pathfinding simulation** remains the one fully
+  untouched item from Stage 9 on. Standing, not-yet-requested options: a
+  drag-to-reorder move, more content-pool filler, more legality rules.
+- **Weather** is still a natural fit given `TIME_BLOCKS.heat` — unchanged
+  from Stage 19's backlog note.
 
 ## What the next stage needs
 
-`PLACEMENT_RULES.maxBuiltByKind` is a plain `{ kind: cap }` map — a
-future stage capping a second kind (say, a stage cap, or a craft-stall
-cap) just adds another entry; `isLegalPlacement`'s check already reads
-the map generically and needs no changes. The same is true of
-`stallSpacingKinds`/`minStallSpacing` for a third kind that should get
-same-kind spacing.
+The Section 1g `SIGNIFICANCE:` tests from Stage 19 are still the ones to
+run against any future balance change (see prior status notes preserved
+in the changelog below for the full list of what they check).
+`computeGroundsDraw` is still a pure function of the plots array, ready
+for a build-preview to call speculatively.
 
-**The demo cap is the first legality rule that isn't spatial** — every
-other rule (terrain bans, stage spacing, stall spacing, path frontage)
-can be discovered by trying a specific cell, so the existing blocked-
-marker-on-hover pattern was enough on its own. A hard count cap blocks
-every cell at once, which is why this stage also surfaced it directly in
-the build palette rather than leaving it purely cell-discoverable. A
-future stage adding another non-spatial rule (something gated on total
-cash spent, or total roster size, say) should probably follow the same
-"surface it in the palette/relevant panel, not just the map" instinct.
-
-**A ready-made test-fixture trap for future stages:** several existing
-smoke-test fixtures used two food stalls built directly adjacent (or
-anchored on a hill cell) purely as generic occupancy-check scaffolding,
-with no relation to the actual rule under test. Adding a new placement
-rule can silently break fixtures like that in a completely unrelated
-part of the suite — when a new rule ships, grep the test file for every
-existing call to the kind(s) it touches, not just the tests written
-specifically for it.
+If a browser or screenshot tool becomes available before the layout item
+above is picked up, that's the highest-value next visual pass — this
+stage closed the one gap that was checkable blind, not the whole caveat.
 
 ## Wishlist (not yet scoped, no priority order)
 
-Unchanged from Stage 17 — still held over from the Stage 14 kickoff
-prompt: guest archetypes, weather/random days, a third contractable
-staff role (security/gate staff/an announcer), multi-stage performer
-story arcs, a photo-mode/postcard export, and a second, deeper win track
-(e.g. a reputation-only milestone independent of cash).
+Unchanged from Stage 19: guest archetypes, weather/random days, a third
+contractable staff role (security/gate staff/an announcer), multi-stage
+performer story arcs, a photo-mode/postcard export, a second deeper win
+track, a per-day weather roll modulating `heat`, and a build-preview
+showing a placement's effect on grounds draw before committing.
 
 ## Retro
 
 **Went well:**
-- All three rules reused `PLACEMENT_RULES`'s existing data-only shape
-  exactly — no new exported engine functions, no new stored plot fields,
-  no save migration. The stage-spacing pattern Stage 11 established
-  (small data table + one check in `isLegalPlacement`, any status counts,
-  `excludeId` self-exemption) turned out to generalize cleanly to a
-  second axis (stalls) and a completely different shape of rule (a count
-  cap, not a spatial one) with almost no new plumbing.
-- Rewriting the terrain-ban message to be generated (hit terrain +
-  "what's still allowed") rather than hardcoded paid for itself
-  immediately — the old message would have told a player refused for
-  building a food stall on a hill to "try a nearby clearing, hill, or
-  woods instead," recommending the very terrain that just refused them.
+- Diagnosing before fixing, same discipline as Stage 19: the audit ran
+  every color pair through the actual formula before touching any hex
+  value, so the two fixes are the two real failures — not a guess at
+  what "looked dark" plus collateral changes to tokens that were already
+  fine.
+- Both fixes were pure token/value edits with no HTML or JS touched and
+  no new stored state, so the fix carried zero risk to the 675 existing
+  checks (all still green) and needed no save migration.
+- Writing the contrast math as a smoke-suite check (not just a one-off
+  script) means this stays caught automatically instead of depending on
+  a future stage remembering to re-run a Python file that isn't part of
+  the repo.
 
-**Dead end / thing to know about before you repeat it:**
-- The bulk of this stage's time went into fixing pre-existing test
-  fixtures, not writing the new feature or its own tests. Several tests
-  elsewhere in the suite used two adjacent food stalls, or a food stall
-  anchored on a known-hill cell, purely as generic "build two things"
-  or "build on top of something" scaffolding — completely unrelated to
-  placement legality. The new hill ban and stall-spacing rules broke
-  roughly a dozen of these in ways that had nothing to do with what
-  those tests were actually checking. The fix each time was the same:
-  swap the incidental kind for one the new rule doesn't touch (`demo`
-  has no hill ban and no spacing rule, so it was the safe substitute
-  throughout) rather than relitigating the fixture's actual intent.
-  Worth remembering for any future placement rule: grep for every
-  existing call to the kind(s) about to be restricted, not just the
-  tests written specifically for the new rule.
-- First pass at the stage-on-hill sanity check (confirming a stage is
-  still allowed on a hill) anchored at a cell where the stage's 2×2
-  footprint spilled onto the path row below it — tripping the *existing*
-  path ban, not testing anything about the new hill ban. Moved the
-  anchor up one row so the whole footprint stays on hill.
+**Things to know before repeating:**
+- **A computed audit is not a substitute for looking at the page.**
+  Contrast ratios catch color-pair legibility; they say nothing about
+  whether text wraps badly, whether the sticky HUD overlaps content at
+  an odd viewport, or whether the surveyor's-plat map actually reads as
+  intended at 720px. That's still owed.
+- The fixed hex values (`#93846A`, `#CD6677`) were derived by lightening
+  along the original HSL hue/saturation until the contrast threshold
+  cleared — a mechanical process, not a designer's eye — so they're
+  correct-by-formula but worth a glance if a screen ever becomes
+  available, in case the specific tone reads oddly against the warm
+  palette even though the numbers pass.
 
 ## Changelog
+
+- **Stage 19** — economy responsiveness + full visual rebuild, the first
+  stage aimed at a systemic problem rather than a new mechanic. Diagnosis
+  by 250-seeded-day sweeps found an empty field earned +$5,420/day
+  (a full build paid back in 1.1 days), ticket price peaked at exactly
+  the slider max, `state.builtPlots` was never read by attendance at all
+  (Stages 12/14/17 only resliced a crowd the map had no vote in), and
+  satisfaction was capped near 68 by an anti-correlated sightline/shade
+  data table. Fixes: new `computeGroundsDraw` makes built stages/staffed
+  stalls/demo camps multiply attendance itself (sqrt-diminishing,
+  0.25x-1.65x); costs rescaled and coupled to scale (`baseOverhead` 150→
+  2200, `upkeepRate` 2.5%→7%, `wristbandCut` 0.65→0.28, new `perGuestCost`
+  $5, rates/build-costs ×2-2.5); price elasticity retuned so cash peaks at
+  $19 and reputation at $16 (two different optima); new `heat`-weighted
+  `blockQualityWeights` turned the dead shade/sightline tradeoff into a
+  real scheduling puzzle; `bankruptcyFloor`/`winCondition.minCash`/
+  `stage.baseCapacity` all rescaled to match. Net measured: empty field
+  +$5,420/day → −$1,245/day; satisfaction range 56–68 → 47–89. Visual
+  rebuild replaced the Stage 1–18 parchment look with a dark "night before
+  gates open" operations room: a real app shell with the grounds map
+  permanently visible beside a tabbed desk, Grenze Gotisch/Fraunces/Barlow
+  Semi Condensed type, the map redrawn as a surveyor's plat (double-ruled
+  sheet, compass rose, per-terrain CSS textures), and the new mechanics
+  made legible via a grounds-draw meter, a revenue sparkline, and a
+  break-even readout. New `SIGNIFICANCE:`-tagged test class (Section 1g,
+  six checks) asserts mechanics are strategically load-bearing, not just
+  correctly implemented — added because Stage 18 shipped fully green with
+  a dominant do-nothing strategy. 629 → 675 checks. Caveat flagged: no
+  browser was available to review the visuals, reviewed by reading
+  instead (addressed by Stage 20). Delivered as renn-faire-sim-stage19.zip.
+
+- **Stage 18** — three more build-time legality rules, all standing
+  "not yet requested" options from the Stage 17/11/12 backlog. New
+  `PLACEMENT_RULES.terrainBans.food`/`.vendor` (both `['hill']`) ban
+  stalls from hill terrain; new `stallSpacingKinds`/`minStallSpacing`
+  refuse two same-kind stalls sitting directly touching (cross-kind is
+  still fine); new `maxBuiltByKind` (`{demo: 3}`) hard-caps demo camps.
+  All three reuse Stage 11's `PLACEMENT_RULES`/`isLegalPlacement` pattern
+  exactly, with zero new plot fields and no save migration.
+  `isLegalPlacement`'s terrain-ban refusal message became generated
+  rather than hardcoded (the old string would have told a refused player
+  to try the very terrain that just refused them). The demo cap being the
+  first *non-spatial* rule is why `renderBuildPalette` gained an
+  "N/cap built" state. Most of the stage went into fixing ~a dozen
+  pre-existing fixtures that incidentally used adjacent food stalls or
+  hill anchors as generic scaffolding. 599 → 629 checks.
 
 
 - **Stage 17** — reachability-gated draw, the specific sub-item the

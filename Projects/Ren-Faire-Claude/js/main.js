@@ -17,37 +17,40 @@ const $ = (sel) => document.querySelector(sel);
 function render() {
   $('#ledger').innerHTML = UI.renderLedger(state);
 
-  if (state.phase === 'report' && state.lastResult) {
+  // Stage 19: phases that show a full-bleed ticket stub (report, weekend
+  // summary, victory, game over) hide the site plan and take the whole
+  // board; the planning phase shows the plan permanently beside the desk.
+  const board = $('#board');
+  const terminalPhases = { report: 1, victory: 1, gameOver: 1, weekendEnd: 1 };
+  const isTerminal = !!terminalPhases[state.phase] && (state.phase !== 'report' || !!state.lastResult);
+  board.classList.toggle('is-fullwidth', isTerminal);
+
+  if (isTerminal) {
+    $('#grounds').innerHTML = '';
     $('#tabs').innerHTML = '';
-    $('#content').innerHTML = UI.renderReport(state, state.lastResult);
+    if (state.phase === 'report') $('#content').innerHTML = UI.renderReport(state, state.lastResult);
+    else if (state.phase === 'victory') $('#content').innerHTML = UI.renderVictory(state);
+    else if (state.phase === 'gameOver') $('#content').innerHTML = UI.renderGameOver(state);
+    else $('#content').innerHTML = UI.renderWeekendEnd(state, summarizeWeekend(state.history, CONFIG.seasonLength));
     return;
   }
 
-  if (state.phase === 'victory') {
-    $('#tabs').innerHTML = '';
-    $('#content').innerHTML = UI.renderVictory(state);
-    return;
-  }
+  // A refusal from clicking a map cell needs to appear next to the map, not
+  // in whichever tab happens to be open. When a build/move is in progress
+  // the grounds panel owns the flash; otherwise the tab panel does. Never
+  // both, so a message can't render twice.
+  const placing = !!(ui.pendingBuild || ui.pendingMove);
+  const groundsFlash = placing ? ui.flash : null;
+  const panelFlash = placing ? null : ui.flash;
 
-  if (state.phase === 'gameOver') {
-    $('#tabs').innerHTML = '';
-    $('#content').innerHTML = UI.renderGameOver(state);
-    return;
-  }
-
-  if (state.phase === 'weekendEnd') {
-    $('#tabs').innerHTML = '';
-    const summary = summarizeWeekend(state.history, CONFIG.seasonLength);
-    $('#content').innerHTML = UI.renderWeekendEnd(state, summary);
-    return;
-  }
-
+  $('#grounds').innerHTML = UI.renderGroundsPanel(state, ui.pendingBuild, ui.pendingMove, groundsFlash);
   $('#tabs').innerHTML = UI.renderTabs(ui.activeTab, state.phase);
+
   const conflicts = validateSchedule(state.schedule);
   let panel = '';
-  if (ui.activeTab === 'office') panel = UI.renderOffice(state, ui.flash);
-  else if (ui.activeTab === 'backstage') panel = UI.renderBackstage(state, ui.flash);
-  else panel = UI.renderFairFloor(state, conflicts, ui.pendingBuild, ui.pendingMove);
+  if (ui.activeTab === 'office') panel = UI.renderOffice(state, panelFlash);
+  else if (ui.activeTab === 'backstage') panel = UI.renderBackstage(state, panelFlash);
+  else panel = UI.renderFairFloor(state, conflicts, panelFlash);
 
   $('#content').innerHTML = `
     ${panel}
@@ -196,6 +199,12 @@ function handleAction(action, el) {
 }
 
 function wire() {
+  $('#app').addEventListener('input', (e) => {
+    if (e.target.id !== 'ticketPrice') return;
+    const readout = document.getElementById('priceReadout');
+    if (readout) readout.textContent = `$${e.target.value}`;
+  });
+
   $('#tabs').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-tab]');
     if (!btn) return;
@@ -205,13 +214,16 @@ function wire() {
     render();
   });
 
-  $('#content').addEventListener('click', (e) => {
+  // Stage 19: the grounds map moved out of #content into its own persistent
+  // #grounds section, so delegation binds to the shared #app ancestor
+  // instead. Every data-action/data-tab hook keeps working unchanged.
+  $('#app').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     handleAction(btn.dataset.action, btn);
   });
 
-  $('#content').addEventListener('change', (e) => {
+  $('#app').addEventListener('change', (e) => {
     const target = e.target;
     if (target.id === 'ticketPrice') {
       const res = State.setTicketPrice(state, Number(target.value));

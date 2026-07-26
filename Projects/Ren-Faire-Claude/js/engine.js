@@ -3,7 +3,7 @@
 // this module for the math. That split is what makes the smoke tests able
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
-import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE } from './data.js';
+import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW } from './data.js';
 
 // ---------- seeded RNG (mulberry32) ----------
 // Deterministic given a numeric seed so tests can assert exact outputs.
@@ -73,6 +73,86 @@ export function effectiveVendorCost(state, vendorId) {
   if (!vendor) return 0;
   const contract = state.vendorContracts && state.vendorContracts[vendorId];
   return contract ? contract.dailyCost : vendor.cost;
+}
+
+// ---------- grounds draw (Stage 19) ----------
+// How much of a crowd the built grounds themselves pull, independent of
+// reputation, price, and who's on the bill. See GROUNDS_DRAW in data.js for
+// why this exists at all — in short, before Stage 19 the attendance formula
+// never read state.builtPlots, so building a faire had no effect on how
+// many people came to it.
+//
+// Pure and state-independent (takes the plots array, not the state), same
+// shape as computeFootTraffic/computeReachability, so it's independently
+// testable and callable from the UI for a live readout.
+//
+// Returns { points, mult, byKind } — `points` and `byKind` are surfaced so
+// the UI can explain the multiplier rather than just asserting it.
+export function computeGroundsDraw(builtPlots = []) {
+  const byKind = { stage: 0, food: 0, vendor: 0, demo: 0 };
+  for (const p of builtPlots) {
+    if (p.status !== 'built') continue; // planning plots aren't on the grounds yet
+    if (!(p.kind in byKind)) continue;
+    // A stall with nobody seated in it is a shed, not an attraction — same
+    // rule simulateDay already applies to stall revenue.
+    if ((p.kind === 'food' || p.kind === 'vendor') && !p.assignedVendorId) continue;
+    byKind[p.kind] += 1;
+  }
+  let points = 0;
+  for (const kind of Object.keys(byKind)) {
+    points += byKind[kind] * (GROUNDS_DRAW.points[kind] || 0);
+  }
+  const raw = GROUNDS_DRAW.floor + GROUNDS_DRAW.coefficient * Math.sqrt(points);
+  return {
+    points: Math.round(points * 100) / 100,
+    byKind,
+    mult: clamp(raw, GROUNDS_DRAW.floor, GROUNDS_DRAW.ceiling),
+  };
+}
+
+// ---------- ticket pricing (Stage 19) ----------
+// How much a given ticket price suppresses (or, below the anchor, boosts)
+// attendance. Split out of simulateDay's inline expression so the Office
+// panel can chart the actual curve the simulation uses instead of a
+// hand-copied approximation of it.
+export function priceFactor(price) {
+  const raw = 1 - (price - CONFIG.priceAnchor) / CONFIG.priceElasticityDivisor;
+  return clamp(raw, CONFIG.priceFactorFloor, CONFIG.priceFactorCeiling);
+}
+
+// Ticket revenue per guest-day at a given price, before every other factor.
+// Exported mostly so the UI (and the tests) can find the peak of the curve
+// without duplicating the formula: with Stage 19's elasticity this peaks
+// mid-slider rather than at the maximum price.
+export function ticketRevenueIndex(price) {
+  return priceFactor(price) * price;
+}
+
+// Crowd reaction to the price on the gate, in satisfaction points. Charging
+// above the anchor annoys people; charging below it buys goodwill, at a
+// shallower rate so undercutting isn't a free reputation engine.
+export function priceSatisfactionDelta(price) {
+  const diff = price - CONFIG.priceAnchor;
+  return diff >= 0
+    ? -diff * CONFIG.priceSatisfactionPenaltyPerDollar
+    : -diff * CONFIG.priceSatisfactionBonusPerDollar;
+}
+
+// ---------- stage quality weighting (Stage 19) ----------
+// How much sightline / shade / act popularity each count toward a stage's
+// crowd-quality score during a given time block.
+//
+// The fixed 0.55/0.25/0.20 split only applies at full heat. As `heat` drops
+// the shade term's weight drops with it and the slack rolls into sightline,
+// because shade nobody needs is not a feature. This is what unlocks the top
+// of the satisfaction range (see TIME_BLOCKS' comment in data.js) and, more
+// importantly, gives terrain a schedule-dependent personality: a hilltop
+// stage is the best seat on the grounds at Morning Procession and the worst
+// place to stand at Afternoon.
+export function blockQualityWeights(block) {
+  const heat = typeof block?.heat === 'number' ? clamp(block.heat, 0, 1) : 1;
+  const shade = 0.25 * heat;
+  return { sightline: 0.55 + (0.25 - shade), shade, pop: 0.20 };
 }
 
 // ---------- season/progression (Stage 6) ----------
@@ -742,11 +822,17 @@ export function simulateDay(state, seed) {
   // --- attendance ---
   const totalScheduledPopularity = rosterPerformers.reduce((sum, p) => sum + (state.schedule && isScheduledAnywhere(state.schedule, p.id) ? effectivePopularity(p) : 0), 0);
   const baseAttendance = 150 + state.reputation * 4;
-  const priceFactor = clamp(1 - (state.ticketPrice - 16) / 40, 0.55, 1.35);
+  const priceMult = priceFactor(state.ticketPrice);
   const popularityFactor = 1 + Math.min(1.2, totalScheduledPopularity / 55);
   const adFactor = state.activeCampaign ? state.activeCampaign.attendanceMult : 1;
+  // Stage 19: the grounds themselves are now a term in this formula. An
+  // empty field multiplies out to GROUNDS_DRAW.floor no matter how famous
+  // the faire is or who's on the bill, which is what makes construction —
+  // and all the siting math from Stages 12/14/17 that feeds off it — worth
+  // paying for.
+  const groundsDraw = computeGroundsDraw(state.builtPlots);
   const jitter = 0.9 + rng() * 0.2;
-  const attendance = Math.max(0, Math.round(baseAttendance * priceFactor * popularityFactor * adFactor * jitter));
+  const attendance = Math.max(0, Math.round(baseAttendance * priceMult * popularityFactor * adFactor * groundsDraw.mult * jitter));
 
   // --- satisfaction (attendance-weighted across block/stage slots) ---
   let satWeightSum = 0;
@@ -757,12 +843,15 @@ export function simulateDay(state, seed) {
   for (const { block, stageEntries } of blockBreakdown) {
     const blockWeightSum = stageEntries.reduce((s, e) => s + e.weight, 0) || 1;
     const blockAttendance = Math.round(attendance * (blockWeightSum / totalWeightAllBlocks));
+    // Stage 19: sightline/shade/popularity weights are per-block now, not
+    // constant — shade only counts while the sun is actually on the crowd.
+    const qw = blockQualityWeights(block);
     for (const e of stageEntries) {
       const share = e.weight / blockWeightSum;
       const stageAttendance = Math.round(blockAttendance * share);
       const capped = Math.min(stageAttendance, e.stage.capacity);
       if (stageAttendance > e.stage.capacity) overCapacityHit = true;
-      let quality = e.attrs.sightline * 0.6 + e.attrs.shade * 0.25 + (e.drawPop / 10) * 0.15;
+      let quality = e.attrs.sightline * qw.sightline + e.attrs.shade * qw.shade + (e.drawPop / 10) * qw.pop;
       if (e._sulking) quality -= 0.3;
       if (capped > e.stage.capacity * 0.95) quality -= 0.15; // crowding discomfort near cap
       satWeightSum += capped;
@@ -771,6 +860,19 @@ export function simulateDay(state, seed) {
   }
   let satisfaction = satWeightSum > 0 ? clamp((satTotal / satWeightSum) * 100, 0, 100) : 45;
   if (overCapacityHit) warnings.push('At least one stage overflowed its capacity — some folks were turned away from the best view.');
+
+  // Stage 19: what the crowd thinks of what they paid at the gate. Together
+  // with the steeper elasticity in priceFactor, this is what makes the
+  // ticket slider a real decision — a high price is still the better cash
+  // day, but it costs standing, and standing is what grows attendance
+  // every day after this one.
+  const priceSatDelta = priceSatisfactionDelta(state.ticketPrice);
+  satisfaction = clamp(satisfaction + priceSatDelta, 0, 100);
+  if (priceSatDelta <= -6) {
+    warnings.push(`At ${'$' + state.ticketPrice} a head, plenty of folk grumbled about the price on the way in.`);
+  } else if (priceSatDelta >= 2) {
+    log.push('Word got round that the gate was a bargain, and the crowd arrived in a generous mood.');
+  }
 
   // --- vendor revenue ---
   // Stage 14: a seated vendor's buyer count now scales with their OWN
@@ -819,7 +921,10 @@ export function simulateDay(state, seed) {
   // flat cost of running the grounds at all, independent of what's built.
   const overhead = CONFIG.baseOverhead;
   const upkeep = totalUpkeep(state.builtPlots);
-  const costs = performerCosts + vendorCosts + upkeep + overhead;
+  // Stage 19: the cost of hosting the crowd itself, which scales with the
+  // crowd — see CONFIG.perGuestCost.
+  const guestCosts = Math.round(attendance * CONFIG.perGuestCost);
+  const costs = performerCosts + vendorCosts + upkeep + overhead + guestCosts;
 
   // --- random events ---
   const ctx = {
@@ -853,13 +958,18 @@ export function simulateDay(state, seed) {
     attendance,
     ticketRevenue: Math.round(ticketRevenue),
     vendorRevenue: Math.round(houseVendorRevenue),
-    performerCosts, vendorCosts, upkeep, overhead,
+    performerCosts, vendorCosts, upkeep, overhead, guestCosts,
     costs: Math.round(costs),
     cashDelta,
     satisfaction: Math.round(satisfaction),
     reputationDelta,
     scheduledCount,
     adFactor,
+    // Stage 19: surfaced so the day report can show *why* the crowd was the
+    // size it was, rather than presenting attendance as an oracle.
+    groundsDraw,
+    priceMult,
+    priceSatDelta: Math.round(priceSatDelta * 10) / 10,
     campaignActive: state.activeCampaign ? state.activeCampaign.name : null,
     footTraffic,
     reachability,

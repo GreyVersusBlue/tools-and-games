@@ -3,25 +3,40 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Faire Weekend \u2014 Renaissance Faire Management Sim</title>
+<meta name="theme-color" content="#14110E">
+<title>Faire Weekend — Renaissance Faire Management Sim</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Space+Mono&display=swap" rel="stylesheet">
+<!-- Stage 19 type pairing: Grenze Gotisch (display) is the blackletter every
+     real faire signboard is painted in, used sparingly at large sizes;
+     Fraunces carries the flavour prose; Barlow Semi Condensed does all the
+     operational work — labels, buttons, and every number in the ledger. -->
+<link href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@400;500;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div id="app">
-  <div class="app-title">
-    <h1>Faire Weekend v0.12.0</h1>
-    <div class="subtitle">running the grounds, one gate-open at a time</div>
+  <header id="hud">
+    <div class="wordmark">
+      <h1>Faire Weekend</h1>
+      <div class="subtitle">Grounds Office &middot; v0.20.0</div>
+    </div>
+    <div id="ledger"></div>
+  </header>
+
+  <div id="board">
+    <!-- Stage 19: the site plan is no longer buried inside the Fair Floor
+         tab. It sits beside the desk at all times, so contracting an act or
+         reading the ledger never means losing sight of the grounds. -->
+    <section id="grounds"></section>
+    <section id="desk">
+      <nav id="tabs"></nav>
+      <main id="content"></main>
+    </section>
   </div>
 
-  <div id="ledger"></div>
-  <nav id="tabs"></nav>
-  <main id="content"></main>
-
   <div id="footer">
-    <button id="resetBtn">reset progress</button>
+    <button id="resetBtn">Reset progress</button>
   </div>
 </div>
 

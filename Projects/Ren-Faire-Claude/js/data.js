@@ -3,10 +3,17 @@
 // swapped for real .json files + fetch() without touching engine/state code.
 
 export const CONFIG = {
-  startingCash: 3200,
+  startingCash: 5200,
   startingReputation: 50, // 0-100
   ticketPrice: { min: 8, max: 28, start: 16 },
-  wristbandCut: 0.65, // fraction of a food/craft sale that goes to the house
+  // Stage 19: 0.65 -> 0.28. The house taking nearly two-thirds of every
+  // vendor sale made stall revenue dwarf the gate at scale (a large faire
+  // was earning more from other people's merchandise than from its own
+  // tickets, at an ~88% margin, which is not a thing a faire operator
+  // gets to do). A quarter-ish cut keeps stalls clearly worth running --
+  // especially now that a staffed stall also feeds GROUNDS_DRAW -- without
+  // letting them become the whole business model.
+  wristbandCut: 0.28, // fraction of a food/craft sale that goes to the house
   blocksPerDay: 4,
   seasonLength: 3, // days per weekend/season (Fri/Sat/Sun) — see Stage 6
   // Stage 10: planning → commit construction flow. Placing a plot is free
@@ -23,12 +30,35 @@ export const CONFIG = {
   // keep in sync — a 2x2 stage costs more to build than a food stall, so
   // it costs more to maintain, same as a hilltop build already costs more
   // than a clearing build via TERRAIN_BUILD_MODIFIERS above.
-  upkeepRate: 0.025,
+  // Stage 19: raised 0.025 -> 0.07. At the old rate a fully built-out
+  // grounds cost about $72/day to maintain against $8,000/day of revenue —
+  // correctly implemented and economically invisible. See the cost-rescale
+  // note on baseOverhead below.
+  upkeepRate: 0.07,
   // Flat daily cost of running the grounds at all, independent of what's
   // built on them (gate staff, general insurance, etc). Stage 13 split
   // this out from the old `150 + stages*20` overhead formula — the
   // per-stage scaling term is now real per-plot upkeep instead.
-  baseOverhead: 150,
+  // Stage 19 cost rescale. This was 150 through Stage 18, against daily
+  // revenue that routinely ran past $8,000 — which meant every cost
+  // mechanic in the game (upkeep, escalating build cost, contract rates,
+  // cancellation fees, the bankruptcy floor) was arithmetically real and
+  // strategically irrelevant. A whole faire paid for itself in about one
+  // day. Raising the flat nut is the single biggest lever on that, because
+  // it is the one cost that lands whether or not the day goes well: it is
+  // what makes a bad weekend actually hurt, and what makes "open the gates
+  // on a thin lineup" a decision instead of free money.
+  baseOverhead: 2200,
+  // Stage 19: the cost of every guest who walks through the gate —
+  // sanitation, water, waste haulage, gate and grounds staffing, the
+  // insurance rider that's priced per head. This is the structural half of
+  // the cost-rescale problem: baseOverhead alone is a fixed nut that a
+  // growing faire simply outruns, so margin widened forever as attendance
+  // climbed. A per-guest cost makes the ticket price a *margin* decision
+  // instead of a pure revenue one — at the bottom of the slider the gate
+  // barely clears what each guest costs to host, which is why cheap tickets
+  // are a reputation play rather than a free lunch.
+  perGuestCost: 5,
   // Stage 15: escalating build cost. Each additional *built* structure of
   // the same kind compounds the next one's price by this fraction — the
   // 1st stage prices at the terrain-adjusted base, the 2nd built stage
@@ -44,20 +74,87 @@ export const CONFIG = {
   // checkBankruptcy / state.js's runDay+nextDay). Deliberately well below
   // zero rather than exactly 0 — a single bad day dipping slightly
   // negative shouldn't end the run; sustained, serious insolvency should.
-  bankruptcyFloor: -1500,
+  bankruptcyFloor: -6000,
   // Reach the END of this weekend (i.e. season has advanced to at least
   // seasonTarget) with reputation and cash at least these values, and the
   // faire earns a one-time "Legendary Faire" milestone (see engine.js's
   // checkWinCondition) — celebratory, not a hard stop; the player
   // acknowledges it and keeps playing the same save afterward.
-  winCondition: { seasonTarget: 6, minReputation: 70, minCash: 4000 },
+  winCondition: { seasonTarget: 6, minReputation: 70, minCash: 25000 },
+
+  // Stage 19: ticket price elasticity. attendance scales by
+  // clamp(1 - (price - anchor) / elasticityDivisor, floor, ceiling).
+  // Through Stage 18 the divisor was a hardcoded 40, which made ticket
+  // revenue `attendance x price` monotonically increasing all the way to
+  // the top of the slider: the revenue curve peaked at exactly $28, the
+  // max. "Set it to max on day one and never look at it again" was
+  // strictly optimal, so the control wasn't a decision. A divisor of 22
+  // moves the revenue peak to about $19 — mid-slider, so both directions
+  // off the optimum cost you something.
+  priceAnchor: 16,
+  priceElasticityDivisor: 22,
+  priceFactorFloor: 0.3,
+  priceFactorCeiling: 1.5,
+  // ...and gouging is separately unpopular. Every dollar above the anchor
+  // costs this much crowd satisfaction (and so, downstream, reputation),
+  // which is what turns pricing into a real cash-now-vs-standing-later
+  // trade rather than a solvable arithmetic problem. Pricing BELOW the
+  // anchor earns a smaller goodwill bonus back (see engine.js's
+  // priceSatisfactionDelta) — a bargain faire is a beloved one.
+  priceSatisfactionPenaltyPerDollar: 0.9,
+  priceSatisfactionBonusPerDollar: 0.45,
 };
 
+// Stage 19: how much the *grounds themselves* pull a crowd.
+//
+// Through Stage 18 the attendance formula read reputation, ticket price,
+// scheduled-performer popularity, and the active ad campaign — and never
+// once looked at state.builtPlots. An empty field drew 386 guests at
+// reputation 100; a two-stage faire with six headliners drew 703, and that
+// entire difference was the performers. Everything shipped in Stages 12,
+// 14, and 17 — footprints, path frontage, foot traffic, gate reachability —
+// only ever re-sliced a crowd whose size the map had no vote in.
+//
+// This is the fix: built structures generate "draw points", diminishing via
+// a square root so the tenth stall is worth much less than the second, and
+// those points become a multiplier on attendance itself. It is what makes
+// the site plan a growth engine rather than a seating chart, and it's the
+// term that gives all the earlier siting work something to compound into.
+export const GROUNDS_DRAW = {
+  // Draw points per built structure, by kind. A stage is the reason people
+  // come; stalls and demo camps are why they stay and tell a friend. Only
+  // *built* plots count (planning ones aren't on the grounds yet), and a
+  // stall only counts if a vendor is actually seated at it — an empty
+  // shell draws nobody, which is the same rule simulateDay already uses
+  // for stall revenue.
+  points: { stage: 1.0, food: 0.5, vendor: 0.5, demo: 0.35 },
+  // multiplier = clamp(floor + coefficient * sqrt(points), floor, ceiling).
+  // Empty grounds sit at the floor: a field with a fence around it draws a
+  // quarter of what its reputation alone would suggest, which is roughly
+  // the "curious locals wandered by" number and nowhere near enough to
+  // cover baseOverhead. The ceiling stops a sprawling grounds from
+  // running away with the attendance formula.
+  floor: 0.25,
+  coefficient: 0.42,
+  ceiling: 1.65,
+};
+
+// `heat` (Stage 19) is how much the sun is beating down during this block,
+// 0-1. It weights how much a stage's *shade* matters to the crowd's comfort
+// — see engine.js's blockQualityWeights. Before Stage 19, shade counted a
+// flat 25% of a stage's quality in every block, which quietly capped
+// satisfaction: TERRAIN_BASE makes sightline and shade anti-correlated (a
+// hill is 0.92/0.15, woods is 0.50/0.88), so no terrain could ever score
+// well on both terms at once and the top of the satisfaction range was
+// unreachable. Making shade matter only when the sun is actually out turns
+// that dead tradeoff into a live scheduling decision: a hilltop stage is
+// magnificent at Morning Procession and Golden Hour and punishing at
+// Afternoon, and a shaded grove stage is the reverse.
 export const TIME_BLOCKS = [
-  { id: 'morning', label: 'Morning Procession', weight: 0.9 },
-  { id: 'midday', label: 'Midday', weight: 1.15 },
-  { id: 'afternoon', label: 'Afternoon', weight: 1.2 },
-  { id: 'golden', label: 'Golden Hour', weight: 0.85 },
+  { id: 'morning', label: 'Morning Procession', weight: 0.9, heat: 0.15 },
+  { id: 'midday', label: 'Midday', weight: 1.15, heat: 0.85 },
+  { id: 'afternoon', label: 'Afternoon', weight: 1.2, heat: 1.0 },
+  { id: 'golden', label: 'Golden Hour', weight: 0.85, heat: 0.25 },
 ];
 
 // ---------- faire grounds map ----------
@@ -147,10 +244,10 @@ export const TERRAIN_BASE = {
 // spacing rule below). Any kind without an explicit `footprint` defaults to
 // 1x1 via engine.js's footprintFor().
 export const STRUCTURE_TYPES = {
-  stage: { label: 'Stage', icon: '\u{1F3AD}', baseCost: 850, baseCapacity: 220, footprint: { w: 2, h: 2 } },
-  food: { label: 'Food Stall', icon: '\u{1F357}', baseCost: 480 },
-  vendor: { label: 'Craft Stall', icon: '\u{1F6D2}', baseCost: 480 },
-  demo: { label: 'Demo Camp', icon: '\u{1F985}', baseCost: 350 },
+  stage: { label: 'Stage', icon: '\u{1F3AD}', baseCost: 1700, baseCapacity: 150, footprint: { w: 2, h: 2 } },
+  food: { label: 'Food Stall', icon: '\u{1F357}', baseCost: 950 },
+  vendor: { label: 'Craft Stall', icon: '\u{1F6D2}', baseCost: 950 },
+  demo: { label: 'Demo Camp', icon: '\u{1F985}', baseCost: 700 },
 };
 
 // Per-terrain multipliers applied when a structure is actually built there.
@@ -251,10 +348,10 @@ export const PLACEMENT_RULES = {
 // `unlockSeason` (Stage 6) gates a campaign behind reaching that weekend
 // number (state.season) — 1 means available from the very first weekend.
 export const AD_CAMPAIGNS = [
-  { id: 'ad_flyers', name: 'Flyer Run', desc: 'A few riders post bills in the nearest towns. Cheap, quick, modest.', cost: 120, attendanceMult: 1.08, durationDays: 1, cooldownDays: 1, unlockSeason: 1 },
-  { id: 'ad_crier', name: 'Town Crier', desc: 'A hired crier works the market squares for days on end.', cost: 280, attendanceMult: 1.16, durationDays: 2, cooldownDays: 2, unlockSeason: 1 },
-  { id: 'ad_broadside', name: 'Regional Broadside', desc: 'Printed notices carried by wagon to every shire nearby.', cost: 550, attendanceMult: 1.28, durationDays: 3, cooldownDays: 4, unlockSeason: 1 },
-  { id: 'ad_proclamation', name: 'Kingdom Proclamation', desc: 'A royal proclamation read at every market cross in the shire. Slow to arrange, hard to beat.', cost: 900, attendanceMult: 1.4, durationDays: 3, cooldownDays: 6, unlockSeason: 2 },
+  { id: 'ad_flyers', name: 'Flyer Run', desc: 'A few riders post bills in the nearest towns. Cheap, quick, modest.', cost: 300, attendanceMult: 1.08, durationDays: 1, cooldownDays: 1, unlockSeason: 1 },
+  { id: 'ad_crier', name: 'Town Crier', desc: 'A hired crier works the market squares for days on end.', cost: 700, attendanceMult: 1.16, durationDays: 2, cooldownDays: 2, unlockSeason: 1 },
+  { id: 'ad_broadside', name: 'Regional Broadside', desc: 'Printed notices carried by wagon to every shire nearby.', cost: 1380, attendanceMult: 1.28, durationDays: 3, cooldownDays: 4, unlockSeason: 1 },
+  { id: 'ad_proclamation', name: 'Kingdom Proclamation', desc: 'A royal proclamation read at every market cross in the shire. Slow to arrange, hard to beat.', cost: 2250, attendanceMult: 1.4, durationDays: 3, cooldownDays: 6, unlockSeason: 2 },
 ];
 
 // Contract types for performers (Stage 5) — and, as of Stage 7, vendors
@@ -277,43 +374,43 @@ export const CONTRACT_OPTIONS = {
 // Performer pool. `quirk` is a small effect tag the engine looks up by id —
 // see engine.js QUIRKS for what each one actually does.
 export const PERFORMERS = [
-  { id: 'perf_jouster_1', name: 'Sir Corwin the Unhorsed', role: 'jouster', cost: 260, popularity: 8, quirk: 'crowd_pleaser' },
-  { id: 'perf_jouster_2', name: "Dame Ysolde Ironback", role: 'jouster', cost: 300, popularity: 9, quirk: 'prima_donna' },
-  { id: 'perf_musician_1', name: 'The Tumbledown Consort', role: 'musician', cost: 150, popularity: 5, quirk: null },
-  { id: 'perf_musician_2', name: 'Fenwick Loudlyre', role: 'musician', cost: 190, popularity: 6, quirk: 'crowd_pleaser' },
-  { id: 'perf_jester_1', name: 'Piccolo the Contrary', role: 'jester', cost: 140, popularity: 6, quirk: 'chaos_prone' },
-  { id: 'perf_jester_2', name: 'Old Nettle', role: 'jester', cost: 110, popularity: 4, quirk: null },
-  { id: 'perf_magician_1', name: 'Master Aldric of the Hollow', role: 'magician', cost: 220, popularity: 7, quirk: 'prima_donna' },
-  { id: 'perf_livinghist_1', name: 'The Cooper\u2019s Guild Camp', role: 'livingHistory', cost: 90, popularity: 3, quirk: null },
-  { id: 'perf_livinghist_2', name: "The Physick's Tent", role: 'livingHistory', cost: 100, popularity: 3, quirk: 'crowd_pleaser' },
-  { id: 'perf_falconer_1', name: 'Wren of the Mews', role: 'falconer', cost: 170, popularity: 6, quirk: null },
+  { id: 'perf_jouster_1', name: 'Sir Corwin the Unhorsed', role: 'jouster', cost: 650, popularity: 8, quirk: 'crowd_pleaser' },
+  { id: 'perf_jouster_2', name: "Dame Ysolde Ironback", role: 'jouster', cost: 750, popularity: 9, quirk: 'prima_donna' },
+  { id: 'perf_musician_1', name: 'The Tumbledown Consort', role: 'musician', cost: 375, popularity: 5, quirk: null },
+  { id: 'perf_musician_2', name: 'Fenwick Loudlyre', role: 'musician', cost: 475, popularity: 6, quirk: 'crowd_pleaser' },
+  { id: 'perf_jester_1', name: 'Piccolo the Contrary', role: 'jester', cost: 350, popularity: 6, quirk: 'chaos_prone' },
+  { id: 'perf_jester_2', name: 'Old Nettle', role: 'jester', cost: 275, popularity: 4, quirk: null },
+  { id: 'perf_magician_1', name: 'Master Aldric of the Hollow', role: 'magician', cost: 550, popularity: 7, quirk: 'prima_donna' },
+  { id: 'perf_livinghist_1', name: 'The Cooper\u2019s Guild Camp', role: 'livingHistory', cost: 225, popularity: 3, quirk: null },
+  { id: 'perf_livinghist_2', name: "The Physick's Tent", role: 'livingHistory', cost: 250, popularity: 3, quirk: 'crowd_pleaser' },
+  { id: 'perf_falconer_1', name: 'Wren of the Mews', role: 'falconer', cost: 425, popularity: 6, quirk: null },
   // Stage 9 additions — content-pool filler, plus two `night_owl` holders
   // (see engine.js QUIRKS.night_owl / effectivePopularity) so a Golden
   // Hour-favoring lineup is an actual choice a player can build toward.
-  { id: 'perf_musician_3', name: 'Rosalind Quicksilver', role: 'musician', cost: 175, popularity: 6, quirk: 'night_owl' },
-  { id: 'perf_magician_2', name: 'Vesper Nightshade', role: 'magician', cost: 240, popularity: 7, quirk: 'night_owl' },
-  { id: 'perf_jester_3', name: 'Bramblewit', role: 'jester', cost: 120, popularity: 5, quirk: null },
-  { id: 'perf_falconer_2', name: 'Talon of the Greenwood', role: 'falconer', cost: 190, popularity: 6, quirk: 'crowd_pleaser' },
-  { id: 'perf_livinghist_3', name: "The Chandler\u2019s Row", role: 'livingHistory', cost: 85, popularity: 3, quirk: null },
+  { id: 'perf_musician_3', name: 'Rosalind Quicksilver', role: 'musician', cost: 440, popularity: 6, quirk: 'night_owl' },
+  { id: 'perf_magician_2', name: 'Vesper Nightshade', role: 'magician', cost: 600, popularity: 7, quirk: 'night_owl' },
+  { id: 'perf_jester_3', name: 'Bramblewit', role: 'jester', cost: 300, popularity: 5, quirk: null },
+  { id: 'perf_falconer_2', name: 'Talon of the Greenwood', role: 'falconer', cost: 475, popularity: 6, quirk: 'crowd_pleaser' },
+  { id: 'perf_livinghist_3', name: "The Chandler\u2019s Row", role: 'livingHistory', cost: 210, popularity: 3, quirk: null },
 ];
 
 // Vendor pool (food + craft). `takeRate` is the fraction of gross the vendor
 // keeps for themself; the house keeps the rest via CONFIG.wristbandCut,
 // modulated by vendor quality.
 export const VENDORS = [
-  { id: 'vend_turkeyleg', name: 'Giant Turkey Legs', type: 'food', cost: 120, quality: 7, avgTicket: 11 },
-  { id: 'vend_piepeddler', name: 'The Pie Peddler', type: 'food', cost: 90, quality: 6, avgTicket: 8 },
-  { id: 'vend_cider', name: "Hollow Barrel Cider", type: 'food', cost: 100, quality: 8, avgTicket: 9 },
-  { id: 'vend_stew', name: 'Widow\u2019s Kettle Stew', type: 'food', cost: 80, quality: 5, avgTicket: 7 },
-  { id: 'vend_leather', name: 'Blackthorn Leatherworks', type: 'craft', cost: 60, quality: 7, avgTicket: 22 },
-  { id: 'vend_glass', name: "Gaffer's Glass", type: 'craft', cost: 70, quality: 8, avgTicket: 30 },
-  { id: 'vend_blades', name: 'Ravensmoor Blades', type: 'craft', cost: 90, quality: 6, avgTicket: 40 },
-  { id: 'vend_trinkets', name: 'Pixie & Pauper Trinkets', type: 'craft', cost: 40, quality: 5, avgTicket: 12 },
+  { id: 'vend_turkeyleg', name: 'Giant Turkey Legs', type: 'food', cost: 300, quality: 7, avgTicket: 11 },
+  { id: 'vend_piepeddler', name: 'The Pie Peddler', type: 'food', cost: 225, quality: 6, avgTicket: 8 },
+  { id: 'vend_cider', name: "Hollow Barrel Cider", type: 'food', cost: 250, quality: 8, avgTicket: 9 },
+  { id: 'vend_stew', name: 'Widow\u2019s Kettle Stew', type: 'food', cost: 200, quality: 5, avgTicket: 7 },
+  { id: 'vend_leather', name: 'Blackthorn Leatherworks', type: 'craft', cost: 150, quality: 7, avgTicket: 22 },
+  { id: 'vend_glass', name: "Gaffer's Glass", type: 'craft', cost: 175, quality: 8, avgTicket: 30 },
+  { id: 'vend_blades', name: 'Ravensmoor Blades', type: 'craft', cost: 225, quality: 6, avgTicket: 40 },
+  { id: 'vend_trinkets', name: 'Pixie & Pauper Trinkets', type: 'craft', cost: 100, quality: 5, avgTicket: 12 },
   // Stage 9 additions — content-pool filler, same shape as the original 8.
-  { id: 'vend_mead', name: "Meadow\u2019s Gold Mead", type: 'food', cost: 95, quality: 7, avgTicket: 10 },
-  { id: 'vend_pretzel', name: 'Twisted Bread Cart', type: 'food', cost: 70, quality: 6, avgTicket: 6 },
-  { id: 'vend_woodcarve', name: 'Oakenshield Woodcarving', type: 'craft', cost: 55, quality: 6, avgTicket: 18 },
-  { id: 'vend_herbalist', name: "The Herbwife\u2019s Basket", type: 'craft', cost: 45, quality: 7, avgTicket: 15 },
+  { id: 'vend_mead', name: "Meadow\u2019s Gold Mead", type: 'food', cost: 240, quality: 7, avgTicket: 10 },
+  { id: 'vend_pretzel', name: 'Twisted Bread Cart', type: 'food', cost: 175, quality: 6, avgTicket: 6 },
+  { id: 'vend_woodcarve', name: 'Oakenshield Woodcarving', type: 'craft', cost: 140, quality: 6, avgTicket: 18 },
+  { id: 'vend_herbalist', name: "The Herbwife\u2019s Basket", type: 'craft', cost: 110, quality: 7, avgTicket: 15 },
 ];
 
 // Random event pool. Each entry has a `weight` (relative chance per day),
