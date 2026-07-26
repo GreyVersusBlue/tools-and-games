@@ -19,6 +19,7 @@
 // npm run play
 
 import { serve, launch, prepPage } from './harness.mjs';
+import { attachSceneProbe, waitForProbe, walkTo as driveTo } from './drive.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +29,9 @@ const OUT = path.join(HERE, 'shots', 'play');
 const PORT = 8124; // not 8123 — so this can run alongside the other checks
 const BASE = `http://127.0.0.1:${PORT}`;
 const GAME = `${BASE}/Projects/Castle%20Conundrum/`;
+// Must match what the game's import map resolves 'three' to, or the probe patches
+// a second copy of the module and captures nothing.
+const THREE_URL = '/Projects/Castle%20Conundrum/libs/three.module.js';
 
 // Where the NPCs stand, per data/npcs.json. If those move, move these.
 const SCHOLAR = [0.8, -9.6];
@@ -69,38 +73,9 @@ const state = () => page.evaluate(() => {
   };
 });
 
-/** Aim at a world x/z, then hold W in bursts until the interact prompt names `who`. */
-async function walkTo([tx, tz], who) {
-  let lastDist = null;
-  for (let burst = 0; burst < 40; burst++) {
-    const s = await state();
-    const dist = Math.hypot(s.pos[0] - tx, s.pos[1] - tz);
-    if (s.prompt?.includes(who)) return { burst, dist: +dist.toFixed(2) };
-
-    // Aim by writing the camera yaw. PointerLockControls re-reads
-    // camera.quaternion on every mousemove, so this composes with real mouse
-    // input rather than fighting it — and it's far easier to aim than synthesized
-    // pointer deltas. Camera forward is local -Z, hence the + PI.
-    await page.evaluate(({ tx, tz }) => {
-      const c = window.__cam;
-      c.rotation.set(0, Math.atan2(tx - c.position.x, tz - c.position.z) + Math.PI, 0);
-    }, { tx, tz });
-
-    // Wedged on geometry? Strafe before trying forward again.
-    if (lastDist !== null && Math.abs(lastDist - dist) < 0.05) {
-      await page.keyboard.down('KeyD');
-      await page.waitForTimeout(220);
-      await page.keyboard.up('KeyD');
-    }
-    lastDist = dist;
-
-    await page.keyboard.down('KeyW');
-    await page.waitForTimeout(dist > 5 ? 400 : 130);
-    await page.keyboard.up('KeyW');
-    await page.waitForTimeout(60);
-  }
-  return null;
-}
+/** Walk until the interact prompt names `who`. drive.mjs owns the aim/strafe loop. */
+const walkTo = (target, who) =>
+  driveTo(page, target, async () => (await state()).prompt?.includes(who));
 
 console.log('playing Castle Conundrum end to end\n');
 
@@ -110,25 +85,10 @@ try {
   const loadStatus = await page.textContent('#loading-status');
   ok('reached the start screen', loadStatus);
 
-  // A live camera handle. renderer.render is an OWN property on the instance in
-  // three r169, so patching WebGLRenderer.prototype.render captures nothing —
-  // but interaction.update() calls camera.getWorldDirection() every frame, and
-  // that IS a prototype method.
-  await page.evaluate(async () => {
-    const THREE = await import('/Projects/Castle%20Conundrum/libs/three.module.js');
-    const O = THREE.Object3D.prototype;
-    const gwd = O.getWorldDirection;
-    O.getWorldDirection = function (t) {
-      if (this.isCamera && !window.__cam) window.__cam = this;
-      return gwd.call(this, t);
-    };
-    const umw = O.updateMatrixWorld;
-    O.updateMatrixWorld = function (f) {
-      if (this.isScene && !window.__scene) window.__scene = this;
-      return umw.call(this, f);
-    };
-  });
-  await page.waitForFunction(() => window.__cam && window.__scene, null, { timeout: 20000 });
+  // Live scene + camera handles. See drive.mjs for why this has to patch
+  // Object3D.prototype rather than WebGLRenderer.prototype.render.
+  await attachSceneProbe(page, THREE_URL);
+  await waitForProbe(page);
 
   // --- The three NPCs built, and their rigs are actually bound to their own bones.
   // Object3D.clone() on a SkinnedMesh keeps the ORIGINAL skeleton, which leaves the
@@ -179,7 +139,7 @@ try {
 
   // --- Scholar.
   const toScholar = await walkTo(SCHOLAR, 'Scholar');
-  assert(!!toScholar, 'walked to the Scholar', toScholar ? `${toScholar.dist}m after ${toScholar.burst} bursts` : 'never got in range');
+  assert(!!toScholar, 'walked to the Scholar', toScholar ? `${toScholar.dist}m after ${toScholar.bursts} bursts` : 'never got in range');
   await snap('at-scholar');
   if (!toScholar) throw new Error('cannot continue without reaching the Scholar');
 
@@ -223,7 +183,7 @@ try {
   // --- Guard.
   if (!s.locked) { await page.click('#start-button'); await page.waitForTimeout(400); }
   const toGuard = await walkTo(GUARD, 'Guard');
-  assert(!!toGuard, 'walked to the Guard', toGuard ? `${toGuard.dist}m after ${toGuard.burst} bursts` : 'never got in range');
+  assert(!!toGuard, 'walked to the Guard', toGuard ? `${toGuard.dist}m after ${toGuard.bursts} bursts` : 'never got in range');
   await snap('at-guard');
   if (!toGuard) throw new Error('cannot continue without reaching the Guard');
 

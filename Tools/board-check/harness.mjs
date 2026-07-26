@@ -181,7 +181,16 @@ export async function launch({ headed = false } = {}) {
  * page.__errs    page errors, console errors, failed requests
  * page.__blocked offsite URLs that were refused (i.e. real external deps)
  */
-export async function prepPage(browser, base, { width = 1280, height = 1000, dsf = 2, mobile = false, jsEnabled = true } = {}) {
+/**
+ * `allow` is a list of host substrings that are let through to the real network
+ * instead of being refused and recorded. It exists for `capture-previews.mjs`:
+ * Golden Hour hotlinks its sand texture from `dl.polyhaven.org` and falls back
+ * to a procedural canvas texture when that's unreachable, so a blocked capture
+ * shows a beach no visitor actually sees. Every other script leaves this empty —
+ * the default of refusing everything offsite is what makes `page.__blocked` a
+ * useful inventory of the site's real external dependencies.
+ */
+export async function prepPage(browser, base, { width = 1280, height = 1000, dsf = 2, mobile = false, jsEnabled = true, allow = [] } = {}) {
   const playwright = browser.__engine === 'playwright';
   let page, context;
 
@@ -200,10 +209,16 @@ export async function prepPage(browser, base, { width = 1280, height = 1000, dsf
   }
 
   const blocked = [];
+  const allowed = [];
   const handleUrl = u => {
     const m = u.match(/cdn\.jsdelivr\.net\/npm\/three@([\d.]+)\/(.*)$/);
     if (m) return `${base}/__three/${m[1]}/${m[2]}`;
     return null;
+  };
+  const isAllowed = u => {
+    if (!allow.some(h => u.includes(h))) return false;
+    allowed.push(u.split('?')[0]);
+    return true;
   };
 
   if (playwright) {
@@ -215,6 +230,7 @@ export async function prepPage(browser, base, { width = 1280, height = 1000, dsf
         return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
       const rewritten = handleUrl(u);
       if (rewritten) return route.continue({ url: rewritten });
+      if (isAllowed(u)) return route.continue();
       if (/^https?:\/\/(?!127\.0\.0\.1)/.test(u)) { blocked.push(u.split('?')[0]); return route.abort(); }
       route.continue();
     });
@@ -228,6 +244,7 @@ export async function prepPage(browser, base, { width = 1280, height = 1000, dsf
         return r.respond({ status: 200, contentType: 'text/css', body: '' });
       const rewritten = handleUrl(u);
       if (rewritten) return r.continue({ url: rewritten });
+      if (isAllowed(u)) return r.continue();
       if (/^https?:\/\/(?!127\.0\.0\.1)/.test(u)) { blocked.push(u.split('?')[0]); return r.abort(); }
       r.continue();
     });
@@ -239,6 +256,7 @@ export async function prepPage(browser, base, { width = 1280, height = 1000, dsf
   page.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 160)); });
   page.__errs = errs;
   page.__blocked = blocked;
+  page.__allowed = allowed;
   return page;
 }
 

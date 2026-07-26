@@ -9,6 +9,10 @@ npm install          # also vendors three.js 0.160.0 and 0.169.0
 npm run check        # integrity sweep + collision guard, both exit non-zero on failure
 npm run play         # plays Castle Conundrum to victory; opens a real window
 npm run shoot        # writes reviewable PNGs to ./shots/
+npm run previews     # plays all seven quests, screenshots gameplay to ./candidates/
+npm run promote      # candidates/chosen.json -> assets/previews/ + assets/og/
+npm run social       # regenerate every page's favicon + og tags from the board
+npm run social:check # ...or just report which pages have drifted
 ```
 
 ## Why this is (mostly) not Playwright
@@ -52,10 +56,13 @@ degraded approximation:
 - **`cdn.jsdelivr.net/npm/three@<ver>/...`** is rewritten to a vendored copy.
 
 Anything else offsite is refused and recorded in `page.__blocked`, which is how
-you find out what the site actually depends on at runtime. Currently that is
-three.js from jsdelivr (Aphelion, Castle Conundrum, The Fourth Quarter) and
-textures from `dl.polyhaven.org` (Golden Hour, Castle Conundrum). Golden Hour
-already vendors three.js locally in `libs/`; the others do not.
+you find out what the site actually depends on at runtime. As of session 4 every
+project vendors its own three.js, so the only offsite dependency left on the whole
+site is **Golden Hour's sand texture from `dl.polyhaven.org`**. `terrain.js` falls
+back to a procedural canvas texture when that host is unreachable, which is why
+`prepPage()` takes an `allow` list — `capture-previews.mjs` lets that one request
+through so the captured beach is the beach a visitor actually gets. Every other
+script leaves `allow` empty, which is what keeps `page.__blocked` honest.
 
 ## The scripts
 
@@ -106,10 +113,17 @@ Two of these assertions exist because of specific bugs that every other check in
 this folder was blind to:
 
 - **The Guard was standing sealed inside the gatehouse wall.** `interaction.js`
-  tests proximity and facing, never line of sight, so "Press E to talk to the
-  Guard" appeared on blank stone and the quest completed normally. The script
-  raycasts from the player to the Guard's chest and fails if anything is in the
-  way. Verified to fail at the old position and pass at the current one.
+  used to test proximity and facing but never line of sight, so "Press E to talk
+  to the Guard" appeared on blank stone and the quest completed normally. The
+  script raycasts from the player to the Guard's chest and fails if anything is in
+  the way. Verified to fail at the old position and pass at the current one.
+
+  As of session 6 the game enforces this itself, so putting the Guard back inside
+  the wall now fails *twice*: this assertion names the blocking mesh
+  (`blocked by wall-fortified-gate_3`), and the run then aborts at
+  `walked to the Guard — never got in range`, because no prompt is offered for a
+  body nobody can see. Both are worth keeping — the second proves the game is
+  right, the first says which piece of stone is in the way.
 - **`Object3D.clone()` on a `SkinnedMesh` keeps the original's skeleton**, so a
   cloned rig stands frozen while its `AnimationMixer` runs happily. `assets.js`
   clones via `SkeletonUtils` instead; the script walks each skeleton's first
@@ -118,12 +132,42 @@ this folder was blind to:
 If NPC positions change in `data/npcs.json`, update the `SCHOLAR` / `GUARD`
 constants at the top to match.
 
+### `drive.mjs`
+
+Shared helpers for playing a first-person three.js game from a script: getting a
+handle on the live scene and camera, aiming, and walking to a world coordinate.
+`play-castle.mjs` and `capture-previews.mjs` both use it. Read its comments before
+writing a new driver — the two non-obvious facts are that `renderer.render` is an
+own property so patching `WebGLRenderer.prototype` captures nothing, and that only
+Castle Conundrum tolerates a direct write to `camera.rotation` (the other three
+games own it and rewrite it every frame, so those need `turnBy`/`lookAt`).
+
 ### `capture-previews.mjs`
 
-**Unfinished.** Loads all seven projects and screenshots them, but the per-game
-`drive` steps are guesses and several produce idle opening frames rather than
-gameplay. Read the header comment before using it. Output goes to
-`./candidates/` and should never be promoted to `assets/previews/` sight unseen.
+Plays all seven projects into a real gameplay frame and screenshots it. Each
+recipe drives its game with that game's own selectors and world coordinates, and
+asserts it arrived: intro overlays gone, frame actually moving (for the games with
+a clock), console clean. Exits non-zero on any miss.
+
+Runs headed, for the same reasons `play-castle.mjs` does. Output goes to
+`./candidates/`, and nothing there reaches `assets/` until it's named in
+`candidates/chosen.json`.
+
+### `promote-previews.mjs`
+
+`candidates/chosen.json` → `assets/previews/<name>.jpg` (330x200, the board's
+hover unfurl) and `assets/og/<name>.jpg` (1200x630, the share card). Crop, resize
+and JPEG encode all happen in a canvas so this needs no image library. `--dry`
+reports the sizes without writing.
+
+### `sync-social-tags.mjs`
+
+Regenerates the favicon + Open Graph block on every page linked from the board,
+taking each page's title and description from its own `<a class="notice">` in
+`index.html`. Reword a notice, re-run this, and the share card matches. Bounded by
+`<!-- gvb:social:start -->` / `<!-- gvb:social:end -->` markers, so it's
+idempotent. `npm run social:check` reports drift and exits non-zero without
+writing.
 
 ## Adding a check
 

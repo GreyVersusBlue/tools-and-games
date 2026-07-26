@@ -2,5 +2,12 @@ node_modules/
 three-0.160.0/
 three-0.169.0/
 shots/
-candidates/
+# candidates/* not candidates/ — git refuses to re-include a file whose parent
+# directory is excluded by a directory pattern, so the negation below is dead
+# unless the contents are what's excluded.
+candidates/*
+# The manifest saying which captured frame was promoted IS tracked. Four lines of
+# JSON, and the only record of why assets/previews/ looks the way it does; without
+# it a future session has to re-choose all seven from scratch.
+!candidates/chosen.json
 package-lock.json

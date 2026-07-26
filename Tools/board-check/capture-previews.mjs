@@ -1,113 +1,459 @@
-// capture-previews.mjs — UNFINISHED. Read the caveats before trusting output.
+// capture-previews.mjs — drive each of the seven quests into a real gameplay
+// frame and screenshot it.
 //
-// Goal: the seven hover-preview JPEGs listed in assets/previews/README.md.
-// Status: the plumbing works, the driving does not. Nothing here has produced
-// an image anyone has looked at. Do not copy output into assets/previews/
-// without opening it first.
+//   npm run previews              all seven
+//   npm run previews aphelion     just one
 //
-// What works
-//   - all seven pages load offline (fonts shimmed, three.js vendored)
-//   - screenshots come out at the right aspect (33:20 -> 330x200)
+// Output: ./candidates/<name>-<n>.png plus candidates/report.json. Promote a
+// chosen frame with `npm run promote` (see promote-previews.mjs) — nothing here
+// writes to assets/previews/.
 //
-// What does not
-//   - the `drive` steps below are guesses at each game's UI. For Integer
-//     Foundry and Faire Weekend every captured frame came out byte-identical
-//     across nine seconds, which means nothing advanced and we are looking at
-//     an idle opening state, exactly the "title screen" the spec warns against.
-//   - the 3D projects (aphelion, castle-conundrum, fourth-quarter, golden-hour)
-//     run on software WebGL here and are slow enough that key events time out
-//     mid-scene. They likely need a machine with real GPU access.
-//   - castle-conundrum cannot be captured at all until src/npc.js is repaired;
-//     it hangs on its loading screen.
-//   - golden-hour hotlinks a sand texture from dl.polyhaven.org, so it will
-//     look wrong anywhere that host is unreachable.
+// WHAT CHANGED IN SESSION 6: the `drive` steps used to be guesses at each game's
+// UI, and several of them captured an idle title screen. Each recipe now plays
+// its game with the selectors and world coordinates the game actually uses, and
+// the script ASSERTS it got there rather than screenshotting whatever was on
+// screen. Three assertions per game:
 //
-// To finish this: fix the drive steps per game (real selectors, real play),
-// run, then LOOK at candidates/ before promoting anything.
+//   1. `intro` — every named overlay is gone. Catches "we never got past the
+//      title", which is exactly the failure the previews spec warns about.
+//   2. `moving` — two frames 1.6 s apart hash differently, for the games that
+//      have a running clock. Catches the live-looking still: a loaded scene with
+//      a stalled render loop. (The old check compared
+//      `statSync().size + ':' + readFileSync().length`, which is the same number
+//      twice — a file-size comparison wearing a hash's clothes, and two visually
+//      different frames of equal size sailed through it.) Closing Time and Faire
+//      Weekend are turn-based and set `live: false`: a still frame is their
+//      correct playing state, and for them the positive DOM assertion inside
+//      `play` (a populated MLS board, plots actually built on the grounds) is the
+//      evidence instead.
+//   3. no console errors.
+//
+// Exits non-zero if any game misses any of those, so this is now a real check
+// and not just a screenshot dumper.
+//
+// WHY HEADED: the four three.js games need a browser that composites to a real
+// screen — pointer lock doesn't engage otherwise and requestAnimationFrame may
+// never fire at all, which hangs rather than fails. Same reason play-castle.mjs
+// runs headed; see drive.mjs and README.md. A window opens and visibly plays
+// seven games. That is expected.
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { serve, launch, prepPage } from './harness.mjs';
+import { attachSceneProbe, waitForProbe, camState, aimAt, setYaw, turnBy, lookAt, walkTo } from './drive.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'candidates');
-fs.mkdirSync(OUT, { recursive: true });
-const PORT = 8123;
+const PORT = 8125; // 8123 is check-collisions/shoot, 8124 is play-castle
 const BASE = `http://127.0.0.1:${PORT}`;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
-async function hold(page, key, ms) {
-  await page.keyboard.down(key); await wait(ms); await page.keyboard.up(key);
-}
+/* ---------------------------------------------------------------- recipes --- */
 
-// 990x600 and 1320x800 are both 33:20, so a plain downscale lands on 330x200
-// with no cropping. UI-heavy games get the smaller frame so text survives.
+// 990x600 and 1320x800 are both 33:20, so a plain downscale lands on the spec's
+// 330x200 with no cropping. UI-heavy games get the smaller frame so text
+// survives; the three.js games get the larger one and dsf 1, because dsf 2 makes
+// the renderer draw at 2640x1600 for no benefit at 330px wide.
 const RECIPES = {
-  'integer-foundry': { url: '/Projects/integer-foundry.html', vw: 990, vh: 600, shots: [0, 3000, 6000],
-    drive: async () => { await wait(2500); } },
+  // ---- Integer Foundry: a factory-line idle game. An empty grid is the
+  // opening state, so build an actual production line — source, belts, a +1,
+  // a sink — and let packets start moving down it. Default tile direction is
+  // 'E', so a straight left-to-right row needs no rotation clicks.
+  'integer-foundry': {
+    url: '/Projects/integer-foundry.html', vw: 990, vh: 600, dsf: 2,
+    intro: [],
+    async play(p, { shot }) {
+      const place = async (tool, x, y) => {
+        await p.click(`[data-tool="${tool}"]`);
+        await p.click(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
+      };
+      const ROW = 2;
+      await p.waitForSelector('#grid .cell');
+      await place('source', 0, ROW);
+      for (const x of [1, 2]) await place('belt', x, ROW);
+      await place('add1', 3, ROW);
+      for (const x of [4, 5]) await place('belt', x, ROW);
+      await place('add1', 6, ROW);
+      await place('sink', 7, ROW);
+      // A second, shorter line one row down so the grid doesn't read as a
+      // single stripe.
+      await place('source', 0, ROW + 2);
+      for (const x of [1, 2, 3]) await place('belt', x, ROW + 2);
+      await place('add1', 4, ROW + 2);
 
-  'closing-time': { url: '/Projects/Closing Time/', vw: 990, vh: 600, shots: [0, 2500],
-    drive: async p => { await wait(2200); const b = await p.$('#newGameBtn'); if (b) { await b.click(); await wait(2000); } } },
+      // TICK_MS is 550 and the source fires every 3 ticks; ~10 s is enough for
+      // packets to be strung down both lines and for the log to fill.
+      await wait(10000);
+      await shot('line-running');
+      const filled = await p.textContent('#stat-orders');
+      const cells = await p.$$eval('#grid .cell:not(.empty)', els => els.length);
+      if (cells < 10) throw new Error(`only ${cells} tiles placed — palette or grid selectors moved`);
+      return `${cells} tiles down, orders filled ${filled.trim()}`;
+    },
+  },
 
-  'faire-weekend': { url: '/Projects/Ren-Faire-Claude/', vw: 990, vh: 600, shots: [0, 2500],
-    drive: async () => { await wait(2500); } },
+  // ---- Closing Time: a DOM career sim behind a brokerage-choice modal. The
+  // MLS Board is the screen that reads as the game — a grid of listing cards
+  // with prices, neighbourhoods and days-on-market.
+  'closing-time': {
+    url: '/Projects/Closing Time/', vw: 990, vh: 600, dsf: 2,
+    intro: ['.start-screen'], live: false,
+    async play(p, { shot }) {
+      await p.click('[data-bk="bk_hearthstone"]');
+      await p.waitForSelector('#nav [data-nav="mls"]');
+      // Burn a day so the ledger and the dashboard aren't day-one empty, then
+      // land on the MLS board.
+      await p.click('#endDayBtn').catch(() => {});
+      await wait(400);
+      await p.click('#nav [data-nav="mls"]');
+      await p.waitForSelector('.mls-grid');
+      await wait(600);
+      await shot('mls-board');
+      const cards = await p.$$eval('.mls-grid > *', els => els.length);
+      if (cards < 3) throw new Error(`MLS board rendered ${cards} listings`);
+      return `${cards} listings on the board`;
+    },
+  },
 
-  'golden-hour': { url: '/Projects/golden-hour-beach/', vw: 1320, vh: 800, shots: [0, 2500, 5000],
-    drive: async p => { await wait(4000); await p.mouse.click(660, 400); await wait(3500); await hold(p, 'KeyW', 2600); await wait(1500); } },
+  // ---- Faire Weekend: builtPlots starts empty, so the site plan opens as a
+  // bare field. Place four structures, commit them, and sit on the Fair Floor
+  // tab — the grounds map with plots on it beside the running order is the
+  // frame that says "management sim".
+  //
+  // 1320 wide on purpose: style.css puts #board into one column below 1080px, so
+  // at 990 the site plan stacks above the desk and scrolls out of frame entirely.
+  // Two columns is the layout worth previewing.
+  'faire-weekend': {
+    url: '/Projects/Ren-Faire-Claude/', vw: 1320, vh: 800, dsf: 2,
+    intro: [], live: false,
+    async play(p, { shot }) {
+      await p.waitForSelector('.grounds-map');
+      // Cheapest kinds first — startingCash is 5200 and a Stage alone is 1700.
+      for (const kind of ['demo', 'food', 'vendor', 'stage']) {
+        await p.click(`[data-action="selectBuild"][data-kind="${kind}"]`);
+        const ghost = await p.$('.plot-marker.ghost');
+        if (!ghost) { await p.click('[data-action="cancelBuild"]').catch(() => {}); continue; }
+        await ghost.click();
+        await wait(150);
+      }
+      // Commit AFTER opening Fair Floor: the commit banner is rendered by
+      // renderFairFloor, so clicking it while the Office tab is up finds nothing
+      // and every plot stays a dashed "planned" outline.
+      await p.click('[data-tab="fairfloor"]');
+      await wait(300);
+      await p.click('[data-action="commitAll"]').catch(() => {});
+      await wait(400);
+      // Clicking down the page scrolls it; the site plan is the subject.
+      await p.evaluate(() => window.scrollTo(0, 0));
+      await wait(400);
+      await shot('grounds-and-floor');
+      const plots = await p.$$eval('.plot-marker:not(.ghost):not(.blocked)', els => els.length);
+      const built = await p.$$eval('.plot-card', els =>
+        els.filter(e => /BUILT/i.test(e.textContent)).length);
+      if (plots < 3) throw new Error(`only ${plots} plots on the grounds — build palette selectors moved`);
+      return `${plots} plots on the plan, ${built} built`;
+    },
+  },
 
-  'aphelion': { url: '/Projects/aphelion/', vw: 1320, vh: 800, shots: [0, 2500, 5000],
-    drive: async p => { await wait(4500); await p.mouse.click(660, 400); await wait(3500); await hold(p, 'KeyW', 2200); await wait(1500); } },
+  // ---- Golden Hour: click the overlay, then walk down the beach. `allow` lets
+  // the Poly Haven sand texture through; without it terrain.js silently keeps
+  // its procedural canvas fallback and the capture shows a beach no visitor
+  // actually gets.
+  'golden-hour': {
+    url: '/Projects/golden-hour-beach/', vw: 1320, vh: 800, dsf: 1,
+    three: '/Projects/golden-hour-beach/libs/three.module.js',
+    intro: ['#overlay'],
+    allow: ['dl.polyhaven.org'],
+    async play(p, { shot, probe }) {
+      await p.waitForSelector('#scene');
+      await probe();
+      // Click the overlay, not the canvas: main.js binds `begin` to the overlay,
+      // and while it's up it covers #scene, so a canvas click never lands.
+      await p.click('#overlay');          // trusted click: begins + locks
+      await p.waitForSelector('#overlay.hidden', { state: 'attached' });
+      await wait(1200);
+      // Walk toward the water, then swing round to put the sun and the waterline
+      // in frame rather than a wall of empty beach. controls.js starts at
+      // yaw = 0.15π (≈0.47) facing down the beach at the sun; +0.5 rad brings the
+      // sea in on the right while keeping the sun's light in shot. +0.9 puts the
+      // sun off-frame and the whole left half goes to unlit dune.
+      await p.keyboard.down('KeyW'); await wait(3200); await p.keyboard.up('KeyW');
+      await turnBy(p, { dyaw: 0.5, dpitch: -0.06, sens: 0.0022 });
+      await wait(2500);                   // let the ocean settle into a wave
+      await shot('shoreline');
+      const c = await camState(p);
+      return `walking at ${c.pos.join(', ')}, yaw ${c.yaw}`;
+    },
+  },
 
-  'castle-conundrum': { url: '/Projects/Castle Conundrum/', vw: 1320, vh: 800, shots: [0, 2500],
-    drive: async p => { await wait(4500); const b = await p.$('#start-button'); if (b) await b.click(); await wait(4000); } },
+  // ---- Aphelion: click the title card, wait out the 2 s fade-from-black, walk
+  // into the hab so the frame has ship interior in it, and catch the CERES
+  // toast that lands at ~1.2 s — the HUD gauges plus that toast are the whole
+  // identity of the game.
+  'aphelion': {
+    url: '/Projects/aphelion/', vw: 1320, vh: 800, dsf: 1,
+    three: '/Projects/aphelion/libs/three.module.js',
+    intro: ['#title'],
+    async play(p, { shot, probe }) {
+      await p.waitForSelector('#title:not(.hidden)');
+      await probe();
+      await p.click('#title');
+      // `state: 'attached'` — the default is 'visible', and #title.hidden is by
+      // definition never visible, so the default waits out the full timeout.
+      await p.waitForSelector('#title.hidden', { state: 'attached' });
+      await wait(2600);                   // UI.fade(false, 2) plus a beat
+      await p.keyboard.down('KeyW'); await wait(1400); await p.keyboard.up('KeyW');
+      await wait(1200);                   // toast lands at ~1.2 s after boarding
+      await shot('aboard');
+      const fade = await p.$eval('#fade', el => getComputedStyle(el).opacity);
+      if (+fade > 0.15) throw new Error(`still faded to black (opacity ${fade})`);
+      const c = await camState(p);
+      return `aboard at ${c.pos.join(', ')}, fade ${fade}`;
+    },
+  },
 
-  'fourth-quarter': { url: '/Projects/fourth-quarter/', vw: 1320, vh: 800, shots: [0, 2500, 5000],
-    drive: async p => { await wait(4500); const b = await p.$('#startBtn'); if (b) await b.click(); await wait(4000); await hold(p, 'KeyW', 2200); await wait(1500); } },
+  // ---- Castle Conundrum: the gatehouse across the courtyard, Guard in frame.
+  // Coordinates match data/npcs.json, same as play-castle.mjs.
+  //
+  // The player does NOT walk to the Guard here — scene-config.json spawns them at
+  // z = 8 and the Guard stands at z = 9.2, so the game opens 2.16 m from him,
+  // already inside interaction.js's 3.2 m INTERACT_RANGE with "Press E to talk to
+  // the Guard" on screen. So this backs AWAY up the courtyard and then turns
+  // round: it gets the arch, the tower walls and a whole visible body in frame
+  // instead of a chest-up crop behind a tooltip.
+  'castle-conundrum': {
+    url: '/Projects/Castle%20Conundrum/', vw: 1320, vh: 800, dsf: 1,
+    three: '/Projects/Castle%20Conundrum/libs/three.module.js',
+    intro: ['#start-overlay', '#loading-screen'],
+    async play(p, { shot, probe }) {
+      const GUARD = [1.8, 9.2];
+      const NORTH = [0, -2];              // up the courtyard, away from the gate
+      const STANDOFF = 6.4;               // comfortably outside INTERACT_RANGE
+      const distToGuard = async () => {
+        const c = await camState(p);
+        return Math.hypot(c.pos[0] - GUARD[0], c.pos[1] - GUARD[1]);
+      };
+
+      await p.waitForSelector('#start-overlay:not(.hidden)', { timeout: 90000 });
+      await probe();
+      await p.click('#start-button');
+      await wait(600);
+      if (!(await p.evaluate(() => !!document.pointerLockElement)))
+        throw new Error('no pointer lock — is this running headed?');
+
+      // nearAt above any real distance keeps every stride short: WALK_SPEED is
+      // 5.2 m/s, so a 400 ms stride is 2 m and overshoots a 6.4 m mark badly.
+      const backed = await walkTo(p, NORTH, async () => (await distToGuard()) > STANDOFF,
+                                  { nearAt: 999 });
+      if (!backed) throw new Error(`never got ${STANDOFF}m clear of the gatehouse`);
+
+      // A little pitch up: at pitch 0 the horizon lands dead centre and the
+      // bottom 40% of the frame is empty courtyard flagstone.
+      await aimAt(p, GUARD, 0.1);
+      await wait(900);                    // let the Guard's idle clip breathe
+      await shot('gatehouse');
+      if (await p.evaluate(() =>
+        !document.getElementById('interact-prompt').classList.contains('hidden')))
+        throw new Error('an interact prompt is in the frame — too close to someone');
+      const c = await camState(p);
+      return `${(await distToGuard()).toFixed(2)}m off the gatehouse at ${c.pos.join(', ')}`;
+    },
+  },
+
+  // ---- The Fourth Quarter: the day phase is an empty room with glowing
+  // station rings; the night is the game. The player spawns at z=3.4 and the
+  // door station sits at z=4.3 with a 1.6 m radius, so it's already the nearest
+  // station — E opens Tonight straight away. Stock and crew come from the dev
+  // menu first, or the night opens with bare shelves and nobody orders anything.
+  'fourth-quarter': {
+    url: '/Projects/fourth-quarter/', vw: 1320, vh: 800, dsf: 1,
+    three: '/Projects/fourth-quarter/libs/three.module.js',
+    intro: ['#startOverlay'],
+    async play(p, { shot, probe }) {
+      await p.waitForSelector('#startBtn');
+      await probe();
+      await p.click('#wipeBtn');          // a stale save would land us mid-campaign
+      await wait(300);
+      await p.click('#startBtn');
+      await wait(800);
+
+      // Dev menu: cash and a full cellar. Debug-only by design (dev.js), which
+      // is exactly what a capture should use rather than grinding a real night.
+      await p.keyboard.press('Backquote');
+      await p.waitForSelector('#devOverlay');
+      await p.click('[data-cash="10000"]');
+      await p.click('[data-fillstock="1"]');
+      await p.click('#devClose');
+      await wait(300);
+
+      await p.keyboard.press('KeyE');     // door station — Tonight panel
+      await p.waitForSelector('#panelOverlay [data-opendoors]', { timeout: 10000 });
+      await p.click('[data-opendoors="1"]');
+      await wait(1000);
+
+      // Patrons trickle in over the first hour (hourLenSec 45). Wait for the
+      // room to actually fill before shooting, and speed the clock up while
+      // waiting.
+      await p.click('[data-speed="2"]').catch(() => {});
+      await p.waitForFunction(
+        () => {
+          const n = document.getElementById('hCrowd')?.textContent || '';
+          return /\d/.test(n) && parseInt(n, 10) >= 4;
+        },
+        null, { timeout: 60000 }
+      );
+      await wait(2500);
+
+      // Aim LAST, and only after re-locking the pointer.
+      //
+      // player.js starts at yaw = PI, facing the door the player just walked in
+      // through — a blank wall — so aiming is not optional. Two things pin it to
+      // the end: player.js's mousemove handler returns early unless pointer lock
+      // is held, and every intervening Playwright click drags the real cursor
+      // across the page, which while locked feeds movementX/Y straight into yaw
+      // and pitch. This capture arrives having clicked through the dev menu and
+      // the Tonight panel, and it lands about four whole turns of yaw away with
+      // the pitch tipped at the floor. lookAt() measures first, so none of that
+      // matters — turning by a fixed -PI from the assumed start does not work.
+      await p.click('canvas');            // re-acquire lock; no MOUSE input after this
+      await wait(200);
+      // Step out of the doorway lane first: the spawn point is a metre inside the
+      // door patrons come through, so standing there puts a passing head in the
+      // lens. Keyboard is safe — only mouse movement disturbs the aim.
+      await p.keyboard.down('KeyD'); await wait(700); await p.keyboard.up('KeyD');
+      await wait(400);
+      const c = await lookAt(p, { facing: 0, pitch: 0, sens: 0.0023 });
+      if (Math.abs(c.facing) > 0.15 || Math.abs(c.pitch) > 0.15)
+        throw new Error(`aim didn't take — facing ${c.facing}, pitch ${c.pitch}, wanted ~0/0`);
+      await wait(600);
+
+      // Three frames a few seconds apart, because where the patrons are standing
+      // is not deterministic: they walk in through the door the camera is next to
+      // and pick their own seats, so one roll of this puts a head in the lens and
+      // the next has them all at the bar. chosen.json exists for exactly this —
+      // pick the frame with a clear floor.
+      await shot('open-for-business');
+      for (const label of ['crowd-b', 'crowd-c']) {
+        await wait(4000);
+        await shot(label);
+      }
+      const crowd = (await p.textContent('#hCrowd')).trim();
+      const hour = (await p.textContent('#hHour')).trim();
+      return `night open, ${crowd} in the bar at ${hour}, facing ${c.facing}`;
+    },
+  },
 };
 
-const server = await serve(PORT);
-const browser = await launch();
-const only = process.argv[2];
-const report = {};
+/* ------------------------------------------------------------------- run ---- */
 
-for (const [name, rec] of Object.entries(RECIPES)) {
-  if (only && only !== name) continue;
-  process.stdout.write(`${name.padEnd(18)}`);
-  const page = await prepPage(browser, BASE, { width: rec.vw, height: rec.vh, dsf: 2 });
-  page.setDefaultTimeout(60000);
+const sha = f => crypto.createHash('sha1').update(fs.readFileSync(f)).digest('hex').slice(0, 12);
+
+const only = process.argv[2];
+const names = Object.keys(RECIPES).filter(n => !only || n === only);
+if (!names.length) {
+  console.error(`no such recipe: ${only}\nknown: ${Object.keys(RECIPES).join(', ')}`);
+  process.exit(2);
+}
+
+// Clear only what this run will replace. Wiping the whole folder would throw away
+// six good captures every time someone re-runs one recipe to tune its framing,
+// which is exactly what tuning framing involves.
+fs.mkdirSync(OUT, { recursive: true });
+for (const f of fs.readdirSync(OUT)) {
+  if (names.some(n => f.startsWith(n + '-'))) fs.rmSync(path.join(OUT, f));
+}
+
+const server = await serve(PORT);
+const browser = await launch({ headed: true });
+// Merge, for the same reason: a single-recipe run shouldn't erase the report for
+// the other six.
+const reportPath = path.join(OUT, 'report.json');
+const report = fs.existsSync(reportPath) ? JSON.parse(fs.readFileSync(reportPath, 'utf8')) : {};
+let failures = 0;
+
+for (const name of names) {
+  const rec = RECIPES[name];
+  console.log(`\n${name}`);
+  const page = await prepPage(browser, BASE, {
+    width: rec.vw, height: rec.vh, dsf: rec.dsf ?? 1, allow: rec.allow ?? [],
+  });
+  page.setDefaultTimeout(45000);
+
   const files = [];
+  const shot = async label => {
+    const f = path.join(OUT, `${name}-${String(files.length).padStart(2, '0')}-${label}.png`);
+    await page.screenshot({ path: f });
+    files.push(f);
+    return f;
+  };
+  const probe = async () => {
+    if (!rec.three) return;
+    await attachSceneProbe(page, rec.three);
+    await waitForProbe(page);
+  };
+
+  const ok = (label, detail = '') => console.log(`  ok    ${label}${detail ? '  ' + detail : ''}`);
+  const bad = (label, detail = '') => { failures++; console.log(`  FAIL  ${label}${detail ? '  ' + detail : ''}`); };
+  const entry = report[name] = { files: [], checks: {} };
+
   try {
     await page.goto(BASE + rec.url, { waitUntil: 'load', timeout: 45000 });
-    await rec.drive(page);
-    let i = 0;
-    for (const d of rec.shots) {
-      if (d) await wait(d);
-      const f = path.join(OUT, `${name}-${i++}.png`);
-      await page.screenshot({ path: f });
-      files.push(f); process.stdout.write('.');
+    const reached = await rec.play(page, { shot, probe, camState, aimAt, setYaw, walkTo, wait });
+    ok('played into gameplay', reached);
+    entry.reached = reached;
+
+    // 1. Nothing that names itself an intro is still on screen.
+    const upStill = await page.evaluate(sels => sels.filter(s => {
+      const el = document.querySelector(s);
+      if (!el) return false;
+      const cs = getComputedStyle(el);
+      return el.getClientRects().length > 0 && cs.opacity !== '0' && cs.visibility !== 'hidden';
+    }), rec.intro);
+    entry.checks.introGone = upStill.length === 0;
+    if (upStill.length) bad('intro overlays gone', `still up: ${upStill.join(', ')}`);
+    else ok('intro overlays gone', rec.intro.length ? rec.intro.join(', ') : '(none declared)');
+
+    // 2. The frame is genuinely live, not a loaded-but-stalled still. Only
+    //    meaningful for the games with a clock — see `live` on each recipe.
+    if (rec.live === false) {
+      entry.checks.moving = null;
+      console.log('  n/a   frame is moving  turn-based; a still frame is the playing state');
+    } else {
+      const a = await shot('motion-a');
+      await wait(1600);
+      const b = await shot('motion-b');
+      entry.checks.moving = sha(a) !== sha(b);
+      if (sha(a) === sha(b)) bad('frame is moving', 'two frames 1.6s apart are byte-identical');
+      else ok('frame is moving');
     }
-    // identical frames across the whole window means nothing is animating
-    const hashes = new Set(files.map(f => fs.statSync(f).size + ':' + fs.readFileSync(f).length));
-    const stale = hashes.size === 1 && files.length > 1;
-    const dom = await page.evaluate(() => {
-      const hidden = el => !el || !el.getClientRects().length || getComputedStyle(el).opacity === '0';
-      const intro = {};
-      for (const id of ['title', 'overlay', 'start-overlay', 'startOverlay', 'loading-screen'])
-        if (document.getElementById(id)) intro[id] = hidden(document.getElementById(id)) ? 'gone' : 'STILL UP';
-      return { intro, canvases: [...document.querySelectorAll('canvas')].map(c => `${c.width}x${c.height}`) };
-    });
-    report[name] = { ok: true, files: files.map(f => path.basename(f)), stale, dom, errs: page.__errs.slice(0, 4), blocked: [...new Set(page.__blocked)] };
-    process.stdout.write(` ok  intro=${JSON.stringify(dom.intro)}${stale ? '  STATIC FRAMES' : ''}\n`);
+
+    // 3. Clean console.
+    entry.checks.noErrors = page.__errs.length === 0;
+    if (page.__errs.length) bad('no console errors', page.__errs.slice(0, 3).join(' | '));
+    else ok('no console errors');
+
+    entry.files = files.map(f => path.basename(f));
+    entry.blocked = [...new Set(page.__blocked)];
+    entry.allowedThrough = [...new Set(page.__allowed)];
+    if (entry.blocked.length) console.log(`  note  refused offsite: ${entry.blocked.slice(0, 3).join(', ')}`);
+    if (entry.allowedThrough.length) console.log(`  note  allowed offsite: ${entry.allowedThrough.slice(0, 2).join(', ')}`);
   } catch (e) {
-    report[name] = { ok: false, error: String(e).slice(0, 160), errs: page.__errs.slice(0, 6), blocked: [...new Set(page.__blocked)] };
-    process.stdout.write(` FAILED ${String(e).slice(0, 90)}\n`);
+    failures++;
+    entry.error = String(e.message || e).slice(0, 200);
+    console.log(`  FAIL  never reached gameplay  ${entry.error}`);
+    await shot('aborted').catch(() => {});
+    entry.files = files.map(f => path.basename(f));
+    entry.errs = page.__errs.slice(0, 4);
   }
   await page.close();
 }
 
-fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
-console.log('\nreport written to candidates/report.json');
-console.log('NOTHING here is ready for assets/previews/ until a human has looked at it.');
+fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 await browser.close();
 server.close();
+
+console.log(`\n${failures ? `${failures} failure(s)` : 'all seven reached gameplay'}`);
+console.log(`candidates in ${path.relative(HERE, OUT)} — LOOK at them, then \`npm run promote\`.`);
+process.exit(failures ? 1 : 0);
