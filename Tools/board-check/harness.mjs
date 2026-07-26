@@ -134,13 +134,18 @@ export function serve(port = 8123) {
 // there. Everywhere but Linux, drive whatever Chrome/Edge is already
 // installed via Playwright instead. No browser download needed for that:
 // `channel: 'chrome'` / `'msedge'` reuses the system install.
-export async function launch() {
+//
+// `headed: true` opens a real visible window. Only play-castle.mjs wants that, and
+// it wants it for a specific reason: the Pointer Lock API and real GPU rendering
+// both need a browser that is actually compositing frames to a screen. Everything
+// else stays headless.
+export async function launch({ headed = false } = {}) {
   if (process.platform === 'linux') {
     const puppeteer = (await import('puppeteer-core')).default;
     const chromium = (await import('@sparticuz/chromium')).default;
     const browser = await puppeteer.launch({
       executablePath: await chromium.executablePath(),
-      headless: true,
+      headless: !headed,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
              '--font-render-hinting=none', '--force-color-profile=srgb',
              '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
@@ -156,7 +161,7 @@ export async function launch() {
     try {
       const browser = await pwChromium.launch({
         channel,
-        headless: true,
+        headless: !headed,
         args: ['--font-render-hinting=none', '--force-color-profile=srgb',
                '--hide-scrollbars', '--disable-lcd-text', '--mute-audio'],
       });

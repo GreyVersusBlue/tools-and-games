@@ -8,6 +8,7 @@
     "check": "node check-integrity.mjs && node check-collisions.mjs",
     "integrity": "node check-integrity.mjs",
     "collisions": "node check-collisions.mjs",
+    "play": "node play-castle.mjs",
     "shoot": "node shoot-board.mjs",
     "previews": "node capture-previews.mjs",
     "postinstall": "npm i --prefix three-0.160.0 three@0.160.0 && npm i --prefix three-0.169.0 three@0.169.0"

@@ -1,9 +1,11 @@
 // assets.js — centralized asset loading.
-// Every model load goes through loadModel(): on failure it logs loudly and
+// Every model load goes through loadGLTF(): on failure it logs loudly and
 // returns a clearly-labeled placeholder box so a bad path never fails silently.
+// loadModel() is the scenery-facing shorthand for "just give me the geometry".
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 export const loadingManager = new THREE.LoadingManager();
 const gltfLoader = new GLTFLoader(loadingManager);
@@ -12,36 +14,43 @@ const textureLoader = new THREE.TextureLoader(loadingManager);
 const modelCache = new Map();
 
 /**
- * Load a GLTF/GLB. Returns a THREE.Group (a clone if cached).
+ * Load a GLTF/GLB. Returns { scene, animations } — scene is always a fresh clone,
+ * animations is the (shared, immutable) AnimationClip array from the file.
+ * Cloning goes through SkeletonUtils rather than Object3D.clone() so that rigged
+ * models come back bound to their *own* cloned skeleton; a plain clone() leaves
+ * the copy's SkinnedMeshes pointing at the original's bones, which means any
+ * AnimationMixer driving the clone visibly does nothing.
  * On failure: console.error + red placeholder box labeled with the path.
  */
-export async function loadModel(path) {
-  if (modelCache.has(path)) {
-    const cached = await modelCache.get(path);
-    return cached.clone(true);
+export async function loadGLTF(path) {
+  if (!modelCache.has(path)) {
+    modelCache.set(path, new Promise((resolve) => {
+      gltfLoader.load(
+        path,
+        (gltf) => {
+          gltf.scene.traverse((obj) => {
+            if (obj.isMesh) {
+              obj.castShadow = true;
+              obj.receiveShadow = true;
+            }
+          });
+          resolve({ scene: gltf.scene, animations: gltf.animations || [] });
+        },
+        undefined,
+        (err) => {
+          console.error(`[Castle Conundrum] MISSING/BROKEN ASSET: "${path}"`, err);
+          resolve({ scene: makePlaceholder(path), animations: [] });
+        }
+      );
+    }));
   }
-  const promise = new Promise((resolve) => {
-    gltfLoader.load(
-      path,
-      (gltf) => {
-        gltf.scene.traverse((obj) => {
-          if (obj.isMesh) {
-            obj.castShadow = true;
-            obj.receiveShadow = true;
-          }
-        });
-        resolve(gltf.scene);
-      },
-      undefined,
-      (err) => {
-        console.error(`[Castle Conundrum] MISSING/BROKEN ASSET: "${path}"`, err);
-        resolve(makePlaceholder(path));
-      }
-    );
-  });
-  modelCache.set(path, promise);
-  const scene = await promise;
-  return scene.clone(true);
+  const cached = await modelCache.get(path);
+  return { scene: cloneSkinned(cached.scene), animations: cached.animations };
+}
+
+/** Load a GLTF/GLB and return just its scene graph. */
+export async function loadModel(path) {
+  return (await loadGLTF(path)).scene;
 }
 
 function makePlaceholder(path) {

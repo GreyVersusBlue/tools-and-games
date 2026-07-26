@@ -7,6 +7,7 @@ instead of reasoning about CSS and hoping.
 ```
 npm install          # also vendors three.js 0.160.0 and 0.169.0
 npm run check        # integrity sweep + collision guard, both exit non-zero on failure
+npm run play         # plays Castle Conundrum to victory; opens a real window
 npm run shoot        # writes reviewable PNGs to ./shots/
 ```
 
@@ -28,6 +29,14 @@ Microsoft Edge, or run `npx playwright install chromium` inside
 `Tools/board-check`. Every script (`check-collisions.mjs`, `shoot-board.mjs`,
 `capture-previews.mjs`) is written against `launch()`/`prepPage()` and doesn't
 care which engine is actually driving the page.
+
+`play-castle.mjs` is the one exception, and it's a deliberate one: it calls
+`launch({ headed: true })`, because the Pointer Lock API and real GPU rendering
+both need a browser that is genuinely compositing frames to a screen. A hidden
+or headless browser doesn't fire `requestAnimationFrame` at all in some hosts,
+which means a WebGL render loop never runs and every frame-dependent assertion
+hangs instead of failing usefully. So that script opens a visible window and
+visibly plays the game. Don't "fix" it back to headless.
 
 ## The two shims
 
@@ -82,6 +91,32 @@ subpath. Output lands in `./shots/`.
 
 It also reports whether any `.unfurl` elements attached. Zero means no preview
 JPEGs exist yet, which is currently expected.
+
+### `play-castle.mjs`
+
+Plays Castle Conundrum start to victory with real input — pointer lock, WASD, E
+presses, typing the riddle answer — and asserts 22 beats along the way: three
+rigged bodies present, every skeleton rebound to its own bones, rigs animating,
+pointer lock acquired and released and re-acquired at the right moments, both
+dialogues, escalating wrong-answer responses, the hint, the Keystone, the gate,
+the victory screen, no console errors, no offsite requests. Exits non-zero on
+any miss. Screenshots land in `./shots/play/`.
+
+Two of these assertions exist because of specific bugs that every other check in
+this folder was blind to:
+
+- **The Guard was standing sealed inside the gatehouse wall.** `interaction.js`
+  tests proximity and facing, never line of sight, so "Press E to talk to the
+  Guard" appeared on blank stone and the quest completed normally. The script
+  raycasts from the player to the Guard's chest and fails if anything is in the
+  way. Verified to fail at the old position and pass at the current one.
+- **`Object3D.clone()` on a `SkinnedMesh` keeps the original's skeleton**, so a
+  cloned rig stands frozen while its `AnimationMixer` runs happily. `assets.js`
+  clones via `SkeletonUtils` instead; the script walks each skeleton's first
+  bone up to its root and fails if that root isn't the live scene.
+
+If NPC positions change in `data/npcs.json`, update the `SCHOLAR` / `GUARD`
+constants at the top to match.
 
 ### `capture-previews.mjs`
 
