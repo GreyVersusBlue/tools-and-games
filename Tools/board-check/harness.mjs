@@ -7,14 +7,13 @@
 // Neither shim touches a file in the repo. They exist so a render is the real
 // thing rather than a font-substituted, module-less approximation.
 //
-// See README.md for why we use @sparticuz/chromium instead of Playwright.
+// See README.md for why the default is @sparticuz/chromium rather than
+// Playwright, and the "browser" section below for the Windows/macOS fallback.
 
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const SITE = path.resolve(HERE, '..', '..');
@@ -129,15 +128,47 @@ export function serve(port = 8123) {
 
 /* ---------------- browser -------------------------------------------------- */
 
+// @sparticuz/chromium ships a Chromium binary built for AWS Lambda's Linux
+// runtime only — there's no Windows or macOS executable in the package at
+// all, so `chromium.executablePath()` resolves to a path that doesn't exist
+// there. Everywhere but Linux, drive whatever Chrome/Edge is already
+// installed via Playwright instead. No browser download needed for that:
+// `channel: 'chrome'` / `'msedge'` reuses the system install.
 export async function launch() {
-  return puppeteer.launch({
-    executablePath: await chromium.executablePath(),
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-           '--font-render-hinting=none', '--force-color-profile=srgb',
-           '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
-           '--hide-scrollbars', '--disable-lcd-text', '--mute-audio'],
-  });
+  if (process.platform === 'linux') {
+    const puppeteer = (await import('puppeteer-core')).default;
+    const chromium = (await import('@sparticuz/chromium')).default;
+    const browser = await puppeteer.launch({
+      executablePath: await chromium.executablePath(),
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+             '--font-render-hinting=none', '--force-color-profile=srgb',
+             '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+             '--hide-scrollbars', '--disable-lcd-text', '--mute-audio'],
+    });
+    browser.__engine = 'puppeteer';
+    return browser;
+  }
+
+  const { chromium: pwChromium } = await import('playwright-core');
+  let lastErr;
+  for (const channel of ['chrome', 'msedge', undefined]) {
+    try {
+      const browser = await pwChromium.launch({
+        channel,
+        headless: true,
+        args: ['--font-render-hinting=none', '--force-color-profile=srgb',
+               '--hide-scrollbars', '--disable-lcd-text', '--mute-audio'],
+      });
+      browser.__engine = 'playwright';
+      return browser;
+    } catch (e) { lastErr = e; }
+  }
+  throw new Error(
+    'No local Chrome or Edge found for Playwright to drive, and no bundled ' +
+    'Chromium is installed. Install Google Chrome or Microsoft Edge, or run ' +
+    '`npx playwright install chromium` inside Tools/board-check.\n' +
+    `(last launch error: ${lastErr?.message})`);
 }
 
 /**
@@ -145,23 +176,57 @@ export async function launch() {
  * page.__errs    page errors, console errors, failed requests
  * page.__blocked offsite URLs that were refused (i.e. real external deps)
  */
-export async function prepPage(browser, base, { width = 1280, height = 1000, dsf = 2, mobile = false } = {}) {
-  const page = await browser.newPage();
-  await page.setViewport({ width, height, deviceScaleFactor: dsf, hasTouch: mobile, isMobile: mobile });
-  await page.setRequestInterception(true);
+export async function prepPage(browser, base, { width = 1280, height = 1000, dsf = 2, mobile = false, jsEnabled = true } = {}) {
+  const playwright = browser.__engine === 'playwright';
+  let page, context;
+
+  if (playwright) {
+    context = await browser.newContext({
+      viewport: { width, height }, deviceScaleFactor: dsf,
+      hasTouch: mobile, isMobile: mobile, javaScriptEnabled: jsEnabled,
+    });
+    page = await context.newPage();
+    const closePage = page.close.bind(page);
+    page.close = async opts => { await closePage(opts); await context.close(); };
+  } else {
+    page = await browser.newPage();
+    await page.setViewport({ width, height, deviceScaleFactor: dsf, hasTouch: mobile, isMobile: mobile });
+    if (!jsEnabled) await page.setJavaScriptEnabled(false);
+  }
 
   const blocked = [];
-  page.on('request', r => {
-    const u = r.url();
-    if (/fonts\.googleapis\.com\/css/.test(u))
-      return r.respond({ status: 200, contentType: 'text/css; charset=utf-8', body: fontCssFor(u, base) });
-    if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(u))
-      return r.respond({ status: 200, contentType: 'text/css', body: '' });
+  const handleUrl = u => {
     const m = u.match(/cdn\.jsdelivr\.net\/npm\/three@([\d.]+)\/(.*)$/);
-    if (m) return r.continue({ url: `${base}/__three/${m[1]}/${m[2]}` });
-    if (/^https?:\/\/(?!127\.0\.0\.1)/.test(u)) { blocked.push(u.split('?')[0]); return r.abort(); }
-    r.continue();
-  });
+    if (m) return `${base}/__three/${m[1]}/${m[2]}`;
+    return null;
+  };
+
+  if (playwright) {
+    await page.route('**/*', route => {
+      const u = route.request().url();
+      if (/fonts\.googleapis\.com\/css/.test(u))
+        return route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: fontCssFor(u, base) });
+      if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(u))
+        return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+      const rewritten = handleUrl(u);
+      if (rewritten) return route.continue({ url: rewritten });
+      if (/^https?:\/\/(?!127\.0\.0\.1)/.test(u)) { blocked.push(u.split('?')[0]); return route.abort(); }
+      route.continue();
+    });
+  } else {
+    await page.setRequestInterception(true);
+    page.on('request', r => {
+      const u = r.url();
+      if (/fonts\.googleapis\.com\/css/.test(u))
+        return r.respond({ status: 200, contentType: 'text/css; charset=utf-8', body: fontCssFor(u, base) });
+      if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(u))
+        return r.respond({ status: 200, contentType: 'text/css', body: '' });
+      const rewritten = handleUrl(u);
+      if (rewritten) return r.continue({ url: rewritten });
+      if (/^https?:\/\/(?!127\.0\.0\.1)/.test(u)) { blocked.push(u.split('?')[0]); return r.abort(); }
+      r.continue();
+    });
+  }
 
   const errs = [];
   page.on('pageerror', e => errs.push('pageerror: ' + e.message));

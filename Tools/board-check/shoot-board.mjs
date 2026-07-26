@@ -114,8 +114,7 @@ await page.close();
 
 /* --- no JS ---------------------------------------------------------------- */
 {
-  const p = await prepPage(browser, BASE, { width: 1024, height: 1000, dsf: 2 });
-  await p.setJavaScriptEnabled(false);
+  const p = await prepPage(browser, BASE, { width: 1024, height: 1000, dsf: 2, jsEnabled: false });
   await p.goto(BASE + '/', { waitUntil: 'load' });
   await pause(900);
   await p.screenshot({ path: `${OUT}/nojs.png`, fullPage: true });

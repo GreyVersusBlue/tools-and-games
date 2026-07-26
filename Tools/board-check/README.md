@@ -10,14 +10,24 @@ npm run check        # integrity sweep + collision guard, both exit non-zero on 
 npm run shoot        # writes reviewable PNGs to ./shots/
 ```
 
-## Why this is not Playwright
+## Why this is (mostly) not Playwright
 
-Playwright and Puppeteer both download their browser from a CDN at install
-time, and those CDNs are unreachable from some sandboxes. `@sparticuz/chromium`
-ships the Chromium binary *inside the npm tarball*, so `npm install` is
-sufficient. `puppeteer-core` then drives it. If you are on a normal machine with
-network access, regular Playwright is nicer; this exists for the constrained
-case.
+Playwright and Puppeteer both normally download their browser from a CDN at
+install time, and those CDNs are unreachable from some sandboxes.
+`@sparticuz/chromium` ships the Chromium binary *inside the npm tarball*, so
+`npm install` is sufficient, and `puppeteer-core` drives it. That binary is
+built for AWS Lambda's Linux runtime, though — there's no Windows or macOS
+executable in the package at all.
+
+So `harness.mjs`'s `launch()` picks per platform: Linux uses
+`@sparticuz/chromium` + `puppeteer-core` as above; anywhere else it uses
+`playwright-core` against whatever Chrome or Edge (`channel: 'chrome'` /
+`'msedge'`) is already installed on the machine, so there's still no browser
+download required. If neither channel is found, install Google Chrome or
+Microsoft Edge, or run `npx playwright install chromium` inside
+`Tools/board-check`. Every script (`check-collisions.mjs`, `shoot-board.mjs`,
+`capture-previews.mjs`) is written against `launch()`/`prepPage()` and doesn't
+care which engine is actually driving the page.
 
 ## The two shims
 
