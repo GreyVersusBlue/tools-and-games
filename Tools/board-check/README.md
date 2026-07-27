@@ -8,6 +8,7 @@ instead of reasoning about CSS and hoping.
 npm install          # also vendors three.js 0.160.0 and 0.169.0
 npm run check        # integrity sweep + collision guard, both exit non-zero on failure
 npm run play         # plays Castle Conundrum to victory; opens a real window
+npm run games        # regression suite for the other six games; opens real windows
 npm run shoot        # writes reviewable PNGs to ./shots/
 npm run previews     # plays all seven quests, screenshots gameplay to ./candidates/
 npm run promote      # candidates/chosen.json -> assets/previews/ + assets/og/
@@ -56,13 +57,15 @@ degraded approximation:
 - **`cdn.jsdelivr.net/npm/three@<ver>/...`** is rewritten to a vendored copy.
 
 Anything else offsite is refused and recorded in `page.__blocked`, which is how
-you find out what the site actually depends on at runtime. As of session 4 every
-project vendors its own three.js, so the only offsite dependency left on the whole
-site is **Golden Hour's sand texture from `dl.polyhaven.org`**. `terrain.js` falls
-back to a procedural canvas texture when that host is unreachable, which is why
-`prepPage()` takes an `allow` list — `capture-previews.mjs` lets that one request
-through so the captured beach is the beach a visitor actually gets. Every other
-script leaves `allow` empty, which is what keeps `page.__blocked` honest.
+you find out what the site actually depends on at runtime. That inventory is now
+**empty**: session 4 vendored three.js into every project, and session 7 vendored
+Golden Hour's sand texture, which had been the last hotlink on the site. Nothing
+on greyversusblue.com reaches another host while a visitor is on it, and both
+`play-games.mjs` and `play-castle.mjs` assert exactly that.
+
+`prepPage()` still takes an `allow` list of host substrings to let through. It was
+written for the hotlinked texture — blocking it left `terrain.js` on its
+procedural fallback and captured a beach nobody saw — and nothing passes it now.
 
 ## The scripts
 
@@ -132,11 +135,36 @@ this folder was blind to:
 If NPC positions change in `data/npcs.json`, update the `SCHOLAR` / `GUARD`
 constants at the top to match.
 
+### `games.mjs`
+
+One description per playable project: URL, frame size, the three.js specifier its
+import map resolves, which overlays count as "intro", where it keeps its save, and
+`open()` — the clicks that get from a blank page to the first frame of play.
+`enter()` wraps that with "load it, wipe the save it left in this browser, play it
+in". `capture-previews.mjs` and `play-games.mjs` both start here, so the way into a
+game is written once. Add a game to the board, describe it here.
+
+### `play-games.mjs`
+
+The end-to-end regression suite for the six games that aren't Castle Conundrum:
+build a real production line in Integer Foundry and watch the sink judge what
+arrives, run a fortnight of Closing Time, build and open a Faire Weekend, walk
+Golden Hour and Aphelion, and put The Fourth Quarter's save through export, import,
+a reload and a pre-versioning legacy blob. 92 assertions, exits non-zero on any of
+them, screenshots in `./shots/games/`.
+
+Four of these projects already have Node smoke suites, and this does not repeat
+them. Those import the engine modules and drive them directly; they cannot see the
+wiring. `day.rebuildStations` was the case in point — 122 campaign assertions
+passing while "New Game" threw on the first click a player makes. Every beat here
+is something that only breaks in a browser: a handler that was never attached, a
+render that throws on empty state, a save that loads into a room nobody rebuilt.
+
 ### `drive.mjs`
 
 Shared helpers for playing a first-person three.js game from a script: getting a
 handle on the live scene and camera, aiming, and walking to a world coordinate.
-`play-castle.mjs` and `capture-previews.mjs` both use it. Read its comments before
+All three driving scripts use it. Read its comments before
 writing a new driver — the two non-obvious facts are that `renderer.render` is an
 own property so patching `WebGLRenderer.prototype` captures nothing, and that only
 Castle Conundrum tolerates a direct write to `camera.rotation` (the other three
@@ -148,6 +176,10 @@ Plays all seven projects into a real gameplay frame and screenshots it. Each
 recipe drives its game with that game's own selectors and world coordinates, and
 asserts it arrived: intro overlays gone, frame actually moving (for the games with
 a clock), console clean. Exits non-zero on any miss.
+
+Getting into each game lives in `games.mjs` now; what's left in each recipe is the
+part that is about taking a *picture* — what to build, where to stand, which way
+to look.
 
 Runs headed, for the same reasons `play-castle.mjs` does. Output goes to
 `./candidates/`, and nothing there reaches `assets/` until it's named in

@@ -139,6 +139,20 @@ export function serve(port = 8123) {
 // it wants it for a specific reason: the Pointer Lock API and real GPU rendering
 // both need a browser that is actually compositing frames to a screen. Everything
 // else stays headless.
+// Chrome slows or stops requestAnimationFrame, timers and compositing in a
+// window it thinks nobody is looking at. In a headed run that is not a hypothesis:
+// click another application while `npm run previews` is playing and the game
+// quietly stops animating, so a walk covers no ground and two screenshots 1.6 s
+// apart come out byte-identical. Both of those failed a seven-game run here, and
+// both passed on their own a minute later. These three flags are the difference
+// between a suite that tests the site and a suite that tests whether the person
+// running it sat still.
+const NO_BACKGROUNDING = [
+  '--disable-backgrounding-occluded-windows',
+  '--disable-renderer-backgrounding',
+  '--disable-background-timer-throttling',
+];
+
 export async function launch({ headed = false } = {}) {
   if (process.platform === 'linux') {
     const puppeteer = (await import('puppeteer-core')).default;
@@ -149,7 +163,8 @@ export async function launch({ headed = false } = {}) {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
              '--font-render-hinting=none', '--force-color-profile=srgb',
              '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
-             '--hide-scrollbars', '--disable-lcd-text', '--mute-audio'],
+             '--hide-scrollbars', '--disable-lcd-text', '--mute-audio',
+             ...NO_BACKGROUNDING],
     });
     browser.__engine = 'puppeteer';
     return browser;
@@ -163,7 +178,8 @@ export async function launch({ headed = false } = {}) {
         channel,
         headless: !headed,
         args: ['--font-render-hinting=none', '--force-color-profile=srgb',
-               '--hide-scrollbars', '--disable-lcd-text', '--mute-audio'],
+               '--hide-scrollbars', '--disable-lcd-text', '--mute-audio',
+               ...NO_BACKGROUNDING],
       });
       browser.__engine = 'playwright';
       return browser;
@@ -183,12 +199,14 @@ export async function launch({ headed = false } = {}) {
  */
 /**
  * `allow` is a list of host substrings that are let through to the real network
- * instead of being refused and recorded. It exists for `capture-previews.mjs`:
- * Golden Hour hotlinks its sand texture from `dl.polyhaven.org` and falls back
- * to a procedural canvas texture when that's unreachable, so a blocked capture
- * shows a beach no visitor actually sees. Every other script leaves this empty —
- * the default of refusing everything offsite is what makes `page.__blocked` a
- * useful inventory of the site's real external dependencies.
+ * instead of being refused and recorded.
+ *
+ * Nothing passes it any more. It was added for `capture-previews.mjs` when Golden
+ * Hour hotlinked its sand texture from `dl.polyhaven.org`: blocking that request
+ * left terrain.js on its procedural fallback and captured a beach no visitor saw.
+ * Session 7 vendored the texture, so the site now makes zero offsite requests and
+ * every caller leaves this empty — which is what makes `page.__blocked` an honest
+ * inventory. Kept for the next dependency that has to be seen to be believed.
  */
 export async function prepPage(browser, base, { width = 1280, height = 1000, dsf = 2, mobile = false, jsEnabled = true, allow = [] } = {}) {
   const playwright = browser.__engine === 'playwright';
@@ -257,6 +275,11 @@ export async function prepPage(browser, base, { width = 1280, height = 1000, dsf
   page.__errs = errs;
   page.__blocked = blocked;
   page.__allowed = allowed;
+  // Which driver is behind this page. Scripts shouldn't normally care — that's
+  // the point of this file — but a few browser features are reached through
+  // engine-specific API (answering a file chooser, for one), and guessing wrong
+  // hangs on a native dialog rather than failing.
+  page.__engine = browser.__engine;
   return page;
 }
 
