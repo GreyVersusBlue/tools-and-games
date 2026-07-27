@@ -3,12 +3,19 @@
 // (see fourth-quarter's smokeN.js). Run with `npm test` or `node tests/smoke.mjs`.
 
 import { JSDOM } from 'jsdom';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
+
+// import() takes a URL, not a path. On Windows a bare absolute path starts with
+// a drive letter, which Node reads as the URL scheme "c:" and refuses outright
+// (ERR_UNSUPPORTED_ESM_URL_SCHEME), so this whole suite was unrunnable there.
+// It works on Linux and macOS only because a POSIX absolute path happens to be
+// a valid relative URL.
+const mod = p => pathToFileURL(path.join(root, p)).href;
 
 let pass = 0, fail = 0;
 function assert(cond, msg) {
@@ -19,9 +26,9 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights } = await import(path.join(root, 'js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW } = await import(path.join(root, 'js/data.js'));
-const State = await import(path.join(root, 'js/state.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights } = await import(mod('js/engine.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW } = await import(mod('js/data.js'));
+const State = await import(mod('js/state.js'));
 
 // --- RNG determinism ---
 {
@@ -1911,7 +1918,7 @@ const State = await import(path.join(root, 'js/state.js'));
   globalThis.localStorage = makeMemoryStorage();
   globalThis.confirm = () => true;
 
-  await import(path.join(root, 'js/main.js') + `?t=${Date.now()}`); // cache-bust so re-imports re-run top-level code
+  await import(mod('js/main.js') + `?t=${Date.now()}`); // cache-bust so re-imports re-run top-level code
 
   const doc = dom.window.document;
   assert(!!doc.querySelector('#ledger') && doc.querySelector('#ledger').innerHTML.length > 0, 'index.html boots and #ledger is populated by main.js');
@@ -2070,7 +2077,7 @@ const State = await import(path.join(root, 'js/state.js'));
   globalThis.localStorage = storage;
   globalThis.confirm = () => true;
 
-  await import(path.join(root, 'js/main.js') + `?t=${Date.now()}`);
+  await import(mod('js/main.js') + `?t=${Date.now()}`);
   const doc = dom.window.document;
   const click = (el) => el.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
 
@@ -2117,7 +2124,7 @@ const State = await import(path.join(root, 'js/state.js'));
   globalThis.localStorage = storage;
   globalThis.confirm = () => true;
 
-  await import(path.join(root, 'js/main.js') + `?t=${Date.now()}`);
+  await import(mod('js/main.js') + `?t=${Date.now()}`);
   const doc = dom.window.document;
 
   assert(!doc.querySelector('[data-tab]'), 'gameOver phase hides the tabs');
@@ -2149,7 +2156,7 @@ const State = await import(path.join(root, 'js/state.js'));
   globalThis.localStorage = storage;
   globalThis.confirm = () => true;
 
-  await import(path.join(root, 'js/main.js') + `?t=${Date.now()}`);
+  await import(mod('js/main.js') + `?t=${Date.now()}`);
   const doc = dom.window.document;
 
   assert(!doc.querySelector('[data-tab]'), 'victory phase hides the tabs');
