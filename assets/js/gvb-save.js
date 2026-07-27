@@ -21,6 +21,14 @@
 //
 //   let state = slot.load() ?? slot.fresh();
 //   slot.save(state);
+//
+// A module that also runs under Node — a game's own pure logic file with a
+// smoke test, which is the case in the first real adopter — should import this
+// by RELATIVE path (`../../../assets/js/gvb-save.js`) rather than the site-
+// absolute one above. Node can't resolve a leading slash, and the relative form
+// works identically in the browser.
+//
+// Adopted by: The Fourth Quarter (Projects/fourth-quarter/js/campaign.js).
 
 const ENVELOPE = "gvb-save";
 
@@ -48,15 +56,27 @@ export function createSaveSlot(options) {
     key = `gvb:${game}`,        // storage key
     version = 1,                // bump when the shape changes
     validate = () => true,      // (state) => boolean
-    migrate = state => state,   // (state, fromVersion) => state
-    defaults = null,            // used by fresh()
+    migrate = state => state,   // (state, fromVersion) => state — version drift only
+    repair = state => state,    // (state) => state — every accepted load
+    defaults = null,            // used by fresh(): a literal, or a factory
     storage = null              // inject a stub in tests
   } = options;
 
   if (!game) throw new Error("createSaveSlot: `game` is required");
   const store = storage || (typeof localStorage !== "undefined" ? defaultStorage() : null);
 
-  /** Take an untrusted parsed object and return usable state, or null. */
+  /**
+   * Take an untrusted parsed object and return usable state, or null.
+   *
+   * `migrate` only runs when the stored version differs from the current one.
+   * `repair` runs on every state this returns, whatever its version and whichever
+   * entry point it came through — localStorage, an imported file, a pasted blob.
+   * That distinction matters: a save written by the current build can still be
+   * missing a field (a hand-edited localStorage, a write truncated by a quota
+   * error), and the fill-in-the-gaps pass that used to live in a project's own
+   * `load()` has nowhere else to go. Keep `repair` idempotent and cheap; it is
+   * not the place for version-specific reshaping.
+   */
   function normalize(raw) {
     if (!raw || typeof raw !== "object") return null;
     // Accept both a bare state blob and a full export envelope.
@@ -72,7 +92,12 @@ export function createSaveSlot(options) {
     }
     if (!state || !validate(state)) return null;
     delete state.__v;
-    return state;
+    try {
+      state = repair(state);
+    } catch (e) {
+      return null;
+    }
+    return state && typeof state === "object" ? state : null;
   }
 
   /** Wrap state in the portable envelope written to disk. */
@@ -94,7 +119,16 @@ export function createSaveSlot(options) {
     return normalize(raw);
   }
 
+  /**
+   * A brand-new state. `defaults` may be a plain object — deep-copied, so a
+   * caller can't mutate the template — or a factory function, for a game whose
+   * starting state isn't a constant. The Fourth Quarter's `newCampaign()` rolls
+   * three random job applicants, so a literal could not describe day one; it
+   * passes `defaults: newCampaign`. That's what makes `reset()` usable there
+   * instead of every caller having to remember to build a fresh state itself.
+   */
   function fresh() {
+    if (typeof defaults === "function") return defaults();
     return defaults ? JSON.parse(JSON.stringify(defaults)) : null;
   }
 
@@ -210,13 +244,24 @@ export function createSaveSlot(options) {
 }
 
 /* ---------------------------------------------------------------------------
-   Optional drop-in UI: three buttons that call the slot for you.
+   Optional drop-in UI: buttons that call the slot for you.
 
      mountSaveBar(document.getElementById("save-bar"), slot, {
        getState: () => campaign,
        setState: c => { campaign = c; redraw(); },
        onMessage: text => toast(text)
      });
+
+   `buttons` picks which of "export" / "import" / "reset" get mounted, in that
+   order by default. A host page that already has its own new-game button wants
+   `buttons: ["export", "import"]` rather than two controls that wipe the save
+   sitting next to each other — which is exactly what the Fourth Quarter needed,
+   since its start screen has shipped a "New Game (wipe save)" button since long
+   before this module existed.
+
+   Each button carries `data-gvb="export|import|reset"`. Nothing in the module
+   reads it; it's there so a driver script can click a specific one without
+   depending on button order or label text.
 
    Styling is deliberately thin. Override with CSS custom properties on any
    ancestor: --gvb-btn-bg, --gvb-btn-fg, --gvb-btn-border, --gvb-btn-radius.
@@ -247,7 +292,10 @@ function injectStyles() {
 
 export function mountSaveBar(container, slot, handlers = {}) {
   if (!container) return null;
-  const { getState, setState, onMessage, confirmReset = true } = handlers;
+  const {
+    getState, setState, onMessage, confirmReset = true,
+    buttons = ["export", "import", "reset"],
+  } = handlers;
   injectStyles();
 
   container.classList.add("gvb-save-bar");
@@ -260,9 +308,10 @@ export function mountSaveBar(container, slot, handlers = {}) {
     else { msg.textContent = text; setTimeout(() => { msg.textContent = ""; }, 4000); }
   };
 
-  const button = (label, title, fn) => {
+  const button = (kind, label, title, fn) => {
     const b = document.createElement("button");
     b.type = "button";
+    b.dataset.gvb = kind;
     b.textContent = label;
     b.title = title;
     b.addEventListener("click", fn);
@@ -270,28 +319,36 @@ export function mountSaveBar(container, slot, handlers = {}) {
     return b;
   };
 
-  button("Export save", "Download this save as a file", () => {
-    const name = slot.exportToFile(getState());
-    say("Saved to " + name);
-  });
+  const KINDS = {
+    export: () => button("export", "Export save", "Download this save as a file", () => {
+      const name = slot.exportToFile(getState());
+      say("Saved to " + name);
+    }),
 
-  button("Import save", "Load a save file from your computer", () => {
-    slot.promptImport().then(
-      state => {
-        slot.save(state);
-        if (setState) setState(state);
-        say("Save loaded.");
-      },
-      err => say(err.message)
-    );
-  });
+    import: () => button("import", "Import save", "Load a save file from your computer", () => {
+      slot.promptImport().then(
+        state => {
+          slot.save(state);
+          if (setState) setState(state);
+          say("Save loaded.");
+        },
+        err => say(err.message)
+      );
+    }),
 
-  button("Start over", "Erase this save and begin again", () => {
-    if (confirmReset && !confirm("Erase this save and start over? This cannot be undone.")) return;
-    const state = slot.reset();
-    if (setState) setState(state);
-    say("Save erased.");
-  });
+    reset: () => button("reset", "Start over", "Erase this save and begin again", () => {
+      if (confirmReset && !confirm("Erase this save and start over? This cannot be undone.")) return;
+      const state = slot.reset();
+      if (setState) setState(state);
+      say("Save erased.");
+    }),
+  };
+
+  for (const kind of buttons) {
+    // Loud on a typo: a silently missing button reads as a broken save bar.
+    if (!KINDS[kind]) throw new Error(`mountSaveBar: no such button "${kind}"`);
+    KINDS[kind]();
+  }
 
   container.appendChild(msg);
   if (slot.memoryOnly) say("This browser blocks storage — export before you close the tab.");

@@ -44,6 +44,53 @@ const baseOpts = storage => ({
   assert(slot.fresh().cash === 100, "defaults survive mutation of a fresh copy");
 }
 
+// --- defaults may be a factory, for a game whose day one isn't a constant ---
+{
+  let rolls = 0;
+  const slot = createSaveSlot({
+    ...baseOpts(stubStorage()),
+    defaults: () => ({ day: 1, staff: [], token: ++rolls })
+  });
+  const a = slot.fresh(), b = slot.fresh();
+  assert(a.token === 1 && b.token === 2, "a defaults factory is called per fresh(), not once");
+  assert(slot.reset().token === 3, "reset() goes through the factory too");
+}
+
+// --- repair runs on every accepted load, whatever the version said ---
+{
+  // Same version as the slot, so migrate() is skipped — this is the gap repair
+  // exists to close. The old per-project loaders ran their fill-ins on every
+  // load, and a state can lose a field without the version ever moving.
+  const current = JSON.stringify({ day: 6, staff: [], __v: 2 });
+  const opts = baseOpts(stubStorage({ "test-save": current }));
+  let migrated = 0, repaired = 0;
+  opts.migrate = s => { migrated++; return s; };
+  opts.repair = s => { repaired++; s.stock = s.stock || { beer: 0 }; return s; };
+  const slot = createSaveSlot(opts);
+  const back = slot.load();
+  assert(migrated === 0, "migrate() stays out of the way at the current version");
+  assert(repaired === 1 && back.stock.beer === 0, "repair() ran on a current-version load");
+
+  const viaFile = slot.deserialize(slot.serialize({ day: 2, staff: [] }));
+  assert(repaired === 2 && viaFile.stock, "repair() runs on the import path as well");
+}
+
+// --- repair only sees states that already passed validate ---
+{
+  const opts = baseOpts(stubStorage({ "test-save": '{"day":"soon","staff":[]}' }));
+  let repaired = 0;
+  opts.repair = s => { repaired++; return s; };
+  const slot = createSaveSlot(opts);
+  assert(slot.load() === null && repaired === 0, "a refused save never reaches repair()");
+}
+
+// --- a repair that throws is an unreadable save, not a crash ---
+{
+  const opts = baseOpts(stubStorage({ "test-save": '{"day":4,"staff":[],"__v":2}' }));
+  opts.repair = () => { throw new Error("boom"); };
+  assert(createSaveSlot(opts).load() === null, "a throwing repair degrades to null");
+}
+
 // --- save / load round-trip ---
 {
   const store = stubStorage();

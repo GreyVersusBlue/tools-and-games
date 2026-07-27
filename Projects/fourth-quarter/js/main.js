@@ -12,6 +12,7 @@ import { DayPhase } from "./day.js";
 import { DevPanel } from "./dev.js";
 import * as C from "./campaign.js";
 import * as audio from "./audio.js";
+import { mountSaveBar } from "../../../assets/js/gvb-save.js";
 
 const $ = s => document.querySelector(s);
 
@@ -39,8 +40,12 @@ addEventListener("resize", () => {
 });
 
 // ---- world, campaign, phases ----
-let campaign = C.loadCampaign(localStorage) || C.newCampaign();
-const save = () => C.saveCampaign(campaign, localStorage);
+// The slot is the shared save system (assets/js/gvb-save.js). It owns the
+// storage probe, so nothing here touches localStorage directly — see
+// campaign.js's campaignSlot().
+const slot = C.campaignSlot();
+let campaign = slot.load() || C.newCampaign();
+const save = () => slot.save(campaign);
 
 let { group: worldGroup, tvs, nightRig, dayRig } = buildWorld(scene, campaign.venue);
 
@@ -304,16 +309,21 @@ function teardownNightMeshes() {
   engine = null; player.engine = null;
 }
 
-/** Full wipe — shared by the start-screen wipe button and the dev menu's
- *  reset. Always rebuilds the room too, since progress could be reset from
- *  any venue tier, not just the Corner Tap. */
-function resetProgress() {
+/** Swap in a different set of books — a wipe, or a save imported from a file.
+ *  Either can arrive from any venue tier and any day, so the room gets rebuilt
+ *  and the day restarted rather than assuming a Day 1 Corner Tap. */
+function adoptCampaign(c) {
   teardownNightMeshes();
-  campaign = C.resetCampaign(localStorage);
+  campaign = c;
   save();
   rebuildVenue();
-  $("#startTag").textContent = "Day 1 at The Corner Tap";
+  refreshStartTag();
   enterDay();
+}
+
+/** Full wipe — shared by the start-screen wipe button and the dev menu's reset. */
+function resetProgress() {
+  adoptCampaign(slot.reset());
   flash("Fresh books. Day 1.", true);
 }
 
@@ -327,9 +337,37 @@ document.querySelectorAll("[data-speed]").forEach(b => b.addEventListener("click
 }));
 
 // ---- start overlay ----
-$("#startTag").textContent = campaign.stats.nights
-  ? `Day ${campaign.day} at The Corner Tap — the books remember.`
-  : "Day 1 at The Corner Tap";
+/** The line under the title. Two fixes over the version that shipped:
+ *
+ *  It reads the venue off the campaign rather than naming the Corner Tap, since
+ *  an imported save — or any campaign past its first move — can open at any tier.
+ *
+ *  And it treats any day past the first as a campaign in progress. Keying that
+ *  off `stats.nights` alone was wrong: `settleDarkNight()` advances the day for
+ *  each closed night of a venue move without counting a night played, so a player
+ *  who moved to the Fieldhouse on day one came back to "Day 1 at The Fieldhouse"
+ *  on day two. */
+function refreshStartTag() {
+  const where = C.venueDef(campaign).name;
+  const inProgress = campaign.day > 1 || campaign.stats.nights > 0;
+  $("#startTag").textContent = inProgress
+    ? `Day ${campaign.day} at ${where} — the books remember.`
+    : `Day 1 at ${where}`;
+}
+refreshStartTag();
+
+// The shared save bar: export the books to a file, or load one back. "Start
+// over" is left off deliberately — #wipeBtn right above it already does that,
+// and two buttons that erase a campaign side by side is a trap, not a feature.
+mountSaveBar($("#saveBar"), slot, {
+  buttons: ["export", "import"],
+  getState: () => campaign,
+  setState: c => {
+    adoptCampaign(c);
+    tick(`Save loaded — day ${campaign.day} at ${C.venueDef(campaign).name}.`, "hl");
+  },
+});
+
 $("#startBtn").addEventListener("click", () => {
   audio.playSfx("uiClick");
   $("#startOverlay").style.display = "none";

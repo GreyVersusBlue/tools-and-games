@@ -10,6 +10,16 @@ box score, wages and rent come out of the till, tomorrow's ledger.
 The campaign persists (localStorage): cash, day counter, stock, payroll.
 Fresh balance, no save compatibility with the 2D game (by design).
 
+## The save
+
+This is the site's reference integration of the shared save system,
+`/assets/js/gvb-save.js` — see `assets/js/README.md`. The start screen has
+**Export save** and **Import save** under the New Game button: a campaign
+downloads as a `.json` file and loads back, so it survives a cleared browser or
+moves to another machine. Storage key is still `fq3d-save`, so a campaign from any
+older build loads exactly as it did; those saves carry no version stamp, and
+`repairCampaign()` in `js/campaign.js` fills in everything added since.
+
 ## Run it
 
 Any static host works — GitHub Pages included. Locally:
@@ -68,7 +78,8 @@ engine's result, and Mules fans bounce when they win.
   beats, stock consumption, promo pricing, cook/bartender prep-speed
   multipliers, the player's stove/tap minigame hooks). No three.js.
 - `js/campaign.js` — the books between nights: cash, calendar, stock orders,
-  payroll + roles, promos, upgrades, settlement, persistence. Also pure.
+  payroll + roles, promos, upgrades, settlement, persistence. Also pure — the
+  save slot takes any localStorage-shaped object, and the smoke test passes a stub.
 - `js/day.js` — day-phase controller: station rings + management panels
   (Stock, Crew, Theme, Upgrades, Door).
 - Tests: `node test/smoke-engine.mjs` and `node test/smoke-campaign.mjs`.

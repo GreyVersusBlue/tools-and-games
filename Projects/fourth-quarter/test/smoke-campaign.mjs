@@ -122,14 +122,60 @@ ok(Math.round(c.cash) === Math.round(cash0 + books.net), "cash moves by net");
 ok(c.day === day0 + 1 && c.promoTonight === "none" && c.applicants.length === 3,
   "settle advances the day, clears the theme, rerolls applicants");
 
-// ---- persistence (stub storage) ----
-const store = { d: {}, setItem(k, v) { this.d[k] = v; }, getItem(k) { return this.d[k] ?? null; }, removeItem(k) { delete this.d[k]; } };
+// ---- persistence: the shared save slot (assets/js/gvb-save.js) ----
+const mkStore = (seed = {}) => ({
+  d: { ...seed },
+  setItem(k, v) { this.d[k] = String(v); },
+  getItem(k) { return this.d[k] ?? null; },
+  removeItem(k) { delete this.d[k]; },
+});
+const store = mkStore();
 C.saveCampaign(c, store);
 const c2 = C.loadCampaign(store);
 ok(c2 && c2.day === c.day && c2.cash === c.cash && c2.staff.length === c.staff.length, "save/load round-trips");
+ok(JSON.parse(store.getItem(C.SAVE_KEY)).__v === C.SAVE_VERSION, "a stored save carries the schema version");
+ok(!("__v" in c2), "the version marker is stripped before the game sees it");
 ok(C.loadCampaign({ getItem: () => "garbage{{" }) === null, "corrupt save loads as null");
+ok(C.loadCampaign(mkStore({ [C.SAVE_KEY]: '{"day":"soon"}' })) === null, "a save missing the basics is refused");
+ok(C.campaignSlot(store) === C.campaignSlot(store), "one slot per storage object");
+
+// A save written before this project used a slot: no version stamp, and none of
+// the fields added since the first release. gvb-save reads the missing stamp as
+// version 0; repairCampaign fills the rest.
+const legacyRaw = JSON.stringify({
+  day: 9, cash: 1200,
+  stock: { wings: 5, beer: 12 },
+  staff: [{ name: "Old Timer", wage: 60 }],
+});
+const cl = C.loadCampaign(mkStore({ [C.SAVE_KEY]: legacyRaw }));
+ok(cl && cl.day === 9 && cl.cash === 1200, "an unversioned pre-slot save still loads");
+ok(Array.isArray(cl.upgrades) && Array.isArray(cl.applicants) && cl.stats.nights === 0,
+  "repair fills in the collections added since");
+ok(cl.venue === "cornerTap" && cl.darkNightsLeft === 0 && cl.promoTonight === "none",
+  "repair supplies the venue ladder fields");
+ok(cl.staff[0].role === "server" && cl.staff[0].skill === 2, "a staffer with no role reads as a middling server");
+ok(typeof cl.staff[0].speed === "number" && cl.staff[0].speed > 0,
+  "and gets a walking speed — beginNight multiplies that into m/s, so undefined means a NaN server");
+ok(Object.keys(C.STOCK_COST).every(id => typeof cl.stock[id] === "number"),
+  "every menu item ends up with a stock number");
+
+// Export / import: the piece the hand-rolled save never had.
+const slot = C.campaignSlot(store);
+const file = slot.serialize(c);
+const env = JSON.parse(file);
+ok(env.format === "gvb-save" && env.game === "fourth-quarter" && env.version === C.SAVE_VERSION,
+  "an export file names the format, the game and the version");
+const imported = slot.deserialize(file);
+ok(imported && imported.day === c.day && imported.venue === c.venue, "an export file imports back");
+ok(slot.deserialize(JSON.stringify({
+  format: "gvb-save", game: "closing-time", version: 1, state: { day: 3, stock: {}, staff: [] },
+})) === null, "another game's save file is refused");
+ok(slot.deserialize('{"format":"gvb-save","game":"fourth-quarter","version":1,"state":{"day":"soon"}}') === null,
+  "an envelope carrying junk is refused");
+
 const c3 = C.resetCampaign(store);
 ok(c3.day === 1 && store.getItem(C.SAVE_KEY) === null, "reset wipes the key and starts fresh");
+ok(c3.applicants.length === 3, "reset rolls a fresh board of applicants (defaults is newCampaign, not a literal)");
 
 // ---- engine: stock consumption ----
 seed(5);

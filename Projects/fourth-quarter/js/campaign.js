@@ -3,6 +3,10 @@
 // Owns cash, the calendar, stock, the crew, tonight's promo, and settlement.
 
 import { MENU } from "./engine.js";
+// Relative, not "/assets/js/gvb-save.js": this module is also imported by
+// test/smoke-campaign.mjs under plain Node, which cannot resolve a site-absolute
+// specifier. The relative path resolves the same in both.
+import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 
 export const SAVE_KEY = "fq3d-save";
 export const RENT = 110;
@@ -264,29 +268,90 @@ export function settleNight(c, summary, rand = Math.random) {
   return { wages, rent: RENT, promoCost, upgFees, take, net };
 }
 
-// ---- persistence (storage-agnostic) ----
-export function saveCampaign(c, storage) {
-  try { storage.setItem(SAVE_KEY, JSON.stringify(c)); } catch (e) {}
+// ---- persistence: the shared save system ------------------------------------
+//
+// This is the site's first adopter of assets/js/gvb-save.js, so it is also the
+// worked example. What the slot buys over the hand-rolled save it replaces:
+// export/import to a file (a campaign survives a cleared browser), a memory
+// fallback when the browser blocks storage, and one implementation of "refuse to
+// load garbage" instead of one per project.
+//
+// The storage key stays `fq3d-save`, unchanged, so a campaign saved by any
+// previous build still loads. Those saves carry no version stamp at all, which
+// gvb-save reads as version 0.
+
+/** Bump when the shape changes. 0 means "written before this file used a slot". */
+export const SAVE_VERSION = 1;
+
+/** The gate on garbage: the three fields nothing downstream can work without. */
+function validCampaign(c) {
+  return !!c && typeof c.day === "number" && !!c.stock && Array.isArray(c.staff);
 }
-export function loadCampaign(storage) {
-  try {
-    const raw = storage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const c = JSON.parse(raw);
-    if (!c || typeof c.day !== "number" || !c.stock || !Array.isArray(c.staff)) return null;
-    if (!c.applicants) c.applicants = [];
-    if (!c.upgrades) c.upgrades = [];
-    if (!c.stats) c.stats = { nights: 0, bestNight: 0, lifetimeNet: 0 };
-    if (!(c.venue in VENUES)) c.venue = "cornerTap";
-    if (typeof c.darkNightsLeft !== "number") c.darkNightsLeft = 0;
-    if (!(c.promoTonight in PROMOS)) c.promoTonight = "none";
-    for (const s of c.staff) if (!s.role) { s.role = "server"; if (!s.skill) s.skill = 2; }
-    for (const a of c.applicants) if (!a.role) { a.role = "server"; if (!a.skill) a.skill = 2; }
-    for (const id in MENU) if (typeof c.stock[id] !== "number") c.stock[id] = 0;
-    return c;
-  } catch (e) { return null; }
+
+/**
+ * Fill in what a save can be missing and clamp what it can get wrong.
+ *
+ * This is the old loadCampaign()'s body, handed to the slot as `repair` so it
+ * runs on every accepted load — a stored save, an imported file — rather than
+ * only when the version number moved. Every field it touches has been added to
+ * the campaign at some point since the first release, which is why a save with
+ * no `upgrades` array or no `venue` is a normal thing to meet and not a
+ * corrupt file.
+ */
+export function repairCampaign(c) {
+  if (!c.applicants) c.applicants = [];
+  if (!c.upgrades) c.upgrades = [];
+  if (!c.stats) c.stats = { nights: 0, bestNight: 0, lifetimeNet: 0 };
+  if (!(c.venue in VENUES)) c.venue = "cornerTap";
+  if (typeof c.darkNightsLeft !== "number") c.darkNightsLeft = 0;
+  if (!(c.promoTonight in PROMOS)) c.promoTonight = "none";
+  for (const p of [...c.staff, ...c.applicants]) {
+    if (!p.role) p.role = "server";
+    if (!p.skill) p.skill = 2;
+    // A save from before roles existed has no walking speed either, and
+    // beginNight() multiplies that straight into a Server's metres per second —
+    // an undefined there makes a floor NPC with a NaN speed that never arrives
+    // anywhere. The old loader filled in role and skill but not this.
+    if (p.role !== "cook" && typeof p.speed !== "number") p.speed = speedForSkill(p.skill);
+  }
+  for (const id in MENU) if (typeof c.stock[id] !== "number") c.stock[id] = 0;
+  return c;
 }
-export function resetCampaign(storage) {
-  try { storage.removeItem(SAVE_KEY); } catch (e) {}
-  return newCampaign();
+
+// One slot per storage, cached: main.js holds onto its slot for the save bar, and
+// two slots over one key would work but would not be the same object.
+const slots = new WeakMap();
+let browserSlot = null;
+
+function buildSlot(storage) {
+  return createSaveSlot({
+    game: "fourth-quarter",
+    key: SAVE_KEY,
+    version: SAVE_VERSION,
+    storage,
+    validate: validCampaign,
+    repair: repairCampaign,
+    // newCampaign rolls three random applicants, so day one cannot be a literal.
+    defaults: newCampaign,
+  });
 }
+
+/**
+ * The save slot. Pass a storage stub in tests; pass nothing in the game.
+ *
+ * Nothing in this project should touch `localStorage` itself. Reading the
+ * property throws outright in a browser configured to block storage, which is
+ * the case gvb-save's memory-backed fallback exists to survive — so let it do
+ * the probing, and let `slot.memoryOnly` be how the game finds out.
+ */
+export function campaignSlot(storage) {
+  if (!storage) return (browserSlot ||= buildSlot(undefined));
+  if (!slots.has(storage)) slots.set(storage, buildSlot(storage));
+  return slots.get(storage);
+}
+
+// Thin wrappers, kept because main.js, dev.js and the smoke test all read better
+// in the campaign's own vocabulary than in the slot's.
+export function saveCampaign(c, storage) { return campaignSlot(storage).save(c); }
+export function loadCampaign(storage) { return campaignSlot(storage).load(); }
+export function resetCampaign(storage) { return campaignSlot(storage).reset(); }
