@@ -98,11 +98,18 @@ export function buildTerrain(scene) {
   mesh.receiveShadow = true;
   scene.add(mesh);
 
-  // Try to upgrade to a real Poly Haven sand texture at runtime (CORS-enabled CDN).
-  // Falls back silently to the procedural canvas texture if unreachable.
+  // Upgrade to the real photographed sand once it has decoded. The procedural
+  // canvas above is what's on screen until then, and what stays there if these
+  // files ever go missing.
+  //
+  // These used to be hotlinked from dl.polyhaven.org, which made this the one
+  // page on the site that still reached offsite at runtime. Vendored in session 7:
+  // 370 KB of CC0 JPEG is nothing against this repo, it stops handing a third
+  // party the IP address of everyone who opens the beach, and it means every
+  // visitor sees the same shoreline instead of whichever one the CDN felt like
+  // serving. Same call v4 made for three.js. Source and licence: assets/textures/README.md.
   const loader = new THREE.TextureLoader();
-  loader.setCrossOrigin('anonymous');
-  const phBase = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_beach_01/aerial_beach_01';
+  const phBase = 'assets/textures/aerial_beach_01';
   loader.load(`${phBase}_diff_1k.jpg`, tex => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.colorSpace = THREE.SRGBColorSpace;

@@ -26,9 +26,12 @@ Or push the folder to a GitHub Pages repo as-is — no build step.
 
 - three.js (r-current), Sky and Water addons — bundled locally in `libs/`.
 - `assets/waternormals.jpg` — bundled (from the three.js examples repo).
-- Sand texture: the app attempts to fetch Poly Haven's `aerial_beach_01`
-  diffuse + normal maps at runtime from their CDN; if unreachable it falls
-  back to a bundled procedural sand texture, so the scene never breaks offline.
+- Sand texture: Poly Haven's `aerial_beach_01` diffuse + normal maps, **bundled**
+  in `assets/textures/` (370 KB, CC0 — see the README there). These were hotlinked
+  from Poly Haven's CDN until session 7, which made this the only page on the site
+  that touched another host while someone was looking at it. `terrain.js` still
+  paints a procedural canvas sand first and swaps these in when they decode, so
+  the beach never breaks — deleting them just makes it look hand-mixed.
 - All audio (ocean, wind, gulls, footsteps, jet, splashes) is synthesized
   live with the Web Audio API — no external audio dependency. To use a real
   recording instead, see the note at the top of `js/audio.js`.
