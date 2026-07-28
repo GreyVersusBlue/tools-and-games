@@ -40,6 +40,17 @@ export class PlayerControls {
 
   update(dt) {
     if (!this.enabled) { this.sync(); return; }
+
+    // Arrow-key look: pointer lock can be denied by the browser, blocked by
+    // policy, or simply unusable for a player who can't drive a mouse. Same
+    // yaw/pitch fields the mousemove handler writes, so this composes with
+    // mouse-look instead of fighting it — whichever one moved last wins.
+    const turnRate = 1.8; // rad/s
+    if (this.keys['ArrowLeft'])  this.yaw += turnRate * dt;
+    if (this.keys['ArrowRight']) this.yaw -= turnRate * dt;
+    if (this.keys['ArrowUp'])   this.pitch = Math.min(1.45, this.pitch + turnRate * 0.6 * dt);
+    if (this.keys['ArrowDown']) this.pitch = Math.max(-1.45, this.pitch - turnRate * 0.6 * dt);
+
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
     const wish = new THREE.Vector3();

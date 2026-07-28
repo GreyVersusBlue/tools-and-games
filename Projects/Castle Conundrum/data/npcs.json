@@ -33,8 +33,9 @@
       "hideNodes": ["Backpack"],
       "heldProp": null,
       "placeholder": { "color": "#2f4f8a" },
-      "position": [0.8, 0, -9.6],
-      "facing": 200,
+      "position": [1.5, 0, -10.0],
+      "facing": 346,
+      "comment": "Was [0.8, 0, -9.6], which put 0.57 m of him inside the hall table (x -0.9..0.9, z -10.33..-9.67). Moved 0.6 m east of the table's east edge instead, and 0.28 m clear of the 0.18 m stool at (2, -9.2). Standing him BEHIND the table at [1.45, -10.85] was better staging and unreachable: the hall doorway is a 4 m wide, 8 m deep tunnel, and walkTo's strafe nudge wedged the player against its east wall before ever getting in range. Facing turned to 346 so he watches the doorway he is approached from rather than standing with his back to it. If this moves, move SCHOLAR in Tools/board-check/play-castle.mjs too.",
       "patrol": null,
       "dialogue": {
         "default": [

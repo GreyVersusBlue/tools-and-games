@@ -21,9 +21,9 @@
 <meta name="twitter:image" content="https://greyversusblue.com/assets/og/closing-time.jpg">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
 <!-- gvb:social:end -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;700&family=Public+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<!-- Zilla Slab, Public Sans and IBM Plex Mono, served from this repo. See
+     assets/fonts/README.md — hotlinking them was the site's last offsite request. -->
+<link rel="stylesheet" href="assets/fonts/fonts.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -33,8 +33,13 @@
   <main id="main" class="main"></main>
 </div>
 <footer class="foot">
-  <span>Closing Time — every deal has a story; most of them are in the disclosures.</span>
-  <button class="btn btn-sm" id="newGameBtn">New career</button>
+  <span class="foot-tag">Closing Time — every deal has a story; most of them are in the disclosures.</span>
+  <div class="foot-actions">
+    <!-- Export / Import, mounted by assets/js/gvb-save.js. In the footer so it
+         is reachable from all six desk screens, not just the start modal. -->
+    <div id="save-bar"></div>
+    <button class="btn btn-sm" id="newGameBtn">New career</button>
+  </div>
 </footer>
 <div id="modal-root"></div>
 <script type="module" src="js/main.js"></script>

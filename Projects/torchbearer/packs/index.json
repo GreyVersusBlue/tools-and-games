@@ -1,0 +1,19 @@
+{
+  "_comment": "The bundled library, listed on Torchbearer's title screen. id / name / type / description are asserted against each pack's own `pack` block by test/smoke.mjs, so this file cannot drift from the JSON it describes. To add a pack: drop the .json in this folder and add an entry here. What a pack actually contains is counted from the pack itself on the load confirmation, not written down twice.",
+  "packs": [
+    {
+      "file": "thornwake-vigil.json",
+      "id": "thornwake-vigil",
+      "name": "The Long Vigil at Thornwake Bridge",
+      "type": "adventure",
+      "description": "A level 3 one-shot: two mercenary companies have refought the same five minutes on a haunted bridge for fifty years. A skill-driven investigation opens a genuine third option — end the vigil with a blade, or end it by finally being believed."
+    },
+    {
+      "file": "embers-of-the-hold.json",
+      "id": "embers-of-the-hold",
+      "name": "Embers of the Hold (Sample Expansion)",
+      "type": "content",
+      "description": "A worked example of every pack collection: the orc ancestry, a background, shared feats, a new spell, a monster, a companion, and a two-battle mini-adventure."
+    }
+  ]
+}

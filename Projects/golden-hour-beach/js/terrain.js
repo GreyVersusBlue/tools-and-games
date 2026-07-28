@@ -1,48 +1,11 @@
 import * as THREE from 'three';
+import { groundHeight } from './field.js';
 
-// Beach terrain. Coordinate convention:
-//   +Z = inland (dunes), -Z = out to sea. Waterline sits near z ≈ -8 … -2 (tide).
-// Height rises gently from below sea level offshore up into noise-built dunes.
-
-// --- tiny value-noise implementation (deterministic) ---
-function hash(x, y) {
-  const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
-  return s - Math.floor(s);
-}
-function smooth(t) { return t * t * (3 - 2 * t); }
-function vnoise(x, y) {
-  const xi = Math.floor(x), yi = Math.floor(y);
-  const xf = x - xi, yf = y - yi;
-  const a = hash(xi, yi), b = hash(xi + 1, yi);
-  const c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
-  const u = smooth(xf), v = smooth(yf);
-  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-}
-function fbm(x, y) {
-  let sum = 0, amp = 0.5, f = 1;
-  for (let i = 0; i < 4; i++) {
-    sum += amp * vnoise(x * f, y * f);
-    amp *= 0.5; f *= 2.1;
-  }
-  return sum;
-}
-
-export function groundHeight(x, z) {
-  // Base beach slope: sea level is y=0. Beach face climbs inland.
-  let h;
-  if (z < -6) {
-    h = (z + 6) * 0.10;                    // underwater slope
-  } else {
-    h = (z + 6) * 0.055;                   // dry beach, gentle rise
-  }
-  // Dune band starting ~z=25 inland
-  const duneT = smooth(Math.max(0, Math.min(1, (z - 22) / 22)));
-  const dunes = fbm(x * 0.025 + 3.7, z * 0.05) * 5.5 + fbm(x * 0.09, z * 0.13) * 1.2;
-  h += duneT * (1.8 + dunes);
-  // long soft undulation along the beach
-  h += Math.sin(x * 0.012) * 0.25 * smooth(Math.max(0, Math.min(1, (z + 4) / 10)));
-  return h;
-}
+// Beach terrain: the sand mesh, the wet strip at the waterline, and the dune
+// grass. The heightfield itself moved to field.js, which imports nothing, so
+// test/smoke.mjs can check the ground and the prop layout without a browser —
+// terrain.js can't be imported under Node at all, because the bare `three`
+// specifier only resolves through index.html's import map.
 
 function makeProceduralSandTexture() {
   const c = document.createElement('canvas');
@@ -69,6 +32,22 @@ function makeProceduralSandTexture() {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** 1×64 alpha ramp: transparent at both ends of V, solid through the middle. */
+function edgeFadeTexture() {
+  const c = document.createElement('canvas');
+  c.width = 1; c.height = 64;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 64);
+  grad.addColorStop(0.00, '#000');
+  grad.addColorStop(0.22, '#fff');
+  grad.addColorStop(0.70, '#fff');
+  grad.addColorStop(1.00, '#000');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, 1, 64);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
   return tex;
 }
 
@@ -135,10 +114,16 @@ export function buildTerrain(scene) {
     wp.setY(i, groundHeight(x, z) + 0.015);
   }
   wetGeo.computeVertexNormals();
+  // Fade the strip out at both edges. Without this its rectangle is visible: a
+  // hard straight seam ran up the beach where the darker wet plane stopped and
+  // the dry sand carried on, and on a phone in portrait it cut a diagonal across
+  // the bottom third of the frame. The plane's V axis runs seaward-to-inland, so
+  // a one-dimensional alpha ramp along V is all it takes.
   const wetMat = new THREE.MeshStandardMaterial({
     color: 0x8a6f4d,
     transparent: true,
     opacity: 0.55,
+    alphaMap: edgeFadeTexture(),
     roughness: 0.25,
     metalness: 0.05,
   });

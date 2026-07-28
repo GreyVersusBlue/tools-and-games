@@ -21,10 +21,27 @@
 <meta name="twitter:image" content="https://greyversusblue.com/assets/og/guild-board.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
 <!-- gvb:social:end -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400&family=Oswald:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+  @font-face{
+    font-family:'Cinzel'; font-style:normal; font-weight:700; font-display:swap;
+    src:url('campaigns-assets/fonts/cinzel-700.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'Cinzel'; font-style:normal; font-weight:900; font-display:swap;
+    src:url('campaigns-assets/fonts/cinzel-900.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'Crimson Pro'; font-style:normal; font-weight:400; font-display:swap;
+    src:url('campaigns-assets/fonts/crimson-pro-400.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'Crimson Pro'; font-style:italic; font-weight:400; font-display:swap;
+    src:url('campaigns-assets/fonts/crimson-pro-400-italic.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'Oswald'; font-style:normal; font-weight:400; font-display:swap;
+    src:url('campaigns-assets/fonts/oswald-400.woff2') format('woff2');
+  }
   :root{
     --void:#120a07;
     --void-deep:#080403;
@@ -123,7 +140,7 @@
     flex:1; max-width:280px;
     font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:.14em; font-size:.82rem;
     padding:1rem 1rem .9rem; background:transparent; border:none; border-top:3px solid transparent;
-    color:rgba(236,220,180,.55); cursor:pointer; transition:color .2s, border-color .2s, background .2s;
+    color:rgba(236,220,180,.68); cursor:pointer; transition:color .2s, border-color .2s, background .2s;
   }
   nav.tabs button.active{ color:var(--gold-bright); background:rgba(184,134,47,.1); border-top-color:var(--gold-bright); }
   nav.tabs button:not(.active):hover{ color:var(--parchment); }
@@ -188,7 +205,7 @@
     background:rgba(124,20,33,.06); border-left:3px solid var(--gold);
     box-shadow:inset 0 1px 3px rgba(0,0,0,.06); padding:.8rem 1.1rem;
   }
-  .roster h4{
+  .roster h3{
     font-family:'Oswald',sans-serif; font-size:.7rem; letter-spacing:.15em; text-transform:uppercase;
     color:var(--oxblood); margin:0 0 .45rem;
   }
@@ -248,8 +265,8 @@
     display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:.4rem 1rem;
     border-bottom:2px solid var(--parchment-line); padding-bottom:.6rem; margin-bottom:.9rem;
   }
-  .scenario-group-head h4{ font-family:'Cinzel',serif; font-size:1.25rem; margin:0; color:var(--oxblood-deep); }
-  .scenario-group-head h4 a{ text-decoration:none; color:inherit; border-bottom:1px dotted var(--oxblood); }
+  .scenario-group-head h3{ font-family:'Cinzel',serif; font-size:1.25rem; margin:0; color:var(--oxblood-deep); }
+  .scenario-group-head h3 a{ text-decoration:none; color:inherit; border-bottom:1px dotted var(--oxblood); }
   .log-summary{ font-family:'Oswald',sans-serif; font-size:.68rem; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft); }
   .log-totals{ font-family:'Oswald',sans-serif; font-size:.66rem; letter-spacing:.04em; color:var(--ink-soft); text-align:right; margin-top:.7rem; }
 
@@ -302,13 +319,13 @@
     <p class="subtitle">Campaigns run from behind the screen, and scenarios played from the other side of the table.</p>
   </header>
 
-  <nav class="tabs">
-    <button class="active" data-panel="gm">As Game Master</button>
-    <button data-panel="player">As Player</button>
+  <nav class="tabs" role="tablist" aria-label="View campaigns as">
+    <button class="active" id="tab-gm" role="tab" aria-selected="true" aria-controls="gm" data-panel="gm">As Game Master</button>
+    <button id="tab-player" role="tab" aria-selected="false" aria-controls="player" tabindex="-1" data-panel="player">As Player</button>
   </nav>
 
   <main>
-    <section class="panel active" id="gm">
+    <section class="panel active" id="gm" role="tabpanel" aria-labelledby="tab-gm">
       <p class="section-lede">Full campaigns run start to finish (or in progress) as GM, roughly in the order they hit the table.</p>
 
       <article class="campaign" style="--spine-color:var(--oxblood)">
@@ -316,7 +333,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="body">
           <div class="campaign-head">
-            <h3 class="campaign-title">Rise of the Runelords</h3>
+            <h2 class="campaign-title">Rise of the Runelords</h2>
           </div>
           <div class="pill-row">
             <span class="pill">Pathfinder 2e Remaster</span>
@@ -325,7 +342,7 @@
           </div>
           <p class="blurb">A goblin raid on the sleepy coastal town of Sandpoint unravels into the return of Karzoug, Runelord of Greed — and a reckoning seven thousand years in the making.</p>
           <div class="roster">
-            <h4>Party Roster</h4>
+            <h3>Party Roster</h3>
             <ul>
               <li>Cassia — Human Fighter
                 <span class="bio">A former prison guard with quick hands and a lockpick's curiosity, picked up from watching — and studying — the inmates in her charge. Warm and personable, and always happy to show off a trick for someone she trusts.</span>
@@ -349,7 +366,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="body">
           <div class="campaign-head">
-            <h3 class="campaign-title">Shattered Star</h3>
+            <h2 class="campaign-title">Shattered Star</h2>
           </div>
           <div class="pill-row">
             <span class="pill">Pathfinder 2e Remaster</span>
@@ -358,7 +375,7 @@
           </div>
           <p class="blurb">Four shards of an ancient artifact, four rival factions racing to claim them, and a Horn of Change that could remake the Inner Sea itself.</p>
           <div class="roster">
-            <h4>Party Roster</h4>
+            <h3>Party Roster</h3>
             <ul>
               <li>Fixer — Goblin Inventor <span style="opacity:.7">(devotee of Lamashtu)</span>
                 <span class="bio">Grew up on the streets of Magnimar's Underbridge; built a bicycle from a picture in a stolen book at age seven, which caught the eye of a clockmaker who took him in and taught him the trade. Erratic, driven, and money-minded, with a constant companion named Crawler and a habit of building things that mostly work.</span>
@@ -388,7 +405,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="body">
           <div class="campaign-head">
-            <h3 class="campaign-title">Return of the Runelords</h3>
+            <h2 class="campaign-title">Return of the Runelords</h2>
             <span class="ribbon sequel">Sequel · Coming Soon</span>
           </div>
           <div class="pill-row">
@@ -404,7 +421,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="body">
           <div class="campaign-head">
-            <h3 class="campaign-title">Seven Dooms for Sandpoint</h3>
+            <h2 class="campaign-title">Seven Dooms for Sandpoint</h2>
             <span class="ribbon">Coming Soon</span>
           </div>
           <div class="pill-row">
@@ -416,21 +433,21 @@
       </article>
     </section>
 
-    <section class="panel" id="player">
+    <section class="panel" id="player" role="tabpanel" aria-labelledby="tab-player">
       <p class="section-lede">One-shots and side scenarios played as a player, not run.</p>
 
-      <div class="view-toggle">
-        <button class="view-toggle-btn active" data-view="by-character">By Character</button>
-        <button class="view-toggle-btn" data-view="chronological">Chronological</button>
+      <div class="view-toggle" role="tablist" aria-label="Group scenarios by">
+        <button class="view-toggle-btn active" id="tab-by-character" role="tab" aria-selected="true" aria-controls="view-by-character" data-view="by-character">By Character</button>
+        <button class="view-toggle-btn" id="tab-chronological" role="tab" aria-selected="false" aria-controls="view-chronological" tabindex="-1" data-view="chronological">Chronological</button>
       </div>
 
-      <div class="view-panel active" id="view-by-character">
+      <div class="view-panel active" id="view-by-character" role="tabpanel" aria-labelledby="tab-by-character">
 
-      <h3 class="org-header">Pathfinder Society</h3>
+      <h2 class="org-header">Pathfinder Society</h2>
 
       <div class="scenario-group" id="kaeta-jadeharbor-log">
         <div class="scenario-group-head">
-          <h4><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></h4>
+          <h3><a href="characters.html#kaeta-jadeharbor">Kaeta Jadeharbor</a></h3>
           <span class="log-summary">19 scenarios · 76 XP</span>
         </div>
         <table class="chronicle">
@@ -462,7 +479,7 @@
 
       <div class="scenario-group" id="ryn-log">
         <div class="scenario-group-head">
-          <h4><a href="characters.html#ryn">Ryn</a></h4>
+          <h3><a href="characters.html#ryn">Ryn</a></h3>
           <span class="log-summary">7 scenarios · 28 XP</span>
         </div>
         <table class="chronicle">
@@ -482,7 +499,7 @@
 
       <div class="scenario-group" id="timun-dunvol-log">
         <div class="scenario-group-head">
-          <h4><a href="characters.html#timun-dunvol">Timun Dunvol</a></h4>
+          <h3><a href="characters.html#timun-dunvol">Timun Dunvol</a></h3>
           <span class="log-summary">5 scenarios (1 holding) · 16 XP</span>
         </div>
         <table class="chronicle">
@@ -500,23 +517,23 @@
 
       <div class="scenario" id="checkers-log">
         <div class="seal">C</div>
-        <div class="scenario-title">The Great Toy Heist</div>
+        <h3 class="scenario-title">The Great Toy Heist</h3>
         <div class="scenario-meta">PFS Scenario</div>
         <p class="scenario-note">Played as <a href="characters.html#checkers">Checkers</a>.</p>
       </div>
 
       <div class="scenario" id="pharasmas-echoing-toll-log">
         <div class="seal">S</div>
-        <div class="scenario-title">7-20: The Strings of Hell</div>
+        <h3 class="scenario-title">7-20: The Strings of Hell</h3>
         <div class="scenario-meta">PFS Scenario · 4 XP · 14 gp · Grand Archive +4</div>
         <p class="scenario-note">Played as <a href="characters.html#pharasmas-echoing-toll">Pharasma's Echoing Toll</a>.</p>
       </div>
 
-      <h3 class="org-header">Starfinder Society</h3>
+      <h2 class="org-header">Starfinder Society</h2>
 
       <div class="scenario-group" id="pip-log">
         <div class="scenario-group-head">
-          <h4><a href="characters.html#pip">Pip</a></h4>
+          <h3><a href="characters.html#pip">Pip</a></h3>
           <span class="log-summary">5 scenarios · 20 XP</span>
         </div>
         <table class="chronicle">
@@ -534,7 +551,7 @@
 
       <div class="scenario-group" id="sannu-log">
         <div class="scenario-group-head">
-          <h4><a href="characters.html#sannu">Sannu</a></h4>
+          <h3><a href="characters.html#sannu">Sannu</a></h3>
           <span class="log-summary">3 scenarios · 12 XP</span>
         </div>
         <table class="chronicle">
@@ -550,7 +567,7 @@
 
       <div class="scenario-group" id="ten-click-log">
         <div class="scenario-group-head">
-          <h4><a href="characters.html#ten-click">Ten-Click</a></h4>
+          <h3><a href="characters.html#ten-click">Ten-Click</a></h3>
           <span class="log-summary">2 scenarios · 8 XP</span>
         </div>
         <table class="chronicle">
@@ -565,19 +582,19 @@
 
       <div class="scenario" id="gus-sterling-log">
         <div class="seal">G</div>
-        <div class="scenario-title">1-26: Final Gambit Part 2</div>
+        <h3 class="scenario-title">1-26: Final Gambit Part 2</h3>
         <div class="scenario-meta">SFS Scenario</div>
         <p class="scenario-note">Played as <a href="characters.html#gus-sterling">Gus Sterling</a>.</p>
       </div>
 
       </div>
 
-      <div class="view-panel" id="view-chronological">
+      <div class="view-panel" id="view-chronological" role="tabpanel" aria-labelledby="tab-chronological">
 
-        <h3 class="org-header">Pathfinder Society</h3>
+        <h2 class="org-header">Pathfinder Society</h2>
         <div class="scenario-group">
           <div class="scenario-group-head">
-            <h4>Chronicle Order</h4>
+            <h3>Chronicle Order</h3>
             <span class="log-summary">33 scenarios · 124 XP tallied</span>
           </div>
           <table class="chronicle">
@@ -620,10 +637,10 @@
           </table>
         </div>
 
-        <h3 class="org-header">Starfinder Society</h3>
+        <h2 class="org-header">Starfinder Society</h2>
         <div class="scenario-group">
           <div class="scenario-group-head">
-            <h4>Chronicle Order</h4>
+            <h3>Chronicle Order</h3>
             <span class="log-summary">11 scenarios · 40 XP tallied</span>
           </div>
           <table class="chronicle">
@@ -654,27 +671,47 @@
 </div>
 
 <script>
-  const buttons = document.querySelectorAll('nav.tabs button');
-  const panels = document.querySelectorAll('section.panel');
-  buttons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      buttons.forEach(b => b.classList.remove('active'));
+  // Wires a row of [role=tab] buttons to their [role=tabpanel] targets: click or
+  // Enter/Space to activate, Left/Right/Home/End to move focus (WAI-ARIA tabs
+  // pattern), keeping aria-selected and the roving tabindex in sync.
+  function wireTabs(tabs, panels, activate) {
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => select(i));
+      tab.addEventListener('keydown', e => {
+        let target = null;
+        if (e.key === 'ArrowRight') target = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') target = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') target = 0;
+        else if (e.key === 'End') target = tabs.length - 1;
+        if (target === null) return;
+        e.preventDefault();
+        select(target);
+        tabs[target].focus();
+      });
+    });
+    function select(i) {
+      tabs.forEach((tab, j) => {
+        const on = j === i;
+        tab.classList.toggle('active', on);
+        tab.setAttribute('aria-selected', String(on));
+        tab.tabIndex = on ? 0 : -1;
+      });
       panels.forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(btn.dataset.panel).classList.add('active');
-    });
-  });
+      activate(tabs[i], panels);
+    }
+  }
 
-  const viewButtons = document.querySelectorAll('.view-toggle-btn');
-  const viewPanels = document.querySelectorAll('.view-panel');
-  viewButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      viewButtons.forEach(b => b.classList.remove('active'));
-      viewPanels.forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById('view-' + btn.dataset.view).classList.add('active');
-    });
-  });
+  wireTabs(
+    Array.from(document.querySelectorAll('nav.tabs button')),
+    document.querySelectorAll('section.panel'),
+    (tab) => document.getElementById(tab.dataset.panel).classList.add('active')
+  );
+
+  wireTabs(
+    Array.from(document.querySelectorAll('.view-toggle-btn')),
+    document.querySelectorAll('.view-panel'),
+    (tab) => document.getElementById('view-' + tab.dataset.view).classList.add('active')
+  );
 
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const field = document.getElementById('embers');

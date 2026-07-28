@@ -153,8 +153,21 @@ input[type="number"], select { font: 600 14px var(--mono); padding: 7px 9px; bor
 .start-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
 .start-choice { padding: 16px; text-align: left; line-height: 1.45; }
 
-.foot { display: flex; justify-content: space-between; align-items: center; padding: 12px 22px;
+.foot { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 12px 22px;
   border-top: 3px double var(--ink); font-size: 12px; color: var(--ink-soft); background: var(--card); }
+.foot-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* The gvb-save bar, restyled to paper-and-ink from the host page. The module
+   reads these four custom properties and nothing else. */
+#save-bar {
+  --gvb-btn-bg: var(--paper);
+  --gvb-btn-fg: var(--ink);
+  --gvb-btn-border: var(--ink);
+  --gvb-btn-radius: 2px;
+}
+/* The module sizes its buttons at .8em, which off a 12px footer is 9.6px. */
+#save-bar button { font-size: 12px; font-weight: 600; letter-spacing: .02em; padding: .35em .8em; }
+#save-bar button:disabled { opacity: .4; cursor: default; }
+#save-bar button:disabled:hover { filter: none; }
 
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 12px); background: var(--ink);
   color: var(--paper); padding: 10px 16px; font-size: 13px; border-radius: 2px; opacity: 0; transition: .25s; z-index: 99; }
@@ -166,6 +179,14 @@ input[type="number"], select { font: 600 14px var(--mono); padding: 7px 9px; bor
   .nav-item { border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; }
   .nav-item.active { border-bottom-color: var(--sign-red); }
   .cols, .start-choices { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  /* At 375 wide the save bar wraps onto its own line and the footer goes from
+     67px to 128px — 7.5% of an iPhone viewport spent on two rarely-used
+     buttons. The tagline is flavour and the buttons are not, so the tagline
+     goes and everything fits on one row again. */
+  .foot-tag { display: none; }
+  .foot { justify-content: flex-end; }
 }
 @media (prefers-reduced-motion: reduce) {
   .btn, .toast { transition: none; }

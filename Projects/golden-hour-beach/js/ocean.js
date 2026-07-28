@@ -1,17 +1,37 @@
 import * as THREE from 'three';
 import { Water } from '../libs/Water.js';
-import { groundHeight } from './terrain.js';
+import { groundHeight } from './field.js';
 
 // The sea: a big reflective Water plane whose height breathes very slowly
 // (the "slap" cycle), plus a soft foam line that slides up and down the
 // wet sand in sync.
 
+/** Soft-edged alpha ramp across the foam strip's width, with a bias seaward. */
+function foamFade() {
+  const c = document.createElement('canvas');
+  c.width = 1; c.height = 32;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 32);
+  grad.addColorStop(0.00, '#000');
+  grad.addColorStop(0.30, '#fff');
+  grad.addColorStop(0.55, '#e0e0e0');
+  grad.addColorStop(1.00, '#000');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, 1, 32);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
 export function buildOcean(scene, sunDirection) {
   const geo = new THREE.PlaneGeometry(1600, 1600);
 
   const water = new Water(geo, {
-    textureWidth: 512,
-    textureHeight: 512,
+    // 1024, up from 512. There is something standing in the water now — the
+    // groyne — and thin dark verticals are the worst case for a low-resolution
+    // reflection: at 512 they came back as jagged black shapes on the water
+    // rather than posts. Measured cost of the bump on this machine is below.
+    textureWidth: 1024,
+    textureHeight: 1024,
     waterNormals: new THREE.TextureLoader().load('assets/waternormals.jpg', t => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
     }),
@@ -26,12 +46,18 @@ export function buildOcean(scene, sunDirection) {
   scene.add(water);
 
   // Foam line: a long thin translucent strip that follows the swash.
-  const foamGeo = new THREE.PlaneGeometry(400, 2.4, 160, 1);
+  //
+  // Two Z segments and an alpha ramp across the width. It used to be one flat
+  // band at a single opacity, and at walking distance that is not foam, it is a
+  // strip of white tape lying on the sand — the hard parallel edges were the
+  // giveaway. Fading both edges to nothing costs a 1×32 canvas and no draw calls.
+  const foamGeo = new THREE.PlaneGeometry(400, 2.4, 160, 2);
   foamGeo.rotateX(-Math.PI / 2);
   const foamMat = new THREE.MeshBasicMaterial({
     color: 0xfff4e0,
     transparent: true,
     opacity: 0.0,
+    alphaMap: foamFade(),
     depthWrite: false,
   });
   const foam = new THREE.Mesh(foamGeo, foamMat);
@@ -47,6 +73,14 @@ export function buildOcean(scene, sunDirection) {
     },
     // exposed so audio can sync the wave-wash sound to the visual slap
     swashLevel: 0,
+
+    // The sun moves now (main.js). The Water shader keeps its own copies of the
+    // direction and colour, so they have to be pushed in — leave them and the
+    // sea keeps the sun path it had at load while the sky above it drops.
+    setSun(dir, color) {
+      water.material.uniforms['sunDirection'].value.copy(dir).normalize();
+      water.material.uniforms['sunColor'].value.copy(color);
+    },
   };
 
   state.update = (dt) => {

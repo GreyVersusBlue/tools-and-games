@@ -15,7 +15,8 @@ export class DayPhase {
   /**
    * @param scene   three.js scene (rings live here)
    * @param getC    () => campaign object (always current)
-   * @param cb      { save(), openDoors() }
+   * @param cb      { save(), openDoors(), flash(), mountBar(el) } — mountBar is
+   *                main.js's one-and-only save-bar mount, called by doorPanel()
    */
   constructor(scene, getC, cb) {
     this.getC = getC;
@@ -202,7 +203,19 @@ export class DayPhase {
     ].map(r => `<div class="row"><span class="hint">${r[0]}</span><span>${r[1]}</span></div>`).join("");
     this.show("Tonight",
       rows + warn.map(w => `<div class="row bad">⚠ ${w}</div>`).join(""),
-      `<button class="btn wide" data-opendoors="1">Open the Doors</button>`);
+      `<div class="footStack">
+         <button class="btn wide" data-opendoors="1">Open the Doors</button>
+         <div id="doorSaveBar"></div>
+       </div>`);
+    // The day-phase home for the shared save bar. This is the one panel that
+    // summarises the whole campaign rather than one desk's worth of it, and it is
+    // the last screen before a night that can go badly — the moment a player who
+    // wants a backup actually wants one.
+    //
+    // Mounted after show(), because show() replaces #panelFoot's innerHTML and the
+    // container has to exist first. A fresh container every render means the
+    // buttons are rebuilt rather than duplicated, so re-opening the panel is safe.
+    if (this.cb.mountBar) this.cb.mountBar($("#doorSaveBar"));
   }
 
   upgradePanel() {

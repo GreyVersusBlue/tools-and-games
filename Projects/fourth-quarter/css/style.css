@@ -134,15 +134,31 @@ td.num,th.num{text-align:right;font-family:var(--mono)}
   font-size:13px;margin-top:8px}
 .card button.ghost:hover{color:var(--amber);border-color:var(--amber)}
 
-/* shared save bar — mountSaveBar() from /assets/js/gvb-save.js writes into
-   #saveBar. The module's own styles are deliberately thin and its custom
+/* shared save bar — mountSaveBar() from /assets/js/gvb-save.js writes into all
+   three of these. The module's own styles are deliberately thin and its custom
    properties are what it expects to be restyled through; the width/margin
    overrides are here because .card button above forces every button in a card
-   to full width, which would stack these two down the start screen. */
-#saveBar{margin-top:16px;justify-content:center;
+   to full width, which would stack these two down the start screen.
+
+   One selector list for all three mounts, deliberately: main.js mounts the same
+   component in three places, and a per-screen style rule is how "the same bar"
+   quietly becomes three bars that look related. */
+#saveBar,#boxSaveBar,#doorSaveBar{margin-top:16px;justify-content:center;
   --gvb-btn-bg:transparent;--gvb-btn-fg:var(--muted);
   --gvb-btn-border:var(--line);--gvb-btn-radius:5px}
-#saveBar button{width:auto;margin-top:0;font-family:var(--disp);font-size:12px}
-#saveBar button:hover{filter:none;color:var(--amber);border-color:var(--amber)}
-#saveBar .gvb-save-msg{flex-basis:100%;text-align:center;font-family:var(--mono);
+#saveBar button,#boxSaveBar button,#doorSaveBar button{width:auto;margin-top:0;
+  font-family:var(--disp);font-size:12px}
+#saveBar button:hover,#boxSaveBar button:hover,#doorSaveBar button:hover{
+  filter:none;color:var(--amber);border-color:var(--amber)}
+#saveBar .gvb-save-msg,#boxSaveBar .gvb-save-msg,#doorSaveBar .gvb-save-msg{
+  flex-basis:100%;text-align:center;font-family:var(--mono);
   color:var(--muted);opacity:1}
+/* #panelFoot is a space-between row; the Tonight panel's footer needs its button
+   and its save bar stacked instead, so day.js wraps them in one column child. */
+.footStack{flex:1 1 auto;display:flex;flex-direction:column}
+.footStack #doorSaveBar{margin-top:10px}
+/* The box score card grew a save bar and its row count already varies with the
+   night (theme and upkeep rows only appear when they cost something, the Game
+   section only on a Thursday or Sunday). Nothing scrolled it before, so a long
+   night on a short window clipped the button off the bottom. */
+#boxOverlay .card{max-height:92vh;overflow-y:auto}

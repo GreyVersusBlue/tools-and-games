@@ -158,6 +158,146 @@ ok(typeof cl.staff[0].speed === "number" && cl.staff[0].speed > 0,
   "and gets a walking speed — beginNight multiplies that into m/s, so undefined means a NaN server");
 ok(Object.keys(C.STOCK_COST).every(id => typeof cl.stock[id] === "number"),
   "every menu item ends up with a stock number");
+ok(typeof cl.staff[0].wage === "number" && cl.staff[0].wage > 0,
+  "and a wage — that one was already in this save, but see the audit block below");
+
+// ---- the legacy-save audit, done on purpose ---------------------------------
+//
+// `speed` (above) was found by accident. This block is the rest of the shape,
+// gone through field by field: load a save missing one field, then run the
+// arithmetic that reads it. The failure mode being hunted is not a crash — it is
+// a number that quietly becomes NaN, or a night that quietly has nobody in it.
+// See the note above repairCampaign() in js/campaign.js for the write-up.
+const legacy = extra => C.loadCampaign(mkStore({
+  [C.SAVE_KEY]: JSON.stringify({
+    day: 5, cash: 1200,
+    stock: { wings: 5, beer: 9 },
+    staff: [{ name: "Old Timer", role: "server", skill: 3, wage: 60, speed: 2.1 }],
+    ...extra,
+  }),
+}));
+const finite = v => typeof v === "number" && Number.isFinite(v);
+
+// cash: two bugs in one missing field. placeOrder() gates on `cost > c.cash`, and
+// every comparison against undefined is false, so the order goes through for free.
+const noCash = legacy({ cash: undefined });
+ok(finite(noCash.cash), "a save with no cash loads with a finite till, not undefined");
+ok(!C.placeOrder(noCash, { beer: 100000 }).ok,
+  "so the distributor still refuses an order past the till (undefined made every order affordable)");
+const noCashBooks = C.settleNight(noCash, { total: 500, revenue: 450, tips: 50 });
+ok(finite(noCashBooks.net) && finite(noCash.cash), "and settling the night doesn't NaN the books");
+ok(finite(legacy({ cash: null }).cash),
+  "cash null reads as missing too — JSON.stringify writes NaN and Infinity as null");
+
+// day: the quietest one in the file. weekday() indexes DAYS[(day-1) % 7], so day 0
+// is DAYS[-1] and day 2.5 is DAYS[1.5] — both undefined, both making forecast() NaN,
+// and a NaN crowdTarget spawns nobody for the whole eight hours.
+for (const [bad, label] of [[0, "day 0"], [2.5, "a fractional day"], [-40, "a negative day"]]) {
+  const c5 = legacy({ day: bad });
+  ok(c5.day >= 1 && Number.isInteger(c5.day), `${label} is repaired onto the calendar`);
+  ok(C.DAYS.includes(C.weekday(c5)), `${label} names a real weekday after repair`);
+  ok(finite(C.forecast(c5)) && C.forecast(c5) > 0,
+    `${label} forecasts a real crowd (NaN here is an empty night with nothing logged)`);
+}
+
+// stats: the old check was `if (!c.stats)`, so an object missing its numbers — a
+// save from before bestNight and lifetimeNet existed — went straight through.
+for (const [stats, label] of [[{}, "an empty stats object"], [{ nights: 3 }, "stats with only nights"]]) {
+  const c6 = legacy({ stats });
+  ok(finite(c6.stats.nights) && finite(c6.stats.bestNight) && finite(c6.stats.lifetimeNet),
+    `${label} gets all three numbers filled`);
+  const b6 = C.settleNight(c6, { total: 400, revenue: 380, tips: 20 });
+  ok(finite(b6.net) && finite(c6.stats.bestNight) && finite(c6.stats.lifetimeNet),
+    `and a night settles into ${label} without NaN`);
+}
+ok(legacy({ stats: { nights: 3 } }).stats.nights === 3, "a stat that is there is left alone");
+ok(legacy({ stats: { nights: 2, streak: 9 } }).stats.streak === 9,
+  "and an unknown stat survives the repair, so a field added later isn't dropped");
+
+// staff/applicant wage: wageBill() feeds settleNight(), so one missing wage lands
+// NaN in cash and stats.lifetimeNet for good.
+const noWage = legacy({ staff: [{ name: "Old Timer", role: "server", skill: 3 }] });
+ok(finite(noWage.staff[0].wage) && noWage.staff[0].wage > 0, "a staffer with no wage gets one from skill");
+ok(finite(C.wageBill(noWage)) && finite(C.effWage(noWage, noWage.staff[0])),
+  "so the wage bill is a number");
+ok(finite(C.settleNight(noWage, { total: 500, revenue: 450, tips: 50 }).net),
+  "and the night's net is a number");
+const appNoWage = legacy({ applicants: [{ name: "Kat Frye", role: "cook", skill: 4 }] });
+ok(finite(appNoWage.applicants[0].wage),
+  "an applicant is repaired too — hire() moves it onto the payroll unchanged");
+
+// name: the one hard throw in the audit. beginNight() does s.name.split(" ")[0]
+// for every floor role, and fire() matches on name, so a nameless staffer is
+// also unfireable.
+const noName = legacy({ staff: [{ role: "server", skill: 2, wage: 55 }, { role: "server", skill: 3, wage: 70 }] });
+ok(noName.staff.every(s => typeof s.name === "string" && s.name.trim()),
+  "a staffer with no name gets one (beginNight() calls .split on it)");
+ok(new Set(noName.staff.map(s => s.name)).size === 2,
+  "and two nameless staffers get different names, because fire() matches on name");
+ok(C.fire(noName, noName.staff[0].name) && noName.staff.length === 1, "so it can be fired");
+
+// skill: `if (!p.skill)` only caught falsy, so a string sailed through into
+// roleMult() — prep speed for that whole side of the ticket.
+for (const [skill, label] of [["high", "a non-numeric skill"], [99, "an out-of-range skill"], [0, "skill 0"]]) {
+  const c7 = legacy({ staff: [{ name: "Old Timer", role: "cook", skill, wage: 60 }] });
+  ok(c7.staff[0].skill >= 1 && c7.staff[0].skill <= 5, `${label} is clamped to 1-5`);
+  ok(finite(C.roleMult(c7, "cook")) && C.roleMult(c7, "cook") > 0, `and ${label} still multiplies prep speed`);
+}
+
+// upgrades: `if (!c.upgrades)` let an object through, and owned() calls .includes
+// on it from the first frame.
+const badUpg = legacy({ upgrades: { pos: true } });
+ok(Array.isArray(badUpg.upgrades), "a non-array upgrades list is replaced with an array");
+// Caught rather than called bare: if this regresses, .includes throws, and an
+// uncaught throw here kills the file instead of failing one line of it.
+ok((() => {
+  try { return finite(C.upgradeFees(badUpg)) && C.owned(badUpg, "pos") === false; }
+  catch (e) { return false; }
+})(), "so owned() and upgradeFees() work instead of throwing on .includes");
+const badApps = legacy({ applicants: {} });
+ok(badApps && Array.isArray(badApps.applicants),
+  "a non-array applicants list loads as empty rather than refusing the whole save");
+
+// speed, the one from last session, still covered.
+for (const [speed, label] of [[undefined, "no speed"], [null, "speed null"], ["fast", "a string speed"]]) {
+  const c8 = legacy({ staff: [{ name: "Old Timer", role: "server", skill: 3, wage: 60, speed }] });
+  ok(finite(c8.staff[0].speed) && c8.staff[0].speed > 0, `${label} is repaired to a real m/s`);
+  ok(finite(c8.staff[0].speed * C.speedMult(c8, "server")),
+    `and ${label} survives the multiply beginNight() does`);
+}
+// The three above all pass on a plain `typeof p.speed !== "number"` too, because
+// JSON has no way to carry a NaN — it writes one as null. The gap only opens when
+// repair runs on a live object rather than a parsed one, which it does: the slot
+// calls it on the campaign the game already holds. `typeof NaN` is "number", so
+// only a finite check catches this. Same for the countdown below.
+const liveNaN = C.repairCampaign({
+  day: 4, cash: 900, stock: {}, upgrades: [], applicants: [], stats: { nights: 1 },
+  venue: "cornerTap", darkNightsLeft: NaN, promoTonight: "none",
+  staff: [{ name: "Old Timer", role: "server", skill: 3, wage: 60, speed: NaN }],
+});
+ok(finite(liveNaN.staff[0].speed) && liveNaN.staff[0].speed > 0,
+  "a literal NaN speed is repaired — typeof NaN is 'number', so a typeof check waves it through");
+ok(liveNaN.darkNightsLeft === 0, "and so is a NaN dark-night countdown");
+const oddDark = legacy({ darkNightsLeft: -3 });
+ok(oddDark.darkNightsLeft === 0,
+  "a negative countdown reads as zero — main.js only announces the reopening on === 0");
+ok(legacy({ darkNightsLeft: 2.7 }).darkNightsLeft === 3, "and a fractional one is rounded to whole nights");
+
+// stock, darkNightsLeft, venue, promo: same treatment, less drama.
+const oddStock = legacy({ stock: { wings: null, beer: "9", nachos: -5 }, darkNightsLeft: "soon" });
+ok(Object.keys(C.STOCK_COST).every(id => finite(oddStock.stock[id]) && oddStock.stock[id] >= 0),
+  "every stock number lands finite and non-negative");
+ok(oddStock.darkNightsLeft === 0, "a non-numeric dark-night countdown reads as zero too");
+ok(legacy({ venue: "not-a-venue" }).venue === "cornerTap", "an unknown venue falls back to the Corner Tap");
+ok(legacy({ promoTonight: "freebeer" }).promoTonight === "none", "an unknown promo falls back to no theme");
+
+// Idempotent: the slot runs repair on every load, including saves it just wrote.
+const once = C.repairCampaign(C.newCampaign());
+const twice = C.repairCampaign(JSON.parse(JSON.stringify(once)));
+ok(JSON.stringify(once) === JSON.stringify(twice), "repair is idempotent — a repaired save repairs to itself");
+const roundTrip = legacy({ cash: undefined, day: 0, stats: {}, staff: [{ role: "server" }] });
+ok(JSON.stringify(C.repairCampaign(JSON.parse(JSON.stringify(roundTrip)))) === JSON.stringify(roundTrip),
+  "and a save it had to fix comes out stable the second time too");
 
 // Export / import: the piece the hand-rolled save never had.
 const slot = C.campaignSlot(store);

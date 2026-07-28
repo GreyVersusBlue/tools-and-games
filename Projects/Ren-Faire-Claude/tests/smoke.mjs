@@ -1909,7 +1909,10 @@ const State = await import(mod('js/state.js'));
   // its top-level wire()+render() calls then run exactly as a browser's
   // module script would after parse.
   const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
-    .replace(/<link[^>]*fonts\.g[^>]*>/g, '')            // skip network font fetch
+    // Stage 21: index.html used to carry three <link>s to fonts.googleapis.com
+    // that got stripped here so jsdom would not try to fetch them. The fonts
+    // are vendored now, so there is nothing to strip; Section 21 asserts they
+    // stay that way.
     .replace(/<script[^>]*main\.js[^>]*><\/script>/, ''); // we import main.js ourselves below
 
   const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
@@ -2061,7 +2064,6 @@ const State = await import(mod('js/state.js'));
 // ---------------------------------------------------------------------
 {
   const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
-    .replace(/<link[^>]*fonts\.g[^>]*>/g, '')
     .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
 
   let capSave = State.createInitialState();
@@ -2111,7 +2113,6 @@ const State = await import(mod('js/state.js'));
 // ---------------------------------------------------------------------
 {
   const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
-    .replace(/<link[^>]*fonts\.g[^>]*>/g, '')
     .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
 
   const gameOverSave = { ...State.createInitialState(), cash: -1800, season: 2, weekendDay: 1, reputation: 22, phase: 'gameOver', bankrupt: true };
@@ -2142,7 +2143,6 @@ const State = await import(mod('js/state.js'));
 
 {
   const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
-    .replace(/<link[^>]*fonts\.g[^>]*>/g, '')
     .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
 
   const w = CONFIG.winCondition;
@@ -2167,6 +2167,149 @@ const State = await import(mod('js/state.js'));
   continueBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   assert(doc.querySelector('.weekend-summary'), 'acknowledging victory drops into the normal weekend-end summary screen');
   assert(doc.querySelector(`[data-action="startNextWeekend"]`)?.textContent.includes(String(w.seasonTarget + 1)), 'the weekend-end screen after victory still offers to begin the next weekend normally');
+
+  dom.window.close();
+}
+
+// ---------------------------------------------------------------------
+// Section 1h: Stage 21 — the save matches the screen in every phase
+//
+// Through Stage 20, render() called saveState() at the very bottom, below
+// the early return the report/victory/gameOver/weekendEnd phases take. So a
+// report was never on disk while it was on screen, and reloading on a day's
+// takings rewound to before the gates opened. runDay() seeds off Date.now(),
+// so replaying that day rerolled it: measured across 400 seeds on a developed
+// grounds, one day's net ran -$301 to +$1,265 and its reputation gain 0 to
+// +5. F5 was worth about 3x the median day's profit.
+//
+// saveState() now runs at the TOP of render(), so it cannot be skipped by an
+// early return. Every assertion below fails if it moves back down — which is
+// how it was checked (locked decision #34): put the call back at the bottom
+// and this whole section goes red.
+//
+// These read the SCREEN for what just happened and the SAVE only for what a
+// reload has to survive, per locked decision #39 — the rule this game is one
+// of the reasons for.
+// ---------------------------------------------------------------------
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
+    .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+
+  // One shared storage across two JSDOMs: booting main.js against the same
+  // storage a second time IS a reload, which is the behaviour under test.
+  const storage = makeMemoryStorage();
+  const saved = () => JSON.parse(storage.getItem('renn-faire-sim-save-v1'));
+
+  const boot = async () => {
+    const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.localStorage = storage;
+    globalThis.confirm = () => true;
+    await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+    return dom;
+  };
+  const click = (dom, sel) => {
+    const el = dom.window.document.querySelector(sel);
+    if (!el) return false;
+    el.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    return true;
+  };
+
+  let dom = await boot();
+  let doc = dom.window.document;
+  assert(saved().phase === 'plan', 'booting a fresh game writes a plan-phase save immediately');
+
+  // --- a report is on disk while it is on screen ---
+  assert(click(dom, '[data-action="openGates"]'), 'Open the Gates is clickable on a fresh boot');
+  const onScreen = doc.querySelector('.ticket-stub h2').textContent;
+  assert(/Closed the Gates/.test(onScreen), 'clicking Open the Gates puts a day report on screen', onScreen);
+
+  const reportSave = saved();
+  assert(reportSave.phase === 'report', 'Stage 21: the save says "report" while a report is on screen (was "plan" through Stage 20)');
+  assert(reportSave.lastResult !== null, 'the saved report carries its lastResult rather than a null');
+  assert(reportSave.history.length === 1, 'the day that just ran is in the saved history');
+  // Guarded reads from here down: with the bug reintroduced lastResult is null,
+  // and a suite that throws on the first symptom hides the other twenty checks.
+  assert(reportSave.lastResult?.attendance === reportSave.history[0]?.attendance,
+    'the saved lastResult and the saved history agree about the gate');
+
+  // The screen and the save report the same day. This is the assertion that
+  // the whole change exists for.
+  assert(reportSave.lastResult != null && doc.querySelector('.ticket-stub').textContent.includes(reportSave.lastResult.attendance.toLocaleString()),
+    'the attendance on screen is the attendance in the save');
+
+  // --- the day is locked: a reload comes back to the same report ---
+  const cashAtReport = reportSave.cash;
+  const attendanceAtReport = reportSave.lastResult?.attendance;
+  dom.window.close();
+  dom = await boot();
+  doc = dom.window.document;
+  assert(!!doc.querySelector('.ticket-stub'), 'reloading on a report comes back to the report, not to the planning desk');
+  assert(!doc.querySelector('[data-action="openGates"]'), 'and the gates cannot be opened a second time on the same day');
+  assert(!!doc.querySelector('[data-action="nextDay"]'), 'the only way on from a reloaded report is Next Day');
+  const afterReload = saved();
+  assert(afterReload.cash === cashAtReport,
+    `the day's takings survive the reload rather than being rewound ($${cashAtReport} -> $${afterReload.cash})`);
+  assert(afterReload.lastResult?.attendance === attendanceAtReport,
+    'and it is the same day, not a rerolled one', `${attendanceAtReport} -> ${afterReload.lastResult?.attendance}`);
+  assert(afterReload.history.length === 1, 'the reload did not duplicate the day in history');
+
+  // --- weekendEnd persists too, and it takes the same early return ---
+  click(dom, '[data-action="nextDay"]');
+  assert(saved().phase === 'plan', 'Next Day from a report saves the new planning phase');
+  for (let i = 0; i < CONFIG.seasonLength; i++) {
+    if (!click(dom, '[data-action="openGates"]')) break;
+    if (saved().phase === 'weekendEnd') break;
+    click(dom, '[data-action="nextDay"]');
+  }
+  const weekendSave = saved();
+  assert(weekendSave.phase === 'weekendEnd', 'playing out the weekend lands in the weekendEnd phase', weekendSave.phase);
+  assert(!!doc.querySelector('.weekend-summary'), 'and the weekend summary is on screen');
+  assert(weekendSave.history.length === CONFIG.seasonLength, 'the whole weekend is in the saved history',
+    `${weekendSave.history.length} days`);
+
+  const weekendCash = weekendSave.cash;
+  dom.window.close();
+  dom = await boot();
+  doc = dom.window.document;
+  assert(!!doc.querySelector('.weekend-summary'), 'reloading on the weekend summary comes back to the weekend summary');
+  assert(saved().cash === weekendCash, 'and the weekend\'s last day is not replayable either', `$${weekendCash}`);
+  dom.window.close();
+}
+
+// The gameOver phase takes the same early return, and it is the one nobody
+// remembers to check. A report-phase save already flagged bankrupt: clicking
+// on from it must leave 'gameOver' on disk, not the stale report.
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
+    .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+
+  const ruined = State.runDay({ ...State.createInitialState(), cash: CONFIG.bankruptcyFloor + 200 }, 4242).state;
+  assert(ruined.bankrupt === true, 'a day that crosses the bankruptcy floor flags the state bankrupt');
+
+  const storage = makeMemoryStorage();
+  storage.setItem('renn-faire-sim-save-v1', JSON.stringify(ruined));
+  const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.localStorage = storage;
+  globalThis.confirm = () => true;
+  await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+  const doc = dom.window.document;
+
+  assert(!!doc.querySelector('.ticket-stub'), 'a bankrupt day still shows its report before the run ends');
+  doc.querySelector('[data-action="nextDay"]').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  assert(!!doc.querySelector('.gameover-stub'), 'clicking on from a bankrupt report shows the game-over screen');
+  const overSave = JSON.parse(storage.getItem('renn-faire-sim-save-v1'));
+  assert(overSave.phase === 'gameOver', 'Stage 21: the gameOver phase reaches the save rather than leaving a stale report on disk');
+
+  // Start a New Faire has to reach the save too, or a reload resurrects the
+  // dead run — the same class of bug in the other direction.
+  doc.querySelector('[data-action="newFaire"]').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  const fresh = JSON.parse(storage.getItem('renn-faire-sim-save-v1'));
+  assert(fresh.phase === 'plan' && fresh.day === 1 && fresh.bankrupt === false,
+    'Start a New Faire writes the fresh game to disk, so a reload does not resurrect the folded faire');
 
   dom.window.close();
 }
@@ -2375,6 +2518,75 @@ function makeMemoryStorage() {
     '.ledger-label.bad reads --wine-text, not the low-contrast --wine, for its text color');
   assert(/\.ledger-table td\.neg\s*\{\s*color:\s*var\(--wine-text\)/.test(css),
     '.ledger-table td.neg reads --wine-text, not the low-contrast --wine, for its text color');
+}
+
+// ---------------------------------------------------------------------
+// Section 21: the fonts are vendored and stay vendored (Stage 21)
+//
+// index.html hotlinked three families from fonts.googleapis.com until this
+// stage, and the board-check suite could not see it: prepPage() in
+// Tools/board-check/harness.mjs fulfills Google Fonts requests locally from
+// bundled @fontsource packages BEFORE the blocked-list check runs, so a font
+// hotlink never lands in page.__blocked. That is why this check lives here
+// and reads the file directly rather than trusting a browser run.
+// ---------------------------------------------------------------------
+{
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
+  const fontsDir = path.join(root, 'assets/fonts');
+
+  // Comments are stripped first: the <head> carries a "do not put these back"
+  // note that names the domain, and a comment cannot make a request.
+  const liveHtml = html.replace(/<!--[\s\S]*?-->/g, '');
+  assert(!/fonts\.googleapis\.com/.test(liveHtml), 'index.html makes no request to fonts.googleapis.com');
+  assert(!/fonts\.gstatic\.com/.test(liveHtml), 'index.html makes no request to fonts.gstatic.com');
+
+  // The general form of the same check: every href/src the browser would
+  // actually fetch has to be relative. og:image and friends live in `content`
+  // attributes, which are read by scrapers and never fetched by the page.
+  const fetched = [...liveHtml.matchAll(/\b(?:href|src)\s*=\s*"([^"]+)"/g)].map(m => m[1]);
+  const offsite = fetched.filter(u => /^(?:https?:)?\/\//.test(u));
+  assert(offsite.length === 0, `every href/src in index.html is relative (offsite: ${offsite.join(', ') || 'none'})`);
+  assert(!/node_modules/.test(css) && !/node_modules/.test(html),
+    'nothing the browser loads references node_modules');
+
+  // Every declared face resolves to a file that is actually on disk. A typo in
+  // a src path is silent in a browser: the family just falls back.
+  const srcs = [...css.matchAll(/@font-face\s*\{[^}]*?src:\s*url\(([^)]+)\)/g)].map(m => m[1].replace(/["']/g, '').trim());
+  assert(srcs.length === 6, `style.css declares the six expected @font-face srcs (found ${srcs.length})`);
+  let bytes = 0;
+  for (const src of srcs) {
+    const file = path.join(root, 'css', src);
+    const there = fs.existsSync(file);
+    assert(there, `@font-face src resolves to a real file: ${src}`);
+    if (there) bytes += fs.statSync(file).size;
+    assert(/\.woff2$/.test(src), `${path.basename(src)} is woff2 (no legacy formats — every browser that runs ES modules reads woff2)`);
+  }
+  assert(bytes === 259680, `the vendored fonts total 259,680 bytes as documented in assets/fonts/README.md (measured ${bytes})`);
+
+  // The families the @font-face rules define have to be the families the
+  // --font-* tokens ask for, or the vendoring silently does nothing.
+  for (const family of ['Fraunces', 'Grenze Gotisch', 'Barlow Semi Condensed']) {
+    assert(new RegExp(`@font-face\\s*\\{[^}]*font-family:\\s*'${family}'`).test(css),
+      `a local @font-face defines '${family}'`);
+    assert(new RegExp(`--font-[a-z]+:\\s*'${family}'`).test(css),
+      `the --font-* token for ${family} names the same family the @font-face defines`);
+  }
+
+  // Only the weights that are actually on screen. Measured with
+  // getComputedStyle across every screen; see assets/fonts/README.md.
+  const barlowWeights = [...css.matchAll(/@font-face\s*\{[^}]*'Barlow Semi Condensed'[^}]*font-weight:\s*(\d+)/g)].map(m => Number(m[1])).sort();
+  assert(JSON.stringify(barlowWeights) === '[400,600,700]',
+    `Barlow ships 400/600/700 and not the unused 500 the old hotlink fetched (got ${barlowWeights.join('/')})`);
+  assert(fs.readdirSync(fontsDir).filter(f => f.endsWith('.woff2')).length === 6,
+    'assets/fonts holds exactly the six files the stylesheet asks for — no orphans left behind');
+
+  // Fraunces was hotlinked as a variable font with an optical-size axis. It
+  // stays one: nine static cuts would be the wrong shape of fix.
+  assert(/font-family:\s*'Fraunces'[^}]*font-weight:\s*100 900/.test(css.replace(/\n/g, ' ')),
+    'Fraunces is declared across the full 100-900 variable weight range, not as static cuts');
+  assert((css.match(/format\('woff2-variations'\)/g) || []).length === 3,
+    'the three variable faces (Fraunces normal + italic, Grenze Gotisch) declare woff2-variations');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

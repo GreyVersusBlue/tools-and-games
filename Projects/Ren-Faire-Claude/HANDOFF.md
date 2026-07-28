@@ -3,6 +3,93 @@
 Living document, updated in place each stage. Older stage summaries get
 condensed into the changelog at the bottom rather than kept as prose above.
 
+## Status as of Stage 21
+
+**The first stage with a browser actually available.** Every prior stage's
+caveat — "no browser was available in the build sandbox, so the visual work was
+reviewed by reading rather than by looking" — finally does not apply. Two things
+shipped, and both were decided by measurement rather than by reading the code.
+
+### 1. A day is final once the gates close
+
+`render()` called `saveState()` at the very bottom, below the early return that
+the `report`, `weekendEnd`, `victory` and `gameOver` phases take. So the game
+never wrote a save while a report was on screen. Reloading on a day's takings
+rewound to before the gates opened.
+
+The previous session logged this as "consistently forgiving rather than broken"
+and left it for a policy decision. **Playing it says otherwise.** `runDay()`
+seeds off `Date.now()`, so the replayed day is not the same day — it is a fresh
+roll. Measured across 400 seeds against a four-plot grounds with performers
+booked and vendors seated:
+
+| | min | median | max | spread |
+| --- | ---: | ---: | ---: | ---: |
+| `cashDelta` | −$301 | +$393 | +$1,265 | $1,566 |
+| attendance | 551 | 604 | 672 | 121 |
+| `reputationDelta` | 0 | +1 | +5 | 5 |
+
+Pressing F5 was worth roughly three times the median day's profit, and
+rerolling for +5 reputation instead of +1 reaches the win condition's
+`minReputation: 70` in about a quarter of the days it should take. That is not
+forgiveness, it is an undocumented save-scum lever that makes the Stage 19
+economy rework and the Stage 16 win/loss conditions optional.
+
+**Policy chosen: persist the report, which locks the day.** Worth knowing that
+in this codebase those are not two options. `runDay()` already applies
+`cashDelta`, pushes to `history` and sets `phase`, so the day is resolved the
+instant the button is clicked; the only reason it was replayable is that the
+state never reached disk. Persisting it *is* locking it. The v7 handoff frames
+them as two policies to choose between, and there is only one.
+
+The fix is `State.saveState(state)` moved to the **top** of `render()`, where an
+early return cannot skip it. The comment there explains why, so nobody moves it
+back for tidiness.
+
+Two arguments for it beyond closing the exploit, both of which the "forgiving"
+framing missed:
+
+- **The old behaviour also punished.** A crash, a closed tab, or a phone
+  locking its screen mid-report threw away a day the player had already earned.
+  The forgiveness was symmetric with a loss, and only the reroll was
+  deliberate — the loss happened by accident.
+- **Bankruptcy was not a loss.** The `gameOver` phase took the same early
+  return, so reloading past a folded faire put you back in the planning phase
+  with the money you had before the day that ruined you. Stage 16's loss
+  condition has never actually been able to end a run.
+
+Downside risk of locking, measured: on a developed grounds the *worst* seed of
+400 is −$301 against a `bankruptcyFloor` of −$6,000. One bad roll cannot ruin
+anyone; only sustained bad decisions can, which is what the floor is for.
+
+### 2. The three type families are vendored
+
+`index.html` hotlinked Grenze Gotisch, Fraunces and Barlow Semi Condensed from
+`fonts.googleapis.com`. That made v7 §5's "zero offsite requests site-wide"
+claim wrong, and **the board-check suite could not see it**: `prepPage()`
+fulfills Google Fonts requests locally from bundled `@fontsource` packages
+before the blocked-list check runs, so a font hotlink never reaches
+`page.__blocked`. The check is `grep index.html for fonts.googleapis.com`, and
+the smoke suite now does exactly that (Section 21).
+
+**253.6 KB total, 259,680 bytes across six woff2 files**, `latin` subset only.
+See `assets/fonts/README.md` for the table, the sources, and the OFL notices.
+
+Weights were measured with `getComputedStyle` across every screen rather than
+copied off the old `<link>`, which turned up two errors in it:
+
+- **Grenze Gotisch 700 and Barlow Semi Condensed 500 were fetched and never
+  used.** Barlow 500 is gone.
+- **Fraunces 700 was used and never fetched.** A ledger `<td>` computes to 700
+  in Fraunces and the hotlink only loaded 400 and 600, so the browser had been
+  synthesising a faux bold since Stage 19. The variable file covers 100–900, so
+  that text now renders in the real cut.
+
+Fraunces keeps its optical-size axis, which is what the old URL asked for. The
+`wght`-only cut would save 66,548 bytes and was deliberately not taken:
+vendoring should not quietly change how the page renders. Both axes were
+confirmed live in a browser by canvas metrics, not assumed.
+
 ## Status as of Stage 20
 
 **Playable end-to-end, no new mechanics this stage.** Stage 19 rebuilt the

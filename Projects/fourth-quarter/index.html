@@ -83,18 +83,24 @@
     <p class="dim">WASD to move · mouse to look · E to interact · Shift to hustle</p>
     <button id="startBtn">Take the Floor</button>
     <button id="wipeBtn" class="ghost">New Game (wipe save)</button>
-    <!-- filled by mountSaveBar() from /assets/js/gvb-save.js — export the books
-         to a file, or load one back. Styled by #saveBar in css/style.css. -->
+    <!-- One of three mounts of the same save bar (mountSaveBar() from
+         /assets/js/gvb-save.js): here, the box score below, and the Tonight
+         panel's footer, which day.js builds. main.js mounts all three through
+         one mountBar() so they cannot drift apart. Styled together in
+         css/style.css. -->
     <div id="saveBar"></div>
   </div>
 </div>
 
-<!-- box score overlay -->
+<!-- box score overlay. The night is settled and written to disk by the time this
+     is on screen, so the save bar here has nothing live to trample: exporting
+     writes tomorrow's books, and importing has no half-finished night to discard. -->
 <div id="boxOverlay" class="overlay" style="display:none">
   <div class="card">
     <h1 id="boxTitle">Box Score</h1>
     <div id="boxBody"></div>
     <button id="nextDayBtn">Tomorrow's Ledger</button>
+    <div id="boxSaveBar"></div>
   </div>
 </div>
 

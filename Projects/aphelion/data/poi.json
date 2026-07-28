@@ -8,6 +8,24 @@
       "yields": { "parts": 2, "curio": "Forty-year broadcast loop" },
       "discoveryId": "sat-recording",
       "ceresMsg": "Salvage logged: two serviceable components and one very patient radio. Filed under 'things worth drifting for.'"
+    },
+    {
+      "id": "cargo-pod",
+      "name": "Frozen cargo pod",
+      "pos": [-11, 1, 20],
+      "scanTime": 2,
+      "yields": { "parts": 3, "curio": "A single preserved orange" },
+      "discoveryId": "cargo-pod",
+      "ceresMsg": "Manifest's intact under the frost. Three parts worth cannibalizing, and one piece of produce I am frankly amazed survived the trip."
+    },
+    {
+      "id": "escape-pod",
+      "name": "Old escape pod",
+      "pos": [24, -5, 8],
+      "scanTime": 3.5,
+      "yields": { "parts": 4, "curio": "A pocket watch, stopped at 04:12" },
+      "discoveryId": "escape-pod",
+      "ceresMsg": "Pod's long empty. Whoever rode it out logged a landing beacon before the recording cuts — filed as a discovery, not a mystery."
     }
   ]
 }

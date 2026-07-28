@@ -25,30 +25,34 @@ Then open `http://localhost:8000`.
 | Key | Action |
 |---|---|
 | Click | Board / capture mouse |
-| WASD + mouse | Move & look |
+| WASD | Move |
+| Mouse, or Arrow keys | Look |
 | E | Interact (repairs are multi-step — keep pressing E) |
 | Tab | Open/close logbook |
 | Space / Shift | Rise / descend (EVA only) |
+
+Arrow-key look works whether or not pointer lock is held, for anyone who can't
+or doesn't want to lock the mouse to look around.
 
 ## The loop
 
 - **Systems** — power, O₂, and hull drift down slowly. Below ~55% you get a soft chime and a CERES note; lights dim as power drops. Nothing can fail permanently. Walk to a panel and press E through the repair steps to bring it back to 100%.
 - **Hydroponics** — water the tray (E), keep it above ~30% and the crop advances a stage each night. Four stages, then harvest.
 - **Sleep** — the bed in quarters ends the day, grows the plant, unlocks new log entries.
-- **EVA** — cycle the airlock at the aft of the ship to drift outside. A derelict relay satellite is out there; look at it and press E to scan it for parts, a curio for the shelf, and a recovered-signal logbook entry. The hatch on the ship's stern takes you back in.
-- **Logbook** — Tab. Entries unlock by day; discoveries unlock by scanning.
+- **EVA** — cycle the airlock at the aft of the ship to drift outside. Three salvage sites are out there — a derelict relay satellite, a frozen cargo pod, an old escape pod — each worth a look and an E to scan for parts, a curio for the shelf, and a recovered logbook entry. The hatch on the ship's stern takes you back in.
+- **Logbook** — Tab. Entries unlock by day; discoveries unlock by scanning. The save bar (export / import / start over) lives at the bottom of the logbook, so it's reachable any time you're playing, not just at boot.
 
-Progress saves to `localStorage` automatically (on sleep, on repairs, and every 30 seconds). To wipe a save, clear site data or run `localStorage.removeItem('aphelion-save-v1')` in the console.
+Progress saves automatically (on sleep, on repairs, and every 30 seconds) through the shared `assets/js/gvb-save.js` slot under the key `aphelion-save-v1` — export a save to a file from the logbook and it'll load back later or in another browser. To wipe a save without the in-game button, clear site data or run `localStorage.removeItem('aphelion-save-v1')` in the console.
 
 ## Repo structure
 
 ```
-index.html          entry point, HUD/logbook DOM, import map (Three.js via CDN)
+index.html          entry point, HUD/logbook DOM, import map (vendored Three.js)
 src/
-  main.js           game loop, interactions, day cycle, EVA transitions
+  main.js           game loop, interactions, day cycle, EVA transitions, save bar
   ship.js           all 3D construction: interior, props, exterior, stars, POIs
-  controls.js       first-person + EVA movement, collision
-  state.js          game state + localStorage save/load
+  controls.js       first-person + EVA movement, collision, arrow-key look
+  state.js          game state + persistence (assets/js/gvb-save.js)
   ui.js             HUD, prompts, CERES toasts, logbook, fades
   audio.js          procedural WebAudio (hum, chimes, clicks) — no audio files
 data/
@@ -56,7 +60,11 @@ data/
   systems.json      ship systems: decay rates, panel positions, repair steps
   logs.json         log entries (unlock by day) + discovery texts
   poi.json          EVA points of interest
-assets/             (empty for now — models/textures/audio go here later)
+assets/
+  fonts/            vendored IBM Plex Mono + Lora (see assets/fonts/README.md)
+libs/               vendored three.module.js
+test/
+  smoke-state.mjs   node test/smoke-state.mjs — save slot + repair/validate
 ```
 
 ## Extending it

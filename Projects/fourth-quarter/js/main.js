@@ -62,7 +62,9 @@ player.onInteract = () => {
   }
 };
 
-const day = new DayPhase(scene, () => campaign, { save, openDoors: beginNight, flash, onMove: rebuildVenue, closedNight });
+// mountBar is a hoisted function declaration further down the file; DayPhase only
+// calls it when the Tonight panel renders, long after both exist.
+const day = new DayPhase(scene, () => campaign, { save, openDoors: beginNight, flash, onMove: rebuildVenue, closedNight, mountBar });
 
 function setLighting(night) {
   nightRig.visible = night; dayRig.visible = !night;
@@ -327,7 +329,24 @@ function resetProgress() {
   flash("Fresh books. Day 1.", true);
 }
 
-const dev = new DevPanel(() => campaign, { save, flash, rebuild: rebuildVenue, resetProgress });
+const dev = new DevPanel(() => campaign, {
+  save, flash, rebuild: rebuildVenue, resetProgress,
+  /**
+   * Dev only: shove the sim clock to last call.
+   *
+   * A night is eight sim hours at 45 real seconds each — six minutes at 1×, and
+   * the speed buttons can't be clicked while pointer lock owns the mouse. That
+   * made the box score the most expensive screen in the game to look at, which is
+   * a bad property for the screen that now hosts a save bar. This runs the real
+   * closing path rather than faking it: the next engine.update() rolls the hour
+   * past 8, which fires lastCall, which schedules showBoxScore().
+   */
+  skipToClose: () => {
+    if (phase !== "night" || !engine) return false;
+    engine.t = engine.hourLenSec * 8 - 0.001;
+    return true;
+  },
+});
 
 // ---- speed buttons ----
 document.querySelectorAll("[data-speed]").forEach(b => b.addEventListener("click", () => {
@@ -356,17 +375,38 @@ function refreshStartTag() {
 }
 refreshStartTag();
 
-// The shared save bar: export the books to a file, or load one back. "Start
-// over" is left off deliberately — #wipeBtn right above it already does that,
-// and two buttons that erase a campaign side by side is a trap, not a feature.
-mountSaveBar($("#saveBar"), slot, {
-  buttons: ["export", "import"],
-  getState: () => campaign,
-  setState: c => {
-    adoptCampaign(c);
-    tick(`Save loaded — day ${campaign.day} at ${C.venueDef(campaign).name}.`, "hl");
-  },
-});
+/**
+ * The shared save bar, mounted the same way everywhere it appears.
+ *
+ * Three places: the start overlay, the box score, and the Tonight panel's footer.
+ * One function rather than three call sites because the thing that would go wrong
+ * is drift — the same button doing slightly different work depending on which
+ * screen you found it on. Every mount gets the same two buttons and the same
+ * setState, so there is one export affordance in this game, shown in three places.
+ *
+ * "Start over" is left off all three. #wipeBtn on the start screen already erases
+ * a campaign, and the other two mounts are screens the player passes through every
+ * single night — a campaign-eraser on the box score is a footgun you'd walk past
+ * a hundred times a playthrough. The dev menu's "Reset all progress" covers the
+ * developer case.
+ */
+function mountBar(container) {
+  return mountSaveBar(container, slot, {
+    buttons: ["export", "import"],
+    getState: () => campaign,
+    setState: c => {
+      // An import can arrive while the Tonight panel is open, and that panel's
+      // rows describe the campaign that just got replaced. adoptCampaign() puts
+      // the player back in the day phase, so leaving a stale panel on top of it
+      // is the one way this lands wrong.
+      if (day.panelOpen()) day.closePanel();
+      adoptCampaign(c);
+      tick(`Save loaded — day ${campaign.day} at ${C.venueDef(campaign).name}.`, "hl");
+    },
+  });
+}
+mountBar($("#saveBar"));
+mountBar($("#boxSaveBar"));
 
 $("#startBtn").addEventListener("click", () => {
   audio.playSfx("uiClick");

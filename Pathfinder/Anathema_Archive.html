@@ -268,6 +268,18 @@ function parseParts(body){ // "reflex|dc:20|basic" -> {_:[reflex],dc:20,basic:tr
   }
   return out;
 }
+/* Strip one enclosing paren pair, but only when it truly wraps the whole string
+   (depth never returns to 0 before the last char) — "(2d8+6)" -> "2d8+6", while
+   something like "(a)+(b)" is left alone since that ")" closes early. */
+function stripWrap(s){
+  if (s[0] !== '(' || s[s.length-1] !== ')') return s;
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')') { depth--; if (depth === 0 && i < s.length - 1) return s; }
+  }
+  return s.slice(1, -1);
+}
 function renderInline(html){
   if (!html) return '';
   let s = String(html);
@@ -284,12 +296,31 @@ function renderInline(html){
     return `<a class="ref" data-ref="${esc(ref)}" data-name="${esc(label||segs[segs.length-1]||'')}">${esc(name)}</a>`;
   });
 
+  // @Embed[Compendium.pf2e.pack.Item.id inline]{Label} — Foundry inlines the referenced
+  // document's full text; this renderer is synchronous and can't load another category
+  // mid-render, so it becomes a clickable reference instead, same as @UUID above. All 93 of
+  // these in the compendium (mostly implement equipment linking to their granting feat) do
+  // resolve once loaded, including the ones whose pack name ("classfeatures") isn't itself
+  // an indexed category here — the item they point at still lands in feat.json under its
+  // own id, which the type-agnostic fallback below finds. The bare id tail means nothing to
+  // a reader, so this only shows it as a last resort.
+  s = s.replace(/@Embed\[([^\]]+)\](?:\{([^}]*)\})?/g, (_, body, label) => {
+    const ref = body.trim().split(/\s+/)[0]; // drop trailing display options like "inline"
+    const { pack, doc, key } = parseRef(ref);
+    const hit = findLoaded(key, null, candidateTypes(pack, doc)) || findLoaded(key, null, null);
+    const name = label || hit?.name || 'embedded reference';
+    return `<a class="ref" data-ref="${esc(ref)}" data-name="${esc(label||hit?.name||'')}">${esc(name)}</a>`;
+  });
+
   // @Damage[6d6[fire]]{label} / @Damage[(2d8+6)[bludgeoning]] / multi-part with commas
   s = s.replace(/@Damage\[((?:[^[\]]|\[[^\]]*\])*)\](?:\{([^}]*)\})?/g, (_, body, label) => {
     if (label) return `<span class="dice">${esc(label)}</span>`;
     const parts = [];
-    const re = /\(?([^,()[\]]+)\)?\[([^\]]*)\]/g; let m;
-    while ((m = re.exec(body))) parts.push(`${m[1].trim()} ${m[2].split(',').join(' ')}`.trim());
+    // formula[type] pairs; formula may itself contain parens (e.g. a level-scaled
+    // "(ceil(@item.level/2))" heightened-cantrip formula), so only [ ] and the
+    // between-term comma are excluded here — not ( ).
+    const re = /([^,[\]]+)\[([^\]]*)\]/g; let m;
+    while ((m = re.exec(body))) parts.push(`${stripWrap(m[1].trim())} ${m[2].split(',').join(' ')}`.trim());
     return `<span class="dice">${esc(parts.length ? parts.join(' plus ') : body.replace(/\[|\]/g,' ').trim())}</span>`;
   });
 
@@ -773,15 +804,22 @@ function renderSpell(e){
   const label = isRitual ? 'Ritual' : isFocus ? 'Focus' : isCantrip ? 'Cantrip' : 'Spell';
   let heighten = '';
   const h = sys.heightening;
-  if (h?.levels) heighten = Object.entries(h.levels)
+  /* Most PF2e compendium descriptions already bake "Heightened (+N)"/"Heightened (Nth)"
+     prose into system.description.value (verified: 530/533 heightened spells do). Rendering
+     our own synthesized summary on top of that duplicates it word-for-word, so only
+     synthesize when the description doesn't already say so — the ~3-spell case where
+     heightening data exists but the compendium prose omits it entirely. */
+  const descAlreadyHeightened = /heighten/i.test(sys.description?.value || '');
+  if (!descAlreadyHeightened && h?.levels) heighten = Object.entries(h.levels)
     .sort((a,b) => +a[0] - +b[0])
     .map(([lvl, eff]) => `<div class="kv"><b>Heightened (${ord(+lvl)})</b> ${heightenFields(eff)}</div>`).join('');
-  else if (h?.interval) {
+  else if (!descAlreadyHeightened && h?.interval) {
     const bits = [];
     const dmg = fmtHeightenVal('damage', h.damage);
     if (dmg) bits.push(`The damage increases by ${dmg}`);
     if (h.area) bits.push(`the area increases by ${h.area} feet`);
-    heighten = `<div class="kv"><b>Heightened (+${h.interval})</b> ${bits.join('; ') || renderInline(String(num(h.effect) ?? ''))}</div>`;
+    const extra = bits.join('; ') || renderInline(String(num(h.effect) ?? ''));
+    if (extra) heighten = `<div class="kv"><b>Heightened (+${h.interval})</b> ${extra}</div>`;
   }
   return headBlock(e, label) + traitBadges(e) + srcLine(e)
     + kv('Cast', esc(cast)) + kv('Range', esc(rng)) + kv('Area', esc(area)) + kv('Targets', esc(tgt))

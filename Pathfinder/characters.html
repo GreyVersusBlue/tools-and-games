@@ -21,10 +21,27 @@
 <meta name="twitter:image" content="https://greyversusblue.com/assets/og/guild-board.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
 <!-- gvb:social:end -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400&family=Oswald:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+  @font-face{
+    font-family:'Cinzel'; font-style:normal; font-weight:700; font-display:swap;
+    src:url('characters-assets/fonts/cinzel-latin-700-normal.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'Cinzel'; font-style:normal; font-weight:900; font-display:swap;
+    src:url('characters-assets/fonts/cinzel-latin-900-normal.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'Crimson Pro'; font-style:normal; font-weight:400; font-display:swap;
+    src:url('characters-assets/fonts/crimson-pro-latin-400-normal.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'Crimson Pro'; font-style:italic; font-weight:400; font-display:swap;
+    src:url('characters-assets/fonts/crimson-pro-latin-400-italic.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'Oswald'; font-style:normal; font-weight:400; font-display:swap;
+    src:url('characters-assets/fonts/oswald-latin-400-normal.woff2') format('woff2');
+  }
   :root{
     --void:#120a07;
     --void-deep:#080403;
@@ -173,7 +190,7 @@
     box-shadow:inset 0 1px 3px rgba(0,0,0,.06);
     padding:.85rem 1.05rem; margin-top:1.1rem;
   }
-  .feature-box h4{
+  .feature-box h3{
     font-family:'Oswald',sans-serif; font-size:.7rem; letter-spacing:.14em; text-transform:uppercase;
     color:var(--oxblood); margin:0 0 .4rem;
   }
@@ -181,7 +198,7 @@
 
   .placeholder-flag{
     display:inline-block; margin-top:1rem; font-family:'Oswald',sans-serif; font-size:.65rem;
-    letter-spacing:.08em; text-transform:uppercase; color:#9c8a6e;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--ink-soft);
   }
 
   .class-line{
@@ -264,7 +281,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="dossier-banner">
           <div class="medallion">KJ</div>
-          <h3 class="dossier-name">Kaeta Jadeharbor</h3>
+          <h2 class="dossier-name">Kaeta Jadeharbor</h2>
           <div class="dossier-class">Pathfinder Society Character</div>
         </div>
         <div class="dossier-body">
@@ -290,7 +307,7 @@
             Appeared in: <a href="campaigns.html">Rise of the Runelords</a> (GM'd)
           </div>
           <div class="feature-box signature">
-            <h4>Signature Moves</h4>
+            <h3>Signature Moves</h3>
             <ul>
               <li>Flurry of Blows into Tiger Stance — striking wounding tiger claws that stack bleed</li>
               <li>Stunning Blows: a hit from either Flurry strike can stun the target outright</li>
@@ -299,7 +316,7 @@
             </ul>
           </div>
           <div class="feature-box">
-            <h4>Pathfinder Society Record</h4>
+            <h3>Pathfinder Society Record</h3>
             <p>19 scenarios logged · 76 XP · <a href="campaigns.html#kaeta-jadeharbor-log">full chronicle →</a></p>
           </div>
           <span class="placeholder-flag">Backstory pending</span>
@@ -310,7 +327,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="dossier-banner">
           <div class="medallion">CH</div>
-          <h3 class="dossier-name">Checkers</h3>
+          <h2 class="dossier-name">Checkers</h2>
           <div class="dossier-class">Pathfinder Society Character</div>
         </div>
         <div class="dossier-body">
@@ -335,7 +352,7 @@
             Played in: <a href="campaigns.html#checkers-log">The Great Toy Heist</a>
           </div>
           <div class="feature-box signature">
-            <h4>Signature Moves</h4>
+            <h3>Signature Moves</h3>
             <ul>
               <li>Bon Mot to shut down a foe's Perception and Will saves before the fight even starts</li>
               <li>Fear, Dizzying Colors, and Biting Words for battlefield control and ranged sonic damage</li>
@@ -351,7 +368,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="dossier-banner">
           <div class="medallion">GS</div>
-          <h3 class="dossier-name">Gus Sterling</h3>
+          <h2 class="dossier-name">Gus Sterling</h2>
           <div class="dossier-class">Starfinder Society Character</div>
         </div>
         <div class="dossier-body">
@@ -376,7 +393,7 @@
             Played in: <a href="campaigns.html#gus-sterling-log">1-26: Final Gambit Part 2</a>
           </div>
           <div class="feature-box signature">
-            <h4>Signature Moves</h4>
+            <h3>Signature Moves</h3>
             <ul>
               <li>Graviton-attuned solar weapon and solar shield, reforged between fights for the right damage type</li>
               <li>Nimbus Surge punishes anyone who tries to move or shoot near him</li>
@@ -392,7 +409,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="dossier-banner">
           <div class="medallion">PT</div>
-          <h3 class="dossier-name">Pharasma's Echoing Toll</h3>
+          <h2 class="dossier-name">Pharasma's Echoing Toll</h2>
           <div class="dossier-class">Pathfinder Society Character</div>
         </div>
         <div class="dossier-body">
@@ -418,7 +435,7 @@
             Played in: <a href="campaigns.html#pharasmas-echoing-toll-log">7-20: The Strings of Hell</a>
           </div>
           <div class="feature-box signature">
-            <h4>Signature Moves</h4>
+            <h3>Signature Moves</h3>
             <ul>
               <li>Unleash Psyche fuels a burst of amped-up damage right before it exhausts them</li>
               <li>Kinetic Ram, telekinetic rend, and daze for reliable ranged psychic pressure</li>
@@ -427,11 +444,11 @@
             </ul>
           </div>
           <div class="feature-box">
-            <h4>Pathfinder Society Record</h4>
+            <h3>Pathfinder Society Record</h3>
             <p>1 scenario logged · 4 XP · 14 gp · Grand Archive +4</p>
           </div>
           <div class="feature-box">
-            <h4>Who They Are</h4>
+            <h3>Who They Are</h3>
             <p>Toll's mind is tuned to the exact cosmic vibration a soul makes when it crosses into Pharasma's Boneyard. To them the universe is a vast symphony, and death is just the percussion keeping time — so they drift across Golarion as a detached, curious scholar of fate, studying why souls end up where they do.</p>
           </div>
         </div>
@@ -441,7 +458,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="dossier-banner">
           <div class="medallion">P</div>
-          <h3 class="dossier-name">Pip</h3>
+          <h2 class="dossier-name">Pip</h2>
           <div class="dossier-class">Starfinder Society Character</div>
         </div>
         <div class="dossier-body">
@@ -467,7 +484,7 @@
             Played in: <a href="campaigns.html#pip-log">Starfinder Society chronicle</a>
           </div>
           <div class="feature-box signature">
-            <h4>Signature Moves</h4>
+            <h3>Signature Moves</h3>
             <ul>
               <li>Aim + rotating pistol/boom pistol for precision damage that shreds cover</li>
               <li>Kill Steal lets an ally's near-kill turn into a free follow-up shot from Pip</li>
@@ -476,7 +493,7 @@
             </ul>
           </div>
           <div class="feature-box">
-            <h4>Starfinder Society Record</h4>
+            <h3>Starfinder Society Record</h3>
             <p>5 scenarios logged · 20 XP · 860 credits · <a href="campaigns.html#pip-log">full chronicle →</a></p>
           </div>
           <span class="placeholder-flag">Backstory pending</span>
@@ -487,7 +504,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="dossier-banner">
           <div class="medallion">R</div>
-          <h3 class="dossier-name">Ryn</h3>
+          <h2 class="dossier-name">Ryn</h2>
           <div class="dossier-class">Pathfinder Society Character</div>
         </div>
         <div class="dossier-body">
@@ -513,7 +530,7 @@
             Played in: <a href="campaigns.html#ryn-log">Pathfinder Society chronicle</a>
           </div>
           <div class="feature-box signature">
-            <h4>Signature Moves</h4>
+            <h3>Signature Moves</h3>
             <ul>
               <li>Bon Mot opens fights by tanking a foe's Perception and Will saves</li>
               <li>Vomit swarm, grim tendrils, and revealing light back up the party face's social kit with real damage</li>
@@ -522,7 +539,7 @@
             </ul>
           </div>
           <div class="feature-box">
-            <h4>Pathfinder Society Record</h4>
+            <h3>Pathfinder Society Record</h3>
             <p>7 scenarios logged · 28 XP · 147 gp 2 sp · <a href="campaigns.html#ryn-log">full chronicle →</a></p>
           </div>
           <span class="placeholder-flag">Backstory pending</span>
@@ -533,7 +550,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="dossier-banner">
           <div class="medallion">TD</div>
-          <h3 class="dossier-name">Timun Dunvol</h3>
+          <h2 class="dossier-name">Timun Dunvol</h2>
           <div class="dossier-class">Pathfinder Society Character</div>
         </div>
         <div class="dossier-body">
@@ -559,7 +576,7 @@
             Played in: <a href="campaigns.html#timun-dunvol-log">Pathfinder Society chronicle</a>
           </div>
           <div class="feature-box signature">
-            <h4>Signature Moves</h4>
+            <h3>Signature Moves</h3>
             <ul>
               <li>Devise a Stratagem locks in an attack roll ahead of time, using Int instead of Str/Dex</li>
               <li>Strategic Strike piles on precision damage whenever that gambit pays off</li>
@@ -568,7 +585,7 @@
             </ul>
           </div>
           <div class="feature-box">
-            <h4>Pathfinder Society Record</h4>
+            <h3>Pathfinder Society Record</h3>
             <p>5 scenarios logged (1 holding for Level 3) · 16 XP · 66 gp 8 sp · <a href="campaigns.html#timun-dunvol-log">full chronicle →</a></p>
           </div>
           <span class="placeholder-flag">Backstory pending</span>
@@ -579,7 +596,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="dossier-banner">
           <div class="medallion">TC</div>
-          <h3 class="dossier-name">Ten-Click</h3>
+          <h2 class="dossier-name">Ten-Click</h2>
           <div class="dossier-class">Starfinder Society Character</div>
         </div>
         <div class="dossier-body">
@@ -605,7 +622,7 @@
             Played in: <a href="campaigns.html#ten-click-log">Starfinder Society chronicle</a>
           </div>
           <div class="feature-box signature">
-            <h4>Signature Moves</h4>
+            <h3>Signature Moves</h3>
             <ul>
               <li>Get 'Em! and Keep On Keeping On! keep the whole party hitting harder and healing better</li>
               <li>Battle Medicine and Ward Medic turn Ten-Click into a field medic who can patch two people at once</li>
@@ -614,11 +631,11 @@
             </ul>
           </div>
           <div class="feature-box">
-            <h4>Starfinder Society Record</h4>
+            <h3>Starfinder Society Record</h3>
             <p>2 scenarios logged · 8 XP · 760 credits · <a href="campaigns.html#ten-click-log">full chronicle →</a></p>
           </div>
           <div class="feature-box">
-            <h4>Who They Are</h4>
+            <h3>Who They Are</h3>
             <p>Ten-Click served as medical attendant to their hive's queen until an unknown force attacked the colony, leaving them the sole survivor and unable to save the rest. Now they search the stars for a new colony, trying to make right what they couldn't prevent.</p>
           </div>
         </div>
@@ -628,7 +645,7 @@
         <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
         <div class="dossier-banner">
           <div class="medallion">S</div>
-          <h3 class="dossier-name">Sannu</h3>
+          <h2 class="dossier-name">Sannu</h2>
           <div class="dossier-class">Starfinder Society Character</div>
         </div>
         <div class="dossier-body">
@@ -654,7 +671,7 @@
             Played in: <a href="campaigns.html#sannu-log">Starfinder Society chronicle</a>
           </div>
           <div class="feature-box signature">
-            <h4>Signature Moves</h4>
+            <h3>Signature Moves</h3>
             <ul>
               <li>Photon-attuned solar weapon and solar flare, reforged on the fly to fit the fight</li>
               <li>Shattering Impact sacrifices the weapon for one massive, size-upgraded hit</li>
@@ -663,7 +680,7 @@
             </ul>
           </div>
           <div class="feature-box">
-            <h4>Starfinder Society Record</h4>
+            <h3>Starfinder Society Record</h3>
             <p>3 scenarios logged · 12 XP · 420 credits · <a href="campaigns.html#sannu-log">full chronicle →</a></p>
           </div>
           <span class="placeholder-flag">Backstory pending</span>

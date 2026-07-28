@@ -144,7 +144,7 @@
         ],
         "count": 2,
         "rotationY": 0,
-        "comment": "interior hall south wall, east of doorway (gap at x=0 is the doorway)"
+        "comment": "interior hall south wall, east of doorway. The gap is world x 0..4, not x=0: wall-half.glb's local x range is 0..0.5 rather than centred, and normalizeToTile re-grounds y but never re-centres x/z, so a piece placed on tile n covers world x 4n..4n+4. It is also scaled 8x (4 / 0.5) rather than 4x, so these pieces are 8 m tall and 8 m deep. See the notes file"
       },
       {
         "model": "wall-half.glb",
@@ -359,21 +359,21 @@
       "model": "wooden_lantern_01_1k.gltf/wooden_lantern_01_1k.gltf",
       "tile": [
         0.15,
-        -2.5
+        -2.48
       ],
       "rotationY": 0,
-      "onTopOfPrevious": false,
-      "yOffset": 0.95,
-      "comment": "lantern on the table; yOffset is a table-height guess, tune after first load"
+      "noCollide": true,
+      "comment": "lantern on the table. yOffset is a lift ABOVE whatever castle-builder finds underneath, so a tabletop item wants no yOffset at all — it used to carry 0.95 against a 0.55 m table and hung in the air"
     },
     {
       "model": "brass_candleholders_1k.gltf/brass_candleholders_1k.gltf",
       "tile": [
-        -0.2,
-        -2.5
+        -0.1,
+        -2.48
       ],
       "rotationY": 15,
-      "yOffset": 0.95
+      "noCollide": true,
+      "comment": "a 1.08 m spread of three candlesticks, not one object. At tile x -0.2 the westmost one overhung the table by 0.35 m; -0.1 puts the whole spread on it"
     },
     {
       "model": "kite_shield_1k.gltf/kite_shield_1k.gltf",
@@ -382,31 +382,32 @@
         2.7
       ],
       "rotationY": 0,
+      "noCollide": true,
       "yOffset": 1.2,
-      "comment": "wall dressing near the Guard's post"
+      "comment": "wall dressing near the Guard's post. Nothing underneath it, so the 1.2 lift is measured off the ground and still means what it says"
     }
   ],
   "braziers": [
     {
       "tile": [
         -0.8,
-        2.7
+        2.35
       ],
-      "comment": "flicker light flanking the gate, west"
+      "comment": "flicker light flanking the gate, west. z was 2.7 -> world 10.8, which is INSIDE the south wall: those blocks span z 10..14 and x -14..-2 / 2..14, so both gate braziers stood in solid stone. A PointLight is not occluded by geometry here, so they lit the courtyard perfectly and nothing looked wrong until they got a body. 2.35 -> world 9.4 puts the bowl 0.31 m clear of the wall's inner face"
     },
     {
       "tile": [
         0.8,
-        2.7
+        2.35
       ],
       "comment": "flicker light flanking the gate, east"
     },
     {
       "tile": [
-        0,
+        0.85,
         -1.6
       ],
-      "comment": "hall doorway light"
+      "comment": "hall doorway light, against the east jamb. The doorway gap is world x 0..4, NOT -2..2: wall-half.glb is authored off-centre (local x 0..0.5) and normalizeToTile only re-grounds y, so each piece extends a full tile east of the tile it is placed on. This brazier was at world x 0, i.e. flush inside the west jamb. x 3.4 keeps it out of the stone and 1.1 m off the line the player walks to reach the Scholar"
     }
   ]
 }

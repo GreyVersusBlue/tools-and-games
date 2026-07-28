@@ -15,6 +15,18 @@ const ui = { activeTab: 'office', flash: null, pendingBuild: null, pendingMove: 
 const $ = (sel) => document.querySelector(sel);
 
 function render() {
+  // Stage 21: this used to sit at the very bottom of the function, below the
+  // early return the report/victory/gameOver/weekendEnd phases take — so the
+  // game never wrote a save while a report was on screen, and reloading on a
+  // day's takings rewound to before the gates opened. That was not a forgiving
+  // replay, it was a free reroll: runDay() seeds off Date.now(), so the same
+  // day replayed came back with different numbers. Measured on a developed
+  // grounds across 400 seeds, one day's net ran -$301 to +$1,265 and its
+  // reputation gain 0 to +5, so F5 was worth 3x the median day's profit and
+  // could reach the win condition's reputation floor in a quarter of the days.
+  // Saving first means the save always matches the screen, in every phase.
+  State.saveState(state);
+
   $('#ledger').innerHTML = UI.renderLedger(state);
 
   // Stage 19: phases that show a full-bleed ticket stub (report, weekend
@@ -59,7 +71,6 @@ function render() {
     </div>
   `;
   ui.flash = null;
-  State.saveState(state);
 }
 
 function handleAction(action, el) {

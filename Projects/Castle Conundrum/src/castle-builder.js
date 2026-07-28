@@ -7,6 +7,10 @@ import { loadModel } from './assets.js';
 
 const _box = new THREE.Box3();
 
+// How much of an interior prop's footprint a surface has to cover before that
+// surface counts as holding it up. See surfaceHeightUnder().
+const SURFACE_COVERAGE = 0.5;
+
 export class CastleBuilder {
   constructor(scene, config) {
     this.scene = scene;
@@ -37,6 +41,37 @@ export class CastleBuilder {
   groundAndCenter(obj) {
     _box.setFromObject(obj);
     obj.position.y -= _box.min.y;
+  }
+
+  /**
+   * Height of the highest already-placed surface this object is standing on, or 0
+   * for "nothing under it, stand it on the ground".
+   *
+   * Overlap is a real 2D rectangle test, not a centre-point test: the brass
+   * candleholders are a 1.08 m spread of three separate candlesticks, so a centre
+   * hit says nothing about whether the outer two have anything beneath them.
+   *
+   * But bare overlap is not enough either, and getting that wrong is visible from
+   * the first frame. The gothic statue stands on the floor 1.4 m behind the hall
+   * table and its 1.56 m footprint clips the table's by 0.12 m, so an any-overlap
+   * rule stands the statue on the table; the statue then becomes a 2.29 m surface
+   * that the candleholders clip by 4 cm, and they go on top of *that*. A surface
+   * has to be under most of the object to be holding it up, hence SURFACE_COVERAGE.
+   */
+  surfaceHeightUnder(surfaces, obj) {
+    if (!surfaces.length) return 0;
+    obj.updateMatrixWorld(true);
+    const own = new THREE.Box3().setFromObject(obj);
+    const area = Math.max(1e-6, (own.max.x - own.min.x) * (own.max.z - own.min.z));
+    let best = 0;
+    for (const s of surfaces) {
+      const ox = Math.min(s.max.x, own.max.x) - Math.max(s.min.x, own.min.x);
+      const oz = Math.min(s.max.z, own.max.z) - Math.max(s.min.z, own.min.z);
+      if (ox <= 0 || oz <= 0) continue;
+      if ((ox * oz) / area < SURFACE_COVERAGE) continue;
+      if (s.max.y > best) best = s.max.y;
+    }
+    return best;
   }
 
   addCollider(obj, id = undefined) {
@@ -122,6 +157,13 @@ export class CastleBuilder {
     };
 
     // --- Interior Poly Haven props ---
+    // Placed in config order, and each one can stand on anything placed before it.
+    // `yOffset` is a lift ABOVE whatever surface is found underneath, not an
+    // absolute height: the lantern and the candleholders used to carry
+    // `yOffset: 0.95` with a comment calling it "a table-height guess, tune after
+    // first load", and nobody ever tuned it. The table is 0.55 m tall, so they
+    // hung 0.40 m in the air. Measuring the surface removes the guess.
+    const surfaces = [];
     for (const p of this.config.interiorProps) {
       const obj = await loadModel(pBase + p.model);
       this.groundAndCenter(obj);
@@ -129,10 +171,13 @@ export class CastleBuilder {
       const pos = this.tileToWorld(p.tile[0], p.tile[1]);
       obj.position.x = pos.x;
       obj.position.z = pos.z;
-      if (p.yOffset) obj.position.y += p.yOffset;
+      obj.position.y += this.surfaceHeightUnder(surfaces, obj) + (p.yOffset || 0);
       this.scene.add(obj);
-      // furniture collides; small tabletop items don't
-      if (!p.yOffset) this.addCollider(obj);
+      if (!p.noCollide) {
+        this.addCollider(obj);
+        obj.updateMatrixWorld(true);
+        surfaces.push(new THREE.Box3().setFromObject(obj));
+      }
     }
 
     return this;

@@ -9,7 +9,17 @@ No build step. Static files only.
 - **GitHub Pages:** push the repo, enable Pages, done.
 - **Locally:** `python3 -m http.server` in the repo root, then open http://localhost:8000. (Opening `index.html` directly from disk won't work — the engine loads `/data` via `fetch`.)
 
-Saves persist in `localStorage` (`closingTime.save.v1`). "New career" in the footer wipes the save.
+Saves persist in `localStorage` (`closingTime.save.v1`) through the shared
+[`assets/js/gvb-save.js`](../../assets/js/README.md). "New career" in the footer wipes the save;
+**Export save / Import save**, also in the footer, write a career to a `.json` file and read one
+back, so it survives a cleared browser or moves between machines. A browser that blocks storage
+falls back to memory for the session and says so.
+
+A save that fails to parse, or parses into something that isn't a career, is refused: you land on
+the brokerage-choice screen with Import still available, rather than booting on it. Everything
+that loads goes through `repairCareer()` in `js/state.js`, which fills in fields added to the game
+since the save was written **and content added to `data/` since** — a listing added last week has
+no entry in a career started last month, and the MLS board reads that entry for every listing.
 
 ## How to play (short version)
 
@@ -23,11 +33,12 @@ Saves persist in `localStorage` (`closingTime.save.v1`). "New career" in the foo
 
 ```
 index.html
+assets/fonts/        the three families, vendored — see that folder's README
 css/style.css
 js/
-  main.js            bootstrap: load content, resume or start
+  main.js            bootstrap: load content, resume or start, mount the save bar
   data.js            content loader (manifest-driven)
-  state.js           game state, save/load, career ladder, RNG
+  state.js           game state, the gvb-save slot (validate/repair), career ladder, RNG
   ui.js              all rendering + interaction flows
   engine/
     calendar.js      day advancement, milestones, deadlines, weekly ticks
@@ -40,7 +51,7 @@ js/
 data/                ALL game content — see schemas below
 tools/
   seed_data.py       regenerates the initial content set (optional; JSON is hand-editable)
-  smoke.mjs          headless engine test: node tools/smoke.mjs
+  smoke.mjs          headless engine + save test: node tools/smoke.mjs
 ```
 
 **The contract:** adding content never requires touching engine code. Add a JSON file under the right `/data` subfolder, list its path in `data/manifest.json`, reload. (GitHub Pages can't list directories, hence the manifest.)
@@ -152,4 +163,13 @@ New events are pure JSON composed from these handlers. New handler = one functio
 - **Feature strings are an implicit vocabulary.** Client `mustFeatures` and `revealOn: feature` triggers match listing `features` verbatim. Check existing listings before inventing new wording.
 - **The value model:** a listing's *ask* is the seller's opinion; `trueValue` = ask × condition adjustment × neighborhood drift. Appraisals anchor between contract price and modeled value. Player-side seller listings use `baseValue` instead of ask.
 - **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Natural next layers: commercial tier at Broker-Track, per-client financing types on the buyer side, and multi-offer escalation wars as a dedicated flow.
-- `tools/smoke.mjs` is a fast regression check: `node tools/smoke.mjs` should end with `SMOKE OK`.
+- **Adding content to a live career is now safe, and wasn't.** `repairCareer()` backfills
+  `listingsState`, `market.nb` and `knowledge` for anything in `data/` the save has never heard
+  of. Before that, adding a listing threw on the MLS board for every existing player, and adding
+  a neighborhood left it permanently out of the weekly market drift. Anything else you add to `S`
+  belongs in `repairCareer()` the same day you add it — especially if arithmetic touches it.
+- `tools/smoke.mjs` is a fast regression check: `node tools/smoke.mjs` should end with
+  `SMOKE OK: <n> passed`, and exits non-zero on any miss. It covers the buyer loop, the seller
+  loop, 40 days of calendar, and the whole save path (corrupt blobs refused, legacy saves
+  repaired, export re-imported, the version stamp). It is blind to the wiring by design —
+  `cd Tools/board-check && npm run games closing-time` drives the real page.

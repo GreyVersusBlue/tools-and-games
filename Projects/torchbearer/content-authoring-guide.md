@@ -2,7 +2,11 @@
 
 **Audience:** a future Claude session (or a careful human) creating JSON content packs for `torchbearer.html`, a single-file Pathfinder 2e adventure engine. Characters are built at **level 3** under Remaster rules. Everything the engine knows — ancestries, backgrounds, classes, feats, spells, items, monsters, companions, and adventures — flows through one loader. The baked-in Player Core content and the baked-in adventure use **exactly the schema described here**, so the source of `torchbearer.html` (constants `CORE_PACK` and `ADVENTURE_PACK`) is always the authoritative worked example. When in doubt, imitate it.
 
-Packs are loaded at runtime via **Load Content JSON** on the title bar. A pack that fails validation is rejected with a list of errors; nothing is partially loaded.
+Packs are loaded at runtime two ways: **The Shelf** on the title screen, which lists everything in `Projects/torchbearer/packs/` and loads it in one click, and **Load Content JSON** on the title bar, for a file on your own disk. A pack that fails validation is rejected with a list of errors; nothing is partially loaded.
+
+To put a pack on the Shelf, drop the `.json` in `packs/` and add an entry to `packs/index.json`. `test/smoke.mjs` asserts the manifest's `id`, `name`, `type` and `description` against the pack's own `pack` block, so the two cannot drift.
+
+> **Audited 2026-07-27 (session 8)** against the engine, field by field. Six documented engine hooks turned out to do nothing, one documented effect was never implemented, and one implemented effect was never documented. Everything below now matches the code; the places where the engine is less capable than it reads are called out rather than quietly left in.
 
 ---
 
@@ -130,13 +134,14 @@ The engine treats slots as a per-rank pool (prepared casting is simplified to "y
 
 | Effect | Shape | What the engine does |
 |---|---|---|
-| `bonus` | `{"bonus":{"target":"speed"\|"hp"\|"initiative","value":n,"type":"status"\|"circumstance"\|"untyped"}}` | Applied numerically at character finalize. A `"vs"` field (e.g. `"vs":"seek"`) demotes it to a displayed note. |
-| `profUp` | `{"profUp":{"target":"perception"\|"save.fort"\|"save.ref"\|"save.will","rank":"E"}}` | Raises proficiency if higher. Optional `"ifSubclass":"warpriest"` substring-matches the chosen subclass id. |
+| `bonus` | `{"bonus":{"target":"speed"\|"hp"\|"initiative","value":n,"type":"status"\|"circumstance"\|"untyped"}}` | Applied numerically at character finalize. A `"vs"` field (e.g. `"vs":"seek"`) demotes it to a displayed note — **but only on `speed`**. A `vs` on `hp` or `initiative` is ignored and the bonus applies flatly. |
+| `profUp` | `{"profUp":{"target":"perception"\|"save.fort"\|"save.ref"\|"save.will","rank":"E"}}` | Raises proficiency if higher. Optional `"ifSubclass":"warpriest"` substring-matches the chosen subclass id. `"target":"save.all"` parses but does nothing — list the three saves separately. |
 | `attackProf` / `armorProf` | `{"attackProf":{"martial":"T"}}` | Merges weapon/armor proficiencies (also unlocks those items in the gear step). |
 | `trainSkill` | `{"trainSkill":"nature"}` or `"choice"` | Fixed training, or +1 skill pick in the builder. |
 | `grantLore` | `{"grantLore":"Bardic Lore","rank":"E"}` | Adds a Lore to the sheet. |
-| `grantCantrip` | `{"grantCantrip":{"tradition":"primal"}}` | +1 cantrip pick. |
-| `grantFeat` | `{"grantFeat":"shield-block"}` or `"class-1"` / `"general"` | Fixed feat by id, or an extra feat slot of that kind. |
+| `grantCantrip` | `{"grantCantrip":{"tradition":"primal"}}` | +1 cantrip pick. The `tradition` is **not** read — the pick comes from the class's own list. |
+| `grantFeat` | `{"grantFeat":"shield-block"}` or `"class-1"` / `"general"` | Fixed feat by id (the named feat's own `effects` are applied, one level deep — a granted feat's `grantFeat` is not followed), or an extra feat slot of that kind. |
+| `sense` | `{"sense":"darkvision"}` | Adds a sense to the sheet. Cosmetic, same as an ancestry's `senses`. |
 | `grantFocusSpell` | `{"grantFocusSpell":"tempest-surge"}` | Adds a focus spell (define it in `spells` with `"focus": true`). |
 | `grantFocusSpellChoice` | `{"grantFocusSpellChoice":["fire-ray","bit-of-luck"]}` | Renders a chooser in the feats step. |
 | `focusPoints` | `{"focusPoints":1}` | Grows the focus pool (cap 3). |
@@ -167,7 +172,7 @@ Resolution model — exactly **one** of these per spell:
 * `"attackRoll": true` — spell attack vs AC; crits double and apply `critPersistent` if present. Optional `"maxTargets": 2` (blazing-bolt style: nearest extra targets are included).
 * `"save": "reflex" | "fortitude" | "will"` — vs caster DC. Add `"basic": true` for basic-save damage. Condition buckets: `onCritFail` / `onFail` / `onSuccess`, each an array of `{"c":"frightened","v":2,"dur":3}` (`dur` in rounds; omit for standard decrement, `99` = whole fight). `persistent: {"formula":"1","type":"bleed"}` applies on failure.
 * `"autoHit": true` — force-barrage style, damage just happens.
-* Healing: put `"heal": "1d8+8"` inside the rank entry. `"healOrHarmUndead": true` makes it damage undead (Fort save) — the heal spell pattern. `"tempHP": n` grants temporary HP.
+* Healing: put `"heal": "1d8+8"` inside the rank entry. `"healOrHarmUndead": true` makes it damage undead (Fort save) — the heal spell pattern. Its mirror is `"livingOnly": true` plus `"healsUndead": true`, which is how core's void spell hurts the living and heals the undead. `"tempHP": n` grants temporary HP.
 * Buffs: top-level `"selfBuff"`, `"allyBuff"`, or `"partyBuff"` — see core `shield`, `guidance`, `runic-weapon`, `bless`, `courageous-anthem`, `blur` (a `"flag":"blurred"` gives a 20% miss chance), `false-life`, `sure-strike` (`"fortune":"next-attack"`), `resist-energy` (`"resistChoice":5`), and `untamed-claw` (`"grantStrike"`).
 * `"utility": true` or `"special": "stabilize"` for the two odd ducks.
 
@@ -179,16 +184,32 @@ Areas: `"area": {"shape":"burst","radius":20}` (pick a point) · `{"shape":"cone
 
 ## 8. Engine hooks (`special` ids the combat/build engine implements)
 
-`reactive-strike` (fighter reaction on enemy movement) · `bravery` · `sneak-attack` · `surprise-attack` · `deny-advantage` · `racket-thief` · `racket-ruffian` · `racket-scoundrel` · `hunt-prey` · `edge-flurry` · `edge-precision` · `edge-outwit` (partial) · `power-attack` · `sudden-charge` · `exacting-strike` · `intimidating-strike` · `brutish-shove` · `hunted-shot` · `twin-takedown` · `twin-feint` · `nimble-dodge` · `mobility` · `crossbow-ace` (partial) · `cackle` · `witchs-armaments` · `cauldron` · `healing-hands` · `deadly-simplicity` · `emblazon` · `battle-medicine` · `natural-medicine` · `intimidating-glare` · `terrified-retreat` · `assurance` · `shield-block` · `toughness` · `diehard` · `halfling-luck` · `reduce-frightened` · `burn-it` · `ignore-armor-speed` · `font-heal` · `cantrip-expansion` (builder: +2 cantrip picks).
+**These 35 are wired to code.** Reusing them on new feats and classes is encouraged (a new class can carry `{"special":"sneak-attack"}` and it will work):
 
-Reusing these on new feats/classes is encouraged (e.g., a new class can carry `{"special":"sneak-attack"}`).
+`reactive-strike` (fighter reaction on enemy movement) · `bravery` · `sneak-attack` · `deny-advantage` · `racket-thief` · `racket-ruffian` · `hunt-prey` · `edge-flurry` · `edge-precision` · `power-attack` · `sudden-charge` · `exacting-strike` · `intimidating-strike` · `brutish-shove` · `hunted-shot` · `twin-takedown` · `twin-feint` · `nimble-dodge` · `cackle` · `witchs-armaments` · `cauldron` · `healing-hands` · `deadly-simplicity` · `emblazon` · `natural-medicine` · `intimidating-glare` · `terrified-retreat` · `shield-block` · `toughness` · `diehard` · `halfling-luck` · `reduce-frightened` · `burn-it` · `ignore-armor-speed` · `font-heal`.
+
+Two more work through a different route: `cantrip-expansion` is read by the builder (+2 cantrip picks, never reaches the sheet's `specials`), and `battle-medicine` is checked against `build.feats` by name rather than through `specials` — so putting `{"special":"battle-medicine"}` on a *class feature* does nothing; only the feat with that id works.
+
+**These are inert.** They appear on core content, they display on the sheet, and no code reads them. Six of them were listed as implemented in earlier versions of this guide, which is worse than not documenting them at all — an author reasonably assumed a feat carrying one would do something.
+
+| Hook | On | Status |
+|---|---|---|
+| `assurance` | Assurance (Athletics), Assurance (Arcana), the Farmhand background | Flavour only. The feats read as a floor on your roll and there is no floor. |
+| `surprise-attack` | Rogue class feature | Flavour only. |
+| `racket-scoundrel` | Rogue's Scoundrel racket | Flavour only — the other two rackets work. |
+| `edge-outwit` | Ranger's Outwit edge | Flavour only — Flurry and Precision work. |
+| `mobility` | Mobility feat | Flavour only. |
+| `crossbow-ace` | Crossbow Ace feat | Flavour only. |
+| `bonus-dmg-vs-large`, `bonus-rest-heal`, `drain-bonded`, `ignore-difficult`, `reach-spell`, `trap-finder`, `widen-spell` | various | Flavour only; never claimed otherwise. |
+
+Unknown ids stay harmless — they render on the sheet and do nothing — so an inert hook is a missing feature, not a bug. But **do not add a `special` to new content expecting behaviour unless it is in the working list above.** Use `note` and the declarative effects instead, and if the behaviour genuinely needs code, say so rather than inventing a hook id (§14 step 5).
 
 ## 9. Items
 
 Weapons: `{"id","name","category":"weapon","prof":"simple|martial|unarmed","hands":1|2,"damage":"1d8","damageType":"slashing","traits":[…],"range":60,"bulk":1,"rogueOk":true}`. Recognized traits: `agile`, `finesse`, `deadly-dX`, `versatile-X`, `propulsive`, `two-hand-dX` (display), `sweep`/`shove`/etc. (display). `rogueOk` marks membership in the "partial martial" list. Every hero's main weapon automatically carries a +1 potency rune (level-3 kit).
 
 Armor: `{"category":"armor","prof":"unarmored|light|medium|heavy","acBonus":n,"dexCap":n,"speedPen":0|5|10}`.
-Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+5"}` — currently potions are the only consumable behavior.
+Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+5"}` — potions are the only consumable behaviour, and **the `heal` field is not read**. The Drink Potion action always rolls a flat `1d8`, whatever the item says, and every potion a hero carries is counted in one pool. Core ships a Lesser Healing Potion advertising `2d8+5` that heals `1d8` in play; The Bell of Barrowmoor hands out two of them. Write the `heal` value you mean, but don't design an encounter around it.
 
 ## 10. Monsters
 
@@ -279,6 +300,16 @@ Prepared casters use per-rank slot pools; divine font is a flat 4; wizard school
 
 1. Read this guide, then skim `CORE_PACK`/`ADVENTURE_PACK` inside `torchbearer.html` for live examples of anything unclear.
 2. Draft the pack. Keep `desc` fields to 1–3 sentences, mechanical text player-facing, and scene paragraphs 2–4 to a scene in the established voice (concrete, wry, a little gothic).
-3. Self-check against the validator's rules: every object has `id` + `name` + its required fields; every `goto`/`success`/`failure` points at a real scene; every `combat` points at a real encounter; every referenced feat/spell/monster id exists (in this pack or core).
+3. Self-check against the validator. It lives in `Projects/torchbearer/js/registry.js` and this is everything it enforces — anything not on this list is your problem, not its:
+   * every object has an `id` and a `name`, plus the required fields listed per collection in §§2–10;
+   * an adventure's `start` names a scene that exists;
+   * every scene has a `title` and a `text` array (the engine calls `sc.text.map` with no guard);
+   * every `goto`, `check.success`, `check.failure`, `victory` and `defeat` names a real scene, or `"END"`;
+   * every `combat` names a real encounter;
+   * every encounter foe names a monster that exists, in this pack **or already loaded**;
+   * every `companionsOffered` id names a companion that exists;
+   * a background's `feat` names a feat that exists.
+
+   It does **not** check spell ids, item ids, `grantFeat` targets, `grantFocusSpell` targets, coordinates inside the map, or whether your numbers are sane. Those are step 4.
 4. Balance pass: compare every number to a core sibling of the same level (feat vs core feat, monster vs `bell-warden`, DC vs the table in §11).
-5. Deliver as a standalone `.json` file. If asked to add new *engine behavior* (a new `special`, condition, or ability type), that requires editing `torchbearer.html` itself — say so rather than inventing schema fields, because unknown fields are silently ignored.
+5. Deliver as a standalone `.json` file in `Projects/torchbearer/packs/`, and add it to `packs/index.json` so it appears on the Shelf. Run `node Projects/torchbearer/test/smoke.mjs` — it validates every pack in that folder against core and checks the manifest matches. If asked to add new *engine behavior* (a new `special`, condition, or ability type), that requires editing `torchbearer.html` itself — say so rather than inventing schema fields, because unknown fields are silently ignored.

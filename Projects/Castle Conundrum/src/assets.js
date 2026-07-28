@@ -13,6 +13,68 @@ const textureLoader = new THREE.TextureLoader(loadingManager);
 
 const modelCache = new Map();
 
+/* ------------------------------------------------------- texture sampling ---
+ * Every texture in this game arrived with anisotropy 1 and LinearFilter
+ * magnification, and that combination is the whole of the "blurry walls" report
+ * that has been open since v6 §8.
+ *
+ * The walls are the Kenney retro-fantasy kit, whose textures are 64x64 pixel art
+ * — not, as v6 guessed, Poly Haven 1k maps. Its glTF samplers declare
+ * `minFilter` and nothing else, and GLTFLoader reads that as
+ * `magFilter = WEBGL_FILTERS[undefined] || LinearFilter`. So a 64 px cobblestone
+ * gets bilinearly smeared across a 4 m wall at roughly 32-64 texels per metre.
+ * No amount of extra source resolution fixes that, because there is no extra
+ * detail in the source to find: the fix is to stop interpolating. NEAREST
+ * magnification renders those texels as the crisp blocks the kit was drawn as.
+ *
+ * Minification stays trilinear. NEAREST-mag plus LINEAR_MIPMAP_LINEAR-min is the
+ * standard pixel-art-in-3D pairing; going nearest on both makes a wall 40 m away
+ * shimmer as the camera moves.
+ *
+ * Size is the only discriminator, so nothing here consults a file path, a
+ * material name or an asset kit. The Poly Haven maps are all 1024 px and the
+ * Quaternius NPCs carry no images at all, so the pixel-art branch can only ever
+ * reach the retro kit. Anisotropy applies to everything — it is what the ground
+ * plane, seen almost edge-on for most of the game, was missing.
+ */
+const PIXEL_ART_MAX_PX = 128;
+const TEXTURE_SLOTS = [
+  'map', 'normalMap', 'aoMap', 'roughnessMap', 'metalnessMap',
+  'emissiveMap', 'specularMap', 'alphaMap',
+];
+let maxAnisotropy = 1;
+
+/**
+ * Read the GPU's anisotropy ceiling once. Call this immediately after the
+ * renderer exists and BEFORE anything loads — textures are tuned as they arrive,
+ * so a texture that lands before this runs keeps anisotropy 1.
+ */
+export function setTextureQuality(renderer) {
+  maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+  return maxAnisotropy;
+}
+
+export function tuneTexture(tex) {
+  if (!tex || tex.userData.__tuned) return tex;
+  tex.userData.__tuned = true;
+  const px = Math.max(tex.image?.width || 0, tex.image?.height || 0);
+  if (px > 0 && px <= PIXEL_ART_MAX_PX) tex.magFilter = THREE.NearestFilter;
+  tex.anisotropy = maxAnisotropy;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Tune every texture on every material under `root`. Idempotent per texture. */
+function tuneMaterials(root) {
+  root.traverse((obj) => {
+    if (!obj.isMesh) return;
+    for (const mat of Array.isArray(obj.material) ? obj.material : [obj.material]) {
+      if (!mat) continue;
+      for (const slot of TEXTURE_SLOTS) tuneTexture(mat[slot]);
+    }
+  });
+}
+
 /**
  * Load a GLTF/GLB. Returns { scene, animations } — scene is always a fresh clone,
  * animations is the (shared, immutable) AnimationClip array from the file.
@@ -34,6 +96,9 @@ export async function loadGLTF(path) {
               obj.receiveShadow = true;
             }
           });
+          // Once per file, on the cached original. SkeletonUtils.clone() shares
+          // materials by reference, so every clone handed out below is tuned too.
+          tuneMaterials(gltf.scene);
           resolve({ scene: gltf.scene, animations: gltf.animations || [] });
         },
         undefined,
@@ -81,6 +146,7 @@ export function loadPBRMaterial({ diffuse, normal, arm }, repeat = 1, fallbackCo
       (tex) => {
         tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
         tex.repeat.set(repeat, repeat);
+        tuneTexture(tex);
         onOk(tex);
         mat.needsUpdate = true;
       },

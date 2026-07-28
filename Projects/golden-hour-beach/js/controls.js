@@ -13,9 +13,20 @@ export class WalkControls {
     this.enabled = false;
     this.yaw = Math.PI * 0.15;   // start facing down the beach toward the sun
     this.pitch = 0;
+
+    // Yaw-then-pitch, matching the order update() composes them in below. The
+    // default XYZ order decomposes the same quaternion into an x/y that are not
+    // pitch and yaw once both are non-zero — look 30° down and `rotation.y` stops
+    // being the direction you are facing. Nothing on screen changes (the
+    // quaternion is identical either way); what changes is that anything reading
+    // `camera.rotation` off this game gets the truth. `drive.mjs`'s camState does
+    // exactly that, and it was reading facing 0.54 while the camera pointed at
+    // 2.60 — every aim after the first landed somewhere nobody asked for.
+    camera.rotation.order = 'YXZ';
     this.pos = new THREE.Vector3(0, 0, 0);
     this.keys = {};
     this.walkSpeed = 2.1;        // m/s — an unhurried stroll
+    this.keyLookSpeed = 1.15;    // rad/s on the arrow keys — a slow pan, not a flick
     this.eyeHeight = 1.62;
     this.bobPhase = 0;
     this.bobAmount = 0;
@@ -31,7 +42,13 @@ export class WalkControls {
   _bindEvents() {
     const dom = this.dom;
 
-    document.addEventListener('keydown', e => { this.keys[e.code] = true; });
+    const LOOK_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    document.addEventListener('keydown', e => {
+      this.keys[e.code] = true;
+      // Arrows scroll by default, and this page is only unscrollable because
+      // style.css sets overflow:hidden on body. Don't rely on that from here.
+      if (LOOK_KEYS.includes(e.code)) e.preventDefault();
+    });
     document.addEventListener('keyup',   e => { this.keys[e.code] = false; });
 
     document.addEventListener('mousemove', e => {
@@ -77,11 +94,26 @@ export class WalkControls {
 
     // Movement input in camera-relative space
     let fwd = 0, strafe = 0;
-    if (this.keys['KeyW'] || this.keys['ArrowUp'])    fwd += 1;
-    if (this.keys['KeyS'] || this.keys['ArrowDown'])  fwd -= 1;
-    if (this.keys['KeyA'] || this.keys['ArrowLeft'])  strafe -= 1;
-    if (this.keys['KeyD'] || this.keys['ArrowRight']) strafe += 1;
+    if (this.keys['KeyW']) fwd += 1;
+    if (this.keys['KeyS']) fwd -= 1;
+    if (this.keys['KeyA']) strafe -= 1;
+    if (this.keys['KeyD']) strafe += 1;
     if (this.touchWalking) fwd += 1;
+
+    // Arrows look, they don't walk.
+    //
+    // They used to be a second copy of WASD, which made them the least useful
+    // keys on the board — and it left mouse-look as the only way to turn, so
+    // losing pointer lock (Esc, alt-tab, anything that takes focus) left you able
+    // to walk and unable to face anywhere. Nothing in this piece needs aiming, so
+    // nothing in it should need the mouse captured. With these bound, the whole
+    // beach is reachable from the keyboard alone.
+    const lookRate = this.keyLookSpeed * dt;
+    if (this.keys['ArrowLeft'])  this.yaw += lookRate;
+    if (this.keys['ArrowRight']) this.yaw -= lookRate;
+    if (this.keys['ArrowUp'])    this.pitch += lookRate * 0.7;
+    if (this.keys['ArrowDown'])  this.pitch -= lookRate * 0.7;
+    this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch));
 
     const moving = (fwd !== 0 || strafe !== 0);
     const len = Math.hypot(fwd, strafe) || 1;

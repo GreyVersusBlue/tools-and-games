@@ -2,11 +2,12 @@
 // Entry point: wires the scene, simulation, and interactions together.
 
 import * as THREE from 'three';
-import { state, initSystems, save, load } from './state.js';
+import { state, initSystems, save, load, aphelionSlot } from './state.js';
 import { buildWorld, updatePlantMesh, addCurioMesh } from './ship.js';
 import { PlayerControls } from './controls.js';
 import * as UI from './ui.js';
 import { initAudio, sfx, setHumLevel } from './audio.js';
+import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 
 const MINUTES_PER_SECOND = 2;          // 1 real second = 2 in-game minutes
 const app = document.getElementById('app');
@@ -45,6 +46,29 @@ state.curios.forEach((_, i) => addCurioMesh(refs, i));
 unlockLogsForDay(false);
 UI.renderLogbook(logData);
 UI.updateHUD();
+
+// Save bar lives in the logbook (TAB), reachable any time play is underway —
+// not stuck behind a reload the way the Fourth Quarter's first cut was
+// (gvb-site-handoff-v7.md §9).
+mountSaveBar(document.getElementById('savebar'), aphelionSlot(), {
+  buttons: ['export', 'import', 'reset'],
+  getState: () => { const { mode, ...rest } = state; return rest; },
+  setState(data) {
+    Object.assign(state, data, { mode: 'interior' });
+    initSystems(systemDefs);
+    activeRepair = null;
+    scanning = null;
+    if (controls.mode === 'eva') controls.setEVA(false);
+    controls.pos.set(0, 1.6, 2);
+    controls.yaw = 0; controls.pitch = 0;
+    updatePlantMesh(refs, state.plant.stage, state.plant.water < 25);
+    while (refs.curioShelf.children.length) refs.curioShelf.remove(refs.curioShelf.children[0]);
+    state.curios.forEach((_, i) => addCurioMesh(refs, i));
+    UI.renderLogbook(logData);
+    UI.updateHUD();
+  },
+  onMessage: text => UI.toast(text, 'SHIP'),
+});
 
 const lowWarned = {};            // systemId -> warned this dip
 let activeRepair = null;         // { id, step }

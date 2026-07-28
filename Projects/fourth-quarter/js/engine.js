@@ -54,15 +54,23 @@ export class NightEngine {
    *  drinkMult    — bartender prep-speed multiplier; 0.55 default = servers cover the taps, badly
    */
   constructor(opts = {}) {
-    this.crowdTarget = opts.crowdTarget ?? 46;
+    // `?? default` is not enough for the numbers: it only catches null and
+    // undefined, and every one of these arrives as campaign arithmetic. A NaN
+    // crowdTarget — which is what `forecast()` returns if the campaign's day is
+    // ever off the calendar — makes `spawnDebt` NaN, so `while (spawnDebt >= 1)`
+    // is never true and the whole eight-hour night runs with nobody in it and
+    // nothing logged. Falling back to the default plays a night instead.
+    this.crowdTarget = fin(opts.crowdTarget, 46);
     this.gameNight   = opts.gameNight ?? true;
-    this.hourLenSec  = opts.hourLenSec ?? 45;
-    this.seats       = opts.seats ?? 30;
+    this.hourLenSec  = Math.max(1, fin(opts.hourLenSec, 45));
+    this.seats       = Math.max(1, Math.floor(fin(opts.seats, 30)));
     this.stock       = opts.stock ?? null;
     this.promo       = opts.promo ?? "none";
-    this.foodMult    = opts.foodMult ?? 1;
-    this.drinkMult   = opts.drinkMult ?? 1;
-    this.beerMult    = opts.beerMult ?? 1;
+    // These three are roleMult()/beerMult() output. foodMult 0 is meaningful —
+    // it's "no cook on shift, kitchen's closed" — so the floor is 0, not 1.
+    this.foodMult    = Math.max(0, fin(opts.foodMult, 1));
+    this.drinkMult   = Math.max(0, fin(opts.drinkMult, 1));
+    this.beerMult    = Math.max(0, fin(opts.beerMult, 1));
 
     this.t = 0;                 // sim seconds elapsed
     this.hour = 0;              // 0..8
@@ -261,3 +269,7 @@ export class NightEngine {
 }
 
 export function clamp(v, lo = 0, hi = 1) { return Math.max(lo, Math.min(hi, v)); }
+
+/** A finite number, or the fallback. `campaign.js` has the same helper and the
+ *  same reason for it — see the note above `repairCampaign()`. */
+export function fin(v, fallback) { return Number.isFinite(v) ? v : fallback; }

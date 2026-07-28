@@ -76,11 +76,27 @@ account's other GitHub Pages projects.
   routes a transient flash message to whichever surface the player was
   acting on — the grounds panel while a build/move is pending, the tab panel
   otherwise, never both.
+
+  **As of Stage 21 the save is written at the top of `render()`, not the
+  bottom.** It used to sit below the early return that the report, weekend-end,
+  victory and game-over phases take, so the game never wrote a save while a
+  report was on screen: reloading on a day's takings rewound to before the
+  gates opened. That read as forgiving, but `runDay()` seeds off `Date.now()`,
+  so the replayed day came back with *different* numbers. Measured across 400
+  seeds on a four-plot grounds, one day's net ran −$301 to +$1,265 and its
+  reputation gain 0 to +5 — so reloading was worth about three times the median
+  day's profit, and could reach the win condition's reputation floor in a
+  quarter of the days it should take. **A day is now final once the gates
+  close**, in all four of those phases. The trade is deliberate: the same change
+  also stops an accidental reload throwing away a day the player already earned,
+  and it makes bankruptcy a real loss rather than something you reload past.
 - `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test`)
 - `package.json` / `package-lock.json` / `.gitignore` — dev-only. They exist
   solely so `npm test` can install jsdom; nothing in them runs on the static
   GitHub Pages deploy, and nothing in `index.html` imports from them. Keep
-  them: deleting them takes the 675-check suite with them.
+  them: deleting them takes the 709-check suite with them.
+- `assets/fonts/` — the three vendored type families, woff2 only. See the
+  README in that folder for source, licence, and which weights are here and why.
 - `HANDOFF.md` — status, what's next, and retro notes for whoever (or whatever model) picks this up next
 
 ## Running the tests
@@ -90,7 +106,7 @@ npm install
 npm test
 ```
 
-675 checks: pure engine/state logic (RNG determinism, terrain/grid data
+709 checks: pure engine/state logic (RNG determinism, terrain/grid data
 integrity, buildable-structure catalog integrity, terrain-driven cost/
 capacity quoting, stage-adjacency effects on sightline/traffic, scheduling
 conflicts, day-simulation invariants, attendance responding sensibly to
@@ -217,6 +233,19 @@ stage as the day heats up); and DOM checks that the map stays visible from
 the Office tab, lives in its own `#grounds` section outside the tab panel,
 that the Office renders the price curve, and that the HUD carries the
 grounds-draw readout.
+And, as of Stage 21, Section 1h — the save-matches-the-screen block. It boots
+`main.js` against a shared in-memory storage, clicks through a real day, and
+asserts the save on disk says `report` while a report is on screen and carries
+the same attendance the ticket stub shows; then boots a *second* JSDOM against
+that same storage (which is what a reload is) and asserts it comes back to the
+same report, with the same cash, with no Open the Gates button, and without
+duplicating the day in history. The weekend-end phase gets the same
+play-then-reload treatment, and a separate block drives a bankrupt report
+through to `gameOver` and confirms that phase reaches the save rather than
+leaving a stale report on disk — plus that Start a New Faire persists, so a
+reload can't resurrect a folded run. Every assertion in the section fails if
+`saveState()` moves back below the early return in `render()`; that is how it
+was checked.
 
 **Plus a new class of test — Section 1g, six assertions tagged
 `SIGNIFICANCE:`.** Everything else in this suite asserts that a mechanic is

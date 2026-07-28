@@ -151,6 +151,10 @@ export const ROLES = {
 const ROLE_KEYS = Object.keys(ROLES);
 
 function speedForSkill(skill) { return Math.round((1.6 + skill * 0.18) * 100) / 100; } // 1.78–2.5 m/s
+/** What a skill level is worth per night. `jitter` is what makes two applicants
+ *  of the same skill ask for different money; repairCampaign() fills a missing
+ *  wage from the un-jittered figure. One formula so the two can't drift. */
+function wageForSkill(skill, jitter = 0) { return Math.round((40 + skill * 22 + jitter) / 5) * 5; }
 
 export function mkStaff(role, skill, wage, name) {
   const s = { name, role, skill, wage };
@@ -214,7 +218,7 @@ export function rollApplicants(c, rand = Math.random) {
     used.add(name);
     const role = ROLE_KEYS[Math.floor(rand() * ROLE_KEYS.length)];
     const skill = 1 + Math.floor(rand() * 5); // 1-5
-    const wage = Math.round((40 + skill * 22 + Math.floor(rand() * 16) - 6) / 5) * 5;
+    const wage = wageForSkill(skill, Math.floor(rand() * 16) - 6);
     c.applicants.push(mkStaff(role, skill, wage, name));
   }
 }
@@ -289,6 +293,17 @@ function validCampaign(c) {
 }
 
 /**
+ * A finite number, or the fallback.
+ *
+ * One helper for undefined, null, a string, NaN and Infinity, because every one of
+ * those reaches this file. `null` in particular is not a hypothetical:
+ * `JSON.stringify` writes NaN and Infinity as `null`, so any number that went bad
+ * in memory before a save comes back through this door looking like an absent
+ * field. And `typeof NaN === "number"`, so a plain typeof check waves it through.
+ */
+function num(v, fallback) { return Number.isFinite(v) ? v : fallback; }
+
+/**
  * Fill in what a save can be missing and clamp what it can get wrong.
  *
  * This is the old loadCampaign()'s body, handed to the slot as `repair` so it
@@ -297,24 +312,83 @@ function validCampaign(c) {
  * the campaign at some point since the first release, which is why a save with
  * no `upgrades` array or no `venue` is a normal thing to meet and not a
  * corrupt file.
+ *
+ * Session 8 went through the shape field by field instead of waiting for the next
+ * one to be found by accident, the way `speed` was. The rule that came out of it:
+ * **every field this game does arithmetic on gets a finite fallback here, and
+ * every field it calls a method on gets a type check.** `validate` only guards
+ * `day`, `stock` and `staff`, so everything else arrives unexamined. What that
+ * audit turned up, each of which is asserted in `test/smoke-campaign.mjs`:
+ *
+ * - **`cash` missing was two bugs, not one.** `placeOrder()` gates on
+ *   `cost > c.cash`, and any comparison against `undefined` is false — so the
+ *   distributor would hand over 100,000 beers for free. Then the till went NaN
+ *   and stayed NaN.
+ * - **`day` below 1, or not a whole number, emptied the room in silence.**
+ *   `weekday()` indexes `DAYS[(day - 1) % 7]`; day 0 gives `DAYS[-1]` and day 2.5
+ *   gives `DAYS[1.5]`, both `undefined`. `BASE_CROWD[undefined]` is `undefined`,
+ *   `forecast()` is NaN, and `NightEngine`'s `crowdTarget ?? 46` keeps the NaN
+ *   because `??` only catches null and undefined. The result is a full eight-hour
+ *   night, six real minutes, in which not one patron ever walks in and nothing is
+ *   logged. This is the worst shape of this bug in the file.
+ * - **A `stats` object could exist without its numbers.** The old check was
+ *   `if (!c.stats)`, so `{ nights: 3 }` — a save from before `bestNight` and
+ *   `lifetimeNet` were added — passed through, and `settleNight()` turned both
+ *   into NaN on the first close, permanently.
+ * - **A staffer with no `wage` poisoned the books.** `wageBill()` sums
+ *   `effWage()`, `settleNight()` subtracts that from the take, and the NaN lands
+ *   in `cash` and `stats.lifetimeNet` for good. Applicants need it too: a hire
+ *   moves one onto the payroll unchanged.
+ * - **A staffer with no `name` crashed the night outright.** `beginNight()` does
+ *   `s.name.split(" ")[0]` for every floor role. Not a silent one, but the only
+ *   hard throw in the audit, and a nameless staffer can't be fired either since
+ *   `fire()` matches on name.
+ * - **`skill` was only checked for falsiness,** so `"high"` survived and made
+ *   `roleMult()` NaN — which is prep speed for that whole side of the ticket.
+ * - **`upgrades` was only checked for falsiness,** so an object there made
+ *   `owned()` throw on `.includes` from the first frame.
+ *
+ * Keep this idempotent: the slot runs it on every load, including saves it wrote
+ * itself.
  */
 export function repairCampaign(c) {
-  if (!c.applicants) c.applicants = [];
-  if (!c.upgrades) c.upgrades = [];
-  if (!c.stats) c.stats = { nights: 0, bestNight: 0, lifetimeNet: 0 };
+  // Collections first: the loops below iterate them.
+  if (!Array.isArray(c.applicants)) c.applicants = [];
+  if (!Array.isArray(c.upgrades)) c.upgrades = [];
+  if (!c.stock || typeof c.stock !== "object") c.stock = {};
+
+  c.day = Math.max(1, Math.round(num(c.day, 1)));
+  c.cash = num(c.cash, 0);
+
+  // Spread first so a stat added later survives a load written by an older build.
+  const st = (c.stats && typeof c.stats === "object") ? c.stats : {};
+  c.stats = {
+    ...st,
+    nights: Math.max(0, Math.round(num(st.nights, 0))),
+    bestNight: Math.max(0, num(st.bestNight, 0)),
+    lifetimeNet: num(st.lifetimeNet, 0),
+  };
+
   if (!(c.venue in VENUES)) c.venue = "cornerTap";
-  if (typeof c.darkNightsLeft !== "number") c.darkNightsLeft = 0;
+  c.darkNightsLeft = Math.max(0, Math.round(num(c.darkNightsLeft, 0)));
   if (!(c.promoTonight in PROMOS)) c.promoTonight = "none";
+
+  let unnamed = 0;
   for (const p of [...c.staff, ...c.applicants]) {
-    if (!p.role) p.role = "server";
-    if (!p.skill) p.skill = 2;
+    // Numbered rather than invented: two nameless staffers would otherwise share
+    // a name, and hire()/fire() match on it. It also reads as what it is in the
+    // crew panel, which is what you want when someone reports it.
+    if (typeof p.name !== "string" || !p.name.trim()) p.name = `Staffer ${++unnamed}`;
+    if (!(p.role in ROLES)) p.role = "server";
+    p.skill = Math.min(5, Math.max(1, Math.round(num(p.skill, 2))));
+    p.wage = Math.max(0, Math.round(num(p.wage, wageForSkill(p.skill))));
     // A save from before roles existed has no walking speed either, and
     // beginNight() multiplies that straight into a Server's metres per second —
     // an undefined there makes a floor NPC with a NaN speed that never arrives
     // anywhere. The old loader filled in role and skill but not this.
-    if (p.role !== "cook" && typeof p.speed !== "number") p.speed = speedForSkill(p.skill);
+    if (p.role !== "cook") p.speed = num(p.speed, speedForSkill(p.skill));
   }
-  for (const id in MENU) if (typeof c.stock[id] !== "number") c.stock[id] = 0;
+  for (const id in MENU) c.stock[id] = Math.max(0, num(c.stock[id], 0));
   return c;
 }
 

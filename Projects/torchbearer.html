@@ -67,6 +67,16 @@ button{font-family:inherit;cursor:pointer}
   font-family:var(--serif-display);
 }
 .tb-btn:hover{background:var(--line);color:var(--brass-hi)}
+.tb-btn:focus-visible,.title-btn:focus-visible,.nav-btn:focus-visible,.choice-btn:focus-visible,.opt-card:focus-visible{outline:2px solid var(--brass-hi);outline-offset:2px}
+/* gvb-save's bar, dressed as a pair of tb-btns. The module reads none of this;
+   it exposes the four custom properties precisely so a host page can. */
+#save-bar{
+  --gvb-btn-bg:var(--raised); --gvb-btn-fg:var(--parch);
+  --gvb-btn-border:var(--line); --gvb-btn-radius:3px;
+}
+#save-bar button{font-family:var(--serif-display);font-size:12.5px;font-variant:small-caps;letter-spacing:.05em;padding:5px 12px}
+#save-bar button:hover{background:var(--line);color:var(--brass-hi);filter:none}
+#save-bar .gvb-save-msg{color:var(--brass-hi);font-style:italic}
 #main{flex:1;display:flex;min-height:0}
 
 /* ============ GENERIC PANELS ============ */
@@ -110,6 +120,13 @@ button{font-family:inherit;cursor:pointer}
 .title-btn.primary:hover{border-color:var(--ember-hi);color:var(--ember-hi);box-shadow:0 0 14px rgba(165,64,45,.35)}
 #pack-list{font-size:12px;color:var(--faded);max-width:480px}
 #pack-list .pk{display:inline-block;margin:2px 4px;padding:2px 8px;border:1px solid var(--line);border-radius:10px;background:var(--leather)}
+#library{width:min(680px,100%);text-align:left;margin-top:4px}
+#library h2{font-size:19px;text-align:center;margin-bottom:2px}
+#library > .small{text-align:center;margin-bottom:10px}
+#library .opt-card{cursor:pointer}
+#library .opt-card[aria-disabled="true"]{cursor:default;opacity:.55}
+#library .opt-card[aria-disabled="true"]:hover{border-color:var(--line);background:var(--leather2)}
+#library .shelf-state{margin-top:7px;font-size:11px;font-family:var(--mono);color:var(--brass-hi);letter-spacing:.04em}
 
 /* ---- Builder ---- */
 #screen-builder{flex-direction:row}
@@ -381,6 +398,43 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
   #game-right{display:none}
   #builder-sheet{display:none}
 }
+/* Phones. The three-column play screen and the two-column builder both put a
+   fixed 200–250px rail beside the thing you are actually reading, which at
+   375px leaves the scene text about 125px of usable width. Below 700 the rails
+   turn into horizontal strips above the content instead. The combat grid keeps
+   its 46px cells and scrolls inside #grid-scroll — shrinking the cells makes
+   the tokens unreadable and the tap targets illegal. */
+@media (max-width:700px){
+  #topbar{flex-wrap:wrap;gap:8px 10px;padding:7px 10px}
+  #topbar .brand{font-size:17px}
+  #topbar .sub{display:none}
+  #topbar .spacer{flex-basis:100%;height:0}
+  #screen-title{gap:12px;padding:16px 12px}
+  #screen-title .sigil{width:88px;height:88px}
+  #screen-title h1{font-size:32px}
+  .title-menu{width:min(320px,100%)}
+  #screen-game{flex-direction:column}
+  #game-left{
+    flex:0 0 auto;max-height:33vh;overflow-y:auto;
+    border-right:none;border-bottom:2px solid var(--line);
+    flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:9px;
+  }
+  #game-left .pc-card{flex:0 0 200px}
+  #screen-builder{flex-direction:column}
+  #builder-steps{
+    flex:0 0 auto;flex-direction:row;overflow-x:auto;overflow-y:hidden;padding:0;
+    border-right:none;border-bottom:2px solid var(--line);
+  }
+  .bstep{border-left:none;border-bottom:3px solid transparent;white-space:nowrap;padding:8px 12px}
+  .bstep.current{border-left-color:transparent;border-bottom-color:var(--brass)}
+  #builder-body{padding:14px 12px}
+  #builder-footer{padding:9px 12px}
+  .card-grid{grid-template-columns:1fr}
+  #combat-top{flex-wrap:wrap}
+  #scene-stage{padding:16px 12px}
+  .scene-title{font-size:25px}
+  .scene-text{font-size:16px}
+}
 </style>
 </head>
 <body>
@@ -390,8 +444,15 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
     <div class="sub">a Pathfinder 2e adventure engine</div>
     <div class="spacer"></div>
     <button class="tb-btn" id="btn-load-content">Load Content JSON</button>
-    <button class="tb-btn" id="btn-export-save">Export Save</button>
-    <button class="tb-btn" id="btn-import-save">Import Save</button>
+    <!-- Export is hand-rolled because a hero's file has been named after the hero
+         since this game shipped and mountSaveBar has no filename hook (see the
+         Shared-file request in the session notes). It still writes through
+         slot.exportToFile, so the bytes are the standard gvb-save envelope.
+         Import is the module's. Both sit in the topbar, which is on screen during
+         play — so exporting mid-adventure costs no page reload, which is the open
+         item v7 §9 raised against The Fourth Quarter. -->
+    <button class="tb-btn" id="btn-export-save">Export save</button>
+    <div id="save-bar"></div>
     <button class="tb-btn" id="btn-to-title">Title</button>
   </div>
   <div id="main">
@@ -415,6 +476,11 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
         <button class="title-btn" id="btn-view-hero" disabled>📜 View Hero Sheet</button>
       </div>
       <div id="pack-list"></div>
+      <section id="library" hidden aria-labelledby="library-head">
+        <h2 id="library-head">The Shelf</h2>
+        <p class="small">Adventures and expansions bundled with this page. One click loads them.</p>
+        <div class="card-grid" id="library-list"></div>
+      </section>
     </div>
 
     <div class="screen" id="screen-builder">
@@ -434,18 +500,36 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
       <div id="game-left"></div>
       <div id="game-center"></div>
       <div id="game-right">
-        <div id="chronicle-head"><h2>📜 The Chronicle</h2></div>
-        <div id="chronicle"></div>
+        <div id="chronicle-head"><h2 id="chronicle-head-h">📜 The Chronicle</h2></div>
+        <!-- role="log" carries aria-live="polite" + aria-relevant="additions", which is
+             exactly right here: every roll, hit and narration a sighted player reads is
+             appended, and a screen reader hears each new entry once without the whole
+             log being re-announced. -->
+        <div id="chronicle" role="log" aria-labelledby="chronicle-head-h" tabindex="0"></div>
       </div>
     </div>
 
   </div>
 </div>
-<div id="modal-veil"><div id="modal"><div id="modal-title"></div><div id="modal-body"></div><div id="modal-foot"></div></div></div>
-<div id="dice-overlay"><div class="big-d20" id="big-d20-num">20</div></div>
-<div id="toast"></div>
-<input type="file" id="file-input" accept=".json,.torchsave" style="display:none">
-<script>
+<div id="modal-veil"><div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title"></h2><div id="modal-body"></div><div id="modal-foot"></div></div></div>
+<!-- The big d20 restates the number the Chronicle just logged, so it is decoration. -->
+<div id="dice-overlay" aria-hidden="true"><div class="big-d20" id="big-d20-num">20</div></div>
+<div id="toast" role="status"></div>
+<!-- Content packs only. Save files come in through gvb-save's own picker. -->
+<input type="file" id="file-input" accept="application/json,.json" style="display:none">
+<script type="module">
+/* Four imports, and the rest of this file is the same single-file engine it has
+   always been. What moved out did so because it needed to be testable under
+   plain Node — registry.js holds the content contract, save.js the state
+   contract, and torchbearer/test/smoke.mjs drives both — or because it belongs
+   to the whole site. CORE_PACK and ADVENTURE_PACK stayed inline on purpose:
+   the page still boots with zero network requests, and the bundled library in
+   torchbearer/packs/ is the only thing that fetches anything. */
+import { mountSaveBar } from "../assets/js/gvb-save.js";
+import { Registry } from "./torchbearer/js/registry.js";
+import { createTorchSlot } from "./torchbearer/js/save.js";
+import { fetchLibrary, fetchPack } from "./torchbearer/js/library.js";
+
 /* ================= CORE CONTENT PACK =================
    This object uses the exact same schema as external JSON
    content packs. See the Content Authoring Guide.        */
@@ -1134,58 +1218,9 @@ const SKILLS = {
 };
 const CHAR_LEVEL = 3;
 
-/* ---------- Content Registry ---------- */
-const Registry = {
-  packs:[], ancestries:{}, backgrounds:{}, classes:{}, feats:{}, spells:{}, items:{},
-  monsters:{}, companions:{}, adventures:{},
-  loadPack(pack){
-    const errs = Validator.validate(pack);
-    if(errs.length) throw new Error("Content pack rejected:\n• "+errs.join("\n• "));
-    const put=(map,arr)=>{ (arr||[]).forEach(o=>{ map[o.id]=o; }); };
-    put(this.ancestries,pack.ancestries); put(this.backgrounds,pack.backgrounds);
-    put(this.classes,pack.classes); put(this.feats,pack.feats); put(this.spells,pack.spells);
-    put(this.items,pack.items); put(this.monsters,pack.monsters); put(this.companions,pack.companions);
-    put(this.adventures,pack.adventures);
-    this.packs.push(pack.pack);
-    return pack.pack;
-  },
-  list(map,filter){ return Object.values(map).filter(filter||(()=>true)); }
-};
-
-/* ---------- Pack validation (friendly errors for JSON authors) ---------- */
-const Validator = {
-  validate(pack){
-    const errs=[];
-    if(!pack || typeof pack!=="object"){ return ["Top level must be a JSON object."]; }
-    if(!pack.pack || !pack.pack.id || !pack.pack.name) errs.push('Missing "pack" metadata: needs at least {"id","name","type"}.');
-    const checkIds=(arr,label,req)=>{ (arr||[]).forEach((o,i)=>{
-      if(!o.id) errs.push(`${label}[${i}] is missing an "id".`);
-      if(!o.name) errs.push(`${label}[${i}] (${o.id||"?"}) is missing a "name".`);
-      (req||[]).forEach(k=>{ if(o[k]===undefined) errs.push(`${label} "${o.id||i}" is missing required field "${k}".`); });
-    });};
-    checkIds(pack.ancestries,"ancestries",["hp","speed","boosts","heritages"]);
-    checkIds(pack.backgrounds,"backgrounds",["boosts","skills"]);
-    checkIds(pack.classes,"classes",["hp","keyAbility","perception","saves","attacks","defenses","skillCount"]);
-    checkIds(pack.feats,"feats",["type","level"]);
-    checkIds(pack.spells,"spells",["rank","traditions","actions","rankEffects"]);
-    checkIds(pack.items,"items",["category"]);
-    checkIds(pack.monsters,"monsters",["ac","hp","attacks","saves"]);
-    checkIds(pack.adventures,"adventures",["start","scenes"]);
-    (pack.adventures||[]).forEach(a=>{
-      Object.entries(a.scenes||{}).forEach(([sid,sc])=>{
-        (sc.choices||[]).forEach((c,i)=>{
-          const dest = c.goto || (c.check&&(c.check.success||c.check.failure)) || c.combat;
-          if(!dest && !c.combat) errs.push(`Adventure "${a.id}" scene "${sid}" choice ${i} has no destination (goto/check/combat).`);
-          if(c.goto && c.goto!=="END" && !a.scenes[c.goto]) errs.push(`Adventure "${a.id}": scene "${sid}" points to missing scene "${c.goto}".`);
-          if(c.check){ ["success","failure"].forEach(k=>{ if(c.check[k] && !a.scenes[c.check[k]]) errs.push(`Adventure "${a.id}": check in "${sid}" points to missing scene "${c.check[k]}".`); }); }
-          if(c.combat && a.encounters && !a.encounters[c.combat] && !(pack.adventures.some(x=>x.encounters&&x.encounters[c.combat]))) errs.push(`Adventure "${a.id}": scene "${sid}" references missing encounter "${c.combat}".`);
-        });
-      });
-    });
-    return errs;
-  }
-};
-
+/* Registry + Validator live in torchbearer/js/registry.js — imported at the top.
+   They are the content contract, and test/smoke.mjs runs both bundled packs and a
+   set of deliberately broken ones through the validator under Node. */
 /* ---------- Dice ---------- */
 const Dice = {
   d(n){ return 1+Math.floor(Math.random()*n); },
@@ -1229,6 +1264,22 @@ function activeEffects(build){
   if(sub) push(sub.name,sub.effects);
   Object.values(build.feats).flat().filter(Boolean).forEach(fid=>{
     const f=Registry.feats[fid]; if(f) push(f.name,f.effects);
+  });
+  /* `{"grantFeat":"shield-block"}` is documented in §6 of the authoring guide as
+     "fixed feat by id", and three pieces of core content use it that way: the
+     Fighter's level-1 Shield Block feature and both Warpriest Cleric doctrines.
+     Nothing read it. The only handling anywhere was the Builder counting
+     "class-1" and "general" as extra feat *slots*, so a Fighter with a raised
+     steel shield never blocked a single hit — Combat gates the reaction on
+     `specials.includes("shield-block")`, and that special only ever arrived if
+     the player happened to spend a general feat on the same thing the class
+     sheet already promised them. Resolving it here fixes all three.
+     `out.filter` snapshots the array, so a granted feat's own grants are not
+     expanded: one level deep, no cycles. */
+  const granted=new Set();
+  out.filter(x=>typeof x.e.grantFeat==="string").forEach(({src,e})=>{
+    const f=Registry.feats[e.grantFeat];
+    if(f && !granted.has(f.id)){ granted.add(f.id); push(`${src} → ${f.name}`, f.effects); }
   });
   return out;
 }
@@ -1451,6 +1502,10 @@ const Builder = {
     const body=document.getElementById("builder-body");
     body.innerHTML=this["ui_"+cur.id]();
     this.bind(cur.id);
+    makeCardsFocusable(body);
+    // The rail is a set of clickable divs too, and it is the only way back to
+    // an earlier step once the footer's Back button has been used.
+    rail.querySelectorAll(".bstep:not(.locked)").forEach(el=>{ el.tabIndex=0; el.setAttribute("role","button"); });
     // footer
     document.getElementById("bld-back").disabled=this.step===0;
     const nextBtn=document.getElementById("bld-next");
@@ -1835,6 +1890,28 @@ function sheetHTML(ch,full){
     if(ch.notes.length) h+=`<div class="sheet-block-title">Notes</div><div class="small">${ch.notes.map(esc).join("<br>")}</div>`;
   }
   return h;
+}
+/**
+ * Make every `.opt-card` in a freshly rendered container reachable by keyboard.
+ *
+ * Ancestry, heritage, background, class, subclass, feats, spells, gear,
+ * companions and adventures are all picked with a bare `<div class="opt-card">`
+ * carrying an `onclick`, built by six different template strings. None of them
+ * was focusable, so the whole character builder — nine steps of it — could not
+ * be operated without a mouse. Upgrading them here rather than in the six
+ * templates means a seventh cannot forget. `App.init` installs one delegated
+ * keydown handler that turns Enter and Space into the click.
+ */
+function makeCardsFocusable(root){
+  if(!root) return;
+  root.querySelectorAll(".opt-card").forEach(el=>{
+    const off=el.classList.contains("disabled")||el.getAttribute("aria-disabled")==="true";
+    el.setAttribute("role","button");
+    el.tabIndex=off?-1:0;
+    if(off) el.setAttribute("aria-disabled","true");
+    // The chosen card is marked with a CSS ::after glyph, which is not text.
+    el.setAttribute("aria-pressed",el.classList.contains("selected")?"true":"false");
+  });
 }
 function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function cap(s){ return s? s.charAt(0).toUpperCase()+s.slice(1):""; }
@@ -2700,22 +2777,75 @@ const Combat = {
    ============================================================ */
 const App = {
   hero:null, heroCb:null, companions:[], adv:null, sceneId:null, flags:{}, chronicle:[],
-  fileMode:null, dailyLuckUsed:false,
+  dailyLuckUsed:false, slot:null, library:[],
 
   init(){
     try{ Registry.loadPack(CORE_PACK); Registry.loadPack(ADVENTURE_PACK); }
     catch(e){ alert(e.message); }
+    /* No argument: gvb-save does its own localStorage probe and falls back to a
+       memory store. Reading the property throws outright in a browser set to
+       block storage, which the old `try{localStorage.getItem(...)}catch{}` in
+       this function was quietly swallowing — leaving Resume disabled forever
+       with no explanation. */
+    this.slot=createTorchSlot();
     document.getElementById("btn-new-hero").onclick=()=>Builder.open();
     document.getElementById("btn-begin-adv").onclick=()=>this.chooseAdventure();
     document.getElementById("btn-view-hero").onclick=()=>this.modal("Hero Sheet",`<div class="parchment" style="padding:16px 20px">${sheetHTML(this.hero,true)}</div>`,[{label:"Close"}]);
     document.getElementById("btn-resume").onclick=()=>this.resume();
     document.getElementById("btn-to-title").onclick=()=>this.toTitle();
-    document.getElementById("btn-load-content").onclick=()=>{ this.fileMode="content"; document.getElementById("file-input").click(); };
+    document.getElementById("btn-load-content").onclick=()=>document.getElementById("file-input").click();
     document.getElementById("btn-export-save").onclick=()=>this.exportSave();
-    document.getElementById("btn-import-save").onclick=()=>{ this.fileMode="save"; document.getElementById("file-input").click(); };
     document.getElementById("file-input").onchange=(e)=>this.fileChosen(e);
+    document.addEventListener("keydown",e=>{
+      if(e.key==="Escape"){ this.closeModal(); return; }
+      if(e.key!=="Enter"&&e.key!==" ") return;
+      // One delegated handler for every `.opt-card` in the app. The builder,
+      // the modals and the shelf all pick things with clickable divs built by
+      // seven different templates; binding keys at each site is seven chances
+      // to forget. See makeCardsFocusable().
+      const card=e.target.closest&&e.target.closest(".opt-card, .bstep[role=button]");
+      if(!card||card.classList.contains("disabled")||card.getAttribute("aria-disabled")==="true") return;
+      e.preventDefault();
+      card.click();
+    });
+    mountSaveBar(document.getElementById("save-bar"),this.slot,{
+      buttons:["import"],                 // Export is the topbar button above; "Start over"
+                                          // would sit next to Forge a Hero doing the same job.
+      getState:()=>this.snapshot(),
+      setState:s=>this.loadSave(s),
+      onMessage:t=>this.toast(t)
+    });
     this.refreshTitle();
-    try{ if(localStorage.getItem("torchbearer-save")) document.getElementById("btn-resume").disabled=false; }catch(e){}
+    this.loadLibrary();
+  },
+
+  /* ---------- the bundled shelf ---------- */
+  async loadLibrary(){
+    this.library=await fetchLibrary();
+    this.renderLibrary();
+  },
+  renderLibrary(){
+    const sec=document.getElementById("library"), list=document.getElementById("library-list");
+    if(!sec||!list) return;
+    if(!this.library.length){ sec.hidden=true; return; }   // file://, offline, or a 404
+    sec.hidden=false;
+    list.innerHTML=this.library.map(p=>{
+      const loaded=Registry.hasPack(p.id);
+      return `<div class="opt-card" role="button" tabindex="0" data-shelf="${esc(p.id)}" aria-disabled="${loaded}">
+        <h3>${esc(p.name)}</h3>
+        <div class="meta">${esc(p.type==="adventure"?"adventure":"content pack")}</div>
+        <div class="desc">${esc(p.description||"")}</div>
+        <div class="shelf-state">${loaded?"✦ loaded":"▸ load this"}</div></div>`;
+    }).join("");
+    // Keyboard comes from the delegated handler in init().
+    list.querySelectorAll("[data-shelf]").forEach(el=>{ el.onclick=()=>this.loadShelfPack(el.dataset.shelf); });
+  },
+  async loadShelfPack(id){
+    const entry=this.library.find(p=>p.id===id);
+    if(!entry||Registry.hasPack(id)) return;
+    try{ this.applyPack(await fetchPack(entry)); }
+    catch(err){ this.modal("Could not load",`<p>${esc(err.message)}</p>`,[{label:"Close"}]); }
+    this.renderLibrary();
   },
   show(id){ document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
     document.getElementById("screen-"+id).classList.add("active"); },
@@ -2724,6 +2854,10 @@ const App = {
   refreshTitle(){
     document.getElementById("btn-begin-adv").disabled=!this.hero;
     document.getElementById("btn-view-hero").disabled=!this.hero;
+    /* load() rather than "is the key set": a save that fails validation now
+       greys Resume out instead of offering a journey that dies on the click. */
+    document.getElementById("btn-resume").disabled=!this.slot.load();
+    this.renderLibrary();
     const pl=document.getElementById("pack-list");
     pl.innerHTML="Loaded content: "+Registry.packs.map(p=>`<span class="pk">${esc(p.name)} <span class="small">v${esc(p.version||"1")}</span></span>`).join("")
       +`<div class="small" style="margin-top:6px">Load new ancestries, classes, feats, spells, monsters, or whole adventures with <b>Load Content JSON</b> above. See the Content Authoring Guide.</div>`;
@@ -2736,7 +2870,11 @@ const App = {
     const foot=document.getElementById("modal-foot");
     foot.innerHTML=(buttons||[{label:"Close"}]).map((b,i)=>`<button class="nav-btn" data-i="${i}">${b.label}</button>`).join("");
     foot.querySelectorAll("button").forEach(el=>el.onclick=()=>{ const b=buttons[+el.dataset.i]; this.closeModal(); if(b.fn) b.fn(); });
+    makeCardsFocusable(document.getElementById("modal-body"));
     document.getElementById("modal-veil").classList.add("open");
+    // Land focus inside the dialog, or Tab starts from wherever the page was.
+    const first=document.querySelector("#modal-body .opt-card[tabindex='0'], #modal-foot button");
+    if(first) first.focus();
   },
   closeModal(){ document.getElementById("modal-veil").classList.remove("open"); },
 
@@ -2799,7 +2937,7 @@ const App = {
     const body=advs.map(a=>`<div class="opt-card" data-id="${a.id}"><h3>${esc(a.name)}</h3>
       <div class="meta">Level ${a.level} adventure</div><div class="desc">${esc(a.blurb||"")}</div></div>`).join("");
     this.modal("Choose an Adventure",`<div class="card-grid">${body}</div>
-      <div class="small" style="margin-top:10px;font-style:italic">More adventures can be loaded from JSON on the title screen.</div>`,[{label:"Cancel"}]);
+      <div class="small" style="margin-top:10px;font-style:italic">More adventures are on The Shelf, at the bottom of the title screen.</div>`,[{label:"Cancel"}]);
     document.querySelectorAll("#modal-body .opt-card").forEach(el=>el.onclick=()=>{ this.closeModal(); this.startAdventure(el.dataset.id); });
   },
   startAdventure(id){
@@ -2862,7 +3000,7 @@ const App = {
       <div class="choice-list">${choiceHTML}</div>
       ${sc.ending?`<div class="rule"></div><div class="small" style="text-align:center;font-style:italic">— end of chronicle —</div>`:""}
     </div></div>`);
-    if(sc.companionChoice) this.bindCompanionPicker();
+    if(sc.companionChoice){ this.bindCompanionPicker(); makeCardsFocusable(document.getElementById("game-center")); }
     document.querySelectorAll(".choice-btn").forEach(el=>el.onclick=()=>this.choose(sc,+el.dataset.i));
     if(!sc.gameover) this.autosave();
   },
@@ -2912,61 +3050,132 @@ const App = {
     this.gotoScene(c.goto);
   },
   resume(){
-    try{ const raw=localStorage.getItem("torchbearer-save");
-      if(raw) this.loadSave(JSON.parse(raw)); }
-    catch(e){ this.toast("No resumable journey found."); }
+    const s=this.slot.load();
+    if(!s){ this.toast("No resumable journey found."); this.refreshTitle(); return; }
+    this.loadSave(s);
   },
 
-  /* ---------- save / load ---------- */
+  /* ---------- save / load ----------
+     Everything here goes through the slot in torchbearer/js/save.js. No version
+     field of our own: gvb-save stamps `__v` and strips it on the way back in,
+     and the old `v: 1` these snapshots used to carry is deleted by `migrate`. */
   snapshot(){
-    return {v:1, build:this.hero?this.hero.build:null,
+    return {build:this.hero?this.hero.build:null,
       advId:this.adv?this.adv.id:null, sceneId:this.sceneId, flags:this.flags,
       dailyLuckUsed:this.dailyLuckUsed,
       hero: this.heroCb? {hp:this.heroCb.hp,wounded:this.heroCb.wounded,resources:this.heroCb.resources}:null,
       companions:this.companions.map(c=>({id:c.id.replace("comp-",""),hp:c.hp})),
       chronicle:this.chronicle.slice(-80)};
   },
-  autosave(){ try{ localStorage.setItem("torchbearer-save",JSON.stringify(this.snapshot())); }catch(e){} },
+  autosave(){ this.slot.save(this.snapshot()); },
   exportSave(){
     if(!this.hero){ this.toast("Nothing to save yet — forge a hero first."); return; }
-    const blob=new Blob([JSON.stringify(this.snapshot(),null,2)],{type:"application/json"});
-    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
-    a.download=(this.hero.name||"hero").replace(/\W+/g,"-").toLowerCase()+".torchsave.json"; a.click();
-    this.toast("Save exported.");
+    const name=(this.hero.name||"hero").replace(/\W+/g,"-").toLowerCase()+".torchsave.json";
+    this.slot.exportToFile(this.snapshot(),name);
+    this.toast("Exported "+name);
   },
+
+  /**
+   * Take a snapshot the slot has already validated, migrated and repaired, and
+   * rehydrate the game from it.
+   *
+   * The one failure the slot cannot catch is a content mismatch: a save is a
+   * *build*, not a character sheet, so a hero forged with the orc ancestry from
+   * Embers of the Hold is meaningless in a browser that hasn't loaded that pack.
+   * `finalizeCharacter` used to throw on `cls.perception` and the player got
+   * "Save could not be restored: Cannot read properties of undefined". Naming
+   * the missing ids is the difference between a dead end and a fixable problem.
+   */
   loadSave(s){
     if(!s||!s.build){ this.toast("That file isn't a Torchbearer save."); return; }
+    const missing=[["ancestries",s.build.ancestry],["backgrounds",s.build.background],["classes",s.build.cls]]
+      .filter(([k,id])=>!Registry[k][id]);
+    if(missing.length){
+      this.modal("Content Missing",
+        `<p>This hero was built with content that isn't loaded here:</p>
+         <ul>${missing.map(([k,id])=>`<li><b>${esc(id)}</b> <span class="small">(${k})</span></li>`).join("")}</ul>
+         <p class="small">Load the pack that defines it — from The Shelf on the title screen,
+         or with Load Content JSON — then import the save again.</p>`,[{label:"Close"}]);
+      /* mountSaveBar's import handler calls slot.save() BEFORE setState, so by
+         the time we get here the rejected file has already overwritten the
+         stored journey. Put the live one back. (A `filename` hook and a
+         setState-before-save ordering are both in the session notes as
+         shared-file requests.) */
+      if(this.hero) this.slot.save(this.snapshot());
+      return;
+    }
     try{
       this.hero=finalizeCharacter(s.build);
-      this.heroCb=null; this.chronicle=s.chronicle||[];
-      if(s.hero){ const cb=this.heroCombatant(); cb.hp=Math.min(cb.hpMax,s.hero.hp); cb.wounded=s.hero.wounded||0;
-        if(s.hero.resources) cb.resources=s.hero.resources; }
-      this.flags=s.flags||{}; this.dailyLuckUsed=!!s.dailyLuckUsed;
-      this.companions=(s.companions||[]).map(c=>{ const cb=this.companionCombatant(c.id); cb.hp=Math.min(cb.hpMax,c.hp); return cb; });
-      if(s.advId&&Registry.adventures[s.advId]&&s.sceneId){
+      this.heroCb=null; this.chronicle=s.chronicle;
+      if(s.hero){ const cb=this.heroCombatant();
+        // repair guarantees a full resource block and hp === null | finite.
+        cb.hp = s.hero.hp==null? cb.hpMax : Math.max(0,Math.min(cb.hpMax,s.hero.hp));
+        cb.wounded=s.hero.wounded;
+        cb.resources=s.hero.resources; }
+      this.flags=s.flags; this.dailyLuckUsed=s.dailyLuckUsed;
+      // A companion from an unloaded pack costs you that companion, not the save.
+      const lostComps=[];
+      this.companions=s.companions.map(c=>{
+        if(!Registry.companions[c.id]){ lostComps.push(c.id); return null; }
+        const cb=this.companionCombatant(c.id);
+        cb.hp = c.hp==null? cb.hpMax : Math.max(0,Math.min(cb.hpMax,c.hp));
+        return cb;
+      }).filter(Boolean);
+      if(s.advId&&Registry.adventures[s.advId]&&s.sceneId&&Registry.adventures[s.advId].scenes[s.sceneId]){
         this.adv=Registry.adventures[s.advId]; this.show("game"); this.gotoScene(s.sceneId);
-      } else { this.toTitle(); }
-      this.toast("Journey restored: "+this.hero.name);
+      } else {
+        this.toTitle();
+      }
+      /* Modal, not a toast, for the two cases the player has to act on.
+         mountSaveBar's import handler calls `say("Save loaded.")` immediately
+         after setState, so anything this puts in the toast is overwritten
+         within the same tick — found by importing a Thornwake save into a page
+         that had not loaded Thornwake and watching the explanation vanish. */
+      if(s.advId&&!Registry.adventures[s.advId]){
+        this.modal("Adventure Not Loaded",
+          `<p><b>${esc(this.hero.name)}</b> is back, but the adventure <b>${esc(s.advId)}</b> isn't loaded,
+            so the journey starts from the title screen.</p>
+           <p class="small">Load it from The Shelf and import the save again to pick up where you left off.</p>`,[{label:"Close"}]);
+      } else if(lostComps.length){
+        this.modal("Companions Missing",
+          `<p>${esc(this.hero.name)} walks on without ${lostComps.map(c=>`<b>${esc(c)}</b>`).join(", ")} —
+            whichever pack defines them isn't loaded here.</p>`,[{label:"Close"}]);
+      } else this.toast("Journey restored: "+this.hero.name);
     }catch(e){ this.toast("Save could not be restored: "+e.message); }
+  },
+
+  /** Register a validated pack and tell the player what arrived. Shared by the
+      shelf and the Load Content JSON picker so both report the same way. */
+  applyPack(data){
+    try{
+      const meta=Registry.loadPack(data);
+      this.refreshTitle();
+      this.modal("Content Loaded",`<p><b>${esc(meta.name)}</b> v${esc(meta.version||"1")} loaded successfully.</p>
+        <p class="small">${esc(meta.description||"")}</p>
+        <p class="small">Added: ${["ancestries","backgrounds","classes","feats","spells","items","monsters","companions","adventures"].map(k=>data[k]&&data[k].length?data[k].length+" "+k:null).filter(Boolean).join(", ")||"nothing (empty pack)"}.</p>`,[{label:"Splendid"}]);
+      return true;
+    }catch(err){
+      this.modal("Content Rejected",`<p>The pack failed validation:</p><pre class="small" style="white-space:pre-wrap">${esc(err.message)}</pre>
+        <p class="small">See the Content Authoring Guide for the schema.</p>`,[{label:"Close"}]);
+      return false;
+    }
   },
   fileChosen(e){
     const f=e.target.files[0]; e.target.value="";
     if(!f) return;
     const reader=new FileReader();
+    reader.onerror=()=>this.modal("Unreadable",`<p>That file could not be read.</p>`,[{label:"Close"}]);
     reader.onload=()=>{
       let data; try{ data=JSON.parse(reader.result); }
       catch(err){ this.modal("Invalid JSON",`<p>That file couldn't be parsed as JSON:</p><p class="small">${esc(err.message)}</p>`,[{label:"Close"}]); return; }
-      if(this.fileMode==="save"){ this.loadSave(data); return; }
-      try{ const meta=Registry.loadPack(data);
-        this.refreshTitle();
-        this.modal("Content Loaded",`<p><b>${esc(meta.name)}</b> v${esc(meta.version||"1")} loaded successfully.</p>
-          <p class="small">${esc(meta.description||"")}</p>
-          <p class="small">Added: ${["ancestries","backgrounds","classes","feats","spells","items","monsters","companions","adventures"].map(k=>data[k]?data[k].length+" "+k:null).filter(Boolean).join(", ")||"nothing (empty pack)"}.</p>`,[{label:"Splendid"}]);
-      }catch(err){ this.modal("Content Rejected",`<p>The pack failed validation:</p><pre class="small" style="white-space:pre-wrap">${esc(err.message)}</pre>
-        <p class="small">See the Content Authoring Guide for the schema.</p>`,[{label:"Close"}]); }
+      this.applyPack(data);
     };
     reader.readAsText(f);
   }
 };
+/* A module script is deferred, so this runs before DOMContentLoaded fires. */
 window.addEventListener("DOMContentLoaded",()=>App.init());
+/* Dev probe. Nothing in the page reads it; it is how a browser-driven suite
+   reaches the engine now that a module script has no globals. */
+window.__torchbearer=App;
 </script></body></html>

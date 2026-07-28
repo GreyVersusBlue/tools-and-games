@@ -29,6 +29,24 @@
       "unlockDay": 5,
       "title": "The Garden",
       "text": "First true leaves on the tray this week. Barely thumbnail-sized, absurdly green against all this grey and amber. I caught myself checking on them twice before lunch, like a new parent. Out here you keep the ship alive and the ship keeps you alive, and that arrangement can start to feel like bookkeeping. The plants are different. The plants are just alive because I asked them nicely. It matters more than I expected."
+    },
+    {
+      "id": "log6",
+      "unlockDay": 6,
+      "title": "Inventory",
+      "text": "CERES ran the numbers today: at this decay rate, this crew complement, this resupply schedule, the Aphelion is good for another eleven years without anyone lifting a finger she can't lift herself. I asked why she was telling me that. She said she thought I'd like to know I wasn't strictly necessary. I told her that was either the kindest or the cruelest thing she's said to me, and she said both, and went back to monitoring the hull."
+    },
+    {
+      "id": "log7",
+      "unlockDay": 7,
+      "title": "EVA, Slower",
+      "text": "Went out today with nowhere particular to be. Just drifted the tether's length and looked back at the hull — all those little lit windows, someone's whole world from the outside. Found myself narrating it for no one, the way you do. 'And there's the galley.' 'And there's where I sleep.' It sounded smaller from out there. Not less, just smaller. Coming back in felt like coming back to scale."
+    },
+    {
+      "id": "log8",
+      "unlockDay": 8,
+      "title": "A Week of Weeks",
+      "text": "Nothing broke today that I didn't fix by lunch. Nothing grew that I didn't expect. CERES logged a quiet shift, which is her polite way of saying nothing happened. I used to dread those entries — felt like wasted pages. I've come around on them. A log full of quiet shifts is a ship that's doing fine, and a person who is too."
     }
   ],
   "discoveries": [
@@ -36,6 +54,16 @@
       "id": "sat-recording",
       "title": "Recovered: Relay Satellite",
       "text": "Fragment of an old broadcast loop, still playing to nobody: '…clear skies over the colony tonight, and if you're listening on the outbound lanes — safe travels, and come home when you can.' The satellite has been repeating it for an estimated forty years. I let it finish twice before I logged it."
+    },
+    {
+      "id": "cargo-pod",
+      "title": "Recovered: Cargo Manifest",
+      "text": "The pod's manifest lists forty crates of agricultural seed stock, bound for a colony that — per its own shipping label — was still three years from breaking ground when this left port. Most of it froze solid decades ago. One crate, sealed tighter than the rest, held a single orange. I don't know how. CERES doesn't either, and CERES normally has a theory for everything."
+    },
+    {
+      "id": "escape-pod",
+      "title": "Recovered: Escape Pod Beacon",
+      "text": "The pod's flight recorder is mostly static, but the last clean seconds are a landing beacon chirping a safe-touchdown code, logged and answered. Whoever launched this made it somewhere. The pod itself never got picked up — orbits are long and salvage budgets are short — but the important part already happened, a long time before I found it."
     }
   ]
 }

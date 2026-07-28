@@ -1,0 +1,130 @@
+// registry.js — the content store and the pack validator.
+//
+// Lifted out of torchbearer.html unchanged in behaviour, for one reason: the
+// validator IS the contract described in content-authoring-guide.md, and a
+// contract nothing tests drifts. `test/smoke.mjs` imports this and runs both
+// bundled packs plus a set of deliberately broken ones through it under plain
+// Node. Nothing in here touches the DOM.
+//
+// The page still holds CORE_PACK and ADVENTURE_PACK inline. Moving those to
+// fetched JSON would make the title screen depend on a network round trip that
+// can fail; the bundled library in ../packs/ is progressive enhancement and can
+// afford to.
+
+/* ---------- Content Registry ---------- */
+export const Registry = {
+  packs: [], ancestries: {}, backgrounds: {}, classes: {}, feats: {}, spells: {}, items: {},
+  monsters: {}, companions: {}, adventures: {},
+  loadPack(pack) {
+    const errs = Validator.validate(pack, this);
+    if (errs.length) throw new Error("Content pack rejected:\n• " + errs.join("\n• "));
+    const put = (map, arr) => { (arr || []).forEach(o => { map[o.id] = o; }); };
+    put(this.ancestries, pack.ancestries); put(this.backgrounds, pack.backgrounds);
+    put(this.classes, pack.classes); put(this.feats, pack.feats); put(this.spells, pack.spells);
+    put(this.items, pack.items); put(this.monsters, pack.monsters); put(this.companions, pack.companions);
+    put(this.adventures, pack.adventures);
+    this.packs.push(pack.pack);
+    return pack.pack;
+  },
+  /** True once a pack with this id has been loaded. Drives the library UI. */
+  hasPack(id) { return this.packs.some(p => p.id === id); },
+  list(map, filter) { return Object.values(map).filter(filter || (() => true)); }
+};
+
+/** A registry with nothing in it — what the tests validate a pack against. */
+export function emptyRegistry() {
+  return {
+    ...Registry,
+    packs: [], ancestries: {}, backgrounds: {}, classes: {}, feats: {}, spells: {},
+    items: {}, monsters: {}, companions: {}, adventures: {}
+  };
+}
+
+/* ---------- Pack validation (friendly errors for JSON authors) ----------
+   Every check here is a promise the authoring guide makes. Five of them were
+   promises the guide made and this file did not keep — a scene with no `text`
+   validated fine and then threw `sc.text.map is not a function` the moment a
+   player walked into it. Those are the ones marked "added session 8". */
+export const Validator = {
+  validate(pack, registry) {
+    const errs = [];
+    if (!pack || typeof pack !== "object") { return ["Top level must be a JSON object."]; }
+    if (!pack.pack || !pack.pack.id || !pack.pack.name) errs.push('Missing "pack" metadata: needs at least {"id","name","type"}.');
+    const checkIds = (arr, label, req) => {
+      (arr || []).forEach((o, i) => {
+        if (!o.id) errs.push(`${label}[${i}] is missing an "id".`);
+        if (!o.name) errs.push(`${label}[${i}] (${o.id || "?"}) is missing a "name".`);
+        (req || []).forEach(k => { if (o[k] === undefined) errs.push(`${label} "${o.id || i}" is missing required field "${k}".`); });
+      });
+    };
+    checkIds(pack.ancestries, "ancestries", ["hp", "speed", "boosts", "heritages"]);
+    checkIds(pack.backgrounds, "backgrounds", ["boosts", "skills"]);
+    checkIds(pack.classes, "classes", ["hp", "keyAbility", "perception", "saves", "attacks", "defenses", "skillCount"]);
+    checkIds(pack.feats, "feats", ["type", "level"]);
+    checkIds(pack.spells, "spells", ["rank", "traditions", "actions", "rankEffects"]);
+    checkIds(pack.items, "items", ["category"]);
+    checkIds(pack.monsters, "monsters", ["ac", "hp", "attacks", "saves"]);
+    checkIds(pack.adventures, "adventures", ["start", "scenes"]);
+
+    // Everything the pack brings with it, plus everything already loaded.
+    // A pack may lean on core ids (that is the whole point of §1's "IDs are
+    // global"), so an id counts as real if either side has it.
+    const known = (collection, id) => {
+      if (!id) return false;
+      if ((pack[collection] || []).some(o => o.id === id)) return true;
+      const map = registry && registry[collection];
+      return !!(map && map[id]);
+    };
+
+    (pack.adventures || []).forEach(a => {
+      const scenes = a.scenes || {};
+
+      // added session 8: `start` was a required *field*, never a checked
+      // *reference*. A typo there validated and then dead-ended on "Missing
+      // scene" the instant the player picked the adventure.
+      if (a.start && a.start !== "END" && !scenes[a.start]) {
+        errs.push(`Adventure "${a.id}": start scene "${a.start}" does not exist.`);
+      }
+      // added session 8: companionsOffered pointing at nothing renders a card
+      // for `undefined` and throws on click.
+      (a.companionsOffered || []).forEach(cid => {
+        if (!known("companions", cid)) errs.push(`Adventure "${a.id}": companionsOffered lists unknown companion "${cid}".`);
+      });
+
+      Object.entries(scenes).forEach(([sid, sc]) => {
+        // added session 8: the engine does `sc.text.map(...)` with no guard.
+        if (!Array.isArray(sc.text)) errs.push(`Adventure "${a.id}": scene "${sid}" needs "text" as an array of paragraphs.`);
+        if (!sc.title) errs.push(`Adventure "${a.id}": scene "${sid}" is missing a "title".`);
+
+        (sc.choices || []).forEach((c, i) => {
+          const dest = c.goto || (c.check && (c.check.success || c.check.failure)) || c.combat;
+          if (!dest && !c.combat) errs.push(`Adventure "${a.id}" scene "${sid}" choice ${i} has no destination (goto/check/combat).`);
+          if (c.goto && c.goto !== "END" && !scenes[c.goto]) errs.push(`Adventure "${a.id}": scene "${sid}" points to missing scene "${c.goto}".`);
+          if (c.check) ["success", "failure"].forEach(k => { if (c.check[k] && !scenes[c.check[k]]) errs.push(`Adventure "${a.id}": check in "${sid}" points to missing scene "${c.check[k]}".`); });
+          if (c.combat && a.encounters && !a.encounters[c.combat] && !((pack.adventures || []).some(x => x.encounters && x.encounters[c.combat]))) errs.push(`Adventure "${a.id}": scene "${sid}" references missing encounter "${c.combat}".`);
+          // added session 8: victory/defeat are gotos too, and were unchecked.
+          ["victory", "defeat"].forEach(k => {
+            if (c[k] && c[k] !== "END" && !scenes[c[k]]) errs.push(`Adventure "${a.id}": scene "${sid}" ${k} points to missing scene "${c[k]}".`);
+          });
+        });
+      });
+
+      // added session 8: guide §14 tells an author to check "every referenced
+      // monster id exists" against "the validator's rules". It wasn't one of
+      // them. A typo in a foe spawned a battle that threw on the first frame.
+      Object.entries(a.encounters || {}).forEach(([eid, enc]) => {
+        (enc.foes || []).forEach((f, i) => {
+          if (!known("monsters", f.monster)) errs.push(`Adventure "${a.id}": encounter "${eid}" foe ${i} references unknown monster "${f.monster}".`);
+        });
+      });
+    });
+
+    // added session 8: a background's `feat` is documented in §3 as "must be
+    // the id of a skill feat that exists after your pack loads".
+    (pack.backgrounds || []).forEach(b => {
+      if (b.feat && !known("feats", b.feat)) errs.push(`Background "${b.id}": feat "${b.feat}" does not exist.`);
+    });
+
+    return errs;
+  }
+};

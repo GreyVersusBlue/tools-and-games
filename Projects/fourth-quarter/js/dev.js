@@ -1,15 +1,16 @@
 // dev.js — a debug/cheat menu for the developer, not part of normal play.
 // Toggle with the ` (backquote) key from any phase. Add cash, jump the
 // calendar, warp straight to any venue tier (free, no dark nights), top off
-// stock, or wipe progress entirely — all the things you don't want a player
-// to see but you want one keystroke away while testing.
+// stock, skip a running night to its last call, or wipe progress entirely — all
+// the things you don't want a player to see but you want one keystroke away
+// while testing.
 
 import * as C from "./campaign.js";
 
 const $ = s => document.querySelector(s);
 
 export class DevPanel {
-  /** @param cb { save(), flash(msg, good), rebuild(), resetProgress() } */
+  /** @param cb { save(), flash(msg, good), rebuild(), resetProgress(), skipToClose() } */
   constructor(getC, cb) {
     this.getC = getC;
     this.cb = cb;
@@ -63,6 +64,11 @@ export class DevPanel {
       <div class="sec">Stock</div>
       <button class="btn small" data-fillstock="1">Fill all stock to 500</button>
 
+      <div class="sec">Night</div>
+      <button class="btn small" data-skipclose="1">Skip to last call</button>
+      <p class="hint" style="margin-top:6px">Only does anything with a night in
+      progress. Closes the books the normal way, so the box score comes up.</p>
+
       <div class="sec">Danger zone</div>
       <button class="btn small ghost" data-resetall="1">Reset all progress</button>
     `;
@@ -94,6 +100,11 @@ export class DevPanel {
     if (t.dataset.cleardark) {
       C.devClearDarkNights(c);
       this.cb.save(); this.render();
+    }
+    if (t.dataset.skipclose) {
+      // The box score comes up 2.5s after last call, on the engine's own timer.
+      if (this.cb.skipToClose()) { this.close(); this.cb.flash("Last call.", true); }
+      else this.cb.flash("No night running — open the doors first.");
     }
     if (t.dataset.fillstock) {
       C.devFillStock(c, 500);

@@ -2,7 +2,7 @@
 // Exercises the pure night engine: arrivals, tickets, boss deliveries,
 // impatience, game beats, summary math. No DOM, no three.js.
 
-import { NightEngine, MENU, seed, HOUR_W, PATIENCE, BOSS_TIP } from "../js/engine.js";
+import { NightEngine, MENU, seed, HOUR_W, PATIENCE, BOSS_TIP, fin } from "../js/engine.js";
 
 let pass = 0, fail = 0;
 const ok = (cond, name) => { cond ? pass++ : (fail++, console.error("FAIL:", name)); };
@@ -105,6 +105,51 @@ seed(1); const tSlowD2 = eNoBartender.placeTicket(2, "beer");
 seed(1); const tFullD = eFullBar.placeTicket(2, "beer");
 ok((tSlowD2.readyAt - tSlowD2.placedAt) > (tFullD.readyAt - tFullD.placedAt),
   "servers covering the taps without a bartender pour slower than a staffed bar");
+
+// --- the engine's half of the legacy-save audit -------------------------------
+//
+// Every number in this constructor is campaign arithmetic, and `?? default` only
+// catches null and undefined. A NaN got through, and the shape of that bug is the
+// nastiest one in the project: `spawnDebt += NaN` makes `while (spawnDebt >= 1)`
+// permanently false, so the night runs its full eight hours with nobody in it and
+// nothing logged. campaign.js's repairCampaign() now stops the NaN at the door;
+// this is the second line of defence, because the engine should never quietly
+// play an empty night. See the note above repairCampaign() for how it got there.
+ok(fin(1.5, 9) === 1.5 && fin(NaN, 9) === 9 && fin(undefined, 9) === 9 &&
+   fin(null, 9) === 9 && fin("7", 9) === 9 && fin(Infinity, 9) === 9,
+  "fin() takes only finite numbers — NaN, Infinity, null and strings all fall back");
+
+const emptyRoom = target => {
+  seed(31);
+  const e = new NightEngine({ crowdTarget: target, hourLenSec: 45, seats: 30 });
+  let spawns = 0;
+  for (let t = 0; t < 45 * 8 && !e.done; t += 0.5)
+    for (const ev of e.update(0.5)) if (ev.type === "spawn") spawns++;
+  return { spawns, done: e.done };
+};
+const nanNight = emptyRoom(NaN);
+ok(nanNight.done && nanNight.spawns > 0,
+  `a NaN crowdTarget still fills the room (got ${nanNight.spawns} arrivals, not a silent empty night)`);
+ok(emptyRoom(undefined).spawns > 0, "and so does an undefined one");
+ok(Number.isFinite(new NightEngine({ crowdTarget: NaN }).crowdTarget), "crowdTarget lands finite");
+
+const junk = new NightEngine({
+  crowdTarget: NaN, hourLenSec: NaN, seats: NaN,
+  foodMult: NaN, drinkMult: undefined, beerMult: "1.2",
+});
+ok(junk.hourLenSec >= 1 && Number.isFinite(junk.hourLenSec), "hourLenSec can't be NaN (it divides the clock)");
+ok(junk.seats >= 1 && Number.isInteger(junk.seats), "seats can't be NaN (it caps arrivals)");
+ok([junk.foodMult, junk.drinkMult, junk.beerMult].every(Number.isFinite),
+  "the three prep/price multipliers all land finite");
+ok(Number.isFinite(junk.price("beer")) && junk.price("beer") > 0,
+  "so pricing is a number rather than NaN on the box score");
+const jt = junk.placeTicket(1, "wings");
+ok(jt && Number.isFinite(jt.readyAt) && jt.readyAt > jt.placedAt,
+  "and a ticket gets a real ready time instead of never being ready");
+
+// foodMult 0 is meaningful — no cook on shift — so the floor is 0, not 1.
+ok(new NightEngine({ foodMult: 0 }).foodMult === 0, "foodMult 0 survives the guard: no cook still closes the kitchen");
+ok(new NightEngine({ foodMult: -3 }).foodMult === 0, "a negative multiplier clamps to closed rather than going backwards");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -11,6 +11,87 @@
    spends any boldness. Everything around it is deliberately quiet.
    ============================================================ */
 
+/* ------------------------------------------------------------
+   Stage 21: the three families are vendored. They were hotlinked from
+   fonts.googleapis.com through Stage 20, which was the last offsite request
+   the site made — and the one the board-check suite could not see, because
+   prepPage() fulfills Google Fonts requests locally before the blocked-list
+   check runs, so a font hotlink never reached page.__blocked.
+
+   Only the `latin` subset is here: every character the game can render was
+   checked against the Google subset ranges and nothing needs latin-ext or
+   vietnamese. The arrows and stars (→ ★ ⛲ ✨) sit outside every subset these
+   families publish, so they fell back to a system font under the hotlink too.
+
+   Weights are the ones actually used, measured with getComputedStyle across
+   every screen rather than copied off the old link tag. The old URL asked for
+   four Barlow weights and three Grenze weights; 500 Barlow and 700 Grenze were
+   never on screen and are not here. Fraunces is a variable font and keeps its
+   optical-size axis, so `font-optical-sizing: auto` still does its job.
+
+   See assets/fonts/README.md for sources, licences and byte counts.
+   ------------------------------------------------------------ */
+
+/* Fraunces — variable, opsz 9..144 + wght 100..900, the axes the old hotlink
+   requested (`ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400`). One file
+   per style rather than nine static cuts. */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url(../assets/fonts/fraunces-latin-var-normal.woff2) format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Fraunces';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url(../assets/fonts/fraunces-latin-var-italic.woff2) format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* Grenze Gotisch — variable, wght 100..900. Used at 400 and 500 only, but the
+   variable file is 42 KB against 33 KB for those two static cuts, and 9 KB is
+   worth not having to ship a new file the next time a heading wants 600. */
+@font-face {
+  font-family: 'Grenze Gotisch';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url(../assets/fonts/grenze-gotisch-latin-var-normal.woff2) format('woff2-variations');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* Barlow Semi Condensed — no variable version exists on Google Fonts, so these
+   are static cuts. 400, 600 and 700 are on screen; 500 is not, and the old
+   hotlink was fetching it for nothing. */
+@font-face {
+  font-family: 'Barlow Semi Condensed';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(../assets/fonts/barlow-semi-condensed-latin-400-normal.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Barlow Semi Condensed';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(../assets/fonts/barlow-semi-condensed-latin-600-normal.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Barlow Semi Condensed';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(../assets/fonts/barlow-semi-condensed-latin-700-normal.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
 :root {
   /* --- surfaces, darkest to lightest --- */
   --pitch: #14110E;        /* page ground */
