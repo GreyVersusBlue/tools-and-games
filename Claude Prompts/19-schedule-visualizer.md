@@ -1,44 +1,55 @@
 # 19 — Schedule Visualizer and Browser Generator
 
 You are working on the Schedule Visualizer and Browser Generator, a classroom tool on
-greyversusblue.com under the board's "Town Services" section. **At 18,707 lines and 859 KB it is by
+greyversusblue.com under the board's "Town Services" section. **At 18,777 lines and 862 KB it is by
 far the largest hand-written file in the repo** — more than twice the next biggest — and it is a
 generator: it produces the second file you own. It also handles school schedule data, so the
 data-handling section below is not boilerplate. This prompt is self-contained.
+
+**Round 1 already ran on this project.** It renamed both files, versioned the tool properly, vendored
+its fonts and jsPDF, fixed a broken mobile map, and surfaced a real, still-unresolved question about
+the committed schedule data. Read its notes before you do anything else — see Required reading.
 
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Tools/Schedule Visualizer and Browser Generator v60.html` (18,707 lines, 859 KB) — the generator
-- `Tools/Schedule Browser as of 260715.html` (632 lines, 58 KB) — **its generated output**, dated
-  15 July 2026
-- Any new folder you create under `Tools/` **named for this tool** — e.g. `Tools/schedule/`
+- `Tools/schedule-visualizer.html` (18,777 lines, 862 KB) — the generator. Renamed this round from
+  `Tools/Schedule Visualizer and Browser Generator v60.html`.
+- `Tools/schedule-browser.html` (636 lines, 157 KB) — **its generated output**. Renamed this round
+  from `Tools/Schedule Browser as of 260715.html`.
+- `Tools/schedule/` — already exists, created last round: `fonts/` (11 vendored woff2 files plus
+  `fonts.css` and a generated `published-fonts.js`), `libs/jspdf/` (vendored jsPDF 2.5.1), and `test/`
+  (`smoke.mjs`, `publish.mjs`, the Northwind fixture). Any further folder you create under `Tools/`
+  named for this tool is yours the same way.
 
-You own both files because they are one system: the second is the first's output, and changing the
-generator's template without regenerating the output leaves the site serving a stale page. No other
-thread touches either.
+**The two old paths still exist**, as tiny redirect stubs: `Tools/Schedule Visualizer and Browser
+Generator v60.html` (2,576 bytes) and `Tools/Schedule Browser as of 260715.html` (2,628 bytes), each a
+`<meta http-equiv="refresh">` plus a visible link. They exist so nothing already bookmarked, emailed,
+or posted to Schoology under the old name 404s. Leave them; they are not leftovers to clean up.
+
+You own both real files because they are one system: the second is the first's output, and changing
+the generator's template without regenerating the output leaves the site serving a stale page. No
+other thread touches either.
 
 **Everything else in the repo is read-only to you.** Read whatever you like; change nothing outside
-that list. Up to twenty other Claude sessions are working on other projects in this same repo right
-now, and this boundary is the only thing keeping that from becoming a merge fight.
+that list. Up to twenty other Claude sessions may be working on other projects in this same repo, and
+this boundary is the only thing keeping that from becoming a merge fight.
 
 Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. **It carries a card for each of your two files**, both with `href`s containing a version number and a date. Prompt 21. |
-| `Tools/creature_artwork_gallery.html` | **Being deleted this round** by prompt 21. Not yours; don't reference it. |
+| `index.html` (the repo root one) | The board. Carries a card for each of your two files. Both `href`s are now the plain, permanent names — `Tools/schedule-visualizer.html` and `Tools/schedule-browser.html` — with no version or date in the URL (locked decision #46). A version bump or a republish is no longer a board edit. Prompt 21. |
 | Every other file in `Tools/` | Prompts 16, 17, 18, 20. `Tools/board-check/` is prompt 21's. |
 | `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
 **`Tools/` is capitalized on purpose** (locked decision #14). Windows hides case differences; git and
-GitHub Pages don't. Both your filenames contain spaces, which the board URL-encodes as
-`Tools/Schedule%20Visualizer%20and%20Browser%20Generator%20v60.html` and
-`Tools/Schedule%20Browser%20as%20of%20260715.html`. If you rename anything, verify the rename landed
-in git and not only on disk, and remember every rename is a board `href` change.
+GitHub Pages don't. Your two real filenames are now lowercase, hyphenated, and space-free, so the board
+`href`s no longer need `%20` encoding. The two old stub paths still have spaces and still get
+URL-encoded — that is fine, they are redirects, not the canonical link.
 
 **If you need a shared file changed, do not change it.** Write the exact edit into the "Shared-file
 requests" section of your notes file, specific enough that someone can apply it without reading your
@@ -46,46 +57,51 @@ session.
 
 One exception inside your own files: each `<head>` has a generated block between
 `<!-- gvb:social:start -->` and `<!-- gvb:social:end -->`. **Do not hand-edit inside those markers**
-(locked decision #31). They are regenerated from the board's notices by `npm run social`, and your
-edit will be silently overwritten. **This is a real trap for you specifically:** if your generator
-emits a `<head>` for the browser file, it must reproduce those markers and their contents exactly, or
-`npm run social:check` will report drift on every regeneration. Check what the generator currently
-does about this before you touch its template.
+(locked decision #31). They are regenerated from the board's notices by `npm run social`, and your edit
+will be silently overwritten. Both real files carry the block, confirmed by grep. **This is still a
+real trap for you specifically:** if your generator emits a `<head>` for the browser file, it must
+reproduce those markers and their contents exactly, or `npm run social:check` will report drift on
+every regeneration.
 
 ## Required reading
 
-1. This whole file, including the versioned-filename problem and the student-data section.
-2. `gvb-site-handoff-v6.md` §3 — how favicons and OG tags are generated into every page's head from
-   `index.html`'s notices, and locked decisions #31 and #32. You are the only tool that *also*
-   generates HTML, so you are the only one that can fight with `sync-social-tags.mjs`.
-3. `gvb-site-handoff-v7.md` §10 (locked decisions), §8 (backlog state).
-4. Locked decision #3 in `gvb-site-handoff-v1.md` §3: "Town Services means schoolhouse tools."
-5. `assets/js/gvb-save.js` and `assets/js/README.md`.
+1. This whole file.
+2. **`Claude Prompts/notes/19-schedule-visualizer-notes.md`** — round 1's session notes for this exact
+   project. It has a line-by-line coverage map of what was and wasn't read in the 18,777-line file, the
+   full reasoning behind the rename, and the exact wording of the committed-data flag. Read it before
+   touching anything. `Claude Prompts/archive/` holds earlier rounds' prompts and notes if you need
+   more history than that.
+3. **`gvb-site-handoff-v8.md`**, all of it. Specifically: the top section ("Two things that matter more
+   than anything below"), which discusses this project by name and is where the committed-schedule-data
+   flag lives at full prominence — that flag is still open. §7 (backlog state) lists it as "Flagged, not
+   decided — Devon's call." §9's locked decision **#46** is this project's own contribution: "a tool's
+   own version lives in the page, not the filename," written up from exactly what round 1 did here.
+4. `gvb-site-handoff-v6.md` §3 — how favicons and OG tags are generated into every page's head from
+   `index.html`'s notices, and locked decisions #31 and #32. You are the only tool that *also* generates
+   HTML, so you are the only one that can fight with `sync-social-tags.mjs`.
+5. Locked decision #3 in `gvb-site-handoff-v1.md` §3: "Town Services means schoolhouse tools."
+6. `assets/js/gvb-save.js` and `assets/js/README.md` — not adopted yet, but still the target for task
+   six below.
 
-## The versioned-filename problem — decide this before anything else
+## The versioned-filename decision — already made
 
-Your two files are named `... v60.html` and `... as of 260715.html`. Both names are baked into public
-URLs and into `index.html`.
+Round 1 decided this. Both files are renamed, both old paths redirect, and it is now locked decision
+#46 in `gvb-site-handoff-v8.md` §9: *"A tool's own version lives in the page, not the filename... the
+board `href`s are the plain, permanent names... the old dated paths stay as tiny redirect stubs so
+nothing already linked or bookmarked 404s."*
 
-That means **every new version of the generator and every regeneration of the browser is a board
-edit**, which is now a cross-thread request rather than a one-line change. It also means the site
-accumulates a card per version, or silently overwrites history, and a bookmark to v59 either 404s or
-was never made because nobody bookmarks a versioned file.
+What that looks like on disk: `TOOL_VERSION = 'v61'` is a constant near the top of the generator's
+script, shown in the header next to the school name, and stamped into the footnote of every file the
+tool publishes — *"Published July 15, 2026 from the School Layout Visualizer v61."* A version bump and
+a republish are no longer board edits.
 
-There is a better shape and it is worth doing: **stable filenames plus a version shown in the page.**
-`Tools/schedule-visualizer.html` and `Tools/schedule-browser.html`, each displaying "v60" and
-"generated 15 July 2026" in the interface where a user can actually see it. The board `href` then
-never changes again, the generator's output path stops being a decision, and the version information
-ends up where it is useful instead of in a URL.
+Round 1 also reconciled three different names for one tool while it was in there — the `<title>` said
+"Movement Visualizer," the old filename said "Schedule Visualizer and Browser Generator," the board
+card said "School Layout Visualizer." The board's name won; seven strings changed, including the PNG
+and PDF export filenames.
 
-The cost is real and you must name it: **the current URLs stop resolving.** Anyone with
-`Tools/Schedule%20Browser%20as%20of%20260715.html` bookmarked, or a link to it in a Schoology post or
-an email to staff, gets a 404. `404.html` exists and is on-theme, so the failure is graceful rather
-than ugly, but it is still a break.
-
-**Make the call, do it or don't, and write the reasoning either way.** If you do it, both board
-`href`s become Shared-file requests with the exact old and new paths. If you don't, say what would
-change your mind.
+Nothing left to decide here. If you rename anything further, remember every rename is still a board
+`href` change and needs a Shared-file request.
 
 ## Student and staff data: handle with care
 
@@ -95,132 +111,188 @@ and student placements, and student schedules are education records under FERPA.
 Hard rules:
 
 - **Everything stays in the browser.** No network calls, no analytics, no third-party endpoint, ever.
-  Apart from the CDN script noted below, the tool is currently clean and must stay clean.
-- **Do not put real schedule data in the repo.** This is the sharpest version of that rule in the
-  whole set, because **the generated browser file is a data file committed to a public GitHub
-  repository served at a public domain.** `Tools/Schedule Browser as of 260715.html` is 58 KB of
-  something, and the first thing you should do in this session is **open it and find out exactly whose
-  names and which rooms are in it.** If it contains real student names, that is a live disclosure on a
-  public website and it is the most important finding in this batch of twenty-one sessions — report it
-  at the top of your notes immediately. If it contains only staff names and room numbers, that is a
-  judgement call rather than a violation, and it is Devon's call to make; flag it clearly with what
-  exactly is exposed and let him decide.
-- Any sample or fixture you create uses obviously fake names.
+  Both files now make zero offsite requests — confirmed fresh, zero hits grepping both for `cdnjs`,
+  `googleapis`, and `gstatic`. Keep it that way.
+- **Do not put real schedule data in the repo... except it already is, and that is the open question.**
+  `Tools/schedule-browser.html` is a data file committed to a public GitHub repository served at a
+  public domain. Round 1 opened it and confirmed: **no student names**, so no FERPA disclosure. What it
+  does contain — 34 real staff surnames, rooms, departments, and, combined with a full floor-plan SVG,
+  each teacher's planning-period block on both A and B days — is a **school-security question, not a
+  privacy one**, and it is still open. See the top of "What is actually here" below; do not resolve it
+  yourself.
+- Any sample or fixture you create uses obviously fake names. The existing test fixture
+  (`Tools/schedule/test/fixture-northwind.mjs`) already does this — a fake two-floor school, 11 rooms,
+  4 groups.
 
-If you add persistence, anything in `localStorage` sits on a shared machine until cleared. A visible
-clear-all control and one honest sentence about what is stored are both required.
+If you touch persistence: it is currently 29 hand-rolled `localStorage` call sites across six or seven
+independent keys, none of it adopted into `gvb-save.js` yet. Anything in `localStorage` sits on a shared
+machine until cleared; a visible clear-all control and one honest sentence about what is stored are both
+required if you add to it.
 
 ## What is actually here
 
-**The generator:** `Tools/Schedule Visualizer and Browser Generator v60.html`, 18,707 lines, 859 KB.
-The `<title>` says "Movement Visualizer", which does not match either the filename or the board card —
-worth reconciling, and note the board card's text lives in `index.html` (a request), while the
-`<title>` outside the `gvb:social` markers is yours. Twenty-nine `localStorage` call sites,
-hand-rolled. It pulls jsPDF from `cdnjs.cloudflare.com` at line 28, and hotlinks four Google Font
-families — DM Sans, DM Mono, Fraunces and Public Sans — at lines 25, 27 and again at 18,673 and
-18,675. **Those last two are almost certainly inside the output template**, which means the generator
-bakes a font hotlink into every browser file it produces. Check that.
+**Unresolved and flagged at the top on purpose — the committed floor plan.** `PUBLISHED_DATA`, an 18.5
+KB JSON literal, sits in both `Tools/schedule-browser.html` and (as the generator's own state)
+`Tools/schedule-visualizer.html`. It contains 34 real East Middle School teacher surnames, their rooms,
+departments, sections, which colleagues they share students with, and — combined with the 50×30 floor
+plan grid also in the file — **which block is each teacher's planning period, on both A and B days**.
+No student names. Individually, a surname and a room number are the kind of thing on a door or in a
+staff directory. Together with the floor plan, they say where a named adult is *not*, at each of four
+times of day, on a public URL with no login. `gvb-site-handoff-v8.md`'s own top section calls this "a
+school-security question rather than a privacy one" and lays out three options, none of them taken:
+leave it as is; stop committing the file and hand it out as an email attachment instead (the tool
+already names downloads `Schedule_Browser_EMS_<date>.html`, so this costs nothing to switch to); or take
+the page down. **This is Devon's call, not a code task, and nothing about it has changed since round 1
+flagged it.** Do not decide it for him — see task one.
 
-**The output:** `Tools/Schedule Browser as of 260715.html`, 632 lines, 58 KB, no `localStorage`,
-hotlinks Fraunces and Public Sans. A static, self-contained artifact.
+**The generator:** `Tools/schedule-visualizer.html`, 18,777 lines, 862,547 bytes. Its `<title>`, old
+filename, and board-card name are reconciled to "School Layout Visualizer" (see above). `TOOL_VERSION =
+'v61'` is shown in the header and stamped into every published footnote.
 
-**Offsite requests.** v7 §5 claims the site makes zero offsite requests site-wide. That is wrong for
-fifteen pages, and the reason nobody caught it is twofold: `prepPage()` in
-`Tools/board-check/harness.mjs` *fulfills* Google Fonts requests locally from bundled `@fontsource`
-packages before the blocked-list check runs, so font hotlinks never reach `page.__blocked`; and the
-browser suites only ever drive the seven games, never the tools. **Nothing measures either of your
-files.** Of your four families, **Fraunces and Public Sans** are among the twelve `@fontsource`
-packages already on disk under `Tools/board-check/node_modules/` — copy woff2 files out, but nothing at
-runtime may reference `node_modules`. **DM Sans and DM Mono are not there**, so you will be sourcing
-those two yourself.
+**The output:** `Tools/schedule-browser.html`, 636 lines, 160,717 bytes. `PUBLISHED_DATA` is
+byte-identical to the pre-rename file — only the head, footnote wording, and one CSS rule changed.
 
-**The practical consequence of the jsPDF hotlink** matters more than the privacy one: a teacher on
-school wifi behind a filter that blocks cdnjs gets a tool that loads, looks fine, and then does
-nothing when they click export.
+**Offsite requests: zero, in both files, confirmed fresh.** Round 1 vendored jsPDF 2.5.1 (364,463
+bytes, byte-for-byte the cdnjs original, MIT licence, in `Tools/schedule/libs/jspdf/`) and eleven woff2
+font files (163,380 bytes total: DM Sans 400/500/600/700, DM Mono 400/500, Fraunces 600, Public Sans
+400/500/600/700, under `Tools/schedule/fonts/`). `npm run tools` reports both pages with "no offsite
+requests refused." Worth knowing why this mattered: the old Google Fonts hotlink pulled DM Sans 300 and
+Fraunces 300/300-italic, weights the file never actually renders (all nineteen Fraunces rules set 600
+explicitly) — wasted bytes on every load — and it never requested Public Sans at all, despite the
+Schedule Browser's own stylesheet setting it everywhere, so the published file silently rendered in a
+system-font fallback for its entire life until this round fixed it.
+
+**The mobile map is fixed.** The floor-plan SVG carried `style="width:100%"` and shrank to fit a 375px
+phone, drawing room numbers about 4px tall. It now renders at native 1,316px with real horizontal
+scroll below 900px — checking a room assignment on a phone is the main thing anyone does with a
+published file, and that was the wrong end of the trade to lose.
+
+**A test suite exists now.** `Tools/schedule/test/smoke.mjs`, 42 assertions, exits non-zero on failure.
+Ran it fresh: **42 passed, 0 failed.** It covers one path end to end — boot the generator, import a
+fixture, publish, open the result from `file://` with no server, use it as a teacher would (pick a
+teacher, read the day, switch views, check the building map). It does **not** cover the simulation half
+(below).
+
+**Coverage is honest and still partial — do not assume the tool is understood.** Round 1 read about
+13% of the file's 18,777 lines in real depth (roughly 2,400 lines: the data model, both import/export
+paths, the whole Schedule Browser block), skimmed another ~2,700 (the stylesheet, the schedules/bulk
+editor module), and **never opened the remaining ~73%, roughly 13,700 lines**: the pathfinding engine,
+the congestion heatmap, the top-3 hotspot overlay, path visualization, the playback engine, and the
+travel-time estimator. That is the actual "movement" half of what "Movement Visualizer" /
+"School Layout Visualizer" refers to — a tool about bodies moving through a building at passing time,
+not a timetable grid, and it sits behind a button nobody outside the generator's own machine ever
+presses. The Schedule Browser (the published half everyone else sees) is fully understood; the
+simulation is not. The exact line ranges are in the notes file's coverage table — re-locate them by
+function name rather than trusting the old line numbers, since the file has shifted slightly since the
+rename.
+
+**`localStorage`: 29 call sites, still hand-rolled, not adopted into `gvb-save.js`.** Six or seven
+independent keys: `stviz_settings`, `stviz_blueprint`, `stviz_schedules`, `stviz_viz_prefs`,
+`stviz_onboarded`, `stviz_whatif`, plus a numbered snapshot series with its own quota accounting. This
+was deliberately not attempted last round — see task six.
+
+**The PDF export still produces an oversized file.** `exportVizAsPDF()` embeds a full-resolution,
+uncompressed PNG. A fake school with 11 rooms produces a 21.4 MB PDF — not broken, but not something
+anyone emails. Understood, not fixed; picking a compression strategy (JPEG at quality, lower export DPI,
+or vector output) is a design decision, not a bug fix. See task three.
+
+**A real, current gap on the file staff actually open:** the Schedule Browser's mode switcher has
+`role="tablist"` on its container, but the three buttons themselves have no `role="tab"` and no
+`aria-selected` — the selected state is conveyed by a CSS class only. See task two.
 
 ## Your task
 
-There is no handoff backlog for this tool. It has never been the subject of a session, and at 859 KB
-it is the largest unexamined thing in the repo.
+Round 1 happened. The backlog below is what it left, ordered by value per effort — this is not a cold
+start.
 
-**Task one: find out what is in the generated browser file** and report it, per the student-data
-section. Do this first; it takes five minutes and it is the only item here that could be urgent.
+**Task one: the committed floor plan is Devon's decision, not yours.** If you are a Claude session
+running this prompt, do not remove or alter `PUBLISHED_DATA` on your own judgement, and do not treat
+"leave it" as the default just because no one has acted yet. Surface the question plainly (it is
+already written out above and in the notes file) and let the decision get made explicitly. This is the
+only item in this prompt with someone else's name on it.
 
-**Task two: decide the versioned-filename question** per the section above, and act on your decision.
+**Task two: add `role="tab"` and `aria-selected` to the Schedule Browser's three mode-switcher
+buttons.** The container's `role="tablist"` is already correct; the buttons aren't finished. Small,
+concrete, and `smoke.mjs` is already in place to catch a mistake — extend it with an assertion for the
+new attributes rather than trusting it by eye.
 
-**Task three: vendor jsPDF and the four font families.** jsPDF into a `libs/` folder you own at the
-version currently requested, with a README naming library, version, licence and source, the way
-`Projects/golden-hour-beach/assets/textures/README.md` does. Fonts as local `@font-face` with only the
-weights actually used. **And fix the generator's template so the output it produces is also clean** —
-otherwise you fix one file and the generator recreates the problem on the next run. Measure everything
-and report the numbers (locked decision #42, which exists because a size estimate wrong by 4× blocked a
-good decision for two sessions).
+**Task three: fix the PDF export size.** Pick one of JPEG-at-quality, a lower export DPI, or vector
+output instead of a raster, implement it, and report the new file size against the same 11-room fixture
+so the before/after is comparable. Say which trade-off you picked and why; there is no single correct
+answer here.
 
-**Task four: audit and plan, then build what fits.** 18,707 lines is too much to understand fully in
-one session, so **be honest about coverage**: say what you read, what you only skimmed, and what you
-did not open. A plan that admits its blind spots is worth more than one that implies it saw everything.
+**Task four: read the simulation half, and only then extend the test suite to cover it.** This is the
+prerequisite for everything after it — the pathfinding engine, the multi-floor graph, congestion
+colouring, the hotspot overlay, and the playback/travel-time engine, roughly 4,400 lines never opened
+last round. Do not restructure any of this before you have actually read it as prose, not skimmed it.
+A full session, honestly.
 
-Worth forming an opinion about:
+**Task five (do not start before task four): restructure the file.** 862 KB in one file is still the
+strongest restructure case in the repo. A generator with a template, an importer, a layout engine, a
+pathfinder, and a UI wants to be five files. It stayed a single file last round specifically because
+13% read depth is not enough to split safely, and that has not changed until task four happens.
 
-- **Actually use it.** Load real-shaped (fake-named) schedule data and generate a browser file. Then
-  open the output and use it as a teacher would. That will find more than reading 18,707 lines.
-- **What is the "movement" the title refers to**, and does the visualiser make it visible? A tool that
-  shows how bodies move through a building at passing time is a genuinely useful thing; a tool that
-  shows a timetable as a grid is a different, lesser thing. Say which this is.
-- **859 KB in one file.** This is the strongest restructure case in the repo, stronger than Daredevil's
-  6,683 lines. A generator with a template, an importer, a layout engine and a UI wants to be four
-  files. **But weigh it against how much of the file you actually understand** — a refactor of code you
-  skimmed is how a working tool becomes a broken one, and this tool has no test suite at all. It may be
-  right to write a test suite this session and restructure the next. Say so if it is.
-- **Twenty-nine `localStorage` call sites, hand-rolled.** `assets/js/gvb-save.js` gives you validation,
-  a memory fallback for browsers that block storage (**reading the `localStorage` property throws
-  outright** in that configuration, which a `try/catch` around `setItem` never reaches), and file
-  export/import. Keep every existing key exactly as it is (locked decision #36); put fill-ins in
-  `repair` rather than `migrate` (locked decision #37) because `repair` runs on every accepted load from
-  every door and `migrate` only on version drift; pass `defaults` as a factory if any default is
-  non-literal, or `slot.reset()` hands back `null`. A missing hook is a Shared-file request, not an edit.
-- **Import/export formats.** Where does schedule data come from — a paste, a CSV, an xlsx? Whatever it
-  is, that is the tool's real interface, and making it tolerant of the actual mess that comes out of a
-  school scheduling system is usually the highest-value work in this class of tool.
-- **Print output.** A schedule browser gets printed and put on a wall. Check the print stylesheet.
-- **Mobile.** 375×812, for the browser file especially — a staff member checking a room assignment on
-  their phone is the main use case for the output, even if the generator is desktop-only. Those two
-  files can legitimately have different answers here.
-- **Accessibility.** Table semantics, contrast, keyboard navigation, and whether a schedule grid reads
-  sensibly to a screen reader. The output file is the one to get right; it is the one other people use.
+**Task six (a session of its own, not urgent): adopt `gvb-save.js` for all 29 call sites.** The tool has
+six or seven independent storage keys, not one; `mountSaveBar` assumes a single slot; the blueprint
+payload is the largest state on the site and already has its own quota-accounting code. Answer the
+storage-quota question directly rather than inheriting an assumption from a simpler adopter. Keep every
+existing key exactly as it is (locked decision #36); put fill-ins in `repair` rather than `migrate`
+(locked decision #37), since `repair` runs on every accepted load and `migrate` only on version drift. A
+missing hook is a Shared-file request, not something you patch around.
+
+**Cosmetic, quick, do whenever convenient:** a scroll-affordance hint on the now-scrollable mobile map
+(a shadow at the scroll edge is the standard fix — nothing currently tells a phone user the map
+scrolls), and check the Building Map prints sensibly across a page break.
+
+**Noted but not tasked — a judgement call, not a bug:** `.rcell` and `.geo-room` are two separate
+floor-plan SVG renderers (the Building Map and the smaller "Where to find you" plan on a teacher's own
+page) that look like duplication but weren't read deeply enough last round to be sure they can merge.
+Leave them unless task four's deeper read settles it. Italic font faces were deliberately not vendored —
+no italic was ever requested by the old hotlink either, and shipping real italics now would be a visual
+design change, not dependency cleanup.
 
 ## Verification
 
-Neither file has a test suite, and at 859 KB that is the largest untested surface in the repo. If you
-change anything structural, it needs one — put it in a folder you own and make it exit non-zero on
-failure (locked decision #13).
+There is now a real regression baseline where there was none. Use it.
 
-- **Before changing anything, generate a browser file from the current generator and keep it.** That
-  output is your only regression baseline. After any change, generate again and diff. A generator whose
-  template silently drops a column gives you no error at all.
-- **Open the generated output in a browser and use it**, every time. A generated file that parses is not
-  a generated file that works.
-- After vendoring, load both files with the network panel open and confirm zero requests leave the site.
-  Then grep both for `cdnjs.cloudflare.com` and `fonts.googleapis.com` → zero hits each. Then **actually
-  export a PDF**, because a vendored library with a wrong path fails at the moment you use it, not at
-  load.
-- `npm run social:check` → 23 notices, 23 already current. **This is the check most likely to catch you
-  out**: if your generator emits a `<head>` and does not reproduce the `gvb:social` block byte-for-byte,
-  every regeneration will read as drift. Run it after generating, not just after editing.
-- `cd Tools/board-check && npm run check` → 235 units, 0 broken, 0 collisions. Run it before you finish,
-  especially if you renamed anything — this is the sweep that catches a broken link, and you are the
-  thread most likely to create one.
-- Locked decision #34: for every guard-rail you add, break the thing on purpose first and watch it fail.
+- **Before changing anything, generate a browser file from the current generator and keep it** (
+  `node Tools/schedule/test/publish.mjs baseline.html`). After any change, generate again and diff. A
+  generator whose template silently drops a column gives you no error at all.
+- **Open the generated output in a browser and use it**, every time. A generated file that parses is
+  not a generated file that works.
+- `node Tools/schedule/test/smoke.mjs` → **42 passed, 0 failed.** Confirmed fresh. If you extend
+  coverage for tasks two or four, this is the file to add assertions to.
+- After any change touching fonts or jsPDF, grep both files for `cdnjs.cloudflare.com`,
+  `fonts.googleapis.com`, `fonts.gstatic.com` → zero hits each, confirmed fresh. Then **actually export
+  a PDF**, because a vendored library with a wrong path fails at the moment of use, not at load.
+- `cd Tools/board-check && npm run social:check` → expect **22 notices, 22 already current** (not 23 —
+  the Bestiary Gallery is gone). As of this refresh, running it surfaced an unrelated parsing failure —
+  `only parsed 17 notices out of index.html — the notice markup has changed shape` — which is
+  `index.html`'s own markup drifting, not anything in your two files. That is outside your boundary; if
+  you hit the same error, do not chase it into `index.html`. Confirm your own files independently
+  instead: grep both for `gvb:social:start` — both currently carry the block.
+- `cd Tools/board-check && npm run check` → as of this refresh, **331 units checked**; the one broken
+  unit is `newindex.html`, an unrelated file outside your boundary with its own offsite-font references
+  — not yours to fix, and not evidence you broke anything. **0 collisions across nine widths, tightest
+  vertical gap 9.2px.** If your own run reports a broken unit under `Tools/schedule-visualizer.html` or
+  `Tools/schedule-browser.html`, that one is real and yours.
+- `cd Tools/board-check && npm run tools` → **18 checks, 0 failed.** This is the suite that actually
+  opens both your pages (`play-games.mjs` never does) — confirmed fresh, both pages pass with
+  "no offsite requests refused" and "no page or console errors."
+- Locked decision #34: for every guard-rail you add, break the thing on purpose first and watch it
+  fail. Round 1's font-fallback assertions passed against a 404'd stylesheet the first time they were
+  written, because `document.fonts.check()` returns true for any family with no `@font-face` at all —
+  worth remembering if you write new font or asset assertions.
 
-Scheduling note: `npm run games`, `npm run play` and `npm run previews` open real visible browser
-windows, and Chrome throttles a window that loses focus (v7 §6). Other threads may be running them.
-Only one at a time.
+Scheduling note: `npm run games`, `npm run play`, `npm run previews`, and `npm run tools` open real
+visible browser windows, and Chrome throttles a window that loses focus. Other threads may be running
+them. Only one browser suite at a time.
 
 ## Output: your notes file
 
 Write `Claude Prompts/notes/19-schedule-visualizer-notes.md`. Nobody else writes that file, so it can
-never conflict. It is the only record of this session that survives — `gvb-site-handoff-v8.md` gets
-assembled from all twenty-one of them.
+never conflict. It is the only record of this session that survives — the next handoff gets assembled
+from all twenty-one of these.
 
 Use these headings:
 
@@ -239,21 +311,18 @@ Use these headings:
 
 Note the three extra headings, which only this prompt asks for.
 
-- **What is in the committed schedule data** — exactly whose names and what details are in
-  `Tools/Schedule Browser as of 260715.html`, which is public. Answer plainly. If there are real
-  student names, say so in the first sentence.
-- **The versioned-filename decision** — what you decided, what it costs, and which URLs break.
-- **Coverage: what I actually read** — of 18,707 lines, what you read, skimmed, and never opened. Be
-  honest; this is the most useful thing you can hand the next session.
-- **What changed** — files touched and why, with paths. Vendored totals in KB. **If you changed the
-  generator's template, say so explicitly** and say whether you regenerated the output.
-- **What I verified** — actual commands, actual output. Include the generate-diff-generate baseline
-  check, the PDF export, and `npm run social:check` after generating. "Should work" is not verification.
-- **Shared-file requests** — both board `href`s if you renamed, both card descriptions if the
-  "Movement Visualizer" mismatch should be reconciled there, any `gvb-save.js` gap with the exact hook
-  signature. Applicable blind.
+- **What is in the committed schedule data** — carry forward round 1's answer if nothing changed, or
+  say plainly what Devon decided if task one got resolved this session.
+- **The versioned-filename decision** — already made; note here only if anything about it needed
+  revisiting.
+- **Coverage: what I actually read** — of 18,777 lines, what you read, skimmed, and never opened. Build
+  on round 1's map rather than restarting it; be honest about what is still unread.
+- **What changed** — files touched and why, with paths. **If you changed the generator's template, say
+  so explicitly** and say whether you regenerated the output.
+- **What I verified** — actual commands, actual output. "Should work" is not verification.
+- **Shared-file requests** — anything needing a board or `gvb-save.js` edit, specific enough to apply
+  blind.
 - **Deliberately not done** — something you looked at, understood, and chose to leave, with the reason.
-  For an 859 KB file this section will be long, and that is correct.
 - **Next session** — ordered by value per effort.
 
 ## Writing style

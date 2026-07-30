@@ -210,8 +210,9 @@ doesn't have a TAC export handy.
 
 **Not a task — already done.** The previous round's shared-file request to sweep every Tools page
 for offsite requests, console errors, and a non-empty title was applied by prompt 21: it's now
-`Tools/board-check/tools.mjs`, wired to `npm run tools`, and it's the check that would have caught
-this tool's old cdnjs hotlinks on day one. Don't re-request it.
+`Tools/board-check/tools.mjs`, wired to `npm run tools` (18 checks, 0 failed, this tool's page
+among them), and it's the check that would have caught this tool's old cdnjs hotlinks on day one.
+Don't re-request it.
 
 ## Output: your notes file
 

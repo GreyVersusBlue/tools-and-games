@@ -135,6 +135,11 @@ feeding it corrupt bytes (locked decision #34), not just written and trusted.
 **Touch targets were measured, not eyeballed, and fixed:** row buttons were 21×24px, now ~50×40px,
 caught by `getBoundingClientRect` in an actual 375×812 viewport rather than guessed from the CSS.
 
+**Clean under the new `Tools/board-check` sweep.** `npm run tools` opens all six Tools pages headless
+and asserts a real title, zero offsite requests, zero console errors — 18 checks, 0 failed, and this
+page is one of the six. `check-integrity.mjs`'s static source sweep (locked decision #44) doesn't flag
+this file either.
+
 **No settings persistence.** Considered and deliberately declined this round as a separable
 feature, not because it's a bad idea — see task three.
 
@@ -196,16 +201,24 @@ should get a Node test in a folder you own, exiting non-zero on failure (locked 
   file for `cdnjs.cloudflare.com` → zero hits.
 - Do the eight-to-ten-image mixed-orientation run described above and record the output file size.
 - Try a non-image file and a very large image, and record what happens.
-- `cd Tools/board-check && npm run check` → 235 units, 0 broken, 0 collisions. Run it before you
-  finish, especially if you renamed anything.
-- `npm run social:check` → 23 notices, 23 already current. Drift on your page means you edited
-  inside the `gvb:social` markers.
+- `cd Tools/board-check && npm run check` → 331 units, 0 collisions across nine widths, tightest
+  vertical gap 9.2px. Run it before you finish, especially if you renamed anything. One unit is
+  currently broken — `newindex.html`, which references offsite fonts. That's a separate file outside
+  every project's Tools boundary, not something this session touches or should fix; if your own run
+  shows a different broken count, or a failure inside `Tools/`, that's a real finding.
+- `npm run social:check` → expect 22 notices, 22 already current (dropped from 23 when the Bestiary
+  Gallery was deleted). As of this refresh the check itself fails before it gets that far —
+  `only parsed 17 notices out of index.html — the notice markup has changed shape` — a repo-wide
+  parsing problem unrelated to this file. Don't chase it here. Confirm by hand instead: `git diff` on
+  `Tools/image-to-pdf.html` should show nothing between `<!-- gvb:social:start -->` and
+  `<!-- gvb:social:end -->`.
 - Locked decision #34: for every guard-rail you add, break the thing on purpose first and watch it
   fail.
 
 Scheduling note: `npm run games`, `npm run play` and `npm run previews` open real visible browser
 windows, and Chrome throttles a window that loses focus (v7 §6). Other threads may be running them.
-Only one at a time.
+Only one at a time. `npm run tools` (18 checks, includes this page) runs headless and doesn't compete
+for focus with those — safe to run whenever.
 
 ## Output: your notes file
 
@@ -235,7 +248,7 @@ Use these headings:
   exact hook signature. Applicable blind. Empty is fine; keep the heading.
 - **Deliberately not done** — something you looked at, understood, and chose to leave, with the
   reason. "This tool is small and does its one job, and here is why adding X would make it worse" is
-  a strong answer for a 748-line single-purpose tool.
+  a strong answer for a 978-line single-purpose tool.
 - **Next session** — ordered by value per effort. If there is genuinely nothing left, say that.
 
 ## Writing style

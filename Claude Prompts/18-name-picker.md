@@ -65,166 +65,199 @@ silently overwritten. A wrong description is a board request.
 ## Student data: this is the part that matters
 
 **This tool stores student names in `localStorage` on whatever machine it runs on.** Student names
-are education records under FERPA. That is not a reason to stop building it — a name picker without
-a roster is useless — but it changes what "done" means.
+are education records under FERPA. Round 1 gave this a full pass and it is in good shape now — the
+rules below are what keeps it that way, not a to-do list.
 
 Hard rules:
 
-- **Everything stays in the browser.** No network calls, no analytics, no third-party endpoint, ever.
-  The tool is currently clean on this and must stay clean.
-- **Do not put real student names in the repo.** Any sample roster, test fixture or screenshot uses
-  obviously fake names. **Check the current file for real names before you do anything else** — it
-  has twelve storage keys and a roster feature, so a hardcoded class list is entirely plausible. If
-  you find one, that is the first item in your notes and it comes out.
-- **A visible, unmissable "clear all data" control is required.** This runs on a classroom machine
-  that other people use. The tool currently has twelve separate keys, and a teacher has no way to
-  know that or to clear them all.
-- **Say in the UI what is stored and where.** One honest sentence. A teacher deciding whether to type
-  twenty-eight real names into a web page deserves to know the answer is "this browser only, nowhere
-  else".
+- **Everything stays in the browser.** No network calls, no analytics, no third-party endpoint. True
+  today (zero requests leave localhost once the page has loaded — the three Google Fonts hotlinks
+  that used to be the exception are gone) and it must stay true through whatever you change.
+- **Do not put real student names in the repo.** Round 1 checked the working copy and the full git
+  history back to the original commit (`git show ef8f69c`) and found none — only three placeholders
+  in the roster textarea's `placeholder` attribute (Aiden Smith, Brooklyn Jones, Charlie Patel), all
+  obviously fake. Keep it that way: any fixture or test data you add is fabricated, never a real
+  roster.
+- **A visible, unmissable "clear all data" control exists: the 🔒 Data tab's "Erase All Student
+  Data" button.** It clears exactly the six keys that hold student data (grouped as `roster` and
+  `records` in `np-store.js`'s `GROUPS`, see below) and leaves the other seven — themes, prompts,
+  options, the retro unlock — untouched, so a teacher clearing a class list doesn't also erase an
+  earned easter egg. Keep that split if you touch this area; a single "clear everything" button is
+  the wrong shape for a shared classroom machine.
+- **The UI says in plain language what is stored and where.** The Data tab opens with a sentence
+  saying everything stays in this browser on this computer, no account, server or analytics, zero
+  network requests — then a live census and a table of all thirteen keys naming which erase button
+  clears each. If you add a fourteenth key, it needs a row in that table and a group in `GROUPS`.
 
-Also worth thinking about: **an export is a file of student names leaving a managed machine.** If you
-add export, that is the right feature, but the filename and the UI should not encourage saving it
-somewhere careless. Name it plainly, don't default to a Downloads-and-forget flow, and say what it
-contains.
+**Export is a file of student names leaving a managed machine, and the tool already treats it that
+way:** the filename is `name-picker-roster-backup-YYYY-MM-DD.json`, not the shared save module's
+generic `name-picker-save-…`, and the confirm dialog states the exact name count before writing
+anything, plus guidance to keep the file on a school-managed drive rather than a personal cloud
+folder or a shared machine's Downloads. If you touch export, keep both of those.
 
 ## What is actually here
 
-1,702 lines, 107 KB, one file. Title: "Name Picker". Tagged with the school stamp under Town
-Services.
+This is a mature, well-tested tool now. **2,045 lines, 127,747 bytes (about 125 KB) in `Tools/Name
+Picker.html`**, plus `Tools/name-picker/`: `np-store.js` (496 lines, the storage layer), `np-pick.js`
+(150 lines, fair rotation and Fisher-Yates), `test/smoke.mjs` (620 lines, 207 assertions),
+`test/blocked-storage.html` (97 lines, 10 assertions), `fonts/` (nine vendored `.woff2`, README,
+three upstream licences), and its own `README.md`. Title: "Name Picker". Tagged with the school stamp
+under Town Services.
 
-**Twelve `localStorage` keys across forty-six call sites**, all hand-rolled:
+**Student-data safety is thorough.** No real student names anywhere in the file or its git history
+(checked back to the original commit). A new **🔒 Data tab** states plainly that everything stays in
+this browser, no account, server or analytics, zero network requests — then a live census and a table
+of all thirteen keys naming which of two erase buttons clears each. Confirm dialogs state real counts
+before erasing (*"This removes 28 student names, 1 roster, 28 sets of pick counts…"*) and before
+exporting. Export files are named `name-picker-roster-backup-YYYY-MM-DD.json`, not the shared
+module's generic `name-picker-save-…`.
+
+**Thirteen `np_` keys, all on `assets/js/gvb-save.js` via `np-store.js`, zero direct `localStorage`
+call sites left in the page.** `grep -c localStorage "Tools/Name Picker.html"` → 3, and all three are
+inside a code comment, not live reads. **All thirteen key names are unchanged from before round 1,
+and so is every byte already on disk** — the four array-valued and five bare-string keys (`np_theme`
+is literally `"medieval"`, not JSON) needed a `boxed()` adapter so `gvb-save`'s `{...state, __v:
+version}` spread never touches what's actually written to storage. Keys are grouped into three named
+groups, in a table in code (`GROUPS` in `np-store.js`), not a comment:
 
 ```
-np_theme  np_stats  np_history  np_rosters  np_current  np_prompts
-np_hof    np_lucky  np_lucky_enabled  np_crazy  np_retro_active  np_retro_unlocked
+roster    np_rosters  np_current  np_lucky              student names — cleared by "Erase All Student Data"
+records   np_stats    np_history  np_hof                names + what they did — cleared by the same button
+prefs     np_theme  np_prompts  np_options  np_crazy     no student data — survives that erase
+          np_lucky_enabled  np_retro_active  np_retro_unlocked
 ```
 
-That is more storage surface than any game in the repo, including the two that went through a
-dedicated save-system session. The error handling is inconsistent: some reads are wrapped in
-`try/catch` with a sensible fallback (`loadStats`, `loadHistory`, `loadPrompts`), and some are bare
-`JSON.parse(localStorage.getItem('np_rosters') || '{}')` with no guard at all — which means **a
-corrupt roster entry throws on read and takes the page with it**, and the user has no way to recover
-except knowing to clear site data. Read lines 1009–1042 and check that for yourself; it is the
-concrete bug in this file.
+`np_lucky` sits in `roster`, not `prefs`, on purpose — it looks like a toggle but it stores one
+student's name.
 
-`np_lucky`, `np_crazy`, `np_retro_active` and `np_retro_unlocked` look like easter eggs and an
-unlockable retro theme. Treat them as features, not cruft — this repo likes easter eggs, and locked
-decision #7 records that the Anathema Archive's is the origin of a pattern the board copied. Find out
-what they do before you touch them.
+**The fairness bug is fixed.** Before round 1, every pick was an independent uniform draw with no
+memory of who'd already gone — over a 28-student roster that left roughly ten students never called
+across a full round (measured: 64% coverage), because `np_stats`/`np_history` were written every pick
+but never read back. There's now a proper fair rotation — draw without replacement within a round,
+refill when the pool is exhausted, exclude the previous pick from the first draw of a new round — as
+a new **"⚖️ Fair rotation" option, on by default**. `makeGroups()`'s old `sort(() => Math.random() -
+0.5)` shuffle, measurably biased (worst deviation 2,438 of an expected 3,333 over 20,000 shuffles),
+is now real Fisher-Yates (worst deviation 68). The rotation lives in memory per page load, not in
+storage — a reload starts a clean round, deliberately.
 
-**It hotlinks three Google Font families** — Bungee, Outfit and Press Start 2P — at lines 24 and 26.
-v7 §5 claims the site makes zero offsite requests site-wide. That is wrong for fifteen pages, and the
-reason nobody caught it is twofold: `prepPage()` in `Tools/board-check/harness.mjs` *fulfills* Google
-Fonts requests locally from bundled `@fontsource` packages before the blocked-list check runs, and the
-browser suites only ever drive the seven games, never the tools. None of your three families are among
-the twelve already on disk in `Tools/board-check/node_modules/@fontsource/`, so you will be sourcing
-these yourself. Press Start 2P is presumably the retro-theme font, so check whether it is needed on
-first paint or only after an unlock — a font only an easter egg uses should not block the initial
-render.
+**Zero offsite requests.** The three Google Fonts hotlinks (Bungee, Outfit, Press Start 2P) are
+vendored: nine `.woff2` files, 96.9 KB on disk, but a typical first paint only fetches 41.5 KB
+(Bungee 400, Outfit 400/600); the `latin-ext` files load only for a name with a non-ASCII glyph, and
+Press Start 2P — the retro-theme font — is never fetched until the Konami code unlocks it. `grep -c
+"fonts.googleapis.com\|fonts.gstatic.com" "Tools/Name Picker.html"` → 0.
+
+**A test suite exists and is this project's own.** `node "Tools/name-picker/test/smoke.mjs"` → 207
+passed, 0 failed (fresh run, this session). `test/blocked-storage.html` needs a real browser (a
+throwing `localStorage` property getter can't be reproduced in plain Node) — 10 of 10 pass there,
+per round 1's notes; re-verify in a browser if you touch storage construction. `npm run tools` from
+`Tools/board-check/` already opens this page headless and asserts a real title, no offsite requests,
+and no console errors — 1 of 18 checks across six Tools pages, all passing.
+
+**Also fixed this round, worth knowing about:** the Hall of Fame ticker used to die permanently on
+one entry with no `tier` field (`e.tier.toLowerCase()`, unguarded); a non-array roster value used to
+crash the whole page on load via `updateRosterUI()`, or crash on click via `.join()` — the store now
+refuses a bad blob and drops one unusable entry rather than losing the whole set to it; and all
+~15 toggle-able options (sound, confetti, cold-call, rarity, sudden-death, the HOF ticker, mode,
+speed, and more) now persist in one new key, `np_options` — previously only 4 of them survived a
+reload.
+
+**The Konami-code retro theme and "Lucky Student of the Day" are real features, preserved exactly.**
+Treat them the same way you would any other feature — this repo likes easter eggs, and locked
+decision #7 records that the Anathema Archive's is the origin of the pattern.
+
+**This project's own two `gvb-save.js` requests were both applied by prompt 21**, now locked
+decisions #48 and #49 in `gvb-site-handoff-v8.md` §4 and §9: `load()`'s `getItem` call is now
+guarded (closes the hard crash this project's own test suite hit — `Error: The operation is
+insecure. at Object.getItem`), and `mountSaveBar` gained a `filename` override (the reason this tool
+wanted it: `name-picker-roster-backup-…json` instead of the generic default). Both are cited, not
+repeated, in the task list below.
 
 ## Your task
 
-There is no handoff backlog for this tool. It has never been the subject of a session.
+Round 1 was the big one: student-data safety, the full `gvb-save.js` adoption across all thirteen
+keys, and the fairness bug fix. What's left is smaller and more specific.
 
-**Task one, the highest-value item and it is a bug: fix the unguarded roster reads.** Four
-`JSON.parse(localStorage.getItem('np_rosters') || '{}')` calls with no `try/catch`. One malformed
-entry — from a failed write, a quota error mid-save, or a browser extension — and the page throws on
-load with a roster the user cannot delete through the UI. That is a tool that eats a teacher's class
-list and offers no way out.
+**Task one, the highest-value item: build the `play-games.mjs` browser suite for this tool.**
+`npm run games` covers six games and zero tools — `Tools/board-check/tools.mjs` (new this round)
+opens this page headless and checks title/offsite/console, but nothing drives it: no click, no
+export, no fairness assertion. That's half of why the font hotlinks went unnoticed for as long as
+they did. This tool is ready for one and it is close to transcription, not invention — round 1's own
+session hand-ran every beat a suite needs and wrote down exactly how, in
+`Claude Prompts/notes/18-name-picker-notes.md`'s "What I verified" section:
 
-**Task two, the structural fix that makes task one permanent: adopt
-`assets/js/gvb-save.js`.** You are the best-fitting candidate in the repo. Twelve keys, forty-six
-call sites, inconsistent error handling, no versioning, no validation, no export, and no memory
-fallback — the module exists for exactly this.
+- **Export**, by hooking `URL.createObjectURL` to read the exact bytes a download would write and
+  neutering the anchor click so nothing actually saves — assert the envelope (`format: "gvb-save"`,
+  `game: "name-picker"`), the `a.download` filename (`name-picker-roster-backup-YYYY-MM-DD.json`),
+  and that `"__v"` never appears in the file.
+- **Import**, by handing a `File` straight to `store.bundle.importFromFile` — sidesteps the OS file
+  picker entirely, no `waitForEvent('filechooser')` needed.
+- **Fairness**, by seeding a 28-name roster, running enough multi-picks to cover it, and reading
+  `np_history` back off disk: assert 28 distinct names, zero duplicates, zero back-to-back repeats.
+- **The corrupt-roster guard**, by seeding a truncated `np_rosters` value and asserting
+  `#countDisplay` is non-empty after load — this is the bug round 1 fixed; the suite should prove it
+  stays fixed.
+- **The erase flow**, by seeding data, clicking `#eraseStudentData`, confirming, and asserting the
+  six student-data keys are gone while the seven preference keys survive.
 
-What you get: validation so a corrupt blob is refused instead of thrown on, file export and import so
-a roster survives a cleared browser or moves between the classroom desktop and a laptop, a
-memory-backed fallback for browsers configured to block storage (**reading the `localStorage` property
-throws outright** in that configuration — not `setItem`, the property access — which none of your
-forty-six call sites survive), and one implementation of "refuse to load garbage".
+One warning, also from round 1's own hands-on run: the pick animations are timer-driven, so a
+headed run that loses focus stretches fast. `gvb-site-handoff-v7.md` §6 and locked decision #41
+apply here more than they do to a rAF-driven game — a throttled `setTimeout` clamps to about a
+second, and only one browser suite should run at a time regardless (see Scheduling note below).
 
-Specifics that bit the first adopter, from v7 §1 and §2:
+**Task two: decide `np_history`'s day boundary.** Small, but it fixes a tab that currently lies
+about what it shows. The History tab's copy says "picked this session" / "No picks yet today," but
+the key is never cleared, so after the first day it shows last week's picks too. `repair` already
+caps it at 500 entries, so it's bounded rather than unbounded, but that's not the same fix. The
+actual decision — clear on the first pick of a new calendar day, or keep everything and relabel the
+tab honestly — is a policy call for Devon, not a coding problem, so surface the tradeoff and
+implement whichever he'd pick if you can't ask directly. Same shape as `gvb-site-handoff-v7.md` §9's
+Faire Weekend report-phase question.
 
-- **Keep every existing key exactly as it is** (locked decision #36). All twelve. `np_theme` stays
-  `np_theme`. Changing one silently loses a teacher's rosters, and rosters are the thing that took
-  the longest to type.
-- **Think about whether twelve keys should become twelve slots or fewer.** The module is per-slot, and
-  there is a real design question here: `np_theme` and `np_retro_unlocked` are preferences,
-  `np_rosters` and `np_current` are data, `np_stats` and `np_history` and `np_hof` are records. Those
-  three groups have different export, reset and validation needs — a "clear all data" that wipes the
-  rosters but keeps the unlocked retro theme is the behaviour a user actually wants. **Grouping them
-  is the interesting work in this task**, and doing it without changing the underlying key names is
-  the constraint.
-- **`defaults` may be a factory.** If any default involves anything non-literal, pass a function or
-  `slot.reset()` hands back `null` — that gap was found by The Fourth Quarter's three random job
-  applicants.
-- **Fill-ins go in `repair`, not `migrate`** (locked decision #37). `repair` runs on **every** accepted
-  load from every door — localStorage, an imported file, a pasted blob, and data the current build
-  just wrote. `migrate` only runs on version drift. You have twelve keys of unversioned data on real
-  machines right now, all of which read as version 0, so `repair` is where the compatibility work
-  lives. Go looking for your version of the bug it exists for: a field added since the tool shipped,
-  absent from existing data, used somewhere that turns `undefined` into a silent failure.
-- **`mountSaveBar` takes a `buttons` option** and each button carries `data-gvb="export|import|reset"`
-  so a driver can click it without depending on label text or order. **Do not mount "reset" beside an
-  existing clear button** if the tool already has one — two data-erasers side by side is the exact
-  footgun that option exists to prevent.
-- **Stop touching `localStorage` directly anywhere afterwards.** All forty-six call sites. Let the
-  module do the probing.
-- **Import relatively** — `../assets/js/gvb-save.js` — so any Node test can resolve it.
-- **A missing hook is a Shared-file request, not an edit** to `gvb-save.js`. Six projects read that
-  file. Write the exact signature you need and work around it locally meanwhile. Given how much
-  storage surface you have, you are the thread most likely to find a real gap — **that finding is
-  valuable, so write it up properly.**
+**Not this project's job, flag it instead: renaming `Tools/Name Picker.html` to
+`name-picker.html`.** Round 1 deliberately left it — the space and capitalization stayed so
+`Tools/Name%20Picker.html` keeps resolving — but a rename now needs the board's `href` in
+`index.html` changed in the same commit, and that file belongs to prompt 21, not to a solo run of
+this prompt. If you think it's worth doing, write the exact before/after `href` into your
+Shared-file requests section rather than touching `index.html` yourself. `Tools/name-picker/` is
+already named right, so only the page and the link are left.
 
-**Task three: vendor the three fonts.** Bungee, Outfit, Press Start 2P. Local `@font-face`, woff2 in a
-folder you own, hotlinks deleted, only the weights the page uses. Consider loading the retro font
-lazily if only an unlocked theme needs it. README naming source and licence, the way
-`Projects/golden-hour-beach/assets/textures/README.md` does. Measure and report the total (locked
-decision #42).
+If task one and two are both done with session left over, worth a look:
 
-**Task four: audit and plan, then build what fits.** Worth an opinion:
-
-- **Is the randomness actually fair?** This is a name picker's entire job, and the thing teachers
-  notice. Does it pick without replacement within a round, or can it call the same student twice in a
-  row? `np_stats` and `np_history` exist, so it appears to track calls — does anything use that to
-  even out who gets asked? "Every student gets called before anyone gets called twice" is usually what
-  a teacher wants and rarely what a naive `Math.random()` gives.
-- **The three levels.** This gets used across Honors GT, Honors and Academic sections, so multiple
-  rosters is a core case rather than an edge one. `np_rosters` suggests it is handled; check how well.
-- **Mobile.** 375×812. A name picker is used standing up in front of a class, from a phone as often as
-  a projector. This is a strong mobile case.
-- **Accessibility, and the projector case.** This one is displayed to a room. Contrast and font size at
-  the back of a classroom matter more than usual, and `@media (prefers-reduced-motion: reduce)` — used
-  elsewhere in this repo — matters if the picker animates, which a picker usually does.
-- **1,702 lines in one file** with twelve storage keys and an unlockable theme is at the point where a
-  split is defensible. If you do it, `/Tools/Name%20Picker.html` stops resolving and the board `href`
-  is a Shared-file request. Say plainly that the old URL breaks. This is also the moment to lose the
-  space in the filename.
+- **The three levels.** Honors GT, Honors and Academic all use this; multiple rosters is a core case.
+  `np_rosters` already handles it — check how well under real use, not just in the abstract.
+- **Mobile and accessibility** were both addressed in round 1 (375×812 checked, `:focus-visible`
+  added, nine `prefers-reduced-motion: reduce` rules) — re-verify rather than redo, and note in your
+  notes if anything regressed.
+- **`leastPicked()`** is written and tested in `np-pick.js` and nothing calls it. Fair rotation made
+  it mostly redundant (the Stats tab's "Least Picked" sort covers the same need), so this is a
+  two-line wiring job only if you specifically want a "who's due" display somewhere.
 
 ## Verification
 
-This tool has no test suite, and it is the one in this set that most obviously needs one: storage
-handling and fair-picking logic are both pure functions and both currently unverified. Put it in a
-folder you own and make it exit non-zero on failure (locked decision #13).
+A test suite exists and it should keep passing. Add to it — a folder you own, exit non-zero on
+failure (locked decision #13) — don't start over.
 
-- **Before you change anything, save a copy of all twelve keys' current values** from a browser that
-  has used the tool, or fabricate a realistic set. You need it to prove existing data still loads.
-- **Test the corrupt-data case explicitly.** Write garbage into `np_rosters` by hand, reload, and watch
-  the page throw. That is the bug in task one, and locked decision #34 says you verify a guard-rail by
-  reintroducing the bug it guards — so do it before the fix, then again after.
-- **Test with storage blocked.** Chrome's site settings will do it. The tool should still run, not
-  white-screen.
-- Test the export/import round trip once it exists: export, clear everything, import, confirm the
-  rosters come back intact.
-- **Test fair picking empirically.** Run a few hundred picks against a roster of twenty-eight and look
-  at the distribution. Numbers, not impressions.
-- After vendoring, grep the file for `fonts.googleapis.com` → zero hits. `page.__blocked` is **not**
-  the check; `prepPage()` fulfills those requests.
-- `cd Tools/board-check && npm run check` → 235 units, 0 broken, 0 collisions. Run it before you
-  finish, especially if you renamed anything.
-- `npm run social:check` → 23 notices, 23 already current. Drift on your page means you edited inside
-  the `gvb:social` markers.
+- `node "Tools/name-picker/test/smoke.mjs"` → **207 passed, 0 failed.** Run this before you touch
+  anything so you know the baseline holds, and again before you finish.
+- `Tools/name-picker/test/blocked-storage.html` → **10 of 10 pass**, per round 1's notes. This one
+  needs a real browser (a throwing `localStorage` property getter can't be reproduced in plain
+  Node), so re-verify it by hand if you touch storage construction; don't assume it still holds
+  just because the Node suite does.
+- If you build the browser suite in task one, **the corrupt-data case is the one to verify by
+  reintroducing the bug it guards** (locked decision #34): seed a truncated `np_rosters`, reload,
+  confirm the page does not throw and the roster is dropped rather than crashing the load.
+- **Test the export/import round trip against the real UI**, not just the module: export, erase via
+  the Data tab, import, confirm the roster and pick counts come back exactly as they were.
+- `grep -c "fonts.googleapis.com\|fonts.gstatic.com" "Tools/Name Picker.html"` → 0. `page.__blocked`
+  is **not** the check (locked decision #44); `check-integrity.mjs`'s static offsite sweep is, and
+  it's what `npm run check` below already runs.
+- `cd Tools/board-check && npm run check` → currently in the high 320s to low 330s units checked,
+  0 broken affecting this project (moving target while other sessions edit the repo; older prompts
+  still say 235 or 298 — ignore those). Run it yourself before you finish for the exact number.
+- `npm run social:check` → 22 notices, 22 already current, 0 out of date, 0 failed. Drift on your
+  page means you edited inside the `gvb:social` markers.
+- `cd Tools/board-check && npm run tools` → 18 checks, 0 failed, across six Tools pages including
+  this one. This already runs a basic smoke pass on the page; it is not a substitute for task one.
 
 Scheduling note: `npm run games`, `npm run play` and `npm run previews` open real visible browser
 windows, and Chrome throttles a window that loses focus (v7 §6). Other threads may be running them.
@@ -252,17 +285,17 @@ Use these headings:
 Note the extra first heading, which only this prompt asks for. **Answer it directly:** whether any
 real student names were in the file, what the tool now stores and where, whether a user can clear all
 of it in one action, and whether the UI tells them the truth about it. That is the section that
-matters most for a tool holding a class list.
+matters most for a tool holding a class list — confirm round 1's answer still holds rather than
+skipping it because it was already answered once.
 
-- **What changed** — files touched and why, with paths. **List every storage key and say what
-  happened to it**; twelve keys is enough that the next session needs a table. Vendored font total in
-  KB.
-- **What I verified** — actual commands, actual output. Include the corrupt-data test before and
-  after, the storage-blocked test, the export/import round trip, and the picking-distribution numbers.
-  "Should work" is not verification.
-- **Shared-file requests** — **read this one twice.** With forty-six call sites and twelve keys you
-  are the most likely thread to find a real gap in `gvb-save.js`; write the exact hook signature and
-  why existing hooks don't cover it. Plus a board `href` if you restructured. Applicable blind.
+- **What changed** — files touched and why, with paths. If you touched storage at all, **list every
+  storage key and say what happened to it**; if you didn't, say so plainly and point at round 1's
+  notes for the full table instead of repeating it.
+- **What I verified** — actual commands, actual output. If you built the browser suite, this is where
+  every beat it drives goes, with pass counts. "Should work" is not verification.
+- **Shared-file requests** — a board `href` if you're recommending the rename (see task list — you
+  write the request, you don't make the edit). Any new `gvb-save.js` gap if you find one. Applicable
+  blind.
 - **Deliberately not done** — something you looked at, understood, and chose to leave, with the
   reason. The easter eggs are a legitimate thing to leave alone once you know what they do.
 - **Next session** — ordered by value per effort.
