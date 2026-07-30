@@ -62,8 +62,12 @@ export const GAMES = {
     saveKey: 'renn-faire-sim-save-v1',
     intro: [],
     live: false,
+    // A report is on disk while it's on screen as of this session (Stage 21),
+    // so a reload can legitimately resume on a report/weekendEnd/victory/
+    // gameOver phase — `.ticket-stub` — rather than the planning phase's
+    // `.grounds-map`. Wait for whichever the saved phase actually is.
     async open(p) {
-      await p.waitForSelector('.grounds-map');
+      await p.waitForSelector('.grounds-map, .ticket-stub');
     },
   },
 
@@ -141,6 +145,78 @@ export const GAMES = {
       if (!start) return;
       await p.click('#startBtn');
       await wait(800);
+    },
+  },
+
+  // ---- The Absalom Inheritance: no title screen and no intro overlay — the
+  // isometric board is up as soon as window.__absalom exists. Plain canvas, no
+  // three.js.
+  'absalom-inheritance': {
+    title: 'The Absalom Inheritance',
+    url: '/Projects/absalom_inheritance.html',
+    vw: 1280, vh: 800, dsf: 1,
+    saveKey: 'absalom-inheritance-save-v1',
+    intro: [],
+    // Turn-based: the engine resolves a whole turn instantly and hands back a
+    // script for ui.js to play back, but the board sits still between inputs.
+    // Locked decision #29.
+    live: false,
+    async open(p) {
+      await p.waitForFunction(() => !!window.__absalom);
+    },
+  },
+
+  // ---- Daredevil: the title screen, the setup screen (default name/town), then
+  // the first chapter card. Turn-based prose — see locked decision #29.
+  'daredevil': {
+    title: 'Daredevil',
+    url: '/Projects/daredevil_r4.html',
+    vw: 1280, vh: 800, dsf: 1,
+    saveKey: 'daredevil-save-v1',
+    intro: [],
+    live: false,
+    async open(p) {
+      await p.waitForSelector('#btn-begin');
+      await p.click('#btn-begin');
+      await wait(200);
+      await p.click('#btn-start');       // accepts the default name and town
+      await wait(600);
+      await p.click('#ct-btn');          // the chapter card
+      await wait(700);
+    },
+  },
+
+  // ---- The Fracture Cycle: a single-file CYOA. First frame of play is the
+  // intro node with its choices rendered — nothing to dismiss before it.
+  'fracture-cycle': {
+    title: 'The Fracture Cycle',
+    url: '/Projects/the-fracture-cycle.html',
+    vw: 1280, vh: 800, dsf: 1,
+    saveKey: 'fracture-cycle-v1',
+    intro: [],
+    live: false,
+    async open(p) {
+      await p.waitForSelector('#choices button');
+    },
+  },
+
+  // ---- Corner & Kettle: click a waiting customer, open the Base station, pull
+  // a shot. Three clicks to a filled cup, per locked decision #28.
+  'corner-and-kettle': {
+    title: 'Corner & Kettle',
+    url: '/Projects/coffee_shop_sim.html',
+    vw: 1280, vh: 800, dsf: 1,
+    saveKey: 'cornerKettleSave_v1',
+    intro: [],
+    live: false,
+    async open(p) {
+      await p.waitForSelector('.customer');
+      await p.click('.customer');
+      await p.click('.stationTab[data-tab="base"]');
+      await p.click('#btnEspresso');
+      await p.waitForFunction(
+        () => window.__CK_DEBUG__?.state?.slots?.[0]?.cup?.shots >= 1,
+        null, { timeout: 10000 });
     },
   },
 };

@@ -22,7 +22,22 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
 <!-- gvb:social:end -->
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap');
+/* Vendored, not hotlinked: 114 KB of woff2 in ./integer-foundry/fonts/, source
+   and licence named in the README there. Only the weights a selector on this page
+   actually asks for. See that README for the one deliberate difference (Inter 700
+   used to be a synthesised bold, because the old @import never requested it). */
+@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;
+  src:url('./integer-foundry/fonts/inter-400.woff2') format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:700;font-display:swap;
+  src:url('./integer-foundry/fonts/inter-700.woff2') format('woff2');}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;
+  src:url('./integer-foundry/fonts/jetbrains-mono-400.woff2') format('woff2');}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:700;font-display:swap;
+  src:url('./integer-foundry/fonts/jetbrains-mono-700.woff2') format('woff2');}
+@font-face{font-family:'Oswald';font-style:normal;font-weight:600;font-display:swap;
+  src:url('./integer-foundry/fonts/oswald-600.woff2') format('woff2');}
+@font-face{font-family:'Oswald';font-style:normal;font-weight:700;font-display:swap;
+  src:url('./integer-foundry/fonts/oswald-700.woff2') format('woff2');}
 
 :root{
   --iron-0:#161310;
@@ -87,6 +102,10 @@ body{
 #grid{
   display:grid; gap:3px;
   background:var(--iron-0);
+  /* The cell size is set in JS from the frame's own width. It used to be a flat
+     560/maxDim, which is 58 px a cell — 485 px of grid inside a 375 px phone, and
+     body has overflow-x:hidden, so the right-hand columns were clipped off the
+     screen with no way to scroll to them. */
 }
 .cell{
   position:relative; aspect-ratio:1/1; background:var(--iron-2);
@@ -129,7 +148,7 @@ body{
 .sink-target{
   position:absolute; top:2px; left:0; right:0; text-align:center;
   font-size:9px; color:var(--paper-dim); font-family:'JetBrains Mono',monospace;
-  pointer-events:none;
+  pointer-events:none; white-space:nowrap; overflow:hidden;
 }
 .cell.blocked-flash{background:rgba(193,84,58,0.35) !important;}
 .cell.reward-flash{background:rgba(124,174,111,0.4) !important;}
@@ -187,6 +206,15 @@ body{
 #prestige-btn:disabled{background:var(--iron-3); color:var(--paper-dim); cursor:not-allowed;}
 #prestige-info{font-size:10.5px; color:var(--paper-dim); margin-top:8px; line-height:1.5;}
 
+/* The shared save bar. In the sidebar, not on a title screen: v7 §9 has an open
+   item for exactly the mistake of putting export behind a page reload. */
+#save-bar{
+  --gvb-btn-bg:var(--iron-3); --gvb-btn-fg:var(--copper);
+  --gvb-btn-border:var(--copper-dim); --gvb-btn-radius:3px;
+  font-family:'JetBrains Mono',monospace;
+}
+#save-note{font-size:10.5px; color:var(--paper-dim); margin-top:8px; line-height:1.5;}
+
 #log{
   max-height:130px; overflow-y:auto; font-size:11px; color:var(--paper-dim);
   font-family:'JetBrains Mono',monospace; display:flex; flex-direction:column-reverse; gap:3px;
@@ -210,8 +238,6 @@ body{
 footer{text-align:center; padding:24px; font-size:11px; color:var(--paper-dim); font-family:'JetBrains Mono',monospace;}
 footer a{color:var(--copper); text-decoration:none;}
 
-#reset-link{position:fixed; bottom:10px; right:14px; font-size:10px; color:var(--paper-dim); cursor:pointer; font-family:'JetBrains Mono',monospace; opacity:0.5;}
-#reset-link:hover{opacity:1;}
 </style>
 </head>
 <body>
@@ -251,97 +277,72 @@ footer a{color:var(--copper); text-decoration:none;}
       <button id="prestige-btn">Trigger Meltdown</button>
       <div id="prestige-info"></div>
     </div>
+    <div class="panel">
+      <h2>Save</h2>
+      <div id="save-bar"></div>
+      <div id="save-note"></div>
+    </div>
   </div>
 </div>
 
-<footer>Built for greyversusblue.com &middot; progress saves automatically to this browser &middot; <span id="reset-link-inline" style="cursor:pointer; text-decoration:underline;">wipe save</span></footer>
+<footer>Built for greyversusblue.com &middot; progress saves to this browser as you play &middot; export it from the Save panel</footer>
 <div id="toast"></div>
 
-<script>
+<script type="module">
+import { mountSaveBar } from '../assets/js/gvb-save.js';
+import { OP_TILES, boardPlan, minCells, recipe, describeRecipe, rollTarget }
+  from './integer-foundry/js/targets.js';
+import { DIRS, emptyCell, foundrySlot, makeEmptyGrid } from './integer-foundry/js/state.js';
+
 (function(){
 "use strict";
 
 /* ===================== CONFIG ===================== */
 
-const DIRS = ['N','E','S','W'];
 const DIR_VEC = {N:[0,-1], E:[1,0], S:[0,1], W:[-1,0]};
 const DIR_ARROW = {N:'\u25B2', E:'\u25B6', S:'\u25BC', W:'\u25C0'};
 
+// The `op` functions come from targets.js rather than being spelled out again
+// here. The solver that decides which orders are fillable and the simulator that
+// carries packets down the line have to agree about what a tile does, or the
+// promise that every order can be filled is worth nothing. One definition is the
+// only way to be sure they never drift.
 const TILE_DEFS = {
   belt:     {label:'Belt',      icon:'\u2504', unlockKey:null},
   source:   {label:'Source',    icon:'\u25C9', unlockKey:null},
   sink:     {label:'Sink',      icon:'\u25A3', unlockKey:null},
-  add1:     {label:'+1',        icon:'+1',  op:v=>v+1,  unlockKey:null},
-  sub1:     {label:'-1',        icon:'-1',  op:v=>Math.max(0,v-1), unlockKey:'sub1'},
-  mul2:     {label:'\u00D72',   icon:'\u00D72', op:v=>v*2, unlockKey:'mul2'},
-  div2:     {label:'\u00F72',   icon:'\u00F72', op:v=>Math.floor(v/2), unlockKey:'div2'},
+  add1:     {label:'+1',        icon:'+1',  op:OP_TILES.add1.apply, unlockKey:null},
+  sub1:     {label:'-1',        icon:'-1',  op:OP_TILES.sub1.apply, unlockKey:'sub1'},
+  mul2:     {label:'\u00D72',   icon:'\u00D72', op:OP_TILES.mul2.apply, unlockKey:'mul2'},
+  div2:     {label:'\u00F72',   icon:'\u00F72', op:OP_TILES.div2.apply, unlockKey:'div2'},
   merge_add:{label:'Merge +',   icon:'\u2295', merge:'add', unlockKey:'merge_add'},
   merge_mul:{label:'Merge \u00D7', icon:'\u2297', merge:'mul', unlockKey:'merge_mul'},
   split:    {label:'Split',     icon:'\u2AF9', unlockKey:'split'},
 };
 
-const BASE_COLS = 8, BASE_ROWS = 6;
 const TICK_MS = 550;
-const SAVE_KEY = 'integer-foundry-save-v1';
 const MAX_OFFLINE_SECONDS = 4*3600;
+const AUTOSAVE_MS = 700;
 
 /* ===================== STATE ===================== */
 
 let state = null;
-
-function freshState(){
-  return {
-    cols: BASE_COLS, rows: BASE_ROWS,
-    grid: makeEmptyGrid(BASE_COLS, BASE_ROWS),
-    ingots: 0,
-    ordersFilled: 0,
-    lifetimeIngots: 0,
-    prestigeMult: 1,
-    prestigeCount: 0,
-    unlocked: {sub1:false, mul2:false, div2:false, merge_add:false, merge_mul:false, split:false,
-               sink2:false, sink3:false, grid2:false, grid3:false, fastSource:false},
-    sourceIntervalTicks: 3,
-    sinks: [ {target: randomTarget(0)} ],
-    tool: 'belt',
-    lastSave: Date.now(),
-    recentIngotsPerSec: 0,
-    log: [],
-  };
-}
-
-function makeEmptyGrid(cols, rows){
-  const g = [];
-  for(let y=0;y<rows;y++){
-    const row = [];
-    for(let x=0;x<cols;x++){
-      row.push({type:null, dir:'E', packet:null, mergeBuf:[], sourceTimer:0, sinkIndex:null});
-    }
-    g.push(row);
-  }
-  return g;
-}
-
-function randomTarget(difficultyBoost){
-  const ceil = Math.min(300, 5 + difficultyBoost*3 + Math.floor(Math.random()*8));
-  return Math.max(2, Math.floor(Math.random()*ceil)+1);
-}
+const slot = foundrySlot();
 
 /* ===================== SAVE / LOAD ===================== */
 
-function save(){
-  try{
-    state.lastSave = Date.now();
-    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
-  }catch(e){ /* storage unavailable, ignore */ }
-}
-
-function load(){
-  try{
-    const raw = localStorage.getItem(SAVE_KEY);
-    if(!raw) return null;
-    return JSON.parse(raw);
-  }catch(e){ return null; }
-}
+// Was `setInterval(save, 8000)` with a `beforeunload`. Two things wrong with that.
+// A player lost any change made in the last eight seconds before a close, because
+// beforeunload does not fire reliably on mobile. And an armed interval could
+// overwrite a deliberate write to the save, which is what forced play-games.mjs to
+// neuter `localStorage.setItem` before reloading the page.
+//
+// gvb-save's autosave coalesces instead: mark it dirty on every change, one write
+// at most every AUTOSAVE_MS, and a flush on `visibilitychange` and `pagehide`. The
+// save is now under a second behind the screen rather than up to eight, which is
+// what locked decision #39 cited this game for.
+const auto = slot.autosave(() => { state.lastSave = Date.now(); return state; }, AUTOSAVE_MS);
+const touch = now => { auto.mark(); if(now) auto.flush(); };
 
 function applyOfflineProgress(loaded){
   const elapsedMs = Date.now() - (loaded.lastSave || Date.now());
@@ -371,23 +372,71 @@ function fmt(n){
 /* ===================== INIT ===================== */
 
 function init(){
-  const loaded = load();
+  // No Object.assign(freshState(), loaded) any more: the slot's `repair` fills the
+  // gaps, and it reaches inside `unlocked` and reconciles the grid with cols/rows,
+  // neither of which a shallow merge ever did.
+  const loaded = slot.load();
   if(loaded){
-    state = Object.assign(freshState(), loaded);
-    // ensure grid dims/shape intact
-    if(!state.grid || !state.grid.length){ state.grid = makeEmptyGrid(state.cols, state.rows); }
+    state = loaded;
     applyOfflineProgress(state);
   } else {
-    state = freshState();
+    state = slot.fresh();
     logMsg('Foundry commissioned. Place a Source and a Sink to begin.');
   }
+  measureCell();
   buildPaletteUI();
   buildShopUI();
   renderGrid();
   updateStatsUI();
+  renderLog();          // a resumed save had a full log and an empty panel until
+                        // something new happened: nothing called this on load.
+  mountSave();
+  window.addEventListener('resize', onResize);
   setInterval(tick, TICK_MS);
-  setInterval(save, 8000);
-  window.addEventListener('beforeunload', save);
+}
+
+/** Take up a state that arrived from somewhere other than play. */
+function adoptState(){
+  measureCell();
+  buildPaletteUI();
+  buildShopUI();
+  renderGrid();
+  updateStatsUI();
+  renderLog();
+  touch(true);
+}
+
+const SAVE_HINT = 'Export writes a .json file you can keep. Import loads one back.';
+let noteTimer = null;
+function sayOnSaveBar(msg){
+  const el = document.getElementById('save-note');
+  el.textContent = msg;
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(()=>{ el.textContent = SAVE_HINT; }, 5000);
+}
+
+function mountSave(){
+  document.getElementById('save-note').textContent = SAVE_HINT;
+  // In the sidebar, reachable while playing. v7 §9 has an open item against the
+  // Fourth Quarter for putting this behind a page reload; no reason to repeat it.
+  //
+  // "Start over" is mounted here, and the footer's old "wipe save" link is gone —
+  // one control that erases a factory, not two.
+  mountSaveBar(document.getElementById('save-bar'), slot, {
+    buttons: ['export','import','reset'],
+    getState: () => state,
+    setState: s => {
+      // mountSaveBar hands both "Import save" and "Start over" through one
+      // setState, so it does not say which happened. It does not have to: import
+      // writes the state to storage before calling this and reset clears the key,
+      // so an empty key means the player pressed Start over.
+      const erased = slot.load() === null;
+      state = s;
+      adoptState();
+      logMsg(erased ? 'Save erased. Starting fresh.' : 'Save loaded from file.');
+    },
+    onMessage: sayOnSaveBar,
+  });
 }
 
 /* ===================== LOG / TOAST ===================== */
@@ -467,12 +516,48 @@ function selectTool(key){
 
 /* ===================== GRID RENDER ===================== */
 
+// How wide a cell is drawn. Measured from the frame, not from a constant.
+//
+// It used to be `max(30, min(58, floor(560/maxDim)))`, which is 58 px for every
+// board this game can produce — 485 px of grid for the opening 8 columns, 696 px
+// once both floor expansions are bought. On a 375 px phone that overflowed, and
+// `body` sets `overflow-x:hidden`, so the right-hand columns were clipped off the
+// screen with no way to scroll or tap them. Not a cosmetic problem: the sink is
+// the rightmost thing most players place.
+//
+// Measured once on load, on resize, and when the floor grows — not per render,
+// which happens every 550 ms tick and would mean a forced layout each time.
+let cellPx = 58;
+function measureCell(){
+  const frame = document.getElementById('grid-frame');
+  const avail = Math.max(140, (frame.clientWidth || 600) - 30); // 14 px padding each side, + border
+  const perCol = Math.floor((avail - (state.cols - 1) * 3) / state.cols);
+  cellPx = Math.max(18, Math.min(58, perCol));
+  return cellPx;
+}
+
+function onResize(){
+  const before = cellPx;
+  if(measureCell() !== before) renderGrid();
+}
+
+/** What the player would have to build to fill this order. */
+function orderHint(target, plan){
+  const cells = minCells(target, plan);
+  if(!Number.isFinite(cells)) return `Order ${target}: this floor cannot build it.`;
+  if(cells === 0) return `Order ${target}: run a source straight into this sink.`;
+  return `Order ${target}: ${cells} fabricator${cells === 1 ? '' : 's'} between a source and `
+       + `this sink. Cheapest line: ${describeRecipe(recipe(target, plan))}.`;
+}
+
 function renderGrid(){
   const gridEl = document.getElementById('grid');
   gridEl.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
   gridEl.innerHTML = '';
-  const maxDim = Math.max(state.cols, state.rows);
-  const cellPx = Math.max(30, Math.min(58, Math.floor(560/maxDim)));
+  // Lazily, and once per render rather than once per sink: boardPlan memoises on
+  // the board's shape and unlock set, but countSinks still walks the grid.
+  let plan = null;
+  const getPlan = () => (plan || (plan = boardPlan(state)));
   for(let y=0;y<state.rows;y++){
     for(let x=0;x<state.cols;x++){
       const cell = state.grid[y][x];
@@ -489,12 +574,18 @@ function renderGrid(){
       }
 
       if(cell.type === 'sink'){
-        const sinkIdx = cell.sinkIndex;
-        const t = state.sinks[sinkIdx] ? state.sinks[sinkIdx].target : '-';
+        const sink = state.sinks[cell.sinkIndex];
+        const t = sink ? sink.target : '-';
         const tgt = document.createElement('div');
         tgt.className = 'sink-target';
-        tgt.textContent = 'NEEDS ' + t;
+        // "NEEDS 12" is about 44 px at 9 px mono. On a phone the cell is 36 px, so
+        // the word wins the space and the number — the only part that matters —
+        // gets clipped. Drop the word rather than the digits.
+        tgt.textContent = cellPx >= 48 ? ('NEEDS ' + t) : String(t);
         div.appendChild(tgt);
+        // The order is guaranteed buildable now, so it is worth saying how. A
+        // target of 11 is eleven +1 tiles and nothing on screen used to hint that.
+        div.title = sink ? orderHint(sink.target, getPlan()) : 'No order on this sink yet.';
         const icon = document.createElement('div');
         icon.className = 'icon'; icon.textContent = '\u25A3';
         div.appendChild(icon);
@@ -528,9 +619,9 @@ function onCellClick(x,y){
   if(tool === 'erase'){
     if(cell.type){
       logMsg(`Removed ${TILE_DEFS[cell.type] ? TILE_DEFS[cell.type].label : cell.type} at (${x},${y}).`);
-      state.grid[y][x] = {type:null, dir:'E', packet:null, mergeBuf:[], sourceTimer:0, sinkIndex:null};
+      state.grid[y][x] = emptyCell();
       renderGrid();
-      save();
+      touch(true);
     }
     return;
   }
@@ -540,6 +631,7 @@ function onCellClick(x,y){
     const idx = DIRS.indexOf(cell.dir);
     cell.dir = DIRS[(idx+1)%DIRS.length];
     renderGrid();
+    touch(true);   // which way a tile points is half the puzzle; it has to persist
     return;
   }
 
@@ -587,14 +679,14 @@ function placeTile(x,y,tool){
     while(used.has(freeIndex)) freeIndex++;
     cell.type = 'sink';
     cell.sinkIndex = freeIndex;
-    if(!state.sinks[freeIndex]) state.sinks[freeIndex] = {target: randomTarget(state.ordersFilled)};
+    if(!state.sinks[freeIndex]) state.sinks[freeIndex] = {target: rollTarget(state)};
   } else if(tool === 'merge_add' || tool === 'merge_mul'){
     cell.type = tool; cell.dir = 'E'; cell.mergeBuf = [];
   } else {
     cell.type = tool; cell.dir = 'E';
   }
   renderGrid();
-  save();
+  touch(true);
 }
 
 /* ===================== SIMULATION ===================== */
@@ -771,8 +863,11 @@ function tick(){
       state.lifetimeIngots += reward;
       state.ordersFilled += 1;
       flashCell(x,y,'reward-flash');
-      logMsg(`Order filled: ${value} \u2192 +${fmt(reward)} ingots`);
-      sink.target = randomTarget(state.ordersFilled);
+      // rollTarget reads the board, so the next order is one this floor can be
+      // built to fill. Naming it in the same line saves a hunt for which sink
+      // changed when there are three of them.
+      sink.target = rollTarget(state);
+      logMsg(`Order filled: ${value} \u2192 +${fmt(reward)} ingots. Next: ${sink.target}.`);
     } else {
       flashCell(x,y,'reject-flash');
       logMsg(`Rejected ${value} at sink (needed ${sink.target}).`);
@@ -783,6 +878,11 @@ function tick(){
   renderGrid();
   updateStatsUI();
   buildShopUI();
+  // Marked, not written: the autosave coalesces, so a tick every 550 ms produces
+  // one write every AUTOSAVE_MS at most. Marking every tick is what keeps packets
+  // in flight in the save, so a reload picks up where the screen was rather than
+  // up to eight seconds behind it.
+  touch();
 }
 
 let rateWindow = [];
@@ -843,6 +943,7 @@ function growGrid(addCols, addRows){
   state.grid = newGrid;
   state.cols = newCols;
   state.rows = newRows;
+  measureCell();   // more columns in the same frame means narrower cells
 }
 
 function buildShopUI(){
@@ -864,7 +965,7 @@ function buildShopUI(){
         buildShopUI();
         renderGrid();
         updateStatsUI();
-        save();
+        touch(true);
       }
     });
     wrap.appendChild(row);
@@ -899,31 +1000,18 @@ document.getElementById('prestige-btn').addEventListener('click', ()=>{
   const newMult = state.prestigeMult + gain;
   const lifetime = state.lifetimeIngots;
   const prestigeCount = state.prestigeCount + 1;
-  state = freshState();
+  state = slot.fresh();
   state.prestigeMult = newMult;
   state.lifetimeIngots = lifetime;
   state.prestigeCount = prestigeCount;
   logMsg(`Meltdown #${prestigeCount} complete. New multiplier: \u00D7${newMult.toFixed(2)}`);
-  buildPaletteUI();
-  buildShopUI();
-  renderGrid();
-  updateStatsUI();
-  save();
+  adoptState();
 });
 
-/* ===================== RESET ===================== */
-
-function wipeSave(){
-  if(!confirm('Wipe all Integer Foundry progress in this browser? This cannot be undone.')) return;
-  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
-  state = freshState();
-  logMsg('Save wiped. Starting fresh.');
-  buildPaletteUI();
-  buildShopUI();
-  renderGrid();
-  updateStatsUI();
-}
-document.getElementById('reset-link-inline').addEventListener('click', wipeSave);
+/* ===================== RESET =====================
+   The hand-rolled wipeSave() and the footer link that called it are gone. The
+   save bar's "Start over" is the one control that erases a factory, and it goes
+   through the slot, so it clears the key the same way every other project does. */
 
 /* ===================== START ===================== */
 

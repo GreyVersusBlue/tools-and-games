@@ -3,7 +3,7 @@
 You are working on Castle Conundrum, a first-person three.js castle puzzle game on
 greyversusblue.com. It is the most-worked project in this repo and the one with the
 most documented history. This prompt is self-contained, but the required reading is
-longer than most because five previous sessions left findings here you will otherwise
+longer than most because six previous sessions left findings here you will otherwise
 rediscover the hard way.
 
 ## Your boundary
@@ -56,20 +56,34 @@ and your edit will be silently overwritten.
 ## Required reading, in this order
 
 1. This whole file.
-2. `gvb-site-handoff-v7.md` §6 (Chrome throttling), §8 (backlog), §10 (locked
-   decisions), §11 (next session, where this project is item 3).
-3. `gvb-site-handoff-v6.md` §4 (line of sight, and the two ways it was got wrong
-   first), §8 (the two things deliberately not fixed — both are yours), §9 (locked
-   decisions #33, #34, #35).
-4. `gvb-site-handoff-v5.md` §1 (the NPC model mapping, decided), §2 (played to
+2. `Claude Prompts/notes/05-castle-conundrum-notes.md` — round 1's session notes for
+   this exact project: the wall-texture root cause, the brazier and candelabra
+   rebuilds, the Scholar reposition, and the audit that produced this round's task
+   list. `Claude Prompts/archive/` holds every earlier round's prompts and notes,
+   including round 1's own copy of this file — read there if you need the version of
+   this prompt round 1 was actually working from.
+3. `gvb-site-handoff-v8.md` §1 (22 notices, not 23 — the Bestiary Gallery is gone),
+   §7 (backlog state — this project's blurry walls are listed fixed, by this
+   project's own round-1 session), §9 (locked decisions 43–50), §10 (suggested next
+   session, site-wide).
+4. `gvb-site-handoff-v7.md` §6 (Chrome throttling — still the house rule), §10
+   (locked decisions), §11 (next session — history now; superseded by v8 §10 and by
+   this project's own notes file for what's actually next).
+5. `gvb-site-handoff-v6.md` §4 (line of sight, and the two ways it was got wrong
+   first), §9 (locked decisions #33, #34, #35). **§8's diagnosis of the blurry walls —
+   "Poly Haven textures stretched by UV scaling, no amount of anisotropy fixes it" —
+   was wrong on both counts. Round 1 found the real cause (a missing `magFilter` on
+   the Kenney kit's samplers, plus site-wide `anisotropy = 1`) and fixed it for free.
+   Read v6 §8 as history, not as a diagnosis to act on.**
+6. `gvb-site-handoff-v5.md` §1 (the NPC model mapping, decided), §2 (played to
    victory, and the Guard standing inside a wall), §4 (how to drive these games from a
    script), §6 (locked decisions #21 through #27).
-5. `gvb-site-handoff-v4.md` §1 (three.js vendored here) and §5 (locked #17, #18, #19).
-6. `gvb-site-handoff-v3.md` §1 (`npc.js` reconstructed; the wrong held-prop path) and
+7. `gvb-site-handoff-v4.md` §1 (three.js vendored here) and §5 (locked #17, #18, #19).
+8. `gvb-site-handoff-v3.md` §1 (`npc.js` reconstructed; the wrong held-prop path) and
    §6 (locked #14, #15, #16).
-7. `gvb-site-handoff-v2.md` §4 — "the important one: Castle Conundrum is broken". For
+9. `gvb-site-handoff-v2.md` §4 — "the important one: Castle Conundrum is broken". For
    history, not current state; it was fixed in v3.
-8. `Tools/board-check/README.md`.
+10. `Tools/board-check/README.md`.
 
 ## House rules for every file in this repo
 
@@ -78,6 +92,10 @@ and your edit will be silently overwritten.
   dependency.
 - **Zero offsite requests.** This game already makes none, and unlike most of the repo
   that is actually true here — it hotlinks no fonts and no CDN. Don't regress it.
+  `page.__blocked` is "offsite and refused"; `page.__shimmed` is "offsite and
+  fulfilled locally instead" (locked decision #44, `gvb-site-handoff-v8.md` §2). This
+  game reports both empty — `play-castle.mjs` currently only asserts on `__blocked`,
+  which is fine only because there's nothing for the shim to catch here.
 - **Each project vendors its own copy; nothing is shared across projects** (locked
   decision #17).
 - **`libs/addons/` mirrors three.js's own `examples/jsm/` layout** — `loaders/`,
@@ -144,62 +162,121 @@ opinion, and if you still disagree, put it in your notes rather than acting on i
 The largest project in the repo. Nine `src/` modules, three `data/` files, its own
 vendored three.js with an `addons/` tree, and a 178 MB `assets/` folder holding the
 Kenney retro-fantasy kit, NPC models, and Poly Haven textures. Tagged
-`Puzzle Explore` and `data-new` on the board, with a preview and OG card.
+`Puzzle Explore` and `data-new` on the board, with a preview and OG card — both
+re-captured last round, since the old ones showed blurry walls and no braziers.
+
+**The blurry walls were a texture-sampling bug, not a UV or resolution problem, and
+round 1 fixed it.** The walls are Kenney kit pieces (`wall.glb`, `wall-half.glb`,
+`tower.glb`, `wall-fortified-gate.glb`), whose textures are deliberate 64x64 pixel
+art. Their glTF samplers specified only `minFilter`, so `GLTFLoader` defaulted
+`magFilter` to `LinearFilter` — a 64 px cobblestone was being bilinearly interpolated
+across a 4 m wall. Separately, every texture in the whole scene had `anisotropy = 1`
+against a GPU ceiling of 16, including the 1024 px ground-plane texture seen almost
+edge-on for the entire game. `src/assets.js` now has `setTextureQuality(renderer)`
+(reads the GPU's real anisotropy ceiling once) and `tuneTexture()` / `tuneMaterials()`
+(sets every texture to that ceiling, switches `magFilter` to `NearestFilter` for
+anything ≤128 px, the standard nearest-mag/linear-min pixel-art pairing). Don't
+re-diagnose this as UV stretching or a too-small source texture — see the required
+reading above on why v6 §8's original diagnosis was wrong, and the notes file for the
+measured texel densities that ruled it out.
+
+Also fixed last round, same session: the Scholar was standing 0.57 m inside the hall
+table (now at `[1.5, 0, -10.0]`, 0.6 m clear of the table, facing the doorway he's
+approached from); all three braziers had no physical body and were sealed inside wall
+geometry — invisible to the eye because a `PointLight` isn't occluded by geometry in
+this renderer, so the lighting looked right while the objects were literally inside
+solid stone (rebuilt from primitives, moved into the courtyard and doorway where
+they're actually visible); and the candelabra (lantern, brass candleholders) floated
+0.40 m above the hall table on a hardcoded `yOffset: 0.95` guess that was never tuned
+against the table's real 0.55 m height (`castle-builder.js` now measures the actual
+surface height via `surfaceHeightUnder()` instead of guessing).
 
 It has its own end-to-end play test, `npm run play` (`Tools/board-check/play-castle.mjs`
-— **yours**), which currently runs 22 beats and plays the game through to victory, all
-passing. It is deliberately excluded from `npm run games`, which covers the other six
-games more shallowly; this one goes deep on one game.
+— **yours**), which currently runs **29 beats** (up from 22 — round 1 added 7, each
+verified by breaking it on purpose first per locked decision #34) and plays the game
+through to victory, all passing. It is deliberately excluded from `npm run games`
+(126 checks, 0 failed, the other six games only) — this one goes deep on one game
+instead.
 
-It makes zero offsite requests, genuinely, verified by `play-castle.mjs` asserting
-`page.__blocked` is empty. Note that assertion has a known hole for Google Fonts
-specifically — `prepPage()` fulfills those locally rather than recording them — but
-this game hotlinks no fonts, so the hole doesn't apply here.
+It makes zero offsite requests, genuinely — see the house rule above on
+`page.__blocked` versus `page.__shimmed` (locked decision #44); both are empty here.
+
+**Ship weight, measured last round: 46.39 MB over 117 requests** — most of the 178 MB
+`assets/` folder never reaches a browser. Nearly all of what does ship is decoration:
+Poly Haven props (34.78 MB) and the three NPC `.gltf` files (9.98 MB, base64-inflated
+by about a third — converting to `.glb` would save roughly 2.5 MB with zero visual
+change). The entire Kenney stonework kit that all the walls come from is 181 KB.
+Frame cost is not the problem: median 6.9 ms, p95 7.6 ms at 1200x800, 175 meshes,
+288,881 triangles. The download is the cost, not the render.
 
 ## Your task
 
-**This project has the clearest backlog in the repo. Three known items, all open:**
+**Round 1 fixed the three known items (walls, Scholar, braziers) plus one nobody had
+flagged (the candelabra) — all four are described under "What is actually here," not
+here.** What's left is real but lower-stakes: shrinking what ships, and one
+earned-but-deferred geometry fix.
 
-**Task one, and it is the headline: the wall textures read blurry.** v6 §8 opened it,
-v7 §8 says "still not fixed", and v7 §11 lists it third with "budget a session; it is
-still the biggest visual win available". The diagnosis in v6 §8 is that it is UV work
-or texture-sourcing work. Do the diagnosis properly before you start editing:
+**Task one: shrink what ships.** 46.39 MB over 117 requests for a fifteen-minute
+quest, nearly all of it decoration — see the ship-weight numbers above. Two contained
+wins, larger first:
 
-- Find out *which* it is. A blurry wall is either a texture whose source resolution is
-  too low for the surface area it covers, or a UV mapping that stretches a fine
-  texture across too much geometry, or a sampling problem (missing mipmaps, wrong
-  `minFilter`, `anisotropy` left at 1, `colorSpace` wrong). Those have different fixes
-  and only one of them is about buying bigger images.
-- **Measure before deciding an asset is too heavy** (locked decision #42). That rule
-  exists because a size estimate that was wrong by 4× blocked the Golden Hour sand
-  decision for two sessions. If the answer is "source a higher-resolution texture",
-  get the actual byte count before arguing about it. This repo already carries 178 MB
-  of assets in this one folder; the bar is lower than you think.
-- `npm run play` plus a preview capture give you a real before/after. Take the before
-  screenshot first.
+- Convert the three NPC `.gltf` files (`King.gltf`, `Adventurer.gltf`, `Farmer.gltf`)
+  to `.glb`. They're base64-inflated by about a third; `.glb` drops roughly 2.5 MB
+  with zero visual change.
+- Downsample the 1k PBR texture sets on `brass_candleholders`, `gothic_statue`,
+  `ornate_medieval_mace` and `wooden_gate` to 512. Those four run about 12 MB combined
+  for props that never fill more than a few dozen pixels on screen. **Measure the
+  visual cost at 512 before committing** (locked decision #42) — take a before/after
+  pair the way round 1 did for the walls.
 
-**Task two: the Scholar clips through a hall table.** v7 §8, "still cosmetic, still not
-fixed". Visible in `Tools/board-check/shots/play/`. Remember locked decision #26 — the
-fix is checked against geometry, not against whether the interact prompt appears.
+**Task two: rebuild the interior hall at the kit's real module scale.**
+`wall-half.glb` is a 0.5x1x1 module, not the 0.5x0.5x0.5 its name suggests —
+`normalizeToTile` scales it to 4 m wide, **8 m tall and 8 m deep**, which is why the
+hall doorway is an 8 m tunnel and the hall wall has the worst texel density in the
+game (16 texels/m vertically, half the outer walls'). There's no contained fix:
+scaling it 4x instead leaves 2 m gaps between pieces placed 4 m apart, and
+substituting `wall.glb` fixes the scale but shrinks the hall's depth from 8 m to 4 m,
+which moves the doorway, the collider list, and the Scholar's sightlines together.
+Budget a full session and expect to re-place the Scholar and the hall brazier
+afterward. `wall-low.glb` (1x0.5x1, normalises correctly to 4x2x4) is the kit's actual
+half-*height* piece — worth considering if a lower interior wall was the original
+intent behind `wall-half`.
 
-**Task three: the interior braziers read as floating / unsupported.** Same section,
-same status, also visible in `shots/play/`.
+**Task three, smaller: give `column.glb` an explicit scale.** It's 0.2x1x0.2 in model
+units, and `castle-builder` only calls `normalizeToTile` for models whose name starts
+with `tower` or `wall`, so the two hall columns sit at native scale — 1 m tall, 20 cm
+thick stubs, out of frame in every current screenshot. Neither the normalized nor the
+native scale is right; give them their own number and put them somewhere visible.
 
-**Then, if there is session left: audit and plan.** Write a prioritized plan into your
-notes for what comes after these three. Worth an opinion:
+**Task four, only if task two happens: brazier colliders.** The braziers are physical
+objects now (see "What is actually here") but have no collider, so a player can walk
+through one. `castle.colliders` is built in `castle-builder.build()` and the braziers
+are constructed separately from `main.js`, so wiring this in means touching how
+they're built — the natural moment is while the collider list is already being
+rebuilt for task two.
 
-- **Does this game save at all?** Nothing in the handoffs says it does, and
-  `assets/js/gvb-save.js` exists precisely so a project doesn't hand-roll it. A castle
-  puzzle you can't leave and come back to is a shorter game than it needs to be. If
-  you adopt the module: keep whatever storage key already exists if one does (locked
-  #36), pass `defaults` as a factory if any initial state is randomised, put fill-ins
-  in `repair` rather than `migrate` (locked #37), and put the save bar somewhere
-  reachable during play rather than only on a start screen (v7 §9 is a whole section
-  on getting that wrong). A missing hook is a Shared-file request, not an edit.
-- **178 MB of assets.** How much of it ships to a visitor? A `.gltf` in the repo that
-  nothing loads is dead weight in a clone but free to a browser; a 4K texture on a wall
-  nobody sees up close is not. Numbers.
-- **Performance.** Frame time, draw calls, whether the castle is instanced.
+**Two things are decided, not open work, and don't need re-deriving:**
+
+- **Leave the walls stylised.** Five 1k Poly Haven stone sets already sit on disk
+  unused and would cost only about +2.1 MB to apply — this was an art-direction call,
+  not a cost one. The Kenney kit's pixel art plus the three flat-shaded, textureless
+  NPCs reads as a coherent stylised look; photoreal stone would make the characters
+  the mismatch instead of the furniture. Before/after pairs are in
+  `Claude Prompts/notes/05-castle-conundrum/`. Revisit only if someone looks at those
+  and disagrees.
+- **No save.** The quest is one boolean (`hasKeystone`) plus one more (`victory`) and
+  about fifteen minutes long — the honest fix for "you can't leave and come back" here
+  is more game to persist, not `gvb-save.js`. If a future session still wants it: no
+  existing key to preserve (locked #36 doesn't bind), nothing initial is randomised so
+  `defaults` needn't be a factory, and per v7 §9 the save bar shouldn't live only on
+  the start overlay. `gvb-site-handoff-v8.md` §4 documents newer capabilities
+  (`defaults` factories, `mountSaveBar` filename/label overrides, storage-construction
+  hardening) if that calculus ever changes.
+
+Worth knowing before placing another prop, for task two or anything after it: the
+Poly Haven pieces arrive at wildly different authored scales — the hall table is
+0.55 m tall, the stool beside it 0.18 m, the chair 2.27 m. `surfaceHeightUnder()`
+measures rather than trusts a number for exactly this reason.
 
 ## Verification
 
@@ -207,13 +284,19 @@ notes for what comes after these three. Worth an opinion:
   browser pane** (locked decision #25). The pane doesn't composite WebGL when hidden,
   so rAF never fires and every frame-dependent check *hangs* rather than failing
   loudly. v5 §4 has the recipe.
-- `cd Tools/board-check && npm run play` — 22 beats, all passing, headed. This is your
-  main instrument. You own the file, so **add beats** for anything you fix. Locked
-  decision #34: break the thing on purpose first and watch the new beat fail.
-- `npm run check` → 235 units, 0 broken, 0 collisions across nine widths.
-- `npm run social:check` → 23 notices, 23 already current.
-- For the texture work specifically, a before/after screenshot pair is the deliverable.
-  Save them somewhere you own and name the paths in your notes.
+- `cd Tools/board-check && npm run play` — **29 beats**, all passing, headed. This is
+  your main instrument. You own the file, so **add beats** for anything you fix.
+  Locked decision #34: break the thing on purpose first and watch the new beat fail.
+- `npm run check` → **327 units checked, 0 broken; 0 collisions across nine widths,
+  tightest vertical gap 9.2px.**
+- `npm run social:check` → **22 notices, 22 already current** (not 23 — the Bestiary
+  Gallery is gone; see `gvb-site-handoff-v8.md` §1).
+- `npm run games` covers the other six games (**126 checks, 0 failed**) and does not
+  include this project — `npm run play` is this project's own suite.
+- For the texture-downsampling work specifically, a before/after screenshot pair is
+  the deliverable, the same way round 1 did for the walls
+  (`Claude Prompts/notes/05-castle-conundrum/`). Save yours somewhere you own and name
+  the paths in your notes.
 
 Scheduling note that will cost you a run if you skip it: `npm run play`, `npm run
 games` and `npm run previews` all open real visible browser windows, and **Chrome
@@ -246,15 +329,15 @@ Use these headings:
 ## Next session
 ```
 
-- **What changed** — files touched and why, in prose, with paths. For the texture
-  work, say which of the possible causes it actually was and what the evidence was.
+- **What changed** — files touched and why, in prose, with paths. For anything visual,
+  say what the evidence was, not just that it looks fixed.
 - **What I verified** — actual commands, actual output, actual beat counts. Screenshot
   paths for anything visual. "Should work" is not verification.
 - **Shared-file requests** — exact edits needed in `games.mjs`, `gvb-save.js` or the
   board, applicable blind. Empty is fine; keep the heading.
 - **Deliberately not done** — something you looked at, understood, and chose to leave,
-  with the reason. If one of the three known items stays open, this is where it goes,
-  and say what you learned about it even so.
+  with the reason. If one of this round's task-list items stays open, this is where it
+  goes, and say what you learned about it even so.
 - **Next session** — ordered by value per effort.
 
 ## Writing style

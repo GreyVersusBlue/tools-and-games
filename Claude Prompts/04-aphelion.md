@@ -47,17 +47,28 @@ description is wrong, that is a board request.
 ## Required reading
 
 1. This whole file.
-2. `Projects/aphelion/README.md`.
-3. `gvb-site-handoff-v4.md` §1 — how three.js got vendored into this project, and
+2. `Claude Prompts/notes/04-aphelion-notes.md` — round 1's session notes for this
+   exact project: what shipped (fonts vendored, `gvb-save.js` adopted, EVA content
+   added, arrow-key look added), what was deliberately left, and what it flagged for
+   next session. `Claude Prompts/archive/` holds every earlier round's prompts and
+   notes, if you need history beyond that.
+3. `Projects/aphelion/README.md`.
+4. `gvb-site-handoff-v4.md` §1 — how three.js got vendored into this project, and
    locked decisions #17 and #18 about `libs/` layout.
-4. `gvb-site-handoff-v7.md` §3 (what the regression suite drives in this game), §4
-   (`games.mjs`), §6 (Chrome throttling), §10 (locked decisions).
-5. `gvb-site-handoff-v5.md` §4 and `gvb-site-handoff-v6.md` §6 — how these games get
+5. `gvb-site-handoff-v7.md` §3 (what the regression suite drives in this game), §4
+   (`games.mjs`), §6 (Chrome throttling).
+6. `gvb-site-handoff-v8.md` §9 for the full locked-decisions list, including new
+   decisions 43–50 (§1–§2 explain the notice-count correction and the
+   `page.__blocked`/`page.__shimmed` distinction behind #44).
+7. `gvb-site-handoff-v5.md` §4 and `gvb-site-handoff-v6.md` §6 — how these games get
    driven from a script, and locked decision #35 about camera rotation.
-6. `assets/js/gvb-save.js` and `assets/js/README.md` — read them, you will probably
-   want to adopt the module. Then read `Projects/fourth-quarter/js/campaign.js` as
-   the worked example, and `gvb-site-handoff-v7.md` §1 for what adopting cost and
-   bought.
+8. `assets/js/gvb-save.js` and `assets/js/README.md` — the module Aphelion already
+   adopted, in `src/state.js`. `gvb-site-handoff-v8.md` §4 documents the five fixes
+   this round found across all eleven adopters (Aphelion among them) — read it before
+   touching save code, since some of what the old hand-rolled fallback worked around
+   is now fixed in the module itself. `gvb-site-handoff-v7.md` §1 is still the best
+   writeup of what adopting the module costs and buys, from the Fourth Quarter's
+   original session.
 
 ## House rules for every file in this repo
 
@@ -92,92 +103,109 @@ description is wrong, that is a board request.
   the wall.
 - **Assert against the DOM for anything that just happened, and against the save only
   for what a reload has to survive** (locked decision #39).
+- **`page.__blocked` is "offsite and refused"; `page.__shimmed` is "offsite and
+  fulfilled locally instead"** (locked decision #44). A page can report an empty
+  `__blocked` and still hotlink something, because `harness.mjs`'s font shim answers
+  the request before the blocked-list check runs. `check-integrity.mjs`'s static
+  source sweep is the check that actually proves zero offsite requests; trust that
+  over `__blocked` alone.
+- **`gvb-save.js`'s `fresh`/`reset` forward arguments to a `defaults` factory, and
+  `clear()` erases the key without building a fresh state first** (locked decision
+  #47). Not needed by Aphelion's own `defaults` today — nothing about day one depends
+  on a runtime choice — but available if that ever changes.
+- **`mountSaveBar` takes `filename`/`labels` overrides, and its import handler now
+  calls `setState` before writing to storage, vetoable by returning `false`** (locked
+  decision #48). Relevant if the save bar's button text or export filename ever needs
+  to change.
+- **The two storage-construction gaps that used to justify a hand-rolled fallback are
+  fixed in the module itself**: `typeof localStorage` throwing outright, and an
+  unguarded `getItem` in `load()` (locked decision #49). Aphelion's adoption already
+  gets both fixes for free; nothing in this project needs to work around them anymore.
+- **`repair` also covers content drift, not just schema drift** (locked decision #50).
+  Relevant here specifically: `data/poi.json` and `data/logs.json` are content files,
+  not schema, and a save written before this round's extra POIs and log entries
+  existed still has to load cleanly against the current build.
 
 ## What is actually here
 
 A three.js first-person game in a proper module layout: six `src/` modules, four
 `data/` JSON files, its own vendored `libs/three.module.js` (three@0.160.0). Tagged
 `Sim` and `data-new` on the board, with a preview and an OG card already generated.
+`index.html` is 213 lines.
 
 `npm run games` drives it and asserts: the opening fade, three HUD gauges, the CERES
-toast, walking, and TAB opening the logbook. Those beats live in
+toast, walking, TAB opening the logbook, the save bar's three buttons mounting inside
+it, and an export producing a valid `gvb-save` envelope. Those beats live in
 `Tools/board-check/play-games.mjs`, which you may read and run but not edit.
 
-**Persistence is hand-rolled.** `src/state.js` does `localStorage.setItem` /
-`getItem` / `removeItem` on `aphelion-save-v1` directly, wrapped in bare
-`try {} catch (e) {}`. There is no version stamp and no validation, so a corrupt blob
-gets `JSON.parse`d straight into game state and the game boots on it. This is the
-same shape Closing Time is in, and Closing Time is #1 on the handoff's next-session
-list for exactly this reason.
+**Fonts are vendored, zero offsite requests.** IBM Plex Mono and Lora, five
+face/weight/style combos, live in `Projects/aphelion/assets/fonts/` (95,400 bytes /
+93.2 KB), with a README naming source and licence. `index.html` has zero
+`fonts.googleapis.com`/`fonts.gstatic.com` references — confirmed by grep and by
+`check-integrity.mjs`'s static offsite sweep, which is the check to trust over
+`page.__blocked` alone (locked decision #44, above).
 
-**It hotlinks two Google Font families** — IBM Plex Mono and Lora — at
-`index.html` lines 24 and 26. v7 §5 claims the site makes zero offsite requests
-site-wide. That is wrong, and the suite cannot see it: `prepPage()` in
-`Tools/board-check/harness.mjs` *fulfills* Google Fonts requests locally from bundled
-`@fontsource` packages before the blocked-list check runs, so font hotlinks never
-reach `page.__blocked`. Aphelion is one of four games in the regression suite with
-this problem. `Tools/board-check/node_modules/@fontsource/ibm-plex-mono` and
-`@fontsource/lora` are both already on disk — copy woff2 files out of them, but do not
-reference `node_modules` at runtime.
+**Persistence runs through `assets/js/gvb-save.js`**, adopted in `src/state.js`. Key
+is unchanged: `aphelion-save-v1`. `validateState` gates only the three fields
+`tick()` dereferences unconditionally every frame (`day`, `plant`, `systems`);
+`repairState` fills in everything else, including gaps opened by this round's new
+content (locked decision #50). `mode` (interior/EVA) is stripped before save and
+forced to `'interior'` on load — deliberate, it was never meant to persist. The save
+bar is mounted inside the logbook (`#savebar`, reachable any time with `Tab`, not
+gated behind a reload or the title screen) with `export`/`import`/`reset` buttons.
+`Projects/aphelion/test/smoke-state.mjs` is a plain-Node suite, no DOM/THREE
+dependency, currently **23 checks, 0 failed**.
+
+**EVA content is no longer thin.** `data/poi.json` has 3 points of interest (was 1);
+`data/logs.json` has 8 day-gated log entries and 3 discoveries (was 5 entries, 1
+discovery) — the day-progression content no longer dead-ends on day 5. Both files
+are pure data; `ship.js`'s POI loop and `main.js`'s day-unlock loop are generic over
+array length, so this needed no code changes.
+
+**Arrow-key look exists**, in `controls.js` (`ArrowLeft`/`ArrowRight` write to
+`yaw`, `ArrowUp`/`ArrowDown` to `pitch`, 1.8 rad/s), unconditional on pointer-lock
+state. WASD movement never required pointer lock; mouse-look does, so a browser or
+policy that blocks pointer lock used to leave a player able to walk in a straight
+line and nothing else. This closes that gap without a second full input scheme.
 
 ## Your task
 
-There is no handoff backlog for this game. It has never been the subject of a session.
+Round 1 vendored the fonts, adopted `gvb-save.js`, and ran a full fun/performance/
+audio/accessibility audit, building the two items that audit found (extra EVA
+content, arrow-key look). Nothing urgent is left on the core game — that is the
+audit's own conclusion, not an assumption. What remains is two low-urgency items the
+notes explicitly flagged and explicitly did not build, in the order the notes put
+them. Neither is required; both are "nice to have" until something makes one of them
+actually matter.
 
-**Task one, concrete and known: vendor the two fonts.** Local `@font-face`, woff2 in a
-folder under `assets/`, hotlinks deleted, only the weights actually used, with a
-README naming source and licence the way `Projects/golden-hour-beach/assets/textures/`
-does. Measure the total and report the number (locked decision #42).
+**Task one: a direction hint for the EVA points of interest, if you decide it's
+worth it.** There are 3 POIs scattered 20+ units out during EVA with nothing pointing
+toward them — a faint compass tick or distance readout in the HUD is the shape round
+1's notes suggested. Round 1 deliberately did not build this: the audit's finding was
+"too little content," not "hard to find," and there's no evidence that finding them
+blind is actually a problem rather than part of the point of drifting. Form your own
+opinion by playing it first. If you build it, keep it subtle enough that it doesn't
+turn EVA into a waypoint-chase — that would be solving a problem nobody has
+demonstrated exists.
 
-**Task two, concrete and known: adopt `assets/js/gvb-save.js`.** This is the same job
-that paid for itself in The Fourth Quarter last session — adopting it found three gaps
-in the module and two bugs in the game. What Aphelion gets: file export/import of a
-save, a memory-backed fallback for browsers that block storage (reading the
-`localStorage` property *throws outright* in that configuration, which the bare
-`try/catch` in `state.js` survives by accident rather than by design), and one
-implementation of "refuse to load garbage" instead of none.
+**Task two: touch/gamepad input, if this ever needs to run somewhere pointer lock
+isn't an option** (a tablet, say). Bigger lift than task one — a full second input
+scheme, not a HUD addition. Round 1's arrow-key look closed the specific gap the
+audit found (pointer lock denied leaves a player able to walk in a straight line and
+nothing else); this would be a genuine mobile-support feature, not an accessibility
+patch. Not attempted last round. Only worth it if there's an actual reason this needs
+to run on a touch device.
 
-Specifics that will bite you, learned the hard way in v7 §1:
+**If you do either:** keep the same discipline round 1 used — measure before
+changing anything performance-related (draw calls were measured at ~104/frame at
+spawn last round, nothing to optimize), and don't reach for the README's "Extending
+it" bigger swings (new ship systems, a second plant, a crafting loop) — those are
+out of scope for incremental work here, not a backlog.
 
-- **Keep the key `aphelion-save-v1`** (locked decision #36).
-- **`defaults` may be a factory.** If the initial state involves anything randomised
-  or time-dependent, pass a function, not a literal, or `slot.reset()` hands back
-  `null`.
-- **`repair` runs on every accepted load; `migrate` only on version drift** (locked
-  decision #37). Any fill-in-the-gaps pass that has to happen whatever the version
-  says — including for a save the current build just wrote — goes in `repair`. The
-  legacy-staffer-with-no-walking-speed bug in The Fourth Quarter was exactly this: a
-  field added later, `undefined` multiplied into a speed, a NaN that never arrives
-  anywhere.
-- **`mountSaveBar` takes a `buttons` option**, and each button carries
-  `data-gvb="export|import|reset"` so a driver can click it without depending on label
-  text or order. Think about *where* the bar goes: v7 §9 flags that The Fourth
-  Quarter's is only reachable from the start screen, which means exporting mid-game
-  requires a page reload. Don't repeat that. Put it somewhere reachable during play.
-- **Import the module relatively** (`../../assets/js/gvb-save.js`), not
-  `/assets/js/gvb-save.js`, if any Node test ever imports the file — Node cannot
-  resolve a leading slash.
-- If the module is missing a hook you need, **that is a Shared-file request**, not an
-  edit to `gvb-save.js`. Write the exact signature you need.
-
-**Task three: audit and plan.** Then write a prioritized improvement plan into your
-notes. Worth forming an opinion about:
-
-- **What is actually fun here right now?** Walk the ship end to end with fresh eyes.
-  The suite proves the HUD renders and the logbook opens; it says nothing about
-  whether there is a game. Is there a goal, a threat, a reason to go into the next
-  room?
-- **The four data files** (`rooms`, `poi`, `logs`, `systems`) suggest a
-  data-driven design. Is it? Can content be added without touching code? If yes,
-  document how in the README; if no, that is probably the highest-value refactor.
-- **Audio.** There is a `src/audio.js`. Does it work, and does anything play?
-- **Performance.** Frame time on the largest room, draw calls, whether geometry is
-  instanced. Numbers, not impressions.
-- **Accessibility.** Pointer lock is hostile to some players. Is there a keyboard-only
-  or reduced-motion path? `@media (prefers-reduced-motion: reduce)` is already used
-  elsewhere in this repo.
-
-**Then build the top items.** Don't stop at the plan.
+**If neither task seems worth the session**, that's a legitimate finding — say so in
+your notes rather than inventing scope. The audit already covered fun, the
+data-driven extension points, audio, and performance, and round 1 found nothing else
+worth flagging.
 
 ## Verification
 
@@ -186,17 +214,21 @@ notes. Worth forming an opinion about:
   frame-dependent check *hangs* rather than failing loudly. `launch({ headed: true })`
   in `Tools/board-check/harness.mjs` is the recipe; v5 §4 explains it.
 - `cd Tools/board-check && npm run games` is the regression suite. It should still
-  report 94 checks, 0 failed. **Run it after every structural change** — the whole
-  point of that suite is that this game's Node-level correctness says nothing about
-  whether the wiring works in a browser. `day.rebuildStations` was 122 passing
-  campaign assertions while "New Game" threw on the first click a player makes.
-- `npm run check` → 235 units, 0 broken, 0 collisions.
-- `npm run social:check` → 23 notices, 23 already current. Drift on your page means
+  report 126 checks, 0 failed, across all six games it drives. **Run it after every
+  structural change** — the whole point of that suite is that this game's Node-level
+  correctness says nothing about whether the wiring works in a browser.
+  `day.rebuildStations` was 122 passing campaign assertions while "New Game" threw on
+  the first click a player makes.
+- `npm run check` → 329 units, 0 broken, 0 collisions across nine widths.
+- `npm run social:check` → 22 notices, 22 already current. Drift on your page means
   you edited inside the `gvb:social` markers.
-- After vendoring fonts, grep `index.html` for `fonts.googleapis.com` and confirm zero
-  hits. `page.__blocked` is **not** the check — `prepPage()` fulfills those requests.
-- If you add a save-related test, write it into a new `Projects/aphelion/test/`
-  folder, which you own. Exit non-zero on failure.
+- Zero offsite requests should still hold: grep `index.html` for `fonts.googleapis.com`
+  / `fonts.gstatic.com` (zero hits expected) and, better, run
+  `check-integrity.mjs`'s static offsite sweep if you touch anything network-facing.
+  `page.__blocked` is **not** the check — `prepPage()` fulfills font requests before
+  the blocked-list check runs (locked decision #44).
+- `node Projects/aphelion/test/smoke-state.mjs` → 23 checks, 0 failed. Extend it if
+  you touch `state.js`; exit non-zero on failure.
 
 Scheduling note: `npm run games`, `npm run play` and `npm run previews` all open real
 visible browser windows, and Chrome throttles a window that loses focus — v7 §6 is a

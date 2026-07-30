@@ -7,9 +7,10 @@ PC-roster page on greyversusblue.com. This prompt is self-contained.
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Pathfinder/characters.html` (698 lines, 36 KB)
+- `Pathfinder/characters.html` (715 lines, 36 KB)
+- `Pathfinder/characters-assets/` (new this round — vendored fonts, see below)
 - Any new folder you create under `Pathfinder/` **named for this page** — e.g.
-  `Pathfinder/characters-assets/` or `Pathfinder/characters/`
+  `Pathfinder/characters/`
 
 **Everything else in the repo is read-only to you.** Read whatever you like; change
 nothing outside that list. Up to twenty other Claude sessions are working on other
@@ -30,21 +31,34 @@ Off-limits in particular:
 | Every other project | Not yours. |
 
 **The twin problem, read this before you plan anything.** `characters.html` and
-`campaigns.html` are a matched pair. They are within three lines of each other in
-length (698 vs 695), they load the same three Google Font families (Cinzel, Crimson
-Pro, Oswald), and they almost certainly share most of their CSS. Prompt 02 is
-working on the other one right now, in parallel, and cannot see what you do.
+`campaigns.html` are a matched pair — both vendor the same three font families
+(Cinzel, Crimson Pro, Oswald) now, and share most of their CSS. If a session on this
+page runs alongside a session on `campaigns.html`, treat this whole subsection as
+live: it cannot see what you do.
 
 So: **do not create anything intended to be shared between the two pages.** No
 `Pathfinder/shared.css`, no `Pathfinder/fonts/`, no lifting the common CSS into one
-file. That is a genuinely good refactor and it is exactly what you must not do here,
-because two threads both creating it is a guaranteed conflict. Locked decision #17
-already points this way for a different reason ("each project vendors its own copy;
-nothing is shared across projects").
+file. That is a genuinely good refactor and it is exactly what you must not do in a
+solo session on one of the two files, because two threads both creating it is a
+guaranteed conflict. Locked decision #17 already points this way for a different
+reason ("each project vendors its own copy; nothing is shared across projects").
+Locked decision #43 (v8 §9) carves out a narrow exception for `assets/fonts/`, shared
+between `index.html` and `404.html` — that's the site's own two pages, owned by one
+thread, not a precedent for these two project pages. #17 still governs here.
 
-If you conclude the two pages should be unified, **write that in your notes as a
-recommendation** with the specifics of what should merge. Devon can run it as a
-single session with both files in scope afterwards. That is the right way to get it.
+**Round 1 already produced the recommendation this section warns about, from both
+sides independently.** This page's own session diffed the two `<style>` blocks and
+found roughly 62% (145 of 233 lines) identical or near-identical — the `:root`
+palette, `.tome`/`.corner`/border-image frame, `header.masthead`,
+`h1.title`/`.flourish`/`.subtitle`, `.embers`/`@keyframes drift`, and a
+byte-for-byte-identical ember-seeding `<script>` — while the content area (card grid
+here, tabbed panel system in `campaigns.html`) genuinely diverges. Prompt 02's
+session on `campaigns.html`, working blind to this one, reached the same conclusion.
+Two independent sessions landing on the same 5 font files and the same shared-CSS
+call is a real signal, not a coincidence — see the task list below. **Still do not
+merge them yourself.** This needs one session with both files in scope, run by
+Devon's choice, not a third solo thread lifting the restriction on its own read of
+the evidence.
 
 **If you need a shared file changed, do not change it.** Write the exact edit into
 the "Shared-file requests" section of your notes file, specific enough that someone
@@ -58,11 +72,19 @@ by `npm run social`, and your edit will be silently overwritten with no warning.
 ## Required reading
 
 1. This whole file.
-2. `gvb-site-handoff-v7.md` §10 (locked decisions) and §8 (backlog state).
-3. Locked decision #3 in `gvb-site-handoff-v1.md` §3: the Pathfinder section of the
+2. `Claude Prompts/notes/03-pathfinder-characters-notes.md` — the previous round's
+   session on this exact page: what it vendored, what it fixed, and what it
+   recommended but didn't build. `Claude Prompts/archive/` holds every earlier
+   round's prompts and notes, if you need more history than that.
+3. `gvb-site-handoff-v8.md` §9 (locked decisions, including #43-50) and §7 (backlog
+   state). §1 explains the Bestiary Gallery deletion and the notice-count drop to
+   22. §2 explains why `page.__blocked` alone never caught a font hotlink, and what
+   `check-integrity.mjs`'s static sweep now does about it — directly relevant to
+   the font work this page already went through.
+4. Locked decision #3 in `gvb-site-handoff-v1.md` §3: the Pathfinder section of the
    board is for Pathfinder things; "Town Services" means schoolhouse tools. Don't
    move this page.
-4. `gvb-site-handoff-v6.md` §3 on favicons and OG tags, so you understand what the
+5. `gvb-site-handoff-v6.md` §3 on favicons and OG tags, so you understand what the
    `gvb:social` block in your head is and why you can't touch it.
 
 ## House rules for every file in this repo
@@ -79,85 +101,103 @@ by `npm run social`, and your edit will be silently overwritten with no warning.
   outright. Don't lean on shell brace expansion either (v6 §5).
 - **A check that only prints is a check that gets ignored** (locked decision #13).
 - **Verify a guard-rail by reintroducing the bug it guards** (locked decision #34).
+- **`page.__blocked` is "offsite and refused"; `page.__shimmed` is "offsite and
+  fulfilled locally instead"** (locked decision #44, v8 §9). A page can report an
+  empty `__blocked` and still hotlink fonts — `check-integrity.mjs`'s static source
+  sweep is the check that actually catches it; see "What is actually here."
+- **The site's own fonts (`index.html`, `404.html`) live in `assets/fonts/`, shared
+  between those two files only** (locked decision #43, v8 §9). That's a narrow
+  exception for the site's two own pages, not a precedent for project pages —
+  #17 still means this page vendors its own copy, which it now does.
 
 ## What is actually here
 
-698 lines, 36 KB, one file. Title: "Character Muster — greyversusblue". No
+715 lines, 36 KB, one file. Title: "Character Muster — greyversusblue". Fonts are
+vendored, not hotlinked: five local `@font-face` rules in
+`Pathfinder/characters-assets/fonts/` (Cinzel 700, Cinzel 900, Crimson Pro 400
+normal, Crimson Pro 400 italic, Oswald 400 — 79,676 bytes / 77.8 KB total, with a
+README next to them naming source and licence). `grep -c
+"fonts.googleapis.com\|fonts.gstatic.com" Pathfinder/characters.html` returns 0. No
 `localStorage` at all, which means **nothing a user does on this page survives a
 refresh** — the roster is hardcoded into the HTML. It reads no JSON and loads no data
 files, and in particular it does **not** read `Pathfinder/data/` (that folder belongs
 to the Anathema Archive alone).
 
-It hotlinks three Google Font families at lines 24 and 26:
+Heading order and one contrast failure, both open at the start of last round, are
+both fixed now: `.dossier-name` is an `<h2>` (was `<h3>`) and the three feature-box
+headings are `<h3>` (were `<h4>`), so the outline reads `H1 → H2 → H3` per dossier
+with nothing skipped. `.placeholder-flag` ("Backstory pending") uses
+`var(--ink-soft)` instead of a one-off `#9c8a6e`, which raised its contrast against
+the parchment background from 2.46:1 (fails WCAG AA) to 6.24:1 (passes).
 
-```
-fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Crimson+Pro:...&family=Oswald:wght@400;500;600
-```
-
-That is a real offsite request in production. v7 §5 claims the site makes zero
-offsite requests site-wide; the claim is wrong, and the reason the suite never caught
-it is that `prepPage()` in `Tools/board-check/harness.mjs` *fulfills* Google Fonts
-requests locally from bundled `@fontsource` packages before the blocked-list check
-runs. Font hotlinks are structurally invisible to `page.__blocked`. Fifteen pages are
-in the same position, including `index.html` itself.
-
-`Tools/board-check/node_modules/@fontsource/` already has **Oswald** on disk, but not
-Cinzel or Crimson Pro. Treat those npm packages as a convenient source to copy woff2
-files out of, not as a dependency — nothing at runtime may reference `node_modules`.
+Not done and not currently planned: no `.ability-grid` restructure to `<dl>` (reads
+fine to a screen reader as-is), no mobile-specific layout change (checked at
+375×812, no overflow or touch-target issues), no `gvb-save.js` adoption (see the
+task list — this page is a showcase, not a live sheet, and that's a considered
+call, not an oversight).
 
 ## Your task
 
-There is no handoff backlog for this page. Nobody has looked at it in eight
-sessions.
+Last round's session vendored the fonts, fixed the heading-order gap, and fixed the
+one contrast failure. Nothing on this page is currently broken — read
+`Claude Prompts/notes/03-pathfinder-characters-notes.md` for the full account before
+you plan anything, so you don't re-spend a session re-deriving what's already there.
 
-**Task one, concrete and known: vendor the fonts.** Copy or download woff2 files for
-Cinzel, Crimson Pro and Oswald into a folder you own, write local `@font-face` rules,
-and delete the `fonts.googleapis.com` links. Ship only the weights the page actually
-uses — the hotlinked URL asks for nine weights across three families and the page
-almost certainly uses four. Read the CSS and check. Include a README next to the
-fonts naming source and licence, the way `Projects/golden-hour-beach/assets/textures/`
-does. Measure the total and put the number in your notes (locked decision #42).
+**Task one, the actual highest-value item: the `characters.html`/`campaigns.html`
+shared-chrome merge, recommended independently by both this page's prompt and
+prompt 02's, and not yet done by anyone.** Both sessions diffed the two `<style>`
+blocks blind to each other and landed on the same conclusion: roughly 62% (145 of
+233 lines) is identical or near-identical — `:root` palette, `.tome`/`.corner`/
+border-image frame, `header.masthead`, `h1.title`/`.flourish`/`.subtitle`,
+`.embers`/`@keyframes drift`, and a byte-for-byte-identical ember-seeding
+`<script>`. Only the content area genuinely diverges (card grid here, tabbed panel
+system in `campaigns.html`). Two independent sessions landing on the same 5 font
+files and the same shared-CSS call is a real convergence signal.
 
-**Task two: audit and plan.** Open the page, drive it, and write a prioritized
-improvement plan into your notes, ordered by value per effort, with tradeoffs named.
-Worth forming an opinion about:
+**This is a "run prompts 02 and 03 together, in one session, with both files in
+scope" job. Do not attempt it solo from this prompt, and do not lift locked
+decision #17's restriction yourself** — #17 exists to keep twenty parallel threads
+from colliding, and it doesn't cleanly resolve whether two cross-linked twin pages
+count as "different projects," which is exactly why this is a call for Devon to
+make about scope, not something either project thread can decide alone. If you're
+running this prompt solo, note the recommendation is still standing and move on to
+task two.
 
-- **Zero persistence, and this is the page where it hurts most.** A character roster
-  changes constantly during a campaign — levels, HP, items, conditions. Right now
-  every change is a file edit. If it should be editable in the browser,
-  `assets/js/gvb-save.js` gives you storage with a memory fallback, validation, and
-  file export/import; read it plus its README, and read
-  `Projects/fourth-quarter/js/campaign.js` as the worked example. Export/import is
-  the important half: a party roster the browser can silently lose is worse than a
-  roster in git.
-- **The Anathema Archive next door has 24 JSON files of PF2e rules data** —
-  ancestries, classes, feats, heritages, backgrounds, deities. A character sheet that
-  could read those would be a genuinely different tool. **But you do not own that
-  folder**, so if this is the direction, the plan needs to say what it would need
-  from `Pathfinder/data/` and that goes in Shared-file requests. Do not read it into
-  a hard dependency in this session.
-- **Is hardcoded actually wrong?** A roster in git is versioned, diffable, and
-  survives a cleared browser. There is a real argument for keeping authored HTML and
-  making it *easier to author*. Decide, and say why.
-- **Mobile.** 375×812. A character sheet on a phone at the table is the actual use
-  case, so this matters more here than on most pages.
-- **Accessibility.** Heading order, contrast against the parchment palette, keyboard
-  navigation, and whether stat blocks read sensibly to a screen reader.
+**Task two, lower priority, Devon's call on style:** a commented-out `<template>`
+dossier block at the bottom of the file (copy, uncomment, fill in) would make
+authoring a new character easier. This is a documentation change, not a bug fix —
+only add it if you're specifically asked to, since it's a preference about how
+Devon wants to author, not a defect.
 
-**Then build the top items.** Don't stop at the plan.
+**Task three, conditional, do not build unasked:** in-browser editing via
+`assets/js/gvb-save.js`, if Devon decides this page's role should shift from
+showcase to living character sheet. Last round read `gvb-save.js`, its README, and
+`Projects/fourth-quarter/js/campaign.js` as the worked example, and reasoned out
+that a showcase page whose content changes at "a character leveled up" cadence is
+well served by a git commit and poorly served by nine forms' worth of editing UI.
+That reasoning still holds. If Devon's answer changes, this is a next-session-sized
+task on its own, not a mid-session add-on.
+
+**The Anathema Archive next door has 24 JSON files of PF2e rules data** —
+ancestries, classes, feats, heritages, backgrounds, deities. If a future session
+wants this page to read that data, **you do not own that folder**; the plan needs
+to say what it would need from `Pathfinder/data/`, and that goes in Shared-file
+requests rather than a hard dependency taken in this session.
 
 ## Verification
 
-- Open the page in a real browser at desktop and at 375×812. Confirm the fonts still
-  render after vendoring — a broken `@font-face` path fails silently to a fallback
-  and looks almost right, which is the trap.
-- Prove the hotlink is gone by grepping the file for `fonts.googleapis.com` and
-  confirming zero hits. Note that `page.__blocked` is **not** the check here:
-  `prepPage()` fulfills Google Fonts requests rather than recording them.
-- `cd Tools/board-check && npm run check` should still pass: 235 units, 0 broken, 0
-  collisions across nine widths.
-- `npm run social:check` should still report 23 notices, 23 already current. Drift on
-  your page means you edited inside the `gvb:social` markers. Undo it.
+- Open the page in a real browser at desktop and at 375×812. Confirm the fonts
+  render — a broken `@font-face` path fails silently to a fallback and looks almost
+  right, which is the trap.
+- Confirm the hotlink is still gone: `grep -c "fonts.googleapis.com\|fonts.gstatic.com"
+  Pathfinder/characters.html` should be 0. `check-integrity.mjs`'s static offsite
+  sweep (part of `npm run check`) is the reliable check now — run it and use its
+  output instead of grepping by hand if you touch anything font-related.
+- `cd Tools/board-check && npm run check` should still pass: 327 units checked, 0
+  broken, 0 collisions across nine widths, tightest vertical gap 9.2px.
+- `npm run social:check` should still report 22 notices, 22 already current, 0 out of
+  date, 0 failed. Drift on your page means you edited inside the `gvb:social`
+  markers. Undo it.
 
 One scheduling note: `npm run games`, `npm run play` and `npm run previews` open real
 visible browser windows, and Chrome throttles a window that loses focus (v7 §6).
@@ -167,7 +207,8 @@ Other threads may be running them. Only one at a time.
 
 Write `Claude Prompts/notes/03-pathfinder-characters-notes.md`. Nobody else writes
 that file, so it can never conflict. It is the only record of this session that
-survives — `gvb-site-handoff-v8.md` gets assembled from all twenty-one of them.
+survives — the next `gvb-site-handoff-v*.md` (v9) gets assembled from all
+twenty-one of them.
 
 Use these headings:
 

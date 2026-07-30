@@ -21,10 +21,48 @@
 <meta name="twitter:image" content="https://greyversusblue.com/assets/og/guild-board.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
 <!-- gvb:social:end -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Outfit:wght@400;600;800&family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
+/* === VENDORED FONTS =========================================================
+   Bungee, Outfit and Press Start 2P used to be hotlinked from Google's font CDN,
+   which made this page one of fifteen on the site still reaching an outside host
+   while a teacher had a class list open. See name-picker/fonts/README.md.
+   (The old host is named in that README, not here, so that grepping this file for
+   it stays a meaningful check.)
+
+   The latin-ext files cost nothing until a name needs them: the browser reads
+   unicode-range and only fetches the subset it has glyphs to draw. Press Start
+   2P is the same deal one level up — nothing applies that family until
+   body.retro-mode exists, so it is never fetched unless the Konami code is
+   entered. A typical first paint is the four latin files, 55.3 KB.
+   ========================================================================== */
+@font-face{font-family:'Bungee';font-style:normal;font-weight:400;font-display:swap;
+  src:url('name-picker/fonts/bungee-latin-400-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Bungee';font-style:normal;font-weight:400;font-display:swap;
+  src:url('name-picker/fonts/bungee-latin-ext-400-normal.woff2') format('woff2');
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;}
+@font-face{font-family:'Outfit';font-style:normal;font-weight:400;font-display:swap;
+  src:url('name-picker/fonts/outfit-latin-400-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Outfit';font-style:normal;font-weight:400;font-display:swap;
+  src:url('name-picker/fonts/outfit-latin-ext-400-normal.woff2') format('woff2');
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;}
+@font-face{font-family:'Outfit';font-style:normal;font-weight:600;font-display:swap;
+  src:url('name-picker/fonts/outfit-latin-600-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Outfit';font-style:normal;font-weight:600;font-display:swap;
+  src:url('name-picker/fonts/outfit-latin-ext-600-normal.woff2') format('woff2');
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;}
+@font-face{font-family:'Outfit';font-style:normal;font-weight:700;font-display:swap;
+  src:url('name-picker/fonts/outfit-latin-700-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+@font-face{font-family:'Outfit';font-style:normal;font-weight:700;font-display:swap;
+  src:url('name-picker/fonts/outfit-latin-ext-700-normal.woff2') format('woff2');
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;}
+@font-face{font-family:'Press Start 2P';font-style:normal;font-weight:400;font-display:swap;
+  src:url('name-picker/fonts/press-start-2p-latin-400-normal.woff2') format('woff2');
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
+
 :root{--bg:#1a1a2e;--surface:#16213e;--text:#eaeaea;--muted:rgba(234,234,234,0.65);--accent:#e94560;--accent2:#f5d76e;--name-bg:#0f3460;--name-text:#fff;--highlight:#e94560;--highlight-text:#fff;--winner:#f5d76e;--winner-text:#1a1a2e;--border:rgba(255,255,255,0.1);}
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--text);transition:background 0.4s,color 0.4s;}
@@ -264,6 +302,84 @@ body.sudden-death{animation:bgPulseChaos 0.6s ease-in-out infinite;}
 
 /* prevent ticker from overlapping footer */
 body.has-hof .footer{padding-bottom:14px;}
+
+/* === DATA AND PRIVACY PANEL ===
+   This tool holds student names, so what it stores and how to erase it is a tab
+   of its own rather than a line at the bottom of Options. */
+.data-truth{background:var(--name-bg);border-left:4px solid var(--accent2);border-radius:8px;padding:14px 16px;font-size:0.94em;line-height:1.55;}
+.data-truth strong{color:var(--accent2);}
+.census{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;margin:14px 0 4px;}
+.census-cell{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;}
+.census-num{font-family:'Bungee',sans-serif;font-size:1.5em;color:var(--accent2);line-height:1.1;}
+.census-label{font-size:0.74em;color:var(--muted);letter-spacing:0.4px;margin-top:3px;}
+.storage-state{font-size:0.85em;padding:9px 12px;border-radius:6px;margin-top:12px;background:var(--bg);border-left:3px solid #16a34a;color:var(--muted);}
+.storage-state.blocked{border-left-color:#dc2626;color:var(--text);}
+.danger-zone{margin-top:22px;border:2px solid #802040;border-radius:10px;padding:14px 16px;}
+.danger-zone h3{color:#ff8fa3;margin-bottom:8px;}
+.danger-zone p{font-size:0.86em;color:var(--muted);line-height:1.5;margin-bottom:10px;}
+.btn-erase{background:#802040 !important;color:#fff !important;width:100%;font-family:'Bungee',sans-serif;letter-spacing:1px;padding:12px 16px;font-size:0.95em;}
+.btn-erase:hover{background:#a8283f !important;border-color:#fff !important;}
+.btn-erase.secondary{background:transparent !important;border:2px solid #802040 !important;color:#ff8fa3 !important;font-family:'Outfit',sans-serif;letter-spacing:0;font-size:0.86em;padding:9px 14px;margin-top:8px;}
+.key-table{width:100%;border-collapse:collapse;font-size:0.8em;margin-top:10px;}
+.key-table th{text-align:left;color:var(--accent2);font-weight:600;padding:5px 6px;border-bottom:1px solid var(--border);}
+.key-table td{padding:5px 6px;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top;}
+.key-table code{color:var(--text);font-size:0.94em;}
+
+/* === PROJECTOR AND ACCESSIBILITY ===
+   This page gets displayed to a room from the back of a classroom. */
+.name-card,.tournament-tile{-webkit-font-smoothing:antialiased;}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--accent2);outline-offset:2px;}
+.visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+
+/* A picker animates by definition, so honouring this setting means keeping the
+   pick legible while dropping everything that moves the whole screen: shakes,
+   background pulses, the chaos particle stream, the scrolling ticker. The
+   highlight and the winner still read, they just stop lurching. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important;scroll-behavior:auto !important;}
+  .shake-active,.shake-active-strong,.shake-active-mega{animation:none !important;}
+  body.crazy-active,body.sudden-death{animation:none !important;filter:none !important;}
+  body.crazy-active .name-card{animation:none !important;}
+  .hof-content{animation:none !important;padding-left:14px;}
+  .chaos-particles,.chaos-distortion,.chaos-shockwave,.confetti,.fireworks-container,.lightning-svg{display:none !important;}
+  .name-card.highlighted{transform:scale(1.12) !important;}
+  .name-card.winner,.tournament-tile.winner-tile{animation:none !important;transform:scale(1.3) !important;}
+  .name-card.fading{animation:none !important;opacity:0.12 !important;}
+}
+
+/* === MOBILE ===
+   375×812. A name picker gets used standing up in front of a class, from a phone
+   about as often as from a projector, so this is a first-class layout. */
+@media (max-width:520px){
+  .header{padding:8px 10px;gap:8px;}
+  .title{font-size:1em;width:100%;text-align:center;}
+  .controls{gap:6px;justify-content:center;}
+  .control-group{font-size:0.74em;gap:4px;}
+  .control-group select{max-width:110px;text-overflow:ellipsis;}
+  input[type="range"]{width:88px;}
+  .crazy-toggle{font-size:0.72em;padding:6px 9px;}
+  .footer{padding:10px 10px;gap:8px;}
+  .btn-primary{font-size:1.05em;padding:14px 22px;flex:1 1 100%;}
+  .count-display,.combo-display{margin-left:0;font-size:0.8em;}
+  .panel{width:100vw;max-width:100vw;right:-100vw;padding:16px 14px 60px;}
+  .tab-buttons button{min-width:0;flex:1 1 22%;font-size:0.7em;padding:7px 3px;}
+  .modal{padding:22px 20px;}
+  .winner-name{font-size:1.9em;}
+  .modal-buttons button{flex:1 1 100%;}
+  .slot-reel{height:96px;}
+  .slot-name{height:96px;font-size:1.4em;}
+  .soundboard-grid{grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;}
+  .census{grid-template-columns:repeat(2,1fr);}
+  /* Tap targets. The header and footer controls measured 31–35px tall on a 375px
+     viewport, which is a miss for a thumb reaching up mid-lesson. 40px minimum. */
+  .header button,.header select,.footer button,.roster-item-actions button,.panel-close{min-height:40px;}
+  .roster-item-actions button,.panel-close{min-width:40px;}
+  .option-row input[type="checkbox"]{width:22px;height:22px;}
+}
+@media (max-width:520px) and (orientation:portrait){
+  .tournament-grid{padding:12px;gap:8px;}
+  .tournament-tile{min-height:64px;font-size:0.82em;padding:8px 6px;}
+}
 </style>
 </head>
 <body>
@@ -310,6 +426,7 @@ body.has-hof .footer{padding-bottom:14px;}
     <button data-tab="prompts">💬 Prompts</button>
     <button data-tab="soundboard">🎵 Sounds</button>
     <button data-tab="options">⚙️ Options</button>
+    <button data-tab="data">🔒 Data</button>
   </div>
   <div class="tab-content active" id="tab-names">
     <div class="info-banner">Type one name per line, then click "Load Names"</div>
@@ -321,14 +438,7 @@ body.has-hof .footer{padding-bottom:14px;}
     </div>
     <h3 style="margin-top:25px;">Saved Rosters</h3>
     <div id="rosterList"></div>
-    <div class="button-row" style="margin-top:14px;">
-      <button id="exportRosters" title="Save all rosters + stats to a JSON file on your computer">💾 Export All to File</button>
-      <div class="file-input-wrap">
-        <button id="importRostersBtn" title="Load rosters from a JSON backup">📂 Import From File</button>
-        <input type="file" id="importRostersInput" accept=".json,application/json">
-      </div>
-    </div>
-    <p style="font-size:0.82em;color:var(--muted);margin-top:8px;line-height:1.5;">Backup your periods/blocks to your computer in case the browser cache clears. Includes rosters, stats, history, and Hall of Fame.</p>
+    <p style="font-size:0.82em;color:var(--muted);margin-top:12px;line-height:1.5;">Rosters live in this browser only. Backup, import and erase are on the <button id="gotoDataTab" style="background:transparent;border:none;padding:0;color:var(--accent2);text-decoration:underline;font-size:1em;">🔒 Data</button> tab.</p>
   </div>
   <div class="tab-content" id="tab-history">
     <div class="info-banner">All names picked this session</div>
@@ -388,6 +498,7 @@ body.has-hof .footer{padding-bottom:14px;}
   </div>
   <div class="tab-content" id="tab-options">
     <div class="option-row"><input type="checkbox" id="soundToggle" checked><label for="soundToggle" class="option-label">Sound effects<small>Beeps, fanfare, slot clicks</small></label></div>
+    <div class="option-row"><input type="checkbox" id="fairRotation" checked><label for="fairRotation" class="option-label">⚖️ Fair rotation<small>Everyone gets called once before anyone gets called twice. Turn it off for independent random draws, which will repeat students and skip others.</small></label></div>
     <div class="option-row"><input type="checkbox" id="coldCallMode"><label for="coldCallMode" class="option-label">Cold-call mode<small>Automatically removes picked names</small></label></div>
     <div class="option-row"><input type="checkbox" id="confettiToggle" checked><label for="confettiToggle" class="option-label">Celebration confetti<small>Confetti burst on win</small></label></div>
     <div class="option-row"><input type="checkbox" id="dramaticPause" checked><label for="dramaticPause" class="option-label">Dramatic slow-down (Jump mode)<small>Builds suspense at the end</small></label></div>
@@ -413,9 +524,62 @@ body.has-hof .footer{padding-bottom:14px;}
     </div>
     <p style="font-size:0.82em;color:var(--muted);margin-top:8px;">High-rarity picks (Rare and above) appear on the bottom ticker.</p>
   </div>
+  <div class="tab-content" id="tab-data">
+    <div class="data-truth">
+      <strong>Everything stays in this browser.</strong> Student names, pick counts, history
+      and the Hall of Fame are stored by this browser on this computer and nowhere
+      else. There is no account, no server, no analytics, and this page makes no
+      network requests at all once it has loaded. Nobody but someone sitting at
+      this machine can see any of it.
+      <br><br>
+      Which is also the catch: a browser that gets cleared, or a machine that gets
+      reimaged, takes your rosters with it. That is what the backup below is for.
+    </div>
+
+    <h3 style="margin-top:20px;">What is stored right now</h3>
+    <div class="census" id="census"></div>
+    <div class="storage-state" id="storageState"></div>
+
+    <h3 style="margin-top:22px;">Backup to a file</h3>
+    <p style="font-size:0.86em;color:var(--muted);line-height:1.55;">
+      The backup file is a plain-text list of your students' names. Treat it the way
+      you would a printed class list: keep it on a school-managed drive, not a
+      personal cloud folder or a shared computer's Downloads.
+    </p>
+    <div class="button-row">
+      <button id="exportRosters" style="background:var(--accent);" title="Write rosters, pick counts, history and Hall of Fame to a file">💾 Save a Backup File</button>
+      <button id="importRostersBtn" title="Read a backup file back in">📂 Restore From Backup</button>
+    </div>
+    <p style="font-size:0.8em;color:var(--muted);margin-top:8px;line-height:1.5;" id="exportNote"></p>
+
+    <h3 style="margin-top:22px;">Every key this tool writes</h3>
+    <table class="key-table" id="keyTable"><tbody></tbody></table>
+
+    <div class="danger-zone">
+      <h3>⚠️ Erase</h3>
+      <p>
+        This is a classroom machine other people use. Erasing student data removes
+        every name, pick count, history entry and Hall of Fame entry from this
+        browser. It keeps your themes, task prompts, options and anything you have
+        unlocked, so the tool is still set up the way you like it.
+      </p>
+      <button class="btn-erase" id="eraseStudentData">🗑 Erase All Student Data</button>
+      <button class="btn-erase secondary" id="eraseEverything">Erase everything, including settings and unlocks</button>
+    </div>
+  </div>
 </div>
-<script id="appScript">
-'use strict';
+<script id="appScript" type="module">
+/* Storage and picking live in name-picker/, imported by relative path so the Node
+   suite (name-picker/test/smoke.mjs) resolves the same modules the page does.
+   Nothing in this file touches localStorage — np-store owns all thirteen keys and
+   lets gvb-save do the probing, because reading the `localStorage` property
+   throws outright in a browser configured to block storage. */
+import { createStore, OPTION_DEFAULTS } from './name-picker/np-store.js';
+import { freshRotation, pickOne, pickMany, shuffle, makeGroups as splitGroups, leastPicked } from './name-picker/np-pick.js';
+
+const store = createStore();
+let opts = { ...OPTION_DEFAULTS };
+let rotation = freshRotation();
 
 let names=[],originalNames=[],history=[],nameCards=[],isRolling=false,mode='jump',speed=130,crazyMode=false,audioCtx=null,prompts=[],statsCache={},lastPickTime=0,comboCount=0,comboTimer=null,currentStatsSort='most';
 
@@ -443,7 +607,7 @@ function applyTheme(n){
   /* Set body class for theme-specific readability overrides */
   document.body.className=document.body.className.split(' ').filter(c=>!c.startsWith('theme-')).join(' ').trim();
   document.body.classList.add('theme-'+n);
-  localStorage.setItem('np_theme',n);
+  store.set('theme',n);
 }
 
 const rarityTiers=[
@@ -726,6 +890,23 @@ function bumpCombo(){
   comboTimer=setTimeout(()=>{display.classList.remove('visible');comboCount=0;},10000);
 }
 
+/* =====================================================================
+   WHO GETS CALLED
+
+   Every mode now decides the winner FIRST, through the rotation, and then
+   animates towards that name. Three of the five used to let the animation pick:
+   jump mode took whoever the last random highlight landed on, disappear mode took
+   the last card standing, tournament mode the last spotlight. That made fair
+   rotation impossible to honour in those modes, because nothing chose a winner
+   there was anything to be fair about.
+   ===================================================================== */
+function chooseWinner(cards){
+  const step=pickOne(rotation,cards.map(c=>c.name),{fair:opts.fair});
+  rotation=step.state;
+  if(!step.name)return null;
+  return cards.find(c=>c.name===step.name)||null;
+}
+
 function pickName(){
   if(isRolling||names.length===0)return;
   const activeNames=names.filter(n=>!absentSet.has(n));
@@ -742,14 +923,25 @@ async function jumpPick(){
   isRolling=true;setRollingState(true);
   const activeCards=nameCards.filter(c=>c.active);
   if(activeCards.length===0){finishRolling();return;}
-  if(activeCards.length===1){selectWinner(activeCards[0]);return;}
+  const winnerCard=chooseWinner(activeCards);
+  if(!winnerCard){finishRolling();return;}
+  if(activeCards.length===1){selectWinner(winnerCard);return;}
+  const winnerIdx=activeCards.indexOf(winnerCard);
   const dramatic=document.getElementById('dramaticPause').checked;
   const baseJumps=dramatic?16:10;
   const totalJumps=baseJumps+Math.floor(Math.random()*6);
   let lastIdx=-1,lastEl=null,currentDelay=speed;
   for(let i=0;i<totalJumps;i++){
     let idx;
-    do{idx=Math.floor(Math.random()*activeCards.length);}while(idx===lastIdx&&activeCards.length>1);
+    if(i===totalJumps-1)idx=winnerIdx;                 /* land on the chosen name */
+    else{
+      /* On the penultimate jump, stay off the winner so the last hop is a visible
+         move rather than the same card lighting twice. */
+      const avoidWinner=i===totalJumps-2&&activeCards.length>2;
+      let guard=0;
+      do{idx=Math.floor(Math.random()*activeCards.length);guard++;}
+      while(guard<40&&((idx===lastIdx&&activeCards.length>1)||(avoidWinner&&idx===winnerIdx)));
+    }
     activeCards.forEach(c=>c.el.classList.remove('highlighted'));
     activeCards[idx].el.classList.add('highlighted');
     playBeep(550+Math.random()*350,60);
@@ -759,17 +951,18 @@ async function jumpPick(){
     await sleep(currentDelay);
   }
   activeCards.forEach(c=>c.el.classList.remove('highlighted'));
-  selectWinner(activeCards[lastIdx]);
+  selectWinner(winnerCard);
 }
 
 async function disappearPick(){
   isRolling=true;setRollingState(true);
-  let active=nameCards.filter(c=>c.active);
+  const active=nameCards.filter(c=>c.active);
   if(active.length===0){finishRolling();return;}
-  if(active.length===1){selectWinner(active[0]);return;}
-  while(active.length>1){
-    const idx=Math.floor(Math.random()*active.length);
-    const card=active[idx];
+  const winnerCard=chooseWinner(active);
+  if(!winnerCard){finishRolling();return;}
+  if(active.length===1){selectWinner(winnerCard);return;}
+  /* Everyone but the winner goes, in a uniformly shuffled order. */
+  for(const card of shuffle(active.filter(c=>c!==winnerCard))){
     if(crazyMode){
       const r=card.el.getBoundingClientRect();
       launchFirework(r.left+r.width/2,r.top+r.height/2,'#ffffff');
@@ -780,17 +973,17 @@ async function disappearPick(){
     playBeep(350+Math.random()*250,80,'sine',0.07);
     await sleep(speed);
     setTimeout(()=>{if(card.el)card.el.style.display='none';},450);
-    active=nameCards.filter(c=>c.active);
   }
-  selectWinner(active[0]);
+  selectWinner(winnerCard);
 }
 
 async function slotPick(){
   isRolling=true;setRollingState(true);
   const activeCards=nameCards.filter(c=>c.active);
   if(activeCards.length===0){finishRolling();return;}
-  if(activeCards.length===1){selectWinner(activeCards[0]);return;}
-  const winnerCard=activeCards[Math.floor(Math.random()*activeCards.length)];
+  const winnerCard=chooseWinner(activeCards);
+  if(!winnerCard){finishRolling();return;}
+  if(activeCards.length===1){selectWinner(winnerCard);return;}
   const overlay=document.createElement('div');
   overlay.className='slot-overlay';
   overlay.innerHTML=`<div class="slot-machine"><div class="slot-title">🎰 SPINNING... 🎰</div><div class="slot-reel"><div class="slot-strip" id="slotStrip"></div><div class="slot-line"></div></div></div>`;
@@ -831,16 +1024,13 @@ async function slotPick(){
 
 async function multiPick(count){
   isRolling=true;setRollingState(true);
-  const winners=[],used=new Set();
   const activeNames=nameCards.filter(c=>c.active).map(c=>c.name).filter(n=>!absentSet.has(n));
-  const total=Math.min(count,activeNames.length);
-  for(let i=0;i<total;i++){
-    const remaining=activeNames.filter(n=>!used.has(n));
-    if(!remaining.length)break;
-    const pick=remaining[Math.floor(Math.random()*remaining.length)];
-    used.add(pick);
-    winners.push(pick);
-  }
+  /* Draws through the same rotation, so picking four partners spends four turns
+     rather than sidestepping the round. */
+  const drawn=pickMany(rotation,activeNames,count,{fair:opts.fair});
+  rotation=drawn.state;
+  const winners=drawn.names;
+  if(!winners.length){finishRolling();return;}
   const activeCards=nameCards.filter(c=>c.active&&!absentSet.has(c.name));
   const sweepCount=Math.min(18,Math.floor(20/(speed/100))+8);
   for(let i=0;i<sweepCount;i++){
@@ -970,8 +1160,8 @@ const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 
 function escapeHtml(s){const div=document.createElement('div');div.textContent=s;return div.innerHTML;}
 
-function loadStats(){try{statsCache=JSON.parse(localStorage.getItem('np_stats')||'{}');}catch(e){statsCache={};}}
-function saveStats(){localStorage.setItem('np_stats',JSON.stringify(statsCache));}
+function loadStats(){statsCache=store.get('stats');}
+function saveStats(){store.set('stats',statsCache);}
 function incrementStats(name){statsCache[name]=(statsCache[name]||0)+1;saveStats();updateStatsUI();}
 
 function updateStatsUI(){
@@ -993,8 +1183,8 @@ function updateStatsUI(){
   });
 }
 
-function saveHistory(){localStorage.setItem('np_history',JSON.stringify(history));}
-function loadHistory(){try{const s=localStorage.getItem('np_history');if(s)history=JSON.parse(s);}catch(e){history=[];}updateHistoryUI();}
+function saveHistory(){store.set('history',history);}
+function loadHistory(){history=store.get('history');updateHistoryUI();}
 
 function updateHistoryUI(){
   const list=document.getElementById('historyList');
@@ -1002,18 +1192,23 @@ function updateHistoryUI(){
   list.innerHTML=history.slice().reverse().map(h=>`<div class="history-item"><span>${escapeHtml(h.name)}</span><span style="opacity:0.6;font-size:0.85em;">${escapeHtml(h.time)}</span></div>`).join('');
 }
 
+/* These four reads used to be bare
+   `JSON.parse(localStorage.getItem('np_rosters')||'{}')`. One truncated write and
+   the page threw on load with a class list the teacher could not reach. The store
+   refuses a bad blob instead of throwing, and drops one unusable roster rather
+   than the whole set. */
 function saveRoster(){
   if(!originalNames.length){alert('Load some names first before saving a roster.');return;}
   const name=prompt('Roster name (e.g., "Period 3", "Block B"):');
   if(!name||!name.trim())return;
-  const rosters=JSON.parse(localStorage.getItem('np_rosters')||'{}');
+  const rosters=store.get('rosters');
   rosters[name.trim()]=originalNames.slice();
-  localStorage.setItem('np_rosters',JSON.stringify(rosters));
+  if(!store.set('rosters',rosters)){alert('That roster could not be saved — this browser is not letting the page store anything. Use "Save a Backup File" on the Data tab instead.');return;}
   updateRosterUI();
 }
 
 function updateRosterUI(){
-  const rosters=JSON.parse(localStorage.getItem('np_rosters')||'{}');
+  const rosters=store.get('rosters');
   const list=document.getElementById('rosterList');
   const entries=Object.entries(rosters);
   if(!entries.length){list.innerHTML='<p class="muted-text">No saved rosters yet</p>';return;}
@@ -1023,39 +1218,42 @@ function updateRosterUI(){
 }
 
 function loadRosterByName(name){
-  const rosters=JSON.parse(localStorage.getItem('np_rosters')||'{}');
+  const rosters=store.get('rosters');
   if(rosters[name]){document.getElementById('namesInput').value=rosters[name].join('\n');loadNamesFromInput();}
 }
 
 function deleteRoster(name){
-  if(!confirm(`Delete roster "${name}"?`))return;
-  const rosters=JSON.parse(localStorage.getItem('np_rosters')||'{}');
+  if(!confirm(`Delete roster "${name}"?\n\nThe names in it are erased from this browser.`))return;
+  const rosters=store.get('rosters');
   delete rosters[name];
-  localStorage.setItem('np_rosters',JSON.stringify(rosters));
-  updateRosterUI();
+  store.set('rosters',rosters);
+  updateRosterUI();updateDataTab();
 }
 
 function loadNamesFromInput(){
   const text=document.getElementById('namesInput').value;
   const list=text.split('\n').map(n=>n.trim()).filter(n=>n.length>0);
   names=list.slice();originalNames=list.slice();
-  localStorage.setItem('np_current',JSON.stringify(originalNames));
+  store.set('current',originalNames);
   absentSet=new Set();
   sessionMythicCount=0;
   achievementsShown.clear();
+  /* A new roster is a new class period. Nobody carries a turn over from the last
+     one, so the rotation starts clean. */
+  rotation=freshRotation();
   pickLuckyStudent();
-  scatterNames();updateStatsUI();
+  scatterNames();updateStatsUI();updateDataTab();
   document.getElementById('settingsPanel').classList.remove('open');
 }
 
 const defaultPrompts=['Read the next paragraph aloud','Define the next vocab word','Give one example from the reading','Summarize the last section in one sentence','Make a connection to today\'s theme','Ask a question about the material','Share what surprised you most','Predict what happens next','Compare this to something modern','Identify the cause AND the effect'];
 
-function loadPrompts(){try{prompts=JSON.parse(localStorage.getItem('np_prompts')||'[]');}catch(e){prompts=[];}document.getElementById('promptsInput').value=prompts.join('\n');updatePromptsList();}
+function loadPrompts(){prompts=store.get('prompts');document.getElementById('promptsInput').value=prompts.join('\n');updatePromptsList();}
 
 function savePrompts(){
   const text=document.getElementById('promptsInput').value;
   prompts=text.split('\n').map(p=>p.trim()).filter(p=>p.length>0);
-  localStorage.setItem('np_prompts',JSON.stringify(prompts));
+  store.set('prompts',prompts);
   updatePromptsList();
 }
 
@@ -1068,9 +1266,10 @@ function updatePromptsList(){
 function makeGroups(){
   const n=parseInt(document.getElementById('groupCount').value,10);
   if(!n||n<2||!originalNames.length){document.getElementById('groupsResult').innerHTML='<p class="muted-text">Load names first and pick a number ≥ 2.</p>';return;}
-  const shuffled=originalNames.slice().sort(()=>Math.random()-0.5);
-  const groups=Array.from({length:n},()=>[]);
-  shuffled.forEach((name,i)=>groups[i%n].push(name));
+  /* Was `sort(()=>Math.random()-0.5)`, which is not a shuffle — the comparator is
+     inconsistent, so in V8 the first name in the roster landed in group 1 far more
+     often than one in n. splitGroups() uses Fisher-Yates; the suite measures both. */
+  const groups=splitGroups(originalNames,n);
   document.getElementById('groupsResult').innerHTML=groups.map((g,i)=>`<div class="group-card"><h4>Group ${i+1} <small style="opacity:0.7;font-family:Outfit;">(${g.length})</small></h4><div class="group-card-names">${g.map(escapeHtml).join(', ')}</div></div>`).join('');
 }
 
@@ -1079,7 +1278,7 @@ function toggleCrazy(){
   document.body.classList.toggle('crazy-active',crazyMode);
   document.getElementById('crazyBtn').classList.toggle('active',crazyMode);
   if(crazyMode){playKlaxon();shake(2);showConfetti();}
-  localStorage.setItem('np_crazy',crazyMode?'1':'0');
+  store.set('crazy',crazyMode);
 }
 
 /* =====================================================================
@@ -1095,8 +1294,8 @@ function toggleAbsent(name,isAbsent){
 /* =====================================================================
    HALL OF FAME TICKER — rolling marquee of high-rarity picks
    ===================================================================== */
-function loadHof(){try{hallOfFame=JSON.parse(localStorage.getItem('np_hof')||'[]');}catch(e){hallOfFame=[];}updateHofTicker();}
-function saveHof(){localStorage.setItem('np_hof',JSON.stringify(hallOfFame.slice(-50)));}
+function loadHof(){hallOfFame=store.get('hof');updateHofTicker();}
+function saveHof(){store.set('hof',hallOfFame.slice(-50));}
 function addToHof(name,rarity){
   hallOfFame.push({name,tier:rarity.name,tierClass:rarity.class,emoji:rarity.emoji,date:new Date().toISOString().slice(0,10)});
   if(hallOfFame.length>50)hallOfFame=hallOfFame.slice(-50);
@@ -1226,14 +1425,23 @@ async function tournamentPick(){
   isRolling=true;setRollingState(true);
   const activeCards=nameCards.filter(c=>c.active&&!absentSet.has(c.name));
   if(activeCards.length===0){finishRolling();return;}
-  if(activeCards.length===1){selectTournamentWinner(activeCards[0]);return;}
+  const winnerCard=chooseWinner(activeCards);
+  if(!winnerCard){finishRolling();return;}
+  if(activeCards.length===1){selectTournamentWinner(winnerCard);return;}
+  const winnerIdx=activeCards.indexOf(winnerCard);
   const dramatic=document.getElementById('dramaticPause').checked;
   const baseJumps=dramatic?18:12;
   const totalJumps=baseJumps+Math.floor(Math.random()*6);
   let lastIdx=-1,currentDelay=Math.max(speed,90);
   for(let i=0;i<totalJumps;i++){
     let idx;
-    do{idx=Math.floor(Math.random()*activeCards.length);}while(idx===lastIdx&&activeCards.length>1);
+    if(i===totalJumps-1)idx=winnerIdx;
+    else{
+      const avoidWinner=i===totalJumps-2&&activeCards.length>2;
+      let guard=0;
+      do{idx=Math.floor(Math.random()*activeCards.length);guard++;}
+      while(guard<40&&((idx===lastIdx&&activeCards.length>1)||(avoidWinner&&idx===winnerIdx)));
+    }
     activeCards.forEach(c=>c.el.classList.remove('spotlight'));
     activeCards[idx].el.classList.add('spotlight');
     playBeep(600+Math.random()*350,55,'square',0.08);
@@ -1243,7 +1451,7 @@ async function tournamentPick(){
     await sleep(currentDelay);
   }
   activeCards.forEach(c=>c.el.classList.remove('spotlight'));
-  selectTournamentWinner(activeCards[lastIdx]);
+  selectTournamentWinner(winnerCard);
 }
 function selectTournamentWinner(winnerCard){
   winnerCard.el.classList.add('winner-tile');
@@ -1289,12 +1497,12 @@ function toggleRetroMode(){
     playEightBitChime();
     if(!retroUnlocked){
       retroUnlocked=true;
-      localStorage.setItem('np_retro_unlocked','1');
+      store.set('retroUnlocked',true);
       showRetroUnlockBanner();
       showAchievement('🕹️','EASTER EGG FOUND','Retro Arcade Mode unlocked!','konami');
     }
   }
-  localStorage.setItem('np_retro_active',retroActive?'1':'0');
+  store.set('retroActive',retroActive);
 }
 function playEightBitChime(){
   const ctx=ensureAudio();if(!ctx)return;
@@ -1448,13 +1656,13 @@ function pickLuckyStudent(){
   const enabled=document.getElementById('luckyStudent');
   if(!enabled||!enabled.checked||originalNames.length===0){luckyStudent=null;return;}
   const today=new Date().toISOString().slice(0,10);
-  const stored=localStorage.getItem('np_lucky');
-  if(stored){
-    try{const obj=JSON.parse(stored);if(obj.date===today&&originalNames.includes(obj.name)){luckyStudent=obj.name;luckyDate=today;return;}}catch(e){}
+  const stored=store.get('lucky');
+  if(stored&&stored.date===today&&originalNames.includes(stored.name)){
+    luckyStudent=stored.name;luckyDate=today;return;
   }
   luckyStudent=originalNames[Math.floor(Math.random()*originalNames.length)];
   luckyDate=today;
-  localStorage.setItem('np_lucky',JSON.stringify({name:luckyStudent,date:today}));
+  store.set('lucky',{name:luckyStudent,date:today});
 }
 
 /* =====================================================================
@@ -1493,77 +1701,196 @@ function checkAchievements(rarity,name){
 /* =====================================================================
    EXPORT / IMPORT — JSON backup of all classroom data
    ===================================================================== */
+/* Export and import go through the store's bundle slot, so validation, repair and
+   the version-2-backup migration are gvb-save's job rather than eleven more
+   unguarded JSON.parse calls. The old hand-rolled format is still readable —
+   `liftLegacyBackup` maps its `rosters` / `currentRoster` / `hallOfFame` keys onto
+   the np_ ones, so a backup a teacher saved months ago still restores. */
 function exportAllData(){
-  const data={
-    version:2,
-    exported:new Date().toISOString(),
-    rosters:JSON.parse(localStorage.getItem('np_rosters')||'{}'),
-    currentRoster:JSON.parse(localStorage.getItem('np_current')||'[]'),
-    stats:JSON.parse(localStorage.getItem('np_stats')||'{}'),
-    history:JSON.parse(localStorage.getItem('np_history')||'[]'),
-    prompts:JSON.parse(localStorage.getItem('np_prompts')||'[]'),
-    hallOfFame:JSON.parse(localStorage.getItem('np_hof')||'[]'),
-    theme:localStorage.getItem('np_theme')||'default'
-  };
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;a.download=`name-picker-backup-${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
-  showAchievement('💾','BACKUP SAVED','Roster data exported to your computer.','export_'+Date.now());
+  const c=store.census();
+  const name=store.exportName(new Date().toISOString().slice(0,10));
+  const ok=confirm(
+    `Save a backup file?\n\nIt will contain ${c.names} student name${c.names===1?'':'s'} `+
+    `across ${c.rosters} roster${c.rosters===1?'':'s'}, plus pick counts and history, in plain text.\n\n`+
+    `File name: ${name}\n\n`+
+    `Save it somewhere you would be comfortable keeping a printed class list.`
+  );
+  if(!ok)return;
+  store.bundle.exportToFile(store.snapshot(),name);
+  const note=document.getElementById('exportNote');
+  if(note)note.textContent=`Last backup this session: ${name} — ${c.names} names.`;
 }
-function importAllData(file){
-  const reader=new FileReader();
-  reader.onload=(e)=>{
-    try{
-      const data=JSON.parse(e.target.result);
-      if(!data||typeof data!=='object')throw new Error('Invalid backup file');
-      const choice=confirm(`Import backup from ${data.exported?new Date(data.exported).toLocaleString():'unknown date'}?\n\n• ${Object.keys(data.rosters||{}).length} rosters\n• ${Object.keys(data.stats||{}).length} students with stats\n• ${(data.history||[]).length} history entries\n• ${(data.hallOfFame||[]).length} Hall of Fame entries\n\nThis will MERGE with your current data (new entries added, existing rosters overwritten if names match). Continue?`);
-      if(!choice)return;
-      /* Merge rosters */
-      if(data.rosters){
-        const existing=JSON.parse(localStorage.getItem('np_rosters')||'{}');
-        localStorage.setItem('np_rosters',JSON.stringify({...existing,...data.rosters}));
-      }
-      /* Merge stats by adding counts */
-      if(data.stats){
-        const existing=JSON.parse(localStorage.getItem('np_stats')||'{}');
-        for(const [n,c] of Object.entries(data.stats))existing[n]=(existing[n]||0)+c;
-        localStorage.setItem('np_stats',JSON.stringify(existing));
-      }
-      /* Replace history (it's session data) only if asked */
-      if(data.history&&data.history.length){
-        const existing=JSON.parse(localStorage.getItem('np_history')||'[]');
-        localStorage.setItem('np_history',JSON.stringify([...existing,...data.history]));
-      }
-      /* Merge Hall of Fame */
-      if(data.hallOfFame&&data.hallOfFame.length){
-        const existing=JSON.parse(localStorage.getItem('np_hof')||'[]');
-        const merged=[...existing,...data.hallOfFame].slice(-50);
-        localStorage.setItem('np_hof',JSON.stringify(merged));
-      }
-      /* Prompts: keep existing if any, otherwise import */
-      if(data.prompts&&data.prompts.length){
-        const existing=JSON.parse(localStorage.getItem('np_prompts')||'[]');
-        if(!existing.length)localStorage.setItem('np_prompts',JSON.stringify(data.prompts));
-      }
-      /* Reload everything from storage */
-      loadStats();loadHistory();loadHof();loadPrompts();updateRosterUI();updateStatsUI();
-      alert('✅ Import complete!');
-      showAchievement('📂','IMPORT SUCCESS','Your backup was restored.','import_'+Date.now());
-    }catch(err){
-      alert('❌ Import failed: '+err.message);
+
+function restoreFromState(state){
+  const inRosters=Object.keys(state.np_rosters||{}).length;
+  const inStats=Object.keys(state.np_stats||{}).length;
+  const ok=confirm(
+    `Restore from this backup?\n\n`+
+    `• ${inRosters} roster${inRosters===1?'':'s'}\n`+
+    `• ${inStats} student${inStats===1?'':'s'} with pick counts\n`+
+    `• ${(state.np_history||[]).length} history entries\n`+
+    `• ${(state.np_hof||[]).length} Hall of Fame entries\n\n`+
+    `This MERGES with what is here now: new rosters are added, a roster with the same `+
+    `name is replaced, pick counts are added together. Your themes, prompts and options `+
+    `are left alone.`
+  );
+  if(!ok)return;
+  const wrote=store.restore(state,{merge:true});
+  loadStats();loadHistory();loadHof();loadPrompts();updateRosterUI();updateStatsUI();updateDataTab();
+  alert(`✅ Restored. ${wrote.length} of the tool's data keys were updated.`);
+}
+
+/* deserialize returns null for corrupt JSON, a non-object, a bundle from another
+   tool, or a file whose every key fails validation; importFromFile turns that
+   into a rejection rather than loading half a roster. */
+function restoreFailed(err){
+  alert('❌ That file could not be restored.\n\n'+err.message+
+        '\n\nIt has to be a backup file this tool wrote. Nothing on this machine was changed.');
+}
+
+/* =====================================================================
+   DATA AND PRIVACY TAB — what is stored, and one control that clears it
+   ===================================================================== */
+function updateDataTab(){
+  const c=store.census();
+  const cells=[
+    [c.rosters,'saved rosters'],
+    [c.names,'student names'],
+    [c.tracked,'with pick counts'],
+    [c.history,'history entries'],
+    [c.hof,'hall of fame']
+  ];
+  const census=document.getElementById('census');
+  if(census)census.innerHTML=cells.map(([n,l])=>
+    `<div class="census-cell"><div class="census-num">${n}</div><div class="census-label">${l}</div></div>`).join('');
+
+  const state=document.getElementById('storageState');
+  if(state){
+    if(store.memoryOnly){
+      state.className='storage-state blocked';
+      state.textContent='⚠️ This browser is blocking storage, so nothing you do here will survive '+
+        'closing the tab. The tool still works. Save a backup file before you leave if you have typed a roster.';
+    }else{
+      state.className='storage-state';
+      state.textContent='✅ Stored in this browser on this computer only. No network requests, no account, no analytics.';
     }
-  };
-  reader.readAsText(file);
+  }
+
+  const table=document.querySelector('#keyTable tbody');
+  if(table){
+    const groupNote={roster:'student names',records:'names and pick counts',prefs:'no student data'};
+    table.innerHTML='<tr><th>Key</th><th>Holds</th><th>Erased by</th></tr>'+
+      store.keys.map(d=>`<tr><td><code>${escapeHtml(d.key)}</code></td><td>${escapeHtml(d.label)}</td><td>${d.group==='prefs'?'Erase everything':'Erase student data'} <small style="opacity:0.65;">(${groupNote[d.group]})</small></td></tr>`).join('');
+  }
+}
+
+function eraseStudentData(){
+  const c=store.census();
+  if(c.names===0&&c.tracked===0&&c.history===0){alert('There is no student data stored in this browser.');return;}
+  const ok=confirm(
+    `Erase all student data from this browser?\n\n`+
+    `This removes ${c.names} student name${c.names===1?'':'s'}, ${c.rosters} roster${c.rosters===1?'':'s'}, `+
+    `${c.tracked} set${c.tracked===1?'':'s'} of pick counts, ${c.history} history entries and `+
+    `${c.hof} Hall of Fame entries.\n\n`+
+    `Your themes, task prompts, options and anything you have unlocked are kept.\n\n`+
+    `This cannot be undone. If you have not saved a backup file, cancel and do that first.`
+  );
+  if(!ok)return;
+  store.clearStudentData();
+  names=[];originalNames=[];history=[];statsCache={};hallOfFame=[];
+  absentSet=new Set();luckyStudent=null;luckyDate=null;
+  rotation=freshRotation();
+  document.getElementById('namesInput').value='';
+  scatterNames();updateStatsUI();updateHistoryUI();updateHofTicker();updateRosterUI();updateDataTab();
+  alert('Erased. No student names are left in this browser.');
+}
+
+function eraseEverything(){
+  if(!confirm('Erase everything this tool has stored, including themes, task prompts, options and the unlocked retro theme?\n\nThis cannot be undone.'))return;
+  store.clearAll();
+  opts={...OPTION_DEFAULTS};
+  names=[];originalNames=[];history=[];statsCache={};hallOfFame=[];prompts=[];
+  absentSet=new Set();luckyStudent=null;luckyDate=null;
+  retroUnlocked=false;retroActive=false;crazyMode=false;
+  rotation=freshRotation();
+  document.body.classList.remove('retro-mode','crazy-active','sudden-death');
+  document.getElementById('crazyBtn').classList.remove('active');
+  document.getElementById('namesInput').value='';
+  document.getElementById('promptsInput').value='';
+  document.getElementById('theme').value='default';applyTheme('default');
+  applyOptionsToUI();stopChaosParticles();
+  scatterNames();updateStatsUI();updateHistoryUI();updateHofTicker();updateRosterUI();updatePromptsList();updateDataTab();
+  alert('Erased. This tool has stored nothing on this computer.');
+}
+
+/* =====================================================================
+   OPTIONS — one key instead of eleven that never persisted
+
+   Only the theme, Crazy mode, the retro unlock and the lucky-student switch used
+   to survive a reload. Sound, confetti, cold-call, rarity, the Hall of Fame
+   ticker, sudden death, the multi-pick count, group count, mode and speed all
+   reset every time the page opened, which a teacher notices on the second period
+   of the day. They now live together in np_options, and anything added later
+   arrives through the store's repair as a fill-in rather than as undefined.
+   ===================================================================== */
+const OPTION_BOXES={
+  sound:'soundToggle', confetti:'confettiToggle', dramatic:'dramaticPause',
+  rarity:'rarityEnabled', hof:'hofEnabled', fair:'fairRotation',
+  coldCall:'coldCallMode', suddenDeath:'suddenDeath', promptsOn:'promptsEnabled'
+};
+const OPTION_FIELDS={ mode:'mode', speed:'speed', multi:'multiPickCount', groups:'groupCount' };
+
+function applyOptionsToUI(){
+  for(const [k,id] of Object.entries(OPTION_BOXES)){
+    const el=document.getElementById(id);
+    if(el)el.checked=!!opts[k];
+  }
+  for(const [k,id] of Object.entries(OPTION_FIELDS)){
+    const el=document.getElementById(id);
+    if(el)el.value=opts[k];
+  }
+  mode=opts.mode;
+  speed=opts.speed;
+  document.getElementById('speedVal').textContent=speed+'ms';
+  toggleSuddenDeath(opts.suddenDeath);
+}
+
+function readOptionsFromUI(){
+  const next={...opts};
+  for(const [k,id] of Object.entries(OPTION_BOXES)){
+    const el=document.getElementById(id);
+    if(el)next[k]=el.checked;
+  }
+  for(const [k,id] of Object.entries(OPTION_FIELDS)){
+    const el=document.getElementById(id);
+    if(!el)continue;
+    next[k]=k==='mode'?el.value:(parseInt(el.value,10)||OPTION_DEFAULTS[k]);
+  }
+  return next;
+}
+
+function persistOptions(){
+  opts=readOptionsFromUI();
+  store.set('options',opts);
+}
+
+/* Every option control writes the whole set back. Cheap, and it means a new
+   checkbox only has to be added to OPTION_BOXES to start persisting. */
+for(const id of [...Object.values(OPTION_BOXES),...Object.values(OPTION_FIELDS)]){
+  const el=document.getElementById(id);
+  if(el)el.addEventListener('change',persistOptions);
 }
 
 document.getElementById('mode').addEventListener('change',(e)=>{mode=e.target.value;});
 document.getElementById('theme').addEventListener('change',(e)=>applyTheme(e.target.value));
 document.getElementById('speed').addEventListener('input',(e)=>{speed=parseInt(e.target.value,10);document.getElementById('speedVal').textContent=speed+'ms';});
+document.getElementById('speed').addEventListener('change',persistOptions);
+document.getElementById('fairRotation').addEventListener('change',()=>{rotation=freshRotation();});
 document.getElementById('pickBtn').addEventListener('click',pickName);
-document.getElementById('resetBtn').addEventListener('click',()=>{names=originalNames.slice();scatterNames();});
+/* Reset Board puts everyone back on the board, so it starts the rotation round
+   over too. Without that, students restored by a reset would sit at the back of
+   the current round until it refilled. */
+document.getElementById('resetBtn').addEventListener('click',()=>{names=originalNames.slice();rotation=freshRotation();scatterNames();});
 document.getElementById('shuffleBtn').addEventListener('click',()=>{if(!isRolling)scatterNames();});
 document.getElementById('settingsBtn').addEventListener('click',()=>{document.getElementById('settingsPanel').classList.add('open');updateStatsUI();});
 document.getElementById('emptyStateBtn').addEventListener('click',()=>{document.getElementById('settingsPanel').classList.add('open');setTimeout(()=>document.getElementById('namesInput').focus(),350);});
@@ -1571,7 +1898,7 @@ document.getElementById('closePanel').addEventListener('click',()=>{document.get
 document.getElementById('loadNames').addEventListener('click',loadNamesFromInput);
 document.getElementById('clearInput').addEventListener('click',()=>{if(confirm('Clear the input area? (Saved rosters are not affected)'))document.getElementById('namesInput').value='';});
 document.getElementById('saveRoster').addEventListener('click',saveRoster);
-document.getElementById('clearHistory').addEventListener('click',()=>{if(confirm('Clear pick history?')){history=[];saveHistory();updateHistoryUI();}});
+document.getElementById('clearHistory').addEventListener('click',()=>{if(confirm('Clear pick history?')){history=[];saveHistory();updateHistoryUI();updateDataTab();}});
 document.getElementById('exportHistory').addEventListener('click',()=>{
   if(!history.length){alert('No history to export.');return;}
   const text=history.map(h=>`${h.time}\t${h.name}`).join('\n');
@@ -1589,17 +1916,23 @@ document.getElementById('tournamentBtn').addEventListener('click',toggleTourname
 document.getElementById('suddenDeath').addEventListener('change',(e)=>toggleSuddenDeath(e.target.checked));
 document.getElementById('hofEnabled').addEventListener('change',updateHofTicker);
 document.getElementById('luckyStudent').addEventListener('change',(e)=>{
-  if(e.target.checked){pickLuckyStudent();localStorage.setItem('np_lucky_enabled','1');}
-  else{luckyStudent=null;localStorage.removeItem('np_lucky');localStorage.removeItem('np_lucky_enabled');}
+  if(e.target.checked){store.set('luckyEnabled',true);pickLuckyStudent();}
+  else{luckyStudent=null;store.clear('lucky');store.set('luckyEnabled',false);}
   if(!isRolling)scatterNames();
+  updateDataTab();
 });
 document.getElementById('clearHof').addEventListener('click',()=>{
-  if(confirm('Clear the Hall of Fame ticker? Recent high-rarity picks will be erased.')){hallOfFame=[];saveHof();updateHofTicker();}
+  if(confirm('Clear the Hall of Fame ticker? Recent high-rarity picks will be erased.')){hallOfFame=[];saveHof();updateHofTicker();updateDataTab();}
 });
 document.getElementById('exportRosters').addEventListener('click',exportAllData);
-document.getElementById('importRostersInput').addEventListener('change',(e)=>{
-  if(e.target.files&&e.target.files[0]){importAllData(e.target.files[0]);e.target.value='';}
+/* The file picker comes from gvb-save's promptImport(), so there is no hidden
+   <input type="file"> in the markup any more. */
+document.getElementById('importRostersBtn').addEventListener('click',()=>{
+  store.bundle.promptImport().then(restoreFromState,restoreFailed);
 });
+document.getElementById('eraseStudentData').addEventListener('click',eraseStudentData);
+document.getElementById('eraseEverything').addEventListener('click',eraseEverything);
+document.getElementById('gotoDataTab').addEventListener('click',()=>showTab('data'));
 document.querySelectorAll('.soundboard-btn').forEach(btn=>{
   btn.addEventListener('click',()=>playSoundboard(btn.dataset.sound,btn));
 });
@@ -1608,16 +1941,16 @@ document.getElementById('loadDefaults').addEventListener('click',()=>{document.g
 document.getElementById('sortStatsMost').addEventListener('click',()=>{currentStatsSort='most';updateStatsUI();});
 document.getElementById('sortStatsLeast').addEventListener('click',()=>{currentStatsSort='least';updateStatsUI();});
 document.getElementById('sortStatsAlpha').addEventListener('click',()=>{currentStatsSort='alpha';updateStatsUI();});
-document.getElementById('resetStats').addEventListener('click',()=>{if(confirm('Reset all pick counts? This wipes lifetime stats.')){statsCache={};saveStats();updateStatsUI();}});
+document.getElementById('resetStats').addEventListener('click',()=>{if(confirm('Reset all pick counts? This wipes lifetime stats.')){statsCache={};store.clear('stats');updateStatsUI();updateDataTab();}});
 
+function showTab(tab){
+  document.querySelectorAll('.tab-buttons button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active',c.id==='tab-'+tab));
+  if(tab==='stats')updateStatsUI();
+  if(tab==='data')updateDataTab();
+}
 document.querySelectorAll('.tab-buttons button').forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    document.querySelectorAll('.tab-buttons button').forEach(b=>b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
-    if(btn.dataset.tab==='stats')updateStatsUI();
-  });
+  btn.addEventListener('click',()=>showTab(btn.dataset.tab));
 });
 
 document.addEventListener('keydown',(e)=>{
@@ -1664,37 +1997,47 @@ document.addEventListener('fullscreenchange',()=>{
 });
 
 window.addEventListener('load',()=>{
-  const savedTheme=localStorage.getItem('np_theme');
-  if(savedTheme&&themes[savedTheme]){document.getElementById('theme').value=savedTheme;applyTheme(savedTheme);}
+  /* Every read here goes through the store, so a corrupt or hand-edited key falls
+     back to its default instead of throwing on boot. The old version of this
+     function wrapped only the np_current read in a try/catch — a bad np_theme,
+     np_crazy or np_retro_active was survivable by luck, and a bad np_rosters
+     took the page down inside updateRosterUI() below. */
+  opts=store.get('options');
+  applyOptionsToUI();
+
+  const savedTheme=store.get('theme');
+  if(themes[savedTheme]){document.getElementById('theme').value=savedTheme;applyTheme(savedTheme);}
   else applyTheme('default');
-  try{
-    const savedNames=localStorage.getItem('np_current');
-    if(savedNames){
-      const parsed=JSON.parse(savedNames);
-      if(Array.isArray(parsed)&&parsed.length){
-        originalNames=parsed.slice();names=parsed.slice();
-        document.getElementById('namesInput').value=names.join('\n');
-        /* Restore lucky student preference */
-        if(localStorage.getItem('np_lucky_enabled')==='1'){
-          document.getElementById('luckyStudent').checked=true;
-          pickLuckyStudent();
-        }
-        setTimeout(scatterNames,50);
-      }
+
+  const savedNames=store.get('current');
+  if(savedNames.length){
+    originalNames=savedNames.slice();names=savedNames.slice();
+    document.getElementById('namesInput').value=names.join('\n');
+    if(store.get('luckyEnabled')){
+      document.getElementById('luckyStudent').checked=true;
+      pickLuckyStudent();
     }
-  }catch(e){}
-  if(localStorage.getItem('np_crazy')==='1'){
+    setTimeout(scatterNames,50);
+  }
+
+  if(store.get('crazy')){
     crazyMode=true;
     document.body.classList.add('crazy-active');
     document.getElementById('crazyBtn').classList.add('active');
   }
-  /* Retro mode persistence */
-  if(localStorage.getItem('np_retro_unlocked')==='1')retroUnlocked=true;
-  if(localStorage.getItem('np_retro_active')==='1'){
+  retroUnlocked=store.get('retroUnlocked');
+  if(store.get('retroActive')){
     retroActive=true;
     document.body.classList.add('retro-mode');
   }
-  loadStats();loadHistory();loadPrompts();loadHof();updateRosterUI();updateCountDisplay();
+
+  loadStats();loadHistory();loadPrompts();loadHof();updateRosterUI();updateCountDisplay();updateDataTab();
+
+  /* A browser that blocks storage does not white-screen, but the teacher has to
+     know before typing twenty-eight names into a page that will forget them. */
+  if(store.memoryOnly){
+    showAchievement('⚠️','STORAGE BLOCKED','This browser will not remember anything. See the Data tab.','memory_only');
+  }
 });
 
 </script>

@@ -2,8 +2,11 @@
 
 You are working on Faire Weekend, a renaissance-faire management sim on greyversusblue.com.
 It lives in `Projects/Ren-Faire-Claude/` — the folder name is older than the game's name, and
-the board calls it Faire Weekend. It has the largest test suite in the repo and one open
-design question waiting on a decision. This prompt is self-contained.
+the board calls it Faire Weekend. It has the largest test suite in the repo. Last round decided
+and shipped the report-phase save policy (now locked decision #45, site-wide) and vendored its
+fonts. This round's headline is adopting the shared save module, `assets/js/gvb-save.js` — the
+adoption is fully scoped already, in this project's own round-one notes. This prompt is
+self-contained.
 
 ## Your boundary
 
@@ -13,7 +16,9 @@ You own these paths. Inside them, edit, add, delete and restructure freely:
   - `index.html`
   - `js/main.js`, `js/engine.js`, `js/state.js`, `js/data.js`, `js/ui.js`
   - `css/style.css`
-  - `tests/smoke.mjs` — 684 assertions, yours
+  - `assets/fonts/**` — the three vendored type families (six woff2 files, 253.6 KB), plus
+    their own `README.md`
+  - `tests/smoke.mjs` — 737 assertions, yours
   - `package.json`, `package-lock.json`, `.gitignore` — **these stay** (locked decision #4)
   - `README.md`, `HANDOFF.md`
 
@@ -35,10 +40,14 @@ Off-limits in particular:
 | Every other project | Not yours. |
 
 **If you need a shared file changed, do not change it.** Write the exact edit into the
-"Shared-file requests" section of your notes file. That especially matters here, because
-`play-games.mjs` currently **reads history rather than `lastResult`** with a comment saying
-why — it is working around the report-phase save behaviour you may be about to change. If you
-change it, that suite needs to change with it, and that is a request.
+"Shared-file requests" section of your notes file. `play-games.mjs`'s `faire-weekend` block used
+to read history rather than `lastResult`, working around the fact that a report was never on
+disk while it was on screen. That workaround is gone: the report-phase policy shipped (locked
+decision #45), and `play-games.mjs` now opens one more day mid-session and asserts the save
+reads `phase: "report"` while the report is on screen, and that a reload keeps the day instead
+of replaying it. If your gvb-save.js adoption changes anything that suite reads (the storage
+key does not change, but the shape written to it might), check that block still passes before
+you file a new request.
 
 One exception inside your own file: `index.html`'s `<head>` has a generated block between
 `<!-- gvb:social:start -->` and `<!-- gvb:social:end -->`. **Do not hand-edit inside those
@@ -48,17 +57,43 @@ overwritten.
 ## Required reading, in this order
 
 1. This whole file.
-2. `gvb-site-handoff-v7.md` §7 — **entirely about this project's test suite** and two reasons
-   it could not run on Windows at all. §9 first paragraph — **your main task**. Also §3 (what
-   the regression suite drives here, and the "read the DOM, not the save" lesson, which is
-   about your game), §10 locked decisions #36 through #40, §11 item 4.
-3. `Projects/Ren-Faire-Claude/HANDOFF.md` and `README.md` — this project has its own handoff,
+2. `Claude Prompts/notes/09-faire-weekend-notes.md` — **read this before you plan task one.** It
+   is round one's session notes for this exact project, and it already contains the full
+   `gvb-save.js` adoption plan (storage key, what goes in `validate` vs. `repair`, the `defaults`
+   factory, where to mount the save bar) checked against the module's current API. Treat it as
+   testimony, not gospel — verify its claims against the files before you build on them — but it
+   is the fastest path into task one. `Claude Prompts/archive/` holds earlier rounds' prompts and
+   notes, including round one's version of this file.
+3. `gvb-site-handoff-v8.md` §9, locked decisions 43 through 50, especially:
+   - **#45**, directly about this project: the report-phase save policy is decided and shipped,
+     a day is final once the gates close.
+   - **#44**, since this project's own round-one request drove the fix: `page.__blocked` is
+     "offsite and refused," `page.__shimmed` is "offsite and fulfilled locally instead" — relevant
+     if you touch fonts again, not for task one.
+   - **#47** (`fresh`/`reset` forward arguments to a `defaults` factory, `clear()` erases without
+     invoking one) and **#50** (`repair` also covers content drift, not just schema drift) — both
+     of these are exactly the shape task one needs.
+   - §4 for two worked adopters worth reading before you adopt: Closing Time (`repair` covering
+     content drift, `fresh`/`reset` forwarding, `clear()` — the closest precedent to this game's
+     plan) and Name Picker or Seating Chart Generator (`mountSaveBar`'s `filename`/`labels`
+     overrides, which you likely won't need here since this game mounts plain `export`/`import`
+     buttons in `#footer`, but know they exist).
+4. `gvb-site-handoff-v7.md` §7 — **entirely about this project's test suite** and two reasons it
+   could not run on Windows at all; still true, still the reason `mod()` exists. §9 — both of its
+   open items concerned this project. The first (the report-phase policy) is resolved, see #45
+   above. The second (the save bar is only reachable from a start screen this game doesn't have)
+   is **still open**, and closing it is the reason task one mounts the bar in `#footer` rather
+   than anywhere else. §3 (the "read the DOM, not the save" lesson, which is about your game),
+   §10 locked decisions #36 through #40.
+5. `Projects/Ren-Faire-Claude/HANDOFF.md` and `README.md` — this project has its own handoff,
    older than the site-wide ones.
-4. `Projects/Ren-Faire-Claude/tests/smoke.mjs`, at least the top of it including the `mod()`
-   helper.
-5. `assets/js/gvb-save.js` and `assets/js/README.md`, plus
-   `Projects/fourth-quarter/js/campaign.js` as the worked example.
-6. Locked decision #4 in `gvb-site-handoff-v1.md` §3.
+6. `Projects/Ren-Faire-Claude/tests/smoke.mjs`, at least the top of it including the `mod()`
+   helper, and sections 1h and 21 (the report/reload tests and the font-vendoring tests added
+   last round) so you know what already guards the ground task one builds on.
+7. `assets/js/gvb-save.js` and `assets/js/README.md`, plus `Projects/Closing Time/**`'s adoption
+   as the worked example closest to this game's plan (see §4 above), and
+   `Projects/fourth-quarter/js/campaign.js` as the original reference integration.
+8. Locked decision #4 in `gvb-site-handoff-v1.md` §3.
 
 ## Before you can run the tests
 
@@ -70,7 +105,7 @@ npm install --prefix "Projects/Ren-Faire-Claude"
 ```
 
 `node_modules/` is already gitignored there. After that, `node tests/smoke.mjs` from inside
-the project gives you 684 passed, 0 failed.
+the project gives you 737 passed, 0 failed.
 
 **Why that install is a separate step and stays that way:** locked decision #4 says this
 project's `package.json`, `package-lock.json`, `.gitignore` and `tests/` all stay, with the
@@ -101,86 +136,133 @@ zero-dependency static files — the same rationale as `Tools/board-check` (lock
 - **Assert against the DOM for anything that just happened, and against the save only for
   what a reload has to survive** (locked decision #39). **This rule is partly about your
   game** — see below.
+- **`page.__blocked` is "offsite and refused"; `page.__shimmed` is "offsite and fulfilled
+  locally instead"** (locked decision #44). This project's own round-one request drove the fix
+  — the font shim in `harness.mjs` used to hide a hotlink from `__blocked` entirely, and this
+  game's fonts hid there for two sessions before anyone noticed. Not your task this round, but
+  know it if you touch `index.html` again.
+- **Faire Weekend: a day is final once the gates close** (locked decision #45, this project's
+  own policy, now codified site-wide). Persisting a report and locking it against replay turned
+  out to be the same action, not two design choices — see "What is actually here" below.
+- **`gvb-save.js`'s `fresh`/`reset` forward arguments to a `defaults` factory, and `clear()`
+  erases without invoking one** (locked decision #47). Relevant to task one if `createInitialState`
+  ever needs a runtime argument.
+- **`gvb-save.js`'s `mountSaveBar` takes `filename` and `labels` overrides, and its import
+  handler calls `setState` before writing to storage, vetoable by returning `false`** (locked
+  decision #48).
+- **Two storage-construction gaps in `gvb-save.js` are fixed: `typeof localStorage` can throw in
+  a storage-blocked browser, and `load()`'s `getItem` is now guarded** (locked decision #49).
+  Backward compatible, nothing to do here except know the module is sturdier than it was.
+- **`repair` also covers content drift, not just schema drift** (locked decision #50). Directly
+  relevant to task one: everything currently in this game's hand-rolled `loadState` beyond the
+  bare `validate` check — the season/`vendorContracts`/`nextPlotId`/`bankrupt`/`victoryAchieved`
+  fill-ins, the plot backfills, the auto-seat pass — belongs in `repair`, not `migrate`, and
+  runs on every accepted load regardless of version.
 
 ## What is actually here
 
-Five `js/` modules, one stylesheet, and a 684-assertion Node smoke suite that builds a JSDOM.
+Five `js/` modules, one stylesheet, and a 737-assertion Node smoke suite that builds a JSDOM.
 Tagged `Sim` and `data-new` on the board with a preview and OG card. `npm run games` drives it:
-builds and commits four plots, opens the gates across a weekend, reloads.
+builds and commits four plots, opens the gates across a weekend, reloads — and, since last
+round, opens one more day mid-session to assert a report is on disk while it's on screen.
 
-**The open design question, and it is your main task.** From v7 §9, verbatim in substance:
-`render()` returns early for the report, victory, gameOver and weekendEnd phases, and
-`saveState()` is on the planning path below that. So **the game never writes a save while a
-report is on screen.** Reloading while looking at a day's takings rewinds to before the gates
-opened, and the day is replayable.
+**The report-phase save policy is decided and shipped, not an open question.** `State.saveState`
+moved from the bottom of `render()` to the top, so a phase that used to take an early return
+(report, victory, gameOver, weekendEnd) can no longer skip the write. **A day is final once the
+gates close** — this is locked decision #45, site-wide, and it originated here. The reasoning,
+measured rather than asserted: the old behavior wasn't forgiving, it was a free reroll worth
+about 3x a median day's profit across 400 seeded runs, and it let a player reroll for +5
+reputation instead of +1, reaching the win condition in roughly a quarter of the intended days.
+It also meant bankruptcy could never end a run — reloading past a folded faire reset you to the
+planning phase with your pre-loss money. Both are closed now. `play-games.mjs`'s
+`faire-weekend` block no longer needs to read history instead of `lastResult` as a workaround —
+see the boundary section above.
 
-It was deliberately not fixed last session, for a stated reason: "it is consistently forgiving
-rather than broken, and 'fix' here means choosing a policy — persist the report, or persist and
-lock the day — rather than moving one line."
+**Fonts are vendored, zero offsite requests.** Barlow Semi Condensed, Fraunces and Grenze
+Gotisch live in `assets/fonts/` as six woff2 files, 259,680 bytes (253.6 KB), `latin` subset
+only. The old hotlink was wrong in both directions — Grenze Gotisch 700 and Barlow Semi
+Condensed 500 were fetched and never used; Fraunces 700 was used (a ledger `<td>`) but never
+fetched, so the browser had been faking a bold since Stage 19. Fraunces kept its optical-size
+variable axis rather than the smaller `wght`-only cut (would save 66 KB, was rejected — it would
+change how the page renders, not just where the bytes come from). Confirm with
+`grep -n "fonts.googleapis\|fonts.gstatic" Projects/Ren-Faire-Claude/index.html` — the only hit
+should be the comment telling you not to put the link back.
 
-This is also why `play-games.mjs` reads history rather than `lastResult`, with a comment saying
-why, and it is one of the three cases behind locked decision #39. The relevant line from v7 §3:
-"**a report is never on disk while it is on screen.** Assert against a stale save and you will
-report a working game as broken — which this did, twice, before the comments went in."
-
-**It hotlinks three Google Font families** — Barlow Semi Condensed, Fraunces and Grenze
-Gotisch — at `index.html` lines 25 and 31. v7 §5 claims the site makes zero offsite requests
-site-wide. That is wrong, and the suite cannot see it: `prepPage()` in
-`Tools/board-check/harness.mjs` *fulfills* Google Fonts requests locally from bundled
-`@fontsource` packages before the blocked-list check runs, so font hotlinks never reach
-`page.__blocked`. All three families are already on disk in
-`Tools/board-check/node_modules/@fontsource/` — copy woff2 files out, but nothing at runtime may
-reference `node_modules`.
+**The biggest remaining gap: this game hand-rolls its own save.** `js/state.js` calls
+`localStorage.setItem`/`getItem`/`removeItem` directly, under the key `renn-faire-sim-save-v1`.
+It has not adopted `assets/js/gvb-save.js`, unlike eleven other projects this round (see
+`gvb-site-handoff-v8.md` §4). The adoption is fully scoped already — see task one — and this is
+the biggest lever left in the project.
 
 ## Your task
 
-**Task one, the headline, item 4 on the handoff's next-session list: decide the report-phase
-save policy and implement it.**
+**Task one, the headline: adopt `assets/js/gvb-save.js`.** This is fully scoped already —
+`Claude Prompts/notes/09-faire-weekend-notes.md` (round one) worked out the whole plan against
+the module's current API and found no missing hook. It is a checklist now, not a design
+question:
 
-The handoff is explicit that **"write down that replayable days are intended" is a legitimate
-answer.** If that is your conclusion, the deliverable is a clear note in the project README
-plus a comment at the early-return in `render()` saying it is deliberate, so the next session
-doesn't spend an hour rediscovering it. That is a real outcome, not a cop-out — but decide it
-by playing the game, not by reading the code.
+- **Keep the key: `renn-faire-sim-save-v1`** (locked #36). Existing saves carry no `__v`, so
+  `normalize()` reads them as version 0.
+- `game: 'faire-weekend'`, `version: 1`.
+- `validate: s => s && typeof s.cash === 'number' && typeof s.day === 'number'` — lift the
+  existing check out of `loadState` unchanged.
+- **Everything else currently in `loadState` goes in `repair`, and `migrate` stays a no-op**
+  (locked #50 — this is content drift, not schema drift). The season/`vendorContracts`/
+  `nextPlotId`/`bankrupt`/`victoryAchieved` fill-ins, the plot `status`/`w`/`h`/
+  `assignedVendorId` backfills and the auto-seat pass all have to run on every accepted load
+  regardless of what the version says.
+- `defaults: createInitialState` **as a factory**, not a literal (locked #47) — nothing in it is
+  randomized, but the factory avoids a deep-copy round trip and makes `slot.reset()` usable
+  as-is.
+- **Import it relatively** (`../../../assets/js/gvb-save.js`). `state.js` is imported under
+  plain Node by `tests/smoke.mjs`, and Node cannot resolve a leading slash — same trap v7 §1
+  documented for `campaign.js`.
+- **Mount the save bar in `#footer`.** This closes v7 §9's other open item as a side effect: The
+  Fourth Quarter's bar is stranded on its start screen, and this game has no start screen, but
+  `#footer` is visible in every phase including mid-report. Mount `buttons: ['export', 'import']`
+  and leave `#resetBtn` alone — putting gvb's "Start over" beside "Reset progress" would be two
+  erasers side by side (locked #48 covers exactly this via `mountSaveBar`'s `buttons` option).
+- `mountSaveBar`'s `setState` handler must also clear `ui.pendingBuild`, `ui.pendingMove` and
+  reset `ui.activeTab` — an import replaces the grounds, and a pending placement against the old
+  ones is meaningless.
 
-If you do change it, the two named policies are:
+Update `play-games.mjs`'s `faire-weekend` block if the adoption changes anything it reads (the
+key doesn't change, but check anyway), and that's a Shared-file request with exact assertions.
 
-- **Persist the report.** A reload puts you back on the report you were looking at. Simplest,
-  and it makes the save match the screen. Ask what happens if the player reloads on the
-  victory or gameOver phase — those take the same early return.
-- **Persist and lock the day.** The day's outcome becomes final on reload, so it can't be
-  replayed. Stricter, and it changes the game's difficulty, because right now a bad Saturday
-  is a free retry. That is a balance decision as much as a persistence one.
+**Task two: give the weekend a shape.** Friday, Saturday and Sunday are currently mechanically
+identical days. `weekendDay` is set, incremented and displayed, but the only reads outside
+`state.js`'s own bookkeeping are the HUD label and the game-over flavor line — `simulateDay`
+touches `state.day` once, just to stamp it on the result. A per-`weekendDay` attendance
+multiplier (a real faire's Saturday is bigger, Sunday quieter) turns scheduling into an actual
+decision — book the expensive act for Saturday, not Friday — and gives the Weekend Package
+contract a reason to exist beyond its flat 15% discount. About one table in `data.js` and one
+term in the attendance formula. Add coverage for it to the Section 1g `SIGNIFICANCE:` test
+class, which is precisely the class that would have caught this being missing.
 
-Whichever you pick, **the regression suite is written against the current behaviour** and
-reads history rather than `lastResult` specifically because of it. Changing the behaviour means
-`play-games.mjs` should be updated, and that is a Shared-file request with the exact assertions
-spelled out.
+**Task three: drive the wiring nothing has ever clicked.** The 737 assertions are engine-level
+and the DOM tests cover the build flow, but ten player-facing actions have never been clicked in
+a browser by anything: `contract`, `release`, `hireVendor`'s let-go path, `launchCampaign`,
+`autoFillStalls`, `unassignVendor`, `demolishPlot`, `selectMove`/`moveTo`, `deletePlanningPlot`
+and `renamePlot`. That means the entire Backstage tab and the entire Marketing section have zero
+browser-level coverage. **Worse: no `change`/`input` event is ever dispatched by either suite.**
+The ticket-price slider, the schedule `<select>`s and the vendor-assignment `<select>`s all run
+through a single delegated `change` handler on a completely different event path from every
+click both suites fire — a delegation bug there would be invisible to 737 assertions and 126
+`npm run games` checks alike. The ticket price is the decision Stage 19 built an entire
+elasticity curve for, and nothing has ever moved the slider. This is the same risk class as
+`day.rebuildStations` being 122 passing assertions while New Game threw on the first click — the
+suites look green and the wiring underneath hasn't been touched.
 
-**Task two: vendor the three fonts.** Local `@font-face`, woff2 in a folder you own, hotlinks
-deleted, only the weights actually used. Note the hotlinked URL asks for Fraunces as a variable
-font with an optical-size axis (`opsz,wght@9..144`) — vendoring a variable font is one file and
-one `@font-face` with ranges, not nine static weights, so get that right. README naming source
-and licence, the way `Projects/golden-hour-beach/assets/textures/` does. Measure the total and
-report the number (locked decision #42).
+**Lower priority, if there's session left:**
 
-**Task three, if there is session left: audit and plan.** Write a prioritized plan. Worth an
-opinion:
-
-- **Should this adopt `assets/js/gvb-save.js`?** It is a strong candidate — Closing Time is
-  doing it in parallel as item 1 on the list, and the report-phase problem you are already
-  fixing is a persistence problem. If yes: keep whatever key exists (locked #36), pass
-  `defaults` as a factory if any initial state is randomised, put fill-ins in `repair` rather
-  than `migrate` (locked #37), and put the save bar somewhere reachable during play — v7 §9's
-  *other* open item is that The Fourth Quarter's bar is only on its start screen. Any missing
-  hook is a Shared-file request.
-- **The 684 assertions are engine-level and blind to the wiring.** That is not a criticism of
-  them, it is the reason `npm run games` exists: `day.rebuildStations` in a sibling project was
-  122 passing assertions while "New Game" threw on the first click a player makes. Is there
-  anything in this game's *wiring* that nothing currently covers?
-- **Balance across a weekend.** Four plots, two days. Is Sunday different from Saturday, or is
-  it the same day twice?
-- **Mobile.** 375×812. This is a turn-based DOM game, so it genuinely could work on a phone.
+- **Mobile tap targets.** 375×812 lays out with no horizontal overflow, which is more than
+  expected, but every interactive element (38 plot markers at 26px, buttons at 27-28px, tabs at
+  40px) is under the 44px touch-target minimum, and the widest grounds tier needs an
+  undiscoverable horizontal scroll to reach its eastern four columns. A real design pass, not a
+  media-query tweak.
+- **Layout/spacing/density review**, the item Stage 20 explicitly owed — its contrast audit was
+  arithmetic-only and said so. Everything needed to pay this down (server, game, `shots/games/`
+  for before/afters) is in place.
 - **`live: false` on this game's preview recipe is correct, not a workaround** (locked decision
   #29). It genuinely has still frames while being played. Don't animate something to satisfy a
   motion check.
@@ -188,23 +270,28 @@ opinion:
 ## Verification
 
 - `npm install --prefix "Projects/Ren-Faire-Claude"` once, then `node tests/smoke.mjs` from
-  inside the project → currently 684 passed, 0 failed. This is your fast loop, and it is the
+  inside the project → currently 737 passed, 0 failed. This is your fast loop, and it is the
   biggest suite in the repo. **Grow it** — you own it. Every new import goes through `mod()`.
-- `cd Tools/board-check && npm run games` → currently 94 checks, 0 failed. **Run it after every
+- `cd Tools/board-check && npm run games` → currently 126 checks, 0 failed. **Run it after every
   structural change.** Your Node suite builds a JSDOM and drives the engine directly; it cannot
   see a broken button.
 - **Read the DOM, not the save, for anything just-happened** (locked decision #39). Your game
   is one of the reasons that rule exists. If you are asserting that a report shows the right
-  takings, assert against the screen. The save may legitimately not have it — that is the whole
-  bug you are fixing.
-- If you change save behaviour, **test the reload path by hand as well as in script.** Open the
-  game, play a day, reload while the report is up, and see what you get. Then do it on the
-  victory phase and the gameOver phase, which take the same early return and are easy to
-  forget.
-- After vendoring, grep `index.html` for `fonts.googleapis.com` → zero hits. `page.__blocked`
-  is **not** the check; `prepPage()` fulfills those requests.
-- `npm run check` → 235 units, 0 broken, 0 collisions. `npm run social:check` → 23 notices, 23
-  already current.
+  takings, assert against the screen.
+- **If you touch save behavior while adopting `gvb-save.js`, test the reload path by hand as
+  well as in script.** Open the game, play a day, reload while the report is up. Then do it on
+  the victory phase and the gameOver phase, which take the same early return and are easy to
+  forget. Locked decision #45's policy already covers all four phases — your job is to carry
+  that through the adoption, not to reopen the policy question.
+- Fonts are already vendored — spot-check with
+  `grep -n "fonts.googleapis\|fonts.gstatic" Projects/Ren-Faire-Claude/index.html`, the only hit
+  should be the comment saying not to put the link back. `page.__blocked` is **not** the check
+  for this (locked decision #44); `prepPage()` fulfills those requests locally before the
+  blocked-list check runs.
+- `npm run check` → 327 units checked, 0 broken; 0 collisions across nine widths, tightest
+  vertical gap 9.2px. `npm run social:check` → 22 notices, 22 already current, 0 out of date,
+  0 failed.
+- `node assets/js/gvb-save.test.mjs` → 50 passed, 0 failed — the module task one adopts against.
 - Locked decision #34: for every guard-rail you add, reintroduce the bug and watch it fail
   before you trust it.
 
@@ -230,14 +317,15 @@ Use these headings:
 ## Next session
 ```
 
-- **What changed** — files touched and why, in prose, with paths. **State the report-phase
-  policy you chose and why, in a sentence someone can disagree with.** If you chose "replayable
-  days are intended", say that plainly and say where you wrote it down.
-- **What I verified** — actual commands, actual counts. Include the by-hand reload test.
+- **What changed** — files touched and why, in prose, with paths. If you adopted
+  `gvb-save.js`, state plainly whether the plan in this round's notes held up unchanged or
+  where it didn't, in a sentence someone can disagree with.
+- **What I verified** — actual commands, actual counts. Include a by-hand reload test across
+  all four phases (report, victory, gameOver, weekendEnd) if you touched save behavior at all.
   "Should work" is not verification.
-- **Shared-file requests** — if the save policy changed, the exact `play-games.mjs` assertions
-  that should replace the history-reading workaround. Any `gvb-save.js` gap with the exact hook
-  signature. Any board change. Applicable blind.
+- **Shared-file requests** — any `play-games.mjs` assertions that need to change because of the
+  adoption. Any `gvb-save.js` gap with the exact hook signature. Any board change. Applicable
+  blind.
 - **Deliberately not done** — something you looked at, understood, and chose to leave, with the
   reason.
 - **Next session** — ordered by value per effort.

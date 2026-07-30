@@ -262,8 +262,39 @@
 
   .badge-png { background: rgba(108, 142, 245, 0.2); color: var(--accent); }
   .badge-svg { background: rgba(167, 139, 250, 0.2); color: var(--accent2); }
+  .badge-jpg { background: rgba(251, 191, 36, 0.18); color: var(--warn); }
+  .badge-webp { background: rgba(74, 222, 128, 0.16); color: var(--success); }
 
   .filename { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .row-actions {
+    display: flex;
+    gap: 0.3rem;
+    flex-shrink: 0;
+  }
+
+  .row-actions button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    font-size: 0.9rem;
+    border-radius: 4px;
+    line-height: 1.4;
+  }
+
+  .row-actions button:hover:not(:disabled) {
+    background: var(--surface2);
+    color: var(--text);
+    opacity: 1;
+    transform: none;
+  }
+
+  .row-actions button:disabled { opacity: 0.25; cursor: not-allowed; }
+
+  #file-list li.dragging { opacity: 0.4; }
+  #file-list li[draggable="true"] { cursor: grab; }
 
   /* Progress */
   #progress-wrap {
@@ -339,8 +370,9 @@
     margin-top: 0.5rem;
   }
 
-  #msg.error { display: block; background: rgba(248, 113, 113, 0.12); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3); }
+  #msg.error { display: block; background: rgba(248, 113, 113, 0.12); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.3); white-space: pre-line; }
   #msg.info { display: block; background: rgba(74, 222, 128, 0.1); color: var(--success); border: 1px solid rgba(74, 222, 128, 0.3); }
+  #msg.warn { display: block; background: rgba(251, 191, 36, 0.1); color: var(--warn); border: 1px solid rgba(251, 191, 36, 0.3); white-space: pre-line; }
 
   /* Scrollbar styling */
   ::-webkit-scrollbar { width: 5px; }
@@ -352,17 +384,17 @@
 
 <header>
   <h1>Image → PDF Assembler</h1>
-  <p>Combine PNG &amp; SVG files into a single PDF — runs entirely in your browser</p>
+  <p>Combine photos and images into a single PDF — runs entirely in your browser</p>
 </header>
 
 <!-- Drop zone -->
 <div class="card">
   <div class="card-title">1 · Select Files</div>
   <div id="drop-zone">
-    <input type="file" id="file-input" accept=".png,.svg" multiple>
+    <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.webp,.svg" multiple aria-label="Choose PNG, JPG, WEBP, or SVG image files">
     <span class="icon">📂</span>
     <div class="label">Drop files here or click to browse</div>
-    <div class="sublabel">Accepts .png and .svg · No file size limit</div>
+    <div class="sublabel">Accepts .png, .jpg/.jpeg, .webp, and .svg · No file size limit</div>
   </div>
 </div>
 
@@ -378,28 +410,41 @@
         <label for="sort-num">Numeric (2…265)</label>
         <input type="radio" name="sort" id="sort-alpha" value="alpha">
         <label for="sort-alpha">Alphabetical</label>
+        <input type="radio" name="sort" id="sort-custom" value="custom">
+        <label for="sort-custom">Custom order</label>
       </div>
     </div>
 
     <div class="control-group">
       <label>Page size</label>
       <select id="page-size">
-        <option value="original" selected>Match image size</option>
-        <option value="letter">Letter (8.5 × 11")</option>
+        <option value="letter" selected>Letter (8.5 × 11")</option>
         <option value="a4">A4 (210 × 297 mm)</option>
         <option value="legal">Legal (8.5 × 14")</option>
         <option value="tabloid">Tabloid (11 × 17")</option>
+        <option value="original">Match image size</option>
       </select>
     </div>
 
     <div class="control-group">
       <label>Orientation (fixed sizes only)</label>
       <div class="toggle-group">
-        <input type="radio" name="orient" id="orient-port" value="portrait" checked>
+        <input type="radio" name="orient" id="orient-auto" value="auto" checked>
+        <label for="orient-auto">Auto (per page)</label>
+        <input type="radio" name="orient" id="orient-port" value="portrait">
         <label for="orient-port">Portrait</label>
         <input type="radio" name="orient" id="orient-land" value="landscape">
         <label for="orient-land">Landscape</label>
       </div>
+    </div>
+
+    <div class="control-group">
+      <label>Quality</label>
+      <select id="quality">
+        <option value="standard" selected>Standard — smaller file, best for email/Schoology</option>
+        <option value="high">High — larger file, less compression</option>
+        <option value="original">Original — no compression, largest file</option>
+      </select>
     </div>
 
     <div class="control-group">
@@ -413,7 +458,7 @@
 <!-- File list -->
 <div class="card">
   <div class="card-title">3 · File Queue</div>
-  <div id="file-count">Load files above to see the sort order preview.</div>
+  <div id="file-count" aria-live="polite">Load files above to see the sort order preview.</div>
   <ul id="file-list"></ul>
 </div>
 
@@ -422,9 +467,9 @@
   <div class="card-title">4 · Generate PDF</div>
   <div id="progress-wrap">
     <div id="progress-bar-bg"><div id="progress-bar"></div></div>
-    <div id="progress-label">Ready</div>
+    <div id="progress-label" aria-live="polite">Ready</div>
   </div>
-  <div id="msg"></div>
+  <div id="msg" aria-live="polite"></div>
   <div class="btn-row" style="margin-top:1rem;">
     <button id="btn-clear">Clear files</button>
     <button id="btn-generate" disabled>Generate PDF</button>
@@ -446,9 +491,35 @@
   const progressLabel = document.getElementById('progress-label');
   const msg        = document.getElementById('msg');
 
-  let loadedFiles = [];   // Array of File objects
+  const VALID_EXT = /\.(png|jpe?g|webp|svg)$/i;
 
-  // ── Drag-over styling ──────────────────────────────────────────────────────
+  let loadedFiles = [];   // Array of { id, file } — array order is the "custom" order
+  let nextId = 1;
+
+  function extOf(name) {
+    const m = name.match(/\.([a-z0-9]+)$/i);
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  function badgeExt(name) {
+    const e = extOf(name);
+    if (e === 'jpg' || e === 'jpeg') return 'jpg';
+    if (e === 'webp') return 'webp';
+    if (e === 'svg') return 'svg';
+    return 'png';
+  }
+
+  // Friendly reason for a file that didn't make the cut.
+  function rejectionReason(name) {
+    const e = extOf(name);
+    if (e === 'heic' || e === 'heif') {
+      return `${name} — HEIC photos can't be read by browsers. On an iPhone: Settings → Camera → Formats → "Most Compatible" (or re-share the photo choosing JPEG), then re-add it.`;
+    }
+    if (!e) return `${name} — no file extension, could not identify the type.`;
+    return `${name} — .${e} isn't supported (PNG, JPG, WEBP, SVG only).`;
+  }
+
+  // ── Drag-over styling (dropping files onto the zone) ────────────────────────
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
   dropZone.addEventListener('drop', e => {
@@ -456,20 +527,30 @@
     dropZone.classList.remove('drag-over');
     handleFiles([...e.dataTransfer.files]);
   });
-  fileInput.addEventListener('change', () => handleFiles([...fileInput.files]));
+  fileInput.addEventListener('change', () => { handleFiles([...fileInput.files]); fileInput.value = ''; });
 
   // Sort-order radio changes → re-render list
   document.querySelectorAll('input[name="sort"]').forEach(r => r.addEventListener('change', renderList));
 
   // ── File ingestion ─────────────────────────────────────────────────────────
   function handleFiles(files) {
-    const valid = files.filter(f => /\.(png|svg)$/i.test(f.name));
-    if (valid.length === 0) { showMsg('No PNG or SVG files found in selection.', 'error'); return; }
-    clearMsg();
-    // Merge (allow multiple file-input calls)
-    const existingNames = new Set(loadedFiles.map(f => f.name));
+    const valid   = files.filter(f => VALID_EXT.test(f.name));
+    const invalid = files.filter(f => !VALID_EXT.test(f.name));
+
+    const existingNames = new Set(loadedFiles.map(e => e.file.name));
     const newOnes = valid.filter(f => !existingNames.has(f.name));
-    loadedFiles.push(...newOnes);
+    newOnes.forEach(f => loadedFiles.push({ id: nextId++, file: f }));
+
+    if (invalid.length > 0) {
+      const lines = invalid.slice(0, 5).map(f => rejectionReason(f.name));
+      if (invalid.length > 5) lines.push(`…and ${invalid.length - 5} more.`);
+      const added = newOnes.length > 0 ? `Added ${newOnes.length}. ` : '';
+      showMsg(`${added}Skipped ${invalid.length} file(s):\n${lines.join('\n')}`, newOnes.length > 0 ? 'warn' : 'error');
+    } else if (newOnes.length === 0 && valid.length > 0) {
+      showMsg('Those files are already in the queue.', 'warn');
+    } else {
+      clearMsg();
+    }
     renderList();
   }
 
@@ -479,39 +560,107 @@
     return m ? parseInt(m[1], 10) : Infinity;
   }
 
-  function getSortedFiles() {
-    const mode = document.querySelector('input[name="sort"]:checked').value;
+  function getSortMode() {
+    return document.querySelector('input[name="sort"]:checked').value;
+  }
+
+  function setSortMode(mode) {
+    document.getElementById('sort-' + mode).checked = true;
+  }
+
+  // Returns the display order as an array of { id, file }. 'custom' reflects
+  // loadedFiles' own order, which drag/move/remove act on directly.
+  function getOrderedEntries() {
+    const mode = getSortMode();
+    if (mode === 'custom') return [...loadedFiles];
     const copy = [...loadedFiles];
     if (mode === 'numeric') {
-      copy.sort((a, b) => extractLeadingNumber(a.name) - extractLeadingNumber(b.name) || a.name.localeCompare(b.name));
+      copy.sort((a, b) => extractLeadingNumber(a.file.name) - extractLeadingNumber(b.file.name) || a.file.name.localeCompare(b.file.name));
     } else {
-      copy.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+      copy.sort((a, b) => a.file.name.localeCompare(b.file.name, undefined, { numeric: true, sensitivity: 'base' }));
     }
     return copy;
   }
 
+  // ── Reorder / remove ────────────────────────────────────────────────────────
+  function indexOfId(id) { return loadedFiles.findIndex(e => e.id === id); }
+
+  function removeFile(id) {
+    const i = indexOfId(id);
+    if (i === -1) return;
+    loadedFiles.splice(i, 1);
+    renderList();
+  }
+
+  function moveFile(id, dir) {
+    const i = indexOfId(id);
+    const j = i + dir;
+    if (i === -1 || j < 0 || j >= loadedFiles.length) return;
+    // Manual reordering only means something in custom order — switch to it
+    // so the move is actually visible instead of being overridden by numeric/alpha.
+    setSortMode('custom');
+    [loadedFiles[i], loadedFiles[j]] = [loadedFiles[j], loadedFiles[i]];
+    renderList();
+  }
+
+  let dragId = null;
+
   // ── Render the file queue list ─────────────────────────────────────────────
   function renderList() {
     fileList.innerHTML = '';
-    const sorted = getSortedFiles();
-    if (sorted.length === 0) {
+    const ordered = getOrderedEntries();
+    if (ordered.length === 0) {
       fileCount.innerHTML = 'Load files above to see the sort order preview.';
       btnGen.disabled = true;
       return;
     }
-    const pngCount = sorted.filter(f => /\.png$/i.test(f.name)).length;
-    const svgCount = sorted.filter(f => /\.svg$/i.test(f.name)).length;
-    fileCount.innerHTML = `<span>${sorted.length}</span> files loaded — <span>${pngCount}</span> PNG, <span>${svgCount}</span> SVG`;
+    const counts = { png: 0, jpg: 0, webp: 0, svg: 0 };
+    ordered.forEach(e => counts[badgeExt(e.file.name)]++);
+    fileCount.innerHTML = `<span>${ordered.length}</span> files loaded — ` +
+      `<span>${counts.png}</span> PNG, <span>${counts.jpg}</span> JPG, <span>${counts.webp}</span> WEBP, <span>${counts.svg}</span> SVG`;
     btnGen.disabled = false;
 
-    sorted.forEach((file, i) => {
-      const li   = document.createElement('li');
-      const ext  = /\.svg$/i.test(file.name) ? 'svg' : 'png';
+    const isCustom = getSortMode() === 'custom';
+
+    ordered.forEach((entry, i) => {
+      const { id, file } = entry;
+      const li = document.createElement('li');
+      const ext = badgeExt(file.name);
+      li.dataset.id = String(id);
+      li.draggable = isCustom;
+
       li.innerHTML = `
         <span class="seq">${i + 1}</span>
         <span class="type-badge badge-${ext}">${ext.toUpperCase()}</span>
         <span class="filename">${file.name}</span>
+        <span class="row-actions">
+          <button type="button" data-act="up" aria-label="Move ${file.name} up" ${i === 0 ? 'disabled' : ''}>&#8593;</button>
+          <button type="button" data-act="down" aria-label="Move ${file.name} down" ${i === ordered.length - 1 ? 'disabled' : ''}>&#8595;</button>
+          <button type="button" data-act="remove" aria-label="Remove ${file.name}">&#10005;</button>
+        </span>
       `;
+
+      li.querySelector('[data-act="up"]').addEventListener('click', () => moveFile(id, -1));
+      li.querySelector('[data-act="down"]').addEventListener('click', () => moveFile(id, 1));
+      li.querySelector('[data-act="remove"]').addEventListener('click', () => removeFile(id));
+
+      // Drag-and-drop reorder — desktop-mouse enhancement. Touch devices don't
+      // support HTML5 drag, so the up/down buttons above are the real mechanism.
+      li.addEventListener('dragstart', () => { dragId = id; li.classList.add('dragging'); });
+      li.addEventListener('dragend', () => { dragId = null; li.classList.remove('dragging'); });
+      li.addEventListener('dragover', e => e.preventDefault());
+      li.addEventListener('drop', e => {
+        e.preventDefault();
+        if (dragId === null || dragId === id) return;
+        setSortMode('custom');
+        const from = indexOfId(dragId);
+        const to   = indexOfId(id);
+        if (from === -1 || to === -1) return;
+        const [moved] = loadedFiles.splice(from, 1);
+        loadedFiles.splice(to, 0, moved);
+        renderList();
+      });
+
       fileList.appendChild(li);
     });
   }
@@ -535,140 +684,147 @@
 
   function pxToMm(px) { return px * 25.4 / 96; }
 
+  // "Match image size" used to place the image's raw pixel count in mm, which
+  // makes a 4032×3024 phone photo a ~1067×800mm page. Clamp the long edge into
+  // a sane print range instead — this is what "match image size" should mean
+  // for a photo rather than a diagram exported at literal print dimensions.
+  function clampPageDimsMm(wMm, hMm) {
+    const MIN_MM = 25, MAX_MM = 432; // 1in .. Tabloid's long edge
+    const long = Math.max(wMm, hMm);
+    let scale = 1;
+    if (long > MAX_MM) scale = MAX_MM / long;
+    else if (long < MIN_MM) scale = MIN_MM / long;
+    return [wMm * scale, hMm * scale];
+  }
+
+  // ── Quality / resolution presets ────────────────────────────────────────────
+  // Standard/high always re-encode as JPEG (smaller for photos than PNG).
+  // "Original" passes only PNG source bytes through untouched — JPEG still goes
+  // through canvas (at near-lossless quality) so EXIF rotation is respected, and
+  // WEBP always goes through canvas since jsPDF has no WEBP encoder. See
+  // processRaster() for the reasoning.
+  const QUALITY_PRESETS = {
+    standard: { maxDim: 1600, q: 0.72 },
+    high:     { maxDim: 2400, q: 0.85 },
+    original: null,
+  };
+
   // ── Generate PDF ───────────────────────────────────────────────────────────
   btnGen.addEventListener('click', generatePDF);
 
   async function generatePDF() {
     clearMsg();
-    const sorted    = getSortedFiles();
+    const ordered   = getOrderedEntries();
     const pageMode  = document.getElementById('page-size').value;
     const orient    = document.querySelector('input[name="orient"]:checked').value;
+    const quality   = document.getElementById('quality').value;
     let   outName   = document.getElementById('filename').value.trim() || 'assembled.pdf';
     if (!/\.pdf$/i.test(outName)) outName += '.pdf';
 
     btnGen.disabled = true;
     btnClear.disabled = true;
     progressWrap.classList.add('visible');
-    setProgress(0, `Preparing 0 / ${sorted.length}…`);
+    setProgress(0, `Preparing 0 / ${ordered.length}…`);
 
-    // jsPDF is loaded via CDN as window.jspdf
+    // jsPDF is loaded from the vendored copy as window.jspdf
     const { jsPDF } = window.jspdf;
 
     let pdf = null;
+    const skipped = [];
+    let sourceBytes = 0;
 
-    try {
-      for (let i = 0; i < sorted.length; i++) {
-        const file = sorted[i];
-        const isSVG = /\.svg$/i.test(file.name);
+    for (let i = 0; i < ordered.length; i++) {
+      const { file } = ordered[i];
+      sourceBytes += file.size;
+      const isSVG = /\.svg$/i.test(file.name);
 
-        setProgress(Math.round(i / sorted.length * 100), `Processing ${i + 1} / ${sorted.length}: ${file.name}`);
-        // Yield to UI
-        await new Promise(r => setTimeout(r, 0));
+      setProgress(Math.round(i / ordered.length * 100), `Processing ${i + 1} / ${ordered.length}: ${file.name}`);
+      // Yield to UI
+      await new Promise(r => setTimeout(r, 0));
+
+      try {
+        let embedDataURL, embedFormat, wMm, hMm;
 
         if (isSVG) {
-          // ── SVG → Canvas → PNG → PDF ─────────────────────────────────────
-          // Rasterize the SVG via a blob URL painted onto a canvas.
-          // No external library required.
-          const text   = await file.text();
-          const parser = new DOMParser();
-          const svgEl  = parser.parseFromString(text, 'image/svg+xml').documentElement;
-
-          // Resolve natural size from width/height attrs or viewBox
-          let svgW = parseFloat(svgEl.getAttribute('width'))  || 0;
-          let svgH = parseFloat(svgEl.getAttribute('height')) || 0;
-          const vb = svgEl.getAttribute('viewBox');
-          if (vb) {
-            const parts = vb.trim().split(/[\s,]+/).map(Number);
-            if (parts.length === 4) {
-              if (!svgW) svgW = parts[2];
-              if (!svgH) svgH = parts[3];
-            }
-          }
-          if (!svgW) svgW = 800;
-          if (!svgH) svgH = 600;
-
-          // Ensure the SVG has explicit dimensions so the browser renders it at full size
-          svgEl.setAttribute('width',  svgW);
-          svgEl.setAttribute('height', svgH);
-
-          // Render at 2× for sharpness
-          const SCALE   = 2;
-          const canvasW = Math.round(svgW * SCALE);
-          const canvasH = Math.round(svgH * SCALE);
-
-          const dataURL = await svgToDataURL(svgEl, canvasW, canvasH);
-
-          const wMm = pxToMm(svgW);
-          const hMm = pxToMm(svgH);
-          const [pgW, pgH] = resolvePageDimsMm(pageMode, orient, wMm, hMm);
-
-          if (!pdf) {
-            pdf = new jsPDF({ orientation: pgW >= pgH ? 'l' : 'p', unit: 'mm', format: [pgW, pgH], compress: true });
-          } else {
-            pdf.addPage([pgW, pgH], pgW >= pgH ? 'l' : 'p');
-          }
-
-          const scaleX = pgW / wMm;
-          const scaleY = pgH / hMm;
-          const scale  = Math.min(scaleX, scaleY);
-          const dW     = wMm * scale;
-          const dH     = hMm * scale;
-          const offX   = (pgW - dW) / 2;
-          const offY   = (pgH - dH) / 2;
-
-          pdf.addImage(dataURL, 'PNG', offX, offY, dW, dH, undefined, 'FAST');
-
+          const svg = await processSVG(file);
+          embedDataURL = svg.dataURL;
+          embedFormat  = 'PNG';
+          wMm = pxToMm(svg.w);
+          hMm = pxToMm(svg.h);
         } else {
-          // ── PNG path ─────────────────────────────────────────────────────
-          const dataURL = await fileToDataURL(file);
-          const [imgW, imgH] = await getImageDimensions(dataURL);
-          const wMm = pxToMm(imgW);
-          const hMm = pxToMm(imgH);
-          const [pgW, pgH] = resolvePageDimsMm(pageMode, orient, wMm, hMm);
-
-          if (!pdf) {
-            pdf = new jsPDF({ orientation: pgW >= pgH ? 'l' : 'p', unit: 'mm', format: [pgW, pgH], compress: true });
-          } else {
-            pdf.addPage([pgW, pgH], pgW >= pgH ? 'l' : 'p');
-          }
-
-          // Scale image to fit page (keeping aspect ratio, centered)
-          const scaleX = pgW / wMm;
-          const scaleY = pgH / hMm;
-          const scale  = Math.min(scaleX, scaleY);
-          const dW     = wMm * scale;
-          const dH     = hMm * scale;
-          const offX   = (pgW - dW) / 2;
-          const offY   = (pgH - dH) / 2;
-
-          pdf.addImage(dataURL, 'PNG', offX, offY, dW, dH, undefined, 'FAST');
+          const raster = await processRaster(file, extOf(file.name), quality);
+          embedDataURL = raster.dataURL;
+          embedFormat  = raster.format;
+          wMm = pxToMm(raster.naturalW);
+          hMm = pxToMm(raster.naturalH);
         }
+
+        const [pgW, pgH] = resolvePageDimsMm(pageMode, orient, wMm, hMm);
+
+        if (!pdf) {
+          pdf = new jsPDF({ orientation: pgW >= pgH ? 'l' : 'p', unit: 'mm', format: [pgW, pgH], compress: true });
+        } else {
+          pdf.addPage([pgW, pgH], pgW >= pgH ? 'l' : 'p');
+        }
+
+        // Scale image to fit the page, keeping aspect ratio, centered
+        const scale = Math.min(pgW / wMm, pgH / hMm);
+        const dW = wMm * scale, dH = hMm * scale;
+        const offX = (pgW - dW) / 2, offY = (pgH - dH) / 2;
+
+        pdf.addImage(embedDataURL, embedFormat, offX, offY, dW, dH, undefined, 'FAST');
+
+      } catch (err) {
+        console.error(err);
+        skipped.push(`${file.name} — ${err.message}`);
       }
-
-      setProgress(100, 'Finalizing…');
-      await new Promise(r => setTimeout(r, 50));
-
-      pdf.save(outName);
-      setProgress(100, `✓ Done! Saved as "${outName}"`);
-      showMsg(`PDF saved: ${outName}  (${sorted.length} pages)`, 'info');
-
-    } catch (err) {
-      console.error(err);
-      showMsg('Error generating PDF: ' + err.message, 'error');
-      setProgress(0, 'Failed.');
     }
+
+    if (!pdf) {
+      showMsg('Nothing could be generated:\n' + skipped.join('\n'), 'error');
+      setProgress(0, 'Failed.');
+      btnGen.disabled = false;
+      btnClear.disabled = false;
+      return;
+    }
+
+    setProgress(100, 'Finalizing…');
+    await new Promise(r => setTimeout(r, 50));
+
+    const blob = pdf.output('blob');
+    downloadBlob(blob, outName);
+
+    const pageCount = ordered.length - skipped.length;
+    const kb = Math.round(blob.size / 1024);
+    const srcKb = Math.round(sourceBytes / 1024);
+    setProgress(100, `✓ Done! Saved as "${outName}"`);
+    let text = `PDF saved: ${outName} — ${pageCount} page(s), ${kb} KB (source images totaled ${srcKb} KB)`;
+    if (skipped.length > 0) text += `\nSkipped ${skipped.length}: ${skipped.join('; ')}`;
+    showMsg(text, skipped.length > 0 ? 'warn' : 'info');
 
     btnGen.disabled = false;
     btnClear.disabled = false;
   }
 
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  function resolvePageDimsMm(mode, orient, naturalW, naturalH) {
-    if (mode === 'original') return [naturalW, naturalH];
+  function resolvePageDimsMm(mode, orient, wMm, hMm) {
+    if (mode === 'original') return clampPageDimsMm(wMm, hMm);
     let [w, h] = PAGE_SIZES[mode];
-    if (orient === 'landscape' && h > w) [w, h] = [h, w];
-    if (orient === 'portrait'  && w > h) [w, h] = [h, w];
+    const wantLandscape = orient === 'landscape' || (orient === 'auto' && wMm > hMm);
+    if (wantLandscape && h > w) [w, h] = [h, w];
+    if (!wantLandscape && w > h) [w, h] = [h, w];
     return [w, h];
   }
 
@@ -676,18 +832,92 @@
     return new Promise((res, rej) => {
       const r = new FileReader();
       r.onload  = () => res(r.result);
-      r.onerror = () => rej(new Error('Could not read file: ' + file.name));
+      r.onerror = () => rej(new Error('could not read file'));
       r.readAsDataURL(file);
     });
   }
 
-  function getImageDimensions(dataURL) {
+  function loadImageElement(dataURL) {
     return new Promise((res, rej) => {
       const img = new Image();
-      img.onload  = () => res([img.naturalWidth, img.naturalHeight]);
-      img.onerror = () => rej(new Error('Could not load image'));
+      img.onload  = () => res(img);
+      img.onerror = () => rej(new Error('could not decode image data — the file may be corrupt or in an unsupported format'));
       img.src = dataURL;
     });
+  }
+
+  // Raster (PNG/JPG/WEBP) → { dataURL, format, naturalW, naturalH } ready to embed.
+  async function processRaster(file, ext, qualityMode) {
+    const srcDataURL = await fileToDataURL(file);
+    const img = await loadImageElement(srcDataURL);
+    const naturalW = img.naturalWidth, naturalH = img.naturalHeight;
+    if (!naturalW || !naturalH) throw new Error('image has no readable dimensions');
+
+    const preset = QUALITY_PRESETS[qualityMode];
+
+    // PNG carries no EXIF orientation, so raw bytes are always safe to pass
+    // straight through at "original" quality. JPEG does carry EXIF orientation —
+    // the browser auto-rotates it for display and for canvas drawing, but jsPDF's
+    // raw JPEG embed does not read that tag, so passing the source bytes straight
+    // through would silently embed a sideways photo for anyone whose phone was
+    // held sideways. Routing JPEG through canvas even at "original" quality (at
+    // a near-lossless setting) makes the embedded pixels match what the browser
+    // — and the person who took the photo — actually see.
+    if (!preset && ext === 'png') {
+      return { dataURL: srcDataURL, format: 'PNG', naturalW, naturalH };
+    }
+
+    const maxDim = preset ? preset.maxDim : Infinity;
+    const jpegQuality = preset ? preset.q : 0.95;
+    const scale = Math.min(1, maxDim / Math.max(naturalW, naturalH));
+    const cw = Math.max(1, Math.round(naturalW * scale));
+    const ch = Math.max(1, Math.round(naturalH * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.drawImage(img, 0, 0, cw, ch);
+
+    if (!preset && ext === 'webp') {
+      // No lossy source quality was requested to begin with; keep it lossless.
+      return { dataURL: canvas.toDataURL('image/png'), format: 'PNG', naturalW, naturalH };
+    }
+    return { dataURL: canvas.toDataURL('image/jpeg', jpegQuality), format: 'JPEG', naturalW, naturalH };
+  }
+
+  // SVG → { dataURL, w, h } via canvas rasterization. No external library needed.
+  async function processSVG(file) {
+    const text   = await file.text();
+    const parser = new DOMParser();
+    const svgEl  = parser.parseFromString(text, 'image/svg+xml').documentElement;
+    if (svgEl.tagName.toLowerCase() !== 'svg' || svgEl.querySelector('parsererror')) {
+      throw new Error('not a valid SVG file');
+    }
+
+    let svgW = parseFloat(svgEl.getAttribute('width'))  || 0;
+    let svgH = parseFloat(svgEl.getAttribute('height')) || 0;
+    const vb = svgEl.getAttribute('viewBox');
+    if (vb) {
+      const parts = vb.trim().split(/[\s,]+/).map(Number);
+      if (parts.length === 4) {
+        if (!svgW) svgW = parts[2];
+        if (!svgH) svgH = parts[3];
+      }
+    }
+    if (!svgW) svgW = 800;
+    if (!svgH) svgH = 600;
+
+    svgEl.setAttribute('width',  svgW);
+    svgEl.setAttribute('height', svgH);
+
+    const SCALE   = 2; // render at 2x for sharpness
+    const canvasW = Math.round(svgW * SCALE);
+    const canvasH = Math.round(svgH * SCALE);
+    const dataURL = await svgToDataURL(svgEl, canvasW, canvasH);
+    return { dataURL, w: svgW, h: svgH };
   }
 
   // Rasterize an SVG element to a PNG data URL via canvas.

@@ -194,8 +194,24 @@ export async function launch({ headed = false } = {}) {
 
 /**
  * A page with both shims wired and error collection attached.
- * page.__errs    page errors, console errors, failed requests
- * page.__blocked offsite URLs that were refused (i.e. real external deps)
+ * page.__errs     page errors, console errors, failed requests
+ * page.__blocked  offsite URLs that were refused — i.e. real external deps this
+ *                 page still has, uncovered by either shim.
+ * page.__shimmed  offsite URLs that were satisfied locally instead of being
+ *                 refused: every fonts.googleapis.com/fonts.gstatic.com request,
+ *                 fulfilled from the bundled @fontsource packages so a render
+ *                 shows the right typefaces. THESE NEVER REACH __blocked. A page
+ *                 that still hotlinks Google Fonts reports empty __blocked and a
+ *                 non-empty __shimmed — check both, or you will conclude the page
+ *                 makes no offsite requests when it asks a CDN for one on every
+ *                 real visit. (Session 8 found fifteen pages in exactly this
+ *                 state, including index.html and 404.html, after several
+ *                 sessions of __blocked alone reporting the site clean.)
+ * page.__allowed  offsite URLs let through to the real network via `allow` below.
+ *
+ * check-integrity.mjs also runs a static source grep for offsite hosts across
+ * every .html in the repo. That check is the one that actually scales: it needs
+ * no browser and it covers pages nothing here ever opens.
  */
 /**
  * `allow` is a list of host substrings that are let through to the real network
@@ -204,9 +220,10 @@ export async function launch({ headed = false } = {}) {
  * Nothing passes it any more. It was added for `capture-previews.mjs` when Golden
  * Hour hotlinked its sand texture from `dl.polyhaven.org`: blocking that request
  * left terrain.js on its procedural fallback and captured a beach no visitor saw.
- * Session 7 vendored the texture, so the site now makes zero offsite requests and
- * every caller leaves this empty — which is what makes `page.__blocked` an honest
- * inventory. Kept for the next dependency that has to be seen to be believed.
+ * Session 7 vendored the texture and every caller leaves this empty now, but that
+ * does not make `page.__blocked` an honest offsite inventory on its own — see
+ * `page.__shimmed` above. Kept for the next dependency that has to be seen to be
+ * believed.
  */
 export async function prepPage(browser, base, { width = 1280, height = 1000, dsf = 2, mobile = false, jsEnabled = true, allow = [] } = {}) {
   const playwright = browser.__engine === 'playwright';
@@ -228,6 +245,7 @@ export async function prepPage(browser, base, { width = 1280, height = 1000, dsf
 
   const blocked = [];
   const allowed = [];
+  const shimmed = [];
   const handleUrl = u => {
     const m = u.match(/cdn\.jsdelivr\.net\/npm\/three@([\d.]+)\/(.*)$/);
     if (m) return `${base}/__three/${m[1]}/${m[2]}`;
@@ -242,10 +260,14 @@ export async function prepPage(browser, base, { width = 1280, height = 1000, dsf
   if (playwright) {
     await page.route('**/*', route => {
       const u = route.request().url();
-      if (/fonts\.googleapis\.com\/css/.test(u))
+      if (/fonts\.googleapis\.com\/css/.test(u)) {
+        shimmed.push(u.split('?')[0]);
         return route.fulfill({ status: 200, contentType: 'text/css; charset=utf-8', body: fontCssFor(u, base) });
-      if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(u))
+      }
+      if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(u)) {
+        shimmed.push(u.split('?')[0]);
         return route.fulfill({ status: 200, contentType: 'text/css', body: '' });
+      }
       const rewritten = handleUrl(u);
       if (rewritten) return route.continue({ url: rewritten });
       if (isAllowed(u)) return route.continue();
@@ -256,10 +278,14 @@ export async function prepPage(browser, base, { width = 1280, height = 1000, dsf
     await page.setRequestInterception(true);
     page.on('request', r => {
       const u = r.url();
-      if (/fonts\.googleapis\.com\/css/.test(u))
+      if (/fonts\.googleapis\.com\/css/.test(u)) {
+        shimmed.push(u.split('?')[0]);
         return r.respond({ status: 200, contentType: 'text/css; charset=utf-8', body: fontCssFor(u, base) });
-      if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(u))
+      }
+      if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(u)) {
+        shimmed.push(u.split('?')[0]);
         return r.respond({ status: 200, contentType: 'text/css', body: '' });
+      }
       const rewritten = handleUrl(u);
       if (rewritten) return r.continue({ url: rewritten });
       if (isAllowed(u)) return r.continue();
@@ -275,6 +301,7 @@ export async function prepPage(browser, base, { width = 1280, height = 1000, dsf
   page.__errs = errs;
   page.__blocked = blocked;
   page.__allowed = allowed;
+  page.__shimmed = shimmed;
   // Which driver is behind this page. Scripts shouldn't normally care — that's
   // the point of this file — but a few browser features are reached through
   // engine-specific API (answering a file chooser, for one), and guessing wrong

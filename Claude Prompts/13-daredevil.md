@@ -1,16 +1,20 @@
 # 13 — Daredevil
 
-You are working on Daredevil, a narrative game on greyversusblue.com. At 6,683 lines and 344 KB
-it is **the largest single-file project in the repo**, and nothing in eight sessions of handoffs
-mentions it. This prompt is self-contained.
+You are working on Daredevil, a narrative game on greyversusblue.com. At 6,888 lines and about
+347.6 KB it is still **the largest single-file project in the repo**. Round 1 made it completable
+for the first time in its history — see "What is actually here" below — and gave it a save,
+vendored fonts, a preview, and a test suite. This prompt is no longer the only record of this
+game: read `Claude Prompts/notes/13-daredevil-notes.md` first, it carries the plot synopsis and
+the full account of what round 1 found.
 
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Projects/daredevil_r4.html` (6,683 lines, 344 KB)
-- Any new folder you create under `Projects/` **named for this game** — e.g.
-  `Projects/daredevil/`
+- `Projects/daredevil_r4.html` (6,888 lines, 347.6 KB)
+- `Projects/daredevil/` — round 1 created this folder for the save module (`js/save.js`), the
+  vendored fonts, and the test suite (`test/`). It's yours; extend it freely, including the
+  restructure into `Projects/daredevil/index.html` the task list below asks for.
 
 **Everything else in the repo is read-only to you.** Read whatever you like; change nothing
 outside that list. Up to twenty other Claude sessions are working on other projects in this same
@@ -22,7 +26,7 @@ Off-limits in particular:
 | --- | --- |
 | `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 21. |
 | `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
-| `assets/previews/**`, `assets/og/**` | Generated. Prompt 21. This game has neither. |
+| `assets/previews/**`, `assets/og/**` | Generated. Prompt 21. This game has both now — `daredevil.jpg` in each, applied by prompt 21 this round. |
 | `Tools/board-check/**` | Shared dev tooling. Prompt 21. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
@@ -39,12 +43,21 @@ edit will be silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file.
-2. `gvb-site-handoff-v7.md` §10 (locked decisions), §8 (backlog state), §1 (the shared save
-   module), §9 (the two open save-design questions).
-3. `assets/js/gvb-save.js` and `assets/js/README.md`, plus
-   `Projects/fourth-quarter/js/campaign.js` as the worked example.
-4. `gvb-site-handoff-v6.md` §1 and §2 on how previews get made, and locked decisions #28 and #29
-   — relevant because this game has no preview and probably should.
+2. `Claude Prompts/notes/13-daredevil-notes.md` — round 1's session notes for this exact project,
+   the largest single find of the round. It has the only plot synopsis this game has ever had
+   written down, plus the full account of the five wiring bugs that kept the game from being
+   finished by anyone and how each was fixed. Read it before you touch the file.
+   `Claude Prompts/archive/` holds every earlier round's prompts and notes, if you need to go back
+   further than that.
+3. `gvb-site-handoff-v8.md`, all of it. §9 for locked decisions 43 through 50, especially #44 (the
+   `page.__blocked` vs `page.__shimmed` distinction — this project's own round-1 notes flagged the
+   exact measurement hole it fixes). §2 is the correction to v7 §5's "zero offsite requests
+   site-wide" claim; cite §2, not v7 §5, when that claim comes up.
+4. `assets/js/gvb-save.js` and `assets/js/README.md`. You already have a working adoption at
+   `Projects/daredevil/js/save.js` — read it alongside the module before changing either.
+5. `Projects/torchbearer/content-authoring-guide.md` — the same-repo precedent for a content
+   format with an authoring contract, relevant to the restructure task below. (This path moved
+   this round; it used to be `Projects/Torchbearer files/content-authoring-guide.md`.)
 
 ## House rules for every file in this repo
 
@@ -62,28 +75,64 @@ edit will be silently overwritten. A wrong description is a board request.
 - **Verify a guard-rail by reintroducing the bug it guards** (locked decision #34).
 - **Assert against the DOM for anything that just happened, and against the save only for what a
   reload has to survive** (locked decision #39).
+- **`page.__blocked` means "offsite and refused"; `page.__shimmed` means "offsite and fulfilled
+  locally instead"** (locked decision #44). An empty `__blocked` no longer proves a page is clean —
+  `check-integrity.mjs`'s static source sweep is the check that scales past what a browser suite
+  happens to drive, and it's what this project's own round-1 notes asked for.
 
 ## What is actually here
 
-6,683 lines in one file, 344 KB. Title: just "DAREDEVIL". Tagged `Narrative` on the board, sealed
-with the flame glyph. No preview and no OG image, unlike the seven games that have them.
+6,888 lines, about 347.6 KB, in `Projects/daredevil_r4.html`, plus a `Projects/daredevil/` folder
+holding the save module, the vendored fonts, and the test suite. Title still just "DAREDEVIL."
+Tagged `Narrative` on the board, sealed with the flame glyph. Preview and OG image both exist now
+(`assets/previews/daredevil.jpg`, `assets/og/daredevil.jpg`), applied by prompt 21 this round.
 
-**No persistence at all.** Zero `localStorage` calls. Nothing a player does survives closing the
-tab. For a `Narrative` game 344 KB deep, that is the defining limitation: a story long enough to
-need 6,700 lines is a story nobody will finish in one sitting.
+**This is now a completable, tested game, all eight endings reachable — it was not before.**
+Before round 1 the game could not be finished by anyone, by any route, ever: every run stopped at
+the same place, the Milestone 3 pre-stunt choice, about 60% of the way through. Five independent,
+completely silent wiring bugs caused it: every free-roam hub gated its milestone button on an
+evening counter that couldn't reach zero on most paths; a minigame id (`_minigame_stunt_m3`) was
+referenced by four choices and answered by nothing; two hub cards were gated on flags their own
+scenes never set (one looped forever, one hid six finished scenes); `GS.rels.pete` was read in
+five places and assigned in none, which silently deleted the "mentor the apprentice" ending from
+the choice list for the game's entire history; and three of four stunt-result handlers read
+`res.outcome` instead of the real field, `res.result`, routing every stunt from Milestone 3 on to
+its failure branch regardless of how well it was ridden. **All five are fixed.** 73 scenes, 88.1
+KB, 42% of the scene database, were unreachable before this round and are reachable now, and the
+eighth ending now appears. Full account and the plot synopsis: `Claude Prompts/notes/13-daredevil-notes.md`.
 
-**It hotlinks three Google Font families** — Alfa Slab One, Oswald and Space Mono — at lines 24
-and 26. v7 §5 claims the site makes zero offsite requests site-wide. That is wrong for fifteen
-pages, and the suite cannot see it: `prepPage()` in `Tools/board-check/harness.mjs` *fulfills*
-Google Fonts requests locally from bundled `@fontsource` packages before the blocked-list check
-runs, so font hotlinks never reach `page.__blocked`. **Oswald** is already on disk in
-`Tools/board-check/node_modules/@fontsource/`; Alfa Slab One and Space Mono are not. Nothing at
-runtime may reference `node_modules` either way.
+**It has a save.** `Projects/daredevil/js/save.js`, an ES module on `assets/js/gvb-save.js`. Key
+**`daredevil-save-v1`** (locked decision #36 — it does not change). The save bar is on the hub, not
+just the title screen; the title screen has import and a Continue button. `gvb-save.js` itself
+picked up five backward-compatible fixes this round from other adopters — construction no longer
+throws in a storage-blocking browser, `load()`'s `getItem` call is guarded, `fresh(...args)` /
+`reset(...args)` forward arguments to a `defaults` factory, there's a new `clear()`, and
+`mountSaveBar` gained `filename`/`labels` options. None of these were this project's own request;
+they're just available now if useful.
 
-**The `_r4` in the filename is a revision marker**, and it is the only file in the repo carrying
-one. There is no `_r1`, `_r2` or `_r3` anywhere, so nothing depends on the suffix meaning
-anything — it is a leftover from how the file was written, and it is now part of a public URL.
-Worth deciding about, with the URL cost named.
+**Zero offsite requests.** Seven fonts vendored into `Projects/daredevil/fonts/` (100.3 KB: Alfa
+Slab One 400, Oswald 400/500/600/700, Space Mono 400/700). `grep -c fonts.googleapis.com
+Projects/daredevil_r4.html` returns 1, but read the line before trusting the count: it's a comment
+recording the history of the fix, not a live hotlink. `check-integrity.mjs`'s static offsite sweep
+(locked decision #44, new this round) is the check to trust now instead of a hand grep or
+`page.__blocked` — it's what closed the exact measurement hole this project's own round-1 notes
+flagged (v7 §5's "zero offsite requests site-wide" claim was wrong; the correction is
+`gvb-site-handoff-v8.md` §2, cite that instead of v7 §5 from here on).
+
+**A test suite exists, in `Projects/daredevil/test/`, which this project owns:**
+`smoke-save.mjs` (53 assertions, no browser), `smoke-page.mjs` (44 assertions, real browser —
+route-coverage checking and a loop detector included), `drive-daredevil.mjs` (the driver,
+including an `autopilot()` that can win the stunt minigame from telemetry), and `transcript.mjs`
+(plays a full run and writes every line and choice offered to `test/transcripts/`). Both suites
+still pass fresh: 53/53 and 44/44.
+
+**The ending screen no longer says "END OF BUILD."** It reads "THE END" / "A Life on Two Wheels."
+
+**The `_r4` in the filename is still there, and the URL hasn't moved.** Round 1 deliberately left
+the restructure for later, on the reasoning that a 6,700-line branching narrative shouldn't be
+refactored until there's a test suite that can prove nothing broke — see the task list below. So
+`Projects/daredevil_r4.html` is still the board's `href` and no shared-file request is outstanding
+for it.
 
 ## Your task
 

@@ -76,5 +76,39 @@ for (const p of files.filter(f => f.endsWith('.json') && !f.includes('package-lo
   catch (e) { fail(p, String(e.message).slice(0, 120)); }
 }
 
+// --- offsite hosts referenced in source --------------------------------------
+// A static sweep, not a browser one. It covers every .html in the repo,
+// including pages no suite ever opens (the Bestiary Gallery lived here
+// unmeasured for the site's whole history), and it needs no browser to run.
+//
+// harness.mjs's prepPage() fulfils fonts.googleapis.com / fonts.gstatic.com
+// requests locally, from bundled @fontsource packages, before its blocked-list
+// check runs — so a font hotlink never reaches page.__blocked, and a browser
+// suite that only asserts page.__blocked will call a hotlinking page clean.
+// (page.__shimmed records what got fulfilled, if you want that from a browser
+// run instead — see harness.mjs.) This check only reads source, so it is not
+// fooled either way, and it is the one that scales to pages nothing else opens.
+//
+// Only actual resource-loading contexts count — <a href> is a navigation link,
+// not a request the page makes on its own, so it is deliberately not one of
+// the tags scanned here.
+const RESOURCE_TAGS = /<(?:link|script|img|iframe|source|audio|video|embed)\b[^>]*>/gi;
+const HREF_OR_SRC = /\b(?:href|src)\s*=\s*["']https?:\/\/([^"'/]+)/i;
+const CSS_URL = /\burl\(\s*['"]?https?:\/\/([^"')\s]+)/gi;
+const OWN_HOST = /^(www\.)?greyversusblue\.com$/i;
+
+for (const p of files.filter(f => f.endsWith('.html'))) {
+  checked++;
+  const src = fs.readFileSync(p, 'utf8');
+  const hosts = new Set();
+  for (const tag of src.matchAll(RESOURCE_TAGS)) {
+    const m = tag[0].match(HREF_OR_SRC);
+    if (m) hosts.add(m[1].split('/')[0].split(':')[0]);
+  }
+  for (const m of src.matchAll(CSS_URL)) hosts.add(m[1].split('/')[0].split(':')[0]);
+  for (const h of [...hosts]) if (OWN_HOST.test(h)) hosts.delete(h);
+  if (hosts.size) fail(p, `references offsite host(s): ${[...hosts].join(', ')}`);
+}
+
 console.log(`\n${checked} units checked, ${bad} broken`);
 process.exit(bad ? 1 : 0);

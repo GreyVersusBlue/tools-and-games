@@ -22,6 +22,14 @@ are enforced by the promote step.
 | `faire-weekend.jpg` | Faire Weekend |
 | `closing-time.jpg` | Closing Time |
 | `integer-foundry.jpg` | Integer Foundry |
+| `absalom-inheritance.jpg` | The Absalom Inheritance |
+| `daredevil.jpg` | Daredevil |
+| `fracture-cycle.jpg` | The Fracture Cycle |
+| `corner-and-kettle.jpg` | Corner & Kettle |
+
+Torchbearer is the one remaining quest with neither — see
+`gvb-site-handoff-v8.md`'s backlog for why (it needs a prebuilt save file from
+an actual playthrough, not something to generate blind).
 
 ## To add one for a different quest
 

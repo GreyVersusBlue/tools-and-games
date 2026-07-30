@@ -228,5 +228,77 @@ const baseOpts = storage => ({
   assert(s.getItem("k") === "v", "the memory fallback stores and retrieves");
 }
 
+// --- fresh() and reset() forward arguments to a defaults factory ---
+// Closing Time's day one depends on which brokerage the player picked on the
+// start screen, which a zero-argument factory has no way to express.
+{
+  const slot = createSaveSlot({
+    ...baseOpts(stubStorage()),
+    defaults: brokerage => ({ day: 1, staff: [], brokerage: brokerage || "indep" })
+  });
+  assert(slot.fresh("hearthstone").brokerage === "hearthstone",
+    "fresh(...args) reaches a defaults factory");
+  assert(slot.reset("hearthstone").brokerage === "hearthstone",
+    "reset(...args) forwards the same way");
+  assert(slot.fresh().brokerage === "indep",
+    "existing zero-argument callers are unaffected");
+}
+
+// --- clear() erases without rebuilding a fresh state ---
+{
+  let built = 0;
+  const store = stubStorage();
+  const slot = createSaveSlot({
+    ...baseOpts(store),
+    defaults: () => { built++; return { day: 1, staff: [] }; }
+  });
+  slot.save({ day: 9, staff: [] });
+  built = 0;
+  assert(slot.clear() === true, "clear() reports true when a key was there to remove");
+  assert(store.getItem("test-save") === null, "clear() removes the key");
+  assert(built === 0, "clear() never calls the defaults factory");
+  assert(slot.clear() === false, "clear() reports false on an already-empty key");
+}
+
+// --- load() survives a storage whose getItem itself throws ---
+// The gap: a browser blocking storage throws on the property access, and an
+// injected storage stub that mimics that (rather than defaultStorage()'s own
+// probe) used to reach load() unguarded.
+{
+  const throwing = {
+    getItem: () => { throw new Error("SecurityError"); },
+    setItem: () => { throw new Error("SecurityError"); },
+    removeItem: () => { throw new Error("SecurityError"); }
+  };
+  const slot = createSaveSlot({ ...baseOpts(throwing) });
+  assert(slot.load() === null, "load() degrades to null when getItem() throws");
+}
+
+// --- construction survives `typeof localStorage` itself throwing ---
+// localStorage is a declared accessor on `window` in a real browser, not an
+// undeclared identifier, so a policy that blocks storage makes the property
+// read throw — before defaultStorage()'s own try/catch runs. createSaveSlot()
+// must not propagate that; it is exactly the case the memory fallback exists
+// to survive.
+{
+  const desc = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    get() { throw new Error("SecurityError: blocked"); }
+  });
+  try {
+    let slot;
+    let threw = false;
+    try { slot = createSaveSlot({ game: "blocked-probe", defaults: { ok: true } }); }
+    catch (e) { threw = true; }
+    assert(!threw, "createSaveSlot() does not propagate a throwing localStorage getter");
+    assert(slot && slot.memoryOnly, "it falls back to the memory-backed store instead");
+    assert(slot && slot.save({ ok: false }) === true, "and that store is actually usable");
+  } finally {
+    if (desc) Object.defineProperty(globalThis, "localStorage", desc);
+    else delete globalThis.localStorage;
+  }
+}
+
 console.log(`\ngvb-save: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

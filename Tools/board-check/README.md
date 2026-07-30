@@ -9,6 +9,7 @@ npm install          # also vendors three.js 0.160.0 and 0.169.0
 npm run check        # integrity sweep + collision guard, both exit non-zero on failure
 npm run play         # plays Castle Conundrum to victory; opens a real window
 npm run games        # regression suite for the other six games; opens real windows
+npm run tools        # sweep of the Tools/ pages no game suite ever opens; headless
 npm run shoot        # writes reviewable PNGs to ./shots/
 npm run previews     # plays all seven quests, screenshots gameplay to ./candidates/
 npm run promote      # candidates/chosen.json -> assets/previews/ + assets/og/
@@ -57,11 +58,16 @@ degraded approximation:
 - **`cdn.jsdelivr.net/npm/three@<ver>/...`** is rewritten to a vendored copy.
 
 Anything else offsite is refused and recorded in `page.__blocked`, which is how
-you find out what the site actually depends on at runtime. That inventory is now
-**empty**: session 4 vendored three.js into every project, and session 7 vendored
-Golden Hour's sand texture, which had been the last hotlink on the site. Nothing
-on greyversusblue.com reaches another host while a visitor is on it, and both
-`play-games.mjs` and `play-castle.mjs` assert exactly that.
+you find out what the site actually depends on at runtime. **That inventory is
+not the whole picture on its own**: a Google Fonts request is fulfilled from the
+font shim above, not refused, so it never reaches `page.__blocked` — a hotlinking
+page reports empty `__blocked` regardless. `page.__shimmed` records what the font
+shim satisfied, for exactly this reason. Fifteen pages hotlinked fonts for a
+period of the site's history while `play-games.mjs` and `play-castle.mjs` (the
+only suites that ever asserted `page.__blocked`, and only across the seven games)
+reported the site clean. `check-integrity.mjs`'s static source sweep is the check
+that actually closes this: no browser, and it covers every `.html` in the repo,
+not just the ones a suite happens to drive.
 
 `prepPage()` still takes an `allow` list of host substrings to let through. It was
 written for the hotlinked texture — blocking it left `terrain.js` on its
@@ -101,6 +107,17 @@ subpath. Output lands in `./shots/`.
 
 It also reports whether any `.unfurl` elements attached. Zero means no preview
 JPEGs exist yet, which is currently expected.
+
+### `tools.mjs`
+
+Opens every page linked from the Town Services board — the six schoolhouse
+tools — and asserts a non-empty title, no offsite requests, and no console
+errors. Exists because `play-games.mjs` and `play-castle.mjs` only ever open
+the seven games: three `cdnjs.cloudflare.com` hotlinks sat in
+`Tools/final_grade_checker.html` for an unmeasured length of time for exactly
+that reason. Headless, unlike the game suites — none of these pages need
+pointer lock or WebGL, and running headless means it can run alongside a
+headed suite without the two stealing each other's focus.
 
 ### `play-castle.mjs`
 

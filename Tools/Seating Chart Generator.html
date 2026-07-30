@@ -21,10 +21,38 @@
 <meta name="twitter:image" content="https://greyversusblue.com/assets/og/guild-board.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
 <!-- gvb:social:end -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Spline+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* ---------- fonts, vendored: see seating-chart/fonts/README.md ----------
+     Both families are single variable files, so a weight range replaces the
+     stack of static weights the Google hotlink used to fetch. Fraunces carries
+     its optical-size axis, which `font-optical-sizing: auto` (the default) reads
+     off the font-size. 143 KB for the three files, and no request leaves the
+     site while a roster of student names is on screen. */
+  @font-face{
+    font-family:'Fraunces';
+    font-style:normal;
+    font-weight:100 900;
+    font-display:swap;
+    src:url('seating-chart/fonts/fraunces-latin.woff2') format('woff2');
+    unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  }
+  @font-face{
+    font-family:'Spline Sans';
+    font-style:normal;
+    font-weight:300 700;
+    font-display:swap;
+    src:url('seating-chart/fonts/spline-sans-latin.woff2') format('woff2');
+    unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  }
+  @font-face{
+    font-family:'Spline Sans';
+    font-style:normal;
+    font-weight:300 700;
+    font-display:swap;
+    src:url('seating-chart/fonts/spline-sans-latin-ext.woff2') format('woff2');
+    unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+  }
+
   :root{
     --paper:#f4f1ea;
     --card:#fbf9f4;
@@ -39,6 +67,7 @@
     --warn:#b4472f;
     --shadow:0 1px 2px rgba(22,36,47,.08), 0 6px 18px rgba(22,36,47,.07);
     --radius:12px;
+    --fscale:1;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;height:100%;}
@@ -51,7 +80,19 @@
   }
   h1,h2,h3{font-family:'Fraunces', Georgia, serif; font-weight:600; margin:0;}
   button{font-family:inherit;}
+  :focus-visible{outline:2px solid var(--teal-deep); outline-offset:2px;}
   .app{display:flex; min-height:100vh;}
+  .sr-only{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+  }
+
+  /* the page needs its modules; say so if they never arrived */
+  .boot-warn{
+    margin:0; padding:12px 18px; background:#fbeae6; color:#7c2d18;
+    border-bottom:1px solid #e6c5bd; font-size:14px;
+  }
+  .boot-warn code{background:#fff; padding:1px 5px; border-radius:4px;}
 
   /* ---------- sidebar ---------- */
   .sidebar{
@@ -78,6 +119,7 @@
   }
 
   label.field{display:block; font-size:12.5px; color:#6b6457; margin:8px 0 4px;}
+  label.check{display:flex; align-items:center; gap:6px; font-size:12.5px; color:#6b6457; margin:8px 0 0;}
   textarea, input[type=text], select{
     width:100%; padding:8px 10px; border:1px solid var(--line);
     border-radius:8px; background:#fff; color:var(--ink); font-size:14px;
@@ -140,6 +182,10 @@
     margin-top:14px; font-size:11.5px; color:#6b6457; background:#eef4f2;
     border:1px solid var(--teal-soft); border-radius:8px; padding:9px 11px;
   }
+  .privacy p{margin:0 0 6px;}
+  .privacy p:last-child{margin-bottom:0;}
+  .privacy code{background:#fff; border:1px solid var(--teal-soft); border-radius:4px; padding:0 3px;}
+  .privacy.blocked{background:#fbeae6; border-color:#e6c5bd; color:#7c2d18;}
 
   /* ---------- main / floor ---------- */
   .main{flex:1; display:flex; flex-direction:column; min-width:0; height:100vh;}
@@ -156,14 +202,33 @@
   .status .bad{color:var(--warn); font-weight:600;}
   .status .good{color:var(--teal-deep); font-weight:600;}
 
+  /* the shared save bar, dressed as a row of ghost buttons */
+  #saveBar{
+    --gvb-btn-bg:#fff; --gvb-btn-fg:var(--blue);
+    --gvb-btn-border:var(--line); --gvb-btn-radius:8px;
+    gap:6px;
+  }
+  #saveBar button{font-size:12.5px; font-weight:600; letter-spacing:0; padding:5px 9px;}
+  #saveBar button:hover{filter:none; background:#f0ece2; border-color:var(--blue-soft);}
+  #saveBar button[data-gvb="reset"]{color:var(--warn); border-color:#e6c5bd;}
+  #saveBar button[data-gvb="reset"]:hover{background:#fbeae6;}
+  #saveBar .gvb-save-msg{font-size:12px; opacity:1; color:var(--teal-deep);}
+
   .stage{flex:1; overflow:auto; padding:22px; background:
      radial-gradient(circle at 1px 1px, #e2dccd 1px, transparent 0) 0 0 / 22px 22px,
      var(--paper);}
+  .floor-wrap{
+    width:calc(1280px * var(--fscale));
+    height:calc(900px * var(--fscale));
+    margin:0 auto;
+  }
   .floor{
-    position:relative; width:1280px; min-height:760px; margin:0 auto;
+    position:relative; width:1280px; height:900px;
+    transform:scale(var(--fscale)); transform-origin:top left;
     background:#fffdf8; border:1px solid var(--line); border-radius:14px;
     box-shadow:var(--shadow);
   }
+  .desk-layer{position:absolute; inset:0;}
   .front-bar{
     position:absolute; top:14px; left:50%; transform:translateX(-50%);
     background:var(--blue); color:#fff; font-weight:700; letter-spacing:2px;
@@ -177,18 +242,16 @@
     transition:border-color .12s ease, box-shadow .12s ease;
   }
   .desk:hover{border-color:var(--teal);}
-  .desk.empty{background:#fbf9f4; border-style:dashed; color:#aaa194;}
-  .desk.empty .placeholder{font-size:11.5px;}
+  .desk.empty{background:#fbf9f4; border-style:dashed;}
   .desk.assigned{background:var(--teal-soft); border-color:var(--teal);}
   .desk.flagged{border-color:var(--gold); box-shadow:0 0 0 2px rgba(201,145,43,.35), var(--shadow);}
   .desk.sel-target{border-color:var(--teal-deep); box-shadow:0 0 0 3px var(--teal-soft);}
-  .desk .who{font-size:13px; font-weight:600; line-height:1.15; color:var(--ink); cursor:grab;}
-  .desk .delx{
-    position:absolute; top:-8px; right:-8px; width:20px; height:20px; border-radius:50%;
-    background:#fff; border:1px solid var(--line); color:#9a917e; font-size:12px;
-    line-height:1; display:none; align-items:center; justify-content:center; cursor:pointer;
+  .desk .seat{
+    font:inherit; font-size:13px; font-weight:600; line-height:1.15; color:var(--ink);
+    background:none; border:none; padding:2px 3px; margin:0; border-radius:6px;
+    cursor:grab; max-width:100%;
   }
-  .desk:hover .delx{display:flex;}
+  .desk.empty .seat{font-size:11.5px; font-weight:500; color:#aaa194; cursor:pointer;}
   .desk .selnote{position:absolute; bottom:-6px; left:50%; transform:translateX(-50%);
     background:var(--gold); color:#fff; font-size:9px; font-weight:700; padding:1px 6px; border-radius:8px; display:none;}
   .desk.selected .selnote{display:block;}
@@ -196,13 +259,14 @@
 
   /* unassigned pool */
   .pool-wrap{border-top:1px solid var(--line); background:var(--card); padding:12px 22px; max-height:160px; overflow-y:auto;}
-  .pool-head{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+  .pool-head{display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;}
   .pool-head h3{font-size:14px; color:var(--blue);}
   .pool-head .pc{font-size:12px; color:#8a8270; background:#efe9dc; padding:1px 9px; border-radius:20px;}
   .pool{display:flex; flex-wrap:wrap; gap:7px; min-height:34px;}
   .chip{
     background:#fff; border:1px solid var(--blue-soft); border-radius:18px;
-    padding:5px 12px; font-size:13px; font-weight:600; cursor:grab; user-select:none;
+    padding:5px 12px; font:inherit; font-size:13px; font-weight:600; color:var(--ink);
+    cursor:grab; user-select:none;
   }
   .chip.flagged{border-color:var(--gold); box-shadow:inset 3px 0 0 var(--gold);}
   .chip:hover{border-color:var(--teal);}
@@ -210,7 +274,7 @@
   .pool.drop-hot{outline:2px dashed var(--teal); outline-offset:3px; border-radius:8px;}
   .pool-empty{color:#aaa194; font-size:13px; font-style:italic;}
 
-  .legend{font-size:12px; color:#6b6457; display:flex; gap:16px; align-items:center; margin-left:auto;}
+  .legend{font-size:12px; color:#6b6457; display:flex; gap:16px; align-items:center; margin-left:auto; flex-wrap:wrap;}
   .legend span{display:inline-flex; align-items:center; gap:6px;}
   .sw{width:13px; height:13px; border-radius:4px; display:inline-block;}
 
@@ -233,19 +297,28 @@
   [data-theme="dark"] .btn.ghost:hover{ background:#16222c; }
   [data-theme="dark"] .btn.danger{ background:#0e1820; color:#e69b86; border-color:#5a3a33; }
   [data-theme="dark"] .btn.danger:hover{ background:#241715; }
+  [data-theme="dark"] #saveBar{ --gvb-btn-bg:#0e1820; --gvb-btn-fg:#cfe0ee; }
+  [data-theme="dark"] #saveBar button:hover{ background:#16222c; }
+  [data-theme="dark"] #saveBar button[data-gvb="reset"]{ color:#e69b86; border-color:#5a3a33; }
+  [data-theme="dark"] #saveBar button[data-gvb="reset"]:hover{ background:#241715; }
   [data-theme="dark"] .sec-tab{ background:#0e1820; color:var(--ink); }
   [data-theme="dark"] .sec-tab:hover:not(.active){ background:#16222c; }
   [data-theme="dark"] .stage{ background:radial-gradient(circle at 1px 1px,#1d2730 1px,transparent 0) 0 0/22px 22px, var(--paper); }
   [data-theme="dark"] .floor{ background:#121b22; }
   [data-theme="dark"] .desk{ background:#16222c; color:var(--ink); }
-  [data-theme="dark"] .desk .who{ color:var(--ink); }
-  [data-theme="dark"] .desk.empty{ background:#121b22; color:#5f6e79; }
+  [data-theme="dark"] .desk .seat{ color:var(--ink); }
+  [data-theme="dark"] .desk.empty{ background:#121b22; }
+  [data-theme="dark"] .desk.empty .seat{ color:#5f6e79; }
   [data-theme="dark"] .desk.assigned{ background:var(--teal-soft); border-color:var(--teal); }
   [data-theme="dark"] .block > h2 .count,
   [data-theme="dark"] .pool-head .pc{ background:#22303b; color:#9fb0bd; }
   [data-theme="dark"] .icon-btn{ color:#7e8d98; }
   [data-theme="dark"] .icon-btn:hover{ background:#22303b; }
   [data-theme="dark"] .privacy{ background:#10241e; border-color:var(--teal-soft); color:#b9c8d2; }
+  [data-theme="dark"] .privacy code{ background:#0e1820; }
+  [data-theme="dark"] .privacy.blocked{ background:#241715; border-color:#5a3a33; color:#e69b86; }
+  [data-theme="dark"] .boot-warn{ background:#241715; border-color:#5a3a33; color:#e69b86; }
+  [data-theme="dark"] .boot-warn code{ background:#0e1820; }
   [data-theme="dark"] .desk-ctrl{ background:#16222c; }
   [data-theme="dark"] .hint,
   [data-theme="dark"] .stu .note,
@@ -253,11 +326,12 @@
   [data-theme="dark"] .brand p,
   [data-theme="dark"] .legend,
   [data-theme="dark"] label.field,
+  [data-theme="dark"] label.check,
   [data-theme="dark"] .pool-empty{ color:#93a3ae; }
 
   /* ---------- desk controls / pin / picker ---------- */
   .desk-ctrls{ position:absolute; top:-11px; right:-7px; display:none; gap:3px; }
-  .desk:hover .desk-ctrls{ display:flex; }
+  .desk:hover .desk-ctrls, .desk:focus-within .desk-ctrls{ display:flex; }
   .desk-ctrl{
     width:21px; height:21px; border-radius:50%; background:var(--card);
     border:1px solid var(--line); color:#9a917e; font-size:12px; line-height:1;
@@ -277,19 +351,64 @@
   }
   .desk.picked{ border-color:var(--gold); animation:pickpulse 1.1s ease-out 2; z-index:30; }
 
+  /* ---------- narrow screens ----------
+     Building a chart is desk work, but reading one on a phone while standing in
+     the room is a real thing a teacher does. Below 900px the sidebar stops being
+     a sidebar and the floor rides the fit-to-width scale like everything else. */
+  @media (max-width:900px){
+    .app{flex-direction:column;}
+    .sidebar{width:100%; flex:none; height:auto; position:static;
+      border-right:none; border-bottom:1px solid var(--line);}
+    /* A roster of 28 names is taller than four phone screens, and the chart
+       lives under it. Cap the controls and let them scroll on their own so the
+       floor is one swipe away rather than five. */
+    .side-scroll{max-height:50vh; overflow-y:auto;}
+    .roster{max-height:220px; overflow-y:auto;}
+    .main{height:auto; min-height:60vh;}
+    .toolbar{padding:10px 12px;}
+    .stage{padding:12px; overflow-x:hidden;}
+    .pool-wrap{padding:10px 12px;}
+    .legend{margin-left:0;}
+  }
+
+  /* ---------- print ----------
+     A chart's whole point is to end up on paper. Two things this has to get
+     right: landscape by default (Chrome's dialog opens portrait, which used to
+     cut the right-hand column of desks clean off the page), and a page trimmed
+     to the desks that exist rather than to the 1280x900 room. preparePrint() in
+     the script does the trimming and the scale-to-fit.
+
+     What deliberately does NOT print: private notes, and the gold flag outline.
+     The flag means "this student needs a particular seat", which is the most
+     sensitive thing on the screen, and a printed chart gets left on a desk. */
+  @page{ size:letter landscape; margin:0.4in; }
   @media print{
-    .sidebar,.toolbar,.pool-wrap{display:none !important;}
+    .sidebar,.toolbar,.pool-wrap,.boot-warn{display:none !important;}
     .app,.main,.stage{display:block; height:auto; overflow:visible;}
     .stage{padding:0; background:#fff;}
-    .floor{box-shadow:none; border:none; width:100%; page-break-inside:avoid;}
-    .desk .delx{display:none !important;}
+    .floor-wrap{margin:0 auto;}
+    .floor{box-shadow:none; border:none; background:#fff; page-break-inside:avoid;}
+    .desk{box-shadow:none; background:#fff;}
+    .desk.assigned{background:#eef4f2; border-color:#4f8a82;}
+    .desk.flagged{border-color:var(--blue-soft); box-shadow:none;}
+    .desk.locked{border-color:var(--blue-soft); border-width:1.5px;}
+    .desk-ctrls,.selnote,.lockbadge{display:none !important;}
+    .print-head{display:block !important;}
     body{background:#fff;}
-    .print-title{display:block !important;}
   }
-  .print-title{display:none; text-align:center; font-family:'Fraunces',serif; font-size:20px; margin:0 0 8px; color:var(--blue);}
+  .print-head{display:none; text-align:center; margin:0 0 10px;}
+  .print-head h2{font-family:'Fraunces',serif; font-size:20px; color:var(--blue);}
+  .print-head p{margin:2px 0 0; font-size:11px; color:#6b6457; letter-spacing:.3px;}
 </style>
 </head>
 <body>
+
+<p class="boot-warn" id="bootWarn" hidden>
+  <b>This page could not load its scripts.</b> The Seating Chart Generator is built
+  from modules, which a browser refuses to load from a file on disk. Open it from
+  <code>https://greyversusblue.com/Tools/Seating%20Chart%20Generator.html</code> instead.
+</p>
+
 <div class="app">
 
   <!-- ================= SIDEBAR ================= -->
@@ -304,7 +423,7 @@
         <h2>Class Sections</h2>
         <div class="sections" id="sectionTabs"></div>
         <div class="row tight">
-          <input type="text" id="newSectionName" placeholder="New section name">
+          <input type="text" id="newSectionName" placeholder="New section name" aria-label="New section name">
           <button class="btn sm ghost" onclick="addSection()">Add</button>
           <button class="btn sm danger" onclick="renameSection()">Rename</button>
           <button class="btn sm danger" onclick="deleteSection()">Delete</button>
@@ -313,21 +432,29 @@
 
       <div class="block">
         <h2>Roster <span class="count" id="rosterCount">0</span></h2>
-        <label class="field">Paste names (one per line) or type one and add</label>
+        <label class="field" for="nameInput">Paste a column of names, or type one and add</label>
         <textarea id="nameInput" placeholder="Ada Lovelace&#10;Marco Polo&#10;Mansa Musa"></textarea>
+        <label class="check"><input type="checkbox" id="lastFirst" onchange="setLastFirst(this.checked)">
+          Names are <b>Last, First</b> &mdash; flip them</label>
         <div class="row tight" style="margin-top:8px;">
           <button class="btn sm teal" onclick="addNames()">Add to roster</button>
           <button class="btn sm ghost" onclick="sortRoster()">Sort A&ndash;Z</button>
         </div>
         <div class="roster" id="rosterList"></div>
-        <p class="hint">Click the flag to mark a student who needs a specific spot (front row, away from the door, and so on). Flagged desks show a gold outline. Click the pencil to add a private note.</p>
+        <p class="hint">Paste straight from a spreadsheet: extra columns, row numbers and
+          duplicates are dropped. Click the flag to mark a student who needs a specific spot.
+          Click the pencil for a note.</p>
+        <p class="hint"><b>Notes stay with the chart</b> in this browser and inside any file you
+          export, and they never appear on the printed page. Keep them short and practical
+          &mdash; &ldquo;front row, vision&rdquo; rather than anything from a medical or IEP
+          document.</p>
       </div>
 
       <div class="block">
         <h2>Keep Apart</h2>
         <div class="row tight">
-          <select id="apartA"></select>
-          <select id="apartB"></select>
+          <select id="apartA" aria-label="Keep apart, first student"></select>
+          <select id="apartB" aria-label="Keep apart, second student"></select>
           <button class="btn sm ghost" onclick="addPair('apart')">Add</button>
         </div>
         <div id="apartList" style="margin-top:9px;"></div>
@@ -337,16 +464,21 @@
       <div class="block">
         <h2>Put Together</h2>
         <div class="row tight">
-          <select id="togA"></select>
-          <select id="togB"></select>
+          <select id="togA" aria-label="Put together, first student"></select>
+          <select id="togB" aria-label="Put together, second student"></select>
           <button class="btn sm ghost" onclick="addPair('together')">Add</button>
         </div>
         <div id="togList" style="margin-top:9px;"></div>
         <p class="hint">These two will sit next to each other. Chain several pairs to build a pod (A with B, B with C).</p>
       </div>
 
-      <div class="privacy">
-        <b>Privacy:</b> everything you enter stays in your browser. Nothing is uploaded anywhere. Use <b>Save file</b> to keep a copy on your computer, and <b>Open file</b> to load it back later.
+      <div class="privacy" id="privacyBox">
+        <p><b>Where this lives:</b> nothing is uploaded, ever. Your sections, student names,
+          notes and desk layouts are saved in this browser&rsquo;s own storage on this computer,
+          under the key <code>seating-chart-v1</code>, and they reload when you come back.</p>
+        <p><b>Erase saved data</b> in the toolbar deletes all of it from this browser in one
+          click. On a shared classroom machine, that or <b>Save to file</b> is the habit worth
+          having.</p>
       </div>
 
     </div>
@@ -358,15 +490,15 @@
       <div class="grp">
         <button class="btn sm" onclick="addDesk()">+ Desk</button>
         <button class="btn sm ghost" onclick="addRow()">+ Row of</button>
-        <input class="mini" id="rowCount" type="text" value="6" title="Seats in this row">
+        <input class="mini" id="rowCount" type="text" value="6" title="Seats in this row" aria-label="Seats in this row">
         <span class="status">seats</span>
         <button class="btn sm ghost" onclick="addPod()">+ Pod of 4</button>
       </div>
       <div class="grp">
         <button class="btn sm ghost" onclick="makeGrid()">Make grid</button>
-        <input class="mini" id="gridCols" type="text" value="6" title="Columns">
-        <span style="color:#9a917e;">&times;</span>
-        <input class="mini" id="gridRows" type="text" value="5" title="Rows">
+        <input class="mini" id="gridCols" type="text" value="6" title="Columns" aria-label="Grid columns">
+        <span style="color:#9a917e;" aria-hidden="true">&times;</span>
+        <input class="mini" id="gridRows" type="text" value="5" title="Rows" aria-label="Grid rows">
       </div>
       <div class="sep"></div>
       <div class="grp">
@@ -382,223 +514,288 @@
       </div>
       <div class="sep"></div>
       <div class="grp">
+        <button class="btn sm ghost" id="zoomBtn" onclick="toggleZoom()" title="Fit the room to the window, or show it full size">Actual size</button>
         <button class="btn sm ghost" id="darkBtn" onclick="toggleDark()">Dark mode</button>
-        <button class="btn sm ghost" onclick="window.print()">Print</button>
-        <button class="btn sm ghost" onclick="saveFile()">Save file</button>
-        <button class="btn sm ghost" onclick="document.getElementById('importFile').click()">Open file</button>
-        <input type="file" id="importFile" accept="application/json" style="display:none" onchange="openFile(event)">
+        <button class="btn sm ghost" onclick="printChart()">Print</button>
       </div>
+      <div class="sep"></div>
+      <span class="grp" id="saveBar"></span>
       <span class="spacer"></span>
-      <div class="status" id="status"></div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
     </div>
 
-    <div class="stage">
-      <h2 class="print-title" id="printTitle"></h2>
-      <div class="floor" id="floor">
-        <div class="front-bar">FRONT OF ROOM &nbsp;&middot;&nbsp; BOARD</div>
+    <div class="stage" id="stage">
+      <div class="print-head" id="printHead">
+        <h2 id="printTitle"></h2>
+        <p id="printMeta"></p>
+      </div>
+      <div class="floor-wrap" id="floorWrap">
+        <div class="floor" id="floor" role="group" aria-label="Classroom floor">
+          <div class="front-bar">FRONT OF ROOM &nbsp;&middot;&nbsp; BOARD</div>
+          <div class="desk-layer" id="deskLayer"></div>
+        </div>
       </div>
     </div>
 
     <div class="pool-wrap">
       <div class="pool-head">
-        <h3>Not yet seated</h3>
+        <h3 id="poolHead">Not yet seated</h3>
         <span class="pc" id="poolCount">0</span>
         <div class="legend">
-          <span><i class="sw" style="background:var(--teal-soft);border:1px solid var(--teal)"></i> seated</span>
-          <span><i class="sw" style="background:#fff;border:1px solid var(--gold)"></i> flagged</span>
-          <span>Tip: tap a name, then tap a desk</span>
+          <span><i class="sw" style="background:var(--teal-soft);border:1px solid var(--teal)" aria-hidden="true"></i> seated</span>
+          <span><i class="sw" style="background:#fff;border:1px solid var(--gold)" aria-hidden="true"></i> flagged</span>
+          <span>Tap a name, then tap a desk. On a keyboard: Enter picks up and puts down, R rotates,
+            P pins, Delete removes a desk, arrows nudge it.</span>
         </div>
       </div>
-      <div class="pool" id="pool" ondragover="poolDragOver(event)" ondragleave="poolDragLeave(event)" ondrop="poolDrop(event)" onclick="poolClick(event)"></div>
+      <div class="pool" id="pool" aria-labelledby="poolHead"
+           ondragover="poolDragOver(event)" ondragleave="poolDragLeave(event)"
+           ondrop="poolDrop(event)" onclick="poolClick(event)"></div>
     </div>
   </div>
 </div>
 
 <script>
+  // The app is an ES module, and a module that fails to load fails silently: no
+  // desks, no seed, no error anyone sees. If boot hasn't happened by now, say why.
+  setTimeout(function () {
+    if (!window.__seatingBooted) {
+      var b = document.getElementById('bootWarn');
+      if (b) b.hidden = false;
+    }
+  }, 2500);
+</script>
+
+<script type="module">
+import {
+  ROOM, snap, freshState, newSection, createSeatingSlot,
+  assignSeats, checkConstraints, pickNext, parseRoster,
+  gridDesks, rowDesks, nextSpot, contentBox,
+} from './seating-chart/seating.mjs';
+import { mountSaveBar, defaultStorage } from '../assets/js/gvb-save.js';
+
 /* ============================================================
    State
 ============================================================ */
-const GRID = 22;            // snap grid in px
-const DESK_W = 106, DESK_H = 70;
-const NEIGHBOR_DIST = 142;  // centers closer than this = neighbors
+const DESK_W = ROOM.deskW, DESK_H = ROOM.deskH;
 
-let state = { sections: [], active: null, theme:'light' };
+/* `storage` is passed in rather than left to gvb-save to work out. Its own probe
+   is `typeof localStorage !== "undefined"`, and in a browser configured to block
+   site data that property access throws SecurityError — so the probe throws
+   before the module's memory fallback can catch anything, and the page dies on
+   boot. `defaultStorage()` does the same job inside a try/catch and hands back a
+   memory-backed stub. Shared-file request is in the session notes. */
+const slot = createSeatingSlot({ storage: defaultStorage() });
+
+let state = freshState();
+let autosaver = null;
 let selectedStudent = null;     // studentId currently picked up (tap-to-place)
 let dragStudentId = null;       // html5 drag payload
 let dragFromDeskId = null;
+let scale = 1;
 
+const el = id => document.getElementById(id);
 const uid = () => Math.random().toString(36).slice(2, 9);
+function sec(){ return state.sections.find(s => s.id === state.active) || state.sections[0]; }
+function studentById(id){ return sec().students.find(s => s.id === id); }
+function nameOf(id){ const s = studentById(id); return s ? s.name : '(removed)'; }
+
+/** Every change funnels through here, so nothing can be changed without being saved. */
+let erasing = false;
+function touch(){ if (autosaver && !erasing) autosaver.mark(); }
 
 /* ---- undo, dark mode, cold-call picker ---- */
-let undoStack=[];
-function pushUndo(){ undoStack.push(JSON.stringify(state)); if(undoStack.length>60) undoStack.shift(); }
+let undoStack = [];
+function pushUndo(){ undoStack.push(JSON.stringify(state)); if (undoStack.length > 60) undoStack.shift(); }
 function undo(){
-  if(!undoStack.length) return;
-  state=JSON.parse(undoStack.pop());
-  if(!sec()) state.active=state.sections[0].id;
-  selectedStudent=null; applyTheme(); renderAll();
+  if (!undoStack.length) return;
+  state = JSON.parse(undoStack.pop());
+  if (!sec()) state.active = state.sections[0].id;
+  selectedStudent = null;
+  applyTheme(); renderAll();
 }
-function toggleDark(){ state.theme = (state.theme==='dark')?'light':'dark'; applyTheme(); }
+function toggleDark(){ state.theme = (state.theme === 'dark') ? 'light' : 'dark'; applyTheme(); touch(); }
 function applyTheme(){
-  const dark = state.theme==='dark';
-  document.documentElement.setAttribute('data-theme', dark?'dark':'light');
-  const b=document.getElementById('darkBtn'); if(b) b.textContent = dark?'Light mode':'Dark mode';
+  const dark = state.theme === 'dark';
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  const b = el('darkBtn'); if (b) b.textContent = dark ? 'Light mode' : 'Dark mode';
 }
-let pickedSet=new Set(), pickedSection=null, lastPicked=null;
-function pickStudent(){
-  const s=sec();
-  const seated=Object.entries(s.assign);
-  if(!seated.length){ alert('No one is seated yet. Assign some students first.'); return; }
-  if(pickedSection!==s.id){ pickedSet=new Set(); pickedSection=s.id; }
-  let pool=seated.filter(([d,sid])=>!pickedSet.has(sid));
-  if(!pool.length){ pickedSet=new Set(); pool=seated; }       // new round once everyone has been called
-  const [deskId,sid]=pool[Math.floor(Math.random()*pool.length)];
-  pickedSet.add(sid); lastPicked=sid;
-  renderFloor();
-  const el=[...document.querySelectorAll('.desk')].find(e=>e.dataset.id===deskId);
-  if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
-  document.getElementById('status').innerHTML = baseStatus()+` &middot; <span class="good">Picked: ${esc(nameOf(sid))}</span>`;
-}
-function rotateDesk(id){ pushUndo(); const d=sec().desks.find(x=>x.id===id); d.rot=((d.rot||0)+90)%360; renderFloor(); }
-function toggleLock(id){ pushUndo(); const d=sec().desks.find(x=>x.id===id); d.locked=!d.locked; renderFloor(); }
 
-function seed(){
-  ["Honors","Academic","Foundational"].forEach(n=>{
-    state.sections.push(newSection(n));
-  });
-  state.active = state.sections[0].id;
+/* ---- fit-to-window vs actual size ---- */
+function applyZoom(){
+  const wantFit = state.zoom !== 'full';
+  const stage = el('stage');
+  const room = Math.max(320, stage.clientWidth - 44);
+  scale = wantFit ? Math.min(1, room / ROOM.width) : 1;
+  document.documentElement.style.setProperty('--fscale', String(scale));
+  const b = el('zoomBtn');
+  if (b) b.textContent = wantFit ? 'Actual size' : 'Fit to window';
 }
-function newSection(name){
-  return { id:uid(), name, students:[], apart:[], together:[], desks:[], assign:{} };
+function toggleZoom(){ state.zoom = state.zoom === 'full' ? 'fit' : 'full'; applyZoom(); touch(); }
+window.addEventListener('resize', () => { if (state.zoom !== 'full') applyZoom(); });
+
+let pickedSet = new Set(), pickedSection = null, lastPicked = null;
+function pickStudent(){
+  const s = sec();
+  const seated = Object.entries(s.assign);
+  if (!seated.length){ say('No one is seated yet. Assign some students first.', 'bad'); return; }
+  if (pickedSection !== s.id){ pickedSet = new Set(); pickedSection = s.id; }
+  const pick = pickNext(seated, pickedSet);
+  if (!pick) return;
+  if (pick.wrapped) pickedSet = new Set();
+  pickedSet.add(pick.studentId);
+  lastPicked = pick.studentId;
+  renderFloor();
+  const node = [...document.querySelectorAll('.desk')].find(e => e.dataset.id === pick.deskId);
+  if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el('status').innerHTML = baseStatus() + ` &middot; <span class="good">Picked: ${esc(nameOf(pick.studentId))}</span>`;
 }
-function sec(){ return state.sections.find(s=>s.id===state.active); }
-function studentById(id){ return sec().students.find(s=>s.id===id); }
+function rotateDesk(id){ pushUndo(); const d = sec().desks.find(x => x.id === id); d.rot = ((d.rot || 0) + 90) % 360; renderFloor(); touch(); }
+function toggleLock(id){ pushUndo(); const d = sec().desks.find(x => x.id === id); d.locked = !d.locked; renderFloor(); touch(); }
 
 /* ============================================================
    Sections
 ============================================================ */
 function renderSections(){
-  const wrap = document.getElementById('sectionTabs');
-  wrap.innerHTML='';
-  state.sections.forEach(s=>{
-    const b=document.createElement('button');
-    b.className='sec-tab'+(s.id===state.active?' active':'');
-    b.textContent=s.name;
-    b.onclick=()=>{ state.active=s.id; selectedStudent=null; lastPicked=null; renderAll(); };
+  const wrap = el('sectionTabs');
+  wrap.innerHTML = '';
+  state.sections.forEach(s => {
+    const b = document.createElement('button');
+    b.className = 'sec-tab' + (s.id === state.active ? ' active' : '');
+    b.textContent = s.name;
+    if (s.id === state.active) b.setAttribute('aria-current', 'true');
+    b.onclick = () => { state.active = s.id; selectedStudent = null; lastPicked = null; renderAll(); };
     wrap.appendChild(b);
   });
 }
 function addSection(){
-  const inp=document.getElementById('newSectionName');
-  const name=(inp.value||'').trim() || ('Section '+(state.sections.length+1));
+  const inp = el('newSectionName');
+  const name = (inp.value || '').trim() || ('Section ' + (state.sections.length + 1));
   pushUndo();
-  const s=newSection(name); state.sections.push(s); state.active=s.id;
-  inp.value=''; renderAll();
+  const s = newSection(name); state.sections.push(s); state.active = s.id;
+  inp.value = ''; renderAll();
 }
 function renameSection(){
-  const name=prompt('Rename this section:', sec().name);
-  if(name && name.trim()){ pushUndo(); sec().name=name.trim(); renderAll(); }
+  const name = prompt('Rename this section:', sec().name);
+  if (name && name.trim()){ pushUndo(); sec().name = name.trim(); renderAll(); }
 }
 function deleteSection(){
-  if(state.sections.length===1){ alert('Keep at least one section.'); return; }
-  if(!confirm('Delete the "'+sec().name+'" section and everything in it?')) return;
+  if (state.sections.length === 1){ alert('Keep at least one section.'); return; }
+  if (!confirm('Delete the "' + sec().name + '" section and everything in it?')) return;
   pushUndo();
-  state.sections=state.sections.filter(s=>s.id!==state.active);
-  state.active=state.sections[0].id; renderAll();
+  state.sections = state.sections.filter(s => s.id !== state.active);
+  state.active = state.sections[0].id; renderAll();
 }
 
 /* ============================================================
    Roster
 ============================================================ */
+function setLastFirst(on){ state.lastFirst = !!on; touch(); }
 function addNames(){
-  const box=document.getElementById('nameInput');
-  const lines=box.value.split('\n').map(t=>t.trim()).filter(Boolean);
-  if(!lines.length) return;
+  const box = el('nameInput');
+  const { names, duplicates } = parseRoster(box.value, {
+    lastFirst: state.lastFirst,
+    existing: sec().students.map(s => s.name),
+  });
+  if (!names.length){
+    say(duplicates.length ? `Already on the roster: ${duplicates.length}. Nobody added.` : 'Nothing to add.', 'bad');
+    return;
+  }
   pushUndo();
-  lines.forEach(nm=> sec().students.push({id:uid(), name:nm, note:'', flag:false}));
-  box.value=''; renderAll();
+  names.forEach(nm => sec().students.push({ id: uid(), name: nm, note: '', flag: false }));
+  box.value = ''; renderAll();
+  say(`Added ${names.length}${duplicates.length ? `, skipped ${duplicates.length} already on the roster` : ''}.`, 'good');
 }
 function removeStudent(id){
   pushUndo();
-  const s=sec();
-  s.students=s.students.filter(x=>x.id!==id);
-  s.apart=s.apart.filter(p=>!p.includes(id));
-  s.together=s.together.filter(p=>!p.includes(id));
-  for(const d in s.assign){ if(s.assign[d]===id) delete s.assign[d]; }  // free the seat, keep the desk
-  if(selectedStudent===id) selectedStudent=null;
+  const s = sec();
+  s.students = s.students.filter(x => x.id !== id);
+  s.apart = s.apart.filter(p => !p.includes(id));
+  s.together = s.together.filter(p => !p.includes(id));
+  for (const d in s.assign){ if (s.assign[d] === id) delete s.assign[d]; }  // free the seat, keep the desk
+  if (selectedStudent === id) selectedStudent = null;
   renderAll();
 }
-function toggleFlag(id){ pushUndo(); studentById(id).flag=!studentById(id).flag; renderAll(); }
+function toggleFlag(id){ pushUndo(); const st = studentById(id); st.flag = !st.flag; renderAll(); }
 function editNote(id){
-  const st=studentById(id);
-  const n=prompt('Private note for '+st.name+' (stays on your computer only):', st.note||'');
-  if(n!==null){ pushUndo(); st.note=n.trim(); renderAll(); }
+  const st = studentById(id);
+  const n = prompt(
+    `Note for ${st.name}.\n\nSaved in this browser and in any file you export. Never printed.\n` +
+    'Keep it practical, not clinical.', st.note || '');
+  if (n !== null){ pushUndo(); st.note = n.trim(); renderAll(); }
 }
 function sortRoster(){
   pushUndo();
-  sec().students.sort((a,b)=>a.name.localeCompare(b.name));
+  sec().students.sort((a, b) => a.name.localeCompare(b.name));
   renderAll();
 }
 function renderRoster(){
-  const list=document.getElementById('rosterList');
-  list.innerHTML='';
-  sec().students.forEach(st=>{
-    const row=document.createElement('div');
-    row.className='stu'+(st.flag?' flagged':'');
-    row.innerHTML=`
-      <span class="nm">${esc(st.name)}${st.note?` <span class="note">(${esc(st.note)})</span>`:''}</span>
-      <button class="icon-btn ${st.flag?'on':''}" title="Flag for a specific spot" onclick="toggleFlag('${st.id}')">&#9873;</button>
-      <button class="icon-btn" title="Private note" onclick="editNote('${st.id}')">&#9998;</button>
-      <button class="icon-btn" title="Remove" onclick="removeStudent('${st.id}')">&times;</button>`;
+  const list = el('rosterList');
+  list.innerHTML = '';
+  sec().students.forEach(st => {
+    const row = document.createElement('div');
+    row.className = 'stu' + (st.flag ? ' flagged' : '');
+    row.innerHTML = `
+      <span class="nm">${esc(st.name)}${st.note ? ` <span class="note">(${esc(st.note)})</span>` : ''}</span>
+      <button class="icon-btn ${st.flag ? 'on' : ''}" title="Flag ${esc(st.name)} for a specific spot"
+              aria-label="Flag ${esc(st.name)} for a specific spot" aria-pressed="${st.flag}"
+              onclick="toggleFlag('${st.id}')">&#9873;</button>
+      <button class="icon-btn" title="Note for ${esc(st.name)}"
+              aria-label="Note for ${esc(st.name)}" onclick="editNote('${st.id}')">&#9998;</button>
+      <button class="icon-btn" title="Remove ${esc(st.name)}"
+              aria-label="Remove ${esc(st.name)} from the roster" onclick="removeStudent('${st.id}')">&times;</button>`;
     list.appendChild(row);
   });
-  document.getElementById('rosterCount').textContent=sec().students.length;
+  el('rosterCount').textContent = sec().students.length;
+  el('lastFirst').checked = !!state.lastFirst;
 }
 
 /* ============================================================
    Constraint pairs
 ============================================================ */
 function fillSelect(id){
-  const el=document.getElementById(id);
-  const cur=el.value;
-  el.innerHTML='';
-  sec().students.forEach(st=>{
-    const o=document.createElement('option'); o.value=st.id; o.textContent=st.name; el.appendChild(o);
+  const box = el(id);
+  const cur = box.value;
+  box.innerHTML = '';
+  sec().students.forEach(st => {
+    const o = document.createElement('option'); o.value = st.id; o.textContent = st.name; box.appendChild(o);
   });
-  if([...el.options].some(o=>o.value===cur)) el.value=cur;
+  if ([...box.options].some(o => o.value === cur)) box.value = cur;
 }
 function addPair(kind){
-  const a=document.getElementById(kind==='apart'?'apartA':'togA').value;
-  const b=document.getElementById(kind==='apart'?'apartB':'togB').value;
-  if(!a||!b||a===b){ alert('Pick two different students.'); return; }
-  const list=kind==='apart'?sec().apart:sec().together;
-  if(list.some(p=>(p[0]===a&&p[1]===b)||(p[0]===b&&p[1]===a))) return;
+  const a = el(kind === 'apart' ? 'apartA' : 'togA').value;
+  const b = el(kind === 'apart' ? 'apartB' : 'togB').value;
+  if (!a || !b || a === b){ say('Pick two different students.', 'bad'); return; }
+  const list = kind === 'apart' ? sec().apart : sec().together;
+  if (list.some(p => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a))) return;
   pushUndo();
-  list.push([a,b]);
+  list.push([a, b]);
   // a pair cannot be both apart and together
-  if(kind==='apart') sec().together=sec().together.filter(p=>!((p[0]===a&&p[1]===b)||(p[0]===b&&p[1]===a)));
-  else sec().apart=sec().apart.filter(p=>!((p[0]===a&&p[1]===b)||(p[0]===b&&p[1]===a)));
+  const same = p => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a);
+  if (kind === 'apart') sec().together = sec().together.filter(p => !same(p));
+  else sec().apart = sec().apart.filter(p => !same(p));
   renderAll();
 }
-function removePair(kind,i){
+function removePair(kind, i){
   pushUndo();
-  if(kind==='apart') sec().apart.splice(i,1); else sec().together.splice(i,1);
+  if (kind === 'apart') sec().apart.splice(i, 1); else sec().together.splice(i, 1);
   renderAll();
 }
-function nameOf(id){ const s=studentById(id); return s?s.name:'(removed)'; }
 function renderPairs(){
-  const ap=document.getElementById('apartList'); ap.innerHTML='';
-  sec().apart.forEach((p,i)=>{
-    const d=document.createElement('div'); d.className='pair apart';
-    d.innerHTML=`<span class="pp">${esc(nameOf(p[0]))} &nbsp;&#8212;&nbsp; ${esc(nameOf(p[1]))}</span>
-      <button class="icon-btn" onclick="removePair('apart',${i})">&times;</button>`;
+  const ap = el('apartList'); ap.innerHTML = '';
+  sec().apart.forEach((p, i) => {
+    const d = document.createElement('div'); d.className = 'pair apart';
+    d.innerHTML = `<span class="pp">${esc(nameOf(p[0]))} &nbsp;&#8212;&nbsp; ${esc(nameOf(p[1]))}</span>
+      <button class="icon-btn" aria-label="Remove the keep-apart rule for ${esc(nameOf(p[0]))} and ${esc(nameOf(p[1]))}"
+              onclick="removePair('apart',${i})">&times;</button>`;
     ap.appendChild(d);
   });
-  const tg=document.getElementById('togList'); tg.innerHTML='';
-  sec().together.forEach((p,i)=>{
-    const d=document.createElement('div'); d.className='pair together';
-    d.innerHTML=`<span class="pp">${esc(nameOf(p[0]))} &nbsp;+&nbsp; ${esc(nameOf(p[1]))}</span>
-      <button class="icon-btn" onclick="removePair('together',${i})">&times;</button>`;
+  const tg = el('togList'); tg.innerHTML = '';
+  sec().together.forEach((p, i) => {
+    const d = document.createElement('div'); d.className = 'pair together';
+    d.innerHTML = `<span class="pp">${esc(nameOf(p[0]))} &nbsp;+&nbsp; ${esc(nameOf(p[1]))}</span>
+      <button class="icon-btn" aria-label="Remove the put-together rule for ${esc(nameOf(p[0]))} and ${esc(nameOf(p[1]))}"
+              onclick="removePair('together',${i})">&times;</button>`;
     tg.appendChild(d);
   });
 }
@@ -606,325 +803,246 @@ function renderPairs(){
 /* ============================================================
    Desks: add / layout / move
 ============================================================ */
-function snap(v){ return Math.round(v/GRID)*GRID; }
-function nextSpot(){
-  // find a free-ish spot scanning a grid
-  const s=sec();
-  const startY=110;
-  for(let y=startY;y<700;y+=DESK_H+24){
-    for(let x=40;x<1140;x+=DESK_W+24){
-      if(!s.desks.some(d=>Math.abs(d.x-x)<DESK_W && Math.abs(d.y-y)<DESK_H)) return {x:snap(x),y:snap(y)};
-    }
-  }
-  return {x:snap(40+Math.random()*200), y:snap(120+Math.random()*200)};
-}
-function addDesk(){ pushUndo(); const p=nextSpot(); sec().desks.push({id:uid(),x:p.x,y:p.y}); renderFloor(); refreshStatus(); }
-function addRow(){
-  let n=parseInt(document.getElementById('rowCount').value)||6;
-  n=Math.max(1,Math.min(14,n));
+function addDesk(){
   pushUndo();
-  const s=sec();
-  const y = s.desks.length? snap(Math.max(...s.desks.map(d=>d.y))+DESK_H+24) : 110;
-  const totalW=n*DESK_W+(n-1)*22;
-  let x=snap(Math.max(30,(1280-totalW)/2));
-  for(let i=0;i<n;i++){ s.desks.push({id:uid(),x:snap(x),y:y}); x+=DESK_W+22; }
-  renderFloor(); refreshStatus();
+  const p = nextSpot(sec().desks);
+  sec().desks.push({ id: uid(), x: p.x, y: p.y, rot: 0, locked: false });
+  renderFloor(); refreshStatus(); touch();
+}
+function addRow(){
+  pushUndo();
+  const s = sec();
+  s.desks.push(...rowDesks(el('rowCount').value, s.desks));
+  renderFloor(); refreshStatus(); touch();
 }
 function addPod(){
   pushUndo();
-  const s=sec();
-  const p=nextSpot();
-  const off=[[0,0],[DESK_W+10,0],[0,DESK_H+10],[DESK_W+10,DESK_H+10]];
-  off.forEach(o=> s.desks.push({id:uid(),x:snap(p.x+o[0]),y:snap(p.y+o[1])}));
-  renderFloor(); refreshStatus();
+  const s = sec();
+  const p = nextSpot(s.desks);
+  [[0, 0], [DESK_W + 10, 0], [0, DESK_H + 10], [DESK_W + 10, DESK_H + 10]]
+    .forEach(o => s.desks.push({ id: uid(), x: snap(p.x + o[0]), y: snap(p.y + o[1]), rot: 0, locked: false }));
+  renderFloor(); refreshStatus(); touch();
 }
 function makeGrid(){
-  let cols=parseInt(document.getElementById('gridCols').value)||6;
-  let rows=parseInt(document.getElementById('gridRows').value)||5;
-  cols=Math.max(1,Math.min(12,cols)); rows=Math.max(1,Math.min(10,rows));
   pushUndo();
-  const s=sec(); s.desks=[]; s.assign={};
-  const totalW=cols*DESK_W+(cols-1)*22;
-  const startX=snap(Math.max(30,(1280-totalW)/2));
-  for(let r=0;r<rows;r++){
-    for(let c=0;c<cols;c++){
-      s.desks.push({id:uid(), x:snap(startX+c*(DESK_W+22)), y:snap(110+r*(DESK_H+24))});
-    }
-  }
-  renderFloor(); refreshStatus();
+  const s = sec();
+  s.desks = gridDesks(el('gridCols').value, el('gridRows').value);
+  s.assign = {};
+  renderFloor(); refreshStatus(); touch();
 }
 function removeDesk(id){
   pushUndo();
-  const s=sec();
-  s.desks=s.desks.filter(d=>d.id!==id);
+  const s = sec();
+  s.desks = s.desks.filter(d => d.id !== id);
   delete s.assign[id];
-  renderFloor(); refreshStatus();
+  renderFloor(); refreshStatus(); touch();
 }
 function clearDesks(){
-  if(!confirm('Remove all desks from this section?')) return;
+  if (!confirm('Remove all desks from this section?')) return;
   pushUndo();
-  sec().desks=[]; sec().assign={}; renderFloor(); refreshStatus();
+  sec().desks = []; sec().assign = {}; renderFloor(); refreshStatus(); touch();
 }
-function clearSeats(){ pushUndo(); sec().assign={}; selectedStudent=null; renderAll(); }
+function clearSeats(){ pushUndo(); sec().assign = {}; selectedStudent = null; renderAll(); }
 
 /* ============================================================
-   Neighbor map + auto-assign solver
+   Auto-assign
 ============================================================ */
-function centers(desks){
-  const c={}; desks.forEach(d=> c[d.id]={x:d.x+DESK_W/2, y:d.y+DESK_H/2}); return c;
-}
-function neighborMap(){
-  const desks=sec().desks; const c=centers(desks); const m={};
-  desks.forEach(d=>m[d.id]=[]);
-  for(let i=0;i<desks.length;i++){
-    for(let j=i+1;j<desks.length;j++){
-      const a=desks[i], b=desks[j];
-      const dist=Math.hypot(c[a.id].x-c[b.id].x, c[a.id].y-c[b.id].y);
-      if(dist<=NEIGHBOR_DIST){ m[a.id].push(b.id); m[b.id].push(a.id); }
-    }
-  }
-  return m;
-}
-// union-find for together groups
-function groups(){
-  const parent={}; sec().students.forEach(s=>parent[s.id]=s.id);
-  const find=x=>{ while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; };
-  const union=(a,b)=>{ parent[find(a)]=find(b); };
-  sec().together.forEach(([a,b])=>{ if(parent[a]&&parent[b]) union(a,b); });
-  const g={};
-  sec().students.forEach(s=>{ const r=find(s.id); (g[r]=g[r]||[]).push(s.id); });
-  return Object.values(g);
-}
-function apartMap(){
-  const m={}; sec().students.forEach(s=>m[s.id]=new Set());
-  sec().apart.forEach(([a,b])=>{ if(m[a]) m[a].add(b); if(m[b]) m[b].add(a); });
-  return m;
-}
-function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
-
-function tryOnce(nbrs, apart, freeDesks, toPlace, seedDesk, seedStudent){
-  const idset=new Set(toPlace);
-  const blocks=shuffle(groups().map(g=>shuffle(g.slice())));
-  // members needing a seat keep their group reference so pinned partners still pull them close
-  const order=[];
-  blocks.forEach(b=> b.forEach(id=>{ if(idset.has(id)) order.push({id, group:b}); }));
-  const free=new Set(freeDesks);
-  const studentDesk=Object.assign({}, seedStudent);   // studentId -> deskId
-  const deskStudent=Object.assign({}, seedDesk);       // deskId -> studentId
-
-  function ok(sid, did){
-    for(const m of apart[sid]){
-      const md=studentDesk[m];
-      if(md && nbrs[did].includes(md)) return false;
-    }
-    return true;
-  }
-  for(const item of order){
-    const sid=item.id;
-    const placedMates=item.group.filter(g=>g!==sid && studentDesk[g]);
-    let cands=[...free].filter(did=>ok(sid,did));
-    if(placedMates.length){
-      const need=cands.filter(did=> placedMates.some(m=> nbrs[did].includes(studentDesk[m]) ));
-      if(need.length) cands=need; else return null;
-    }
-    if(!cands.length) return null;
-    const pick=cands[Math.floor(Math.random()*cands.length)];
-    studentDesk[sid]=pick; deskStudent[pick]=sid; free.delete(pick);
-  }
-  return deskStudent;
-}
-function validate(assign, nbrs, apart){
-  for(const [a,b] of sec().apart){
-    const da=Object.keys(assign).find(d=>assign[d]===a);
-    const db=Object.keys(assign).find(d=>assign[d]===b);
-    if(da&&db&&nbrs[da].includes(db)) return false;
-  }
-  return true;
-}
 function autoAssign(){
-  const s=sec();
-  if(!s.students.length){ alert('Add some students first.'); return; }
-  if(!s.desks.length){ alert('Add some desks first. Try "Make grid".'); return; }
+  const s = sec();
+  if (!s.students.length){ say('Add some students first.', 'bad'); return; }
+  if (!s.desks.length){ say('Add some desks first. Try "Make grid".', 'bad'); return; }
   pushUndo();
-  const nbrs=neighborMap(); const apart=apartMap();
-
-  // pinned (locked) seats stay exactly where they are
-  const seedDesk={}, seedStudent={}, lockedSids=new Set(), lockedDesks=new Set();
-  s.desks.forEach(d=>{
-    if(d.locked){
-      lockedDesks.add(d.id);
-      const sid=s.assign[d.id];
-      if(sid){ seedDesk[d.id]=sid; seedStudent[sid]=d.id; lockedSids.add(sid); }
-    }
-  });
-  const freeDesks=s.desks.filter(d=>!lockedDesks.has(d.id)).map(d=>d.id);
-  const toPlace=s.students.filter(st=>!lockedSids.has(st.id)).map(st=>st.id);
-
-  let best=null;
-  for(let i=0;i<800;i++){
-    const a=tryOnce(nbrs, apart, freeDesks, toPlace, seedDesk, seedStudent);
-    if(a){ best=a; if(validate(a,nbrs,apart)) break; }
-  }
-  if(!best){
-    // last resort: fill ignoring constraints so the teacher still gets a chart
-    best=Object.assign({}, seedDesk);
-    const ds=shuffle(freeDesks.slice()); const st=shuffle(toPlace.slice());
-    for(let i=0;i<Math.min(ds.length,st.length);i++) best[ds[i]]=st[i];
-  }
-  s.assign=best;
-  selectedStudent=null;
+  const r = assignSeats(s);
+  s.assign = r.assign;
+  selectedStudent = null;
   renderAll();
-  reportConstraints();
+  reportConstraints(r);
 }
-function reportConstraints(){
-  const nbrs=neighborMap();
-  const apartOK = sec().apart.every(([a,b])=>{
-    const da=Object.keys(sec().assign).find(d=>sec().assign[d]===a);
-    const db=Object.keys(sec().assign).find(d=>sec().assign[d]===b);
-    return !(da&&db&&nbrs[da].includes(db));
-  });
-  const togOK = sec().together.every(([a,b])=>{
-    const da=Object.keys(sec().assign).find(d=>sec().assign[d]===a);
-    const db=Object.keys(sec().assign).find(d=>sec().assign[d]===b);
-    return da&&db&&nbrs[da].includes(db);
-  });
-  const msg=document.getElementById('status');
-  let extra='';
-  if(!apartOK) extra+=' <span class="bad">Some keep-apart pairs could not be separated.</span>';
-  if(!togOK) extra+=' <span class="bad">Some put-together pairs could not be seated next to each other.</span>';
-  if(apartOK&&togOK && (sec().apart.length||sec().together.length)) extra=' <span class="good">All seating rules met.</span>';
-  msg.innerHTML=baseStatus()+extra;
+function reportConstraints(r){
+  const s = sec();
+  const report = r || checkConstraints(s);
+  let extra = '';
+  if (!report.apartOK) extra += ` <span class="bad">${report.apartBroken.length} keep-apart pair(s) could not be separated.</span>`;
+  if (!report.togetherOK) extra += ` <span class="bad">${report.togetherBroken.length} put-together pair(s) could not be seated side by side.</span>`;
+  if (r && r.unseated && r.unseated.length) extra += ` <span class="bad">${r.unseated.length} student(s) have no desk.</span>`;
+  if (report.apartOK && report.togetherOK && (s.apart.length || s.together.length)) extra = ' <span class="good">All seating rules met.</span>';
+  el('status').innerHTML = baseStatus() + extra;
 }
 
 /* ============================================================
    Rendering the floor
 ============================================================ */
 function renderFloor(){
-  const floor=document.getElementById('floor');
-  // clear desks but keep front bar
-  [...floor.querySelectorAll('.desk')].forEach(d=>d.remove());
-  const s=sec();
-  s.desks.forEach(d=>{
-    const sid=s.assign[d.id];
-    const st=sid?studentById(sid):null;
-    const el=document.createElement('div');
-    el.className='desk '+(st?'assigned':'empty')+(st&&st.flag?' flagged':'')+(d.locked?' locked':'')+(selectedStudent&&!st?' sel-target':'');
-    el.style.left=d.x+'px'; el.style.top=d.y+'px';
-    el.style.transform=(d.rot? 'rotate('+d.rot+'deg)':'');
-    el.dataset.id=d.id;
-    const body = st ? `<span class="who" draggable="true">${esc(st.name)}</span>`
-                    : `<span class="placeholder">empty</span>`;
-    el.innerHTML = body
+  const layer = el('deskLayer');
+  layer.innerHTML = '';
+  const s = sec();
+  const total = s.desks.length;
+  s.desks.forEach((d, i) => {
+    const sid = s.assign[d.id];
+    const st = sid ? studentById(sid) : null;
+    const node = document.createElement('div');
+    node.className = 'desk ' + (st ? 'assigned' : 'empty') + (st && st.flag ? ' flagged' : '')
+      + (d.locked ? ' locked' : '') + (selectedStudent && !st ? ' sel-target' : '');
+    node.style.left = d.x + 'px'; node.style.top = d.y + 'px';
+    node.style.transform = (d.rot ? 'rotate(' + d.rot + 'deg)' : '');
+    node.dataset.id = d.id;
+
+    const label = st
+      ? `Seat ${i + 1} of ${total}, ${st.name}${st.flag ? ', flagged' : ''}${d.locked ? ', pinned' : ''}`
+      : `Seat ${i + 1} of ${total}, empty`;
+    node.innerHTML =
+        `<button class="seat" data-id="${d.id}" aria-label="${esc(label)}"${st ? ' draggable="true"' : ''}>`
+      +   (st ? esc(st.name) : 'empty')
+      + `</button>`
       + `<span class="selnote">moving</span>`
-      + (d.locked?`<span class="lockbadge">pinned</span>`:``)
+      + (d.locked ? `<span class="lockbadge" aria-hidden="true">pinned</span>` : ``)
       + `<span class="desk-ctrls">`
-      +   `<button class="desk-ctrl" data-act="rot" title="Rotate desk">&#8635;</button>`
-      +   `<button class="desk-ctrl ${d.locked?'on':''}" data-act="lock" title="Pin this seat so Shuffle keeps it">&#9679;</button>`
-      +   `<button class="desk-ctrl" data-act="del" title="Remove this desk">&times;</button>`
+      +   `<button class="desk-ctrl" data-act="rot" tabindex="-1" title="Rotate desk (R)" aria-hidden="true">&#8635;</button>`
+      +   `<button class="desk-ctrl ${d.locked ? 'on' : ''}" data-act="lock" tabindex="-1" title="Pin this seat so Shuffle keeps it (P)" aria-hidden="true">&#9679;</button>`
+      +   `<button class="desk-ctrl" data-act="del" tabindex="-1" title="Remove this desk (Delete)" aria-hidden="true">&times;</button>`
       + `</span>`;
-    if(st && selectedStudent===sid) el.classList.add('selected');
-    if(st && lastPicked===sid) el.classList.add('picked');
-    // desk control buttons
-    el.querySelectorAll('.desk-ctrl').forEach(b=>{
-      b.addEventListener('pointerdown',ev=>ev.stopPropagation());
-      b.addEventListener('click',ev=>{
+    if (st && selectedStudent === sid) node.classList.add('selected');
+    if (st && lastPicked === sid) node.classList.add('picked');
+
+    node.querySelectorAll('.desk-ctrl').forEach(b => {
+      b.addEventListener('pointerdown', ev => ev.stopPropagation());
+      b.addEventListener('click', ev => {
         ev.stopPropagation();
-        const a=b.dataset.act;
-        if(a==='del') removeDesk(d.id);
-        else if(a==='rot') rotateDesk(d.id);
-        else if(a==='lock') toggleLock(d.id);
+        const a = b.dataset.act;
+        if (a === 'del') removeDesk(d.id);
+        else if (a === 'rot') rotateDesk(d.id);
+        else if (a === 'lock') toggleLock(d.id);
       });
     });
+
     // tap to place / pick up
-    el.addEventListener('click',ev=> deskClick(ev, d.id));
+    node.addEventListener('click', ev => deskClick(ev, d.id));
     // drag desk to move (pointer)
-    el.addEventListener('pointerdown',ev=> deskPointerDown(ev, d.id, el));
-    // html5 drag of the seated student
-    const who=el.querySelector('.who');
-    if(who){
-      who.addEventListener('dragstart',ev=>{ dragStudentId=sid; dragFromDeskId=d.id; ev.dataTransfer.setData('text/plain',sid); ev.stopPropagation(); });
+    node.addEventListener('pointerdown', ev => deskPointerDown(ev, d.id, node));
+
+    const seat = node.querySelector('.seat');
+    seat.addEventListener('keydown', ev => deskKey(ev, d.id));
+    if (st){
+      seat.addEventListener('dragstart', ev => {
+        dragStudentId = sid; dragFromDeskId = d.id;
+        ev.dataTransfer.setData('text/plain', sid); ev.stopPropagation();
+      });
     }
     // desk is a drop target for students
-    el.addEventListener('dragover',ev=>{ ev.preventDefault(); });
-    el.addEventListener('drop',ev=>{ ev.preventDefault(); deskDrop(ev, d.id); });
-    floor.appendChild(el);
+    node.addEventListener('dragover', ev => { ev.preventDefault(); });
+    node.addEventListener('drop', ev => { ev.preventDefault(); deskDrop(ev, d.id); });
+    layer.appendChild(node);
   });
 }
 
-/* ----- moving desks with pointer ----- */
-let moving=null;
-function deskPointerDown(ev, id, el){
-  if(ev.target.closest('.desk-ctrl') || ev.target.classList.contains('who')) return; // controls / student drag
-  if(ev.button!==0) return;
-  const d=sec().desks.find(x=>x.id===id);
-  const floorRect=document.getElementById('floor').getBoundingClientRect();
-  moving={id, el, dx:ev.clientX-(floorRect.left+d.x), dy:ev.clientY-(floorRect.top+d.y), floorRect, moved:false, snap0:JSON.stringify(state)};
-  el.setPointerCapture(ev.pointerId);
-  el.style.cursor='grabbing'; el.style.zIndex=50;
+/* ----- keyboard: one tab stop per desk, every action on a key ----- */
+function deskKey(ev, id){
+  const k = ev.key;
+  const step = ev.shiftKey ? ROOM.grid * 3 : ROOM.grid;
+  const d = sec().desks.find(x => x.id === id);
+  if (!d) return;
+  const move = (dx, dy) => {
+    pushUndo();
+    d.x = Math.max(0, Math.min(ROOM.width - DESK_W, snap(d.x + dx)));
+    d.y = Math.max(0, Math.min(ROOM.height - DESK_H, snap(d.y + dy)));
+    renderFloor(); touch();
+    const again = [...document.querySelectorAll('.desk')].find(e => e.dataset.id === id);
+    if (again) again.querySelector('.seat').focus();
+  };
+  if (k === 'Enter' || k === ' '){ ev.preventDefault(); ev.stopPropagation(); deskClick(ev, id); focusDesk(id); }
+  else if (k === 'Escape' && selectedStudent){ selectedStudent = null; renderAll(); focusDesk(id); }
+  else if (k === 'r' || k === 'R'){ ev.preventDefault(); rotateDesk(id); focusDesk(id); }
+  else if (k === 'p' || k === 'P'){ ev.preventDefault(); toggleLock(id); focusDesk(id); }
+  else if (k === 'Delete' || k === 'Backspace'){ ev.preventDefault(); removeDesk(id); }
+  else if (k === 'ArrowLeft'){ ev.preventDefault(); move(-step, 0); }
+  else if (k === 'ArrowRight'){ ev.preventDefault(); move(step, 0); }
+  else if (k === 'ArrowUp'){ ev.preventDefault(); move(0, -step); }
+  else if (k === 'ArrowDown'){ ev.preventDefault(); move(0, step); }
 }
-document.addEventListener('pointermove',ev=>{
-  if(!moving) return;
-  const x=ev.clientX-moving.floorRect.left-moving.dx;
-  const y=ev.clientY-moving.floorRect.top-moving.dy;
-  moving.moved=true;
-  moving.el.style.left=Math.max(0,Math.min(1280-DESK_W,x))+'px';
-  moving.el.style.top=Math.max(0,Math.min(900-DESK_H,y))+'px';
+function focusDesk(id){
+  const node = [...document.querySelectorAll('.desk')].find(e => e.dataset.id === id);
+  if (node) node.querySelector('.seat').focus();
+}
+
+/* ----- moving desks with pointer ----- */
+let moving = null;
+function deskPointerDown(ev, id, node){
+  if (ev.target.closest('.desk-ctrl')) return;
+  if (ev.target.closest('.seat') && sec().assign[id]) return;   // that's a student drag
+  if (ev.button !== 0) return;
+  const d = sec().desks.find(x => x.id === id);
+  const floorRect = el('floor').getBoundingClientRect();
+  moving = {
+    id, el: node,
+    dx: ev.clientX - (floorRect.left + d.x * scale),
+    dy: ev.clientY - (floorRect.top + d.y * scale),
+    floorRect, moved: false, snap0: JSON.stringify(state),
+  };
+  node.setPointerCapture(ev.pointerId);
+  node.style.cursor = 'grabbing'; node.style.zIndex = 50;
+}
+document.addEventListener('pointermove', ev => {
+  if (!moving) return;
+  // Pointer deltas are screen pixels; desk coordinates are room pixels.
+  const x = (ev.clientX - moving.floorRect.left - moving.dx) / scale;
+  const y = (ev.clientY - moving.floorRect.top - moving.dy) / scale;
+  moving.moved = true;
+  moving.el.style.left = Math.max(0, Math.min(ROOM.width - DESK_W, x)) + 'px';
+  moving.el.style.top = Math.max(0, Math.min(ROOM.height - DESK_H, y)) + 'px';
 });
-document.addEventListener('pointerup',ev=>{
-  if(!moving) return;
-  if(moving.moved){
-    undoStack.push(moving.snap0); if(undoStack.length>60) undoStack.shift();
-    const d=sec().desks.find(x=>x.id===moving.id);
-    d.x=snap(parseFloat(moving.el.style.left));
-    d.y=snap(parseFloat(moving.el.style.top));
+document.addEventListener('pointerup', () => {
+  if (!moving) return;
+  if (moving.moved){
+    undoStack.push(moving.snap0); if (undoStack.length > 60) undoStack.shift();
+    const d = sec().desks.find(x => x.id === moving.id);
+    d.x = snap(parseFloat(moving.el.style.left));
+    d.y = snap(parseFloat(moving.el.style.top));
+    touch();
   }
-  moving.el.style.zIndex=''; moving.el.style.cursor='grab';
-  moving=null;
+  moving.el.style.zIndex = ''; moving.el.style.cursor = 'grab';
+  moving = null;
   renderFloor();
 });
 
 /* ----- tap-to-place ----- */
 function deskClick(ev, deskId){
-  if(moving && moving.moved) return; // was a drag
-  const s=sec();
-  const here=s.assign[deskId];
-  if(selectedStudent){
+  if (moving && moving.moved) return; // was a drag
+  const s = sec();
+  const here = s.assign[deskId];
+  if (selectedStudent){
     pushUndo();
-    // place selected here
-    if(here && here!==selectedStudent){
-      // swap: find where selected currently is
-      const fromDesk=Object.keys(s.assign).find(d=>s.assign[d]===selectedStudent);
-      if(fromDesk){ s.assign[fromDesk]=here; } // move displaced student to selected's old desk
-      else { /* selected came from pool */ }
-      s.assign[deskId]=selectedStudent;
-      if(!fromDesk){ /* displaced student goes to pool if no slot */ }
+    if (here && here !== selectedStudent){
+      // swap: the student already here takes the selected student's old desk
+      const fromDesk = Object.keys(s.assign).find(d => s.assign[d] === selectedStudent);
+      if (fromDesk) s.assign[fromDesk] = here;
+      s.assign[deskId] = selectedStudent;
     } else {
-      const fromDesk=Object.keys(s.assign).find(d=>s.assign[d]===selectedStudent);
-      if(fromDesk) delete s.assign[fromDesk];
-      s.assign[deskId]=selectedStudent;
+      const fromDesk = Object.keys(s.assign).find(d => s.assign[d] === selectedStudent);
+      if (fromDesk) delete s.assign[fromDesk];
+      s.assign[deskId] = selectedStudent;
     }
-    selectedStudent=null;
+    selectedStudent = null;
     renderAll();
-  } else if(here){
-    selectedStudent=here; renderAll();
+  } else if (here){
+    selectedStudent = here; renderAll();
   }
 }
 
 /* ----- html5 drop on desk ----- */
 function deskDrop(ev, deskId){
-  const s=sec();
-  const sid=dragStudentId; if(!sid) return;
+  const s = sec();
+  const sid = dragStudentId; if (!sid) return;
   pushUndo();
-  const occupant=s.assign[deskId];
-  const fromDesk=dragFromDeskId;
-  if(occupant && occupant!==sid){
-    if(fromDesk){ s.assign[fromDesk]=occupant; } else { /* occupant returns to pool */ }
-    s.assign[deskId]=sid;
+  const occupant = s.assign[deskId];
+  const fromDesk = dragFromDeskId;
+  if (occupant && occupant !== sid){
+    if (fromDesk) s.assign[fromDesk] = occupant;
+    s.assign[deskId] = sid;
   } else {
-    if(fromDesk) delete s.assign[fromDesk];
-    s.assign[deskId]=sid;
+    if (fromDesk) delete s.assign[fromDesk];
+    s.assign[deskId] = sid;
   }
-  dragStudentId=null; dragFromDeskId=null;
+  dragStudentId = null; dragFromDeskId = null;
   renderAll();
 }
 
@@ -932,77 +1050,120 @@ function deskDrop(ev, deskId){
    Pool (unassigned)
 ============================================================ */
 function renderPool(){
-  const pool=document.getElementById('pool'); pool.innerHTML='';
-  const s=sec();
-  const seated=new Set(Object.values(s.assign));
-  const un=s.students.filter(st=>!seated.has(st.id));
-  if(!un.length){ pool.innerHTML='<span class="pool-empty">Everyone has a seat.</span>'; }
-  un.forEach(st=>{
-    const c=document.createElement('div');
-    c.className='chip'+(st.flag?' flagged':'')+(selectedStudent===st.id?' selected':'');
-    c.textContent=st.name; c.draggable=true; c.dataset.id=st.id;
-    c.addEventListener('dragstart',ev=>{ dragStudentId=st.id; dragFromDeskId=null; ev.dataTransfer.setData('text/plain',st.id); });
-    c.addEventListener('click',ev=>{ ev.stopPropagation(); selectedStudent = (selectedStudent===st.id?null:st.id); renderAll(); });
+  const pool = el('pool'); pool.innerHTML = '';
+  const s = sec();
+  const seated = new Set(Object.values(s.assign));
+  const un = s.students.filter(st => !seated.has(st.id));
+  if (!un.length) pool.innerHTML = '<span class="pool-empty">Everyone has a seat.</span>';
+  un.forEach(st => {
+    const c = document.createElement('button');
+    c.type = 'button';
+    c.className = 'chip' + (st.flag ? ' flagged' : '') + (selectedStudent === st.id ? ' selected' : '');
+    c.textContent = st.name;
+    c.draggable = true;
+    c.dataset.id = st.id;
+    c.setAttribute('aria-pressed', selectedStudent === st.id ? 'true' : 'false');
+    c.setAttribute('aria-label', `${st.name}, not seated${st.flag ? ', flagged' : ''}. Pick up, then choose a desk.`);
+    c.addEventListener('dragstart', ev => { dragStudentId = st.id; dragFromDeskId = null; ev.dataTransfer.setData('text/plain', st.id); });
+    c.addEventListener('click', ev => { ev.stopPropagation(); selectedStudent = (selectedStudent === st.id ? null : st.id); renderAll(); });
     pool.appendChild(c);
   });
-  document.getElementById('poolCount').textContent=un.length;
+  el('poolCount').textContent = un.length;
 }
-function poolClick(ev){
+function poolClick(){
   // tapping empty pool area with a selected (seated) student unseats them
-  if(selectedStudent){
-    const s=sec();
-    const fromDesk=Object.keys(s.assign).find(d=>s.assign[d]===selectedStudent);
-    if(fromDesk){ pushUndo(); delete s.assign[fromDesk]; }
-    selectedStudent=null; renderAll();
+  if (selectedStudent){
+    const s = sec();
+    const fromDesk = Object.keys(s.assign).find(d => s.assign[d] === selectedStudent);
+    if (fromDesk){ pushUndo(); delete s.assign[fromDesk]; }
+    selectedStudent = null; renderAll();
   }
 }
-function poolDragOver(ev){ ev.preventDefault(); document.getElementById('pool').classList.add('drop-hot'); }
-function poolDragLeave(ev){ document.getElementById('pool').classList.remove('drop-hot'); }
+function poolDragOver(ev){ ev.preventDefault(); el('pool').classList.add('drop-hot'); }
+function poolDragLeave(){ el('pool').classList.remove('drop-hot'); }
 function poolDrop(ev){
-  ev.preventDefault(); document.getElementById('pool').classList.remove('drop-hot');
-  const s=sec(); if(dragFromDeskId){ pushUndo(); delete s.assign[dragFromDeskId]; }
-  dragStudentId=null; dragFromDeskId=null; renderAll();
+  ev.preventDefault(); el('pool').classList.remove('drop-hot');
+  const s = sec(); if (dragFromDeskId){ pushUndo(); delete s.assign[dragFromDeskId]; }
+  dragStudentId = null; dragFromDeskId = null; renderAll();
 }
 
 /* ============================================================
-   Status + save/load
+   Status
 ============================================================ */
 function baseStatus(){
-  const s=sec();
-  const seated=Object.keys(s.assign).length;
-  return `<b>${s.name}</b> &middot; ${s.students.length} students &middot; ${s.desks.length} desks &middot; ${seated} seated`;
+  const s = sec();
+  const seated = Object.keys(s.assign).length;
+  return `<b>${esc(s.name)}</b> &middot; ${s.students.length} students &middot; ${s.desks.length} desks &middot; ${seated} seated`;
 }
-function refreshStatus(){ document.getElementById('status').innerHTML=baseStatus(); }
+function refreshStatus(){ el('status').innerHTML = baseStatus(); }
+function say(text, kind){
+  el('status').innerHTML = baseStatus() + (text ? ` &middot; <span class="${kind === 'bad' ? 'bad' : 'good'}">${esc(text)}</span>` : '');
+}
 
-function saveFile(){
-  const data=JSON.stringify(state,null,2);
-  const blob=new Blob([data],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  const d=new Date();
-  a.download=`seating-charts-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.json`;
-  a.click(); URL.revokeObjectURL(a.href);
+/* ============================================================
+   Print
+
+   The room is 1280x900 and a class of 28 uses maybe half of it, so printing the
+   room prints mostly floor. Trim to the desks, then scale that box to the paper.
+============================================================ */
+const PAPER = { w: 979, h: 660 };   // letter landscape at 0.4in margins, minus the header
+let printRestore = null;
+
+function preparePrint(){
+  const s = sec();
+  const box = contentBox(s.desks);
+  const pad = 30;
+  const topRoom = 58;               // leave the FRONT OF ROOM bar room to breathe
+  const w = box.w + pad * 2;
+  const h = box.h + pad + topRoom;
+  // Scale up as well as down: a chart of 12 desks printed at screen size wastes
+  // most of the sheet, and a name a substitute can read from the doorway is the
+  // whole point. 1.5x is where the rounded corners start looking silly.
+  const fit = Math.min(1.5, PAPER.w / w, PAPER.h / h);
+
+  const floor = el('floor'), wrap = el('floorWrap'), layer = el('deskLayer');
+  // Chrome can fire beforeprint more than once for one trip through the dialog,
+  // and a second capture would record the trimmed layout as the thing to restore.
+  if (!printRestore) printRestore = { floorW: floor.style.width, floorH: floor.style.height, layer: layer.style.transform };
+  floor.style.width = w + 'px';
+  floor.style.height = h + 'px';
+  layer.style.transform = `translate(${-box.x + pad}px, ${-box.y + topRoom}px)`;
+  document.documentElement.style.setProperty('--fscale', String(fit));
+  wrap.style.width = (w * fit) + 'px';
+  wrap.style.height = (h * fit) + 'px';
+
+  const seated = Object.keys(s.assign).length;
+  const unseated = s.students.length - seated;
+  el('printTitle').textContent = s.name;
+  el('printMeta').textContent =
+    `${seated} seated of ${s.students.length} · ${s.desks.length} desks · `
+    + new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+    + (unseated ? ` · ${unseated} not seated` : '');
 }
-function openFile(ev){
-  const f=ev.target.files[0]; if(!f) return;
-  const r=new FileReader();
-  r.onload=()=>{
-    try{
-      const obj=JSON.parse(r.result);
-      if(!obj.sections || !Array.isArray(obj.sections)) throw new Error('bad');
-      state=obj; if(!state.active||!sec()) state.active=state.sections[0].id;
-      if(!state.theme) state.theme='light';
-      undoStack=[]; pickedSet=new Set(); pickedSection=null; lastPicked=null;
-      selectedStudent=null; applyTheme(); renderAll();
-    }catch(e){ alert('That file did not look like a saved seating chart.'); }
-  };
-  r.readAsText(f); ev.target.value='';
+function restoreAfterPrint(){
+  if (printRestore){
+    const floor = el('floor'), wrap = el('floorWrap'), layer = el('deskLayer');
+    floor.style.width = printRestore.floorW;
+    floor.style.height = printRestore.floorH;
+    layer.style.transform = printRestore.layer;
+    wrap.style.width = ''; wrap.style.height = '';
+    printRestore = null;
+  }
+  // Chrome can fire afterprint while the page is still laid out for paper, and a
+  // fit-to-window scale measured against a paper-width stage comes out wrong.
+  // Measure again once the screen layout is back.
+  applyZoom();
+  requestAnimationFrame(applyZoom);
 }
+// Covers both the toolbar button and Ctrl+P.
+window.addEventListener('beforeprint', preparePrint);
+window.addEventListener('afterprint', restoreAfterPrint);
+function printChart(){ window.print(); }
 
 /* ============================================================
    Util + boot
 ============================================================ */
-function esc(s){ return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function esc(s){ return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 function renderAll(){
   renderSections();
@@ -1012,20 +1173,89 @@ function renderAll(){
   renderFloor();
   renderPool();
   refreshStatus();
-  document.getElementById('printTitle').textContent='Seating Chart \u2013 '+sec().name;
+  touch();
 }
 
-document.addEventListener('keydown',e=>{
-  if((e.ctrlKey||e.metaKey) && (e.key==='z'||e.key==='Z')){
-    const tag=(e.target.tagName||'').toLowerCase();
-    if(tag==='input'||tag==='textarea'||tag==='select') return; // let text fields handle their own undo
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')){
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return; // let text fields handle their own undo
     e.preventDefault(); undo();
   }
 });
 
-seed();
-applyTheme();
-renderAll();
+/** An imported file or an erased save has to be taken up whole. */
+function setState(next){
+  state = next;
+  undoStack = [];
+  selectedStudent = null; dragStudentId = null; dragFromDeskId = null;
+  pickedSet = new Set(); pickedSection = null; lastPicked = null;
+  applyTheme(); applyZoom(); renderAll();
+  if (erasing && autosaver) autosaver.stop();   // kill a timer already in flight
+}
+
+function mountBar(){
+  const bar = mountSaveBar(el('saveBar'), slot, {
+    buttons: ['export', 'import', 'reset'],
+    getState: () => state,
+    setState,
+    onMessage: text => say(text, /blocks storage|could not|not a valid/i.test(text) ? 'bad' : 'good'),
+  });
+  // The module's labels are written for a game save. This is a teacher's charts.
+  const relabel = (kind, label, title) => {
+    const b = el('saveBar').querySelector(`[data-gvb="${kind}"]`);
+    if (b){ b.textContent = label; b.title = title; }
+  };
+  relabel('export', 'Save to file', 'Download all sections as one .json file');
+  relabel('import', 'Open file', 'Load charts back from a .json file');
+  relabel('reset', 'Erase saved data', 'Delete every chart stored in this browser');
+
+  // Erase has to leave nothing behind. Without this, the autosave timer that was
+  // already ticking when the button was pressed fires a second later and writes
+  // the fresh empty state straight back under the same key — the names are gone
+  // either way, but "I erased it" should mean the key is gone.
+  const resetBtn = el('saveBar').querySelector('[data-gvb="reset"]');
+  if (resetBtn) resetBtn.addEventListener('click', () => {
+    erasing = true;
+    setTimeout(() => { erasing = false; }, 0);
+  }, true);
+  return bar;
+}
+
+function boot(){
+  const loaded = slot.load();
+  state = loaded || slot.fresh();
+  autosaver = slot.autosave(() => state, 1200);
+  mountBar();
+  applyTheme(); applyZoom(); renderAll();
+  if (loaded){
+    const n = state.sections.reduce((t, s) => t + s.students.length, 0);
+    say(`Reloaded ${state.sections.length} sections and ${n} students from this browser.`, 'good');
+  } else {
+    slot.save(state);
+  }
+  if (slot.memoryOnly){
+    const box = el('privacyBox');
+    box.classList.add('blocked');
+    box.innerHTML = '<p><b>This browser is blocking storage.</b> Charts will not survive a '
+      + 'reload here. Use <b>Save to file</b> before you close the tab, and <b>Open file</b> '
+      + 'to bring it back. Nothing is uploaded either way.</p>';
+  }
+  window.__seatingBooted = true;
+}
+
+// The inline handlers in the markup need these on the window; a module's scope is
+// its own. Kept explicit rather than clever so a missing one is a visible name.
+Object.assign(window, {
+  addSection, renameSection, deleteSection,
+  addNames, sortRoster, setLastFirst, toggleFlag, editNote, removeStudent,
+  addPair, removePair,
+  addDesk, addRow, addPod, makeGrid, clearDesks, clearSeats,
+  autoAssign, undo, pickStudent, toggleDark, toggleZoom, printChart,
+  poolDragOver, poolDragLeave, poolDrop, poolClick,
+});
+
+boot();
 </script>
 </body>
 </html>

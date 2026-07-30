@@ -187,7 +187,7 @@ export function parsePastedData(raw) {
     // worth naming, not a quarter to quietly treat as missing.
     raws.forEach((cell, q) => {
       if (String(cell).trim() !== '' && scores[q] === null) {
-        warnings.push(`${row} (${name}): Q${q + 1} reads "${String(cell).trim()}" — not a grade, treated as missing`);
+        warnings.push(`${row} (${name}): Q${q + 1} reads "${String(cell).trim()}", which is not a grade, so it counts as missing`);
       }
     });
 
@@ -196,7 +196,7 @@ export function parsePastedData(raw) {
       return;
     }
     const missing = scores.filter(v => v === null).length;
-    if (missing > 0) warnings.push(`${row} (${name}): ${missing} quarter(s) missing — no final grade`);
+    if (missing > 0) warnings.push(`${row} (${name}): ${missing} quarter(s) missing, so no final grade`);
 
     students.push({ name, scores });
   });

@@ -11,10 +11,11 @@ You own these paths. Inside them, edit, add, delete and restructure freely:
 - `Projects/golden-hour-beach/**` — the whole folder:
   - `index.html`
   - `js/main.js`, `js/terrain.js`, `js/ocean.js`, `js/controls.js`, `js/wildlife.js`,
-    `js/audio.js`
+    `js/audio.js`, `js/field.js`, `js/props.js`
   - `css/style.css`
   - `libs/three.module.js`, `libs/three.core.js`, `libs/Sky.js`, `libs/Water.js`
   - `assets/waternormals.jpg`, `assets/textures/` — the vendored sand pair and its README
+  - `test/smoke.mjs`
   - `README.md`
 
 **Everything else in the repo is read-only to you.** Read whatever you like; change
@@ -47,14 +48,25 @@ overwritten.
 ## Required reading
 
 1. This whole file.
-2. **`gvb-site-handoff-v7.md` §5 — entirely about this project**, and the source of locked
+2. **`Claude Prompts/notes/08-golden-hour-notes.md` — round 1's session notes for this exact
+   project, and your primary source for what changed.** `Claude Prompts/archive/` holds every
+   earlier round if you need more history than that.
+3. **`gvb-site-handoff-v8.md` §2 and §9 locked decision #44** — the offsite-measurement hole
+   this project's own prior session flagged (`page.__blocked` reading empty on a page that
+   still hotlinks fonts, because `harness.mjs`'s font shim answers the request before the
+   blocked-list check ever sees it) is fixed now: `harness.mjs` reports `page.__shimmed`
+   separately, and `check-integrity.mjs` has a static source sweep that doesn't need a browser
+   at all. Golden Hour had zero offsite requests either way, but the tooling that would have
+   caught a regression here now actually works. Also §5 (this game's `play-games.mjs` beats
+   landed, site suite 94 → 126) and §6 (this game's preview and OG card were recaptured).
+4. `gvb-site-handoff-v7.md` §5 — entirely about this project, and the source of locked
    decision #42. Also §3 (what the suite drives here), §6 (Chrome throttling), §10.
-3. `gvb-site-handoff-v6.md` §1, and specifically the sub-section "Golden Hour is allowed one
+5. `gvb-site-handoff-v6.md` §1, and specifically the sub-section "Golden Hour is allowed one
    offsite request, deliberately" — that is the decision v7 §5 reversed. Read both to
    understand why, because the reasoning is more useful than the outcome. Also §9 locked
    decisions #28 through #35.
-4. `Projects/golden-hour-beach/assets/textures/README.md` and `Projects/golden-hour-beach/README.md`.
-5. `gvb-site-handoff-v4.md` §5 locked decisions #17, #18, #19.
+6. `Projects/golden-hour-beach/assets/textures/README.md` and `Projects/golden-hour-beach/README.md`.
+7. `gvb-site-handoff-v4.md` §5 locked decisions #17, #18, #19.
 
 ## House rules for every file in this repo
 
@@ -75,6 +87,12 @@ overwritten.
   already-on-disk, npm-authoritative copies to source from (locked decision #19).
 - **Measure before deciding an asset is too heavy** (locked decision #42). **This rule was
   written about this project.** See below.
+- **`page.__blocked` proves a request was refused, not that none was made** (locked decision
+  #44). `harness.mjs`'s font shim fulfills Google Fonts requests before the blocked-list check
+  runs, so `__blocked` could read empty on a page that still hotlinks. Fixed this round:
+  `harness.mjs` now also reports `page.__shimmed`, and `check-integrity.mjs` has a static
+  source sweep that greps every `.html` for offsite tags and CSS `url()`s without needing a
+  browser. Confirmed clean for this project — see "What is actually here."
 - **Direct `camera.rotation` writes only work where `PointerLockControls` does** (locked
   decision #35). Three of the four 3D projects own the camera's rotation and rewrite it
   every frame; use `lookAt` for those, and prefer it over `turnBy` because Playwright
@@ -87,66 +105,124 @@ overwritten.
 
 ## What is actually here
 
-Six `js/` modules, a `libs/` with three.module.js + three.core.js + Sky.js + Water.js, and
-an `assets/` folder with `waternormals.jpg` and a vendored sand pair. Tagged `Explore` on the
-board with a preview and OG card. No save, no score, no fail state.
+This was an empty, beautiful sea view as of round 1's audit. It is not anymore. Eight `js/`
+modules now (`main.js`, `terrain.js`, `ocean.js`, `controls.js`, `wildlife.js`, `audio.js`,
+plus two new ones, `field.js` and `props.js`), a `libs/` with three.module.js + three.core.js
++ Sky.js + Water.js, an `assets/` folder with `waternormals.jpg` and the vendored sand pair,
+and a `test/smoke.mjs`. Tagged `Explore` on the board with a preview and OG card, both
+recaptured this round to show the new content (the groyne and the sailboat on the sun path
+is the shot now, not an empty beach). No save, no score, no fail state — still the right call,
+see the task list.
 
-**The sand texture story, because it is the most instructive thing in this project's
-history.** For two sessions the sand was hotlinked from `dl.polyhaven.org`, and the one
-argument against vendoring it was an estimate of "two 1k JPEGs, roughly 1 to 2 MB". Last
-session someone finally ran two `curl -I`s: **they are 370 KB for the pair** — 113 KB
-diffuse, 257 KB normal — against a repo whose Castle Conundrum asset kit alone is 178 MB.
-The estimate was wrong by 4× and had never been checked. That is locked decision #42, and it
-is the reason `harness.mjs` has an `allow` list with no users left: it was added so a preview
-capture could let the polyhaven request through, because blocking it left `terrain.js` on its
-procedural fallback and captured a beach no visitor ever saw.
+**There is something on the beach now.** 491 placed objects: a groyne (16 weathered posts
+walking from dry sand into the water at the west end, tops descending to the waterline — the
+best thing in the piece), a boulder cluster in the shallows at the east end (11 rocks), four
+hand-placed driftwood pieces, and a 460-piece wrack line strung along the tide mark the full
+width of the beach. The groyne, driftwood and boulders are each one merged mesh; the wrack is
+three `InstancedMesh`es, not 460 separate objects — `test/smoke.mjs` and `play-games.mjs` both
+guard that on purpose, because the day someone "simplifies" it into a loop is the day this
+page starts costing 460 draw calls. `js/field.js` is the new pure-arithmetic heightfield
+(`terrain.js`, `ocean.js`, `props.js` and `main.js` all read `groundHeight` from it), and
+splitting it out from the `three`-importing files is what makes it testable under plain Node
+at all.
+
+**The sun moves.** It drifts from 5.6° to 1.1° elevation over 8 minutes of walking, then
+stops — deliberately does not go all the way down, since a fully dark beach is a different,
+worse piece. One `setSunElevation()` in `main.js` drives all 8 things the sun touches (sky
+uniform, light position/color/intensity, both hemisphere colors, ambient, fog color,
+tone-mapping exposure, the water shader's sun direction/color) so nothing can drift out of
+sync. Over the ~30 s a preview capture takes, the sun moves about 0.3°, which is deliberate —
+locked decision #29 warns against animating something *because* it would trivially satisfy the
+preview's motion assertion, and the ripple, swash and gulls already move every frame regardless.
+
+**Arrow-key look is real now, not a second copy of WASD.** Mouse-look used to be the only way
+to turn, and pointer lock ends on Esc, alt-tab, or anything stealing focus — a player could
+still walk with nothing to look at. The arrow keys now turn the camera at 1.15 rad/s on their
+own; the whole beach is reachable from the keyboard alone. A `pointerlockchange` status pill
+tells the player as much ("Mouse released, click to look with the mouse, or use the arrow
+keys"), hidden on touch, and respects `prefers-reduced-motion`.
+
+**Two bugs that were in every screenshot the site has ever taken of this game are fixed.** The
+sun glint sprite was compositing with normal alpha blending over a much brighter `Sky.js`
+radiance, so it was subtracting light — a fuzzy dark-orange smudge on the brightest part of
+the frame, clearest in the mobile portrait capture. Fixed with `blending:
+THREE.AdditiveBlending`. And `camera.rotation.order` was the default `XYZ`; the controls
+compose yaw-then-pitch via `rotateY`/`rotateX` every frame, so the wrong Euler order meant
+anything that *reads* `camera.rotation` — `drive.mjs`'s `camState`, which every driving script
+uses to aim — got a false reading. No visual bug, the quaternion was always right, but every
+automated driver aiming this game was silently wrong until this fix. It's `YXZ` now.
+
+**`test/smoke.mjs`, new, 33 checks, exits non-zero.** Asserts no reachable cliff anywhere a
+walker can go, every prop inside the walkable bounds, the groyne's tops descend to the
+waterline, the boulders break the surface, the driftwood touches sand without floating over
+it. Confirmed still 33/33 this round.
+
+**`npm run games`'s `golden-hour` suite carries this game's own beats now.** Five checks
+landed in `play-games.mjs`: the wrack line reports more than 400 instances across at most 4
+`InstancedMesh`es, the arrow keys turn the camera with pointer lock released, and the sun's
+elevation and fog color both move over a 6-second sample. Confirmed present in the file and
+passing.
 
 **`terrain.js` still paints its procedural canvas sand first and swaps the vendored textures
 in when they decode.** That is deliberate: deleting the textures makes the beach look
-hand-mixed rather than breaking it. Keep that property. If you change the texture pipeline,
-check the fallback still works by temporarily renaming `assets/textures/`.
+hand-mixed rather than breaking it, and it's still the fallback that ran cleanly when this was
+last verified (renaming `assets/textures/` produced 4 expected FAILs and a beach that still
+rendered complete). Keep that property. If you change the texture pipeline, check the
+fallback still works the same way.
 
-`npm run games` drives this game: it walks, turns, asserts the vendored sand is actually on
-the ground, and asserts nothing left the site.
+**Zero offsite requests, still.** Grepped the whole folder for `fonts.googleapis.com`,
+`fonts.gstatic.com`, `cdnjs.cloudflare.com`, `cdn.jsdelivr.net` and any other non-local host —
+nothing but doc-comment URLs inside the vendored three.js files, which are comments, not
+requests. `check-integrity.mjs`'s new static sweep (see Required reading and locked decision
+#44) is what actually proves this now instead of relying on what the browser suite happens to
+drive.
 
-**One thing to know about the offsite assertion.** `page.__blocked` being empty is what
-proves the sand is vendored, and here it genuinely works. But it has a hole elsewhere in the
-repo: `prepPage()` *fulfills* Google Fonts requests locally from bundled `@fontsource`
-packages before the blocked-list check runs, so font hotlinks are invisible to it. Fifteen
-pages still hotlink fonts, including `index.html`. That doesn't affect you — this project
-hotlinks none — but do not add one thinking the suite will catch it if you get it wrong.
+**The sand texture story, because it is still the most instructive thing in this project's
+history.** For two sessions the sand was hotlinked from `dl.polyhaven.org`, and the one
+argument against vendoring it was an estimate of "two 1k JPEGs, roughly 1 to 2 MB". Someone
+finally ran two `curl -I`s: **they are 370 KB for the pair** — 113 KB diffuse, 257 KB normal —
+against a repo whose Castle Conundrum asset kit alone is 178 MB. The estimate was wrong by 4×
+and had never been checked. That is locked decision #42, and it is the reason `harness.mjs`
+has an `allow` list with no users left: it was added so a preview capture could let the
+polyhaven request through, because blocking it left `terrain.js` on its procedural fallback
+and captured a beach no visitor ever saw.
 
 ## Your task
 
-There is no open backlog for this project. Last session closed its only item.
+Last session was an audit that found real bugs and decided the piece needed content, then
+fixed and built both. This session has a real, concrete backlog, in priority order:
 
-**Audit, plan, then build the top items.** Write a prioritized plan into your notes, ordered
-by value per effort, with tradeoffs named. Things worth forming an opinion about:
+1. **Stop the walk at wading depth.** Currently you can walk to eye-level 3.8 m underwater —
+   nothing stops you, and it's a strange place to end up. A naive `bounds.minZ` clamp is the
+   wrong fix. The interesting version lets a player wade to about knee depth with the camera
+   dropping properly and the swash sound rising as they go in. Budget an hour, not a session.
+2. **Break up the sand tiling.** At a 60×34 repeat over a 400×220 plane each tile is roughly
+   6.6 m, which stretches the photographed ripples into a visible diagonal corduroy moiré
+   across the whole beach — the last obviously synthetic thing in an otherwise convincing
+   frame. Raising the repeat just trades one tiling artifact for a smaller, more frequent one.
+   The real fix is a second low-frequency detail texture multiplied over the diffuse at a
+   different repeat — can be a canvas texture, same as the wet-sand and foam ramps, so it
+   costs no bytes (locked decision #42 doesn't even come into it).
+3. **Footprints.** The piece's most obvious missing pleasure, and not expensive: an
+   `InstancedMesh` ring buffer of shallow dark ovals dropped per footstep, fading over about a
+   minute, only on wet sand. `audio.js` already fires a `_footstep()` hook on a phase counter
+   to key off of.
+4. **A low-end hardware measurement.** Everything measured so far says this piece is nowhere
+   near fill-rate bound — the water's 0.8 ms/frame cost didn't move across three render
+   resolutions on one desktop — but every number was taken on that one machine. Worth one run
+   on integrated graphics before anyone leans on "the water is affordable" as settled.
+5. **Cosmetic, low priority.** The dune grass is still `LineSegments`, reading as yellow
+   scratches at any distance. Camera-facing alpha-textured quads would fix it for one draw
+   call, but the dunes are also the direction nobody should be walking toward, so this is low
+   value.
 
-- **Is there enough here?** This is the site's only piece with no goal, and that is a
-  legitimate design. But `Explore` still has to reward walking. Walk the whole beach with
-  fresh eyes and ask what you found. Is there anywhere to go, anything to notice, any reason
-  to turn around? `wildlife.js` exists — does it do enough to be noticed?
-- **Time of day.** It is called Golden Hour and the sky is a `Sky.js` shader. Does the light
-  move? Should it? A sun that visibly sets over five minutes would change what the piece is,
-  for a small amount of code. Weigh it against the fact that the preview capture asserts the
-  frame changes (locked decision #28) and a moving sun would satisfy that trivially, which
-  locked decision #29 explicitly warns against treating as the goal.
-- **Audio.** `js/audio.js` exists. Does anything play? Surf is most of the atmosphere in a
-  beach piece, and `Audio/thepwhatnow.mp3` at the repo root suggests audio has been handled
-  ad hoc before. Anything you add gets vendored into your own folder.
-- **Ocean quality.** `Water.js` is expensive. Frame time with the water on versus off, in
-  numbers, and whether the reflections are worth their cost on a low-end laptop.
-- **Performance generally.** Frame time, draw calls, whether the terrain is one mesh or many.
-  Numbers, not impressions.
-- **Accessibility.** Pointer lock is hostile to some players and this piece has no reason to
-  require it — there is nothing to aim at. A keyboard-only or on-rails viewing mode is worth
-  considering, and `@media (prefers-reduced-motion: reduce)` is already used elsewhere in
-  this repo.
-- **Mobile.** 375×812. For a pointer-lock 3D piece "not supported" is a legitimate answer,
-  but if this one could work on a phone it is the best candidate on the site.
-- **Does it need a save?** Probably not, and saying so in writing is a useful answer.
-  `assets/js/gvb-save.js` exists if it does.
+Also still true from last round, not urgent enough to be a task: `wildlife.js`'s dolphin and
+plane are correctly tuned for a long quiet visit and shouldn't be touched blind — worth a
+second look only after someone has actually spent real time on the now-populated beach. And
+**this project should keep not having a save.** The only candidate state is how far the sun
+has descended, and persisting that is actively wrong — a returning visitor should get the
+strong opening frame every time, not arrive mid-descent or at the bottom of the ramp.
+`assets/js/gvb-save.js` exists; this project is a correct non-adopter.
 
 ## Verification
 
@@ -154,17 +230,26 @@ by value per effort, with tradeoffs named. Things worth forming an opinion about
   pane** (locked decision #25). A hidden pane doesn't composite WebGL, so rAF never fires and
   every frame-dependent check *hangs* rather than failing loudly. `gvb-site-handoff-v5.md`
   §4 has the recipe.
-- `cd Tools/board-check && npm run games` → currently 94 checks, 0 failed. Run it after every
-  structural change. The whole reason it exists is that engine-level correctness says nothing
-  about whether the wiring works in a browser.
+- `node Projects/golden-hour-beach/test/smoke.mjs` → 33 checks, 0 failed. This is the layout
+  guard — cliffs, prop placement, groyne/boulder/driftwood geometry. Run it after any change to
+  `field.js` or `props.js`.
+- `cd Tools/board-check && npm run games` → 126 checks, 0 failed, site-wide across all six
+  games. This game's own slice is the wrack-is-instanced, arrow-key-look and sun-descending
+  beats in `play-games.mjs`'s `golden-hour` suite — run after every structural change. The
+  whole reason it exists is that engine-level correctness says nothing about whether the
+  wiring works in a browser.
 - If you touch the texture pipeline, **temporarily rename `assets/textures/` and confirm the
-  procedural fallback still renders a beach.** That property is deliberate and nothing
-  currently tests it.
+  procedural fallback still renders a beach.** That property is deliberate; it was confirmed by
+  hand last round (renaming produced 4 expected FAILs and a beach that still rendered complete)
+  but nothing automated tests it yet.
 - If you touch anything that shows up in a screenshot, re-run `npm run previews` and look at
   the candidate for this game. Locked decision #28: a preview is a frame from *play* and the
-  capture has to prove it got there.
-- `npm run check` → 235 units, 0 broken, 0 collisions.
-- `npm run social:check` → 23 notices, 23 already current.
+  capture has to prove it got there. The board's current preview and OG card were recaptured
+  this round and now show the groyne and the sailboat on the sun path — if you change the
+  frame again, it needs promoting again.
+- `npm run check` → 327 units, 0 broken; 0 collisions across nine widths, tightest vertical gap
+  9.2px.
+- `npm run social:check` → 22 notices, 22 already current.
 - Anything you add that verifies something exits non-zero on failure (locked decision #13),
   and you break it on purpose first to watch it fail (locked decision #34).
 

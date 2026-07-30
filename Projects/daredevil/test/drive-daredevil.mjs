@@ -1,11 +1,11 @@
 // drive-daredevil.mjs — the way into Daredevil and the way through it.
 //
 // Daredevil is a branching narrative with four canvas stunt runs bolted into
-// the middle of it. Playing it by hand to an ending is ~250 clicks, and the
-// two things a regression suite has to prove — that a branch still exists, and
-// that a stunt still routes to the right outcome scene — are exactly the two
-// things that fail silently when a refactor goes wrong. So the driver reads the
-// live DOM every step, decides what screen it is looking at, and acts.
+// the middle of it. Playing it by hand to an ending is ~700 clicks, and the two
+// things a regression suite has to prove — that a branch still exists, and that
+// a stunt still routes to the right outcome scene — are exactly the two things
+// that fail silently when a refactor goes wrong. So the driver reads the live
+// DOM every step, decides what screen it is looking at, and acts.
 //
 // Nothing here re-implements game logic. `pick()` matches the visible label of
 // a real button and clicks it; if the button is gone, the run stops and says so.
@@ -23,75 +23,98 @@ export const wait = ms => new Promise(r => setTimeout(r, ms));
 
 /* ---------------------------------------------------------------- screens */
 
-/** Which of the seven layers is on screen, plus the two overlays. */
-export const where = page => page.evaluate(() => {
+// The two overlays float ON TOP of a layer that is still `.active` —
+// `showChapter()` and `showMgResult()` never call `showScreen()`. So the set of
+// things a player can actually click is the overlay's buttons when an overlay
+// is up and the active layer's only when one isn't. Scanning both at once is
+// how the first version of this driver clicked "Hit the Road" behind a chapter
+// card six times and reported the game as dead-ended.
+const PAGE_SCAN = function () {
   const on = id => document.getElementById(id)?.classList.contains('active');
-  if (document.getElementById('reporter')?.classList.contains('on')) return 'reporter';
-  if (document.getElementById('chapter-transition')?.classList.contains('visible')) return 'chapter';
+  const reporter = document.getElementById('reporter');
+  const chapter = document.getElementById('chapter-transition');
+  if (reporter && reporter.classList.contains('on')) return { screen: 'reporter', root: reporter };
+  if (chapter && chapter.classList.contains('visible')) return { screen: 'chapter', root: chapter };
   for (const id of ['title', 'setup', 'panel', 'stats', 'minigame', 'hub', 'end'])
-    if (on('screen-' + id)) return id;
-  return 'none';
-});
+    if (on('screen-' + id)) return { screen: id, root: document.getElementById('screen-' + id) };
+  return { screen: 'none', root: null };
+};
+
+const PAGE_CONTROLS = function (scan) {
+  const { root } = scan();
+  if (!root) return [];
+  return [...root.querySelectorAll('button, .hub-card')].filter(b => b.offsetParent !== null);
+};
+
+// A hub card that has been used keeps its full label and gains `.completed`,
+// not `.disabled` — buildHubCard() just never attaches an onclick. So "is this
+// clickable" has to ask three questions, and a driver that asks only about
+// `.disabled` re-clicks a spent evening forever.
+const PAGE_LOCKED = function (b) {
+  if (b.disabled || b.classList.contains('disabled')) return true;
+  if (b.classList.contains('completed')) return true;
+  if (b.classList.contains('hub-card') && !b.onclick) return true;
+  return false;
+};
+
+const TRIM = s => (s || '').replace(/\s+/g, ' ').trim();
+
+/** Which of the seven layers is on screen, plus the two overlays. */
+export const where = page => page.evaluate(scanSrc => {
+  const scan = eval('(' + scanSrc + ')');
+  return scan().screen;
+}, PAGE_SCAN.toString());
 
 /** Everything a decision needs: the screen, the text on it, the clickable labels. */
-export const snapshot = page => page.evaluate(() => {
-  const txt = el => (el?.textContent || '').replace(/\s+/g, ' ').trim();
-  const on = id => document.getElementById(id)?.classList.contains('active');
-  let screen = 'none';
-  if (document.getElementById('reporter')?.classList.contains('on')) screen = 'reporter';
-  else if (document.getElementById('chapter-transition')?.classList.contains('visible')) screen = 'chapter';
-  else for (const id of ['title', 'setup', 'panel', 'stats', 'minigame', 'hub', 'end'])
-    if (on('screen-' + id)) { screen = id; break; }
-
-  const buttons = [...document.querySelectorAll(
-    '.screen-layer.active button, .screen-layer.active .hub-card, ' +
-    '#reporter.on button, .chapter-transition.visible button')]
-    .filter(b => b.offsetParent !== null)
-    .map(b => ({
-      label: txt(b),
-      locked: b.classList.contains('disabled') || b.disabled,
-    }));
-
+export const snapshot = page => page.evaluate(([scanSrc, ctlSrc, lockSrc]) => {
+  const scan = eval('(' + scanSrc + ')');
+  const controls = eval('(' + ctlSrc + ')');
+  const locked = eval('(' + lockSrc + ')');
+  const t = el => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+  const dd = window.__dd || {};
   return {
-    screen,
-    scene: typeof currentScene === 'string' ? currentScene : null,
-    speaker: txt(document.getElementById('speaker-tag')),
-    text: txt(document.getElementById('panel-text')),
-    heading: txt(document.getElementById('ct-title')) || txt(document.getElementById('stat-update-h')),
-    reason: txt(document.getElementById('stat-update-reason')),
-    hub: txt(document.getElementById('hub-title')),
-    verdict: txt(document.getElementById('rVerdict')),
-    score: txt(document.getElementById('rScore')),
-    detail: txt(document.getElementById('rDetail')),
-    stats: typeof GS === 'object' ? { ...GS.stats } : null,
-    rels: typeof GS === 'object' ? { ...GS.rels } : null,
-    buttons,
+    screen: scan().screen,
+    scene: typeof dd.scene === 'string' ? dd.scene : null,
+    speaker: t(document.getElementById('speaker-tag')),
+    text: t(document.getElementById('panel-text')),
+    chapter: t(document.getElementById('ct-title')),
+    update: t(document.getElementById('stat-update-h')),
+    reason: t(document.getElementById('stat-update-reason')),
+    hub: t(document.getElementById('hub-title')),
+    verdict: t(document.getElementById('rVerdict')),
+    score: t(document.getElementById('rScore')),
+    detail: t(document.getElementById('rDetail')),
+    stats: dd.GS ? { ...dd.GS.stats } : null,
+    rels: dd.GS ? { ...dd.GS.rels } : null,
+    flags: dd.GS ? { ...dd.GS.flags } : null,
+    // `save` flags the gvb-save bar's own controls. They are real buttons on a
+    // real screen, but clicking one is not a move in the story — a driver that
+    // treats them as playable spends every hub turn exporting a file.
+    buttons: controls(scan).map(b => ({ label: t(b), locked: locked(b), save: !!b.dataset.gvb })),
   };
-});
+}, [PAGE_SCAN.toString(), PAGE_CONTROLS.toString(), PAGE_LOCKED.toString()]);
 
 /** Click the first visible, unlocked control whose label contains `needle`. */
 export async function pick(page, needle) {
-  const hit = await page.evaluate(n => {
-    const txt = el => (el.textContent || '').replace(/\s+/g, ' ').trim();
-    const els = [...document.querySelectorAll(
-      '.screen-layer.active button, .screen-layer.active .hub-card, ' +
-      '#reporter.on button, .chapter-transition.visible button')]
-      .filter(b => b.offsetParent !== null);
-    const el = els.find(b =>
-      txt(b).toLowerCase().includes(n.toLowerCase()) &&
-      !b.classList.contains('disabled') && !b.disabled);
+  const hit = await page.evaluate(([scanSrc, ctlSrc, lockSrc, n]) => {
+    const scan = eval('(' + scanSrc + ')');
+    const controls = eval('(' + ctlSrc + ')');
+    const locked = eval('(' + lockSrc + ')');
+    const t = el => (el.textContent || '').replace(/\s+/g, ' ').trim();
+    const el = controls(scan).find(b => t(b).toLowerCase().includes(n.toLowerCase()) && !locked(b));
     if (!el) return null;
     el.click();
-    return txt(el).slice(0, 120);
-  }, needle);
+    return t(el).slice(0, 140);
+  }, [PAGE_SCAN.toString(), PAGE_CONTROLS.toString(), PAGE_LOCKED.toString(), needle]);
+
   if (!hit) {
     const s = await snapshot(page);
     throw new Error(
       `no clickable "${needle}" on screen "${s.screen}" (scene ${s.scene}).\n` +
       `  visible: ${s.buttons.map(b => (b.locked ? '[locked] ' : '') + b.label.slice(0, 60)).join(' | ') || '(nothing)'}`);
   }
-  await wait(90);
-  return hit;
+  await wait(80);
+  return TRIM(hit);
 }
 
 /* ------------------------------------------------------------- minigames */
@@ -101,37 +124,35 @@ export async function pick(page, needle) {
  *
  * `mode` is "good" (aim for a clean landing) or "crash" (pin the throttle and
  * let the drift take it). The stunt run's own numbers decide the rest: the
- * approach wants v near GREEN_C=485 at the lip, and the air wants the body
- * angle at the landing slope, -18deg. `w` is fed into the error term because a
- * plain proportional loop on angle alone oscillates straight through the band.
+ * approach wants speed near GREEN_C=485 at the lip, and the air wants the body
+ * angle at the landing slope, -18deg. `w` is in the error term because a plain
+ * proportional loop on angle alone swings straight through the band and back.
  *
- * The recovery minigame is a timing exercise; the driver lets it time out,
- * which is a legitimate way to finish it and only ever happens after a crash.
+ * The recovery minigame is a timing exercise with a per-round clock; the driver
+ * lets it time out, which finishes it honestly with a low score and only ever
+ * happens after a crash anyway.
  */
-export async function autopilot(page, mode = 'good', timeoutMs = 45000) {
+export async function autopilot(page, mode = 'good', timeoutMs = 60000) {
   await page.evaluate(m => {
     window.__apStop = false;
-    const TARGET_V = m === 'crash' ? 999 : 485;
+    const TARGET_V = m === 'crash' ? 9999 : 485;
     const TARGET_TH = -18;
     const tick = () => {
       if (window.__apStop) return;
-      const a = typeof mgActive !== 'undefined' ? mgActive : null;
+      const a = (window.__dd && window.__dd.mg) || null;
       const t = a && a.tele;
-      if (a && t) {
+      if (a && t && a.onGas) {
         if (t.phase === 'approach') {
-          a.onGas && a.onGas(t.v < TARGET_V - 8);
-          a.onLean && a.onLean(m !== 'crash' && t.v > TARGET_V + 8);
+          a.onGas(t.v < TARGET_V - 8);
+          a.onLean(m !== 'crash' && t.v > TARGET_V + 8);
         } else if (t.phase === 'air') {
-          if (m === 'crash') { a.onGas && a.onGas(true); a.onLean && a.onLean(false); }
+          if (m === 'crash') { a.onGas(true); a.onLean(false); }
           else {
             const err = (t.th - TARGET_TH) + 0.22 * (t.w || 0);
-            a.onGas && a.onGas(err < -1.5);
-            a.onLean && a.onLean(err > 1.5);
+            a.onGas(err < -1.5);
+            a.onLean(err > 1.5);
           }
-        } else {
-          a.onGas && a.onGas(false);
-          a.onLean && a.onLean(false);
-        }
+        } else { a.onGas(false); a.onLean(false); }
       }
       requestAnimationFrame(tick);
     };
@@ -145,7 +166,7 @@ export async function autopilot(page, mode = 'good', timeoutMs = 45000) {
   }
   await page.evaluate(() => { window.__apStop = true; });
   if (await where(page) !== 'reporter') {
-    const tele = await page.evaluate(() => (typeof mgActive !== 'undefined' && mgActive ? mgActive.tele : null));
+    const tele = await page.evaluate(() => (window.__dd && window.__dd.mg ? window.__dd.mg.tele : null));
     throw new Error(`minigame never finished in ${timeoutMs}ms; tele=${JSON.stringify(tele)}`);
   }
   return snapshot(page);
@@ -153,10 +174,18 @@ export async function autopilot(page, mode = 'good', timeoutMs = 45000) {
 
 /* ------------------------------------------------------------------ boot */
 
-export async function open(page, base, { name = '', town = '' } = {}) {
+export const SAVE_KEY = 'daredevil-save-v1';
+
+export async function open(page, base, { name = '', town = '', wipe = true } = {}) {
   await page.goto(base + URL_PATH, { waitUntil: 'load' });
+  if (wipe) {
+    // Clear the key and reload. Clearing without a reload does nothing: the
+    // module has already read the save and put Continue on the title screen.
+    await page.evaluate(k => localStorage.removeItem(k), SAVE_KEY);
+    await page.reload({ waitUntil: 'load' });
+  }
   await page.evaluate(() => document.fonts.ready);
-  await wait(250);
+  await wait(200);
   await pick(page, 'Begin');
   if (name || town) {
     await page.evaluate(([n, t]) => {
@@ -165,13 +194,16 @@ export async function open(page, base, { name = '', town = '' } = {}) {
     }, [name, town]);
   }
   await pick(page, 'Hit the Road');
-  await wait(500);            // chapter overlay fades in
+  await wait(450);            // the chapter overlay fades in over 400ms
 }
 
 export async function boot({ headed = false, port = 8137 } = {}) {
-  const srv = serve(port);
+  const srv = await serve(port);
   const base = `http://127.0.0.1:${port}`;
   const browser = await launch({ headed });
   const page = await prepPage(browser, base, { width: 1280, height: 1000, dsf: 1 });
-  return { srv, base, browser, page, async done() { await page.close(); await browser.close(); srv.close(); } };
+  return {
+    srv, base, browser, page,
+    async done() { await page.close(); await browser.close(); srv.close(); },
+  };
 }

@@ -50,6 +50,13 @@ belongs there. A save can be missing a field without the version ever moving (a
 hand-edited localStorage, a write cut short by a quota error), and the pass that
 used to live in each project's own `load()` has nowhere else to go.
 
+`repair` is also where **content drift** goes, not just schema drift. A
+data-driven game whose save holds one entry per content file will meet saves
+written before half that content existed — Closing Time's `repairCareer`
+backfills a market entry for every listing in the DB the save has never heard
+of, which is not a version problem, it is a "content shipped after this save
+did" problem, and it runs on every load for exactly that reason.
+
 Both are caught: a `migrate` or `repair` that throws makes the load return `null`
 rather than taking the game down with it.
 
@@ -66,7 +73,9 @@ mountSaveBar(document.getElementById("save-bar"), slot, {
   buttons: ["export", "import"],     // default is all three, reset last
   getState: () => state,
   setState: s => { state = s; redraw(); },
-  onMessage: text => toast(text)     // optional; falls back to inline text
+  onMessage: text => toast(text),    // optional; falls back to inline text
+  filename: () => `${state.heroName}.save.json`,   // optional, export() only
+  labels: { export: ["Save to file", "Download all sections as one .json file"] },
 });
 ```
 
@@ -77,7 +86,20 @@ on, so a driver script can click one without depending on order or label text.
 
 `setState` gets a state the game has to actually take up: reloading the world,
 redrawing, whatever a fresh start does. An imported save can be from any point in
-a campaign, not just the one the page is currently showing.
+a campaign, not just the one the page is currently showing. **`setState` runs
+before the import reaches storage**, and can veto it by returning `false` — a
+host that rejects an id from a content pack this browser hasn't loaded should
+not have already overwritten what was on disk by the time it finds out.
+
+`filename` overrides the export button's default `<game>-save-YYYY-MM-DD.json`
+— a function (called at click time) or a plain string. Useful when a save is
+named after something other than the game, like a hero.
+
+`labels` overrides a button's default text and title without touching its
+`data-gvb` attribute or click order — `{ export: [label, title] }`. Handy when
+"Export save" / "Import save" / "Start over" don't fit the page's own
+vocabulary (a class roster's "Save to file" / "Open file" / "Erase saved data",
+say).
 
 Restyle it from the host page — no need to touch the module:
 
@@ -112,37 +134,53 @@ taken months ago still loads.
 
 | Call | Does |
 | --- | --- |
-| `slot.fresh()` | deep copy of `defaults`, or the result of calling it if it's a function |
-| `slot.load()` | validated state, or `null` |
+| `slot.fresh(...args)` | deep copy of `defaults`, or the result of calling it (with `args`) if it's a function |
+| `slot.load()` | validated state, or `null` — never throws, including when the storage object itself throws on read |
 | `slot.save(state)` | returns `false` on quota/private-mode failure |
-| `slot.reset()` | clears the key, returns a fresh state |
+| `slot.clear()` | erases the key without building a fresh state. Returns whether a key was there |
+| `slot.reset(...args)` | `clear()` then `fresh(...args)` |
 | `slot.autosave(getState, ms)` | `{ mark, flush, stop }` — coalesces writes, flushes on tab hide |
-| `slot.exportToFile(state)` | downloads `<game>-save-YYYY-MM-DD.json` |
+| `slot.exportToFile(state, name?)` | downloads `<game>-save-YYYY-MM-DD.json`, or `name` if given |
 | `slot.promptImport()` | opens a file picker, resolves with state |
 | `slot.serialize/deserialize` | the pure envelope pair (what the tests drive) |
 | `slot.memoryOnly` | true when the browser blocks storage — warn the player |
 
+`fresh`/`reset` forwarding arguments matters when day one depends on a choice
+the module doesn't know about yet — Closing Time's opening career depends on
+which brokerage the player just picked, which a zero-argument factory can't
+express. `clear()` exists for a "wipe" control that shouldn't have to build
+(and immediately discard) a throwaway state just to get to `location.reload()`.
+
 ## Who uses it
 
-**The Fourth Quarter** (`Projects/fourth-quarter/js/campaign.js`), since session 7.
-It is the worked example, and the three things it needed are the three things that
-got added when it landed:
+One adopter for four sessions, then eleven in the space of one round. Every hook
+below exists because a real adopter needed it; none were added speculatively.
 
-- `defaults` may be a **factory**. `newCampaign()` rolls three random job
-  applicants, so day one could not be a literal, and without this `reset()` was
-  useless to it.
-- `repair`, above. The old `loadCampaign()` ran its fill-ins on every load; there
-  was no hook with that shape.
-- `buttons`, above. The start screen has shipped a "New Game (wipe save)" button
-  since long before this module existed.
+| Project | Storage key | Notable in its adoption |
+| --- | --- | --- |
+| **The Fourth Quarter** | `fq3d-save` | The reference integration (session 7). `defaults` as a factory, `repair`, and `buttons` were all added for it. Save bar now mounted on three screens, not just the start overlay |
+| **Aphelion** | `aphelion-save-v1` | Save bar in the logbook rather than a title screen, since the title card vanishes for good once you board |
+| **Closing Time** | `closingTime.save.v1` | `repair` catches **content drift**, not just schema drift — see `migrate` vs `repair` above. Prompted the `fresh(...args)`/`reset(...args)` and `clear()` additions |
+| **Torchbearer** | `torchbearer-save` | Names its export after the hero, not the game — prompted the `filename` option on `mountSaveBar` |
+| **The Absalom Inheritance** | `absalom-inheritance-save-v1` | `repair` clamps a wild coordinate back to a place a body can actually stand, not just to a number |
+| **Corner & Kettle** | (`coffee_shop_sim.html`'s save) | Found the `load()`/`getItem` and private-mode construction gaps this session's fixes close |
+| **Daredevil** | `daredevil-save-v1` | Deliberately does not save the line index inside a scene, so rewriting prose can't strand a save mid-sentence |
+| **Integer Foundry** | `integer-foundry-save-v1` | `slot.autosave()` replaced a hand-rolled 8-second `setInterval`; saves are under a second behind the screen now |
+| **The Fracture Cycle** | `fracture-cycle-v1` | The smallest adoption on the list on purpose — one array, which endings have been seen, not a mid-story save |
+| **Name Picker** | (thirteen `np_` keys) | Wraps every non-object key (arrays, bare strings) in `{value: …}` so the module's `{...state, __v}` spread can't silently corrupt it. See "a slot can't hold an array or a scalar" below |
+| **Seating Chart Generator** | `seating-chart-v1` | Found the `typeof localStorage` construction-time throw this session's fixes close |
 
-The storage key stayed `fq3d-save`, so campaigns saved by older builds still load:
-they carry no version stamp, `normalize()` reads that as version 0, and `repair`
-fills in every field added since. **Keep the old key** when you adopt this
-somewhere else — changing it silently abandons everyone mid-campaign.
+Common thread across all eleven: nobody needed a hook that didn't already
+exist by the time they went looking, except the five gaps found this round
+(`load()`'s unguarded `getItem`, the `typeof localStorage` throw at
+construction, `fresh`/`reset` forwarding, `clear()`, and `mountSaveBar`'s
+`filename`/`labels`/import-ordering) — all fixed as of this session.
 
-What the game got for it: export a campaign to a file and load it back (it
-survives a cleared browser now), a memory-backed fallback when the browser blocks
-storage, and one implementation of "refuse to load garbage" instead of one per
-project. `Tools/board-check/play-games.mjs` drives all of that in a real browser —
-export, import through the file picker, reload, and a pre-versioning save.
+**A slot can't hold an array or a bare scalar.** `save()` writes
+`JSON.stringify({...state, __v: version})`, and spreading an array produces an
+object with numeric-string keys, not an array; spreading a string does
+something similarly wrong. Every adopter above happens to store an object
+except Name Picker, which works around it (`np-store.js`'s `boxed()`: box as
+`{value: …}` for the module, unbox on write so the on-disk format is
+untouched). Worth a `box: true` option on `createSaveSlot` if a second project
+hits the same wall — one data point isn't enough to add it yet.

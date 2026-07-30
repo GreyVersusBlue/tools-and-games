@@ -10,20 +10,37 @@
 <meta property="og:url" content="https://greyversusblue.com/Projects/coffee_shop_sim.html">
 <meta property="og:title" content="Corner &amp; Kettle — greyversusblue">
 <meta property="og:description" content="Run your own coffee shop, one order at a time.">
-<meta property="og:image" content="https://greyversusblue.com/assets/og/guild-board.png">
+<meta property="og:image" content="https://greyversusblue.com/assets/og/corner-and-kettle.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A tavern notice board headed 'The Guild Board of greyversusblue'.">
+<meta property="og:image:alt" content="Corner &amp; Kettle, mid-play.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Corner &amp; Kettle — greyversusblue">
 <meta name="twitter:description" content="Run your own coffee shop, one order at a time.">
-<meta name="twitter:image" content="https://greyversusblue.com/assets/og/guild-board.png">
+<meta name="twitter:image" content="https://greyversusblue.com/assets/og/corner-and-kettle.jpg">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
 <!-- gvb:social:end -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Quicksand:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
+/* ---------- VENDORED FONTS ---------- */
+/* Latin woff2 from the official @fontsource packages, 121.6 KB for the seven
+   faces. See corner-and-kettle/fonts/README.md for source and licence. These
+   replaced a Google Fonts hotlink; nothing here reaches offsite. */
+@font-face{font-family:'Kalam';font-style:normal;font-weight:400;font-display:swap;
+  src:url(corner-and-kettle/fonts/kalam-latin-400-normal.woff2) format('woff2');}
+@font-face{font-family:'Kalam';font-style:normal;font-weight:700;font-display:swap;
+  src:url(corner-and-kettle/fonts/kalam-latin-700-normal.woff2) format('woff2');}
+@font-face{font-family:'Quicksand';font-style:normal;font-weight:400;font-display:swap;
+  src:url(corner-and-kettle/fonts/quicksand-latin-400-normal.woff2) format('woff2');}
+@font-face{font-family:'Quicksand';font-style:normal;font-weight:600;font-display:swap;
+  src:url(corner-and-kettle/fonts/quicksand-latin-600-normal.woff2) format('woff2');}
+@font-face{font-family:'Quicksand';font-style:normal;font-weight:700;font-display:swap;
+  src:url(corner-and-kettle/fonts/quicksand-latin-700-normal.woff2) format('woff2');}
+@font-face{font-family:'Space Mono';font-style:normal;font-weight:400;font-display:swap;
+  src:url(corner-and-kettle/fonts/space-mono-latin-400-normal.woff2) format('woff2');}
+@font-face{font-family:'Space Mono';font-style:normal;font-weight:700;font-display:swap;
+  src:url(corner-and-kettle/fonts/space-mono-latin-700-normal.woff2) format('woff2');}
+
 :root{
   --cream:#F5EDE1;
   --cream-dark:#e9dcc7;
@@ -113,7 +130,16 @@ body{
   padding:0 16px;
   gap:10px;
 }
+/* A <button>, so the queue is keyboard-reachable. Everything below the first
+   four lines is undoing the default button chrome. */
 .customer{
+  appearance:none;
+  background:none;
+  border:none;
+  padding:0;
+  font:inherit;
+  color:inherit;
+  text-align:center;
   position:relative;
   display:flex;
   flex-direction:column;
@@ -123,6 +149,12 @@ body{
   flex-shrink:0;
 }
 .customer:hover{transform:translateY(-4px);}
+.customer:focus-visible{
+  outline:3px solid var(--copper);
+  outline-offset:3px;
+  border-radius:8px;
+  transform:translateY(-4px);
+}
 .customer.served{
   animation:walkoff 0.6s forwards;
 }
@@ -348,6 +380,14 @@ body{
   padding:8px 10px;cursor:pointer;
 }
 #newGameBtn:hover{background:#872f21;}
+#save-bar{
+  margin:0 0 14px 0;
+  --gvb-btn-bg:#33422f;
+  --gvb-btn-fg:#f2ead7;
+  --gvb-btn-border:#7a8a6f;
+  --gvb-btn-radius:8px;
+}
+#save-bar button{font-family:'Quicksand',sans-serif;font-weight:700;}
 #chalkboard{
   position:fixed;top:0;right:-380px;width:340px;height:100%;
   background:#1f2b22;color:#f2ead7;
@@ -498,11 +538,12 @@ body{
 
 </div>
 
-<button id="chalkToggle" title="Menu board">📋</button>
-<button id="muteToggle" title="Mute sounds">🔊</button>
+<button id="chalkToggle" title="Menu board" aria-label="Open the menu board">📋</button>
+<button id="muteToggle" title="Mute sounds" aria-label="Mute sounds">🔊</button>
 <div id="chalkboard">
   <h2>Menu Board</h2>
   <button id="newGameBtn" title="Erase saved progress and start over">🗑️ New Game</button>
+  <div id="save-bar"></div>
   <div id="chalkContent"></div>
 </div>
 
@@ -514,12 +555,24 @@ body{
   </div>
 </div>
 
-<div id="toastWrap"></div>
+<!-- Every piece of feedback this game gives is a toast: what was served, what it
+     paid, the combo bonus, an event firing. Without a live region a screen
+     reader announces none of it. -->
+<div id="toastWrap" role="status" aria-live="polite" aria-atomic="false"></div>
 
-<script>
+<script type="module">
 /* =========================================================
    CORNER & KETTLE — coffee shop sim
    ========================================================= */
+
+// Persistence lives in corner-and-kettle/js/save.js, on top of the shared
+// gvb-save module: file export/import, a memory fallback when the browser
+// blocks storage, and a validator that refuses a corrupt blob instead of
+// booting on it. Relative import so the Node test resolves the same path.
+import { mountSaveBar } from "../assets/js/gvb-save.js";
+import {
+  buildCatalog, createCornerKettleSlot, toSaveData, applyToState,
+} from "./corner-and-kettle/js/save.js";
 
 /* ---------- DATA ---------- */
 
@@ -784,6 +837,24 @@ function fireRandomEvent(){
 
 /* ---------- STATE ---------- */
 
+// Day one's menu. One definition, read by the state initializer, doPrestige()
+// and the save catalog — repairSave() unions a loaded save with this, so a
+// save that somehow lost 'drip' can't leave the order generator picking from
+// an empty pool.
+const STARTING_UNLOCKS = {
+  recipes: ['drip','americano','latte','cappuccino','icedcoffee'],
+  syrups: ['vanilla','caramel'],
+  toppings: ['whip','cinnamon'],
+  foods: ['croissant','bagel'],
+};
+
+// Today's scoreboard. Never persisted — a reload reopens the shop at Dawn on
+// the same day, so the day's tally starts over with it.
+function freshDayStats(){
+  return { drinksServed:0, foodServed:0, totalTips:0, accuracySum:0, accuracyCount:0,
+    wagesPaid:0, bestTip:0, bestTipName:'', worstMiss:null, events:[], repDelta:0 };
+}
+
 let state = {
   day:1,
   money:60,
@@ -792,10 +863,10 @@ let state = {
   shiftStartTime:null,
   shiftElapsed:0,
   shiftRunning:true,
-  unlockedRecipes: new Set(['drip','americano','latte','cappuccino','icedcoffee']),
-  unlockedSyrups: new Set(['vanilla','caramel']),
-  unlockedToppings: new Set(['whip','cinnamon']),
-  unlockedFoods: new Set(['croissant','bagel']),
+  unlockedRecipes: new Set(STARTING_UNLOCKS.recipes),
+  unlockedSyrups: new Set(STARTING_UNLOCKS.syrups),
+  unlockedToppings: new Set(STARTING_UNLOCKS.toppings),
+  unlockedFoods: new Set(STARTING_UNLOCKS.foods),
   queue: [], // waiting customers {id, recipeId, custom:{milk,syrup,toppings:[],ice}, food:bool, patience, patienceMax, sprite}
   slots: [null, null], // active {customer, cup} — length grows via station upgrades
   focusedSlot: 0,
@@ -803,7 +874,7 @@ let state = {
   spawnTimer: null,
   regulars: {}, // name -> persistent favorite order content
   muted: false,
-  dayStats: { drinksServed:0, foodServed:0, totalTips:0, accuracySum:0, accuracyCount:0, wagesPaid:0, bestTip:0, bestTipName:'', worstMiss:null, events:[], repDelta:0 },
+  dayStats: freshDayStats(),
   baristas: [], // {id, name, level, targetSlot:null, acc:0, spec:null, trained:false, working:true}
   stationTab: 'base',
   loyaltyLevel: 0,
@@ -821,7 +892,26 @@ let state = {
 };
 
 const QUEUE_MAX = 5;
-const SAVE_KEY = 'cornerKettleSave_v1';
+
+/* ---------- SAVE SLOT ---------- */
+// The catalog is derived from the tables above rather than written out again,
+// so the ids repairSave() accepts cannot drift from the ids the game renders.
+const CATALOG = buildCatalog({
+  recipes: RECIPES.map(r=>r.id),
+  foods: FOODS.map(f=>f.id),
+  syrups: SYRUPS.map(s=>s.id),
+  toppings: TOPPINGS.map(t=>t.id),
+  milks: MILKS.map(m=>m.id),
+  bases: Object.keys(BASE_COLORS),
+  upgrades: [...EQUIPMENT_UPGRADES, ...AMBIANCE_UPGRADES, ...BUSINESS_UPGRADES].map(u=>u.id),
+  modifiers: DAILY_MODIFIERS.filter(Boolean).map(m=>m.id),
+  baristaNames: BARISTA_NAMES,
+  starting: STARTING_UNLOCKS,
+  shiftMs: SHIFT_MS,
+  presetMax: PRESET_MAX,
+});
+const saveSlot = createCornerKettleSlot(CATALOG);
+const SAVE_KEY = saveSlot.key;
 
 /* ---------- UTIL ---------- */
 function rand(arr){return arr[Math.floor(Math.random()*arr.length)];}
@@ -1218,14 +1308,38 @@ function hexToRgb(hex){
 }
 
 /* ---------- RENDER: QUEUE ---------- */
+// Taking an order off the queue is the game's core verb, and it used to be a
+// click on a bare <div> with no role and no tab stop — so the one thing a
+// player has to do most was the one thing a keyboard could not do. Each
+// customer is a real button now, named with what they actually want, because
+// "customer" repeated five times is not a queue you can read out loud.
+function customerLabel(c){
+  const what = c.isFood
+    ? FOODS.find(f=>f.id===c.foodId).name
+    : (()=>{
+        const r = RECIPES.find(x=>x.id===c.recipeId);
+        const bits = [r.name];
+        if(c.custom.milk) bits.push(MILKS.find(m=>m.id===c.custom.milk).name);
+        if(c.custom.syrup) bits.push(SYRUPS.find(s=>s.id===c.custom.syrup).name+' syrup');
+        c.custom.toppings.forEach(t=> bits.push(TOPPINGS.find(x=>x.id===t).name));
+        if(c.custom.ice) bits.push('iced');
+        return bits.join(', ');
+      })();
+  const who = c.isRegular ? `${c.regularName} (regular)` : 'Customer';
+  const patience = Math.round((c.patience/c.patienceMax)*100);
+  return `${who} waiting for ${what}. ${patience}% patience left. Take this order.`;
+}
+
 function renderQueue(){
   const row = document.getElementById('queueRow');
   row.innerHTML='';
   state.queue.slice(0,queueMax()).forEach((c)=>{
-    const div = document.createElement('div');
+    const div = document.createElement('button');
+    div.type = 'button';
     div.className='customer';
     if(c._servedAnim) div.className+=' served';
     if(c.isRegular) div.className += ' regular';
+    div.setAttribute('aria-label', customerLabel(c));
     const pct = Math.max(0, (c.patience/c.patienceMax))*100;
     div.innerHTML = `
       ${c.isRegular ? `<div class="regularName">${c.regularName}</div>` : ''}
@@ -2139,10 +2253,15 @@ function doPrestige(){
   state.shiftElapsed = 0; state.shiftRunning = true;
   state.queue = [];
   state.slots = [null, null];
-  state.unlockedRecipes = new Set(['drip','americano','latte','cappuccino','icedcoffee']);
-  state.unlockedSyrups = new Set(['vanilla','caramel']);
-  state.unlockedToppings = new Set(['whip','cinnamon']);
-  state.unlockedFoods = new Set(['croissant','bagel']);
+  state.unlockedRecipes = new Set(STARTING_UNLOCKS.recipes);
+  state.unlockedSyrups = new Set(STARTING_UNLOCKS.syrups);
+  state.unlockedToppings = new Set(STARTING_UNLOCKS.toppings);
+  state.unlockedFoods = new Set(STARTING_UNLOCKS.foods);
+  // Regulars survive a reopen but their standing orders don't: a favourite
+  // built from syrups and toppings the reopened shop no longer stocks is an
+  // order the player has no button to make. They re-roll a new favourite on
+  // their next visit, off the day-one menu.
+  state.regulars = {};
   state.baristas = [];
   state.loyaltyLevel = 0;
   state.comboShields = 0;
@@ -2154,7 +2273,7 @@ function doPrestige(){
   state.eventFiredThisShift = false;
   state.eventTriggerAt = randInt(SHIFT_MS*0.2, SHIFT_MS*0.7);
   rollDailyModifier();
-  state.dayStats = { drinksServed:0, foodServed:0, totalTips:0, accuracySum:0, accuracyCount:0, wagesPaid:0, bestTip:0, bestTipName:'', worstMiss:null, events:[], repDelta:0 };
+  state.dayStats = freshDayStats();
   toast(`Reopened with prestige level ${state.prestigeLevel}! Permanent income boost active. 🔁`);
   renderAll();
 }
@@ -2261,7 +2380,7 @@ document.getElementById('modalBtn').onclick = ()=>{
   state.eventFiredThisShift = false;
   state.eventTriggerAt = randInt(SHIFT_MS*0.2, SHIFT_MS*0.7);
   rollDailyModifier();
-  state.dayStats = { drinksServed:0, foodServed:0, totalTips:0, accuracySum:0, accuracyCount:0, wagesPaid:0, bestTip:0, bestTipName:'', worstMiss:null, events:[], repDelta:0 };
+  state.dayStats = freshDayStats();
   renderAll();
 };
 
@@ -2278,87 +2397,43 @@ document.getElementById('muteToggle').onclick = ()=>{
 };
 
 /* ---------- NEW GAME ---------- */
+// This button has always been here, so the save bar mounts export/import only
+// — two controls that erase the shop, side by side, is the footgun the
+// `buttons` option exists to prevent.
 document.getElementById('newGameBtn').onclick = ()=>{
   if(window.confirm('Start a new game? This clears all saved progress (day, money, unlocks).')){
-    clearSave();
-    window.location.reload();
+    adoptSave(saveSlot.reset());
+    rollDailyModifier();   // a fresh state carries no modifier; day one rolls one
+    renderAll();
+    toast('New shop, day one ☕');
   }
 };
 
 /* ---------- SAVE / LOAD ---------- */
+// Nothing below touches localStorage. gvb-save probes it once and falls back
+// to memory when the browser blocks it — and in a browser configured to block
+// storage, *reading the property* throws, not just setItem, so guessing from
+// inside a try/catch here was never going to be enough.
 function saveState(){
-  try{
-    const data = {
-      day: state.day,
-      money: state.money,
-      unlockedRecipes: [...state.unlockedRecipes],
-      unlockedSyrups: [...state.unlockedSyrups],
-      unlockedToppings: [...state.unlockedToppings],
-      unlockedFoods: [...state.unlockedFoods],
-      stationCount: state.slots.length,
-      muted: state.muted,
-      regulars: state.regulars,
-      baristas: state.baristas.map(b=>({id:b.id, name:b.name, level:b.level, spec:b.spec||null, trained:!!b.trained, working:b.working!==false})),
-      loyaltyLevel: state.loyaltyLevel,
-      comboShields: state.comboShields,
-      shieldsPurchased: state.shieldsPurchased,
-      presets: state.presets,
-      reputation: state.reputation,
-      upgrades: [...state.upgrades],
-      prestigeLevel: state.prestigeLevel,
-      dailyModifierId: state.dailyModifierId,
-      eventFiredThisShift: state.eventFiredThisShift,
-      eventTriggerAt: state.eventTriggerAt,
-    };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-  }catch(e){ /* localStorage unavailable — ignore */ }
+  saveSlot.save(toSaveData(state));
 }
 
 function loadState(){
-  try{
-    const raw = localStorage.getItem(SAVE_KEY);
-    if(!raw) return false;
-    const data = JSON.parse(raw);
-    if(typeof data.day==='number') state.day = data.day;
-    if(typeof data.money==='number') state.money = data.money;
-    if(Array.isArray(data.unlockedRecipes)) state.unlockedRecipes = new Set(data.unlockedRecipes);
-    if(Array.isArray(data.unlockedSyrups)) state.unlockedSyrups = new Set(data.unlockedSyrups);
-    if(Array.isArray(data.unlockedToppings)) state.unlockedToppings = new Set(data.unlockedToppings);
-    if(Array.isArray(data.unlockedFoods)) state.unlockedFoods = new Set(data.unlockedFoods);
-    const stationCount = (typeof data.stationCount==='number' && data.stationCount>=2) ? data.stationCount : 2;
-    state.slots = new Array(stationCount).fill(null);
-    state.muted = !!data.muted;
-    if(data.regulars && typeof data.regulars==='object') state.regulars = data.regulars;
-    if(Array.isArray(data.baristas)){
-      state.baristas = data.baristas.map(b=>({
-        id:b.id, name:b.name, level:(b.level===2?2:1), targetSlot:null, acc:0,
-        spec: (b.spec==='bar'||b.spec==='kitchen') ? b.spec : null,
-        trained: !!b.trained,
-        working: b.working!==false,
-      }));
-    } else if(typeof data.baristaLevel==='number' && data.baristaLevel>0){
-      // migrate old single-barista save: one hire at the saved tier
-      state.baristas = [{id:'b_migrated', name:BARISTA_NAMES[0], level:(data.baristaLevel>=2?2:1), targetSlot:null, acc:0, spec:null, trained:false, working:true}];
-    }
-    if(typeof data.loyaltyLevel==='number') state.loyaltyLevel = data.loyaltyLevel;
-    if(typeof data.comboShields==='number') state.comboShields = data.comboShields;
-    if(typeof data.shieldsPurchased==='number') state.shieldsPurchased = data.shieldsPurchased;
-    if(Array.isArray(data.presets)) state.presets = data.presets;
-    // ---- new-system migration defaults (old saves won't have these) ----
-    state.reputation = (typeof data.reputation==='number') ? data.reputation : 50;
-    state.upgrades = Array.isArray(data.upgrades) ? new Set(data.upgrades) : new Set();
-    state.prestigeLevel = (typeof data.prestigeLevel==='number') ? data.prestigeLevel : 0;
-    state.dailyModifierId = (typeof data.dailyModifierId==='string' || data.dailyModifierId===null) ? data.dailyModifierId : null;
-    state.eventFiredThisShift = !!data.eventFiredThisShift;
-    state.eventTriggerAt = (typeof data.eventTriggerAt==='number') ? data.eventTriggerAt : randInt(SHIFT_MS*0.2, SHIFT_MS*0.7);
-    state.marketingRemaining = 0;
-    state.activeEvent = null;
-    return true;
-  }catch(e){ return false; }
+  const data = saveSlot.load();
+  if(!data) return false;
+  applyToState(state, data);
+  return true;
 }
 
-function clearSave(){
-  try{ localStorage.removeItem(SAVE_KEY); }catch(e){ /* ignore */ }
+// Take up a state that arrived from somewhere other than boot — an imported
+// file, or Start Over. The queue has to be rebuilt because applyToState()
+// empties it, and the whole UI redrawn because an import can be from any day.
+function adoptSave(data){
+  applyToState(state, data);
+  state.dayStats = freshDayStats();
+  for(let i=0;i<3;i++) state.queue.push(generateOrder());
+  renderAll();
+  renderClock();
 }
 
 /* ---------- MASTER RENDER ---------- */
@@ -2386,15 +2461,30 @@ function renderAll(){
   saveState();
 }
 
+/* ---------- SAVE BAR ---------- */
+// Mounted in the chalkboard rather than the end-of-day modal. v7 §9 left an
+// item open because the Fourth Quarter's bar lives only on its start screen,
+// so exporting mid-campaign means reloading the page; the chalkboard is one
+// click away at any point in a shift, and the modal only exists once a day.
+function mountBar(){
+  mountSaveBar(document.getElementById('save-bar'), saveSlot, {
+    buttons: ['export', 'import'],
+    getState: () => toSaveData(state),
+    setState: data => adoptSave(data),
+    onMessage: text => toast(text),
+  });
+}
+
 /* ---------- INIT ---------- */
 function init(){
   const hadSave = loadState();
   if(!hadSave){
+    applyToState(state, saveSlot.fresh());
     rollDailyModifier();
-    state.eventTriggerAt = randInt(SHIFT_MS*0.2, SHIFT_MS*0.7);
   }
   const muteBtn = document.getElementById('muteToggle');
   if(muteBtn) muteBtn.textContent = state.muted ? '🔇' : '🔊';
+  mountBar();
   for(let i=0;i<3;i++) state.queue.push(generateOrder());
   renderAll();
   renderClock();
@@ -2408,7 +2498,8 @@ if(typeof window !== 'undefined'){
   window.__CK_DEBUG__ = {
     get state(){ return state; },
     doUnlock, fireRandomEvent, generateOrder, tryAcceptCustomer, orderIsComplete,
-    autoAssistStep, serveSlot, saveState, loadState, queueMax,
+    autoAssistStep, serveSlot, saveState, loadState, adoptSave, queueMax,
+    slot: saveSlot, catalog: CATALOG,
     MARKETING_COST, SAVE_KEY, RANDOM_EVENTS, DAILY_MODIFIERS,
   };
 }

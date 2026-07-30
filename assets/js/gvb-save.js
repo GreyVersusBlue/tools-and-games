@@ -28,7 +28,10 @@
 // absolute one above. Node can't resolve a leading slash, and the relative form
 // works identically in the browser.
 //
-// Adopted by: The Fourth Quarter (Projects/fourth-quarter/js/campaign.js).
+// Adopted by: The Fourth Quarter, Aphelion, Closing Time, Torchbearer,
+// The Absalom Inheritance, Corner & Kettle, Daredevil, Integer Foundry,
+// The Fracture Cycle, Name Picker, and Seating Chart Generator.
+// See assets/js/README.md's "Who uses it" for what each one added.
 
 const ENVELOPE = "gvb-save";
 
@@ -63,7 +66,15 @@ export function createSaveSlot(options) {
   } = options;
 
   if (!game) throw new Error("createSaveSlot: `game` is required");
-  const store = storage || (typeof localStorage !== "undefined" ? defaultStorage() : null);
+  // `typeof localStorage` is not a safe undeclared-identifier check here — it's a
+  // declared accessor on `window`, so the read itself throws in a browser that
+  // blocks storage, before defaultStorage()'s own try/catch ever runs. That is
+  // the exact case the memory fallback exists for, so guard the check too.
+  let store = storage;
+  if (!store) {
+    try { store = typeof localStorage !== "undefined" ? defaultStorage() : null; }
+    catch (e) { store = defaultStorage(); }
+  }
 
   /**
    * Take an untrusted parsed object and return usable state, or null.
@@ -127,14 +138,15 @@ export function createSaveSlot(options) {
    * passes `defaults: newCampaign`. That's what makes `reset()` usable there
    * instead of every caller having to remember to build a fresh state itself.
    */
-  function fresh() {
-    if (typeof defaults === "function") return defaults();
+  function fresh(...args) {
+    if (typeof defaults === "function") return defaults(...args);
     return defaults ? JSON.parse(JSON.stringify(defaults)) : null;
   }
 
   function load() {
     if (!store) return null;
-    const raw = store.getItem(key);
+    let raw;
+    try { raw = store.getItem(key); } catch (e) { return null; }
     if (!raw) return null;
     let parsed;
     try { parsed = JSON.parse(raw); } catch (e) { return null; }
@@ -152,9 +164,18 @@ export function createSaveSlot(options) {
     }
   }
 
-  function reset() {
-    if (store) { try { store.removeItem(key); } catch (e) { /* nothing to do */ } }
-    return fresh();
+  /** Erase the stored save. Returns true if a key was there to remove. */
+  function clear() {
+    if (!store) return false;
+    let had = false;
+    try { had = store.getItem(key) !== null; } catch (e) { return false; }
+    try { store.removeItem(key); } catch (e) { return false; }
+    return had;
+  }
+
+  function reset(...args) {
+    clear();
+    return fresh(...args);
   }
 
   /** Save no more than once every `ms`, with a flush on page hide. */
@@ -236,7 +257,7 @@ export function createSaveSlot(options) {
 
   return {
     game, key, version,
-    fresh, load, save, reset, autosave,
+    fresh, load, save, reset, clear, autosave,
     serialize, deserialize, normalize,
     exportToFile, importFromFile, promptImport, filename,
     get memoryOnly() { return !!(store && store.__memoryOnly); }
@@ -295,6 +316,8 @@ export function mountSaveBar(container, slot, handlers = {}) {
   const {
     getState, setState, onMessage, confirmReset = true,
     buttons = ["export", "import", "reset"],
+    filename = null,   // () => string, or a string — export's download name
+    labels = {},       // { kind: [label, title] } — override the default wording
   } = handlers;
   injectStyles();
 
@@ -309,11 +332,12 @@ export function mountSaveBar(container, slot, handlers = {}) {
   };
 
   const button = (kind, label, title, fn) => {
+    const override = labels[kind];
     const b = document.createElement("button");
     b.type = "button";
     b.dataset.gvb = kind;
-    b.textContent = label;
-    b.title = title;
+    b.textContent = (override && override[0]) || label;
+    b.title = (override && override[1]) || title;
     b.addEventListener("click", fn);
     container.appendChild(b);
     return b;
@@ -321,16 +345,23 @@ export function mountSaveBar(container, slot, handlers = {}) {
 
   const KINDS = {
     export: () => button("export", "Export save", "Download this save as a file", () => {
-      const name = slot.exportToFile(getState());
+      const want = typeof filename === "function" ? filename() : filename;
+      const name = slot.exportToFile(getState(), want || undefined);
       say("Saved to " + name);
     }),
 
+    // setState runs before the write reaches storage, and can veto it by
+    // returning false — a host that rejects an imported state (an id from a
+    // pack this browser hasn't loaded, say) should not have already
+    // overwritten what was on disk by the time it finds out.
     import: () => button("import", "Import save", "Load a save file from your computer", () => {
       slot.promptImport().then(
         state => {
-          slot.save(state);
-          if (setState) setState(state);
-          say("Save loaded.");
+          const accepted = setState ? setState(state) : true;
+          if (accepted !== false) {
+            slot.save(state);
+            say("Save loaded.");
+          }
         },
         err => say(err.message)
       );

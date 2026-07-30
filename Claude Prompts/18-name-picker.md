@@ -1,17 +1,18 @@
 # 18 — Name Picker
 
 You are working on the Name Picker, a classroom tool on greyversusblue.com under the board's "Town
-Services" section. It picks students at random from a roster, and it is **the heaviest
-`localStorage` user in the entire repo** — twelve keys, forty-six call sites. It also holds student
-names, which makes the data-handling section below the most important part of this prompt. This
-prompt is self-contained.
+Services" section. It picks students at random from a roster. Round 1 gave it a full data-safety
+pass, moved all thirteen storage keys onto the shared save module, and fixed a real fairness bug in
+the picking logic. This prompt is self-contained, but read the round-1 notes first (below) — this
+round's task list is short and specific because of what that session already found.
 
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Tools/Name Picker.html` (1,702 lines, 107 KB)
-- Any new folder you create under `Tools/` **named for this tool** — e.g. `Tools/name-picker/`
+- `Tools/Name Picker.html` (2,045 lines, 125 KB)
+- `Tools/name-picker/` — `np-store.js`, `np-pick.js`, `test/smoke.mjs`, `test/blocked-storage.html`,
+  `fonts/` (nine vendored `.woff2` files plus README and licences), `README.md`
 
 **Everything else in the repo is read-only to you.** Read whatever you like; change nothing outside
 that list. Up to twenty other Claude sessions are working on other projects in this same repo right
@@ -21,17 +22,17 @@ Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Card title, description, and the version line (locked decisions #9, #31). Prompt 21. |
-| `Tools/creature_artwork_gallery.html` | **Being deleted this round** by prompt 21. Not yours; don't reference it. |
-| Every other file in `Tools/` | Prompts 16, 17, 19, 20. `Tools/board-check/` is prompt 21's. |
-| `assets/js/gvb-save.js` and its test | The shared save module. **You are the strongest adoption candidate in the repo and you still may not edit it.** Prompt 21. |
+| `index.html` (the repo root one) | The board. Card title, description, and the version line (locked decisions #9, #31). Prompt 21. The board `href` still points at `Tools/Name%20Picker.html`, space and all — see below. |
+| Every other file in `Tools/` | Prompts 16, 17, 19, 20. `Tools/board-check/` is prompt 21's. The Bestiary Gallery that used to sit here is gone; don't reference it. |
+| `assets/js/gvb-save.js` and its test | The shared save module, now backing all thirteen of your keys through `Tools/name-picker/np-store.js`. **You may still not edit the module itself.** Prompt 21. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
 **`Tools/` is capitalized on purpose** (locked decision #14). Windows hides case differences; git and
-GitHub Pages don't. If you rename anything — and the space in `Name Picker.html` is a candidate —
-verify the rename landed in git and not only on disk, and remember the board `href` currently
-URL-encodes it as `Tools/Name%20Picker.html`.
+GitHub Pages don't. The page deliberately **stayed** at `Tools/Name Picker.html`, space and all,
+through round 1 — renaming it to `name-picker.html` needs the board `href` changed in the same
+commit, and that edit belongs to whoever owns `index.html` (prompt 21), not to a solo run of this
+prompt. See the task list.
 
 **If you need a shared file changed, do not change it.** Write the exact edit into the "Shared-file
 requests" section of your notes file, specific enough that someone can apply it without reading your
@@ -45,15 +46,21 @@ silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file, including the student-data section, which is not boilerplate here.
-2. `assets/js/gvb-save.js` and `assets/js/README.md`. All of it.
-3. `Projects/fourth-quarter/js/campaign.js` — the module's worked example — and
-   `gvb-site-handoff-v7.md` §1 for the three gaps adopting it found, plus §2 for the bug class its
-   `repair` hook exists to catch.
-4. `gvb-site-handoff-v7.md` §9 (both open save-design questions), §10 locked decisions #36 through
-   #40.
+2. **`Claude Prompts/notes/18-name-picker-notes.md`, your own session's notes from round 1.** It has
+   the exact beats needed for the task-one browser suite below, already hand-verified in a real
+   browser — export/import, the fairness assertion, the corrupt-roster guard. `Claude
+   Prompts/archive/` holds earlier rounds' prompts and notes if you need more history than that.
+3. `assets/js/gvb-save.js` and `assets/js/README.md`. All of it. `Tools/name-picker/np-store.js` is
+   the worked example of adopting it against thirteen keys, four of them arrays or bare strings.
+4. `gvb-site-handoff-v8.md` §4 (the shared save module: one adopter to eleven, five gaps found) and
+   §9 locked decisions **#48** (`mountSaveBar`'s `filename`/`labels` overrides) and **#49** (the
+   `load()`/`getItem` guard and the construction-time `typeof localStorage` throw) — both are this
+   project's own findings from round 1, now applied. `gvb-site-handoff-v7.md` §1 and §2 are still the
+   best explanation of the `repair`-vs-`migrate` split if you need the background.
 5. Locked decision #3 in `gvb-site-handoff-v1.md` §3: "Town Services means schoolhouse tools."
-6. Locked decision #7 in v1 §3 — the site's easter-egg pattern. You appear to have easter eggs
-   (see below) and that decision is about how the board handles the same idea.
+6. Locked decision #7 in v1 §3 — the site's easter-egg pattern. The Konami-code retro theme and the
+   Lucky Student of the Day feature are both real, both preserved, and that decision is about how the
+   board handles the same idea.
 
 ## Student data: this is the part that matters
 

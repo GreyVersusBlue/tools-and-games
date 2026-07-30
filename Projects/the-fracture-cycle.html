@@ -11,19 +11,37 @@
 <meta property="og:url" content="https://greyversusblue.com/Projects/the-fracture-cycle.html">
 <meta property="og:title" content="The Fracture Cycle — greyversusblue">
 <meta property="og:description" content="A choose-your-own-adventure through Dota 2's lore.">
-<meta property="og:image" content="https://greyversusblue.com/assets/og/guild-board.png">
+<meta property="og:image" content="https://greyversusblue.com/assets/og/fracture-cycle.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A tavern notice board headed 'The Guild Board of greyversusblue'.">
+<meta property="og:image:alt" content="The Fracture Cycle, mid-play.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="The Fracture Cycle — greyversusblue">
 <meta name="twitter:description" content="A choose-your-own-adventure through Dota 2's lore.">
-<meta name="twitter:image" content="https://greyversusblue.com/assets/og/guild-board.png">
+<meta name="twitter:image" content="https://greyversusblue.com/assets/og/fracture-cycle.jpg">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
 <!-- gvb:social:end -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
+  @font-face{
+    font-family:'Cinzel'; font-style:normal; font-weight:700; font-display:swap;
+    src:url('the-fracture-cycle/fonts/cinzel-latin-700-normal.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'Cinzel'; font-style:normal; font-weight:900; font-display:swap;
+    src:url('the-fracture-cycle/fonts/cinzel-latin-900-normal.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'EB Garamond'; font-style:normal; font-weight:400; font-display:swap;
+    src:url('the-fracture-cycle/fonts/eb-garamond-latin-400-normal.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'EB Garamond'; font-style:italic; font-weight:400; font-display:swap;
+    src:url('the-fracture-cycle/fonts/eb-garamond-latin-400-italic.woff2') format('woff2');
+  }
+  @font-face{
+    font-family:'JetBrains Mono'; font-style:normal; font-weight:400; font-display:swap;
+    src:url('the-fracture-cycle/fonts/jetbrains-mono-latin-400-normal.woff2') format('woff2');
+  }
   :root{
     --void:#0c0a13;
     --void-2:#141020;
@@ -35,6 +53,7 @@
     --radiant-dim: rgba(232,196,104,0.35);
     --dire:#a4293b;
     --dire-dim: rgba(164,41,59,0.35);
+    --dire-text:#e0596b;
     --ley:#4fd1c5;
     --ley-dim: rgba(79,209,197,0.35);
   }
@@ -161,6 +180,39 @@
     border-color:var(--ley);
   }
 
+  .tracker-bar{
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:10px 16px;
+    padding:10px 16px;
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-radius:2px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+  }
+  .tracker-info{ display:flex; align-items:baseline; gap:8px; }
+  .tracker-label{ color:var(--parchment-dim); letter-spacing:0.08em; text-transform:uppercase; font-size:10px; }
+  .tracker-count{ color:var(--ley); }
+  .tracker-chips{ display:flex; gap:6px; flex-wrap:wrap; flex:1; }
+  .tracker-chip{
+    padding:3px 9px;
+    border:1px solid var(--rule);
+    border-radius:10px;
+    font-size:10px;
+    color:var(--parchment-dim);
+  }
+  .tracker-chip.have{ color:var(--void); background:var(--ley); border-color:var(--ley); }
+  #saveControls{
+    --gvb-btn-bg: rgba(230,221,201,0.05);
+    --gvb-btn-fg: var(--parchment);
+    --gvb-btn-border: var(--rule);
+    --gvb-btn-radius: 2px;
+    font-family:'JetBrains Mono', monospace;
+    margin-left:auto;
+  }
+
   .story-panel{
     background:var(--panel);
     border:1px solid var(--rule);
@@ -188,7 +240,7 @@
     margin:0 0 14px;
     letter-spacing:0.02em;
   }
-  .node-title.dire-tone{ color:var(--dire); }
+  .node-title.dire-tone{ color:var(--dire-text); }
   .node-text p{
     font-size:18px;
     line-height:1.65;
@@ -263,8 +315,18 @@
     display:inline-block;
   }
 
+  .fan-notice{
+    text-align:center;
+    font-size:11px;
+    color:var(--parchment-dim);
+    opacity:0.65;
+    margin-top:2px;
+  }
+
   @media (max-width:640px){
     .status-bar{ grid-template-columns:1fr; }
+    .tracker-bar{ flex-direction:column; align-items:stretch; }
+    #saveControls{ margin-left:0; }
   }
   @media (prefers-reduced-motion: reduce){
     *{ transition:none !important; }
@@ -313,8 +375,17 @@
     </div>
   </div>
 
+  <div class="tracker-bar">
+    <div class="tracker-info">
+      <span class="tracker-label">Endings Discovered</span>
+      <span class="tracker-count" id="trackerCount">0 / 5</span>
+    </div>
+    <div class="tracker-chips" id="trackerChips"></div>
+    <div id="saveControls"></div>
+  </div>
+
   <div class="story-panel">
-    <div class="node-title" id="nodeTitle"></div>
+    <h2 class="node-title" id="nodeTitle"></h2>
     <div class="node-text" id="nodeText"></div>
     <div class="choices" id="choices"></div>
   </div>
@@ -323,9 +394,15 @@
     <button class="restart-btn" id="restartBtn">Begin the Cycle Anew</button>
   </div>
 
+  <div class="fan-notice">Unofficial fan project set in Valve's Dota 2 universe. Not affiliated with or endorsed by Valve Corporation.</div>
+
 </div>
 
-<script>
+<script type="module">
+import { createSaveSlot, mountSaveBar } from "../assets/js/gvb-save.js";
+import { SAVE_KEY, SAVE_VERSION, ENDING_IDS, freshProgress, validateProgress, repairProgress }
+  from "./the-fracture-cycle/save-config.js";
+
 (function(){
 
   const initialState = () => ({
@@ -364,7 +441,7 @@
       <p>A patrol has already spotted you — three scouts in the leathers of the Sanctuary Guard, led by a woman with a crescent-blade strapped to her back. She doesn't draw it. Yet.</p>
       <p>"Nothing walks out of the seam without a reason," she says. "State yours, or give me one."</p>`,
       choices:[
-        {label:"Help the patrol finish their sweep of the tree-line before answering her", mark:"a", next:"radiant_patrol", effect:s=>{s.favor.radiant+=1;}},
+        {label:"Help the patrol finish their sweep of the tree-line before answering her", mark:"a", next:"radiant_patrol", effect:s=>{s.align+=1; s.favor.radiant+=1;}},
         {label:"Answer honestly: you don't know why you exist, only that you were called", mark:"b", next:"radiant_patrol", effect:s=>{s.favor.radiant+=1; s.favor.invoker+=1;}}
       ]
     },
@@ -586,6 +663,51 @@
   const fragR = document.getElementById('fragR');
   const fragD = document.getElementById('fragD');
   const fragI = document.getElementById('fragI');
+  const trackerCount = document.getElementById('trackerCount');
+  const trackerChips = document.getElementById('trackerChips');
+
+  // ---------------- ENDING TRACKER (the save) ----------------
+  // A CYOA this short (see the session notes' branch map) doesn't need a
+  // mid-story save — nothing here embeds `state`, only which endings you've
+  // found across every playthrough. Restarting never touches this.
+  const slot = createSaveSlot({
+    game: 'fracture-cycle',
+    key: SAVE_KEY,
+    version: SAVE_VERSION,
+    validate: validateProgress,
+    repair: repairProgress,
+    defaults: freshProgress
+  });
+  let progress = slot.load() ?? slot.fresh();
+
+  function endingTitle(id){
+    return (nodes[id] && nodes[id].title || id).replace(/^Ending:\s*/, '');
+  }
+
+  function renderTracker(){
+    trackerCount.textContent = progress.seenEndings.length + ' / ' + ENDING_IDS.length;
+    trackerChips.innerHTML = '';
+    ENDING_IDS.forEach(id=>{
+      const seen = progress.seenEndings.includes(id);
+      const chip = document.createElement('span');
+      chip.className = 'tracker-chip' + (seen ? ' have' : '');
+      chip.textContent = seen ? endingTitle(id) : '???';
+      trackerChips.appendChild(chip);
+    });
+  }
+
+  function markEndingSeen(id){
+    if(progress.seenEndings.includes(id)) return;
+    progress.seenEndings.push(id);
+    slot.save(progress);
+    renderTracker();
+  }
+
+  mountSaveBar(document.getElementById('saveControls'), slot, {
+    buttons: ['export', 'import'],
+    getState: () => progress,
+    setState: p => { progress = p; renderTracker(); }
+  });
 
   function alignmentWord(v){
     if(v<=-4) return "Dire Sworn";
@@ -639,6 +761,7 @@
       tag.className='ending-tag';
       tag.textContent = 'Cycle Complete';
       choicesEl.appendChild(tag);
+      markEndingSeen(currentId);
       return;
     }
 
@@ -667,6 +790,7 @@
   });
 
   renderStatus();
+  renderTracker();
   render();
 
 })();

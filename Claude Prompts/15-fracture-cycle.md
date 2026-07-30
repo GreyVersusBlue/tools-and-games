@@ -1,20 +1,31 @@
 # 15 — The Fracture Cycle
 
+**This project had nothing outstanding as of round 1, 2026-07-30, verified against the repository
+just now: all 5 endings are reachable (`node Projects/the-fracture-cycle/test/smoke.mjs` → 26
+passed, 0 failed), the save round-trips (`fracture-cycle-v1`, chip bar shows discovered endings
+across reloads), zero offsite requests remain (`grep -c fonts.googleapis.com
+Projects/the-fracture-cycle.html` → 0), and the test suite passes clean.** Round 1 fixed the one
+real bug this game had — a mathematically unreachable ending — added a save, vendored its fonts,
+fixed two accessibility issues, and got a preview/OG card. Its own session notes said plainly that
+nothing else rises to "worth doing" absent a deliberate scope decision. This prompt stays in the
+rotation, but a future round can skip it unless Devon wants to expand the story.
+
 You are working on The Fracture Cycle, a choose-your-own-adventure set in Dota 2's lore, on
-greyversusblue.com. At 675 lines it is the **smallest game in the repo**, which makes it the one
-where a session can plausibly finish something end to end. This prompt is self-contained.
+greyversusblue.com. At 799 lines it is still the **smallest game in the repo**. This prompt is
+self-contained.
 
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Projects/the-fracture-cycle.html` (675 lines, 35 KB)
-- Any new folder you create under `Projects/` **named for this game** — e.g.
-  `Projects/the-fracture-cycle/`
+- `Projects/the-fracture-cycle.html` (799 lines, ~38.9 KB)
+- `Projects/the-fracture-cycle/` — `fonts/` (vendored woff2s + README), `save-config.js`,
+  `test/smoke.mjs` — all added in round 1, all yours
+- Any other new folder you create under `Projects/` **named for this game**
 
 **Everything else in the repo is read-only to you.** Read whatever you like; change nothing
-outside that list. Up to twenty other Claude sessions are working on other projects in this same
-repo right now, and this boundary is the only thing keeping that from becoming a merge fight.
+outside that list. Other Claude sessions may be working on other projects in this same repo at the
+same time, and this boundary is the only thing keeping that from becoming a merge fight.
 
 Off-limits in particular:
 
@@ -22,9 +33,9 @@ Off-limits in particular:
 | --- | --- |
 | `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 21. |
 | `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
-| `assets/previews/**`, `assets/og/**` | Generated. Prompt 21. This game has neither. |
+| `assets/previews/fracture-cycle.jpg`, `assets/og/fracture-cycle.jpg` | Generated. Prompt 21. This game now has both — see "What is actually here." |
 | `Tools/board-check/**` | Shared dev tooling. Prompt 21. |
-| `Projects/daredevil_r4.html` | Prompt 13. The repo's other `Narrative` game, and 10× your size. |
+| `Projects/daredevil_r4.html` | Prompt 13. The repo's other `Narrative` game, and about 10x your size. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
@@ -40,21 +51,29 @@ edit will be silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file.
-2. `gvb-site-handoff-v7.md` §10 (locked decisions), §8 (backlog state), §1 (the shared save
-   module), §9 (the two open save-design questions).
-3. `assets/js/gvb-save.js` and `assets/js/README.md`, plus
-   `Projects/fourth-quarter/js/campaign.js` as the worked example.
-4. `gvb-site-handoff-v6.md` §1 and §3 on how previews and OG cards get made, and locked decisions
-   #28, #29, #31, #32 — relevant because this game has no preview and probably should.
+2. **`Claude Prompts/notes/15-fracture-cycle-notes.md`** — round 1's session notes for this exact
+   project. It has the full branch map, exactly what changed and why, and what verification was
+   run. Read it before you open the HTML file. `Claude Prompts/archive/` holds earlier rounds if
+   you need history beyond round 1.
+3. `gvb-site-handoff-v8.md` §9 (locked decisions, all of them — 43-50 are new this round), §4 (the
+   shared save module: five real gaps found and fixed since round 1, all backward-compatible), §6
+   (this game's preview capture, already done).
+4. `assets/js/gvb-save.js` and `assets/js/README.md` if you touch the save at all — the module
+   picked up `clear()`, argument-forwarding `fresh`/`reset`, a guarded `load()`, and
+   `mountSaveBar`'s `filename`/`labels` overrides since round 1 (locked decisions #47-49). None of
+   this was requested by this project and none of it is a gap here — round 1's own notes confirm
+   `defaults`, `repair`, `validate` and `mountSaveBar`'s `buttons` option already covered
+   everything this game needed.
 
 ## House rules for every file in this repo
 
 - **No build step.** Static files served by GitHub Pages from the repo root at
   `greyversusblue.com`. Plain ES modules, no bundler, no transpiler, no runtime npm dependency.
-- **Zero offsite requests.** You have three font hotlinks — see below.
+- **Zero offsite requests.** This game now has none — its three fonts are vendored locally in
+  `Projects/the-fracture-cycle/fonts/`.
 - **Each project vendors its own copy; nothing is shared across projects** (locked decision #17).
-- **Never change a storage key** (locked decision #36). You currently have none. Whatever you pick
-  is the name it keeps forever.
+- **Never change a storage key** (locked decision #36). This game's key is `fracture-cycle-v1`. It
+  keeps that name forever.
 - **`migrate` is for version drift; `repair` is for every load** (locked decision #37).
 - **Windows is the dev machine** (v7 §7). An absolute `import()` path needs `pathToFileURL` — a
   bare `C:\...` is read by Node as URL scheme `c:` and refused. Don't lean on shell brace
@@ -63,134 +82,103 @@ edit will be silently overwritten. A wrong description is a board request.
 - **Verify a guard-rail by reintroducing the bug it guards** (locked decision #34).
 - **Assert against the DOM for anything that just happened, and against the save only for what a
   reload has to survive** (locked decision #39).
+- **`page.__blocked` is "offsite and refused"; `page.__shimmed` is "offsite and fulfilled locally
+  instead"** (locked decision #44). `check-integrity.mjs` now runs a static source sweep of every
+  `.html` file for offsite hosts — if you touch fonts or add any external reference, run
+  `cd Tools/board-check && npm run check` and trust its output over a hand grep; it's the check
+  that actually scales.
 
 ## What is actually here
 
-675 lines in one file, 35 KB. Title: "The Fracture Cycle — A Dota 2 Lore CYOA". Tagged `Narrative`
-on the board, sealed with the book glyph. No preview and no OG image, unlike the seven games that
-have them. **The smallest game in the repo by a wide margin** — the next smallest, Integer Foundry,
-is 935 lines and it is a puzzle game with a whole tile engine.
+799 lines in one file, ~38.9 KB. Title: "The Fracture Cycle — A Dota 2 Lore CYOA". Tagged
+`Narrative` on the board, sealed with the book glyph. **Round 1 gave it a preview and an OG card**
+(`assets/previews/fracture-cycle.jpg`, `assets/og/fracture-cycle.jpg`) — the capture landed on the
+"The Sanctuary's Dawn" ending after 8 choices, with the endings-discovered tracker and save
+controls both visible in frame. Still the **smallest game in the repo by a wide margin**.
 
-**No persistence at all.** Zero `localStorage` calls, no export, no import. A branching story you
-cannot bookmark, and one where discovering you took a wrong turn means starting over.
+**25 nodes, 5 endings, all reachable.** Three prongs (Radiant/Dire/Invoker) converge at a hub, then
+either push to a final confrontation or detour through side content, then a fork with 5 possible
+endings gated on accumulated `align`, `favor.invoker`, and fragment count. `end_radiant` was
+genuinely unreachable at the start of round 1 — its `align >= 2` gate could never be hit because
+the only node that ever raised `align` added just +1. Fixed with a one-line addition at
+`radiant_gate`; a full-Radiant run now reaches `align = 2` and the ending is offered. See the
+notes file for the full branch map, choice-point count, and run-length estimate.
 
-**It hotlinks three Google Font families** — Cinzel, EB Garamond and JetBrains Mono — at lines 24
-and 25. v7 §5 claims the site makes zero offsite requests site-wide. That is wrong for fifteen
-pages, and the suite cannot see it: `prepPage()` in `Tools/board-check/harness.mjs` *fulfills*
-Google Fonts requests locally from bundled `@fontsource` packages before the blocked-list check
-runs, so font hotlinks never reach `page.__blocked`. **JetBrains Mono** is already on disk in
-`Tools/board-check/node_modules/@fontsource/`; Cinzel and EB Garamond are not. Nothing at runtime
-may reference `node_modules` either way.
+**A save exists, and it's deliberately an ending tracker, not a mid-story save.** New file
+`Projects/the-fracture-cycle/save-config.js`, wired through `assets/js/gvb-save.js`, storage key
+`fracture-cycle-v1`. It holds exactly one thing: which of the 5 ending ids you've seen across every
+playthrough. Restarting never touches it. A visible "Endings Discovered X/5" bar with per-ending
+chips sits above the story panel on every node. `reset` is deliberately not mounted — the page
+already has its own "Begin the Cycle Anew" button, and two adjacent erase-like controls with
+different scopes is the thing the gvb-save README warns against.
 
-**A licensing note worth thinking about, not worrying about.** This is a fan work using Valve's
-Dota 2 setting on a personal site with no monetisation, which is the same footing as thousands of
-fan works and Valve is famously relaxed about it. Nothing here needs fixing. But if the page does
-not already say it is an unofficial fan work, adding one line is cheap and honest, and it is the
-kind of thing that is easier to add now than to be asked about later. Your call; mention it either
-way.
+**Fonts are vendored, zero offsite requests.** Cinzel, EB Garamond, JetBrains Mono, local woff2 in
+`Projects/the-fracture-cycle/fonts/` — 108 KB, 5 files, only the weights the CSS actually sets.
+Confirmed by grep and by a live browser network log.
+
+**Two accessibility fixes landed.** `#nodeTitle` is now a real `<h2>` instead of a bare `<div>`
+(previously the whole page had exactly one heading total). `.node-title.dire-tone`'s contrast went
+from ~2.3:1 to ~4.9:1 via a new `--dire-text` variable, clearing the 3:1 WCAG AA floor.
+
+**A one-line fan-work notice** sits under the restart button: "Unofficial fan project set in
+Valve's Dota 2 universe. Not affiliated with or endorsed by Valve Corporation."
+
+**A test suite exists:** `Projects/the-fracture-cycle/test/smoke.mjs`, 26 checks, 0 failed. Walks
+every reachable `(node, state)` combination from `intro`, confirms all 5 endings are hit, confirms
+no dangling `next` targets, confirms every node is reachable. Not part of `npm run games` — this
+project owns its own test folder rather than a `play-games.mjs` recipe for regression beats; the
+shared suite only has a preview-capture recipe for this game.
 
 ## Your task
 
-There is no handoff backlog for this game. It has never been the subject of a session.
+**Round 1's own notes were explicit: there is nothing left here that rises to "worth doing."** The
+one real bug (the unreachable ending) is fixed, the save question is answered and implemented, the
+fonts are vendored, the accessibility issues are fixed, and a test suite exists. Read the notes
+file before assuming otherwise — don't invent busywork for a 799-line game with every ending
+reachable, a working save, no offsite requests, and no known accessibility or mobile issues.
 
-**675 lines is small enough that you can genuinely finish things here.** Treat that as the
-opportunity: this is the one prompt in the set where "leave it in a state where nothing is
-outstanding" is realistic. Prefer completing three items to starting six.
+**The list below is only for if Devon deliberately decides to expand scope** — none of it is an
+obvious next step, and the notes file says so plainly:
 
-**Task one: play it to every ending and map it.** All of them — at 675 lines that is achievable.
-Write down the branch structure: how many choice points, how many endings, whether branches
-reconverge or stay split, and how long a run takes. That map does not exist anywhere and everything
-below depends on it.
-
-**Task two: give it a save.** Adopt `assets/js/gvb-save.js` rather than hand-rolling. You get
-`localStorage` persistence, file export and import, a memory-backed fallback for browsers that
-block storage (reading the `localStorage` property *throws outright* in that configuration, which
-a naive `try/catch` around `setItem` never reaches), and validation so a corrupt blob is refused
-rather than `JSON.parse`d into state.
-
-For a CYOA the design question is what the save holds, and it matters more than the plumbing:
-
-- **A node id plus a flag set is small and survives you rewriting the prose.** A serialised engine
-  state does not. If you want to keep editing the story after players have saves, the save must not
-  embed the story.
-- **Consider whether a CYOA wants a save at all, or wants something better.** Two alternatives worth
-  weighing in the plan: a visible "you have seen 6 of 9 endings" tracker, which turns replaying from
-  a chore into the point; or a shareable URL that encodes the path, which needs no storage at all and
-  is a better fit for a short branching story than a save slot is. **Say which you chose and why.**
-  An ending tracker plus no mid-story save is a completely defensible answer for a fifteen-minute
-  game, and it is more interesting than the obvious one.
-
-If you do adopt the module, the specifics that bit the first adopter (v7 §1 and §2):
-
-- **Pick the key once and keep it forever** (locked decision #36). Something like
-  `fracture-cycle-v1`.
-- **`defaults` may be a factory** — if a new run randomises anything, pass a function, or
-  `slot.reset()` hands back `null`.
-- **Fill-ins go in `repair`, not `migrate`** (locked decision #37): `repair` runs on every accepted
-  load from every door, `migrate` only on version drift. You have no legacy saves, so this is the one
-  chance to get the shape right before you do.
-- **`mountSaveBar` takes a `buttons` option** and each button carries
-  `data-gvb="export|import|reset"`. Put it somewhere reachable during play — v7 §9 has an item open
-  because The Fourth Quarter's is only on its start screen.
-- **Import relatively** — `../assets/js/gvb-save.js` — so any Node test can resolve it.
-- **A missing hook is a Shared-file request, not an edit** to `gvb-save.js`.
-
-**Task three: vendor the three fonts.** Cinzel, EB Garamond, JetBrains Mono. Local `@font-face`,
-woff2 in a folder you own, hotlinks deleted, only the weights the page uses — read the CSS and
-check. README naming source and licence, the way `Projects/golden-hour-beach/assets/textures/` does.
-Measure and report the total (locked decision #42).
-
-**Task four: ask whether the story is finished.** 675 lines is short for a CYOA, and the honest
-question after mapping it is whether the branch structure is complete or whether it narrows to one
-path. If a branch dead-ends where it shouldn't, that is content work and content work is what this
-game most likely needs. Say what you found, and if you write more, say how much.
-
-**Task five: audit and plan the rest.** Worth an opinion:
-
-- **No preview and no OG card.** Getting one means a recipe in `Tools/board-check/games.mjs` and a
-  run of `npm run previews`, both prompt 21's. Request it and say what the frame should show. Locked
-  decision #28: a preview is a frame from *play* and the capture has to prove it got there. Locked
-  decision #29: a turn-based game legitimately gets `live: false`; don't animate something to satisfy
-  a motion check.
-- **675 lines does not need restructuring** and you should probably say so rather than doing it. If
-  you split it anyway, `/Projects/the-fracture-cycle.html` stops resolving and the board `href` is a
-  Shared-file request.
-- **Mobile.** 375×812. A text-and-choices game is the best mobile candidate on the site; check
-  whether it works.
-- **Accessibility.** Heading order, contrast, keyboard navigation, whether choices are reachable
-  without a mouse, and whether the prose reads sensibly to a screen reader. A narrative game has the
-  least excuse for getting this wrong.
+1. **A 4th prong, or deeper side content.** The three existing prongs and the side-hub detour are
+   each a complete beginning/middle/payoff shape, not truncated. Adding more would be new content
+   Devon chooses to commission, not a gap being filled. If you do this, replay every existing path
+   afterward — a narrative game that silently loses a branch gives no error, the choice just isn't
+   there.
+2. **Re-verify the branch map after any future edit.** If a later round touches the story logic at
+   all, rerun `node Projects/the-fracture-cycle/test/smoke.mjs` and replay by hand; that suite is
+   the only thing standing between an edit and a silently broken branch.
+3. **Nothing else.** If you open this prompt and the game is untouched since round 1, the honest
+   move is to say so in your notes and move to something with real backlog.
 
 ## Verification
 
-This game has no test suite. At 675 lines a small one is cheap, and if you add a save it is worth
-having — put it in a folder you own and make it exit non-zero on failure (locked decision #13). A
-reachability test that walks every branch and asserts every ending is hit is exactly the right size
-for this game.
+If you change anything, this game already has a way to check it:
 
-- **Play every path before you change anything**, and write down what you did. That is your
-  regression baseline and nothing else exists.
-- If you restructure or edit the prose, **replay every path afterwards.** A narrative game that
-  silently loses a branch gives you no error — the choice just isn't there. Nothing catches that but
-  a human or a walk test.
-- Once a save or tracker exists, test it by hand: mid-story, reload, confirm you are where you were.
-  Export, clear storage, import, confirm again. Corrupt file, refused.
-- After vendoring, grep the file for `fonts.googleapis.com` → zero hits. `page.__blocked` is **not**
-  the check; `prepPage()` fulfills those requests.
-- `cd Tools/board-check && npm run check` → 235 units, 0 broken, 0 collisions. `npm run social:check`
-  → 23 notices, 23 already current.
-- Locked decision #34: for every guard-rail you add, break the thing on purpose first and watch it
-  fail.
+- `node Projects/the-fracture-cycle/test/smoke.mjs` → **26 passed, 0 failed** is the current
+  baseline. If you edit story logic, rerun it; if you edit prose only, still rerun it (a typo in a
+  `next` id breaks reachability without touching any logic).
+- **Play every path by hand** after any change, not just the automated suite — a narrative game
+  that silently loses a branch gives you no error.
+- If you touch the save or tracker: mid-story, reload, confirm the tracker survived. Export, clear
+  storage, import, confirm again. Corrupt file, refused.
+- After any font or asset change, grep for `fonts.googleapis.com` → should stay at 0. Prefer
+  `cd Tools/board-check && npm run check`'s static source sweep over a hand grep (locked decision
+  #44) — **327 units checked, 0 broken; 0 collisions across nine widths, tightest vertical gap
+  9.2px** is the current baseline. `npm run social:check` → **22 notices, 22 already current, 0
+  out of date, 0 failed**.
+- Locked decision #34: for any new guard-rail, break the thing on purpose first and watch it fail,
+  the way round 1 did for the align-gate fix.
 
 Scheduling note: `npm run games`, `npm run play` and `npm run previews` open real visible browser
 windows, and Chrome throttles a window that loses focus (v7 §6). Other threads may be running them.
-Only one at a time.
+Only one at a time. This game's own `test/smoke.mjs` is plain Node and has no such restriction.
 
 ## Output: your notes file
 
 Write `Claude Prompts/notes/15-fracture-cycle-notes.md`. Nobody else writes that file, so it can
-never conflict. It is the only record of this session that survives — `gvb-site-handoff-v8.md` gets
-assembled from all twenty-one of them.
+never conflict. It is the only record of this session that survives — `gvb-site-handoff-v9.md`
+(or whatever the next handoff is numbered) gets assembled from all the projects' notes files.
 
 Use these headings:
 
@@ -206,16 +194,15 @@ Use these headings:
 ```
 
 Note the extra first heading, which only this prompt asks for. **Write the branch map** — choice
-points, endings, whether branches reconverge, run length, and whether the story is finished. At 675
-lines you can actually know all of that, and nobody currently does.
+points, endings, whether branches reconverge, run length, and whether the story is finished. Round
+1 already did this in full; if nothing changed, say the branch map is unchanged from round 1's
+notes rather than re-deriving it from scratch, and cite the file.
 
-- **What changed** — files touched and why, with paths. Vendored font total in KB. If you wrote
-  prose, how much.
-- **What I verified** — actual commands, actual output, and which paths you played. "Should work" is
-  not verification.
-- **Shared-file requests** — a preview recipe if you want one, a board `href` if you restructured,
-  any `gvb-save.js` gap with the exact hook signature. Applicable blind. Empty is fine; keep the
-  heading.
+- **What changed** — files touched and why, with paths. If nothing changed, say so plainly rather
+  than padding this section.
+- **What I verified** — actual commands, actual output, and which paths you played. "Should work"
+  is not verification.
+- **Shared-file requests** — empty is fine; keep the heading.
 - **Deliberately not done** — something you looked at, understood, and chose to leave, with the
   reason. **"This game is small and finished, and here is why adding X would make it worse" is a
   strong answer here**, more so than in any other prompt in this set.
@@ -227,3 +214,4 @@ Devon writes the handoffs himself and they have a voice: direct, specific, no em
 rule-of-three padding, no corporate throat-clearing. Numbers over adjectives. When something was
 wrong, say what was wrong and what the evidence was. Match that. Do not write "comprehensive" or
 "robust" anywhere.
+</content>

@@ -1,0 +1,447 @@
+{
+  "cols": 8,
+  "rows": 6,
+  "grid": [
+    [
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      }
+    ],
+    [
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      }
+    ],
+    [
+      {
+        "type": "source",
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 2,
+        "sinkIndex": null
+      },
+      {
+        "type": "belt",
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": "belt",
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": "add1",
+        "dir": "E",
+        "packet": {
+          "value": 2
+        },
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": "belt",
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": "belt",
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": "add1",
+        "dir": "E",
+        "packet": {
+          "value": 3
+        },
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": "sink",
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": 0
+      }
+    ],
+    [
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      }
+    ],
+    [
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": "belt",
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      }
+    ],
+    [
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      },
+      {
+        "type": null,
+        "dir": "E",
+        "packet": null,
+        "mergeBuf": [],
+        "sourceTimer": 0,
+        "sinkIndex": null
+      }
+    ]
+  ],
+  "ingots": 0,
+  "ordersFilled": 0,
+  "lifetimeIngots": 0,
+  "prestigeMult": 1,
+  "prestigeCount": 0,
+  "unlocked": {
+    "sub1": false,
+    "mul2": false,
+    "div2": false,
+    "merge_add": false,
+    "merge_mul": false,
+    "split": false,
+    "sink2": false,
+    "sink3": false,
+    "grid2": false,
+    "grid3": false,
+    "fastSource": false
+  },
+  "sourceIntervalTicks": 3,
+  "sinks": [
+    {
+      "target": 2
+    }
+  ],
+  "tool": "belt",
+  "lastSave": 1785212702236,
+  "recentIngotsPerSec": 0,
+  "log": [
+    {
+      "t": 1785212700834,
+      "msg": "Rejected 3 at sink (needed 2)."
+    },
+    {
+      "t": 1785212699179,
+      "msg": "Rejected 3 at sink (needed 2)."
+    },
+    {
+      "t": 1785212694211,
+      "msg": "Foundry commissioned. Place a Source and a Sink to begin."
+    }
+  ]
+}

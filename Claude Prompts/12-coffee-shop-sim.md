@@ -7,13 +7,14 @@ prompt is self-contained.
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Projects/coffee_shop_sim.html` (2,418 lines, 95 KB)
-- Any new folder you create under `Projects/` **named for this game** — e.g.
-  `Projects/corner-and-kettle/`
+- `Projects/coffee_shop_sim.html` (2,509 lines, 96.6 KB)
+- `Projects/corner-and-kettle/` — `fonts/` (vendored, done), `js/save.js` (the save schema),
+  `test/` (`smoke-save.mjs`, `drive-save.mjs`)
+- Any new folder you create under `Projects/` **named for this game**
 
 **Everything else in the repo is read-only to you.** Read whatever you like; change nothing
-outside that list. Up to twenty other Claude sessions are working on other projects in this same
-repo right now, and this boundary is the only thing keeping that from becoming a merge fight.
+outside that list. Up to twenty other Claude sessions may be working on other projects in this
+same repo, and this boundary is the only thing keeping that from becoming a merge fight.
 
 Off-limits in particular:
 
@@ -21,9 +22,9 @@ Off-limits in particular:
 | --- | --- |
 | `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 21. |
 | `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
-| `assets/previews/**`, `assets/og/**` | Generated. Prompt 21. This game has neither. |
+| `assets/previews/corner-and-kettle.jpg`, `assets/og/corner-and-kettle.jpg` | Generated, and now exist — your round-one preview request was applied. Regenerating either is Prompt 21's, via `Tools/board-check/games.mjs` and `npm run previews`. |
 | `Tools/board-check/**` | Shared dev tooling. Prompt 21. |
-| `Projects/fourth-quarter/**`, `Projects/Closing Time/**` | Prompts 07 and 06. **Read both** — they are your two closest siblings and both are ahead of you on save handling. |
+| `Projects/fourth-quarter/**`, `Projects/Closing Time/**` | Prompts 07 and 06. Both are close siblings on the same save-module integration you've now also done yourselves — worth reading if you touch the save schema again. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
@@ -39,23 +40,29 @@ edit will be silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file.
-2. `gvb-site-handoff-v7.md` §1 (the shared save module and the three gaps adopting it found), §2
-   (the two bugs adoption surfaced — **read these, one of them is a bug class you almost
-   certainly have**), §9 (the two things deliberately not fixed, both about save design), §10
-   locked decisions #36 through #40.
-3. `assets/js/gvb-save.js` and `assets/js/README.md`.
-4. `Projects/fourth-quarter/js/campaign.js` — the worked example. It is a service-industry sim
-   with staff, shifts and a day loop, so it is close to your problem.
+2. **`Claude Prompts/notes/12-coffee-shop-sim-notes.md`** — your own round-one session. Fonts and
+   save adoption are both done; what it leaves you is a measured difficulty-curve audit with exact
+   numbers (spawn and patience factors floor at day 9-10 and never move again; a full playthrough
+   is under half an hour, most of it watching). Read it in full before touching the game loop.
+   `Claude Prompts/archive/` holds every earlier round if you need more history than that.
+3. `gvb-site-handoff-v8.md` §4 (the shared save module, now eleven adopters — Corner & Kettle is
+   named directly, and its own two requests are the fix described there), §9 locked decisions
+   #43-50, in particular **#49** (the two `gvb-save.js` storage-construction gaps — this is your
+   own contribution from last round, now fixed and locked) and **#44** (`page.__blocked` vs
+   `page.__shimmed`, relevant if you ever touch fonts again). §10 item 2 names a small task that's
+   yours — see task list below.
+4. `assets/js/gvb-save.js` and `assets/js/README.md`.
+5. `Projects/corner-and-kettle/js/save.js` — the save schema you already wrote, and its two test
+   suites in `Projects/corner-and-kettle/test/`.
 
 ## House rules for every file in this repo
 
 - **No build step.** Static files served by GitHub Pages from the repo root at
   `greyversusblue.com`. Plain ES modules, no bundler, no transpiler, no runtime npm dependency.
-- **Zero offsite requests.** You have three — see below.
+- **Zero offsite requests.** Already true for this page — see below.
 - **Each project vendors its own copy; nothing is shared across projects** (locked decision #17).
-- **Never change a storage key** (locked decision #36). Yours is `cornerKettleSave_v1`, at line
-  824. **It keeps that name.** Changing it silently abandons everyone mid-save. Unversioned saves
-  read as version 0 and come through `repair`.
+- **Never change a storage key** (locked decision #36). Yours is `cornerKettleSave_v1`. It keeps
+  that name.
 - **`migrate` is for version drift; `repair` is for every load** (locked decision #37).
 - **Windows is the dev machine** (v7 §7). An absolute `import()` path needs `pathToFileURL` — a
   bare `C:\...` is read by Node as URL scheme `c:` and refused. Don't lean on shell brace
@@ -64,139 +71,154 @@ edit will be silently overwritten. A wrong description is a board request.
 - **Verify a guard-rail by reintroducing the bug it guards** (locked decision #34).
 - **Assert against the DOM for anything that just happened, and against the save only for what a
   reload has to survive** (locked decision #39).
+- **`page.__blocked` is "offsite and refused"; `page.__shimmed` is "offsite and fulfilled locally
+  instead"** (locked decision #44). Not currently relevant — you have zero offsite requests — but
+  if you ever add a font or an asset, check `__shimmed` too, not just `__blocked`.
+- **`gvb-save.js`'s `mountSaveBar` now also takes `filename` and `labels` overrides, and `fresh`/
+  `reset` forward arguments to a `defaults` factory; there's also a bare `clear()`** (locked
+  decisions #47, #48). None of this is required for you, but `clear()` in particular is worth
+  knowing about if the mid-shift reload policy decision below ends up wanting "erase the day
+  without building a fresh one first."
 
 ## What is actually here
 
-2,418 lines in one file, 95 KB. Title: "Corner & Kettle — Coffee Shop Sim". Tagged `Sim` on the
-board. No preview and no OG image, unlike the seven games that have them.
+`Projects/coffee_shop_sim.html`, 2,509 lines, 96.6 KB. One file, one URL, unchanged from round
+one — the save schema (360 lines) lives separately for testability, nothing else moved.
 
-**Persistence is hand-rolled and thin.** Four `localStorage` calls around lines 2313–2361, on
-`SAVE_KEY = 'cornerKettleSave_v1'` (line 824), each wrapped in a bare `try {} catch (e) {}` with
-comments like `/* localStorage unavailable — ignore */`. There is no version stamp and no
-validation, so a corrupt blob is `JSON.parse`d straight into game state and the game boots on it.
-There is no file export or import, so a cleared browser loses the shop.
+**Fonts are vendored, zero offsite requests.** Seven `@font-face` faces (Kalam, Quicksand, Space
+Mono; 400/600/700 as actually used, 121.6 KB total) live in `Projects/corner-and-kettle/fonts/`.
+`grep -c fonts.googleapis.com Projects/coffee_shop_sim.html` → 0.
 
-That `try/catch` deserves a specific note, because the comment shows the intent was right and the
-implementation doesn't reach it: in a browser configured to block storage, **reading the
-`localStorage` property throws outright** — not `setItem`, the property access itself. Depending
-on where your `try` starts, that may or may not be caught, and it will never fall back to
-anything. `assets/js/gvb-save.js` has a memory-backed fallback for exactly this case, and it
-probes rather than guesses.
+**Persistence runs through `assets/js/gvb-save.js`**, via `Projects/corner-and-kettle/js/save.js`
+(imported relatively, so the page is `<script type="module">` now). Storage key
+`cornerKettleSave_v1`, unchanged. Adopting the module found and fixed seven ways a save could
+silently break the game — all in `presets[].cup`, `regulars[name]`, `loyaltyLevel`, and
+`stationCount`, one level deeper than the top-level scalars the old loader already guarded — plus
+one non-loading bug (`doPrestige()` left `state.regulars` stale, making a regular permanently
+unservable after prestige; regulars now re-roll on prestige). Full detail and exact line numbers
+are in the round-one notes file.
 
-**It hotlinks three Google Font families** — Kalam, Quicksand and Space Mono — at lines 24 and
-25. v7 §5 claims the site makes zero offsite requests site-wide. That is wrong for fifteen pages,
-and the suite cannot see it: `prepPage()` in `Tools/board-check/harness.mjs` *fulfills* Google
-Fonts requests locally from bundled `@fontsource` packages before the blocked-list check runs, so
-font hotlinks never reach `page.__blocked`. None of your three families are among the twelve
-already on disk in `Tools/board-check/node_modules/@fontsource/`, so you will be sourcing these
-yourself. Nothing at runtime may reference `node_modules` either way.
+**The save bar is mounted on the chalkboard**, reachable any time during a shift, with
+`buttons: ["export", "import"]` (no reset — the game ships its own "New Game").
+
+**Two accessibility fixes are in**: the toast feed is `role="status" aria-live="polite"`, and
+queue customers are real `<button>`s with order-specific `aria-label`s instead of bare
+onclick-divs.
+
+**Two test suites exist**: `Projects/corner-and-kettle/test/smoke-save.mjs` (Node, drives the save
+schema directly) and `Projects/corner-and-kettle/test/drive-save.mjs` (browser-driven, drives the
+page for real). As of this refresh, `smoke-save.mjs` reports **161 passed, 1 failed** — the one
+failure is expected, not a regression: it asserts the *old* buggy behavior of `load()`'s unguarded
+`getItem` call, which was fixed site-wide this round (locked decision #49) exactly as this
+project's own shared-file request specified. See the task list. `drive-save.mjs` reports **90
+checks, 0 failed**. `node assets/js/gvb-save.test.mjs` reports **50 passed, 0 failed**.
+
+**Preview and OG card both exist** — `assets/previews/corner-and-kettle.jpg` and
+`assets/og/corner-and-kettle.jpg`, applied by prompt 21 last round using `games.mjs`'s existing
+`open()` recipe, which already reaches a filled espresso cup, a waiting customer, and the day/
+currency HUD.
+
+**There is a measured, unfixed difficulty problem.** Both the spawn-rate and patience-decay
+curves floor at day 9-10 and never change again — day 30 plays identically to day 9. Worse, staff
+throughput outgrows demand entirely: three trained Seniors clear about 74 orders a shift against a
+demand cap of 43, which measures out to 99% accuracy with no human input needed. Every purchasable
+thing in the game (about $14,150 worth) is affordable in 12-13 days at measured late-game income
+(~$2,350/day), so a full playthrough is under half an hour of wall clock, most of it watching. See
+the round-one notes file for the full table and the exact numbers. Nothing about this is fixed yet
+— it's data, not a task done.
+
+**`npm run games` does not drive this game.** It has its own driver, `drive-save.mjs`, because
+adding a seventh entry to `games.mjs` is prompt 21's file to touch, not yours. If Corner & Kettle
+ever joins that suite, `drive-save.mjs`'s opening beats and `games.mjs`'s `enter()` should collapse
+into one rather than keeping two ways to reach the same first frame (locked decision #38).
 
 ## Your task
 
-There is no handoff backlog for this game. It has never been the subject of a session.
+Round one shipped fonts, save adoption, the seven save bugs, two accessibility fixes, and the
+preview/OG card. All of that is done — do not re-do it. What's left is balance work plus one
+one-line test cleanup.
 
-**Task one, concrete and known: vendor the three fonts.** Kalam, Quicksand and Space Mono. Local
-`@font-face`, woff2 in a folder you own, hotlinks deleted, only the weights the page actually
-uses — read the CSS and check, because the hotlinked URL asks for more than the page needs.
-Include a README naming source and licence, the way
-`Projects/golden-hour-beach/assets/textures/` does. Measure the total and put the number in your
-notes (locked decision #42, which exists because a size estimate that was wrong by 4× blocked a
-good decision for two sessions).
+**Task one: make prestige move the difficulty floors, not just the tip rate.** This is the
+highest-value, lowest-cost thing on the list — two lines, no new content, no new UI, using state
+(`state.prestigeLevel`) that's already saved and already read elsewhere. Right now prestige only
+grants +5% tips, which is invisible. The sketch from the round-one audit:
 
-**Task two, concrete and known: adopt `assets/js/gvb-save.js`.** This is the same job that paid
-for itself in The Fourth Quarter last session — adopting it found three gaps in the module and two
-bugs in the game. What you get: file export and import, a memory-backed fallback for blocked
-storage, validation so a corrupt blob is refused, and one implementation of "refuse to load
-garbage" instead of none.
+```js
+function spawnFactor(){
+  const floor = Math.max(0.30, 0.6 - 0.06*state.prestigeLevel);
+  return Math.max(0.25, Math.max(floor, 1 - (state.day-1)*0.05) * shopSpawnFactorMult());
+}
+```
 
-Specifics that will bite you, all learned expensively in v7 §1 and §2:
+Same shape for `patienceFactor()`. Measure before and after — the round-one notes have the day-1/
+day-3/day-5/day-9/day-30 table already built, so a second table after this change is a direct
+comparison, not a fresh measurement from scratch.
 
-- **Keep the key `cornerKettleSave_v1`** (locked decision #36).
-- **`defaults` may be a factory, and probably has to be.** If a new shop involves anything
-  randomised — starting customers, a rolled staff pool, a seeded market — day one cannot be a
-  literal, and passing one means `slot.reset()` hands back `null` and the module is useless to
-  you. That exact gap was found by The Fourth Quarter's three random job applicants.
-- **Fill-ins go in `repair`, not `migrate`** (locked decision #37). `migrate(state, from)` only
-  runs when the stored version differs; `repair` runs on **every** accepted load from every door
-  — localStorage, an imported file, a pasted blob, and a save the current build just wrote. The
-  pass that currently lives in your load path has exactly that shape.
-- **Go looking for your version of the walking-speed bug.** The Fourth Quarter had a staffer saved
-  before roles existed; the old loader filled in `role` and `skill` but never `speed`, and
-  `beginNight()` multiplied that straight into metres per second. An `undefined` there made a
-  floor NPC with a NaN speed that never arrived anywhere — no error, no crash, just something
-  that silently never happens. **You are a staff-and-shifts sim with the same shape.** Enumerate
-  every field added to the save since it shipped, check whether an old save has it, and check
-  whether it lands in arithmetic. This is the highest-value thing in the task and it is the part
-  people skip.
-- **`mountSaveBar` takes a `buttons` option** (`["export", "import"]`, etc.) and each button
-  carries `data-gvb="export|import|reset"` so a driver can click it without depending on label
-  text or order. If your game already has a "new game / wipe" button somewhere, **do not mount
-  "reset" next to it** — two save-erasers side by side is the exact footgun that `buttons` option
-  exists to prevent.
-- **Put the save bar somewhere reachable during play.** v7 §9 has an item still open because The
-  Fourth Quarter's bar lives only on the start screen, so exporting mid-week means reloading the
-  page to get the overlay back. Nothing is lost but it is a step nobody should have to think of.
-  A day-end or shift-end screen is the natural home.
-- **Stop touching `localStorage` directly anywhere afterwards.** Let the module do the probing.
-- **Import relatively** — `../assets/js/gvb-save.js`, not `/assets/js/gvb-save.js` — so any Node
-  test can resolve it.
-- **A missing hook is a Shared-file request, not an edit** to `gvb-save.js`. Six projects read
-  that file. Write the exact signature you need.
+**Task two: invert the one expected-failing assertion in your own `smoke-save.mjs`.** One line.
+`Projects/corner-and-kettle/test/smoke-save.mjs`, in section 9 ("blocked storage"), around line
+375-387:
 
-**Task three: audit and plan, then build what fits.** Write a prioritized plan into your notes.
-Worth an opinion:
+```js
+  const hostileSlot = createCornerKettleSlot(CATALOG, { storage: hostile, rng: () => 0.5 });
+  eq(hostileSlot.save({ day: 1 }), false, "a throwing setItem is already caught");
+  let threw = false;
+  try { hostileSlot.load(); } catch (e) { threw = true; }
+  eq(threw, true, "a throwing getItem is NOT caught — known gvb-save gap, see notes");
+```
 
-- **Play it to the end and say how long that took.** Then say what the cheapest change is that
-  would make the second playthrough different from the first. For a management sim that is usually
-  either a difficulty curve or a build choice, not more content.
-- **Is there a difficulty curve, or does day 30 play like day 3?** Numbers if you can get them:
-  revenue per day, customers per day, staff cost.
-- **2,418 lines in one file.** You may restructure into `Projects/corner-and-kettle/index.html`
-  plus `js/` and `css/`. For a 95 KB sim with a day loop, an economy and a UI, splitting engine
-  from UI is a real gain. **But it breaks the URL** — `/Projects/coffee_shop_sim.html` stops
-  resolving — so the board `href` becomes a Shared-file request and you should say plainly that
-  the old URL breaks. Note the current filename uses underscores where most of the repo uses
-  hyphens. Decide on merit and say why either way.
-- **No preview and no OG card.** Getting one means a recipe in `Tools/board-check/games.mjs` and a
-  run of `npm run previews`, both prompt 21's. If you think it deserves one, request it and say
-  what frame should show. Locked decision #28: a preview is a frame from *play* and the capture
-  has to prove it got there; locked decision #29 says a turn-based game legitimately gets
-  `live: false` and you should not animate something just to satisfy a motion check.
-- **Mobile.** 375×812. A DOM-based management sim genuinely could work on a phone.
-- **Accessibility.** Heading order, contrast, keyboard navigation, whether the day's numbers read
-  sensibly to a screen reader.
+`gvb-save.js`'s `load()` now wraps its `getItem` call in try/catch (locked decision #49, fixed in
+response to this project's own request). `threw` should now come back `false`, and `load()` should
+return `null` rather than propagating. Update the assertion and its message to say so. This is
+`gvb-site-handoff-v8.md` §10 item 2, named there as a task specifically for this prompt. A stale
+"known gap" test is worse than no test — it will keep failing every run and training you to ignore
+red output.
+
+**Task three: decide the mid-shift reload policy.** Measured, real, unfixed: `shiftElapsed` is
+never saved, so reloading mid-shift restarts the clock at Dawn while keeping the day and the
+money. Wages are only deducted in `endShift()`, so this is currently unlimited free shifts and
+free labor, two clicks, no cost. Pick one of: persist `shiftElapsed` so a reload resumes where it
+left off, or bank the day's results on reload the way Faire Weekend now does (locked decision
+#45 — "a day is final once the gates close" is the same shape of problem, already decided there).
+Either is fine. Leaving it undecided again is not.
+
+**Task four: stop baristas auto-serving.** `runBaristaTick()` currently calls `serveSlot()` itself
+the moment a ticket completes. If a trained barista instead left the finished cup for a human to
+hand over, three Seniors become a throughput multiplier instead of a full replacement, and the 99%
+hands-off accuracy number goes back to being the player's problem. Do this after task one, so the
+new numbers get measured against the fixed curve, not the old flat one.
+
+**Task five, lower priority: keyboard shortcuts for the stations.** The queue cards are already
+keyboard-reachable (round one). The stations themselves still have no shortcuts — digits for the
+tabs and a key for Serve would finish what round one started, but it's cheaper and less
+consequential than tasks one through four.
+
+If time allows beyond this: re-run the full playthrough measurement after tasks one and four land,
+and put fresh numbers in your notes so the next session isn't measuring against stale ones.
 
 ## Verification
 
-This game has no test suite. If you adopt the save module, that needs one — put it in a folder you
-own and make it exit non-zero on failure (locked decision #13).
-
-- Open the page in a real browser and play it to the end. You cannot plan improvements to a sim you
-  have not finished.
-- Test the save round trip by hand: play a few days, reload, confirm the same state. Then export to
-  a file, clear storage, import, confirm the same state again. Then feed it a deliberately corrupt
-  file and confirm it is refused rather than loaded — right now it would not be, and that is the
-  argument for this whole task in one sentence.
-- **Load an old save written by the current build before your changes**, and confirm it still works
-  after. Save one to a file first, before you start editing. This is the single most likely thing to
-  break and the easiest to forget.
-- After vendoring, grep the file for `fonts.googleapis.com` → zero hits. `page.__blocked` is **not**
-  the check; `prepPage()` fulfills those requests.
-- `cd Tools/board-check && npm run check` → 235 units, 0 broken, 0 collisions. Run it before you
-  finish, especially if you renamed anything.
-- `npm run social:check` → 23 notices, 23 already current. Drift on your page means you edited
+- `node Projects/corner-and-kettle/test/smoke-save.mjs` → 162 passed, 0 failed, once task two
+  lands (161/1 before it — the 1 is the stale assertion, not a real bug).
+- `node Projects/corner-and-kettle/test/drive-save.mjs` → 90 checks, 0 failed.
+- `node assets/js/gvb-save.test.mjs` → 50 passed, 0 failed.
+- If you change the difficulty curve, re-measure the day 1/3/5/9/30 table by hand or in the suite
+  and put the new numbers next to the old ones in your notes — a claim without a before/after
+  isn't verification.
+- `cd Tools/board-check && npm run check` → 329 units checked, 0 broken, 0 collisions, tightest
+  vertical gap 9.2px.
+- `npm run social:check` → 22 notices, 22 already current. Drift on your page means you edited
   inside the `gvb:social` markers.
-- Locked decision #34: for every guard-rail you add, break the thing on purpose first and watch it
-  fail.
+- Locked decision #34: for any new guard-rail, break the thing on purpose first and watch it fail.
 
 Scheduling note: `npm run games`, `npm run play` and `npm run previews` open real visible browser
-windows, and Chrome throttles a window that loses focus (v7 §6). Other threads may be running them.
-Only one at a time.
+windows, and Chrome throttles a window that loses focus (v7 §6). Other threads may be running
+them. Only one at a time. This game isn't in `npm run games` (see above), so prefer your own two
+suites for iteration.
 
 ## Output: your notes file
 
 Write `Claude Prompts/notes/12-coffee-shop-sim-notes.md`. Nobody else writes that file, so it can
-never conflict. It is the only record of this session that survives — `gvb-site-handoff-v8.md` gets
+never conflict. It is the only record of this session that survives — the next handoff gets
 assembled from all twenty-one of them.
 
 Use these headings:
@@ -211,12 +233,12 @@ Use these headings:
 ## Next session
 ```
 
-- **What changed** — files touched and why, in prose, with paths. Vendored font total in KB.
-- **What I verified** — actual commands, actual output. Include the save round trip, the corrupt-file
-  test and the old-save test. "Should work" is not verification.
-- **Shared-file requests** — a new board `href` if you restructured, a preview recipe if you want
-  one, any `gvb-save.js` gap with the exact hook signature. Applicable blind. Empty is fine; keep
-  the heading.
+- **What changed** — files touched and why, in prose, with paths. If you re-measured the
+  difficulty table, put the new numbers here next to the old ones.
+- **What I verified** — actual commands, actual output. Include a before/after on any balance
+  change. "Should feel better" is not verification.
+- **Shared-file requests** — any `gvb-save.js` gap with the exact hook signature. Applicable
+  blind. Empty is fine; keep the heading.
 - **Deliberately not done** — something you looked at, understood, and chose to leave, with the
   reason.
 - **Next session** — ordered by value per effort.

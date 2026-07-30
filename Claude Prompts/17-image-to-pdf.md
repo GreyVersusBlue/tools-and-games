@@ -8,8 +8,10 @@ browser. This prompt is self-contained.
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Tools/image-to-pdf.html` (748 lines, 24 KB)
-- Any new folder you create under `Tools/` **named for this tool** — e.g. `Tools/image-to-pdf/`
+- `Tools/image-to-pdf.html` (978 lines, 33 KB)
+- `Tools/image-to-pdf/` — the folder this tool now has, holding `libs/jspdf.umd.min.js` (the
+  vendored jsPDF) and `libs/README.md`
+- Any new folder you create under `Tools/` **named for this tool**
 
 **Everything else in the repo is read-only to you.** Read whatever you like; change nothing outside
 that list. Up to twenty other Claude sessions are working on other projects in this same repo right
@@ -42,11 +44,21 @@ silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file.
-2. `gvb-site-handoff-v7.md` §10 (locked decisions), §8 (backlog state).
-3. Locked decision #3 in `gvb-site-handoff-v1.md` §3: "Town Services means schoolhouse tools." This
+2. `Claude Prompts/notes/17-image-to-pdf-notes.md` — round one's session on this exact tool. It
+   vendored jsPDF, added JPEG/WEBP input, quality presets, per-page orientation, reorder/remove,
+   and found two real bugs by testing. Read it before you touch anything; the task list below
+   already reflects it, but the reasoning behind what it declined to do is there, not here.
+   `Claude Prompts/archive/` holds every earlier round's prompts and notes if you need more history
+   than that.
+3. `gvb-site-handoff-v8.md` §9 (locked decisions), §7 (backlog state), and §5 for `npm run tools`,
+   the new sweep that now covers this page.
+4. Locked decision #3 in `gvb-site-handoff-v1.md` §3: "Town Services means schoolhouse tools." This
    is one, and it stays there.
-4. `assets/js/gvb-save.js` and `assets/js/README.md`, if you conclude the tool should remember
-   anything.
+5. `assets/js/gvb-save.js` and `assets/js/README.md`, if you conclude the tool should remember
+   anything — but read "Deliberately not done" in the notes file first. Round one considered this
+   and decided against `gvb-save.js` specifically: three primitive UI preferences with no student
+   data don't need its versioned-slot machinery. Plain `localStorage` is proportionate here, if you
+   still decide to build it at all.
 
 ## House rules for every file in this repo
 
@@ -80,81 +92,95 @@ honest in the UI about what is stored and where.
 
 ## What is actually here
 
-748 lines, 24 KB, one file — **the smallest tool in the set**. Title: "Image → PDF Assembler".
-Tagged with the school stamp under Town Services. No `localStorage` at all.
+978 lines, 33 KB (33,466 bytes) in the main file, plus a `Tools/image-to-pdf/libs/` folder round
+one added. Title: "Image → PDF Assembler". Tagged with the school stamp under Town Services. Still
+no `localStorage` — no persistence at all, deliberately (see below).
 
-**It pulls jsPDF from `cdnjs.cloudflare.com`** at line 24:
+**jsPDF is vendored, not hotlinked.** `Tools/image-to-pdf/libs/jspdf.umd.min.js`, 357 KB (365,730
+bytes), pinned to **2.5.2** — the last patch on the 2.x line matching what used to be hotlinked,
+not the current 4.x, because two major-version jumps was judged too much unverified change for a
+978-line tool with no prior test suite, and the 4.x UMD build is bigger, not smaller, so there was
+no size argument for going there either. Reasoning is written down in
+`Tools/image-to-pdf/libs/README.md`. `grep -c cdnjs Tools/image-to-pdf.html` → 0. (If you grep the
+vendored library file itself, the minified source happens to contain the literal string
+`cdnjs.cloudflare.com` somewhere internally — inert text, never executed, confirmed inert by
+network panel showing nothing left the machine when a PDF is generated. Don't mistake that for a
+live hotlink.)
 
-```
-cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
-```
+**Input formats, quality, and orientation are real now, not the round-one gaps.** The tool accepts
+`.png`, `.svg`, `.jpg/.jpeg`, and `.webp` — JPEG in particular is what phones actually produce, and
+the tool couldn't take a phone photo at all before this. Three quality presets (Standard / High /
+Original) downscale and re-encode as JPEG, except Original+PNG, which stays raw and lossless.
+Orientation is picked per page from that image's own aspect ratio (Auto, default), not forced
+document-wide. "Match image size" is clamped to 25–432mm so a 4032×3024 photo no longer becomes a
+room-sized page, and the default page size is Letter.
 
-That is a real offsite request in production, and it is the tool's entire reason for existing —
-without it there is no PDF. v7 §5 claims the site makes zero offsite requests site-wide; the claim
-is wrong, and the reason nobody caught it is that the browser suites only ever drive the seven
-games, never the tools. Nothing measures this file.
+**EXIF rotation is handled for phone photos, but not for a scanner-fed sideways page — these are
+different problems and only one is fixed.** A phone photo carries an EXIF orientation tag; the
+browser auto-rotates it for display, but jsPDF's raw JPEG embed doesn't read that tag, so passing
+JPEG bytes through unmodified at "Original" quality would land a correctly-oriented-on-screen photo
+sideways in the PDF. Fixed by routing JPEG through canvas even at Original (0.95, near-lossless).
+This fix is verified by reasoning through documented browser behavior, not against an actual
+sideways photo (no camera in round one's sandbox) — **that verification is still outstanding, see
+task two.** Separately, a flatbed scan fed in backwards has no EXIF tag to correct and no rotate
+button exists for it — that's a real, smaller, still-open gap, see task one.
 
-**The practical consequence matters more than the privacy one here.** A teacher on school wifi
-behind a content filter that blocks cdnjs gets a page that loads, looks fine, and then does nothing
-when they click the button. That is the worst possible failure mode for a single-purpose tool, and
-it is entirely avoidable.
+**Per-file reorder, remove, and error isolation all work.** Every row has Up/Down/Remove buttons —
+the primary reorder mechanism and the only one verified to work on a touch phone. HTML5
+drag-and-drop is wired as a desktop-mouse bonus but was not separately exercised with a simulated
+drag; treat it as unverified. Each file gets its own try/catch during PDF generation, so one
+corrupt file no longer kills a batch that was otherwise fine — this was tested by deliberately
+feeding it corrupt bytes (locked decision #34), not just written and trusted.
 
-It hotlinks no Google Fonts, which puts it in a minority of pages in this repo.
+**Touch targets were measured, not eyeballed, and fixed:** row buttons were 21×24px, now ~50×40px,
+caught by `getBoundingClientRect` in an actual 375×812 viewport rather than guessed from the CSS.
+
+**No settings persistence.** Considered and deliberately declined this round as a separable
+feature, not because it's a bad idea — see task three.
+
+**No real HEIC decoding.** Not possible client-side without a new WASM dependency for a format
+problem that has a one-step fix on the phone that created the file; the rejection message tells the
+teacher that fix by name instead of a generic "unsupported file" error.
 
 ## Your task
 
-There is no handoff backlog for this tool. It has never been the subject of a session.
+Round one closed the gaps that made this tool unable to do its actual job (JPEG input, quality
+control, reorder, page sizing). What's left is smaller and more specific — see the notes file for
+the full reasoning behind each of these.
 
-**Task one, concrete and known: vendor jsPDF.** Copy `jspdf.umd.min.js` at version 2.5.1 into a
-`libs/` folder you own and point the script tag at a local path. Include a README naming the
-library, the version, the licence (MIT) and where it came from, the way
-`Projects/golden-hour-beach/assets/textures/README.md` does for its textures. Measure the file and
-report the number (locked decision #42).
+**Task one: a rotation control for a scanner-fed sideways page.** 90°-at-a-time, per page — two
+small buttons per row is enough UI. This is the one item from the original audit ("a landscape scan
+rotated the wrong way") not yet covered: EXIF-rotated phone photos are handled automatically (see
+above), but a page that's genuinely upside-down or sideways in the source file — as a flatbed scan
+fed in backwards would be — has no fix. Build the guard-rail, then verify it by rotating a page the
+wrong way on purpose and confirming the button corrects it (locked decision #34).
 
-While you are there, check whether 2.5.1 is the version you want. A newer jsPDF may be smaller,
-may fix a bug you are working around, or may have changed an API you depend on. Pin deliberately
-and write the reason down — a vendored version with no note about why becomes unupgradable folklore.
+**Task two: verify the EXIF fix against a real photo.** Round one's fix is reasoned correctly from
+documented browser behavior but was never checked against an actual sideways phone photo — no
+camera in that sandbox. Five minutes with a real device closes this. If you find the reasoning was
+wrong somewhere, that's the most valuable thing this task could turn up.
 
-**Task two: audit and plan, then build what fits.** This is the smallest tool in the set, which
-means a session can plausibly finish it. Prefer completing three things to starting six. Write a
-prioritized plan into your notes and then build the top items.
+**Task three, lower priority, conditional: settings persistence.** Only worth building if a teacher
+using this repeatedly actually asks for page size / quality / orientation to be remembered between
+visits — round one looked at this and decided it's a real but separable convenience, not a gap that
+blocks the tool's actual job. If you build it: plain `localStorage` for three primitive values is
+proportionate. Do **not** reach for `assets/js/gvb-save.js`'s versioned-slot machinery here — it's
+built for game campaign state, and round one's own assessment was that it would be overhead for
+three dropdowns with no student data involved. That's a considered call, not an oversight; revisit
+it only if the actual shape of the need changes.
 
-Worth forming an opinion about:
+**If genuinely nothing else surfaces after those three:** this is a small, single-purpose tool that
+now does its one job (assembling real phone photos into a PDF) on its actual input. Say so rather
+than inventing scope. 978 lines, one file, one job — restructuring into a folder of modules was
+considered in round one and declined; it would cost the board's `/Tools/image-to-pdf.html` link for
+no real readability win at this size. Don't reopen that unless the file has grown enough since to
+change the answer.
 
-- **Actually use it for the job it exists for.** Take a stack of eight or ten photographed pages of
-  varying orientation, resolution and aspect ratio — some landscape, some portrait, one enormous,
-  one tiny — and assemble a PDF. Then open the PDF and look at it. That single exercise will find
-  more than reading the code will. Specific things that go wrong in this class of tool: images
-  silently letterboxed with huge white margins, a landscape scan rotated the wrong way, page order
-  not matching the order you added them, a 12 MP phone photo embedded at full resolution making a
-  40 MB PDF nobody can email.
-- **Is there a resolution or quality control?** If every image goes in at native resolution, the
-  output is unusable for the most common purpose (emailing or uploading to Schoology). A quality or
-  target-size setting is a small change with a large effect. Report actual before-and-after
-  file sizes.
-- **Reordering and removing.** If you can add ten images but not drag one into a different position
-  or delete the one you scanned twice, the tool forces a restart for a trivial mistake. Check
-  whether that is the case.
-- **Page size and orientation.** Letter versus A4, portrait versus landscape, and whether the tool
-  picks per page or once for the document. A US school tool should default to Letter.
-- **What happens with a non-image file, a HEIC, or a 100 MB TIFF.** Error handling in a
-  drag-and-drop tool is most of the user experience, and "nothing happens" is the usual bug.
-- **Should it remember settings?** Page size, quality and orientation are re-chosen every time
-  otherwise. That is a legitimate use for `assets/js/gvb-save.js` — but read the student-data
-  section first, do not persist the images themselves without a very good reason and a visible
-  clear control, keep whatever key you pick forever (locked decision #36), and put fill-ins in
-  `repair` rather than `migrate` (locked decision #37). A missing hook in the module is a
-  Shared-file request, not an edit.
-- **748 lines does not need restructuring** and you should probably say so rather than doing it.
-  If you split it anyway, `/Tools/image-to-pdf.html` stops resolving and the board `href` is a
-  Shared-file request.
-- **Mobile.** 375×812. **This is the single best mobile case in the whole repo**: the images are on
-  the phone that took them, and a teacher photographing a stack of worksheets would rather not move
-  them to a laptop first. If it works on a phone, that is worth knowing. If it doesn't, that is
-  probably the highest-value item in the plan.
-- **Accessibility.** A drag-and-drop-only interface is unusable without a mouse. Check there is a
-  file-picker path, that every control has a label, and that progress and errors are announced
-  rather than only shown.
+- **Mobile.** 375×812 remains **the single best mobile case in the whole repo** — the images are on
+  the phone that took them. Round one verified the core flow here and caught the touch-target bug
+  this way; if you add the rotation control, verify it on a phone too, not just desktop.
+- **Accessibility.** `aria-live` regions and button labels exist from round one. Check anything you
+  add gets the same treatment.
 
 ## Verification
 

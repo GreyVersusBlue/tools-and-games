@@ -60,7 +60,9 @@ export function freshSaveData(catalog) {
     prestigeLevel: 0,
     dailyModifierId: null,
     eventFiredThisShift: false,
-    eventTriggerAt: 0,
+    // Rolled by repairSave, which every fresh state goes through too — so
+    // fresh() and load() can't hand back differently-shaped objects.
+    eventTriggerAt: null,
   };
 }
 
@@ -329,7 +331,10 @@ export function createCornerKettleSlot(catalog, { storage = null, rng = Math.ran
     key: SAVE_KEY,
     version: SAVE_VERSION,
     storage,
-    defaults: () => freshSaveData(catalog),
+    // A factory, not a literal: day one rolls an event time. Passing a literal
+    // is what made slot.reset() hand back null for the Fourth Quarter (v7 §1).
+    // Run through repair so fresh() and load() agree on shape.
+    defaults: () => repairSave(freshSaveData(catalog), catalog, rng),
     validate: validateSave,
     migrate: (s, from) => migrateSave(s, from, catalog),
     repair: s => repairSave(s, catalog, rng),

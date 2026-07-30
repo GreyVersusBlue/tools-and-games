@@ -43,6 +43,7 @@ const CAND = path.join(HERE, 'candidates');
 const KNOWN = new Set([
   'castle-conundrum', 'aphelion', 'golden-hour', 'fourth-quarter',
   'faire-weekend', 'closing-time', 'integer-foundry',
+  'absalom-inheritance', 'daredevil', 'fracture-cycle', 'corner-and-kettle',
 ]);
 
 const OUTPUTS = [

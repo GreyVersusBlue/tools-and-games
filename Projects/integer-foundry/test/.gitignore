@@ -1,0 +1,8 @@
+# Screenshots and exported saves written by browser.mjs on every run. Evidence
+# for the run that produced them, not source. Same call Tools/board-check makes
+# for its own shots/.
+shots/
+
+# fixtures/legacy-save-v0.json IS tracked, deliberately. It is a save captured
+# off the pre-gvb-save build and it cannot be regenerated once that build is
+# gone — it is the only proof that old saves still load.

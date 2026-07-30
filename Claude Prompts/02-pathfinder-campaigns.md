@@ -7,9 +7,10 @@ campaign-tracking page on greyversusblue.com. This prompt is self-contained.
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Pathfinder/campaigns.html` (695 lines, 44 KB)
-- Any new folder you create under `Pathfinder/` **named for this page** — e.g.
-  `Pathfinder/campaigns-assets/` or `Pathfinder/campaigns/`
+- `Pathfinder/campaigns.html` (732 lines, 44.9 KB)
+- `Pathfinder/campaigns-assets/` — already exists (round 1 vendored fonts into it); yours to
+  extend
+- Any other new folder you create under `Pathfinder/` **named for this page**
 
 **Everything else in the repo is read-only to you.** Read whatever you like; change
 nothing outside that list. Up to twenty other Claude sessions are working on other
@@ -30,10 +31,11 @@ Off-limits in particular:
 | Every other project | Not yours. |
 
 **The twin problem, read this before you plan anything.** `campaigns.html` and
-`characters.html` are a matched pair. They are within three lines of each other in
-length (695 vs 698), they load the same three Google Font families (Cinzel, Crimson
-Pro, Oswald), and they almost certainly share most of their CSS. Prompt 03 is
-working on the other one right now, in parallel, and cannot see what you do.
+`characters.html` are a matched pair. Both now vendor the same three font families
+(Cinzel, Crimson Pro, Oswald) — round 1 vendored each independently and landed on
+the exact same five files, byte for byte, which is strong evidence they share most
+of their CSS too (see Task one). Prompt 03 owns the other file and, in a solo run
+of either prompt, cannot see what you do.
 
 So: **do not create anything intended to be shared between the two pages.** No
 `Pathfinder/shared.css`, no `Pathfinder/fonts/`, no lifting the common CSS into one
@@ -59,11 +61,16 @@ the description is wrong, that is a board request, not a head edit.
 ## Required reading
 
 1. This whole file.
-2. `gvb-site-handoff-v7.md` §10 (locked decisions) and §8 (backlog state).
-3. Locked decision #3 in `gvb-site-handoff-v1.md` §3: the Pathfinder section of the
+2. **`Claude Prompts/notes/02-pathfinder-campaigns-notes.md`** — round 1's session notes
+   for this exact page: what it vendored, what it verified, and what it recommends next.
+   Read it before you plan anything. `Claude Prompts/archive/` holds every earlier round if
+   you need history beyond that.
+3. `gvb-site-handoff-v8.md` §9 (locked decisions — read all of them, but #43 and #44 are the
+   two that bear directly on this page) and §7 (backlog state).
+4. Locked decision #3 in `gvb-site-handoff-v1.md` §3: the Pathfinder section of the
    board is for Pathfinder things; "Town Services" means schoolhouse tools. Don't
    move this page.
-4. `gvb-site-handoff-v6.md` §3 on favicons and OG tags, so you understand what the
+5. `gvb-site-handoff-v6.md` §3 on favicons and OG tags, so you understand what the
    `gvb:social` block in your head is and why you can't touch it.
 
 ## House rules for every file in this repo
@@ -72,8 +79,17 @@ the description is wrong, that is a board request, not a head edit.
   `greyversusblue.com`. Plain ES modules, no bundler, no transpiler, no runtime npm
   dependency. If it needs `npm run` something to work in a browser, it is wrong.
 - **Zero offsite requests.** Every dependency gets vendored into the repo.
+- **`page.__blocked` is "offsite and refused"; `page.__shimmed` is "offsite and fulfilled
+  locally instead"** (locked decision #44). A page can report an empty `__blocked` and
+  still hotlink Google Fonts, because `harness.mjs`'s font shim answers the request before
+  the blocked-list check ever sees it. `check-integrity.mjs` now has a static source sweep
+  that greps every `.html` for offsite hosts without needing a browser at all — it's the
+  right tool to confirm zero offsite requests now, not a hand grep or `page.__blocked`.
 - **Each project vendors its own copy; nothing is shared across projects** (locked
-  decision #17).
+  decision #17). Locked decision #43 narrowed this: it doesn't apply to `index.html` and
+  `404.html` sharing `assets/fonts/`, because those two are one thread's own files, not two
+  projects. It still applies to `campaigns.html` and `characters.html` as far as any solo
+  session is concerned — see Task one below for why that's not the end of the question.
 - **Never change a storage key** (locked decision #36).
 - **Windows is the dev machine** (v7 §7). An absolute `import()` path needs
   `pathToFileURL` — a bare `C:\...` is read by Node as URL scheme `c:` and refused
@@ -83,80 +99,103 @@ the description is wrong, that is a board request, not a head edit.
 
 ## What is actually here
 
-695 lines, 44 KB, one file. Title: "The Adventure Log — greyversusblue". No
-`localStorage` at all, which means **nothing a user does on this page survives a
-refresh** — the campaign content is hardcoded into the HTML. It reads no JSON and
-loads no data files.
+732 lines, 44.9 KB, one file. Title: "The Adventure Log — greyversusblue". No
+`localStorage` at all — nothing a user does on this page survives a refresh — but
+that's a deliberate choice, not a gap: round 1 formed the opinion (see Task two)
+that a DM's campaign log belongs in git, versioned and diffable, rather than in
+browser storage that can silently drift or get cleared. It reads no JSON and loads
+no data files.
 
-It hotlinks three Google Font families:
+**Fonts are vendored, not hotlinked.** Round 1 read the CSS for every
+`font-family`/`font-weight`/`font-style` actually used — five combinations, not the
+nine weights the old hotlink asked for — and pulled the matching woff2s into
+`Pathfinder/campaigns-assets/fonts/`: Cinzel 700 and 900, Crimson Pro 400 roman and
+italic, Oswald 400. Five files, **79,676 bytes / 77.8 KB total**, with a README
+naming the source (`@fontsource` npm packages) and licence (SIL OFL 1.1).
+`grep -c "fonts.googleapis.com\|fonts.gstatic.com" Pathfinder/campaigns.html` → **0**.
+Zero offsite requests, confirmed both the old way (grep, since `page.__blocked`
+can't see a font request the harness's shim fulfilled locally — locked decision
+#44) and, since it exists now, by `check-integrity.mjs`'s static source sweep —
+prefer that over hand-grepping if you're re-verifying.
 
-```
-fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Crimson+Pro:...&family=Oswald:wght@400;500;600
-```
+**Heading order is fixed.** h1 → h2 → h3 throughout, no skips, no orphaned levels.
+The three `.scenario-title` elements that used to be `<div>`s styled to look like
+headings are real `<h3>`s now.
 
-That is a real offsite request in production, at lines 24 and 26. v7 §5 claims the
-site makes zero offsite requests site-wide; that claim is wrong, and the reason the
-suite never caught it is that `prepPage()` in `Tools/board-check/harness.mjs`
-*fulfills* Google Fonts requests locally from bundled `@fontsource` packages before
-the blocked-list check runs. Font hotlinks are structurally invisible to
-`page.__blocked`. Fifteen pages are in the same position, including `index.html`
-itself.
+**Both tab widgets have full ARIA tab semantics.** GM/Player nav and the By
+Character/Chronological toggle both got `role="tablist"/"tab"/"tabpanel"`,
+`aria-selected`, `aria-controls`, roving `tabindex`, and Left/Right/Home/End
+arrow-key navigation, via one shared `wireTabs()` helper.
 
-`Tools/board-check/node_modules/@fontsource/` already has **Oswald** on disk from
-that mechanism, but not Cinzel or Crimson Pro. Treat those npm packages as a
-convenient source to copy woff2 files out of, not as a dependency — nothing at
-runtime may reference `node_modules`.
+**Contrast is clean**, including the one borderline ratio round 1 found and fixed:
+`nav.tabs button:not(.active)` is 6.26:1 now (was 4.50:1, a hair off the WCAG AA
+line).
 
 ## Your task
 
-There is no handoff backlog for this page. Nobody has looked at it in eight
-sessions.
+**Task one: this page and `Pathfinder/characters.html` should probably merge —
+but not in this session, and not solo.** Round 1's session here and prompt 03's
+session, working in parallel and blind to each other, both vendored fonts for
+their respective pages and independently landed on **the exact same five files** —
+same families, same weights, same styles, same byte count (79,676 bytes each). Two
+sessions that couldn't see each other's work reaching the identical conclusion
+about what either page needs is a strong signal that these are one shared
+stylesheet wearing two filenames — round 1's estimate is 62-88% of the `<style>`
+block is shared verbatim (`:root` palette, card/border-image chrome, `header`,
+title/flourish styles, the ember animation and its seeding script). Prompt 03's
+own notes reached the same recommendation independently; see its file if you have
+it in scope.
 
-**Task one, concrete and known: vendor the fonts.** Download or copy the woff2 files
-for Cinzel, Crimson Pro and Oswald into a folder you own, write local `@font-face`
-rules, and delete the `fonts.googleapis.com` links. Ship only the weights the page
-actually uses — read the CSS and check which ones it references, because the
-hotlinked URL asks for nine weights across three families and the page almost
-certainly uses four. Include a README next to the fonts naming the source and the
-licence, the way `Projects/golden-hour-beach/assets/textures/` does. Measure the
-total size and put the number in your notes (locked decision #42).
+This is **not a task for a solo run of this prompt.** It needs a single session
+with both `campaigns.html` and `characters.html` open at once — diff the two
+`<style>` blocks for real, confirm what round 1 only estimated, and if confirmed,
+lift the shared rules into one file both pages `<link>`. Locked decision #17
+("each project vendors its own copy") is a parallel-safety rule for threads that
+can't see each other's work, not a verdict that these two pages are better off
+duplicated forever — locked decision #43 already carved out a similar exception
+for `index.html`/`404.html` sharing `assets/fonts/`, on the reasoning that they're
+one thread's files, not two projects. `campaigns.html`/`characters.html` are
+arguably the same case (a cross-linked TTRPG CV, not two unrelated tools), but
+that's Devon's call to make, not either prompt's to assume. **If you're running
+this prompt alone, do not act on this** — don't create a shared file, don't lift
+the restriction, don't touch `characters.html`. Flag it in your notes as still
+unmerged and move on to task two.
 
-**Task two: audit and plan.** Open the page, drive it, and write a prioritized
-improvement plan into your notes, ordered by value per effort, with tradeoffs named.
-Worth forming an opinion about:
+**Task two: the generator-script idea, if persistence is ever wanted.** Round 1
+deliberately did not add `gvb-save.js` or any in-browser editing — this page
+updates a handful of times a year, and hardcoded HTML with git history is a better
+fit than persistence for content that static (full reasoning in the round-1
+notes). That reasoning still holds; don't reopen it without a new reason. If a
+future session does want to make authoring easier without taking on browser-storage
+risk, the standing idea is a small local script that turns structured input (JSON,
+or a simple form) into the `<article class="campaign">` / `<div class="scenario-group">`
+HTML blocks — keeps everything versioned in git, cuts the actual authoring friction.
+Nobody has built this yet.
 
-- **Zero persistence.** Every campaign entry is hardcoded HTML, so adding a session
-  log means editing the file. Should this page let you author entries in the browser
-  and persist them? If yes, `assets/js/gvb-save.js` already does storage with a
-  memory fallback, validation, and file export/import — read it and its README, and
-  read `Projects/fourth-quarter/js/campaign.js` as the worked example. Export/import
-  matters more than usual here, because a campaign log the browser can lose is worse
-  than no log.
-- **Is hardcoded actually wrong?** A DM's campaign log that lives in git is
-  versioned, diffable, and survives a cleared browser. There is a real argument for
-  leaving it as authored HTML and instead making it *easier to author*. Decide, and
-  say why.
-- **Mobile.** Checked at 375×812. The board is used on phones.
-- **Accessibility.** Heading order, contrast against the parchment palette, keyboard
-  navigation.
-
-**Then build the top items.** Don't stop at the plan.
+Nothing else stood out in round 1's pass — card chrome, ember animation, and
+foil-sweep title all read fine at both widths checked, and contrast across the
+rest of the parchment palette was already strong. Re-check only if the page
+itself changes.
 
 ## Verification
 
 - Open the page in a real browser at desktop and at 375×812. Confirm the fonts still
-  render after vendoring — a broken `@font-face` path fails silently to a fallback
-  and looks almost right, which is the trap.
-- Prove the hotlink is gone: load the page with the network panel open, or write a
-  throwaway script using `launch()` / `prepPage()` from
-  `Tools/board-check/harness.mjs` (you may **run** those, not edit them). Note that
-  `prepPage()` will fulfill a Google Fonts request rather than record it, so
-  `page.__blocked` is *not* the check here — grep the file for
-  `fonts.googleapis.com` and confirm zero hits.
-- `cd Tools/board-check && npm run check` should still pass: 235 units, 0 broken, 0
-  collisions across nine widths.
-- `npm run social:check` should still report 23 notices, 23 already current. If it
-  reports drift on your page, you edited inside the `gvb:social` markers. Undo that.
+  render — a broken `@font-face` path fails silently to a fallback and looks almost
+  right, which is the trap.
+- Prove there's no offsite request: `check-integrity.mjs`'s static source sweep
+  covers this now (locked decision #44) — run it and use its output instead of a
+  hand grep. `page.__blocked` is still not the check, for the same reason it never
+  was: the harness's font shim fulfills a Google Fonts request rather than refusing
+  it, so a hotlink would never show up there.
+- `cd Tools/board-check && npm run check` should still pass: **327 units checked, 0
+  broken; 0 collisions across nine widths, tightest vertical gap 9.2px.**
+- `npm run social:check` should report **22 notices, 22 already current, 0 out of
+  date, 0 failed** (22, not 23 — the Bestiary Gallery is gone). If it reports drift
+  on your page, you edited inside the `gvb:social` markers. Undo that.
+- If you touch anything JS-adjacent: `node assets/js/gvb-save.test.mjs` →
+  **50 passed, 0 failed**, and `npm run tools` → **18 checks, 0 failed** — this page
+  isn't a `gvb-save.js` adopter and doesn't need either to pass for its own sake, but
+  both are cheap sanity checks that you haven't broken shared tooling.
 
 One scheduling note: `npm run games`, `npm run play` and `npm run previews` open
 real visible browser windows, and Chrome throttles a window that loses focus (v7

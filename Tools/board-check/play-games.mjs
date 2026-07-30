@@ -77,8 +77,9 @@ const SUITES = {
     const target = s.sinks[0].target;
     t.ok(typeof target === 'number' && target >= 2, 'the sink is asking for a number', `target ${target}`);
 
-    // The log on screen, not the one in the save: save() runs on an 8-second
-    // interval, so the stored copy is always a few beats behind what happened.
+    // The log on screen, not the one in the save. The save is debounced rather
+    // than on a timer now, so it is under a second behind rather than up to eight,
+    // but locked decision #39 still holds: assert the DOM for what just happened.
     //
     // A source emits a 1 and the two +1s each add one, so whatever reaches the
     // sink has to be a 3. That one number is the whole pipeline: packet spawned,
@@ -91,28 +92,70 @@ const SUITES = {
     t.ok(verdicts.length > 0, 'the sink judged the packets that arrived', verdicts[0] || '');
     t.ok(verdicts.some(l => /\b3\b/.test(l)), 'and they arrived as 3s — both +1 fabricators applied');
 
-    // Now make the order fillable. Rewriting the target through the save is the
-    // only way to be deterministic about it: randomTarget() can ask for up to 12,
-    // and a straight 8-cell row only holds six +1s. This doubles as the reload
-    // test — the grid, the ingots and the offline-progress branch (which reads
-    // lastSave before anything else runs) all come back through it.
-    await p.evaluate(() => {
-      const KEY = 'integer-foundry-save-v1';
-      const raw = JSON.parse(localStorage.getItem(KEY));
-      raw.sinks[0].target = 3;
-      localStorage.setItem(KEY, JSON.stringify(raw));
-      // This page is about to be reloaded away, but its 8-second autosave is
-      // still armed and would happily write the old target back first.
-      localStorage.setItem = () => {};
-    });
+    // The reload test: the grid, the ingots and the offline-progress branch
+    // (which reads lastSave before anything else runs) all come back through it.
     await p.reload({ waitUntil: 'load' });
     await GAMES['integer-foundry'].open(p);
     const back = await p.$$eval('#grid .cell:not(.empty)', els => els.length);
     t.ok(back === 8, 'the built line came back after a reload', `${back} cells`);
 
+    // Fill the order the game actually asked for. Every order is now guaranteed
+    // buildable on the floor the player has (Projects/integer-foundry/js/targets.js),
+    // so the target does not need seeding and the outgoing page's autosave does not
+    // need disarming: read the number and build a line that delivers it. Erase the
+    // demo line first — its sink already paid out a 3 and won't ask again until it
+    // does, which would leave nothing to build toward.
+    await p.click('[data-tool="erase"]');
+    for (const [x, y] of [[0,2],[1,2],[2,2],[3,2],[4,2],[5,2],[6,2],[7,2]]) {
+      await p.click(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
+    }
+    await p.waitForFunction(
+      () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
+      null, { timeout: 10000 });
+
+    // A sink has to be on the floor before its order is on screen, so park one,
+    // read it, clear it. state.sinks[0] survives the erase, so the number holds.
+    await place('sink', 0, 0);
+    await p.waitForSelector('#grid .cell[data-x="0"][data-y="0"].sink .sink-target');
+    const want = Number((await p.$eval('.sink-target', el => el.textContent)).replace(/\D/g, ''));
+    t.ok(Number.isInteger(want) && want >= 2 && want <= 12,
+      'the opening order is between 2 and 12', `wants ${want}`);
+    await p.click('[data-tool="erase"]');
+    await p.click('#grid .cell[data-x="0"][data-y="0"]');
+    await p.waitForFunction(
+      () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
+      null, { timeout: 10000 });
+
+    // A source emits 1 and every +1 adds one, so `want` needs want-1 of them. Row
+    // 2 west to east, turn down at column 7, row 3 east to west: 14 operator cells
+    // available, and the opening ramp never asks for more than 12.
+    const chain = [];
+    for (let x = 1; x <= 7 && chain.length < want - 1; x++) chain.push({ x, y: 2, dir: 'E' });
+    if (chain.length < want - 1) {
+      chain[chain.length - 1].dir = 'S';
+      for (let x = 7; x >= 1 && chain.length < want - 1; x--) chain.push({ x, y: 3, dir: 'W' });
+    }
+    const last = chain[chain.length - 1];
+    const sinkAt = !last ? { x: 1, y: 2 }
+      : last.dir === 'E' ? { x: last.x + 1, y: last.y }
+      : last.dir === 'S' ? { x: last.x, y: last.y + 1 }
+      : { x: last.x - 1, y: last.y };
+
+    await place('source', 0, 2);
+    await p.click('[data-tool="add1"]');
+    for (const c of chain) await p.click(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+    // Clicking a placed tile with the same tool selected steps its output E>S>W>N.
+    for (const c of chain) {
+      const turns = c.dir === 'E' ? 0 : c.dir === 'S' ? 1 : 2;
+      for (let i = 0; i < turns; i++) await p.click(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+    }
+    await place('sink', sinkAt.x, sinkAt.y);
+    t.ok((await p.$$eval('#grid .cell:not(.empty)', els => els.length)) === want + 1,
+      'built a line of exactly the right length', `for an order of ${want}`);
+
     const filled = await p.waitForFunction(
       () => /[1-9]/.test(document.getElementById('stat-orders').textContent),
-      null, { timeout: 20000 }).then(() => true, () => false);
+      null, { timeout: 30000 }).then(() => true, () => false);
     await t.shot('order-filled');
     const live = await p.evaluate(() => ({
       orders: document.getElementById('stat-orders').textContent.trim(),
@@ -121,17 +164,19 @@ const SUITES = {
     }));
     t.ok(filled, 'a matching packet filled the order',
       live.log.find(l => /order filled/i.test(l)) || live.log[0] || '');
+    t.ok(new RegExp(`Order filled: ${want} `).test(live.log.join(' | ')),
+      `the sink took a ${want}`, live.log.find(l => /order filled/i.test(l)) || '');
     t.ok(/[1-9]/.test(live.ingots), 'and the sink paid out in ingots', `${live.ingots} ingots`);
 
-    // Only now check the save. save() is on an 8-second interval, so reading it
-    // the instant the counter moves reads the previous state and calls a working
-    // game broken — which is exactly what it did the first time this was written.
-    await wait(9000);
+    // The save is debounced at 700ms now, not an 8-second interval, but locked
+    // decision #39 still holds: assert the DOM for what just happened, and give
+    // the save a moment before reading it for what has to survive a reload.
+    await wait(1500);
     const s2 = await savedState(p, 'integer-foundry');
     t.ok(s2.ordersFilled > 0 && s2.ingots > 0, 'and the takings reached the save',
       `${s2.ordersFilled} orders, ${s2.ingots} ingots`);
     t.ok(s2.lifetimeIngots >= s2.ingots, 'lifetime ingots tracks at least the current pile');
-    t.ok(s2.sinks[0].target !== 3 || s2.ordersFilled > 1,
+    t.ok(s2.sinks[0].target !== want || s2.ordersFilled > 1,
       'the sink rolled a new order after filling one', `now wants ${s2.sinks[0].target}`);
   },
 
@@ -189,6 +234,77 @@ const SUITES = {
     const resumed = await savedState(p, 'closing-time');
     t.ok(!(await p.$('.start-screen')), 'a reload resumes the career instead of asking again');
     t.ok(resumed.day === after.day, 'and resumes on the same day', `day ${resumed.day}`);
+
+    // A random event can leave a modal open on resume — the save bar sits under
+    // it (`.modal-back` covers the screen) until it's dismissed.
+    const closeModals = async () => {
+      for (let g = 0; g < 4 && await p.$('#modal-root .modal'); g++) {
+        const choice = await p.$('#modal-root .modal-actions button');
+        if (!choice) break;
+        await choice.click(); await wait(200);
+      }
+    };
+    await closeModals();
+
+    // The save moved onto assets/js/gvb-save.js this session — the version stamp,
+    // the footer save bar, and the export/import/corrupt/legacy paths it added.
+    t.ok(resumed.__v === 1, 'the save carries a version stamp');
+
+    const kinds = await p.$$eval('#save-bar [data-gvb]', els => els.map(e => e.dataset.gvb));
+    t.ok(kinds.join(' ') === 'export import', 'export and import are in the footer', kinds.join(' '));
+
+    await p.evaluate(() => {
+      window.__ctExports = [];
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => { blob.text().then(txt => window.__ctExports.push(txt)); return create(blob); };
+      const click = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () { if (!this.download) return click.call(this); };
+    });
+    await p.click('#save-bar [data-gvb="export"]');
+    await p.waitForFunction(() => window.__ctExports.length > 0, null, { timeout: 5000 });
+    const ctText = await p.evaluate(() => window.__ctExports[0]);
+    const ctEnv = JSON.parse(ctText);
+    t.ok(ctEnv.format === 'gvb-save' && ctEnv.game === 'closing-time', 'export wrote a gvb-save envelope');
+    t.ok(ctEnv.state.day === resumed.day, 'holding the career it was taken from', `day ${ctEnv.state.day}`);
+    const topbarAtExport = await p.$eval('.stat-val', el => el.textContent.trim());
+
+    // Import takes the career back. End four more days first so there is
+    // something for the import to undo, then answer the file chooser before
+    // opening it. Assert the DOM (locked decision #39), not just the save, so an
+    // import that lands in state without redrawing does not pass by accident.
+    for (let i = 0; i < 4; i++) {
+      await closeModals();
+      await p.click('#endDayBtn'); await wait(220);
+    }
+    await closeModals();
+    fs.writeFileSync(path.join(OUT, 'ct-export.json'), ctText);
+    await setFiles(p, path.join(OUT, 'ct-export.json'), () => p.click('#save-bar [data-gvb="import"]'));
+    await wait(500);
+    const topbarAfterImport = await p.$eval('.stat-val', el => el.textContent.trim());
+    const importedState = await savedState(p, 'closing-time');
+    t.ok(importedState.day === resumed.day, 'import restored the earlier career',
+      `back to day ${importedState.day}`);
+    t.ok(topbarAfterImport === topbarAtExport,
+      'the topbar redrew to match, not just the save underneath it',
+      `"${topbarAfterImport}"`);
+
+    // A corrupt save does not boot the game.
+    await p.evaluate(() => localStorage.setItem('closingTime.save.v1',
+      JSON.stringify({ day: 'tuesday', cash: 'lots', clients: 'none' })));
+    await p.reload({ waitUntil: 'load' });
+    await p.waitForSelector('.start-screen, #nav [data-nav]');
+    t.ok(!!(await p.$('.start-screen')), 'a corrupt save drops you at the start screen, not into it');
+
+    // A legacy save with no __v and no seed still loads and still plays.
+    await p.evaluate(() => localStorage.setItem('closingTime.save.v1', JSON.stringify({
+      day: 3, cash: 5000, brokerageId: 'bk_indep', clients: [],
+    })));
+    await p.reload({ waitUntil: 'load' });
+    await GAMES['closing-time'].open(p);
+    const legacy = await savedState(p, 'closing-time');
+    t.ok(!(await p.$('.start-screen')), 'an unversioned legacy save boots straight into the desk');
+    t.ok(typeof legacy.seed === 'number' && Number.isFinite(legacy.seed),
+      'and got a real seed rather than an undefined one', `seed ${legacy.seed}`);
   },
 
   // ---- Faire Weekend --------------------------------------------------------
@@ -248,10 +364,8 @@ const SUITES = {
     t.ok(Number.isFinite(after.cash), 'cash is still a number', String(after.cash));
     t.ok(after.reputation >= 0 && after.reputation <= 100, 'reputation stayed in range',
       String(Math.round(after.reputation)));
-    // Read the gate off history rather than off lastResult mid-report: render()
-    // returns early for the report/victory/gameOver/weekendEnd phases and only
-    // calls saveState() on the planning path, so a report is never on disk while
-    // it's on screen.
+    // Reading a completed run out of history, not lastResult — still the right
+    // source for a day that's over.
     const gate = after.history[0]?.attendance;
     t.ok(Number.isFinite(gate) && gate > 0, 'guests came through the gate',
       `${gate} on the first day`);
@@ -261,6 +375,41 @@ const SUITES = {
     const resumed = await savedState(p, 'faire-weekend');
     t.ok(resumed.builtPlots.length === after.builtPlots.length,
       'the grounds came back after a reload', `${resumed.builtPlots.length} plots`);
+
+    // Stage 21: a report is now on disk while it is on screen, so the suite can
+    // assert the thing an earlier comment here used to work around. Open one
+    // more day and read the save mid-report, without clicking Next Day first.
+    const gates = await p.$('[data-action="openGates"]');
+    if (gates) {
+      await gates.click();
+      await wait(450);
+      const midReport = await savedState(p, 'faire-weekend');
+      t.ok(midReport.phase === 'report',
+        'the save says "report" while a report is on screen', midReport.phase);
+      t.ok(Number.isFinite(midReport.lastResult?.attendance),
+        'and it carries the day it is showing',
+        `${midReport.lastResult?.attendance} through the gate`);
+
+      // The screen and the save agree — locked decision #39 still applies, so
+      // the gate figure is read off the DOM and compared to the save, not
+      // trusted from the save alone.
+      const onScreen = await p.$eval('.ticket-stub',
+        el => el.textContent.replace(/[^0-9]/g, ' ').trim().split(/\s+/).map(Number));
+      t.ok(onScreen.includes(midReport.lastResult.attendance),
+        'the attendance on the ticket stub is the attendance in the save');
+
+      // And the day is final: reloading comes back to the same report rather
+      // than rewinding to before the gates opened.
+      const cashAtReport = midReport.cash;
+      await p.reload({ waitUntil: 'load' });
+      await GAMES['faire-weekend'].open(p);
+      const afterReload = await savedState(p, 'faire-weekend');
+      t.ok(afterReload.cash === cashAtReport,
+        'reloading on a report keeps the day rather than replaying it',
+        `$${cashAtReport} -> $${afterReload.cash}`);
+      t.ok(!(await p.$('[data-action="openGates"]')),
+        'and the gates cannot be opened twice on the same day');
+    }
   },
 
   // ---- Golden Hour ----------------------------------------------------------
@@ -303,6 +452,61 @@ const SUITES = {
     t.ok(p.__blocked.length === 0, 'nothing offsite was even attempted',
       p.__blocked.slice(0, 2).join(' | '));
     await t.shot('shoreline');
+
+    // The beach has things on it as of session 8: a groyne at the west end, a
+    // boulder cluster at the east, driftwood, and a 460-piece wrack line along
+    // the tide mark. Six merged/instanced meshes for the lot. Assert the wrack
+    // is instanced rather than 460 objects, because the day someone "simplifies"
+    // that into a loop is the day this page starts costing 460 draw calls.
+    const props = await p.evaluate(() => {
+      let instanced = 0, instances = 0, merged = 0;
+      window.__scene.traverse(o => {
+        if (o.isInstancedMesh) { instanced++; instances += o.count; }
+        else if (o.isMesh && o.geometry?.attributes?.position?.count > 400
+                 && !o.material?.uniforms) merged++;
+      });
+      return { instanced, instances, merged };
+    });
+    t.ok(props.instances > 400, 'the wrack line is on the sand',
+      `${props.instances} pieces across ${props.instanced} instanced meshes`);
+    t.ok(props.instanced <= 4, 'and it is instanced, not 460 separate objects');
+
+    // Arrow keys look. This is the whole keyboard-only path: nothing in this
+    // piece needs aiming, so nothing in it should require pointer lock, and a
+    // player who presses Esc must still be able to turn around.
+    await p.evaluate(() => document.exitPointerLock?.());
+    await wait(200);
+    const beforeTurn = await camState(p);
+    await p.keyboard.down('ArrowLeft'); await wait(900); await p.keyboard.up('ArrowLeft');
+    const afterTurn = await camState(p);
+    const dyaw = Math.abs(afterTurn.facing - beforeTurn.facing);
+    t.ok(dyaw > 0.5, 'the arrow keys turn the camera with pointer lock released',
+      `${dyaw.toFixed(2)} rad`);
+
+    // The sun descends while you walk, and everything derived from it moves with
+    // it. Reading the fog is the cheap way to catch the failure that matters:
+    // one of the eight things setSunElevation() drives getting left behind.
+    const sunNow = await p.evaluate(() => {
+      let el = null;
+      window.__scene.traverse(o => {
+        const u = o.material?.uniforms;
+        if (u?.sunPosition) el = Math.asin(u.sunPosition.value.y) * 180 / Math.PI;
+      });
+      return { el, fog: window.__scene.fog.color.getHexString() };
+    });
+    await wait(6000);
+    const sunLater = await p.evaluate(() => {
+      let el = null;
+      window.__scene.traverse(o => {
+        const u = o.material?.uniforms;
+        if (u?.sunPosition) el = Math.asin(u.sunPosition.value.y) * 180 / Math.PI;
+      });
+      return { el, fog: window.__scene.fog.color.getHexString() };
+    });
+    t.ok(sunLater.el < sunNow.el - 0.02, 'the sun is going down',
+      `${sunNow.el.toFixed(2)}° to ${sunLater.el.toFixed(2)}° in 6 s`);
+    t.ok(sunLater.fog !== sunNow.fog, 'and the fog colour came with it',
+      `#${sunNow.fog} to #${sunLater.fog}`);
   },
 
   // ---- Aphelion -------------------------------------------------------------
@@ -348,8 +552,24 @@ const SUITES = {
     await wait(300);
     t.ok(!(await p.$eval('#logbook', el => el.classList.contains('open'))), 'and TAB closes it again');
 
-    // No save assertion: main.js autosaves on a 30-second timer and at story
-    // beats, so a fresh boot legitimately has nothing on disk yet.
+    // The save bar, adopted onto assets/js/gvb-save.js this session. It lives in
+    // the logbook rather than a title screen — this game has no persistent title
+    // card to hang one off, since it vanishes for good once you board.
+    await p.keyboard.press('Tab'); // reopen the logbook
+    await wait(400);
+    const barButtons = await p.$$eval('#savebar button', els => els.map(b => b.dataset.gvb));
+    t.ok(barButtons.join(',') === 'export,import,reset',
+      'the save bar mounted three buttons in the logbook', barButtons.join(', '));
+
+    const exported = await p.evaluate(() => new Promise(resolve => {
+      const orig = URL.createObjectURL;
+      URL.createObjectURL = blob => { blob.text().then(resolve); return orig(blob); };
+      document.querySelector('[data-gvb="export"]').click();
+    }));
+    const env = JSON.parse(exported);
+    t.ok(env.format === 'gvb-save' && env.game === 'aphelion' && env.version === 1,
+      'Export save produced a gvb-save envelope', `${env.game} v${env.version}`);
+    await p.keyboard.press('Tab');
   },
 
   // ---- The Fourth Quarter ---------------------------------------------------
@@ -504,8 +724,37 @@ const SUITES = {
     await p.click('[data-fillstock="1"]');
     await p.click('#devClose');
     await wait(300);
+
+    // --- the save bar is also on the Tonight panel and the box score, not just
+    // the start overlay (v7 §9's open item, answered this session).
     await p.keyboard.press('KeyE');
     await p.waitForSelector('#panelOverlay [data-opendoors]', { timeout: 10000 });
+    let doorBar = await p.$$eval('#doorSaveBar button', els => els.map(b => b.dataset.gvb));
+    t.ok(doorBar.join(',') === 'export,import', 'the Tonight panel mounted its own save bar', doorBar.join(', '));
+    await p.click('#panelClose');
+    await wait(200);
+    await p.keyboard.press('KeyE');
+    await p.waitForSelector('#panelOverlay [data-opendoors]', { timeout: 10000 });
+    doorBar = await p.$$eval('#doorSaveBar button', els => els.map(b => b.dataset.gvb));
+    t.ok(doorBar.length === 2, 'reopening the panel does not stack a second pair', doorBar.join(', '));
+
+    await p.evaluate(() => {
+      window.__doorExports = [];
+      const create = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = blob => { blob.text().then(txt => window.__doorExports.push(txt)); return create(blob); };
+      const click = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () { if (!this.download) return click.call(this); };
+    });
+    await p.click('#doorSaveBar [data-gvb="export"]');
+    await p.waitForFunction(() => window.__doorExports.length > 0, null, { timeout: 5000 });
+    const doorEnv = JSON.parse(await p.evaluate(() => window.__doorExports[0]));
+    const beforeDoors = await savedState(p, 'fourth-quarter');
+    t.ok(doorEnv.state.day === beforeDoors.day && Math.round(doorEnv.state.cash) === Math.round(beforeDoors.cash),
+      'exporting from the Tonight panel writes the campaign as it stands, mid-day, no reload',
+      `day ${doorEnv.state.day}`);
+
+    // Open the doors for real and let the room fill, same as before this
+    // session — the door save bar above didn't change any of this path.
     await p.click('[data-opendoors="1"]');
     await p.click('[data-speed="2"]').catch(() => {});
     const filled = await p.waitForFunction(() => {
@@ -517,6 +766,61 @@ const SUITES = {
     t.ok(hour !== 'DAY', 'the night clock is running', hour);
     await lookAt(p, { facing: 0, pitch: 0, sens: 0.0023 });
     await t.shot('night-open');
+
+    // The dev menu's fast path to a box score — reaching one at 1x costs six
+    // real minutes once the doors are open, and the 1x/2x speed buttons are not
+    // clickable under pointer lock (found this session; see the notes for that
+    // bug), so this only works once a night is actually running.
+    await p.keyboard.press('Backquote');
+    await p.waitForSelector('#devOverlay [data-cash]');
+    const skip = await p.$('[data-skipclose="1"]');
+    if (skip) {
+      await skip.click();
+      await wait(200);
+      await p.click('#devClose').catch(() => {});
+      const reachedBox = await p.waitForFunction(
+        () => document.getElementById('boxOverlay')?.style.display === 'flex',
+        null, { timeout: 20000 }).then(() => true, () => false);
+      t.ok(reachedBox, 'the dev menu can skip straight to a box score');
+      if (reachedBox) {
+        const boxBar = await p.$$eval('#boxSaveBar button', els => els.map(b => b.dataset.gvb));
+        t.ok(boxBar.join(',') === 'export,import', 'the box score mounted its own save bar too', boxBar.join(', '));
+        t.ok(!doorBar.includes('reset') && !boxBar.includes('reset'),
+          'neither new mount offers a second campaign-eraser next to the dev menu');
+
+        await p.evaluate(() => {
+          window.__boxExports = [];
+          const create = URL.createObjectURL.bind(URL);
+          URL.createObjectURL = blob => { blob.text().then(txt => window.__boxExports.push(txt)); return create(blob); };
+        });
+        await p.click('#boxSaveBar [data-gvb="export"]');
+        await p.waitForFunction(() => window.__boxExports.length > 0, null, { timeout: 5000 });
+        fs.writeFileSync(path.join(OUT, 'fq-box-export.json'), await p.evaluate(() => window.__boxExports[0]));
+        const boxDay = (await savedState(p, 'fourth-quarter')).day;
+
+        await p.click('#nextDayBtn').catch(() => {});
+        await wait(400);
+        await p.keyboard.press('Backquote');
+        await p.waitForSelector('#devOverlay [data-cash]');
+        await p.click('[data-day="7"]');
+        await p.click('#devClose');
+        await wait(300);
+        const movedOn = await savedState(p, 'fourth-quarter');
+        t.ok(movedOn.day > boxDay, 'the campaign moved on past the exported day',
+          `day ${boxDay} -> ${movedOn.day}`);
+
+        // Import from the start screen's bar. #wipeBtn only exists there, and
+        // getting there from a live campaign means a reload, not a click —
+        // reloading always shows the overlay, per the first beat in this suite.
+        await p.reload({ waitUntil: 'load' });
+        await p.waitForSelector('#startBtn');
+        await setFiles(p, path.join(OUT, 'fq-box-export.json'), () => p.click('#saveBar [data-gvb="import"]'));
+        await wait(600);
+        const restored = await savedState(p, 'fourth-quarter');
+        t.ok(restored.day === boxDay, 'importing the box-score export restored that earlier day',
+          `day ${restored.day}`);
+      }
+    }
   },
 };
 

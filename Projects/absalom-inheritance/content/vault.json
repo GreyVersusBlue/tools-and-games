@@ -1,0 +1,256 @@
+{
+  "pack": {
+    "id": "vault-beneath-the-court",
+    "name": "The Vault Beneath the Ascendant Court",
+    "version": "1.0.0",
+    "schema": 1,
+    "description": "The shipping adventure. One room, two dormant sentinels, two pillars, and the thing the family letter was about."
+  },
+
+  "tuning": {
+    "visionFeet": 30,
+    "noticeFeet": 30,
+    "standardDC": 15
+  },
+
+  "pc": {
+    "name": "Vesper Quill",
+    "title": "Human Wizard 1",
+    "note": "Trained proficiency +3 (level 1 + 2)",
+    "hp": 15,
+    "ac": 15,
+    "acNote": "10 + DEX 2 + Trained unarmored +3",
+    "speed": 25,
+    "perception": 5,
+    "saves": { "fort": 4, "ref": 5, "will": 6 },
+    "spellDC": 17,
+    "spellAttack": 7,
+    "slots": 2,
+    "focus": 1
+  },
+
+  "commands": [
+    {
+      "id": "strike",
+      "name": "Strike — Dagger",
+      "cost": 1,
+      "costGlyph": "◆",
+      "kind": "attack",
+      "target": "adjacent-enemy",
+      "attackBonus": 5,
+      "damage": "1d4",
+      "damageType": "piercing",
+      "agile": true,
+      "hint": "Strike (◆): choose an adjacent sentinel.",
+      "note": "Finesse, so the +5 is DEX 2 + Trained 3. Agile, so MAP is −4/−8 rather than −5/−10."
+    },
+    {
+      "id": "shield",
+      "name": "Shield",
+      "flavour": "cantrip",
+      "cost": 1,
+      "costGlyph": "◆",
+      "kind": "self-buff",
+      "acBonus": 1,
+      "hint": "Shield (◆): a disc of force, +1 AC until your next turn begins.",
+      "note": "Player Core. The +1 is a circumstance bonus and lasts until the start of your next turn. Shield Block is not modelled — there are no reactions in this build."
+    },
+    {
+      "id": "splash",
+      "name": "Rousing Splash",
+      "flavour": "cantrip",
+      "cost": 2,
+      "costGlyph": "◆◆",
+      "kind": "self-heal",
+      "healing": "1d4",
+      "hint": "Rousing Splash (◆◆): a conjured wave crashes over you.",
+      "note": "Would also end persistent fire damage; nothing in this adventure applies it."
+    },
+    {
+      "id": "breathe",
+      "name": "Breathe Fire",
+      "flavour": "rank 1",
+      "cost": 2,
+      "costGlyph": "◆◆",
+      "kind": "cone",
+      "spendSlot": true,
+      "coneFeet": 15,
+      "damage": "2d6",
+      "damageType": "fire",
+      "save": "ref",
+      "hint": "Breathe Fire (◆◆, spends a rank-1 slot): click a direction — 15-ft cone, basic Reflex DC 17.",
+      "note": "Burning Hands was renamed Breathe Fire in the Remaster. Implemented under its legal name."
+    },
+    {
+      "id": "fang",
+      "name": "Force Fang",
+      "flavour": "focus",
+      "cost": 1,
+      "costGlyph": "◆",
+      "kind": "unerring",
+      "spendFocus": true,
+      "rangeFeet": 30,
+      "damage": "1d4+1",
+      "damageType": "force",
+      "hint": "Force Fang (◆, 1 Focus): click a sentinel within 30 ft — no attack roll, unerring force.",
+      "note": "Strictly a Magus focus spell (Secrets of Magic). Kept per the original design spec; it behaves like Magic Missile."
+    },
+    {
+      "id": "potion",
+      "name": "Drink Healing Potion",
+      "cost": 1,
+      "costGlyph": "◆",
+      "kind": "consume",
+      "consumes": "potion",
+      "healing": "1d8",
+      "hint": "Drink a Minor Healing Potion (◆).",
+      "note": "Interact. The potion is treated as already drawn, so drawing it does not cost a second action."
+    }
+  ],
+
+  "creatures": {
+    "shattered-sentinel": {
+      "name": "Shattered Sentinel",
+      "level": -1,
+      "hp": 11,
+      "ac": 13,
+      "perception": 2,
+      "speed": 20,
+      "saves": { "fort": 5, "ref": 1, "will": 0 },
+      "attackBonus": 4,
+      "attackName": "Fist",
+      "damage": "1d6",
+      "damageType": "bludgeoning",
+      "deathLine": "{name} shatters into gravel and gold dust.",
+      "wakeLine": "Rubble shudders upright into a humanoid shape — {name} still keeps its post.",
+      "sleepLine": "{name} loses you in the dark. The rubble settles, and reknits.",
+      "note": "Creature -1 on GM Core's Building Creatures benchmarks, and Low on every line except Fortitude: HP 11, AC 13, attack +4, damage 1d6, Fort +5 high because it is masonry, Will +0 low because it does not think. 10 XP each against a solo level-1 PC. The binding constraint is not the statline, it is that a level-1 wizard has two spell slots and one focus point for the whole delve — see the note on vault-keeper."
+    },
+    "vault-keeper": {
+      "name": "The Vault Keeper",
+      "level": 0,
+      "hp": 18,
+      "ac": 14,
+      "perception": 4,
+      "speed": 15,
+      "saves": { "fort": 6, "ref": 4, "will": 2 },
+      "attackBonus": 4,
+      "attackName": "Basalt Fist",
+      "damage": "1d6+2",
+      "damageType": "bludgeoning",
+      "deathLine": "The Keeper kneels, and does not rise. Gold dust settles over the casket.",
+      "wakeLine": "The shape beside the casket was never rubble. {name} stands, and the chamber narrows.",
+      "note": "The statline the two sentinels originally shipped with (17 HP, AC 14, fist +6 for 1d6+2), promoted to the boss it was always sized for: 15 XP against a solo level-1 PC, and the only fight the PC arrives at with a full spell list, because opening the gate restores them. The number was never wrong; it was pointed at the wrong fight, twice over."
+    }
+  },
+
+  "items": [
+    { "id": "dagger", "name": "Dagger", "glyph": "🗡", "bulk": "L" },
+    { "id": "longsword", "name": "Longsword (heirloom)", "glyph": "⚔", "bulk": 1 },
+    { "id": "potion", "name": "Minor Healing Potion", "glyph": "🧪", "bulk": "L" },
+    { "id": "book", "name": "Spellbook", "glyph": "📖", "bulk": 1 },
+    { "id": "rations", "name": "Rations (1 week)", "glyph": "🥖", "bulk": "L" }
+  ],
+
+  "startingInventory": ["dagger", "longsword", "potion", "potion", "potion", "book", "rations"],
+  "startingInventoryNote": "Three Minor Healing Potions, not two. A solo level-1 wizard's entire day is two spell slots and one focus point; potions are the only resource that can be bought rather than rested for, and the balance harness says the delve needs about thirteen points of them.",
+  "inventorySlots": 8,
+  "bulkLimit": 5,
+  "bulkLimitNote": "5 + STR modifier 0. Player Core p.271.",
+
+  "lore": {
+    "bequest": {
+      "title": "The Western Pillar — The Bequest",
+      "body": [
+        "Chisel-work in pre-Absalom Kelish, gold leaf still bright in the grooves:",
+        "\"I, Sarvel of the First Landing, leave what I carried up from the sea to the heir with wit enough to find it. The city above will grow fat and forgetful. Let this vault stay lean and patient.\"",
+        "A recess below the text is shaped like half of a two-piece seal."
+      ],
+      "logLine": "You study the western pillar. Old words, older intent."
+    },
+    "condition": {
+      "title": "The Eastern Pillar — The Condition",
+      "body": [
+        "The same hand, generations older, the letters shakier:",
+        "\"The sentinels do not guard the gold. They guard the question: will the heir read both stones before forcing the gate? Patience was ever the family's rarest coin.\"",
+        "The second half of the seal glows faintly as you finish reading. Somewhere ahead, stone grinds against stone."
+      ],
+      "logLine": "You study the eastern pillar. Old words, older intent."
+    }
+  },
+
+  "area": {
+    "id": "vault",
+    "name": "The Vault Beneath the Ascendant Court",
+    "legend": {
+      "#": { "tile": "wall" },
+      ".": { "tile": "floor" },
+      "G": { "tile": "gate" },
+      "T": { "tile": "treasure" },
+      "P": { "tile": "pillar", "lore": "bequest" },
+      "Q": { "tile": "pillar", "lore": "condition" },
+      "@": { "tile": "floor", "spawn": "pc" },
+      "e": { "tile": "floor", "creature": "shattered-sentinel" },
+      "k": { "tile": "floor", "creature": "vault-keeper", "wakesOn": "gate-opened" }
+    },
+    "rows": [
+      "######################",
+      "#########..k.#########",
+      "#########.TT.#########",
+      "#########....#########",
+      "#########....#########",
+      "##########GG##########",
+      "#....................#",
+      "#....................#",
+      "#......e......e......#",
+      "#....................#",
+      "#...##..........##...#",
+      "#...##..........##...#",
+      "#..P..............Q..#",
+      "#....................#",
+      "#...##..........##...#",
+      "#...##..........##...#",
+      "#....................#",
+      "#....................#",
+      "#....................#",
+      "#.........@..........#",
+      "#....................#",
+      "######################"
+    ]
+  },
+
+  "gate": {
+    "requiresLore": ["bequest", "condition"],
+    "sealedHint": "The gate is sealed by a two-part sigil. Perhaps the pillars…",
+    "sealedLog": "The gate does not move. Two empty seal-recesses flank it.",
+    "openNarrative": "Both halves of the seal flare gold. The gate's counterweights release — the way north stands open.",
+    "restore": ["slots", "focus", "hp"],
+    "restoreNarrative": "The seal's release washes back down the stair. Bruises fade, your prepared spells settle into place again, and the focus you spent returns.",
+    "restoreNote": "This is the adventure's only rest, and it is what makes two acts out of one room. Everything the sentinels cost you comes back except potions, which is the point: potions are the currency the delve is actually played in, and a player who slips past a sentinel using the wall blocks as cover arrives at the Keeper holding all three.",
+    "openHint": "The gate is open. The Inheritance waits beyond."
+  },
+
+  "treasure": {
+    "requiresDown": ["vault-keeper"],
+    "blockedHint": "The Keeper's hand rests on the casket lid. It will not move while it stands.",
+    "title": "The Absalom Inheritance",
+    "body": [
+      "Inside the casket: a founder's deed, sealed the day the Starstone fell — title to a sliver of the Ascendant Court itself, made out to whichever heir could pass the sentinels and read the pillars true.",
+      "You are, as of this moment, minor landed gentry of Absalom. The paperwork will take decades."
+    ]
+  },
+
+  "defeat": {
+    "title": "Dying — the Vault Keeps Its Secret",
+    "body": [
+      "Vesper falls at 0 HP and gains the dying 1 condition. With no ally to Administer First Aid, the ruin reclaims its silence.",
+      "Full dying and recovery-check rules are out of scope for this vignette — a rules-lawyer confession."
+    ]
+  },
+
+  "intro": {
+    "narrative": "Beneath the Ascendant Court, the family letter led you true: a vault older than the Starstone Cathedral, air thick with rock dust and patience.",
+    "goal": "Read both pillars to open the northern gate, then claim the Inheritance. A sentinel wakes if you stray within 30 ft of it and it can see you.",
+    "hint": "Click a lit tile to walk, or use the arrow keys. Approach the carved pillars to read them."
+  }
+}

@@ -305,6 +305,92 @@ const RECIPES = {
       return `night open, ${crowd} in the bar at ${hour}, facing ${c.facing}`;
     },
   },
+
+  // ---- The Absalom Inheritance: the spawn is a lone figure in an unlit room;
+  // the good frame is mid-encounter, with a woken sentinel, gold pillar
+  // capstones in view, and the HP bars up. window.__absalom.renderer.screenToGrid
+  // inverts the live isometric projection, so scan the canvas for the pixel
+  // that maps to the square that wakes exactly one sentinel rather than
+  // hardcoding tile math this recipe doesn't own.
+  'absalom-inheritance': {
+    async play(p, { shot }) {
+      const canvas = await p.$('canvas');
+      const box = await canvas.boundingBox();
+      const target = await p.evaluate(({ w, h }) => {
+        const r = window.__absalom?.renderer;
+        if (!r || typeof r.screenToGrid !== 'function') return null;
+        for (let y = 8; y < h; y += 6) {
+          for (let x = 8; x < w; x += 6) {
+            const g = r.screenToGrid(x, y);
+            if (g && g.x === 10 && g.y === 13) return { x, y };
+          }
+        }
+        return null;
+      }, { w: box.width, h: box.height });
+      if (!target) throw new Error('no canvas pixel maps to grid square (10,13) — projection or map moved');
+      await p.mouse.click(box.x + target.x, box.y + target.y);
+      const woke = await p.waitForFunction(
+        () => window.__absalom?.game?.mode === 'combat'
+          && window.__absalom.game.awake?.().length === 1,
+        null, { timeout: 8000 }).then(() => true, () => false);
+      await wait(300);
+      await shot('encounter');
+      if (!woke) throw new Error('walking to (10,13) did not start a single-sentinel encounter');
+      return 'one sentinel woken, mid-encounter';
+    },
+  },
+
+  // ---- Daredevil: the cold open's first choice screen is what the game is —
+  // narration plus a branching decision — not the bare opening panel.
+  'daredevil': {
+    async play(p, { shot }) {
+      // The cold open is nine scenes deep before the first real fork; measured
+      // by hand at 14 Continues from the chapter card this session.
+      let reached = false;
+      for (let i = 0; i < 20; i++) {
+        if (await p.$('.choices-list button')) { reached = true; break; }
+        await p.click('.panel-continue').catch(() => {});
+        await wait(450);
+      }
+      await shot('origin-choice');
+      const choices = await p.$$eval('.choices-list button', els => els.length).catch(() => 0);
+      if (!reached || !choices) throw new Error('never reached a choice screen — panel selectors moved');
+      return `${choices} choices on screen`;
+    },
+  },
+
+  // ---- The Fracture Cycle: the intro alone doesn't show what the game is.
+  // Always taking the first option is a deterministic way to reach a real
+  // ending screen without hand-authoring one path through the branch map.
+  'fracture-cycle': {
+    async play(p, { shot }) {
+      let clicks = 0;
+      for (; clicks < 10; clicks++) {
+        const btn = await p.$('#choices button');
+        if (!btn) break;
+        await btn.click();
+        await wait(300);
+      }
+      await wait(400);
+      await shot('ending');
+      const title = await p.$eval('#nodeTitle', el => el.textContent.trim()).catch(() => '');
+      if (!title) throw new Error('no #nodeTitle text on the reached screen — node selectors moved');
+      return `reached "${title}" after ${clicks} choices`;
+    },
+  },
+
+  // ---- Corner & Kettle: games.mjs's open() already reaches the money shot —
+  // a queue of waiting customers with a filled espresso cup at the Base
+  // station — so this recipe is just the screenshot and the proof.
+  'corner-and-kettle': {
+    async play(p, { shot }) {
+      await wait(500);
+      await shot('first-shot');
+      const shots = await p.evaluate(() => window.__CK_DEBUG__?.state?.slots?.[0]?.cup?.shots ?? 0);
+      if (!(shots >= 1)) throw new Error(`cup only has ${shots} shots — station selectors moved`);
+      return `first shot pulled, cup at ${shots} shot(s)`;
+    },
+  },
 };
 
 /* ------------------------------------------------------------------- run ---- */

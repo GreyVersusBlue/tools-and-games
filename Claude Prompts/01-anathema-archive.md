@@ -8,7 +8,7 @@ named here.
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Pathfinder/Anathema_Archive.html` (1,419 lines, 78 KB)
+- `Pathfinder/Anathema_Archive.html` (1,457 lines, 79 KB)
 - `Pathfinder/data/**` — 24 JSON files plus `data/npcs/`. **You are the only reader.**
   `campaigns.html` and `characters.html` hardcode their content and never touch this
   folder, so it is yours alone.
@@ -45,13 +45,24 @@ the description is wrong, that is a board request, not a head edit.
 ## Required reading
 
 1. This whole file.
-2. `gvb-site-handoff-v3.md` §2 — "an orphaned Pathfinder data file". That is about
-   this project's data folder and it tells you how the folder got the shape it has.
-3. `gvb-site-handoff-v7.md` §10 (locked decisions) and §8 (backlog state).
-4. Locked decision #3 in `gvb-site-handoff-v1.md` §3: the Pathfinder section of the
+2. `Claude Prompts/notes/01-anathema-archive-notes.md` — round 1's session on this
+   exact project: three renderer bugs found and fixed, an orphaned NPC file
+   deleted, and why adopting `gvb-save.js` was deliberately declined rather than
+   missed. `Claude Prompts/archive/` holds this prompt and that notes file (and
+   earlier rounds) if you want more history than this file carries forward.
+3. `gvb-site-handoff-v3.md` §2 — "an orphaned Pathfinder data file". That is about
+   this project's data folder and it tells you how the folder got the shape it
+   has; the file itself is now deleted (see "What is actually here").
+4. `gvb-site-handoff-v8.md` §9 (locked decisions, the full running list) and §7
+   (backlog state).
+5. `gvb-site-handoff-v8.md` §2 and locked decision #44 — `page.__blocked` only
+   tells you what a browser refused, not what a page asked for.
+   `check-integrity.mjs`'s static source sweep is the reliable check for "zero
+   offsite requests" now; use it instead of grepping or trusting a browser run.
+6. Locked decision #3 in `gvb-site-handoff-v1.md` §3: the Pathfinder section of the
    board is for Pathfinder things; "Town Services" means schoolhouse tools. Don't
    move this page.
-5. Locked decision #7 in v1 §3: this page's easter egg is the origin of the
+7. Locked decision #7 in v1 §3: this page's easter egg is the origin of the
    `preventDefault()` + `stopPropagation()` pattern the board's cards copied. If you
    touch the easter egg, know that `index.html` imitates it.
 
@@ -65,9 +76,10 @@ the description is wrong, that is a board request, not a head edit.
   decision #17). Do not create a shared `Pathfinder/fonts/` for all three Pathfinder
   pages, and do not hoist anything up a level. A duplicated 40 KB font beats a
   cross-project coupling.
-- **Never change a storage key** (locked decision #36). This page uses
-  `localStorage` in five places — whatever keys those are, they keep their names.
-  Changing a key silently abandons anyone mid-use.
+- **Never change a storage key** (locked decision #36). This page persists three
+  keys to `localStorage` (`aa.remasterOnly`, `aa.bookmarks`, `aa.encounter`) across
+  six call sites — they keep their names. Changing a key silently abandons anyone
+  mid-use.
 - **Windows is the dev machine** (v7 §7). An absolute `import()` path needs
   `pathToFileURL` — a bare `C:\...` is read by Node as URL scheme `c:` and refused
   outright. Don't lean on shell brace expansion either (v6 §5).
@@ -80,59 +92,87 @@ the description is wrong, that is a board request, not a head edit.
 
 ## What is actually here
 
-A 78 KB single-file page that reads `Pathfinder/data/manifest.json` and, through it,
-24 JSON files — `spell.json`, `feat.json`, `ancestry.json`, `class.json`,
-`hazard.json`, `treasure.json`, `deity.json` and the rest — plus a `data/npcs/`
-folder. It carries `class="has-suite"` on the board, meaning it advertises itself as
-more than one page's worth of tool. It uses `localStorage` in five places. There is
-an easter egg in it (v1 §3.7).
+A 79 KB single-file page (1,457 lines) that reads `Pathfinder/data/manifest.json`
+and, through it, 24 JSON files — `spell.json`, `feat.json`, `ancestry.json`,
+`class.json`, `hazard.json`, `treasure.json`, `deity.json` and the rest — plus a
+`data/npcs/` folder. It carries `class="has-suite"` on the board, meaning it
+advertises itself as more than one page's worth of tool. There is an easter egg in
+it (v1 §3.7).
 
-`Pathfinder/fetch json data.py` is the ingest script that built `data/`.
+`Pathfinder/fetch json data.py` is the ingest script that built `data/`. The
+manifest matches disk in both directions — the one orphaned NPC file v3 §2
+originally flagged (`npc-level-25 - Only Treerazor.json`, a duplicate of an entry
+already in `npc-level-25.json`) was deleted in round 1.
 
-This page makes **no offsite requests** — no Google Fonts, no CDN. It is one of the
-few pages in the repo that is already clean. Don't regress that.
+It persists three keys to `localStorage` across six call sites: `aa.remasterOnly`
+(source-mode toggle), `aa.bookmarks` (a bare array of `{type, level, name, _id}`
+stubs), and `aa.encounter` (encounter-builder state). **Not adopting `gvb-save.js`**
+for any of these is a standing decision from round 1, not an oversight worth
+re-raising: `save()` does `{...state, __v: version}`, and spreading a bare array
+produces an object with numeric-string keys instead of an array — every existing
+user's bookmarks would silently corrupt on the first save after adopting it.
+Fixing that means either a migration shim at the storage boundary
+(`{list:[...]}`) or restructuring `S.bookmarks` to an object-shaped state
+throughout the app, for a save system this page doesn't really need: three small
+independent preferences, not one versioned campaign blob. `gvb-site-handoff-v8.md`
+§4 records the same "can't hold a bare array or scalar" limit surfacing again in
+Name Picker's adoption this round, so this isn't a one-off problem with the app —
+if you want to make the case for adopting it anyway, the migration path is the
+part to design, not just the wiring.
+
+Three inline Foundry-token renderer bugs are fixed as of round 1, not open: a
+double-printed heighten line on the ~530 spells whose description prose already
+stated it (`renderSpell`), a `@Damage[...]` regex that broke on nested parens on
+224 entries (`renderInline`), and missing `@Embed[...]` handling that printed raw
+Foundry ids as text on 93 entries. `Claude Prompts/notes/01-anathema-archive-notes.md`
+has the detail if this renderer needs touching again.
+
+**There is still no test suite.** Nothing but hand-testing drives the level-bar
+anchor/range selection, npc shard sync, hash-routing round-trips, or bookmark-stub
+resolution. That's task one below.
+
+This page makes **no offsite requests** — no Google Fonts, no CDN.
+`Tools/board-check/check-integrity.mjs`'s static source sweep (locked decision #44)
+is what confirms that now, more reliably than a browser run's `page.__blocked`,
+which can't see a hotlink that was fulfilled locally instead of refused. Don't
+regress this.
 
 ## Your task
 
-There is no handoff backlog for this page. Nobody has looked at it in eight
-sessions. So:
+Round 1 already did the open-ended audit this section used to ask for: data
+loading, manifest integrity, search/filter/keyboard access, and mobile layout were
+all specifically checked and are in good shape, with no backlog behind any of
+them. It also fixed the three renderer bugs and the orphaned NPC file described
+above. What it left, in order of value per effort:
 
-**First, audit and plan.** Open the page, read it, and drive it in a browser. Then
-write a prioritized improvement plan into your notes file, ordered by value per
-effort, with the tradeoffs named. Things worth specifically forming an opinion about:
+1. **Build a test suite for this page.** There is none, and it owns fiddly
+   interaction logic that currently only gets verified by hand: the level-bar
+   anchor/range selection state machine, npc shard sync (load on select, unload on
+   deselect, and the case where the open detail pane was showing an entry that
+   just got unloaded), hash-routing round-trips (especially the 3-segment npc form
+   carrying a shard level), and bookmark-stub resolution.
+   `Tools/board-check/harness.mjs`'s `serve()` + `launch()`/`prepPage()` already
+   gets a real browser pointed at real data with no setup cost — you may **run**
+   that script, not edit it (see boundary). Write a Node script that drives it
+   from a folder you own under `Pathfinder/`, not `Tools/board-check`.
+2. **Sweep `renderNpc` for the same "structured data duplicates baked-in prose"
+   bug class** the spell-heighten fix addressed in round 1. `renderNpc` is the
+   largest, most complex renderer in the file, covering 6,393 creatures, and round
+   1 only confirmed the underlying field (`system.heightening`) is spell-only —
+   it did not do an equally deep pass over `renderNpc` looking for a sibling bug.
+3. **Decide what to do with the FABLE-PROGRESS header comment's "94 assertions"
+   claim.** It says the prior roadmap was "Tested via jsdom harness (mock fetch,
+   fixtures, 94 assertions)." No such test file exists anywhere in this repo —
+   round 1 checked and left the comment alone rather than guess at intent. Either
+   build item 1's harness and make the claim true, or trim the comment so it
+   stops asserting something nobody can currently check.
 
-- **Does the data actually load?** 24 JSON files behind a manifest is a lot of
-  fetches on a static host. Time it. If it is slow, say how slow, with numbers —
-  locked decision #42 is "measure before deciding an asset is too heavy", and it
-  exists because a size estimate that was wrong by 4× blocked a good decision for
-  two sessions.
-- **Is `data/` complete and current?** v3 §2 found an orphaned file here once. Check
-  the manifest against what is on disk in both directions: files the manifest names
-  that don't exist, and files on disk nothing references.
-- **What does the page do with its five `localStorage` calls,** and is any of it
-  worth moving to the shared `assets/js/gvb-save.js` (read that module and its
-  README first)? `gvb-save` gives you file export/import, a memory fallback for
-  browsers that block storage, and validation. The Fourth Quarter is the worked
-  example — read `Projects/fourth-quarter/js/campaign.js`. If the module is missing
-  a hook you need, that is a Shared-file request, not an edit.
-- **Does 1,419 lines in one file still make sense?** You may restructure into
-  `Pathfinder/anathema-archive/index.html` plus `js/` and `css/`. If you do, the old
-  URL `/Pathfinder/Anathema_Archive.html` stops resolving, so the board `href` must
-  change — that is a Shared-file request, and you should say in your notes that the
-  old URL breaks. Only do it if the page's complexity actually warrants it; say why
-  either way.
-- **Search, filtering and keyboard access.** A rules reference lives or dies on how
-  fast you can find one spell. Try it as a user with a real question.
-- **Mobile.** The board is used on phones. Check it at 375×812.
-
-**Then build the top items.** Don't stop at the plan. Implement the highest
-value-per-effort items in this same session and verify them. Leave the rest in the
-plan for next time.
+If your own pass turns up something new, add it here for whoever runs this prompt
+next.
 
 ## Verification
 
-You have no existing test suite here, and that is worth fixing if you touch
-anything structural.
+You have no existing test suite here, and building one is task one above.
 
 - Open the page in a real browser and drive it. `Tools/board-check/README.md`
   explains the harness (`launch()` / `prepPage()` in `harness.mjs`) if you want to
@@ -140,7 +180,11 @@ anything structural.
   scripted check would be genuinely useful, write it into your own project folder
   as a Node script rather than adding to `Tools/board-check`.
 - `cd Tools/board-check && npm run check` is the integrity + collision sweep. It
-  should still pass, 235 units, 0 broken, 0 collisions. Run it before you finish.
+  should still pass, 329 units, 0 broken, 0 collisions across nine widths, tightest
+  vertical gap 9.2px. Run it before you finish.
+- `cd Tools/board-check && npm run social:check` should report 22 notices, 22
+  already current. That count moves with the board, not with anything you do here
+  — if it's different when you run it, note it, don't chase it.
 - If you add a validator for `data/`, make it exit non-zero (locked decision #13).
 
 One scheduling note: `npm run games`, `npm run play` and `npm run previews` open
