@@ -1760,6 +1760,28 @@
 (function () {
   "use strict";
 
+  /* ---------- 0. Close the gap between the room and the first plaque.
+     .plaque.first's CSS margin-top (var(--band) - 34px) assumes the plaque
+     is the room's only sibling, but the hanging sign and the flavor line
+     sit in normal flow above it and push it down further than the room is
+     tall. Their combined height depends on viewport width (font clamps,
+     title wrap) and on web-font metrics, so it's measured at runtime
+     rather than guessed a second time in CSS; the CSS value stays as a
+     no-JS fallback. ---------- */
+  (function () {
+    var plaque = document.querySelector(".plaque.first");
+    var flavor = document.getElementById("flavor");
+    if (!plaque || !flavor) return;
+    function settle() {
+      var band = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--band")) || 0;
+      var flavorBottom = flavor.getBoundingClientRect().bottom + window.scrollY;
+      plaque.style.marginTop = Math.max(24, band - 34 - flavorBottom) + "px";
+    }
+    settle();
+    window.addEventListener("resize", settle);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(settle);
+  })();
+
   /* ---------- 1. Tavern-keeper flavor line, and the room talks back ---------- */
   var LINES = [
     "Take a notice down to accept the job. The barkeep vouches for every posting.",
