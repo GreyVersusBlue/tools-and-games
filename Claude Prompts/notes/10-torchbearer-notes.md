@@ -223,7 +223,7 @@ Loaded" modal naming the pack instead of a dead end.
 | File | Result |
 | --- | --- |
 | the export truncated to 900 bytes | "That is not a valid torchbearer save." |
-| `this is not json at all {{{` | same |
+| `this is not json at all {% raw %}{{{{% endraw %}` | same |
 | a Closing Time save envelope | same |
 | `{"state":{"build":null}}` | same |
 | `[]` | same |

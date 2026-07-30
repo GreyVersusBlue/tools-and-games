@@ -285,7 +285,7 @@ being clean confirms I did not touch anything inside the `gvb:social` markers.
 - **Corrupt files, all five refused** with "That is not a valid absalom-inheritance save." and the
   game still playable afterwards: garbage text, `{}`, a file truncated to half its length, a save
   stamped `game: "fourth-quarter"`, and a well-formed envelope wrapping a PC with no HP. Plus, in
-  the Node suite, `{{{ not json` sitting in localStorage loads as `null` rather than throwing on
+  the Node suite, `{% raw %}{{{ not json{% endraw %}` sitting in localStorage loads as `null` rather than throwing on
   boot.
 
 **Played it, in the browser, to both endings**
