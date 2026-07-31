@@ -43,6 +43,12 @@ Pointer lock ends on Esc and on anything that takes focus off the page; when tha
 happens a hint appears at the bottom of the screen saying so, because the previous
 behaviour was for mouse-look to stop working silently.
 
+You can wade into the water up to about knee depth — the limit is a water depth,
+not a fixed line on the sand, so it moves in and out with the tide (see
+`field.js`'s `wadeLimitZ`). Past that, the wash sound rises the same way it does
+on a big swash. Walking on the wet strip near the tideline leaves footprints that
+fade out after about a minute.
+
 ## Assets & audio
 
 - three.js (r-current), Sky and Water addons — bundled locally in `libs/`.
@@ -56,6 +62,11 @@ behaviour was for mouse-look to stop working silently.
 - All audio (ocean, wind, gulls, footsteps, jet, splashes) is synthesized
   live with the Web Audio API — no external audio dependency. To use a real
   recording instead, see the note at the top of `js/audio.js`.
+- The sand's tiling is broken up by a second, low-frequency canvas texture
+  multiplied into the diffuse in `terrain.js` (`onBeforeCompile`), tiled at a
+  different repeat than the photographed sand. Runtime canvas, 0 bytes on disk.
+  The footprint ovals in `footprints.js` are geometry, not a texture — same
+  reason, 0 bytes.
 
 ## Structure
 
@@ -68,8 +79,9 @@ js/terrain.js     sand mesh, wet strip, dune grass
 js/props.js       groyne, driftwood, boulders, wrack line
 js/ocean.js       water shader, tide swash, foam line
 js/wildlife.js    dolphin, gulls, sailboat, plane + contrail
-js/controls.js    first-person stroll controls
+js/controls.js    first-person stroll controls, wading limit
 js/audio.js       procedural soundscape
+js/footprints.js  footprint ring buffer, dropped from audio's footstep hook
 libs/             three.module.js, Sky.js, Water.js
 assets/           waternormals.jpg, textures/
 test/smoke.mjs    node test/smoke.mjs — heightfield + layout, no browser
@@ -86,8 +98,9 @@ layout in a dependency-free file is what makes them checkable.
 node test/smoke.mjs
 ```
 
-33 checks on the arithmetic: the ground has no cliffs in it, every prop is inside
+38 checks on the arithmetic: the ground has no cliffs in it, every prop is inside
 the walkable bounds, the groyne's tops descend to the waterline, the boulders
-break the surface, the driftwood touches the sand. It cannot see whether any of
-it is wired up or renders — for that, `npm run games golden-hour` in
+break the surface, the driftwood touches the sand, and the wading limit tracks
+the tide and stays well inside the old fallback wall. It cannot see whether any
+of it is wired up or renders — for that, `npm run games golden-hour` in
 `Tools/board-check` drives the real page in a real browser.

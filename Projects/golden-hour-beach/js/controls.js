@@ -1,8 +1,12 @@
 import * as THREE from 'three';
+import { wadeLimitZ } from './field.js';
 
 // First-person stroll controls. Pointer-lock on desktop; drag-look +
 // hold-lower-screen-to-walk on touch. Camera height follows the terrain
 // heightfield, with a gentle head bob while moving.
+
+// Knee-ish. See field.js's wadeLimitZ for why this is a depth, not a position.
+const WADE_DEPTH = 0.45;
 
 export class WalkControls {
   constructor(camera, dom, getGroundHeight) {
@@ -33,8 +37,12 @@ export class WalkControls {
     this.touchWalking = false;
     this._lastTouch = null;
 
-    // Bounds: keep the walker on the beach strip.
+    // Bounds: keep the walker on the beach strip. minZ here is a fallback outer
+    // wall only — the real seaward limit is computed every frame from the
+    // current water level, see wadeLimitZ below.
     this.bounds = { minX: -140, maxX: 140, minZ: -60, maxZ: 46 };
+    this.wadeDepth = 0;
+    this.wadeT = 0;
 
     this._bindEvents();
   }
@@ -89,7 +97,7 @@ export class WalkControls {
     }, { passive: true });
   }
 
-  update(dt) {
+  update(dt, waterLevel = 0) {
     if (!this.enabled) dt = Math.min(dt, 0.05);
 
     // Movement input in camera-relative space
@@ -123,8 +131,15 @@ export class WalkControls {
     const dx = (-sin * fwd + cos * strafe) * this.walkSpeed * dt;
     const dz = (-cos * fwd - sin * strafe) * this.walkSpeed * dt;
 
+    // Seaward bound is a wading depth, not a wall. Used to be the static
+    // BOUNDS.minZ, -60, which is nowhere near the water — nothing stopped a
+    // walker from reaching eye height 3.8 m *underwater*, because the seabed
+    // keeps dropping long after the shoreline is behind you. wadeLimitZ solves
+    // for the z where the current water surface is WADE_DEPTH deep, so the
+    // limit rises and falls with the tide instead of sitting at a fixed spot.
+    const minZ = Math.max(this.bounds.minZ, wadeLimitZ(waterLevel, WADE_DEPTH));
     this.pos.x = Math.max(this.bounds.minX, Math.min(this.bounds.maxX, this.pos.x + dx));
-    this.pos.z = Math.max(this.bounds.minZ, Math.min(this.bounds.maxZ, this.pos.z + dz));
+    this.pos.z = Math.max(minZ, Math.min(this.bounds.maxZ, this.pos.z + dz));
 
     // Head bob eases in and out
     const targetBob = moving ? 1 : 0;
@@ -135,6 +150,12 @@ export class WalkControls {
 
     const ground = this.getGroundHeight(this.pos.x, this.pos.z);
     this.pos.y = ground + this.eyeHeight;
+
+    // How deep the water is where the walker is standing, 0 on dry sand. Camera
+    // height already drops "for free" as ground descends toward the clamp above
+    // — this is just exposed so audio.js can swell the wash sound as you wade in.
+    this.wadeDepth = Math.max(0, waterLevel - ground);
+    this.wadeT = Math.min(1, this.wadeDepth / WADE_DEPTH);
 
     this.camera.position.set(this.pos.x + bobX * cos, this.pos.y + bobY, this.pos.z - bobX * sin);
     this.camera.rotation.set(0, 0, 0);
