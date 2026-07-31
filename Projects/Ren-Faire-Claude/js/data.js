@@ -157,6 +157,24 @@ export const TIME_BLOCKS = [
   { id: 'golden', label: 'Golden Hour', weight: 0.85, heat: 0.25 },
 ];
 
+// Stage 22: a per-weekendDay attendance multiplier, keyed by state.weekendDay
+// (1=Fri, 2=Sat, 3=Sun — see state.js's createInitialState/nextDay). Through
+// Stage 21, weekendDay was set, incremented, and shown in the HUD, and
+// nothing else ever read it: simulateDay() stamped it on the result and
+// stopped there, so Friday, Saturday, and Sunday were mechanically the same
+// day three times despite the game being named for the shape a weekend has.
+// This is that shape: a real faire's Saturday is the day whole families turn
+// out, Friday is a workday for most of the shire, and Sunday eases off as
+// the weekend winds down. It's also what gives the Weekend Package contract
+// (data.js's CONTRACT_OPTIONS.weekend) a reason to exist beyond its flat 15%
+// discount — a single day-rate hire is now a choice of WHICH day, not just
+// whether to hire at all.
+export const WEEKEND_DAY_ATTENDANCE = {
+  1: 0.85, // Friday
+  2: 1.2,  // Saturday — the big day
+  3: 0.95, // Sunday
+};
+
 // ---------- faire grounds map ----------
 // Stage 2: plots now sit on a real coordinate grid instead of carrying
 // authored sightline/shade/traffic numbers. Those are *derived* in

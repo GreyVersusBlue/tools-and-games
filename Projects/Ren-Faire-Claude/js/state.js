@@ -5,6 +5,11 @@
 
 import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
 import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE, previewCommitAll, checkBankruptcy, checkWinCondition } from './engine.js';
+// Relative, not "/assets/js/gvb-save.js": tests/smoke.mjs imports this module
+// under plain Node, which cannot resolve a leading slash. The relative form
+// resolves identically in the browser (v7 §1 documented the same trap for
+// fourth-quarter's campaign.js).
+import { createSaveSlot } from '../../../assets/js/gvb-save.js';
 
 const SAVE_KEY = 'renn-faire-sim-save-v1';
 
@@ -570,71 +575,113 @@ export function acknowledgeVictory(state) {
 }
 
 // ---------- persistence ----------
-export function saveState(state) {
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
-    return true;
-  } catch (e) {
-    return false;
+// Stage 22: adopted assets/js/gvb-save.js, replacing the hand-rolled
+// localStorage calls this used to make directly. Key is unchanged (locked
+// decision #36) — an existing save carries no `__v`, which gvb-save reads
+// as version 0 and sends through repair() below rather than migrate().
+
+/** The gate on garbage: lifted unchanged from the old loadState(). */
+function validateSave(s) {
+  return !!s && typeof s.cash === 'number' && typeof s.day === 'number';
+}
+
+/**
+ * Everything else the old loadState() filled in, moved here unchanged.
+ * Locked decision #50: this is content drift (fields/shape added to the
+ * game since a save was written), not schema drift, so it belongs in
+ * repair — it has to run on every accepted load regardless of what __v
+ * says, exactly like it always ran regardless of what an old save's
+ * (nonexistent) version field said. migrate() stays the default no-op;
+ * there is no version-specific reshaping here, only fill-in-the-gaps.
+ */
+function repairSave(parsed) {
+  if (typeof parsed.season !== 'number') parsed.season = 1; // pre-Stage-6 save
+  if (!parsed.vendorContracts) parsed.vendorContracts = {}; // pre-Stage-7 save
+  if (typeof parsed.nextPlotId !== 'number') parsed.nextPlotId = 1; // pre-Stage-10 save
+  if (typeof parsed.bankrupt !== 'boolean') parsed.bankrupt = false; // pre-Stage-16 save
+  if (typeof parsed.victoryAchieved !== 'boolean') parsed.victoryAchieved = false; // pre-Stage-16 save
+
+  // Stage 10: planning/build status + per-plot vendor seating are new
+  // fields. Every pre-existing plot was, functionally, already "built"
+  // the instant it was placed (the old buildPlot charged immediately), so
+  // migrate straight to status:'built' rather than dropping it back into
+  // planning limbo. assignedVendorId defaults to null on food/vendor
+  // plots that predate the field.
+  let needsAutoSeat = false;
+  parsed.builtPlots = (parsed.builtPlots || []).map(p => {
+    // Stage 12: every plot from before this stage was built 1x1 — even a
+    // stage, since footprint didn't exist yet — so a missing w/h always
+    // backfills to 1, never to the current (now 2x2) STRUCTURE_TYPES
+    // footprint. Reshaping an old stage to 2x2 on load could suddenly
+    // overlap something the player already built right next to it.
+    const withStatus = { customName: false, w: 1, h: 1, ...p, status: p.status || 'built' };
+    if ((withStatus.kind === 'food' || withStatus.kind === 'vendor') && withStatus.assignedVendorId === undefined) {
+      withStatus.assignedVendorId = null;
+      needsAutoSeat = true;
+    }
+    return withStatus;
+  });
+  if (needsAutoSeat) {
+    // Seat already-hired vendors into already-built stalls so a save from
+    // before Stage 10 keeps earning exactly what it did before, without
+    // the player having to manually reseat everyone on first load.
+    const stallsByKind = { food: [], vendor: [] };
+    for (const p of parsed.builtPlots) {
+      if ((p.kind === 'food' || p.kind === 'vendor') && p.status === 'built') stallsByKind[p.kind].push(p);
+    }
+    const seated = new Set();
+    for (const vendorId of parsed.hiredVendors || []) {
+      const vendor = vendorById(vendorId);
+      if (!vendor || seated.has(vendorId)) continue;
+      const kind = STALL_KIND_BY_VENDOR_TYPE[vendor.type];
+      const openPlot = stallsByKind[kind] && stallsByKind[kind].find(p => !p.assignedVendorId);
+      if (openPlot) { openPlot.assignedVendorId = vendorId; seated.add(vendorId); }
+    }
   }
+  return parsed;
+}
+
+/**
+ * Deliberately built fresh on every call rather than cached: this project's
+ * own Node smoke suite reassigns globalThis.localStorage per JSDOM boot to
+ * simulate separate page loads sharing one storage (or, for most tests, a
+ * fresh storage per boot). gvb-save's storage probe only runs at
+ * createSaveSlot() construction time, and this module itself is only ever
+ * imported once — main.js is what the suite re-imports with a cache-busting
+ * query string — so a cached slot would freeze onto whichever localStorage
+ * happened to exist the first time any test in the process booted the game,
+ * silently breaking every later boot's save. createSaveSlot() just builds
+ * closures; building one per call is cheap next to the full re-render every
+ * action already does.
+ */
+function slot(storage) {
+  return createSaveSlot({
+    game: 'faire-weekend',
+    key: SAVE_KEY,
+    version: 1,
+    storage,
+    validate: validateSave,
+    repair: repairSave,
+    // A factory, not a literal (locked decision #47) — nothing in
+    // createInitialState() is randomized, but the factory avoids a
+    // deep-copy round trip and makes fresh()/reset() usable as-is.
+    defaults: createInitialState,
+  });
+}
+
+/** Exposed for main.js to hand to mountSaveBar; pass a stub in tests. */
+export function saveSlot(storage) {
+  return slot(storage);
+}
+
+export function saveState(state) {
+  return slot().save(state);
 }
 
 export function loadState() {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (typeof parsed.cash !== 'number' || typeof parsed.day !== 'number') return null;
-    if (typeof parsed.season !== 'number') parsed.season = 1; // pre-Stage-6 save
-    if (!parsed.vendorContracts) parsed.vendorContracts = {}; // pre-Stage-7 save
-    if (typeof parsed.nextPlotId !== 'number') parsed.nextPlotId = 1; // pre-Stage-10 save
-    if (typeof parsed.bankrupt !== 'boolean') parsed.bankrupt = false; // pre-Stage-16 save
-    if (typeof parsed.victoryAchieved !== 'boolean') parsed.victoryAchieved = false; // pre-Stage-16 save
-
-    // Stage 10: planning/build status + per-plot vendor seating are new
-    // fields. Every pre-existing plot was, functionally, already "built"
-    // the instant it was placed (the old buildPlot charged immediately), so
-    // migrate straight to status:'built' rather than dropping it back into
-    // planning limbo. assignedVendorId defaults to null on food/vendor
-    // plots that predate the field.
-    let needsAutoSeat = false;
-    parsed.builtPlots = (parsed.builtPlots || []).map(p => {
-      // Stage 12: every plot from before this stage was built 1x1 — even a
-      // stage, since footprint didn't exist yet — so a missing w/h always
-      // backfills to 1, never to the current (now 2x2) STRUCTURE_TYPES
-      // footprint. Reshaping an old stage to 2x2 on load could suddenly
-      // overlap something the player already built right next to it.
-      const withStatus = { customName: false, w: 1, h: 1, ...p, status: p.status || 'built' };
-      if ((withStatus.kind === 'food' || withStatus.kind === 'vendor') && withStatus.assignedVendorId === undefined) {
-        withStatus.assignedVendorId = null;
-        needsAutoSeat = true;
-      }
-      return withStatus;
-    });
-    if (needsAutoSeat) {
-      // Seat already-hired vendors into already-built stalls so a save from
-      // before Stage 10 keeps earning exactly what it did before, without
-      // the player having to manually reseat everyone on first load.
-      const stallsByKind = { food: [], vendor: [] };
-      for (const p of parsed.builtPlots) {
-        if ((p.kind === 'food' || p.kind === 'vendor') && p.status === 'built') stallsByKind[p.kind].push(p);
-      }
-      const seated = new Set();
-      for (const vendorId of parsed.hiredVendors || []) {
-        const vendor = vendorById(vendorId);
-        if (!vendor || seated.has(vendorId)) continue;
-        const kind = STALL_KIND_BY_VENDOR_TYPE[vendor.type];
-        const openPlot = stallsByKind[kind] && stallsByKind[kind].find(p => !p.assignedVendorId);
-        if (openPlot) { openPlot.assignedVendorId = vendorId; seated.add(vendorId); }
-      }
-    }
-    return parsed;
-  } catch (e) {
-    return null;
-  }
+  return slot().load();
 }
 
 export function resetSave() {
-  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* noop */ }
-  return createInitialState();
+  return slot().reset();
 }

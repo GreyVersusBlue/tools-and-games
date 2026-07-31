@@ -3,7 +3,7 @@
 // this module for the math. That split is what makes the smoke tests able
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
-import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW } from './data.js';
+import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE } from './data.js';
 
 // ---------- seeded RNG (mulberry32) ----------
 // Deterministic given a numeric seed so tests can assert exact outputs.
@@ -831,8 +831,13 @@ export function simulateDay(state, seed) {
   // and all the siting math from Stages 12/14/17 that feeds off it — worth
   // paying for.
   const groundsDraw = computeGroundsDraw(state.builtPlots);
+  // Stage 22: Friday/Saturday/Sunday finally draw differently. Falls back to
+  // neutral (1) for a state that never set weekendDay — every ad-hoc test
+  // state built with a plain object literal, mainly — rather than NaN-ing
+  // the whole attendance formula.
+  const weekendDayFactor = WEEKEND_DAY_ATTENDANCE[state.weekendDay] || 1;
   const jitter = 0.9 + rng() * 0.2;
-  const attendance = Math.max(0, Math.round(baseAttendance * priceMult * popularityFactor * adFactor * groundsDraw.mult * jitter));
+  const attendance = Math.max(0, Math.round(baseAttendance * priceMult * popularityFactor * adFactor * groundsDraw.mult * weekendDayFactor * jitter));
 
   // --- satisfaction (attendance-weighted across block/stage slots) ---
   let satWeightSum = 0;

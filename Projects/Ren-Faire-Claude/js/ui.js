@@ -1,7 +1,7 @@
 // ui.js — turns state into HTML strings. No event listeners live here;
 // main.js wires all interaction via event delegation on #content.
 
-import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW } from './data.js';
+import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE } from './data.js';
 import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
@@ -17,7 +17,7 @@ export function renderLedger(state) {
   const drawPct = ((draw.mult - GROUNDS_DRAW.floor) / (GROUNDS_DRAW.ceiling - GROUNDS_DRAW.floor)) * 100;
   const cashClass = state.cash < 0 ? ' bad' : '';
   return `
-    <div class="ledger-item">
+    <div class="ledger-item" title="${weekendNames[state.weekendDay] || 'This day'}'s crowd runs ${(WEEKEND_DAY_ATTENDANCE[state.weekendDay] || 1).toFixed(2)}x the base draw, before reputation, price, or the grounds.">
       <span class="ledger-label">Weekend ${state.season}</span>
       <span class="ledger-sub">${weekendNames[state.weekendDay] || ''} &middot; Day ${state.day}</span>
     </div>
