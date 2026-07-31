@@ -15,8 +15,12 @@ export class DayPhase {
   /**
    * @param scene   three.js scene (rings live here)
    * @param getC    () => campaign object (always current)
-   * @param cb      { save(), openDoors(), flash(), mountBar(el) } — mountBar is
-   *                main.js's one-and-only save-bar mount, called by doorPanel()
+   * @param cb      { save(), openDoors(), flash(), mountBar(el), onMove(), closedNight() }
+   *                mountBar is main.js's one-and-only save-bar mount, called by
+   *                doorPanel()/darkNightPanel(); onMove() rebuilds the room after a
+   *                signed lease (main.js's rebuildVenue()); closedNight() settles one
+   *                dark night's bills with no patrons (main.js's closedNight()) — both
+   *                were already wired into DayPhase before anything in here called them.
    */
   constructor(scene, getC, cb) {
     this.getC = getC;
@@ -33,6 +37,8 @@ export class DayPhase {
         pos: new THREE.Vector3(DOOR.x, 0, DOOR.z - 0.9), open: () => this.doorPanel() },
       { id: "upgrades", label: "Upgrades", key: "UPG", color: 0x9a6fb5,
         pos: UPGRADES_STATION.clone(), open: () => this.upgradePanel() },
+      { id: "realestate", label: "Real Estate", key: "ESTATE", color: 0xd4af37,
+        pos: new THREE.Vector3(6.7, 0, -0.8), open: () => this.realEstatePanel() },
     ];
     this.group = new THREE.Group();
     for (const st of this.stations) {
@@ -94,7 +100,11 @@ export class DayPhase {
 
   prompt(pos) {
     const st = this.nearest(pos);
-    return st ? `E — ${st.label}` : "";
+    if (!st) return "";
+    // Moving in isn't "opening the doors" — the door ring's panel becomes the
+    // dark-night settlement while a move is in progress, so the prompt says so.
+    if (st.id === "door" && this.getC().darkNightsLeft > 0) return "E — Tonight";
+    return `E — ${st.label}`;
   }
 
   interact(pos) {
@@ -184,6 +194,7 @@ export class DayPhase {
 
   doorPanel() {
     const c = this.getC();
+    if (c.darkNightsLeft > 0) return this.darkNightPanel();
     const game = C.isGameNight(c);
     const warn = [];
     if (game && (c.stock.beer || 0) < C.forecast(c) * 1.3) warn.push("Beer's thin for a game night.");
@@ -191,14 +202,14 @@ export class DayPhase {
     if (!C.hasCook(c)) warn.push("No cook — the kitchen's closed tonight.");
     if (!C.hasBartender(c)) warn.push("No bartender — servers cover the taps, badly.");
     if (Object.values(c.stock).every(v => !v)) warn.push("The shelves are BARE. Nobody can order anything.");
-    if (c.cash < C.RENT + C.wageBill(c) + C.upgradeFees(c)) warn.push("Tonight's rent + wages + upkeep outrun the till. A bad night puts you in the red.");
+    if (c.cash < C.rent(c) + C.wageBill(c) + C.upgradeFees(c)) warn.push("Tonight's rent + wages + upkeep outrun the till. A bad night puts you in the red.");
     const rows = [
       ["Day", `${c.day} · ${C.weekday(c)}`],
       ["Tonight", game ? "Mules game — kickoff 7 PM" : "No game on the screens"],
       ["Theme", C.promoDef(c).name + (C.promoDef(c).cost ? ` (−$${C.promoDef(c).cost})` : "")],
       ["Forecast", `~${C.forecast(c)} through the door`],
       ["Crew", c.staff.length ? c.staff.map(s => s.name.split(" ")[0]).join(", ") : "just you"],
-      ["Wages + rent", `$${C.wageBill(c)} + $${C.RENT}`],
+      ["Wages + rent", `$${C.wageBill(c)} + $${C.rent(c)}`],
       ["Upgrade upkeep", `$${C.upgradeFees(c)}`],
     ].map(r => `<div class="row"><span class="hint">${r[0]}</span><span>${r[1]}</span></div>`).join("");
     this.show("Tonight",
@@ -216,6 +227,61 @@ export class DayPhase {
     // container has to exist first. A fresh container every render means the
     // buttons are rebuilt rather than duplicated, so re-opening the panel is safe.
     if (this.cb.mountBar) this.cb.mountBar($("#doorSaveBar"));
+  }
+
+  /** The door ring's panel while a venue move is settling in. Replaces the normal
+   *  "Open the Doors" flow entirely — there's no night to run, just bills to pay
+   *  and a countdown to clear, one closed night per click through cb.closedNight()
+   *  (already wired in main.js, same as cb.openDoors() for a real night). */
+  darkNightPanel() {
+    const c = this.getC();
+    const v = C.venueDef(c);
+    const bill = Math.round(C.wageBill(c) + C.rent(c) + C.upgradeFees(c));
+    const rows = [
+      ["Day", `${c.day} · ${C.weekday(c)}`],
+      ["Status", `Moving into ${v.name}`],
+      ["Closed nights left", `${c.darkNightsLeft}`],
+    ].map(r => `<div class="row"><span class="hint">${r[0]}</span><span>${r[1]}</span></div>`).join("");
+    this.show("Tonight",
+      rows + `<div class="row bad">⚠ No patrons tonight — the crew still draws wages and rent still comes due.</div>`,
+      `<div class="footStack">
+         <span class="hint">Tonight's bill: <b class="money">$${bill}</b></span>
+         <button class="btn wide" data-closednight="1">Push Through the Night</button>
+         <div id="doorSaveBar"></div>
+       </div>`);
+    if (this.cb.mountBar) this.cb.mountBar($("#doorSaveBar"));
+  }
+
+  /** The venue ladder's door into the game. moveVenue()/nextVenue()/canMoveVenue()
+   *  are all campaign.js, tested there — this is only the UI: show the next rung,
+   *  sign it through cb.onMove() (already wired to rebuildVenue() in main.js). */
+  realEstatePanel() {
+    const c = this.getC();
+    const cur = C.venueDef(c);
+    if (c.darkNightsLeft > 0) {
+      this.show("Real Estate",
+        `<p class="hint">The move into ${cur.name} isn't finished — ${c.darkNightsLeft} closed night${c.darkNightsLeft === 1 ? "" : "s"} left before the doors reopen. Push through from the Tonight panel at the door.</p>`,
+        `<span class="hint">Cash $${Math.round(c.cash)}</span>`);
+      return;
+    }
+    const nv = C.nextVenue(c);
+    if (!nv) {
+      this.show("Real Estate",
+        `<p class="hint">You're already at <b>${cur.name}</b> — the top of the ladder. Nowhere left to climb.</p>`,
+        `<span class="hint">Cash $${Math.round(c.cash)}</span>`);
+      return;
+    }
+    const afford = c.cash >= nv.cost;
+    const draw = Math.round((nv.buzzMult / cur.buzzMult - 1) * 100);
+    this.show("Real Estate",
+      `<p class="hint">Currently at <b>${cur.name}</b>. A lease is one-way and cash up front — the room stays shut ${nv.darkNights} night${nv.darkNights === 1 ? "" : "s"} while the crew moves in, and rent, wages and upkeep all still come due on a closed night.</p>
+       <div class="promoCard">
+         <b>${nv.name}</b> <span class="hint">$${nv.cost.toLocaleString()}</span>
+         <div class="hint">${nv.desc}</div>
+         <div class="hint">+${draw}% more of a draw · $${nv.rent}/night rent (up from $${cur.rent}) · ${nv.darkNights} dark night${nv.darkNights === 1 ? "" : "s"} to move in</div>
+         <button class="btn small" data-signlease="1" style="margin-top:6px" ${afford ? "" : "disabled"}>Sign the Lease</button>
+       </div>`,
+      `<span class="hint">Cash $${Math.round(c.cash)}${afford ? "" : ` · need $${Math.round(nv.cost - c.cash).toLocaleString()} more`}</span>`);
   }
 
   upgradePanel() {
@@ -265,5 +331,17 @@ export class DayPhase {
       this.cb.save(); this.promoPanel();
     }
     if (t.dataset.opendoors) { this.closePanel(); this.cb.openDoors(); }
+    if (t.dataset.closednight) { this.closePanel(); this.cb.closedNight(); }
+    if (t.dataset.signlease) {
+      const r = C.moveVenue(c);
+      if (r.ok) {
+        this.closePanel();
+        this.cb.save();
+        if (this.cb.onMove) this.cb.onMove();
+        this.cb.flash(`Signed the lease on ${r.venue.name}. ${c.darkNightsLeft} closed night${c.darkNightsLeft === 1 ? "" : "s"} before you reopen.`, true);
+      } else {
+        this.cb.flash(r.err);
+      }
+    }
   }
 }

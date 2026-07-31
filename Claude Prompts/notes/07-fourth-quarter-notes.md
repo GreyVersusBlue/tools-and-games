@@ -2,332 +2,303 @@
 
 ## What changed
 
-### The save bar is reachable mid-campaign, in two new places
+### The venue ladder has a door into the game
 
-v7 §9 left this open and guessed the box score. The box score is right, and it is
-not enough on its own, so the bar went to both screens that qualify.
+`js/day.js` gained a fifth station, Real Estate, at (6.7, 0, -0.8) — open
+ground east of the room, clear of every table and the bar. Its panel
+(`realEstatePanel()`) shows the next rung (name, cost, description, the draw
+bump from `buzzMult`, the new rent, the dark-night count) and a Sign the Lease
+button that calls `C.moveVenue()`, then `cb.onMove()` — `rebuildVenue()` in
+`main.js`, wired since round 1 and never called until now. Three states:
+top of the ladder (nowhere to climb), a move in progress (redirects to the
+door panel), and the normal case.
 
-`Projects/fourth-quarter/index.html` gained `#boxSaveBar` inside the box score
-card, under Tomorrow's Ledger. `Projects/fourth-quarter/js/day.js`'s `doorPanel()`
-gained `#doorSaveBar` in the Tonight panel's footer, under Open the Doors.
-`Projects/fourth-quarter/js/main.js` mounts all three (start screen included)
-through one `mountBar()` function rather than three `mountSaveBar()` call sites,
-so there is one export affordance in this game shown in three places, not three
-bars that happen to look alike. `css/style.css` has one selector list covering all
-three for the same reason.
+The door ring's panel now branches on `c.darkNightsLeft`. Zero, and it's the
+same "Open the Doors" panel as always — unchanged HTML, unchanged behavior.
+Above zero, `doorPanel()` returns `darkNightPanel()` instead: no forecast, no
+crew list, just the day, which venue is moving in, the countdown, and a
+"Push Through the Night" button wired to `cb.closedNight()` — also wired
+since round 1, also never called until now. One click = one closed night,
+same unit as `settleDarkNight()`. The save bar mounts in both panels' footers
+the same way it already did in the old one.
 
-**Why the box score alone would not have finished the job.** It is reachable once
-per night, and a night is eight sim hours at 45 real seconds each: six minutes at
-1×. The complaint in v7 §9 is "exporting a campaign mid-week", and mid-week means
-during the day. With only the box score, a player who wanted a backup while
-planning still had to choose between reloading the page (which is the thing being
-fixed) and playing a full night. The Tonight panel closes that: it is the one day
-panel that summarises the whole campaign instead of one desk's worth of it, and it
-is the last screen before a night that can go badly. Between the two, no point in a
-campaign is more than one screen away from an export.
+`moveVenue()`/`canMoveVenue()`/`nextVenue()`/`settleDarkNight()` themselves
+are untouched — round 1's Node suite already covered the whole ladder. This
+was a UI and flow problem, exactly as the prompt said: a ring on the floor
+and a panel, nothing in the economics.
 
-**`buttons: ["export", "import"]` on all three, and `reset` on none of them.** The
-start screen keeps the two it had for the reason v7 §1 gives. The other two are
-screens a player passes through every single night, which makes them a worse home
-for a campaign-eraser than the start screen, not a better one: "Start over" next to
-Tomorrow's Ledger is a button you walk past a hundred times a playthrough and
-misclick once. The dev menu's "Reset all progress" covers the developer case.
-Every button still carries `data-gvb="export|import"`.
+### The seat count: honest now instead of fake
 
-**Import mid-campaign, which was the actual design question.** It turns out not to
-be a question at either new mount, and that is why these two and not others.
-Neither can be reached with a night in progress: the box score only exists after
-`lastCall`, by which time `showBoxScore()` has already run `settleNight()` and
-`save()`, and the Tonight panel only exists in the day phase. So an import never
-has live floor state to discard. `adoptCampaign()` already handled everything else
-(tear down night meshes, rebuild the room at the imported tier, restart the day,
-and `enterDay()` hides `#boxOverlay` on its way through). One thing it did not
-handle: an import from the Tonight panel left that panel open on top of the new
-campaign, still showing the old one's forecast and wage bill. `mountBar()`'s
-`setState` now closes an open panel first.
+Two separate things were wrong here, not one.
 
-Verified in a real browser, including the case where the panel is left open. See
-below.
+**The tiers' `seats` numbers never gated anything**, because `buildWorld()`
+ignores the venue argument `main.js` passes it and always builds the same
+30-seat Corner Tap room. `VENUES[].seats` (30/44/60/80) fed `NightEngine`'s
+cap directly, so at every tier above the Corner Tap the engine thought it had
+more room than the floor actually had. I didn't build four floor plans — that's
+a real 3D-modeling task and out of scope for what was left of this session —
+I did the other option the prompt named: `main.js`'s `beginNight()` now reads
+`seats: seats.length` (the actual room, imported from `world.js`) instead of
+`C.venueDef(campaign).seats`, so the engine's cap can never again say something
+the room doesn't back up. `VENUES[].seats` is now 30 at every tier, with a
+comment saying why, instead of four numbers that looked like content and
+weren't.
 
-### The box score card can scroll
+**`buildWorld()` never cleared `seats`/`colliders` between calls, and the
+ladder going live means it now runs on every real playthrough.** Both are
+module-level arrays in `world.js`, appended to by `addSeat()`/`blockCollider()`
+inside `buildWorld()`, and nothing ever reset them. `main.js`'s
+`rebuildVenue()` calls `buildWorld()` again on a signed lease, a dev-menu
+warp, or "New Game" — all three already existed before this session, so this
+bug predates the ladder — and every call silently appended another room's
+worth of seats and colliders on top of the last, all sitting at the exact
+same coordinates since the room never changes shape. Invisible in a browser
+(the old stool meshes leave with the group they belonged to) until
+`freeSeat()` or the collision check is working a list several rooms deep.
+Fixed with three lines at the top of `buildWorld()`:
+`seats.length = 0; colliders.length = 0; seatId = 0;`. Reintroduced the bug
+and watched it fail per locked decision #34 — see below — before trusting
+the fix.
 
-`#boxOverlay .card` got `max-height:92vh; overflow-y:auto`. Its row count already
-varied before I touched it (the Theme and Upgrade-upkeep rows only appear when they
-cost something, the Game section only on a Thursday or Sunday), nothing scrolled
-it, and I was adding 40px. Measured at 1320×800: card 557px in a 800px viewport,
-save bar bottom at 650px, so it fits with room. On a short window it now scrolls
-instead of putting Tomorrow's Ledger below the fold.
+### Rent scales with the venue tier
 
-### Dev menu: "Skip to last call"
+Task three's finding: nothing reads `c.day` for difficulty, rent was a flat
+$110 everywhere, and the venue ladder had no downside — a same-night A/B last
+session found the flagship paying 86% more net than the Corner Tap on
+identical bills. `campaign.js`'s `VENUES` now carries a `rent` field per tier
+(110 / 160 / 210 / 260, $50 up each rung) and a new `rent(c)` accessor reads
+the campaign's current venue. `settleNight()` and `settleDarkNight()` both
+call it instead of the flat `RENT` constant. `RENT` itself is unchanged and
+still exported — it's the Corner Tap's own number now, not a sitewide flat
+rate.
 
-`js/dev.js` and `js/main.js`. The box score was the most expensive screen in the
-game to look at, which is a bad property for a screen that now hosts a save bar.
-Six minutes at 1×, and the 2× button does not help, because **the speed buttons
-cannot be clicked while pointer lock is active**: they are DOM buttons and the
-canvas owns the mouse. I found that driving the page. `[data-speed="2"]` clicked
-cleanly, no error thrown, and `speedOn` stayed at 1 for the whole night.
+**This is a decision, written down, not the whole difficulty-curve question.**
+It does what the prompt asked for the cheapest: the ladder now costs more to
+run at the top, so climbing it is a tradeoff again instead of a pure
+upgrade. It does **not** touch the other half of task three — nothing reads
+`c.day` for anything, so day 40 within one tier is still exactly as easy as
+day 4, and there's still no fail state. See Deliberately not done.
 
-The button pushes `engine.t` to just under eight hours and lets the next
-`engine.update()` do the rest, so it runs the real closing path (hour rolls past 8,
-`lastCall` fires, `showBoxScore()` is scheduled) rather than faking a box score. It
-reports "No night running" instead of doing nothing when there is no night.
+### The five uncompressed WAVs are OGG now
 
-### The legacy-save audit, done on purpose
+`audio/sfx/events/patron-storm-out.wav` (3.7 MB), `stinger-kickoff.wav`
+(3.6 MB), `stinger-final-whistle.wav` (477 KB), and
+`audio/sfx/qte/qte-sizzle-loop.wav` (3.3 MB), `qte-pour-loop.wav` (2.1 MB) —
+converted to OGG Vorbis at `-q:a 5 -ar 44100`, matching the sample rate of
+every other file in `audio/` (bitrates land 79-181 kbps, in the same range as
+the existing OGGs: `order-ding.ogg` 144 kbps, `bar-bed-crowded-pub-loop.ogg`
+179 kbps). `audio/` is 2.3 MB now, down from 14.2 MB. `js/audio.js`'s `SFX`
+and `LOOPS` maps point at the new filenames; the WAVs are deleted, not kept
+alongside.
 
-`repairCampaign()` in `js/campaign.js`, rewritten around a `num(v, fallback)`
-helper that takes only finite numbers. The rule the audit produced, written above
-the function: every field this game does arithmetic on gets a finite fallback, and
-every field it calls a method on gets a type check. `validate` only guards `day`,
-`stock` and `staff`, so everything else was arriving unexamined.
+The size wasn't the only problem, so I also did the other half of the
+prompt's suggestion: `audio.js` gained `preload(...keys)`, which builds (but
+doesn't play) the `Audio`/loop element for a list of keys, and
+`main.js`'s `beginNight()` calls it with all five formerly-WAV keys at the
+top of the night — before the storm-out clip's first real trigger (a patron
+giving up, mid-night) has to be the moment the browser first fetches it.
 
-Method: load a save missing exactly one field, then run the arithmetic that reads
-it. Seven findings, worst first.
+### The mute toggle has a UI control
 
-| Field | What an old save actually did |
-| --- | --- |
-| `day` below 1 or fractional | `weekday()` indexes `DAYS[(day-1) % 7]`, so day 0 is `DAYS[-1]` and day 2.5 is `DAYS[1.5]`, both `undefined`. `BASE_CROWD[undefined]` is `undefined`, `forecast()` is NaN, and `NightEngine`'s `crowdTarget ?? 46` keeps the NaN because `??` only catches null and undefined. **Measured: 0 arrivals across a full eight-hour night, nothing thrown, nothing logged.** |
-| `cash` missing | Two bugs. `placeOrder()` gates on `cost > c.cash` and every comparison against `undefined` is false, so the distributor handed over 100,000 beers for free. Then the till went NaN and stayed NaN. |
-| `wage` on a staffer | `wageBill()` feeds `settleNight()`, so one missing wage put NaN into `cash` and `stats.lifetimeNet` permanently. Applicants need it too: `hire()` moves one onto the payroll unchanged. |
-| `stats` present but incomplete | The old check was `if (!c.stats)`, so `{ nights: 3 }` (a save from before `bestNight` and `lifetimeNet` existed) went straight through and both became NaN on the first close. |
-| `name` on a staffer | `beginNight()` does `s.name.split(" ")[0]` for every floor role. The only hard throw in the audit. A nameless staffer is also unfireable, since `fire()` matches on name. |
-| `skill` non-numeric | The old check was `if (!p.skill)`, which only catches falsy, so `"high"` survived into `roleMult()` and made prep speed NaN for that whole side of the ticket. |
-| `upgrades` not an array | The old check was `if (!c.upgrades)`, so an object there made `owned()` throw on `.includes` from the first frame. |
+`setMuted()`/`isMuted()`/`setMasterVolume()` were exported from `audio.js`
+since some earlier session with zero callers. `index.html`'s score bug gained
+one button (`#muteBtn`, next to the 1×/2× speed buttons) that calls
+`audio.setMuted(!audio.isMuted())` and swaps its own icon (🔊/🔇). No changes
+to `audio.js`'s API — it already did everything this needed.
 
-Also tightened, less dramatic: `applicants` non-array (was refusing the whole save,
-now loads empty), stock values, `darkNightsLeft`, unknown `venue` and `promoTonight`.
+### Two smaller items from round 1's notes
 
-Two things worth carrying forward. **`JSON.stringify` writes NaN and Infinity as
-`null`**, so any number that went bad in memory before a save comes back looking
-like an absent field, which is why `num()` treats null as missing. And **`typeof
-NaN` is `"number"`**, so the `typeof p.speed !== "number"` check from last session
-would wave through a live NaN. It cannot get one through a save file, but the slot
-runs `repair` on the campaign the game already holds, so it can get one in memory.
-
-`js/engine.js` got the same treatment on the constructor: `fin()` plus finite
-guards on `crowdTarget`, `hourLenSec`, `seats`, `foodMult`, `drinkMult` and
-`beerMult`. Second line of defence, because the engine should never quietly play an
-empty night whatever the caller hands it. `foodMult` floors at 0 rather than 1,
-because 0 is meaningful there: no cook on shift, kitchen's closed.
-
-One refactor fell out: `wageForSkill(skill, jitter)` now backs both
-`rollApplicants()` and the repair's wage fill, so the two cannot drift. Identical
-arithmetic to what `rollApplicants` had inline.
-
-### README
-
-`Projects/fourth-quarter/README.md`: the save section now has the three-mount
-table and says why `reset` is off everywhere, the controls section documents the
-dev menu and the pointer-lock trap on the speed buttons, and the file list points
-at `repairCampaign()`'s note as the audit write-up.
+Wrote the mobile-not-supported paragraph into the README (pointer lock +
+WASD + a keyboard-only controls hint is not a touch game, and that's the
+honest answer). Left the frame-time numbers alone — they're already recorded
+and nothing this session touched rendering.
 
 ## What I verified
 
-Baseline before I started: 137 and 179, matching v7.
-
-- `node test/smoke-campaign.mjs` → **189 passed, 0 failed** (was 137). 52 new
-  assertions, one or more per audit finding.
-- `node test/smoke-engine.mjs` → **190 passed, 0 failed** (was 179). 11 new,
-  covering the engine's finite guards and the empty-night case end to end.
-- **Locked decision #34, all 14 guards.** I put each bug back one at a time,
-  reverting the guard to exactly what it replaced (`if (!c.stats)`,
-  `if (!p.skill)`, `?? 46`, and so on), ran the owning suite, and confirmed it went
-  red before restoring. Script in the scratchpad. First pass: **12 red, 2 stayed
-  green.** The two were `speed` and `darkNightsLeft`, and the reason is worth
-  keeping: my assertions used `null` and a string, both of which the old `typeof`
-  check already caught, so they proved nothing. I added the assertions that
-  distinguish them (a literal NaN through `repairCampaign()` directly, and a
-  negative and fractional countdown). Second pass: **14 red, 0 untested.**
-- **Save bars in real headed Chrome, 21 checks, 0 failed.** Own script, same
-  harness `play-games.mjs` uses, at 1320×800. Covers: all three bars mount
-  `export,import` and nothing else; re-opening the Tonight panel rebuilds its bar
-  rather than stacking a second pair; exporting mid-day writes an envelope matching
-  the campaign as it stands with no reload; the dev skip reaches the box score;
-  exporting there writes the settled night; importing at the box score restores an
-  older campaign, hides the overlay and lands in the day phase; importing from the
-  Tonight panel closes the panel; the doors still open afterwards; the bar is
-  inside the viewport; `page.__blocked` empty. Screenshots of both new bars in the
-  scratchpad.
-- `npm run check` → **250 units, 0 broken; 0 collisions across nine widths.**
-  (250, not v7's 235, because other threads have added pages this session.)
-- `npm run social:check` → **23 notices, 23 already current.**
-- `npm run games` → **94 checks, 0 failed.** Every existing fourth-quarter beat
-  still passes untouched, which is the point: the start-screen bar is exactly what
-  it was, `#saveBar` is still `export,import`, and the two new mounts are additive.
-  Worth knowing for scheduling: port 8126 was held by another thread's run for the
-  first 3.5 minutes and the suite dies with `EADDRINUSE` rather than waiting, so I
-  queued behind it. v7's "only one at a time" is a hard requirement, not advice.
-- Four full nights driven in headed Chrome for the audit half of task three: one
-  at the flagship for frame time (Next session item 7), and a Corner Tap versus
-  flagship A/B on the same Thursday (item 2). The A/B is there because I had
-  written down that the flagship was probably a worse night than the Corner Tap,
-  and it is not. Numbers in item 2, along with why they should be seeded before
-  anyone leans on the digits.
+- `node test/smoke-campaign.mjs` → **196 passed, 0 failed** (was 189). 7 new
+  assertions: rent scales strictly up the ladder and moves with `devWarpVenue`,
+  the Corner Tap's own rent still equals the `RENT` constant, every tier's
+  `seats` field is the same 30. 2 existing assertions fixed to expect the
+  Fieldhouse's own rent instead of the old flat `RENT` at the point in the
+  file where `c` is parked at that tier.
+- `node test/smoke-engine.mjs` → **190 passed, 0 failed** (unchanged —
+  `engine.js` itself wasn't touched; the seat cap fix is entirely in
+  `main.js`/`world.js`, upstream of what this suite drives).
+- **Locked decision #34, both changes verified against the bug they fix.**
+  Reverted the `rent: 160` back to `110` on the Fieldhouse: 2 red
+  (`rent strictly increases up the ladder`, `Fieldhouse's rent is more than
+  the Corner Tap's`), rest green. Restored, both green again. Separately,
+  commented out the three `seats.length = 0; colliders.length = 0; seatId = 0;`
+  lines in `world.js` and reran my own browser script (below): seats/colliders
+  grew by 30/11 on every rebuild (30→60→90→120 across three dev-menu warps,
+  and 60 again after a "New Game" that should have reset it to 30) — the exact
+  failure mode the fix exists for. Restored, all green.
+- **`npm run games` could not run — root cause found, unrelated to this
+  project's code.** `page.waitForFunction(fn, null, { timeout })` — the
+  pattern used by every headed-suite script in `Tools/board-check/`
+  (`drive.mjs`, `games.mjs`, `capture-previews.mjs`, `play-castle.mjs`, and
+  nine call sites in `play-games.mjs` itself) — throws
+  `Cannot read properties of null (reading 'polling')` under the
+  `puppeteer-core` version `npm install` resolves in this environment
+  (24.43.1, against `"^24.0.0"` in `package.json` with no committed
+  `package-lock.json`, which is itself gitignored). Reproduces on a blank
+  `data:` URL page with nothing loaded — confirmed with a five-line repro
+  before touching this project's code at all, and confirmed again in both
+  headed and headless mode. `puppeteer-core`'s `Realm.waitForFunction`
+  defaults `options` to `{}` only when the caller omits the argument or
+  passes `undefined`; an explicit `null` (which is what every one of those
+  call sites passes) skips the default, and `WaitTask`'s constructor then
+  does `options.polling` directly. This is a Shared-file request, not
+  something I fixed — `Tools/board-check/**` isn't mine — see below.
+- **Verified the actual feature in headless Chrome instead, since the shared
+  suite couldn't run.** Two throwaway scripts in the scratchpad, reusing
+  `harness.mjs`'s `serve`/`launch`/`prepPage` (imported, not edited) but with
+  every `waitForFunction` call written as `(fn, { timeout })` or with a
+  hand-rolled poll loop instead of the broken `(fn, null, {...})` shape.
+  28 checks total, 0 failed:
+  - Walking to the Real Estate station and pressing E opens the panel;
+    it names the Fieldhouse and its $5,500 cost; Sign the Lease is present
+    and enabled once cash covers it.
+  - Signing the lease: campaign moves to `fieldhouse`, `darkNightsLeft`
+    becomes 1, exactly $5,500 leaves the till, the panel closes itself
+    before the world rebuilds, and `world.js`'s `seats` array is still
+    exactly 30 afterward (the leak-fix check, live).
+  - The door ring during the dark night opens a panel titled "Tonight"
+    describing the move in progress, with no "Open the Doors" button and a
+    "Push Through the Night" button in its place.
+  - Pushing through: `darkNightsLeft` clears to 0, the day advances by
+    exactly one with zero patrons, cash drops (rent + wages + upkeep, no
+    revenue), and the door ring's panel reverts to the normal one.
+  - Warped through all three moves via the dev menu on one page load (the
+    same repeated-`buildWorld()` path a lease, a warp, or "New Game" all take)
+    — seats stayed at exactly 30 after every one of the three rebuilds, and
+    again after a subsequent "New Game" wipe.
+  - Opened a real night at the flagship tier (no dark nights pending after a
+    dev warp) and confirmed the clock actually started (`#hHour` left "DAY").
+  - The mute button toggles its own icon on click.
+  - No audio-related request or console errors from the five new `.ogg`
+    files.
+  Screenshots of the Real Estate panel and the dark-night door panel are in
+  the scratchpad; both render correctly against the existing panel CSS with
+  zero new classes.
+- `npm run check` → **325 units, 1 broken** (`newindex.html`, offsite
+  Google Fonts hotlinks) and `npm run check-collisions` (run separately,
+  since `check` chains them with `&&` and the integrity failure stops it) →
+  **0 collisions, tightest gap 3.5px.** Neither result involves anything I
+  touched — `newindex.html` isn't in my boundary and I never opened it. Not
+  fixed, flagged below.
+- `npm run social:check` → refused to run: **"only parsed 17 notices out of
+  index.html — the notice markup has changed shape."** `index.html` at the
+  repo root is explicitly not mine to edit (locked decisions #9/#31, Prompt
+  21's file). Not fixed, flagged below.
 
 ## Shared-file requests
 
-**`Tools/board-check/play-games.mjs`, the `fourth-quarter` suite.** The existing
-beats all still pass, because the start-screen bar is untouched and `#saveBar` is
-still `export,import`. What is untested is both new mounts. Suggested beats, in the
-order they fit the existing script, all of them draft-verified in my own runner:
+**`Tools/board-check`'s `waitForFunction` calls are broken against the
+`puppeteer-core` version this environment actually installs, and it isn't
+a fourth-quarter-specific problem — every headed suite on the board is
+affected.** Exact fix, either of:
 
-1. After `#startBtn` and the dev-menu warp, before opening the doors, press `KeyE`
-   at the door ring and wait for `#panelOverlay [data-opendoors]`. Assert
-   `#doorSaveBar button` is exactly two buttons with `dataset.gvb` reading
-   `export,import`. Then click `#panelClose`, press `KeyE` again, and assert it is
-   still exactly two: the bar is mounted on every render of that panel, and the
-   thing that would break is duplication.
-2. With the `URL.createObjectURL` hook already installed, click
-   `#doorSaveBar [data-gvb="export"]` and assert the envelope's `state.day` and
-   `state.cash` equal the current `savedState()`. This is the beat that proves the
-   feature: an export mid-campaign with no reload in it.
-3. `#devOverlay [data-skipclose="1"]` is new and is the cheap way to a box score.
-   Open the doors, press Backquote, click it, then
-   `waitForFunction(() => boxOverlay.style.display === 'flex')`. Budget 20s. Without
-   it, reaching the box score costs six real minutes, because the 1×/2× buttons are
-   not clickable under pointer lock.
-4. At the box score, assert `#boxSaveBar button` is `export,import`, and assert
-   **no** `[data-gvb="reset"]` at either new mount.
-5. The import beat worth having, using the existing `setFiles()` helper: export at
-   the box score, click `#nextDayBtn`, use the dev menu to move the campaign on
-   (`[data-cash]`, `[data-day="7"]`), get back to a box score via `[data-skipclose]`,
-   then `setFiles(exported, () => page.click('#boxSaveBar [data-gvb="import"]'))`.
-   Assert the day came back, `#boxOverlay` display is `none`, and `#hHour` reads
-   `DAY`. That last pair is the actual risk in this change: an import that leaves a
-   box score sitting on a campaign it no longer describes.
-6. Same shape for the Tonight panel, asserting `#panelOverlay` display is `none`
-   afterwards.
+1. Change every `page.waitForFunction(fn, null, { ... })` (and the two
+   argument-less `null` forms, `drive.mjs:58` and `games.mjs:165`) to
+   `page.waitForFunction(fn, { ... })` — dropping the literal `null` lets
+   `Realm.waitForFunction`'s own `options = {}` default apply. Call sites:
+   `drive.mjs:58`; `play-games.mjs:68, 112, 125, 156, 264, 531, 643, 749, 781,
+   797`; `capture-previews.mjs:261, 332`; `games.mjs:165, 217`;
+   `play-castle.mjs:386`.
+2. And/or pin `puppeteer-core` to a version whose `WaitTask` tolerates a
+   literal `null` again, and commit `package-lock.json` (currently
+   gitignored in `Tools/board-check/.gitignore`) so the resolved version
+   stops floating on every fresh `npm install`.
 
-No `gvb-save.js` gap found. `mountSaveBar` already does everything three mounts
-need, `buttons` already covers the reset question, and `data-gvb` already makes the
-new bars clickable without label matching. Nothing to add to the module, and I did
-not touch it.
+I'd do (1) regardless of (2) — relying on exact patch-version behavior of an
+unpinned dependency is how this broke silently in the first place. Reproduced
+with a 15-line script against a blank `data:` page; happy to hand that over
+if it helps whoever picks this up.
+
+**A Real Estate suite for `play-games.mjs`, since the existing one never
+reaches the venue ladder.** Beats I already draft-verified in my own runner
+(exact selectors, exact assertions):
+
+1. After the dev-menu cash bump, teleport isn't available to a real script —
+   walk there instead: from spawn, that's roughly forward-and-right to
+   `(6.7, -0.8)` in world space (east side of the room, past the last table).
+   Simplest reliable approach: use the dev menu's cash, then drive the
+   camera the same way `lookAt()`/movement already works elsewhere in
+   `drive.mjs`, holding `KeyD`/`KeyW` for a measured duration. (My own
+   verification script teleported `window.__cam.position` directly, which
+   isn't available to a script that doesn't already have scene-probe access
+   wired the way I had it — `play-games.mjs` does have `attachSceneProbe`
+   via `t.probe()`, so this is very doable, just needs the walk timed once
+   by hand the way Daredevil's Continue-count was.)
+2. At the Real Estate panel: assert `#panelTitle` is `Real Estate`,
+   `[data-signlease="1"]` exists, and its `disabled` state matches whether
+   `savedState(p, 'fourth-quarter').cash >= 5500`.
+3. Click it; assert `savedState(p, 'fourth-quarter').venue === 'fieldhouse'`
+   and `.darkNightsLeft === 1`, and that `#panelOverlay` is `none` (it closes
+   itself — rebuilding the world under an open panel was the wrong call).
+4. Press `KeyE` at the door ring (same spawn-adjacent position the existing
+   suite already uses): assert `#panelTitle === 'Tonight'`,
+   `[data-opendoors="1"]` is **absent**, `[data-closednight="1"]` is present.
+5. Click it; assert `darkNightsLeft === 0` and `day` advanced by exactly 1
+   with cash lower than before (rent+wages+upkeep, no revenue — there's no
+   "took in $0" line to assert against directly, just the cash delta).
+6. Press `KeyE` again; assert the panel is back to the normal one
+   (`[data-opendoors="1"]` present) and `[data-opendoors="1"]` still opens a
+   real night (`#hHour` leaves `DAY`).
+
+No `gvb-save.js` gap. The lease/dark-night flow doesn't touch save/load at
+all beyond the existing `cb.save()` calls already in `main.js`.
 
 ## Deliberately not done
 
-**No fourth mount, and no pause menu.** The obvious "reachable anywhere" answer is
-Esc opening a menu, and it does not work here: in pointer lock, Chrome consumes the
-first Esc to release the lock and it cannot be prevented, so an Esc menu is either
-a two-press affordance or a fight with the browser. The four other day panels
-(Stock, Crew, Theme, Upgrades) are task-specific desks, and a save bar in each is
-four more copies of one control, not more reach. Three mounts covers the day and
-the close, which is the whole loop.
+**Distinct floor plans per venue tier.** The other of the two options the
+prompt offered for the seat-count problem. Building four rooms — more tables,
+a second stove, a wider bar — is real 3D layout work (collider placement,
+station repositioning, lighting), not a small lever, and it's the thing that
+would make `seats` numbers meaningful again instead of retired. I took the
+cheaper, honest fix (derive the engine's cap from the one room that exists)
+and left this as the real next step if the ladder's tiers are ever supposed
+to feel physically different, not just better-drawing.
 
-**The venue ladder has no player-facing UI at all, and I left it that way.** This
-is not a save-bar issue, it is the biggest thing I found and it is too big for what
-was left of this session. `moveVenue()`, `canMoveVenue()`, `nextVenue()` and
-`settleDarkNight()` are all written, tested (the Node suite covers the whole ladder)
-and unreachable: there is no Real Estate station in `day.js`, and `main.js` passes
-`onMove: rebuildVenue` and `closedNight` into `DayPhase`, which never calls either.
-The only way a player reaches the Fieldhouse is the dev menu's warp, which is free
-and skips the dark nights. So the cash gates ($5,500 / $15,000 / $34,000), the
-one-way lease, and the dark-night settlement are all dead content in the shipped
-game. Details and a plan in Next session.
+**The day-based difficulty curve.** Rent now scales with tier, which answers
+the half of task three that was cheap and available. It does not answer the
+other half: nothing in this game reads `c.day` for cost, so within a single
+tier day 40 is exactly as easy as day 4, and there is still no fail state
+beyond a red HUD number and a door-panel warning. A real fix here needs a
+design decision I don't think is mine to make solo — rent creeping with the
+calendar, a lease that can be lost, spoilage, something — not a mechanical
+one-line change. Flagging it explicitly rather than re-closing task three as
+if rent-by-tier were the whole answer.
 
-**Nothing done about the 12.9 MB of WAV.** Measured, not fixed: see Next session.
-It is a conversion job plus a listen, and doing it badly is worse than not doing it.
+**`Tools/board-check`'s broken `waitForFunction` calls.** Found the exact
+line and the exact one-character-class fix (a literal `null` where the
+callee's default only fires on `undefined`), and did not touch it —
+`Tools/board-check/**` isn't mine. See Shared-file requests.
 
-**`buildWorld()`'s unused venue argument left alone.** `main.js` calls
-`buildWorld(scene, campaign.venue)` and the function signature is
-`buildWorld(scene)`. `day.js`'s `rebuildStations()` comment already documents this
-and says the moment a tier gets its own floor plan is when it matters. Deleting the
-argument would remove the marker; wiring it up is the venue-ladder job below.
+**`newindex.html`'s font hotlinks and `index.html`'s social-notice markup
+drift.** Both surfaced by `npm run check`/`npm run social:check`, neither
+inside my boundary, neither touched.
 
 ## Next session
 
 Ordered by value per effort.
 
-1. **Give the venue ladder a door into the game.** A Real Estate station in
-   `day.js` calling `C.moveVenue()` through the `onMove` callback that is already
-   wired, plus the dark-night settlement through `closedNight`, which is also
-   already wired. The economics, the tests and both main.js callbacks exist; what is
-   missing is a ring on the floor and a panel. This is the cheapest large win on the
-   board: it turns four tiers of written content on.
-2. **Then fix the seat count, which is a live bug the moment item 1 ships.**
-   `buildWorld()` ignores the venue argument `main.js` passes it and builds the
-   same room every time, so ROOM/KITCHEN/DOOR are identical metres at all four
-   tiers. The only differences are `seats` (30/44/60/80) and `buzzMult`
-   (1.00–1.50). **The room has exactly 30 physical seats**: 6 bar stools plus 6
-   tables of 4, in a fixed `seats` array built once at module load in `world.js`.
-   That matches the Corner Tap's cap exactly and nothing above it.
-
-   `NightEngine` gates arrivals on `inBar < this.seats`, so at the flagship it will
-   admit up to 80. `Patron`'s constructor calls `freeSeat()`, and
-   `js/patrons.js:89` reads
-   `if (!this.seat) { this.state = "leaving"; engine.walkout(this.id); }`. So a
-   patron who arrives once 30 are seated is an instant walkout: `walkouts++`,
-   `mood -= 0.03`, `serviceRate` drops.
-
-   **I assumed that made the flagship a bad deal, ran the A/B, and it does not.**
-   Same Thursday game night, same starting two-person crew, same full shelves, only
-   the tier different:
-
-   | tier | forecast | peak in room | served | walkouts | service | net |
-   | --- | --- | --- | --- | --- | --- | --- |
-   | Corner Tap | 51 | 23 | 44 | 24 | 65% | +$85 |
-   | flagship | 77 | 29 | 54 | 36 | 60% | +$158 |
-
-   The ladder pays: 86% more net for the top tier, because rent and wages are flat
-   and the extra crowd converts. Service degrades but does not collapse. So the
-   $34,000 is not wasted, and the thing to fix is narrower than I first wrote:
-   **the `seats` numbers on the tiers are inert.** Peak occupancy is 23 and 29
-   against 30 physical seats, so 44, 60 and 80 never gate anything and never will.
-   Every bit of a tier's value comes from `buzzMult`. Either build real rooms per
-   tier so the caps mean something, or derive `VENUES[].seats` from
-   `world.seats.length` and drop the pretence.
-
-   Caveat on all six numbers: `engine.js`'s `seed()` is never called in the game, so
-   these are single unseeded runs and they move. An earlier flagship night on the
-   same setup came out 42 walkouts, 51%, +$56. Treat the direction as real and the
-   digits as approximate, or seed the run.
-3. **The night loop has no difficulty curve, and it is one line to confirm.**
-   Nothing reads `c.day` except `weekday()` and the HUD. Rent is a flat $110 at
-   every tier and every day. Wages are your own roster, upgrade upkeep is opt-in,
-   and crowd goes up with tier. So cost is fixed and revenue only grows: day 40 is
-   strictly easier than day 4, and there is no fail state anywhere (negative cash
-   turns the HUD red and the door panel warns, and nothing else happens). Decide
-   whether that is intended (a sandbox) or whether rent should scale with the tier,
-   which is the smallest lever that would make the ladder a decision instead of a
-   reward.
-4. **Convert the WAVs.** `audio/` is 14.2 MB, and 12.9 MB of that is five
-   uncompressed WAVs: `patron-storm-out.wav` 3.7 MB, `stinger-kickoff.wav` 3.6 MB,
-   `qte-sizzle-loop.wav` 3.3 MB, `qte-pour-loop.wav` 2.1 MB,
-   `stinger-final-whistle.wav` 477 KB. The other ten files are OGG or MP3 and come
-   to 1.4 MB together. The size is not the real problem: `playSfx()` builds the
-   `Audio` element on first play, so the 3.7 MB storm-out downloads **the first time
-   a patron gives up**, mid-night, and the clone is asked to play before it has
-   buffered. Same for the kickoff stinger two sim hours into a game night. Convert
-   to OGG at the same settings as the ones that are already OGG, and consider
-   warming the cache on `beginNight()`.
-5. **There is no way to turn the sound down.** `setMuted()`, `isMuted()` and
-   `setMasterVolume()` are exported from `audio.js` and have no callers anywhere.
-   The bar bed is a 1.2 MB loop that starts on Open the Doors at 0.35. A mute toggle
-   in the score bug is small and the API is already there.
-6. **Mobile: write down that it is not supported.** Pointer lock plus WASD plus a
-   `#controls-hint` that names four keyboard controls is not a touch game, and the
-   honest answer is a note in the README and on the board card rather than a
-   touch-controls project. Worth one paragraph so nobody re-opens it.
-7. **Frame time is not a problem, and here are the numbers so nobody has to
-   wonder again.** Measured in real headed Chrome at 1320×800, flagship tier,
-   Thursday game night, sampling a full eight-hour night in 6-second windows.
-
-   | | empty room | peak (29 patrons, 9 PM) |
-   | --- | --- | --- |
-   | median frame | 6.9 ms (145 fps) | 7.0 ms (143 fps) |
-   | p95 frame | 7.4 ms | 21.1 ms |
-   | worst frame | 8.4 ms | 48.7 ms |
-   | visible meshes | 157 | 353 |
-   | triangles | 9.2k | 24.6k |
-
-   Median does not move at all. The number that moves is p95, 7.4 ms to 21.8 ms,
-   so the busiest hour has occasional 20–50 ms frames rather than a lower steady
-   rate. 24.6k triangles is nothing; if that hitch is ever worth chasing it will be
-   per-patron `update()` work or material count, not geometry. Roughly 5 meshes and
-   500 triangles per patron, so even a genuine 80-patron room lands near 550 meshes
-   and 35k triangles.
-
-   A measuring note for whoever does this next: **do not hook
-   `WebGLRenderer.prototype.render`.** In three r160 the renderer assigns
-   `this.render = function ...` as an own property on the instance, so the
-   prototype patch never fires and you get zero frames. This is v5 §4's warning and
-   I walked into it anyway. `requestAnimationFrame` for frame time and a
-   `window.__scene` traverse for mesh and triangle counts both work.
+1. **Fix `Tools/board-check`'s `waitForFunction` calls.** One-line change,
+   eleven call sites, and it's the only thing standing between every future
+   session and a working `npm run games`. See Shared-file requests for the
+   exact list and the two-part fix (drop the `null`s; pin+lock
+   `puppeteer-core` so it can't silently drift again).
+2. **Apply the Real Estate beats to `play-games.mjs`** once (1) is fixed —
+   drafted above, needs the walk-to-the-station timing measured once by hand
+   the way Daredevil's Continue count was.
+3. **Distinct floor plans per venue tier**, if the ladder is ever meant to
+   feel physically bigger rather than just draw better. Not urgent — the
+   honest-30-seats fix this session means nothing is currently lying about
+   what the tiers do.
+4. **The day-based difficulty curve**, properly — a design call, not a code
+   task. Rent-by-tier (this session) is a partial answer; day 40 vs. day 4
+   within one tier is still untouched.
+5. Everything still open from round 1's notes that this session didn't
+   touch: the WAV conversion and the mute toggle are both done now (tasks
+   four and five), so this list is shorter than it was.

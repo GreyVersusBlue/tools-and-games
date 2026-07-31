@@ -46,13 +46,31 @@ ok(!mv.ok, "can't afford Midtown right after paying for the Fieldhouse");
 c.cash = 900;
 const dn = C.settleDarkNight(c, Math.random);
 ok(dn.net < 0 && c.cash < 900 && c.darkNightsLeft === 0, "dark night charges bills with zero revenue and counts down");
-ok(dn.rent === C.RENT, "dark night still bills full rent");
+ok(dn.rent === C.VENUES.fieldhouse.rent, "dark night bills the Fieldhouse's own rent, not the Corner Tap's flat number");
+ok(dn.rent > C.RENT, "and the Fieldhouse's rent is more than the Corner Tap's base rate");
 c.cash = 999999;
 mv = C.moveVenue(c); mv = C.moveVenue(c);
 ok(c.venue === "flagship", "moving twice more reaches the flagship");
 mv = C.moveVenue(c);
 ok(!mv.ok && c.venue === "flagship", "no further move exists past the flagship");
 ok(C.nextVenue(c) === null, "nextVenue is null once you're at the top of the ladder");
+
+// ---- rent scales with tier, seats don't (session-2 audit) ----
+// Session 1 shipped the ladder's economics with a flat RENT everywhere, which is
+// what let the flagship win a same-night A/B on net alone — bigger crowd, same
+// bills. rent() ties the nightly bill to the current venue so the top of the
+// ladder costs more to run, not just more to buy.
+ok(C.VENUES.cornerTap.rent === C.RENT, "the Corner Tap's own rent is still the base RENT constant");
+const rentLadder = C.VENUE_ORDER.map(id => C.VENUES[id].rent);
+ok(rentLadder.every((r, i) => i === 0 || r > rentLadder[i - 1]), "rent strictly increases up the ladder");
+const rc = C.newCampaign();
+ok(C.rent(rc) === C.VENUES.cornerTap.rent, "rent(c) reads off the campaign's current venue");
+C.devWarpVenue(rc, "flagship");
+ok(C.rent(rc) === C.VENUES.flagship.rent, "and moves with it");
+// Physical capacity, on the other hand, does not move — world.js builds one
+// 30-seat room regardless of tier (buildWorld() ignores the venue argument), so
+// pretending the tiers differ here was cosmetic. See campaign.js's VENUES comment.
+ok(C.VENUE_ORDER.every(id => C.VENUES[id].seats === 30), "every tier's seats field is the same physical 30 — no fake variety");
 
 // ---- dev/debug helpers ----
 const cashBefore = c.cash;
@@ -117,7 +135,8 @@ ok(C.upgradeFees(cu) === C.UPGRADES.pos.fee + C.UPGRADES.training.fee, "upkeep s
 // ---- settlement ----
 const cash0 = c.cash, day0 = c.day;
 const books = C.settleNight(c, { total: 500, revenue: 450, tips: 50 });
-ok(books.net === 500 - books.wages - C.RENT, "net = take − wages − rent (no theme)");
+ok(books.net === 500 - books.wages - C.rent(c), "net = take − wages − rent (no theme)");
+ok(books.rent === C.VENUES.fieldhouse.rent, "and it's the Fieldhouse's rent, since that's where c is by now");
 ok(Math.round(c.cash) === Math.round(cash0 + books.net), "cash moves by net");
 ok(c.day === day0 + 1 && c.promoTonight === "none" && c.applicants.length === 3,
   "settle advances the day, clears the theme, rerolls applicants");

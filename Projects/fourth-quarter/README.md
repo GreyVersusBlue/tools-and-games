@@ -1,11 +1,17 @@
 # The Fourth Quarter — 3D (Sprint 3D-2: The Day Phase)
 
 A full day loop, first-person. **Days**: the room sits empty in daylight and
-you manage at four glowing stations — stock back in the kitchen (through the
+you manage at five glowing stations — stock back in the kitchen (through the
 doorway behind the bar), the crew at the bar, tonight's theme at the corkboard,
-and the front door to open up.
+a real estate desk for the venue ladder, and the front door to open up.
 **Nights**: patrons, tickets, your servers, and you on the floor. **Close**:
 box score, wages and rent come out of the till, tomorrow's ledger.
+
+**Mobile is not supported, on purpose.** Movement is pointer lock plus WASD,
+minigames are timed keypresses, and the on-screen controls hint names four
+keyboard keys — none of that has a touch equivalent worth building without
+redesigning the input model from scratch. This is a legitimate answer, not a
+gap: a touch-controls version would be a different project.
 
 The campaign persists (localStorage): cash, day counter, stock, payroll.
 Fresh balance, no save compatibility with the 2D game (by design).
@@ -71,6 +77,8 @@ python3 -m http.server 8000
 - **1× / 2×** in the score bug set the night sim clock (movement stays real-time).
   They are DOM buttons, so pointer lock has to be released (Esc) before one is
   clickable — worth knowing if you ever drive this page from a script.
+- The 🔊 next to the speed buttons mutes everything — one-shots and the bar-bed
+  loop alike (`setMuted()`/`isMuted()` in `js/audio.js`).
 - **`** (backquote) opens the dev menu from any phase. "Skip to last call" ends a
   running night immediately through the normal closing path, which is the only
   quick way to reach the box score: a night is eight sim hours at 45 real seconds
@@ -98,8 +106,15 @@ engine's result, and Mules fans bounce when they win.
 - **Theme** — Wing Night (crowd up, wings 40% off), Happy Hour (crowd up a
   little, drinks 25% off before 7), Watch Party ($50, big draw — game nights
   only, dead money otherwise).
-- Rent is **$110/night**, always. Wages, rent, upgrade upkeep, and theme costs
-  settle at close.
+- **Real Estate** — a one-way lease up the venue ladder: The Corner Tap →
+  Fieldhouse ($5,500) → Midtown Draft Hall ($15,000) → The Fourth Quarter
+  ($34,000). Cash up front, then 1-2 closed nights (rent/wages/upkeep still
+  due, no patrons) before the doors reopen. Each rung lifts the crowd forecast
+  and the nightly rent alike — see below.
+- Rent is **$110/night at the Corner Tap, rising $50/rung up the ladder**
+  ($160 / $210 / $260). Wages, rent, upgrade upkeep, and theme costs settle at
+  close. The physical room doesn't grow with the tier — see Files below — so
+  the ladder's payoff is the bigger crowd (`buzzMult`), not more seats.
 
 ## Files
 
@@ -113,12 +128,17 @@ engine's result, and Mules fans bounce when they win.
   write-up of the session-8 audit: every field the game does arithmetic on, what
   an old save missing it actually did, and why a `typeof` check wasn't enough.
 - `js/day.js` — day-phase controller: station rings + management panels
-  (Stock, Crew, Theme, Upgrades, Door).
+  (Stock, Crew, Theme, Upgrades, Real Estate, Door). The door's panel becomes
+  the dark-night settlement instead of "Open the Doors" whenever a venue move
+  is still settling in (`c.darkNightsLeft > 0`).
 - Tests: `node test/smoke-engine.mjs` and `node test/smoke-campaign.mjs`.
 - `js/world.js` — Corner Tap geometry: main room + back-of-house kitchen
   (doorway east of the bar, pass-through window where food lands), seats,
   colliders + walkable-bounds union, TVs, neon sign, day/night light rigs,
-  stove/tap minigame stations, upgrade crates.
+  stove/tap minigame stations, upgrade crates. One physical room at every
+  venue tier — `buildWorld()` clears and rebuilds `seats`/`colliders` on
+  every call, since a signed lease, a dev warp, or "New Game" all call it
+  again on the same page load.
 - `js/patrons.js` — patron + server NPC state machines (bartenders stick to
   drink tickets).
 - `js/player.js` — pointer-lock movement, collision, pick-up/deliver, and the
@@ -149,8 +169,13 @@ missing file just falls back to that surface's placeholder color.
 
 ## Roadmap (next sprints)
 
-1. **Venue ladder** — distinct rooms per tier; upgrade tiering can hook back
-   in once this exists.
-2. **Full campaign port** — league standings, regulars, rival bar,
+1. **Distinct rooms per venue tier.** The ladder is reachable now (Real
+   Estate station, session 2) but every tier is the same 30-seat room —
+   upgrade tiering and a real seat cap can hook back in once this exists.
+2. **A difficulty curve tied to the calendar.** Rent now scales with venue
+   tier (session 2), which makes the ladder a tradeoff instead of a pure
+   reward, but nothing yet reads `c.day` for cost — day 40 is exactly as
+   easy as day 4 within a tier, and there's still no fail state.
+3. **Full campaign port** — league standings, regulars, rival bar,
    distributors, spoilage (which would unlock a Commercial Walk-In-style
    upgrade), events as floor moments, re-balanced for the 3D serving loop.

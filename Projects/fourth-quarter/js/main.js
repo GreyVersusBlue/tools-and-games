@@ -120,7 +120,13 @@ function beginNight() {
     crowdTarget: C.forecast(campaign),
     gameNight: C.isGameNight(campaign),
     hourLenSec: 45,
-    seats: C.venueDef(campaign).seats,
+    // The physical room's own seat count, not the venue tier's — world.js builds
+    // the same 30-stool-and-table room at every tier (see world.js's buildWorld()
+    // and campaign.js's VENUES comment), so this is the one true cap. Reading it
+    // straight from `seats` (imported from world.js, already used below to reset
+    // occupancy) means the engine's arrival gate can never drift from the room a
+    // player can actually see.
+    seats: seats.length,
     stock: campaign.stock,        // shared — the night eats the shelves
     promo: C.promoDef(campaign).id,
     foodMult: C.roleMult(campaign, "cook"),
@@ -142,6 +148,11 @@ function beginNight() {
   });
   if (!C.hasCook(campaign)) tick("No cook on shift — the kitchen's closed tonight.", "b");
   if (!C.hasBartender(campaign)) tick("No bartender — servers are covering the taps, badly.", "b");
+  // Warm these five now, at the top of the night, rather than the first time
+  // playSfx()/startLoop() builds their Audio element mid-event — the storm-out
+  // clip in particular used to start fetching the moment a patron first gave up,
+  // and be asked to play before it had buffered.
+  audio.preload("stormOut", "stingerKickoff", "stingerFinal", "sizzle", "pour");
   passDisplays = new Map();
   broadcast = { gameNight: engine.gameNight, started: false, finished: false, win: null, mules: 0, sharks: 0, clockText: "Q1 15:00", flicker: 0, tick: 0 };
   $("#ticker").innerHTML = "";
@@ -354,6 +365,23 @@ document.querySelectorAll("[data-speed]").forEach(b => b.addEventListener("click
   speed = +b.dataset.speed;
   document.querySelectorAll("[data-speed]").forEach(x => x.classList.toggle("on", x === b));
 }));
+
+// ---- mute toggle ----
+// setMuted()/isMuted() have been exported from audio.js with no caller since they
+// were added; this is the whole job, in the one control cluster that's visible in
+// every phase of the game.
+function syncMuteBtn() {
+  const b = $("#muteBtn");
+  b.textContent = audio.isMuted() ? "🔇" : "🔊";
+  b.classList.toggle("on", audio.isMuted());
+  b.title = audio.isMuted() ? "Unmute" : "Mute";
+}
+$("#muteBtn").addEventListener("click", () => {
+  audio.setMuted(!audio.isMuted());
+  audio.playSfx("uiClick"); // silent while muting, audible confirmation on unmute
+  syncMuteBtn();
+});
+syncMuteBtn();
 
 // ---- start overlay ----
 /** The line under the title. Two fixes over the version that shipped:

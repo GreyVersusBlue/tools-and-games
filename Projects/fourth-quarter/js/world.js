@@ -54,6 +54,18 @@ function blockCollider(mesh, pad = 0.05) {
 export function buildWorld(scene) {
   const g = new THREE.Group();
 
+  // main.js's rebuildVenue() (a signed lease, a dev-menu warp, "New Game") calls
+  // this again on the same page, and neither module-level array was ever cleared
+  // — every rebuild silently doubled seats and colliders on top of the previous
+  // room's, all sitting at the same coordinates since the room itself never
+  // changes shape. Harmless-looking (the old stool meshes are gone with the
+  // group they belonged to) until freeSeat() or the collision check starts
+  // working a list several rooms deep. The venue ladder going live means this
+  // now runs on every real playthrough, not just a dev warp or two.
+  seats.length = 0;
+  colliders.length = 0;
+  seatId = 0;
+
   // ---- floors & ceilings ----
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, ROOM.z * 2), mat("floorWood"));
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; g.add(floor);

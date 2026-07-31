@@ -24,15 +24,15 @@ const SFX = {
   qteHit:         "sfx/qte/qte-hit-perfect.ogg",
   qteMiss:        "sfx/qte/qte-miss.ogg",
   crowdGroan:     "sfx/events/crowd-groan.mp3",
-  stormOut:       "sfx/events/patron-storm-out.wav",
-  stingerKickoff: "sfx/events/stinger-kickoff.wav",
-  stingerFinal:   "sfx/events/stinger-final-whistle.wav",
+  stormOut:       "sfx/events/patron-storm-out.ogg",
+  stingerKickoff: "sfx/events/stinger-kickoff.ogg",
+  stingerFinal:   "sfx/events/stinger-final-whistle.ogg",
 };
 
 const LOOPS = {
   barBed: "ambience/bar-bed-crowded-pub-loop.ogg",
-  sizzle: "sfx/qte/qte-sizzle-loop.wav",
-  pour:   "sfx/qte/qte-pour-loop.wav",
+  sizzle: "sfx/qte/qte-sizzle-loop.ogg",
+  pour:   "sfx/qte/qte-pour-loop.ogg",
 };
 
 let masterVol = 0.8;
@@ -54,6 +54,32 @@ export function playSfx(key, vol = 1) {
   const node = oneShotCache[key].cloneNode(true);
   node.volume = clamp01(vol * masterVol);
   node.play().catch(() => {}); // ignore autoplay-policy rejections
+}
+
+/**
+ * Build (but don't play) the Audio element for one or more keys, so the
+ * browser starts fetching the file before the moment it's first needed.
+ *
+ * Every one of these five used to be an uncompressed WAV, 2-3.7 MB apiece, and
+ * playSfx()/startLoop() only ever build an element on first play — so the
+ * storm-out clip downloaded mid-night, the first time a patron actually gave
+ * up, and the clone was asked to play before it had buffered. Converting them
+ * to OGG (same settings as every other file here) shrank the download; this
+ * is the other half — call it once, early, rather than let the first real use
+ * be the first fetch.
+ */
+export function preload(...keys) {
+  for (const key of keys) {
+    if (SFX[key] && !oneShotCache[key]) {
+      const a = new Audio(BASE + SFX[key]);
+      a.preload = "auto";
+      oneShotCache[key] = a;
+    } else if (LOOPS[key] && !loopState[key]) {
+      const el = new Audio(BASE + LOOPS[key]);
+      el.loop = true; el.preload = "auto";
+      loopState[key] = { el, vol: 0.5, playing: false };
+    }
+  }
 }
 
 /** Start a looped bed/QTE loop. Safe to call repeatedly — no-ops if already playing. */
