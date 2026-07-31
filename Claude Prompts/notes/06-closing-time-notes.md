@@ -2,442 +2,285 @@
 
 ## What changed
 
-**`Projects/Closing Time/js/state.js` — the save is now `assets/js/gvb-save.js`.**
-The key is unchanged: `closingTime.save.v1`. What it replaced, verbatim from the old
-file:
+**The headline: the career ends at day 336.** `js/engine/calendar.js` exports
+`CAREER_LENGTH_DAYS = 336`, matching `seasonOf`'s existing wrap point (four
+84-day seasons). `endDay()` now checks `S.day >= CAREER_LENGTH_DAYS` before
+incrementing; on the day it's true it calls `finishCareer()` instead of
+advancing to a 337th day. `finishCareer()` freezes a scorecard onto
+`S.scorecard` (day, volume, closings, referrals, final reputation, level,
+title, cash), sets `S.careerEnded = true`, logs a milestone line, and saves.
+`endDay()` is now a no-op once `S.careerEnded` is true, so a second click
+changes nothing.
 
-```js
-export function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
-export function loadSave() {
-  try { const raw = localStorage.getItem(SAVE_KEY); if (raw) { S = JSON.parse(raw); return true; } } catch (e) {}
-  return false;
-}
-```
+`js/state.js`: `makeCareer()` initializes `careerEnded: false, scorecard:
+null`. `repairCareer()` normalizes both (`s.careerEnded = !!s.careerEnded`;
+`scorecard` reset to `null` if it isn't an object) so a save from before the
+ending existed loads cleanly instead of crashing on `S.careerEnded` being
+`undefined` somewhere.
 
-Three exports are new and one is split:
+`js/ui.js`: `renderTopbar()` shows "Close out the year →" on day 336, "Career
+complete" (disabled) once `S.careerEnded` is true, and a new `renderScorecard()`
+opens a modal the first time `render()` runs after the career ends, showing
+the frozen numbers. It's dismissible per page load (a module-level
+`scorecardDismissed` flag) rather than per save, because `S.careerEnded`
+never goes back to `false` and `render()` runs on every nav click — without
+the flag, closing the modal once would just reopen it on the next screen
+switch.
 
-- `makeCareer(brokerageId)` is the old body of `newGame()` with the mutation taken
-  out. It builds a career and returns it, touching neither `S` nor storage, so the
-  slot can call it as a `defaults` factory. `newGame()` is now three lines around it.
-- `validCareer(s)` — the gate. Requires a finite numeric `day` and `cash`, a string
-  `brokerageId`, and an array `clients`. Those are the four the render path reads
-  before anything else can go wrong.
-- `repairCareer(s)` — the fill-in pass, handed to the slot as `repair` so it runs on
-  every accepted load through every door (locked decision #37).
-- `careerSlot(storage)` mirrors The Fourth Quarter's `campaignSlot`: cached per
-  storage in a `WeakMap`, undefined in the browser so gvb-save probes for itself.
-  `save()` / `loadSave()` / `wipeSave()` stayed as thin wrappers because `ui.js`,
-  `calendar.js` and the smoke test all read better in the game's vocabulary.
-- `adoptState(next)` installs a state the game did not build. That is the import path.
+**Task two: the topbar collapses on mobile.** `index.html`'s topbar wraps six
+stats into a `.statgrid` containing `.stat-primary` (Date, Slots, Cash — the
+three checked mid-day) and `.stat-secondary` (Reputation, XP, Rate), plus a
+`.stat-toggle` button. Above 620px `.stat-secondary` always shows and
+`.stat-toggle` is hidden (`css/style.css`) — nothing changes there. Below
+620px, `.stat-secondary` starts collapsed and the toggle shows; clicking it
+flips a module-level `statsExpanded` flag in `ui.js` and re-renders just the
+topbar. Measured at 375×812: topbar collapsed 241px, expanded 301px — a
+player checking Date/Slots/Cash mid-day never pays for the other three.
 
-Nothing in the project reads `localStorage` any more.
+**Task three: the Ledger got a real filter**, not a fold. `js/ui.js`'s
+`renderLog()` now shows a `<select>` with Everything / Money only /
+Reputation only / one option per client ("<name> only"), backed by a new
+module-level `ledgerFilter`. `logPanel(n, filter)` takes the filter and
+narrows `S.log` before slicing. Money/Reputation filtering needed a new field
+on log entries: `state.js`'s `log(text, cls, kind)` now takes an optional
+third argument, and `addRep`/`addCash` pass `"rep"`/`"money"`. This is
+deliberately separate from `cls` (which only drives log-row color and is
+heavily overloaded — both money losses and reputation losses use `cls:
+"bad"`, so `cls` alone can't distinguish the two categories). The
+per-client option filters by `it.text.includes(name)` — a substring match
+against the roster, not a stored client id on every log line, since adding a
+recId to every one of the ~50 call sites across `deals.js`/`seller.js`/
+`clients.js` was a much bigger change than the task asked for. Verified it
+against Sal DiMeo and Deb-referred clients in a real browser: filtering
+narrowed the row count in every case I tried, never widened it.
 
-**Two bugs `repairCareer` fixes that were already live, not hypothetical.** The prompt
-said to enumerate the fields added since ship that get used in arithmetic. The
-interesting ones here are not fields, they are content:
+**Task four: content removed from `data/` while a save references it.**
+`repairCareer()` in `state.js` now purges, not just backfills: after filling
+in missing `listingsState`/`market.nb`/`knowledge` entries for content added
+since a save was written, it deletes any entry in those three maps whose id
+no longer exists in `DB.listings`/`DB.neighborhoods`. Without this,
+`calendar.js`'s daily loop — `for (const id in S.listingsState) { ...
+DB.listings[id].address ... }` on a price cut or an off-market roll — throws
+the moment it reaches an orphaned id. Same family as the two bugs last
+round's adoption fixed (a save missing an entry for content added since),
+opposite direction (a save holding an entry for content that's gone).
+**Not handled, on purpose:** a deal or player listing still actively
+under contract on content that gets deleted mid-session. That's a much
+rarer, much stranger case (deleting a listing a real save is mid-contract on)
+and fixing it would mean guarding `deals.js`'s and `seller.js`'s own
+`DB.listings[id]`/`DB.neighborhoods[id]` reads throughout, not just the
+calendar loop. Documented in the README instead of silently patched.
 
-1. **A listing added to `data/` after a career started threw on the MLS board.**
-   `renderMLS` runs
-   `Object.values(DB.listings).filter(l => S.listingsState[l.id].status === "onMarket")`
-   over everything in the DB, and a save written before that JSON file existed has no
-   entry for it. `Cannot read properties of undefined (reading 'status')` — the screen
-   does not render at all. "Adding content never requires touching engine code" is the
-   documented contract in the project README, and until today it quietly meant
-   "…as long as nobody has a save."
-2. **A neighborhood added after a career started stopped the weekly market drift.**
-   `weeklyMarketTick` does `S.market.nb[id] = Math.max(0.7, S.market.nb[id] * (1 + change))`.
-   Undefined times a number is NaN, `Math.max(0.7, NaN)` is NaN, and it stays NaN
-   forever. `trueValue` reads it as `S.market.nb[...] || 1`, and NaN is falsy, so the
-   symptom is not a crash — the new neighborhood's prices simply never move again and
-   nothing anywhere says so.
+`tools/smoke.mjs`: grew from 76 to 100 assertions. New coverage: the career
+ending (reaching day 336, the scorecard's fields, the no-op on a second
+`endDay()`, a legacy save already past day 336 ending on its next click), the
+content-removal purge (both a direct `repairCareer()` check and a full
+save/load round trip through `careerSlot`), and a legacy save missing
+`careerEnded`/`scorecard` entirely repairing to `false`/`null`.
 
-The field-level ones, in descending order of how badly they break:
-
-- **`S.seed`.** `rand()` is `S.seed = (S.seed * 1664525 + 1013904223) % 4294967296`. An
-  undefined or NaN seed makes `rand()` return NaN forever: every `rand() < chance` is
-  false so no event ever fires again, and the first `pick(arr)` returns `arr[NaN]`,
-  which is `undefined`, which throws as soon as anything reads `.negotiationStyle` off
-  it. This is the same shape as v7's NaN walking speed and worse in reach.
-- **`S.nextId`.** `uid()` is `p + "_" + (S.nextId++)`. Undefined gives every record the
-  id `cr_NaN`, and `getClientRec()` then matches the first one every time. Repair
-  scans the existing `recId` / deal id / listing id / offer id suffixes and starts past
-  the highest, rather than resetting to 1 and colliding with what is already there.
-- **`pl.dom`, `pl.interest`, `pl.openHouseBoost`, `pl.marketingTier`, `pl.staged`** all
-  get added together in `dailySellerTick` every day a listing is live. One undefined
-  makes `pl.interest` NaN and it never recovers, so the listing stops attracting
-  offers and the seller sits there.
-- **`rec.schmoozeCount`.** `rec.schmoozeCount++` on undefined is NaN, and every
-  schmooze-triggered reveal after that compares `NaN >= n` and never fires. Silent.
-- **`S.firedEvents`** is read in `eligibleEvents` and written in `fireEvent`, and was
-  never in `newGame()` at all — both sites guard it (`S.firedEvents && …`,
-  `S.firedEvents = S.firedEvents || {}`), so this one was already handled. It is in
-  `makeCareer` and `repairCareer` now because relying on every future reader to
-  remember the guard is not a plan.
-- `brokerageId` is clamped to a brokerage that exists. `renderTopbar` reads
-  `DB.brokerages[S.brokerageId].name` on the first paint, so a stale id from a deleted
-  brokerage file is a dead page, not a wrong name.
-
-**`js/main.js`** mounts the save bar and takes the import path. It also disables the
-Export button until a career exists, by reaching for `#save-bar [data-gvb="export"]`.
-
-**`index.html`** — the save bar lives in the footer, inside a new `.foot-actions`
-wrapper next to "New career". The footer is on screen behind all six desk screens, so
-there is no equivalent here of v7 §9's complaint about The Fourth Quarter (export
-mid-campaign, reload the page to get the overlay back). Nothing was touched inside the
-`gvb:social` markers.
-
-**`index.html`, `css/style.css`, `assets/fonts/`** — the three Google Fonts hotlinks
-are gone, replaced by seven local woff2 faces. See "Fonts" below.
-
-**`css/style.css`** — save-bar styling via the module's four custom properties, plus a
-`max-width: 620px` rule that hides the footer tagline. Numbers in "What I verified".
-
-**`tools/smoke.mjs`** — rewritten around an assertion harness. It printed before and
-exited 0 no matter what (locked decision #13). 76 assertions now, non-zero exit on any
-miss, and the narrative output kept because it is genuinely useful to read.
-
-**`README.md`** — persistence section, architecture tree, and a design note saying that
-anything added to `S` or to `data/` belongs in `repairCareer()` the same day.
+`README.md`: persistence section now mentions the reverse-direction purge
+and the day-336 ending; "Design notes for future expansion" gained a
+paragraph on the removal fix and its one deliberately-unhandled edge case.
 
 ## What I verified
 
-Commands and their actual output.
-
-- `node tools/smoke.mjs` from `Projects/Closing Time` → **`SMOKE OK: 76 passed`**
-  (was `SMOKE OK`, an unconditional print, with no assertions at all). New coverage:
-  six shapes of corrupt save refused, a legacy save with nine things missing repaired,
-  the export envelope, a re-import, a version-0 export re-imported, `__v` written,
-  `fresh()`, `wipeSave()`, and that `makeCareer` does not touch the live career.
-- **Locked decision #34, five guard-rails, each broken on purpose and watched to fail
-  before being trusted:**
+- `node "tools/smoke.mjs"` from inside `Projects/Closing Time` →
+  **`SMOKE OK: 100 passed`** (was 76). Every new number above is an actual
+  assertion in that file, not a description.
+- **Locked decision #34, both new guard-rails broken on purpose and watched
+  to fail before being trusted:**
 
   | What I broke | Misses |
   | --- | --- |
-  | `repairCareer` returns immediately | 15 of 76, including `rand()` returning `NaN NaN NaN` and the MLS filter throwing |
-  | only the `s.seed` line removed | 3 — the seed, `rand()`, and the version-0 import |
-  | only the `listingsState` backfill removed | 2 — `ls_0004` missing, MLS filter throws |
-  | `validCareer` returns `true` | 5 corrupt blobs accepted |
-  | `nextId` reset to 1 instead of scanning | 1 — `nextId 1, highest issued 10` |
+  | the three orphan-purge lines in `repairCareer()` deleted | 5 of 100, including the two purge checks and the reload-and-advance check |
+  | the day-336 check in `endDay()` deleted (`S.day++` unconditional) | 5 of 100, all in the career-ending block |
 
-  Then restored, back to 76 passed. Two of the corrupt-blob cases (unparseable JSON, a
-  bare `null`) still pass with `validate` neutered, correctly: `normalize()` rejects
-  those before `validate` is ever reached.
-- `cd Tools/board-check && node play-games.mjs closing-time` → **18 checks, 0 failed**,
-  including "no page or console errors" and "no offsite requests". Every pre-existing
-  beat still passes untouched, which matters: `savedState()` reads the raw key and
-  `JSON.parse`s it, and `slot.save()` writes `{...state, __v: 1}`, so the flat shape
-  those beats read is unchanged.
-- `npm run check` → **247 units checked, 0 broken; 0 collisions, tightest vertical gap
-  7.1px.** Not 235, and not a stable number: it read 247, then 246, then 247 again
-  across three runs an hour apart. Other sessions are adding and removing files in this
-  tree while we all work. I added no `.js`, `.mjs`, `.json` or `.html` file, so none of
-  the drift is mine — and "235 units" is not a figure the next handoff should quote as
-  a baseline.
-- `npm run social:check` → **23 notices, 23 already current, 0 out of date.**
-- `grep -c "fonts.googleapis.com\|fonts.gstatic.com" "Projects/Closing Time/index.html"`
-  → **0**.
-- In a real browser at `http://localhost:47681/Projects/Closing Time/`:
-  - `document.fonts` after `ready` → all seven faces `loaded`, and `.lh-name` computes
-    to `"Zilla Slab", Rockwell, serif` at weight 700. The families resolve locally.
-  - Started a career, ended three days, clicked **Export save** with
-    `URL.createObjectURL` hooked and the anchor click neutered — the blob it would have
-    written is 4,200 bytes, filename `closing-time-save-2026-07-27.json`, envelope
-    `{format: "gvb-save", game: "closing-time", version: 1, savedAt: …}`, `state.day` 4.
-  - Ended five more days to day 9, then clicked **Import save** with the file chooser
-    answered before the click (same trick `play-games.mjs` uses). Career came back to
-    day 4, the desk re-rendered to "Thursday, Wk 1 Winter", localStorage rewritten with
-    `__v: 1`, no modal left open.
-  - Wrote `{"day":"tuesday","cash":"lots","clients":"none"}` into the key and reloaded:
-    **the brokerage-choice screen, no console errors, Import still available.** The old
-    loader took that blob (`S = JSON.parse(raw); return true`), and `renderTopbar`'s
-    first statement is `DB.brokerages[S.brokerageId].name` with `S.brokerageId`
-    undefined — a `TypeError` on the first paint and a page with no nav, no start
-    screen and an empty `#main`.
-  - Export is disabled on the start screen and enabled once a career exists.
-- Mobile, measured at 375×812 rather than eyeballed:
-  - footer **67px** before this session with no save bar → **128px** with the bar,
-    because it wraps onto its own line. That is 7.5% of an iPhone viewport spent on two
-    buttons nobody presses often, and I caused it.
-  - Hiding the tagline below 620px: footer **55px**, save bar on the same row as "New
-    career", no horizontal page scroll. Net 12px *shorter* than before the session,
-    with export/import added.
-  - Desktop at 1280×800 after the same change: footer 55px, tagline visible, no
-    horizontal scroll.
+  Both restored, back to 100 passed.
+- `cd Tools/board-check && npm install && node play-games.mjs closing-time`
+  **could not complete** — see "A shared-tooling bug I found, not caused" below.
+  In its place I wrote a standalone Puppeteer script against the same
+  `harness.mjs` this suite uses (not committed; it isn't a project file, it's
+  how I drove a real browser) and ran 17 checks against a live page, 0
+  failed:
+  - Six desk screens in the nav, MLS populated, a fresh visit shows the
+    start screen.
+  - At 375×812: the stat-toggle is visible, Rep/XP/Rate start hidden,
+    clicking the toggle shows them and grows the topbar (241px → 301px),
+    clicking again collapses it. At 1280×900 the toggle is hidden and the
+    secondary stats show without a click — the collapse is mobile-only.
+  - The Ledger filter's options are Everything/Money/Reputation (plus
+    per-client); switching to Money narrowed the row count.
+  - A save seeded directly into `localStorage` at day 336 (minimal fields;
+    `repairCareer()` filled the rest) resumes into the desk, the End Day
+    button reads "Close out the year →", clicking it opens a modal titled
+    "Year one, closed" showing the seeded closings (6) and reputation (62),
+    the button becomes disabled and reads "Career complete," and switching
+    screens afterward does not reopen the dismissed modal.
+- `cd Tools/board-check && npm install && node check-collisions.mjs` →
+  **0 collisions, tightest vertical gap 3.5px.** (`check-integrity.mjs`
+  failed on `newindex.html`, a file I never touched — see below — so I ran
+  collisions on its own rather than let `&&` skip it.)
+- `cd Tools/board-check && node tools.mjs` → **18 checks, 0 failed.** Doesn't
+  touch this game directly but confirms the sweep is still live.
+- Grep `Projects/Closing Time/index.html` for `fonts.googleapis.com` /
+  `fonts.gstatic.com` → **0**, still true.
+- `git status` before writing this file showed only the five files this
+  session touched inside `Projects/Closing Time/` — nothing stray staged
+  from the `npm install` in `Tools/board-check` (its `node_modules` and
+  `package-lock.json` are both gitignored there, confirmed).
+
+### A shared-tooling bug I found, not caused
+
+`npm run games` — the suite that matters most, per every past round's own
+notes — is currently broken for **every game on the board**, not just this
+one. `node play-games.mjs fourth-quarter` aborts on the very first thing it
+does (0 checks logged) with `Cannot read properties of null (reading
+'polling')`. `node play-games.mjs closing-time` gets 18 checks in (every
+desk-screen and save-resume check passes) and aborts at the same message on
+the export-flow check.
+
+The cause, traced with a standalone script against the same `harness.mjs`:
+`drive.mjs`'s `waitForProbe()` and four call sites in `play-games.mjs`
+itself (the export-flow checks for `closing-time`, `torchbearer` — I didn't
+check every game's line, only the ones I found — and others) all call
+`page.waitForFunction(fn, null, { timeout })`. JavaScript default parameters
+only substitute for `undefined`, not `null`, so passing `null` explicitly
+means Puppeteer's own `options = {}` default never kicks in — `options`
+stays `null`, and the currently-installed `puppeteer-core@24.43.1` (there's
+no committed `package-lock.json` in `Tools/board-check`; both it and
+`node_modules` are gitignored, so every session's `npm install` gets
+whatever's newest on the registry that day) destructures it directly and
+throws. `fourth-quarter` aborts before its own suite code even runs because
+`enter()` calls `waitForProbe()` for every three.js game (it, Aphelion,
+Golden Hour, Castle Conundrum) before the per-game checks start.
+
+I did not fix this. `Tools/board-check/**` (except `play-castle.mjs`) is
+prompt 21's, not mine, and `drive.mjs`/`play-games.mjs` aren't files I'm
+allowed to edit. It's in Shared-file requests below with the exact lines.
 
 ## Shared-file requests
 
-Written so they can be applied without this session's context.
+### `Tools/board-check/play-games.mjs` and `drive.mjs` — `npm run games` is currently broken for every game
 
-### gvb-save.js — three gaps, one of them real
+Not a request for a new beat — a bug report on the harness itself, found
+while trying to verify this session's own work. Change `null` to `{}` (or
+just omit the argument) at every `page.waitForFunction(fn, null, {
+timeout })` call:
 
-**1. `fresh()` cannot pass arguments to a `defaults` factory.** This is the one that
-actually cost me something.
+- `drive.mjs:58` — `waitForProbe()`, hit by every three.js game (Aphelion,
+  Golden Hour, Castle Conundrum, this project) before their own suite code
+  runs at all.
+- `play-games.mjs:264, 643, 749, 797` — export-flow checks for at least
+  `closing-time` and whichever games those other three lines belong to. I
+  didn't audit the whole file for the same pattern; a `grep -n
+  "waitForFunction(.*null"` across both files would find every instance in
+  one pass.
 
-Current: `function fresh() { if (typeof defaults === "function") return defaults(); … }`
+Root cause: JS default parameters only substitute for `undefined`, not
+`null`, so `waitForFunction(fn, null, opts)` never gets Puppeteer's own
+`options = {}` default — it stays `null`, and `puppeteer-core@24.43.1`
+throws destructuring it. Confirmed with a standalone script against this
+repo's own `harness.mjs`: the identical call with `{}` in place of `null`
+works; with `null` it reproduces `Cannot read properties of null (reading
+'polling')` on both engines' code paths (this is `puppeteer-core`-specific;
+I didn't check whether Playwright's `chromium.launch()` tolerates it — the
+Linux code path is the one every session actually runs).
 
-Requested:
+Second, smaller finding: `Tools/board-check/.gitignore` excludes both
+`node_modules/` and `package-lock.json`. That means every session's `npm
+install` resolves against whatever's newest on the registry that day, with
+no way to reproduce a previously-working install. This exact bug is a
+demonstration of the cost: `waitForFunction(fn, null, ...)` may have worked
+fine against whatever `puppeteer-core` version some earlier round installed,
+and broke silently on drift with no commit to point at. Worth considering
+committing `package-lock.json` (keeping `node_modules/` ignored) so a
+version bump is a visible, reviewable diff instead of invisible drift.
 
-```js
-/** A brand-new state. Extra arguments are forwarded to a `defaults` factory. */
-function fresh(...args) {
-  if (typeof defaults === "function") return defaults(...args);
-  return defaults ? JSON.parse(JSON.stringify(defaults)) : null;
-}
-function reset(...args) {
-  if (store) { try { store.removeItem(key); } catch (e) {} }
-  return fresh(...args);
-}
-```
+### `check-integrity.mjs` — `newindex.html` fails the integrity sweep
 
-Why the existing hooks don't cover it: `defaults` as a factory (v7 §1) solved
-"day one isn't a constant". It does not solve "day one depends on a choice the player
-has just made". Closing Time's day one is `makeCareer(brokerageId)` and the brokerage
-is picked on the start screen — Hearthstone Realty or independent, different
-commission split, different Monday perks. `slot.fresh()` has no way to say which, so
-the slot's `defaults` here is `() => makeCareer(DEFAULT_BROKERAGE)`, a career at a
-brokerage the player did not choose. Nothing in the game calls it, `newGame(id)` goes
-straight to `makeCareer`, and the smoke test asserts the default is what comes back —
-but a real hook is four characters of spread and removes a wrong-by-construction
-default from the second adopter's code. Backward compatible: every existing
-`fresh()` / `reset()` call site keeps working unchanged.
-
-**2. `reset()` cannot just erase.** `reset()` always calls `fresh()`, so `wipeSave()`
-here builds a whole throwaway career (iterating 24 listings and 6 neighborhoods,
-shuffling 16 clients) one line before `location.reload()` discards it. Harmless,
-slightly absurd, and it means erasing a save requires `defaults` to be capable of
-producing one. Requested:
-
-```js
-/** Erase the stored save. Returns true if a key was there to remove. */
-function clear() {
-  if (!store) return false;
-  const had = store.getItem(key) !== null;
-  try { store.removeItem(key); } catch (e) { return false; }
-  return had;
-}
-```
-
-and `reset()` becomes `clear(); return fresh(...args);`. Export `clear` alongside the
-rest. Low priority — the workaround costs nothing at runtime.
-
-**3. `mountSaveBar` has no way to express "this button isn't usable yet".** On the
-start screen there is no career, so Export would serialize `null` into a file that
-`deserialize` then refuses. I disable it from the host page via
-`#save-bar [data-gvb="export"]`, which is exactly what the `data-gvb` attribute is
-documented for, so this is a nice-to-have rather than a gap: a `canExport: () => bool`
-handler polled on click, or a returned `{ buttons }` map, would be tidier. I would not
-change the module for it alone.
-
-**Everything else held.** `repair` is the right shape and did all the work here without
-a single awkward case — including the two content-drift bugs, which are not what it was
-written for and which it handles because it runs on every load rather than on version
-drift. The envelope, the `game` check, the memory fallback, the relative import and the
-`buttons` option all fit a second adopter with no argument. See "the actual question"
-at the bottom.
-
-### `assets/js/README.md`
-
-Add Closing Time to "Who uses it", and one line to `migrate` vs `repair` that is worth
-having in the shared doc because it generalises past this game:
-
-> `repair` is also where **content drift** goes, not just schema drift. A data-driven
-> game whose save holds one entry per content file will meet saves written before half
-> that content existed. Closing Time's `repairCareer` backfills a market state for
-> every listing in the DB the save has never heard of; without it, adding one JSON file
-> threw on the MLS board for every existing player.
-
-### `Tools/board-check/play-games.mjs` — new beats for `closing-time`
-
-The suite already reloads mid-career, so it has the shape for these. Model them on the
-`fourth-quarter` save beats; the game key is `closing-time` and the storage key is
-`closingTime.save.v1`. Insert after the existing "and resumes on the same day" check.
-
-1. **The version stamp reached the save.**
-   `t.ok((await savedState(p, 'closing-time')).__v === 1, 'the save carries a version stamp')`
-
-2. **The save bar is in the footer and both buttons are there.**
-   ```js
-   const kinds = await p.$$eval('#save-bar [data-gvb]', els => els.map(e => e.dataset.gvb));
-   t.ok(kinds.join(' ') === 'export import', 'export and import are in the footer', kinds.join(' '));
-   ```
-   The point of this one is the *footer*, not the buttons — it is the assertion that
-   stops someone moving the bar back onto a start overlay.
-
-3. **Export writes a real career.** Hook `URL.createObjectURL` and neuter the anchor
-   click, same as the fourth-quarter beat does:
-   ```js
-   await p.evaluate(() => {
-     window.__cap = null;
-     const real = URL.createObjectURL;
-     URL.createObjectURL = b => { b.text().then(t => window.__cap = t); return real(new Blob()); };
-     HTMLAnchorElement.prototype.click = function () {};
-   });
-   await p.click('#save-bar [data-gvb="export"]');
-   const env = JSON.parse(await p.evaluate(() => window.__cap));
-   t.ok(env.format === 'gvb-save' && env.game === 'closing-time', 'export wrote a gvb-save envelope');
-   t.ok(env.state.day === after.day, 'holding the career it was taken from', `day ${env.state.day}`);
-   ```
-
-4. **Import takes the career back.** End four more days first so the import has
-   something to undo, then answer the file chooser before opening it — `prepPage()`
-   sets `page.__engine`, so branch on it exactly the way the fourth-quarter beat does.
-   Assert the day goes *back* to the exported one, and assert it against the **DOM**
-   (`.stat-val` in the topbar), not the save: locked decision #39, and this game saves
-   on render so the save agrees anyway. Asserting the DOM is what catches an import
-   that lands in state without redrawing.
-
-5. **A corrupt save does not boot the game.** The highest-value one, and the reason
-   this task existed:
-   ```js
-   await p.evaluate(() => localStorage.setItem('closingTime.save.v1',
-     JSON.stringify({ day: 'tuesday', cash: 'lots', clients: 'none' })));
-   await p.reload({ waitUntil: 'load' });
-   await p.waitForSelector('.start-screen, #nav [data-nav]');
-   t.ok(!!(await p.$('.start-screen')), 'a corrupt save drops you at the start screen, not into it');
-   t.ok(!(await p.$('#save-bar [data-gvb="import"]'))?.disabled ?? true, 'with import still offered');
-   ```
-   Note the wait selector: `boot()` awaits `loadAll()` before rendering anything, so
-   waiting for `.start-screen` alone times out (v7 §4).
-
-6. **A legacy save loads.** Write a save with no `__v` and no `seed`, reload, assert the
-   nav comes up and that ending a day still moves the counter — a NaN seed passes a
-   "does it render" check and fails the first time anything random happens.
-
-### The board — `index.html`, prompt 21
-
-**v7 §5 is still wrong, and by more than one page.** It says the site makes zero offsite
-requests site-wide. Closing Time's three font hotlinks are gone as of this session, but
-`grep -rln "fonts.googleapis.com" --include=*.html --include=*.css` over the repo, minus
-`node_modules`, still returns **eleven files**:
+`cd Tools/board-check && node check-integrity.mjs` reports:
 
 ```
-404.html
-index.html                                   <- the board itself
-Projects/coffee_shop_sim.html
-Projects/daredevil_r4.html
-Projects/integer-foundry.html
-Projects/Ren-Faire-Claude/index.html
-Projects/the-fracture-cycle.html
-Tools/Name Picker.html
-Tools/Schedule Browser as of 260715.html
-Tools/Schedule Visualizer and Browser Generator v60.html
-Tools/Seating Chart Generator.html
+FAIL newindex.html
+     references offsite host(s): fonts.googleapis.com, fonts.gstatic.com
 ```
 
-The board's own front page is one of them. **This is invisible to every check we have**,
-for the reason the prompt gave me: `prepPage()` in `harness.mjs` fulfills Google Fonts
-requests locally from the bundled `@fontsource` packages before the blocked-list check
-runs, so they never reach `page.__blocked`, and both `play-games.mjs` and
-`play-castle.mjs` assert on `page.__blocked`. The suites will keep saying "no offsite
-requests" for as long as this is true.
+I didn't touch `newindex.html` (`git diff --stat -- newindex.html` against
+this session's start is empty) and it isn't in my boundary. Flagging it
+because it's the reason `npm run check` (the combined `check-integrity.mjs
+&& check-collisions.mjs` script) reports 1 broken instead of 0 right now —
+I ran `check-collisions.mjs` on its own to confirm my own project's layout
+is still clean (0 collisions), but the combined command will keep failing
+on this file regardless of anything in `Projects/Closing Time/`.
 
-Two things worth doing, both outside my boundary:
+### `sync-social-tags.mjs` — currently can't parse `index.html`
 
-- **A grep check, not a browser check.** Add to `check-integrity.mjs`: scan every
-  `.html` and `.css` for `fonts.googleapis.com`, `fonts.gstatic.com`, and `//` URLs in
-  `src=` / `href=` that are not same-origin, and fail on a hit. It is a dozen lines,
-  it runs in `npm run check` where it costs nothing, and it would have caught this
-  three sessions ago. `page.__blocked` cannot be the check while `prepPage` fulfills.
-- **Then vendor the rest.** 124 KB bought three families here. The eleven remaining
-  files share most of the same families; a single shared `assets/fonts/` would cost
-  less than eleven copies and is the one case besides `gvb-save.js` where sharing
-  probably beats locked decision #17 — though I would not make that call for someone
-  else's file. Per-project copies at ~120 KB each are also fine.
+`node sync-social-tags.mjs --check` reports:
+
+```
+only parsed 17 notices out of index.html — the notice markup has changed
+shape, fix the regexes rather than shipping a partial sweep
+```
+
+Same situation: I never touched the repo root `index.html`, this predates
+anything in this session, and it's prompt 21's file to fix. Flagging it
+because it means I could not get a real "22 of 22 current" number this
+round — the tool refuses to ship a partial sweep, which is the right call,
+but it means this check is currently unusable for anyone until index.html's
+notice markup and the regex agree again.
 
 ## Deliberately not done
 
-- **A `migrate` hook.** There is one version of this save shape and version 0 needs
-  nothing that `repair` does not already do on every load. Adding an identity `migrate`
-  to look complete would blur locked decision #37, which is specifically about not
-  putting fill-ins in the version-drift hook. When the shape actually changes, `migrate`
-  goes in and `SAVE_VERSION` goes to 2.
-- **Rewriting `shuffle()` to use the seeded RNG.** It uses `Math.random()` while
-  everything else in the file uses `rand()`, so the intake queue is not reproducible
-  from the seed even though the comment on the seed implies "determinism-lite". It only
-  runs once per career, before any save exists, so it changes nothing about loading —
-  and fixing it changes what every new career looks like for no player-visible gain.
-  Worth a line in the file if anyone tries to make this game replay a seed.
-- **The `pendingLowball` field.** It is set by an event handler and consumed by the open
-  house flow in the same session, and `flowOpenHouse` clears it on entry, so a save
-  written mid-open-house cannot resurrect a stale one. `repairCareer` leaves it alone
-  on purpose. `makeCareer` declares it as `null` only so the shape is documented.
-- **Moving the seven vendored faces to a shared `assets/fonts/`.** Locked decision #17
-  says each project vendors its own copy. Eleven other files still hotlink the same
-  families and a shared folder would obviously be cheaper, but that is a board-level
-  decision on a shared path, and taking it unilaterally from inside one project is how
-  a merge fight starts. It is in the Shared-file requests instead.
-- **Reducing the topbar on mobile.** At 375×812 the topbar is 257px and the footer 55px,
-  so 38% of the viewport is chrome before any content. The six-cell stat grid wrapping
-  to four rows is the cause. It is a real problem and it is a layout redesign, not a
-  media query — see "Next session".
+- **Folding the Ledger into Desk instead of filtering it.** The prompt
+  offered either. A filter (Money / Reputation / per-client) is a smaller,
+  reversible change than repurposing the tab slot for something else, and
+  "something with actual state in it" wasn't specified, so inventing a new
+  screen felt like scope past what was asked. If a future round wants the
+  tab slot back for something specific, the filter work isn't wasted — it
+  moves into whatever Desk's "show more" becomes.
+- **A `recId` on every log entry, for an exact per-client filter.** The
+  current filter matches on the client's display name appearing in the log
+  text, which is how almost every client-related log line is already
+  written. A name that happens to be a substring of an unrelated log line
+  would be a false positive; I didn't hit one in play, and content authors
+  already avoid short or generic client names for readability. Threading a
+  `recId` through every `log()` call in `deals.js`, `seller.js` and
+  `clients.js` (roughly fifty call sites) to make it exact was a much bigger
+  change than a Ledger filter should cost.
+- **Guarding `deals.js`/`seller.js`'s own `DB.listings[id]` /
+  `DB.neighborhoods[id]` reads against deleted content.** Covered above,
+  under task four. An active deal or player listing on content that gets
+  deleted mid-session is a narrower, stranger case than the daily aging
+  loop, and fixing it means auditing every read site in both engine files,
+  not one function.
+- **A `migrate` hook for the new fields.** `careerEnded`/`scorecard` go
+  through `repair`, the same as every other gap this project's adoption
+  has ever filled, on purpose (locked decision #37 again: fill-ins belong
+  in `repair`, not `migrate`, and adding an identity `migrate` here would
+  blur that for no reason — there's still exactly one version of this save
+  shape).
 
 ## Next session
 
 Ordered by value per effort.
 
-1. **The offsite-request grep check in `check-integrity.mjs`, then the other eleven
-   files.** Detailed above. The check is a dozen lines and closes a hole that has been
-   silently open since v5; the vendoring after it is mechanical. Highest value on the
-   list because we are currently *asserting* something that is false.
-2. **`fresh(...args)` in `gvb-save.js`** — four characters, backward compatible, removes
-   a wrong-by-construction default from this project. Do it with the third adopter, so
-   two games' worth of evidence lands at once.
-3. **The six `play-games.mjs` beats above.** The save path is covered by 76 Node
-   assertions and verified by hand in a browser, but nothing automated drives the
-   export or import buttons in a real page. That is the exact gap `npm run games` was
-   built to close, and `day.rebuildStations` is the standing argument for closing it.
-4. **The topbar at 375 wide.** 257px of the viewport, six stats in a grid that wraps to
-   four rows. Date / Slots / Cash on one line and Rep / XP / Rate behind a tap would
-   halve it. This is the single biggest thing between the game and being playable on a
-   phone, and the rest of the layout already behaves.
-5. **Fourteen days is not a career length, and the game does not have one.** The prompt
-   asked for an opinion. There is no end condition at all — `endDay()` runs forever, the
-   ladder tops out at Managing Broker (1,300 XP), and after that the loop is the same
-   loop with bigger numbers. The seasons function suggests an intent nobody built:
-   `seasonOf` wraps at 336 days, which is four 84-day seasons, so **a one-year career is
-   already encoded in the date math**. Ending at day 336 with a year-end scorecard —
-   volume, closings, referrals, final rep, the ladder rung you reached — would give the
-   XP curve something to be a curve toward. Cheap to build, and it is the difference
-   between a sim and a toy.
-6. **The six desk screens earn their space, with one exception.** Desk, Clients, MLS,
-   My Listings, Office and Ledger are all doing distinct work, and the nav badges make
-   the two that need attention obvious. **Ledger is the weak one:** it is `logPanel(80)`
-   where the Desk already shows `logPanel(8)`, so it is the same list, longer. It would
-   earn its tab with a filter — money only, reputation only, this client only — or it
-   should fold into the Desk as a "show more" and free the slot for something with
-   state in it.
-7. **`data/` extensibility is real now, and worth one more pass.** Backfilling
-   `listingsState` fixed the crash, but the reverse case is untested: a listing
-   *removed* from `data/` while a save references it. `S.listingsState` keeps the orphan
-   entry, `calendar.js` iterates the save's keys and ages a listing that no longer
-   exists, and `DB.listings[id].address` in the price-cut log line throws. Same family,
-   opposite direction, cheap to fix in the same function.
-
-## Did the module's shape hold up for a second adopter?
-
-Mostly yes, and the one place it did not is small and named above.
-
-The thing worth writing down is *why* it held up, because it is not the part that was
-designed for it. `repair` was added in v7 for "fields added to the campaign since the
-first release" — a schema problem. Closing Time's two worst load bugs are not schema
-problems. They are **content drift**: the game's whole extension model is "add a JSON
-file, list it in the manifest, reload", and a save holds one `listingsState` entry per
-listing and one `market.nb` entry per neighborhood. Every content file added after a
-career starts is a hole in that career's save. `repair` handles it exactly, without
-being bent, because it runs on every accepted load rather than on version drift — a
-distinction that was made for a different reason and turned out to be the load-bearing
-one. That is a hook being right rather than a hook being lucky.
-
-Where it is still shaped like The Fourth Quarter: `fresh()` and `reset()`. Both assume a
-new game is a thing the module can produce on its own, which is true when the start
-screen is one button and false when it is a choice that changes the game's economics.
-The Fourth Quarter did not notice because its "New Game (wipe save)" button predates the
-module and it mounts `["export", "import"]` for unrelated reasons. Closing Time mounts
-`["export", "import"]` too, for the same-looking reason and a different actual one: not
-"there is already a wipe button" but "this game cannot start over without asking a
-question first, and the module has no way to ask it". Two adopters, both avoiding
-`reset`, for two different reasons, is the signal. The third adopter should be checked
-against this specifically.
-
-The relative import, the memory fallback, the envelope, the `game` check and `validate`
-all worked first time with nothing to report.
+1. **`npm run games` is broken for every game on the board, not just this
+   one.** Detailed above with exact lines. Whoever owns `Tools/board-check`
+   should fix the four-plus `null`-argument call sites before any project
+   thread trusts a green `npm run games` result this round — right now a
+   pass is impossible to get, so a silent skip of that check is not the
+   same as it actually passing.
+2. **`newindex.html` and `sync-social-tags.mjs`'s regex** are both failing
+   independently of anything in this project. Neither is mine to fix, but
+   both block the combined `npm run check` / `npm run social:check` numbers
+   the handoff usually quotes.
+3. **The per-client Ledger filter is name-substring, not id-exact.** Noted
+   above under "Deliberately not done." Worth revisiting if a future round
+   adds two clients whose names collide as substrings, or wants the filter
+   to survive a client being renamed mid-career (it currently wouldn't,
+   since past log lines keep the old name).
+4. **The one-time career-ending flow has no "what's next" beyond dismiss.**
+   The scorecard modal's only action is "Keep browsing the desk." A second
+   career at the same brokerage, or a proper end-of-run history across
+   multiple careers, is out of scope for what was asked this round but
+   would be the natural next step if the ending sticks.

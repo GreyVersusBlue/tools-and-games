@@ -15,7 +15,7 @@ import { S, newGame, makeCareer, adoptState, careerSlot, save, loadSave, wipeSav
 import * as Clients from "../js/engine/clients.js";
 import * as Deals from "../js/engine/deals.js";
 import * as Seller from "../js/engine/seller.js";
-import { endDay } from "../js/engine/calendar.js";
+import { endDay, CAREER_LENGTH_DAYS } from "../js/engine/calendar.js";
 import { maybeFireEvent } from "../js/engine/events.js";
 
 /* ------------------------------------------------------------------ harness */
@@ -176,6 +176,8 @@ delete legacy.listingsState[legacyListing];   // a listing added to data/ since
 delete legacy.market.nb[legacyNb];            // a neighborhood added since
 delete legacy.knowledge[legacyNb];
 delete legacy.activeEffects;
+delete legacy.careerEnded;             // predates the year-336 ending entirely
+delete legacy.scorecard;
 legacy.brokerageId = "bk_does_not_exist";
 if (legacy.clients[0]) delete legacy.clients[0].schmoozeCount;
 if (legacy.playerListings[0]) { delete legacy.playerListings[0].openHouseBoost; delete legacy.playerListings[0].dom; }
@@ -192,6 +194,8 @@ if (fixed) {
   ok(Number.isFinite(fixed.market.nb[legacyNb]), `and a price index for ${legacyNb}`);
   ok(Number.isFinite(fixed.knowledge[legacyNb]), "and a knowledge level for it");
   ok(fixed.brokerageId in DB.brokerages, "and a brokerage that exists", fixed.brokerageId);
+  eq(fixed.careerEnded, false, "and a save from before the ending existed defaults to not-ended");
+  eq(fixed.scorecard, null, "with no scorecard");
   if (fixed.clients[0]) eq(fixed.clients[0].schmoozeCount, 0, "and a schmooze count that can be incremented");
   if (fixed.playerListings[0]) {
     ok(Number.isFinite(fixed.playerListings[0].openHouseBoost), "and an open-house boost that is a number");
@@ -223,6 +227,77 @@ if (fixed) {
 }
 ok(repairCareer(repairCareer(JSON.parse(JSON.stringify(midCareer)))).day === midCareer.day,
   "repair is idempotent");
+
+// --- the reverse direction: content removed from data/ while a save still
+// references it. Same family as the legacy-save gaps above, opposite way.
+console.log("\ncontent removed from data/:");
+const removed = JSON.parse(JSON.stringify(midCareer));
+removed.listingsState["ls_ghost_removed"] = { status: "onMarket", price: 250000, dom: 50 };
+removed.market.nb["nb_ghost_removed"] = 1.05;
+removed.knowledge["nb_ghost_removed"] = 2;
+const cleaned = repairCareer(removed);
+ok(!("ls_ghost_removed" in cleaned.listingsState), "repair drops a listingsState entry for a listing no longer in data/");
+ok(!("nb_ghost_removed" in cleaned.market.nb), "and a market index for a neighborhood no longer in data/");
+ok(!("nb_ghost_removed" in cleaned.knowledge), "and a knowledge level for it");
+
+// Locked decision #34: reintroduce the bug the purge guards and watch it fail
+// before trusting the fix. calendar.js's daily aging loop is
+// `for (const id in S.listingsState) { ... DB.listings[id].address ... }`
+// (a price cut and an off-market roll both read it, each gated by a daily
+// dice roll) — exercise that exact shape directly instead of waiting on the
+// random branches to fire, which would make the test itself flaky.
+adoptState(JSON.parse(JSON.stringify(cleaned)));
+S.listingsState["ls_ghost_removed"] = { status: "onMarket", price: 250000, dom: 46 };
+let removalThrew = null;
+try { for (const id in S.listingsState) { void DB.listings[id].address; } }
+catch (e) { removalThrew = e.message; }
+ok(removalThrew !== null, "confirms the bug: reading DB.listings[id] over an unpurged orphan id throws — exactly what calendar.js does every day",
+  removalThrew || "");
+
+// Now prove the actual load path — not a hand-edited S — purges it first.
+adoptState(JSON.parse(JSON.stringify(midCareer)));
+S.listingsState["ls_ghost_removed"] = { status: "onMarket", price: 250000, dom: 46 };
+ok(save(store), "a save with an orphaned listing (content deleted after it was written) saves fine");
+ok(loadSave(store), "and loads fine");
+ok(!("ls_ghost_removed" in S.listingsState), "with the orphan purged by repair before the game ever sees it");
+let reloadedThrew = null;
+try { for (const id in S.listingsState) { void DB.listings[id].address; } }
+catch (e) { reloadedThrew = e.message; }
+ok(reloadedThrew === null, "so the same loop calendar.js runs every day no longer throws");
+const dayBeforeReload = S.day;
+endDay();
+eq(S.day, dayBeforeReload + 1, "and a real day advances cleanly on the repaired career");
+
+// --- give the career an ending: day 336, a one-year career (task: headline)
+console.log("\ncareer ending at day 336:");
+{
+  const c = makeCareer("bk_indep");
+  eq(CAREER_LENGTH_DAYS, 336, "the career length matches seasonOf's own wrap point");
+  c.day = CAREER_LENGTH_DAYS;
+  adoptState(c);
+  ok(!S.careerEnded, "day 336 itself is not yet the end — the player still gets to play it");
+  endDay();
+  ok(S.careerEnded, "ending the day from 336 closes the career instead of starting a 337th day");
+  eq(S.day, CAREER_LENGTH_DAYS, "day stays put at 336, the last day actually played");
+  ok(!!S.scorecard, "and freezes a scorecard");
+  if (S.scorecard) {
+    eq(S.scorecard.day, CAREER_LENGTH_DAYS, "the scorecard remembers day 336");
+    eq(S.scorecard.closings, S.stats.closed, "carrying the deals-closed count");
+    eq(S.scorecard.volume, S.stats.volume, "and the volume");
+    eq(S.scorecard.referrals, S.stats.referrals, "and referrals earned");
+    eq(S.scorecard.finalRep, S.rep, "and final reputation");
+  }
+  endDay();
+  eq(S.day, CAREER_LENGTH_DAYS, "clicking End Day again after the career ends is a no-op, not a second day 337");
+
+  // A save written under the old, endless rules can already be past day 336.
+  const veteran = makeCareer("bk_hearthstone");
+  veteran.day = 500;
+  adoptState(veteran);
+  ok(!S.careerEnded, "a save from before the ending existed can sit past day 336 unended");
+  endDay();
+  ok(S.careerEnded, "and ends on its very next End Day click rather than sailing on to day 501");
+}
 
 // --- export to a file and import it back
 const text = slot.serialize(midCareer);

@@ -53,6 +53,8 @@ export function makeCareer(brokerageId) {
     stats: { closed: 0, volume: 0, referrals: 0, honesty: 0 },
     seed: Math.floor(Math.random() * 1e9),
     nextId: 1,
+    careerEnded: false,            // set by endDay() at day 336 — see engine/calendar.js
+    scorecard: null,               // frozen year-end snapshot, built once, when careerEnded flips true
   };
   for (const id in DB.neighborhoods) { c.market.nb[id] = 1.0; c.knowledge[id] = 0; }
   for (const id in DB.listings) {
@@ -119,6 +121,13 @@ const num = (v, fallback) => (typeof v === "number" && Number.isFinite(v) ? v : 
  *    a career started before that file existed has no `listingsState` entry for
  *    it — which threw outright in renderMLS, and left new neighborhoods out of
  *    the weekly market drift.
+ * 3. The reverse of #2: content *removed* from `data/` while a save still
+ *    references it. `calendar.js` ages every id in `S.listingsState` and reads
+ *    `DB.listings[id].address` on a price cut or an off-market roll — an id
+ *    with no matching content file throws there, not in a screen render.
+ *    Orphaned entries are pruned below for the same reason stale ones are
+ *    backfilled: the save shouldn't hold state for content that no longer
+ *    exists to have state about.
  *
  * Idempotent and cheap. It must never throw: a throw here is a `null` load,
  * which is a wiped career.
@@ -149,6 +158,8 @@ export function repairCareer(s) {
     const first = Object.keys(DB.brokerages)[0];
     if (first) s.brokerageId = first;
   }
+  s.careerEnded = !!s.careerEnded;
+  if (!s.scorecard || typeof s.scorecard !== "object") s.scorecard = null;
 
   // Content that did not exist when this career started.
   for (const id in DB.neighborhoods) {
@@ -165,6 +176,14 @@ export function repairCareer(s) {
     ls.price = num(ls.price, DB.listings[id].price);
     ls.dom = Math.max(0, Math.round(num(ls.dom, DB.listings[id].daysOnMarket)));
   }
+  // Content removed since this career started. calendar.js iterates
+  // S.listingsState and S.market.nb by key and reads DB.listings[id] /
+  // DB.neighborhoods[id] unguarded, so an id with no content file left in a
+  // save throws on the next day it ages — not on a screen render, which is
+  // exactly why it went unnoticed for the forward direction above.
+  for (const id of Object.keys(s.listingsState)) if (!(id in DB.listings)) delete s.listingsState[id];
+  for (const id of Object.keys(s.market.nb)) if (!(id in DB.neighborhoods)) delete s.market.nb[id];
+  for (const id of Object.keys(s.knowledge)) if (!(id in DB.neighborhoods)) delete s.knowledge[id];
 
   for (const rec of s.clients) {
     if (!rec || typeof rec !== "object") continue;
@@ -294,11 +313,11 @@ export function addXP(n, why) {
 }
 export function addRep(n, why) {
   S.rep = Math.max(0, Math.min(100, S.rep + n));
-  log(`${n >= 0 ? "+" : ""}${n} reputation — ${why}`, n >= 0 ? "rep" : "bad");
+  log(`${n >= 0 ? "+" : ""}${n} reputation — ${why}`, n >= 0 ? "rep" : "bad", "rep");
 }
 export function addCash(n, why) {
   S.cash += n;
-  log(`${n >= 0 ? "+" : "−"}${Math.abs(Math.round(n)).toLocaleString()} — ${why}`, n >= 0 ? "money" : "bad");
+  log(`${n >= 0 ? "+" : "−"}${Math.abs(Math.round(n)).toLocaleString()} — ${why}`, n >= 0 ? "money" : "bad", "money");
 }
 
 export function clientSlotsMax() { return levelInfo().slots; }
@@ -306,8 +325,11 @@ export function activeClients() { return S.clients.filter(c => c.status === "act
 export function getClientRec(recId) { return S.clients.find(c => c.recId === recId); }
 export function contentClient(rec) { return DB.clients[rec.clientId]; }
 
-export function log(text, cls = "") {
-  S.log.unshift({ day: S.day, text, cls });
+// `kind` is a filter category, separate from `cls` (which only drives color).
+// addRep/addCash tag "rep"/"money"; everything else leaves it undefined, which
+// the Ledger's "Everything" filter still shows — see ui.js's renderLog.
+export function log(text, cls = "", kind = undefined) {
+  S.log.unshift({ day: S.day, text, cls, kind });
   if (S.log.length > 300) S.log.pop();
 }
 

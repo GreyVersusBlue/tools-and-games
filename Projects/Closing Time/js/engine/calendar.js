@@ -1,6 +1,6 @@
 // calendar.js — the day-by-day spine: advancing time, resolving milestones, deadlines, weekly ticks.
 import { DB, fmtMoney } from "../data.js";
-import { S, log, save, rand, pick, isWeekend, dayName, weekOf, contentClient, getClientRec, addRep } from "../state.js";
+import { S, log, save, rand, pick, isWeekend, dayName, weekOf, contentClient, getClientRec, addRep, levelInfo } from "../state.js";
 import { weeklyMarketTick } from "./market.js";
 import { maybeFireEvent } from "./events.js";
 import { resolveMilestone } from "./deals.js";
@@ -9,13 +9,43 @@ import { patienceTick } from "./clients.js";
 
 export const SLOTS_PER_DAY = 4;
 
+/** A one-year career, in days. `seasonOf` in state.js already wraps here. */
+export const CAREER_LENGTH_DAYS = 336;
+
 export function spendSlots(n = 1) {
   if (S.slotsLeft < n) return false;
   S.slotsLeft -= n;
   return true;
 }
 
+/**
+ * Closes the career out at day 336 instead of advancing to a 337th day.
+ * `seasonOf` already wraps a four-season year there; nothing else built the
+ * ending to match it. Freezes a scorecard rather than computing one on demand
+ * so a finished career reads the same numbers on every later visit, even
+ * after more log entries or (if the player somehow keeps clicking) more days
+ * would otherwise have changed them.
+ */
+function finishCareer() {
+  const lv = levelInfo();
+  S.scorecard = {
+    day: S.day,
+    volume: S.stats.volume,
+    closings: S.stats.closed,
+    referrals: S.stats.referrals,
+    finalRep: S.rep,
+    level: S.level,
+    title: lv.title,
+    cash: S.cash,
+  };
+  S.careerEnded = true;
+  log(`Day ${S.day}. The year closes: ${S.stats.closed} closings, ${fmtMoney(S.stats.volume)} in volume, ${S.rep} reputation, ${lv.title}.`, "milestone");
+  save();
+}
+
 export function endDay() {
+  if (S.careerEnded) return;
+  if (S.day >= CAREER_LENGTH_DAYS) { finishCareer(); return; }
   S.day++;
   S.slotsLeft = SLOTS_PER_DAY;
   const monday = (S.day - 1) % 7 === 0;

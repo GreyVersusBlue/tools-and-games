@@ -29,7 +29,8 @@ body::before { /* subtle ledger rule down the left, ambient not loud */
   padding: 14px 22px; border-bottom: 3px double var(--ink); background: var(--card); }
 .letterhead .lh-name { font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: .06em; }
 .letterhead .lh-sub { display: block; font-size: 12px; color: var(--ink-soft); letter-spacing: .04em; }
-.statgrid { display: flex; gap: 20px; flex-wrap: wrap; margin-left: auto; }
+.statgrid { display: flex; gap: 20px; flex-wrap: wrap; margin-left: auto; align-items: center; }
+.stat-primary, .stat-secondary { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
 .stat { display: flex; flex-direction: column; }
 .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-soft); }
 .stat-val { font-family: var(--mono); font-weight: 600; font-size: 14px; }
@@ -37,6 +38,11 @@ body::before { /* subtle ledger rule down the left, ambient not loud */
 .stat-val.money { color: var(--brass); }
 .stat-val.slots { color: var(--sign-red); letter-spacing: .15em; }
 .dim { color: var(--ink-soft); font-weight: 500; }
+/* Shown only below 620px — see the media query for why Rep/XP/Rate hide
+   behind it there. Above that width .stat-secondary is always visible and
+   this never renders. */
+.stat-toggle { display: none; font: 600 11px var(--body); color: var(--ink-soft); background: none;
+  border: 1px solid var(--line); border-radius: 2px; padding: 3px 8px; cursor: pointer; }
 
 .frame { display: grid; grid-template-columns: 168px 1fr; min-height: calc(100vh - 130px); }
 .nav { border-right: 1px solid var(--line); padding: 18px 0; background: var(--paper-2); }
@@ -187,6 +193,13 @@ input[type="number"], select { font: 600 14px var(--mono); padding: 7px 9px; bor
      goes and everything fits on one row again. */
   .foot-tag { display: none; }
   .foot { justify-content: flex-end; }
+  /* Six stats in a grid wrap to four rows at this width, eating a large share
+     of the viewport before any content renders. Date/Slots/Cash — the three
+     checked mid-day — stay on one row; Reputation/XP/Rate move behind the
+     toggle, roughly halving the topbar. */
+  .stat-toggle { display: inline-block; }
+  .stat-secondary { display: none; width: 100%; margin-top: 4px; }
+  .stat-secondary.open { display: flex; }
 }
 @media (prefers-reduced-motion: reduce) {
   .btn, .toast { transition: none; }
