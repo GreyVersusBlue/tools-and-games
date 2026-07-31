@@ -42,7 +42,12 @@
     font-family:'Oswald'; font-style:normal; font-weight:400; font-display:swap;
     src:url('characters-assets/fonts/oswald-latin-400-normal.woff2') format('woff2');
   }
-  :root{
+  /* This page and campaigns.html are a matched pair (locked decision #17 still
+     applies: no file is shared between them). The rules below marked [shared]
+     are kept byte-identical with campaigns.html's own copy of the same rules —
+     confirmed by diff 2026-07-31. If you edit one, mirror the edit in the other
+     file. See Claude Prompts/notes/03-pathfinder-characters-notes.md. */
+  :root{ /* [shared] all 14 vars below match campaigns.html's :root */
     --void:#120a07;
     --void-deep:#080403;
     --parchment:#ecdcb4;
@@ -73,6 +78,7 @@
   }
   a{ color:var(--oxblood); }
 
+  /* [shared] .embers / .ember / @keyframes drift — identical in campaigns.html */
   .embers{ position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
   .ember{
     position:absolute; bottom:-5%; width:3px; height:3px; border-radius:50%;
@@ -85,6 +91,8 @@
     100%{ transform:translateY(-110vh) translateX(var(--drift-x, 30px)); opacity:0; }
   }
 
+  /* [shared] .tome / .corner* — identical in campaigns.html except max-width,
+     which each page sets for its own content width */
   .tome{
     position:relative; z-index:1; max-width:1040px; margin:3rem auto;
     background:var(--parchment);
@@ -98,6 +106,7 @@
   .corner.bl{ bottom:-10px; left:-10px; border-right:none; border-top:none; }
   .corner.br{ bottom:-10px; right:-10px; border-left:none; border-top:none; }
 
+  /* [shared] header.masthead through .subtitle — identical in campaigns.html */
   header.masthead{
     background:
       radial-gradient(ellipse 70% 120% at 50% -20%, rgba(226,112,58,.35), transparent 60%),
@@ -131,6 +140,7 @@
 
   .subtitle{ font-style:italic; font-size:1.08rem; color:var(--parchment-dark); max-width:36rem; margin:0 auto; position:relative; }
 
+  /* [shared] identical in campaigns.html */
   main{ position:relative; padding:2.8rem 2rem 4rem; }
 
   .muster{ display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:2.2rem; }
@@ -234,6 +244,7 @@
   .feature-box.signature li:last-child{ margin-bottom:0; }
   .weapon-line{ font-style:normal !important; }
 
+  /* [shared] footer / footer a — identical in campaigns.html */
   footer{
     text-align:center; padding:2rem 1rem 2.4rem;
     font-family:'Oswald',sans-serif; font-size:.75rem; letter-spacing:.08em;
@@ -241,10 +252,13 @@
   }
   footer a{ color:var(--gold-bright); text-decoration:none; }
 
+  /* [shared pattern] campaigns.html has the same hover-lift rule on its own
+     content selectors (.campaign, .scenario) instead of .dossier */
   @media (prefers-reduced-motion:no-preference){
     .dossier{ transition:transform .18s ease, box-shadow .18s ease; }
     .dossier:hover{ transform:translateY(-3px); box-shadow:0 14px 26px -10px rgba(36,26,16,.45); }
   }
+  /* [shared] both media queries below are identical in campaigns.html */
   @media (prefers-reduced-motion:reduce){
     .ember{ display:none; }
     h1.title{ animation:none; background-position:0 0; }
@@ -696,6 +710,7 @@
 </div>
 
 <script>
+  // [shared] this ember-seeding block is byte-identical in campaigns.html
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const field = document.getElementById('embers');
     const COUNT = 16;

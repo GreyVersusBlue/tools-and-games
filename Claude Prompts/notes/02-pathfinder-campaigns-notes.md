@@ -1,5 +1,26 @@
 # Pathfinder Campaigns — session notes
 
+## Note from prompt 03's round-2 session (2026-07-31) — read this first
+
+A round-2 session on prompt 03 touched this file with Devon's explicit
+sign-off, extending that prompt's normal boundary to include this page. It
+added `[shared]` comment markers to the `<style>` block and bottom `<script>`
+at every point that's byte-identical with `characters.html`'s copy of the
+same rules (palette vars, `.embers`/`.ember`/keyframes, `.tome`/`.corner*`,
+`header.masthead` through `.subtitle`, `main{}`, `footer`, both bottom media
+queries, the ember-seeding script) — no CSS/JS logic changed, only comments.
+It also caught and fixed a real bug it introduced in the first pass: a
+comment that spelled out the literal text `</style>` inside this file's
+`<style>` block, which closed the element ~150 lines early per HTML's raw-text
+tokenizer rules and silently dropped every rule after it (`.campaign-title`,
+`.roster`, `.scenario`, `table.chronicle`, etc.) from being valid CSS. Fixed
+and reverified live (`.campaign-title`/`.scenario-title` compute to
+`Cinzel, serif` again, `#gm` keeps its `active` class on load, tab switching
+works). Full account, including why the merge didn't become an actual shared
+file (locked decision #17), is in
+`Claude Prompts/notes/03-pathfinder-characters-notes.md`. Everything below
+this note is that prior round-1 session's own record, unedited.
+
 ## What changed
 
 **Built the generator script round 1 left as a standing idea, item 2 in its

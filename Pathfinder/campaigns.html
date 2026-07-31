@@ -42,7 +42,13 @@
     font-family:'Oswald'; font-style:normal; font-weight:400; font-display:swap;
     src:url('campaigns-assets/fonts/oswald-400.woff2') format('woff2');
   }
-  :root{
+  /* This page and characters.html are a matched pair (locked decision #17 still
+     applies: no file is shared between them). The rules below marked [shared]
+     are kept byte-identical with characters.html's own copy of the same rules —
+     confirmed by diff 2026-07-31. If you edit one, mirror the edit in the other
+     file. See Claude Prompts/notes/03-pathfinder-characters-notes.md. */
+  :root{ /* [shared] first 14 vars match characters.html's :root; sage/slate/
+            dustrose below are this page's own (ribbon/scenario colors) */
     --void:#120a07;
     --void-deep:#080403;
     --parchment:#ecdcb4;
@@ -77,6 +83,7 @@
   }
   a{ color:var(--oxblood); }
 
+  /* [shared] .embers / .ember / @keyframes drift — identical in characters.html */
   .embers{ position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
   .ember{
     position:absolute; bottom:-5%; width:3px; height:3px; border-radius:50%;
@@ -89,6 +96,8 @@
     100%{ transform:translateY(-110vh) translateX(var(--drift-x, 30px)); opacity:0; }
   }
 
+  /* [shared] .tome / .corner* — identical in characters.html except max-width,
+     which each page sets for its own content width */
   .tome{
     position:relative; z-index:1; max-width:960px; margin:3rem auto;
     background:var(--parchment);
@@ -102,6 +111,7 @@
   .corner.bl{ bottom:-10px; left:-10px; border-right:none; border-top:none; }
   .corner.br{ bottom:-10px; right:-10px; border-left:none; border-top:none; }
 
+  /* [shared] header.masthead through .subtitle — identical in characters.html */
   header.masthead{
     background:
       radial-gradient(ellipse 70% 120% at 50% -20%, rgba(226,112,58,.35), transparent 60%),
@@ -135,6 +145,9 @@
 
   .subtitle{ font-style:italic; font-size:1.08rem; color:var(--parchment-dark); max-width:36rem; margin:0 auto; position:relative; }
 
+  /* nav.tabs and everything below, through the end of this style block, is
+     this page's own content — no more [shared] blocks until main{} and footer
+     further down */
   nav.tabs{ display:flex; justify-content:center; background:var(--oxblood-deep); }
   nav.tabs button{
     flex:1; max-width:280px;
@@ -145,6 +158,7 @@
   nav.tabs button.active{ color:var(--gold-bright); background:rgba(184,134,47,.1); border-top-color:var(--gold-bright); }
   nav.tabs button:not(.active):hover{ color:var(--parchment); }
 
+  /* [shared] identical in characters.html */
   main{ position:relative; padding:2.8rem 2rem 4rem; }
   section.panel{ display:none; }
   section.panel.active{ display:block; animation:fadein .4s ease; }
@@ -279,6 +293,7 @@
   table.chronicle tr:last-child td{ border-bottom:none; }
   table.chronicle td.num{ white-space:nowrap; font-family:'Oswald',sans-serif; font-size:.85rem; }
 
+  /* [shared] footer / footer a — identical in characters.html */
   footer{
     text-align:center; padding:2rem 1rem 2.4rem;
     font-family:'Oswald',sans-serif; font-size:.75rem; letter-spacing:.08em;
@@ -286,10 +301,13 @@
   }
   footer a{ color:var(--gold-bright); text-decoration:none; }
 
+  /* [shared pattern] characters.html has the same hover-lift rule on its own
+     content selector (.dossier) instead of .campaign/.scenario */
   @media (prefers-reduced-motion:no-preference){
     .campaign, .scenario{ transition:transform .18s ease, box-shadow .18s ease; }
     .campaign:hover, .scenario:hover{ transform:translateY(-3px); box-shadow:0 14px 26px -10px rgba(36,26,16,.45); }
   }
+  /* [shared] both media queries below are identical in characters.html */
   @media (prefers-reduced-motion:reduce){
     .ember{ display:none; }
     h1.title{ animation:none; background-position:0 0; }
@@ -713,6 +731,7 @@
     (tab) => document.getElementById('view-' + tab.dataset.view).classList.add('active')
   );
 
+  // [shared] this ember-seeding block is byte-identical in characters.html
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const field = document.getElementById('embers');
     const COUNT = 16;
