@@ -20,6 +20,9 @@ the brokerage-choice screen with Import still available, rather than booting on 
 that loads goes through `repairCareer()` in `js/state.js`, which fills in fields added to the game
 since the save was written **and content added to `data/` since** — a listing added last week has
 no entry in a career started last month, and the MLS board reads that entry for every listing.
+The reverse direction is handled too: content **removed** from `data/` while a save still
+references it gets its orphaned `listingsState` / `market.nb` / `knowledge` entries dropped, since
+`calendar.js` ages every listing by id and throws on one with no content file left.
 
 ## How to play (short version)
 
@@ -28,6 +31,7 @@ no entry in a career started last month, and the MLS board reads that entry for 
 - **Seller mode:** take the listing → walkthrough, recommend repairs and disclosures, pick staging/photos, set a price against the modeled value → go live → interest accrues daily → NPC agents submit offers with deadlines → advise your seller (who has their own hidden psychology) → host open houses → close from the other side of the table.
 - **Hidden information is the game.** Clients have hidden preferences/dealbreakers that surface through viewings, the right questions, and schmoozing. Listings have hidden issues in three severity tiers (cosmetic / moderate / dealbreaker), discovered visibly, by question topic, or only via inspection. Sitting on a disclosure-required issue you knew about will eventually detonate.
 - **Reputation** (word of mouth) is separate from **XP** (career ladder). Satisfied closings generate **referrals** — new clients who name the past client that sent them. Rivals poach, brokerages recruit, rates drift, neighborhoods trend, and your **local market knowledge** per neighborhood sharpens your valuations and negotiating odds.
+- **The career ends at day 336** — four 84-day seasons, one year. `endDay()` freezes a scorecard (closings, volume, referrals, final reputation, the ladder rung reached) instead of starting a 337th day; "End day" becomes "Career complete" and "New career" in the footer starts the next one.
 
 ## Architecture
 
@@ -168,6 +172,13 @@ New events are pure JSON composed from these handlers. New handler = one functio
   of. Before that, adding a listing threw on the MLS board for every existing player, and adding
   a neighborhood left it permanently out of the weekly market drift. Anything else you add to `S`
   belongs in `repairCareer()` the same day you add it — especially if arithmetic touches it.
+- **Removing content from a live career is safe now too.** `repairCareer()` also drops any
+  `listingsState` / `market.nb` / `knowledge` entry whose id no longer has a matching file in
+  `data/`. Without that, `calendar.js`'s daily aging loop — `for (const id in S.listingsState)`,
+  reading `DB.listings[id].address` on a price cut or an off-market roll — throws the first time
+  that loop reaches an id whose content file is gone. A deal or listing still actively under
+  contract on deleted content is a separate, unhandled edge case: don't delete a listing a save
+  might be mid-contract on.
 - `tools/smoke.mjs` is a fast regression check: `node tools/smoke.mjs` should end with
   `SMOKE OK: <n> passed`, and exits non-zero on any miss. It covers the buyer loop, the seller
   loop, 40 days of calendar, and the whole save path (corrupt blobs refused, legacy saves

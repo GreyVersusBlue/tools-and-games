@@ -20,32 +20,48 @@ export function render() {
   ({ dashboard: renderDashboard, clients: renderClients, mls: renderMLS,
      mylistings: renderMyListings, office: renderOffice, log: renderLog }[screen])(main);
   renderChoiceQueue();
+  renderScorecard();
   save();
 }
 
 function setScreen(s) { screen = s; render(); }
 
 // ---------------- TOP BAR / NAV ----------------
+// Rep/XP/Rate collapse behind a tap below 620px (see the media query in
+// style.css) — Date/Slots/Cash are the three a player checks mid-day, the
+// other three are checked far less often and cost the same four rows of an
+// iPhone viewport either way. Kept expanded by default above that width, so
+// this only changes anything on the narrow layout it was written for.
+let statsExpanded = false;
 function renderTopbar() {
   const lv = levelInfo();
+  const ended = S.careerEnded;
   $("#topbar").innerHTML = `
     <div class="letterhead">
       <span class="lh-name">CLOSING TIME</span>
       <span class="lh-sub">${esc(DB.brokerages[S.brokerageId].name)} · ${esc(lv.title)}</span>
     </div>
     <div class="statgrid">
-      <div class="stat"><span class="stat-label">Date</span><span class="stat-val">${dayName(S.day)}, Wk ${weekOf(S.day)} <em class="season">${seasonOf(S.day)}</em></span></div>
-      <div class="stat"><span class="stat-label">Slots</span><span class="stat-val slots">${"●".repeat(S.slotsLeft)}${"○".repeat(Math.max(0, SLOTS_PER_DAY - S.slotsLeft))}</span></div>
-      <div class="stat"><span class="stat-label">Cash</span><span class="stat-val money">${fmtMoney(S.cash)}</span></div>
-      <div class="stat"><span class="stat-label">Reputation</span><span class="stat-val">${S.rep}<span class="dim">/100</span></span></div>
-      <div class="stat"><span class="stat-label">XP</span><span class="stat-val">${S.xp}${LEVELS[S.level] ? `<span class="dim">/${LEVELS[S.level].xp}</span>` : ""}</span></div>
-      <div class="stat"><span class="stat-label">Rate</span><span class="stat-val">${S.market.rate.toFixed(2)}%</span></div>
+      <div class="stat-primary">
+        <div class="stat"><span class="stat-label">Date</span><span class="stat-val">${dayName(S.day)}, Wk ${weekOf(S.day)} <em class="season">${seasonOf(S.day)}</em></span></div>
+        <div class="stat"><span class="stat-label">Slots</span><span class="stat-val slots">${"●".repeat(S.slotsLeft)}${"○".repeat(Math.max(0, SLOTS_PER_DAY - S.slotsLeft))}</span></div>
+        <div class="stat"><span class="stat-label">Cash</span><span class="stat-val money">${fmtMoney(S.cash)}</span></div>
+        <button class="stat-toggle" id="statToggle" aria-expanded="${statsExpanded}">${statsExpanded ? "Less ▴" : "More ▾"}</button>
+      </div>
+      <div class="stat-secondary${statsExpanded ? " open" : ""}">
+        <div class="stat"><span class="stat-label">Reputation</span><span class="stat-val">${S.rep}<span class="dim">/100</span></span></div>
+        <div class="stat"><span class="stat-label">XP</span><span class="stat-val">${S.xp}${LEVELS[S.level] ? `<span class="dim">/${LEVELS[S.level].xp}</span>` : ""}</span></div>
+        <div class="stat"><span class="stat-label">Rate</span><span class="stat-val">${S.market.rate.toFixed(2)}%</span></div>
+      </div>
     </div>
-    <button class="btn btn-red" id="endDayBtn">End day →</button>`;
-  $("#endDayBtn").onclick = () => {
-    if (S.choiceQueue.length) { toast("Handle the pending decisions first."); return; }
-    endDay(); render();
-  };
+    <button class="btn btn-red" id="endDayBtn" ${ended ? "disabled" : ""}>${ended ? "Career complete" : S.day >= 336 ? "Close out the year →" : "End day →"}</button>`;
+  $("#statToggle").onclick = () => { statsExpanded = !statsExpanded; renderTopbar(); };
+  if (!ended) {
+    $("#endDayBtn").onclick = () => {
+      if (S.choiceQueue.length) { toast("Handle the pending decisions first."); return; }
+      endDay(); render();
+    };
+  }
 }
 
 function renderNav() {
@@ -281,10 +297,35 @@ function renderOffice(main) {
 }
 
 // ---------------- LOG ----------------
-function renderLog(main) { main.appendChild(card("Ledger", logPanel(80))); }
-function logPanel(n) {
+// A filter, not just a longer logPanel(8) — see the "this client only" option,
+// which needs the roster (including past clients, since the ledger is
+// historical) rather than logPanel's plain slice.
+let ledgerFilter = "all";
+function renderLog(main) {
+  const bar = el("div", "filterbar");
+  const clientOpts = S.clients.map(rec =>
+    `<option value="client:${rec.recId}" ${ledgerFilter === "client:" + rec.recId ? "selected" : ""}>${esc(contentClient(rec).name)} only</option>`);
+  bar.innerHTML = `
+    <label>Filter <select id="ledgerFilter">
+      <option value="all" ${ledgerFilter === "all" ? "selected" : ""}>Everything</option>
+      <option value="money" ${ledgerFilter === "money" ? "selected" : ""}>Money only</option>
+      <option value="rep" ${ledgerFilter === "rep" ? "selected" : ""}>Reputation only</option>
+      ${clientOpts.join("")}
+    </select></label>`;
+  main.appendChild(bar);
+  bar.querySelector("#ledgerFilter").onchange = e => { ledgerFilter = e.target.value; render(); };
+  main.appendChild(card("Ledger", logPanel(80, ledgerFilter)));
+}
+function logPanel(n, filter = "all") {
   const d = el("div", "logpanel");
-  S.log.slice(0, n).forEach(it => d.appendChild(el("div", "log-row log-" + (it.cls || "plain"),
+  let rows = S.log;
+  if (filter === "money" || filter === "rep") rows = rows.filter(it => it.kind === filter);
+  else if (filter.startsWith("client:")) {
+    const rec = S.clients.find(r => r.recId === filter.slice(7));
+    const name = rec ? contentClient(rec).name : null;
+    if (name) rows = rows.filter(it => it.text.includes(name));
+  }
+  rows.slice(0, n).forEach(it => d.appendChild(el("div", "log-row log-" + (it.cls || "plain"),
     `<span class="log-day">D${it.day}</span> ${esc(it.text)}`)));
   return d;
 }
@@ -568,6 +609,29 @@ function renderChoiceQueue() {
         ["Pass (they'll find someone)", () => { S.clientQueue = S.clientQueue.filter(id => id !== ch.clientId).concat(ch.clientId); done(); }]]); },
   };
   (M[ch.kind] || (() => { S.choiceQueue.shift(); }))();
+}
+
+// ---------------- CAREER END ----------------
+// Dismissable per page load, not per save — reopening on the next visit is a
+// feature (nothing else on this screen replaces "the career you finished"),
+// and closeModal()/renderChoiceQueue() would otherwise reopen it on every nav
+// click once dismissed, since S.careerEnded never goes back to false.
+let scorecardDismissed = false;
+function renderScorecard() {
+  if (!S.careerEnded || scorecardDismissed || $("#modal-root").childElementCount) return;
+  const sc = S.scorecard || {};
+  const body = el("div");
+  body.appendChild(el("p", "", `Alder Falls, day ${sc.day ?? S.day}. The books close on year one.`));
+  const stats = el("div");
+  stats.innerHTML = `
+    <p>Final title: <b>${esc(sc.title ?? levelInfo().title)}</b> (level ${sc.level ?? S.level})</p>
+    <p>Deals closed: <b>${sc.closings ?? S.stats.closed}</b> · Volume: <b>${fmtMoney(sc.volume ?? S.stats.volume)}</b></p>
+    <p>Referrals earned: <b>${sc.referrals ?? S.stats.referrals}</b></p>
+    <p>Final reputation: <b>${sc.finalRep ?? S.rep}</b>/100</p>
+    <p>Cash on hand: <b>${fmtMoney(sc.cash ?? S.cash)}</b></p>`;
+  body.appendChild(stats);
+  body.appendChild(el("p", "hint", "“New career” in the footer starts the next one whenever you're ready."));
+  modal("Year one, closed", body, [["Keep browsing the desk", () => { scorecardDismissed = true; closeModal(); }]], true);
 }
 
 // ---------------- WIDGETS ----------------
