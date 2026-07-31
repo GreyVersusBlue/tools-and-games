@@ -29,22 +29,37 @@ export const PROMOS = {
 };
 
 // ---------- venue ladder (one-way moves; the 3D room itself lives in world.js) ----------
-// Each tier: seats feeds NightEngine's cap, buzzMult lifts forecast(), darkNights
-// is how many closed nights (rent/wages/upkeep still due, no revenue) it takes
-// to move in before the doors can reopen.
+// Each tier: buzzMult lifts forecast(), rent is the nightly bill (base RENT at the
+// Corner Tap, up $50/rung above it — see the note on `rent()` below), darkNights is
+// how many closed nights (rent/wages/upkeep still due, no revenue) it takes to move
+// in before the doors can reopen.
+//
+// `seats` is deliberately the same 30 at every tier. world.js builds one physical
+// room (6 stools + 6 four-tops) regardless of venue, so a tier-varying number here
+// was cosmetic — the engine's real cap is world.js's own seats.length, wired
+// directly in main.js's beginNight(). Session-2 audit measured peak occupancy at
+// 23-29 against the 30 that already existed and found nothing above it was ever
+// gating anything; rather than fake a floor plan that doesn't exist, this says so.
 export const VENUES = {
-  cornerTap:  { id: "cornerTap",  name: "The Corner Tap",     order: 0, cost: 0,     seats: 30, buzzMult: 1.00, darkNights: 0,
+  cornerTap:  { id: "cornerTap",  name: "The Corner Tap",     order: 0, cost: 0,     seats: 30, buzzMult: 1.00, darkNights: 0, rent: 110,
                 desc: "Where you started. Six tables, six stools, one stove, one tap." },
-  fieldhouse: { id: "fieldhouse", name: "The Fieldhouse",     order: 1, cost: 5500,  seats: 44, buzzMult: 1.15, darkNights: 1,
+  fieldhouse: { id: "fieldhouse", name: "The Fieldhouse",     order: 1, cost: 5500,  seats: 30, buzzMult: 1.15, darkNights: 1, rent: 160,
                 desc: "Room to breathe — a second stove keeps the kitchen from choking on a rush." },
-  midtown:    { id: "midtown",    name: "Midtown Draft Hall", order: 2, cost: 15000, seats: 60, buzzMult: 1.30, darkNights: 1,
+  midtown:    { id: "midtown",    name: "Midtown Draft Hall", order: 2, cost: 15000, seats: 30, buzzMult: 1.30, darkNights: 1, rent: 210,
                 desc: "A real draft wall — three taps instead of one changes the whole rhythm of the bar." },
-  flagship:   { id: "flagship",   name: "The Fourth Quarter", order: 3, cost: 34000, seats: 80, buzzMult: 1.50, darkNights: 2,
+  flagship:   { id: "flagship",   name: "The Fourth Quarter", order: 3, cost: 34000, seats: 30, buzzMult: 1.50, darkNights: 2, rent: 260,
                 desc: "The flagship. Three stoves, a four-tap draft wall, and a room that finally looks the part." },
 };
 export const VENUE_ORDER = ["cornerTap", "fieldhouse", "midtown", "flagship"];
 
 export function venueDef(c) { return VENUES[c.venue] ?? VENUES.cornerTap; }
+/** Tonight's rent: the Corner Tap's flat RENT everywhere before this, now the
+ *  current tier's own number — a bigger room costs more to run. This is the
+ *  session-3 answer to "day 40 is strictly easier than day 4, and the venue
+ *  ladder pays without a downside": rent still doesn't move with the calendar,
+ *  but it moves with the tier, so climbing the ladder is a real tradeoff again
+ *  instead of a one-way markup on revenue. See the notes file for the numbers. */
+export function rent(c) { return venueDef(c).rent; }
 export function nextVenue(c) {
   const i = VENUE_ORDER.indexOf(c.venue);
   return (i >= 0 && i < VENUE_ORDER.length - 1) ? VENUES[VENUE_ORDER[i + 1]] : null;
@@ -67,12 +82,13 @@ export function moveVenue(c) {
 export function settleDarkNight(c, rand = Math.random) {
   const wages = wageBill(c);
   const upgFees = upgradeFees(c);
-  const net = -(wages + RENT + upgFees);
-  c.cash = Math.round((c.cash - wages - RENT - upgFees) * 100) / 100;
+  const rentDue = rent(c);
+  const net = -(wages + rentDue + upgFees);
+  c.cash = Math.round((c.cash - wages - rentDue - upgFees) * 100) / 100;
   c.day++;
   c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
   rollApplicants(c, rand);
-  return { wages, rent: RENT, upgFees, net };
+  return { wages, rent: rentDue, upgFees, net };
 }
 
 // ---------- dev/debug helpers — a debug menu only, never part of normal play ----------
@@ -260,16 +276,17 @@ export function settleNight(c, summary, rand = Math.random) {
   const wages = wageBill(c);
   const promoCost = promoDef(c).cost;
   const upgFees = upgradeFees(c);
+  const rentDue = rent(c);
   const take = summary.total;
-  const net = Math.round(take - wages - RENT - promoCost - upgFees);
-  c.cash = Math.round((c.cash + take - wages - RENT - promoCost - upgFees) * 100) / 100;
+  const net = Math.round(take - wages - rentDue - promoCost - upgFees);
+  c.cash = Math.round((c.cash + take - wages - rentDue - promoCost - upgFees) * 100) / 100;
   c.stats.nights++;
   c.stats.bestNight = Math.max(c.stats.bestNight, take);
   c.stats.lifetimeNet += net;
   c.day++;
   c.promoTonight = "none";
   rollApplicants(c, rand);
-  return { wages, rent: RENT, promoCost, upgFees, take, net };
+  return { wages, rent: rentDue, promoCost, upgFees, take, net };
 }
 
 // ---- persistence: the shared save system ------------------------------------
