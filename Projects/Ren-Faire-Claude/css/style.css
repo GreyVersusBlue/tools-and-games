@@ -915,7 +915,7 @@ select {
 /* ============================================================
    Footer + primary action
    ============================================================ */
-#footer { text-align: center; margin-top: 1.6rem; }
+#footer { display: flex; justify-content: center; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 1.6rem; }
 #resetBtn {
   font-family: var(--font-ui);
   font-size: 0.74rem;
@@ -928,6 +928,22 @@ select {
   padding: 0.4rem;
 }
 #resetBtn:hover { color: var(--wine); }
+
+/* Stage 22: gvb-save.js's export/import bar, restyled to match #resetBtn
+   rather than its own default (light-on-dark chip) styling. The module
+   reads these four custom properties and nothing else. */
+#save-bar {
+  --gvb-btn-bg: none;
+  --gvb-btn-fg: var(--vellum-faint);
+  --gvb-btn-border: var(--vellum-faint);
+}
+#save-bar button {
+  font-family: var(--font-ui);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+#save-bar button:hover { color: var(--wine); }
 
 /* The primary action lives in a fixed bar so it stays reachable no matter
    how far down a long Backstage table the player has scrolled. */

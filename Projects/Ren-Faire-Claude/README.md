@@ -42,7 +42,7 @@ account's other GitHub Pages projects.
   `bankruptcyFloor`, `winCondition.minCash`, every structure base cost,
   `stage.baseCapacity`, and every performer/vendor/campaign rate — see
   HANDOFF.md for the measurements that prompted it. Also config (including
-  `seasonLength`, days per weekend, and, as of Stage 10, `demolishFeeMult`/`relocateDiscountMult`/`maxPlotNameLength`, as of Stage 15, `escalatingBuildCostRate` for the same-kind escalating build-cost curve, and, as of Stage 16, `bankruptcyFloor` and `winCondition` — the loss/win thresholds). No logic.
+  `seasonLength`, days per weekend, and, as of Stage 10, `demolishFeeMult`/`relocateDiscountMult`/`maxPlotNameLength`, as of Stage 15, `escalatingBuildCostRate` for the same-kind escalating build-cost curve, and, as of Stage 16, `bankruptcyFloor` and `winCondition` — the loss/win thresholds). As of Stage 22, a new `WEEKEND_DAY_ATTENDANCE` table keyed by `weekendDay` (Friday 0.85x, Saturday 1.2x, Sunday 0.95x) gives the three days of a weekend a real shape instead of being mechanically identical. No logic.
 - `js/engine.js` — pure simulation math (RNG, scheduling validation, terrain/adjacency lookup, build-cost quoting, campaign lookup, contract-aware performer AND vendor cost, season-unlock checks, the currently-unlocked grounds size and next expansion (Stage 8), quirk-aware performer popularity including the block-conditional `night_owl` quirk (Stage 9), the `EVENT_REQUIREMENTS` gating map for random events, weekend-summary aggregation, day simulation, `stallSummary`/`STALL_KIND_BY_VENDOR_TYPE` for the per-kind stall vacancy tracker (Stage 10), `isLegalPlacement` — the terrain-ban/stage-spacing/path-frontage check sitting alongside `quoteBuild` as the other half of "can this be built here" (as of Stage 18, also a same-kind stall-spacing check and a per-kind build-count cap, and the terrain-ban refusal message is now built dynamically from whatever terrain is actually still allowed rather than a hardcoded suggestion), the footprint primitives everything above runs on (`footprintFor`/`footprintCells`/`plotFootprintCells`/`isFootprintWithinCurrentGrid` and `hasPathFrontage`, Stage 12), per-plot daily upkeep (`plotUpkeep`/`totalUpkeep`, Stage 13), and, as of Stage 14, `computeFootTraffic` — turns each built food/vendor stall's terrain+adjacency `traffic` attribute into a per-stall sales multiplier relative to the day's average stall, wired into `simulateDay`'s vendor-revenue calc so placement (path frontage, proximity to a stage or a now-functional demo camp) has a real economic payoff, not just a cosmetic stat), and, as of Stage 15, `countBuiltOfKind` plus a `quoteBuild(kind, x, y, builtPlots, excludeId)` that compounds a same-kind structure's price by `CONFIG.escalatingBuildCostRate` per already-*built* one of that kind, and `previewCommitAll` — prices a whole batch of planning plots being committed together in order, so a same-kind cluster committed at once escalates against itself exactly like committing one at a time would, and, as of Stage 16, `checkBankruptcy(cash)` and `checkWinCondition(state)` — the two pure predicates the loss/win phases in state.js are built on), and, as of Stage 17, `computePathDistances()` (a memoized BFS along path tiles from `ENTRANCE`), `reachabilityDistance(plot)`, and `computeReachability(builtPlots)` — a gate-distance sales/draw multiplier (0.8×-1.2×, grouped separately for stages vs. stalls) wired into both `simulateDay`'s vendor-revenue calc and its per-block stage draw-weight, layered on top of Stage 14's foot-traffic multiplier rather than replacing
   it. And, as of Stage 19, `computeGroundsDraw(builtPlots)` — the term that
   finally makes the built grounds an input to *attendance itself* rather than
@@ -54,8 +54,11 @@ account's other GitHub Pages projects.
   — per-block sightline/shade/popularity weights, where shade's weight scales
   with the block's `heat` and the slack rolls into sightline, so a hilltop
   stage is superb in cool blocks and punishing at Afternoon while a shaded
-  grove is the reverse. No DOM.
-- `js/state.js` — the game-state object and the actions that change it (immutable-style: every action returns a new state). Also owns localStorage save/load, performer AND vendor contract commitments, the weekend/season boundary (`nextDay` hard-stops into a `weekendEnd` phase at the end of each weekend; `startNextWeekend` rolls over into the next one), and gates construction against the currently-unlocked grounds footprint rather than the grid's full authored extent. A planning → commit construction flow (`placePlot`/`commitPlot`/`commitAllPlots`/`deletePlanningPlot`/`movePlanningPlot`, all free/reversible until committed) plus paid `demolishPlot`/`relocatePlot`/`renamePlot` for already-built plots, individual vendor-to-stall seating (`assignVendorToPlot`/`unassignVendorFromPlot`/`autoFillStalls`), and a `hireVendor` hiring cap split correctly between food and craft stalls. `buildPlot`/`placePlot`/`movePlanningPlot`/`relocatePlot` all check `isLegalPlacement` and refuse an illegal siting before any money moves; as of Stage 12 their bounds checks are footprint-aware (`isFootprintWithinCurrentGrid`) and `buildPlot`/`placePlot` stamp each plot's own `w`/`h` onto its record at creation time. `loadState` migrates old saves, including (Stage 12) backfilling `w:1,h:1` onto every pre-Stage-12 plot regardless of kind. As of Stage 15, `buildPlot`/`placePlot`/`movePlanningPlot`/`relocatePlot` all thread `state.builtPlots` (and, where the plot being priced is itself already built, its own id to exclude) into `quoteBuild` so the same-kind escalating cost curve applies; `commitPlot` and `commitAllPlots` both re-quote live at commit time (via `previewCommitAll` for the batch case) rather than trusting a plan's possibly-stale placement-time price, closing a loophole where planning several same-kind plots before committing any would otherwise dodge the escalation. As of Stage 16, `runDay` flags a new `bankrupt` field the moment cash crosses `CONFIG.bankruptcyFloor` (the report ticket for that day still shows normally); `nextDay` checks that flag first and routes to a terminal `'gameOver'` phase instead of continuing, and separately checks `checkWinCondition` at every weekend boundary, routing to a one-time `'victory'` phase (guarded by a new `victoryAchieved` field so it can only fire once per save) instead of `'weekendEnd'` the first time every threshold is met; a new `acknowledgeVictory` action drops from `'victory'` into the normal `'weekendEnd'` screen without altering cash/reputation/victoryAchieved, so the sandbox continues uninterrupted afterward. `loadState` migrates pre-Stage-16 saves missing either field to `false`.
+  grove is the reverse. As of Stage 22, `simulateDay`'s attendance formula
+  gained one more term reading `WEEKEND_DAY_ATTENDANCE[state.weekendDay]`
+  (falling back to a neutral 1x for a state that never set `weekendDay`). No
+  DOM.
+- `js/state.js` — the game-state object and the actions that change it (immutable-style: every action returns a new state). As of Stage 22, persistence goes through the shared `assets/js/gvb-save.js` module (key unchanged: `renn-faire-sim-save-v1`) rather than hand-rolled `localStorage` calls — `validate` is the old bare check, everything else `loadState` used to fill in now lives in `repair` (content drift, not schema drift — locked decision #50), and `defaults` is `createInitialState` itself, passed as a factory. Also owns performer AND vendor contract commitments, the weekend/season boundary (`nextDay` hard-stops into a `weekendEnd` phase at the end of each weekend; `startNextWeekend` rolls over into the next one), and gates construction against the currently-unlocked grounds footprint rather than the grid's full authored extent. A planning → commit construction flow (`placePlot`/`commitPlot`/`commitAllPlots`/`deletePlanningPlot`/`movePlanningPlot`, all free/reversible until committed) plus paid `demolishPlot`/`relocatePlot`/`renamePlot` for already-built plots, individual vendor-to-stall seating (`assignVendorToPlot`/`unassignVendorFromPlot`/`autoFillStalls`), and a `hireVendor` hiring cap split correctly between food and craft stalls. `buildPlot`/`placePlot`/`movePlanningPlot`/`relocatePlot` all check `isLegalPlacement` and refuse an illegal siting before any money moves; as of Stage 12 their bounds checks are footprint-aware (`isFootprintWithinCurrentGrid`) and `buildPlot`/`placePlot` stamp each plot's own `w`/`h` onto its record at creation time. `loadState` migrates old saves, including (Stage 12) backfilling `w:1,h:1` onto every pre-Stage-12 plot regardless of kind. As of Stage 15, `buildPlot`/`placePlot`/`movePlanningPlot`/`relocatePlot` all thread `state.builtPlots` (and, where the plot being priced is itself already built, its own id to exclude) into `quoteBuild` so the same-kind escalating cost curve applies; `commitPlot` and `commitAllPlots` both re-quote live at commit time (via `previewCommitAll` for the batch case) rather than trusting a plan's possibly-stale placement-time price, closing a loophole where planning several same-kind plots before committing any would otherwise dodge the escalation. As of Stage 16, `runDay` flags a new `bankrupt` field the moment cash crosses `CONFIG.bankruptcyFloor` (the report ticket for that day still shows normally); `nextDay` checks that flag first and routes to a terminal `'gameOver'` phase instead of continuing, and separately checks `checkWinCondition` at every weekend boundary, routing to a one-time `'victory'` phase (guarded by a new `victoryAchieved` field so it can only fire once per save) instead of `'weekendEnd'` the first time every threshold is met; a new `acknowledgeVictory` action drops from `'victory'` into the normal `'weekendEnd'` screen without altering cash/reputation/victoryAchieved, so the sandbox continues uninterrupted afterward. `loadState` migrates pre-Stage-16 saves missing either field to `false`.
 - `js/ui.js` — state → HTML string rendering. No event listeners. `renderGroundsMap`'s ghost-cell loop renders an illegal open cell as a non-interactive `.plot-marker.blocked` marker (with the refusal reason in its title) instead of just omitting the ghost there; as of Stage 12, built/ghost/blocked markers span their real multi-cell footprint via CSS grid `span`, and occupancy checks cover a plot's whole footprint rather than just its anchor cell. As of Stage 15, the build palette's "from $X" tags, the ghost-cell ground-map preview, a planning plot's "Commit — $X" button/tag, and the "Commit All" batch total all re-quote live off current `state.builtPlots` so what a player sees always matches what they'll actually be charged. As of Stage 16, `renderVictory` and `renderGameOver` render the two new terminal-ish screens (same ticket-stub shell as the day report/weekend summary, gold-accented for victory, wine-accented for game over). As of Stage 17, the grounds map renders a `.gate-marker` at `ENTRANCE`, and both the map tooltip and every plot card (stages included, not just stalls) show a gate-reach multiplier alongside foot traffic. As of Stage 18, the build palette shows "N/cap built" instead of a price once a per-kind build cap (`PLACEMENT_RULES.maxBuiltByKind`) is reached, and the grounds-map legend gained a line noting the new stall hill ban. As
   of Stage 19, the map/grounds-status/build-palette moved out of
   `renderFairFloor` into a new top-level `renderGroundsPanel` (rendered into
@@ -75,7 +78,9 @@ account's other GitHub Pages projects.
   the same handlers, updates the ticket-price readout live on `input`, and
   routes a transient flash message to whichever surface the player was
   acting on — the grounds panel while a build/move is pending, the tab panel
-  otherwise, never both.
+  otherwise, never both. As of Stage 22, mounts `gvb-save.js`'s export/import
+  save bar in `#footer` (visible in every phase, including mid-report) —
+  `#resetBtn` stays the only "erase everything" control.
 
   **As of Stage 21 the save is written at the top of `render()`, not the
   bottom.** It used to sit below the early return that the report, weekend-end,
@@ -106,7 +111,7 @@ npm install
 npm test
 ```
 
-709 checks: pure engine/state logic (RNG determinism, terrain/grid data
+783 checks: pure engine/state logic (RNG determinism, terrain/grid data
 integrity, buildable-structure catalog integrity, terrain-driven cost/
 capacity quoting, stage-adjacency effects on sightline/traffic, scheduling
 conflicts, day-simulation invariants, attendance responding sensibly to
@@ -247,17 +252,33 @@ reload can't resurrect a folded run. Every assertion in the section fails if
 `saveState()` moves back below the early return in `render()`; that is how it
 was checked.
 
-**Plus a new class of test — Section 1g, six assertions tagged
-`SIGNIFICANCE:`.** Everything else in this suite asserts that a mechanic is
-*correctly implemented*; these assert that it is *strategically
-load-bearing*. Stage 18 shipped with a fully green suite and a dominant
-"build nothing, charge maximum" strategy precisely because no test ever
-asked whether the numbers mattered. They check that an empty field loses
-money and bleeds reputation, that building a stage substantially grows
-attendance, that neither end of the ticket slider is cash-optimal, that
-price is a real cash-versus-goodwill trade, that daily costs are a
-meaningful share of revenue rather than a rounding error, that upkeep on a
-developed grounds is a real line item, and that stage capacity is low enough
-to eventually force a second stage. **Run these against any future balance
-change, not just the correctness suite** — if one starts failing, a tuning
-tweak has quietly made part of the game pointless.
+**Plus a new class of test — Section 1g, tagged `SIGNIFICANCE:`** (six
+checks through Stage 21, seven as of Stage 22). Everything else in this
+suite asserts that a mechanic is *correctly implemented*; these assert that
+it is *strategically load-bearing*. Stage 18 shipped with a fully green
+suite and a dominant "build nothing, charge maximum" strategy precisely
+because no test ever asked whether the numbers mattered. They check that an
+empty field loses money and bleeds reputation, that building a stage
+substantially grows attendance, that neither end of the ticket slider is
+cash-optimal, that price is a real cash-versus-goodwill trade, that daily
+costs are a meaningful share of revenue rather than a rounding error, that
+upkeep on a developed grounds is a real line item, that stage capacity is
+low enough to eventually force a second stage, and, as of Stage 22, that
+Saturday draws a measurably bigger crowd (and more cash) than Friday or
+Sunday. **Run these against any future balance change, not just the
+correctness suite** — if one starts failing, a tuning tweak has quietly
+made part of the game pointless.
+
+**Stage 22, 740 → 783 checks.** Adopted the shared `assets/js/gvb-save.js`
+save module (no test changes beyond the module swap — same key, same flat
+on-disk shape, plus a `__v` field nothing reads); added the
+`WEEKEND_DAY_ATTENDANCE` significance check above; and added a new
+DOM-driven Section 22 that clicks ten player-facing actions
+(`contract`/`release`/`hireVendor`'s day-rate let-go path/`launchCampaign`/
+`autoFillStalls`/`unassignVendor`/`demolishPlot`/`selectMove`+`moveTo`/
+`deletePlanningPlot`/`renamePlot`) and dispatches `change`/`input` on the
+ticket-price slider and both `<select>`s (schedule, vendor assignment) —
+none of which any suite had ever exercised — plus a round-trip test of the
+new footer save bar's Export/Import buttons through the real `gvb-save.js`
+pipeline (a captured `Blob` for export, a synthesized `File` + `change`
+event on the hidden file input for import).

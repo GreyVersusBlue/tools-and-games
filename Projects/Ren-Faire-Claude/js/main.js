@@ -8,6 +8,7 @@ import * as State from './state.js';
 import * as UI from './ui.js';
 import { validateSchedule, summarizeWeekend } from './engine.js';
 import { CONFIG } from './data.js';
+import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 
 let state = State.loadState() || State.createInitialState();
 const ui = { activeTab: 'office', flash: null, pendingBuild: null, pendingMove: null };
@@ -271,5 +272,32 @@ function wire() {
   });
 }
 
+// Stage 22: mounted in #footer rather than a title screen — this game has
+// no start screen, and #footer is visible in every phase, including
+// mid-report, closing v7 §9's other open item (The Fourth Quarter's bar was
+// stranded on its start overlay). #resetBtn stays untouched: mounting gvb's
+// "Start over" beside "Reset progress" would be two erasers side by side,
+// so only export/import are mounted here (locked decision #48's `buttons`
+// option is exactly for this).
+function mountSave() {
+  const slot = State.saveSlot();
+  mountSaveBar(document.getElementById('save-bar'), slot, {
+    buttons: ['export', 'import'],
+    getState: () => state,
+    setState: (next) => {
+      // An import replaces the grounds outright — a pending placement or
+      // move against the plots that just vanished is meaningless, and a
+      // stale tab selection (Backstage on a save with no vendors yet, say)
+      // is a worse first impression than just landing on the Office desk.
+      state = next;
+      ui.pendingBuild = null;
+      ui.pendingMove = null;
+      ui.activeTab = 'office';
+      render();
+    },
+  });
+}
+
 wire();
+mountSave();
 render();

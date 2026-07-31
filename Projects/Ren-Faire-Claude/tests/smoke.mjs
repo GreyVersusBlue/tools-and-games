@@ -27,7 +27,7 @@ function assert(cond, msg) {
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
 const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights } = await import(mod('js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW } = await import(mod('js/data.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE } = await import(mod('js/data.js'));
 const State = await import(mod('js/state.js'));
 
 // --- RNG determinism ---
@@ -2315,6 +2315,299 @@ const State = await import(mod('js/state.js'));
 }
 
 // ---------------------------------------------------------------------
+// Section 22: the wiring nothing has ever clicked, plus the gvb-save.js
+// footer save bar (Stage 22)
+//
+// The 737-assertion engine suite and the big DOM boot test above cover
+// build/commit/schedule/weekend flow, but mapping every data-action in
+// main.js against both suites turned up ten player-facing actions that had
+// never been clicked in a browser by anything: contract, release,
+// hireVendor's day-rate let-go path (only the Weekend Package fee path
+// above was ever covered), launchCampaign, autoFillStalls, unassignVendor,
+// demolishPlot, selectMove/moveTo, deletePlanningPlot, and renamePlot.
+// Worse: no change/input event was ever dispatched by any suite, so the
+// ticket-price slider and both <select>s (schedule, assignVendor) — which
+// all run through main.js's single delegated 'change' listener, a
+// completely different event path from every click both suites fire — had
+// zero coverage. This is the day.rebuildStations shape of risk: a passing
+// engine suite next to wiring nobody has ever actually exercised.
+// ---------------------------------------------------------------------
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
+    .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+  const boot = async (save) => {
+    const storage = makeMemoryStorage();
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify(save));
+    const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.localStorage = storage;
+    globalThis.confirm = () => true;
+    // renamePlot's UI reads window.prompt(), which jsdom does not implement.
+    dom.window.prompt = () => 'The Jousting Green Renamed';
+    // gvb-save.js's exportToFile() clicks a real <a href="blob:...">. jsdom
+    // schedules that as an actual (unimplemented) navigation unless the
+    // default action is prevented — nothing here ever wants that anchor to
+    // navigate anywhere.
+    dom.window.document.addEventListener('click', (e) => {
+      if (e.target && e.target.tagName === 'A') e.preventDefault();
+    }, true);
+    await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+    return { dom, doc: dom.window.document, storage };
+  };
+  const click = (doc, sel) => {
+    const el = doc.querySelector(sel);
+    if (!el) return false;
+    el.dispatchEvent(new el.ownerDocument.defaultView.Event('click', { bubbles: true }));
+    return true;
+  };
+  const saved = (storage) => JSON.parse(storage.getItem('renn-faire-sim-save-v1'));
+
+  // --- contract / release / autoFillStalls (Backstage) ---
+  {
+    let s = State.createInitialState();
+    s = State.buildPlot(s, 'food', 6, 2).state;
+    s = State.hireVendor(s, 'vend_cider', 'open').state; // seats at (6,2)
+    s = State.buildPlot(s, 'food', 9, 2).state;
+    s = State.hireVendor(s, 'vend_piepeddler', 'open').state; // seats at (9,2)
+    const openStall = s.builtPlots.find(p => p.x === 9 && p.kind === 'food');
+    s = State.unassignVendorFromPlot(s, openStall.id).state; // hired but unseated, for autoFillStalls
+    s = State.contractPerformer(s, 'perf_jester_2', 'open').state; // contracted, for release
+    s = { ...s, cash: 20000 };
+
+    const { dom, doc, storage } = await boot(s);
+    click(doc, '[data-tab="backstage"]');
+
+    assert(click(doc, '[data-action="contract"][data-id="perf_musician_1"][data-contract="open"]'),
+      'Stage 22: an uncontracted performer’s Day Rate contract button is clickable');
+    assert(saved(storage).roster.includes('perf_musician_1'),
+      'Stage 22: clicking Contract actually adds the performer to the roster — never exercised before this session');
+
+    assert(click(doc, '[data-action="release"][data-id="perf_jester_2"]'),
+      'Stage 22: a contracted performer’s Release button is clickable');
+    assert(!saved(storage).roster.includes('perf_jester_2'),
+      'Stage 22: clicking Release actually removes the performer from the roster — never exercised before this session');
+
+    assert(click(doc, '[data-action="autoFillStalls"]'),
+      'Stage 22: Auto-Fill Stalls is clickable');
+    assert(saved(storage).builtPlots.find(p => p.id === openStall.id)?.assignedVendorId === 'vend_piepeddler',
+      'Stage 22: clicking Auto-Fill Stalls actually seats the hired-but-unseated vendor into the open stall');
+
+    dom.window.close();
+  }
+
+  // --- hireVendor's day-rate let-go path: firing a vendor hired at the
+  // no-commitment day rate charges no cancellation fee. The DOM boot test
+  // above only ever fires a Weekend Package vendor (the fee path); the
+  // plain, more common day-rate let-go had never been clicked. ---
+  {
+    let s = State.createInitialState();
+    s = State.buildPlot(s, 'vendor', 1, 2).state;
+    s = State.hireVendor(s, 'vend_leather', 'open').state;
+    s = { ...s, cash: 20000 };
+
+    const { dom, doc, storage } = await boot(s);
+    click(doc, '[data-tab="backstage"]');
+    assert(click(doc, '[data-action="fireVendor"][data-id="vend_leather"]'),
+      'Stage 22: a Day Rate vendor’s Let go button is clickable');
+    assert(!saved(storage).hiredVendors.includes('vend_leather'),
+      'Stage 22: clicking Let go actually removes the vendor — never exercised before this session');
+    assert(!doc.querySelector('#content').innerHTML.includes('cancellation fee'),
+      'Stage 22: letting a Day Rate (no-commitment) vendor go charges no fee, unlike the Weekend Package path the DOM boot test already covers');
+
+    dom.window.close();
+  }
+
+  // --- unassignVendor + the assignVendor <select>'s change event (Fair Floor) ---
+  {
+    let s = State.createInitialState();
+    s = State.buildPlot(s, 'food', 6, 2).state;
+    s = State.hireVendor(s, 'vend_cider', 'open').state; // seats at (6,2)
+    s = State.buildPlot(s, 'food', 9, 2).state;
+    s = State.hireVendor(s, 'vend_piepeddler', 'open').state; // seats at (9,2)
+    const seatedPlot = s.builtPlots.find(p => p.x === 6);
+    const openPlot = s.builtPlots.find(p => p.x === 9);
+    s = State.unassignVendorFromPlot(s, openPlot.id).state; // (9,2) open, vend_piepeddler unseated
+    s = { ...s, cash: 20000 };
+
+    const { dom, doc, storage } = await boot(s);
+    click(doc, '[data-tab="fairfloor"]');
+
+    assert(click(doc, `.plot-card[data-kind="food"] [data-action="unassignVendor"][data-id="${seatedPlot.id}"]`),
+      'Stage 22: a staffed stall’s Unassign button is clickable');
+    assert(saved(storage).builtPlots.find(p => p.id === seatedPlot.id).assignedVendorId === null,
+      'Stage 22: clicking Unassign actually clears the seat — never exercised before this session');
+
+    const assignSelect = doc.querySelector(`select[data-action="assignVendor"][data-plot="${openPlot.id}"]`);
+    assert(!!assignSelect, 'Stage 22: an open stall with a hired-unseated vendor offers the seat-a-vendor <select>');
+    assignSelect.value = 'vend_piepeddler';
+    assignSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert(saved(storage).builtPlots.find(p => p.id === openPlot.id).assignedVendorId === 'vend_piepeddler',
+      'Stage 22: dispatching change on the assignVendor <select> actually seats the chosen vendor — never exercised before this session, since main.js’s change handling runs on a different event path from every click either suite fires');
+
+    dom.window.close();
+  }
+
+  // --- selectMove/moveTo, renamePlot, demolishPlot, deletePlanningPlot (Fair Floor) ---
+  {
+    let s = State.createInitialState();
+    s = State.buildPlot(s, 'demo', 0, 1).state; // built, for relocate/rename/demolish
+    s = State.placePlot(s, 'demo', 2, 1).state; // planning, for deletePlanningPlot
+    const builtPlot = s.builtPlots.find(p => p.status === 'built');
+    const planningPlot = s.builtPlots.find(p => p.status === 'planning');
+    s = { ...s, cash: 20000 };
+
+    const { dom, doc, storage } = await boot(s);
+    click(doc, '[data-tab="fairfloor"]');
+
+    assert(click(doc, `[data-action="renamePlot"][data-id="${builtPlot.id}"]`),
+      'Stage 22: a built plot’s Rename button is clickable');
+    assert(saved(storage).builtPlots.find(p => p.id === builtPlot.id).name === 'The Jousting Green Renamed',
+      'Stage 22: clicking Rename actually renames the plot to what window.prompt returned — never exercised before this session');
+
+    const cashBeforeMove = saved(storage).cash;
+    assert(click(doc, `[data-action="selectMove"][data-id="${builtPlot.id}"]`),
+      'Stage 22: a built plot’s Relocate button is clickable');
+    const moveGhosts = [...doc.querySelectorAll(`[data-action="moveTo"][data-plot="${builtPlot.id}"]`)];
+    assert(moveGhosts.length > 0, 'Stage 22: selecting Relocate reveals ghost cells on the grounds map, same as a fresh placement');
+    // One "ghost" is always the plot's own current cell (relocating onto
+    // yourself is legal, if pointless) — pick a different one so the test
+    // actually proves the plot moved rather than paying a fee to stay put.
+    const destGhost = moveGhosts.find(g => Number(g.dataset.x) !== builtPlot.x || Number(g.dataset.y) !== builtPlot.y);
+    assert(!!destGhost, 'Stage 22: at least one relocate destination is a different cell than the plot’s own');
+    destGhost.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    const movedPlot = saved(storage).builtPlots.find(p => p.id === builtPlot.id);
+    assert(movedPlot.x !== builtPlot.x || movedPlot.y !== builtPlot.y,
+      'Stage 22: moveTo actually moved the plot to the clicked cell');
+    assert(saved(storage).cash < cashBeforeMove,
+      'Stage 22: relocating a built plot actually charges the demolish-plus-rebuild fee');
+
+    assert(click(doc, `[data-action="deletePlanningPlot"][data-id="${planningPlot.id}"]`),
+      'Stage 22: a planning plot’s Delete button is clickable');
+    assert(!saved(storage).builtPlots.some(p => p.id === planningPlot.id),
+      'Stage 22: clicking Delete actually removes the planning plot — never exercised before this session');
+
+    const cashBeforeDemolish = saved(storage).cash;
+    assert(click(doc, `[data-action="demolishPlot"][data-id="${builtPlot.id}"]`),
+      'Stage 22: a built plot’s Demolish button is clickable');
+    assert(!saved(storage).builtPlots.some(p => p.id === builtPlot.id),
+      'Stage 22: clicking Demolish actually removes the plot — never exercised before this session');
+    assert(saved(storage).cash < cashBeforeDemolish,
+      'Stage 22: demolishing actually charges the teardown fee');
+
+    dom.window.close();
+  }
+
+  // --- the schedule <select>'s change event (Fair Floor) ---
+  {
+    let s = State.createInitialState();
+    s = State.buildPlot(s, 'stage', 3, 0).state;
+    s = State.contractPerformer(s, 'perf_musician_1', 'open').state; // on the roster, not yet scheduled
+    s = { ...s, cash: 20000 };
+    const stagePlot = s.builtPlots.find(p => p.kind === 'stage');
+
+    const { dom, doc, storage } = await boot(s);
+    click(doc, '[data-tab="fairfloor"]');
+
+    const scheduleSelect = doc.querySelector(`select[data-action="schedule"][data-block="morning"][data-stage="${stagePlot.id}"]`);
+    assert(!!scheduleSelect, 'Stage 22: the schedule grid offers a <select> for the built stage’s Morning Procession slot');
+    scheduleSelect.value = 'perf_musician_1';
+    scheduleSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert(saved(storage).schedule.morning[stagePlot.id] === 'perf_musician_1',
+      'Stage 22: dispatching change on the schedule <select> actually books the performer — never exercised before this session');
+
+    const scheduleSelect2 = doc.querySelector(`select[data-action="schedule"][data-block="morning"][data-stage="${stagePlot.id}"]`);
+    scheduleSelect2.value = '';
+    scheduleSelect2.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert(saved(storage).schedule.morning[stagePlot.id] === undefined,
+      'Stage 22: setting the schedule <select> back to empty actually unassigns the slot');
+
+    dom.window.close();
+  }
+
+  // --- the ticket-price slider's input/change events, and launchCampaign (Office) ---
+  {
+    let s = State.createInitialState();
+    s = { ...s, cash: 20000 };
+
+    const { dom, doc, storage } = await boot(s); // Office is the default tab
+    const slider = doc.querySelector('#ticketPrice');
+    assert(!!slider, 'Stage 22: the ticket-price slider is present on the Office tab');
+    slider.value = '24';
+    slider.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    assert(doc.querySelector('#priceReadout')?.textContent === '$24',
+      'Stage 22: dispatching input on the ticket-price slider updates the live readout — never exercised before this session');
+    assert(saved(storage).ticketPrice !== 24,
+      'Stage 22: input alone does not commit the new price — that is change’s job');
+    slider.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    assert(saved(storage).ticketPrice === 24,
+      'Stage 22: dispatching change on the ticket-price slider actually commits the new price — never exercised before this session');
+
+    const campaignBtn = doc.querySelector('[data-action="launchCampaign"]:not([disabled])');
+    assert(!!campaignBtn, 'Stage 22: at least one campaign is launchable on a fresh faire');
+    const campaignId = campaignBtn.dataset.id;
+    assert(click(doc, `[data-action="launchCampaign"][data-id="${campaignId}"]`),
+      'Stage 22: a launchable campaign’s Launch button is clickable');
+    assert(saved(storage).activeCampaign?.id === campaignId,
+      'Stage 22: clicking Launch actually starts the campaign — never exercised before this session');
+
+    dom.window.close();
+  }
+
+  // --- the footer save bar (Stage 22's headline task): mounted with only
+  // export/import (locked decision #48's buttons option — #resetBtn stays
+  // the one eraser), and both buttons actually round-trip through the real
+  // gvb-save.js pipeline rather than being asserted present and untested. ---
+  {
+    let s = State.createInitialState();
+    s = { ...s, cash: 4321, day: 3 };
+
+    const { dom, doc, storage } = await boot(s);
+    const gvbButtons = [...doc.querySelectorAll('#save-bar [data-gvb]')].map(b => b.dataset.gvb);
+    assert(gvbButtons.length === 2 && gvbButtons.includes('export') && gvbButtons.includes('import'),
+      `Stage 22: the footer save bar mounts exactly export and import, no reset (got: ${gvbButtons.join(',')})`);
+    assert(!!doc.querySelector('#resetBtn'),
+      'Stage 22: #resetBtn is untouched — mounting a second eraser beside it was the thing to avoid');
+
+    // Export: jsdom implements neither URL.createObjectURL nor a readable
+    // Blob, so the Blob constructor is wrapped just long enough to capture
+    // what gvb-save.js actually wrote, rather than mocking the module itself.
+    const OrigBlob = globalThis.Blob;
+    let exportedText = null;
+    globalThis.Blob = class extends OrigBlob {
+      constructor(parts, opts) { super(parts, opts); exportedText = parts[0]; }
+    };
+    globalThis.URL.createObjectURL = () => 'blob:mock';
+    globalThis.URL.revokeObjectURL = () => {};
+    assert(click(doc, '#save-bar [data-gvb="export"]'), 'Stage 22: the Export save button is clickable');
+    globalThis.Blob = OrigBlob;
+    const exported = exportedText && JSON.parse(exportedText);
+    assert(exported?.format === 'gvb-save' && exported.game === 'faire-weekend' && exported.version === 1,
+      'Stage 22: Export writes a real gvb-save envelope for this game, not a stub');
+    assert(exported?.state?.cash === 4321,
+      'Stage 22: the exported envelope actually carries the live game state, not a snapshot from boot');
+
+    // Import: build a save file with a state distinct enough to prove it
+    // actually landed, wire it into the hidden <input type="file"> the same
+    // way a real file chooser would, and dispatch the change event
+    // gvb-save.js's promptImport() is waiting on.
+    globalThis.FileReader = dom.window.FileReader;
+    assert(click(doc, '#save-bar [data-gvb="import"]'), 'Stage 22: the Import save button is clickable');
+    const fileInput = doc.querySelector('input[type="file"]');
+    assert(!!fileInput, 'Stage 22: clicking Import creates the hidden file-picker input promptImport() uses');
+    const importedState = { ...State.createInitialState(), cash: 99999, day: 7 };
+    const file = new dom.window.File([JSON.stringify(importedState)], 'my-save.json', { type: 'application/json' });
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fileInput.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 50)); // FileReader + the import Promise both resolve async
+    assert(saved(storage).cash === 99999 && saved(storage).day === 7,
+      'Stage 22: importing a file actually replaces the live save with its contents — never exercised before this session');
+
+    dom.window.close();
+  }
+}
+
+// ---------------------------------------------------------------------
 // Section 1f: Stage 19 — grounds draw, price elasticity, block quality
 // ---------------------------------------------------------------------
 
@@ -2453,6 +2746,24 @@ const State = await import(mod('js/state.js'));
 
   // 6. Siting still has to beat noise once everything else is equal.
   assert(stagePlot && stagePlot.capacity < 400, 'SIGNIFICANCE: stage capacity is low enough that a successful faire eventually has to build a second stage');
+
+  // 7. Stage 22: the weekend has to have a shape. Through Stage 21,
+  //    weekendDay was set, incremented, and shown in the HUD, and nothing
+  //    else ever read it — Friday, Saturday, and Sunday were mechanically
+  //    the same day three times despite the game being named for the shape
+  //    a weekend has. If this regresses to a flat multiplier again, nothing
+  //    else in the suite would have caught it.
+  const friday = { ...built, weekendDay: 1 };
+  const saturday = { ...built, weekendDay: 2 };
+  const sunday = { ...built, weekendDay: 3 };
+  assert(avg(saturday, 'attendance') > avg(friday, 'attendance'),
+    'SIGNIFICANCE: Saturday draws a bigger crowd than Friday on an identical grounds — the weekend has a shape');
+  assert(avg(saturday, 'attendance') > avg(sunday, 'attendance'),
+    'SIGNIFICANCE: Saturday draws a bigger crowd than Sunday too — it is the peak, not just "not Friday"');
+  const fridayCash = avg(friday, 'cashDelta');
+  const saturdayCash = avg(saturday, 'cashDelta');
+  assert(saturdayCash > fridayCash,
+    `SIGNIFICANCE: the bigger Saturday crowd shows up as more money, not just a cosmetic attendance number (Friday $${fridayCash.toFixed(0)} -> Saturday $${saturdayCash.toFixed(0)})`);
 }
 
 function makeMemoryStorage() {

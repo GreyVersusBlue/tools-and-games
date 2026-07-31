@@ -3,92 +3,93 @@
 Living document, updated in place each stage. Older stage summaries get
 condensed into the changelog at the bottom rather than kept as prose above.
 
-## Status as of Stage 21
+## Status as of Stage 22
 
-**The first stage with a browser actually available.** Every prior stage's
-caveat — "no browser was available in the build sandbox, so the visual work was
-reviewed by reading rather than by looking" — finally does not apply. Two things
-shipped, and both were decided by measurement rather than by reading the code.
+**The headline: adopted `assets/js/gvb-save.js`, the shared save module eleven
+other projects on the site already use.** This game hand-rolled its own
+`localStorage.setItem`/`getItem`/`removeItem` in `state.js` since Stage 1 — the
+last real save-system gap in the project, and the biggest lever Stage 21 left
+on the table. Stage 21's own session notes scoped the whole adoption against
+the module's current API and found no missing hook, so this stage was a
+checklist, not a design question, and the plan held **unchanged**:
 
-### 1. A day is final once the gates close
+- **Key stays `renn-faire-sim-save-v1`** (locked decision #36 — an existing
+  save carries no `__v`, which `gvb-save.js` reads as version 0).
+- `validate` is the old `loadState`'s bare check, lifted unchanged:
+  `s => s && typeof s.cash === 'number' && typeof s.day === 'number'`.
+- **Everything else `loadState` used to fill in — season/`vendorContracts`/
+  `nextPlotId`/`bankrupt`/`victoryAchieved` defaults, the plot `status`/`w`/
+  `h`/`assignedVendorId` backfills, the auto-seat pass — moved to `repair`
+  unchanged, and `migrate` stays a no-op** (locked decision #50: this is
+  content drift, not schema drift, so it has to run on every accepted load
+  regardless of what `__v` says, exactly like it always did regardless of
+  what an old save's nonexistent version field said).
+- `defaults: createInitialState` as a **factory**, not a literal (locked
+  decision #47) — nothing in it is randomized, but the factory avoids a
+  deep-copy round trip.
+- Imported relatively (`../../../assets/js/gvb-save.js`) — `state.js` is
+  imported under plain Node by `tests/smoke.mjs`, and Node can't resolve a
+  leading slash (v7 §1's `campaign.js` trap).
+- **The save bar mounts in `#footer`**, with `buttons: ['export', 'import']`
+  — `#resetBtn` stays untouched (mounting gvb's "Start over" beside "Reset
+  progress" would be two erasers side by side). This closes v7 §9's other
+  long-open item as a side effect: this game has no start screen, and
+  `#footer` is visible in every phase, including mid-report, unlike The
+  Fourth Quarter's bar (stranded on its start overlay).
+- Its `setState` handler also clears `ui.pendingBuild`/`ui.pendingMove` and
+  resets `ui.activeTab` to `office` — an import replaces the grounds
+  outright, so a pending placement or a stale tab selection against
+  whatever was there before is meaningless.
 
-`render()` called `saveState()` at the very bottom, below the early return that
-the `report`, `weekendEnd`, `victory` and `gameOver` phases take. So the game
-never wrote a save while a report was on screen. Reloading on a day's takings
-rewound to before the gates opened.
+One thing the plan didn't originally call out that turned out to matter:
+**the slot has to be built fresh on every `save`/`load`/`reset` call, not
+cached.** `tests/smoke.mjs` reassigns `globalThis.localStorage` per JSDOM
+boot to simulate separate page loads, but `gvb-save.js`'s storage probe
+only runs once, at `createSaveSlot()` construction — and `state.js` itself
+is only ever imported once in the whole test process (`main.js` is what
+gets cache-busted and re-imported to simulate a "reload"). A slot built
+once and reused across the suite's many boots would have frozen onto
+whichever `localStorage` existed the first time any test in the file
+booted the game, silently breaking every boot after it. Building the slot
+fresh per call sidesteps this entirely and costs nothing next to the full
+re-render every action already does.
 
-The previous session logged this as "consistently forgiving rather than broken"
-and left it for a policy decision. **Playing it says otherwise.** `runDay()`
-seeds off `Date.now()`, so the replayed day is not the same day — it is a fresh
-roll. Measured across 400 seeds against a four-plot grounds with performers
-booked and vendors seated:
+### 2. The weekend finally has a shape
 
-| | min | median | max | spread |
-| --- | ---: | ---: | ---: | ---: |
-| `cashDelta` | −$301 | +$393 | +$1,265 | $1,566 |
-| attendance | 551 | 604 | 672 | 121 |
-| `reputationDelta` | 0 | +1 | +5 | 5 |
+Through Stage 21, `weekendDay` was set, incremented, and shown in the HUD,
+and nothing else ever read it — `simulateDay` touched `state.day` once,
+just to stamp it on the result. Friday, Saturday, and Sunday were
+mechanically the same day three times, despite the game being named for
+the shape a weekend has. New `WEEKEND_DAY_ATTENDANCE` table in `data.js`
+(Friday 0.85x, Saturday 1.2x, Sunday 0.95x) and one new term in the
+attendance formula in `engine.js` fix that: Saturday is now measurably the
+day to book the expensive act on, not Friday, and it gives the Weekend
+Package contract a reason to exist beyond its flat 15% discount. Falls
+back to a neutral 1x for any ad-hoc state that never set `weekendDay` (the
+Section 1g `SIGNIFICANCE` tests build several of these), so nothing
+existing needed to change. Surfaced in the HUD as a title tooltip on the
+Weekend/day readout, matching the existing grounds-draw tooltip pattern —
+otherwise this would have been exactly the kind of lever nothing on screen
+tells the player exists.
 
-Pressing F5 was worth roughly three times the median day's profit, and
-rerolling for +5 reputation instead of +1 reaches the win condition's
-`minReputation: 70` in about a quarter of the days it should take. That is not
-forgiveness, it is an undocumented save-scum lever that makes the Stage 19
-economy rework and the Stage 16 win/loss conditions optional.
+### 3. The wiring nothing had ever clicked
 
-**Policy chosen: persist the report, which locks the day.** Worth knowing that
-in this codebase those are not two options. `runDay()` already applies
-`cashDelta`, pushes to `history` and sets `phase`, so the day is resolved the
-instant the button is clicked; the only reason it was replayable is that the
-state never reached disk. Persisting it *is* locking it. The v7 handoff frames
-them as two policies to choose between, and there is only one.
-
-The fix is `State.saveState(state)` moved to the **top** of `render()`, where an
-early return cannot skip it. The comment there explains why, so nobody moves it
-back for tidiness.
-
-Two arguments for it beyond closing the exploit, both of which the "forgiving"
-framing missed:
-
-- **The old behaviour also punished.** A crash, a closed tab, or a phone
-  locking its screen mid-report threw away a day the player had already earned.
-  The forgiveness was symmetric with a loss, and only the reroll was
-  deliberate — the loss happened by accident.
-- **Bankruptcy was not a loss.** The `gameOver` phase took the same early
-  return, so reloading past a folded faire put you back in the planning phase
-  with the money you had before the day that ruined you. Stage 16's loss
-  condition has never actually been able to end a run.
-
-Downside risk of locking, measured: on a developed grounds the *worst* seed of
-400 is −$301 against a `bankruptcyFloor` of −$6,000. One bad roll cannot ruin
-anyone; only sustained bad decisions can, which is what the floor is for.
-
-### 2. The three type families are vendored
-
-`index.html` hotlinked Grenze Gotisch, Fraunces and Barlow Semi Condensed from
-`fonts.googleapis.com`. That made v7 §5's "zero offsite requests site-wide"
-claim wrong, and **the board-check suite could not see it**: `prepPage()`
-fulfills Google Fonts requests locally from bundled `@fontsource` packages
-before the blocked-list check runs, so a font hotlink never reaches
-`page.__blocked`. The check is `grep index.html for fonts.googleapis.com`, and
-the smoke suite now does exactly that (Section 21).
-
-**253.6 KB total, 259,680 bytes across six woff2 files**, `latin` subset only.
-See `assets/fonts/README.md` for the table, the sources, and the OFL notices.
-
-Weights were measured with `getComputedStyle` across every screen rather than
-copied off the old `<link>`, which turned up two errors in it:
-
-- **Grenze Gotisch 700 and Barlow Semi Condensed 500 were fetched and never
-  used.** Barlow 500 is gone.
-- **Fraunces 700 was used and never fetched.** A ledger `<td>` computes to 700
-  in Fraunces and the hotlink only loaded 400 and 600, so the browser had been
-  synthesising a faux bold since Stage 19. The variable file covers 100–900, so
-  that text now renders in the real cut.
-
-Fraunces keeps its optical-size axis, which is what the old URL asked for. The
-`wght`-only cut would save 66,548 bytes and was deliberately not taken:
-vendoring should not quietly change how the page renders. Both axes were
-confirmed live in a browser by canvas metrics, not assumed.
+Mapping every `data-action` in `main.js` against both the Node smoke suite
+and `Tools/board-check/play-games.mjs` turned up ten player-facing actions
+that had never been clicked in a browser by anything: `contract`,
+`release`, `hireVendor`'s day-rate let-go path (only a Weekend Package
+fee let-go was ever covered), `launchCampaign`, `autoFillStalls`,
+`unassignVendor`, `demolishPlot`, `selectMove`/`moveTo`,
+`deletePlanningPlot`, and `renamePlot`. Worse: **no `change` or `input`
+event had ever been dispatched by either suite**, so the ticket-price
+slider and both `<select>`s (schedule assignment, vendor-to-stall seating)
+— which all run through `main.js`'s single delegated `change` listener, a
+completely different event path from every click both suites fire — had
+zero coverage. Same risk class as `day.rebuildStations` being 122 passing
+assertions while New Game threw on the first click. New DOM-driven Section
+22 in `tests/smoke.mjs` exercises all ten actions plus both events, each
+preloaded via a purpose-built save so the test proves the click/change
+itself works rather than the setup around it. 740 → 783 checks.
 
 ## Status as of Stage 20
 
@@ -154,14 +155,19 @@ changed.
 
 ## Backlog
 
-Unchanged from Stage 19, plus one addition:
-
 - **Layout/spacing/density review still needs real eyes on a rendered
-  page.** This stage's audit was contrast-only because that's the one
-  visual property checkable by computation alone; whether the new
-  permanent-map layout actually reads well at 1080px/720px, whether
-  anything overlaps or crowds, is still an open question the moment a
-  browser (or a screenshot-capable tool) is available.
+  page.** Unchanged from Stage 20/21 — a browser has been available since
+  Stage 21, but both browser stages spent it on their own assigned tasks
+  (save timing/fonts, then the save-module adoption/weekend
+  shape/wiring coverage) rather than this. Everything needed to pay it
+  down (server, game, `shots/games/` for before/afters) is in place.
+- **Mobile tap targets are all under the 44px minimum.** New this stage,
+  found while touring the game in a real browser for the save-bar work:
+  375×812 lays out with no horizontal overflow, which is better than
+  expected, but every interactive element (38 plot markers at 26px,
+  buttons at 27-28px, tabs at 40px) is undersized, and the plot markers
+  are the primary interaction. A real design pass (bigger hit areas, or a
+  pinch/pan map), not a media-query tweak.
 - `perGuestCost`, `upkeepRate`, and `winCondition`/`bankruptcyFloor` are
   still the three economy numbers most likely to need adjusting after
   real play (unchanged from Stage 19 — nothing here touched them).
@@ -173,15 +179,19 @@ Unchanged from Stage 19, plus one addition:
 
 ## What the next stage needs
 
-The Section 1g `SIGNIFICANCE:` tests from Stage 19 are still the ones to
-run against any future balance change (see prior status notes preserved
-in the changelog below for the full list of what they check).
-`computeGroundsDraw` is still a pure function of the plots array, ready
-for a build-preview to call speculatively.
+The Section 1g `SIGNIFICANCE:` tests from Stage 19 (now seven, with this
+stage's weekend-shape check added) are still the ones to run against any
+future balance change. `computeGroundsDraw` is still a pure function of
+the plots array, ready for a build-preview to call speculatively.
 
-If a browser or screenshot tool becomes available before the layout item
-above is picked up, that's the highest-value next visual pass — this
-stage closed the one gap that was checkable blind, not the whole caveat.
+The wiring gap this stage closed (ten never-clicked actions, two never-
+dispatched event types) was found by mapping every `data-action` in
+`main.js` against both test suites by hand. Worth re-running that mapping
+after any stage that adds a new `data-action` or a new `<select>`/slider,
+since nothing else catches this class of gap automatically.
+
+Mobile tap targets (see Backlog) is the highest-value next visual pass —
+this stage didn't touch layout/CSS beyond the footer save bar.
 
 ## Wishlist (not yet scoped, no priority order)
 
@@ -194,33 +204,64 @@ showing a placement's effect on grounds draw before committing.
 ## Retro
 
 **Went well:**
-- Diagnosing before fixing, same discipline as Stage 19: the audit ran
-  every color pair through the actual formula before touching any hex
-  value, so the two fixes are the two real failures — not a guess at
-  what "looked dark" plus collateral changes to tokens that were already
-  fine.
-- Both fixes were pure token/value edits with no HTML or JS touched and
-  no new stored state, so the fix carried zero risk to the 675 existing
-  checks (all still green) and needed no save migration.
-- Writing the contrast math as a smoke-suite check (not just a one-off
-  script) means this stays caught automatically instead of depending on
-  a future stage remembering to re-run a Python file that isn't part of
-  the repo.
+- Stage 21's own session notes scoped the entire `gvb-save.js` adoption in
+  advance and checked it against the module's live API rather than just
+  describing intent — the plan held with zero changes needed, which is
+  the actual payoff of writing a real plan instead of a to-do list.
+- The slot-caching bug (see Stage 22 status above) was caught by the
+  existing test suite's own boot pattern, not guessed at — reassigning
+  `globalThis.localStorage` per JSDOM boot is exactly the scenario a
+  cached slot breaks, and it broke loudly (every save silently pointing
+  at stale storage) rather than quietly.
+- The wiring audit (mapping every `data-action` against both suites by
+  hand) found real gaps a fuzzer or coverage tool wouldn't have flagged
+  as clearly: ten specific, nameable actions, plus the entire `change`/
+  `input` event family. Concrete findings, not "coverage is at 80%."
+- Locked decision #34 (reintroduce the bug, watch the new test fail)
+  caught two real mistakes before they shipped: the first `moveTo` test
+  picked the plot's own current cell as the relocation target (a legal
+  no-op) and the export test's anchor click triggered jsdom's
+  unimplemented navigation path, both invisible until the guard-rail
+  check demanded the test actually fail on a broken build.
 
 **Things to know before repeating:**
-- **A computed audit is not a substitute for looking at the page.**
-  Contrast ratios catch color-pair legibility; they say nothing about
-  whether text wraps badly, whether the sticky HUD overlaps content at
-  an odd viewport, or whether the surveyor's-plat map actually reads as
-  intended at 720px. That's still owed.
-- The fixed hex values (`#93846A`, `#CD6677`) were derived by lightening
-  along the original HSL hue/saturation until the contrast threshold
-  cleared — a mechanical process, not a designer's eye — so they're
-  correct-by-formula but worth a glance if a screen ever becomes
-  available, in case the specific tone reads oddly against the warm
-  palette even though the numbers pass.
+- **A `createSaveSlot()` call is not free to cache across simulated page
+  loads.** Any project's Node smoke suite that reassigns
+  `globalThis.localStorage` to test multiple "boots" in one process needs
+  its slot built fresh per `save`/`load`/`reset` call, not once and
+  reused — the module doing the reassigning (`state.js` here) is not the
+  module that gets cache-busted (`main.js` is), so a cached slot silently
+  survives every "reload."
+- **jsdom implements neither `URL.createObjectURL` nor a readable `Blob`,
+  and clicking a real `<a href="blob:...">` schedules an unimplemented
+  navigation** unless the click's default action is prevented. Both are
+  one-time setup costs (a `Blob` subclass to capture what was written, an
+  `e.preventDefault()` on anchor clicks) worth keeping in mind before any
+  future adopter's smoke suite wants to exercise `mountSaveBar`'s export
+  button for real rather than asserting it merely exists.
+- Mobile tap targets and the layout/spacing review are still owed — this
+  stage had a browser and spent it on the three assigned tasks, the same
+  tradeoff Stage 21 made.
 
 ## Changelog
+
+- **Stage 21** — the first stage with a browser actually available, and
+  both changes were decided by measurement rather than by reading the
+  code. `State.saveState(state)` moved from the bottom of `render()` to
+  the top, so the `report`/`weekendEnd`/`victory`/`gameOver` early return
+  can no longer skip it — **a day is now final once the gates close**.
+  400 seeded days on a four-plot grounds showed the old behavior wasn't
+  forgiving, it was a free reroll worth ~3x the median day's profit and
+  able to reach the win condition's reputation floor in a quarter of the
+  intended days; it also meant bankruptcy could never end a run, since
+  reloading past a folded faire rewound to the pre-loss planning phase.
+  Separately, the three vendored type families (Grenze Gotisch, Fraunces,
+  Barlow Semi Condensed) replaced a `fonts.googleapis.com` hotlink that
+  had made v7's "zero offsite requests site-wide" claim wrong — 253.6 KB
+  across six woff2 files, `latin` subset only, which also fixed two
+  measurement errors in the old link tag (Grenze 700 and Barlow 500
+  fetched and unused; Fraunces 700 used but never fetched, faked bold
+  since Stage 19). 684 → 737 checks.
 
 - **Stage 19** — economy responsiveness + full visual rebuild, the first
   stage aimed at a systemic problem rather than a new mechanic. Diagnosis
