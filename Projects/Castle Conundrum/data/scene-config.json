@@ -125,12 +125,12 @@
           -1
         ],
         "step": [
-          1,
+          0.5,
           0
         ],
-        "count": 2,
+        "count": 4,
         "rotationY": 0,
-        "comment": "interior hall south wall, west of doorway"
+        "comment": "interior hall south wall, west of doorway. wall-half.glb is authored 2m wide once normalizeToTile scales off its Z depth (the correct 4x, not the old X-derived 8x) -- half a tile, not a whole one -- so this run steps in half-tiles now. Four pieces at 2m each still span the same 8m this used to cover in two 4m-wide (buggy) pieces."
       },
       {
         "model": "wall-half.glb",
@@ -139,12 +139,12 @@
           -1
         ],
         "step": [
-          1,
+          0.5,
           0
         ],
-        "count": 2,
+        "count": 4,
         "rotationY": 0,
-        "comment": "interior hall south wall, east of doorway. The gap is world x 0..4, not x=0: wall-half.glb's local x range is 0..0.5 rather than centred, and normalizeToTile re-grounds y but never re-centres x/z, so a piece placed on tile n covers world x 4n..4n+4. It is also scaled 8x (4 / 0.5) rather than 4x, so these pieces are 8 m tall and 8 m deep. See the notes file"
+        "comment": "interior hall south wall, east of doorway. Doorway gap is world x 0..4, unchanged by the scale fix -- wall-half.glb's local x range is 0..0.5 rather than centred, and normalizeToTile re-grounds y but never re-centres x/z, so a piece placed on tile n covers world x 4n..4n+2 now (was 4n..4n+4 before the fix). See the notes file for the scale bug this run used to carry."
       },
       {
         "model": "wall-half.glb",
@@ -154,11 +154,11 @@
         ],
         "step": [
           0,
-          1
+          0.5
         ],
-        "count": 1,
+        "count": 2,
         "rotationY": 90,
-        "comment": "interior hall west wall"
+        "comment": "interior hall west wall. Same half-tile-step fix as the south wall runs: correctly-scaled wall-half.glb pieces are 2m along their run, so this needs two to close what one (buggy, 4m-appearing) piece used to cover."
       },
       {
         "model": "wall-half.glb",
@@ -168,11 +168,11 @@
         ],
         "step": [
           0,
-          1
+          -0.5
         ],
-        "count": 1,
+        "count": 2,
         "rotationY": 270,
-        "comment": "interior hall east wall"
+        "comment": "interior hall east wall. Same half-tile-step fix as the west wall above, but the step direction flips: a rotationY of 270 vs 90 mirrors which way +tz moves the piece in world space, so this run steps tz negative to reach the outer wall instead of doubling back onto the south partition."
       }
     ],
     "placements": [

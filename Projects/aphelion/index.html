@@ -71,7 +71,7 @@
   .bar i { display: block; height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.6s ease, background 0.6s ease; }
   .bar i.low { background: #e08f5f; }
   #daybox { margin-top: 10px; letter-spacing: 0.12em; color: var(--ink-dim); }
-  #inv { margin-top: 4px; letter-spacing: 0.06em; }
+  #inv, #signal { margin-top: 4px; letter-spacing: 0.06em; }
 
   /* ---------- Interaction prompt ---------- */
   #prompt {
@@ -184,6 +184,7 @@
     <div class="gauge"><label>HULL</label><div class="bar"><i id="bar-hull" style="width:100%"></i></div></div>
     <div id="daybox">DAY 1 · 08:00</div>
     <div id="inv"></div>
+    <div id="signal"></div>
   </div>
 
   <div id="dot"></div>

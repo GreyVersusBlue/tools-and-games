@@ -97,10 +97,14 @@ const BOWL_R = 0.29;
  * the Poly Haven vessels would turn a synchronous call into an async one for
  * three objects the player never gets closer than about 2 m to.
  *
- * No collider. The bare coal had none either, so this is not a regression, but it
- * does mean a determined player can stand inside one. See the notes file.
+ * Takes the CastleBuilder rather than a bare scene so the stand can register
+ * itself in castle.colliders the same way every other piece of scenery does.
+ * The bare coal sphere this replaced had no collider either, so this closes a
+ * pre-existing hole rather than opening one: a player could always walk
+ * through where a brazier visually stood.
  */
-export function createBrazier(scene, position) {
+export function createBrazier(castle, position) {
+  const scene = castle.scene;
   const stand = new THREE.Group();
   stand.position.copy(position);
 
@@ -143,6 +147,7 @@ export function createBrazier(scene, position) {
   stand.add(coals);
 
   scene.add(stand);
+  castle.addCollider(stand, 'brazier');
 
   const light = new THREE.PointLight(0xff9033, 8, 12, 2);
   light.position.copy(position).add(new THREE.Vector3(0, BOWL_Y + 0.2, 0));

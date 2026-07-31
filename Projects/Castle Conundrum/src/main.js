@@ -31,7 +31,7 @@ async function init() {
 
   // --- Braziers (flicker lights) ---
   const brazierUpdates = config.braziers.map((b) =>
-    createBrazier(scene, castle.tileToWorld(b.tile[0], b.tile[1]))
+    createBrazier(castle, castle.tileToWorld(b.tile[0], b.tile[1]))
   );
 
   // --- NPCs ---

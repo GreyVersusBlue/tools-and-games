@@ -22,6 +22,10 @@ export function updateHUD() {
   $('inv').textContent = bits.join(' · ');
 }
 
+export function updateSignal(text) {
+  $('signal').textContent = text;
+}
+
 export function setPrompt(text) {
   const p = $('prompt');
   if (!text) { p.classList.remove('show'); return; }

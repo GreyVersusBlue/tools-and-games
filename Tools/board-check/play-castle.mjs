@@ -36,6 +36,9 @@ const THREE_URL = '/Projects/Castle%20Conundrum/libs/three.module.js';
 // Where the NPCs stand, per data/npcs.json. If those move, move these.
 const SCHOLAR = [1.5, -10.0];
 const GUARD = [1.8, 9.2];
+// The hall brazier, per data/scene-config.json's braziers[1].tile [0.85, -1.6].
+// If that moves, move this.
+const HALL_BRAZIER = [3.4, -6.4];
 
 // Geometry the placement beats below check against. Measured from the live scene,
 // not read off the config: every one of these models arrives at its own authored
@@ -176,6 +179,41 @@ try {
   assert(sampling.allAtCap, 'every texture is at the GPU anisotropy ceiling',
     `cap ${sampling.cap}, worst ${sampling.worstAniso}, ${sampling.total} textures`);
 
+  // --- The interior hall walls are the same height as every outer wall, and the
+  // hall columns reach the ceiling. normalizeToTile used to scale wall-half.glb
+  // off its own X size (0.5, the one dimension that's deliberately NOT 1 unit for
+  // a half-width piece), which doubled its height and depth to 8m instead of 4m.
+  // castle-builder now scales off Z, the dimension that actually is 1 unit on
+  // every piece in the kit. Separately, column.glb had no scale branch at all and
+  // sat at its native 1m/20cm-thick size, invisible in every screenshot.
+  const geometry = await page.evaluate(async () => {
+    const THREE = await import('/Projects/Castle%20Conundrum/libs/three.module.js');
+    const s = window.__scene;
+    const heights = (pattern) => {
+      const out = [];
+      s.traverse((o) => {
+        if (!o.isMesh || !pattern.test(o.name || '')) return;
+        const b = new THREE.Box3().setFromObject(o);
+        out.push(+(b.max.y - b.min.y).toFixed(2));
+      });
+      return out;
+    };
+    const outerWalls = heights(/^wall_/);
+    const hallWalls = heights(/^wall-half/);
+    const columns = heights(/^column/);
+    return { outerWalls, hallWalls, columns };
+  });
+  const wallHeightsMatch = geometry.outerWalls.length > 0 && geometry.hallWalls.length > 0
+    && geometry.outerWalls.every((h) => Math.abs(h - 4) < 0.05)
+    && geometry.hallWalls.every((h) => Math.abs(h - 4) < 0.05);
+  assert(wallHeightsMatch, 'interior hall walls are the same height as the outer walls',
+    `outer ${[...new Set(geometry.outerWalls)]}m, hall ${[...new Set(geometry.hallWalls)]}m`);
+  // Each column mesh has multiple material slots (separate submeshes per name,
+  // like the wall pieces above), so this counts distinct heights, not meshes.
+  assert(geometry.columns.length > 0 && geometry.columns.every((h) => Math.abs(h - 4) < 0.05),
+    'hall columns reach the same height as the walls, not a 1m stub',
+    `${[...new Set(geometry.columns)]}m across ${geometry.columns.length} submeshes`);
+
   // --- Nothing in the hall is standing in mid-air or inside the furniture.
   // Two separate bugs, one check: the lantern and the candleholders carried
   // `yOffset: 0.95` against a 0.55 m table and hung 0.40 m above it, and the
@@ -287,6 +325,14 @@ try {
   let s = await state();
   assert(s.locked, 'pointer lock engaged');
   if (!s.locked) throw new Error('without pointer lock there is nothing left to test — is this running headed?');
+
+  // --- The hall brazier now has a collider (it used to have none, same as the
+  // bare coal it replaced). Walk straight at its centre and confirm the player
+  // is stopped short rather than walking through it. Bounded burst count: if the
+  // collider is missing this would otherwise "arrive" in a couple of strides.
+  const toBrazier = await driveTo(page, HALL_BRAZIER, async (dist) => dist < 0.25, { maxBursts: 20 });
+  assert(!toBrazier, 'the hall brazier collider stops the player walking into it',
+    toBrazier ? `reached ${toBrazier.dist}m — no collider` : 'blocked as expected');
 
   // --- Real mouse movement drives the look.
   const yaw0 = await page.evaluate(() => +window.__cam.rotation.y.toFixed(4));

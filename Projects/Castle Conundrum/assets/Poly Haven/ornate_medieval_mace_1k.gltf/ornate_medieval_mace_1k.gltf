@@ -1,37 +1,122 @@
 {
   "asset": {
-    "generator": "Khronos glTF Blender I/O v4.2.60",
+    "generator": "glTF-Transform v4.4.2",
     "version": "2.0"
   },
-  "scene": 0,
-  "scenes": [
+  "accessors": [
     {
-      "name": "Scene",
-      "nodes": [
-        0
-      ]
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 9919,
+      "max": [
+        0.047472625970840454,
+        0.5259767174720764,
+        0.05086246505379677
+      ],
+      "min": [
+        -0.04739980399608612,
+        -0.10402332246303558,
+        -0.050850674510002136
+      ],
+      "bufferView": 0,
+      "byteOffset": 0
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 9919,
+      "bufferView": 0,
+      "byteOffset": 12
+    },
+    {
+      "type": "VEC2",
+      "componentType": 5126,
+      "count": 9919,
+      "bufferView": 0,
+      "byteOffset": 24
+    },
+    {
+      "type": "SCALAR",
+      "componentType": 5123,
+      "count": 44286,
+      "bufferView": 1,
+      "byteOffset": 0
     }
   ],
-  "nodes": [
+  "bufferViews": [
     {
-      "mesh": 0,
-      "name": "ornate_medieval_mace"
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 317408,
+      "byteStride": 32,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 317408,
+      "byteLength": 88572,
+      "target": 34963
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "textures": [
+    {
+      "source": 1,
+      "sampler": 0
+    },
+    {
+      "source": 0,
+      "sampler": 0
+    },
+    {
+      "source": 2,
+      "sampler": 0
+    }
+  ],
+  "images": [
+    {
+      "name": "ornate_medieval_mace_nor_gl",
+      "mimeType": "image/jpeg",
+      "uri": "textures/ornate_medieval_mace_nor_gl_1k.jpg"
+    },
+    {
+      "name": "ornate_medieval_mace_diff",
+      "mimeType": "image/jpeg",
+      "uri": "textures/ornate_medieval_mace_diff_1k.jpg"
+    },
+    {
+      "name": "ornate_medieval_mace_metal-ornate_medieval_mace_rough",
+      "mimeType": "image/jpeg",
+      "uri": "textures/ornate_medieval_mace_arm_1k.jpg"
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "ornate_medieval_mace.bin",
+      "byteLength": 405980
     }
   ],
   "materials": [
     {
-      "doubleSided": true,
       "name": "ornate_medieval_mace",
-      "normalTexture": {
-        "index": 0
-      },
+      "doubleSided": true,
       "pbrMetallicRoughness": {
         "baseColorTexture": {
-          "index": 1
+          "index": 0
         },
         "metallicRoughnessTexture": {
           "index": 2
         }
+      },
+      "normalTexture": {
+        "index": 1
       }
     }
   ],
@@ -45,115 +130,26 @@
             "NORMAL": 1,
             "TEXCOORD_0": 2
           },
-          "indices": 3,
-          "material": 0
+          "mode": 4,
+          "material": 0,
+          "indices": 3
         }
       ]
     }
   ],
-  "textures": [
+  "nodes": [
     {
-      "sampler": 0,
-      "source": 0
-    },
-    {
-      "sampler": 0,
-      "source": 1
-    },
-    {
-      "sampler": 0,
-      "source": 2
+      "name": "ornate_medieval_mace",
+      "mesh": 0
     }
   ],
-  "images": [
+  "scenes": [
     {
-      "mimeType": "image/jpeg",
-      "name": "ornate_medieval_mace_nor_gl",
-      "uri": "textures/ornate_medieval_mace_nor_gl_1k.jpg"
-    },
-    {
-      "mimeType": "image/jpeg",
-      "name": "ornate_medieval_mace_diff",
-      "uri": "textures/ornate_medieval_mace_diff_1k.jpg"
-    },
-    {
-      "mimeType": "image/jpeg",
-      "name": "ornate_medieval_mace_metal-ornate_medieval_mace_rough",
-      "uri": "textures/ornate_medieval_mace_arm_1k.jpg"
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
     }
   ],
-  "accessors": [
-    {
-      "bufferView": 0,
-      "componentType": 5126,
-      "count": 9919,
-      "max": [
-        0.047472625970840454,
-        0.5259767174720764,
-        0.05086246505379677
-      ],
-      "min": [
-        -0.04739980399608612,
-        -0.10402332246303558,
-        -0.050850674510002136
-      ],
-      "type": "VEC3"
-    },
-    {
-      "bufferView": 1,
-      "componentType": 5126,
-      "count": 9919,
-      "type": "VEC3"
-    },
-    {
-      "bufferView": 2,
-      "componentType": 5126,
-      "count": 9919,
-      "type": "VEC2"
-    },
-    {
-      "bufferView": 3,
-      "componentType": 5123,
-      "count": 44286,
-      "type": "SCALAR"
-    }
-  ],
-  "bufferViews": [
-    {
-      "buffer": 0,
-      "byteLength": 119028,
-      "byteOffset": 0,
-      "target": 34962
-    },
-    {
-      "buffer": 0,
-      "byteLength": 119028,
-      "byteOffset": 119028,
-      "target": 34962
-    },
-    {
-      "buffer": 0,
-      "byteLength": 79352,
-      "byteOffset": 238056,
-      "target": 34962
-    },
-    {
-      "buffer": 0,
-      "byteLength": 88572,
-      "byteOffset": 317408,
-      "target": 34963
-    }
-  ],
-  "samplers": [
-    {
-      "magFilter": 9729,
-      "minFilter": 9987
-    }
-  ],
-  "buffers": [
-    {
-      "byteLength": 405980,
-      "uri": "ornate_medieval_mace.bin"
-    }
-  ]
+  "scene": 0
 }

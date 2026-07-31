@@ -1,0 +1,13 @@
+{
+  "id": "kaeta-jadeharbor-log",
+  "characterName": "Kaeta Jadeharbor",
+  "characterAnchor": "kaeta-jadeharbor",
+  "summary": "19 scenarios · 76 XP",
+  "columns": ["Scenario", "XP", "Gold", "Reputation"],
+  "numColumns": [false, true, true, false],
+  "rows": [
+    { "cells": ["7-07: Draconic Folly", "4", "220 gp", "Envoys' Alliance +4"] },
+    { "cells": ["7-03: A Foot in the Door", "4", "150 gp", "Envoys' Alliance +4"] }
+  ],
+  "totals": "Totals: 370 gp · Envoys' Alliance +8"
+}

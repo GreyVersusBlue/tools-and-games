@@ -334,6 +334,19 @@ function tick() {
     if (!it && activeRepair) activeRepair = null; // walked away mid-repair — fine, no harm
     UI.setPrompt(it ? promptFor(it) : null);
     UI.updateHUD();
+
+    // Distance-only readout, EVA only, unscanned sites — no bearing, on purpose.
+    // A compass would point straight at the answer; this just says "warmer",
+    // which is the shape that doesn't turn drifting into a waypoint-chase.
+    if (state.mode === 'eva') {
+      const dists = poiData.pois
+        .filter(p => !state.scannedPois.includes(p.id))
+        .map(p => Math.round(controls.pos.distanceTo(new THREE.Vector3(...p.pos))))
+        .sort((a, b) => a - b);
+      UI.updateSignal(dists.length ? `SALVAGE ${dists.map(d => d + 'm').join(' · ')}` : '');
+    } else {
+      UI.updateSignal('');
+    }
   }
 
   // autosave every 30s

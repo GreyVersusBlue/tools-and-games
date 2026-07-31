@@ -1,0 +1,23 @@
+{
+  "title": "Rise of the Runelords",
+  "spineColor": "var(--oxblood)",
+  "comingSoon": false,
+  "ribbon": null,
+  "pills": [
+    "Pathfinder 2e Remaster",
+    "Levels 1–20",
+    { "text": "Completed", "status": "completed" }
+  ],
+  "blurb": "A goblin raid on the sleepy coastal town of Sandpoint unravels into the return of Karzoug, Runelord of Greed — and a reckoning seven thousand years in the making.",
+  "roster": [
+    {
+      "name": "Cassia — Human Fighter",
+      "bio": "A former prison guard with quick hands and a lockpick's curiosity, picked up from watching — and studying — the inmates in her charge. Warm and personable, and always happy to show off a trick for someone she trusts."
+    },
+    {
+      "name": "Essoren — Human Sorcerer",
+      "aside": "devotee of Lissala",
+      "bio": "Raised outside Wartle along the Yondabakri River; his fair Chelaxian complexion traces back to ancestors who fled generations of changeling blood. His curses have a habit of striking back at whoever draws first blood."
+    }
+  ]
+}

@@ -10,7 +10,7 @@ DONE: 1 (sort selector: level/name/price/source, priceCp helper, persists across
       8 (rebrand: title + brand header "Anathema Archive", subtitle kept)
 IN PROGRESS: none — all eight roadmap items complete
 NEXT STEP: no roadmap remains; next session should adopt a new roadmap (proposals in session-1 closing summary) or polish
-NOTES: Tested via jsdom harness (mock fetch, fixtures, 94 assertions) covering all baseline regressions (level bar, shard sync, runes, hash links, kbd nav, vlist) + every feature.
+NOTES: The "jsdom harness, 94 assertions" claim once here didn't match anything in the repo (checked across two rounds of review; no such file exists and never did as far as either round could tell). Replaced by a real one: Pathfinder/tests/anathema.test.mjs, a headless-browser suite against the real page and real data via Tools/board-check/harness.mjs, 33 assertions covering the level-bar anchor/range state machine, npc shard load/unload sync (including the open-detail-pane-just-unloaded case), hash-routing round trips (2- and 3-segment), and bookmark-stub resolution. `node "Pathfinder/tests/anathema.test.mjs"`, exits non-zero on failure.
 - Item 6: roadmap listed per-char budget adj "±20/±30/±40"; implemented full GM Core set 10/15/20/30/40 (Trivial/Low/Moderate/Severe/Extreme) since the roadmap's three numbers map to the top three tiers. Delta < -4 scores 0 XP; delta > +4 flags "Beyond Extreme".
 - Trait chip matching uses substring includes() like the original single filter (chip "fire" also matches "firearm"). Exact-match option noted for future polish.
 - Bookmarked entries hash as their real category (#equipment/Name etc.); #bookmarks is scope-only, mirroring the Runes convention.

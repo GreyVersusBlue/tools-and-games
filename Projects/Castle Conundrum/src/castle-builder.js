@@ -24,13 +24,26 @@ export class CastleBuilder {
     return new THREE.Vector3(tx * this.tile, 0, tz * this.tile);
   }
 
-  /** Scale a loaded model so its X footprint equals tileSize (for modular wall pieces). */
+  /**
+   * Scale a loaded modular wall/tower piece so its depth (Z) equals tileSize.
+   * Every piece in the kit — wall, wall-half, wall-low, tower, the fortified
+   * gate — is authored 1 unit deep; a "half" piece is half-WIDTH (X) or
+   * half-HEIGHT (Y), never half-depth. Scaling off Z therefore gives every
+   * piece the same 4x factor and every "half" dimension comes out to exactly
+   * half a tile, matching how the wallRuns below space them.
+   *
+   * This used to scale off size.x, which is correct for every piece except
+   * wall-half.glb (0.5 wide, 1 deep): its X is the odd one out, so scaling
+   * from it gave wall-half.glb an 8x factor instead of 4x — 4m wide (right),
+   * but 8m tall and 8m deep, half the texel density of every other wall and
+   * an 8m-thick partition where every other wall in the castle is 4m.
+   */
   normalizeToTile(obj) {
     _box.setFromObject(obj);
     const size = new THREE.Vector3();
     _box.getSize(size);
-    if (size.x > 0.0001) {
-      const s = this.tile / size.x;
+    if (size.z > 0.0001) {
+      const s = this.tile / size.z;
       obj.scale.setScalar(s);
     }
     // sit on the ground
@@ -39,6 +52,23 @@ export class CastleBuilder {
   }
 
   groundAndCenter(obj) {
+    _box.setFromObject(obj);
+    obj.position.y -= _box.min.y;
+  }
+
+  /**
+   * Scale a loaded model so its height equals tileSize (for the hall columns).
+   * column.glb is 0.2 x 1 x 0.2 in model units -- neither normalizeToTile's
+   * width-driven scale (20x, an absurd 4m-thick stub) nor leaving it at native
+   * scale (a 1m, 20cm-thick stub, out of frame in every screenshot) is right.
+   * Scaling to the same height as a wall tile makes it read as a floor-to-
+   * ceiling support post, which is what a "hall column" is supposed to be.
+   */
+  normalizeHeight(obj) {
+    _box.setFromObject(obj);
+    const size = new THREE.Vector3();
+    _box.getSize(size);
+    if (size.y > 0.0001) obj.scale.setScalar(this.tile / size.y);
     _box.setFromObject(obj);
     obj.position.y -= _box.min.y;
   }
@@ -110,6 +140,8 @@ export class CastleBuilder {
       const obj = await loadModel(kBase + p.model);
       if (p.model.startsWith('tower') || p.model.startsWith('wall')) {
         this.normalizeToTile(obj);
+      } else if (p.model.startsWith('column')) {
+        this.normalizeHeight(obj);
       } else {
         this.groundAndCenter(obj);
       }
