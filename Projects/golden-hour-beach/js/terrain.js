@@ -35,6 +35,40 @@ function makeProceduralSandTexture() {
   return tex;
 }
 
+/**
+ * Low-frequency blotchy grayscale, tiled at a different repeat than the sand map
+ * so multiplying it in breaks up the sand's tiling without adding a single byte
+ * of asset (locked decision #42, and this is the project that rule came from).
+ *
+ * At a 60×34 repeat over the 400×220 terrain plane each sand tile is ~6.6 m,
+ * which stretches the photographed ripples into a visible diagonal moiré —
+ * every copy of the tile looks identical, so the eye locks onto the repeat.
+ * Raising the repeat only trades that for a smaller, more frequent version of
+ * the same problem. Modulating the diffuse by a second texture at a much lower,
+ * non-matching repeat makes neighbouring copies of the sand tile read as
+ * differently lit instead of identical, which is what actually breaks the
+ * "wallpaper" look — the underlying ripple pattern is still tiled, but nothing
+ * is asking you to notice that anymore.
+ */
+function detailTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#8a8a8a';
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.filter = 'blur(18px)';
+  for (let i = 0; i < 22; i++) {
+    const v = 60 + Math.random() * 140 | 0;
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.beginPath();
+    ctx.arc(Math.random() * 128, Math.random() * 128, 22 + Math.random() * 30, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
 /** 1×64 alpha ramp: transparent at both ends of V, solid through the middle. */
 function edgeFadeTexture() {
   const c = document.createElement('canvas');
@@ -72,6 +106,25 @@ export function buildTerrain(scene) {
     roughness: 0.96,
     metalness: 0.0,
   });
+
+  // Second sampler at its own repeat, multiplied into the diffuse in the
+  // fragment shader. MeshStandardMaterial has no second-repeat diffuse input of
+  // its own (aoMap modulates only indirect light, off a separate UV set), so
+  // this is the plain way to get one without a custom ShaderMaterial.
+  const detailMap = detailTexture();
+  mat.onBeforeCompile = shader => {
+    shader.uniforms.detailMap = { value: detailMap };
+    shader.uniforms.detailRepeat = { value: new THREE.Vector2(11, 6) };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>',
+        '#include <common>\nuniform sampler2D detailMap;\nuniform vec2 detailRepeat;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+#ifdef USE_MAP
+  float sandDetail = texture2D( detailMap, vMapUv * detailRepeat ).r;
+  diffuseColor.rgb *= mix( 0.82, 1.16, sandDetail );
+#endif`);
+  };
+  mat.customProgramCacheKey = () => 'golden-hour-sand-detail';
 
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;

@@ -50,6 +50,25 @@ export function groundHeight(x, z) {
 /** Where the walker is allowed. Kept here so the layout can be checked against it. */
 export const BOUNDS = { minX: -140, maxX: 140, minZ: -60, maxZ: 46 };
 
+/**
+ * How far seaward a walker can wade before the water reaches `wadeDepth` metres
+ * deep (default 0.45, knee-ish). `controls.js` used to clamp at the static
+ * BOUNDS.minZ, -60, which is nowhere near the water — it let a walker reach eye
+ * height 3.8 m *underwater*, because the seabed keeps dropping long after the
+ * shoreline is behind you.
+ *
+ * The real limit is a depth, not a position, and it moves with the tide: solve
+ * `waterLevel - groundHeight(z) = wadeDepth` on the underwater slope
+ * `groundHeight(z) = (z + 6) * 0.10` (true for every z this ever returns, since
+ * the shoreline never wanders far from z ≈ -6 — the x-dependent dune term in
+ * groundHeight is zero out here). `waterLevel` is the ocean's current surface
+ * height (`ocean.js`'s `water.position.y`, which breathes with the swash cycle),
+ * so the wading limit breathes with it too.
+ */
+export function wadeLimitZ(waterLevel, wadeDepth = 0.45) {
+  return (waterLevel - wadeDepth) / 0.10 - 6;
+}
+
 /* -------------------------------------------------------------------- layout */
 
 /**

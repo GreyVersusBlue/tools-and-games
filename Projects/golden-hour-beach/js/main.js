@@ -7,6 +7,7 @@ import { buildOcean } from './ocean.js';
 import { buildWildlife } from './wildlife.js';
 import { WalkControls } from './controls.js';
 import { Soundscape } from './audio.js';
+import { buildFootprints } from './footprints.js';
 
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -123,6 +124,8 @@ const audio = new Soundscape();
 const wildlife = buildWildlife(scene, audio);
 const controls = new WalkControls(camera, canvas, groundHeight);
 controls.pos.set(0, 0, 14);   // start on dry sand, sea ahead
+const footprints = buildFootprints(scene);
+audio.onFootstep = () => footprints.step(controls.pos.x, controls.pos.z, controls.yaw);
 
 // ---------- Sun glint sprite ----------
 const glintTex = (() => {
@@ -232,10 +235,14 @@ function tick() {
     placeGlint();
   }
 
-  const moving = controls.update(dt);
+  // Ocean first: controls needs this frame's water surface height to know how
+  // far a walker can wade, and a one-frame-old value would be imperceptible
+  // anyway against a 9.5 s swash period, but there's no reason to take the lag.
   ocean.update(dt);
+  const moving = controls.update(dt, ocean.water.position.y);
   wildlife.update(dt, camera);
-  audio.update(dt, ocean.swashLevel, moving && controls.enabled);
+  audio.update(dt, ocean.swashLevel, moving && controls.enabled, controls.wadeT);
+  footprints.update(dt);
 
   renderer.render(scene, camera);
 }

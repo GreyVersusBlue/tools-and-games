@@ -1,401 +1,339 @@
 # Golden Hour — session notes
 
-The backlog was empty, so this was an audit first. Walking the whole beach with
-fresh eyes turned up four things that were wrong rather than merely thin, and one
-answer to "is there enough here" that was plainly no. Both got fixed.
-
-Zero bytes of new asset. Every texture added this session is a canvas gradient
-built at runtime (a 1x64 and a 1x32). Worth saying out loud in this project of all
-projects, given locked decision #42 came out of it.
+Last round's backlog in priority order. Four of five items done. Zero bytes
+of new asset again: the sand's second texture and the footprint fade are both
+runtime canvas/geometry, same as everything else this project has added since
+session 7.
 
 ## What changed
 
-**`js/main.js` — the sun glint sprite was rendering as a brown stain on the sun.**
-This is the one to lead with because it was in every screenshot the site has ever
-taken of this game and nobody had spotted it. The sprite is a warm radial gradient
-meant to add bloom at the sun, drawn with normal alpha blending over a `Sky.js`
-shader whose radiance at the sun is far higher than the sprite's own colour. So
-compositing it *subtracted* light: a fuzzy dark-orange thumbprint sitting on the
-brightest part of the frame, clearest on the mobile portrait capture where it
-reads as a dirty lens. One word fixes it, `blending: THREE.AdditiveBlending`,
-which is what a glow wanted anyway.
+**`js/field.js`, `js/controls.js` — the walk stops at wading depth, not at a
+wall 54 m past the shoreline.** You could walk to eye height 3.8 m underwater
+before this: the old clamp was `bounds.minZ = -60`, a number with no relation
+to the water at all, and the seabed keeps dropping long after the shoreline is
+behind you. `field.js` gets a new pure function, `wadeLimitZ(waterLevel,
+wadeDepth = 0.45)`, that solves `waterLevel - groundHeight(z) = wadeDepth` on
+the underwater slope (`groundHeight(z) = (z + 6) * 0.10` for z < -6, which is
+where the shoreline always sits). `controls.js` calls it every frame with the
+ocean's current surface height, so the limit rises and falls with the 9.5 s
+swash cycle instead of sitting still. `main.js`'s tick() now runs
+`ocean.update(dt)` before `controls.update(dt, ocean.water.position.y)` so the
+same frame's water height is what gets used, not last frame's (the lag would
+have been imperceptible against a 9.5 s cycle, but there was no reason to take
+it). `controls.js` also exposes `wadeDepth` and `wadeT` (0 to 1, capped at the
+0.45 m limit) so `audio.js` can hear it.
 
-**`js/controls.js` — `camera.rotation.order` is now `YXZ`.** The controls compose
-yaw then pitch every frame via `rotateY`/`rotateX`, but the Euler was left at the
-default XYZ, which decomposes that same quaternion into an x and y that are not
-pitch and yaw once both are non-zero. Nothing on screen was wrong; the quaternion
-is identical either way. What was wrong is everything that *reads*
-`camera.rotation` off this game, which is `drive.mjs`'s `camState`, which is what
-every driving script aims with. Measured it reporting `facing 0.537` while the
-camera actually pointed at 2.601. Each `lookAt` corrected from a false reading and
-drove the pitch further into the sand, so my first pass at walking the beach
-produced ten screenshots of the same patch of ground before I worked out the
-camera had never turned. One line, no visual change, and the driver tells the
-truth about this game now.
+I did not clamp position to a fixed knee-depth line. The camera dropping as
+you wade in is the existing ground-following behaviour doing its job for
+free: standing in shallower water means standing on higher seabed, so the eye
+height already falls as you approach the limit without a separate mechanic
+for it.
 
-**`js/controls.js` — the arrow keys look instead of walking.** They used to be a
-second copy of WASD, which made them the least useful keys on the board and left
-mouse-look as the only way to turn. That matters more than it sounds: pointer lock
-ends on Esc, on alt-tab, and on anything that takes focus off the page, and when
-it did you could still walk and could no longer face anywhere. Nothing in this
-piece needs aiming, so nothing in it should need the mouse captured. The whole
-beach is now reachable from the keyboard alone at 1.15 rad/s of yaw. Also
-`preventDefault` on the four arrows, since the page is only unscrollable by virtue
-of `overflow: hidden`.
+**`js/audio.js` — the wash sound rises as you wade in, not just when a big
+wave runs up.** `update()` takes a fourth argument, `wadeT`, and adds
+`wadeT * 0.18` to the wash gain target and `wadeT * 500` to its filter
+frequency, on top of what the tide swash already contributes. Also added
+`onFootstep`, a hook fired from the same `_stepPhase` counter that already
+triggers the footstep sound, so footprints land on the same beat rather than
+keeping a second counter.
 
-**`js/main.js`, `index.html`, `css/style.css` — say so when the mouse stops
-looking.** A `pointerlockchange` handler fades in a pill at the bottom of the
-screen reading "Mouse released, click to look with the mouse, or use the arrow
-keys". Hidden on touch, and `prefers-reduced-motion` kills the fade.
+**`js/footprints.js` (new) — shallow dark ovals dropped per footstep, only on
+wet sand, fading over 60 s.** One `InstancedMesh`, capacity 220, count grows
+as prints are dropped and wraps as a ring buffer once full. "Fading" is done
+by shrinking each instance's scale to 0 over 60 s rather than a true
+per-instance alpha: `InstancedMesh` has no alpha channel of its own, adding
+one would mean an `onBeforeCompile` shader edit for something that reads the
+same to a player either way. Wet sand is `z` between -9 and 2, narrower than
+`terrain.js`'s full wet-strip fade range (-10 to 4) so a print doesn't show up
+on sand that's barely tinted. `main.js` wires `audio.onFootstep` to
+`footprints.step(controls.pos.x, controls.pos.z, controls.yaw)`, and
+`footprints.update(dt)` runs in the tick loop.
 
-**`js/main.js` — `requestPointerLock()` rejections are swallowed.** It returns a
-promise in current Chrome and rejects when the browser will not grant the lock,
-most commonly during the short cooldown right after Esc, which is exactly when a
-player clicks to get back in. Unhandled, that reaches `window.onerror` as "The
-root document of this element is not valid for pointer lock". Thirteen of them in
-one driven session here. `play-games.mjs`'s "no page or console errors" beat was
-one unlucky click away from failing on it.
+**`js/terrain.js` — a second, low-frequency texture breaks up the sand's
+tiling.** At a 60x34 repeat over the 400x220 plane, each sand tile is about
+6.6 m, and every copy is identical, which is what makes the diagonal moiré
+obvious: the eye locks onto the repeat. Raising the repeat only trades that
+for a smaller version of the same problem. The fix in the backlog was "a
+second detail texture at a different repeat," and that's what's here: a 128x128
+canvas of soft blurred blotches (`ctx.filter = 'blur(18px)'`), tiled at 11x6 via
+`onBeforeCompile`, multiplied into `diffuseColor.rgb` after `#include
+<map_fragment>` with `mix(0.82, 1.16, sample)`. This doesn't remove the
+underlying ripple pattern's repetition, it makes neighbouring copies of it
+read as differently lit, which is what actually breaks the "wallpaper" look.
+`customProgramCacheKey` set so this material's shader variant doesn't get
+confused with any other `MeshStandardMaterial` in the scene.
 
-**`js/field.js` (new) — the heightfield, and the layout of everything on it.**
-Imports nothing, on purpose. Every other file in `js/` imports the bare specifier
-`three`, which only resolves through `index.html`'s import map, so Node refuses
-all of it and none of it can carry a test. Splitting the pure arithmetic out is
-what makes `test/smoke.mjs` possible. `terrain.js`, `ocean.js`, `props.js` and
-`main.js` all read `groundHeight` from here now.
+**`test/smoke.mjs` — 5 new checks, 38 total, still exits non-zero.** All on
+`wadeLimitZ`: the limit moves seaward when the water is higher, the depth at
+the limit is exactly `wadeDepth` (checked at three water levels), and the
+limit stays well inside the old -60 fallback wall at every water level the
+tide actually produces.
 
-**`js/props.js` (new) — there is something on the beach.** This is the answer to
-"is there enough here", and the honest audit answer was no. The sea-facing view
-was always lovely. Everything else was 280 m by 106 m of empty sand: I held W for
-seventy seconds to reach the western bound and arrived at a view identical to the
-one I left, with nothing marking that I had got anywhere, and turning around got
-you a red-brown slope with yellow line-segment grass on it. Four additions, each
-doing a different job:
-
-- **A groyne**, sixteen weathered posts wading out of the dry sand into the water
-  at the west end, tops descending until the last is awash. It is a destination
-  and, from the starting position, a silhouette against the sun path. It is the
-  best thing in the piece now.
-- **A boulder cluster** standing in the shallows at the east end, tallest 1.8 m
-  clear of the water, so both ends of the walk have a reason.
-- **Four pieces of driftwood** between them, hand-placed rather than scattered,
-  because four objects across 280 m is few enough that each position is a
-  composition decision.
-- **A wrack line**, 460 shells, pebbles and weed strung along the high-tide mark
-  the full width of the beach. This is the reason to look down.
-
-Six extra meshes for all of it. The groyne, driftwood and boulders are each
-merged into one buffer, and the wrack is three `InstancedMesh`es.
-
-**`js/main.js` — the sun moves.** It drifts from 5.6 degrees above the horizon
-down to 1.1 over eight minutes of walking, then stops. Everything the sun touches
-goes through one `setSunElevation()`: the sky uniform, the directional light's
-position colour and intensity, both hemisphere colours, the ambient, the fog
-colour, the tone-mapping exposure, and the water shader's sun direction and
-colour. Split across call sites that set would rot, and the failure mode is the
-fog staying at the old colour while the light goes red, which nobody notices until
-a screenshot looks wrong.
-
-Three decisions inside that are worth disagreeing with if you want to:
-
-- **It stops rather than setting.** A sun that goes all the way down turns this
-  into a dark beach, which is a different and worse piece. The palette, the water
-  colour and the exposure are all built for low warm light. What this wants is the
-  light deepening while you are out in it, not night falling.
-- **The clock only runs while `controls.enabled`.** Timing it off page load means
-  a tab left on the title card burns the whole descent before the visitor takes a
-  step.
-- **It is deliberately not what satisfies the preview's motion assertion.** Locked
-  decision #29 is explicit that animating something to satisfy that check is the
-  wrong reason to animate it, and the ripple, swash and gulls already move every
-  frame. Over the roughly 30 s a capture takes the sun moves 0.3 degrees.
-
-**`js/terrain.js` — the wet-sand strip had a visible rectangle.** A hard straight
-seam ran up the beach where the darker wet plane stopped and dry sand carried on,
-and in mobile portrait it cut a diagonal across the bottom third of the frame. Now
-carries a 1x64 canvas alpha ramp that fades both edges.
-
-**`js/ocean.js` — the foam line was a strip of white tape.** Same class of
-problem: one flat band at a uniform opacity with two hard parallel edges, obvious
-at walking distance. Two Z segments and a 1x32 alpha ramp across the width.
-
-**`js/ocean.js` — the water's reflection render target is 1024, up from 512.**
-There is something standing in the water now, and thin dark verticals are the
-worst case for a low-resolution reflection: at 512 the groyne came back as jagged
-black shapes. Measured cost of the bump is 0.2 ms per frame, below.
-
-**`js/props.js` — `roughen()` displaces along a smooth function of position, not
-per-vertex random.** The random version looked equivalent and was not. A sphere's
-pole is a fan of coincident vertices at the same position with different indices,
-so independent jitter pulled them apart into a crown of spikes; every boulder had
-one and up close the cluster read as broken glass. Any two vertices at the same
-point now get the same displacement.
-
-**`test/smoke.mjs` (new) — 33 checks, exits non-zero.** The ground has no cliffs
-anywhere a walker can reach, every prop is inside the walkable bounds, the
-groyne's tops descend to the waterline, the boulders break the surface, the
-driftwood touches the sand without floating over it.
-
-**`README.md`** rewritten for all of the above, including what the test can and
-cannot see.
+**`README.md`** updated for all of the above: controls section mentions
+wading and footprints, structure table lists `footprints.js`, tests count is
+38, and a line under Assets & audio says the detail texture and footprint
+geometry are both 0 bytes on disk.
 
 ## What I verified
 
-Everything below is a real run on this machine, headed Chrome via
-`playwright-core` per locked decision #25, one suite at a time per v7 §6.
+`node test/smoke.mjs`:
 
 ```
-node test/smoke.mjs                          33 checks, 0 failed
-npm run games golden-hour                     9 checks, 0 failed
-npm run games                                94 checks, 0 failed
-npm run check                    250 units checked, 0 broken
-                                 0 collisions, tightest vertical gap 7.1px
-npm run social:check             23 notices, 23 already current
-npm run previews                 all seven captured, no console errors
+38 checks, 0 failed
 ```
 
-`npm run check` was 235 units before; the 15 new ones are this project's new
-files. `npm run games` is unchanged at 94 because the six suites are in
-`play-games.mjs`, which I cannot edit. See Shared-file requests.
-
-**Frame cost.** 1320x800 at dsf 1, `gl.finish()` inside the rAF wrapper so the
-number includes the GPU, 6 s per sample, medians:
+Broke a new guard on purpose (locked decision #34): swapped the trough/crest
+water levels in the "the limit moves seaward when the water is higher" check.
 
 ```
-everything on                            p50 2.3 ms   p95 2.9 ms    43 draws  130,766 tris
-water off                                p50 1.5 ms   p95 1.9 ms    21 draws   65,382 tris
-props off (groyne, wood, rocks, wrack)   p50 2.1 ms   p95 2.6 ms
-dune grass off                           p50 2.3 ms   p95 2.8 ms             115,298 tris
+FAIL  the limit moves seaward when the water is higher  trough -9.20, crest -12.40
 ```
+exits 1. Restored, back to 38/38.
 
-So: **the water costs 0.8 ms and doubles both the draw calls and the triangle
-count**, because the reflection pass renders the whole scene a second time. It was
-0.6 ms at the old 512 target, measured in the same session before the bump. **The
-props cost 0.2 ms.** The dune grass costs nothing measurable, 15,000 triangles of
-`LineSegments` in one draw. A 60 Hz frame is 16.7 ms, so the whole thing is
-running in a seventh of budget.
-
-**Is the water worth it?** Yes, and it is not close. The sun path on the sea is
-most of the image in every good frame this piece produces, and 0.8 ms buys it.
-More usefully: I ran the same measurement at 3.7 Mpx and at 8.3 Mpx and the frame
-cost did not move (1.4 ms both, against 1.5 at 1.0 Mpx). This is not fill-rate
-bound on this machine at any resolution I can throw at it, which means the water's
-cost is the second scene pass and the render-target resolution, not pixels. A
-low-end laptop would be a different measurement and I do not have one to make it
-on. If someone does, the dial to reach for first is `textureWidth`/`textureHeight`
-in `ocean.js`, not the water itself.
-
-**The terrain is one mesh.** 200x130 segments, 52,000 triangles, one draw. Whole
-scene is 43 draws with the water on, 21 without. There is nothing to optimise
-here; the budget should go on content, which is where it went.
-
-**Audio plays.** Tapped the graph with an `AnalyserNode` in front of
-`ctx.destination`. Context `running` at 48 kHz, RMS 0.035 to 0.049 with peaks
-around 0.20 at rest, rising to RMS 0.058 / peak 0.23 while walking, which is the
-footsteps. It is all synthesised, no file, and it works. I added nothing.
-
-**Mobile works, at 375x812 dsf 3.** Coarse-pointer media query fires, the mobile
-hint shows and the desktop one is hidden, no pointer lock is requested, touch on
-the lower third walks (6.35 m in 3 s, which is 2.1 m/s exactly), p50 2.1 ms, zero
-console errors. This is not a "not supported" case. It is the best-suited thing on
-the site for a phone and it already runs.
-
-**The procedural sand fallback still holds.** Renamed `assets/textures/` and
-re-ran. `npm run games golden-hour` reported 4 FAILs, correctly, and the beach
-still rendered complete: hand-mixed sand, groyne, wrack line, dune grass, boat,
-water. Renamed back, 9/9 again.
-
-**Broke a new guard on purpose** (locked decision #34). Reverted the groyne's post
-tops to the ground-relative version I first wrote:
+**Browser verification did not go through `npm run games` this session.**
+`play-games.mjs` and `capture-previews.mjs` both call `drive.mjs`'s
+`waitForProbe`, which calls `page.waitForFunction(fn, null, { timeout })`.
+That's Playwright's argument order. `harness.mjs`'s `launch()` drives Chromium
+through `puppeteer-core` + `@sparticuz/chromium` on Linux, whose
+`waitForFunction` signature is `(fn, options, ...args)` instead, so the second
+argument lands where `options` is expected and throws
+`Cannot read properties of null (reading 'polling')`. Confirmed:
 
 ```
-FAIL  the seaward end finishes just under the water  top y = -2.75
-exit code: 1
+$ npm run games golden-hour
+golden-hour — Golden Hour
+  ABORTED  Cannot read properties of null (reading 'polling')
+0 checks, 1 FAILED
 ```
 
-That check exists because the first version of it passed while describing
-something false. It measured exposed height off the local ground and reported
-"tops descend from head height to awash, 2.50 m down to 0.03 m", which was true
-and useless: the seabed drops 3.7 m across that row, so the tops followed it
-straight down and the last six posts finished entirely underwater. Height above
-the water is what a player can see, so it is what the check asserts now. The
-boulder check had the same disease and caught itself the same way, reporting "at
-least a couple stand in the shallows, 11 of 11" about a cluster that was
-completely submerged.
+This is not specific to golden-hour, or to anything I touched: it breaks
+every suite in `play-games.mjs` and `capture-previews.mjs` on any machine
+without a real Chrome or Edge for Playwright to find, which this container
+doesn't have. See Shared-file requests.
 
-**The sun ramp, end to end.** Temporarily set `SUN_SECONDS` to 30 and captured the
-whole arc rather than shipping a light curve I had only ever seen the first ten
-seconds of. Elevation 5.41 to 1.10 degrees, fog `#efc19b` to `#db9a78`, water sun
-colour `#ffdba8` to `#ffb578`, all moving together, all frozen once the ramp
-completes. The end state is a deep sunset with the disc on the horizon behind the
-sailboat, and it is arguably a better frame than the start. Restored to 480.
+So verification of the actual page went through a standalone script instead,
+reusing `harness.mjs`, `games.mjs` and `drive.mjs` read-only (never edited),
+with a local replacement for the one broken call. Headed Chromium (global
+`playwright` package, not the project's `playwright-core`) via `xvfb-run`,
+same anti-backgrounding flags `harness.mjs` uses.
 
-**Preview candidates** captured and looked at. The two motion frames differ
-(`48deb484...` and `5f572902...`), so v7 §6's byte-identical failure did not
-recur. The new `golden-hour-00-shoreline.png` is a real improvement on what is on
-the board: the groyne leads the eye out to the sailboat on the sun path and the
-wrack line gives the tide mark something to be. I did not promote it, because
-`assets/previews/`, `assets/og/` and `candidates/chosen.json` are not mine.
+**Wading, seeded near the shoreline so it converges in seconds instead of
+minutes.** (This container's software rendering is slow enough that a real 45 s
+walk from the start position only covered about 17 m: `main.js`'s
+`Math.min(clock.getDelta(), 0.1)` dt cap, invisible at 60 fps, throttles real
+elapsed time into slow motion when actual frame delivery is far slower than
+that, which it is here. Not a bug, just this container.) Started the walker at
+z = -6 and held W:
+
+```
+0  z -6.75  wadeDepth 0.205  wadeT 0.455
+1  z -7.50  wadeDepth 0.278  wadeT 0.618
+2  z -8.25  wadeDepth 0.348  wadeT 0.774
+3  z -8.99  wadeDepth 0.415  wadeT 0.923
+4  z -9.45  wadeDepth 0.450  wadeT 1.000
+5  z -9.60  wadeDepth 0.450  wadeT 1.000
+...
+15 z -12.24 wadeDepth 0.450  wadeT 1.000
+16 z -12.10 wadeDepth 0.450  wadeT 1.000
+...
+19 z -10.43 wadeDepth 0.450  wadeT 1.000
+```
+
+Depth ramps smoothly to the 0.45 m cap, then holds there while z keeps moving
+with the tide (-9.45 out to -12.24 and back over about 30 s, one swash cycle),
+and the camera's eye height fell from 1.62 to 1.00 over the same run, i.e. the
+"dropping properly" part is the existing ground-following behaviour, not a
+separate mechanic. No console errors, no page errors, across this run and a
+separate 45 s walk from the actual start position.
+
+**Footprints.** After the 45 s walk from the start position (which only
+reached the edge of the wet zone, per the throttling note above), the
+footprint `InstancedMesh` had 3 instances. After the seeded-near-shore run,
+which crosses the full wet strip, count was in the 90s. No stray meshes: the
+scene has exactly 4 `InstancedMesh`es (the wrack's 3 kinds plus footprints),
+matching `play-games.mjs`'s existing `props.instanced <= 4` check with
+nothing to spare.
+
+**Sand detail, visually.** Screenshot looking down the beach from a raised,
+angled view (more of the tiled plane in frame than the default look-ahead).
+No console/shader errors from the `onBeforeCompile` injection, and the sand
+doesn't read as a uniform wallpaper repeat at this distance. I don't have a
+clean side-by-side against the pre-session version (see the note below about
+why), so I'm reporting what I can verify (compiles clean, renders, no obvious
+tiling) rather than claiming a quantified improvement I didn't measure.
+
+**Sun glint, groyne, wrack, sailboat all still correct** from a straight
+screenshot at the start position: soft glow at the sun with no brown smudge,
+posts visible at the west end, shell/pebble/weed line along the tide mark,
+sailboat on the sun path. Nothing here changed this session; confirming
+nothing broke.
+
+**Low-end hardware measurement, the actual backlog item.** This container has
+no GPU: `harness.mjs`'s Linux branch launches Chromium with `--use-gl=angle
+--use-angle=swiftshader --enable-unsafe-swiftshader`, software rasterization,
+which is what made the wading throttling above happen in the first place.
+That's not the same thing as one specific integrated GPU, but it answers the
+question that was actually open, whether the frame cost holds up off the one
+desktop everything was measured on. 1320x800, `gl.finish()` inside the rAF
+wrapper, 90-frame warmup before timing (the very first frame after page load
+took 11.6 real seconds under software rendering, all one-time shader
+compilation; steady state is the number that matters):
+
+```
+everything on   p50 964.7 ms   p95 1381.2 ms
+water off       p50 597.8 ms   p95 1122.7 ms
+```
+
+Roughly 1 fps either way, obviously unusable as a real experience, but that's
+expected for full software rasterization of a reflective water pass at this
+resolution and not the question being asked. The question was relative: does
+water stay the dominant single cost off real hardware, and it does, 964.7 vs
+597.8 ms is a 1.61x multiplier, the same direction and a similar order of
+magnitude to last round's real-GPU finding (water added about 0.6x on top of
+the no-water baseline there). The absolute 0.8 ms number from session 7
+obviously doesn't transfer; the shape of the finding does. I don't have actual
+low-end integrated-GPU hardware to run this on, and software rasterization is
+a different bottleneck profile than a weak-but-real GPU would be, so this
+confirms the qualitative claim rather than replacing the desktop numbers.
+
+**Site-wide checks, run for completeness, not blocking:**
+
+```
+npm run integrity     326 units, 1 broken (newindex.html hotlinks Google
+                       Fonts) — pre-existing, not golden-hour, not touched by
+                       this session or by me
+npm run collisions    0 collisions, tightest gap 3.5px
+npm run social:check  "only parsed 17 notices... markup has changed shape" —
+                       also pre-existing, also not mine
+```
+
+Golden Hour itself has zero offsite requests, same as every round: nothing in
+`footprints.js` or the new detail texture in `terrain.js` reaches off the
+page, both are runtime canvas/geometry.
 
 ## Shared-file requests
 
-**1. `Tools/board-check/play-games.mjs`, in the `'golden-hour'` suite.** Add these
-after the existing `t.ok(scene.normals, ...)` line and before the `__blocked`
-check. Applicable blind; nothing else in the file needs touching.
+**1. `Tools/board-check/drive.mjs`, `waitForProbe`.** Currently:
 
 ```js
-    // The beach has things on it as of session 8: a groyne at the west end, a
-    // boulder cluster at the east, driftwood, and a 460-piece wrack line along
-    // the tide mark. Six merged/instanced meshes for the lot. Assert the wrack
-    // is instanced rather than 460 objects, because the day someone "simplifies"
-    // that into a loop is the day this page starts costing 460 draw calls.
-    const props = await p.evaluate(() => {
-      let instanced = 0, instances = 0, merged = 0;
-      window.__scene.traverse(o => {
-        if (o.isInstancedMesh) { instanced++; instances += o.count; }
-        else if (o.isMesh && o.geometry?.attributes?.position?.count > 400
-                 && !o.material?.uniforms) merged++;
-      });
-      return { instanced, instances, merged };
-    });
-    t.ok(props.instances > 400, 'the wrack line is on the sand',
-      `${props.instances} pieces across ${props.instanced} instanced meshes`);
-    t.ok(props.instanced <= 4, 'and it is instanced, not 460 separate objects');
-
-    // Arrow keys look. This is the whole keyboard-only path: nothing in this
-    // piece needs aiming, so nothing in it should require pointer lock, and a
-    // player who presses Esc must still be able to turn around.
-    await p.evaluate(() => document.exitPointerLock?.());
-    await wait(200);
-    const beforeTurn = await camState(p);
-    await p.keyboard.down('ArrowLeft'); await wait(900); await p.keyboard.up('ArrowLeft');
-    const afterTurn = await camState(p);
-    const dyaw = Math.abs(afterTurn.facing - beforeTurn.facing);
-    t.ok(dyaw > 0.5, 'the arrow keys turn the camera with pointer lock released',
-      `${dyaw.toFixed(2)} rad`);
-
-    // The sun descends while you walk, and everything derived from it moves with
-    // it. Reading the fog is the cheap way to catch the failure that matters:
-    // one of the eight things setSunElevation() drives getting left behind.
-    const sunNow = await p.evaluate(() => {
-      let el = null;
-      window.__scene.traverse(o => {
-        const u = o.material?.uniforms;
-        if (u?.sunPosition) el = Math.asin(u.sunPosition.value.y) * 180 / Math.PI;
-      });
-      return { el, fog: window.__scene.fog.color.getHexString() };
-    });
-    await wait(6000);
-    const sunLater = await p.evaluate(() => {
-      let el = null;
-      window.__scene.traverse(o => {
-        const u = o.material?.uniforms;
-        if (u?.sunPosition) el = Math.asin(u.sunPosition.value.y) * 180 / Math.PI;
-      });
-      return { el, fog: window.__scene.fog.color.getHexString() };
-    });
-    t.ok(sunLater.el < sunNow.el - 0.02, 'the sun is going down',
-      `${sunNow.el.toFixed(2)}° to ${sunLater.el.toFixed(2)}° in 6 s`);
-    t.ok(sunLater.fog !== sunNow.fog, 'and the fog colour came with it',
-      `#${sunNow.fog} to #${sunLater.fog}`);
+export async function waitForProbe(page, timeout = 25000) {
+  await page.waitForFunction(() => !!(window.__scene && window.__cam), null, { timeout });
+}
 ```
 
-That takes the suite from 94 to 99. The arrow-key beat needs `camState`, already
-imported at the top of the file. Break the sun beats by hard-coding
-`SUN_SECONDS = 0` in `main.js` and they both fail; break the wrack beat by
-swapping the `InstancedMesh` for a loop of `Mesh`es.
+`page.waitForFunction(fn, arg, options)` is Playwright's signature.
+`harness.mjs`'s Linux branch drives Chromium through `puppeteer-core`, whose
+`waitForFunction` is `(fn, options, ...args)` instead, so `null` lands in
+`options` and throws `Cannot read properties of null (reading 'polling')`.
+This breaks every suite in `play-games.mjs` and every capture in
+`capture-previews.mjs`, on any machine without a real Chrome or Edge
+installed for Playwright to find, not just this one and not just golden-hour.
+Fix, applicable blind:
 
-**2. `Tools/board-check/candidates/chosen.json` and `npm run promote`.** A fresh
-`golden-hour-00-shoreline.png` is sitting in `candidates/`. The board's current
-preview and OG card are of a beach that no longer exists: no groyne, no wrack
-line, a brown smudge on the sun and a hard seam across the wet sand. Worth
-promoting.
+```js
+export async function waitForProbe(page, timeout = 25000) {
+  const ready = () => !!(window.__scene && window.__cam);
+  if (page.__engine === 'puppeteer') await page.waitForFunction(ready, { timeout });
+  else await page.waitForFunction(ready, null, { timeout });
+}
+```
 
-**3. Nothing needed in `games.mjs`.** The existing `open()` recipe still works
-unchanged, and `capture-previews.mjs` shares it, so neither moved.
+`page.__engine` is already set by `harness.mjs`'s `prepPage`, so this needs no
+new plumbing.
+
+**2. `Tools/board-check/play-games.mjs`, in the `'golden-hour'` suite.**
+Proposed addition, after the existing sun/fog checks, covering the two things
+this session added that have no browser-level guard yet:
+
+```js
+    // Wading: session 8 let the walk continue past the old static wall (-60,
+    // which put a walker's eyes 3.8 m underwater) up to a knee-depth limit
+    // that rides the tide instead of sitting still. Walk into the water long
+    // enough and the eye height should settle rather than keep dropping.
+    await p.keyboard.down('KeyW'); await wait(20000);
+    const midWade = await camState(p);
+    await wait(6000);
+    const settledWade = await camState(p);
+    await p.keyboard.up('KeyW');
+    t.ok(Math.abs(settledWade.pos[1] - midWade.pos[1]) < 0.15,
+      'walking into the water settles at a wading depth rather than continuing to drop',
+      `eye y ${midWade.pos[1].toFixed(2)} -> ${settledWade.pos[1].toFixed(2)}`);
+    t.ok(settledWade.pos[1] > 0.5, 'and the walker never goes fully underwater',
+      `eye y ${settledWade.pos[1].toFixed(2)}`);
+
+    // Footprints: a small-geometry InstancedMesh (the wrack kinds are all
+    // bigger than 60 vertices) should have instances on it after walking
+    // toward the shoreline.
+    const footCount = await p.evaluate(() => {
+      let found = 0;
+      window.__scene.traverse(o => {
+        if (o.isInstancedMesh && o.geometry.attributes.position.count < 60) found = o.count;
+      });
+      return found;
+    });
+    t.ok(footCount > 0, 'footprints are left in the wet sand', `${footCount} instances`);
+```
+
+I could not run this against real hardware in this container (see
+`drive.mjs` above), so the 20 s/6 s timings are a reasonable estimate at the
+documented 2.1 m/s walk speed from the documented start position, not a
+measured value. Whoever lands this should sanity-check the timing once
+`waitForProbe` is fixed, and it's fine to shorten it if 20 s turns out to be
+more margin than needed.
+
+**3. Nothing needed in `games.mjs` or `capture-previews.mjs`.** The existing
+`open()` recipe and the existing preview candidate are both still accurate;
+nothing this session changed shows up differently in the opening frame.
 
 ## Deliberately not done
 
-**No save, and I do not think it should have one.** There is no state a visitor
-would be annoyed to lose. The one candidate is how far the sun has descended, and
-persisting that is actively wrong: it would mean a returning visitor arrives at a
-beach mid-descent or already at the bottom of the ramp, and the opening frame is
-the strongest thing this piece has. Everybody should get it every time.
-`gvb-save.js` exists and this project should keep not using it.
+**Dune grass is still `LineSegments`.** Backlog item 5, marked low priority in
+the prompt itself: camera-facing alpha-textured quads would read better than
+yellow scratches at distance, but the dunes are the direction nobody should be
+walking, and the other four items were both higher-value and, combined,
+already a full session. Still true and still in Next session.
 
-**Did not touch the sand texture repeat.** At 60x34 over a 400x220 plane each tile
-is about 6.6 m, which stretches the photographed ripples to roughly a metre apart
-and produces a visible diagonal corduroy moiré across the whole beach. It is the
-most video-gamey thing left in the frame. I left it because the obvious fix,
-raising the repeat, trades one tiling artifact for a smaller more frequent one,
-and the actual fix is either a second detail texture or breaking up the UVs, which
-is a real piece of work rather than a number change. Named in Next session.
+**Didn't chase the `drive.mjs` bug beyond reporting it.** Not my file, and
+the fix is small enough that whoever owns shared tooling can land it in one
+pass rather than needing a session on it.
 
-**Did not add a sun disc.** `Sky.js` draws one and at 5.6 degrees with turbidity 6
-it is washed out into the bloom. It becomes visible on its own at the bottom of
-the ramp, which is the right place for it.
+**Didn't touch `newindex.html` or the social-tags notice-count mismatch.**
+Both pre-existing, both outside `Projects/golden-hour-beach/`, both somebody
+else's file.
 
-**Did not touch `wildlife.js`.** The prompt asks whether it does enough to be
-noticed, and the answer after walking is: the gulls and the sailboat yes, the
-dolphin and the plane no, but not because they are badly made. The dolphin's first
-appearance is 12 s in and then every 40 to 90 s, out at z between -110 and -180,
-which is 120 m away and small; the plane's first flyover is 45 s in and then every
-2 to 3.5 minutes. Both are correctly tuned for a long quiet visit and both would
-be worse if they were more frequent. What they were missing was a reason for the
-visit to *be* long, and that is what the props and the moving sun are for. Come
-back to whether the dolphin should surface closer once someone has actually spent
-ten minutes on the new beach.
+**Didn't add a true per-instance alpha fade to footprints.** Shrinking scale
+to 0 over 60 s reads the same to a player as fading and costs nothing beyond
+what `InstancedMesh` already provides. A real alpha channel would mean an
+`onBeforeCompile` edit like the one already added for the sand detail
+texture, for a difference nobody would see.
 
-**Did not widen the walk bounds.** You hit an invisible wall at z = 46 inland,
-about 24 m into the dunes, with dune grass visibly continuing past it. Extending
-the bounds means extending the terrain mesh and the grass placement, and the dunes
-are the least interesting direction to walk in. The better fix is a reason not to
-want to go that way, which the groyne and the rocks now provide by being the other
-direction.
-
-**Did not stop you walking into the sea.** At z = -60 your eyes are 3.8 m below
-sea level and you are looking at the underside of the water plane. It is a strange
-place to end up and nothing stops you. I left it because the honest fix is a
-swim-depth limit on the walk bounds, which is a design call about whether the sea
-is a wall or a place, and every option I liked involved more work than the rest of
-this list. Named in Next session.
+**Didn't quantify the sand-tiling fix with a real before/after screenshot.**
+I have a post-change screenshot and confirmed no shader compile errors and no
+obvious wallpaper repeat at the distance shown, but stashing the working tree
+to capture a clean "before" mid-session risked losing uncommitted work for a
+comparison that isn't required verification, just a nicer writeup. Chose not
+to.
 
 ## Next session
 
 Ordered by value per effort.
 
-1. **Land the `play-games.mjs` beats above.** They are written and ready to paste,
-   and until they land the props, the keyboard look and the moving sun have no
-   browser-level guard at all. The layout has `test/smoke.mjs`; the wiring has
-   nothing.
+1. **Land the two shared-file requests above.** The `drive.mjs` fix is one
+   `if`, applies to every project's regression suite and every preview
+   capture on a machine without real Chrome or Edge, not just this one. The
+   `play-games.mjs` addition is written and needs only a timing sanity-check
+   once the first fix lands.
 
-2. **Promote the new preview and OG card.** The board is advertising a beach that
-   no longer exists. `npm run previews` then `npm run promote`, candidate already
-   captured.
+2. **Dune grass to camera-facing quads.** Unchanged from last round's
+   assessment: fixes the last obviously-flat-looking thing in the piece for
+   one draw call, low value because it's the direction nobody walks.
 
-3. **Stop the walk at wading depth.** Currently you can walk to eye-level 3.8 m
-   underwater. Clamping `bounds.minZ` is a two-line fix and the wrong one, because
-   the interesting version is letting people wade to about knee depth with the
-   camera dropping properly and the swash sound rising. Budget an hour, not a
-   session.
+3. **A real low-end-GPU run, not a software-rendering stand-in.** This
+   session confirmed water stays the dominant relative cost off real
+   hardware, but the actual absolute numbers on a weak integrated GPU are
+   still unmeasured; software rasterization is a different bottleneck profile
+   than what a real low-end laptop would show.
 
-4. **Break up the sand tiling.** The diagonal corduroy is the last obviously
-   synthetic thing in a frame that is otherwise convincing. Cheapest real fix is a
-   second low-frequency detail map multiplied over the diffuse at a different
-   repeat, which can be a canvas texture and cost no bytes.
-
-5. **Footprints.** This is the piece's most obvious missing pleasure and it is not
-   expensive: an `InstancedMesh` ring buffer of shallow dark ovals dropped at each
-   footstep, fading over a minute or so, only on the wet sand. The audio already
-   fires a `_footstep()` on a phase counter, so the hook exists. It would make the
-   beach remember you were there, which is most of what a walking simulator is
-   for.
-
-6. **A low-end measurement.** Everything above says this piece is nowhere near
-   fill-rate bound, and every number was taken on one desktop. The claim that the
-   water is affordable deserves one run on a laptop with integrated graphics
-   before anyone leans on it.
-
-7. **Cosmetic, low priority:** the dune grass is still `LineSegments`, which at
-   any distance reads as yellow scratches rather than marram. Camera-facing
-   quads with an alpha texture would fix it and cost one draw call, but the dunes
-   are also the direction nobody should be walking, so it is low value.
+4. **Revisit `wildlife.js` tuning**, per last round: worth a second look only
+   after someone has spent real time on the now-populated, now-wadeable
+   beach, not blind.

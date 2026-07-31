@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Absolute paths on Windows start with a drive letter, which Node reads as the
 // URL scheme `c:` and rejects (v7 §7). Same fix Faire Weekend's suite needed.
-const { groundHeight, BOUNDS, LAYOUT } =
+const { groundHeight, BOUNDS, LAYOUT, wadeLimitZ } =
   await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
 
 let passed = 0, failed = 0;
@@ -60,6 +60,32 @@ ok(groundHeight(0, 40) > 3, 'the dunes rise inland',
   const b = [groundHeight(12.5, -3.25), groundHeight(-88, 31), groundHeight(140, 46)];
   ok(a.every((v, i) => v === b[i]), 'the same coordinates give the same height twice');
   ok(a.every(Number.isFinite), 'and the corners are finite numbers', a.map(v => v.toFixed(2)).join(', '));
+}
+
+group('wading');
+{
+  // ocean.js's water surface breathes between roughly -0.19 and 0.13 over the
+  // swash cycle (level 0.06 + s*0.32, minus 0.25). The wading limit should
+  // track it: a calmer trough lets a walker get closer to shore before hitting
+  // knee depth than a run-up crest does, not the other way round.
+  const trough = wadeLimitZ(-0.19), crest = wadeLimitZ(0.13);
+  ok(trough < crest, 'the limit moves seaward when the water is higher',
+    `trough ${trough.toFixed(2)}, crest ${crest.toFixed(2)}`);
+
+  // The point it solves for actually is knee depth, on the slope the walker is
+  // standing on when they hit the limit.
+  for (const waterLevel of [-0.19, 0, 0.13]) {
+    const z = wadeLimitZ(waterLevel, 0.45);
+    const depth = waterLevel - groundHeight(0, z);
+    ok(Math.abs(depth - 0.45) < 1e-6, `depth at the limit is 0.45 m (waterLevel ${waterLevel})`,
+      `z = ${z.toFixed(2)}, depth = ${depth.toFixed(3)}`);
+  }
+
+  // However the tide breathes, the real limit has to be tighter than the old
+  // static wall at BOUNDS.minZ, -60 — that wall is what let a walker reach eye
+  // height 3.8 m underwater in the first place.
+  ok(wadeLimitZ(-0.19) > BOUNDS.minZ && wadeLimitZ(0.13) > BOUNDS.minZ,
+    'the wading limit is well short of the old -60 wall');
 }
 
 /* -------------------------------------------------------------- the layout -- */

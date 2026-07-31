@@ -18,6 +18,10 @@ export class Soundscape {
     this.master = null;
     this._gullTimer = 4;
     this._stepPhase = 0;
+    // Set by main.js. Fired on the same phase counter that triggers the
+    // footstep sound, so footprints land in step with the sound that already
+    // exists rather than carrying a second counter of their own.
+    this.onFootstep = null;
   }
 
   init() {
@@ -92,15 +96,19 @@ export class Soundscape {
     lfo.start();
   }
 
-  // called every frame; swash 0..1 from the ocean sim, moving = walking
-  update(dt, swash, moving) {
+  // called every frame; swash 0..1 from the ocean sim, moving = walking,
+  // wadeT 0..1 = how close to the knee-depth wading limit controls.js has let
+  // the walker go (0 on dry sand)
+  update(dt, swash, moving, wadeT = 0) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
 
-    // Ocean wash follows the visual wave: louder + brighter at run-up
-    const target = 0.03 + Math.pow(swash, 1.6) * 0.22;
+    // Ocean wash follows the visual wave (louder + brighter at run-up) and now
+    // also the walker wading in — standing in the water should sound different
+    // from standing on the sand watching it, not just look different.
+    const target = 0.03 + Math.pow(swash, 1.6) * 0.22 + wadeT * 0.18;
     this.washGain.gain.setTargetAtTime(target, t, 0.25);
-    this.washFilt.frequency.setTargetAtTime(900 + swash * 1300, t, 0.3);
+    this.washFilt.frequency.setTargetAtTime(900 + swash * 1300 + wadeT * 500, t, 0.3);
 
     // Gull cries
     this._gullTimer -= dt;
@@ -115,6 +123,7 @@ export class Soundscape {
       if (this._stepPhase >= 1) {
         this._stepPhase = 0;
         this._footstep();
+        this.onFootstep?.();
       }
     } else {
       this._stepPhase = 0.7;
