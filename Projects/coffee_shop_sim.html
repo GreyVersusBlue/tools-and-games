@@ -648,11 +648,13 @@ const PHASE_MS = SHIFT_MS / PHASES.length;
 // rate up and patience down slightly, capped at a floor so it never becomes
 // impossible.
 function spawnFactor(){
-  const base = Math.max(0.6, 1 - (state.day-1)*0.05);
+  const floor = Math.max(0.30, 0.6 - 0.06*state.prestigeLevel);
+  const base = Math.max(floor, 1 - (state.day-1)*0.05);
   return Math.max(0.25, base * shopSpawnFactorMult());
 }
 function patienceFactor(){
-  const base = Math.max(0.75, 1 - (state.day-1)*0.03);
+  const floor = Math.max(0.45, 0.75 - 0.06*state.prestigeLevel);
+  const base = Math.max(floor, 1 - (state.day-1)*0.03);
   return base * shopPatienceMult();
 }
 
@@ -1376,7 +1378,7 @@ function renderSlots(){
       <div class="cupwrap">${ slot.food ? `<div style="font-size:64px">${FOODS.find(f=>f.id===order.foodId).icon}</div>` : cupSvg(slot.cup) }</div>
       <div class="slotbtnrow">
         <button class="discardbtn" title="dump the cup and start over">🗑️ Dump</button>
-        <button class="servebtn" ${canServe? '':'disabled'}>Serve</button>
+        <button class="servebtn" aria-keyshortcuts="s" title="Shortcut: S" ${canServe? '':'disabled'}>Serve</button>
       </div>
     `;
     div.querySelector('.clearbtn').onclick = (e)=>{ e.stopPropagation(); releaseSlot(idx); };
@@ -1435,14 +1437,32 @@ const STATION_TAB_DEFS = [
 
 function renderStationTabs(slot){
   const bar = document.getElementById('stationTabs');
-  bar.innerHTML = STATION_TAB_DEFS.map(t=>{
+  bar.innerHTML = STATION_TAB_DEFS.map((t,i)=>{
     const dot = (slot && t.needsWork(slot)) ? '<span class="needdot"></span>' : '';
-    return `<button class="stationTab ${state.stationTab===t.id?'active':''}" data-tab="${t.id}">${t.label}${dot}</button>`;
+    return `<button class="stationTab ${state.stationTab===t.id?'active':''}" data-tab="${t.id}" aria-keyshortcuts="${i+1}" title="Shortcut: ${i+1}">${t.label}${dot}</button>`;
   }).join('');
   bar.querySelectorAll('.stationTab').forEach(btn=>{
     btn.onclick = ()=>{ state.stationTab = btn.dataset.tab; renderStationsAll(); };
   });
 }
+
+// Digits switch station tabs, "s" serves the focused station — the tabs and
+// Serve were already keyboard-reachable via Tab, this just makes them fast.
+document.addEventListener('keydown', (e)=>{
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  if(tag==='INPUT' || tag==='TEXTAREA') return;
+  if(document.getElementById('modalOverlay').classList.contains('show')) return;
+  const tabIdx = STATION_TAB_DEFS.findIndex((t,i)=> String(i+1)===e.key);
+  if(tabIdx!==-1){
+    state.stationTab = STATION_TAB_DEFS[tabIdx].id;
+    renderStationsAll();
+    return;
+  }
+  if(e.key==='s' || e.key==='S'){
+    if(currentSlot()) serveSlot(state.focusedSlot);
+  }
+});
 
 function stationBlockHtml(tab, slot){
   const cup = slot.cup;
@@ -1860,6 +1880,7 @@ function runBaristaTick(barista){
     let best = -1, bestPatience = Infinity;
     state.slots.forEach((slot, idx)=>{
       if(!slot || slot.serving || claimed.has(idx)) return;
+      if(orderIsComplete(slot)) return; // already prepped, waiting on a human to serve
       if(!baristaCanHandle(barista, slot.customer)) return;
       const p = slot.customer.patience;
       if(p < bestPatience){ bestPatience = p; best = idx; }
@@ -1874,14 +1895,14 @@ function runBaristaTick(barista){
   // Work exactly one step on this cup only
   const worked = autoAssistStep(slot);
 
-  // Auto-serve when everything on the ticket is done
+  // Prep is done — leave the cup for a human to serve instead of auto-serving.
   if(orderIsComplete(slot)){
     barista.targetSlot = null;
     const tier = BARISTA_TIERS[barista.level];
     const effMistakeChance = tier.mistakeChance * mistakeReduceFactor(barista) * (slot.food && hasUpgrade('foodprep') ? 0.8 : 1);
     const fumbled = Math.random() < effMistakeChance && baristaFumble(slot);
-    toast(fumbled ? `${barista.name} rushed the order 😬` : `${barista.name} served the order ☕`);
-    serveSlot(idx);
+    toast(fumbled ? `${barista.name} rushed the order, check it before serving 😬` : `${barista.name} finished the order — ready to serve ☕`);
+    renderAll();
     return true;
   }
   if(worked) renderAll();
@@ -2365,8 +2386,9 @@ function endShift(){
   saveState();
 }
 
-document.getElementById('modalBtn').onclick = ()=>{
-  document.getElementById('modalOverlay').classList.remove('show');
+// Shared by the modal's own button and by init() resuming a save captured
+// between endShift() banking the day and this button being clicked.
+function startNextDay(){
   state.day++;
   state.shiftElapsed = 0;
   state.combo = 0;
@@ -2381,6 +2403,11 @@ document.getElementById('modalBtn').onclick = ()=>{
   state.eventTriggerAt = randInt(SHIFT_MS*0.2, SHIFT_MS*0.7);
   rollDailyModifier();
   state.dayStats = freshDayStats();
+}
+
+document.getElementById('modalBtn').onclick = ()=>{
+  document.getElementById('modalOverlay').classList.remove('show');
+  startNextDay();
   renderAll();
 };
 
@@ -2481,6 +2508,12 @@ function init(){
   if(!hadSave){
     applyToState(state, saveSlot.fresh());
     rollDailyModifier();
+  } else if(!state.shiftRunning){
+    // Saved between endShift() banking the day and "Start Next Shift" being
+    // clicked. Today's stats aren't persisted, so there's no summary left to
+    // show — advance straight to the next day instead of leaving the shop
+    // paused with no way to proceed.
+    startNextDay();
   }
   const muteBtn = document.getElementById('muteToggle');
   if(muteBtn) muteBtn.textContent = state.muted ? '🔇' : '🔊';

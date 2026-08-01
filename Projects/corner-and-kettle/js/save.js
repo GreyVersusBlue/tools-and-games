@@ -35,9 +35,11 @@ const strList = (v, allowed) => {
 };
 
 /**
- * What the game persists. Everything else — the queue, the cups on the
- * counter, the clock, today's stats — is deliberately not saved: a reload
- * reopens the shop at Dawn on the same day.
+ * What the game persists. `shiftElapsed`/`shiftRunning` are saved so a reload
+ * resumes the shift where it left off, rather than restarting the clock at
+ * Dawn for free while keeping the day and the money (the mid-shift reload
+ * exploit). Everything else — the queue, the cups on the counter, today's
+ * stats — is still deliberately not saved.
  */
 export function freshSaveData(catalog) {
   return {
@@ -49,6 +51,8 @@ export function freshSaveData(catalog) {
     unlockedFoods: [...catalog.starting.foods],
     stationCount: STATION_MIN,
     muted: false,
+    shiftElapsed: 0,
+    shiftRunning: true,
     regulars: {},
     baristas: [],
     loyaltyLevel: 0,
@@ -207,6 +211,11 @@ export function repairSave(s, catalog, rng = Math.random) {
   s.stationCount = intIn(s.stationCount, STATION_MIN, STATION_MAX, STATION_MIN);
   s.muted = !!s.muted;
 
+  // Clamped to the shift length: a corrupt or hand-edited value past the end
+  // just means the shift is immediately banked on the next tick, not a crash.
+  s.shiftElapsed = clamp(num(s.shiftElapsed, 0), 0, catalog.shiftMs);
+  s.shiftRunning = s.shiftRunning !== false;
+
   // LOYALTY_UPGRADES[loyaltyLevel-1].tipBonus is read on every serve and
   // .patienceBonus on every spawn. An out-of-range level throws inside the
   // rAF loop, which is a frozen game rather than a wrong number.
@@ -261,6 +270,8 @@ export function toSaveData(state) {
     unlockedFoods: [...state.unlockedFoods],
     stationCount: state.slots.length,
     muted: state.muted,
+    shiftElapsed: state.shiftElapsed,
+    shiftRunning: state.shiftRunning,
     regulars: state.regulars,
     baristas: state.baristas.map(b => ({
       id: b.id, name: b.name, level: b.level,
@@ -308,13 +319,13 @@ export function applyToState(state, data) {
   state.dailyModifierId = data.dailyModifierId;
   state.eventFiredThisShift = data.eventFiredThisShift;
   state.eventTriggerAt = data.eventTriggerAt;
-  // Not persisted: the queue, the cups on the counter, the clock, today's
-  // stats. A reload reopens at Dawn on the same day.
+  state.shiftElapsed = data.shiftElapsed;
+  state.shiftRunning = data.shiftRunning;
+  // Not persisted: the queue, the cups on the counter, today's stats. A
+  // reload keeps the shift clock (above) but rebuilds these from scratch.
   state.queue = [];
   state.combo = 0;
   state.bestCombo = 0;
-  state.shiftElapsed = 0;
-  state.shiftRunning = true;
   state.marketingRemaining = 0;
   state.activeEvent = null;
   return state;

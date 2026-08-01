@@ -372,9 +372,10 @@ section("9. blocked storage");
   const text = slot.serialize(slot.fresh());
   ok(slot.deserialize(text) !== null, "export/import works with no storage");
 
-  // A store whose getItem throws. gvb-save's load() has no try/catch around
-  // store.getItem, so this propagates — see the Shared-file request in the
-  // session notes. Asserted as-is so the day it is fixed, this test says so.
+  // A store whose getItem throws. gvb-save's load() now wraps its getItem
+  // call in try/catch (locked decision #49, fixed in response to this
+  // project's own shared-file request), so this returns null instead of
+  // propagating.
   const hostile = {
     getItem() { throw new Error("blocked"); },
     setItem() { throw new Error("blocked"); },
@@ -384,7 +385,7 @@ section("9. blocked storage");
   eq(hostileSlot.save({ day: 1 }), false, "a throwing setItem is already caught");
   let threw = false;
   try { hostileSlot.load(); } catch (e) { threw = true; }
-  eq(threw, true, "a throwing getItem is NOT caught — known gvb-save gap, see notes");
+  eq(threw, false, "a throwing getItem is now caught too (locked decision #49)");
 }
 
 /* ---------- 10. the guard-rails, broken on purpose ---------- */
