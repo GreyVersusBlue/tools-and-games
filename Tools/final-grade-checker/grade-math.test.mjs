@@ -72,20 +72,24 @@ group('Rule 1 — both figures get computed');
   const f = calcFinals([90, 90, 60, 60]);
   eq(f.avgQP, 2.5, 'quality points average is 2.5 (A,A,D,D = 4+4+1+1 / 4)');
   eq(f.pctAvg, 75, 'percentage average is 75');
-  eq(f.qpFinal, 'B', 'quality points gives a B');
+  eq(f.qpFinal, 'C', 'quality points gives a C (2.50 does not round up to B)');
   eq(f.pctFinal, 'C', 'percentage gives a C');
 }
 
 group('Rule 2 — the HIGHER of the two is reported');
 // Worked by hand:
-//   Q1 90 A=4   Q2 90 A=4   Q3 60 D=1   Q4 60 D=1
-//   quality points 10/4 = 2.50 -> B
-//   percentage    300/4 = 75.00 -> C
+//   Q1 90 A=4   Q2 90 A=4   Q3 70 C=2   Q4 60 D=1
+//   quality points 11/4 = 2.75 -> B
+//   percentage    310/4 = 77.50 -> C
 //   B beats C, so the student gets a B.
 // This is the case that separates a correct tool from one that always reports
-// the percentage average.
-eq(calcFinals([90, 90, 60, 60]).winner, 'QP', 'quality points wins when it is higher');
-eq(calcFinals([90, 90, 60, 60]).finalLetter, 'B', 'and the B is what gets reported');
+// the percentage average. (An earlier version of this example used A,A,D,D,
+// which averages to exactly 2.50 QP — a genuine tie once quality points stop
+// rounding up at .5. See "Quality points — .5 does not round up" above.)
+eq(calcFinals([90, 90, 70, 60]).qpFinal,  'B', 'quality points gives a B');
+eq(calcFinals([90, 90, 70, 60]).pctFinal, 'C', 'percentage gives a C');
+eq(calcFinals([90, 90, 70, 60]).winner, 'QP', 'quality points wins when it is higher');
+eq(calcFinals([90, 90, 70, 60]).finalLetter, 'B', 'and the B is what gets reported');
 
 //   Q1 79 C=2   Q2 79 C=2   Q3 100 A=4   Q4 100 A=4
 //   quality points 12/4 = 3.00 -> B
@@ -100,13 +104,16 @@ eq(calcFinals([79, 79, 100, 100]).finalLetter, 'A', 'and the A is what gets repo
 //   A tie: 85 four times. Both methods give a B. Either winner is the same letter.
 eq(calcFinals([85, 85, 85, 85]).finalLetter, 'B', 'a tie reports the shared letter');
 
-//   Quality points wins at the pass/fail line.
-//   Q1 70 C=2  Q2 70 C=2  Q3 30 F=0  Q4 70 C=2
-//   quality points 6/4 = 1.50 -> C
-//   percentage   240/4 = 60.00 -> D
-eq(calcFinals([70, 70, 30, 70]).qpFinal,     'C', 'quality points gives a C');
-eq(calcFinals([70, 70, 30, 70]).pctFinal,    'D', 'percentage gives a D');
-eq(calcFinals([70, 70, 30, 70]).finalLetter, 'C', 'the higher, C, is reported');
+//   Quality points wins near the pass/fail line.
+//   Q1 70 C=2  Q2 70 C=2  Q3 70 C=2  Q4 60 D=1
+//   quality points 7/4 = 1.75 -> C
+//   percentage   270/4 = 67.50 -> D
+// (An earlier version of this example used three C's and an F, which
+// averages to exactly 1.50 QP — a tie now that quality points don't round
+// up at .5, both methods landing on D. See the boundary group above.)
+eq(calcFinals([70, 70, 70, 60]).qpFinal,     'C', 'quality points gives a C');
+eq(calcFinals([70, 70, 70, 60]).pctFinal,    'D', 'percentage gives a D');
+eq(calcFinals([70, 70, 70, 60]).finalLetter, 'C', 'the higher, C, is reported');
 
 //   A failing final either way.
 eq(calcFinals([50, 55, 40, 58]).qpFinal,     'F', 'four Fs give an F by quality points');
@@ -130,12 +137,30 @@ eq(getQP('C'), 2, 'C is 2 points'); eq(getQP('D'), 1, 'D is 1 point');
 eq(getQP('F'), 0, 'F is 0 points'); eq(getQP('Z'), null, 'nothing else is a letter');
 // Averages of four integers 0-4 are multiples of 0.25 and exact in floating
 // point, so this table is the complete set of inputs the method can produce.
+// Unlike the percentage average, quality points do NOT round up at exactly
+// .5 (confirmed against county policy) — 3.50, 2.50, 1.50 and 0.50 all stay
+// the lower letter, one step down from where they'd land if this table
+// rounded up the same way the percentage side does.
 const qpTable = [
-  [4.00,'A'],[3.75,'A'],[3.50,'A'],[3.25,'B'],[3.00,'B'],[2.75,'B'],[2.50,'B'],
-  [2.25,'C'],[2.00,'C'],[1.75,'C'],[1.50,'C'],[1.25,'D'],[1.00,'D'],[0.75,'D'],
-  [0.50,'D'],[0.25,'F'],[0.00,'F'],
+  [4.00,'A'],[3.75,'A'],[3.50,'B'],[3.25,'B'],[3.00,'B'],[2.75,'B'],[2.50,'C'],
+  [2.25,'C'],[2.00,'C'],[1.75,'C'],[1.50,'D'],[1.25,'D'],[1.00,'D'],[0.75,'D'],
+  [0.50,'F'],[0.25,'F'],[0.00,'F'],
 ];
 for (const [avg, letter] of qpTable) eq(qpToFinalLetter(avg), letter, `quality-point average ${avg.toFixed(2)} is a ${letter}`);
+
+// ── Rule 4, the quality-point half: .5 does NOT round up ─────
+group('Quality points — .5 does not round up, unlike the percentage average');
+eq(qpToFinalLetter(3.50), 'B', 'exactly 3.50 stays a B, not an A');
+eq(qpToFinalLetter(3.51), 'A', '3.51 clears the line, so it is an A');
+eq(qpToFinalLetter(2.50), 'C', 'exactly 2.50 stays a C, not a B');
+eq(qpToFinalLetter(1.50), 'D', 'exactly 1.50 stays a D, not a C');
+eq(qpToFinalLetter(0.50), 'F', 'exactly 0.50 stays an F, not a D — the pass/fail line');
+// A real four-quarter set that lands exactly on the boundary: two A quarters
+// and two D quarters average to exactly 2.50 quality points.
+eq(calcFinals([90, 90, 60, 60]).avgQP,      2.5, 'A,A,D,D averages to exactly 2.50 QP');
+eq(calcFinals([90, 90, 60, 60]).qpFinal,    'C', 'and that stays a C, not a B, under the real rule');
+eq(calcFinals([90, 90, 60, 60]).pctFinal,   'C', 'the percentage average (75.00) also gives a C here');
+eq(calcFinals([90, 90, 60, 60]).finalLetter,'C', 'so this particular set is a genuine tie, not a QP rescue');
 
 // ── Missing and exempt quarters ──────────────────────────────
 group('Missing or exempt quarters');
@@ -241,7 +266,7 @@ group('End to end — a pasted class');
   });
   eq(result, [
     ['Gwendolyn Placeholder', 'A', 'QP'],   // 4+4+3+4 = 3.75 -> A ; 92.25 -> A ; tie, QP
-    ['Horatio Notarealboy',   'B', 'QP'],   // 4+4+1+1 = 2.50 -> B ; 75.00 -> C ; QP wins
+    ['Horatio Notarealboy',   'C', 'QP'],   // 4+4+1+1 = 2.50 -> C (does not round up) ; 75.00 -> C ; tie, QP
     ['Isolde Madeupname',     'A', 'PCT'],  // 2+2+4+4 = 3.00 -> B ; 89.50 -> A ; PCT wins
     ['Jasper Fictional',      'no final', '-'], // missing Q2
   ], 'four students, four correct outcomes');

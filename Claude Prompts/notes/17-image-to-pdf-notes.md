@@ -2,191 +2,137 @@
 
 ## What changed
 
-- **`Tools/image-to-pdf/libs/jspdf.umd.min.js`** — vendored jsPDF **2.5.2**, 357 KB
-  (365,730 bytes), fetched from `cdn.jsdelivr.net/npm/jspdf@2.5.2`. Pinned to 2.5.2
-  rather than the 2.5.1 that was hotlinked, or the current 4.2.1: 2.5.2 is the last
-  patch on the same 2.x line (seven commits — a unicode font fix and three dependency
-  security bumps, no API changes), so nothing in this file needed re-testing against
-  it. Skipped 3.x/4.x deliberately — two major jumps is a bigger change than a
-  748-line-turned-978-line tool with no test suite should absorb sight unseen, and
-  the 4.2.1 UMD build is 420 KB, bigger not smaller, so there's no size argument for
-  going there either. Reasoning is written down in `Tools/image-to-pdf/libs/README.md`
-  so it doesn't become unmovable folklore.
-- **`Tools/image-to-pdf.html`** line 24 — script tag now points at
-  `image-to-pdf/libs/jspdf.umd.min.js` instead of `cdnjs.cloudflare.com`.
-- **JPEG and WEBP input.** The tool only accepted `.png` and `.svg` before this
-  session — for a tool whose stated job is assembling photographed pages, that meant
-  it couldn't actually take a phone photo, which is JPEG (or HEIC) on every phone
-  that exists. Accept attribute, validation regex, and file-list badges now cover
-  `.jpg/.jpeg/.webp` too.
-- **Quality/resolution control**, three presets (Standard / High / Original). Standard
-  and High downscale to a max long edge (1600px / 2400px) and re-encode as JPEG
-  (0.72 / 0.85 quality) regardless of source format. Original skips that for PNG
-  (raw bytes, lossless) but **not** for JPEG — see the EXIF note below for why.
-- **EXIF-safety fix, found while building the above, not asked for by the prompt.**
-  My first pass of "Original quality" passed JPEG source bytes straight through
-  unmodified. That's wrong: a phone photo taken sideways carries an EXIF orientation
-  tag, the browser auto-rotates it for display and for canvas drawing, but jsPDF's
-  raw JPEG embed does not read that tag. The dimensions used for page sizing come
-  from `img.naturalWidth/Height`, which the browser already reports post-rotation —
-  so page size and embedded pixel data would have disagreed, and the photo would
-  have landed sideways in the PDF specifically in the one mode promising "original."
-  Fixed by routing JPEG through canvas even at "Original" quality, at 0.95 (near-
-  lossless). PNG has no EXIF-rotation concept and still passes through raw. I could
-  not test this against a real EXIF-tagged photo (no camera in this sandbox; canvas-
-  generated test images carry no EXIF), so this is verified by reasoning through the
-  browser's documented auto-rotation behavior, not by a before/after screenshot.
-- **Per-page auto orientation.** The orientation control used to be one radio button
-  for the whole document — every page got forced portrait or landscape regardless of
-  what the source image actually was. Replaced with Auto (default) / Portrait /
-  Landscape; Auto picks per page from that image's own aspect ratio. `resolvePageDimsMm`
-  now takes the image's own wMm/hMm into the landscape-vs-portrait decision instead of
-  ignoring them for fixed page sizes.
-- **"Match image size" no longer produces room-sized pages.** It used to place a
-  photo's native pixel count directly in millimeters — a 4032×3024 photo became a
-  ~1067×800mm page. Long edge is now clamped to 25–432mm (`clampPageDimsMm`).
-- **Default page size is Letter**, not "Match image size" (was the default before).
-- **Per-file remove and reorder.** Previously the only control was "Clear files" —
-  a full restart for one misscanned page. Every row now has Up/Down/Remove buttons,
-  which is the primary reorder mechanism (see mobile note below), plus HTML5
-  drag-and-drop as a desktop-mouse bonus. A third sort-order option, "Custom order,"
-  reflects manual arrangement; moving or dragging a row auto-switches to it.
-- **Per-file error isolation during generation.** Previously one bad file threw and
-  killed the entire batch — including pages already processed. Each file now has its
-  own try/catch; failures are collected and reported by name, and the PDF still
-  builds from whatever succeeded.
-- **Specific rejection messages**, especially HEIC: names the exact fix ("Settings →
-  Camera → Formats → Most Compatible, or re-share choosing JPEG") instead of a
-  generic "unsupported file" error. A teacher hitting this needs to know what an
-  iPhone default camera setting is doing to their scans, not just that something
-  failed.
-- **Accessibility**: `aria-live="polite"` on the message, progress, and file-count
-  regions; `aria-label`s on the file input and every row button.
-- **Mobile touch targets.** First pass at the row buttons was 21×24px — well under
-  any touch-target guideline. Caught by measuring, not guessing (`getBoundingClientRect`
-  in the actual mobile viewport). Now 2.5rem square (~50×40px rendered).
-- Fixed the header subtitle, which still said "Combine PNG & SVG files" after JPEG/
-  WEBP landed.
+- **A rotation control, 90° at a time, per page.** Each row in the file queue now
+  has two buttons (⟲/⟳) alongside the existing Up/Down/Remove. Each file entry
+  carries a `rotation` value (0/90/180/270, wraps both directions) that travels
+  with it through reorder, sort, and removal since it lives on the same object
+  as the file reference. A non-zero rotation shows as a small "N° rotated" badge
+  next to the filename so the state is visible, not just settable.
+- **`processRaster` and `processSVG` both take a `rotation` argument now.** For
+  raster images, a non-zero rotation forces the canvas path even when the old
+  code would have passed PNG bytes straight through unmodified — a rotation
+  can't happen to bytes that never get decoded and redrawn. The canvas is sized
+  to the post-rotation footprint (dimensions swap on 90°/270°, stay put on
+  180°), the image is drawn centered and rotated with `ctx.translate` +
+  `ctx.rotate`, and the returned `naturalW`/`naturalH` are swapped to match so
+  page-size and orientation decisions downstream see the rotated shape, not the
+  source shape. SVG got the identical treatment inside `svgToDataURL`, since it
+  already rasterizes through canvas for its own reasons and the same rotate-
+  around-center approach applies unchanged.
+- **`#file-list li` markup restructured into two rows** (filename/badges on
+  row one, all five action buttons on row two, via `flex: 0 0 100%` on
+  `.row-actions`) rather than trying to fit five buttons on one line at
+  375px. This is a real layout change, not just an addition — chose one
+  layout that works at every width over a responsive rule that only kicks in
+  below some breakpoint, since this tool only had one layout to verify before
+  and I wanted to keep it that way.
 
 ## What I verified
 
-- **jsPDF loads from the vendored path**: `typeof window.jspdf.jsPDF === 'function'`
-  after page load, confirmed in the browser, not assumed from a file existing on disk.
-- **Zero offsite requests**: `read_network_requests` during actual PDF generation
-  shows only `file://` requests to the html file and the vendored lib — nothing else.
-  `grep -c "cdnjs" Tools/image-to-pdf.html` → **0**. (The vendored jsPDF's own
-  minified source happens to contain the literal string `cdnjs.cloudflare.com`
-  somewhere internally — inert, never executed by anything this tool calls, and
-  confirmed inert by the network panel showing nothing left the machine.)
-- **Real assembly run, mixed batch**: 10 files — a 3024×4032 portrait JPEG, a
-  4032×3024 landscape JPEG, a 180×140 tiny PNG, a 6000×4500 "huge scan" JPEG, a
-  1000×1000 square PNG, a 1275×1650 and 1650×1275 JPEG pair, an 800×600 PNG, an SVG,
-  and a WEBP. Built via canvas in the live browser (synthetic content, since I don't
-  have a real camera in this sandbox — the point was exercising real decode/resize/
-  embed code paths, not the pixel content). Opened the resulting PDF and looked at
-  every page:
-  - Portrait photo → portrait page, full-bleed, no white margins.
-  - Landscape photo → landscape page, full-bleed. Confirms Auto orientation is
-    actually per-page, not document-wide.
-  - Square image → letterboxed top/bottom on a portrait page. Correct — a square
-    can't fill a non-square page without distortion, this is aspect-preserving
-    centering working as intended, not a bug.
-  - SVG (circle) and WEBP both rendered correctly.
-  - Source total 751 KB → **Standard 222 KB, High 352 KB, Original 883 KB**. Quality
-    setting has the "small change, large effect" the prompt predicted: 4× between
-    Standard and Original on the same batch.
-- **Per-file failure isolation, tested by breaking it on purpose** (locked decision
-  #34): loaded two files with a valid `.png`/`.jpg` extension but garbage bytes,
-  plus one real image. Result: 1-page PDF from the good file, message reads
-  `Skipped 2: corrupt.png — could not decode image data...; corrupt2.jpg — ...`.
-  Then tried it with **only** the two corrupt files — result: no PDF, "Nothing could
-  be generated" with both names listed, both buttons correctly re-enabled afterward
-  (no stuck-disabled state).
-- **Rejection messaging**: dropped a fake `.heic` and a fake `.tiff` alongside 10
-  valid files. Result: "Added 10. Skipped 2 file(s)" with the HEIC-specific
-  instructions and the generic ".tiff isn't supported" message, each on its own
-  line. (An extensionless-file case was exercised once, during the run that hit the
-  bug below, before the fix — not re-confirmed afterward, so I'm not claiming it as
-  verified.)
-- **Found and fixed a real bug via this testing, not by inspection**: my first
-  version of the rejection-message code called `rejectionReason(file)` inside
-  `.map()`, passing File objects where the function expected a filename string.
-  That threw inside the callback, which silently aborted the entire `handleFiles`
-  call — no message, no files added, no console error visible through this tool's
-  console reader. Files that were rejected didn't just get skipped, *nothing after
-  the first invalid file in a batch got processed, silently*. Fixed to
-  `invalid.slice(0,5).map(f => rejectionReason(f.name))`. Confirmed console
-  inspection alone would not have caught this — the exception didn't surface as a
-  visible error through the tool I was using to check, which is itself worth knowing
-  if a future session leans on console output as its only signal.
-- **Reorder**: removed one file (9 left, correct), moved another up twice via the
-  Up button, confirmed the resulting order matches manual array-splice math exactly,
-  and confirmed sort mode auto-switched to "Custom order."
-- **Mobile, 375×812**: screenshotted the full flow. Drop zone, controls, and file
-  queue all readable and usable. Caught the touch-target size problem this way
-  (measured 21×24px, fixed to ~50×40px) — this would not have been visible from
-  a desktop screenshot or from reading the CSS.
-- `cd Tools/board-check && npm run check` → **280 units, 0 broken, 0 collisions**
-  (v7's baseline was 235; the increase is other sessions' files landing in parallel,
-  not mine — I didn't touch the board or any other tool's card).
-- `npm run social:check` → **23 notices, 23 already current.** Confirms I never
-  hand-edited inside the `gvb:social` markers — checked directly: `git diff` on
-  the file, `grep -n "gvb:social"` on the diff output, zero matches.
-- `node --check` on the extracted `<script>` body, three times across the session
-  as edits landed — clean every time.
+- **jsPDF loads from the vendored path**: `window.jspdf.jsPDF` is a function
+  after page load, checked directly in the browser.
+- **Rotation is pixel-correct, not just dimension-correct — checked against the
+  actual generated PDF, not by re-reasoning the canvas math.** Built two
+  synthetic images (a blue portrait PNG, a green landscape JPEG) each with an
+  asymmetric red marker in the top-left corner. Rotated the PNG 90° (one
+  click) and the JPEG 180° (two clicks), generated the PDF, then pulled the
+  raw JPEG byte streams back out of the PDF bytes (JFIF SOI/EOI scan — jsPDF
+  embeds JPEG as literal DCTDecode data) and decoded them back to pixels:
+  - 90° case: output image reported as 400×300 where the source was 300×400
+    (dimension swap confirmed), and the marker had moved from top-left to
+    top-right — exactly where a 90°-clockwise rotation puts it.
+  - 180° case: output stayed 400×300 (no dimension swap, correctly), and the
+    marker had moved from top-left to bottom-right — exactly where a
+    180° rotation puts it.
+  - Rotating the first file back to 0° made the "N° rotated" badge disappear
+    and the PDF's own `/MediaBox` for that page returned to matching a
+    non-rotated portrait orientation.
+- **Real 8-image mixed batch**, matching round one's own verification shape: a
+  3024×4032 portrait JPEG, a 4032×3024 landscape JPEG, a 180×140 tiny PNG
+  (rotated 90°), a 3000×2250 "huge" JPEG, a 1000×1000 square PNG, an
+  850×1100 portrait JPEG (rotated to 90° via three left-clicks — the modulo
+  wrap landed on 90°, not 270°, which is correct: -90 three times from 0 is
+  -270 ≡ 90 mod 360), an 1100×850 landscape JPEG, and an 800×600 WEBP.
+  Generated at Standard quality, Letter page, Auto orientation: **8 pages,
+  67 KB output from 223 KB of source images.** Extracted every page's
+  `/MediaBox` from the raw PDF bytes and confirmed all eight orientations
+  against the aspect ratio each file actually has post-rotation — including
+  both rotated files, whose pages came out in the orientation their *rotated*
+  dimensions call for, not their original ones. All eight matched.
+- **Zero offsite requests**: `read_network_requests` during all of the above
+  shows only `file://`, `blob:`, and `data:` URLs — nothing left the machine.
+  `grep -c cdnjs Tools/image-to-pdf.html` → 0.
+- **Mobile, 375×812**: measured the five row buttons directly via
+  `getBoundingClientRect` rather than eyeballing — 50–56px wide, 41px tall,
+  above the touch-target size round one fixed to and verified this session's
+  two-row layout doesn't overflow horizontally at this width
+  (`document.documentElement.scrollWidth` === `clientWidth`, 375 both).
+  Couldn't get an actual screenshot this session (the browser pane wasn't
+  compositing in this sandbox), so this is geometry-verified, not eyeballed —
+  a real screenshot next session would be a strictly stronger check.
+- `cd Tools/board-check && npm run tools` → **18 checks, 0 failed**, this page
+  included.
+- `cd Tools/board-check && npm run check` → **344 units, 1 broken**
+  (`newindex.html`, offsite fonts — pre-existing, outside every project's
+  `Tools/` boundary, matches what the prompt said to expect), **0 collisions,
+  tightest gap 9.2px**.
+- `npm run social:check` → still fails before completing, same repo-wide
+  notice-parsing problem the prompt described (`only parsed 17 notices out of
+  index.html`), unrelated to this file. Confirmed by hand instead:
+  `git diff -- Tools/image-to-pdf.html` has no lines mentioning `gvb:social`.
+- `node --check` on the extracted `<script>` body — clean, both mid-session
+  and on the final file (1033 lines, up from 978).
 
 ## Shared-file requests
 
-None. Nothing outside `Tools/image-to-pdf.html` and `Tools/image-to-pdf/` was
-touched.
+None. Nothing outside `Tools/image-to-pdf.html` was touched this session —
+`Tools/image-to-pdf/libs/` didn't need changes, since rotation is plain
+canvas transform work, not a new library.
 
 ## Deliberately not done
 
-- **Settings persistence** (page size / quality / orientation remembered between
-  visits). The prompt flagged this as worth an opinion, not a requirement. Decided
-  against it this session: it's a real convenience but a distinct, separable feature,
-  and the four fixes above (JPEG support, quality control, reorder, per-page
-  orientation) were the ones that make the tool actually usable for its stated job.
-  If a future session adds it: plain `localStorage` for three primitive values is
-  proportionate here, `gvb-save.js`'s versioned-slot machinery is built for game
-  campaign state and would be overhead for three dropdowns with no student data
-  involved.
-- **748 lines became 978.** I considered whether that crosses into "needs
-  restructuring" and decided it doesn't — it's one file, one job, and every new
-  function (`processRaster`, `processSVG`, reorder helpers) is a handful of lines
-  doing one thing. Splitting it would cost the `/Tools/image-to-pdf.html` URL the
-  board links to, for no real readability win at this size.
-- **Real HEIC decoding.** Not possible client-side without a WASM decoder library,
-  which would be a new dependency for a format problem that has a one-step fix on
-  the phone that created the file. The error message tells the teacher that fix
-  instead.
-- **A rotation control for correctly-oriented-but-upside-down scans** (e.g., a flatbed
-  scan fed in backwards, as opposed to phone EXIF rotation, which is handled
-  automatically — see the EXIF fix above). No rotate button exists. Genuinely
-  smaller in scope than the EXIF fix and I ran out of runway to test it properly;
-  flagging rather than shipping something unverified.
-- **Desktop drag-and-drop reordering** got wired up but not separately exercised
-  with a simulated drag gesture — the Up/Down buttons are the mechanism I verified,
-  and they're also the *only* mechanism that works on a touch phone, since HTML5
-  drag-and-drop isn't a touch interaction. Treat the drag handlers as an unverified
-  bonus for a mouse, not the load-bearing path.
+- **Task two, verifying the EXIF fix against a real sideways phone photo**:
+  still not done. This sandbox has no camera this round either, same gap
+  round one flagged. The EXIF fix itself wasn't touched this session — still
+  verified only by reasoning through documented browser auto-rotation
+  behavior, not by an actual photo. Flagging again rather than pretending the
+  gap closed itself.
+- **Settings persistence** (task three): still not built. No signal this
+  session that a teacher using the tool repeatedly has actually asked for
+  page size / quality / orientation to be remembered — round one's call to
+  leave this as a real-but-separable convenience still holds, and building it
+  speculatively a second round in a row without that signal would just be
+  scope creep on a small tool. If it gets built: plain `localStorage` for
+  three primitive values, not `gvb-save.js`.
+- **Desktop drag-and-drop reorder**, still not separately exercised with a
+  simulated drag this session either — same unverified-bonus status round one
+  left it in. It wasn't touched by this session's changes (the rotate buttons
+  are additive, don't interact with the drag handlers), so its status is
+  unchanged, not newly regressed.
+- **A "reset rotation to 0" shortcut** beyond clicking the opposite arrow
+  twice/four times. Considered a third button per row for this and decided
+  against it — two 90° buttons already get to any of the four states in at
+  most two clicks, and a sixth button per row on a 375px screen is exactly the
+  kind of crowding this session's layout change was trying to avoid.
 
 ## Next session
 
 Ordered by value per effort:
 
-1. **A rotation control**, 90°-at-a-time, per page. Small UI addition (two buttons
-   on each row), and it's the one item in the prompt's audit list ("a landscape scan
-   rotated the wrong way") not fully covered — EXIF-rotated phone photos are handled
-   automatically, but a scanner-fed-in-sideways page has no fix here yet.
-2. **Settings persistence**, if a teacher using this repeatedly asks for it. Small,
-   plain `localStorage`, no student data involved since only three UI preferences
-   would be stored.
-3. **Verify the EXIF fix against a real photo.** Everything in this session's EXIF
-   reasoning is correct as far as documented browser behavior goes, but "I read the
-   spec" is not the same standard of proof this tool otherwise held itself to. Worth
-   five minutes with an actual sideways phone photo the next time someone is at a
-   real device.
-4. If genuinely nothing else surfaces: this is a small, single-purpose tool that now
-   does its one job on the actual input it exists to handle (photos), with reasonable
-   file sizes, on a phone. That was the gap; it's closed.
+1. **Verify the EXIF fix against a real sideways phone photo.** Two rounds
+   running without a camera in the sandbox. Five minutes at an actual device
+   would close this permanently — reasoning from spec is not the same
+   standard of proof this tool otherwise holds itself to.
+2. **A real screenshot of the two-row mobile layout.** Geometry-verified this
+   session (button sizes, no horizontal overflow) but not eyeballed, because
+   this sandbox's browser pane wasn't compositing frames for a screenshot.
+   Worth confirming nothing looks visually off even though the numbers check
+   out.
+3. **Settings persistence**, only if an actual teacher asks for it. Still a
+   convenience, still not a gap in the tool's core job.
+4. If genuinely nothing else surfaces: this tool now covers both of the
+   original audit's rotation problems — EXIF-rotated phone photos (handled
+   automatically, from round one) and a scanner-fed sideways page (handled by
+   this session's rotate buttons) — on top of everything round one already
+   closed. The remaining open item is verifying an assumption against a real
+   device, not building anything new.

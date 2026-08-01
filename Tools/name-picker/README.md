@@ -12,8 +12,9 @@ name, would have meant a board change and a broken URL; see the session notes.
 | `np-store.js` | All thirteen storage keys, on `assets/js/gvb-save.js`. DOM-free. |
 | `np-pick.js` | Who gets called and how fairly. Pure, injectable `rng`. DOM-free. |
 | `fonts/` | Bungee, Outfit, Press Start 2P, vendored. See its README. |
-| `test/smoke.mjs` | 207 assertions under plain Node. |
+| `test/smoke.mjs` | 213 assertions under plain Node. |
 | `test/blocked-storage.html` | The one case Node cannot reach — a browser that blocks storage. |
+| `test/browser.mjs` | The page in a real browser: export, import, fairness, the corrupt-roster guard, the erase flow. |
 
 ## Running the tests
 
@@ -30,6 +31,23 @@ uniform draws over 280 picks:  min 6, max 16, spread 10
 first-pick uniformity over 28000 rounds: expected 1000, worst deviation 67
 shuffle bias, position 1 of 6 over 20000 shuffles: comparator worst 2437, Fisher-Yates worst 67
 ```
+
+`smoke.mjs` and `blocked-storage.html` only ever drive `np-store.js`/`np-pick.js`
+directly — they are blind to the page's own wiring, a button whose handler never
+attached, an export that never triggers a real download. `test/browser.mjs` drives
+the actual page, headless, real clicks:
+
+```
+node Tools/name-picker/test/browser.mjs
+```
+
+Exits non-zero on any failure. Screenshots and the exported backup land in
+`test/shots/` (gitignored — regenerated every run, not source). Round-trips a real
+28-name roster through save-as-roster, export, four rounds of fair multi-picking,
+erase and import, then reloads the page to prove the restored data is what the
+tool itself picks up, not just what `localStorage` happens to hold. Also seeds two
+distinct corrupt-roster shapes (a truncated JSON blob, and a roster whose value
+is a number rather than an array) and confirms neither takes the page down.
 
 For the blocked-storage case, serve the repo and open
 `/Tools/name-picker/test/blocked-storage.html`. It replaces the `localStorage`
@@ -77,6 +95,14 @@ what "clear site data" does.
 `np_lucky` is in `roster`, not `prefs`, because it stores a student's name. That
 is invisible from the key name and is the reason the grouping is a table in code
 rather than a comment.
+
+**`np_history` entries carry a `date` field** (`YYYY-MM-DD`), added in round 2. The
+History tab has always said "today" / "this session", but the key itself was never
+cleared, so after the first day it silently showed last week's picks too. The page
+clears `history` on the first pick of a new calendar day (`recordPick()` in `Tools/Name
+Picker.html`), not on load and not never, so the tab's own copy stays true without
+a teacher doing anything. Legacy entries with no `date` just never trigger the
+clear — they load fine, per `fix()`'s optional-field handling.
 
 ### `migrate` vs `repair`
 

@@ -22,7 +22,23 @@ const obj = v => (v && typeof v === "object" && !Array.isArray(v) ? v : null);
 
 /** The resource block every hero combatant needs to exist. */
 export function blankResources() {
-  return { slots: { 1: 0, 2: 0 }, focus: 0, font: 0, potions: 0 };
+  return { slots: { 1: 0, 2: 0 }, focus: 0, font: 0, potions: [] };
+}
+
+/**
+ * `potions` used to be a bare count, so Drink Potion always rolled a flat
+ * `1d8` no matter which healing item the hero was actually holding — the
+ * Lesser Healing Potion's own text promises `2d8+5` (session 10, "the potion
+ * heal question"). It is now a stack of item ids so the action can look up
+ * each one's own `heal` formula. A save written before this change (or a
+ * hand-built snapshot) still carries a plain number; read it back as that
+ * many `healing-potion-minor`s, since that was the only potion the old code
+ * could ever have counted.
+ */
+function normalizePotions(v) {
+  if (Array.isArray(v)) return v.filter(id => typeof id === "string");
+  const n = num(v, 0);
+  return n > 0 ? Array(Math.floor(n)).fill("healing-potion-minor") : [];
 }
 
 /**
@@ -75,7 +91,7 @@ export function repairHero(hero) {
       slots: { 1: num(slots[1], 0), 2: num(slots[2], 0) },
       focus: num(r.focus, 0),
       font: num(r.font, 0),
-      potions: num(r.potions, 0)
+      potions: normalizePotions(r.potions)
     }
   };
 }

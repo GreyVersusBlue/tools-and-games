@@ -190,7 +190,7 @@ const goodBuild = () => ({
 const goodSnap = () => ({
   build: goodBuild(), advId: "bell-of-barrowmoor", sceneId: "arrival", flags: { "met-someone": true },
   dailyLuckUsed: false,
-  hero: { hp: 31, wounded: 1, resources: { slots: { 1: 2, 2: 1 }, focus: 1, font: 0, potions: 2 } },
+  hero: { hp: 31, wounded: 1, resources: { slots: { 1: 2, 2: 1 }, focus: 1, font: 0, potions: 2 } }, // legacy numeric count — repair should stack it
   companions: [{ id: "aldous", hp: 22 }],
   chronicle: [{ html: "<b>x</b>", cls: "narr" }]
 });
@@ -201,7 +201,8 @@ const goodSnap = () => ({
   ok(slot.save(goodSnap()), "save() writes");
   const back = slot.load();
   ok(!!back, "load() returns the state");
-  eq(back.hero.resources.potions, 2, "potions survive a round trip");
+  eq(back.hero.resources.potions, ["healing-potion-minor", "healing-potion-minor"],
+    "a legacy numeric potion count repairs into a stack of that many minor potions");
   eq(back.build.name, "Wren", "the build survives a round trip");
   ok(!("__v" in back) && !("v" in back), "no version field leaks into game state");
   eq(JSON.parse(store._raw.get(SAVE_KEY)).__v, SAVE_VERSION, "the stored blob carries the version stamp");
@@ -216,6 +217,21 @@ const goodSnap = () => ({
   eq(slot.deserialize(text).hero.hp, 31, "an export deserializes back to the same state");
   ok(slot.deserialize('{"format":"gvb-save","game":"closing-time","version":3,"state":{"day":1}}') === null,
     "another game's save file is refused");
+}
+
+{ // the committed preview save (session 10) — a real export from a real playthrough,
+  // used by `npm run games`/the preview capture to reach the Thornwake bridge scene
+  // without playing the nine-step builder blind. If this ever stops deserializing,
+  // the preview recipe silently has nothing to import.
+  const slot = createTorchSlot(memStore());
+  const text = fs.readFileSync(path.join(PROJECT, "test", "sera-voss.torchsave.json"), "utf8");
+  const state = slot.deserialize(text);
+  ok(state !== null, "the committed preview save deserializes");
+  eq(state?.build?.name, "Sera Voss", "the committed save is the expected hero");
+  eq(state?.advId, "thornwake", "the committed save targets Thornwake Vigil");
+  eq(state?.sceneId, "bridge-fog", "the committed save lands at the bridge-fog scene");
+  eq(state?.hero?.resources?.potions, ["healing-potion-minor", "healing-potion-minor"],
+    "the committed save's potions are already in the new stack shape");
 }
 
 { // the corrupt-file cases, which used to reach finalizeCharacter
@@ -235,7 +251,8 @@ const goodSnap = () => ({
   const back = createTorchSlot(store).load();
   ok(!!back, "a pre-adoption save still loads");
   ok(!("v" in back), "migrate strips the old v field");
-  eq(back.hero.resources.potions, 2, "a pre-adoption save keeps its potions");
+  eq(back.hero.resources.potions, ["healing-potion-minor", "healing-potion-minor"],
+    "a pre-adoption save keeps its potions, normalized into a stack");
 }
 
 { // a corrupt blob in storage must not take the boot down
@@ -260,10 +277,10 @@ group("repair");
   delete thin.flags;
   store.setItem(SAVE_KEY, JSON.stringify(thin));
   const slot = createTorchSlot(store);
-  eq(slot.load().hero.resources.potions, 0, "load() repairs a save missing potions");
+  eq(slot.load().hero.resources.potions, [], "load() repairs a save missing potions");
   eq(slot.load().flags, {}, "load() repairs a save missing flags");
-  eq(slot.deserialize(JSON.stringify(thin)).hero.resources.potions, 0, "deserialize() repairs a pasted blob");
-  eq(slot.deserialize(slot.serialize(thin)).hero.resources.potions, 0, "deserialize() repairs an exported file");
+  eq(slot.deserialize(JSON.stringify(thin)).hero.resources.potions, [], "deserialize() repairs a pasted blob");
+  eq(slot.deserialize(slot.serialize(thin)).hero.resources.potions, [], "deserialize() repairs an exported file");
 }
 {
   /* Same wiring question for the validator: loadPack has to reject, not just
@@ -277,24 +294,41 @@ group("repair");
 }
 {
   // The bug this hook exists for. A save whose resource block predates
-  // `potions` used to be assigned wholesale over the fresh one, and
-  // `gotoScene` then did `hero.resources.potions++` → NaN. The Chronicle still
-  // printed "Gained: Lesser Healing Potion"; the button, gated behind
-  // `(potions||0) > 0`, never came back. Silent, permanent, no error anywhere.
+  // `potions` used to be assigned wholesale over the fresh one. Session 10
+  // turned `potions` from a bare count into a stack of item ids (so Drink
+  // Potion can read each item's own `heal` formula instead of a hardcoded
+  // `1d8` — see the potion-heal decision in the session notes), which makes
+  // the unrepaired failure louder: `gotoScene`'s `hero.resources.potions.push(it)`
+  // now throws on undefined outright instead of silently going to NaN. Louder
+  // is better, but a throw mid-scene is still exactly what repair exists to
+  // prevent.
   const s = goodSnap();
   s.hero.resources = { slots: { 1: 2, 2: 1 }, focus: 1 };     // no font, no potions
   const r = repairSnapshot(s);
-  eq(r.hero.resources.potions, 0, "a missing potion count repairs to 0, not undefined");
+  eq(r.hero.resources.potions, [], "a missing potion stack repairs to [], not undefined");
   eq(r.hero.resources.font, 0, "a missing font count repairs to 0");
-  ok(Number.isFinite(r.hero.resources.potions + 1), "the repaired counter survives arithmetic");
+  ok(Array.isArray(r.hero.resources.potions), "the repaired stack survives .push()");
+  r.hero.resources.potions.push("healing-potion-minor");
+  eq(r.hero.resources.potions.length, 1, "…and picking up a potion doesn't throw");
 
   // Prove the bug is real, not theoretical: the same field without repair.
   const raw = { potions: undefined };
-  ok(Number.isNaN(raw.potions + 1), "…and that an unrepaired one does not");
+  let threw = false;
+  try { raw.potions.push("healing-potion-minor"); } catch (e) { threw = true; }
+  ok(threw, "…and that an unrepaired one throws instead");
 }
 {
   const r = repairHero({ hp: 40, resources: {} });
   eq(r.resources.slots, { 1: 0, 2: 0 }, "a missing slots block repairs (the party panel indexes it on render)");
+}
+{
+  eq(repairHero({ hp: 10, resources: { potions: ["healing-potion-minor", "healing-potion-lesser"] } }).resources.potions,
+    ["healing-potion-minor", "healing-potion-lesser"], "an array of potion ids passes through repair unchanged");
+  eq(repairHero({ hp: 10, resources: { potions: [1, "healing-potion-lesser", null] } }).resources.potions,
+    ["healing-potion-lesser"], "repair drops non-string entries from the potion stack");
+  eq(repairHero({ hp: 10, resources: { potions: 3 } }).resources.potions,
+    ["healing-potion-minor", "healing-potion-minor", "healing-potion-minor"],
+    "a legacy count of 3 repairs to three minor potions, since minor was the only potion the old counter could track");
 }
 {
   eq(repairHero({ resources: {} }).hp, null, "an unrecorded hp becomes null, not NaN");

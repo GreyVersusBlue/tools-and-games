@@ -195,39 +195,83 @@ A pillar is a map square whose legend entry names a lore id (§8). Reading one i
 
 ---
 
-## 8. `area`
+## 8. `areas`, `startArea`, `areaOrder`
+
+The pack can hold more than one area now — round two's actual change, not a plan for one. `area`
+(singular) no longer exists; `areas` is an object keyed by area id, `startArea` names the one the
+PC begins in, and `areaOrder` (optional; defaults to the object's own key order) is the sequence
+a session or a test walking the whole adventure should expect to visit them in.
 
 ```json
-"area": {
-  "id": "vault", "name": "The Vault Beneath the Ascendant Court",
-  "legend": {
-    "#": { "tile": "wall" },
-    ".": { "tile": "floor" },
-    "G": { "tile": "gate" },
-    "T": { "tile": "treasure" },
-    "P": { "tile": "pillar", "lore": "bequest" },
-    "@": { "tile": "floor", "spawn": "pc" },
-    "e": { "tile": "floor", "creature": "shattered-sentinel" },
-    "k": { "tile": "floor", "creature": "vault-keeper", "wakesOn": "gate-opened" }
+"startArea": "vault",
+"areaOrder": ["vault", "sanctum"],
+"areas": {
+  "vault": {
+    "name": "The Vault Beneath the Ascendant Court",
+    "legend": {
+      "#": { "tile": "wall" },
+      ".": { "tile": "floor" },
+      "G": { "tile": "gate" },
+      "V": { "tile": "stairs", "to": { "area": "sanctum", "x": 6, "y": 8 } },
+      "P": { "tile": "pillar", "lore": "bequest" },
+      "@": { "tile": "floor", "spawn": "pc" },
+      "e": { "tile": "floor", "creature": "shattered-sentinel" },
+      "k": { "tile": "floor", "creature": "vault-keeper", "wakesOn": "gate-opened" }
+    },
+    "rows": ["######", "#.@..#", "######"]
   },
-  "rows": ["######", "#.@..#", "######"]
+  "sanctum": {
+    "name": "The Reliquary",
+    "legend": { "#": { "tile": "wall" }, ".": { "tile": "floor" }, "T": { "tile": "treasure" } },
+    "rows": ["######", "#....#", "######"]
+  }
 }
 ```
 
-`tile` is `floor`, `wall`, `gate`, `pillar` or `treasure`. Walls and pillars block movement and
-sight; a gate blocks both until it opens; treasure is walkable.
+`tile` is `floor`, `wall`, `gate`, `pillar`, `treasure` or `stairs`. Walls and pillars block
+movement and sight; a gate blocks both until it opens; treasure and stairs are both walkable and
+sight-transparent — a stairway is a floor tile with a destination attached, nothing more.
 
 A legend entry may also carry:
 
-* `spawn: "pc"` — where the PC starts. Exactly one square must have it.
+* `spawn: "pc"` — where the PC starts. Required in the **start area only** — `content.startArea`
+  names it, and that is the only area a fresh run ever needs to spawn into. An area reached
+  purely by stairs (the sanctum, today) has no spawn and does not need one; its `pcSpawn` loads as
+  `null`.
 * `lore: "<lore id>"` — makes a `pillar` readable.
 * `creature: "<creature id>"` — places one. Repeat the character to place several of the same
-  kind; each gets its own identity from its coordinates.
+  kind; each gets its own identity from its coordinates and its area (two areas may reuse the
+  same creature id at the same local coordinates without colliding — see below).
 * `wakesOn: "notice"` (default) or `"gate-opened"` — `gate-opened` keeps a creature dormant no
   matter how close you get, until the gate opens.
+* `to: { "area": "<area id>", "x": <int>, "y": <int> }` — required on a `stairs` tile. Names the
+  destination area and the exact square the PC arrives on there. The destination area does not
+  need to exist earlier in the file — validated in a pass after every area is parsed, so a
+  stairway is free to point forward.
 
-Rules the loader enforces: every row the same length, every character in the legend, every
-`lore` and `creature` reference resolvable, at least one PC spawn, at least one creature.
+Rules the loader enforces, per area: every row the same length, every character in the legend,
+every `lore` and `creature` reference resolvable, at least one creature, a `pc` spawn if (and only
+if) this is the start area. Across areas: `startArea` must name a real one, `areaOrder` may only
+list real ones, and every `stairs` destination must name a real area and land inside its bounds.
+
+**A creature's saved identity includes its area.** The key game.js and save.js both use is
+`"<areaId>:<creatureId>@<x>,<y>"`, not just `"<creatureId>@<x>,<y>"` — the area has to be in it or
+two areas placing the same creature id at the same local coordinates would collide. A round-one
+save predates this and has no area prefix; `save.js`'s `repair` recognises a colon-less legacy key
+and rewrites it onto the real placement rather than spawning a duplicate. If you are reading this
+because you are about to touch that migration: it only works because a creature's key has never
+been anything but its *original placement* coordinates, even after it moves — do not "fix" the key
+to track current position, or the migration (and the underlying identity scheme) breaks.
+
+**Every creature in every area exists in a fresh run's state from the start**, not just the one
+the PC is standing in — a construct in a room whose door is not open yet still has to be there,
+dormant, the moment a save from that far along gets built. `living()` and `awake()` are scoped to
+`run.areaId`: a creature belongs to the room its body is in, whatever else has state.
+
+**Fog of war is one bitfield per area, not one for the whole pack.** `run.fog` is an object keyed
+by area id; `game.js` banks the current area's bitfield under its own id the instant a stairway
+fires and loads the destination's (or an empty one, on a first visit) in its place. A round-one
+save's single `explored` string migrates into this shape under its own `areaId` in `repair`.
 
 **Author the map as text and read it.** The board being legible in the file is why the two
 sentinels' positions were easy to reason about, and why moving the Keeper from row 3 to row 1 —
@@ -247,7 +291,7 @@ a one-character edit — was a balance change worth measuring.
   "restoreNarrative": "…"
 },
 "treasure": {
-  "requiresDown": ["vault-keeper"],
+  "requiresDown": ["vault-keeper", "reliquary-warden"],
   "blockedHint": "…",
   "title": "…", "body": ["…"]
 },
@@ -265,8 +309,10 @@ delve is three encounters on one wizard's resources, which measured at 10.7% win
 `restoreNote` in the shipping pack before you take it out.
 
 `treasure.requiresDown` lists creatures that must be dead before standing on a treasure square
-wins. Without it the boss is skippable: the casket is fifteen feet inside the door and one
-Stride away.
+wins — one entry per boss in the way, whichever area each stands in. `requiresDown` is checked
+against `run.creatures` as a whole, not the current area, precisely so a boss in an earlier area
+(the Keeper) can still gate a casket in a later one (the sanctum) without either of them knowing
+about the other.
 
 `intro.narrative` and `intro.goal` are the first two log entries of a new run. `intro.hint` is
 the opening hint line.
@@ -289,6 +335,16 @@ not what a reading of the stat blocks would have predicted. One was not a balanc
 the harness turned up a bug where killing the boss while standing on the casket never triggered
 the win, which was costing a third of all runs.
 
+**Round two added a fourth mandatory fight (the sanctum's reliquary warden, §11) and it moved the
+win rate again: 59.3% → 53.6%.** Measured both ways — the warden at full sentinel strength landed
+41.5%, just under the 45% floor, which is why it shipped weaker (§5's note on that creature has the
+exact numbers). The harness caught a second bug this round that was not a balance problem either:
+a Stride landing exactly on a stairway mid-combat never rechecked the stairs once the fight ended,
+which read in `balance.mjs` as a wall of `"unfinished"` runs at full HP — not a low win rate, a
+stall. §11 has the fix. Same lesson as round one's casket bug, applied to a different standing
+condition: count first, and a `playThrough()` that stalls is telling you something a win-rate
+number alone would hide.
+
 Numbers a reasonable pack should hit:
 
 | Reading | Healthy |
@@ -304,21 +360,50 @@ that stat-block arithmetic hides.
 
 ---
 
-## 11. Adding a second area
+## 11. A second area, worked: the sanctum
 
-Not supported yet, and it is the biggest single thing this content format is missing.
+Round two shipped this. `areas` is real (§8), `stairs` is a real tile kind, and the shipping pack
+uses both: past the gate, where the Keeper used to stand directly over the casket, two `V` squares
+now lead to `sanctum` — a small room with its own guardian (`reliquary-warden`, deliberately weaker
+than a sentinel — see its `note`) and the casket the Keeper used to guard directly. Read
+`vault.json`'s `areas.sanctum` alongside this section; it is the worked example, and if the two
+disagree the file is right.
 
-`area` is one object, not an array, and there is no transition trigger, no per-area save slice
-and no "which area am I in" in the run state (`areaId` is written and validated but only ever
-holds one value). The pieces that would need to change:
+**What actually changed, for a session adding a third area on top of this one:**
 
-1. `content.js` — parse `areas: []`, keyed by id.
-2. `game.js` — `run.areaId`, a `world` per area, and a `stairs` tile kind whose legend entry
-   names a destination area and square.
-3. `save.js` — `repair` currently discards the fog bitfield when its length does not match the
-   one area; it would need a bitfield per visited area.
-4. `render.js` and `ui.js` — rebuild on transition. The renderer already measures itself every
-   frame, so a new grid size needs no extra work there.
+1. `content.js` parses `areas` (plural, keyed by id) instead of a single `area`, plus `startArea`
+   and `areaOrder`. A `stairs` legend tile needs a `to: {area, x, y}`, validated in a pass after
+   every area is parsed (so a stairway may point at an area declared later in the file).
+2. `game.js` keeps `area` and `world` as `let`, not `const` — `transitionTo()` reassigns both when
+   the PC steps onto a stairway, and every function in the module reads them fresh through the
+   closure rather than a value captured once at boot. Both are exposed to callers as *getters*
+   (`get area()`, `get world()`), not plain fields, for the same reason: a plain field copied out
+   once at construction would go stale the instant a transition happened.
+3. `run.creatures` holds every creature from every area from the start of a fresh run (see §8),
+   each tagged with its own `area`; `living()`/`awake()` filter to `run.areaId`. `run.fog` is a map
+   of area id to bitfield, not a single string.
+4. `save.js`'s `repair` resolves `s.areaId` first (falling back to `startArea` if the pack no
+   longer defines it), then clamps the PC and every creature against *its own* area rather than a
+   single shared one, and migrates a round-one save's key format and single `explored` string into
+   the new shapes (§8 has the details — read them before touching either migration).
+5. `render.js` and `ui.js` read the current area through `game.area` on every frame or call, not a
+   value destructured once when the module was set up. `render.js` additionally has to force a
+   full `syncSize()` recompute on a transition even when the canvas's own CSS box has not changed
+   size, since two areas can differ in grid dimensions without the browser window moving at all.
+6. **The single easiest way to get this wrong**: `checkTreasure()` was already a "standing
+   condition, not an event" (§10's whole reason for existing) — checked on every step, on a
+   creature's death, and when an encounter ends, because a Stride mid-combat can land the PC on
+   the treasure square with nothing left to re-trigger it. `checkStairs()` needs exactly the same
+   treatment and shipped without it at first: a Stride mid-fight can equally land the PC on a
+   stairway, `checkStairs()` correctly refuses to fire while `turn.mode` is still `"combat"`, and
+   then *nothing rechecked it once the fight ended* — the run measured a wall of `"unfinished"`
+   results in `balance.mjs` (not a low win rate; a chunk of full-health runs that never resolved at
+   all) until `endCombat()` and `begin()` both learned to ask `checkStairs()` the same question
+   `checkTreasure()` already knew to ask.
 
-Everything else — creatures, commands, items, lore, the gate and treasure conditions — is
-already keyed and reusable across areas.
+**What did not need to change at all**: creatures, commands, items, lore, and the gate/treasure
+conditions are already keyed by id and reusable across areas with zero modification — a second
+area's guardian is a normal entry in `creatures`, not a new kind of thing.
+
+A third area would cost the same six items above and nothing more structural — there is no per-area
+count baked in anywhere that a third area would have to unwind.

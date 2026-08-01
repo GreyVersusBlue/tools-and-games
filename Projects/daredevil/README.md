@@ -1,12 +1,21 @@
-# Daredevil — supporting files
+# Daredevil
 
-The game itself is still one file: **`Projects/daredevil_r4.html`**. This folder
-holds the parts that could not live inside it — a save module Node can import,
-vendored fonts, and a test suite.
+The game. Round 1 (session 9) made it completable for the first time and
+added a save, vendored fonts and a test suite alongside the still-monolithic
+`Projects/daredevil_r4.html`. Round 2 did the restructure round 1 deliberately
+deferred: the engine and the story are now separate ES modules under `js/`,
+and `index.html` here is the entry point. `Projects/daredevil_r4.html` is now
+a redirect stub (matching locked decision #46's pattern) pointing here — see
+`Claude Prompts/notes/13-daredevil-notes.md` for the full account.
 
 ```
 daredevil/
-  js/save.js        the save format, on top of assets/js/gvb-save.js
+  index.html        entry point — head, CSS, body markup, one module script tag
+  js/
+    state.js         the leaf: GS, STAT_LABELS, N/D/C/NF — see its own header for why
+    scenes.js        the story, as data — SCENES, 208 KB, 62% of the old monolith
+    engine.js        the runtime — screens, hubs, minigames, epilogue, boot
+    save.js          the save format, on top of assets/js/gvb-save.js
   fonts/            7 woff2, 100.3 KB — see fonts/README.md
   test/
     drive-daredevil.mjs   how to get into the game and through it, written once
@@ -58,3 +67,10 @@ global any more; this is the deliberate door.
 The stunt run's `tele` object also carries `w` (angular velocity). It is a debug
 channel nothing in the game reads, and `autopilot()` cannot steer a landing
 without it — a proportional loop on angle alone swings straight through the band.
+
+Work the Crowd (round 2, `js/engine.js`'s `createCrowd()`) carries the same kind
+of hook for the same reason: `mg.correctCall`, the id of the card that matches
+the current crowd mood. It is a "choices" minigame, not a "pedals" one, so
+there is no `tele` to read a phase off of — without `correctCall`, `autopilot()`
+has nothing to click and the game self-resolves into FAIL on its own per-round
+timeout every time.

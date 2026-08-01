@@ -14304,8 +14304,17 @@ function renderExportCanvas() {
     vizCtx = savedVizCtx;
   }
 
-  return { dataURL: off.toDataURL('image/png'), w: W, h: H };
+  return { dataURL: off.toDataURL('image/png'), canvas: off, w: W, h: H };
 }
+
+// R62: PDF export quality. The export canvas is painted with an opaque
+// background (#eef2f7) before anything else draws, so there is no alpha
+// channel a JPEG could lose — safe to recompress for the PDF path even
+// though the PNG export next to it stays lossless. 0.82 held up visually
+// against the map's flat fills and thin lines at print scale (4x) while
+// cutting the file by roughly 40x; see the notes file for the fixture
+// before/after.
+const PDF_EXPORT_JPEG_QUALITY = 0.82;
 
 function exportVizAsPNG() {
   if (!vizCanvas) { showToast('Canvas not ready.', 'warn'); return; }
@@ -14328,7 +14337,7 @@ function exportVizAsPDF() {
   if (!vizCanvas) { showToast('Canvas not ready.', 'warn'); return; }
   showToast('Exporting…', 'info');
   try {
-    const { dataURL, w, h } = renderExportCanvas();
+    const { canvas, w, h } = renderExportCanvas();
     if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
       showToast('PDF export unavailable — try PNG instead.', 'warn');
       return;
@@ -14338,7 +14347,10 @@ function exportVizAsPDF() {
     const mmH = h * 0.264583;
     const orientation = w > h ? 'landscape' : 'portrait';
     const doc = new jsPDF({ orientation, unit: 'mm', format: [mmW, mmH] });
-    doc.addImage(dataURL, 'PNG', 0, 0, mmW, mmH);
+    // JPEG, not the uncompressed PNG renderExportCanvas() also returns — see
+    // PDF_EXPORT_JPEG_QUALITY above for why that's safe here.
+    const jpegDataURL = canvas.toDataURL('image/jpeg', PDF_EXPORT_JPEG_QUALITY);
+    doc.addImage(jpegDataURL, 'JPEG', 0, 0, mmW, mmH);
     const schoolName = (AppState.settings.schoolName || 'School').replace(/[^\w\s-]/g, '').trim() || 'School';
     doc.save(`School Layout — ${schoolName}.pdf`);
     showToast('Saved as PDF', 'success');
@@ -17621,9 +17633,9 @@ window.wiComputeDiff    = wiComputeDiff;
     <div class="panel">
       <div class="toolbar">
         <div class="mode" role="tablist">
-          <button id="br-mTeacher" class="on" onclick="brSetMode('teacher')">By Teacher</button>
-          <button id="br-mGroup"   onclick="brSetMode('group')">By Student Group</button>
-          <button id="br-mMap"     onclick="brSetMode('map')">Building Map</button>
+          <button id="br-mTeacher" class="on" role="tab" aria-selected="true"  onclick="brSetMode('teacher')">By Teacher</button>
+          <button id="br-mGroup"   role="tab" aria-selected="false" onclick="brSetMode('group')">By Student Group</button>
+          <button id="br-mMap"     role="tab" aria-selected="false" onclick="brSetMode('map')">Building Map</button>
         </div>
         <div class="br-field" id="br-searchField">
           <label id="br-searchLabel" for="br-search">Find a teacher</label>
@@ -18199,6 +18211,9 @@ function brSetMode(mo) {
   document.getElementById('br-mTeacher').classList.toggle('on', mo==='teacher');
   document.getElementById('br-mGroup').classList.toggle('on',   mo==='group');
   document.getElementById('br-mMap').classList.toggle('on',     mo==='map');
+  document.getElementById('br-mTeacher').setAttribute('aria-selected', mo==='teacher');
+  document.getElementById('br-mGroup').setAttribute('aria-selected',   mo==='group');
+  document.getElementById('br-mMap').setAttribute('aria-selected',     mo==='map');
   const sf = document.getElementById('br-searchField');
   if (mo==='map') {
     sf.style.display='none';
@@ -18638,9 +18653,9 @@ function brBuildPublishedMarkup(school, dateStr) {
     <div class="panel">
       <div class="toolbar">
         <div class="mode" role="tablist">
-          <button id="br-mTeacher" class="on" onclick="brSetMode('teacher')">By Teacher</button>
-          <button id="br-mGroup"   onclick="brSetMode('group')">By Student Group</button>
-          <button id="br-mMap"     onclick="brSetMode('map')">Building Map</button>
+          <button id="br-mTeacher" class="on" role="tab" aria-selected="true"  onclick="brSetMode('teacher')">By Teacher</button>
+          <button id="br-mGroup"   role="tab" aria-selected="false" onclick="brSetMode('group')">By Student Group</button>
+          <button id="br-mMap"     role="tab" aria-selected="false" onclick="brSetMode('map')">Building Map</button>
         </div>
         <div class="br-field" id="br-searchField">
           <label id="br-searchLabel" for="br-search">Find a teacher</label>

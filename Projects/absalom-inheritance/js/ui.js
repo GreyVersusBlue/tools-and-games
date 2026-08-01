@@ -354,7 +354,7 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
    * ------------------------------------------------------------------ */
   function act(x, y) {
     if (game.mode === "over" || pumping) return;
-    if (x < 0 || y < 0 || x >= content.area.width || y >= content.area.height) return;
+    if (x < 0 || y < 0 || x >= game.area.width || y >= game.area.height) return;
 
     if (armed && fireAt(x, y)) return;
 
@@ -398,17 +398,21 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     for (const c of game.living()) {
       if (game.visible.has(c.x + "," + c.y)) out.push({ x: c.x, y: c.y, why: game.def(c).name });
     }
-    for (const key of Object.keys(content.area.pillars)) {
+    for (const key of Object.keys(game.area.pillars)) {
       const [x, y] = key.split(",").map(Number);
       if (!game.explored.has(key)) continue;
-      if (game.run.loreRead.includes(content.area.pillars[key])) continue;
-      out.push({ x, y, why: content.lore[content.area.pillars[key]].title });
+      if (game.run.loreRead.includes(game.area.pillars[key])) continue;
+      out.push({ x, y, why: content.lore[game.area.pillars[key]].title });
     }
-    for (let y = 0; y < content.area.height; y++) {
-      for (let x = 0; x < content.area.width; x++) {
+    for (let y = 0; y < game.area.height; y++) {
+      for (let x = 0; x < game.area.width; x++) {
         if (game.tileAt(x, y) !== TILE.TREASURE) continue;
         if (game.explored.has(x + "," + y)) out.push({ x, y, why: "the casket" });
       }
+    }
+    for (const key of Object.keys(game.area.stairs)) {
+      const [x, y] = key.split(",").map(Number);
+      if (game.explored.has(key)) out.push({ x, y, why: "a stairway" });
     }
     return out;
   }
@@ -444,8 +448,8 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     if (STEP[ev.key]) {
       ev.preventDefault();
       const [dx, dy] = STEP[ev.key];
-      const nx = Math.max(0, Math.min(content.area.width - 1, cursor.x + dx));
-      const ny = Math.max(0, Math.min(content.area.height - 1, cursor.y + dy));
+      const nx = Math.max(0, Math.min(game.area.width - 1, cursor.x + dx));
+      const ny = Math.max(0, Math.min(game.area.height - 1, cursor.y + dy));
       cursor = { x: nx, y: ny };
       renderer.setCursor(cursor);
       if (armed && content.commandById[armed].kind === "cone") renderer.setAim(cursor);
@@ -485,6 +489,7 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     if (t === TILE.WALL) { announce("Wall."); return; }
     if (t === TILE.GATE) { announce(game.run.gateOpen ? "The open gate." : "The sealed gate."); return; }
     if (t === TILE.TREASURE) { announce("The casket."); return; }
+    if (t === TILE.STAIRS) { announce("A stairway onward."); return; }
     if (x === game.run.pc.x && y === game.run.pc.y) { announce("You are here."); return; }
     announce("Floor.");
   }
@@ -518,6 +523,16 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     if (ev.type === "end") showEnd();
     if (ev.type === "hint") $("hint").textContent = ev.text;
     if (ev.type === "woke" || ev.type === "slept" || ev.type === "gate") refresh();
+    if (ev.type === "area") {
+      // A stairway swaps the whole board out from under the player. Any armed
+      // command was aimed at the room they just left, and the keyboard cursor
+      // has to land on the PC's new square rather than wherever it was parked.
+      disarm();
+      cycle = -1;
+      cursor = { x: game.run.pc.x, y: game.run.pc.y };
+      renderer.setCursor(cursor);
+      refresh();
+    }
   });
 
   /* ------------------------------------------------------------------ *

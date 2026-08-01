@@ -1,4 +1,248 @@
-# Name Picker — session notes
+# Name Picker — session notes (round 2)
+
+Round 1's own notes are below the `---` split. This round was two specific tasks
+off round 1's own "Next session" list: build the browser suite, and decide
+`np_history`'s day boundary. Both done. Nothing else in this file's own scope
+needed touching.
+
+## Student data
+
+Still no real student names anywhere. `test/browser.mjs` adds one more fabricated
+fixture — the same 28-name `CLASS_OF_28` list `test/smoke.mjs` already used
+(Aiden Alvarez, Zoe Zaman, etc.) — rather than inventing a second one, so this
+project's fixtures don't multiply. I did not re-check the full git history myself
+this round; round 1 already did (`git show ef8f69c`) and nothing in this session
+added, exported, or logged a real name anywhere.
+
+What the tool stores and where is unchanged from round 1: thirteen `np_` keys in
+`localStorage`, nothing else, zero network requests after load (re-confirmed:
+`npm run tools` still reports 0 offsite requests refused for this page). The
+🔒 Data tab's single "Erase All Student Data" button still clears exactly the six
+keys with names in them and leaves the other seven alone — verified fresh this
+round in `test/browser.mjs`'s erase block, which snapshots every `prefs` key
+before erasing and asserts each one is byte-identical after, not just "still
+there."
+
+One change worth calling out under this heading specifically: `np_history`
+entries now carry a `date` field (below). That field is a calendar date, not a
+name, and it does not change which of the thirteen keys is student data — history
+was already in the `records` group and still is.
+
+## What changed
+
+### Task one — `Tools/name-picker/test/browser.mjs` (new, 44 checks)
+
+Round 1 flagged this as the highest-value gap: `npm run games` drives seven games
+and zero tools, `Tools/board-check/tools.mjs` opens this page headless and checks
+title/offsite/console but nothing clicks anything. This is that suite, scoped to
+this project's own `test/` folder rather than `Tools/board-check/` (which prompt
+21 owns) — same pattern as `Tools/seating-chart/test/drive-seating.mjs` and
+`Projects/integer-foundry/test/browser.mjs`, both of which already import
+`board-check/harness.mjs` by relative path from outside that folder. Headless: this
+tool needs no WebGL or pointer lock, so it never has to fight `npm run
+games`/`play`/`previews` for the screen the way a headed suite would.
+
+One continuous run through the real page:
+
+- Load 28 names, save them as a roster, confirm the Data tab's census and its
+  13-row key table.
+- Four rounds of multi-pick (7 at a time) through real clicks — not the pick
+  module directly — then read `np_history`/`np_stats` off disk.
+- Export: hook `URL.createObjectURL` and neuter the anchor click (per the prompt's
+  own instruction) rather than using Playwright's `download` event, so this stays
+  portable to the puppeteer engine `harness.mjs` uses on Linux. Capture both the
+  envelope and the `a.download` filename.
+- Erase: snapshot every prefs key before, assert it is unchanged after, assert
+  every student-data key is `null`.
+- Import: a real file chooser (`page.waitForFileChooser`/`waitForEvent
+  ('filechooser')`, engine-aware, same split as `play-games.mjs`'s `setFiles`),
+  not a shortcut around it. Assert the roster is back immediately (before any
+  reload), then reload and assert the tool's own UI — not just `localStorage` —
+  picked the restored roster back up.
+- Two distinct corrupt-roster shapes, in separate fresh browser contexts so
+  neither pollutes the other's storage: a truncated JSON blob (round 1's own bug),
+  and a roster whose value is a number rather than an array (round 1's *second*,
+  distinct bug in the same function — `loadRosterByName`'s `.join('\n')`).
+
+I put both corrupt-roster bugs back on purpose rather than trusting the fix from
+memory (locked decision #34) — details under "What I verified."
+
+**One thing this uncovered that round 1's notes get slightly wrong:** the
+truncated-JSON case is now guarded twice, not once. Prompt 21 already applied
+round 1's own shared-file request — `gvb-save.js`'s `load()` now wraps
+`store.getItem(key)` in its own `try/catch` (see the current file; round 1's notes
+still describe this as an open request). So a syntactically-broken `np_rosters`
+never even reaches `np-store.js`'s `fix()` any more — `load()` itself returns
+`null` and the key falls back to its default. The non-array-value case (valid
+JSON, wrong shape) is the one that still depends solely on this project's own
+`fix()`, and that's the one I actually sabotaged to prove the guard matters (see
+below) — sabotaging the JSON-syntax path no longer reproduces a crash, because
+the shared module already stops it first.
+
+### Task two — `np_history` gets a `date` field; the tab clears on the first pick of a new day
+
+The History tab has said "picked this session" (banner) and "No picks yet today"
+(empty state) since round 1, and neither was true: the key was never cleared, so
+after the first day it silently accumulated last week's picks under a label that
+implied otherwise. `repair` already caps it at 500 entries, which bounds it but
+doesn't fix the label.
+
+Decision: clear on the first pick of a new calendar day, not on load and not
+never. On load would mean a teacher reopening the page mid-morning loses the
+first period's picks the moment second period's roster loads — the "today"
+framing is about a teaching day, not a browser session, and this project's own
+groups already treat a fresh roster load as a fresh round (`rotation=freshRotation()`
+in `loadNamesFromInput()`) rather than a fresh page. "Never" is the status quo and
+is what makes the label false. First-pick-of-the-day is the smallest change that
+makes "No picks yet today" literally true without a teacher doing anything.
+
+Implementation: three near-identical `history.push(...); incrementStats(...)` call
+sites (`selectWinner`, `multiPick`, `selectTournamentWinner`) collapsed into one
+`recordPick(name)` (`Tools/Name Picker.html`, next to `saveHistory`/`loadHistory`).
+It stamps every entry with today's date and clears `history` first if the last
+entry's date differs from today. `np_history`'s `fix()` in `np-store.js` now
+carries an optional `date` field through repair — legacy entries with none just
+never trigger the clear, they still load. Also relabeled the History tab's banner
+from "All names picked this session" to "All names picked today," since "session"
+was never really true either (a reload doesn't clear it, only a new day or the
+existing "Clear pick history" button does).
+
+Verified by hand in a real browser (not just the suite): seeded a history entry
+dated yesterday, reloaded — entry survived untouched, because no pick had
+happened yet. Then clicked Pick — the yesterday entry was gone, replaced by a
+single today-dated entry. Exactly the boundary the decision describes.
+
+### Files touched
+
+| Path | What |
+| --- | --- |
+| `Tools/Name Picker.html` | new `recordPick()` helper; three call sites collapsed into it; History banner reworded |
+| `Tools/name-picker/np-store.js` | `history`'s `fix()` carries an optional `date` field |
+| `Tools/name-picker/test/smoke.mjs` | +6 assertions for the `date` field (207 → 213) |
+| `Tools/name-picker/test/browser.mjs` | new, 44 checks |
+| `Tools/name-picker/test/.gitignore` | new — `shots/`, same as the other project `test/` folders |
+| `Tools/name-picker/README.md` | documents `browser.mjs`, the `date` field, updated assertion count |
+
+Every storage key: unchanged from round 1's table except `np_history`, which
+gained one optional field (`date`) inside its existing JSON array — same key,
+same wire format, no migration needed. No key was added or removed.
+
+## What I verified
+
+**`node Tools/name-picker/test/smoke.mjs` → 213 passed, 0 failed** (was 207; +6 for
+the `date` field: a well-formed date round-trips, a malformed one becomes `''` not
+the garbage string, a missing one is the same as malformed, and legacy fixtures
+with no `date` at all still load clean).
+
+**`node Tools/name-picker/test/browser.mjs` → 44 passed, 0 failed**, twice in a row
+(checked it wasn't flaky on the timer-driven multi-pick animation). Full beats:
+
+```
+picks: 28   distinct: 28   duplicates: 0   back-to-back: 0
+every history entry dated today
+every student's pick count: 1 (28 students tracked)
+export: name-picker-roster-backup-YYYY-MM-DD.json, format gvb-save, game
+        name-picker, version 3, 13 keys, no "__v" anywhere in the file
+erase: all 6 student-data keys null, all 6 prefs keys byte-identical to before
+import: roster back immediately (pre-reload), then a reload shows the tool's own
+        UI (namesInput, #countDisplay, #rosterList) picked it up, not just
+        localStorage
+corrupt np_rosters (truncated JSON): #countDisplay stays "3 names in pool",
+        #rosterList says "No saved rosters yet", 0 page errors
+corrupt np_rosters (value is a number, not an array): the good roster beside it
+        survives with its full count, the bad one is silently dropped, 0 page
+        errors
+```
+
+**Reintroduced both corrupt-roster bugs on purpose (locked decision #34), not
+trusted from memory:**
+
+- Removed `boxed()`'s `try/catch` around `JSON.parse` in `np-store.js` — the
+  truncated-JSON test still passed. That's the finding above: this path is now
+  guarded one layer up, in `gvb-save.js`'s own `load()`, which prompt 21 already
+  patched. Reverted the change (confirmed `git diff` shows nothing left) once I
+  understood why it didn't reproduce.
+- Replaced `rosters`' `fix()` with `v => v` (no repair at all) — **this one broke
+  immediately**: `pageerror: list.forEach is not a function`, in the same
+  function round 1 named (`loadRosterByName`'s `.join`/`.forEach` on a non-array
+  value). Reverted; suite back to 44/44.
+
+**Day-boundary clear, by hand in a real browser** (`Tools/board-check` static
+server, a spare port since another session had the usual one in use): seeded
+`np_history` with an entry dated the day before, reloaded — entry present and
+unchanged, `#countDisplay` correct. Clicked Pick once — the old entry was gone,
+replaced by a single entry dated today. Confirmed the History tab's banner reads
+"All names picked today" in the live DOM.
+
+**`cd Tools/board-check && npm run tools` → 18 checks, 0 failed**, including this
+page: title non-empty, no offsite requests refused, no console errors.
+
+**`node Tools/name-picker/test/blocked-storage.html` → 10 of 10 pass**, checked by
+hand in a real browser this round (not assumed from round 1's notes), since I
+touched `np-store.js`'s storage-adjacent code (the `history` descriptor's `fix`).
+Still needs a real browser — a throwing `localStorage` property getter can't be
+reproduced in plain Node.
+
+**`cd Tools/board-check && npm run check` → 346 units checked, 1 broken.** The one
+break is `newindex.html` at the repo root hotlinking Google Fonts — not a file
+this project touches, not tracked by git in this working copy, looks like another
+session's in-progress draft of a board replacement. Flagging it since it showed
+up in a check I ran, not fixing it — outside my boundary (index.html is prompt
+21's, and this isn't even that file).
+
+**`npm run social:check` → failed to parse: "only parsed 17 notices out of
+index.html — the notice markup has changed shape."** Also not this project;
+`index.html` is being edited by another session as I ran this. Re-run it yourself
+before trusting either of these two numbers — moving target, same caveat round
+1's notes gave for the unit count.
+
+`grep -c "fonts.googleapis.com\|fonts.gstatic.com" "Tools/Name Picker.html"` → 0,
+unchanged.
+
+## Shared-file requests
+
+None new. Both of this project's round-1 requests to `assets/js/gvb-save.js` are
+already applied (locked decisions #48 and #49) — confirmed by reading the current
+file, not by trusting the old notes, since that's what let me find the
+guarded-twice finding above.
+
+## Deliberately not done
+
+**The three "worth a look if session left over" items from round 1's own list.**
+Session went entirely into the two assigned tasks plus verifying them properly
+(including the sabotage-and-revert check, which took longer than either task's
+own code). Untouched, in the same state round 1 left them:
+
+- **Multiple rosters under real use** — `np_rosters` handles it structurally
+  (`test/browser.mjs` only exercises one roster at a time, same as round 1's own
+  browser verification did).
+- **Mobile and accessibility re-verification** — round 1 already checked 375×812
+  and `prefers-reduced-motion`; I did not re-run either, and did not touch any CSS
+  or layout this round, so there is nothing here that could have regressed.
+- **`leastPicked()` wiring** — still written, still tested, still unused. Fair
+  rotation still makes it mostly redundant.
+
+**Did not investigate `newindex.html` or the `social:check` parse failure beyond
+noting them.** Neither is this project's file or this project's job — see above.
+
+**Did not persist the fair-rotation round across a reload.** Same call round 1
+made: it needs an answer to "is a reload the same period or the next one," not
+code, and nobody's asked that question yet.
+
+## Next session
+
+1. **Whoever owns `index.html`** (prompt 21) should know `npm run check` and
+   `npm run social:check` both currently fail because of files at the repo root
+   that aren't this project's — see "What I verified" above for both.
+2. **Multiple-roster real-use check and mobile/accessibility re-verification**,
+   carried over from round 1's own list, untouched this round.
+3. **`leastPicked()`** — still a two-line wiring job if anyone wants a "who's due"
+   display.
+4. **The rotation-persistence question**, if a teacher ever says they want it.
+
+---
+
+# Name Picker — session notes (round 1, preserved below)
 
 ## Student data
 
@@ -602,6 +846,9 @@ Worked around in `np-store.js`'s `boxed()`, which try/catches `getItem`,
 `removeItem` and the `__memoryOnly` getter. Six projects read `gvb-save.js`, so I
 did not edit it.
 
+**Round 2 update: applied.** The current `gvb-save.js` already has this exact guard
+(confirmed by reading the file, not the old note) — this request is closed.
+
 ### 2. `mountSaveBar` cannot set the export filename
 
 `mountSaveBar`'s export button calls `slot.exportToFile(getState())` with no name,
@@ -639,6 +886,9 @@ Worked around by keeping the tool's own two buttons wired to
 `reset` button is mounted anywhere, per the prompt's warning — this tool has two
 erase controls of its own and a third would be the exact footgun `buttons` exists to
 prevent.
+
+**Round 2 update: this tool still doesn't need the save bar** (its own two buttons
+still do the job), so whether this landed elsewhere wasn't re-checked this round.
 
 ### Not a request, but worth recording
 
@@ -709,42 +959,18 @@ achievements.** All working, none of them storage or fairness.
 
 ---
 
-## Next session
+## Next session (round 1's own list — see round 2's list above for what's current)
 
 Ordered by value per effort.
 
-1. **Decide `np_history`'s day boundary** — small, and it fixes a tab that currently
-   lies about what it shows. The decision is one line either way; somebody just has
-   to make it.
+1. ~~**Decide `np_history`'s day boundary**~~ — done in round 2, above.
 2. **Rename `Name Picker.html` to `name-picker.html` and update the board `href`**,
    from a session that owns `index.html` (prompt 21's territory). Both edits in one
    commit. My folder is already `Tools/name-picker/` so the pairing is done; this is
    just the page and the link.
-3. **The two `gvb-save` requests above** — a one-line `try` in `load()` and a
-   `filename` handler on `mountSaveBar`. Both tiny, both applicable blind, and the
-   `load()` one closes a gap between the module and its own documented contract.
-4. **A browser suite for the tools.** `play-games.mjs` drives seven games and zero
-   tools, which is half of why the font hotlink went unnoticed. This tool is ready
-   for one: `data-tab` attributes on every tab, and `#eraseStudentData`,
-   `#exportRosters`, `#importRostersBtn`, `#fairRotation`, `#census`, `#keyTable`
-   ids to drive and assert against. The beats I ran by hand this session all
-   transcribe directly, and none needed engine knowledge:
-
-   - export by hooking `URL.createObjectURL` and neutering
-     `HTMLAnchorElement.prototype.click`, then asserting the envelope and the
-     `a.download` name (v7 §3)
-   - import by handing a `File` to `store.bundle.importFromFile`, sidestepping the
-     file chooser entirely — no `waitForEvent('filechooser')`, no `page.__engine`
-     branch
-   - fairness by reading `np_history` after four multi-picks and asserting 28
-     distinct names, zero duplicates, zero back-to-back
-   - the corrupt-roster guard by seeding a truncated `np_rosters` and asserting
-     `#countDisplay` is non-empty after load
-
-   One warning from doing it by hand: the pick animations are timer-driven, so a
-   headed run that loses focus stretches a four-pick loop past thirty seconds. v7 §6
-   and locked decision #41 apply — the harness flags matter here more than they do
-   for a rAF-driven game, because a throttled `setTimeout` clamps to about a second.
+3. ~~**The two `gvb-save` requests above**~~ — both applied by prompt 21; confirmed
+   in round 2.
+4. ~~**A browser suite for the tools.**~~ — done in round 2, above.
 5. **Four pages were still hotlinking Google Fonts when I finished**, so v7 §5's
    "zero offsite requests site-wide" is still wrong — but by much less than the
    prompt says. It told me fifteen pages; a grep at the end of my session found

@@ -76,9 +76,14 @@ function report(results) {
     console.log(`  ${k.padEnd(12)} ${String(v).padStart(6)}  ${(100 * v / n).toFixed(1)}%`);
   }
   console.log(`\n  win rate            ${(100 * wins.length / n).toFixed(1)}%  (band ${100 * BAND.min}–${100 * BAND.max}%)`);
-  console.log(`  reached both pillars ${(100 * results.filter(r => r.lore === 2).length / n).toFixed(1)}%`);
+  // `lore` is a raw count and the sanctum's plaque means it can now go past
+  // the two the gate needs — read this off gateOpen (exactly the condition
+  // content.gate.requiresLore describes) rather than an exact lore count that
+  // a third, non-gating pillar can legitimately exceed.
   console.log(`  opened the gate      ${(100 * results.filter(r => r.gateOpen).length / n).toFixed(1)}%`);
-  console.log(`  creatures slain      mean ${mean(results, r => r.slain).toFixed(2)} of ${Object.keys(content.creatures).length > 0 ? content.area.placements.length : 0}`);
+  console.log(`  read the reliquary   ${(100 * results.filter(r => r.lore >= 3).length / n).toFixed(1)}%  (optional; not required to win)`);
+  const totalPlacements = content.areaOrder.reduce((n, id) => n + content.areas[id].placements.length, 0);
+  console.log(`  creatures slain      mean ${mean(results, r => r.slain).toFixed(2)} of ${totalPlacements}`);
   console.log(`  encounter rounds     median ${median(results.map(r => r.rounds))}`);
   console.log(`  damage dealt / taken mean ${mean(results, r => r.dealt).toFixed(1)} / ${mean(results, r => r.taken).toFixed(1)}`);
   if (wins.length) {

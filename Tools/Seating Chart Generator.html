@@ -162,6 +162,10 @@
   .stu.flagged{border-color:var(--gold); box-shadow:inset 3px 0 0 var(--gold);}
   .stu .nm{flex:1; font-size:13.5px; font-weight:500;}
   .stu .note{font-size:11.5px; color:#8a8270; font-style:italic;}
+  .zone-need{
+    width:auto; padding:2px 6px; font-size:11.5px; border-radius:6px;
+    border:1px solid var(--line); color:#6b6457; background:#fff;
+  }
   .icon-btn{
     border:none; background:none; cursor:pointer; font-size:14px; line-height:1;
     color:#9a917e; padding:3px; border-radius:6px;
@@ -195,6 +199,7 @@
   }
   .toolbar .grp{display:flex; gap:6px; align-items:center;}
   .toolbar .sep{width:1px; height:26px; background:var(--line); margin:0 4px;}
+  #presetCluster{display:contents;}
   .toolbar .spacer{flex:1;}
   .toolbar .mini{width:48px; padding:6px 6px; text-align:center;}
   .status{font-size:12.5px; color:#6b6457; margin-left:2px;}
@@ -344,6 +349,10 @@
     position:absolute; top:-8px; left:-6px; background:var(--teal-deep); color:#fff;
     font-size:9px; font-weight:700; letter-spacing:.3px; padding:1px 6px; border-radius:8px;
   }
+  .zonebadge{
+    position:absolute; bottom:-8px; right:-6px; background:var(--gold); color:#fff;
+    font-size:9px; font-weight:700; letter-spacing:.3px; padding:1px 6px; border-radius:8px;
+  }
   @keyframes pickpulse{
     0%{ box-shadow:0 0 0 0 rgba(201,145,43,.65); }
     70%{ box-shadow:0 0 0 16px rgba(201,145,43,0); }
@@ -366,6 +375,10 @@
     .roster{max-height:220px; overflow-y:auto;}
     .main{height:auto; min-height:60vh;}
     .toolbar{padding:10px 12px;}
+    /* Room-shape presets are a planning feature for the desk layout, not
+       something a teacher reaches for one-handed on a phone. Dropping it here
+       is what keeps the chart itself within one swipe of the top. */
+    #presetCluster{display:none;}
     .stage{padding:12px; overflow-x:hidden;}
     .pool-wrap{padding:10px 12px;}
     .legend{margin-left:0;}
@@ -392,13 +405,32 @@
     .desk.assigned{background:#eef4f2; border-color:#4f8a82;}
     .desk.flagged{border-color:var(--blue-soft); box-shadow:none;}
     .desk.locked{border-color:var(--blue-soft); border-width:1.5px;}
-    .desk-ctrls,.selnote,.lockbadge{display:none !important;}
+    .desk-ctrls,.selnote,.lockbadge,.zonebadge{display:none !important;}
     .print-head{display:block !important;}
     body{background:#fff;}
   }
   .print-head{display:none; text-align:center; margin:0 0 10px;}
   .print-head h2{font-family:'Fraunces',serif; font-size:20px; color:var(--blue);}
   .print-head p{margin:2px 0 0; font-size:11px; color:#6b6457; letter-spacing:.3px;}
+
+  /* ---------- print all sections ----------
+     One print job, one page per section. Built as a parallel, static copy of
+     the floor rather than reusing the live one, because the live floor's scale
+     is one shared CSS variable and every section needs its own. Hidden on
+     screen; swapped in for the whole app only while `.print-all-mode` is on
+     the body, which only ever happens for the duration of one print job. */
+  #printAllHolder{display:none;}
+  @media print{
+    .print-all-mode .app{display:none !important;}
+    .print-all-mode #printAllHolder{display:block;}
+    .print-page{page-break-after:always;}
+    .print-page:last-child{page-break-after:auto;}
+    #printAllHolder .floor-wrap{margin:0 auto;}
+    #printAllHolder .floor{position:relative; background:#fff; border:none; box-shadow:none;}
+    #printAllHolder .desk{box-shadow:none; background:#fff;}
+    #printAllHolder .desk.assigned{background:#eef4f2; border-color:#4f8a82;}
+    #printAllHolder .desk.locked{border-color:var(--blue-soft); border-width:1.5px;}
+  }
 </style>
 </head>
 <body>
@@ -442,8 +474,10 @@
         </div>
         <div class="roster" id="rosterList"></div>
         <p class="hint">Paste straight from a spreadsheet: extra columns, row numbers and
-          duplicates are dropped. Click the flag to mark a student who needs a specific spot.
-          Click the pencil for a note.</p>
+          duplicates are dropped. Click the flag to mark a student who needs a specific spot,
+          then pick a zone if it's a particular part of the room &mdash; front row, by the door,
+          back corner &mdash; and Auto-assign will hold them to it. Tag a desk's zone from its own
+          controls. Click the pencil for a note.</p>
         <p class="hint"><b>Notes stay with the chart</b> in this browser and inside any file you
           export, and they never appear on the printed page. Keep them short and practical
           &mdash; &ldquo;front row, vision&rdquo; rather than anything from a medical or IEP
@@ -500,6 +534,20 @@
         <span style="color:#9a917e;" aria-hidden="true">&times;</span>
         <input class="mini" id="gridRows" type="text" value="5" title="Rows" aria-label="Grid rows">
       </div>
+      <div id="presetCluster">
+        <div class="sep"></div>
+        <div class="grp" id="presetGrp">
+          <select id="presetKind" aria-label="Layout preset shape" onchange="presetKindChanged()">
+            <option value="horseshoe">Horseshoe</option>
+            <option value="pods">Pods</option>
+            <option value="rows">Double rows</option>
+            <option value="lab">Lab benches</option>
+          </select>
+          <input class="mini" id="presetA" type="text" value="12" aria-label="Preset first number">
+          <input class="mini" id="presetB" type="text" value="3" aria-label="Preset second number">
+          <button class="btn sm ghost" onclick="applyPreset()" title="Replace this section's desks with the chosen layout">Apply layout</button>
+        </div>
+      </div>
       <div class="sep"></div>
       <div class="grp">
         <button class="btn sm teal" onclick="autoAssign()">Auto-assign</button>
@@ -517,6 +565,7 @@
         <button class="btn sm ghost" id="zoomBtn" onclick="toggleZoom()" title="Fit the room to the window, or show it full size">Actual size</button>
         <button class="btn sm ghost" id="darkBtn" onclick="toggleDark()">Dark mode</button>
         <button class="btn sm ghost" onclick="printChart()">Print</button>
+        <button class="btn sm ghost" onclick="printAllSections()" title="Print every section, one page each, in one job">Print all sections</button>
       </div>
       <div class="sep"></div>
       <span class="grp" id="saveBar"></span>
@@ -555,6 +604,8 @@
   </div>
 </div>
 
+<div id="printAllHolder" aria-hidden="true"></div>
+
 <script>
   // The app is an ES module, and a module that fails to load fails silently: no
   // desks, no seed, no error anyone sees. If boot hasn't happened by now, say why.
@@ -568,9 +619,10 @@
 
 <script type="module">
 import {
-  ROOM, snap, freshState, newSection, createSeatingSlot,
+  ROOM, ZONES, snap, freshState, newSection, createSeatingSlot,
   assignSeats, checkConstraints, pickNext, parseRoster,
   gridDesks, rowDesks, nextSpot, contentBox,
+  horseshoeDesks, podsDesks, doubleRowDesks, labBenchDesks,
 } from './seating-chart/seating.mjs';
 import { mountSaveBar, defaultStorage } from '../assets/js/gvb-save.js';
 
@@ -653,6 +705,20 @@ function pickStudent(){
 function rotateDesk(id){ pushUndo(); const d = sec().desks.find(x => x.id === id); d.rot = ((d.rot || 0) + 90) % 360; renderFloor(); touch(); }
 function toggleLock(id){ pushUndo(); const d = sec().desks.find(x => x.id === id); d.locked = !d.locked; renderFloor(); touch(); }
 
+/* ---- zones: named regions a desk can belong to, so a flagged student can
+   require one instead of just carrying a manual-placement reminder ---- */
+const ZONE_LABEL = Object.fromEntries(ZONES.map(z => [z.id, z.label]));
+const ZONE_ABBR = { front: 'Fr', door: 'Dr', back: 'Bk' };
+const ZONE_ORDER = ['', ...ZONES.map(z => z.id)];
+function cycleZone(id){
+  pushUndo();
+  const d = sec().desks.find(x => x.id === id);
+  const i = ZONE_ORDER.indexOf(d.zone || '');
+  d.zone = ZONE_ORDER[(i + 1) % ZONE_ORDER.length];
+  renderFloor(); touch();
+}
+function setZoneNeed(id, zone){ pushUndo(); const st = studentById(id); st.zoneNeed = zone; renderAll(); }
+
 /* ============================================================
    Sections
 ============================================================ */
@@ -716,7 +782,15 @@ function removeStudent(id){
   if (selectedStudent === id) selectedStudent = null;
   renderAll();
 }
-function toggleFlag(id){ pushUndo(); const st = studentById(id); st.flag = !st.flag; renderAll(); }
+function toggleFlag(id){
+  pushUndo();
+  const st = studentById(id);
+  st.flag = !st.flag;
+  // A zone need only means anything on a flagged student. Clearing it here
+  // keeps that true instead of leaving an invisible constraint behind.
+  if (!st.flag) st.zoneNeed = '';
+  renderAll();
+}
 function editNote(id){
   const st = studentById(id);
   const n = prompt(
@@ -735,8 +809,14 @@ function renderRoster(){
   sec().students.forEach(st => {
     const row = document.createElement('div');
     row.className = 'stu' + (st.flag ? ' flagged' : '');
+    const zonePicker = st.flag ? `
+      <select class="zone-need" aria-label="Zone ${esc(st.name)} needs" onchange="setZoneNeed('${st.id}', this.value)">
+        <option value=""${!st.zoneNeed ? ' selected' : ''}>Any spot</option>
+        ${ZONES.map(z => `<option value="${z.id}"${st.zoneNeed === z.id ? ' selected' : ''}>${esc(z.label)}</option>`).join('')}
+      </select>` : '';
     row.innerHTML = `
       <span class="nm">${esc(st.name)}${st.note ? ` <span class="note">(${esc(st.note)})</span>` : ''}</span>
+      ${zonePicker}
       <button class="icon-btn ${st.flag ? 'on' : ''}" title="Flag ${esc(st.name)} for a specific spot"
               aria-label="Flag ${esc(st.name)} for a specific spot" aria-pressed="${st.flag}"
               onclick="toggleFlag('${st.id}')">&#9873;</button>
@@ -830,6 +910,38 @@ function makeGrid(){
   s.assign = {};
   renderFloor(); refreshStatus(); touch();
 }
+/* ---- layout presets, on top of the same free desk coordinates ---- */
+const PRESET_META = {
+  horseshoe: { titleA: 'Total seats', titleB: null, defA: 12 },
+  pods:      { titleA: 'Number of pods', titleB: null, defA: 6 },
+  rows:      { titleA: 'Columns', titleB: 'Row pairs', defA: 6, defB: 3 },
+  lab:       { titleA: 'Seats per bench', titleB: 'Benches', defA: 8, defB: 3 },
+};
+function presetKindChanged(){
+  const meta = PRESET_META[el('presetKind').value];
+  const a = el('presetA'), b = el('presetB');
+  a.title = meta.titleA; a.setAttribute('aria-label', meta.titleA); a.value = meta.defA;
+  if (meta.titleB){
+    b.style.display = '';
+    b.title = meta.titleB; b.setAttribute('aria-label', meta.titleB); b.value = meta.defB;
+  } else {
+    b.style.display = 'none';
+  }
+}
+function applyPreset(){
+  pushUndo();
+  const s = sec();
+  const kind = el('presetKind').value;
+  const a = el('presetA').value, b = el('presetB').value;
+  if (kind === 'horseshoe') s.desks = horseshoeDesks(a);
+  else if (kind === 'pods') s.desks = podsDesks(a);
+  else if (kind === 'rows') s.desks = doubleRowDesks(a, b);
+  else s.desks = labBenchDesks(a, b);
+  s.assign = {};
+  renderFloor(); refreshStatus(); touch();
+  say(`Laid out ${s.desks.length} desks (${el('presetKind').selectedOptions[0].textContent}).`, 'good');
+}
+
 function removeDesk(id){
   pushUndo();
   const s = sec();
@@ -864,8 +976,10 @@ function reportConstraints(r){
   let extra = '';
   if (!report.apartOK) extra += ` <span class="bad">${report.apartBroken.length} keep-apart pair(s) could not be separated.</span>`;
   if (!report.togetherOK) extra += ` <span class="bad">${report.togetherBroken.length} put-together pair(s) could not be seated side by side.</span>`;
+  if (!report.zoneOK) extra += ` <span class="bad">${report.zoneBroken.length} student(s) could not be seated in their required zone.</span>`;
   if (r && r.unseated && r.unseated.length) extra += ` <span class="bad">${r.unseated.length} student(s) have no desk.</span>`;
-  if (report.apartOK && report.togetherOK && (s.apart.length || s.together.length)) extra = ' <span class="good">All seating rules met.</span>';
+  const hasRules = s.apart.length || s.together.length || s.students.some(st => st.zoneNeed);
+  if (report.apartOK && report.togetherOK && report.zoneOK && hasRules) extra = ' <span class="good">All seating rules met.</span>';
   el('status').innerHTML = baseStatus() + extra;
 }
 
@@ -888,17 +1002,19 @@ function renderFloor(){
     node.dataset.id = d.id;
 
     const label = st
-      ? `Seat ${i + 1} of ${total}, ${st.name}${st.flag ? ', flagged' : ''}${d.locked ? ', pinned' : ''}`
-      : `Seat ${i + 1} of ${total}, empty`;
+      ? `Seat ${i + 1} of ${total}, ${st.name}${st.flag ? ', flagged' : ''}${d.locked ? ', pinned' : ''}${d.zone ? `, ${ZONE_LABEL[d.zone]} zone` : ''}`
+      : `Seat ${i + 1} of ${total}, empty${d.zone ? `, ${ZONE_LABEL[d.zone]} zone` : ''}`;
     node.innerHTML =
         `<button class="seat" data-id="${d.id}" aria-label="${esc(label)}"${st ? ' draggable="true"' : ''}>`
       +   (st ? esc(st.name) : 'empty')
       + `</button>`
       + `<span class="selnote">moving</span>`
       + (d.locked ? `<span class="lockbadge" aria-hidden="true">pinned</span>` : ``)
+      + (d.zone ? `<span class="zonebadge" aria-hidden="true">${ZONE_ABBR[d.zone]}</span>` : ``)
       + `<span class="desk-ctrls">`
       +   `<button class="desk-ctrl" data-act="rot" tabindex="-1" title="Rotate desk (R)" aria-hidden="true">&#8635;</button>`
       +   `<button class="desk-ctrl ${d.locked ? 'on' : ''}" data-act="lock" tabindex="-1" title="Pin this seat so Shuffle keeps it (P)" aria-hidden="true">&#9679;</button>`
+      +   `<button class="desk-ctrl ${d.zone ? 'on' : ''}" data-act="zone" tabindex="-1" title="${d.zone ? ZONE_LABEL[d.zone] + ' — click to change (Z)' : 'Tag this desk’s zone (Z)'}" aria-hidden="true">${d.zone ? ZONE_ABBR[d.zone] : '+Z'}</button>`
       +   `<button class="desk-ctrl" data-act="del" tabindex="-1" title="Remove this desk (Delete)" aria-hidden="true">&times;</button>`
       + `</span>`;
     if (st && selectedStudent === sid) node.classList.add('selected');
@@ -912,6 +1028,7 @@ function renderFloor(){
         if (a === 'del') removeDesk(d.id);
         else if (a === 'rot') rotateDesk(d.id);
         else if (a === 'lock') toggleLock(d.id);
+        else if (a === 'zone') cycleZone(d.id);
       });
     });
 
@@ -953,6 +1070,7 @@ function deskKey(ev, id){
   else if (k === 'Escape' && selectedStudent){ selectedStudent = null; renderAll(); focusDesk(id); }
   else if (k === 'r' || k === 'R'){ ev.preventDefault(); rotateDesk(id); focusDesk(id); }
   else if (k === 'p' || k === 'P'){ ev.preventDefault(); toggleLock(id); focusDesk(id); }
+  else if (k === 'z' || k === 'Z'){ ev.preventDefault(); cycleZone(id); focusDesk(id); }
   else if (k === 'Delete' || k === 'Backspace'){ ev.preventDefault(); removeDesk(id); }
   else if (k === 'ArrowLeft'){ ev.preventDefault(); move(-step, 0); }
   else if (k === 'ArrowRight'){ ev.preventDefault(); move(step, 0); }
@@ -1155,10 +1273,67 @@ function restoreAfterPrint(){
   applyZoom();
   requestAnimationFrame(applyZoom);
 }
-// Covers both the toolbar button and Ctrl+P.
-window.addEventListener('beforeprint', preparePrint);
-window.addEventListener('afterprint', restoreAfterPrint);
+// Covers both the toolbar button and Ctrl+P. Routed through the print-all-mode
+// body class rather than a closure flag, so a test (or a future caller) can
+// drive either path just by dispatching these two events, the same way Ctrl+P
+// does — no need to actually open a print dialog to exercise the wiring.
+window.addEventListener('beforeprint', () => {
+  if (document.body.classList.contains('print-all-mode')) beforePrintAll();
+  else preparePrint();
+});
+window.addEventListener('afterprint', () => {
+  if (document.body.classList.contains('print-all-mode')) afterPrintAll();
+  else restoreAfterPrint();
+});
 function printChart(){ window.print(); }
+
+/* ----- print every section, one page each, in one job -----
+   The live floor's scale is one shared CSS variable, and each section needs
+   its own, so this builds a parallel static copy — one .print-page per
+   section, each with its own inline transform — instead of reusing #floor. */
+function buildSectionPrintHTML(s){
+  const box = contentBox(s.desks);
+  const pad = 30, topRoom = 58;
+  const w = box.w + pad * 2, h = box.h + pad + topRoom;
+  const fit = Math.min(1.5, PAPER.w / w, PAPER.h / h);
+  const desks = s.desks.map(d => {
+    const sid = s.assign[d.id];
+    const st = sid ? s.students.find(x => x.id === sid) : null;
+    const cls = 'desk ' + (st ? 'assigned' : 'empty') + (d.locked ? ' locked' : '');
+    const x = d.x - box.x + pad, y = d.y - box.y + topRoom;
+    const rot = d.rot ? `transform:rotate(${d.rot}deg);` : '';
+    return `<div class="${cls}" style="left:${x}px;top:${y}px;${rot}">`
+      + `<button class="seat" tabindex="-1">${st ? esc(st.name) : ''}</button>`
+      + (d.locked ? `<span class="lockbadge" aria-hidden="true">pinned</span>` : '')
+      + `</div>`;
+  }).join('');
+  const seated = Object.keys(s.assign).length;
+  const unseated = s.students.length - seated;
+  const meta = `${seated} seated of ${s.students.length} &middot; ${s.desks.length} desks &middot; `
+    + new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+    + (unseated ? ` &middot; ${unseated} not seated` : '');
+  return `<div class="print-page">
+      <div class="print-head"><h2>${esc(s.name)}</h2><p>${meta}</p></div>
+      <div class="floor-wrap" style="width:${w * fit}px;height:${h * fit}px;">
+        <div class="floor" style="width:${w}px;height:${h}px;transform:scale(${fit});transform-origin:top left;">
+          <div class="front-bar">FRONT OF ROOM &nbsp;&middot;&nbsp; BOARD</div>
+          <div class="desk-layer">${desks}</div>
+        </div>
+      </div>
+    </div>`;
+}
+function beforePrintAll(){
+  el('printAllHolder').innerHTML = state.sections.map(buildSectionPrintHTML).join('');
+}
+function afterPrintAll(){
+  el('printAllHolder').innerHTML = '';
+  document.body.classList.remove('print-all-mode');
+}
+function printAllSections(){
+  if (state.sections.length < 2){ printChart(); return; }   // nothing "all" gains with one section
+  document.body.classList.add('print-all-mode');
+  window.print();
+}
 
 /* ============================================================
    Util + boot
@@ -1227,6 +1402,7 @@ function boot(){
   state = loaded || slot.fresh();
   autosaver = slot.autosave(() => state, 1200);
   mountBar();
+  presetKindChanged();
   applyTheme(); applyZoom(); renderAll();
   if (loaded){
     const n = state.sections.reduce((t, s) => t + s.students.length, 0);
@@ -1248,10 +1424,10 @@ function boot(){
 // its own. Kept explicit rather than clever so a missing one is a visible name.
 Object.assign(window, {
   addSection, renameSection, deleteSection,
-  addNames, sortRoster, setLastFirst, toggleFlag, editNote, removeStudent,
+  addNames, sortRoster, setLastFirst, toggleFlag, editNote, removeStudent, setZoneNeed,
   addPair, removePair,
-  addDesk, addRow, addPod, makeGrid, clearDesks, clearSeats,
-  autoAssign, undo, pickStudent, toggleDark, toggleZoom, printChart,
+  addDesk, addRow, addPod, makeGrid, presetKindChanged, applyPreset, clearDesks, clearSeats,
+  autoAssign, undo, pickStudent, toggleDark, toggleZoom, printChart, printAllSections,
   poolDragOver, poolDragLeave, poolDrop, poolClick,
 });
 

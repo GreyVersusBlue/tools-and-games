@@ -15,7 +15,7 @@ import { TILE } from "./world.js";
 
 const TILE_BY_NAME = {
   floor: TILE.FLOOR, wall: TILE.WALL, gate: TILE.GATE,
-  pillar: TILE.PILLAR, treasure: TILE.TREASURE,
+  pillar: TILE.PILLAR, treasure: TILE.TREASURE, stairs: TILE.STAIRS,
 };
 
 class ContentError extends Error {}
@@ -135,55 +135,95 @@ export function loadPack(raw) {
     lore[id] = Object.freeze({ id, title: l.title, body: [...l.body], logLine: l.logLine || "" });
   }
 
-  // ---- area -----------------------------------------------------------
-  const a = raw.area;
-  need(a && Array.isArray(a.rows) && a.rows.length, "content: area.rows must be a non-empty array");
-  need(a.legend && typeof a.legend === "object", "content: area.legend is required");
-  const height = a.rows.length;
-  const width = a.rows[0].length;
-  a.rows.forEach((r, i) => need(r.length === width,
-    `content: area row ${i} is ${r.length} wide, expected ${width}`));
+  // ---- areas ------------------------------------------------------------
+  // `raw.areas` is an object keyed by area id; `raw.startArea` names the one
+  // the PC begins in. A legend entry whose tile is "stairs" needs a `to`
+  // naming the destination area and square — validated in a second pass below
+  // once every area has been parsed, so a stairway can point forward at an
+  // area declared later in the file.
+  need(raw.areas && typeof raw.areas === "object" && Object.keys(raw.areas).length,
+    "content: areas must be a non-empty object, keyed by area id");
+  need(raw.startArea && raw.areas[raw.startArea], "content: startArea must name a defined area");
 
-  const tiles = [];
-  const pillars = {};          // "x,y" -> lore id
-  const placements = [];       // { creature, x, y, wakesOn }
-  let pcSpawn = null;
+  const areas = {};
+  for (const [areaId, a] of Object.entries(raw.areas)) {
+    need(a && Array.isArray(a.rows) && a.rows.length,
+      `content: area "${areaId}".rows must be a non-empty array`);
+    need(a.legend && typeof a.legend === "object", `content: area "${areaId}".legend is required`);
+    const height = a.rows.length;
+    const width = a.rows[0].length;
+    a.rows.forEach((r, i) => need(r.length === width,
+      `content: area "${areaId}" row ${i} is ${r.length} wide, expected ${width}`));
 
-  for (let y = 0; y < height; y++) {
-    const row = [];
-    for (let x = 0; x < width; x++) {
-      const ch = a.rows[y][x];
-      const def = a.legend[ch];
-      need(def, `content: area row ${y} column ${x} uses "${ch}", which is not in the legend`);
-      const t = TILE_BY_NAME[def.tile];
-      need(t !== undefined, `content: legend "${ch}" has unknown tile "${def.tile}"`);
-      row.push(t);
-      if (def.lore) {
-        need(lore[def.lore], `content: legend "${ch}" points at unknown lore "${def.lore}"`);
-        pillars[x + "," + y] = def.lore;
+    const tiles = [];
+    const pillars = {};          // "x,y" -> lore id
+    const placements = [];       // { creature, x, y, wakesOn }
+    const stairs = {};           // "x,y" -> { area, x, y }
+    let pcSpawn = null;
+
+    for (let y = 0; y < height; y++) {
+      const row = [];
+      for (let x = 0; x < width; x++) {
+        const ch = a.rows[y][x];
+        const def = a.legend[ch];
+        need(def, `content: area "${areaId}" row ${y} column ${x} uses "${ch}", which is not in the legend`);
+        const t = TILE_BY_NAME[def.tile];
+        need(t !== undefined, `content: area "${areaId}" legend "${ch}" has unknown tile "${def.tile}"`);
+        row.push(t);
+        if (def.lore) {
+          need(lore[def.lore], `content: area "${areaId}" legend "${ch}" points at unknown lore "${def.lore}"`);
+          pillars[x + "," + y] = def.lore;
+        }
+        if (def.creature) {
+          need(creatures[def.creature],
+            `content: area "${areaId}" legend "${ch}" points at unknown creature "${def.creature}"`);
+          placements.push({ creature: def.creature, x, y, wakesOn: def.wakesOn || "notice" });
+        }
+        if (def.spawn === "pc") pcSpawn = { x, y };
+        if (def.tile === "stairs") {
+          need(def.to && typeof def.to.area === "string"
+            && typeof def.to.x === "number" && typeof def.to.y === "number",
+            `content: area "${areaId}" legend "${ch}" is stairs and needs a "to": {area, x, y}`);
+          stairs[x + "," + y] = { area: def.to.area, x: def.to.x, y: def.to.y };
+        }
       }
-      if (def.creature) {
-        need(creatures[def.creature], `content: legend "${ch}" points at unknown creature "${def.creature}"`);
-        placements.push({ creature: def.creature, x, y, wakesOn: def.wakesOn || "notice" });
-      }
-      if (def.spawn === "pc") pcSpawn = { x, y };
+      tiles.push(row);
     }
-    tiles.push(row);
-  }
-  need(pcSpawn, "content: the area has no pc spawn — mark one square with a legend entry whose spawn is \"pc\"");
-  need(placements.length, "content: the area places no creatures");
-  for (const pl of placements) {
-    need(["notice", "gate-opened"].includes(pl.wakesOn),
-      `content: creature placement at ${pl.x},${pl.y} has unknown wakesOn "${pl.wakesOn}"`);
+    if (areaId === raw.startArea) {
+      need(pcSpawn, `content: the start area "${areaId}" has no pc spawn — mark one square with spawn "pc"`);
+    }
+    need(placements.length, `content: area "${areaId}" places no creatures`);
+    for (const pl of placements) {
+      need(["notice", "gate-opened"].includes(pl.wakesOn),
+        `content: area "${areaId}" creature placement at ${pl.x},${pl.y} has unknown wakesOn "${pl.wakesOn}"`);
+    }
+
+    areas[areaId] = Object.freeze({
+      id: areaId, name: a.name || areaId, width, height,
+      tiles: Object.freeze(tiles.map(r => Object.freeze(r))),
+      pillars: Object.freeze(pillars),
+      placements: Object.freeze(placements.map(Object.freeze)),
+      pcSpawn: pcSpawn ? Object.freeze(pcSpawn) : null,
+      stairs: Object.freeze(stairs),
+    });
   }
 
-  const area = Object.freeze({
-    id: a.id || "area", name: a.name || "", width, height,
-    tiles: Object.freeze(tiles.map(r => Object.freeze(r))),
-    pillars: Object.freeze(pillars),
-    placements: Object.freeze(placements.map(Object.freeze)),
-    pcSpawn: Object.freeze(pcSpawn),
-  });
+  // Second pass: a stairway's destination area and square must actually
+  // exist. Nothing above can check this while areas are still being built,
+  // since a stairway is allowed to point at an area declared later in the
+  // object.
+  for (const a of Object.values(areas)) {
+    for (const [k, dest] of Object.entries(a.stairs)) {
+      need(areas[dest.area], `content: area "${a.id}" stairs at ${k} point at unknown area "${dest.area}"`);
+      const target = areas[dest.area];
+      need(dest.x >= 0 && dest.y >= 0 && dest.x < target.width && dest.y < target.height,
+        `content: area "${a.id}" stairs at ${k} land outside area "${dest.area}"`);
+    }
+  }
+
+  const areaOrder = raw.areaOrder || Object.keys(areas);
+  need(Array.isArray(areaOrder) && areaOrder.every(id => areas[id]),
+    "content: areaOrder must list only defined area ids");
 
   // ---- gate and treasure ----------------------------------------------
   const gate = { requiresLore: [], restore: [], ...(raw.gate || {}) };
@@ -208,7 +248,9 @@ export function loadPack(raw) {
     bulkLimit: raw.bulkLimit ?? 5,
     bulkLimitNote: raw.bulkLimitNote || "",
     lore: Object.freeze(lore),
-    area,
+    areas: Object.freeze(areas),
+    startArea: raw.startArea,
+    areaOrder: Object.freeze(areaOrder),
     gate: Object.freeze(gate),
     treasure: Object.freeze(treasure),
     defeat: Object.freeze({ title: "Defeated", body: [], ...(raw.defeat || {}) }),

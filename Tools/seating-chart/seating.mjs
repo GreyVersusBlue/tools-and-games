@@ -34,6 +34,20 @@ export const ROOM = {
 
 export const uid = (rng = Math.random) => rng().toString(36).slice(2, 9);
 
+/**
+ * Named zones a desk can belong to. "Front row for a vision IEP" used to be a
+ * flag plus manual placement; this is the room model that lets the solver
+ * enforce it instead. Deliberately NOT inferred from x/y — a desk's position
+ * doesn't say what it means in a horseshoe or a pod layout, which is exactly
+ * where the flag matters most. A desk is tagged by hand (or left untagged).
+ */
+export const ZONES = [
+  { id: 'front', label: 'Front row' },
+  { id: 'door', label: 'By the door' },
+  { id: 'back', label: 'Back corner' },
+];
+const ZONE_IDS = new Set(ZONES.map(z => z.id));
+
 /* ---------------------------------------------------------------------------
    Shape
 --------------------------------------------------------------------------- */
@@ -42,10 +56,10 @@ export function newSection(name, rng = Math.random) {
   return {
     id: uid(rng),
     name,
-    students: [],   // { id, name, note, flag }
+    students: [],   // { id, name, note, flag, zoneNeed }
     apart: [],      // [ [studentId, studentId] ]
     together: [],
-    desks: [],      // { id, x, y, rot, locked }
+    desks: [],      // { id, x, y, rot, locked, zone }
     assign: {},     // { deskId: studentId }
   };
 }
@@ -125,12 +139,18 @@ function repairSection(s, index, rng) {
 
   const students = (Array.isArray(s.students) ? s.students : [])
     .filter(st => st && typeof st === 'object' && str(st.name).trim())
-    .map(st => ({
-      id: str(st.id) || uid(rng),
-      name: str(st.name).trim(),
-      note: str(st.note),
-      flag: bool(st.flag),
-    }));
+    .map(st => {
+      const flag = bool(st.flag);
+      // A zone need only means anything on a flagged student — an unflagged
+      // student that used to be flagged doesn't quietly keep constraining seats.
+      return {
+        id: str(st.id) || uid(rng),
+        name: str(st.name).trim(),
+        note: str(st.note),
+        flag,
+        zoneNeed: flag && ZONE_IDS.has(st.zoneNeed) ? st.zoneNeed : '',
+      };
+    });
   const studentIds = new Set(students.map(st => st.id));
 
   const desks = (Array.isArray(s.desks) ? s.desks : [])
@@ -141,6 +161,7 @@ function repairSection(s, index, rng) {
       y: clamp(num(d.y, 110), 0, ROOM.height - ROOM.deskH),
       rot: [0, 90, 180, 270].includes(num(d.rot, 0)) ? num(d.rot, 0) : 0,
       locked: bool(d.locked),
+      zone: ZONE_IDS.has(d.zone) ? d.zone : '',
     }));
   const deskIds = new Set(desks.map(d => d.id));
 
@@ -235,6 +256,20 @@ export function apartMap(students, apart) {
   return m;
 }
 
+/** studentId -> zone, for every student who actually needs one. */
+export function zoneNeedMap(students) {
+  const m = {};
+  for (const s of students) if (s.zoneNeed) m[s.id] = s.zoneNeed;
+  return m;
+}
+
+/** deskId -> zone, for every desk that has been tagged. */
+export function deskZoneMap(desks) {
+  const m = {};
+  for (const d of desks) if (d.zone) m[d.id] = d.zone;
+  return m;
+}
+
 function shuffled(arr, rng) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -248,7 +283,7 @@ function shuffled(arr, rng) {
    The solver
 --------------------------------------------------------------------------- */
 
-function onePass(section, nbrs, apart, freeDesks, toPlace, seedDesk, seedStudent, rng) {
+function onePass(section, nbrs, apart, zoneOf, needOf, freeDesks, toPlace, seedDesk, seedStudent, rng) {
   const wanted = new Set(toPlace);
   const blocks = shuffled(togetherGroups(section.students, section.together).map(g => shuffled(g, rng)), rng);
   const order = [];
@@ -271,13 +306,14 @@ function onePass(section, nbrs, apart, freeDesks, toPlace, seedDesk, seedStudent
     const sid = item.id;
     if (!free.size) { unseated.push(sid); continue; }   // more students than desks: leave in the pool
     const mates = item.group.filter(g => g !== sid && studentDesk[g]);
-    let cands = [...free].filter(did => ok(sid, did));
+    const need = needOf[sid];
+    let cands = [...free].filter(did => ok(sid, did) && (!need || zoneOf[did] === need));
     if (mates.length) {
       const beside = cands.filter(did => mates.some(m => nbrs[did].includes(studentDesk[m])));
       if (beside.length) cands = beside;
       else return null;                                  // this pass cannot honour a put-together
     }
-    if (!cands.length) return null;
+    if (!cands.length) return null;                       // no free desk in this student's zone either
     const pick = cands[Math.floor(rng() * cands.length)];
     studentDesk[sid] = pick;
     deskStudent[pick] = sid;
@@ -297,6 +333,8 @@ function onePass(section, nbrs, apart, freeDesks, toPlace, seedDesk, seedStudent
 export function assignSeats(section, { attempts = 800, rng = Math.random } = {}) {
   const nbrs = neighborMap(section.desks);
   const apart = apartMap(section.students, section.apart);
+  const zoneOf = deskZoneMap(section.desks);
+  const needOf = zoneNeedMap(section.students);
 
   const seedDesk = {}, seedStudent = {}, lockedSids = new Set(), lockedDesks = new Set();
   for (const d of section.desks) {
@@ -310,15 +348,15 @@ export function assignSeats(section, { attempts = 800, rng = Math.random } = {})
 
   let best = null, bestScore = -Infinity;
   for (let i = 0; i < attempts; i++) {
-    const pass = onePass(section, nbrs, apart, freeDesks, toPlace, seedDesk, seedStudent, rng);
+    const pass = onePass(section, nbrs, apart, zoneOf, needOf, freeDesks, toPlace, seedDesk, seedStudent, rng);
     if (!pass) continue;
     const report = checkConstraints({ ...section, assign: pass.assign }, nbrs);
     // Seated students first, then rules met. A chart that seats 28 with one broken
     // keep-apart beats a spotless chart that seats 24.
     const score = Object.keys(pass.assign).length * 10
-      + (report.apartOK ? 3 : 0) + (report.togetherOK ? 3 : 0);
+      + (report.apartOK ? 3 : 0) + (report.togetherOK ? 3 : 0) + (report.zoneOK ? 3 : 0);
     if (score > bestScore) { best = pass; bestScore = score; }
-    if (report.apartOK && report.togetherOK && !pass.unseated.length) break;
+    if (report.apartOK && report.togetherOK && report.zoneOK && !pass.unseated.length) break;
   }
 
   if (!best) {
@@ -343,6 +381,7 @@ export function assignSeats(section, { attempts = 800, rng = Math.random } = {})
 export function checkConstraints(section, nbrs = neighborMap(section.desks)) {
   const deskOf = {};
   for (const [d, sid] of Object.entries(section.assign)) deskOf[sid] = d;
+  const zoneOf = deskZoneMap(section.desks);
 
   const apartBroken = section.apart.filter(([a, b]) => {
     const da = deskOf[a], db = deskOf[b];
@@ -352,11 +391,18 @@ export function checkConstraints(section, nbrs = neighborMap(section.desks)) {
     const da = deskOf[a], db = deskOf[b];
     return !(da && db && nbrs[da].includes(db));
   });
+  // A student with no desk yet isn't "broken" here — they're just unseated,
+  // which the caller already tracks separately (`unseated` from assignSeats).
+  const zoneBroken = section.students
+    .filter(st => st.zoneNeed && deskOf[st.id] && zoneOf[deskOf[st.id]] !== st.zoneNeed)
+    .map(st => st.id);
   return {
     apartOK: apartBroken.length === 0,
     togetherOK: togetherBroken.length === 0,
+    zoneOK: zoneBroken.length === 0,
     apartBroken,
     togetherBroken,
+    zoneBroken,
   };
 }
 
@@ -434,7 +480,7 @@ export function gridDesks(cols, rows, rng = Math.random) {
         id: uid(rng),
         x: snap(startX + c * (ROOM.deskW + 22)),
         y: snap(110 + r * (ROOM.deskH + 24)),
-        rot: 0, locked: false,
+        rot: 0, locked: false, zone: '',
       });
     }
   }
@@ -447,7 +493,7 @@ export function rowDesks(n, existing = [], rng = Math.random) {
   const totalW = n * ROOM.deskW + (n - 1) * 22;
   let x = snap(Math.max(30, (ROOM.width - totalW) / 2));
   const out = [];
-  for (let i = 0; i < n; i++) { out.push({ id: uid(rng), x: snap(x), y, rot: 0, locked: false }); x += ROOM.deskW + 22; }
+  for (let i = 0; i < n; i++) { out.push({ id: uid(rng), x: snap(x), y, rot: 0, locked: false, zone: '' }); x += ROOM.deskW + 22; }
   return out;
 }
 
@@ -473,4 +519,117 @@ export function contentBox(desks) {
     w: Math.max(...xs) + ROOM.deskW - x,
     h: Math.max(...ys) + ROOM.deskH - y,
   };
+}
+
+/* ---------------------------------------------------------------------------
+   Layout presets, built on the same free desk coordinates as gridDesks and
+   rowDesks. What is new here is only the shape of the layout, not a room
+   model — zone tagging (above) is a separate, explicit step, on purpose:
+   inferring a preset's zones from the coordinates it happens to generate
+   would be exactly the guess the room model exists to avoid.
+
+   Every preset clamps each desk back inside the room, so a caller never has
+   to check the math: the desk count it asked for is the desk count it gets,
+   regardless of how the shape falls near an edge.
+--------------------------------------------------------------------------- */
+
+function toRoom(x, y) {
+  return { x: clamp(snap(x), 0, ROOM.width - ROOM.deskW), y: clamp(snap(y), 0, ROOM.height - ROOM.deskH) };
+}
+
+/** A U: a back row plus two legs running toward the front, open end forward. */
+export function horseshoeDesks(n, rng = Math.random) {
+  n = clamp(Math.round(num(n, 12)) || 12, 6, 24);
+  const back = Math.max(2, Math.round(n * 0.4));
+  const sideTotal = n - back;
+  const leftN = Math.ceil(sideTotal / 2), rightN = sideTotal - leftN;
+  const spacing = ROOM.deskW + 22, rowSpacing = ROOM.deskH + 24;
+  const totalW = back * ROOM.deskW + (back - 1) * 22;
+  const startX = Math.max(30, (ROOM.width - totalW) / 2);
+  const topY = 110;
+  const out = [];
+  for (let c = 0; c < back; c++) {
+    const p = toRoom(startX + c * spacing, topY);
+    out.push({ id: uid(rng), x: p.x, y: p.y, rot: 0, locked: false, zone: '' });
+  }
+  const legRows = Math.max(leftN, rightN);
+  for (let r = 0; r < legRows; r++) {
+    const y = topY + (r + 1) * rowSpacing;
+    if (r < leftN) {
+      const p = toRoom(startX - ROOM.deskW - 30, y);
+      out.push({ id: uid(rng), x: p.x, y: p.y, rot: 90, locked: false, zone: '' });
+    }
+    if (r < rightN) {
+      const p = toRoom(startX + totalW + 30, y);
+      out.push({ id: uid(rng), x: p.x, y: p.y, rot: 270, locked: false, zone: '' });
+    }
+  }
+  return out;
+}
+
+/** Pods of four, tiled across the room — the "+ Pod of 4" button, repeated. */
+export function podsDesks(podCount, rng = Math.random) {
+  podCount = clamp(Math.round(num(podCount, 6)) || 6, 1, 12);
+  const podW = ROOM.deskW * 2 + 10, podH = ROOM.deskH * 2 + 10;
+  const cols = Math.max(1, Math.floor((ROOM.width - 40) / (podW + 26)));
+  const out = [];
+  for (let i = 0; i < podCount; i++) {
+    const col = i % cols, row = Math.floor(i / cols);
+    const baseX = 30 + col * (podW + 26);
+    const baseY = 110 + row * (podH + 26);
+    [[0, 0], [ROOM.deskW + 10, 0], [0, ROOM.deskH + 10], [ROOM.deskW + 10, ROOM.deskH + 10]].forEach(o => {
+      const p = toRoom(baseX + o[0], baseY + o[1]);
+      out.push({ id: uid(rng), x: p.x, y: p.y, rot: 0, locked: false, zone: '' });
+    });
+  }
+  return out;
+}
+
+/** Rows in two blocks with a walking aisle down the middle, rows paired with a gap between pairs. */
+export function doubleRowDesks(cols, rowPairs, rng = Math.random) {
+  cols = clamp(Math.round(num(cols, 6)) || 6, 2, 12);
+  rowPairs = clamp(Math.round(num(rowPairs, 3)) || 3, 1, 6);
+  const half = Math.ceil(cols / 2);
+  const rightCount = cols - half;
+  const aisle = 40;
+  const leftW = half * ROOM.deskW + (half - 1) * 22;
+  const rightW = rightCount ? rightCount * ROOM.deskW + (rightCount - 1) * 22 : 0;
+  const startX = Math.max(20, (ROOM.width - (leftW + aisle + rightW)) / 2);
+  const out = [];
+  for (let rp = 0; rp < rowPairs; rp++) {
+    for (let pass = 0; pass < 2; pass++) {
+      const y = 110 + (rp * 2 + pass) * (ROOM.deskH + 20) + rp * 14;
+      let x = startX;
+      for (let c = 0; c < half; c++) {
+        const p = toRoom(x, y);
+        out.push({ id: uid(rng), x: p.x, y: p.y, rot: 0, locked: false, zone: '' });
+        x += ROOM.deskW + 22;
+      }
+      x += aisle;
+      for (let c = 0; c < rightCount; c++) {
+        const p = toRoom(x, y);
+        out.push({ id: uid(rng), x: p.x, y: p.y, rot: 0, locked: false, zone: '' });
+        x += ROOM.deskW + 22;
+      }
+    }
+  }
+  return out;
+}
+
+/** Long benches, seats shoulder to shoulder, extra depth behind each row for equipment. */
+export function labBenchDesks(seatsPerBench, benches, rng = Math.random) {
+  seatsPerBench = clamp(Math.round(num(seatsPerBench, 8)) || 8, 2, 14);
+  benches = clamp(Math.round(num(benches, 3)) || 3, 1, 8);
+  const totalW = seatsPerBench * ROOM.deskW + (seatsPerBench - 1) * 14;
+  const startX = Math.max(20, (ROOM.width - totalW) / 2);
+  const benchGap = ROOM.deskH + 46;
+  const out = [];
+  for (let b = 0; b < benches; b++) {
+    const y = 110 + b * benchGap;
+    for (let c = 0; c < seatsPerBench; c++) {
+      const p = toRoom(startX + c * (ROOM.deskW + 14), y);
+      out.push({ id: uid(rng), x: p.x, y: p.y, rot: 0, locked: false, zone: '' });
+    }
+  }
+  return out;
 }

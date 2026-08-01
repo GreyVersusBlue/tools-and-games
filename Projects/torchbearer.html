@@ -1306,7 +1306,12 @@ function finalizeCharacter(build){
   const bg=Registry.backgrounds[build.background];
   const abil=abilityMods(build);
   const effs=activeEffects(build);
-  const specials=new Set(effs.filter(x=>x.e.special).map(x=>x.e.special));
+  /* `{"special":"assurance","skill":"athletics"}` carries which skill it floors, but a
+     bare map of x.e.special threw that away and collapsed every Assurance feat to the
+     same string "assurance" — so Assurance (Arcana) and Assurance (Athletics) were
+     indistinguishable and neither could be checked against a specific skill. Keyed as
+     "assurance-<skill>" instead, matching the feat ids already in the Registry. */
+  const specials=new Set(effs.filter(x=>x.e.special).map(x=>x.e.special==="assurance"?`assurance-${x.e.skill}`:x.e.special));
   const notes=effs.filter(x=>x.e.note).map(x=>`${x.src}: ${x.e.note}`);
 
   // proficiencies
@@ -1722,21 +1727,38 @@ const Builder = {
       return Object.keys(f.prereq.skill).every(s=>fixed.has(s)||b.skills.includes(s)); }
     return true;
   },
+  /* The Fighter's class feature and both Warpriest doctrines grant Shield
+     Block by `grantFeat` (fixed in session 10 — see `activeEffects`). Once
+     that actually worked, the general-feat picker still offered it to those
+     same builds with nothing telling them it was redundant. Checked directly
+     against the Registry rather than `activeEffects(build)`, since that
+     folds in the very feat pick this is deciding whether to greyed out. */
+  classGrantsShieldBlock(){
+    const b=this.build, cls=Registry.classes[b.cls];
+    if(!cls) return false;
+    const viaClass=(cls.features||[]).some(f=>f.level<=CHAR_LEVEL&&(f.effects||[]).some(e=>e.grantFeat==="shield-block"));
+    const sub=cls.subclass&&(cls.subclass.options||[]).find(o=>o.id===b.subclass);
+    const viaSub=!!(sub&&(sub.effects||[]).some(e=>e.grantFeat==="shield-block"));
+    return viaClass||viaSub;
+  },
   ui_feats(){
     const b=this.build, taken=new Set(Object.values(b.feats).flat().filter(Boolean));
     const ex=this.extras();
     let html=`<div class="step-title">Feats</div>
     <div class="step-hint">Your tricks of the trade. Grayed feats have unmet prerequisites; a feat can be taken only once.</div>`;
+    const shieldBlockGranted=this.classGrantsShieldBlock();
     this.featSlots().forEach(slot=>{
       const opts=this.featOptions(slot);
       html+=`<div class="section-sub">${slot.label}</div><div class="card-grid">`+
         opts.map(f=>{
           const sel=b.feats[slot.key]===f.id;
           const dup=taken.has(f.id)&&!sel;
-          const ok=this.featPrereqOk(f)&&!dup;
+          const redundant=slot.type==="general"&&f.id==="shield-block"&&shieldBlockGranted&&!sel;
+          const ok=this.featPrereqOk(f)&&!dup&&!redundant;
+          const tag=dup?"already taken":redundant?"already granted by class":"";
           return `<div class="opt-card ${sel?"selected":""} ${ok?"":"disabled"}" data-slot="${slot.key}" data-id="${f.id}">
             <h3>${f.name}</h3><div class="meta">${f.type} ${f.level}${f.actions?" · "+(f.actions==="reaction"?"⟲ reaction":f.actions==="free"?"◇ free":"◆".repeat(f.actions)):""}</div>
-            <div class="desc">${f.desc}</div>${dup?'<div class="tagrow"><span class="tag">already taken</span></div>':""}</div>`;
+            <div class="desc">${f.desc}</div>${tag?`<div class="tagrow"><span class="tag">${tag}</span></div>`:""}</div>`;
         }).join("")+`</div>`;
     });
     if(ex.focusChoosers.length){
@@ -2106,6 +2128,14 @@ const Combat = {
     if(this.condVal(target,"prone")) offGuard=true;
     if(opts&&opts.forceOffGuard) offGuard=true;
     if(this.surprise&&target.side==="foe") offGuard=true;
+    /* Surprise Attack (Rogue, level 1): "creatures that haven't acted [in round 1]
+       are off-guard to you" — narrower than the scripted-ambush `this.surprise`
+       flag above (which is a scene-authored freebie against the whole party).
+       This one is per-attacker and expires the instant a foe takes its turn,
+       not at the end of the round, so it is checked against turn order rather
+       than a flat round number. */
+    if(this.round===1&&attacker&&attacker.char&&attacker.char.specials.includes("surprise-attack")
+       &&this.order.indexOf(target)>=this.turnIdx) offGuard=true;
     if(attacker&&!attacker.ranged&&this.isFlanking(attacker,target)) offGuard=true;
     if(offGuard&&!(target.char&&target.char.specials.includes("deny-advantage"))) ac-=2;
     return {ac,offGuard};
@@ -2303,7 +2333,10 @@ const Combat = {
       if(ch.specials.includes("cackle")&&!cb.cackled&&cb.resources.focus<ch.focusMax) btn("cackle","🤣 Cackle","◇",false);
       if(ch.casting) btn("spells",`✦ Spells (R1×${cb.resources.slots[1]} R2×${cb.resources.slots[2]}${cb.resources.font?" ✚×"+cb.resources.font:""})`,"",no);
       if(ch.focusSpells.length) btn("focus",`☄ Focus (${cb.resources.focus}/${ch.focusMax})`,"",no);
-      if((cb.resources.potions||0)>0) btn("potion",`🧪 Potion ×${cb.resources.potions}`,"◆",no);
+      if(cb.resources.potions.length>0){
+        const nextPotion=Registry.items[cb.resources.potions[cb.resources.potions.length-1]];
+        btn("potion",`🧪 ${esc(nextPotion?nextPotion.name:"Potion")} ×${cb.resources.potions.length}`,"◆",no);
+      }
     }
     if(cb.abilities) cb.abilities.forEach((ab,i)=>{ if(ab.uses>0) btn("abil"+i,`✚ ${ab.name} ×${ab.uses}`,"◆".repeat(ab.cost),no||this.actions<ab.cost); });
     btn("end","⏭ End Turn","", false,"end-turn");
@@ -2420,8 +2453,14 @@ const Combat = {
         else if(r.deg===0) this.applyDamage(t,Dice.roll("1d8").total,"slashing",null,"botched surgery");
         return done();
       }
-      case "potion": { cb.resources.potions--; const h=Dice.roll("1d8").total;
-        this.heal(t,h); App.log(`${esc(t.name)} drinks a healing potion (+${h}).`,"combat"); return done(); }
+      case "potion": {
+        const id=cb.resources.potions.pop();
+        const item=Registry.items[id];
+        const h=Dice.roll(item&&item.heal?item.heal:"1d8").total;
+        this.heal(t,h);
+        App.log(`${esc(t.name)} drinks ${esc(item?item.name:"a healing potion")} (+${h}).`,"combat");
+        return done();
+      }
       case "strike": this.strike(cb,t,cb.attacks[a.atkIdx]); return done(a.btn==="charge2"?0:1);
       case "exacting": this.strike(cb,t,cb.attacks[a.atkIdx],{exacting:true}); return done();
       case "powerattack": { cb.mapCount++; this.strike(cb,t,cb.attacks[a.atkIdx],{extraDie:1}); return done(); }
@@ -2919,7 +2958,7 @@ const App = {
       speed:Math.floor(ch.speed/5),attacks:ch.attacks.map(a=>({...a})),conditions:[],buffs:[],dying:0,wounded:0,
       resources:{slots:ch.casting?{1:ch.casting.slots[1],2:ch.casting.slots[2]}:{1:0,2:0},
         focus:ch.focusMax,font:ch.casting&&ch.casting.font?ch.casting.font.uses:0,
-        potions:(ch.consumables.find(c=>c.id==="healing-potion-minor")||{count:0}).count}};
+        potions:Array((ch.consumables.find(c=>c.id==="healing-potion-minor")||{count:0}).count).fill("healing-potion-minor")}};
     return this.heroCb;
   },
   companionCombatant(id){
@@ -2927,7 +2966,7 @@ const App = {
     return {id:"comp-"+id,side:"pc",name:c.name,subtitle:c.subtitle,hpMax:c.hp,hp:c.hp,tempHP:0,ac:c.ac,
       saves:{...c.saves},perception:c.perception,initSkill:c.initSkill,speed:Math.floor(c.speed/5),
       attacks:c.attacks.map(a=>({...a,die:a.damage,dmgMod:0,traits:a.traits||[],ranged:a.range>1})),
-      abilities:(c.abilities||[]).map(a=>({...a})),conditions:[],buffs:[],dying:0,wounded:0,resources:{slots:{1:0,2:0},focus:0,font:0,potions:0}};
+      abilities:(c.abilities||[]).map(a=>({...a})),conditions:[],buffs:[],dying:0,wounded:0,resources:{slots:{1:0,2:0},focus:0,font:0,potions:[]}};
   },
   party(){ return [this.heroCombatant(),...this.companions]; },
 
@@ -2977,7 +3016,7 @@ const App = {
       if(sc.onEnter.flag) this.flags[sc.onEnter.flag]=true;
       (sc.onEnter.items||[]).forEach(it=>{
         const hero=this.heroCombatant();
-        if(it.startsWith("healing-potion")) hero.resources.potions++;
+        if(it.startsWith("healing-potion")) hero.resources.potions.push(it);
         this.log(`Gained: <b>${esc((Registry.items[it]||{name:it}).name)}</b>.`,"narr");
       });
     }
@@ -3035,19 +3074,43 @@ const App = {
       const ch=this.hero;
       let skill=c.check.skill;
       if(c.check.altSkill&&skillMod(ch,c.check.altSkill)>skillMod(ch,skill)) skill=c.check.altSkill;
-      let mod=skill==="perception"?ch.perception:skillMod(ch,skill);
-      let r=this.rollCheck(`${ch.name}: ${cap(skill)} check`,mod,c.check.dc);
+      if(skill!=="perception"&&ch.specials.includes(`assurance-${skill}`)){
+        const rank=ch.skills[skill]||"U";
+        const floor=10+(rank==="U"?0:PROF_VAL[rank]+ch.level);
+        this.modal(`Assurance (${cap(skill)})`,
+          `<p>${esc(ch.name)} may forgo the roll and take a guaranteed <b>${floor}</b> against
+           DC ${c.check.dc}, or roll normally with a +${skillMod(ch,skill)} modifier.</p>`,
+          [{label:`Take ${floor}`,fn:()=>this.resolveCheck(c,skill,floor)},
+           {label:"Roll normally",fn:()=>this.resolveCheck(c,skill)}]);
+        return;
+      }
+      this.resolveCheck(c,skill);
+      return;
+    }
+    this.log(`<i>${esc(c.text)}</i>`,"narr");
+    this.gotoScene(c.goto);
+  },
+  /* Assurance (locked as a floor, not a bonus): forgoing the roll always yields exactly a
+     success or failure, never a critical either way, per the authoring guide's own wording
+     ("forgo the roll and take 10 + your proficiency bonus"). */
+  resolveCheck(c,skill,assuranceFloor){
+    const ch=this.hero;
+    let r;
+    if(assuranceFloor!=null){
+      const deg=assuranceFloor>=c.check.dc?2:1;
+      this.log(`<i>${esc(ch.name)} forgoes the roll: Assurance (${cap(skill)}) takes ${assuranceFloor} vs DC ${c.check.dc}.</i>`,"roll");
+      r={d20:null,total:assuranceFloor,deg};
+    } else {
+      const mod=skill==="perception"?ch.perception:skillMod(ch,skill);
+      r=this.rollCheck(`${ch.name}: ${cap(skill)} check`,mod,c.check.dc);
       if(r.deg<=1&&ch.specials.includes("halfling-luck")&&!this.dailyLuckUsed){
         this.dailyLuckUsed=true;
         this.log(`<b>Halfling Luck!</b> ${esc(ch.name)} rerolls with a grin.`,"narr");
         r=this.rollCheck(`${ch.name}: ${cap(skill)} (lucky reroll)`,mod,c.check.dc);
       }
-      this.log(`<i>${esc(c.text)}</i>`,"narr");
-      this.gotoScene(r.deg>=2? c.check.success:c.check.failure);
-      return;
     }
     this.log(`<i>${esc(c.text)}</i>`,"narr");
-    this.gotoScene(c.goto);
+    this.gotoScene(r.deg>=2? c.check.success:c.check.failure);
   },
   resume(){
     const s=this.slot.load();

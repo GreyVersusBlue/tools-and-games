@@ -5,7 +5,7 @@
 
 import { feetBetween } from "./rules.js";
 
-export const TILE = { FLOOR: 0, WALL: 1, GATE: 2, PILLAR: 3, TREASURE: 4 };
+export const TILE = { FLOOR: 0, WALL: 1, GATE: 2, PILLAR: 3, TREASURE: 4, STAIRS: 5 };
 
 /**
  * A World wraps one area's tile grid.

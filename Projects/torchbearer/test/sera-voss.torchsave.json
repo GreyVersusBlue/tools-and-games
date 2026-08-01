@@ -1,0 +1,126 @@
+{
+  "format": "gvb-save",
+  "game": "torchbearer",
+  "version": 2,
+  "savedAt": "2026-08-01T00:38:46.853Z",
+  "state": {
+    "build": {
+      "name": "Sera Voss",
+      "ancestry": "dwarf",
+      "heritage": "rock-dwarf",
+      "background": "farmhand",
+      "cls": "fighter",
+      "subclass": null,
+      "boosts": {
+        "ancestry": [
+          "str"
+        ],
+        "bgA": "con",
+        "bgFree": "wis",
+        "key": "str",
+        "free": [
+          "str",
+          "dex",
+          "con",
+          "wis"
+        ]
+      },
+      "skills": [
+        "intimidation",
+        "survival",
+        "society",
+        "stealth"
+      ],
+      "loreExtra": [],
+      "feats": {
+        "background": "assurance-athletics",
+        "ancestry1": "dwarven-doughtiness",
+        "class1": "power-attack",
+        "class2": "exacting-strike",
+        "skill2": "experienced-tracker",
+        "general3": "toughness"
+      },
+      "extraPicks": [],
+      "focusChoices": {},
+      "spells": {
+        "cantrips": [],
+        "r1": [],
+        "r2": []
+      },
+      "gear": {
+        "weapon": "longsword",
+        "weapon2": null,
+        "ranged": null,
+        "armor": "chain-shirt",
+        "shield": true
+      },
+      "skillIncrease": "athletics"
+    },
+    "advId": "thornwake",
+    "sceneId": "bridge-fog",
+    "flags": {
+      "read-markers": true
+    },
+    "dailyLuckUsed": false,
+    "hero": {
+      "hp": 52,
+      "wounded": 0,
+      "resources": {
+        "slots": {
+          "1": 0,
+          "2": 0
+        },
+        "focus": 0,
+        "font": 0,
+        "potions": [
+          "healing-potion-minor",
+          "healing-potion-minor"
+        ]
+      }
+    },
+    "companions": [
+      {
+        "id": "mercy-vane",
+        "hp": 38
+      }
+    ],
+    "chronicle": [
+      {
+        "html": "<b>The Long Vigil at Thornwake Bridge</b> — the chronicle of Sera Voss begins.",
+        "cls": "narr"
+      },
+      {
+        "html": "<div class=\"seal \">8</div><div class=\"roll-detail\">\n      <div class=\"rd-title\">Sera Voss: Society check</div><div class=\"rd-math\">8+5 = 13 vs DC 16</div>\n      <div class=\"rd-out failure\">Failure</div></div>",
+        "cls": "roll"
+      },
+      {
+        "html": "<i>Read the marker stones before crossing.</i>",
+        "cls": "narr"
+      },
+      {
+        "html": "<i>Cross onto the bridge.</i>",
+        "cls": "narr"
+      },
+      {
+        "html": "<i>Engage the pickets before they form ranks.</i>",
+        "cls": "narr"
+      },
+      {
+        "html": "<b>The Vanguard's Watch.</b> The fog resolves into ranks mid-dress, and then the ranks notice you. Broken masonry (walls) and drifts of grave-fog (difficult terrain) litter the span.",
+        "cls": "combat"
+      },
+      {
+        "html": "<div class=\"seal \">17</div><div class=\"roll-detail\">\n      <div class=\"rd-title\">Duskmantle Picket: Notched Saber vs Mercy Vane</div><div class=\"rd-math\">17+8 = 25 vs AC 19</div>\n      <div class=\"rd-out success\">Success</div></div>",
+        "cls": "roll"
+      },
+      {
+        "html": "<div class=\"seal \">6</div><div class=\"roll-detail\">\n      <div class=\"rd-title\">Mercy Vane: Lantern Mace vs Duskmantle Picket</div><div class=\"rd-math\">6+9 = 15 vs AC 17</div>\n      <div class=\"rd-out failure\">Failure</div></div>",
+        "cls": "roll"
+      },
+      {
+        "html": "<div class=\"seal \">3</div><div class=\"roll-detail\">\n      <div class=\"rd-title\">Sera Voss: Longsword vs Duskmantle Picket</div><div class=\"rd-math\">3+11 = 14 vs AC 17</div>\n      <div class=\"rd-out failure\">Failure</div></div>",
+        "cls": "roll"
+      }
+    ]
+  }
+}
