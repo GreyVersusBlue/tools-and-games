@@ -8,15 +8,21 @@
 // tunes the game for a cheater.
 
 import { feetBetween, isAdjacent } from "../js/rules.js";
+import { TILE } from "../js/world.js";
 
 /** Walk toward a square through the fog, one visible leg at a time. */
 export function travel(game, tx, ty, { maxLegs = 80 } = {}) {
+  const startArea = game.run.areaId;
   for (let leg = 0; leg < maxLegs; leg++) {
     if (game.run.outcome) return "over";
     // Mode before position: the last step of a walk can both arrive and wake
     // something, and the caller needs to hear about the encounter. Reporting
     // "arrived" there loses the fight entirely.
     if (game.mode === "combat") return "combat";
+    // A stairway can redirect the walk into another area entirely — (tx, ty)
+    // was a square in the area the PC just left, so it cannot still be the
+    // destination once the area has changed under it.
+    if (game.run.areaId !== startArea) return "arrived";
     if (game.run.pc.x === tx && game.run.pc.y === ty) return "arrived";
 
     const path = game.world.findPath(game.run.pc.x, game.run.pc.y, tx, ty, {
@@ -123,24 +129,50 @@ export function fight(game, { maxTurns = 200 } = {}) {
 }
 
 /**
- * Play the whole adventure: both pillars, the gate, the casket, fighting
- * whatever wakes on the way. Returns how it ended and what it cost.
+ * Every goal worth walking to, area by area, in the order the adventure
+ * intends them to be visited (`content.areaOrder`). A stairway is a goal like
+ * any other square — walking onto it is what fires the transition — and it
+ * has to come before the goals in whatever area it leads to, or the autopilot
+ * would try to path to a square in a room it has not entered yet.
+ */
+function collectGoals(content) {
+  const goals = [];
+  for (const areaId of content.areaOrder) {
+    const a = content.areas[areaId];
+    for (const key of Object.keys(a.pillars)) {
+      const [x, y] = key.split(",").map(Number);
+      goals.push({ kind: "pillar", x, y });
+    }
+    // One goal per destination, not one per stairway square — two squares
+    // leading to the same place (a wide stairway, like the vault's) would
+    // otherwise queue a second travel to a square in the area the first one
+    // already left.
+    const seenDest = new Set();
+    for (const key of Object.keys(a.stairs || {})) {
+      const dest = a.stairs[key].area;
+      if (seenDest.has(dest)) continue;
+      seenDest.add(dest);
+      const [x, y] = key.split(",").map(Number);
+      goals.push({ kind: "stairs", x, y });
+    }
+    let treasureTaken = false;
+    for (let y = 0; y < a.height && !treasureTaken; y++) {
+      for (let x = 0; x < a.width; x++) {
+        if (a.tiles[y][x] === TILE.TREASURE) { goals.push({ kind: "treasure", x, y }); treasureTaken = true; break; }
+      }
+    }
+  }
+  return goals;
+}
+
+/**
+ * Play the whole adventure: every pillar, the gate, every stairway, the
+ * casket, fighting whatever wakes on the way. Returns how it ended and what
+ * it cost.
  */
 export function playThrough(game, { maxPhases = 60 } = {}) {
   game.begin();
-  const pillars = Object.keys(game.content.area.pillars)
-    .map(k => k.split(",").map(Number))
-    .map(([x, y]) => ({ x, y }));
-  const treasure = [];
-  for (let y = 0; y < game.content.area.height; y++) {
-    for (let x = 0; x < game.content.area.width; x++) {
-      if (game.tileAt(x, y) === 4) treasure.push({ x, y });
-    }
-  }
-
-  const goals = [];
-  for (const p of pillars) goals.push({ kind: "pillar", ...p });
-  goals.push({ kind: "treasure", ...treasure[0] });
+  const goals = collectGoals(game.content);
 
   let phases = 0;
   for (const goal of goals) {

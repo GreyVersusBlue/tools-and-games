@@ -413,6 +413,192 @@ async function buildChart(page) {
   await page.close();
 }
 
+/* ============================================= zones and layout presets == */
+{
+  const page = await prepPage(browser, BASE, { width: 1440, height: 1000, dsf: 1 });
+  await page.goto(URL_PAGE, { waitUntil: 'load' });
+  await settle(page, 400);
+
+  /* ---- desk zone tagging: the cycle button and its badge ---- */
+  await page.click('button[onclick="makeGrid()"]');
+  const zoneCycle = await page.evaluate(() => {
+    const btn = () => document.querySelector('.desk .desk-ctrl[data-act="zone"]');
+    const badge = () => document.querySelector('.desk .zonebadge');
+    const seq = [btn().textContent];
+    for (let i = 0; i < 4; i++) { btn().click(); seq.push(btn().textContent); }
+    return { seq, hasBadgeMidway: !!badge };
+  });
+  eq(zoneCycle.seq[0], '+Z', 'an untagged desk shows the tag prompt');
+  eq(zoneCycle.seq[1], 'Fr', 'one click tags the desk front row');
+  eq(zoneCycle.seq[2], 'Dr', 'the next click moves to by the door');
+  eq(zoneCycle.seq[3], 'Bk', 'then back corner');
+  eq(zoneCycle.seq[4], '+Z', 'and a fourth click clears the tag, back where it started');
+
+  /* ---- a flagged student's zone need is a rule the solver enforces ---- */
+  const zoneRule = await page.evaluate(() => {
+    document.getElementById('nameInput').value = 'Ada Lovelace\nMarco Polo\nMansa Musa';
+    document.querySelector('button[onclick="addNames()"]').click();
+    document.querySelector('button[onclick="makeGrid()"]').click();
+    // Tag exactly one desk 'front', then require it for Ada.
+    document.querySelector('.desk .desk-ctrl[data-act="zone"]').click();
+    const findRow = () => [...document.querySelectorAll('.stu')].find(r => r.textContent.includes('Ada Lovelace'));
+    findRow().querySelector('.icon-btn').click();            // flag — re-renders the roster
+    const select = findRow().querySelector('.zone-need');    // so re-query rather than reuse the old node
+    select.value = 'front';
+    select.dispatchEvent(new Event('change'));
+    document.querySelector('button[onclick="autoAssign()"]').click();
+    const adaDesk = [...document.querySelectorAll('.desk')]
+      .find(d => d.querySelector('.seat').textContent === 'Ada Lovelace');
+    return {
+      status: document.getElementById('status').textContent,
+      adaTag: adaDesk ? adaDesk.querySelector('.desk-ctrl[data-act="zone"]').textContent : null,
+    };
+  });
+  eq(zoneRule.adaTag, 'Fr', 'the flagged student with a zone need lands on the desk tagged for it');
+  ok(/All seating rules met/.test(zoneRule.status), 'and the status line says the rules are met');
+
+  // Unflagging clears the zone need rather than leaving an invisible rule behind.
+  const unflag = await page.evaluate(() => {
+    const findRow = () => [...document.querySelectorAll('.stu')].find(r => r.textContent.includes('Ada Lovelace'));
+    findRow().querySelector('.icon-btn').click();            // unflag — re-renders the roster
+    return { hasSelect: !!findRow().querySelector('.zone-need') };
+  });
+  ok(!unflag.hasSelect, 'unflagging a student hides the zone-need picker again');
+
+  /* ---- layout presets, each applied through the real toolbar control ---- */
+  const presets = await page.evaluate(() => {
+    const apply = (kind, a, b) => {
+      const sel = document.getElementById('presetKind');
+      sel.value = kind; sel.dispatchEvent(new Event('change'));
+      if (a != null) document.getElementById('presetA').value = a;
+      if (b != null) document.getElementById('presetB').value = b;
+      document.querySelector('button[onclick="applyPreset()"]').click();
+      return document.querySelectorAll('.desk').length;
+    };
+    const out = {};
+    out.horseshoe = apply('horseshoe', 12);
+    out.pods = apply('pods', 5);
+    out.rows = apply('rows', 6, 3);
+    out.lab = apply('lab', 8, 3);
+    out.bHiddenForHorseshoe = (() => {
+      const sel = document.getElementById('presetKind');
+      sel.value = 'horseshoe'; sel.dispatchEvent(new Event('change'));
+      return getComputedStyle(document.getElementById('presetB')).display;
+    })();
+    // Every desk from the last preset applied lands inside the visible floor.
+    const floor = document.getElementById('floor').getBoundingClientRect();
+    out.allOnFloor = [...document.querySelectorAll('.desk')].every(d => {
+      const r = d.getBoundingClientRect();
+      return r.left >= floor.left - 1 && r.top >= floor.top - 1;
+    });
+    return out;
+  });
+  eq(presets.horseshoe, 12, 'the horseshoe preset lays out the requested seat count');
+  eq(presets.pods, 20, 'pods of four, five pods requested');
+  eq(presets.rows, 36, 'double rows: columns times row pairs times two');
+  eq(presets.lab, 24, 'lab benches: seats per bench times benches');
+  eq(presets.bHiddenForHorseshoe, 'none', 'the second preset number hides itself for a one-number layout');
+  ok(presets.allOnFloor, 'every preset desk lands inside the room, not off the edge');
+
+  await page.close();
+}
+
+/* ================================================= print all sections === */
+{
+  const page = await prepPage(browser, BASE, { width: 1440, height: 1000, dsf: 1 });
+  await page.goto(URL_PAGE, { waitUntil: 'load' });
+  await settle(page, 400);
+
+  // Build the first section, then a second, smaller one so "print all" has
+  // something to prove (a fresh page already starts with three sections;
+  // printAllSections() itself falls back to printChart() below that count).
+  await page.evaluate(() => {
+    document.getElementById('nameInput').value = 'Ada Lovelace';
+    document.querySelector('button[onclick="addNames()"]').click();
+    document.querySelector('button[onclick="makeGrid()"]').click();
+    document.querySelector('button[onclick="autoAssign()"]').click();
+  });
+  await page.evaluate(() => {
+    document.querySelectorAll('.sec-tab')[1].click();
+    document.getElementById('nameInput').value = 'Ida B Wells\nBessie Coleman';
+    document.querySelector('button[onclick="addNames()"]').click();
+    document.getElementById('gridCols').value = '2';
+    document.getElementById('gridRows').value = '1';
+    document.querySelector('button[onclick="makeGrid()"]').click();
+    document.querySelector('button[onclick="autoAssign()"]').click();
+    document.querySelectorAll('.sec-tab')[0].click();
+  });
+  await settle(page, 200);
+
+  // Drive the same beforeprint/afterprint events a real print job fires,
+  // rather than calling printAllSections() itself: that calls window.print(),
+  // which opens a real (blocking) print dialog outside headless Chromium, the
+  // same reason the single-section print test above dispatches these by hand.
+  await page.evaluate(() => {
+    document.body.classList.add('print-all-mode');
+    window.dispatchEvent(new Event('beforeprint'));
+  });
+  await settle(page, 300);
+  const built = await page.evaluate(() => {
+    const holder = document.getElementById('printAllHolder');
+    const pages = [...holder.querySelectorAll('.print-page')];
+    return {
+      bodyClass: document.body.className,
+      pageCount: pages.length,
+      titles: pages.map(p => p.querySelector('.print-head h2').textContent),
+      desksPerPage: pages.map(p => p.querySelectorAll('.desk').length),
+      lockedNamePrinted: pages[0].querySelector('.seat').textContent.length > 0,
+    };
+  });
+  eq(built.pageCount, 3, 'one print page per section, all three');
+  ok(/print-all-mode/.test(built.bodyClass), 'the body is flagged for the print-all layout');
+  eq(built.titles[0], 'Honors GT', 'the first page is titled for its section');
+  eq(built.titles[1], 'Honors', 'the second for its own');
+  eq(built.desksPerPage[1], 2, 'the second section only carries its own two desks');
+
+  await page.emulateMedia({ media: 'print' });
+  await settle(page, 200);
+  const printView = await page.evaluate(() => ({
+    appHidden: getComputedStyle(document.querySelector('.app')).display === 'none',
+    holderShown: getComputedStyle(document.getElementById('printAllHolder')).display !== 'none',
+  }));
+  ok(printView.appHidden, 'the live app is hidden while printing every section');
+  ok(printView.holderShown, 'and the static print-all copy is what shows instead');
+
+  await page.pdf({ path: path.join(SHOTS, 'chart-print-all.pdf'), preferCSSPageSize: true, printBackground: true });
+  const pdf = fs.readFileSync(path.join(SHOTS, 'chart-print-all.pdf'));
+  const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+  eq(pages, 3, 'the PDF itself has one page per section');
+
+  await page.emulateMedia({ media: 'screen' });
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+  await settle(page, 200);
+  const after = await page.evaluate(() => ({
+    bodyClass: document.body.className,
+    holderEmpty: document.getElementById('printAllHolder').innerHTML === '',
+  }));
+  ok(!/print-all-mode/.test(after.bodyClass), 'print-all-mode is cleared afterward');
+  ok(after.holderEmpty, 'and the static copy is torn back down');
+
+  // Below two sections, printAllSections() is just printChart() — stub
+  // window.print so the fallback is provable without opening a real dialog.
+  page.on('dialog', d => d.accept());
+  await page.click('button[onclick="deleteSection()"]');
+  await page.click('button[onclick="deleteSection()"]');
+  const fallback = await page.evaluate(() => {
+    let calls = 0;
+    window.print = () => { calls++; };
+    document.querySelector('button[onclick="printAllSections()"]').click();
+    return { calls, printAllMode: document.body.classList.contains('print-all-mode') };
+  });
+  eq(fallback.calls, 1, 'one section left: printAllSections() just calls window.print() once');
+  ok(!fallback.printAllMode, 'and never enters print-all-mode for a single section');
+
+  const errs = page.__errs.filter(e => !/favicon/.test(e));
+  eq(errs.length, 0, 'no page errors printing every section' + (errs.length ? ':\n       ' + errs.join('\n       ') : ''));
+  await page.close();
+}
+
 /* ========================================================= phone view === */
 {
   const page = await prepPage(browser, BASE, { width: 375, height: 812, dsf: 2, mobile: true });

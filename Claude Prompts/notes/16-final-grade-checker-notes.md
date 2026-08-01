@@ -2,399 +2,119 @@
 
 ## Is the arithmetic right
 
-Two of the four rules were right. One was wrong by half a percent at every letter
-boundary. And the paste importer could hand the arithmetic a quarter grade the
-student never had, which is worse than any of it. Both wrong things are fixed and
-both now have failing-first tests.
+**Headline finding: quality points do not round up at .5. The percentage average does.** This was the actual headline task (check the QP thresholds against real policy) and the answer came directly from Devon, not from a document. I spent real time first: searched the CCPS site, the district-wide Student Services Manual, East Middle's own 2025-26 handbook, Maryland's COMAR 13A.03.02.08, boarddocs, and the high school Program of Studies (which has a different, weighted GPA table for transcripts, not this). None of it published the actual per-quarter QP-to-letter midpoints. The CCPS Policy Book is described as living in the Superintendent's and each Principal's office, not online. So I asked. Devon's answer: quality points do NOT round up at all, but the percentage average does.
 
-No real student data was in the file. Nothing to remove.
+That means the previous round's code, which used the same `>=` comparison for both methods, was still wrong after last round's fix, just wrong in a smaller and more specific way. An averaged QP figure sitting exactly on 3.5, 2.5, 1.5 or 0.5 has to clear the line, not just meet it.
 
-**Rule 1, both figures get computed.** Right, before and after.
+    qpToFinalLetter(3.50)  ->  B, not A
+    qpToFinalLetter(2.50)  ->  C, not B
+    qpToFinalLetter(1.50)  ->  D, not C
+    qpToFinalLetter(0.50)  ->  F, not D  (the pass/fail line)
 
-**Rule 2, the higher of the two gets reported.** Right, before and after. This is
-the one the prompt said to check first and it was the one thing the tool already
-did correctly. `winner` compares letter ranks and a tie goes to quality points,
-which is the same letter either way.
+Fixed by changing the QP comparison from `>=` to `>` in `qpToFinalLetter`. The percentage side is untouched; it still rounds up at .5, which Devon also confirmed directly ("but grade average does").
+
+**This breaks the two worked examples that were the centerpiece of the last two rounds of documentation.** Both used A,A,D,D (90,90,60,60), which averages to exactly 2.50 QP:
 
     Q1 90 A=4   Q2 90 A=4   Q3 60 D=1   Q4 60 D=1
-    quality points   10 / 4 = 2.50 -> B
+    quality points   10 / 4 = 2.50 -> C   (was reported as B)
     percentage      300 / 4 = 75.00 -> C
-    reported: B, by quality points
+    reported: C either way. A genuine tie, not a case of quality points rescuing the student.
 
-A tool that quietly reported the percentage average would give this student a C.
-It gives a B. Verified in the live page, not just in the source.
+Under the real rule this specific student is not an example of quality points winning at all, both methods land on C. I replaced the "QP wins" demonstration with a set that isn't sitting on a boundary:
 
-**Rule 3, ten-point scale.** Right.
+    Q1 90 A=4   Q2 90 A=4   Q3 70 C=2   Q4 60 D=1
+    quality points   11 / 4 = 2.75 -> B
+    percentage      310 / 4 = 77.50 -> C
+    B beats C. Quality points wins for real here.
 
-**Rule 4, round up at exactly .5.** Half right, and the wrong half moved letters.
+The old A,A,D,D example is kept in the suite, relabeled as what it actually demonstrates now: a real four-quarter set that lands exactly on the boundary and comes out a tie once quality points stop rounding up.
 
-89.5 came out an A, which is correct. So did 89.45, which is not. The cutoff test
-was `Math.round(n * 10) >= 895`. That rounds the average to the nearest tenth
-before comparing it to the boundary, so the real cutoff sat at x.45 rather than
-x.5 at all four boundaries:
+**Rules 1, 2 and 3.** Unaffected, still right. The higher-of-two-methods logic (`winner`) didn't need to change, only what `qpFinal` evaluates to at the boundary, which feeds into it.
 
-| Boundary | Rule says | Old code used |
-| --- | --- | --- |
-| A | 89.5 | 89.45 |
-| B | 79.5 | 79.45 |
-| C | 69.5 | 69.45 |
-| D | 59.5 | 59.45 |
+**Rule 4, the percentage half.** Unaffected, still right, per last round's fix and this round's re-confirmation. 89.5 is an A. The floating-point handling (round to 4 decimals before comparing) still holds for the same reason it did last round.
 
-A four-quarter average of two-decimal percentages lands on a multiple of 0.0025,
-so there are 40,001 averages the tool can actually produce between 0 and 100.
-**80 of them got a letter one grade too high.** Twenty at each boundary. The
-twenty at the bottom are the ones that matter:
+**Missing or exempt quarters.** Unaffected. `calcFinals` still declines to produce a final grade with fewer than four usable quarters.
 
-    Q1 60.00 D=1   Q2 59.40 F=0   Q3 59.40 F=0   Q4 59.00 F=0
-    quality points     1 / 4 =  0.25 -> F
-    percentage     237.80 / 4 = 59.45 -> D  (old)   F  (correct)
-    old tool reported: D, by percentage average
-    now reports:       F
+**Letter-only quarters (this round's task two).** Asked Devon directly: does a TAC export ever show a bare letter with no percentage, like `B` instead of `B(84.00)`? Answer: never seen it. Not building support for a case that doesn't occur. `parseGradeToken` returning null for anything that isn't `X(NN.NN)` is correct, not a gap.
 
-That is a student the old tool passed. Worth knowing before you use the fixed
-version on anything you already checked: the correction moves grades **down**, and
-only for averages sitting in the x.45 to x.4999 band.
-
-The other half of rule 4 is the floating-point trap, and it is real. Of 8,205,049
-four-quarter sets whose mean is exactly a .5 boundary, **422,651 evaluate to
-something like 89.49999999999999**. A naive `avg >= 89.5` marks every one of those
-a B. The old `Math.round(n * 10)` absorbed that noise, which is why it was written
-that way, but it paid for it with the x.45 band above. The fix rounds to four
-decimals first, which is the precision the data actually has, then compares
-against the true .5 boundary. That kills the noise (0 misses across the same 8.2M
-sets) without moving any real value. Three of those float-hostile sets are in the
-test suite.
-
-Quality points needed no change. Averages of four integers 0 to 4 are multiples of
-0.25 and exact in floating point, and none of the 17 reachable values falls in a
-dangerous band. All 17 are in the suite as a table.
-
-**A missing or exempt quarter.** `calcFinals` already declined to produce a final
-grade with fewer than four quarters, and that is the right answer, so it stayed.
-The problem was that the importer rarely let it get asked.
-
-**The importer, which is the actual headline.** The row splitter ended with
-`.filter(c => c.length > 0)`, which threw away empty columns. Positions shift left,
-and every column after the gap is read as the wrong quarter. Real TAC row, one
-missing Q1:
-
-    123457 <tab> Bartholomew Notreal <tab> SS7-3 <tab> 7 <tab><tab> B(84.00) <tab> A(91.00) <tab> A(93.00) <tab> 89.33
-
-    read as:  Q1 84.00  Q2 91.00  Q3 93.00  Q4 89.33
-    quality points  B,A,A,B = 14 / 4 = 3.50 -> A
-    percentage      357.33 / 4 = 89.3325 -> B
-    reported: A, by quality points. Zero warnings.
-
-The 89.33 in Q4 is the system average column, the one the panel text says is
-ignored. So a student with three quarters on file got a confident A built partly
-out of the number the tool was supposed to be checking. Now:
-
-    read as:  Q1 missing  Q2 84.00  Q3 91.00  Q4 93.00
-    reported: no final grade
-    warning:  "Row 2 (Bartholomew Notreal): 1 quarter(s) missing, so no final grade"
-
-Two smaller importer faults, both fixed. The length guard was `cols.length < 6`
-while the code read up to `cols[7]`, so a six-column row passed the guard and read
-`undefined` for Q3 and Q4. And nothing range-checked a percentage: a paste
-containing `A(950.00)` was accepted as a quarter grade of 950.
+**What is still not verified against a written source, after this round.** The rounding *direction* for quality points is now confirmed directly by Devon. The actual *spacing* of the four thresholds (3.5 for A, 2.5 for B, 1.5 for C, 0.5 for D, each exactly 1.0 apart) is still inherited from the original code, not checked against the written policy text. It's internally consistent and now correctly asymmetric with the percentage side, but the specific numbers themselves are still an assumption, just a smaller one than before.
 
 ## What changed
 
-**Read this first: half of task two was already done and had never been connected.**
+**`Tools/final-grade-checker/grade-math.mjs`** (211 to 217 lines). The actual fix: `qpToFinalLetter`'s comparison changed from `v >= cutoff` to `v > cutoff`. Comments at the top of the file and above `QP_CUTOFFS` and `qpToFinalLetter` updated to state the asymmetry explicitly, so the next person doesn't "simplify" the two methods back to matching comparisons.
 
-`git log` says commit `8cf6575` ("auto updates using Code") already added
-`Tools/final-grade-checker/grade-math.mjs` and all three vendored libraries. It did
-not touch `Tools/final_grade_checker.html`. So at the start of this session the repo
-held a corrected copy of the arithmetic that nothing imported, and 1.22 MB of
-vendored libraries that nothing loaded, while the page users actually open was
-still 808 lines with its own private copy of the old math and three live
-`cdnjs.cloudflare.com` script tags. Dead code beside a shipping bug.
+**`Tools/final-grade-checker/grade-math.test.mjs`** (279 to 303 lines, 119 to 130 assertions). Updated the four worked examples that happened to sit on a QP boundary (the marquee "QP wins" example, the "wins near the pass/fail line" example, one entry in the end-to-end pasted-class test, and the qpTable's four boundary rows). Added a new group, "Quality points — .5 does not round up, unlike the percentage average," with explicit boundary assertions and the real A,A,D,D tie case, mirroring how last round's percentage fix got its own dedicated test group.
 
-That matters for reading the section above: **every defect described there was
-live on the site**, because the page never used the fixed module. It also means the
-credit for the vendoring and for the module is not mine.
+**`Tools/final_grade_checker.html`** (833 to 866 lines). Three separate changes:
 
-What this session actually contributed:
+1. The on-screen policy text and the PDF footer text both now state the asymmetry (quality points don't round up, percentage does), instead of implying both methods work the same way.
+2. **Export Excel is gone. Export CSV replaces it.** `xlsx.full.min.js` (861 KB, SheetJS, 67% of the vendored total) is deleted from the repo. Its styling was already confirmed dead on write last round (SheetJS Community drops `cell.s`), so it was buying a file extension, not an appearance. The new `exportCSV()` builds the file with a `Blob` and `URL.createObjectURL`, no library at all, with a UTF-8 byte-order mark so Excel on Windows reads accented names correctly, and proper quoting for any field containing a comma, quote or newline.
+3. **"+ Add Student Row" button.** `MANUAL_COUNT` (a constant, 5) is now `manualCount` (a variable). The button appends one card without touching the ones already filled in, focuses the new name field, and hides itself in import mode (adding rows only means something in manual entry). `attachManualListeners` takes an optional root element now, so a freshly added card gets its own listeners wired without re-binding every existing input.
 
-- wired the page to both, which is the part that makes any of it real
-- the test suite, which did not exist
-- `libs/README.md`, which did not exist
-- two warning strings in `grade-math.mjs`
+**`Tools/final-grade-checker/libs/README.md`** (72 to 65 lines). Rewritten: the xlsx row is gone from the table, the size total drops from 1.22 MB to 402,489 bytes (393 KB), and a new "Why xlsx is gone" section carries the same reasoning that was already flagged as a pending decision last round.
 
-The three `libs/*.js` files are byte-identical to `HEAD` (sha256 compared). I
-re-downloaded them from cdnjs before noticing they were already there and got the
-same bytes, which at least confirms the committed copies are what cdnjs serves.
-
-**`Tools/final_grade_checker.html`** (808 lines before, 833 after). This is the
-session's real work.
-
-- The three `cdnjs.cloudflare.com` script tags are gone. `grep cdnjs` returns 0.
-- The arithmetic moved out to `final-grade-checker/grade-math.mjs`. The page
-  imports it. The page script is now `type="module"`, which means the five inline
-  `onclick=""` attributes could no longer reach it and are `addEventListener`
-  calls instead.
-- Libraries load on the first press of the button that needs them, not on page
-  load. See the size numbers below.
-- Deleted about 100 lines of Excel cell styling. SheetJS Community drops `cell.s`
-  on write. Checked rather than assumed: write a sheet with fills and fonts set,
-  unzip the result, and `xl/styles.xml` comes back with one font, two default
-  fills, and no cell carrying a style index. It was decorating nothing. Column
-  widths do survive and are still set.
-- Every card now states its answer instead of leaving you to infer it from which
-  box is starred: **Final: B, by quality points**.
-- All import warnings are listed, not just the first one. The old status line said
-  "3 warning(s): Row 2 …" and swallowed the rest.
-- `tabindex="${i*5+q}"` came off the grade inputs. Any positive tabindex jumps
-  ahead of every `tabindex=0` element on the page, so Tab from the top skipped the
-  header buttons and the paste box and went straight into the grades, and each
-  name field came after all twenty grade inputs. DOM order was already the order
-  you type in.
-- The paste box has a real `<label for>`. Imported cards use `<span>` where they
-  had a `<label>` with nothing to point at. Focus rings are visible.
-- The note bar prints now. A printed sheet saying "B" without saying which method
-  produced it is not something you can hand to a parent. The winning box also gets
-  a border in print, since colour alone does not survive a mono printer.
-- 375 px layout: quarters go two-up instead of wrapping three-and-one.
-- Blank manual rows are excluded from exports. Five empty "Student 4" lines in a
-  PDF read as missing data rather than an empty form.
-- Percentages show two decimals everywhere. It was 1 decimal on screen and in the
-  PDF, 2 in the input, which made an 89.45 display as "89.5%" next to a B.
-- A line under the buttons saying nothing is sent anywhere and nothing is saved.
-
-**`Tools/final-grade-checker/grade-math.mjs`** (already in `HEAD`, 2 lines changed).
-Pure functions, no DOM. I changed only the two import warning strings, to drop the
-em dashes. The comment above the precision constant explains the two-sided rounding
-problem so the next person does not "simplify" it back; that comment was already
-there and it is right.
-
-**`Tools/final-grade-checker/grade-math.test.mjs`** (new this session). 119
-assertions, exits 1 on failure. No real names. Nothing was testing any of this
-before, which is presumably how the module came to sit unimported without anyone
-noticing.
-
-**`Tools/final-grade-checker/libs/README.md`** (new this session). The libraries
-were vendored with no record of what they were.
-
-**`Tools/final-grade-checker/libs/`** (already in `HEAD`, unchanged). The exact
-versions that were being hotlinked:
-
-| File | Version | Licence | Bytes | KB |
-| --- | --- | --- | --- | --- |
-| `xlsx.full.min.js` | 0.18.5 | Apache-2.0 | 881,727 | 861 |
-| `jspdf.umd.min.js` | 2.5.1 | MIT | 364,463 | 356 |
-| `jspdf.plugin.autotable.min.js` | 3.6.0 | MIT | 38,026 | 37 |
-| **Total** | | | **1,284,216** | **1,254 (1.22 MB)** |
-
-I checked all three are actually used before accepting them: `XLSX.utils` and
-`XLSX.writeFile` for the spreadsheet, `window.jspdf.jsPDF` and `doc.autoTable` for
-the PDF. None is vendored for nothing.
-
-But 1.22 MB on every page load for a page that adds up four numbers is not a trade
-worth making, so **nothing is in a `<script src>` tag**. `loadLibs()` injects the
-scripts on the first press of the button that needs them. Export PDF pulls 393 KB,
-Export Excel pulls 861 KB, and a visit that exports nothing pulls **0 KB of
-library**. jsPDF loads before its autotable plugin, in sequence, because the plugin
-registers against it. `libs/README.md` now names each one, its version, licence and
-source URL.
-
-`xlsx` is 67% of that total and it is used for one thing: writing the file. It
-never reads a spreadsheet, the import path is a paste box. Since its styling is
-dead anyway, a CSV export would produce a visually identical file at zero library
-cost. That is a product call, not a cleanup, so the Excel button still works and
-the library is still there. Numbers are in the README.
+**`Tools/final-grade-checker/libs/xlsx.full.min.js`** deleted (`git rm`).
 
 ## What I verified
 
-Commands and their actual output.
-
 ```
 node Tools/final-grade-checker/grade-math.test.mjs
-  119 passed, 0 failed        (exit 0)
+  130 passed, 0 failed        (was 119)
+
+Locked decision #34: reintroduced the old `>=` comparison in qpToFinalLetter,
+reran the suite, 12 failed (confirms the fix is load-bearing), restored the
+file, sha256 before and after both 1e909139c9b61eb57a7c5d3039cc35bb796a4f8
+6f7392a7ba776b3c061349ca7, byte-for-byte.
+
+cd Tools/board-check && npm run tools
+  18 checks, 0 failed         (Final Grade Checker's page: no offsite
+  requests, no console errors, real title)
 
 cd Tools/board-check && npm run check
-  280 units checked, 0 broken
-  0 collisions, tightest vertical gap 7.1px
+  345 units checked, 1 broken  <- NOT this file, see Shared-file requests
 
-npm run social:check
-  23 notices · 23 already current · 0 out of date · 0 failed
-
-grep -c cdnjs.cloudflare.com Tools/final_grade_checker.html
-  0
+cd Tools/board-check && npm run social:check
+  parse failure                <- NOT this file, see Shared-file requests
 ```
 
-**On the 280.** v7 recorded 235. Counted rather than assumed, by replicating
-`check-integrity.mjs`'s `walk()`. `Tools/final-grade-checker/` holds 5 `.js`/`.mjs`
-units, but 4 of them (the module and the three libraries) were already in `HEAD`
-from commit `8cf6575`, so **this session adds exactly 1 unit**, the test file. The
-rest of the gap between 235 and 280 is the vendoring commit plus the parallel
-threads working in this repo while I was in it. The inline-script count for
-`final_grade_checker.html` is still 1.
+**In a real browser**, served over http on port 47681 via the existing `gvb-static-site` launch config.
 
-**Locked decision #34, each guard-rail watched failing.** Eight bugs reintroduced
-into `grade-math.mjs` one at a time, suite run, file restored byte-for-byte
-(verified by string compare). All eight exited 1:
+- Page load: 2 network requests total (the HTML and `grade-math.mjs`). No library bytes until a button is pressed. No console errors.
+- Typed 90/90/70/60 into a manual row (the new "QP genuinely wins" example): QP box showed avg 2.75 / B, Pct box showed 77.50% / C, Final line showed B by quality points. Matches the hand-worked example above, confirmed live, not just in the test file.
+- Typed 90/90/60/60 into another row (the old boundary example): QP 2.50 / C, Pct 75.00 / C, Final C. Confirms the tie live, in the actual DOM, not just in `grade-math.test.mjs`.
+- **Exported a CSV for real.** Intercepted `URL.createObjectURL` to capture the actual `Blob` before the download fired, read its raw bytes with `arrayBuffer()`: first three bytes are `239, 187, 191`, the UTF-8 byte-order mark, followed by the header row and both students' data, correct on every column. (Calling `.text()` on the same blob strips the BOM, that's `TextDecoder`'s own default behavior per the Encoding spec, not a bug in the export. Worth knowing if anyone else checks this the same way.)
+- Confirmed zero network requests for the CSV export. No library loads at all.
+- **Exported a PDF for real.** Same capture technique: 13,645 bytes, `Content-Type: application/pdf`, `/Producer (jsPDF 2.5.1)` readable in the raw bytes. Two `console.warn` lines appeared ("Of the table content, 162 units width could not fit page") from jsPDF-AutoTable. This is pre-existing: the table's column layout is untouched by this session's changes (I only edited the footer text strings), so this warning was already there, just never explicitly checked before now since last round's own check was for `console.error`, not `console.warn`. Not fixing it, it's outside this round's five tasks and the export still produces a correct, readable PDF.
+- **Add Student Row**, tested by clicking the real button (via its click handler, not by calling the JS function directly): went from 5 cards to 7, the first card's already-typed name and Q1 value were untouched, focus moved to the new row's name field. Filled all four quarters on the new row and the calculation engine picked it up correctly (same 90/90/60/60 tie case above, reproduced on a dynamically added row).
+- **Clear All** on a 7-row board blanks all 7 rows and keeps 7 cards, it does not delete the rows you added. Confirmed this is the existing "Clear All blanks data, not roster shape" behavior, applied consistently to added rows rather than a new inconsistency.
+- 375x812: `documentElement.scrollWidth` 375, equals `clientWidth`, no horizontal overflow. Quarter inputs at two rows of two, 101 px each. Add Student Row button fits at 147 px wide.
+- Print rules read from the CSSOM: `.no-print { display: none !important }` exists inside the print media block and the new Add Student Row wrapper carries that class, so it hides on a printed page the same way the header buttons already do. `.note-bar` and `.result-box.winner`'s print styling are unchanged from last round.
 
-| Reintroduced bug | Failures |
-| --- | --- |
-| `winner` always PCT | 5 |
-| no normalise, bare `>=` on the raw float | 6 |
-| the old `Math.round(n*10)` thresholds | 6 |
-| `calcFinals` averages however many quarters it has | 8 |
-| the old parser, empty columns filtered out | 7 |
-| column guard back to 6 | 2 |
-| range check removed | 5 |
-| quarter window pinned to column 4 | 2 |
-
-**In a real browser**, served over http on port 47681 via the existing
-`gvb-static-site` launch config. Console errors across the whole session: none.
-Network requests across the whole session: **10, every one of them to localhost.**
-Zero offsite.
-
-- Page load pulls exactly two things: the HTML and `grade-math.mjs`. No library
-  bytes until a button is pressed.
-- Typed 90/90/60/60 into the manual form: `avg 2.50 pts / B`, `75.00% / C`,
-  `Final B by quality points`, Quality Points box starred.
-- Exactly 89.5 (79, 79, 100, 100) -> A. The float-hostile 89.5 (58.80, 99.99,
-  99.25, 99.96) -> A. 89.49 flat -> B. Three quarters only -> "no grade / all four
-  quarters required".
-- Pasted the three-row TAC sample including Bartholomew's empty Q1. Status:
-  "Imported 3 students. 1 without a final grade. 1 warning below." His Q1 shows
-  Missing, 89.33 never became a quarter, no final grade.
-- **Exported a PDF for real** by pressing the button. Both libraries loaded from
-  `./final-grade-checker/libs/`, autotable registered against jsPDF, button
-  re-enabled. Captured the bytes and read the content stream back: title,
-  "Generated July 28, 2026", the twelve headers, and per student
-  `Ingrid Notapupil 90.00 90.00 60.00 60.00 2.50 B 75.00% C B Qual. Pts` and
-  `Jerome Fabricated 79.00 79.00 100.00 100.00 3.00 B 89.50% A A Pct. Avg`. Both
-  directions of the dual-method rule in one file. Producer `jsPDF 2.5.1`. The
-  footer carries the .5 rule and the all-four-quarters rule.
-- **Exported a spreadsheet for real**, then read it back with `XLSX.read`.
-  `final_grades.xlsx`, sheet "Final Grades", 18,085 bytes, and every cell correct
-  including `Bartholomew Notreal | Missing | 84 | 91 | 93 | Incomplete | | ... |
-  No final grade | All four quarters required`. Blank manual rows absent.
-- Tab order read off the live DOM: zero elements with a positive tabindex, order
-  runs Clear All, Export Excel, Export PDF, Print, paste box, Import, Clear paste,
-  warnings summary, name-0, Clear row, q1-0, q2-0.
-- 375x812: `documentScrollWidth` 375, no horizontal overflow, quarters on two rows
-  of two at 116 px each, result boxes and the final line full width at 328 px.
-- Print rules read out of the CSSOM: `.legend, .import-panel` hidden, `.note-bar`
-  visible with a border, `.result-box.winner` given a 2 px border.
-
-**Not verified: no screenshots.** The browser pane was not compositing frames in
-this session, so the mobile and print checks above are geometry and CSSOM
-measurements, not pictures. Someone should look at it with their eyes.
-
-Also not verified: **the quality-point thresholds against an actual county policy
-document.** I kept the tool's existing 3.5 = A, 2.5 = B, 1.5 = C, 0.5 = D and
-confirmed they are internally consistent and that .5 rounds up, but I had no source
-to check them against. See Next session.
+**Not verified: no screenshots, again.** Same limitation the previous round hit: the browser pane did not composite frames in this session either ("the Browser pane is not displayed, so the page is not compositing frames"). Tried a fresh tab, tried the auto-opened editor-preview tab, same error both times. Everything above is geometry, CSSOM and raw bytes, not a picture. Two rounds running now without an actual screenshot of this page.
 
 ## Shared-file requests
 
-Two, both for `Tools/board-check/**`, which is prompt 21's.
+Two, both outside this tool's boundary, both surfaced by running the site-wide checks as verification (not something I went looking for).
 
-**1. Nothing in the browser suites ever opens a Tools page.** This is why the three
-cdnjs hotlinks sat in production unnoticed while v7 §5 said the site made zero
-offsite requests site-wide. `play-games.mjs` and `play-castle.mjs` assert
-`page.__blocked` is empty, but only across the seven games. Suggested addition, a
-new script `Tools/board-check/tools.mjs` wired to a `"tools"` script in
-`package.json`, that for each of the six pages in `Tools/`:
+**1. `newindex.html` hotlinks fonts.googleapis.com and fonts.gstatic.com.** `npm run check` in `Tools/board-check` reports it as the one broken unit out of 345. Not a file I own or touched. Flagging for whoever owns `newindex.html` (looks like a board-owned file, last touched by another thread the day before this session per `git log`).
 
-```
-  for (const page of ['final_grade_checker.html', 'image-to-pdf.html',
-                      'Name Picker.html', 'Seating Chart Generator.html',
-                      'Schedule Browser as of 260715.html',
-                      'Schedule Visualizer and Browser Generator v60.html']) {
-    // load it, then assert:
-    //   page.__blocked is empty        (no offsite requests)
-    //   zero console errors
-    //   document.title is non-empty
-  }
-```
+**2. `sync-social-tags.mjs --check` fails to parse `index.html`.** Output: "only parsed 17 notices out of index.html, the notice markup has changed shape, fix the regexes rather than shipping a partial sweep." `index.html` is prompt 21's file, not mine. Flagging since it means `social:check` can't currently confirm the board's notice count is accurate for any prompt in this round, not just this one.
 
-The `page.__blocked` assertion is the load-bearing one and it is the same helper
-the game suites already use. If only one thing gets built, build that.
-
-**2. Optional, the board description for this card.** Current text, generated into
-the `gvb:social` block from `index.html`, is "Paste TAC report card summaries to
-check end-of-year grades." Accurate but half the tool. It also does manual entry.
-Suggested replacement, same length range:
-
-```
-Check end-of-year grades by hand or from a pasted TAC summary.
-```
-
-Only worth doing if prompt 21 is editing that area anyway. If it changes,
-`npm run social` has to run afterwards or `social:check` will report drift on this
-page.
-
-Nothing needed from `assets/js/gvb-save.js`. No `href` change: the file name is
-unchanged, so the board link still resolves.
+Nothing needed from `assets/js/gvb-save.js`. Nothing needed from `Tools/board-check/tools.mjs`, already covers this page (18/18 clean).
 
 ## Deliberately not done
 
-**No `localStorage`.** The prompt asked for an opinion and this is it: this tool
-should not remember anything. What it holds is a class roster of grades, and the
-machines it runs on are shared classroom machines. The saving is one paste. The
-cost is a roster of student grades sitting in a browser profile until something
-clears it, on a machine other people use. That trade is bad in a way that a
-clear-all button does not fix, because the risk is the data existing at all, not
-the data being hard to delete. The page now says out loud that nothing is stored.
-If this gets revisited, the thing worth persisting is a roster of names with no
-grades attached, which is a different and much smaller decision.
+**Letter-only quarter support.** Asked Devon directly. Never seen in practice. Not building for a case that doesn't occur, per the prompt's own ten-minutes-to-check-first guidance.
 
-**Did not swap the Excel export for CSV.** It would remove 861 KB, 67% of the
-vendored total, and produce a visually identical file, because the styling that
-justified the library is dead. But removing a button a teacher may rely on is your
-call. The numbers are in `libs/README.md` so the decision can be made in one
-minute.
+**The jsPDF-AutoTable column-width warning.** Real, reproducible, pre-existing, and outside this round's five tasks. Noted above under "What I verified" rather than fixed.
 
-**Did not add level-based weighting.** Honors GT, Honors and Academic all run
-through the same calculation, and there is no weighting anywhere in the tool. My
-understanding is that CCPS quality points for a course final are the same 4/3/2/1/0
-at every level and that weighting affects GPA rather than the course grade, which
-is why this is written down rather than built. If that is wrong, it is a real bug
-and it needs the policy text, not a guess.
-
-**Did not touch the `gvb:social` block.** Locked decision #31. `social:check` says
-23 of 23 current.
-
-**Did not create a shared `Tools/libs/`.** `Tools/image-to-pdf.html` also uses
-jsPDF and prompt 17 is editing it right now. Locked decision #17, and a duplicated
-356 KB beats a merge conflict.
-
-**The page now needs to be served, not opened off disk.** `type="module"` means
-opening `final_grade_checker.html` by double-clicking it in Explorer gives a blank
-page, where before it worked apart from the exports. It is fine on
-greyversusblue.com and fine under the local server. I took this because the house
-rule is plain ES modules and because it is the only way the browser and the Node
-test can share one copy of the arithmetic, which is the whole point of the
-exercise. The export error message mentions it. Flagging it because it is a real
-regression for anyone who keeps a local copy.
+**`newindex.html`'s font hotlinks and `index.html`'s notice-markup parse failure.** Both outside my boundary. Filed as shared-file requests instead of touched.
 
 ## Next session
 
 Ordered by value per effort.
 
-1. **Check the quality-point thresholds against the written CCPS policy.** Ten
-   minutes with the actual document. Everything else in this tool is now verified
-   against something; this one number, 3.5 for an A on the quality-point average,
-   is inherited from the previous code and verified only for internal consistency.
-   It is the last unchecked assumption in a tool that sets report card grades.
-2. **Build the Tools page sweep in `board-check`** (shared-file request 1). Three
-   offsite hotlinks lived on a student-data page indefinitely because nothing
-   measured it, and a whole vendoring commit landed without anyone noticing the
-   page still hotlinked, for the same reason. Nothing still measures the other five
-   tools.
-3. **Letter-only quarters.** The importer wants a percentage. If a quarter ever
-   arrives as a bare `B` with no number in brackets, `parseGradeToken` returns null
-   and the student loses their final grade. Quality points only needs the letter,
-   so the tool could still give half an answer. Worth ten minutes to find out
-   whether that case happens before building for it.
-4. **Decide on CSV instead of xlsx** (see Deliberately not done). 861 KB.
-5. **Look at the page with your eyes at 375 px and in print preview.** I measured
-   both and they measure correctly, but I could not get a screenshot out of this
-   session.
-6. **More than five manual rows.** `MANUAL_COUNT` is hard-coded at 5 and a section
-   is nearer 28. Right now the way to do a whole class is the paste box. An "add
-   row" button is small.
+1. **Decide whether the brief QP-rounding bug needs anything beyond a code fix.** This tool's dual-method calculation only went live (imported into the actual page) last round. Between last round's session and this one, any student whose QP average landed exactly on 3.5, 2.5, 1.5 or 0.5, and whose QP method was the one reported, would have gotten a letter one grade too high. The window is short (one round, not "the tool's entire history" the way the percentage bug was), but if this tool got used on anything real in that window, it's the same kind of call the percentage fix needed: check old report cards, note it somewhere, or nothing. Not a code decision.
+2. **The exact CCPS QP threshold numbers (3.5/2.5/1.5/0.5) are still inherited, not verified against the written policy text**, even though the rounding direction is now confirmed directly. If the actual Policy Book ever surfaces (Superintendent's or Principal's office copy), worth a five-minute check against these four numbers specifically.
+3. **Get an actual screenshot.** Two rounds in a row where the browser pane measured correctly (CSSOM, geometry, raw export bytes) but never composited a frame. Someone with a working pane should just look at 375px and print preview.
+4. Everything else from last round's list that this round closed: the Tools sweep (done, by prompt 21), CSV vs xlsx (done, this round), more than five manual rows (done, this round). Nothing carried forward from those three.

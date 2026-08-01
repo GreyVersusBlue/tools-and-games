@@ -176,9 +176,15 @@ export const KEYS = [
     name: "history", key: "np_history", group: "records", wire: "json",
     label: "Pick history", blank: () => [],
     ok: Array.isArray,
+    // `date` is optional so history written before this field existed still
+    // loads — those entries just never trigger the new-day clear in the page.
     fix: v => v
       .filter(isObj)
-      .map(h => ({ name: trimmed(h.name).slice(0, MAX_NAME), time: trimmed(h.time).slice(0, 20) }))
+      .map(h => ({
+        name: trimmed(h.name).slice(0, MAX_NAME),
+        time: trimmed(h.time).slice(0, 20),
+        date: /^\d{4}-\d{2}-\d{2}$/.test(h.date) ? h.date : ""
+      }))
       .filter(h => h.name)
       .slice(-MAX_HISTORY)
   },

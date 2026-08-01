@@ -18,7 +18,7 @@
 
 import { serve, launch, prepPage } from '../../../Tools/board-check/harness.mjs';
 
-export const URL_PATH = '/Projects/daredevil_r4.html';
+export const URL_PATH = '/Projects/daredevil/index.html';
 export const wait = ms => new Promise(r => setTimeout(r, ms));
 
 /* ---------------------------------------------------------------- screens */
@@ -131,6 +131,16 @@ export async function pick(page, needle) {
  * The recovery minigame is a timing exercise with a per-round clock; the driver
  * lets it time out, which finishes it honestly with a low score and only ever
  * happens after a crash anyway.
+ *
+ * Work the Crowd (new this round, wired to `_minigame_crowd_m1`) is a
+ * "choices" minigame, not a "pedals" one: there is no `tele` to read a phase
+ * off of, and the only way to know the right card is `mg.correctCall`, a
+ * getter added to the game object for exactly this — the same move round 1
+ * made adding `tele.w` for the stunt run. Without it, `good` mode has nothing
+ * to click, the game self-resolves on its own per-round timeout into FAIL
+ * every time, and `smoke-page.mjs`'s "every stunt the autopilot was asked to
+ * land, it landed" assertion breaks the moment this minigame became
+ * reachable — confirmed by running the suite before this branch existed.
  */
 export async function autopilot(page, mode = 'good', timeoutMs = 60000) {
   await page.evaluate(m => {
@@ -141,7 +151,9 @@ export async function autopilot(page, mode = 'good', timeoutMs = 60000) {
       if (window.__apStop) return;
       const a = (window.__dd && window.__dd.mg) || null;
       const t = a && a.tele;
-      if (a && t && a.onGas) {
+      if (a && a.controlSpec && a.controlSpec.type === 'choices') {
+        if (m !== 'crash' && typeof a.correctCall === 'string') a.onChoice(a.correctCall);
+      } else if (a && t && a.onGas) {
         if (t.phase === 'approach') {
           a.onGas(t.v < TARGET_V - 8);
           a.onLean(m !== 'crash' && t.v > TARGET_V + 8);

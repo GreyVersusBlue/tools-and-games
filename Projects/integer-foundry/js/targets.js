@@ -167,22 +167,47 @@ export function nearestReachable(n, plan) {
 /**
  * Roll the next order.
  *
- * The difficulty ramp is the original one — a ceiling of 5 + 3 per order filled,
- * jittered by up to 7, capped at 300 — so the curve a player feels is unchanged.
- * What is new is the second line: the ceiling is also clamped to what the board
- * can build, and the value is drawn from the reachable set rather than from a
- * bare integer range. With only `+1` unlocked every integer up to the budget is
- * reachable, so early play is bit-for-bit what it was; the clamp only bites once
- * the ramp outruns the floor, which is exactly the case that used to hand out
- * impossible orders.
+ * The old ramp climbed the target's raw MAGNITUDE: a ceiling of 5 + 3 per order
+ * filled, jittered by up to 7. That is fine with only `+1` unlocked, where
+ * building N costs N-1 tiles — magnitude and effort are the same thing. It
+ * stops being fine the moment `x2` is bought (80 ingots, most players have it
+ * within a couple of orders): `buildCosts` prices a value on a log2 curve once
+ * doubling exists, so the ceiling keeps climbing by 3 a roll while the tiles a
+ * player actually has to place barely grow. That is the flat 15-to-30-order
+ * stretch round 1 flagged and deliberately left alone.
+ *
+ * So this ramps TILE COST directly instead of magnitude, using the exact same
+ * numbers (4 base, 3 a roll, jittered by up to 7 — one lower than before,
+ * because cost starts at 0 where the old value ramp started at 1). `maxCost`
+ * is the most tiles anything on this board could ever need with the operators
+ * currently unlocked — buying a new op can only ever lower it, never raise it,
+ * which is the lever a magnitude ramp did not have: it reads what has actually
+ * been bought. With only `+1` unlocked, cost is magnitude minus one, so
+ * `costCeil` saturates at `maxCost` (the board's operator budget) on the same
+ * order the old ceiling first exceeded 47 — bit for bit the old curve. Unlock
+ * `x2` and `maxCost` drops to whatever this board's actual hardest tile-count
+ * is now (14 on the opening floor, not 46), and the ramp saturates there
+ * within a few orders instead of continuing to chase a 300-cap that log2
+ * pricing made meaningless.
+ *
+ * `costFloor`, a small band under the ceiling, keeps the draw from collapsing
+ * onto one deterministic value once saturated — a board that is never
+ * upgraded keeps demanding close to its full capacity forever rather than a
+ * single repeating number, and a richer toolset has more values at any given
+ * cost anyway.
  */
 export function rollTarget(state, rand = Math.random) {
   const plan = boardPlan(state);
-  const ramp = Math.min(HARD_CAP, 5 + Math.max(0, Math.floor(state.ordersFilled) || 0) * 3 + Math.floor(rand() * 8));
-  const ceil = Math.min(ramp, plan.max);
+  const ord = Math.max(0, Math.floor(state.ordersFilled) || 0);
+
+  let maxCost = 0;
+  for (const c of plan.cost.values()) if (c > maxCost) maxCost = c;
+  const costCeil = Math.min(maxCost, 4 + ord * 3 + Math.floor(rand() * 8));
+  const band = Math.max(1, Math.round(maxCost / 8));
+  const costFloor = Math.max(0, costCeil - band);
 
   const pool = [];
-  for (const v of plan.cost.keys()) if (v >= MIN_TARGET && v <= ceil) pool.push(v);
+  for (const [v, c] of plan.cost) if (v >= MIN_TARGET && c >= costFloor && c <= costCeil) pool.push(v);
   if (!pool.length) {
     // Only possible on a board too small to hold a line at all, which no shop
     // path can produce. Ask for the cheapest thing that exists rather than for

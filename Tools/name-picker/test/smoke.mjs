@@ -100,6 +100,7 @@ console.log("name-picker smoke\n");
   assert(store.get("current").length === 24, "np_current loads as an array");
   assert(Array.isArray(store.get("history")) && store.get("history").length === 2, "np_history stays an array");
   assert(store.get("history")[0].name === "Aiden Alvarez", "history entries keep their fields");
+  assert(store.get("history")[0].date === "", "legacy history with no date field loads as '', not undefined");
   assert(store.get("prompts").length === 2, "np_prompts stays an array");
   assert(store.get("hof")[0].tier === "MYTHIC", "Hall of Fame entry loads");
   assert(store.get("stats")["Brooklyn Bell"] === 1, "pick counts load as numbers");
@@ -213,6 +214,7 @@ console.log("name-picker smoke\n");
   const hist = store.get("history");
   assert(hist.length === 1 && hist[0].name === "Quinn Quintero", "unusable history rows are dropped");
   assert(hist[0].time === "", "a missing time becomes an empty string, never undefined");
+  assert(hist[0].date === "", "a missing date becomes an empty string too — the day-boundary clear just never fires on it");
 
   // The repair that matters: updateHofTicker() calls e.tier.toLowerCase() on
   // every entry, so an entry with no tier used to throw and kill the ticker.
@@ -235,6 +237,30 @@ console.log("name-picker smoke\n");
   assert(opts.mode === "slot", "a good option value is kept");
   assert(opts.groups === OPTION_DEFAULTS.groups, "a missing option is filled from the defaults");
   assert(!("nonsense" in opts), "an unknown option is not carried through");
+}
+
+/* =====================================================================
+   np_history's `date` field — the day-boundary clear the round-2 prompt asked
+   for. The History tab has always said "today", but np_history was never
+   actually cleared, so after the first day it silently showed last week's
+   picks too. `date` lets the page detect a new calendar day and clear then,
+   rather than never or on every load.
+   ===================================================================== */
+{
+  const store = createStore({
+    storage: stubStorage({
+      np_history: JSON.stringify([
+        { name: "Aiden Alvarez", time: "09:14", date: "2026-05-04" },
+        { name: "Rosa Reyes", time: "09:16", date: "13-99-2026" },   // malformed, dropped
+        { name: "Zoe Zaman", time: "09:18" }                        // no date at all, kept as ""
+      ])
+    })
+  });
+  const hist = store.get("history");
+  assert(hist.length === 3, "a bad date does not drop the whole entry, just the date field");
+  assert(hist[0].date === "2026-05-04", "a well-formed date round-trips");
+  assert(hist[1].date === "", "a malformed date becomes '', not the garbage string");
+  assert(hist[2].date === "", "an entry with no date at all is the same as a malformed one");
 }
 
 /* =====================================================================

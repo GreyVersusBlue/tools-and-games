@@ -2,7 +2,7 @@
 
 Played as Duke Harlan of Buford County, stunt policy `good`.
 
-**Scene path (89):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r1` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_pitch` → `m2_counter_30` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_negotiate` → `m2_round3_enter` → `m2_round3_cal` → `m2_sign` → `fr2_hub_open` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_debt_01` → `fr2_debt_earl` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_end_stub` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_eve_earl` → `fr3_eve_earl_engage` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_signed` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
+**Scene path (89):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r1` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_pitch` → `m2_counter_30` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_negotiate` → `m2_round3_enter` → `m2_round3_cal` → `m2_sign` → `fr2_hub_open` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_debt_01` → `fr2_debt_earl` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_eve_earl` → `fr3_eve_earl_engage` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_signed` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
 
 ---
 
@@ -142,7 +142,7 @@ Then he went.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 94** — Cleared the cows and landed dead level
+> **STUNT RESULT — SUCCESS / 95** — Cleared the cows and landed dead level
 
 ### `m1_stunt_perfect`
 He hit the ramp at exactly the speed he intended.
@@ -151,6 +151,10 @@ He cleared the cows by four feet. The landing was clean. The crowd's sound hit h
 He brought the bike to a stop and turned it around. He raised one hand. He wasn't sure why he did it. It seemed right.
 
 > **A Perfect Run** — Clean arc. Clean landing. The crowd knows what it saw.
+
+> _[minigame: Work the Crowd]_
+
+> **STUNT RESULT — SUCCESS / 100** — Worked the crowd to 100% energy over 3 calls.
 
 ### `m1_earl_approach_perfect`
 He didn't get far. A man materialized at his elbow — big brimmed hat, unlit cigar, the kind of silver belt buckle that announces its own opinion.
@@ -970,7 +974,7 @@ He said it simply. Duke thought about the tell — the three taps — and though
 
 > **Five Cars Clean** — The TV crew got it. Earl got it. Cal got it. The crowd got it. Nothing left on the table.
 
-### `m3_end_stub`
+### `m3_aftermath`
 That was one thing taken care of.
 Cal loaded the ramp into the trailer without speaking. Duke watched him do it.
 The show had already moved on to whatever comes after a show. The crowd, the sponsor's people, the TV crew folding cable. Earl somewhere doing what Earl did after a show.
@@ -1247,7 +1251,7 @@ He thought: the bike is right. Let's go find out what I am.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 94** — Cleared the buses and landed dead level
+> **STUNT RESULT — SUCCESS / 95** — Cleared the buses and landed dead level
 
 ### `m4_triumph_buses`
 Thirteen buses. He cleared all of them.
@@ -1318,7 +1322,7 @@ He thought: that's going to be in the book. He thought: that's fine. That's true
 He took the bike out after dark.
 Not to practice. Not toward anything. The road north of town went flat for twenty-two miles before it hit anything worth stopping for, and he had been on it enough times that he could feel the surface through the tires like a conversation he knew by heart.
 He thought about the canyon. He thought about Vegas. He thought about the number — the one you found in the air, not on the ground.
-He thought about Pete finding it in Lubbock. He thought about what Ruthie had said about the hands. He thought about Roy filming the three seconds after.
+He thought about Pete finding it in Lubbock. He thought about Roy filming the three seconds after.
 He thought: some things are the same from the inside and the outside. The ones that matter usually are.
 He turned around at mile twenty-two.
 The fork seal, which Cal had replaced, held.
@@ -1495,7 +1499,7 @@ Eight options. Not choices exactly — more like the eight things a man in his p
 He made the call.
 He told Earl first — that was the right order. Earl was quiet for a moment. Then he said: I had a feeling. Duke said: no you didn't. Earl said: no, I didn't. But I thought it was possible.
 He told Cal next. Cal said: I figured. Duke said: how long. Cal said: since the canyon. He said it without sentiment. He meant it as a compliment.
-He told Ruthie last. She already knew. He thought: she probably knew before Earl. He thought: the hands.
+There was no Ruthie to tell. He thought about the fork at the county fair more than once over the years. Mostly he didn't regret it. Mostly.
 The announcement ran in three papers and the circuit wire. Sandra wrote it herself. She got the county fair detail right.
 He thought: that's the story. He thought: that's actually the story.
 He thought: it's enough.

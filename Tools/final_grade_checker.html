@@ -45,6 +45,7 @@
   .page-header h1 { font-size: 1.6rem; font-weight: 700; color: #1a3a5c; letter-spacing: -0.5px; }
   .page-header p { font-size: 0.85rem; color: #666; margin-top: 0.3rem; }
   .header-actions { display: flex; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+  .add-row-wrap { display: flex; justify-content: center; margin: 0.75rem 0 1.25rem; }
 
   .btn { padding: 6px 14px; border: 1px solid #c8d8e8; border-radius: 6px; background: #fff; color: #1a3a5c; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
   .btn:hover { background: #eef3f8; border-color: #1a3a5c; }
@@ -164,7 +165,7 @@
     <p>Manual entry or paste from your grade export. Grades calculate automatically.</p>
     <div class="header-actions no-print">
       <button class="btn btn-danger" id="clear-all-btn" type="button">Clear All</button>
-      <button class="btn btn-green" id="export-excel-btn" type="button">Export Excel</button>
+      <button class="btn btn-green" id="export-csv-btn" type="button">Export CSV</button>
       <button class="btn btn-red"   id="export-pdf-btn"   type="button">Export PDF</button>
       <button class="btn" id="print-btn" type="button">Print</button>
     </div>
@@ -191,9 +192,13 @@
 
   <div id="students-container"></div>
 
+  <div class="add-row-wrap no-print" id="add-row-wrap" hidden>
+    <button class="btn" id="add-row-btn" type="button">+ Add Student Row</button>
+  </div>
+
   <div class="note-bar">
     <strong>Which grade to use?</strong> Per Carroll County grading policy, award the <strong>higher</strong> of the two methods. The highlighted box is the one to report.<br>
-    <strong>Quality Points:</strong> Each quarter letter converts to a point value (A=4, B=3, C=2, D=1, F=0). Those four values are averaged, then converted back to a letter (3.5 and up is an A).<br>
+    <strong>Quality Points:</strong> Each quarter letter converts to a point value (A=4, B=3, C=2, D=1, F=0). Those four values are averaged, then converted back to a letter. Unlike the percentage average below, this side does <strong>not</strong> round up at exactly .5 — an average of exactly 3.5 is a B, not an A.<br>
     <strong>Percentage Average:</strong> The four raw percentages are averaged directly, then converted using the 10-point scale. Exactly .5 rounds up, so 89.5 is an A and 89.49 is a B.<br>
     <strong>All four quarters are required.</strong> With a quarter missing or exempt, no final grade is shown, because a three-quarter average is not the county's number.
   </div>
@@ -223,13 +228,13 @@ const METHOD_NAME = { QP: 'quality points', PCT: 'percentage average' };
 let currentStudents = [];
 
 // ── Libraries, loaded on demand ─────────────────────────────
-// Vendored under final-grade-checker/libs/ — see the README there. They are
-// 1.22 MB between them, so nothing loads until an export button is pressed,
-// and each button pulls only what it needs.
+// Vendored under final-grade-checker/libs/ — see the README there. Nothing
+// loads until an export button is pressed, and each button pulls only what
+// it needs. The spreadsheet export needs no library at all — see "Export:
+// CSV" below.
 const LIBS = {
-  pdf:   ['./final-grade-checker/libs/jspdf.umd.min.js',
-          './final-grade-checker/libs/jspdf.plugin.autotable.min.js'],
-  excel: ['./final-grade-checker/libs/xlsx.full.min.js'],
+  pdf: ['./final-grade-checker/libs/jspdf.umd.min.js',
+        './final-grade-checker/libs/jspdf.plugin.autotable.min.js'],
 };
 const loaded = new Map();
 
@@ -273,7 +278,7 @@ async function withLibs(which, btn, run) {
   const label = btn.textContent;
   btn.disabled = true; btn.textContent = 'Working…';
   try {
-    await loadLibs(which);
+    if (which) await loadLibs(which);
     run();
   } catch (err) {
     console.error(err);
@@ -283,18 +288,23 @@ async function withLibs(which, btn, run) {
   }
 }
 
-// ── Export: Excel ────────────────────────────────────────────
+// ── Export: CSV ──────────────────────────────────────────────
 //
-// This used to set `cell.s` on every cell — header fills, grade colours, row
-// banding, number formats, about a hundred lines of it. SheetJS Community
-// drops all of that on write. Checked rather than assumed: write a sheet with
-// `.s` set, unzip the result, and `xl/styles.xml` comes back with one font, no
-// fills, and no cell carrying a style index. It was decorating nothing.
-//
-// The columns and their widths are what actually survive, so that is what is
-// left. If a coloured spreadsheet is wanted, it needs a different library, not
-// more style objects.
-function exportExcel() {
+// This used to be an .xlsx export via a vendored 861 KB SheetJS build, used
+// for exactly one thing: writing the file. The cell styling that would have
+// justified the library was already dead on write — SheetJS Community drops
+// `cell.s`, checked last round by unzipping the output and finding no cell
+// carrying a style index — so the library was buying a file extension, not
+// an appearance. A CSV opens identically in Excel, Sheets or Numbers with
+// zero vendored code. The leading ﻿ is a UTF-8 byte-order mark so Excel
+// on Windows reads names with accented characters correctly instead of
+// mangling them; every other reader ignores it.
+function csvField(v) {
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportCSV() {
   const students = exportableStudents();
   const rows = [[
     '#', 'Student Name',
@@ -319,15 +329,16 @@ function exportExcel() {
     ]);
   });
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [
-    {wch:4},{wch:30},{wch:9},{wch:9},{wch:9},{wch:9},
-    {wch:10},{wch:10},{wch:10},{wch:10},{wch:14},{wch:26}
-  ];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Final Grades');
-  XLSX.writeFile(wb, 'final_grades.xlsx');
+  const csv = '﻿' + rows.map(row => row.map(csvField).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'final_grades.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ── Export: PDF ──────────────────────────────────────────────
@@ -496,7 +507,7 @@ function exportPDF() {
     });
     doc.setTextColor(120,120,120);
     doc.setFont('helvetica', 'normal');
-    doc.text('Final grade = higher of the Quality Points or Percentage Average method. Exactly .5 rounds up, so 89.5 is an A.', 40, finalY + 18);
+    doc.text('Final grade = higher of the Quality Points or Percentage Average method. The percentage average rounds up at exactly .5 (89.5 is an A); quality points do not (3.5 is a B).', 40, finalY + 18);
     doc.text('A student missing any quarter shows no final grade; all four are required.', 40, finalY + 30);
   }
 
@@ -505,7 +516,9 @@ function exportPDF() {
 
 // ── State ────────────────────────────────────────────────────
 let mode = 'manual';
-const MANUAL_COUNT = 5;
+// Starts at 5, the size of a quick check. "+ Add Student Row" grows it for a
+// whole section entered by hand — a real section is closer to 28.
+let manualCount = 5;
 
 // ── Import ───────────────────────────────────────────────────
 function setStatus(msg, cls) {
@@ -559,6 +572,7 @@ function renderImportedStudents(students) {
   container.innerHTML = '';
   students.forEach((s, i) => container.appendChild(buildImportCard(s, i)));
   document.getElementById('clear-all-btn').onclick = () => switchToManual();
+  document.getElementById('add-row-wrap').hidden = true;
 }
 
 function buildImportCard(student, i) {
@@ -632,7 +646,8 @@ function switchToManual() {
   mode = 'manual';
   document.getElementById('import-area').value = '';
   setStatus('','');
-  currentStudents = Array.from({length: MANUAL_COUNT}, (_,i) => ({ name:'', scores:[null,null,null,null] }));
+  manualCount = 5;
+  currentStudents = Array.from({length: manualCount}, (_,i) => ({ name:'', scores:[null,null,null,null] }));
   renderManualCards();
   document.getElementById('clear-all-btn').onclick = clearAllManual;
 }
@@ -640,8 +655,19 @@ function switchToManual() {
 function renderManualCards() {
   const container = document.getElementById('students-container');
   container.innerHTML = '';
-  for (let i = 0; i < MANUAL_COUNT; i++) container.appendChild(buildManualCard(i));
+  for (let i = 0; i < manualCount; i++) container.appendChild(buildManualCard(i));
   attachManualListeners();
+  document.getElementById('add-row-wrap').hidden = false;
+}
+
+/** Appends one more manual card without touching the ones already filled in. */
+function addManualRow() {
+  const i = manualCount++;
+  currentStudents.push({ name: '', scores: [null,null,null,null] });
+  const card = buildManualCard(i);
+  document.getElementById('students-container').appendChild(card);
+  attachManualListeners(card);
+  document.getElementById(`name-${i}`).focus();
 }
 
 function buildManualCard(i) {
@@ -696,14 +722,19 @@ function buildManualCard(i) {
   return card;
 }
 
-function attachManualListeners() {
-  // The grade inputs used to carry tabindex="1" upward. Any positive tabindex
-  // pulls an element in front of every tabindex=0 element on the page, so Tab
-  // from the top of the document jumped past the header buttons and the paste
-  // box straight into the grades, and each name field came after all twenty
-  // grade inputs. DOM order is already the order you want to type in, so the
-  // attribute is gone.
-  document.querySelectorAll('.grade-input').forEach(inp => {
+/**
+ * Wires up the inputs in `root` (a single new card, or the whole document on
+ * first render — see addManualRow vs renderManualCards).
+ *
+ * The grade inputs used to carry tabindex="1" upward. Any positive tabindex
+ * pulls an element in front of every tabindex=0 element on the page, so Tab
+ * from the top of the document jumped past the header buttons and the paste
+ * box straight into the grades, and each name field came after all twenty
+ * grade inputs. DOM order is already the order you want to type in, so the
+ * attribute is gone.
+ */
+function attachManualListeners(root = document) {
+  root.querySelectorAll('.grade-input').forEach(inp => {
     inp.addEventListener('input', () => updateManual(parseInt(inp.dataset.student)));
     inp.addEventListener('keydown', e => {
       if (e.key !== 'Enter') return;
@@ -713,13 +744,13 @@ function attachManualListeners() {
       if (idx >= 0 && idx < all.length-1) all[idx+1].focus();
     });
   });
-  document.querySelectorAll('.name-input').forEach(inp => {
+  root.querySelectorAll('.name-input').forEach(inp => {
     inp.addEventListener('input', () => {
       const si = parseInt(inp.dataset.student);
       if (currentStudents[si]) currentStudents[si].name = inp.value;
     });
   });
-  document.querySelectorAll('.clear-row-btn').forEach(btn => {
+  root.querySelectorAll('.clear-row-btn').forEach(btn => {
     btn.addEventListener('click', () => clearManualStudent(parseInt(btn.dataset.student)));
   });
 }
@@ -808,7 +839,7 @@ function clearManualStudent(i) {
   if (currentStudents[i]) currentStudents[i] = { name:'', scores:[null,null,null,null] };
   updateManual(i);
 }
-function clearAllManual() { for(let i=0;i<MANUAL_COUNT;i++) clearManualStudent(i); }
+function clearAllManual() { for(let i=0;i<manualCount;i++) clearManualStudent(i); }
 
 // ── Wiring ───────────────────────────────────────────────────
 // This is a module, so nothing here is on `window` and the old inline
@@ -822,11 +853,12 @@ on('clear-paste-btn', () => {
   showWarnings([]);
 });
 on('print-btn', () => window.print());
-on('export-excel-btn', e => withLibs('excel', e.currentTarget, exportExcel));
-on('export-pdf-btn',   e => withLibs('pdf',   e.currentTarget, exportPDF));
+on('export-csv-btn', e => withLibs(null, e.currentTarget, exportCSV));
+on('export-pdf-btn', e => withLibs('pdf', e.currentTarget, exportPDF));
+on('add-row-btn', addManualRow);
 
 // ── Boot ─────────────────────────────────────────────────────
-currentStudents = Array.from({length: MANUAL_COUNT}, () => ({ name:'', scores:[null,null,null,null] }));
+currentStudents = Array.from({length: manualCount}, () => ({ name:'', scores:[null,null,null,null] }));
 document.getElementById('clear-all-btn').onclick = clearAllManual;
 renderManualCards();
 </script>

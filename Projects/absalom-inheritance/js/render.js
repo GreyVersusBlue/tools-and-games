@@ -14,6 +14,7 @@ const PALETTE = {
   pcTop: "#3f6ea8", pcLeft: "#26456b", pcRight: "#315687",
   foeTop: "#8a3a46", foeLeft: "#57242c", foeRight: "#6e2e38",
   bossTop: "#6f4a8a", bossLeft: "#422b52", bossRight: "#573a6e",
+  stairs: "#1c2c22",
   gold: "#d4a843", goldDim: "#8a6f2e",
   fog: "rgba(12,11,16,.62)",
   hpBack: "#0c0b10", hpPC: "#4f9e5f", hpFoe: "#b03a48",
@@ -21,7 +22,11 @@ const PALETTE = {
 
 export function createRenderer(canvas, game) {
   const ctx = canvas.getContext("2d");
-  const { area } = game.content;
+  // The current area, refreshed at the top of every drawFrame() call. A
+  // stairway swaps game.area out from under the renderer mid-session, and a
+  // value captured once here at construction would keep drawing the room the
+  // PC left.
+  let area = game.area;
 
   // Tile diamond, 2:1. Recomputed on every resize so the whole board fits.
   let tw = 56, th = 28;
@@ -31,6 +36,7 @@ export function createRenderer(canvas, game) {
   let hover = null;      // { x, y } under the pointer
   let cursor = null;     // { x, y } keyboard cursor, drawn differently
   let aim = null;        // { x, y } armed-command preview origin
+  let sizedForArea = null;   // id of the area tw/th/origin were last fit to
 
   /**
    * Match the backing store to the CSS box.
@@ -54,9 +60,12 @@ export function createRenderer(canvas, game) {
     // Compare against the backing store itself rather than a cached copy of the
     // CSS box. Caching the box detects the boot race but not a backing store
     // that went wrong some other way, and a renderer that cannot notice its own
-    // canvas is the wrong size is the bug this function exists for.
-    if (canvas.width === wantW && canvas.height === wantH && ratio === dpr && w === cssW) return false;
-    cssW = w; cssH = h; dpr = ratio;
+    // canvas is the wrong size is the bug this function exists for. A stairway
+    // can also change the board's own dimensions without the CSS box moving at
+    // all, so an area change forces the same recompute a resize would.
+    if (canvas.width === wantW && canvas.height === wantH && ratio === dpr
+      && w === cssW && sizedForArea === area.id) return false;
+    cssW = w; cssH = h; dpr = ratio; sizedForArea = area.id;
     if (!w || !h) return false;           // not laid out yet; try again next frame
 
     canvas.width = wantW;
@@ -118,6 +127,7 @@ export function createRenderer(canvas, game) {
   }
 
   function drawFrame() {
+    area = game.area;
     syncSize();
     if (!cssW || !cssH) return;
     ctx.clearRect(0, 0, cssW, cssH);
@@ -138,6 +148,7 @@ export function createRenderer(canvas, game) {
         let fill = ((x + y) % 2 === 0) ? PALETTE.floorA : PALETTE.floorB;
         if (t === TILE.TREASURE) fill = PALETTE.treasure;
         if (t === TILE.GATE) fill = gateOpen ? PALETTE.gateOpen : PALETTE.gateShut;
+        if (t === TILE.STAIRS) fill = PALETTE.stairs;
         diamond(cx, cy, tw, th);
         ctx.fillStyle = fill; ctx.fill();
         ctx.strokeStyle = vis ? "rgba(212,168,67,.10)" : "rgba(80,75,95,.15)";
@@ -146,6 +157,14 @@ export function createRenderer(canvas, game) {
         if (vis && t === TILE.TREASURE) {
           ctx.fillStyle = PALETTE.gold;
           diamond(cx, cy - 8 * scale, 14 * scale, 7 * scale); ctx.fill();
+        }
+        if (vis && t === TILE.STAIRS) {
+          // Two nested diamonds reading as a stairway seen from above, rather
+          // than a plain floor square that happens to teleport you.
+          ctx.strokeStyle = "rgba(212,168,67,.55)"; ctx.lineWidth = 1.5;
+          diamond(cx, cy, tw * 0.6, th * 0.6); ctx.stroke();
+          diamond(cx, cy, tw * 0.3, th * 0.3); ctx.stroke();
+          ctx.lineWidth = 1;
         }
       }
     }

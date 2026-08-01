@@ -3,9 +3,10 @@
 ## What it is
 
 **Daredevil is a 1970s American stunt-rider story: 207 scenes, about 21,200 words
-of narration and dialogue, five milestones, eight endings.** It is the largest
-single file in the repo and no handoff has ever described it, so this section is
-the point of the session.
+of narration and dialogue, five milestones, eight endings.** It was the largest
+single file in the repo and no handoff had ever described it before round 1, so
+this section — carried forward from that session, updated where the restructure
+changed a number — is still the point of it.
 
 You play Duke Harlan. The name and the hometown are both yours to set on the
 setup screen, and the text uses them throughout. He rides dirt bikes. The cold
@@ -69,539 +70,508 @@ Regional King or The Burnout, inferred from final stats), five verdict lines
 (body, legacy, home, the work, nerve) and the relationship roster. The eight:
 retire clean, one last stunt on his terms, one last stunt Earl's way, walk away
 quietly, keep going, mentor Pete, a symbolic jump at the county fair, disappear.
-**Until this session it was seven.** The mentor ending is gated on `GS.rels.pete`,
-which was read in five places and assigned in none, so the option was filtered
-out of the list on every run ever played.
+Round 1 made the mentor ending reachable for the first time (`GS.rels.pete` was
+read in five places and assigned in none).
 
-**Three canvas minigames are implemented and two are reachable.** The Stunt Run
-is a side-on jump: throttle up into a green speed band before the lip, then fight
-rotation in the air to meet the landing slope at -18 degrees. It is the only one
-that matters and it is good. The Recovery is a hold-the-input-in-the-band drill
-that runs after a hard crash. **"Work the Crowd", 90 lines with three crowd
-moods, an energy meter and a legend, is never launched from anywhere.**
+**Three canvas minigames, and as of this round all three are wired to a call
+site.** The Stunt Run is a side-on jump: throttle up into a green speed band
+before the lip, then fight rotation in the air to meet the landing slope at
+-18 degrees. It is the marquee one and it is good. The Recovery is a
+hold-the-input-in-the-band drill that runs after a hard crash. **Work the
+Crowd** — three crowd moods, an energy meter, a nerve gate at 45 — sat finished
+and unreachable through round 1; this round placed it. See "What changed" below.
 
 **The state of the writing: finished.** Consistent voice, no placeholder prose,
 no lorem. Duke's interiority is rendered as "He thought:" which sounds like a tic
-written down and reads well in play. The code disagrees with the prose. Three
-chapter headers say STUB, the ending screen said "END OF BUILD", and `m3_end_stub`
-is the id of a scene that is not a stub. That is leftover scaffolding around
-finished work, not unfinished work.
+written down and reads well in play. Round 1 found the code disagreeing with the
+prose in three places (STUB chapter headers, an "END OF BUILD" ending screen, two
+misleadingly-named scene ids) and fixed all of it; this round found two more
+places where the prose disagreed with itself — see "The Ruthie continuity holes"
+below.
 
-### Nobody had ever finished it
+### Round 1: nobody had ever finished it
 
-**Before this session the game could not be completed by any route, and it
-stopped at the same place every time: the Milestone 3 pre-stunt choice, about 60%
-of the way in.** Five separate wiring bugs. None of them throws. None of them
-logs anything a player would see.
+**Before round 1 the game could not be completed by any route, and it stopped at
+the same place every time: the Milestone 3 pre-stunt choice, about 60% of the way
+in.** Five separate wiring bugs, none of which threw or logged anything a player
+would see: every hub gated its milestone button on a counter that could not
+reach zero; `_minigame_stunt_m3` was named by four choices and answered by
+nothing; two hub cards were gated on flags their own scenes never set;
+`GS.rels.pete` was read in five places and assigned in none, silently deleting
+the mentor ending; and three of four stunt-result handlers read `res.outcome`
+instead of the real field, `res.result`. All five were fixed. 73 scenes, 88.1
+KB, 42% of the scene database, were unreachable before round 1 and are reachable
+now. Full account: `Claude Prompts/archive/round-1/notes/13-daredevil-notes.md`.
 
-**73 scenes and 88.1 KB, 42% of the scene database, had never been reachable**,
-plus six more behind a flag nothing sets and one of the eight endings behind a
-relationship nothing assigns.
-
-The writing is not the problem with this game. The wiring is, and it is the kind
-of wiring that fails quietly: a button that does nothing, a counter that cannot
-reach zero, a field name that does not match, a flag nobody writes.
+Round 1 also gave the game a save (`daredevil-save-v1`, on `assets/js/gvb-save.js`),
+vendored its seven fonts (100.3 KB, zero offsite requests), and wrote the first
+test suite this project ever had — `Projects/daredevil/test/`, still owned by
+this project, still the thing every change in this round was checked against.
 
 ---
 
 ## What changed
 
-Everything is in `Projects/daredevil_r4.html` and the new `Projects/daredevil/`
-folder. Nothing outside them was touched.
+Round 2 picked up round 1's own "Next session" list in order: the restructure
+first (it was blocking, and round 1 said why), then Work the Crowd, then the
+prose pass. All inside `Projects/daredevil_r4.html` (now a redirect stub) and
+`Projects/daredevil/`. Nothing outside them was touched, except two shared-file
+edits this project cannot make itself — see "Shared-file requests".
 
-### The five bugs that made it unfinishable
+### The restructure, now that it was safe
 
-**1. Every hub gated its milestone button on a counter that could not reach zero.**
-Each free-roam hub grants a fixed number of evenings and renders its "Milestone N"
-button only when `eveRemaining <= 0`. But the number of *spendable* evening cards
-is built conditionally from relationship state, and it is routinely smaller than
-the number of evenings granted:
+Round 1 deliberately did not do this and said why in its own notes: "the game
+had five bugs that made it impossible to finish, and it had no test of any
+kind... the right order is: make it finishable, prove it with a suite that plays
+it end to end, then move the furniture." Both halves were true this round, so
+this was the job.
 
-| Hub | Evenings granted | Evening cards it can build |
-| --- | --- | --- |
-| FR1 | 5 | 5, or **4** with no Ruthie, or 3 if Earl is also absent |
-| FR2 | 6 | 7 with Ruthie, **5** without |
-| FR3 | 7 | **4, always** |
-| FR4 | 6 | 6 on a maximal path, fewer if any relationship has gone |
+**`Projects/daredevil_r4.html` (6,888 lines, 355,972 bytes) is now four files**
+under `Projects/daredevil/`:
 
-So FR3 was a guaranteed dead end for every player on every path, and FR1 and FR2
-dead-ended on **five of the six ways to answer Earl at the county fair**,
-including "I'm listening", which is the first option in the list. My first
-playthrough hit it after 31 scenes.
-
-Fixed with one helper, `hubExhausted(eveRemaining, eveCards)`, called by all four
-hubs after the `_disabled` pass. A hub is done when you are out of evenings **or**
-out of anything to spend one on.
-
-**2. `_minigame_stunt_m3` was named by four choices and answered by nothing.**
-All three Milestone 3 pre-stunt scenes route "Go" to `_minigame_stunt_m3`.
-`goToScene` had no branch for it and `SCENES` had no entry, so it fell through to
-`console.warn('Scene not found')` and returned, leaving the choice buttons on
-screen doing nothing, forever. `handleStuntRunM3` was fully written and
-referenced by nothing.
-
-Added the branch. Also made an unrouted id loud instead of silent: it now
-`console.error`s and puts a visible note in the panel, because a dead end should
-look like one (locked decision #13).
-
-**3. Two hub cards were gated on flags their own scenes never set.**
-
-- **`fr1_wannabe_intro` looped forever.** The card was gated on
-  `!GS.flags.wannabeMet`, but only one of the kid's three answers sets that flag.
-  Take either of the two that turn him down and the card comes straight back: the
-  same scene, replayable indefinitely, the game never remembering you said no.
-  Now gated on `hubDayScenesDone`, which `buildHubCard` was already maintaining
-  and nothing was reading. `wannabeMet` has to keep meaning "Pete's thread is
-  open" because that is what Free Roam 2 reads it for, so turning him away must
-  not set it.
-- **"Pete's Mistake" could never appear.** Its card gates on
-  `GS.flags.fr2Pete01Done`, a name that occurs exactly once in the whole file, in
-  that read. Nothing sets it. Six scenes of finished writing (`fr2_pete_02` plus
-  five outcomes, one of which has Pete leave) that no player has seen. Gated on
-  `done2.includes('fr2_pete_01')` now, matching how the Danny follow-up does it.
-
-**4. `GS.rels.pete` was read in five places and assigned in none.** It is not even
-in `GS.rels`'s initial object, so it was permanently `undefined`. That silently
-deleted **Milestone 5's "mentor the apprentice" ending**: the choice carries
-`_requires: () => GS.rels.pete && ...`, and `showSceneEnd` drops a choice whose
-`_requires` returns falsy without rendering anything, so the option simply was not
-in the list. It also made `m4_prestunt_pete_m4` unreachable and kept Pete out of
-the epilogue roster.
-
-The thread that already exists now sets the relationship it already implies:
-`hanger_on` when you take the kid up on it at the gas station, `ally` if you
-commit to his show or teach him something in FR2, `absent` on the branch where
-letting his mistake go drives him off. Both terms were already sitting in the
-epilogue's `relStateNames` map waiting for a value that never came.
-
-**5. Milestones 3, 4 and 5 read `res.outcome`. The field is `res.result`.**
-The stunt run reports `{result, score, details}`. `handleStuntRunResult` (M1)
-reads `res.result` and is correct. `handleStuntRunM3`, `handleStuntRunM4` and
-`handleStuntRunM5` each read `res.outcome`, which is never set, so every
-comparison was `undefined === 'SUCCESS'` and **every stunt from Milestone 3 on
-routed to its failure branch no matter how well it was ridden.** Three character
-fixes. Also routed M3's hard crash through `m3_failure_bad`, a written scene whose
-own `next` is the recovery minigame, rather than jumping past it, which is what
-left it orphaned.
-
-### An audit for the same shapes
-
-I checked every other hub card for bug 3's shape, a card gated on a flag rather
-than on the "done" list the hub already keeps. Those two were the only ones. The
-Lloyd Perkins card is flag-gated but all four of its outcomes set the flag, and
-every FR2, FR3 and FR4 day card and every evening card already uses the done list.
-
-I also ran a whole-file audit of bug 4's shape: every `GS.flags.*` and `GS.rels.*`
-that is read, against every one that is written. **46 flags read, 77 written, and
-after these fixes nothing is read that is never written.** `fr2Danny03Done` and
-`fr2Cal02Done` go the other way, written and never read, which is harmless.
-
-### A save
-
-New: `Projects/daredevil/js/save.js`, an ES module on top of
-`assets/js/gvb-save.js`. Key **`daredevil-save-v1`**, version 1, and per locked
-decision #36 that key does not change. Second adopter of the shared module after
-The Fourth Quarter, and it needed no new hooks, which is a good sign for the
-module: `repair`, factory `defaults` and `buttons` were all already there.
-
-**What the save holds is the design decision worth recording.** A scene id, the
-five stats, the six relationships, and the flag bag. It deliberately does not
-hold:
-
-- **the line index inside a scene.** Resume lands at the top of the scene you were
-  in, so rewriting prose can never strand a save mid-sentence.
-- **anything from `SCENES`.** The save names a node, it does not embed the story,
-  which is what lets the writing keep changing after players have saves.
-- **minigame state.** Persistence is suppressed while the minigame screen is up,
-  so a reload during a jump puts you back at the pre-stunt scene with the choice
-  still in front of you.
-
-Fill-ins are in `repair`, not `migrate` (locked decision #37). There are no legacy
-saves for this game, which made this the one chance to get the split right before
-there are. `repair` clamps stats to 0-5, rebuilds a missing `rels`, and forces the
-eight `*Done` flags back to arrays: a non-array there throws on `.includes()` the
-first time a hub renders. `migrate` is a no-op with a comment explaining what
-belongs in it.
-
-`defaults` is the `freshState` factory, not a literal. `freshState()` is also
-where the game's starting state now lives, since `GS` is built from it, so the
-save format and the game cannot drift apart.
-
-**The save bar is on the hub, not just the title screen.** That is v7 §9's open
-item. A hub is this game's natural "done for tonight" moment: it comes round four
-times and it is where a run pauses anyway. It mounts export, import and reset.
-The title screen mounts import only, plus a **Continue** button that appears when
-a stored save exists (and renames Begin to New Game).
-
-### The inline script is now a module
-
-`<script>` became `<script type="module">` so `save.js` can be imported rather
-than inlined. Three inline `onclick` attributes became ids with handlers attached
-in a boot block, and `window.__dd` publishes `GS`, `SCENES`, the slot,
-`goToScene` and getters for the live scene and minigame. That last part is for the
-test driver, which has no other way in now that top-level declarations are not
-global.
-
-### Fonts vendored, and this page now makes zero offsite requests
-
-Two `preconnect`s and a `fonts.googleapis.com` stylesheet, gone. Seven woff2 files
-in `Projects/daredevil/fonts/`, **100.3 KB for the set**, latin subset: Alfa Slab
-One 400, Oswald 400/500/600/700, Space Mono 400/700. All three families are SIL
-Open Font License 1.1 and the full licence text ships alongside them.
-
-Two of the three were already in this repo and were copied rather than fetched:
-Oswald from `Tools/board-check/node_modules/@fontsource/oswald/`, Space Mono from
-`Projects/corner-and-kettle/fonts/`. Only Alfa Slab One needed installing, and it
-was done with `npm i --no-save` and then uninstalled, so
-`Tools/board-check/package.json` is untouched and `git status` on that folder is
-clean.
-
-**Oswald 300 is not vendored.** The Google URL asked for it and nothing on the
-page has ever set `font-weight:300`.
-
-**A note for whoever writes v8.** v7 §5 says the site makes zero offsite requests
-site-wide. That is wrong for fifteen pages, and the suite cannot see it:
-`prepPage()` *fulfills* `fonts.googleapis.com` requests locally from bundled
-`@fontsource` packages before the blocked-list check runs, so a font hotlink never
-reaches `page.__blocked`. The check that works is a grep for the hostname inside
-an `href` or `src` attribute, and it is in the new suite.
-
-### Accessibility
-
-- **The four free-roam hubs were mouse-only.** `buildHubCard` built a `<div>` with
-  an `onclick`: not focusable, not announced as a control. They are
-  `<button type="button">` now, with `disabled` doing the work the `.disabled`
-  class used to fake.
-- **`user-scalable=no, maximum-scale=1` is gone** from the viewport meta. This is
-  45 minutes of reading on a phone. The usual reason for that flag, browser
-  gestures stealing the stunt controls, was already handled properly: the canvas,
-  the pedals and the D-pad all set `touch-action:none`.
-- **Focus is visible.** Every control was Tab-reachable and invisible once you got
-  there, because the default outline does not survive these backgrounds. Added a
-  `:focus-visible` rule with a 3px gold outline.
-- **The prose is a live region.** `#panel-text` is replaced in place on every
-  Continue. Without `aria-live` a screen reader announced the button and nothing
-  else, which for this game means nothing at all.
-
-### The ending screen said "END OF BUILD"
-
-It read **END OF BUILD** / *Round 2 — Implementation Complete* / "Your stats at
-the end of Round 2". Eight endings land there and it is the last thing a player
-sees. Now **THE END** / *A Life on Two Wheels* / "Where he finished".
-
-### Tests, in a folder I own
-
-`Projects/daredevil/test/`:
-
-- **`smoke-save.mjs`**: 53 assertions, plain Node, no browser. The save format,
-  validate, repair, round trips, and refusing bad files.
-- **`smoke-page.mjs`**: the regression suite. Real browser, real clicks, plays
-  the game to an ending twice, and fails non-zero (locked decision #13).
-- **`drive-daredevil.mjs`**: the way in and the way through, written once.
-  Includes `autopilot()`, a closed loop over the stunt run's telemetry that holds
-  the approach in the green band and steers the body angle onto the landing slope.
-  It lands SUCCESS reliably, which is what makes a triumph branch reachable from a
-  script at all.
-- **`transcript.mjs`**: plays a run and writes down every line, every choice
-  offered and every choice taken. This is the tool that produced the description
-  at the top of this file. Output in `test/transcripts/`.
-
-One line changed in the game for the suite's benefit: `w`, angular velocity, was
-added to the stunt run's `tele` object. `tele` is a debug channel nothing reads,
-and a proportional loop on angle alone oscillates straight through the landing
-band without it.
-
-### Byte breakdown of the file, measured
-
-| Part | Lines | Size | Share |
+| File | Lines | Bytes | What it is |
 | --- | --- | --- | --- |
-| head | 26 | 1.9 KB | 1% |
-| CSS | 292 | 19.6 KB | 6% |
-| body markup | 129 | 5.9 KB | 2% |
-| **`SCENES`** | **4,260** | **208.3 KB** | **62%** |
-| engine + UI | 1,469 | 64.5 KB | 19% |
-| canvas minigames | 449 | 32.5 KB | 10% |
+| `index.html` | 505 | 31,720 | head, CSS, body markup, one `<script type="module" src="./js/engine.js">` |
+| `js/state.js` | 42 | 2,211 | the leaf: `GS`, `STAT_LABELS`, `N`/`D`/`C`/`NF` |
+| `js/scenes.js` | 4,303 | 216,848 | the story, as data — `SCENES` |
+| `js/engine.js` | 2,113 | 109,459 | screens, rendering, the four hubs, the three minigames, the epilogue, boot |
+| `js/save.js` | 167 | 6,312 | unchanged — the save format, on `assets/js/gvb-save.js` |
 
-Measured before this session's edits, on the 344,237-byte file. **The story is
-62% of it.** That is the number the next person needs for the split-the-content
-decision, and it says the split is worth doing: 208 KB of prose currently ships on
-first paint to somebody who will read 43% of it.
+360,238 bytes across the four files this round touched, against 355,972 before —
+about 1.2% growth, all of it import/export lines, file-header comments, and this
+round's fixes. Nothing was re-typed: the split was done by a script that sliced
+the original file at four confirmed line boundaries (`const SCENES = {` /
+`}; // end SCENES` bracket the data cleanly) and wrote each piece into its new
+file with only the intended edits applied as targeted, verified-unique string
+replacements. I diffed each new file against the corresponding unedited slice of
+the original afterward — byte-for-byte identical outside the handful of lines
+listed below. That diff, not just the test suite, is what I'm trusting for "the
+split didn't quietly change anything."
+
+**Why `state.js` is its own file and not folded into `engine.js`.** `scenes.js`'s
+`SCENES` object calls `N()`/`D()`/`C()` and reads `GS.town`/`GS.name` at
+module-evaluation time, not inside functions. If `engine.js` imported `SCENES`
+from `scenes.js` and `state.js`'s contents lived inside `engine.js`, the import
+would be circular (`engine.js` → `scenes.js` → `engine.js`), and whichever
+module's turn it was to evaluate second would read the first module's bindings
+out of the temporal dead zone — `GS` would not exist yet when `SCENES`'s object
+literal tried to read `GS.town`. `state.js` is a leaf both `scenes.js` and
+`engine.js` depend on, depending on neither, so there is no cycle. Full
+reasoning is in `state.js`'s own header and `js/README.md`, which is new this
+round and does for this project's content schema what
+`Projects/torchbearer/content-authoring-guide.md` does for Torchbearer's packs
+— the same-repo precedent the prompt pointed at.
+
+**Font paths in `index.html`'s `<style>` block moved from `daredevil/fonts/...`
+to `fonts/...`**, the one substantive change to the markup — `index.html` and
+`fonts/` are now siblings instead of parent/child. The `gvb:social:start`/`end`
+block was left untouched, verbatim, per locked decision #31; its `og:url` still
+names the old path and will be wrong until prompt 21 regenerates it after the
+board `href` changes — see "Shared-file requests".
+
+**Two misleadingly-named scene ids were renamed while I was already touching
+every line for the split**, something round 1 flagged as "free to do as part of
+the restructure": `m1_earl_card_stub` → `m1_earl_card`, `m3_end_stub` →
+`m3_aftermath`. Both are finished scenes; neither name described what was in
+them. 7 total occurrences (2 definitions, 5 `next:` references), all inside
+`scenes.js`, all plain string literals — no `goToScene()` special-casing to
+update, since these were never leading-underscore procedural routes.
+
+**`Projects/daredevil_r4.html` is now a redirect stub**, matching locked
+decision #46's pattern (I copied the Schedule Browser stub's shape exactly):
+`noindex`, a `meta http-equiv="refresh"` to `daredevil/`, a canonical link, and
+a one-paragraph explanation. The URL cost the prompt warned about is real —
+`/Projects/daredevil_r4.html` no longer serves the game — but nothing that
+already linked or bookmarked it 404s.
+
+### Work the Crowd, placed
+
+90 finished lines — three crowd moods, an energy meter, a nerve gate at 45 —
+had no `launchMinigame('crowd')` call site anywhere in the file through round 1.
+I placed it rather than deleting it.
+
+**Where: the Milestone 1 stunt aftermath, on the one outcome (`m1_stunt_perfect`)
+where Duke is shown actively performing for the crowd** — its own prose already
+has "He raised one hand. He wasn't sure why he did it. It seemed right." The
+other candidate the prompt named, Danny's FR2 head-to-head, already has a
+finished, stat-gated two-choice resolution (55 feet clean vs. 52 feet
+controlled); routing that through a different minigame would have meant
+rewriting an already-complete beat's structure, which is a bigger and less
+invited change than wiring an existing feature to a natural gap. The four other
+M1 outcomes (upright-but-shaky, chaos, two crash tiers) go straight to Earl as
+they did before — none of their prose reads as a crowd-working beat, and a hard
+crash in particular is the wrong tone for a bonus performance minigame right
+after it.
+
+**It is upside-only and does not change the story graph.** `m1_stunt_perfect`
+now routes to the new procedural id `_minigame_crowd_m1` instead of straight to
+`m1_earl_approach_perfect`; `handleCrowdM1Result()` adds +1 Showmanship on a
+`SUCCESS` verdict and otherwise changes nothing, then sends the player to
+exactly the scene `m1_stunt_perfect` used to route to directly. A player who
+loses the round loses nothing but the bonus stat point — Earl still approaches
+the same way. This was a deliberate choice to keep the change "cheap," per round
+1's own framing of this task: wiring a finished feature to a natural gap, not a
+new story decision layered on top of someone else's finished beat.
+
+**The test-support gap this created, and how it was closed.** Work the Crowd is
+a "choices"-type minigame (three buttons: Pump It Up / Build It Slow / The
+Unexpected), not a "pedals" one like the Stunt Run. `drive-daredevil.mjs`'s
+`autopilot()` only knew how to read `mg.tele.phase` and press gas/lean —
+against a minigame with no `tele` at all, it does nothing every frame, and the
+Crowd game's own per-round timeout resolves each unanswered round as a miss.
+Under `good` policy, that runs the meter down to a FAIL almost every time — and
+`smoke-page.mjs` asserts `clean.stunts.every(s => verdict is SUCCESS or PARTIAL)`
+across every entry that reaches the result-ticket screen, minigame or not. Left
+alone, placing Work the Crowd would have silently broken a passing assertion the
+moment it became reachable — exactly the "looks fine, isn't" failure mode this
+whole project is about. Fixed the same way round 1 fixed the equivalent gap for
+the Stunt Run (exposing `tele.w` for `autopilot()` to steer with): the crowd
+game object now exposes a `get correctCall()` getter naming the right card for
+the current mood, and `autopilot()` gained a branch that clicks it under `good`
+policy and does nothing under `crash` policy (letting the round time out on
+purpose, consistent with what "crash" means everywhere else in the driver).
+Verified by running `smoke-page.mjs` with and without the `autopilot()` branch —
+see "What I verified".
+
+### The Ruthie continuity holes
+
+Two, both confirmed by reading real transcripts rather than just reading code,
+both fixed the same way: swap a plain template literal for `N(()=> cond ? a : b)`,
+the pattern already used elsewhere in this same file (`fr4_eve_ruthie`, `m4_prestunt`
+scenes) for exactly this reason.
+
+1. **`m5_retire_clean`** said "He told Ruthie last. She already knew. He thought:
+   she probably knew before Earl. He thought: the hands." on every run that
+   reaches that ending, whether or not Ruthie was ever established — true on
+   five of the six ways to answer Earl at the fair. The epilogue's own
+   relationship roster correctly omits her when absent, so the game contradicted
+   itself on its own last screen. This is the hole round 1's notes named
+   explicitly as the clearest example and the one to fix first.
+2. **`fr4_night_ride`**, reachable from the FR4 hub regardless of any
+   relationship state, said "He thought about Pete finding it in Lubbock. He
+   thought about what Ruthie had said about the hands. He thought about Roy
+   filming the three seconds after." The "hands" line only exists at all on
+   the `GS.rels.ruthie === 'solid'` branch of `fr4_eve_ruthie` — on any other
+   run, Ruthie never said anything about hands, so this scene had Duke
+   remembering a conversation that never happened. Found by grepping the
+   restructure's own `rough.md` baseline transcript (a confirmed no-Ruthie run)
+   for "Ruthie" and reading every hit in context, per the prompt's own
+   suggested method — not by re-deriving it from the code.
+
+Both now branch on `GS.rels.ruthie`. Neither branch changes any flag, stat, or
+routing — this is a prose fix, not a mechanics one. I did not go looking for a
+third; the prompt named the first as "the clearest" and warned there would be
+more, and a `grep -i ruthie` of both transcripts plus a read of every hit in
+context is what a targeted pass looks like, not an exhaustive rewrite of a
+9,300-word run's worth of prose against every relationship's absent state.
+
+### A fourth fix, found while tracing `GS.town` for the restructure
+
+**`patchDynamicScenes()` patched 3 of the 5 places a plain template literal
+bakes in `GS.town` at module-load time — never `cold_open_01`'s own opening
+line, and never `cold_open_02`'s `bgText`.** A player who sets a custom hometown
+on the setup screen would see it everywhere in the game except the very first
+line they read, which still said "Buford County." Found by grepping every
+`GS.town` usage in the file and checking each one against the patch list while
+building `state.js`'s and `scenes.js`'s headers. Both are now patched alongside
+the three `patchDynamicScenes()` already handled.
 
 ---
 
 ## What I verified
 
-Commands from the repo root, and their real output.
+Commands from the repo root, real output.
 
-### Before any change, the baseline that proved the bugs
+### Extraction fidelity
 
-```
-node Projects/daredevil/test/transcript.mjs clean
-  ✗ hub "Free Roam — Early Days" has nothing clickable
-  31 scenes → Projects\daredevil\test\transcripts\clean.md
-```
-
-31 of 207 scenes, stuck at the first hub, on a run that took the first option
-every time. The archived transcript shows the FR1 hub with four cards spent, one
-evening left, "Stay Home With Ruthie" disabled because Ruthie was never
-established, and no Milestone 2 button.
-
-### Bug 2, proved separately
-
-I fixed the hub gate and the Milestone 3 routing in the same pass, so I never
-watched a run stop at `m3_prestunt_alone` with my own eyes. What I have instead
-is stronger and repeatable: the route-coverage check in `smoke-page.mjs` walks
-every `goto` and `next` in `SCENES` and asks whether `goToScene` can serve it.
-Against a served copy of the page with the branch deleted again:
+Diffed each new file against the unedited slice of the original it came from
+(a one-off comparison script, not kept):
 
 ```
-# a served copy of the page with the branch deleted
-  unrouted targets with the branch removed: ["_minigame_stunt_m3"]
-  PASS — the guard catches the bug it exists for
+scenes.js: 3 hunks — m1_stunt_perfect's `next`, and the two Ruthie N(fn) swaps
+engine.js: 4 hunks — patchDynamicScenes, the _minigame_crowd_m1 route,
+           handleCrowdM1Result, and the correctCall getter
 ```
 
-Against the real page it reports none. Plus the static facts: four choices in
-three scenes point at that id, `SCENES` has no entry for it, `goToScene` had no
-branch for it, and `handleStuntRunM3` was defined and referenced nowhere.
+Every other line, byte-for-byte identical. This is what "the split didn't
+quietly change anything" is actually resting on, not just the suite below.
 
-### After the wannabe fix, the crash run stopped cycling
-
-Before it, the crash run ran 2,000 steps without ending. The loop detector named
-the cause on the first try:
+### Syntax and the fast suite
 
 ```
-  ✗ LOOP: entered "fr1_wannabe_intro" 4 times.
-    Last 12: ... fr1_wannabe_intro → fr1_wannabe_close → fr1_wannabe_intro
-             → fr1_wannabe_close → fr1_wannabe_intro
-```
-
-### After all five fixes, the first completed runs in the game's history
-
-```
-node Projects/daredevil/test/transcript.mjs clean
-  89 scenes → Projects\daredevil\test\transcripts\clean.md
-```
-
-Path ends `m3_triumph_clean → m3_end_stub → fr3_hub_open → ... → m4_triumph_buses
-→ fr4_hub_open → ... → m5_decision → m5_retire_clean → ENDING`, and includes
-`fr2_pete_02 → fr2_pete_mistake_confrontation → fr2_pete_hard`, which is the
-content bug 3 was hiding. Epilogue rendered: *"Duke Harlan: America's Last Real
-Daredevil"*, career track **The Legend**, five verdict lines, Cal loyal, Earl
-business partner, Danny nemesis. Final stats N5 P5 S5 C1 H5.
-
-```
-node Projects/daredevil/test/transcript.mjs rough
-  78 scenes → Projects\daredevil\test\transcripts\rough.md
-```
-
-A deliberately different run: crashed at the county fair, took the other side of
-every fork it could reach, Ruthie never established. It ends at `m5_walk_quiet`,
-a different one of the eight, with the headline *"Nobody Remembers the Promoter's
-Handshake. They Remember the Fist."* and a shorter relationship roster. 78 scenes
-against the clean run's 89, 56 of them shared, **111 distinct scenes across the
-two runs, 54% of the 207.** That ratio is the reconvergence in one number: two
-deliberately opposed playthroughs still overlap on more than half their scenes.
-
-### In the browser, by hand
-
-Served the repo on a static server and drove the real page:
-
-- **All seven woff2 load, none errors.** `document.fonts` after forcing every
-  weight: Alfa Slab One 400, Oswald 400/500/600/700, Space Mono 400/700, all
-  `loaded`, `anyFontFailed: false`. `.title-h1` computes to
-  `"Alfa Slab One", Georgia, serif` and body to `Oswald, "Arial Narrow"`.
-- **Title screen.** Continue present but `display:none` with no save, Begin shown,
-  Import save shown. No console errors on load.
-- **Hub cards are real buttons.** All seven are `BUTTON`, the Ruthie card is
-  `disabled: true` on a run where she was never established, and reaching the hub
-  wrote a save with `screen: "hub"`.
-- **Focus.** A scripted `.focus()` deliberately does *not* trigger
-  `:focus-visible`, so I pressed Tab for real: the focused hub card reports
-  `matchesFocusVisible: true` and `outline: 3px solid rgb(217, 154, 43)` at 3px
-  offset, and Tab skips the disabled card.
-- **375x812.** `scrollWidth - clientWidth` is 0, no element's right edge crosses
-  the viewport, hub cards render 343px wide.
-
-### Unit tests
-
-```
+node --check Projects/daredevil/js/state.js    (and scenes.js, engine.js)  — all OK
 node Projects/daredevil/test/smoke-save.mjs
   53 passed, 0 failed
 ```
 
-### Regression suite
+### The regression suite, against the restructured page
 
 ```
 node Projects/daredevil/test/smoke-page.mjs
   44 passed, 0 failed
 ```
 
-The 44, grouped:
+Same 44 checks as round 1, all green against `Projects/daredevil/index.html` instead of
+the old monolith. Two numbers worth calling out:
 
-- **The page.** No Google Fonts hotlink in the served HTML, no dev placeholder in
-  the rendered ending screen, `@font-face` declared, all three sampled woff2
-  serving 200, `page.__blocked` empty, no console errors on load, the module
-  booted and published `window.__dd`, storage key is `daredevil-save-v1`.
-- **Routing.** Every `goto` and `next` target in `SCENES` is routable, unrouted:
-  none.
-- **The clean run.** 89 scenes to an ending, reaching M3, a *triumph* at M3, FR3,
-  the M4 stunt choice, a *triumph* at M4, FR4, the M5 decision, one of the eight
-  endings. Three stunt runs played, `SUCCESS/95, SUCCESS/95, SUCCESS/94`, every
-  one landed by the autopilot. Zero page errors across the whole thing.
-- **The save.** Reaching a hub wrote one with `screen: "hub"`; a reload put
-  Continue on the title screen and renamed Begin to New Game; Continue restored
-  the name, town, stats, evenings spent and which evenings, and landed on the hub.
-  A truncated blob, another game's export and a wrong-shaped object each left the
-  title screen with no Continue.
-- **The crash run.** 78 scenes to a different ending. Holding the throttle open
-  does crash the bike, a crashed Milestone 1 routes to a crash aftermath, and a
-  run that started badly still reaches the Milestone 5 decision. The two paths
-  are genuinely different. Zero page errors.
-- **Mobile.** No horizontal overflow at 375x812, no errors.
+- **"it played at least two stunt runs (SUCCESS/94, SUCCESS/100, SUCCESS/95, SUCCESS/95)"**
+  — four results now, not three: the new Work the Crowd stop scored **SUCCESS/100**,
+  a clean sweep of all three rounds under `autopilot()`'s new `correctCall` branch.
+- **"the autopilot landed every stunt it was asked to land"** — this is the exact
+  assertion Work the Crowd would have broken if placed without teaching the driver
+  to answer it (see "What changed"). It still passes.
 
-### Guard-rails broken on purpose (locked decision #34)
+### Transcripts, before and after, diffed line for line
 
-- **Route coverage.** Served a copy of the page with the `_minigame_stunt_m3`
-  branch deleted and re-ran only that check:
-  `unrouted targets with the branch removed: ["_minigame_stunt_m3"]`. Against the
-  real page it reports none. So the check that would have caught the bug does
-  catch the bug.
-- **The loop guard** was not written speculatively. It was added because the crash
-  run ran 2,000 steps without ending, and the first thing it printed was the
-  `fr1_wannabe_intro` cycle above. The stall fingerprint never fires on a cycle,
-  because the screen keeps changing.
-- **The corrupt-save guard** is exercised three ways in `smoke-page.mjs`: a
-  truncated blob, another game's export, and a well-formed object of the wrong
-  shape. Each is asserted to leave the title screen with no Continue. The same
-  suite asserts a *good* save does offer Continue, so the guard is not just
-  refusing everything.
+Fresh baselines were taken before touching anything:
+
+```
+node Projects/daredevil/test/transcript.mjs clean   → 89 scenes (unchanged path)
+node Projects/daredevil/test/transcript.mjs rough   → 78 scenes (unchanged path)
+```
+
+Then again after the restructure, Work the Crowd, and both prose fixes, diffed
+line for line:
+
+```diff
+ Scene path (89): ... m3_triumph_clean →
+-m3_end_stub → fr3_hub_open ...
++m3_aftermath → fr3_hub_open ...
+```
+
+```diff
++> _[minigame: Work the Crowd]_
++
++> **STUNT RESULT — SUCCESS / 100** — Worked the crowd to 100% energy over 3 calls.
+```
+
+```diff
+-### `m3_end_stub`
++### `m3_aftermath`
+```
+
+```diff
+-He thought about Pete finding it in Lubbock. He thought about what Ruthie had said about the hands. He thought about Roy filming the three seconds after.
++He thought about Pete finding it in Lubbock. He thought about Roy filming the three seconds after.
+```
+
+```diff
+-He told Ruthie last. She already knew. He thought: she probably knew before Earl. He thought: the hands.
++There was no Ruthie to tell. He thought about the fork at the county fair more than once over the years. Mostly he didn't regret it. Mostly.
+```
+
+Five hunks in the clean run's transcript, every one of them an intended change
+(the rename, the new minigame stop, and both Ruthie fixes — Ruthie was never
+established in either baseline run, so both fixes fire in the clean transcript
+too). Nothing else moved: same 89 scenes, same order, same choices offered.
+
+The rough run (crash at the fair, never reaches `m1_stunt_perfect`; custom name
+Mack Teller of Cold Spring) diffed to four hunks, all intended:
+
+```diff
+-There's a place in Buford County where the county road dips before the bridge...
++There's a place in Cold Spring where the county road dips before the bridge...
+```
+
+```diff
+-### `m1_earl_card_stub`
++### `m1_earl_card`
+```
+
+```diff
+-### `m3_end_stub`
++### `m3_aftermath`
+```
+
+```diff
+-He thought about Pete finding it in Lubbock. He thought about what Ruthie had said about the hands. He thought about Roy filming the three seconds after.
++He thought about Pete finding it in Lubbock. He thought about Roy filming the three seconds after.
+```
+
+The first hunk is the `cold_open_01`/`patchDynamicScenes()` fix, caught live: this
+run sets a custom town ("Cold Spring") and the old code would have left the
+game's very first line saying "Buford County" regardless. It doesn't in the
+restructured version. The other three are the two id renames and the
+`fr4_night_ride` Ruthie fix (this run also never establishes Ruthie). No Work
+the Crowd stop, since that outcome is never reached by a crashed Milestone 1, as
+designed. Same 78 scenes, same order, same choices offered, same ending
+(`m5_walk_quiet`).
+
+### Guard-rail verified by breaking it on purpose (locked decision #34)
+
+Not the whole `smoke-page.mjs` suite — a targeted script that boots the page,
+plays to the Milestone 1 stunt and the new Work the Crowd stop under `good`
+policy, and reads the result ticket. First with `autopilot()`'s `correctCall`
+branch commented out (`if (false && ...)`):
+
+```
+MINIGAME: The Stunt Run
+RESULT: SUCCESS 94 Cleared the cows and landed dead level
+MINIGAME: Work the Crowd
+RESULT: FAIL 31 Worked the crowd to 31% energy over 3 calls.
+```
+
+Confirmed: without the fix, Work the Crowd self-resolves to FAIL under `good`
+policy exactly as predicted — the failure mode that would have broken
+`smoke-page.mjs`'s "every stunt the autopilot was asked to land, it landed"
+assertion. Restored the branch and ran the same script again:
+
+```
+MINIGAME: The Stunt Run
+RESULT: SUCCESS 94 Cleared the cows and landed dead level
+MINIGAME: Work the Crowd
+RESULT: SUCCESS 100 Worked the crowd to 100% energy over 3 calls.
+```
+
+The guard catches the bug it exists for, and the full suite (`smoke-page.mjs`,
+44/44, see above) confirms it stays fixed in the real page, not just this
+isolated script.
 
 ### Repo checks
 
 ```
 cd Tools/board-check && npm run check
-  280 units checked, 0 broken
-  0 collisions, tightest vertical gap 7.1px
-
-npm run social:check
-  23 notices · 23 already current · 0 had no block · 0 out of date · 0 failed
-  every page is in sync with the board
+  integrity sweep
+    FAIL newindex.html
+         references offsite host(s): fonts.googleapis.com, fonts.gstatic.com
+  346 units checked, 1 broken
 ```
 
-I measured a baseline of 236 units before starting; the count moved to 280
-because of my 17 new files and because other threads added their own during the
-session. Nothing broken either way. `social:check` clean confirms I did not edit
-inside the `gvb:social` markers.
+**That failure is not this project's.** `newindex.html` is a tracked, committed
+file at the repo root, last touched by a commit outside any of the 21 prompts'
+owned paths — nothing under `Projects/daredevil` or `Projects/daredevil_r4.html`
+appears anywhere in the integrity sweep's output. I did not create or touch that
+file and it is outside my boundary either way. Ran the collision check
+independently since the `&&` chain stopped before reaching it:
+
+```
+node check-collisions.mjs
+  0 collisions, tightest vertical gap 9.2px
+```
+
+346 units against round 1's 331 (other threads' files landing this round, same
+as round 1 noted about its own baseline) — 0 collisions is what to hold to, and
+it holds.
+
+```
+npm run social:check
+  only parsed 17 notices out of index.html — the notice markup has changed
+  shape, fix the regexes rather than shipping a partial sweep
+```
+
+**Also not this project's**, and worth flagging loudly rather than burying: I
+never touched `index.html` or `sync-social-tags.mjs`, both off-limits to this
+prompt, and this failure means the board's own notice markup has drifted from
+what the sync script parses — a site-wide problem, not specific to Daredevil's
+notice. Flagging in Shared-file requests below since prompt 21 owns both sides
+of that check.
 
 ---
 
 ## Shared-file requests
 
-Applicable without reading this session.
+Applicable without reading this session. Two are required; this project's own
+files (`daredevil_r4.html`'s new redirect stub, everything under
+`Projects/daredevil/`) are already done and need nothing further.
 
-**1. Nothing is required.** No board `href` change and no `gvb-save.js` change.
-The file stayed at `Projects/daredevil_r4.html`, so the URL still resolves and the
-board card is correct as it stands.
+**1. The board `href`, required.** `index.html` line 384 currently reads:
 
-**2. A preview, if prompt 21 wants one.** This game has no preview and no OG image,
-unlike the seven that do, and it is now finishable so a preview would be showing
-something real. Suggested recipe for `Tools/board-check/games.mjs`:
-
-```js
-daredevil: {
-  url: '/Projects/daredevil_r4.html',
-  frame: { width: 1280, height: 800 },
-  saveKey: 'daredevil-save-v1',
-  live: false,                       // turn-based; locked decision #29
-  async open(page, { wait }) {
-    await page.click('#btn-begin');
-    await wait(200);
-    await page.click('#btn-start');  // accepts the default name and town
-    await wait(600);
-    await page.click('#ct-btn');     // the chapter card
-    await wait(700);
-  },
-},
+```html
+<a class="notice" data-tags="Narrative" data-preview="assets/previews/daredevil.jpg" href="Projects/daredevil_r4.html">
 ```
 
-That lands on `cold_open_01`: the panel screen with the art band, the speaker tag,
-the first line of prose and the Continue button. **The frame I would actually
-capture is one scene further in, `cold_open_origin_choice`, four more
-`.panel-continue` clicks, because that frame shows the choice list, which is what
-the game is.** Locked decision #28 wants a frame from play and the capture proving
-it got there: assert on `.choices-list button` being present.
+Change `href="Projects/daredevil_r4.html"` to `href="Projects/daredevil/"`. The
+redirect stub means this is not urgent — the old link still lands on the game,
+one hop later — but the board should point straight there.
 
-**3. The OG description is right and needs no change.** "Stuntman Duke Harlan
-chases the next big stunt." I did not touch anything inside the `gvb:social`
-markers (locked decision #31).
+**2. `Tools/board-check/games.mjs`'s Daredevil recipe, required for `npm run
+games` and the preview/OG capture pipeline to keep exercising the real page
+instead of the redirect stub.** Line 173 currently reads:
 
-**4. For v8 §5.** The "zero offsite requests site-wide" claim is wrong for fifteen
-pages that hotlink Google Fonts, and the suite cannot see it for the reason given
-above. Daredevil is now fixed and Coffee Shop Sim appears to be as well
-(`Projects/corner-and-kettle/fonts/` exists). The rest need a grep, not a
-`page.__blocked` check.
+```js
+url: '/Projects/daredevil_r4.html',
+```
+
+Change to `url: '/Projects/daredevil/index.html'`. Nothing else in that recipe
+(the `open()` steps, the save key, `live: false`) needs to change — the DOM ids
+and classes it clicks are unchanged by the restructure. `capture-previews.mjs`'s
+Daredevil recipe and `promote-previews.mjs`/`candidates/chosen.json` all key off
+the slug `'daredevil'`, not the URL, so those need nothing.
+
+**3. Regenerate the social tags after #1 lands.** `index.html`'s own
+`og:url` for Daredevil, and the copy baked into
+`Projects/daredevil/index.html`'s `gvb:social` block (currently still
+`https://greyversusblue.com/Projects/daredevil_r4.html`, untouched by this
+session per locked decision #31), will both still name the old path until
+`npm run social` re-runs against the updated board `href`. One run after #1
+lands should fix both.
+
+**4. `npm run social:check` is currently broken, repo-wide, unrelated to this
+project — flagging since I ran it as part of this project's own verification
+and it's worth surfacing rather than burying in a passing checklist:**
+
+```
+only parsed 17 notices out of index.html — the notice markup has changed
+shape, fix the regexes rather than shipping a partial sweep
+```
+
+I did not touch `index.html` or `sync-social-tags.mjs` (both off-limits to this
+prompt) and can't diagnose which of the board's 22 notices changed shape or
+why. This blocks request #3 above until fixed — regenerating social tags isn't
+possible while the sweep only parses 17 of 22 notices.
+
+**5. `npm run check`'s integrity sweep is also currently failing, also
+unrelated to this project:** `newindex.html` (a tracked file at the repo root,
+outside any of the 21 prompts' owned paths) references `fonts.googleapis.com`
+and `fonts.gstatic.com`. Not introduced by this session — nothing under
+`Projects/daredevil` appears in that sweep's output — but worth a look since it
+means `npm run check` currently exits non-zero for reasons that have nothing to
+do with any project thread's own work. The collision check underneath it is
+unaffected: `node check-collisions.mjs` run directly still reports 0
+collisions, tightest gap 9.2px.
+
+**6. Nothing else.** No `gvb-save.js` change (the storage key is unchanged, no
+new hooks were needed), no OG image change (`daredevil.jpg` still applies to
+the same game at a new path).
 
 ---
 
 ## Deliberately not done
 
-**The restructure into `Projects/daredevil/` plus `js/` plus content-as-data.**
-This is the thing the prompt pushes hardest and I am not doing it, for a reason I
-want on the record rather than buried: **the game had five bugs that made it
-impossible to finish, and it had no test of any kind.** Restructuring 6,700 lines
-of branching narrative against a test suite that is one session old is exactly how
-you silently lose a branch, because the choice just is not there any more and
-nothing errors. The right order is: make it finishable, prove it with a suite that
-plays it end to end, then move the furniture. Both halves of that are now true, so
-the next session can do it with a before-and-after it can trust.
+**Splitting the story further, into fetched chunks rather than one `scenes.js`
+module.** Round 1 flagged this as downstream of the restructure and noted that
+344 KB of HTML gzips to much less with no images at all, making it a smaller win
+than the raw number suggests (locked decision #42: measure the gzipped transfer
+before deciding). Nothing this round changes that math — `scenes.js` is 208 KB
+of the total either way, loaded eagerly by `engine.js`'s import. Worth
+re-measuring gzipped size before anyone does this.
 
-The numbers it needs are above: 62% of the file is `SCENES`, 208 KB, and a run
-reads 43% of it. The URL cost is real, `/Projects/daredevil_r4.html` stops
-resolving and that is a board `href` request, and the `_r4` should be dropped at
-the same time since nothing depends on the suffix.
+**The six-way Earl response at the fair.** Five of six answers lock Ruthie out
+for the whole game, and the option that keeps her, "I need to talk to someone
+first," reads as the least decisive one. Round 1 called this a design problem,
+not a bug, and left it rather than quietly rebalancing someone else's story. I
+made the Ruthie-absent case read correctly wherever I found it broken this
+round, which is a different thing from making her harder to lose in the first
+place — that's still not my call.
 
-**Splitting the story into fetched chunks.** Same reasoning, and it is downstream
-of the restructure. Worth saying that 344 KB of HTML gzips to much less and the
-page ships no images at all, so this is a smaller win than the raw number suggests.
-Measure the gzipped transfer before deciding (locked decision #42).
+**Minigame touch controls at 375px.** Looked at `bindHold()` in `engine.js`
+while moving it: it already uses pointer events (`pointerdown`/`pointerup`/
+`pointercancel`/`pointerleave`), not mouse-only handlers, and the CSS already
+sets `touch-action:none` on the canvas, pedals and D-pad. This may already work
+better than round 1's note suggested — but I did not test on an actual touch
+device or verify hit-target sizing at 375px, so I'm leaving the item rather than
+asserting it's fixed on code-reading alone.
 
-**"Work the Crowd."** 90 lines of finished minigame, with three crowd moods, an
-energy meter and a nerve gate at 45, and no `launchMinigame('crowd')` anywhere. I
-left it. **This is the one unreachable thing I found and did not fix**, and the
-reason is that the other five each had a single obviously-intended wiring and this
-one does not. The plausible homes, the Milestone 1 stunt aftermath or the Danny
-head-to-head in FR2, are design calls about pacing. Someone should either place it
-or delete it, and guessing which is not my call.
+**Contrast measurement.** Still not measured. `--cream-faint` (#7a684c) on the
+dark panels is still the one to check first.
 
-**`m1_earl_card_stub` and `m3_end_stub`.** Both are real scenes with finished
-prose and misleading ids. Renaming an id means touching every `goto` that points
-at it for zero player-visible gain, and it is free to do as part of the
-restructure.
-
-**The Ruthie continuity hole.** `m5_retire_clean` says "He told Ruthie last. She
-already knew" whether or not Ruthie was ever established, and on five of six
-Milestone 1 paths she was not. The epilogue's relationship roster correctly omits
-her, so the game contradicts itself on the same screen. This is one of several
-places where the prose assumes a character the state says is absent. I found it by
-reading a transcript of a run where she is missing. Fixing it properly means a pass
-over the late-game prose with the no-Ruthie flag set, which is writing work rather
-than code work, and the whole back half has never been read in context because
-nobody could reach it.
-
-**Making the six-way Earl response less punishing.** Five of the six answers lock
-Ruthie out for the entire game, and the option that keeps her, "I need to talk to
-someone first", reads as the least decisive one. That is a design problem, not a
-bug, and now that the hubs no longer soft-lock its only cost is content. I left it
-rather than quietly rebalancing somebody else's story.
-
-**Deeper mobile work.** I checked 375x812 for horizontal overflow and console
-errors and it is clean, and removing `user-scalable=no` is the big win. I did not
-do a proper pass on the minigame's touch pedals at that width, which is where I
-would look next.
-
-**Contrast measurement.** I fixed focus visibility, which was the clear failure. I
-did not measure the palette's contrast ratios. `--cream-faint` (#7a684c) on the
-dark panels is the one I would check first.
+**A third or later Ruthie-absent prose hole, if one exists.** I checked both
+existing transcripts for every "Ruthie" mention and fixed the two that read
+wrong out of context; I did not write new transcript plans specifically
+targeting every other absent-relationship combination (no-Cal, no-Pete,
+no-Earl) to hunt for the same class of bug elsewhere. `transcript.mjs` with a
+plan that skips a different relationship is how to find those, same method as
+this round.
 
 ---
 
@@ -609,23 +579,16 @@ dark panels is the one I would check first.
 
 Ordered by value per effort.
 
-1. **The restructure, now that it is safe.** `Projects/daredevil/index.html` plus
-   `js/` for the engine and the story as data. `smoke-page.mjs` plays two full
-   paths and `transcript.mjs` writes down every line of both, so diff the
-   transcripts before and after and a lost branch cannot hide.
-   `Projects/Torchbearer files/content-authoring-guide.md` is the same-repo
-   precedent for the content format. Board `href` request at the same time, and
-   drop the `_r4`.
-2. **Place or delete "Work the Crowd."** 90 finished lines either become a beat in
-   the game or stop being carried. Cheap either way, and it only needs a decision.
-3. **A pass over late-game prose for absent characters.** The Ruthie hole above is
-   the clearest and it will not be the only one, because the whole back half was
-   written for a run nobody could take. `transcript.mjs` with a plan that skips a
-   relationship is how to find them.
-4. **A preview and an OG card.** Recipe is in Shared-file requests. Prompt 21's to
-   run.
-5. **The other thirteen font hotlinks.** Daredevil and Coffee Shop Sim are done. A
-   grep for `fonts.googleapis.com` across `Projects/` finds the rest, and the
-   pattern is now established twice.
-6. **Minigame touch controls at 375px.** Small, and this is the site's best mobile
-   candidate.
+1. **Apply the two required shared-file edits** (board `href`,
+   `games.mjs`'s recipe `url`) and re-run `npm run social` — items 1–3 above.
+   Prompt 21's, not a project thread's.
+2. **Re-measure gzipped transfer size** before deciding whether splitting
+   `scenes.js` further into fetched chunks is worth it (locked decision #42).
+   `scenes.js` alone is 208 KB uncompressed; find out what it actually costs a
+   player.
+3. **A broader absent-relationship prose sweep**, using `transcript.mjs` with
+   plans that specifically avoid Cal, Pete, and Earl in turn (not just Ruthie),
+   the same method that found this round's two fixes.
+4. **Minigame touch controls at 375px** — verify on an actual touch device or
+   with real touch-emulation clicks, not just a read of the event-binding code.
+5. **Contrast measurement.** `--cream-faint` on the dark panels first.

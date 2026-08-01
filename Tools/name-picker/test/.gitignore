@@ -1,0 +1,4 @@
+# Screenshots and the exported backup file browser.mjs writes on every run.
+# Evidence for the run that produced them, not source — same call Tools/board-check
+# and the other project test/ folders make for their own shots/.
+shots/

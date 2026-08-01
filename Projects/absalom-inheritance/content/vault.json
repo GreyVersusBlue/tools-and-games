@@ -2,9 +2,9 @@
   "pack": {
     "id": "vault-beneath-the-court",
     "name": "The Vault Beneath the Ascendant Court",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "schema": 1,
-    "description": "The shipping adventure. One room, two dormant sentinels, two pillars, and the thing the family letter was about."
+    "description": "Two rooms now: the vault proper (two dormant sentinels, two pillars, the Keeper) and, past the stairway the Keeper's death opens the way to, the reliquary the family letter was actually about."
   },
 
   "tuning": {
@@ -141,6 +141,23 @@
       "deathLine": "The Keeper kneels, and does not rise. Gold dust settles over the casket.",
       "wakeLine": "The shape beside the casket was never rubble. {name} stands, and the chamber narrows.",
       "note": "The statline the two sentinels originally shipped with (17 HP, AC 14, fist +6 for 1d6+2), promoted to the boss it was always sized for: 15 XP against a solo level-1 PC, and the only fight the PC arrives at with a full spell list, because opening the gate restores them. The number was never wrong; it was pointed at the wrong fight, twice over."
+    },
+    "reliquary-warden": {
+      "name": "Reliquary Warden",
+      "level": -1,
+      "hp": 8,
+      "ac": 12,
+      "perception": 1,
+      "speed": 20,
+      "saves": { "fort": 4, "ref": 0, "will": -1 },
+      "attackBonus": 3,
+      "attackName": "Basalt Fist",
+      "damage": "1d4",
+      "damageType": "bludgeoning",
+      "deathLine": "{name} folds at the joints and does not rise again.",
+      "wakeLine": "A last construct rises between you and the reliquary — {name}.",
+      "sleepLine": "{name} loses you in the dark and settles back to stone.",
+      "note": "Deliberately weaker than either sentinel (8 HP vs 11, AC 12 vs 13, +3 vs +4, 1d4 vs 1d6): the PC reaches it with whatever the Keeper fight left. Measured both ways over 2000 seeded runs: at full sentinel stats this creature measures 41.5% wins, just under the 45% floor; at these numbers it measures 53.6%. Neither is a small effect — a fourth mandatory fight moves the needle even weakened well below sentinel strength."
     }
   },
 
@@ -176,47 +193,80 @@
         "The second half of the seal glows faintly as you finish reading. Somewhere ahead, stone grinds against stone."
       ],
       "logLine": "You study the eastern pillar. Old words, older intent."
+    },
+    "reliquary": {
+      "title": "The Reliquary Plaque",
+      "body": [
+        "Newer stonework than the pillars below, and blunter: \"Sarvel's heir: the sentinels were the test. The Keeper was the price. What is past both is only ever yours if you can still lift it.\"",
+        "Beneath the text, a mason's mark rather than a seal — this room was cut after the vault, not with it."
+      ],
+      "logLine": "You read the reliquary plaque. Whoever finished this room came after Sarvel, and knew exactly what they were guarding."
     }
   },
 
-  "area": {
-    "id": "vault",
-    "name": "The Vault Beneath the Ascendant Court",
-    "legend": {
-      "#": { "tile": "wall" },
-      ".": { "tile": "floor" },
-      "G": { "tile": "gate" },
-      "T": { "tile": "treasure" },
-      "P": { "tile": "pillar", "lore": "bequest" },
-      "Q": { "tile": "pillar", "lore": "condition" },
-      "@": { "tile": "floor", "spawn": "pc" },
-      "e": { "tile": "floor", "creature": "shattered-sentinel" },
-      "k": { "tile": "floor", "creature": "vault-keeper", "wakesOn": "gate-opened" }
+  "startArea": "vault",
+  "areaOrder": ["vault", "sanctum"],
+  "areas": {
+    "vault": {
+      "name": "The Vault Beneath the Ascendant Court",
+      "legend": {
+        "#": { "tile": "wall" },
+        ".": { "tile": "floor" },
+        "G": { "tile": "gate" },
+        "V": { "tile": "stairs", "to": { "area": "sanctum", "x": 6, "y": 8 } },
+        "P": { "tile": "pillar", "lore": "bequest" },
+        "Q": { "tile": "pillar", "lore": "condition" },
+        "@": { "tile": "floor", "spawn": "pc" },
+        "e": { "tile": "floor", "creature": "shattered-sentinel" },
+        "k": { "tile": "floor", "creature": "vault-keeper", "wakesOn": "gate-opened" }
+      },
+      "rows": [
+        "######################",
+        "#########..k.#########",
+        "#########.VV.#########",
+        "#########....#########",
+        "#########....#########",
+        "##########GG##########",
+        "#....................#",
+        "#....................#",
+        "#......e......e......#",
+        "#....................#",
+        "#...##..........##...#",
+        "#...##..........##...#",
+        "#..P..............Q..#",
+        "#....................#",
+        "#...##..........##...#",
+        "#...##..........##...#",
+        "#....................#",
+        "#....................#",
+        "#....................#",
+        "#.........@..........#",
+        "#....................#",
+        "######################"
+      ]
     },
-    "rows": [
-      "######################",
-      "#########..k.#########",
-      "#########.TT.#########",
-      "#########....#########",
-      "#########....#########",
-      "##########GG##########",
-      "#....................#",
-      "#....................#",
-      "#......e......e......#",
-      "#....................#",
-      "#...##..........##...#",
-      "#...##..........##...#",
-      "#..P..............Q..#",
-      "#....................#",
-      "#...##..........##...#",
-      "#...##..........##...#",
-      "#....................#",
-      "#....................#",
-      "#....................#",
-      "#.........@..........#",
-      "#....................#",
-      "######################"
-    ]
+    "sanctum": {
+      "name": "The Reliquary",
+      "legend": {
+        "#": { "tile": "wall" },
+        ".": { "tile": "floor" },
+        "T": { "tile": "treasure" },
+        "R": { "tile": "pillar", "lore": "reliquary" },
+        "w": { "tile": "floor", "creature": "reliquary-warden" }
+      },
+      "rows": [
+        "##############",
+        "#............#",
+        "#....R.......#",
+        "#............#",
+        "#....TT......#",
+        "#....TT......#",
+        "#............#",
+        "#.....w......#",
+        "#............#",
+        "##############"
+      ]
+    }
   },
 
   "gate": {
@@ -231,8 +281,8 @@
   },
 
   "treasure": {
-    "requiresDown": ["vault-keeper"],
-    "blockedHint": "The Keeper's hand rests on the casket lid. It will not move while it stands.",
+    "requiresDown": ["vault-keeper", "reliquary-warden"],
+    "blockedHint": "Something still stands between you and the casket lid.",
     "title": "The Absalom Inheritance",
     "body": [
       "Inside the casket: a founder's deed, sealed the day the Starstone fell — title to a sliver of the Ascendant Court itself, made out to whichever heir could pass the sentinels and read the pillars true.",
@@ -250,7 +300,7 @@
 
   "intro": {
     "narrative": "Beneath the Ascendant Court, the family letter led you true: a vault older than the Starstone Cathedral, air thick with rock dust and patience.",
-    "goal": "Read both pillars to open the northern gate, then claim the Inheritance. A sentinel wakes if you stray within 30 ft of it and it can see you.",
+    "goal": "Read both pillars to open the northern gate, then take the stairway beyond it to the reliquary and claim the Inheritance. A sentinel wakes if you stray within 30 ft of it and it can see you.",
     "hint": "Click a lit tile to walk, or use the arrow keys. Approach the carved pillars to read them."
   }
 }

@@ -2,7 +2,7 @@
 
 Played as Mack Teller of Cold Spring, stunt policy `crash`.
 
-**Scene path (78):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_credit` → `m1_beat_3` → `m1_b3_legacy` → `m1_stunt_approach` → `m1_stunt_crash_bad` → `m1_earl_card_stub` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_clause_first` → `m2_deal_40_defined` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_walkaway` → `m2_walkaway_hold` → `m2_round3_enter` → `m2_round3_cal` → `m2_use_tell` → `m2_sign` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_end_stub` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_earl` → `fr3_eve_earl_read` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_prestunt_cal_detail` → `m4_triumph_symbolic` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_no` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_direct` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
+**Scene path (78):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_credit` → `m1_beat_3` → `m1_b3_legacy` → `m1_stunt_approach` → `m1_stunt_crash_bad` → `m1_earl_card` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_clause_first` → `m2_deal_40_defined` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_walkaway` → `m2_walkaway_hold` → `m2_round3_enter` → `m2_round3_cal` → `m2_use_tell` → `m2_sign` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_earl` → `fr3_eve_earl_read` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_prestunt_cal_detail` → `m4_triumph_symbolic` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_no` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_direct` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
 
 ---
 
@@ -11,7 +11,7 @@ Played as Mack Teller of Cold Spring, stunt policy `crash`.
 
 
 ### `cold_open_01`
-There's a place in Buford County where the county road dips before the bridge. On a bike, if you hit it right, you leave the ground.
+There's a place in Cold Spring where the county road dips before the bridge. On a bike, if you hit it right, you leave the ground.
 Everyone in town knew about that dip. Most people lifted off the seat, held on, came down.
 He didn't do it that way.
 
@@ -162,7 +162,7 @@ Someone told Cal about the card later.
 
 > **Hard Down** — The body took a real hit. This will need time.
 
-### `m1_earl_card_stub`
+### `m1_earl_card`
 He didn't meet Earl Maddox that day. He was in too much pain, and Earl — whoever he was — seemed to understand that.
 Cal showed him the card later. White card. One name, one number.
 **CAL:** Man left this on the fence rail. Said to give it to you when you were up.
@@ -735,7 +735,7 @@ He didn't say it. He looked at his wrist. He thought about the next part, which 
 
 > **Down — Hard** — The crash was the show. Recovery starts now. Cal is already thinking about what comes next.
 
-### `m3_end_stub`
+### `m3_aftermath`
 That was one thing taken care of.
 Cal loaded the ramp into the trailer without speaking. Duke watched him do it.
 The show had already moved on to whatever comes after a show. The crowd, the sponsor's people, the TV crew folding cable. Earl somewhere doing what Earl did after a show.
@@ -1098,7 +1098,7 @@ He thought: he finds the number in the air, not on the ground. And some numbers 
 He took the bike out after dark.
 Not to practice. Not toward anything. The road north of town went flat for twenty-two miles before it hit anything worth stopping for, and he had been on it enough times that he could feel the surface through the tires like a conversation he knew by heart.
 He thought about the canyon. He thought about Vegas. He thought about the number — the one you found in the air, not on the ground.
-He thought about Pete finding it in Lubbock. He thought about what Ruthie had said about the hands. He thought about Roy filming the three seconds after.
+He thought about Pete finding it in Lubbock. He thought about Roy filming the three seconds after.
 He thought: some things are the same from the inside and the outside. The ones that matter usually are.
 He turned around at mile twenty-two.
 The fork seal, which Cal had replaced, held.

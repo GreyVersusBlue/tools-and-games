@@ -43,15 +43,14 @@ export function validRun(s) {
  * missing today, because the whole point is the version where they can.
  */
 export function makeRepair(content) {
-  const { area } = content;
   const clampInt = (v, lo, hi, fallback) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return fallback;
     return Math.min(hi, Math.max(lo, Math.round(n)));
   };
 
-  /** Somewhere a body can actually stand. */
-  const standable = (x, y, gateOpen) => {
+  /** Somewhere a body can actually stand, in a given area. */
+  const standable = (area, x, y, gateOpen) => {
     if (x < 0 || y < 0 || x >= area.width || y >= area.height) return false;
     const t = area.tiles[y][x];
     if (t === TILE.WALL || t === TILE.PILLAR) return false;
@@ -59,9 +58,21 @@ export function makeRepair(content) {
     return true;
   };
 
+  // Every creature in every area, keyed the same way game.js keys them.
+  const placedByKey = new Map();
+  for (const areaId of content.areaOrder) {
+    for (const p of content.areas[areaId].placements) {
+      placedByKey.set(`${areaId}:${p.creature}@${p.x},${p.y}`, { areaId, ...p });
+    }
+  }
+
   return function repairRun(s) {
     s.packId ??= content.pack.id;
-    s.areaId ??= area.id;
+    // An area the save names that this pack no longer defines — the room was
+    // cut, or renamed, between sessions — falls back to the start area rather
+    // than indexing a tile grid that is not there.
+    if (!s.areaId || !content.areas[s.areaId]) s.areaId = content.startArea;
+    const area = content.areas[s.areaId];
 
     // --- progress flags, first, because where the PC may legally stand depends
     // on whether the gate is open ---
@@ -73,12 +84,15 @@ export function makeRepair(content) {
     // --- the PC ---
     // Clamping a wild coordinate into bounds is not enough: x=900 clamps to the
     // border wall, and a PC inside a wall cannot path anywhere ever again. Any
-    // position that is not somewhere a body can stand goes back to the spawn.
-    s.pc.x = clampInt(s.pc.x, 0, area.width - 1, area.pcSpawn.x);
-    s.pc.y = clampInt(s.pc.y, 0, area.height - 1, area.pcSpawn.y);
-    if (!standable(s.pc.x, s.pc.y, s.gateOpen)) {
-      s.pc.x = area.pcSpawn.x;
-      s.pc.y = area.pcSpawn.y;
+    // position that is not somewhere a body can stand goes back to the spawn —
+    // that area's own spawn if it has one, else the adventure's starting spawn,
+    // for an area (like a second one reached only by stairs) that has none.
+    const homeSpawn = area.pcSpawn || content.areas[content.startArea].pcSpawn;
+    s.pc.x = clampInt(s.pc.x, 0, area.width - 1, homeSpawn.x);
+    s.pc.y = clampInt(s.pc.y, 0, area.height - 1, homeSpawn.y);
+    if (!standable(area, s.pc.x, s.pc.y, s.gateOpen)) {
+      s.pc.x = homeSpawn.x;
+      s.pc.y = homeSpawn.y;
     }
     s.pc.hp = clampInt(s.pc.hp, 0, content.pc.hp, content.pc.hp);
     s.pc.slots = clampInt(s.pc.slots, 0, content.pc.slots, content.pc.slots);
@@ -89,27 +103,36 @@ export function makeRepair(content) {
     // pack was edited between sessions). Dropping it is right: the alternative
     // is a walking `undefined` in every damage roll it makes.
     s.creatures = (s.creatures || []).filter(c => c && content.creatures[c.creature]);
-    const placed = new Map(area.placements.map(p => [`${p.creature}@${p.x},${p.y}`, p]));
     for (const c of s.creatures) {
       const d = content.creatures[c.creature];
-      c.key ??= `${c.creature}@${c.x},${c.y}`;
-      c.wakesOn = placed.get(c.key)?.wakesOn ?? c.wakesOn ?? "notice";
-      const home = placed.get(c.key);
-      c.x = clampInt(c.x, 0, area.width - 1, home?.x ?? area.pcSpawn.x);
-      c.y = clampInt(c.y, 0, area.height - 1, home?.y ?? area.pcSpawn.y);
+      // A round-one save's key has no area prefix — just "id@x,y", where x,y
+      // is the creature's original placement, since game.js never rewrote the
+      // key after a creature moved. Prefixing it with the save's own area (the
+      // only area that existed when it was written) recovers the exact key
+      // placedByKey uses today, rather than orphaning every in-progress
+      // round-one save into a duplicated creature at boot.
+      if (c.key && !c.key.includes(":")) c.key = `${s.areaId}:${c.key}`;
+      c.key ??= `${s.areaId}:${c.creature}@${c.x},${c.y}`;
+      const home = placedByKey.get(c.key);
+      c.area = home?.areaId ?? c.area ?? s.areaId;
+      c.wakesOn = home?.wakesOn ?? c.wakesOn ?? "notice";
+      const cArea = content.areas[c.area] || area;
+      c.x = clampInt(c.x, 0, cArea.width - 1, home?.x ?? 0);
+      c.y = clampInt(c.y, 0, cArea.height - 1, home?.y ?? 0);
       // Same trap as the PC: a creature clamped into masonry never Strides again,
       // and a dungeon whose guard is stuck in a wall reads as a broken game.
-      if (!standable(c.x, c.y, s.gateOpen) && home) { c.x = home.x; c.y = home.y; }
+      if (!standable(cArea, c.x, c.y, s.gateOpen) && home) { c.x = home.x; c.y = home.y; }
       c.hp = clampInt(c.hp, 0, d.hp, d.hp);
       c.dead = !!c.dead || c.hp === 0;
       c.awake = !!c.awake && !c.dead;
     }
-    // A placement the save never mentioned — a creature added to the pack after
-    // this run started — arrives dormant and at full HP rather than not at all.
-    for (const [key, p] of placed) {
+    // A placement the save never mentioned — a creature added to the pack, or
+    // a whole area added, after this run started — arrives dormant and at full
+    // HP rather than not at all.
+    for (const [key, p] of placedByKey) {
       if (s.creatures.some(c => c.key === key)) continue;
       s.creatures.push({
-        key, creature: p.creature, wakesOn: p.wakesOn, x: p.x, y: p.y,
+        key, area: p.areaId, creature: p.creature, wakesOn: p.wakesOn, x: p.x, y: p.y,
         hp: content.creatures[p.creature].hp, awake: false, dead: false,
       });
     }
@@ -119,11 +142,21 @@ export function makeRepair(content) {
       for (const c of s.creatures) if (c.wakesOn === "gate-opened" && !c.dead) c.wakesOn = "notice";
     }
 
-    if (typeof s.explored !== "string" || s.explored.length !== area.width * area.height) {
-      // Wrong length means the area changed shape under the save. Forgetting the
-      // map is survivable; indexing a bitfield with the wrong stride is not.
-      s.explored = "";
+    // --- fog of war, per area ---
+    // A save from before areas existed carries a single `explored` bitfield
+    // for what was then the only room; fold it into the map under that room's
+    // id rather than discarding a player's explored map over a field rename.
+    if (typeof s.explored === "string" && !s.fog) s.fog = { [s.areaId]: s.explored };
+    delete s.explored;
+    const fog = {};
+    for (const [areaId, bits] of Object.entries(s.fog || {})) {
+      const a = content.areas[areaId];
+      // Wrong length means the area changed shape under the save, or no longer
+      // exists. Forgetting the map is survivable; indexing a bitfield with the
+      // wrong stride is not.
+      if (a && typeof bits === "string" && bits.length === a.width * a.height) fog[areaId] = bits;
     }
+    s.fog = fog;
 
     // --- inventory ---
     s.inventory = (s.inventory || [])
@@ -176,20 +209,28 @@ export function makeSaveSlot(content, storage) {
 
 /** A brand-new run, straight from the content pack. */
 export function freshRun(content) {
+  const start = content.areas[content.startArea];
+  const creatures = [];
+  for (const areaId of content.areaOrder) {
+    for (const p of content.areas[areaId].placements) {
+      creatures.push({
+        key: `${areaId}:${p.creature}@${p.x},${p.y}`, area: areaId,
+        creature: p.creature, wakesOn: p.wakesOn,
+        x: p.x, y: p.y, hp: content.creatures[p.creature].hp, awake: false, dead: false,
+      });
+    }
+  }
   return {
     packId: content.pack.id,
-    areaId: content.area.id,
+    areaId: content.startArea,
     pc: {
-      x: content.area.pcSpawn.x, y: content.area.pcSpawn.y,
+      x: start.pcSpawn.x, y: start.pcSpawn.y,
       hp: content.pc.hp, slots: content.pc.slots, focus: content.pc.focus,
     },
-    creatures: content.area.placements.map(p => ({
-      key: `${p.creature}@${p.x},${p.y}`, creature: p.creature, wakesOn: p.wakesOn,
-      x: p.x, y: p.y, hp: content.creatures[p.creature].hp, awake: false, dead: false,
-    })),
+    creatures,
     loreRead: [],
     gateOpen: false,
-    explored: "",
+    fog: {},
     inventory: content.startingInventory.map((item, slot) => ({ item, slot })),
     log: [],
     stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0 },

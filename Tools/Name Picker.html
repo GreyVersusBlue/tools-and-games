@@ -441,7 +441,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
     <p style="font-size:0.82em;color:var(--muted);margin-top:12px;line-height:1.5;">Rosters live in this browser only. Backup, import and erase are on the <button id="gotoDataTab" style="background:transparent;border:none;padding:0;color:var(--accent2);text-decoration:underline;font-size:1em;">🔒 Data</button> tab.</p>
   </div>
   <div class="tab-content" id="tab-history">
-    <div class="info-banner">All names picked this session</div>
+    <div class="info-banner">All names picked today</div>
     <div id="historyList"></div>
     <div class="button-row">
       <button id="exportHistory">⬇️ Export to Text</button>
@@ -1046,10 +1046,7 @@ async function multiPick(count){
   showConfetti(crazyMode);
   if(crazyMode){fireworkShow();shake(3);}
   if(suddenDeath){triggerSuddenDeathExplosion();}
-  winners.forEach(name=>{
-    history.push({name,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})});
-    incrementStats(name);
-  });
+  winners.forEach(name=>recordPick(name));
   saveHistory();updateHistoryUI();bumpCombo();
   setTimeout(()=>showMultiWinnerModal(winners),700);
 }
@@ -1068,8 +1065,7 @@ function selectWinner(winnerCard){
   if(suddenDeath){triggerSuddenDeathExplosion();}
   isRolling=false;
   bumpCombo();
-  history.push({name:winnerCard.name,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})});
-  incrementStats(winnerCard.name);
+  recordPick(winnerCard.name);
   if(rarity&&['RARE','EPIC','LEGENDARY','MYTHIC'].includes(rarity.name)){addToHof(winnerCard.name,rarity);}
   if(rarity&&rarity.name==='MYTHIC'){sessionMythicCount++;}
   checkAchievements(rarity,winnerCard.name);
@@ -1185,6 +1181,18 @@ function updateStatsUI(){
 
 function saveHistory(){store.set('history',history);}
 function loadHistory(){history=store.get('history');updateHistoryUI();}
+
+/* The History tab has always said "this session" / "today", but np_history was
+   never actually cleared — after the first day it silently showed last week's
+   picks too. Clearing on the first pick of a new calendar day (rather than on
+   load, or never) makes that label true without a teacher having to do anything:
+   a fresh day starts a fresh list the moment someone gets called. */
+function recordPick(name){
+  const today=new Date().toISOString().slice(0,10);
+  if(history.length&&history[history.length-1].date&&history[history.length-1].date!==today)history=[];
+  history.push({name,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),date:today});
+  incrementStats(name);
+}
 
 function updateHistoryUI(){
   const list=document.getElementById('historyList');
@@ -1464,8 +1472,7 @@ function selectTournamentWinner(winnerCard){
   if(suddenDeath){triggerSuddenDeathExplosion();}
   isRolling=false;
   bumpCombo();
-  history.push({name:winnerCard.name,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})});
-  incrementStats(winnerCard.name);
+  recordPick(winnerCard.name);
   if(rarity&&['RARE','EPIC','LEGENDARY','MYTHIC'].includes(rarity.name)){addToHof(winnerCard.name,rarity);}
   if(rarity&&rarity.name==='MYTHIC')sessionMythicCount++;
   checkAchievements(rarity,winnerCard.name);

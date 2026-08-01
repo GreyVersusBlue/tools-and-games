@@ -236,6 +236,7 @@
 
   #file-list li {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.6rem;
     padding: 0.45rem 0.75rem;
@@ -245,6 +246,14 @@
 
   #file-list li:last-child { border-bottom: none; }
   #file-list li:hover { background: var(--surface2); }
+
+  .file-row-main {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex: 1;
+    min-width: 0;
+  }
 
   #file-list .seq {
     color: var(--text-dim);
@@ -267,10 +276,18 @@
 
   .filename { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  .rotate-badge {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    flex-shrink: 0;
+  }
+
   .row-actions {
     display: flex;
     gap: 0.3rem;
-    flex-shrink: 0;
+    flex: 0 0 100%;
+    justify-content: flex-end;
   }
 
   .row-actions button {
@@ -539,7 +556,7 @@
 
     const existingNames = new Set(loadedFiles.map(e => e.file.name));
     const newOnes = valid.filter(f => !existingNames.has(f.name));
-    newOnes.forEach(f => loadedFiles.push({ id: nextId++, file: f }));
+    newOnes.forEach(f => loadedFiles.push({ id: nextId++, file: f, rotation: 0 }));
 
     if (invalid.length > 0) {
       const lines = invalid.slice(0, 5).map(f => rejectionReason(f.name));
@@ -603,6 +620,16 @@
     renderList();
   }
 
+  // Rotate a page 90° at a time, for a scanner-fed page that's genuinely
+  // sideways or upside-down in the source file (not EXIF-rotated — that's
+  // handled automatically at embed time regardless of this control).
+  function rotateFile(id, delta) {
+    const entry = loadedFiles.find(e => e.id === id);
+    if (!entry) return;
+    entry.rotation = ((entry.rotation + delta) % 360 + 360) % 360;
+    renderList();
+  }
+
   let dragId = null;
 
   // ── Render the file queue list ─────────────────────────────────────────────
@@ -623,23 +650,30 @@
     const isCustom = getSortMode() === 'custom';
 
     ordered.forEach((entry, i) => {
-      const { id, file } = entry;
+      const { id, file, rotation } = entry;
       const li = document.createElement('li');
       const ext = badgeExt(file.name);
       li.dataset.id = String(id);
       li.draggable = isCustom;
 
       li.innerHTML = `
-        <span class="seq">${i + 1}</span>
-        <span class="type-badge badge-${ext}">${ext.toUpperCase()}</span>
-        <span class="filename">${file.name}</span>
+        <span class="file-row-main">
+          <span class="seq">${i + 1}</span>
+          <span class="type-badge badge-${ext}">${ext.toUpperCase()}</span>
+          <span class="filename">${file.name}</span>
+          ${rotation ? `<span class="rotate-badge">${rotation}&deg; rotated</span>` : ''}
+        </span>
         <span class="row-actions">
+          <button type="button" data-act="rotate-ccw" aria-label="Rotate ${file.name} 90 degrees left">&#10226;</button>
+          <button type="button" data-act="rotate-cw" aria-label="Rotate ${file.name} 90 degrees right">&#10227;</button>
           <button type="button" data-act="up" aria-label="Move ${file.name} up" ${i === 0 ? 'disabled' : ''}>&#8593;</button>
           <button type="button" data-act="down" aria-label="Move ${file.name} down" ${i === ordered.length - 1 ? 'disabled' : ''}>&#8595;</button>
           <button type="button" data-act="remove" aria-label="Remove ${file.name}">&#10005;</button>
         </span>
       `;
 
+      li.querySelector('[data-act="rotate-ccw"]').addEventListener('click', () => rotateFile(id, -90));
+      li.querySelector('[data-act="rotate-cw"]').addEventListener('click', () => rotateFile(id, 90));
       li.querySelector('[data-act="up"]').addEventListener('click', () => moveFile(id, -1));
       li.querySelector('[data-act="down"]').addEventListener('click', () => moveFile(id, 1));
       li.querySelector('[data-act="remove"]').addEventListener('click', () => removeFile(id));
@@ -734,7 +768,7 @@
     let sourceBytes = 0;
 
     for (let i = 0; i < ordered.length; i++) {
-      const { file } = ordered[i];
+      const { file, rotation } = ordered[i];
       sourceBytes += file.size;
       const isSVG = /\.svg$/i.test(file.name);
 
@@ -746,13 +780,13 @@
         let embedDataURL, embedFormat, wMm, hMm;
 
         if (isSVG) {
-          const svg = await processSVG(file);
+          const svg = await processSVG(file, rotation);
           embedDataURL = svg.dataURL;
           embedFormat  = 'PNG';
           wMm = pxToMm(svg.w);
           hMm = pxToMm(svg.h);
         } else {
-          const raster = await processRaster(file, extOf(file.name), quality);
+          const raster = await processRaster(file, extOf(file.name), quality, rotation);
           embedDataURL = raster.dataURL;
           embedFormat  = raster.format;
           wMm = pxToMm(raster.naturalW);
@@ -847,23 +881,32 @@
   }
 
   // Raster (PNG/JPG/WEBP) → { dataURL, format, naturalW, naturalH } ready to embed.
-  async function processRaster(file, ext, qualityMode) {
+  // rotation is a 0/90/180/270 page rotation from the row's rotate buttons —
+  // separate from EXIF rotation below, which is about a scanner-fed page that's
+  // genuinely sideways in the source file, not a phone photo's orientation tag.
+  async function processRaster(file, ext, qualityMode, rotation) {
     const srcDataURL = await fileToDataURL(file);
     const img = await loadImageElement(srcDataURL);
     const naturalW = img.naturalWidth, naturalH = img.naturalHeight;
     if (!naturalW || !naturalH) throw new Error('image has no readable dimensions');
 
     const preset = QUALITY_PRESETS[qualityMode];
+    const needsRotation = rotation !== 0;
+    const rotated90 = rotation === 90 || rotation === 270;
+    const outNaturalW = rotated90 ? naturalH : naturalW;
+    const outNaturalH = rotated90 ? naturalW : naturalH;
 
     // PNG carries no EXIF orientation, so raw bytes are always safe to pass
-    // straight through at "original" quality. JPEG does carry EXIF orientation —
-    // the browser auto-rotates it for display and for canvas drawing, but jsPDF's
-    // raw JPEG embed does not read that tag, so passing the source bytes straight
-    // through would silently embed a sideways photo for anyone whose phone was
-    // held sideways. Routing JPEG through canvas even at "original" quality (at
-    // a near-lossless setting) makes the embedded pixels match what the browser
-    // — and the person who took the photo — actually see.
-    if (!preset && ext === 'png') {
+    // straight through at "original" quality — unless a rotate button has been
+    // used, which needs real pixels redrawn, not just a bigger claimed size.
+    // JPEG does carry EXIF orientation — the browser auto-rotates it for
+    // display and for canvas drawing, but jsPDF's raw JPEG embed does not read
+    // that tag, so passing the source bytes straight through would silently
+    // embed a sideways photo for anyone whose phone was held sideways. Routing
+    // JPEG through canvas even at "original" quality (at a near-lossless
+    // setting) makes the embedded pixels match what the browser — and the
+    // person who took the photo — actually see.
+    if (!preset && ext === 'png' && !needsRotation) {
       return { dataURL: srcDataURL, format: 'PNG', naturalW, naturalH };
     }
 
@@ -874,22 +917,27 @@
     const ch = Math.max(1, Math.round(naturalH * scale));
 
     const canvas = document.createElement('canvas');
-    canvas.width = cw;
-    canvas.height = ch;
+    canvas.width  = rotated90 ? ch : cw;
+    canvas.height = rotated90 ? cw : ch;
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, cw, ch);
-    ctx.drawImage(img, 0, 0, cw, ch);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    if (needsRotation) ctx.rotate(rotation * Math.PI / 180);
+    ctx.drawImage(img, -cw / 2, -ch / 2, cw, ch);
+    ctx.restore();
 
     if (!preset && ext === 'webp') {
       // No lossy source quality was requested to begin with; keep it lossless.
-      return { dataURL: canvas.toDataURL('image/png'), format: 'PNG', naturalW, naturalH };
+      return { dataURL: canvas.toDataURL('image/png'), format: 'PNG', naturalW: outNaturalW, naturalH: outNaturalH };
     }
-    return { dataURL: canvas.toDataURL('image/jpeg', jpegQuality), format: 'JPEG', naturalW, naturalH };
+    return { dataURL: canvas.toDataURL('image/jpeg', jpegQuality), format: 'JPEG', naturalW: outNaturalW, naturalH: outNaturalH };
   }
 
   // SVG → { dataURL, w, h } via canvas rasterization. No external library needed.
-  async function processSVG(file) {
+  // rotation is the same 0/90/180/270 page rotation processRaster() takes.
+  async function processSVG(file, rotation) {
     const text   = await file.text();
     const parser = new DOMParser();
     const svgEl  = parser.parseFromString(text, 'image/svg+xml').documentElement;
@@ -916,14 +964,16 @@
     const SCALE   = 2; // render at 2x for sharpness
     const canvasW = Math.round(svgW * SCALE);
     const canvasH = Math.round(svgH * SCALE);
-    const dataURL = await svgToDataURL(svgEl, canvasW, canvasH);
-    return { dataURL, w: svgW, h: svgH };
+    const dataURL = await svgToDataURL(svgEl, canvasW, canvasH, rotation);
+    const rotated90 = rotation === 90 || rotation === 270;
+    return { dataURL, w: rotated90 ? svgH : svgW, h: rotated90 ? svgW : svgH };
   }
 
   // Rasterize an SVG element to a PNG data URL via canvas.
   // svgEl: an SVGSVGElement (already has width/height set)
-  // canvasW, canvasH: pixel dimensions of the output canvas
-  function svgToDataURL(svgEl, canvasW, canvasH) {
+  // canvasW, canvasH: pixel dimensions of the output canvas, pre-rotation
+  // rotation: 0/90/180/270, applied by rotating the canvas around its center
+  function svgToDataURL(svgEl, canvasW, canvasH, rotation) {
     return new Promise((res, rej) => {
       // Serialize the SVG to a string, then make a blob URL
       const serializer = new XMLSerializer();
@@ -934,14 +984,19 @@
       const img = new Image();
       img.onload = () => {
         try {
+          const rotated90 = rotation === 90 || rotation === 270;
           const canvas = document.createElement('canvas');
-          canvas.width  = canvasW;
-          canvas.height = canvasH;
+          canvas.width  = rotated90 ? canvasH : canvasW;
+          canvas.height = rotated90 ? canvasW : canvasH;
           const ctx = canvas.getContext('2d');
           // White background so transparency renders cleanly in PDF
           ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, canvasW, canvasH);
-          ctx.drawImage(img, 0, 0, canvasW, canvasH);
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          if (rotation) ctx.rotate(rotation * Math.PI / 180);
+          ctx.drawImage(img, -canvasW / 2, -canvasH / 2, canvasW, canvasH);
+          ctx.restore();
           URL.revokeObjectURL(url);
           res(canvas.toDataURL('image/png'));
         } catch (e) {

@@ -21,12 +21,25 @@ import { makeWorld, TILE, packExplored, unpackExplored } from "./world.js";
 export const LOG_MEMORY = 200;   // entries kept in RAM
 export const LOG_SAVED = 60;     // entries written to a save
 
-/** Stable identity for a placed creature: the id plus where it was placed. */
-const placementKey = pl => `${pl.creature}@${pl.x},${pl.y}`;
+/**
+ * Stable identity for a placed creature: the area, the id, and where it was
+ * placed. The area has to be in the key now that more than one of them
+ * exists — two areas can otherwise place the same creature id at the same
+ * coordinates and collide.
+ */
+const placementKey = (areaId, pl) => `${areaId}:${pl.creature}@${pl.x},${pl.y}`;
+
+/** Every creature in every area, flattened, each tagged with its area id. */
+function allPlacements(content) {
+  const out = [];
+  for (const areaId of content.areaOrder) {
+    for (const pl of content.areas[areaId].placements) out.push({ areaId, ...pl });
+  }
+  return out;
+}
 
 export function createGame({ content, rng = Math.random, state = null }) {
-  const world = makeWorld(content.area);
-  const { area, tuning } = content;
+  const { tuning } = content;
 
   const listeners = new Set();
   const emit = ev => { for (const fn of listeners) fn(ev); };
@@ -38,19 +51,34 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * ------------------------------------------------------------------ */
   const run = state || freshState();
 
+  // The area the PC is currently in, and its world. Both are reassigned by
+  // transitionTo() on a stairway; every function below reads them through
+  // these closures rather than a value captured once at boot, which is what
+  // lets a transition change the board under the renderer without it having
+  // to know anything happened.
+  let area = content.areas[run.areaId] || content.areas[content.startArea];
+  let world = makeWorld(area);
+
   function freshState() {
+    const startArea = content.areas[content.startArea];
     return {
       packId: content.pack.id,
-      areaId: area.id,
-      pc: { x: area.pcSpawn.x, y: area.pcSpawn.y, hp: content.pc.hp, slots: content.pc.slots, focus: content.pc.focus },
-      creatures: area.placements.map(pl => ({
-        key: placementKey(pl), creature: pl.creature, wakesOn: pl.wakesOn,
+      areaId: content.startArea,
+      pc: {
+        x: startArea.pcSpawn.x, y: startArea.pcSpawn.y,
+        hp: content.pc.hp, slots: content.pc.slots, focus: content.pc.focus,
+      },
+      // Every area's creatures exist in the state from the start, not just the
+      // one the PC is standing in — a construct in a room you have not opened
+      // the door to yet still has to be there, dormant, when you arrive.
+      creatures: allPlacements(content).map(pl => ({
+        key: placementKey(pl.areaId, pl), area: pl.areaId, creature: pl.creature, wakesOn: pl.wakesOn,
         x: pl.x, y: pl.y, hp: content.creatures[pl.creature].hp,
         awake: false, dead: false,
       })),
       loreRead: [],
       gateOpen: false,
-      explored: "",
+      fog: {},
       inventory: content.startingInventory.map((item, slot) => ({ item, slot })),
       log: [],
       stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0 },
@@ -70,7 +98,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
     shielded: false,         // Shield cantrip, until the start of your next turn
   };
 
-  let explored = unpackExplored(run.explored, area.width, area.height);
+  let explored = unpackExplored(run.fog[run.areaId], area.width, area.height);
   let visible = new Set();
 
   /* ------------------------------------------------------------------ *
@@ -93,8 +121,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * Actors                                                             *
    * ------------------------------------------------------------------ */
   const def = c => content.creatures[c.creature];
-  const living = () => run.creatures.filter(c => !c.dead);
-  const awake = () => run.creatures.filter(c => c.awake && !c.dead);
+  // Scoped to the area the PC is standing in. A creature's state persists
+  // while you are elsewhere, but it cannot occupy a square, wake, or fight
+  // in a room its body is not in.
+  const living = () => run.creatures.filter(c => c.area === run.areaId && !c.dead);
+  const awake = () => run.creatures.filter(c => c.area === run.areaId && c.awake && !c.dead);
   const byKey = k => (k === "pc" ? null : run.creatures.find(c => c.key === k));
 
   function occupied(x, y, ignoreKey) {
@@ -117,7 +148,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
   function recomputeVision() {
     visible = world.fieldOfView(run.pc.x, run.pc.y, tuning.visionFeet, run.gateOpen);
     for (const k of visible) explored.add(k);
-    run.explored = packExplored(explored, area.width, area.height);
+    run.fog[run.areaId] = packExplored(explored, area.width, area.height);
   }
 
   /* ------------------------------------------------------------------ *
@@ -252,6 +283,12 @@ export function createGame({ content, rng = Math.random, state = null }) {
     if (why === "cleared") narrative("Silence returns to the vault.");
     emit({ type: "mode", mode: "explore" });
     setHint(run.gateOpen ? content.gate.openHint : "The way is clear, for now.");
+    // A standing condition, not an event, for the same reason checkTreasure()
+    // below already is: a Stride taken mid-fight can land the PC exactly on a
+    // stairway, and checkStairs() (by design) refuses to fire while combat is
+    // still under way. `turn.mode` is "explore" again as of the top of this
+    // function, so this is the first point it is safe to ask.
+    if (checkStairs()) return;
     checkTreasure();
   }
 
@@ -432,13 +469,59 @@ export function createGame({ content, rng = Math.random, state = null }) {
   }
 
   /**
+   * Take the stairs, if the PC is standing on one.
+   *
+   * Only outside an encounter — leaving mid-fight is not a move the engine
+   * offers a way to trigger by accident, since the only way onto a stairway
+   * square during combat would be a Stride that also happened to end a fight,
+   * and a creature disengaging when its target vanishes into another area is
+   * a state nothing downstream is built to describe.
+   */
+  function checkStairs() {
+    if (run.outcome || turn.mode === "combat") return null;
+    const dest = area.stairs[run.pc.x + "," + run.pc.y];
+    if (!dest) return null;
+    transitionTo(dest);
+    return "transitioned";
+  }
+
+  /**
+   * Move the PC to another area.
+   *
+   * The current area's fog is banked under its own id in `run.fog` before the
+   * switch, `area` and `world` are reassigned so every closure in this module
+   * that reads them sees the new area on its next call, and vision is
+   * recomputed fresh from the arrival square.
+   */
+  function transitionTo(dest) {
+    const from = area;
+    run.fog[from.id] = packExplored(explored, from.width, from.height);
+
+    area = content.areas[dest.area];
+    world = makeWorld(area);
+    run.areaId = area.id;
+    run.pc.x = dest.x;
+    run.pc.y = dest.y;
+    explored = unpackExplored(run.fog[area.id], area.width, area.height);
+    visible = new Set();
+
+    narrative(`— ${area.name} —`);
+    recomputeVision();
+    emit({ type: "area", areaId: area.id });
+    checkTreasure();
+  }
+
+  /**
    * Everything that can happen because the PC is standing somewhere new.
    * Returns a reason string if the walk should stop here.
    */
   function checkTriggers() {
     for (const c of run.creatures) {
+      if (c.area !== run.areaId) continue;
       if (!c.dead && !c.awake && notices(c)) { wake(c); return "noticed"; }
     }
+    const stairs = checkStairs();
+    if (stairs) return stairs;
     return checkTreasure();
   }
 
@@ -681,6 +764,12 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * ------------------------------------------------------------------ */
   function begin() {
     recomputeVision();
+    // A save could in principle land the PC exactly on a stairway (mid-combat
+    // autosave, or a hand-built state in a test) with nothing awake to trigger
+    // a re-check of it. checkStairs() re-runs recomputeVision() for the new
+    // area itself when it fires, so nothing here needs to know which area it
+    // ends up looking at next.
+    checkStairs();
     // A save can have been written with the PC already standing on an unguarded
     // casket — the win is a standing state, so booting has to look at it too.
     checkTreasure();
@@ -693,7 +782,12 @@ export function createGame({ content, rng = Math.random, state = null }) {
   }
 
   return {
-    content, world, run, turn,
+    content, run, turn,
+    // world and area are getters, not plain fields, because transitionTo()
+    // reassigns both when the PC takes a stairway — a plain field captured
+    // once at construction would still point at the area the PC left.
+    get world() { return world; },
+    get area() { return area; },
 
     on(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     begin,
@@ -725,6 +819,10 @@ export function createGame({ content, rng = Math.random, state = null }) {
         pc: { ...run.pc },
         inventory: run.inventory.map(i => ({ ...i })),
         stats: { ...run.stats },
+        // A fresh object, not the live one — run.fog keeps mutating after this
+        // is handed to the save layer, and an aliased object would let a later
+        // move rewrite a snapshot an autosave has not flushed yet.
+        fog: { ...run.fog },
       };
     },
   };

@@ -253,9 +253,9 @@ html,body{margin:0;padding:0;background:#f4f7f4}
     <div class="panel">
       <div class="toolbar">
         <div class="mode" role="tablist">
-          <button id="br-mTeacher" class="on" onclick="brSetMode('teacher')">By Teacher</button>
-          <button id="br-mGroup"   onclick="brSetMode('group')">By Student Group</button>
-          <button id="br-mMap"     onclick="brSetMode('map')">Building Map</button>
+          <button id="br-mTeacher" class="on" role="tab" aria-selected="true"  onclick="brSetMode('teacher')">By Teacher</button>
+          <button id="br-mGroup"   role="tab" aria-selected="false" onclick="brSetMode('group')">By Student Group</button>
+          <button id="br-mMap"     role="tab" aria-selected="false" onclick="brSetMode('map')">Building Map</button>
         </div>
         <div class="br-field" id="br-searchField">
           <label id="br-searchLabel" for="br-search">Find a teacher</label>
@@ -361,6 +361,9 @@ function brSetMode(mo) {
   document.getElementById('br-mTeacher').classList.toggle('on', mo==='teacher');
   document.getElementById('br-mGroup').classList.toggle('on',   mo==='group');
   document.getElementById('br-mMap').classList.toggle('on',     mo==='map');
+  document.getElementById('br-mTeacher').setAttribute('aria-selected', mo==='teacher');
+  document.getElementById('br-mGroup').setAttribute('aria-selected',   mo==='group');
+  document.getElementById('br-mMap').setAttribute('aria-selected',     mo==='map');
   const sf = document.getElementById('br-searchField');
   if (mo==='map') {
     sf.style.display='none';

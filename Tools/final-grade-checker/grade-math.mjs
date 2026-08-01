@@ -7,7 +7,10 @@
 //   2. Report the HIGHER of the two. Not the average of them, not the
 //      percentage one by default.
 //   3. Ten-point scale: A 90+, B 80-89, C 70-79, D 60-69, F below 60.
-//   4. Round up at exactly .5. An 89.5 is an A.
+//   4. Round up at exactly .5 — but only for the percentage average. An
+//      89.5 is an A. The quality-point average does NOT get this treatment:
+//      an average of exactly 3.5 stays a B. Confirmed against county policy;
+//      see QP_CUTOFFS below.
 //
 // Rule 4 is the one that needs care, and it needs care in both directions.
 // See NORMALISE below.
@@ -35,6 +38,11 @@ export const MAX_SCORE = 100;
 export const QUARTERS = 4;
 
 // Cutoffs are the true .5 boundaries, compared against a normalised value.
+// The percentage average rounds UP at exactly .5 (>=): 89.5 is an A.
+// The quality-point average does NOT round up at its .5 boundaries (>):
+// an average of exactly 3.5 stays a B, not an A. Confirmed against county
+// policy — the two methods are asymmetric on purpose, not a copy-paste of
+// the same rule twice.
 const LETTER_CUTOFFS = [['A', 89.5], ['B', 79.5], ['C', 69.5], ['D', 59.5]];
 const QP_CUTOFFS     = [['A', 3.5],  ['B', 2.5],  ['C', 1.5],  ['D', 0.5]];
 
@@ -64,11 +72,15 @@ export function getQP(letter) {
   return QP_VALUE[letter] ?? null;
 }
 
-/** Letter for an averaged quality-point figure. */
+/**
+ * Letter for an averaged quality-point figure. Unlike the percentage method,
+ * this does NOT round up at exactly .5 — a QP average has to clear the
+ * cutoff, not just meet it, so the comparison is strict.
+ */
 export function qpToFinalLetter(avgQP) {
   if (!Number.isFinite(avgQP)) return null;
   const v = normalise(avgQP);
-  for (const [letter, cutoff] of QP_CUTOFFS) if (v >= cutoff) return letter;
+  for (const [letter, cutoff] of QP_CUTOFFS) if (v > cutoff) return letter;
   return 'F';
 }
 

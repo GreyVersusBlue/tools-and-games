@@ -123,6 +123,103 @@ ok(pdf.ok, 'vendored jsPDF constructs a document', pdf.why);
 ok(pdf.ok && pdf.size > 500, `output is a non-trivial blob (${pdf.size} bytes)`);
 eq(pdf.type, 'application/pdf', 'output blob is application/pdf');
 
+// The real Export-as-PDF button, not jsPDF in isolation. renderExportCanvas()
+// used to hand addImage() a full-resolution, uncompressed PNG — 21,363,645
+// bytes for this same 11-room fixture rendered with every group, not a file
+// anyone emails. R62 recompresses the same canvas as JPEG for the PDF path
+// only (the canvas has an opaque background painted before anything else
+// draws, so there's no alpha to lose). Ceiling is 2 MB: comfortably above the
+// ~190 KB this fixture actually produces, comfortably below the old 21 MB.
+const pdfExport = await run.page.evaluate(async () => {
+  window.__capturedBlob = null;
+  const origCreate = URL.createObjectURL;
+  URL.createObjectURL = blob => { window.__capturedBlob = blob; return origCreate.call(URL, blob); };
+  try {
+    AppState.viz.displayMode = 'all';
+    vizRender();
+    exportVizAsPDF();
+  } finally {
+    URL.createObjectURL = origCreate;
+  }
+  const blob = window.__capturedBlob;
+  if (!blob) return { ok: false, why: 'no blob captured from URL.createObjectURL' };
+  const header = await blob.slice(0, 8).text();
+  return { ok: true, size: blob.size, type: blob.type, header };
+});
+console.log('\nexportVizAsPDF (the real export button, real render data)');
+ok(pdfExport.ok, 'exportVizAsPDF produces a blob', pdfExport.why);
+eq(pdfExport.type, 'application/pdf', 'exported blob is application/pdf');
+ok(pdfExport.header === '%PDF-1.3', 'exported bytes start with a PDF header', pdfExport.header);
+ok(pdfExport.size < 2_000_000,
+   `exported PDF stays well under the old 21.4 MB (${pdfExport.size} bytes)`,
+   `size ${pdfExport.size}`);
+
+/* ── 2b. The simulation half: pathfinding, congestion, playback ─────────
+   Never had a single assertion before this session (see notes file,
+   "Coverage: what I actually read"). The Northwind fixture crosses a
+   staircase (group 7-1's A day goes 106→107→108→201, and 201 is on Floor 2),
+   and 6-1/6-2 both route through rooms 101/102/103 on their A day, so both
+   the teleport-aware A* path and real corridor sharing are exercised, not
+   just an empty grid. */
+console.log('\npathfinding, congestion, and playback (never tested before this session)');
+
+const sim = await run.page.evaluate(() => {
+  const crossFloor = resolveRoomPath('106', '201'); // 7-1's own route, different floors
+  const sameRoom   = resolveRoomPath('108', '108'); // same start and end
+  const unknownRoom = resolveRoomPath('nope-999', '101');
+
+  AppState.viz.displayMode = 'all';
+  vizRender();
+  const rendered = AppState.viz.rendered;
+  const hartwell = rendered.entries.find(e => e.name === '7-1');
+  const firstRoutedSeg = hartwell && (hartwell.rawSegments || []).find(s => s.path && s.path.length > 1);
+
+  PlaybackController.open();
+  const openedActive = AppState.viz.playback.active;
+  const steps = PlaybackController.stepCount();
+  PlaybackController.goToStep(0);
+  renderVizCanvas();   // exercises drawPlaybackFrame + buildCollisionSimulation
+  PlaybackController.close();
+  const closedActive = AppState.viz.playback.active;
+
+  return {
+    // Read defensively: a broken graph makes resolveRoomPath return an
+    // { error, severity } shape instead of a routed one, and a naive read of
+    // .staircasePairsUsed on that would throw and abort the whole suite
+    // rather than failing one assertion cleanly.
+    crossFloor: { usesStaircase: !!crossFloor.usesStaircase, pathLength: crossFloor.pathLength || 0,
+                  pairs: crossFloor.staircasePairsUsed || [], error: crossFloor.error || null },
+    sameRoom: { noTravel: sameRoom.noTravel, pathLength: sameRoom.pathLength },
+    unknownRoom: { error: unknownRoom.error, severity: unknownRoom.severity },
+    groups: rendered.stats.groups,
+    maxConcurrency: rendered.stats.maxConcurrency,
+    hotspotCount: rendered.hotspots.length,
+    maxCongestion: rendered.maxCongestion,
+    travelSecIsNumber: firstRoutedSeg ? (typeof firstRoutedSeg.travelSec === 'number') : false,
+    travelSecPositive: firstRoutedSeg ? firstRoutedSeg.travelSec > 0 : false,
+    openedActive, steps, closedActive,
+  };
+});
+
+ok(sim.crossFloor.usesStaircase, 'A* routes 106→201 across the staircase pair', sim.crossFloor.error || '');
+ok(sim.crossFloor.pairs.length > 0, 'the crossing is reported as a used staircase pair', JSON.stringify(sim.crossFloor.pairs));
+ok(sim.crossFloor.pathLength > 2, `cross-floor path has real length (${sim.crossFloor.pathLength} cells)`);
+ok(sim.sameRoom.noTravel, 'resolveRoomPath(x, x) is a no-travel result, not a routed one');
+eq(sim.sameRoom.pathLength, 0, 'no-travel result has zero path length');
+eq(sim.unknownRoom.error, 'Room not found in blueprint', 'an unknown room number is the documented error string');
+eq(sim.unknownRoom.severity, 'warning', 'an unknown room number is a warning, not an error');
+eq(sim.groups, 4, 'all 4 fixture groups rendered');
+ok(sim.maxConcurrency >= 2, `6-1 and 6-2 share hallway cells (max concurrency ${sim.maxConcurrency})`);
+ok(sim.hotspotCount > 0, `congestion hotspot table is populated (${sim.hotspotCount} cells)`);
+ok(sim.maxCongestion > 0, 'peak corridor load is nonzero');
+ok(sim.travelSecIsNumber, 'computeTravelTimes annotates a routed segment with travelSec');
+ok(sim.travelSecPositive, 'that travelSec is a real positive number, not a stub 0');
+ok(sim.openedActive, 'PlaybackController.open() activates playback');
+eq(sim.steps, 3, 'stepCount() is modCount-1 (4 blocks → 3 transitions)');
+ok(!sim.closedActive, 'PlaybackController.close() deactivates playback');
+ok(run.page.__errs.length === 0, 'no console/page errors from driving playback + collision simulation',
+   run.page.__errs.join('\n        '));
+
 /* ── 3. The published file, on its own ─────────────────────────────────── */
 
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sched-smoke-'));
@@ -220,6 +317,31 @@ const mapView = await page2.evaluate(() => {
 });
 ok(mapView.svgs > 0, 'building map renders an SVG');
 ok(mapView.rooms > 0, `building map draws room cells (${mapView.rooms})`);
+
+// The mode switcher's tablist has three tabs, not just a tablist container.
+// mapView left brMode==='map'; switch back to teacher and check every state.
+const tabState = await page2.evaluate(() => {
+  brSetMode('teacher');
+  const read = id => {
+    const el = document.getElementById(id);
+    return { role: el.getAttribute('role'), selected: el.getAttribute('aria-selected') };
+  };
+  const teacherSel = read('br-mTeacher');
+  brSetMode('group');
+  const groupSel = read('br-mGroup');
+  const teacherDeselected = read('br-mTeacher');
+  return {
+    roles: [read('br-mTeacher').role, groupSel.role, read('br-mMap').role],
+    teacherSelectedOnTeacher: teacherSel.selected,
+    groupSelectedOnGroup: groupSel.selected,
+    teacherDeselectedOnGroup: teacherDeselected.selected,
+  };
+});
+ok(tabState.roles.every(r => r === 'tab'), 'all three mode buttons carry role="tab"',
+   tabState.roles.join(','));
+eq(tabState.teacherSelectedOnTeacher, 'true', 'aria-selected is true on the active tab');
+eq(tabState.groupSelectedOnGroup, 'true', 'aria-selected moves to the newly active tab');
+eq(tabState.teacherDeselectedOnGroup, 'false', 'aria-selected clears on the tab that lost focus');
 
 // Nothing reached for the network at any point.
 ok((page2.__blocked || []).length === 0, 'published file made zero offsite requests',

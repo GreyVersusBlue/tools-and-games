@@ -142,10 +142,16 @@ section("content");
 
 const content = loadPack(rawPack);
 eq(content.pack.id, "vault-beneath-the-court", "the shipping pack loads");
-eq(content.area.width, 22, "the area is 22 squares wide");
-eq(content.area.height, 22, "the area is 22 squares tall");
-eq(content.area.placements.length, 3, "the area places three creatures");
-eq(Object.keys(content.area.pillars).length, 2, "the area has two lore pillars");
+eq(content.startArea, "vault", "the pack starts in the vault");
+eq(JSON.stringify(content.areaOrder), JSON.stringify(["vault", "sanctum"]), "the area order is vault then sanctum");
+eq(content.areas.vault.width, 22, "the vault is 22 squares wide");
+eq(content.areas.vault.height, 22, "the vault is 22 squares tall");
+eq(content.areas.vault.placements.length, 3, "the vault places three creatures");
+eq(Object.keys(content.areas.vault.pillars).length, 2, "the vault has two lore pillars");
+eq(content.areas.sanctum.placements.length, 1, "the sanctum places one creature");
+ok(content.areas.sanctum.pcSpawn === null, "the sanctum has no pc spawn — it is only ever reached by stairs");
+eq(Object.keys(content.areas.vault.stairs).length, 2, "the vault has two stairway squares");
+eq(content.areas.vault.stairs["10,2"].area, "sanctum", "the vault stairway leads to the sanctum");
 eq(content.startingInventory.filter(i => i === "potion").length, 3, "the PC starts with three potions");
 ok(Object.isFrozen(content), "content is frozen — a run cannot edit the pack it is playing");
 ok(Object.isFrozen(content.creatures["shattered-sentinel"]), "creature definitions are frozen");
@@ -163,11 +169,11 @@ throws(() => { const p = clone(); delete p.pc.hp; loadPack(p); }, "content: a PC
 throws(() => { const p = clone(); delete p.pc.saves.will; loadPack(p); }, "content: a PC missing a save is refused");
 throws(() => { const p = clone(); p.creatures["shattered-sentinel"].damage = "1d"; loadPack(p); }, "content: a creature with unreadable damage is refused");
 throws(() => { const p = clone(); delete p.creatures["shattered-sentinel"].saves.ref; loadPack(p); }, "content: a creature missing a save is refused");
-throws(() => { const p = clone(); p.area.rows[3] = "###"; loadPack(p); }, "content: a ragged map row is refused");
-throws(() => { const p = clone(); p.area.rows[6] = p.area.rows[6].replace(".", "z"); loadPack(p); }, "content: a map character with no legend entry is refused");
-throws(() => { const p = clone(); p.area.legend["P"].lore = "nope"; loadPack(p); }, "content: a pillar pointing at missing lore is refused");
-throws(() => { const p = clone(); p.area.legend["e"].creature = "nope"; loadPack(p); }, "content: a spawn pointing at a missing creature is refused");
-throws(() => { const p = clone(); p.area.legend["k"].wakesOn = "tuesday"; loadPack(p); }, "content: an unknown wakesOn is refused");
+throws(() => { const p = clone(); p.areas.vault.rows[3] = "###"; loadPack(p); }, "content: a ragged map row is refused");
+throws(() => { const p = clone(); p.areas.vault.rows[6] = p.areas.vault.rows[6].replace(".", "z"); loadPack(p); }, "content: a map character with no legend entry is refused");
+throws(() => { const p = clone(); p.areas.vault.legend["P"].lore = "nope"; loadPack(p); }, "content: a pillar pointing at missing lore is refused");
+throws(() => { const p = clone(); p.areas.vault.legend["e"].creature = "nope"; loadPack(p); }, "content: a spawn pointing at a missing creature is refused");
+throws(() => { const p = clone(); p.areas.vault.legend["k"].wakesOn = "tuesday"; loadPack(p); }, "content: an unknown wakesOn is refused");
 throws(() => { const p = clone(); p.startingInventory.push("nope"); loadPack(p); }, "content: starting inventory naming a missing item is refused");
 throws(() => { const p = clone(); p.commands[0].cost = 9; loadPack(p); }, "content: a command costing more than three actions is refused");
 throws(() => { const p = clone(); p.commands[0].kind = "vibes"; loadPack(p); }, "content: a command with an unknown kind is refused");
@@ -175,9 +181,36 @@ throws(() => { const p = clone(); p.gate.requiresLore.push("nope"); loadPack(p);
 throws(() => { const p = clone(); p.treasure.requiresDown.push("nope"); loadPack(p); }, "content: treasure requiring a missing creature is refused");
 throws(() => {
   const p = clone();
-  p.area.rows = p.area.rows.map(r => r.replace("@", "."));
+  p.areas.vault.rows = p.areas.vault.rows.map(r => r.replace("@", "."));
   loadPack(p);
-}, "content: an area with no PC spawn is refused");
+}, "content: the start area with no PC spawn is refused");
+
+// Multi-area and stairs, new in round two.
+throws(() => { const p = clone(); delete p.areas; loadPack(p); }, "content: a pack with no areas is refused");
+throws(() => { const p = clone(); p.startArea = "nowhere"; loadPack(p); }, "content: an unknown startArea is refused");
+throws(() => { const p = clone(); p.areaOrder.push("nowhere"); loadPack(p); }, "content: an areaOrder naming an unknown area is refused");
+throws(() => {
+  const p = clone();
+  delete p.areas.vault.legend["V"].to;
+  loadPack(p);
+}, "content: a stairs legend entry with no destination is refused");
+throws(() => {
+  const p = clone();
+  p.areas.vault.legend["V"].to.area = "nowhere";
+  loadPack(p);
+}, "content: stairs pointing at an unknown area are refused");
+throws(() => {
+  const p = clone();
+  p.areas.vault.legend["V"].to.x = 900;
+  loadPack(p);
+}, "content: stairs landing outside their destination area are refused");
+{
+  // Only the start area needs a pc spawn — the sanctum is reached by stairs,
+  // never by booting straight into it.
+  const p = clone();
+  const loaded = loadPack(p);
+  ok(loaded.areas.sanctum.pcSpawn === null, "a non-start area with no spawn loads fine");
+}
 {
   // A missing Speed falls back rather than throwing, but it must never be
   // undefined — that is the exact NaN-metres-per-second trap from v7 §2.
@@ -194,12 +227,12 @@ throws(() => {
  * ========================================================================= */
 section("world");
 
-const world = makeWorld(content.area);
+const world = makeWorld(content.areas.vault);
 eq(world.tileAt(0, 0), TILE.WALL, "the border is wall");
 eq(world.tileAt(10, 19), TILE.FLOOR, "the PC spawn is floor");
 eq(world.tileAt(3, 12), TILE.PILLAR, "the western pillar is a pillar");
 eq(world.tileAt(10, 5), TILE.GATE, "the gate squares are gate");
-eq(world.tileAt(10, 2), TILE.TREASURE, "the casket squares are treasure");
+eq(world.tileAt(10, 2), TILE.STAIRS, "the stairway squares are stairs");
 eq(world.tileAt(-1, 5), TILE.WALL, "off-grid reads as wall rather than undefined");
 
 ok(world.blocksMove(10, 5, false), "a closed gate blocks movement");
@@ -208,11 +241,13 @@ ok(world.blocksSight(10, 5, false), "a closed gate blocks sight");
 ok(!world.blocksSight(10, 5, true), "an open gate does not block sight");
 ok(world.blocksMove(3, 12, false), "a pillar blocks movement");
 ok(world.blocksSight(3, 12, false), "a pillar blocks sight");
+ok(!world.blocksMove(10, 2, false), "a stairway does not block movement");
+ok(!world.blocksSight(10, 2, false), "a stairway does not block sight");
 
 ok(world.hasLoS(10, 19, 10, 17, false), "line of sight down an open corridor");
 ok(!world.hasLoS(1, 6, 20, 6, false) === false, "a clear row has line of sight end to end");
-ok(!world.hasLoS(10, 19, 10, 2, false), "the casket is not visible through a closed gate");
-ok(world.hasLoS(10, 6, 10, 2, true), "the casket is visible once the gate opens");
+ok(!world.hasLoS(10, 19, 10, 2, false), "the stairway is not visible through a closed gate");
+ok(world.hasLoS(10, 6, 10, 2, true), "the stairway is visible once the gate opens");
 ok(world.hasLoS(4, 10, 5, 10, false), "a wall square can be seen from beside it (endpoints are exempt)");
 ok(!world.hasLoS(3, 10, 6, 10, false), "the wall block between them breaks line of sight");
 
@@ -225,9 +260,9 @@ ok(!world.hasLoS(3, 10, 6, 10, false), "the wall block between them breaks line 
   const diag = world.findPath(10, 19, 12, 17, open);
   eq(diag[diag.length - 1].g, 15, "two diagonals cost 5 + 10 = 15 ft, not 10");
 
-  ok(!world.findPath(10, 19, 10, 2, open), "no path to the casket while the gate is shut");
+  ok(!world.findPath(10, 19, 10, 2, open), "no path to the stairway while the gate is shut");
   ok(world.findPath(10, 19, 10, 2, { gateOpen: true, occupied: () => false }),
-    "a path to the casket opens with the gate");
+    "a path to the stairway opens with the gate");
   ok(!world.findPath(10, 19, 0, 0, open), "no path into a wall");
   ok(!world.findPath(10, 19, 3, 12, open), "no path into a pillar");
   ok(!world.findPath(10, 19, 11, 19, { gateOpen: false, occupied: (x, y) => x === 11 && y === 19 }),
@@ -246,7 +281,7 @@ ok(!world.hasLoS(3, 10, 6, 10, false), "the wall block between them breaks line 
   const fov = world.fieldOfView(10, 19, 30, false);
   ok(fov.has("10,19"), "you can see the square you are standing on");
   ok(fov.has("10,17"), "you can see two squares up the corridor");
-  ok(!fov.has("10,2"), "you cannot see the casket from the spawn");
+  ok(!fov.has("10,2"), "you cannot see the stairway from the spawn");
   for (const k of fov) {
     const [x, y] = k.split(",").map(Number);
     ok(feetBetween(10, 19, x, y) <= 30, `field of view respects the 30 ft radius at ${k}`);
@@ -280,7 +315,7 @@ section("game");
   eq(g.run.creatures.filter(c => c.awake).length, 0, "no creature starts awake");
   eq(g.potionCount(), 3, "three potions in the satchel");
   ok(g.explored.has("10,19"), "the spawn square is explored at boot");
-  ok(!g.explored.has("10,2"), "the casket is not explored at boot");
+  ok(!g.explored.has("10,2"), "the stairway is not explored at boot");
 
   // Bulk — Player Core p.271. Two 1-Bulk items plus five Light.
   const bulk = g.bulkCarried();
@@ -343,37 +378,43 @@ function toPCTurn(g, limit = 40) {
 
 {
   // The treasure is a standing condition, not an event. This is the bug the
-  // balance harness found: a third of runs killed the Keeper while standing on
-  // the casket and were never told they had won.
-  const g = createGame({ content, rng: makeRng(5) });
-  g.run.gateOpen = true;
-  g.run.pc.x = 10; g.run.pc.y = 4;          // just inside the open gate
-  const keeper = g.run.creatures.find(c => c.creature === "vault-keeper");
-  keeper.wakesOn = "notice";
-  keeper.hp = 1;                             // one Force Fang from gravel
+  // balance harness found: a third of runs killed a boss while standing on
+  // the casket and were never told they had won. The casket lives in the
+  // sanctum now, so this run is built straight into that area — via `state`,
+  // not by walking the whole vault to get there — with the Keeper already
+  // down, since requiresDown names both bosses.
+  const state = freshRun(content);
+  state.areaId = "sanctum";
+  state.gateOpen = true;
+  state.creatures.find(c => c.creature === "vault-keeper").dead = true;
+  const wardenStart = state.creatures.find(c => c.creature === "reliquary-warden");
+  wardenStart.hp = 1;                        // one Force Fang from gravel
+  state.pc.x = 6; state.pc.y = 8;             // the sanctum's own arrival square
+  const g = createGame({ content, rng: makeRng(5), state });
   g.begin();
-  eq(g.mode, "explore", "the run starts in exploration with the gate already open");
+  eq(g.mode, "explore", "the run starts in exploration, already delivered into the sanctum");
 
-  g.walkTo(10, 2);                           // notice fires on the way in
-  eq(g.mode, "combat", "stepping into the chamber wakes the Keeper");
+  g.walkTo(6, 4);                            // notice fires on the way to the casket
+  eq(g.mode, "combat", "approaching the casket wakes the warden guarding it");
   ok(toPCTurn(g), "control comes back to the PC");
 
-  // Place both bodies by hand from here. The Keeper's own AI will happily take
-  // the casket square itself, and this test is about the win condition, not
-  // about where a construct chooses to stand.
-  g.run.pc.x = 10; g.run.pc.y = 2;           // on the casket
-  keeper.x = 11; keeper.y = 1;               // back in its corner, still adjacent
+  // Place both bodies by hand from here. The warden's own AI will happily
+  // take the casket square itself, and this test is about the win condition,
+  // not about where a construct chooses to stand.
+  const warden = g.run.creatures.find(c => c.creature === "reliquary-warden");
+  g.run.pc.x = 5; g.run.pc.y = 4;             // on the casket
+  warden.x = 6; warden.y = 4;                 // beside it, still adjacent
   eq(g.tileAt(g.run.pc.x, g.run.pc.y), TILE.TREASURE, "the PC is standing on the casket");
   g.turn.actions = 3;
-  g.walkTo(11, 2);                           // a step that resolves triggers
-  g.run.pc.x = 10; g.run.pc.y = 2;
+  g.walkTo(6, 5);                             // a step that resolves triggers
+  g.run.pc.x = 5; g.run.pc.y = 4;
   eq(g.run.outcome, null, "standing on a guarded casket does not win");
 
   g.run.pc.focus = 1;
   g.turn.actions = 3;
-  eq(g.useCommand("fang", keeper.key).ok, true, "Force Fang reaches the Keeper");
-  eq(keeper.dead, true, "the Keeper is down");
-  eq(g.run.outcome, "victory", "the Keeper dying under the PC's feet wins immediately");
+  eq(g.useCommand("fang", warden.key).ok, true, "Force Fang reaches the warden");
+  eq(warden.dead, true, "the warden is down");
+  eq(g.run.outcome, "victory", "the warden dying under the PC's feet wins immediately");
 }
 
 {
@@ -496,7 +537,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   eq(back.pc.x, g.run.pc.x, "position survived");
   eq(back.pc.y, g.run.pc.y, "position survived on both axes");
   eq(back.loreRead.length, 1, "lore progress survived");
-  eq(back.explored.length, 484, "the fog-of-war bitfield survived at full length");
+  eq(back.fog.vault.length, 484, "the vault's fog-of-war bitfield survived at full length");
   eq(back.inventory.length, g.run.inventory.length, "the satchel survived");
 
   // And the game boots on it.
@@ -504,6 +545,66 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   g2.begin();
   eq(g2.run.pc.hp, 9, "a game built on the loaded save has the right HP");
   ok(g2.explored.size > 1, "and remembers the map it had explored");
+}
+
+{
+  // Taking the stairs: the area changes under the PC, the vault's own fog is
+  // banked rather than lost, and a creature back in the room just left cannot
+  // notice, collide with, or otherwise interact with one in the new room.
+  // Built with the Keeper already down — it stands right beside this path —
+  // so the walk to the stairs is not also an encounter test; waking is
+  // covered elsewhere. The sentinels are left alive and awake-able, fifteen
+  // squares away in the main room, to check that living()/awake() really are
+  // scoped to the area the PC is in once it reaches the sanctum, not just
+  // filtering out the dead.
+  const state = freshRun(content);
+  state.gateOpen = true;
+  for (const c of state.creatures) if (c.wakesOn === "gate-opened") c.wakesOn = "notice";
+  state.creatures.find(c => c.creature === "vault-keeper").dead = true;
+  state.pc.x = 9; state.pc.y = 3;      // already inside the boss chamber
+  const g = createGame({ content, rng: makeRng(50), state });
+  g.begin();
+  eq(g.run.areaId, "vault", "the run starts in the vault");
+  const exploredBefore = g.explored.size;
+  ok(exploredBefore > 1, "arriving already sees a chunk of the boss chamber");
+
+  g.walkTo(10, 2);                     // onto a stairway square
+  eq(g.run.areaId, "sanctum", "walking onto a stairway changes the area");
+  eq(g.run.pc.x, 6, "the PC lands on the stairway's declared x");
+  eq(g.run.pc.y, 8, "the PC lands on the stairway's declared y");
+  eq(g.mode, "explore", "arriving does not itself start an encounter");
+
+  eq(g.run.fog.vault.length, 484, "the vault's fog was banked under its own id");
+  const vaultFog = unpackExplored(g.run.fog.vault, 22, 22);
+  // At least what had been seen before the walk to the stairs, since the walk
+  // itself reveals a few more squares along the way.
+  ok(vaultFog.size >= exploredBefore, "and it remembers what had been explored there, not less");
+  ok(vaultFog.has("9,3"), "including the square the walk to the stairs started from");
+  ok(g.explored.size >= 1, "the sanctum starts with at least its arrival square explored");
+  ok(!g.explored.has("10,19"), "the sanctum's fog does not carry over the vault's spawn square");
+
+  // A creature in the vault cannot be woken, targeted, or collided with from
+  // the sanctum — living()/awake() are scoped to the area the PC stands in.
+  ok(g.living().every(c => c.area === "sanctum"), "living() only returns creatures in the current area");
+  ok(!g.awake().some(c => c.creature === "shattered-sentinel"), "a vault sentinel cannot be awake while the PC is in the sanctum");
+}
+
+{
+  // The stairway trigger only fires out of combat — a Stride that lands on
+  // one mid-fight does not strand a creature's turn order across an area
+  // change.
+  const state = freshRun(content);
+  state.gateOpen = true;
+  const keeper = state.creatures.find(c => c.creature === "vault-keeper");
+  keeper.wakesOn = "notice"; keeper.awake = true; keeper.x = 9; keeper.y = 1;
+  state.pc.x = 9; state.pc.y = 3;
+  const g = createGame({ content, rng: makeRng(13), state });
+  g.begin();
+  eq(g.mode, "combat", "the run boots straight into the encounter the save described");
+  ok(toPCTurn(g), "control comes to the PC");
+  g.turn.actions = 3;
+  g.walkTo(10, 2);                     // Stride onto the stairway mid-fight
+  eq(g.run.areaId, "vault", "a stairway square reached mid-combat does not transition");
 }
 
 {
@@ -591,12 +692,26 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
     eq(repair(s).stats.rounds, 0, "repair: missing stats are rebuilt");
   }
   {
-    const s = base(); delete s.explored;
-    eq(repair(s).explored, "", "repair: a missing fog bitfield becomes empty rather than undefined");
+    const s = base(); delete s.fog;
+    eq(JSON.stringify(repair(s).fog), "{}", "repair: a missing fog map becomes an empty object rather than undefined");
   }
   {
-    const s = base(); s.explored = "101";
-    eq(repair(s).explored, "", "repair: a bitfield of the wrong length is discarded, not indexed with the wrong stride");
+    const s = base(); s.fog = { vault: "101" };
+    eq(repair(s).fog.vault, undefined,
+      "repair: a bitfield of the wrong length is dropped, not indexed with the wrong stride");
+  }
+  {
+    const s = base(); s.fog = { vault: "1".repeat(484), nowhere: "1".repeat(484) };
+    ok(!("nowhere" in repair(s).fog), "repair: fog for an area the pack no longer defines is dropped");
+  }
+  {
+    // A round-one save had no `fog` map at all — one bitfield for what was
+    // then the only room, under `explored`. It has to become the new shape,
+    // not be discarded outright.
+    const s = base(); delete s.fog; s.explored = "1".repeat(484);
+    const r = repair(s);
+    eq(r.fog.vault, "1".repeat(484), "repair: a legacy single explored bitfield migrates under the save's own area id");
+    ok(!("explored" in r), "repair: the legacy explored field is removed once migrated");
   }
   {
     const s = base(); s.pc.hp = 999;
@@ -623,8 +738,30 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   {
     const s = base(); s.pc.x = 900; s.pc.y = -3;
     const r = repair(s);
-    eq(r.pc.x, content.area.pcSpawn.x, "repair: an out-of-bounds PC goes back to the spawn");
-    eq(r.pc.y, content.area.pcSpawn.y, "repair: on both axes");
+    eq(r.pc.x, content.areas.vault.pcSpawn.x, "repair: an out-of-bounds PC goes back to the spawn");
+    eq(r.pc.y, content.areas.vault.pcSpawn.y, "repair: on both axes");
+  }
+  {
+    // A save naming an area this pack no longer defines falls back to the
+    // start area rather than indexing a tile grid that is not there.
+    const s = base(); s.areaId = "collapsed-wing";
+    const r = repair(s);
+    eq(r.areaId, "vault", "repair: an unknown area falls back to the start area");
+  }
+  {
+    // A round-one save's creature key has no area prefix — just "id@x,y" —
+    // since game.js never rewrote it after a creature moved. Repair has to
+    // recover the same key placedByKey uses today, or every in-progress
+    // round-one save spawns a duplicate creature at boot.
+    const s = base();
+    const sentinel = sentinelIn(s);
+    const legacyKey = sentinel.key.split(":")[1];
+    sentinel.key = legacyKey;
+    delete sentinel.area;
+    const r = repair(s);
+    eq(r.creatures.filter(c => c.creature === "shattered-sentinel").length, 2,
+      "repair: a legacy key migrates onto the real placement rather than duplicating it");
+    ok(sentinelIn(r).key.startsWith("vault:"), "repair: the migrated key carries the area prefix now");
   }
   {
     const s = base(); delete sentinelIn(s).hp;
@@ -649,7 +786,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   }
   {
     const s = base(); s.creatures = [];
-    eq(repair(s).creatures.length, 3, "repair: creatures the save never mentioned arrive dormant at full HP");
+    eq(repair(s).creatures.length, 4, "repair: creatures the save never mentioned arrive dormant at full HP");
     ok(repair(base()).creatures.every(c => typeof c.hp === "number" && c.hp > 0),
       "repair: every creature ends with usable HP");
   }

@@ -100,15 +100,11 @@ group('Rolling an order');
 }
 
 {
-  // The difficulty ramp is the old one, so the curve a player feels is unchanged.
-  // Old code: ceil = min(300, 5 + boost*3 + floor(r1*8)); target = max(2, floor(r2*ceil)+1).
-  //
-  // The two are NOT value-for-value identical and are not meant to be: the old
-  // one drew from 1..ceil and folded the 1 into 2, so 2 came up twice as often as
-  // any other number. This draws evenly from the reachable set. What has to match
-  // is the ceiling each roll is bounded by and roughly where the mean sits.
+  // The ramp is now in tile cost, not magnitude, but on a board with only +1
+  // unlocked the two are the same thing (cost(v) is v-1), so the ceiling a
+  // roll is bounded by should still land on the old formula, value for value.
   const legacyCeil = (boost, r1) => Math.min(HARD_CAP, 5 + boost * 3 + Math.floor(r1 * 8));
-  let over = 0, under = 0, mineSum = 0, oldSum = 0, total = 0;
+  let over = 0, under = 0;
   for (let boost = 0; boost < 12; boost++) {
     for (let a = 0; a < 8; a++) {
       for (let b = 0; b < 40; b++) {
@@ -117,17 +113,48 @@ group('Rolling an order');
         const mine = rollTarget({ ...OPENING, ordersFilled: boost }, seq([r1, r2]));
         if (mine > ceil) over++;
         if (mine < MIN_TARGET) under++;
-        mineSum += mine;
-        oldSum += Math.max(2, Math.floor(r2 * ceil) + 1);
-        total++;
       }
     }
   }
   eq(over, 0, 'no roll in the first dozen orders exceeds the old ramp ceiling');
   eq(under, 0, 'and none is below 2');
-  const drift = Math.abs(mineSum - oldSum) / oldSum;
-  ok(drift < 0.08, 'the average order is within 8% of what the old generator asked',
-    `${(mineSum / total).toFixed(2)} vs ${(oldSum / total).toFixed(2)}, ${(drift * 100).toFixed(1)}% drift`);
+}
+
+{
+  // The actual fix, measured. The old generator ramped magnitude, and on a
+  // board with x2 unlocked that stopped meaning anything: buildCosts prices
+  // a value on a log2 curve once doubling exists, so climbing magnitude by 3
+  // a roll left the tiles a player had to place flat for a long stretch
+  // (round 1's finding: orders 15 to 30). This ramps tile cost directly, so
+  // it has to actually keep demanding more tiles once x2 is bought, not just
+  // bigger numbers.
+  const withDoubler = { ...OPENING, unlocked: { mul2: true } };
+  const maxCostOf = plan => { let m = 0; for (const c of plan.cost.values()) if (c > m) m = c; return m; };
+  const avgCostAt = (ord, n = 1500) => {
+    const s = { ...withDoubler, ordersFilled: ord };
+    const plan = boardPlan(s);
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += minCells(rollTarget(s), plan);
+    return sum / n;
+  };
+  const maxCost = maxCostOf(boardPlan(withDoubler));
+  ok(maxCost < 20, 'x2 alone caps this board\'s hardest tile count well under its 46-cell budget',
+    `maxCost ${maxCost}`);
+
+  const ord0 = avgCostAt(0), ord3 = avgCostAt(3), ord30 = avgCostAt(30);
+  ok(ord0 < maxCost * 0.7, 'turn one with x2 already owned is not yet demanding the toolset\'s max',
+    `avg ${ord0.toFixed(1)} vs a cap of ${maxCost}`);
+  ok(ord3 > ord0, 'and it climbs by order 3', `${ord0.toFixed(1)} -> ${ord3.toFixed(1)}`);
+  ok(ord30 > maxCost * 0.7,
+    'by order 30 -- the stretch that used to be flat -- rolls average most of this board\'s hardest tile count',
+    `avg ${ord30.toFixed(1)} vs a cap of ${maxCost}`);
+
+  // The property that matters even more than the number: it holds however far
+  // out ordersFilled goes, because maxCost is a fact about the board and the
+  // unlocked ops, not about ordersFilled.
+  const ord200 = avgCostAt(200);
+  ok(ord200 > maxCost * 0.7, 'and it holds at order 200, long after the old ramp would have hit the 300 cap',
+    `avg ${ord200.toFixed(1)} vs a cap of ${maxCost}`);
 }
 
 {

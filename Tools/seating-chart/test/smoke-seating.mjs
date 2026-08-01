@@ -7,10 +7,12 @@
 // print, drag, reload, a real file picker — is test/drive-seating.mjs.
 
 import {
-  STORAGE_KEY, SCHEMA_VERSION, ROOM,
+  STORAGE_KEY, SCHEMA_VERSION, ROOM, ZONES,
   freshState, newSection, validateState, repairState, createSeatingSlot,
   neighborMap, togetherGroups, apartMap, assignSeats, checkConstraints,
+  zoneNeedMap, deskZoneMap,
   pickNext, parseRoster, gridDesks, rowDesks, nextSpot, contentBox, snap,
+  horseshoeDesks, podsDesks, doubleRowDesks, labBenchDesks,
 } from '../seating.mjs';
 import { defaultStorage } from '../../../assets/js/gvb-save.js';
 
@@ -148,6 +150,41 @@ console.log('seating chart — pure logic\n');
   deep(twice.sections[0].assign, s.sections[0].assign, 'repair is idempotent');
 }
 
+/* ------------------------------------------------- zone repair ---- */
+{
+  // A desk's zone tag and a student's zone need are the room model: named
+  // zones a desk can belong to, that a flagged student can require.
+  const raw = {
+    sections: [{
+      name: 'Honors GT',
+      students: [
+        { id: 'a', name: 'Ada Lovelace', flag: true, zoneNeed: 'front' },   // kept: flagged, valid zone
+        { id: 'b', name: 'Marco Polo', flag: true, zoneNeed: 'moon base' }, // invalid zone: cleared
+        { id: 'c', name: 'Mansa Musa', flag: false, zoneNeed: 'front' },    // not flagged: cleared
+      ],
+      desks: [
+        { id: 'd1', x: 40, y: 110, zone: 'door' },       // kept: valid
+        { id: 'd2', x: 40, y: 200, zone: 'moon base' },  // invalid: cleared
+        { id: 'd3', x: 40, y: 300 },                     // absent: defaults to none
+      ],
+    }],
+  };
+  const s = repairState(raw, rngFrom(60));
+  const [a, b, c] = s.sections[0].students;
+  eq(a.zoneNeed, 'front', 'a flagged student keeps a valid zone need');
+  eq(b.zoneNeed, '', 'an unrecognized zone need is cleared');
+  eq(c.zoneNeed, '', 'a zone need on an unflagged student is cleared — it only means anything flagged');
+
+  const [d1, d2, d3] = s.sections[0].desks;
+  eq(d1.zone, 'door', 'a desk keeps a valid zone tag');
+  eq(d2.zone, '', 'an unrecognized desk zone is cleared');
+  eq(d3.zone, '', 'a desk with no zone field defaults to none');
+
+  eq(ZONES.length, 3, 'three named zones: front row, by the door, back corner');
+  deep(zoneNeedMap(s.sections[0].students), { a: 'front' }, 'zoneNeedMap only carries students who actually need one');
+  deep(deskZoneMap(s.sections[0].desks), { d1: 'door' }, 'deskZoneMap only carries desks that were tagged');
+}
+
 /* ----------------------------------------------------------- neighbours ---- */
 {
   const desks = [
@@ -258,6 +295,57 @@ console.log('seating chart — pure logic\n');
   s.assign = { d1: 's0' };
   ok(checkConstraints(s).apartOK, 'a rule involving an unseated student is not a violation');
 }
+{
+  // A zone need is a rule the solver enforces, same standing as keep-apart and
+  // put-together: "front row for a vision IEP" as a rule, not a manual habit.
+  // Same trap as decision #40's keep-apart sabotage: at the default 800
+  // attempts, scoring alone can stumble onto a zone-legal arrangement by
+  // sheer luck even with the per-candidate filter removed, since only 2 of 12
+  // desks are tagged and a few hundred random tries will eventually place one
+  // student on one of them anyway. Pin it with attempts: 1 across ten fixed
+  // seeds instead, so this is provably the filter and not the retry loop.
+  let zoneClean = 0;
+  for (let seed = 200; seed < 210; seed++) {
+    const desks = gridDesks(4, 3, rngFrom(seed));   // 12 desks
+    desks[0].zone = 'front';
+    desks[1].zone = 'front';
+    const s = sectionWith(NAMES28.slice(0, 8), desks);
+    s.students[0].flag = true;
+    s.students[0].zoneNeed = 'front';
+    const r = assignSeats(s, { rng: rngFrom(seed), attempts: 1 });
+    const desk0 = Object.entries(r.assign).find(([, sid]) => sid === s.students[0].id);
+    const onFrontDesk = desk0 && desks.find(d => d.id === desk0[0]).zone === 'front';
+    if (r.zoneOK && onFrontDesk && Object.keys(r.assign).length === 8) zoneClean++;
+  }
+  eq(zoneClean, 10, 'one pass in a 12-desk room honours a zone need, on all ten seeds');
+
+  // checkConstraints reports a hand-built chart that violates a zone need.
+  const desks = gridDesks(4, 3, rngFrom(61));
+  desks[0].zone = 'front';
+  const s = sectionWith(NAMES28.slice(0, 8), desks);
+  s.students[0].flag = true;
+  s.students[0].zoneNeed = 'front';
+  s.assign = {};
+  s.assign[desks[2].id] = s.students[0].id;   // desks[2] is untagged
+  const bad = checkConstraints(s);
+  ok(!bad.zoneOK, 'seating a zone-needing student on an untagged desk is reported');
+  deep(bad.zoneBroken, [s.students[0].id], 'the student who is not in their zone is named');
+
+  // Unseated is not the same as broken.
+  s.assign = {};
+  ok(checkConstraints(s).zoneOK, 'a zone need on an unseated student is not a violation');
+}
+{
+  // No desk in the room carries the required zone at all: the solver still
+  // seats everyone (a chart with one broken rule beats no chart), and says so.
+  const desks = gridDesks(2, 2, rngFrom(62));   // 4 desks, none tagged
+  const s = sectionWith(['A', 'B', 'C', 'D'], desks);
+  s.students[0].flag = true;
+  s.students[0].zoneNeed = 'back';
+  const r = assignSeats(s, { rng: rngFrom(11), attempts: 40 });
+  eq(Object.keys(r.assign).length, 4, 'everyone is still seated');
+  ok(!r.zoneOK, 'and the unmet zone need is reported rather than silently dropped');
+}
 
 /* --------------------------------------------------------------- picker ---- */
 {
@@ -322,6 +410,44 @@ console.log('seating chart — pure logic\n');
   const box = contentBox([{ x: 100, y: 200 }, { x: 400, y: 300 }]);
   deep(box, { x: 100, y: 200, w: 400 + ROOM.deskW - 100, h: 300 + ROOM.deskH - 200 }, 'contentBox wraps the desks that exist');
   eq(contentBox([]).w, ROOM.width, 'contentBox on an empty floor falls back to the whole room');
+}
+
+/* ------------------------------------------------------ layout presets ---- */
+{
+  // Every preset guarantees the count it was asked for and clamps every desk
+  // back inside the room, regardless of how the shape falls near an edge.
+  const inRoom = d => d.x >= 0 && d.x <= ROOM.width - ROOM.deskW && d.y >= 0 && d.y <= ROOM.height - ROOM.deskH;
+
+  const hs = horseshoeDesks(12, rngFrom(70));
+  eq(hs.length, 12, 'a 12-seat horseshoe is 12 desks');
+  ok(hs.every(inRoom), 'every horseshoe desk stays inside the room');
+  eq(new Set(hs.map(d => d.id)).size, 12, 'every horseshoe desk gets its own id');
+  const hsBig = horseshoeDesks(99, rngFrom(71));
+  ok(hsBig.every(inRoom), 'a horseshoe at the seat cap still stays inside the room');
+
+  const pods = podsDesks(6, rngFrom(72));
+  eq(pods.length, 24, 'six pods of four is 24 desks');
+  ok(pods.every(inRoom), 'every pod desk stays inside the room');
+  const podsBig = podsDesks(99, rngFrom(73));
+  ok(podsBig.every(inRoom), 'pods at the cap still stay inside the room');
+
+  const rows = doubleRowDesks(6, 3, rngFrom(74));
+  eq(rows.length, 36, 'six columns, three row pairs, two rows per pair: 36 desks');
+  ok(rows.every(inRoom), 'every double-row desk stays inside the room');
+  const rowsOdd = doubleRowDesks(11, 2, rngFrom(75));    // an odd column count splits unevenly
+  eq(rowsOdd.length, 44, 'an odd column count still comes out to columns times pairs times two');
+  ok(rowsOdd.every(inRoom), 'an odd-column double row still stays inside the room');
+
+  const lab = labBenchDesks(8, 3, rngFrom(76));
+  eq(lab.length, 24, 'three benches of eight seats is 24 desks');
+  ok(lab.every(inRoom), 'every lab bench desk stays inside the room');
+  const labBig = labBenchDesks(14, 8, rngFrom(77));
+  ok(labBig.every(inRoom), 'lab benches at the cap still stay inside the room');
+
+  // Zone tagging is deliberately not part of any preset: inferring a zone from
+  // the coordinates a preset happens to generate is exactly the guess the room
+  // model exists to avoid.
+  ok(hs.every(d => d.zone === ''), 'a preset never guesses a zone for its own desks');
 }
 
 /* ------------------------------------------------------ save round trip ---- */
@@ -425,12 +551,13 @@ console.log('seating chart — pure logic\n');
     ok(slot.save(state), 'saving still succeeds in memory');
     eq(slot.load().sections[0].students[0].name, 'Ada Lovelace', 'and loads back within the session');
 
-    // And the reason the page passes `storage` explicitly instead of letting the
-    // module probe: createSaveSlot's own `typeof localStorage` guard throws here.
-    // Shared-file request is in the notes.
-    let threw = false;
-    try { createSeatingSlot(); } catch (e) { threw = true; }
-    ok(threw, 'createSaveSlot without an explicit storage throws in this configuration (gvb-save gap)');
+    // gvb-save's construction-time `typeof localStorage` guard used to throw
+    // here instead of falling through to its own try/catch (shared-file request
+    // #1, applied). Now createSeatingSlot() with no explicit storage argument
+    // survives the blocked property and comes back a working memory-only slot.
+    const probeSlot = createSeatingSlot();
+    ok(probeSlot.memoryOnly && probeSlot.save(freshState(rngFrom(51))),
+      'createSaveSlot with no explicit storage now survives a blocked localStorage property and works (gvb-save gap fixed)');
   } finally {
     if (had) Object.defineProperty(globalThis, 'localStorage', had);
     else delete globalThis.localStorage;

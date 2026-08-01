@@ -106,7 +106,7 @@ const t = await boot({ headed });
 try {
   /* ============================================================ the page */
 
-  await t.page.goto(t.base + '/Projects/daredevil_r4.html', { waitUntil: 'load' });
+  await t.page.goto(t.base + '/Projects/daredevil/index.html', { waitUntil: 'load' });
   await t.page.evaluate(() => document.fonts.ready);
   await wait(300);
 
@@ -114,7 +114,7 @@ try {
   // prepPage() fulfills fonts.googleapis.com locally before the blocked list is
   // written, so the request never reaches it. Grep the served HTML instead.
   {
-    const html = await (await fetch(t.base + '/Projects/daredevil_r4.html')).text();
+    const html = await (await fetch(t.base + '/Projects/daredevil/index.html')).text();
     // Match a real reference — an attribute value or a CSS url() — not a
     // comment that happens to name the host. The comment above the @font-face
     // block explains what these replaced, and a bare hostname grep flags it.
@@ -272,7 +272,7 @@ try {
   {
     const m = await (await import('../../../Tools/board-check/harness.mjs'))
       .prepPage(t.browser, t.base, { width: 375, height: 812, dsf: 2, mobile: true });
-    await m.goto(t.base + '/Projects/daredevil_r4.html', { waitUntil: 'load' });
+    await m.goto(t.base + '/Projects/daredevil/index.html', { waitUntil: 'load' });
     await m.evaluate(() => document.fonts.ready);
     await wait(300);
     const overflow = await m.evaluate(() =>
