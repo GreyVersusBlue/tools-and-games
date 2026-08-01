@@ -10,4 +10,10 @@ candidates/*
 # JSON, and the only record of why assets/previews/ looks the way it does; without
 # it a future session has to re-choose all seven from scratch.
 !candidates/chosen.json
-package-lock.json
+
+# package-lock.json IS tracked (locked decision #52) — node_modules/ above stays
+# ignored (locked decision #12, dev-only tooling), but an unpinned lockfile meant
+# every session's `npm install` floated on whatever the registry served that day,
+# with no diff to point at when a dependency's behavior changed underneath
+# everyone. That's exactly how the puppeteer-core waitForFunction break (round
+# 2) went unnoticed until three separate threads hit it independently.

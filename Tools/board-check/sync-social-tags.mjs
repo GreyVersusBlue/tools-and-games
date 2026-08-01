@@ -54,7 +54,15 @@ for (const m of boardHtml.matchAll(anchorRe)) {
   notices.push({ href, title, desc, preview });
 }
 
-if (notices.length < 20) {
+// The board dropped from 22 notices to 17 this round: the six standalone Tools
+// notices were replaced by one "School Tools" card pointing at newindex.html.
+// That is a real, deliberate count, not a parse failure — confirmed by reading
+// every one of the 17 anchors back with title/desc/href intact. The floor below
+// is a sanity check against a markup change silently dropping notices, not
+// against this file knowing the exact count; keep the same two-notice buffer
+// round 1 used (22 - 2 = 20) rather than pinning to a number that will need
+// editing again next time a section's shape changes on purpose.
+if (notices.length < 15) {
   console.error(`only parsed ${notices.length} notices out of index.html — the notice markup has changed shape, fix the regexes rather than shipping a partial sweep`);
   process.exit(2);
 }

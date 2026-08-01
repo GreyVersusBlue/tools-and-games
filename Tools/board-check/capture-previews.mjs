@@ -1,7 +1,7 @@
-// capture-previews.mjs — drive each of the seven quests into a real gameplay
+// capture-previews.mjs — drive each of the board's games into a real gameplay
 // frame and screenshot it.
 //
-//   npm run previews              all seven
+//   npm run previews              every game in RECIPES
 //   npm run previews aphelion     just one
 //
 // Output: ./candidates/<name>-<n>.png plus candidates/report.json. Promote a
@@ -49,7 +49,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { serve, launch, prepPage } from './harness.mjs';
-import { attachSceneProbe, waitForProbe, camState, aimAt, setYaw, turnBy, lookAt, walkTo } from './drive.mjs';
+import { attachSceneProbe, waitForProbe, camState, aimAt, setYaw, turnBy, lookAt, walkTo, waitFor, textContent } from './drive.mjs';
 import { GAMES, enter } from './games.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -98,7 +98,7 @@ const RECIPES = {
       // packets to be strung down both lines and for the log to fill.
       await wait(10000);
       await shot('line-running');
-      const filled = await p.textContent('#stat-orders');
+      const filled = await textContent(p, '#stat-orders');
       const cells = await p.$$eval('#grid .cell:not(.empty)', els => els.length);
       if (cells < 10) throw new Error(`only ${cells} tiles placed — palette or grid selectors moved`);
       return `${cells} tiles down, orders filled ${filled.trim()}`;
@@ -258,12 +258,12 @@ const RECIPES = {
       // room to actually fill before shooting, and speed the clock up while
       // waiting.
       await p.click('[data-speed="2"]').catch(() => {});
-      await p.waitForFunction(
+      await waitFor(p,
         () => {
           const n = document.getElementById('hCrowd')?.textContent || '';
           return /\d/.test(n) && parseInt(n, 10) >= 4;
         },
-        null, { timeout: 60000 }
+        { timeout: 60000 }
       );
       await wait(2500);
 
@@ -300,8 +300,8 @@ const RECIPES = {
         await wait(4000);
         await shot(label);
       }
-      const crowd = (await p.textContent('#hCrowd')).trim();
-      const hour = (await p.textContent('#hHour')).trim();
+      const crowd = (await textContent(p, '#hCrowd')).trim();
+      const hour = (await textContent(p, '#hHour')).trim();
       return `night open, ${crowd} in the bar at ${hour}, facing ${c.facing}`;
     },
   },
@@ -329,10 +329,10 @@ const RECIPES = {
       }, { w: box.width, h: box.height });
       if (!target) throw new Error('no canvas pixel maps to grid square (10,13) — projection or map moved');
       await p.mouse.click(box.x + target.x, box.y + target.y);
-      const woke = await p.waitForFunction(
+      const woke = await waitFor(p,
         () => window.__absalom?.game?.mode === 'combat'
           && window.__absalom.game.awake?.().length === 1,
-        null, { timeout: 8000 }).then(() => true, () => false);
+        { timeout: 8000 }).then(() => true, () => false);
       await wait(300);
       await shot('encounter');
       if (!woke) throw new Error('walking to (10,13) did not start a single-sentinel encounter');
@@ -389,6 +389,23 @@ const RECIPES = {
       const shots = await p.evaluate(() => window.__CK_DEBUG__?.state?.slots?.[0]?.cup?.shots ?? 0);
       if (!(shots >= 1)) throw new Error(`cup only has ${shots} shots — station selectors moved`);
       return `first shot pulled, cup at ${shots} shot(s)`;
+    },
+  },
+
+  // ---- Torchbearer: games.mjs's `open()` lands on the bridge-fog scene, the
+  // committed save's checkpoint. One click into "Engage the pickets" starts
+  // the Vanguard's Watch encounter — a 13x7 grid with 5 tokens, the shot
+  // locked decision #28 wants (a frame that proves this is a tactical engine).
+  'torchbearer': {
+    async play(p, { shot }) {
+      await p.click('.choice-btn');
+      await waitFor(p, () => document.querySelectorAll('#grid .token').length > 0, { timeout: 10000 });
+      await wait(400);
+      await shot('vanguards-watch');
+      const cells = await p.$$eval('#grid .cell', els => els.length);
+      const tokens = await p.$$eval('#grid .token', els => els.length);
+      if (cells !== 91 || tokens !== 5) throw new Error(`grid is ${cells} cells, ${tokens} tokens — recipe or map moved`);
+      return `${cells}-cell grid, ${tokens} tokens, Vanguard's Watch`;
     },
   },
 };
@@ -503,6 +520,6 @@ fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 await browser.close();
 server.close();
 
-console.log(`\n${failures ? `${failures} failure(s)` : 'all seven reached gameplay'}`);
+console.log(`\n${failures ? `${failures} failure(s)` : `all ${names.length} reached gameplay`}`);
 console.log(`candidates in ${path.relative(HERE, OUT)} — LOOK at them, then \`npm run promote\`.`);
 process.exit(failures ? 1 : 0);

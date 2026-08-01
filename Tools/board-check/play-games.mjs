@@ -1,6 +1,6 @@
-// play-games.mjs — end-to-end regression suite for the six non-Castle games.
+// play-games.mjs — end-to-end regression suite for the non-Castle games.
 //
-//   npm run games                  all six
+//   npm run games                  every game in SUITES
 //   npm run games fourth-quarter   just one
 //
 // Castle Conundrum has play-castle.mjs, which goes deeper than this on one game.
@@ -26,7 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve, launch, prepPage } from './harness.mjs';
-import { attachSceneProbe, waitForProbe, camState, lookAt } from './drive.mjs';
+import { attachSceneProbe, waitForProbe, camState, lookAt, waitFor, textContent, setFiles, walkTo } from './drive.mjs';
 import { GAMES, enter, savedState, wait } from './games.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -65,9 +65,9 @@ const SUITES = {
 
     // TICK_MS is 550 and the source fires every 3 ticks, so a packet needs ~1.7 s
     // to appear and ~4 s to walk the line. Fifteen seconds is several deliveries.
-    const moved = await p.waitForFunction(
+    const moved = await waitFor(p,
       () => document.querySelectorAll('#grid .cell .packet').length > 0,
-      null, { timeout: 15000 }).then(() => true, () => false);
+      { timeout: 15000 }).then(() => true, () => false);
     t.ok(moved, 'packets are moving down the line');
     await wait(14000);
     await t.shot('line-running');
@@ -109,9 +109,9 @@ const SUITES = {
     for (const [x, y] of [[0,2],[1,2],[2,2],[3,2],[4,2],[5,2],[6,2],[7,2]]) {
       await p.click(`#grid .cell[data-x="${x}"][data-y="${y}"]`);
     }
-    await p.waitForFunction(
+    await waitFor(p,
       () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
-      null, { timeout: 10000 });
+      { timeout: 10000 });
 
     // A sink has to be on the floor before its order is on screen, so park one,
     // read it, clear it. state.sinks[0] survives the erase, so the number holds.
@@ -122,9 +122,9 @@ const SUITES = {
       'the opening order is between 2 and 12', `wants ${want}`);
     await p.click('[data-tool="erase"]');
     await p.click('#grid .cell[data-x="0"][data-y="0"]');
-    await p.waitForFunction(
+    await waitFor(p,
       () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
-      null, { timeout: 10000 });
+      { timeout: 10000 });
 
     // A source emits 1 and every +1 adds one, so `want` needs want-1 of them. Row
     // 2 west to east, turn down at column 7, row 3 east to west: 14 operator cells
@@ -153,9 +153,9 @@ const SUITES = {
     t.ok((await p.$$eval('#grid .cell:not(.empty)', els => els.length)) === want + 1,
       'built a line of exactly the right length', `for an order of ${want}`);
 
-    const filled = await p.waitForFunction(
+    const filled = await waitFor(p,
       () => /[1-9]/.test(document.getElementById('stat-orders').textContent),
-      null, { timeout: 30000 }).then(() => true, () => false);
+      { timeout: 30000 }).then(() => true, () => false);
     await t.shot('order-filled');
     const live = await p.evaluate(() => ({
       orders: document.getElementById('stat-orders').textContent.trim(),
@@ -261,7 +261,7 @@ const SUITES = {
       HTMLAnchorElement.prototype.click = function () { if (!this.download) return click.call(this); };
     });
     await p.click('#save-bar [data-gvb="export"]');
-    await p.waitForFunction(() => window.__ctExports.length > 0, null, { timeout: 5000 });
+    await waitFor(p, () => window.__ctExports.length > 0, { timeout: 5000 });
     const ctText = await p.evaluate(() => window.__ctExports[0]);
     const ctEnv = JSON.parse(ctText);
     t.ok(ctEnv.format === 'gvb-save' && ctEnv.game === 'closing-time', 'export wrote a gvb-save envelope');
@@ -507,6 +507,35 @@ const SUITES = {
       `${sunNow.el.toFixed(2)}° to ${sunLater.el.toFixed(2)}° in 6 s`);
     t.ok(sunLater.fog !== sunNow.fog, 'and the fog colour came with it',
       `#${sunNow.fog} to #${sunLater.fog}`);
+
+    // Wading: session 8 let the walk continue past the old static wall (which
+    // put a walker's eyes 3.8 m underwater) up to a knee-depth limit that rides
+    // the tide instead of sitting still. Walk into the water long enough and
+    // the eye height should settle rather than keep dropping. camState's `y` is
+    // eye height (`pos` is x/z only) — the shared-file request's own sketch
+    // read `pos[1]` for this, which would be `z`, not height; adapted here.
+    await p.keyboard.down('KeyW'); await wait(20000);
+    const midWade = await camState(p);
+    await wait(6000);
+    const settledWade = await camState(p);
+    await p.keyboard.up('KeyW');
+    t.ok(Math.abs(settledWade.y - midWade.y) < 0.15,
+      'walking into the water settles at a wading depth rather than continuing to drop',
+      `eye y ${midWade.y.toFixed(2)} -> ${settledWade.y.toFixed(2)}`);
+    t.ok(settledWade.y > 0.5, 'and the walker never goes fully underwater',
+      `eye y ${settledWade.y.toFixed(2)}`);
+
+    // Footprints: a small-geometry InstancedMesh (the wrack kinds are all
+    // bigger than 60 vertices) should have instances on it after walking
+    // toward the shoreline.
+    const footCount = await p.evaluate(() => {
+      let found = 0;
+      window.__scene.traverse(o => {
+        if (o.isInstancedMesh && o.geometry.attributes.position.count < 60) found = o.count;
+      });
+      return found;
+    });
+    t.ok(footCount > 0, 'footprints are left in the wet sand', `${footCount} instances`);
   },
 
   // ---- Aphelion -------------------------------------------------------------
@@ -528,9 +557,9 @@ const SUITES = {
     // The opening CERES line lands a beat after the fade, not with it — waiting
     // for it rather than sampling once is the difference between testing the
     // toast and testing this script's timing.
-    const toasted = await p.waitForFunction(
+    const toasted = await waitFor(p,
       () => document.querySelectorAll('#toasts > *').length > 0,
-      null, { timeout: 8000 }).then(() => true, () => false);
+      { timeout: 8000 }).then(() => true, () => false);
     const said = await p.$eval('#toasts', el => el.textContent.trim().slice(0, 60)).catch(() => '');
     t.ok(toasted, 'the opening CERES message arrived', said);
 
@@ -578,7 +607,7 @@ const SUITES = {
   // export, a file import, or a room being rebuilt around a loaded campaign.
   'fourth-quarter': async (p, t) => {
     const KEY = 'fq3d-save';
-    const tag = () => p.textContent('#startTag');
+    const tag = () => textContent(p, '#startTag');
 
     // --- the save bar mounted, with the buttons this page asked for and no others
     const bar = await p.$$eval('#saveBar button', els =>
@@ -640,7 +669,7 @@ const SUITES = {
       HTMLAnchorElement.prototype.click = function () { if (!this.download) return click.call(this); };
     });
     await p.click('#saveBar [data-gvb="export"]');
-    await p.waitForFunction(() => window.__exports.length > 0, null, { timeout: 5000 });
+    await waitFor(p, () => window.__exports.length > 0, { timeout: 5000 });
     const text = await p.evaluate(() => window.__exports[0]);
     let env = null;
     try { env = JSON.parse(text); } catch (e) { /* asserted below */ }
@@ -746,7 +775,7 @@ const SUITES = {
       HTMLAnchorElement.prototype.click = function () { if (!this.download) return click.call(this); };
     });
     await p.click('#doorSaveBar [data-gvb="export"]');
-    await p.waitForFunction(() => window.__doorExports.length > 0, null, { timeout: 5000 });
+    await waitFor(p, () => window.__doorExports.length > 0, { timeout: 5000 });
     const doorEnv = JSON.parse(await p.evaluate(() => window.__doorExports[0]));
     const beforeDoors = await savedState(p, 'fourth-quarter');
     t.ok(doorEnv.state.day === beforeDoors.day && Math.round(doorEnv.state.cash) === Math.round(beforeDoors.cash),
@@ -757,12 +786,12 @@ const SUITES = {
     // session — the door save bar above didn't change any of this path.
     await p.click('[data-opendoors="1"]');
     await p.click('[data-speed="2"]').catch(() => {});
-    const filled = await p.waitForFunction(() => {
+    const filled = await waitFor(p, () => {
       const n = document.getElementById('hCrowd')?.textContent || '';
       return /\d/.test(n) && parseInt(n, 10) >= 4;
-    }, null, { timeout: 60000 }).then(() => true, () => false);
-    t.ok(filled, 'the doors opened and the room filled', await p.textContent('#hCrowd'));
-    const hour = (await p.textContent('#hHour')).trim();
+    }, { timeout: 60000 }).then(() => true, () => false);
+    t.ok(filled, 'the doors opened and the room filled', await textContent(p, '#hCrowd'));
+    const hour = (await textContent(p, '#hHour')).trim();
     t.ok(hour !== 'DAY', 'the night clock is running', hour);
     await lookAt(p, { facing: 0, pitch: 0, sens: 0.0023 });
     await t.shot('night-open');
@@ -778,9 +807,9 @@ const SUITES = {
       await skip.click();
       await wait(200);
       await p.click('#devClose').catch(() => {});
-      const reachedBox = await p.waitForFunction(
+      const reachedBox = await waitFor(p,
         () => document.getElementById('boxOverlay')?.style.display === 'flex',
-        null, { timeout: 20000 }).then(() => true, () => false);
+        { timeout: 20000 }).then(() => true, () => false);
       t.ok(reachedBox, 'the dev menu can skip straight to a box score');
       if (reachedBox) {
         const boxBar = await p.$$eval('#boxSaveBar button', els => els.map(b => b.dataset.gvb));
@@ -794,7 +823,7 @@ const SUITES = {
           URL.createObjectURL = blob => { blob.text().then(txt => window.__boxExports.push(txt)); return create(blob); };
         });
         await p.click('#boxSaveBar [data-gvb="export"]');
-        await p.waitForFunction(() => window.__boxExports.length > 0, null, { timeout: 5000 });
+        await waitFor(p, () => window.__boxExports.length > 0, { timeout: 5000 });
         fs.writeFileSync(path.join(OUT, 'fq-box-export.json'), await p.evaluate(() => window.__boxExports[0]));
         const boxDay = (await savedState(p, 'fourth-quarter')).day;
 
@@ -821,6 +850,113 @@ const SUITES = {
           `day ${restored.day}`);
       }
     }
+
+    // --- Real Estate: walk to the station (real movement, not the dev warp
+    // used above), sign the lease, and push through the dark night it opens.
+    // The dev warp already covers every venue tier; this is the one thing it
+    // skips — the actual Real Estate panel and the door ring's "Tonight" state
+    // during a move, neither of which had any coverage before this round.
+    // Fresh reload so the walk starts from the documented spawn point.
+    await p.reload({ waitUntil: 'load' });
+    await p.waitForSelector('#wipeBtn');
+    await p.click('#wipeBtn');
+    await wait(600);
+    await t.probe();
+    await p.click('#startBtn');
+    await wait(700);
+    await p.keyboard.press('Backquote');
+    await p.waitForSelector('#devOverlay [data-cash]');
+    await p.click('[data-cash="10000"]');
+    await p.click('#devClose');
+    await wait(300);
+
+    const reachedEstate = await walkTo(p, [6.7, -0.8], async (dist) => dist < 1.4, { maxBursts: 60 })
+      .catch(() => null);
+    t.ok(!!reachedEstate, 'walked to the Real Estate station',
+      reachedEstate ? `${reachedEstate.bursts} bursts, ${reachedEstate.dist}m off` : 'never got in range');
+    if (reachedEstate) {
+      await p.keyboard.press('KeyE');
+      await p.waitForSelector('#panelOverlay [data-signlease]', { timeout: 10000 });
+      const estateTitle = await textContent(p, '#panelTitle');
+      t.ok(estateTitle === 'Real Estate', 'the Real Estate panel opened', estateTitle);
+      const leaseDisabled = await p.$eval('[data-signlease="1"]', el => el.disabled);
+      t.ok(leaseDisabled === false, 'Sign the Lease is enabled once cash covers it',
+        `disabled=${leaseDisabled}`);
+
+      await p.click('[data-signlease="1"]');
+      await wait(400);
+      const leased = await savedState(p, 'fourth-quarter');
+      t.ok(leased.venue === 'fieldhouse' && leased.darkNightsLeft === 1,
+        'signing the lease moves in and opens a dark night',
+        `venue ${leased.venue}, dark nights ${leased.darkNightsLeft}`);
+      const panelClosed = await p.$eval('#panelOverlay', el => el.style.display === 'none');
+      t.ok(panelClosed, 'and the panel closes itself before the world rebuilds');
+
+      // The door ring during the dark night opens "Tonight," not the normal
+      // doors — same spawn-adjacent door station, different panel entirely.
+      await p.keyboard.press('KeyE');
+      await p.waitForSelector('#panelOverlay [data-closednight]', { timeout: 10000 });
+      const tonightTitle = await textContent(p, '#panelTitle');
+      const openDoorsGone = !(await p.$('[data-opendoors="1"]'));
+      t.ok(tonightTitle === 'Tonight' && openDoorsGone,
+        'the door ring shows "Tonight" during the move, with no Open the Doors button',
+        tonightTitle);
+
+      await p.click('[data-closednight="1"]');
+      await wait(400);
+      const pushed = await savedState(p, 'fourth-quarter');
+      t.ok(pushed.darkNightsLeft === 0 && pushed.day === leased.day + 1,
+        'pushing through clears the dark night and advances one day, zero patrons',
+        `dark nights ${pushed.darkNightsLeft}, day ${leased.day} -> ${pushed.day}`);
+      t.ok(pushed.cash < leased.cash, 'and cash drops (rent, wages, upkeep, no revenue)',
+        `$${Math.round(leased.cash)} -> $${Math.round(pushed.cash)}`);
+
+      await p.keyboard.press('KeyE');
+      await p.waitForSelector('#panelOverlay [data-opendoors]', { timeout: 10000 });
+      t.ok(true, "the door ring is back to a normal night's panel");
+      await p.click('#panelClose');
+    }
+  },
+
+  // ---- Torchbearer ----------------------------------------------------------
+  // games.mjs's open() already Shelf-loaded Thornwake and imported the committed
+  // save; it lands on bridge-fog and stops there, per that project's own
+  // recipe — everything past that point is this suite's to assert on.
+  'torchbearer': async (p, t) => {
+    const state = await savedState(p, 'torchbearer');
+    t.ok(state?.sceneId === 'bridge-fog', 'the imported save landed on the committed checkpoint',
+      `sceneId ${state?.sceneId}`);
+    t.ok(state?.companions?.[0]?.hp === 38, 'and the companion HP came through',
+      `${state?.companions?.[0]?.id} at ${state?.companions?.[0]?.hp} HP`);
+
+    await p.click('.choice-btn');
+    await waitFor(p, () => document.querySelectorAll('#grid .token').length > 0, { timeout: 10000 });
+    await wait(300);
+    const cells = await p.$$eval('#grid .cell', els => els.length);
+    const tokens = await p.$$eval('#grid .token', els => els.length);
+    t.ok(cells === 91 && tokens === 5, "engaging the pickets opens the Vanguard's Watch grid",
+      `${cells} cells, ${tokens} tokens`);
+    await t.shot('vanguards-watch');
+
+    // Corrupt-file-rejected: a build naming a class/background this page never
+    // loaded. Thornwake is already loaded from the beat above, so this
+    // exercises loadSave's ancestry/background/class check specifically, not
+    // the separate advId one.
+    const badBuild = JSON.parse(fs.readFileSync(
+      path.join(HERE, '..', '..', 'Projects', 'torchbearer', 'test', 'sera-voss.torchsave.json'), 'utf8'));
+    badBuild.state.build.cls = 'nonexistent-class';
+    badBuild.state.build.background = 'nonexistent-background';
+    const badFile = path.join(OUT, 'torchbearer-bad-build.json');
+    fs.writeFileSync(badFile, JSON.stringify(badBuild));
+    await setFiles(p, badFile, () => p.click('#save-bar [data-gvb="import"]'));
+    await waitFor(p, () => document.getElementById('modal-veil')?.classList.contains('open'), { timeout: 5000 });
+    const modalTitle = await textContent(p, '#modal-title');
+    t.ok(/Content Missing/i.test(modalTitle), 'a build naming unloaded content is refused, not crashed',
+      modalTitle);
+    await p.click('#modal-foot button');
+    const stillHere = await savedState(p, 'torchbearer');
+    t.ok(stillHere?.sceneId === 'bridge-fog', 'and the live journey survives the rejected import',
+      `sceneId ${stillHere?.sceneId}`);
   },
 };
 
@@ -841,25 +977,6 @@ const OPEN_OPTS = {
   'fourth-quarter': { start: false },
 };
 
-/* --------------------------------------------------------------- file picker - */
-
-/**
- * Run `trigger` and answer the file chooser it opens with `file`.
- *
- * gvb-save's promptImport() creates a hidden <input type="file"> and clicks it,
- * which is a real chooser; it has to be answered by the driver, and the two
- * engines this harness supports do that differently. Registering the handler
- * before the click matters — the chooser is a one-shot event.
- */
-async function setFiles(page, file, trigger) {
-  if (page.__engine === 'puppeteer') {
-    const [chooser] = await Promise.all([page.waitForFileChooser(), trigger()]);
-    await chooser.accept([file]);
-    return;
-  }
-  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), trigger()]);
-  await chooser.setFiles(file);
-}
 
 /* ------------------------------------------------------------------- run ----- */
 

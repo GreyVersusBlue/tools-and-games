@@ -8,10 +8,10 @@ instead of reasoning about CSS and hoping.
 npm install          # also vendors three.js 0.160.0 and 0.169.0
 npm run check        # integrity sweep + collision guard, both exit non-zero on failure
 npm run play         # plays Castle Conundrum to victory; opens a real window
-npm run games        # regression suite for the other six games; opens real windows
+npm run games        # regression suite for the other games; opens real windows
 npm run tools        # sweep of the Tools/ pages no game suite ever opens; headless
 npm run shoot        # writes reviewable PNGs to ./shots/
-npm run previews     # plays all seven quests, screenshots gameplay to ./candidates/
+npm run previews     # plays every quest, screenshots gameplay to ./candidates/
 npm run promote      # candidates/chosen.json -> assets/previews/ + assets/og/
 npm run social       # regenerate every page's favicon + og tags from the board
 npm run social:check # ...or just report which pages have drifted
@@ -163,12 +163,14 @@ game is written once. Add a game to the board, describe it here.
 
 ### `play-games.mjs`
 
-The end-to-end regression suite for the six games that aren't Castle Conundrum:
+The end-to-end regression suite for the games that aren't Castle Conundrum:
 build a real production line in Integer Foundry and watch the sink judge what
 arrives, run a fortnight of Closing Time, build and open a Faire Weekend, walk
-Golden Hour and Aphelion, and put The Fourth Quarter's save through export, import,
-a reload and a pre-versioning legacy blob. 92 assertions, exits non-zero on any of
-them, screenshots in `./shots/games/`.
+Golden Hour and Aphelion, put The Fourth Quarter's save through export, import,
+a reload, a pre-versioning legacy blob and a real Real Estate lease, and Shelf-load
+and import a committed save into Torchbearer to reach a real combat grid. Exits
+non-zero on any missed beat, screenshots in `./shots/games/`. `npm run games` for
+the current count — it grows with the board, so it isn't repeated here.
 
 Four of these projects already have Node smoke suites, and this does not repeat
 them. Those import the engine modules and drive them directly; they cannot see the
@@ -187,9 +189,34 @@ own property so patching `WebGLRenderer.prototype` captures nothing, and that on
 Castle Conundrum tolerates a direct write to `camera.rotation` (the other three
 games own it and rewrite it every frame, so those need `turnBy`/`lookAt`).
 
+**Engine differences that aren't handled by `launch()`/`prepPage()` alone.**
+Puppeteer and Playwright disagree on three call shapes this repo actually uses;
+`page.__engine` (set by `prepPage`) is how the difference gets bridged. Use
+these instead of the bare Playwright form, or a script that only ever ran on
+Windows/macOS via Playwright will crash the instant it runs on Linux via
+puppeteer-core (this happened: round 2 shipped with `waitForFunction(fn, null,
+opts)` everywhere, worked fine wherever a real Chrome/Edge let Playwright
+drive, and threw `Cannot read properties of null (reading 'polling')` on every
+single Linux/puppeteer run until three independent threads had each rediscovered
+it):
+
+- `waitFor(page, fn, opts)` — in place of `page.waitForFunction(fn, null, opts)`.
+- `textContent(page, selector)` — in place of `page.textContent(selector)`,
+  which puppeteer-core doesn't have at all.
+- `wait(ms)` — in place of `page.waitForTimeout(ms)`, which recent
+  puppeteer-core versions dropped. This one needs no engine branch; a plain
+  `setTimeout` promise works identically on both.
+- `setFiles(page, file, trigger)` — answers the file chooser `trigger()` opens
+  (`gvb-save.js`'s `promptImport()`), the two engines' event names differ.
+
+All four are exported from here for that reason, even though `waitFor`/`wait`
+have nothing to do with camera driving specifically — this file is the one
+every headed script already imports, and a fifth near-identical helper file
+was worse than a slightly misplaced export.
+
 ### `capture-previews.mjs`
 
-Plays all seven projects into a real gameplay frame and screenshots it. Each
+Plays every project with a preview recipe into a real gameplay frame and screenshots it. Each
 recipe drives its game with that game's own selectors and world coordinates, and
 asserts it arrived: intro overlays gone, frame actually moving (for the games with
 a clock), console clean. Exits non-zero on any miss.

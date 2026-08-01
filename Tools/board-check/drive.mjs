@@ -53,9 +53,23 @@ export async function attachSceneProbe(page, threeUrl) {
   }, threeUrl);
 }
 
+/**
+ * `page.waitForFunction(fn, arg, options)` is Playwright's signature.
+ * `harness.mjs`'s Linux branch drives Chromium through `puppeteer-core`, whose
+ * `waitForFunction` is `(fn, options, ...args)` instead, so a literal `null` in
+ * the middle argument lands in `options` and throws
+ * `Cannot read properties of null (reading 'polling')`. `page.__engine`,
+ * set by `harness.mjs`'s `prepPage`, tells the two call shapes apart. Use this
+ * everywhere in place of a bare `page.waitForFunction(fn, null, opts)`.
+ */
+export async function waitFor(page, fn, opts) {
+  if (page.__engine === 'puppeteer') return page.waitForFunction(fn, opts);
+  return page.waitForFunction(fn, null, opts);
+}
+
 /** Resolve once both handles exist. */
 export async function waitForProbe(page, timeout = 25000) {
-  await page.waitForFunction(() => !!(window.__scene && window.__cam), null, { timeout });
+  await waitFor(page, () => !!(window.__scene && window.__cam), { timeout });
 }
 
 /**
@@ -132,7 +146,7 @@ export async function turnBy(page, { dyaw = 0, dpitch = 0, sens = 0.0022 }) {
       movementX: dx, movementY: dy, bubbles: true,
     }));
   }, { dx: -dyaw / sens, dy: -dpitch / sens });
-  await page.waitForTimeout(120);
+  await wait(120);
 }
 
 /**
@@ -181,17 +195,48 @@ export async function walkTo(page, target, arrived,
 
     if (lastDist !== null && Math.abs(lastDist - dist) < 0.05) {
       await page.keyboard.down('KeyD');
-      await page.waitForTimeout(220);
+      await wait(220);
       await page.keyboard.up('KeyD');
     }
     lastDist = dist;
 
     await page.keyboard.down(key);
-    await page.waitForTimeout(dist > nearAt ? longMs : shortMs);
+    await wait(dist > nearAt ? longMs : shortMs);
     await page.keyboard.up(key);
-    await page.waitForTimeout(60);
+    await wait(60);
   }
   return null;
 }
 
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * `page.textContent(selector)` is Playwright's convenience method; puppeteer-core
+ * has no page-level `textContent` at all, only element handles. Same
+ * `page.__engine` split as `waitFor` above — use this in place of a bare
+ * `page.textContent(sel)` so a beat works under both engines.
+ */
+export const textContent = (page, sel) =>
+  page.__engine === 'puppeteer'
+    ? page.$eval(sel, (el) => el.textContent)
+    : page.textContent(sel);
+
+/**
+ * Run `trigger` and answer the file chooser it opens with `file`.
+ *
+ * gvb-save's promptImport() creates a hidden <input type="file"> and clicks it,
+ * which is a real chooser; it has to be answered by the driver, and the two
+ * engines this harness supports do that differently. Registering the handler
+ * before the click matters — the chooser is a one-shot event. Shared here (not
+ * just in play-games.mjs) because games.mjs's own `open()` recipes need it too
+ * — Torchbearer's opening move is importing a save, not clicking through UI.
+ */
+export async function setFiles(page, file, trigger) {
+  if (page.__engine === 'puppeteer') {
+    const [chooser] = await Promise.all([page.waitForFileChooser(), trigger()]);
+    await chooser.accept([file]);
+    return;
+  }
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), trigger()]);
+  await chooser.setFiles(file);
+}
