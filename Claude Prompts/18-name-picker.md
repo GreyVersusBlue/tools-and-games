@@ -22,15 +22,15 @@ Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Card title, description, and the version line (locked decisions #9, #31). Prompt 21. The board `href` still points at `Tools/Name%20Picker.html`, space and all. |
-| Every other file in `Tools/` | Prompts 16, 17, 19, 20. `Tools/board-check/` is prompt 21's. |
-| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
+| `index.html` (the repo root one) | The board. Card title, description, and the version line (locked decisions #9, #31). Prompt 22. The board `href` still points at `Tools/Name%20Picker.html`, space and all. |
+| Every other file in `Tools/` | Prompts 16, 17, 19, 20. `Tools/board-check/` is prompt 22's. |
+| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 22. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
 **`Tools/` is capitalized on purpose** (locked decision #14). The page deliberately **stayed** at
 `Tools/Name Picker.html`, space and all — a rename needs the board `href` changed in the same
-commit, and that's prompt 21's file, not a solo run of this prompt's to touch.
+commit, and that's prompt 22's file, not a solo run of this prompt's to touch.
 
 **If you need a shared file changed, do not change it.** Write the exact edit into the "Shared-file
 requests" section of your notes file, specific enough that someone can apply it without reading your
@@ -92,7 +92,7 @@ it). Legacy entries with no `date` just never trigger the clear; they still load
 
 **A real, newly-found bug in this project's own test file, not previously flagged: `test/browser.mjs`
 has the same engine-mismatch problem that broke `npm run games` repo-wide this round, in two
-different forms, neither covered by prompt 21's fix (that fix only touched `Tools/board-check/**`,
+different forms, neither covered by prompt 22's fix (that fix only touched `Tools/board-check/**`,
 not this project-owned file).** Confirmed by direct run this refresh:
 - `page.waitForFunction(() => window.__npExports.length > 0, null, { timeout: 5000 })` at line 163
   — the exact Playwright-vs-puppeteer-core shape mismatch. Throws under this environment's
@@ -111,7 +111,7 @@ Round 2 closed both of the previous round's tasks. What's left:
 
 1. **Fix `test/browser.mjs`'s own copy of the engine-mismatch bug** (see above) — the same class of
    bug that broke `npm run games` for every project this round, in a file that's yours and that
-   prompt 21's fix explicitly didn't reach (project-owned test files are out of its boundary).
+   prompt 22's fix explicitly didn't reach (project-owned test files are out of its boundary).
    Import `waitFor`/`textContent` from `Tools/board-check/drive.mjs` and swap the calls. Verify per
    locked decision #34.
 2. **Not this project's job, flag it instead: renaming `Tools/Name Picker.html` to
@@ -151,7 +151,7 @@ Only one at a time.
 
 Write `Claude Prompts/notes/18-name-picker-notes.md`. Nobody else writes that file, so it can never
 conflict. It is the only record of this session that survives — `gvb-site-handoff-v*.md` gets
-assembled from all twenty-one of them each round.
+assembled from all twenty-two of them each round.
 
 Use these headings:
 

@@ -29,10 +29,10 @@ Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 21. Its card now points at `Projects/daredevil/` directly — applied this round, see below. |
-| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
-| `assets/previews/**`, `assets/og/**` | Generated. Prompt 21. `daredevil.jpg` in each, recaptured this round against the new restructured path. |
-| `Tools/board-check/**`, including `games.mjs`'s Daredevil recipe (repointed at `/Projects/daredevil/index.html` this round) | Shared dev tooling. Prompt 21. |
+| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 22. Its card now points at `Projects/daredevil/` directly — applied this round, see below. |
+| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 22. |
+| `assets/previews/**`, `assets/og/**` | Generated. Prompt 22. `daredevil.jpg` in each, recaptured this round against the new restructured path. |
+| `Tools/board-check/**`, including `games.mjs`'s Daredevil recipe (repointed at `/Projects/daredevil/index.html` this round) | Shared dev tooling. Prompt 22. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
@@ -99,7 +99,7 @@ names no longer described stubs.
 
 **The board points straight at the new path now.** `index.html`'s card `href` is
 `Projects/daredevil/`, not the old `daredevil_r4.html`; `games.mjs`'s recipe URL matches. Both
-applied by prompt 21 this round. The old URL still resolves via the redirect stub, so nothing that
+applied by prompt 22 this round. The old URL still resolves via the redirect stub, so nothing that
 bookmarked it 404s.
 
 **"Work the Crowd" is placed, not deleted.** 90 finished lines (three crowd moods, an energy meter,
@@ -189,7 +189,7 @@ them. Only one at a time.
 
 Write `Claude Prompts/notes/13-daredevil-notes.md`. Nobody else writes that file, so it can never
 conflict. It is the only record of this session that survives — `gvb-site-handoff-v*.md` gets
-assembled from all twenty-one of them each round.
+assembled from all twenty-two of them each round.
 
 Use these headings:
 

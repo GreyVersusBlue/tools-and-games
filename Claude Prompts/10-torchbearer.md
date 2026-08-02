@@ -4,7 +4,7 @@ You are working on Torchbearer, a Pathfinder 2e adventure engine on greyversusbl
 is a single-file game that loads user-supplied adventure content, and it carries
 `class="has-suite"` on the board — it advertises itself as a platform, not one adventure.
 Round 2 fixed Assurance, fixed a real potion-healing bug, fixed a Shield Block double-grant
-hole, and committed a real playthrough save that — combined with prompt 21's work this round —
+hole, and committed a real playthrough save that — combined with prompt 22's work this round —
 finally gave this game a preview, an OG card, and an `npm run games` entry. This prompt is
 self-contained.
 
@@ -28,11 +28,11 @@ Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 21. Now has `data-preview` pointing at your game — see below. |
+| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 22. Now has `data-preview` pointing at your game — see below. |
 | `Pathfinder/**` | Prompts 01, 02, 03. `Pathfinder/data/` holds 24 JSON files of PF2e rules data. Read it; don't edit it; don't create a runtime dependency on it. Whether that data is a shared interface or private to prompts 01-03 is a real open question — see prompt 01's "Questions for Devon" block, which now tracks it centrally. |
-| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
-| `assets/previews/torchbearer.jpg`, `assets/og/torchbearer.jpg` | Generated. Prompt 21. **These exist now** — 9.2 KB / 64.4 KB, captured this round from your committed save. |
-| `Tools/board-check/**`, including your new `play-games.mjs` entry (7 checks) and `games.mjs` recipe | Shared dev tooling. Prompt 21. |
+| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 22. |
+| `assets/previews/torchbearer.jpg`, `assets/og/torchbearer.jpg` | Generated. Prompt 22. **These exist now** — 9.2 KB / 64.4 KB, captured this round from your committed save. |
+| `Tools/board-check/**`, including your new `play-games.mjs` entry (7 checks) and `games.mjs` recipe | Shared dev tooling. Prompt 22. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
@@ -89,7 +89,7 @@ your edit will be silently overwritten. A wrong description is a board request.
 
 3,280 lines in one file. Title: "Torchbearer — A Pathfinder 2e Adventure Engine". Tagged `CRPG`
 with `has-suite` on the board. **Now has a preview and an OG card** (round 2 committed a real
-playthrough save; prompt 21 used it this round to build the `games.mjs` recipe, capture, and
+playthrough save; prompt 22 used it this round to build the `games.mjs` recipe, capture, and
 promote — 9.2 KB preview, 64.4 KB OG card).
 
 **Assurance works.** Two bugs, not one: `finalizeCharacter` only ever recorded the bare string
@@ -187,7 +187,7 @@ them. Only one at a time.
 
 Write `Claude Prompts/notes/10-torchbearer-notes.md`. Nobody else writes that file, so it can
 never conflict. It is the only record of this session that survives —
-`gvb-site-handoff-v*.md` gets assembled from all twenty-one of them each round.
+`gvb-site-handoff-v*.md` gets assembled from all twenty-two of them each round.
 
 Use these headings:
 

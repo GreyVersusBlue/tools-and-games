@@ -29,11 +29,11 @@ Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 21. |
+| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 22. |
 | `Pathfinder/**` | Prompts 01, 02, 03. `Pathfinder/data/` holds 24 JSON files of PF2e rules data. Read it; don't edit it; don't build a runtime dependency on it. Whether it's a published interface or private to prompts 01-03 is a real open question, raised by you and Torchbearer independently a fourth and fifth time now — see prompt 01's "Questions for Devon" block, which now tracks it centrally. |
-| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
-| `assets/previews/absalom-inheritance.jpg`, `assets/og/absalom-inheritance.jpg` | Generated. Prompt 21. Unchanged this round — the existing mid-combat capture is still accurate; nothing about the sanctum needs to be in the shot. |
-| `Tools/board-check/**` | Shared dev tooling. Prompt 21. |
+| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 22. |
+| `assets/previews/absalom-inheritance.jpg`, `assets/og/absalom-inheritance.jpg` | Generated. Prompt 22. Unchanged this round — the existing mid-combat capture is still accurate; nothing about the sanctum needs to be in the shot. |
+| `Tools/board-check/**` | Shared dev tooling. Prompt 22. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
@@ -213,7 +213,7 @@ them. Only one at a time.
 
 Write `Claude Prompts/notes/11-absalom-inheritance-notes.md`. Nobody else writes that file, so it
 can never conflict. It is the only record of this session that survives —
-`gvb-site-handoff-v*.md` gets assembled from all twenty-one of them each round.
+`gvb-site-handoff-v*.md` gets assembled from all twenty-two of them each round.
 
 Use these headings:
 

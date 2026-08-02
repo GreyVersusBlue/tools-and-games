@@ -21,9 +21,9 @@ Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Card title, description, and the version line (locked decisions #9, #31). Prompt 21. |
-| Every other file in `Tools/` | Prompts 16, 17, 18, 19. `Tools/board-check/` is prompt 21's. |
-| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
+| `index.html` (the repo root one) | The board. Card title, description, and the version line (locked decisions #9, #31). Prompt 22. |
+| Every other file in `Tools/` | Prompts 16, 17, 18, 19. `Tools/board-check/` is prompt 22's. |
+| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 22. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
@@ -101,7 +101,7 @@ inverted and confirmed clean this refresh (`153 passed, 0 failed`). Not outstand
 
 **A real, newly-found bug in this project's own test file, not previously flagged: `test/drive-
 seating.mjs` uses two Playwright-only methods that don't exist under this environment's
-`puppeteer-core`**, not covered by prompt 21's fix (project-owned test files are out of its
+`puppeteer-core`**, not covered by prompt 22's fix (project-owned test files are out of its
 boundary). Confirmed by direct run this refresh: `TypeError: page.isHidden is not a function`, at
 lines 80 and 394 (`page.isHidden('#bootWarn')`), and `page.textContent(...)` at lines 82 and 396.
 See task one.
@@ -148,7 +148,7 @@ but the one-suite-at-a-time rule still applies if another thread is running one 
 
 Write `Claude Prompts/notes/20-seating-chart-generator-notes.md`. Nobody else writes that file, so
 it can never conflict. It is the only record of this session that survives — the next handoff gets
-assembled from all twenty-one of them each round.
+assembled from all twenty-two of them each round.
 
 Use these headings:
 

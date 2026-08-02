@@ -32,10 +32,10 @@ Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 21. |
-| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
-| `assets/previews/fracture-cycle.jpg`, `assets/og/fracture-cycle.jpg` | Generated. Prompt 21. This game has both — see "What is actually here." |
-| `Tools/board-check/**` | Shared dev tooling. Prompt 21. |
+| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 22. |
+| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 22. |
+| `assets/previews/fracture-cycle.jpg`, `assets/og/fracture-cycle.jpg` | Generated. Prompt 22. This game has both — see "What is actually here." |
+| `Tools/board-check/**` | Shared dev tooling. Prompt 22. |
 | `Projects/daredevil/` | Prompt 13. The repo's other `Narrative` game, and about 10x your size — restructured into a folder this round; the old `Projects/daredevil_r4.html` is now just a redirect stub. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |

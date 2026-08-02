@@ -1,7 +1,7 @@
-# 21 — General Site Improvements
+# 22 — General Site Improvements
 
 You own the shared infrastructure of greyversusblue.com: the board, the 404 page, the shared save
-module, the dev tooling, and the handoff. **Twenty other Claude sessions are working on individual
+module, the dev tooling, and the handoff. **Twenty-one other Claude sessions are working on individual
 projects in parallel and none of them may touch any of it** — instead each one writes what it needs
 into a notes file, and applying those is your job.
 
@@ -13,18 +13,18 @@ every shared-file request, and wrote `gvb-site-handoff-v9.md` (site version now 
 sequencing section before you start — it's the same shape every round, and this round is proof the
 "don't write the handoff early" rule matters.
 
-**A 22nd project landed on `main` after this refresh's own survey ran, and nothing in `Claude
-Prompts/` owns it yet.** `Projects/orbital/` ("Orbital," a gravity flight-plan puzzle game) merged
-via PR #6 (commit `6661745`), adding a board notice (`index.html` gained 9 lines) and its own
-fonts/JS. `npm run social:check` now reports **18 notices**, not 17 — genuinely current as of this
-note, expected to move again once Orbital gets a real social-tag pass (`npm run social:check`
-currently shows it "had no block," meaning it's linked from the board but has no generated
-`gvb:social` head block yet). No prompt file exists for it, and no boundary table row does either.
-**This is the first thing whoever runs this prompt next should account for**: either give it its own
-prompt (22 becomes 23, following this file's own numbering conventions) or fold it in as a stopgap,
-but don't silently treat 17-notices/twenty-project figures anywhere in this refresh as still
-current — they were accurate when this refresh's survey ran, and this landed afterward, the same
-class of thing §1-2 below describe happening mid-round-1.
+**A 22nd project landed on `main` mid-refresh, and the whole rotation renumbered to give it a real
+prompt.** `Projects/orbital/` ("Orbital," a gravity flight-plan puzzle game) merged via PR #6
+(commit `6661745`) after this refresh's own survey had already run, with a board notice but no
+prompt file and no boundary-table row. Devon's call: give it a real prompt rather than a stopgap.
+It's now `Claude Prompts/21-orbital.md`, first round, no notes file yet. This file (General Site
+Improvements) moved from 21 to 22 to make room, and the refresh prompt moved from 22 to 23
+(`Claude Prompts/23-refresh-prompts.md`) in turn — **already done, not something for you to
+apply**: every boundary-table reference in every other prompt has already been updated to match
+("Prompt 22" now means this file, "prompt 23" now means the refresh process). `npm run
+social:check` reported **18 notices** at the time of this renumbering, with Orbital's own page
+showing "had no block" (linked from the board, no generated `gvb:social` head block yet) — that's
+Orbital's own task list to close, not yours.
 
 ## Your boundary
 
@@ -33,7 +33,7 @@ You own these paths:
 - `index.html` — the board. The single most contested file in the repo.
 - `404.html`
 - `newindex.html` — appeared at the repo root, committed directly by Devon rather than through any
-  of the twenty-one prompts. It's a Town Services landing page, linked from a board notice. Treat it
+  of the twenty-two prompts. It's a Town Services landing page, linked from a board notice. Treat it
   as yours by default — its fonts are vendored into `assets/fonts/` now (locked decision #51).
 - `assets/js/gvb-save.js` and `assets/js/gvb-save.test.mjs` — the shared save module
 - `assets/js/README.md`
@@ -46,10 +46,10 @@ You own these paths:
 - `CNAME` — still absent. Leave it absent unless Devon says otherwise.
 - `gvb-site-handoff-v10.md` — **which you write this round.** v1 through v9 are history; read them,
   never edit them.
-- `Claude Prompts/notes/**` — you read all twenty-one. You write none of them except your own.
+- `Claude Prompts/notes/**` — you read all twenty-two. You write none of them except your own.
 
 **Everything else is read-only to you.** Every project under `Projects/`, `Pathfinder/` and `Tools/`
-belongs to one of the other twenty prompts. If a project needs an internal fix, **it is not yours to
+belongs to one of the other twenty-one prompts. If a project needs an internal fix, **it is not yours to
 make** — note it in the handoff as backlog for that project's next session.
 
 **`Tools/` is capitalized on purpose** (locked decision #14).
@@ -64,7 +64,7 @@ make** — note it in the handoff as backlog for that project's next session.
   artifact (a save fixture, a committed file) the way Torchbearer's was for two rounds. If that
   artifact now exists, this is transcription per that project's own notes; if not, leave it.
 
-**Do only after the other twenty threads have finished and their notes files exist:**
+**Do only after the other twenty-one threads have finished and their notes files exist:**
 
 - Task one: apply every shared-file request.
 - Task two: bump the version line and write `gvb-site-handoff-v10.md`.
@@ -72,7 +72,7 @@ make** — note it in the handoff as backlog for that project's next session.
 If you are running before the others are done, do the independent check above, then stop and say
 clearly in your notes that tasks one and two are outstanding and need a second pass. **Do not write
 `gvb-site-handoff-v10.md` from an incomplete set of notes files** — a handoff that claims to
-summarise twenty-one sessions but saw nine is worse than no handoff, because the next session will
+summarise twenty-two sessions but saw nine is worse than no handoff, because the next session will
 trust it. This happened exactly this way last round and the first pass's own notes record why it
 correctly stopped rather than push through.
 
@@ -109,7 +109,7 @@ new beats written but unverified.
 
 ## Update from a fair environment — this refresh ran the whole suite on real Chrome/Playwright, not the Linux sandbox
 
-This prompt-22 refresh happened to run on a machine where `harness.mjs`'s non-Linux branch applies
+This prompt-23 refresh happened to run on a machine where `harness.mjs`'s non-Linux branch applies
 (real Chrome via Playwright, not forced software rendering). That's exactly the "fair environment"
 the section above calls for, so the three items it left open all got a real answer:
 
@@ -184,15 +184,15 @@ endings before comparing. Neither is done — flagging it as found, not fixed, s
 
 ## A new durable convention, starting this round: "Questions for Devon" blocks live in project prompts
 
-Prompt 22's refresh now embeds a project's genuinely open Devon-decisions directly in that project's
+Prompt 23's refresh now embeds a project's genuinely open Devon-decisions directly in that project's
 own prompt file, near the top, as a labeled "Questions for Devon" block — not just as prose in the
 handoff. This means: when you write `gvb-site-handoff-v10.md`, **check each project's own prompt file
 for a "Questions for Devon" block before summarizing that project's open decisions in the handoff** —
 that block is now the source of truth for what's still unresolved, not this file's memory of it. If
 Devon answers one directly (in conversation, in a commit, in a decision recorded here), that's a
-prompt-22 job to remove from the block and record durably — not yours to edit in a project's prompt
+prompt-23 job to remove from the block and record durably — not yours to edit in a project's prompt
 file, since that's outside your boundary. Just make sure the handoff records the answer clearly so
-prompt 22's next refresh can close it out.
+prompt 23's next refresh can close it out.
 
 **One remaining open question that's now centralized rather than scattered**: `Pathfinder/data/` as
 a shared interface or private to prompts 01-03 — raised a fourth and fifth time this round by
@@ -203,8 +203,8 @@ been raised five times across two rounds and is cheap for Devon to decide.
 ## Required reading
 
 1. This whole file.
-2. `Claude Prompts/README.md` — how the twenty-one-way split works and which prompt owns what.
-3. **Your own notes file from last round, `Claude Prompts/notes/21-general-site-improvements-notes.md`.**
+2. `Claude Prompts/README.md` — how the twenty-two-way split works and which prompt owns what.
+3. **Your own notes file from last round, `Claude Prompts/notes/22-general-site-improvements-notes.md`.**
    It records exactly what round 2 applied and refused, request by request — including its own
    partial-pass-then-full-pass structure. The archived copies under `Claude Prompts/archive/round-1/`
    and `Claude Prompts/archive/round-2/` hold everything from before that.
@@ -289,7 +289,7 @@ against the actual test file output, not against what an earlier note claimed.
 ## Task two: version line and handoff (after task one)
 
 - **Bump the version line** in `index.html` from `version 10` to `version 11`.
-- **Write `gvb-site-handoff-v10.md`**, assembled from all twenty-one notes files plus your own work.
+- **Write `gvb-site-handoff-v10.md`**, assembled from all twenty-two notes files plus your own work.
   Follow the shape of v9: a one-paragraph summary, numbered sections, a backlog-state table, a
   "things I found and deliberately did not fix" section, a locked-decisions section carrying the
   previous fifty-three forward and numbering new ones from 54, a suggested-next-session list, and a
@@ -303,7 +303,7 @@ Things that should end up in it, if the round bears them out:
 - Any answer to the `Pathfinder/data/` question, if Devon weighed in.
 - Any new locked decisions from 54 onward.
 - **A note on the "Questions for Devon" convention** (see above) — which project prompts carry one,
-  and whether any got answered and should be marked resolved for prompt 22's next refresh.
+  and whether any got answered and should be marked resolved for prompt 23's next refresh.
 
 ## Verification
 
@@ -331,7 +331,7 @@ these suites; only one at a time.
 
 ## Output: your notes file
 
-Write `Claude Prompts/notes/21-general-site-improvements-notes.md` **as well as**
+Write `Claude Prompts/notes/22-general-site-improvements-notes.md` **as well as**
 `gvb-site-handoff-v10.md`. The notes file records what you did; the handoff records what the whole
 batch did.
 

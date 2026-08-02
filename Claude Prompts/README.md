@@ -1,11 +1,11 @@
 # Claude Prompts
 
-Twenty-one self-contained prompts, one per project. Each is written to be pasted
+Twenty-two self-contained prompts, one per project. Each is written to be pasted
 into its own Claude Code session with no other context, and each is scoped so that
-**all twenty-one can run at the same time without touching the same file.**
+**all twenty-two can run at the same time without touching the same file.**
 
 Originally written after session 7 (site version 8). Round 1 (prompts 01–21) and round 2
-(prompts 01–21 again) have both completed. Prompt 22 has refreshed all twenty-one prompts
+(prompts 01–21 again) have both completed. Prompt 23 has refreshed all twenty-two prompts
 against round 2's result. The site is now at **version 10** with `gvb-site-handoff-v9.md` as
 its current handoff. Read that file, not v8 or earlier, for where the site actually stands.
 See "Rounds so far" below for what each round shipped.
@@ -16,7 +16,7 @@ A project prompt with genuinely nothing outstanding moves to `Claude Prompts/Sta
 its exact filename. This is **not** the same thing as `archive/round-N/`:
 
 - **`Stable/`** holds a *live* prompt that's still correct and still gets re-surveyed by every
-  future prompt-22 refresh. If a real change turns up later (a shared dependency shifts, Devon
+  future prompt-23 refresh. If a real change turns up later (a shared dependency shifts, Devon
   wants to expand scope, a regression appears), the file moves back to the live folder with a
   real task list again.
 - **`archive/round-N/`** holds a *frozen snapshot* of a past round — never re-read as a live
@@ -39,21 +39,21 @@ of burying it in a task description or only mentioning it in the handoff. As of 
   revisiting, and whether the QP threshold spacing matches the real written policy.
 - **19** (Schedule Visualizer) — how storage quota should be handled for `gvb-save.js` adoption.
 
-When Devon answers one, prompt 22's next refresh removes it from the block and records the
+When Devon answers one, prompt 23's next refresh removes it from the block and records the
 decision in the prompt's durable section (or as a new locked decision in the next handoff).
 
 ## The cycle
 
-1. **Run 01–20** (skipping anything currently in `Stable/` unless Devon wants to reopen it) in
+1. **Run 01–21** (skipping anything currently in `Stable/` unless Devon wants to reopen it) in
    separate chats, in any order, as many at once as you like. Each writes one file into `notes/`.
-2. **Run 21.** It applies every shared-file request from those notes files, bumps the version
-   line, and writes the next handoff. See "Run 21 last" below.
-3. **Run 22.** It archives the whole folder into `archive/round-N/`, surveys the repo for
-   ground truth, and rewrites the perishable parts of all twenty-one prompts — including moving
+2. **Run 22.** It applies every shared-file request from those notes files, bumps the version
+   line, and writes the next handoff. See "Run 22 last" below.
+3. **Run 23.** It archives the whole folder into `archive/round-N/`, surveys the repo for
+   ground truth, and rewrites the perishable parts of all twenty-two prompts — including moving
    projects into or out of `Stable/` and updating "Questions for Devon" blocks.
 4. **Round N+1**: back to step 1.
 
-Prompt 22 is the piece that makes this repeatable. Without it, the next round's threads get
+Prompt 23 is the piece that makes this repeatable. Without it, the next round's threads get
 told to vendor fonts that are already vendored and to expect counts that have moved.
 
 ## The files
@@ -80,44 +80,45 @@ told to vendor fonts that are already vendored and to expect counts that have mo
 | 18 | `18-name-picker.md` | `Tools/Name Picker.html`, `Tools/name-picker/` |
 | 19 | `19-schedule-visualizer.md` | `Tools/schedule-visualizer.html`, `Tools/schedule-browser.html` (both renamed in round 1; old dated/spaced paths survive as redirect stubs), `Tools/schedule/` |
 | 20 | `20-seating-chart-generator.md` | `Tools/Seating Chart Generator.html`, `Tools/seating-chart/` |
-| 21 | `21-general-site-improvements.md` | `index.html`, `404.html`, `newindex.html` (new this round — see locked decision #51), `assets/` (including `assets/fonts/`), `Tools/board-check/` (except `play-castle.mjs` and any project's own test folder), `CNAME`, the handoff files |
-| 22 | `22-refresh-prompts.md` | `Claude Prompts/**` only. Not a project — it refreshes the other twenty-one between rounds. Read-only everywhere else in the repo. |
+| 21 | `21-orbital.md` | `Projects/orbital/` — merged directly to `main` outside the normal process (PR #6); this is its first prompt, first round |
+| 22 | `22-general-site-improvements.md` | `index.html`, `404.html`, `newindex.html` (see locked decision #51), `assets/` (including `assets/fonts/`), `Tools/board-check/` (except `play-castle.mjs` and any project's own test folder), `CNAME`, the handoff files |
+| 23 | `23-refresh-prompts.md` | `Claude Prompts/**` only. Not a project — it refreshes the other twenty-two between rounds. Read-only everywhere else in the repo. |
 
 ## How the parallel safety works
 
 Every prompt names the paths it owns and declares the rest of the repo read-only.
 The four genuinely shared things — `index.html`, `assets/js/gvb-save.js`,
 `Tools/board-check/**`, and the generated `assets/previews` + `assets/og` — belong to
-prompt 21 and nobody else.
+prompt 22 and nobody else.
 
 When a project thread needs one of those changed, it does not change it. It writes
 the exact edit into a **Shared-file requests** section of its own notes file, and
-prompt 21 applies them all in one pass at the end.
+prompt 22 applies them all in one pass at the end.
 
 Two refinements worth knowing:
 
-- **`Tools/board-check/play-castle.mjs` belongs to prompt 05**, not 21. Castle
+- **`Tools/board-check/play-castle.mjs` belongs to prompt 05**, not 22. Castle
   Conundrum is its only consumer, so no other thread can conflict with it, and
   Castle work is unverifiable without being able to add beats to it.
 - **A project owns its own test suite**, including a browser-driven one that imports
   `Tools/board-check/harness.mjs`/`drive.mjs` read-only
   (`Projects/fourth-quarter/test/`, `Tools/name-picker/test/browser.mjs`,
   `Tools/seating-chart/test/drive-seating.mjs`, `Projects/integer-foundry/test/browser.mjs`, and
-  others). Those are per-project files even though they drive a browser the same way prompt 21's
+  others). Those are per-project files even though they drive a browser the same way prompt 22's
   own tooling does — **this matters concretely as of round 2**: a `puppeteer-core` compatibility
-  bug (see below) was fixed across every file prompt 21 owns, but the identical bug still exists
-  in at least three project-owned test files, because they're outside prompt 21's boundary. Each
+  bug (see below) was fixed across every file prompt 22 owns, but the identical bug still exists
+  in at least three project-owned test files, because they're outside prompt 22's boundary. Each
   is now its own project's task one.
 
-## Run 21 last
+## Run 22 last
 
-As of round 2, prompt 21 ran twice — a first pass that correctly stopped after only nine of
+As of round 2, prompt 22 ran twice — a first pass that correctly stopped after only nine of
 twenty project threads had posted notes, and a full pass once all twenty existed. The full pass
 fixed a live site-wide breakage (`newindex.html`'s offsite font hotlinks, `sync-social-tags.mjs`'s
 stale notice-count floor — both introduced by a direct commit outside the prompt process, neither
 caused by any of the twenty threads), fixed a `puppeteer-core` incompatibility that had broken
 `npm run games` for every game all round, applied every shared-file request, and wrote the next
-handoff. **Prompt 21's own file will stop rather than write a handoff from a partial set of notes
+handoff. **Prompt 22's own file will stop rather than write a handoff from a partial set of notes
 files** — this is by design, not a bug, and it happened exactly this way in round 2.
 
 **The board is at 17 notices, not 22.** Devon consolidated six standalone Tools notices (Name
@@ -145,7 +146,7 @@ per earlier locked decisions) before trusting either a pass or a fail.
 ## Notes files
 
 Each thread writes exactly one file into `Claude Prompts/notes/`, named after its
-prompt. Nobody else writes that file, so it never conflicts. Those twenty-one files
+prompt. Nobody else writes that file, so it never conflicts. Those twenty-two files
 are what each round's handoff (`gvb-site-handoff-v9.md` as of round 2) gets assembled from.
 Round 1's versions are preserved under `Claude Prompts/archive/round-1/notes/`, and round 2's
 under `Claude Prompts/archive/round-2/notes/`, since each new round's threads overwrite these
@@ -161,7 +162,7 @@ in round 2:
    couldn't see it. **Fixed in round 1** (`page.__shimmed`, `check-integrity.mjs`'s static
    source sweep — locked decision #44). As of round 2's refresh, a fresh repo-wide grep confirms
    genuinely zero live offsite requests remain anywhere in the site — including `newindex.html`,
-   which briefly reintroduced a hotlink mid-round-2 via a direct commit and was fixed by prompt 21
+   which briefly reintroduced a hotlink mid-round-2 via a direct commit and was fixed by prompt 22
    (locked decision #51).
 2. **The regression suites only drove the seven games.** **Fixed in round 1** — the Bestiary
    Gallery (3,894 offsite requests, the site's largest by three orders of magnitude) is deleted,
@@ -189,11 +190,14 @@ in round 2:
   projects (01, 15) moved to `Claude Prompts/Stable/` with nothing outstanding. This refresh also
   re-ran the whole suite on a fair (real Chrome/Playwright) environment rather than the Linux
   sandbox the round itself used, which resolved several things round 2 had correctly left as
-  "needs a fair environment to know for sure" — see `Claude Prompts/notes/22-refresh-prompts-notes.md`
+  "needs a fair environment to know for sure" — see `Claude Prompts/notes/23-refresh-prompts-notes.md`
   for the full account, including two real (non-environment) bugs found in shared test tooling.
   Full summary: `Claude Prompts/archive/round-2/README.md`.
-- **A 22nd project, not yet in the rotation.** `Projects/orbital/` merged directly to `main` (PR #6)
-  after this refresh's survey ran. No prompt file owns it yet, and it has no `gvb:social` block
-  (board notice count is genuinely 18 now, not 17). See the callout at the top of
-  `21-general-site-improvements.md`. Whoever runs prompt 21 next should decide whether it gets its
-  own prompt 23 or a stopgap.
+- **Orbital joined the rotation, and the whole numbering shifted to make room for it.** `Projects/orbital/`
+  merged directly to `main` (PR #6) mid-refresh, after this refresh's own survey had already run.
+  Devon's call: give it a real prompt rather than a stopgap. It's now `21-orbital.md` — first round,
+  no notes file yet. General Site Improvements moved from 21 to 22, and the refresh prompt moved
+  from 22 to 23 to make room. Every prompt's boundary-table references to these two files are
+  current as of this renumbering; if you see a stale "Prompt 21" meaning General Site Improvements
+  or "prompt 22" meaning the refresh process anywhere outside `archive/` or a notes file, that's a
+  miss worth fixing. Board notice count is 18 now, not 17, from Orbital's own new card.

@@ -40,9 +40,9 @@ Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Card title, description, and the version line (locked decisions #9, #31). Prompt 21. |
-| Every other file in `Tools/` | Prompts 17 through 20. `Tools/board-check/` is prompt 21's. |
-| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
+| `index.html` (the repo root one) | The board. Card title, description, and the version line (locked decisions #9, #31). Prompt 22. |
+| Every other file in `Tools/` | Prompts 17 through 20. `Tools/board-check/` is prompt 22's. |
+| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 22. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
@@ -174,7 +174,7 @@ quarters, CSV vs xlsx, the add-row button). What's left:
 
 Write `Claude Prompts/notes/16-final-grade-checker-notes.md`. Nobody else writes that file, so it
 can never conflict. It is the only record of this session that survives —
-`gvb-site-handoff-v*.md` gets assembled from all twenty-one of them each round.
+`gvb-site-handoff-v*.md` gets assembled from all twenty-two of them each round.
 
 Use these headings:
 

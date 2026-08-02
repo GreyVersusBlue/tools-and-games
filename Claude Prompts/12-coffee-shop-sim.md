@@ -22,10 +22,10 @@ Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 21. |
-| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
-| `assets/previews/corner-and-kettle.jpg`, `assets/og/corner-and-kettle.jpg` | Generated. Prompt 21. |
-| `Tools/board-check/**` | Shared dev tooling. Prompt 21. |
+| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 22. |
+| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 22. |
+| `assets/previews/corner-and-kettle.jpg`, `assets/og/corner-and-kettle.jpg` | Generated. Prompt 22. |
+| `Tools/board-check/**` | Shared dev tooling. Prompt 22. |
 | `Projects/fourth-quarter/**`, `Projects/Closing Time/**` | Prompts 07 and 06. Close siblings on the same save-module integration. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
@@ -73,7 +73,7 @@ edit will be silently overwritten. A wrong description is a board request.
   fixed this round in every shared `Tools/board-check` file, but **not in your own
   `test/drive-save.mjs`**, which has 8 separate instances of the identical pattern (confirmed by
   direct grep this refresh: lines 93, 160, 166, 226, 265, 344, 424, 530). That file is yours, not
-  `Tools/board-check`'s, so prompt 21's fix didn't touch it — see task one.
+  `Tools/board-check`'s, so prompt 22's fix didn't touch it — see task one.
 - **A real-time or timing-based assertion failing under this environment's Linux/software-rendered
   Chromium is inconclusive, not confirmed** (locked decision #53). This game is 2D DOM, not
   three.js, so less exposed, but worth knowing if `drive-save.mjs` behaves inconsistently.
@@ -126,7 +126,7 @@ Round 2 closed five real tasks in one session. What's left:
 
 1. **Fix `test/drive-save.mjs`'s own 8 instances of the `waitForFunction(fn, null, opts)` bug** —
    the same pattern that broke `npm run games` for every other project this round, in a file
-   that's yours and that prompt 21's fix didn't reach. `Tools/board-check/drive.mjs` exports
+   that's yours and that prompt 22's fix didn't reach. `Tools/board-check/drive.mjs` exports
    `waitFor(page, fn, opts)`, `wait(ms)`, and `textContent(page, sel)` as engine-aware
    replacements — import them (you already import other things from `harness.mjs`/`drive.mjs`
    presumably) and swap each `p.waitForFunction(fn, null, {timeout})` for `waitFor(p, fn,
@@ -142,7 +142,7 @@ Round 2 closed five real tasks in one session. What's left:
 4. **Per-station-content keyboard shortcuts** (a milk type, a syrup), only if full keyboard play
    becomes a real goal — the station tabs and Serve already have shortcuts; picks inside a station
    don't yet, and would need a per-tab legend since contents change per tab.
-5. **`npm run games` still doesn't cover this game** — unchanged from round 1, still prompt 21's
+5. **`npm run games` still doesn't cover this game** — unchanged from round 1, still prompt 22's
    file to touch if this game ever joins that suite.
 
 ## Verification
@@ -169,7 +169,7 @@ iteration.
 
 Write `Claude Prompts/notes/12-coffee-shop-sim-notes.md`. Nobody else writes that file, so it can
 never conflict. It is the only record of this session that survives — the next handoff gets
-assembled from all twenty-one of them.
+assembled from all twenty-two of them.
 
 Use these headings:
 

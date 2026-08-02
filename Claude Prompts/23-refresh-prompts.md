@@ -1,13 +1,13 @@
-# 22 — Refresh the prompts
+# 23 — Refresh the prompts
 
-You are not working on a project. You are maintaining the twenty-one prompts in
+You are not working on a project. You are maintaining the twenty-two prompts in
 `Claude Prompts/`, so they describe the site as it is now rather than as it was when they were
 written.
 
-**Run this between rounds**, after prompts 01–20 have finished and prompt 21 has applied their
+**Run this between rounds**, after prompts 01–21 have finished and prompt 22 has applied their
 shared-file requests and written the new handoff. Then round two uses the refreshed prompts.
 
-This is a general prompt, not a one-off. It handles all twenty-one files and it is designed to be
+This is a general prompt, not a one-off. It handles all twenty-two files and it is designed to be
 run again after every round. Nothing in it is specific to round one.
 
 ## Why this exists
@@ -57,7 +57,7 @@ not edit what you run.
    between rounds, and they have to reach every prompt they apply to.
 4. **Every file in `Claude Prompts/notes/`.** These tell you what each session intended, what it
    left, and what it wants next. Treat them as testimony, not as fact — see below.
-5. Prompt 21's notes file specifically, and its "Requests applied, and requests refused" section. A
+5. Prompt 22's notes file specifically, and its "Requests applied, and requests refused" section. A
    refused request is work that fell on the floor, and it needs to land in a prompt's task list or
    it is lost.
 
@@ -77,7 +77,7 @@ Write `Claude Prompts/archive/round-N/README.md` with:
 
 - Which round this was, and the site version line in `index.html` at the time (read it, don't
   assume — locked decision #9 bumps it every session).
-- Which of the twenty-one prompts produced a notes file and which did not.
+- Which of the twenty-two prompts produced a notes file and which did not.
 - One line per project: what shipped, drawn from its notes.
 
 Do not rename, renumber or reorganise anything in the live folder. `01` stays `01`. The numbering is
@@ -89,12 +89,12 @@ in the notes filenames and in Devon's head, and a renumber breaks both.
 did. Some of those claims will be wrong — not dishonestly, but because a thread ran out of context,
 or reported a plan as an outcome, or fixed something and broke something adjacent.
 
-For each of the twenty projects, open the files it owns and establish, from the file:
+For each of the twenty-one projects, open the files it owns and establish, from the file:
 
 - **Line count and byte size.** Every prompt quotes these.
 - **Offsite requests.** Grep for `fonts.googleapis.com`, `fonts.gstatic.com`,
   `cdnjs.cloudflare.com`, `cdn.jsdelivr.net`, and any other non-local host. The prompts contain a
-  per-page inventory of these and it should shrink every round. Prompt 21 was asked to add a static
+  per-page inventory of these and it should shrink every round. Prompt 22 was asked to add a static
   sweep of exactly this to `check-integrity.mjs` — **if it exists now, run it and use its output
   instead of grepping by hand**, and say so in the refreshed prompts so the next round uses it too.
 - **Storage keys and persistence.** Grep for `localStorage`, `sessionStorage`, `indexedDB`, and
@@ -140,7 +140,7 @@ is the single most valuable thing this step can surface, because everything down
 
 ## Step three: rewrite each prompt
 
-For each of the twenty-one, edit in place. Same filename, same number, same section order.
+For each of the twenty-two, edit in place. Same filename, same number, same section order.
 
 **Refresh these:**
 
@@ -149,7 +149,7 @@ For each of the twenty-one, edit in place. Same filename, same number, same sect
   longer true rather than hedging them; a prompt that says "it may still hotlink fonts" is worse than
   one that says nothing.
 - **The task list** — this is the biggest edit. Remove completed tasks. Promote whatever the notes'
-  **Next session** section put first. Add anything prompt 21 refused, and say it was refused so the
+  **Next session** section put first. Add anything prompt 22 refused, and say it was refused so the
   thread does not simply re-request it. Add anything your own survey turned up. Renumber so the
   headline task is task one.
 - **Every quoted count** — checks, beats, notices, assertions, units. Any figure in the prompts that
@@ -165,7 +165,7 @@ For each of the twenty-one, edit in place. Same filename, same number, same sect
 **Leave these alone unless something genuinely changed:**
 
 - The ownership boundary table, **except** where a project restructured and its paths moved, or where
-  a file was deleted, or where prompt 21 handed ownership of something to a project thread.
+  a file was deleted, or where prompt 22 handed ownership of something to a project thread.
 - House rules and locked decisions — **but add any new locked decisions** from the newest handoff to
   every prompt they apply to. This is the main durable change each round and it is easy to skip. If
   the handoff numbers a new decision 43 about where the site's own fonts live, every prompt that
@@ -202,13 +202,13 @@ Devon answers a question — in conversation, in a commit, in the handoff — re
 and record the decision in the prompt's durable section (or as a new locked decision in the next
 handoff) instead of leaving it to accumulate.
 
-**Prompt 21 needs the most work**, because most of its round-one task list was one-off site surgery.
+**Prompt 22 needs the most work**, because most of its round-one task list was one-off site surgery.
 Delete what is done. Its last two tasks — apply every shared-file request, then bump the version line
 and write the next handoff — are permanent and stay. Fill the gap with the site-level work the newest
 handoff's suggested-next-session list puts first, plus anything the twenty notes files asked for that
 is nobody's project.
 
-**Do not rewrite this file, prompt 22.** It describes a process, not a state. Archive it, leave it.
+**Do not rewrite this file, prompt 23.** It describes a process, not a state. Archive it, leave it.
 If the process itself needs changing, say so in your notes and let Devon decide.
 
 ## Step four: the special cases
@@ -238,7 +238,7 @@ If the process itself needs changing, say so in your notes and let Devon decide.
   and check whether `index.html` was updated to match. If the board still points at a file that moved,
   that is a broken link on a live site — **report it at the top of your notes** and put it in prompt
   21's task list. Do not fix it yourself.
-- **A project that got blocked** on a `gvb-save.js` hook prompt 21 refused: its task one is now
+- **A project that got blocked** on a `gvb-save.js` hook prompt 22 refused: its task one is now
   "here is what was refused and why, work within it or make the case again". Say which, so the thread
   does not spend the session re-litigating a decision.
 - **Two prompts that were told not to build the same shared thing** — 02 and 03, the Pathfinder twins
@@ -279,7 +279,7 @@ changed.
   most valuable thing left, and is every count something you personally ran?
 - **Grep the whole `Claude Prompts/` folder for the old counts** you replaced — "23 notices", "94
   checks", "235 units", "137 passed", whatever the previous figures were. A stale number surviving in
-  one file is the most likely failure of this session, because these figures repeat across twenty-one
+  one file is the most likely failure of this session, because these figures repeat across twenty-two
   files and it only takes one miss.
 - **Every prompt you moved to `Stable/` actually has nothing outstanding** — verified against the live
   repo yourself, not just carried forward the notes file's own claim. Every "Questions for Devon"
@@ -292,7 +292,7 @@ changed.
 
 ## Output: your notes file
 
-Write `Claude Prompts/notes/22-refresh-prompts-notes.md`.
+Write `Claude Prompts/notes/23-refresh-prompts-notes.md`.
 
 ```
 # Refresh — round N notes
@@ -311,7 +311,7 @@ Write `Claude Prompts/notes/22-refresh-prompts-notes.md`.
 - **Where the notes and the repository disagreed** — first, because it is the most valuable thing
   here. Any session that reported something not on disk, with both claims side by side. If there are
   none, say so plainly; that is worth knowing too.
-- **Fresh numbers** — a table of every count you ran, old value and new. This is what the twenty-one
+- **Fresh numbers** — a table of every count you ran, old value and new. This is what the twenty-two
   prompts now quote, so it needs to be right.
 - **What I changed in each prompt** — one or two lines each. Which tasks came off, which went on.
 - **Stable/active moves** — every project moved into `Stable/` this round (with what you verified to

@@ -26,9 +26,9 @@ Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Both `href`s are the plain, permanent names (locked decision #46). Prompt 21. |
-| Every other file in `Tools/` | Prompts 16, 17, 18, 20. `Tools/board-check/` is prompt 21's. |
-| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
+| `index.html` (the repo root one) | The board. Both `href`s are the plain, permanent names (locked decision #46). Prompt 22. |
+| Every other file in `Tools/` | Prompts 16, 17, 18, 20. `Tools/board-check/` is prompt 22's. |
+| `assets/js/gvb-save.js` and its test | The shared save module. Prompt 22. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
@@ -163,7 +163,7 @@ running them. Only one browser suite at a time.
 
 Write `Claude Prompts/notes/19-schedule-visualizer-notes.md`. Nobody else writes that file, so it
 can never conflict. It is the only record of this session that survives — the next handoff gets
-assembled from all twenty-one of these.
+assembled from all twenty-two of these.
 
 Use these headings:
 
