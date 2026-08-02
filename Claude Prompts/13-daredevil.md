@@ -1,33 +1,38 @@
 # 13 — Daredevil
 
-You are working on Daredevil, a narrative game on greyversusblue.com. At 6,888 lines and about
-347.6 KB it is still **the largest single-file project in the repo**. Round 1 made it completable
-for the first time in its history — see "What is actually here" below — and gave it a save,
-vendored fonts, a preview, and a test suite. This prompt is no longer the only record of this
-game: read `Claude Prompts/notes/13-daredevil-notes.md` first, it carries the plot synopsis and
-the full account of what round 1 found.
+You are working on Daredevil, a narrative game on greyversusblue.com. Round 2 restructured it
+from a 356 KB monolith into `Projects/daredevil/` (four files), now that a full regression
+suite existed to prove nothing broke — the split round 1 deliberately deferred. It also wired
+the previously-unreachable "Work the Crowd" minigame and fixed two continuity holes in the
+prose. Read `Claude Prompts/notes/13-daredevil-notes.md` first — it carries the plot synopsis
+and the full account of both rounds' work.
 
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Projects/daredevil_r4.html` (6,888 lines, 347.6 KB)
-- `Projects/daredevil/` — round 1 created this folder for the save module (`js/save.js`), the
-  vendored fonts, and the test suite (`test/`). It's yours; extend it freely, including the
-  restructure into `Projects/daredevil/index.html` the task list below asks for.
+- `Projects/daredevil/` — the real game now: `index.html` (505 lines — head, CSS, body,
+  one `<script type="module" src="./js/engine.js">`), `js/state.js` (the leaf module), `js/scenes.js`
+  (the story, as data — `SCENES`), `js/engine.js` (screens, rendering, hubs, minigames, epilogue,
+  boot), `js/save.js` (unchanged), `js/README.md` (new — documents this project's content schema),
+  `fonts/`, `test/` (`smoke-save.mjs`, `smoke-page.mjs`, `drive-daredevil.mjs`, `transcript.mjs`,
+  `transcripts/`)
+- `Projects/daredevil_r4.html` — **now a redirect stub**, not the game. `noindex`, a
+  `meta http-equiv="refresh"` to `daredevil/`, a canonical link. Keep it a stub; don't put game
+  logic back into it.
 
 **Everything else in the repo is read-only to you.** Read whatever you like; change nothing
-outside that list. Up to twenty other Claude sessions are working on other projects in this same
-repo right now, and this boundary is the only thing keeping that from becoming a merge fight.
+outside that list. Other Claude sessions may be working on other projects in this same
+repo at the same time, and this boundary is the only thing keeping that from becoming a merge fight.
 
 Off-limits in particular:
 
 | Path | Who owns it |
 | --- | --- |
-| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 21. |
+| `index.html` (the repo root one) | The board. Card title, description, `data-new`, `data-preview`, version line (locked decisions #9, #31). Prompt 21. Its card now points at `Projects/daredevil/` directly — applied this round, see below. |
 | `assets/js/gvb-save.js` and its test | The shared save module. Prompt 21. |
-| `assets/previews/**`, `assets/og/**` | Generated. Prompt 21. This game has both now — `daredevil.jpg` in each, applied by prompt 21 this round. |
-| `Tools/board-check/**` | Shared dev tooling. Prompt 21. |
+| `assets/previews/**`, `assets/og/**` | Generated. Prompt 21. `daredevil.jpg` in each, recaptured this round against the new restructured path. |
+| `Tools/board-check/**`, including `games.mjs`'s Daredevil recipe (repointed at `/Projects/daredevil/index.html` this round) | Shared dev tooling. Prompt 21. |
 | `gvb-site-handoff-v*.md` | History. Read them. Never edit them. |
 | Every other project | Not yours. |
 
@@ -43,180 +48,136 @@ edit will be silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file.
-2. `Claude Prompts/notes/13-daredevil-notes.md` — round 1's session notes for this exact project,
-   the largest single find of the round. It has the only plot synopsis this game has ever had
-   written down, plus the full account of the five wiring bugs that kept the game from being
-   finished by anyone and how each was fixed. Read it before you touch the file.
-   `Claude Prompts/archive/` holds every earlier round's prompts and notes, if you need to go back
-   further than that.
-3. `gvb-site-handoff-v8.md`, all of it. §9 for locked decisions 43 through 50, especially #44 (the
-   `page.__blocked` vs `page.__shimmed` distinction — this project's own round-1 notes flagged the
-   exact measurement hole it fixes). §2 is the correction to v7 §5's "zero offsite requests
-   site-wide" claim; cite §2, not v7 §5, when that claim comes up.
-4. `assets/js/gvb-save.js` and `assets/js/README.md`. You already have a working adoption at
-   `Projects/daredevil/js/save.js` — read it alongside the module before changing either.
-5. `Projects/torchbearer/content-authoring-guide.md` — the same-repo precedent for a content
-   format with an authoring contract, relevant to the restructure task below. (This path moved
-   this round; it used to be `Projects/Torchbearer files/content-authoring-guide.md`.)
+2. **`Claude Prompts/notes/13-daredevil-notes.md`** — round 2's session: the restructure (with a
+   byte-for-byte diff against the original proving nothing but the intended lines changed), Work
+   the Crowd placed at the Milestone 1 stunt aftermath, and two Ruthie-continuity prose fixes found
+   by grepping a real transcript. Round 1's notes are archived at
+   `Claude Prompts/archive/round-1/notes/13-daredevil-notes.md` — the only plot synopsis this game
+   has ever had, and the five wiring bugs that made it unfinishable before round 1.
+3. `gvb-site-handoff-v9.md` §6 (your restructure's board `href`/`games.mjs` fix, applied) and §10
+   (locked decisions #51-53).
+4. `assets/js/gvb-save.js` and `assets/js/README.md`. Your adoption is at
+   `Projects/daredevil/js/save.js` — unchanged by the restructure.
+5. `Projects/daredevil/js/README.md` — new this round, documents why `state.js` is its own file
+   (a circular-import trap between `scenes.js` and `engine.js` otherwise) and the content schema,
+   the same way `Projects/torchbearer/content-authoring-guide.md` does for that project.
 
 ## House rules for every file in this repo
 
 - **No build step.** Static files served by GitHub Pages from the repo root at
   `greyversusblue.com`. Plain ES modules, no bundler, no transpiler, no runtime npm dependency.
-- **Zero offsite requests.** Confirmed for this page — seven fonts vendored, no hotlinks left, see
-  below.
+- **Zero offsite requests.** Fonts vendored in `Projects/daredevil/fonts/`, paths now relative
+  (siblings of `index.html`, not a subfolder of it — one substantive markup change the restructure
+  made).
 - **Each project vendors its own copy; nothing is shared across projects** (locked decision #17).
-- **Never change a storage key** (locked decision #36). Yours is `daredevil-save-v1` — that name
-  is permanent now.
+- **Never change a storage key** (locked decision #36). Yours is `daredevil-save-v1`.
 - **`migrate` is for version drift; `repair` is for every load** (locked decision #37).
-- **Windows is the dev machine** (v7 §7). An absolute `import()` path needs `pathToFileURL` — a
-  bare `C:\...` is read by Node as URL scheme `c:` and refused. Don't lean on shell brace
-  expansion either (v6 §5).
+- **Windows is the dev machine** (v7 §7). Absolute `import()` paths need `pathToFileURL`.
 - **A check that only prints is a check that gets ignored** (locked decision #13).
 - **Verify a guard-rail by reintroducing the bug it guards** (locked decision #34).
 - **Assert against the DOM for anything that just happened, and against the save only for what a
   reload has to survive** (locked decision #39).
 - **`page.__blocked` means "offsite and refused"; `page.__shimmed` means "offsite and fulfilled
-  locally instead"** (locked decision #44). An empty `__blocked` no longer proves a page is clean —
-  `check-integrity.mjs`'s static source sweep is the check that scales past what a browser suite
-  happens to drive, and it's what this project's own round-1 notes asked for.
+  locally instead"** (locked decision #44). `check-integrity.mjs`'s static source sweep is the
+  check to trust.
+- **A literal `</style>`/`</script>` inside a comment inside that same element silently closes it
+  early** — HTML's tokenizer scans for the raw substring regardless of comment syntax. This bit
+  Pathfinder Campaigns' own session this round; worth knowing if you ever write a comment about
+  "the closing tag" anywhere in this project's markup.
 
 ## What is actually here
 
-6,888 lines, about 347.6 KB, in `Projects/daredevil_r4.html`, plus a `Projects/daredevil/` folder
-holding the save module, the vendored fonts, and the test suite. Title still just "DAREDEVIL."
-Tagged `Narrative` on the board, sealed with the flame glyph. Preview and OG image both exist now
-(`assets/previews/daredevil.jpg`, `assets/og/daredevil.jpg`), applied by prompt 21 this round.
+**`Projects/daredevil_r4.html` is now a redirect stub, not the game.** The real game is
+`Projects/daredevil/`, four files: `index.html` (505 lines), `js/state.js` (42 lines — `GS`,
+`STAT_LABELS`, `N`/`D`/`C`/`NF`), `js/scenes.js` (4,303 lines, 216.8 KB — the story, as data),
+`js/engine.js` (2,113 lines, 109.5 KB — everything else). Total across the four is about 1.2%
+bigger than the original single file — the split was done by slicing at confirmed boundaries and
+diffing each new file byte-for-byte against the corresponding slice of the original, not
+re-typing. Two scene ids were renamed while already touching every line
+(`m1_earl_card_stub`→`m1_earl_card`, `m3_end_stub`→`m3_aftermath`) — both finished scenes whose
+names no longer described stubs.
 
-**This is now a completable, tested game, all eight endings reachable — it was not before.**
-Before round 1 the game could not be finished by anyone, by any route, ever: every run stopped at
-the same place, the Milestone 3 pre-stunt choice, about 60% of the way through. Five independent,
-completely silent wiring bugs caused it: every free-roam hub gated its milestone button on an
-evening counter that couldn't reach zero on most paths; a minigame id (`_minigame_stunt_m3`) was
-referenced by four choices and answered by nothing; two hub cards were gated on flags their own
-scenes never set (one looped forever, one hid six finished scenes); `GS.rels.pete` was read in
-five places and assigned in none, which silently deleted the "mentor the apprentice" ending from
-the choice list for the game's entire history; and three of four stunt-result handlers read
-`res.outcome` instead of the real field, `res.result`, routing every stunt from Milestone 3 on to
-its failure branch regardless of how well it was ridden. **All five are fixed.** 73 scenes, 88.1
-KB, 42% of the scene database, were unreachable before this round and are reachable now, and the
-eighth ending now appears. Full account and the plot synopsis: `Claude Prompts/notes/13-daredevil-notes.md`.
+**The board points straight at the new path now.** `index.html`'s card `href` is
+`Projects/daredevil/`, not the old `daredevil_r4.html`; `games.mjs`'s recipe URL matches. Both
+applied by prompt 21 this round. The old URL still resolves via the redirect stub, so nothing that
+bookmarked it 404s.
 
-**It has a save.** `Projects/daredevil/js/save.js`, an ES module on `assets/js/gvb-save.js`. Key
-**`daredevil-save-v1`** (locked decision #36 — it does not change). The save bar is on the hub, not
-just the title screen; the title screen has import and a Continue button. `gvb-save.js` itself
-picked up five backward-compatible fixes this round from other adopters — construction no longer
-throws in a storage-blocking browser, `load()`'s `getItem` call is guarded, `fresh(...args)` /
-`reset(...args)` forward arguments to a `defaults` factory, there's a new `clear()`, and
-`mountSaveBar` gained `filename`/`labels` options. None of these were this project's own request;
-they're just available now if useful.
+**"Work the Crowd" is placed, not deleted.** 90 finished lines (three crowd moods, an energy meter,
+a nerve gate at 45) had no call site through round 1. It now fires on the one Milestone 1 stunt
+outcome where Duke is shown actively performing for the crowd (`m1_stunt_perfect`) — the other four
+outcomes (shaky, chaos, two crash tiers) go straight to Earl as before, since none of their prose
+reads as a crowd-working beat. It's **upside-only**: winning adds +1 Showmanship, losing changes
+nothing, the story graph is identical either way. `drive-daredevil.mjs`'s `autopilot()` gained a
+branch to answer this minigame's choice-based rounds (a `get correctCall()` getter on the game
+object), closing a gap that would have silently broken `smoke-page.mjs`'s "every stunt the autopilot
+was asked to land, it landed" assertion the moment this became reachable.
 
-**Zero offsite requests.** Seven fonts vendored into `Projects/daredevil/fonts/` (100.3 KB: Alfa
-Slab One 400, Oswald 400/500/600/700, Space Mono 400/700). `grep -c fonts.googleapis.com
-Projects/daredevil_r4.html` returns 1, but read the line before trusting the count: it's a comment
-recording the history of the fix, not a live hotlink. `check-integrity.mjs`'s static offsite sweep
-(locked decision #44, new this round) is the check to trust now instead of a hand grep or
-`page.__blocked` — it's what closed the exact measurement hole this project's own round-1 notes
-flagged (v7 §5's "zero offsite requests site-wide" claim was wrong; the correction is
-`gvb-site-handoff-v8.md` §2, cite that instead of v7 §5 from here on).
+**Two Ruthie-continuity holes are fixed**, found by grepping a real "Ruthie never established"
+transcript rather than re-deriving from code: `m5_retire_clean` and `fr4_night_ride` both used to
+reference things Ruthie said even on runs where she was never established. Both now branch on
+`GS.rels.ruthie`, prose-only, no mechanics change.
 
-**A test suite exists, in `Projects/daredevil/test/`, which this project owns:**
-`smoke-save.mjs` (53 assertions, no browser), `smoke-page.mjs` (44 assertions, real browser —
-route-coverage checking and a loop detector included), `drive-daredevil.mjs` (the driver,
-including an `autopilot()` that can win the stunt minigame from telemetry), and `transcript.mjs`
-(plays a full run and writes every line and choice offered to `test/transcripts/`). Both suites
-still pass fresh: 53/53 and 44/44.
+**A fourth fix, found while tracing `GS.town` for the restructure**: `patchDynamicScenes()` missed
+2 of 5 places a custom hometown gets baked into a scene at load time — including `cold_open_01`,
+the very first line of the game. Fixed; all 5 now patched.
 
-**The ending screen no longer says "END OF BUILD."** It reads "THE END" / "A Life on Two Wheels."
-
-**The `_r4` in the filename is still there, and the URL hasn't moved.** Round 1 deliberately left
-the restructure for later, on the reasoning that a 6,700-line branching narrative shouldn't be
-refactored until there's a test suite that can prove nothing broke — see the task list below. So
-`Projects/daredevil_r4.html` is still the board's `href` and no shared-file request is outstanding
-for it.
+**Both test suites still pass, against the new path**: `smoke-save.mjs` (53/53) and `smoke-page.mjs`
+(44/44, up from 44 checks but now including a fourth stunt-run result for Work the Crowd).
+`transcript.mjs`'s clean (89 scenes) and rough (78 scenes) baselines diffed line-for-line before
+and after every change this round — every hunk was an intended change, nothing else moved.
 
 ## Your task
 
-Round 1 was the first session ever to touch this file. It found the five wiring bugs that made
-the game unfinishable and fixed all of them, gave it a save and a test suite, vendored its fonts,
-and wrote the plot synopsis that had never existed. That work is done — see "What is actually
-here" above and `Claude Prompts/notes/13-daredevil-notes.md` for the full account. This round picks
-up where it left off.
+Round 2 closed the restructure, Work the Crowd, and the Ruthie holes — the top three items from
+the previous round. What's left:
 
-**Task one: the restructure into `Projects/daredevil/`, now that it's safe.** Round 1 deliberately
-did not do this, and said why in its own notes rather than just leaving it undone: "the game had
-five bugs that made it impossible to finish, and it had no test of any kind... the right order is:
-make it finishable, prove it with a suite that plays it end to end, then move the furniture. Both
-halves of that are now true, so the next session can do it with a before-and-after it can trust."
-Both halves are true now, so this is the job. Build `Projects/daredevil/index.html` plus `js/` for
-the engine and the story as data — 62% of the current file (208.3 KB) is the `SCENES` object, and a
-full run only reads 43% of it, which is the number that makes the split worth doing.
-`Projects/torchbearer/content-authoring-guide.md` is the same-repo precedent for a content format
-with an authoring contract (this path moved this round; it used to be
-`Projects/Torchbearer files/content-authoring-guide.md`). Before you touch anything, run
-`node Projects/daredevil/test/transcript.mjs clean` and `... rough` for fresh baseline transcripts,
-restructure, then run both again and diff them line for line — `smoke-page.mjs` already plays both
-paths, and a lost branch during a refactor gives you no error at all, just a choice that quietly
-stops being offered. The URL cost is real: `/Projects/daredevil_r4.html` stops resolving. That's a
-board `href` Shared-file request, not something to apply yourself — write the exact new path into
-your notes. Drop the `_r4` suffix at the same time.
+1. **Re-measure gzipped transfer size before deciding whether to split `scenes.js` further into
+   fetched chunks** (locked decision #42: measure before deciding an asset is too heavy).
+   `scenes.js` alone is 208 KB uncompressed, loaded eagerly by `engine.js`'s import — but 344 KB of
+   HTML with no images gzips to much less than the raw number suggests, and nothing this round
+   changed that math. Find out what a player's browser actually fetches before treating the size as
+   a problem.
+2. **A broader absent-relationship prose sweep.** Round 2 checked both existing transcripts for
+   every "Ruthie" mention and fixed the two that read wrong. It did not write new transcript plans
+   specifically targeting every other absent-relationship combination (no-Cal, no-Pete, no-Earl) to
+   hunt for the same class of bug elsewhere. `transcript.mjs` with a plan that skips a different
+   relationship each time is the method — it found two real bugs this round using exactly this
+   approach on Ruthie alone.
+3. **Minigame touch controls at 375px** — verify on an actual touch device or with real
+   touch-emulation clicks, not just a read of the event-binding code. Round 2 looked at `bindHold()`
+   in `engine.js` while moving it and found it already uses pointer events with `touch-action:none`
+   set, which may already work better than round 1's note suggested — but this was not tested on an
+   actual touch device, so don't assert it's fixed on code-reading alone.
+4. **Contrast measurement.** Still not measured, two rounds running. `--cream-faint` (#7a684c) on
+   the dark panels is the one to check first.
+5. **Place or delete lower-value cosmetic-adjacent work**: none currently flagged beyond the above.
 
-**Task two: place or delete "Work the Crowd."** 90 finished lines — three crowd moods, an energy
-meter, a nerve gate at 45 — and no `launchMinigame('crowd')` call site anywhere in the file. Round 1
-left it alone on purpose: the other five bugs each had one obviously-intended wiring, this one
-doesn't, and guessing where a finished minigame belongs is a story decision, not a bug fix. The
-plausible homes are the Milestone 1 stunt aftermath or the Danny head-to-head in FR2. Make the call
-either way and say why.
-
-**Task three: a prose pass for absent characters.** `m5_retire_clean` says "He told Ruthie last.
-She already knew" whether or not Ruthie was ever established, and she's absent on five of the six
-Milestone 1 answers to Earl — the epilogue's relationship roster correctly omits her, so the game
-contradicts itself on its own last screen. Round 1 found this one by reading a transcript of a run
-without her. `Projects/daredevil/test/transcript.mjs` with a plan that skips a relationship is how
-to find the rest, since the whole back half of the game was written for a run nobody could actually
-reach until this round.
-
-Lower-value items, roughly in order:
-
-- **Minigame touch controls at 375px.** This is the site's best mobile candidate — no horizontal
-  overflow and no console errors at that width already, per round 1's check — but the Stunt Run's
-  pedals and D-pad haven't had a dedicated touch pass.
-- **Contrast.** Round 1 fixed focus visibility but didn't measure the palette's contrast ratios.
-  `--cream-faint` (#7a684c) on the dark panels is the one to check first.
-- **The six-way Earl response at the fair.** Five of six answers lock Ruthie out for the whole
-  game, and the option that keeps her, "I need to talk to someone first," reads as the least
-  decisive one. That's a design problem, not a bug — round 1 left it rather than quietly
-  rebalancing someone else's story, and the same call applies here.
+**The six-way Earl response at the fair remains a design question, not a bug** — five of six
+answers lock Ruthie out for the whole game. Round 1 and round 2 both left it as Devon's call, not
+something to quietly rebalance.
 
 ## Verification
 
-A suite already exists in `Projects/daredevil/test/`, and it is what protects the restructure —
-`smoke-save.mjs` (53 assertions, no browser) and `smoke-page.mjs` (44 assertions, real browser,
-route-coverage check and loop detector included) both still pass fresh, confirmed this round:
-53/53 and 44/44. If you touch the engine, run them, don't assume.
+A suite exists in `Projects/daredevil/test/` and protects any further edit:
 
-- **Before restructuring, get fresh baseline transcripts** — `node
-  Projects/daredevil/test/transcript.mjs clean` and `... rough` — if you don't already have
-  current ones. Restructure, then run both again and diff them line for line. A narrative game
-  that silently loses a branch during a refactor gives you no error at all — the choice just isn't
-  there any more, and nothing but the diff catches that.
-- **Run `smoke-save.mjs` and `smoke-page.mjs` after any change**, engine or content. Both exit
-  non-zero on failure (locked decision #13).
-- If you touch the save, also test the round trip by hand: save mid-story, reload, confirm you are
-  where you were. Then export, clear storage, import, confirm again. Then feed it a corrupt file
-  and confirm it is refused.
-- `grep -c fonts.googleapis.com Projects/daredevil_r4.html` → 1 right now, and it's a comment
-  recording the history of the fix, not a live hotlink — read the line before trusting the count.
-  `page.__blocked` is **not** the check either; `check-integrity.mjs`'s static offsite sweep is
-  (locked decision #44).
-- `cd Tools/board-check && npm run check` → currently 331 units checked, 0 collisions across nine
-  widths, tightest vertical gap 9.2px. The unit count moves every round as other projects land
-  files — 0 collisions is what to hold yourself to, not the raw count.
-- `npm run social:check` → 22 notices, 22 already current. Drift on your page means you edited
-  inside the `gvb:social` markers.
-- `npm run games` does not exercise this project — Daredevil has no `play-games.mjs` recipe for
-  regression beats, only a preview capture recipe (see the shared-file request in
-  `Claude Prompts/notes/13-daredevil-notes.md`). Its own suite above is the regression check.
+- `node Projects/daredevil/test/smoke-save.mjs` → **53 passed, 0 failed**.
+- `node Projects/daredevil/test/smoke-page.mjs` → **44 passed, 0 failed**.
+- **Before any story-logic edit, get fresh baseline transcripts** — `node
+  Projects/daredevil/test/transcript.mjs clean` and `... rough` — then diff after, line for line.
+  A narrative game that silently loses a branch during an edit gives you no error at all.
+- If you touch the save, test the round trip by hand: save mid-story, reload, confirm you are
+  where you were. Export, clear storage, import, confirm again. Feed it a corrupt file, confirm
+  refusal.
+- `grep -c fonts.googleapis.com Projects/daredevil/index.html` → should be 0 (the old file had a
+  historical comment; check whether it carried over during the restructure and clean it up if the
+  literal hotlink text still appears anywhere).
+- `cd Tools/board-check && npm run check` → as of this refresh: **335 units checked, 0 broken, 0
+  collisions across nine widths, tightest vertical gap 3.5px.**
+- `npm run social:check` → **17 notices, 17 already current** (dropped from 22 this round — a real,
+  correct count, not a regression).
+- `npm run games` doesn't have a regression-beat recipe for this project, only a preview-capture
+  one — your own suite above is the regression check. If a future session wants beats added, that's
+  a shared-file request into `play-games.mjs`, not something to do yourself.
 - Locked decision #34: for every guard-rail you add, break the thing on purpose first and watch it
   fail.
 
@@ -227,8 +188,8 @@ them. Only one at a time.
 ## Output: your notes file
 
 Write `Claude Prompts/notes/13-daredevil-notes.md`. Nobody else writes that file, so it can never
-conflict. It is the only record of this session that survives — `gvb-site-handoff-v8.md` gets
-assembled from all twenty-one of them.
+conflict. It is the only record of this session that survives — `gvb-site-handoff-v*.md` gets
+assembled from all twenty-one of them each round.
 
 Use these headings:
 
@@ -243,21 +204,18 @@ Use these headings:
 ## Next session
 ```
 
-Note the extra first heading, which only this prompt asks for. Round 1 wrote the first-ever
-description of this game into that section — premise, run length, endings, branch structure, state
-of the writing. Carry it forward rather than rewriting it from nothing, and update whatever the
-restructure changes (byte and line counts, mainly, if the split moves the story into its own
-file).
+Note the extra first heading, which only this prompt asks for. Carry the plot synopsis forward
+from round 1's notes rather than rewriting it from nothing, and update whatever changed (file
+paths, mainly, if you touch the structure again).
 
-- **What changed** — files touched and why, in prose, with paths. Old and new paths if you renamed.
-  Byte counts for the content split, if you do it.
+- **What changed** — files touched and why, in prose, with paths. Old and new paths if you
+  renamed anything.
 - **What I verified** — actual commands, actual output, and the paths you played. "Should work" is
   not verification.
-- **Shared-file requests** — a new board `href` if you restructured, a preview recipe if you want
-  one, any `gvb-save.js` gap with the exact hook signature. Applicable blind.
+- **Shared-file requests** — a new board `href` or `games.mjs` recipe change if you restructure
+  again, any `gvb-save.js` gap with the exact hook signature. Applicable blind.
 - **Deliberately not done** — something you looked at, understood, and chose to leave, with the
-  reason. Round 1's list was long because nobody had verified this file before; say why for
-  whatever you leave alone this round too.
+  reason.
 - **Next session** — ordered by value per effort.
 
 ## Writing style

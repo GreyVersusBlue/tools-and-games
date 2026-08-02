@@ -47,19 +47,19 @@ description is wrong, that is a board request.
 ## Required reading
 
 1. This whole file.
-2. `Claude Prompts/notes/04-aphelion-notes.md` — round 1's session notes for this
-   exact project: what shipped (fonts vendored, `gvb-save.js` adopted, EVA content
-   added, arrow-key look added), what was deliberately left, and what it flagged for
-   next session. `Claude Prompts/archive/` holds every earlier round's prompts and
-   notes, if you need history beyond that.
+2. **`Claude Prompts/notes/04-aphelion-notes.md`** — round 2's session: built the EVA distance
+   readout (task one from the previous round), verified it live against the real POI positions.
+   Round 1's notes are archived at `Claude Prompts/archive/round-1/notes/04-aphelion-notes.md` —
+   fonts vendored, `gvb-save.js` adopted, the original EVA content and arrow-key look.
 3. `Projects/aphelion/README.md`.
 4. `gvb-site-handoff-v4.md` §1 — how three.js got vendored into this project, and
    locked decisions #17 and #18 about `libs/` layout.
 5. `gvb-site-handoff-v7.md` §3 (what the regression suite drives in this game), §4
    (`games.mjs`), §6 (Chrome throttling).
-6. `gvb-site-handoff-v8.md` §9 for the full locked-decisions list, including new
-   decisions 43–50 (§1–§2 explain the notice-count correction and the
-   `page.__blocked`/`page.__shimmed` distinction behind #44).
+6. `gvb-site-handoff-v9.md` §10 for the full locked-decisions list, including #51-53, new this
+   round — **#53 in particular matters here**: this environment's forced Linux/software-rendered
+   Chromium runs three.js real-time movement far slower and less consistently than the games'
+   physics assume, which affects any timing-sensitive assertion in this project's own suite.
 7. `gvb-site-handoff-v5.md` §4 and `gvb-site-handoff-v6.md` §6 — how these games get
    driven from a script, and locked decision #35 about camera rotation.
 8. `assets/js/gvb-save.js` and `assets/js/README.md` — the module Aphelion already
@@ -125,6 +125,17 @@ description is wrong, that is a board request.
   Relevant here specifically: `data/poi.json` and `data/logs.json` are content files,
   not schema, and a save written before this round's extra POIs and log entries
   existed still has to load cleanly against the current build.
+- **A real-time movement or physics assertion failing under this environment's Linux/software-
+  rendered Chromium is inconclusive, not confirmed** (locked decision #53). Measured directly this
+  round on a different three.js game (Castle Conundrum): ten 400ms held-key bursts covered 0.78m
+  against a ~20m expectation, several bursts covered exactly zero. This project's own EVA-signal
+  verification in round 2 worked around it by timing turns to the exact documented turn rate
+  rather than trusting a fixed wait — worth doing the same if you script movement here.
+- **`Tools/board-check`'s `waitForFunction`/`waitForTimeout`/`textContent` engine mismatch is fixed**
+  (locked decision #52's neighbor, `gvb-site-handoff-v9.md` §3) — `npm run games` no longer crashes
+  outright on every game the way it did for most of round 2. It's still a moving target in this
+  sandbox per #53 above; a representative run this round was 119 checks, 8 failed, all failures
+  timing-related, none in this project specifically.
 
 ## What is actually here
 
@@ -168,44 +179,36 @@ state. WASD movement never required pointer lock; mouse-look does, so a browser 
 policy that blocks pointer lock used to leave a player able to walk in a straight
 line and nothing else. This closes that gap without a second full input scheme.
 
+**The EVA distance readout is built, round 2.** `#signal` in the HUD (under `#inv`) shows the
+unscanned POIs' distances, ascending, e.g. `SALVAGE 13m · 25m · 38m`, and goes empty once every
+site is scanned or the player is back inside. **Distance only, no bearing/compass** — deliberately
+the more conservative of the two shapes this prompt used to offer, so a player still has to
+actually explore rather than get pointed straight at the answer. Verified live against the real
+POI positions in `data/poi.json` (hand-checked distances matched to the metre, live-updated while
+walking).
+
 ## Your task
 
 Round 1 vendored the fonts, adopted `gvb-save.js`, and ran a full fun/performance/
-audio/accessibility audit, building the two items that audit found (extra EVA
-content, arrow-key look). Nothing urgent is left on the core game — that is the
-audit's own conclusion, not an assumption. What remains is two low-urgency items the
-notes explicitly flagged and explicitly did not build, in the order the notes put
-them. Neither is required; both are "nice to have" until something makes one of them
-actually matter.
+audio/accessibility audit. Round 2 built the EVA distance readout that audit flagged as optional.
+**Nothing urgent is left on the core game.** What remains is one low-urgency item the notes have
+carried across two rounds now, still with no forcing signal:
 
-**Task one: a direction hint for the EVA points of interest, if you decide it's
-worth it.** There are 3 POIs scattered 20+ units out during EVA with nothing pointing
-toward them — a faint compass tick or distance readout in the HUD is the shape round
-1's notes suggested. Round 1 deliberately did not build this: the audit's finding was
-"too little content," not "hard to find," and there's no evidence that finding them
-blind is actually a problem rather than part of the point of drifting. Form your own
-opinion by playing it first. If you build it, keep it subtle enough that it doesn't
-turn EVA into a waypoint-chase — that would be solving a problem nobody has
-demonstrated exists.
+1. **Touch/gamepad input, if this ever needs to run somewhere pointer lock
+   isn't an option** (a tablet, say). A full second input scheme, not a HUD addition. Round 1's
+   arrow-key look closed the specific gap the original audit found (pointer lock denied leaves a
+   player able to walk in a straight line and nothing else); this would be a genuine mobile-support
+   feature. Not attempted in either round. **Only worth it if there's an actual reason this needs
+   to run on a touch device** — still no such reason as of this refresh.
+2. **Optional: a `play-games.mjs` regression beat for the new `#signal` readout**, if it earns its
+   keep. Round 2's notes have the exact assertion body drafted (checks `#signal` reads
+   `/^SALVAGE \d+m/` once in EVA) — it needs the airlock-entry beat added to the shared suite first,
+   which is prompt 21's file, not yours. Flag it as a shared-file request rather than trying to
+   land it yourself.
 
-**Task two: touch/gamepad input, if this ever needs to run somewhere pointer lock
-isn't an option** (a tablet, say). Bigger lift than task one — a full second input
-scheme, not a HUD addition. Round 1's arrow-key look closed the specific gap the
-audit found (pointer lock denied leaves a player able to walk in a straight line and
-nothing else); this would be a genuine mobile-support feature, not an accessibility
-patch. Not attempted last round. Only worth it if there's an actual reason this needs
-to run on a touch device.
-
-**If you do either:** keep the same discipline round 1 used — measure before
-changing anything performance-related (draw calls were measured at ~104/frame at
-spawn last round, nothing to optimize), and don't reach for the README's "Extending
-it" bigger swings (new ship systems, a second plant, a crafting loop) — those are
-out of scope for incremental work here, not a backlog.
-
-**If neither task seems worth the session**, that's a legitimate finding — say so in
-your notes rather than inventing scope. The audit already covered fun, the
-data-driven extension points, audio, and performance, and round 1 found nothing else
-worth flagging.
+**If neither seems worth the session**, that's a legitimate finding — say so in
+your notes rather than inventing scope. Two rounds of audit have covered fun, the
+data-driven extension points, audio, and performance, and nothing else has surfaced.
 
 ## Verification
 
@@ -213,15 +216,19 @@ worth flagging.
   decision #25). A hidden pane doesn't composite WebGL, so rAF never fires and every
   frame-dependent check *hangs* rather than failing loudly. `launch({ headed: true })`
   in `Tools/board-check/harness.mjs` is the recipe; v5 §4 explains it.
-- `cd Tools/board-check && npm run games` is the regression suite. It should still
-  report 126 checks, 0 failed, across all six games it drives. **Run it after every
-  structural change** — the whole point of that suite is that this game's Node-level
-  correctness says nothing about whether the wiring works in a browser.
+- `cd Tools/board-check && npm run games` is the regression suite, and it's a moving target in
+  this environment right now (locked decision #53) — a representative round-2 run was 119 checks,
+  8 failed, all in other projects' timing-sensitive assertions, none in this project's own 9. Run
+  it after every structural change anyway; a failure specific to this project's own beats is still
+  a real signal, a generic timing flake elsewhere in the same run is not.
   `day.rebuildStations` was 122 passing campaign assertions while "New Game" threw on
-  the first click a player makes.
-- `npm run check` → 329 units, 0 broken, 0 collisions across nine widths.
-- `npm run social:check` → 22 notices, 22 already current. Drift on your page means
-  you edited inside the `gvb:social` markers.
+  the first click a player makes — Node-level correctness says nothing about whether the wiring
+  works in a browser.
+- `npm run check` → as of this refresh, 335 units, 0 broken, 0 collisions across nine widths,
+  tightest gap 3.5px.
+- `npm run social:check` → **17** notices, 17 already current (dropped from 22 this round — a real,
+  correct count, not a regression). Drift on your page means you edited inside the `gvb:social`
+  markers.
 - Zero offsite requests should still hold: grep `index.html` for `fonts.googleapis.com`
   / `fonts.gstatic.com` (zero hits expected) and, better, run
   `check-integrity.mjs`'s static offsite sweep if you touch anything network-facing.
@@ -240,7 +247,7 @@ assertion fails once and passes on retry, that is what happened.
 
 Write `Claude Prompts/notes/04-aphelion-notes.md`. Nobody else writes that file, so it
 can never conflict. It is the only record of this session that survives —
-`gvb-site-handoff-v8.md` gets assembled from all twenty-one of them.
+`gvb-site-handoff-v*.md` gets assembled from all twenty-one of them each round.
 
 Use these headings:
 
