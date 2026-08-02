@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>Orbital — a gravity flight-plan puzzle</title>
+<link rel="stylesheet" href="css/orbital.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv" aria-label="Orbital gravity puzzle playfield"></canvas>
+
+  <div class="hud">
+    <div class="telem">
+      <div class="eyebrow"><span id="packName">Basics</span> · <span id="lvlNum">01</span> / <span id="lvlTotal">10</span></div>
+      <div class="lvl-name" id="lvlName">First Light</div>
+      <div class="lvl-sub"><span id="lvlSub">a clear line to the marker</span></div>
+      <div class="lvl-sub"><span id="attempts">0</span> attempts · best <span class="stars" id="hudStars">☆☆☆</span></div>
+    </div>
+    <div class="controls">
+      <button id="btnReset" title="Reset shot (R)">Reset</button>
+      <button id="btnLevels" title="Sector map (Esc)">Sectors</button>
+    </div>
+  </div>
+
+  <div class="hint" id="hint">Drag anywhere to aim · release to launch</div>
+  <button class="nextbtn" id="btnNext">Next sector ▶</button>
+
+  <div class="rotate" id="rotate" aria-hidden="true">
+    <div class="ph"></div>
+    <h2>Rotate to play</h2>
+    <p>Orbital flies best in landscape</p>
+  </div>
+  <div class="flash" id="flash"></div>
+
+  <!-- intro -->
+  <div class="scrim show" id="introScrim">
+    <div class="card">
+      <div class="tag">Flight Plan · v2</div>
+      <h1>Orbital</h1>
+      <p>Launch a probe and let gravity do the flying. Drag anywhere to set heading and power — the <b>dotted flight plan</b> is an exact prediction, because once you launch there's no steering. Read the curves, thread the wells, reach the green marker.</p>
+      <div class="legend">
+        <span><i class="dot" style="color:var(--goal)"></i>target</span>
+        <span><i class="dot" style="color:var(--planet)"></i>planet</span>
+        <span><i class="dot" style="color:var(--star)"></i>star</span>
+        <span><i class="dot" style="color:var(--repulse)"></i>repulsor</span>
+        <span><i class="dot" style="color:var(--rock)"></i>asteroid</span>
+        <span><i class="dot" style="color:var(--blackhole)"></i>black hole</span>
+        <span><i class="dot" style="color:var(--wormhole)"></i>wormhole</span>
+        <span><i class="dot" style="color:var(--booster)"></i>booster</span>
+      </div>
+      <p class="kbd-hint" style="font-size:12.5px;margin-top:14px">Keyboard: <b>← →</b> aim · <b>↑ ↓</b> power · <b>Space</b> launch · <b>R</b> reset.</p>
+      <div class="row" style="justify-content:flex-end">
+        <button class="primary" id="btnStart">Begin flight</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- level select -->
+  <div class="scrim" id="lvlScrim">
+    <div class="card">
+      <div class="tag">Sector Map</div>
+      <h1>Choose a sector</h1>
+      <div class="grid" id="lvlGrid"></div>
+      <div class="row">
+        <button id="btnWipe" title="Erase saved progress">Reset progress</button>
+        <button class="primary" id="btnClose">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- modules: physics + level packs, then render, input, and the orchestrator -->
+<script src="js/physics.js"></script>
+<script src="js/levels/pack-01-basics.js"></script>
+<script src="js/levels/pack-02-deepspace.js"></script>
+<script src="js/render.js"></script>
+<script src="js/input.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
