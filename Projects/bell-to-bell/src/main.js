@@ -73,7 +73,9 @@ const room = buildRoom(scene, registry, mats, data.room);
 
 // T4: the chart decides who sits where before anything is built. It survives
 // between periods; the first period of a fresh browser gets the August chart.
+// T5: so does the furniture — move the cabinet once and it stays moved.
 let savedChart = persist.load('chart', null);
+let savedLayout = persist.load('furniture', null);
 let known = persist.load('known', { edges: [], steadies: [] });
 const chart = createChart({
   seatGrid: data.students.seatGrid,
@@ -82,7 +84,8 @@ const chart = createChart({
   tellTypes: data.tells.types,
   rules: data.seating.rules,
   plan: data.seating.plan.furniture,
-  saved: savedChart
+  saved: savedChart,
+  layout: savedLayout
 });
 
 const students = buildStudents(scene, registry, mats, data.students, chart);
@@ -282,6 +285,10 @@ const seating = createSeatingScreen({
   copy: data.seating,
   onSwap: (a, b) => { chart.swapDesks(a, b); redrawChart(); },
   onReset: () => { chart.reset(); redrawChart(); },
+  // T5: dragging furniture reclassifies sight live; the drag path in
+  // ui/seating.js patches in place rather than re-rendering, so this hands
+  // back a fresh view model rather than calling redrawChart() itself.
+  onMoveOccluder: (id, x, z) => (chart.moveOccluder(id, x, z) ? chart.viewModel(known) : null),
   onConfirm: () => beginPeriod()
 });
 
@@ -301,6 +308,7 @@ function beginPeriod() {
   state.rechart = cost;
   if (cost.rapport) state.rapport += cost.rapport;
   persist.save('chart', chart.seatOf);
+  persist.save('furniture', chart.occluderLayout());
 
   seating.close();
   audio.init();

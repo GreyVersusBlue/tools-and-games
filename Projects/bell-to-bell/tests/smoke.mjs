@@ -12,10 +12,10 @@ const iData = D('interventions'), tData = D('tells'), sData = D('students');
 const lData = D('lesson'), eData = D('events'), rData = D('reactions');
 const roomData = D('room'), seatData = D('seating');
 
-const mkChart = (saved=null) => createChart({
+const mkChart = (saved=null, layout=null) => createChart({
   seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
   tellTypes: tData.types, rules: seatData.rules,
-  plan: seatData.plan.furniture, saved
+  plan: seatData.plan.furniture, saved, layout
 });
 const baseChart = mkChart();
 
@@ -462,6 +462,45 @@ check('and the stabiliser gets a dot', vmWarm.seats.some(s=>s.steadyKnown));
 const cMoved = mkChart(); cMoved.swapDesks(2, 11);
 check('an edge you have already separated is drawn quiet',
   cMoved.viewModel(learned.known).edges[0].live===false);
+
+// ---------------------------------------------------------------------------
+// T5 — the classroom builder: push the furniture, the shading follows
+// ---------------------------------------------------------------------------
+
+// desk 8 is row 2 / col 0, the back-left desk the cabinet test above (line
+// ~318) already showed is blocked from centre-front.
+const cabRect = occluderRects(roomData.occluders).find(r=>r.id==='cabinet');
+const farCorner = { x: roomData.bounds.x - cabRect.halfW, z: roomData.bounds.zBack - cabRect.halfD };
+
+const cBuild = mkChart();
+const before8 = cBuild.desks[8].sight;
+check('desk 8 (back-left) is not fully clear before anything gets rearranged', before8.kind!=='clear');
+
+const moved = cBuild.moveOccluder('cabinet', 999, 999);
+check('the cabinet is clamped to the room, not wherever you drag it',
+  Math.abs(moved.x-farCorner.x)<1e-9 && Math.abs(moved.z-farCorner.z)<1e-9);
+check('every desk gets reclassified, live, against the new layout',
+  cBuild.desks[8].sight.count > before8.count);
+check('the front row does not care that the cabinet moved',
+  cBuild.desks[0].sight.kind===baseChart.desks[0].sight.kind);
+check('an unknown occluder id is refused', cBuild.moveOccluder('nope', 0, 0)===null);
+check('a refused move touches nothing', cBuild.rects.find(r=>r.id==='cabinet').x===moved.x);
+
+check('occluderLayout reports exactly what moveOccluder just set',
+  cBuild.occluderLayout().find(o=>o.id==='cabinet').x===moved.x &&
+  cBuild.occluderLayout().find(o=>o.id==='cabinet').z===moved.z);
+
+// a chart loaded with a saved layout starts already rearranged
+const cLoaded = mkChart(null, [{ id: 'cabinet', x: 999, z: 999 }]);
+check('a saved layout moves the furniture before the first desk is classified',
+  cLoaded.rects.find(r=>r.id==='cabinet').x===farCorner.x);
+check('desks are classified against the loaded layout, not the room.json default',
+  cLoaded.desks[8].sight.count > baseChart.desks[8].sight.count);
+
+// junk in a saved layout is ignored rather than thrown
+const cBadLayout = mkChart(null, [{ id: 'nope', x: 1, z: 1 }, { id: 'cabinet', x: NaN, z: 1 }]);
+check('an unknown id or a non-finite coordinate in a saved layout is skipped',
+  cBadLayout.rects.find(r=>r.id==='cabinet').x===cabRect.x);
 
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');

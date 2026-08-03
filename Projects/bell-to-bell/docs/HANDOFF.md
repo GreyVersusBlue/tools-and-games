@@ -1,46 +1,42 @@
 # HANDOFF — Bell to Bell
 
-**Where we are:** T1–T4 still built and playable (One Period, the lesson, Room Temp, the
-seating chart). No new ticket landed this session — this was a bug session, not a build
-session. Where we're going: same as before, T5 onward, one ticket at a time.
+**Where we are:** T1–T5 built and playable (One Period, the lesson, Room Temp, the seating
+chart, and now the classroom builder). Where we're going: T6 next, one ticket at a time.
 
 Read `CLAUDE.md` first — it has the commands and the architecture rules.
 Read `docs/BELL-TO-BELL-treatment.md` for anything about a system that isn't built yet.
 
 ---
 
-## This session — the dead start button
+## This session — T5, the classroom builder
 
-You reported a soft lock on the opening screen: clicking "Seating chart" did nothing.
+The cabinet and the bookshelf now drag on the seating chart screen, and every desk's sight
+classification re-runs live against wherever you dropped them. Closes gap 8: a layout that
+puts both occluders on the same side of the room can put a desk fully out of sight of every
+viewpoint, which the August default deliberately never did.
 
-**What I ruled out**, by building a headless harness (jsdom + a mocked `three.js`) that
-replays the actual click without a real GPU:
-- The seating chart logic itself — `tests/smoke.mjs` is still 143/143 green, no regressions.
-- DOM wiring — every element ID `dom.js` expects exists in `index.html`.
-- Data shape — `data/seating.json`'s furniture plan matches `data/room.json`'s fixture IDs.
-- The click path itself — simulated end-to-end in the harness: `startBtn` click correctly
-  hides the intro screen and renders all 19 seating-chart elements (4 furniture + 2 occluders
-  + the edge SVG + 12 desks).
-
-**Leading theory, not yet confirmed by you:** `main.js` uses top-level `await loadData()`,
-which `fetch()`es `data/*.json`. If `index.html` is opened directly as a file instead of
-served over HTTP, those fetches are blocked (CORS on `file://`), the `await` throws, and the
-script dies *before it ever reaches the line that wires up `startBtn`'s click listener* —
-which is at the very bottom of the file. Result: a permanently dead button with zero visible
-error. This matches what you described exactly, and I reproduced that failure mode in the
-harness to confirm the mechanism is real. CLAUDE.md already says "ES modules need a server"
-for this reason — it's an easy thing to forget between sessions.
-
-**What I actually fixed, independent of whether that theory is the whole story:** the entire
-startup path in `main.js` (from `loadData()` through the final `requestAnimationFrame(frame)`)
-is now wrapped in a try/catch. Any startup failure — that one, or anything else — now shows a
-full-screen overlay with the real error and stack trace, plus a pointer toward the file://
-gotcha, instead of failing silently. If this happens again, the screen itself will tell us
-what broke.
-
-**If the soft lock is still happening after this**, run it via
-`python3 -m http.server 8000` and open `localhost:8000` (not the file directly), reload, and
-send me whatever the new error overlay says — that's the actual next clue, not a guess.
+- **`src/systems/chart.js`** — `moveOccluder(id, x, z)` mutates that occluder's rect (clamped
+  to the room's own footprint via `room.bounds`, nothing fancier — no collision with desks or
+  other furniture) and reclassifies every desk's `sight` against the new layout in one pass.
+  `occluderLayout()` reads back the current positions. A new `layout` argument to
+  `createChart(...)` lets a saved layout apply before the first desk is even classified — the
+  furniture starts already rearranged instead of always resetting to `room.json`.
+- **`src/ui/seating.js`** — occluders drag the same way desks do, but *not* through a full
+  `render()` per `pointermove`: that would tear down the very element under the pointer
+  mid-drag, the same trap the existing desk-selection comment already warned about. A new
+  `reflow()` repositions the dragged occluder and patches every desk card's sight class and
+  title in place, keeping every DOM node's identity intact through the drag.
+- **Persistence.** `main.js` loads `persist.load('furniture', null)` into `layout` at
+  startup and saves `chart.occluderLayout()` alongside the seat chart on `beginPeriod()` — the
+  room stays rearranged between periods the same way the chart does.
+- Verified in a real browser (Playwright, headless Chromium): dragging the cabinet across the
+  room flips desk 8 (back-left, the one the cabinet already blinded) from `sight-partial` to
+  `sight-clear`, and the desk card DOM node it's applied to is provably the same node before
+  and after the drag.
+- 12 new `tests/smoke.mjs` assertions: clamping, refusing an unknown occluder id, a saved
+  layout applying before first classification, and junk layout entries being skipped rather
+  than thrown. All 155 assertions green; `tests/balance.mjs` unchanged (T5 doesn't touch
+  anything balance-relevant).
 
 ---
 
@@ -58,8 +54,7 @@ send me whatever the new error overlay says — that's the actual next clue, not
 - **Hypervigilance** → false positive spawn → the granola bar
 - **The curveball** (QUIET) at minute 21, unscored, different menu
 - Scheduled intercom event, four meters, room-temp bands, four endings, end-of-period report
-- **Startup errors now surface on screen** instead of leaving the start button dead (this
-  session, `main.js`)
+- **Startup errors surface on screen** instead of leaving the start button dead (`main.js`)
 
 **T1 — Student reactions.** A pose/envelope tween in `src/world/students.js`, every pose data
 (`data/reactions.json`): attack/hold/release, head yaw aimed at wherever the teacher actually
@@ -88,9 +83,9 @@ which is pure and headless.
 - **Sightlines.** `src/systems/sightlines.js` asks the raycast's question on paper — segment
   against rectangle — and shades every desk *clear / partial / blind* from the three places
   you actually stand (now named in `data/room.json` → `viewpoints`). Hovering a desk tells you
-  where you would have to walk. The current furniture produces no fully blind desk: the back
-  right is visible only from the windows, the back left only from the door. That is honest,
-  and it is the hook T5 hangs on.
+  where you would have to walk. The August layout produces no fully blind desk: the back right
+  is visible only from the windows, the back left only from the door — T5 is what makes a fully
+  blind desk reachable, by moving the furniture that's currently making it merely partial.
 - **Reach.** Side by side 1.0, in front/behind 0.8, diagonal 0.55, threshold 0.5. A whisper
   needs a neighbour; a note does not. Separate a whisper pair and **they do not become saints**
   — the instigator does something quieter and easier to see (a `PHONE`, 85% of the life), which
@@ -108,19 +103,27 @@ which is pure and headless.
   (`learnFrom` at the bell). Persisted with `src/persist.js` — the only `localStorage` in the
   project, degrading to memory if the browser refuses.
 
+**T5 — The classroom builder.** The cabinet and the bookshelf drag on the same chart screen;
+every desk's sight class reclassifies live as you move them (`chart.moveOccluder`). Clamped to
+the room's own footprint (`room.bounds`) — no collision against desks or each other, that's
+not what this ticket bought. The layout persists between periods the same way the seat chart
+does. This is the whole mechanic from the treatment's §5 ("sightlines are the point"), just
+without the money, the catalog, or the seasonal door-decorating contest — those are still
+unbuilt content, not systems.
+
 **Audio.** HVAC bed, ambient murmur scaling with restlessness and ducking under Withitness,
 chair scrapes on reactions, a chime on checks, the bell.
 
-**Tests.** `tests/smoke.mjs` — 143 headless assertions over interventions, the lesson, the
-reaction wiring, Room Temp, and the chart. `tests/balance.mjs` — five play styles through
-whole periods, plus one style across three different charts. Both still green after this
-session's changes; the error-handling wrap touches nothing either test exercises.
+**Tests.** `tests/smoke.mjs` — 155 headless assertions over interventions, the lesson, the
+reaction wiring, Room Temp, the chart, and the classroom builder. `tests/balance.mjs` — five
+play styles through whole periods, plus one style across three different charts. Both green;
+balance is untouched by T5, which doesn't reach anything balance-relevant.
 
 ---
 
 ## Where the balance sits
 
-Unchanged from before this session — nothing in the balance-relevant systems was touched.
+Unchanged — T5 doesn't touch anything balance-relevant.
 
 ```
 ideal (never scans)         mastery 77  fidelity 84  bandwidth 19  restless 72  missed 7
@@ -140,8 +143,6 @@ the barometer up front  mastery 79  restless 49  missed 6
 
 ## Known gaps in the slice
 
-Unchanged from before this session:
-
 1. **The lesson is 2,000 game-seconds against a 2,820-second period.** Still a live tuning
    call; settle before T6.
 2. **Tell meshes are still placeholders.** Boxes and spheres.
@@ -151,21 +152,20 @@ Unchanged from before this session:
 6. **Beats and tells are hand-authored and never vary.**
 7. **T4: the front row's advantage is small enough to hide.** Don't decide this without
    running `SPREAD=1 node balance.mjs`.
-8. **T4: no desk in this room is fully blind**, so one of the three legend swatches never
-   lights. Correct given the furniture; T5 is what makes it reachable.
+8. ~~T4: no desk in this room is fully blind~~ — **closed by T5.** The August default still
+   doesn't produce one (that was never the bug), but you can now drag the furniture until it
+   does, and the "blind" legend swatch lights up when you have.
+9. **T5 doesn't check furniture against desks or against the other occluder.** You can drag
+   the cabinet on top of a desk, or on top of the bookshelf. Nothing breaks — the sight math
+   doesn't care — it just looks wrong. Not worth solving until it's visible in the 3D room too.
 
 ---
 
-## Backlog (suggested order) — unchanged
+## Backlog (suggested order)
 
-**T5 — Classroom builder.** *Highest value per hour of work.* Move the furniture; the
-blind-spot polygons update live. `systems/sightlines.js` already classifies desks from named
-viewpoints and the chart screen already draws the occluders in plan, so this is largely "make
-the two grey rectangles draggable and re-run `classifySight`." Closes gap 8.
-
-**T6 — Second period.** Same room, different roster, different Room Temp baseline, a different
-lesson, starting comprehension carried from nothing. Inherits a real chart and real
-discoveries. Settle gap 1 first.
+**T6 — Second period.** *Next up.* Same room, different roster, different Room Temp baseline,
+a different lesson, starting comprehension carried from nothing. Inherits a real chart, a real
+furniture layout, and real discoveries. Settle gap 1 first.
 
 **T7 — The Observation.** The boss fight. Admin Proximity Alert, nine-second window, rubric
 look-fors, post-conference dialogue tree. Treatment §6.1.
@@ -174,7 +174,7 @@ look-fors, post-conference dialogue tree. Treatment §6.1.
 
 ---
 
-## Open questions — unchanged
+## Open questions
 
 - Tell and beat authoring vs. generation: keep authoring until after T6.
 - Does the period need a fail state? Still no.
@@ -189,7 +189,7 @@ look-fors, post-conference dialogue tree. Treatment §6.1.
 
 Point it at the repo root and give it a ticket, not the whole project:
 
-> Read CLAUDE.md and docs/HANDOFF.md. Implement T5 (classroom builder). Run
+> Read CLAUDE.md and docs/HANDOFF.md. Implement T6 (second period). Run
 > tests/smoke.mjs and tests/balance.mjs when you're done and tell me what you changed.
 
 Don't open with "figure out what to do" — the backlog already decided, and an agent given an
