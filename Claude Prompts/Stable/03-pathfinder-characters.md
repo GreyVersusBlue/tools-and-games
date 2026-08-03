@@ -1,3 +1,14 @@
+**This project had nothing outstanding as of round 3 (2026-08-03).** Checked: unchanged since round
+2 (line count, byte size, font vendoring, `gvb-save.js` non-adoption, the `[shared]` markers), its
+first fully clean verification round. This page carried a "Questions for Devon" item asking whether
+one clean round is enough to move to `Stable/` (Anathema Archive's bar) or whether a second is
+needed (The Fracture Cycle's bar) — **Devon answered directly: one clean round is enough.** Moved
+here on that basis, together with its twin, `campaigns.html` (prompt 02). Re-verified against the
+live repo, not just carried forward on the session's own claim. If a real change surfaces later —
+Devon asks for the commented-out `<template>` dossier block or in-browser editing, a
+`[shared]`-marker drift turns up against `campaigns.html`, or a regression appears — move this back
+to the live `Claude Prompts/` folder and give it a real task list again.
+
 # 03 — Pathfinder Characters (Character Muster)
 
 You are working on `Pathfinder/characters.html`, titled "Character Muster", a
@@ -5,19 +16,8 @@ PC-roster page on greyversusblue.com. This prompt is self-contained.
 
 **Round 3 made zero edits to this page** — confirmed clean against round 2's own claims (line count,
 byte size, font vendoring, `gvb-save.js` non-adoption, the `[shared]` markers all checked and
-unchanged). See "Questions for Devon" below: this is this page's first fully clean verification
-round, same situation as `campaigns.html` (prompt 02) — not a third clean round the way an earlier
-draft of this refresh mistakenly counted it.
-
-## Questions for Devon
-
-- **Is one clean verification round enough to move this page to `Stable/`, or do you want a second
-  clean round first?** Anathema Archive (01) moved to `Stable/` after one clean round following its
-  round-1 work. The Fracture Cycle (15) waited for two. Round 1 (font vendoring, heading order,
-  contrast) and round 2 (the `[shared]`-marker guardrail work, plus the `</style>`-truncation bug fix)
-  were both real work; round 3 was the first round with nothing to do and nothing found. If one clean
-  round is your bar, this page qualifies now, in step with `campaigns.html`. If you want a second,
-  leave both live for one more round and revisit together.
+unchanged), its first fully clean verification round, same situation as `campaigns.html` (prompt
+02) — not a third clean round the way an earlier draft of this refresh mistakenly counted it.
 
 ## Your boundary
 

@@ -1,3 +1,15 @@
+**This project had nothing outstanding as of round 3 (2026-08-03).** Checked: the Real Estate
+walk-to-station beat — the one concrete confirmation item on this project's own task list — passes
+(45/45) per this same refresh's fair-environment survey (three independent runs, 146/146 clean
+site-wide), after the shared `walkTo({steer:'lookAt'})` fix landed post-dating this project's own
+round-3 notes. `smoke-campaign.mjs` 203/203, `smoke-engine.mjs` 190/190. The difficulty-curve
+question is answered (spoilage, built); the two remaining items (distinct floor plans per venue
+tier, spoilage tuning by feel) are both explicitly speculative or balance-only, with no forcing
+signal. Re-verified against the live repo by this refresh, not just carried forward on the
+session's own claim. If the ladder's physical scale becomes a real goal, or spoilage needs
+retuning after real play, move this back to the live `Claude Prompts/` folder and give it a real
+task list again.
+
 # 07 — The Fourth Quarter (3D)
 
 You are working on The Fourth Quarter, a first-person three.js sports-bar management sim

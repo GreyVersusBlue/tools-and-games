@@ -1,3 +1,12 @@
+**This project had nothing outstanding as of round 3 (2026-08-03).** Checked: `smoke-seating.mjs`
+153/153, `drive-seating.mjs` 111/111, `gvb-save.test.mjs` 50/50, zero real student names in the
+repo, a working "erase saved data" control. Round 3 closed everything it touched (the rotated-label
+counter-rotation fix, all three of this project's own Playwright-only test bugs) and its own task
+list is empty — the first refresh with genuinely nothing carried over from this project's own
+work. Re-verified against the live repo by this refresh, not just carried forward on the session's
+own claim. If a real gap surfaces, move this back to the live `Claude Prompts/` folder and give it
+a real task list again.
+
 # 20 — Seating Chart Generator
 
 You are working on the Seating Chart Generator, a classroom tool on greyversusblue.com under the

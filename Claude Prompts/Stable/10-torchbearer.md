@@ -1,3 +1,14 @@
+**This project had nothing outstanding as of round 3 (2026-08-03).** Checked: `test/smoke.mjs`
+95/95, its `npm run games` entry clean (7/7, part of the site-wide 146/146 fair-environment run),
+all three of round 2's feature items wired (edge-outwit, Feint, reload) and independently
+confirmed on disk. What's left is one item blocked on a prerequisite that doesn't exist yet
+(`mobility`, needs monster-data support nobody has built), one trivial stale comment, and the
+site-wide `Pathfinder/data/` question tracked centrally in prompt 01 rather than owned here. None
+of the three is actionable engine work. Re-verified against the live repo by this refresh, not
+just carried forward on the session's own claim. If a monster ever gets a reach reaction, or
+`Pathfinder/data/` gets resolved in a way that changes this project's boundary, move this back to
+the live `Claude Prompts/` folder and give it a real task list again.
+
 # 10 — Torchbearer
 
 You are working on Torchbearer, a Pathfinder 2e adventure engine on greyversusblue.com. It

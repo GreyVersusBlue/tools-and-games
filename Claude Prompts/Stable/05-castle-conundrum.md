@@ -1,3 +1,13 @@
+**This project had nothing outstanding as of round 3 (2026-08-03).** Checked: `npm run play` clean
+at 34/34 beats, real GPU compositing, all four of round 3's own tasks (wall-embedded furniture, the
+preview recapture and promotion, `play-castle.mjs`'s own engine-mismatch fix, the gate door's
+hinge/pivot math) independently re-confirmed on disk. The two remaining items — cabinet/commode
+clearance margins and a speculative gate-mesh symmetry check — are both explicitly cosmetic,
+low-value judgment calls with no bug evidence behind either. Re-verified against the live repo by
+this refresh, not just carried forward on the session's own claim. If either item turns out to
+matter once someone looks closely, or a regression appears, move this back to the live
+`Claude Prompts/` folder and give it a real task list again.
+
 # 05 — Castle Conundrum
 
 You are working on Castle Conundrum, a first-person three.js castle puzzle game on

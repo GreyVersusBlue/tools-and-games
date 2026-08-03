@@ -22,11 +22,20 @@ its exact filename. This is **not** the same thing as `archive/round-N/`:
 - **`archive/round-N/`** holds a *frozen snapshot* of a past round — never re-read as a live
   prompt, only consulted for history.
 
-As of this refresh, `Claude Prompts/Stable/` holds **01 (Anathema Archive)**, **14 (Integer
-Foundry)**, **15 (The Fracture Cycle)**, and **17 (Image → PDF Assembler)** — all four verified to
-have nothing outstanding as of round 3, each explicitly re-checked against the live repo rather
-than just trusting their own prior claim. 14 and 17 joined this round; 01 and 15 were re-verified
-and stayed.
+As of this pass, `Claude Prompts/Stable/` holds **01 (Anathema Archive)**, **02 (Pathfinder
+Campaigns)**, **03 (Pathfinder Characters)**, **04 (Aphelion)**, **05 (Castle Conundrum)**,
+**06 (Closing Time)**, **07 (The Fourth Quarter)**, **10 (Torchbearer)**, **14 (Integer Foundry)**,
+**15 (The Fracture Cycle)**, **17 (Image → PDF Assembler)**, and **20 (Seating Chart Generator)** —
+twelve of twenty-two, all verified to have nothing outstanding as of round 3, each explicitly
+re-checked against the live repo rather than just trusting their own prior claim. 14 and 17 joined
+during round 3's own refresh; 01 and 15 were re-verified and stayed; 02, 03, 04, 05, 06, 07, 10, and
+20 were added in a follow-up audit of the round-3 prompts (same date) that found each one's own task
+list already contained nothing but blocked, speculative, or purely cosmetic items — 06 and 07 each
+had one concrete verification item outstanding, closed here against the round-3 refresh's own
+same-day fair-environment `npm run games` result (146/146, three independent runs) rather than a
+fresh run of this pass's own; 02 and 03 were each one clean round in, blocked only on a
+self-referential "is one round enough" question that Devon answered directly during this same
+audit (yes — one clean round is the bar, matching 01's precedent).
 
 ## Questions for Devon, tracked in-prompt
 
@@ -37,9 +46,6 @@ burying it in a task description or only mentioning it in the handoff. As of thi
 
 - **01** (Anathema Archive) — whether `Pathfinder/data/` is a published interface or private.
   Raised a sixth time this round.
-- **02** (Pathfinder Campaigns) and **03** (Pathfinder Characters) — whether one clean
-  verification round is enough to move a page to `Stable/` (01's precedent) or whether two clean
-  rounds are needed (15's precedent), now that both pages have had their first fully clean round.
 - **12** (Coffee Shop Sim / Corner & Kettle) — whether the Serve button should require full order
   completion, now that baristas are the main path to a finished cup and a measured gap exists
   between patient and eager serving.
@@ -56,7 +62,10 @@ burying it in a task description or only mentioning it in the handoff. As of thi
   Third round running with the same answer (skip it).
 
 When Devon answers one, prompt 23's next refresh removes it from the block and records the
-decision in the prompt's durable section (or as a new locked decision in the next handoff).
+decision in the prompt's durable section (or as a new locked decision in the next handoff). One
+was answered this way outside the normal round cycle: Devon confirmed (2026-08-03) that one clean
+verification round is the bar for `Stable/`, which resolved 02 and 03's shared question directly
+and moved both — see the `Stable/` section above.
 
 ## The cycle
 
@@ -77,15 +86,15 @@ told to vendor fonts that are already vendored and to expect counts that have mo
 | # | Prompt | Owns |
 | --- | --- | --- |
 | 01 | `Stable/01-anathema-archive.md` | `Pathfinder/Anathema_Archive.html`, `Pathfinder/data/`, `Pathfinder/fetch json data.py`, `Pathfinder/tests/`. **In `Stable/`** — nothing outstanding as of round 2. |
-| 02 | `02-pathfinder-campaigns.md` | `Pathfinder/campaigns.html`, `Pathfinder/campaigns-assets/` |
-| 03 | `03-pathfinder-characters.md` | `Pathfinder/characters.html`, `Pathfinder/characters-assets/` |
-| 04 | `04-aphelion.md` | `Projects/aphelion/` |
-| 05 | `05-castle-conundrum.md` | `Projects/Castle Conundrum/`, `Tools/board-check/play-castle.mjs` |
-| 06 | `06-closing-time.md` | `Projects/Closing Time/` |
-| 07 | `07-fourth-quarter.md` | `Projects/fourth-quarter/` |
+| 02 | `Stable/02-pathfinder-campaigns.md` | `Pathfinder/campaigns.html`, `Pathfinder/campaigns-assets/`. **In `Stable/`** — nothing outstanding as of round 3. |
+| 03 | `Stable/03-pathfinder-characters.md` | `Pathfinder/characters.html`, `Pathfinder/characters-assets/`. **In `Stable/`** — nothing outstanding as of round 3. |
+| 04 | `Stable/04-aphelion.md` | `Projects/aphelion/`. **In `Stable/`** — nothing outstanding as of round 3. |
+| 05 | `Stable/05-castle-conundrum.md` | `Projects/Castle Conundrum/`, `Tools/board-check/play-castle.mjs`. **In `Stable/`** — nothing outstanding as of round 3. |
+| 06 | `Stable/06-closing-time.md` | `Projects/Closing Time/`. **In `Stable/`** — nothing outstanding as of round 3. |
+| 07 | `Stable/07-fourth-quarter.md` | `Projects/fourth-quarter/`. **In `Stable/`** — nothing outstanding as of round 3. |
 | 08 | `08-golden-hour.md` | `Projects/golden-hour-beach/` |
 | 09 | `09-faire-weekend.md` | `Projects/Ren-Faire-Claude/` |
-| 10 | `10-torchbearer.md` | `Projects/torchbearer.html`, `Projects/torchbearer/` |
+| 10 | `Stable/10-torchbearer.md` | `Projects/torchbearer.html`, `Projects/torchbearer/`. **In `Stable/`** — nothing outstanding as of round 3. |
 | 11 | `11-absalom-inheritance.md` | `Projects/absalom_inheritance.html` (shell, URL unchanged), `Projects/absalom-inheritance/` (the real logic, restructured round 1) |
 | 12 | `12-coffee-shop-sim.md` | `Projects/coffee_shop_sim.html`, `Projects/corner-and-kettle/` |
 | 13 | `13-daredevil.md` | `Projects/daredevil/` (the real game, restructured round 2 from the old single-file `Projects/daredevil_r4.html`, now a redirect stub) |
@@ -95,7 +104,7 @@ told to vendor fonts that are already vendored and to expect counts that have mo
 | 17 | `Stable/17-image-to-pdf.md` | `Tools/image-to-pdf.html`, `Tools/image-to-pdf/`. **In `Stable/`** — nothing outstanding as of round 3 beyond two environment-blocked verification checks. |
 | 18 | `18-name-picker.md` | `Tools/Name Picker.html`, `Tools/name-picker/` |
 | 19 | `19-schedule-visualizer.md` | `Tools/schedule-visualizer.html`, `Tools/schedule-browser.html` (both renamed in round 1; old dated/spaced paths survive as redirect stubs), `Tools/schedule/` |
-| 20 | `20-seating-chart-generator.md` | `Tools/Seating Chart Generator.html`, `Tools/seating-chart/` |
+| 20 | `Stable/20-seating-chart-generator.md` | `Tools/Seating Chart Generator.html`, `Tools/seating-chart/`. **In `Stable/`** — nothing outstanding as of round 3. |
 | 21 | `21-orbital.md` | `Projects/orbital/` — merged directly to `main` outside the normal process (PR #6); this is its first prompt, first round |
 | 22 | `22-general-site-improvements.md` | `index.html`, `404.html`, `newindex.html` (see locked decision #51), `assets/` (including `assets/fonts/`), `Tools/board-check/` (except `play-castle.mjs` and any project's own test folder), `CNAME`, the handoff files |
 | 23 | `23-refresh-prompts.md` | `Claude Prompts/**` only. Not a project — it refreshes the other twenty-two between rounds. Read-only everywhere else in the repo. |

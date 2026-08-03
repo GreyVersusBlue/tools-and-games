@@ -1,3 +1,13 @@
+**This project had nothing outstanding as of round 3 (2026-08-03).** Checked: `tools/smoke.mjs`
+105/105. The one real remaining ask on this project's own task list — a pass through the shared
+`npm run games` regression suite rather than just this project's own hand-verification — is
+satisfied by this same refresh's fair-environment survey (three independent runs, 146/146 clean
+site-wide, Closing Time's own beats included). Round 3 closed both items round 2 left open (the
+exact-`recId` Ledger filter, the career-ending "what's next" flow); no shared-file requests are
+pending. Re-verified against the live repo by this refresh, not just carried forward on the
+session's own claim. If a real gap surfaces, move this back to the live `Claude Prompts/` folder
+and give it a real task list again.
+
 # 06 — Closing Time
 
 You are working on Closing Time, a real-estate-brokerage management sim on

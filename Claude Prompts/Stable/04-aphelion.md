@@ -1,3 +1,12 @@
+**This project had nothing outstanding as of round 3 (2026-08-03).** Checked: `npm run games`
+clean at 146/146 across three independent fair-environment runs (this project's own 9 assertions
+included), `smoke-state.mjs` 23/23, zero offsite requests, `gvb-save.js` adoption intact. The two
+remaining items — a touch/gamepad input scheme and an optional `#signal` regression beat — are
+both explicitly speculative, carried across two rounds with no forcing signal ("only worth it if
+there's an actual reason"). Re-verified against the live repo by this refresh, not just carried
+forward on the session's own claim. If a real reason for touch input appears, or a regression
+surfaces, move this back to the live `Claude Prompts/` folder and give it a real task list again.
+
 # 04 — Aphelion
 
 You are working on Aphelion, a first-person three.js derelict-spaceship exploration
