@@ -12,6 +12,7 @@ import { createInterventions } from './systems/interventions.js';
 import { createEvents } from './systems/events.js';
 import { createLesson } from './systems/lesson.js';
 import { createRoomTemp } from './systems/roomtemp.js';
+import { createObservation } from './systems/observation.js';
 import { inTeachingZone, tickMeters } from './systems/meters.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
@@ -86,7 +87,7 @@ const projector = new THREE.Vector3();
 let periodIndex = -1;
 let periodGroup = null;
 let data, registry, room, chart, students, plan, reactions, tellSystem,
-    withitness, interventions, lesson, temp, events, state,
+    withitness, interventions, lesson, temp, events, observation, state,
     savedChart, known;
 let input = null;
 
@@ -98,6 +99,7 @@ function flashCFU() {
 }
 
 function handleTellClick(t) {
+  if (observation.active()) return;    // T7: the alert owns your attention
   state.openTell = t;
   openMenu(interventions.buildMenu(t, camera), key => {
     closeMenu();
@@ -132,7 +134,11 @@ function updateWhisperAudio() {
   audio.setWhisper(pan, level);
 }
 
-addEventListener('keydown', e => { if (e.code === 'Escape') { closeMenu(); state.openTell = null; } });
+addEventListener('keydown', e => {
+  if (e.code !== 'Escape') return;
+  if (observation.active()) return;   // T7: no dismissing the alert or the AP
+  closeMenu(); state.openTell = null;
+});
 document.addEventListener('click', e => {
   if (state.openTell && !e.target.closest('#menu') && !e.target.closest('.tell')) {
     closeMenu();
@@ -160,6 +166,7 @@ function frame(now) {
   const teaching = inTeachingZone(camera, room.teachingZone);
 
   for (const action of input.takeActions() || []) {
+    if (observation.active()) continue;        // T7: the alert owns your attention
     if (action === 'roomTemp') { temp.read(state); continue; }
     if (state.openTell) continue;              // one thing at a time
     if (action === 'advance') lesson.advance(state);
@@ -179,6 +186,7 @@ function frame(now) {
   }
 
   events.tick(state);
+  observation.tick(state, dt);
   tellSystem.update(state, onExpire);
   reactions.tick(dt, {
     auraFor: state.withitness ? (s => lesson.auraOf(s, state)) : null
@@ -385,6 +393,8 @@ async function startPeriod(index) {
       reactions.wave(ev.reaction, { scale: 0.9, delayPerMetre: 0.02 });
     }
   });
+
+  observation = createObservation({ data: data.observation, dom, toast, openMenu, closeMenu });
 
   room.screens.board?.set(lesson.current(state).board);
   room.screens.objective?.set(data.lesson.objectiveBoard);

@@ -5,12 +5,13 @@ import { createLesson } from '../src/systems/lesson.js';
 import { createRoomTemp } from '../src/systems/roomtemp.js';
 import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
+import { createObservation } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
 const iData = D('interventions'), tData = D('tells'), sData = D('students');
 const lData = D('lesson'), eData = D('events'), rData = D('reactions');
-const roomData = D('room'), seatData = D('seating');
+const roomData = D('room'), seatData = D('seating'), oData = D('observation');
 
 const mkChart = (saved=null) => createChart({
   seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
@@ -499,6 +500,98 @@ const cMoved = mkChart(); cMoved.swapDesks(2, 11);
 check('an edge you have already separated is drawn quiet',
   cMoved.viewModel(learned.known).edges[0].live===false);
 
+
+// ---------------------------------------------------------------------------
+// T7 — the observation
+// ---------------------------------------------------------------------------
+// Headless: dom/openMenu/closeMenu are mocked, and `schedule` is swapped for
+// a synchronous call so the bridge-to-conference transition doesn't need a
+// real 900ms wait in a test.
+function mkObservation(data = oData) {
+  const domMock = {
+    pa: { classList: { add(){}, remove(){} } },
+    paTitle: { textContent: '' },
+    paTxt: { textContent: '' }
+  };
+  const toasts = [];
+  let lastSpec = null, lastPick = null;
+  const obs = createObservation({
+    data, dom: domMock, toast: (kind, title, body) => toasts.push({ kind, title, body }),
+    openMenu: (spec, onPick) => { lastSpec = spec; lastPick = onPick; },
+    closeMenu: () => {},
+    schedule: fn => fn()
+  });
+  return { obs, toasts, spec: () => lastSpec, pick: k => lastPick(k) };
+}
+
+const atSeconds = CFG.periodSeconds - oData.trigger.atMinute * 60;
+
+{
+  const st = createState();
+  const { obs, spec } = mkObservation();
+  st.t = atSeconds + 5;
+  obs.tick(st, 1 / 60);
+  check('T7: idle before its scripted minute', !obs.active());
+
+  st.t = atSeconds;
+  obs.tick(st, 1 / 60);
+  check('T7: the alert fires at its scripted minute', obs.active());
+  check('T7: the window offers every authored action', spec().items.length === oData.actions.length);
+}
+
+{
+  const st = createState();
+  const { obs, spec, pick } = mkObservation();
+  st.t = atSeconds; obs.tick(st, 1 / 60);
+
+  const nonSolo = oData.actions.find(a => !a.solo);
+  const key = Object.keys(nonSolo.effects)[0];
+  const before = key === 'mastery' ? st.masteryPending : st[key];
+  pick(nonSolo.id);
+  const after = key === 'mastery' ? st.masteryPending : st[key];
+  check('T7: picking an action applies its effects', after !== before);
+  check('T7: the window stays open under maxPicks', obs.active());
+  check('T7: a picked action is disabled if offered again',
+    spec().items.find(i => i.key === nonSolo.id).enabled === false);
+
+  const solo = oData.actions.find(a => a.solo);
+  pick(solo.id);
+  check('T7: the solo action closes the window and moves straight to the conference',
+    obs.active() && spec().body === oData.conference.prompts[0].line);
+}
+
+{
+  const st = createState();
+  const { obs, pick, spec, toasts } = mkObservation();
+  st.t = atSeconds; obs.tick(st, 1 / 60);
+
+  const [a1, a2] = oData.actions.filter(a => !a.solo);
+  pick(a1.id); pick(a2.id);
+  check('T7: reaching maxPicks ends the window on its own',
+    spec().body === oData.conference.prompts[0].line);
+
+  const followUpIndex = oData.conference.prompts[0].choices.findIndex(c => c.followUp);
+  const fuId = oData.conference.prompts[0].choices[followUpIndex].followUp;
+  pick(String(followUpIndex));
+  check('T7: a choice with a follow-up shows it next',
+    spec().body === oData.conference.followUps[fuId].line);
+
+  pick('0');
+  check('T7: the conference ends and returns to idle', !obs.active());
+  check('T7: a closing toast fires when the conference wraps',
+    toasts.some(t => t.title === oData.conference.closing.title));
+}
+
+check('T7: an unknown menu key is ignored, not a crash', (() => {
+  const st = createState();
+  const { obs, pick } = mkObservation();
+  st.t = atSeconds; obs.tick(st, 1 / 60);
+  pick('not-a-real-action');
+  return obs.active();
+})());
+
+check('T7: period 2 has its own observation, not a copy',
+  D('period2/observation').trigger.atMinute !== oData.trigger.atMinute);
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');
 process.exit(fails?1:0);

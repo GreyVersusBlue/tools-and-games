@@ -1,0 +1,74 @@
+{
+  "trigger": { "atMinute": 30, "warningSeconds": 9 },
+  "alert": {
+    "title": "Admin Proximity Alert",
+    "body": "Two sets of shoes in the hallway. One is the assistant principal. The other is someone in a lanyard you do not recognize, which means district.",
+    "instruction": "Pick two."
+  },
+  "maxPicks": 2,
+  "actions": [
+    {
+      "id": "objective",
+      "label": "Fix the objective board",
+      "blurb": "3 seconds. You will have to stop talking.",
+      "effects": { "fidelity": 3 }
+    },
+    {
+      "id": "kayla",
+      "label": "Get Kayla up",
+      "blurb": "3 seconds. She will say it loudly.",
+      "effects": { "rapport": -1 },
+      "toast": { "kind": "", "title": "Kayla", "body": "\"I'm getting my PENCIL.\"" }
+    },
+    {
+      "id": "turnandtalk",
+      "label": "Insert a turn-and-talk",
+      "blurb": "2 seconds to launch. Satisfies a look-for. Kills the momentum of the best discussion you've had in a month.",
+      "effects": { "fidelity": 2, "mastery": -2 }
+    },
+    {
+      "id": "nothing",
+      "label": "Do nothing. Teach the lesson.",
+      "blurb": "Uses your whole turn. The lesson you were already teaching keeps going.",
+      "solo": true,
+      "effects": { "fidelity": -4, "mastery": 5, "rapport": 3 }
+    }
+  ],
+  "bridge": {
+    "kind": "", "title": "They step back into the hall.",
+    "body": "A moment later, a knock."
+  },
+  "conference": {
+    "header": "Post-Conference — AP Reyes",
+    "prompts": [
+      {
+        "id": "engagement",
+        "line": "\"I noticed only about four students spoke during the discussion. Talk to me about your engagement strategy.\"",
+        "choices": [
+          { "label": "\"You're right — I want to build in more structured turn-and-talks.\"",
+            "blurb": "Fidelity +. You now owe a follow-up.",
+            "effects": { "fidelity": 2 }, "followUp": "structure" },
+          { "label": "\"Those four were the ones who'd read it.\"",
+            "blurb": "Honest. Rapport −.",
+            "effects": { "rapport": -2 } },
+          { "label": "\"That's a great point, I'll add it to my growth plan.\"",
+            "blurb": "Free. Hollow.",
+            "effects": { "bandwidth": -1 } }
+        ]
+      }
+    ],
+    "followUps": {
+      "structure": {
+        "line": "\"Good. I'll check back in on that next time I'm in.\"",
+        "choices": [
+          { "label": "\"I'll have something by then.\"", "blurb": "You now owe her, specifically.", "effects": { "fidelity": 1 } },
+          { "label": "Say nothing. Nod.", "blurb": "", "effects": {} }
+        ]
+      }
+    },
+    "closing": {
+      "kind": "", "title": "Observation complete",
+      "body": "You'll see the write-up in your email. Eventually."
+    }
+  }
+}

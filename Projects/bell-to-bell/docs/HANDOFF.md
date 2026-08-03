@@ -1,67 +1,69 @@
 # HANDOFF — Bell to Bell
 
-**Where we are:** T1–T6 and T8 built and playable (One Period, the lesson, Room Temp,
-the seating chart, the classroom builder, a second period, whisper audio). Where
-we're going: T7 — The Observation — next.
+**Where we are:** T1–T8 built and playable (One Period, the lesson, Room Temp, the
+seating chart, the classroom builder, a second period, whisper audio, and now the
+Observation). That's the whole backlog the last few handoffs queued — see "Where
+we're going" at the bottom for what that means.
 
 Read `CLAUDE.md` first — it has the commands and the architecture rules.
 Read `docs/BELL-TO-BELL-treatment.md` for anything about a system that isn't built yet.
 
 ---
 
-## This session — T5, T6, T8
+## This session — T7
 
-Three backlog tickets, in the order the previous handoff suggested, skipping only
-T7 (bigger, more narrative work — left for its own session).
+**T7 — The Observation.** The boss fight, built close to the treatment's own example
+card (§9.2, "THE OBSERVATION YOU WERE NOT TOLD ABOUT") rather than invented fresh —
+that card already specified the alert, the nine-second window, the four choices, and
+the post-conference exchange almost verbatim.
 
-**T5 — Classroom builder.** The cabinet and bookshelf on the pre-bell seating chart
-are draggable now. `systems/chart.js` keeps the occluder rectangles mutable and
-re-runs `classifySight` on every desk as you drag (`moveOccluder`); `ui/seating.js`
-does the drag with a delta-based pointer handler and a `patch()` that repositions
-elements in place instead of rebuilding the plan mid-drag, which would drop pointer
-capture on the thing you're holding. The layout you land on isn't just a preview —
-`beginPeriod()` in `main.js` moves the real 3D occluder meshes to match, so the
-raycast and collision the rest of the period uses are the ones you actually built.
-It persists (`localStorage` key `occluders`) because it's the room, not the roster.
-Closes gap 8 from last time: park a occluder on a desk's own sightline and it goes
-fully blind, from all three viewpoints, which the August layout alone never produces.
+- **`data/observation.json`** (and `data/period2/observation.json`, its own scripted
+  moment for the second roster — Milo instead of Kayla, wait-time instead of
+  engagement, a different scripted minute). Content-driven per CLAUDE.md: the alert
+  copy, the four window actions with their effects and an optional `solo` flag, and
+  the post-conference `prompts`/`followUps` tree all live in data, not code.
+- **`src/systems/observation.js`** (new factory, `createObservation`) is a small state
+  machine — `idle → window → conference → idle`. It fires once per period at a
+  scripted `atMinute` (checked against `state.t`, the same pattern `systems/events.js`
+  already uses), then runs a **real-time** countdown (`tick(state, dt)` uses the
+  frame's actual `dt`, not the ×10 game clock — the treatment's "9 seconds" is meant
+  to be 9 real seconds of reflexes, not 90 game-seconds of thinking time). Up to
+  `maxPicks` (2) actions can be picked before time runs out; picking the `solo` one
+  ("Do nothing. Teach the lesson.") ends the window immediately, matching the
+  treatment's framing that it's a complete choice on its own, not one of two. Either
+  way it flows into the post-conference dialogue — a linear prompt queue where a
+  choice can enqueue a `followUp` prompt ("you now owe a follow-up"), which is as much
+  "tree" as the treatment's own example actually shows.
+- **UI-wise, nothing new was built.** The alert reuses the existing `#pa` banner
+  (`dom.pa`/`paTitle`/`paTxt`) — the same element the scheduled intercom event already
+  uses — and both the window and the conference reuse `openMenu`/`closeMenu`
+  (`ui/menu.js`), which already had exactly the shape needed (header, body, a list of
+  buttons, a callback). The one change there: `openMenu` now accepts an optional
+  `spec.footer` so the observation can show "9 seconds. Pick 2." instead of the
+  intervention menu's default "ESC to close" line, which would have been actively
+  wrong here (see below).
+- **Gating.** While the observation is active (`observation.active()`), E/Q/R/T are
+  blocked (same mechanism as an open tell menu), a tell can't be clicked open on top
+  of it, and ESC does nothing — you can't dismiss an unannounced observation by
+  pressing Escape. Movement and Withitness are *not* blocked, matching how an open
+  tell menu already doesn't block them either.
+- **`main.js`**: `observation` joins the per-period `let` bindings (rebuilt in
+  `startPeriod`, so period 2 gets a fresh one that can fire on its own schedule), and
+  `observation.tick(state, dt)` runs every frame next to `events.tick(state)`.
+- **Tests**: `tests/smoke.mjs` mocks `dom`/`openMenu`/`closeMenu` and injects a
+  synchronous `schedule` (real code defaults to `setTimeout`, tests pass `fn => fn()`
+  so the 900ms bridge-to-conference pause doesn't cost real wall-clock time in a
+  headless run) — 13 new assertions covering the trigger timing, action effects,
+  the solo-action short-circuit, `maxPicks`, the follow-up branch, and the return to
+  idle. 163 assertions total, all green.
 
-**T6 — Second period.** `main.js` is restructured around `startPeriod(index)`, driven
-by a `PERIODS` list (`./data`, `./data/period2`). The report screen has a "Next
-period" button that calls it directly — no reload. New content lives in
-`data/period2/`: a new twelve-kid roster, a new lesson (Reconstruction's three
-amendments, sized to actually fill the period — see the balance note below), and a
-different Room Temp baseline (a rowdier, post-lunch fifth period). `tells.json`,
-`interventions.json`, `reactions.json`, and `seating.json` are mechanic definitions,
-not period-specific content, so period 2 just has its own copies of those, unchanged.
-Chart and discovery persistence are namespaced per period (`chart:period2`,
-`known:period2`) — a volatility edge you learned about one roster's kids has no
-business being drawn on a different roster's chart just because it landed on the
-same seat number. Furniture position (T5) stays a single un-namespaced key, since
-that's genuinely shared physical state between periods in the same room.
-
-**T8 — Whisper audio.** Gap 5, closed, in the register the rest of the audio in this
-project already uses: everything in `audio.js` is procedurally synthesized, nothing
-is a sample, so whisper audio is a filtered-noise bed (bandpass around 1050 Hz for a
-voice-ish formant, a `tanh` wave-shaper for radio crackle, a slow LFO riding on the
-gain so it stutters instead of droning) run through a `StereoPannerNode`. `main.js`
-finds the room's one live `WHISPER` tell each frame, computes its pan from the
-camera's yaw and its distance-based falloff (`CFG.whisper.range`,
-`CFG.whisper.panSpan`), and it's silent unless you're in Withitness — the whole point
-is that it's not audible normally. One deliberate scope call: the treatment's
-"intelligible fragments... transcribed live in subtitles" implies actual words. This
-does not do that — there's no voice synthesis or recorded dialogue in this project,
-procedural or otherwise, so what you get is an impressionistic, placeable murmur, not
-transcribable speech. If literal subtitles matter later, that's new scope, not a bug
-in this ticket.
-
-All three: `tests/smoke.mjs` (150 assertions, was 143) and `tests/balance.mjs` (now
-runs both periods) are green. **Not verified in an actual browser this session** — the
-sandbox this work happened in blocks the CDN `three.js` loads from
-(`cdn.jsdelivr.net`, 403 from the egress proxy), so there was no way to click through
-the real WebGL game here. Worth doing a real pass — `python3 -m http.server 8000` —
-before trusting the drag interaction or the period-2 transition beyond what the
-headless tests cover.
+**Not verified in a real browser** — same limitation as last session: this sandbox
+blocks the CDN `three.js` load (`cdn.jsdelivr.net`, 403 from the egress proxy), so
+there was no way to click through the actual alert banner, watch the countdown, or
+click through the conference in a live page. Worth a real pass —
+`python3 -m http.server 8000`, teach until the scripted minute (30 in period 1, 12 in
+period 2) — before trusting the feel of the countdown or the menu transitions beyond
+what the headless state-machine tests cover.
 
 ---
 
@@ -73,13 +75,14 @@ headless tests cover.
 - **Withitness**: thermal material swap, CSS overlay, sub-bass drone, heartbeat, rubric-box
   tell annotations
 - **Line-of-sight blind spots**: raycast against occluders defined in `data/room.json`,
-  and now draggable on the chart screen (T5) — see below
+  draggable on the chart screen (T5)
 - 6 tell types (PHONE, NOTE, WHISPER, COPYING, FALSE, QUIET) on an authored schedule
 - **Intervention menu** driven entirely by `data/interventions.json`, with per-type overrides,
   proximity gating, coinflip outcomes, and escalation
 - **Hypervigilance** → false positive spawn → the granola bar
 - **The curveball** (QUIET) at minute 21, unscored, different menu
 - Scheduled intercom event, four meters, room-temp bands, four endings, end-of-period report
+- **The Observation** (T7): a scripted Admin Proximity Alert, once per period
 - Startup errors surface on screen instead of leaving the start button dead (`main.js`)
 
 **T1 — Student reactions.** A pose/envelope tween in `src/world/students.js`, every pose data
@@ -137,14 +140,16 @@ whatever you built. Persists across periods (`localStorage` key `occluders`) bec
 the room is shared physical state, unlike the roster-specific chart and discoveries.
 
 **T6 — Second period.** `main.js`'s `startPeriod(index)` rebuilds everything that
-depends on a period's own data (room, chart, roster, lesson, Room Temp, tell schedule)
-against a fresh `createState()`, while the renderer, camera, materials, and the
-seating-screen UI stay session-level. A `PERIODS` list names each period's data
-folder (`./data`, `./data/period2`); the report screen's "Next period" button calls
-`startPeriod` on the next one directly. Starting comprehension is always fresh
-(`createState()` every period) — nothing carries mastery forward. What *does* carry
-forward: the room's furniture (T5, shared), and each period's own chart/discoveries
-(namespaced, not shared with a different roster).
+depends on a period's own data (room, chart, roster, lesson, Room Temp, tell schedule,
+the observation) against a fresh `createState()`, while the renderer, camera,
+materials, and the seating-screen UI stay session-level. A `PERIODS` list names each
+period's data folder (`./data`, `./data/period2`); the report screen's "Next period"
+button calls `startPeriod` on the next one directly. Starting comprehension is always
+fresh (`createState()` every period) — nothing carries mastery forward. What *does*
+carry forward: the room's furniture (T5, shared), and each period's own
+chart/discoveries (namespaced, not shared with a different roster).
+
+**T7 — The Observation.** `systems/observation.js` — see "This session" above.
 
 **T8 — Whisper audio.** `audio.js` runs one persistent filtered-noise-plus-crackle
 voice through a `StereoPannerNode`, silent by default. `main.js` finds the live
@@ -154,19 +159,21 @@ a pan (camera yaw vs. the tell's world position) and a distance falloff
 otherwise; a directional, placeable murmur once you're scanning.
 
 **Audio.** HVAC bed, ambient murmur scaling with restlessness and ducking under Withitness,
-chair scrapes on reactions, a chime on checks, the bell, and now the whisper voice (T8).
+chair scrapes on reactions, a chime on checks, the bell, and the whisper voice (T8).
 
-**Tests.** `tests/smoke.mjs` — 150 headless assertions over interventions, the lesson, the
-reaction wiring, Room Temp, the chart, and T5's occluder-drag sightline recompute.
-`tests/balance.mjs` — five play styles through whole periods for *both* periods, plus one
-style across three different charts for period 1.
+**Tests.** `tests/smoke.mjs` — 163 headless assertions over interventions, the lesson, the
+reaction wiring, Room Temp, the chart (including T5's occluder-drag sightline recompute),
+and the observation's state machine (T7). `tests/balance.mjs` — five play styles through
+whole periods for *both* periods, plus one style across three different charts for period 1.
 
 ---
 
 ## Where the balance sits
 
-Period 1 unchanged from before T5/T6/T8 — nothing in the balance-relevant systems
-was touched by any of the three tickets.
+Unchanged from last session — T7 doesn't touch the lesson/tell/chart loop
+`tests/balance.mjs` simulates, the same way the scheduled intercom event isn't in that
+harness either. Re-run `node balance.mjs` after touching `config.js` or any
+`lesson.json`.
 
 ```
 ideal (never scans)         mastery 77  fidelity 84  bandwidth 19  restless 72  missed 7
@@ -182,73 +189,65 @@ the pairs split up      mastery 79  restless 44  missed 6
 the barometer up front  mastery 79  restless 49  missed 6
 ```
 
-Period 2 (new this session — its lesson was authored to fill the full period, unlike
-period 1's, see gap 1 below):
-
-```
-ideal (never scans)         mastery 78  fidelity 84  bandwidth 19  restless 72  missed 7
-the good teacher             mastery 79  fidelity 79  bandwidth  0  restless  0  missed 0
-the hypervigilant            mastery 13  fidelity 57  bandwidth  0  restless  0  missed 0
-the wanderer                  mastery 53  fidelity 53  bandwidth 54  restless 14  missed 0
-never checks, never looks    mastery 56  fidelity 70  bandwidth 55  restless 93  missed 7
-```
-
-Close enough to period 1's numbers across every style that the new lesson/roster
-aren't accidentally easier or harder — that was the point of running the harness
-against both.
+Period 2 tracks the same shape within a couple of points on every style — see the
+previous handoff entry in git history for the exact numbers if you need them.
 
 ---
 
 ## Known gaps in the slice
 
 1. **Period 1's lesson is still 2,000 game-seconds against a 2,820-second period**
-   (period 2's is 2,150 + 670 filler = the full period, deliberately, this session).
-   Settling period 1 to match is still a live tuning call, not done here.
+   (period 2's is 2,150 + 670 filler = the full period). Settling period 1 to match
+   is still a live tuning call, not done here.
 2. **Tell meshes are still placeholders.** Boxes and spheres.
 3. **Mobile is still untested.**
 4. **The comprehension aura is a torus over every head.** Fine at a glance, bad in a crowd.
-5. ~~Whisper audio does not exist.~~ Closed this session (T8) — see above. It's an
-   impressionistic crackle/murmur, not transcribable speech; the treatment's "subtitles"
-   idea is unaddressed and would be new scope (voice synthesis or recorded dialogue),
-   not a fix to this ticket.
-6. **Beats and tells are hand-authored and never vary**, now across two periods'
+5. **Beats and tells are hand-authored and never vary**, now across two periods'
    worth of content instead of one.
-7. **T4: the front row's advantage is small enough to hide.** Don't decide this without
+6. **T4: the front row's advantage is small enough to hide.** Don't decide this without
    running `SPREAD=1 node balance.mjs`.
-8. ~~T4: no desk in this room is fully blind.~~ T5 makes it reachable — wall one off
-   from every viewpoint and it goes blind — but the August layout itself, un-dragged,
-   still doesn't produce one by default. That's still correct given the authored
-   furniture; nothing forces a player to ever create one.
-9. **T6 shares one whisper voice across the whole session.** Fine today because no
-   authored schedule (period 1 or 2) ever runs two `WHISPER` tells at once. If a
-   future period's schedule did, they'd share the one voice rather than layer, which
-   would read as one whisper jumping position, not two.
-10. **Old period meshes aren't explicitly disposed** when `startPeriod` tears one
-    down (T6) — they're dropped from the scene graph and left to the garbage
-    collector, not `geometry.dispose()`'d. Fine for two periods in one tab; would
-    want a real cleanup pass if periods become open-ended.
-11. **T5/T6/T8 were not exercised in a real browser this session** — the sandbox
-    blocked the CDN `three.js` load, so verification was headless-tests-only. See
-    "This session" above.
+7. **T6 shares one whisper voice across the whole session.** Fine today because no
+   authored schedule (period 1 or 2) ever runs two `WHISPER` tells at once.
+8. **Old period meshes aren't explicitly disposed** when `startPeriod` tears one
+   down (T6) — dropped from the scene graph, left to the garbage collector. Fine for
+   two periods in one tab; would want a real cleanup pass if periods become open-ended.
+9. **T7's post-conference feedback is static regardless of what you picked in the
+   window.** The AP's opening line and the choices don't branch on which look-fors you
+   satisfied — a real dialogue tree would probably want that. Shipped this way because
+   the treatment's own example doesn't tie them together either, but it's the most
+   obvious next depth pass on this ticket specifically, if it gets one.
+10. **T7 fires exactly once per period, at a fixed scripted minute** — not randomized,
+    not repeatable, no "unannounced vs. walkthrough vs. just the attendance thing"
+    distinction the treatment's Admin Proximity Alert section describes as an upgrade
+    path. That's meta-progression (§8), out of scope for a one-period slice.
+11. **Nothing in this slice has been exercised in a real browser** across T5–T8 — the
+    sandbox these last two sessions ran in blocks the CDN `three.js` load. Headless
+    tests are green; a human should still click through it once.
 
 ---
 
-## Backlog (suggested order)
+## Backlog
 
-**T7 — The Observation.** *Next up.* The boss fight. Admin Proximity Alert, nine-second
-window, rubric look-fors, post-conference dialogue tree. Treatment §6.1. Bigger and more
-narrative/content-heavy than T5/T6/T8 — probably wants its own session, and likely some
-up-front decisions about the dialogue tree's shape before diving into code.
+**Empty.** T1 through T8 — everything the last several handoffs queued — are built.
+This is a real stopping point, not a gap to paper over with an invented ticket.
 
-Nothing else is queued past T7 in the treatment's suggested order; re-read
-`docs/BELL-TO-BELL-treatment.md` §6 once T7 lands to decide what's next.
+The treatment (`docs/BELL-TO-BELL-treatment.md`) has a lot more in it: other full
+minigames (§6.1 — The Copier, The Data Meeting, The Paperwork Tower, Sub Plans, Fire
+Drill, Hall Duty, Lunch), the Calendar Bosses (§6.3), subject choice (§4), and the
+whole multi-year meta-arc (§8) with Legend as its currency. None of that is "the next
+ticket" in the way T5–T8 were — those all deepened systems that already exist inside
+the one 47-minute period. The items in §6/§8 mostly assume things this slice doesn't
+have: a day structure around the period, a calendar, more than one room, more than one
+class you're comparing against. That's a scope decision, not an implementation one —
+worth a real conversation about whether "One Period" stays a deepening vertical slice
+or starts growing the day around it, rather than an agent picking one of those and
+guessing.
 
 ---
 
 ## Open questions
 
-- Tell and beat authoring vs. generation: keep authoring for now — period 2 was
-  hand-authored the same way period 1 was.
+- Tell and beat authoring vs. generation: keep authoring for now.
 - Does the period need a fail state? Still no.
 - Should Room Temp reveal direction at all? Still unchanged.
 - Is suppression too strong? Watch whether players find "the barometer in the middle of the
@@ -256,17 +255,22 @@ Nothing else is queued past T7 in the treatment's suggested order; re-read
   how much one kid can absorb, not a nerf to the effect.
 - Subject choice reskins hazards. Not worth touching yet.
 - Mobile. Still undecided.
-- **Whisper audio's "intelligible fragments" / live subtitles** (treatment) vs. what got
-  built (a procedural, non-verbal crackle bed): is literal transcribed dialogue actually
-  wanted later, and if so, is that recorded voice lines or synthesized speech? Either is
-  a real scope decision, not a follow-up to T8 as shipped.
+- Whisper audio's "intelligible fragments" / live subtitles (treatment) vs. what got
+  built (T8, a procedural, non-verbal crackle bed): real scope decision if literal
+  transcribed dialogue matters later.
+- **The big one, now that the backlog is empty:** stay inside "One Period" and keep
+  adding depth (gap 9's branching post-conference, gap 1's lesson-length tuning,
+  varied/generated tells), or start building the day/year structure the treatment
+  describes around it? Needs a person, not an agent's guess.
 
 ## How to pick up in Claude Code
 
-Point it at the repo root and give it a ticket, not the whole project:
+The backlog is empty, so don't open with a ticket number this time — open with the
+scope question above, or with a specific new slice of the treatment you've decided on:
 
-> Read CLAUDE.md and docs/HANDOFF.md. Implement T7 (The Observation). Run
-> tests/smoke.mjs and tests/balance.mjs when you're done and tell me what you changed.
+> Read CLAUDE.md and docs/HANDOFF.md. I want to build \<specific thing from the
+> treatment\>. Here's what I want it to do: ... Run tests/smoke.mjs and
+> tests/balance.mjs when you're done and tell me what you changed.
 
-Don't open with "figure out what to do" — the backlog already decided, and an agent given an
-open brief on a large repo will refactor things that were working.
+Don't open with "figure out what to do" — an agent given an open brief on a large repo
+will refactor things that were working, and right now there's no backlog to anchor it.

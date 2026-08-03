@@ -1,0 +1,74 @@
+{
+  "trigger": { "atMinute": 12, "warningSeconds": 9 },
+  "alert": {
+    "title": "Admin Proximity Alert",
+    "body": "Two sets of shoes in the hallway, moving slower than passing-time shoes. One of them is AP Reyes.",
+    "instruction": "Pick two."
+  },
+  "maxPicks": 2,
+  "actions": [
+    {
+      "id": "projector",
+      "label": "Advance the slide off yesterday's warm-up",
+      "blurb": "3 seconds. You will have to stop talking.",
+      "effects": { "fidelity": 3 }
+    },
+    {
+      "id": "milo",
+      "label": "Get Milo back in his seat",
+      "blurb": "3 seconds. He will narrate the whole walk back.",
+      "effects": { "rapport": -1 },
+      "toast": { "kind": "", "title": "Milo", "body": "\"I'm sitting down. I'm sitting. Down.\"" }
+    },
+    {
+      "id": "waittime",
+      "label": "Count five full seconds before calling on anyone",
+      "blurb": "2 seconds to set up. Satisfies a look-for. Feels like an hour out loud.",
+      "effects": { "fidelity": 2, "mastery": -1 }
+    },
+    {
+      "id": "nothing",
+      "label": "Do nothing. Teach the lesson.",
+      "blurb": "Uses your whole turn. The lesson you were already teaching keeps going.",
+      "solo": true,
+      "effects": { "fidelity": -4, "mastery": 5, "rapport": 3 }
+    }
+  ],
+  "bridge": {
+    "kind": "", "title": "They step back into the hall.",
+    "body": "A moment later, a knock."
+  },
+  "conference": {
+    "header": "Post-Conference — AP Reyes",
+    "prompts": [
+      {
+        "id": "waittime",
+        "line": "\"I clocked about two seconds between your question and the first hand. Talk to me about wait time.\"",
+        "choices": [
+          { "label": "\"You're right — I'll count to five in my head before I call on anyone.\"",
+            "blurb": "Fidelity +. You now owe a follow-up.",
+            "effects": { "fidelity": 2 }, "followUp": "count" },
+          { "label": "\"Two seconds is how long it takes them to decide it's not a trick question.\"",
+            "blurb": "Honest. Rapport −.",
+            "effects": { "rapport": -2 } },
+          { "label": "\"That's a great point, I'll add it to my growth plan.\"",
+            "blurb": "Free. Hollow.",
+            "effects": { "bandwidth": -1 } }
+        ]
+      }
+    ],
+    "followUps": {
+      "count": {
+        "line": "\"Good. I'll listen for it next time I'm in.\"",
+        "choices": [
+          { "label": "\"You'll hear it.\"", "blurb": "You now owe her, specifically.", "effects": { "fidelity": 1 } },
+          { "label": "Say nothing. Nod.", "blurb": "", "effects": {} }
+        ]
+      }
+    },
+    "closing": {
+      "kind": "", "title": "Observation complete",
+      "body": "You'll see the write-up in your email. Eventually."
+    }
+  }
+}
