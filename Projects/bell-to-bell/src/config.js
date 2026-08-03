@@ -99,6 +99,13 @@ export const CFG = {
     quadrantMinShare: 0.45      // below this the reading is "evenly distributed"
   },
 
+  // whisper audio (T8). Only reaches you in Withitness — it's a hearing
+  // upgrade to go with the seeing one, not a free extra sense.
+  whisper: {
+    range: 9,           // metres; beyond this it fades below the noise floor
+    panSpan: 4          // metres of lateral offset that reads as fully hard-panned
+  },
+
   // unresolved tell expiry
   missedRestless: 8,
   missedMastery: -1.2,

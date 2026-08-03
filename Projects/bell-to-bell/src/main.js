@@ -114,6 +114,24 @@ function onExpire(t) {
   toast('', 'Missed it', copy);
 }
 
+// T8 — the room's one live whisper, if it has one, panned to where it
+// actually is and audible only in Withitness. Room noise otherwise; the
+// same conversation the murmur bed already implies, just not resolvable.
+function updateWhisperAudio() {
+  const t = tellSystem.tells.find(x => x.type === 'WHISPER' && x.born !== null && !x.dead);
+  if (!t || !state.withitness) { audio.setWhisper(0, 0); return; }
+
+  const dx = t.pos.x - camera.position.x, dz = t.pos.z - camera.position.z;
+  const dist = Math.hypot(dx, dz);
+  const level = Math.max(0, 1 - dist / CFG.whisper.range);
+  if (level <= 0) { audio.setWhisper(0, 0); return; }
+
+  const yaw = input.look.yaw;
+  const lateral = dx * Math.cos(yaw) - dz * Math.sin(yaw);
+  const pan = Math.max(-1, Math.min(1, lateral / CFG.whisper.panSpan));
+  audio.setWhisper(pan, level);
+}
+
 addEventListener('keydown', e => { if (e.code === 'Escape') { closeMenu(); state.openTell = null; } });
 document.addEventListener('click', e => {
   if (state.openTell && !e.target.closest('#menu') && !e.target.closest('.tell')) {
@@ -166,6 +184,7 @@ function frame(now) {
     auraFor: state.withitness ? (s => lesson.auraOf(s, state)) : null
   });
   audio.setMurmur(state.restless / 100, state.withitness);
+  updateWhisperAudio();
 
   updateLabels({ state, camera, tellSystem, students, onClick: handleTellClick, projector });
   drawHUD(state, teaching, temp.display(state), lesson.summary(state));

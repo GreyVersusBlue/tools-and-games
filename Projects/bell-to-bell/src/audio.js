@@ -4,6 +4,7 @@ export function createAudio() {
   let ctx = null, droneGain = null, beatTimer = null, active = false;
   let hvacGain = null, murmurGain = null, murmurFilter = null, noiseBuf = null;
   let murmurTarget = 0;
+  let whisperGate = null, whisperPanner = null, whisperActive = false;
 
   function noise(seconds = 2) {
     const buf = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
@@ -21,6 +22,17 @@ export function createAudio() {
     src.connect(f).connect(g).connect(ctx.destination);
     src.start();
     return { gain: g, filter: f };
+  }
+
+  // A soft asymmetric clip — enough harmonic garbage to read as a bad radio,
+  // not distortion-pedal fuzz.
+  function crackleCurve() {
+    const n = 256, curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * 2 - 1;
+      curve[i] = Math.tanh(x * 3.2) * 0.9;
+    }
+    return curve;
   }
 
   function init() {
@@ -41,7 +53,43 @@ export function createAudio() {
       hvacGain = bed(noiseBuf, 220, 0.6, 0.014).gain;          // the ceiling unit
       const m = bed(noiseBuf, 700, 1.6, 0.0, 'bandpass');       // twelve people
       murmurGain = m.gain; murmurFilter = m.filter;
+
+      // T8 — a whisper conversation you cannot make out normally. Withitness
+      // is what turns it from room noise into a directional, panned, crackly
+      // thing you can place. One voice: the schedule never runs two whispers
+      // at once, and if a future one did, they'd share it rather than stack.
+      const whisperSrc = ctx.createBufferSource();
+      whisperSrc.buffer = noiseBuf; whisperSrc.loop = true;
+      const voiceFilter = ctx.createBiquadFilter();
+      voiceFilter.type = 'bandpass'; voiceFilter.frequency.value = 1050; voiceFilter.Q.value = 3.4;
+      const crackle = ctx.createWaveShaper();
+      crackle.curve = crackleCurve();
+      const pulseGain = ctx.createGain(); pulseGain.gain.value = 0.028;   // the murmur, always "there"
+      const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 3.1;
+      const lfoDepth = ctx.createGain(); lfoDepth.gain.value = 0.02;      // the "fragments" stutter
+      lfo.connect(lfoDepth).connect(pulseGain.gain);
+      lfo.start();
+      whisperGate = ctx.createGain(); whisperGate.gain.value = 0;         // on/off + distance falloff
+      whisperPanner = ctx.createStereoPanner();
+      whisperSrc.connect(voiceFilter).connect(crackle).connect(pulseGain)
+        .connect(whisperGate).connect(whisperPanner).connect(ctx.destination);
+      whisperSrc.start();
     } catch (e) { /* audio is optional */ }
+  }
+
+  // Called every frame with whatever the room's one live whisper resolves to.
+  // level 0..1 is distance falloff; the caller has already decided whether
+  // Withitness is even on.
+  function setWhisper(pan, level) {
+    if (!ctx || !whisperGate) return;
+    const on = level > 0;
+    if (on !== whisperActive) {
+      whisperActive = on;
+      whisperPanner.pan.setTargetAtTime(pan, ctx.currentTime, 0.05);
+    } else if (on) {
+      whisperPanner.pan.setTargetAtTime(pan, ctx.currentTime, 0.15);
+    }
+    whisperGate.gain.linearRampToValueAtTime(Math.max(0, Math.min(1, level)), ctx.currentTime + 0.12);
   }
 
   function beat() {
@@ -118,5 +166,5 @@ export function createAudio() {
     });
   }
 
-  return { init, setDrone, setMurmur, scrape, blip, chime, bell };
+  return { init, setDrone, setMurmur, scrape, blip, chime, bell, setWhisper };
 }
