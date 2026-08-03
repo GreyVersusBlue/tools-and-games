@@ -19,6 +19,7 @@ export function buildRoom(scene, registry, mats, data) {
   for (const o of data.occluders) {
     const [w, h, d] = o.size;
     const mesh = box(scene, registry, o.size, mats[o.mat], [o.pos[0], h / 2, o.pos[1]]);
+    mesh.userData.id = o.id;
     mesh.userData.label = o.label;
     mesh.userData.halfW = w / 2;
     mesh.userData.halfD = d / 2;

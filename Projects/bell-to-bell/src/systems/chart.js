@@ -17,9 +17,10 @@ export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [
   const S = CFG.seating;
   const cols = seatGrid.cols, rows = seatGrid.rows;
   const rects = occluderRects(room.occluders || []);
+  const rectsById = new Map(rects.map(r => [r.id, r]));
   const viewpoints = room.viewpoints || [{ id: 'front', x: 0, z: room.spawn?.z ?? -2.4 }];
 
-  // ---- the desks (fixed until T5 lets you push them around) ----------------
+  // ---- the desks (fixed layout; T5 moves the occluders around them) --------
   const desks = [];
   for (let r = 0; r < rows.length; r++) {
     for (let c = 0; c < cols.length; c++) {
@@ -28,11 +29,37 @@ export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [
       // The point the raycast actually asks about at run time (systems/tells.js).
       const target = { x: x + 0.18, z: bodyZ - 0.1 };
       desks.push({
-        index: desks.length, col: c, row: r, x, z, bodyZ,
+        index: desks.length, col: c, row: r, x, z, bodyZ, target,
         rowGain: S.rowGain[Math.min(r, S.rowGain.length - 1)],
-        sight: classifySight(target, viewpoints, rects)
+        sight: null
       });
     }
+  }
+
+  // Re-run the raycast-on-paper for every desk against wherever the occluders
+  // are right now. Called once at construction and again after every drag.
+  function recomputeSight() {
+    for (const d of desks) d.sight = classifySight(d.target, viewpoints, rects);
+  }
+  recomputeSight();
+
+  // T5 — drag an occluder to a new plan position, clamped to the room, then
+  // re-shade every desk. Returns false for an unknown id so callers can ignore
+  // a stray drag instead of crashing on it.
+  function moveOccluder(id, x, z) {
+    const r = rectsById.get(id);
+    if (!r) return false;
+    const b = room.bounds || {};
+    const minX = -b.x + r.halfW, maxX = b.x - r.halfW;
+    const minZ = b.zFront + r.halfD, maxZ = b.zBack - r.halfD;
+    r.x = Number.isFinite(minX) && Number.isFinite(maxX) ? Math.min(maxX, Math.max(minX, x)) : x;
+    r.z = Number.isFinite(minZ) && Number.isFinite(maxZ) ? Math.min(maxZ, Math.max(minZ, z)) : z;
+    recomputeSight();
+    return true;
+  }
+
+  function occluderPositions() {
+    return rects.map(r => ({ id: r.id, x: r.x, z: r.z }));
   }
 
   const defaultAssignment = desks.map((_, i) => i);
@@ -222,7 +249,8 @@ export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [
     get seatOf() { return seatOf.slice(); },
     deskOf, studentAt, assign, reset, swapDesks,
     adjacency, neighbours, steadiestNeighbour,
-    resolveSchedule, apply, movesFrom, rechartCost, viewModel
+    resolveSchedule, apply, movesFrom, rechartCost, viewModel,
+    moveOccluder, occluderPositions
   };
 }
 

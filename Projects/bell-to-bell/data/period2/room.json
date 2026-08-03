@@ -1,0 +1,49 @@
+{
+  "meta": { "period": "Period 5 — U.S. Hist.", "room": "RM 214" },
+  "bounds": { "x": 5.2, "zFront": -3.6, "zBack": 5.4, "height": 3.0 },
+  "teachingZone": { "maxZ": -1.7, "maxAbsX": 4.4 },
+  "spawn": { "x": 0, "z": -2.4, "yaw": 3.14159 },
+  "viewpoints": [
+    { "id": "front-centre", "label": "the middle of the front", "x": 0,    "z": -2.4 },
+    { "id": "front-left",   "label": "by the door",       "x": -3.0, "z": -2.2 },
+    { "id": "front-right",  "label": "by the windows",    "x": 3.2,  "z": -2.2 }
+  ],
+  "fixtures": [
+    { "id": "floor",       "mat": "floor",  "size": [10.4, 0.1, 9.0],  "pos": [0, -0.05, 0.9] },
+    { "id": "ceiling",     "mat": "ceil",   "size": [10.4, 0.1, 9.0],  "pos": [0, 3.0, 0.9] },
+    { "id": "wallFront",   "mat": "wall",   "size": [10.4, 3.0, 0.1],  "pos": [0, 1.5, -3.6] },
+    { "id": "wallBack",    "mat": "wall",   "size": [10.4, 3.0, 0.1],  "pos": [0, 1.5, 5.4] },
+    { "id": "wallLeft",    "mat": "wall",   "size": [0.1, 3.0, 9.0],   "pos": [-5.2, 1.5, 0.9] },
+    { "id": "wallRight",   "mat": "wall",   "size": [0.1, 3.0, 9.0],   "pos": [5.2, 1.5, 0.9] },
+
+    { "id": "whiteboard",  "mat": "board",  "size": [6.4, 1.5, 0.06],  "pos": [-0.4, 1.55, -3.51] },
+    { "id": "objectiveBoard", "mat": "poster", "size": [1.5, 1.0, 0.06], "pos": [3.9, 1.7, -3.51],
+      "note": "Still says Tuesday's objective." },
+    { "id": "posterA",     "mat": "poster", "size": [0.9, 1.3, 0.04],  "pos": [-5.1, 1.8, 1.2], "rotY": 1.5708 },
+    { "id": "posterB",     "mat": "poster", "size": [0.9, 1.3, 0.04],  "pos": [-5.1, 1.8, 3.4], "rotY": 1.5708 },
+
+    { "id": "window1",     "mat": "glass",  "size": [0.06, 1.2, 1.5],  "pos": [5.16, 1.7, 0.2] },
+    { "id": "window2",     "mat": "glass",  "size": [0.06, 1.2, 1.5],  "pos": [5.16, 1.7, 2.1] },
+    { "id": "window3",     "mat": "glass",  "size": [0.06, 1.2, 1.5],  "pos": [5.16, 1.7, 4.0] },
+
+    { "id": "teacherDeskTop",  "mat": "wood",  "size": [1.6, 0.06, 0.75], "pos": [-3.5, 0.74, -2.7] },
+    { "id": "teacherDeskBody", "mat": "metal", "size": [1.5, 0.72, 0.7],  "pos": [-3.5, 0.37, -2.7] },
+    { "id": "rug",             "mat": "rug",   "size": [3.2, 0.02, 2.2],  "pos": [0, 0.01, -1.4] }
+  ],
+  "screens": [
+    { "id": "board",     "kind": "lesson",    "size": [6.1, 1.34], "pos": [-0.4, 1.55, -3.46], "px": [1024, 224] },
+    { "id": "objective", "kind": "objective", "size": [1.36, 0.86], "pos": [3.9, 1.70, -3.46], "px": [340, 216] }
+  ],
+  "occluders": [
+    { "id": "cabinet",   "label": "storage cabinet", "mat": "metal", "size": [0.95, 1.95, 0.62], "pos": [-2.35, 1.8],
+      "blocks": "back-left seats from center-front" },
+    { "id": "bookshelf", "label": "bookshelf",       "mat": "wood",  "size": [0.9, 1.85, 0.55],  "pos": [1.95, 1.4],
+      "clutter": 4, "blocks": "back-right seats from center-front" }
+  ],
+  "lights": [
+    { "type": "ambient", "color": "0xE6EAE0", "intensity": 0.72 },
+    { "type": "point",   "color": "0xF6FFF0", "intensity": 0.55, "distance": 22, "pos": [-2, 2.7, 0] },
+    { "type": "point",   "color": "0xF6FFF0", "intensity": 0.55, "distance": 22, "pos": [2, 2.7, 3] },
+    { "type": "directional", "color": "0xFFF3D8", "intensity": 0.35, "pos": [8, 4, 2] }
+  ]
+}

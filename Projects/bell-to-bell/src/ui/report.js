@@ -96,12 +96,21 @@ export function showReport(state, data, extra = {}) {
   if (!quotes.length && !seatQuotes.length) quotes.push(c.quiet);
   quotes.push(...seatQuotes);
 
+  const periodLabel = (extra.periodLabel || '4th period').toUpperCase();
+
   dom.endTitle.textContent = ending.title;
-  dom.endSub.textContent = `${ending.sub} \u2014 4TH PERIOD \u00B7 ${state.caught} ADDRESSED \u00B7 ${state.missed} MISSED`;
+  dom.endSub.textContent = `${ending.sub} \u2014 ${periodLabel} \u00B7 ${state.caught} ADDRESSED \u00B7 ${state.missed} MISSED`;
+  // T6: a period that isn't the last one offers a way to walk straight into
+  // the next roster instead of reloading back to period one.
+  const nextBtn = extra.onNextPeriod ? '<button class="cta" id="nextBtn">Next period</button>' : '';
   dom.endBody.innerHTML = rows + lessonRow + seatRow +
     '<div style="height:16px"></div>' +
     quotes.map(q => `<div class="quote">${q}</div>`).join('') +
+    nextBtn +
     '<button class="cta" id="againBtn">Run it again</button>';
   dom.endScreen.classList.remove('hide');
   document.getElementById('againBtn').addEventListener('click', () => location.reload());
+  if (extra.onNextPeriod) {
+    document.getElementById('nextBtn').addEventListener('click', () => extra.onNextPeriod());
+  }
 }

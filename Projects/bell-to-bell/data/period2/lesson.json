@@ -1,0 +1,93 @@
+{
+  "title": "Reconstruction — the Three Amendments",
+  "unit": "U.S. HIST · UNIT 5 · DAY 1 OF 2",
+  "objectiveBoard": {
+    "head": "WED  3/12",
+    "lines": [
+      "SWBAT explain what the 13th, 14th,",
+      "and 15th Amendments actually changed.",
+      "",
+      "8.5.A  ·  DO NOW ON DESK"
+    ],
+    "foot": "(new unit, same room)"
+  },
+  "beats": [
+    {
+      "id": "donow",
+      "label": "Do Now — one document, five years",
+      "line": "1865 to 1870. Three amendments. Put a word next to each year before I say anything.",
+      "board": { "head": "DO NOW", "lines": ["1865  ·  1868  ·  1870", "One word for each.", "You are allowed to guess."] },
+      "seconds": 250,
+      "gain": 0.00017,
+      "spread": 0.55
+    },
+    {
+      "id": "context",
+      "label": "Context — what the war did not settle",
+      "line": "The war ended slavery. It did not say what came after. That gap is the whole unit.",
+      "board": { "head": "AFTER APPOMATTOX", "lines": ["Slavery: ended.", "Citizenship: undefined.", "Voting: undefined."] },
+      "seconds": 460,
+      "gain": 0.00021,
+      "spread": 0.8
+    },
+    {
+      "id": "model",
+      "label": "Model — read the three",
+      "line": "13th out loud together. 14th, you read it with a partner. 15th, on your own.",
+      "board": { "head": "THE THREE", "lines": ["13th — no slavery", "14th — citizenship, equal protection", "15th — the vote, race is not a bar"] },
+      "seconds": 520,
+      "gain": 0.00027,
+      "spread": 1.1
+    },
+    {
+      "id": "argue",
+      "label": "The argument — did it work?",
+      "line": "Somebody will bring up 1965. Let them get there before you do.",
+      "board": { "head": "DID IT WORK?", "lines": ["On paper  ·  or  ·  in practice?", "Evidence from the amendments.", "\"Both\" needs proof, not a shrug."] },
+      "seconds": 580,
+      "gain": 0.00030,
+      "spread": 1.35,
+      "fidelityBonus": 2.5,
+      "note": "student-led discourse — a rubric look-for, if anyone were watching"
+    },
+    {
+      "id": "close",
+      "label": "Exit ticket",
+      "line": "One sentence. Which amendment still gets argued about in court, and why.",
+      "board": { "head": "EXIT TICKET", "lines": ["One sentence:", "Which one still gets argued", "about, and why?"] },
+      "seconds": 340,
+      "gain": 0.00020,
+      "spread": 0.6
+    }
+  ],
+  "filler": {
+    "id": "filler",
+    "label": "Sustained silent work",
+    "line": "You are out of lesson and not out of period. This is the oldest move there is.",
+    "board": { "head": "WORK TIME", "lines": ["Finish the exit ticket.", "Then read. Quietly.", "Yes, anything."] },
+    "seconds": 670,
+    "gain": 0.00004,
+    "spread": 0.4
+  },
+  "copy": {
+    "advance": { "kind": "", "title": "Next beat", "body": "{label}." },
+    "rushed": { "kind": "bad", "title": "You moved on",
+                "body": "Half of them were still writing. You saw it and you moved on anyway." },
+    "belabor": { "kind": "", "title": "Still on this",
+                 "body": "You have been on {label} for a while. Two kids have stopped writing and started waiting." },
+    "outOfBeats": { "kind": "", "title": "That's the lesson",
+                    "body": "There are eleven minutes left and nothing planned in them." },
+    "check": { "kind": "good", "title": "Check for understanding",
+               "body": "Thumbs, whiteboards, whatever you use. Now you know instead of assuming." },
+    "checkAgain": { "kind": "", "title": "Checking again",
+                    "body": "You just checked. They can tell you are stalling." },
+    "checkCold": { "kind": "bad", "title": "Nothing to check",
+                   "body": "You have not said anything yet to check on." },
+    "reteach": { "kind": "good", "title": "You back up",
+                 "body": "\"Let me say that a different way.\" It costs you four minutes you did not have." },
+    "reteachBlind": { "kind": "bad", "title": "Reteaching blind",
+                      "body": "You back up without checking first, so you reteach the part they already had." },
+    "greenIsland": { "kind": "", "title": "Comprehension",
+                     "body": "{name} has it. {name} has had it for ten minutes and has not said a word." }
+  }
+}

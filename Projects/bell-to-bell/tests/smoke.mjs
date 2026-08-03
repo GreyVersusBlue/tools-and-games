@@ -325,6 +325,42 @@ check('every desk gets a sight class', sights.length===12 && sights.every(k=>['c
 check('the furniture actually blinds somebody', sights.some(k=>k!=='clear'));
 check('the front row is always visible', baseChart.desks.filter(d=>d.row===0).every(d=>d.sight.kind==='clear'));
 
+// ---------------------------------------------------------------------------
+// T5 — the classroom builder (dragging the occluders)
+// ---------------------------------------------------------------------------
+// A fresh chart, so mutating occluder positions here cannot leak into any
+// other test that reads baseChart's sight classifications.
+const buildChart = mkChart();
+const backLeftDesk = 8;    // col 0, row 2 — the desk the cabinet test above blinds
+
+check('moving an unknown occluder is refused', buildChart.moveOccluder('nope', 0, 0)===false);
+
+// Park the cabinet on top of that desk's own target point: every viewpoint's
+// line to it now has to cross the rect, so it goes fully blind — gap 8, closed.
+buildChart.moveOccluder('cabinet', -2.9, 3.0);
+check('walling a desk off from everywhere makes it blind',
+  buildChart.desks[backLeftDesk].sight.kind==='blind');
+
+// Now drag it well out of the way of every desk and viewpoint.
+buildChart.moveOccluder('cabinet', 4.9, -3.4);
+check('moving the cabinet clear of a desk un-blinds it',
+  buildChart.desks[backLeftDesk].sight.kind==='clear');
+
+const clampChart = mkChart();
+clampChart.moveOccluder('cabinet', 999, 999);
+const clamped = clampChart.occluderPositions().find(o=>o.id==='cabinet');
+check('a wild drag is clamped inside the room bounds',
+  clamped.x <= roomData.bounds.x && clamped.z <= roomData.bounds.zBack);
+
+const posChart = mkChart();
+posChart.moveOccluder('bookshelf', 2.5, -1.0);
+const positions = posChart.occluderPositions();
+check('occluderPositions reports both occluders', positions.length===2);
+check('a moved occluder reports its new position',
+  positions.find(o=>o.id==='bookshelf').x===2.5 && positions.find(o=>o.id==='bookshelf').z===-1.0);
+check('moving one occluder leaves the other where it was',
+  positions.find(o=>o.id==='cabinet').x===roomData.occluders.find(o=>o.id==='cabinet').pos[0]);
+
 // assignment
 check('the August chart is one kid per desk', baseChart.seatOf.join()===baseChart.defaultAssignment.join());
 const cSwap = mkChart();

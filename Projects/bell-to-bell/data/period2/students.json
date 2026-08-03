@@ -1,0 +1,17 @@
+{
+  "seatGrid": { "cols": [-3.1, -1.05, 1.05, 3.1], "rows": [-0.7, 1.0, 2.7], "bodyOffsetZ": 0.52 },
+  "roster": [
+    { "name": "Farrah", "aptitude": 1.02,  "shirt": "shirtA", "tension": 0.42, "steady": 0.30, "note": "narrates what she is doing under her breath" },
+    { "name": "Milo", "aptitude": 0.88,    "shirt": "shirtB", "tension": 0.60, "steady": 0.14 },
+    { "name": "Odalys", "aptitude": 1.16,  "shirt": "shirtC", "tension": 0.18, "steady": 0.58, "note": "finishes early, then helps whoever is next to her" },
+    { "name": "Deshawn", "aptitude": 1.08, "shirt": "shirtA", "tension": 0.22, "steady": 0.64, "note": "runs the projector cart down to the office and back" },
+    { "name": "Ines", "aptitude": 0.94,    "shirt": "shirtB", "tension": 0.50, "steady": 0.20 },
+    { "name": "Booker", "aptitude": 1.0,   "shirt": "shirtC", "tension": 0.34, "steady": 0.36 },
+    { "name": "Saoirse", "aptitude": 1.20, "shirt": "shirtA", "tension": 0.08, "steady": 0.86, "note": "the one you seat problems next to" },
+    { "name": "Reyes", "aptitude": 0.96,   "shirt": "shirtB", "tension": 0.75, "steady": 0.08, "note": "loud when bored, not when confused" },
+    { "name": "Winnie", "aptitude": 0.90,  "shirt": "shirtC", "tension": 0.48, "steady": 0.26 },
+    { "name": "Atlas", "aptitude": 1.14,   "shirt": "shirtA", "tension": 0.28, "steady": 0.44 },
+    { "name": "Prisha", "aptitude": 0.84,  "shirt": "shirtB", "tension": 0.68, "steady": 0.18 },
+    { "name": "Cyrus", "aptitude": 1.06,   "shirt": "shirtC", "tension": 0.38, "steady": 0.42, "note": "the ghost's replacement; also a ghost" }
+  ]
+}
