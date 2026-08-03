@@ -1,9 +1,9 @@
 # HANDOFF — Bell to Bell
 
 **Where we are:** T1–T8 built and playable (One Period, the lesson, Room Temp, the
-seating chart, the classroom builder, a second period, whisper audio, and now the
-Observation). That's the whole backlog the last few handoffs queued — see "Where
-we're going" at the bottom for what that means.
+seating chart, the classroom builder, a second period, whisper audio, the
+Observation). Where we're going: a freshly drafted T9–T16, all still deepening the
+same 47-minute slice — see the Backlog section for the list and suggested order.
 
 Read `CLAUDE.md` first — it has the commands and the architecture rules.
 Read `docs/BELL-TO-BELL-treatment.md` for anything about a system that isn't built yet.
@@ -228,20 +228,77 @@ previous handoff entry in git history for the exact numbers if you need them.
 
 ## Backlog
 
-**Empty.** T1 through T8 — everything the last several handoffs queued — are built.
-This is a real stopping point, not a gap to paper over with an invented ticket.
+T1–T8 (the last several handoffs' entire queue) are built. This next batch, T9–T16,
+is drafted rather than committed to — sized and ordered, but check them against what
+you actually want before handing one to an agent. All of them deepen the existing
+47-minute slice; none require the day/year structure the treatment describes in §6/§8
+(see "the big one" in Open Questions below — that's still a separate, unresolved
+scope call, deliberately not folded into this list).
 
-The treatment (`docs/BELL-TO-BELL-treatment.md`) has a lot more in it: other full
-minigames (§6.1 — The Copier, The Data Meeting, The Paperwork Tower, Sub Plans, Fire
-Drill, Hall Duty, Lunch), the Calendar Bosses (§6.3), subject choice (§4), and the
-whole multi-year meta-arc (§8) with Legend as its currency. None of that is "the next
-ticket" in the way T5–T8 were — those all deepened systems that already exist inside
-the one 47-minute period. The items in §6/§8 mostly assume things this slice doesn't
-have: a day structure around the period, a calendar, more than one room, more than one
-class you're comparing against. That's a scope decision, not an implementation one —
-worth a real conversation about whether "One Period" stays a deepening vertical slice
-or starts growing the day around it, rather than an agent picking one of those and
-guessing.
+**T9 — Settle period 1's lesson length.** Closes gap 1. Period 1's authored beats
+(2,000s) + filler (700s) still fall 120s short of the 2,820s period; period 2's
+lesson was written to fill it exactly. Pure `data/lesson.json` + `src/config.js`
+tuning, checked with `node balance.mjs` before/after. Smallest ticket here — good
+first pick if you want a fast, low-risk one.
+
+**T10 — Branch the post-conference on what you picked.** Closes gap 9. Right now
+AP Reyes's post-conference in T7 opens with the same line and the same three choices
+regardless of which look-fors you satisfied in the window (or whether you did nothing
+at all). Give `data/observation.json`'s `conference.prompts` a way to pick a variant
+opening line keyed off `picked` (e.g. a `when: { anyOf: [...] }` on a prompt, first
+match wins, same shape as `data/events.json`'s `endings.when`), and have
+`systems/observation.js` pass the window's `picked` list into prompt selection. Small,
+touches code you just wrote for T7, no new UI.
+
+**T11 — The Hallway Ear.** A new passive "other sense" from treatment §3.7, and a
+nice thematic setup for T7: a different ambient audio signature through the closed
+door for "a fight," "a spill," "an administrator," and "nothing, they're just like
+that," playing a few real seconds *before* T7's Admin Proximity Alert fires — the
+game rewarding you for noticing the sound before the banner tells you. Audio-only,
+same procedural-synthesis approach as T8 (a new bed in `audio.js`, gated on nothing —
+it's passive and always on, unlike Withitness-gated whisper audio). No visual
+component. Needs one content decision: does it play for *every* scheduled event
+(intercom included) or only ahead of the Observation? Recommend Observation-only for
+v1 — the intercom already announces itself.
+
+**T12 — Assignment Ghosting.** A Tier 3 reveal from treatment §3.3: a faint outline
+on an empty desk where homework wasn't done, visible only in Withitness. Needs a
+data-driven notion of "did this student do the assigned work" — simplest version:
+a student whose comprehension is below some threshold when a beat ends "ghosts" until
+the next check. Touches `world/students.js` (a new faint mesh/material swap, must
+`registry.add()` per the architecture rule), `systems/lesson.js` (the actual
+did-they-get-it signal), and `src/config.js` for the threshold.
+
+**T13 — Rumor threads.** Tier 3, §3.3: glowing filaments between kids showing
+information moving through the room, thickness = intensity, visible only in
+Withitness and only "unlocked" behaviorally at high Rapport (no skill-tree exists in
+this slice, so gate on `state.rapport` crossing a `CFG` threshold, not an unlock
+flag). The richest new-content ticket in this batch — needs its own authored
+schedule (a new `data/rumors.json`, shaped like `tells.json`'s schedule: who, who,
+when, how long) and a new render pass in the 3D world, plan-view sightlines
+untouched. Reads as a sibling to T4's volatility edges, not a reuse of them — a
+rumor is something happening *now*, not something the chart remembers between
+periods.
+
+**T14 — Tell mesh art pass.** Closes gap 2. `systems/tells.js` → `buildMesh` still
+draws every tell as a box or sphere except NOTE and COPYING, which get a line. Give
+PHONE, WHISPER, FALSE, and QUIET their own distinct low-poly geometry so a glance at
+the thermal view reads tell-type without opening the label. Pure 3D-asset work, no
+new mechanics, no data changes — the natural "clean up placeholders" ticket once the
+mechanical backlog (T9–T13) is closed enough that new visual noise stops arriving.
+
+**T15 — Redesign the comprehension aura.** Closes gap 4. The torus-over-every-head
+is "fine at a glance, bad in a crowd" per the existing gap note — worth a real
+before-you-build decision, not just an agent's guess: a floor ring under the desk
+instead of a head-height torus, a HUD side-list of names+colors, or something else
+entirely. Flag this one for a quick design conversation before assigning it, unlike
+the others.
+
+**T16 — Mobile pass.** Closes gap 3, still "still undecided" in Open Questions below.
+Touch controls (drag-look already exists for touch per `input.js`'s `touchstart`/
+`touchmove` handlers — untested, not built from nothing), responsive HUD/menu
+layout, and the seating chart's drag interaction on a touchscreen. Cross-cutting
+enough to want its own dedicated session rather than slotting between the others.
 
 ---
 
@@ -254,23 +311,23 @@ guessing.
   back row" and never move her again. If they do, the fix is probably a per-period limit on
   how much one kid can absorb, not a nerf to the effect.
 - Subject choice reskins hazards. Not worth touching yet.
-- Mobile. Still undecided.
+- Mobile. T16 is drafted; still an open question whether it's worth doing before the
+  bigger scope question below.
 - Whisper audio's "intelligible fragments" / live subtitles (treatment) vs. what got
   built (T8, a procedural, non-verbal crackle bed): real scope decision if literal
   transcribed dialogue matters later.
-- **The big one, now that the backlog is empty:** stay inside "One Period" and keep
-  adding depth (gap 9's branching post-conference, gap 1's lesson-length tuning,
-  varied/generated tells), or start building the day/year structure the treatment
-  describes around it? Needs a person, not an agent's guess.
+- **The big one:** T9–T16 all stay inside "One Period" and keep adding depth. Whether
+  to start building the day/year structure the treatment describes around it instead
+  (or after) is still a separate, unresolved scope call. Needs a person, not an
+  agent's guess.
 
 ## How to pick up in Claude Code
 
-The backlog is empty, so don't open with a ticket number this time — open with the
-scope question above, or with a specific new slice of the treatment you've decided on:
+Point it at the repo root and give it a ticket, not the whole project:
 
-> Read CLAUDE.md and docs/HANDOFF.md. I want to build \<specific thing from the
-> treatment\>. Here's what I want it to do: ... Run tests/smoke.mjs and
-> tests/balance.mjs when you're done and tell me what you changed.
+> Read CLAUDE.md and docs/HANDOFF.md. Implement T9 (settle period 1's lesson
+> length). Run tests/smoke.mjs and tests/balance.mjs when you're done and tell me
+> what you changed.
 
-Don't open with "figure out what to do" — an agent given an open brief on a large repo
-will refactor things that were working, and right now there's no backlog to anchor it.
+Don't open with "figure out what to do" — the backlog already decided, and an agent
+given an open brief on a large repo will refactor things that were working.
