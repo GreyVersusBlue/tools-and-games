@@ -29,6 +29,7 @@ export const dom = {
   cbTitle: $('cbTitle'),
   cbRoom: $('cbRoom'),
   startScreen: $('startScreen'),
+  startSub: $('startSub'),
   startBtn: $('startBtn'),
   chartScreen: $('seatingScreen'),
   chartTitle: $('chartTitle'),

@@ -1,42 +1,60 @@
 # HANDOFF — Bell to Bell
 
-**Where we are:** T1–T5 built and playable (One Period, the lesson, Room Temp, the seating
-chart, and now the classroom builder). Where we're going: T6 next, one ticket at a time.
+**Where we are:** T1–T6 built and playable — One Period, the lesson, Room Temp, the seating
+chart, the classroom builder, and now a second period. Where we're going: T7 next, one ticket
+at a time.
 
 Read `CLAUDE.md` first — it has the commands and the architecture rules.
 Read `docs/BELL-TO-BELL-treatment.md` for anything about a system that isn't built yet.
 
 ---
 
-## This session — T5, the classroom builder
+## This session — T6, a second period
 
-The cabinet and the bookshelf now drag on the seating chart screen, and every desk's sight
-classification re-runs live against wherever you dropped them. Closes gap 8: a layout that
-puts both occluders on the same side of the room can put a desk fully out of sight of every
-viewpoint, which the August default deliberately never did.
+4th period's report screen now hands off into 5th period: same room, a completely different
+roster, a different (busier) tell schedule, and a different lesson — the day continues past
+the bell instead of just ending. Also removed `HANDOFF-teacher-sim (1).md`, a stray duplicate
+of this file that had gone stale since the commit that introduced it.
 
-- **`src/systems/chart.js`** — `moveOccluder(id, x, z)` mutates that occluder's rect (clamped
-  to the room's own footprint via `room.bounds`, nothing fancier — no collision with desks or
-  other furniture) and reclassifies every desk's `sight` against the new layout in one pass.
-  `occluderLayout()` reads back the current positions. A new `layout` argument to
-  `createChart(...)` lets a saved layout apply before the first desk is even classified — the
-  furniture starts already rearranged instead of always resetting to `room.json`.
-- **`src/ui/seating.js`** — occluders drag the same way desks do, but *not* through a full
-  `render()` per `pointermove`: that would tear down the very element under the pointer
-  mid-drag, the same trap the existing desk-selection comment already warned about. A new
-  `reflow()` repositions the dragged occluder and patches every desk card's sight class and
-  title in place, keeping every DOM node's identity intact through the drag.
-- **Persistence.** `main.js` loads `persist.load('furniture', null)` into `layout` at
-  startup and saves `chart.occluderLayout()` alongside the seat chart on `beginPeriod()` — the
-  room stays rearranged between periods the same way the chart does.
-- Verified in a real browser (Playwright, headless Chromium): dragging the cabinet across the
-  room flips desk 8 (back-left, the one the cabinet already blinded) from `sight-partial` to
-  `sight-clear`, and the desk card DOM node it's applied to is provably the same node before
-  and after the drag.
-- 12 new `tests/smoke.mjs` assertions: clamping, refusing an unknown occluder id, a saved
-  layout applying before first classification, and junk layout entries being skipped rather
-  than thrown. All 155 assertions green; `tests/balance.mjs` unchanged (T5 doesn't touch
-  anything balance-relevant).
+- **`data/period5.json`** (new) — 12 new students, a 9-entry tell schedule (one more than 4th's
+  eight, on purpose — 5th reads busier), and a 5-beat lesson continuing the same unit (`U.S.
+  HIST · UNIT 4 · DAY 3 OF 3` — the Missouri Compromise's actual collapse in 1854, picking up
+  the "delay or solution?" question 4th period's last beat leaves open). Its own stabiliser
+  (Anh, steady 0.84) sits beside its own live wire (Devontae) exactly the way Priya sits beside
+  June — a fresh version of the same authored shape, for kids who have never met either of
+  them. Its own `seatingCopy` overrides the chart screen's intro/sub/reset-button copy, because
+  "back to the August chart" means nothing to a class that was never charted in August.
+- **What carries over, what doesn't** (a real design fork, not a default): the **furniture**
+  carries over because it's a fact about the room. The **physical desk arrangement** — whatever
+  4th period's chart ended up as — carries over too, onto the new roster, because the desks
+  themselves didn't move when the bell rang. **Discoveries** (volatility edges, stabilisers)
+  do *not* — they're facts about specific kids, and 5th period has never met any of them. Nor
+  does the **Rapport cost of rearranging** carry over: `main.js` keeps a `rapportBase` distinct
+  from the desk arrangement itself, so a brand-new roster's first chart always reads as novel
+  (free to rearrange) no matter how the desks happened to already be sitting.
+- **`src/main.js`** — `periodFor(id, data)` is the one place that picks a roster/schedule/
+  lesson/copy bundle for whichever period is active (`persist.load('period', 'p4')`). Six new
+  persisted keys (`chart5`, `known5`, `rapportBase5`, plus `rapportBase` alongside the existing
+  `chart`/`known`) keep 5th period's own history from ever touching 4th's. The whole handoff is
+  a `persist.save(...)` sequence followed by `location.reload()` — the same mechanism "Run it
+  again" already used, not a new in-place teardown/rebuild of the 3D scene.
+- **`src/ui/report.js`** — the end-of-period button is now data-driven (`extra.restart`):
+  "Next period — 5th" after 4th, "Run it again" after 5th (which resets `period` back to `p4`
+  and leaves 4th's own persisted chart/discoveries untouched, since T6 never wrote to them).
+- **Gap 1, settled:** the lesson intentionally does not fill the period — `filler` (a "sustained
+  silent work" beat, already authored, already has copy for the moment) is the answer, not a
+  bug. Both periods' authored beats sum to exactly 2,000 of the period's 2,820 seconds; 5th
+  period was written to the same ratio on purpose, so the slice has one settled answer instead
+  of two different guesses.
+- Verified in a real browser (Playwright, headless Chromium, with `config.js`'s period length
+  temporarily shortened for the test run only): played 4th period, swapped desks 0/11, dragged
+  the cabinet, took the report screen's "Next period — 5th" button, and confirmed on the
+  reloaded page that 5th period's chart opens with a completely different roster, desk 0 and
+  11 swapped exactly as 4th left them, the cabinet in 4th's final position, and the cost line
+  reading "They have never sat in this chart" even after rearranging several more seats.
+- 20 new `tests/smoke.mjs` assertions (distinct roster, schedule shape, its own stabiliser/
+  handoff/curveball, the physical-carryover-without-familiarity split) plus three new
+  `tests/balance.mjs` runs against 5th period's content. All green — see below for numbers.
 
 ---
 
@@ -111,19 +129,29 @@ does. This is the whole mechanic from the treatment's §5 ("sightlines are the p
 without the money, the catalog, or the seasonal door-decorating contest — those are still
 unbuilt content, not systems.
 
+**T6 — Second period.** `data/period5.json` bundles a new roster, tell schedule and lesson;
+`src/main.js`'s `periodFor()` is the single seam that picks which bundle is active. 4th
+period's report hands off with a `persist.save(...)` + `location.reload()`, not a live
+teardown/rebuild — the entire linear boot sequence in `main.js` already runs once per page
+load, so a second period is a second load with different data selected, the same mechanism
+"Run it again" always used. Room, tell *types* (the mechanical definitions, not the schedule),
+interventions, reactions, events and seating *rules* are the same building and the same
+rulebook regardless of period; only the roster, the tell schedule, and the lesson are
+period-specific content.
+
 **Audio.** HVAC bed, ambient murmur scaling with restlessness and ducking under Withitness,
 chair scrapes on reactions, a chime on checks, the bell.
 
-**Tests.** `tests/smoke.mjs` — 155 headless assertions over interventions, the lesson, the
-reaction wiring, Room Temp, the chart, and the classroom builder. `tests/balance.mjs` — five
-play styles through whole periods, plus one style across three different charts. Both green;
-balance is untouched by T5, which doesn't reach anything balance-relevant.
+**Tests.** `tests/smoke.mjs` — 167 headless assertions over interventions, the lesson, the
+reaction wiring, Room Temp, the chart, the classroom builder, and the second period.
+`tests/balance.mjs` — five play styles through whole 4th-period runs, one style across three
+4th-period charts, and three representative styles against 5th period's own content.
 
 ---
 
 ## Where the balance sits
 
-Unchanged — T5 doesn't touch anything balance-relevant.
+4th period unchanged. 5th period is new this session — see "5th period" below.
 
 ```
 ideal (never scans)         mastery 77  fidelity 84  bandwidth 19  restless 72  missed 7
@@ -139,12 +167,26 @@ the pairs split up      mastery 79  restless 44  missed 6
 the barometer up front  mastery 79  restless 49  missed 6
 ```
 
+5th period, the same three representative styles run against `data/period5.json` — genuinely
+busier (one more scheduled tell, restless runs hotter across the board) while still landing in
+the same neighborhood on mastery, and still exactly one thing that quietly never happens:
+
+```
+5th: ideal (never scans)       mastery 76  fidelity 84  bandwidth 19  restless 79  missed 8
+5th: the good teacher          mastery 81  fidelity 80  bandwidth  0  restless  0  missed 0
+5th: never checks, never looks mastery 54  fidelity 70  bandwidth 55  restless 91  missed 8
+```
+
 ---
 
 ## Known gaps in the slice
 
-1. **The lesson is 2,000 game-seconds against a 2,820-second period.** Still a live tuning
-   call; settle before T6.
+1. ~~The lesson is 2,000 game-seconds against a 2,820-second period~~ — **settled.** This is
+   intentional: `filler` ("sustained silent work") is the designed answer to running out of
+   lesson before the bell, not a bug to fix by stretching beats. Both periods' authored beats
+   sum to exactly 2,000s on purpose, so there's one ratio for the slice, not two accidental
+   ones. Revisit only if playtesting says the filler stretch actually feels bad, not because
+   the number looks incomplete.
 2. **Tell meshes are still placeholders.** Boxes and spheres.
 3. **Mobile is still untested.**
 4. **The comprehension aura is a torus over every head.** Fine at a glance, bad in a crowd.
@@ -158,17 +200,23 @@ the barometer up front  mastery 79  restless 49  missed 6
 9. **T5 doesn't check furniture against desks or against the other occluder.** You can drag
    the cabinet on top of a desk, or on top of the bookshelf. Nothing breaks — the sight math
    doesn't care — it just looks wrong. Not worth solving until it's visible in the 3D room too.
+10. **T6 only ever goes forward, once.** There is no 6th period, and "Run it again" from 5th's
+    report restarts the whole day at 4th (correctly leaving 4th's own persisted chart and
+    discoveries untouched — T6 never writes to the `chart`/`known`/`rapportBase` keys, only to
+    the `*5` ones). A real multi-period day would need a per-period save slot, not two hardcoded
+    ones; not worth building until there's a third period to prove the pattern against.
+11. **A page reload always lands back on 4th period**, even mid-5th-period. There's no
+    persisted "which period was I actually in the middle of" — only "Run it again"/"Next
+    period" set the `period` flag, so an accidental refresh during 5th period sends you back to
+    4th's chart. Matches the existing "Run it again reloads everything" mental model; would
+    need its own ticket to fix properly.
 
 ---
 
 ## Backlog (suggested order)
 
-**T6 — Second period.** *Next up.* Same room, different roster, different Room Temp baseline,
-a different lesson, starting comprehension carried from nothing. Inherits a real chart, a real
-furniture layout, and real discoveries. Settle gap 1 first.
-
-**T7 — The Observation.** The boss fight. Admin Proximity Alert, nine-second window, rubric
-look-fors, post-conference dialogue tree. Treatment §6.1.
+**T7 — The Observation.** *Next up.* The boss fight. Admin Proximity Alert, nine-second window,
+rubric look-fors, post-conference dialogue tree. Treatment §6.1.
 
 **T8 — Whisper audio.** Gap 5. Directional, panned, radio-crackle fragments on WHISPER tells.
 
@@ -176,20 +224,26 @@ look-fors, post-conference dialogue tree. Treatment §6.1.
 
 ## Open questions
 
-- Tell and beat authoring vs. generation: keep authoring until after T6.
+- Tell and beat authoring vs. generation: keep authoring for now — T6 shipped a second
+  authored roster/schedule/lesson rather than generating one, deliberately, to keep proving the
+  authored shape works before automating it.
 - Does the period need a fail state? Still no.
 - Should Room Temp reveal direction at all? Still unchanged.
 - Is suppression too strong? Watch whether players find "the barometer in the middle of the
   back row" and never move her again. If they do, the fix is probably a per-period limit on
-  how much one kid can absorb, not a nerf to the effect.
+  how much one kid can absorb, not a nerf to the effect. Now watch it across *two* rosters
+  (Priya and Anh both), not just one.
 - Subject choice reskins hazards. Not worth touching yet.
 - Mobile. Still undecided.
+- A third period would immediately demand solving known gaps 10 and 11 (hardcoded `*5` keys,
+  no "which period am I mid-way through" persistence). Don't build that scaffolding until a
+  third period is actually the next ticket.
 
 ## How to pick up in Claude Code
 
 Point it at the repo root and give it a ticket, not the whole project:
 
-> Read CLAUDE.md and docs/HANDOFF.md. Implement T6 (second period). Run
+> Read CLAUDE.md and docs/HANDOFF.md. Implement T7 (The Observation). Run
 > tests/smoke.mjs and tests/balance.mjs when you're done and tell me what you changed.
 
 Don't open with "figure out what to do" — the backlog already decided, and an agent given an

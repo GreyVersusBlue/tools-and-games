@@ -1,0 +1,86 @@
+{
+  "meta": { "period": "Period 5 — U.S. Hist." },
+  "roster": [
+    { "name": "Farah",    "aptitude": 1.05, "shirt": "shirtB", "tension": 0.50, "steady": 0.24, "note": "keeps a running list of unfair things" },
+    { "name": "Deshawn",  "aptitude": 0.95, "shirt": "shirtA", "tension": 0.60, "steady": 0.20, "note": "runs a snack economy out of his backpack" },
+    { "name": "Odalys",   "aptitude": 1.15, "shirt": "shirtC", "tension": 0.22, "steady": 0.55 },
+    { "name": "Mateo",    "aptitude": 1.08, "shirt": "shirtB", "tension": 0.18, "steady": 0.66, "note": "hands your marker back before you ask" },
+    { "name": "Simone",   "aptitude": 0.86, "shirt": "shirtA", "tension": 0.72, "steady": 0.10 },
+    { "name": "Robbie",   "aptitude": 1.00, "shirt": "shirtC", "tension": 0.34, "steady": 0.30 },
+    { "name": "Anh",      "aptitude": 1.24, "shirt": "shirtB", "tension": 0.10, "steady": 0.84, "note": "the actual thermostat in here" },
+    { "name": "Devontae", "aptitude": 1.02, "shirt": "shirtA", "tension": 0.82, "steady": 0.06, "note": "funnier than fourth period, will not say so" },
+    { "name": "Ruthie",   "aptitude": 0.92, "shirt": "shirtC", "tension": 0.48, "steady": 0.28 },
+    { "name": "Ka'Sean",  "aptitude": 1.12, "shirt": "shirtB", "tension": 0.28, "steady": 0.42, "note": "narrates the sub's plans before the sub gets here" },
+    { "name": "Wren",     "aptitude": 0.80, "shirt": "shirtA", "tension": 0.76, "steady": 0.14 },
+    { "name": "Beatrix",  "aptitude": 0.96, "shirt": "shirtC", "tension": 0.40, "steady": 0.36, "note": "asks if it's on the test, every time" }
+  ],
+  "schedule": [
+    { "type": "WHISPER",  "seat": 0, "with": 1,  "atMinute": 2.0,  "life": 140 },
+    { "type": "PHONE",    "seat": 9,             "atMinute": 4.5,  "life": 170 },
+    { "type": "NOTE",     "seat": 4, "with": 11, "atMinute": 7.8,  "life": 210 },
+    { "type": "COPYING",  "seat": 3, "with": 2,  "atMinute": 9.3,  "life": 165 },
+    { "type": "PHONE",    "seat": 7,             "atMinute": 14.5, "life": 190 },
+    { "type": "QUIET",    "seat": 5,             "atMinute": 19.5, "life": 300 },
+    { "type": "WHISPER",  "seat": 11, "with": 10, "atMinute": 23.0, "life": 150 },
+    { "type": "NOTE",     "seat": 1, "with": 2,  "atMinute": 26.5, "life": 190 },
+    { "type": "COPYING",  "seat": 8, "with": 9,  "atMinute": 29.8, "life": 160 }
+  ],
+  "lesson": {
+    "unit": "U.S. HIST · UNIT 4 · DAY 3 OF 3",
+    "beats": [
+      {
+        "id": "bridge",
+        "label": "Bridge — one line, one number",
+        "line": "Somebody tell me the number from yesterday. If nobody can, we have a problem before first period even starts.",
+        "board": { "head": "YESTERDAY", "lines": ["36°30′", "Missouri: slave. Maine: free.", "Write it from memory. No peeking."] },
+        "seconds": 220, "gain": 0.00017, "spread": 0.5
+      },
+      {
+        "id": "context",
+        "label": "Context — the math stops working",
+        "line": "The line held for thirty years. Then the country got bigger than the line.",
+        "board": { "head": "1854", "lines": ["Kansas-Nebraska Act", "Popular sovereignty: let the settlers vote", "The 36°30′ line: repealed"] },
+        "seconds": 420, "gain": 0.00023, "spread": 0.85
+      },
+      {
+        "id": "model",
+        "label": "Model — what “popular sovereignty” actually meant",
+        "line": "Read the clause. Then read what happened when people started moving there just to vote.",
+        "board": { "head": "POPULAR SOVEREIGNTY", "lines": ["1. Territory organizes", "2. Settlers vote slave or free", "3. Both sides start moving in early"] },
+        "seconds": 460, "gain": 0.00027, "spread": 1.05
+      },
+      {
+        "id": "argue",
+        "label": "The argument — delay, or fuse?",
+        "line": "Yesterday somebody said ‘delay, not solution.’ Today we find out what the delay actually cost.",
+        "board": { "head": "DELAY OR FUSE?", "lines": ["1820: the compromise", "1854: the line is gone", "Evidence, not vibes."] },
+        "seconds": 540, "gain": 0.00030, "spread": 1.3,
+        "fidelityBonus": 2.5,
+        "note": "student-led discourse — a rubric look-for, if anyone were watching"
+      },
+      {
+        "id": "close",
+        "label": "Exit ticket",
+        "line": "Half sheet. One sentence. What does ‘kicking the can’ actually cost, thirty years later?",
+        "board": { "head": "EXIT TICKET", "lines": ["One sentence:", "What did repealing the line cost?", "Name on it. First AND last."] },
+        "seconds": 360, "gain": 0.00021, "spread": 0.65
+      }
+    ],
+    "filler": {
+      "id": "filler",
+      "label": "Sustained silent work",
+      "line": "Fifth period does not ask what this is for. Fifth period has seen this before.",
+      "board": { "head": "WORK TIME", "lines": ["Finish the exit ticket.", "Then read. Quietly.", "Yes, anything."] },
+      "seconds": 700, "gain": 0.00004, "spread": 0.4
+    }
+  },
+  "seatingCopy": {
+    "sub": "RM 214 · 5TH PERIOD · 6 MINUTES BEFORE THE BELL",
+    "intro": [
+      "Fourth period just left. These are the desks the way that class left them — you have not rearranged anything since, and this class has never sat in any of it.",
+      "Drag a name onto another name to swap them. The room is drawn from above; the whiteboard is at the top, same as it ever is.",
+      "The cabinet and the bookshelf still drag, too, and they remember exactly where fourth period put them."
+    ],
+    "buttons": { "reset": "Back to roll-call order" }
+  }
+}

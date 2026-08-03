@@ -96,12 +96,17 @@ export function showReport(state, data, extra = {}) {
   if (!quotes.length && !seatQuotes.length) quotes.push(c.quiet);
   quotes.push(...seatQuotes);
 
+  // T6: what the button says and does is main.js's call \u2014 it's the one that
+  // knows whether there's a next period or this is the last one.
+  const restart = extra.restart || { label: 'Run it again', onClick: () => location.reload() };
+
   dom.endTitle.textContent = ending.title;
-  dom.endSub.textContent = `${ending.sub} \u2014 4TH PERIOD \u00B7 ${state.caught} ADDRESSED \u00B7 ${state.missed} MISSED`;
+  dom.endSub.textContent =
+    `${ending.sub} \u2014 ${extra.periodTag || '4TH PERIOD'} \u00B7 ${state.caught} ADDRESSED \u00B7 ${state.missed} MISSED`;
   dom.endBody.innerHTML = rows + lessonRow + seatRow +
     '<div style="height:16px"></div>' +
     quotes.map(q => `<div class="quote">${q}</div>`).join('') +
-    '<button class="cta" id="againBtn">Run it again</button>';
+    `<button class="cta" id="againBtn">${restart.label}</button>`;
   dom.endScreen.classList.remove('hide');
-  document.getElementById('againBtn').addEventListener('click', () => location.reload());
+  document.getElementById('againBtn').addEventListener('click', restart.onClick);
 }

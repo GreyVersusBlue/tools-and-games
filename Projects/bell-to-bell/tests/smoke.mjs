@@ -10,7 +10,7 @@ import { CFG } from '../src/config.js';
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
 const iData = D('interventions'), tData = D('tells'), sData = D('students');
 const lData = D('lesson'), eData = D('events'), rData = D('reactions');
-const roomData = D('room'), seatData = D('seating');
+const roomData = D('room'), seatData = D('seating'), p5Data = D('period5');
 
 const mkChart = (saved=null, layout=null) => createChart({
   seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
@@ -502,6 +502,70 @@ const cBadLayout = mkChart(null, [{ id: 'nope', x: 1, z: 1 }, { id: 'cabinet', x
 check('an unknown id or a non-finite coordinate in a saved layout is skipped',
   cBadLayout.rects.find(r=>r.id==='cabinet').x===cabRect.x);
 
+// ---------------------------------------------------------------------------
+// T6 — second period: a different roster, a different lesson, the same room
+// ---------------------------------------------------------------------------
+
+check('period5 has a full roster', p5Data.roster.length===12);
+check('period5 names are all distinct', new Set(p5Data.roster.map(r=>r.name)).size===12);
+check("period5 isn't just period4's roster with the serial numbers filed off",
+  p5Data.roster.every(r => !sData.roster.some(r4 => r4.name===r.name)));
+
+const mkChart5 = (saved=null) => createChart({
+  seatGrid: sData.seatGrid, room: roomData, roster: p5Data.roster,
+  tellTypes: tData.types, rules: seatData.rules,
+  plan: seatData.plan.furniture, saved
+});
+const chart5 = mkChart5();
+
+check('period5 lesson still sums to the same 2000s gap-1 settled on for period4',
+  p5Data.lesson.beats.reduce((a,b)=>a+b.seconds,0) === lData.beats.reduce((a,b)=>a+b.seconds,0));
+
+check('every seat named in period5\'s schedule exists in its roster',
+  p5Data.schedule.every(row =>
+    row.seat>=0 && row.seat<12 && (row.with==null || (row.with>=0 && row.with<12))));
+
+const plan5 = chart5.resolveSchedule(p5Data.schedule);
+check('period5\'s schedule survives the chart',
+  plan5.rows.length + plan5.suppressed.length === p5Data.schedule.length);
+check('period5 has its own curveball, and it is never suppressed',
+  plan5.rows.some(r=>r.type==='QUIET'));
+
+// Anh (seat 6, steady 0.84) sits directly beside Devontae (seat 7, tension
+// 0.82) on the default chart — that phone should never happen, the same
+// shape as period4's Priya/June, authored fresh for a roster that has never
+// met Priya or June.
+check("period5 has its own quiet stabiliser (Anh) absorbing its own live wire (Devontae)",
+  plan5.suppressed.some(x=>x.by===6 && x.seat===7));
+check("and it's silent — nothing shows up in the schedule for it",
+  plan5.rows.every(r=>!(r.type==='PHONE' && r.seat===7)));
+
+// the seat1/seat2 NOTE is adjacent by default, so it is a handoff — same
+// mechanic as period4's, different kids.
+const p5NoteRow = plan5.rows.find(r=>r.type==='NOTE' && r.seat===1);
+check('period5 has its own quick handoff',
+  p5NoteRow && p5NoteRow.life < p5Data.schedule.find(r=>r.seat===1 && r.type==='NOTE').life);
+
+const p5Students = chart5.apply(p5Data.roster.map((r,i)=>({ ...r, seat:i })), plan5);
+check('period5 students actually learn something under it',
+  p5Students.find(s=>s.row===0).rowGain > p5Students.find(s=>s.row===2).rowGain);
+
+// ---- T6: the physical handoff from 4th period's desks into 5th's ----------
+// This is what main.js does across the reload: 5th period's chart is built
+// with `saved` set to whatever 4th period's seatOf ended up being, onto a
+// roster that has never seen it before.
+const p4End = mkChart(); p4End.swapDesks(0, 11);
+const chart5Carried = mkChart5(p4End.seatOf);
+check("5th period's desks start wherever 4th period actually left them",
+  chart5Carried.seatOf.join()===p4End.seatOf.join());
+check('but the kids sitting in them are a completely different roster',
+  chart5Carried.deskOf(11).index===0 && p5Data.roster[11].name !== sData.roster[11].name);
+
+// The physical carryover is not the same thing as familiarity: main.js feeds
+// rechartCost() a *separate*, always-null baseline for a brand-new roster, so
+// this reads as novel (free) no matter how the carried-over chart is used.
+check("a carried-over chart still reads as novel for Rapport purposes when compared against nothing",
+  chart5Carried.rechartCost(null).novel===true && chart5Carried.rechartCost(null).rapport===0);
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');
 process.exit(fails?1:0);

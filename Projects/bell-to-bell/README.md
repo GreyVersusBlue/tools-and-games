@@ -1,8 +1,9 @@
 # Bell to Bell
 
 A 3D browser game about being a classroom teacher. This repo currently contains
-**Slice 001 — "One Period"**: one 47-minute class period, one room, twelve students,
-and the mechanic the whole game is built around.
+**Slice 001 — "One Period"**: a 47-minute class period, one room, twelve students,
+and the mechanic the whole game is built around — followed, if you take the report
+screen's offer, by a second period: same room, a different twelve students.
 
 ## Withitness
 
@@ -97,6 +98,7 @@ data/                 ← content lives here, not in code
   lesson.json         the beats, what goes on the board, and the lesson's copy
   reactions.json      pose definitions: what a body does and for how long
   seating.json        chart screen copy, the seating rules table, report lines
+  period5.json         5th period: its own roster, tell schedule, lesson and chart copy
 src/
   config.js           every tuning constant
   state.js            game state + effect application

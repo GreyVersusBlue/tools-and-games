@@ -13,21 +13,29 @@ import { tickMeters } from '../src/systems/meters.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`, 'utf8'));
 const lData = D('lesson'), sData = D('students'), tData = D('tells'), eData = D('events');
-const roomData = D('room'), seatData = D('seating');
+const roomData = D('room'), seatData = D('seating'), p5Data = D('period5');
 
 const DT = 1 / 60;
 
-function run(name, style, chartSeats = null) {
+// T6: period4's content, or period5's — same shape either way, so `run` can
+// simulate whichever one it's handed.
+const P4_CONTENT = { roster: sData.roster, schedule: tData.schedule, lesson: lData };
+const P5_CONTENT = {
+  roster: p5Data.roster, schedule: p5Data.schedule,
+  lesson: { ...p5Data.lesson, copy: lData.copy }
+};
+
+function run(name, style, chartSeats = null, content = P4_CONTENT) {
   // T4: everything starts at the chart. The schedule this room produces is not
   // the authored schedule — it is what the authored schedule becomes once you
   // decide who is sitting next to whom.
   const chart = createChart({
-    seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
+    seatGrid: sData.seatGrid, room: roomData, roster: content.roster,
     tellTypes: tData.types, rules: seatData.rules,
     plan: seatData.plan.furniture, saved: chartSeats
   });
-  const students = chart.apply(sData.roster.map((r, i) => ({ ...r, seat: i })));
-  const plan = chart.resolveSchedule(tData.schedule);
+  const students = chart.apply(content.roster.map((r, i) => ({ ...r, seat: i })));
+  const plan = chart.resolveSchedule(content.schedule);
   chart.apply(students, plan);
 
   // A live tell schedule, resolved (or not) according to the style.
@@ -39,7 +47,7 @@ function run(name, style, chartSeats = null) {
   const tellSystem = { defs: tData.types, tells, kill(t) { t.dead = true; }, describe: () => '' };
 
   const state = createState();
-  const lesson = createLesson({ data: lData, students, tellSystem, toast: () => {}, rand: () => 0.5 });
+  const lesson = createLesson({ data: content.lesson, students, tellSystem, toast: () => {}, rand: () => 0.5 });
   const temp = createRoomTemp({ data: eData, students, tellSystem, toast: () => {} });
 
   let missed = 0;
@@ -92,7 +100,7 @@ function run(name, style, chartSeats = null) {
   console.log(
     `${name.padEnd(22)} mastery ${p(state.mastery)}  fidelity ${p(state.fidelity)}  ` +
     `rapport ${p(state.rapport)}  bandwidth ${p(state.bandwidth)}  restless ${p(state.restless)}  ` +
-    `beats ${state.beatsDelivered}/${lData.beats.length}  checks ${String(state.checks).padStart(2)}  ` +
+    `beats ${state.beatsDelivered}/${content.lesson.beats.length}  checks ${String(state.checks).padStart(2)}  ` +
     `missed ${missed}  scan ${Math.round(state.withitnessSeconds)}s`
   );
   if (plan.suppressed.length || plan.separated.length) {
@@ -148,4 +156,20 @@ const swaps = (...pairs) => {
 run('  the August chart', HEADS_DOWN);
 run('  the pairs split up', HEADS_DOWN, swaps([5, 11], [2, 7]));
 run('  the barometer up front', HEADS_DOWN, swaps([6, 0]));
+console.log('');
+
+// T6: a different roster, a different (busier) tell schedule, a different
+// lesson — same room, same rulebook, same two representative styles.
+console.log(`5th period lesson: ${P5_CONTENT.lesson.beats.reduce((a, b) => a + b.seconds, 0)}s of authored beats, ` +
+  `${p5Data.schedule.length} scheduled tells (vs 4th's ${tData.schedule.length})\n`);
+run('5th: ideal (never scans)', {
+  teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 2, catchAfter: null
+}, null, P5_CONTENT);
+run('5th: the good teacher', {
+  teaching: s => !s.withitness, scan: s => Math.floor(s.t / 45) % 4 === 0 && s.bandwidth > 5,
+  advanceAt: 1.0, checkEvery: 2, reteach: true, catchAfter: 30, temp: true
+}, null, P5_CONTENT);
+run('5th: never checks, never looks', {
+  teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 0, catchAfter: null
+}, null, P5_CONTENT);
 console.log('');
