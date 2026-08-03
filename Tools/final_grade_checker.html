@@ -198,7 +198,7 @@
 
   <div class="note-bar">
     <strong>Which grade to use?</strong> Per Carroll County grading policy, award the <strong>higher</strong> of the two methods. The highlighted box is the one to report.<br>
-    <strong>Quality Points:</strong> Each quarter letter converts to a point value (A=4, B=3, C=2, D=1, F=0). Those four values are averaged, then converted back to a letter. Unlike the percentage average below, this side does <strong>not</strong> round up at exactly .5 — an average of exactly 3.5 is a B, not an A.<br>
+    <strong>Quality Points:</strong> Each quarter letter converts to a point value (A=4, B=3, C=2, D=1, F=0). Those four values are averaged, then converted back to a letter. This side must earn the <strong>full</strong> point for a letter — an average of 3.99 is still a B, not an A. Only an exact 4.00 is an A.<br>
     <strong>Percentage Average:</strong> The four raw percentages are averaged directly, then converted using the 10-point scale. Exactly .5 rounds up, so 89.5 is an A and 89.49 is a B.<br>
     <strong>All four quarters are required.</strong> With a quarter missing or exempt, no final grade is shown, because a three-quarter average is not the county's number.
   </div>
@@ -507,7 +507,7 @@ function exportPDF() {
     });
     doc.setTextColor(120,120,120);
     doc.setFont('helvetica', 'normal');
-    doc.text('Final grade = higher of the Quality Points or Percentage Average method. The percentage average rounds up at exactly .5 (89.5 is an A); quality points do not (3.5 is a B).', 40, finalY + 18);
+    doc.text('Final grade = higher of the Quality Points or Percentage Average method. The percentage average rounds up at exactly .5 (89.5 is an A); quality points must earn the full point (3.99 is still a B, not an A).', 40, finalY + 18);
     doc.text('A student missing any quarter shows no final grade; all four are required.', 40, finalY + 30);
   }
 

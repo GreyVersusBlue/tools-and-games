@@ -444,14 +444,11 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
     <div class="sub">a Pathfinder 2e adventure engine</div>
     <div class="spacer"></div>
     <button class="tb-btn" id="btn-load-content">Load Content JSON</button>
-    <!-- Export is hand-rolled because a hero's file has been named after the hero
-         since this game shipped and mountSaveBar has no filename hook (see the
-         Shared-file request in the session notes). It still writes through
-         slot.exportToFile, so the bytes are the standard gvb-save envelope.
-         Import is the module's. Both sit in the topbar, which is on screen during
-         play — so exporting mid-adventure costs no page reload, which is the open
-         item v7 §9 raised against The Fourth Quarter. -->
-    <button class="tb-btn" id="btn-export-save">Export save</button>
+    <!-- Export and Import both come from mountSaveBar now that the module takes
+         a `filename` hook — named after the hero, same as the hand-rolled button
+         used to. Both sit in the topbar, which is on screen during play — so
+         exporting mid-adventure costs no page reload, the open item v7 §9
+         raised against The Fourth Quarter. -->
     <div id="save-bar"></div>
     <button class="tb-btn" id="btn-to-title">Title</button>
   </div>
@@ -2012,7 +2009,7 @@ const Combat = {
     const cb=this.cur();
     if(cb.dead){ return this.nextTurn(); }
     // start-of-turn: persistent damage & recovery & cooldowns & buffs tick handled at end
-    cb.reactionUsed=false; cb.shieldRaised=false; cb.nimbleUsed=false; cb.mapCount=0; cb.flourishUsed=false; cb.hexUsed=false;
+    cb.reactionUsed=false; cb.shieldRaised=false; cb.nimbleUsed=false; cb.mapCount=0; cb.flourishUsed=false; cb.hexUsed=false; cb.reloadedThisTurn=false;
     if(cb.side==="pc"&&cb.dying>0){
       const roll=Dice.d(20); const dc=10+cb.dying;
       if(roll>=dc){ cb.dying=Math.max(0,cb.dying-(roll>=dc+10?2:1));
@@ -2124,6 +2121,10 @@ const Combat = {
     ac-=this.condVal(target,"frightened")+this.condVal(target,"sickened")+this.condVal(target,"clumsy")+this.condVal(target,"fatigued");
     ac+=this.buffSum(target,"ac");
     if(target.shieldRaised) ac+=2;
+    /* Outwit (Ranger edge): +1 circumstance AC against your own hunted prey —
+       the defensive half of edge-outwit. huntPreyId is a single global (only
+       the hero can be a Ranger), so this never needs to be per-character. */
+    if(attacker&&target.char&&target.char.specials.includes("edge-outwit")&&this.huntPreyId===attacker.id) ac+=1;
     let offGuard=false;
     if(this.condVal(target,"prone")) offGuard=true;
     if(opts&&opts.forceOffGuard) offGuard=true;
@@ -2136,6 +2137,13 @@ const Combat = {
        than a flat round number. */
     if(this.round===1&&attacker&&attacker.char&&attacker.char.specials.includes("surprise-attack")
        &&this.order.indexOf(target)>=this.turnIdx) offGuard=true;
+    /* Feint: off-guard to the specific feinter's attacks only, for the rest of
+       their own turn (round+turnIdx unchanged) — a single Strike on a plain
+       Feint, every attack this turn if the feinter has racket-scoundrel. */
+    if(attacker&&target.feint&&target.feint.by===attacker.id&&target.feint.round===this.round
+       &&target.feint.turnIdx===this.turnIdx&&target.feint.usesLeft>0){
+      offGuard=true; target.feint.usesLeft--;
+    }
     if(attacker&&!attacker.ranged&&this.isFlanking(attacker,target)) offGuard=true;
     if(offGuard&&!(target.char&&target.char.specials.includes("deny-advantage"))) ac-=2;
     return {ac,offGuard};
@@ -2317,10 +2325,12 @@ const Combat = {
     btn("stride","➤ Stride","◆",no);
     btn("step","⋆ Step","◆",no);
     if(cb.char&&cb.char.build.gear.shield) btn("raise","🛡 Raise Shield","◆",no||cb.shieldRaised);
+    if(cb.attacks.some(a=>a.ranged&&(a.traits||[]).includes("reload-1"))) btn("reload","🔃 Reload","◆",no||cb.reloadedThisTurn);
     if(cb.char){
       const ch=cb.char;
       if(ch.specials.includes("hunt-prey")) btn("hunt","🎯 Hunt Prey","◆",no);
       if(ch.skills.intimidation!=="U") btn("demoralize","😱 Demoralize","◆",no);
+      if(ch.skills.deception!=="U") btn("feint","🎭 Feint","◆",no);
       if(Object.values(ch.build.feats).includes("battle-medicine")) btn("battlemed","✚ Battle Medicine","◆",no);
       if(ch.specials.includes("power-attack")) btn("powerattack","💥 Power Attack","◆◆",no||this.actions<2);
       if(ch.specials.includes("sudden-charge")) btn("charge","🐎 Sudden Charge","◆◆",no||this.actions<2);
@@ -2359,8 +2369,10 @@ const Combat = {
     if(id==="stride") return arm({kind:"move",budget:this.moveBudget(cb),cost:1},"Choose a highlighted square to Stride to.");
     if(id==="step") return arm({kind:"move",budget:1,cost:1,step:true},"Step one square (no reactions).");
     if(id==="raise"){ cb.shieldRaised=true; this.spend(1); App.log(`${esc(cb.name)} raises a shield (+2 AC).`,"combat"); return this.renderAll(); }
+    if(id==="reload"){ cb.reloadedThisTurn=true; this.spend(1); App.log(`${esc(cb.name)} reloads.`,"combat"); return this.renderAll(); }
     if(id==="hunt") return arm({kind:"target",range:99,cost:1,mode:"hunt"},"Mark a foe as your hunted prey.");
     if(id==="demoralize") return arm({kind:"target",range:6,cost:1,mode:"demoralize"},"Choose a foe within 30 ft to Demoralize.");
+    if(id==="feint") return arm({kind:"target",range:1,cost:1,mode:"feint"},"Feint: choose an adjacent foe.");
     if(id==="battlemed") return arm({kind:"target",range:1,cost:1,mode:"battlemed",friendly:true,canDowned:true},"Choose an adjacent ally to treat.");
     if(id.startsWith("strike")) return arm({kind:"target",range:cb.attacks[+id.slice(6)].range,cost:1,mode:"strike",atkIdx:+id.slice(6)},"Choose a target to Strike.");
     if(id==="powerattack") return arm({kind:"target",range:1,cost:2,mode:"powerattack",atkIdx:this.meleeIdx(cb)},"Power Attack: choose an adjacent foe.");
@@ -2440,11 +2452,24 @@ const Combat = {
       case "demoralize": {
         const ch=cb.char; let mod=skillMod(ch,"intimidation")-this.condVal(cb,"frightened")-this.condVal(cb,"sickened");
         if(!ch.specials.includes("intimidating-glare")) mod-=4; // no shared language with the mindless dead
+        if(ch.specials.includes("edge-outwit")&&t.id===this.huntPreyId) mod+=2; // Outwit vs hunted prey
         const dc=10+(t.saves.will||0)+CHAR_LEVEL;
         const r=App.rollCheck(`${cb.name} Demoralizes ${t.name}`,mod,dc);
         if(r.deg>=2){ this.addCond(t,"frightened",r.deg===3?2:1);
           if(r.deg===3&&ch.specials.includes("terrified-retreat")&&(t.monster&&t.monster.level<CHAR_LEVEL)) this.addCond(t,"fleeing",1,1); }
         t.demoralized=true; return done();
+      }
+      case "feint": {
+        const ch=cb.char; let mod=skillMod(ch,"deception")-this.condVal(cb,"frightened")-this.condVal(cb,"sickened");
+        if(ch.specials.includes("edge-outwit")&&t.id===this.huntPreyId) mod+=2; // Outwit vs hunted prey
+        const dc=10+(t.perception||0);
+        const r=App.rollCheck(`${cb.name} Feints ${t.name}`,mod,dc);
+        if(r.deg>=2){
+          const scoundrel=ch.specials.includes("racket-scoundrel");
+          t.feint={by:cb.id,round:this.round,turnIdx:this.turnIdx,usesLeft:scoundrel?Infinity:1};
+          App.log(`${esc(t.name)} is off-guard to ${scoundrel?"all of ":""}${esc(cb.name)}'s attacks${scoundrel?" this turn":" (next Strike)"}.`,"combat");
+        } else App.log(`${esc(cb.name)}'s Feint fails to fool ${esc(t.name)}.`,"combat");
+        return done();
       }
       case "battlemed": {
         const ch=cb.char;
@@ -2498,8 +2523,13 @@ const Combat = {
     App.rollSeal(`${att.name}: ${wpn.name} vs ${def.name}${offGuard?" (off-guard)":""}`,d20,`${d20}${mod>=0?"+":""}${mod} = ${total} vs AC ${ac}`,deg);
     if(!opts.noMAP&&!(opts.exacting&&deg<2)) att.mapCount++;
     if(deg>=2){
-      let dice=wpn.die; const extra=opts.extraDie||0;
-      let dmg=Dice.roll(dice).total+(extra?Dice.roll(dice).total:0)+ (wpn.dmgMod||0)+(wpn.statusDmg||0);
+      /* Crossbow Ace: "against your hunted prey, or after reloading" — die
+         improves 1d8→1d10 and +2 circumstance damage. reload-1 is the only
+         trait this checks, so it never fires on a non-crossbow weapon. */
+      const craceOn=att.char&&att.char.specials.includes("crossbow-ace")&&(wpn.traits||[]).includes("reload-1")
+        &&(this.huntPreyId===def.id||att.reloadedThisTurn);
+      let dice=craceOn?"1d10":wpn.die; const extra=opts.extraDie||0;
+      let dmg=Dice.roll(dice).total+(extra?Dice.roll(dice).total:0)+ (wpn.dmgMod||0)+(wpn.statusDmg||0)+(craceOn?2:0);
       dmg+=this.buffSum(att,"damage");
       if(!wpn.ranged&&this.condVal(att,"enfeebled")) dmg=Math.max(1,dmg-this.condVal(att,"enfeebled"));
       // precision: sneak attack / precision edge / companion sneak
@@ -2795,7 +2825,7 @@ const Combat = {
     let mod=atk.bonus - this.condVal(foe,"frightened")-this.condVal(foe,"sickened")-this.condVal(foe,"enfeebled")-this.condVal(foe,"hexed")-this.condVal(foe,"night-shrouded");
     mod+= foe.mapCount===0?0: (atk.traits.includes("agile")? (foe.mapCount===1?-4:-8):(foe.mapCount===1?-5:-10));
     foe.mapCount++;
-    const {ac,offGuard}=this.effAC(t,{ranged:atk.ranged});
+    const {ac,offGuard}=this.effAC(t,{id:foe.id,ranged:atk.ranged});
     // nimble dodge
     let acFinal=ac;
     if(t.char&&t.char.specials.includes("nimble-dodge")&&!t.nimbleUsed&&!t.reactionUsed){ acFinal+=2; t.nimbleUsed=true; t.reactionUsed=true;
@@ -2833,7 +2863,6 @@ const App = {
     document.getElementById("btn-resume").onclick=()=>this.resume();
     document.getElementById("btn-to-title").onclick=()=>this.toTitle();
     document.getElementById("btn-load-content").onclick=()=>document.getElementById("file-input").click();
-    document.getElementById("btn-export-save").onclick=()=>this.exportSave();
     document.getElementById("file-input").onchange=(e)=>this.fileChosen(e);
     document.addEventListener("keydown",e=>{
       if(e.key==="Escape"){ this.closeModal(); return; }
@@ -2848,8 +2877,8 @@ const App = {
       card.click();
     });
     mountSaveBar(document.getElementById("save-bar"),this.slot,{
-      buttons:["import"],                 // Export is the topbar button above; "Start over"
-                                          // would sit next to Forge a Hero doing the same job.
+      buttons:["export","import"],        // "Start over" would sit next to Forge a Hero doing the same job.
+      filename:()=>this.saveFilename(),
       getState:()=>this.snapshot(),
       setState:s=>this.loadSave(s),
       onMessage:t=>this.toast(t)
@@ -3131,12 +3160,7 @@ const App = {
       chronicle:this.chronicle.slice(-80)};
   },
   autosave(){ this.slot.save(this.snapshot()); },
-  exportSave(){
-    if(!this.hero){ this.toast("Nothing to save yet — forge a hero first."); return; }
-    const name=(this.hero.name||"hero").replace(/\W+/g,"-").toLowerCase()+".torchsave.json";
-    this.slot.exportToFile(this.snapshot(),name);
-    this.toast("Exported "+name);
-  },
+  saveFilename(){ return (this.hero&&this.hero.name||"hero").replace(/\W+/g,"-").toLowerCase()+".torchsave.json"; },
 
   /**
    * Take a snapshot the slot has already validated, migrated and repaired, and

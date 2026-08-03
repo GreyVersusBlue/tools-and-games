@@ -3,16 +3,17 @@
 You are working on Torchbearer, a Pathfinder 2e adventure engine on greyversusblue.com. It
 is a single-file game that loads user-supplied adventure content, and it carries
 `class="has-suite"` on the board — it advertises itself as a platform, not one adventure.
-Round 2 fixed Assurance, fixed a real potion-healing bug, fixed a Shield Block double-grant
-hole, and committed a real playthrough save that — combined with prompt 22's work this round —
-finally gave this game a preview, an OG card, and an `npm run games` entry. This prompt is
+**Round 3 wired all three of the previous round's feature items** (edge-outwit's AC half, a real
+Feint action, a reload mechanic for crossbow-ace) and did the `mountSaveBar` cleanup. What's left
+is `mobility` (still blocked on a monster-data prerequisite, not an engine task) and the
+site-wide `Pathfinder/data/` question (Devon's call, tracked in prompt 01). This prompt is
 self-contained.
 
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Projects/torchbearer.html` (3,280 lines)
+- `Projects/torchbearer.html` (3,268 lines)
 - `Projects/torchbearer/` — `content-authoring-guide.md`,
   `packs/thornwake-vigil.json`, `packs/embers-of-the-hold.json`, `js/library.js`,
   `js/save.js`, `js/registry.js`, `test/smoke.mjs`, `test/sera-voss.torchsave.json`
@@ -48,18 +49,20 @@ your edit will be silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file.
-2. **`Claude Prompts/notes/10-torchbearer-notes.md`** — round 2's session: fixed Assurance
-   (two bugs, not one), decided and fixed the potion-heal bug (a real, reachable bug — every
-   Lesser Healing Potion in the game was silently healing about 10 HP short of its own text),
-   fixed Shield Block double-granting, fixed `surprise-attack`, and played the builder for real to
-   commit a save fixture. Round 1's notes are archived at
-   `Claude Prompts/archive/round-1/notes/10-torchbearer-notes.md`.
+2. **`Claude Prompts/notes/10-torchbearer-notes.md`** — round 3's session: edge-outwit's AC half,
+   a real Feint action (unlocking `racket-scoundrel`), a reload mechanic (unlocking
+   `crossbow-ace`), and the `mountSaveBar` cleanup (the old hand-rolled Export button and
+   `App.exportSave()` are gone). Round 2's notes are archived at
+   `Claude Prompts/archive/round-2/notes/10-torchbearer-notes.md` — Assurance (two bugs, not one),
+   the potion-heal bug (every Lesser Healing Potion silently healing ~10 HP short of its own text),
+   the Shield Block double-grant fix, `surprise-attack`, and the committed save fixture. Round 1's
+   are at `Claude Prompts/archive/round-1/notes/10-torchbearer-notes.md`.
 3. `Projects/torchbearer/content-authoring-guide.md` — the contract between the engine and its
-   content, updated this round to move `assurance` and `surprise-attack` into the working list
-   and give the four remaining inert hooks specific findings instead of "flavour only."
+   content, updated this round with the Feint/reload mechanics.
 4. Both JSON packs in `Projects/torchbearer/packs/`, as worked examples of that contract.
-5. `gvb-site-handoff-v9.md` §5 (your preview/OG/games.mjs entry, finally unblocked and applied
-   this round) and §10 (locked decisions #51-53).
+5. `gvb-site-handoff-v10.md` §3 (the repo-wide `sync-social-tags.mjs` false-DRIFT bug this project
+   independently reported, root-caused and fixed this round) and §10 (locked decisions, through
+   #58).
 6. `assets/js/gvb-save.js` and `assets/js/README.md`, plus `Projects/torchbearer/js/save.js`.
 
 ## House rules for every file in this repo
@@ -87,81 +90,66 @@ your edit will be silently overwritten. A wrong description is a board request.
 
 ## What is actually here
 
-3,280 lines in one file. Title: "Torchbearer — A Pathfinder 2e Adventure Engine". Tagged `CRPG`
-with `has-suite` on the board. **Now has a preview and an OG card** (round 2 committed a real
-playthrough save; prompt 22 used it this round to build the `games.mjs` recipe, capture, and
-promote — 9.2 KB preview, 64.4 KB OG card).
+3,268 lines in one file. Title: "Torchbearer — A Pathfinder 2e Adventure Engine". Tagged `CRPG`
+with `has-suite` on the board. Has a preview and an OG card, unchanged this round.
 
-**Assurance works.** Two bugs, not one: `finalizeCharacter` only ever recorded the bare string
-`"assurance"`, so Assurance (Athletics) and Assurance (Arcana) were indistinguishable — fixed by
-keying it `"assurance-"+skill`. And nothing consumed it — `choose()`'s scene-check path now offers
-a modal (forgo the roll for `10 + proficiency`, or roll normally) whenever the hero has Assurance
-for the relevant skill.
+**`edge-outwit` works, both halves.** `Combat.effAC` gets the +1 AC term against hunted prey; the
++2 Deception/Intimidation/Stealth bonus applies to Demoralize (existing) and to the new Feint
+action (below) when either targets the hunted foe.
 
-**The potion `heal` question is decided: read the item, don't rewrite the item.** Both core
-potions kept their existing text; the engine was changed to match. `resources.potions` is now a
-stack of item ids (was a bare count), so Drink Potion rolls the specific item's own `heal` formula.
-This was a real, reachable bug: Bell of Barrowmoor and Thornwake Vigil both hand out Lesser Healing
-Potions, and every one healed a flat `1d8` instead of the advertised `2d8+5` — about 10 HP short,
-every single time, silently.
+**A real Feint action exists now** (button, `resolveTargeted` case), unlocking `racket-scoundrel`
+("when you Feint, your foe is off-guard to all your attacks") — a core PF2e verb this engine didn't
+have before. Feint sets an off-guard flag consumed by the hunted-prey OR reloaded condition
+`crossbow-ace` also checks.
 
-**`surprise-attack` works now** — a second inert hook fixed past what was asked, because the
-scaffolding was already 90% there: "creatures that haven't acted are off-guard to you," one added
-clause in `Combat.effAC`.
+**A reload mechanic exists**, however minimal, unlocking `crossbow-ace` honestly: the `reload-1`
+trait on the Crossbow item now actually costs an action to clear before the next Strike works at
+full effect.
 
-**Shield Block is greyed out where a class already grants it**, closing the follow-on hole from
-round 1's `grantFeat` fix (which made classes actually grant it, but left the general-feat picker
-still offering it a second time).
+**The `mountSaveBar` cleanup is done.** The old hand-rolled Export button and `App.exportSave()` are
+gone; the save bar is mounted via `mountSaveBar(..., {buttons: ["export","import"], filename: () =>
+...})`, naming the file after the hero.
 
-**A real committed save fixture exists**: `Projects/torchbearer/test/sera-voss.torchsave.json` —
-played for real, not built blind (Dwarf Fighter, Farmhand background, Thornwake Vigil, mid-combat
-at the Vanguard's Watch). `test/smoke.mjs` asserts it deserializes with the expected hero,
-adventure, and scene, so it can't silently rot.
+**A real repo-wide bug was found here and reported, not fixed locally: `sync-social-tags.mjs`'s
+permanent false DRIFT.** Reported alongside fifteen other projects' identical finding; root-caused
+and fixed by prompt 22 this round (a Windows/`autocrlf` line-ending mismatch, `gvb-site-handoff-v10.md`
+§3) — not a bug in this project's own `torchbearer.html`.
 
-**`content-authoring-guide.md`** now documents 37 working hooks (was 35) and gives the four
-remaining inert ones (`mobility`, `edge-outwit`, `racket-scoundrel`, `crossbow-ace`) specific,
-actionable findings instead of a blanket "flavour only" — see task list below.
+**A `.claude/launch.json` change landed this round, with Devon's live sign-off**: the
+`gvb-static-site` config's `autoPort` is `true` now, `runtimeArgs` no longer hardcodes a port. Not
+routed through the shared-file-request process since it happened live in-session — flagged here so
+it's not mistaken for an out-of-process change.
 
-**`Projects/torchbearer/test/smoke.mjs`, 95 checks** (was 86), exits non-zero on failure.
+**`content-authoring-guide.md`** documents the Feint/reload mechanics now. **`mobility`,
+`racket-scoundrel`'s off-guard condition, and `crossbow-ace` are the only hooks still meaningfully
+gated** — see task list.
 
-**The `Pathfinder/data/` question is still unresolved** — raised again this round, a fourth and
-fifth time site-wide (jointly with The Absalom Inheritance). See prompt 01's "Questions for Devon"
-block, which now tracks this centrally rather than each project re-raising it independently.
+**`Projects/torchbearer/test/smoke.mjs`, 95 checks**, unchanged — this round's `Combat`/`App`
+changes live entirely in browser-only code the Node suite doesn't import.
+
+**The `Pathfinder/data/` question is still unresolved** — raised again this round, a sixth time
+site-wide (jointly with The Absalom Inheritance). See prompt 01's "Questions for Devon" block,
+which tracks this centrally.
 
 ## Your task
 
-Round 2 closed the headline preview gap and fixed two real gameplay bugs plus one extra. What's
-left is genuine feature work on the four remaining inert hooks — each one is now a specific,
-scoped finding, not a vague "flavour only":
+Round 3 wired all three feature items round 2 left open. What's left:
 
-1. **`edge-outwit`'s AC half, paired with Demoralize's bonus against hunted prey.** The feat is one
-   clause ("+1 AC *and* +2 to Deception/Intimidation/Stealth against your prey") — the AC half is
-   safe to add alone (one more term in `effAC`), but shipping half of it silently makes the guide's
-   "these are inert" table wrong about the other half. Demoralize (Intimidation) already exists as
-   an action and could take the bonus immediately; Deception/Stealth need a Feint and/or Hide action
-   that doesn't exist yet (see next item) — either build those too, or say explicitly in the guide
-   that they stay unbonused until then.
-2. **A Feint action.** Unlocks `racket-scoundrel` ("when you Feint, your foe is off-guard to all
-   your attacks" — no verb to attach to right now, since there's no Feint button or
-   `resolveTargeted` case for it) and is probably worth more than that one feat alone — Feint is a
-   core PF2e verb this engine doesn't have yet. Twin Feint (a different, already-working feat) does
-   something narrower and isn't a substitute.
-3. **A reload mechanic, however minimal.** Unlocks `crossbow-ace` honestly — the `reload-1` trait is
-   already on the Crossbow item, but nothing currently spends an action reloading, so Strike with a
-   loaded crossbow just works every turn with no reload step to track. Shipping the feat's
-   hunted-prey bonus alone without "or after reloading" would be inconsistent with its own wording.
-4. **`mobility` — investigated, and it's not just unwired, it's currently unwireable.**
+1. **`mobility` — still not just unwired, but currently unwireable.**
    `Combat.provokeAlong()` only ever fires a reactive strike against a moving *foe*, never against
    the hero or a companion, and no monster in the Registry carries `reactive-strike` either.
    Wiring the special up today would be a flag nothing reads. The real prerequisite is giving at
    least one monster a reach reaction — a monster-data question, not this hook. Don't attempt this
    without that first.
-5. **The `mountSaveBar` cleanup, low priority.** Swap the hand-rolled Export button for
-   `mountSaveBar(..., {buttons: ["export", "import"], filename: () => ...})` now that the module
-   supports naming the file after the hero. The hand-rolled version works correctly today; this is
-   tidiness, not a fix.
-6. **`Pathfinder/data/`** — still not yours to decide alone. See prompt 01's "Questions for Devon"
+2. **A stale comment in `loadSave`'s "Content Missing" branch** describes the old save-order
+   behavior that `mountSaveBar`'s cleanup changed. Small, self-contained, real — a documentation
+   fix, not urgent.
+3. **`Pathfinder/data/`** — still not yours to decide alone. See prompt 01's "Questions for Devon"
    block. Don't build a runtime dependency on it.
+4. **If your own pass finds nothing beyond the three items above, say so plainly.** This project
+   has now had three consecutive rounds of real feature and bug work, and every previously-inert
+   hook except `mobility` is wired; a session that confirms there's nothing left but a blocked item
+   and a comment fix is a legitimate, valuable outcome — not a failure to find scope.
 
 ## Verification
 
@@ -169,13 +157,15 @@ scoped finding, not a vague "flavour only":
 - Open the page in a real browser. Load a pack from the Shelf, play it in, export a hero,
   clear storage, import it back, confirm you get the same state. Try a deliberately corrupt
   `.torchsave.json` and confirm the running game survives it.
-- `cd Tools/board-check && npm run check` → as of this refresh: **335 units checked, 0 broken**, 0
-  collisions across nine widths, tightest vertical gap 3.5px.
-- `npm run social:check` → **17 notices, 17 already current** (dropped from 22 this round — a real,
-  correct count, not a regression).
+- `cd Tools/board-check && npm run check` → as of this refresh: **559 units checked, 0 broken**, 0
+  collisions across nine widths, tightest vertical gap 9.1px. (The unit count moves every round as
+  files are added elsewhere in the repo; 0 broken is what matters.)
+- `npm run social:check` → **18 notices, 18 already current** (Orbital's card joined this round; the
+  false-DRIFT this project reported is fixed at the root, see above).
 - `node assets/js/gvb-save.test.mjs` → **50 passed, 0 failed**.
-- `npm run games` → your game has a real entry now (7 checks, 0 failed as of this round — a 2D DOM
-  game, not three.js, so it isn't affected by locked decision #53's rendering-speed finding).
+- `npm run games` → your game has a real entry (7 checks — a 2D DOM game, not three.js, so it isn't
+  affected by locked decision #53's rendering-speed finding). Part of the fair-environment run that
+  reported **146 checks, 0 failed** across the whole suite this refresh (`gvb-site-handoff-v10.md` §6).
 - Locked decision #34: for every guard-rail you add, break the thing on purpose first and
   watch it fail.
 

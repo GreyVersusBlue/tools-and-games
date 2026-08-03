@@ -141,6 +141,30 @@ ok(Math.round(c.cash) === Math.round(cash0 + books.net), "cash moves by net");
 ok(c.day === day0 + 1 && c.promoTonight === "none" && c.applicants.length === 3,
   "settle advances the day, clears the theme, rerolls applicants");
 
+// ---- spoilage: the day-based cost session 3 decided on (Devon's call, not rent-creep or a losable lease) ----
+const sp = C.newCampaign();
+sp.stock = { wings: 20, burger: 20, nachos: 20, fries: 20, beer: 20, soda: 20 };
+const before = { ...sp.stock };
+const spBooks = C.settleNight(sp, { total: 0, revenue: 0, tips: 0 });
+ok(sp.stock.beer === before.beer && sp.stock.soda === before.soda, "beer and soda never spoil");
+ok(["wings", "burger", "nachos", "fries"].every(id => sp.stock[id] < before[id]),
+  "every food item loses stock overnight when nothing sold");
+ok(["wings", "burger", "nachos", "fries"].every(id => before[id] - sp.stock[id] === Math.round(before[id] * C.SPOILAGE_RATE)),
+  "the amount lost matches SPOILAGE_RATE of what was on the shelf");
+ok(spBooks.spoilage.value > 0 && Object.keys(spBooks.spoilage.byItem).length === 4,
+  "settleNight reports what spoiled and its wholesale value");
+const spDark = C.newCampaign();
+spDark.cash = 5500; C.moveVenue(spDark);
+spDark.stock.wings = 20;
+const darkBooks = C.settleDarkNight(spDark);
+ok(darkBooks.spoilage.byItem.wings === 3, "a dark night (no patrons) still rots the shelf — 15% of 20 rounds to 3");
+const empty = C.newCampaign();
+empty.stock = { wings: 0, burger: 0, nachos: 0, fries: 0, beer: 0, soda: 0 };
+const emptyBooks = C.settleNight(empty, { total: 0, revenue: 0, tips: 0 });
+ok(Object.keys(emptyBooks.spoilage.byItem).length === 0 && emptyBooks.spoilage.value === 0,
+  "nothing on the shelf means nothing spoils");
+ok(Object.values(sp.stock).every(v => v >= 0), "spoilage never takes stock negative");
+
 // ---- persistence: the shared save slot (assets/js/gvb-save.js) ----
 const mkStore = (seed = {}) => ({
   d: { ...seed },

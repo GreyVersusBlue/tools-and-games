@@ -270,7 +270,25 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
    ============================================================ */
 #board {
   display: grid;
-  grid-template-columns: minmax(0, auto) minmax(340px, 1fr);
+  /* Stage 23: an "auto" track sizes to the max-content of everything inside
+     it — including a flex-wrap row, measured as if it never wraps. The
+     4-button build palette (Stage/Food/Craft/Demo, all on one line) was
+     quietly stretching this column to 839px on a 1280px desktop even on
+     the 10x7 starting grounds (a 469px map plus padding is ~515px), which
+     left the desk column — Office/Backstage/Fair Floor, i.e. most of the
+     game — squeezed to its 340px floor. Found by hiding each child of
+     .plat in turn and re-measuring: the map/legend/status alone need
+     ~546px, and the palette's unwrapped row was the other ~293px.
+     fit-content(710px) — the widest any tier's map legitimately needs
+     (Deep Woods Trail, 14x10, is 703px including both paddings) — caps it,
+     so the palette's own width can no longer set the column's size. Desk
+     width on a 1280px desktop: 373px -> 502px. Note this cap is fixed at
+     the largest tier's size rather than shrinking further for a smaller
+     one still in progress (see HANDOFF.md) — a genuinely adaptive version
+     would need the current --cols/--cell threaded up from ui.js into a
+     calc() on this rule, which is more than this pass's remaining budget
+     covered. */
+  grid-template-columns: fit-content(710px) minmax(340px, 1fr);
   gap: 1.1rem;
   align-items: start;
 }
@@ -973,16 +991,64 @@ select {
   #grounds { position: static; }
 }
 @media (max-width: 720px) {
-  :root { --cell: 30px; }
+  /* Stage 23: through Stage 22, this breakpoint *shrank* the grid to
+     30px cells to keep the whole grounds visible without scrolling — which
+     put every one of the 38 plot markers at 26px (30px cell minus the
+     shared 2px margin on each side), the primary interaction on the whole
+     page, well under the 44px touch-target minimum. Shrinking further
+     isn't available (a legible glyph needs more room, not less); the real
+     fix is the opposite move: keep cells full-size and let the map pan,
+     the way a real physical plat is bigger than the table you read it on.
+     48px (minus the existing 2px marker margin on each side) lands exactly
+     on 44px. */
+  :root { --cell: 48px; }
   body { font-size: 15px; }
   #hud { flex-direction: column; gap: 0.6rem; padding: 0.6rem 1rem; }
   .wordmark { border-right: none; border-bottom: 1px solid var(--bark-line); padding: 0 0 0.5rem; }
   #ledger { gap: 1rem; justify-content: space-between; }
   .ledger-label { font-size: 1.1rem; }
-  .plat-sheet { padding: 7px; overflow-x: auto; }
+
+  /* The grounds grid now regularly runs wider than the viewport (the Deep
+     Woods Trail tier is 14 cells * 48px = 672px), so panning to the eastern
+     columns is now the normal case, not an edge case — and nothing on
+     screen said so. This is the standard "scroll shadow" technique: two
+     gradients painted in the map's own paper colour scroll WITH the
+     content (background-attachment: local) and mask two more gradients
+     painted in shadow that stay fixed to the viewport
+     (background-attachment: scroll). The shadow only shows through where
+     the paper-coloured cover has scrolled clear of that edge, so the fade
+     appears on the right on load, moves to both edges mid-scroll, and
+     disappears on the left once fully panned — an affordance that reflects
+     actual scroll position rather than a static hint that goes stale. */
+  .plat-sheet {
+    padding: 7px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    background-image:
+      linear-gradient(to right, var(--map-mat) 40%, transparent),
+      linear-gradient(to left, var(--map-mat) 40%, transparent) 100% 0,
+      linear-gradient(to right, rgba(20, 17, 14, 0.55), transparent 24px),
+      linear-gradient(to left, rgba(20, 17, 14, 0.55), transparent 24px) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 24px 100%, 24px 100%, 24px 100%, 24px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
   #content { padding: 1rem; }
   .plot-grid, .campaign-grid { grid-template-columns: 1fr; }
   .roster-table { font-size: 0.86rem; }
+
+  /* Buttons (27-28px), tabs (40px), and the footer controls were all under
+     the 44px touch minimum too. min-height (rather than resizing font/
+     padding by hand for every variant) guarantees the floor regardless of
+     which .btn modifier or how little text a given button has; the flex
+     centring keeps short labels from riding to the top of the taller box. */
+  .btn, .tab-btn, #save-bar button, #resetBtn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #resetBtn, #save-bar button { padding: 0.4rem 0.9rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

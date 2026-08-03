@@ -16,7 +16,7 @@ shots/              screenshots and the printed PDF the driver writes (gitignore
 
 ```
 node Tools/seating-chart/test/smoke-seating.mjs      → 153 passed, 0 failed
-node Tools/seating-chart/test/drive-seating.mjs      → 108 checks, 0 failed
+node Tools/seating-chart/test/drive-seating.mjs      → 111 checks, 0 failed
 ```
 
 Both exit non-zero on failure. The driver borrows `serve()`, `launch()` and

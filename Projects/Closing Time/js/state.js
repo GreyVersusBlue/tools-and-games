@@ -302,22 +302,22 @@ export function shuffle(arr) { const a = [...arr]; for (let i = a.length - 1; i 
 
 // --- Progression ---
 export function levelInfo() { return LEVELS[S.level - 1]; }
-export function addXP(n, why) {
+export function addXP(n, why, recId = undefined) {
   S.xp += n;
-  log(`+${n} XP — ${why}`, "xp");
+  log(`+${n} XP — ${why}`, "xp", undefined, recId);
   const next = LEVELS[S.level];
   if (next && S.xp >= next.xp) {
     S.level = next.level;
     log(`Promotion: you are now a ${next.title}. Client slots: ${next.slots}. Tiers unlocked: ${next.tiers.join(", ")}.`, "milestone");
   }
 }
-export function addRep(n, why) {
+export function addRep(n, why, recId = undefined) {
   S.rep = Math.max(0, Math.min(100, S.rep + n));
-  log(`${n >= 0 ? "+" : ""}${n} reputation — ${why}`, n >= 0 ? "rep" : "bad", "rep");
+  log(`${n >= 0 ? "+" : ""}${n} reputation — ${why}`, n >= 0 ? "rep" : "bad", "rep", recId);
 }
-export function addCash(n, why) {
+export function addCash(n, why, recId = undefined) {
   S.cash += n;
-  log(`${n >= 0 ? "+" : "−"}${Math.abs(Math.round(n)).toLocaleString()} — ${why}`, n >= 0 ? "money" : "bad", "money");
+  log(`${n >= 0 ? "+" : "−"}${Math.abs(Math.round(n)).toLocaleString()} — ${why}`, n >= 0 ? "money" : "bad", "money", recId);
 }
 
 export function clientSlotsMax() { return levelInfo().slots; }
@@ -328,8 +328,12 @@ export function contentClient(rec) { return DB.clients[rec.clientId]; }
 // `kind` is a filter category, separate from `cls` (which only drives color).
 // addRep/addCash tag "rep"/"money"; everything else leaves it undefined, which
 // the Ledger's "Everything" filter still shows — see ui.js's renderLog.
-export function log(text, cls = "", kind = undefined) {
-  S.log.unshift({ day: S.day, text, cls, kind });
+// `recId` stamps a log line as belonging to one client's history, for the
+// Ledger's per-client filter — see ui.js's logPanel. Left undefined for a line
+// that isn't about one specific client (market rates, weekly announcements,
+// brokerage recruitment).
+export function log(text, cls = "", kind = undefined, recId = undefined) {
+  S.log.unshift({ day: S.day, text, cls, kind, recId });
   if (S.log.length > 300) S.log.pop();
 }
 

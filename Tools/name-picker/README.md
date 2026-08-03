@@ -14,7 +14,7 @@ name, would have meant a board change and a broken URL; see the session notes.
 | `fonts/` | Bungee, Outfit, Press Start 2P, vendored. See its README. |
 | `test/smoke.mjs` | 213 assertions under plain Node. |
 | `test/blocked-storage.html` | The one case Node cannot reach — a browser that blocks storage. |
-| `test/browser.mjs` | The page in a real browser: export, import, fairness, the corrupt-roster guard, the erase flow. |
+| `test/browser.mjs` | The page in a real browser: export, import, fairness, the corrupt-roster guard, the erase flow, switching between two saved rosters. |
 
 ## Running the tests
 
@@ -47,7 +47,9 @@ Exits non-zero on any failure. Screenshots and the exported backup land in
 erase and import, then reloads the page to prove the restored data is what the
 tool itself picks up, not just what `localStorage` happens to hold. Also seeds two
 distinct corrupt-roster shapes (a truncated JSON blob, and a roster whose value
-is a number rather than an array) and confirms neither takes the page down.
+is a number rather than an array) and confirms neither takes the page down, and
+saves two rosters under two names, switches between them, and deletes one to
+confirm the other survives with its full count.
 
 For the blocked-storage case, serve the repo and open
 `/Tools/name-picker/test/blocked-storage.html`. It replaces the `localStorage`

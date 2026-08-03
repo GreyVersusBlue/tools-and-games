@@ -184,14 +184,31 @@ export async function lookAt(page, { facing = 0, pitch = 0, sens = 0.0022 }) {
  * it or the last long stride sails straight past.
  */
 export async function walkTo(page, target, arrived,
-                            { maxBursts = 40, key = 'KeyW', nearAt = 5, longMs = 400, shortMs = 130 } = {}) {
+                            { maxBursts = 40, key = 'KeyW', nearAt = 5, longMs = 400, shortMs = 130,
+                              steer = 'aimAt', sens = 0.0022 } = {}) {
   let lastDist = null;
   for (let bursts = 0; bursts < maxBursts; bursts++) {
     const s = await camState(page);
     const dist = Math.hypot(s.pos[0] - target[0], s.pos[1] - target[1]);
     if (await arrived(dist)) return { bursts, dist: +dist.toFixed(2) };
 
-    await aimAt(page, target);
+    if (steer === 'lookAt') {
+      // aimAt()'s raw camera.rotation.set() only sticks where a game's own
+      // controls treat camera.quaternion as the source of truth
+      // (PointerLockControls — Castle Conundrum). Aphelion, Golden Hour and
+      // The Fourth Quarter all keep a private yaw/pitch and overwrite
+      // camera.rotation from it every frame, so a raw write here is gone
+      // within ~16ms and walkTo() silently never turns — this is locked
+      // decision #35, confirmed again this round against The Fourth
+      // Quarter's Real Estate beat ("never got in range" on a 6-8m walk).
+      // Same target-angle formula as aimAt(), routed through lookAt()'s
+      // mousemove-based turn instead, which those three games' own
+      // mousemove handlers actually read.
+      const facing = Math.atan2(target[0] - s.pos[0], target[1] - s.pos[1]) + Math.PI;
+      await lookAt(page, { facing, pitch: 0, sens });
+    } else {
+      await aimAt(page, target);
+    }
 
     if (lastDist !== null && Math.abs(lastDist - dist) < 0.05) {
       await page.keyboard.down('KeyD');

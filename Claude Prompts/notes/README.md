@@ -47,5 +47,5 @@ its notes file stays right here, same filename, same as every other project's.
 
 The next round's threads write to the same filenames. Prompt 23 copies the whole folder into
 `Claude Prompts/archive/round-N/` before that happens, so earlier rounds survive there and nowhere
-else. As of this refresh, `archive/round-1/` and `archive/round-2/` both exist. If you are looking
-for what a project did in an earlier round, that is where it is.
+else. As of this refresh, `archive/round-1/`, `archive/round-2/`, and `archive/round-3/` all exist.
+If you are looking for what a project did in an earlier round, that is where it is.

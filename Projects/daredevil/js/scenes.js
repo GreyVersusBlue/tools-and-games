@@ -545,7 +545,7 @@ m1_player_response: {
       _requires: ()=> true },
     { label:'6', text:`"Not interested."`,
       subtext:`You don't need this man.`,
-      effects:{ rels:{ earl:'absent' } }, goto:'m1_r6' },
+      effects:{ rels:{ earl:'absent' }, flags:{ earlResponse:'not_interested' } }, goto:'m1_r6' },
   ]
 },
 m1_r1: {
@@ -1063,11 +1063,13 @@ m2_entry_waited: {
   art:'m2', artLabel:'Milestone 2',
   bgText:'THE OFFER',
   lines:[
-    N(`Earl's office. He'd kept Duke waiting a week and a half before calling back, and Duke had let him — the calculation being that a man who called first was the buyer, not the seller.`),
+    N(()=> GS.rels.earl === 'absent'
+      ? `Earl's office. Duke hadn't called. He'd told the man to lose his number, and the man had left a card on a ramp anyway, and here they both were three weeks later — Earl's people had tracked him down through Perkins.`
+      : `Earl's office. He'd kept Duke waiting a week and a half before calling back, and Duke had let him — the calculation being that a man who called first was the buyer, not the seller.`),
     N(`Earl was standing when they came in. He let them sit first.`),
-    C('EARL',`You made me work for it.`),
-    D(`You said call when I was ready.`),
-    C('EARL',`Fair enough.`),
+    C('EARL',()=> GS.rels.earl === 'absent' ? `You're a hard man to reach.` : `You made me work for it.`),
+    D(()=> GS.rels.earl === 'absent' ? `I told you I wasn't interested.` : `You said call when I was ready.`),
+    C('EARL',()=> GS.rels.earl === 'absent' ? `You told me a lot of things. I heard the part that mattered.` : `Fair enough.`),
     N(`He sat. He put his hands on the table in the way of a man who had done this a hundred times and planned to do it a hundred more.`),
     C('EARL',`Forty percent. That's the opening number.`),
     N(`Duke had read the contract. He knew what forty percent meant in practice. He also knew what the insurance clause on page three meant.`),
@@ -3524,10 +3526,14 @@ fr4_night_ride: {
     N(`He took the bike out after dark.`),
     N(`Not to practice. Not toward anything. The road north of town went flat for twenty-two miles before it hit anything worth stopping for, and he had been on it enough times that he could feel the surface through the tires like a conversation he knew by heart.`),
     N(`He thought about the canyon. He thought about Vegas. He thought about the number — the one you found in the air, not on the ground.`),
-    N(()=> GS.rels.ruthie === 'solid'
-      ? `He thought about Pete finding it in Lubbock. He thought about what Ruthie had said about the hands. He thought about Roy filming the three seconds after.`
-      : `He thought about Pete finding it in Lubbock. He thought about Roy filming the three seconds after.`
-    ),
+    N(()=>{
+      const peteActive = GS.rels.pete && GS.rels.pete !== 'absent' && GS.rels.pete !== 'unknown';
+      const ruthieSolid = GS.rels.ruthie === 'solid';
+      if (peteActive && ruthieSolid) return `He thought about Pete finding it in Lubbock. He thought about what Ruthie had said about the hands. He thought about Roy filming the three seconds after.`;
+      if (peteActive) return `He thought about Pete finding it in Lubbock. He thought about Roy filming the three seconds after.`;
+      if (ruthieSolid) return `He thought about what Ruthie had said about the hands. He thought about Roy filming the three seconds after.`;
+      return `He thought about Roy filming the three seconds after.`;
+    }),
     N(`He thought: some things are the same from the inside and the outside. The ones that matter usually are.`),
     N(`He turned around at mile twenty-two.`),
     N(`The fork seal, which Cal had replaced, held.`),
@@ -3798,7 +3804,11 @@ fr4_biographer: {
     C('FISK',`There's a book here. I don't mean the stunts — I mean the thing underneath the stunts. What you're actually doing.`),
     N(`Duke looked at him.`),
     C('FISK',`I've been doing this for twenty years. I know the difference between a career and a story. You have a story.`),
-    N(`The second section of the contract he'd seen briefly was a paragraph about narrative rights. He thought about Pete's sentence. He finds the number in the air, not on the ground. He thought about Fisk sitting across from him with the footage already in his head.`),
+    N(()=>{
+      const peteActive = GS.rels.pete && GS.rels.pete !== 'absent' && GS.rels.pete !== 'unknown';
+      const petePart = peteActive ? ` He thought about Pete's sentence. He finds the number in the air, not on the ground.` : ` He thought about the number — the one you found in the air, not on the ground.`;
+      return `The second section of the contract he'd seen briefly was a paragraph about narrative rights.${petePart} He thought about Fisk sitting across from him with the footage already in his head.`;
+    }),
     N(`He thought: Fisk had gotten there on his own.`),
   ],
   choices:[
@@ -3874,7 +3884,12 @@ fr4_biographer_no: {
     C('FISK',`That might be the best reason I've ever heard.`),
     N(`He closed his briefcase. He shook Duke's hand. He left without arguing.`),
     N(`Duke thought: that went the only way it could go. He thought: I'm going to remember that I said that.`),
-    N(`He thought: he finds the number in the air, not on the ground. And some numbers you don't need someone else to write down.`),
+    N(()=>{
+      const peteActive = GS.rels.pete && GS.rels.pete !== 'absent' && GS.rels.pete !== 'unknown';
+      return peteActive
+        ? `He thought: he finds the number in the air, not on the ground. And some numbers you don't need someone else to write down.`
+        : `He thought: he finds the number in the air, not on the ground. Some numbers were never anybody else's to keep track of.`;
+    }),
   ],
   statUpdate:{
     title:'No.',

@@ -4,13 +4,13 @@ Twenty-two self-contained prompts, one per project. Each is written to be pasted
 into its own Claude Code session with no other context, and each is scoped so that
 **all twenty-two can run at the same time without touching the same file.**
 
-Originally written after session 7 (site version 8). Round 1 (prompts 01–21) and round 2
-(prompts 01–21 again) have both completed. Prompt 23 has refreshed all twenty-two prompts
-against round 2's result. The site is now at **version 10** with `gvb-site-handoff-v9.md` as
-its current handoff. Read that file, not v8 or earlier, for where the site actually stands.
-See "Rounds so far" below for what each round shipped.
+Originally written after session 7 (site version 8). Rounds 1, 2, and 3 (prompts 01–21 each
+time) have all completed. Prompt 23 has refreshed all twenty-two prompts against round 3's
+result. The site is now at **version 11** with `gvb-site-handoff-v10.md` as its current handoff.
+Read that file, not v9 or earlier, for where the site actually stands. See "Rounds so far" below
+for what each round shipped.
 
-## The `Stable/` folder, new this round
+## The `Stable/` folder
 
 A project prompt with genuinely nothing outstanding moves to `Claude Prompts/Stable/`, keeping
 its exact filename. This is **not** the same thing as `archive/round-N/`:
@@ -22,22 +22,38 @@ its exact filename. This is **not** the same thing as `archive/round-N/`:
 - **`archive/round-N/`** holds a *frozen snapshot* of a past round — never re-read as a live
   prompt, only consulted for history.
 
-As of this refresh, `Claude Prompts/Stable/` holds **01 (Anathema Archive)** and **15 (The
-Fracture Cycle)** — both verified to have nothing outstanding as of round 2, both explicitly
-re-checked against the live repo rather than just trusting their own prior claim.
+As of this refresh, `Claude Prompts/Stable/` holds **01 (Anathema Archive)**, **14 (Integer
+Foundry)**, **15 (The Fracture Cycle)**, and **17 (Image → PDF Assembler)** — all four verified to
+have nothing outstanding as of round 3, each explicitly re-checked against the live repo rather
+than just trusting their own prior claim. 14 and 17 joined this round; 01 and 15 were re-verified
+and stayed.
 
 ## Questions for Devon, tracked in-prompt
 
-Some prompts now carry a **"Questions for Devon"** block near the top — a genuine open decision
+Some prompts carry a **"Questions for Devon"** block near the top — a genuine open decision
 (a design call, a policy fact, a scope choice) that only Devon can answer, phrased as a direct
-question. This is the durable home for that kind of open item now, replacing the older pattern
-of burying it in a task description or only mentioning it in the handoff. As of this refresh:
+question. This is the durable home for that kind of open item, replacing the older pattern of
+burying it in a task description or only mentioning it in the handoff. As of this refresh:
 
 - **01** (Anathema Archive) — whether `Pathfinder/data/` is a published interface or private.
-- **07** (The Fourth Quarter) — whether the night loop should have a day-based difficulty curve.
-- **16** (Final Grade Checker) — whether any real report card graded in a specific window needs
-  revisiting, and whether the QP threshold spacing matches the real written policy.
+  Raised a sixth time this round.
+- **02** (Pathfinder Campaigns) and **03** (Pathfinder Characters) — whether one clean
+  verification round is enough to move a page to `Stable/` (01's precedent) or whether two clean
+  rounds are needed (15's precedent), now that both pages have had their first fully clean round.
+- **12** (Coffee Shop Sim / Corner & Kettle) — whether the Serve button should require full order
+  completion, now that baristas are the main path to a finished cup and a measured gap exists
+  between patient and eager serving.
+- **13** (Daredevil) — what "Not interested" to Earl should actually do, given the milestone spine
+  proceeds almost unchanged regardless of the choice. The single biggest open item on the site.
+- **16** (Final Grade Checker) — whether any real report card, at any point in this tool's
+  history, needs a second look now that the grading bug turned out bigger than first thought
+  (thresholds are whole numbers, not `.5`-offset midpoints).
+- **18** (Name Picker) and **22** (General Site Improvements) — the same question, from both
+  sides of the boundary: should the `Tools/Name Picker.html` → `name-picker.html` rename finally
+  be authorized (touching `newindex.html`'s one link), now a structural deadlock three rounds
+  running.
 - **19** (Schedule Visualizer) — how storage quota should be handled for `gvb-save.js` adoption.
+  Third round running with the same answer (skip it).
 
 When Devon answers one, prompt 23's next refresh removes it from the block and records the
 decision in the prompt's durable section (or as a new locked decision in the next handoff).
@@ -73,10 +89,10 @@ told to vendor fonts that are already vendored and to expect counts that have mo
 | 11 | `11-absalom-inheritance.md` | `Projects/absalom_inheritance.html` (shell, URL unchanged), `Projects/absalom-inheritance/` (the real logic, restructured round 1) |
 | 12 | `12-coffee-shop-sim.md` | `Projects/coffee_shop_sim.html`, `Projects/corner-and-kettle/` |
 | 13 | `13-daredevil.md` | `Projects/daredevil/` (the real game, restructured round 2 from the old single-file `Projects/daredevil_r4.html`, now a redirect stub) |
-| 14 | `14-integer-foundry.md` | `Projects/integer-foundry.html`, `Projects/integer-foundry/` |
-| 15 | `Stable/15-fracture-cycle.md` | `Projects/the-fracture-cycle.html`, `Projects/the-fracture-cycle/`. **In `Stable/`** — nothing outstanding for two rounds running. |
+| 14 | `Stable/14-integer-foundry.md` | `Projects/integer-foundry.html`, `Projects/integer-foundry/`. **In `Stable/`** — nothing outstanding as of round 3. |
+| 15 | `Stable/15-fracture-cycle.md` | `Projects/the-fracture-cycle.html`, `Projects/the-fracture-cycle/`. **In `Stable/`** — nothing outstanding for three rounds running. |
 | 16 | `16-final-grade-checker.md` | `Tools/final_grade_checker.html`, `Tools/final-grade-checker/` |
-| 17 | `17-image-to-pdf.md` | `Tools/image-to-pdf.html`, `Tools/image-to-pdf/` |
+| 17 | `Stable/17-image-to-pdf.md` | `Tools/image-to-pdf.html`, `Tools/image-to-pdf/`. **In `Stable/`** — nothing outstanding as of round 3 beyond two environment-blocked verification checks. |
 | 18 | `18-name-picker.md` | `Tools/Name Picker.html`, `Tools/name-picker/` |
 | 19 | `19-schedule-visualizer.md` | `Tools/schedule-visualizer.html`, `Tools/schedule-browser.html` (both renamed in round 1; old dated/spaced paths survive as redirect stubs), `Tools/schedule/` |
 | 20 | `20-seating-chart-generator.md` | `Tools/Seating Chart Generator.html`, `Tools/seating-chart/` |
@@ -105,27 +121,25 @@ Two refinements worth knowing:
   (`Projects/fourth-quarter/test/`, `Tools/name-picker/test/browser.mjs`,
   `Tools/seating-chart/test/drive-seating.mjs`, `Projects/integer-foundry/test/browser.mjs`, and
   others). Those are per-project files even though they drive a browser the same way prompt 22's
-  own tooling does — **this matters concretely as of round 2**: a `puppeteer-core` compatibility
-  bug (see below) was fixed across every file prompt 22 owns, but the identical bug still exists
-  in at least three project-owned test files, because they're outside prompt 22's boundary. Each
-  is now its own project's task one.
+  own tooling does — a `puppeteer-core` compatibility bug found in round 2 existed both in every
+  file prompt 22 owns and in at least three project-owned test files outside its boundary. **As of
+  round 3, every known instance across both is fixed**, confirmed by direct read project by
+  project, not just trusted from notes.
 
 ## Run 22 last
 
-As of round 2, prompt 22 ran twice — a first pass that correctly stopped after only nine of
-twenty project threads had posted notes, and a full pass once all twenty existed. The full pass
-fixed a live site-wide breakage (`newindex.html`'s offsite font hotlinks, `sync-social-tags.mjs`'s
-stale notice-count floor — both introduced by a direct commit outside the prompt process, neither
-caused by any of the twenty threads), fixed a `puppeteer-core` incompatibility that had broken
-`npm run games` for every game all round, applied every shared-file request, and wrote the next
-handoff. **Prompt 22's own file will stop rather than write a handoff from a partial set of notes
-files** — this is by design, not a bug, and it happened exactly this way in round 2.
+Prompt 22 ran a single, full pass in round 3 — all twenty-one other project notes files existed
+before it touched anything shared. It root-caused and fixed a repo-wide `sync-social-tags.mjs`
+false-DRIFT (a Windows `core.autocrlf` line-ending mismatch that sixteen of twenty-one projects
+independently reported), fixed two real bugs in shared test tooling that a fair environment
+finally proved (Golden Hour's wading beat, The Fourth Quarter's Real Estate walk), extended
+`check-integrity.mjs`'s offsite sweep to `.js`/`.css`, gave Orbital its first preview/OG card,
+applied every shared-file request, and wrote the next handoff. **Prompt 22's own file will stop
+rather than write a handoff from a partial set of notes files** — this is by design, not a bug,
+and it's happened this way before (round 2).
 
-**The board is at 17 notices, not 22.** Devon consolidated six standalone Tools notices (Name
-Picker, Seating Chart Generator, Schedule Browser, Schedule Visualizer, Final Grade Checker,
-Image → PDF) into one "School Tools" card this round — a real, correct drop, not a regression.
-`sync-social-tags.mjs`'s hard-fail floor was lowered from 20 to 15 to match (same two-notice
-buffer, relative to the new count).
+**The board is at 18 notices.** Orbital's card joined the count this round when it got its
+preview/OG.
 
 ## Running the shared browser suites in parallel — don't
 
@@ -147,9 +161,9 @@ per earlier locked decisions) before trusting either a pass or a fail.
 
 Each thread writes exactly one file into `Claude Prompts/notes/`, named after its
 prompt. Nobody else writes that file, so it never conflicts. Those twenty-two files
-are what each round's handoff (`gvb-site-handoff-v9.md` as of round 2) gets assembled from.
-Round 1's versions are preserved under `Claude Prompts/archive/round-1/notes/`, and round 2's
-under `Claude Prompts/archive/round-2/notes/`, since each new round's threads overwrite these
+are what each round's handoff (`gvb-site-handoff-v10.md` as of round 3) gets assembled from.
+Earlier rounds' versions are preserved under `Claude Prompts/archive/round-1/notes/`,
+`round-2/notes/`, and `round-3/notes/`, since each new round's threads overwrite these
 same filenames.
 
 ## Two facts these prompts were originally written on — both now fixed
@@ -193,6 +207,22 @@ in round 2:
   "needs a fair environment to know for sure" — see `Claude Prompts/notes/23-refresh-prompts-notes.md`
   for the full account, including two real (non-environment) bugs found in shared test tooling.
   Full summary: `Claude Prompts/archive/round-2/README.md`.
+- **Round 3** (prompts 01–21 again; site started at version 10, ended at version 11). Every
+  project thread shipped real work. Headline finds: Daredevil's "Not interested" to Earl was
+  discovered to leave the entire milestone spine (M2-M4) almost unchanged despite removing three
+  optional evening cards — the biggest open item on the site now, a content-authoring decision for
+  Devon, not a bug. Final Grade Checker's grading bug turned out much bigger than round 2 thought —
+  the correct quality-point thresholds are whole numbers (4/3/2/1/0), not `.5`-offset midpoints, so
+  every `x.75` average had been one full letter too high since the tool's dual-method calculation
+  first went live, not just for one round. A repo-wide `sync-social-tags.mjs` false-DRIFT (Windows
+  `core.autocrlf` line-ending mismatch) was independently reported by sixteen of twenty-one
+  projects and root-caused once. Schedule Visualizer's 863 KB monolith was finally restructured
+  into a seven-file `app/` split, byte-for-byte verified against the original. Two real bugs in
+  shared test tooling (Golden Hour's wading beat, The Fourth Quarter's Real Estate walk) got fixed
+  at the root once a fair environment let them prove out, not just flagged. Orbital got its first
+  real round: a physics test suite (all 22 levels confirmed winnable), a reset-confirmation fix,
+  and a preview/OG card. Two projects (14, 17) moved to `Claude Prompts/Stable/`, joining 01 and 15.
+  Full summary: `Claude Prompts/archive/round-3/README.md`.
 - **Orbital joined the rotation, and the whole numbering shifted to make room for it.** `Projects/orbital/`
   merged directly to `main` (PR #6) mid-refresh, after this refresh's own survey had already run.
   Devon's call: give it a real prompt rather than a stopgap. It's now `21-orbital.md` — first round,

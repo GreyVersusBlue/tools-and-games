@@ -22,6 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve, launch, prepPage } from '../../../Tools/board-check/harness.mjs';
 import { GAMES, enter, savedState, wait } from '../../../Tools/board-check/games.mjs';
+import { waitFor } from '../../../Tools/board-check/drive.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'shots');
@@ -196,7 +197,7 @@ try {
       HTMLAnchorElement.prototype.click = function () { if (!this.download) return click.call(this); };
     });
     await p.click('#save-bar [data-gvb="export"]');
-    await p.waitForFunction(() => window.__exports.length > 0, null, { timeout: 5000 });
+    await waitFor(p, () => window.__exports.length > 0, { timeout: 5000 });
     const text = await p.evaluate(() => window.__exports[0]);
     let env = null; try { env = JSON.parse(text); } catch (e) { /* asserted next */ }
     t.ok(env && env.format === 'gvb-save', 'Export save wrote a gvb-save envelope');
@@ -299,9 +300,9 @@ try {
     // Wait for the empty floor rather than for a fixed delay: reset goes through
     // adoptState(), which rebuilds the palette, so a click fired mid-rebuild lands
     // on a detached button.
-    await p.waitForFunction(
+    await waitFor(p,
       () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
-      null, { timeout: 10000 });
+      { timeout: 10000 });
 
     // A sink has to be on the floor before its order is on screen. Park one, read
     // it, clear it. state.sinks[0] survives the erase, so the number holds.
@@ -312,9 +313,9 @@ try {
       'the opening order is between 2 and 12', `wants ${want}`);
     await p.click('[data-tool="erase"]');
     await p.click('#grid .cell[data-x="0"][data-y="0"]');
-    await p.waitForFunction(
+    await waitFor(p,
       () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
-      null, { timeout: 10000 });
+      { timeout: 10000 });
 
     // A source emits 1 and every +1 adds one, so `want` needs want-1 of them.
     // Row 2 west to east, turn down at column 7, row 3 east to west: 14 operator
@@ -346,9 +347,9 @@ try {
       `${built} tiles for an order of ${want}`);
 
     // TICK_MS 550, source every 3 ticks, then one tile per tick down the line.
-    const filled = await p.waitForFunction(
+    const filled = await waitFor(p,
       () => /[1-9]/.test(document.getElementById('stat-orders').textContent),
-      null, { timeout: 30000 }).then(() => true, () => false);
+      { timeout: 30000 }).then(() => true, () => false);
     const live = await p.evaluate(() => ({
       orders: document.getElementById('stat-orders').textContent.trim(),
       ingots: document.getElementById('stat-ingots').textContent.trim(),

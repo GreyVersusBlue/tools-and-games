@@ -1,0 +1,68 @@
+{
+  "scheduled": [
+    {
+      "id": "pa-portal",
+      "atMinute": 19,
+      "kind": "pa",
+      "title": "Intercom — Main Office",
+      "body": "—cuse the interruption. Teachers, if you have not yet submitted your fourth-quarter data-team artifact in the new portal, please disregard the previous email and use the OLD portal. Thank you and have a great Bulldog day.",
+      "durationMs": 8000,
+      "effects": { "mastery": -2.5, "restless": 9 },
+      "reaction": "listenUp",
+      "toast": { "kind": "bad", "title": "Intercom",
+                 "body": "It fired four seconds into the best sentence you had all week. Mastery −2.5." }
+    }
+  ],
+  "roomTemp": [
+    { "below": 18,  "label": "Locked In",          "line": "Twelve pencils moving. Do not say anything clever." },
+    { "below": 38,  "label": "Restless",           "line": "The floor noise is up. Nothing has happened yet." },
+    { "below": 60,  "label": "Suspiciously Quiet", "line": "Too quiet for a Wednesday. Somebody is getting away with something." },
+    { "below": 999, "label": "Feral",              "line": "You have lost the room. It is recoverable. It will cost four minutes." }
+  ],
+  "roomTempReading": {
+    "cost": { "bandwidth": -0.4 },
+    "cooldownSeconds": 9,
+    "staleAfterSeconds": 55,
+    "staleLabel": "\u2014 stale \u2014",
+    "unreadLabel": "\u2014",
+    "zoneTemplate": "Warmest toward the {zone}.",
+    "zoneNone": "Evenly distributed. For now.",
+    "zoneNames": {
+      "front-left": "front left", "front-right": "front right",
+      "back-left": "back left", "back-right": "back right",
+      "middle": "middle of the room"
+    },
+    "blindHint": "Something in that corner is behind furniture."
+  },
+  "endings": [
+    { "id": "husk",      "when": { "masteryAbove": 55, "bandwidthBelow": 30 },
+      "title": "They Learned a Lot", "sub": "YOU ARE NOT OKAY" },
+    { "id": "exemplary", "when": { "fidelityAbove": 75, "masteryBelow": 40 },
+      "title": "Exemplary", "sub": "NOTHING HAPPENED IN HERE TODAY" },
+    { "id": "beloved",   "when": { "rapportAbove": 65, "fidelityBelow": 45 },
+      "title": "They'll Remember You", "sub": "ADMIN HAS SOME CONCERNS" },
+    { "id": "default",   "when": {}, "title": "You Made It", "sub": "SEE YOU FIFTH PERIOD" }
+  ],
+  "reportLines": [
+    { "key": "mastery", "label": "Mastery",
+      "tiers": [ [55, "They got most of it."], [35, "Some of them got it."], [0, "You covered it. That is not the same thing."] ] },
+    { "key": "fidelity", "label": "Fidelity",
+      "tiers": [ [60, "Nothing anyone could write up."], [0, "The objective board still says Tuesday."] ] },
+    { "key": "rapport", "label": "Rapport",
+      "tiers": [ [60, "They will give you the benefit of the doubt tomorrow."], [40, "Neutral. They are deciding."], [0, "You spent something today."] ] },
+    { "key": "bandwidth", "label": "Bandwidth left",
+      "tiers": [ [50, "You have three more periods in you."], [25, "You have two more periods and no lunch."], [0, "It is 11:40 a.m."] ] }
+  ],
+  "closingLines": {
+    "sawCurveball": "You do not think about the lesson on the drive home. You think about a phone screen at minimum brightness.",
+    "heavyScanning": "You used Withitness {uses} times in 47 minutes. That is roughly once every three minutes. That is a lot.",
+    "missedSeveral": "{missed} things happened in this room that you never saw. That is a normal number. That is the part nobody tells you.",
+    "leverage": "Leverage banked: {list}.",
+    "quiet": "Nothing much happened. It was a Tuesday. Those are the good ones.",
+    "neverChecked": "You never once checked whether they had it. You taught the whole period into a room you were assuming things about.",
+    "rushed": "You moved on {rushed} times before they were ready. Every one of those was a decision made by the clock.",
+    "reteach": "You backed up and said it a different way {reteaches} times. That is the only part of this the data will never see.",
+    "unfinished": "You got {done} of {total} beats out. The pacing guide has an opinion about that and it is wrong.",
+    "greenIsland": "{name} understood it before you finished explaining it and did not tell anybody."
+  }
+}

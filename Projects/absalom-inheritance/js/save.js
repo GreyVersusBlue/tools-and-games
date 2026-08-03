@@ -68,6 +68,13 @@ export function makeRepair(content) {
 
   return function repairRun(s) {
     s.packId ??= content.pack.id;
+    // A save with no buildId at all predates character creation — every save
+    // that could possibly be in the wild before this round meant the one PC
+    // that ever existed, so falling back to pcOptions[0] only works because
+    // that build has to stay the wizard. See selectPc()'s own comment in
+    // content.js, which leans on the same fact.
+    if (!s.buildId || !content.pcById[s.buildId]) s.buildId = content.pcOptions[0].id;
+    const build = content.pcById[s.buildId];
     // An area the save names that this pack no longer defines — the room was
     // cut, or renamed, between sessions — falls back to the start area rather
     // than indexing a tile grid that is not there.
@@ -94,9 +101,9 @@ export function makeRepair(content) {
       s.pc.x = homeSpawn.x;
       s.pc.y = homeSpawn.y;
     }
-    s.pc.hp = clampInt(s.pc.hp, 0, content.pc.hp, content.pc.hp);
-    s.pc.slots = clampInt(s.pc.slots, 0, content.pc.slots, content.pc.slots);
-    s.pc.focus = clampInt(s.pc.focus, 0, content.pc.focus, content.pc.focus);
+    s.pc.hp = clampInt(s.pc.hp, 0, build.hp, build.hp);
+    s.pc.slots = clampInt(s.pc.slots, 0, build.slots, build.slots);
+    s.pc.focus = clampInt(s.pc.focus, 0, build.focus, build.focus);
 
     // --- creatures ---
     // A save can name a creature the current content no longer defines (the
@@ -198,17 +205,24 @@ export function makeSaveSlot(content, storage) {
     storage,
     validate: validRun,
     repair: makeRepair(content),
-    // Character generation is not randomised today, but the starting state is
-    // still derived from the content pack rather than a literal, and a factory
-    // is what keeps `slot.reset()` from handing back a shared object every
-    // caller can scribble on. Passing a literal here is how The Fourth Quarter's
-    // reset() ended up returning null (v7 §1).
-    defaults: () => freshRun(content),
+    // Character generation is not randomised, but the starting state is still
+    // derived from the content pack rather than a literal, and a factory is
+    // what keeps `slot.reset()` from handing back a shared object every caller
+    // can scribble on. Passing a literal here is how The Fourth Quarter's
+    // reset() ended up returning null (v7 §1). gvb-save's `fresh`/`reset` both
+    // forward their own arguments straight through to this factory, which is
+    // how the character picker's chosen buildId gets here: `slot.fresh(id)`.
+    defaults: buildId => freshRun(content, buildId),
   });
 }
 
-/** A brand-new run, straight from the content pack. */
-export function freshRun(content) {
+/**
+ * A brand-new run, straight from the content pack, for one chosen build.
+ * `buildId` may be omitted or unknown — see `content.js`'s `selectPc` for why
+ * that has to fall back to `pcOptions[0]` rather than throw.
+ */
+export function freshRun(content, buildId) {
+  const build = content.pcById[buildId] || content.pcOptions[0];
   const start = content.areas[content.startArea];
   const creatures = [];
   for (const areaId of content.areaOrder) {
@@ -222,10 +236,11 @@ export function freshRun(content) {
   }
   return {
     packId: content.pack.id,
+    buildId: build.id,
     areaId: content.startArea,
     pc: {
       x: start.pcSpawn.x, y: start.pcSpawn.y,
-      hp: content.pc.hp, slots: content.pc.slots, focus: content.pc.focus,
+      hp: build.hp, slots: build.slots, focus: build.focus,
     },
     creatures,
     loreRead: [],

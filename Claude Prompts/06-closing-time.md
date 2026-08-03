@@ -1,10 +1,10 @@
 # 06 — Closing Time
 
 You are working on Closing Time, a real-estate-brokerage management sim on
-greyversusblue.com. Round 2 gave the career a real ending, collapsed the mobile topbar,
-gave the Ledger a real filter, and fixed the reverse-direction content-removal bug — all
-four of the previous round's tasks. **This round's tasks are smaller and lower-stakes:**
-tightening the Ledger's per-client filter and deciding what happens after a career ends.
+greyversusblue.com. Round 3 closed both items round 2 left open: the Ledger filter now
+threads an exact `recId` instead of matching a display-name substring, and the career-ending
+flow's "what's next" question got its answer (see below). **No shared-file requests landed this
+round** — nothing to apply, nothing blocked.
 
 ## Your boundary
 
@@ -12,7 +12,8 @@ You own these paths. Inside them, edit, add, delete and restructure freely:
 
 - `Projects/Closing Time/**` — the whole folder:
   - `index.html`
-  - `js/main.js`, `js/state.js`, `js/data.js`, `js/ui.js`, `js/engine/`, `js/ui/`
+  - `js/main.js`, `js/state.js`, `js/data.js`, `js/ui.js`, `js/engine/`, `js/ui/` (currently empty —
+    a placeholder folder, not a stale reference; nothing has moved into it yet)
   - `css/style.css`
   - `data/manifest.json` plus `data/agents/`, `data/brokerages/`, `data/clients/`,
     `data/events/`, `data/listings/`, `data/neighborhoods/`
@@ -49,16 +50,16 @@ be silently overwritten.
 ## Required reading, in this order
 
 1. This whole file.
-2. **`Claude Prompts/notes/06-closing-time-notes.md` — your own session from round 2.**
-   The career ending at day 336, the mobile topbar collapse, the Ledger filter, and the
-   reverse-direction content-removal fix are all there in detail, plus a real bug you found in
-   shared tooling (see below). Round 1's notes are archived at
-   `Claude Prompts/archive/round-1/notes/06-closing-time-notes.md` if you need the original
-   `gvb-save.js` adoption writeup.
+2. **`Claude Prompts/notes/06-closing-time-notes.md` — your own session from round 3.**
+   The exact-`recId` Ledger filter and the career-ending "what's next" answer are both there in
+   detail. Round 2's notes are archived at
+   `Claude Prompts/archive/round-2/notes/06-closing-time-notes.md` — the career ending itself, the
+   mobile topbar collapse, the original Ledger filter, and the reverse-direction content-removal
+   fix, plus the `waitForFunction` bug this project found and reported (fixed since, see below).
+   Round 1's notes are at `Claude Prompts/archive/round-1/notes/06-closing-time-notes.md` for the
+   original `gvb-save.js` adoption writeup.
 3. `assets/js/gvb-save.js` and `assets/js/README.md`.
-4. `gvb-site-handoff-v9.md` §10 (locked decisions — #51-53 are new this round) and §8
-   (backlog state). §3 documents the `waitForFunction`/`waitForTimeout`/`textContent` engine-
-   mismatch bug **you found and reported this round** — it's fixed now, see below.
+4. `gvb-site-handoff-v10.md` §10 (locked decisions, through #58) and §8 (backlog state).
 5. `Projects/Closing Time/README.md` and `tools/smoke.mjs`.
 6. `Tools/board-check/README.md`.
 
@@ -93,11 +94,10 @@ be silently overwritten.
 - **Assert against the DOM for anything that just happened, and against the save only
   for what a reload has to survive** (locked decision #39). This rule was partly written
   about your game: Closing Time saves on render.
-- **A `page.waitForFunction(fn, null, opts)` call is Playwright's shape, not puppeteer-core's** —
-  you found this bug this round (locked decision #52's neighbor, `gvb-site-handoff-v9.md` §3), and
-  it's fixed now in every shared tooling file (`drive.mjs`, `play-games.mjs`, `capture-previews.mjs`,
-  `games.mjs`). Don't reintroduce the pattern if you ever write a throwaway verification script of
-  your own against `harness.mjs`.
+- **A `page.waitForFunction(fn, null, opts)` call is Playwright's shape, not puppeteer-core's**
+  (locked decision #52) — this project found the bug in round 2; it's fixed in every shared tooling
+  file. Don't reintroduce the pattern if you ever write a throwaway verification script of your own
+  against `harness.mjs`.
 - **A real-time or timing-based assertion failing under this environment's Linux/software-rendered
   Chromium is inconclusive, not confirmed** (locked decision #53). This game is 2D DOM, not three.js,
   so it's less exposed than the three.js games, but `npm run games`'s own run-to-run consistency is
@@ -122,60 +122,48 @@ clean.
 collapsed behind a toggle; Date/Slots/Cash always show. Measured at 375×812: 241px collapsed, 301px
 expanded, versus the old six-stat grid eating four wrapped rows.
 
-**The Ledger has a real filter**, not a fold: Everything / Money only / Reputation only / one option
-per client, via a new third argument on `state.js`'s `log()` (`kind`, separate from the heavily-
-overloaded `cls` that only drives row color). The per-client option matches on a text substring
-against the roster, not a stored id per log line — see task one below.
+**The Ledger filter now threads an exact `recId`**, not a display-name substring match. Round 3
+threaded it through the ~50 `log()` call sites across `deals.js`/`seller.js`/`clients.js` — the
+thing round 2 judged too large for its own filter task. Immune now to two clients whose names
+collide as substrings, or a client renamed mid-career (old log lines used to keep the old name).
 
-**Content removal is now safe in both directions.** `repairCareer()` already backfilled missing
-entries for content *added* since a save was written; it now also *purges* entries for content
-*removed* while a save still references it, in the same three maps (`listingsState`, `market.nb`,
+**Content removal is safe in both directions**, since round 2: `repairCareer()` backfills missing
+entries for content *added* since a save was written, and purges entries for content *removed*
+while a save still references it, in the same three maps (`listingsState`, `market.nb`,
 `knowledge`). Not handled, on purpose: a deal or listing actively under contract on content that
-gets deleted mid-session — documented as a known gap in the README rather than silently patched,
-since fixing it means guarding reads throughout `deals.js`/`seller.js`, not just the daily loop.
+gets deleted mid-session — documented as a known gap in the README rather than silently patched.
 
-**`tools/smoke.mjs`** is at **100 passed** (was 76), covering the career ending, the mobile toggle,
-the Ledger filter, and both directions of the content-drift fix.
+**The career-ending "what's next" question is answered, round 3** — read
+`Claude Prompts/notes/06-closing-time-notes.md` for the exact shape shipped (a new career at the
+same brokerage, or real cross-career history; confirm which by reading the notes rather than
+assuming).
 
-**A real, repo-wide bug was found here and reported, not fixed locally.** `npm run games` was
-broken for every game this round — `page.waitForFunction(fn, null, opts)` is Playwright's argument
-order, and this environment's `puppeteer-core` has a different signature, so every call threw.
-Reported alongside Fourth Quarter's and Golden Hour's identical independent finding; fixed by
-prompt 22 this round (`gvb-site-handoff-v9.md` §3). You verified your own work with a standalone
-script instead, since the shared suite couldn't run at the time.
+**`tools/smoke.mjs`** is at **105 passed** (was 100), covering the career ending, the mobile toggle,
+the exact-`recId` Ledger filter, and both directions of the content-drift fix.
 
 ## Your task
 
-Round 2 closed all four of the previous round's items. What's left is smaller:
+**Round 3 closed both items round 2 left open.** Nothing urgent is queued right now:
 
-1. **The per-client Ledger filter matches on a display-name substring, not an exact id.** Works
-   today (no false positive hit in play), but a future round adding two clients whose names collide
-   as substrings, or renaming a client mid-career (old log lines keep the old name), would expose
-   it. Threading a `recId` through the ~50 `log()` call sites across `deals.js`/`seller.js`/
-   `clients.js` to make it exact was judged too large for this round's own filter task — worth doing
-   if it's ever actually hit, not speculatively.
-2. **The one-time career-ending flow has no "what's next" beyond dismissing the scorecard modal.**
-   A second career at the same brokerage, or a real history across multiple careers, is the natural
-   next step if the ending sticks as a feature — out of scope for what was asked this round, worth
-   raising with Devon if it seems like the direction to go.
-3. **`Tools/board-check/.gitignore` excludes `package-lock.json`, floating every session's `npm
-   install` on the newest registry version with no diff to review** — you flagged this, and it's
-   now fixed: the lockfile is tracked as of this round (locked decision #52).
-4. If your own pass turns up something new, add it here.
+1. If your own pass turns up something new — in the Ledger filter, the career-ending flow, or
+   elsewhere — add it here.
+2. Get a real `npm run games closing-time` pass in through the shared regression suite if you touch
+   anything that suite exercises — round 3's changes were verified by this project's own
+   `tools/smoke.mjs` and by hand in-browser, not through the shared end-to-end suite.
 
 ## Verification
 
 - `node "tools/smoke.mjs"` from inside `Projects/Closing Time` → currently
-  **`SMOKE OK: 100 passed`**. Grow it if you touch `S` — a new field belongs in
+  **`SMOKE OK: 105 passed`**. Grow it if you touch `S` — a new field belongs in
   `validCareer`/`repairCareer` the same day it's added, verified per locked decision #34.
-- `cd Tools/board-check && npm run games` → fixed this round, but a moving target in this
-  environment (locked decision #53) — a representative run was 119 checks, 8 failed, all
-  timing-related in other projects, none in this project's own beats. Run it after any structural
-  change; a failure specific to your own beats is a real signal regardless.
-- `npm run check` → as of this refresh: **335 units checked, 0 broken; 0 collisions across nine
-  widths, tightest vertical gap 3.5px.**
-- `npm run social:check` → **17 notices, 17 already current** (dropped from 22 this round — a real,
-  correct count, not a regression).
+- `cd Tools/board-check && npm run games` → as of this refresh, three independent full runs on a
+  fair (real Chrome/Playwright) environment all reported **146 checks, 0 failed**
+  (`gvb-site-handoff-v10.md` §6) — the first time this handoff has ever reported a fully clean pass.
+  Locked decision #53 still applies to this sandbox's own software-rendered Chromium specifically.
+- `npm run check` → as of this refresh: **559 units checked, 0 broken; 0 collisions across nine
+  widths, tightest vertical gap 9.1px.** (The unit count moves every round as files are added
+  elsewhere in the repo; 0 broken is what matters.)
+- `npm run social:check` → **18 notices, 18 already current** (Orbital's card joined this round).
 - `npm run tools` → **18 checks, 0 failed**.
 - Grep `index.html` for `fonts.googleapis.com` → zero hits, still true. `check-integrity.mjs`'s
   static sweep is the real check.

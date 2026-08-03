@@ -88,7 +88,15 @@ function fileFor(href) {
   return abs;
 }
 
-function blockFor(n) {
+// A Windows checkout with core.autocrlf=true rewrites every LF this script
+// ever wrote back to CRLF at checkout time — including the block itself, not
+// just the surrounding file. `blockFor()` always joined with a bare `\n`, so
+// the very next `--check` run compared an LF-built block against a CRLF file
+// and reported DRIFT on content that is otherwise byte-identical. Building
+// the block with whichever line ending the file on disk already uses makes
+// the comparison (and the write) agree with git's own checkout behavior
+// instead of fighting it every time autocrlf converts a file.
+function blockFor(n, eol = '\n') {
   const url = `${ORIGIN}/${n.href.replace(/ /g, '%20')}`;
   const img = n.preview
     ? `${ORIGIN}/assets/og/${n.preview}.jpg`
@@ -116,7 +124,7 @@ function blockFor(n) {
     `<meta name="twitter:image" content="${img}">`,
     `<link rel="icon" href="${ICON}">`,
     END,
-  ].join('\n');
+  ].join(eol);
 }
 
 /* ------------------------------------------------------------------- apply -- */
@@ -133,7 +141,7 @@ for (const n of notices) {
   }
 
   const src = fs.readFileSync(file, 'utf8');
-  const block = blockFor(n);
+  const block = blockFor(n, src.includes('\r\n') ? '\r\n' : '\n');
   let out;
 
   const s = src.indexOf(START);

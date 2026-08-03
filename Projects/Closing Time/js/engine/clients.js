@@ -26,7 +26,7 @@ export function meetClient(clientId, referredBy = null) {
   };
   S.clients.push(rec);
   const refText = referredBy ? ` They mention ${referredBy.name} — "${referredBy.rel}, says you did right by them."` : "";
-  log(`New client: ${c.name} (${c.type}). ${c.intro}${refText}`, "client");
+  log(`New client: ${c.name} (${c.type}). ${c.intro}${refText}`, "client", undefined, rec.recId);
   return rec;
 }
 
@@ -36,7 +36,7 @@ export function revealPref(rec, i, source) {
   const p = contentClient(rec).hiddenPrefs[i];
   if (p.type === "stretchBudget" && p.data.newBudget) rec.budget = p.data.newBudget;
   if (p.type === "realMotive" && p.data.patienceBonus) rec.patience += p.data.patienceBonus;
-  log(`${contentClient(rec).name} — revealed (${source}): ${p.desc}`, "reveal");
+  log(`${contentClient(rec).name} — revealed (${source}): ${p.desc}`, "reveal", undefined, rec.recId);
   return p;
 }
 
@@ -89,8 +89,8 @@ export function patienceTick(rec, amt, why) {
   rec.patience -= amt;
   if (rec.patience <= 0 && rec.status === "active" && !rec.dealId) {
     rec.status = "walked";
-    log(`${contentClient(rec).name} has run out of patience and quietly signed with another agent. ${why || ""}`, "bad");
-    addRep(-4, "a client walked");
+    log(`${contentClient(rec).name} has run out of patience and quietly signed with another agent. ${why || ""}`, "bad", undefined, rec.recId);
+    addRep(-4, "a client walked", rec.recId);
   }
 }
 
@@ -99,14 +99,14 @@ export function schmooze(rec) {
   rec.patience += 2; rec.mood = Math.min(100, rec.mood + 10);
   const revealed = checkReveals(rec, { trigger: "schmooze", value: rec.schmoozeCount });
   const c = contentClient(rec);
-  if (!revealed.length) log(`Lunch with ${c.name}. Pleasant, mostly small talk. Patience restored.`, "");
+  if (!revealed.length) log(`Lunch with ${c.name}. Pleasant, mostly small talk. Patience restored.`, "", undefined, rec.recId);
   return revealed;
 }
 
 export function fireClient(rec) {
   rec.status = "fired";
-  addRep(-5, `you fired ${contentClient(rec).name}`);
-  log(`You part ways with ${contentClient(rec).name}. Word gets around, but so does your sanity.`, "");
+  addRep(-5, `you fired ${contentClient(rec).name}`, rec.recId);
+  log(`You part ways with ${contentClient(rec).name}. Word gets around, but so does your sanity.`, "", undefined, rec.recId);
 }
 
 export function rollReferral(closedRec) {
@@ -132,5 +132,5 @@ export function rollReferral(closedRec) {
 
 export function satisfactionDelta(rec, amt, why) {
   rec.satisfaction = Math.max(0, Math.min(100, rec.satisfaction + amt));
-  if (Math.abs(amt) >= 5) log(`${contentClient(rec).name} ${amt > 0 ? "appreciates" : "is unhappy about"} ${why}. (${amt > 0 ? "+" : ""}${amt} satisfaction)`, amt > 0 ? "" : "bad");
+  if (Math.abs(amt) >= 5) log(`${contentClient(rec).name} ${amt > 0 ? "appreciates" : "is unhappy about"} ${why}. (${amt > 0 ? "+" : ""}${amt} satisfaction)`, amt > 0 ? "" : "bad", undefined, rec.recId);
 }

@@ -14,7 +14,7 @@ import {
   feetBetween, isAdjacent, stridesFor,
 } from "../js/rules.js";
 import { makeWorld, TILE, packExplored, unpackExplored } from "../js/world.js";
-import { loadPack, ContentError } from "../js/content.js";
+import { loadPack, selectPc, ContentError } from "../js/content.js";
 import { createGame } from "../js/game.js";
 import { makeSaveSlot, makeRepair, validRun, freshRun, SAVE_KEY, SAVE_VERSION } from "../js/save.js";
 import { playThrough, travel, fight } from "./autopilot.mjs";
@@ -141,6 +141,11 @@ throws(() => parseDamage(undefined), "parseDamage rejects undefined");
 section("content");
 
 const content = loadPack(rawPack);
+// Everything below that calls createGame() wants one resolved build, the same
+// way a real boot does after the character picker fires. `resolved` is the
+// wizard, build 0 — the one every pre-character-creation save ever written
+// implicitly meant, and the default `selectPc` falls back to.
+const resolved = selectPc(content, "wizard");
 eq(content.pack.id, "vault-beneath-the-court", "the shipping pack loads");
 eq(content.startArea, "vault", "the pack starts in the vault");
 eq(JSON.stringify(content.areaOrder), JSON.stringify(["vault", "sanctum"]), "the area order is vault then sanctum");
@@ -158,6 +163,23 @@ ok(Object.isFrozen(content.creatures["shattered-sentinel"]), "creature definitio
 eq(content.commandById.strike.agile, true, "the dagger is agile, so MAP is -4/-8");
 eq(content.creatures["shattered-sentinel"].damage.s, 6, "the sentinel's damage string parsed into dice");
 
+/* -- pcOptions and selectPc — character creation, round three ---------- */
+eq(content.pcOptions.length, 2, "the pack ships two builds");
+eq(content.pc.id, "wizard", "content.pc defaults to the first build");
+ok(Object.isFrozen(content.pcOptions[0]), "each build is frozen");
+eq(content.pcById.fighter.name, "Kessa Vane", "pcById looks builds up by id");
+eq(resolved.pc.id, "wizard", "selectPc resolves the requested build");
+eq(resolved.commands.length, 6, "selectPc narrows commands to the wizard's own list");
+ok(!resolved.commandById["strike-sword"], "a build cannot see a command outside its own list");
+ok(!!resolved.commandById.breathe, "but every command the build lists is there");
+const fighterContent = selectPc(content, "fighter");
+eq(fighterContent.pc.name, "Kessa Vane", "selectPc resolves a different build by id");
+eq(fighterContent.commands.length, 2, "the fighter's command list is exactly its own two");
+ok(!fighterContent.commandById.breathe, "the fighter cannot see the wizard's cone spell");
+ok(!!fighterContent.commandById["strike-sword"], "and can see its own Strike");
+eq(selectPc(content, "nope-not-a-build").pc.id, "wizard",
+  "selectPc falls back to pcOptions[0] on an unknown id, the same fallback repair() leans on");
+
 // The validator's job is to complain at load rather than let an undefined reach
 // a damage roll. Each of these was confirmed to load silently before the check
 // existed.
@@ -165,8 +187,12 @@ const clone = () => JSON.parse(JSON.stringify(rawPack));
 throws(() => loadPack(null), "content: a null pack is refused");
 throws(() => loadPack({}), "content: a pack with no id is refused");
 throws(() => { const p = clone(); p.pack.schema = 2; loadPack(p); }, "content: an unknown schema version is refused");
-throws(() => { const p = clone(); delete p.pc.hp; loadPack(p); }, "content: a PC with no HP is refused");
-throws(() => { const p = clone(); delete p.pc.saves.will; loadPack(p); }, "content: a PC missing a save is refused");
+throws(() => { const p = clone(); delete p.pcOptions[0].hp; loadPack(p); }, "content: a PC with no HP is refused");
+throws(() => { const p = clone(); delete p.pcOptions[0].saves.will; loadPack(p); }, "content: a PC missing a save is refused");
+throws(() => { const p = clone(); p.pcOptions = []; loadPack(p); }, "content: an empty pcOptions is refused");
+throws(() => { const p = clone(); delete p.pcOptions[0].id; loadPack(p); }, "content: a build with no id is refused");
+throws(() => { const p = clone(); p.pcOptions[1].id = "wizard"; loadPack(p); }, "content: two builds sharing an id are refused");
+throws(() => { const p = clone(); p.pcOptions[1].commands.push("nope"); loadPack(p); }, "content: a build listing an unknown command is refused");
 throws(() => { const p = clone(); p.creatures["shattered-sentinel"].damage = "1d"; loadPack(p); }, "content: a creature with unreadable damage is refused");
 throws(() => { const p = clone(); delete p.creatures["shattered-sentinel"].saves.ref; loadPack(p); }, "content: a creature missing a save is refused");
 throws(() => { const p = clone(); p.areas.vault.rows[3] = "###"; loadPack(p); }, "content: a ragged map row is refused");
@@ -306,7 +332,7 @@ ok(!world.hasLoS(3, 10, 6, 10, false), "the wall block between them breaks line 
 section("game");
 
 {
-  const g = createGame({ content, rng: makeRng(42) });
+  const g = createGame({ content: resolved, rng: makeRng(42) });
   g.begin();
   eq(g.mode, "explore", "a new run starts in exploration");
   eq(g.run.pc.hp, 15, "the PC starts at 15 HP");
@@ -336,7 +362,7 @@ section("game");
   // Walking into notice range wakes exactly one sentinel, not both. This is the
   // headline fix: the shipped build woke every creature at once and put six
   // attacks a round into a 15 HP wizard.
-  const g = createGame({ content, rng: makeRng(7) });
+  const g = createGame({ content: resolved, rng: makeRng(7) });
   g.begin();
   const r = travel(g, 7, 14);
   eq(r, "combat", "walking into the middle of the room starts an encounter");
@@ -348,7 +374,7 @@ section("game");
 
 {
   // The gate needs both pillars, and opening it is the adventure's only rest.
-  const g = createGame({ content, rng: makeRng(3) });
+  const g = createGame({ content: resolved, rng: makeRng(3) });
   g.begin();
   g.run.pc.x = 3; g.run.pc.y = 13;
   g.run.pc.hp = 4; g.run.pc.slots = 0; g.run.pc.focus = 0;
@@ -390,7 +416,7 @@ function toPCTurn(g, limit = 40) {
   const wardenStart = state.creatures.find(c => c.creature === "reliquary-warden");
   wardenStart.hp = 1;                        // one Force Fang from gravel
   state.pc.x = 6; state.pc.y = 8;             // the sanctum's own arrival square
-  const g = createGame({ content, rng: makeRng(5), state });
+  const g = createGame({ content: resolved, rng: makeRng(5), state });
   g.begin();
   eq(g.mode, "explore", "the run starts in exploration, already delivered into the sanctum");
 
@@ -426,7 +452,7 @@ function toPCTurn(g, limit = 40) {
   // was wrong is worse than no test.
   eq(world.hasLoS(3, 9, 6, 12, false), false, "the wall block does break that line of sight");
 
-  const g = createGame({ content, rng: makeRng(9) });
+  const g = createGame({ content: resolved, rng: makeRng(9) });
   g.begin();
   eq(travel(g, 7, 14), "combat", "walking into the room starts an encounter");
   ok(toPCTurn(g), "control is with the PC");
@@ -443,7 +469,7 @@ function toPCTurn(g, limit = 40) {
 
 {
   // Shield is a real +1 for a round and lapses on your next turn.
-  const g = createGame({ content, rng: makeRng(21) });
+  const g = createGame({ content: resolved, rng: makeRng(21) });
   g.begin();
   travel(g, 7, 14);
   if (g.isPCTurn()) {
@@ -467,7 +493,7 @@ function toPCTurn(g, limit = 40) {
 
 {
   // Spending the last action ends the turn without the caller asking.
-  const g = createGame({ content, rng: makeRng(31) });
+  const g = createGame({ content: resolved, rng: makeRng(31) });
   g.begin();
   travel(g, 7, 14);
   let guard = 0;
@@ -483,7 +509,7 @@ function toPCTurn(g, limit = 40) {
 {
   // The encounter always terminates. A turn loop that could spin forever is
   // worse than a losing fight.
-  const g = createGame({ content, rng: makeRng(1234) });
+  const g = createGame({ content: resolved, rng: makeRng(1234) });
   g.begin();
   travel(g, 10, 12);
   fight(g, { maxTurns: 400 });
@@ -495,10 +521,29 @@ function toPCTurn(g, limit = 40) {
   // could not have passed on any seed.
   let wins = 0;
   for (let i = 0; i < 40; i++) {
-    const g = createGame({ content, rng: makeRng(1000 + i) });
+    const g = createGame({ content: resolved, rng: makeRng(1000 + i) });
     if (playThrough(g).outcome === "victory") wins++;
   }
   ok(wins > 0, `the adventure is winnable (${wins}/40 seeds)`);
+  ok(wins < 40, `and losable (${40 - wins}/40 seeds lost)`);
+}
+
+{
+  // The second build is a whole different command list (no cone, no unerring,
+  // no self-buff) and autopilot.mjs's combatPolicy is generic over "whatever
+  // kind of commands this build has" specifically so this does not need its
+  // own driver. If the fighter never won or never fought, that genericness
+  // would be the first thing to suspect.
+  const fighterContent = selectPc(content, "fighter");
+  let wins = 0, fought = 0;
+  for (let i = 0; i < 40; i++) {
+    const g = createGame({ content: fighterContent, rng: makeRng(2000 + i) });
+    const r = playThrough(g);
+    if (g.run.stats.rounds > 0) fought++;
+    if (r.outcome === "victory") wins++;
+  }
+  eq(fought, 40, "the fighter build actually reaches and fights the sentinels, every seed");
+  ok(wins > 0, `the fighter build's adventure is winnable (${wins}/40 seeds)`);
   ok(wins < 40, `and losable (${40 - wins}/40 seeds lost)`);
 }
 
@@ -521,7 +566,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   // The round trip through localStorage.
   const store = memStore();
   const slot = makeSaveSlot(content, store);
-  const g = createGame({ content, rng: makeRng(77) });
+  const g = createGame({ content: resolved, rng: makeRng(77) });
   g.begin();
   travel(g, 10, 15);
   g.run.pc.hp = 9;
@@ -541,7 +586,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   eq(back.inventory.length, g.run.inventory.length, "the satchel survived");
 
   // And the game boots on it.
-  const g2 = createGame({ content, rng: makeRng(78), state: back });
+  const g2 = createGame({ content: resolved, rng: makeRng(78), state: back });
   g2.begin();
   eq(g2.run.pc.hp, 9, "a game built on the loaded save has the right HP");
   ok(g2.explored.size > 1, "and remembers the map it had explored");
@@ -562,7 +607,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   for (const c of state.creatures) if (c.wakesOn === "gate-opened") c.wakesOn = "notice";
   state.creatures.find(c => c.creature === "vault-keeper").dead = true;
   state.pc.x = 9; state.pc.y = 3;      // already inside the boss chamber
-  const g = createGame({ content, rng: makeRng(50), state });
+  const g = createGame({ content: resolved, rng: makeRng(50), state });
   g.begin();
   eq(g.run.areaId, "vault", "the run starts in the vault");
   const exploredBefore = g.explored.size;
@@ -598,7 +643,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   const keeper = state.creatures.find(c => c.creature === "vault-keeper");
   keeper.wakesOn = "notice"; keeper.awake = true; keeper.x = 9; keeper.y = 1;
   state.pc.x = 9; state.pc.y = 3;
-  const g = createGame({ content, rng: makeRng(13), state });
+  const g = createGame({ content: resolved, rng: makeRng(13), state });
   g.begin();
   eq(g.mode, "combat", "the run boots straight into the encounter the save described");
   ok(toPCTurn(g), "control comes to the PC");
@@ -611,7 +656,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   // Export to a file and import it back, which is the thing no project had
   // before gvb-save.
   const slot = makeSaveSlot(content, memStore());
-  const g = createGame({ content, rng: makeRng(88) });
+  const g = createGame({ content: resolved, rng: makeRng(88) });
   g.begin();
   g.run.pc.hp = 6;
   g.run.loreRead.push("bequest", "condition");
@@ -648,7 +693,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
     "an envelope wrapping a string is refused");
 
   // A truncated file — the realistic corruption, half a download.
-  const g = createGame({ content, rng: makeRng(2) });
+  const g = createGame({ content: resolved, rng: makeRng(2) });
   g.begin();
   const good = slot.serialize(g.snapshot());
   eq(slot.deserialize(good.slice(0, Math.floor(good.length / 2))), null, "a half-written file is refused");
@@ -712,6 +757,27 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
     const r = repair(s);
     eq(r.fog.vault, "1".repeat(484), "repair: a legacy single explored bitfield migrates under the save's own area id");
     ok(!("explored" in r), "repair: the legacy explored field is removed once migrated");
+  }
+  {
+    // A save from before character creation existed has no buildId at all —
+    // every save that could be in the wild before this round meant the one PC
+    // that ever existed, which is why pcOptions[0] has to stay the wizard.
+    const s = base(); delete s.buildId;
+    eq(repair(s).buildId, "wizard", "repair: a save with no buildId at all migrates onto the first build");
+  }
+  {
+    const s = base(); s.buildId = "a-build-this-pack-never-shipped";
+    eq(repair(s).buildId, "wizard", "repair: an unknown buildId falls back to the first build rather than crashing");
+  }
+  {
+    // HP/slots/focus have to clamp against the *chosen* build's own numbers,
+    // not always the wizard's — this is the whole reason repair() needed to
+    // resolve buildId before it could clamp anything.
+    const s = base(); s.buildId = "fighter"; s.pc.hp = 999; s.pc.slots = 99; s.pc.focus = 99;
+    const r = repair(s);
+    eq(r.pc.hp, 18, "repair: HP clamps against the fighter's own maximum, not the wizard's");
+    eq(r.pc.slots, 0, "repair: the fighter has no spell slots to clamp up to");
+    eq(r.pc.focus, 0, "repair: nor any focus");
   }
   {
     const s = base(); s.pc.hp = 999;
@@ -829,13 +895,13 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   // A save from mid-encounter comes back mid-encounter: same creatures awake,
   // same HP, fresh initiative.
   const slot = makeSaveSlot(content, memStore());
-  const g = createGame({ content, rng: makeRng(303) });
+  const g = createGame({ content: resolved, rng: makeRng(303) });
   g.begin();
   travel(g, 10, 12);
   const awakeBefore = g.awake().length;
   const hpBefore = g.awake()[0]?.hp;
   slot.save(g.snapshot());
-  const g2 = createGame({ content, rng: makeRng(304), state: slot.load() });
+  const g2 = createGame({ content: resolved, rng: makeRng(304), state: slot.load() });
   g2.begin();
   eq(g2.awake().length, awakeBefore, "the creatures that were awake are still awake after a reload");
   eq(g2.awake()[0]?.hp, hpBefore, "and still as hurt as they were");
@@ -853,6 +919,17 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   eq(fresh.loreRead.length, 0, "with no lore read");
   ok(fresh !== slot.reset(), "and a new object each time, not a shared template");
   eq(slot.load(), null, "reset cleared the key");
+}
+
+{
+  // gvb-save's fresh()/reset() forward their own arguments straight through to
+  // the `defaults` factory (that passthrough already existed for The Fourth
+  // Quarter's newCampaign()); the character picker's chosen buildId rides that
+  // same path as `slot.fresh("fighter")` / `slot.reset("fighter")`.
+  const slot = makeSaveSlot(content, memStore());
+  const picked = slot.fresh("fighter");
+  eq(picked.buildId, "fighter", "fresh(buildId) builds the chosen character, not the default one");
+  eq(picked.pc.hp, 18, "at that build's own starting HP");
 }
 
 /* ========================================================================= *

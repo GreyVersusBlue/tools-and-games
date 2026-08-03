@@ -299,6 +299,31 @@ console.log("\ncareer ending at day 336:");
   ok(S.careerEnded, "and ends on its very next End Day click rather than sailing on to day 501");
 }
 
+// --- the Ledger's per-client filter is recId-exact now, not a name substring
+// Task: a name-substring filter (it.text.includes(name)) has a real false
+// positive already live in the game, not a hypothetical future one — a
+// referral's own intro line names the referrer verbatim ("They mention
+// <referrer>..."), so filtering by the referrer's name used to also surface
+// every client THEY referred. recId fixes it by tagging the log line with
+// the client it's actually about.
+console.log("\nledger filter is recId-exact, not name-substring:");
+{
+  const recX = Clients.meetClient("cl_0005");
+  const nameX = contentClient(recX).name;
+  const recY = Clients.meetClient("cl_0006", { name: nameX, rel: "cousin" });
+  const referralLine = S.log[0];
+  ok(referralLine.text.includes(nameX), "the referral intro line names the referrer verbatim", referralLine.text);
+  eq(referralLine.recId, recY.recId, "but the line is tagged with the new client's own recId, not the referrer's");
+  const filterFor = recId => S.log.filter(it => it.recId === recId);
+  ok(!filterFor(recX.recId).includes(referralLine), "so filtering by the referrer's recId correctly excludes it");
+  ok(filterFor(recY.recId).includes(referralLine), "and filtering by the new client's recId includes it");
+  // Locked decision #34: reintroduce the bug being guarded against, in
+  // isolation, and confirm it actually would have failed.
+  const oldSubstringFilter = S.log.filter(it => it.text.includes(nameX));
+  ok(oldSubstringFilter.includes(referralLine),
+    "confirms the bug: the old text.includes(name) approach wrongly matches the referral line under the referrer's filter");
+}
+
 // --- export to a file and import it back
 const text = slot.serialize(midCareer);
 const env = JSON.parse(text);

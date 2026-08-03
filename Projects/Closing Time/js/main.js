@@ -73,7 +73,10 @@ function showStartScreen() {
 function attachNewGame() {
   exportBtn().disabled = false;
   document.getElementById("newGameBtn").onclick = () => {
-    if (confirm("Abandon this career and start over? The save will be wiped.")) { wipeSave(); location.reload(); }
+    const msg = S.careerEnded
+      ? "Start a new career at Alder Falls? This save will be wiped."
+      : "Abandon this career and start over? The save will be wiped.";
+    if (confirm(msg)) { wipeSave(); location.reload(); }
   };
 }
 

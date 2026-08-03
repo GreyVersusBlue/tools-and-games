@@ -1,0 +1,17 @@
+{
+  "seatGrid": { "cols": [-3.1, -1.05, 1.05, 3.1], "rows": [-0.7, 1.0, 2.7], "bodyOffsetZ": 0.52 },
+  "roster": [
+    { "name": "Dorian", "aptitude": 0.92,  "shirt": "shirtA", "tension": 0.70, "steady": 0.22, "note": "asks if it is for a grade" },
+    { "name": "Kayla", "aptitude": 1.04,   "shirt": "shirtB", "tension": 0.35, "steady": 0.18, "note": "is always retrieving a pencil" },
+    { "name": "Marisol", "aptitude": 1.18, "shirt": "shirtC", "tension": 0.20, "steady": 0.52 },
+    { "name": "Israel", "aptitude": 1.1,  "shirt": "shirtA", "tension": 0.15, "steady": 0.68, "note": "fixes your projector" },
+    { "name": "Bex", "aptitude": 0.86,     "shirt": "shirtB", "tension": 0.55, "steady": 0.12 },
+    { "name": "Tuan", "aptitude": 0.98,    "shirt": "shirtC", "tension": 0.30, "steady": 0.34 },
+    { "name": "Priya", "aptitude": 1.22,   "shirt": "shirtA", "tension": 0.10, "steady": 0.82, "note": "the barometer" },
+    { "name": "Colton", "aptitude": 1.06,  "shirt": "shirtB", "tension": 0.80, "steady": 0.05, "note": "extremely funny, worst timing" },
+    { "name": "Nadia", "aptitude": 0.9,   "shirt": "shirtC", "tension": 0.45, "steady": 0.28 },
+    { "name": "Emeka", "aptitude": 1.12,   "shirt": "shirtA", "tension": 0.25, "steady": 0.46 },
+    { "name": "June", "aptitude": 0.82,    "shirt": "shirtB", "tension": 0.65, "steady": 0.16 },
+    { "name": "Wyatt", "aptitude": 1.0,   "shirt": "shirtC", "tension": 0.40, "steady": 0.40, "note": "the ghost" }
+  ]
+}

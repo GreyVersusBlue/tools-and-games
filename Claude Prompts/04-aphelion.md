@@ -47,19 +47,27 @@ description is wrong, that is a board request.
 ## Required reading
 
 1. This whole file.
-2. **`Claude Prompts/notes/04-aphelion-notes.md`** — round 2's session: built the EVA distance
-   readout (task one from the previous round), verified it live against the real POI positions.
-   Round 1's notes are archived at `Claude Prompts/archive/round-1/notes/04-aphelion-notes.md` —
-   fonts vendored, `gvb-save.js` adopted, the original EVA content and arrow-key look.
+2. **`Claude Prompts/notes/04-aphelion-notes.md`** — round 3's session: confirmed the EVA distance
+   readout and everything else round 2 shipped is still true, no code changes; the `#signal`
+   regression beat is still blocked on the airlock-entry beat prerequisite (see below). Round 2's
+   notes are archived at `Claude Prompts/archive/round-2/notes/04-aphelion-notes.md` — the EVA
+   distance readout build. Round 1's are at
+   `Claude Prompts/archive/round-1/notes/04-aphelion-notes.md` — fonts vendored, `gvb-save.js`
+   adopted, the original EVA content and arrow-key look.
 3. `Projects/aphelion/README.md`.
 4. `gvb-site-handoff-v4.md` §1 — how three.js got vendored into this project, and
    locked decisions #17 and #18 about `libs/` layout.
 5. `gvb-site-handoff-v7.md` §3 (what the regression suite drives in this game), §4
    (`games.mjs`), §6 (Chrome throttling).
-6. `gvb-site-handoff-v9.md` §10 for the full locked-decisions list, including #51-53, new this
-   round — **#53 in particular matters here**: this environment's forced Linux/software-rendered
-   Chromium runs three.js real-time movement far slower and less consistently than the games'
-   physics assume, which affects any timing-sensitive assertion in this project's own suite.
+6. `gvb-site-handoff-v10.md` §10 for the full locked-decisions list, through #58. **#53, #55 and #56
+   matter here specifically**: #53 is this environment's forced Linux/software-rendered Chromium
+   running three.js real-time movement far slower and less consistently than the games' physics
+   assume, which affects any timing-sensitive assertion in this project's own suite. #55/#56 are new
+   this round and directly relevant if the `#signal` regression beat ever gets built: `walkTo()` in
+   `drive.mjs` now takes a `{steer:'lookAt', sens}` option for exactly this project's situation (a
+   hand-rolled `yaw`/`pitch` overwritten every frame, not `PointerLockControls`) instead of the raw
+   `aimAt()` rotation write that gets silently erased — see §2 of the handoff for the full story,
+   including the pointer-lock-release gotcha in #56.
 7. `gvb-site-handoff-v5.md` §4 and `gvb-site-handoff-v6.md` §6 — how these games get
    driven from a script, and locked decision #35 about camera rotation.
 8. `assets/js/gvb-save.js` and `assets/js/README.md` — the module Aphelion already
@@ -132,17 +140,24 @@ description is wrong, that is a board request.
   verification in round 2 worked around it by timing turns to the exact documented turn rate
   rather than trusting a fixed wait — worth doing the same if you script movement here.
 - **`Tools/board-check`'s `waitForFunction`/`waitForTimeout`/`textContent` engine mismatch is fixed**
-  (locked decision #52's neighbor, `gvb-site-handoff-v9.md` §3) — `npm run games` no longer crashes
-  outright on every game the way it did for most of round 2. It's still a moving target in this
-  sandbox per #53 above; a representative run this round was 119 checks, 8 failed, all failures
-  timing-related, none in this project specifically.
+  (locked decision #52) — `npm run games` no longer crashes outright on every game. As of this
+  refresh, a fair (real Chrome/Playwright) environment ran the whole suite three independent times
+  and got **146 checks, 0 failed** every time (`gvb-site-handoff-v10.md` §6) — the first time this
+  handoff has ever reported a fully clean pass. #53 above still applies to this sandbox's own
+  software-rendered Chromium specifically; don't treat a clean run here as proof against a failing
+  run there, or vice versa.
+- **`walkTo()` gained a `{steer:'lookAt', sens}` option this round** (locked decisions #55, #56) for
+  games that hand-roll their own camera instead of using `PointerLockControls` — Aphelion is
+  explicitly one of the three named games this was built for. If the `#signal` regression beat ever
+  gets built, use this option rather than the raw `aimAt()` steering, and check pointer-lock state
+  first if it doesn't seem to work (see #56).
 
 ## What is actually here
 
 A three.js first-person game in a proper module layout: six `src/` modules, four
 `data/` JSON files, its own vendored `libs/three.module.js` (three@0.160.0). Tagged
 `Sim` and `data-new` on the board, with a preview and an OG card already generated.
-`index.html` is 213 lines.
+`index.html` is 214 lines.
 
 `npm run games` drives it and asserts: the opening fade, three HUD gauges, the CERES
 toast, walking, TAB opening the logbook, the save bar's three buttons mounting inside
@@ -216,19 +231,16 @@ data-driven extension points, audio, and performance, and nothing else has surfa
   decision #25). A hidden pane doesn't composite WebGL, so rAF never fires and every
   frame-dependent check *hangs* rather than failing loudly. `launch({ headed: true })`
   in `Tools/board-check/harness.mjs` is the recipe; v5 §4 explains it.
-- `cd Tools/board-check && npm run games` is the regression suite, and it's a moving target in
-  this environment right now (locked decision #53) — a representative round-2 run was 119 checks,
-  8 failed, all in other projects' timing-sensitive assertions, none in this project's own 9. Run
-  it after every structural change anyway; a failure specific to this project's own beats is still
-  a real signal, a generic timing flake elsewhere in the same run is not.
-  `day.rebuildStations` was 122 passing campaign assertions while "New Game" threw on
-  the first click a player makes — Node-level correctness says nothing about whether the wiring
-  works in a browser.
-- `npm run check` → as of this refresh, 335 units, 0 broken, 0 collisions across nine widths,
-  tightest gap 3.5px.
-- `npm run social:check` → **17** notices, 17 already current (dropped from 22 this round — a real,
-  correct count, not a regression). Drift on your page means you edited inside the `gvb:social`
-  markers.
+- `cd Tools/board-check && npm run games` is the regression suite. As of this refresh, three
+  independent full runs on a fair (real Chrome/Playwright) environment all reported **146 checks,
+  0 failed** (`gvb-site-handoff-v10.md` §6) — treat any failure specific to this project's own 9
+  assertions as real; a generic timing flake in this sandbox specifically is still possible per
+  locked decision #53.
+- `npm run check` → as of this refresh, 559 units, 0 broken, 0 collisions across nine widths,
+  tightest gap 9.1px. (The unit count moves every round as files are added elsewhere; 0 broken is
+  what matters.)
+- `npm run social:check` → **18** notices, 18 already current (Orbital's card joined this round).
+  Drift on your page means you edited inside the `gvb:social` markers.
 - Zero offsite requests should still hold: grep `index.html` for `fonts.googleapis.com`
   / `fonts.gstatic.com` (zero hits expected) and, better, run
   `check-integrity.mjs`'s static offsite sweep if you touch anything network-facing.

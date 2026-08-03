@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bell to Bell — One Period</title>
+<link rel="stylesheet" href="./styles/main.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="thermal"></div><div id="thermalTint"></div>
+
+<div id="hud">
+  <div id="clipboard">
+    <div class="cb-head"><b id="cbTitle">Period 4</b><span class="mono" id="cbRoom">RM 214</span></div>
+    <div class="meter"><div class="lbl"><span>Mastery</span><span id="vMas">0</span></div><div class="bar mastery"><i id="bMas"></i></div></div>
+    <div class="meter"><div class="lbl"><span>Fidelity</span><span id="vFid">0</span></div><div class="bar fidelity"><i id="bFid"></i></div></div>
+    <div class="meter"><div class="lbl"><span>Rapport</span><span id="vRap">0</span></div><div class="bar rapport"><i id="bRap"></i></div></div>
+    <div class="meter"><div class="lbl"><span>Bandwidth</span><span id="vBan">0</span></div><div class="bar bandwidth"><i id="bBan"></i></div></div>
+    <div class="cb-foot"><span id="zone">DELIVERING</span><span id="hyper">&mdash;</span></div>
+  </div>
+
+  <div id="clock"><div class="t" id="tClock">47:00</div><div class="p">remaining</div></div>
+  <div id="roomtemp" class="cold"><div class="k">Room Temp <span class="key">T</span></div>
+    <div class="v" id="tempV">&mdash;</div><div class="s" id="tempS">not read yet</div></div>
+
+  <div id="lesson">
+    <div class="lh"><span id="lsUnit">UNIT</span><span id="lsCount">0/0</span></div>
+    <div class="lb" id="lsLabel">&mdash;</div>
+    <div class="lbar"><i id="lsBar"></i><u id="lsMark"></u></div>
+    <div class="ln" id="lsLine"></div>
+    <div class="lk">
+      <span><b>E</b> next beat</span><span><b>Q</b> check</span><span><b>R</b> reteach</span>
+    </div>
+  </div>
+  <div id="crosshair"></div>
+  <div id="withitness"><span class="key">SHIFT</span><span class="txt" id="wTxt">Hold for Withitness</span></div>
+  <div id="tells"></div>
+</div>
+
+<div id="cfu"></div>
+<div id="menu"></div>
+<div id="log"></div>
+<div id="pa"><b id="paTitle"></b><p id="paTxt"></p></div>
+
+<div class="screen" id="startScreen">
+  <div class="card">
+    <div class="top">
+      <h1>Bell to Bell</h1>
+      <div class="sub">SLICE 001 &mdash; "ONE PERIOD" &middot; 4th Period &middot; 47 minutes &middot; 12 students</div>
+    </div>
+    <div class="body">
+      <p><b>Withitness</b> <i>(Kounin, 1970)</i> &mdash; "the teacher's awareness of student behavior in all areas of the classroom at all times." Hold SHIFT to become aware of student behavior in all areas of the classroom at all times.</p>
+      <p>It costs Bandwidth. The lesson does not pause while you use it. And your furniture casts blind spots &mdash; the cabinet and the bookshelf hide what is behind them, so some things can only be seen from somewhere else in the room.</p>
+      <div class="keys">
+        <kbd>W A S D</kbd><span>Move around the room</span>
+        <kbd>DRAG</kbd><span>Look</span>
+        <kbd>SHIFT</kbd><span>Withitness (hold)</span>
+        <kbd>CLICK</kbd><span>Open the intervention menu on anything you have spotted</span>
+        <kbd>E</kbd><span>Advance to the next beat of the lesson</span>
+        <kbd>Q</kbd><span>Check for understanding &mdash; find out instead of assuming</span>
+        <kbd>R</kbd><span>Reteach &mdash; say it a second way, for the people who need it</span>
+        <kbd>T</kbd><span>Room Temp &mdash; one cheap glance at the whole room</span>
+        <kbd>ESC</kbd><span>Close menu</span>
+      </div>
+      <p><b>Mastery is not a bar you fill.</b> It is the average of what twelve people understand, and each of them has their own number. Deliver from the front strip and those numbers climb. A kid with a phone under the desk is not learning anything, which is what the phone is actually costing you.</p>
+      <p class="fineprint">Check for understanding to see the comprehension aura in Withitness. It goes stale in about a minute. You are always deciding whether you have time to know.</p>
+      <p><b>First, the seating chart.</b> Drag a name onto another name. Where somebody sits decides who they can reach, who settles them, what you can see from the front, and how much of you they get. None of that is written on the chart. You learn it by teaching them, and it is still there next period.</p>
+      <button class="cta" id="startBtn">Seating chart</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen hide" id="seatingScreen">
+  <div class="card wide">
+    <div class="top"><h1 id="chartTitle">Seating Chart</h1><div class="sub" id="chartSub"></div></div>
+    <div class="body">
+      <div id="chartIntro"></div>
+      <div id="chartWrap">
+        <div id="chartPlan"></div>
+        <div id="chartSide"></div>
+      </div>
+      <div id="chartBtns">
+        <button class="cta" id="chartConfirm">Take the period</button>
+        <button class="ghost" id="chartReset">Back to the August chart</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="screen hide" id="endScreen">
+  <div class="card">
+    <div class="top"><h1 id="endTitle">The Bell</h1><div class="sub" id="endSub"></div></div>
+    <div class="body" id="endBody"></div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

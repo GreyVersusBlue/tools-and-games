@@ -1061,7 +1061,7 @@ He had Roy's footage on a reel he'd watched three times. He had a contract in hi
 **FISK:** There's a book here. I don't mean the stunts — I mean the thing underneath the stunts. What you're actually doing.
 Duke looked at him.
 **FISK:** I've been doing this for twenty years. I know the difference between a career and a story. You have a story.
-The second section of the contract he'd seen briefly was a paragraph about narrative rights. He thought about Pete's sentence. He finds the number in the air, not on the ground. He thought about Fisk sitting across from him with the footage already in his head.
+The second section of the contract he'd seen briefly was a paragraph about narrative rights. He thought about the number — the one you found in the air, not on the ground. He thought about Fisk sitting across from him with the footage already in his head.
 He thought: Fisk had gotten there on his own.
 
 - Option A"Let's talk."The story will be told. Duke can shape it.
@@ -1081,7 +1081,7 @@ A long pause.
 **FISK:** That might be the best reason I've ever heard.
 He closed his briefcase. He shook Duke's hand. He left without arguing.
 Duke thought: that went the only way it could go. He thought: I'm going to remember that I said that.
-He thought: he finds the number in the air, not on the ground. And some numbers you don't need someone else to write down.
+He thought: he finds the number in the air, not on the ground. Some numbers were never anybody else's to keep track of.
 
 > **No.** — Duke owns the story. Nobody writes it down.
 
@@ -1098,7 +1098,7 @@ He thought: he finds the number in the air, not on the ground. And some numbers 
 He took the bike out after dark.
 Not to practice. Not toward anything. The road north of town went flat for twenty-two miles before it hit anything worth stopping for, and he had been on it enough times that he could feel the surface through the tires like a conversation he knew by heart.
 He thought about the canyon. He thought about Vegas. He thought about the number — the one you found in the air, not on the ground.
-He thought about Pete finding it in Lubbock. He thought about Roy filming the three seconds after.
+He thought about Roy filming the three seconds after.
 He thought: some things are the same from the inside and the outside. The ones that matter usually are.
 He turned around at mile twenty-two.
 The fork seal, which Cal had replaced, held.

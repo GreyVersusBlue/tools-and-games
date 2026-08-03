@@ -1,16 +1,19 @@
 # 01 — Anathema Archive
 
-> **Stable as of round 2 (2026-08-01).** This project has nothing outstanding for its own
-> feature work — verified against the live repo, not just carried forward from its own notes:
-> its test suite runs clean (`node Pathfinder/tests/anathema.test.mjs` → 33 checks, 0 failed),
-> its `renderNpc` sweep for the round-1 duplication bug class came back clean with a real
-> structural reason why, and the stale FABLE-PROGRESS comment is fixed. It lives in
-> `Claude Prompts/Stable/` instead of the main rotation for that reason — see
-> `Claude Prompts/README.md` for what that means. It is still re-surveyed every round prompt 23
-> runs; if something real turns up (a shared dependency shifts, Devon wants to expand scope,
-> a regression appears), move this file back to the live folder and give it a real task list
-> again. There is one open cross-project question below that this project's owner needs to weigh
-> in on even though its own work is done — see "Questions for Devon."
+> **Stable as of round 2 (2026-08-01), re-verified round 3 (2026-08-03).** This project has
+> nothing outstanding for its own feature work — verified against the live repo, not just carried
+> forward from its own notes: its test suite runs clean (`node Pathfinder/tests/anathema.test.mjs`
+> → 33 checks, 0 failed), its `renderNpc` sweep for the round-1 duplication bug class came back
+> clean with a real structural reason why, and the stale FABLE-PROGRESS comment is fixed. Round 3
+> correctly skipped this project entirely (per the `Stable/` convention); this refresh re-confirmed
+> directly rather than trusting the skip — `git log` on `Pathfinder/data/` shows nothing has
+> touched it since before round 2's own Stable date. It lives in `Claude Prompts/Stable/` instead
+> of the main rotation for that reason — see `Claude Prompts/README.md` for what that means. It is
+> still re-surveyed every round prompt 23 runs; if something real turns up (a shared dependency
+> shifts, Devon wants to expand scope, a regression appears), move this file back to the live
+> folder and give it a real task list again. There is one open cross-project question below that
+> this project's owner needs to weigh in on even though its own work is done — see "Questions for
+> Devon."
 
 You are working on the Anathema Archive, a Pathfinder 2e rules-reference page on
 greyversusblue.com. This prompt is self-contained: everything you need is here or
@@ -19,9 +22,9 @@ named here.
 ## Questions for Devon
 
 - **Is `Pathfinder/data/**` a published interface other projects can read, or private to this
-  page (and 02/03, which don't currently touch it)?** Raised independently five times across two
-  rounds now, most recently by Torchbearer (10) and The Absalom Inheritance (11), both of which
-  considered depending on this project's data shape for their own content and both correctly
+  page (and 02/03, which don't currently touch it)?** Raised independently six times across three
+  rounds now, most recently by Torchbearer (10) and The Absalom Inheritance (11) again, both of
+  which considered depending on this project's data shape for their own content and both correctly
   stopped rather than assume. If the answer is "private," say so once here and the other prompts
   can stop re-raising it. If "shared," this project's boundary table below needs to change to
   reflect who else may read it, and this file should probably leave `Stable/` until that's
@@ -207,12 +210,11 @@ next, and move this file back out of `Stable/` into the main `Claude Prompts/` f
 - `node "Pathfinder/tests/anathema.test.mjs"` → 33 checks, 0 failed. Re-run this before
   concluding "nothing outstanding" still holds — that's the whole point of a stable prompt still
   being surveyed every round.
-- `cd Tools/board-check && npm run check` — as of this refresh: 335 units checked, 0 broken, 0
-  collisions across nine widths, tightest vertical gap 3.5px. (Was 329 at round 1's refresh; the
-  number moves as other projects add files. 0 broken is what matters.)
-- `cd Tools/board-check && npm run social:check` — as of this refresh: **17** notices, 17 already
-  current (dropped from 22 this round — Devon consolidated six standalone Tools notices into one
-  "School Tools" card; this is a real, correct count, not a regression). That count moves with the
+- `cd Tools/board-check && npm run check` — as of this refresh: 559 units checked, 0 broken, 0
+  collisions across nine widths, tightest vertical gap 9.1px. (The number moves every round as
+  other projects add files. 0 broken is what matters.)
+- `cd Tools/board-check && npm run social:check` — as of this refresh: **18** notices, 18 already
+  current (Orbital's card joined this round). That count moves with the
   board, not with anything you do here — if it's different when you run it, note it, don't chase it.
 - If you add a validator for `data/`, make it exit non-zero (locked decision #13).
 

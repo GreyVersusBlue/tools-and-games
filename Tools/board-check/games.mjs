@@ -257,6 +257,37 @@ export const GAMES = {
       await waitFor(p, () => window.__torchbearer?.sceneId === 'bridge-fog', { timeout: 10000 });
     },
   },
+
+  // ---- Orbital: a gravity flight-plan puzzle. Sector grid cells unlock only
+  // once the previous level has a progress record (buildGrid()'s own rule,
+  // js/game.js) — cell 21 (deepspace#11, "Deep Field") needs deepspace#10
+  // played first, so seed just that one key rather than the whole chain.
+  'orbital': {
+    title: 'Orbital',
+    url: '/Projects/orbital/',
+    vw: 1320, vh: 800, dsf: 1,
+    saveKey: 'orbital_progress_v2',
+    intro: ['#introScrim'],
+    async open(p, { probe } = {}) {
+      await p.evaluate(key => localStorage.setItem(key, JSON.stringify({ 'deepspace#10': 1 })),
+        'orbital_progress_v2');
+      await p.reload({ waitUntil: 'load' });
+      await p.waitForSelector('#btnStart');
+      if (probe) await probe();
+      await p.click('#btnStart');
+      await waitFor(p, () => !document.getElementById('introScrim').classList.contains('show'),
+        { timeout: 5000 });
+      await p.click('#btnLevels');
+      await waitFor(p, () => document.getElementById('lvlScrim').classList.contains('show'),
+        { timeout: 5000 });
+      // 0-based: ten `basics` cells then deepspace#11 is the 12th of that pack.
+      const cells = await p.$$('#lvlGrid .cell');
+      if (cells.length < 22) throw new Error(`sector grid has ${cells.length} cells, expected >= 22`);
+      await cells[21].click();
+      await waitFor(p, () => !document.getElementById('lvlScrim').classList.contains('show'),
+        { timeout: 5000 });
+    },
+  },
 };
 
 export const NAMES = Object.keys(GAMES);

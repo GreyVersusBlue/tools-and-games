@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadPack } from "../js/content.js";
+import { loadPack, selectPc } from "../js/content.js";
 import { createGame } from "../js/game.js";
 import { makeRng } from "../js/rules.js";
 import { playThrough } from "./autopilot.mjs";
@@ -39,9 +39,9 @@ const PACK = path.join(HERE, "..", "content", "vault.json");
  */
 export const BAND = { min: 0.45, max: 0.90 };
 
-const content = loadPack(JSON.parse(fs.readFileSync(PACK, "utf8")));
+const basePack = loadPack(JSON.parse(fs.readFileSync(PACK, "utf8")));
 
-export function runBatch(runs, { verbose = false } = {}) {
+export function runBatch(content, runs, { verbose = false } = {}) {
   const results = [];
   for (let i = 0; i < runs; i++) {
     const rng = makeRng(0x5EED + i);
@@ -59,7 +59,7 @@ export function runBatch(runs, { verbose = false } = {}) {
   return results;
 }
 
-function report(results) {
+function report(content, results) {
   const n = results.length;
   const tally = {};
   for (const r of results) tally[r.outcome] = (tally[r.outcome] || 0) + 1;
@@ -71,7 +71,7 @@ function report(results) {
     return s[Math.floor(s.length / 2)];
   };
 
-  console.log(`\n${n} runs of "${content.pack.name}"\n`);
+  console.log(`\n${n} runs of "${content.pack.name}" — ${content.pc.name}, ${content.pc.title}\n`);
   for (const [k, v] of Object.entries(tally).sort((a, b) => b[1] - a[1])) {
     console.log(`  ${k.padEnd(12)} ${String(v).padStart(6)}  ${(100 * v / n).toFixed(1)}%`);
   }
@@ -99,9 +99,19 @@ const invokedDirectly = process.argv[1] &&
 if (invokedDirectly) {
   const runs = Number(process.argv[2]) || 2000;
   const verbose = process.argv.includes("--verbose");
-  if (verbose) console.log("first twelve runs:");
-  const rate = report(runBatch(runs, { verbose }));
-  const ok = rate >= BAND.min && rate <= BAND.max;
-  console.log(`\n${ok ? "BALANCE OK" : "BALANCE OUT OF BAND"} — ${(100 * rate).toFixed(1)}%\n`);
-  process.exit(ok ? 0 : 1);
+  // Every build gets its own batch and its own band check — character
+  // creation means "is this adventure winnable" is now a question per PC, not
+  // one number for the pack. A build with an unfair chance at the vault is
+  // exactly as much a shipped bug as the original single build being
+  // unwinnable was.
+  let allOk = true;
+  for (const build of basePack.pcOptions) {
+    const content = selectPc(basePack, build.id);
+    if (verbose) console.log(`\nfirst twelve runs, ${build.name}:`);
+    const rate = report(content, runBatch(content, runs, { verbose }));
+    const ok = rate >= BAND.min && rate <= BAND.max;
+    console.log(`\n${ok ? "BALANCE OK" : "BALANCE OUT OF BAND"} — ${build.id}: ${(100 * rate).toFixed(1)}%\n`);
+    allOk = allOk && ok;
+  }
+  process.exit(allOk ? 0 : 1);
 }

@@ -311,69 +311,75 @@
       "model": "WoodenTable_01_1k.gltf/WoodenTable_01_1k.gltf",
       "tile": [
         0,
-        -2.5
+        -2.0
       ],
-      "rotationY": 0
+      "rotationY": 0,
+      "comment": "was tile z -2.5 (world -10), which put the table's own north edge 0.33 m inside the north wall (wall's inner face is world z -10, box was z -10.33..-9.67). Whole hall cluster (this table, the chair, stool, statue, candleholders, lantern) and the Scholar shifted +2.0 m south (+0.5 tile) together as one rigid move so their relative spacing is unchanged; see gothic_statue's comment below for the wall-clearance numbers that picked +2.0"
     },
     {
       "model": "WoodenChair_01_1k.gltf/WoodenChair_01_1k.gltf",
       "tile": [
         -0.5,
-        -2.3
+        -1.8
       ],
-      "rotationY": 40
+      "rotationY": 40,
+      "comment": "part of the +2.0 m south rigid shift, see WoodenTable_01's comment"
     },
     {
       "model": "wooden_stool_02_1k.gltf/wooden_stool_02_1k.gltf",
       "tile": [
         0.5,
-        -2.3
+        -1.8
       ],
-      "rotationY": -30
+      "rotationY": -30,
+      "comment": "part of the +2.0 m south rigid shift, see WoodenTable_01's comment"
     },
     {
       "model": "GothicCabinet_01_1k.gltf/GothicCabinet_01_1k.gltf",
       "tile": [
-        -2.2,
-        -2.7
+        -1.1,
+        -2.2
       ],
-      "rotationY": 90
+      "rotationY": 90,
+      "comment": "was tile [-2.2, -2.7] (world -8.8, -10.8) — that box (x -9.257..-8.129, z -11.66..-9.94) sat entirely inside the corner where the north wall (z <= -10) and the hall's own west wall (x <= -6) meet, fully invisible, same class of bug as the statue below but nobody had measured this corner. Needed both an east shift (off the west wall, not just south of the north wall — a south-only shift walks it into the west wall's z-band instead) and the same +0.5 tile south shift as the rest of the cluster. +1.1 tile east (4.4 m) clears the west wall by just over its own footprint and stays clear of the hall's west column (world x -6..-5.2, z -10..-9.2, right in the naive path east)"
     },
     {
       "model": "GothicCommode_01_1k.gltf/GothicCommode_01_1k.gltf",
       "tile": [
-        2.2,
-        -2.7
+        1.1,
+        -2.2
       ],
-      "rotationY": 270
+      "rotationY": 270,
+      "comment": "was tile [2.2, -2.7] (world 8.8, -10.8), entirely inside the north wall (z <= -10), same discovery as GothicCabinet_01 mirrored onto the east wall/east column — see its comment. Mirrored shift: 1.1 tile (4.4 m) west, 0.5 tile south"
     },
     {
       "model": "gothic_statue_1k.gltf/gothic_statue_1k.gltf",
       "tile": [
         0,
-        -2.85
+        -2.35
       ],
-      "rotationY": 180
+      "rotationY": 180,
+      "comment": "was tile z -2.85 (world -11.4): measured box z -11.774..-10.211, entirely inside the north wall (inner face z -10) -- confirmed invisible with a camera probe standing where it should render. The whole hall cluster (this statue, the table, chair, stool, candleholders, lantern) and the Scholar (data/npcs.json, and SCHOLAR in Tools/board-check/play-castle.mjs) moved +2.0 m south (+0.5 tile) as one rigid shift, chosen as the smallest round number that clears the statue's north edge (0.23 m margin from the wall) without pushing the chair's south edge past the doorway partition (0.76 m margin from its inner face at z -6) -- valid range was roughly +1.9 to +2.6 m"
     },
     {
       "model": "wooden_lantern_01_1k.gltf/wooden_lantern_01_1k.gltf",
       "tile": [
         0.15,
-        -2.48
+        -1.98
       ],
       "rotationY": 0,
       "noCollide": true,
-      "comment": "lantern on the table. yOffset is a lift ABOVE whatever castle-builder finds underneath, so a tabletop item wants no yOffset at all — it used to carry 0.95 against a 0.55 m table and hung in the air"
+      "comment": "lantern on the table. yOffset is a lift ABOVE whatever castle-builder finds underneath, so a tabletop item wants no yOffset at all — it used to carry 0.95 against a 0.55 m table and hung in the air. Tile z was -2.48 (world -9.92); its own box clipped 0.03 m into the north wall even sitting on the table, since the table's own north edge already did. Part of the +2.0 m south rigid shift, see gothic_statue's comment"
     },
     {
       "model": "brass_candleholders_1k.gltf/brass_candleholders_1k.gltf",
       "tile": [
         -0.1,
-        -2.48
+        -1.98
       ],
       "rotationY": 15,
       "noCollide": true,
-      "comment": "a 1.08 m spread of three candlesticks, not one object. At tile x -0.2 the westmost one overhung the table by 0.35 m; -0.1 puts the whole spread on it"
+      "comment": "a 1.08 m spread of three candlesticks, not one object. At tile x -0.2 the westmost one overhung the table by 0.35 m; -0.1 puts the whole spread on it. Tile z was -2.48 (world -9.92); its own box clipped 0.25 m into the north wall. Part of the +2.0 m south rigid shift, see gothic_statue's comment"
     },
     {
       "model": "kite_shield_1k.gltf/kite_shield_1k.gltf",

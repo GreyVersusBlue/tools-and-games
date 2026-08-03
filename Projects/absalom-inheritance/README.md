@@ -22,7 +22,7 @@ absalom-inheritance/
   js/render.js                isometric canvas renderer
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              244 assertions
+  test/smoke.mjs              308 assertions
   test/balance.mjs            Monte Carlo playthroughs, exits non-zero out of band
   test/autopilot.mjs          a competent player, shared by both suites
 ```
@@ -40,7 +40,17 @@ node Projects/absalom-inheritance/test/balance.mjs 2000
 ```
 
 Both exit non-zero on failure. `balance.mjs` fails if the adventure stops being winnable, which
-is not hypothetical — the build this replaced could not be finished on any seed.
+is not hypothetical — the build this replaced could not be finished on any seed. It now runs and
+reports every build in `pcOptions` separately, and fails if any one of them is out of band.
+
+## Character creation
+
+`content/vault.json`'s `pc` (one object) is `pcOptions` (an array) — a Wizard and a Fighter today,
+picked on a screen shown once, before there is a save to load. `js/content.js`'s `selectPc(pack,
+buildId)` resolves the chosen build's stats and narrows `commands`/`commandById` to exactly that
+build's own list, so every other module still reads `content.pc` as if there were only one PC —
+none of `game.js`, `save.js`, `render.js` changed to add this. See the content-authoring guide's
+§3 for the schema and the save's own `buildId` migration.
 
 ## The save
 
@@ -52,9 +62,11 @@ to a file, import back, a memory fallback where storage is blocked, and one impl
 "refuse to load garbage". The save bar is in the left panel rather than behind a title screen, so
 exporting mid-delve does not mean reloading the page.
 
-What survives a reload: position, HP, spell slots, focus, every creature's HP and whether it is
-awake, which pillars have been read, whether the gate is open, the fog-of-war memory as a 484
-character bitfield, the satchel, the last 60 log lines, and the run statistics.
+What survives a reload: which build was chosen, position, HP, spell slots, focus, every creature's
+HP and whether it is awake, which pillars have been read, whether the gate is open, the fog-of-war
+memory as a 484 character bitfield, the satchel, the last 60 log lines, and the run statistics.
+A save with no `buildId` at all predates character creation and migrates onto `pcOptions[0]` — the
+one build that existed when every such save was written.
 
 What does not: the initiative order. A save restored mid-encounter re-rolls it. Rebuilding a
 half-finished round is more machinery than it is worth, and a player who reloads to escape a bad

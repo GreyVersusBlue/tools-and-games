@@ -5,26 +5,16 @@ module, the dev tooling, and the handoff. **Twenty-one other Claude sessions are
 projects in parallel and none of them may touch any of it** — instead each one writes what it needs
 into a notes file, and applying those is your job.
 
-**Round 2 ran twice.** A first pass correctly stopped after only nine of twenty project notes files
-existed, rather than write a handoff from an incomplete set. A second, full pass — once all twenty
-existed — fixed a live site-wide breakage Devon introduced outside the prompt process, fixed a
-`puppeteer-core` incompatibility that had broken `npm run games` for every game all round, applied
-every shared-file request, and wrote `gvb-site-handoff-v9.md` (site version now **10**). Read the
-sequencing section before you start — it's the same shape every round, and this round is proof the
-"don't write the handoff early" rule matters.
-
-**A 22nd project landed on `main` mid-refresh, and the whole rotation renumbered to give it a real
-prompt.** `Projects/orbital/` ("Orbital," a gravity flight-plan puzzle game) merged via PR #6
-(commit `6661745`) after this refresh's own survey had already run, with a board notice but no
-prompt file and no boundary-table row. Devon's call: give it a real prompt rather than a stopgap.
-It's now `Claude Prompts/21-orbital.md`, first round, no notes file yet. This file (General Site
-Improvements) moved from 21 to 22 to make room, and the refresh prompt moved from 22 to 23
-(`Claude Prompts/23-refresh-prompts.md`) in turn — **already done, not something for you to
-apply**: every boundary-table reference in every other prompt has already been updated to match
-("Prompt 22" now means this file, "prompt 23" now means the refresh process). `npm run
-social:check` reported **18 notices** at the time of this renumbering, with Orbital's own page
-showing "had no block" (linked from the board, no generated `gvb:social` head block yet) — that's
-Orbital's own task list to close, not yours.
+**Round 3 ran a single, full pass** — all twenty-one other project notes files existed by the time
+this thread ran, confirmed by listing `Claude Prompts/notes/` before touching anything shared, so
+tasks one and two both ran without a partial-pass gate. It root-caused and fixed a repo-wide
+`sync-social-tags.mjs` false-DRIFT that sixteen of twenty-one projects independently reported (a
+Windows/`core.autocrlf` line-ending mismatch), fixed two real bugs in shared test tooling that a
+fair (real Chrome/Playwright) environment finally let it prove (Golden Hour's wading beat, The
+Fourth Quarter's Real Estate walk), extended `check-integrity.mjs`'s offsite sweep to `.js`/`.css`,
+gave Orbital its first preview and OG card, applied every shared-file request, and wrote
+`gvb-site-handoff-v10.md` (site version now **11**). Read the sequencing section before you
+start — it's the same shape every round.
 
 ## Your boundary
 
@@ -44,8 +34,8 @@ You own these paths:
   `Tools/seating-chart/test/`). Those are the owning project's files even though they drive a
   browser the same way your tooling does.
 - `CNAME` — still absent. Leave it absent unless Devon says otherwise.
-- `gvb-site-handoff-v10.md` — **which you write this round.** v1 through v9 are history; read them,
-  never edit them.
+- `gvb-site-handoff-v11.md` — **which you write this round.** v1 through v10 are history; read
+  them, never edit them.
 - `Claude Prompts/notes/**` — you read all twenty-two. You write none of them except your own.
 
 **Everything else is read-only to you.** Every project under `Projects/`, `Pathfinder/` and `Tools/`
@@ -58,161 +48,128 @@ make** — note it in the handoff as backlog for that project's next session.
 
 **Do now, independent of everyone else:**
 
-- Read every notes file that exists so far, and read `gvb-site-handoff-v9.md` fresh even though
-  you're the thread that wrote it last round — you're not the same session.
+- Read every notes file that exists so far, and read `gvb-site-handoff-v10.md` fresh even though
+  you may be the thread that wrote a previous one — you're not the same session.
 - Check for any project whose preview/OG/regression-suite entry is blocked on a single missing
-  artifact (a save fixture, a committed file) the way Torchbearer's was for two rounds. If that
-  artifact now exists, this is transcription per that project's own notes; if not, leave it.
+  artifact, the way Torchbearer's was for two rounds and Castle Conundrum's recapture was blocked
+  on a fair environment before round 3. If that blocker is now resolved per that project's own
+  notes, this is transcription; if not, leave it.
 
 **Do only after the other twenty-one threads have finished and their notes files exist:**
 
 - Task one: apply every shared-file request.
-- Task two: bump the version line and write `gvb-site-handoff-v10.md`.
+- Task two: bump the version line and write `gvb-site-handoff-v11.md`.
 
 If you are running before the others are done, do the independent check above, then stop and say
 clearly in your notes that tasks one and two are outstanding and need a second pass. **Do not write
-`gvb-site-handoff-v10.md` from an incomplete set of notes files** — a handoff that claims to
-summarise twenty-two sessions but saw nine is worse than no handoff, because the next session will
-trust it. This happened exactly this way last round and the first pass's own notes record why it
-correctly stopped rather than push through.
+`gvb-site-handoff-v11.md` from an incomplete set of notes files** — a handoff that claims to
+summarise twenty-two sessions but saw fewer is worse than no handoff, because the next session will
+trust it.
 
-## A cross-cutting bug class that turned out bigger than first thought — check for more of it
+## Questions for Devon
 
-Round 2 fixed a `page.waitForFunction(fn, null, opts)` incompatibility (Playwright's argument shape,
-wrong under this environment's `puppeteer-core`) across every file in `Tools/board-check/**` you own.
-While closing this round's refresh, direct testing found **the identical bug class in at least three
-project-owned test files that your fix didn't reach, because they're outside your boundary**:
-`Projects/integer-foundry/test/browser.mjs` (the exact `waitForFunction` shape), `Tools/name-picker/
-test/browser.mjs` (`waitForFunction` plus multiple `page.textContent()` calls), and
-`Tools/seating-chart/test/drive-seating.mjs` (`page.textContent()` plus `page.isHidden()`, both
-Playwright-only). Each has been written into that project's own prompt as a task-one item, with exact
-line numbers and the fix (import `waitFor`/`textContent` from your own `Tools/board-check/drive.mjs`,
-which already exports engine-aware versions). **Not yours to fix** — but if a round-3 thread reports
-a fourth instance in a different project's test file, that's worth a mention in the handoff as a
-pattern, since it means whatever review caught the first three missed something systematic (every
-project that wrote its own browser-driven test folder by copying a `waitForFunction`/`textContent`
-call shape from an earlier, Playwright-only-era example).
+- **The Name Picker rename (`Tools/Name Picker.html` → `name-picker.html`) is a structural deadlock
+  now, raised three rounds running.** The board's Town Services section no longer links to that
+  file directly — it links to `newindex.html` (your file), which itself holds the real
+  `href="Tools/Name%20Picker.html"` link. So the same-commit change a rename needs is one line in
+  `newindex.html` plus the file rename itself — and no single prompt owns both halves (the file is
+  prompt 18's, the link is yours). Should you be authorized to do the rename yourself this once
+  (touching a file that's normally prompt 18's), should prompt 18 be authorized to touch
+  `newindex.html`'s one line, or is "leave it forever" the actual answer? Prompt 18's own prompt
+  file carries the matching question — resolve both together if you resolve either.
 
-## A rendering-environment limitation, found this round — read before trusting `npm run games`
+## A cross-cutting bug class, closed this round — confirm before assuming it could recur
 
-**This environment's three.js rendering is very slow and inconsistent under its forced Linux
-software-rendering path** (`harness.mjs`'s `--use-gl=angle --use-angle=swiftshader` flags). Measured
-directly against Castle Conundrum: ten 400ms held-`KeyW` bursts covered 0.78m against a ~20m
-expectation. This is not a regression and not specific to anything round 2 touched — it's a property
-of this sandbox, newly visible now that the `waitForFunction` crash (above) stopped masking every
-suite before it got far enough to hit a timing-sensitive assertion. **Locked decision #53** covers
-this: treat a real-time movement or physics assertion failing here as inconclusive, not confirmed,
-and re-verify from a machine where `harness.mjs`'s non-Linux branch applies (real Chrome/Edge via
-Playwright) before trusting either a pass or a fail. This blocked Castle Conundrum's requested
-preview recapture again this round (see task one) and left Golden Hour's and The Fourth Quarter's
-new beats written but unverified.
+Round 2 found a `page.waitForFunction(fn, null, opts)` incompatibility (Playwright's argument
+shape, wrong under this environment's `puppeteer-core`) in every file under `Tools/board-check/**`
+you own, plus at least three project-owned test files outside your boundary. As of this round,
+every known instance is fixed — confirmed by direct read, not just trusted from notes:
+`play-castle.mjs` (prompt 05), `Projects/integer-foundry/test/browser.mjs` (prompt 14),
+`Tools/name-picker/test/browser.mjs` (prompt 18), and `Tools/seating-chart/test/drive-seating.mjs`
+(prompt 20, which had a *third*, previously unflagged instance — `page.addInitScript()`). If a
+future round's thread reports a new instance in yet another project's test file, that's worth a
+mention in the handoff as a recurring pattern (every project that wrote its own browser-driven test
+folder by copying an early, Playwright-only-era call shape), not a surprise.
 
-## Update from a fair environment — this refresh ran the whole suite on real Chrome/Playwright, not the Linux sandbox
+## Two real bugs fixed this round, found because a fair environment let them prove out
 
-This prompt-23 refresh happened to run on a machine where `harness.mjs`'s non-Linux branch applies
-(real Chrome via Playwright, not forced software rendering). That's exactly the "fair environment"
-the section above calls for, so the three items it left open all got a real answer:
+Two beats that a previous round's fair-environment (real Chrome/Playwright) re-run left as "fails,
+and not the project's fault" got fixed at the root this round, both in shared tooling:
 
-- **Castle Conundrum's recapture: unblocked, done.** `npm run play` passed all 32 beats with real
-  movement ("walked to the Scholar 3.2m after 4 bursts"), and `npm run previews castle-conundrum`
-  reached gameplay at "6.48m off the gatehouse" (the requested 6.4m standoff). Fresh candidates are
-  sitting in `Tools/board-check/candidates/`, dated this refresh, with `chosen.json` already naming
-  a frame. Nobody has looked at them or run `npm run promote` yet — see prompt 05's task two.
-- **Golden Hour's wading/footprint beats: verified, and they fail — but not because of anything in
-  Golden Hour's own code.** Reproduced twice, identical: eye height climbs (7.85 -> 10.08/10.09)
-  instead of settling, and 0 footprint instances. Root cause is in `play-games.mjs` itself: the
-  suite reorients the camera twice before the wading test (`lookAt` to 1.2 rad, then a 900ms
-  `ArrowLeft` hold that adds ~1.03 rad with no re-aim after), so `KeyW` walks the character inland
-  toward the dunes instead of toward the sea. **Fix:** re-aim toward the sea (e.g. `lookAt(p,
-  {facing: 0, pitch: -0.05})`) immediately before the wading test holds `KeyW`. Golden Hour's own
-  `test/smoke.mjs` (38/38) already proves the wading-limit math and footprint placement are correct
-  in isolation — this is a test-sequencing bug, not a game bug, and it's yours to fix, not prompt
-  08's.
-- **The Fourth Quarter's Real Estate walk-to-station beat: verified, and it fails — also not a game
-  bug.** `walked to the Real Estate station — never got in range`, reproduced twice. Root cause:
-  `drive.mjs`'s `walkTo()` steers via `aimAt()`, a **raw** `camera.rotation.set(...)` write — but
-  Fourth Quarter's `js/player.js:182-184` overwrites `camera.rotation` from its own internal
-  `yaw`/`pitch` every frame (real `mousemove`-driven), exactly the situation locked decision #35
-  warns about (a raw write only sticks where `PointerLockControls` owns the camera). Every
-  `aimAt()` call gets stomped the next frame. **Fix:** give `walkTo()` a `lookAt`-style steering
-  option (synthetic `mousemove` events, the same mechanism single-target `lookAt()` calls already
-  use) for games that hand-roll their own camera rotation, or write a project-specific walk helper
-  that calls `lookAt()` per burst instead of `aimAt()`. This is `drive.mjs`'s only current call site
-  for `walkTo()`, so nothing else depends on today's behavior.
-- **Daredevil's Stunt Run timeout does not reproduce here.** `smoke-page.mjs` passed 44/44 clean,
-  including four stunt-run results, no retry needed — confirms that failure was this sandbox's
-  rendering slowness, not a real bug, same pattern as the other three.
+- **Golden Hour's wading beat** (`play-games.mjs`) needed an explicit re-aim before its `KeyW`
+  hold. Two prior look-tests leave the camera facing an arbitrary direction, and the obvious fix
+  (`lookAt()`) silently no-ops once pointer lock is released — which the test just above the
+  wading one releases on purpose, to prove the keyboard-only path works. **Fix:** poll
+  `camState().facing` toward 0 using arrow keys instead (locked decision #54).
+- **The Fourth Quarter's Real Estate walk-to-station beat** needed `walkTo()`'s raw
+  `camera.rotation.set()` write (`aimAt()`) replaced with a `lookAt`-style steering option for
+  games that hand-roll their own camera instead of using `PointerLockControls` — this project's
+  own per-frame `yaw`/`pitch` overwrite erased the raw write within ~16ms. **Fix:** `walkTo()` now
+  takes `{steer:'lookAt', sens}` (locked decisions #55, #56). A second, unrelated issue compounded
+  this one: a dev-menu shortcut used earlier in the same test released pointer lock and never
+  reacquired it, so `lookAt()`'s dispatched mousemove was, again, silently ignored — fixed with a
+  canvas re-click before the walk.
 
-None of this is a claim that the Linux sandbox's own future runs will behave differently — locked
-decision #53 still holds for that environment. It's a real answer for the two specific beats and
-the one recapture that were left as open questions, from the fair environment the decision itself
-calls for.
+Both confirmed twice, deterministic both times, on a fair environment. **Pattern worth naming**:
+before assuming a `lookAt()`/`walkTo()` steering fix is wrong, check whether pointer lock is
+actually held at that point in the test (locked decision #56) — both bugs above looked at first
+like a wrong angle or a wrong steering function, and were actually "something upstream in the same
+test released pointer lock for an unrelated reason." Locked decision #53 (this environment's own
+Linux/software-rendered Chromium being slow and inconsistent for three.js movement) still applies
+independently of both fixes above — a clean run on a fair environment doesn't guarantee a clean run
+on this sandbox, and vice versa.
 
-## A Windows-checkout false positive, found this round — read before trusting `npm run social:check`
+## The repo-wide `sync-social-tags.mjs` false-DRIFT, root-caused and fixed this round
 
-**`npm run social:check` reports 5 pages "out of date" on a Windows checkout with
-`core.autocrlf=true` (this repo's local config on the machine this refresh ran on) even though
-their content is byte-for-byte correct.** `sync-social-tags.mjs` compares each page's embedded
-`gvb:social` block against a freshly generated one joined with plain `\n`. The five most recently
-committed pages (`Projects/daredevil/index.html`, `Projects/torchbearer.html`,
-`Projects/fourth-quarter/index.html`, `Projects/Ren-Faire-Claude/index.html`, `newindex.html` — all
-five touched in round 2's last few commits) get checked out with `\r\n` line endings on a machine
-where autocrlf converts LF-stored blobs to CRLF on checkout; older, untouched-on-this-machine files
-still carry whatever line ending they had before. The generated block's content matches exactly
-(verified by hand for `daredevil/index.html`: title, description, `og:url`, `og:image` all correct)
-— only the line endings differ. **Do not run `npm run social` to "fix" this** — it would just
-rewrite the files with LF again, and the next checkout on a Windows machine with this git config
-would immediately reintroduce the same false DRIFT. This needs either a `.gitattributes` entry
-forcing LF for `*.html` repo-wide, or `sync-social-tags.mjs`'s own comparison normalizing line
-endings before comparing. Neither is done — flagging it as found, not fixed, since it's a real
-`Tools/board-check/**` change and outside a refresh session's boundary either way.
+Sixteen of twenty-one projects independently reported the same `npm run social:check` result this
+round: several pages "out of date" even though their content was byte-for-byte correct. Root
+cause: `blockFor()` always joined the generated `gvb:social` block with a bare `\n`; on a Windows
+checkout with `core.autocrlf=true`, every LF this script has ever written gets rewritten to `\r\n`
+at checkout — including the block itself — so the comparison showed permanent drift on content
+that was otherwise identical. **Fixed**: `blockFor()` takes an `eol` parameter now; the call site
+detects the target file's actual line ending and matches it (locked decision #57). Verified per
+locked decision #34: converted a committed page to all-CRLF by hand, confirmed `--check` still
+reported it current, restored the file. If a future round reports this exact symptom again, it's a
+regression in this fix, not a new instance of the old bug.
 
-## Two things resolved this round — don't re-surface as open
+## `check-integrity.mjs`'s offsite sweep now covers `.js`/`.mjs`/`.css`, not just `.html`
 
-1. **The Final Grade Checker's grading-arithmetic correction (prompt 16).** Round 1 fixed a live
-   percentage-rounding bug. Round 2 found and fixed a second, smaller one (quality points don't round
-   up at .5, unlike the percentage average) by asking Devon directly. **This individual project's own
-   prompt now carries a "Questions for Devon" block** with the remaining open question (does any real
-   report card graded in the affected window need revisiting) — that's the new durable home for this
-   kind of question, not this file. Confirm it's still there when you read prompt 16's file.
-2. **The committed schedule data (prompt 19).** Devon decided this round: **leave it as is.** Fully
-   resolved — don't re-surface it.
-3. **The Pathfinder Campaigns/Characters merge recommendation.** Devon decided this round, via prompt
-   03 extended with his sign-off: **harmonize, don't share.** `[shared]` comment markers exist now in
-   both files as a drift guardrail; no shared file was created; locked decision #17 stays in force.
-   Fully resolved — a recurring backlog item across two rounds, now closed.
+Schedule Visualizer's round-2 request: its own 590 KB of `.js` / 156 KB of `.css` (now split across
+`Tools/schedule/app/`) had zero coverage. Extended the same resource-shaped-regex pattern to
+`.js`/`.mjs`/`.css` (locked decision #58); `/libs/` joined the `SKIP` list for vendored bundles.
+**Found and fixed in passing**: the pre-existing `SKIP` list never actually matched anything on
+this machine (Windows `path.join` returns backslashes; the list's own patterns are lowercase
+forward-slash) — normalized the comparison, which fixes the original three.js-package exclusion
+too, not just the new one.
 
-## A new durable convention, starting this round: "Questions for Devon" blocks live in project prompts
+## The "Questions for Devon" convention — check each project's own prompt file, not just this one
 
-Prompt 23's refresh now embeds a project's genuinely open Devon-decisions directly in that project's
-own prompt file, near the top, as a labeled "Questions for Devon" block — not just as prose in the
-handoff. This means: when you write `gvb-site-handoff-v10.md`, **check each project's own prompt file
-for a "Questions for Devon" block before summarizing that project's open decisions in the handoff** —
-that block is now the source of truth for what's still unresolved, not this file's memory of it. If
-Devon answers one directly (in conversation, in a commit, in a decision recorded here), that's a
-prompt-23 job to remove from the block and record durably — not yours to edit in a project's prompt
-file, since that's outside your boundary. Just make sure the handoff records the answer clearly so
-prompt 23's next refresh can close it out.
+Project prompts carry their own labeled "Questions for Devon" blocks near the top, the durable home
+for genuine open decisions — not just prose in this handoff. **When you write
+`gvb-site-handoff-v11.md`, check each project's own prompt file for one of these blocks before
+summarizing that project's open decisions** — that block is the source of truth, not this file's
+memory of it. If Devon answers one directly this round, that's prompt 23's job to remove and
+record durably next refresh, not yours to edit in a project's file — just make sure the handoff
+records the answer clearly.
 
-**One remaining open question that's now centralized rather than scattered**: `Pathfinder/data/` as
-a shared interface or private to prompts 01-03 — raised a fourth and fifth time this round by
-Torchbearer and The Absalom Inheritance. It now lives in prompt 01's own "Questions for Devon" block
-(01 owns the path). If it's still unanswered when you write the handoff, repeat it there too — it's
-been raised five times across two rounds and is cheap for Devon to decide.
+**`Pathfinder/data/`** (prompt 01's block) and **the Name Picker rename** (prompt 18's block, and
+yours, above) are the two currently open. If `Pathfinder/data/` is raised again this round, that's
+a seventh time — worth a direct one-line ask in the handoff rather than carrying it forward again.
 
 ## Required reading
 
 1. This whole file.
 2. `Claude Prompts/README.md` — how the twenty-two-way split works and which prompt owns what.
 3. **Your own notes file from last round, `Claude Prompts/notes/22-general-site-improvements-notes.md`.**
-   It records exactly what round 2 applied and refused, request by request — including its own
-   partial-pass-then-full-pass structure. The archived copies under `Claude Prompts/archive/round-1/`
-   and `Claude Prompts/archive/round-2/` hold everything from before that.
-4. `gvb-site-handoff-v9.md`, all of it, then §10's locked-decision list (through #53) plus the earlier
-   lists it cites.
-5. `Tools/board-check/README.md`, then `harness.mjs`, `drive.mjs` (new `waitFor`/`wait`/`textContent`
-   helpers, documented there with the exact crash message so future call sites copy the right shape),
-   `sync-social-tags.mjs`, `check-integrity.mjs`, `capture-previews.mjs`, `games.mjs`, `tools.mjs`.
+   It records exactly what round 3 applied and refused, request by request. The archived copies
+   under `Claude Prompts/archive/round-1/`, `round-2/`, and `round-3/` hold everything from before
+   that.
+4. `gvb-site-handoff-v10.md`, all of it, then §10's locked-decision list (through #58) plus the
+   earlier lists it cites.
+5. `Tools/board-check/README.md`, then `harness.mjs`, `drive.mjs` (`waitFor`/`wait`/`textContent`
+   helpers, plus the new `{steer:'lookAt'}` option on `walkTo()`), `sync-social-tags.mjs` (the
+   `eol`-aware `blockFor()`), `check-integrity.mjs` (the `.js`/`.css` sweep), `capture-previews.mjs`,
+   `games.mjs`, `tools.mjs`.
 6. `assets/js/gvb-save.js` and its test, in full.
 7. Every `Claude Prompts/notes/*.md` file that exists when you start, including the two now living in
    `Claude Prompts/Stable/` (01 and 15) if either has a note worth reading.
@@ -249,12 +206,23 @@ been raised five times across two rounds and is cheap for Devon to decide.
   #52). An unpinned lockfile is exactly how the `waitForFunction` bug went unnoticed for a whole round
   — a dependency version drift now shows up as a reviewable diff.
 - **A real-time movement or physics assertion failing under this environment's Linux/software-
-  rendered Chromium is inconclusive, not confirmed** (locked decision #53). See above.
+  rendered Chromium is inconclusive, not confirmed** (locked decision #53).
+- **`play-games.mjs`'s Golden Hour wading beat re-aims via arrow keys, not `lookAt()`, before its
+  `KeyW` hold** (locked decision #54). See above.
+- **`drive.mjs`'s `walkTo()` takes a `{steer:'lookAt', sens}` option for games with a hand-rolled
+  camera** (locked decision #55). See above.
+- **Check whether pointer lock is actually held before assuming a steering fix is wrong** (locked
+  decision #56). See above.
+- **`sync-social-tags.mjs`'s generated block matches the target file's own line-ending convention**
+  (locked decision #57). See above.
+- **`check-integrity.mjs`'s offsite sweep covers `.js`/`.mjs`/`.css`, and `SKIP` matching is
+  case/separator-normalized** (locked decision #58). See above.
 
-## Task one: apply every Shared-file request (after the other twenty finish)
+## Task one: apply every Shared-file request (after the other twenty-one finish)
 
-Read all twenty notes files. Each has a **Shared-file requests** section written to be applied
-without reading that session. What to expect, based on what the last two rounds taught:
+Read all twenty-one notes files (plus the ones now living in `Claude Prompts/Stable/` if any carry
+a request). Each has a **Shared-file requests** section written to be applied without reading that
+session. What to expect, based on what previous rounds taught:
 
 - **Board card rewordings and `href` changes**, especially from any thread that restructured a
   single-file project into a folder. Verify a restructure actually needs a board edit before assuming
@@ -265,60 +233,47 @@ without reading that session. What to expect, based on what the last two rounds 
   adapt where the actual code doesn't match the sketch, and say so in your notes.
 - **New preview/OG requests, or recapture requests.** Check locked decision #53 above before
   attempting one for a three.js game — a recapture that can't complete here isn't a code problem.
-- **The three cross-cutting `waitForFunction`/`textContent` bug reports** (see above) — these are
-  each already written into their own project's prompt as that project's own task one. Don't apply
-  them yourself; they're outside your boundary. Confirm each project's own session actually did it
-  before assuming it's closed.
-- **Two new `play-games.mjs`/`drive.mjs` bugs, found this refresh from a fair environment** (see "Update
-  from a fair environment" above) — these are yours to fix, not any project's: (1) the golden-hour
-  wading-test beat needs a re-aim toward the sea immediately before it holds `KeyW`, since two prior
-  look-tests leave the camera heading inland; (2) `drive.mjs`'s `walkTo()` needs a `lookAt`-style
-  steering option for games that hand-roll their own camera rotation (starting with The Fourth
-  Quarter's Real Estate beat) instead of its current raw `camera.rotation.set()` write, which gets
-  silently overwritten every frame on any game that doesn't use `PointerLockControls`.
+- **The Name Picker rename** (see "Questions for Devon" above) — only act if Devon has actually
+  authorized crossing the boundary; otherwise it stays a standing, low-urgency suggestion.
 
 When you touch `gvb-save.js`, `node assets/js/gvb-save.test.mjs` must still pass — currently
-**50 passed, 0 failed**. Every project that imports it must still work — run their suites, don't just
-trust the module's own test. Current adopter list (eleven projects): The Fourth Quarter, Aphelion,
-Torchbearer, The Absalom Inheritance, Daredevil, Integer Foundry, The Fracture Cycle, Name Picker,
-Closing Time, Corner & Kettle, Seating Chart Generator. **Corner & Kettle's and Seating Chart's own
-"invert the stale assertion" tasks are both done and confirmed clean this round** (166/0 and 153/0
-respectively) — don't re-flag either as outstanding; a prior handoff draft got this wrong, so verify
-against the actual test file output, not against what an earlier note claimed.
+**50 passed, 0 failed**. Every project that imports it must still work — run their suites, don't
+just trust the module's own test. Current adopter list (eleven projects): The Fourth Quarter,
+Aphelion, Torchbearer, The Absalom Inheritance, Daredevil, Integer Foundry, The Fracture Cycle,
+Name Picker, Closing Time, Corner & Kettle, Seating Chart Generator.
 
 ## Task two: version line and handoff (after task one)
 
-- **Bump the version line** in `index.html` from `version 10` to `version 11`.
-- **Write `gvb-site-handoff-v10.md`**, assembled from all twenty-two notes files plus your own work.
-  Follow the shape of v9: a one-paragraph summary, numbered sections, a backlog-state table, a
+- **Bump the version line** in `index.html` from `version 11` to `version 12`.
+- **Write `gvb-site-handoff-v11.md`**, assembled from all twenty-two notes files plus your own work.
+  Follow the shape of v10: a one-paragraph summary, numbered sections, a backlog-state table, a
   "things I found and deliberately did not fix" section, a locked-decisions section carrying the
-  previous fifty-three forward and numbering new ones from 54, a suggested-next-session list, and a
+  previous fifty-eight forward and numbering new ones from 59, a suggested-next-session list, and a
   "Verified this session" list.
 
 Things that should end up in it, if the round bears them out:
 
-- Whether Golden Hour's and The Fourth Quarter's new beats got verified from a fair environment this
-  round (see the rendering-environment section above).
-- Whether Castle Conundrum's preview recapture succeeded this round.
-- Any answer to the `Pathfinder/data/` question, if Devon weighed in.
-- Any new locked decisions from 54 onward.
+- Any answer to the `Pathfinder/data/` or Name Picker rename questions, if Devon weighed in.
+- Any new locked decisions from 59 onward.
 - **A note on the "Questions for Devon" convention** (see above) — which project prompts carry one,
   and whether any got answered and should be marked resolved for prompt 23's next refresh.
+- Any project your own read suggests is a `Stable/` candidate, or a `Stable/` project that should
+  move back — note it for prompt 23, since moving prompt files isn't your boundary.
 
 ## Verification
 
-- `cd Tools/board-check && npm run check` → currently **335 units, 0 broken, 0 collisions across nine
-  widths, tightest vertical gap 3.5px** (moves a little run to run; 0 broken is what matters).
-- `npm run social:check` → currently **17 notices, 17 already current, 0 out of date, 0 failed**
-  (dropped from 22 this round — a real, correct count after Devon consolidated six Tools notices into
-  one card).
+- `cd Tools/board-check && npm run check` → currently **559 units, 0 broken, 0 collisions across nine
+  widths, tightest vertical gap 9.1px** (moves every round as files are added elsewhere in the repo;
+  0 broken is what matters).
+- `npm run social:check` → currently **18 notices, 18 already current, 0 out of date, 0 failed**
+  (Orbital's card joined this round).
 - `node assets/js/gvb-save.test.mjs` → currently **50 passed, 0 failed**.
 - `npm run tools` → currently **18 checks, 0 failed**.
-- `npm run games` → fixed this round, and **on a fair environment (real Chrome/Playwright) it is
-  not a moving target at all** — this refresh ran it twice and got the identical result both times:
-  **137 checks, 3 FAILED**, all three explained above (Golden Hour's two beats, Fourth Quarter's
-  Real Estate walk). On this Linux sandbox specifically, still expect run-to-run variance per locked
-  decision #53 — that decision is about this environment's rendering, not about the suite itself.
+- `npm run games` → as of this refresh, three independent full runs on a fair (real Chrome/Playwright)
+  environment all reported **146 checks, 0 failed**, identical every time — the first fully clean
+  pass this handoff has ever reported. On this Linux sandbox specifically, still expect run-to-run
+  variance per locked decision #53 — that decision is about this environment's rendering, not about
+  the suite itself.
 - `npm run previews` → confirm whichever games you touched still reach gameplay, with the caveat
   above for three.js games specifically.
 - Every project suite whose files you touched through a shared-file request.
@@ -332,7 +287,7 @@ these suites; only one at a time.
 ## Output: your notes file
 
 Write `Claude Prompts/notes/22-general-site-improvements-notes.md` **as well as**
-`gvb-site-handoff-v10.md`. The notes file records what you did; the handoff records what the whole
+`gvb-site-handoff-v11.md`. The notes file records what you did; the handoff records what the whole
 batch did.
 
 Use these headings:

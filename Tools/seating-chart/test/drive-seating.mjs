@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve, launch, prepPage, settle } from '../../board-check/harness.mjs';
+import { textContent } from '../../board-check/drive.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SHOTS = path.join(HERE, '..', 'shots');
@@ -30,6 +31,14 @@ const ok = (cond, label) => {
   failed++; fails.push(label); console.log('  FAIL ' + label); return false;
 };
 const eq = (a, b, label) => ok(a === b, `${label} (got ${JSON.stringify(a)}, want ${JSON.stringify(b)})`);
+
+// page.isHidden() and page.addInitScript() are Playwright convenience methods;
+// puppeteer-core has neither. $eval reads the same `hidden` attribute both
+// engines expose, and evaluateOnNewDocument is puppeteer-core's own equivalent
+// of addInitScript (same "run before the page's own script" contract).
+const isHidden = (page, sel) => page.$eval(sel, el => el.offsetParent === null);
+const addInitScript = (page, fn) =>
+  page.__engine === 'puppeteer' ? page.evaluateOnNewDocument(fn) : page.addInitScript(fn);
 
 const NAMES = [
   'Ada Lovelace', 'Marco Polo', 'Mansa Musa', 'Ida B Wells', 'Hypatia Alexandria',
@@ -77,9 +86,9 @@ async function buildChart(page) {
   await page.goto(URL_PAGE, { waitUntil: 'load' });
   await settle(page, 400);
 
-  ok(await page.isHidden('#bootWarn'), 'the modules loaded, so the boot warning stays hidden');
+  ok(await isHidden(page, '#bootWarn'), 'the modules loaded, so the boot warning stays hidden');
   eq((await page.$$('.sec-tab')).length, 3, 'three section tabs on a first visit');
-  eq(await page.textContent('#rosterCount'), '0', 'a first visit has an empty roster');
+  eq(await textContent(page, '#rosterCount'), '0', 'a first visit has an empty roster');
 
   // Fonts: vendored, and nothing reached out for them.
   const fontsUsed = await page.evaluate(async () => {
@@ -252,11 +261,13 @@ async function buildChart(page) {
     const box = () => document.querySelector(`.seat[data-id="${id}"]`).closest('.desk');
     const x0 = parseFloat(box().style.left);
     fire('r'); const rot = box().style.transform;
+    const seatRot = document.querySelector(`.seat[data-id="${id}"]`).style.transform;
     fire('p'); const pinned = box().classList.contains('locked');
     fire('ArrowRight'); const x1 = parseFloat(box().style.left);
-    return { rot, pinned, moved: x1 - x0 };
+    return { rot, seatRot, pinned, moved: x1 - x0 };
   });
   ok(/rotate\(90deg\)/.test(keys.rot), 'R rotates the focused desk');
+  eq(keys.seatRot, 'rotate(-90deg)', 'and counter-rotates the name back to level');
   ok(keys.pinned, 'P pins the focused desk');
   eq(keys.moved, 22, 'ArrowRight nudges the desk one grid step');
 
@@ -382,7 +393,7 @@ async function buildChart(page) {
   // Chrome with site data blocked throws on the `localStorage` property itself.
   // Reproduce that exactly, before any of the page's script runs.
   const page = await prepPage(browser, BASE, { width: 1280, height: 900, dsf: 1 });
-  await page.addInitScript(() => {
+  await addInitScript(page, () => {
     Object.defineProperty(window, 'localStorage', {
       configurable: true,
       get() { throw new DOMException('The operation is insecure.', 'SecurityError'); },
@@ -391,9 +402,9 @@ async function buildChart(page) {
   await page.goto(URL_PAGE, { waitUntil: 'load' });
   await settle(page, 500);
 
-  ok(await page.isHidden('#bootWarn'), 'with storage blocked the page still boots');
+  ok(await isHidden(page, '#bootWarn'), 'with storage blocked the page still boots');
   eq((await page.$$('.sec-tab')).length, 3, 'and still has its sections');
-  const warned = await page.textContent('#privacyBox');
+  const warned = await textContent(page, '#privacyBox');
   ok(/blocking storage/i.test(warned), 'and tells the teacher storage is blocked');
   ok(/Save to file/.test(warned), 'and points at the file export instead');
 
@@ -477,6 +488,14 @@ async function buildChart(page) {
     };
     const out = {};
     out.horseshoe = apply('horseshoe', 12);
+    // The horseshoe's side legs are rotated automatically, not by a teacher's
+    // click — every rotated desk's name has to counter-rotate back to level.
+    const rotatedDesks = [...document.querySelectorAll('.desk')].filter(d => d.style.transform);
+    out.horseshoeRotatedCount = rotatedDesks.length;
+    out.horseshoeSeatsLevel = rotatedDesks.length > 0 && rotatedDesks.every(d => {
+      const deskDeg = d.style.transform.match(/-?\d+/)[0];
+      return d.querySelector('.seat').style.transform === `rotate(${-deskDeg}deg)`;
+    });
     out.pods = apply('pods', 5);
     out.rows = apply('rows', 6, 3);
     out.lab = apply('lab', 8, 3);
@@ -494,6 +513,8 @@ async function buildChart(page) {
     return out;
   });
   eq(presets.horseshoe, 12, 'the horseshoe preset lays out the requested seat count');
+  ok(presets.horseshoeRotatedCount > 0, 'the horseshoe preset actually rotates its side-leg desks');
+  ok(presets.horseshoeSeatsLevel, 'every rotated desk from the horseshoe preset counter-rotates its name back to level');
   eq(presets.pods, 20, 'pods of four, five pods requested');
   eq(presets.rows, 36, 'double rows: columns times row pairs times two');
   eq(presets.lab, 24, 'lab benches: seats per bench times benches');

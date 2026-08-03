@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve, launch, prepPage, settle } from '../../board-check/harness.mjs';
+import { waitFor, textContent } from '../../board-check/drive.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SHOTS = path.join(HERE, 'shots');
@@ -99,18 +100,18 @@ let exportedPath = null;
   ok(!!(await page.title()), 'the page has a title');
   const tabs = await page.$$eval('.tab-buttons button', els => els.map(b => b.dataset.tab));
   eq(tabs.length, 8, 'all eight settings tabs are wired');
-  eq(await page.textContent('#countDisplay'), '', 'a first visit has no roster loaded');
+  eq(await textContent(page, '#countDisplay'), '', 'a first visit has no roster loaded');
 
   /* --------------------------------------------------------- load and save --- */
   await page.click('#settingsBtn');
   await page.fill('#namesInput', CLASS_OF_28.join('\n'));
   await page.click('#loadNames');
-  eq(await page.textContent('#countDisplay'), '28 names in pool', 'loading 28 names fills the pool');
+  eq(await textContent(page, '#countDisplay'), '28 names in pool', 'loading 28 names fills the pool');
 
   // loadNamesFromInput() closes the panel behind itself.
   await page.click('#settingsBtn');
   await page.click('#saveRoster');
-  const rosterList = await page.textContent('#rosterList');
+  const rosterList = await textContent(page, '#rosterList');
   ok(rosterList.includes(ROSTER_NAME) && rosterList.includes('(28)'),
     `the saved roster shows up with its count (${rosterList.slice(0, 80)})`);
 
@@ -160,7 +161,7 @@ let exportedPath = null;
     };
   });
   await page.click('#exportRosters');
-  await page.waitForFunction(() => window.__npExports.length > 0, null, { timeout: 5000 });
+  await waitFor(page, () => window.__npExports.length > 0, { timeout: 5000 });
   const [exportedText] = await page.evaluate(() => window.__npExports);
   const [downloadName] = await page.evaluate(() => window.__npDownloadNames);
 
@@ -192,13 +193,13 @@ let exportedPath = null;
   const prefsAfter = await readGroup(page, PREFS_KEYS);
   for (const k of PREFS_KEYS) eq(prefsAfter[k], prefsBefore[k], `${k} survives a student-data erase unchanged`);
   eq(await page.inputValue('#namesInput'), '', 'the names box is cleared too');
-  eq(await page.textContent('#countDisplay'), '', 'the board comes back empty');
+  eq(await textContent(page, '#countDisplay'), '', 'the board comes back empty');
 
   /* ---------------------------------------------------------------- import --- */
   await chooseFile(page, exportedPath, () => page.click('#importRostersBtn'));
   await settle(page, 300);
 
-  const rosterListAfterImport = await page.textContent('#rosterList');
+  const rosterListAfterImport = await textContent(page, '#rosterList');
   ok(rosterListAfterImport.includes(ROSTER_NAME) && rosterListAfterImport.includes('(28)'),
     'the imported roster is back immediately, before any reload');
   const census2 = await page.$$eval('#census .census-num', els => els.map(e => e.textContent));
@@ -207,10 +208,10 @@ let exportedPath = null;
   // The tool itself has to pick the restored data up, not just localStorage.
   await page.reload({ waitUntil: 'load' });
   await settle(page, 400);
-  eq(await page.textContent('#countDisplay'), '28 names in pool', 'a reload restores the on-screen roster');
+  eq(await textContent(page, '#countDisplay'), '28 names in pool', 'a reload restores the on-screen roster');
   const namesBack = (await page.inputValue('#namesInput')).split('\n');
   eq(namesBack.length, 28, 'all 28 names came back into the input');
-  const rosterListFinal = await page.textContent('#rosterList');
+  const rosterListFinal = await textContent(page, '#rosterList');
   ok(rosterListFinal.includes(ROSTER_NAME), 'the saved roster is still there after the reload');
 
   await page.screenshot({ path: path.join(SHOTS, 'after-import.png') });
@@ -237,9 +238,9 @@ let exportedPath = null;
   await page.reload({ waitUntil: 'load' });
   await settle(page, 300);
 
-  eq(await page.textContent('#countDisplay'), '3 names in pool',
+  eq(await textContent(page, '#countDisplay'), '3 names in pool',
     'a corrupt np_rosters does not stop np_current from loading');
-  ok((await page.textContent('#rosterList')).includes('No saved rosters yet'),
+  ok((await textContent(page, '#rosterList')).includes('No saved rosters yet'),
     'the corrupt roster blob is dropped rather than crashing the whole set');
   const errs = page.__errs.filter(e => !/favicon/.test(e));
   eq(errs.length, 0, 'no page errors from the corrupt roster' + (errs.length ? ':\n       ' + errs.join('\n       ') : ''));
@@ -261,12 +262,70 @@ let exportedPath = null;
   await page.reload({ waitUntil: 'load' });
   await settle(page, 300);
 
-  const rosterList = await page.textContent('#rosterList');
+  const rosterList = await textContent(page, '#rosterList');
   ok(rosterList.includes('Period 5') && rosterList.includes('(2)'),
     `the good roster survives (${rosterList.slice(0, 80)})`);
   ok(!rosterList.includes('Period 3'), 'the non-array roster entry is dropped rather than crashing the whole set');
   const errs = page.__errs.filter(e => !/favicon/.test(e));
   eq(errs.length, 0, 'no page errors from the non-array roster entry' + (errs.length ? ':\n       ' + errs.join('\n       ') : ''));
+  await page.close();
+}
+
+/* ========================================================== two rosters === */
+// np_rosters handles more than one saved roster structurally, but neither round
+// 1 nor round 2's browser suite exercised switching between two of them — both
+// left it on their own "if session left over" list. Two classes, saved under
+// two names, switched back and forth, one deleted: the other must come out
+// unscathed, not silently merged or corrupted.
+{
+  const page = await prepPage(browser, BASE, { width: 1280, height: 900, dsf: 1 });
+  const rosterNames = ['Period 3', 'Period 5'];
+  let promptIdx = 0;
+  page.on('dialog', d => (d.type() === 'prompt' ? d.accept(rosterNames[promptIdx++]) : d.accept()));
+  await page.goto(URL_PAGE, { waitUntil: 'load' });
+  await settle(page, 400);
+
+  const CLASS_A = CLASS_OF_28.slice(0, 14);
+  const CLASS_B = CLASS_OF_28.slice(14);
+
+  await page.click('#settingsBtn');
+  await page.fill('#namesInput', CLASS_A.join('\n'));
+  await page.click('#loadNames');           // closes the panel behind itself
+  await page.click('#settingsBtn');
+  await page.click('#saveRoster');          // prompt() answered with "Period 3"
+
+  await page.fill('#namesInput', CLASS_B.join('\n'));
+  await page.click('#loadNames');
+  await page.click('#settingsBtn');
+  await page.click('#saveRoster');          // prompt() answered with "Period 5"
+
+  let rosterList = await textContent(page, '#rosterList');
+  ok(rosterList.includes('Period 3') && rosterList.includes('(14)'), 'Period 3 is saved with its own count');
+  ok(rosterList.includes('Period 5') && rosterList.includes('(14)'), 'Period 5 is saved beside it with its own count');
+
+  await page.click('[data-load="Period 3"]');
+  await settle(page, 150);
+  eq(await textContent(page, '#countDisplay'), '14 names in pool', 'loading Period 3 shows only its 14, not both classes combined');
+  let namesNow = (await page.inputValue('#namesInput')).split('\n');
+  eq(namesNow.length, 14, 'the names box holds exactly Period 3 after the switch');
+  ok(namesNow.includes(CLASS_A[0]) && !namesNow.includes(CLASS_B[0]), 'Period 3 is really loaded, not Period 5 left over from the save above');
+
+  await page.click('#settingsBtn');
+  await page.click('[data-load="Period 5"]');
+  await settle(page, 150);
+  eq(await textContent(page, '#countDisplay'), '14 names in pool', 'switching to Period 5 shows only its 14');
+  namesNow = (await page.inputValue('#namesInput')).split('\n');
+  ok(namesNow.includes(CLASS_B[0]) && !namesNow.includes(CLASS_A[0]), 'Period 5 is really loaded, not Period 3 left over from the switch');
+
+  await page.click('#settingsBtn');
+  await page.click('[data-delete="Period 3"]');   // confirm() accepted by the generic dialog handler
+  await settle(page, 150);
+  rosterList = await textContent(page, '#rosterList');
+  ok(!rosterList.includes('Period 3'), 'Period 3 is gone after its own delete');
+  ok(rosterList.includes('Period 5') && rosterList.includes('(14)'), "Period 5 survives the other roster's delete with its full count");
+
+  const errs = page.__errs.filter(e => !/favicon/.test(e));
+  eq(errs.length, 0, 'no page errors across the two-roster switch' + (errs.length ? ':\n       ' + errs.join('\n       ') : ''));
   await page.close();
 }
 

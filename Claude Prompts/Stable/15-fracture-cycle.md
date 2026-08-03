@@ -1,15 +1,16 @@
 # 15 — The Fracture Cycle
 
-**This project has had nothing outstanding for two rounds running.** Round 1 (2026-07-30) fixed
+**This project has had nothing outstanding for three rounds running.** Round 1 (2026-07-30) fixed
 the one real bug this game had, added a save, vendored fonts, fixed two accessibility issues, and
 got a preview/OG card. Round 2 (2026-08-01) opened the file, checked every one of round 1's claims
-against the live repo, and made **zero edits** — everything held: all 5 endings still reachable
-(`node Projects/the-fracture-cycle/test/smoke.mjs` → 26 passed, 0 failed, re-confirmed at this
-refresh), fonts still vendored (0 offsite requests), preview/OG still present. Round 2's own notes
-suggested this prompt might not belong in every round's default rotation at all — that's exactly
-what moving it to `Claude Prompts/Stable/` does. See `Claude Prompts/README.md` for what living here
-means: not archived, still re-surveyed every round, moves back to the live folder the moment
-something real changes.
+against the live repo, and made **zero edits** — everything held. Round 3 didn't run at all
+(correctly skipped, per the `Stable/` convention), and this refresh (2026-08-03) re-verified
+directly against the live repo rather than trusting the skip: all 5 endings still reachable
+(`node Projects/the-fracture-cycle/test/smoke.mjs` → 26 passed, 0 failed), fonts still vendored (0
+offsite requests), storage key unchanged, preview/OG still present, nothing in `git log` for this
+project's paths since round 2 landed. See `Claude Prompts/README.md` for what living in
+`Claude Prompts/Stable/` means: not archived, still re-surveyed every round, moves back to the live
+folder the moment something real changes.
 
 You are working on The Fracture Cycle, a choose-your-own-adventure set in Dota 2's lore, on
 greyversusblue.com. At 799 lines it is still the **smallest game in the repo**. This prompt is
@@ -57,8 +58,7 @@ edit will be silently overwritten. A wrong description is a board request.
    session (the full branch map, the align-gate fix, the save/font/accessibility work) is archived
    at `Claude Prompts/archive/round-1/notes/15-fracture-cycle-notes.md` — read that one for the
    actual branch-map detail, since round 2 didn't re-derive it.
-3. `gvb-site-handoff-v9.md` §10 (locked decisions — #51-53 are new this round) and §8 (backlog
-   state).
+3. `gvb-site-handoff-v10.md` §10 (locked decisions, through #58) and §8 (backlog state).
 4. `assets/js/gvb-save.js` and `assets/js/README.md` if you touch the save at all. Unchanged for
    this project's purposes since round 1 — `defaults`, `repair`, `validate` and `mountSaveBar`'s
    `buttons` option already cover everything this game needs.
@@ -156,10 +156,10 @@ If you change anything, this game already has a way to check it:
   storage, import, confirm again. Corrupt file, refused.
 - After any font or asset change, grep for `fonts.googleapis.com` → should stay at 0. Prefer
   `cd Tools/board-check && npm run check`'s static source sweep over a hand grep (locked decision
-  #44) — as of this refresh: **335 units checked, 0 broken; 0 collisions across nine widths,
-  tightest vertical gap 3.5px**. `npm run social:check` → **17 notices, 17 already current** (down
-  from 22 — Devon consolidated six standalone Tools notices into one "School Tools" card this
-  round; a real, correct drop, not a regression).
+  #44) — as of this refresh: **559 units checked, 0 broken; 0 collisions across nine widths,
+  tightest vertical gap 9.1px** (the unit count moves every round as files are added elsewhere in
+  the repo; 0 broken is what matters). `npm run social:check` → **18 notices, 18 already current**
+  (Orbital's card joined this round).
 - Locked decision #34: for any new guard-rail, break the thing on purpose first and watch it fail.
 
 Scheduling note: `npm run games`, `npm run play` and `npm run previews` open real visible browser

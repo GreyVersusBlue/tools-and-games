@@ -2,11 +2,10 @@
 
 You are working on Faire Weekend, a renaissance-faire management sim on greyversusblue.com.
 It lives in `Projects/Ren-Faire-Claude/` — the folder name is older than the game's name, and
-the board calls it Faire Weekend. It has the largest test suite in the repo. Round 2 adopted
-the shared save module, gave the weekend a real day-of-week shape, and drove ten previously-
-unexercised UI actions through real clicks. **This round's real remaining work is mobile tap
-targets and a layout/density review that's now been deferred three rounds running.** This
-prompt is self-contained.
+the board calls it Faire Weekend. It has the largest test suite in the repo. **Round 3 closed the
+mobile-tap-target task**: plot markers and buttons now meet the 44px touch minimum, and `#board`'s
+desktop column split was fixed too. **The layout/spacing/density review is now owed for four
+rounds running, not three** — still nobody's assigned task yet. This prompt is self-contained.
 
 ## Your boundary
 
@@ -17,7 +16,7 @@ You own these paths. Inside them, edit, add, delete and restructure freely:
   - `js/main.js`, `js/engine.js`, `js/state.js`, `js/data.js`, `js/ui.js`
   - `css/style.css`
   - `assets/fonts/**` — the three vendored type families, plus their own `README.md`
-  - `tests/smoke.mjs` — **783 assertions**, yours
+  - `tests/smoke.mjs` — **801 assertions**, yours
   - `package.json`, `package-lock.json`, `.gitignore` — **these stay** (locked decision #4)
   - `README.md`, `HANDOFF.md`
 
@@ -49,15 +48,15 @@ overwritten.
 ## Required reading, in this order
 
 1. This whole file.
-2. **`Claude Prompts/notes/09-faire-weekend-notes.md` — round 2's session.** The `gvb-save.js`
-   adoption (fully held to the plan round 1 scoped, zero surprises), the weekend-shape work
-   (Friday/Saturday/Sunday attendance multipliers), and the wiring audit (ten previously-unclicked
-   actions, now covered — see below). Round 1's notes are archived at
+2. **`Claude Prompts/notes/09-faire-weekend-notes.md` — round 3's session.** The mobile
+   tap-target fix (44px cells, `#board`'s desktop `fit-content(710px)` column split) and a real
+   wiring gap found even after round 2 called the audit "closed" (`cancelMove`, untested until this
+   round). Round 2's notes are archived at
+   `Claude Prompts/archive/round-2/notes/09-faire-weekend-notes.md` — the `gvb-save.js` adoption,
+   the weekend-shape work, and the original ten-gap wiring audit. Round 1's are at
    `Claude Prompts/archive/round-1/notes/09-faire-weekend-notes.md` if you need the original save
    plan or the report-phase policy work (now locked decision #45).
-3. `gvb-site-handoff-v9.md` §10 (locked decisions — #51-53 new this round) and §8 (backlog state).
-4. `gvb-site-handoff-v8.md` §9 locked decisions #43-50, especially #45 (report-phase save policy,
-   originated here, still in force) and #50 (`repair` covers content drift).
+3. `gvb-site-handoff-v10.md` §10 (locked decisions, through #58) and §8 (backlog state).
 5. `Projects/Ren-Faire-Claude/HANDOFF.md` and `README.md`.
 6. `Projects/Ren-Faire-Claude/tests/smoke.mjs` — at least Section 22 (this round's wiring-audit
    DOM tests) and the `mod()` helper at the top.
@@ -102,10 +101,8 @@ the project gives you 783 passed, 0 failed.
 - **Storage-construction gaps in `gvb-save.js` are fixed** (locked decision #49).
 - **`repair` also covers content drift, not just schema drift** (locked decision #50) — this is
   how your `repairState` now works, carried over unchanged from `loadState`.
-- **A `page.waitForFunction(fn, null, opts)` call is Playwright's shape, not puppeteer-core's** —
-  fixed this round in every shared tooling file (`gvb-site-handoff-v9.md` §3). Your own round-2
-  session hit this as four *other* games aborting mid-`npm run games` run while your own 18 checks
-  passed clean twice — flagged rather than chased, correctly, since it wasn't your project's bug.
+- **A `page.waitForFunction(fn, null, opts)` call is Playwright's shape, not puppeteer-core's**
+  (locked decision #52) — fixed in every shared tooling file since round 2.
 - **A real-time or timing-based assertion failing under this environment's Linux/software-rendered
   Chromium is inconclusive, not confirmed** (locked decision #53). This game is 2D DOM, less exposed
   than the three.js games, but `npm run games`'s own run-to-run consistency is still affected
@@ -113,8 +110,20 @@ the project gives you 783 passed, 0 failed.
 
 ## What is actually here
 
-Five `js/` modules, one stylesheet, and a **783-assertion** Node smoke suite (was 737) that
+Five `js/` modules, one stylesheet, and an **801-assertion** Node smoke suite (was 783) that
 builds a JSDOM. Tagged `Sim` and `data-new` on the board with a preview and OG card.
+
+**Mobile tap targets are fixed, round 3.** The ≤375px breakpoint's `--cell` is 48px now (was 30px),
+with buttons/tabs at a `min-height: 44px` floor — measured before/after, documented in `style.css`
+comments. `#board`'s desktop layout also got `grid-template-columns: fit-content(710px)
+minmax(340px, 1fr)`, a fixed worst-case cap rather than a fully adaptive one (a named, deliberate
+follow-up, not an oversight — see "Your task"). The 1080px tablet breakpoint's cell size was
+deliberately left untouched, a scoped exclusion, not a miss.
+
+**The wiring audit found one more real gap even after being called "closed" last round**: `cancelMove`
+had an existing case in `main.js` (not new this round) that had never actually been click-tested.
+Reinforces that the audit needs to keep repeating when a new `data-action` lands, not that it's a
+one-time job.
 
 **`gvb-save.js` is adopted, and it held to round 1's plan exactly** — key unchanged
 (`renn-faire-sim-save-v1`), `validate` lifted unchanged, everything `loadState` used to fill in
@@ -140,22 +149,19 @@ round-trip test of the save bar itself.
 
 ## Your task
 
-Round 2 closed all three of the previous round's tasks. What's left:
+Round 3 closed the mobile-tap-target task. What's left:
 
-1. **Mobile tap targets — the real remaining gap.** 375×812 lays out with no horizontal overflow,
-   but every interactive element is under the 44px touch minimum: 38 plot markers at 26px, buttons
-   at 27-28px, tabs at 40px. The plot markers are the primary interaction. **A real design pass —
-   bigger hit areas, or a pinch/pan/zoom affordance for the map — not a media-query tweak.** Also
-   revisit the widest grounds tier's undiscoverable horizontal scroll to its eastern columns while
-   you're in there.
-2. **The layout/spacing/density review — owed for three rounds running now.** Every session with a
+1. **The layout/spacing/density review — owed for four rounds running now.** Every session with a
    browser available has spent it on assigned tasks instead. Everything needed (server, game,
    `shots/games/` for before/afters) is in place; it just hasn't been anyone's assigned task yet.
-   If you have session left after task one, this is where it goes.
+   This is the headline item now.
+2. **`#board`'s `fit-content(710px)` cap is a fixed worst-case, not truly adaptive.** Named,
+   deliberate follow-up from round 3's own fix — worth a real adaptive-width pass if the fixed cap
+   ever reads wrong at an untested width.
 3. **Re-run the wiring audit** (grep every `data-action` in `main.js`, cross-reference against both
-   test suites) **after any future session adds a new `data-action` or `<select>`/slider.** The
-   method found ten real gaps this round and isn't automatic — nothing catches a newly-added action
-   going untested by construction.
+   test suites) **after any future session adds a new `data-action` or `<select>`/slider.** Round 3
+   found one more real gap (`cancelMove`) even after round 2 called the audit closed — this isn't a
+   one-time job, it needs repeating.
 4. `perGuestCost`/`upkeepRate`/`winCondition`/`bankruptcyFloor` are still the economy numbers most
    likely to need adjusting after real play, unchanged assessment from three rounds running.
 5. True guest-agent/pathfinding simulation remains the one fully untouched item since this
@@ -166,18 +172,19 @@ Round 2 closed all three of the previous round's tasks. What's left:
 ## Verification
 
 - `npm install --prefix "Projects/Ren-Faire-Claude"` once, then `node tests/smoke.mjs` from
-  inside the project → currently **783 passed, 0 failed**. Grow it — you own it. Every new import
+  inside the project → currently **801 passed, 0 failed**. Grow it — you own it. Every new import
   goes through `mod()`.
-- `cd Tools/board-check && npm run games` → fixed this round (the crash you flagged in your own
-  notes), but a moving target in this environment per locked decision #53 — this game's own beats
-  passed clean twice in round 2's own verification even while it was broken elsewhere in the same
-  run.
+- `cd Tools/board-check && npm run games` → as of this refresh, three independent full runs on a
+  fair (real Chrome/Playwright) environment all reported **146 checks, 0 failed**
+  (`gvb-site-handoff-v10.md` §6). Locked decision #53 still applies to this sandbox's own
+  software-rendered Chromium specifically.
 - **Read the DOM, not the save, for anything just-happened** (locked decision #39).
 - Fonts already vendored — `grep -n "fonts.googleapis\|fonts.gstatic" Projects/Ren-Faire-Claude/index.html`
   should show only the comment saying not to put the link back.
-- `npm run check` → as of this refresh: **335 units checked, 0 broken; 0 collisions across nine
-  widths, tightest vertical gap 3.5px.** `npm run social:check` → **17 notices, 17 already current**
-  (dropped from 22 this round — a real, correct count, not a regression).
+- `npm run check` → as of this refresh: **559 units checked, 0 broken; 0 collisions across nine
+  widths, tightest vertical gap 9.1px.** (The unit count moves every round as files are added
+  elsewhere in the repo; 0 broken is what matters.) `npm run social:check` → **18 notices, 18
+  already current** (Orbital's card joined this round).
 - `node assets/js/gvb-save.test.mjs` → 50 passed, 0 failed.
 - Locked decision #34: for every guard-rail you add, reintroduce the bug and watch it fail
   before you trust it.

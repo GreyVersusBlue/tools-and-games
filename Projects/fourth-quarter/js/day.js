@@ -146,6 +146,7 @@ export class DayPhase {
         <button data-cart="${m.id}" data-d="25">+25</button></span></td></tr>`).join("");
     this.show("Stock Order",
       `<p class="hint">Delivered on the spot — the truck's out back. Sell out of something mid-rush and patrons order around it, or walk.</p>
+       <p class="hint">Food rots about ${Math.round(C.SPOILAGE_RATE * 100)}% of what's left on the shelf every closed night — beer and soda don't. Order what you'll actually sell tonight, not a stockpile.</p>
        <table><tr><th>Item</th><th class="num">On hand</th><th>Add</th></tr>${rows}</table>`,
       `<span>Order total: <b class="money">$${C.orderCost(this.cart).toFixed(2)}</b>
         <span class="hint">· Cash $${Math.round(c.cash)}</span></span>

@@ -1,21 +1,11 @@
 # 07 — The Fourth Quarter (3D)
 
 You are working on The Fourth Quarter, a first-person three.js sports-bar management sim
-on greyversusblue.com. Round 2 gave the fully-written, previously-unreachable venue ladder
-an actual door into the game, fixed a seat-count lie and a room-rebuild memory leak, converted
-the last uncompressed audio, and wired the mute toggle. **This round's real remaining question
-is a design one, not a plumbing one — see "Questions for Devon."** This prompt is self-contained.
+on greyversusblue.com. **Round 3 answered this prompt's own "Questions for Devon" question
+directly: the difficulty curve is spoilage, and it's built** (see "What is actually here"). That
+block is resolved and removed below — don't re-ask it.
 
-## Questions for Devon
-
-- **Should the night loop have a day-based difficulty curve, and if so, what shape?** Round 2 did
-  the cheap half of this (rent now scales with venue tier — $110/$160/$210/$260 — so climbing the
-  ladder is a real tradeoff, not a pure upgrade). It did **not** answer the other half: nothing in
-  this game reads `c.day` for anything, so day 40 within one tier is exactly as easy as day 4, and
-  there's still no fail state beyond a red HUD number and a warning. Options on the table: rent that
-  creeps with the calendar, a lease that can be lost, spoilage, or a deliberate answer of "this is a
-  sandbox, leave it." Whichever it is, say so here so the next session builds the right thing
-  instead of guessing.
+This prompt is self-contained.
 
 ## Your boundary
 
@@ -61,19 +51,20 @@ silently overwritten.
 ## Required reading, in this order
 
 1. This whole file.
-2. **`Claude Prompts/notes/07-fourth-quarter-notes.md` — round 2's session**: the Real Estate
-   station, the seat-count/leak fix, rent-by-tier, the audio conversion, the mute toggle, and a
-   real repo-wide bug you found (`waitForFunction`, see below). Round 1's notes are archived at
+2. **`Claude Prompts/notes/07-fourth-quarter-notes.md` — round 3's session**: built the spoilage
+   mechanic (the difficulty-curve answer), plus whatever else it shipped. Round 2's notes are
+   archived at `Claude Prompts/archive/round-2/notes/07-fourth-quarter-notes.md` — the Real Estate
+   station, the seat-count/leak fix, rent-by-tier, the audio conversion, the mute toggle, and the
+   `waitForFunction` bug this project helped find. Round 1's are at
    `Claude Prompts/archive/round-1/notes/07-fourth-quarter-notes.md` — the three save-bar mounts and
    the seven-bug legacy-save audit.
-3. `gvb-site-handoff-v9.md` §10 (locked decisions — #51-53 are new) and §8 (backlog state,
-   including your Real Estate suite's status — written, verified not to crash, not yet confirmed
-   passing in a fair environment).
-4. `gvb-site-handoff-v8.md` §4 (the shared save module) and §9 (locked decisions).
-5. `assets/js/gvb-save.js` and `assets/js/README.md`.
-6. `Projects/fourth-quarter/README.md`, `js/campaign.js`, and both files in `test/`.
-7. `gvb-site-handoff-v4.md` §1 (three.js vendored here) and §5 (locked #17, #18, #19).
-8. `gvb-site-handoff-v5.md` §4 and `gvb-site-handoff-v6.md` §6 — driving these games from
+3. `gvb-site-handoff-v10.md` §2 (the Real Estate walk-to-station fix — this project's suite, fixed
+   in shared tooling this round, see below) and §10 (locked decisions, through #58) and §8 (backlog
+   state).
+4. `assets/js/gvb-save.js` and `assets/js/README.md`.
+5. `Projects/fourth-quarter/README.md`, `js/campaign.js`, `js/day.js`, and both files in `test/`.
+6. `gvb-site-handoff-v4.md` §1 (three.js vendored here) and §5 (locked #17, #18, #19).
+7. `gvb-site-handoff-v5.md` §4 and `gvb-site-handoff-v6.md` §6 — driving these games from
    a script, and locked decision #35 about camera rotation.
 
 ## House rules for every file in this repo
@@ -95,18 +86,30 @@ silently overwritten.
 - **Verify a guard-rail by reintroducing the bug it guards** (locked decision #34).
 - **Assert against the DOM for anything that just happened, and against the save only for
   what a reload has to survive** (locked decision #39).
-- **A `page.waitForFunction(fn, null, opts)` call is Playwright's shape, not puppeteer-core's** —
-  you found this bug this round, jointly with Closing Time and Golden Hour, and it's fixed now in
-  every shared tooling file (locked decision #52's neighbor, `gvb-site-handoff-v9.md` §3).
+- **A `page.waitForFunction(fn, null, opts)` call is Playwright's shape, not puppeteer-core's**
+  (locked decision #52) — this project helped find the bug in round 2, jointly with Closing Time and
+  Golden Hour; fixed in every shared tooling file since.
 - **A real-time or timing-based assertion failing under this environment's Linux/software-rendered
-  Chromium is inconclusive, not confirmed** (locked decision #53). **This one blocks your own new
-  Real Estate suite** — see below.
+  Chromium is inconclusive, not confirmed** (locked decision #53).
+- **`walkTo()` in `drive.mjs` now takes a `{steer:'lookAt', sens}` option for games that hand-roll
+  their own camera** (locked decisions #55, #56) — this project is one of the three it was built
+  for. The Real Estate walk-to-station beat that used to fail against this project's own
+  `player.js`-owned `yaw`/`pitch` (see §2 below) now uses it. If you script any new walk-to beat
+  against this project, use `steer:'lookAt'`, not the default `aimAt()`.
 
 ## What is actually here
 
-Ten `js/` modules, nine vendored texture sets, a real audio folder (now all OGG, see below), its
-own three.js, and two Node suites: `test/smoke-campaign.mjs` (**196 assertions**, up from 189) and
+Ten `js/` modules, nine vendored texture sets, a real audio folder (all OGG), its
+own three.js, and two Node suites: `test/smoke-campaign.mjs` (**203 assertions**, up from 196) and
 `test/smoke-engine.mjs` (**190**, unchanged). Tagged `Sim` on the board with a preview and OG card.
+
+**The difficulty curve is spoilage, built round 3.** `campaign.js` defines `SPOILAGE_RATE = 0.15`
+and `applySpoilage(c)`, called from both `settleNight` and `settleDarkNight`; `main.js` renders a
+"Spoiled overnight" box-score row; `day.js`'s stock panel shows a live hint reading
+`C.SPOILAGE_RATE`. This answers the "Questions for Devon" block that used to sit at the top of this
+prompt — rent-by-tier (round 2) was the cheap half, spoilage is the other half. Tune
+`SPOILAGE_RATE` by feel once played live if it doesn't land right; nothing else about the shape is
+locked in.
 
 **The venue ladder has a door into the game.** A fifth station, Real Estate, sits at open ground
 east of the room. Its panel shows the next rung and a Sign the Lease button wired to
@@ -142,30 +145,26 @@ your code: a file picker has to be answered before it's opened (engine-aware, se
 
 ## Your task
 
-**One design decision is open — see "Questions for Devon" above.** Once that's answered:
+**No design decision is open right now — spoilage answered it.** What's left:
 
-1. **Distinct floor plans per venue tier**, if the ladder is ever meant to feel physically bigger,
+1. **Confirm the Real Estate walk-to-station beat actually passes now, not just that the fix
+   exists.** Round 3's own session correctly found and reported this beat failing because
+   `drive.mjs`'s `walkTo()` steered via a raw `camera.rotation.set()` write that this project's own
+   per-frame `yaw`/`pitch` overwrite erases (locked decision #35) — and flagged it as a shared-file
+   request. That fix landed **after** this project's round-3 notes were written: `walkTo()` now
+   takes `{steer:'lookAt', sens}` (locked decisions #55, #56), and `play-games.mjs`'s Real Estate
+   beat now uses it, plus a `canvas` re-click to reacquire pointer lock a dev-menu shortcut had
+   released. `gvb-site-handoff-v10.md` §2 reports this specific beat now passing (45/45 checks) —
+   run `cd Tools/board-check && npm run games` yourself and confirm this project's own beats are
+   still clean before assuming it's fully closed on your machine too.
+2. **Distinct floor plans per venue tier**, if the ladder is ever meant to feel physically bigger,
    not just draw better. The honest-30-seats fix (round 2) means nothing currently lies about what
    the tiers do, so this isn't urgent — it's the real next step only if "the room gets bigger" is
    actually wanted. Real 3D layout work (collider placement, station repositioning, lighting), not a
    small lever.
-2. **Not your bug, but know about it: the Real Estate suite has now been re-verified on a fair
-   environment (real Chrome via Playwright), and the walk-to-station beat still fails — for a
-   reason that traces to shared tooling, not this project's code.** `walked to the Real Estate
-   station — never got in range`, reproduced twice, identical both times. Root cause:
-   `Tools/board-check/drive.mjs`'s `walkTo()` steers via `aimAt()`, which does a **raw**
-   `camera.rotation.set(...)` write — but `js/player.js:182-184` overwrites `camera.rotation` from
-   its own internal `yaw`/`pitch` fields every single frame (driven only by a real `mousemove`
-   listener). This is exactly what locked decision #35 warns about: a raw rotation write only
-   sticks where `PointerLockControls` owns the camera, and this project hand-rolls its own. Every
-   `aimAt()` call gets stomped on the next frame, the walker never actually turns toward the
-   station, and it times out after 60 bursts. This is `drive.mjs`'s bug (prompt 22's file, its only
-   call site so far), not anything in `player.js` or the station's own coordinates — everything
-   else in your suite (36 other checks, the full save/reload/tier-warp sequence) passes clean on
-   this same run. Flag it in your shared-file requests if `walkTo()` hasn't been given a
-   `lookAt`-style steering option by the time you read this; don't spend a session rewriting your
-   own camera code to chase it.
-3. **If your own pass turns up something new**, add it here.
+3. **Tune `SPOILAGE_RATE` by feel once played live**, if the round-3 build doesn't land right on a
+   real playthrough. Not a bug — a balance pass, only worth doing with actual play data.
+4. **If your own pass turns up something new**, add it here.
 
 Two smaller items, still true from earlier rounds: mobile is documented as unsupported (README
 paragraph, already written); frame time is measured and fine (median 6.9-7.0ms, p95 spikes to 21ms
@@ -173,19 +172,19 @@ at peak crowd) — don't re-measure it.
 
 ## Verification
 
-- `node test/smoke-campaign.mjs` from inside `Projects/fourth-quarter` → currently **196
-  passed** (was 189).
+- `node test/smoke-campaign.mjs` from inside `Projects/fourth-quarter` → currently **203
+  passed** (was 196).
 - `node test/smoke-engine.mjs` → currently **190 passed**, unchanged.
-- `cd Tools/board-check && npm run games` → fixed this round (you helped find the bug) but a moving
-  target in this environment per locked decision #53. A representative run was 119 checks, 8 failed
-  — every failure was a timing-sensitive assertion (yours among them, per item 2 above), none a
-  logic regression. Re-verify from a machine with real GPU compositing before trusting either
-  outcome.
+- `cd Tools/board-check && npm run games` → as of this refresh, three independent full runs on a
+  fair (real Chrome/Playwright) environment all reported **146 checks, 0 failed**
+  (`gvb-site-handoff-v10.md` §6), including this project's own Real Estate walk beat specifically
+  (see task one above). Locked decision #53 still applies to this sandbox's own software-rendered
+  Chromium specifically — re-verify there if a run disagrees.
 - **Verify anything visual in headed Chrome, not an in-app browser pane** (locked decision #25).
-- `npm run check` → as of this refresh: **335 units, 0 broken, 0 collisions across nine widths,
-  tightest vertical gap 3.5px.**
-- `npm run social:check` → **17 notices, 17 already current** (dropped from 22 this round — a real,
-  correct count, not a regression).
+- `npm run check` → as of this refresh: **559 units, 0 broken, 0 collisions across nine widths,
+  tightest vertical gap 9.1px.** (The unit count moves every round as files are added elsewhere in
+  the repo; 0 broken is what matters.)
+- `npm run social:check` → **18 notices, 18 already current** (Orbital's card joined this round).
 - Locked decision #34: for every guard-rail you add, reintroduce the bug and watch it fail
   before you trust it.
 

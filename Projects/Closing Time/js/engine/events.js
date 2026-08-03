@@ -109,7 +109,7 @@ const HANDLERS = {
     if (!rec) return;
     const d = randInt(fx.deltaMin, fx.deltaMax);
     rec.patience += d;
-    log(`${contentClient(rec).name}'s timeline shifts (${d >= 0 ? "+" : ""}${d} patience).`, "");
+    log(`${contentClient(rec).name}'s timeline shifts (${d >= 0 ? "+" : ""}${d} patience).`, "", undefined, rec.recId);
   },
   openHouseLowball(ev, fx) { /* consumed live during open house flow via pendingLowball */ 
     S.pendingLowball = { pctMin: fx.pctOfAskMin, pctMax: fx.pctOfAskMax };

@@ -36,8 +36,10 @@ if (!fs.existsSync(harness)) {
   console.error(`Cannot find the shared harness at ${harness}`);
   process.exit(1);
 }
+const drive = path.resolve(HERE, '..', '..', '..', 'Tools', 'board-check', 'drive.mjs');
 // Windows reads a bare C:\... import as URL scheme `c:` and refuses it (v7 §7).
 const { serve, launch, prepPage } = await import(pathToFileURL(harness).href);
+const { waitFor } = await import(pathToFileURL(drive).href);
 
 /* ---------- harness ---------- */
 
@@ -90,7 +92,7 @@ async function boot(p, { wipe = false } = {}) {
   }
   // The debug hook is the last thing the module assigns, so it is the signal
   // that a `type="module"` script actually parsed and ran.
-  await p.waitForFunction(() => !!window.__CK_DEBUG__, null, { timeout: 10000 });
+  await waitFor(p, () => !!window.__CK_DEBUG__, { timeout: 10000 });
   await p.waitForSelector('#save-bar button[data-gvb="export"]');
 }
 
@@ -157,13 +159,13 @@ try {
   // no-backgrounding flags.
   await p.click('.stationTab[data-tab="base"]');
   await p.click('#btnEspresso');
-  await p.waitForFunction(() => window.__CK_DEBUG__.state.slots[0].cup.shots >= 1, null, { timeout: 5000 });
+  await waitFor(p, () => window.__CK_DEBUG__.state.slots[0].cup.shots >= 1, { timeout: 5000 });
   t.ok(true, 'Pull Espresso Shot ran its progress bar to the end and landed a shot');
 
   await p.click('.stationTab[data-tab="milk"]');
   await p.click('[data-milk="oat"]');
   await p.click('#btnSteam');
-  await p.waitForFunction(() => window.__CK_DEBUG__.state.slots[0].cup.milkSteamed, null, { timeout: 5000 });
+  await waitFor(p, () => window.__CK_DEBUG__.state.slots[0].cup.milkSteamed, { timeout: 5000 });
   t.ok(true, 'Steam Milk ran its progress bar to the end');
 
   const done = await p.evaluate(() => window.__CK_DEBUG__.orderIsComplete(window.__CK_DEBUG__.state.slots[0]));
@@ -189,8 +191,8 @@ try {
 
   // Warp to the end of the shift and let the loop notice.
   await p.evaluate(() => { window.__CK_DEBUG__.state.shiftElapsed = 34000 * 4 - 50; });
-  await p.waitForFunction(() => document.getElementById('modalOverlay').classList.contains('show'),
-    null, { timeout: 8000 });
+  await waitFor(p, () => document.getElementById('modalOverlay').classList.contains('show'),
+    { timeout: 8000 });
   const summary = await p.$eval('#modalBody', el => el.innerText.replace(/\n+/g, ' / '));
   t.ok(/Drinks served/.test(summary) && /Reputation/.test(summary), 'the day-end summary is built', summary.slice(0, 110));
   t.ok(await p.$eval('#modalTitle', el => el.textContent) === 'Day 1 Complete!', 'titled with the day that just ended');
@@ -223,7 +225,7 @@ try {
   });
 
   await p.goto(PAGE, { waitUntil: 'load' });
-  await p.waitForFunction(() => !!window.__CK_DEBUG__, null, { timeout: 10000 });
+  await waitFor(p, () => !!window.__CK_DEBUG__, { timeout: 10000 });
   const back = await p.evaluate(() => {
     const s = window.__CK_DEBUG__.state;
     return { day: s.day, money: s.money, stations: s.slots.length, staff: s.baristas.length,
@@ -262,7 +264,7 @@ try {
   await p.click('#chalkToggle');
   await wait(400);
   await p.click('#save-bar [data-gvb="export"]');
-  await p.waitForFunction(() => window.__exports && window.__exports.length > 0, null, { timeout: 5000 });
+  await waitFor(p, () => window.__exports && window.__exports.length > 0, { timeout: 5000 });
   const text = await p.evaluate(() => window.__exports[0]);
   let env = null;
   try { env = JSON.parse(text); } catch (e) { /* asserted below */ }
@@ -341,7 +343,7 @@ try {
   };
   await p.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [KEY, legacy]);
   await p.goto(PAGE, { waitUntil: 'load' });
-  await p.waitForFunction(() => !!window.__CK_DEBUG__, null, { timeout: 10000 });
+  await waitFor(p, () => !!window.__CK_DEBUG__, { timeout: 10000 });
   const old = await p.evaluate(() => {
     const s = window.__CK_DEBUG__.state;
     return { day: s.day, money: s.money, stations: s.slots.length, muted: s.muted,
@@ -421,7 +423,7 @@ try {
     dailyModifierId: 'nonsense', upgrades: ['teleporter'],
   }]);
   await p.goto(PAGE, { waitUntil: 'load' });
-  await p.waitForFunction(() => !!window.__CK_DEBUG__, null, { timeout: 10000 });
+  await waitFor(p, () => !!window.__CK_DEBUG__, { timeout: 10000 });
   const clamped = await p.evaluate(() => {
     const s = window.__CK_DEBUG__.state;
     return { loyalty: s.loyaltyLevel, shields: s.comboShields, rep: s.reputation,
@@ -527,7 +529,7 @@ try {
   t.section('13. mobile at 375x812');
   const mp = await prepPage(browser, BASE, { width: 375, height: 812, dsf: 2, mobile: true });
   await mp.goto(PAGE, { waitUntil: 'load' });
-  await mp.waitForFunction(() => !!window.__CK_DEBUG__, null, { timeout: 10000 });
+  await waitFor(mp, () => !!window.__CK_DEBUG__, { timeout: 10000 });
   const mob = await mp.evaluate(() => ({
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     slots: document.querySelectorAll('.slot').length,

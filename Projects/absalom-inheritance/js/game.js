@@ -63,6 +63,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
     const startArea = content.areas[content.startArea];
     return {
       packId: content.pack.id,
+      // content.pc is already the one build a caller resolved via selectPc()
+      // before constructing this game — see content.js. Stamping its id here
+      // keeps this internal fallback (used when no explicit state is passed,
+      // mostly by tests) shaped the same as save.js's freshRun().
+      buildId: content.pc.id,
       areaId: content.startArea,
       pc: {
         x: startArea.pcSpawn.x, y: startArea.pcSpawn.y,

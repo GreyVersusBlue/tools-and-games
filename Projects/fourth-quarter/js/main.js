@@ -91,6 +91,8 @@ function closedNight() {
   save();
   const billed = Math.round(books.wages + books.rent + books.upgFees);
   tick(`Closed for the move. −$${billed} in bills, doors stay shut tonight.`, "b");
+  const spoiled = Object.values(books.spoilage.byItem).reduce((a, b) => a + b, 0);
+  if (spoiled) tick(`${spoiled} serving${spoiled === 1 ? "" : "s"} spoiled in the walk-in while the doors stayed shut.`, "b");
   if (campaign.darkNightsLeft === 0) tick(`Ready to open at ${C.venueDef(campaign).name} tomorrow.`, "hl");
   updateHUD();
 }
@@ -284,6 +286,7 @@ function showBoxScore() {
   const books = C.settleNight(campaign, s);
   save();
   const empt = patrons.filter(p => p.emptyShelves).length;
+  const spoiled = Object.values(books.spoilage.byItem).reduce((a, b) => a + b, 0);
   $("#boxTitle").textContent = `Night ${campaign.day - 1} — Box Score`;
   $("#boxBody").innerHTML = `
     <div class="row"><span>Food & drink</span><span class="money">$${s.revenue}</span></div>
@@ -300,6 +303,7 @@ function showBoxScore() {
     <div class="row"><span>Cooked/poured by hand</span><span class="${s.crafted ? "good" : ""}">${s.crafted}</span></div>
     <div class="row"><span>Walkouts</span><span class="${s.walkouts ? "bad" : ""}">${s.walkouts}${empt ? ` (${empt} found bare shelves)` : ""}</span></div>
     <div class="row"><span>Service rate</span><span class="${s.serviceRate >= 90 ? "good" : s.serviceRate >= 70 ? "warn" : "bad"}">${s.serviceRate}%</span></div>
+    <div class="row"><span>Spoiled overnight</span><span class="${spoiled ? "bad" : ""}">${spoiled} serving${spoiled === 1 ? "" : "s"}${spoiled ? ` (~$${books.spoilage.value.toFixed(2)} wholesale)` : ""}</span></div>
     ${engine.gameNight ? `<div class="sec">The Game</div>
     <div class="row"><span>Final</span><span class="${s.game.win ? "good" : "bad"}">${s.game.win ? "Mules win — the room erupted" : "Mules dropped it"}</span></div>` : ""}`;
   $("#boxOverlay").style.display = "flex";

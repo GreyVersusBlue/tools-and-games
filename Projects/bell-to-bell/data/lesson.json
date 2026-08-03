@@ -1,0 +1,93 @@
+{
+  "title": "Sectional Crisis — the Compromise of 1820",
+  "unit": "U.S. HIST · UNIT 4 · DAY 2 OF 3",
+  "objectiveBoard": {
+    "head": "TUE  3/11",
+    "lines": [
+      "SWBAT analyze how compromise",
+      "delayed sectional conflict.",
+      "",
+      "8.4.C  ·  DO NOW ON DESK"
+    ],
+    "foot": "(it is Wednesday)"
+  },
+  "beats": [
+    {
+      "id": "donow",
+      "label": "Do Now — the map",
+      "line": "Two colours on a map. Ask them what the line is for before you tell them.",
+      "board": { "head": "DO NOW", "lines": ["What is the line for?", "Write one sentence. Guess.", "You are allowed to be wrong."] },
+      "seconds": 240,
+      "gain": 0.00016,
+      "spread": 0.55
+    },
+    {
+      "id": "context",
+      "label": "Context — why 1819 mattered",
+      "line": "Eleven and eleven. Say the number twice and let it land.",
+      "board": { "head": "1819", "lines": ["11 free states", "11 slave states", "Missouri applies →  ?"] },
+      "seconds": 420,
+      "gain": 0.00022,
+      "spread": 0.8
+    },
+    {
+      "id": "model",
+      "label": "Model — read the terms",
+      "line": "You read the first clause aloud. You do the second one with them. They do the third.",
+      "board": { "head": "THE TERMS", "lines": ["1. Missouri enters slave", "2. Maine enters free", "3. 36°30′ — line drawn west"] },
+      "seconds": 480,
+      "gain": 0.00028,
+      "spread": 1.1
+    },
+    {
+      "id": "argue",
+      "label": "The argument — was it a solution?",
+      "line": "Somebody will say 'they just kicked the can.' Let them get there first.",
+      "board": { "head": "SO WAS IT SOLVED?", "lines": ["Solution  ·  or  ·  delay?", "Evidence from the terms.", "Nobody says 'both' without proof."] },
+      "seconds": 540,
+      "gain": 0.00031,
+      "spread": 1.35,
+      "fidelityBonus": 2.5,
+      "note": "student-led discourse — a rubric look-for, if anyone were watching"
+    },
+    {
+      "id": "close",
+      "label": "Exit ticket",
+      "line": "Half sheet. One sentence. Their words, not the board's.",
+      "board": { "head": "EXIT TICKET", "lines": ["One sentence:", "What did the line at 36°30′ do?", "Name on it. Yes, first AND last."] },
+      "seconds": 320,
+      "gain": 0.00020,
+      "spread": 0.6
+    }
+  ],
+  "filler": {
+    "id": "filler",
+    "label": "Sustained silent work",
+    "line": "You are out of lesson and not out of period. This is the oldest move there is.",
+    "board": { "head": "WORK TIME", "lines": ["Finish the exit ticket.", "Then read. Quietly.", "Yes, anything."] },
+    "seconds": 700,
+    "gain": 0.00004,
+    "spread": 0.4
+  },
+  "copy": {
+    "advance": { "kind": "", "title": "Next beat", "body": "{label}." },
+    "rushed": { "kind": "bad", "title": "You moved on",
+                "body": "Half of them were still writing. You saw it and you moved on anyway." },
+    "belabor": { "kind": "", "title": "Still on this",
+                 "body": "You have been on {label} for a while. Two kids have stopped writing and started waiting." },
+    "outOfBeats": { "kind": "", "title": "That's the lesson",
+                    "body": "There are eleven minutes left and nothing planned in them." },
+    "check": { "kind": "good", "title": "Check for understanding",
+               "body": "Thumbs, whiteboards, whatever you use. Now you know instead of assuming." },
+    "checkAgain": { "kind": "", "title": "Checking again",
+                    "body": "You just checked. They can tell you are stalling." },
+    "checkCold": { "kind": "bad", "title": "Nothing to check",
+                   "body": "You have not said anything yet to check on." },
+    "reteach": { "kind": "good", "title": "You back up",
+                 "body": "\"Let me say that a different way.\" It costs you four minutes you did not have." },
+    "reteachBlind": { "kind": "bad", "title": "Reteaching blind",
+                      "body": "You back up without checking first, so you reteach the part they already had." },
+    "greenIsland": { "kind": "", "title": "Comprehension",
+                     "body": "{name} has it. {name} has had it for ten minutes and has not said a word." }
+  }
+}

@@ -93,7 +93,9 @@ engine's result, and Mules fans bounce when they win.
 
 - **Stock** — buy servings per item at wholesale; the night eats the shelves.
   86'd items get ordered around; fully bare shelves send patrons back out the
-  door. Unsold stock carries over (no spoilage yet — that's a later sprint).
+  door. Food (wings, burgers, nachos, fries) rots 15% of whatever's left every
+  closed night — a settled night or a dark night alike. Beer and soda don't
+  spoil. Stockpiling food against a slow night now has a real cost.
 - **Crew** — up to 3 staff, each a **cook**, **server**, or **bartender** with
   a skill (1–5) driving wage and effectiveness. Cooks/bartenders push prep
   speed on their side of the ticket (no cook on shift = kitchen's closed, no
@@ -172,10 +174,13 @@ missing file just falls back to that surface's placeholder color.
 1. **Distinct rooms per venue tier.** The ladder is reachable now (Real
    Estate station, session 2) but every tier is the same 30-seat room —
    upgrade tiering and a real seat cap can hook back in once this exists.
-2. **A difficulty curve tied to the calendar.** Rent now scales with venue
-   tier (session 2), which makes the ladder a tradeoff instead of a pure
-   reward, but nothing yet reads `c.day` for cost — day 40 is exactly as
-   easy as day 4 within a tier, and there's still no fail state.
+2. **A difficulty curve tied to the calendar — decided and partly built.**
+   Rent scales with venue tier (session 2); food spoilage (session 3, see
+   above) answers the other half by making hoarding food a real cost. Still
+   open: there's no fail state beyond a red HUD number and a warning — this
+   session's spoilage is a cost curve, not a lease-can-be-lost mechanic.
+   `SPOILAGE_RATE` in `js/campaign.js` is the one number to tune if 15%/night
+   feels wrong once it's been played.
 3. **Full campaign port** — league standings, regulars, rival bar,
-   distributors, spoilage (which would unlock a Commercial Walk-In-style
-   upgrade), events as floor moments, re-balanced for the 3D serving loop.
+   distributors, a Commercial Walk-In upgrade to cut the spoilage rate,
+   events as floor moments, re-balanced for the 3D serving loop.

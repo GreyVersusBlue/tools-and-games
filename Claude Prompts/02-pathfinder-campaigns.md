@@ -3,6 +3,21 @@
 You are working on `Pathfinder/campaigns.html`, titled "The Adventure Log", a
 campaign-tracking page on greyversusblue.com. This prompt is self-contained.
 
+**Round 3 made zero edits to this page** — confirmed clean against round 2's own claims (line count,
+byte size, font vendoring, `gvb-save.js` non-adoption all checked and unchanged). See "Questions for
+Devon" below: this is this page's first fully clean verification round, and whether that alone is
+enough to move it to `Stable/` is a real open call, not something this refresh decided unilaterally.
+
+## Questions for Devon
+
+- **Is one clean verification round enough to move this page to `Stable/`, or do you want a second
+  clean round first?** Anathema Archive (01) moved to `Stable/` after one clean round following its
+  round-1 work. The Fracture Cycle (15) waited for two. Round 1 (font vendoring, heading order,
+  ARIA/contrast) and round 2 (the `[shared]`-marker guardrail, plus the JSON-to-HTML generator) were
+  both real work; round 3 was the first round with nothing to do and nothing found. If one clean
+  round is your bar, this page qualifies now. If you want a second, leave it live for one more round
+  and revisit.
+
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
@@ -60,19 +75,22 @@ the description is wrong, that is a board request, not a head edit.
 ## Required reading
 
 1. This whole file.
-2. **`Claude Prompts/notes/02-pathfinder-campaigns-notes.md`** — round 2's session: built a
-   dependency-free JSON-to-HTML generator script (`campaigns-assets/generator/`) so this
-   hand-authored page stays reviewable and diffable while cutting authoring friction, per round 1's
-   own standing idea. Read round 1's notes too
-   (`Claude Prompts/archive/round-1/notes/02-pathfinder-campaigns-notes.md`) for the original font
-   vendoring, heading-order, and ARIA/contrast work, and for the merge evidence that led to round
-   2's resolution (see above).
-3. **`Claude Prompts/notes/03-pathfinder-characters-notes.md`, its round-2 section** — the actual
-   `[shared]` marker work happened in that file's own session (with Devon's sign-off to touch this
-   page too). Read it for the full account of what got marked and the one real bug caught and fixed
-   along the way (a literal `</style>` inside a CSS comment silently truncated the stylesheet).
-4. `gvb-site-handoff-v9.md` §10 (locked decisions — #51-53 are new this round) and §8 (backlog
-   state). The top of this file also records the merge decision directly, in Devon's own words.
+2. **`Claude Prompts/notes/02-pathfinder-campaigns-notes.md`** — round 3's session: verified
+   everything round 2 shipped (the JSON-to-HTML generator, the `[shared]` markers) is still true,
+   made zero edits. Read round 1's and round 2's notes too, now archived at
+   `Claude Prompts/archive/round-1/notes/02-pathfinder-campaigns-notes.md` and
+   `Claude Prompts/archive/round-2/notes/02-pathfinder-campaigns-notes.md`, for the original font
+   vendoring/heading-order/ARIA work and the generator build, and for the merge evidence that led to
+   round 2's resolution (see above).
+3. **`Claude Prompts/notes/03-pathfinder-characters-notes.md`** — round 3's session there also made
+   zero edits. The actual `[shared]` marker work happened in that file's round-2 session (with
+   Devon's sign-off to touch this page too); read `Claude Prompts/archive/round-2/notes/03-pathfinder-characters-notes.md`
+   for the full account of what got marked and the one real bug caught and fixed along the way (a
+   literal `</style>` inside a CSS comment silently truncated the stylesheet).
+4. `gvb-site-handoff-v10.md`, then §10 (locked decisions — through #58) and §8 (backlog state). The
+   locked decisions added this round (#54-58) are about shared test tooling and don't bear on this
+   static page directly. The merge decision is recorded in Devon's own words in `gvb-site-handoff-v9.md`'s
+   top section if you want the original context.
 5. Locked decision #3 in `gvb-site-handoff-v1.md` §3: the Pathfinder section of the
    board is for Pathfinder things; "Town Services" means schoolhouse tools. Don't
    move this page.
@@ -172,11 +190,12 @@ foil-sweep title, contrast) still stands as the last real review.
 - Prove there's no offsite request: `check-integrity.mjs`'s static source sweep
   covers this now (locked decision #44) — run it and use its output instead of a
   hand grep.
-- `cd Tools/board-check && npm run check` should still pass: as of this refresh, **335 units
-  checked, 0 broken; 0 collisions across nine widths, tightest vertical gap 3.5px.**
-- `npm run social:check` should report **17 notices, 17 already current, 0 out of
-  date, 0 failed** (dropped from 22 this round — Devon consolidated six standalone Tools notices
-  into one "School Tools" card; a real, correct count, not a regression). If it reports drift
+- `cd Tools/board-check && npm run check` should still pass: as of this refresh, **559 units
+  checked, 0 broken; 0 collisions across nine widths, tightest vertical gap 9.1px.** (The unit count
+  moves every round as files are added elsewhere in the repo — that's expected, not a regression;
+  0 broken is what matters.)
+- `npm run social:check` should report **18 notices, 18 already current, 0 out of
+  date, 0 failed** (Orbital's card joined this round). If it reports drift
   on your page, you edited inside the `gvb:social` markers. Undo that.
 - If you touch the generator or anything JS-adjacent: `node assets/js/gvb-save.test.mjs` →
   **50 passed, 0 failed**, and `npm run tools` → **18 checks, 0 failed** — this page

@@ -172,8 +172,24 @@ export class CastleBuilder {
 
     const pivot = new THREE.Group();
     const gatePos = this.tileToWorld(g.tile[0], g.tile[1]);
-    pivot.position.set(gatePos.x - size.x / 2, 0, gatePos.z);
-    pivot.rotation.y = THREE.MathUtils.degToRad(g.rotationY || 0);
+    const rotY = THREE.MathUtils.degToRad(g.rotationY || 0);
+    // The door leaf hangs off the hinge along the pivot's local +X (set below), so
+    // closing it sweeps world offset [0, size.x] through R(rotY) — that range's
+    // world-space midpoint is `size.x/2` rotated by rotY, not size.x/2 along world
+    // X unconditionally. `gatePos.x - size.x / 2` (no rotation term) is only that
+    // midpoint for rotY = 0. This config's gate uses rotY = 180 (matching every
+    // wallRun flanking it, which all rotate 180 too, to face their faces into the
+    // archway) and the un-rotated formula put the whole leaf on the wrong side of
+    // 0 in world X entirely: world x [-5.4, -1.8] against a centered [-2, 2]
+    // archway, never crossing it at any point in the swing. Solving for the pivot
+    // that keeps the leaf's world-space midpoint AT the archway center for any
+    // rotY gives cos/sin of it instead.
+    pivot.position.set(
+      gatePos.x - (size.x / 2) * Math.cos(rotY),
+      0,
+      gatePos.z + (size.x / 2) * Math.sin(rotY)
+    );
+    pivot.rotation.y = rotY;
     doorModel.position.x = size.x / 2; // door hangs off the hinge
     pivot.add(doorModel);
     this.scene.add(pivot);

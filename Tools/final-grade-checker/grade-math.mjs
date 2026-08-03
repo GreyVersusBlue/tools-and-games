@@ -8,12 +8,22 @@
 //      percentage one by default.
 //   3. Ten-point scale: A 90+, B 80-89, C 70-79, D 60-69, F below 60.
 //   4. Round up at exactly .5 — but only for the percentage average. An
-//      89.5 is an A. The quality-point average does NOT get this treatment:
-//      an average of exactly 3.5 stays a B. Confirmed against county policy;
-//      see QP_CUTOFFS below.
+//      89.5 is an A. The quality-point average does not round at a .5
+//      midpoint at all: it has to reach the FULL next quality point, whole
+//      number, confirmed directly by Devon. An average of 3.99 is a B, not
+//      an A — only an exact 4.00 is an A. See QP_CUTOFFS below.
 //
 // Rule 4 is the one that needs care, and it needs care in both directions.
 // See NORMALISE below.
+//
+// A round 2 fix made the QP side asymmetric with the percentage side at the
+// .5 boundary (3.50 stays a B, not an A) but kept midpoint cutoffs — 3.5,
+// 2.5, 1.5, 0.5 — as the thresholds themselves. That was still wrong, just
+// in a smaller way: asked directly, Devon confirmed the real rule is not
+// "clear the midpoint," it's "earn the whole point." A 3.75 average is not
+// three-quarters of the way to an A, it is short of a full 4 and stays a B.
+// Every fractional QP average that wasn't sitting on an exact .5 was
+// previously landing one full letter too high.
 
 // ── Precision ────────────────────────────────────────────────
 //
@@ -37,14 +47,16 @@ export const MIN_SCORE = 0;
 export const MAX_SCORE = 100;
 export const QUARTERS = 4;
 
-// Cutoffs are the true .5 boundaries, compared against a normalised value.
-// The percentage average rounds UP at exactly .5 (>=): 89.5 is an A.
-// The quality-point average does NOT round up at its .5 boundaries (>):
-// an average of exactly 3.5 stays a B, not an A. Confirmed against county
-// policy — the two methods are asymmetric on purpose, not a copy-paste of
-// the same rule twice.
+// LETTER_CUTOFFS are .5 midpoints, compared against a normalised value, and
+// the percentage average rounds UP at exactly .5 (>=): 89.5 is an A.
+//
+// QP_CUTOFFS are NOT midpoints. They are the whole quality points themselves
+// — 4, 3, 2, 1 — because the rule is "earn the full point," not "clear the
+// midpoint between two points." A QP average has to reach a cutoff, not just
+// pass it, so the comparison is >=, and the cutoff is the integer, not a .5
+// below it. Confirmed directly by Devon: "4-a, 3-b, 2-c, 1-d, 0-f."
 const LETTER_CUTOFFS = [['A', 89.5], ['B', 79.5], ['C', 69.5], ['D', 59.5]];
-const QP_CUTOFFS     = [['A', 3.5],  ['B', 2.5],  ['C', 1.5],  ['D', 0.5]];
+const QP_CUTOFFS     = [['A', 4],    ['B', 3],    ['C', 2],    ['D', 1]];
 
 const QP_VALUE = { A: 4, B: 3, C: 2, D: 1, F: 0 };
 export const RANK = { A: 4, B: 3, C: 2, D: 1, F: 0 };
@@ -73,14 +85,16 @@ export function getQP(letter) {
 }
 
 /**
- * Letter for an averaged quality-point figure. Unlike the percentage method,
- * this does NOT round up at exactly .5 — a QP average has to clear the
- * cutoff, not just meet it, so the comparison is strict.
+ * Letter for an averaged quality-point figure. This is a floor, not a round:
+ * a student gets the letter for the highest whole quality point they've
+ * fully earned. 3.99 is a B, not an A — only an exact 4.00 is an A. This is
+ * why the comparison is >= against a whole number (4, 3, 2, 1), not > a .5
+ * midpoint the way an earlier version of this function had it.
  */
 export function qpToFinalLetter(avgQP) {
   if (!Number.isFinite(avgQP)) return null;
   const v = normalise(avgQP);
-  for (const [letter, cutoff] of QP_CUTOFFS) if (v > cutoff) return letter;
+  for (const [letter, cutoff] of QP_CUTOFFS) if (v >= cutoff) return letter;
   return 'F';
 }
 

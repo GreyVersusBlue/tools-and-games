@@ -18,12 +18,19 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { SITE } from './harness.mjs';
 
-const SKIP = ['node_modules', '/tools/board-check/three-'];
+const SKIP = ['node_modules', '/tools/board-check/three-', '/libs/'];
 
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
-    if (SKIP.some(s => p.includes(s))) continue;
+    // `SKIP`'s patterns are lowercase forward-slash paths, but path.join on
+    // Windows returns backslashes and this repo's own paths are mixed-case
+    // (Tools/ is capitalized on purpose, locked decision #14) — so this
+    // check silently matched nothing at all on this dev machine until now.
+    // Normalizing both sides fixes the three-package skip that was already
+    // here, not just the new /libs/ entry.
+    const norm = p.replace(/\\/g, '/').toLowerCase();
+    if (SKIP.some(s => norm.includes(s))) continue;
     if (e.isDirectory()) walk(p, out);
     else out.push(p);
   }
@@ -95,6 +102,10 @@ for (const p of files.filter(f => f.endsWith('.json') && !f.includes('package-lo
 const RESOURCE_TAGS = /<(?:link|script|img|iframe|source|audio|video|embed)\b[^>]*>/gi;
 const HREF_OR_SRC = /\b(?:href|src)\s*=\s*["']https?:\/\/([^"'/]+)/i;
 const CSS_URL = /\burl\(\s*['"]?https?:\/\/([^"')\s]+)/gi;
+// The .js equivalent of an HTML resource tag: a plain `.src =` / `.href =`
+// assignment, or a `fetch()`/`import()` call — actual code that makes a
+// request, not just a URL-shaped string sitting in a comment or a data value.
+const JS_RESOURCE_CALL = /\.(?:src|href)\s*=\s*["']https?:\/\/([^"'/]+)|\b(?:fetch|import)\(\s*["']https?:\/\/([^"'/]+)/gi;
 const OWN_HOST = /^(www\.)?greyversusblue\.com$/i;
 
 for (const p of files.filter(f => f.endsWith('.html'))) {
@@ -106,6 +117,26 @@ for (const p of files.filter(f => f.endsWith('.html'))) {
     if (m) hosts.add(m[1].split('/')[0].split(':')[0]);
   }
   for (const m of src.matchAll(CSS_URL)) hosts.add(m[1].split('/')[0].split(':')[0]);
+  for (const h of [...hosts]) if (OWN_HOST.test(h)) hosts.delete(h);
+  if (hosts.size) fail(p, `references offsite host(s): ${[...hosts].join(', ')}`);
+}
+
+// Same sweep, extended to .js/.css — this repo's own code, not just markup.
+// Schedule Visualizer's round-3 finding: this check only ever walked .html,
+// so a tool that splits its logic into .js/.css (590 KB / 156 KB under
+// Tools/schedule/app/ as of this round) got zero coverage from it. `/libs/`
+// joined the SKIP list above so a vendored bundle (e.g.
+// Tools/schedule/libs/jspdf/jspdf.umd.min.js) doesn't false-positive on its
+// own embedded license header or a stray URL in a minified string.
+for (const p of files.filter(f => /\.(js|mjs|css)$/.test(f))) {
+  checked++;
+  const src = fs.readFileSync(p, 'utf8');
+  const hosts = new Set();
+  for (const m of src.matchAll(CSS_URL)) hosts.add(m[1].split('/')[0].split(':')[0]);
+  for (const m of src.matchAll(JS_RESOURCE_CALL)) {
+    const host = m[1] || m[2];
+    hosts.add(host.split('/')[0].split(':')[0]);
+  }
   for (const h of [...hosts]) if (OWN_HOST.test(h)) hosts.delete(h);
   if (hosts.size) fail(p, `references offsite host(s): ${[...hosts].join(', ')}`);
 }

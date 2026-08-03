@@ -1,15 +1,17 @@
 # 20 — Seating Chart Generator
 
 You are working on the Seating Chart Generator, a classroom tool on greyversusblue.com under the
-board's "Town Services" section. It builds classroom seating charts. Round 2 closed all four of
-the previous round's tasks: named room zones with a real solver constraint, four layout presets,
-print-all-sections, and inverting its own now-stale test assertion. This prompt is self-contained.
+board's "Town Services" section. It builds classroom seating charts. **Round 3 fixed the rotated
+desk labels (they now counter-rotate so text stays upright) and this project's own
+Playwright-only test bugs (three of them, one beyond what was originally flagged).** This is the
+first refresh with genuinely nothing carried over from this project's own work. This prompt is
+self-contained.
 
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Tools/Seating Chart Generator.html` (1,437 lines)
+- `Tools/Seating Chart Generator.html` (1,444 lines)
 - `Tools/seating-chart/` — `seating.mjs` (pure logic, no DOM), `test/smoke-seating.mjs`,
   `test/drive-seating.mjs`, `fonts/`, `README.md`, `.gitignore`, `shots/`
 
@@ -43,14 +45,16 @@ silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file, including the student-data section.
-2. **`Claude Prompts/notes/20-seating-chart-generator-notes.md`** — round 2's session: room zones
-   with a real solver constraint, four layout presets, print-all-sections, and its own test-assertion
-   inversion. Round 1's notes are archived at
+2. **`Claude Prompts/notes/20-seating-chart-generator-notes.md`** — round 3's session: the rotated
+   desk-label counter-rotation fix and the three Playwright-only bugs in this project's own
+   `test/drive-seating.mjs`. Round 2's notes are archived at
+   `Claude Prompts/archive/round-2/notes/20-seating-chart-generator-notes.md` — room zones with a
+   real solver constraint, four layout presets, print-all-sections, and its own test-assertion
+   inversion. Round 1's are at
    `Claude Prompts/archive/round-1/notes/20-seating-chart-generator-notes.md` — the original save
    adoption, the rewritten print stylesheet, keyboard operation, the two solver bugs.
 3. `assets/js/gvb-save.js` and `assets/js/README.md`.
-4. `gvb-site-handoff-v9.md` §3 (a bug **found in your own `test/drive-seating.mjs`** this refresh,
-   not fixed there — see below) and §10 (locked decisions #51-53).
+4. `gvb-site-handoff-v10.md` §10 (locked decisions, through #58).
 5. Locked decision #3 in `gvb-site-handoff-v1.md` §3: "Town Services means schoolhouse tools."
 
 ## Student data: this is the part that matters
@@ -94,50 +98,40 @@ coordinates would be exactly the guess the room model exists to avoid.
 of every section's floor into one holder, one page per section with `page-break-after: always`.
 Falls back to the existing single-print path below two sections.
 
-**`Tools/seating-chart/test/smoke-seating.mjs`, 153 assertions** (was 123), **all passing** — the
-construction-time-throw assertion this project's own notes flagged as needing inversion is
-inverted and confirmed clean this refresh (`153 passed, 0 failed`). Not outstanding.
-`test/drive-seating.mjs`, **108 checks** (was 81).
+**`Tools/seating-chart/test/smoke-seating.mjs`, 153 assertions, all passing.**
+`test/drive-seating.mjs`, **111 checks, all passing** — fixed this round, see below.
 
-**A real, newly-found bug in this project's own test file, not previously flagged: `test/drive-
-seating.mjs` uses two Playwright-only methods that don't exist under this environment's
-`puppeteer-core`**, not covered by prompt 22's fix (project-owned test files are out of its
-boundary). Confirmed by direct run this refresh: `TypeError: page.isHidden is not a function`, at
-lines 80 and 394 (`page.isHidden('#bootWarn')`), and `page.textContent(...)` at lines 82 and 396.
-See task one.
+**Rotated desk labels counter-rotate now**, so text stays upright regardless of the desk's own
+rotation — fixed at both call sites (`renderFloor()` and `buildSectionPrintHTML()`) via a
+`rotate(${-d.rot}deg)` counter-transform. If a future preset or render path adds a new place a desk
+gets drawn, this fix needs copying there too.
+
+**All three Playwright-only bugs in this project's own `test/drive-seating.mjs` are fixed** — one
+more than originally flagged. `textContent` now imports from `Tools/board-check/drive.mjs`; a local
+`isHidden(page, sel)` helper uses `$eval`/`offsetParent` instead of the Playwright-only
+`page.isHidden()`; and a third, previously unflagged instance — `page.addInitScript()`, also
+Playwright-only — now branches to `page.evaluateOnNewDocument()` under `puppeteer-core` via a local
+helper. All three confirmed via direct code read, not just a clean test run.
 
 ## Your task
 
-Round 2 closed all four of the previous round's tasks. What's left:
-
-1. **Fix `test/drive-seating.mjs`'s Playwright-only calls** (see above). `Tools/board-check/drive.mjs`
-   exports an engine-aware `textContent(page, sel)` you can import for the two `page.textContent()`
-   calls. For `page.isHidden('#bootWarn')`, there's no ready-made replacement in `drive.mjs` — the
-   simplest fix is `await page.$eval('#bootWarn', el => el.offsetParent === null)` or an equivalent
-   direct check, since `isHidden` itself is a Playwright convenience with no puppeteer-core
-   equivalent. Verify per locked decision #34.
-2. **Rotated desk labels**, if the rotate control is actually getting used — the horseshoe preset's
-   side legs are the first case in this tool's history where rotation is applied automatically
-   rather than by a teacher's own click, so it's worth checking whether that changes the answer to
-   "does anyone rotate desks" from round 1's "watch for ten minutes first."
-3. **The four pages still hotlinking Google Fonts** (`index.html`, `404.html`,
-   `Projects/daredevil_r4.html`, `Projects/Ren-Faire-Claude/index.html`) as of round 1's check —
-   re-verify this is still accurate before citing it; several of these have since been fixed by
-   other threads (Daredevil restructured, for one). Not this project's files regardless.
-4. Nothing else outstanding from the round-1 or round-2 task lists remains beyond items 1-2 above.
+**This is the first refresh with nothing carried over from this project's own work.** If your own
+pass turns up something new, add it here. The two items round 1 raised and every round since
+re-verified without acting on (whether anyone rotates desks enough to matter; the four pages that
+used to hotlink Google Fonts, none of them this project's own files) are stale carryovers from
+other projects' work, not this one's — check `gvb-site-handoff-v10.md`'s backlog table rather than
+this file if you want their current status.
 
 ## Verification
 
-- `node Tools/seating-chart/test/smoke-seating.mjs` → **153 passed, 0 failed** (confirmed clean as
-  of this refresh — not outstanding).
-- `node Tools/seating-chart/test/drive-seating.mjs` → currently **aborts** on the bug in task one
-  above. Fix that first, then expect 108 checks, 0 failed.
+- `node Tools/seating-chart/test/smoke-seating.mjs` → **153 passed, 0 failed**.
+- `node Tools/seating-chart/test/drive-seating.mjs` → **111 checks, 0 failed**.
 - `node assets/js/gvb-save.test.mjs` → 50 passed, 0 failed.
 - `cd Tools/board-check && npm run tools` → 18 checks, 0 failed.
-- `cd Tools/board-check && npm run check` → as of this refresh: **335 units checked, 0 broken; 0
-  collisions, tightest vertical gap 3.5px.**
-- `npm run social:check` → **17 notices, 17 already current** (dropped from 22 this round — a real,
-  correct count, not a regression; the parse failure that blocked this check previously is fixed).
+- `cd Tools/board-check && npm run check` → as of this refresh: **559 units checked, 0 broken; 0
+  collisions, tightest vertical gap 9.1px.** (The unit count moves every round as files are added
+  elsewhere in the repo; 0 broken is what matters.)
+- `npm run social:check` → **18 notices, 18 already current** (Orbital's card joined this round).
 - Locked decision #34 still applies to anything new you add.
 
 Scheduling note: `npm run games`, `npm run play` and `npm run previews` open real visible browser

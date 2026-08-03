@@ -1,15 +1,27 @@
 # 12 — Coffee Shop Sim (Corner & Kettle)
 
-You are working on Corner & Kettle, a coffee shop management sim on greyversusblue.com. Round
-2 closed five tasks in one session: the flat difficulty curve at high prestige, the mid-shift
-reload exploit, baristas auto-serving instead of handing off, station keyboard shortcuts, and
-its own stale test assertion. This prompt is self-contained.
+You are working on Corner & Kettle, a coffee shop management sim on greyversusblue.com. Round 3
+fixed `test/drive-save.mjs`'s own `waitForFunction` engine-mismatch bug (9 instances, not the 8 a
+grep first found — one was a multi-line call the pattern missed) and found a real design question
+worth Devon's attention — see "Questions for Devon." This prompt is self-contained.
+
+## Questions for Devon
+
+- **Should the Serve button require full completion, now that baristas — not the player — are the
+  main path to a finished cup?** Round 3 measured a patient server (waits for every order to fully
+  complete before serving) at 100% accuracy and $309 net on a representative day, against an eager
+  server (serves as soon as `cupMatchesEnough()` allows) at 46% accuracy, falling reputation, and
+  $77 net on an otherwise-identical day. Right now the accuracy/reputation hit from serving early is
+  the only thing discouraging it — is that the intended consequence, or should the gate itself
+  tighten to `orderIsComplete()`-level strictness, or should there be a UI cue ("still missing: X")
+  instead of a hard gate? Any of the three is a real answer; leaving it as-is is also a legitimate
+  answer if the accuracy hit is doing its job.
 
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Projects/coffee_shop_sim.html` (2,562 lines)
+- `Projects/coffee_shop_sim.html` (2,542 lines)
 - `Projects/corner-and-kettle/` — `fonts/` (vendored, done), `js/save.js` (the save schema),
   `test/` (`smoke-save.mjs`, `drive-save.mjs`)
 - Any new folder you create under `Projects/` **named for this game**
@@ -42,12 +54,15 @@ edit will be silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file.
-2. **`Claude Prompts/notes/12-coffee-shop-sim-notes.md`** — round 2's session: prestige-based
-   difficulty floors, the mid-shift reload fix, baristas no longer auto-serving, keyboard
-   shortcuts, and the stale test assertion inverted. Round 1's notes are archived at
+2. **`Claude Prompts/notes/12-coffee-shop-sim-notes.md`** — round 3's session: fixed
+   `test/drive-save.mjs`'s own `waitForFunction` bug (see below) and measured the Serve-button
+   early-enable gate (see "Questions for Devon"). Round 2's notes are archived at
+   `Claude Prompts/archive/round-2/notes/12-coffee-shop-sim-notes.md` — prestige-based difficulty
+   floors, the mid-shift reload fix, baristas no longer auto-serving, keyboard shortcuts, and the
+   stale test assertion inverted. Round 1's are at
    `Claude Prompts/archive/round-1/notes/12-coffee-shop-sim-notes.md` — fonts, the original save
    adoption, the seven save bugs, and the difficulty audit that found what round 2 fixed.
-3. `gvb-site-handoff-v9.md` §10 (locked decisions — #51-53 new) and §8 (backlog state).
+3. `gvb-site-handoff-v10.md` §10 (locked decisions, through #58) and §8 (backlog state).
 4. `assets/js/gvb-save.js` and `assets/js/README.md`.
 5. `Projects/corner-and-kettle/js/save.js` and its two test suites.
 
@@ -69,11 +84,12 @@ edit will be silently overwritten. A wrong description is a board request.
 - **`gvb-save.js`'s storage-construction gaps are fixed, and `mountSaveBar` takes `filename`/`labels`
   overrides** (locked decisions #47-49). Your own round-1 requests, both applied and confirmed
   fixed this round.
-- **A `page.waitForFunction(fn, null, opts)` call is Playwright's shape, not puppeteer-core's** —
-  fixed this round in every shared `Tools/board-check` file, but **not in your own
-  `test/drive-save.mjs`**, which has 8 separate instances of the identical pattern (confirmed by
-  direct grep this refresh: lines 93, 160, 166, 226, 265, 344, 424, 530). That file is yours, not
-  `Tools/board-check`'s, so prompt 22's fix didn't touch it — see task one.
+- **A `page.waitForFunction(fn, null, opts)` call is Playwright's shape, not puppeteer-core's**
+  (locked decision #52) — fixed in every shared `Tools/board-check` file since round 2, and, as of
+  this round, in this project's own `test/drive-save.mjs` too (9 instances, not the 8 a plain grep
+  found — one was a multi-line call the simple pattern missed). Verified against a real reproduction
+  on `puppeteer-core`, not just a re-run. If you add a new call in this file, use `drive.mjs`'s
+  `waitFor`/`wait`/`textContent` helpers, not a bare Playwright-shaped call.
 - **A real-time or timing-based assertion failing under this environment's Linux/software-rendered
   Chromium is inconclusive, not confirmed** (locked decision #53). This game is 2D DOM, not
   three.js, so less exposed, but worth knowing if `drive-save.mjs` behaves inconsistently.
@@ -110,54 +126,49 @@ modal's button is clicked now calls `startNextDay()` immediately on load, rather
 **Keyboard shortcuts exist.** Digits 1-7 switch station tabs, `S` serves the focused station, both
 discoverable via `title`/`aria-keyshortcuts`.
 
-**Both test suites pass clean, including the assertion that used to be a known gap.**
-`smoke-save.mjs` → **166 passed, 0 failed** (confirmed fresh this refresh — the "blocked storage"
-assertion that used to expect the *old*, buggy `load()` behavior is inverted and passing, not
-outstanding). `drive-save.mjs` → **90 checks, 0 failed** (confirmed fresh this refresh, though see
-task one — this suite's own `waitForFunction` calls are the puppeteer-incompatible shape and
-haven't hit a run where that mattered yet in this environment, possibly by luck rather than by
-being fixed).
+**Both test suites pass clean.** `smoke-save.mjs` → **166 passed, 0 failed**. `drive-save.mjs` →
+**90 checks, 0 failed**, and as of this round its own `waitForFunction` calls are genuinely fixed
+(9 instances), not just untested-and-lucky.
+
+**The Serve-button early-enable gate was measured this round, not tuned by feel** — see "Questions
+for Devon." Patient serving: 100% accuracy, $309 net. Eager serving (as soon as
+`cupMatchesEnough()` allows): 46% accuracy, falling reputation, $77 net. Real difference, not
+noise, on an otherwise-identical day.
 
 **Preview and OG card both exist.**
 
 ## Your task
 
-Round 2 closed five real tasks in one session. What's left:
+Round 3 fixed the `drive-save.mjs` engine bug and raised the Serve-gate question. What's left:
 
-1. **Fix `test/drive-save.mjs`'s own 8 instances of the `waitForFunction(fn, null, opts)` bug** —
-   the same pattern that broke `npm run games` for every other project this round, in a file
-   that's yours and that prompt 22's fix didn't reach. `Tools/board-check/drive.mjs` exports
-   `waitFor(page, fn, opts)`, `wait(ms)`, and `textContent(page, sel)` as engine-aware
-   replacements — import them (you already import other things from `harness.mjs`/`drive.mjs`
-   presumably) and swap each `p.waitForFunction(fn, null, {timeout})` for `waitFor(p, fn,
-   {timeout})`. Verify per locked decision #34 the same way every other project verified this fix.
-2. **Re-measure the day-10 (and maybe day-20, prestige-1) full-playthrough numbers now that tasks
-   one and four from the previous round have landed.** This is the actual answer to "did the
-   balance work work," and it needs a scripted player, not a fast-forwarded clock — a human now has
-   to click Serve on everything three baristas prep, where before it was hands-off. Compare against
-   round 1's `offered 41 · served 45 · net $2,353 · 99% accuracy`.
+1. **Once Devon answers the Serve-gate question, build whichever shape was chosen** (tighter gate,
+   a UI cue, or confirm leave-as-is) — see "Questions for Devon" above.
+2. **Re-measure the day-10 (and maybe day-20, prestige-1) full-playthrough numbers**, factoring in
+   both the hand-off change (round 2) and whatever the Serve-gate question above resolves to. This
+   is the actual answer to "did the balance work work," and it needs a scripted player, not a
+   fast-forwarded clock. Compare against round 1's `offered 41 · served 45 · net $2,353 · 99%
+   accuracy`.
 3. **Check whether the barista fumble chance needs retuning** now that a human confirms every
    serve instead of the barista's own accuracy being the only check. Fold into item 2's
    measurement.
 4. **Per-station-content keyboard shortcuts** (a milk type, a syrup), only if full keyboard play
    becomes a real goal — the station tabs and Serve already have shortcuts; picks inside a station
    don't yet, and would need a per-tab legend since contents change per tab.
-5. **`npm run games` still doesn't cover this game** — unchanged from round 1, still prompt 22's
+5. **`npm run games` still doesn't cover this game** — unchanged since round 1, still prompt 22's
    file to touch if this game ever joins that suite.
 
 ## Verification
 
-- `node Projects/corner-and-kettle/test/smoke-save.mjs` → **166 passed, 0 failed** (confirmed clean
-  as of this refresh — not outstanding).
-- `node Projects/corner-and-kettle/test/drive-save.mjs` → **90 checks, 0 failed**, but see task one
-  above before trusting this stays true.
+- `node Projects/corner-and-kettle/test/smoke-save.mjs` → **166 passed, 0 failed**.
+- `node Projects/corner-and-kettle/test/drive-save.mjs` → **90 checks, 0 failed**, engine-mismatch
+  bug fixed as of this round.
 - `node assets/js/gvb-save.test.mjs` → 50 passed, 0 failed.
 - If you re-measure the playthrough table, put the new numbers next to round 1's old ones in your
   notes — a claim without a before/after isn't verification.
-- `cd Tools/board-check && npm run check` → as of this refresh: **335 units checked, 0 broken, 0
-  collisions, tightest vertical gap 3.5px.**
-- `npm run social:check` → **17 notices, 17 already current** (dropped from 22 this round — a real,
-  correct count, not a regression).
+- `cd Tools/board-check && npm run check` → as of this refresh: **559 units checked, 0 broken, 0
+  collisions, tightest vertical gap 9.1px.** (The unit count moves every round as files are added
+  elsewhere in the repo; 0 broken is what matters.)
+- `npm run social:check` → **18 notices, 18 already current** (Orbital's card joined this round).
 - Locked decision #34: for any new guard-rail, break the thing on purpose first and watch it fail.
 
 Scheduling note: `npm run games`, `npm run play` and `npm run previews` open real visible browser

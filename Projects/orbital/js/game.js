@@ -196,7 +196,10 @@ document.getElementById("btnNext").addEventListener("click", advance);
 document.getElementById("btnLevels").addEventListener("click", openLevels);
 document.getElementById("btnClose").addEventListener("click", closeLevels);
 document.getElementById("btnReset").addEventListener("click", () => { if (mode !== "fly") { resetProbe(); mode = "aim"; } });
-document.getElementById("btnWipe").addEventListener("click", () => { progress = {}; writeSave(progress); buildGrid(); updateHUD(); });
+document.getElementById("btnWipe").addEventListener("click", () => {
+  if (!confirm("Erase all saved progress? Every sector's stars will be reset. This can't be undone.")) return;
+  progress = {}; writeSave(progress); buildGrid(); updateHUD();
+});
 document.getElementById("btnStart").addEventListener("click", () => {
   document.getElementById("introScrim").classList.remove("show"); loadLevel(0);
 });

@@ -32,6 +32,9 @@ node Projects/daredevil/test/smoke-save.mjs      # fast, no browser
 node Projects/daredevil/test/smoke-page.mjs      # the real one, ~15 minutes
 node Projects/daredevil/test/transcript.mjs clean
 node Projects/daredevil/test/transcript.mjs rough
+node Projects/daredevil/test/transcript.mjs no_earl   # answers "Not interested" at the fair
+node Projects/daredevil/test/transcript.mjs no_pete   # declines the Young Wannabe
+node Projects/daredevil/test/verify-touch-375.mjs     # 375px, touch-emulated pointer input
 ```
 
 Both browser scripts take `--headed` if you want to watch. Only run one at a

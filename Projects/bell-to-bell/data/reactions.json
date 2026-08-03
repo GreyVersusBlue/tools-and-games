@@ -1,0 +1,63 @@
+{
+  "poses": {
+    "headSnap": {
+      "dur": 2.4, "attack": 0.09, "release": 1.1,
+      "aimHead": 1.0, "freeze": 1.9,
+      "note": "the look up. fast, then a slow guilty return to the paper."
+    },
+    "stow": {
+      "dur": 1.6, "attack": 0.06, "release": 0.9,
+      "torsoDip": 0.055, "headPitch": 0.30, "freeze": 1.2,
+      "note": "the phone goes under the leg. one motion, practised."
+    },
+    "slump": {
+      "dur": 3.4, "attack": 0.5, "release": 2.4,
+      "torsoDip": 0.07, "headPitch": 0.34, "aimHead": -0.35, "freeze": 2.8
+    },
+    "flinch": {
+      "dur": 1.1, "attack": 0.04, "release": 0.7,
+      "torsoDip": 0.035, "aimHead": 0.75, "freeze": 0.9
+    },
+    "glanceUp": {
+      "dur": 1.5, "attack": 0.12, "release": 0.9,
+      "headPitch": -0.22, "aimHead": 0.7, "freeze": 0.7
+    },
+    "listenUp": {
+      "dur": 3.2, "attack": 0.25, "release": 1.6,
+      "headPitch": -0.38, "freeze": 2.2
+    },
+    "settle": {
+      "dur": 2.6, "attack": 0.4, "release": 1.8,
+      "headPitch": 0.16, "freeze": 2.0
+    },
+    "leanIn": {
+      "dur": 0, "attack": 1.4, "release": 1.2, "hold": true,
+      "aimPartner": 0.55, "torsoDip": 0.02, "idleScale": 0.55
+    },
+    "headDown": {
+      "dur": 0, "attack": 1.8, "release": 1.0, "hold": true,
+      "headPitch": 0.26, "torsoDip": 0.03, "idleScale": 0.7
+    },
+    "sidelong": {
+      "dur": 0, "attack": 1.2, "release": 0.9, "hold": true,
+      "aimPartner": 0.42, "idleScale": 0.8
+    },
+    "still": {
+      "dur": 0, "attack": 2.4, "release": 1.6, "hold": true,
+      "headPitch": 0.18, "idleScale": 0.18,
+      "note": "not doing anything. that is what makes it visible, eventually."
+    }
+  },
+  "ripple": {
+    "pose": "headSnap",
+    "radius": 3.6,
+    "delayPerMetre": 0.085,
+    "scale": 0.6,
+    "skipSubject": true
+  },
+  "room": {
+    "check": { "pose": "glanceUp", "delayPerMetre": 0.04, "scale": 0.85 },
+    "reteach": { "pose": "settle", "delayPerMetre": 0.03, "scale": 0.7 },
+    "advance": { "pose": "glanceUp", "delayPerMetre": 0.05, "scale": 0.35 }
+  }
+}

@@ -19,7 +19,7 @@
 // npm run play
 
 import { serve, launch, prepPage } from './harness.mjs';
-import { attachSceneProbe, waitForProbe, walkTo as driveTo } from './drive.mjs';
+import { attachSceneProbe, waitForProbe, walkTo as driveTo, waitFor, wait, textContent } from './drive.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,7 +34,10 @@ const GAME = `${BASE}/Projects/Castle%20Conundrum/`;
 const THREE_URL = '/Projects/Castle%20Conundrum/libs/three.module.js';
 
 // Where the NPCs stand, per data/npcs.json. If those move, move these.
-const SCHOLAR = [1.5, -10.0];
+// Scholar's z was -10.0; moved to -8.0 along with the whole hall furniture
+// cluster (+2.0 m south, off the north wall his own body used to clip 0.29 m
+// into) — see data/scene-config.json's gothic_statue comment for the full story.
+const SCHOLAR = [1.5, -8.0];
 const GUARD = [1.8, 9.2];
 // The hall brazier, per data/scene-config.json's braziers[1].tile [0.85, -1.6].
 // If that moves, move this.
@@ -43,7 +46,9 @@ const HALL_BRAZIER = [3.4, -6.4];
 // Geometry the placement beats below check against. Measured from the live scene,
 // not read off the config: every one of these models arrives at its own authored
 // scale, so the hall "table" is 0.55 m tall and the "stool" next to it is 0.18 m.
-const HALL_TABLE = { min: [-0.9, 0, -10.33], max: [0.9, 0.55, -9.67] };
+// Was z -10.33..-9.67 (0.33 m inside the north wall); moved +2.0 m south with the
+// rest of the hall cluster.
+const HALL_TABLE = { min: [-0.9, 0, -8.33], max: [0.9, 0.55, -7.67] };
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
@@ -90,7 +95,7 @@ console.log('playing Castle Conundrum end to end\n');
 try {
   await page.goto(GAME, { waitUntil: 'load' });
   await page.waitForSelector('#start-overlay:not(.hidden)', { timeout: 90000 });
-  const loadStatus = await page.textContent('#loading-status');
+  const loadStatus = await textContent(page, '#loading-status');
   ok('reached the start screen', loadStatus);
 
   // Live scene + camera handles. See drive.mjs for why this has to patch
@@ -319,9 +324,96 @@ try {
     'no brazier is sealed inside the stonework',
     hall.braziers.map((b) => `${JSON.stringify(b.at)}${b.inside ? ' IN ' + b.inside : ''}`).join(' '));
 
+  // --- The closed gate door actually crosses the archway it's meant to fill.
+  // castle-builder.js's hinge-pivot math derived the door's world position
+  // assuming rotationY = 0; this config's gate uses rotationY = 180 (matching
+  // every wallRun that flanks the archway, all rotated 180 too so their faces
+  // point into it), and the un-rotated formula put the whole leaf on the wrong
+  // side of world x 0 entirely — world x [-5.4, -1.8] against a centered
+  // [-2, 2] archway, never blocking anything in any quest state or appearing
+  // in any capture frame, regardless of what "closed" or "open" meant.
+  const gateDoorBox = await page.evaluate(async () => {
+    const THREE = await import('/Projects/Castle%20Conundrum/libs/three.module.js');
+    let found = null;
+    window.__scene.children.forEach((c) => {
+      if (found || /^(wall|tower|column)/.test(c.name || '')) return;
+      const b = new THREE.Box3().setFromObject(c);
+      if (!isFinite(b.min.x)) return;
+      const cz = (b.min.z + b.max.z) / 2;
+      const width = b.max.x - b.min.x;
+      if (Math.abs(cz - 12) < 2.5 && width > 1 && width < 5 && b.max.y - b.min.y > 1) {
+        found = { min: [b.min.x, b.min.z], max: [b.max.x, b.max.z] };
+      }
+    });
+    return found;
+  });
+  assert(!!gateDoorBox && gateDoorBox.min[0] <= -1 && gateDoorBox.max[0] >= 1,
+    'the closed gate door crosses the archway it is meant to fill',
+    gateDoorBox ? `x[${gateDoorBox.min[0].toFixed(2)}, ${gateDoorBox.max[0].toFixed(2)}]` : 'not found');
+
+  // --- The hall table, the gothic statue, and the two side cabinets clear the
+  // wall behind them. Round 2 found (but did not fix) the table and the statue
+  // sitting inside the north wall — nothing had ever checked furniture against
+  // the wall, only against the table and the floor (see the checks above). This
+  // session's own sweep found two more of the same bug: GothicCabinet_01 and
+  // GothicCommode_01 were both fully sealed in the corners where the north wall
+  // meets the hall's own side walls.
+  //
+  // Deliberately NOT the "stoneBoxes" height>1.5m heuristic the brazier check
+  // above uses — the gothic statue (1.74m) and GothicCabinet_01 (2.36m) are
+  // both taller than that themselves, so that filter would count each piece of
+  // furniture as its own wall and report every one of them "embedded" against
+  // itself (caught by running this check once and seeing exactly that). Wall/
+  // tower/column pieces are the only scene children whose top-level group name
+  // starts with wall, tower or column — match on that instead.
+  const wallCheck = await page.evaluate(async () => {
+    const THREE = await import('/Projects/Castle%20Conundrum/libs/three.module.js');
+    const s = window.__scene;
+    const stoneBoxes = [];
+    for (const c of s.children) {
+      if (!/^(wall|tower|column)/.test(c.name || '')) continue;
+      const b = new THREE.Box3().setFromObject(c);
+      if (!isFinite(b.min.x)) continue;
+      stoneBoxes.push(b);
+    }
+    const findByMesh = (pattern) => {
+      let found = null;
+      s.children.forEach((c) => {
+        if (found) return;
+        let hit = false;
+        c.traverse((o) => { if (o.isMesh && pattern.test(o.name || '')) hit = true; });
+        if (hit) found = c;
+      });
+      return found;
+    };
+    const targets = {
+      table: findByMesh(/^WoodenTable_01$/),
+      statue: findByMesh(/^gothic_statue$/),
+      cabinet: findByMesh(/^GothicCabinet_01/),
+      commode: findByMesh(/^GothicCommode_01/),
+    };
+    const results = {};
+    for (const [name, obj] of Object.entries(targets)) {
+      if (!obj) { results[name] = 'not found'; continue; }
+      const b = new THREE.Box3().setFromObject(obj);
+      let embedded = false;
+      for (const sb of stoneBoxes) {
+        const ox = Math.min(b.max.x, sb.max.x) - Math.max(b.min.x, sb.min.x);
+        const oy = Math.min(b.max.y, sb.max.y) - Math.max(b.min.y, sb.min.y);
+        const oz = Math.min(b.max.z, sb.max.z) - Math.max(b.min.z, sb.min.z);
+        if (ox > 0 && oy > 0 && oz > 0) { embedded = true; break; }
+      }
+      results[name] = embedded ? 'EMBEDDED' : 'clear';
+    }
+    return results;
+  });
+  assert(Object.values(wallCheck).every((v) => v === 'clear'),
+    'the hall table, statue, cabinet and commode all clear the wall behind them',
+    JSON.stringify(wallCheck));
+
   // --- Start. A real trusted click is what pointer lock requires.
   await page.click('#start-button');
-  await page.waitForTimeout(600);
+  await wait(600);
   let s = await state();
   assert(s.locked, 'pointer lock engaged');
   if (!s.locked) throw new Error('without pointer lock there is nothing left to test — is this running headed?');
@@ -338,7 +430,7 @@ try {
   const yaw0 = await page.evaluate(() => +window.__cam.rotation.y.toFixed(4));
   await page.mouse.move(700, 400);
   await page.mouse.move(500, 400);
-  await page.waitForTimeout(200);
+  await wait(200);
   const yaw1 = await page.evaluate(() => +window.__cam.rotation.y.toFixed(4));
   assert(yaw0 !== yaw1, 'mouse look turns the camera', `${yaw0} -> ${yaw1}`);
 
@@ -349,14 +441,14 @@ try {
   if (!toScholar) throw new Error('cannot continue without reaching the Scholar');
 
   await page.keyboard.press('KeyE');
-  await page.waitForTimeout(400);
+  await wait(400);
   s = await state();
   assert(s.dialogueOpen && s.dialogueName === 'Scholar', 'E opened the Scholar dialogue', s.dialogueName);
   await snap('scholar-dialogue');
 
   for (let i = 0; i < 5 && !(await state()).riddleOpen; i++) {
     await page.keyboard.press('KeyE');
-    await page.waitForTimeout(350);
+    await wait(350);
   }
   s = await state();
   assert(s.riddleOpen, 'dialogue ran out into the riddle overlay');
@@ -367,18 +459,18 @@ try {
   // Wrong answers: distinct responses, and the hint from the second one on.
   await page.fill('#riddle-input', 'a door');
   await page.press('#riddle-input', 'Enter');
-  await page.waitForTimeout(300);
-  const wrong1 = await page.textContent('#riddle-feedback');
+  await wait(300);
+  const wrong1 = await textContent(page, '#riddle-feedback');
   await page.fill('#riddle-input', 'the sky');
   await page.press('#riddle-input', 'Enter');
-  await page.waitForTimeout(300);
-  const wrong2 = await page.textContent('#riddle-feedback');
+  await wait(300);
+  const wrong2 = await textContent(page, '#riddle-feedback');
   assert(!!wrong1 && wrong1 !== wrong2, 'wrong answers give escalating responses');
   assert(/Hint:/.test(wrong2), 'the second wrong answer adds the hint');
 
   await page.fill('#riddle-input', 'Keyboard');
   await page.press('#riddle-input', 'Enter');
-  await page.waitForTimeout(700);
+  await wait(700);
   s = await state();
   assert(!s.riddleOpen, 'the right answer closed the riddle');
   assert(/Keystone/.test(s.objective), 'objective advanced to the Keystone', JSON.stringify(s.objective));
@@ -386,7 +478,7 @@ try {
   await snap('keystone');
 
   // --- Guard.
-  if (!s.locked) { await page.click('#start-button'); await page.waitForTimeout(400); }
+  if (!s.locked) { await page.click('#start-button'); await wait(400); }
   const toGuard = await walkTo(GUARD, 'Guard');
   assert(!!toGuard, 'walked to the Guard', toGuard ? `${toGuard.dist}m after ${toGuard.bursts} bursts` : 'never got in range');
   await snap('at-guard');
@@ -416,25 +508,26 @@ try {
     visible.blockedBy ? `blocked by ${visible.blockedBy}` : `${visible.dist}m, clear`);
 
   await page.keyboard.press('KeyE');
-  await page.waitForTimeout(400);
+  await wait(400);
   s = await state();
   assert(s.dialogueOpen && s.dialogueName === 'Guard', 'E opened the Guard dialogue', s.dialogueName);
 
   for (let i = 0; i < 5 && (await state()).dialogueOpen; i++) {
     await page.keyboard.press('KeyE');
-    await page.waitForTimeout(350);
+    await wait(350);
   }
   s = await state();
   assert(/gate is open/i.test(s.objective), 'the gate opened', JSON.stringify(s.objective));
   await snap('gate-opening');
 
   let victory = true;
-  await page.waitForFunction(
+  await waitFor(
+    page,
     () => !document.getElementById('victory-screen').classList.contains('hidden'),
-    null, { timeout: 10000 }
+    { timeout: 10000 }
   ).catch(() => { victory = false; });
   assert(victory, 'victory screen appeared');
-  await page.waitForTimeout(400);
+  await wait(400);
   await snap('victory');
 
   // --- Nothing broke, and nothing reached for a CDN.

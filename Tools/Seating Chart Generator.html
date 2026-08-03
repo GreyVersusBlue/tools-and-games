@@ -1004,8 +1004,14 @@ function renderFloor(){
     const label = st
       ? `Seat ${i + 1} of ${total}, ${st.name}${st.flag ? ', flagged' : ''}${d.locked ? ', pinned' : ''}${d.zone ? `, ${ZONE_LABEL[d.zone]} zone` : ''}`
       : `Seat ${i + 1} of ${total}, empty${d.zone ? `, ${ZONE_LABEL[d.zone]} zone` : ''}`;
+    // The desk box rotates as a whole so its shape reads correctly in the floor
+    // plan (a horseshoe's side legs, say). Counter-rotating just the name back
+    // to level keeps it wrapping the same two lines a straight desk would, not
+    // that wrapped text tipped on its side — the readable half of the desk, not
+    // the shape half.
+    const seatStyle = d.rot ? ` style="transform:rotate(${-d.rot}deg)"` : '';
     node.innerHTML =
-        `<button class="seat" data-id="${d.id}" aria-label="${esc(label)}"${st ? ' draggable="true"' : ''}>`
+        `<button class="seat"${seatStyle} data-id="${d.id}" aria-label="${esc(label)}"${st ? ' draggable="true"' : ''}>`
       +   (st ? esc(st.name) : 'empty')
       + `</button>`
       + `<span class="selnote">moving</span>`
@@ -1302,8 +1308,9 @@ function buildSectionPrintHTML(s){
     const cls = 'desk ' + (st ? 'assigned' : 'empty') + (d.locked ? ' locked' : '');
     const x = d.x - box.x + pad, y = d.y - box.y + topRoom;
     const rot = d.rot ? `transform:rotate(${d.rot}deg);` : '';
+    const seatRot = d.rot ? ` style="transform:rotate(${-d.rot}deg)"` : '';
     return `<div class="${cls}" style="left:${x}px;top:${y}px;${rot}">`
-      + `<button class="seat" tabindex="-1">${st ? esc(st.name) : ''}</button>`
+      + `<button class="seat" tabindex="-1"${seatRot}>${st ? esc(st.name) : ''}</button>`
       + (d.locked ? `<span class="lockbadge" aria-hidden="true">pinned</span>` : '')
       + `</div>`;
   }).join('');

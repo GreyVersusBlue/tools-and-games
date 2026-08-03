@@ -26,7 +26,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { publishFromFixture, generatorPath } from './publish.mjs';
 import { EXPECTED, fixtureProject } from './fixture-northwind.mjs';
-import { serve, launch, prepPage } from '../../board-check/harness.mjs';
+import { serve, launch, prepPage, SITE } from '../../board-check/harness.mjs';
+import { spliceSocialBlock } from './splice-social-block.mjs';
 
 const PORT = 8138;
 
@@ -72,7 +73,13 @@ eq(run.applied.groups, EXPECTED.groups.length, `fixture imports ${EXPECTED.group
 const fontsLive = await run.page.evaluate(async () => {
   const want = [['DM Sans', '600'], ['DM Mono', '400'],
                 ['Fraunces', '600'], ['Public Sans', '400']];
-  await Promise.all(want.map(([f, w]) => document.fonts.load(`${w} 16px "${f}"`)));
+  // A missing file rejects with NetworkError, and an unhandled rejection here
+  // takes the whole run down instead of failing the four assertions below.
+  // Locked decision #34's point exactly: a test that crashes reads as "the
+  // harness broke", not "the fonts are gone". Let each load settle and let
+  // the FontFaceSet check be the thing that reports.
+  await Promise.all(want.map(([f, w]) =>
+    document.fonts.load(`${w} 16px "${f}"`).catch(() => null)));
   await document.fonts.ready;
   const loaded = ([family, weight]) => {
     for (const face of document.fonts) {
@@ -219,6 +226,32 @@ eq(sim.steps, 3, 'stepCount() is modCount-1 (4 blocks → 3 transitions)');
 ok(!sim.closedActive, 'PlaybackController.close() deactivates playback');
 ok(run.page.__errs.length === 0, 'no console/page errors from driving playback + collision simulation',
    run.page.__errs.join('\n        '));
+
+/* ── 2a. brBuildPublishedHTML()'s optional social-block passthrough ────── */
+// brBuildPublishedHTML() builds its own <head> from scratch and, until this
+// was added, never emitted a gvb:social block at all — regenerating
+// schedule-browser.html from real data would have wiped the block that file
+// carries today (locked decision #31), silently. The fix is an optional
+// argument, emitted verbatim when supplied and omitted entirely otherwise, so
+// a teacher's own private download (brPublish(), which passes nothing) never
+// gets greyversusblue.com's canonical URL baked into it. Pure string
+// assembly — no real school data needed to prove it.
+const SAMPLE_SOCIAL = '<!-- gvb:social:start -->\n'
+  + '<meta property="og:title" content="smoke-test-marker">\n'
+  + '<!-- gvb:social:end -->';
+const socialTest = await run.page.evaluate(sample => {
+  const noArg = window.brBuildPublishedHTML();
+  const withArg = window.brBuildPublishedHTML(sample);
+  return {
+    noArgHasMarkers: noArg.includes('gvb:social:start'),
+    withArgHasBlock: withArg.includes(sample),
+    order: withArg.indexOf('</title>') < withArg.indexOf(sample)
+      && withArg.indexOf(sample) < withArg.indexOf('<style>'),
+  };
+}, SAMPLE_SOCIAL);
+ok(!socialTest.noArgHasMarkers, 'brBuildPublishedHTML() with no argument emits no gvb:social block');
+ok(socialTest.withArgHasBlock, 'brBuildPublishedHTML(block) emits the given block verbatim');
+ok(socialTest.order, 'the passed-through block lands between </title> and <style>, matching the committed file');
 
 /* ── 3. The published file, on its own ─────────────────────────────────── */
 
@@ -398,6 +431,21 @@ ok(committed.teachers > 0, `committed browser still has its data (${committed.te
 ok(committed.hasSocial, 'committed browser still carries its gvb:social block');
 ok((page3.__blocked || []).length === 0, 'committed browser makes zero offsite requests',
    (page3.__blocked || []).join(', '));
+
+// splice-social-block.mjs against the real committed file. run.html (captured
+// in section 1, before run.close()) is a real brBuildPublishedHTML() output
+// with no social block, exactly what brPublish()'s live download produces —
+// the actual input this script is for.
+const committedRaw = fs.readFileSync(path.join(SITE, 'Tools/schedule-browser.html'), 'utf8');
+const spliced = spliceSocialBlock(run.html, committedRaw);
+ok(spliced.includes('East Middle') && spliced.includes('gvb:social:start'),
+   'splice-social-block.mjs inserts the committed file\'s real block into a fresh publish');
+ok(spliced.indexOf('</title>') < spliced.indexOf('gvb:social:start')
+   && spliced.indexOf('gvb:social:end') < spliced.indexOf('<style>'),
+   'the spliced block still lands between </title> and <style>');
+let splicedTwice = false;
+try { spliceSocialBlock(spliced, committedRaw); splicedTwice = true; } catch { /* expected */ }
+ok(!splicedTwice, 'splicing into a file that already has a block throws instead of duplicating it');
 
 // And the generator's own page, served from the site.
 await page3.goto('http://127.0.0.1:' + PORT + generatorPath(), { waitUntil: 'load' });

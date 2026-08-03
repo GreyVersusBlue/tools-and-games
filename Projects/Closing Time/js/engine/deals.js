@@ -95,7 +95,7 @@ export function writeOffer(rec, listing, price, opts) {
   };
   S.deals.push(deal);
   rec.dealId = deal.id;
-  log(`Offer written: ${fmtMoney(price)} on ${listing.address} (ask ${fmtMoney(deal.ask)}). Sent to ${DB.agents[deal.agentId].name}.`, "deal");
+  log(`Offer written: ${fmtMoney(price)} on ${listing.address} (ask ${fmtMoney(deal.ask)}). Sent to ${DB.agents[deal.agentId].name}.`, "deal", undefined, rec.recId);
   return deal;
 }
 
@@ -139,7 +139,7 @@ export function acceptDeal(deal) {
   deal.milestones.push({ day: base + deal.closeDays, type: "closing", done: false });
   deal.milestones.forEach(m => scheduleItem(m.day, `${cap(m.type)} — ${listing.address}`, m.type, deal.id));
   satisfactionDelta(rec, 8, "going under contract");
-  log(`Under contract at ${fmtMoney(deal.price)} — ${listing.address}. Closing in ${deal.closeDays} days.`, "milestone");
+  log(`Under contract at ${fmtMoney(deal.price)} — ${listing.address}. Closing in ${deal.closeDays} days.`, "milestone", undefined, rec.recId);
 }
 
 export function killDeal(deal, why, repHit = 0) {
@@ -148,8 +148,8 @@ export function killDeal(deal, why, repHit = 0) {
   if (rec) { rec.dealId = null; satisfactionDelta(rec, -12, "the deal collapsing"); }
   if (deal.listingId && S.listingsState[deal.listingId]) S.listingsState[deal.listingId].status = "onMarket";
   unschedule(it => it.ref === deal.id);
-  if (repHit) addRep(-repHit, why);
-  log(`Deal dead: ${why}`, "bad");
+  if (repHit) addRep(-repHit, why, rec && rec.recId);
+  log(`Deal dead: ${why}`, "bad", undefined, rec && rec.recId);
 }
 
 // ---------- MILESTONE RESOLUTION (called by calendar on the day) ----------
@@ -174,10 +174,10 @@ function resolveInspection(deal, rec, listing) {
     listing.hiddenIssues[i].disclosureRequired && !told.includes(i) && !newFinds.includes(i));
   if (hidden.length) {
     satisfactionDelta(rec, -20, "finding out you sat on known problems");
-    addRep(-10, "a client learned you withheld a required disclosure");
+    addRep(-10, "a client learned you withheld a required disclosure", rec.recId);
   }
   if (!newFinds.length) {
-    log(`Inspection at ${listing.address}: clean enough. The inspector seems almost disappointed.`, "");
+    log(`Inspection at ${listing.address}: clean enough. The inspector seems almost disappointed.`, "", undefined, rec.recId);
     return { ok: true };
   }
   const worst = newFinds.map(i => listing.hiddenIssues[i]).sort((a, b) => sevRank(b) - sevRank(a))[0];
@@ -205,10 +205,10 @@ export function inspectionDecision(deal, decision, totalCost) {
     const odds = 0.35 + (1 - agent.counterAggression) * 0.4 + knowledgeEdge(listing.neighborhood) * 0.15;
     if (rand() < odds) {
       deal.price -= askCredit;
-      log(`${agent.name} grumbles but concedes a ${fmtMoney(askCredit)} repair credit. "${pickHook(agent, "accept")}"`, "deal");
+      log(`${agent.name} grumbles but concedes a ${fmtMoney(askCredit)} repair credit. "${pickHook(agent, "accept")}"`, "deal", undefined, rec.recId);
       satisfactionDelta(rec, 10, "you fighting for a repair credit");
     } else {
-      log(`${agent.name} refuses any credit. "${pickHook(agent, "reject")}"`, "bad");
+      log(`${agent.name} refuses any credit. "${pickHook(agent, "reject")}"`, "bad", undefined, rec.recId);
       const c = contentClient(rec);
       if (rand() < 0.35) { killDeal(deal, `${c.name} wouldn't proceed without a credit.`); return; }
       satisfactionDelta(rec, -6, "eating the repair costs");
@@ -220,7 +220,7 @@ export function inspectionDecision(deal, decision, totalCost) {
 
 function resolveAppraisal(deal, rec, listing) {
   const appr = appraisalFor(deal.price, trueValue(listing));
-  if (appr >= deal.price) { log(`Appraisal on ${listing.address}: at value. The lender exhales.`, ""); return { ok: true }; }
+  if (appr >= deal.price) { log(`Appraisal on ${listing.address}: at value. The lender exhales.`, "", undefined, rec.recId); return { ok: true }; }
   const gap = Math.round(deal.price - appr);
   S.choiceQueue.push({
     kind: "appraisalGap", dealId: deal.id, gap,
@@ -235,7 +235,7 @@ export function appraisalDecision(deal, decision, gap) {
   const agent = DB.agents[deal.agentId];
   if (decision === "cover") {
     if (deal.price <= rec.budget) { // client can find the cash if still within stretch
-      log(`${contentClient(rec).name} covers the ${fmtMoney(gap)} gap in cash. Nobody enjoys this.`, "deal");
+      log(`${contentClient(rec).name} covers the ${fmtMoney(gap)} gap in cash. Nobody enjoys this.`, "deal", undefined, rec.recId);
       satisfactionDelta(rec, -5, "covering an appraisal gap");
     } else { killDeal(deal, "the appraisal gap was more cash than the buyer could raise."); }
     return;
@@ -244,7 +244,7 @@ export function appraisalDecision(deal, decision, gap) {
     const odds = 0.3 + (1 - agent.tolerance * 10) * 0 + (S.listingsState[listing.id].dom > 40 ? 0.25 : 0.05) + (1 - agent.counterAggression) * 0.3;
     if (rand() < odds) {
       deal.price -= gap;
-      log(`${agent.name} drops the price to appraisal. "${pickHook(agent, "accept")}"`, "deal");
+      log(`${agent.name} drops the price to appraisal. "${pickHook(agent, "accept")}"`, "deal", undefined, rec.recId);
       satisfactionDelta(rec, 12, "you saving the deal at the appraised price");
     } else {
       killDeal(deal, `${agent.name} wouldn't budge to appraisal. "${pickHook(agent, "reject")}"`);
@@ -262,7 +262,7 @@ function resolveFinancing(deal, rec) {
     killDeal(deal, `${contentClient(rec).name}'s financing fell through at the eleventh hour.`);
     return { ok: false };
   }
-  log(`Financing clear for ${contentClient(rec).name}. The underwriter found no further feelings to have.`, "");
+  log(`Financing clear for ${contentClient(rec).name}. The underwriter found no further feelings to have.`, "", undefined, rec.recId);
   return { ok: true };
 }
 
@@ -272,18 +272,18 @@ function resolveClosing(deal, rec, listing) {
   const gross = deal.price * 0.03;
   const split = DB.brokerages[S.brokerageId].commissionSplit;
   const net = gross * split;
-  addCash(net, `commission — ${listing.address} closed at ${fmtMoney(deal.price)}`);
+  addCash(net, `commission — ${listing.address} closed at ${fmtMoney(deal.price)}`, rec.recId);
   S.stats.closed++; S.stats.volume += deal.price;
   const xp = { starter: 40, mid: 70, luxury: 120 }[listing.tier] || 40;
-  addXP(xp, "closed a " + listing.tier + " purchase");
+  addXP(xp, "closed a " + listing.tier + " purchase", rec.recId);
   // Final satisfaction: fit + budget respect
   const fit = fitScore(rec, listing);
   satisfactionDelta(rec, Math.round((fit - 55) / 3), "how well the house actually fits");
   if (deal.price <= rec.budget * 0.97) satisfactionDelta(rec, 5, "coming in under budget");
   rec.status = "closedBuyer"; rec.dealId = null;
   const c = contentClient(rec);
-  addRep(Math.max(1, Math.round((rec.satisfaction - 50) / 8)), `${c.name} closed on a home (satisfaction ${rec.satisfaction})`);
-  log(`CLOSED: ${c.name} — ${listing.address}, ${fmtMoney(deal.price)}. Keys, tears, a fruit basket.`, "milestone");
+  addRep(Math.max(1, Math.round((rec.satisfaction - 50) / 8)), `${c.name} closed on a home (satisfaction ${rec.satisfaction})`, rec.recId);
+  log(`CLOSED: ${c.name} — ${listing.address}, ${fmtMoney(deal.price)}. Keys, tears, a fruit basket.`, "milestone", undefined, rec.recId);
   rollReferral(rec);
   return { ok: true, closed: true };
 }

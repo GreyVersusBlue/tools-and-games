@@ -46,18 +46,14 @@ overwritten.
 ## Required reading
 
 1. This whole file.
-2. **`Claude Prompts/notes/08-golden-hour-notes.md` — round 2's session**: wading depth that
-   rides the tide, a second sand texture to break tiling, footprints in wet sand — 4 of 5
-   backlog items done with zero new asset bytes, plus a real repo-wide bug you found and reported
-   (see below). Round 1's notes are archived at
+2. **`Claude Prompts/notes/08-golden-hour-notes.md` — round 3's session**: dune grass rebuilt as
+   camera-facing quads (was `LineSegments`), the last obviously-flat-looking thing on this project.
+   Round 2's notes are archived at `Claude Prompts/archive/round-2/notes/08-golden-hour-notes.md` —
+   wading depth that rides the tide, the second sand texture, footprints in wet sand, and the
+   `waitForFunction` bug this project helped find and report. Round 1's are at
    `Claude Prompts/archive/round-1/notes/08-golden-hour-notes.md`.
-3. **`gvb-site-handoff-v9.md` §10 (locked decisions — #51-53 new this round) and §8 (backlog
-   state).** §3 documents the `waitForFunction`/`waitForTimeout`/`textContent` engine-mismatch bug
-   **you found and reported this round**, jointly with Closing Time and The Fourth Quarter — it's
-   fixed now. §4 documents a follow-on finding directly relevant to your own new beats: this
-   sandbox's software-rendered three.js is too slow/inconsistent for real-time movement assertions
-   to be trusted here (locked decision #53) — this is why your own wading/footprint beats couldn't
-   be fully verified this round even after the crash was fixed.
+3. **`gvb-site-handoff-v10.md` §1 (the wading-beat fix — read this before touching the beat again,
+   see below) and §10 (locked decisions, through #58) and §8 (backlog state).**
 4. `gvb-site-handoff-v8.md` §2, §5, §6 (still-relevant history on the offsite-measurement fix, the
    `play-games.mjs` beats, and the preview recapture).
 5. `gvb-site-handoff-v7.md` §5 — entirely about this project, source of locked decision #42.
@@ -91,14 +87,21 @@ overwritten.
 - **Verify a guard-rail by reintroducing the bug it guards** (locked decision #34).
 - **Assert against the DOM for anything that just happened, and against the save only for
   what a reload has to survive** (locked decision #39).
-- **A `page.waitForFunction(fn, null, opts)` call is Playwright's shape, not puppeteer-core's** —
-  you found this bug this round, jointly with Closing Time and The Fourth Quarter, and it's fixed
-  now in every shared tooling file (`gvb-site-handoff-v9.md` §3). Your own version of the fix (a
-  `page.__engine` branch) was the cleanest of the three proposals and is the one that shipped.
+- **A `page.waitForFunction(fn, null, opts)` call is Playwright's shape, not puppeteer-core's**
+  (locked decision #52) — this project helped find and report the bug in round 2; fixed since in
+  every shared tooling file.
 - **A real-time movement or physics assertion failing under this environment's Linux/software-
   rendered Chromium is inconclusive, not confirmed** (locked decision #53). **This affects your own
-  project directly** — your round-2 walk/sun/fog/wading assertions ran inconsistently in this
-  sandbox for exactly this reason, not because of anything wrong in your code.
+  project directly** — walk/sun/fog/wading assertions can run inconsistently in this sandbox for
+  exactly this reason, not because of anything wrong in your code.
+- **The wading beat needs an explicit re-aim before its `KeyW` hold — arrow keys, not `lookAt()`**
+  (locked decision #54). Two prior look-tests in `play-games.mjs` leave the camera facing an
+  arbitrary direction and nothing re-aimed it; `lookAt()` silently no-ops once pointer lock is
+  released (which the arrow-key test just above the wading one releases on purpose to prove the
+  keyboard-only path works), so the fix polls `camState().facing` toward 0 using the same arrow
+  keys instead. This is `play-games.mjs`'s fix (prompt 22's file), not anything in this project's
+  own `controls.js` — see `gvb-site-handoff-v10.md` §1 for the full diagnosis, including why the
+  first fix attempt (a bare `lookAt()` call) looked like it should work and didn't.
 
 ## What is actually here
 
@@ -126,7 +129,13 @@ Zero new asset bytes, same as everything else this project has added since sessi
 remove the underlying ripple-texture repetition; makes neighbouring copies of it read as differently
 lit, which is what actually breaks the "wallpaper" look.
 
-**`test/smoke.mjs`, 38 checks** (up from 33), all on the new wading-limit math. Exits non-zero.
+**`test/smoke.mjs`, 38 checks**, unchanged this round (round 3's dune-grass work didn't touch the
+wading-limit math). Exits non-zero.
+
+**Dune grass is camera-facing quads now, round 3.** `terrain.js`'s `buildGrass()` emits an indexed
+mesh with `aRoot`/`aCorner` attributes and an `onBeforeCompile` shader hook referencing
+`cameraPosition` — was `LineSegments`, read as yellow scratches at distance. This was the last
+obviously-flat-looking thing on this project.
 
 **A low-end-hardware proxy measurement exists, not a real one.** This sandbox's forced
 software-rendered Chromium (no GPU) confirmed water stays the dominant relative frame cost off real
@@ -147,31 +156,22 @@ when they decode** — deliberate, keep this property.
 
 ## Your task
 
-Four of five backlog items from the previous round are done. What's left:
+Dune grass (round 3) closed the last of the previous round's backlog. What's left:
 
-1. **A real low-end-GPU run, not a software-rendering stand-in.** This round confirmed the
-   qualitative direction (water stays the dominant relative cost) but the actual absolute numbers
-   on a weak integrated GPU are still unmeasured. Worth one run on real low-end hardware before
-   anyone leans on "the water is affordable" as fully settled.
-2. **Dune grass to camera-facing quads.** Still `LineSegments`, still reads as yellow scratches at
-   distance. Fixes the last obviously-flat-looking thing for one draw call — low value because the
-   dunes are the direction nobody should be walking toward.
-3. **Revisit `wildlife.js` tuning**, per round 1's own note, worth a second look only after someone
-   has spent real time on the now-populated, now-wadeable beach — not blind.
-4. **Not your bug, but know about it: the wading/footprint beats have now been re-verified on a
-   fair environment (real Chrome via Playwright, not this sandbox), and they fail — for a reason
-   that traces to `play-games.mjs` itself, not this project's code.** Reproduced twice, consistent:
-   `eye y 7.85 -> 10.08/10.09` (climbing, not settling into a wading depth) and `footprints — 0
-   instances`. Root cause: the suite reorients the camera twice before the wading test runs
-   (`lookAt(p, {facing: 1.2, ...})`, then a 900ms `ArrowLeft` hold that adds another ~1.03 rad with
-   no re-aim after), landing the internal yaw around 2.23 rad — at that heading `controls.js`'s own
-   movement math sends `KeyW` **inland toward the dunes**, not toward the sea, so the walker never
-   reaches wet sand and eye height climbs against dune terrain instead of settling. Your own
-   `test/smoke.mjs` (38/38) already proves `wadeLimitZ` and footprint placement are correct in
-   isolation, which is exactly why this isn't yours to fix — the missing piece is a re-aim toward
-   the sea immediately before the wading test holds `KeyW`, inside `Tools/board-check/play-games.mjs`,
-   which is prompt 22's file. Flag it in your shared-file requests if it isn't already fixed by the
-   time you read this; don't spend a session chasing a bug in your own code that isn't there.
+1. **A real low-end-GPU run, not a software-rendering stand-in.** Confirmed the qualitative
+   direction (water stays the dominant relative cost) but the actual absolute numbers on a weak
+   integrated GPU are still unmeasured. Worth one run on real low-end hardware before anyone leans
+   on "the water is affordable" as fully settled.
+2. **Revisit `wildlife.js` tuning**, per round 1's own note, worth a second look only after someone
+   has spent real time on the now-populated, now-wadeable, now-grassy beach — not blind.
+3. **If your own pass turns up something new**, add it here.
+
+**The wading/footprint beat is fixed, not yours to revisit.** It used to fail because two prior
+look-tests in `play-games.mjs` left the camera facing an arbitrary direction with nothing re-aiming
+it afterward — this project's own code (`wadeLimitZ`, footprint placement) was correct in isolation
+the whole time, confirmed by `test/smoke.mjs`. Fixed this round in shared tooling (locked decision
+#54, `gvb-site-handoff-v10.md` §1): an explicit re-aim via arrow keys before the `KeyW` hold. Not
+your file, nothing to do here.
 
 **This project should keep not having a save.** The only candidate state is how far the sun has
 descended, and persisting that is actively wrong — a returning visitor should get the strong opening
@@ -184,17 +184,19 @@ frame every time.
 - **Know which environment you're in before trusting a timing-based result** (locked decision #53).
 - `node Projects/golden-hour-beach/test/smoke.mjs` → **38 checks, 0 failed**. Run after any change
   to `field.js`, `props.js`, or the wading limit.
-- `cd Tools/board-check && npm run games` → fixed this round (the crash you helped find), but a
-  moving target in this environment (locked decision #53) — this game's own new beats specifically
-  need re-verification from a fair environment, not just a clean run count.
+- `cd Tools/board-check && npm run games` → as of this refresh, three independent full runs on a
+  fair (real Chrome/Playwright) environment all reported **146 checks, 0 failed**
+  (`gvb-site-handoff-v10.md` §6), including this project's own wading beat specifically (re-verified
+  twice, facing landed at -0.030 and -0.006 both times). Locked decision #53 still applies to this
+  sandbox's own software-rendered Chromium specifically.
 - If you touch the texture pipeline, temporarily rename `assets/textures/` and confirm the
   procedural fallback still renders a beach.
 - If you touch anything that shows up in a screenshot, re-run `npm run previews` and look at the
   candidate.
-- `npm run check` → as of this refresh: **335 units, 0 broken; 0 collisions across nine widths,
-  tightest vertical gap 3.5px.**
-- `npm run social:check` → **17 notices, 17 already current** (dropped from 22 this round — a real,
-  correct count, not a regression).
+- `npm run check` → as of this refresh: **559 units, 0 broken; 0 collisions across nine widths,
+  tightest vertical gap 9.1px.** (The unit count moves every round as files are added elsewhere in
+  the repo; 0 broken is what matters.)
+- `npm run social:check` → **18 notices, 18 already current** (Orbital's card joined this round).
 - Anything you add that verifies something exits non-zero on failure (locked decision #13),
   and you break it on purpose first to watch it fail (locked decision #34).
 

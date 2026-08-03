@@ -82,8 +82,9 @@ export function endDay() {
   S.playerListings.forEach(pl => pl.offers.forEach(o => {
     if (o.status === "open" && S.day > o.day + 2) {
       o.status = "expired";
-      log(`Offer expired unanswered on ${pl.listing.address} — ${DB.agents[o.agentId].name} pulls it. Deadlines have consequences.`, "bad");
-      addRep(-3, "you let an offer deadline lapse");
+      const sellerRec = getClientRec(pl.clientRecId);
+      log(`Offer expired unanswered on ${pl.listing.address} — ${DB.agents[o.agentId].name} pulls it. Deadlines have consequences.`, "bad", undefined, sellerRec && sellerRec.recId);
+      addRep(-3, "you let an offer deadline lapse", sellerRec && sellerRec.recId);
     }
   }));
 
@@ -91,7 +92,7 @@ export function endDay() {
   S.deals.filter(d => d.stage === "offerPending" && S.day > d.createdDay + 3).forEach(d => {
     d.stage = "dead";
     const rec = getClientRec(d.clientRecId); if (rec) rec.dealId = null;
-    log(`Your offer on ${DB.listings[d.listingId].address} withered on the vine. ${DB.agents[d.agentId].name} moved on.`, "bad");
+    log(`Your offer on ${DB.listings[d.listingId].address} withered on the vine. ${DB.agents[d.agentId].name} moved on.`, "bad", undefined, rec && rec.recId);
   });
 
   // Patience decay every other day for idle buyers

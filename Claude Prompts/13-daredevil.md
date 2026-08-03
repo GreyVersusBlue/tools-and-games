@@ -1,11 +1,28 @@
 # 13 — Daredevil
 
-You are working on Daredevil, a narrative game on greyversusblue.com. Round 2 restructured it
-from a 356 KB monolith into `Projects/daredevil/` (four files), now that a full regression
-suite existed to prove nothing broke — the split round 1 deliberately deferred. It also wired
-the previously-unreachable "Work the Crowd" minigame and fixed two continuity holes in the
-prose. Read `Claude Prompts/notes/13-daredevil-notes.md` first — it carries the plot synopsis
-and the full account of both rounds' work.
+You are working on Daredevil, a narrative game on greyversusblue.com. **Round 3 closed all four of
+the previous round's tasks** (gzip measurement, a broader absent-relationship prose sweep, touch
+controls verified on a real touch-emulation pass, contrast measured and fixed) **and found the
+single biggest open question in the whole game — see "Questions for Devon."** Read
+`Claude Prompts/notes/13-daredevil-notes.md` first — it carries the plot synopsis and the full
+account of all three rounds' work.
+
+## Questions for Devon
+
+- **What should "Not interested" to Earl actually do?** Choosing it at the county fair correctly
+  sets `GS.rels.earl = 'absent'` and removes three optional evening cards (the contract-reading
+  card, the FR3 renegotiation, the FR4 Vegas call) — but Milestones 2, 3, and 4 never check that
+  flag at all. `goToScene()`'s `_chapter_m2` branch picks its entry scene purely from
+  `GS.flags.stuntOutcome`/`hubEveningsUsed`, and the chapter subtitles are fixed strings regardless
+  of relationship state, so a player who flatly rejects Earl is still marched through the entire
+  investor negotiation, the TV deal, and everything built on it — Earl just "comes back" with no
+  acknowledgment he was ever turned down. Round 3 fixed the one line that was flatly false (Duke's
+  invented "you said call when I was ready" callback in `m2_entry_waited`, replaced with dialogue
+  consistent with the rejection) but built no real alternate content for this branch — that's a
+  content-authoring decision, not a bug fix. Should "Not interested" stay as "Earl doesn't take no
+  for an answer" (maybe with one more acknowledgment line at M3/M4), or does the rejection deserve a
+  genuinely smaller, backer-less version of the middle game? This is the highest-value open item by
+  a wide margin — bigger than anything flagged in round 1 or 2.
 
 ## Your boundary
 
@@ -48,14 +65,18 @@ edit will be silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file.
-2. **`Claude Prompts/notes/13-daredevil-notes.md`** — round 2's session: the restructure (with a
+2. **`Claude Prompts/notes/13-daredevil-notes.md`** — round 3's session: the gzip measurement, a
+   real absent-relationship prose sweep (Earl and Pete this time, via
+   `test/transcripts/no_earl.md`/`no_pete.md`), touch controls verified with a real
+   touch-emulation pass (`test/verify-touch-375.mjs`, new, one-off), the `--cream-faint` contrast
+   fix, and the Earl/"Not interested" finding above. Round 2's notes are archived at
+   `Claude Prompts/archive/round-2/notes/13-daredevil-notes.md` — the restructure (with a
    byte-for-byte diff against the original proving nothing but the intended lines changed), Work
-   the Crowd placed at the Milestone 1 stunt aftermath, and two Ruthie-continuity prose fixes found
-   by grepping a real transcript. Round 1's notes are archived at
-   `Claude Prompts/archive/round-1/notes/13-daredevil-notes.md` — the only plot synopsis this game
-   has ever had, and the five wiring bugs that made it unfinishable before round 1.
-3. `gvb-site-handoff-v9.md` §6 (your restructure's board `href`/`games.mjs` fix, applied) and §10
-   (locked decisions #51-53).
+   the Crowd placed at the Milestone 1 stunt aftermath, and two Ruthie-continuity prose fixes.
+   Round 1's are at `Claude Prompts/archive/round-1/notes/13-daredevil-notes.md` — the only plot
+   synopsis this game has ever had, and the five wiring bugs that made it unfinishable before
+   round 1.
+3. `gvb-site-handoff-v10.md` §10 (locked decisions, through #58).
 4. `assets/js/gvb-save.js` and `assets/js/README.md`. Your adoption is at
    `Projects/daredevil/js/save.js` — unchanged by the restructure.
 5. `Projects/daredevil/js/README.md` — new this round, documents why `state.js` is its own file
@@ -121,40 +142,44 @@ reference things Ruthie said even on runs where she was never established. Both 
 2 of 5 places a custom hometown gets baked into a scene at load time — including `cold_open_01`,
 the very first line of the game. Fixed; all 5 now patched.
 
-**Both test suites still pass, against the new path**: `smoke-save.mjs` (53/53) and `smoke-page.mjs`
-(44/44, up from 44 checks but now including a fourth stunt-run result for Work the Crowd).
-`transcript.mjs`'s clean (89 scenes) and rough (78 scenes) baselines diffed line-for-line before
-and after every change this round — every hunk was an intended change, nothing else moved.
+**Both test suites still pass**: `smoke-save.mjs` (53/53) and `smoke-page.mjs` (44/44, including
+the Work the Crowd stunt-run result). `transcript.mjs`'s clean (89 scenes) and rough (78 scenes)
+baselines diffed line-for-line before and after every change this round — every hunk was an
+intended change, nothing else moved.
+
+**Two absent-relationship prose sweeps found and fixed one real bug, round 3.** New transcript
+plans, `test/transcripts/no_earl.md` and `no_pete.md`, extend round 2's Ruthie-only method to two
+more relationships. Found: `m2_entry_waited` had Duke reference a call-back promise Earl never
+actually made on a no-Ruthie-established run where Earl was also the one waiting — a factually
+false line, now branching correctly on `GS.rels.earl === 'absent'`.
+
+**Touch controls verified for real, round 3** — not just a code read. `test/verify-touch-375.mjs`
+(new, a one-off, not part of the committed regression suite) drives the Stunt Run minigame's pedal
+with Playwright touch-emulated pointer events at 375px. Confirmed working: `bindHold()`'s pointer
+events with `touch-action:none` hold up under real touch emulation, not just in theory.
+
+**Contrast is fixed, round 3.** `--cream-faint` is `#ac9a7f` now (was the too-dark `#7a684c`),
+applied consistently across all 14 CSS rules that reference it.
+
+**A real repo-wide bug was found here and reported, not fixed locally.** `sync-social-tags.mjs`
+reported permanent DRIFT on this project's `index.html` even though its `og:url`/`og:image` content
+was already correct — root-caused and fixed by prompt 22 this round (a Windows/`autocrlf`
+line-ending mismatch, `gvb-site-handoff-v10.md` §3), not a bug in this project's own file.
 
 ## Your task
 
-Round 2 closed the restructure, Work the Crowd, and the Ruthie holes — the top three items from
-the previous round. What's left:
+Round 3 closed all four of the previous round's tasks and found the Earl/"Not interested" gap
+(see "Questions for Devon"). What's left:
 
-1. **Re-measure gzipped transfer size before deciding whether to split `scenes.js` further into
-   fetched chunks** (locked decision #42: measure before deciding an asset is too heavy).
-   `scenes.js` alone is 208 KB uncompressed, loaded eagerly by `engine.js`'s import — but 344 KB of
-   HTML with no images gzips to much less than the raw number suggests, and nothing this round
-   changed that math. Find out what a player's browser actually fetches before treating the size as
-   a problem.
-2. **A broader absent-relationship prose sweep.** Round 2 checked both existing transcripts for
-   every "Ruthie" mention and fixed the two that read wrong. It did not write new transcript plans
-   specifically targeting every other absent-relationship combination (no-Cal, no-Pete, no-Earl) to
-   hunt for the same class of bug elsewhere. `transcript.mjs` with a plan that skips a different
-   relationship each time is the method — it found two real bugs this round using exactly this
-   approach on Ruthie alone.
-3. **Minigame touch controls at 375px** — verify on an actual touch device or with real
-   touch-emulation clicks, not just a read of the event-binding code. Round 2 looked at `bindHold()`
-   in `engine.js` while moving it and found it already uses pointer events with `touch-action:none`
-   set, which may already work better than round 1's note suggested — but this was not tested on an
-   actual touch device, so don't assert it's fixed on code-reading alone.
-4. **Contrast measurement.** Still not measured, two rounds running. `--cream-faint` (#7a684c) on
-   the dark panels is the one to check first.
-5. **Place or delete lower-value cosmetic-adjacent work**: none currently flagged beyond the above.
-
-**The six-way Earl response at the fair remains a design question, not a bug** — five of six
-answers lock Ruthie out for the whole game. Round 1 and round 2 both left it as Devon's call, not
-something to quietly rebalance.
+1. **Once Devon answers the Earl question, build whichever shape was chosen** — an acknowledgment
+   line or two at M3/M4, or a genuinely smaller backer-less middle game. This is the highest-value
+   work on this project by a wide margin.
+2. **A Danny/Tommy absent-relationship sweep**, extending the same method (round 2: Ruthie; round
+   3: Earl, Pete) to the two remaining tracked relationships. Found one real bug per relationship
+   pass so far — worth continuing the pattern.
+3. **A physical touch-device pass**, if one becomes available. Round 3's touch-emulation pass is
+   real evidence, but it's still emulation, not a physical device.
+4. **Place or delete lower-value cosmetic-adjacent work**: none currently flagged beyond the above.
 
 ## Verification
 
@@ -168,13 +193,13 @@ A suite exists in `Projects/daredevil/test/` and protects any further edit:
 - If you touch the save, test the round trip by hand: save mid-story, reload, confirm you are
   where you were. Export, clear storage, import, confirm again. Feed it a corrupt file, confirm
   refusal.
-- `grep -c fonts.googleapis.com Projects/daredevil/index.html` → should be 0 (the old file had a
-  historical comment; check whether it carried over during the restructure and clean it up if the
-  literal hotlink text still appears anywhere).
-- `cd Tools/board-check && npm run check` → as of this refresh: **335 units checked, 0 broken, 0
-  collisions across nine widths, tightest vertical gap 3.5px.**
-- `npm run social:check` → **17 notices, 17 already current** (dropped from 22 this round — a real,
-  correct count, not a regression).
+- `grep -c fonts.googleapis.com Projects/daredevil/index.html` → should be 0 (only a historical
+  comment documenting the removal, never a live reference).
+- `cd Tools/board-check && npm run check` → as of this refresh: **559 units checked, 0 broken, 0
+  collisions across nine widths, tightest vertical gap 9.1px.** (The unit count moves every round as
+  files are added elsewhere in the repo; 0 broken is what matters.)
+- `npm run social:check` → **18 notices, 18 already current** (Orbital's card joined this round; the
+  false-DRIFT this project reported is fixed at the root, see above).
 - `npm run games` doesn't have a regression-beat recipe for this project, only a preview-capture
   one — your own suite above is the regression check. If a future session wants beats added, that's
   a shared-file request into `play-games.mjs`, not something to do yourself.

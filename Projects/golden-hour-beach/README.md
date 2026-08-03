@@ -67,6 +67,9 @@ fade out after about a minute.
   different repeat than the photographed sand. Runtime canvas, 0 bytes on disk.
   The footprint ovals in `footprints.js` are geometry, not a texture — same
   reason, 0 bytes.
+- Dune grass is camera-facing quads (`terrain.js`'s `buildGrass`), billboarded
+  around each blade's own root in a vertex shader — no per-frame JS, one draw
+  call, same as the `LineSegments` it replaced. Geometry only, 0 bytes.
 
 ## Structure
 

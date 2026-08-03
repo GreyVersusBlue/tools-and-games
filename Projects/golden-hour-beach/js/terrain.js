@@ -190,14 +190,31 @@ export function buildTerrain(scene) {
   return { mesh, wet };
 }
 
+/**
+ * Camera-facing quads instead of a LineSegments blade per tuft. A line has zero
+ * width from a grazing angle (which is most of the time, since the dunes sit at
+ * the far edge of a beach nobody is meant to walk toward) and reads as a yellow
+ * scratch rather than grass at any distance. Each blade billboards around its
+ * own root in the vertex shader — `cameraPosition` is one of three.js's
+ * automatic `<common>` uniforms, so this needs no per-frame JS, just like the
+ * line version it replaces: one draw call either way.
+ *
+ * Billboarding is Y-axis only (the blade stays upright and rotates to face the
+ * camera's horizontal bearing), not a full sprite-style billboard — a grass
+ * blade that also tipped to follow camera pitch would look like it was falling
+ * over every time someone looked down at their feet.
+ */
 function buildGrass() {
   const group = new THREE.Group();
   const bladeCount = 2600;
-  const positions = [];
+  const positions = [];   // only needs to be roughly right for frustum culling
+  const roots = [];
+  const corners = [];
   const colors = [];
+  const indices = [];
   const cA = new THREE.Color(0x8a9a5b), cB = new THREE.Color(0xb5a642), tmp = new THREE.Color();
 
-  let placed = 0, guard = 0;
+  let placed = 0, guard = 0, vi = 0;
   while (placed < bladeCount && guard++ < bladeCount * 10) {
     const x = (Math.random() - 0.5) * 380;
     const z = 26 + Math.random() * 78;
@@ -211,18 +228,58 @@ function buildGrass() {
       const bh = groundHeight(bx, bz);
       const tall = 0.5 + Math.random() * 0.8;
       const lean = (Math.random() - 0.5) * 0.35;
-      positions.push(bx, bh, bz, bx + lean, bh + tall, bz + (Math.random() - 0.5) * 0.2);
+      const half = 0.035 + Math.random() * 0.02;
       tmp.lerpColors(cA, cB, Math.random());
-      colors.push(tmp.r, tmp.g, tmp.b, tmp.r * 0.7, tmp.g * 0.7, tmp.b * 0.55);
+      const rootCol = [tmp.r, tmp.g, tmp.b];
+      const tipCol = [tmp.r * 0.7, tmp.g * 0.7, tmp.b * 0.55];
+
+      // Four corners of one blade's quad: base-left, base-right, tip-left,
+      // tip-right. `aRoot` is the same world position for all four (the
+      // billboard pivot); `aCorner` is the local offset the vertex shader
+      // applies after computing that root's own billboard axis. `lean`
+      // shifts the tip corners along the billboard's local right axis,
+      // same windswept effect the line version got from shifting the tip
+      // vertex in world X/Z, just expressed in the new local frame. The tip
+      // corners are also pulled in to a fifth of the base width — a blade
+      // that stays full width to its tip reads as a plank, not a grass leaf.
+      const tip = half * 0.2;
+      for (let c = 0; c < 4; c++) {
+        roots.push(bx, bh, bz);
+        positions.push(bx, bh + (c >= 2 ? tall : 0), bz);
+        colors.push(...(c >= 2 ? tipCol : rootCol));
+      }
+      corners.push(-half, 0, half, 0, -tip + lean, tall, tip + lean, tall);
+      indices.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2);
+      vi += 4;
     }
     placed++;
   }
 
   const geo = new THREE.BufferGeometry();
+  geo.setIndex(indices);
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('aRoot', new THREE.Float32BufferAttribute(roots, 3));
+  geo.setAttribute('aCorner', new THREE.Float32BufferAttribute(corners, 2));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 });
-  const lines = new THREE.LineSegments(geo, mat);
-  group.add(lines);
+
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.9, side: THREE.DoubleSide,
+  });
+  mat.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>',
+        '#include <common>\nattribute vec3 aRoot;\nattribute vec2 aCorner;')
+      .replace('#include <begin_vertex>', `
+        vec3 toCam = cameraPosition - aRoot;
+        toCam.y = 0.0;
+        float toCamLen = length(toCam);
+        vec3 camDir = toCamLen > 0.0001 ? toCam / toCamLen : vec3(0.0, 0.0, 1.0);
+        vec3 bladeRight = vec3(-camDir.z, 0.0, camDir.x);
+        vec3 transformed = aRoot + bladeRight * aCorner.x + vec3(0.0, aCorner.y, 0.0);`);
+  };
+  mat.customProgramCacheKey = () => 'golden-hour-grass-billboard';
+
+  const mesh = new THREE.Mesh(geo, mat);
+  group.add(mesh);
   return group;
 }

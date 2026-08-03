@@ -408,6 +408,39 @@ const RECIPES = {
       return `${cells}-cell grid, ${tokens} tokens, Vanguard's Watch`;
     },
   },
+
+  // ---- Orbital: Deep Field (deepspace#11), games.mjs's open() already
+  // loaded it. A real winning aim drag — world-space (dx:200, dy:-350) from
+  // this level's own start — grazes a blackhole and a wormhole before the
+  // goal (verified live, Claude Prompts/notes/21-orbital-notes.md), a real
+  // curve rather than a straight line, so the preview reads as "this game
+  // rewards reading the curve." Screenshot before pointerup: aim mode draws
+  // the dotted flight plan; firing would replace it with the flight itself.
+  'orbital': {
+    async play(p, { shot }) {
+      const view = await p.evaluate(() => ({ s: view.s, ox: view.ox, oy: view.oy }));
+      const start = await p.evaluate(() => ({ x: probe.x, y: probe.y }));
+      const toScreen = (wx, wy) => ({ x: wx * view.s + view.ox, y: wy * view.s + view.oy });
+      const p0 = toScreen(start.x, start.y);
+      const p1 = toScreen(start.x + 200, start.y - 350);
+
+      await p.evaluate(({ x, y }) => {
+        document.getElementById('cv').dispatchEvent(new PointerEvent('pointerdown',
+          { clientX: x, clientY: y, pointerId: 1, bubbles: true, cancelable: true }));
+      }, p0);
+      await wait(150);
+      await p.evaluate(({ x, y }) => {
+        document.getElementById('cv').dispatchEvent(new PointerEvent('pointermove',
+          { clientX: x, clientY: y, pointerId: 1, bubbles: true, cancelable: true }));
+      }, p1);
+      await wait(300);
+
+      await shot('deep-field-aim');
+      const outcome = await p.evaluate(() => plan?.outcome || null);
+      if (outcome !== 'WIN') throw new Error(`drag plan outcome was "${outcome}", expected WIN — level or physics moved`);
+      return `Deep Field, aim drawn, plan outcome ${outcome}`;
+    },
+  },
 };
 
 /* ------------------------------------------------------------------- run ---- */

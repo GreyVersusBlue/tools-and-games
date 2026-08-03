@@ -514,6 +514,33 @@ const SUITES = {
     // the eye height should settle rather than keep dropping. camState's `y` is
     // eye height (`pos` is x/z only) — the shared-file request's own sketch
     // read `pos[1]` for this, which would be `z`, not height; adapted here.
+    //
+    // Re-aim toward the sea first. Two look-tests already ran (a mouse-look to
+    // facing 1.2, then a 900ms ArrowLeft hold adding ~1.05 rad more) and neither
+    // re-aims afterward, so by this point facing is ~2.25 rad with nothing
+    // pointing the camera back at the water. controls.js's own dz = -cos(facing)
+    // for a straight KeyW: facing=2.25 gives dz > 0, which is inland (confirmed
+    // against golden-hour-beach/js/controls.js directly), so KeyW walked toward
+    // the dunes instead of the shoreline. facing=0 gives dz = -1, straight
+    // seaward — confirmed against the same formula, not guessed.
+    //
+    // lookAt() can't do this turn: it steers with synthetic mouse movement, and
+    // the arrow-key test just above this one calls document.exitPointerLock()
+    // on purpose (to prove the keyboard-only path works). controls.js's own
+    // mousemove handler is gated on pointer lock (`if (document.pointerLockElement
+    // !== dom) return`), so with lock released, lookAt() silently does nothing —
+    // this was the actual reason the first version of this fix, which called
+    // lookAt(), still measured eye height climbing instead of settling. Arrow
+    // keys stay live regardless of lock state, so turn with those instead,
+    // polling facing the same way walkTo() polls distance.
+    for (let i = 0, facing = (await camState(p)).facing; i < 60 && Math.abs(facing) > 0.05; i++) {
+      const key = facing > 0 ? 'ArrowRight' : 'ArrowLeft';
+      await p.keyboard.down(key); await wait(60); await p.keyboard.up(key);
+      facing = (await camState(p)).facing;
+    }
+    const reaimed = await camState(p);
+    t.ok(Math.abs(reaimed.facing) < 0.1, 'the wading beat re-aimed toward the sea before walking in',
+      `facing ${reaimed.facing.toFixed(3)}`);
     await p.keyboard.down('KeyW'); await wait(20000);
     const midWade = await camState(p);
     await wait(6000);
@@ -870,7 +897,22 @@ const SUITES = {
     await p.click('#devClose');
     await wait(300);
 
-    const reachedEstate = await walkTo(p, [6.7, -0.8], async (dist) => dist < 1.4, { maxBursts: 60 })
+    // Opening the dev console (Backquote, above) calls document.exitPointerLock()
+    // (main.js:310) and closing it never re-acquires — player.js's mousemove
+    // handler is gated on `this.locked`, itself only ever set true by a click on
+    // the canvas (js/player.js:34, js/main.js:447). Without this click, lookAt()
+    // below dispatches a mousemove the game's own handler silently ignores —
+    // the actual reason the first version of this fix still failed to turn.
+    await p.click('canvas');
+    await wait(150);
+
+    // steer:'lookAt' — The Fourth Quarter hand-rolls its own camera control
+    // (js/player.js:182-184 overwrites camera.rotation from its own yaw/pitch
+    // every frame), so walkTo()'s default aimAt() raw write gets stomped the
+    // next frame and the walk never turns. lookAt() drives the same target
+    // angle through the game's own mousemove handler instead.
+    const reachedEstate = await walkTo(p, [6.7, -0.8], async (dist) => dist < 1.4,
+      { maxBursts: 60, steer: 'lookAt', sens: 0.0023 })
       .catch(() => null);
     t.ok(!!reachedEstate, 'walked to the Real Estate station',
       reachedEstate ? `${reachedEstate.bursts} bursts, ${reachedEstate.dist}m off` : 'never got in range');

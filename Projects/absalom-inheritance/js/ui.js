@@ -20,6 +20,60 @@ import { TILE } from "./world.js";
 
 const $ = id => document.getElementById(id);
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+const fmtMod = n => (n >= 0 ? "+" : "") + n;
+
+/**
+ * The character picker. Called once, before `mountUI`, and only when there is
+ * no save to load — `main.js` never shows this and a loaded save in the same
+ * boot. Resolves with the chosen build's id.
+ *
+ * Takes the *unresolved* content (pcOptions plural, commandById covering every
+ * build's commands) rather than a game, because there is no game yet: nothing
+ * has been chosen for `selectPc` to resolve onto. Card copy is built from the
+ * pack, same as every other panel in this file, so a third build never needs
+ * a matching edit here.
+ */
+export function pickCharacter(content) {
+  const veil = $("create-veil");
+  const grid = $("create-grid");
+  grid.innerHTML = "";
+  return new Promise(resolve => {
+    for (const pc of content.pcOptions) {
+      const card = document.createElement("div");
+      card.className = "pc-card";
+      const cmdNames = pc.commands.map(id => content.commandById[id].name).join(" · ");
+      card.innerHTML =
+        `<h3 class="serif">${escapeHtml(pc.name)}</h3>` +
+        `<div class="pc-title">${escapeHtml(pc.title)}</div>` +
+        `<div class="pc-blurb">${escapeHtml(pc.blurb)}</div>` +
+        `<div class="pc-stats">` +
+        `<span>HP <b>${pc.hp}</b></span>` +
+        `<span>AC <b>${pc.ac}</b></span>` +
+        `<span>Speed <b>${pc.speed} ft</b></span>` +
+        `<span>Fort <b>${fmtMod(pc.saves.fort)}</b></span>` +
+        `<span>Ref <b>${fmtMod(pc.saves.ref)}</b></span>` +
+        `<span>Will <b>${fmtMod(pc.saves.will)}</b></span>` +
+        `</div>` +
+        `<div class="pc-cmds">${escapeHtml(cmdNames)}</div>`;
+      const begin = document.createElement("button");
+      begin.type = "button";
+      begin.className = "pc-begin";
+      begin.textContent = `Begin as ${pc.name} →`;
+      begin.addEventListener("click", () => {
+        veil.classList.remove("open");
+        resolve(pc.id);
+      });
+      card.appendChild(begin);
+      grid.appendChild(card);
+    }
+    veil.classList.add("open");
+    grid.querySelector(".pc-begin")?.focus();
+  });
+}
+
 export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
   const { content } = game;
   const canvas = $("game");
@@ -176,6 +230,16 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     b.addEventListener("click", () => closeModal(b.dataset.close));
   }
   $("restart-btn").addEventListener("click", () => { closeModal("end-veil"); onReset(); });
+  // One reset path, not two: mountSaveBar's own built-in "reset" button (below)
+  // calls slot.reset() with no build id and hands back a default-build state,
+  // which would restart silently as pcOptions[0] with no chance to pick again.
+  // This button and the end screen's both go through the same onReset() —
+  // clear the save, reload, and let the character picker fire like a fresh
+  // visit — so "start over" means the same thing everywhere it appears.
+  $("btn-restart").addEventListener("click", () => {
+    if (!confirm("Erase this save and start over? This cannot be undone.")) return;
+    onReset();
+  });
 
   /* ------------------------------------------------------------------ *
    * Inventory                                                          *
@@ -538,8 +602,11 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
   /* ------------------------------------------------------------------ *
    * The save bar — in the panel, reachable during play                  *
    * ------------------------------------------------------------------ */
+  // "reset" is deliberately not in this list — see the #btn-restart wiring
+  // above for why the built-in one is the wrong shape for a game with more
+  // than one buildable PC.
   mountSaveBar($("save-bar"), slot, {
-    buttons: ["export", "import", "reset"],
+    buttons: ["export", "import"],
     getState: () => game.snapshot(),
     setState: state => onAdopt(state),
     onMessage: text => { $("save-msg").textContent = text; announce(text); },

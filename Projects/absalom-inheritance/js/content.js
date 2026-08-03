@@ -41,21 +41,9 @@ export function loadPack(raw) {
     ...(raw.tuning || {}),
   };
 
-  // ---- PC -------------------------------------------------------------
-  const p = raw.pc;
-  need(p && typeof p.hp === "number" && p.hp > 0, "content: pc.hp must be a positive number");
-  need(typeof p.ac === "number", "content: pc.ac must be a number");
-  need(p.saves && ["fort", "ref", "will"].every(k => typeof p.saves[k] === "number"),
-    "content: pc.saves needs fort, ref and will");
-  const pc = {
-    name: p.name || "The heir", title: p.title || "", note: p.note || "",
-    hp: p.hp, ac: p.ac, acNote: p.acNote || "", speed: p.speed || 25,
-    perception: p.perception || 0, saves: { ...p.saves },
-    spellDC: p.spellDC || 10, spellAttack: p.spellAttack || 0,
-    slots: p.slots || 0, focus: p.focus || 0,
-  };
-
   // ---- commands -------------------------------------------------------
+  // Parsed before pcOptions because each build's own `commands` list is
+  // validated against these ids.
   need(Array.isArray(raw.commands) && raw.commands.length, "content: commands must be a non-empty array");
   const commands = raw.commands.map(c => {
     need(c.id && c.name, "content: every command needs an id and a name");
@@ -86,6 +74,43 @@ export function loadPack(raw) {
       `content: command "${c.id}" needs healing`);
     return Object.freeze(out);
   });
+  const commandById = Object.fromEntries(commands.map(c => [c.id, c]));
+  const allCommandIds = commands.map(c => c.id);
+
+  // ---- pcOptions --------------------------------------------------------
+  // What used to be a single `pc` object is now an array of builds — this is
+  // the whole point of character creation: `pcOptions[i]` is one full
+  // character sheet, and `commands` on a build is which of the pack's global
+  // commands that build can use (a Fighter and a Wizard read from the same
+  // command list; each just gets a different slice of it). A build that omits
+  // `commands` gets all of them, which is what kept a one-build pack (this
+  // engine's whole history before this) working without every field present.
+  need(Array.isArray(raw.pcOptions) && raw.pcOptions.length,
+    "content: pcOptions must be a non-empty array");
+  const pcOptions = raw.pcOptions.map(p => {
+    need(p.id, "content: every pcOptions entry needs an id");
+    need(typeof p.hp === "number" && p.hp > 0, `content: pcOptions "${p.id}".hp must be a positive number`);
+    need(typeof p.ac === "number", `content: pcOptions "${p.id}".ac must be a number`);
+    need(p.saves && ["fort", "ref", "will"].every(k => typeof p.saves[k] === "number"),
+      `content: pcOptions "${p.id}" needs fort, ref and will saves`);
+    const cmdIds = p.commands && p.commands.length ? p.commands : allCommandIds;
+    for (const id of cmdIds) {
+      need(commandById[id], `content: pcOptions "${p.id}" lists unknown command "${id}"`);
+    }
+    return Object.freeze({
+      id: p.id,
+      name: p.name || "The heir", title: p.title || "", note: p.note || "",
+      blurb: p.blurb || "",
+      hp: p.hp, ac: p.ac, acNote: p.acNote || "", speed: p.speed || 25,
+      perception: p.perception || 0, saves: { ...p.saves },
+      spellDC: p.spellDC || 10, spellAttack: p.spellAttack || 0,
+      slots: p.slots || 0, focus: p.focus || 0,
+      commands: Object.freeze([...cmdIds]),
+    });
+  });
+  need(new Set(pcOptions.map(p => p.id)).size === pcOptions.length,
+    "content: pcOptions ids must be unique");
+  const pcById = Object.fromEntries(pcOptions.map(p => [p.id, p]));
 
   // ---- creatures ------------------------------------------------------
   need(raw.creatures && typeof raw.creatures === "object", "content: creatures must be an object");
@@ -238,9 +263,16 @@ export function loadPack(raw) {
   return Object.freeze({
     pack: Object.freeze({ ...raw.pack }),
     tuning: Object.freeze(tuning),
-    pc: Object.freeze(pc),
+    // `pc` here is a convenience default (the first build) for any caller that
+    // has not chosen one yet. Real play always goes through `selectPc` below —
+    // this is what game.js, save.js, ui.js and render.js read, and none of
+    // them changed for character creation because every one of them just
+    // trusts whatever `content.pc` says.
+    pc: pcOptions[0],
+    pcOptions: Object.freeze(pcOptions),
+    pcById: Object.freeze(pcById),
     commands: Object.freeze(commands),
-    commandById: Object.freeze(Object.fromEntries(commands.map(c => [c.id, c]))),
+    commandById: Object.freeze(commandById),
     creatures: Object.freeze(creatures),
     items: Object.freeze(items),
     startingInventory: Object.freeze(startingInventory),
@@ -255,6 +287,36 @@ export function loadPack(raw) {
     treasure: Object.freeze(treasure),
     defeat: Object.freeze({ title: "Defeated", body: [], ...(raw.defeat || {}) }),
     intro: Object.freeze({ narrative: "", goal: "", hint: "", ...(raw.intro || {}) }),
+  });
+}
+
+/**
+ * Resolve a loaded pack onto one chosen build.
+ *
+ * Every other module in this engine (game.js, save.js, ui.js, render.js,
+ * test/autopilot.mjs) reads `content.pc`, `content.commands` and
+ * `content.commandById` as if there were only ever one PC — that was true for
+ * two whole rounds, and staying true to it is what let character creation land
+ * without touching any of those files. This function is the one place the
+ * pack-with-many-builds becomes the content-with-one-pc every other module
+ * still expects: `pc` becomes the chosen build, and `commands`/`commandById`
+ * narrow to exactly the ids that build lists, so a Fighter cannot spend a
+ * Wizard's Shield cantrip just because the definition still exists globally.
+ *
+ * An unknown or missing `buildId` falls back to `pcOptions[0]` rather than
+ * throwing — the one case that matters in practice is a save written before
+ * this feature existed, which has no `buildId` at all and always meant the
+ * one build that existed then. `pcOptions[0]` has to stay that build for that
+ * fallback to mean what it says; see save.js's `repair`.
+ */
+export function selectPc(content, buildId) {
+  const pc = content.pcById[buildId] || content.pcOptions[0];
+  const commands = content.commands.filter(c => pc.commands.includes(c.id));
+  return Object.freeze({
+    ...content,
+    pc,
+    commands: Object.freeze(commands),
+    commandById: Object.freeze(Object.fromEntries(commands.map(c => [c.id, c]))),
   });
 }
 

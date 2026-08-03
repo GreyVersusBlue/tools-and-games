@@ -78,18 +78,20 @@ group('Rule 1 — both figures get computed');
 
 group('Rule 2 — the HIGHER of the two is reported');
 // Worked by hand:
-//   Q1 90 A=4   Q2 90 A=4   Q3 70 C=2   Q4 60 D=1
-//   quality points 11/4 = 2.75 -> B
-//   percentage    310/4 = 77.50 -> C
+//   Q1 90 A=4   Q2 90 A=4   Q3 90 A=4   Q4 10 F=0
+//   quality points 12/4 = 3.00 -> B (a full 3, earned outright)
+//   percentage    280/4 = 70.00 -> C
 //   B beats C, so the student gets a B.
 // This is the case that separates a correct tool from one that always reports
-// the percentage average. (An earlier version of this example used A,A,D,D,
-// which averages to exactly 2.50 QP — a genuine tie once quality points stop
-// rounding up at .5. See "Quality points — .5 does not round up" above.)
-eq(calcFinals([90, 90, 70, 60]).qpFinal,  'B', 'quality points gives a B');
-eq(calcFinals([90, 90, 70, 60]).pctFinal, 'C', 'percentage gives a C');
-eq(calcFinals([90, 90, 70, 60]).winner, 'QP', 'quality points wins when it is higher');
-eq(calcFinals([90, 90, 70, 60]).finalLetter, 'B', 'and the B is what gets reported');
+// the percentage average. (An earlier version of this example used A,A,C,D,
+// which averages to exactly 2.75 QP — under the corrected whole-point rule
+// that is short of a full 3 and lands on C, the same letter the percentage
+// side gives, so it stopped demonstrating a QP win. See "Quality points must
+// earn the full point" below for why 2.75 isn't a B.)
+eq(calcFinals([90, 90, 90, 10]).qpFinal,  'B', 'quality points gives a B (a full 3.00 earned)');
+eq(calcFinals([90, 90, 90, 10]).pctFinal, 'C', 'percentage gives a C');
+eq(calcFinals([90, 90, 90, 10]).winner, 'QP', 'quality points wins when it is higher');
+eq(calcFinals([90, 90, 90, 10]).finalLetter, 'B', 'and the B is what gets reported');
 
 //   Q1 79 C=2   Q2 79 C=2   Q3 100 A=4   Q4 100 A=4
 //   quality points 12/4 = 3.00 -> B
@@ -105,30 +107,42 @@ eq(calcFinals([79, 79, 100, 100]).finalLetter, 'A', 'and the A is what gets repo
 eq(calcFinals([85, 85, 85, 85]).finalLetter, 'B', 'a tie reports the shared letter');
 
 //   Quality points wins near the pass/fail line.
-//   Q1 70 C=2  Q2 70 C=2  Q3 70 C=2  Q4 60 D=1
-//   quality points 7/4 = 1.75 -> C
-//   percentage   270/4 = 67.50 -> D
-// (An earlier version of this example used three C's and an F, which
-// averages to exactly 1.50 QP — a tie now that quality points don't round
-// up at .5, both methods landing on D. See the boundary group above.)
-eq(calcFinals([70, 70, 70, 60]).qpFinal,     'C', 'quality points gives a C');
-eq(calcFinals([70, 70, 70, 60]).pctFinal,    'D', 'percentage gives a D');
-eq(calcFinals([70, 70, 70, 60]).finalLetter, 'C', 'the higher, C, is reported');
+//   Q1 70 C=2  Q2 70 C=2  Q3 70 C=2  Q4 20 F=0
+//   quality points 6/4 = 1.50 -> D
+//   percentage   230/4 = 57.50 -> F
+// (An earlier version of this example used three C's and a D, which
+// averages to exactly 1.75 QP — under the corrected whole-point rule that is
+// short of a full 2 and lands on D, the same letter the percentage side gives
+// there, so it stopped demonstrating a QP win. See "Quality points must earn
+// the full point" below for why 1.75 isn't a C.)
+eq(calcFinals([70, 70, 70, 20]).qpFinal,     'D', 'quality points gives a D (1.50, at least a full 1)');
+eq(calcFinals([70, 70, 70, 20]).pctFinal,    'F', 'percentage fails outright');
+eq(calcFinals([70, 70, 70, 20]).finalLetter, 'D', 'the higher, D, is reported, the student passes');
 
 //   A failing final either way.
 eq(calcFinals([50, 55, 40, 58]).qpFinal,     'F', 'four Fs give an F by quality points');
 eq(calcFinals([50, 55, 40, 58]).pctFinal,    'F', 'and an F by percentage');
 eq(calcFinals([50, 55, 40, 58]).finalLetter, 'F', 'reported F');
 
-//   One quarter carries a student over the line by quality points only.
-//   Q1 59 F=0  Q2 60 D=1  Q3 60 D=1  Q4 60 D=1
-//   quality points 3/4 = 0.75 -> D
-//   percentage   239/4 = 59.75 -> D
-eq(calcFinals([59, 60, 60, 60]).finalLetter, 'D', '59.75 average is a D, the student passes');
-//   Drop Q1 by two points: 237/4 = 59.25 -> F by percentage, still D by quality points.
-eq(calcFinals([57, 60, 60, 60]).pctFinal,    'F', '59.25 average fails by percentage');
-eq(calcFinals([57, 60, 60, 60]).qpFinal,     'D', 'but quality points still gives a D');
-eq(calcFinals([57, 60, 60, 60]).finalLetter, 'D', 'the county rule passes this student');
+//   One quarter carries a student over the line by quality points only —
+//   and the margin is exact, not approximate, under the corrected rule.
+//   Q1 70 C=2  Q2 60 D=1  Q3 60 D=1  Q4 30 F=0
+//   quality points 3/4 = 0.75 -> old (wrong) code said D; the real rule needs
+//   a FULL 1.00 to reach D, and 0.75 is short of it.
+// This is the case round 1 and round 2 both had wrong: swap the C's raw score
+// down to a plain D (making it four D/D/D/F instead of C/D/D/F) and see what
+// actually clears the line.
+eq(calcFinals([60, 60, 60, 30]).qpFinal,     'F', 'three Ds and an F average to exactly 0.75 QP, short of the full point');
+eq(calcFinals([60, 60, 60, 30]).pctFinal,    'F', 'and the percentage average (52.50) also fails');
+eq(calcFinals([60, 60, 60, 30]).finalLetter, 'F', 'so this student fails by both methods');
+//   Now give one quarter a full extra point (a C instead of a fourth D):
+//   quality points 4/4 = 1.00 -> D, a full point earned, exactly on the line.
+eq(calcFinals([70, 60, 60, 30]).qpFinal,     'D', 'swap one D for a C and quality points reaches exactly 1.00 -> D');
+eq(calcFinals([70, 60, 60, 30]).pctFinal,    'F', 'the percentage average (55.00) still fails');
+eq(calcFinals([70, 60, 60, 30]).finalLetter, 'D', 'quality points passes this student, percentage alone would not');
+//   How low the failing quarter is doesn't matter to quality points — F is F.
+eq(calcFinals([70, 60, 60, 10]).qpFinal,     'D', 'an even worse F (10 instead of 30) does not change the QP outcome');
+eq(calcFinals([70, 60, 60, 10]).finalLetter, 'D', 'quality points floors any F to 0 regardless of magnitude');
 
 // ── Quality-point thresholds ─────────────────────────────────
 group('Quality points — every reachable average');
@@ -137,13 +151,13 @@ eq(getQP('C'), 2, 'C is 2 points'); eq(getQP('D'), 1, 'D is 1 point');
 eq(getQP('F'), 0, 'F is 0 points'); eq(getQP('Z'), null, 'nothing else is a letter');
 // Averages of four integers 0-4 are multiples of 0.25 and exact in floating
 // point, so this table is the complete set of inputs the method can produce.
-// Unlike the percentage average, quality points do NOT round up at exactly
-// .5 (confirmed against county policy) — 3.50, 2.50, 1.50 and 0.50 all stay
-// the lower letter, one step down from where they'd land if this table
-// rounded up the same way the percentage side does.
+// The rule is "earn the full point": a letter's cutoff is the whole number
+// itself (4, 3, 2, 1), not a .5 below it, so anything short of a whole number
+// falls to the next letter down. Confirmed directly by Devon: "4-a, 3-b,
+// 2-c, 1-d, 0-f."
 const qpTable = [
-  [4.00,'A'],[3.75,'A'],[3.50,'B'],[3.25,'B'],[3.00,'B'],[2.75,'B'],[2.50,'C'],
-  [2.25,'C'],[2.00,'C'],[1.75,'C'],[1.50,'D'],[1.25,'D'],[1.00,'D'],[0.75,'D'],
+  [4.00,'A'],[3.75,'B'],[3.50,'B'],[3.25,'B'],[3.00,'B'],[2.75,'C'],[2.50,'C'],
+  [2.25,'C'],[2.00,'C'],[1.75,'D'],[1.50,'D'],[1.25,'D'],[1.00,'D'],[0.75,'F'],
   [0.50,'F'],[0.25,'F'],[0.00,'F'],
 ];
 for (const [avg, letter] of qpTable) eq(qpToFinalLetter(avg), letter, `quality-point average ${avg.toFixed(2)} is a ${letter}`);
@@ -151,7 +165,6 @@ for (const [avg, letter] of qpTable) eq(qpToFinalLetter(avg), letter, `quality-p
 // ── Rule 4, the quality-point half: .5 does NOT round up ─────
 group('Quality points — .5 does not round up, unlike the percentage average');
 eq(qpToFinalLetter(3.50), 'B', 'exactly 3.50 stays a B, not an A');
-eq(qpToFinalLetter(3.51), 'A', '3.51 clears the line, so it is an A');
 eq(qpToFinalLetter(2.50), 'C', 'exactly 2.50 stays a C, not a B');
 eq(qpToFinalLetter(1.50), 'D', 'exactly 1.50 stays a D, not a C');
 eq(qpToFinalLetter(0.50), 'F', 'exactly 0.50 stays an F, not a D — the pass/fail line');
@@ -161,6 +174,22 @@ eq(calcFinals([90, 90, 60, 60]).avgQP,      2.5, 'A,A,D,D averages to exactly 2.
 eq(calcFinals([90, 90, 60, 60]).qpFinal,    'C', 'and that stays a C, not a B, under the real rule');
 eq(calcFinals([90, 90, 60, 60]).pctFinal,   'C', 'the percentage average (75.00) also gives a C here');
 eq(calcFinals([90, 90, 60, 60]).finalLetter,'C', 'so this particular set is a genuine tie, not a QP rescue');
+
+// ── The deeper fix: quality points must earn the FULL point ──
+group('Quality points must earn the full point, not just clear a midpoint');
+// Confirmed directly by Devon, asked as a follow-up after the .5-rounding
+// fix above: the QP cutoffs are not "3.5, 2.5, 1.5, 0.5" at all. They are the
+// whole numbers 4, 3, 2, 1. A round-2 fix made the .5 boundary asymmetric
+// with the percentage side (correct, and unaffected by this fix — see the
+// group above) but kept the midpoints themselves as the thresholds, which
+// meant almost every fractional average that wasn't sitting exactly on a .5
+// was still landing one full letter too high.
+eq(qpToFinalLetter(4.00), 'A', 'only an exact 4.00 is an A — nothing else clears the full point');
+eq(qpToFinalLetter(3.99), 'B', '3.99 is a hundredth short of a full 4 and stays a B, not close to an A');
+eq(qpToFinalLetter(3.75), 'B', '3.75 is a B now; earlier (wrong) code called this an A');
+eq(qpToFinalLetter(2.75), 'C', '2.75 is a C now; earlier (wrong) code called this a B');
+eq(qpToFinalLetter(1.75), 'D', '1.75 is a D now; earlier (wrong) code called this a C');
+eq(qpToFinalLetter(0.75), 'F', '0.75 is an F now; earlier (wrong) code called this a D and passed the student');
 
 // ── Missing and exempt quarters ──────────────────────────────
 group('Missing or exempt quarters');
@@ -265,11 +294,18 @@ group('End to end — a pasted class');
     return [s.name, f ? f.finalLetter : 'no final', f ? f.winner : '-'];
   });
   eq(result, [
-    ['Gwendolyn Placeholder', 'A', 'QP'],   // 4+4+3+4 = 3.75 -> A ; 92.25 -> A ; tie, QP
+    ['Gwendolyn Placeholder', 'A', 'PCT'],  // 4+4+3+4 = 3.75 -> B (short of a full 4) ; 92.25 -> A ; PCT wins
     ['Horatio Notarealboy',   'C', 'QP'],   // 4+4+1+1 = 2.50 -> C (does not round up) ; 75.00 -> C ; tie, QP
     ['Isolde Madeupname',     'A', 'PCT'],  // 2+2+4+4 = 3.00 -> B ; 89.50 -> A ; PCT wins
     ['Jasper Fictional',      'no final', '-'], // missing Q2
   ], 'four students, four correct outcomes');
+  // Gwendolyn is the case that changed: her quality-point average (3.75) used
+  // to be miscalled an A by the old midpoint cutoff (>3.5), which happened to
+  // match her percentage average (92.25 -> A) and look like a tie won by QP.
+  // Under the corrected whole-point rule 3.75 is a B, so it is her percentage
+  // average, not quality points, that actually earns the A — same final
+  // letter on this student's report card, but the wrong method was getting
+  // credit for it.
 }
 
 // ── Report ───────────────────────────────────────────────────

@@ -13,21 +13,43 @@
     "standardDC": 15
   },
 
-  "pc": {
-    "name": "Vesper Quill",
-    "title": "Human Wizard 1",
-    "note": "Trained proficiency +3 (level 1 + 2)",
-    "hp": 15,
-    "ac": 15,
-    "acNote": "10 + DEX 2 + Trained unarmored +3",
-    "speed": 25,
-    "perception": 5,
-    "saves": { "fort": 4, "ref": 5, "will": 6 },
-    "spellDC": 17,
-    "spellAttack": 7,
-    "slots": 2,
-    "focus": 1
-  },
+  "pcOptions": [
+    {
+      "id": "wizard",
+      "name": "Vesper Quill",
+      "title": "Human Wizard 1",
+      "note": "Trained proficiency +3 (level 1 + 2)",
+      "blurb": "A scholar's approach: strike from range, close the fight with Breathe Fire and Force Fang, and lean on Shield when the resources run out. Fragile — 15 HP is a Keeper's fist and a half — but the widest toolkit in the vault.",
+      "hp": 15,
+      "ac": 15,
+      "acNote": "10 + DEX 2 + Trained unarmored +3",
+      "speed": 25,
+      "perception": 5,
+      "saves": { "fort": 4, "ref": 5, "will": 6 },
+      "spellDC": 17,
+      "spellAttack": 7,
+      "slots": 2,
+      "focus": 1,
+      "commands": ["strike", "shield", "splash", "breathe", "fang", "potion"]
+    },
+    {
+      "id": "fighter",
+      "name": "Kessa Vane",
+      "title": "Human Fighter 1",
+      "note": "Expert proficiency +5 with the sword (level 1 + 4); the heirloom longsword in the satchel is finally being carried by someone who trained on one.",
+      "blurb": "No spells, no tricks: three swings of the family longsword every turn and enough Hit Points to shrug off what the wizard cannot. Simpler than Vesper's list and, resource for resource, hits harder — the trade is a fixed plan with nothing held in reserve once the potions run out.",
+      "hp": 18,
+      "ac": 14,
+      "acNote": "10 + leather armor 1 + DEX 1 + Trained armor +2 (armor proficiency starts Trained even for a Fighter; weapon proficiency is the one that starts Expert) — measured light, not the heavier armor the class could wear, per balance.mjs (see note below)",
+      "speed": 25,
+      "perception": 6,
+      "saves": { "fort": 6, "ref": 4, "will": 1 },
+      "slots": 0,
+      "focus": 0,
+      "commands": ["strike-sword", "potion"],
+      "reactionsNote": "No reactions modelled — same restraint as Vesper's Shield Block note. A Fighter's actual selling point (Attack of Opportunity) is exactly the priority-2 gap in the prompt, not something this build fakes with a wizard-shaped workaround."
+    }
+  ],
 
   "commands": [
     {
@@ -43,6 +65,20 @@
       "agile": true,
       "hint": "Strike (◆): choose an adjacent sentinel.",
       "note": "Finesse, so the +5 is DEX 2 + Trained 3. Agile, so MAP is −4/−8 rather than −5/−10."
+    },
+    {
+      "id": "strike-sword",
+      "name": "Strike — Longsword",
+      "cost": 1,
+      "costGlyph": "◆",
+      "kind": "attack",
+      "target": "adjacent-enemy",
+      "attackBonus": 7,
+      "damage": "1d8+2",
+      "damageType": "slashing",
+      "agile": false,
+      "hint": "Strike (◆): choose an adjacent creature.",
+      "note": "STR 2 + Expert proficiency +5 (level 1 + 4) — Fighters start Expert with their trained weapon, unlike Vesper's Trained-only dagger. Not agile, so MAP is the standard −5/−10 rather than the dagger's −4/−8. STR 2, not the +4 a min-maxed build would carry — measured against balance.mjs, see the pcOptions note."
     },
     {
       "id": "shield",

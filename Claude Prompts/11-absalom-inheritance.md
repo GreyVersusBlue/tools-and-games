@@ -1,11 +1,10 @@
 # 11 — The Absalom Inheritance
 
 You are working on The Absalom Inheritance, an isometric CRPG built on the Pathfinder 2e
-Remaster rules, on greyversusblue.com. It carries `class="has-suite"` on the board. Round 2
-built a second area — the cheapest thing that doubles play time, per round 1's own ranking —
-and found a real stall bug along the way that a browser playthrough would never have caught.
-**The single biggest remaining gap is now character creation: one fixed PC, no build, no
-choice outside tactics.** This prompt is self-contained.
+Remaster rules, on greyversusblue.com. It carries `class="has-suite"` on the board. **Round 3
+closed what round 2 called the single highest-value gap: character creation now has a real pick
+screen with more than one build.** The next headline item is Reactions (Shield Block, Attack of
+Opportunity) — see "Your task." This prompt is self-contained.
 
 ## Your boundary
 
@@ -49,14 +48,16 @@ edit will be silently overwritten. A wrong description is a board request.
 ## Required reading
 
 1. This whole file.
-2. **`Claude Prompts/notes/11-absalom-inheritance-notes.md`** — round 2's session: a second area
-   (the Reliquary, past the vault's Keeper), five of eight engine files touched to give "which area
-   is the PC in" a real answer for the first time, and a real stall bug the balance harness caught
-   (a boss defeated mid-Stride onto a stairway square, in explore mode, with nothing ever noticing).
-   Round 1's notes are archived at `Claude Prompts/archive/round-1/notes/11-absalom-inheritance-notes.md`
-   — the unwinnable-to-59.3% fix, the ES-module restructure, the save/keyboard/mobile work.
-3. `gvb-site-handoff-v9.md` §10 (locked decisions — #51-53 new) and §8 (backlog state, including
-   the `Pathfinder/data/` question raised again this round).
+2. **`Claude Prompts/notes/11-absalom-inheritance-notes.md`** — round 3's session: the
+   character-creation pick screen (`pcOptions`, `selectPc()`, the picker modal) and a second build
+   (a Fighter, alongside the original Wizard), verified through the balance harness at both builds.
+   Round 2's notes are archived at
+   `Claude Prompts/archive/round-2/notes/11-absalom-inheritance-notes.md` — the second area (the
+   Reliquary), and the stall bug the balance harness caught that a browser playthrough never would
+   have. Round 1's are at `Claude Prompts/archive/round-1/notes/11-absalom-inheritance-notes.md` —
+   the unwinnable-to-59.3% fix, the ES-module restructure, the save/keyboard/mobile work.
+3. `gvb-site-handoff-v10.md` §10 (locked decisions, through #58) and §8 (backlog state, including
+   the `Pathfinder/data/` question, raised again this round).
 4. `assets/js/gvb-save.js` and `assets/js/README.md`. Your own `js/save.js` is a worked example.
 5. `Projects/absalom-inheritance/content-authoring-guide.md` §11 — now documents what a second area
    actually needed (six files, two real bugs found along the way), so a session adding a third area
@@ -126,7 +127,9 @@ nothing happens" into a number worth investigating.
 at reduced strength, and that's the honest one-line summary if a future session wants lore-optional
 side content instead of another mandatory encounter).
 
-**Test coverage: 281 assertions in `test/smoke.mjs`** (was 244), plus the 2000-run balance check.
+**Test coverage: 308 assertions in `test/smoke.mjs`** (was 281), plus the 2000-run balance check —
+now measured against **two builds**: Wizard 53.6% (round 2's number, unchanged), Fighter 79.8%
+(new), both comfortably in the 45-90% band.
 
 ```
 node Projects/absalom-inheritance/test/smoke.mjs
@@ -134,35 +137,30 @@ node Projects/absalom-inheritance/test/balance.mjs 2000
 ```
 
 **How much game is there now?** Two rooms, four mandatory fights, three lore pieces, one rest, one
-casket. Call it 12-16 minutes for a first completion, up from round 1's 8-12 — the second area
-roughly adds what it cost to build it.
+casket, two selectable builds. Call it 12-16 minutes for a first completion per build.
 
-**The `Pathfinder/data/` question is still unresolved** — raised again this round, a fourth and
-fifth time site-wide (jointly with Torchbearer). See prompt 01's "Questions for Devon" block.
+**The `Pathfinder/data/` question is still unresolved** — raised again this round, a sixth time
+site-wide (jointly with Torchbearer). See prompt 01's "Questions for Devon" block.
 
 ## Your task
 
-Round 2 spent its whole session on the second area — five of eight engine files, plus the balance
-re-verification at every step, plus the stall bug. Priorities 2-4 from the previous round are
-untouched, and the second area makes the first of them more valuable than it was, not less:
+Round 3 closed character creation — a real pick screen, two builds, both balance-verified.
+What's left:
 
-1. **Something to choose at character creation — now the single highest-value item.** Still one
-   fixed Human Wizard 1, no build, no choice outside tactics. `pc` is one object in the pack; an
-   array with a pick screen is the change, and `defaults` in `save.js` is already a factory for
-   exactly this reason. Two rooms now exist to replay through with a different build, which is what
-   makes this worth more now than it was after round 1.
-2. **Reactions — Shield Block, Attack of Opportunity.** Needs a real interrupt point in the turn
-   loop that doesn't exist yet. **Re-run `test/balance.mjs` afterward** — Attack of Opportunity
-   changes how safe it is to walk past anything with a melee reach, and both rounds' balance bands
-   assume it doesn't exist.
-3. **A true PF2e cone template.** Roughly 30 lines per the original estimate. Pair with a
-   `balance.mjs` run — it will shift Breathe Fire's actual hit rate slightly.
+1. **Reactions — Shield Block, Attack of Opportunity — now the single highest-value item.** Needs
+   a real interrupt point in the turn loop that doesn't exist yet. **Re-run `test/balance.mjs`
+   afterward, against both builds** — Attack of Opportunity changes how safe it is to walk past
+   anything with a melee reach, and every round's balance numbers so far assume it doesn't exist.
+2. **A true PF2e cone template.** Roughly 30 lines per the original estimate. Pair with a
+   `balance.mjs` run against both builds — it will shift Breathe Fire's actual hit rate slightly.
+3. **A third build**, per round 3's own next-session suggestion, now that the picker infrastructure
+   exists — the marginal cost of a third option is much lower than building the picker was.
 4. **A hint-bar line on area transition.** `transitionTo()` writes a narrative log line, but the
    hint bar at the bottom of the board doesn't update — it still reads whatever it said before
    crossing. Cheap, cosmetic, only worth doing if you're already touching `ui.js`'s event handler
    for something else.
 5. **A third area, or extending the sanctum further** — only if Devon wants more content;
-   `content-authoring-guide.md` §11 has the honest cost (same six files as this round, nothing
+   `content-authoring-guide.md` §11 has the honest cost (same six files as round 2, nothing
    structurally new).
 6. **`Pathfinder/data/`** — see prompt 01's "Questions for Devon" block. Don't build a runtime
    dependency on it.
@@ -176,12 +174,11 @@ rather than reasoning from the stat blocks.
 
 ```
 node Projects/absalom-inheritance/test/smoke.mjs
-  → 281 passed, 0 failed — SMOKE OK
+  → 308 passed, 0 failed — SMOKE OK
 
 node Projects/absalom-inheritance/test/balance.mjs 2000
-  → BALANCE OK — somewhere in the 45-90% band (round 2 measured 53.6%; a fresh 2000-run
-    should land at or near that number, but a small drift isn't a problem — that's why the
-    band exists)
+  → BALANCE OK for both builds — Wizard ~53.6%, Fighter ~79.8%, both comfortably inside the
+    45-90% band (a small drift run to run isn't a problem — that's why the band exists)
 ```
 
 If you add content or touch combat math, extend `smoke.mjs` and re-run `balance.mjs` — a content
@@ -196,10 +193,10 @@ edit that makes the adventure unwinnable should fail the build, not ship.
   just happened).
 - If you touch the save shape, test the full round trip by hand, then export/clear/import, then a
   deliberately corrupt file.
-- `cd Tools/board-check && npm run check` → as of this refresh: **335 units checked, 0 broken; 0
-  collisions across nine widths, tightest vertical gap 3.5px.**
-- `npm run social:check` → **17 notices, 17 already current** (dropped from 22 this round — a real,
-  correct count, not a regression).
+- `cd Tools/board-check && npm run check` → as of this refresh: **559 units checked, 0 broken; 0
+  collisions across nine widths, tightest vertical gap 9.1px.** (The unit count moves every round as
+  files are added elsewhere in the repo; 0 broken is what matters.)
+- `npm run social:check` → **18 notices, 18 already current** (Orbital's card joined this round).
 - Locked decision #34: for every guard-rail you add, break the thing on purpose first and watch
   it fail.
 - This game is not part of `play-games.mjs`'s beat suite — only the preview-capture recipe in

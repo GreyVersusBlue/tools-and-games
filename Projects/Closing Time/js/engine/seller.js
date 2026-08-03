@@ -17,8 +17,8 @@ export function takeListing(rec) {
   };
   S.playerListings.push(pl);
   rec.dealId = pl.id;
-  addXP(15, "took a listing: " + sl.address);
-  log(`Listing agreement signed: ${sl.address} for ${c.name}. Now make them proud — or at least solvent.`, "milestone");
+  addXP(15, "took a listing: " + sl.address, rec.recId);
+  log(`Listing agreement signed: ${sl.address} for ${c.name}. Now make them proud — or at least solvent.`, "milestone", undefined, rec.recId);
   bumpKnowledge(sl.neighborhood, 0.5);
   return pl;
 }
@@ -29,7 +29,8 @@ export function doRepair(pl, issueIdx) {
   const is = pl.listing.issues[issueIdx];
   pl.repairsDone.push(issueIdx);
   pl.listing.condition = Math.min(1, pl.listing.condition + (sevRank(is) * 0.04));
-  log(`Repair completed at ${pl.listing.address}: ${is.desc} (${fmtMoney(is.repairCost)}, seller-funded).`, "");
+  const rec = getClientRec(pl.clientRecId);
+  log(`Repair completed at ${pl.listing.address}: ${is.desc} (${fmtMoney(is.repairCost)}, seller-funded).`, "", undefined, rec && rec.recId);
 }
 
 export function setStaging(pl, tier) { pl.staged = tier; } // 0,1,2
@@ -38,7 +39,8 @@ export function goLive(pl, price, marketingTier) {
   const bk = DB.brokerages[S.brokerageId];
   const freePhoto = (bk.perks || []).some(p => p.includes("photo tier")) ? 1 : 0;
   pl.marketingTier = Math.min(2, marketingTier + freePhoto);
-  log(`LIVE: ${pl.listing.address} listed at ${fmtMoney(price)}. Photos: ${["phone-camera", "professional", "twilight-drone"][pl.marketingTier]}.`, "deal");
+  const rec = getClientRec(pl.clientRecId);
+  log(`LIVE: ${pl.listing.address} listed at ${fmtMoney(price)}. Photos: ${["phone-camera", "professional", "twilight-drone"][pl.marketingTier]}.`, "deal", undefined, rec && rec.recId);
 }
 
 export function priceRatio(pl) { return pl.price / Math.max(1, playerListingValue(pl)); }
@@ -57,8 +59,8 @@ export function dailySellerTick(pl) {
   if (rand() < offerChance) spawnNPCOffer(pl);
   // Stale-listing feedback
   if (pl.dom === 21 && !pl.offers.length && ratio > 1.05) {
-    log(`${pl.listing.address}: three weeks, no offers. The market has reviewed your price and left no tip.`, "bad");
     const rec = getClientRec(pl.clientRecId);
+    log(`${pl.listing.address}: three weeks, no offers. The market has reviewed your price and left no tip.`, "bad", undefined, rec && rec.recId);
     satisfactionDelta(rec, -6, "the listing sitting");
   }
 }
@@ -78,7 +80,8 @@ export function spawnNPCOffer(pl) {
     escalation: agent.dirtyTricks && rand() < 0.4 ? Math.round(price * 1.02 / 500) * 500 : null,
   };
   pl.offers.push(offer);
-  log(`Offer in on ${pl.listing.address}: ${fmtMoney(price)} from ${agent.name} (${offer.financing}${offer.inspection ? "" : ", inspection waived"}). "${pickHook(agent, "greeting")}"`, "deal");
+  const sellerRec = getClientRec(pl.clientRecId);
+  log(`Offer in on ${pl.listing.address}: ${fmtMoney(price)} from ${agent.name} (${offer.financing}${offer.inspection ? "" : ", inspection waived"}). "${pickHook(agent, "greeting")}"`, "deal", undefined, sellerRec && sellerRec.recId);
   scheduleItem(S.day + 2, `Offer deadline — ${pl.listing.address} (${agent.name})`, "offerDeadline", offer.id);
 }
 
@@ -103,7 +106,7 @@ export function respondToOffer(pl, offer, action, counterPrice) {
   const agent = DB.agents[offer.agentId];
   const rec = getClientRec(pl.clientRecId);
   unschedule(it => it.ref === offer.id);
-  if (action === "reject") { offer.status = "rejected"; log(`Rejected ${agent.name}'s offer on ${pl.listing.address}. "${pickHook(agent, "reject")}"`, ""); return { done: true }; }
+  if (action === "reject") { offer.status = "rejected"; log(`Rejected ${agent.name}'s offer on ${pl.listing.address}. "${pickHook(agent, "reject")}"`, "", undefined, rec && rec.recId); return { done: true }; }
   if (action === "accept") { offer.status = "accepted"; return acceptSellerOffer(pl, offer); }
   // Counter
   offer.status = "countered";
@@ -111,17 +114,17 @@ export function respondToOffer(pl, offer, action, counterPrice) {
   const ceiling = offer.escalation || Math.min(pl.price * 1.02, value * (1 + agent.tolerance) * 1.02);
   if (counterPrice <= ceiling * randRange(0.985, 1.02)) {
     offer.price = counterPrice; offer.status = "accepted";
-    log(`${agent.name} takes your counter at ${fmtMoney(counterPrice)}. "${pickHook(agent, "accept")}"`, "deal");
+    log(`${agent.name} takes your counter at ${fmtMoney(counterPrice)}. "${pickHook(agent, "accept")}"`, "deal", undefined, rec && rec.recId);
     return acceptSellerOffer(pl, offer);
   }
   if (rand() < 0.45) {
     const mid = Math.round((counterPrice + offer.price) / 2 / 500) * 500;
     offer.price = mid; offer.status = "open";
-    log(`${agent.name} counters back at ${fmtMoney(mid)}. "${pickHook(agent, "counter")}"`, "deal");
+    log(`${agent.name} counters back at ${fmtMoney(mid)}. "${pickHook(agent, "counter")}"`, "deal", undefined, rec && rec.recId);
     return { recounter: mid };
   }
   offer.status = "walked";
-  log(`${agent.name}'s buyers walk. "${pickHook(agent, "reject")}"`, "bad");
+  log(`${agent.name}'s buyers walk. "${pickHook(agent, "reject")}"`, "bad", undefined, rec && rec.recId);
   return { done: true };
 }
 
@@ -137,7 +140,7 @@ function acceptSellerOffer(pl, offer) {
   pl.milestones.forEach(m => scheduleItem(m.day, `${m.type.replace("seller", "")} — ${pl.listing.address}`, m.type, pl.id));
   const rec = getClientRec(pl.clientRecId);
   satisfactionDelta(rec, 8, "accepting a solid offer");
-  log(`${pl.listing.address} under contract at ${fmtMoney(offer.price)} with ${DB.agents[offer.agentId].name}'s buyers.`, "milestone");
+  log(`${pl.listing.address} under contract at ${fmtMoney(offer.price)} with ${DB.agents[offer.agentId].name}'s buyers.`, "milestone", undefined, rec && rec.recId);
   return { accepted: true };
 }
 
@@ -148,7 +151,7 @@ export function resolveSellerMilestone(pl, m) {
     const undisclosed = pl.listing.issues
       .map((is, i) => ({ is, i }))
       .filter(({ is, i }) => !pl.repairsDone.includes(i) && !pl.disclosed.includes(i) && is.discovery !== "visible");
-    if (!undisclosed.length) { log(`Buyer's inspection at ${pl.listing.address}: no surprises. Disclosure pays.`, ""); return; }
+    if (!undisclosed.length) { log(`Buyer's inspection at ${pl.listing.address}: no surprises. Disclosure pays.`, "", undefined, rec && rec.recId); return; }
     const worst = undisclosed.sort((a, b) => sevRank(b.is) - sevRank(a.is))[0];
     const cost = undisclosed.reduce((s, x) => s + x.is.repairCost, 0);
     S.choiceQueue.push({
@@ -162,22 +165,22 @@ export function resolveSellerMilestone(pl, m) {
     const fail = pl.acceptedOffer.financing === "FHA" ? 0.12 : 0.05;
     if (rand() < fail + Math.max(0, S.market.rate - 6.5) * 0.03) {
       failSellerDeal(pl, "the buyer's financing collapsed");
-    } else log(`Buyer financing clear on ${pl.listing.address}.`, "");
+    } else log(`Buyer financing clear on ${pl.listing.address}.`, "", undefined, rec && rec.recId);
     return;
   }
   if (m.type === "sellerClosing") {
     pl.status = "sold";
     const price = pl.acceptedOffer.price;
     const gross = price * 0.03, net = gross * DB.brokerages[S.brokerageId].commissionSplit;
-    addCash(net, `listing commission — ${pl.listing.address} closed at ${fmtMoney(price)}`);
+    addCash(net, `listing commission — ${pl.listing.address} closed at ${fmtMoney(price)}`, rec.recId);
     S.stats.closed++; S.stats.volume += price;
-    addXP({ starter: 45, mid: 75, luxury: 130 }[pl.listing.tier] || 45, "closed a listing");
+    addXP({ starter: 45, mid: 75, luxury: 130 }[pl.listing.tier] || 45, "closed a listing", rec.recId);
     const ratio = price / suggestedPrice(pl);
     satisfactionDelta(rec, Math.round((ratio - 0.95) * 100), "the final price vs what the house was worth");
     if (pl.dom <= 14) satisfactionDelta(rec, 6, "how fast you moved it");
     rec.status = "closedSeller"; rec.dealId = null;
-    addRep(Math.max(1, Math.round((rec.satisfaction - 50) / 8)), `${contentClient(rec).name}'s home sold (satisfaction ${rec.satisfaction})`);
-    log(`SOLD: ${pl.listing.address} at ${fmtMoney(price)}. Sign comes down; your name stays in the neighborhood.`, "milestone");
+    addRep(Math.max(1, Math.round((rec.satisfaction - 50) / 8)), `${contentClient(rec).name}'s home sold (satisfaction ${rec.satisfaction})`, rec.recId);
+    log(`SOLD: ${pl.listing.address} at ${fmtMoney(price)}. Sign comes down; your name stays in the neighborhood.`, "milestone", undefined, rec.recId);
     rollReferral(rec);
   }
 }
@@ -188,14 +191,14 @@ export function sellerInspectionDecision(pl, decision, cost) {
   const agent = DB.agents[offer.agentId];
   if (decision === "credit") {
     offer.price -= Math.round(cost * 0.7);
-    log(`You concede a ${fmtMoney(Math.round(cost * 0.7))} credit. ${agent.name}: "${pickHook(agent, "accept")}"`, "deal");
+    log(`You concede a ${fmtMoney(Math.round(cost * 0.7))} credit. ${agent.name}: "${pickHook(agent, "accept")}"`, "deal", undefined, rec && rec.recId);
     satisfactionDelta(rec, -4, "the credit off their proceeds");
     return;
   }
   if (decision === "refuse") {
     const walkOdds = { lowballer: 0.55, shark: 0.5, stonewall: 0.35, charmer: 0.4, "by-the-book": 0.45, mentor: 0.3 }[agent.negotiationStyle] || 0.45;
     if (rand() < walkOdds) failSellerDeal(pl, `the buyers walked over inspection findings — ${agent.name}: "${pickHook(agent, "reject")}"`);
-    else { log(`${agent.name}'s buyers grumble and proceed. "${pickHook(agent, "counter")}"`, ""); satisfactionDelta(rec, 5, "you holding the line"); }
+    else { log(`${agent.name}'s buyers grumble and proceed. "${pickHook(agent, "counter")}"`, "", undefined, rec && rec.recId); satisfactionDelta(rec, 5, "you holding the line"); }
     return;
   }
 }
@@ -205,14 +208,15 @@ export function failSellerDeal(pl, why) {
   unschedule(it => it.ref === pl.id);
   const rec = getClientRec(pl.clientRecId);
   satisfactionDelta(rec, -10, "the deal falling through");
-  log(`Back on market: ${pl.listing.address} — ${why}.`, "bad");
+  log(`Back on market: ${pl.listing.address} — ${why}.`, "bad", undefined, rec && rec.recId);
 }
 
 export function discloseIssue(pl, issueIdx) {
   if (!pl.disclosed.includes(issueIdx)) {
     pl.disclosed.push(issueIdx);
     S.stats.honesty++;
-    log(`Disclosure filed: "${pl.listing.issues[issueIdx].desc}" now in the listing packet.`, "");
+    const rec = getClientRec(pl.clientRecId);
+    log(`Disclosure filed: "${pl.listing.issues[issueIdx].desc}" now in the listing packet.`, "", undefined, rec && rec.recId);
   }
 }
 
@@ -238,9 +242,10 @@ export function runOpenHouse(pl) {
 export function finishOpenHouse(pl, capturedInterest, honestyChoices) {
   pl.openHouseBoost += capturedInterest * 0.6;
   pl.interest += capturedInterest;
-  addXP(10, "hosted an open house at " + pl.listing.address);
+  const rec = getClientRec(pl.clientRecId);
+  addXP(10, "hosted an open house at " + pl.listing.address, rec && rec.recId);
   bumpKnowledge(pl.listing.neighborhood, 0.5);
-  if (honestyChoices.honest > 0 && honestyChoices.spin === 0) addRep(2, "straight answers at the open house — agents talk");
-  if (honestyChoices.spin > 1) addRep(-3, "your open-house spin was noticed. Agents talk about that too");
-  log(`Open house wrapped at ${pl.listing.address}: interest +${capturedInterest.toFixed(1)}.`, "deal");
+  if (honestyChoices.honest > 0 && honestyChoices.spin === 0) addRep(2, "straight answers at the open house — agents talk", rec && rec.recId);
+  if (honestyChoices.spin > 1) addRep(-3, "your open-house spin was noticed. Agents talk about that too", rec && rec.recId);
+  log(`Open house wrapped at ${pl.listing.address}: interest +${capturedInterest.toFixed(1)}.`, "deal", undefined, rec && rec.recId);
 }

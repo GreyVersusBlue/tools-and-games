@@ -1,0 +1,40 @@
+{
+  "types": {
+    "PHONE":   { "indicator": "2.3", "name": "Off-task, covert",   "descriptor": "Device engagement, sub-desk",
+                 "anchor": "seat", "posture": "headDown", "attention": 0.12, "suppressible": true,
+                 "copy": "{a} has a phone flat on one thigh. Screen brightness at minimum, which is somehow the tell." },
+    "NOTE":    { "indicator": "2.3", "name": "Off-task, covert",   "descriptor": "Object in transit, peer-to-peer",
+                 "anchor": "pair", "height": 0.8, "posture": "sidelong", "attention": 0.30,
+                 "needsAdjacency": false, "suppressible": true,
+                 "copy": "A folded object is two hops from {b}. You can see where it is going before it does." },
+    "WHISPER": { "indicator": "2.1", "name": "Off-task, verbal",   "descriptor": "Side conversation, sustained",
+                 "anchor": "pair", "height": 1.15, "posture": "leanIn", "attention": 0.15,
+                 "needsAdjacency": true, "suppressible": true,
+                 "copy": "{a} and {b} have been running a parallel conversation for a while now. It is not about the Missouri Compromise." },
+    "COPYING": { "indicator": "4.4", "name": "Academic integrity", "descriptor": "Answer transfer, adjacent",
+                 "anchor": "pair", "height": 0.8, "posture": "sidelong", "attention": 0.38,
+                 "needsAdjacency": true, "suppressible": true,
+                 "copy": "{b}'s answers are arriving on {a}'s paper in the same order they were written." },
+    "FALSE":   { "indicator": "2.3", "name": "Off-task, covert",   "descriptor": "Device engagement, sub-desk",
+                 "anchor": "seat", "forceConfidence": "HIGH", "posture": "headDown", "attention": 0.85, "suppressible": false,
+                 "copy": "{a} has something under the desk. Confidence: HIGH." },
+    "QUIET":   { "indicator": "2.3", "name": "Off-task, covert",   "descriptor": "Device engagement, sub-desk",
+                 "anchor": "seat", "forceConfidence": "HIGH", "curveball": true, "posture": "still", "attention": 0.05, "suppressible": false,
+                 "copy": "It's a phone. The thread is with a contact saved as \"Mom — cell.\" The last message is about whether anyone is picking her up today. She is not reading it. She is just holding it.",
+                 "menuHeader": "You look longer than you meant to" }
+  },
+  "schedule": [
+    { "type": "PHONE",   "seat": 6,  "atMinute": 1.2,  "life": 190 },
+    { "type": "WHISPER", "seat": 1,  "with": 2,  "atMinute": 3.8,  "life": 150 },
+    { "type": "NOTE",    "seat": 8,  "with": 11, "atMinute": 7.2,  "life": 200 },
+    { "type": "COPYING", "seat": 4,  "with": 5,  "atMinute": 11.7, "life": 170 },
+    { "type": "PHONE",   "seat": 10, "atMinute": 16.3, "life": 200 },
+    { "type": "QUIET",   "seat": 3,  "atMinute": 20.8, "life": 320 },
+    { "type": "WHISPER", "seat": 7,  "with": 6,  "atMinute": 26.7, "life": 160 },
+    { "type": "NOTE",    "seat": 0,  "with": 9,  "atMinute": 31.7, "life": 200 }
+  ],
+  "missedCopy": {
+    "default": "It ran its course on its own. Something in the room shifted and you did not see it.",
+    "QUIET": "The bell will ring and you will never know that happened."
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "title": "Seating Chart",
+  "sub": "RM 214 · 4TH PERIOD · 7 MINUTES BEFORE THE BELL",
+  "intro": [
+    "You made this chart in August with a marker and a class list and no information whatsoever. You have information now.",
+    "Drag a name onto another name to swap them. The room is drawn from above; the whiteboard is at the top, which is the direction they are all supposed to be facing."
+  ],
+  "fineprint": "Nothing on this chart is labelled for you. What you know here, you learned by teaching them.",
+  "rules": {
+    "minAdjacency": 0.5,
+    "suppressThreshold": 0.6,
+    "discoverSuppressAfter": 1,
+    "separationSubstitute": {
+      "type": "PHONE",
+      "lifeScale": 0.85
+    },
+    "handoffLifeScale": 0.7
+  },
+  "plan": {
+    "furniture": [
+      {
+        "id": "whiteboard",
+        "label": "whiteboard"
+      },
+      {
+        "id": "objectiveBoard",
+        "label": "obj."
+      },
+      {
+        "id": "teacherDeskTop",
+        "label": "your desk"
+      },
+      {
+        "id": "rug",
+        "label": ""
+      }
+    ]
+  },
+  "sight": {
+    "clear": {
+      "label": "clear",
+      "line": "Visible from anywhere you normally stand."
+    },
+    "partial": {
+      "label": "partial",
+      "line": "Visible from some of the places you stand and not the others."
+    },
+    "blind": {
+      "label": "blind",
+      "line": "You cannot see this desk from the front of the room at all."
+    }
+  },
+  "legend": {
+    "rows": "Front row learns fastest. There are four of those.",
+    "sight": "Shading is what you can see from where you teach. It is your furniture doing that.",
+    "edges": "A red line is a pair you have watched go sideways. It is drawn only after it happens.",
+    "steady": "A dot is somebody who settles the desks around them. You worked that out the hard way.",
+    "unknown": "Everything else on this chart is a guess, which is the normal amount of information to have."
+  },
+  "buttons": {
+    "confirm": "Take the period",
+    "reset": "Back to the August chart",
+    "restore": "Use last period's chart"
+  },
+  "recharted": {
+    "first": "They have never sat in this chart. Nobody has an opinion about it yet.",
+    "free": "Two seats moved. Nobody says anything.",
+    "some": "\"Wait, we're MOVING?\" Rapport {cost}. They will be over it by Thursday.",
+    "many": "You moved most of the room. There is a full ninety seconds of scraping and negotiation before anyone sits down. Rapport {cost}."
+  },
+  "report": {
+    "head": "Seating",
+    "separated": "You had {name} sitting somewhere they could not reach the person they usually reach. It did not make {name} stop. It made {name} do something quieter and easier to see.",
+    "suppressed": "Nothing at all happened at {name}'s table today. That is not luck, and it is not nothing — you parked the room's steadiest kid next to the noise and it worked.",
+    "suppressedCost": "{name} also finished the period at {comp}%, which is the lowest {name} has been all week. You gave them a job. They did it instead of the lesson.",
+    "blindSeat": "{name} spent the period in a seat you cannot see from the front. You built that blind spot with a cabinet in 2019 and you have never moved it.",
+    "frontRow": "The front row — {names} — ended the period ahead of everybody. The front row always does. There are four seats in it."
+  },
+  "discovery": {
+    "edge": "{a} and {b}. Noted.",
+    "steady": "{name}. Noted."
+  }
+}

@@ -1,316 +1,246 @@
-# Refresh — round 2 notes
-
-This refresh ran after prompt 21's round-2 pass completed on its own branch and was merged into
-`main`. All twenty project threads (01–20) had posted round-2 notes, and prompt 21 had run twice
-(a partial pass that correctly stopped early, then a full pass) — applied every shared-file
-request, fixed a live site-wide breakage and a repo-wide `puppeteer-core` bug, bumped the site to
-version 10, and written `gvb-site-handoff-v9.md`. This refresh also carries two new durable process
-rules, added to prompt 22 itself at Devon's explicit request: projects with nothing outstanding now
-move to `Claude Prompts/Stable/`, and projects with a genuine open decision for Devon now carry a
-"Questions for Devon" block directly in their own prompt file.
-
-**A note on how this file came to exist.** This round's refresh was done twice, independently, by
-two separate sessions. A first pass ran on `origin/claude/prompts-project-review-dvo3zj`, a remote
-branch that was never merged — everything above this note, and the bulk of the refreshed prompts,
-is that session's work. A second session (mine) started this same refresh from scratch, discovered
-the unmerged branch partway through its own survey, and — per Devon's explicit direction — adopted
-that branch's work as the base rather than duplicating it, then layered its own findings on top.
-Those findings are recorded in "What this session added on top" below, and folded into the relevant
-projects' prompts (05, 07, 08, 14, 21) and into the tables/lists elsewhere in this file. The
-practical difference between the two sessions: this one happened to run on a machine where
-`harness.mjs`'s real-Chrome/Playwright branch applies, not the Linux/software-rendered sandbox the
-first session (and both rounds' 21 threads) used — so several things the first pass correctly left
-as "needs a fair environment" got a real, concrete answer here.
+# Refresh — round 3 notes
 
 ## Where the notes and the repository disagreed
 
-**`gvb-site-handoff-v9.md` is wrong about Corner & Kettle's and Seating Chart Generator's test
-inversions.** The handoff's backlog table says both projects' "one expected-failing test each"
-(the `gvb-save.js` construction-time-throw assertion, written deliberately to fail once the fix
-landed) is "still outstanding two rounds running" and "neither project's round-2 notes mention
-inverting it." **This is false, checked by actually running both suites fresh**, not by trusting
-either the handoff or the project notes:
-
-```
-node Projects/corner-and-kettle/test/smoke-save.mjs   → 166 passed, 0 failed
-node Tools/seating-chart/test/smoke-seating.mjs        → 153 passed, 0 failed
-```
-
-Both are clean. Reading both projects' own round-2 notes files confirms this directly: Corner &
-Kettle's notes describe inverting "one assertion in section 9 ('blocked storage')," and Seating
-Chart's notes describe the same thing as its own explicit task one, with the before/after count
-(122/1 failed → 123/0, later growing to 153/0 as more assertions were added the same session).
-Both projects did the work; the handoff's own author either didn't re-run the suites before writing
-that line or misread the two projects' notes. Removed this from both projects' task lists in the
-refreshed prompts and from prompt 21's own carried-forward backlog — it was already closed before
-this refresh started.
+- **The Fourth Quarter (07).** Its own round-3 notes describe the Real Estate walk-to-station
+  beat as still blocked on a shared-tooling fix ("not something I can apply inside my boundary")
+  and its prompt file's own "Questions for Devon" block (the difficulty-curve question) still read
+  as open. Both were stale by the time this refresh ran: the difficulty question was answered
+  directly this same round (spoilage, built — confirmed in `campaign.js`/`day.js`), and prompt
+  22's `walkTo({steer:'lookAt'})` fix landed in `Tools/board-check/drive.mjs`/`play-games.mjs`
+  *after* 07's own notes were written, confirmed present by direct code read. Neither is a false
+  claim by the 07 session — both were true when written — but a thread reading only 07's own
+  prompt/notes without cross-checking the shared-tooling files or the handoff would have re-flagged
+  both as open. Fixed in the refresh.
+- **Pathfinder Campaigns and Characters (02, 03).** Both sessions' own notes framed this round as
+  "the third clean round running" or similar, implying three rounds of nothing-to-do. Checked
+  against round 1 and round 2's actual archived notes: both of those rounds did real, substantive
+  work (font vendoring, ARIA/contrast fixes round 1; the `[shared]`-marker guardrail and a real
+  `</style>`-truncation bug fix round 2). Round 3 is genuinely the *first* clean, edit-free round
+  for both pages, not the third. Corrected in both prompts, with a "Questions for Devon" block
+  added asking whether one clean round (Anathema Archive's bar) or two (Fracture Cycle's bar) is
+  the actual threshold for `Stable/`, since the notes' framing doesn't resolve that on its own.
+- **Schedule Visualizer (19).** Its own round-3 notes list `check-integrity.mjs`'s `.js`/`.css`
+  sweep extension as a still-open "Shared-file requests" item. It was already done — confirmed
+  directly by reading `check-integrity.mjs` (the sweep exists, with a comment citing this
+  project's own finding) and by running `npm run check` (559 units, up from the notes' own 360).
+  Applied by another thread (prompt 22) within the same round, after 19's notes were written.
+  Corrected in the prompt; no longer listed as open.
+- **Aphelion (04).** Notes cited "10 assertions" for this project's own block in
+  `Tools/board-check/play-games.mjs`; direct count is 9, matching the prompt file's own
+  longstanding figure. Also cited that block as living at lines 541-602; it's currently at
+  569-629 (a ~28-line shift from other threads editing earlier parts of the same shared file after
+  Aphelion's own notes were written). Both are minor and don't change the substance (no EVA/airlock
+  cycling exists in that block either way) — noted here for completeness, not worth a prompt-file
+  correction beyond what's already accurate.
+- **Final Grade Checker (16).** Notes estimated `grade-math.mjs` at "217 to 224 lines" and
+  `grade-math.test.mjs` at "303 to 335 lines"; actual counts are 231 and 339 respectively. The
+  assertion count (139) and the substance (whole-point QP thresholds) are correct — only the line
+  estimates were off. Corrected in the prompt.
+- **Name Picker (18).** Prompt's own boundary section claimed 2,070 lines; actual is 2,052 (a
+  pre-existing staleness the round-3 session's own zero-net-change diff didn't cause). Separately,
+  `np-store.js`'s own header comment says "the Name Picker's twelve storage keys," but the real,
+  correct count — confirmed by the `KEYS` array and stated correctly everywhere else (README,
+  prompt, notes) — is thirteen. Both corrected/flagged in the prompt; the header-comment fix itself
+  is a one-line task-list item, not something this refresh could fix (out of boundary).
+- **Seating Chart Generator (20).** An earlier prompt draft cited `test/drive-seating.mjs` at 108
+  checks; a fresh run (and the round-3 session's own count) shows 111. Corrected.
 
 ## Fresh numbers
 
-Every figure below is something I ran myself this refresh, except where noted.
-
-| Check | Old figure (round-1 refresh baseline) | Fresh figure this round |
+| Check | Previous figure | Current figure |
 | --- | --- | --- |
-| `npm run check` (units) | 329, 0 broken | **335 units, 0 broken** |
-| `npm run check` (collisions) | 0, tightest gap 9.2px | **0, tightest gap 3.5px** |
-| `npm run social:check` | 22 notices, 22 current | **17 notices, 17 current** (Devon consolidated six Tools notices into one card mid-round; a real, correct drop) |
-| `node assets/js/gvb-save.test.mjs` | 50 passed | **50 passed, 0 failed** (unchanged — module untouched functionally this round beyond the fixes already counted in the 50) |
-| `npm run tools` | 18 checks | **18 checks, 0 failed** |
-| `npm run games` | 126 checks, 0 failed | 119/8 on the Linux sandbox (first-pass session); **137 checks, 3 FAILED, identical on two separate runs** on this session's fair (real Chrome/Playwright) environment — see "What this session added on top" |
-| Site version | 9 | **10** |
-| Current handoff | v8 | **v9** |
-| Locked decisions | through #50 | **through #53** |
-| `gvb-save.js` adopters | 11 | **11** (unchanged this round) |
-| `Claude Prompts/Stable/` | did not exist | **exists, holds 01 and 15** |
-
-Per-project test suites, all re-run by me directly during this refresh:
-
-| Project | Suite | Result |
-| --- | --- | --- |
-| 01 Anathema Archive | `Pathfinder/tests/anathema.test.mjs` | 33/33 |
-| 04 Aphelion | `test/smoke-state.mjs` | 23/23 |
-| 06 Closing Time | `tools/smoke.mjs` | 100/100 |
-| 07 The Fourth Quarter | `smoke-campaign.mjs` / `smoke-engine.mjs` | 196/196, 190/190 |
-| 08 Golden Hour | `test/smoke.mjs` | 38/38 |
-| 09 Faire Weekend | `tests/smoke.mjs` | 783/783 |
-| 10 Torchbearer | `test/smoke.mjs` | 95/95 |
-| 11 The Absalom Inheritance | `test/smoke.mjs` | 281/281 |
-| 12 Corner & Kettle | `test/smoke-save.mjs` | **166/166 — not 1 failed, see "Where the notes and repository disagreed"** |
-| 13 Daredevil | `test/smoke-save.mjs` | 53/53 |
-| 14 Integer Foundry | `test/smoke-targets.mjs` | 94/94 |
-| 14 Integer Foundry | `test/browser.mjs` | **ABORTS — real bug, see "Found but not fixed"** |
-| 15 The Fracture Cycle | `test/smoke.mjs` | 26/26 |
-| 16 Final Grade Checker | `grade-math.test.mjs` | 130/130 |
-| 18 Name Picker | `test/smoke.mjs` | 213/213 |
-| 18 Name Picker | `test/browser.mjs` | **ABORTS — real bug, see "Found but not fixed"** |
-| 19 Schedule Visualizer | `Tools/schedule/test/smoke.mjs` | 67/67 |
-| 20 Seating Chart Generator | `test/smoke-seating.mjs` | **153/153 — not 122/1, see above** |
-| 20 Seating Chart Generator | `test/drive-seating.mjs` | **ABORTS — real bug, see "Found but not fixed"** |
-
-## What this session added on top
-
-Everything above this point (and most of what follows) is the first, unmerged-branch session's
-work, adopted as the base per Devon's direction. This section is what got layered on afterward, from
-running the whole suite twice on a fair (real Chrome/Playwright) environment rather than the Linux
-sandbox both rounds' work happened on.
-
-- **Castle Conundrum's preview recapture is unblocked and done, not just theoretically possible.**
-  `npm run play` passed all 32 beats with real movement; `npm run previews castle-conundrum` reached
-  gameplay at 6.48m off the gatehouse (the requested 6.4m standoff). Fresh candidates are sitting in
-  `Tools/board-check/candidates/`, `chosen.json` already names a frame. Prompt 05's task two rewritten
-  from "attempt this from a fair environment" to "look at what's already there and promote."
-- **Golden Hour's wading/footprint beats: verified for real, and they fail — but the bug is in
-  `play-games.mjs`, not Golden Hour's code.** Reproduced twice, identical (eye y 7.85→10.08/10.09
-  instead of settling; 0 footprint instances). The suite leaves the camera heading inland (two prior
-  look-tests, no re-aim before the wading test) so `KeyW` walks away from the sea instead of into it.
-  Golden Hour's own `test/smoke.mjs` (38/38) already proves the game logic is correct in isolation.
-  Moved this from prompt 08's task list to prompt 21's — see below.
-- **The Fourth Quarter's Real Estate walk-to-station beat: verified for real, and it fails — also not
-  a game bug.** `drive.mjs`'s `walkTo()` steers via a raw `camera.rotation.set()` write that Fourth
-  Quarter's own per-frame camera code (`player.js:182-184`) silently overwrites every frame — exactly
-  what locked decision #35 already warns about for any game that doesn't use `PointerLockControls`.
-  Moved from prompt 07's task list to prompt 21's.
-- **Daredevil's Stunt Run timeout (flagged in `gvb-site-handoff-v9.md` §4 as one of several
-  environment-sensitive findings) does not reproduce on a fair environment.** `smoke-page.mjs` passed
-  44/44 clean including four stunt-run results, no retry needed. Confirms it was this sandbox's
-  rendering slowness, consistent with the Castle Conundrum/Golden Hour/Fourth Quarter pattern. No
-  prompt change needed — 13-daredevil.md never listed it as an open item to begin with.
-- **Integer Foundry's `test/browser.mjs` engine-mismatch bug has three more instances than the first
-  pass found.** The first session's survey (and `gvb-site-handoff-v9.md` §3) named only line 199.
-  Direct inspection this session found the identical `waitForFunction(fn, null, opts)` shape at
-  lines 302-304, 315-317, and 349-351 too — four sites total, same fix (`drive.mjs`'s `waitFor()`).
-  Updated prompt 14's task one and house rules to cover all four.
-- **A new environment-specific false positive, found and written into prompt 21, not fixed (outside
-  a refresh session's boundary):** `npm run social:check` reports 5 pages "out of date" on a Windows
-  checkout with `core.autocrlf=true` even though their content is byte-for-byte correct — the
-  generator joins lines with `\n`, but autocrlf rewrites the most-recently-checked-out files to
-  `\r\n`. Verified by hand for `daredevil/index.html`: every generated field matches exactly, only
-  line endings differ. Needs either a `.gitattributes` entry or a normalizing comparison in
-  `sync-social-tags.mjs` — flagged in prompt 21's own file rather than fixed here.
-
-None of this contradicts the first session's work — it answers questions that session correctly
-left open pending a fair environment, and finds one new thing (Integer Foundry's extra call sites)
-its survey didn't reach. Two prompts (05, 08, 07, 14, 21) got edited again on top of the first
-session's rewrite to reflect it; nothing in "What I changed in each prompt" below needed reverting.
+| `npm run check` (units / broken) | 335 units, 0 broken | 559 units, 0 broken (moves every round as files are added; 0 broken is what matters) |
+| `npm run check` (collision gap) | 3.5px | 9.1px |
+| `npm run social:check` | 17 notices, 17 current | 18 notices, 18 current (Orbital's card joined) |
+| `node assets/js/gvb-save.test.mjs` | 50 passed | 50 passed (unchanged) |
+| `npm run tools` | 18 checks | 18 checks (unchanged) |
+| `npm run games` (fair environment) | 137 checks, 3 failed | 146 checks, 0 failed (three independent runs, identical — first fully clean pass ever reported) |
+| Site version / current handoff | version 10 / v9 | version 11 / v10 |
+| Pathfinder Campaigns / Characters | 751 / 730 lines | unchanged, zero edits either round-3 session |
+| Aphelion `index.html` | 213 lines (prompt's stale claim) | 214 lines |
+| Castle Conundrum `npm run play` | 32 beats | 34 beats, 0 failed (independently re-run this refresh) |
+| Closing Time `tools/smoke.mjs` | 100 passed | 105 passed |
+| The Fourth Quarter `smoke-campaign.mjs` | 196 passed | 203 passed |
+| Golden Hour `test/smoke.mjs` | 38 checks | 38 checks (unchanged; round 3 touched dune grass, not the wading math) |
+| Faire Weekend `tests/smoke.mjs` | 783 passed | 801 passed |
+| Torchbearer `torchbearer.html` | 3,280 lines (stale) | 3,268 lines |
+| The Absalom Inheritance `test/smoke.mjs` / balance | 281 passed / Wizard 53.6% only | 308 passed / Wizard 53.6%, Fighter 79.8% |
+| Coffee Shop Sim `coffee_shop_sim.html` | 2,562 lines (stale) | 2,542 lines |
+| Daredevil test suites | 53/53, 44/44 | unchanged counts, new coverage (touch-emulation, two more relationship sweeps) |
+| Integer Foundry `test/browser.mjs` | aborting on engine-mismatch bug | 56 checks, 0 failed |
+| Final Grade Checker `grade-math.test.mjs` | 130 passed | 139 passed |
+| Image to PDF | no code changes | unchanged, re-verified fresh |
+| Name Picker `test/browser.mjs` | aborting on engine-mismatch bug | 44 checks, 0 failed |
+| Schedule Visualizer/Browser | 863,737 / 161,074 bytes | 124,566 / 164,349 bytes (restructured into `Tools/schedule/app/`, ~594 KB `.js` + 156 KB `.css`) |
+| Schedule Visualizer `smoke.mjs` | 67 passed | 73 passed, plus new `structure.mjs` (31 passed) |
+| Seating Chart `smoke-seating.mjs` / `drive-seating.mjs` | 153 / 108 (stale) | 153 / 111 |
+| Orbital | no test suite, no preview/OG, 21 levels claimed | `test/physics.mjs` (22 levels, all winnable), preview/OG live, 22 levels confirmed (pack-02 has 12, not 11) |
 
 ## What I changed in each prompt
 
-- **01 Anathema Archive** — moved to `Stable/`. Verified "nothing outstanding" fresh (suite still
-  33/0). Added a "Questions for Devon" block for the `Pathfinder/data/` shared-interface question,
-  raised repeatedly by 10 and 11 but owned by 01's boundary.
-- **02 Pathfinder Campaigns** — closed the merge-with-03 recommendation (Devon decided
-  "harmonize, don't share" this round); documented the `[shared]` comment markers; promoted the
-  generator's Chronological-view sync as the only remaining task.
-- **03 Pathfinder Characters** — same merge closure, documented from this side (the session that
-  actually did the harmonize work with Devon's sign-off); the `</style>`-truncation bug it found
-  and fixed is now a house rule.
-- **04 Aphelion** — marked the EVA distance readout done; kept touch/gamepad input as the one
-  remaining (still no forcing signal).
-- **05 Castle Conundrum** — promoted the hall-table/statue-in-wall bug to task one with exact
-  numbers; documented the preview recapture as blocked by environment (locked decision #53), not
-  neglect; found via direct grep that `play-castle.mjs`'s own engine-mismatch fix is bigger than
-  the handoff's "one-line" description (12 `waitForTimeout` calls, 3 `textContent` calls, not just
-  the one `waitForFunction`) and wrote the exact fix using `drive.mjs`'s exported helpers.
-- **06 Closing Time** — marked all four previous tasks done; kept the per-client filter exactness
-  and the post-ending "what's next" as the small remaining items.
-- **07 The Fourth Quarter** — marked the venue-ladder door, seat-count fix, audio conversion, and
-  mute toggle done; added a "Questions for Devon" block for the day-based difficulty curve
-  decision; flagged that its own new Real Estate suite needs re-verification from a fair
-  environment.
-- **08 Golden Hour** — marked 4 of 5 backlog items done; kept the real low-end-GPU measurement and
-  dune grass as remaining; flagged its own new beats need re-verification from a fair environment.
-- **09 Faire Weekend** — marked adoption, weekend-shape, and the wiring audit done; promoted mobile
-  tap targets and the three-round-deferred layout review to the top.
-- **10 Torchbearer** — marked Assurance, the potion fix, Shield Block, and the preview (now applied
-  by prompt 21) all done; kept the three feature-scoped inert hooks (Feint, reload, edge-outwit) as
-  the real remaining work.
-- **11 The Absalom Inheritance** — marked the second area done; promoted character creation to
-  task one as the single highest-value item now that there's more content to replay through.
-- **12 Corner & Kettle** — marked all five of the previous round's tasks done, including the test
-  inversion (corrected from the handoff's wrong claim); added the newly-found `drive-save.mjs`
-  engine-mismatch bug (8 instances) as task one.
-- **13 Daredevil** — marked the restructure, Work the Crowd, and the Ruthie prose fixes done;
-  documented the new `Projects/daredevil/` file layout and the redirect-stub pattern; kept the
-  gzip-remeasurement and broader prose sweep as remaining.
-- **14 Integer Foundry** — marked the difficulty-curve rework done; added the newly-confirmed
-  `test/browser.mjs` engine-mismatch bug (line 199, still present, matches the handoff's own
-  finding) as task one.
-- **15 The Fracture Cycle** — moved to `Stable/`. Verified "nothing outstanding" fresh (suite still
-  26/0, zero edits made this round per its own notes).
-- **16 Final Grade Checker** — marked the QP-rounding fix, CSV export, and add-row button done;
-  added a "Questions for Devon" block for the report-card-revisit question and the QP
-  threshold-spacing verification; kept the screenshot gap (two rounds running) as a task.
-- **17 Image to PDF** — marked the rotation control done; kept the EXIF-on-a-real-photo
-  verification (two rounds without a camera) and the screenshot gap as remaining.
-- **18 Name Picker** — marked the browser suite and the history day-boundary decision done; added
-  the newly-found `test/browser.mjs` engine-mismatch bug (both `waitForFunction` and multiple
-  `textContent` calls) as task one.
-- **19 Schedule Visualizer** — marked the full simulation-module read and the PDF-size fix done;
-  closed the committed-schedule-data question (Devon: leave it); added a "Questions for Devon"
-  block for the storage-quota decision blocking `gvb-save.js` adoption; promoted the restructure
-  (now unblocked) to task one.
-- **20 Seating Chart Generator** — marked all four of the previous round's tasks done, including
-  the test inversion (corrected from the handoff's wrong claim); added the newly-found
-  `drive-seating.mjs` engine-mismatch bug (`textContent` and `isHidden`) as task one.
-- **21 General Site Improvements** — rewrote heavily. Documented both passes this round (partial,
-  then full); the live `newindex.html`/`sync-social-tags.mjs` fix; the `waitForFunction` fix and
-  its rendering-environment follow-on finding (locked decision #53); the three resolved Devon
-  decisions; the new cross-cutting bug-class finding (three more project-owned instances beyond
-  what its own fix reached); the new "Questions for Devon" convention and how it interacts with the
-  handoff. Version bump target is now 10→11, handoff target `gvb-site-handoff-v10.md`.
-- **22 Refresh prompts** — not rewritten (per its own rule), but edited to add the two durable
-  process rules at Devon's explicit request: the `Stable/` folder convention and the "Questions for
-  Devon" block convention, plus matching updates to the archive/survey/verification/notes-heading
-  sections.
+- **02, 03 (Pathfinder Campaigns/Characters)** — added a "Questions for Devon" block on the
+  one-clean-round-vs-two question (see disagreements above); refreshed handoff citations and
+  repo-wide counts.
+- **04 (Aphelion)** — refreshed line count, handoff citations, added locked decisions #55/#56
+  relevance (this project is one of the three `walkTo({steer:'lookAt'})` was built for), updated
+  `npm run games` figure to the clean 146/146 result.
+- **05 (Castle Conundrum)** — rewrote "What is actually here" and the task list from scratch: all
+  four of this round's tasks (wall-embedded furniture, preview promotion, engine-mismatch fix, gate
+  pivot fix) are closed, independently re-verified this refresh (`npm run play` → 34/34). Added two
+  new project-specific rules (rotated-piece bounding boxes, furniture-vs-wall clearance checks).
+  Replaced the two remaining tasks with the genuinely cosmetic items round 3's own notes left open.
+- **06 (Closing Time)** — both of round 2's open items (exact `recId` filter, career-ending
+  "what's next") closed this round; refreshed counts and flagged the previously-empty `js/ui/`
+  folder as a placeholder, not a stale reference.
+- **07 (The Fourth Quarter)** — removed the stale "Questions for Devon" block (answered: spoilage),
+  documented the spoilage mechanic, corrected the walkTo/steer fix's status (landed after this
+  project's own notes were written — see disagreements), rewrote the task list.
+- **08 (Golden Hour)** — documented the dune-grass fix, corrected the wading-beat fix's status
+  (it's `play-games.mjs`'s fix, landed this round, not this project's own code), dropped the
+  low-end-GPU and wildlife-tuning items' framing to reflect what's actually left.
+- **09 (Faire Weekend)** — documented the mobile-tap-target fix and the `cancelMove` wiring gap
+  found even after the audit was called closed; updated the layout-review backlog item's age from
+  three to four rounds.
+- **10 (Torchbearer)** — documented all three feature items shipped (edge-outwit, Feint, reload)
+  and the `mountSaveBar` cleanup; rewrote the task list down to the one genuinely blocked item
+  (`mobility`) plus a small comment fix.
+- **11 (The Absalom Inheritance)** — documented the character-creation pick screen and the second
+  build (Fighter); promoted Reactions (Shield Block, AoO) to the new task one.
+- **12 (Coffee Shop Sim)** — documented the `drive-save.mjs` engine-mismatch fix; added a
+  "Questions for Devon" block on the Serve-button early-enable gate, the real design question this
+  round's measurement surfaced.
+- **13 (Daredevil)** — documented all four closed items (gzip, absent-relationship sweep, touch
+  verification, contrast) and added the Earl/"Not interested" finding as this project's — and the
+  site's — headline "Questions for Devon" item.
+- **14 (Integer Foundry)** — moved to `Stable/`. Documented the engine-mismatch fix and the
+  coupled-not-two-separate-gaps argument for the remaining model-gap backlog item.
+- **16 (Final Grade Checker)** — the biggest single content rewrite this round: replaced the
+  entire "rules this tool implements" section (thresholds are whole numbers 4/3/2/1/0, not
+  `.5`-offset midpoints), rewrote the "Questions for Devon" block to reflect the larger-than-expected
+  historical window, corrected stale line counts.
+- **17 (Image to PDF)** — moved to `Stable/`. No code changes this round; documented the
+  re-verification and the two environment-blocked (not code) items keeping it off a fully-closed
+  state.
+- **18 (Name Picker)** — documented the engine-mismatch fix; added a "Questions for Devon" block
+  (mirrored in 22) on the rename now targeting `newindex.html`; flagged the stale "twelve keys"
+  comment in `np-store.js`.
+- **19 (Schedule Visualizer)** — the second-biggest rewrite: documented the full restructure
+  (863,737 → 124,566-byte shell plus seven `app/` files), the What-If Lab and `.rcell`/`.geo-room`
+  reads (both closed, not restructure candidates), and the `gvb:social` publish-drift mechanism.
+- **20 (Seating Chart Generator)** — documented the rotated-label fix and all three Playwright-only
+  bugs (one previously unflagged); this is the first refresh with nothing carried over from this
+  project's own work.
+- **21 (Orbital)** — full fresh rewrite now that it has a real notes file: documented the physics
+  test suite, the reset-confirmation fix, the preview/OG, and corrected the level count (22, not 21;
+  pack-02 has 12, not 11).
+- **22 (General Site Improvements)** — replaced all of round 2's now-historical narrative sections
+  with round 3's: the cross-cutting bug class (closed), the two fair-environment bug fixes, the
+  CRLF false-DRIFT root cause and fix, the `.js`/`.css` sweep extension. Added a "Questions for
+  Devon" block on the Name Picker rename (mirrored in 18). Added locked decisions #54-58 to house
+  rules. Bumped every internal version reference (v10→v11 handoff, version 11→12 line).
+- **23 (this file)** — not rewritten, per its own rule, except for the commit-and-push addition
+  Devon explicitly requested (see below).
 
 ## Stable/active moves
 
-- **01 Anathema Archive** → moved into `Stable/`. Verified: test suite 33/0 fresh, `renderNpc`
-  sweep and the FABLE-PROGRESS comment fix both confirmed on disk, all three of its own tasks from
-  the previous refresh closed.
-- **15 The Fracture Cycle** → moved into `Stable/`. Verified: test suite 26/0 fresh, its own round-2
-  session made zero edits and explicitly re-confirmed round 1's claims rather than assuming them.
-
-No project moved back out of `Stable/` this round — this is the first round the folder exists.
+- **14 (Integer Foundry) → `Stable/`.** Verified: `test/browser.mjs` fixed and passing (56/56),
+  the difficulty curve played for feel with no issues found, the one shared-file request this
+  project ever had already applied, and the two remaining model gaps argued (convincingly, on a
+  second round of scrutiny) to be one coupled, deliberately-parked piece of work rather than
+  incomplete work. Re-verified test counts myself before moving.
+- **17 (Image to PDF) → `Stable/`.** Verified: the tool's own round-3 session explicitly assessed
+  itself as stable, re-ran the rotation-fix verification fresh (not just trusted round 2's proof),
+  and confirmed the two remaining items (EXIF-vs-real-photo, a real screenshot) are environmental
+  gaps identical across three straight sessions, not code defects. `npm run tools` 18/18 confirmed.
+- **01, 15 — stayed in `Stable/`, re-verified.** Neither ran this round (correctly skipped). Both
+  re-checked directly against the live repo: test suites clean (33/0 and 26/0), no git history on
+  their owned paths since their respective Stable dates, storage keys and offsite-request counts
+  unchanged. No move.
+- **No project moved out of `Stable/`** — nothing surfaced that reopens 01 or 15.
 
 ## Questions raised for Devon
 
-- **01 Anathema Archive**: is `Pathfinder/data/` a published interface or private to prompts
-  01-03? Raised a fourth and fifth time this round (Torchbearer, The Absalom Inheritance). Still
-  open — not answered this round.
-- **07 The Fourth Quarter**: should the night loop have a day-based difficulty curve, and what
-  shape? New this round (rent-by-tier answered half the question; the day-based half is still
-  open). Not answered this round.
-- **16 Final Grade Checker**: does any report card graded in the QP-rounding-bug window need
-  revisiting? Are the QP threshold numbers themselves right? Both new this round (the rounding
-  *direction* was answered directly by Devon mid-round — that part is resolved and removed from
-  the question; the two remaining sub-questions are still open).
-- **19 Schedule Visualizer**: how should `gvb-save.js` storage quota be handled for this project's
-  unusually large save state? Carried forward from round 1, still open, still blocking task six's
-  adoption.
-
-Three questions were resolved and removed this round (not carried into any "Questions for Devon"
-block, since they're now closed): the Pathfinder Campaigns/Characters merge (harmonize, don't
-share), the committed schedule data (leave it), and the Final Grade Checker's rounding *direction*
-(quality points don't round up at .5, unlike the percentage average).
+- **02, 03 (Pathfinder Campaigns/Characters) — added.** Whether one clean round or two is the
+  actual bar for `Stable/`, now that both pages have had their first genuinely clean round. New
+  this refresh, not previously asked this way.
+- **07 (The Fourth Quarter) — removed, answered.** The difficulty-curve question was answered
+  directly this round (spoilage, built) — recorded in the prompt's durable section, removed from
+  the block.
+- **12 (Coffee Shop Sim) — added.** Whether the Serve button should require full order completion,
+  given a measured real difference between patient and eager serving. New this refresh, raised by
+  this round's own session.
+- **13 (Daredevil) — added.** What "Not interested" to Earl should actually do, given the milestone
+  spine proceeds almost unchanged regardless. New this refresh; this round's own session flagged it
+  as the biggest open item on the site, and it's now in the durable location for it.
+- **16 (Final Grade Checker) — rewritten, not just carried forward.** The old question ("are the
+  3.5/2.5/1.5/0.5 thresholds right") is answered (no — whole numbers, 4/3/2/1/0) and removed. The
+  remaining question (does any real report card need a second look) is restated with the larger,
+  correct scope — the bug window is the tool's entire history, not one round.
+- **18 (Name Picker), 22 (General Site Improvements) — added, mirrored.** The rename deadlock now
+  targets `newindex.html` (22's file), not `index.html`; both prompts carry the same question so
+  whichever session picks it up first can resolve both at once.
+- **19 (Schedule Visualizer) — unchanged, still open.** Storage-quota question for `gvb-save.js`
+  adoption, third round running with the same "skip it" answer from Devon.
+- **01 (Anathema Archive) — unchanged, still open, count updated.** `Pathfinder/data/` raised a
+  sixth time this round (Torchbearer, The Absalom Inheritance again).
 
 ## Projects that are done
 
-**01 Anathema Archive** and **15 The Fracture Cycle** — both moved to `Claude Prompts/Stable/` this
-round, both verified against the live repo rather than trusted on their own notes' say-so. See
-"Stable/active moves" above.
-
-No other project reached that bar. Several (10, 12, 20) closed every task from their previous
-round's list, but each still has a real next item (feature-scoped inert hooks, a playthrough
-re-measurement, a cosmetic geometry fix) rather than nothing at all.
+- **14 (Integer Foundry)** and **17 (Image to PDF)** — moved to `Stable/` this round, see above.
+- **01 (Anathema Archive)** and **15 (The Fracture Cycle)** — already in `Stable/`, re-confirmed.
 
 ## Projects that never ran
 
-None. All twenty of prompts 01-20 ran this round, and prompt 21 ran twice (as designed) and
-applied every request.
+None. All twenty-one project prompts (02-21) plus prompt 22 posted round-3 notes. 01 and 15 were
+correctly skipped per the `Stable/` convention, not left idle by omission.
 
 ## Found but not fixed
 
-- **The `waitForFunction`/`textContent`/`isHidden` engine-mismatch bug class is bigger than prompt
-  21's own round-2 fix covered.** Prompt 21 fixed every instance in `Tools/board-check/**` and, in
-  the course of that work, additionally found (but correctly did not fix, being outside its
-  boundary) the identical bug in `Tools/board-check/play-castle.mjs` (prompt 05's) and
-  `Projects/integer-foundry/test/browser.mjs` (prompt 14's). **This refresh's own survey — running
-  every project's test suite fresh rather than trusting notes files — found two more instances
-  prompt 21's pass never mentioned**: `Tools/name-picker/test/browser.mjs` (both the
-  `waitForFunction` shape and multiple `page.textContent()` calls) and
-  `Tools/seating-chart/test/drive-seating.mjs` (`page.textContent()` and `page.isHidden()`, both
-  Playwright-only). A sixth instance, `Projects/corner-and-kettle/test/drive-save.mjs`, has **eight
-  separate occurrences** of the `waitForFunction(fn, null, opts)` shape, the most of any file found.
-  All three of these new findings are now written into their respective projects' own prompts as
-  task one, with exact line numbers and the fix (import `waitFor`/`textContent` from
-  `Tools/board-check/drive.mjs`, which already exports engine-aware versions). Put a note in
-  prompt 21's own refreshed file flagging that this bug class turned out broader than first found,
-  in case a seventh instance surfaces in a future round's project-owned test file.
-- **The handoff/notes disagreement on Corner & Kettle's and Seating Chart's test inversions** — see
-  "Where the notes and the repository disagreed" above. Not a code bug, but worth recording as a
-  finding: `gvb-site-handoff-v9.md`'s own backlog table is wrong on this one point, and future
-  sessions citing it for "what's still outstanding" should verify against the actual test file
-  rather than the handoff's summary.
-- **Two real bugs in shared test tooling, found by re-running `npm run games` on a fair environment**
-  (see "What this session added on top") — `play-games.mjs`'s golden-hour wading-test sequencing,
-  and `drive.mjs`'s `walkTo()` raw camera-rotation write. Both written into prompt 21's own file as
-  action items, not fixed here — they're `Tools/board-check/**`, outside a refresh session's
-  boundary either way.
-- **A Windows-checkout `core.autocrlf` false positive in `npm run social:check`** (see "What this
-  session added on top") — five recently-touched pages report DRIFT with byte-identical content,
-  purely from a line-ending mismatch between the generator (`\n`) and what autocrlf rewrites on
-  checkout (`\r\n`). Written into prompt 21's file with the fix direction (`.gitattributes` or a
-  normalizing comparison); not fixed here.
+- **Torchbearer (10):** a stale comment in `loadSave`'s "Content Missing" branch, describing
+  save-order behavior the `mountSaveBar` cleanup changed. Written into prompt 10's task list.
+- **Name Picker (18):** `np-store.js`'s own header comment says "twelve" storage keys; the real
+  count is thirteen, confirmed everywhere else. Written into prompt 18's task list.
+- **Final Grade Checker (16):** the jsPDF-AutoTable column-width `console.warn` — real,
+  reproducible, low value, pre-existing across three rounds. Left in prompt 16's task list at its
+  existing low priority.
+- **Aphelion (04):** a stale assertion-count claim (10 vs. actual 9) and a stale line-number
+  citation (541-602 vs. actual 569-629) in this project's own round-3 notes, caused by another
+  thread editing earlier parts of the same shared file afterward. Not worth a prompt-file
+  correction beyond noting it here — the prompt's own figures were already accurate.
+- **Schedule Visualizer (19):** none found beyond the restructure's own bugs, all fixed this round
+  (the `check-integrity.mjs` false-positive on an HTML comment, the `BR_CSS` template-literal
+  syntax error caught by the new `structure.mjs`).
+
+## Commit and push
+
+Ran as Step six, added to prompt 23 this refresh per Devon's explicit request (see below). `git
+status` before staging showed the full round's accumulated work: all twenty-one projects' own
+changes, prompt 22's shared-file pass (including the untracked `gvb-site-handoff-v10.md`), and
+this session's own `Claude Prompts/**` refresh. Nothing unfamiliar or unaccounted-for by a notes
+file turned up. Staged and committed the whole tree; see the commit that follows this notes file
+in `git log` for the message and hash, and the top-level conversation for confirmation the push
+landed.
 
 ## Next round
 
-Roughly in order of value per effort, reading across all twenty-one refreshed prompts:
+Roughly in order of value per effort:
 
-1. **Prompt 05** (Castle Conundrum), task two — look at the candidates already sitting in
-   `Tools/board-check/candidates/` and run `npm run promote`. This is now a five-minute judgment
-   call, not an environment-blocked attempt — the highest value-per-effort item on the whole board.
-2. **Prompt 05** (Castle Conundrum), task one — the hall table and gothic statue embedded in the
-   back wall: a decorative prop that's been fully invisible for at least two rounds, with exact
-   numbers already worked out.
-3. **Prompt 21**, two small fixes in shared test tooling, both root-caused and ready to apply: the
-   golden-hour wading-test camera re-aim in `play-games.mjs`, and a `lookAt`-style steering option
-   for `drive.mjs`'s `walkTo()` for games that hand-roll their own camera rotation (Fourth Quarter
-   first). Both cheap, both mechanical, both currently blocking real coverage of features that
-   already shipped.
-4. **Prompt 11** (The Absalom Inheritance) — character creation is now the single biggest gap
-   between this and "a CRPG," and there's more content than ever to replay through once it exists.
-5. **Prompts 12, 14, 18, 20's own newly-found `waitForFunction`/`textContent`/`isHidden` fixes** —
-   each is a small, mechanical, well-scoped fix now that the pattern and the working replacement
-   (`drive.mjs`'s exported helpers) are known. Prompt 14 now has four call sites confirmed, not one.
-6. **Prompt 09** (Faire Weekend) — mobile tap targets, a real design pass, three rounds overdue.
-7. **Prompt 19** (Schedule Visualizer) — the restructure is now unblocked after round 2's full read
-   of the simulation module; two sessions is still the right estimate.
-8. **Prompt 10** (Torchbearer) — a Feint action unlocks real content (a core PF2e verb this engine
-   doesn't have yet) beyond the one feat it was scoped for.
-9. **The four open "Questions for Devon" blocks** (01, 07, 16, 19) — none is code, all are cheap for
-   Devon to resolve, and each has been carried forward at least once already.
-10. Everything else per each prompt's own task list — none of it is urgent, all of it is real.
+1. **Daredevil's Earl/"Not interested" question** — the single biggest open item on the site,
+   Devon's call, not code.
+2. **Final Grade Checker's report-card-revisit question** — now a bigger window than previously
+   known, Devon's call.
+3. **Coffee Shop Sim's Serve-gate question** — a real, measured design decision.
+4. **The Name Picker rename deadlock** — cheap to resolve either direction, three rounds running.
+5. **The Pathfinder Campaigns/Characters Stable-timing question** — cheap, resolves two prompts at
+   once.
+6. **`Pathfinder/data/`** — raised six times now, cheaper to decide than to keep carrying forward.
+7. Every project's own "Next session" section for its regular backlog — unchanged by this refresh,
+   carried forward there rather than duplicated here.
 
-Skip **prompts 01 and 15** (both in `Stable/`) unless Devon wants to deliberately expand either's
-scope.
+## Writing style
+
+Devon writes the handoffs himself and they have a voice: direct, specific, no em dashes, no
+rule-of-three padding, no corporate throat-clearing. Numbers over adjectives. When something was
+wrong, say what was wrong and what the evidence was. Match that. Do not write "comprehensive" or
+"robust" anywhere.

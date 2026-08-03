@@ -287,8 +287,50 @@ changed.
   or the handoff already resolved.
 - Confirm the archive is a complete copy, including `notes/` and `Stable/` if it exists yet, and that
   nothing in the live folder was moved rather than copied.
-- Confirm you changed nothing outside `Claude Prompts/`: `git status` should show additions and edits
-  under that folder only.
+- Confirm your own edits are scoped to `Claude Prompts/` only: everything else `git status` shows is
+  the round's already-completed project work (the twenty-one project threads' own commits-to-be, plus
+  prompt 22's), not something you created. Read through it if anything looks unfamiliar, but it is not
+  yours to edit.
+
+## Step six: commit and push everything (added 2026-08-03, at Devon's explicit request)
+
+**This is the one deliberate exception to "you touch nothing outside `Claude Prompts/`."** By the
+time prompt 23 runs, a full round's worth of work — twenty-one projects plus prompt 22's shared-file
+pass — usually sits uncommitted in the working tree, because nothing earlier in the cycle commits
+anything. Prompt 23 runs last, so it is the natural place to close the round out with a real commit
+and push, the same way prompt 22 was already the natural place to bump the version line and write the
+handoff.
+
+After Verification above passes:
+
+1. **Run `git status` and look at it before staging anything.** Confirm what's there is what you'd
+   expect from a completed round: the twenty-one projects' own changes, prompt 22's shared-file work,
+   your own `Claude Prompts/**` refresh. If anything looks like unrelated in-progress work that isn't
+   part of this round (an unfamiliar file, a change with no notes-file account of it anywhere), stop
+   and ask rather than commit it blind — the usual git-safety judgment applies here same as anywhere
+   else.
+2. **Stage everything that belongs to the round** — this is a repo-wide `git add`, not scoped to
+   `Claude Prompts/`, since the round's whole point was to let twenty-two parallel threads touch the
+   rest of the repo. Review what actually got staged before committing, the same way you would before
+   any commit: skim for anything that looks like a secret, a credential, or student data that
+   shouldn't be there (see every project prompt's own "Student data" section — this is exactly the
+   kind of accidental-inclusion moment those rules exist to catch).
+3. **Commit with a message that names the round and the headline finds** — not just "round N". Look at
+   what you wrote in `Claude Prompts/archive/round-N/README.md` and the fresh `gvb-site-handoff-v*.md`
+   for the actual content; a commit message that just says "refresh" wastes the one line of `git log`
+   that could have told a future reader what shipped.
+4. **Push to `origin/main`.** If the push is rejected (a remote change landed since this session
+   started), do not force-push — pull/rebase or merge as the situation actually calls for, the same
+   judgment call you'd make for any push conflict, and say what happened in your notes.
+5. **If a future round's prompt 22 or an individual project thread already committed and pushed its
+   own work before prompt 23 ran** (the cycle doesn't currently require this, but nothing prevents an
+   individual session from doing it), do not re-commit what's already committed — `git status`
+   showing a clean tree for a given path before you even start staging is your signal that this
+   already happened, and step two's own review will surface it either way.
+
+Note in your own notes file (see below) that this step ran, what was committed, and the resulting
+commit hash — this is the one part of a refresh session's own account that isn't just about
+`Claude Prompts/**`.
 
 ## Output: your notes file
 
@@ -305,6 +347,7 @@ Write `Claude Prompts/notes/23-refresh-prompts-notes.md`.
 ## Projects that are done
 ## Projects that never ran
 ## Found but not fixed
+## Commit and push
 ## Next round
 ```
 
@@ -324,6 +367,8 @@ Write `Claude Prompts/notes/23-refresh-prompts-notes.md`.
 - **Projects that never ran** — prompts left untouched, still pending.
 - **Found but not fixed** — bugs your survey turned up. You are forbidden from fixing them, so this
   section is the only place they exist. Say which prompt's task list you put each one in.
+- **Commit and push** — per Step six: what was staged, the commit message and hash, and confirmation
+  the push landed (or, if it didn't, why not and what you did instead).
 - **Next round** — which prompts to run, roughly in order of value.
 
 ## Writing style

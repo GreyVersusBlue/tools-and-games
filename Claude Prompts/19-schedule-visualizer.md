@@ -1,20 +1,24 @@
 # 19 — Schedule Visualizer and Browser Generator
 
 You are working on the Schedule Visualizer and Browser Generator, a classroom tool on
-greyversusblue.com under the board's "Town Services" section. **At 863 KB it is by far the
-largest hand-written file in the repo.** It is a generator: it produces the second file you
-own. Round 2 read the entire ~4,400-line simulation half of the file for the first time
-(pathfinding, congestion, playback) and fixed a 21 MB PDF export down to ~190 KB. **The
-restructure is now unblocked — see task one.** This prompt is self-contained.
+greyversusblue.com under the board's "Town Services" section. **Round 3 did the restructure round
+2 unblocked**: `Tools/schedule-visualizer.html` is a shell now, not an 863 KB monolith — the real
+logic lives in `Tools/schedule/app/`, seven files (~594 KB of `.js`, 156 KB of `.css`). This prompt
+is self-contained.
 
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
 
-- `Tools/schedule-visualizer.html` (863,737 bytes) — the generator.
-- `Tools/schedule-browser.html` (161,074 bytes) — its generated output.
-- `Tools/schedule/` — `fonts/`, `libs/jspdf/`, `test/` (`smoke.mjs`, `publish.mjs`, the Northwind
-  fixture). Any further folder you create under `Tools/` named for this tool is yours the same way.
+- `Tools/schedule-visualizer.html` (124,566 bytes) — the generator, now a shell.
+- `Tools/schedule-browser.html` (164,349 bytes) — its generated output.
+- `Tools/schedule/app/` — the real logic, seven files split out of the shell this round:
+  `data-model.js`, `layout-editor.js`, `schedule-ui.js`, `pathfinding.js`, `viz-playback.js`,
+  `app-shell.js`, `browser-template.js`, plus `visualizer.css` and a `README.md` explaining the
+  split's shape and editing rules — **read that README before moving code between these files.**
+- `Tools/schedule/` — `fonts/`, `libs/jspdf/`, `test/` (`smoke.mjs`, `structure.mjs`, new this
+  round, `splice-social-block.mjs`, new this round, `publish.mjs`, the Northwind fixture). Any
+  further folder you create under `Tools/` named for this tool is yours the same way.
 
 **The two old dated/spaced paths still exist as tiny redirect stubs.** Leave them.
 
@@ -50,6 +54,25 @@ those markers exactly, or `npm run social:check` will report drift on every rege
   directly rather than inheriting an assumption from a simpler adopter (every other adopter has one
   small save; this one doesn't). See task two below.
 
+## Required reading
+
+1. This whole file.
+2. **`Claude Prompts/notes/19-schedule-visualizer-notes.md`** — round 3's session: the restructure
+   itself (drafted in a separate sandbox session, checked against the real repo and tooling before
+   landing), the What-If Lab read (task two, closed — it's genuinely shared with the newly-read
+   simulation module, not duplicated), the `.rcell`/`.geo-room` read (task five, closed — different
+   coordinate systems and data sources, not mergeable duplication), both cosmetic task-four items,
+   and the `gvb:social` publish-drift gap closed with Devon's explicit go-ahead this round. Round
+   2's notes are archived at `Claude Prompts/archive/round-2/notes/19-schedule-visualizer-notes.md`
+   — the full simulation-module read and the PDF-size fix. Round 1's are at
+   `Claude Prompts/archive/round-1/notes/19-schedule-visualizer-notes.md`.
+3. **`Tools/schedule/app/README.md`, new this round** — why the split has this shape, what was
+   rejected and why, what this shape is bad at, and the editing rules. Read before moving code
+   between the new files.
+4. `gvb-site-handoff-v10.md` §4 (`check-integrity.mjs`'s new `.js`/`.css` sweep, this project's own
+   round-2 request, applied — confirm it's no longer an open Shared-file request) and §10 (locked
+   decisions, through #58).
+
 ## What is already decided — don't reopen these
 
 **The committed floor plan question is resolved.** Devon's call, made this round: **leave it as
@@ -72,85 +95,95 @@ dated paths still redirect. Nothing to revisit.
 
 ## What is actually here
 
-**The generator**: `Tools/schedule-visualizer.html`, 863,737 bytes (was 862,547 at round 1's
-refresh — +1,190 bytes this round). **The output**: `Tools/schedule-browser.html`, 161,074 bytes
-(+357).
+**The restructure is done.** `Tools/schedule-visualizer.html` is 124,566 bytes now (was 863,737) —
+both `<style>` blocks and both inline `<script>` blocks are gone, replaced by one `<link>` and
+seven `<script src>` tags in the body, in source order, with no `defer`/`async` (about 40 listeners
+bind at parse time, so load order has to match the original). The real logic lives in
+`Tools/schedule/app/`: `data-model.js` (51 KB — AppState, storage keys, blueprint persistence,
+staircase pairing, undo/redo), `layout-editor.js` (116 KB — canvas, tool placement, all five
+right-panel editors), `schedule-ui.js` (95 KB — settings, bell/subjects editors, CSV bulk import),
+`pathfinding.js` (30 KB — A*, multi-floor graph, congestion map), `viz-playback.js` (164 KB, now
+the largest file — path visualization, playback engine, travel-time estimator, PDF/PNG export),
+`app-shell.js` (71 KB — onboarding, project export/import, the What-If Lab, `init()`),
+`browser-template.js` (68 KB — the publish codegen), plus `visualizer.css` (156 KB). The cut was
+mechanical (a script copying verbatim line ranges, not retyping), and this session independently
+re-ran that script against the live file and confirmed every one of the seven files reproduces
+byte-for-byte. Published output is byte-identical to the pre-restructure baseline.
 
-**The full pathfinding/congestion/playback module is read now, for the first time.** Round 2 read
-about 4,430 lines line-by-line: the A* pathfinding engine (with a teleport-aware admissible
-heuristic for staircase pairs), segment resolution, path visualization and congestion colouring,
-the top-3 hotspot pulse overlay, and — the biggest piece, previously completely unread — the
-playback engine and travel-time estimator, including a real per-tile, quadrant-based hallway
-traffic simulation with directional right-of-way rules. **This answers round 1's open question,
-"is the movement real, and does the visualizer make it visible?": yes.** Not a toy heatmap — a
-genuine traffic model.
+**The What-If Lab is read now, and it's genuinely shared, not duplicated.** 891 lines, 35
+functions, lives entirely in `app-shell.js`. It reuses the same congestion-multiplier model
+`computeTravelTimes` uses rather than reimplementing it — confirms the shared helpers round 2
+flagged really are shared. No changes needed.
 
-**The PDF export is fixed: 21.4 MB → ~190 KB, same 11-room fixture.** `renderExportCanvas()` now
-also returns the raw canvas; `exportVizAsPDF()` embeds a JPEG recompression (quality 0.82) instead
-of an uncompressed PNG. Safe because the export canvas is always painted with an opaque background
-first, so there's no alpha channel a JPEG could lose. `exportVizAsPNG()` is untouched, still
-lossless.
+**`.rcell` vs. `.geo-room` are not duplication and cannot merge — read, closed.** Different
+coordinate systems (hardcoded absolute-pixel wing layouts vs. data-driven grid cells times a
+scale), different data sources, different lifetimes. The only available move is deleting the
+legacy renderer, which costs the live app its map for anyone who hasn't drawn a blueprint yet.
+Not worth it.
 
-**Accessibility: the mode switcher's three buttons now carry `role="tab"` and `aria-selected`**, in
-both the live generator and the publish template — fixed in the generator function so every newly
-published file gets it for free, plus a hand-patch to the already-committed `schedule-browser.html`
-since it isn't regenerated automatically.
+**A repo-wide false-positive bug found and fixed while landing the restructure**:
+`check-integrity.mjs`'s inline-script regex matched an HTML comment that described `<script src>`
+syntax in prose, because the comment text itself contained an unescaped `<script` with no `src=`
+before the next `>`. Reworded the comment; `npm run check` back to 0 broken. Not a bug in the
+split, a blind spot in a static regex check — worth knowing if you ever write a comment describing
+script-tag syntax anywhere in this project.
 
-**`Tools/schedule/test/smoke.mjs`, 67 assertions** (was 42): the mode-switcher fix, the PDF-size
-fix (driving the real `exportVizAsPDF()` button with real render data, asserting a `%PDF` header
-and a 2 MB ceiling), and 17 new assertions covering the simulation half for the first time — A*
-routing across a staircase pair, `resolveRoomPath`'s three documented outcomes, congestion/hotspot
-data, travel-time annotation, and a full `PlaybackController` lifecycle.
+**A new guard exists: `Tools/schedule/test/structure.mjs`, 31 assertions.** Checks the seven files
+exist, load order matches the `<script src>` list, no tag carries `defer`/`async`/`type=`, no
+`<style>` is left in the shell, all seven files parse as one concatenated unit with no duplicate
+top-level name (491 names checked), and no `app/` file references an offsite host. Caught a real
+`BR_CSS` template-literal syntax error mid-round before `publish.mjs` got to it.
 
-**A guard-rail check found a real hardening gap, fixed in passing**: emptying
-`AppState.blueprint.crossFloorPairs` before building the graph first **crashed the whole test
-suite** with an uncaught `TypeError`, instead of failing the one assertion it should have. A test
-that crashes instead of failing is worse than no test — a real regression could produce the same
-crash and get misread as "the harness broke," not "the feature broke." Hardened before this round
-ended.
+**The `gvb:social` publish-drift gap is closed, with Devon's explicit go-ahead this round** (a
+prior session had deliberately left it for later). `brBuildPublishedHTML()` now takes an optional
+`socialBlock` argument, emitted verbatim when supplied and omitted otherwise — the live Publish
+button still calls it with no argument, so a teacher's own downloaded copy never gets a
+`greyversusblue.com` URL baked in. `Tools/schedule/test/splice-social-block.mjs`, new, mechanizes
+inserting the committed file's real block into a freshly generated one, for whenever someone with
+real blueprint data next regenerates `Tools/schedule-browser.html` for real.
 
-**Still not done: the restructure itself.** 863 KB in one file is still the strongest restructure
-case in the repo, and task four (the read) was its explicit precondition — now satisfied. Round 1's
-two-session estimate for the restructure itself still looks right given the file's size.
+**Both cosmetic task-four items from round 2 are done.** A mobile scroll-affordance gradient on
+`.mapscroll` (a first, more "correct-looking" four-layer CSS approach measurably didn't work —
+worth reading the notes if you ever revisit this) and the Building Map now paginates sensibly
+across a print page break.
 
-**Still not done: the What-If Schedule Lab, ~890 lines, completely unread.** Shares some of the
-same congestion/weighting helpers the newly-read module uses. Not part of round 2's task, but
-belongs on the list before anyone restructures the file — a split has to know what depends on what.
+**`check-integrity.mjs`'s offsite sweep now covers `.js`/`.css`, not just `.html`** (this project's
+own round-2 request, applied by prompt 22 this round) — confirm this is reflected as done, not
+still open, in Shared-file requests.
 
-**`localStorage`: still 29 call sites, still hand-rolled.** See Questions for Devon above.
+**`localStorage`: still 29 call sites, still hand-rolled.** See "Questions for Devon" above — third
+round running with the same open question, Devon has said skip adoption each time so far.
 
 ## Your task
 
-Round 2 closed the read (the precondition for the restructure) and the PDF-size fix. What's left:
+**The restructure, the What-If Lab read, and the `.rcell`/`.geo-room` read are all closed.** What's
+left:
 
-1. **Restructure the file — now unblocked.** A generator with a template, an importer, a layout
-   engine, a pathfinder, and a UI wants to be five files. The algorithmic core is now genuinely
-   understood, not skimmed, per round 2's read. Two sessions still looks like the right estimate
-   given the file's size and the fact only two test suites exist to catch a bad split.
-2. **Read the What-If Schedule Lab** (~890 lines) before or during the restructure, since it shares
-   helpers with the module round 2 just read.
-3. **Adopt `gvb-save.js`, once the storage-quota question above is answered.** Keep every existing
+1. **Adopt `gvb-save.js`, once the storage-quota question above is answered.** Keep every existing
    key exactly as it is (locked decision #36); put fill-ins in `repair`, not `migrate` (locked
    decision #37). A missing hook is a Shared-file request, not something to patch around.
-4. **Cosmetic, quick:** a scroll-affordance shadow on the mobile map (nothing currently tells a
-   phone user the map scrolls), and check the Building Map prints sensibly across a page break.
-5. **`.rcell` vs. `.geo-room`** — two floor-plan SVG renderers that look like duplication but
-   haven't been read deeply enough to be sure they can merge. Needs a deeper read of both, possibly
-   as part of the restructure.
+2. **`viz-playback.js` at 164 KB is now the largest file in the tool** — the notes name a clean
+   further split (path rendering vs. the playback engine, at the old file's line 14729) if anyone
+   wants one. Optional, not urgent.
+3. **The actual end-to-end regeneration of `Tools/schedule-browser.html`** — deliberately not done
+   this round, since it needs real blueprint/schedule data that lives in whoever's browser last
+   built it, not in this repo. `splice-social-block.mjs` is ready for whenever that happens.
+4. If your own pass turns up something new, add it here.
 
 ## Verification
 
 - **Before changing anything, generate a browser file from the current generator and keep it**
   (`node Tools/schedule/test/publish.mjs baseline.html`). After any change, generate again and diff.
 - **Open the generated output in a browser and use it**, every time.
-- `node Tools/schedule/test/smoke.mjs` → **67 passed, 0 failed.**
+- `node Tools/schedule/test/smoke.mjs` → **73 passed, 0 failed.**
+- `node Tools/schedule/test/structure.mjs` → **31 passed, 0 failed.**
 - After any change touching fonts or jsPDF, grep both files for offsite hosts → zero hits, then
   **actually export a PDF**.
-- `cd Tools/board-check && npm run social:check` → **17 notices, 17 already current** (dropped
-  from 22 this round — a real, correct count, not a regression; the parse failure that blocked this
-  check in round 2 is fixed now too).
-- `cd Tools/board-check && npm run check` → as of this refresh: **335 units checked, 0 broken; 0
-  collisions across nine widths, tightest vertical gap 3.5px.**
+- `cd Tools/board-check && npm run social:check` → **18 notices, 18 already current** (Orbital's
+  card joined this round).
+- `cd Tools/board-check && npm run check` → as of this refresh: **559 units checked, 0 broken; 0
+  collisions across nine widths, tightest vertical gap 9.1px.** (The unit count moves every round as
+  files are added elsewhere in the repo; 0 broken is what matters.)
 - `cd Tools/board-check && npm run tools` → **18 checks, 0 failed.**
 - Locked decision #34: for every guard-rail you add, break the thing on purpose first and watch it
   fail — round 2's own crash-instead-of-fail finding (above) is exactly why this matters.

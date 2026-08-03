@@ -1,6 +1,6 @@
 // ui.js — rendering + interaction flows. All engine mutation goes through engine modules.
 import { DB, fmtMoney } from "./data.js";
-import { S, save, dayName, isWeekend, weekOf, seasonOf, levelInfo, LEVELS, activeClients, clientSlotsMax,
+import { S, save, wipeSave, dayName, isWeekend, weekOf, seasonOf, levelInfo, LEVELS, activeClients, clientSlotsMax,
          getClientRec, contentClient, log, addRep, addCash, rand, pick } from "./state.js";
 import { SLOTS_PER_DAY, spendSlots, endDay } from "./engine/calendar.js";
 import { marketHeat, trueValue, suggested, bumpKnowledge, knowledgeEdge, playerListingValue } from "./engine/marketFacade.js";
@@ -170,7 +170,7 @@ function clientCard(rec) {
     acts.appendChild(actionBtn("Take the listing", 1, false, () => { if (!spendSlots()) return; const pl = Seller.takeListing(rec); flowPrepListing(pl); }));
   }
   acts.appendChild(actionBtn("Schmooze ($120)", 1, S.cash < 120, () => {
-    if (!spendSlots()) return; addCash(-120, `lunch with ${c.name}`);
+    if (!spendSlots()) return; addCash(-120, `lunch with ${c.name}`, rec.recId);
     Clients.schmooze(rec); render();
   }));
   acts.appendChild(actionBtn("Fire client", 0, !!rec.dealId, () => confirmModal(`Part ways with ${esc(c.name)}? (−5 reputation, frees a slot)`, () => { Clients.fireClient(rec); render(); })));
@@ -321,9 +321,11 @@ function logPanel(n, filter = "all") {
   let rows = S.log;
   if (filter === "money" || filter === "rep") rows = rows.filter(it => it.kind === filter);
   else if (filter.startsWith("client:")) {
-    const rec = S.clients.find(r => r.recId === filter.slice(7));
-    const name = rec ? contentClient(rec).name : null;
-    if (name) rows = rows.filter(it => it.text.includes(name));
+    // Matches the stamped recId on the log entry, not the client's display
+    // name — a substring match used to false-positive on two clients whose
+    // names collide, or go stale the moment a client's name changed.
+    const recId = filter.slice(7);
+    rows = rows.filter(it => it.recId === recId);
   }
   rows.slice(0, n).forEach(it => d.appendChild(el("div", "log-row log-" + (it.cls || "plain"),
     `<span class="log-day">D${it.day}</span> ${esc(it.text)}`)));
@@ -437,7 +439,7 @@ function flowNegotiate(deal, price) {
   modal(`Negotiation, round ${deal.round} — ${esc(l.address)}`, body, [
     ["Accept their counter", () => { deal.price = resp.counter; if (resp.counter > rec.budget) Clients.satisfactionDelta(rec, -6, "accepting a number past their budget"); Deals.acceptDeal(deal); closeModal(); render(); }],
     ["Counter back", () => { const p = parseInt(counterIn.value, 10) || price; closeModal(); flowNegotiate(deal, p); }],
-    ["Walk away", () => { deal.stage = "dead"; rec.dealId = null; log(`You walk from ${l.address}. ${agent.name} pretends not to care.`, ""); Clients.satisfactionDelta(rec, 2, "you refusing to overpay"); closeModal(); render(); }],
+    ["Walk away", () => { deal.stage = "dead"; rec.dealId = null; log(`You walk from ${l.address}. ${agent.name} pretends not to care.`, "", undefined, rec.recId); Clients.satisfactionDelta(rec, 2, "you refusing to overpay"); closeModal(); render(); }],
   ]);
 }
 
@@ -458,7 +460,7 @@ function flowPrepListing(pl) {
   });
   if (!pl.preInspected) {
     const insBtn = el("button", "btn btn-sm", "Pre-listing inspection ($450) — find what the buyer's inspector will");
-    insBtn.onclick = () => { addCash(-450, "pre-listing inspection"); pl.preInspected = true; flowRefresh(() => flowPrepListing(pl)); };
+    insBtn.onclick = () => { addCash(-450, "pre-listing inspection", rec.recId); pl.preInspected = true; flowRefresh(() => flowPrepListing(pl)); };
     body.appendChild(insBtn);
   }
   const stageSel = el("select"); ["No staging ($0)", "Light staging ($500)", "Full staging ($1,500)"].forEach(t => stageSel.appendChild(el("option", "", t)));
@@ -471,7 +473,7 @@ function flowPrepListing(pl) {
     ["Go live", () => {
       const stageCost = [0, 500, 1500][stageSel.selectedIndex], photoCost = [0, 300, 900][photoSel.selectedIndex];
       if (stageCost + photoCost > S.cash) { toast("You can't front that much for staging and photos right now."); return; }
-      if (stageCost + photoCost > 0) addCash(-(stageCost + photoCost), "listing prep at " + pl.listing.address);
+      if (stageCost + photoCost > 0) addCash(-(stageCost + photoCost), "listing prep at " + pl.listing.address, rec.recId);
       Seller.setStaging(pl, stageSel.selectedIndex);
       Seller.goLive(pl, parseInt(priceIn.value, 10) || suggested(pl), photoSel.selectedIndex);
       closeModal(); render();
@@ -486,7 +488,11 @@ function flowReprice(pl) {
   body.append(el("p", "", `Currently ${fmtMoney(pl.price)}; value ~${fmtMoney(suggested(pl))}; DOM ${pl.dom}; interest ${pl.interest.toFixed(1)}.`), labelWrap("New price", priceIn));
   modal(`Reprice — ${esc(pl.listing.address)}`, body, [["Update", () => {
     const p = parseInt(priceIn.value, 10);
-    if (p < pl.price) { Clients.satisfactionDelta(getClientRec(pl.clientRecId), -3, "the price cut"); log(`Price improved (the polite term): ${pl.listing.address} → ${fmtMoney(p)}.`, ""); }
+    if (p < pl.price) {
+      const rec = getClientRec(pl.clientRecId);
+      Clients.satisfactionDelta(rec, -3, "the price cut");
+      log(`Price improved (the polite term): ${pl.listing.address} → ${fmtMoney(p)}.`, "", undefined, rec && rec.recId);
+    }
     pl.price = p; closeModal(); render();
   }], ["Cancel", () => { S.slotsLeft++; closeModal(); render(); }]]);
 }
@@ -544,7 +550,8 @@ function flowOpenHouse(pl) {
     modal("Lowball, live", body, [
       ["Take it to your seller as a real offer", () => {
         pl.offers.push({ id: "off_lb" + S.day, agentId: "ag_sal_dimeo", price, financing: "cash", inspection: false, closeDays: 14, day: S.day, status: "open", escalation: null });
-        log(`Verbal lowball formalized: ${fmtMoney(price)} cash on ${pl.listing.address}.`, "deal");
+        const rec = getClientRec(pl.clientRecId);
+        log(`Verbal lowball formalized: ${fmtMoney(price)} cash on ${pl.listing.address}.`, "deal", undefined, rec && rec.recId);
         closeModal(); step();
       }],
       ["Decline with a smile", () => { closeModal(); step(); }],
@@ -574,26 +581,26 @@ function renderChoiceQueue() {
       ["Buyer covers the gap in cash", () => { Deals.appraisalDecision(deal, "cover", ch.gap); done(); }],
       ["Push seller down to appraisal", () => { Deals.appraisalDecision(deal, "renegotiate", ch.gap); done(); }],
       ["Let it die", () => { Deals.appraisalDecision(deal, "die", ch.gap); done(); }]]),
-    competingOffer: () => modal("Competing offer", body, [
-      ["Raise your offer", () => { deal.price = Math.round(deal.price * (1 + ch.bumpPct) / 500) * 500; log(`You raise to ${fmtMoney(deal.price)} to hold position.`, "deal"); done(); }],
-      ["Stand pat", () => { if (rand() < 0.4) Deals.killDeal(deal, "the other offer won."); else log("You stand pat. The other offer blinks first.", "deal"); done(); }],
-      ["Withdraw", () => { Deals.killDeal(deal, "you withdrew rather than bid up."); done(); }]]),
-    coldFeet: () => modal("Cold feet", body, [
-      ["Talk them through it (schmooze on the house)", () => { addCash(-120, "emergency reassurance dinner"); log("Two hours, one dessert, zero cancelled contracts.", ""); done(); }],
-      ["Give them space", () => { if (rand() < ch.walkChance) Deals.killDeal(deal, "the buyer walked after a long night of doubt."); else log("They call back at 8am: 'Ignore me. We're good.'", ""); done(); }]]),
-    coldFeetSeller: () => modal("Seller cold feet", body, [
-      ["Sit with them at the kitchen table", () => { addCash(-120, "a long talk over coffee"); log("The house stays sold. The kitchen table did its job.", ""); done(); }],
-      ["Give them space", () => { if (rand() < ch.walkChance) Seller.failSellerDeal(pl, "the seller pulled out"); else log("They come around by morning.", ""); done(); }]]),
-    sellerInspectionHit: () => modal("Buyer's inspection findings", body, [
-      ["Offer a credit (~70% of cost)", () => { Seller.sellerInspectionDecision(pl, "credit", ch.cost); if (ch.undisclosedRequired) addRep(-6, "an undisclosed required issue surfaced under contract"); done(); }],
-      ["Refuse — dare them to walk", () => { Seller.sellerInspectionDecision(pl, "refuse", ch.cost); if (ch.undisclosedRequired) addRep(-6, "an undisclosed required issue surfaced under contract"); done(); }]]),
+    competingOffer: () => { const buyerRec = getClientRec(deal.clientRecId); return modal("Competing offer", body, [
+      ["Raise your offer", () => { deal.price = Math.round(deal.price * (1 + ch.bumpPct) / 500) * 500; log(`You raise to ${fmtMoney(deal.price)} to hold position.`, "deal", undefined, buyerRec && buyerRec.recId); done(); }],
+      ["Stand pat", () => { if (rand() < 0.4) Deals.killDeal(deal, "the other offer won."); else log("You stand pat. The other offer blinks first.", "deal", undefined, buyerRec && buyerRec.recId); done(); }],
+      ["Withdraw", () => { Deals.killDeal(deal, "you withdrew rather than bid up."); done(); }]]); },
+    coldFeet: () => { const buyerRec = getClientRec(deal.clientRecId); return modal("Cold feet", body, [
+      ["Talk them through it (schmooze on the house)", () => { addCash(-120, "emergency reassurance dinner", buyerRec && buyerRec.recId); log("Two hours, one dessert, zero cancelled contracts.", "", undefined, buyerRec && buyerRec.recId); done(); }],
+      ["Give them space", () => { if (rand() < ch.walkChance) Deals.killDeal(deal, "the buyer walked after a long night of doubt."); else log("They call back at 8am: 'Ignore me. We're good.'", "", undefined, buyerRec && buyerRec.recId); done(); }]]); },
+    coldFeetSeller: () => { const sellerRec = getClientRec(pl.clientRecId); return modal("Seller cold feet", body, [
+      ["Sit with them at the kitchen table", () => { addCash(-120, "a long talk over coffee", sellerRec && sellerRec.recId); log("The house stays sold. The kitchen table did its job.", "", undefined, sellerRec && sellerRec.recId); done(); }],
+      ["Give them space", () => { if (rand() < ch.walkChance) Seller.failSellerDeal(pl, "the seller pulled out"); else log("They come around by morning.", "", undefined, sellerRec && sellerRec.recId); done(); }]]); },
+    sellerInspectionHit: () => { const sellerRec = getClientRec(pl.clientRecId); return modal("Buyer's inspection findings", body, [
+      ["Offer a credit (~70% of cost)", () => { Seller.sellerInspectionDecision(pl, "credit", ch.cost); if (ch.undisclosedRequired) addRep(-6, "an undisclosed required issue surfaced under contract", sellerRec && sellerRec.recId); done(); }],
+      ["Refuse — dare them to walk", () => { Seller.sellerInspectionDecision(pl, "refuse", ch.cost); if (ch.undisclosedRequired) addRep(-6, "an undisclosed required issue surfaced under contract", sellerRec && sellerRec.recId); done(); }]]); },
     poach: () => { const rec2 = getClientRec(ch.recId); const a = DB.agents[ch.agentId];
       modal("Poaching attempt", body, [
-        ["Counter-schmooze immediately ($200)", () => { addCash(-200, "damage-control dinner"); log(`${contentClient(rec2).name} stays. ${a.name} sends a winking emoji.`, ""); done(); }],
+        ["Counter-schmooze immediately ($200)", () => { addCash(-200, "damage-control dinner", rec2.recId); log(`${contentClient(rec2).name} stays. ${a.name} sends a winking emoji.`, "", undefined, rec2.recId); done(); }],
         ["Trust the relationship", () => {
           const stay = ch.resistBase + rec2.satisfaction / 200 + (rec2.referredBy ? 0.15 : 0);
-          if (rand() < stay) log(`${contentClient(rec2).name} laughs it off. Loyalty: earned.`, "");
-          else { rec2.status = "walked"; rec2.dealId = null; log(`${contentClient(rec2).name} signs with ${a.name}. It stings exactly as much as you'd think.`, "bad"); }
+          if (rand() < stay) log(`${contentClient(rec2).name} laughs it off. Loyalty: earned.`, "", undefined, rec2.recId);
+          else { rec2.status = "walked"; rec2.dealId = null; log(`${contentClient(rec2).name} signs with ${a.name}. It stings exactly as much as you'd think.`, "bad", undefined, rec2.recId); }
           done(); }]]); },
     brokerageOffer: () => { const b = DB.brokerages[ch.brokerageId];
       body.appendChild(el("p", "muted", esc(b.pitch)));
@@ -630,8 +637,11 @@ function renderScorecard() {
     <p>Final reputation: <b>${sc.finalRep ?? S.rep}</b>/100</p>
     <p>Cash on hand: <b>${fmtMoney(sc.cash ?? S.cash)}</b></p>`;
   body.appendChild(stats);
-  body.appendChild(el("p", "hint", "“New career” in the footer starts the next one whenever you're ready."));
-  modal("Year one, closed", body, [["Keep browsing the desk", () => { scorecardDismissed = true; closeModal(); }]], true);
+  body.appendChild(el("p", "hint", "Start fresh right now, or keep browsing the finished desk — “New career” in the footer does the same thing later."));
+  modal("Year one, closed", body, [
+    ["Start a new career", () => confirmModal("Start a new career at Alder Falls? This save will be wiped.", () => { wipeSave(); location.reload(); })],
+    ["Keep browsing the desk", () => { scorecardDismissed = true; closeModal(); }],
+  ], true);
 }
 
 // ---------------- WIDGETS ----------------

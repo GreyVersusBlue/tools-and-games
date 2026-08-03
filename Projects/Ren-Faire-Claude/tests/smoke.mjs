@@ -2498,6 +2498,34 @@ const State = await import(mod('js/state.js'));
     dom.window.close();
   }
 
+  // --- cancelMove: re-running Stage 22's own wiring-audit method (grep
+  // every data-action in main.js, cross-reference against both suites)
+  // turned up one action its own list missed — selectMove/moveTo were
+  // covered, but the move-in-progress banner's Cancel button never was. ---
+  {
+    let s = State.createInitialState();
+    s = State.buildPlot(s, 'demo', 0, 1).state;
+    const builtPlot = s.builtPlots.find(p => p.status === 'built');
+    s = { ...s, cash: 20000 };
+
+    const { dom, doc, storage } = await boot(s);
+    click(doc, '[data-tab="fairfloor"]');
+
+    assert(click(doc, `[data-action="selectMove"][data-id="${builtPlot.id}"]`),
+      'Stage 23: a built plot’s Relocate button is clickable');
+    assert(doc.querySelectorAll(`[data-action="moveTo"][data-plot="${builtPlot.id}"]`).length > 0,
+      'Stage 23: selecting Relocate reveals destination ghost cells on the map');
+    assert(click(doc, '[data-action="cancelMove"]'),
+      'Stage 23: the move-in-progress banner’s Cancel button is clickable — never exercised before this session');
+    assert(doc.querySelectorAll('[data-action="moveTo"]').length === 0,
+      'Stage 23: clicking Cancel actually exits move mode — no destination ghosts remain on the map');
+    assert(saved(storage).builtPlots.find(p => p.id === builtPlot.id).x === builtPlot.x
+      && saved(storage).builtPlots.find(p => p.id === builtPlot.id).y === builtPlot.y,
+      'Stage 23: cancelling a relocate leaves the plot exactly where it was, uncharged');
+
+    dom.window.close();
+  }
+
   // --- the schedule <select>'s change event (Fair Floor) ---
   {
     let s = State.createInitialState();
@@ -2898,6 +2926,92 @@ function makeMemoryStorage() {
     'Fraunces is declared across the full 100-900 variable weight range, not as static cuts');
   assert((css.match(/format\('woff2-variations'\)/g) || []).length === 3,
     'the three variable faces (Fraunces normal + italic, Grenze Gotisch) declare woff2-variations');
+}
+
+// ---------------------------------------------------------------------
+// Section 23: mobile touch targets + grounds-map scroll affordance (Stage 23)
+//
+// Toured on a real 375x812 layout at the end of Stage 21 and left
+// deliberately undone through Stage 22: 38 plot markers at 26px, buttons at
+// 27-28px, and tabs at 40px, all under the 44px touch minimum, plus no
+// affordance at all for the fact that the widest grounds tier runs wider
+// than the viewport. None of this is renderable in a Node/jsdom suite (no
+// real layout engine), so — same move as Stage 20's WCAG contrast audit —
+// this parses the actual rule text back out of style.css and checks the
+// arithmetic and the technique directly, rather than only printing a
+// screenshot's worth of "looks fine."
+// ---------------------------------------------------------------------
+{
+  const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
+
+  const mobileBlockMatch = css.match(/@media \(max-width:\s*720px\)\s*\{([\s\S]*?)\r?\n\}\r?\n/);
+  assert(!!mobileBlockMatch, 'style.css still has its max-width: 720px breakpoint');
+  const mobile = mobileBlockMatch[1];
+
+  // Plot markers: the grid cell size minus the marker's own margin (2px a
+  // side, set once at global scope and unchanged here) has to clear 44px.
+  const mobileCell = Number((mobile.match(/--cell:\s*(\d+)px/) || [])[1]);
+  const markerMargin = Number((css.match(/\.plot-marker\s*\{[^}]*?margin:\s*(\d+)px/) || [])[1]);
+  assert(Number.isFinite(mobileCell) && Number.isFinite(markerMargin),
+    'both --cell (mobile) and .plot-marker\u2019s margin parse as real numbers');
+  assert(mobileCell - markerMargin * 2 >= 44,
+    `a mobile plot marker (cell ${mobileCell}px \u2212 margin ${markerMargin}px \u00d7 2) is at least 44px (got ${mobileCell - markerMargin * 2}px) \u2014 was 26px pre-Stage-23`);
+
+  // Buttons, tabs, and the footer controls all get an explicit floor rather
+  // than a font/padding guess, so no variant (small, primary, danger, the
+  // gvb-save.js footer buttons) can quietly fall back under 44px.
+  for (const selector of ['.btn', '.tab-btn', '#save-bar button', '#resetBtn']) {
+    const escaped = selector.replace(/[.#]/g, '\\$&');
+    const rule = new RegExp(`${escaped}[^{]*\\{[^}]*min-height:\\s*44px`);
+    assert(rule.test(mobile), `${selector} has a 44px min-height inside the mobile breakpoint (was ${selector === '.tab-btn' ? '40px' : selector === '.plot-marker' ? '26px' : 'under 44px'} pre-Stage-23)`);
+  }
+
+  // The grounds map now regularly overflows the viewport on mobile (Deep
+  // Woods Trail: 14 * 48px = 672px against a 375px phone) — confirm the
+  // scroll-shadow affordance (paper-coloured cover scrolling WITH the
+  // content, shadow gradient fixed to the viewport) is actually wired, not
+  // just an unused overflow-x: auto.
+  const plotSheetMobile = (mobile.match(/\.plat-sheet\s*\{([\s\S]*?)\}/) || [])[1] || '';
+  assert(/overflow-x:\s*auto/.test(plotSheetMobile), '.plat-sheet still scrolls horizontally on mobile');
+  assert(/background-attachment:\s*local,\s*local,\s*scroll,\s*scroll/.test(plotSheetMobile),
+    '.plat-sheet pairs two locally-scrolling cover gradients with two viewport-fixed shadow gradients \u2014 the scroll-shadow technique that makes panning to the eastern columns visible');
+  const shadowLayers = (plotSheetMobile.match(/linear-gradient/g) || []).length;
+  assert(shadowLayers === 4, `the scroll-shadow effect layers exactly 4 gradients \u2014 2 covers + 2 shadows (found ${shadowLayers})`);
+}
+
+// ---------------------------------------------------------------------
+// Section 24: #board's desktop column split (Stage 23)
+//
+// A live-browser measurement (not reproducible in jsdom, which does no real
+// layout) found the desk column \u2014 Office/Backstage/Fair Floor, i.e. most of
+// the game's own controls \u2014 squeezed to 373px on a 1280px desktop, because
+// the grounds column's "auto" track sized itself off the build palette's
+// flex-wrap row measured as if it never wraps (839px), not off the actual
+// map (515px for the starting 10x7 grounds). Fixed with a fit-content()
+// cap. The first attempt (`minmax(0, fit-content(710px))`) is invalid CSS \u2014
+// fit-content() cannot nest inside minmax() per the grid spec \u2014 and a
+// browser silently drops the whole declaration, collapsing #board to a
+// single implicit column and stacking the map on top of the desk instead
+// of beside it. That regression is invisible to this suite (jsdom does not
+// validate grid-track syntax the way a real layout engine does), so this
+// guards the specific shape of the fix rather than its rendered effect.
+// ---------------------------------------------------------------------
+{
+  const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
+  const boardRule = (css.match(/#board\s*\{([\s\S]*?)\}/) || [])[1] || '';
+
+  assert(/grid-template-columns:\s*fit-content\(\d+px\)\s+minmax\(340px,\s*1fr\)/.test(boardRule),
+    '#board\u2019s first column is capped with a bare fit-content(), not nested inside minmax() \u2014 minmax(0, fit-content(...)) is invalid CSS and silently drops the whole rule');
+  assert(!/minmax\([^)]*fit-content/.test(boardRule),
+    '#board never nests fit-content() inside minmax() \u2014 the exact invalid shape that collapsed the two-column layout to one column pre-fix');
+
+  const cap = Number((boardRule.match(/fit-content\((\d+)px\)/) || [])[1]);
+  // Deep Woods Trail (14x10, the widest GRID_EXPANSIONS tier) at the
+  // desktop --cell of 46px: 14*46 + 13*1px gaps + 12px*2 sheet padding +
+  // 0.7rem*2 plat padding = 703.4px. The cap has to clear that or the
+  // widest unlocked grounds would be squeezed narrower than its own cells.
+  assert(Number.isFinite(cap) && cap >= 704,
+    `the fit-content() cap (${cap}px) clears the widest grounds tier\u2019s real width (~703.4px for Deep Woods Trail at the desktop 46px cell)`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

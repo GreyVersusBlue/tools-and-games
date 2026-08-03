@@ -31,7 +31,8 @@ references it gets its orphaned `listingsState` / `market.nb` / `knowledge` entr
 - **Seller mode:** take the listing → walkthrough, recommend repairs and disclosures, pick staging/photos, set a price against the modeled value → go live → interest accrues daily → NPC agents submit offers with deadlines → advise your seller (who has their own hidden psychology) → host open houses → close from the other side of the table.
 - **Hidden information is the game.** Clients have hidden preferences/dealbreakers that surface through viewings, the right questions, and schmoozing. Listings have hidden issues in three severity tiers (cosmetic / moderate / dealbreaker), discovered visibly, by question topic, or only via inspection. Sitting on a disclosure-required issue you knew about will eventually detonate.
 - **Reputation** (word of mouth) is separate from **XP** (career ladder). Satisfied closings generate **referrals** — new clients who name the past client that sent them. Rivals poach, brokerages recruit, rates drift, neighborhoods trend, and your **local market knowledge** per neighborhood sharpens your valuations and negotiating odds.
-- **The career ends at day 336** — four 84-day seasons, one year. `endDay()` freezes a scorecard (closings, volume, referrals, final reputation, the ladder rung reached) instead of starting a 337th day; "End day" becomes "Career complete" and "New career" in the footer starts the next one.
+- **The career ends at day 336** — four 84-day seasons, one year. `endDay()` freezes a scorecard (closings, volume, referrals, final reputation, the ladder rung reached) instead of starting a 337th day; "End day" becomes "Career complete." The scorecard modal itself has a **Start a new career** button now, alongside "Keep browsing the desk" — the footer's "New career" still does the same thing later, but the ending no longer leaves the only way forward as a control the player has to go find.
+- **The Ledger's filter (Everything / Money / Reputation / one client)** matches an exact `recId` stamped on the log line, not a substring of the client's display name. A real, already-live case this closes: a referral's own intro line names the referrer verbatim ("They mention Deb..."), which a name-substring filter would have wrongly surfaced under the referrer's own filtered view.
 
 ## Architecture
 
@@ -179,6 +180,10 @@ New events are pure JSON composed from these handlers. New handler = one functio
   that loop reaches an id whose content file is gone. A deal or listing still actively under
   contract on deleted content is a separate, unhandled edge case: don't delete a listing a save
   might be mid-contract on.
+- **`log(text, cls, kind, recId)`'s fourth argument tags a line as belonging to one client.** Any
+  new call site that's about a specific client should pass that client's `rec.recId` — it's what
+  the Ledger's per-client filter matches on. Leave it `undefined` for anything not about one client
+  (a market-rate shift, a weekly announcement, a brokerage recruitment offer).
 - `tools/smoke.mjs` is a fast regression check: `node tools/smoke.mjs` should end with
   `SMOKE OK: <n> passed`, and exits non-zero on any miss. It covers the buyer loop, the seller
   loop, 40 days of calendar, and the whole save path (corrupt blobs refused, legacy saves

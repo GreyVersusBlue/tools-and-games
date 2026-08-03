@@ -1,0 +1,98 @@
+{
+  "defaultOptions": ["prox", "pause", "call", "bank", "let"],
+  "options": {
+    "prox": {
+      "label": "Proximity",
+      "blurb": "Walk over. Bandwidth −2. No escalation. Undefeated.",
+      "blurbBlocked": "You are too far away. Walk within {range}m first.",
+      "requiresProximity": true,
+      "reaction": "stow",
+      "effects": { "bandwidth": -2, "rapport": 1, "restless": -5 },
+      "toast": { "kind": "good", "title": "Proximity",
+                 "body": "You walk over. Nothing is said. It stops. It always works and it is always boring." }
+    },
+    "pause": {
+      "label": "The pause",
+      "blurb": "Stop mid-sentence and wait. Costs tempo. Mastery −1.",
+      "reaction": "glanceUp", "reactRoom": true,
+      "effects": { "mastery": -1, "restless": -6, "rapport": 0.5 },
+      "toast": { "kind": "", "title": "The pause",
+                 "body": "You stop mid-sentence. The room finds itself. Eleven heads turn toward the silence." }
+    },
+    "call": {
+      "label": "Public callout",
+      "blurb": "Free, fast, and the whole room watches you do it.",
+      "reaction": "flinch",
+      "effects": { "restless": -8, "rapport": -4 },
+      "toast": { "kind": "bad", "title": "Public callout",
+                 "body": "Instant compliance. Rapport −4. Two other kids quietly decide something about you." },
+      "escalation": {
+        "tensionAbove": 0.62,
+        "reaction": "ripple",
+        "effects": { "rapport": -5, "mastery": -3, "restless": 14 },
+        "toast": { "kind": "bad", "title": "Escalation",
+                   "body": "\"I wasn't even DOING anything.\" Now everyone is in it. This is going to take four minutes to come back from." }
+      }
+    },
+    "bank": {
+      "label": "Bank it",
+      "blurb": "Say nothing. Remember it. Adds to your leverage file.",
+      "reaction": null,
+      "effects": {},
+      "leverage": "{name} — {descriptor}",
+      "toast": { "kind": "", "title": "Banked",
+                 "body": "Filed. Useful in a conference. Useless in about three weeks." }
+    },
+    "let": {
+      "label": "Let it go",
+      "blurb": "Sometimes correct. Sometimes it spreads.",
+      "reaction": null,
+      "coinflip": 0.45,
+      "effects": { "rapport": 2 },
+      "toast": { "kind": "good", "title": "They noticed you noticed",
+                 "body": "And they noticed you chose not to. That is worth something." },
+      "elseEffects": { "restless": 7 },
+      "elseToast": { "kind": "", "title": "It spreads",
+                     "body": "It does not stop. Two desks over, someone else starts." }
+    },
+    "quiet": {
+      "label": "The quiet word later",
+      "blurb": "Costs your passing time. Bandwidth −4. Rapport +5.",
+      "reaction": "glanceUp",
+      "effects": { "bandwidth": -4, "rapport": 5 },
+      "leverage": "{name} — talk to her at the door Friday",
+      "toast": { "kind": "good", "title": "You'll catch her at the door",
+                 "body": "Nothing changes in the next thirty minutes. Something changes." }
+    }
+  },
+  "byType": {
+    "QUIET": {
+      "options": ["quiet", "let", "call"],
+      "overrides": {
+        "let":  { "blurb": "Free. She keeps the phone. The lesson continues.",
+                  "effects": { "rapport": 1 }, "coinflip": null,
+                  "toast": { "kind": "", "title": "You let it go",
+                             "body": "She keeps the phone. You keep teaching. Both of those were choices." } },
+        "call": { "blurb": "Immediate compliance. You will think about this tonight.", "reaction": "slump",
+                  "effects": { "rapport": -9, "restless": 10, "mastery": -2 }, "escalation": null,
+                  "toast": { "kind": "bad", "title": "That landed badly",
+                             "body": "She puts it away immediately and does not look up again for the rest of the period." } }
+      }
+    },
+    "FALSE": {
+      "overrides": {
+        "prox": { "effects": { "rapport": -4, "mastery": -1, "restless": 6 },
+                  "toast": { "kind": "bad", "title": "It is a granola bar",
+                             "body": "You crossed the room for a granola bar. The class saw you do it. Rapport −4." } },
+        "call": { "effects": { "rapport": -4, "mastery": -1, "restless": 6 }, "escalation": null,
+                  "toast": { "kind": "bad", "title": "It is a granola bar",
+                             "body": "You crossed the room for a granola bar. The class saw you do it. Rapport −4." } },
+        "bank": { "toast": { "kind": "", "title": "Banked",
+                             "body": "You have written down that {name} was eating a granola bar. For later. For some reason." } },
+        "let":  { "effects": { "hyper": -8 }, "coinflip": null,
+                  "toast": { "kind": "good", "title": "Nothing there",
+                             "body": "You let it go, and it was nothing. Some of the pressure comes off." } }
+      }
+    }
+  }
+}

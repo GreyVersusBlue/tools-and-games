@@ -44,6 +44,23 @@ export function travel(game, tx, ty, { maxLegs = 80 } = {}) {
   return "too-many-legs";
 }
 
+/**
+ * Find this build's command of a given kind, if it has one and it is usable
+ * right now. A build lists which commands it has in `content.pc.commands`
+ * (content.js's `selectPc` has already narrowed `content.commandById` to just
+ * those), so this reads off the resolved content rather than a fixed id —
+ * the same policy plays a Wizard's cone-and-unerring kit or a Fighter's bare
+ * Strike without knowing which build it was handed. Ids are not a safe way to
+ * pick "the attack command": two builds' attacks are named differently
+ * (`strike`, `strike-sword`) precisely because their numbers differ.
+ */
+function findUsable(game, kind) {
+  for (const cmd of game.content.commands) {
+    if (cmd.kind === kind && !game.commandBlocked(cmd.id)) return cmd;
+  }
+  return null;
+}
+
 /** One PC turn's worth of decisions. Returns true if it spent an action. */
 export function combatPolicy(game) {
   const pc = game.run.pc;
@@ -55,34 +72,40 @@ export function combatPolicy(game) {
   const canSee = c => game.world.hasLoS(pc.x, pc.y, c.x, c.y, game.run.gateOpen);
   const actions = game.actionsLeft;
 
-  // Bleeding out beats everything.
+  // Bleeding out beats everything. "potion" is universal across builds — the
+  // one command id every pcOptions entry lists — since it is the adventure's
+  // only externally-bought resource rather than a class feature.
   if (pc.hp <= maxHp * 0.4 && game.potionCount() && !game.commandBlocked("potion")) {
     return game.useCommand("potion").ok;
   }
 
-  // Breathe Fire when it catches somebody. Aim at the closest target in range;
-  // anything else inside the cone is a bonus.
-  if (!game.commandBlocked("breathe")) {
-    const cone = game.content.commandById.breathe.coneFeet;
-    const inCone = live.filter(c => dist(c) <= cone && canSee(c))
+  // A cone command, if this build has one. Aim at the closest target in
+  // range; anything else inside the cone is a bonus.
+  const cone = findUsable(game, "cone");
+  if (cone) {
+    const inCone = live.filter(c => dist(c) <= cone.coneFeet && canSee(c))
       .sort((a, b) => dist(a) - dist(b));
-    if (inCone.length) return game.useCommand("breathe", { x: inCone[0].x, y: inCone[0].y }).ok;
+    if (inCone.length) return game.useCommand(cone.id, { x: inCone[0].x, y: inCone[0].y }).ok;
   }
 
-  // Force Fang never misses, so spend it on whatever is closest to dying.
-  if (!game.commandBlocked("fang")) {
-    const reach = game.content.commandById.fang.rangeFeet;
-    const targets = live.filter(c => dist(c) <= reach && canSee(c)).sort((a, b) => a.hp - b.hp);
-    if (targets.length) return game.useCommand("fang", targets[0].key).ok;
+  // An unerring command, if this build has one — never misses, so spend it on
+  // whatever is closest to dying.
+  const unerring = findUsable(game, "unerring");
+  if (unerring) {
+    const targets = live.filter(c => dist(c) <= unerring.rangeFeet && canSee(c)).sort((a, b) => a.hp - b.hp);
+    if (targets.length) return game.useCommand(unerring.id, targets[0].key).ok;
   }
 
   const adj = live.find(c => isAdjacent(c, pc));
-  if (adj && !game.commandBlocked("strike")) {
-    // A third Strike at −8 is worth less than the Shield it displaces.
-    if (actions === 1 && game.mapPenaltyNow(true) >= 8 && !game.commandBlocked("shield")) {
-      return game.useCommand("shield").ok;
+  const attack = findUsable(game, "attack");
+  if (adj && attack) {
+    // A third Strike at a steep MAP is worth less than the buff it displaces —
+    // whatever penalty this build's own attack actually takes.
+    const buff = findUsable(game, "self-buff");
+    if (actions === 1 && game.mapPenaltyNow(attack.agile) >= 8 && buff) {
+      return game.useCommand(buff.id).ok;
     }
-    return game.useCommand("strike", adj.key).ok;
+    return game.useCommand(attack.id, adj.key).ok;
   }
 
   // Nothing in reach: close on the nearest one.
@@ -105,8 +128,9 @@ export function combatPolicy(game) {
     if (cut > 0 && game.walkTo(best[cut].x, best[cut].y).ok) return true;
   }
 
-  // Boxed in or out of reach: brace.
-  if (!game.commandBlocked("shield")) return game.useCommand("shield").ok;
+  // Boxed in or out of reach: brace, if this build has anything to brace with.
+  const brace = findUsable(game, "self-buff");
+  if (brace) return game.useCommand(brace.id).ok;
   return false;
 }
 

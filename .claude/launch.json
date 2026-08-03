@@ -4,8 +4,9 @@
     {
       "name": "gvb-static-site",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["--yes", "serve", "-l", "47681", "."],
-      "port": 47681
+      "runtimeArgs": ["--yes", "serve", "."],
+      "port": 47681,
+      "autoPort": true
     }
   ]
 }

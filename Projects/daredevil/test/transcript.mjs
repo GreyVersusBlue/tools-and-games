@@ -47,6 +47,28 @@ const RUNS = {
       { on: 'Option B' },
     ],
   },
+  // Answers "Not interested" at the fair: rels.earl stays 'absent' for the
+  // whole run (and, as a side effect, Ruthie is never established either,
+  // since that's a different option on the same six-way choice). Targets the
+  // same class of bug the Ruthie sweep found: prose that assumes Earl is
+  // still in the picture when a plain run said otherwise.
+  no_earl: {
+    name: 'Ray Dockery', town: 'Split Oak',
+    stunt: 'good',
+    rules: [
+      { on: 'Not interested' },
+    ],
+  },
+  // Turns the Young Wannabe down at the gas station, so wannabeMet never gets
+  // set and rels.pete stays undefined for the whole run — the "thread never
+  // opened" case, not the "opened then walked away" case fr2_pete_soft covers.
+  no_pete: {
+    name: 'Ellis Boone', town: 'Cutter Ridge',
+    stunt: 'good',
+    rules: [
+      { on: "isn't something I can teach" },
+    ],
+  },
 };
 
 const MAX_STEPS = 2000;

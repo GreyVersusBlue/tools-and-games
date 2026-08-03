@@ -2,7 +2,7 @@
 // pass any localStorage-shaped object (tests pass a plain stub).
 // Owns cash, the calendar, stock, the crew, tonight's promo, and settlement.
 
-import { MENU } from "./engine.js";
+import { MENU, FOOD } from "./engine.js";
 // Relative, not "/assets/js/gvb-save.js": this module is also imported by
 // test/smoke-campaign.mjs under plain Node, which cannot resolve a site-absolute
 // specifier. The relative path resolves the same in both.
@@ -85,10 +85,43 @@ export function settleDarkNight(c, rand = Math.random) {
   const rentDue = rent(c);
   const net = -(wages + rentDue + upgFees);
   c.cash = Math.round((c.cash - wages - rentDue - upgFees) * 100) / 100;
+  const spoilage = applySpoilage(c);
   c.day++;
   c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
   rollApplicants(c, rand);
-  return { wages, rent: rentDue, upgFees, net };
+  return { wages, rent: rentDue, upgFees, net, spoilage };
+}
+
+// ---------- spoilage: this session's answer to "day 40 is as easy as day 4" ----------
+// Rent-by-tier (session 3) made the venue ladder a tradeoff again but never touched
+// the other half of that gap: nothing read the calendar for cost within a tier. This
+// is that half, and it's the one Devon picked over rent-creep-with-the-calendar or a
+// losable lease — see the notes file for the other two options on the table.
+//
+// Food (wings, burger, nachos, fries) rots a fraction of what's left on the shelf
+// every closed night, settled night or dark night alike — the walk-in doesn't care
+// whether patrons came through the door. Beer and soda don't: kegs and cans don't
+// need a walk-in the way raw wings and ground beef do, which is exactly the
+// distinction the README's own roadmap already drew ("spoilage ... would unlock a
+// Commercial Walk-In-style upgrade" — that upgrade, when it exists, is the lever
+// that should cut this rate, not the rate itself changing here).
+export const SPOILAGE_RATE = 0.15;
+
+/** Rot whatever's left of the perishable menu after a night closes. Returns what
+ *  was lost, by item and in wholesale dollars, so the box score can say so. */
+export function applySpoilage(c) {
+  const byItem = {};
+  let value = 0;
+  for (const id of FOOD) {
+    const have = c.stock[id] || 0;
+    const gone = Math.round(have * SPOILAGE_RATE);
+    if (gone > 0) {
+      c.stock[id] = have - gone;
+      byItem[id] = gone;
+      value += gone * STOCK_COST[id];
+    }
+  }
+  return { byItem, value: Math.round(value * 100) / 100 };
 }
 
 // ---------- dev/debug helpers — a debug menu only, never part of normal play ----------
@@ -283,10 +316,11 @@ export function settleNight(c, summary, rand = Math.random) {
   c.stats.nights++;
   c.stats.bestNight = Math.max(c.stats.bestNight, take);
   c.stats.lifetimeNet += net;
+  const spoilage = applySpoilage(c);
   c.day++;
   c.promoTonight = "none";
   rollApplicants(c, rand);
-  return { wages, rent: rentDue, promoCost, upgFees, take, net };
+  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage };
 }
 
 // ---- persistence: the shared save system ------------------------------------

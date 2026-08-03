@@ -59,23 +59,70 @@ check added to this engine will want it. Everything else in this document is wir
 
 ---
 
-## 3. `pc`
+## 3. `pcOptions`
+
+Character creation (round three) turned the single `pc` object into an array of buildable
+characters. Each entry is the same character sheet round one and two always had, plus an `id`,
+a `blurb` for the picker screen, and its own `commands` — which of the pack's global `commands`
+(§4) that build can actually use.
 
 ```json
-"pc": {
-  "name": "Vesper Quill", "title": "Human Wizard 1", "note": "Trained proficiency +3",
-  "hp": 15, "ac": 15, "acNote": "10 + DEX 2 + Trained unarmored +3",
-  "speed": 25, "perception": 5,
-  "saves": { "fort": 4, "ref": 5, "will": 6 },
-  "spellDC": 17, "spellAttack": 7, "slots": 2, "focus": 1
-}
+"pcOptions": [
+  {
+    "id": "wizard",
+    "name": "Vesper Quill", "title": "Human Wizard 1", "note": "Trained proficiency +3",
+    "blurb": "A one-paragraph pitch, shown on the character picker.",
+    "hp": 15, "ac": 15, "acNote": "10 + DEX 2 + Trained unarmored +3",
+    "speed": 25, "perception": 5,
+    "saves": { "fort": 4, "ref": 5, "will": 6 },
+    "spellDC": 17, "spellAttack": 7, "slots": 2, "focus": 1,
+    "commands": ["strike", "shield", "splash", "breathe", "fang", "potion"]
+  },
+  {
+    "id": "fighter",
+    "name": "Kessa Vane", "title": "Human Fighter 1",
+    "blurb": "...",
+    "hp": 18, "ac": 14, "speed": 25, "perception": 6,
+    "saves": { "fort": 6, "ref": 4, "will": 1 },
+    "commands": ["strike-sword", "potion"]
+  }
+]
 ```
 
-`hp`, `ac` and all three `saves` are required. `slots` and `focus` set both the starting count
-and the maximum, and the number of gems drawn in the left panel — the sheet is built from this
-object, so it cannot drift from the rules the engine is applying.
+`id` and a unique one across the array, `hp`, `ac` and all three `saves` are required per build.
+`slots` and `focus` default to 0 — a build with no spellcasting simply omits them, the way the
+fighter above does — and set both the starting count and the maximum, and the number of gems
+drawn in the left panel once that build is chosen; the sheet is built from the chosen build, so it
+cannot drift from the rules the engine is applying.
 
 `perception` is the initiative modifier.
+
+`commands` is a list of ids from the pack's own `commands` array (§4) — not a separate command
+definition. Two builds can point at the same command (both list `"potion"`, say) or at entries
+that exist only for one build (only the fighter lists `"strike-sword"`); either way, the id has to
+resolve against something in `commands`, or the pack is refused at load. Omit `commands` entirely
+and a build gets every command in the pack, which is what kept the one-build era's packs (and any
+test fixture that never bothered to add the field) working unchanged.
+
+**`content.pc` is a convenience default — `pcOptions[0]`** — for a caller that has not chosen a
+build yet. Real play never reads it: `js/content.js` exports `selectPc(content, buildId)`, which
+resolves one build's stats onto `content.pc` and narrows `content.commands`/`commandById` down to
+exactly that build's list. Every other module (`game.js`, `save.js`, `render.js`, `ui.js`,
+`test/autopilot.mjs`) reads `content.pc`/`content.commands` exactly as if there had only ever been
+one PC, and none of them changed for character creation — `main.js` calls `selectPc` once, right
+after the player picks (or right after a save names which build it was), and everything downstream
+of that is unaware a choice was ever made. **`pcOptions[0]` has to stay the wizard.** A save
+written before this feature existed has no `buildId` field at all, and `save.js`'s `repair` falls
+back to `pcOptions[0]` for exactly that save — reordering the array changes what an old save
+becomes.
+
+**The autopilot that drives `balance.mjs` reads a build's commands by *kind*, not by id** —
+`findUsable(game, "attack")` rather than a hardcoded `"strike"`. A pack that adds a third build
+does not need to touch `test/autopilot.mjs` at all, provided the new build's commands use `kind`
+honestly (an attack command really is `"attack"`, a heal really spends `healing`, and so on).
+`test/balance.mjs` runs and reports each build in `pcOptions` separately and fails the build if
+any one of them is out of band — a build with an unfair shot at the vault is exactly as much a
+shipped bug as the original single build being unwinnable was.
 
 ---
 

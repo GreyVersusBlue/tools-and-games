@@ -3,6 +3,22 @@
 You are working on `Pathfinder/characters.html`, titled "Character Muster", a
 PC-roster page on greyversusblue.com. This prompt is self-contained.
 
+**Round 3 made zero edits to this page** — confirmed clean against round 2's own claims (line count,
+byte size, font vendoring, `gvb-save.js` non-adoption, the `[shared]` markers all checked and
+unchanged). See "Questions for Devon" below: this is this page's first fully clean verification
+round, same situation as `campaigns.html` (prompt 02) — not a third clean round the way an earlier
+draft of this refresh mistakenly counted it.
+
+## Questions for Devon
+
+- **Is one clean verification round enough to move this page to `Stable/`, or do you want a second
+  clean round first?** Anathema Archive (01) moved to `Stable/` after one clean round following its
+  round-1 work. The Fracture Cycle (15) waited for two. Round 1 (font vendoring, heading order,
+  contrast) and round 2 (the `[shared]`-marker guardrail work, plus the `</style>`-truncation bug fix)
+  were both real work; round 3 was the first round with nothing to do and nothing found. If one clean
+  round is your bar, this page qualifies now, in step with `campaigns.html`. If you want a second,
+  leave both live for one more round and revisit together.
+
 ## Your boundary
 
 You own these paths. Inside them, edit, add, delete and restructure freely:
@@ -76,15 +92,17 @@ by `npm run social`, and your edit will be silently overwritten with no warning.
 ## Required reading
 
 1. This whole file.
-2. **`Claude Prompts/notes/03-pathfinder-characters-notes.md`** — round 2's session: the full
+2. **`Claude Prompts/notes/03-pathfinder-characters-notes.md`** — round 3's session: verified
+   everything round 2 shipped is still true, made zero edits. Read round 2's notes
+   (`Claude Prompts/archive/round-2/notes/03-pathfinder-characters-notes.md`) for the full
    account of the `[shared]` marker work on both files, the `</style>`-truncation bug found and
-   fixed, and why this didn't become an actual shared file. Read round 1's notes too
-   (`Claude Prompts/archive/round-1/notes/03-pathfinder-characters-notes.md`) for the original font
+   fixed, and why this didn't become an actual shared file. Round 1's notes
+   (`Claude Prompts/archive/round-1/notes/03-pathfinder-characters-notes.md`) have the original font
    vendoring, heading-order, and contrast work.
-3. `gvb-site-handoff-v9.md` §10 (locked decisions — #51-53 are new this round) and §8 (backlog
-   state). The top of this file records the merge decision directly, in Devon's own words: "harmonize,
-   don't share... this recurring backlog item is closed; don't re-raise it as an open question next
-   round."
+3. `gvb-site-handoff-v10.md` §10 (locked decisions — through #58; #54-58 are shared test-tooling
+   fixes that don't bear on this static page) and §8 (backlog state). `gvb-site-handoff-v9.md`'s top
+   section records the merge decision directly, in Devon's own words: "harmonize, don't share... this
+   recurring backlog item is closed; don't re-raise it as an open question next round."
 4. Locked decision #3 in `gvb-site-handoff-v1.md` §3: the Pathfinder section of the
    board is for Pathfinder things; "Town Services" means schoolhouse tools. Don't
    move this page.
@@ -170,11 +188,11 @@ own headline item across two rounds — is answered (see above); don't re-litiga
 - `grep -n "</style>" Pathfinder/characters.html Pathfinder/campaigns.html` and the same for
   `</script>` → exactly one match each, the real closing tag. Worth re-running any time either
   file's `<style>`/`<script>` block gets a new comment, per the bug above.
-- `cd Tools/board-check && npm run check` should still pass: as of this refresh, **335 units
-  checked, 0 broken, 0 collisions across nine widths, tightest vertical gap 3.5px.**
-- `npm run social:check` should report **17 notices, 17 already current, 0 out of
-  date, 0 failed** (dropped from 22 this round — a real, correct count; Devon consolidated six
-  standalone Tools notices into one card). Drift on your page means you edited inside the
+- `cd Tools/board-check && npm run check` should still pass: as of this refresh, **559 units
+  checked, 0 broken, 0 collisions across nine widths, tightest vertical gap 9.1px.** (The unit count
+  moves every round as files are added elsewhere in the repo; 0 broken is what matters.)
+- `npm run social:check` should report **18 notices, 18 already current, 0 out of
+  date, 0 failed** (Orbital's card joined this round). Drift on your page means you edited inside the
   `gvb:social` markers. Undo it.
 - **A tooling note from round 2, worth keeping:** opening a `file://` path directly in an in-app
   preview pane can render a stale snapshot that doesn't reflect live computed styles or JS-driven
