@@ -39,19 +39,28 @@ export function createModelLoader() {
 // target [w, d] in meters, then drop it so its lowest point sits at y=0.
 // Furniture kits are never authored at this room's scale.
 export function fitFootprint(object, targetW, targetD) {
+  object.updateWorldMatrix(true, true);
   const box = new THREE.Box3().setFromObject(object);
   const size = box.getSize(new THREE.Vector3());
   const targetDiag = Math.hypot(targetW, targetD);
   const sourceDiag = Math.hypot(size.x, size.z) || 1;
   object.scale.setScalar(targetDiag / sourceDiag);
 
+  object.updateWorldMatrix(true, true);
   const resettled = new THREE.Box3().setFromObject(object);
   object.position.y -= resettled.min.y;
   return object;
 }
 
 // Scale a loaded character uniformly to a target standing height in meters.
+// updateWorldMatrix is not optional here: a posed skeleton's bones only get
+// new LOCAL transforms from an AnimationMixer, and nothing propagates those
+// into matrixWorld until something asks for it. Measuring without this first
+// reads stale, pre-pose matrices — on this rig that's a curled-up ~0.5m
+// bounding box instead of a standing ~1.8m one, which scaled every character
+// to several times its intended height.
 export function fitHeight(object, targetHeight) {
+  object.updateWorldMatrix(true, true);
   const box = new THREE.Box3().setFromObject(object);
   const height = box.max.y - box.min.y || 1;
   object.scale.setScalar(targetHeight / height);
@@ -63,6 +72,7 @@ export function fitHeight(object, targetHeight) {
 // wall-mounted flats (picture frames) rather than floor-standing furniture,
 // where width/depth is the wrong plane and "rest on the floor" is wrong too.
 export function fitPlane(object, targetW, targetH) {
+  object.updateWorldMatrix(true, true);
   const box = new THREE.Box3().setFromObject(object);
   const size = box.getSize(new THREE.Vector3());
   const targetDiag = Math.hypot(targetW, targetH);
@@ -75,10 +85,16 @@ export function fitPlane(object, targetW, targetH) {
   return object;
 }
 
-// A plain image texture (a painting, not a PBR material set).
-export function loadTexture(path, srgb = true) {
+// A plain image texture (a painting, not a PBR material set). glTF's own UV
+// convention expects flipY=false (GLTFLoader sets this on every texture it
+// loads itself); a plain TextureLoader call defaults to flipY=true, so
+// dropping one of these onto a glTF mesh's existing UVs — the picture
+// frame's canvas submesh — needs flipY explicitly turned off or the image
+// renders upside down.
+export function loadTexture(path, srgb = true, flipY = true) {
   const t = new THREE.TextureLoader().load(encodeURI(path));
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.flipY = flipY;
   return t;
 }
 
@@ -102,14 +118,21 @@ export function registerModel(root, registry, thermalHex) {
   });
 }
 
-// Find the first node in a loaded rig matching any of the given names.
-// Returns null if none are present — callers must fall back gracefully,
-// since outfit packs are not guaranteed to share a rig template.
+// Find a node in a loaded rig by name, trying each candidate in priority
+// order — NOT tree order. `names` is a preference list (callers pass e.g.
+// ['Chest', 'Spine1', 'Spine', 'Hips'] wanting Chest if it exists), and
+// tree order would silently defeat that: Hips is the skeleton's root joint,
+// an ancestor of Chest, so a single traversal collecting "any name in this
+// set" hits Hips first regardless of which name was actually preferred.
+// Returns null if none of the candidates are present — callers must fall
+// back gracefully, since outfit packs are not guaranteed to share a rig.
 export function findBone(root, names) {
-  const want = new Set(names);
-  let found = null;
-  root.traverse(node => { if (!found && want.has(node.name)) found = node; });
-  return found;
+  for (const name of names) {
+    let found = null;
+    root.traverse(node => { if (!found && node.name === name) found = node; });
+    if (found) return found;
+  }
+  return null;
 }
 
 // Sample one frame of an idle animation into the skeleton's live pose, then
@@ -123,4 +146,15 @@ export function poseIdle(root, animations, seconds = 1.2) {
   mixer.clipAction(clip).play();
   mixer.update(seconds);
   mixer.stopAllAction();
+  // mixer.update() only sets each bone's LOCAL transform — nothing walks
+  // those up into matrixWorld until something asks for it. Any bounding-box
+  // measurement taken right after this (fitHeight, the floor-settle in
+  // buildCharacterBody) would otherwise read stale, pre-pose matrices and
+  // measure something close to the raw bind pose instead of the idle stance
+  // — which for this rig is a tiny, curled-up bounding box, not a standing
+  // one. That's what was scaling characters to several times their intended
+  // height. Forcing the update here is what makes this function's promise
+  // ("comes back standing naturally") actually true for anything measuring
+  // the result afterward.
+  root.updateWorldMatrix(true, true);
 }

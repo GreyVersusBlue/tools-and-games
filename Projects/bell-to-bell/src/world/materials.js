@@ -49,12 +49,19 @@ export function createMaterials(assets) {
 
     const tex = textures[key];
     if (tex) {
-      const { dir, base, tile } = tex;
+      const { dir, base, tile, packedArm = true } = tex;
       m.map = loadTex(`${dir}/${base}_diff_1k.jpg`, true);
       m.normalMap = loadTex(`${dir}/${base}_nor_gl_1k.jpg`, false);
-      const arm = loadTex(`${dir}/${base}_arm_1k.jpg`, false);
-      m.roughnessMap = arm;
-      m.metalnessMap = arm;
+      // Most Poly Haven sets ship one arm.jpg packing AO/roughness/metalness
+      // into R/G/B. Not all of them do (plywood only has a plain rough.jpg) —
+      // packedArm:false in the manifest switches to that instead.
+      if (packedArm) {
+        const arm = loadTex(`${dir}/${base}_arm_1k.jpg`, false);
+        m.roughnessMap = arm;
+        m.metalnessMap = arm;
+      } else {
+        m.roughnessMap = loadTex(`${dir}/${base}_rough_1k.jpg`, false);
+      }
       m.userData.tile = tile || 1.4;
     }
     mats[key] = m;

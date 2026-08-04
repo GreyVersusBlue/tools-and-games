@@ -59,7 +59,7 @@ async function dressPoster(scene, registry, loader, framePath, paintingPath, box
     const canvas = frame.getObjectByName('fancy_picture_frame_01_canvas');
     if (canvas) {
       canvas.material = canvas.material.clone();
-      canvas.material.map = loadTexture(paintingPath);
+      canvas.material.map = loadTexture(paintingPath, true, false);
       canvas.material.needsUpdate = true;
     }
 

@@ -5,7 +5,7 @@
     "floor": { "dir": "Assets/textures/Floor/interior_tiles_1k.gltf/textures", "base": "interior_tiles", "tile": 2.6 },
     "wall":  { "dir": "Assets/textures/wall/painted_concrete_02_1k.gltf/textures", "base": "painted_concrete_02", "tile": 2.2 },
     "ceil":  { "dir": "Assets/textures/ceil/ceiling_interior_1k.gltf/textures", "base": "ceiling_interior", "tile": 2.6 },
-    "desk":  { "dir": "Assets/textures/desk/plywood_1k.gltf/textures", "base": "plywood", "tile": 0.6 },
+    "desk":  { "dir": "Assets/textures/desk/plywood_1k.gltf/textures", "base": "plywood", "tile": 0.6, "packedArm": false },
     "wood":  { "dir": "Assets/textures/wood/wood_planks_1k.gltf/textures", "base": "wood_planks", "tile": 1.0 },
     "metal": { "dir": "Assets/textures/metal/blue_metal_plate_1k.gltf/textures", "base": "blue_metal_plate", "tile": 0.5 },
     "rug":   { "dir": "Assets/textures/rug/wool_boucle_1k.gltf/textures", "base": "wool_boucle", "tile": 1.6 }
@@ -60,17 +60,17 @@
   ],
 
   "props": {
-    "wallClock": "Assets/models/props/wall_clock_1k.gltf/wall_clock_1k.gltf",
-    "fireAlarm": "Assets/models/props/fire_alarm_1k.gltf/fire_alarm_1k.gltf",
-    "pottedPlant2": "Assets/models/props/potted_plant_02_1k.gltf/potted_plant_02_1k.gltf",
-    "pottedPlant4": "Assets/models/props/potted_plant_04_1k.gltf/potted_plant_04_1k.gltf",
-    "displayShelves": "Assets/models/props/wooden_display_shelves_01_1k.gltf/wooden_display_shelves_01_1k.gltf",
-    "metalRack": "Assets/models/props/worn_metal_rack_1k.gltf/worn_metal_rack_1k.gltf",
-    "wetFloorSign": "Assets/models/props/WetFloorSign_01_1k.gltf/WetFloorSign_01_1k.gltf",
-    "clipboard": "Assets/models/props/clipboard_1k.gltf/clipboard_1k.gltf",
-    "stationery": "Assets/models/props/stationery_supplies_1k.gltf/stationery_supplies_1k.gltf",
-    "binder": "Assets/models/props/binder_notebook_1k.gltf/binder_notebook_1k.gltf",
-    "stapler": "Assets/models/props/vintage_stapler_1k.gltf/vintage_stapler_1k.gltf"
+    "wallClock": "Assets/models/Props/wall_clock_1k.gltf/wall_clock_1k.gltf",
+    "fireAlarm": "Assets/models/Props/fire_alarm_1k.gltf/fire_alarm_1k.gltf",
+    "pottedPlant2": "Assets/models/Props/potted_plant_02_1k.gltf/potted_plant_02_1k.gltf",
+    "pottedPlant4": "Assets/models/Props/potted_plant_04_1k.gltf/potted_plant_04_1k.gltf",
+    "displayShelves": "Assets/models/Props/wooden_display_shelves_01_1k.gltf/wooden_display_shelves_01_1k.gltf",
+    "metalRack": "Assets/models/Props/worn_metal_rack_1k.gltf/worn_metal_rack_1k.gltf",
+    "wetFloorSign": "Assets/models/Props/WetFloorSign_01_1k.gltf/WetFloorSign_01_1k.gltf",
+    "clipboard": "Assets/models/Props/clipboard_1k.gltf/clipboard_1k.gltf",
+    "stationery": "Assets/models/Props/stationery_supplies_1k.gltf/stationery_supplies_1k.gltf",
+    "binder": "Assets/models/Props/binder_notebook_1k.gltf/binder_notebook_1k.gltf",
+    "stapler": "Assets/models/Props/vintage_stapler_1k.gltf/vintage_stapler_1k.gltf"
   },
   "_propAlternates": [
     "SchoolDesk_01, SchoolChair_01 (an alternate desk/chair style, unused)",

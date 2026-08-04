@@ -67,10 +67,14 @@ async function buildCharacterBody(loader, outfitPath, targetHeight, registry) {
   if (!loader || !outfitPath) return null;
   try {
     const { root, animations } = await loader.loadRigged(outfitPath);
+    // Pose BEFORE measuring: fitHeight/the floor-settle below both bound the
+    // model with Box3, and this rig's raw bind pose measures as a tiny,
+    // curled-up ~0.5m box, not a standing one — measuring before poseIdle
+    // scaled every character to several times its intended height.
+    poseIdle(root, animations);
     fitHeight(root, targetHeight);
     const settle = new THREE.Box3().setFromObject(root);
     root.position.y -= settle.min.y;
-    poseIdle(root, animations);
 
     const head = findBone(root, ['Head']);
     // Chest first: rotating it swings the upper body the way the original
@@ -79,8 +83,17 @@ async function buildCharacterBody(loader, outfitPath, targetHeight, registry) {
     const torso = findBone(root, ['Chest', 'Spine1', 'Spine', 'Hips']);
     if (!head || !torso) return null;
 
+    // A bone's rest rotation (baked in by poseIdle, above) is almost never
+    // (0,0,0) — bind-pose joints carry a real local orientation relative to
+    // their parent. reactions.js only ever wants to ADD a yaw/pitch/dip on
+    // top of "standing naturally," so the rest pose has to be captured here
+    // and re-added every frame, not overwritten. Skipping this folded every
+    // character in half at the chest the instant idle torsoDip hit zero.
+    const headRestX = head.rotation.x, headRestY = head.rotation.y;
+    const torsoRestX = torso.rotation.x;
+
     registerModel(root, registry, CHAR_THERMAL);
-    return { root, head, torso };
+    return { root, head, torso, headRestX, headRestY, torsoRestX };
   } catch (err) {
     console.warn(`Character model failed to load (${outfitPath}), using placeholder body.`, err);
     return null;
@@ -114,12 +127,14 @@ export async function buildStudents(scene, registry, mats, data, chart, opts = {
     const outfitPath = charCfg?.outfits?.length ? charCfg.outfits[i % charCfg.outfits.length] : null;
     const built = await buildCharacterBody(loader, outfitPath, targetHeight, registry);
 
-    let torso, head, auraY;
+    let torso, head, auraY, headRestX = 0, headRestY = 0, torsoRestX = 0;
 
     if (built) {
       g.add(built.root);
       torso = built.torso;
       head = built.head;
+      headRestX = built.headRestX; headRestY = built.headRestY;
+      torsoRestX = built.torsoRestX;
       auraY = targetHeight + 0.08;
     } else {
       const shirt = mats[spec.shirt] || mats.shirtA;
@@ -160,7 +175,7 @@ export async function buildStudents(scene, registry, mats, data, chart, opts = {
       seat: i, desk: seat.index, col: seat.col, row: seat.row,
       x, z, bodyZ: z + bodyOffsetZ,
       rowGain: seat.rowGain, sight: seat.sight.kind, steadyLoad: 0,
-      group: g, torso, head, aura,
+      group: g, torso, head, aura, headRestX, headRestY, torsoRestX,
       phase: Math.random() * 7,
       rx: [], holds: new Map(),
       comp: 0, compShown: 0
@@ -287,9 +302,9 @@ export function createReactions({ students, data, camera }) {
       const idle = idleScale * (1 - freeze);
       s.phase += dt * (0.6 + s.tension * 0.5) * (0.35 + idle * 0.65);
       s.group.position.y = Math.sin(s.phase) * 0.012 * idle - torsoDip;
-      s.head.rotation.y = Math.sin(s.phase * 0.45) * 0.35 * idle + Math.max(-1.2, Math.min(1.2, headYaw));
-      s.head.rotation.x = headPitch;
-      s.torso.rotation.x = torsoDip * 2.2;
+      s.head.rotation.y = s.headRestY + Math.sin(s.phase * 0.45) * 0.35 * idle + Math.max(-1.2, Math.min(1.2, headYaw));
+      s.head.rotation.x = s.headRestX + headPitch;
+      s.torso.rotation.x = s.torsoRestX + torsoDip * 2.2;
 
       if (auraFor) {
         const band = auraFor(s);

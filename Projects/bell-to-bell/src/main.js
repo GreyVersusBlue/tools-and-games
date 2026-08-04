@@ -92,6 +92,13 @@ function periodFor(id, data) {
 
 try {
 
+// Models and textures now make boot a real network-bound wait, not the near-
+// instant thing it used to be — without this, the button sits there looking
+// clickable for however long that takes, and clicking it does nothing until
+// the script reaches dom.startBtn.addEventListener() at the very bottom.
+dom.startBtn.disabled = true;
+dom.startBtn.textContent = 'Loading…';
+
 const data = await loadData();
 const state = createState();
 
@@ -446,6 +453,8 @@ function beginPeriod() {
   last = performance.now();
 }
 
+dom.startBtn.textContent = 'Seating chart';
+dom.startBtn.disabled = false;
 dom.startBtn.addEventListener('click', () => {
   dom.startScreen.classList.add('hide');
   seating.open(chart.viewModel(known), { cost: chart.rechartCost(rapportBase) });
