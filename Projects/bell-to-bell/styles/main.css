@@ -146,6 +146,16 @@
     font:400 13px/1.6 Georgia,serif;color:#4A463C}
   .hide{display:none!important}
 
+  /* ---------- T7: the post-conference ---------- */
+  #confOptions{margin-top:6px;border:1px solid var(--manila-dk)}
+  #confOptions button{display:block;width:100%;text-align:left;background:none;border:0;
+    border-bottom:1px solid var(--manila-dk);padding:11px 14px;cursor:pointer;font:inherit;color:inherit}
+  #confOptions button:last-child{border-bottom:0}
+  #confOptions button:hover{background:var(--highlight)}
+  #confOptions button b{display:block;font:400 13px/1.4 Georgia,serif;color:#2A2820}
+  #confOptions button span{display:block;font:400 10px/1.4 "SFMono-Regular",Consolas,monospace;
+    color:#6B6455;margin-top:4px}
+
   /* ---------- room temp: a reading that ages ---------- */
   #roomtemp .s{font:400 9px/1.3 "SFMono-Regular",Consolas,monospace;color:#6B6455;margin-top:2px}
   #roomtemp .k .key{background:var(--ink);color:var(--manila);padding:1px 5px;margin-left:5px;
@@ -173,6 +183,20 @@
     font:400 9px/1.2 "SFMono-Regular",Consolas,monospace;color:#6B6455}
   #lesson .lk b{background:var(--ink);color:var(--manila);padding:1px 4px;margin-right:3px}
   #lesson .lk .hot b{background:var(--rule)}
+
+  /* ---------- T7: the observation rubric ---------- */
+  #observation{position:absolute;right:14px;top:336px;width:236px;background:var(--panel);
+    border:1px solid var(--rule);box-shadow:0 4px 0 rgba(0,0,0,.25);padding:8px 11px 9px}
+  #observation .oh{font:700 10px/1.3 "Arial Narrow",Arial,sans-serif;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--rule);margin-bottom:6px;padding-bottom:5px;
+    border-bottom:1px solid var(--manila-dk)}
+  .obsrow{display:flex;align-items:center;gap:7px;padding:2px 0;
+    font:400 10px/1.3 "SFMono-Regular",Consolas,monospace;color:#6B6455}
+  .obsrow b{background:var(--ink);color:var(--manila);padding:1px 5px;font:700 10px/1.4 monospace;
+    flex:0 0 auto}
+  .obsrow.got{color:var(--ink)}
+  .obsrow.got b{background:#4A7A3C}
+  .obsrow.got span::after{content:" \2713"}
 
   /* ---------- check-for-understanding flash ---------- */
   #cfu{position:fixed;inset:0;pointer-events:none;opacity:0;background:

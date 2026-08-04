@@ -37,6 +37,9 @@ export function createInput(canvas, spawn) {
   addEventListener('touchend', () => { dragging = false; });
 
   const wantsWithitness = () => !!(keys.ShiftLeft || keys.ShiftRight);
+  // T7: "wait time" is performed by holding, not tapping — the same shape as
+  // Withitness, and the same joke the rubric is making about doing nothing.
+  const wantsWait = () => !!keys.KeyF;
 
   function move(camera, dt, bounds, students, occluders) {
     let fx = 0, fz = 0;
@@ -70,5 +73,5 @@ export function createInput(canvas, spawn) {
     return actions.splice(0, actions.length);
   }
 
-  return { keys, look, move, wantsWithitness, takeActions };
+  return { keys, look, move, wantsWithitness, wantsWait, takeActions };
 }

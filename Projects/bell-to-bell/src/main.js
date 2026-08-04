@@ -12,6 +12,7 @@ import { createInterventions } from './systems/interventions.js';
 import { createEvents } from './systems/events.js';
 import { createLesson } from './systems/lesson.js';
 import { createRoomTemp } from './systems/roomtemp.js';
+import { createObservation } from './systems/observation.js';
 import { inTeachingZone, tickMeters } from './systems/meters.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
@@ -21,6 +22,7 @@ import { toast } from './ui/toast.js';
 import { updateLabels } from './ui/labels.js';
 import { openMenu, closeMenu } from './ui/menu.js';
 import { showReport } from './ui/report.js';
+import { showConference } from './ui/conference.js';
 import { createSeatingScreen } from './ui/seating.js';
 import * as persist from './persist.js';
 
@@ -234,6 +236,10 @@ const events = createEvents({
   }
 });
 
+// T7: the Observation. Shared across periods on purpose — it is the same
+// rubric and the same AP regardless of whose desks are in the room.
+const observation = createObservation({ data: data.observation, dom, toast });
+
 room.screens.board?.set(lesson.current(state).board);
 room.screens.objective?.set(period.lessonData.objectiveBoard);
 
@@ -244,6 +250,18 @@ function flashCFU() {
   void dom.cfu.offsetWidth;
   dom.cfu.classList.add('on');
   audio.chime();
+}
+
+// T7: the rubric panel is visible from the Admin Proximity Alert through the
+// end of the window, so you can see what it wants before she's even in the
+// room, and it goes away the moment she's done writing.
+function drawObservationHUD(state) {
+  const show = state.obsPhase === 'alert' || state.obsPhase === 'active';
+  dom.observation.classList.toggle('hide', !show);
+  if (!show) return;
+  for (const row of dom.observation.querySelectorAll('.obsrow')) {
+    row.classList.toggle('got', !!state.obsSatisfied[row.dataset.key]);
+  }
 }
 
 function handleTellClick(t) {
@@ -294,14 +312,20 @@ function frame(now) {
     if (action === 'roomTemp') { temp.read(state); continue; }
     if (state.openTell) continue;              // one thing at a time
     if (action === 'advance') lesson.advance(state);
-    else if (action === 'check') lesson.check(state);
+    else if (action === 'check') { if (lesson.check(state).ok) observation.satisfy(state, 'check'); }
     else if (action === 'reteach') lesson.reteach(state);
+    else if (action === 'postObjective') observation.satisfy(state, 'objective');
+    else if (action === 'askQuestion') observation.satisfy(state, 'question');
+    else if (action === 'discourse') observation.satisfy(state, 'discourse');
   }
 
   withitness.tick(state, dt);
   const liveTells = tellSystem.tells.filter(t => t.born !== null && !t.dead && !t.resolved).length;
   tickMeters(state, dt, teaching, liveTells);
   lesson.tick(state, dt, { teaching });
+  observation.tick(state, dt);
+  observation.tickWait(state, dt, input.wantsWait());
+  drawObservationHUD(state);
 
   if (state.hyper > CFG.hyperThreshold && !state.falseSpawned && state.t > 420) {
     state.falseSpawned = true;
@@ -354,12 +378,31 @@ function endPeriod() {
     onClick: () => { persist.save('period', 'p4'); location.reload(); }
   };
 
-  showReport(state, data.events, {
-    lesson: lesson.summary(state), students,
-    seating: { plan, copy: data.seating.report, chart, learned },
-    periodTag: period.periodTag,
-    restart
-  });
+  function report() {
+    showReport(state, data.events, {
+      lesson: lesson.summary(state), students,
+      seating: { plan, copy: data.seating.report, chart, learned },
+      periodTag: period.periodTag,
+      observation: state.obsResult ? {
+        result: state.obsResult,
+        labels: observation.lookFors.filter(l => state.obsSatisfied[l.key]).map(l => l.label),
+        option: observation.conferenceOption(state.obsConference),
+        copy: observation.report
+      } : null,
+      restart
+    });
+  }
+
+  // T7: if she came today, the post-conference happens before the report —
+  // the day is not over until you've answered her, one way or another.
+  if (state.obsPhase === 'done') {
+    showConference(observation.conference, key => {
+      observation.resolveConference(state, key);
+      report();
+    });
+  } else {
+    report();
+  }
 }
 
 // ---------- the seating chart, then the bell ----------

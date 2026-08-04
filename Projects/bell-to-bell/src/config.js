@@ -14,7 +14,13 @@ export const CFG = {
     advance: 'KeyE',
     check: 'KeyQ',
     reteach: 'KeyR',
-    roomTemp: 'KeyT'
+    roomTemp: 'KeyT',
+    // T7: the rubric's other four look-fors. Checks for understanding (KeyQ,
+    // above) is the one look-for that is also just good teaching; these three
+    // one-shot keys and the held wait key are close to pure performance.
+    postObjective: 'KeyO',
+    askQuestion: 'KeyH',
+    discourse: 'KeyG'
   },
 
   // withitness costs
@@ -97,6 +103,25 @@ export const CFG = {
   roomTemp: {
     hotTellWeight: 9,           // an unresolved tell reads as heat
     quadrantMinShare: 0.45      // below this the reading is "evenly distributed"
+  },
+
+  // T7: The Observation. Announced by a countdown, not a coin flip — it always
+  // happens, same as the intercom PA does, so a slice about one day at school
+  // does not have to model whether today is an observation day.
+  observation: {
+    alertSeconds: 9,       // real seconds between the Admin Proximity Alert and AP walking in
+    windowMinutes: 11,     // game-minutes the rubric window stays open once she has
+    waitHoldSeconds: 5,    // real seconds KeyF must be held to bank "wait time"
+
+    // Ambient cost of performing for an audience instead of teaching, applied
+    // through masteryPending (never state.mastery directly) regardless of
+    // whether you chase a single look-for. Over the full 11-minute window this
+    // is about a 5-point Mastery dent on its own — a fact about being watched,
+    // not a fact about what you do with it.
+    masteryDrainPerSec: 0.008,
+
+    lookForFidelity: 2.4,     // per look-for satisfied, the rubric actually rewarding the show
+    lookForBandwidth: -1.2    // performing it is not free either
   },
 
   // unresolved tell expiry

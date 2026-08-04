@@ -5,12 +5,13 @@ import { createLesson } from '../src/systems/lesson.js';
 import { createRoomTemp } from '../src/systems/roomtemp.js';
 import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
+import { createObservation } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
 const iData = D('interventions'), tData = D('tells'), sData = D('students');
 const lData = D('lesson'), eData = D('events'), rData = D('reactions');
-const roomData = D('room'), seatData = D('seating'), p5Data = D('period5');
+const roomData = D('room'), seatData = D('seating'), p5Data = D('period5'), obsData = D('observation');
 
 const mkChart = (saved=null, layout=null) => createChart({
   seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
@@ -566,6 +567,121 @@ check('but the kids sitting in them are a completely different roster',
 // this reads as novel (free) no matter how the carried-over chart is used.
 check("a carried-over chart still reads as novel for Rapport purposes when compared against nothing",
   chart5Carried.rechartCost(null).novel===true && chart5Carried.rechartCost(null).rapport===0);
+
+// ---------------------------------------------------------------------------
+// T7 — the Observation: the alert, the window, the rubric, the conference
+// ---------------------------------------------------------------------------
+
+const fakeClassList = () => {
+  const s = new Set();
+  return { add: k => s.add(k), remove: k => s.delete(k), contains: k => s.has(k) };
+};
+const mkObsDom = () => ({
+  pa: { classList: fakeClassList() },
+  paTitle: { textContent: '' },
+  paTxt: { textContent: '' }
+});
+const mkObs = () => {
+  const msgs = [];
+  const dom = mkObsDom();
+  const obs = createObservation({ data: obsData, dom, toast: (k, t, b) => msgs.push([k, t, b]) });
+  return { obs, dom, msgs };
+};
+
+// idle until her scheduled minute arrives
+{
+  const { obs } = mkObs();
+  const st = createState();
+  st.t = CFG.periodSeconds - (obsData.atMinute - 1) * 60;   // one minute early
+  obs.tick(st, 1 / 60);
+  check('no alert before her scheduled minute', st.obsPhase === 'idle');
+}
+
+// alert -> active, on schedule, in real seconds
+{
+  const { obs, dom } = mkObs();
+  const st = createState();
+  st.t = CFG.periodSeconds - obsData.atMinute * 60;
+  obs.tick(st, 1 / 60);
+  check('the alert starts exactly on her scheduled minute', st.obsPhase === 'alert');
+  check('the alert banner is up', dom.pa.classList.contains('on'));
+  check('a full countdown is queued', st.obsAlertRemaining === CFG.observation.alertSeconds);
+
+  for (let i = 0; i < CFG.observation.alertSeconds * 60 + 2; i++) obs.tick(st, 1 / 60);
+  check('nine real seconds later she has arrived', st.obsPhase === 'active');
+  check('the window is a fixed number of game-minutes', st.obsWindowRemaining <= CFG.observation.windowMinutes * 60);
+}
+
+// look-fors: satisfied once, idempotent, refused outside the window
+{
+  const { obs, msgs } = mkObs();
+  const st = createState();
+  check('pressing a look-for before she has arrived does nothing', obs.satisfy(st, 'objective') === false);
+  check('and it tells you so', msgs.some(m => m[2] === obsData.idle));
+
+  st.obsPhase = 'active';
+  const before = st.fidelity;
+  check('the first press satisfies it', obs.satisfy(st, 'objective') === true);
+  check('fidelity actually moved', st.fidelity > before);
+  check('a second press does nothing', obs.satisfy(st, 'objective') === false);
+  check('a satisfied look-for stays satisfied', st.obsSatisfied.objective === true);
+}
+
+// wait time: held long enough books itself; releasing early resets the clock
+{
+  const { obs } = mkObs();
+  const st = createState();
+  st.obsPhase = 'active';
+  for (let i = 0; i < 60; i++) obs.tickWait(st, 1 / 60, true);   // one second held
+  check('half a hold does not satisfy it yet', !st.obsSatisfied.wait);
+  obs.tickWait(st, 1 / 60, false);                                // let go
+  check('letting go resets the held clock', st.obsWaitHeld === 0);
+  for (let i = 0; i < CFG.observation.waitHoldSeconds * 60 + 2; i++) obs.tickWait(st, 1 / 60, true);
+  check('holding it the whole way books "wait time" for you', st.obsSatisfied.wait === true);
+}
+
+// checks for understanding piggybacks on the real Q action, not a new key
+check("checks for understanding is a real look-for key, not one you press directly",
+  obsData.lookFors.find(l => l.key === 'check').code === 'Q' && !obsData.lookFors.find(l => l.key === 'check').toast);
+
+// the ambient Mastery cost runs through masteryPending, never state.mastery,
+// whether or not you chase a single look-for (CLAUDE.md rule 7)
+{
+  const { obs } = mkObs();
+  const st = createState();
+  st.obsPhase = 'active';
+  st.obsWindowRemaining = 999;
+  const m0 = st.mastery;
+  obs.tick(st, 1);
+  check('being watched costs something, queued rather than applied directly',
+    st.masteryPending < 0 && st.mastery === m0);
+}
+
+// the window closes on the game clock, not on player behaviour, and reports itself
+{
+  const { obs } = mkObs();
+  const st = createState();
+  st.obsPhase = 'active';
+  st.obsWindowRemaining = 0.001;
+  obs.satisfy(st, 'objective');
+  obs.satisfy(st, 'question');
+  obs.tick(st, 1 / 60);
+  check('the window closes on schedule regardless of the rubric score', st.obsPhase === 'done');
+  check('what got satisfied is reported back', st.obsResult.satisfied.length === 2 && st.obsResult.total === 5);
+}
+
+// the post-conference: three options, real effects, honesty flagged for the report
+{
+  const { obs } = mkObs();
+  const st = createState();
+  const before = st.fidelity;
+  const opt = obs.resolveConference(st, 'honest');
+  check('resolving a real option returns it', opt && opt.key === 'honest');
+  check('its effects actually apply', st.fidelity < before);
+  check('the honest option is flagged for the report', opt.honest === true);
+  check('the other two are not', !obs.conferenceOption('turnAndTalk').honest && !obs.conferenceOption('hollow').honest);
+  check('an unknown option resolves to nothing', obs.resolveConference(createState(), 'nope') === null);
+}
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');
 process.exit(fails?1:0);

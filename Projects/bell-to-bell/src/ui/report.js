@@ -78,6 +78,12 @@ export function showReport(state, data, extra = {}) {
     `${state.checks} check${state.checks === 1 ? '' : 's'} for understanding \u00B7 ` +
     `${state.reteaches} reteach${state.reteaches === 1 ? '' : 'es'}</span></div>` : '';
 
+  // T7: only present on a period she actually visited.
+  const obs = extra.observation;
+  const obsRow = obs ? `<div class="rubricline"><b>${obs.copy.head}</b>` +
+    `<span style="text-align:right"><span class="mono">${obs.result.satisfied.length}/${obs.result.total}</span><br>` +
+    `${obs.labels.length ? obs.labels.join(' · ') : 'none of it'}</span></div>` : '';
+
   const c = data.closingLines;
   const quotes = [];
   const seatQuotes = seatingLines(extra.seating, students);
@@ -93,6 +99,8 @@ export function showReport(state, data, extra = {}) {
   if (state.withitnessUses > 14) quotes.push(c.heavyScanning.replace('{uses}', state.withitnessUses));
   if (state.missed > 2) quotes.push(c.missedSeveral.replace('{missed}', state.missed));
   if (state.leverage.length) quotes.push(c.leverage.replace('{list}', state.leverage.join('; ')));
+  if (obs?.option) quotes.push(obs.option.result);
+  if (obs?.option?.honest) quotes.push(obs.copy.honest);
   if (!quotes.length && !seatQuotes.length) quotes.push(c.quiet);
   quotes.push(...seatQuotes);
 
@@ -103,7 +111,7 @@ export function showReport(state, data, extra = {}) {
   dom.endTitle.textContent = ending.title;
   dom.endSub.textContent =
     `${ending.sub} \u2014 ${extra.periodTag || '4TH PERIOD'} \u00B7 ${state.caught} ADDRESSED \u00B7 ${state.missed} MISSED`;
-  dom.endBody.innerHTML = rows + lessonRow + seatRow +
+  dom.endBody.innerHTML = rows + lessonRow + obsRow + seatRow +
     '<div style="height:16px"></div>' +
     quotes.map(q => `<div class="quote">${q}</div>`).join('') +
     `<button class="cta" id="againBtn">${restart.label}</button>`;

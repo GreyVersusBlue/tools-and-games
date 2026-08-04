@@ -1,60 +1,60 @@
 # HANDOFF — Bell to Bell
 
-**Where we are:** T1–T6 built and playable — One Period, the lesson, Room Temp, the seating
-chart, the classroom builder, and now a second period. Where we're going: T7 next, one ticket
-at a time.
+**Where we are:** T1–T7 built and playable — One Period, the lesson, Room Temp, the seating
+chart, the classroom builder, a second period, and now the boss fight. Where we're going: T8
+next, one ticket at a time.
 
 Read `CLAUDE.md` first — it has the commands and the architecture rules.
 Read `docs/BELL-TO-BELL-treatment.md` for anything about a system that isn't built yet.
 
 ---
 
-## This session — T6, a second period
+## This session — T7, the Observation
 
-4th period's report screen now hands off into 5th period: same room, a completely different
-roster, a different (busier) tell schedule, and a different lesson — the day continues past
-the bell instead of just ending. Also removed `HANDOFF-teacher-sim (1).md`, a stray duplicate
-of this file that had gone stale since the commit that introduced it.
+The boss fight. Every period, an Admin Proximity Alert gives you a real nine-second warning;
+then AP Reyes is in the room, a rubric window opens on the game clock, and you can perform the
+rubric's look-fors while your actual class either keeps going or doesn't. She always visits —
+same as the intercom PA does — no coin flip, so the slice never has to model whether today is
+an observation day.
 
-- **`data/period5.json`** (new) — 12 new students, a 9-entry tell schedule (one more than 4th's
-  eight, on purpose — 5th reads busier), and a 5-beat lesson continuing the same unit (`U.S.
-  HIST · UNIT 4 · DAY 3 OF 3` — the Missouri Compromise's actual collapse in 1854, picking up
-  the "delay or solution?" question 4th period's last beat leaves open). Its own stabiliser
-  (Anh, steady 0.84) sits beside its own live wire (Devontae) exactly the way Priya sits beside
-  June — a fresh version of the same authored shape, for kids who have never met either of
-  them. Its own `seatingCopy` overrides the chart screen's intro/sub/reset-button copy, because
-  "back to the August chart" means nothing to a class that was never charted in August.
-- **What carries over, what doesn't** (a real design fork, not a default): the **furniture**
-  carries over because it's a fact about the room. The **physical desk arrangement** — whatever
-  4th period's chart ended up as — carries over too, onto the new roster, because the desks
-  themselves didn't move when the bell rang. **Discoveries** (volatility edges, stabilisers)
-  do *not* — they're facts about specific kids, and 5th period has never met any of them. Nor
-  does the **Rapport cost of rearranging** carry over: `main.js` keeps a `rapportBase` distinct
-  from the desk arrangement itself, so a brand-new roster's first chart always reads as novel
-  (free to rearrange) no matter how the desks happened to already be sitting.
-- **`src/main.js`** — `periodFor(id, data)` is the one place that picks a roster/schedule/
-  lesson/copy bundle for whichever period is active (`persist.load('period', 'p4')`). Six new
-  persisted keys (`chart5`, `known5`, `rapportBase5`, plus `rapportBase` alongside the existing
-  `chart`/`known`) keep 5th period's own history from ever touching 4th's. The whole handoff is
-  a `persist.save(...)` sequence followed by `location.reload()` — the same mechanism "Run it
-  again" already used, not a new in-place teardown/rebuild of the 3D scene.
-- **`src/ui/report.js`** — the end-of-period button is now data-driven (`extra.restart`):
-  "Next period — 5th" after 4th, "Run it again" after 5th (which resets `period` back to `p4`
-  and leaves 4th's own persisted chart/discoveries untouched, since T6 never wrote to them).
-- **Gap 1, settled:** the lesson intentionally does not fill the period — `filler` (a "sustained
-  silent work" beat, already authored, already has copy for the moment) is the answer, not a
-  bug. Both periods' authored beats sum to exactly 2,000 of the period's 2,820 seconds; 5th
-  period was written to the same ratio on purpose, so the slice has one settled answer instead
-  of two different guesses.
-- Verified in a real browser (Playwright, headless Chromium, with `config.js`'s period length
-  temporarily shortened for the test run only): played 4th period, swapped desks 0/11, dragged
-  the cabinet, took the report screen's "Next period — 5th" button, and confirmed on the
-  reloaded page that 5th period's chart opens with a completely different roster, desk 0 and
-  11 swapped exactly as 4th left them, the cabinet in 4th's final position, and the cost line
-  reading "They have never sat in this chart" even after rearranging several more seats.
-- 20 new `tests/smoke.mjs` assertions (distinct roster, schedule shape, its own stabiliser/
-  handoff/curveball, the physical-carryover-without-familiarity split) plus three new
-  `tests/balance.mjs` runs against 5th period's content. All green — see below for numbers.
+- **`data/observation.json`** (new) + **`src/systems/observation.js`** (new) — the alert copy,
+  the arrival copy, five look-fors, and the one-exchange post-conference dialogue tree, all
+  driven by a small phase machine on `state` (`idle → alert → active → done`). Four of the five
+  look-fors are close to pure performance: post the objective (**O**), ask a higher-order
+  question (**H**), give it student-led discourse (**G**) — one-shot keys, satisfied once,
+  idempotent after. **Checks for understanding** reuses the existing **Q** action outright
+  (it's the one look-for that's also just good teaching, so it costs nothing extra here —
+  `lesson.check()` already charges for it). **Wait time** is performed by *holding* **F** for
+  five real seconds and doing nothing else — the rubric rewards the appearance of patience, so
+  the mechanic is: literally stand there. All are gated to the active window only; pressed
+  early they just tell you nobody's watching yet.
+- **The ambient cost is not performable.** While the window is open, Mastery drains continuously
+  through `state.masteryPending` (never `state.mastery` directly — CLAUDE.md rule 7), regardless
+  of whether you chase a single look-for. About a 5-point dent over the full 11 game-minutes,
+  every time, win or lose the rubric. Satisfying look-fors adds real Fidelity on top. This is
+  the mechanical shape of "you can stack a fake-great observation... Mastery down, Fidelity up"
+  from the treatment: the cost of being watched and the reward for performing are two separate
+  levers, not one.
+- **The post-conference is its own screen** (`src/ui/conference.js`, `#conferenceScreen`), not
+  a reuse of the intervention menu's `#menu` — that menu is deliberately ESC-skippable ("the
+  period is still running"); this conversation is not skippable, since ESC is wired globally to
+  close `#menu` and would otherwise strand the game with the period over and no report ever
+  shown. One exchange, three responses (adapted directly from treatment §6.1): the affirming
+  answer that costs a future follow-up, the honest answer that costs Fidelity now, and the
+  hollow answer that costs nothing but Bandwidth "from the small death inside." `main.js`'s
+  `endPeriod()` shows this before the report, only on a period she actually visited.
+- Verified in a real browser (Playwright, headless Chromium — software-rendered, so the frame
+  clock runs slower than wall time here; the test polls state instead of assuming durations):
+  the alert banner counts down and hands off to her arrival, all four one-shot look-fors land
+  on keypress, holding **F** the full five seconds (and *only* holding it — releasing early
+  resets the clock) books "wait time," the rubric panel closes exactly when the window's game-
+  time budget runs out regardless of score, the post-conference shows all three responses
+  verbatim, and picking "honest" produces a report with the 5/5 rubric line and the honest
+  quote.
+- 24 new `tests/smoke.mjs` assertions (phase transitions on schedule, idempotent look-fors,
+  the wait-hold's reset-on-release, the ambient drain going through `masteryPending`, all three
+  conference options). `tests/balance.mjs` now runs the Observation unconditionally in every
+  simulated period (she always visits) and adds a "plays the rubric" comparison run — see below.
 
 ---
 
@@ -139,32 +139,53 @@ interventions, reactions, events and seating *rules* are the same building and t
 rulebook regardless of period; only the roster, the tell schedule, and the lesson are
 period-specific content.
 
+**T7 — The Observation.** Admin Proximity Alert (real nine-second countdown) → she's in the
+room → an eleven-game-minute rubric window (`src/systems/observation.js`). Five look-fors:
+three one-shot performative keys (**O**bjective, **H**igher-order question, **G** for
+discourse), one held key (**F**, five real seconds, wait time), and checks-for-understanding
+riding the existing **Q**. An ambient Mastery cost runs the whole window regardless of what you
+do with it; look-fors satisfied add real Fidelity. The post-conference (`src/ui/conference.js`,
+its own screen, not the skippable intervention menu) is one exchange, three responses, straight
+out of treatment §6.1.
+
 **Audio.** HVAC bed, ambient murmur scaling with restlessness and ducking under Withitness,
 chair scrapes on reactions, a chime on checks, the bell.
 
-**Tests.** `tests/smoke.mjs` — 167 headless assertions over interventions, the lesson, the
-reaction wiring, Room Temp, the chart, the classroom builder, and the second period.
-`tests/balance.mjs` — five play styles through whole 4th-period runs, one style across three
-4th-period charts, and three representative styles against 5th period's own content.
+**Tests.** `tests/smoke.mjs` — 191 headless assertions over interventions, the lesson, the
+reaction wiring, Room Temp, the chart, the classroom builder, the second period, and the
+Observation. `tests/balance.mjs` — five play styles through whole 4th-period runs (now with
+the Observation's ambient cost baked in, since she always visits), one style across three
+4th-period charts, three representative styles against 5th period's own content, and a
+rubric-vs-no-rubric comparison run.
 
 ---
 
 ## Where the balance sits
 
-4th period unchanged. 5th period is new this session — see "5th period" below.
+Every number below moved from last session — the Observation's ambient Mastery cost now runs
+in every simulated period (she always visits), which is why mastery reads a few points lower
+across the board and fidelity a few points *higher* (checking for understanding is also a
+look-for, and every style here checks at least occasionally). That's the correct direction: an
+observation happened, you paid for it whether you played to it or not.
 
 ```
-ideal (never scans)         mastery 77  fidelity 84  bandwidth 19  restless 72  missed 7
-the good teacher            mastery 80  fidelity 80  bandwidth  0  restless  0  missed 0
-the hypervigilant           mastery 12  fidelity 57  bandwidth  0  restless  0  missed 0
-the wanderer                mastery 55  fidelity 53  bandwidth 54  restless 14  missed 0
-never checks, never looks   mastery 56  fidelity 70  bandwidth 55  restless 93  missed 7
+ideal (never scans)        mastery 74  fidelity 87  bandwidth 18  restless 72  missed 7  obs 1/5
+the good teacher           mastery 79  fidelity 82  bandwidth  0  restless  0  missed 0  obs 1/5
+the good teacher, rubric   mastery 79  fidelity 92  bandwidth  0  restless  0  missed 0  obs 5/5
+the hypervigilant          mastery  8  fidelity 57  bandwidth  0  restless  0  missed 0  obs 0/5
+the wanderer               mastery 50  fidelity 56  bandwidth 53  restless 14  missed 0  obs 1/5
+never checks, never looks  mastery 51  fidelity 70  bandwidth 55  restless 93  missed 7  obs 0/5
 ```
 
+"the good teacher, rubric" is the same teacher, same everything, except she also plays to the
+rubric the instant AP Reyes walks in: identical mastery (the ambient cost doesn't care whether
+you performed), ten points more Fidelity (the rubric actually rewarding the show). That's the
+whole mechanic in one row.
+
 ```
-the August chart        mastery 77  restless 72  missed 7
-the pairs split up      mastery 79  restless 44  missed 6
-the barometer up front  mastery 79  restless 49  missed 6
+the August chart        mastery 74  restless 72  missed 7  obs 1/5
+the pairs split up      mastery 75  restless 44  missed 6  obs 1/5
+the barometer up front  mastery 75  restless 49  missed 6  obs 1/5
 ```
 
 5th period, the same three representative styles run against `data/period5.json` — genuinely
@@ -172,9 +193,9 @@ busier (one more scheduled tell, restless runs hotter across the board) while st
 the same neighborhood on mastery, and still exactly one thing that quietly never happens:
 
 ```
-5th: ideal (never scans)       mastery 76  fidelity 84  bandwidth 19  restless 79  missed 8
-5th: the good teacher          mastery 81  fidelity 80  bandwidth  0  restless  0  missed 0
-5th: never checks, never looks mastery 54  fidelity 70  bandwidth 55  restless 91  missed 8
+5th: ideal (never scans)       mastery 73  fidelity 87  bandwidth 18  restless 79  missed 8  obs 1/5
+5th: the good teacher          mastery 78  fidelity 82  bandwidth  0  restless  0  missed 0  obs 1/5
+5th: never checks, never looks mastery 49  fidelity 70  bandwidth 55  restless 91  missed 8  obs 0/5
 ```
 
 ---
@@ -210,29 +231,44 @@ the same neighborhood on mastery, and still exactly one thing that quietly never
     period" set the `period` flag, so an accidental refresh during 5th period sends you back to
     4th's chart. Matches the existing "Run it again reloads everything" mental model; would
     need its own ticket to fix properly.
+12. **The Observation always fires at the same authored minute, every period, for everyone.**
+    Not randomized, not announced-vs-unannounced (treatment §6.1 has both; only unannounced is
+    built). Matches the project's own authoring-over-generation stance — see open questions —
+    and both periods happening to schedule it the same way is a deliberate simplification, not
+    a discovered coincidence.
+13. **The post-conference is one exchange, not a tree.** Treatment §6.1 shows one exchange as
+    its example; a deeper multi-turn conversation is real future scope, not a cut corner — this
+    ticket shipped the shape (a screen that isn't skippable, three real responses, effects that
+    apply), not the depth.
+14. **Tell meshes, mobile, whisper audio, generated content — all still open, all still gaps
+    2/3/5/6 above.** T7 didn't touch any of them.
 
 ---
 
 ## Backlog (suggested order)
 
-**T7 — The Observation.** *Next up.* The boss fight. Admin Proximity Alert, nine-second window,
-rubric look-fors, post-conference dialogue tree. Treatment §6.1.
-
-**T8 — Whisper audio.** Gap 5. Directional, panned, radio-crackle fragments on WHISPER tells.
+**T8 — Whisper audio.** *Next up.* Gap 5. Directional, panned, radio-crackle fragments on
+WHISPER tells.
 
 ---
 
 ## Open questions
 
 - Tell and beat authoring vs. generation: keep authoring for now — T6 shipped a second
-  authored roster/schedule/lesson rather than generating one, deliberately, to keep proving the
-  authored shape works before automating it.
+  authored roster/schedule/lesson rather than generating one, and T7 shipped one authored
+  observation rather than a randomized one, both deliberately, to keep proving the authored
+  shape works before automating it.
 - Does the period need a fail state? Still no.
 - Should Room Temp reveal direction at all? Still unchanged.
 - Is suppression too strong? Watch whether players find "the barometer in the middle of the
   back row" and never move her again. If they do, the fix is probably a per-period limit on
   how much one kid can absorb, not a nerf to the effect. Now watch it across *two* rosters
   (Priya and Anh both), not just one.
+- Is the Observation's ambient Mastery cost calibrated right? It's ~5 points over the full
+  window by design math, not by playtesting. Watch whether it reads as "a real cost" or "not
+  even worth noticing" once someone other than the person who wrote the constant plays it.
+- Should there be an announced (scheduled, not surprise) variant of the Observation, per
+  treatment §6.1? Not built. Low priority — the Admin Proximity Alert version is the funnier one.
 - Subject choice reskins hazards. Not worth touching yet.
 - Mobile. Still undecided.
 - A third period would immediately demand solving known gaps 10 and 11 (hardcoded `*5` keys,
@@ -243,7 +279,7 @@ rubric look-fors, post-conference dialogue tree. Treatment §6.1.
 
 Point it at the repo root and give it a ticket, not the whole project:
 
-> Read CLAUDE.md and docs/HANDOFF.md. Implement T7 (The Observation). Run
+> Read CLAUDE.md and docs/HANDOFF.md. Implement T8 (whisper audio). Run
 > tests/smoke.mjs and tests/balance.mjs when you're done and tell me what you changed.
 
 Don't open with "figure out what to do" — the backlog already decided, and an agent given an

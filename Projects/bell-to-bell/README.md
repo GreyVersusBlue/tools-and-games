@@ -67,6 +67,17 @@ anything.** That is what the phone actually costs you, and it is why the seeing 
 the heat is in. It never names a kid; that is what the expensive ability is for. The readout
 is a snapshot, not a live feed, so it ages and then tells you it has aged.
 
+## The Observation
+
+Every period, on no notice: an Admin Proximity Alert gives you nine real seconds, then AP Reyes
+is in the room with a clipboard and a rubric. For the next eleven minutes, five look-fors are
+worth performing — post the objective (**O**), ask a bigger question (**H**), let them talk to
+each other (**G**), hold still and call it wait time (**F**, five seconds) — and one of them,
+checking for understanding, you were probably already doing. Being watched costs you something
+the whole time regardless of what you do about it; performing the rubric costs something else
+and pays out in Fidelity. Afterward, one exchange, three ways to answer it, and the "correct"
+one is usually not the cheap one.
+
 ## Running it
 
 ES modules need a server — opening `index.html` from the filesystem will not work.
@@ -80,7 +91,7 @@ Deploys to GitHub Pages as-is. three.js loads from a CDN via the import map in
 `index.html`; there is no build step and no `node_modules`.
 
 ```bash
-cd tests && node smoke.mjs     # 143 headless assertions
+cd tests && node smoke.mjs     # 191 headless assertions
 cd tests && node balance.mjs   # five styles through whole periods, plus one style across three charts
 ```
 
@@ -99,6 +110,7 @@ data/                 ← content lives here, not in code
   reactions.json      pose definitions: what a body does and for how long
   seating.json        chart screen copy, the seating rules table, report lines
   period5.json         5th period: its own roster, tell schedule, lesson and chart copy
+  observation.json     the Observation: alert/arrival copy, look-fors, the post-conference tree
 src/
   config.js           every tuning constant
   state.js            game state + effect application
@@ -119,7 +131,8 @@ src/
   systems/meters.js   per-frame meter math, teaching zone
   systems/interventions.js  menu construction + outcome resolution
   systems/events.js   scheduled interruptions
-  ui/                 dom refs, hud, labels, menu, toast, report, seating
+  systems/observation.js  the alert, the rubric window, the look-fors
+  ui/                 dom refs, hud, labels, menu, toast, report, seating, conference
   main.js             wiring and the frame loop
 tests/smoke.mjs       headless assertions
 tests/balance.mjs     full-period simulation across play styles
@@ -145,6 +158,10 @@ Most of what this game needs next is content, and content is data:
 - **Retuning difficulty** — `src/config.js`. Nothing else. Then run `tests/balance.mjs`.
 - **New flavor text** — `data/events.json` and the `toast` blocks in
   `data/interventions.json`.
+- **A new post-conference response** — add an entry to `data/observation.json` →
+  `conference.options`: the line, the blurb, its effects, and what she does with it.
+  A one-shot look-for (as opposed to the held wait-time key) needs a matching key in
+  `src/config.js` → `keys` and a dispatch line in `main.js`'s action loop.
 
 ## Design docs
 
