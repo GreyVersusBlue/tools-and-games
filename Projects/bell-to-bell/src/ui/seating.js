@@ -8,16 +8,51 @@ import { dom } from './dom.js';
 // have not already watched happen in this room.
 //
 // UI only. It takes a view model in and calls back out (see CLAUDE.md).
-export function createSeatingScreen({ copy, onSwap, onReset, onConfirm }) {
+//
+// T5 — the two occluders (`.planocc`) drag like the desks do, but they must
+// not go through a full render() on every pointermove: that would tear down
+// the very element under the pointer mid-drag (same trap the desk comment
+// above used to warn about). Dragging instead repositions elements in place
+// and lets `onMoveOccluder` hand back a fresh view model to patch from.
+export function createSeatingScreen({ copy, onSwap, onReset, onMoveOccluder, onConfirm }) {
   let vm = null, meta = null;
-  let selected = null, pressed = null;
-  const cards = new Map();
+  let selected = null, pressed = null, dragOcc = null;
+  const cards = new Map(), occEls = new Map();
 
   const pct = (v, min, span) => ((v - min) / span) * 100;
 
   function bounds() {
     const b = vm.bounds;
     return { minX: -b.x, spanX: b.x * 2, minZ: b.zFront, spanZ: b.zBack - b.zFront };
+  }
+
+  // Inverse of place(): where in world space the pointer actually is.
+  function worldFromEvent(e) {
+    const box = dom.chartPlan.getBoundingClientRect();
+    const { minX, spanX, minZ, spanZ } = bounds();
+    return {
+      x: minX + ((e.clientX - box.left) / box.width) * spanX,
+      z: minZ + ((e.clientY - box.top) / box.height) * spanZ
+    };
+  }
+
+  // Reposition what moved and restate what it changed, without rebuilding a
+  // single DOM node — the desk cards keep their identity and the occluder
+  // being dragged keeps its pointer capture.
+  function reflow() {
+    for (const o of vm.occluders) {
+      const el = occEls.get(o.id);
+      if (el) place(el, o.x, o.z, o.w, o.d);
+    }
+    for (const s of vm.seats) {
+      const el = cards.get(s.desk);
+      if (!el) continue;
+      el.className = `deskcard sight-${s.sight} row${s.row}` +
+        (selected === s.desk ? ' sel' : '') + (s.steadyKnown ? ' steady' : '');
+      el.title = s.sightFromLabels.length
+        ? `${s.name} — you can see this desk from ${s.sightFromLabels.join(', ')}`
+        : `${s.name} — you cannot see this desk from the front at all`;
+    }
   }
 
   function place(el, x, z, w, d) {
@@ -39,6 +74,7 @@ export function createSeatingScreen({ copy, onSwap, onReset, onConfirm }) {
     const plan = dom.chartPlan;
     plan.innerHTML = '';
     cards.clear();
+    occEls.clear();
     const { minX, spanX, minZ, spanZ } = bounds();
 
     for (const f of vm.furniture) {
@@ -52,9 +88,11 @@ export function createSeatingScreen({ copy, onSwap, onReset, onConfirm }) {
     for (const o of vm.occluders) {
       const el = document.createElement('div');
       el.className = 'planocc';
+      el.dataset.occ = o.id;
       el.innerHTML = `<span>${o.label}</span>`;
       place(el, o.x, o.z, o.w, o.d);
       plan.appendChild(el);
+      if (onMoveOccluder) occEls.set(o.id, el);
     }
 
     // Volatility edges, drawn only between pairs you have already watched.
@@ -134,7 +172,24 @@ export function createSeatingScreen({ copy, onSwap, onReset, onConfirm }) {
     onSwap(a, b);
   }
 
+  function occFrom(target) {
+    return target && target.closest ? target.closest('.planocc') : null;
+  }
+
   dom.chartPlan.addEventListener('pointerdown', e => {
+    const occEl = onMoveOccluder ? occFrom(e.target) : null;
+    if (occEl) {
+      e.preventDefault();
+      const id = occEl.dataset.occ;
+      const o = vm.occluders.find(x => x.id === id);
+      const at = worldFromEvent(e);
+      // Offset from the grab point to the rectangle's own centre, so it
+      // doesn't jump to be centred under the pointer the instant you grab it.
+      dragOcc = { id, el: occEl, dx: o.x - at.x, dz: o.z - at.z };
+      occEl.setPointerCapture(e.pointerId);
+      occEl.classList.add('dragging');
+      return;
+    }
     const d = deskFrom(e.target);
     if (d == null) { setSelected(null); return; }
     e.preventDefault();
@@ -145,12 +200,25 @@ export function createSeatingScreen({ copy, onSwap, onReset, onConfirm }) {
     } else { setSelected(d); pressed = d; }
   });
 
+  addEventListener('pointermove', e => {
+    if (!dragOcc) return;
+    const at = worldFromEvent(e);
+    const result = onMoveOccluder(dragOcc.id, at.x + dragOcc.dx, at.z + dragOcc.dz);
+    if (result) { vm = result; reflow(); }
+  });
+
   addEventListener('pointerup', e => {
+    if (dragOcc) { dragOcc.el.classList.remove('dragging'); dragOcc = null; return; }
     if (pressed == null) return;
     const over = deskFrom(document.elementFromPoint(e.clientX, e.clientY));
     const from = pressed;
     pressed = null;
     if (over != null && over !== from) { setSelected(null); swap(from, over); }
+  });
+
+  addEventListener('pointercancel', () => {
+    if (dragOcc) { dragOcc.el.classList.remove('dragging'); dragOcc = null; }
+    pressed = null;
   });
 
   dom.chartConfirm.addEventListener('click', () => onConfirm());
@@ -159,7 +227,7 @@ export function createSeatingScreen({ copy, onSwap, onReset, onConfirm }) {
   return {
     open(model, info) {
       vm = model; meta = info || {};
-      selected = null; pressed = null;
+      selected = null; pressed = null; dragOcc = null;
       dom.chartTitle.textContent = copy.title;
       dom.chartSub.textContent = copy.sub;
       dom.chartIntro.innerHTML = copy.intro.map(p => `<p>${p}</p>`).join('') +

@@ -44,7 +44,17 @@ export function createState() {
     sawCurveball: false,
     leverage: [],
     firedEvents: new Set(),
-    openTell: null
+    openTell: null,
+
+    // T7: the Observation. 'idle' -> 'alert' -> 'active' -> 'done', in order,
+    // once per period, unskippable and unrepeatable.
+    obsPhase: 'idle',
+    obsAlertRemaining: 0,   // real seconds left in the Admin Proximity Alert
+    obsWindowRemaining: 0,  // game seconds left once she's actually in the room
+    obsSatisfied: {},       // look-for key -> true, once satisfied it stays satisfied
+    obsWaitHeld: 0,         // real seconds KeyF has been held, this window
+    obsResult: null,        // { satisfied: [...], total } once the window closes
+    obsConference: null     // the option key the player picked in the post-conference
   };
 }
 

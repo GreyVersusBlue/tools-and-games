@@ -12,6 +12,7 @@ import { createInterventions } from './systems/interventions.js';
 import { createEvents } from './systems/events.js';
 import { createLesson } from './systems/lesson.js';
 import { createRoomTemp } from './systems/roomtemp.js';
+import { createObservation } from './systems/observation.js';
 import { inTeachingZone, tickMeters } from './systems/meters.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
@@ -21,6 +22,7 @@ import { toast } from './ui/toast.js';
 import { updateLabels } from './ui/labels.js';
 import { openMenu, closeMenu } from './ui/menu.js';
 import { showReport } from './ui/report.js';
+import { showConference } from './ui/conference.js';
 import { createSeatingScreen } from './ui/seating.js';
 import * as persist from './persist.js';
 
@@ -45,10 +47,59 @@ function showFatalError(err) {
   document.body.appendChild(box);
 }
 
+// T6: everything that differs between 4th and 5th period, in one place. Room,
+// tell types, seating rules, interventions, reactions and events are the same
+// building and the same rulebook regardless of which class is in front of you
+// — only the kids, their tell schedule, and the lesson change.
+function periodFor(id, data) {
+  if (id === 'p5') {
+    const p5 = data.period5;
+    return {
+      id: 'p5',
+      periodLabel: p5.meta.period,
+      periodTag: '5TH PERIOD',
+      ordinal: '5th Period',
+      seatGrid: data.students.seatGrid,
+      roster: p5.roster,
+      schedule: p5.schedule,
+      lessonData: {
+        unit: p5.lesson.unit, beats: p5.lesson.beats, filler: p5.lesson.filler,
+        copy: data.lesson.copy, objectiveBoard: data.lesson.objectiveBoard
+      },
+      seatingCopy: {
+        ...data.seating,
+        sub: p5.seatingCopy.sub,
+        intro: p5.seatingCopy.intro,
+        buttons: { ...data.seating.buttons, ...p5.seatingCopy.buttons }
+      },
+      nextPeriodId: null
+    };
+  }
+  return {
+    id: 'p4',
+    periodLabel: data.room.meta.period,
+    periodTag: '4TH PERIOD',
+    ordinal: '4th Period',
+    seatGrid: data.students.seatGrid,
+    roster: data.students.roster,
+    schedule: data.tells.schedule,
+    lessonData: data.lesson,
+    seatingCopy: data.seating,
+    nextPeriodId: 'p5'
+  };
+}
+
 try {
 
 const data = await loadData();
 const state = createState();
+
+// T6: which class is in front of you right now. A fresh browser (or "Run it
+// again" from 5th period's own report) always starts back at 4th; the only
+// way forward is 4th period's report handing you off.
+const activePeriodId = persist.load('period', 'p4');
+const isP5 = activePeriodId === 'p5';
+const period = periodFor(activePeriodId, data);
 
 // ---------- renderer ----------
 const scene = new THREE.Scene();
@@ -73,25 +124,39 @@ const room = buildRoom(scene, registry, mats, data.room);
 
 // T4: the chart decides who sits where before anything is built. It survives
 // between periods; the first period of a fresh browser gets the August chart.
-let savedChart = persist.load('chart', null);
-let known = persist.load('known', { edges: [], steadies: [] });
+// T5: so does the furniture — move the cabinet once and it stays moved.
+// T6: 5th period keeps its own chart/discovery history, seeded once from
+// whatever 4th period's desks looked like the moment you handed off — see
+// rapportBase below for why that seeding is not the same thing as "familiar."
+const chartKey = isP5 ? 'chart5' : 'chart';
+const knownKey = isP5 ? 'known5' : 'known';
+const rapportKey = isP5 ? 'rapportBase5' : 'rapportBase';
+
+let savedChart = persist.load(chartKey, null);
+let savedLayout = persist.load('furniture', null);
+// A brand-new roster has no opinion about any chart yet, however the desks
+// happen to be sitting — that's what rapportBase (not savedChart) tracks.
+let rapportBase = persist.load(rapportKey, savedChart);
+let known = persist.load(knownKey, { edges: [], steadies: [] });
 const chart = createChart({
-  seatGrid: data.students.seatGrid,
+  seatGrid: period.seatGrid,
   room: data.room,
-  roster: data.students.roster,
+  roster: period.roster,
   tellTypes: data.tells.types,
   rules: data.seating.rules,
   plan: data.seating.plan.furniture,
-  saved: savedChart
+  saved: savedChart,
+  layout: savedLayout
 });
 
-const students = buildStudents(scene, registry, mats, data.students, chart);
-let plan = chart.resolveSchedule(data.tells.schedule);
+const students = buildStudents(scene, registry, mats, period, chart);
+let plan = chart.resolveSchedule(period.schedule);
 chart.apply(students, plan);
 
 camera.position.set(room.spawn.x, CFG.eyeHeight, room.spawn.z);
-dom.cbTitle.textContent = data.room.meta.period;
+dom.cbTitle.textContent = period.periodLabel;
 dom.cbRoom.textContent = data.room.meta.room;
+dom.startSub.textContent = `SLICE 001 — "ONE PERIOD" · ${period.ordinal} · 47 minutes · 12 students`;
 
 const reactions = createReactions({ students, data: data.reactions, camera });
 
@@ -144,7 +209,7 @@ const interventions = createInterventions({
 });
 
 const lesson = createLesson({
-  data: data.lesson, students, tellSystem, toast,
+  data: period.lessonData, students, tellSystem, toast,
   onBoard: beat => room.screens.board?.set(beat.board),
   onRoomReact: kind => {
     const cfg = data.reactions.room[kind];
@@ -171,8 +236,12 @@ const events = createEvents({
   }
 });
 
+// T7: the Observation. Shared across periods on purpose — it is the same
+// rubric and the same AP regardless of whose desks are in the room.
+const observation = createObservation({ data: data.observation, dom, toast });
+
 room.screens.board?.set(lesson.current(state).board);
-room.screens.objective?.set(data.lesson.objectiveBoard);
+room.screens.objective?.set(period.lessonData.objectiveBoard);
 
 const projector = new THREE.Vector3();
 
@@ -181,6 +250,18 @@ function flashCFU() {
   void dom.cfu.offsetWidth;
   dom.cfu.classList.add('on');
   audio.chime();
+}
+
+// T7: the rubric panel is visible from the Admin Proximity Alert through the
+// end of the window, so you can see what it wants before she's even in the
+// room, and it goes away the moment she's done writing.
+function drawObservationHUD(state) {
+  const show = state.obsPhase === 'alert' || state.obsPhase === 'active';
+  dom.observation.classList.toggle('hide', !show);
+  if (!show) return;
+  for (const row of dom.observation.querySelectorAll('.obsrow')) {
+    row.classList.toggle('got', !!state.obsSatisfied[row.dataset.key]);
+  }
 }
 
 function handleTellClick(t) {
@@ -231,14 +312,20 @@ function frame(now) {
     if (action === 'roomTemp') { temp.read(state); continue; }
     if (state.openTell) continue;              // one thing at a time
     if (action === 'advance') lesson.advance(state);
-    else if (action === 'check') lesson.check(state);
+    else if (action === 'check') { if (lesson.check(state).ok) observation.satisfy(state, 'check'); }
     else if (action === 'reteach') lesson.reteach(state);
+    else if (action === 'postObjective') observation.satisfy(state, 'objective');
+    else if (action === 'askQuestion') observation.satisfy(state, 'question');
+    else if (action === 'discourse') observation.satisfy(state, 'discourse');
   }
 
   withitness.tick(state, dt);
   const liveTells = tellSystem.tells.filter(t => t.born !== null && !t.dead && !t.resolved).length;
   tickMeters(state, dt, teaching, liveTells);
   lesson.tick(state, dt, { teaching });
+  observation.tick(state, dt);
+  observation.tickWait(state, dt, input.wantsWait());
+  drawObservationHUD(state);
 
   if (state.hyper > CFG.hyperThreshold && !state.falseSpawned && state.t > 420) {
     state.falseSpawned = true;
@@ -266,41 +353,88 @@ function endPeriod() {
   audio.bell();
 
   // What this period taught you about the room. Next chart knows it; nothing
-  // about it was labelled in advance.
+  // about it was labelled in advance. A new roster next period gets none of
+  // this — it is genuinely about these kids, not the desks (T6).
   const learned = learnFrom({ tells: tellSystem.tells, plan, known, rules: data.seating.rules });
   known = learned.known;
-  persist.save('known', known);
+  persist.save(knownKey, known);
 
-  showReport(state, data.events, {
-    lesson: lesson.summary(state), students,
-    seating: { plan, copy: data.seating.report, chart, learned }
-  });
+  // T6: 4th period hands off into 5th; 5th period's own report just restarts
+  // the day at 4th, which is what "Run it again" always meant.
+  const restart = period.nextPeriodId ? {
+    label: 'Next period — 5th',
+    onClick: () => {
+      // The room's desks carry forward as a fact about the room. Whether
+      // moving further from them costs Rapport is a fact about the kids, and
+      // this class has never met this chart, so that resets to novel.
+      persist.save('chart5', chart.seatOf);
+      persist.save('rapportBase5', null);
+      persist.clear('known5');
+      persist.save('period', period.nextPeriodId);
+      location.reload();
+    }
+  } : {
+    label: 'Run it again',
+    onClick: () => { persist.save('period', 'p4'); location.reload(); }
+  };
+
+  function report() {
+    showReport(state, data.events, {
+      lesson: lesson.summary(state), students,
+      seating: { plan, copy: data.seating.report, chart, learned },
+      periodTag: period.periodTag,
+      observation: state.obsResult ? {
+        result: state.obsResult,
+        labels: observation.lookFors.filter(l => state.obsSatisfied[l.key]).map(l => l.label),
+        option: observation.conferenceOption(state.obsConference),
+        copy: observation.report
+      } : null,
+      restart
+    });
+  }
+
+  // T7: if she came today, the post-conference happens before the report —
+  // the day is not over until you've answered her, one way or another.
+  if (state.obsPhase === 'done') {
+    showConference(observation.conference, key => {
+      observation.resolveConference(state, key);
+      report();
+    });
+  } else {
+    report();
+  }
 }
 
 // ---------- the seating chart, then the bell ----------
 const seating = createSeatingScreen({
-  copy: data.seating,
+  copy: period.seatingCopy,
   onSwap: (a, b) => { chart.swapDesks(a, b); redrawChart(); },
   onReset: () => { chart.reset(); redrawChart(); },
+  // T5: dragging furniture reclassifies sight live; the drag path in
+  // ui/seating.js patches in place rather than re-rendering, so this hands
+  // back a fresh view model rather than calling redrawChart() itself.
+  onMoveOccluder: (id, x, z) => (chart.moveOccluder(id, x, z) ? chart.viewModel(known) : null),
   onConfirm: () => beginPeriod()
 });
 
 function redrawChart() {
-  seating.update(chart.viewModel(known), { cost: chart.rechartCost(savedChart) });
+  seating.update(chart.viewModel(known), { cost: chart.rechartCost(rapportBase) });
 }
 
 function beginPeriod() {
   // Everything the chart decides is decided here, once, and then the room is
   // whatever you made it.
-  plan = chart.resolveSchedule(data.tells.schedule);
+  plan = chart.resolveSchedule(period.schedule);
   chart.apply(students, plan);
-  placeStudents(students, chart, data.students.seatGrid.bodyOffsetZ);
+  placeStudents(students, chart, period.seatGrid.bodyOffsetZ);
   tellSystem.load(plan.rows);
 
-  const cost = chart.rechartCost(savedChart);
+  const cost = chart.rechartCost(rapportBase);
   state.rechart = cost;
   if (cost.rapport) state.rapport += cost.rapport;
-  persist.save('chart', chart.seatOf);
+  persist.save(chartKey, chart.seatOf);
+  persist.save(rapportKey, chart.seatOf);
+  persist.save('furniture', chart.occluderLayout());
 
   seating.close();
   audio.init();
@@ -310,7 +444,7 @@ function beginPeriod() {
 
 dom.startBtn.addEventListener('click', () => {
   dom.startScreen.classList.add('hide');
-  seating.open(chart.viewModel(known), { cost: chart.rechartCost(savedChart) });
+  seating.open(chart.viewModel(known), { cost: chart.rechartCost(rapportBase) });
 });
 
 drawHUD(state, true, temp.display(state), lesson.summary(state));

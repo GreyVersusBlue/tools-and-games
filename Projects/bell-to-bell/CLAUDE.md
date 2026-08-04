@@ -2,7 +2,8 @@
 
 ## What this is
 `Bell to Bell`, a 3D browser game about teaching. Currently one vertical slice:
-a single 47-minute class period. Read `docs/BELL-TO-BELL-treatment.md` for the full
+a 47-minute class period, now followed by a second one (4th period hands off into
+5th — same room, different kids). Read `docs/BELL-TO-BELL-treatment.md` for the full
 design vision and `docs/HANDOFF.md` for current state and the backlog.
 
 ## Commands

@@ -9,17 +9,37 @@ import { classifySight, occluderRects } from './sightlines.js';
 // `student.x` / `student.z`, which this module writes.
 //
 // Four things the chart decides, none of which are printed on it:
-//   1. What you can see from the front, because the furniture has not moved.
+//   1. What you can see from the front — the furniture (T5: draggable) decides it.
 //   2. Who can reach whom — a whisper needs a neighbour, and a note does not.
 //   3. Who calms whom, and what that costs the person doing the calming.
 //   4. Who is close enough to the front to get the most out of you talking.
-export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [], saved = null }) {
+export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [], saved = null, layout = null }) {
   const S = CFG.seating;
   const cols = seatGrid.cols, rows = seatGrid.rows;
   const rects = occluderRects(room.occluders || []);
   const viewpoints = room.viewpoints || [{ id: 'front', x: 0, z: room.spawn?.z ?? -2.4 }];
+  const B = room.bounds;
 
-  // ---- the desks (fixed until T5 lets you push them around) ----------------
+  // A rectangle's centre may not leave the room, and the room's centre is not
+  // yours to give away: everything is clamped to the room's own footprint.
+  function clampOccluder(r, x, z) {
+    return {
+      x: Math.min(B.x - r.halfW, Math.max(-B.x + r.halfW, x)),
+      z: Math.min(B.zBack - r.halfD, Math.max(B.zFront + r.halfD, z))
+    };
+  }
+
+  // T5: a chart carried over from last period may have moved the furniture too.
+  if (Array.isArray(layout)) {
+    for (const entry of layout) {
+      const r = rects.find(o => o.id === entry.id);
+      if (!r || !Number.isFinite(entry.x) || !Number.isFinite(entry.z)) continue;
+      const c = clampOccluder(r, entry.x, entry.z);
+      r.x = c.x; r.z = c.z;
+    }
+  }
+
+  // ---- the desks -------------------------------------------------------
   const desks = [];
   for (let r = 0; r < rows.length; r++) {
     for (let c = 0; c < cols.length; c++) {
@@ -28,11 +48,29 @@ export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [
       // The point the raycast actually asks about at run time (systems/tells.js).
       const target = { x: x + 0.18, z: bodyZ - 0.1 };
       desks.push({
-        index: desks.length, col: c, row: r, x, z, bodyZ,
+        index: desks.length, col: c, row: r, x, z, bodyZ, target,
         rowGain: S.rowGain[Math.min(r, S.rowGain.length - 1)],
         sight: classifySight(target, viewpoints, rects)
       });
     }
+  }
+
+  // ---- T5: the classroom builder — push the furniture around ---------------
+  // Moves one occluder and reclassifies every desk against the new layout.
+  // Nothing else about the chart changes: seatOf, the schedule, none of it —
+  // this only recomputes what the furniture hides, live.
+  function moveOccluder(id, x, z) {
+    const r = rects.find(o => o.id === id);
+    if (!r) return null;
+    const c = clampOccluder(r, x, z);
+    r.x = c.x; r.z = c.z;
+    for (const d of desks) d.sight = classifySight(d.target, viewpoints, rects);
+    return { id: r.id, x: r.x, z: r.z };
+  }
+
+  // What the room actually looks like right now, for the next period to load.
+  function occluderLayout() {
+    return rects.map(r => ({ id: r.id, x: r.x, z: r.z }));
   }
 
   const defaultAssignment = desks.map((_, i) => i);
@@ -222,7 +260,8 @@ export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [
     get seatOf() { return seatOf.slice(); },
     deskOf, studentAt, assign, reset, swapDesks,
     adjacency, neighbours, steadiestNeighbour,
-    resolveSchedule, apply, movesFrom, rechartCost, viewModel
+    resolveSchedule, apply, movesFrom, rechartCost, viewModel,
+    moveOccluder, occluderLayout
   };
 }
 

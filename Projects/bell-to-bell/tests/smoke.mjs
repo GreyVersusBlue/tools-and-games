@@ -5,17 +5,18 @@ import { createLesson } from '../src/systems/lesson.js';
 import { createRoomTemp } from '../src/systems/roomtemp.js';
 import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
+import { createObservation } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
 const iData = D('interventions'), tData = D('tells'), sData = D('students');
 const lData = D('lesson'), eData = D('events'), rData = D('reactions');
-const roomData = D('room'), seatData = D('seating');
+const roomData = D('room'), seatData = D('seating'), p5Data = D('period5'), obsData = D('observation');
 
-const mkChart = (saved=null) => createChart({
+const mkChart = (saved=null, layout=null) => createChart({
   seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
   tellTypes: tData.types, rules: seatData.rules,
-  plan: seatData.plan.furniture, saved
+  plan: seatData.plan.furniture, saved, layout
 });
 const baseChart = mkChart();
 
@@ -463,6 +464,224 @@ const cMoved = mkChart(); cMoved.swapDesks(2, 11);
 check('an edge you have already separated is drawn quiet',
   cMoved.viewModel(learned.known).edges[0].live===false);
 
+// ---------------------------------------------------------------------------
+// T5 — the classroom builder: push the furniture, the shading follows
+// ---------------------------------------------------------------------------
+
+// desk 8 is row 2 / col 0, the back-left desk the cabinet test above (line
+// ~318) already showed is blocked from centre-front.
+const cabRect = occluderRects(roomData.occluders).find(r=>r.id==='cabinet');
+const farCorner = { x: roomData.bounds.x - cabRect.halfW, z: roomData.bounds.zBack - cabRect.halfD };
+
+const cBuild = mkChart();
+const before8 = cBuild.desks[8].sight;
+check('desk 8 (back-left) is not fully clear before anything gets rearranged', before8.kind!=='clear');
+
+const moved = cBuild.moveOccluder('cabinet', 999, 999);
+check('the cabinet is clamped to the room, not wherever you drag it',
+  Math.abs(moved.x-farCorner.x)<1e-9 && Math.abs(moved.z-farCorner.z)<1e-9);
+check('every desk gets reclassified, live, against the new layout',
+  cBuild.desks[8].sight.count > before8.count);
+check('the front row does not care that the cabinet moved',
+  cBuild.desks[0].sight.kind===baseChart.desks[0].sight.kind);
+check('an unknown occluder id is refused', cBuild.moveOccluder('nope', 0, 0)===null);
+check('a refused move touches nothing', cBuild.rects.find(r=>r.id==='cabinet').x===moved.x);
+
+check('occluderLayout reports exactly what moveOccluder just set',
+  cBuild.occluderLayout().find(o=>o.id==='cabinet').x===moved.x &&
+  cBuild.occluderLayout().find(o=>o.id==='cabinet').z===moved.z);
+
+// a chart loaded with a saved layout starts already rearranged
+const cLoaded = mkChart(null, [{ id: 'cabinet', x: 999, z: 999 }]);
+check('a saved layout moves the furniture before the first desk is classified',
+  cLoaded.rects.find(r=>r.id==='cabinet').x===farCorner.x);
+check('desks are classified against the loaded layout, not the room.json default',
+  cLoaded.desks[8].sight.count > baseChart.desks[8].sight.count);
+
+// junk in a saved layout is ignored rather than thrown
+const cBadLayout = mkChart(null, [{ id: 'nope', x: 1, z: 1 }, { id: 'cabinet', x: NaN, z: 1 }]);
+check('an unknown id or a non-finite coordinate in a saved layout is skipped',
+  cBadLayout.rects.find(r=>r.id==='cabinet').x===cabRect.x);
+
+// ---------------------------------------------------------------------------
+// T6 — second period: a different roster, a different lesson, the same room
+// ---------------------------------------------------------------------------
+
+check('period5 has a full roster', p5Data.roster.length===12);
+check('period5 names are all distinct', new Set(p5Data.roster.map(r=>r.name)).size===12);
+check("period5 isn't just period4's roster with the serial numbers filed off",
+  p5Data.roster.every(r => !sData.roster.some(r4 => r4.name===r.name)));
+
+const mkChart5 = (saved=null) => createChart({
+  seatGrid: sData.seatGrid, room: roomData, roster: p5Data.roster,
+  tellTypes: tData.types, rules: seatData.rules,
+  plan: seatData.plan.furniture, saved
+});
+const chart5 = mkChart5();
+
+check('period5 lesson still sums to the same 2000s gap-1 settled on for period4',
+  p5Data.lesson.beats.reduce((a,b)=>a+b.seconds,0) === lData.beats.reduce((a,b)=>a+b.seconds,0));
+
+check('every seat named in period5\'s schedule exists in its roster',
+  p5Data.schedule.every(row =>
+    row.seat>=0 && row.seat<12 && (row.with==null || (row.with>=0 && row.with<12))));
+
+const plan5 = chart5.resolveSchedule(p5Data.schedule);
+check('period5\'s schedule survives the chart',
+  plan5.rows.length + plan5.suppressed.length === p5Data.schedule.length);
+check('period5 has its own curveball, and it is never suppressed',
+  plan5.rows.some(r=>r.type==='QUIET'));
+
+// Anh (seat 6, steady 0.84) sits directly beside Devontae (seat 7, tension
+// 0.82) on the default chart — that phone should never happen, the same
+// shape as period4's Priya/June, authored fresh for a roster that has never
+// met Priya or June.
+check("period5 has its own quiet stabiliser (Anh) absorbing its own live wire (Devontae)",
+  plan5.suppressed.some(x=>x.by===6 && x.seat===7));
+check("and it's silent — nothing shows up in the schedule for it",
+  plan5.rows.every(r=>!(r.type==='PHONE' && r.seat===7)));
+
+// the seat1/seat2 NOTE is adjacent by default, so it is a handoff — same
+// mechanic as period4's, different kids.
+const p5NoteRow = plan5.rows.find(r=>r.type==='NOTE' && r.seat===1);
+check('period5 has its own quick handoff',
+  p5NoteRow && p5NoteRow.life < p5Data.schedule.find(r=>r.seat===1 && r.type==='NOTE').life);
+
+const p5Students = chart5.apply(p5Data.roster.map((r,i)=>({ ...r, seat:i })), plan5);
+check('period5 students actually learn something under it',
+  p5Students.find(s=>s.row===0).rowGain > p5Students.find(s=>s.row===2).rowGain);
+
+// ---- T6: the physical handoff from 4th period's desks into 5th's ----------
+// This is what main.js does across the reload: 5th period's chart is built
+// with `saved` set to whatever 4th period's seatOf ended up being, onto a
+// roster that has never seen it before.
+const p4End = mkChart(); p4End.swapDesks(0, 11);
+const chart5Carried = mkChart5(p4End.seatOf);
+check("5th period's desks start wherever 4th period actually left them",
+  chart5Carried.seatOf.join()===p4End.seatOf.join());
+check('but the kids sitting in them are a completely different roster',
+  chart5Carried.deskOf(11).index===0 && p5Data.roster[11].name !== sData.roster[11].name);
+
+// The physical carryover is not the same thing as familiarity: main.js feeds
+// rechartCost() a *separate*, always-null baseline for a brand-new roster, so
+// this reads as novel (free) no matter how the carried-over chart is used.
+check("a carried-over chart still reads as novel for Rapport purposes when compared against nothing",
+  chart5Carried.rechartCost(null).novel===true && chart5Carried.rechartCost(null).rapport===0);
+
+// ---------------------------------------------------------------------------
+// T7 — the Observation: the alert, the window, the rubric, the conference
+// ---------------------------------------------------------------------------
+
+const fakeClassList = () => {
+  const s = new Set();
+  return { add: k => s.add(k), remove: k => s.delete(k), contains: k => s.has(k) };
+};
+const mkObsDom = () => ({
+  pa: { classList: fakeClassList() },
+  paTitle: { textContent: '' },
+  paTxt: { textContent: '' }
+});
+const mkObs = () => {
+  const msgs = [];
+  const dom = mkObsDom();
+  const obs = createObservation({ data: obsData, dom, toast: (k, t, b) => msgs.push([k, t, b]) });
+  return { obs, dom, msgs };
+};
+
+// idle until her scheduled minute arrives
+{
+  const { obs } = mkObs();
+  const st = createState();
+  st.t = CFG.periodSeconds - (obsData.atMinute - 1) * 60;   // one minute early
+  obs.tick(st, 1 / 60);
+  check('no alert before her scheduled minute', st.obsPhase === 'idle');
+}
+
+// alert -> active, on schedule, in real seconds
+{
+  const { obs, dom } = mkObs();
+  const st = createState();
+  st.t = CFG.periodSeconds - obsData.atMinute * 60;
+  obs.tick(st, 1 / 60);
+  check('the alert starts exactly on her scheduled minute', st.obsPhase === 'alert');
+  check('the alert banner is up', dom.pa.classList.contains('on'));
+  check('a full countdown is queued', st.obsAlertRemaining === CFG.observation.alertSeconds);
+
+  for (let i = 0; i < CFG.observation.alertSeconds * 60 + 2; i++) obs.tick(st, 1 / 60);
+  check('nine real seconds later she has arrived', st.obsPhase === 'active');
+  check('the window is a fixed number of game-minutes', st.obsWindowRemaining <= CFG.observation.windowMinutes * 60);
+}
+
+// look-fors: satisfied once, idempotent, refused outside the window
+{
+  const { obs, msgs } = mkObs();
+  const st = createState();
+  check('pressing a look-for before she has arrived does nothing', obs.satisfy(st, 'objective') === false);
+  check('and it tells you so', msgs.some(m => m[2] === obsData.idle));
+
+  st.obsPhase = 'active';
+  const before = st.fidelity;
+  check('the first press satisfies it', obs.satisfy(st, 'objective') === true);
+  check('fidelity actually moved', st.fidelity > before);
+  check('a second press does nothing', obs.satisfy(st, 'objective') === false);
+  check('a satisfied look-for stays satisfied', st.obsSatisfied.objective === true);
+}
+
+// wait time: held long enough books itself; releasing early resets the clock
+{
+  const { obs } = mkObs();
+  const st = createState();
+  st.obsPhase = 'active';
+  for (let i = 0; i < 60; i++) obs.tickWait(st, 1 / 60, true);   // one second held
+  check('half a hold does not satisfy it yet', !st.obsSatisfied.wait);
+  obs.tickWait(st, 1 / 60, false);                                // let go
+  check('letting go resets the held clock', st.obsWaitHeld === 0);
+  for (let i = 0; i < CFG.observation.waitHoldSeconds * 60 + 2; i++) obs.tickWait(st, 1 / 60, true);
+  check('holding it the whole way books "wait time" for you', st.obsSatisfied.wait === true);
+}
+
+// checks for understanding piggybacks on the real Q action, not a new key
+check("checks for understanding is a real look-for key, not one you press directly",
+  obsData.lookFors.find(l => l.key === 'check').code === 'Q' && !obsData.lookFors.find(l => l.key === 'check').toast);
+
+// the ambient Mastery cost runs through masteryPending, never state.mastery,
+// whether or not you chase a single look-for (CLAUDE.md rule 7)
+{
+  const { obs } = mkObs();
+  const st = createState();
+  st.obsPhase = 'active';
+  st.obsWindowRemaining = 999;
+  const m0 = st.mastery;
+  obs.tick(st, 1);
+  check('being watched costs something, queued rather than applied directly',
+    st.masteryPending < 0 && st.mastery === m0);
+}
+
+// the window closes on the game clock, not on player behaviour, and reports itself
+{
+  const { obs } = mkObs();
+  const st = createState();
+  st.obsPhase = 'active';
+  st.obsWindowRemaining = 0.001;
+  obs.satisfy(st, 'objective');
+  obs.satisfy(st, 'question');
+  obs.tick(st, 1 / 60);
+  check('the window closes on schedule regardless of the rubric score', st.obsPhase === 'done');
+  check('what got satisfied is reported back', st.obsResult.satisfied.length === 2 && st.obsResult.total === 5);
+}
+
+// the post-conference: three options, real effects, honesty flagged for the report
+{
+  const { obs } = mkObs();
+  const st = createState();
+  const before = st.fidelity;
+  const opt = obs.resolveConference(st, 'honest');
+  check('resolving a real option returns it', opt && opt.key === 'honest');
+  check('its effects actually apply', st.fidelity < before);
+  check('the honest option is flagged for the report', opt.honest === true);
+  check('the other two are not', !obs.conferenceOption('turnAndTalk').honest && !obs.conferenceOption('hollow').honest);
+  check('an unknown option resolves to nothing', obs.resolveConference(createState(), 'nope') === null);
+}
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');
 process.exit(fails?1:0);

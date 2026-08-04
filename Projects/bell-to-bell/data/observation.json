@@ -1,0 +1,95 @@
+{
+  "atMinute": 30,
+  "alert": {
+    "title": "Admin Proximity Alert",
+    "body": "Someone with a clipboard is two doors down and moving with intent."
+  },
+  "arrival": {
+    "title": "AP Reyes",
+    "body": "She takes the seat by the door without being asked. Clipboard open before she sits down."
+  },
+  "lookFors": [
+    {
+      "key": "objective",
+      "code": "O",
+      "label": "Posted objective",
+      "toast": {
+        "kind": "good", "title": "Posted objective",
+        "body": "You flip the board to today's actual date. Nobody in this room has seen it do that before."
+      }
+    },
+    {
+      "key": "question",
+      "code": "H",
+      "label": "Higher-order question",
+      "toast": {
+        "kind": "good", "title": "Higher-order question",
+        "body": "You ask one with more than one right answer. Two hands go up. Neither is right, but they went up."
+      }
+    },
+    {
+      "key": "wait",
+      "code": "F",
+      "label": "Wait time",
+      "hold": true,
+      "toast": {
+        "kind": "good", "title": "Wait time",
+        "body": "You count to five in your head and say nothing out loud. It is the longest five seconds of your career."
+      }
+    },
+    {
+      "key": "check",
+      "code": "Q",
+      "label": "Checks for understanding"
+    },
+    {
+      "key": "discourse",
+      "code": "G",
+      "label": "Student-led discourse",
+      "toast": {
+        "kind": "good", "title": "Student-led discourse",
+        "body": "You step back and let them talk to each other instead of to you. Three of them actually do."
+      }
+    }
+  ],
+  "idle": "Nobody's watching. Save it.",
+  "conclusion": {
+    "full": "She checks the last box without looking up. Five for five.",
+    "partial": "She writes something for a while. You cannot see the tense of it from here.",
+    "empty": "She writes for a while, unprompted. That is somehow worse than a question."
+  },
+  "conference": {
+    "title": "Post-Conference",
+    "sub": "AP REYES · 3:40 PM · 12 MINUTES",
+    "prompt": "AP Reyes: “I noticed only about four students spoke during the discussion. Talk to me about your engagement strategy.”",
+    "options": [
+      {
+        "key": "turnAndTalk",
+        "label": "“You're right — I want to build in more structured turn-and-talks.”",
+        "blurb": "Fidelity +, and you now owe a follow-up.",
+        "effects": { "fidelity": 3, "bandwidth": -1 },
+        "result": "She writes “follow-up” and underlines it twice. You have just promised her a specific Tuesday."
+      },
+      {
+        "key": "honest",
+        "label": "“Those four were the ones who'd read it.”",
+        "blurb": "Honest. Fidelity −.",
+        "effects": { "fidelity": -3 },
+        "honest": true,
+        "result": "She looks up from the clipboard for the first time all conference. It is not clear yet whether that was a mistake."
+      },
+      {
+        "key": "hollow",
+        "label": "“That's a great point, I'll add it to my growth plan.”",
+        "blurb": "Free. Hollow. Bandwidth −, from the small death inside.",
+        "effects": { "bandwidth": -1 },
+        "result": "She nods and writes something down. You will never know what it was."
+      }
+    ]
+  },
+  "report": {
+    "head": "Observation",
+    "rubric": "{count} of five look-fors, performed",
+    "honest": "You told her the truth about the discussion. That is worth more than it paid out today."
+  }
+}

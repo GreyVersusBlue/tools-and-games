@@ -9,25 +9,39 @@ import { createState, applyEffects } from '../src/state.js';
 import { createLesson } from '../src/systems/lesson.js';
 import { createRoomTemp } from '../src/systems/roomtemp.js';
 import { createChart } from '../src/systems/chart.js';
+import { createObservation } from '../src/systems/observation.js';
 import { tickMeters } from '../src/systems/meters.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`, 'utf8'));
 const lData = D('lesson'), sData = D('students'), tData = D('tells'), eData = D('events');
-const roomData = D('room'), seatData = D('seating');
+const roomData = D('room'), seatData = D('seating'), p5Data = D('period5'), obsData = D('observation');
+
+// T7: a fake DOM just big enough for createObservation to touch without
+// throwing — the balance harness has no HUD to actually draw.
+const fakeClassList = () => ({ add() {}, remove() {}, contains: () => false });
+const mkObsDom = () => ({ pa: { classList: fakeClassList() }, paTitle: {}, paTxt: {} });
 
 const DT = 1 / 60;
 
-function run(name, style, chartSeats = null) {
+// T6: period4's content, or period5's — same shape either way, so `run` can
+// simulate whichever one it's handed.
+const P4_CONTENT = { roster: sData.roster, schedule: tData.schedule, lesson: lData };
+const P5_CONTENT = {
+  roster: p5Data.roster, schedule: p5Data.schedule,
+  lesson: { ...p5Data.lesson, copy: lData.copy }
+};
+
+function run(name, style, chartSeats = null, content = P4_CONTENT) {
   // T4: everything starts at the chart. The schedule this room produces is not
   // the authored schedule — it is what the authored schedule becomes once you
   // decide who is sitting next to whom.
   const chart = createChart({
-    seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
+    seatGrid: sData.seatGrid, room: roomData, roster: content.roster,
     tellTypes: tData.types, rules: seatData.rules,
     plan: seatData.plan.furniture, saved: chartSeats
   });
-  const students = chart.apply(sData.roster.map((r, i) => ({ ...r, seat: i })));
-  const plan = chart.resolveSchedule(tData.schedule);
+  const students = chart.apply(content.roster.map((r, i) => ({ ...r, seat: i })));
+  const plan = chart.resolveSchedule(content.schedule);
   chart.apply(students, plan);
 
   // A live tell schedule, resolved (or not) according to the style.
@@ -39,8 +53,10 @@ function run(name, style, chartSeats = null) {
   const tellSystem = { defs: tData.types, tells, kill(t) { t.dead = true; }, describe: () => '' };
 
   const state = createState();
-  const lesson = createLesson({ data: lData, students, tellSystem, toast: () => {}, rand: () => 0.5 });
+  const lesson = createLesson({ data: content.lesson, students, tellSystem, toast: () => {}, rand: () => 0.5 });
   const temp = createRoomTemp({ data: eData, students, tellSystem, toast: () => {} });
+  const observation = createObservation({ data: obsData, dom: mkObsDom(), toast: () => {} });
+  let rubricPerformed = false;
 
   let missed = 0;
   while (state.t > 0) {
@@ -75,6 +91,15 @@ function run(name, style, chartSeats = null) {
     const live = tells.filter(t => t.born !== null && !t.dead && !t.resolved).length;
     tickMeters(state, DT, teaching, live);
     lesson.tick(state, DT, { teaching });
+    observation.tick(state, DT);
+
+    // T7: she always visits. Whether you play to the rubric is the style's
+    // call — "cram all five into eleven artificial minutes" is a crude but
+    // honest stand-in for actually timing four keypresses and a hold.
+    if (style.performRubric && observation.active(state) && !rubricPerformed) {
+      rubricPerformed = true;
+      for (const key of ['objective', 'question', 'wait', 'discourse']) observation.satisfy(state, key);
+    }
 
     // advance beats when they are done; check and reteach on the style's rhythm
     const beat = lesson.current(state);
@@ -82,18 +107,19 @@ function run(name, style, chartSeats = null) {
     if (style.checkEvery && state.beatProgress > 0 &&
         state.checksThisBeat < style.checkEvery &&
         state.beatProgress > beat.seconds * (0.35 + state.checksThisBeat * 0.4)) {
-      lesson.check(state);
+      if (lesson.check(state).ok && observation.active(state)) observation.satisfy(state, 'check');
       if (style.reteach && state.mastery < 60) lesson.reteach(state);
     }
     if (style.temp && Math.floor(state.t) % 30 === 0) temp.read(state);
   }
 
   const p = v => String(Math.round(v)).padStart(3);
+  const obs = state.obsResult ? `  obs ${state.obsResult.satisfied.length}/${state.obsResult.total}` : '';
   console.log(
     `${name.padEnd(22)} mastery ${p(state.mastery)}  fidelity ${p(state.fidelity)}  ` +
     `rapport ${p(state.rapport)}  bandwidth ${p(state.bandwidth)}  restless ${p(state.restless)}  ` +
-    `beats ${state.beatsDelivered}/${lData.beats.length}  checks ${String(state.checks).padStart(2)}  ` +
-    `missed ${missed}  scan ${Math.round(state.withitnessSeconds)}s`
+    `beats ${state.beatsDelivered}/${content.lesson.beats.length}  checks ${String(state.checks).padStart(2)}  ` +
+    `missed ${missed}  scan ${Math.round(state.withitnessSeconds)}s${obs}`
   );
   if (plan.suppressed.length || plan.separated.length) {
     console.log(`   chart: ${plan.suppressed.length} never happened, ` +
@@ -114,6 +140,13 @@ run('ideal (never scans)', {
 run('the good teacher', {
   teaching: s => !s.withitness, scan: s => Math.floor(s.t / 45) % 4 === 0 && s.bandwidth > 5,
   advanceAt: 1.0, checkEvery: 2, reteach: true, catchAfter: 30, temp: true
+});
+// T7: same teacher, same everything, except she also plays to the rubric the
+// moment AP Reyes walks in. If mastery/fidelity land identically to the row
+// above, the Observation is decoration and something is wrong.
+run('the good teacher, plays the rubric', {
+  teaching: s => !s.withitness, scan: s => Math.floor(s.t / 45) % 4 === 0 && s.bandwidth > 5,
+  advanceAt: 1.0, checkEvery: 2, reteach: true, catchAfter: 30, temp: true, performRubric: true
 });
 run('the hypervigilant', {
   teaching: s => !s.withitness, scan: s => s.bandwidth > 3 && Math.floor(s.t / 20) % 2 === 0,
@@ -148,4 +181,20 @@ const swaps = (...pairs) => {
 run('  the August chart', HEADS_DOWN);
 run('  the pairs split up', HEADS_DOWN, swaps([5, 11], [2, 7]));
 run('  the barometer up front', HEADS_DOWN, swaps([6, 0]));
+console.log('');
+
+// T6: a different roster, a different (busier) tell schedule, a different
+// lesson — same room, same rulebook, same two representative styles.
+console.log(`5th period lesson: ${P5_CONTENT.lesson.beats.reduce((a, b) => a + b.seconds, 0)}s of authored beats, ` +
+  `${p5Data.schedule.length} scheduled tells (vs 4th's ${tData.schedule.length})\n`);
+run('5th: ideal (never scans)', {
+  teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 2, catchAfter: null
+}, null, P5_CONTENT);
+run('5th: the good teacher', {
+  teaching: s => !s.withitness, scan: s => Math.floor(s.t / 45) % 4 === 0 && s.bandwidth > 5,
+  advanceAt: 1.0, checkEvery: 2, reteach: true, catchAfter: 30, temp: true
+}, null, P5_CONTENT);
+run('5th: never checks, never looks', {
+  teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 0, catchAfter: null
+}, null, P5_CONTENT);
 console.log('');
