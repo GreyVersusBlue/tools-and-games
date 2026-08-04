@@ -1,0 +1,82 @@
+{
+  "_comment": "Content, not code — swap any path here and nothing in src/ needs to change.",
+
+  "textures": {
+    "floor": { "dir": "Assets/textures/Floor/interior_tiles_1k.gltf/textures", "base": "interior_tiles", "tile": 2.6 },
+    "wall":  { "dir": "Assets/textures/wall/painted_concrete_02_1k.gltf/textures", "base": "painted_concrete_02", "tile": 2.2 },
+    "ceil":  { "dir": "Assets/textures/ceil/ceiling_interior_1k.gltf/textures", "base": "ceiling_interior", "tile": 2.6 },
+    "desk":  { "dir": "Assets/textures/desk/plywood_1k.gltf/textures", "base": "plywood", "tile": 0.6 },
+    "wood":  { "dir": "Assets/textures/wood/wood_planks_1k.gltf/textures", "base": "wood_planks", "tile": 1.0 },
+    "metal": { "dir": "Assets/textures/metal/blue_metal_plate_1k.gltf/textures", "base": "blue_metal_plate", "tile": 0.5 },
+    "rug":   { "dir": "Assets/textures/rug/wool_boucle_1k.gltf/textures", "base": "wool_boucle", "tile": 1.6 }
+  },
+  "_textureAlternates": {
+    "wall": ["blue_plaster_wall (Assets/textures/wall/blue_plaster_wall_1k.gltf/textures)"],
+    "rug": [
+      "curly_teddy_checkered (Assets/textures/rug/curly_teddy_checkered_1k.gltf/textures)",
+      "faux_fur_geometric (Assets/textures/rug/faux_fur_geometric_1k.gltf/textures)"
+    ]
+  },
+
+  "models": {
+    "teacherDesk": "Assets/models/kenney_furniture-kit/Models/GLTF format/desk.glb",
+    "cabinet": "Assets/models/kenney_furniture-kit/Models/GLTF format/bookcaseClosedDoors.glb",
+    "bookshelf": "Assets/models/kenney_furniture-kit/Models/GLTF format/bookcaseOpen.glb",
+    "studentDesk": "Assets/models/kenney_furniture-kit/Models/GLTF format/desk.glb",
+    "studentChair": "Assets/models/kenney_furniture-kit/Models/GLTF format/chairDesk.glb"
+  },
+
+  "characters": {
+    "targetHeight": 1.48,
+    "outfits": [
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Casual_2.gltf",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Casual.gltf",
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Worker.gltf",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Formal.gltf",
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Adventurer.gltf",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Worker.gltf",
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Casual_Hoodie.gltf",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Adventurer.gltf"
+    ]
+  },
+
+  "art": {
+    "frame": "Assets/models/art/fancy_picture_frame_01_1k.gltf/fancy_picture_frame_01_1k.gltf",
+    "paintings": {
+      "posterA": "Assets/models/art/public domain art/George Washington by John Trumbull (1780).jpg",
+      "posterB": "Assets/models/art/public domain art/The Geography Lesson or The Black Spot.jpg",
+      "posterC": "Assets/models/art/public domain art/Arthur Streeton - Golden summer, Eaglemont.jpg",
+      "posterD": "Assets/models/art/public domain art/Landscape with the Good Samaritan - Rembrandt.jpg"
+    }
+  },
+  "_artAlternates": [
+    "Cavalier soldier Hals.jpg",
+    "David Teniers the Younger - Archduke Leopold William in his Gallery at Brussels.jpg",
+    "Evelyn De Morgan The Love Potion (1903).jpg",
+    "I Am the Witch of the North.jpg",
+    "Jan Matejko, Stańczyk.jpg",
+    "Lights of Canopus.jpg",
+    "Thomas Cole The Architects Dream.jpg"
+  ],
+
+  "props": {
+    "wallClock": "Assets/models/props/wall_clock_1k.gltf/wall_clock_1k.gltf",
+    "fireAlarm": "Assets/models/props/fire_alarm_1k.gltf/fire_alarm_1k.gltf",
+    "pottedPlant2": "Assets/models/props/potted_plant_02_1k.gltf/potted_plant_02_1k.gltf",
+    "pottedPlant4": "Assets/models/props/potted_plant_04_1k.gltf/potted_plant_04_1k.gltf",
+    "displayShelves": "Assets/models/props/wooden_display_shelves_01_1k.gltf/wooden_display_shelves_01_1k.gltf",
+    "metalRack": "Assets/models/props/worn_metal_rack_1k.gltf/worn_metal_rack_1k.gltf",
+    "wetFloorSign": "Assets/models/props/WetFloorSign_01_1k.gltf/WetFloorSign_01_1k.gltf",
+    "clipboard": "Assets/models/props/clipboard_1k.gltf/clipboard_1k.gltf",
+    "stationery": "Assets/models/props/stationery_supplies_1k.gltf/stationery_supplies_1k.gltf",
+    "binder": "Assets/models/props/binder_notebook_1k.gltf/binder_notebook_1k.gltf",
+    "stapler": "Assets/models/props/vintage_stapler_1k.gltf/vintage_stapler_1k.gltf"
+  },
+  "_propAlternates": [
+    "SchoolDesk_01, SchoolChair_01 (an alternate desk/chair style, unused)",
+    "wooden_bookshelf_worn, Shelf_01, metal_office_desk (unused, would compete with the furniture already in place)",
+    "chemistry_set (science-flavored, not this room's subject)",
+    "pine_sapling_small (outdoor prop, not used indoors)",
+    "office_notepads (unused, redundant with stationery_supplies)"
+  ]
+}

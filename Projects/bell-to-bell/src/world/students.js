@@ -1,44 +1,132 @@
 import * as THREE from 'three';
+import { tiled } from './materials.js';
+import { fitFootprint, fitHeight, registerModel, findBone, poseIdle } from './models.js';
 
 const AURA = { green: 0x6FCF6A, amber: 0xE8B23A, red: 0xE0553C };
+// A thermal camera reads body heat, not clothing — every loaded character
+// gets the same flat "person" thermal color regardless of outfit, matching
+// mats.skin's thermal twin rather than inventing a separate constant.
+const CHAR_THERMAL = 0xFF9C4A;
 
-function box(scene, registry, size, mat, pos) {
+function box(scene, registry, mats, matKey, size, pos) {
+  const dims = [...size].sort((a, b) => b - a);
+  const mat = tiled(mats, matKey, dims[0], dims[1]);
   const m = new THREE.Mesh(new THREE.BoxGeometry(size[0], size[1], size[2]), mat);
   m.position.set(pos[0], pos[1], pos[2]);
   scene.add(m); registry.add(m);
   return m;
 }
 
-// T4: the desks are the room and do not move (that is T5). The people do. So
-// the furniture is built once per desk, and each body is then placed at whatever
-// desk the seating chart put them at.
-export function buildStudents(scene, registry, mats, data, chart) {
-  const { bodyOffsetZ } = data.seatGrid;
-  const students = [];
+// Desk + chair are a visual-only upgrade — nothing reads their geometry
+// (collision is a distance check against the student's own position, not
+// this mesh), so a failed fetch just leaves the original box in place.
+async function buildDeskFurniture(scene, registry, loader, modelPaths, mats, d, bodyOffsetZ) {
+  let gotDesk = false, gotChair = false;
 
-  for (const d of chart.desks) {
-    box(scene, registry, [0.72, 0.05, 0.52], mats.desk, [d.x, 0.72, d.z]);
-    for (const [dx, dz] of [[-0.3, -0.2], [0.3, -0.2], [-0.3, 0.2], [0.3, 0.2]]) {
-      box(scene, registry, [0.06, 0.7, 0.06], mats.metal, [d.x + dx, 0.36, d.z + dz]);
+  if (loader && modelPaths.studentDesk) {
+    try {
+      const desk = await loader.loadStatic(modelPaths.studentDesk);
+      fitFootprint(desk, 0.72, 0.52);
+      desk.position.x += d.x; desk.position.z += d.z;
+      registerModel(desk, registry, mats.desk.userData.thermal.color.getHex());
+      scene.add(desk);
+      gotDesk = true;
+    } catch (err) {
+      console.warn('studentDesk model failed to load, using placeholder box.', err);
     }
-    box(scene, registry, [0.44, 0.05, 0.42], mats.metal, [d.x, 0.45, d.z + bodyOffsetZ]);
+  }
+  if (loader && modelPaths.studentChair) {
+    try {
+      const chair = await loader.loadStatic(modelPaths.studentChair);
+      fitFootprint(chair, 0.44, 0.42);
+      chair.position.x += d.x; chair.position.z += d.z + bodyOffsetZ;
+      registerModel(chair, registry, mats.metal.userData.thermal.color.getHex());
+      scene.add(chair);
+      gotChair = true;
+    } catch (err) {
+      console.warn('studentChair model failed to load, using placeholder box.', err);
+    }
   }
 
-  {
-    let i = 0;
-    for (const spec of data.roster) {
-      const seat = chart.deskOf(i);
-      const x = seat.x, z = seat.z;
+  if (!gotDesk) {
+    box(scene, registry, mats, 'desk', [0.72, 0.05, 0.52], [d.x, 0.72, d.z]);
+    for (const [dx, dz] of [[-0.3, -0.2], [0.3, -0.2], [-0.3, 0.2], [0.3, 0.2]]) {
+      box(scene, registry, mats, 'metal', [0.06, 0.7, 0.06], [d.x + dx, 0.36, d.z + dz]);
+    }
+  }
+  if (!gotChair) {
+    box(scene, registry, mats, 'metal', [0.44, 0.05, 0.42], [d.x, 0.45, d.z + bodyOffsetZ]);
+  }
+}
 
-      const g = new THREE.Group();
-      g.position.set(x, 0, z + bodyOffsetZ);
-      scene.add(g);
+// Load one rigged outfit and hand back the two bones reactions.js actually
+// drives. If the rig doesn't have them (an outfit pack with a different
+// skeleton, say), this bails to null rather than half-wiring a body no
+// system can pose — buildStudents falls back to the original primitive body.
+async function buildCharacterBody(loader, outfitPath, targetHeight, registry) {
+  if (!loader || !outfitPath) return null;
+  try {
+    const { root, animations } = await loader.loadRigged(outfitPath);
+    fitHeight(root, targetHeight);
+    const settle = new THREE.Box3().setFromObject(root);
+    root.position.y -= settle.min.y;
+    poseIdle(root, animations);
 
+    const head = findBone(root, ['Head']);
+    // Chest first: rotating it swings the upper body the way the original
+    // single torso cylinder did, without dragging the legs along the way
+    // rotating Hips (parent of both spine and legs in most rigs) would.
+    const torso = findBone(root, ['Chest', 'Spine1', 'Spine', 'Hips']);
+    if (!head || !torso) return null;
+
+    registerModel(root, registry, CHAR_THERMAL);
+    return { root, head, torso };
+  } catch (err) {
+    console.warn(`Character model failed to load (${outfitPath}), using placeholder body.`, err);
+    return null;
+  }
+}
+
+// T4: the desks are the room and do not move (that is T5). The people do. So
+// the furniture is built once per desk, and each body is then placed at
+// whatever desk the seating chart put them at.
+export async function buildStudents(scene, registry, mats, data, chart, opts = {}) {
+  const { loader, assets } = opts;
+  const modelPaths = assets?.models || {};
+  const charCfg = assets?.characters;
+  const targetHeight = charCfg?.targetHeight || 1.48;
+  const { bodyOffsetZ } = data.seatGrid;
+
+  await Promise.all(
+    chart.desks.map(d => buildDeskFurniture(scene, registry, loader, modelPaths, mats, d, bodyOffsetZ))
+  );
+
+  const students = new Array(data.roster.length);
+
+  await Promise.all(data.roster.map(async (spec, i) => {
+    const seat = chart.deskOf(i);
+    const x = seat.x, z = seat.z;
+
+    const g = new THREE.Group();
+    g.position.set(x, 0, z + bodyOffsetZ);
+    scene.add(g);
+
+    const outfitPath = charCfg?.outfits?.length ? charCfg.outfits[i % charCfg.outfits.length] : null;
+    const built = await buildCharacterBody(loader, outfitPath, targetHeight, registry);
+
+    let torso, head, auraY;
+
+    if (built) {
+      g.add(built.root);
+      torso = built.torso;
+      head = built.head;
+      auraY = targetHeight + 0.08;
+    } else {
       const shirt = mats[spec.shirt] || mats.shirtA;
-      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.22, 0.55, 10), shirt);
+      torso = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.22, 0.55, 10), shirt);
       torso.position.y = 0.78; g.add(torso); registry.add(torso);
 
-      const head = new THREE.Group();
+      head = new THREE.Group();
       head.position.y = 1.18; g.add(head);
 
       const skull = new THREE.Mesh(new THREE.SphereGeometry(0.135, 14, 12), mats.skin);
@@ -50,33 +138,35 @@ export function buildStudents(scene, registry, mats, data, chart) {
       const legs = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.42), shirt);
       legs.position.set(0, 0.5, -0.24); g.add(legs); registry.add(legs);
 
-      // Comprehension aura (lesson T2). Deliberately NOT registered with the
-      // material registry: it has its own palette and must not thermal-swap.
-      const aura = new THREE.Mesh(
-        new THREE.TorusGeometry(0.19, 0.018, 6, 20),
-        new THREE.MeshBasicMaterial({ color: AURA.amber, transparent: true, opacity: 0.85 })
-      );
-      aura.rotation.x = Math.PI / 2;
-      aura.position.y = 1.42;
-      aura.visible = false;
-      g.add(aura);
-
-      students.push({
-        name: spec.name, note: spec.note || '', tension: spec.tension,
-        aptitude: spec.aptitude ?? 1, steady: spec.steady ?? 0,
-        // `seat` is who they are. `desk` is where they are. They used to be the
-        // same number and T4 is the ticket where that stopped being true.
-        seat: i, desk: seat.index, col: seat.col, row: seat.row,
-        x, z, bodyZ: z + bodyOffsetZ,
-        rowGain: seat.rowGain, sight: seat.sight.kind, steadyLoad: 0,
-        group: g, torso, head, aura,
-        phase: Math.random() * 7,
-        rx: [], holds: new Map(),
-        comp: 0, compShown: 0
-      });
-      i++;
+      auraY = 1.42;
     }
-  }
+
+    // Comprehension aura (lesson T2). Deliberately NOT registered with the
+    // material registry: it has its own palette and must not thermal-swap.
+    const aura = new THREE.Mesh(
+      new THREE.TorusGeometry(0.19, 0.018, 6, 20),
+      new THREE.MeshBasicMaterial({ color: AURA.amber, transparent: true, opacity: 0.85 })
+    );
+    aura.rotation.x = Math.PI / 2;
+    aura.position.y = auraY;
+    aura.visible = false;
+    g.add(aura);
+
+    students[i] = {
+      name: spec.name, note: spec.note || '', tension: spec.tension,
+      aptitude: spec.aptitude ?? 1, steady: spec.steady ?? 0,
+      // `seat` is who they are. `desk` is where they are. They used to be the
+      // same number and T4 is the ticket where that stopped being true.
+      seat: i, desk: seat.index, col: seat.col, row: seat.row,
+      x, z, bodyZ: z + bodyOffsetZ,
+      rowGain: seat.rowGain, sight: seat.sight.kind, steadyLoad: 0,
+      group: g, torso, head, aura,
+      phase: Math.random() * 7,
+      rx: [], holds: new Map(),
+      comp: 0, compShown: 0
+    };
+  }));
+
   return students;
 }
 

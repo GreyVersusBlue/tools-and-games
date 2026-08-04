@@ -1,4 +1,4 @@
-const FILES = ['room', 'students', 'tells', 'interventions', 'events', 'lesson', 'reactions', 'seating', 'period5', 'observation'];
+const FILES = ['room', 'students', 'tells', 'interventions', 'events', 'lesson', 'reactions', 'seating', 'period5', 'observation', 'assets'];
 
 export async function loadData(base = './data') {
   const entries = await Promise.all(FILES.map(async name => {

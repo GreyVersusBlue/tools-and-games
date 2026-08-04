@@ -7,6 +7,13 @@
       "runtimeArgs": ["--yes", "serve", "."],
       "port": 47681,
       "autoPort": true
+    },
+    {
+      "name": "bell-to-bell",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8010"],
+      "port": 8010,
+      "autoPort": true
     }
   ]
 }

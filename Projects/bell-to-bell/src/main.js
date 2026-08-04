@@ -3,6 +3,7 @@ import { CFG } from './config.js';
 import { createState } from './state.js';
 import { loadData } from './loader.js';
 import { createMaterials, createRegistry } from './world/materials.js';
+import { createModelLoader } from './world/models.js';
 import { buildRoom } from './world/room.js';
 import { buildStudents, placeStudents, createReactions } from './world/students.js';
 import { createChart, learnFrom } from './systems/chart.js';
@@ -119,8 +120,11 @@ addEventListener('resize', () => {
 
 // ---------- world ----------
 const registry = createRegistry();
-const mats = createMaterials();
-const room = buildRoom(scene, registry, mats, data.room);
+const mats = createMaterials(data.assets);
+// Shared across the room and the roster so a desk.glb used by both the
+// teacher's desk and every student desk is only ever fetched once.
+const modelLoader = createModelLoader();
+const room = await buildRoom(scene, registry, mats, data.room, { loader: modelLoader, assets: data.assets });
 
 // T4: the chart decides who sits where before anything is built. It survives
 // between periods; the first period of a fresh browser gets the August chart.
@@ -149,7 +153,7 @@ const chart = createChart({
   layout: savedLayout
 });
 
-const students = buildStudents(scene, registry, mats, period, chart);
+const students = await buildStudents(scene, registry, mats, period, chart, { loader: modelLoader, assets: data.assets });
 let plan = chart.resolveSchedule(period.schedule);
 chart.apply(students, plan);
 
