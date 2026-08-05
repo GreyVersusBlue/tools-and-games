@@ -354,6 +354,15 @@
   }
   .preset-btn:hover{ background: rgba(227,167,60,0.16); border-color: rgba(227,167,60,0.4); }
   .preset-btn:focus-visible{ outline: 3px solid rgba(76,140,125,0.5); outline-offset: 2px; }
+  .preset-btn-clear{
+    background: transparent;
+    border-style: dashed;
+    color: var(--muted-light);
+    margin-left: 0.2rem;
+  }
+  .preset-btn-clear:hover{ background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.3); color: #F3EEDF; }
+
+  .other-wrap{ display:none; margin-top: 0.6rem; }
 
   /* ---- section hint ---- */
   .section-hint{
@@ -466,9 +475,47 @@
     transition: opacity 0.3s ease;
   }
   .autosave-note.show{ opacity: 1; }
+
+  /* ---- simple / advanced mode ---- */
+  body.mode-simple .advanced-only{ display: none !important; }
+
+  .mode-toggle-wrap{
+    margin-bottom: 1.1rem;
+  }
+  .mode-toggle{
+    display: inline-flex;
+    background: rgba(251,247,238,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 100px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .mode-btn{
+    font-family: 'Inter', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: none;
+    border: none;
+    color: var(--muted-light);
+    padding: 0.45rem 1.1rem;
+    border-radius: 100px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .mode-btn.active{
+    background: var(--marigold);
+    color: #26210F;
+  }
+  .mode-btn:not(.active):hover{ color: #F3EEDF; }
+  .mode-btn:focus-visible{ outline: 3px solid rgba(76,140,125,0.5); outline-offset: 2px; }
+  .mode-note{
+    font-size: 0.78rem;
+    color: var(--muted-light);
+    margin: 0.55rem 0 0;
+  }
 </style>
 </head>
-<body>
+<body class="mode-simple">
 
 <header>
   <span class="tag">No AI required to run this</span>
@@ -479,6 +526,14 @@
 <main>
   <form class="form-panel" id="promptForm">
 
+    <div class="mode-toggle-wrap">
+      <div class="mode-toggle">
+        <button type="button" class="mode-btn active" id="modeSimpleBtn">Simple</button>
+        <button type="button" class="mode-btn" id="modeAdvancedBtn">Advanced</button>
+      </div>
+      <p class="mode-note" id="modeNote">Just the core fields. Switch to Advanced for finer control &mdash; nothing you've typed is lost either way.</p>
+    </div>
+
     <div class="presets">
       <div class="presets-label">Quick start &mdash; try an example</div>
       <div class="preset-row" id="presetRow">
@@ -487,6 +542,7 @@
         <button type="button" class="preset-btn" data-preset="rubric">Rubric</button>
         <button type="button" class="preset-btn" data-preset="email">Parent email</button>
         <button type="button" class="preset-btn" data-preset="differentiated">Differentiated materials</button>
+        <button type="button" class="preset-btn preset-btn-clear" id="clearAllTop">Clear all fields</button>
       </div>
     </div>
 
@@ -511,6 +567,16 @@
         <label for="classLevel">Class or section <span class="optional">(optional)</span></label>
         <input type="text" id="classLevel" placeholder="e.g. Honors, co-taught, IEP support">
       </div>
+      <div class="two-col advanced-only">
+        <div class="field">
+          <label for="classSize">Class size <span class="optional">(optional)</span></label>
+          <input type="text" id="classSize" placeholder="e.g. 24 students">
+        </div>
+        <div class="field">
+          <label for="schoolContext">School context <span class="optional">(optional)</span></label>
+          <input type="text" id="schoolContext" placeholder="e.g. block schedule, 1:1 Chromebooks, Title I school">
+        </div>
+      </div>
     </div>
 
     <div class="section">
@@ -529,7 +595,7 @@
           <option value="differentiated materials for multiple levels">Differentiated materials for multiple levels</option>
           <option value="other">Something else&hellip;</option>
         </select>
-        <div id="toolTypeOtherWrap">
+        <div id="toolTypeOtherWrap" class="other-wrap">
           <input type="text" id="toolTypeOther" placeholder="Describe what you're building">
         </div>
       </div>
@@ -541,6 +607,20 @@
         <label for="objective">Standard or learning goal <span class="optional">(optional)</span></label>
         <input type="text" id="objective" placeholder="e.g. analyze how nationalism contributed to the outbreak of war">
       </div>
+      <div class="two-col advanced-only">
+        <div class="field">
+          <label for="standardCode">Standard code <span class="optional">(optional)</span></label>
+          <input type="text" id="standardCode" placeholder="e.g. MD 7.NAT.2">
+        </div>
+        <div class="field">
+          <label for="unitContext">Where this fits in your unit <span class="optional">(optional)</span></label>
+          <input type="text" id="unitContext" placeholder="e.g. lesson 3 of a 6-lesson unit">
+        </div>
+      </div>
+      <div class="field advanced-only">
+        <label for="priorKnowledge">What students already know <span class="optional">(optional)</span></label>
+        <textarea id="priorKnowledge" placeholder="e.g. they already know the alliance system but not the assassination"></textarea>
+      </div>
       <div id="dynamicFields"></div>
     </div>
 
@@ -551,24 +631,75 @@
         <label for="studentNeeds">Students to keep in mind <span class="optional">(optional)</span></label>
         <textarea id="studentNeeds" placeholder="e.g. two students with reading IEPs, several ESOL learners"></textarea>
       </div>
+      <div class="two-col advanced-only">
+        <div class="field">
+          <label for="languageNeeds">Language needs <span class="optional">(optional)</span></label>
+          <input type="text" id="languageNeeds" placeholder="e.g. several ELL students at WIDA level 3">
+        </div>
+        <div class="field">
+          <label for="accommodations">Accommodations <span class="optional">(optional)</span></label>
+          <input type="text" id="accommodations" placeholder="e.g. extended time, chunked text, read-aloud option">
+        </div>
+      </div>
+      <div class="field advanced-only">
+        <label for="interestHooks">Student interests to tap into <span class="optional">(optional)</span></label>
+        <input type="text" id="interestHooks" placeholder="e.g. many students are into soccer and TikTok">
+      </div>
     </div>
 
     <div class="section">
       <h2><span class="eyebrow">04</span> Format &amp; guardrails</h2>
       <p class="section-hint">Telling the AI what to avoid is often more useful than telling it what to include.</p>
-      <div class="two-col">
-        <div class="field">
-          <label for="length">Length or time <span class="optional">(optional)</span></label>
-          <input type="text" id="length" placeholder="e.g. one 45-minute period">
-        </div>
-        <div class="field">
-          <label for="tone">Tone <span class="optional">(optional)</span></label>
-          <input type="text" id="tone" placeholder="e.g. warm, written for 12-year-olds">
+      <div class="field">
+        <label for="length">Length or time <span class="optional">(optional)</span></label>
+        <input type="text" id="length" placeholder="e.g. one 45-minute period">
+      </div>
+
+      <div class="field">
+        <label for="tone">Tone / voice <span class="optional">(optional)</span></label>
+        <select id="tone">
+          <option value="">Choose one&hellip;</option>
+          <option value="warm and encouraging">Warm and encouraging</option>
+          <option value="playful and fun">Playful and fun</option>
+          <option value="direct and concise">Direct and concise</option>
+          <option value="formal and academic">Formal and academic</option>
+          <option value="neutrally professional">Neutrally professional</option>
+          <option value="humorous">Humorous</option>
+          <option value="serious and matter-of-fact">Serious and matter-of-fact</option>
+          <option value="other">Something else&hellip;</option>
+        </select>
+        <div id="toneOtherWrap" class="other-wrap">
+          <input type="text" id="toneOther" placeholder="Describe the tone you want">
         </div>
       </div>
+      <div class="two-col advanced-only">
+        <div class="field">
+          <label for="readingLevel">Reading / audience level <span class="optional">(optional)</span></label>
+          <input type="text" id="readingLevel" placeholder="e.g. written at a 6th-grade reading level">
+        </div>
+        <div class="field">
+          <label for="outputStyle">Output style <span class="optional">(optional)</span></label>
+          <input type="text" id="outputStyle" placeholder="e.g. bullet points, not paragraphs">
+        </div>
+      </div>
+
       <div class="field">
         <label for="format">Final format <span class="optional">(optional)</span></label>
         <input type="text" id="format" placeholder="e.g. a printable worksheet with an answer key">
+      </div>
+      <div class="two-col advanced-only">
+        <div class="field">
+          <label for="rigor">Rigor / difficulty <span class="optional">(optional)</span></label>
+          <input type="text" id="rigor" placeholder="e.g. on grade level, with one stretch question">
+        </div>
+        <div class="field">
+          <label for="exampleCount">Examples to include <span class="optional">(optional)</span></label>
+          <input type="text" id="exampleCount" placeholder="e.g. 2 fully worked examples">
+        </div>
+      </div>
+      <div class="field advanced-only">
+        <label for="citationsNeeded">Sources or citations <span class="optional">(optional)</span></label>
+        <input type="text" id="citationsNeeded" placeholder="e.g. cite any primary sources used">
       </div>
       <div class="field">
         <label for="avoidInclude">Must include or avoid <span class="optional">(optional)</span></label>
@@ -576,8 +707,25 @@
       </div>
     </div>
 
+    <div class="section advanced-only">
+      <h2><span class="eyebrow">05</span> Extend &amp; connect</h2>
+      <p class="section-hint">Optional add-ons for a more complete package &mdash; skip these if you just need the core piece.</p>
+      <div class="field">
+        <label for="earlyFinisher">Early-finisher extension <span class="optional">(optional)</span></label>
+        <input type="text" id="earlyFinisher" placeholder="e.g. an extension task for students who finish early">
+      </div>
+      <div class="field">
+        <label for="homeworkConnection">Homework connection <span class="optional">(optional)</span></label>
+        <input type="text" id="homeworkConnection" placeholder="e.g. a related 10-minute homework task">
+      </div>
+      <div class="field">
+        <label for="crossCurricular">Cross-curricular tie-in <span class="optional">(optional)</span></label>
+        <input type="text" id="crossCurricular" placeholder="e.g. connect to what they're reading in ELA">
+      </div>
+    </div>
+
     <div class="section">
-      <h2><span class="eyebrow">05</span> Anything else</h2>
+      <h2><span class="eyebrow">06</span> Anything else</h2>
       <div class="field">
         <textarea id="extra" placeholder="Anything else the AI should know"></textarea>
       </div>
@@ -597,7 +745,7 @@
           <span id="charCount">0 characters</span>
         </div>
         <div class="strength-row">
-          <div class="strength-label"><span id="strengthText">Bare bones</span><span id="strengthCount">0 / 13 fields</span></div>
+          <div class="strength-label"><span id="strengthText">Bare bones</span><span id="strengthCount">0 / 29 fields</span></div>
           <div class="strength-bar"><div class="strength-fill" id="strengthFill"></div></div>
         </div>
         <div id="promptOutput"><span class="placeholder">Fill in a few boxes on the left &mdash; your prompt builds itself here.</span></div>
@@ -637,10 +785,28 @@
   const toolTypeSelect = $('toolType');
   const toolTypeOtherWrap = $('toolTypeOtherWrap');
   const toolTypeOther = $('toolTypeOther');
+  const toneSelect = $('tone');
+  const toneOtherWrap = $('toneOtherWrap');
+  const toneOther = $('toneOther');
   const dynamicFieldsWrap = $('dynamicFields');
 
-  const STATIC_IDS = ['name','grade','subject','classLevel','toolType','topic','objective','studentNeeds','length','tone','format','avoidInclude','extra'];
-  const STORAGE_KEY = 'promptBuilderDraft_v1';
+  const STATIC_IDS = [
+    'name','grade','subject','classLevel','classSize','schoolContext',
+    'toolType','topic','objective','standardCode','unitContext','priorKnowledge',
+    'studentNeeds','languageNeeds','accommodations','interestHooks',
+    'length','tone','readingLevel','outputStyle','format','rigor','exampleCount','citationsNeeded','avoidInclude',
+    'earlyFinisher','homeworkConnection','crossCurricular',
+    'extra'
+  ];
+  const SIMPLE_IDS = [
+    'name','grade','subject','classLevel',
+    'toolType','topic','objective',
+    'studentNeeds',
+    'length','tone','format','avoidInclude',
+    'extra'
+  ];
+  const STORAGE_KEY = 'promptBuilderDraft_v2';
+  const MODE_KEY = 'promptBuilderMode_v1';
 
   function esc(str){
     const div = document.createElement('div');
@@ -692,6 +858,17 @@
     return toolTypeSelect.value;
   }
 
+  function getTone(){
+    if (toneSelect.value === 'other') return toneOther.value.trim();
+    return toneSelect.value;
+  }
+
+  toneSelect.addEventListener('change', () => {
+    toneOtherWrap.style.display = toneSelect.value === 'other' ? 'block' : 'none';
+    build();
+    saveDraft();
+  });
+
   function renderDynamicFields(){
     const extras = TOOL_EXTRAS[toolTypeSelect.value] || [];
     dynamicFieldsWrap.innerHTML = '';
@@ -725,14 +902,30 @@
     const grade = val('grade');
     const subject = val('subject');
     const classLevel = val('classLevel');
+    const classSize = val('classSize');
+    const schoolContext = val('schoolContext');
     const toolType = getToolType();
     const topic = val('topic');
     const objective = val('objective');
+    const standardCode = val('standardCode');
+    const unitContext = val('unitContext');
+    const priorKnowledge = val('priorKnowledge');
     const studentNeeds = val('studentNeeds');
+    const languageNeeds = val('languageNeeds');
+    const accommodations = val('accommodations');
+    const interestHooks = val('interestHooks');
     const length = val('length');
+    const tone = getTone();
+    const readingLevel = val('readingLevel');
+    const outputStyle = val('outputStyle');
     const format = val('format');
-    const tone = val('tone');
+    const rigor = val('rigor');
+    const exampleCount = val('exampleCount');
+    const citationsNeeded = val('citationsNeeded');
     const avoidInclude = val('avoidInclude');
+    const earlyFinisher = val('earlyFinisher');
+    const homeworkConnection = val('homeworkConnection');
+    const crossCurricular = val('crossCurricular');
     const extra = val('extra');
 
     const sentences = [];
@@ -752,6 +945,9 @@
       sentences.push('I teach ' + fill(grade) + ' grade.');
     }
 
+    if (classSize) sentences.push('My class has ' + fill(classSize) + '.');
+    if (schoolContext) sentences.push('Some school context: ' + fill(schoolContext) + '.');
+
     // 2. What you're building (+ class level)
     if (toolType && classLevel){
       sentences.push("I'm building " + fill(toolType) + ' for my ' + fill(classLevel) + ' class.');
@@ -763,6 +959,9 @@
 
     if (topic) sentences.push('The topic is ' + fill(topic) + '.');
     if (objective) sentences.push('The learning goal is: ' + fill(objective) + '.');
+    if (standardCode) sentences.push('This aligns to standard ' + fill(standardCode) + '.');
+    if (unitContext) sentences.push('For context, this is ' + fill(unitContext) + '.');
+    if (priorKnowledge) sentences.push('Here is what students already know: ' + fill(priorKnowledge) + '.');
 
     // tool-specific extras
     const extras = TOOL_EXTRAS[toolTypeSelect.value] || [];
@@ -772,10 +971,24 @@
     });
 
     if (studentNeeds) sentences.push('Please keep these students in mind: ' + fill(studentNeeds) + '.');
+    if (languageNeeds) sentences.push('Language needs: ' + fill(languageNeeds) + '.');
+    if (accommodations) sentences.push('Please build in these accommodations: ' + fill(accommodations) + '.');
+    if (interestHooks) sentences.push('For engagement, ' + fill(interestHooks) + '.');
+
     if (length) sentences.push('Please plan for ' + fill(length) + '.');
-    if (format) sentences.push('The final format should be ' + fill(format) + '.');
     if (tone) sentences.push('Keep the tone ' + fill(tone) + '.');
+    if (readingLevel) sentences.push(fill(readingLevel) + '.');
+    if (outputStyle) sentences.push('For the output style: ' + fill(outputStyle) + '.');
+    if (format) sentences.push('The final format should be ' + fill(format) + '.');
+    if (rigor) sentences.push('Rigor level: ' + fill(rigor) + '.');
+    if (exampleCount) sentences.push('Please include ' + fill(exampleCount) + '.');
+    if (citationsNeeded) sentences.push(fill(citationsNeeded) + '.');
     if (avoidInclude) sentences.push('Important: ' + fill(avoidInclude) + '.');
+
+    if (earlyFinisher) sentences.push('Also include ' + fill(earlyFinisher) + '.');
+    if (homeworkConnection) sentences.push('Also, ' + fill(homeworkConnection) + '.');
+    if (crossCurricular) sentences.push('If possible, ' + fill(crossCurricular) + '.');
+
     if (extra) sentences.push(fill(extra));
 
     if (sentences.length === 0){
@@ -791,9 +1004,10 @@
 
   // ---- strength meter ----
   function updateStrength(){
+    const ids = document.body.classList.contains('mode-simple') ? SIMPLE_IDS : STATIC_IDS;
     let filled = 0;
-    STATIC_IDS.forEach(id => { if (val(id)) filled++; });
-    const total = STATIC_IDS.length;
+    ids.forEach(id => { if (val(id)) filled++; });
+    const total = ids.length;
     const pct = Math.round((filled / total) * 100);
     $('strengthFill').style.width = pct + '%';
     $('strengthCount').textContent = filled + ' / ' + total + ' fields';
@@ -804,15 +1018,33 @@
     $('strengthText').textContent = label;
   }
 
+  // ---- simple / advanced mode ----
+  function setMode(mode){
+    document.body.classList.toggle('mode-simple', mode === 'simple');
+    document.body.classList.toggle('mode-advanced', mode === 'advanced');
+    $('modeSimpleBtn').classList.toggle('active', mode === 'simple');
+    $('modeAdvancedBtn').classList.toggle('active', mode === 'advanced');
+    $('modeNote').textContent = mode === 'simple'
+      ? "Just the core fields. Switch to Advanced for finer control \u2014 nothing you've typed is lost either way."
+      : "Every field is visible. Switch back to Simple any time \u2014 nothing you've typed is lost either way.";
+    try { localStorage.setItem(MODE_KEY, mode); } catch(e) {}
+    updateStrength();
+  }
+  $('modeSimpleBtn').addEventListener('click', () => setMode('simple'));
+  $('modeAdvancedBtn').addEventListener('click', () => setMode('advanced'));
+
   // ---- presets ----
   const PRESETS = {
     lesson: {
       toolType: 'a lesson plan',
       topic: 'the causes of World War I',
       objective: 'analyze how nationalism, alliances, and militarism contributed to the outbreak of war',
+      standardCode: 'MD 7.NAT.2',
       studentNeeds: 'two students with reading IEPs, several ESOL learners',
       length: 'one 45-minute period',
-      tone: 'warm, written for 12-year-olds',
+      tone: 'warm and encouraging',
+      readingLevel: 'written for 12-year-olds',
+      earlyFinisher: 'an extension question about why the Balkans were called the "powder keg of Europe"',
       dyn: { x_structure: 'a warm-up question, a short reading, a small-group task, and an exit ticket' }
     },
     quiz: {
@@ -820,7 +1052,9 @@
       topic: 'the water cycle',
       objective: 'identify and explain the stages of the water cycle',
       length: '20 minutes',
+      tone: 'direct and concise',
       format: 'a printable quiz with an answer key',
+      rigor: 'on grade level',
       dyn: { x_qcount: '10', x_qtypes: 'multiple choice and short answer' }
     },
     rubric: {
@@ -828,12 +1062,14 @@
       topic: 'a persuasive essay',
       objective: 'take and defend a position using evidence',
       format: 'a table I can paste into a document',
+      outputStyle: 'a table, not a paragraph',
       dyn: { x_criteria: '4', x_scale: '4-point scale (1-4)' }
     },
     email: {
       toolType: 'an email or letter',
       topic: 'an upcoming field trip',
-      tone: 'friendly but informative',
+      tone: 'other',
+      toneOther: 'friendly but informative',
       avoidInclude: 'keep it under one page',
       dyn: { x_recipient: 'parents and guardians' }
     },
@@ -842,18 +1078,30 @@
       topic: 'reading a primary source document',
       objective: 'interpret a primary source and identify author bias',
       studentNeeds: 'a mix of on-level, below-level, and advanced readers',
+      languageNeeds: 'include an ELL-friendly version with simplified vocabulary',
       dyn: { x_levels: '3 versions: below, on, and above grade level' }
     }
   };
 
+  function clearAllFields(){
+    form.reset();
+    toolTypeOtherWrap.style.display = 'none';
+    toneOtherWrap.style.display = 'none';
+    Object.keys(dynamicValues).forEach(k => delete dynamicValues[k]);
+    renderDynamicFields();
+  }
+
   function applyPreset(key){
     const p = PRESETS[key];
     if (!p) return;
+    clearAllFields();
+    setMode('advanced');
     STATIC_IDS.forEach(id => { if (id in p) $(id).value = p[id]; });
-    toolTypeSelect.value = p.toolType || '';
-    toolTypeOtherWrap.style.display = 'none';
+    if (p.toolTypeOther) toolTypeOther.value = p.toolTypeOther;
+    toolTypeOtherWrap.style.display = toolTypeSelect.value === 'other' ? 'block' : 'none';
+    if (p.toneOther) toneOther.value = p.toneOther;
+    toneOtherWrap.style.display = toneSelect.value === 'other' ? 'block' : 'none';
     renderDynamicFields();
-    Object.keys(dynamicValues).forEach(k => delete dynamicValues[k]);
     if (p.dyn){
       Object.keys(p.dyn).forEach(k => {
         dynamicValues[k] = p.dyn[k];
@@ -865,20 +1113,19 @@
     saveDraft();
   }
 
-  document.querySelectorAll('.preset-btn').forEach(btn => {
+  document.querySelectorAll('.preset-btn[data-preset]').forEach(btn => {
     btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
   });
 
-  // ---- reset ----
-  $('resetBtn').addEventListener('click', () => {
-    form.reset();
-    toolTypeOtherWrap.style.display = 'none';
-    Object.keys(dynamicValues).forEach(k => delete dynamicValues[k]);
-    renderDynamicFields();
+  // ---- reset / clear all ----
+  function handleClearAll(){
+    clearAllFields();
     build();
     localStorage.removeItem(STORAGE_KEY);
     history.replaceState(null, '', location.pathname);
-  });
+  }
+  $('resetBtn').addEventListener('click', handleClearAll);
+  $('clearAllTop').addEventListener('click', handleClearAll);
 
   // ---- copy ----
   $('copyBtn').addEventListener('click', () => {
@@ -933,6 +1180,7 @@
     const params = new URLSearchParams();
     STATIC_IDS.forEach(id => { const v = val(id); if (v) params.set(id, v); });
     if (toolTypeSelect.value === 'other') params.set('toolTypeOther', toolTypeOther.value.trim());
+    if (toneSelect.value === 'other') params.set('toneOther', toneOther.value.trim());
     Object.keys(dynamicValues).forEach(k => { if (dynamicValues[k]) params.set(k, dynamicValues[k]); });
     const url = location.origin + location.pathname + '?' + params.toString();
     const shareStatus = () => showTempLabel($('shareBtn'), 'Link copied!');
@@ -965,7 +1213,7 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try {
-        const data = { toolTypeOther: toolTypeOther.value, dyn: dynamicValues };
+        const data = { toolTypeOther: toolTypeOther.value, toneOther: toneOther.value, dyn: dynamicValues };
         STATIC_IDS.forEach(id => { data[id] = val(id); });
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         const note = $('autosaveNote');
@@ -983,6 +1231,11 @@
       toolTypeOther.value = params.get('toolTypeOther');
       toolTypeSelect.value = 'other';
       toolTypeOtherWrap.style.display = 'block';
+    }
+    if (params.has('toneOther')){
+      toneOther.value = params.get('toneOther');
+      toneSelect.value = 'other';
+      toneOtherWrap.style.display = 'block';
     }
     renderDynamicFields();
     (TOOL_EXTRAS[toolTypeSelect.value] || []).forEach(cfg => {
@@ -1005,6 +1258,10 @@
         toolTypeOther.value = data.toolTypeOther;
         if (toolTypeSelect.value === 'other') toolTypeOtherWrap.style.display = 'block';
       }
+      if (data.toneOther){
+        toneOther.value = data.toneOther;
+        if (toneSelect.value === 'other') toneOtherWrap.style.display = 'block';
+      }
       renderDynamicFields();
       if (data.dyn){
         Object.keys(data.dyn).forEach(k => {
@@ -1022,10 +1279,15 @@
 
   // ---- init ----
   renderDynamicFields();
-  if (!loadFromParams()){
+  const cameFromParams = loadFromParams();
+  if (!cameFromParams){
     loadFromStorage();
   }
   toolTypeOtherWrap.style.display = toolTypeSelect.value === 'other' ? 'block' : 'none';
+  toneOtherWrap.style.display = toneSelect.value === 'other' ? 'block' : 'none';
+  let initialMode = 'simple';
+  try { initialMode = localStorage.getItem(MODE_KEY) || 'simple'; } catch(e) {}
+  setMode(cameFromParams ? 'advanced' : initialMode);
   build();
 })();
 </script>
