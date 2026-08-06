@@ -1,13 +1,13 @@
 {
   "action": {
-    "count": 1379,
+    "count": 1414,
     "file": "action.json",
-    "sizeMB": 1.25
+    "sizeMB": 1.28
   },
   "ammo": {
-    "count": 204,
+    "count": 216,
     "file": "ammo.json",
-    "sizeMB": 0.25
+    "sizeMB": 0.27
   },
   "ancestry": {
     "count": 50,
@@ -15,9 +15,9 @@
     "sizeMB": 0.07
   },
   "armor": {
-    "count": 202,
+    "count": 210,
     "file": "armor.json",
-    "sizeMB": 0.31
+    "sizeMB": 0.33
   },
   "army": {
     "count": 22,
@@ -25,9 +25,9 @@
     "sizeMB": 0.09
   },
   "background": {
-    "count": 501,
+    "count": 514,
     "file": "background.json",
-    "sizeMB": 0.73
+    "sizeMB": 0.74
   },
   "backpack": {
     "count": 46,
@@ -40,9 +40,9 @@
     "sizeMB": 0.14
   },
   "class": {
-    "count": 27,
+    "count": 29,
     "file": "class.json",
-    "sizeMB": 0.12
+    "sizeMB": 0.13
   },
   "condition": {
     "count": 44,
@@ -50,9 +50,9 @@
     "sizeMB": 0.04
   },
   "consumable": {
-    "count": 1670,
+    "count": 1701,
     "file": "consumable.json",
-    "sizeMB": 2.48
+    "sizeMB": 2.51
   },
   "deity": {
     "count": 480,
@@ -60,9 +60,9 @@
     "sizeMB": 0.87
   },
   "equipment": {
-    "count": 2323,
+    "count": 2389,
     "file": "equipment.json",
-    "sizeMB": 3.45
+    "sizeMB": 3.55
   },
   "familiar": {
     "count": 5,
@@ -70,9 +70,9 @@
     "sizeMB": 0.01
   },
   "feat": {
-    "count": 7360,
+    "count": 7633,
     "file": "feat.json",
-    "sizeMB": 7.19
+    "sizeMB": 7.46
   },
   "hazard": {
     "count": 1221,
@@ -80,7 +80,7 @@
     "sizeMB": 3.09
   },
   "heritage": {
-    "count": 326,
+    "count": 328,
     "file": "heritage.json",
     "sizeMB": 0.24
   },
@@ -114,7 +114,7 @@
         "sizeMB": 3.98
       },
       "3": {
-        "count": 522,
+        "count": 521,
         "file": "npcs/npc-level-3.json",
         "sizeMB": 4.63
       },
@@ -129,17 +129,17 @@
         "sizeMB": 5.14
       },
       "6": {
-        "count": 393,
+        "count": 392,
         "file": "npcs/npc-level-6.json",
         "sizeMB": 4.26
       },
       "7": {
-        "count": 402,
+        "count": 404,
         "file": "npcs/npc-level-7.json",
-        "sizeMB": 5.07
+        "sizeMB": 5.1
       },
       "8": {
-        "count": 358,
+        "count": 357,
         "file": "npcs/npc-level-8.json",
         "sizeMB": 4.67
       },
@@ -149,9 +149,9 @@
         "sizeMB": 4.83
       },
       "10": {
-        "count": 266,
+        "count": 267,
         "file": "npcs/npc-level-10.json",
-        "sizeMB": 4.17
+        "sizeMB": 4.2
       },
       "11": {
         "count": 246,
@@ -161,7 +161,7 @@
       "12": {
         "count": 193,
         "file": "npcs/npc-level-12.json",
-        "sizeMB": 3.52
+        "sizeMB": 3.53
       },
       "13": {
         "count": 231,
@@ -186,7 +186,7 @@
       "17": {
         "count": 139,
         "file": "npcs/npc-level-17.json",
-        "sizeMB": 3.01
+        "sizeMB": 3.02
       },
       "18": {
         "count": 162,
@@ -201,7 +201,7 @@
       "20": {
         "count": 114,
         "file": "npcs/npc-level-20.json",
-        "sizeMB": 3.57
+        "sizeMB": 3.58
       },
       "21": {
         "count": 52,
@@ -229,17 +229,17 @@
         "sizeMB": 0.15
       }
     },
-    "sizeMB": 86.8
+    "sizeMB": 86.87
   },
   "shield": {
-    "count": 118,
+    "count": 126,
     "file": "shield.json",
-    "sizeMB": 0.16
+    "sizeMB": 0.17
   },
   "spell": {
-    "count": 1802,
+    "count": 1993,
     "file": "spell.json",
-    "sizeMB": 2.88
+    "sizeMB": 3.19
   },
   "treasure": {
     "count": 153,
@@ -252,8 +252,8 @@
     "sizeMB": 0.2
   },
   "weapon": {
-    "count": 980,
+    "count": 1013,
     "file": "weapon.json",
-    "sizeMB": 1.73
+    "sizeMB": 1.79
   }
 }
