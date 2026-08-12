@@ -63,9 +63,28 @@ const THICK = {
   ambient: new THREE.Color(0x364656), ambientI: 0.48,
   exposure: 0.8,
 };
-// Above the fog line the summit breaks out into thin, cold, bright air —
-// the payoff for the climb, whatever the weather is doing below.
-const SUMMIT_FOG = new THREE.Color(0xc4d2de);
+// The top of the mountain is not the way out.
+//
+// This used to be the payoff: above the fog line the trail broke out into thin
+// bright air over a cloud sea, and every altitude term below leaned that way —
+// fog thinning to almost nothing, light coming up, exposure opening. Read back,
+// the whole gradient was a promise of relief in a piece whose actual subject is
+// wanting to leave and not being able to. So it inverts. The climb does not
+// deliver air; it delivers less of everything. The fog closes rather than
+// parts, the light goes out of it, and the only thing up there worth seeing is
+// the thing you would rather not have.
+//
+// The old bright value is kept in the history, not here. This one is colder and
+// darker than THICK, on purpose: the summit is the worst weather on the
+// mountain, not an escape from it.
+const SUMMIT_FOG = new THREE.Color(0x46525c);
+const SUMMIT = {
+  density: 0.055,     // worse than THICK's 0.046 — visibility bottoms out at the top
+  fill: 0.46,
+  lightI: 0.26,
+  ambientI: 0.62,     // the one term that rises: without it the near ground reads black
+  exposure: 0.92,
+};
 
 const mixN = (a, b, t) => a + (b - a) * t;
 const smoothstep = (a, b, v) => {
@@ -83,19 +102,23 @@ function fogPhase() {
 
 function applyWeather(fogT, altT) {
   scene.fog.color.copy(CLEAR.fog).lerp(THICK.fog, fogT).lerp(SUMMIT_FOG, altT);
-  scene.fog.density = mixN(mixN(CLEAR.density, THICK.density, Math.pow(fogT, 1.15)), 0.006, altT);
+  scene.fog.density = mixN(mixN(CLEAR.density, THICK.density, Math.pow(fogT, 1.15)), SUMMIT.density, altT);
 
   skyFill.color.copy(CLEAR.skyTop).lerp(THICK.skyTop, fogT);
   skyFill.groundColor.copy(CLEAR.skyBottom).lerp(THICK.skyBottom, fogT);
-  skyFill.intensity = mixN(mixN(CLEAR.fill, THICK.fill, fogT), 1.0, altT);
+  skyFill.intensity = mixN(mixN(CLEAR.fill, THICK.fill, fogT), SUMMIT.fill, altT);
 
   dayLight.color.copy(CLEAR.light).lerp(THICK.light, fogT);
-  dayLight.intensity = mixN(mixN(CLEAR.lightI, THICK.lightI, fogT), 0.9, altT);
+  dayLight.intensity = mixN(mixN(CLEAR.lightI, THICK.lightI, fogT), SUMMIT.lightI, altT);
 
   bounce.color.copy(CLEAR.ambient).lerp(THICK.ambient, fogT);
-  bounce.intensity = mixN(CLEAR.ambientI, THICK.ambientI, fogT);
+  // Ambient is the exception that keeps this legible rather than merely dark.
+  // Everything else above the fog line goes down; without this term the ground
+  // three metres from your boots reads as black, which is not atmosphere, just
+  // an unlit frame. Measured: the old summit sat at 6-14/255.
+  bounce.intensity = mixN(mixN(CLEAR.ambientI, THICK.ambientI, fogT), SUMMIT.ambientI, altT);
 
-  renderer.toneMappingExposure = mixN(mixN(CLEAR.exposure, THICK.exposure, fogT), 0.8, altT);
+  renderer.toneMappingExposure = mixN(mixN(CLEAR.exposure, THICK.exposure, fogT), SUMMIT.exposure, altT);
 }
 
 // ---------- World ----------
@@ -229,3 +252,50 @@ function tick() {
   renderer.render(scene, camera);
 }
 tick();
+
+// ---------- Debug hook ----------
+// Only with ?debug in the URL. Same bargain Golden Hour struck: the regression
+// suite cannot walk 860 m in real time, cannot wait out a 337-second fog period
+// to see the thick phase, and cannot stand in the woods for the ~70 s before
+// dread's first beat and then hope the coin lands on the one it wanted. So the
+// clock, the walker and the scheduler each get one door in — and nothing in the
+// piece itself opens any of them.
+if (new URLSearchParams(location.search).has('debug')) {
+  window.__bh = {
+    // The fog cycle is this piece's sun. Scrubbing it is how you see the thick
+    // phase and the clear one in the same run.
+    setWeatherT(t) {
+      weatherT = Math.max(0, t);
+      applyWeather(fogPhase(), smoothstep(46, 62, controls.pos.y));
+    },
+    getWeatherT: () => weatherT,
+    fogT: () => fogPhase(),
+    altT: () => smoothstep(46, 62, controls.pos.y),
+    density: () => scene.fog.density,
+
+    teleport(x, z) { controls.pos.x = x; controls.pos.z = z; },
+    face(yaw, pitch = 0) { controls.yaw = yaw; controls.pitch = pitch; },
+    pos: () => ({ x: controls.pos.x, y: controls.pos.y, z: controls.pos.z }),
+    surface: () => controls.surface,
+
+    cairns: () => ({ found: [...cairnsFound].sort((a, b) => a - b), total: LAYOUT.cairns.length }),
+    layout: () => ({ cairns: LAYOUT.cairns, markers: LAYOUT.markers, bench: LAYOUT.bench }),
+
+    // The centerline, so a test can point the walker up the mountain instead of
+    // guessing a yaw. Guessing one costs you 5 m and a boundary clamp: the
+    // trailhead sits at z 145 with BOUNDS.maxZ at 150, so "face down +z" walks
+    // into the edge of the world almost immediately.
+    trail: () => TRAIL.points.map(p => ({ x: p.x, z: p.z, dx: p.dx, dz: p.dz, t: p.t })),
+    yawAlongTrail(i = 0) {
+      const p = TRAIL.points[Math.max(0, Math.min(TRAIL.points.length - 1, i | 0))];
+      return Math.atan2(-p.dx, -p.dz);
+    },
+
+    // Bypasses the cooldown and the fog/elevation gates. 'snap' | 'phantom' |
+    // 'silence' | 'howl' | 'bear' | 'eyes'.
+    fireDread: beat => dread.force(beat, camera, controls),
+    dread,
+
+    info: () => renderer.info.render,
+  };
+}

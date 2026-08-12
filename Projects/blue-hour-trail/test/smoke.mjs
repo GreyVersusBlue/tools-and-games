@@ -219,11 +219,22 @@ group('the layout');
 }
 
 {
-  // The summit furniture is where the payoff is.
+  // The summit furniture. Not a payoff any more — the walk ends in the fog, and
+  // the bench is somewhere to sit in it while the lookout watches you do it.
   const end = trailPoint(1);
   const d = Math.hypot(LAYOUT.bench.x - end.x, LAYOUT.bench.z - end.z);
   ok(d < 6, 'the bench waits at the top of the trail', `${d.toFixed(1)} m from the end`);
-  ok(groundHeight(LAYOUT.bench.x, LAYOUT.bench.z) > 55, 'above the fog line');
+  ok(groundHeight(LAYOUT.bench.x, LAYOUT.bench.z) > 55, 'high on the mountain',
+    `${groundHeight(LAYOUT.bench.x, LAYOUT.bench.z).toFixed(1)} m`);
+
+  // The tower has to be far enough from the bench that the figure on it is not
+  // straight overhead, and close enough to be unmistakably the thing you
+  // climbed to. dread.js stops showing it below 6.5 m and past 70 m — if the
+  // furniture ever moves, this is the check that catches a figure nobody can
+  // see from the one place the walk actually ends.
+  const td = Math.hypot(LAYOUT.tower.x - LAYOUT.bench.x, LAYOUT.tower.z - LAYOUT.bench.z);
+  ok(td > 6.5 && td < 70, 'the lookout stands in the figure\'s readable band from the bench',
+    `${td.toFixed(1)} m`);
 }
 
 group('determinism');
