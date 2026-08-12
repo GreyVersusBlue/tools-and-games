@@ -381,6 +381,21 @@ export function buildWildlife(scene, audio) {
       const grow = 2.5 + (1 - seg.life) * 6;
       seg.sprite.scale.set(grow, grow * 0.6, 1);
     }
+
+    // --- journal sightings (main.js sets state.journal) ---
+    const j = state.journal;
+    if (j) {
+      if (dolphin.visible) j.focus('dolphin', dolphin.position, dt, camera);
+      j.focus('sailboat', boat.position, dt, camera);
+      if (plane.visible) j.focus('jet', plane.position, dt, camera);
+      // Nearest gull only, so two gulls in frame can't double-count the time.
+      let ng = null, nd = Infinity;
+      for (const g of gulls) {
+        const d = g.position.distanceToSquared(camera.position);
+        if (d < nd) { nd = d; ng = g; }
+      }
+      if (ng) j.focus('gull', ng.position, dt, camera);
+    }
   };
 
   return state;

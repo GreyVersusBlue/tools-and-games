@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { groundHeight, LAYOUT, mulberry32 } from './field.js';
+import { SHELL_NAMES_BY_KIND } from './journal-core.js';
 
 // The forty shells worth crouching for. field.js fixes where they lie; this
 // module gives each a body and a name, and the examine verb: press E over one
@@ -8,12 +9,9 @@ import { groundHeight, LAYOUT, mulberry32 } from './field.js';
 // pocketed and nothing is counted here — the *finding* is the thing, and the
 // journal (phase 3) is what will remember it.
 
-const NAMES = {
-  cockle: ['Banded Cockle', 'Dog Cockle', 'Spiny Cockle'],
-  whelk: ['Spired Whelk', 'Common Whelk', 'Netted Dog Whelk'],
-  sanddollar: ['Sand Dollar', 'Keyhole Sand Dollar'],
-  seaglass: ['Sea Glass — bottle green', 'Sea Glass — cornflower', 'Sea Glass — amber'],
-};
+// Names live in journal-core.js so the notebook's slots and the beach's finds
+// can never drift apart.
+const NAMES = SHELL_NAMES_BY_KIND;
 const GLASS_TINT = [0x3d7a52, 0x5577aa, 0xa87b3a];
 
 function cockleGeo(seed) {

@@ -51,6 +51,10 @@ export class WalkControls {
     // stand" prompt, everybody just pushes forward.
     this.seated = false;
 
+    // True while the journal (or anything else modal) is open: input is
+    // ignored but the world keeps breathing behind the page.
+    this.frozen = false;
+
     this._bindEvents();
   }
 
@@ -109,11 +113,13 @@ export class WalkControls {
 
     // Movement input in camera-relative space
     let fwd = 0, strafe = 0;
-    if (this.keys['KeyW']) fwd += 1;
-    if (this.keys['KeyS']) fwd -= 1;
-    if (this.keys['KeyA']) strafe -= 1;
-    if (this.keys['KeyD']) strafe += 1;
-    if (this.touchWalking) fwd += 1;
+    if (!this.frozen) {
+      if (this.keys['KeyW']) fwd += 1;
+      if (this.keys['KeyS']) fwd -= 1;
+      if (this.keys['KeyA']) strafe -= 1;
+      if (this.keys['KeyD']) strafe += 1;
+      if (this.touchWalking) fwd += 1;
+    }
 
     // Arrows look, they don't walk.
     //
@@ -123,7 +129,7 @@ export class WalkControls {
     // to walk and unable to face anywhere. Nothing in this piece needs aiming, so
     // nothing in it should need the mouse captured. With these bound, the whole
     // beach is reachable from the keyboard alone.
-    const lookRate = this.keyLookSpeed * dt;
+    const lookRate = this.frozen ? 0 : this.keyLookSpeed * dt;
     if (this.keys['ArrowLeft'])  this.yaw += lookRate;
     if (this.keys['ArrowRight']) this.yaw -= lookRate;
     if (this.keys['ArrowUp'])    this.pitch += lookRate * 0.7;

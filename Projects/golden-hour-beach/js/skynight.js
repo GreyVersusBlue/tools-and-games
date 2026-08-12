@@ -168,9 +168,11 @@ export function buildSkyNight(scene) {
     moonDir,           // read by main.js to aim the night light and water glint
     moonUp: 0,         // 0..1, how risen the moon is — main.js mixes light by this
     meteorRate: 1,     // Phase 7's meteor shower multiplies this
+    journal: null,     // main.js sets this; sightings feed it
     _moonAge: 0,
     _meteorTimer: 30,
   };
+  const worldPos = new THREE.Vector3();
 
   state.update = (dt, nightT, camera) => {
     group.position.set(camera.position.x, 0, camera.position.z);
@@ -223,6 +225,14 @@ export function buildSkyNight(scene) {
       if (p >= 1) { m.sprite.visible = false; m.sprite.material.opacity = 0; continue; }
       m.sprite.position.copy(m.from).addScaledVector(m.vel, m.t);
       m.sprite.material.opacity = Math.sin(p * Math.PI) * 0.9;
+      // Too brief to "watch" — one clean look counts.
+      if (state.journal) {
+        state.journal.glimpse('meteor', worldPos.copy(m.sprite.position).add(group.position), camera);
+      }
+    }
+
+    if (state.journal && moonA > 0.35) {
+      state.journal.focus('moon', worldPos.copy(moon.position).add(group.position), dt, camera);
     }
   };
 

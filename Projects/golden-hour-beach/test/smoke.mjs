@@ -237,6 +237,71 @@ group('the driftwood lies on the sand');
   }
 }
 
+/* ------------------------------------------------------------- the journal -- */
+
+group('the journal survives what a reload throws at it');
+{
+  const jc = await import(pathToFileURL(path.join(HERE, '..', 'js', 'journal-core.js')).href);
+  const { createSaveSlot } = await import(
+    pathToFileURL(path.join(HERE, '..', '..', '..', 'assets', 'js', 'gvb-save.js')).href);
+
+  ok(jc.isJournalShape({ species: [], shells: [], places: [] }), 'the empty journal is a journal');
+  ok(!jc.isJournalShape(null) && !jc.isJournalShape({ species: 'gull' }),
+    'garbage is not a journal');
+
+  const dirty = {
+    species: ['gull', 'gull', 'dragon', 'dolphin', 42],
+    shells: ['Banded Cockle', 'Banded Cockle', 'The Hope Diamond'],
+    places: ['camp', 'atlantis'],
+  };
+  const clean = jc.normalizeJournal(dirty);
+  ok(clean.species.join(',') === 'gull,dolphin',
+    'normalize dedupes and drops unknown species', clean.species.join(','));
+  ok(clean.shells.join(',') === 'Banded Cockle', 'and unknown shells');
+  ok(clean.places.join(',') === 'camp', 'and unknown places');
+  ok(JSON.stringify(jc.normalizeJournal(clean)) === JSON.stringify(clean),
+    'normalize is idempotent');
+
+  const list = [];
+  ok(jc.record(list, 'gull') === true && jc.record(list, 'gull') === false && list.length === 1,
+    'record adds an entry exactly once');
+
+  // The full slot round-trip, storage stubbed — the same pure path journal.js
+  // rides in the browser.
+  const mem = new Map();
+  const storage = {
+    getItem: k => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: k => mem.delete(k),
+  };
+  const slot = createSaveSlot({
+    game: 'golden-hour', version: 1,
+    validate: jc.isJournalShape, repair: jc.normalizeJournal,
+    defaults: { species: [], shells: [], places: [] },
+    storage,
+  });
+  const state = slot.fresh();
+  jc.record(state.species, 'dolphin');
+  jc.record(state.shells, 'Sand Dollar');
+  ok(slot.save(state) === true, 'a journal saves');
+  const back = slot.load();
+  ok(back && back.species.includes('dolphin') && back.shells.includes('Sand Dollar'),
+    'and loads back intact');
+
+  const exported = slot.serialize(state);
+  const reimported = slot.deserialize(exported);
+  ok(reimported && reimported.species.includes('dolphin'),
+    'the export envelope round-trips');
+  const foreign = slot.deserialize(exported.replace('"golden-hour"', '"fourth-quarter"'));
+  ok(foreign === null, "another game's save is refused");
+
+  // Every shell name shells.js can hand out has a slot on the beachcombing
+  // page — the grouping is the single source both sides read.
+  ok(jc.SHELL_NAMES.length === Object.values(jc.SHELL_NAMES_BY_KIND).flat().length &&
+     jc.SHELL_NAMES.length === new Set(jc.SHELL_NAMES).size,
+    'shell names are complete and unique', `${jc.SHELL_NAMES.length} names`);
+}
+
 /* --------------------------------------------------------------------------- */
 
 console.log(`\n${passed + failed} checks, ${failed} failed`);

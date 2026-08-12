@@ -13,6 +13,7 @@ import { buildCampfire, CAMP } from './campfire.js';
 import { buildInteract } from './interact.js';
 import { buildStones } from './stones.js';
 import { buildShells } from './shells.js';
+import { buildJournal } from './journal.js';
 
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -325,9 +326,18 @@ interact.register({
 const stones = buildStones(scene, interact, controls, camera, audio, ocean);
 const shells = buildShells(scene, interact, controls, camera, audio);
 
+// ---------- The journal ----------
+// Discoveries persist (gvb-save); the sun does not. Species sight themselves
+// under honest attention, shells record on examine, places on arrival.
+const journal = buildJournal(controls);
+wildlife.journal = journal;
+skynight.journal = journal;
+shells.onExamine = shell => journal.foundShell(shell.name);
+
 function updateFireAudio() {
   const d = Math.hypot(controls.pos.x - CAMP.x, controls.pos.z - CAMP.z);
   audio.setFire(THREE.MathUtils.clamp(1 - (d - 2) / 12, 0, 1));
+  if (d < 6) journal.visitPlace('camp');
 }
 
 // ---------- Loop ----------
@@ -378,6 +388,7 @@ function tick() {
   interact.update();
   stones.update(dt);
   shells.update(dt);
+  journal.update(dt);
   updateFireAudio();
 
   // The far beacon wakes with the dusk: a slow sweep, bright for a beat.
