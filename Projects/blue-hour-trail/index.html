@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Blue Hour — a mountain trail</title>
+<meta name="description" content="Hike a fog-bound switchback trail at blue hour — dense woods, wildlife, and things half-seen between the trees.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230c1216'/%3E%3Cpath d='M4 26 L13 10 L19 20 L23 14 L30 26 Z' fill='%233a4a54'/%3E%3Cpath d='M4 26 L13 10 L16 15 L11 26 Z' fill='%234d616e'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./libs/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="overlay">
+  <div id="overlay-card">
+    <h1>Blue Hour</h1>
+    <p class="sub">a mountain trail</p>
+    <p class="hint">
+      <span class="desktop-hint"><b>Click to begin</b> &middot; WASD to walk &middot; mouse or arrow keys to look &middot; Esc to release</span>
+      <span class="mobile-hint"><b>Tap to begin</b> &middot; drag to look &middot; hold bottom of screen to walk</span>
+    </p>
+    <p class="tiny">Sound on recommended &mdash; the forest is generated live. Follow the trail markers up.</p>
+  </div>
+</div>
+<div id="lock-hint">Mouse released &middot; click to look with the mouse, or use the arrow keys</div>
+<div id="cairn-chip"></div>
+<div id="vignette"></div>
+<div id="mute-btn" title="Toggle sound">&#128266;</div>
+<canvas id="scene"></canvas>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
