@@ -20,7 +20,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Absolute paths on Windows start with a drive letter, which Node reads as the
 // URL scheme `c:` and rejects (v7 §7). Same fix Faire Weekend's suite needed.
-const { groundHeight, BOUNDS, LAYOUT, wadeLimitZ, SHELL_KINDS } =
+const { groundHeight, BOUNDS, LAYOUT, wadeLimitZ, SHELL_KINDS,
+        shorelineZ, seabedSlope, regionAt, regionWeights, walkLimits, trailX } =
   await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
 
 let passed = 0, failed = 0;
@@ -42,16 +43,129 @@ ok(groundHeight(0, 40) > 3, 'the dunes rise inland',
   `h(0,40) = ${groundHeight(0, 40).toFixed(2)}`);
 
 {
-  // Monotonic enough to walk: no cliff the walker can fall off, anywhere.
+  // Monotonic enough to walk: no cliff on the HOME BEACH, the original
+  // rectangle. The coast beyond it has a real cliff now, on purpose — the
+  // step rule fences it, and its own checks are below.
   let worst = 0, at = null;
-  for (let x = BOUNDS.minX; x <= BOUNDS.maxX; x += 2) {
-    for (let z = BOUNDS.minZ; z <= BOUNDS.maxZ; z += 1) {
+  for (let x = -140; x <= 140; x += 2) {
+    for (let z = -60; z <= 46; z += 1) {
       const d = Math.abs(groundHeight(x, z + 1) - groundHeight(x, z));
       if (d > worst) { worst = d; at = [x, z]; }
     }
   }
-  ok(worst < 1.2, 'no step in the walkable ground is a cliff',
+  ok(worst < 1.2, 'no step in the home beach is a cliff',
     `worst rise ${worst.toFixed(2)} m/m at ${at}`);
+}
+
+group('the home beach has not moved');
+{
+  // Twelve heights sampled from the pre-coast heightfield, recorded before the
+  // shoreline-curve refactor. groundHeight must reduce to the old formula
+  // bit-identically inside the original beach — this is what lets every layout
+  // above survive a 10x world without re-checking a single placement.
+  const GOLDEN = [
+    [0, -6, 0],
+    [0, -40, -3.4000000000000004],
+    [0, 40, 7.421109201089736],
+    [12.5, -3.25, 0.15184892001530434],
+    [-88, 31, 3.7412681213040124],
+    [140, 46, 9.108256083408317],
+    [-140, -60, -5.4],
+    [100, -8, -0.2],
+    [-44, 10, 0.7540483207130297],
+    [20, 34, 5.369915814530072],
+    [68, -2, 0.2389386886784141],
+    [-24, 2.5, 0.4164979353745456],
+  ];
+  let worst = 0;
+  for (const [x, z, want] of GOLDEN) worst = Math.max(worst, Math.abs(groundHeight(x, z) - want));
+  ok(worst < 1e-12, 'twelve golden heights are bit-identical to the pre-coast beach',
+    `worst drift ${worst.toExponential(1)}`);
+}
+
+group('the coast');
+{
+  ok(Math.abs(shorelineZ(0) + 6) < 1e-12 && Math.abs(shorelineZ(140) + 6) < 1e-12,
+    'the home waterline is still exactly -6');
+  ok(shorelineZ(-560) < -38, 'the headland pushes the shoreline well out to sea',
+    `shorelineZ(-560) = ${shorelineZ(-560).toFixed(1)}`);
+
+  // Curvature cap: the foam strip folds over itself if the shoreline bends
+  // faster than ~0.5 m of z per m of x. Verify a guard-rail by holding the
+  // whole curve under it.
+  let worstBend = 0, bendAt = 0;
+  for (let x = BOUNDS.minX; x <= BOUNDS.maxX; x += 1) {
+    const d = Math.abs(shorelineZ(x + 1) - shorelineZ(x));
+    if (d > worstBend) { worstBend = d; bendAt = x; }
+  }
+  ok(worstBend < 0.5, 'the shoreline never bends sharply enough to fold the foam',
+    `worst ${worstBend.toFixed(3)} m/m at x = ${bendAt}`);
+
+  // The cliff is a cliff and the flank is a ramp: the step rule (0.9 m) must
+  // block the seaward face and pass the eastern approach.
+  let cliffMax = 0;
+  for (let z = -35; z <= 30; z += 1) {
+    cliffMax = Math.max(cliffMax, groundHeight(-560, z + 1) - groundHeight(-560, z));
+  }
+  ok(cliffMax > 0.9, "the headland's seaward face refuses a stride", `steepest ${cliffMax.toFixed(2)} m/m`);
+  let flankMax = 0;
+  for (let z = -20; z <= 60; z += 1) {
+    flankMax = Math.max(flankMax, Math.abs(groundHeight(-465, z + 1) - groundHeight(-465, z)));
+  }
+  ok(flankMax < 0.9, 'and its eastern flank can be climbed', `steepest ${flankMax.toFixed(2)} m/m`);
+
+  // The shelf under the cliff stays walkable at the waterline the whole way
+  // round — that is the route to the pools.
+  let shelfOk = true;
+  for (let x = -440; x >= -600; x -= 4) {
+    const s3 = groundHeight(x, shorelineZ(x) + 3);
+    if (s3 > 1.4) shelfOk = false;
+  }
+  ok(shelfOk, 'the tide-pool shelf stays low along the whole cliff base');
+
+  ok(regionAt(0, 0) === 'home' && regionAt(-500) === 'headland' &&
+     regionAt(300) === 'pier' && regionAt(600) === 'estuary' && regionAt(10, 60) === 'dunes',
+    'the regions are where they say they are');
+  const w = regionWeights(-500), wh = regionWeights(0);
+  ok(Math.abs(w.headland + w.home + w.estuary - 1) < 1e-9 && w.headland > 0.9 && wh.home > 0.9,
+    'region weights blend to one and peak in the right places');
+
+  const lim = walkLimits(0, 0);
+  ok(Math.abs(lim.minZ - wadeLimitZ(0, 0.45, 0)) < 1e-9 && lim.maxZ === BOUNDS.maxZ,
+    'walkLimits is the wading limit plus the world edge');
+  // Off the headland the seabed is steeper, so the wading limit hugs the
+  // (shifted) shoreline closer than the same water does at home.
+  const homeReach = wadeLimitZ(0) - shorelineZ(0);
+  const headReach = wadeLimitZ(0, 0.45, -560) - shorelineZ(-560);
+  ok(headReach > homeReach, 'wading off the headland stops sooner (steeper seabed)',
+    `${(-headReach).toFixed(1)} m vs ${(-homeReach).toFixed(1)} m of water`);
+}
+
+group('the tide pools and the trail');
+{
+  const pools = LAYOUT.headland.pools;
+  ok(pools.length >= 4, 'there are pools on the shelf', `${pools.length}`);
+  ok(pools.every(p => {
+    const s = p.z - shorelineZ(p.x);
+    return s > 0.5 && s < 7;
+  }), 'every pool sits on the shelf strip above the waterline');
+  ok(pools.every(p => groundHeight(p.x, p.z) < groundHeight(p.x + p.r + 1, p.z) + 0.05 ||
+                      groundHeight(p.x, p.z) < groundHeight(p.x - p.r - 1, p.z) + 0.05),
+    'every pool basin is carved below its rim');
+  ok(pools.every(p => p.depth > 0.2 && p.depth < 1), 'pool depths are pool-like');
+
+  const fence = LAYOUT.dunes.fence;
+  ok(fence.length > 10, 'the trail has a fence', `${fence.length} posts`);
+  ok(fence.every(f => Math.abs(f.x - trailX(f.z) - 5) < 1.5),
+    'every post paces the trail centreline');
+  // The carved trail is genuinely lower than the dune shoulder beside it.
+  let carved = 0;
+  for (let z = 56; z <= 108; z += 4) {
+    const onTrail = groundHeight(trailX(z), z);
+    const beside = groundHeight(trailX(z) + 12, z);
+    if (beside - onTrail > 0.8) carved++;
+  }
+  ok(carved >= 8, 'the trail runs below the dunes beside it', `${carved} of 14 samples clearly carved`);
 }
 
 {
@@ -149,17 +263,17 @@ group('the groyne walks into the sea');
 
 group('the wrack line sits on the tide mark');
 {
-  // The swash reaches z ≈ -3.6 at its highest (ocean.js: zLine = level/0.055 - 6
-  // with level topping out near 0.13). Wrack below that gets washed away; wrack
-  // far above it is litter on dry sand.
-  const zs = LAYOUT.wrack.map(w => w.z);
-  const lo = Math.min(...zs), hi = Math.max(...zs);
-  ok(lo > -8 && hi < 4, 'the whole line is within a few metres of the waterline',
-    `z ${lo.toFixed(1)} to ${hi.toFixed(1)}`);
+  // The tide mark is shore-relative now: the line has to hug the shoreline
+  // CURVE, bending out to sea around the headland with the water. Measured as
+  // distance from where the highest swash reaches at that x.
+  const rel = LAYOUT.wrack.map(w => w.z - shorelineZ(w.x));
+  const lo = Math.min(...rel), hi = Math.max(...rel);
+  ok(lo > -2 && hi < 10, 'the whole line hugs the tide mark, wherever the coast bends',
+    `s ${lo.toFixed(1)} to ${hi.toFixed(1)}`);
 
   const xs = LAYOUT.wrack.map(w => w.x);
-  ok(Math.min(...xs) < -120 && Math.max(...xs) > 120,
-    'and it runs the full width of the beach',
+  ok(Math.min(...xs) < -600 && Math.max(...xs) > 600,
+    'and it runs the full length of the coast',
     `x ${Math.min(...xs).toFixed(0)} to ${Math.max(...xs).toFixed(0)}`);
 
   const kinds = new Set(LAYOUT.wrack.map(w => w.kind));

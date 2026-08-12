@@ -155,6 +155,59 @@ function buildWrack() {
   return out;
 }
 
+/* -------------------------------------------------------------------- fence - */
+
+// The dune-trail fence: one merged mesh of leaning posts pacing the path.
+function buildFence(mat) {
+  const parts = [];
+  for (const f of LAYOUT.dunes.fence) {
+    const g = groundHeight(f.x, f.z);
+    const post = new THREE.CylinderGeometry(0.055, 0.07, f.h + 0.5, 6, 1);
+    roughen(post, 0.12, (f.x * 331 + f.z * 17) | 0);
+    post.rotateZ(f.lean);
+    post.translate(f.x, g + f.h / 2 - 0.25, f.z);
+    parts.push(post);
+  }
+  return new THREE.Mesh(mergeGeometries(parts), mat);
+}
+
+/* --------------------------------------------------------------- tide pools - */
+
+// Still water in carved basins on the headland shelf, each ringed by low
+// rocks. The water is a plain reflective disc, NOT a Water instance — five
+// reflection render targets for five puddles would be the definition of not
+// measuring first.
+function buildTidePools(stoneMat) {
+  const group = new THREE.Group();
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x14383c, roughness: 0.06, metalness: 0.55,
+    transparent: true, opacity: 0.88,
+  });
+  const rnd = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(20250811);
+  const rimParts = [];
+  for (const p of LAYOUT.headland.pools) {
+    const rimN = 8 + (rnd() * 4 | 0);
+    for (let i = 0; i < rimN; i++) {
+      const a = (i / rimN) * Math.PI * 2 + rnd() * 0.4;
+      const rx = p.x + Math.cos(a) * p.r * 1.06;
+      const rz = p.z + Math.sin(a) * p.r * 0.98;
+      const rr = 0.14 + rnd() * 0.16;
+      const rock = new THREE.SphereGeometry(rr, 8, 6);
+      roughen(rock, 0.3, (rx * 977 + rz * 131) | 0);
+      rock.scale(1, 0.65, 1);
+      rock.translate(rx, groundHeight(rx, rz) + rr * 0.2, rz);
+      rimParts.push(rock);
+    }
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(p.r * 0.9, 22), waterMat);
+    disc.rotation.x = -Math.PI / 2;
+    // Water sits partway up the basin: below the rim, above the bottom.
+    disc.position.set(p.x, groundHeight(p.x, p.z) + p.depth * 0.55, p.z);
+    group.add(disc);
+  }
+  group.add(new THREE.Mesh(mergeGeometries(rimParts), stoneMat));
+  return group;
+}
+
 /* ------------------------------------------------------------------- merge --- */
 
 /**
@@ -197,6 +250,8 @@ export function buildProps(scene) {
   group.add(buildGroyne(wood));
   group.add(buildDriftwood(wood));
   group.add(buildRocks(stone));
+  group.add(buildFence(wood));
+  group.add(buildTidePools(stone));
   for (const inst of buildWrack()) group.add(inst);
 
   scene.add(group);

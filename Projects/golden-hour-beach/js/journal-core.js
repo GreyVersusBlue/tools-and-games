@@ -26,9 +26,13 @@ export const SHELL_NAMES_BY_KIND = {
 };
 export const SHELL_NAMES = Object.values(SHELL_NAMES_BY_KIND).flat();
 
-// Places the coast can teach you. Phase 4's regions fill this in.
+// Places the coast can teach you.
 export const PLACES = [
   { id: 'camp', name: 'The Camp' },
+  { id: 'dunes', name: 'The Dune Trail' },
+  { id: 'headland', name: 'The Headland' },
+  { id: 'lighthouse', name: 'The Lighthouse' },
+  { id: 'pools', name: 'The Tide Pools' },
 ];
 
 const speciesIds = new Set(SPECIES.map(s => s.id));

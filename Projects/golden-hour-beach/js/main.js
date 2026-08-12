@@ -14,6 +14,8 @@ import { buildInteract } from './interact.js';
 import { buildStones } from './stones.js';
 import { buildShells } from './shells.js';
 import { buildJournal } from './journal.js';
+import { buildLighthouse } from './lighthouse.js';
+import { buildRegions } from './regions.js';
 
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -226,17 +228,11 @@ function placeGlint() {
 }
 placeGlint();
 
-// ---------- A light on the far western horizon ----------
-// The lighthouse this beach doesn't reach yet. One sprite, fog off so distance
-// doesn't erase it, flashing on a slow sweep once real dusk arrives. It costs
-// nothing and it means the horizon has a promise in it.
-const beacon = new THREE.Sprite(new THREE.SpriteMaterial({
-  map: glintTex, transparent: true, depthWrite: false, fog: false,
-  blending: THREE.AdditiveBlending, color: 0xfff2c8, opacity: 0,
-}));
-beacon.position.set(-780, 12, -90);
-beacon.scale.set(14, 14, 1);
-scene.add(beacon);
+// ---------- The lighthouse ----------
+// Phase 1 promised it as a nameless flash on the horizon; the headland is
+// walkable now, so the promise is kept — a real tower whose beam sweeps from
+// its true position all night.
+const lighthouse = buildLighthouse(scene);
 
 // ---------- Overlay / input bootstrap ----------
 const overlay = document.getElementById('overlay');
@@ -333,6 +329,7 @@ const journal = buildJournal(controls);
 wildlife.journal = journal;
 skynight.journal = journal;
 shells.onExamine = shell => journal.foundShell(shell.name);
+const regions = buildRegions(controls, journal);
 
 function updateFireAudio() {
   const d = Math.hypot(controls.pos.x - CAMP.x, controls.pos.z - CAMP.z);
@@ -378,7 +375,7 @@ function tick() {
   // Ocean first: controls needs this frame's water surface height to know how
   // far a walker can wade, and a one-frame-old value would be imperceptible
   // anyway against a 9.5 s swash period, but there's no reason to take the lag.
-  ocean.update(dt);
+  ocean.update(dt, camera);
   const moving = controls.update(dt, ocean.water.position.y);
   wildlife.update(dt, camera);
   audio.update(dt, ocean.swashLevel, moving && controls.enabled, controls.wadeT);
@@ -389,11 +386,9 @@ function tick() {
   stones.update(dt);
   shells.update(dt);
   journal.update(dt);
+  regions.update(dt);
+  lighthouse.update(dt, nightT, camera);
   updateFireAudio();
-
-  // The far beacon wakes with the dusk: a slow sweep, bright for a beat.
-  const sweep = Math.pow(Math.max(0, Math.sin(clock.elapsedTime * 0.785)), 24);
-  beacon.material.opacity = nightT * (0.12 + sweep * 0.8);
 
   renderer.render(scene, camera);
 }
@@ -416,6 +411,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     getSunT() { return sunT; },
     teleport(x, z) { controls.pos.x = x; controls.pos.z = z; },
     face(yaw, pitch = 0) { controls.yaw = yaw; controls.pitch = pitch; },
+    pos: () => ({ x: controls.pos.x, z: controls.pos.z }),
     info: () => renderer.info.render,
   };
 }

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { wadeLimitZ } from './field.js';
+import { BOUNDS, walkLimits } from './field.js';
 
 // First-person stroll controls. Pointer-lock on desktop; drag-look +
 // hold-lower-screen-to-walk on touch. Camera height follows the terrain
@@ -38,10 +38,9 @@ export class WalkControls {
     this.touchWalking = false;
     this._lastTouch = null;
 
-    // Bounds: keep the walker on the beach strip. minZ here is a fallback outer
-    // wall only — the real seaward limit is computed every frame from the
-    // current water level, see wadeLimitZ below.
-    this.bounds = { minX: -140, maxX: 140, minZ: -60, maxZ: 46 };
+    // World edges come straight from field.js's BOUNDS; the live seaward limit
+    // is computed every frame from the current water level (walkLimits below).
+    this.bounds = BOUNDS;
     this.wadeDepth = 0;
     this.wadeT = 0;
 
@@ -147,15 +146,32 @@ export class WalkControls {
     const dx = (-sin * fwd + cos * strafe) * this.walkSpeed * dt;
     const dz = (-cos * fwd - sin * strafe) * this.walkSpeed * dt;
 
-    // Seaward bound is a wading depth, not a wall. Used to be the static
-    // BOUNDS.minZ, -60, which is nowhere near the water — nothing stopped a
-    // walker from reaching eye height 3.8 m *underwater*, because the seabed
-    // keeps dropping long after the shoreline is behind you. wadeLimitZ solves
-    // for the z where the current water surface is WADE_DEPTH deep, so the
-    // limit rises and falls with the tide instead of sitting at a fixed spot.
-    const minZ = Math.max(this.bounds.minZ, wadeLimitZ(waterLevel, WADE_DEPTH));
-    this.pos.x = Math.max(this.bounds.minX, Math.min(this.bounds.maxX, this.pos.x + dx));
-    this.pos.z = Math.max(minZ, Math.min(this.bounds.maxZ, this.pos.z + dz));
+    // Seaward bound is a wading depth, not a wall — and it now varies along
+    // the coast (steeper seabed off the headland stops a wader sooner).
+    // walkLimits solves for the z where the current water surface is
+    // WADE_DEPTH deep at this x, so the limit breathes with the tide and
+    // bends with the shoreline.
+    const lim = walkLimits(this.pos.x, waterLevel, WADE_DEPTH);
+    let nx = Math.max(this.bounds.minX, Math.min(this.bounds.maxX, this.pos.x + dx));
+    let nz = Math.max(lim.minZ, Math.min(lim.maxZ, this.pos.z + dz));
+
+    // The step rule: a stride that would rise more than 0.9 m is refused.
+    // This one line is what makes the headland's cliff face, and everything
+    // else built tall, solid — no colliders anywhere. Probed a stride ahead
+    // (0.8 m) rather than at the destination, because per-frame movement is
+    // centimetres and a per-frame height difference would never trip.
+    if (moving) {
+      const mdx = nx - this.pos.x, mdz = nz - this.pos.z;
+      const mlen = Math.hypot(mdx, mdz);
+      if (mlen > 1e-9) {
+        const here = this.getGroundHeight(this.pos.x, this.pos.z);
+        const ahead = this.getGroundHeight(
+          this.pos.x + (mdx / mlen) * 0.8, this.pos.z + (mdz / mlen) * 0.8);
+        if (ahead - here > 0.9) { nx = this.pos.x; nz = this.pos.z; }
+      }
+    }
+    this.pos.x = nx;
+    this.pos.z = nz;
 
     // Head bob eases in and out
     const targetBob = moving ? 1 : 0;
