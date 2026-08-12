@@ -197,9 +197,61 @@ function wrack() {
   return out;
 }
 
+/**
+ * Flat-stone patches: where the skipping stones live. Three patches on the dry
+ * sand just above the wrack line, each a loose scatter of half a dozen stones.
+ * Fixed places, same argument as the wrack — a good skipping spot is a thing
+ * you remember and come back to.
+ */
+function stonePatches() {
+  const rnd = mulberry32(0x570e);
+  const out = [];
+  for (const [px, pz] of [[-24, 2.5], [52, 1.5], [-70, 4]]) {
+    const stones = [];
+    for (let i = 0; i < 6; i++) {
+      stones.push({
+        x: px + (rnd() - 0.5) * 3.2,
+        z: pz + (rnd() - 0.5) * 2.2,
+        s: 0.05 + rnd() * 0.03,
+        yaw: rnd() * 6.28,
+      });
+    }
+    out.push({ x: px, z: pz, stones });
+  }
+  return out;
+}
+
+/**
+ * The special shells: forty fixed finds worth crouching for, scattered along
+ * the wrack line (most) and up into the dry sand (the rest, harder to spot
+ * against the ripples). Distinct from the 460-piece wrack scatter, which is
+ * texture; these are the ones with names.
+ */
+export const SHELL_KINDS = ['cockle', 'whelk', 'sanddollar', 'seaglass'];
+
+function shellFinds() {
+  const rnd = mulberry32(0xbe11);
+  const out = [];
+  for (let i = 0; i < 40; i++) {
+    const x = -136 + rnd() * 272;
+    const nearWrack = rnd() < 0.7;
+    const z = nearWrack ? -2 + (rnd() - 0.5) * 4 : 4 + rnd() * 24;
+    out.push({
+      x, z,
+      kind: SHELL_KINDS[(rnd() * SHELL_KINDS.length) | 0],
+      s: 0.13 + rnd() * 0.09,
+      yaw: rnd() * 6.28,
+      seed: (rnd() * 1e6) | 0,
+    });
+  }
+  return out;
+}
+
 export const LAYOUT = {
   groyne: groyne(),
   driftwood: driftwood(),
   rocks: rocks(),
   wrack: wrack(),
+  stones: stonePatches(),
+  shells: shellFinds(),
 };

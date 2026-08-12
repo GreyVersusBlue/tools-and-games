@@ -76,6 +76,15 @@ export function buildCampfire(scene) {
     group.add(log);
   }
 
+  // The crumb tin by the seat — main.js hangs the scatter verb on it.
+  const tin = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.09, 0.09, 0.12, 10),
+    new THREE.MeshStandardMaterial({ color: 0x8a7f6a, roughness: 0.4, metalness: 0.6 }),
+  );
+  const tinY = groundHeight(CAMP.x - 1.8, CAMP.z + 1.4) - gy;
+  tin.position.set(-1.8, tinY + 0.06, 1.4);
+  group.add(tin);
+
   // The one realtime light. Warm, short range, flickered in update().
   const light = new THREE.PointLight(0xff8c3a, 0, 16, 2);
   light.position.set(0, 0.7, 0);

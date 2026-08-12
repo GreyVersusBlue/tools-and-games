@@ -1,7 +1,11 @@
 import * as THREE from 'three';
+import { groundHeight } from './field.js';
 
 // Dolphin arcs, circling gulls, a drifting sailboat, and a jet that
-// crosses the sky every few minutes trailing a contrail.
+// crosses the sky every few minutes trailing a contrail. The gulls also come
+// down for scattered crumbs — the project's first real state machine
+// (ORBIT → APPROACH → GROUND → DEPART) and the template the rest of the
+// bestiary follows.
 
 // ---------- Dolphin ----------
 function makeDolphin() {
@@ -127,6 +131,25 @@ export function buildWildlife(scene, audio) {
   boat.position.set(-160, 0, -260);
   scene.add(boat);
 
+  // Crumb patch: a speckled little circle where crumbs were scattered, fading
+  // as the gulls (and time) work through it.
+  const crumbTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d');
+    for (let i = 0; i < 60; i++) {
+      const a = Math.random() * Math.PI * 2, d = Math.pow(Math.random(), 0.6) * 28;
+      g.fillStyle = `rgba(240,225,190,${0.5 + Math.random() * 0.5})`;
+      g.beginPath(); g.arc(32 + Math.cos(a) * d, 32 + Math.sin(a) * d, 0.8 + Math.random() * 1.2, 0, 6.29); g.fill();
+    }
+    return new THREE.CanvasTexture(c);
+  })();
+  const crumbPatch = new THREE.Mesh(
+    new THREE.CircleGeometry(1.6, 20).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: crumbTex, transparent: true, opacity: 0, depthWrite: false }),
+  );
+  crumbPatch.visible = false;
+  scene.add(crumbPatch);
+
   const plane = makePlane();
   plane.visible = false;
   scene.add(plane);
@@ -154,7 +177,17 @@ export function buildWildlife(scene, audio) {
     planeT: 0,
     planeFrom: new THREE.Vector3(),
     planeTo: new THREE.Vector3(),
+    crumbs: null,
   };
+
+  // Scatter crumbs at a spot; nearby orbiting gulls will come down for them.
+  state.feedAt = (x, z) => {
+    state.crumbs = { x, z, t: 45 };
+    crumbPatch.position.set(x, groundHeight(x, z) + 0.02, z);
+    crumbPatch.visible = true;
+    crumbPatch.material.opacity = 0.4;
+  };
+  state.feedActive = () => !!state.crumbs;
 
   state.update = (dt, camera) => {
     state.t += dt;
@@ -192,14 +225,105 @@ export function buildWildlife(scene, audio) {
     }
 
     // --- gulls ---
+    // Crumbs age out whether or not anyone came.
+    if (state.crumbs) {
+      state.crumbs.t -= dt;
+      crumbPatch.material.opacity = Math.min(0.4, state.crumbs.t / 20);
+      if (state.crumbs.t <= 0) { state.crumbs = null; crumbPatch.visible = false; }
+    }
+
     for (const gull of gulls) {
-      const o = gull.userData.orbit;
-      const a = state.t * o.speed * o.dir + o.phase;
-      gull.position.set(o.cx + Math.cos(a) * o.r, o.h + Math.sin(state.t * 0.4 + o.phase) * 1.5, o.cz + Math.sin(a) * o.r);
-      gull.rotation.y = -a * o.dir + (o.dir > 0 ? Math.PI : 0);
-      const flap = Math.sin(state.t * o.flap * 4 + o.phase);
-      gull.userData.wL.rotation.x = flap * 0.6;
-      gull.userData.wR.rotation.x = -flap * 0.6;
+      const gd = gull.userData;
+      const o = gd.orbit;
+      if (!gd.mode) gd.mode = 'orbit';
+
+      if (gd.mode === 'orbit') {
+        const a = state.t * o.speed * o.dir + o.phase;
+        gull.position.set(o.cx + Math.cos(a) * o.r, o.h + Math.sin(state.t * 0.4 + o.phase) * 1.5, o.cz + Math.sin(a) * o.r);
+        gull.rotation.y = -a * o.dir + (o.dir > 0 ? Math.PI : 0);
+        gull.rotation.x = 0;
+        const flap = Math.sin(state.t * o.flap * 4 + o.phase);
+        gd.wL.rotation.x = flap * 0.6;
+        gd.wR.rotation.x = -flap * 0.6;
+
+        if (state.crumbs && state.crumbs.t > 12) {
+          const d = Math.hypot(gull.position.x - state.crumbs.x, gull.position.z - state.crumbs.z);
+          if (d < 80) {
+            gd.mode = 'approach';
+            gd.spot = {
+              x: state.crumbs.x + (Math.random() - 0.5) * 3.5,
+              z: state.crumbs.z + (Math.random() - 0.5) * 3.5,
+            };
+          }
+        }
+      } else if (gd.mode === 'approach') {
+        // Fly at the landing spot, descending, flare close in.
+        const gy = groundHeight(gd.spot.x, gd.spot.z) + 0.12;
+        const dx = gd.spot.x - gull.position.x, dz = gd.spot.z - gull.position.z;
+        const dist = Math.hypot(dx, dz);
+        const speed = dist < 5 ? 2.2 + dist * 0.9 : 7;
+        const vy = (gy - gull.position.y) * Math.min(1, 2 / Math.max(dist, 0.5));
+        gull.position.x += (dx / (dist || 1)) * speed * dt;
+        gull.position.z += (dz / (dist || 1)) * speed * dt;
+        gull.position.y += vy * speed * 0.35 * dt;
+        gull.rotation.y = Math.atan2(-dz, dx);
+        gull.rotation.x = dist < 5 ? -0.35 : 0.1;   // flare up to land
+        const flap = Math.sin(state.t * o.flap * 8);
+        gd.wL.rotation.x = flap * 0.8;
+        gd.wR.rotation.x = -flap * 0.8;
+        if (dist < 0.5 && Math.abs(gull.position.y - gy) < 0.4) {
+          gd.mode = 'ground';
+          gd.groundT = 22 + Math.random() * 14;
+          gd.hopT = 0;
+          gull.position.y = gy;
+          gull.rotation.x = 0;
+        }
+      } else if (gd.mode === 'ground') {
+        gd.groundT -= dt;
+        // Folded wings, quick hops between pecks, an occasional squabble.
+        gd.wL.rotation.x = 1.1;
+        gd.wR.rotation.x = -1.1;
+        gd.hopT -= dt;
+        if (gd.hopT <= 0 && state.crumbs) {
+          gd.hopT = 0.5 + Math.random() * 1.1;
+          gd.hop = {
+            x: state.crumbs.x + (Math.random() - 0.5) * 3,
+            z: state.crumbs.z + (Math.random() - 0.5) * 3,
+          };
+          if (Math.random() < 0.18 && audio) audio.squabble();
+        }
+        if (gd.hop) {
+          const dx = gd.hop.x - gull.position.x, dz = gd.hop.z - gull.position.z;
+          const d = Math.hypot(dx, dz);
+          if (d > 0.1) {
+            gull.position.x += (dx / d) * 1.5 * dt;
+            gull.position.z += (dz / d) * 1.5 * dt;
+            gull.rotation.y = Math.atan2(-dz, dx);
+          }
+        }
+        gull.position.y = groundHeight(gull.position.x, gull.position.z) + 0.12;
+        // Peck: a quick nod on a jittered clock.
+        gull.rotation.x = Math.max(0, Math.sin(state.t * 3.1 + o.phase * 7)) * 0.55;
+        if (gd.groundT <= 0 || !state.crumbs) gd.mode = 'depart';
+      } else if (gd.mode === 'depart') {
+        // Climb out seaward, then splice back into the orbit exactly where the
+        // climb ends — re-anchoring phase and radius so there is no snap.
+        gull.position.y += 3.2 * dt;
+        gull.position.z -= 2.6 * dt;
+        gull.position.x += Math.sin(state.t * 0.7 + o.phase) * dt;
+        gull.rotation.x = 0.25;
+        const flap = Math.sin(state.t * o.flap * 7);
+        gd.wL.rotation.x = flap * 0.8;
+        gd.wR.rotation.x = -flap * 0.8;
+        if (gull.position.y >= o.h - 0.5) {
+          const a = Math.atan2(gull.position.z - o.cz, gull.position.x - o.cx);
+          o.r = Math.min(34, Math.max(10, Math.hypot(gull.position.x - o.cx, gull.position.z - o.cz)));
+          o.phase = a - state.t * o.speed * o.dir;
+          gull.rotation.x = 0;
+          gd.mode = 'orbit';
+          delete gd.spot; delete gd.hop;
+        }
+      }
     }
 
     // --- sailboat: slow drift + rock ---

@@ -10,6 +10,9 @@ import { Soundscape } from './audio.js';
 import { buildFootprints } from './footprints.js';
 import { buildSkyNight } from './skynight.js';
 import { buildCampfire, CAMP } from './campfire.js';
+import { buildInteract } from './interact.js';
+import { buildStones } from './stones.js';
+import { buildShells } from './shells.js';
 
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -296,40 +299,34 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ---------- Sitting at the fire ----------
-// The one interaction this round: get near the fire, press E (or tap the hint
-// on touch), and sit. Look stays free; any walk input stands you back up
-// (controls.js). While seated the hour passes six times faster — the fire is
-// how you choose to let the night come.
-const actionHint = document.getElementById('action-hint');
-let prevE = false;
+// ---------- Hands ----------
+// The interact system (interact.js) owns the hint pill and the E key; every
+// verb registers with it. Sitting at the fire and scattering crumbs live here
+// because they belong to the camp; stones and shells register themselves.
+const interact = buildInteract(camera, controls);
 
-function toggleSit() {
-  if (!controls.seated) {
-    const dx = controls.pos.x - CAMP.x, dz = controls.pos.z - CAMP.z;
-    if (dx * dx + dz * dz > 3.5 * 3.5) return;
-    controls.seated = true;
-  } else {
-    controls.seated = false;
-  }
-}
-actionHint.addEventListener('click', e => { e.stopPropagation(); toggleSit(); });
+interact.register({
+  x: CAMP.x, z: CAMP.z, y: groundHeight(CAMP.x, CAMP.z) + 0.8, radius: 3.5,
+  label: () => controls.seated
+    ? (interact.isTouch ? 'sitting — tap to stand' : 'sitting — W to stand')
+    : (interact.isTouch ? 'tap here to sit by the fire' : 'sit by the fire · E'),
+  use: () => { controls.seated = !controls.seated; },
+});
 
-function updateCamp() {
-  const dx = controls.pos.x - CAMP.x, dz = controls.pos.z - CAMP.z;
-  const d = Math.hypot(dx, dz);
+// The crumb tin by the log seat. Scatters onto open sand a few strides from
+// the flames — gulls will not land in a fire, and neither would crumbs.
+interact.register({
+  x: CAMP.x - 1.8, z: CAMP.z + 1.4, y: groundHeight(CAMP.x - 1.8, CAMP.z + 1.4) + 0.4, radius: 2.6,
+  available: () => !wildlife.feedActive(),
+  label: () => 'scatter crumbs for the gulls · E',
+  use: () => wildlife.feedAt(CAMP.x - 6, CAMP.z - 6),
+});
 
-  const e = !!controls.keys['KeyE'];
-  if (e && !prevE && controls.enabled) toggleSit();
-  prevE = e;
+const stones = buildStones(scene, interact, controls, camera, audio, ocean);
+const shells = buildShells(scene, interact, controls, camera, audio);
 
-  let hint = '';
-  if (controls.seated) hint = isTouch ? 'sitting — tap to stand' : 'sitting — W to stand';
-  else if (d < 3.5 && controls.enabled) hint = isTouch ? 'tap here to sit by the fire' : 'sit by the fire · E';
-  if (actionHint.textContent !== hint) actionHint.textContent = hint;
-  actionHint.classList.toggle('show', hint !== '');
-
-  // Fire loudness by distance: full inside 2 m, gone by 14 m.
+function updateFireAudio() {
+  const d = Math.hypot(controls.pos.x - CAMP.x, controls.pos.z - CAMP.z);
   audio.setFire(THREE.MathUtils.clamp(1 - (d - 2) / 12, 0, 1));
 }
 
@@ -378,7 +375,10 @@ function tick() {
   footprints.update(dt);
   skynight.update(dt * timeScale, nightT, camera);
   campfire.update(dt);
-  updateCamp();
+  interact.update();
+  stones.update(dt);
+  shells.update(dt);
+  updateFireAudio();
 
   // The far beacon wakes with the dusk: a slow sweep, bright for a beat.
   const sweep = Math.pow(Math.max(0, Math.sin(clock.elapsedTime * 0.785)), 24);
@@ -404,6 +404,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     },
     getSunT() { return sunT; },
     teleport(x, z) { controls.pos.x = x; controls.pos.z = z; },
+    face(yaw, pitch = 0) { controls.yaw = yaw; controls.pitch = pitch; },
     info: () => renderer.info.render,
   };
 }

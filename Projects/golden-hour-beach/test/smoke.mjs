@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Absolute paths on Windows start with a drive letter, which Node reads as the
 // URL scheme `c:` and rejects (v7 §7). Same fix Faire Weekend's suite needed.
-const { groundHeight, BOUNDS, LAYOUT, wadeLimitZ } =
+const { groundHeight, BOUNDS, LAYOUT, wadeLimitZ, SHELL_KINDS } =
   await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
 
 let passed = 0, failed = 0;
@@ -183,6 +183,44 @@ group('the rocks are half in the water');
   ok(r.some(b => topY(b) < 0.25), 'and at least one is awash, so the cluster meets the sea');
   ok(r.every(b => groundHeight(b.x, b.z) < 0.6),
     'the whole cluster is below the dry-sand line, not sitting up the beach');
+}
+
+group('the skipping stones are worth walking to');
+{
+  const patches = LAYOUT.stones;
+  ok(patches.length >= 3, 'there are several patches', `${patches.length} patches`);
+  // A skipping stone has to start on walkable sand above the swash's reach
+  // (z ≈ -3.6 at the highest run-up) — a patch underwater can't be picked up,
+  // and one up in the dunes is a pile of rocks, not a skipping spot.
+  const everyStone = patches.flatMap(p => p.stones);
+  ok(everyStone.every(s => s.z > -3 && s.z < 12),
+    'every stone lies on sand between the swash and the dunes',
+    `z ${Math.min(...everyStone.map(s => s.z)).toFixed(1)} to ${Math.max(...everyStone.map(s => s.z)).toFixed(1)}`);
+  ok(everyStone.every(s => s.x > BOUNDS.minX && s.x < BOUNDS.maxX),
+    'and inside the walkable strip');
+  ok(everyStone.every(s => s.s > 0.02 && s.s < 0.12), 'every stone is hand-sized');
+  // Throwing range: a patch more than ~25 m from the waterline makes the verb
+  // pointless. The waterline sits near z = -6.
+  ok(patches.every(p => p.z < 20), 'every patch is within a throw of the water',
+    `nearest-to-dune patch at z = ${Math.max(...patches.map(p => p.z)).toFixed(1)}`);
+}
+
+group('the forty shells');
+{
+  const s = LAYOUT.shells;
+  ok(s.length === 40, 'there are exactly forty finds', `${s.length}`);
+  ok(s.every(sh => SHELL_KINDS.includes(sh.kind)), 'every find is a known kind');
+  const kinds = new Set(s.map(sh => sh.kind));
+  ok(kinds.size === SHELL_KINDS.length, 'all four kinds occur', [...kinds].join(', '));
+  // Above the swash line (nothing examinable underwater), below the deep dunes
+  // (z 46 is the wall; leave headroom so nothing sits against it).
+  ok(s.every(sh => sh.z > -5 && sh.z < 40), 'every shell lies on reachable sand',
+    `z ${Math.min(...s.map(x => x.z)).toFixed(1)} to ${Math.max(...s.map(x => x.z)).toFixed(1)}`);
+  ok(s.every(sh => sh.x > BOUNDS.minX && sh.x < BOUNDS.maxX), 'and inside the walkable strip');
+  ok(s.every(sh => sh.s > 0.05 && sh.s < 0.4), 'every shell is shell-sized');
+  const spread = new Set(s.map(sh => Math.round(sh.x / 40)));
+  ok(spread.size >= 5, 'the finds spread across the beach rather than clumping in one spot',
+    `${spread.size} of 7 possible 40 m bands occupied`);
 }
 
 group('the driftwood lies on the sand');

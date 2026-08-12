@@ -179,13 +179,16 @@ export class Soundscape {
     }
   }
 
-  _gullCry() {
+  // vol: per-cry peak. panSpread: how far off-centre the cry may sit — the
+  // squabble on the sand in front of you is loud and centred, the wheeling
+  // cries overhead are quiet and anywhere.
+  _gullCry(vol = 0.035, panSpread = 0.8) {
     const ctx = this.ctx;
     const t0 = ctx.currentTime;
     const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
     const out = ctx.createGain();
     out.gain.value = 0;
-    if (pan) { pan.pan.value = Math.random() * 1.6 - 0.8; out.connect(pan).connect(this.master); }
+    if (pan) { pan.pan.value = (Math.random() * 2 - 1) * panSpread; out.connect(pan).connect(this.master); }
     else out.connect(this.master);
 
     const cries = 1 + (Math.random() * 3 | 0);
@@ -198,7 +201,7 @@ export class Soundscape {
       osc.frequency.exponentialRampToValueAtTime(f0 * 0.55, start + 0.28);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0, start);
-      g.gain.linearRampToValueAtTime(0.035 + Math.random() * 0.02, start + 0.05);
+      g.gain.linearRampToValueAtTime(vol + Math.random() * vol * 0.6, start + 0.05);
       g.gain.exponentialRampToValueAtTime(0.001, start + 0.3);
       const filt = ctx.createBiquadFilter();
       filt.type = 'bandpass'; filt.frequency.value = f0; filt.Q.value = 2.5;
@@ -259,6 +262,63 @@ export class Soundscape {
         osc.start(start); osc.stop(start + dur + 0.05);
       }
     }
+  }
+
+  // Squabbling gulls on the sand right in front of you: louder, centred.
+  squabble() {
+    if (!this.ctx) return;
+    this._gullCry(0.05, 0.3);
+  }
+
+  // A stone touching water on its way past — a bright little tap, panned to
+  // where it happened. Higher and quieter as the skips die off (the caller
+  // passes vol down each skip).
+  plink(pan = 0, vol = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const out = ctx.createGain(); out.gain.value = 1;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panner) { panner.pan.value = pan; out.connect(panner).connect(this.master); }
+    else out.connect(this.master);
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    const f = 900 + Math.random() * 300 + (1 - vol) * 500;
+    osc.frequency.setValueAtTime(f, t0);
+    osc.frequency.exponentialRampToValueAtTime(f * 0.7, t0 + 0.08);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.05 * vol, t0 + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.12);
+    osc.connect(g).connect(out);
+    osc.start(t0); osc.stop(t0 + 0.15);
+    // and the smallest splash under it
+    const src = ctx.createBufferSource();
+    src.buffer = this._noiseBuf; src.loop = true;
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'bandpass'; filt.frequency.value = 2400; filt.Q.value = 1;
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0, t0);
+    g2.gain.linearRampToValueAtTime(0.02 * vol, t0 + 0.01);
+    g2.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.09);
+    src.connect(filt).connect(g2).connect(out);
+    src.start(t0, Math.random() * 2); src.stop(t0 + 0.1);
+  }
+
+  // A stone coming down on sand instead: dull, low, done.
+  thud() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this._noiseBuf; src.loop = true;
+    src.playbackRate.value = 0.5;
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'lowpass'; filt.frequency.value = 260;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.06, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.14);
+    src.connect(filt).connect(g).connect(this.master);
+    src.start(t0, Math.random() * 2); src.stop(t0 + 0.16);
   }
 
   _startFireBed() {
