@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { groundHeight, trailPoint, LAYOUT } from './field.js';
 
 // The air itself: drifting mist banks, light shafts that only exist while the
-// fog thins, fireflies that only exist while it thickens, and — above the fog
-// line — the cloud sea the whole climb is for. Everything here is a handful
+// fog thins, fireflies that only exist while it thickens, and dust motes
+// falling through a box that follows the walker. Everything here is a handful
 // of merged meshes; nothing is a per-sprite draw call.
 
 function softTexture(inner = 0.5) {
@@ -186,6 +186,42 @@ function buildFireflies() {
   return { points, mat, base, phase };
 }
 
+/* -------------------------------------------------------------------- motes */
+
+/**
+ * Dust and seed-drift in a box that follows the camera: each point falls and
+ * sways, and any coordinate that leaves the box wraps to the far side, so the
+ * air is never empty and never catches up with the walker. They read best in
+ * the clear phases — murk swallows anything this small — so opacity leans on
+ * (1 - fogT) and the mesh itself never toggles.
+ */
+function buildMotes() {
+  const COUNT = 140;
+  const arr = new Float32Array(COUNT * 3);
+  const sway = new Float32Array(COUNT);
+  for (let i = 0; i < COUNT; i++) {
+    arr[i * 3] = (Math.random() - 0.5) * 14;
+    arr[i * 3 + 1] = (Math.random() - 0.5) * 8;
+    arr[i * 3 + 2] = (Math.random() - 0.5) * 14;
+    sway[i] = Math.random() * Math.PI * 2;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  const mat = new THREE.PointsMaterial({
+    map: softTexture(0.8),
+    color: 0xbcc8d0,
+    size: 0.045,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+  const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;      // the box straddles the camera
+  return { points, mat, sway };
+}
+
 /* ---------------------------------------------------- above the fog line --- */
 
 // There used to be a summit payoff built here: a cloud sea ring at y = 46 and
@@ -209,7 +245,12 @@ export function buildAtmosphere(scene) {
   const flies = buildFireflies();
   scene.add(flies.points);
 
+  const motes = buildMotes();
+  scene.add(motes.points);
+
   const positions = flies.points.geometry.attributes.position;
+  const motePos = motes.points.geometry.attributes.position;
+  const wrap = (v, c, s) => c + ((v - c + s / 2) % s + s) % s - s / 2;
   let t = 0;
 
   return {
@@ -244,6 +285,18 @@ export function buildAtmosphere(scene) {
       // Shafts and fireflies still fade out with altitude, and they should:
       // no light gets through up there to make a shaft of, and fireflies are a
       // thing the woods have. Losing them is part of arriving.
+
+      // Motes: falling, swaying, wrapping through the camera's box.
+      motes.mat.opacity = 0.06 + (1 - fogT) * 0.08;
+      const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+      for (let i = 0; i < motes.sway.length; i++) {
+        const ph = motes.sway[i];
+        motePos.setXYZ(i,
+          wrap(motePos.getX(i) + Math.sin(t * 0.4 + ph) * dt * 0.12, cx, 14),
+          wrap(motePos.getY(i) - dt * 0.06, cy, 8),
+          wrap(motePos.getZ(i) + Math.cos(t * 0.3 + ph * 1.3) * dt * 0.1, cz, 14));
+      }
+      motePos.needsUpdate = true;
     },
   };
 }
