@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { wadeLimitZ } from './field.js';
+import { BOUNDS, walkLimits } from './field.js';
 
 // First-person stroll controls. Pointer-lock on desktop; drag-look +
 // hold-lower-screen-to-walk on touch. Camera height follows the terrain
@@ -32,17 +32,27 @@ export class WalkControls {
     this.walkSpeed = 2.1;        // m/s — an unhurried stroll
     this.keyLookSpeed = 1.15;    // rad/s on the arrow keys — a slow pan, not a flick
     this.eyeHeight = 1.62;
+    this._eye = 1.62;
     this.bobPhase = 0;
     this.bobAmount = 0;
     this.touchWalking = false;
     this._lastTouch = null;
 
-    // Bounds: keep the walker on the beach strip. minZ here is a fallback outer
-    // wall only — the real seaward limit is computed every frame from the
-    // current water level, see wadeLimitZ below.
-    this.bounds = { minX: -140, maxX: 140, minZ: -60, maxZ: 46 };
+    // World edges come straight from field.js's BOUNDS; the live seaward limit
+    // is computed every frame from the current water level (walkLimits below).
+    this.bounds = BOUNDS;
     this.wadeDepth = 0;
     this.wadeT = 0;
+
+    // Sitting (at the campfire, main.js decides where). Seated keeps the look
+    // free and drops the eye to log height; any walk key stands back up, which
+    // is the only way standing up should ever work — nobody reads a "press X to
+    // stand" prompt, everybody just pushes forward.
+    this.seated = false;
+
+    // True while the journal (or anything else modal) is open: input is
+    // ignored but the world keeps breathing behind the page.
+    this.frozen = false;
 
     this._bindEvents();
   }
@@ -102,11 +112,13 @@ export class WalkControls {
 
     // Movement input in camera-relative space
     let fwd = 0, strafe = 0;
-    if (this.keys['KeyW']) fwd += 1;
-    if (this.keys['KeyS']) fwd -= 1;
-    if (this.keys['KeyA']) strafe -= 1;
-    if (this.keys['KeyD']) strafe += 1;
-    if (this.touchWalking) fwd += 1;
+    if (!this.frozen) {
+      if (this.keys['KeyW']) fwd += 1;
+      if (this.keys['KeyS']) fwd -= 1;
+      if (this.keys['KeyA']) strafe -= 1;
+      if (this.keys['KeyD']) strafe += 1;
+      if (this.touchWalking) fwd += 1;
+    }
 
     // Arrows look, they don't walk.
     //
@@ -116,12 +128,15 @@ export class WalkControls {
     // to walk and unable to face anywhere. Nothing in this piece needs aiming, so
     // nothing in it should need the mouse captured. With these bound, the whole
     // beach is reachable from the keyboard alone.
-    const lookRate = this.keyLookSpeed * dt;
+    const lookRate = this.frozen ? 0 : this.keyLookSpeed * dt;
     if (this.keys['ArrowLeft'])  this.yaw += lookRate;
     if (this.keys['ArrowRight']) this.yaw -= lookRate;
     if (this.keys['ArrowUp'])    this.pitch += lookRate * 0.7;
     if (this.keys['ArrowDown'])  this.pitch -= lookRate * 0.7;
     this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch));
+
+    if (this.seated && (fwd !== 0 || strafe !== 0 || this.touchWalking)) this.seated = false;
+    if (this.seated) { fwd = 0; strafe = 0; }
 
     const moving = (fwd !== 0 || strafe !== 0);
     const len = Math.hypot(fwd, strafe) || 1;
@@ -131,15 +146,42 @@ export class WalkControls {
     const dx = (-sin * fwd + cos * strafe) * this.walkSpeed * dt;
     const dz = (-cos * fwd - sin * strafe) * this.walkSpeed * dt;
 
-    // Seaward bound is a wading depth, not a wall. Used to be the static
-    // BOUNDS.minZ, -60, which is nowhere near the water — nothing stopped a
-    // walker from reaching eye height 3.8 m *underwater*, because the seabed
-    // keeps dropping long after the shoreline is behind you. wadeLimitZ solves
-    // for the z where the current water surface is WADE_DEPTH deep, so the
-    // limit rises and falls with the tide instead of sitting at a fixed spot.
-    const minZ = Math.max(this.bounds.minZ, wadeLimitZ(waterLevel, WADE_DEPTH));
-    this.pos.x = Math.max(this.bounds.minX, Math.min(this.bounds.maxX, this.pos.x + dx));
-    this.pos.z = Math.max(minZ, Math.min(this.bounds.maxZ, this.pos.z + dz));
+    // Seaward bound is a wading depth, not a wall — and it now varies along
+    // the coast (steeper seabed off the headland stops a wader sooner).
+    // walkLimits solves for the z where the current water surface is
+    // WADE_DEPTH deep at this x, so the limit breathes with the tide and
+    // bends with the shoreline.
+    const lim = walkLimits(this.pos.x, waterLevel, WADE_DEPTH);
+    let nx = Math.max(this.bounds.minX, Math.min(this.bounds.maxX, this.pos.x + dx));
+    let nz = Math.max(lim.minZ, Math.min(lim.maxZ, this.pos.z + dz));
+
+    // The limits at the DESTINATION column must agree. Standing on the pier
+    // deck, a sideways step leaves the deck's rectangle and the wading limit
+    // at the new x would snap z ten metres shoreward — so any move whose new
+    // column wants to yank z is refused instead. This is what keeps the deck's
+    // edges solid without a railing anywhere.
+    const lim2 = walkLimits(nx, waterLevel, WADE_DEPTH);
+    const nz2 = Math.max(lim2.minZ, Math.min(lim2.maxZ, nz));
+    if (Math.abs(nz2 - nz) > 0.5) { nx = this.pos.x; nz = this.pos.z; }
+    else nz = nz2;
+
+    // The step rule: a stride that would rise more than 0.9 m is refused.
+    // This one line is what makes the headland's cliff face, and everything
+    // else built tall, solid — no colliders anywhere. Probed a stride ahead
+    // (0.8 m) rather than at the destination, because per-frame movement is
+    // centimetres and a per-frame height difference would never trip.
+    if (moving) {
+      const mdx = nx - this.pos.x, mdz = nz - this.pos.z;
+      const mlen = Math.hypot(mdx, mdz);
+      if (mlen > 1e-9) {
+        const here = this.getGroundHeight(this.pos.x, this.pos.z);
+        const ahead = this.getGroundHeight(
+          this.pos.x + (mdx / mlen) * 0.8, this.pos.z + (mdz / mlen) * 0.8);
+        if (ahead - here > 0.9) { nx = this.pos.x; nz = this.pos.z; }
+      }
+    }
+    this.pos.x = nx;
+    this.pos.z = nz;
 
     // Head bob eases in and out
     const targetBob = moving ? 1 : 0;
@@ -149,7 +191,10 @@ export class WalkControls {
     const bobX = Math.sin(this.bobPhase) * 0.02 * this.bobAmount;
 
     const ground = this.getGroundHeight(this.pos.x, this.pos.z);
-    this.pos.y = ground + this.eyeHeight;
+    // Eased between standing and seated so sitting is a settle, not a cut.
+    const targetEye = this.seated ? 0.95 : this.eyeHeight;
+    this._eye += (targetEye - this._eye) * Math.min(1, dt * 4);
+    this.pos.y = ground + this._eye;
 
     // How deep the water is where the walker is standing, 0 on dry sand. Camera
     // height already drops "for free" as ground descends toward the clamp above

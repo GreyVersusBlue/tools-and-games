@@ -1,11 +1,18 @@
 import * as THREE from 'three';
-import { groundHeight } from './field.js';
+import { groundHeight, shorelineZ, trailX, riverX } from './field.js';
 
-// Beach terrain: the sand mesh, the wet strip at the waterline, and the dune
-// grass. The heightfield itself moved to field.js, which imports nothing, so
+// Beach terrain: the sand, the wet strips at the waterline, and the grass.
+// The heightfield itself lives in field.js, which imports nothing, so
 // test/smoke.mjs can check the ground and the prop layout without a browser —
 // terrain.js can't be imported under Node at all, because the bare `three`
 // specifier only resolves through index.html's import map.
+//
+// The coast is 1.8 km wide now, so the single displaced plane became a grid of
+// 100 m chunks built once at load — three fixed densities by row (sea floor
+// coarse, shoreline band fine, dunes middling), every chunk a static mesh
+// sharing one material, culled by the frustum like anything else. No
+// streaming, no rebuilds: ~110k vertices of attributes total, which is
+// nothing, and measuring came first (locked decision #42).
 
 function makeProceduralSandTexture() {
   const c = document.createElement('canvas');
@@ -85,20 +92,48 @@ function edgeFadeTexture() {
   return tex;
 }
 
-export function buildTerrain(scene) {
-  const W = 400, D = 220, SEGX = 200, SEGZ = 130;
-  const geo = new THREE.PlaneGeometry(W, D, SEGX, SEGZ);
+/**
+ * A chunk's displaced grid. Normals come from the heightfield's own gradient
+ * (central differences) rather than computeVertexNormals — per-chunk local
+ * normals disagree at shared borders and draw a visible lighting seam down
+ * every chunk edge; the analytic gradient is identical from both sides.
+ */
+function chunkGeometry(x0, z0, size, depth, step) {
+  const nx = Math.round(size / step), nz = Math.round(depth / step);
+  const geo = new THREE.PlaneGeometry(size, depth, nx, nz);
   geo.rotateX(-Math.PI / 2);
-  // plane spans x∈[-200,200], z∈[-110,110]; shift so more sea than land? keep centered, sea side z<-6
-  const posAttr = geo.attributes.position;
-  for (let i = 0; i < posAttr.count; i++) {
-    const x = posAttr.getX(i), z = posAttr.getZ(i);
-    posAttr.setY(i, groundHeight(x, z));
+  geo.translate(x0 + size / 2, 0, z0 + depth / 2);
+  const pos = geo.attributes.position;
+  const normals = new Float32Array(pos.count * 3);
+  const EPS = 0.6;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    pos.setY(i, groundHeight(x, z));
+    const dhx = (groundHeight(x + EPS, z) - groundHeight(x - EPS, z)) / (2 * EPS);
+    const dhz = (groundHeight(x, z + EPS) - groundHeight(x, z - EPS)) / (2 * EPS);
+    const inv = 1 / Math.hypot(dhx, 1, dhz);
+    normals[i * 3] = -dhx * inv; normals[i * 3 + 1] = inv; normals[i * 3 + 2] = -dhz * inv;
   }
-  geo.computeVertexNormals();
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  return geo;
+}
+
+export function buildTerrain(scene) {
+  const CHUNK = 100;
+  const X0 = -900, X1 = 900;
+  // Rows front to back: sea floor (coarse — it's under the Water plane),
+  // the shoreline band every coastline crosses (fine), the dunes (middling).
+  const ROWS = [
+    { z0: -140, depth: 100, step: 8 },
+    { z0: -40, depth: 100, step: 2, wet: true },
+    { z0: 60, depth: 100, step: 4 },
+  ];
 
   const sandTex = makeProceduralSandTexture();
-  sandTex.repeat.set(60, 34);
+  // Integer repeat per 100 m chunk: each chunk's UVs run 0..1, so an integer
+  // count keeps the tile phase continuous across every seam. 15 per 100 m is
+  // the same ~6.7 m tile the single plane had.
+  sandTex.repeat.set(15, 15);
 
   const mat = new THREE.MeshStandardMaterial({
     map: sandTex,
@@ -114,7 +149,8 @@ export function buildTerrain(scene) {
   const detailMap = detailTexture();
   mat.onBeforeCompile = shader => {
     shader.uniforms.detailMap = { value: detailMap };
-    shader.uniforms.detailRepeat = { value: new THREE.Vector2(11, 6) };
+    // Integer for the same seam-phase reason as the sand repeat.
+    shader.uniforms.detailRepeat = { value: new THREE.Vector2(3, 3) };
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>',
         '#include <common>\nuniform sampler2D detailMap;\nuniform vec2 detailRepeat;')
@@ -126,9 +162,15 @@ export function buildTerrain(scene) {
   };
   mat.customProgramCacheKey = () => 'golden-hour-sand-detail';
 
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+  const chunkGroup = new THREE.Group();
+  for (const row of ROWS) {
+    for (let x0 = X0; x0 < X1; x0 += CHUNK) {
+      const mesh = new THREE.Mesh(chunkGeometry(x0, row.z0, CHUNK, row.depth, row.step), mat);
+      mesh.receiveShadow = true;
+      chunkGroup.add(mesh);
+    }
+  }
+  scene.add(chunkGroup);
 
   // Upgrade to the real photographed sand once it has decoded. The procedural
   // canvas above is what's on screen until then, and what stays there if these
@@ -145,33 +187,23 @@ export function buildTerrain(scene) {
   loader.load(`${phBase}_diff_1k.jpg`, tex => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.repeat.set(60, 34);
+    tex.repeat.set(15, 15);
     mat.map = tex;
     mat.needsUpdate = true;
     loader.load(`${phBase}_nor_gl_1k.jpg`, nor => {
       nor.wrapS = nor.wrapT = THREE.RepeatWrapping;
-      nor.repeat.set(60, 34);
+      nor.repeat.set(15, 15);
       mat.normalMap = nor;
       mat.normalScale.set(0.6, 0.6);
       mat.needsUpdate = true;
     }, undefined, () => {});
   }, undefined, () => { /* keep procedural */ });
 
-  // Wet sand strip near the waterline: darker, slightly reflective overlay
-  const wetGeo = new THREE.PlaneGeometry(W, 14, SEGX, 10);
-  wetGeo.rotateX(-Math.PI / 2);
-  const wp = wetGeo.attributes.position;
-  for (let i = 0; i < wp.count; i++) {
-    const x = wp.getX(i), z = wp.getZ(i) - 3; // strip centered z≈-3
-    wp.setX(i, x); wp.setZ(i, z);
-    wp.setY(i, groundHeight(x, z) + 0.015);
-  }
-  wetGeo.computeVertexNormals();
-  // Fade the strip out at both edges. Without this its rectangle is visible: a
-  // hard straight seam ran up the beach where the darker wet plane stopped and
-  // the dry sand carried on, and on a phone in portrait it cut a diagonal across
-  // the bottom third of the frame. The plane's V axis runs seaward-to-inland, so
-  // a one-dimensional alpha ramp along V is all it takes.
+  // Wet sand near the waterline: darker, slightly reflective overlay, one
+  // strip per shoreline chunk, each strip's vertices placed at
+  // shorelineZ(x) + offset so the dark band bends around the headland with
+  // the water instead of running straight past it. The alpha ramp along V
+  // fades both edges — without it the strip's rectangle reads as tape.
   const wetMat = new THREE.MeshStandardMaterial({
     color: 0x8a6f4d,
     transparent: true,
@@ -180,14 +212,120 @@ export function buildTerrain(scene) {
     roughness: 0.25,
     metalness: 0.05,
   });
-  const wet = new THREE.Mesh(wetGeo, wetMat);
-  scene.add(wet);
+  const wetGroup = new THREE.Group();
+  for (let x0 = X0; x0 < X1; x0 += CHUNK) {
+    const wetGeo = new THREE.PlaneGeometry(CHUNK, 14, 50, 10);
+    wetGeo.rotateX(-Math.PI / 2);
+    const wp = wetGeo.attributes.position;
+    for (let i = 0; i < wp.count; i++) {
+      const x = wp.getX(i) + x0 + CHUNK / 2;
+      const z = shorelineZ(x) + 3 + wp.getZ(i);
+      wp.setX(i, x); wp.setZ(i, z);
+      wp.setY(i, groundHeight(x, z) + 0.015);
+    }
+    wetGeo.computeVertexNormals();
+    wetGroup.add(new THREE.Mesh(wetGeo, wetMat));
+  }
+  scene.add(wetGroup);
 
-  // Dune grass tufts
+  // Grass tufts — dunes, trailsides, and the headland top.
   const grass = buildGrass();
   scene.add(grass);
 
-  return { mesh, wet };
+  // The river: a still ribbon following the channel down to the mouth, its
+  // surface a fixed height above the carved bed so it slopes with the land.
+  // The big Water plane takes over where the sea reaches in.
+  scene.add(buildRiver());
+
+  // Reed beds along the banks.
+  scene.add(buildReeds());
+
+  return { chunks: chunkGroup, wet: wetGroup };
+}
+
+function buildRiver() {
+  const Z0 = -12, Z1 = 106, STEP = 2, HALF = 4.2;
+  const positions = [], indices = [];
+  let row = 0;
+  for (let z = Z0; z <= Z1; z += STEP, row++) {
+    const cx = riverX(z);
+    const y = groundHeight(cx, z) + 0.26;
+    positions.push(cx - HALF, y, z, cx + HALF, y, z);
+    if (row > 0) {
+      const a = (row - 1) * 2;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x2a4a44, roughness: 0.12, metalness: 0.35,
+    transparent: true, opacity: 0.88,
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+/**
+ * Reeds: the grass-billboard technique grown up — taller, darker, straighter,
+ * crowding the river banks. Same vertex-shader billboarding, its own mesh.
+ */
+function buildReeds() {
+  const positions = [], roots = [], corners = [], colors = [], indices = [];
+  const cA = new THREE.Color(0x4a5c38), cB = new THREE.Color(0x6a6b42), tmp = new THREE.Color();
+  let vi = 0, placed = 0, guard = 0;
+  while (placed < 900 && guard++ < 9000) {
+    const z = 4 + Math.random() * 100;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const x = riverX(z) + side * (5 + Math.random() * 9);
+    if (groundHeight(x, z) < 0.2) continue;
+    const blades = 2 + (Math.random() * 3 | 0);
+    for (let b = 0; b < blades; b++) {
+      const bx = x + (Math.random() - 0.5) * 0.4;
+      const bz = z + (Math.random() - 0.5) * 0.4;
+      const bh = groundHeight(bx, bz);
+      const tall = 1.2 + Math.random() * 1.0;
+      const lean = (Math.random() - 0.5) * 0.12;
+      const half = 0.03 + Math.random() * 0.015;
+      tmp.lerpColors(cA, cB, Math.random());
+      const rootCol = [tmp.r * 0.8, tmp.g * 0.8, tmp.b * 0.8];
+      const tipCol = [tmp.r, tmp.g, tmp.b * 0.7];
+      const tip = half * 0.3;
+      for (let c = 0; c < 4; c++) {
+        roots.push(bx, bh, bz);
+        positions.push(bx, bh + (c >= 2 ? tall : 0), bz);
+        colors.push(...(c >= 2 ? tipCol : rootCol));
+      }
+      corners.push(-half, 0, half, 0, -tip + lean, tall, tip + lean, tall);
+      indices.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2);
+      vi += 4;
+    }
+    placed++;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setIndex(indices);
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('aRoot', new THREE.Float32BufferAttribute(roots, 3));
+  geo.setAttribute('aCorner', new THREE.Float32BufferAttribute(corners, 2));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.92, side: THREE.DoubleSide,
+  });
+  mat.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>',
+        '#include <common>\nattribute vec3 aRoot;\nattribute vec2 aCorner;')
+      .replace('#include <begin_vertex>', `
+        vec3 toCam = cameraPosition - aRoot;
+        toCam.y = 0.0;
+        float toCamLen = length(toCam);
+        vec3 camDir = toCamLen > 0.0001 ? toCam / toCamLen : vec3(0.0, 0.0, 1.0);
+        vec3 bladeRight = vec3(-camDir.z, 0.0, camDir.x);
+        vec3 transformed = aRoot + bladeRight * aCorner.x + vec3(0.0, aCorner.y, 0.0);`);
+  };
+  mat.customProgramCacheKey = () => 'golden-hour-grass-billboard';
+  return new THREE.Mesh(geo, mat);
 }
 
 /**
@@ -206,7 +344,7 @@ export function buildTerrain(scene) {
  */
 function buildGrass() {
   const group = new THREE.Group();
-  const bladeCount = 2600;
+  const bladeCount = 6000;
   const positions = [];   // only needs to be roughly right for frustum culling
   const roots = [];
   const corners = [];
@@ -216,10 +354,11 @@ function buildGrass() {
 
   let placed = 0, guard = 0, vi = 0;
   while (placed < bladeCount && guard++ < bladeCount * 10) {
-    const x = (Math.random() - 0.5) * 380;
-    const z = 26 + Math.random() * 78;
+    const x = (Math.random() - 0.5) * 1560;
+    const z = 26 + Math.random() * 128;
     const h = groundHeight(x, z);
-    if (h < 2.2) continue; // only on raised dune ground
+    if (h < 2.2) continue; // only on raised ground (dunes, headland top)
+    if (z > 48 && Math.abs(x - trailX(z)) < 4.5) continue; // keep the trail bare — it's a path
     // clump of blades
     const blades = 3 + (Math.random() * 4 | 0);
     for (let b = 0; b < blades; b++) {

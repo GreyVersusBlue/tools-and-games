@@ -29,13 +29,23 @@ function footGeometry() {
 }
 
 export function buildFootprints(scene) {
+  // Material colour is white and the real colour lives per-instance, so night
+  // prints can glow teal (bioluminescent sand, matching the foam in ocean.js)
+  // while old daytime prints stay dark. instanceColor is the one per-instance
+  // channel InstancedMesh does have — the alpha it doesn't have is still
+  // handled by the scale fade.
   const mat = new THREE.MeshBasicMaterial({
-    color: 0x2c1d12, transparent: true, opacity: 0.32, depthWrite: false,
+    color: 0xffffff, transparent: true, opacity: 0.32, depthWrite: false,
   });
   const mesh = new THREE.InstancedMesh(footGeometry(), mat, MAX);
   mesh.count = 0;
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const dayCol = new THREE.Color(0x2c1d12);
+  const bioCol = new THREE.Color(0x59e8e0);
+  const tmpCol = new THREE.Color();
+  for (let i = 0; i < MAX; i++) mesh.setColorAt(i, dayCol);
   scene.add(mesh);
+  let nightBio = 0;
 
   const age = new Float32Array(MAX).fill(Infinity);
   const px = new Float32Array(MAX), py = new Float32Array(MAX), pz = new Float32Array(MAX);
@@ -56,6 +66,12 @@ export function buildFootprints(scene) {
   return {
     mesh,
 
+    // 0..1 from the palette keyframes (main.js) — how bioluminescent the wet
+    // sand is right now. Only affects prints made from here on; the old ones
+    // keep the colour they were stamped with, which is what a real glow decays
+    // to anyway.
+    setNight(bio) { nightBio = bio; },
+
     // x, z: world position. yaw: facing direction, same convention as
     // WalkControls.yaw, so a print's long axis lines up with the way it was
     // walked rather than always pointing the same way.
@@ -68,6 +84,8 @@ export function buildFootprints(scene) {
       age[slot] = 0;
       px[slot] = x; py[slot] = groundHeight(x, z) + 0.006; pz[slot] = z; yawOf[slot] = yaw;
       place(slot, 1);
+      mesh.setColorAt(slot, tmpCol.copy(dayCol).lerp(bioCol, nightBio));
+      mesh.instanceColor.needsUpdate = true;
       mesh.instanceMatrix.needsUpdate = true;
     },
 

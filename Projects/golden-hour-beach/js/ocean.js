@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Water } from '../libs/Water.js';
-import { groundHeight } from './field.js';
+import { groundHeight, shorelineZ, beachSlope } from './field.js';
 
 // The sea: a big reflective Water plane whose height breathes very slowly
 // (the "slap" cycle), plus a soft foam line that slides up and down the
@@ -23,7 +23,8 @@ function foamFade() {
 }
 
 export function buildOcean(scene, sunDirection) {
-  const geo = new THREE.PlaneGeometry(1600, 1600);
+  // Big enough to reach the horizon from either end of the 1.6 km coast.
+  const geo = new THREE.PlaneGeometry(3400, 2200);
 
   const water = new Water(geo, {
     // 1024, up from 512. There is something standing in the water now — the
@@ -42,17 +43,15 @@ export function buildOcean(scene, sunDirection) {
     fog: true,
   });
   water.rotation.x = -Math.PI / 2;
-  water.position.set(0, 0, -420); // centered offshore; big enough to reach horizon
+  water.position.set(0, 0, -560); // centered offshore; reaches past both capes
   scene.add(water);
 
-  // Foam line: a long thin translucent strip that follows the swash.
-  //
-  // Two Z segments and an alpha ramp across the width. It used to be one flat
-  // band at a single opacity, and at walking distance that is not foam, it is a
-  // strip of white tape lying on the sand — the hard parallel edges were the
-  // giveaway. Fading both edges to nothing costs a 1×32 canvas and no draw calls.
-  const foamGeo = new THREE.PlaneGeometry(400, 2.4, 160, 2);
-  foamGeo.rotateX(-Math.PI / 2);
+  // Foam line: thin translucent strips that follow the swash, one per 100 m of
+  // shoreline. The per-vertex re-deform is the cost, not the geometry, so each
+  // frame only strips within FOAM_ACTIVE metres of the camera update — the
+  // rest keep the shape they had when last near, which from that far away is
+  // indistinguishable. The alpha ramp across the width is what keeps the strip
+  // from reading as tape; that lesson predates the pool.
   const foamMat = new THREE.MeshBasicMaterial({
     color: 0xfff4e0,
     transparent: true,
@@ -60,12 +59,22 @@ export function buildOcean(scene, sunDirection) {
     alphaMap: foamFade(),
     depthWrite: false,
   });
-  const foam = new THREE.Mesh(foamGeo, foamMat);
-  scene.add(foam);
-  const foamBase = foamGeo.attributes.position.array.slice();
+  const FOAM_CHUNK = 100, FOAM_ACTIVE = 260;
+  const foamStrips = [];
+  for (let x0 = -800; x0 < 800; x0 += FOAM_CHUNK) {
+    const g = new THREE.PlaneGeometry(FOAM_CHUNK, 2.4, 40, 2);
+    g.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(g, foamMat);
+    scene.add(mesh);
+    foamStrips.push({ mesh, base: g.attributes.position.array.slice(), cx: x0 + FOAM_CHUNK / 2 });
+  }
+  const foamDay = new THREE.Color(0xfff4e0);
+  const foamBio = new THREE.Color(0x5fe8ff);
+  let foamAdditive = false;
+  let firstFoamPass = true;
 
   const state = {
-    water, foam,
+    water, foamStrips,
     t: 0,
     swashPeriod: 9.5,      // seconds per slow wave slap
     getSwashPhase() {
@@ -81,9 +90,25 @@ export function buildOcean(scene, sunDirection) {
       water.material.uniforms['sunDirection'].value.copy(dir).normalize();
       water.material.uniforms['sunColor'].value.copy(color);
     },
+
+    // Bioluminescence. Deep at night the foam line stops being cream and starts
+    // to glow faint cyan — each run-up paints a lit arc on the dark sand. The
+    // glow is the foam material itself going additive; no light, no shader edit.
+    // bio is 0..1 from the palette keyframes, single writer as ever.
+    setNight(bio) {
+      foamMat.color.copy(foamDay).lerp(foamBio, bio);
+      const wantAdd = bio > 0.5;
+      if (wantAdd !== foamAdditive) {
+        foamAdditive = wantAdd;
+        foamMat.blending = wantAdd ? THREE.AdditiveBlending : THREE.NormalBlending;
+        foamMat.needsUpdate = true;
+      }
+      state._bio = bio;
+    },
+    _bio: 0,
   };
 
-  state.update = (dt) => {
+  state.update = (dt, camera) => {
     state.t += dt;
     water.material.uniforms['time'].value += dt * 0.35; // slow ripple
 
@@ -96,23 +121,30 @@ export function buildOcean(scene, sunDirection) {
     const level = 0.06 + s * 0.32;
     water.position.y = level - 0.25;
 
-    // Where does this water level meet the beach? Solve on dry-slope:
-    // groundHeight ≈ (z+6)*0.055 for z>-6  →  z = level/0.055 - 6
-    const zLine = Math.min(4, (water.position.y) / 0.055 - 6);
-
-    // Foam strip hugs the terrain at the waterline, fading with retreat
-    const posArr = foam.geometry.attributes.position;
-    for (let i = 0; i < posArr.count; i++) {
-      const x = foamBase[i * 3];
-      const localZ = foamBase[i * 3 + 2];
-      const wob = Math.sin(x * 0.09 + state.t * 0.6) * 0.7 + Math.sin(x * 0.023 - state.t * 0.3) * 1.1;
-      const z = zLine + localZ + wob * 0.4;
-      posArr.setX(i, x);
-      posArr.setZ(i, z);
-      posArr.setY(i, Math.max(groundHeight(x, z), water.position.y) + 0.03);
+    // Each active strip hugs the terrain at the local waterline: where this
+    // water level meets the beach slope, starting from the shoreline curve.
+    const camX = camera ? camera.position.x : 0;
+    const slope = beachSlope();
+    for (const strip of foamStrips) {
+      if (!firstFoamPass && Math.abs(strip.cx - camX) > FOAM_ACTIVE) continue;
+      const posArr = strip.mesh.geometry.attributes.position;
+      const base = strip.base;
+      for (let i = 0; i < posArr.count; i++) {
+        const x = base[i * 3] + strip.cx;
+        const localZ = base[i * 3 + 2];
+        const sz = shorelineZ(x);
+        const zLine = Math.min(sz + 10, sz + water.position.y / slope);
+        const wob = Math.sin(x * 0.09 + state.t * 0.6) * 0.7 + Math.sin(x * 0.023 - state.t * 0.3) * 1.1;
+        const z = zLine + localZ + wob * 0.4;
+        posArr.setX(i, x);
+        posArr.setZ(i, z);
+        posArr.setY(i, Math.max(groundHeight(x, z), water.position.y) + 0.03);
+      }
+      posArr.needsUpdate = true;
     }
-    posArr.needsUpdate = true;
-    foamMat.opacity = 0.10 + s * 0.30;
+    firstFoamPass = false;
+    // Additive glow wants a touch more presence at full run-up than daytime foam.
+    foamMat.opacity = 0.10 + s * 0.30 + state._bio * s * 0.15;
   };
 
   return state;

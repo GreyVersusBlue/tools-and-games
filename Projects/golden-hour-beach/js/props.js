@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, LAYOUT } from './field.js';
+import { groundHeight, LAYOUT, CAVE } from './field.js';
 
 // Everything standing on the sand. Before this the beach was 280 m by 106 m of
 // empty ground: you could walk west for seventy seconds and arrive at a view
@@ -155,6 +155,90 @@ function buildWrack() {
   return out;
 }
 
+/* -------------------------------------------------------------------- fence - */
+
+// The dune-trail fence: one merged mesh of leaning posts pacing the path.
+function buildFence(mat) {
+  const parts = [];
+  for (const f of LAYOUT.dunes.fence) {
+    const g = groundHeight(f.x, f.z);
+    const post = new THREE.CylinderGeometry(0.055, 0.07, f.h + 0.5, 6, 1);
+    roughen(post, 0.12, (f.x * 331 + f.z * 17) | 0);
+    post.rotateZ(f.lean);
+    post.translate(f.x, g + f.h / 2 - 0.25, f.z);
+    parts.push(post);
+  }
+  return new THREE.Mesh(mergeGeometries(parts), mat);
+}
+
+/* --------------------------------------------------------------- tide pools - */
+
+// Still water in carved basins on the headland shelf, each ringed by low
+// rocks. The water is a plain reflective disc, NOT a Water instance — five
+// reflection render targets for five puddles would be the definition of not
+// measuring first.
+function buildTidePools(stoneMat) {
+  const group = new THREE.Group();
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x14383c, roughness: 0.06, metalness: 0.55,
+    transparent: true, opacity: 0.88,
+  });
+  const rnd = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(20250811);
+  const rimParts = [];
+  for (const p of LAYOUT.headland.pools) {
+    const rimN = 8 + (rnd() * 4 | 0);
+    for (let i = 0; i < rimN; i++) {
+      const a = (i / rimN) * Math.PI * 2 + rnd() * 0.4;
+      const rx = p.x + Math.cos(a) * p.r * 1.06;
+      const rz = p.z + Math.sin(a) * p.r * 0.98;
+      const rr = 0.14 + rnd() * 0.16;
+      const rock = new THREE.SphereGeometry(rr, 8, 6);
+      roughen(rock, 0.3, (rx * 977 + rz * 131) | 0);
+      rock.scale(1, 0.65, 1);
+      rock.translate(rx, groundHeight(rx, rz) + rr * 0.2, rz);
+      rimParts.push(rock);
+    }
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(p.r * 0.9, 22), waterMat);
+    disc.rotation.x = -Math.PI / 2;
+    // Water sits partway up the basin: below the rim, above the bottom.
+    disc.position.set(p.x, groundHeight(p.x, p.z) + p.depth * 0.55, p.z);
+    group.add(disc);
+  }
+  group.add(new THREE.Mesh(mergeGeometries(rimParts), stoneMat));
+  return group;
+}
+
+/* --------------------------------------------------------------------- cave - */
+
+// The cave's mouth: the recess itself is carved by the heightfield; this adds
+// the fallen lintel blocks and rubble that make it read as a cave rather than
+// a dent. The glowing pool inside belongs to main.js (it needs the night
+// palette).
+function buildCaveDressing(stoneMat) {
+  const parts = [];
+  const rnd = (s => () => (s = (s * 48271) % 2147483647) / 2147483647)(51966);
+  // Big tumbled blocks flanking the entry.
+  for (const [dx, dz, r] of [[-4.5, 2.5, 1.6], [4.2, 2.1, 1.9], [-2.8, -1.5, 1.1], [3.4, -2, 0.9]]) {
+    const g = new THREE.SphereGeometry(r, 10, 8);
+    roughen(g, 0.3, ((CAVE.x + dx) * 977) | 0);
+    g.scale(1, 0.7, 1);
+    const x = CAVE.x + dx, z = CAVE.z + dz;
+    g.translate(x, groundHeight(x, z) + r * 0.25, z);
+    parts.push(g);
+  }
+  // Rubble across the floor.
+  for (let i = 0; i < 14; i++) {
+    const a = rnd() * Math.PI * 2, d = rnd() * 5;
+    const x = CAVE.x + Math.cos(a) * d, z = CAVE.z + Math.sin(a) * d * 0.8;
+    const r = 0.12 + rnd() * 0.3;
+    const g = new THREE.SphereGeometry(r, 7, 5);
+    roughen(g, 0.35, (x * 131 + z * 977) | 0);
+    g.translate(x, groundHeight(x, z) + r * 0.3, z);
+    parts.push(g);
+  }
+  return new THREE.Mesh(mergeGeometries(parts), stoneMat);
+}
+
 /* ------------------------------------------------------------------- merge --- */
 
 /**
@@ -197,6 +281,9 @@ export function buildProps(scene) {
   group.add(buildGroyne(wood));
   group.add(buildDriftwood(wood));
   group.add(buildRocks(stone));
+  group.add(buildFence(wood));
+  group.add(buildTidePools(stone));
+  group.add(buildCaveDressing(stone));
   for (const inst of buildWrack()) group.add(inst);
 
   scene.add(group);
