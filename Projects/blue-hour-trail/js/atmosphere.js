@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { groundHeight, trailPoint, LAYOUT } from './field.js';
 
 // The air itself: drifting mist banks, light shafts that only exist while the
-// fog thins, fireflies that only exist while it thickens, and dust motes
-// falling through a box that follows the walker. Everything here is a handful
-// of merged meshes; nothing is a per-sprite draw call.
+// fog thins, fireflies that only exist while it thickens, dust motes falling
+// through a box that follows the walker, and the walker's own breath once the
+// summit air bites. Everything here is a handful of merged meshes; nothing is
+// a per-sprite draw call.
 
 function softTexture(inner = 0.5) {
   const c = document.createElement('canvas');
@@ -222,6 +223,87 @@ function buildMotes() {
   return { points, mat, sway };
 }
 
+/* ------------------------------------------------------------------- breath */
+
+/**
+ * The walker's breath, once the air is cold enough to show it: six billboard
+ * quads recycled round-robin, each one born at the camera's mouth and gone
+ * within a second and a half. Age does everything in the shader — rise, grow,
+ * fade — so the CPU only writes a root and a birth time every few seconds.
+ * The mesh never toggles visible; a quad older than its fade is simply not
+ * there.
+ */
+function buildBreath() {
+  const N = 6;
+  const uvs = [], indices = [];
+  const corners = new Float32Array(N * 8);
+  for (let i = 0; i < N; i++) {
+    const vi = i * 4;
+    corners.set([-0.14, 0, 0.14, 0, -0.14, 0.28, 0.14, 0.28], i * 8);
+    uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
+    indices.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setIndex(indices);
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 12), 3));
+  geo.setAttribute('aRoot', new THREE.BufferAttribute(new Float32Array(N * 12), 3));
+  geo.setAttribute('aCorner', new THREE.BufferAttribute(corners, 2));
+  geo.setAttribute('aBirth', new THREE.BufferAttribute(new Float32Array(N * 4).fill(-10), 1));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+
+  const mat = new THREE.MeshBasicMaterial({
+    map: softTexture(0.5),
+    transparent: true,
+    opacity: 0.26,
+    depthWrite: false,
+    fog: true,
+  });
+  let shaderRef = null;
+  mat.onBeforeCompile = shader => {
+    shader.uniforms.uTime = { value: 0 };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>',
+        '#include <common>\nattribute vec3 aRoot;\nattribute vec2 aCorner;\nattribute float aBirth;\nuniform float uTime;\nvarying float vPuff;')
+      .replace('#include <begin_vertex>', `
+        float age = uTime - aBirth;
+        vPuff = smoothstep(0.0, 0.15, age) * (1.0 - smoothstep(0.4, 1.3, age));
+        vec3 root = aRoot + vec3(0.0, age * 0.25, 0.0);
+        vec3 toCam = cameraPosition - root;
+        toCam.y = 0.0;
+        float toCamLen = length(toCam);
+        vec3 camDir = toCamLen > 0.0001 ? toCam / toCamLen : vec3(0.0, 0.0, 1.0);
+        vec3 bladeRight = vec3(-camDir.z, 0.0, camDir.x);
+        float grow = 1.0 + age * 1.6;
+        vec3 transformed = root + bladeRight * aCorner.x * grow + vec3(0.0, aCorner.y * grow, 0.0);`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vPuff;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        diffuseColor.a *= vPuff;`);
+    shaderRef = shader;
+  };
+  mat.customProgramCacheKey = () => 'blue-hour-breath';
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;        // six quads glued to the camera
+  return {
+    mesh,
+    tick: dt => { if (shaderRef) shaderRef.uniforms.uTime.value += dt; },
+    time: () => (shaderRef ? shaderRef.uniforms.uTime.value : 0),
+    puff(camera, dir, slot) {
+      const roots = geo.attributes.aRoot, births = geo.attributes.aBirth;
+      const x = camera.position.x + dir.x * 0.35;
+      const y = camera.position.y - 0.12 + dir.y * 0.35;
+      const z = camera.position.z + dir.z * 0.35;
+      for (let c = 0; c < 4; c++) {
+        roots.setXYZ(slot * 4 + c, x, y, z);
+        births.setX(slot * 4 + c, this.time());
+      }
+      roots.needsUpdate = true;
+      births.needsUpdate = true;
+    },
+  };
+}
+
 /* ---------------------------------------------------- above the fog line --- */
 
 // There used to be a summit payoff built here: a cloud sea ring at y = 46 and
@@ -248,9 +330,14 @@ export function buildAtmosphere(scene) {
   const motes = buildMotes();
   scene.add(motes.points);
 
+  const breath = buildBreath();
+  scene.add(breath.mesh);
+
   const positions = flies.points.geometry.attributes.position;
   const motePos = motes.points.geometry.attributes.position;
   const wrap = (v, c, s) => c + ((v - c + s / 2) % s + s) % s - s / 2;
+  const camDir = new THREE.Vector3();
+  let breathTimer = 2, breathSlot = 0;
   let t = 0;
 
   return {
@@ -297,6 +384,17 @@ export function buildAtmosphere(scene) {
           wrap(motePos.getZ(i) + Math.cos(t * 0.3 + ph * 1.3) * dt * 0.1, cz, 14));
       }
       motePos.needsUpdate = true;
+
+      // Breath, once the summit air bites. Spawns gate on altitude; the mesh
+      // itself stays in the draw list with all its quads faded out.
+      breath.tick(dt);
+      breathTimer -= dt;
+      if (breathTimer <= 0 && altT > 0.6) {
+        breathTimer = 3.8 + Math.random() * 1.2;
+        camera.getWorldDirection(camDir);
+        breath.puff(camera, camDir, breathSlot);
+        breathSlot = (breathSlot + 1) % 6;
+      }
     },
   };
 }
