@@ -247,6 +247,7 @@ function tick() {
     creekDist: ck.dist,
     waterfallDist: Math.hypot(controls.pos.x - wf.x, controls.pos.z - wf.z),
     birdsSilent: dread.birdsSilent,
+    watched: dread.lookoutWatching,
   });
 
   renderer.render(scene, camera);
@@ -295,6 +296,8 @@ if (new URLSearchParams(location.search).has('debug')) {
     // 'silence' | 'howl' | 'bear' | 'eyes'.
     fireDread: beat => dread.force(beat, camera, controls),
     dread,
+
+    music: () => audio.musicState(),
 
     info: () => renderer.info.render,
   };

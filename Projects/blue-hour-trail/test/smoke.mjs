@@ -246,6 +246,45 @@ group('determinism');
     `${a.trees.length} trees`);
 }
 
+/* ------------------------------------------------------------------- music -- */
+
+// audio.js touches window only inside init(), so Node can import the motif
+// engine's pure half and hold every phrase it will ever play to the scale.
+group('the motif engine writes only woe');
+{
+  const { motifPhrase } = await import(
+    pathToFileURL(path.join(HERE, '..', 'js', 'audio.js')).href);
+
+  // A little LCG so a failure names a reproducible seed, not a mood.
+  const lcg = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+
+  const LOW = [146.83, 164.81, 174.61, 196.0, 220.0, 233.08, 261.63, 293.66, 110.0];
+  const HIGH = [146.83, 155.56, 174.61, 196.0, 220.0, 233.08, 261.63, 293.66, 110.0];
+
+  let lengths = true, endings = true, inLow = true, inHigh = true;
+  let sawFlatTwo = false, sawNaturalTwoHigh = false;
+  for (let seed = 1; seed <= 400; seed++) {
+    const low = motifPhrase(lcg(seed), 0);
+    const high = motifPhrase(lcg(seed), 1);
+    for (const [phrase, scale, isHigh] of [[low, LOW, false], [high, HIGH, true]]) {
+      if (phrase.length < 3 || phrase.length > 5) lengths = false;
+      const last = phrase[phrase.length - 1].freq;
+      if (last !== 146.83 && last !== 110.0) endings = false;
+      const off = phrase.some(n => !scale.includes(n.freq));
+      if (isHigh) {
+        if (off) inHigh = false;
+        if (phrase.some(n => n.freq === 155.56)) sawFlatTwo = true;
+        if (phrase.some(n => n.freq === 164.81)) sawNaturalTwoHigh = true;
+      } else if (off) inLow = false;
+    }
+  }
+  ok(lengths, 'every phrase is 3 to 5 notes');
+  ok(endings, 'and every one of them falls home to D3 or A2');
+  ok(inLow, 'low phrases stay in D aeolian');
+  ok(inHigh && !sawNaturalTwoHigh, 'high phrases stay in D phrygian — no E natural above the fog line');
+  ok(sawFlatTwo, 'and the flat second actually gets used up there');
+}
+
 /* --------------------------------------------------------------------------- */
 
 console.log(`\n${passed + failed} checks, ${failed} failed`);

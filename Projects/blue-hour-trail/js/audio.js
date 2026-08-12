@@ -11,8 +11,45 @@
 //   • Creek and waterfall: looped filtered noise, gained by distance.
 //   • Stingers for the wildlife and dread systems: owl, elk, wolf, crow,
 //     snapped branch, phantom footsteps, the cairn chime, the low sting.
+//   • Music: a drone in D minor that surfaces out of the wind half a minute
+//     in and never quite sits still, plus a lonely horn phrase every couple
+//     of minutes that always falls back down to the root. The fog thickens
+//     the drone, the altitude sours it — a minor 2nd starts beating against
+//     the root above the fog line, and a tritone joins near the summit.
+//     Foreboding, not haunted house: nothing stabs, everything leans.
 //
 // The class shape is Golden Hour's Soundscape; the instruments are new.
+
+// The motif engine's pitch tables, D3 to D4. Above the fog line the scale
+// turns phrygian — E gives way to E♭, and every phrase that falls through the
+// second degree lands a semitone too close to home.
+const MOTIF_SCALE = [146.83, 164.81, 174.61, 196.0, 220.0, 233.08, 261.63, 293.66];
+const MOTIF_SCALE_HIGH = [146.83, 155.56, 174.61, 196.0, 220.0, 233.08, 261.63, 293.66];
+const MOTIF_ROOT = 146.83;      // D3 — where phrases go to die
+const MOTIF_FLOOR = 110.0;      // A2 — where the saddest ones go
+
+/**
+ * One phrase of foreboding woe: 3-5 notes, biased downhill, always ending on
+ * the root or the fifth below it. Pure — rand in, [{freq, dur}] out — so the
+ * smoke suite can hold it to the scale without an AudioContext.
+ */
+export function motifPhrase(rand, altT) {
+  const scale = altT > 0.5 ? MOTIF_SCALE_HIGH : MOTIF_SCALE;
+  const count = 3 + Math.floor(rand() * 3);
+  let idx = 2 + Math.floor(rand() * 4);        // start mid-scale, F3..B♭3
+  const notes = [];
+  for (let i = 0; i < count - 1; i++) {
+    notes.push({ freq: scale[idx], dur: 1.4 + rand() * 1.2 });
+    const r = rand();                           // mostly down, sometimes a lift
+    idx += r < 0.4 ? -1 : r < 0.75 ? -2 : 1;
+    idx = Math.max(0, Math.min(scale.length - 1, idx));
+  }
+  notes.push({
+    freq: rand() < 0.65 ? MOTIF_ROOT : MOTIF_FLOOR,
+    dur: (1.4 + rand() * 1.2) * 1.8,
+  });
+  return notes;
+}
 
 export class Soundscape {
   constructor() {
@@ -25,6 +62,11 @@ export class Soundscape {
     this._gustTarget = 0;
     this._gustTimer = 3;
     this.onFootstep = null;
+    this._motifTimer = 90;       // the first phrase waits out the fade-in
+    this._duckTimer = 0;
+    this._duckHeld = false;
+    this._musicStart = 0;
+    this._musicInfo = null;
   }
 
   init() {
@@ -42,6 +84,7 @@ export class Soundscape {
     this._noiseBuf = this._makeNoise(4);
     this._startWind();
     this._startWater();
+    this._startMusic();
   }
 
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
@@ -104,14 +147,146 @@ export class Soundscape {
     fall.connect(ff).connect(this._fallGain).connect(this.master);
   }
 
+  /* ---------------------------------------------------------------- music */
+
+  _startMusic() {
+    const ctx = this.ctx, t0 = ctx.currentTime;
+
+    // Two gains between the music and the master: the duck, which the dread
+    // stingers pull down so they land on silence instead of harmony, and the
+    // bus, a 35-second fade from the first click — the drone surfaces out of
+    // the wind rather than arriving with it.
+    this._musicBus = ctx.createGain();
+    this._musicBus.gain.setValueAtTime(0.0001, t0);
+    this._musicBus.gain.linearRampToValueAtTime(1, t0 + 35);
+    this._musicDuck = ctx.createGain();
+    this._musicDuck.gain.value = 1;
+    this._musicDuck.connect(this._musicBus).connect(this.master);
+    this._musicStart = t0;
+
+    // The drone: eight oscillators in D minor, none of them loud enough to
+    // notice alone. Detuned pairs on the root and fifth throb at a tenth of
+    // a hertz; the E♭ against the root beats at 4.4 Hz once the walker is
+    // above the fog line, which is the altitude turning into a feeling.
+    this._droneFilter = ctx.createBiquadFilter();
+    this._droneFilter.type = 'lowpass';
+    this._droneFilter.frequency.value = 900;
+    this._droneFilter.Q.value = 0.7;
+    this._droneGain = ctx.createGain();
+    this._droneGain.gain.value = 1;
+    this._droneFilter.connect(this._droneGain).connect(this._musicDuck);
+
+    this._drone = {};
+    const voice = (name, freq, type, cents = 0) => {
+      const osc = ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.value = freq;
+      osc.detune.value = cents;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      osc.connect(g).connect(this._droneFilter);
+      osc.start();
+      this._drone[name] = g;
+    };
+    voice('d2a', 73.42, 'sine', -3);      // the floor, always on
+    voice('d2b', 73.42, 'triangle', 3);
+    voice('a2a', 110.0, 'sawtooth', -4);  // the fifth, thickening with fog
+    voice('a2b', 110.0, 'sawtooth', 4);
+    voice('d3', 146.83, 'triangle');      // body for the murk
+    voice('f3', 174.61, 'sine', 2);       // the minor 3rd, said out loud
+    voice('eb2', 77.78, 'sine');          // minor 2nd — the altitude unease
+    voice('ab2', 103.83, 'sine');         // the tritone, saved for the summit
+
+    // The filter never sits still, and the whole bed breathes — two LFOs so
+    // slow they read as weather, not tremolo.
+    const wander = ctx.createOscillator();
+    wander.frequency.value = 0.03;
+    const wanderAmt = ctx.createGain();
+    wanderAmt.gain.value = 120;
+    wander.connect(wanderAmt).connect(this._droneFilter.frequency);
+    wander.start();
+    const breath = ctx.createOscillator();
+    breath.frequency.value = 0.05;
+    const breathAmt = ctx.createGain();
+    breathAmt.gain.value = 0.12;
+    breath.connect(breathAmt).connect(this._droneGain.gain);
+    breath.start();
+  }
+
+  /** Dread pulls the music down to a fifth of itself; it climbs back slowly. */
+  _duckMusic(seconds) {
+    if (!this._musicDuck) return;
+    this._duckTimer = Math.max(this._duckTimer, seconds);
+    this._musicDuck.gain.setTargetAtTime(0.15, this.ctx.currentTime, 0.4);
+  }
+
+  /** One phrase — a horn a long way off, bowed noise on top, sent down the
+   *  same cheap valley the wolf uses. */
+  _motif(altT) {
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.1;
+    const notes = motifPhrase(Math.random, altT);
+
+    const out = ctx.createGain();
+    const delay = ctx.createDelay();
+    delay.delayTime.value = 0.36;
+    const fb = ctx.createGain(); fb.gain.value = 0.35;
+    delay.connect(fb).connect(delay);
+    const wet = ctx.createGain(); wet.gain.value = 0.35;
+    out.connect(delay); delay.connect(wet);
+    const pan = this._pan(0.5);
+    const sink = pan || this._musicDuck;
+    out.connect(sink); wet.connect(sink);
+    if (pan) pan.connect(this._musicDuck);
+
+    // The bow: one narrow band of noise retuned note to note, breath on brass.
+    const bow = this._noiseSource();
+    const bowF = ctx.createBiquadFilter();
+    bowF.type = 'bandpass'; bowF.Q.value = 30;
+    bowF.frequency.value = notes[0].freq;
+    const bowG = ctx.createGain(); bowG.gain.value = 0;
+    bow.connect(bowF).connect(bowG).connect(out);
+    bowG.gain.setValueAtTime(0, t0);
+    bowG.gain.linearRampToValueAtTime(0.006, t0 + 1.2);
+
+    let st = t0, lastRel = 0;
+    for (const n of notes) {
+      const attack = n.dur * 0.4;                 // a bow drawn, not a key hit
+      const rel = 2.5 + Math.random();
+      for (const cents of [-5, 5]) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.value = n.freq;
+        osc.detune.value = cents;
+        const f = ctx.createBiquadFilter();
+        f.type = 'lowpass'; f.frequency.value = 720; f.Q.value = 1.2;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, st);
+        g.gain.linearRampToValueAtTime(0.02, st + attack);
+        g.gain.setValueAtTime(0.02, st + n.dur);
+        g.gain.exponentialRampToValueAtTime(0.001, st + n.dur + rel);
+        osc.connect(f).connect(g).connect(out);
+        osc.start(st); osc.stop(st + n.dur + rel + 0.1);
+      }
+      bowF.frequency.setTargetAtTime(n.freq, st, 0.3);
+      st += n.dur;
+      lastRel = rel;
+    }
+    bowG.gain.setTargetAtTime(0, st, 1.5);
+    bow.stop(st + lastRel + 4);
+  }
+
+  /** Read-only targets for the debug hook and the browser suite. */
+  musicState() { return this._musicInfo; }
+
   /**
    * Called every frame.
-   * state: { moving, surface, fogT, altT, creekDist, waterfallDist, birdsSilent }
+   * state: { moving, surface, fogT, altT, creekDist, waterfallDist,
+   *          birdsSilent, watched }
    */
   update(dt, state) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const { moving, surface, fogT, altT, creekDist, waterfallDist, birdsSilent } = state;
+    const { moving, surface, fogT, altT, creekDist, waterfallDist, birdsSilent, watched } = state;
 
     // The fog closes the world's top end down.
     this._fogFilter.frequency.setTargetAtTime(12000 - fogT * 9200, t, 0.8);
@@ -154,6 +329,62 @@ export class Soundscape {
     } else {
       this._stepPhase = 0.7;
     }
+
+    // The drone follows the weather the way the lights do: fog thickens it
+    // and darkens it, altitude sours it. Being watched from the lookout
+    // leans on the tritone and closes the filter a little further — tension
+    // out of voices already running, not a stinger.
+    const dr = this._drone;
+    const set = (g, v, tau = 2) => g.gain.setTargetAtTime(v, t, tau);
+    const d2 = 0.045 + fogT * 0.012;
+    set(dr.d2a, d2 * 0.6, 2.5); set(dr.d2b, d2 * 0.4, 2.5);
+    const a2 = 0.01 + fogT * 0.018;
+    set(dr.a2a, a2 * 0.5, 2.5); set(dr.a2b, a2 * 0.5, 2.5);
+    set(dr.d3, fogT * 0.014, 3);
+    set(dr.f3, 0.006 + fogT * 0.01, 3);
+    set(dr.eb2, altT * altT * 0.03, 2);
+    const tritone = Math.max(0, (altT - 0.55) / 0.45) * 0.018 * (watched ? 1.6 : 1);
+    set(dr.ab2, tritone, 1.5);
+    const droneHz = 900 - fogT * 420 - altT * 180 - (watched ? 120 : 0);
+    this._droneFilter.frequency.setTargetAtTime(droneHz, t, 2);
+
+    // Ducking: stingers set a timer; the silence beat holds the music down
+    // for as long as the woods hold their breath.
+    if (this._duckTimer > 0) {
+      this._duckTimer -= dt;
+      if (this._duckTimer <= 0 && !birdsSilent) {
+        this._musicDuck.gain.setTargetAtTime(1, t, 3);
+      }
+    }
+    if (birdsSilent && !this._duckHeld) {
+      this._duckHeld = true;
+      this._musicDuck.gain.setTargetAtTime(0.15, t, 0.4);
+    } else if (!birdsSilent && this._duckHeld) {
+      this._duckHeld = false;
+      if (this._duckTimer <= 0) this._musicDuck.gain.setTargetAtTime(1, t, 3);
+    }
+
+    // A phrase every couple of minutes, and never while dread has the floor.
+    this._motifTimer -= dt;
+    if (this._motifTimer <= 0) {
+      this._motifTimer = 70 + Math.random() * 70;
+      if (!birdsSilent && !this._duckHeld && this._duckTimer <= 0 &&
+          t > this._musicStart + 45) {
+        this._motif(altT);
+      }
+    }
+
+    this._musicInfo = {
+      bus: this._musicBus.gain.value,
+      duck: this._musicDuck.gain.value,
+      ducked: this._duckTimer > 0 || this._duckHeld,
+      droneHz,
+      motifIn: this._motifTimer,
+      voices: {
+        d2, a2, d3: fogT * 0.014, f3: 0.006 + fogT * 0.01,
+        eb2: altT * altT * 0.03, ab2: tritone,
+      },
+    };
   }
 
   /* ------------------------------------------------------------- birdsong */
@@ -293,6 +524,7 @@ export class Soundscape {
   /** A branch breaking somewhere it shouldn't. Panned hard, quiet, dry. */
   branchSnap() {
     if (!this.ctx) return;
+    this._duckMusic(5);
     const ctx = this.ctx, t0 = ctx.currentTime;
     const out = ctx.createGain();
     const pan = this._pan(1);
@@ -312,6 +544,7 @@ export class Soundscape {
   /** Two or three footsteps that are not yours, after yours have stopped. */
   phantomSteps(count = 3) {
     if (!this.ctx) return;
+    this._duckMusic(8);
     const ctx = this.ctx;
     const pan = this._pan(0.9);
     for (let i = 0; i < count; i++) {
@@ -335,6 +568,8 @@ export class Soundscape {
   /** Barely audible pressure under the floor of the mix. */
   lowSting() {
     if (!this.ctx) return;
+    // Load-bearing: a 45 Hz sting under a D2/E♭2 drone is mud, not dread.
+    this._duckMusic(6);
     const ctx = this.ctx, t0 = ctx.currentTime;
     const osc = ctx.createOscillator();
     osc.type = 'sine';
@@ -399,6 +634,7 @@ export class Soundscape {
 
   wolfHowl() {
     if (!this.ctx) return;
+    this._duckMusic(8);
     const ctx = this.ctx, t0 = ctx.currentTime;
     const osc = ctx.createOscillator();
     osc.type = 'sine';
@@ -476,6 +712,7 @@ export class Soundscape {
   /** Hooves hitting ground, fading fast — a deer deciding against you. */
   deerThump() {
     if (!this.ctx) return;
+    this._duckMusic(4);
     const ctx = this.ctx;
     for (let i = 0; i < 5; i++) {
       const t0 = ctx.currentTime + i * 0.21;
