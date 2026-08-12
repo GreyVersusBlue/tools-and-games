@@ -6,7 +6,8 @@ import { groundHeight, LAYOUT } from './field.js';
 // foliage cards. Everything farther out is a flat silhouette card the fog has
 // already half-eaten by the time it's visible: at 22 m the fog factor is
 // pushing a third, and flatness is exactly what dense mist does to a tree
-// anyway. Four draw calls for the whole forest, whichever way you look.
+// anyway. Six draw calls for the whole forest, whichever way you look —
+// three conifer variants, birch trunks and canopies, one far-tier card mesh.
 //
 // Every position comes from LAYOUT.trees in field.js. This file places
 // nothing itself — that's what lets the smoke test claim no tree blocks the
@@ -81,15 +82,17 @@ function birchLeafTexture() {
   return tex;
 }
 
-// Far-tier silhouettes, two cells: conifer spire (left), broadleaf (right).
+// Far-tier silhouettes, four cells: the broad conifer, a slender one, a dead
+// spire, and the broadleaf. Two shapes for a whole horizon read as wallpaper
+// the moment the fog thins; four is enough that no two neighbours rhyme.
 function silhouetteTexture() {
   const c = document.createElement('canvas');
-  c.width = 256; c.height = 128;
+  c.width = 512; c.height = 128;
   const ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, 256, 128);
+  ctx.clearRect(0, 0, 512, 128);
   ctx.fillStyle = '#ffffff';        // colour comes from the material
 
-  // conifer: stacked ragged triangles
+  // broad conifer: stacked ragged triangles
   ctx.save();
   ctx.translate(64, 128);
   ctx.fillRect(-3, -34, 6, 34);
@@ -108,9 +111,47 @@ function silhouetteTexture() {
   }
   ctx.restore();
 
-  // broadleaf: trunk and a lumpy crown
+  // slender conifer: more bands, tighter, a spire more than a tree
   ctx.save();
   ctx.translate(192, 128);
+  ctx.fillRect(-2.5, -30, 5, 30);
+  for (let band = 0; band < 8; band++) {
+    const y = -18 - band * 13;
+    const w = 30 - band * 3.1;
+    ctx.beginPath();
+    ctx.moveTo(-w, y);
+    for (let s = 0; s <= 6; s++) {
+      const t = s / 6;
+      ctx.lineTo(-w + t * 2 * w, y - 3 + Math.sin(s * 3.1 + band * 1.7) * 2.4);
+    }
+    ctx.lineTo(0, y - 19);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // dead spire: a trunk and the jagged stubs of what the crown used to be
+  ctx.save();
+  ctx.translate(320, 128);
+  ctx.beginPath();
+  ctx.moveTo(-4.5, 0); ctx.lineTo(-1.2, -118); ctx.lineTo(1.2, -118); ctx.lineTo(4.5, 0);
+  ctx.closePath();
+  ctx.fill();
+  for (let i = 0; i < 9; i++) {
+    const y = -26 - i * 10.5;
+    const s = i % 2 === 0 ? 1 : -1;
+    const len = 22 - i * 2;
+    ctx.save();
+    ctx.translate(0, y);
+    ctx.rotate(s * (0.45 + (i % 3) * 0.12));
+    ctx.fillRect(0, -1.6, s * len, 3.2);
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // broadleaf: trunk and a lumpy crown
+  ctx.save();
+  ctx.translate(448, 128);
   ctx.fillRect(-3.5, -52, 7, 52);
   for (let i = 0; i < 26; i++) {
     const a = Math.random() * Math.PI * 2, r = Math.random() * 30;
@@ -126,58 +167,112 @@ function silhouetteTexture() {
 
 /* --------------------------------------------------------------- near tier */
 
-function coniferGeometry() {
+// Three silhouettes so the stand stops being one tree repeated 2,700 times:
+// the full spruce everyone gets, a slender four-band fir, and the odd dead
+// spire — bare trunk, stub branches, no crown. Heights before instance scale.
+const CONIFER_H = [10.6, 10.1, 10.5];
+
+function coniferGeometry(variant) {
   const parts = [];
-  const trunk = new THREE.CylinderGeometry(0.14, 0.34, 2.6, 5, 1);
-  trunk.translate(0, 1.3, 0);
+  if (variant === 2) {
+    // Dead spire: what's left when a tree loses the argument with winter.
+    const trunk = new THREE.CylinderGeometry(0.06, 0.3, 10.5, 5, 1);
+    trunk.translate(0, 5.25, 0);
+    parts.push(trunk);
+    for (let i = 0; i < 6; i++) {
+      const y = 2.6 + i * 1.35;
+      const len = 1.5 - i * 0.18;
+      const stub = new THREE.CylinderGeometry(0.025, 0.06, len, 4, 1);
+      stub.translate(0, len / 2, 0);
+      stub.rotateZ(Math.PI / 2 - 0.5 - (i % 3) * 0.22);   // drooping, not reaching
+      stub.rotateY(i * 2.4);
+      stub.translate(0, y, 0);
+      parts.push(stub);
+    }
+    return mergeGeometries(parts);
+  }
+  const slender = variant === 1;
+  const trunk = slender
+    ? new THREE.CylinderGeometry(0.1, 0.24, 2.8, 5, 1)
+    : new THREE.CylinderGeometry(0.14, 0.34, 2.6, 5, 1);
+  trunk.translate(0, slender ? 1.4 : 1.3, 0);
   parts.push(trunk);
-  const bands = [
-    [2.1, 4.6, 3.3], [1.55, 3.8, 5.9], [1.0, 3.0, 8.2],
-  ];
+  const bands = slender
+    ? [[1.6, 3.6, 3.0], [1.3, 3.2, 5.2], [1.0, 2.8, 7.2], [0.65, 2.2, 9.0]]
+    : [[2.1, 4.6, 3.3], [1.55, 3.8, 5.9], [1.0, 3.0, 8.2]];
   for (const [r, h, y] of bands) {
     const cone = new THREE.ConeGeometry(r, h, 7, 1, true);
     cone.translate(0, y, 0);
     parts.push(cone);
   }
-  return mergeGeometries(parts);   // ~10.6 units tall before instance scale
+  return mergeGeometries(parts);
 }
-const CONIFER_H = 10.6;
 
-function buildConifers(trees) {
-  const geo = coniferGeometry();
+// One material recipe, two stiffnesses: live trees answer the wind, dead
+// wood barely moves. Phase comes from the instance's world position, more
+// sway at the crown than the root, normalized by a fixed height so all the
+// variants share the same weather.
+function coniferMaterial(amp, key) {
   const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
-  let windShader = null;
+  const holder = { shader: null };
   mat.onBeforeCompile = shader => {
     shader.uniforms.uTime = { value: 0 };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nuniform float uTime;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-        // Wind: each tree sways on its own phase, more at the crown than the
-        // root. Phase from the instance's world position, so no attribute.
         float windPh = dot(instanceMatrix[3].xz, vec2(0.31, 0.17));
-        float windAmt = pow(max(position.y, 0.0) / ${CONIFER_H.toFixed(1)}, 2.0);
-        transformed.x += sin(uTime * 0.9 + windPh) * windAmt * 0.32;
-        transformed.z += sin(uTime * 0.7 + windPh * 1.3) * windAmt * 0.2;`);
-    windShader = shader;
+        float windAmt = pow(max(position.y, 0.0) / 11.0, 2.0);
+        transformed.x += sin(uTime * 0.9 + windPh) * windAmt * ${(amp).toFixed(2)};
+        transformed.z += sin(uTime * 0.7 + windPh * 1.3) * windAmt * ${(amp * 0.625).toFixed(2)};`);
+    holder.shader = shader;
   };
-  mat.customProgramCacheKey = () => 'blue-hour-conifer';
+  mat.customProgramCacheKey = () => key;
+  return { mat, holder };
+}
 
-  const inst = new THREE.InstancedMesh(geo, mat, trees.length);
+function buildConifers(trees) {
+  // seed % 10: six of ten get the full spruce, three the slender fir, one
+  // in ten died standing. Deterministic, so the woods are the same woods
+  // every load.
+  const groups = [[], [], []];
+  for (const t of trees) groups[t.seed % 10 < 6 ? 0 : t.seed % 10 < 9 ? 1 : 2].push(t);
+
+  const live = coniferMaterial(0.32, 'blue-hour-conifer');
+  const dead = coniferMaterial(0.13, 'blue-hour-conifer-dead');
+
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
   const pos = new THREE.Vector3(), scl = new THREE.Vector3();
-  const col = new THREE.Color(), cA = new THREE.Color(0x33443a), cB = new THREE.Color(0x4e6248);
-  trees.forEach((t, i) => {
-    const s = t.h / CONIFER_H;
-    e.set(0, (t.seed % 628) / 100, 0);
-    q.setFromEuler(e);
-    pos.set(t.x, groundHeight(t.x, t.z) - 0.25, t.z);
-    scl.set(s * (0.9 + (t.seed % 97) / 400), s, s * (0.9 + (t.seed % 89) / 400));
-    inst.setMatrixAt(i, m.compose(pos, q, scl));
-    inst.setColorAt(i, col.lerpColors(cA, cB, (t.seed % 1000) / 1000));
+  const col = new THREE.Color();
+  const ramps = [
+    [new THREE.Color(0x33443a), new THREE.Color(0x4e6248)],
+    [new THREE.Color(0x33443a), new THREE.Color(0x4e6248)],
+    [new THREE.Color(0x2a3230), new THREE.Color(0x3a4038)],   // weathered grey
+  ];
+
+  const meshes = groups.map((group, v) => {
+    const inst = new THREE.InstancedMesh(
+      coniferGeometry(v), v === 2 ? dead.mat : live.mat, group.length);
+    group.forEach((t, i) => {
+      const s = t.h / CONIFER_H[v];
+      e.set(0, (t.seed % 628) / 100, 0);
+      q.setFromEuler(e);
+      pos.set(t.x, groundHeight(t.x, t.z) - 0.25, t.z);
+      scl.set(s * (0.9 + (t.seed % 97) / 400), s, s * (0.9 + (t.seed % 89) / 400));
+      inst.setMatrixAt(i, m.compose(pos, q, scl));
+      inst.setColorAt(i, col.lerpColors(ramps[v][0], ramps[v][1], (t.seed % 1000) / 1000));
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    return inst;
   });
-  inst.instanceMatrix.needsUpdate = true;
-  if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-  return { inst, tick: dt => { if (windShader) windShader.uniforms.uTime.value += dt; } };
+
+  return {
+    meshes,
+    tick: dt => {
+      if (live.holder.shader) live.holder.shader.uniforms.uTime.value += dt;
+      if (dead.holder.shader) dead.holder.shader.uniforms.uTime.value += dt;
+    },
+  };
 }
 
 function buildBirches(trees) {
@@ -195,6 +290,23 @@ function buildBirches(trees) {
   const leafMat = new THREE.MeshLambertMaterial({
     map: birchLeafTexture(), alphaTest: 0.5, side: THREE.DoubleSide,
   });
+  // The canopies answer the same wind as the conifers, gentler — the cards
+  // are ~4 m across after instance scale, so the local amplitude stays small.
+  // (position.y + 0.5) puts zero sway at the canopy's underside, most at the
+  // crown, since the unit plane is centered.
+  let leafShader = null;
+  leafMat.onBeforeCompile = shader => {
+    shader.uniforms.uTime = { value: 0 };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        float windPh = dot(instanceMatrix[3].xz, vec2(0.31, 0.17));
+        float windAmt = position.y + 0.5;
+        transformed.x += sin(uTime * 1.1 + windPh) * windAmt * 0.05;
+        transformed.z += sin(uTime * 0.8 + windPh * 1.3) * windAmt * 0.035;`);
+    leafShader = shader;
+  };
+  leafMat.customProgramCacheKey = () => 'blue-hour-birch-leaves';
   const leaves = new THREE.InstancedMesh(leafGeo, leafMat, trees.length);
 
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
@@ -217,29 +329,44 @@ function buildBirches(trees) {
   });
   trunks.instanceMatrix.needsUpdate = true;
   leaves.instanceMatrix.needsUpdate = true;
-  return [trunks, leaves];
+  return {
+    meshes: [trunks, leaves],
+    tick: dt => { if (leafShader) leafShader.uniforms.uTime.value += dt; },
+  };
 }
 
 /* ---------------------------------------------------------------- far tier */
 
 function buildFarTrees(trees) {
-  const positions = [], uvs = [], indices = [];
+  const positions = [], uvs = [], colors = [], indices = [];
   let vi = 0;
+  const tint = new THREE.Color();
   const addQuad = (x, y, z, yaw, w, h, u0) => {
     const dx = Math.cos(yaw) * w / 2, dz = Math.sin(yaw) * w / 2;
     positions.push(
       x - dx, y, z - dz,   x + dx, y, z + dz,
       x - dx, y + h, z - dz,   x + dx, y + h, z + dz);
-    uvs.push(u0, 0, u0 + 0.5, 0, u0, 1, u0 + 0.5, 1);
+    uvs.push(u0, 0, u0 + 0.25, 0, u0, 1, u0 + 0.25, 1);
+    for (let i = 0; i < 4; i++) colors.push(tint.r, tint.g, tint.b);
     indices.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2);
     vi += 4;
   };
 
   for (const t of trees) {
     const y = groundHeight(t.x, t.z) - 0.3;
-    const u0 = t.species === 'conifer' ? 0 : 0.5;
-    const w = t.species === 'conifer' ? t.h * 0.55 : t.h * 0.8;
+    // Same census as the near tier: mostly broad, some slender, one in ten
+    // dead. Baked per-tree tint jitter keeps the merged wall from reading as
+    // one flat cutout when the fog thins — all of it from the seed, so the
+    // horizon is the same horizon every load.
+    const cell = t.species !== 'conifer' ? 3
+      : t.seed % 10 < 6 ? 0 : t.seed % 10 < 9 ? 1 : 2;
+    const u0 = cell * 0.25;
+    const w = t.species === 'conifer' ? t.h * (cell === 1 ? 0.42 : cell === 2 ? 0.3 : 0.55) : t.h * 0.8;
     const yaw = (t.seed % 314) / 100;
+    tint.setHSL(
+      0.56 + ((t.seed % 101) / 100 - 0.5) * 0.03,
+      0.16 + ((t.seed % 71) / 70 - 0.5) * 0.04,
+      0.26 + ((t.seed % 89) / 88 - 0.5) * 0.09);
     // Crossed pair, not camera-facing: static geometry parallaxes honestly
     // as the walker moves, and the fog has flattened it long before the
     // flatness could read.
@@ -251,10 +378,11 @@ function buildFarTrees(trees) {
   geo.setIndex(indices);
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 
   const mat = new THREE.MeshBasicMaterial({
     map: silhouetteTexture(),
-    color: 0x37444c,             // just darker than the near fog, so depth stacks
+    vertexColors: true,          // the tint bakes in the old 0x37444c, jittered
     alphaTest: 0.5,
     side: THREE.DoubleSide,
     fog: true,
@@ -269,11 +397,12 @@ export function buildForest(scene) {
   const far = LAYOUT.trees.filter(t => t.tier === 'far');
 
   const conifers = buildConifers(near.filter(t => t.species === 'conifer'));
-  scene.add(conifers.inst);
-  for (const mesh of buildBirches(near.filter(t => t.species === 'birch'))) scene.add(mesh);
+  for (const mesh of conifers.meshes) scene.add(mesh);
+  const birches = buildBirches(near.filter(t => t.species === 'birch'));
+  for (const mesh of birches.meshes) scene.add(mesh);
   scene.add(buildFarTrees(far));
 
   return {
-    update(dt) { conifers.tick(dt); },
+    update(dt) { conifers.tick(dt); birches.tick(dt); },
   };
 }

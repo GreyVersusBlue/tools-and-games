@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { CREEK, creekX, creekWaterY, LAYOUT } from './field.js';
 
 // The creek: a dark ribbon of water following the carve in field.js, the
-// waterfall pouring off the rock step at its head, and the spray mist at the
-// fall's base. Three draw calls.
+// waterfall pouring off the rock step at its head, the spray mist at the
+// fall's base, and a handful of thrown droplets recycling through the air
+// above it. Four draw calls.
 
 function streakTexture(vertical = false) {
   const c = document.createElement('canvas');
@@ -105,6 +106,38 @@ export function buildCreek(scene) {
   spray.position.set(wf.x, wf.baseY + 0.9, wf.z + 1.6);
   scene.add(spray);
 
+  // ---- thrown droplets ----
+  // 150 points recycling through a little fountain arc at the fall's base.
+  // CPU-updated: 450 floats a frame is nothing, and it keeps the piece's
+  // no-addons rule intact. The mesh never toggles visible — dead particles
+  // just respawn — so the draw-call count holds still for the budget test.
+  const SPRAY_N = 150;
+  const sprayPos = new Float32Array(SPRAY_N * 3);
+  const sprayVel = new Float32Array(SPRAY_N * 3);
+  const sprayLife = new Float32Array(SPRAY_N);
+  const toss = i => {
+    sprayPos[i * 3] = wf.x + (Math.random() - 0.5) * 1.8;
+    sprayPos[i * 3 + 1] = wf.baseY + 0.3;
+    sprayPos[i * 3 + 2] = wf.z + 1.2 + (Math.random() - 0.5) * 1.0;
+    sprayVel[i * 3] = (Math.random() - 0.5) * 1.0;
+    sprayVel[i * 3 + 1] = 1.2 + Math.random() * 1.6;
+    sprayVel[i * 3 + 2] = 0.4 + (Math.random() - 0.5) * 1.0;
+    sprayLife[i] = 0.7 + Math.random() * 0.7;
+  };
+  for (let i = 0; i < SPRAY_N; i++) {
+    toss(i);
+    sprayLife[i] *= Math.random();   // stagger the first generation
+  }
+  const dropGeo = new THREE.BufferGeometry();
+  dropGeo.setAttribute('position', new THREE.BufferAttribute(sprayPos, 3));
+  const drops = new THREE.Points(dropGeo, new THREE.PointsMaterial({
+    map: softDiscTexture(), color: 0xdfeaf2, size: 0.22,
+    transparent: true, opacity: 0.5, depthWrite: false,
+    sizeAttenuation: true, fog: true,
+  }));
+  drops.frustumCulled = false;       // the cloud is small and always near the fall
+  scene.add(drops);
+
   let t = 0;
   return {
     update(dt) {
@@ -113,6 +146,16 @@ export function buildCreek(scene) {
       for (const f of falls) f.tex.offset.y += dt * f.speed;
       spray.material.opacity = 0.28 + Math.sin(t * 1.7) * 0.07;
       spray.rotation.y = Math.sin(t * 0.13) * 0.2;   // slow wander, not a billboard
+
+      for (let i = 0; i < SPRAY_N; i++) {
+        sprayLife[i] -= dt;
+        if (sprayLife[i] <= 0) { toss(i); continue; }
+        sprayVel[i * 3 + 1] -= 4.5 * dt;
+        sprayPos[i * 3] += sprayVel[i * 3] * dt;
+        sprayPos[i * 3 + 1] += sprayVel[i * 3 + 1] * dt;
+        sprayPos[i * 3 + 2] += sprayVel[i * 3 + 2] * dt;
+      }
+      dropGeo.attributes.position.needsUpdate = true;
     },
   };
 }

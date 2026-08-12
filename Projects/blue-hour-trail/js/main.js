@@ -122,7 +122,7 @@ function applyWeather(fogT, altT) {
 }
 
 // ---------- World ----------
-buildTerrain(scene);
+const terrain = buildTerrain(scene);
 const forest = buildForest(scene);
 const props = buildProps(scene);
 const creek = buildCreek(scene);
@@ -229,6 +229,7 @@ function tick() {
   applyWeather(fogT, altT);
 
   const moving = controls.update(dt);
+  terrain.update(dt);
   forest.update(dt);
   wildlife.update(dt, camera, controls, fogT);
   dread.update(dt, camera, controls, fogT);
@@ -247,6 +248,7 @@ function tick() {
     creekDist: ck.dist,
     waterfallDist: Math.hypot(controls.pos.x - wf.x, controls.pos.z - wf.z),
     birdsSilent: dread.birdsSilent,
+    watched: dread.lookoutWatching,
   });
 
   renderer.render(scene, camera);
@@ -295,6 +297,8 @@ if (new URLSearchParams(location.search).has('debug')) {
     // 'silence' | 'howl' | 'bear' | 'eyes'.
     fireDread: beat => dread.force(beat, camera, controls),
     dread,
+
+    music: () => audio.musicState(),
 
     info: () => renderer.info.render,
   };

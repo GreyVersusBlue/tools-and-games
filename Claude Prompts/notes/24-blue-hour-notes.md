@@ -1,5 +1,70 @@
 # 24 — Blue Hour
 
+## Session 3 — the mountain gets a voice, and the piece gets a north star
+
+Two halves this session: a high-fidelity pass Devon asked for (with adaptive music as its
+centerpiece), and a direction conversation that ended with the dream version and its governing
+doctrine written into the prompt file.
+
+**Music.** The genuinely absent layer. A `_startMusic()` bus inside `Soundscape` —
+`drone/motifs → _musicDuck → _musicBus (35 s fade-in) → master → fog filter`, so mute and the
+fog muffle apply for free and nothing slams on the first click. Eight drone oscillators in D
+aeolian: detuned pairs on D2/A2 that throb at a tenth of a hertz, D3 and F3 for body and the
+spoken minor 3rd, and the two altitude voices — E♭2 beating at ~4.4 Hz against the root above
+the fog line, A♭2 (the tritone) only near the summit, ×1.6 while the lookout figure watches
+(`watched: dread.lookoutWatching`, the one new field in `audio.update`'s state). The filter
+never sits still (0.03 Hz LFO) and the bed breathes (0.05 Hz). Motifs are a pure exported
+`motifPhrase(rand, altT)` — 3–5 notes, biased downhill, always ending on D3 or A2, E♭3
+replacing E3 above the fog line — synthesized as detuned-saw horn pairs with a bandpass-noise
+bow on top, sent down the wolfHowl-style feedback-delay valley. Every loud stinger calls
+`_duckMusic()` (the `lowSting` one is load-bearing: a 45 Hz sine under a D2/E♭2 drone is mud,
+not dread); `birdsSilent` holds the duck down for the beat's whole duration. Brief for the
+emotion, from Devon: *foreboding woe, not haunted house*. Tuning knobs are all single
+constants: motif interval (70–140 s), drone floor (0.045), tritone gain (0.018).
+
+**Fidelity pass**, all inside the zero-asset rules: plant atlas 4 → 8 cells at 512×256
+(bracken, thistle, deadfall sprout, mossy rock tuft; staples double-weighted), undergrowth
+tops sway (aCorner.y-scaled, roots planted); conifers split into three seeded variants — full
+spruce / slender fir / dead spire at `seed % 10` = 6/3/1, the dead ones grey and stiff (wind
+×0.4) — sharing one live material and one dead (+2 draw calls); birch canopies answer the
+wind; far-tier atlas 2 → 4 cells (slender spire, dead snag) with per-tree HSL jitter baked as
+vertex colours around the old flat 0x37444c; 150 recycled spray droplets at the waterfall
+base; 140 dust motes in a camera-following wrap box, opacity leaning on (1−fogT); breath
+vapour above altT 0.6 — six round-robin billboard quads, age does everything in the shader.
+Nothing new ever toggles `.visible`, which is what the draw-cost-equality assertion demands.
+
+### What I verified (session 3)
+
+- `node test/smoke.mjs` — **52 checks, 0 failed** (was 47). New group holds the motif engine
+  to the scale across 400 seeded phrases per register: 3–5 notes, every phrase falls home to
+  D3 or A2, no E natural above the fog line, and the flat second actually gets used up there.
+- `node test/browser.mjs` — **32 checks, 0 failed, twice consecutively** (one earlier run
+  dropped a single check under swiftshader at 1.4 fps — timing flake, not reproducible).
+  Zero page errors across all shader work, which is the canary for the five new
+  `onBeforeCompile` materials.
+- **Draw budget: 36 calls, 290k triangles, identical in thick and clear** — was 35/280k. The
+  music costs zero calls; the whole visual pass costs +5 (conifer split +2, spray +1, motes
+  +1, breath +1) against the 300 budget.
+- Not verified, still: real GPU, real glass, real ears. The music has never been *heard* —
+  the browser suite proves it constructs and ducks without error, not that it lands. Items
+  3–5 of the prompt's task list all still stand, and the drone gains especially are
+  unheard guesses in the same class as the dread cooldowns.
+
+### The north star
+
+Devon asked for the no-ceiling version — full engine, what does this become — and then set
+the doctrine: the player must believe they COULD be in danger the whole runtime while never
+being in any, Gone Home's discipline exactly. Both are now in the prompt file ("The north
+star", session 3): the relief-keeper story, seven cairns / eight keepers, the ending at the
+rail, the asynchronous-multiplayer truth of the dread — and the six rules that apply at THIS
+scale now (never show teeth, never show a safe room; plausible not supernatural; refuse to
+acknowledge the experiment; the body may fear, the game may not agree; metadata discipline;
+fear planted in-fiction, never confirmed). Plus a feasibility ladder of HTML-replicable
+pieces: descending-biased phantom steps, the gaze-aware director v0, a dead radio, bootprints
+on the last switchback, tea steam in the cab — and the ones that need Devon's explicit yes
+first because they add verbs or persistence (logbook pages, own-ghost replay, the headlamp).
+The direction question from session 2 is settled by it: dread, not collection.
+
 ## Session 2 — the walk ends in the fog
 
 Devon set the thesis this session, and it reframed the open item rather than answering it:
