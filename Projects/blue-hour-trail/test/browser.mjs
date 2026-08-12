@@ -74,6 +74,16 @@ const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
+// Seed a previous walk before the page ever runs: 100 steps the length of the
+// trail, every gap a distinctive 0.77 s, so the ghost group below can prove
+// the phantom steps replayed THIS rhythm and not an invented one.
+await page.addInitScript(() => {
+  localStorage.setItem('blue-hour-last-walk', JSON.stringify({
+    v: 1,
+    steps: Array.from({ length: 100 }, (_, i) => [i / 100, 0.77]),
+  }));
+});
+
 await page.goto(URL, { waitUntil: 'load' });
 await page.waitForSelector('#scene');
 await page.waitForFunction(() => !!window.__bh, null, { timeout: 30000 });
@@ -337,6 +347,27 @@ ok('their pitch falls step over step',
   phantom && phantom.plan.every((s, i) => i === 0 || s.rate < phantom.plan[i - 1].rate));
 ok('and they are panned, not centred', phantom && typeof phantom.pan === 'number',
   phantom ? `pan ${phantom.pan.toFixed(2)}` : '');
+
+group('the mountain remembers your last walk');
+// Grant 3: the record seeded before page load is the "previous visit"; the
+// phantom steps that just fired must have walked in its rhythm. See ghost.js
+// and the prompt-file amendment — this is not a save, and no UI may ever
+// surface any of it.
+const ghostState = await page.evaluate(() => __bh.ghost());
+ok('the previous walk is waiting when the page opens', ghostState.loaded && ghostState.count === 100,
+  `${ghostState.count} remembered steps`);
+const gaps = phantom && phantom.plan.slice(1).map((s, i) => s.at - phantom.plan[i].at);
+ok('the steps that are not yours are your own, from last time',
+  phantom && phantom.intervals && gaps.every(g => Math.abs(g - 0.77) < 1e-6),
+  gaps ? gaps.map(g => g.toFixed(2)).join(', ') : 'no phantom fired');
+
+await page.keyboard.down('KeyW');
+await wait(7000);          // world time runs ~10x slow here; ~3 footsteps' worth
+await page.keyboard.up('KeyW');
+const recording = await page.evaluate(() => ({ g: __bh.ghost(), saved: __bh.ghostSave() }));
+ok('and this walk is being recorded for the next one', recording.g.walked > 0,
+  `${recording.g.walked} steps so far`);
+ok('too short a walk refuses to become a ghost', recording.saved === false);
 
 group('the director spends beats off-gaze');
 // Ladder 2: a yaw-dwell histogram decides which side a visual beat lands on,

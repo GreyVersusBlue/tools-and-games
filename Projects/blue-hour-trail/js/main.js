@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { TRAIL, LAYOUT, creekInfo } from './field.js';
+import { TRAIL, LAYOUT, creekInfo, trailInfo } from './field.js';
+import { createGhost } from './ghost.js';
 import { buildTerrain } from './terrain.js';
 import { buildForest } from './forest.js';
 import { buildProps } from './props.js';
@@ -133,6 +134,24 @@ const wildlife = buildWildlife(scene, audio);
 const dread = createDread(scene, audio);
 const controls = new WalkControls(camera, canvas);
 const logbook = buildLogbook(scene, controls);
+
+// The mountain remembers your last walk — grant 3, session 4. See ghost.js
+// and the prompt file's amendment before touching this. Not a save.
+const ghost = createGhost(window.localStorage);
+// Clocked on weatherT — world seconds, not wall seconds — so the gait the
+// ghost remembers is the gait the piece PLAYED, even when a slow tab runs
+// the world under the dt clamp at a fraction of real time.
+audio.onFootstep = () => {
+  ghost.step(trailInfo(controls.pos.x, controls.pos.z).t, weatherT);
+};
+dread.ghostRhythm = t => (ghost.loaded ? ghost.rhythmNear(t) : null);
+// Written when the walker leaves, not on a timer: the record is of a walk
+// that ended, and pagehide is the only honest definition of ended a browser
+// offers. visibilitychange covers the phone pocketing that pagehide misses.
+addEventListener('pagehide', () => ghost.save());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') ghost.save();
+});
 
 // Start at the trailhead, facing up the first leg into the fog.
 {
@@ -317,6 +336,11 @@ if (new URLSearchParams(location.search).has('debug')) {
     // descent, the downhill lean and the echo without ears.
     lastPhantom: () => audio._lastPhantom,
     lastRadio: () => audio._lastRadio,
+
+    // The ghost's doors: whether a previous walk loaded, how much of this one
+    // has been recorded, and a way to force the save without a pagehide.
+    ghost: () => ({ loaded: ghost.loaded, count: ghost.count, walked: ghost.walked() }),
+    ghostSave: () => ghost.save(),
 
     info: () => renderer.info.render,
   };

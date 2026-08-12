@@ -177,6 +177,7 @@ export function createDread(scene, audio) {
   const state = {
     birdsSilent: false,
     lookoutWatching: false,
+    ghostRhythm: null,      // main.js wires the previous walk's gait in here
 
     _elapsed: 0,
     _cooldown: 70,          // the woods get to feel normal first
@@ -454,7 +455,14 @@ export function createDread(scene, audio) {
         // right of the walker's facing (-sin, -cos) is (cos, -sin)
         const pan = Math.max(-1, Math.min(1,
           dh.x * Math.cos(controls.yaw) - dh.z * Math.sin(controls.yaw))) * 0.85;
-        audio.phantomSteps({ count: 2 + (Math.random() * 2 | 0), pan });
+        const count = 2 + (Math.random() * 2 | 0);
+        // If a previous walk left a ghost (main.js assigns this), the steps
+        // play in ITS rhythm near this stretch of trail — your own gait from
+        // last time, going down. With no ghost the scheduler invents one,
+        // exactly as before, and nothing anywhere tells the player which
+        // kind they got.
+        const intervals = state.ghostRhythm ? state.ghostRhythm(trailInfo(controls.pos.x, controls.pos.z).t) : null;
+        audio.phantomSteps({ count, pan, ...(intervals ? { intervals } : {}) });
         state._phantomArmed = false;
       } else if (state._phantomWindow <= 0) {
         state._phantomArmed = false;     // never stopped walking; let it go

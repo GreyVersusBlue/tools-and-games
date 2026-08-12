@@ -371,6 +371,58 @@ group('the phantom steps only ever descend');
     'and it still descends in somebody else\'s rhythm');
 }
 
+group('the mountain remembers your last walk');
+{
+  // Grant 3, session 4: one project-local localStorage record of the previous
+  // walk's footstep rhythm, fed to the phantom steps on the next visit. Not a
+  // save — the prompt file's amendment is the authority. This group holds the
+  // pure half under a stub storage: what gets remembered, what gets refused,
+  // and what a corrupt memory degrades to.
+  const { createGhost, encodeWalk, decodeWalk, rhythmNear, GHOST_KEY } = await import(
+    pathToFileURL(path.join(HERE, '..', 'js', 'ghost.js')).href);
+
+  const stub = () => {
+    const m = new Map();
+    return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v), m };
+  };
+
+  // A believable recorded climb: 200 steps, 0.5-0.7 s apart, trailhead to top.
+  const climb = Array.from({ length: 200 }, (_, i) => [i / 200, 0.5 + (i % 5) * 0.05]);
+  ok(decodeWalk(encodeWalk(climb)).length === 200, 'a walk survives the round trip');
+  ok(decodeWalk('{"v":1,"steps":"no"}') === null && decodeWalk('garbage') === null
+    && decodeWalk(null) === null, 'a corrupt memory is quietly nobody');
+  ok(decodeWalk(encodeWalk(climb.slice(0, 10))) === null,
+    'ten steps is a door opened and closed, not a walk');
+
+  const r = rhythmNear(climb, 0.5);
+  ok(r && r.length === 3 && r.every(dt => dt > 0.4 && dt < 0.8),
+    'the rhythm near mid-trail is the gait recorded there', r && r.map(x => x.toFixed(2)).join(', '));
+  ok(rhythmNear(climb.slice(0, 20), 0.9) === null,
+    'and nothing recorded near here means no rhythm, not an invented one');
+
+  // The live loop: record a walk, save it, and find it waiting next visit.
+  const store = stub();
+  const g1 = createGhost(store);
+  ok(g1.loaded === false, 'the first walk has no ghost');
+  ok(g1.save() === false, 'and an empty walk refuses to become one');
+  let now = 0;
+  for (let i = 0; i < 120; i++) { g1.step(i / 120, now); now += 0.55 + (i % 3) * 0.04; }
+  ok(g1.walked() === 119, 'footsteps are recorded as gaps between steps', `${g1.walked()}`);
+  ok(g1.save() === true, 'a real walk is worth remembering');
+
+  const g2 = createGhost(store);
+  ok(g2.loaded && g2.count === 119, 'the next visit finds the previous walker', `${g2.count} steps`);
+  const gr = g2.rhythmNear(0.4);
+  ok(gr && gr.every(dt => dt > 0.5 && dt < 0.7), 'walking in their rhythm', gr && gr.map(x => x.toFixed(2)).join(', '));
+
+  // Standing still is not walking: long gaps never enter the record.
+  const g3 = createGhost(stub());
+  g3.step(0.1, 0); g3.step(0.1, 8); g3.step(0.11, 8.6);
+  ok(g3.walked() === 1, 'the ghost keeps the gait, not the sightseeing');
+
+  ok(GHOST_KEY === 'blue-hour-last-walk', 'the key is project-local — gvb-save.js stays untouched');
+}
+
 group('the motif engine writes only woe');
 {
   const { motifPhrase } = await import(
