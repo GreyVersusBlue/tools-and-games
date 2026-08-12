@@ -122,7 +122,7 @@ function applyWeather(fogT, altT) {
 }
 
 // ---------- World ----------
-buildTerrain(scene);
+const terrain = buildTerrain(scene);
 const forest = buildForest(scene);
 const props = buildProps(scene);
 const creek = buildCreek(scene);
@@ -229,6 +229,7 @@ function tick() {
   applyWeather(fogT, altT);
 
   const moving = controls.update(dt);
+  terrain.update(dt);
   forest.update(dt);
   wildlife.update(dt, camera, controls, fogT);
   dread.update(dt, camera, controls, fogT);
