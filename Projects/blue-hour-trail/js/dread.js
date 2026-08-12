@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, trailInfo } from './field.js';
+import { groundHeight, trailInfo, LAYOUT } from './field.js';
 
 // The other thing in the woods. A scheduler of directed beats, none of which
 // can hurt the walker and none of which ever resolves: a branch breaking off
@@ -12,8 +12,19 @@ import { groundHeight, trailInfo } from './field.js';
 //   • never the same beat twice running
 //   • the visual beats only fire when the fog is thick enough to half-take
 //     them back — a monster you can see clearly is just a prop
-//   • beats prefer the deep woods; above the fog line the mountain is honest
+//   • the fog line is where it gets WORSE, not better
 //   • escalation follows progress up the trail, gently
+//
+// That fourth rule used to read the other way: "beats prefer the deep woods;
+// above the fog line the mountain is honest." It made the summit a refuge, and
+// a refuge is the wrong ending for a walk about wanting to leave somewhere. The
+// gates that the deep woods used to be required for are now satisfied by
+// altitude instead — high on the mountain the weather no longer has to
+// cooperate for the woods to lie to you.
+//
+// Still true, and not negotiable: nothing here can hurt you. Nothing chases,
+// nothing closes, nothing touches the walker. The lookout below is the furthest
+// this piece goes, and it goes there by standing perfectly still.
 
 function bearTexture() {
   const c = document.createElement('canvas');
@@ -59,6 +70,29 @@ function eyesTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+// The figure on the lookout platform. Deliberately not anatomy: a head, a set
+// of shoulders and a column, blurred until it is only a posture. Everything
+// that would make it a character — a face, hands, a silhouette you could
+// describe to someone — is left out, because the moment it becomes describable
+// it becomes a monster, and a monster is a thing you can be finished with.
+function lookoutTexture() {
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 160;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, 64, 160);
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(32, 26, 11, 13, 0, 0, Math.PI * 2);            // head
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(14, 58); ctx.quadraticCurveTo(32, 44, 50, 58);  // shoulders
+  ctx.lineTo(47, 150); ctx.lineTo(17, 150); ctx.closePath();
+  ctx.fill();
+  ctx.filter = 'blur(2.5px)';
+  ctx.drawImage(c, 0, 0);
+  return new THREE.CanvasTexture(c);
+}
+
 export function createDread(scene, audio) {
   // ---- the shape ----
   const bearMat = new THREE.MeshBasicMaterial({
@@ -79,8 +113,62 @@ export function createDread(scene, audio) {
   eyes.visible = false;
   scene.add(eyes);
 
+  // ---- the lookout ----
+  //
+  // The fire lookout is the only structure on this mountain that implies other
+  // people: someone built it, someone was meant to sit in it and watch for
+  // smoke. Somebody is in it. That is the whole of the reveal — the climb pays
+  // off in the one currency this piece deals in, which is company you did not
+  // want.
+  //
+  // It never moves from the platform. It never comes down. What it does is
+  // turn: whichever way the walker goes, it is facing them, so looking away and
+  // looking back does not clear it the way the shape in the trees clears. This
+  // is the one thing on the mountain that does not deny itself.
+  //
+  // Except at the base of the tower, where it stops being visible from the
+  // platform rail — not gone, just no longer where you can see it. Walking up
+  // to a thing to get a better look and having it step out of view is worse
+  // than either finding it or finding nothing, and it keeps the piece's own
+  // rule intact: a figure you could finally resolve up close would just be a
+  // prop.
+  const lookoutMat = new THREE.MeshBasicMaterial({
+    map: lookoutTexture(), color: 0x0b0f13,
+    transparent: true, opacity: 0, alphaTest: 0.2,
+    fog: true, side: THREE.DoubleSide, depthWrite: false,
+  });
+  const lookout = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 1.8), lookoutMat);
+  lookout.visible = false;
+  scene.add(lookout);
+  {
+    // At a corner of the platform, not in the middle of the near rail. The cab
+    // is 2.6 m across and very nearly black, and a black figure standing in
+    // front of it is a figure nobody will ever see — first attempt at this put
+    // it on the near rail and it vanished into the tower's own silhouette. Out
+    // at a corner (past the cab's half-width in both axes, inside the
+    // platform's) it stands against fog instead, which is the only background
+    // on this mountain that will hold it.
+    const tw = LAYOUT.tower, be = LAYOUT.bench;
+    const ax = be.x - tw.x, az = be.z - tw.z;
+    const len = Math.hypot(ax, az) || 1;
+    // The arithmetic that decides this: the cab is 2.6 m across (half-width
+    // 1.3), the platform 3.4 (half-width 1.7), so the walkway around the cab is
+    // 40 cm. A 0.78 m figure anywhere on the near rail is half-behind the cab
+    // from the approach — measured, not guessed, after the first two placements
+    // came back as a sliver. Pushing it out to the side rail past 1.3 + half a
+    // body clears the cab laterally and puts fog behind it.
+    const fx = ax / len, fz = az / len;          // toward the walker
+    const px = -fz, pz = fx;                     // along the rail
+    lookout.position.set(
+      tw.x + fx * 0.2 + px * 1.95,
+      groundHeight(tw.x, tw.z) + 9.08 + 0.9,     // platform deck, plus half a body
+      tw.z + fz * 0.2 + pz * 1.95,
+    );
+  }
+
   const state = {
     birdsSilent: false,
+    lookoutWatching: false,
 
     _elapsed: 0,
     _cooldown: 70,          // the woods get to feel normal first
@@ -100,35 +188,41 @@ export function createDread(scene, audio) {
 
     _eyesActive: false,
     _eyesLife: 0,
+
+    _lookoutNoticed: false,
   };
 
   const camDir = new THREE.Vector3();
   const toShape = new THREE.Vector3();
 
-  function intensity(progressT) {
-    return Math.min(1, state._elapsed / 480) * 0.5 + progressT * 0.5;
+  function intensity(progressT, highT) {
+    return Math.min(1, state._elapsed / 480) * 0.4 + progressT * 0.4 + highT * 0.2;
   }
 
   function tryFire(camera, controls, fogT) {
     const pt = trailInfo(controls.pos.x, controls.pos.z);
-    const deepWoods = controls.pos.y < 48;    // above the fog line, honesty
+    // How far into the bad air the walker is. The same 46→62 m band main.js
+    // reads for the weather, so the moment the fog stops thinning is the moment
+    // the woods stop pretending.
+    const highT = Math.min(1, Math.max(0, (controls.pos.y - 46) / 16));
+    const high = highT > 0.35;
     const candidates = [];
 
     if (state._lastBeat !== 'snap') candidates.push('snap', 'snap');
     if (state._lastBeat !== 'phantom' && controls.moving) candidates.push('phantom', 'phantom');
-    if (state._lastBeat !== 'silence' && fogT > 0.35 && deepWoods) candidates.push('silence');
-    if (state._lastBeat !== 'bear' && fogT > 0.55 && deepWoods && !state._bearActive) {
+    if (state._lastBeat !== 'silence' && (fogT > 0.35 || high)) candidates.push('silence');
+    if (state._lastBeat !== 'bear' && (fogT > 0.55 || high) && !state._bearActive) {
       candidates.push('bear', 'bear');
     }
-    if (state._lastBeat !== 'eyes' && fogT > 0.5 && deepWoods && !state._eyesActive) {
+    if (state._lastBeat !== 'eyes' && (fogT > 0.5 || high) && !state._eyesActive) {
       candidates.push('eyes', 'eyes');
     }
     if (state._lastBeat !== 'howl' && pt.t > 0.35) candidates.push('howl');
 
     if (!candidates.length) { state._cooldown = 12; return; }
     const beat = candidates[(Math.random() * candidates.length) | 0];
-    const inten = intensity(pt.t);
-    state._cooldown = (55 + Math.random() * 45) * (1.2 - inten * 0.5);
+    const inten = intensity(pt.t, highT);
+    state._cooldown = (55 + Math.random() * 45) * (1.2 - inten * 0.5) * (1 - highT * 0.3);
 
     runBeat(beat, camera, controls);
   }
@@ -198,6 +292,14 @@ export function createDread(scene, audio) {
     }
   }
 
+  // For the regression suite and for tuning: where the figure is and whether it
+  // is currently readable. Nothing in the piece calls this.
+  state.lookoutInfo = () => ({
+    x: lookout.position.x, y: lookout.position.y, z: lookout.position.z,
+    visible: lookout.visible, opacity: lookoutMat.opacity,
+    noticed: state._lookoutNoticed,
+  });
+
   // For the regression suite and for tuning: stage a named beat now, bypassing
   // the cooldown and the fog/elevation gates that normally have to agree first.
   // Nothing in the piece calls this — the scheduler is the only thing that
@@ -261,6 +363,52 @@ export function createDread(scene, audio) {
         state._bearActive = false;
         if (state._bearSeen && state._bearLife > 0) audio.lowSting();
       }
+    }
+
+    // ---- the lookout, once the walker is high enough to see it ----
+    {
+      const dx = lookout.position.x - controls.pos.x;
+      const dz = lookout.position.z - controls.pos.z;
+      const dist = Math.hypot(dx, dz);
+      const highT = Math.min(1, Math.max(0, (controls.pos.y - 42) / 14));
+
+      // Near the base it is no longer at the rail. Far off, the fog has it
+      // anyway and drawing it is just a smudge with a draw call attached.
+      //
+      // The band is tight because the geography is: the tower stands 13 m past
+      // the trail's end and the bench 3 m past it, so the walker's whole
+      // relationship with this thing happens inside about 10 m, and at the
+      // summit's fog density anything past ~50 m is gone regardless.
+      const inRange = dist > 6.5 && dist < 70;
+      const show = highT > 0.05 && inRange;
+
+      lookout.visible = show;
+      if (show) {
+        // Yaw only — it turns to keep facing the walker, but it does not tilt,
+        // lean, or track in pitch. A figure that pivots on the spot reads as
+        // attention. A figure that tips its head reads as animation.
+        lookout.rotation.set(0, Math.atan2(dx * -1, dz * -1), 0);
+
+        // Never more than half-there. The fog does the rest, and between them
+        // the figure stays at the exact threshold where a person would start
+        // arguing with themselves about whether anything is there at all.
+        const near = 1 - Math.min(1, Math.max(0, (dist - 10) / 45));
+        const target = 0.5 * highT * (0.35 + near * 0.65);
+        lookoutMat.opacity += (target - lookoutMat.opacity) * Math.min(1, dt * 1.6);
+
+        // One sting, the first time it is genuinely in front of the walker.
+        if (!state._lookoutNoticed && dist < 55) {
+          camera.getWorldDirection(camDir);
+          toShape.set(dx, 0, dz).normalize();
+          if (camDir.x * toShape.x + camDir.z * toShape.z > 0.9) {
+            state._lookoutNoticed = true;
+            audio.lowSting();
+          }
+        }
+      } else {
+        lookoutMat.opacity = 0;
+      }
+      state.lookoutWatching = show;
     }
 
     // ---- the eyes, while they last ----

@@ -116,13 +116,31 @@ elevation: split across call sites it rots. **The fog is not a culling strategy*
 the draw cost is identical in the thickest fog and the clearest. It is mood and depth-precision
 headroom.
 
+**The climb makes it worse, and that is the whole thesis.** `altT` (the 46→62 m altitude blend)
+used to promise relief: fog thinning to 0.006, light coming up, mist and shafts clearing, a
+cloud sea. Every one of those terms now runs the other way — the summit is the thickest air on
+the mountain at 0.055, the light goes out of it, and the mist gets heavier. `dread.js` reads the
+same band and *opens* its gates on it, where it used to close them. **Do not restore the old
+gradient.** This is a piece about being somewhere you want to leave; a scenic reward at the top
+of the climb contradicts everything below it. The one term that rises with altitude is ambient
+light, and only because without it the near ground renders black — that is legibility, not
+relief, and `test/browser.mjs` pins it at a luminance floor.
+
 **The woods are not honest.** `dread.js` is a scheduler of directed beats — a branch breaking
 where nothing is, footsteps that continue a half-second after yours stop, the birds all going
 quiet at once, eyes low in the treeline, a dark shape up the trail that is gone when you look
 twice. Long cooldowns, never the same beat twice running, visual beats gated on fog thick
-enough to half-take them back, and nothing above the fog line, where the mountain is honest.
-Nothing here can hurt you, which is not the same as nothing being here. **Keep it that way** —
-this piece has no threat and should never grow one.
+enough to half-take them back. Nothing here can hurt you, which is not the same as nothing
+being here. **Keep it that way** — this piece has no threat and should never grow one. Nothing
+chases, nothing closes, nothing touches the walker.
+
+**Somebody is in the fire lookout.** The one structure at the top, the one thing on the
+mountain that implies other people, and there is a figure at the platform rail that turns to
+face the walker wherever they go. It never moves from the platform and never comes down. It is
+the single exception to the piece's own vanishing rule — looking away and back does not clear
+it — and it buys that exception by never resolving: capped at half opacity, denied by fog, and
+gone from the rail entirely once the walker reaches the foot of the tower. `dread.js` owns it.
+Do not give it a face, an animation, or a second location.
 
 **A debug hook, `?debug` → `window.__bh`**: `setWeatherT`/`getWeatherT`/`fogT`/`altT`,
 `teleport`/`face`/`pos`/`surface`, `cairns`/`layout`, `trail`/`yawAlongTrail`, `fireDread`,
@@ -134,30 +152,30 @@ and hold W" walks into the edge of the world 5 m later and looks exactly like a 
 Chromium through `?debug`. Both exit non-zero on failure. `browser.mjs` needs `playwright-core`
 and a Chromium on disk (`CHROME=` overrides the path); neither is a dependency of the piece.
 
-**The summit payoff does not render, and it is the top open item.** The README promises "thin
-bright air over a cloud sea"; what renders is a black hillside under a pale sky. Two measured
-causes: `atmosphere.js` puts the cloud sea at y = 46 while the summit is a *plateau* averaging
-~60 m for 200 m around, so the ring is inside the mountain (100% buried at r = 40, 60% still
-buried at r = 200); and above the fog line nothing lifts the ground colour any more, because
-the fog was doing all that work and the forest floor has no alpine treatment — lower-half mean
-frame luminance at the bench is 6–14/255 against 22/255 on the trail below. `browser.mjs`
-prints both as OPEN FINDING notes rather than asserting them.
+**The mountain has no peak, and you should know that before you touch it.** `mountainH` is a
+linear ramp in `z` alone — height depends only on how far up the map you are, the slab keeps
+climbing past the trail's end at z = -100 to `BOUNDS.minZ` at -120, and there is no lateral
+shape beyond noise. The "summit" is just the point where walking stops. This was diagnosed,
+costed and deliberately **not** fixed: the fog now closes at the top instead, so nobody can see
+far enough for it to matter. If some future session wants a real view from up there it needs a
+peak term in `mountainH` and a `smoke.mjs` rebaseline — and it should read why the view was
+removed before putting one back.
+
+Related, also unfixed, also hidden by the fog: `trailYof(1)` returns 65 while the raw hillside
+there is ~60, so the last stretch of trail rides a ~5 m berm. Invisible now. Real the moment
+anyone lifts the weather at the summit.
 
 ## Your task
 
-1. **Settle the summit.** It is the payoff of an 860 m climb. Two honest routes: give the
-   mountain a real peak so the ground falls away and the sea plane clears the terrain — which
-   costs a `smoke.mjs` golden-height rebaseline and is the bigger job — or drop the cloud sea
-   and rewrite the promise, ending the walk *in* the fog rather than above it, which is
-   arguably truer to the piece's own thesis. Either way the ground shader needs a treatment
-   above the fog line so the view is legible at all. Turn the two OPEN FINDING notes into
-   assertions when it lands.
-2. **The direction question.** Golden Hour grew a journal, hands, photo mode and rare events.
-   This piece has none of them. Three defensible answers — parity, deliberate abstinence
-   (write it into this file as a locked decision so no future session "fixes" it), or push
-   further into what the piece is already best at (more in `dread.js`, a darker second half,
-   the summit costing something). Do not pick this one unilaterally if Devon is reachable; it
-   is a question about what the piece *is*.
+1. **The direction question.** Golden Hour grew a journal, hands, photo mode and rare events.
+   This piece has none of them, and the ending pass leaned hard the other way — dread, not
+   collection. The remaining defensible answers: keep pushing that way, or write "no save, no
+   verbs, no collection" into this file as a locked decision so no future session "fixes" it.
+   Parity with Golden Hour is now the odd one out and should not be adopted without asking.
+2. **The second half wants more than frequency.** The dread gates open on altitude now, but the
+   beats themselves are the same five everywhere on the mountain. Something should change in
+   kind, not just in rate, once the walker is above the fog line — the figure in the lookout is
+   one answer, and it is currently the only one.
 3. **A real GPU run.** Every number on this project is swiftshader. The geometry budget is
    comfortable, but this piece leans hard on large transparent billboards in fog — ferns,
    silhouette cards, mist, shafts — which is fill-rate cost that software rasterization reports

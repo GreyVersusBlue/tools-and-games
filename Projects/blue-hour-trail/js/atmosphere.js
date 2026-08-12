@@ -188,38 +188,14 @@ function buildFireflies() {
 
 /* ---------------------------------------------------- above the fog line --- */
 
-function buildSummitPayoff() {
-  const group = new THREE.Group();
-  const end = trailPoint(1);
-
-  // The cloud sea: a soft ring around the summit, only visible once the
-  // walker climbs above the fog line. fog:false — it IS the fog, seen from
-  // on top, and letting the scene fog eat it would defeat the reveal.
-  const sea = new THREE.Mesh(
-    new THREE.RingGeometry(40, 200, 48),
-    new THREE.MeshBasicMaterial({
-      color: 0xdae4ec, transparent: true, opacity: 0,
-      side: THREE.DoubleSide, fog: false, depthWrite: false,
-    }));
-  sea.rotation.x = -Math.PI / 2;
-  sea.position.set(end.x, 46, end.z);
-  group.add(sea);
-
-  // Distant peaks breaking the cloud, dark against the pale air.
-  const peakMat = new THREE.MeshBasicMaterial({
-    color: 0x5a6b7e, transparent: true, opacity: 0, fog: false,
-  });
-  const peaks = [];
-  [[-150, -80, 46, 34], [120, -140, 60, 42], [-40, -190, 52, 55]].forEach(([dx, dz, r, h]) => {
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7), peakMat);
-    cone.position.set(end.x + dx, 40 + h / 2, end.z + dz);
-    group.add(cone);
-    peaks.push(cone);
-  });
-
-  group.visible = false;
-  return { group, sea, peakMat };
-}
+// There used to be a summit payoff built here: a cloud sea ring at y = 46 and
+// three distant peaks breaking it, both fading in on altT. Two things were
+// wrong with it. Geometrically it never worked — the mountain has no peak, it
+// is a ramp in z, so the plane sat inside the hillside and was reachable by
+// 2 of 30 test rays. And thematically it was the wrong promise: a scenic reward
+// at the top of a climb that is supposed to feel like a place you want to leave.
+// Both are gone. The walk ends in the fog now, which is the honest version of
+// what this piece was always doing.
 
 /* -------------------------------------------------------------------- build */
 
@@ -233,9 +209,6 @@ export function buildAtmosphere(scene) {
   const flies = buildFireflies();
   scene.add(flies.points);
 
-  const summit = buildSummitPayoff();
-  scene.add(summit.group);
-
   const positions = flies.points.geometry.attributes.position;
   let t = 0;
 
@@ -243,8 +216,11 @@ export function buildAtmosphere(scene) {
     update(dt, camera, fogT, altT) {
       t += dt;
       mist.tick(dt);
-      // more mist when the weather is thick, and none above the fog line
-      mist.mat.opacity = (0.07 + fogT * 0.09) * (1 - altT);
+      // More mist when the weather is thick, and MORE of it again at altitude.
+      // This term used to be multiplied by (1 - altT) — the mist thinned out as
+      // you climbed, because the summit was where the piece let you go. It
+      // doesn't any more.
+      mist.mat.opacity = 0.07 + fogT * 0.09 + altT * 0.07;
 
       // Shafts belong to the clear phases: light gets through while the fog
       // breathes out, and the woods go blind while it breathes in.
@@ -265,10 +241,9 @@ export function buildAtmosphere(scene) {
         positions.needsUpdate = true;
       }
 
-      // The reveal.
-      summit.group.visible = altT > 0.02;
-      summit.sea.material.opacity = altT * 0.9;
-      summit.peakMat.opacity = altT * 0.85;
+      // Shafts and fireflies still fade out with altitude, and they should:
+      // no light gets through up there to make a shaft of, and fireflies are a
+      // thing the woods have. Losing them is part of arriving.
     },
   };
 }

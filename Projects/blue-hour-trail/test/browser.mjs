@@ -145,23 +145,76 @@ ok('and the altitude blend is fully out of it', summit.altT > 0.99, `altT ${summ
 ok('the summit view is cheap', summit.info.calls < 300, `${summit.info.calls} calls`);
 await page.screenshot({ path: path.join(SHOTS, 'summit.png') });
 
-group('the payoff — OPEN FINDING, measured not asserted');
-// The README promises "thin bright air over a cloud sea". It does not render.
-// Two measurements, deliberately printed rather than asserted: the fix is a
-// world-design decision (see notes/24-blue-hour-notes.md), and a red suite
-// would just be a to-do list nobody can run. Turn these into assertions the
-// moment the summit is rebuilt.
+group('the summit ends in the fog');
+// This group replaces an OPEN FINDING block that measured two defects without
+// asserting them. Both are fixed, so both are assertions now.
 //
-// 1. atmosphere.js puts the cloud sea at y = 46, a ring of radius 40..200 round
-//    the trail end. The mountain there is a broad plateau averaging ~60 m, so
-//    the plane is inside the hill for most of its area and cannot be seen.
-console.log('  note  cloud sea plane sits at y=46; the summit plateau averages ~60 m for 200 m around');
-console.log('  note  so the ring is inside the hill — 100% buried at r=40, 60% still buried at r=200');
-// 2. Above the fog line nothing lifts the ground colour any more, and the
-//    forest floor has no alpine treatment, so the payoff view reads black:
-//    lower-half mean luminance 6-14/255 at the bench, against 22/255 on the
-//    trail below, which is itself deliberately dim.
-console.log(`  note  summit ground reads near-black (6-14/255); captures in ${SHOTS}`);
+// 1. The weather no longer clears at the top. It used to drop the fog to 0.006
+//    and hand the walker a bright empty view over a cloud sea that was itself
+//    buried inside the hillside. The summit is now the thickest air on the
+//    mountain, which is the promise this piece actually makes.
+const summitWeather = await page.evaluate(() => ({ altT: __bh.altT(), density: __bh.density() }));
+ok('the fog closes at the top rather than parting', summitWeather.density > 0.04,
+  `density ${summitWeather.density.toFixed(3)} at altT ${summitWeather.altT.toFixed(2)}`);
+
+// 2. The near-black frame is gone. The old summit measured 6-14/255 across four
+//    facings; the trail below, which is deliberately dim, reads about 22.
+//    Read in-page from the drawing buffer so the suite needs no PNG decoder.
+const lum = await page.evaluate(() => new Promise(res => {
+  const src = document.getElementById('scene');
+  // The renderer runs without preserveDrawingBuffer, so sample inside a rAF —
+  // after the frame is drawn, before it is cleared.
+  requestAnimationFrame(() => {
+    const gl = src.getContext('webgl2') || src.getContext('webgl');
+    const w = src.width, h = Math.floor(src.height / 2);
+    const buf = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);   // y=0 is the BOTTOM half
+    let s = 0;
+    for (let i = 0; i < buf.length; i += 4) {
+      s += 0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2];
+    }
+    res(s / (buf.length / 4));
+  });
+}));
+ok('the ground at the summit is legible, not black', lum > 18,
+  `lower-half luminance ${lum.toFixed(1)}/255 (was 6-14)`);
+
+group('somebody is in the lookout');
+const figure = await page.evaluate(async () => {
+  const L = __bh.layout();
+  __bh.teleport(L.bench.x, L.bench.z);
+  await new Promise(r => setTimeout(r, 400));
+  const info = __bh.dread.lookoutInfo();
+  const p = __bh.pos();
+  return { info, d: Math.hypot(info.x - p.x, info.z - p.z), eye: p.y };
+});
+ok('the figure stands on the platform, not on the ground', figure.info.y - figure.eye > 6,
+  `${(figure.info.y - figure.eye).toFixed(1)} m above the walker`);
+ok('and it is visible from the bench', figure.info.visible, `${figure.d.toFixed(1)} m away`);
+ok('half-there at most — never resolved', figure.info.opacity <= 0.5 + 1e-6,
+  `opacity ${figure.info.opacity.toFixed(2)}`);
+
+// The whole point of it: looking away does not clear it. The shape in the trees
+// is gone when you look back. This is not.
+const persists = await page.evaluate(async () => {
+  __bh.face(__bh.yawAlongTrail(0) + Math.PI, 0);       // look away
+  await new Promise(r => setTimeout(r, 500));
+  const away = __bh.dread.lookoutInfo().visible;
+  __bh.face(__bh.yawAlongTrail(0), 0);                  // and back
+  await new Promise(r => setTimeout(r, 500));
+  return { away, back: __bh.dread.lookoutInfo().visible };
+});
+ok('it does not vanish when you look away and back', persists.away && persists.back);
+
+// ...but walking up to it takes it out of view rather than resolving it.
+const upClose = await page.evaluate(async () => {
+  const i = __bh.dread.lookoutInfo();
+  __bh.teleport(i.x, i.z);                              // directly under the tower
+  await new Promise(r => setTimeout(r, 400));
+  return __bh.dread.lookoutInfo();
+});
+ok('at the foot of the tower it is no longer at the rail', !upClose.visible);
+await page.screenshot({ path: path.join(SHOTS, 'lookout.png') });
 
 group('the cairns');
 const cairn = await page.evaluate(async () => {
