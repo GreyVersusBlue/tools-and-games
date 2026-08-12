@@ -17,10 +17,17 @@ import { buildJournal } from './journal.js';
 import { buildLighthouse } from './lighthouse.js';
 import { buildRegions } from './regions.js';
 import { buildPier } from './pier.js';
+import { buildEvents } from './events.js';
+import { buildSandcastles } from './sandcastle.js';
 
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Phones get a 1.5 pixel-ratio cap: on a 3x screen that is 2.25x fewer
+// fragments for a difference no one sees on a moving sunset, and the water
+// shader is fragment-bound (round 1's measurement, reconfirmed in software
+// this round).
+const coarse = window.matchMedia('(pointer: coarse)').matches;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, coarse ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.55;
@@ -345,6 +352,14 @@ wildlife.journal = journal;
 skynight.journal = journal;
 shells.onExamine = shell => journal.foundShell(shell.name);
 const regions = buildRegions(controls, journal);
+const events = buildEvents(scene, audio, skynight, journal);
+const sandcastles = buildSandcastles(scene, interact, controls, camera, audio, ocean);
+
+// Photo mode: H hides every piece of chrome. The journal frames what you saw;
+// this frames what you see.
+document.addEventListener('keydown', e => {
+  if (e.code === 'KeyH' && controls.enabled) document.body.classList.toggle('photo');
+});
 
 function updateFireAudio() {
   const d = Math.hypot(controls.pos.x - CAMP.x, controls.pos.z - CAMP.z);
@@ -409,6 +424,8 @@ function tick() {
   journal.update(dt);
   regions.update(dt);
   lighthouse.update(dt, nightT, camera);
+  events.update(dt, camera, ocean.water.position.y, nightT);
+  sandcastles.update(dt);
   updateFireAudio();
 
   renderer.render(scene, camera);
@@ -434,6 +451,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     face(yaw, pitch = 0) { controls.yaw = yaw; controls.pitch = pitch; },
     pos: () => ({ x: controls.pos.x, z: controls.pos.z }),
     journal: () => JSON.parse(JSON.stringify(journal.state)),
+    events,
     info: () => renderer.info.render,
   };
 }

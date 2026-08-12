@@ -19,6 +19,8 @@ export const SPECIES = [
   { id: 'firefly', name: 'Fireflies', kind: 'creature', hint: 'the dune hollows, in the half-light' },
   { id: 'owl', name: 'Barn Owl', kind: 'creature', hint: 'something watches from the dead snag at night' },
   { id: 'bat', name: 'Pipistrelle Bats', kind: 'creature', hint: 'jagged little flights over the camp at dusk' },
+  { id: 'whale', name: 'Fin Whale', kind: 'creature', hint: 'a breath on the horizon, once' },
+  { id: 'jelly', name: 'Moon Jellies', kind: 'creature', hint: 'the tide leaves lanterns, some nights' },
   { id: 'sailboat', name: 'Sloop, westbound', kind: 'passage', hint: 'something crosses, unhurried' },
   { id: 'jet', name: 'Jet, transatlantic', kind: 'passage', hint: 'a line being drawn very high up' },
   { id: 'moon', name: 'The Moon, rising', kind: 'sky', hint: 'stay past the last of the light' },
