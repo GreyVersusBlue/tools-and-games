@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from '../libs/Sky.js';
-import { groundHeight } from './field.js';
+import { groundHeight, regionWeights } from './field.js';
 import { buildTerrain } from './terrain.js';
 import { buildProps } from './props.js';
 import { buildOcean } from './ocean.js';
@@ -377,7 +377,8 @@ function tick() {
   // anyway against a 9.5 s swash period, but there's no reason to take the lag.
   ocean.update(dt, camera);
   const moving = controls.update(dt, ocean.water.position.y);
-  wildlife.update(dt, camera);
+  wildlife.update(dt, camera, ocean.swashLevel, ocean.water.position.y, nightT);
+  audio.setRegionMix(regionWeights(controls.pos.x).headland);
   audio.update(dt, ocean.swashLevel, moving && controls.enabled, controls.wadeT);
   footprints.update(dt);
   skynight.update(dt * timeScale, nightT, camera);
@@ -412,6 +413,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     teleport(x, z) { controls.pos.x = x; controls.pos.z = z; },
     face(yaw, pitch = 0) { controls.yaw = yaw; controls.pitch = pitch; },
     pos: () => ({ x: controls.pos.x, z: controls.pos.z }),
+    journal: () => JSON.parse(JSON.stringify(journal.state)),
     info: () => renderer.info.render,
   };
 }

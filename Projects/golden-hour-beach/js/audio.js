@@ -79,6 +79,8 @@ export class Soundscape {
     bedFilt.type = 'lowpass'; bedFilt.frequency.value = 420; bedFilt.Q.value = 0.4;
     const bedGain = ctx.createGain(); bedGain.gain.value = 0.16;
     bed.connect(bedFilt).connect(bedGain).connect(this.master);
+    this.bedFilt = bedFilt;
+    this.bedGain = bedGain;
 
     // Wash: brighter layer that swells with each slap
     const wash = this._noiseSource();
@@ -150,6 +152,13 @@ export class Soundscape {
     // Wind eases off after dark — the day's onshore breeze lying down.
     if (this.windGain) {
       this.windGain.gain.setTargetAtTime(0.05 * (1 - this._nightT * 0.55), t, 0.5);
+    }
+
+    // Surf on rocks (the headland) is deeper and heavier than surf on sand.
+    if (this.bedFilt) {
+      const mix = this._headlandMix || 0;
+      this.bedFilt.frequency.setTargetAtTime(420 - mix * 150, t, 0.8);
+      this.bedGain.gain.setTargetAtTime(0.16 + mix * 0.06, t, 0.8);
     }
 
     // Campfire crackle: sparse filtered pops, rate and level scaled by how close
@@ -268,6 +277,86 @@ export class Soundscape {
   squabble() {
     if (!this.ctx) return;
     this._gullCry(0.05, 0.3);
+  }
+
+  // Sanderling contact peeps: a quick run of very high, very short chirps.
+  peep(pan = 0, vol = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const out = ctx.createGain(); out.gain.value = 1;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panner) { panner.pan.value = pan; out.connect(panner).connect(this.master); }
+    else out.connect(this.master);
+    const n = 2 + (Math.random() * 3 | 0);
+    for (let i = 0; i < n; i++) {
+      const start = t0 + i * 0.09;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      const f = 3400 + Math.random() * 600;
+      osc.frequency.setValueAtTime(f, start);
+      osc.frequency.exponentialRampToValueAtTime(f * 1.25, start + 0.03);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, start);
+      g.gain.linearRampToValueAtTime(0.014 * vol, start + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0003, start + 0.06);
+      osc.connect(g).connect(out);
+      osc.start(start); osc.stop(start + 0.08);
+    }
+  }
+
+  // One low pelican croak — half frog, half door.
+  croak(pan = 0) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const out = ctx.createGain(); out.gain.value = 1;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panner) { panner.pan.value = pan; out.connect(panner).connect(this.master); }
+    else out.connect(this.master);
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(120, t0);
+    osc.frequency.linearRampToValueAtTime(88, t0 + 0.3);
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'lowpass'; filt.frequency.value = 500; filt.Q.value = 2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.03, t0 + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.35);
+    osc.connect(filt).connect(g).connect(out);
+    osc.start(t0); osc.stop(t0 + 0.4);
+  }
+
+  // A seal's bark: two rough pulses through a vowel-ish bandpass.
+  bark(pan = 0, vol = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const out = ctx.createGain(); out.gain.value = 1;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panner) { panner.pan.value = pan; out.connect(panner).connect(this.master); }
+    else out.connect(this.master);
+    for (let i = 0; i < 2; i++) {
+      const start = t0 + i * 0.28;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(150 + Math.random() * 30, start);
+      osc.frequency.exponentialRampToValueAtTime(95, start + 0.18);
+      const filt = ctx.createBiquadFilter();
+      filt.type = 'bandpass'; filt.frequency.value = 620; filt.Q.value = 1.2;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, start);
+      g.gain.linearRampToValueAtTime(0.045 * vol, start + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0005, start + 0.22);
+      osc.connect(filt).connect(g).connect(out);
+      osc.start(start); osc.stop(start + 0.26);
+    }
+  }
+
+  // The soundscape's sense of place: 0..1 how "headland" it is here. Surf on
+  // rocks is deeper and heavier than surf on sand — the bed filter opens down
+  // and the bed gain leans in as the weights shift. One writer per frame, from
+  // main.js, off field.js's regionWeights.
+  setRegionMix(headland) {
+    this._headlandMix = headland;
   }
 
   // A stone touching water on its way past — a bright little tap, panned to

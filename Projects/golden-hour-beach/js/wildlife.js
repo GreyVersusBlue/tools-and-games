@@ -1,11 +1,20 @@
 import * as THREE from 'three';
 import { groundHeight } from './field.js';
+import { makeSanderlings } from './creatures/sanderlings.js';
+import { makeCrabs } from './creatures/crabs.js';
+import { makePelicans } from './creatures/pelicans.js';
+import { makeSeals } from './creatures/seals.js';
+import { makeTidepoolLife } from './creatures/tidepool.js';
+import { makeFireflies, makeOwl, makeBats } from './creatures/nightlife.js';
 
-// Dolphin arcs, circling gulls, a drifting sailboat, and a jet that
-// crosses the sky every few minutes trailing a contrail. The gulls also come
-// down for scattered crumbs — the project's first real state machine
-// (ORBIT → APPROACH → GROUND → DEPART) and the template the rest of the
-// bestiary follows.
+// Two layers now. The original quartet — dolphin arcs, circling/feeding gulls,
+// the sailboat, the jet with its contrail — lives in this file, as tuned and
+// tested since round 1. Everything newer is a module in js/creatures/, each
+// exporting makeX(scene, audio) → { group, home: {x, z, radius}, update(dt,
+// ctx) }, registered below and driven through one shared ctx of
+// { camera, playerPos, swashLevel, waterY, nightT, journal }. An entity whose
+// home is more than 300 m beyond its own radius from the walker is skipped
+// entirely — a seal nobody is west of costs nothing.
 
 // ---------- Dolphin ----------
 function makeDolphin() {
@@ -189,8 +198,37 @@ export function buildWildlife(scene, audio) {
   };
   state.feedActive = () => !!state.crumbs;
 
-  state.update = (dt, camera) => {
+  // ---------- The creature registry ----------
+  const entities = [
+    makeSanderlings(scene, audio),
+    makeCrabs(scene, audio),
+    makePelicans(scene, audio),
+    makeSeals(scene, audio),
+    makeTidepoolLife(scene, audio),
+    makeFireflies(scene),
+    makeOwl(scene, audio),
+    makeBats(scene),
+  ];
+  const ctx = {
+    camera: null, playerPos: null,
+    swashLevel: 0, waterY: 0, nightT: 0, journal: null,
+  };
+
+  state.update = (dt, camera, swashLevel = 0, waterY = 0, nightT = 0) => {
     state.t += dt;
+
+    // The registry first: one ctx, reused, no per-frame allocation.
+    ctx.camera = camera;
+    ctx.playerPos = camera.position;
+    ctx.swashLevel = swashLevel;
+    ctx.waterY = waterY;
+    ctx.nightT = nightT;
+    ctx.journal = state.journal;
+    for (const e of entities) {
+      const d = Math.hypot(e.home.x - camera.position.x, e.home.z - camera.position.z);
+      if (d > (e.home.radius || 0) + 300) continue;
+      e.update(dt, ctx);
+    }
 
     // --- dolphin: periodic series of 3–5 arcs traveling laterally ---
     if (!state.dolphinActive) {
