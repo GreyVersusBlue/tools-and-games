@@ -394,6 +394,89 @@ const stared = await page.evaluate(async () => {
 ok('a stared-at treeline never fires', stared.fired === false);
 ok('and a declined beat is not remembered as the last one', stared.lastBeat === stared.before);
 
+group('the small wrongnesses');
+// Ladder 3-5: the dead radio at the cabin, the bootprints under the fog, the
+// steam at the cab glass. None of them is a beat you could prove happened.
+const radio = await page.evaluate(async () => {
+  const L = __bh.layout();
+  __bh.teleport(L.cabin.x + 6, L.cabin.z + 6);
+  await new Promise(r => setTimeout(r, 200));
+  const fired = __bh.fireDread('radio');
+  return { fired, last: __bh.lastRadio() };
+});
+ok('the dead radio finds a carrier', radio.fired === 'radio' && !!radio.last,
+  radio.last ? `pan ${radio.last.pan.toFixed(2)}` : '');
+ok('and nothing answers at the cabin', radio.last && radio.last.echoGain === 0);
+
+const prints = await page.evaluate(async () => {
+  // thickest fog the cycle reaches, then the clearest
+  let thick = { t: 0, f: 0 }, clear = { t: 0, f: 1 };
+  for (let t = 0; t < 700; t += 5) {
+    __bh.setWeatherT(t); const f = __bh.fogT();
+    if (f > thick.f) thick = { t, f };
+    if (f < clear.f) clear = { t, f };
+  }
+  __bh.setWeatherT(thick.t);
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const inFog = __bh.bootprints();
+  __bh.setWeatherT(clear.t);
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const inClear = __bh.bootprints();
+  return { inFog, inClear };
+});
+ok('the bootprints surface in thick fog', prints.inFog.opacity > 0.3,
+  `opacity ${prints.inFog.opacity.toFixed(2)}, ${prints.inFog.prints} prints`);
+ok('and are gone in clear air — deniable, like everything here', prints.inClear.opacity < 0.05,
+  `opacity ${prints.inClear.opacity.toFixed(2)}`);
+
+const steamAt = await page.evaluate(async () => {
+  const L = __bh.layout();
+  __bh.teleport(L.bench.x, L.bench.z);
+  await new Promise(r => setTimeout(r, 200));
+  const s = __bh.steam();
+  return { d: Math.hypot(s.x - L.tower.x, s.z - L.tower.z), y: s.y, benchY: __bh.pos().y };
+});
+ok('the steam rises at the cab glass', steamAt.d > 1.0 && steamAt.d < 2.0,
+  `${steamAt.d.toFixed(2)} m out from the tower axis`);
+ok('at cab height, not on the ground', steamAt.y - steamAt.benchY > 6,
+  `y ${steamAt.y.toFixed(1)}, walker eye ${steamAt.benchY.toFixed(1)}`);
+
+// The check the whole billboard family actually needs: PIXELS. This session
+// found the mist and the breath had never rendered a single frame — their
+// billboard winding faces away from the camera and FrontSide culled them,
+// with zero page errors and zero warnings. Geometry assertions can't see
+// that; only the drawing buffer can. Stage every steam quad, stand at the
+// bench facing the cab, and demand the wisp be measurably brighter than the
+// dark cab face behind it.
+const steamPixels = await page.evaluate(() => new Promise(res => {
+  const L = __bh.layout();
+  __bh.teleport(L.bench.x, L.bench.z);
+  __bh.face(Math.atan2(-(L.tower.x - L.bench.x), -(L.tower.z - L.bench.z)), 0.28);
+  __bh.steamBurst();
+  setTimeout(() => requestAnimationFrame(() => {
+    const src = document.getElementById('scene');
+    const gl = src.getContext('webgl2') || src.getContext('webgl');
+    // A tight box on the cab face where the wisp rises. The bench view is
+    // deterministic, so the framing is too.
+    const x0 = Math.floor(src.width * 0.45), w = Math.floor(src.width * 0.10);
+    const yTop = Math.floor(src.height * 0.14), h = Math.floor(src.height * 0.15);
+    const buf = new Uint8Array(w * h * 4);
+    gl.readPixels(x0, src.height - (yTop + h), w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    const lums = [];
+    for (let i = 0; i < buf.length; i += 4) {
+      lums.push(0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2]);
+    }
+    lums.sort((a, b) => a - b);
+    res({
+      median: lums[lums.length >> 1],
+      max: lums[lums.length - 1],
+      alpha: __bh.steam().alpha0,
+    });
+  }), 1400);
+}));
+ok('and the steam is pixels, not just geometry', steamPixels.max > steamPixels.median + 18,
+  `max ${steamPixels.max.toFixed(0)} vs median ${steamPixels.median.toFixed(0)}, quad alpha ${steamPixels.alpha.toFixed(2)}`);
+
 group('the frame rate here');
 // Every timing number below is hostage to this. Measure it rather than assume.
 const fps = await page.evaluate(() => new Promise(res => {

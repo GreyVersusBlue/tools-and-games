@@ -261,6 +261,11 @@ export function createDread(scene, audio) {
       candidates.push('eyes', 'eyes');
     }
     if (state._lastBeat !== 'howl' && pt.t > 0.35) candidates.push('howl');
+    // The dead radio, only within earshot of the cabin, and rare — a single
+    // ticket in the draw. Every logbook radio check went out through a set
+    // like that one; this is the other half of those conversations.
+    const cabinD = Math.hypot(controls.pos.x - LAYOUT.cabin.x, controls.pos.z - LAYOUT.cabin.z);
+    if (state._lastBeat !== 'radio' && cabinD < 28) candidates.push('radio');
 
     if (!candidates.length) { state._cooldown = 12; return; }
     const beat = candidates[(Math.random() * candidates.length) | 0];
@@ -303,6 +308,17 @@ export function createDread(scene, audio) {
       case 'howl':
         audio.wolfHowl();
         break;
+
+      case 'radio': {
+        // Panned toward wherever the cabin actually is, because a sound with
+        // a source is deniable and a sound from nowhere is a jump scare.
+        const dx = LAYOUT.cabin.x - controls.pos.x;
+        const dz = LAYOUT.cabin.z - controls.pos.z;
+        const len = Math.hypot(dx, dz) || 1;
+        const pan = (dx / len) * Math.cos(controls.yaw) - (dz / len) * Math.sin(controls.yaw);
+        audio.radioSquelch({ pan: pan * 0.9 });
+        break;
+      }
 
       case 'bear': {
         // 45–65 m ahead, inside the view cone, facing the walker. It will be

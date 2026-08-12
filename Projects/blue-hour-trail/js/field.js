@@ -565,6 +565,30 @@ export function buildLayout() {
     }
   }
 
+  // Bootprints on the last switchback. Somebody walked up here in boots, one
+  // set, ascending — they start partway up the final climb and stop before
+  // the top, and no prints ever come back down. Deterministic, fog-gated at
+  // render time, and small enough to miss entirely, which is the point: the
+  // player who never looks down loses nothing, and the player who notices
+  // gets no explanation.
+  const printRnd = mulberry32(0xb007);
+  const bootprints = [];
+  {
+    const STRIDE = 0.78 / TRAIL.length;          // ~78 cm a step, in trail t
+    let foot = 1;
+    for (let t = 0.9; t < 0.965; t += STRIDE) {
+      const p = trailPoint(t);
+      const off = foot * (0.14 + printRnd() * 0.05);
+      bootprints.push({
+        x: p.x + -p.dz * off + (printRnd() - 0.5) * 0.04,
+        z: p.z + p.dx * off + (printRnd() - 0.5) * 0.04,
+        t, yaw: Math.atan2(p.dx, p.dz) + (printRnd() - 0.5) * 0.14,
+        foot,
+      });
+      foot = -foot;
+    }
+  }
+
   // Bird perches: tops of near trees strung along the whole climb.
   const perchRnd = mulberry32(0xbead);
   const nearTrees = trees.filter(t => t.tier === 'near');
@@ -576,7 +600,7 @@ export function buildLayout() {
 
   return {
     bridge, bench, tower, cabin, waterfall,
-    markers, cairns, pages, mushrooms, shafts, clearings, trees, perches,
+    markers, cairns, pages, bootprints, mushrooms, shafts, clearings, trees, perches,
   };
 }
 

@@ -294,6 +294,31 @@ group('the logbook');
     'and those pages read in order along the id sequence');
 }
 
+group('the bootprints');
+{
+  // Ladder item 4, session 4: one set of prints on the last switchback,
+  // already there, ascending only. They start partway up the final climb and
+  // stop short of the top; no set ever comes back down. props.js fog-gates
+  // the rendering; this group pins the arithmetic.
+  const bp = LAYOUT.bootprints;
+  ok(bp.length > 55 && bp.length < 85, 'one climb\'s worth of prints', `${bp.length}`);
+  ok(bp.every(p => p.t >= 0.9 && p.t < 0.965), 'all on the last switchback, stopping short of the top',
+    `t ${bp[0].t.toFixed(3)} to ${bp[bp.length - 1].t.toFixed(3)}`);
+  ok(bp.every((p, i) => i === 0 || p.t > bp[i - 1].t), 'ascending only — the t sequence never doubles back');
+  ok(bp.every(p => trailInfo(p.x, p.z).dist < 1.0), 'every print is on the trail itself',
+    `worst ${Math.max(...bp.map(p => trailInfo(p.x, p.z).dist)).toFixed(2)} m out`);
+  ok(bp.every((p, i) => i === 0 || p.foot !== bp[i - 1].foot), 'left, right, left — a walker, not a stamp');
+  const toeUp = bp.every(p => {
+    const tp = trailPoint(p.t);
+    const uphillYaw = Math.atan2(tp.dx, tp.dz);
+    let d = p.yaw - uphillYaw;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    return Math.abs(d) < 0.25;
+  });
+  ok(toeUp, 'and every toe points up the mountain');
+}
+
 group('determinism');
 {
   const a = buildLayout(), b = buildLayout();

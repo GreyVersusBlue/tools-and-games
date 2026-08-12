@@ -611,6 +611,76 @@ export class Soundscape {
     }
   }
 
+  /**
+   * The dead radio finding a carrier for a moment: squelch opens, hiss with a
+   * slow flutter and nothing in it, squelch shuts. No voice, no tone, no
+   * message — the sound of an open channel and nobody on it. Quiet enough to
+   * argue with; the pan (from dread.js) leans it toward the cabin. echoGain,
+   * if set, replays the burst once, fainter and delayed — a channel answered
+   * by its own static — which the summit beat uses and the cabin beat leaves
+   * alone.
+   */
+  radioSquelch({ pan = 0, echoGain = 0 } = {}) {
+    if (!this.ctx) return;
+    this._duckMusic(6);
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.05;
+    this._lastRadio = { pan, echoGain, at: t0 };   // read-only, for the suite
+
+    const out = ctx.createGain();
+    const p = this._pan(1);
+    if (p) { p.pan.value = Math.max(-1, Math.min(1, pan)); out.connect(p).connect(this.master); }
+    else out.connect(this.master);
+
+    const burst = (st, vol) => {
+      // squelch click, open
+      const click = ctx.createBufferSource();
+      click.buffer = this._noiseBuf;
+      click.playbackRate.value = 1.8;
+      const cf = ctx.createBiquadFilter();
+      cf.type = 'bandpass'; cf.frequency.value = 2400; cf.Q.value = 5;
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(0.05 * vol, st);
+      cg.gain.exponentialRampToValueAtTime(0.001, st + 0.03);
+      click.connect(cf).connect(cg).connect(out);
+      click.start(st, Math.random() * 2); click.stop(st + 0.04);
+
+      // the carrier: narrow hiss, fluttering slightly, saying nothing
+      const hiss = ctx.createBufferSource();
+      hiss.buffer = this._noiseBuf;
+      hiss.loop = true;
+      const hf = ctx.createBiquadFilter();
+      hf.type = 'bandpass'; hf.frequency.value = 1650; hf.Q.value = 0.9;
+      const hg = ctx.createGain();
+      hg.gain.setValueAtTime(0, st);
+      hg.gain.linearRampToValueAtTime(0.016 * vol, st + 0.3);
+      hg.gain.setValueAtTime(0.016 * vol, st + 1.5);
+      hg.gain.linearRampToValueAtTime(0, st + 1.62);
+      const flutter = ctx.createOscillator();
+      flutter.frequency.value = 0.8 + Math.random() * 0.5;
+      const flutterAmt = ctx.createGain();
+      flutterAmt.gain.value = 0.005 * vol;
+      flutter.connect(flutterAmt).connect(hg.gain);
+      hiss.connect(hf).connect(hg).connect(out);
+      hiss.start(st, Math.random() * 2); hiss.stop(st + 1.7);
+      flutter.start(st); flutter.stop(st + 1.7);
+
+      // squelch shut
+      const shut = ctx.createBufferSource();
+      shut.buffer = this._noiseBuf;
+      shut.playbackRate.value = 1.4;
+      const sf = ctx.createBiquadFilter();
+      sf.type = 'bandpass'; sf.frequency.value = 1900; sf.Q.value = 6;
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.04 * vol, st + 1.6);
+      sg.gain.exponentialRampToValueAtTime(0.001, st + 1.64);
+      shut.connect(sf).connect(sg).connect(out);
+      shut.start(st + 1.6, Math.random() * 2); shut.stop(st + 1.66);
+    };
+
+    burst(t0, 1);
+    if (echoGain > 0) burst(t0 + 4.2, echoGain);
+  }
+
   /** Barely audible pressure under the floor of the mix. */
   lowSting() {
     if (!this.ctx) return;

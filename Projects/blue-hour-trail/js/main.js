@@ -287,7 +287,10 @@ if (new URLSearchParams(location.search).has('debug')) {
     surface: () => controls.surface,
 
     cairns: () => ({ found: [...cairnsFound].sort((a, b) => a - b), total: LAYOUT.cairns.length }),
-    layout: () => ({ cairns: LAYOUT.cairns, markers: LAYOUT.markers, bench: LAYOUT.bench, pages: LAYOUT.pages }),
+    layout: () => ({
+      cairns: LAYOUT.cairns, markers: LAYOUT.markers, bench: LAYOUT.bench,
+      pages: LAYOUT.pages, tower: LAYOUT.tower, cabin: LAYOUT.cabin,
+    }),
     logbook: () => logbook.debug(),
 
     // The centerline, so a test can point the walker up the mountain instead of
@@ -301,14 +304,19 @@ if (new URLSearchParams(location.search).has('debug')) {
     },
 
     // Bypasses the cooldown and the fog/elevation gates. 'snap' | 'phantom' |
-    // 'silence' | 'howl' | 'bear' | 'eyes'.
+    // 'silence' | 'howl' | 'bear' | 'eyes' | 'radio'.
     fireDread: beat => dread.force(beat, camera, controls),
     dread,
 
+    steam: () => atmosphere.steamInfo(),
+    steamBurst: () => atmosphere.steamBurst(),
+    bootprints: () => ({ opacity: props.bootprintOpacity(), prints: LAYOUT.bootprints.length }),
+
     music: () => audio.musicState(),
-    // The last phantom-steps firing: its plan and pan, so the suite can hold
-    // the descent and the downhill lean without ears.
+    // The last phantom-steps and radio firings, so the suite can hold the
+    // descent, the downhill lean and the echo without ears.
     lastPhantom: () => audio._lastPhantom,
+    lastRadio: () => audio._lastRadio,
 
     info: () => renderer.info.render,
   };
