@@ -7,6 +7,7 @@ import { buildCreek } from './creek.js';
 import { buildAtmosphere } from './atmosphere.js';
 import { buildWildlife } from './wildlife.js';
 import { createDread } from './dread.js';
+import { buildLogbook } from './logbook.js';
 import { WalkControls } from './controls.js';
 import { Soundscape } from './audio.js';
 
@@ -131,6 +132,7 @@ const audio = new Soundscape();
 const wildlife = buildWildlife(scene, audio);
 const dread = createDread(scene, audio);
 const controls = new WalkControls(camera, canvas);
+const logbook = buildLogbook(scene, controls);
 
 // Start at the trailhead, facing up the first leg into the fog.
 {
@@ -152,9 +154,12 @@ function checkCairns() {
     if (Math.hypot(controls.pos.x - c.x, controls.pos.z - c.z) < c.foundRadius) {
       cairnsFound.add(i);
       audio.chime();
+      // The chip reads the keeper's name off the cairn. Nothing anywhere says
+      // who the keepers are or how many there should be; the logbook holds
+      // eight names and this counter only ever reaches seven.
       cairnChip.textContent = cairnsFound.size === LAYOUT.cairns.length
         ? 'all seven cairns'
-        : `cairn found — ${cairnsFound.size} of ${LAYOUT.cairns.length}`;
+        : `${c.keeper}’s cairn — ${cairnsFound.size} of ${LAYOUT.cairns.length}`;
       cairnChip.classList.add('show');
       chipTimer = 4;
     }
@@ -236,6 +241,7 @@ function tick() {
   atmosphere.update(dt, camera, fogT, altT);
   props.update(dt, fogT);
   creek.update(dt);
+  logbook.update(dt);
   checkCairns();
 
   const ck = creekInfo(controls.pos.x, controls.pos.z);
@@ -281,7 +287,8 @@ if (new URLSearchParams(location.search).has('debug')) {
     surface: () => controls.surface,
 
     cairns: () => ({ found: [...cairnsFound].sort((a, b) => a - b), total: LAYOUT.cairns.length }),
-    layout: () => ({ cairns: LAYOUT.cairns, markers: LAYOUT.markers, bench: LAYOUT.bench }),
+    layout: () => ({ cairns: LAYOUT.cairns, markers: LAYOUT.markers, bench: LAYOUT.bench, pages: LAYOUT.pages }),
+    logbook: () => logbook.debug(),
 
     // The centerline, so a test can point the walker up the mountain instead of
     // guessing a yaw. Guessing one costs you 5 m and a boundary clamp: the

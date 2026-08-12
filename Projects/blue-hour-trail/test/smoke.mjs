@@ -21,7 +21,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const {
   groundHeight, BOUNDS, TRAIL, trailPoint, trailInfo, trailBlend,
   CREEK, creekX, creekInfo, creekWaterY, walkHeight, walkable, surfaceAt,
-  LAYOUT, buildLayout,
+  LAYOUT, buildLayout, KEEPERS,
 } = await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
 
 let passed = 0, failed = 0;
@@ -235,6 +235,63 @@ group('the layout');
   const td = Math.hypot(LAYOUT.tower.x - LAYOUT.bench.x, LAYOUT.tower.z - LAYOUT.bench.z);
   ok(td > 6.5 && td < 70, 'the lookout stands in the figure\'s readable band from the bench',
     `${td.toFixed(1)} m`);
+}
+
+group('the keepers');
+{
+  // Grant 2, session 4: the cairns carry keepers' names, and the roster is one
+  // name longer than the cairn count. That gap is the whole story and this is
+  // the check that keeps it countable: eight names, seven cairns, exactly one
+  // keeper with entries in the log and no cairn on the mountain. Nothing in
+  // the piece ever says so — only a player who counts will know, and only
+  // this test makes sure the count stays worth making.
+  ok(KEEPERS.length === 8, 'eight keepers on the roster', KEEPERS.join(', '));
+  ok(new Set(KEEPERS).size === 8, 'no two share a name');
+  ok(LAYOUT.cairns.length === 7 && LAYOUT.cairns.every(c => KEEPERS.includes(c.keeper)),
+    'every cairn is a keeper\'s cairn');
+  ok(new Set(LAYOUT.cairns.map(c => c.keeper)).size === 7, 'no keeper built two');
+  const uncairned = KEEPERS.filter(k => !LAYOUT.cairns.some(c => c.keeper === k));
+  ok(uncairned.length === 1, 'exactly one keeper has no cairn', uncairned.join(', '));
+  ok(LAYOUT.pages.some(p => p.keeper === uncairned[0]),
+    'and that keeper\'s entries are in the log all the same');
+}
+
+group('the logbook');
+{
+  const pg = LAYOUT.pages;
+  ok(pg.length === 10, 'ten pages scattered on the mountain', `${pg.length}`);
+  ok(KEEPERS.every(k => pg.some(p => p.keeper === k)),
+    'every keeper is heard from at least once');
+  ok(pg.every(p => p.entries.length >= 1 && p.entries.every(e => e.date && e.body.length > 20)),
+    'every page carries dated, written entries');
+  ok(pg.every(p => walkable(p.x, p.z)), 'every page lies where a walker can stand',
+    pg.map(p => walkable(p.x, p.z) ? '' : p.id).join(''));
+
+  const onTrail = pg.filter(p => trailInfo(p.x, p.z).dist < 3.5);
+  const nearCabin = pg.filter(p => Math.hypot(p.x - LAYOUT.cabin.x, p.z - LAYOUT.cabin.z) < 8);
+  const nearTop = pg.filter(p =>
+    Math.hypot(p.x - LAYOUT.tower.x, p.z - LAYOUT.tower.z) < 20 ||
+    Math.hypot(p.x - LAYOUT.bench.x, p.z - LAYOUT.bench.z) < 20);
+  ok(onTrail.length >= 3 && nearCabin.length >= 3 && nearTop.length >= 3,
+    'a few on the trail, the rest at the cabin and the summit',
+    `${onTrail.length} trail, ${nearCabin.length} cabin, ${nearTop.length} summit`);
+
+  // The doctrine, held to the letter where a test can hold it: no entry may
+  // mention the figure, and the log never speaks in the game's voice. (No
+  // entry confirming danger or safety is editorial and stays a human's job.)
+  const all = pg.flatMap(p => p.entries.map(e => e.body)).join(' ');
+  ok(!/figure|monster|ghost|haunt|spirit|creature|watcher/i.test(all),
+    'no entry mentions the figure, by any name');
+  ok(!/\b(press|click|hold|player|found|unlock|collect)\b/i.test(all),
+    'and the log never speaks in the game\'s voice');
+
+  // Kessler's arc is the heart of the writing brief: the circling entries sit
+  // mid-roster and there are more of them than anyone else's, in order.
+  const mid = KEEPERS[4];
+  const midPages = pg.filter(p => p.keeper === mid);
+  ok(midPages.length >= 3, `${mid} carries the middle of the log`, `${midPages.length} pages`);
+  ok(midPages.every((p, i) => i === 0 || p.id > midPages[i - 1].id),
+    'and those pages read in order along the id sequence');
 }
 
 group('determinism');

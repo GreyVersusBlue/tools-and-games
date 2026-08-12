@@ -321,6 +321,93 @@ export function surfaceAt(x, z) {
   return 'undergrowth';
 }
 
+/* ------------------------------------------------------------------- keepers */
+
+// Eight names. Seven cairns. The tradition — stated once, in Doyle's own hand,
+// on the page found beside their cairn — is that a keeper who finishes a season
+// builds one on the way down. Nothing anywhere counts these two lists against
+// each other; the gap is left for whoever thinks to count.
+export const KEEPERS = ['Hollis', 'Vann', 'Merrit', 'Ruiz', 'Kessler', 'Okafor', 'Doyle', 'Marsh'];
+
+// The logbook, page by scattered page. Entries start administrative — weather,
+// supplies, a repaired shutter — and drift personal the deeper the log runs.
+// Kessler's entries are the middle of the arc and the reason it exists; read
+// them in order. House rules for every word here: no entry confirms danger, no
+// entry confirms safety, no entry mentions what stands at the rail, and the
+// log never once speaks in the game's voice. Madness or peace stays unruled.
+const PAGE_TEXTS = [
+  {
+    keeper: 'Hollis',
+    entries: [
+      { date: 'June 2', body: 'Hauled the season’s tinned goods up from the cache. Four trips. The winch rope wants replacing before somebody trusts it.' },
+      { date: 'June 5', body: 'Rain through the morning, cleared by four. Visibility good to the far ridge. Nothing to report.' },
+    ],
+  },
+  {
+    keeper: 'Vann',
+    entries: [
+      { date: 'July 11', body: 'Mice in the flour again. Patched the tin with a boot heel and a prayer. If the district wants a better report than that, the district can climb up here.' },
+      { date: 'July 14', body: 'Glass falling since noon. Banked the stove.' },
+    ],
+  },
+  {
+    keeper: 'Merrit',
+    entries: [
+      { date: 'Aug 3', body: 'The east shutter came off its top hinge in the night. Planed a shim and rehung it. It sits true now, which is more than I can say for the door.' },
+      { date: 'Aug 9', body: 'Counted nine deer in the burn scar this evening. I have started naming them, which the manual does not forbid.' },
+    ],
+  },
+  {
+    keeper: 'Ruiz',
+    entries: [
+      { date: 'Sept 1', body: 'Checked in on the radio at seven. Static took most of Delia’s voice but I got the weather out of it. Cold coming early, she thinks.' },
+      { date: 'Sept 6', body: 'I have been up here long enough that the quiet has stopped being a thing I notice and started being a thing I own. I don’t know how to write that in a weather column, so it goes here.' },
+    ],
+  },
+  {
+    keeper: 'Kessler',
+    entries: [
+      { date: 'June 19', body: 'Something came around the tower in the night. Twice, by the sound of it — slow, and heavy enough to hear through the floor. I did not go down to look. Elk, at that weight.' },
+      { date: 'June 20', body: 'Nothing in the mud this morning but my own boots from Thursday. Wind took the rest, I’d guess. Logged it and moving on.' },
+    ],
+  },
+  {
+    keeper: 'Kessler',
+    entries: [
+      { date: 'July 2', body: 'It was back last night. I counted eleven circuits before I lost the thread of it and slept. I want to write that it is a bear working the smell of the larder, so I will: it is a bear, working the smell of the larder.' },
+      { date: 'July 8', body: 'Four nights quiet, then last night again. I sat up with the lamp out and my ear on the floorboards and it was almost like listening to weather. It has a wide, patient way of going around.' },
+    ],
+  },
+  {
+    keeper: 'Kessler',
+    entries: [
+      { date: 'July 30', body: 'It came around again toward morning. I noticed I had stopped counting the circuits some nights back, the way you stop counting stairs in a house you live in.' },
+      { date: 'Aug 14', body: 'Slept the whole night through. Woke once near dawn to the sound of it going around and thought, there you are, and went back down into sleep like a stone into a well. Weather clear. Berries coming on along the south face.' },
+    ],
+  },
+  {
+    keeper: 'Okafor',
+    entries: [
+      { date: 'June 30', body: 'Inventory against the district list: short two lamp mantles and long one axe, which is the kind of arithmetic this mountain runs. Previous keeper left the log in good order. I read the whole of it my first week. Long evenings up here.' },
+      { date: 'July 21', body: 'Repainted the catwalk rail. The old paint had worn through in a ring, the way a path wears.' },
+    ],
+  },
+  {
+    keeper: 'Doyle',
+    entries: [
+      { date: 'Aug 25', body: 'Season’s end. Packed out the perishables and swept the cab. Whoever reads this next: the stove damper sticks a quarter turn from closed, and the third stair sings in frost. Treat both gently.' },
+      { date: 'Aug 26', body: 'Built my cairn this morning, up past the last turn, where the trail stops pretending it might level out. The tradition is you build it going down, done — but I wanted mine where I could stand and see the whole season from the top of it. Take a stone up with you if you pass; it saves carrying the mountain to the mountain.' },
+    ],
+  },
+  {
+    keeper: 'Marsh',
+    entries: [
+      { date: 'Sept 12', body: 'Relief is late. Radio check gave me carrier and no voices, which on this set could mean weather and could mean the set. Rationing the good tea against better company.' },
+      { date: 'Sept 18', body: 'Wind from the north all day, the long way of it through the guy-wires, like a note held past the end of the breath. Kettle’s on more than it’s off. I find I am in no great hurry to be anywhere but the window.' },
+    ],
+  },
+];
+
 /* -------------------------------------------------------------------- layout */
 
 const CAIRN_TS = [0.08, 0.22, 0.31, 0.47, 0.58, 0.71, 0.86];
@@ -366,6 +453,9 @@ export function buildLayout() {
     });
   }
 
+  // Each cairn carries the name of the keeper who built it, oldest lowest —
+  // the chip reads the name out when one is found. Seven names off an
+  // eight-name roster. Nothing explains that, anywhere, on purpose.
   const cairnRnd = mulberry32(0xca19);
   const cairns = CAIRN_TS.map((t, i) => {
     const p = trailPoint(t);
@@ -373,9 +463,32 @@ export function buildLayout() {
     const off = 5 + cairnRnd() * 9;
     return {
       x: p.x + -p.dz * off * side, z: p.z + p.dx * off * side,
-      t, stones: 4 + (i % 3), foundRadius: 4,
+      t, stones: 4 + (i % 3), foundRadius: 4, keeper: KEEPERS[i],
     };
   });
+
+  // The logbook's scattered pages: a few blown down along the trail, the rest
+  // where hands would have put them down — around the cabin, and at the top
+  // where the log lived. Positions are offsets from things already placed, so
+  // redrawing the trail or moving the cabin carries the pages along.
+  const pages = PAGE_TEXTS.map((pg, i) => ({ id: i, ...pg }));
+  {
+    const at = (i, x, z, yaw) => { pages[i].x = x; pages[i].z = z; pages[i].yaw = yaw; };
+    const onTrail = (i, t, off, side, yaw) => {
+      const p = trailPoint(t);
+      at(i, p.x + -p.dz * off * side, p.z + p.dx * off * side, yaw);
+    };
+    onTrail(0, 0.06, 2.4, -1, 0.7);                      // Hollis, first leg
+    onTrail(1, 0.21, 2.1, 1, 2.2);                       // Vann, low switchbacks
+    onTrail(2, 0.44, 1.8, -1, 4.1);                      // Merrit, below the cabin turn
+    at(3, cabin.x + 2.6, cabin.z + 1.8, 1.3);            // Ruiz, by the cabin door
+    at(4, cabin.x - 3.1, cabin.z + 0.9, 5.0);            // Kessler, cabin west side
+    at(5, cabin.x - 0.8, cabin.z - 3.4, 2.8);            // Kessler, behind the cabin
+    at(6, bench.x - 1.6, bench.z - 1.2, 0.4);            // Kessler, beside the bench
+    at(7, tower.x - 3.4, tower.z + 2.2, 3.6);            // Okafor, near the tower legs
+    onTrail(8, 0.88, 1.5, 1, 1.9);                       // Doyle, by their own cairn
+    at(9, tower.x + 1.2, tower.z - 1.6, 5.6);            // Marsh, at the foot of the tower
+  }
 
   const mushRnd = mulberry32(0x5309);
   const mushrooms = [];
@@ -423,6 +536,7 @@ export function buildLayout() {
     { x: waterfall.x, z: waterfall.z, r: 7 },
     ...markers.map(m => ({ x: m.x, z: m.z, r: 1.5 })),
     ...cairns.map(c => ({ x: c.x, z: c.z, r: 2.5 })),
+    ...pages.map(p => ({ x: p.x, z: p.z, r: 1.2 })),
   ];
 
   const treeRnd = mulberry32(0x7ee5);
@@ -462,7 +576,7 @@ export function buildLayout() {
 
   return {
     bridge, bench, tower, cabin, waterfall,
-    markers, cairns, mushrooms, shafts, clearings, trees, perches,
+    markers, cairns, pages, mushrooms, shafts, clearings, trees, perches,
   };
 }
 

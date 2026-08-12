@@ -225,6 +225,11 @@ const cairn = await page.evaluate(async () => {
   return __bh.cairns();
 });
 ok('standing on a cairn counts it', cairn.found.length === 1, `found ${cairn.found.length} of ${cairn.total}`);
+// Grant 2: the chip reads the keeper's name off the cairn — the seven-for-
+// eight gap made countable without a word of explanation.
+const chipText = await page.evaluate(() => document.getElementById('cairn-chip').textContent);
+const firstKeeper = await page.evaluate(() => __bh.layout().cairns[0].keeper);
+ok('and the chip names its keeper', chipText.includes(firstKeeper), JSON.stringify(chipText));
 
 const allCairns = await page.evaluate(async () => {
   const L = __bh.layout();
@@ -238,6 +243,47 @@ const allCairns = await page.evaluate(async () => {
 ok('all seven are reachable and counted', allCairns.c.found.length === allCairns.c.total,
   `${allCairns.c.found.length} of ${allCairns.c.total}`);
 ok('and the last one says so', /all seven/.test(allCairns.chip), JSON.stringify(allCairns.chip));
+
+group('the logbook opens under a held key');
+// Grant 1: the piece's one verb. Stand over a page, hold E, read; let go and
+// it's back on the ground. No state survives the release — that's the grant's
+// whole shape and this group holds every edge of it.
+const nearPage = await page.evaluate(async () => {
+  const pg = __bh.layout().pages[0];
+  __bh.teleport(pg.x, pg.z);
+  await new Promise(r => setTimeout(r, 300));
+  return { lb: __bh.logbook(), chip: document.getElementById('page-chip').className };
+});
+ok('standing over a page is noticed', nearPage.lb.near === 0, JSON.stringify(nearPage.lb));
+ok('and the chip offers the verb', /show/.test(nearPage.chip));
+
+await page.keyboard.down('KeyE');
+await wait(400);
+const opened = await page.evaluate(() => ({
+  lb: __bh.logbook(),
+  shown: document.getElementById('page-overlay').classList.contains('show'),
+  text: document.getElementById('page-overlay-body').textContent,
+}));
+ok('holding E brings the page up', opened.shown && opened.lb.open === 0);
+ok('with the keeper\'s entries on it', /Hollis/.test(opened.text) && /winch rope/.test(opened.text));
+await page.screenshot({ path: path.join(SHOTS, 'logbook.png') });
+
+await page.keyboard.up('KeyE');
+await wait(400);
+const closed = await page.evaluate(() => ({
+  lb: __bh.logbook(),
+  shown: document.getElementById('page-overlay').classList.contains('show'),
+}));
+ok('letting go puts it back down', !closed.shown && closed.lb.open === -1);
+
+const awayFromPage = await page.evaluate(async () => {
+  __bh.teleport(0, 145);
+  await new Promise(r => setTimeout(r, 300));
+  return { lb: __bh.logbook(), chip: document.getElementById('page-chip').className };
+});
+ok('walking off forgets the page entirely', awayFromPage.lb.near === -1 && !/show/.test(awayFromPage.chip));
+ok('every page is placed and named', await page.evaluate(() =>
+  __bh.layout().pages.length === 10 && __bh.layout().pages.every(p => p.keeper && p.entries.length)));
 
 group('the woods are not honest');
 // Every dread beat, forced, with no page error and the visible ones actually
