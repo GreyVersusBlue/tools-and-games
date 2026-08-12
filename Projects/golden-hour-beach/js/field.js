@@ -78,7 +78,7 @@ export function wadeLimitZ(waterLevel, wadeDepth = 0.45) {
  * one you can never get to know; and a fixed layout is one a test can make claims
  * about. Same argument the repo already made for vendoring the sand.
  */
-function mulberry32(a) {
+export function mulberry32(a) {
   return function () {
     a |= 0; a = a + 0x6D2B79F5 | 0;
     let t = Math.imul(a ^ a >>> 15, 1 | a);

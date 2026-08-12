@@ -32,6 +32,7 @@ export class WalkControls {
     this.walkSpeed = 2.1;        // m/s — an unhurried stroll
     this.keyLookSpeed = 1.15;    // rad/s on the arrow keys — a slow pan, not a flick
     this.eyeHeight = 1.62;
+    this._eye = 1.62;
     this.bobPhase = 0;
     this.bobAmount = 0;
     this.touchWalking = false;
@@ -43,6 +44,12 @@ export class WalkControls {
     this.bounds = { minX: -140, maxX: 140, minZ: -60, maxZ: 46 };
     this.wadeDepth = 0;
     this.wadeT = 0;
+
+    // Sitting (at the campfire, main.js decides where). Seated keeps the look
+    // free and drops the eye to log height; any walk key stands back up, which
+    // is the only way standing up should ever work — nobody reads a "press X to
+    // stand" prompt, everybody just pushes forward.
+    this.seated = false;
 
     this._bindEvents();
   }
@@ -123,6 +130,9 @@ export class WalkControls {
     if (this.keys['ArrowDown'])  this.pitch -= lookRate * 0.7;
     this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch));
 
+    if (this.seated && (fwd !== 0 || strafe !== 0 || this.touchWalking)) this.seated = false;
+    if (this.seated) { fwd = 0; strafe = 0; }
+
     const moving = (fwd !== 0 || strafe !== 0);
     const len = Math.hypot(fwd, strafe) || 1;
     fwd /= len; strafe /= len;
@@ -149,7 +159,10 @@ export class WalkControls {
     const bobX = Math.sin(this.bobPhase) * 0.02 * this.bobAmount;
 
     const ground = this.getGroundHeight(this.pos.x, this.pos.z);
-    this.pos.y = ground + this.eyeHeight;
+    // Eased between standing and seated so sitting is a settle, not a cut.
+    const targetEye = this.seated ? 0.95 : this.eyeHeight;
+    this._eye += (targetEye - this._eye) * Math.min(1, dt * 4);
+    this.pos.y = ground + this._eye;
 
     // How deep the water is where the walker is standing, 0 on dry sand. Camera
     // height already drops "for free" as ground descends toward the clamp above

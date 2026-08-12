@@ -63,6 +63,9 @@ export function buildOcean(scene, sunDirection) {
   const foam = new THREE.Mesh(foamGeo, foamMat);
   scene.add(foam);
   const foamBase = foamGeo.attributes.position.array.slice();
+  const foamDay = new THREE.Color(0xfff4e0);
+  const foamBio = new THREE.Color(0x5fe8ff);
+  let foamAdditive = false;
 
   const state = {
     water, foam,
@@ -81,6 +84,22 @@ export function buildOcean(scene, sunDirection) {
       water.material.uniforms['sunDirection'].value.copy(dir).normalize();
       water.material.uniforms['sunColor'].value.copy(color);
     },
+
+    // Bioluminescence. Deep at night the foam line stops being cream and starts
+    // to glow faint cyan — each run-up paints a lit arc on the dark sand. The
+    // glow is the foam material itself going additive; no light, no shader edit.
+    // bio is 0..1 from the palette keyframes, single writer as ever.
+    setNight(bio) {
+      foamMat.color.copy(foamDay).lerp(foamBio, bio);
+      const wantAdd = bio > 0.5;
+      if (wantAdd !== foamAdditive) {
+        foamAdditive = wantAdd;
+        foamMat.blending = wantAdd ? THREE.AdditiveBlending : THREE.NormalBlending;
+        foamMat.needsUpdate = true;
+      }
+      state._bio = bio;
+    },
+    _bio: 0,
   };
 
   state.update = (dt) => {
@@ -112,7 +131,8 @@ export function buildOcean(scene, sunDirection) {
       posArr.setY(i, Math.max(groundHeight(x, z), water.position.y) + 0.03);
     }
     posArr.needsUpdate = true;
-    foamMat.opacity = 0.10 + s * 0.30;
+    // Additive glow wants a touch more presence at full run-up than daytime foam.
+    foamMat.opacity = 0.10 + s * 0.30 + state._bio * s * 0.15;
   };
 
   return state;

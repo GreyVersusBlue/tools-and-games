@@ -18,6 +18,13 @@ export class Soundscape {
     this.master = null;
     this._gullTimer = 4;
     this._stepPhase = 0;
+    // Night layers (set every frame by main.js from the palette's nightT).
+    this._nightT = 0;
+    this._cricketTimer = 2;
+    this._owlTimer = 70;
+    // Campfire (proximity 0..1, set every frame by main.js).
+    this._fireProx = 0;
+    this._crackleTimer = 0;
     // Set by main.js. Fired on the same phase counter that triggers the
     // footstep sound, so footprints land in step with the sound that already
     // exists rather than carrying a second counter of their own.
@@ -88,6 +95,7 @@ export class Soundscape {
     const filt = ctx.createBiquadFilter();
     filt.type = 'bandpass'; filt.frequency.value = 300; filt.Q.value = 1.2;
     const gain = ctx.createGain(); gain.gain.value = 0.05;
+    this.windGain = gain;
     wind.connect(filt).connect(gain).connect(this.master);
     // slow wander
     const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07;
@@ -110,11 +118,52 @@ export class Soundscape {
     this.washGain.gain.setTargetAtTime(target, t, 0.25);
     this.washFilt.frequency.setTargetAtTime(900 + swash * 1300 + wadeT * 500, t, 0.3);
 
-    // Gull cries
-    this._gullTimer -= dt;
-    if (this._gullTimer <= 0) {
-      this._gullTimer = 5 + Math.random() * 14;
-      this._gullCry();
+    // Gull cries — gulls roost as real dusk sets in, so the cries thin out and
+    // stop rather than carrying on over a starfield.
+    if (this._nightT < 0.5) {
+      this._gullTimer -= dt;
+      if (this._gullTimer <= 0) {
+        this._gullTimer = (5 + Math.random() * 14) * (1 + this._nightT * 3);
+        this._gullCry();
+      }
+    }
+
+    // Crickets take over from the gulls. Chirp trains from random stereo spots,
+    // starting sparse at dusk and settling into the steady night bed.
+    if (this._nightT > 0.4) {
+      this._cricketTimer -= dt;
+      if (this._cricketTimer <= 0) {
+        this._cricketTimer = 0.9 + Math.random() * (3.5 - this._nightT * 2);
+        this._cricketChirp();
+      }
+    }
+
+    // One owl, far off, rarely. The night's landmark sound.
+    if (this._nightT > 0.85) {
+      this._owlTimer -= dt;
+      if (this._owlTimer <= 0) {
+        this._owlTimer = 60 + Math.random() * 80;
+        this._owlHoot();
+      }
+    }
+
+    // Wind eases off after dark — the day's onshore breeze lying down.
+    if (this.windGain) {
+      this.windGain.gain.setTargetAtTime(0.05 * (1 - this._nightT * 0.55), t, 0.5);
+    }
+
+    // Campfire crackle: sparse filtered pops, rate and level scaled by how close
+    // the walker is standing. The low fire rumble is a lazy-built bed.
+    if (this._fireProx > 0.02) {
+      if (!this._fireBed) this._startFireBed();
+      this._crackleTimer -= dt;
+      if (this._crackleTimer <= 0) {
+        this._crackleTimer = 0.05 + Math.random() * 0.3;
+        this._cracklePop();
+      }
+    }
+    if (this._fireBed) {
+      this._fireBed.gain.setTargetAtTime(this._fireProx * 0.05, t, 0.3);
     }
 
     // Footsteps
@@ -157,6 +206,88 @@ export class Soundscape {
       osc.start(start); osc.stop(start + 0.35);
     }
     out.gain.setValueAtTime(1, t0);
+  }
+
+  // main.js writes these once per frame from the single palette writer, so the
+  // soundscape can never disagree with the sky about what time it is.
+  setNight(nightT) { this._nightT = nightT; }
+  setFire(proximity) { this._fireProx = proximity; }
+
+  _cricketChirp() {
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    const out = ctx.createGain(); out.gain.value = 1;
+    if (pan) { pan.pan.value = Math.random() * 1.6 - 0.8; out.connect(pan).connect(this.master); }
+    else out.connect(this.master);
+    const f = 4100 + Math.random() * 500;
+    const pulses = 4 + (Math.random() * 4 | 0);
+    const vol = (0.006 + Math.random() * 0.006) * this._nightT;
+    for (let i = 0; i < pulses; i++) {
+      const start = t0 + i * 0.055;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, start);
+      g.gain.linearRampToValueAtTime(vol, start + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + 0.045);
+      osc.connect(g).connect(out);
+      osc.start(start); osc.stop(start + 0.05);
+    }
+  }
+
+  _owlHoot() {
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    const out = ctx.createGain(); out.gain.value = 1;
+    if (pan) { pan.pan.value = Math.random() < 0.5 ? -0.6 : 0.6; out.connect(pan).connect(this.master); }
+    else out.connect(this.master);
+    // Two notes, hoo-HOOO, each a soft sine pair with a breathy attack.
+    const notes = [[370, 0, 0.28], [330, 0.42, 0.55]];
+    for (const [f, off, dur] of notes) {
+      const start = t0 + off;
+      for (const mult of [1, 0.5]) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f * mult, start);
+        osc.frequency.linearRampToValueAtTime(f * mult * 0.93, start + dur);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, start);
+        g.gain.linearRampToValueAtTime(mult === 1 ? 0.028 : 0.012, start + 0.06);
+        g.gain.exponentialRampToValueAtTime(0.0005, start + dur);
+        osc.connect(g).connect(out);
+        osc.start(start); osc.stop(start + dur + 0.05);
+      }
+    }
+  }
+
+  _startFireBed() {
+    const ctx = this.ctx;
+    const src = this._noiseSource();
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'lowpass'; filt.frequency.value = 180; filt.Q.value = 0.5;
+    const gain = ctx.createGain(); gain.gain.value = 0;
+    src.connect(filt).connect(gain).connect(this.master);
+    this._fireBed = gain;
+  }
+
+  _cracklePop() {
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this._noiseBuf; src.loop = true;
+    src.playbackRate.value = 1.5 + Math.random() * 1.5;
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'bandpass';
+    filt.frequency.value = 1400 + Math.random() * 2600;
+    filt.Q.value = 1.5;
+    const g = ctx.createGain();
+    const vol = (0.015 + Math.random() * 0.035) * this._fireProx;
+    const dur = 0.02 + Math.random() * 0.05;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0002, t0 + dur);
+    src.connect(filt).connect(g).connect(this.master);
+    src.start(t0, Math.random() * 2); src.stop(t0 + dur + 0.02);
   }
 
   _footstep() {

@@ -8,6 +8,8 @@ import { buildWildlife } from './wildlife.js';
 import { WalkControls } from './controls.js';
 import { Soundscape } from './audio.js';
 import { buildFootprints } from './footprints.js';
+import { buildSkyNight } from './skynight.js';
+import { buildCampfire, CAMP } from './campfire.js';
 
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -50,67 +52,130 @@ scene.add(bounce);
 // ---------- The hour actually passing ----------
 //
 // The piece is called Golden Hour and the sun used to sit at a fixed 3.2°, which
-// meant a twenty-minute walk and a ten-second one looked the same. It now drifts
-// from 5.6° down to 1.1° over eight minutes and then stops.
+// meant a twenty-minute walk and a ten-second one looked the same. Then it
+// drifted from 5.6° down to 1.1° over eight minutes and stopped — full night
+// would have broken a palette built for low warm light.
 //
-// It stops on purpose. A sun that goes all the way down turns this into a dark
-// beach, which is a different and worse piece — the whole palette, the water
-// colour and the exposure are built for low warm light. What this wants is the
-// light *deepening* while you are out in it, not night falling. Eight minutes is
-// long enough that nobody watches it happen and short enough that a real visit
-// covers most of it.
+// Now the palette is built for the whole descent, so the sun goes all the way
+// down. The eight-minute opening act is untouched; past 1.1° the light keeps
+// falling through sunset, blue hour and deep dusk into a held night — about 26
+// minutes of walking time end to end, or a lot less sitting at the fire, where
+// time runs six times faster. Night holds: the moon keeps its own slow arc and
+// the elevation stays put. A fresh visit still opens at 5.6° — the strong
+// opening frame is the one thing the old decision got permanently right.
 //
-// It is also deliberately not the thing that makes the preview capture's
-// "did the frame change" assertion pass (locked decision #28). The water ripple,
-// the swash and the gulls already move every frame, and #29 is explicit that
-// animating something to satisfy that check is the wrong reason. Over the ~30 s
-// a capture takes, the sun moves 0.3° and changes nothing you could see.
-const SUN_FROM = 5.6, SUN_TO = 1.1, SUN_SECONDS = 480;
+// None of this is the thing that makes the preview capture's "did the frame
+// change" assertion pass (locked decision #28). The water ripple, the swash and
+// the gulls already move every frame, and #29 is explicit that animating
+// something to satisfy that check is the wrong reason.
+const SUN_FROM = 5.6;
+
+// The descent as (walking-seconds, elevation) stops. The first leg is the
+// original eight minutes exactly.
+const SUN_TRACK = [
+  { at: 0,    elev: 5.6 },
+  { at: 480,  elev: 1.1 },   // end of the old piece
+  { at: 600,  elev: 0.0 },   // sunset touch
+  { at: 840,  elev: -3.0 },  // blue hour
+  { at: 1140, elev: -7.0 },  // deep dusk, first real stars
+  { at: 1560, elev: -12.0 }, // night, held
+];
+const SUN_TOTAL = SUN_TRACK[SUN_TRACK.length - 1].at;
+
+function elevAtTime(s) {
+  for (let i = 1; i < SUN_TRACK.length; i++) {
+    if (s <= SUN_TRACK[i].at) {
+      const a = SUN_TRACK[i - 1], b = SUN_TRACK[i];
+      return a.elev + (b.elev - a.elev) * ((s - a.at) / (b.at - a.at));
+    }
+  }
+  return SUN_TRACK[SUN_TRACK.length - 1].elev;
+}
 
 // Everything the sun touches, set in one place from one elevation. Split across
 // call sites it would rot: the fog would stay the noon colour while the light
-// went red, and nobody would notice until a screenshot looked wrong.
-const HIGH = {
-  light: new THREE.Color(0xffc98d), intensity: 2.9,
-  skyTop: new THREE.Color(0xd8a5c0), skyBottom: new THREE.Color(0x7a5c40), fill: 0.62,
-  ambient: new THREE.Color(0x8e6274), ambientI: 0.24,
-  fog: new THREE.Color(0xf0c39c), water: new THREE.Color(0xffdcaa), exposure: 0.52,
-};
-const LOW = {
-  light: new THREE.Color(0xff8f4a), intensity: 2.1,
-  skyTop: new THREE.Color(0xc57ba4), skyBottom: new THREE.Color(0x5c4632), fill: 0.48,
-  ambient: new THREE.Color(0x7a4460), ambientI: 0.27,
-  fog: new THREE.Color(0xdb9a78), water: new THREE.Color(0xffb578), exposure: 0.60,
-};
+// went red, and nobody would notice until a screenshot looked wrong. The two
+// original keyframes grew into six; the rule is the same — one writer.
+//
+// star = star opacity, bio = bioluminescence (foam + footprints), moonMix = how
+// far the one directional light has handed over from sun to moon (one light,
+// two jobs — a second realtime light would cost real frame time for a sky that
+// only ever shows one of them), glintA = the sun-glint sprite's presence.
+const KEY = (elev, light, intensity, skyTop, skyBottom, fill, ambient, ambientI, fog, water, exposure, star, bio, moonMix, glintA) => ({
+  elev, intensity, fill, ambientI, exposure, star, bio, moonMix, glintA,
+  light: new THREE.Color(light), skyTop: new THREE.Color(skyTop),
+  skyBottom: new THREE.Color(skyBottom), ambient: new THREE.Color(ambient),
+  fog: new THREE.Color(fog), water: new THREE.Color(water),
+});
+const PALETTE = [
+  //   elev   light    inten  skyTop   skyBot   fill  ambient  ambI  fog      water    expo  star  bio  moon  glint
+  KEY( 5.6,  0xffc98d, 2.90, 0xd8a5c0, 0x7a5c40, 0.62, 0x8e6274, 0.24, 0xf0c39c, 0xffdcaa, 0.52, 0,    0,   0,    1),
+  KEY( 1.1,  0xff8f4a, 2.10, 0xc57ba4, 0x5c4632, 0.48, 0x7a4460, 0.27, 0xdb9a78, 0xffb578, 0.60, 0,    0,   0,    1),
+  KEY( 0.0,  0xff6a33, 1.60, 0xb06694, 0x4a3828, 0.40, 0x6a3a55, 0.28, 0xc98268, 0xff9a55, 0.66, 0,    0,   0,    0.85),
+  KEY(-3.0,  0x8890c0, 0.70, 0x525c88, 0x38344a, 0.40, 0x44426a, 0.36, 0x555a78, 0x3a5878, 0.72, 0.25, 0.1, 0,    0),
+  KEY(-7.0,  0x6a7aac, 0.50, 0x2c3454, 0x201e2c, 0.32, 0x323458, 0.42, 0x2a3048, 0x1c3854, 0.80, 0.80, 0.6, 0.6,  0),
+  KEY(-12.0, 0x9fb2d8, 0.68, 0x18223c, 0x12101c, 0.28, 0x242a48, 0.46, 0x141a2c, 0x102c44, 0.88, 1,    1,   1,    0),
+];
 const mixC = (a, b, t, out) => out.copy(a).lerp(b, t);
 const mixN = (a, b, t) => a + (b - a) * t;
 
 const tmpFog = new THREE.Color(), tmpWater = new THREE.Color();
+const lightDir = new THREE.Vector3();
+
+// Where the directional light's night half aims from. skynight owns the moon's
+// arc and pushes its direction in here every frame; before it exists (the very
+// first setSunElevation call at load) a plausible dummy is fine — moonMix is 0
+// until deep dusk.
+const moonDir = new THREE.Vector3(0.4, 0.3, -0.85).normalize();
 
 function setSunElevation(deg) {
-  const t = THREE.MathUtils.clamp((SUN_FROM - deg) / (SUN_FROM - SUN_TO), 0, 1);
+  // Bracketing keyframes, then one local lerp. PALETTE runs high to low.
+  let a = PALETTE[0], b = PALETTE[1];
+  for (let i = 1; i < PALETTE.length; i++) {
+    a = PALETTE[i - 1]; b = PALETTE[i];
+    if (deg >= b.elev) break;
+  }
+  const t = THREE.MathUtils.clamp((a.elev - deg) / (a.elev - b.elev), 0, 1);
 
-  const phi = THREE.MathUtils.degToRad(90 - deg);
+  // The Sky shader's brightness collapses to black almost the moment its sun
+  // goes below the horizon — no twilight, just off. Real dusk keeps a glow in
+  // the west for an hour. So the *shader* sun descends on a slowed, curved
+  // track below zero (-3° true reads as -0.55°, a strong afterglow; -12° true
+  // reads as -3.6°, a whisper on the horizon), while the lighting math uses the
+  // true elevation. Screenshot-verified both ways: linear ×0.125 left night
+  // looking like a sunset that never ends, and no remap at all rendered blue
+  // hour as a black frame with a foam line in it.
+  const shaderDeg = deg >= 0 ? deg : -Math.pow(-deg, 1.35) * 0.125;
+  const phi = THREE.MathUtils.degToRad(90 - shaderDeg);
   const theta = THREE.MathUtils.degToRad(sunAzimuthDeg);
   sun.setFromSphericalCoords(1, phi, theta);
   sky.material.uniforms.sunPosition.value.copy(sun);
 
-  sunLight.position.copy(sun).multiplyScalar(300);
-  mixC(HIGH.light, LOW.light, t, sunLight.color);
-  sunLight.intensity = mixN(HIGH.intensity, LOW.intensity, t);
+  const moonMix = mixN(a.moonMix, b.moonMix, t);
+  lightDir.copy(sun).lerp(moonDir, moonMix).normalize();
+  sunLight.position.copy(lightDir).multiplyScalar(300);
+  mixC(a.light, b.light, t, sunLight.color);
+  sunLight.intensity = mixN(a.intensity, b.intensity, t);
 
-  mixC(HIGH.skyTop, LOW.skyTop, t, skyFill.color);
-  mixC(HIGH.skyBottom, LOW.skyBottom, t, skyFill.groundColor);
-  skyFill.intensity = mixN(HIGH.fill, LOW.fill, t);
+  mixC(a.skyTop, b.skyTop, t, skyFill.color);
+  mixC(a.skyBottom, b.skyBottom, t, skyFill.groundColor);
+  skyFill.intensity = mixN(a.fill, b.fill, t);
 
-  mixC(HIGH.ambient, LOW.ambient, t, bounce.color);
-  bounce.intensity = mixN(HIGH.ambientI, LOW.ambientI, t);
+  mixC(a.ambient, b.ambient, t, bounce.color);
+  bounce.intensity = mixN(a.ambientI, b.ambientI, t);
 
-  scene.fog.color.copy(mixC(HIGH.fog, LOW.fog, t, tmpFog));
-  renderer.toneMappingExposure = mixN(HIGH.exposure, LOW.exposure, t);
+  scene.fog.color.copy(mixC(a.fog, b.fog, t, tmpFog));
+  renderer.toneMappingExposure = mixN(a.exposure, b.exposure, t);
 
-  mixC(HIGH.water, LOW.water, t, tmpWater);
-  return { t, water: tmpWater };
+  mixC(a.water, b.water, t, tmpWater);
+  return {
+    water: tmpWater,
+    nightT: THREE.MathUtils.clamp(-deg / 12, 0, 1),
+    star: mixN(a.star, b.star, t),
+    bio: mixN(a.bio, b.bio, t),
+    moonMix,
+    glintA: mixN(a.glintA, b.glintA, t),
+  };
 }
 
 // ---------- World ----------
@@ -126,6 +191,8 @@ const controls = new WalkControls(camera, canvas, groundHeight);
 controls.pos.set(0, 0, 14);   // start on dry sand, sea ahead
 const footprints = buildFootprints(scene);
 audio.onFootstep = () => footprints.step(controls.pos.x, controls.pos.z, controls.yaw);
+const skynight = buildSkyNight(scene);
+const campfire = buildCampfire(scene);
 
 // ---------- Sun glint sprite ----------
 const glintTex = (() => {
@@ -154,6 +221,18 @@ function placeGlint() {
   glint.position.y = Math.max(glint.position.y, 40);
 }
 placeGlint();
+
+// ---------- A light on the far western horizon ----------
+// The lighthouse this beach doesn't reach yet. One sprite, fog off so distance
+// doesn't erase it, flashing on a slow sweep once real dusk arrives. It costs
+// nothing and it means the horizon has a promise in it.
+const beacon = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: glintTex, transparent: true, depthWrite: false, fog: false,
+  blending: THREE.AdditiveBlending, color: 0xfff2c8, opacity: 0,
+}));
+beacon.position.set(-780, 12, -90);
+beacon.scale.set(14, 14, 1);
+scene.add(beacon);
 
 // ---------- Overlay / input bootstrap ----------
 const overlay = document.getElementById('overlay');
@@ -217,9 +296,63 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// ---------- Sitting at the fire ----------
+// The one interaction this round: get near the fire, press E (or tap the hint
+// on touch), and sit. Look stays free; any walk input stands you back up
+// (controls.js). While seated the hour passes six times faster — the fire is
+// how you choose to let the night come.
+const actionHint = document.getElementById('action-hint');
+let prevE = false;
+
+function toggleSit() {
+  if (!controls.seated) {
+    const dx = controls.pos.x - CAMP.x, dz = controls.pos.z - CAMP.z;
+    if (dx * dx + dz * dz > 3.5 * 3.5) return;
+    controls.seated = true;
+  } else {
+    controls.seated = false;
+  }
+}
+actionHint.addEventListener('click', e => { e.stopPropagation(); toggleSit(); });
+
+function updateCamp() {
+  const dx = controls.pos.x - CAMP.x, dz = controls.pos.z - CAMP.z;
+  const d = Math.hypot(dx, dz);
+
+  const e = !!controls.keys['KeyE'];
+  if (e && !prevE && controls.enabled) toggleSit();
+  prevE = e;
+
+  let hint = '';
+  if (controls.seated) hint = isTouch ? 'sitting — tap to stand' : 'sitting — W to stand';
+  else if (d < 3.5 && controls.enabled) hint = isTouch ? 'tap here to sit by the fire' : 'sit by the fire · E';
+  if (actionHint.textContent !== hint) actionHint.textContent = hint;
+  actionHint.classList.toggle('show', hint !== '');
+
+  // Fire loudness by distance: full inside 2 m, gone by 14 m.
+  audio.setFire(THREE.MathUtils.clamp(1 - (d - 2) / 12, 0, 1));
+}
+
 // ---------- Loop ----------
 const clock = new THREE.Clock();
-let sunT = 0;   // seconds of walking, not seconds since the page loaded
+let sunT = 0;      // seconds of walking, not seconds since the page loaded
+let nightT = 0;    // 0 above the horizon, 1 at held night
+
+function applySun() {
+  // skynight owns the moon's arc; pull its current direction in before the
+  // palette write so the directional light and the water agree on where the
+  // brightest thing in the sky is.
+  moonDir.copy(skynight.moonDir);
+  const pal = setSunElevation(elevAtTime(sunT));
+  nightT = pal.nightT;
+  ocean.setSun(pal.moonMix > 0.5 ? lightDir : sun, pal.water);
+  ocean.setNight(pal.bio);
+  footprints.setNight(pal.bio);
+  skynight.setNight(pal.star, nightT);
+  audio.setNight(nightT);
+  glint.material.opacity = pal.glintA;
+  placeGlint();
+}
 
 function tick() {
   requestAnimationFrame(tick);
@@ -227,12 +360,12 @@ function tick() {
 
   // The hour only passes while someone is here for it. Clocking this off page
   // load would mean a tab left open on the title card burns the whole descent
-  // before the visitor has taken a step.
-  if (controls.enabled && sunT < SUN_SECONDS) {
-    sunT = Math.min(SUN_SECONDS, sunT + dt);
-    const { water } = setSunElevation(SUN_FROM + (SUN_TO - SUN_FROM) * (sunT / SUN_SECONDS));
-    ocean.setSun(sun, water);
-    placeGlint();
+  // before the visitor has taken a step. Sitting at the fire runs it at six
+  // times — the fire is the fast-forward, deliberately diegetic.
+  const timeScale = controls.seated ? 6 : 1;
+  if (controls.enabled && sunT < SUN_TOTAL) {
+    sunT = Math.min(SUN_TOTAL, sunT + dt * timeScale);
+    applySun();
   }
 
   // Ocean first: controls needs this frame's water surface height to know how
@@ -243,7 +376,34 @@ function tick() {
   wildlife.update(dt, camera);
   audio.update(dt, ocean.swashLevel, moving && controls.enabled, controls.wadeT);
   footprints.update(dt);
+  skynight.update(dt * timeScale, nightT, camera);
+  campfire.update(dt);
+  updateCamp();
+
+  // The far beacon wakes with the dusk: a slow sweep, bright for a beat.
+  const sweep = Math.pow(Math.max(0, Math.sin(clock.elapsedTime * 0.785)), 24);
+  beacon.material.opacity = nightT * (0.12 + sweep * 0.8);
 
   renderer.render(scene, camera);
 }
 tick();
+
+// ---------- Debug hook ----------
+// Only with ?debug in the URL. The regression suite (and anyone tuning the
+// palette) cannot wait 26 real minutes for night: setSunT scrubs the descent,
+// teleport moves the walker, info reads the renderer's draw counts.
+if (new URLSearchParams(location.search).has('debug')) {
+  window.__gh = {
+    setSunT(s) {
+      sunT = THREE.MathUtils.clamp(s, 0, SUN_TOTAL);
+      // The moon crosses nightT 0.25 around t=840 in real play; give the scrub
+      // the same moon a patient walker would have.
+      skynight.syncMoon(Math.max(0, sunT - 840));
+      skynight.update(0, THREE.MathUtils.clamp(-elevAtTime(sunT) / 12, 0, 1), camera);
+      applySun();
+    },
+    getSunT() { return sunT; },
+    teleport(x, z) { controls.pos.x = x; controls.pos.z = z; },
+    info: () => renderer.info.render,
+  };
+}
