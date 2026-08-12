@@ -21,7 +21,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Absolute paths on Windows start with a drive letter, which Node reads as the
 // URL scheme `c:` and rejects (v7 §7). Same fix Faire Weekend's suite needed.
 const { groundHeight, BOUNDS, LAYOUT, wadeLimitZ, SHELL_KINDS,
-        shorelineZ, seabedSlope, regionAt, regionWeights, walkLimits, trailX } =
+        shorelineZ, seabedSlope, regionAt, regionWeights, walkLimits, trailX,
+        riverX, PIER, onPier, pierDeckY, CAVE } =
   await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
 
 let passed = 0, failed = 0;
@@ -139,6 +140,65 @@ group('the coast');
   const headReach = wadeLimitZ(0, 0.45, -560) - shorelineZ(-560);
   ok(headReach > homeReach, 'wading off the headland stops sooner (steeper seabed)',
     `${(-headReach).toFixed(1)} m vs ${(-homeReach).toFixed(1)} m of water`);
+}
+
+group('the river, the pier, and the cave');
+{
+  // The estuary notches the shoreline inland, and returns it before the edge.
+  ok(shorelineZ(600) > 4, 'the estuary carries the shoreline inland',
+    `shorelineZ(600) = ${shorelineZ(600).toFixed(1)}`);
+  ok(Math.abs(shorelineZ(780) + 6) < 1.5, 'and lets it back out by the world edge',
+    `shorelineZ(780) = ${shorelineZ(780).toFixed(1)}`);
+
+  // The river runs below its banks, and crossing it is always a wade, never a
+  // climb: no half-metre stride across the channel rises past the step rule.
+  let carved = 0, worstStride = 0;
+  for (let z = 10; z <= 100; z += 6) {
+    const cx = riverX(z);
+    const bed = groundHeight(cx, z);
+    const bank = groundHeight(cx + 12, z);
+    if (bank - bed > 0.3) carved++;
+    for (let dx = -10; dx < 10; dx += 0.5) {
+      const rise = groundHeight(cx + dx + 0.5, z) - groundHeight(cx + dx, z);
+      worstStride = Math.max(worstStride, rise);
+    }
+  }
+  ok(carved >= 12, 'the channel is carved below its banks', `${carved} of 16 samples`);
+  ok(worstStride < 0.85, 'and crossing it never needs a stride the step rule refuses',
+    `worst rise ${worstStride.toFixed(2)} m per half-metre`);
+
+  // The pier deck is ground, sloping gently seaward, entered at beach level.
+  ok(onPier(PIER.x, 0) && !onPier(PIER.x, PIER.deckEnd - 1) && !onPier(PIER.x + 5, 0),
+    'onPier knows the deck from the gap and the beach beside it');
+  const entryRise = groundHeight(PIER.x, PIER.deckStart - 0.5) - groundHeight(PIER.x, PIER.deckStart + 1);
+  ok(entryRise < 0.9, 'stepping onto the deck clears the step rule',
+    `rise ${entryRise.toFixed(2)} m`);
+  ok(pierDeckY(PIER.deckEnd) > pierDeckY(PIER.deckStart), 'the deck rises as it goes out');
+  ok(groundHeight(PIER.x, PIER.deckEnd + 0.5) > 1.5,
+    'the deck end stands well above the water');
+  // The collapsed span is not walkable: the wading limit past the deck end
+  // pulls z back toward shore at any tide.
+  const lim = walkLimits(PIER.x, 0.13);
+  ok(lim.minZ <= PIER.deckEnd, 'walkLimits lets a walker reach the broken end');
+  const limOff = walkLimits(PIER.x + PIER.halfW + 1, 0.13);
+  ok(limOff.minZ > PIER.deckEnd + 4, 'but not the water beside the pier',
+    `limit off-deck ${limOff.minZ.toFixed(1)}`);
+
+  // The cave is a real recess: it backs INTO the cliff — the ground a few
+  // strides inland of the floor rises like a wall — while the floor itself
+  // stays dry above the highest swash.
+  const inCave = groundHeight(CAVE.x, CAVE.z);
+  const backWall = groundHeight(CAVE.x, CAVE.z + 10);
+  ok(backWall - inCave > 2, 'the cave backs into the cliff',
+    `${(backWall - inCave).toFixed(1)} m of wall behind the floor`);
+  ok(inCave > 0.2, 'and its floor stays above the highest swash',
+    `floor y = ${inCave.toFixed(2)}`);
+  let entryOk = true;
+  for (let s = 2; s <= 8; s += 0.5) {
+    const z0 = shorelineZ(CAVE.x) + s, z1 = shorelineZ(CAVE.x) + s + 0.5;
+    if (groundHeight(CAVE.x, z1) - groundHeight(CAVE.x, z0) > 0.85) entryOk = false;
+  }
+  ok(entryOk, 'and the walk in from the shelf clears the step rule');
 }
 
 group('the tide pools and the trail');

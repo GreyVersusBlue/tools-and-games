@@ -1,4 +1,4 @@
-import { regionAt, LAYOUT } from './field.js';
+import { regionAt, LAYOUT, PIER, CAVE } from './field.js';
 import { LIGHTHOUSE } from './lighthouse.js';
 
 // Region arrivals: crossing into a named stretch of coast for the first time
@@ -11,6 +11,9 @@ const CARDS = {
   dunes: 'The Dune Trail',
   lighthouse: 'The Lighthouse',
   pools: 'The Tide Pools',
+  estuary: 'The River Mouth',
+  pier: 'The Old Pier',
+  cave: 'The Sea Cave',
 };
 
 export function buildRegions(controls, journal) {
@@ -33,8 +36,10 @@ export function buildRegions(controls, journal) {
       const r = regionAt(x, z);
       if (CARDS[r]) arrive(r);
 
-      // Point places inside the headland: the tower, and the pool shelf.
+      // Point places: the tower, the pool shelf, the pier deck, the cave.
       if (Math.hypot(x - LIGHTHOUSE.x, z - LIGHTHOUSE.z) < 24) arrive('lighthouse');
+      else if (Math.abs(x - PIER.x) < 6 && z < PIER.deckStart + 4) arrive('pier');
+      else if (Math.hypot(x - CAVE.x, z - CAVE.z) < CAVE.r) arrive('cave');
       else {
         for (const p of LAYOUT.headland.pools) {
           if (Math.hypot(x - p.x, z - p.z) < 9) { arrive('pools'); break; }

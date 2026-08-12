@@ -14,6 +14,8 @@ export const SPECIES = [
   { id: 'seal', name: 'Harbour Seal', kind: 'creature', hint: 'hauled out somewhere rocky — approach gently' },
   { id: 'starfish', name: 'Ochre Starfish', kind: 'creature', hint: 'look into the still water on the shelf' },
   { id: 'shanny', name: 'Rock Pool Shanny', kind: 'creature', hint: 'quicker than your shadow on the pool' },
+  { id: 'heron', name: 'Grey Heron', kind: 'creature', hint: 'stands where the river runs, stiller than you can' },
+  { id: 'cormorant', name: 'Cormorant', kind: 'creature', hint: 'wings held open, out past where the pier gives up' },
   { id: 'firefly', name: 'Fireflies', kind: 'creature', hint: 'the dune hollows, in the half-light' },
   { id: 'owl', name: 'Barn Owl', kind: 'creature', hint: 'something watches from the dead snag at night' },
   { id: 'bat', name: 'Pipistrelle Bats', kind: 'creature', hint: 'jagged little flights over the camp at dusk' },
@@ -42,6 +44,9 @@ export const PLACES = [
   { id: 'headland', name: 'The Headland' },
   { id: 'lighthouse', name: 'The Lighthouse' },
   { id: 'pools', name: 'The Tide Pools' },
+  { id: 'estuary', name: 'The River Mouth' },
+  { id: 'pier', name: 'The Old Pier' },
+  { id: 'cave', name: 'The Sea Cave' },
 ];
 
 const speciesIds = new Set(SPECIES.map(s => s.id));

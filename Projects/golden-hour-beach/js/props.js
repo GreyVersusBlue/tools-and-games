@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, LAYOUT } from './field.js';
+import { groundHeight, LAYOUT, CAVE } from './field.js';
 
 // Everything standing on the sand. Before this the beach was 280 m by 106 m of
 // empty ground: you could walk west for seventy seconds and arrive at a view
@@ -208,6 +208,37 @@ function buildTidePools(stoneMat) {
   return group;
 }
 
+/* --------------------------------------------------------------------- cave - */
+
+// The cave's mouth: the recess itself is carved by the heightfield; this adds
+// the fallen lintel blocks and rubble that make it read as a cave rather than
+// a dent. The glowing pool inside belongs to main.js (it needs the night
+// palette).
+function buildCaveDressing(stoneMat) {
+  const parts = [];
+  const rnd = (s => () => (s = (s * 48271) % 2147483647) / 2147483647)(51966);
+  // Big tumbled blocks flanking the entry.
+  for (const [dx, dz, r] of [[-4.5, 2.5, 1.6], [4.2, 2.1, 1.9], [-2.8, -1.5, 1.1], [3.4, -2, 0.9]]) {
+    const g = new THREE.SphereGeometry(r, 10, 8);
+    roughen(g, 0.3, ((CAVE.x + dx) * 977) | 0);
+    g.scale(1, 0.7, 1);
+    const x = CAVE.x + dx, z = CAVE.z + dz;
+    g.translate(x, groundHeight(x, z) + r * 0.25, z);
+    parts.push(g);
+  }
+  // Rubble across the floor.
+  for (let i = 0; i < 14; i++) {
+    const a = rnd() * Math.PI * 2, d = rnd() * 5;
+    const x = CAVE.x + Math.cos(a) * d, z = CAVE.z + Math.sin(a) * d * 0.8;
+    const r = 0.12 + rnd() * 0.3;
+    const g = new THREE.SphereGeometry(r, 7, 5);
+    roughen(g, 0.35, (x * 131 + z * 977) | 0);
+    g.translate(x, groundHeight(x, z) + r * 0.3, z);
+    parts.push(g);
+  }
+  return new THREE.Mesh(mergeGeometries(parts), stoneMat);
+}
+
 /* ------------------------------------------------------------------- merge --- */
 
 /**
@@ -252,6 +283,7 @@ export function buildProps(scene) {
   group.add(buildRocks(stone));
   group.add(buildFence(wood));
   group.add(buildTidePools(stone));
+  group.add(buildCaveDressing(stone));
   for (const inst of buildWrack()) group.add(inst);
 
   scene.add(group);

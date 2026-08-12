@@ -37,10 +37,94 @@ export class Soundscape {
     this.ctx = ctx;
     this.master = ctx.createGain();
     this.master.gain.value = 0.9;
-    this.master.connect(ctx.destination);
+    // master → muffle → destination. The muffle is wide open on land and
+    // closes down as a wader gets toward knee depth — the world going soft
+    // around your legs.
+    this.muffle = ctx.createBiquadFilter();
+    this.muffle.type = 'lowpass';
+    this.muffle.frequency.value = 20000;
+    this.master.connect(this.muffle).connect(ctx.destination);
     this._noiseBuf = this._makeNoise(4);
     this._startOcean();
     this._startWind();
+    this._startCaveReverb();
+  }
+
+  // The cave's acoustics: a ConvolverNode fed a SYNTHESIZED impulse response
+  // (1.4 s of exponentially decaying noise — still zero files). The wash layer
+  // taps into it through a send gain that opens as the walker steps inside,
+  // so the surf you were hearing becomes a boom you are standing in.
+  _startCaveReverb() {
+    const ctx = this.ctx;
+    const seconds = 1.4;
+    const ir = ctx.createBuffer(2, ctx.sampleRate * seconds, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      for (let i = 0; i < d.length; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2.6);
+      }
+    }
+    const conv = ctx.createConvolver();
+    conv.buffer = ir;
+    this.caveSend = ctx.createGain();
+    this.caveSend.gain.value = 0;
+    this.caveSend.connect(conv).connect(this.master);
+    if (this._pendingCaveTap) { this._pendingCaveTap.connect(this.caveSend); this._pendingCaveTap = null; }
+    this._caveT = 0;
+    this._dripTimer = 2;
+  }
+
+  // 0..1: how far inside the cave the walker is. main.js writes it per frame.
+  setCave(t) { this._caveT = t; }
+
+  // 'sand' | 'wood' — what the next footstep lands on.
+  setSurface(s) { this._surface = s; }
+
+  // The curlew: a long liquid two-part whistle, rising then bubbling down.
+  // The estuary's voice. Deliberately not in the journal — not everything
+  // should be collectable, and a cry with no bird attached is the point.
+  curlew(pan = 0) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const out = ctx.createGain(); out.gain.value = 1;
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panner) { panner.pan.value = pan; out.connect(panner).connect(this.master); }
+    else out.connect(this.master);
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1250, t0);
+    osc.frequency.linearRampToValueAtTime(1950, t0 + 0.55);
+    // the bubbling descent
+    for (let i = 0; i < 7; i++) {
+      const s = t0 + 0.62 + i * 0.11;
+      osc.frequency.setValueAtTime(1750 - i * 110, s);
+      osc.frequency.linearRampToValueAtTime(1500 - i * 110, s + 0.07);
+    }
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.022, t0 + 0.2);
+    g.gain.setValueAtTime(0.022, t0 + 1.1);
+    g.gain.exponentialRampToValueAtTime(0.0004, t0 + 1.6);
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'bandpass'; filt.frequency.value = 1600; filt.Q.value = 1.1;
+    osc.connect(filt).connect(g).connect(out);
+    osc.start(t0); osc.stop(t0 + 1.7);
+  }
+
+  // One drip, into the reverb, for the cave.
+  _drip() {
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    const f = 900 + Math.random() * 900;
+    osc.frequency.setValueAtTime(f, t0);
+    osc.frequency.exponentialRampToValueAtTime(f * 0.6, t0 + 0.06);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.03 * this._caveT, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0003, t0 + 0.09);
+    osc.connect(g).connect(this.caveSend);
+    osc.start(t0); osc.stop(t0 + 0.1);
   }
 
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
@@ -89,6 +173,9 @@ export class Soundscape {
     this.washGain = ctx.createGain(); this.washGain.gain.value = 0.0;
     wash.connect(washFilt).connect(this.washGain).connect(this.master);
     this.washFilt = washFilt;
+    // The wash also feeds the cave reverb send (built in init just after).
+    if (this.caveSend) this.washGain.connect(this.caveSend);
+    else this._pendingCaveTap = this.washGain;
   }
 
   _startWind() {
@@ -112,6 +199,7 @@ export class Soundscape {
   update(dt, swash, moving, wadeT = 0) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+    this._wadeT = wadeT;
 
     // Ocean wash follows the visual wave (louder + brighter at run-up) and now
     // also the walker wading in — standing in the water should sound different
@@ -154,11 +242,38 @@ export class Soundscape {
       this.windGain.gain.setTargetAtTime(0.05 * (1 - this._nightT * 0.55), t, 0.5);
     }
 
-    // Surf on rocks (the headland) is deeper and heavier than surf on sand.
+    // Surf on rocks (the headland) is deeper and heavier than surf on sand,
+    // and the cave squeezes everything down further while the reverb opens.
     if (this.bedFilt) {
       const mix = this._headlandMix || 0;
-      this.bedFilt.frequency.setTargetAtTime(420 - mix * 150, t, 0.8);
+      const cave = this._caveT || 0;
+      this.bedFilt.frequency.setTargetAtTime((420 - mix * 150) * (1 - cave * 0.55), t, 0.8);
       this.bedGain.gain.setTargetAtTime(0.16 + mix * 0.06, t, 0.8);
+    }
+    if (this.caveSend) {
+      this.caveSend.gain.setTargetAtTime((this._caveT || 0) * 0.85, t, 0.5);
+      if (this._caveT > 0.25) {
+        this._dripTimer -= dt;
+        if (this._dripTimer <= 0) {
+          this._dripTimer = 1.5 + Math.random() * 4;
+          this._drip();
+        }
+      }
+    }
+
+    // The curlew calls across the estuary, daylight and dusk.
+    if ((this._estuaryMix || 0) > 0.35 && this._nightT < 0.8) {
+      this._curlewTimer = (this._curlewTimer ?? 20) - dt;
+      if (this._curlewTimer <= 0) {
+        this._curlewTimer = 35 + Math.random() * 50;
+        this.curlew(Math.random() * 1.4 - 0.7);
+      }
+    }
+
+    // Underwater-adjacent: the world softens as the wade deepens.
+    if (this.muffle) {
+      const deep = Math.max(0, (this._wadeT || 0) - 0.55) / 0.45;
+      this.muffle.frequency.setTargetAtTime(20000 - deep * 14500, t, 0.3);
     }
 
     // Campfire crackle: sparse filtered pops, rate and level scaled by how close
@@ -351,12 +466,12 @@ export class Soundscape {
     }
   }
 
-  // The soundscape's sense of place: 0..1 how "headland" it is here. Surf on
-  // rocks is deeper and heavier than surf on sand — the bed filter opens down
-  // and the bed gain leans in as the weights shift. One writer per frame, from
-  // main.js, off field.js's regionWeights.
-  setRegionMix(headland) {
+  // The soundscape's sense of place: how "headland" and how "estuary" it is
+  // here (0..1 each). Rocks deepen the surf; the estuary brings the curlew.
+  // One writer per frame, from main.js, off field.js's regionWeights.
+  setRegionMix(headland, estuary = 0) {
     this._headlandMix = headland;
+    this._estuaryMix = estuary;
   }
 
   // A stone touching water on its way past — a bright little tap, panned to
@@ -442,18 +557,34 @@ export class Soundscape {
   _footstep() {
     const ctx = this.ctx;
     const t0 = ctx.currentTime;
+    const wood = this._surface === 'wood';
     const src = ctx.createBufferSource();
     src.buffer = this._noiseBuf;
     src.loop = true;
     src.playbackRate.value = 0.7 + Math.random() * 0.2;
     const filt = ctx.createBiquadFilter();
-    filt.type = 'lowpass'; filt.frequency.value = 700 + Math.random() * 300;
+    // Sand scuffs; planking knocks. Same noise, different body.
+    filt.type = wood ? 'bandpass' : 'lowpass';
+    filt.frequency.value = wood ? 1100 + Math.random() * 300 : 700 + Math.random() * 300;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(0.05, t0 + 0.03);
-    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+    g.gain.linearRampToValueAtTime(wood ? 0.04 : 0.05, t0 + (wood ? 0.012 : 0.03));
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + (wood ? 0.09 : 0.16));
     src.connect(filt).connect(g).connect(this.master);
     src.start(t0, Math.random() * 2); src.stop(t0 + 0.2);
+    if (wood) {
+      // The hollow under the boards.
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(150 + Math.random() * 40, t0);
+      osc.frequency.exponentialRampToValueAtTime(95, t0 + 0.08);
+      const g2 = ctx.createGain();
+      g2.gain.setValueAtTime(0, t0);
+      g2.gain.linearRampToValueAtTime(0.035, t0 + 0.008);
+      g2.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.12);
+      osc.connect(g2).connect(this.master);
+      osc.start(t0); osc.stop(t0 + 0.14);
+    }
   }
 
   splash(vol = 0.15) {

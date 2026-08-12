@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, shorelineZ, trailX } from './field.js';
+import { groundHeight, shorelineZ, trailX, riverX } from './field.js';
 
 // Beach terrain: the sand, the wet strips at the waterline, and the grass.
 // The heightfield itself lives in field.js, which imports nothing, so
@@ -232,7 +232,100 @@ export function buildTerrain(scene) {
   const grass = buildGrass();
   scene.add(grass);
 
+  // The river: a still ribbon following the channel down to the mouth, its
+  // surface a fixed height above the carved bed so it slopes with the land.
+  // The big Water plane takes over where the sea reaches in.
+  scene.add(buildRiver());
+
+  // Reed beds along the banks.
+  scene.add(buildReeds());
+
   return { chunks: chunkGroup, wet: wetGroup };
+}
+
+function buildRiver() {
+  const Z0 = -12, Z1 = 106, STEP = 2, HALF = 4.2;
+  const positions = [], indices = [];
+  let row = 0;
+  for (let z = Z0; z <= Z1; z += STEP, row++) {
+    const cx = riverX(z);
+    const y = groundHeight(cx, z) + 0.26;
+    positions.push(cx - HALF, y, z, cx + HALF, y, z);
+    if (row > 0) {
+      const a = (row - 1) * 2;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x2a4a44, roughness: 0.12, metalness: 0.35,
+    transparent: true, opacity: 0.88,
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+/**
+ * Reeds: the grass-billboard technique grown up — taller, darker, straighter,
+ * crowding the river banks. Same vertex-shader billboarding, its own mesh.
+ */
+function buildReeds() {
+  const positions = [], roots = [], corners = [], colors = [], indices = [];
+  const cA = new THREE.Color(0x4a5c38), cB = new THREE.Color(0x6a6b42), tmp = new THREE.Color();
+  let vi = 0, placed = 0, guard = 0;
+  while (placed < 900 && guard++ < 9000) {
+    const z = 4 + Math.random() * 100;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const x = riverX(z) + side * (5 + Math.random() * 9);
+    if (groundHeight(x, z) < 0.2) continue;
+    const blades = 2 + (Math.random() * 3 | 0);
+    for (let b = 0; b < blades; b++) {
+      const bx = x + (Math.random() - 0.5) * 0.4;
+      const bz = z + (Math.random() - 0.5) * 0.4;
+      const bh = groundHeight(bx, bz);
+      const tall = 1.2 + Math.random() * 1.0;
+      const lean = (Math.random() - 0.5) * 0.12;
+      const half = 0.03 + Math.random() * 0.015;
+      tmp.lerpColors(cA, cB, Math.random());
+      const rootCol = [tmp.r * 0.8, tmp.g * 0.8, tmp.b * 0.8];
+      const tipCol = [tmp.r, tmp.g, tmp.b * 0.7];
+      const tip = half * 0.3;
+      for (let c = 0; c < 4; c++) {
+        roots.push(bx, bh, bz);
+        positions.push(bx, bh + (c >= 2 ? tall : 0), bz);
+        colors.push(...(c >= 2 ? tipCol : rootCol));
+      }
+      corners.push(-half, 0, half, 0, -tip + lean, tall, tip + lean, tall);
+      indices.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2);
+      vi += 4;
+    }
+    placed++;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setIndex(indices);
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('aRoot', new THREE.Float32BufferAttribute(roots, 3));
+  geo.setAttribute('aCorner', new THREE.Float32BufferAttribute(corners, 2));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.92, side: THREE.DoubleSide,
+  });
+  mat.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>',
+        '#include <common>\nattribute vec3 aRoot;\nattribute vec2 aCorner;')
+      .replace('#include <begin_vertex>', `
+        vec3 toCam = cameraPosition - aRoot;
+        toCam.y = 0.0;
+        float toCamLen = length(toCam);
+        vec3 camDir = toCamLen > 0.0001 ? toCam / toCamLen : vec3(0.0, 0.0, 1.0);
+        vec3 bladeRight = vec3(-camDir.z, 0.0, camDir.x);
+        vec3 transformed = aRoot + bladeRight * aCorner.x + vec3(0.0, aCorner.y, 0.0);`);
+  };
+  mat.customProgramCacheKey = () => 'golden-hour-grass-billboard';
+  return new THREE.Mesh(geo, mat);
 }
 
 /**

@@ -6,6 +6,7 @@ import { makePelicans } from './creatures/pelicans.js';
 import { makeSeals } from './creatures/seals.js';
 import { makeTidepoolLife } from './creatures/tidepool.js';
 import { makeFireflies, makeOwl, makeBats } from './creatures/nightlife.js';
+import { makeHeron, makeCormorants } from './creatures/estuary.js';
 
 // Two layers now. The original quartet — dolphin arcs, circling/feeding gulls,
 // the sailboat, the jet with its contrail — lives in this file, as tuned and
@@ -208,6 +209,8 @@ export function buildWildlife(scene, audio) {
     makeFireflies(scene),
     makeOwl(scene, audio),
     makeBats(scene),
+    makeHeron(scene, audio),
+    makeCormorants(scene, audio),
   ];
   const ctx = {
     camera: null, playerPos: null,

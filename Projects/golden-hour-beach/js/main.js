@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from '../libs/Sky.js';
-import { groundHeight, regionWeights } from './field.js';
+import { groundHeight, regionWeights, onPier, CAVE } from './field.js';
 import { buildTerrain } from './terrain.js';
 import { buildProps } from './props.js';
 import { buildOcean } from './ocean.js';
@@ -16,6 +16,7 @@ import { buildShells } from './shells.js';
 import { buildJournal } from './journal.js';
 import { buildLighthouse } from './lighthouse.js';
 import { buildRegions } from './regions.js';
+import { buildPier } from './pier.js';
 
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -233,6 +234,20 @@ placeGlint();
 // walkable now, so the promise is kept — a real tower whose beam sweeps from
 // its true position all night.
 const lighthouse = buildLighthouse(scene);
+buildPier(scene);
+
+// The pool inside the sea cave glows faintly at night — the same
+// bioluminescence the foam carries, pooled and still. Driven by the palette's
+// bio value in applySun.
+const cavePool = new THREE.Mesh(
+  new THREE.CircleGeometry(2.4, 20).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({
+    color: 0x48e0f2, transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  }),
+);
+cavePool.position.set(CAVE.x, groundHeight(CAVE.x, CAVE.z) + 0.05, CAVE.z);
+scene.add(cavePool);
 
 // ---------- Overlay / input bootstrap ----------
 const overlay = document.getElementById('overlay');
@@ -355,6 +370,7 @@ function applySun() {
   skynight.setNight(pal.star, nightT);
   audio.setNight(nightT);
   glint.material.opacity = pal.glintA;
+  cavePool.material.opacity = pal.bio * 0.4;
   placeGlint();
 }
 
@@ -378,7 +394,11 @@ function tick() {
   ocean.update(dt, camera);
   const moving = controls.update(dt, ocean.water.position.y);
   wildlife.update(dt, camera, ocean.swashLevel, ocean.water.position.y, nightT);
-  audio.setRegionMix(regionWeights(controls.pos.x).headland);
+  const rw = regionWeights(controls.pos.x);
+  audio.setRegionMix(rw.headland, rw.estuary);
+  audio.setSurface(onPier(controls.pos.x, controls.pos.z) ? 'wood' : 'sand');
+  const caveD = Math.hypot(controls.pos.x - CAVE.x, controls.pos.z - CAVE.z);
+  audio.setCave(THREE.MathUtils.clamp(1 - caveD / CAVE.r, 0, 1));
   audio.update(dt, ocean.swashLevel, moving && controls.enabled, controls.wadeT);
   footprints.update(dt);
   skynight.update(dt * timeScale, nightT, camera);

@@ -51,11 +51,13 @@ const clamp01 = t => Math.max(0, Math.min(1, t));
 const sstep = (e0, e1, t) => smooth(clamp01((t - e0) / (e1 - e0)));
 
 export function shorelineZ(x) {
-  // Headland bulge only, for now; the estuary will notch the line inland when
-  // the east coast opens. Curvature stays gentle by construction — smoothstep
-  // over 140 m — and the smoke suite asserts the cap, because the foam strip
+  // The headland bulges the line seaward in the west; the estuary notches it
+  // inland in the east. Curvature stays gentle by construction — smoothsteps
+  // over 120+ m — and the smoke suite asserts the cap, because the foam strip
   // folds over itself if this ever bends sharply.
-  return -6 - 34 * sstep(0, 1, (-x - 420) / 140);
+  return -6
+    - 34 * sstep(0, 1, (-x - 420) / 140)
+    + 18 * sstep(0, 1, (x - 460) / 130) * sstep(0, 1, (760 - x) / 90);
 }
 
 export function seabedSlope(x) {
@@ -114,6 +116,41 @@ export function trailX(z) {
   return 18 * Math.sin(z * 0.045) + 26 * Math.sin(z * 0.012 + 1);
 }
 
+// The river's centreline through the estuary, mouth to marsh. Pure for the
+// same reason as trailX: the channel carve, the water ribbon, the reed beds
+// and the heron all follow the same curve.
+export function riverX(z) {
+  return 610 + 14 * Math.sin(z * 0.03 + 1);
+}
+
+/**
+ * The old pier: a ruined timber deck walking out over the water at x = 300.
+ * The deck is real ground — groundHeight returns the deck surface inside its
+ * rectangle, which is what makes it walkable with no special cases anywhere
+ * else. It ends at a collapsed span (deckEnd); the stumps continue seaward,
+ * for the cormorants and for the eye.
+ */
+export const PIER = {
+  x: 300, halfW: 1.9,
+  deckStart: 9, deckEnd: -18,   // walkable planking
+  stumpEnd: -36,                // broken piles continue to here
+  y0: 1.25, y1: 2.05,           // deck height, shore end → sea end
+};
+
+export function onPier(x, z) {
+  return Math.abs(x - PIER.x) <= PIER.halfW && z <= PIER.deckStart && z >= PIER.deckEnd;
+}
+
+export function pierDeckY(z) {
+  const t = clamp01((PIER.deckStart - z) / (PIER.deckStart - PIER.deckEnd));
+  return PIER.y0 + (PIER.y1 - PIER.y0) * t;
+}
+
+// The sea cave: a recess scooped out of the headland mass at the cliff base,
+// entered from the tide-pool shelf. Kept as data so the audio zone, the
+// arrival card and the smoke checks agree on where it is.
+export const CAVE = { x: -536, z: shorelineZ(-536) + 8, r: 9 };
+
 export function groundHeight(x, z) {
   const sz = shorelineZ(x);
   const s = z - sz;
@@ -142,7 +179,13 @@ export function groundHeight(x, z) {
     if (massX > 0) {
       const faceW = 50 - 36 * sstep(0, 1, (-x - 500) / 90);
       const massS = Math.pow(sstep(0, 1, (s - 6) / faceW), 1.15);
-      h += 18 * massX * massS;
+      // The sea cave: a recess scooped from the mass at the cliff base. The
+      // scoop's floor stays near shelf level (mass is small there anyway), so
+      // you can walk in; its sides rise fast enough that the step rule keeps
+      // you from climbing out through the roof.
+      const dcx = x - CAVE.x, dcs = s - 8;
+      const scoop = 1 - 0.85 * Math.exp(-(dcx * dcx / 90 + dcs * dcs / 40));
+      h += 18 * massX * massS * scoop;
     }
     // Pool basins, only worth computing anywhere near the shelf.
     if (x > -620 && s > -1 && s < 8) {
@@ -165,6 +208,23 @@ export function groundHeight(x, z) {
       const dx = x - trailX(z);
       h -= 3.2 * ramp * Math.exp(-(dx * dx) / 40);
     }
+  }
+
+  // The river: a shallow channel wound through the estuary. Shallow on
+  // purpose — nowhere deeper than a determined wade, so the far bank is a
+  // squelch away, and the sand bar at the mouth barely covers your ankles.
+  if (x > 555 && x < 665 && z > sz - 6 && z < 112) {
+    const drx = x - riverX(z);
+    const depth = 0.45 + 0.3 * sstep(0, 1, (z - 14) / 40);
+    const ramp = sstep(0, 1, (z - (sz - 5)) / 5) * sstep(0, 1, (110 - z) / 8);
+    h -= depth * ramp * Math.exp(-(drx * drx) / 50);
+  }
+
+  // The pier deck is ground. That single fact is what makes it walkable —
+  // the step rule lets you stroll on where the planks meet the beach, and
+  // walkLimits (below) is what keeps you from strolling off the broken end.
+  if (onPier(x, z)) {
+    h = Math.max(h, pierDeckY(z));
   }
 
   return h;
@@ -196,10 +256,11 @@ export function wadeLimitZ(waterLevel, wadeDepth = 0.45, x = 0) {
  * without a collider in sight.
  */
 export function walkLimits(x, waterLevel, wadeDepth = 0.45) {
-  return {
-    minZ: Math.max(BOUNDS.minZ, wadeLimitZ(waterLevel, wadeDepth, x)),
-    maxZ: BOUNDS.maxZ,
-  };
+  let minZ = Math.max(BOUNDS.minZ, wadeLimitZ(waterLevel, wadeDepth, x));
+  // On the pier the deck carries you out over water far past wading depth —
+  // to the edge of the collapsed span, and not a plank further.
+  if (Math.abs(x - PIER.x) <= PIER.halfW) minZ = Math.min(minZ, PIER.deckEnd);
+  return { minZ, maxZ: BOUNDS.maxZ };
 }
 
 /* -------------------------------------------------------------------- layout */
