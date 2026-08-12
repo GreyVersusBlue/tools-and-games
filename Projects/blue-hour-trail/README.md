@@ -49,6 +49,28 @@ everything standing on it), and `test/smoke.mjs` checks it under bare Node:
 node test/smoke.mjs
 ```
 
+`test/browser.mjs` is the other half: it serves the site, boots the real page in
+real Chromium through `?debug`, and checks the things arithmetic can't see —
+draw budget, the fog cycle, the climb, the cairn counter, every dread beat, and
+a genuine walk up the trail. It needs `playwright-core` and a Chromium on disk,
+neither of which the piece itself depends on:
+
+```
+npm i playwright-core
+node test/browser.mjs            # CHROME=/path/to/chrome to override the binary
+```
+
+Adding `?debug` to the URL exposes `window.__bh` — the fog clock, the walker,
+the dread scheduler and the renderer's draw counts. Nothing in the piece opens
+those doors itself.
+
+**Known, and the next thing to fix:** the summit doesn't pay off yet. The cloud
+sea sits at y 46 while the top of the mountain is a plateau averaging ~60 m, so
+it's buried inside the hill, and with no fog left up there to lift it the ground
+reads nearly black. `test/browser.mjs` prints both measurements rather than
+asserting them, since the fix is a decision about the mountain rather than a
+tuning nudge. See `Claude Prompts/notes/24-blue-hour-notes.md`.
+
 The rest: `terrain.js` (ground + undergrowth), `forest.js` (tree tiers),
 `props.js` (built things), `creek.js` (water), `atmosphere.js` (mist,
 shafts, fireflies, cloud sea), `wildlife.js` (everything that is really

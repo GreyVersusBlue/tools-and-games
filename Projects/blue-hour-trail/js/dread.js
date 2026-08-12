@@ -127,10 +127,18 @@ export function createDread(scene, audio) {
 
     if (!candidates.length) { state._cooldown = 12; return; }
     const beat = candidates[(Math.random() * candidates.length) | 0];
-    state._lastBeat = beat;
     const inten = intensity(pt.t);
     state._cooldown = (55 + Math.random() * 45) * (1.2 - inten * 0.5);
 
+    runBeat(beat, camera, controls);
+  }
+
+  // Staging a beat is split from choosing one so a beat can be forced by name
+  // without waiting out a 70-second cooldown and then losing the coin flip.
+  // tryFire owns the rules; runBeat owns the staging. Both go through
+  // _lastBeat, so a forced beat still can't repeat on the next natural fire.
+  function runBeat(beat, camera, controls) {
+    state._lastBeat = beat;
     switch (beat) {
       case 'snap':
         audio.branchSnap();
@@ -189,6 +197,15 @@ export function createDread(scene, audio) {
       }
     }
   }
+
+  // For the regression suite and for tuning: stage a named beat now, bypassing
+  // the cooldown and the fog/elevation gates that normally have to agree first.
+  // Nothing in the piece calls this — the scheduler is the only thing that
+  // fires beats in play.
+  state.force = (beat, camera, controls) => {
+    runBeat(beat, camera, controls);
+    return beat;
+  };
 
   state.update = (dt, camera, controls, fogT) => {
     if (!controls.enabled) return;

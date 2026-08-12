@@ -229,3 +229,49 @@ function tick() {
   renderer.render(scene, camera);
 }
 tick();
+
+// ---------- Debug hook ----------
+// Only with ?debug in the URL. Same bargain Golden Hour struck: the regression
+// suite cannot walk 860 m in real time, cannot wait out a 337-second fog period
+// to see the thick phase, and cannot stand in the woods for the ~70 s before
+// dread's first beat and then hope the coin lands on the one it wanted. So the
+// clock, the walker and the scheduler each get one door in — and nothing in the
+// piece itself opens any of them.
+if (new URLSearchParams(location.search).has('debug')) {
+  window.__bh = {
+    // The fog cycle is this piece's sun. Scrubbing it is how you see the thick
+    // phase and the clear one in the same run.
+    setWeatherT(t) {
+      weatherT = Math.max(0, t);
+      applyWeather(fogPhase(), smoothstep(46, 62, controls.pos.y));
+    },
+    getWeatherT: () => weatherT,
+    fogT: () => fogPhase(),
+    altT: () => smoothstep(46, 62, controls.pos.y),
+
+    teleport(x, z) { controls.pos.x = x; controls.pos.z = z; },
+    face(yaw, pitch = 0) { controls.yaw = yaw; controls.pitch = pitch; },
+    pos: () => ({ x: controls.pos.x, y: controls.pos.y, z: controls.pos.z }),
+    surface: () => controls.surface,
+
+    cairns: () => ({ found: [...cairnsFound].sort((a, b) => a - b), total: LAYOUT.cairns.length }),
+    layout: () => ({ cairns: LAYOUT.cairns, markers: LAYOUT.markers, bench: LAYOUT.bench }),
+
+    // The centerline, so a test can point the walker up the mountain instead of
+    // guessing a yaw. Guessing one costs you 5 m and a boundary clamp: the
+    // trailhead sits at z 145 with BOUNDS.maxZ at 150, so "face down +z" walks
+    // into the edge of the world almost immediately.
+    trail: () => TRAIL.points.map(p => ({ x: p.x, z: p.z, dx: p.dx, dz: p.dz, t: p.t })),
+    yawAlongTrail(i = 0) {
+      const p = TRAIL.points[Math.max(0, Math.min(TRAIL.points.length - 1, i | 0))];
+      return Math.atan2(-p.dx, -p.dz);
+    },
+
+    // Bypasses the cooldown and the fog/elevation gates. 'snap' | 'phantom' |
+    // 'silence' | 'howl' | 'bear' | 'eyes'.
+    fireDread: beat => dread.force(beat, camera, controls),
+    dread,
+
+    info: () => renderer.info.render,
+  };
+}
