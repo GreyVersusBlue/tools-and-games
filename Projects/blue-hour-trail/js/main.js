@@ -306,6 +306,9 @@ if (new URLSearchParams(location.search).has('debug')) {
     dread,
 
     music: () => audio.musicState(),
+    // The last phantom-steps firing: its plan and pan, so the suite can hold
+    // the descent and the downhill lean without ears.
+    lastPhantom: () => audio._lastPhantom,
 
     info: () => renderer.info.render,
   };

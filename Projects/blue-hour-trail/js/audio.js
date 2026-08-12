@@ -29,6 +29,40 @@ const MOTIF_ROOT = 146.83;      // D3 — where phrases go to die
 const MOTIF_FLOOR = 110.0;      // A2 — where the saddest ones go
 
 /**
+ * The phantom steps' score: when they land, how fast they play, how much of
+ * their tone is left. Every step is lower and duller than the one before —
+ * these footsteps are DESCENDING, away down the mountain, because everything
+ * on this mountain is trying to leave. Pure — rand in, [{at, rate, cutoff,
+ * gain}] out — so the smoke suite can hold the descent without an
+ * AudioContext.
+ *
+ * opts.intervals, if given, sets the gaps between steps — this is the door
+ * the ghost of a previous walk feeds its own recorded rhythm through. The
+ * descent in pitch stays regardless of whose rhythm it is.
+ */
+export function phantomStepPlan(rand, opts = {}) {
+  const count = Math.max(1, opts.count ?? 3);
+  const intervals = opts.intervals && opts.intervals.length ? opts.intervals : null;
+  const steps = [];
+  let at = 0.5;
+  for (let i = 0; i < count; i++) {
+    if (i > 0) {
+      at += intervals
+        ? Math.min(1.2, Math.max(0.3, intervals[(i - 1) % intervals.length]))
+        : 0.52 + rand() * 0.08;
+    }
+    const fall = count > 1 ? i / (count - 1) : 0;
+    steps.push({
+      at,
+      rate: 0.62 - fall * 0.16,          // pitch falling step over step
+      cutoff: 340 - fall * 110,          // the tone going down the trail with it
+      gain: 0.035 * (1 - fall * 0.35),
+    });
+  }
+  return steps;
+}
+
+/**
  * One phrase of foreboding woe: 3-5 notes, biased downhill, always ending on
  * the root or the fifth below it. Pure — rand in, [{freq, dur}] out — so the
  * smoke suite can hold it to the scale without an AudioContext.
@@ -541,23 +575,35 @@ export class Soundscape {
     src.start(t0, Math.random() * 2); src.stop(t0 + 0.1);
   }
 
-  /** Two or three footsteps that are not yours, after yours have stopped. */
-  phantomSteps(count = 3) {
+  /**
+   * Footsteps that are not yours, after yours have stopped — and every one of
+   * them a step further DOWN: pitch and tone fall step over step, and the pan
+   * (handed in by dread.js) leans toward the downhill side of wherever the
+   * walker is standing. opts: { count, pan, intervals } — or a bare number,
+   * which is just a count. intervals is the ghost's door; see phantomStepPlan.
+   */
+  phantomSteps(opts = 3) {
     if (!this.ctx) return;
+    if (typeof opts === 'number') opts = { count: opts };
     this._duckMusic(8);
     const ctx = this.ctx;
+    const plan = phantomStepPlan(Math.random, opts);
+    this._lastPhantom = { ...opts, plan };     // read-only, for the suite
     const pan = this._pan(0.9);
-    for (let i = 0; i < count; i++) {
-      const t0 = ctx.currentTime + 0.5 + i * (0.52 + Math.random() * 0.08);
+    if (pan && typeof opts.pan === 'number') {
+      pan.pan.value = Math.max(-1, Math.min(1, opts.pan));
+    }
+    for (const step of plan) {
+      const t0 = ctx.currentTime + step.at;
       const src = ctx.createBufferSource();
       src.buffer = this._noiseBuf;
       src.loop = true;
-      src.playbackRate.value = 0.55;
+      src.playbackRate.value = step.rate;
       const f = ctx.createBiquadFilter();
-      f.type = 'lowpass'; f.frequency.value = 320;
+      f.type = 'lowpass'; f.frequency.value = step.cutoff;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(0.035 * (1 - i * 0.2), t0 + 0.03);
+      g.gain.linearRampToValueAtTime(step.gain, t0 + 0.03);
       g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.2);
       if (pan) src.connect(f).connect(g).connect(pan), pan.connect(this.master);
       else src.connect(f).connect(g).connect(this.master);

@@ -307,6 +307,93 @@ ok('the shape is staged and on a clock', bear.active && bear.life > 0, `life ${b
 const silence = await page.evaluate(() => { __bh.fireDread('silence'); return __bh.dread.birdsSilent; });
 ok('the birds go quiet on cue', silence === true);
 
+group('everything here is trying to leave');
+// Ladder 1: the shape's head points downhill however it is staged, and the
+// phantom steps go out through the real just-stopped path with a downhill pan
+// and a falling plan.
+const bearHead = await page.evaluate(async () => {
+  const dots = [];
+  for (const [x, z] of [[0, 120], [60, 60], [-60, 20]]) {
+    __bh.teleport(x, z);
+    await new Promise(r => setTimeout(r, 150));
+    __bh.fireDread('bear');
+    dots.push(__bh.dread.bearInfo().headDownhillDot);
+  }
+  return dots;
+});
+ok('the shape faces down the mountain wherever it stands',
+  bearHead.every(d => d > 0.05), bearHead.map(d => d.toFixed(2)).join(', '));
+
+await page.evaluate(() => { __bh.teleport(0, 130); __bh.fireDread('phantom'); });
+await page.keyboard.down('KeyW');
+await wait(800);
+await page.evaluate(() => { __bh.dread._movingFor = 4; });   // skip the slow-motion wait
+await page.keyboard.up('KeyW');
+await wait(700);
+const phantom = await page.evaluate(() => __bh.lastPhantom());
+ok('stopping fires the armed phantom steps', !!phantom && phantom.plan.length >= 2,
+  phantom ? `${phantom.plan.length} steps` : 'never fired');
+ok('their pitch falls step over step',
+  phantom && phantom.plan.every((s, i) => i === 0 || s.rate < phantom.plan[i - 1].rate));
+ok('and they are panned, not centred', phantom && typeof phantom.pan === 'number',
+  phantom ? `pan ${phantom.pan.toFixed(2)}` : '');
+
+group('the director spends beats off-gaze');
+// Ladder 2: a yaw-dwell histogram decides which side a visual beat lands on,
+// and a stared-at treeline never fires. The suite paints stares straight into
+// the histogram — real dwell accrues at a tenth speed under swiftshader, and
+// the arithmetic being tested is the same either way. One real-accrual check
+// keeps the painting honest.
+const accrues = await page.evaluate(async () => {
+  const d = __bh.dread;
+  d._gaze.fill(0);
+  __bh.face(1.0, 0);
+  await new Promise(r => setTimeout(r, 2000));
+  return d.dwellAt(1.0);
+});
+ok('watching a direction is remembered', accrues > 0, `${accrues.toFixed(2)} s dwell`);
+
+const offGaze = await page.evaluate(async () => {
+  const d = __bh.dread;
+  const yaw = 1.0;
+  __bh.teleport(0, 100);
+  __bh.face(yaw, 0);
+  await new Promise(r => setTimeout(r, 200));
+  const results = [];
+  for (let i = 0; i < 5; i++) {
+    d._gaze.fill(0);
+    // stare down the LEFT candidate arc (world yaw + 25°..80°)
+    for (let a = yaw + 0.44; a < yaw + 1.4; a += 0.1) d._gaze[d.bucketOf(a)] = 10;
+    const fired = __bh.fireDread('eyes');
+    const e = d.eyesInfo();
+    const p = __bh.pos();
+    // the piece's yaw convention for the placement direction
+    const eyeYaw = Math.atan2(-(e.x - p.x), -(e.z - p.z));
+    let diff = eyeYaw - yaw;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    while (diff < -Math.PI) diff += 2 * Math.PI;
+    results.push({ fired, diff });
+  }
+  return results;
+});
+ok('a beat lands on the unwatched side, every time',
+  offGaze.every(r => r.fired && r.diff < 0),
+  offGaze.map(r => (r.diff * 180 / Math.PI).toFixed(0) + '°').join(', '));
+
+const stared = await page.evaluate(async () => {
+  const d = __bh.dread;
+  const yaw = 1.0;
+  __bh.face(yaw, 0);
+  d._gaze.fill(0);
+  // stare down BOTH candidate arcs
+  for (let a = yaw - 1.4; a < yaw + 1.4; a += 0.1) d._gaze[d.bucketOf(a)] = 10;
+  const before = d._lastBeat;
+  const fired = __bh.fireDread('eyes');
+  return { fired, lastBeat: d._lastBeat, before };
+});
+ok('a stared-at treeline never fires', stared.fired === false);
+ok('and a declined beat is not remembered as the last one', stared.lastBeat === stared.before);
+
 group('the frame rate here');
 // Every timing number below is hostage to this. Measure it rather than assume.
 const fps = await page.evaluate(() => new Promise(res => {

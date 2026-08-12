@@ -307,6 +307,45 @@ group('determinism');
 
 // audio.js touches window only inside init(), so Node can import the motif
 // engine's pure half and hold every phrase it will ever play to the scale.
+group('the phantom steps only ever descend');
+{
+  // Ladder item 1, session 4: the steps that are not yours are on their way
+  // DOWN the mountain — pitch and tone fall step over step, no exceptions,
+  // whatever rhythm they play in. This is the eight-keepers story told with
+  // no words at all, and this group keeps any future tuning from accidentally
+  // making the mountain's one direction ambiguous.
+  const { phantomStepPlan } = await import(
+    pathToFileURL(path.join(HERE, '..', 'js', 'audio.js')).href);
+  const lcg = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+
+  let ordered = true, falling = true, dulling = true, fading = true;
+  for (let seed = 1; seed <= 200; seed++) {
+    for (const count of [2, 3, 4]) {
+      const plan = phantomStepPlan(lcg(seed), { count });
+      for (let i = 1; i < plan.length; i++) {
+        if (plan[i].at <= plan[i - 1].at) ordered = false;
+        if (plan[i].rate >= plan[i - 1].rate) falling = false;
+        if (plan[i].cutoff >= plan[i - 1].cutoff) dulling = false;
+        if (plan[i].gain >= plan[i - 1].gain) fading = false;
+      }
+    }
+  }
+  ok(ordered, 'the steps land in order');
+  ok(falling, 'every step is lower than the last');
+  ok(dulling, 'and duller');
+  ok(fading, 'and a little further away');
+
+  // The ghost's door: a supplied rhythm is honoured (clamped to a walkable
+  // gait), and the descent survives whoever's rhythm it is.
+  const ghost = phantomStepPlan(lcg(7), { count: 4, intervals: [0.45, 0.8, 2.5] });
+  const gaps = ghost.slice(1).map((s, i) => s.at - ghost[i].at);
+  ok(Math.abs(gaps[0] - 0.45) < 1e-9 && Math.abs(gaps[1] - 0.8) < 1e-9 && Math.abs(gaps[2] - 1.2) < 1e-9,
+    'a recorded rhythm is replayed, clamped to a believable gait',
+    gaps.map(g => g.toFixed(2)).join(', '));
+  ok(ghost.every((s, i) => i === 0 || s.rate < ghost[i - 1].rate),
+    'and it still descends in somebody else\'s rhythm');
+}
+
 group('the motif engine writes only woe');
 {
   const { motifPhrase } = await import(

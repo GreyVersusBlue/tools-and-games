@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, trailInfo, LAYOUT } from './field.js';
+import { groundHeight, trailInfo, trailPoint, LAYOUT } from './field.js';
 
 // The other thing in the woods. A scheduler of directed beats, none of which
 // can hurt the walker and none of which ever resolves: a branch breaking off
@@ -14,6 +14,14 @@ import { groundHeight, trailInfo, LAYOUT } from './field.js';
 //     them back — a monster you can see clearly is just a prop
 //   • the fog line is where it gets WORSE, not better
 //   • escalation follows progress up the trail, gently
+//   • everything here is trying to LEAVE: the phantom steps descend — pitch
+//     falling, panned toward the downhill side — and the shape between the
+//     trees faces down the mountain, never up it (session 4)
+//   • the director spends visual beats just outside the walker's recent gaze
+//     (session 4): a yaw-dwell histogram with a ~45 s memory decides which
+//     side of the camera a beat lands on, and a treeline the walker has been
+//     staring at never fires at all. Half-glimpsed or nothing — a beat placed
+//     where someone is already looking is a prop with a spawn animation.
 //
 // That fourth rule used to read the other way: "beats prefer the deep woods;
 // above the fog line the mountain is honest." It made the summit a refuge, and
@@ -188,12 +196,47 @@ export function createDread(scene, audio) {
 
     _eyesActive: false,
     _eyesLife: 0,
+    _eyesDrift: null,
+    _bearHeadDot: 0,
 
     _lookoutNoticed: false,
   };
 
   const camDir = new THREE.Vector3();
   const toShape = new THREE.Vector3();
+
+  // ---- the attention director's memory ----
+  //
+  // 24 buckets of 15°, each holding roughly "seconds spent facing this way
+  // lately". Decays with a ~45 s half-life-ish memory, so a long stare fades
+  // rather than counting forever. Beats read it to land where the walker has
+  // NOT been looking; nothing ever reads it to land where they have.
+  const GAZE_N = 24;
+  const gaze = new Float32Array(GAZE_N);
+  const GAZE_DECAY = 45;      // seconds of memory
+  const STARE = 4;            // accumulated seconds that mean "being watched"
+
+  const yawOf = (dx, dz) => Math.atan2(-dx, -dz);   // the piece's facing convention
+  const bucketOf = yaw => {
+    const u = ((yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    return Math.floor(u / (Math.PI * 2) * GAZE_N) % GAZE_N;
+  };
+  // Dwell at a world yaw, with half-weight neighbours so bucket edges don't
+  // make a 15.1° miss read as unwatched.
+  function dwellAt(yaw) {
+    const b = bucketOf(yaw);
+    return gaze[b]
+      + 0.5 * gaze[(b + 1) % GAZE_N]
+      + 0.5 * gaze[(b + GAZE_N - 1) % GAZE_N];
+  }
+
+  // Which way is off the mountain, from anywhere: the downhill direction of
+  // the nearest trail point. The trail's own samples point uphill (trailhead
+  // to summit), so downhill is their negation.
+  function downhillAt(x, z) {
+    const p = trailPoint(trailInfo(x, z).t);
+    return { x: -p.dx, z: -p.dz };
+  }
 
   function intensity(progressT, highT) {
     return Math.min(1, state._elapsed / 480) * 0.4 + progressT * 0.4 + highT * 0.2;
@@ -221,18 +264,26 @@ export function createDread(scene, audio) {
 
     if (!candidates.length) { state._cooldown = 12; return; }
     const beat = candidates[(Math.random() * candidates.length) | 0];
+
+    if (!runBeat(beat, camera, controls)) {
+      // The director refused the placement — the walker is watching every arc
+      // the beat could have used. Retry soon rather than burning the whole
+      // cooldown on a beat that never happened.
+      state._cooldown = 12;
+      return;
+    }
     const inten = intensity(pt.t, highT);
     state._cooldown = (55 + Math.random() * 45) * (1.2 - inten * 0.5) * (1 - highT * 0.3);
-
-    runBeat(beat, camera, controls);
   }
 
   // Staging a beat is split from choosing one so a beat can be forced by name
   // without waiting out a 70-second cooldown and then losing the coin flip.
   // tryFire owns the rules; runBeat owns the staging. Both go through
   // _lastBeat, so a forced beat still can't repeat on the next natural fire.
+  // Returns false when the director declines to stage it (currently only the
+  // eyes, when every candidate arc has been stared at) — a declined beat sets
+  // no _lastBeat and costs no cooldown.
   function runBeat(beat, camera, controls) {
-    state._lastBeat = beat;
     switch (beat) {
       case 'snap':
         audio.branchSnap();
@@ -255,15 +306,36 @@ export function createDread(scene, audio) {
 
       case 'bear': {
         // 45–65 m ahead, inside the view cone, facing the walker. It will be
-        // gone before anyone gets an answer about it.
-        camera.getWorldDirection(camDir);
-        camDir.y = 0; camDir.normalize();
+        // gone before anyone gets an answer about it. The director only picks
+        // which SIDE of the ahead-arc it stands in — the less-watched one —
+        // because a shape up the trail has to be up the trail to be seen at
+        // all; there is no off-gaze placement for a thing whose job is to be
+        // half-noticed and then denied.
+        camDir.set(-Math.sin(controls.yaw), 0, -Math.cos(controls.yaw));
         const dist = 45 + Math.random() * 20;
-        const side = (Math.random() - 0.5) * 0.35;
+        const mag = 0.08 + Math.random() * 0.14;
+        const pick = (s) => dwellAt(yawOf(
+          camDir.x * dist - camDir.z * dist * mag * s,
+          camDir.z * dist + camDir.x * dist * mag * s));
+        const side = (pick(1) < pick(-1) ? 1 : -1) * mag;
         const x = camera.position.x + camDir.x * dist - camDir.z * dist * side;
         const z = camera.position.z + camDir.z * dist + camDir.x * dist * side;
         bear.position.set(x, groundHeight(x, z) + 1.1, z);
         bear.lookAt(camera.position.x, bear.position.y, camera.position.z);
+
+        // The silhouette's head is on its local -x side. After lookAt, local
+        // +x lies along up × (toward-camera); flip scale.x so the head end
+        // points DOWNHILL — the shape is on its way off this mountain, like
+        // everything else here except the walker and the thing at the top.
+        const n = toShape.copy(camera.position).sub(bear.position).setY(0).normalize();
+        const headWorld = { x: -n.z, z: n.x };            // local -x in world, unflipped
+        const dh = downhillAt(x, z);
+        const headDot = headWorld.x * dh.x + headWorld.z * dh.z;
+        bear.scale.x = headDot >= 0 ? 1 : -1;
+        // After the flip the head points |headDot| of the way downhill; the
+        // suite asserts this never goes negative.
+        state._bearHeadDot = Math.abs(headDot);
+
         bear.visible = true;
         bearMat.opacity = 0.92;
         state._bearActive = true;
@@ -274,12 +346,19 @@ export function createDread(scene, audio) {
       }
 
       case 'eyes': {
-        camera.getWorldDirection(camDir);
-        camDir.y = 0; camDir.normalize();
-        // low, off to one side, in the treeline
-        const side = Math.random() < 0.5 ? -1 : 1;
+        camDir.set(-Math.sin(controls.yaw), 0, -Math.cos(controls.yaw));
+        // low, off to one side, in the treeline — and the director picks the
+        // side: whichever arc the walker has looked at least. If they have
+        // been staring down BOTH arcs, nothing fires. A watched treeline
+        // holds still.
         const ahead = 12 + Math.random() * 10;
         const out = 14 + Math.random() * 12;
+        const arcOf = s => yawOf(
+          camDir.x * ahead - camDir.z * out * s,
+          camDir.z * ahead + camDir.x * out * s);
+        const dwellL = dwellAt(arcOf(-1)), dwellR = dwellAt(arcOf(1));
+        if (Math.min(dwellL, dwellR) > STARE) return false;
+        const side = dwellR < dwellL ? 1 : -1;
         const x = camera.position.x + camDir.x * ahead - camDir.z * out * side;
         const z = camera.position.z + camDir.z * ahead + camDir.x * out * side;
         eyes.position.set(x, groundHeight(x, z) + 0.5, z);
@@ -287,10 +366,32 @@ export function createDread(scene, audio) {
         eyesMat.opacity = 0;
         state._eyesActive = true;
         state._eyesLife = 4.5 + Math.random() * 2.5;
+        // They too are leaving, slowly — a drift you would have to time to
+        // prove, pointed the only way anything here points.
+        state._eyesDrift = downhillAt(x, z);
         break;
       }
     }
+    state._lastBeat = beat;
+    return true;
   }
+
+  // For the regression suite and for tuning: the director's memory, the
+  // shape's staging, and where the eyes stand. Nothing in the piece calls
+  // these; _gaze is handed out live so a test can paint a stare into it
+  // without waiting real minutes at software-GL frame rates.
+  state._gaze = gaze;
+  state.gazeInfo = () => ({ buckets: Array.from(gaze) });
+  state.dwellAt = yaw => dwellAt(yaw);
+  state.bucketOf = yaw => bucketOf(yaw);
+  state.bearInfo = () => ({
+    x: bear.position.x, z: bear.position.z, visible: bear.visible,
+    flip: bear.scale.x, headDownhillDot: state._bearHeadDot,
+  });
+  state.eyesInfo = () => ({
+    x: eyes.position.x, z: eyes.position.z, visible: eyes.visible,
+    drift: state._eyesDrift,
+  });
 
   // For the regression suite and for tuning: where the figure is and whether it
   // is currently readable. Nothing in the piece calls this.
@@ -304,14 +405,22 @@ export function createDread(scene, audio) {
   // the cooldown and the fog/elevation gates that normally have to agree first.
   // Nothing in the piece calls this — the scheduler is the only thing that
   // fires beats in play.
+  // Returns the beat name, or false when the director declined the staging —
+  // the same refusal a natural fire gets, so the never-fires rule is testable.
   state.force = (beat, camera, controls) => {
-    runBeat(beat, camera, controls);
-    return beat;
+    return runBeat(beat, camera, controls) ? beat : false;
   };
 
   state.update = (dt, camera, controls, fogT) => {
     if (!controls.enabled) return;
     state._elapsed += dt;
+
+    // ---- the director watching the walker watch ----
+    {
+      const decay = Math.exp(-dt / GAZE_DECAY);
+      for (let i = 0; i < GAZE_N; i++) gaze[i] *= decay;
+      gaze[bucketOf(controls.yaw)] += dt;
+    }
 
     // Track walking rhythm for the phantom steps.
     if (controls.moving) state._movingFor += dt;
@@ -323,7 +432,13 @@ export function createDread(scene, audio) {
     if (state._phantomArmed) {
       state._phantomWindow -= dt;
       if (justStopped) {
-        audio.phantomSteps(2 + (Math.random() * 2 | 0));
+        // Panned toward the downhill side of wherever the walker stopped:
+        // whoever these steps belong to, they are on their way DOWN.
+        const dh = downhillAt(controls.pos.x, controls.pos.z);
+        // right of the walker's facing (-sin, -cos) is (cos, -sin)
+        const pan = Math.max(-1, Math.min(1,
+          dh.x * Math.cos(controls.yaw) - dh.z * Math.sin(controls.yaw))) * 0.85;
+        audio.phantomSteps({ count: 2 + (Math.random() * 2 | 0), pan });
         state._phantomArmed = false;
       } else if (state._phantomWindow <= 0) {
         state._phantomArmed = false;     // never stopped walking; let it go
@@ -414,6 +529,11 @@ export function createDread(scene, audio) {
     // ---- the eyes, while they last ----
     if (state._eyesActive) {
       state._eyesLife -= dt;
+      // Leaving, at a pace nobody could swear to: ~6 cm a second, downhill.
+      if (state._eyesDrift) {
+        eyes.position.x += state._eyesDrift.x * dt * 0.06;
+        eyes.position.z += state._eyesDrift.z * dt * 0.06;
+      }
       eyes.lookAt(camera.position);
       // fade in, hold with a blink, fade out
       const blink = Math.sin(state._elapsed * 0.9) > -0.93 ? 1 : 0.1;
