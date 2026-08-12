@@ -82,15 +82,17 @@ function birchLeafTexture() {
   return tex;
 }
 
-// Far-tier silhouettes, two cells: conifer spire (left), broadleaf (right).
+// Far-tier silhouettes, four cells: the broad conifer, a slender one, a dead
+// spire, and the broadleaf. Two shapes for a whole horizon read as wallpaper
+// the moment the fog thins; four is enough that no two neighbours rhyme.
 function silhouetteTexture() {
   const c = document.createElement('canvas');
-  c.width = 256; c.height = 128;
+  c.width = 512; c.height = 128;
   const ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, 256, 128);
+  ctx.clearRect(0, 0, 512, 128);
   ctx.fillStyle = '#ffffff';        // colour comes from the material
 
-  // conifer: stacked ragged triangles
+  // broad conifer: stacked ragged triangles
   ctx.save();
   ctx.translate(64, 128);
   ctx.fillRect(-3, -34, 6, 34);
@@ -109,9 +111,47 @@ function silhouetteTexture() {
   }
   ctx.restore();
 
-  // broadleaf: trunk and a lumpy crown
+  // slender conifer: more bands, tighter, a spire more than a tree
   ctx.save();
   ctx.translate(192, 128);
+  ctx.fillRect(-2.5, -30, 5, 30);
+  for (let band = 0; band < 8; band++) {
+    const y = -18 - band * 13;
+    const w = 30 - band * 3.1;
+    ctx.beginPath();
+    ctx.moveTo(-w, y);
+    for (let s = 0; s <= 6; s++) {
+      const t = s / 6;
+      ctx.lineTo(-w + t * 2 * w, y - 3 + Math.sin(s * 3.1 + band * 1.7) * 2.4);
+    }
+    ctx.lineTo(0, y - 19);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // dead spire: a trunk and the jagged stubs of what the crown used to be
+  ctx.save();
+  ctx.translate(320, 128);
+  ctx.beginPath();
+  ctx.moveTo(-4.5, 0); ctx.lineTo(-1.2, -118); ctx.lineTo(1.2, -118); ctx.lineTo(4.5, 0);
+  ctx.closePath();
+  ctx.fill();
+  for (let i = 0; i < 9; i++) {
+    const y = -26 - i * 10.5;
+    const s = i % 2 === 0 ? 1 : -1;
+    const len = 22 - i * 2;
+    ctx.save();
+    ctx.translate(0, y);
+    ctx.rotate(s * (0.45 + (i % 3) * 0.12));
+    ctx.fillRect(0, -1.6, s * len, 3.2);
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // broadleaf: trunk and a lumpy crown
+  ctx.save();
+  ctx.translate(448, 128);
   ctx.fillRect(-3.5, -52, 7, 52);
   for (let i = 0; i < 26; i++) {
     const a = Math.random() * Math.PI * 2, r = Math.random() * 30;
@@ -298,23 +338,35 @@ function buildBirches(trees) {
 /* ---------------------------------------------------------------- far tier */
 
 function buildFarTrees(trees) {
-  const positions = [], uvs = [], indices = [];
+  const positions = [], uvs = [], colors = [], indices = [];
   let vi = 0;
+  const tint = new THREE.Color();
   const addQuad = (x, y, z, yaw, w, h, u0) => {
     const dx = Math.cos(yaw) * w / 2, dz = Math.sin(yaw) * w / 2;
     positions.push(
       x - dx, y, z - dz,   x + dx, y, z + dz,
       x - dx, y + h, z - dz,   x + dx, y + h, z + dz);
-    uvs.push(u0, 0, u0 + 0.5, 0, u0, 1, u0 + 0.5, 1);
+    uvs.push(u0, 0, u0 + 0.25, 0, u0, 1, u0 + 0.25, 1);
+    for (let i = 0; i < 4; i++) colors.push(tint.r, tint.g, tint.b);
     indices.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2);
     vi += 4;
   };
 
   for (const t of trees) {
     const y = groundHeight(t.x, t.z) - 0.3;
-    const u0 = t.species === 'conifer' ? 0 : 0.5;
-    const w = t.species === 'conifer' ? t.h * 0.55 : t.h * 0.8;
+    // Same census as the near tier: mostly broad, some slender, one in ten
+    // dead. Baked per-tree tint jitter keeps the merged wall from reading as
+    // one flat cutout when the fog thins — all of it from the seed, so the
+    // horizon is the same horizon every load.
+    const cell = t.species !== 'conifer' ? 3
+      : t.seed % 10 < 6 ? 0 : t.seed % 10 < 9 ? 1 : 2;
+    const u0 = cell * 0.25;
+    const w = t.species === 'conifer' ? t.h * (cell === 1 ? 0.42 : cell === 2 ? 0.3 : 0.55) : t.h * 0.8;
     const yaw = (t.seed % 314) / 100;
+    tint.setHSL(
+      0.56 + ((t.seed % 101) / 100 - 0.5) * 0.03,
+      0.16 + ((t.seed % 71) / 70 - 0.5) * 0.04,
+      0.26 + ((t.seed % 89) / 88 - 0.5) * 0.09);
     // Crossed pair, not camera-facing: static geometry parallaxes honestly
     // as the walker moves, and the fog has flattened it long before the
     // flatness could read.
@@ -326,10 +378,11 @@ function buildFarTrees(trees) {
   geo.setIndex(indices);
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 
   const mat = new THREE.MeshBasicMaterial({
     map: silhouetteTexture(),
-    color: 0x37444c,             // just darker than the near fog, so depth stacks
+    vertexColors: true,          // the tint bakes in the old 0x37444c, jittered
     alphaTest: 0.5,
     side: THREE.DoubleSide,
     fog: true,
