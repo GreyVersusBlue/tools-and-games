@@ -88,7 +88,9 @@ node test/smoke.mjs
 real Chromium through `?debug`, and checks the things arithmetic can't see —
 draw budget, the fog cycle, the climb, the cairn names, the logbook overlay,
 the attention director, the headlamp, the ghost of the previous walk, every
-dread beat, and a genuine walk up the trail. It needs `playwright-core` and a
+dread beat, a genuine walk up the trail, and actual drawing-buffer pixels from
+every billboard system that once went dark silently (the steam, the mist, the
+breath — see the winding-trap note in the prompt file). It needs `playwright-core` and a
 Chromium on disk, neither of which the piece itself depends on:
 
 ```

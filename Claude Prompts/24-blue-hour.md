@@ -236,7 +236,7 @@ stinger ducks the music to 15% with a slow recovery; the silence beat holds it d
 routes through the master/fog filter, so mute and murk apply. `__bh.music()` reads the live
 targets.
 
-**`test/smoke.mjs`, 93 checks**, pure Node, no browser. **`test/browser.mjs`, 70 checks**, real
+**`test/smoke.mjs`, 93 checks**, pure Node, no browser. **`test/browser.mjs`, 72 checks**, real
 Chromium through `?debug`. Both exit non-zero on failure. `browser.mjs` needs `playwright-core`
 and a Chromium on disk (`CHROME=` overrides the path); neither is a dependency of the piece.
 
@@ -249,9 +249,25 @@ breath vapour had never rendered a single frame** until session 4 found this whi
 building the tea steam; the undergrowth shares the basis and only ever survived because
 it declares `DoubleSide`. Mist and breath now declare it too, and the steam (CPU-
 billboarded) winds correctly. The browser suite reads the drawing buffer for actual
-steam pixels because the zero-page-errors canary cannot see a culled mesh. If you add a
-billboard: either use `(camDir.z, 0, -camDir.x)` or set `DoubleSide`, and prove it with
-pixels, not with the absence of errors.
+pixels from ALL THREE — steam (session 4), mist and breath (session 5, each staged
+deterministically through a debug door and compared shown-against-hidden) — because the
+zero-page-errors canary cannot see a culled mesh; both new guards were verified by
+reintroducing the winding bug (locked decision #34). If you add a billboard: either use
+`(camDir.z, 0, -camDir.x)` or set `DoubleSide`, and prove it with pixels, not with the
+absence of errors.
+
+**The mist got its first light in session 5** — every constant it shipped with was
+authored by someone who had never seen it render. Measured from the trail, the old
+banks touched under 1% of the frame; the one that ever read on screen read as a
+radial-gradient disc. Now: a banked lobe texture instead of a circle, 30 banks of
+which most hug the trail corridor low enough to walk through, deliberate pools at the
+waterfall and the cabin hollow, a near-camera fade (banks you are inside melt away
+instead of washing the frame), opacity 0.14–0.35 across weather and altitude. The
+breath was resized the same session (a hand-span puff at arm's length, not a
+0.28 m quad 0.35 m from the eye), and the headlamp went from decay 2 / intensity 34
+to decay 1 / 4.5 after the first look at the walker's own feet under it came back a
+featureless white disc. All of it screenshotted and looked at; the fill-rate cost on
+a real GPU is still unmeasured and still task 3.
 
 **The mountain has no peak, and you should know that before you touch it.** `mountainH` is a
 linear ramp in `z` alone — height depends only on how far up the map you are, the slab keeps
@@ -377,11 +393,19 @@ multiplayer, climbing the tower, the handwriting reveal, the ending at the rail.
    transmission stingers, the headlamp partial and the descending phantom curve are too.
    They want a real walk, not a scrub. If Devon plays a build and leaves listening
    notes, tune the constants from them; session 4 left every level as authored.
-6. **The logbook wants a proofread out loud.** The keeper entries were written to be
-   read by one player who reads all of them. Read them in order on the mountain, not in
-   the source, and fix anything that clunks — the texts are in `field.js`, the writing
-   rules are in the grant-1 amendment, and the smoke suite holds the mechanical rules.
+6. **The logbook proofread — DONE, session 5.** All ten pages read through the overlay
+   in trail order. One clunk fixed (Doyle's "going down, done" → "on the way down,
+   when you are done"); every grant-1 rule reheld by ear. If the texts ever change
+   again, walk them again — the source order is not the mountain's order.
 7. **If your own pass turns up something new**, add it here.
+8. **The chip timing is real seconds now** (session 5) — it ticked 1/60 per frame,
+   which meant minutes on a slow tab and 2.4 s at 144 Hz. If any future UI element
+   grows a timer, tick it by `dt`, not by frame.
+9. **The real-GPU run (task 3) should look at three specific things** now that the
+   session-5 retunes landed: the mist banks' fill cost (30 large transparent quads,
+   more of them near the camera than before), the headlamp at decay 1 (cheaper than
+   it looks — one SpotLight either way), and whether the lamp's feet-pool and
+   12 m reach still read right at a real frame rate and real pixel density.
 
 ## Verification
 

@@ -396,7 +396,7 @@ const PAGE_TEXTS = [
     keeper: 'Doyle',
     entries: [
       { date: 'Aug 25', body: 'Season’s end. Packed out the perishables and swept the cab. Whoever reads this next: the stove damper sticks a quarter turn from closed, and the third stair sings in frost. Treat both gently.' },
-      { date: 'Aug 26', body: 'Built my cairn this morning, up past the last turn, where the trail stops pretending it might level out. The tradition is you build it going down, done — but I wanted mine where I could stand and see the whole season from the top of it. Take a stone up with you if you pass; it saves carrying the mountain to the mountain.' },
+      { date: 'Aug 26', body: 'Built my cairn this morning, up past the last turn, where the trail stops pretending it might level out. The tradition is you build it on the way down, when you are done — but I wanted mine where I could stand and see the whole season from the top of it. Take a stone up with you if you pass; it saves carrying the mountain to the mountain.' },
     ],
   },
   {

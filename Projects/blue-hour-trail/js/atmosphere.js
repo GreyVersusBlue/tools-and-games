@@ -20,6 +20,29 @@ function softTexture(inner = 0.5) {
   return new THREE.CanvasTexture(c);
 }
 
+// A bank, not a disc. The first-light pass (session 5) found the one mist
+// quad that ever read on screen read as a perfect radial-gradient circle —
+// a sprite, in exactly the way the task file feared. A bank of mist has a
+// long soft core and ragged ends, so the texture is a horizontal band of
+// overlapping lobes: nothing on screen can resolve into one circle.
+function mistTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  for (let i = 0; i < 9; i++) {
+    const x = 56 + Math.random() * 144;
+    const y = 50 + Math.random() * 28;
+    const r = 28 + Math.random() * 28;
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, 'rgba(255,255,255,0.45)');
+    grad.addColorStop(0.6, 'rgba(255,255,255,0.19)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 256, 128);
+  }
+  return new THREE.CanvasTexture(c);
+}
+
 function shaftTexture() {
   const c = document.createElement('canvas');
   c.width = 64; c.height = 256;
@@ -45,22 +68,61 @@ function shaftTexture() {
 /* --------------------------------------------------------------------- mist */
 
 /**
- * 26 huge billboarded quads on the dune-grass shader, with a slow per-quad
- * drift added in the vertex stage — the banks wander a few metres over half a
+ * 30 billboarded quads on the dune-grass shader, with a slow per-quad drift
+ * added in the vertex stage — the banks wander a few metres over half a
  * minute, which is all real mist does. One draw call, zero per-frame JS
  * beyond a time uniform. Deliberately not THREE.Sprite, which is a draw call
  * apiece.
+ *
+ * Placement is from the first-light pass (session 5), the first time anyone
+ * had ever SEEN these: the original 26 banks sat 8-38 m off-trail and were
+ * swallowed whole by the trees and the fog — measured, they touched under
+ * 1% of the frame from the trail. Mist the walker never crosses is mist
+ * that isn't there. So most banks now hug the trail corridor low enough to
+ * walk through, a few stand deep in the trees for layers, and the rest pool
+ * where real mist pools: over the creek at the waterfall, and in the cabin
+ * hollow.
  */
 function buildMist() {
   const positions = [], roots = [], corners = [], uvs = [], phases = [], indices = [];
   let vi = 0;
-  for (let i = 0; i < 26; i++) {
+  const banks = [];
+  // 18 trail-huggers: on or beside the corridor, low, walk-through height.
+  for (let i = 0; i < 18; i++) {
     const p = trailPoint(0.02 + Math.random() * 0.96);
     const side = Math.random() < 0.5 ? -1 : 1;
-    const off = 8 + Math.random() * 30;
-    const x = p.x + -p.dz * off * side, z = p.z + p.dx * off * side;
-    const w = 25 + Math.random() * 25, h = 8 + Math.random() * 8;
-    const y = groundHeight(x, z) + 1 + Math.random() * 3;
+    const off = Math.random() * 14;
+    banks.push({
+      x: p.x + -p.dz * off * side, z: p.z + p.dx * off * side,
+      w: 22 + Math.random() * 18, h: 3.5 + Math.random() * 3.5,
+      lift: 0.4 + Math.random() * 0.8,
+    });
+  }
+  // 6 deep banks: the old off-trail placement, kept for depth between trees.
+  for (let i = 0; i < 6; i++) {
+    const p = trailPoint(0.05 + Math.random() * 0.9);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const off = 16 + Math.random() * 22;
+    banks.push({
+      x: p.x + -p.dz * off * side, z: p.z + p.dx * off * side,
+      w: 30 + Math.random() * 25, h: 8 + Math.random() * 6,
+      lift: 1 + Math.random() * 2,
+    });
+  }
+  // 3 over the creek at the waterfall, 3 in the cabin hollow — the two
+  // places on this mountain where mist would genuinely collect.
+  const wf = LAYOUT.waterfall, cb = LAYOUT.cabin;
+  for (let i = 0; i < 6; i++) {
+    const a = i < 3 ? { x: wf.x, z: wf.z + 10 } : { x: cb.x, z: cb.z };
+    banks.push({
+      x: a.x + (Math.random() - 0.5) * 14, z: a.z + (Math.random() - 0.5) * 14,
+      w: 18 + Math.random() * 14, h: 3 + Math.random() * 2.5,
+      lift: 0.3 + Math.random() * 0.6,
+    });
+  }
+  for (const b of banks) {
+    const { x, z, w, h } = b;
+    const y = groundHeight(x, z) + b.lift;
     const ph = Math.random() * Math.PI * 2;
     for (let cnr = 0; cnr < 4; cnr++) {
       roots.push(x, y, z);
@@ -81,7 +143,7 @@ function buildMist() {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
 
   const mat = new THREE.MeshBasicMaterial({
-    map: softTexture(0.4),
+    map: mistTexture(),
     transparent: true,
     opacity: 0.12,
     depthWrite: false,
@@ -102,7 +164,7 @@ function buildMist() {
     shader.uniforms.uTime = { value: 0 };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>',
-        '#include <common>\nattribute vec3 aRoot;\nattribute vec2 aCorner;\nattribute float aPhase;\nuniform float uTime;')
+        '#include <common>\nattribute vec3 aRoot;\nattribute vec2 aCorner;\nattribute float aPhase;\nuniform float uTime;\nvarying float vNear;')
       .replace('#include <begin_vertex>', `
         vec3 root = aRoot;
         root.x += sin(uTime * 0.05 + aPhase) * 7.0;
@@ -110,15 +172,55 @@ function buildMist() {
         vec3 toCam = cameraPosition - root;
         toCam.y = 0.0;
         float toCamLen = length(toCam);
+        // Banks the walker is inside melt away instead of washing the frame
+        // white — and instead of popping the instant the camera crosses the
+        // billboard plane. Mist you are in is just fog; the banks are the
+        // mist you can still see across the air.
+        vNear = smoothstep(2.0, 7.0, toCamLen);
         vec3 camDir = toCamLen > 0.0001 ? toCam / toCamLen : vec3(0.0, 0.0, 1.0);
         vec3 bladeRight = vec3(-camDir.z, 0.0, camDir.x);
         vec3 transformed = root + bladeRight * aCorner.x + vec3(0.0, aCorner.y, 0.0);`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vNear;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        diffuseColor.a *= vNear;`);
     shaderRef = shader;
   };
   mat.customProgramCacheKey = () => 'blue-hour-mist';
   const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;    // roots drift out of the static bounds
-  return { mesh, mat, tick: dt => { if (shaderRef) shaderRef.uniforms.uTime.value += dt; } };
+  return {
+    mesh, mat,
+    tick: dt => { if (shaderRef) shaderRef.uniforms.uTime.value += dt; },
+    // One root per bank (the four corners share it) — where the banks stand,
+    // for the suite and for anyone aiming a camera at one. The shader adds a
+    // ±7 m drift on top of these.
+    banks: () => {
+      const r = geo.attributes.aRoot, out = [];
+      for (let i = 0; i < r.count; i += 4) out.push({ x: r.getX(i), y: r.getY(i), z: r.getZ(i) });
+      return out;
+    },
+    // Move one bank to a known spot with a known size — the deterministic
+    // staging the pixel check needs. Bank placement is random per load and
+    // the shader drifts every root by up to ±7 m, so a test that hopes a
+    // bank is in frame is a test that flakes; a test that puts a wide one
+    // right in front of the camera isn't.
+    reroot: (i, x, y, z, w = 24, h = 8) => {
+      const r = geo.attributes.aRoot, ph = geo.attributes.aPhase;
+      const pos = geo.attributes.position, cor = geo.attributes.aCorner;
+      for (let c = 0; c < 4; c++) {
+        r.setXYZ(i * 4 + c, x, y, z);
+        pos.setXYZ(i * 4 + c, x, y + (c >= 2 ? h : 0), z);
+        ph.setX(i * 4 + c, 0);
+      }
+      cor.setXY(i * 4, -w / 2, 0); cor.setXY(i * 4 + 1, w / 2, 0);
+      cor.setXY(i * 4 + 2, -w / 2, h); cor.setXY(i * 4 + 3, w / 2, h);
+      r.needsUpdate = true;
+      ph.needsUpdate = true;
+      pos.needsUpdate = true;
+      cor.needsUpdate = true;
+    },
+  };
 }
 
 /* ------------------------------------------------------------- light shafts */
@@ -249,7 +351,11 @@ function buildBreath() {
   const corners = new Float32Array(N * 8);
   for (let i = 0; i < N; i++) {
     const vi = i * 4;
-    corners.set([-0.14, 0, 0.14, 0, -0.14, 0.28, 0.14, 0.28], i * 8);
+    // Sized in the session-5 first-light pass, the first time the breath was
+    // ever seen: the original 0.28 m quad at 0.35 m from the eye covered two
+    // thirds of the screen and read as a bloom artifact, not as vapour. A
+    // hand-span puff at arm's length reads as breath.
+    corners.set([-0.09, 0, 0.09, 0, -0.09, 0.19, 0.09, 0.19], i * 8);
     uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
     indices.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2);
   }
@@ -280,13 +386,13 @@ function buildBreath() {
       .replace('#include <begin_vertex>', `
         float age = uTime - aBirth;
         vPuff = smoothstep(0.0, 0.15, age) * (1.0 - smoothstep(0.4, 1.3, age));
-        vec3 root = aRoot + vec3(0.0, age * 0.25, 0.0);
+        vec3 root = aRoot + vec3(0.0, age * 0.22, 0.0);
         vec3 toCam = cameraPosition - root;
         toCam.y = 0.0;
         float toCamLen = length(toCam);
         vec3 camDir = toCamLen > 0.0001 ? toCam / toCamLen : vec3(0.0, 0.0, 1.0);
         vec3 bladeRight = vec3(-camDir.z, 0.0, camDir.x);
-        float grow = 1.0 + age * 1.6;
+        float grow = 1.0 + age * 1.1;
         vec3 transformed = root + bladeRight * aCorner.x * grow + vec3(0.0, aCorner.y * grow, 0.0);`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vPuff;')
@@ -302,14 +408,16 @@ function buildBreath() {
     mesh,
     tick: dt => { if (shaderRef) shaderRef.uniforms.uTime.value += dt; },
     time: () => (shaderRef ? shaderRef.uniforms.uTime.value : 0),
-    puff(camera, dir, slot) {
+    puff(camera, dir, slot, agoSec = 0) {
       const roots = geo.attributes.aRoot, births = geo.attributes.aBirth;
-      const x = camera.position.x + dir.x * 0.35;
-      const y = camera.position.y - 0.12 + dir.y * 0.35;
-      const z = camera.position.z + dir.z * 0.35;
+      // Born at the mouth but half a metre out — close enough to be yours,
+      // far enough that the quad is a puff in the frame, not a screen wash.
+      const x = camera.position.x + dir.x * 0.55;
+      const y = camera.position.y - 0.14 + dir.y * 0.55;
+      const z = camera.position.z + dir.z * 0.55;
       for (let c = 0; c < 4; c++) {
         roots.setXYZ(slot * 4 + c, x, y, z);
-        births.setX(slot * 4 + c, this.time());
+        births.setX(slot * 4 + c, this.time() - agoSec);
       }
       roots.needsUpdate = true;
       births.needsUpdate = true;
@@ -458,7 +566,13 @@ export function buildAtmosphere(scene) {
       // This term used to be multiplied by (1 - altT) — the mist thinned out as
       // you climbed, because the summit was where the piece let you go. It
       // doesn't any more.
-      mist.mat.opacity = 0.07 + fogT * 0.09 + altT * 0.07;
+      //
+      // Raised from 0.07/0.09/0.07 in the session-5 first-light pass: those
+      // numbers were authored blind (the mist had never rendered — see the
+      // material note) and measured under 1% of the frame from the trail.
+      // The banked texture and the near-camera fade carry the extra opacity
+      // without letting any one quad read as a shape.
+      mist.mat.opacity = 0.14 + fogT * 0.12 + altT * 0.09;
 
       // Shafts belong to the clear phases: light gets through while the fog
       // breathes out, and the woods go blind while it breathes in.
@@ -526,5 +640,21 @@ export function buildAtmosphere(scene) {
     // screenshot doesn't have to wait out the kettle's own timing at
     // software-GL frame rates.
     steamBurst: () => { for (let i = 0; i < 6; i++) { steam.puff(i); } },
+
+    // The same doors for the two systems that went dark silently for three
+    // sessions (the billboard-winding trap — see the mist material). The
+    // suite proves these with PIXELS now, and pixels need a way to stage a
+    // frame and a way to take the mesh out of it for a baseline.
+    mistInfo: () => ({ opacity: mist.mat.opacity, banks: mist.banks() }),
+    mistShow: v => { mist.mesh.visible = !!v; },
+    mistReroot: (i, x, y, z, w, h) => mist.reroot(i, x, y, z, w, h),
+    breathInfo: () => ({ opacity: breath.mesh.material.opacity }),
+    breathShow: v => { breath.mesh.visible = !!v; },
+    // Stage all six breath quads at the camera's mouth at once, staggered in
+    // age so they read as a plume rather than one stacked quad.
+    breathBurst: camera => {
+      camera.getWorldDirection(camDir);
+      for (let i = 0; i < 6; i++) breath.puff(camera, camDir, i, i * 0.18);
+    },
   };
 }
