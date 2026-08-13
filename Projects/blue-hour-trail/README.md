@@ -63,7 +63,13 @@ down to the root.
   someone standing at the rail facing whichever way you go. Look away and
   look back and it has not gone — this is the one thing here that doesn't
   deny itself. Walk to the foot of the tower and it is no longer at the
-  rail. Nothing follows you back down.
+  rail. Step back out from under the tower and it is at the rail again,
+  because it never left it. Nothing follows you back down.
+- And you do have to come back down. The trail only goes up, but the walk
+  does not: 860 m back through weather that hands the woods over to you
+  again a metre at a time, past bootprints that are all still going the
+  other way, with the mountain finding less and less to say the lower you
+  get.
 
 ## Architecture
 
@@ -88,8 +94,10 @@ node test/smoke.mjs
 real Chromium through `?debug`, and checks the things arithmetic can't see —
 draw budget, the fog cycle, the climb, the cairn names, the logbook overlay,
 the attention director, the headlamp, the ghost of the previous walk, every
-dread beat, a genuine walk up the trail, and actual drawing-buffer pixels from
-every billboard system that once went dark silently (the steam, the mist, the
+dread beat, a genuine walk up the trail and another back down it, the promise
+that nothing follows you down, the promise that nothing here ever admits you
+went and looked, and actual drawing-buffer pixels from every billboard system
+that once went dark silently (the steam, the mist, the
 breath — see the winding-trap note in the prompt file). It needs `playwright-core` and a
 Chromium on disk, neither of which the piece itself depends on:
 
@@ -108,6 +116,17 @@ the mountain is a ramp with no peak in it, so the cloud plane sat inside the
 hillside and was reachable by 2 of 30 test rays — and it was the wrong promise
 anyway for a walk about being somewhere you'd rather not be. The altitude blend
 now runs the other way. See `Claude Prompts/notes/24-blue-hour-notes.md`.
+
+A second scar, found the first time anybody walked back DOWN: above t 0.5 the
+trail is not benched into anything. `mountainH` is a ramp in z alone and
+`trailYof` is analytic in arc length, so the switchbacks make arc length outrun
+z and the bench ends up standing proud of the hillside on both sides — 2.5 m at
+mid-height, 10.9 m near the top, a causeway with the crowns of full-height
+conifers level with your boots. Climbing, you never see it; the near trees fill
+the frame and the flanks are below your sightline. Coming down, it is the view.
+Unfixed for the same reason the missing peak is: the fix moves the heightfield
+and every expectation pinned on it. `test/smoke.mjs` holds the number as a
+ceiling so it cannot quietly get worse.
 
 The rest: `terrain.js` (ground + undergrowth), `forest.js` (tree tiers),
 `props.js` (built things), `creek.js` (water + spray), `atmosphere.js`
