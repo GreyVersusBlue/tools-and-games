@@ -508,6 +508,86 @@ const steamPixels = await page.evaluate(() => new Promise(res => {
 ok('and the steam is pixels, not just geometry', steamPixels.max > steamPixels.median + 18,
   `max ${steamPixels.max.toFixed(0)} vs median ${steamPixels.median.toFixed(0)}, quad alpha ${steamPixels.alpha.toFixed(2)}`);
 
+group('no billboard in this piece goes dark silently');
+// Session 4 found the mist and the breath had never rendered a single frame —
+// the shared billboard winding faces away from the camera and FrontSide culled
+// them with zero errors and zero warnings. The steam got a pixel check that
+// session; these are the same check for the other two members of the family.
+// Each stages its system deterministically (bank placement is random per load
+// and drifts, so the suite MOVES a bank rather than hoping one is in frame),
+// reads the drawing buffer with the mesh shown and hidden, and demands the
+// difference. Any silent way the mesh can die — culling, winding, a zeroed
+// alpha, a broken texture — shows up here as a zero.
+const mistPixels = await page.evaluate(async () => {
+  const boxRead = () => new Promise(res => {
+    requestAnimationFrame(() => {
+      const src = document.getElementById('scene');
+      const gl = src.getContext('webgl2') || src.getContext('webgl');
+      const x0 = Math.floor(src.width * 0.25), w = Math.floor(src.width * 0.5);
+      const yTop = Math.floor(src.height * 0.2), h = Math.floor(src.height * 0.5);
+      const buf = new Uint8Array(w * h * 4);
+      gl.readPixels(x0, src.height - (yTop + h), w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      let s = 0;
+      for (let i = 0; i < buf.length; i += 4) s += 0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2];
+      res(s / (buf.length / 4));
+    });
+  });
+  let thick = { t: 0, f: 0 };
+  for (let t = 0; t < 700; t += 2) { __bh.setWeatherT(t); if (__bh.fogT() > thick.f) thick = { t, f: __bh.fogT() }; }
+  __bh.setWeatherT(thick.t);
+  const L = __bh.layout();
+  __bh.teleport(L.bench.x, L.bench.z);
+  const yaw = __bh.yawAlongTrail(9999);
+  __bh.face(yaw, 0.05);
+  await new Promise(r => requestAnimationFrame(r));
+  const p = __bh.pos();
+  __bh.mistReroot(0, p.x - Math.sin(yaw) * 15, p.y - 2.5, p.z - Math.cos(yaw) * 15, 26, 9);
+  __bh.mistShow(true);
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const on = await boxRead();
+  __bh.mistShow(false);
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const off = await boxRead();
+  __bh.mistShow(true);
+  return { on, off };
+});
+// Measured margin at authoring time: +8.2 to +8.8. Anything under a third of
+// that means the bank is not reaching the screen.
+ok('a staged mist bank is pixels, not just geometry', mistPixels.on - mistPixels.off > 2.5,
+  `box ${mistPixels.on.toFixed(1)} with the bank, ${mistPixels.off.toFixed(1)} without`);
+
+const breathPixels = await page.evaluate(async () => {
+  const boxRead = () => new Promise(res => {
+    requestAnimationFrame(() => {
+      const src = document.getElementById('scene');
+      const gl = src.getContext('webgl2') || src.getContext('webgl');
+      const x0 = Math.floor(src.width * 0.3), w = Math.floor(src.width * 0.4);
+      const yTop = Math.floor(src.height * 0.25), h = Math.floor(src.height * 0.5);
+      const buf = new Uint8Array(w * h * 4);
+      gl.readPixels(x0, src.height - (yTop + h), w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      let s = 0;
+      for (let i = 0; i < buf.length; i += 4) s += 0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2];
+      res(s / (buf.length / 4));
+    });
+  });
+  const yaw = __bh.yawAlongTrail(9999);
+  __bh.face(yaw + Math.PI, 0.35);
+  // the camera picks the new facing up on the NEXT frame, and the burst reads
+  // the camera — a burst in the same frame breathes out behind the view
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  __bh.breathBurst();
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const on = await boxRead();
+  __bh.breathShow(false);
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const off = await boxRead();
+  __bh.breathShow(true);
+  return { on, off };
+});
+// Measured margin at authoring time: +7.3.
+ok('a burst of breath is pixels, not just geometry', breathPixels.on - breathPixels.off > 2.5,
+  `box ${breathPixels.on.toFixed(1)} breathing, ${breathPixels.off.toFixed(1)} holding it`);
+
 group('above the fog line the beats change in kind');
 // Ladder 7: the transmission exists ONLY at altitude — no low-altitude fog
 // can reach its gate — and it answers itself: a carrier burst, then the same

@@ -399,6 +399,14 @@ if (new URLSearchParams(location.search).has('debug')) {
 
     steam: () => atmosphere.steamInfo(),
     steamBurst: () => atmosphere.steamBurst(),
+    // Doors for the two systems that went dark silently for three sessions —
+    // the suite proves them with pixels now, same as the steam.
+    mist: () => atmosphere.mistInfo(),
+    mistShow: v => atmosphere.mistShow(v),
+    mistReroot: (i, x, y, z, w, h) => atmosphere.mistReroot(i, x, y, z, w, h),
+    breath: () => atmosphere.breathInfo(),
+    breathShow: v => atmosphere.breathShow(v),
+    breathBurst: () => atmosphere.breathBurst(camera),
     bootprints: () => ({ opacity: props.bootprintOpacity(), prints: LAYOUT.bootprints.length }),
 
     music: () => audio.musicState(),
