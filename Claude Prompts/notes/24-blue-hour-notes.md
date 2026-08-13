@@ -1,5 +1,145 @@
 # 24 — Blue Hour
 
+## Session 5 — first light: the truth pass
+
+No new verbs, no new persistence, no new systems — the amendments gave no such grant
+and none was taken. This session's job was TRUTH: see the things session 4 made
+renderable but nobody had ever looked at, read the writing the way a player reads it,
+and walk the seams between the new systems. Four commits, each leaving both suites
+green.
+
+### First light on the mist and the breath (`js/atmosphere.js`)
+
+Session 4 fixed the winding trap; this session was the first time anyone LOOKED. The
+verdict on the blind-authored constants, measured with A/B drawing-buffer diffs
+(mesh shown vs hidden, same framing):
+
+- **In the woods the mist did not exist.** From the trail, the 26 banks touched under
+  1% of the frame — placed 8–38 m off-trail, occluded by trees and the benched berm,
+  fogged toward the exact colour they had to stand out against, at opacity ≤0.16.
+- **The one bank that ever read on screen read as a perfect radial-gradient disc**
+  hanging over the tower — a sprite, in exactly the way the prompt feared.
+- **The breath was a screen wash, not vapour**: a 0.28 m quad spawned 0.35 m from the
+  eye covers two thirds of the frame and reads as a bloom artifact.
+
+The retune, all in `atmosphere.js`: a banked texture (a horizontal band of nine
+overlapping lobes — nothing on screen can resolve into one circle) replaces the
+radial disc; 30 banks of which 18 hug the trail corridor low enough to walk through,
+6 stand deep for layers, and 6 pool deliberately at the waterfall and in the cabin
+hollow; a near-camera fade in the vertex stage (`smoothstep(2,7,toCamLen)`) melts a
+bank the walker enters instead of white-washing the frame or popping at the plane
+crossing; opacity 0.14 + fogT·0.12 + altT·0.09 (was 0.07/0.09/0.07). The breath is a
+hand-span puff at arm's length now (0.18 × 0.19 m at 0.55 m, grow ×1.1/s, was
+0.28 m at 0.35 m growing ×1.6/s). Screenshots taken at trail, cabin hollow and
+summit in clear, mid and thick weather — and looked at, which is the entire point.
+
+### Pixels as proof, for the whole billboard family (`test/browser.mjs`, 70 → 72)
+
+The steam's session-4 pixel check generalized: new group "no billboard in this piece
+goes dark silently". Bank placement is random per load and every root drifts ±7 m in
+the shader, so the check MOVES a bank (`__bh.mistReroot` — root, size, phase pinned)
+in front of a known camera instead of hoping one is in frame, then reads the drawing
+buffer with the mesh shown and hidden and demands the difference (measured margin
++8.2, threshold 2.5; breath via `__bh.breathBurst` staged ages, margin +7.3). Both
+guards verified by reintroducing the winding bug they guard (locked decision #34):
+`FrontSide` on the mist fails exactly the mist check, `FrontSide` on the breath fails
+exactly the breath check, everything else stays green. New debug doors, none opened
+by the piece itself: `mist`, `mistShow`, `mistReroot`, `breath`, `breathShow`,
+`breathBurst`.
+
+**Draw budget re-measured against HEAD in a worktree, same procedure both sides:
+24–27 calls / ~282–286k tris, unchanged by this session** (same mesh count; one
+canvas texture swapped). The swiftshader numbers still cannot see fill rate, and two
+fill-heavy systems that never drew before are drawing now — the real-GPU run (prompt
+task 3) got MORE urgent again, not less. Noted in the prompt file's task list.
+
+### The read-aloud proofread (prompt task 6 — done)
+
+All ten pages read in place through the overlay, in the order the trail gives them
+(Hollis → Vann → Ruiz → Kessler June → Merrit → Kessler July → Doyle → Kessler
+July 30/Aug 14 → Okafor → Marsh). The writing survives its own reading: Kessler's
+"it is a bear, working the smell of the larder" written down twice is the piece's
+thesis in one line; Okafor leaves the ring in the catwalk paint without a remark;
+Marsh's log just ends. One clunk fixed in `field.js`: Doyle's "The tradition is you
+build it going down, done —" stumbled aloud on the dangling "done"; it reads "on the
+way down, when you are done" now. Every grant-1 rule reheld by ear: no entry confirms
+danger or safety, none mentions the figure, Kessler ends calmer and unruled, Marsh's
+absence stays unspoken.
+
+### The seams, staged and judged (four questions each)
+
+- **Headlamp + the figure**: cannot break, structurally — everything dread owns
+  (figure, bear, eyes) is `MeshBasicMaterial`, unlit; the cone spends itself on the
+  world and the world dims around the watcher. Opacity cap held at 0.46 with the lamp
+  burning; the fog-dimming actually makes the figure HARDER to see lit, which is the
+  right direction. Holds.
+- **Headlamp + summit fog**: no volumetrics, so the cone cannot punch a dishonest
+  hole in the fog — but the first look at the lamp on the walker's own feet came back
+  a featureless blown-white disc. Inverse-square decay put 16× the reach's light on
+  the near ground; no intensity satisfies both ends. **Fixed: decay 1 / intensity 4.5**
+  (was 2 / 34) holds the same 12 m reach and returns the feet their texture.
+  Screenshotted at the feet, up the trail, and on the summit ground.
+- **Transmission + silence adjacent**: coexist in either order — carrier opens,
+  self-static answers at echoGain 0.5, birdsSilent holds, duck stays at 0.15. The
+  echo is the walker's own signal, so nothing reads as an answer. In natural play the
+  cooldown keeps them ≥55 s apart anyway. Holds.
+- **Cairn chip + headlamp chip**: they share the DOM element, last-writer-wins — but
+  the nearest cairn stands 28.8 m from the lamp against a 4 m and a 1.6 m found
+  radius, so the collision cannot be staged by walking; at 2 m/s the first chip is
+  10 s gone before the second could fire. Holds, by geometry. (Found while staging
+  this: the chip timer ticked 1/60 per FRAME, not per second — minutes of chip on a
+  slow tab, 2.4 s on a 144 Hz display. Ticks `dt` now.)
+- **Ghost at the trailhead, barely-recorded walk**: a 40-step record clustered on the
+  first switchback replays its own 0.93 s gait verbatim at the trailhead, and high on
+  the mountain — where the record has nothing within a tenth of the trail —
+  `rhythmNear` returns null and the phantom falls back to the scheduler's invention,
+  exactly the designed boundary ("a rhythm borrowed from nowhere is an invention, and
+  inventions are the scheduler's job"). Holds.
+
+### The flake class, met in person
+
+The draw-cost-equality check failed once mid-session: 24 calls became 45 between its
+thick sample and its clear one because wildlife crossed the frustum — nothing to do
+with fog. Hardened per the suite's own rule (never trust one swiftshader timing):
+the pair now retries into a quiet window, up to four attempts; fog-dependent
+submission would differ on every attempt and still fail. Green twice since.
+
+### What I verified (session 5)
+
+- `node test/smoke.mjs` — **93 checks, 0 failed** at every commit.
+- `node test/browser.mjs` — **72 checks, 0 failed** at every commit (70 → 72; the
+  two pixel-truth checks). Guard-rails verified by bug-reintroduction, both
+  directions (mist FrontSide → only the mist check fails; breath FrontSide → only
+  the breath check fails).
+- Screenshots, looked at, this session: trail/cabin/summit × clear/mid/thick before
+  AND after the mist retune; a staged bank at 15 m (the bank-not-disc proof); inside
+  a bank (no white-wash); breath against hillside and sky; the Doyle page in the
+  overlay after the edit; the lamp at the feet, up the trail, and on the summit
+  ground at three tunings.
+- Draw budget vs HEAD, same procedure: 24–27 calls / ~282–286k tris both sides.
+
+### Shared-file requests — THIRD SESSION CARRYING THIS FLAG
+
+**The piece is still not on the board.** Root `index.html` has no Blue Hour card, no
+`#g-peak` seal, `Tools/board-check/games.mjs` has no `blue-hour` entry, the previews
+recipe does not exist, and `Claude Prompts/notes/README.md` still stops at 23. Every
+block needed is written out verbatim in the session-2 section below, amended once in
+session 4 (no `saveKey` — `blue-hour-last-walk` is not a save and must not be wired
+into shared save/reset tooling). Blue Hour shipped in PR #8 and has been live and
+unreachable from the board for five sessions. Prompt 22 runs last and applies these;
+nothing else will. Please apply requests 1–4.
+
+### Deliberately not done
+
+- **No GPU/touch/ears passes** (prompt tasks 3–5) — they need Devon's hardware and
+  Devon's ears, not this environment's swiftshader and silence. Task 9 in the prompt
+  file now lists what the GPU run should specifically look at after this session.
+- **Music levels untouched** — no listening notes from Devon again this session, so
+  every gain stays exactly as authored (session-3 condition, still binding).
+- **The summit geometry** stays settled: no peak, fog closes. Nothing here leaned
+  on it.
+- **No board-card or shared-file edits** — re-flagged above, loudly.
+
 ## Session 4 — the logbook, the three grants, and the mist that was never there
 
 The full-hog session. Devon granted the three items the feasibility ladder had fenced off
