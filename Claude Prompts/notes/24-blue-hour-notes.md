@@ -1,5 +1,238 @@
 # 24 — Blue Hour
 
+## Session 6 — the walk down
+
+Every design decision in this piece faces downhill and nobody had ever walked
+that way. This session did: the bench to the trailhead in one go, 860 m, and
+then it spent the rest of itself on what the descent turned up. No new verbs,
+no new persistence, no new systems — none was granted and none was taken. Four
+commits, both suites green at each.
+
+**smoke 93 → 104. browser 72 → 95.**
+
+### The walk itself
+
+A scratch harness (not part of the suite) boots the real page at 480×300, puts
+the walker at the bench and holds W with pure-pursuit steering four metres down
+the centerline, pausing eight world-seconds every hundred the way a walker
+pauses. It logged every world-second and every event.
+
+**23 real minutes, 470 world-seconds, arrived at (0.5, 145.4) standing on the
+trail. Never more than 1.6 m off the centerline, never on any surface but trail
+and bridge, zero page errors, 840 recorded footsteps.** Six beats fired
+naturally on the way down — howl at t 0.86, snap at 0.73, bear at 0.56, snap at
+0.34, silence at 0.15, snap at 0.03 — 70, 63, 79, 99, 86 and 61 world-seconds
+apart. Frames captured at every tenth of the trail and looked at.
+
+The walk answers the three questions it was sent to ask:
+
+- **Does the director still spend beats sensibly when the yaw histogram
+  inverts?** Yes, and better than sensibly: it spends FEWER of them. `intensity`
+  reads trail progress and altitude and both fall away behind a descending
+  walker, so the cooldown the scheduler sets at the summit (33–62 s) cannot
+  overlap the one it sets at the trailhead (65–118 s) — hard bounds, not
+  overlapping distributions. The gaps the real walk heard climb through exactly
+  that band. The mountain runs out of things to say to you as you leave, which
+  is the right shape and nobody had designed it on purpose.
+- **Do the fog cycle and the altitude blend hand the woods back gracefully?**
+  Yes, with a number: **the largest change in fog density in any world-second of
+  the whole descent was 0.0006, and it happened inside the 46→62 m band.** The
+  fog cycle on its own does 0.0004/s. The summit letting go is gentler than the
+  weather the piece breathes anyway. (One artifact worth knowing: the first
+  sample after a teleport shows a 0.02 jump, because `altT` reads `controls.pos.y`
+  and that is a frame behind. It settles in one frame and never happens in play.)
+- **Do the descending beats still read when the WALKER is descending?** Partly,
+  and the exceptions are geometry rather than faults — see the next two sections.
+
+### Everything descends, including the walker — what that does to three beats
+
+**The shape.** Its head-downhill flip is real and never inverts, but staged from
+a downhill facing the *read* collapses: 0.02–0.28 typically, against 0.99 on the
+legs where the trail crosses the slope. The head axis lies across the line of
+sight, so with downhill running away from the camera there is no profile left to
+point with. The old check demanded > 0.05 and was only ever staged from a
+climbing facing; it would have failed on the descent, and did, at 0.017.
+`bearInfo()` now hands out the head's world direction after the flip and the way
+downhill, so the suite can check the SIGN instead of an absolute value that
+would read fine with no flip at all. Verified by removing the flip: 3 of 8
+stagings turn to face up the mountain.
+
+**The phantom steps.** Their downhill pan is **exactly zero** — not nearly.
+`downhillAt` returns the reverse of the trail tangent, so a walker facing along
+the trail has downhill dead ahead or dead behind. In closed form, with
+yaw = atan2(−dx, −dz), pan = (−dx)(−dz) − (−dz)(−dx) = 0, and the about-face
+only flips both signs. Measured: −7e-17 descending, −2e-17 climbing. The beat's
+descent is carried entirely by the falling pitch. That is now a browser check —
+as a tripwire, not an endorsement: it fails the day anyone points `downhillAt`
+at the terrain's fall line, which is the decision (prompt task 11).
+
+**The eyes.** Unchanged in kind: staged 16–26 m out, and the walker closes on
+them either way. What changed is what happens when they go — see the doctrine
+break below.
+
+### The causeway: the descent sees what the climb hides
+
+At t 0.8 the walk came back with a frame of the trail as a raised earth levee
+with the treetops below it on both sides. Measured against the heightfield, 5 m
+out past the 4.5 m blend shoulder:
+
+| t | 0.30 | 0.40 | 0.50 | 0.60 | 0.70 | 0.80 | 0.90 | 1.00 |
+|---|---|---|---|---|---|---|---|---|
+| proud of both shoulders | −4.2 | −1.2 | **2.5** | 4.9 | 6.7 | 8.2 | **10.9** | 6.0 |
+
+The bottom half is a proper bench cut into the hillside (negative = shoulders
+above the trail). From **t 0.49** up it is a causeway. The prompt file had this
+as "the last stretch rides a ~5 m berm, invisible now"; it is neither only the
+last stretch nor invisible. `mountainH` is a ramp in z alone while `trailYof` is
+analytic in arc length, and the switchbacks make arc length outrun z.
+
+The "invisible" half is settled by a matched pair of frames from the same spot
+at t 0.8: **looking up the trail is an ordinary forest path** with the near trees
+crowding both sides and the flanks below the sightline; **looking down it is a
+levee** with the crowns of full-height conifers level with your boots. Six
+sessions of climbing is why nobody saw it.
+
+Not fixed, deliberately — it moves the heightfield and rebaselines a dozen
+pinned expectations, which is Devon's call for the same reason the missing peak
+was (session 2). `smoke.mjs` holds 10.9 m as a **ceiling**, and the three ways
+out are written up as prompt task 10, with the note that whoever takes it should
+walk down afterwards rather than up.
+
+### The doctrine break: a sting that only fired if you ran the experiment
+
+Counting stings for the figure's promise is what caught this. `dread.js` fired a
+`lowSting` when the shape went, guarded by `_bearSeen && _bearLife > 0` — seen,
+and not timed out. Both surviving ways out of that `gone` are the experiment:
+looked away and looked back, or walked out to where it stood. So the sting fired
+**if and only if the player ran the test, and never when they didn't.** The eyes
+had the same sound on closing to 15 m, which is the player going to look.
+
+Gone Home doctrine, rule 3, is written against that precise sound: *"there is
+nothing — and no sting, no cue, no sound of it having left. The scheduler must
+never reward or punish investigation. Unfalsifiable means the game doesn't even
+confirm the question was asked."* The doctrine postdates this code (session 3;
+the stings are session 1) and it wins every tie. Both sounds are deleted. The
+lookout's single notice stays — that is noticing, not investigating.
+
+The descent is what exposed it: coming down you close on a shape staged 45–65 m
+ahead at a full 2 m/s, with no grade slowing you, and the sting lands every
+time. Climbing, it is occasional.
+
+**This is the one change here a listener could notice, and it is a deletion, so
+it is one line each to put back.** Considered and rejected: moving the sting to
+the timeout path instead — that just inverts the correlation, and a careful
+player could still read "silence means I caused it".
+
+### The ghost of a whole walk — the record had no descent in it
+
+The prompt asked whose gait the phantom borrows from a round-trip record. The
+answer turned out to be upstream of the question.
+
+Measured against the real heightfield with controls.js's arithmetic and
+audio.js's cadence, cross-checked against the live engine (the walk recorded 840
+steps; the simulation said 839): **the climb is 975 recorded footsteps and the
+descent 839, so a whole visit is ~1,814 — twice `ghost.js`'s 900-step cap.** The
+cap was a hard stop. Every walker who went up and came back down saved a memory
+that ended at t 0.917 of the CLIMB and contained no descending step at all. The
+beat it feeds has been descending by authorship since session 4 and had never
+once had a descending step to borrow.
+
+Also measured, and contrary to the prompt's premise: **descending gaits are not
+faster.** `_stepPhase += dt * 2.05` is speed-independent, so both halves record
+0.50 s gaps. What differs is metres per step — 0.88 up, 1.02 down — which is
+what makes the climb denser in t and therefore the nearest-t winner, along with
+being recorded first and settling the ties. So the two gaits differ only through
+pauses, which are exactly the human part.
+
+Two fixes, both inside `ghost.js`, both pure, `v:1` untouched:
+
+1. **The cap became a sampling budget.** At 900 the record thins by half in
+   place and the sampling rate halves with it. A whole round trip lands at ~453
+   steps, 5.3 KB, spanning t 0.001–0.999 with 209 taken on the way down. Every
+   surviving gap is still one that was genuinely walked — nothing is averaged, a
+   pause is kept or dropped but never smeared.
+2. **`rhythmNear` asks the descending pass first**, falling back to the whole
+   record when there isn't one. A walker who climbed and never came back down
+   lends the climb they were on, which is the older behaviour exactly and also
+   the right fiction: that one is still up there.
+
+Verified by reintroducing each bug: the old hard cap fails exactly three of the
+new smoke checks, and a direction-blind `rhythmNear` fails exactly one — and
+fails it by answering 0.62, 0.41, 0.62, 0.41 across four altitudes, which is the
+incoherence in one line.
+
+### The flake class, met again in a new dress
+
+Session 5's rule is never trust one measurement taken under swiftshader. This
+session's instance: the walk checks measured DISTANCE against an fps-scaled
+floor, and a hitch inside the six-second hold made a perfectly good descent read
+0.2 m against a 0.3 m floor. Hardened by changing what is measured rather than
+the threshold — the walker's **speed in the walker's own clock**, since
+`weatherT` advances by exactly the clamped dt the walker moves on, so
+distance ÷ world-seconds is metres per second whatever the renderer is doing. A
+hold that draws fewer than two frames retries instead of reporting a walker who
+cannot walk. Both the climb and the descent checks read that way now (1.41 m/s
+up at the trailhead, 1.56 m/s down at mid-trail — not comparable to each other,
+different grades and partial frames at both ends, so no race is claimed).
+
+### What I verified (session 6)
+
+- `node test/smoke.mjs` — **104 checks, 0 failed** at every commit (was 93).
+  New: the way back down (a downhill step never rises so the descent is never
+  slowed; an uphill one always does, the footbridge deck excepted as the only
+  level ground on the mountain; the causeway ceiling; the bottom half still
+  benched) and four more on the ghost of a whole walk.
+- `node test/browser.mjs` — **95 checks, 0 failed** at every commit (was 72).
+  New groups: the walk down (seamless handback, a real descending W-hold, the
+  scheduler thinning out, the shape's sign, the phantom's zero pan), nothing
+  follows you back down (six), the woods never admit the experiment (six).
+- **Guard-rails verified by reintroducing the bug they guard** (locked decision
+  #34), five of them: the old hard cap in `ghost.js` (fails 3 smoke checks), a
+  direction-blind `rhythmNear` (fails 1), `altT` as a switch instead of a ramp
+  (fails only the seam check, 0.0217 against a 0.003 bound), the shape's flip
+  removed (3 of 8 stagings face up the mountain), and both investigation stings
+  put back (the silence checks fail, one sting each).
+- **Screenshots, looked at**: every tenth of the trail on the live descent at
+  480×300; and at 1320×800, matched down/up pairs at t 0.9, 0.8, 0.7, 0.5 and
+  0.3 (the causeway pair is the t 0.8 one), the shape staged while descending,
+  the foot of the tower with the rail empty, and 10 / 20 / 45 m below the tower
+  looking back with the figure at the rail again.
+- Draw budget unchanged and re-measured in passing: 37 calls / 290k tris,
+  identical in thick fog and clear.
+
+### Shared-file requests — FOURTH SESSION CARRYING THIS FLAG
+
+**The piece is STILL not on the board.** Checked again this session, by hand:
+root `index.html` has no Blue Hour card and no `#g-peak` seal (0 matches for
+either), `Tools/board-check/games.mjs` has no `blue-hour` entry (0 matches),
+`Tools/board-check/capture-previews.mjs` has no recipe (0 matches),
+`assets/previews/blue-hour.jpg` does not exist, and `Claude Prompts/notes/README.md`
+still stops at 23.
+
+That is sessions 2, 4, 5 and now 6 asking for the same four mechanical paste-ins.
+**Blue Hour shipped in PR #8 and has been live and unreachable from the board for
+six sessions.** The exact blocks are written out verbatim in the session-2
+section below and have not changed; the one amendment (session 4) still stands —
+no `saveKey`, because `blue-hour-last-walk` is not a save and must not be wired
+into the shared save/reset tooling. Prompt 22 runs last and applies these;
+nothing else will. **Please apply requests 1–4.**
+
+### Deliberately not done
+
+- **No GPU/touch/ears passes** (prompt tasks 3–5, and task 9's list) — they need
+  Devon's hardware and Devon's ears, not this environment's swiftshader and
+  silence. Not simulated, not guessed at.
+- **Music levels untouched.** No listening notes from Devon again this session,
+  so every gain stays exactly as authored — the session-3 condition, still
+  binding, and still the reason nothing here was tuned by ear. The one audio
+  change is a deletion made on doctrine grounds, not a level.
+- **The summit geometry stays settled** — no peak, the fog closes. The causeway
+  is measured and flagged, not fixed, for the same reason.
+- **The mist, breath and lamp constants session 5 tuned are untouched.** They
+  had their eyes-on pass; nothing this session measured them to be wrong.
+- **No board-card or shared-file edits** — re-flagged above, loudly, for the
+  fourth time.
+
 ## Session 5 — first light: the truth pass
 
 No new verbs, no new persistence, no new systems — the amendments gave no such grant

@@ -236,9 +236,46 @@ stinger ducks the music to 15% with a slow recovery; the silence beat holds it d
 routes through the master/fog filter, so mute and murk apply. `__bh.music()` reads the live
 targets.
 
-**`test/smoke.mjs`, 93 checks**, pure Node, no browser. **`test/browser.mjs`, 72 checks**, real
+**`test/smoke.mjs`, 104 checks**, pure Node, no browser. **`test/browser.mjs`, 95 checks**, real
 Chromium through `?debug`. Both exit non-zero on failure. `browser.mjs` needs `playwright-core`
 and a Chromium on disk (`CHROME=` overrides the path); neither is a dependency of the piece.
+
+**The walk down was walked in session 6**, all 860 m of it, and half this
+piece's runtime stopped being theoretical. What that found, in the piece as it
+now stands:
+
+- **The summit lets go of the woods without a seam.** The biggest change in fog
+  density in any world-second of the whole 470-second descent was 0.0006, and
+  it happened inside the 46→62 m altitude band. The handback is gentler than the
+  weather the piece breathes anyway; the suite pins it.
+- **The mountain thins out as you come down it.** `dread`'s intensity reads
+  trail progress and altitude and both fall away behind you, so the cooldown it
+  sets at the summit (33–62 s) cannot overlap the one it sets at the trailhead
+  (65–118 s). Nothing follows you down, the scheduler included.
+- **The figure comes back to the rail behind you, and that is the promise
+  kept.** It never left the rail — the foot of the tower is the one place you
+  cannot see it from. It never moves, never comes down, is gone for good by
+  y 55.9 and 66 m out, and re-arms only at the far edge of its own range where
+  the fog has taken 99.9994% of it. It makes no sound on the way down.
+- **Nothing acknowledges being investigated any more** (a doctrine fix, rule 3).
+  `dread.js` used to fire a `lowSting` when the shape went, guarded by "seen,
+  and life not run out" — which fired it if and only if the walker had run the
+  experiment. The eyes had the same sound on closing to 15 m. Both deleted; the
+  lookout's one notice stays, because noticing is not investigating.
+  `audio._stings` counts them for the suite and the piece never reads it.
+- **The ghost remembers a whole walk now.** See grant 3's amendment and
+  `ghost.js`: the 900-step cap thins the record by half instead of stopping it
+  dead, and `rhythmNear` asks the descending pass first. Before session 6 a
+  walker who went up and came back down saved a memory that ended partway up
+  the climb and held no descending step at all.
+- **The phantom's downhill pan is exactly zero** whenever the walker faces along
+  the trail, which is whenever they have just been walking — downhill is the
+  reverse of the trail tangent, so it is dead ahead or dead behind and there is
+  nothing lateral left to lean on. The falling pitch carries those steps; the
+  stereo field does not. Pinned as a tripwire, not as an endorsement — see
+  task 11.
+- **The top half of the trail rides a causeway, and the descent is the view that
+  sees it.** See below, under the mountain's shape.
 
 **The billboard-winding trap, so nobody falls in it a third time** (session 4). The
 `bladeRight = vec3(-camDir.z, 0, camDir.x)` basis used by the onBeforeCompile billboard
@@ -278,9 +315,23 @@ far enough for it to matter. If some future session wants a real view from up th
 peak term in `mountainH` and a `smoke.mjs` rebaseline — and it should read why the view was
 removed before putting one back.
 
-Related, also unfixed, also hidden by the fog: `trailYof(1)` returns 65 while the raw hillside
-there is ~60, so the last stretch of trail rides a ~5 m berm. Invisible now. Real the moment
-anyone lifts the weather at the summit.
+Related, also unfixed — but NOT hidden, and bigger than this paragraph used to say. It read:
+"`trailYof(1)` returns 65 while the raw hillside there is ~60, so the last stretch of trail rides
+a ~5 m berm. Invisible now. Real the moment anyone lifts the weather at the summit." Session 6
+measured it properly and then walked down it. It is not only the last stretch and it is not
+invisible:
+
+- `mountainH` is a ramp in **z** alone; `trailYof` is analytic in **arc length**. The switchbacks
+  make arc length outrun z, so from **t 0.49 upward** the bench stands proud of the hillside on
+  BOTH sides — 2.5 m at t 0.50, 8.2 m at t 0.80, **10.9 m at t 0.90**, measured 5 m out past the
+  4.5 m blend shoulder. It is a causeway, not a bench.
+- Nobody saw it for six sessions because everybody climbed. Looking UP the trail, the near trees
+  fill the frame and the flanks are below the sightline: an ordinary forest path. Looking DOWN
+  it, from the same spot, it is an earth levee with the crowns of full-height conifers level
+  with your boots. The matched pair of frames is in the session-6 notes.
+- `smoke.mjs` holds 10.9 m as a **ceiling**, not a target, so it cannot quietly get worse. The
+  fix is task 10 and it is Devon's call, for the same reason the missing peak is: it moves
+  `mountainH` or `trailYof` and rebaselines a dozen expectations.
 
 ## The north star (Devon, session 3)
 
@@ -406,6 +457,25 @@ multiplayer, climbing the tower, the handwriting reveal, the ending at the rail.
    more of them near the camera than before), the headlamp at decay 1 (cheaper than
    it looks — one SpotLight either way), and whether the lamp's feet-pool and
    12 m reach still read right at a real frame rate and real pixel density.
+10. **The causeway — Devon's call** (session 6). The top half of the trail rides up to
+    10.9 m above the hillside on both sides and the descent is the view that shows it;
+    the measurements and the frames are above and in the notes. Three ways out, none of
+    them a cleanup: give `mountainH` a term that follows the trail's arc-length height
+    instead of z alone; or re-anchor `trailYof` to the hillside it actually crosses; or
+    decide a ridge trail is what this is and widen the bench so it reads as ground
+    rather than a levee. All three move the heightfield and rebaseline `smoke.mjs`, and
+    the third also has to answer why the blaze posts stand at the lip of a 10 m drop.
+    **Whoever takes it: walk down afterwards, not up.**
+11. **The phantom's downhill pan does nothing — decide whether to mean it**
+    (session 6). `downhillAt` returns the reverse of the trail tangent, so for a walker
+    facing along the trail the pan is exactly 0.000 in both directions of travel; the
+    beat's descent is carried entirely by the falling pitch. Either accept that (the
+    honest reading: those steps are behind you or ahead of you, and stereo cannot say
+    which) and reword the ladder, or point `downhillAt` at the terrain's fall line,
+    which IS lateral on every switchback leg and would make the sentence true. The
+    second changes the eyes' drift and the shape's head-flip too, since all three read
+    the same function — which is an argument for doing it deliberately or not at all.
+    A browser check fails the moment anyone changes it, on purpose.
 
 ## Verification
 

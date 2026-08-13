@@ -127,6 +127,71 @@ group('the trail climbs the mountain');
   ok(trailBlend(p.x + -p.dz * 12, p.z + p.dx * 12) < 0.05, 'and 0 out in the woods');
 }
 
+/* -------------------------------------------------------------- the descent -- */
+
+group('the way back down');
+
+{
+  // Session 6 walked it, all 860 m of it, for the first time. Two things the
+  // walk turned up that are arithmetic and therefore belong here.
+
+  // 1. Coming down is never slowed. controls.js reads the rise between where
+  //    the walker is and where the next 0.1 s of walking would put them, and
+  //    charges up to 55% of the walker's speed for it. Downhill that rise is
+  //    zero at every point on the trail, so the descent runs at the full 2 m/s
+  //    while the climb averages ~1.75 — which is why the way down is 430 s
+  //    against the climb's 490 and why half this piece's runtime is a half
+  //    nobody had played.
+  //    The footbridge is the exception in both directions and the only level
+  //    ground on the mountain: walkHeight returns the flat deck over the creek,
+  //    so those five samples are skipped rather than argued with.
+  let slowedDescending = 0, unslowedClimbing = 0;
+  const STEP = 0.2;
+  const deck = LAYOUT.bridge;
+  for (let i = 4; i < TRAIL.points.length - 4; i++) {
+    const p = TRAIL.points[i];
+    if (Math.hypot(p.x - deck.x, p.z - deck.z) < deck.len) continue;
+    const here = walkHeight(p.x, p.z);
+    const up = walkHeight(p.x + p.dx * STEP, p.z + p.dz * STEP);
+    const down = walkHeight(p.x - p.dx * STEP, p.z - p.dz * STEP);
+    if (down > here + 1e-6) slowedDescending++;
+    if (up <= here + 1e-6) unslowedClimbing++;
+  }
+  ok(slowedDescending === 0, 'a step down the trail never rises, so the descent is never slowed',
+    `${slowedDescending} rising downhill steps`);
+  ok(unslowedClimbing === 0, 'and a step up it always does, so the climb always is',
+    `${unslowedClimbing} level uphill steps`);
+
+  // 2. The trail's top half is not benched into anything — it rides a
+  //    causeway. mountainH is a ramp in z alone while trailYof is analytic in
+  //    ARC LENGTH, and the switchbacks make arc length outrun z, so above
+  //    t 0.5 the bench stands proud of the hillside on BOTH sides: 2.5 m at
+  //    t 0.50, 10.9 m at t 0.90. The prompt file recorded this as "the last
+  //    stretch rides a ~5 m berm, invisible now" — it is neither only the last
+  //    stretch nor invisible: walking DOWN is the one view that looks along the
+  //    trail from above, and session 6's screenshots at t 0.8 and t 0.7 show a
+  //    raised earth causeway with the treetops below it on both sides.
+  //
+  //    NOT FIXED HERE, deliberately: every fix moves mountainH or trailYof and
+  //    rebaselines a dozen expectations in this file, which is Devon's call and
+  //    not a cleanup (same reasoning as the missing peak, session 2). This
+  //    number is a CEILING so nobody makes it worse by accident, not a target.
+  let worstCauseway = 0, worstAt = 0, firstProud = 1;
+  for (let k = 0; k <= 200; k++) {
+    const t = k / 200, p = trailPoint(t);
+    const px = -p.dz, pz = p.dx;
+    const shoulderL = groundHeight(p.x + px * 5, p.z + pz * 5);
+    const shoulderR = groundHeight(p.x - px * 5, p.z - pz * 5);
+    const proud = groundHeight(p.x, p.z) - Math.max(shoulderL, shoulderR);
+    if (proud > worstCauseway) { worstCauseway = proud; worstAt = t; }
+    if (proud > 2 && t < firstProud) firstProud = t;
+  }
+  ok(worstCauseway < 12, 'the causeway in the top half is no worse than it was measured',
+    `${worstCauseway.toFixed(1)} m above both shoulders at t ${worstAt.toFixed(2)}, first over 2 m at t ${firstProud.toFixed(2)}`);
+  ok(firstProud > 0.4, 'and the bottom half is still a bench cut into the hillside',
+    `proud of both shoulders from t ${firstProud.toFixed(2)} up`);
+}
+
 /* ------------------------------------------------------------------- creek -- */
 
 group('the creek and the bridge');
@@ -427,6 +492,61 @@ group('the mountain remembers your last walk');
   ok(g3.walked() === 1, 'the ghost keeps the gait, not the sightseeing');
 
   ok(GHOST_KEY === 'blue-hour-last-walk', 'the key is project-local — gvb-save.js stays untouched');
+
+  // ---- the ghost of a WHOLE walk (session 6) ----
+  //
+  // Up and back down again. Measured against the real heightfield: the climb
+  // is 975 steps and the descent 839, so a whole visit is ~1,814 — twice the
+  // old hard cap, which ended the record at t 0.917 of the climb and threw
+  // the entire way down away. The beat these gaps feed is descending. Two
+  // gaits here, deliberately different, so it is provable which one answers.
+  const upGait = 0.62, downGait = 0.41;
+  const roundTrip = storeIn => {
+    const g = createGhost(storeIn);
+    let now = 0;
+    for (let i = 0; i < 975; i++) { g.step(i / 975, now); now += upGait; }
+    now += 30;                                    // a while at the bench
+    for (let i = 839; i > 0; i--) { g.step(i / 839, now); now += downGait; }
+    return g;
+  };
+  const rtStore = stub();
+  const rt = roundTrip(rtStore);
+  ok(rt.save() === true, 'a whole walk is worth remembering');
+  const rtBack = createGhost(rtStore);
+  const rtSteps = decodeWalk(rtStore.m.get(GHOST_KEY));
+  ok(rtBack.count <= 900, 'the record stays inside its budget however long the walk',
+    `${rtBack.count} steps for 1,814 walked`);
+  const rtT = rtSteps.map(s => s[0]);
+  ok(Math.min(...rtT) < 0.05 && Math.max(...rtT) > 0.95,
+    'and it still spans the whole mountain, thinned rather than cut off',
+    `t ${Math.min(...rtT).toFixed(3)}–${Math.max(...rtT).toFixed(3)}`);
+  const descended = rtSteps.filter((s, i) => i > 0 && s[0] < rtSteps[i - 1][0]).length;
+  ok(descended > 100, 'the way back down is in there', `${descended} descending steps`);
+  ok(rtSteps.every(s => Math.abs(s[1] - upGait) < 1e-9 || Math.abs(s[1] - downGait) < 1e-9),
+    'every surviving gap is one that was actually walked — nothing averaged');
+
+  // Whose gait does the phantom borrow? The descending one, at every
+  // altitude — nearest-t alone answers with the climb every time, because the
+  // climb is slower and therefore denser in t and because it is recorded
+  // first. See rhythmNear.
+  const borrowed = [0.15, 0.5, 0.85, 0.99].map(at => rtBack.rhythmNear(at));
+  ok(borrowed.every(r => r && r.every(dt => Math.abs(dt - downGait) < 1e-9)),
+    'the steps that are not yours are your own coming DOWN, not climbing',
+    borrowed.map(r => (r ? r[0].toFixed(2) : 'null')).join(', '));
+
+  // A walker who went up and never came back down leaves no descending pass,
+  // and then the climb is all there is — which is the older behaviour exactly.
+  const upOnlyStore = stub();
+  {
+    const g = createGhost(upOnlyStore);
+    let now = 0;
+    for (let i = 0; i < 300; i++) { g.step(i / 300, now); now += upGait; }
+    g.save();
+  }
+  const upOnly = createGhost(upOnlyStore).rhythmNear(0.5);
+  ok(upOnly && upOnly.every(dt => Math.abs(dt - upGait) < 1e-9),
+    'and a walker still up there lends the climb they were on',
+    upOnly && upOnly.map(x => x.toFixed(2)).join(', '));
 }
 
 group('the motif engine writes only woe');

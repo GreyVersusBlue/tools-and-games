@@ -17,6 +17,11 @@ import { groundHeight, trailInfo, trailPoint, LAYOUT } from './field.js';
 //   • everything here is trying to LEAVE: the phantom steps descend — pitch
 //     falling, panned toward the downhill side — and the shape between the
 //     trees faces down the mountain, never up it (session 4)
+//   • nothing here acknowledges being investigated (session 6): the shape and
+//     the eyes go out in silence whether the walker looked away and looked
+//     back, walked out to where they stood, or never noticed them at all. The
+//     Gone Home doctrine's third rule — the game doesn't even confirm the
+//     question was asked — and it used to be broken here by a single sting
 //   • the director spends visual beats just outside the walker's recent gaze
 //     (session 4): a yaw-dwell histogram with a ~45 s memory decides which
 //     side of the camera a beat lands on, and a treeline the walker has been
@@ -384,6 +389,20 @@ export function createDread(scene, audio) {
         // After the flip the head points |headDot| of the way downhill; the
         // suite asserts this never goes negative.
         state._bearHeadDot = Math.abs(headDot);
+        // The head's actual world direction after the flip, and the way off
+        // the mountain from where the shape stands, both handed to the suite
+        // so the flip can be checked rather than taken on trust — the dot
+        // above is an absolute value and would read fine with no flip at all.
+        //
+        // Session 6, walking DOWN: |headDot| can be ~0 and the check that
+        // wanted it over 0.05 was only ever staged from a climbing facing.
+        // That is geometry, not a fault. The head axis lies across the line of
+        // sight, so when the walker is descending the fall line, downhill runs
+        // AWAY from the camera and there is no profile left to point with. The
+        // invariant that survives in every direction is this one: never up the
+        // mountain.
+        state._bearHead = { x: headWorld.x * bear.scale.x, z: headWorld.z * bear.scale.x };
+        state._bearDownhill = dh;
 
         bear.visible = true;
         bearMat.opacity = 0.92;
@@ -442,6 +461,7 @@ export function createDread(scene, audio) {
   state.bearInfo = () => ({
     x: bear.position.x, z: bear.position.z, visible: bear.visible,
     flip: bear.scale.x, headDownhillDot: state._bearHeadDot,
+    head: state._bearHead, downhill: state._bearDownhill,
   });
   state.eyesInfo = () => ({
     x: eyes.position.x, z: eyes.position.z, visible: eyes.visible,
@@ -539,7 +559,21 @@ export function createDread(scene, audio) {
       if (gone) {
         bear.visible = false;
         state._bearActive = false;
-        if (state._bearSeen && state._bearLife > 0) audio.lowSting();
+        // And nothing else happens. There used to be a lowSting on this line,
+        // fired if the shape had been SEEN and its life had not yet run out —
+        // which is to say fired if and only if the walker ran the experiment,
+        // and never when they didn't. Both surviving ways out of that `gone`
+        // are the experiment: looked away and looked back, or walked out to
+        // where it stood.
+        //
+        // The Gone Home doctrine's third rule is written against that exact
+        // sound: "there is nothing — and no sting, no cue, no sound of it
+        // having left. The scheduler must never reward or punish
+        // investigation. Unfalsifiable means the game doesn't even confirm the
+        // question was asked." The doctrine postdates this code and wins every
+        // tie, so the sound goes. Session 6 is where it got caught, walking
+        // DOWN: descending you close on a shape staged 45-65 m ahead at a full
+        // 2 m/s and the sting lands every single time.
       }
     }
 
@@ -605,7 +639,9 @@ export function createDread(scene, audio) {
       if (dist < 15 || state._eyesLife <= 0) {
         eyes.visible = false;
         state._eyesActive = false;
-        if (dist < 15) audio.lowSting();
+        // Same rule as the shape, and the same deletion: closing to 15 m is
+        // the walker going to look, and the sting that used to fire here was
+        // the piece admitting they had. They stop being there. That is all.
       }
     }
   };

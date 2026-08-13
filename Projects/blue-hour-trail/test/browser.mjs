@@ -74,13 +74,23 @@ const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
-// Seed a previous walk before the page ever runs: 100 steps the length of the
-// trail, every gap a distinctive 0.77 s, so the ghost group below can prove
-// the phantom steps replayed THIS rhythm and not an invented one.
+// Seed a previous walk before the page ever runs, so the ghost group below can
+// prove the phantom steps replayed THAT rhythm and not an invented one.
+//
+// Session 6 made it a WHOLE visit — up the mountain and back down again, which
+// is what a real previous walker leaves behind and what no record could
+// actually hold until this session (the old cap ended it partway up the
+// climb). The two halves are given deliberately different gaits, 0.62 s
+// climbing and 0.41 s descending, so the rhythm that comes back proves not
+// just that the record was borrowed but WHICH HALF of it — and the beat these
+// gaps feed is descending.
 await page.addInitScript(() => {
   localStorage.setItem('blue-hour-last-walk', JSON.stringify({
     v: 1,
-    steps: Array.from({ length: 100 }, (_, i) => [i / 100, 0.77]),
+    steps: [
+      ...Array.from({ length: 120 }, (_, i) => [i / 120, 0.62]),
+      ...Array.from({ length: 120 }, (_, i) => [(120 - i) / 120, 0.41]),
+    ],
   }));
 });
 
@@ -247,6 +257,61 @@ const upClose = await page.evaluate(async () => {
 ok('at the foot of the tower it is no longer at the rail', !upClose.visible);
 await page.screenshot({ path: path.join(SHOTS, 'lookout.png') });
 
+group('nothing follows you back down');
+// The README makes that promise in those words and nothing had ever checked
+// it. Session 6 staged it: reach the foot of the tower (the figure leaves the
+// rail), then walk away downhill and watch every distance and facing for the
+// whole 860 m.
+//
+// The answer is that the figure DOES come back to the rail behind you — and
+// that this is the promise kept, not broken. It never left the rail; the base
+// of the tower is only the one place you cannot see it from. What must hold is
+// that it never moves, never follows, and is gone for good long before the
+// woods have you back. All three do.
+const leaving = await page.evaluate(async () => {
+  const d = __bh.dread, trail = __bh.trail();
+  const foot = d.lookoutInfo();
+  __bh.teleport(foot.x, foot.z);
+  await new Promise(r => setTimeout(r, 500));
+  const stings0 = __bh.stings();
+  const samples = [];
+  for (let i = trail.length - 1; i >= 0; i -= 12) {
+    __bh.teleport(trail[i].x, trail[i].z);
+    __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz) + Math.PI, 0);   // walking away
+    await new Promise(r => requestAnimationFrame(r));
+    const li = d.lookoutInfo(), p = __bh.pos();
+    const dist = Math.hypot(li.x - p.x, li.z - p.z);
+    samples.push({
+      t: +trail[i].t.toFixed(3), y: +p.y.toFixed(2), dist: +dist.toFixed(1),
+      watching: d.lookoutWatching, opacity: +li.opacity.toFixed(3),
+      fx: li.x, fy: li.y, fz: li.z, above: +(li.y - p.y).toFixed(1),
+      // how much of it the fog has taken at this range, FogExp2's own formula
+      fogged: 1 - Math.exp(-Math.pow(__bh.density() * dist, 2)),
+    });
+  }
+  return { samples, stings0, stings1: __bh.stings(), foot };
+});
+const seen = leaving.samples.filter(s => s.watching);
+const lastSeen = seen[seen.length - 1];
+ok('it does come back to the rail once you step out from under it', seen.length > 2,
+  `at the rail in ${seen.length} of ${leaving.samples.length} samples down the trail`);
+ok('but it never moves from the platform, not once, all the way down',
+  leaving.samples.every(s => s.fx === leaving.foot.x && s.fy === leaving.foot.y && s.fz === leaving.foot.z));
+ok('and it never comes down off it', leaving.samples.every(s => s.above > 2.5),
+  `lowest it ever stands is ${Math.min(...leaving.samples.map(s => s.above)).toFixed(1)} m over the walker`);
+ok('by the time the woods have you back it is gone for good',
+  lastSeen && lastSeen.y > 50 && leaving.samples.every(s => s.y >= 50 || !s.watching),
+  `last seen at y ${lastSeen ? lastSeen.y : '—'}, ${lastSeen ? lastSeen.dist : '—'} m out, and never again over the last ${leaving.samples.filter(s => s.y < 50).length} samples`);
+// The switchbacks swing the walker back inside the 70 m band a couple of times
+// on the way down, so the figure re-arms — but only ever at the far edge of
+// its own range, where the fog has already taken all of it. The blink at the
+// boundary is real and cannot be seen.
+const rearms = leaving.samples.filter((s, i) => i > 0 && s.watching && !leaving.samples[i - 1].watching);
+ok('and every time it comes back it is already fog', rearms.every(s => s.fogged > 0.99),
+  rearms.length ? rearms.map(s => `${s.dist} m, ${(s.fogged * 100).toFixed(4)}% fogged`).join(' | ') : 'no re-arm in this sampling');
+ok('nothing sounds like it followed you', leaving.stings1 === leaving.stings0,
+  `${leaving.stings0} stings at the foot of the tower, ${leaving.stings1} at the trailhead`);
+
 group('the cairns');
 const cairn = await page.evaluate(async () => {
   const L = __bh.layout();
@@ -375,12 +440,19 @@ group('the mountain remembers your last walk');
 // and the prompt-file amendment — this is not a save, and no UI may ever
 // surface any of it.
 const ghostState = await page.evaluate(() => __bh.ghost());
-ok('the previous walk is waiting when the page opens', ghostState.loaded && ghostState.count === 100,
+ok('the previous walk is waiting when the page opens', ghostState.loaded && ghostState.count === 240,
   `${ghostState.count} remembered steps`);
 const gaps = phantom && phantom.plan.slice(1).map((s, i) => s.at - phantom.plan[i].at);
 ok('the steps that are not yours are your own, from last time',
-  phantom && phantom.intervals && gaps.every(g => Math.abs(g - 0.77) < 1e-6),
+  phantom && phantom.intervals && gaps.every(g => Math.abs(g - 0.41) < 1e-6),
   gaps ? gaps.map(g => g.toFixed(2)).join(', ') : 'no phantom fired');
+// ...and from the half of that walk that was going the same way these steps
+// are. The seeded record crosses every stretch of trail twice; asked at three
+// altitudes, the answer is the descent's 0.41 s and never the climb's 0.62.
+const whoseGait = await page.evaluate(() => [0.15, 0.5, 0.9].map(t => __bh.dread.ghostRhythm(t)));
+ok('and they are the steps they took coming DOWN, at every altitude',
+  whoseGait.every(r => r && r.length && r.every(g => Math.abs(g - 0.41) < 1e-6)),
+  whoseGait.map(r => (r ? r[0].toFixed(2) : 'null')).join(', '));
 
 await page.keyboard.down('KeyW');
 await wait(7000);          // world time runs ~10x slow here; ~3 footsteps' worth
@@ -445,6 +517,79 @@ const stared = await page.evaluate(async () => {
 });
 ok('a stared-at treeline never fires', stared.fired === false);
 ok('and a declined beat is not remembered as the last one', stared.lastBeat === stared.before);
+
+group('the woods never admit the experiment');
+// Gone Home doctrine, rule 3: "When a player walks out to where the bear-shape
+// stood, there is nothing — and no sting, no cue, no sound of it having left.
+// The scheduler must never reward or punish investigation." Until session 6
+// the code did the opposite of that in one line: the shape's lowSting fired if
+// and only if it had been seen and its life had not run out, which is exactly
+// the two ways a player TESTS it. The eyes had the same sound on closing to
+// 15 m. Both are gone; this group is what keeps them gone.
+//
+// The counter is not vacuous — the lookout's one notice has already stung by
+// the time this runs, and the last check here says so.
+const investigate = await page.evaluate(async () => {
+  const d = __bh.dread;
+  const frame = () => new Promise(r => requestAnimationFrame(r));
+  const out = {};
+  out.before = __bh.stings();
+
+  // 1. walk out to where it stood
+  __bh.teleport(0, 120);
+  __bh.face(__bh.yawAlongTrail(120), 0);
+  await frame();
+  __bh.fireDread('bear');
+  await frame();                                  // one update: it is SEEN
+  const seen1 = d._bearSeen;
+  const b = d.bearInfo();
+  __bh.teleport(b.x, b.z);                        // out to the spot
+  await frame(); await frame();
+  out.walkedOut = { seen: seen1, active: d._bearActive, stings: __bh.stings() };
+
+  // 2. look away and look back
+  __bh.teleport(0, 120);
+  __bh.face(__bh.yawAlongTrail(120), 0);
+  await frame();
+  d._lastBeat = null;
+  __bh.fireDread('bear');
+  await frame();
+  const seen2 = d._bearSeen;
+  __bh.face(__bh.yawAlongTrail(120) + Math.PI, 0);   // away
+  await frame(); await frame();
+  const away = d._bearAway;
+  __bh.face(__bh.yawAlongTrail(120), 0);             // and back
+  await frame(); await frame();
+  out.lookedBack = { seen: seen2, away, active: d._bearActive, stings: __bh.stings() };
+
+  // 3. walk up to the eyes
+  __bh.teleport(0, 120);
+  __bh.face(__bh.yawAlongTrail(120), 0);
+  d._gaze.fill(0);
+  await frame();
+  d._lastBeat = null;
+  __bh.fireDread('eyes');
+  const e = d.eyesInfo();
+  __bh.teleport(e.x, e.z);
+  await frame(); await frame();
+  out.eyes = { active: d._eyesActive, stings: __bh.stings() };
+  return out;
+});
+ok('walking out to where the shape stood finds nothing there',
+  investigate.walkedOut.seen && !investigate.walkedOut.active);
+ok('and the mountain does not remark on it',
+  investigate.walkedOut.stings === investigate.before,
+  `${investigate.before} stings before, ${investigate.walkedOut.stings} after`);
+ok('looking away and looking back finds nothing there either',
+  investigate.lookedBack.seen && investigate.lookedBack.away && !investigate.lookedBack.active);
+ok('and the mountain does not remark on that either',
+  investigate.lookedBack.stings === investigate.before,
+  `still ${investigate.lookedBack.stings}`);
+ok('the eyes close their own distance without a sound',
+  !investigate.eyes.active && investigate.eyes.stings === investigate.before,
+  `still ${investigate.eyes.stings}`);
+ok('but the piece can still sting — the figure at the rail already did',
+  investigate.before > 0, `${investigate.before} sting on the way up`);
 
 group('the small wrongnesses');
 // Ladder 3-5: the dead radio at the cabin, the bootprints under the fog, the
@@ -712,31 +857,215 @@ console.log(`  note  ${fps.toFixed(1)} fps under swiftshader at 1320x800 — sof
 // walker), but it means walk distances here are compressed by ~fps/10.
 const slowFactor = Math.min(1, fps / 10);
 
+// A held W, measured the only way that survives this frame rate: in the
+// walker's OWN clock. weatherT advances by exactly the clamped dt the walker
+// moves on, so distance ÷ world-seconds is metres per second whatever the
+// renderer is doing — where "1.4 m in 6 s" is hostage to whether seven frames
+// landed or one. Session 6 watched a distance-and-floor check fail at 0.2 m
+// because a single hitch ate the hold; this is the same measurement without
+// the hostage. A hold that draws fewer than two frames measures nothing at
+// all, so it retries rather than reporting a walker who cannot walk.
+async function holdW(seconds) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const t0 = await page.evaluate(() => ({ p: __bh.pos(), wt: __bh.getWeatherT() }));
+    await page.keyboard.down('KeyW');
+    await wait(seconds * 1000);
+    await page.keyboard.up('KeyW');
+    const t1 = await page.evaluate(() => ({ p: __bh.pos(), wt: __bh.getWeatherT(), surf: __bh.surface() }));
+    const world = t1.wt - t0.wt;
+    if (world >= 0.15 || attempt === 2) {
+      return { from: t0.p, to: t1.p, surf: t1.surf, world,
+        dist: Math.hypot(t1.p.x - t0.p.x, t1.p.z - t0.p.z),
+        speed: world > 0 ? Math.hypot(t1.p.x - t0.p.x, t1.p.z - t0.p.z) / world : 0 };
+    }
+  }
+}
+
 group('the walk');
 // A real W-hold up the trail. Face along the centerline — a guessed yaw walks
 // into BOUNDS.maxZ 5 m from the trailhead and reads as a movement bug.
-const walked = await page.evaluate(async () => {
+await page.evaluate(async () => {
   __bh.teleport(0, 145);
   __bh.face(__bh.yawAlongTrail(0), 0);
   await new Promise(r => setTimeout(r, 200));
-  return __bh.pos();
 });
-await page.keyboard.down('KeyW');
-await wait(6000);
-await page.keyboard.up('KeyW');
-const after = await page.evaluate(() => __bh.pos());
-const dist = Math.hypot(after.x - walked.x, after.z - walked.z);
-// 2.0 m/s nominal, x0.45 worst-case uphill slowdown, x the sandbox's slow
-// motion. Anything above half of that floor means walking genuinely works.
-const floor = 6 * 2.0 * 0.45 * slowFactor * 0.5;
-ok('holding W covers ground up the trail', dist > floor,
-  `${dist.toFixed(1)} m in 6 s (floor ${floor.toFixed(1)} m at ${fps.toFixed(1)} fps)`);
-ok('the walker gained elevation', after.y > walked.y, `y ${walked.y.toFixed(2)} to ${after.y.toFixed(2)}`);
+const up = await holdW(6);
+// 2.0 m/s nominal, and the grade takes up to 55% of it back on the way up.
+ok('holding W covers ground up the trail', up.speed > 0.5,
+  `${up.speed.toFixed(2)} m/s — ${up.dist.toFixed(1)} m over ${up.world.toFixed(1)} world-seconds at ${fps.toFixed(1)} fps`);
+ok('the walker gained elevation', up.to.y > up.from.y, `y ${up.from.y.toFixed(2)} to ${up.to.y.toFixed(2)}`);
 ok('and stayed on the mountain',
-  Number.isFinite(after.y) && after.y > -5 && after.y < 90, `y ${after.y.toFixed(1)}`);
+  Number.isFinite(up.to.y) && up.to.y > -5 && up.to.y < 90, `y ${up.to.y.toFixed(1)}`);
 ok('still on the trail, not lost in the woods',
-  ['trail', 'bridge'].includes(await page.evaluate(() => __bh.surface())),
-  await page.evaluate(() => __bh.surface()));
+  ['trail', 'bridge'].includes(up.surf), up.surf);
+
+group('the walk down');
+// Session 6 walked the descent — all 860 m of it, held W with pure-pursuit
+// steering down the centerline, 470 world-seconds, six beats, no page errors —
+// which nobody had ever done. This group holds what that walk found.
+
+// The summit's grip has to let go of the woods gradually. altT is a smoothstep
+// over 46-62 m and everything the fog does reads from it, so a hard switch
+// anywhere in that band would show up as a wall of weather at one step of the
+// trail. Sample the band with the weather clock PINNED — reset before every
+// sample, or the fog cycle drifts under the measurement and answers for it.
+const handback = await page.evaluate(async () => {
+  const trail = __bh.trail();
+  const out = [];
+  for (let i = trail.length - 1; i >= 0; i -= 4) {
+    __bh.setWeatherT(120);
+    __bh.teleport(trail[i].x, trail[i].z);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const p = __bh.pos();
+    if (p.y > 65) continue;
+    out.push({ y: +p.y.toFixed(2), altT: +__bh.altT().toFixed(4), dens: +__bh.density().toFixed(5) });
+    if (p.y < 44) break;
+  }
+  return out;
+});
+let seam = 0, everyStepFalls = true;
+for (let i = 1; i < handback.length; i++) {
+  seam = Math.max(seam, Math.abs(handback[i].dens - handback[i - 1].dens));
+  if (handback[i].dens > handback[i - 1].dens + 1e-9) everyStepFalls = false;
+}
+ok('the fog lets go of the woods step by step, never all at once', everyStepFalls,
+  `${handback.length} samples, density ${handback[0].dens} at y ${handback[0].y} down to ${handback[handback.length - 1].dens} at y ${handback[handback.length - 1].y}`);
+// Measured on the real descent: the largest density change in any world-second
+// of the whole 470 s walk was 0.0006, and it happened INSIDE this band — the
+// summit letting go is gentler than the weather the piece breathes anyway.
+ok('and no single step of the descent is a seam', seam < 0.003,
+  `worst step ${seam.toFixed(5)} over ~0.4 m of descent`);
+
+// A real W-hold, downhill. The mirror of the walk group above, measured the
+// same way and in the same clock — and the descent should be the FASTER of the
+// two, because nothing charges the walker for going down.
+await page.evaluate(async () => {
+  const trail = __bh.trail();
+  const i = Math.round(0.55 * (trail.length - 1));
+  __bh.teleport(trail[i].x, trail[i].z);
+  __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz) + Math.PI, 0);   // about-face
+  await new Promise(r => setTimeout(r, 300));
+});
+const down = await holdW(6);
+ok('holding W walks the walker back down the mountain', down.to.y < down.from.y - 1e-3,
+  `y ${down.from.y.toFixed(2)} to ${down.to.y.toFixed(2)}`);
+// Speed, not a race: the hold brackets a frame or two at this rate and the
+// partial frames at each end cost both directions an honest chunk (measured:
+// 1.56 m/s down, 1.41 up at DIFFERENT points of the trail — not a comparison
+// worth making here). That the descent is never slowed is arithmetic and
+// smoke.mjs holds it; what this needs to know is that the walker walks.
+ok('and at a walking pace, not a crawl', down.speed > 1.0,
+  `${down.speed.toFixed(2)} m/s over ${down.world.toFixed(1)} world-seconds`);
+ok('and the descent stays on the trail as well as the climb does',
+  ['trail', 'bridge'].includes(down.surf), down.surf);
+await page.screenshot({ path: path.join(SHOTS, 'descent.png') });
+
+// The woods spend beats on progress up the trail: dread's intensity reads
+// trail t and altitude, and both fall away on the way down, so the cooldown
+// it sets at the summit is a different animal from the one it sets at the
+// bottom. Measured on the walk: the six beats came 70, 63, 79, 99, 86 and 61
+// world-seconds apart, thinning as the mountain let go.
+//
+// Read the cooldown the scheduler actually sets, from a clean slate each time
+// (_lastBeat null so the whole candidate list is live, thick fog so the low
+// ground has beats it CAN play — with nothing available the scheduler sets a
+// flat 12 s retry and answers a different question).
+const spend = await page.evaluate(async () => {
+  const d = __bh.dread;
+  let thick = { t: 0, f: 0 };
+  for (let t = 0; t < 700; t += 5) { __bh.setWeatherT(t); if (__bh.fogT() > thick.f) thick = { t, f: __bh.fogT() }; }
+  const read = async (x, z) => {
+    const got = [];
+    for (let k = 0; k < 3; k++) {
+      __bh.setWeatherT(thick.t);
+      __bh.teleport(x, z);
+      d._gaze.fill(0);
+      d._phantomArmed = false;
+      d._lastBeat = null;
+      await new Promise(r => setTimeout(r, 250));
+      d._cooldown = 0.001;
+      // Wait for FRAMES, not for wall-clock: one frame is ~900 ms here and a
+      // fixed timeout that lands between two of them reads a cooldown the
+      // scheduler has not set yet.
+      for (let f = 0; f < 12 && d._cooldown < 1; f++) {
+        await new Promise(r => requestAnimationFrame(r));
+      }
+      got.push(+d._cooldown.toFixed(1));
+    }
+    return got;
+  };
+  const L = __bh.layout();
+  return { top: await read(L.bench.x, L.bench.z), bottom: await read(0, 143) };
+});
+const noRetry = [...spend.top, ...spend.bottom].every(c => Math.abs(c - 12) > 0.5);
+ok('every read is a beat the scheduler actually staged', noRetry,
+  `summit ${spend.top.join('/')}, trailhead ${spend.bottom.join('/')}`);
+ok('the mountain thins out as you come down it', Math.max(...spend.top) < Math.min(...spend.bottom),
+  `worst wait ${Math.max(...spend.top).toFixed(0)} s at the top, best ${Math.min(...spend.bottom).toFixed(0)} s at the bottom`);
+
+// Everything descends — including when the WALKER is descending. The group
+// above stages the shape from a climbing facing and demands a head-downhill
+// component over 0.05; staged from a DOWNHILL facing that number collapses
+// toward zero (measured: 0.02 to 0.25, and 0.21 on the real walk). That is
+// geometry, not a fault — the head axis lies across the line of sight, so
+// with downhill running away from the camera there is no profile left to
+// point with. What has to hold in every direction is the sign: never up the
+// mountain. Read the head's world direction after the flip rather than the
+// absolute dot, which would look fine with no flip at all.
+const bearDescending = await page.evaluate(async () => {
+  const trail = __bh.trail();
+  const out = [];
+  for (const t of [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]) {
+    const i = Math.round(t * (trail.length - 1));
+    __bh.teleport(trail[i].x, trail[i].z);
+    __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz) + Math.PI, 0);
+    await new Promise(r => setTimeout(r, 200));
+    __bh.fireDread('bear');
+    const b = __bh.dread.bearInfo();
+    out.push(+(b.head.x * b.downhill.x + b.head.z * b.downhill.z).toFixed(3));
+  }
+  return out;
+});
+ok('the shape never turns to face UP the mountain, even when the walker is coming down',
+  bearDescending.every(d => d >= 0), bearDescending.join(', '));
+ok('and on the switchbacks, where a profile can still be seen, it reads',
+  bearDescending.filter(d => d > 0.3).length >= 2,
+  `${bearDescending.filter(d => d > 0.3).length} of 8 stagings show the head clearly`);
+
+// The phantom steps' downhill pan is the same geometry, and it comes out
+// EXACTLY zero — not nearly. The pan is the downhill direction's component
+// along the walker's right, and downhill is the reverse of the trail tangent,
+// so facing along the trail (which is what a walker who has just been walking
+// is doing) it is dead ahead or dead behind and nothing is left to lean on.
+// Provable in closed form: with yaw = atan2(-dx, -dz), pan = (-dx)(-dz) -
+// (-dz)(-dx) = 0, and the about-face only flips both signs.
+//
+// This is a finding, not an endorsement: "panned toward the downhill side" is
+// what the ladder shipped and the stereo field does not in fact carry it — the
+// falling pitch does, and that is pinned in the descending-family group above.
+// The tripwire is deliberate. If a future session gives downhillAt the
+// terrain's fall line instead of the trail tangent (which WOULD pan, because
+// the trail crosses the slope), this check fails and points at the decision.
+const panBoth = await page.evaluate(async () => {
+  const trail = __bh.trail();
+  const out = {};
+  for (const f of ['down', 'up']) {
+    const i = Math.round(0.55 * (trail.length - 1));
+    __bh.teleport(trail[i].x, trail[i].z);
+    __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz) + (f === 'down' ? Math.PI : 0), 0);
+    await new Promise(r => setTimeout(r, 200));
+    __bh.dread._lastBeat = null;
+    __bh.fireDread('phantom');
+    __bh.dread._movingFor = 4;
+    __bh.dread._wasMoving = true;
+    await new Promise(r => setTimeout(r, 600));
+    out[f] = __bh.lastPhantom().pan;
+  }
+  return out;
+});
+ok('the phantom\'s downhill pan is a no-op in both directions of travel',
+  Math.abs(panBoth.down) < 1e-9 && Math.abs(panBoth.up) < 1e-9,
+  `pan ${panBoth.down} descending, ${panBoth.up} climbing`);
 
 group('the whole run');
 ok('no page errors, start to finish', errors.length === 0, errors.slice(0, 5).join(' | '));
