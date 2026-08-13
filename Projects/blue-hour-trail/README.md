@@ -11,10 +11,11 @@ the weather only gets worse the higher you get, and the one thing waiting at
 the top is watching you arrive.
 
 Open `index.html` over any static server. Click to begin; WASD walks, mouse
-or arrow keys look, Esc releases the pointer. On touch: drag to look, hold
-the bottom of the screen to walk. Sound on — everything you hear is
-synthesized live, including the music: a drone in D minor that surfaces out
-of the wind half a minute in, thickens with the fog, sours with the
+or arrow keys look, Esc releases the pointer. Hold E over a loose page to
+read it; let go to put it down. On touch: drag to look, hold the bottom of
+the screen to walk, hold the chip to read. Sound on — everything you hear
+is synthesized live, including the music: a drone in D minor that surfaces
+out of the wind half a minute in, thickens with the fog, sours with the
 altitude, and every couple of minutes lets a lonely horn phrase fall back
 down to the root.
 
@@ -29,10 +30,19 @@ down to the root.
   the corridor as billboarded cutouts — ferns, shrubs, bracken, thistle,
   dead grass, saplings, deadfall sprouts, mossy rocks — and all of it moves.
 - A creek with a footbridge and a waterfall just upstream of it.
-- Seven cairns hidden off-trail (a quiet counter keeps score), a ranger
-  cabin with one lit window, deer that freeze and stare before they bolt,
-  perch-hopping birds, crows over the canopy, a squirrel, an owl, one fox,
-  and an elk you will only ever hear.
+- Seven cairns hidden off-trail, each one built by a keeper on their way
+  down — the chip reads the name when you find one. A ranger cabin with one
+  lit window and a dead radio on the sill. Deer that freeze and stare
+  before they bolt, perch-hopping birds, crows over the canopy, a squirrel,
+  an owl, one fox, and an elk you will only ever hear.
+- Pages torn loose from the lookout log, scattered where the wind or a hand
+  left them: on the trail, around the cabin, at the top. Stand over one and
+  hold E and it comes up close enough to read. Nothing counts them and
+  nothing remembers which ones you've seen; whether you read the whole log
+  is between you and the mountain.
+- A headlamp on the cabin step, still working. F switches it on, and you
+  will want to think about whether that was wise: the cone is honest light,
+  and everything outside it goes darker for as long as it burns.
 - The weather breathes: fog density ebbs and swells on two slow overlapping
   cycles, from ~45 m visibility to ~100 m and back. Light shafts break
   through in the clear phases; fireflies come out in the thick ones. Dust
@@ -41,11 +51,13 @@ down to the root.
 - The climb does not get you out. Above ~50 m the fog closes rather than
   parts — the summit is the thickest air on the mountain, the light goes out
   of it, the birds stop, the wind comes up, and the woods stop pretending.
-- And the woods are not honest. Branches break where nothing is. Your
-  footsteps sometimes take a half-second too long to stop. The birds go
-  quiet all at once. Things stand between the trees at the edge of the fog
-  and are not there when you look again. Nothing here can hurt you, which
-  is not the same as nothing being here.
+- And the woods are not honest. Branches break where nothing is. Footsteps
+  that are not yours carry on downhill after yours have stopped. The birds
+  go quiet all at once. Things stand between the trees at the edge of the
+  fog — always facing down the mountain, never up it — and are not there
+  when you look again, and they have a way of happening just where you
+  weren't looking. Nothing here can hurt you, which is not the same as
+  nothing being here.
 - There is somebody in the fire lookout. It is the only structure up there,
   the only thing on the mountain that implies other people, and it has
   someone standing at the rail facing whichever way you go. Look away and
@@ -59,6 +71,11 @@ Same shape as Golden Hour: no build step, ES modules resolved through an
 import map, three.js vendored in `libs/`, zero offsite requests, every
 texture drawn into a canvas at load, every sound synthesized in Web Audio.
 
+The piece saves nothing — no progress, no score, no position. The one thing
+it keeps (in `localStorage`, under `blue-hour-last-walk`) is the rhythm of
+your previous walk's footsteps, and what it does with that is its own
+business.
+
 `js/field.js` imports nothing — it is the mountain as arithmetic
 (heightfield, trail curve, creek, and the seeded deterministic layout of
 everything standing on it), and `test/smoke.mjs` checks it under bare Node:
@@ -69,9 +86,10 @@ node test/smoke.mjs
 
 `test/browser.mjs` is the other half: it serves the site, boots the real page in
 real Chromium through `?debug`, and checks the things arithmetic can't see —
-draw budget, the fog cycle, the climb, the cairn counter, every dread beat, and
-a genuine walk up the trail. It needs `playwright-core` and a Chromium on disk,
-neither of which the piece itself depends on:
+draw budget, the fog cycle, the climb, the cairn names, the logbook overlay,
+the attention director, the headlamp, the ghost of the previous walk, every
+dread beat, and a genuine walk up the trail. It needs `playwright-core` and a
+Chromium on disk, neither of which the piece itself depends on:
 
 ```
 npm i playwright-core
@@ -91,7 +109,8 @@ now runs the other way. See `Claude Prompts/notes/24-blue-hour-notes.md`.
 
 The rest: `terrain.js` (ground + undergrowth), `forest.js` (tree tiers),
 `props.js` (built things), `creek.js` (water + spray), `atmosphere.js`
-(mist, shafts, fireflies, motes, breath), `wildlife.js` (everything that is
-really there), `dread.js` (everything that is not), `audio.js` (the
-soundscape and the music), `controls.js` (walking), `main.js` (the
-breathing fog and the loop).
+(mist, shafts, fireflies, motes, breath, steam), `wildlife.js` (everything
+that is really there), `dread.js` (everything that is not), `logbook.js`
+(the pages and the reading), `ghost.js` (the one thing the mountain
+remembers), `audio.js` (the soundscape and the music), `controls.js`
+(walking), `main.js` (the breathing fog, the headlamp and the loop).
