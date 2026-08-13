@@ -99,6 +99,13 @@ const SUMMIT = {
 // programs are compiled before anyone finds the switch — a toggle that
 // hitches is a jump scare, and this piece startles on purpose or not at all.
 const lampLight = new THREE.SpotLight(0xe8dcb4, 0, 30, 0.42, 0.55);
+// Linear falloff, not the physical inverse square. Session 5's seams pass
+// aimed the burning lamp at the walker's own feet for the first time and got
+// a featureless blown-white disc — with decay 2 the near ground catches
+// sixteen times the light of the 12 m reach, and no intensity satisfies both
+// ends. Decay 1 holds the reach while the feet keep their texture: a lamp,
+// not a flashbang.
+lampLight.decay = 1;
 lampLight.target = new THREE.Object3D();
 scene.add(lampLight, lampLight.target);
 const lampState = { found: false, on: false, mix: 0 };
@@ -194,7 +201,7 @@ const cairnChip = document.getElementById('cairn-chip');
 const cairnsFound = new Set();
 let chipTimer = 0;
 
-function checkCairns() {
+function checkCairns(dt) {
   for (let i = 0; i < LAYOUT.cairns.length; i++) {
     if (cairnsFound.has(i)) continue;
     const c = LAYOUT.cairns[i];
@@ -212,7 +219,10 @@ function checkCairns() {
     }
   }
   if (chipTimer > 0) {
-    chipTimer -= 1 / 60;
+    // Real seconds, not frames — the session-5 seams pass caught this ticking
+    // at 1/60 per FRAME, which held the chip up for minutes on a slow tab and
+    // would have cut it to 2.4 s on a 144 Hz display.
+    chipTimer -= dt;
     if (chipTimer <= 0) cairnChip.classList.remove('show');
   }
 }
@@ -243,7 +253,10 @@ function updateHeadlamp(dt) {
     }
   }
   lampState.mix += ((lampState.on ? 1 : 0) - lampState.mix) * Math.min(1, dt * 5);
-  lampLight.intensity = lampState.mix * 34;
+  // 4.5 at decay 1 lands a touch more light on the 12 m reach than the old
+  // 34 did at decay 2 and a quarter of what it dumped on the near ground —
+  // the pair was retuned together; change them together.
+  lampLight.intensity = lampState.mix * 4.5;
   if (lampState.mix > 0.001) {
     lampLight.position.copy(camera.position);
     lampLight.position.y -= 0.08;
@@ -326,7 +339,7 @@ function tick() {
   props.update(dt, fogT);
   creek.update(dt);
   logbook.update(dt);
-  checkCairns();
+  checkCairns(dt);
   updateHeadlamp(dt);
 
   const ck = creekInfo(controls.pos.x, controls.pos.z);

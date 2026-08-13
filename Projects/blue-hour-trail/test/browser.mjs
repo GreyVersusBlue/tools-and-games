@@ -129,8 +129,29 @@ ok('clear phase: draw calls under budget', clearInfo.calls < 300, `${clearInfo.c
 // submitted in thick and clear alike. That is the design working as built —
 // draw cost is flat regardless of weather — and it is worth pinning down,
 // because it means the fog is mood and depth precision, not a perf strategy.
-ok('the weather does not change the draw cost', clearInfo.calls === thickInfo.calls,
-  `${clearInfo.calls} calls in both, ${(clearInfo.triangles / 1000).toFixed(0)}k tris flat`);
+//
+// The two phases can't be measured in the same frame, and the wildlife is
+// alive between them — a deer herd or a bird crossing the frustum between
+// the thick sample and the clear one moves the count and has nothing to do
+// with fog (session 5 watched it happen: 24 vs 45 calls, all animals). So
+// the pair retries until it lands in a quiet window; fog-dependent
+// submission would differ on EVERY attempt and still fail.
+let flat = null;
+for (let attempt = 0; attempt < 4 && !flat; attempt++) {
+  const pair = await page.evaluate(async ({ thickAt, clearAt }) => {
+    const read = async t => {
+      __bh.setWeatherT(t);
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return __bh.info().calls;
+    };
+    return { thick: await read(thickAt), clear: await read(clearAt) };
+  }, { thickAt: thickInfo.at, clearAt: clearInfo.at });
+  if (pair.thick === pair.clear) flat = pair;
+  else await wait(700);
+}
+ok('the weather does not change the draw cost', !!flat,
+  flat ? `${flat.clear} calls in both, ${(clearInfo.triangles / 1000).toFixed(0)}k tris flat`
+       : 'no equal pair in 4 attempts');
 
 group('the fog breathes');
 const swing = await page.evaluate(() => {
@@ -640,8 +661,10 @@ const ambientOff = await page.evaluate(() => __bh.headlamp().ambient);
 await page.keyboard.press('KeyF');
 await wait(2800);       // the mix eases over ~5 world frames; give slow GL room
 const lit = await page.evaluate(() => ({ lamp: __bh.headlamp(), music: __bh.music() }));
-ok('one press and it burns', lit.lamp.on && lit.lamp.intensity > 20,
-  `intensity ${lit.lamp.intensity.toFixed(0)}`);
+// The scale changed in session 5: decay 1 / intensity 4.5 replaced the old
+// decay 2 / 34 after the seams pass caught the near ground blowing out white.
+ok('one press and it burns', lit.lamp.on && lit.lamp.intensity > 2.7,
+  `intensity ${lit.lamp.intensity.toFixed(1)}`);
 ok('and the world outside the cone genuinely darkens', lit.lamp.ambient < ambientOff * 0.75,
   `ambient ${ambientOff.toFixed(2)} down to ${lit.lamp.ambient.toFixed(2)}`);
 ok('the drone carries a barely-there partial while it burns', lit.music.voices.d5 > 0,
