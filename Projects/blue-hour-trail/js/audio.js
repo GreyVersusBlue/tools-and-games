@@ -690,6 +690,12 @@ export class Soundscape {
   /** Barely audible pressure under the floor of the mix. */
   lowSting() {
     if (!this.ctx) return;
+    // How many have been played, read-only, for the suite — the same door
+    // _lastPhantom and _lastRadio open. The piece never reads it. It exists
+    // because "nothing here acknowledges that you went and looked" is a
+    // doctrine promise, and a promise about a SOUND can only be held by
+    // counting the sound.
+    this._stings = (this._stings || 0) + 1;
     // Load-bearing: a 45 Hz sting under a D2/E♭2 drone is mud, not dread.
     this._duckMusic(6);
     const ctx = this.ctx, t0 = ctx.currentTime;

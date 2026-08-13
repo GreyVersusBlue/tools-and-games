@@ -427,6 +427,9 @@ if (new URLSearchParams(location.search).has('debug')) {
     // descent, the downhill lean and the echo without ears.
     lastPhantom: () => audio._lastPhantom,
     lastRadio: () => audio._lastRadio,
+    // How many low stings the piece has played. The suite counts them to hold
+    // the promise that nothing acknowledges the walker's leaving.
+    stings: () => audio._stings || 0,
 
     // The ghost's doors: whether a previous walk loaded, how much of this one
     // has been recorded, and a way to force the save without a pagehide.
