@@ -508,6 +508,94 @@ const steamPixels = await page.evaluate(() => new Promise(res => {
 ok('and the steam is pixels, not just geometry', steamPixels.max > steamPixels.median + 18,
   `max ${steamPixels.max.toFixed(0)} vs median ${steamPixels.median.toFixed(0)}, quad alpha ${steamPixels.alpha.toFixed(2)}`);
 
+group('above the fog line the beats change in kind');
+// Ladder 7: the transmission exists ONLY at altitude — no low-altitude fog
+// can reach its gate — and it answers itself: a carrier burst, then the same
+// burst back fainter and delayed. Your own static, from nowhere.
+const gates = await page.evaluate(async () => {
+  __bh.teleport(0, 140);
+  await new Promise(r => setTimeout(r, 200));
+  const below = __bh.dreadCandidates(1.0);       // thickest possible fog, low down
+  const L = __bh.layout();
+  __bh.teleport(L.bench.x, L.bench.z);
+  await new Promise(r => setTimeout(r, 200));
+  const above = __bh.dreadCandidates(0.0);       // clearest fog, high up
+  return { below, above };
+});
+ok('no amount of fog reaches the transmission from below', !gates.below.includes('transmission'),
+  gates.below.join(', '));
+ok('and above the fog line it is simply there', gates.above.includes('transmission'),
+  gates.above.join(', '));
+
+const transmission = await page.evaluate(() => {
+  const fired = __bh.fireDread('transmission');
+  return { fired, last: __bh.lastRadio() };
+});
+ok('the carrier opens at the summit', transmission.fired === 'transmission' && !!transmission.last);
+ok('answered by nothing but your own delayed static', transmission.last.echoGain === 0.5,
+  `echo ${transmission.last.echoGain}`);
+
+group('the headlamp');
+// Ladder 6: findable at the cabin, one toggle, and honest — the cone is a
+// real light and the world outside it genuinely darkens while it burns.
+const beforeFound = await page.evaluate(async () => {
+  __bh.teleport(0, 140);           // nowhere near the cabin
+  await new Promise(r => setTimeout(r, 200));
+  return __bh.headlamp();
+});
+await page.keyboard.press('KeyF');
+await wait(300);
+const fNoLamp = await page.evaluate(() => __bh.headlamp());
+ok('F does nothing before the lamp is found', !beforeFound.found && !fNoLamp.on);
+
+const pickup = await page.evaluate(async () => {
+  const h = __bh.layout().headlamp;
+  __bh.teleport(h.x, h.z);
+  await new Promise(r => setTimeout(r, 400));
+  return { lamp: __bh.headlamp(), chip: document.getElementById('cairn-chip').textContent };
+});
+ok('walking to the cabin step finds it', pickup.lamp.found, JSON.stringify(pickup.chip));
+
+const ambientOff = await page.evaluate(() => __bh.headlamp().ambient);
+await page.keyboard.press('KeyF');
+await wait(2800);       // the mix eases over ~5 world frames; give slow GL room
+const lit = await page.evaluate(() => ({ lamp: __bh.headlamp(), music: __bh.music() }));
+ok('one press and it burns', lit.lamp.on && lit.lamp.intensity > 20,
+  `intensity ${lit.lamp.intensity.toFixed(0)}`);
+ok('and the world outside the cone genuinely darkens', lit.lamp.ambient < ambientOff * 0.75,
+  `ambient ${ambientOff.toFixed(2)} down to ${lit.lamp.ambient.toFixed(2)}`);
+ok('the drone carries a barely-there partial while it burns', lit.music.voices.d5 > 0,
+  `d5 ${lit.music.voices.d5}`);
+
+// The dread director reads the lamp: eyes land just past the cone's edge.
+const litEyes = await page.evaluate(async () => {
+  const d = __bh.dread;
+  d._gaze.fill(0);
+  __bh.face(0.5, 0);
+  await new Promise(r => setTimeout(r, 200));
+  const angles = [];
+  for (let i = 0; i < 5; i++) {
+    d._gaze.fill(0);
+    __bh.fireDread('eyes');
+    const e = d.eyesInfo();
+    const p = __bh.pos();
+    let diff = Math.atan2(-(e.x - p.x), -(e.z - p.z)) - 0.5;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    while (diff < -Math.PI) diff += 2 * Math.PI;
+    angles.push(Math.abs(diff));
+  }
+  return angles;
+});
+ok('beats hug the darkness just past the cone while it burns',
+  litEyes.every(a => a > 0.35 && a < 0.85),
+  litEyes.map(a => (a * 180 / Math.PI).toFixed(0) + '°').join(', '));
+
+await page.keyboard.press('KeyF');
+await wait(800);
+const dark = await page.evaluate(() => ({ lamp: __bh.headlamp(), music: __bh.music() }));
+ok('a second press puts it out', !dark.lamp.on && dark.music.voices.d5 === 0);
+await page.screenshot({ path: path.join(SHOTS, 'headlamp.png') });
+
 group('the frame rate here');
 // Every timing number below is hostage to this. Measure it rather than assume.
 const fps = await page.evaluate(() => new Promise(res => {

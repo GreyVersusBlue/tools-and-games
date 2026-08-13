@@ -178,6 +178,7 @@ export function createDread(scene, audio) {
     birdsSilent: false,
     lookoutWatching: false,
     ghostRhythm: null,      // main.js wires the previous walk's gait in here
+    headlampOn: false,      // main.js mirrors the lamp; beats prefer its edge
 
     _elapsed: 0,
     _cooldown: 70,          // the woods get to feel normal first
@@ -243,7 +244,11 @@ export function createDread(scene, audio) {
     return Math.min(1, state._elapsed / 480) * 0.4 + progressT * 0.4 + highT * 0.2;
   }
 
-  function tryFire(camera, controls, fogT) {
+  // Which beats are drawable from where the walker stands. Split out of
+  // tryFire so the suite can hold the gates without waiting out a cooldown —
+  // notably the one gate that changes the beats in KIND, not just rate: the
+  // transmission only exists above the fog line.
+  function candidatesFor(controls, fogT) {
     const pt = trailInfo(controls.pos.x, controls.pos.z);
     // How far into the bad air the walker is. The same 46→62 m band main.js
     // reads for the weather, so the moment the fog stops thinning is the moment
@@ -267,6 +272,18 @@ export function createDread(scene, audio) {
     // like that one; this is the other half of those conversations.
     const cabinD = Math.hypot(controls.pos.x - LAYOUT.cabin.x, controls.pos.z - LAYOUT.cabin.z);
     if (state._lastBeat !== 'radio' && cabinD < 28) candidates.push('radio');
+    // Above the fog line the beats change in KIND, not just rate: the
+    // transmission exists only up here, gated on altitude alone — no amount
+    // of low-altitude fog can reach it. The keeper's set finds a carrier and
+    // the mountain answers with your own static. Task 2 of the prompt file
+    // wanted a summit-only beat for two sessions; this is it.
+    if (state._lastBeat !== 'transmission' && highT > 0.7) candidates.push('transmission');
+
+    return { candidates, pt, highT };
+  }
+
+  function tryFire(camera, controls, fogT) {
+    const { candidates, pt, highT } = candidatesFor(controls, fogT);
 
     if (!candidates.length) { state._cooldown = 12; return; }
     const beat = candidates[(Math.random() * candidates.length) | 0];
@@ -321,6 +338,21 @@ export function createDread(scene, audio) {
         break;
       }
 
+      case 'transmission': {
+        // The summit-only beat. The keeper's set in the cab opens a carrier —
+        // the same empty hiss as the cabin radio — and then, seconds after it
+        // shuts, the burst comes back fainter from nowhere in particular:
+        // answered by nothing but your own delayed static. It confirms
+        // nothing. Marsh's log line — "carrier and no voices, which could
+        // mean weather and could mean the set" — is the whole spec.
+        const dx = LAYOUT.tower.x - controls.pos.x;
+        const dz = LAYOUT.tower.z - controls.pos.z;
+        const len = Math.hypot(dx, dz) || 1;
+        const pan = (dx / len) * Math.cos(controls.yaw) - (dz / len) * Math.sin(controls.yaw);
+        audio.radioSquelch({ pan: pan * 0.9, echoGain: 0.5 });
+        break;
+      }
+
       case 'bear': {
         // 45–65 m ahead, inside the view cone, facing the walker. It will be
         // gone before anyone gets an answer about it. The director only picks
@@ -368,8 +400,14 @@ export function createDread(scene, audio) {
         // side: whichever arc the walker has looked at least. If they have
         // been staring down BOTH arcs, nothing fires. A watched treeline
         // holds still.
-        const ahead = 12 + Math.random() * 10;
-        const out = 14 + Math.random() * 12;
+        //
+        // While the headlamp burns, the placement hugs the darkness just past
+        // the cone's edge instead of the wide treeline: the cone is 24° to
+        // its edge, and these ranges put the eyes 25-40° off-axis — one step
+        // outside the light the walker chose to trust.
+        const lampOn = !!state.headlampOn;
+        const ahead = lampOn ? 14 + Math.random() * 8 : 12 + Math.random() * 10;
+        const out = lampOn ? 8 + Math.random() * 6 : 14 + Math.random() * 12;
         const arcOf = s => yawOf(
           camDir.x * ahead - camDir.z * out * s,
           camDir.z * ahead + camDir.x * out * s);
@@ -409,6 +447,7 @@ export function createDread(scene, audio) {
     x: eyes.position.x, z: eyes.position.z, visible: eyes.visible,
     drift: state._eyesDrift,
   });
+  state.candidates = (controls, fogT) => candidatesFor(controls, fogT).candidates;
 
   // For the regression suite and for tuning: where the figure is and whether it
   // is currently readable. Nothing in the piece calls this.

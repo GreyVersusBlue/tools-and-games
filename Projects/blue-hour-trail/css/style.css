@@ -127,3 +127,17 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0c1216; }
   transition: background 0.2s;
 }
 #mute-btn:hover { background: rgba(0,0,0,0.55); }
+
+/* The headlamp toggle — hidden until the lamp is found on the cabin step,
+   then it lives under the mute button. Dim until lit. */
+#lamp-btn {
+  position: fixed; top: 64px; right: 14px; z-index: 15;
+  width: 42px; height: 42px; border-radius: 50%;
+  background: rgba(0,0,0,0.35); color: #7e8890;
+  display: none; align-items: center; justify-content: center;
+  font-size: 1.15rem; cursor: pointer; user-select: none;
+  transition: background 0.2s, color 0.3s;
+}
+#lamp-btn.show { display: flex; }
+#lamp-btn.lit { color: #e8dfb2; }
+#lamp-btn:hover { background: rgba(0,0,0,0.55); }

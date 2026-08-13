@@ -565,6 +565,20 @@ export function buildLayout() {
     }
   }
 
+  // The headlamp, on the cabin step beside the door — where a keeper going
+  // inside for the last time would have set it down. Findable, one toggle,
+  // never required for anything. props.js draws it until it is picked up;
+  // main.js owns what it does after that.
+  const headlamp = (() => {
+    const lx = 1.6, lz = 2.1;      // cabin-local: past the door, off the step
+    const cy = Math.cos(cabin.yaw), sy = Math.sin(cabin.yaw);
+    return {
+      x: cabin.x + lx * cy + lz * sy,
+      z: cabin.z - lx * sy + lz * cy,
+      foundRadius: 1.6,
+    };
+  })();
+
   // Bootprints on the last switchback. Somebody walked up here in boots, one
   // set, ascending — they start partway up the final climb and stop before
   // the top, and no prints ever come back down. Deterministic, fog-gated at
@@ -599,7 +613,7 @@ export function buildLayout() {
   }
 
   return {
-    bridge, bench, tower, cabin, waterfall,
+    bridge, bench, tower, cabin, waterfall, headlamp,
     markers, cairns, pages, bootprints, mushrooms, shafts, clearings, trees, perches,
   };
 }

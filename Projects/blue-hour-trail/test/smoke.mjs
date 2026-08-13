@@ -227,6 +227,12 @@ group('the layout');
   ok(groundHeight(LAYOUT.bench.x, LAYOUT.bench.z) > 55, 'high on the mountain',
     `${groundHeight(LAYOUT.bench.x, LAYOUT.bench.z).toFixed(1)} m`);
 
+  // The headlamp waits on the cabin step — findable, never required.
+  const hl = LAYOUT.headlamp;
+  ok(Math.hypot(hl.x - LAYOUT.cabin.x, hl.z - LAYOUT.cabin.z) < 5 && walkable(hl.x, hl.z),
+    'the headlamp waits at the cabin, where a walker can reach it',
+    `${Math.hypot(hl.x - LAYOUT.cabin.x, hl.z - LAYOUT.cabin.z).toFixed(1)} m from the cabin`);
+
   // The tower has to be far enough from the bench that the figure on it is not
   // straight overhead, and close enough to be unmistakably the thing you
   // climbed to. dread.js stops showing it below 6.5 m and past 70 m — if the

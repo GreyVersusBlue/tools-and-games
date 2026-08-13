@@ -289,6 +289,34 @@ function buildRadio() {
   return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x3c443e }));
 }
 
+/* ----------------------------------------------------------------- headlamp */
+
+// A headlamp on the cabin step, lens dark, strap coiled — set down by a hand
+// on its way in, still where it was left. The one findable thing on the
+// mountain that does something. main.js hides this mesh when the walker picks
+// it up; nothing else about the world changes, which is rather the point.
+function buildHeadlamp() {
+  const h = LAYOUT.headlamp;
+  const g = groundHeight(h.x, h.z);
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(
+    place(box(0.09, 0.06, 0.06), h.x, g + 0.05, h.z, 0.7),
+    new THREE.MeshLambertMaterial({ color: 0x3a4046 }));
+  const strap = new THREE.Mesh(
+    place(box(0.16, 0.015, 0.1), h.x - 0.02, g + 0.02, h.z + 0.06, 0.4),
+    new THREE.MeshLambertMaterial({ color: 0x55504a }));
+  // The lens, unlit but pale enough to catch the eye from the trail side.
+  const lensGeo = new THREE.CircleGeometry(0.026, 10);
+  lensGeo.rotateY(0.7 + Math.PI / 2);
+  lensGeo.translate(h.x + 0.036, g + 0.05, h.z - 0.032);
+  const lens = new THREE.Mesh(lensGeo,
+    new THREE.MeshBasicMaterial({ color: 0xcfc9ae, fog: true }));
+
+  group.add(body, strap, lens);
+  return group;
+}
+
 /* ---------------------------------------------------------------- mushrooms */
 
 function buildMushrooms() {
@@ -354,6 +382,8 @@ export function buildProps(scene) {
   const cabin = buildCabin(darkWood);
   group.add(cabin.body, cabin.win);
   group.add(buildRadio());
+  const lamp = buildHeadlamp();
+  group.add(lamp);
   const prints = buildBootprints();
   group.add(prints.mesh);
   for (const inst of buildMushrooms()) group.add(inst);
@@ -371,5 +401,7 @@ export function buildProps(scene) {
       prints.mat.opacity = Math.min(1, Math.max(0, (fogT - 0.35) / 0.3)) * 0.55;
     },
     bootprintOpacity: () => prints.mat.opacity,
+    // main.js calls this once, when the walker picks the lamp up off the step.
+    takeHeadlamp: () => { lamp.visible = false; },
   };
 }

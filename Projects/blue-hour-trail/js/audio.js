@@ -230,6 +230,7 @@ export class Soundscape {
     voice('f3', 174.61, 'sine', 2);       // the minor 3rd, said out loud
     voice('eb2', 77.78, 'sine');          // minor 2nd — the altitude unease
     voice('ab2', 103.83, 'sine');         // the tritone, saved for the summit
+    voice('d5', 587.33, 'sine');          // barely-there partial while the headlamp burns
 
     // The filter never sits still, and the whole bed breathes — two LFOs so
     // slow they read as weather, not tremolo.
@@ -320,7 +321,7 @@ export class Soundscape {
   update(dt, state) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const { moving, surface, fogT, altT, creekDist, waterfallDist, birdsSilent, watched } = state;
+    const { moving, surface, fogT, altT, creekDist, waterfallDist, birdsSilent, watched, lamp } = state;
 
     // The fog closes the world's top end down.
     this._fogFilter.frequency.setTargetAtTime(12000 - fogT * 9200, t, 0.8);
@@ -379,6 +380,11 @@ export class Soundscape {
     set(dr.eb2, altT * altT * 0.03, 2);
     const tritone = Math.max(0, (altT - 0.55) / 0.45) * 0.018 * (watched ? 1.6 : 1);
     set(dr.ab2, tritone, 1.5);
+    // The headlamp in the music: a barely-there partial two octaves up while
+    // it burns. Light as EXPOSURE, not comfort — a thin high presence, the
+    // acoustic version of being the brightest thing on the mountain.
+    const lampPartial = lamp ? 0.0035 : 0;
+    set(dr.d5, lampPartial, 1.2);
     const droneHz = 900 - fogT * 420 - altT * 180 - (watched ? 120 : 0);
     this._droneFilter.frequency.setTargetAtTime(droneHz, t, 2);
 
@@ -416,7 +422,7 @@ export class Soundscape {
       motifIn: this._motifTimer,
       voices: {
         d2, a2, d3: fogT * 0.014, f3: 0.006 + fogT * 0.01,
-        eb2: altT * altT * 0.03, ab2: tritone,
+        eb2: altT * altT * 0.03, ab2: tritone, d5: lampPartial,
       },
     };
   }
