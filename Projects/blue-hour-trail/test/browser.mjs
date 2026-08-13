@@ -74,13 +74,23 @@ const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
-// Seed a previous walk before the page ever runs: 100 steps the length of the
-// trail, every gap a distinctive 0.77 s, so the ghost group below can prove
-// the phantom steps replayed THIS rhythm and not an invented one.
+// Seed a previous walk before the page ever runs, so the ghost group below can
+// prove the phantom steps replayed THAT rhythm and not an invented one.
+//
+// Session 6 made it a WHOLE visit — up the mountain and back down again, which
+// is what a real previous walker leaves behind and what no record could
+// actually hold until this session (the old cap ended it partway up the
+// climb). The two halves are given deliberately different gaits, 0.62 s
+// climbing and 0.41 s descending, so the rhythm that comes back proves not
+// just that the record was borrowed but WHICH HALF of it — and the beat these
+// gaps feed is descending.
 await page.addInitScript(() => {
   localStorage.setItem('blue-hour-last-walk', JSON.stringify({
     v: 1,
-    steps: Array.from({ length: 100 }, (_, i) => [i / 100, 0.77]),
+    steps: [
+      ...Array.from({ length: 120 }, (_, i) => [i / 120, 0.62]),
+      ...Array.from({ length: 120 }, (_, i) => [(120 - i) / 120, 0.41]),
+    ],
   }));
 });
 
@@ -375,12 +385,19 @@ group('the mountain remembers your last walk');
 // and the prompt-file amendment — this is not a save, and no UI may ever
 // surface any of it.
 const ghostState = await page.evaluate(() => __bh.ghost());
-ok('the previous walk is waiting when the page opens', ghostState.loaded && ghostState.count === 100,
+ok('the previous walk is waiting when the page opens', ghostState.loaded && ghostState.count === 240,
   `${ghostState.count} remembered steps`);
 const gaps = phantom && phantom.plan.slice(1).map((s, i) => s.at - phantom.plan[i].at);
 ok('the steps that are not yours are your own, from last time',
-  phantom && phantom.intervals && gaps.every(g => Math.abs(g - 0.77) < 1e-6),
+  phantom && phantom.intervals && gaps.every(g => Math.abs(g - 0.41) < 1e-6),
   gaps ? gaps.map(g => g.toFixed(2)).join(', ') : 'no phantom fired');
+// ...and from the half of that walk that was going the same way these steps
+// are. The seeded record crosses every stretch of trail twice; asked at three
+// altitudes, the answer is the descent's 0.41 s and never the climb's 0.62.
+const whoseGait = await page.evaluate(() => [0.15, 0.5, 0.9].map(t => __bh.dread.ghostRhythm(t)));
+ok('and they are the steps they took coming DOWN, at every altitude',
+  whoseGait.every(r => r && r.length && r.every(g => Math.abs(g - 0.41) < 1e-6)),
+  whoseGait.map(r => (r ? r[0].toFixed(2) : 'null')).join(', '));
 
 await page.keyboard.down('KeyW');
 await wait(7000);          // world time runs ~10x slow here; ~3 footsteps' worth

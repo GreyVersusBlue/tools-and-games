@@ -427,6 +427,61 @@ group('the mountain remembers your last walk');
   ok(g3.walked() === 1, 'the ghost keeps the gait, not the sightseeing');
 
   ok(GHOST_KEY === 'blue-hour-last-walk', 'the key is project-local — gvb-save.js stays untouched');
+
+  // ---- the ghost of a WHOLE walk (session 6) ----
+  //
+  // Up and back down again. Measured against the real heightfield: the climb
+  // is 975 steps and the descent 839, so a whole visit is ~1,814 — twice the
+  // old hard cap, which ended the record at t 0.917 of the climb and threw
+  // the entire way down away. The beat these gaps feed is descending. Two
+  // gaits here, deliberately different, so it is provable which one answers.
+  const upGait = 0.62, downGait = 0.41;
+  const roundTrip = storeIn => {
+    const g = createGhost(storeIn);
+    let now = 0;
+    for (let i = 0; i < 975; i++) { g.step(i / 975, now); now += upGait; }
+    now += 30;                                    // a while at the bench
+    for (let i = 839; i > 0; i--) { g.step(i / 839, now); now += downGait; }
+    return g;
+  };
+  const rtStore = stub();
+  const rt = roundTrip(rtStore);
+  ok(rt.save() === true, 'a whole walk is worth remembering');
+  const rtBack = createGhost(rtStore);
+  const rtSteps = decodeWalk(rtStore.m.get(GHOST_KEY));
+  ok(rtBack.count <= 900, 'the record stays inside its budget however long the walk',
+    `${rtBack.count} steps for 1,814 walked`);
+  const rtT = rtSteps.map(s => s[0]);
+  ok(Math.min(...rtT) < 0.05 && Math.max(...rtT) > 0.95,
+    'and it still spans the whole mountain, thinned rather than cut off',
+    `t ${Math.min(...rtT).toFixed(3)}–${Math.max(...rtT).toFixed(3)}`);
+  const descended = rtSteps.filter((s, i) => i > 0 && s[0] < rtSteps[i - 1][0]).length;
+  ok(descended > 100, 'the way back down is in there', `${descended} descending steps`);
+  ok(rtSteps.every(s => Math.abs(s[1] - upGait) < 1e-9 || Math.abs(s[1] - downGait) < 1e-9),
+    'every surviving gap is one that was actually walked — nothing averaged');
+
+  // Whose gait does the phantom borrow? The descending one, at every
+  // altitude — nearest-t alone answers with the climb every time, because the
+  // climb is slower and therefore denser in t and because it is recorded
+  // first. See rhythmNear.
+  const borrowed = [0.15, 0.5, 0.85, 0.99].map(at => rtBack.rhythmNear(at));
+  ok(borrowed.every(r => r && r.every(dt => Math.abs(dt - downGait) < 1e-9)),
+    'the steps that are not yours are your own coming DOWN, not climbing',
+    borrowed.map(r => (r ? r[0].toFixed(2) : 'null')).join(', '));
+
+  // A walker who went up and never came back down leaves no descending pass,
+  // and then the climb is all there is — which is the older behaviour exactly.
+  const upOnlyStore = stub();
+  {
+    const g = createGhost(upOnlyStore);
+    let now = 0;
+    for (let i = 0; i < 300; i++) { g.step(i / 300, now); now += upGait; }
+    g.save();
+  }
+  const upOnly = createGhost(upOnlyStore).rhythmNear(0.5);
+  ok(upOnly && upOnly.every(dt => Math.abs(dt - upGait) < 1e-9),
+    'and a walker still up there lends the climb they were on',
+    upOnly && upOnly.map(x => x.toFixed(2)).join(', '));
 }
 
 group('the motif engine writes only woe');
