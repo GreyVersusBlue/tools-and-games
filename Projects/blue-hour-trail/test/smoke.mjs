@@ -127,6 +127,71 @@ group('the trail climbs the mountain');
   ok(trailBlend(p.x + -p.dz * 12, p.z + p.dx * 12) < 0.05, 'and 0 out in the woods');
 }
 
+/* -------------------------------------------------------------- the descent -- */
+
+group('the way back down');
+
+{
+  // Session 6 walked it, all 860 m of it, for the first time. Two things the
+  // walk turned up that are arithmetic and therefore belong here.
+
+  // 1. Coming down is never slowed. controls.js reads the rise between where
+  //    the walker is and where the next 0.1 s of walking would put them, and
+  //    charges up to 55% of the walker's speed for it. Downhill that rise is
+  //    zero at every point on the trail, so the descent runs at the full 2 m/s
+  //    while the climb averages ~1.75 — which is why the way down is 430 s
+  //    against the climb's 490 and why half this piece's runtime is a half
+  //    nobody had played.
+  //    The footbridge is the exception in both directions and the only level
+  //    ground on the mountain: walkHeight returns the flat deck over the creek,
+  //    so those five samples are skipped rather than argued with.
+  let slowedDescending = 0, unslowedClimbing = 0;
+  const STEP = 0.2;
+  const deck = LAYOUT.bridge;
+  for (let i = 4; i < TRAIL.points.length - 4; i++) {
+    const p = TRAIL.points[i];
+    if (Math.hypot(p.x - deck.x, p.z - deck.z) < deck.len) continue;
+    const here = walkHeight(p.x, p.z);
+    const up = walkHeight(p.x + p.dx * STEP, p.z + p.dz * STEP);
+    const down = walkHeight(p.x - p.dx * STEP, p.z - p.dz * STEP);
+    if (down > here + 1e-6) slowedDescending++;
+    if (up <= here + 1e-6) unslowedClimbing++;
+  }
+  ok(slowedDescending === 0, 'a step down the trail never rises, so the descent is never slowed',
+    `${slowedDescending} rising downhill steps`);
+  ok(unslowedClimbing === 0, 'and a step up it always does, so the climb always is',
+    `${unslowedClimbing} level uphill steps`);
+
+  // 2. The trail's top half is not benched into anything — it rides a
+  //    causeway. mountainH is a ramp in z alone while trailYof is analytic in
+  //    ARC LENGTH, and the switchbacks make arc length outrun z, so above
+  //    t 0.5 the bench stands proud of the hillside on BOTH sides: 2.5 m at
+  //    t 0.50, 10.9 m at t 0.90. The prompt file recorded this as "the last
+  //    stretch rides a ~5 m berm, invisible now" — it is neither only the last
+  //    stretch nor invisible: walking DOWN is the one view that looks along the
+  //    trail from above, and session 6's screenshots at t 0.8 and t 0.7 show a
+  //    raised earth causeway with the treetops below it on both sides.
+  //
+  //    NOT FIXED HERE, deliberately: every fix moves mountainH or trailYof and
+  //    rebaselines a dozen expectations in this file, which is Devon's call and
+  //    not a cleanup (same reasoning as the missing peak, session 2). This
+  //    number is a CEILING so nobody makes it worse by accident, not a target.
+  let worstCauseway = 0, worstAt = 0, firstProud = 1;
+  for (let k = 0; k <= 200; k++) {
+    const t = k / 200, p = trailPoint(t);
+    const px = -p.dz, pz = p.dx;
+    const shoulderL = groundHeight(p.x + px * 5, p.z + pz * 5);
+    const shoulderR = groundHeight(p.x - px * 5, p.z - pz * 5);
+    const proud = groundHeight(p.x, p.z) - Math.max(shoulderL, shoulderR);
+    if (proud > worstCauseway) { worstCauseway = proud; worstAt = t; }
+    if (proud > 2 && t < firstProud) firstProud = t;
+  }
+  ok(worstCauseway < 12, 'the causeway in the top half is no worse than it was measured',
+    `${worstCauseway.toFixed(1)} m above both shoulders at t ${worstAt.toFixed(2)}, first over 2 m at t ${firstProud.toFixed(2)}`);
+  ok(firstProud > 0.4, 'and the bottom half is still a bench cut into the hillside',
+    `proud of both shoulders from t ${firstProud.toFixed(2)} up`);
+}
+
 /* ------------------------------------------------------------------- creek -- */
 
 group('the creek and the bridge');

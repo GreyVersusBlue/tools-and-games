@@ -384,6 +384,20 @@ export function createDread(scene, audio) {
         // After the flip the head points |headDot| of the way downhill; the
         // suite asserts this never goes negative.
         state._bearHeadDot = Math.abs(headDot);
+        // The head's actual world direction after the flip, and the way off
+        // the mountain from where the shape stands, both handed to the suite
+        // so the flip can be checked rather than taken on trust — the dot
+        // above is an absolute value and would read fine with no flip at all.
+        //
+        // Session 6, walking DOWN: |headDot| can be ~0 and the check that
+        // wanted it over 0.05 was only ever staged from a climbing facing.
+        // That is geometry, not a fault. The head axis lies across the line of
+        // sight, so when the walker is descending the fall line, downhill runs
+        // AWAY from the camera and there is no profile left to point with. The
+        // invariant that survives in every direction is this one: never up the
+        // mountain.
+        state._bearHead = { x: headWorld.x * bear.scale.x, z: headWorld.z * bear.scale.x };
+        state._bearDownhill = dh;
 
         bear.visible = true;
         bearMat.opacity = 0.92;
@@ -442,6 +456,7 @@ export function createDread(scene, audio) {
   state.bearInfo = () => ({
     x: bear.position.x, z: bear.position.z, visible: bear.visible,
     flip: bear.scale.x, headDownhillDot: state._bearHeadDot,
+    head: state._bearHead, downhill: state._bearDownhill,
   });
   state.eyesInfo = () => ({
     x: eyes.position.x, z: eyes.position.z, visible: eyes.visible,

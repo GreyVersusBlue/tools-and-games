@@ -755,6 +755,173 @@ ok('still on the trail, not lost in the woods',
   ['trail', 'bridge'].includes(await page.evaluate(() => __bh.surface())),
   await page.evaluate(() => __bh.surface()));
 
+group('the walk down');
+// Session 6 walked the descent — all 860 m of it, held W with pure-pursuit
+// steering down the centerline, 470 world-seconds, six beats, no page errors —
+// which nobody had ever done. This group holds what that walk found.
+
+// The summit's grip has to let go of the woods gradually. altT is a smoothstep
+// over 46-62 m and everything the fog does reads from it, so a hard switch
+// anywhere in that band would show up as a wall of weather at one step of the
+// trail. Sample the band with the weather clock PINNED — reset before every
+// sample, or the fog cycle drifts under the measurement and answers for it.
+const handback = await page.evaluate(async () => {
+  const trail = __bh.trail();
+  const out = [];
+  for (let i = trail.length - 1; i >= 0; i -= 4) {
+    __bh.setWeatherT(120);
+    __bh.teleport(trail[i].x, trail[i].z);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const p = __bh.pos();
+    if (p.y > 65) continue;
+    out.push({ y: +p.y.toFixed(2), altT: +__bh.altT().toFixed(4), dens: +__bh.density().toFixed(5) });
+    if (p.y < 44) break;
+  }
+  return out;
+});
+let seam = 0, everyStepFalls = true;
+for (let i = 1; i < handback.length; i++) {
+  seam = Math.max(seam, Math.abs(handback[i].dens - handback[i - 1].dens));
+  if (handback[i].dens > handback[i - 1].dens + 1e-9) everyStepFalls = false;
+}
+ok('the fog lets go of the woods step by step, never all at once', everyStepFalls,
+  `${handback.length} samples, density ${handback[0].dens} at y ${handback[0].y} down to ${handback[handback.length - 1].dens} at y ${handback[handback.length - 1].y}`);
+// Measured on the real descent: the largest density change in any world-second
+// of the whole 470 s walk was 0.0006, and it happened INSIDE this band — the
+// summit letting go is gentler than the weather the piece breathes anyway.
+ok('and no single step of the descent is a seam', seam < 0.003,
+  `worst step ${seam.toFixed(5)} over ~0.4 m of descent`);
+
+// A real W-hold, downhill. The mirror of the walk group above: the same
+// scaling, the opposite sign on the elevation.
+const downFrom = await page.evaluate(async () => {
+  const trail = __bh.trail();
+  const i = Math.round(0.55 * (trail.length - 1));
+  __bh.teleport(trail[i].x, trail[i].z);
+  __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz) + Math.PI, 0);   // about-face
+  await new Promise(r => setTimeout(r, 300));
+  return __bh.pos();
+});
+await page.keyboard.down('KeyW');
+await wait(6000);
+await page.keyboard.up('KeyW');
+const downTo = await page.evaluate(() => ({ p: __bh.pos(), surf: __bh.surface() }));
+const downDist = Math.hypot(downTo.p.x - downFrom.x, downTo.p.z - downFrom.z);
+ok('holding W walks the walker back down the mountain', downTo.p.y < downFrom.y - 1e-3,
+  `y ${downFrom.y.toFixed(2)} to ${downTo.p.y.toFixed(2)}`);
+ok('covering ground on the way down too', downDist > floor,
+  `${downDist.toFixed(1)} m in 6 s (floor ${floor.toFixed(1)} m)`);
+ok('and the descent stays on the trail as well as the climb does',
+  ['trail', 'bridge'].includes(downTo.surf), downTo.surf);
+await page.screenshot({ path: path.join(SHOTS, 'descent.png') });
+
+// The woods spend beats on progress up the trail: dread's intensity reads
+// trail t and altitude, and both fall away on the way down, so the cooldown
+// it sets at the summit is a different animal from the one it sets at the
+// bottom. Measured on the walk: the six beats came 70, 63, 79, 99, 86 and 61
+// world-seconds apart, thinning as the mountain let go.
+//
+// Read the cooldown the scheduler actually sets, from a clean slate each time
+// (_lastBeat null so the whole candidate list is live, thick fog so the low
+// ground has beats it CAN play — with nothing available the scheduler sets a
+// flat 12 s retry and answers a different question).
+const spend = await page.evaluate(async () => {
+  const d = __bh.dread;
+  let thick = { t: 0, f: 0 };
+  for (let t = 0; t < 700; t += 5) { __bh.setWeatherT(t); if (__bh.fogT() > thick.f) thick = { t, f: __bh.fogT() }; }
+  const read = async (x, z) => {
+    const got = [];
+    for (let k = 0; k < 3; k++) {
+      __bh.setWeatherT(thick.t);
+      __bh.teleport(x, z);
+      d._gaze.fill(0);
+      d._phantomArmed = false;
+      d._lastBeat = null;
+      await new Promise(r => setTimeout(r, 250));
+      d._cooldown = 0.001;
+      // Wait for FRAMES, not for wall-clock: one frame is ~900 ms here and a
+      // fixed timeout that lands between two of them reads a cooldown the
+      // scheduler has not set yet.
+      for (let f = 0; f < 12 && d._cooldown < 1; f++) {
+        await new Promise(r => requestAnimationFrame(r));
+      }
+      got.push(+d._cooldown.toFixed(1));
+    }
+    return got;
+  };
+  const L = __bh.layout();
+  return { top: await read(L.bench.x, L.bench.z), bottom: await read(0, 143) };
+});
+const noRetry = [...spend.top, ...spend.bottom].every(c => Math.abs(c - 12) > 0.5);
+ok('every read is a beat the scheduler actually staged', noRetry,
+  `summit ${spend.top.join('/')}, trailhead ${spend.bottom.join('/')}`);
+ok('the mountain thins out as you come down it', Math.max(...spend.top) < Math.min(...spend.bottom),
+  `worst wait ${Math.max(...spend.top).toFixed(0)} s at the top, best ${Math.min(...spend.bottom).toFixed(0)} s at the bottom`);
+
+// Everything descends — including when the WALKER is descending. The group
+// above stages the shape from a climbing facing and demands a head-downhill
+// component over 0.05; staged from a DOWNHILL facing that number collapses
+// toward zero (measured: 0.02 to 0.25, and 0.21 on the real walk). That is
+// geometry, not a fault — the head axis lies across the line of sight, so
+// with downhill running away from the camera there is no profile left to
+// point with. What has to hold in every direction is the sign: never up the
+// mountain. Read the head's world direction after the flip rather than the
+// absolute dot, which would look fine with no flip at all.
+const bearDescending = await page.evaluate(async () => {
+  const trail = __bh.trail();
+  const out = [];
+  for (const t of [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]) {
+    const i = Math.round(t * (trail.length - 1));
+    __bh.teleport(trail[i].x, trail[i].z);
+    __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz) + Math.PI, 0);
+    await new Promise(r => setTimeout(r, 200));
+    __bh.fireDread('bear');
+    const b = __bh.dread.bearInfo();
+    out.push(+(b.head.x * b.downhill.x + b.head.z * b.downhill.z).toFixed(3));
+  }
+  return out;
+});
+ok('the shape never turns to face UP the mountain, even when the walker is coming down',
+  bearDescending.every(d => d >= 0), bearDescending.join(', '));
+ok('and on the switchbacks, where a profile can still be seen, it reads',
+  bearDescending.filter(d => d > 0.3).length >= 2,
+  `${bearDescending.filter(d => d > 0.3).length} of 8 stagings show the head clearly`);
+
+// The phantom steps' downhill pan is the same geometry, and it comes out
+// EXACTLY zero — not nearly. The pan is the downhill direction's component
+// along the walker's right, and downhill is the reverse of the trail tangent,
+// so facing along the trail (which is what a walker who has just been walking
+// is doing) it is dead ahead or dead behind and nothing is left to lean on.
+// Provable in closed form: with yaw = atan2(-dx, -dz), pan = (-dx)(-dz) -
+// (-dz)(-dx) = 0, and the about-face only flips both signs.
+//
+// This is a finding, not an endorsement: "panned toward the downhill side" is
+// what the ladder shipped and the stereo field does not in fact carry it — the
+// falling pitch does, and that is pinned in the descending-family group above.
+// The tripwire is deliberate. If a future session gives downhillAt the
+// terrain's fall line instead of the trail tangent (which WOULD pan, because
+// the trail crosses the slope), this check fails and points at the decision.
+const panBoth = await page.evaluate(async () => {
+  const trail = __bh.trail();
+  const out = {};
+  for (const f of ['down', 'up']) {
+    const i = Math.round(0.55 * (trail.length - 1));
+    __bh.teleport(trail[i].x, trail[i].z);
+    __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz) + (f === 'down' ? Math.PI : 0), 0);
+    await new Promise(r => setTimeout(r, 200));
+    __bh.dread._lastBeat = null;
+    __bh.fireDread('phantom');
+    __bh.dread._movingFor = 4;
+    __bh.dread._wasMoving = true;
+    await new Promise(r => setTimeout(r, 600));
+    out[f] = __bh.lastPhantom().pan;
+  }
+  return out;
+});
+ok('the phantom\'s downhill pan is a no-op in both directions of travel',
+  Math.abs(panBoth.down) < 1e-9 && Math.abs(panBoth.up) < 1e-9,
+  `pan ${panBoth.down} descending, ${panBoth.up} climbing`);
+
 group('the whole run');
 ok('no page errors, start to finish', errors.length === 0, errors.slice(0, 5).join(' | '));
 
