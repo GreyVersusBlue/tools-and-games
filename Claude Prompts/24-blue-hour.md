@@ -86,12 +86,90 @@ board card request was ever written, and it sat on the site unreachable from the
   numbers are 36 draw calls and 290k triangles against a budget of 300 calls.
 - **Windows is the dev machine.** Absolute `import()` paths need `pathToFileURL`.
 
+## Amendments (Devon, session 4) — three grants, binding
+
+The feasibility ladder's fenced-off items were granted in session 4, precisely and
+narrowly. These amendments override the older text below where they conflict; the doctrine
+is untouched and still wins every tie.
+
+**GRANT 1 — THE LOGBOOK EXISTS.** The piece has exactly one verb: reading. Ten scattered
+pages (canvas-drawn, in-fiction, zero-asset) — a few on the trail, the rest at the cabin
+and the summit — each carrying a keeper's entries. Hold E (or hold the chip, on touch)
+over a page to read it in a quiet DOM overlay; release closes it. **No inventory, no
+collection counter, no journal UI** — a page read is not "gotten", nothing tracks which
+pages have been read, and pages are findable in any order. The writing rules are law: no
+entry confirms danger, no entry confirms safety, no entry mentions the figure, the
+eighth keeper's entries simply don't have a cairn to go with them, and only a player who
+counts will ever know. Kessler's arc (calmer, not because it stopped) never rules
+madness or peace. The texts live in `field.js`; the smoke suite holds every rule of this
+paragraph that a test can hold.
+
+**GRANT 2 — THE CAIRNS GET NAMES.** A found cairn's chip reads its keeper's name
+("Merrit's cairn — 3 of 7"). The names match the logbook's eight, minus one — the
+seven-for-eight gap made countable without a word of explanation. Names live in
+`field.js` (`KEEPERS`, `cairn.keeper`) and `smoke.mjs` pins the count: eight keepers,
+seven cairns, exactly one keeper uncairned, that keeper present in the log.
+
+**GRANT 3 — THE MOUNTAIN REMEMBERS YOUR LAST WALK.** "No save" is amended precisely:
+the piece still saves **no progress, no score, no position** — but it keeps ONE
+localStorage record (`blue-hour-last-walk`, project-local, `js/ghost.js`; NOT
+`gvb-save.js`, which stays untouched) of the previous walk's footstep rhythm and route
+timing, and feeds it to the phantom-steps beat on the next visit. The steps that aren't
+yours are your own, from last time, descending. Never surfaced, never explained, no UI.
+**Do not "fix" this as a privacy leftover or a missing save feature — it is neither.**
+It is the HTML-sized shadow of the asynchronous truth in the north star, and it was
+granted knowingly. A future session that wants to remove it needs Devon's explicit yes,
+same as it took to add it.
+
 ## What is actually here
 
-Eleven `js/` modules, a `libs/` with `three.module.js` + `three.core.js`, `css/style.css`, and
-a two-part `test/`. Tagged `Explore`. **No save, no score, no fail state** — and unlike Golden
-Hour, no journal, no interaction verbs and no photo mode either. Whether that stays true is the
-open question of this project, not a settled decision in either direction.
+Thirteen `js/` modules (`logbook.js` and `ghost.js` joined in session 4), a `libs/` with
+`three.module.js` + `three.core.js`, `css/style.css`, and a two-part `test/`. Tagged
+`Explore`. **No score, no fail state, and no save in any sense a player would recognise**
+— but the direction question is now settled by the session-4 amendments above: one verb
+(reading the logbook), one memory (the ghost of your last walk), one findable tool (the
+headlamp). No journal, no collection counter, no photo mode, and none of those should be
+added without another explicit grant.
+
+**The logbook and the keepers** (grants 1–2). Ten weathered pages scattered down the
+mountain — three on the trail, three at the cabin, four around the summit — carrying
+eight keepers' entries that drift from weather-and-supplies administrative into the
+personal. Kessler is the middle of the arc: something circling the tower at night, then
+calm that is never explained as either madness or peace. Doyle's page states the cairn
+tradition in-fiction; the chip names each found cairn's keeper; eight names, seven
+cairns, and nothing anywhere counts them against each other out loud. Hold E over a page
+to read. `logbook.js` owns the prop mesh, the chip and the overlay; the texts and
+placements are `field.js` data so the smoke suite can hold the writing rules.
+
+**The dread director** (session 4). `dread.js` keeps a 24-bucket yaw-dwell histogram
+with a ~45 s memory. Visual beats land on the walker's less-watched side; a treeline
+stared down on both candidate arcs never fires at all (the declined beat costs no
+cooldown and is not remembered as `_lastBeat`). Everything descends: phantom steps fall
+in pitch and tone step over step (`phantomStepPlan` in `audio.js`, pure, pinned by
+smoke), panned toward the downhill side; the shape's head points down the mountain
+wherever it is staged; the eyes drift downhill at 6 cm/s. When the headlamp burns, the
+eyes hug the darkness just past the cone's edge instead.
+
+**The small wrongnesses** (session 4). A dead field radio on the cabin sill with a rare
+carrier-hiss beat, panned at the cabin, nothing in it. One set of bootprints on the last
+switchback — deterministic out of `field.js`, ascending only, stopping short of the top,
+visible only when the fog is thick enough to half-take them back. A window band on the
+lookout cab, and tea steam rising at the bench-facing pane, running whether or not
+anyone can see it. Above the fog line the beats change in KIND: the `transmission`
+(altitude-gated, unreachable from below at any fogT) opens a carrier at the tower and is
+answered seconds later by your own delayed static.
+
+**The headlamp** (session 4). On the cabin step, findable, one toggle (F, or the button
+that appears once found), never required for anything. The cone is a real SpotLight and
+the price is real: fill, ambient, key and the fog colour all drop by roughly a third to
+a half while it burns, so the lamp is the only argument against the darkness it makes.
+The director reads its state; the drone gains a barely-there D5 partial while it is on —
+light as exposure, not comfort.
+
+**The ghost** (grant 3). `ghost.js`, wired in `main.js`: footsteps are recorded against
+`weatherT` (world seconds, so slow tabs don't corrupt the gait), saved on
+pagehide/visibilitychange only if the walk was ≥40 steps, and replayed through the
+phantom-steps rhythm near wherever the walker is standing next visit. See the amendment.
 
 **860 m of switchback trail** climbing a fog-bound mountainside to a lookout above the cloud
 line, benched into the hillside and blended into the forest floor in the ground shader, marked
@@ -158,9 +236,22 @@ stinger ducks the music to 15% with a slow recovery; the silence beat holds it d
 routes through the master/fog filter, so mute and murk apply. `__bh.music()` reads the live
 targets.
 
-**`test/smoke.mjs`, 52 checks**, pure Node, no browser. **`test/browser.mjs`, 32 checks**, real
+**`test/smoke.mjs`, 93 checks**, pure Node, no browser. **`test/browser.mjs`, 70 checks**, real
 Chromium through `?debug`. Both exit non-zero on failure. `browser.mjs` needs `playwright-core`
 and a Chromium on disk (`CHROME=` overrides the path); neither is a dependency of the piece.
+
+**The billboard-winding trap, so nobody falls in it a third time** (session 4). The
+`bladeRight = vec3(-camDir.z, 0, camDir.x)` basis used by the onBeforeCompile billboard
+family winds its quads CLOCKWISE as seen from the camera — the triangle normal points
+away from the viewer — so under three.js's default `FrontSide` the whole mesh is
+silently backface-culled: no page error, no warning, no pixels. **The mist banks and the
+breath vapour had never rendered a single frame** until session 4 found this while
+building the tea steam; the undergrowth shares the basis and only ever survived because
+it declares `DoubleSide`. Mist and breath now declare it too, and the steam (CPU-
+billboarded) winds correctly. The browser suite reads the drawing buffer for actual
+steam pixels because the zero-page-errors canary cannot see a culled mesh. If you add a
+billboard: either use `(camDir.z, 0, -camDir.x)` or set `DoubleSide`, and prove it with
+pixels, not with the absence of errors.
 
 **The mountain has no peak, and you should know that before you touch it.** `mountainH` is a
 linear ramp in `z` alone — height depends only on how far up the map you are, the slab keeps
@@ -242,57 +333,55 @@ and fear collapses into mechanics; confirm safety once and it evaporates. Theref
 
 ### What can be replicated in HTML, in rough feasibility order
 
-Near-term, inside current architecture and rules:
+Near-term, inside current architecture and rules — **all five built in session 4**, kept
+here so the intent behind each stays readable:
 
-- **Directional intent in the dread beats**: phantom steps biased to read as *descending*
-  (pitch/pan drift down-trail), the treeline shape oriented downhill. Small `dread.js` and
-  `audio.js` changes; the eight-keepers story starts existing without a single word of text.
-- **An attention director, v0**: `dread.js` already knows camera yaw — extend beat placement
-  to spend beats just outside the player's recent gaze arc, and track dwell so a stared-at
-  treeline never fires. This is the Alien Isolation director rebuilt for atmosphere, and the
-  scheduler is already halfway there.
-- **A dead radio**: a prop on the trail or at the cabin, one interaction-free ambient beat —
-  squelch and carrier hiss in Web Audio, keyed like the other stingers. Implies the unanswered
-  keeper without adding a verb.
-- **Bootprints on the last switchback**, already there, ascending only, boot-sized: decal
-  quads along the final trail segment, fog-gated. Cheap, wordless, wrong.
-- **Tea steam in the tower cab** visible from the bench through the cab glass — one breath-
-  style emitter. The cab is warm and nobody says so.
+- **Directional intent in the dread beats** — built: phantom steps descend in pitch and
+  pan, the shape faces downhill, the eyes drift downhill.
+- **An attention director, v0** — built: yaw-dwell histogram, off-gaze placement, a
+  stared-at treeline never fires.
+- **A dead radio** — built, at the cabin, plus its summit sibling the transmission.
+- **Bootprints on the last switchback** — built, ascending only, fog-gated.
+- **Tea steam in the tower cab** — built, at the bench-facing pane, always on.
 
-Needs a design decision from Devon first (they add verbs or persistence the piece has sworn
-off so far):
+Needed a design decision from Devon first, and got one — all three were granted in
+session 4 and are now built; see the Amendments section at the top of this file for the
+exact terms:
 
-- **Logbook pages** as findable props — this is narrative, not collection, but it grows a
-  reading verb. The keepers'-cairns naming wants this.
-- **Ghosts of your own prior walk** (localStorage replay feeding the phantom-step scheduler) —
-  the HTML approximation of the asynchronous truth, but it violates "no save" as currently
-  held.
-- **A headlamp you choose not to use.**
+- **Logbook pages** as findable props — granted and shipped (grant 1).
+- **Ghosts of your own prior walk** — granted and shipped (grant 3).
+- **A headlamp you choose not to use** — granted and shipped (ladder item 6).
 
 Waits for the leap: volumetric fog as physics, raytraced acoustics, the live asynchronous
 multiplayer, climbing the tower, the handwriting reveal, the ending at the rail.
 
 ## Your task
 
-1. **The direction question.** Golden Hour grew a journal, hands, photo mode and rare events.
-   This piece has none of them, and the ending pass leaned hard the other way — dread, not
-   collection. The remaining defensible answers: keep pushing that way, or write "no save, no
-   verbs, no collection" into this file as a locked decision so no future session "fixes" it.
-   Parity with Golden Hour is now the odd one out and should not be adopted without asking.
-2. **The second half wants more than frequency.** The dread gates open on altitude now, but the
-   beats themselves are the same five everywhere on the mountain. Something should change in
-   kind, not just in rate, once the walker is above the fog line — the figure in the lookout is
-   one answer, and it is currently the only one.
-3. **A real GPU run.** Every number on this project is swiftshader. The geometry budget is
-   comfortable, but this piece leans hard on large transparent billboards in fog — ferns,
-   silhouette cards, mist, shafts — which is fill-rate cost that software rasterization reports
-   very differently from a real GPU. Nobody has measured the actual frame rate of this piece
-   anywhere.
-4. **A touch playtest on real glass.** The hold-the-bottom-third-to-walk scheme has never had a
-   thumb on it.
-5. **An hour on the trail with ears on.** The dread cooldowns (55–100 s, first beat at 70 s)
-   and the fog periods are unheard guesses. They want a real walk, not a scrub.
-6. **If your own pass turns up something new**, add it here.
+1. **The direction question — SETTLED, session 4.** The amendments above are the answer:
+   one reading verb, one memory, one findable tool, granted by Devon explicitly and
+   narrowly. Anything further in the verbs/persistence/collection direction needs a new
+   grant, and Golden Hour parity remains the odd one out.
+2. **Beats in kind above the fog line — DONE, session 4.** The transmission is the
+   summit-only beat (see "What is actually here"). More are welcome if they obey the
+   doctrine, but the slot the task was holding open is filled.
+3. **A real GPU run.** Every number on this project is still swiftshader — now including
+   the headlamp's SpotLight cost and the newly-alive mist/breath fill rate, which makes
+   this MORE urgent than before, not less: two full-screen-capable transparent systems
+   that had never actually drawn are drawing now. Nobody has measured the actual frame
+   rate of this piece anywhere.
+4. **A touch playtest on real glass.** The hold-the-bottom-third-to-walk scheme has never
+   had a thumb on it — and the logbook's hold-the-chip-to-read and the headlamp button
+   have joined it untested.
+5. **An hour on the trail with ears on.** The dread cooldowns (55–100 s, first beat at
+   70 s) and the fog periods are unheard guesses; the drone gains, the new radio/
+   transmission stingers, the headlamp partial and the descending phantom curve are too.
+   They want a real walk, not a scrub. If Devon plays a build and leaves listening
+   notes, tune the constants from them; session 4 left every level as authored.
+6. **The logbook wants a proofread out loud.** The keeper entries were written to be
+   read by one player who reads all of them. Read them in order on the mountain, not in
+   the source, and fix anything that clunks — the texts are in `field.js`, the writing
+   rules are in the grant-1 amendment, and the smoke suite holds the mechanical rules.
+7. **If your own pass turns up something new**, add it here.
 
 ## Verification
 

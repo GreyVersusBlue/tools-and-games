@@ -29,6 +29,40 @@ const MOTIF_ROOT = 146.83;      // D3 — where phrases go to die
 const MOTIF_FLOOR = 110.0;      // A2 — where the saddest ones go
 
 /**
+ * The phantom steps' score: when they land, how fast they play, how much of
+ * their tone is left. Every step is lower and duller than the one before —
+ * these footsteps are DESCENDING, away down the mountain, because everything
+ * on this mountain is trying to leave. Pure — rand in, [{at, rate, cutoff,
+ * gain}] out — so the smoke suite can hold the descent without an
+ * AudioContext.
+ *
+ * opts.intervals, if given, sets the gaps between steps — this is the door
+ * the ghost of a previous walk feeds its own recorded rhythm through. The
+ * descent in pitch stays regardless of whose rhythm it is.
+ */
+export function phantomStepPlan(rand, opts = {}) {
+  const count = Math.max(1, opts.count ?? 3);
+  const intervals = opts.intervals && opts.intervals.length ? opts.intervals : null;
+  const steps = [];
+  let at = 0.5;
+  for (let i = 0; i < count; i++) {
+    if (i > 0) {
+      at += intervals
+        ? Math.min(1.2, Math.max(0.3, intervals[(i - 1) % intervals.length]))
+        : 0.52 + rand() * 0.08;
+    }
+    const fall = count > 1 ? i / (count - 1) : 0;
+    steps.push({
+      at,
+      rate: 0.62 - fall * 0.16,          // pitch falling step over step
+      cutoff: 340 - fall * 110,          // the tone going down the trail with it
+      gain: 0.035 * (1 - fall * 0.35),
+    });
+  }
+  return steps;
+}
+
+/**
  * One phrase of foreboding woe: 3-5 notes, biased downhill, always ending on
  * the root or the fifth below it. Pure — rand in, [{freq, dur}] out — so the
  * smoke suite can hold it to the scale without an AudioContext.
@@ -196,6 +230,7 @@ export class Soundscape {
     voice('f3', 174.61, 'sine', 2);       // the minor 3rd, said out loud
     voice('eb2', 77.78, 'sine');          // minor 2nd — the altitude unease
     voice('ab2', 103.83, 'sine');         // the tritone, saved for the summit
+    voice('d5', 587.33, 'sine');          // barely-there partial while the headlamp burns
 
     // The filter never sits still, and the whole bed breathes — two LFOs so
     // slow they read as weather, not tremolo.
@@ -286,7 +321,7 @@ export class Soundscape {
   update(dt, state) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const { moving, surface, fogT, altT, creekDist, waterfallDist, birdsSilent, watched } = state;
+    const { moving, surface, fogT, altT, creekDist, waterfallDist, birdsSilent, watched, lamp } = state;
 
     // The fog closes the world's top end down.
     this._fogFilter.frequency.setTargetAtTime(12000 - fogT * 9200, t, 0.8);
@@ -345,6 +380,11 @@ export class Soundscape {
     set(dr.eb2, altT * altT * 0.03, 2);
     const tritone = Math.max(0, (altT - 0.55) / 0.45) * 0.018 * (watched ? 1.6 : 1);
     set(dr.ab2, tritone, 1.5);
+    // The headlamp in the music: a barely-there partial two octaves up while
+    // it burns. Light as EXPOSURE, not comfort — a thin high presence, the
+    // acoustic version of being the brightest thing on the mountain.
+    const lampPartial = lamp ? 0.0035 : 0;
+    set(dr.d5, lampPartial, 1.2);
     const droneHz = 900 - fogT * 420 - altT * 180 - (watched ? 120 : 0);
     this._droneFilter.frequency.setTargetAtTime(droneHz, t, 2);
 
@@ -382,7 +422,7 @@ export class Soundscape {
       motifIn: this._motifTimer,
       voices: {
         d2, a2, d3: fogT * 0.014, f3: 0.006 + fogT * 0.01,
-        eb2: altT * altT * 0.03, ab2: tritone,
+        eb2: altT * altT * 0.03, ab2: tritone, d5: lampPartial,
       },
     };
   }
@@ -541,28 +581,110 @@ export class Soundscape {
     src.start(t0, Math.random() * 2); src.stop(t0 + 0.1);
   }
 
-  /** Two or three footsteps that are not yours, after yours have stopped. */
-  phantomSteps(count = 3) {
+  /**
+   * Footsteps that are not yours, after yours have stopped — and every one of
+   * them a step further DOWN: pitch and tone fall step over step, and the pan
+   * (handed in by dread.js) leans toward the downhill side of wherever the
+   * walker is standing. opts: { count, pan, intervals } — or a bare number,
+   * which is just a count. intervals is the ghost's door; see phantomStepPlan.
+   */
+  phantomSteps(opts = 3) {
     if (!this.ctx) return;
+    if (typeof opts === 'number') opts = { count: opts };
     this._duckMusic(8);
     const ctx = this.ctx;
+    const plan = phantomStepPlan(Math.random, opts);
+    this._lastPhantom = { ...opts, plan };     // read-only, for the suite
     const pan = this._pan(0.9);
-    for (let i = 0; i < count; i++) {
-      const t0 = ctx.currentTime + 0.5 + i * (0.52 + Math.random() * 0.08);
+    if (pan && typeof opts.pan === 'number') {
+      pan.pan.value = Math.max(-1, Math.min(1, opts.pan));
+    }
+    for (const step of plan) {
+      const t0 = ctx.currentTime + step.at;
       const src = ctx.createBufferSource();
       src.buffer = this._noiseBuf;
       src.loop = true;
-      src.playbackRate.value = 0.55;
+      src.playbackRate.value = step.rate;
       const f = ctx.createBiquadFilter();
-      f.type = 'lowpass'; f.frequency.value = 320;
+      f.type = 'lowpass'; f.frequency.value = step.cutoff;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(0.035 * (1 - i * 0.2), t0 + 0.03);
+      g.gain.linearRampToValueAtTime(step.gain, t0 + 0.03);
       g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.2);
       if (pan) src.connect(f).connect(g).connect(pan), pan.connect(this.master);
       else src.connect(f).connect(g).connect(this.master);
       src.start(t0, Math.random() * 2); src.stop(t0 + 0.25);
     }
+  }
+
+  /**
+   * The dead radio finding a carrier for a moment: squelch opens, hiss with a
+   * slow flutter and nothing in it, squelch shuts. No voice, no tone, no
+   * message — the sound of an open channel and nobody on it. Quiet enough to
+   * argue with; the pan (from dread.js) leans it toward the cabin. echoGain,
+   * if set, replays the burst once, fainter and delayed — a channel answered
+   * by its own static — which the summit beat uses and the cabin beat leaves
+   * alone.
+   */
+  radioSquelch({ pan = 0, echoGain = 0 } = {}) {
+    if (!this.ctx) return;
+    this._duckMusic(6);
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.05;
+    this._lastRadio = { pan, echoGain, at: t0 };   // read-only, for the suite
+
+    const out = ctx.createGain();
+    const p = this._pan(1);
+    if (p) { p.pan.value = Math.max(-1, Math.min(1, pan)); out.connect(p).connect(this.master); }
+    else out.connect(this.master);
+
+    const burst = (st, vol) => {
+      // squelch click, open
+      const click = ctx.createBufferSource();
+      click.buffer = this._noiseBuf;
+      click.playbackRate.value = 1.8;
+      const cf = ctx.createBiquadFilter();
+      cf.type = 'bandpass'; cf.frequency.value = 2400; cf.Q.value = 5;
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(0.05 * vol, st);
+      cg.gain.exponentialRampToValueAtTime(0.001, st + 0.03);
+      click.connect(cf).connect(cg).connect(out);
+      click.start(st, Math.random() * 2); click.stop(st + 0.04);
+
+      // the carrier: narrow hiss, fluttering slightly, saying nothing
+      const hiss = ctx.createBufferSource();
+      hiss.buffer = this._noiseBuf;
+      hiss.loop = true;
+      const hf = ctx.createBiquadFilter();
+      hf.type = 'bandpass'; hf.frequency.value = 1650; hf.Q.value = 0.9;
+      const hg = ctx.createGain();
+      hg.gain.setValueAtTime(0, st);
+      hg.gain.linearRampToValueAtTime(0.016 * vol, st + 0.3);
+      hg.gain.setValueAtTime(0.016 * vol, st + 1.5);
+      hg.gain.linearRampToValueAtTime(0, st + 1.62);
+      const flutter = ctx.createOscillator();
+      flutter.frequency.value = 0.8 + Math.random() * 0.5;
+      const flutterAmt = ctx.createGain();
+      flutterAmt.gain.value = 0.005 * vol;
+      flutter.connect(flutterAmt).connect(hg.gain);
+      hiss.connect(hf).connect(hg).connect(out);
+      hiss.start(st, Math.random() * 2); hiss.stop(st + 1.7);
+      flutter.start(st); flutter.stop(st + 1.7);
+
+      // squelch shut
+      const shut = ctx.createBufferSource();
+      shut.buffer = this._noiseBuf;
+      shut.playbackRate.value = 1.4;
+      const sf = ctx.createBiquadFilter();
+      sf.type = 'bandpass'; sf.frequency.value = 1900; sf.Q.value = 6;
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.04 * vol, st + 1.6);
+      sg.gain.exponentialRampToValueAtTime(0.001, st + 1.64);
+      shut.connect(sf).connect(sg).connect(out);
+      shut.start(st + 1.6, Math.random() * 2); shut.stop(st + 1.66);
+    };
+
+    burst(t0, 1);
+    if (echoGain > 0) burst(t0 + 4.2, echoGain);
   }
 
   /** Barely audible pressure under the floor of the mix. */

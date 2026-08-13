@@ -1,5 +1,119 @@
 # 24 — Blue Hour
 
+## Session 4 — the logbook, the three grants, and the mist that was never there
+
+The full-hog session. Devon granted the three items the feasibility ladder had fenced off
+behind an explicit yes, and the whole near-term ladder shipped with them. **All three
+grants are recorded as amendments at the top of `Claude Prompts/24-blue-hour.md`** — that
+section is now the authority on the piece's one verb, the named cairns, and the one thing
+localStorage is allowed to hold. Read it before "fixing" any of them.
+
+**Grant 1 — the logbook** (`js/logbook.js`, texts and placements in `field.js`). Ten
+weathered pages, one verb: hold E over a page (hold the chip, on touch) and it comes up in
+a quiet DOM overlay; release puts it down. No inventory, no counter, nothing remembers
+what has been read. The writing was the heart of the session: eight keepers — Hollis,
+Vann, Merrit, Ruiz, Kessler, Okafor, Doyle, Marsh — drifting administrative-to-personal
+across the log. Kessler is the circling-the-tower arc, and the later entries go CALMER
+("I noticed I had stopped counting the circuits… the way you stop counting stairs in a
+house you live in"), never ruled madness or peace. Okafor repaints a catwalk rail "worn
+through in a ring, the way a path wears" and moves on. Doyle states the cairn tradition
+in-fiction, one page from their own cairn. Marsh — the eighth — rations the good tea,
+gets carrier and no voices on the radio check, and is in no great hurry to be anywhere
+but the window. Marsh has no cairn. Nothing says so.
+
+**Grant 2 — the cairns get names.** `KEEPERS` in `field.js`, `cairn.keeper` per cairn,
+chip reads "Merrit's cairn — 3 of 7". Seven for eight, countable, never counted out loud.
+smoke pins the whole shape: eight named, seven cairned, exactly one uncairned, that one
+present in the log.
+
+**Grant 3 — the ghost** (`js/ghost.js`). One project-local key, `blue-hour-last-walk`:
+the previous visit's footstep rhythm and route timing, clocked in world seconds
+(`weatherT`, so a slow tab doesn't corrupt the gait), saved on pagehide only when the
+walk was ≥40 steps. Next visit, the phantom-steps beat replays that rhythm near wherever
+the walker stands — your own steps, from last time, descending. Never surfaced, no UI.
+`gvb-save.js` untouched, deliberately.
+
+**The ladder, all eight.** (1) Everything descends: `phantomStepPlan` (pure, in
+`audio.js`) makes every phantom step lower and duller than the last, panned downhill;
+the bear silhouette's head points down the mountain (scale.x flip against the trail
+direction); the eyes drift downhill at 6 cm/s. (2) Attention director v0: 24-bucket
+yaw-dwell histogram, ~45 s memory; visual beats land on the less-watched side and a
+treeline stared down both arcs never fires — declined beats cost no cooldown and don't
+set `_lastBeat`. (3) Dead radio at the cabin: prop on the sill, rare squelch-and-carrier
+beat panned at the cabin, nothing in it. (4) Bootprints on the last switchback: 72
+prints, deterministic, ascending only, t 0.90–0.965, fog-gated in `props.js` — come and
+go with the weather. (5) Tea steam at the cab glass (plus the cab's window band, which
+it never had): CPU-billboarded emitter at the bench-facing pane, always on. (6) The
+headlamp: cabin step, F toggles, real SpotLight, and fill/ambient/key/fog-colour all
+drop while it burns; director places eyes just past the cone's edge; never required.
+(7) Beats change in KIND above the fog line: the `transmission`, gated on altitude alone
+(candidates door proves no fogT reaches it from below), opens a carrier at the tower and
+answers with your own delayed static 4 s later. (8) Music second pass: new stingers duck
+the drone like the others; a barely-there D5 partial while the headlamp burns. No
+listening notes from Devon this session, so every gain stays exactly as authored.
+
+### The real find: the mist and the breath had never rendered
+
+Chasing the invisible tea steam turned up the cause: the shared billboard basis
+`bladeRight = vec3(-camDir.z, 0, camDir.x)` winds quads clockwise as seen from the
+camera (triangle normal = −toCam), so under default `FrontSide` the mesh backface-culls
+— silently. No page error, no shader warning, no pixels. **The mist banks (session 1)
+and the breath vapour (session 3) had never drawn a single frame.** The undergrowth
+shares the basis and only ever survived by declaring `DoubleSide`. The session-3 claim
+that zero page errors was "the canary for the five new onBeforeCompile materials" was
+wrong in exactly the way locked decision #34 warns about: the canary cannot see a culled
+mesh. Fix: mist and breath declare `DoubleSide` (comment at the mist material tells the
+story); the steam winds correctly on the CPU; and `browser.mjs` now reads the drawing
+buffer and asserts actual steam pixels against the cab face. The trap is written into
+the prompt file so a third billboard doesn't fall in.
+
+### What I verified (session 4)
+
+- `node test/smoke.mjs` — **93 checks, 0 failed** (was 52). New groups: the keepers
+  (roster/cairn-gap pinning), the logbook (placement, reachability, doctrine words —
+  no entry mentions the figure, no game-voice), the bootprints (count, ascent,
+  on-trail, toe direction), the phantom descent (400 plans held monotone), the ghost
+  (round-trip, corrupt-record degradation, gait filtering, save threshold, key name).
+- `node test/browser.mjs` — **70 checks, 0 failed** (was 32). New groups: the logbook
+  overlay (open under held E, close on release, chip lifecycle), cairn naming, the
+  descending family (bear head downhill at three standoffs, phantom via the real
+  just-stopped path), the director (real dwell accrual, five forced eyes all off-gaze,
+  both-arcs-stared refusal), the small wrongnesses (radio, fog-gated prints, steam
+  geometry AND steam pixels), the transmission gates (unreachable below at fogT 1.0,
+  present above at fogT 0.0), the headlamp (inert before found, pickup, burn, ambient
+  drop measured, cone-edge bias, D5 partial), the ghost (seeded record loads, phantom
+  replays its 0.77 s rhythm verbatim, recording live, short-walk refusal).
+- Screenshots, looked at: page prop on the trail (pale, missable, right), the overlay
+  (quiet, serif, world dimmed behind), the cab with window band + steam wisp from the
+  bench, headlamp off/on on the same framing (world darkens, cone honest), trail view
+  with mist alive for the first time.
+- Draw budget: the piece added ~6 draw calls across pages/prints/radio/lamp/windows/
+  steam against a budget of 300; weather-equality untouched (nothing new toggles
+  visibility with fog).
+- Not verified, unchanged: real GPU, real glass, real ears (prompt tasks 3–5). The
+  mist/breath fix makes the GPU run MORE urgent — two fill-heavy systems that never
+  drew before are drawing now.
+
+### Shared-file requests
+
+**Everything from session 2 is still pending and still needed — the piece is STILL not
+on the board.** Re-flagging all four, unchanged: (1) the board card in root
+`index.html` (+ `#g-peak` seal), (2) the `Tools/board-check/games.mjs` entry, (3) the
+preview recipe + `npm run previews blue-hour` + `npm run promote`, (4) the notes
+README expected-names list. The exact blocks to paste are in the session-2 section
+below. One amendment to request 2: the piece still has no `saveKey` and that is still
+correct — `blue-hour-last-walk` is not a save and must not be wired into the shared
+save/reset tooling (see grant 3 in the prompt file).
+
+### Deliberately not done
+
+- **No GPU/touch/ears passes** — environment can't provide them; see prompt tasks 3–5.
+- **Music levels untouched** beyond the new D5 partial and stinger ducks — ladder item
+  8 conditioned tuning on listening notes, and there were none.
+- **The summit geometry** stays as session 2 left it (no peak, fog closes) — nothing in
+  this session leaned on it.
+- **No board-card or shared-file edits** — requests re-flagged above instead.
+
 ## Session 3 — the mountain gets a voice, and the piece gets a north star
 
 Two halves this session: a high-fidelity pass Devon asked for (with adaptive music as its

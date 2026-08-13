@@ -86,6 +86,16 @@ function buildMist() {
     opacity: 0.12,
     depthWrite: false,
     fog: true,
+    // Load-bearing, discovered session 4: the bladeRight billboard basis
+    // below winds these quads CLOCKWISE as seen from the camera — the
+    // triangle normal (bladeRight × up) points away from the viewer — so
+    // under the default FrontSide the entire mesh is backface-culled and the
+    // mist has never once rendered. The undergrowth shares the basis and was
+    // only ever visible because it sets DoubleSide. Zero page errors, zero
+    // warnings: a culled mesh fails silently, which is why the suite now
+    // checks pixels for this family of materials instead of trusting the
+    // error canary.
+    side: THREE.DoubleSide,
   });
   let shaderRef = null;
   mat.onBeforeCompile = shader => {
@@ -257,6 +267,9 @@ function buildBreath() {
     opacity: 0.26,
     depthWrite: false,
     fog: true,
+    // Same silently-culled winding as the mist — see the note there. The
+    // breath shipped a whole session without a single frame of it existing.
+    side: THREE.DoubleSide,
   });
   let shaderRef = null;
   mat.onBeforeCompile = shader => {
@@ -304,6 +317,99 @@ function buildBreath() {
   };
 }
 
+/* -------------------------------------------------------------------- steam */
+
+/**
+ * Tea steam at the cab glass. Six quads recycled round-robin at one fixed
+ * point — the pane of the lookout cab that faces the bench — rising half a
+ * metre and gone. It runs whether or not anyone has climbed high enough to
+ * see it, because it is not a beat and not a reward: the cab is warm, has
+ * been warm the whole time, and nobody says so. The quads sit a hand's width
+ * outside the glass (the cab is a solid box; a wisp truly inside it would be
+ * depth-tested away), which from the bench ten metres off in summit fog is
+ * indistinguishable from steam behind the pane.
+ *
+ * Billboarded on the CPU, not in a vertex shader: six quads at one fixed
+ * point are cheap enough to place by hand every frame, and hunting this
+ * feature's invisibility is how the mist/breath backface-culling bug above
+ * was found in the first place. The right vector here is (tz, -tx) — the
+ * OPPOSITE of the shader family's bladeRight — so the winding is
+ * counter-clockwise toward the camera and FrontSide is enough.
+ */
+function buildSteam() {
+  const tw = LAYOUT.tower, be = LAYOUT.bench;
+  const g = groundHeight(tw.x, tw.z);
+  const d = { x: be.x - tw.x, z: be.z - tw.z };
+  const len = Math.hypot(d.x, d.z) || 1;
+  d.x /= len; d.z /= len;
+  const root = {
+    x: tw.x + d.x * 1.36,
+    y: g + 9.86,                     // the sill of the window band
+    z: tw.z + d.z * 1.36,
+  };
+
+  const N = 6, LIFE = 2.6;
+  const uvs = [], indices = [];
+  for (let i = 0; i < N; i++) {
+    const vi = i * 4;
+    uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
+    indices.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setIndex(indices);
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 12), 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(N * 16), 4));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+
+  const mat = new THREE.MeshBasicMaterial({
+    map: softTexture(0.55),
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false,
+    fog: true,
+    vertexColors: true,     // RGBA — the alpha channel carries each puff's age
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  const births = new Float32Array(N).fill(-10);
+  let now = 0;
+  const sstep = (a, b, x) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+
+  return {
+    mesh, root,
+    time: () => now,
+    puff(slot) { births[slot] = now; },
+    update(dt, camera) {
+      now += dt;
+      const pos = geo.attributes.position, col = geo.attributes.color;
+      const tx = camera.position.x - root.x, tz = camera.position.z - root.z;
+      const tlen = Math.hypot(tx, tz) || 1;
+      const rx = tz / tlen, rz = -tx / tlen;        // billboard right, CCW winding
+      for (let i = 0; i < N; i++) {
+        const age = now - births[i];
+        const alive = age >= 0 && age < LIFE;
+        const fade = alive ? sstep(0, 0.3, age) * (1 - sstep(1.2, LIFE, age)) : 0;
+        const grow = 1 + age * 0.9;
+        const cx = root.x + Math.sin(age * 1.7) * 0.04;
+        const cy = root.y + age * 0.28;
+        const cz = root.z;
+        const hw = 0.12 * grow, hh = 0.26 * grow;
+        pos.setXYZ(i * 4, cx - rx * hw, cy, cz - rz * hw);
+        pos.setXYZ(i * 4 + 1, cx + rx * hw, cy, cz + rz * hw);
+        pos.setXYZ(i * 4 + 2, cx - rx * hw, cy + hh, cz - rz * hw);
+        pos.setXYZ(i * 4 + 3, cx + rx * hw, cy + hh, cz + rz * hw);
+        for (let c = 0; c < 4; c++) col.setXYZW(i * 4 + c, 1, 1, 1, fade);
+      }
+      pos.needsUpdate = true;
+      col.needsUpdate = true;
+    },
+  };
+}
+
 /* ---------------------------------------------------- above the fog line --- */
 
 // There used to be a summit payoff built here: a cloud sea ring at y = 46 and
@@ -333,11 +439,15 @@ export function buildAtmosphere(scene) {
   const breath = buildBreath();
   scene.add(breath.mesh);
 
+  const steam = buildSteam();
+  scene.add(steam.mesh);
+
   const positions = flies.points.geometry.attributes.position;
   const motePos = motes.points.geometry.attributes.position;
   const wrap = (v, c, s) => c + ((v - c + s / 2) % s + s) % s - s / 2;
   const camDir = new THREE.Vector3();
   let breathTimer = 2, breathSlot = 0;
+  let steamTimer = 1, steamSlot = 0;
   let t = 0;
 
   return {
@@ -395,6 +505,26 @@ export function buildAtmosphere(scene) {
         breath.puff(camera, camDir, breathSlot);
         breathSlot = (breathSlot + 1) % 6;
       }
+
+      // The kettle, tirelessly. No gate on altitude or attention: the steam
+      // does not know whether anyone can see it, which is what makes it true.
+      steam.update(dt, camera);
+      steamTimer -= dt;
+      if (steamTimer <= 0) {
+        steamTimer = 1.2 + Math.random() * 0.6;
+        steam.puff(steamSlot);
+        steamSlot = (steamSlot + 1) % 6;
+      }
     },
+    // Where the kettle is, and the alpha the first quad is currently drawn
+    // at — geometry truth for the suite; the pixel check covers the rest.
+    steamInfo: () => ({
+      ...steam.root,
+      alpha0: steam.mesh.geometry.attributes.color.getW(0),
+    }),
+    // For the suite and for tuning: stage every steam quad at once so a
+    // screenshot doesn't have to wait out the kettle's own timing at
+    // software-GL frame rates.
+    steamBurst: () => { for (let i = 0; i < 6; i++) { steam.puff(i); } },
   };
 }

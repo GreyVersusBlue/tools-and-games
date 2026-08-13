@@ -58,6 +58,60 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0c1216; }
 #cairn-chip.show { opacity: 0.85; }
 @media (prefers-reduced-motion: reduce) { #cairn-chip { transition: none; } }
 
+/* A loose logbook page underfoot. Same manners as the cairn chip, other
+   corner, so the two never talk over each other. */
+#page-chip {
+  position: fixed; z-index: 16; right: 16px; bottom: 16px;
+  padding: 0.5rem 1rem; border-radius: 999px;
+  background: rgba(8, 14, 18, 0.55);
+  color: #cfe0e8; font-family: system-ui, sans-serif; font-size: 0.85rem;
+  letter-spacing: 0.04em; white-space: nowrap;
+  opacity: 0; pointer-events: none; user-select: none;
+  transition: opacity 0.6s ease;
+  touch-action: none;
+}
+#page-chip.show { opacity: 0.85; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) { #page-chip { transition: none; } }
+
+/* The page, read. Quiet on purpose: the world keeps running behind it, the
+   fog keeps breathing, and letting go of the key puts the page back down.
+   No close button, no page number, no chrome — just the handwriting. */
+#page-overlay {
+  position: fixed; inset: 0; z-index: 18;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(6,10,13,0.62), rgba(4,7,9,0.86));
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+#page-overlay.show { opacity: 1; }
+#page-overlay-card {
+  max-width: 34rem; max-height: 80vh; overflow: hidden;
+  padding: 2.4rem 2.8rem;
+  color: #d6cfba;
+  font-family: Georgia, 'Times New Roman', serif;
+  text-shadow: 0 1px 12px rgba(0,0,0,0.8);
+  user-select: none;
+}
+#page-overlay-head {
+  text-align: center; font-size: 0.72rem; letter-spacing: 0.4em;
+  text-transform: uppercase; opacity: 0.45; margin-bottom: 1.6rem;
+}
+.page-date {
+  font-size: 0.82rem; letter-spacing: 0.12em; opacity: 0.6;
+  margin-top: 1.3rem;
+}
+.page-date:first-child { margin-top: 0; }
+.page-body {
+  margin-top: 0.35rem; font-size: 1.02rem; line-height: 1.65;
+  font-style: italic;
+}
+.page-sig { margin-top: 0.3rem; text-align: right; opacity: 0.7; font-size: 0.92rem; }
+@media (prefers-reduced-motion: reduce) { #page-overlay { transition: none; } }
+@media (max-width: 600px) {
+  #page-overlay-card { padding: 1.6rem 1.4rem; }
+  .page-body { font-size: 0.95rem; }
+}
+
 /* Stronger than the beach's vignette — the woods should close in a little. */
 #vignette {
   position: fixed; inset: 0; z-index: 5; pointer-events: none;
@@ -73,3 +127,17 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0c1216; }
   transition: background 0.2s;
 }
 #mute-btn:hover { background: rgba(0,0,0,0.55); }
+
+/* The headlamp toggle — hidden until the lamp is found on the cabin step,
+   then it lives under the mute button. Dim until lit. */
+#lamp-btn {
+  position: fixed; top: 64px; right: 14px; z-index: 15;
+  width: 42px; height: 42px; border-radius: 50%;
+  background: rgba(0,0,0,0.35); color: #7e8890;
+  display: none; align-items: center; justify-content: center;
+  font-size: 1.15rem; cursor: pointer; user-select: none;
+  transition: background 0.2s, color 0.3s;
+}
+#lamp-btn.show { display: flex; }
+#lamp-btn.lit { color: #e8dfb2; }
+#lamp-btn:hover { background: rgba(0,0,0,0.55); }

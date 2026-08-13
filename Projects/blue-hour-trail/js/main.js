@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { TRAIL, LAYOUT, creekInfo } from './field.js';
+import { TRAIL, LAYOUT, creekInfo, trailInfo } from './field.js';
+import { createGhost } from './ghost.js';
 import { buildTerrain } from './terrain.js';
 import { buildForest } from './forest.js';
 import { buildProps } from './props.js';
@@ -7,6 +8,7 @@ import { buildCreek } from './creek.js';
 import { buildAtmosphere } from './atmosphere.js';
 import { buildWildlife } from './wildlife.js';
 import { createDread } from './dread.js';
+import { buildLogbook } from './logbook.js';
 import { WalkControls } from './controls.js';
 import { Soundscape } from './audio.js';
 
@@ -86,6 +88,21 @@ const SUMMIT = {
   exposure: 0.92,
 };
 
+// ---------- The headlamp ----------
+//
+// Found on the cabin step, one toggle, never required for anything. The cone
+// is honest light — a real SpotLight, not a screen effect — and everything
+// OUTSIDE it goes genuinely darker while it burns: the ambient and the sky
+// fill drop by nearly half, so switching it on trades the whole grey world
+// for one bright reach of trail. Turning it on must feel like a mistake you
+// chose. The light exists from frame one at intensity zero so the shader
+// programs are compiled before anyone finds the switch — a toggle that
+// hitches is a jump scare, and this piece startles on purpose or not at all.
+const lampLight = new THREE.SpotLight(0xe8dcb4, 0, 30, 0.42, 0.55);
+lampLight.target = new THREE.Object3D();
+scene.add(lampLight, lampLight.target);
+const lampState = { found: false, on: false, mix: 0 };
+
 const mixN = (a, b, t) => a + (b - a) * t;
 const smoothstep = (a, b, v) => {
   const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
@@ -102,6 +119,10 @@ function fogPhase() {
 
 function applyWeather(fogT, altT) {
   scene.fog.color.copy(CLEAR.fog).lerp(THICK.fog, fogT).lerp(SUMMIT_FOG, altT);
+  // The fog and the sky are one colour object, so this darkens the whole
+  // world past the cone when the headlamp is on — the horizon must not stay
+  // bright while the fill drops, or the lamp reads as a filter, not a light.
+  scene.fog.color.multiplyScalar(1 - lampState.mix * 0.35);
   scene.fog.density = mixN(mixN(CLEAR.density, THICK.density, Math.pow(fogT, 1.15)), SUMMIT.density, altT);
 
   skyFill.color.copy(CLEAR.skyTop).lerp(THICK.skyTop, fogT);
@@ -119,6 +140,15 @@ function applyWeather(fogT, altT) {
   bounce.intensity = mixN(mixN(CLEAR.ambientI, THICK.ambientI, fogT), SUMMIT.ambientI, altT);
 
   renderer.toneMappingExposure = mixN(mixN(CLEAR.exposure, THICK.exposure, fogT), SUMMIT.exposure, altT);
+
+  // The headlamp's price: while it burns, the world outside the cone loses
+  // nearly half its light. Not a vignette, not an effect — the actual fill
+  // and ambient go down, so the darkness past the cone's edge is real and
+  // the lamp is the only argument against it.
+  const dim = 1 - lampState.mix * 0.45;
+  skyFill.intensity *= dim;
+  bounce.intensity *= dim;
+  dayLight.intensity *= dim;
 }
 
 // ---------- World ----------
@@ -131,6 +161,25 @@ const audio = new Soundscape();
 const wildlife = buildWildlife(scene, audio);
 const dread = createDread(scene, audio);
 const controls = new WalkControls(camera, canvas);
+const logbook = buildLogbook(scene, controls);
+
+// The mountain remembers your last walk — grant 3, session 4. See ghost.js
+// and the prompt file's amendment before touching this. Not a save.
+const ghost = createGhost(window.localStorage);
+// Clocked on weatherT — world seconds, not wall seconds — so the gait the
+// ghost remembers is the gait the piece PLAYED, even when a slow tab runs
+// the world under the dt clamp at a fraction of real time.
+audio.onFootstep = () => {
+  ghost.step(trailInfo(controls.pos.x, controls.pos.z).t, weatherT);
+};
+dread.ghostRhythm = t => (ghost.loaded ? ghost.rhythmNear(t) : null);
+// Written when the walker leaves, not on a timer: the record is of a walk
+// that ended, and pagehide is the only honest definition of ended a browser
+// offers. visibilitychange covers the phone pocketing that pagehide misses.
+addEventListener('pagehide', () => ghost.save());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') ghost.save();
+});
 
 // Start at the trailhead, facing up the first leg into the fog.
 {
@@ -152,9 +201,12 @@ function checkCairns() {
     if (Math.hypot(controls.pos.x - c.x, controls.pos.z - c.z) < c.foundRadius) {
       cairnsFound.add(i);
       audio.chime();
+      // The chip reads the keeper's name off the cairn. Nothing anywhere says
+      // who the keepers are or how many there should be; the logbook holds
+      // eight names and this counter only ever reaches seven.
       cairnChip.textContent = cairnsFound.size === LAYOUT.cairns.length
         ? 'all seven cairns'
-        : `cairn found — ${cairnsFound.size} of ${LAYOUT.cairns.length}`;
+        : `${c.keeper}’s cairn — ${cairnsFound.size} of ${LAYOUT.cairns.length}`;
       cairnChip.classList.add('show');
       chipTimer = 4;
     }
@@ -164,6 +216,43 @@ function checkCairns() {
     if (chipTimer <= 0) cairnChip.classList.remove('show');
   }
 }
+
+// ---------- Headlamp pickup and toggle ----------
+const lampBtn = document.getElementById('lamp-btn');
+
+function toggleLamp() {
+  if (!lampState.found) return;
+  lampState.on = !lampState.on;
+  lampBtn.classList.toggle('lit', lampState.on);
+}
+lampBtn.addEventListener('click', e => { e.stopPropagation(); toggleLamp(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'KeyF' && !e.repeat) toggleLamp();
+});
+
+function updateHeadlamp(dt) {
+  if (!lampState.found && controls.enabled) {
+    const h = LAYOUT.headlamp;
+    if (Math.hypot(controls.pos.x - h.x, controls.pos.z - h.z) < h.foundRadius) {
+      lampState.found = true;
+      props.takeHeadlamp();
+      lampBtn.classList.add('show');
+      cairnChip.textContent = 'a headlamp, still working — F';
+      cairnChip.classList.add('show');
+      chipTimer = 5;
+    }
+  }
+  lampState.mix += ((lampState.on ? 1 : 0) - lampState.mix) * Math.min(1, dt * 5);
+  lampLight.intensity = lampState.mix * 34;
+  if (lampState.mix > 0.001) {
+    lampLight.position.copy(camera.position);
+    lampLight.position.y -= 0.08;
+    camera.getWorldDirection(_lampDir);
+    lampLight.target.position.copy(camera.position).addScaledVector(_lampDir, 12);
+  }
+  dread.headlampOn = lampState.on;
+}
+const _lampDir = new THREE.Vector3();
 
 // ---------- Overlay / input bootstrap ----------
 const overlay = document.getElementById('overlay');
@@ -236,7 +325,9 @@ function tick() {
   atmosphere.update(dt, camera, fogT, altT);
   props.update(dt, fogT);
   creek.update(dt);
+  logbook.update(dt);
   checkCairns();
+  updateHeadlamp(dt);
 
   const ck = creekInfo(controls.pos.x, controls.pos.z);
   const wf = LAYOUT.waterfall;
@@ -249,6 +340,7 @@ function tick() {
     waterfallDist: Math.hypot(controls.pos.x - wf.x, controls.pos.z - wf.z),
     birdsSilent: dread.birdsSilent,
     watched: dread.lookoutWatching,
+    lamp: lampState.on,
   });
 
   renderer.render(scene, camera);
@@ -281,7 +373,12 @@ if (new URLSearchParams(location.search).has('debug')) {
     surface: () => controls.surface,
 
     cairns: () => ({ found: [...cairnsFound].sort((a, b) => a - b), total: LAYOUT.cairns.length }),
-    layout: () => ({ cairns: LAYOUT.cairns, markers: LAYOUT.markers, bench: LAYOUT.bench }),
+    layout: () => ({
+      cairns: LAYOUT.cairns, markers: LAYOUT.markers, bench: LAYOUT.bench,
+      pages: LAYOUT.pages, tower: LAYOUT.tower, cabin: LAYOUT.cabin,
+      headlamp: LAYOUT.headlamp,
+    }),
+    logbook: () => logbook.debug(),
 
     // The centerline, so a test can point the walker up the mountain instead of
     // guessing a yaw. Guessing one costs you 5 m and a boundary clamp: the
@@ -294,11 +391,31 @@ if (new URLSearchParams(location.search).has('debug')) {
     },
 
     // Bypasses the cooldown and the fog/elevation gates. 'snap' | 'phantom' |
-    // 'silence' | 'howl' | 'bear' | 'eyes'.
+    // 'silence' | 'howl' | 'bear' | 'eyes' | 'radio' | 'transmission'.
     fireDread: beat => dread.force(beat, camera, controls),
+    // The gate truth: which beats are drawable from here, at a given fogT.
+    dreadCandidates: (fogT = 0.5) => dread.candidates(controls, fogT),
     dread,
 
+    steam: () => atmosphere.steamInfo(),
+    steamBurst: () => atmosphere.steamBurst(),
+    bootprints: () => ({ opacity: props.bootprintOpacity(), prints: LAYOUT.bootprints.length }),
+
     music: () => audio.musicState(),
+    // The last phantom-steps and radio firings, so the suite can hold the
+    // descent, the downhill lean and the echo without ears.
+    lastPhantom: () => audio._lastPhantom,
+    lastRadio: () => audio._lastRadio,
+
+    // The ghost's doors: whether a previous walk loaded, how much of this one
+    // has been recorded, and a way to force the save without a pagehide.
+    ghost: () => ({ loaded: ghost.loaded, count: ghost.count, walked: ghost.walked() }),
+    ghostSave: () => ghost.save(),
+
+    headlamp: () => ({
+      found: lampState.found, on: lampState.on, mix: lampState.mix,
+      intensity: lampLight.intensity, ambient: bounce.intensity,
+    }),
 
     info: () => renderer.info.render,
   };

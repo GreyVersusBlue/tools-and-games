@@ -74,6 +74,16 @@ const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
+// Seed a previous walk before the page ever runs: 100 steps the length of the
+// trail, every gap a distinctive 0.77 s, so the ghost group below can prove
+// the phantom steps replayed THIS rhythm and not an invented one.
+await page.addInitScript(() => {
+  localStorage.setItem('blue-hour-last-walk', JSON.stringify({
+    v: 1,
+    steps: Array.from({ length: 100 }, (_, i) => [i / 100, 0.77]),
+  }));
+});
+
 await page.goto(URL, { waitUntil: 'load' });
 await page.waitForSelector('#scene');
 await page.waitForFunction(() => !!window.__bh, null, { timeout: 30000 });
@@ -225,6 +235,11 @@ const cairn = await page.evaluate(async () => {
   return __bh.cairns();
 });
 ok('standing on a cairn counts it', cairn.found.length === 1, `found ${cairn.found.length} of ${cairn.total}`);
+// Grant 2: the chip reads the keeper's name off the cairn — the seven-for-
+// eight gap made countable without a word of explanation.
+const chipText = await page.evaluate(() => document.getElementById('cairn-chip').textContent);
+const firstKeeper = await page.evaluate(() => __bh.layout().cairns[0].keeper);
+ok('and the chip names its keeper', chipText.includes(firstKeeper), JSON.stringify(chipText));
 
 const allCairns = await page.evaluate(async () => {
   const L = __bh.layout();
@@ -238,6 +253,47 @@ const allCairns = await page.evaluate(async () => {
 ok('all seven are reachable and counted', allCairns.c.found.length === allCairns.c.total,
   `${allCairns.c.found.length} of ${allCairns.c.total}`);
 ok('and the last one says so', /all seven/.test(allCairns.chip), JSON.stringify(allCairns.chip));
+
+group('the logbook opens under a held key');
+// Grant 1: the piece's one verb. Stand over a page, hold E, read; let go and
+// it's back on the ground. No state survives the release — that's the grant's
+// whole shape and this group holds every edge of it.
+const nearPage = await page.evaluate(async () => {
+  const pg = __bh.layout().pages[0];
+  __bh.teleport(pg.x, pg.z);
+  await new Promise(r => setTimeout(r, 300));
+  return { lb: __bh.logbook(), chip: document.getElementById('page-chip').className };
+});
+ok('standing over a page is noticed', nearPage.lb.near === 0, JSON.stringify(nearPage.lb));
+ok('and the chip offers the verb', /show/.test(nearPage.chip));
+
+await page.keyboard.down('KeyE');
+await wait(400);
+const opened = await page.evaluate(() => ({
+  lb: __bh.logbook(),
+  shown: document.getElementById('page-overlay').classList.contains('show'),
+  text: document.getElementById('page-overlay-body').textContent,
+}));
+ok('holding E brings the page up', opened.shown && opened.lb.open === 0);
+ok('with the keeper\'s entries on it', /Hollis/.test(opened.text) && /winch rope/.test(opened.text));
+await page.screenshot({ path: path.join(SHOTS, 'logbook.png') });
+
+await page.keyboard.up('KeyE');
+await wait(400);
+const closed = await page.evaluate(() => ({
+  lb: __bh.logbook(),
+  shown: document.getElementById('page-overlay').classList.contains('show'),
+}));
+ok('letting go puts it back down', !closed.shown && closed.lb.open === -1);
+
+const awayFromPage = await page.evaluate(async () => {
+  __bh.teleport(0, 145);
+  await new Promise(r => setTimeout(r, 300));
+  return { lb: __bh.logbook(), chip: document.getElementById('page-chip').className };
+});
+ok('walking off forgets the page entirely', awayFromPage.lb.near === -1 && !/show/.test(awayFromPage.chip));
+ok('every page is placed and named', await page.evaluate(() =>
+  __bh.layout().pages.length === 10 && __bh.layout().pages.every(p => p.keeper && p.entries.length)));
 
 group('the woods are not honest');
 // Every dread beat, forced, with no page error and the visible ones actually
@@ -260,6 +316,285 @@ ok('the shape is staged and on a clock', bear.active && bear.life > 0, `life ${b
 
 const silence = await page.evaluate(() => { __bh.fireDread('silence'); return __bh.dread.birdsSilent; });
 ok('the birds go quiet on cue', silence === true);
+
+group('everything here is trying to leave');
+// Ladder 1: the shape's head points downhill however it is staged, and the
+// phantom steps go out through the real just-stopped path with a downhill pan
+// and a falling plan.
+const bearHead = await page.evaluate(async () => {
+  const dots = [];
+  for (const [x, z] of [[0, 120], [60, 60], [-60, 20]]) {
+    __bh.teleport(x, z);
+    await new Promise(r => setTimeout(r, 150));
+    __bh.fireDread('bear');
+    dots.push(__bh.dread.bearInfo().headDownhillDot);
+  }
+  return dots;
+});
+ok('the shape faces down the mountain wherever it stands',
+  bearHead.every(d => d > 0.05), bearHead.map(d => d.toFixed(2)).join(', '));
+
+await page.evaluate(() => { __bh.teleport(0, 130); __bh.fireDread('phantom'); });
+await page.keyboard.down('KeyW');
+await wait(800);
+await page.evaluate(() => { __bh.dread._movingFor = 4; });   // skip the slow-motion wait
+await page.keyboard.up('KeyW');
+await wait(700);
+const phantom = await page.evaluate(() => __bh.lastPhantom());
+ok('stopping fires the armed phantom steps', !!phantom && phantom.plan.length >= 2,
+  phantom ? `${phantom.plan.length} steps` : 'never fired');
+ok('their pitch falls step over step',
+  phantom && phantom.plan.every((s, i) => i === 0 || s.rate < phantom.plan[i - 1].rate));
+ok('and they are panned, not centred', phantom && typeof phantom.pan === 'number',
+  phantom ? `pan ${phantom.pan.toFixed(2)}` : '');
+
+group('the mountain remembers your last walk');
+// Grant 3: the record seeded before page load is the "previous visit"; the
+// phantom steps that just fired must have walked in its rhythm. See ghost.js
+// and the prompt-file amendment — this is not a save, and no UI may ever
+// surface any of it.
+const ghostState = await page.evaluate(() => __bh.ghost());
+ok('the previous walk is waiting when the page opens', ghostState.loaded && ghostState.count === 100,
+  `${ghostState.count} remembered steps`);
+const gaps = phantom && phantom.plan.slice(1).map((s, i) => s.at - phantom.plan[i].at);
+ok('the steps that are not yours are your own, from last time',
+  phantom && phantom.intervals && gaps.every(g => Math.abs(g - 0.77) < 1e-6),
+  gaps ? gaps.map(g => g.toFixed(2)).join(', ') : 'no phantom fired');
+
+await page.keyboard.down('KeyW');
+await wait(7000);          // world time runs ~10x slow here; ~3 footsteps' worth
+await page.keyboard.up('KeyW');
+const recording = await page.evaluate(() => ({ g: __bh.ghost(), saved: __bh.ghostSave() }));
+ok('and this walk is being recorded for the next one', recording.g.walked > 0,
+  `${recording.g.walked} steps so far`);
+ok('too short a walk refuses to become a ghost', recording.saved === false);
+
+group('the director spends beats off-gaze');
+// Ladder 2: a yaw-dwell histogram decides which side a visual beat lands on,
+// and a stared-at treeline never fires. The suite paints stares straight into
+// the histogram — real dwell accrues at a tenth speed under swiftshader, and
+// the arithmetic being tested is the same either way. One real-accrual check
+// keeps the painting honest.
+const accrues = await page.evaluate(async () => {
+  const d = __bh.dread;
+  d._gaze.fill(0);
+  __bh.face(1.0, 0);
+  await new Promise(r => setTimeout(r, 2000));
+  return d.dwellAt(1.0);
+});
+ok('watching a direction is remembered', accrues > 0, `${accrues.toFixed(2)} s dwell`);
+
+const offGaze = await page.evaluate(async () => {
+  const d = __bh.dread;
+  const yaw = 1.0;
+  __bh.teleport(0, 100);
+  __bh.face(yaw, 0);
+  await new Promise(r => setTimeout(r, 200));
+  const results = [];
+  for (let i = 0; i < 5; i++) {
+    d._gaze.fill(0);
+    // stare down the LEFT candidate arc (world yaw + 25°..80°)
+    for (let a = yaw + 0.44; a < yaw + 1.4; a += 0.1) d._gaze[d.bucketOf(a)] = 10;
+    const fired = __bh.fireDread('eyes');
+    const e = d.eyesInfo();
+    const p = __bh.pos();
+    // the piece's yaw convention for the placement direction
+    const eyeYaw = Math.atan2(-(e.x - p.x), -(e.z - p.z));
+    let diff = eyeYaw - yaw;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    while (diff < -Math.PI) diff += 2 * Math.PI;
+    results.push({ fired, diff });
+  }
+  return results;
+});
+ok('a beat lands on the unwatched side, every time',
+  offGaze.every(r => r.fired && r.diff < 0),
+  offGaze.map(r => (r.diff * 180 / Math.PI).toFixed(0) + '°').join(', '));
+
+const stared = await page.evaluate(async () => {
+  const d = __bh.dread;
+  const yaw = 1.0;
+  __bh.face(yaw, 0);
+  d._gaze.fill(0);
+  // stare down BOTH candidate arcs
+  for (let a = yaw - 1.4; a < yaw + 1.4; a += 0.1) d._gaze[d.bucketOf(a)] = 10;
+  const before = d._lastBeat;
+  const fired = __bh.fireDread('eyes');
+  return { fired, lastBeat: d._lastBeat, before };
+});
+ok('a stared-at treeline never fires', stared.fired === false);
+ok('and a declined beat is not remembered as the last one', stared.lastBeat === stared.before);
+
+group('the small wrongnesses');
+// Ladder 3-5: the dead radio at the cabin, the bootprints under the fog, the
+// steam at the cab glass. None of them is a beat you could prove happened.
+const radio = await page.evaluate(async () => {
+  const L = __bh.layout();
+  __bh.teleport(L.cabin.x + 6, L.cabin.z + 6);
+  await new Promise(r => setTimeout(r, 200));
+  const fired = __bh.fireDread('radio');
+  return { fired, last: __bh.lastRadio() };
+});
+ok('the dead radio finds a carrier', radio.fired === 'radio' && !!radio.last,
+  radio.last ? `pan ${radio.last.pan.toFixed(2)}` : '');
+ok('and nothing answers at the cabin', radio.last && radio.last.echoGain === 0);
+
+const prints = await page.evaluate(async () => {
+  // thickest fog the cycle reaches, then the clearest
+  let thick = { t: 0, f: 0 }, clear = { t: 0, f: 1 };
+  for (let t = 0; t < 700; t += 5) {
+    __bh.setWeatherT(t); const f = __bh.fogT();
+    if (f > thick.f) thick = { t, f };
+    if (f < clear.f) clear = { t, f };
+  }
+  __bh.setWeatherT(thick.t);
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const inFog = __bh.bootprints();
+  __bh.setWeatherT(clear.t);
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const inClear = __bh.bootprints();
+  return { inFog, inClear };
+});
+ok('the bootprints surface in thick fog', prints.inFog.opacity > 0.3,
+  `opacity ${prints.inFog.opacity.toFixed(2)}, ${prints.inFog.prints} prints`);
+ok('and are gone in clear air — deniable, like everything here', prints.inClear.opacity < 0.05,
+  `opacity ${prints.inClear.opacity.toFixed(2)}`);
+
+const steamAt = await page.evaluate(async () => {
+  const L = __bh.layout();
+  __bh.teleport(L.bench.x, L.bench.z);
+  await new Promise(r => setTimeout(r, 200));
+  const s = __bh.steam();
+  return { d: Math.hypot(s.x - L.tower.x, s.z - L.tower.z), y: s.y, benchY: __bh.pos().y };
+});
+ok('the steam rises at the cab glass', steamAt.d > 1.0 && steamAt.d < 2.0,
+  `${steamAt.d.toFixed(2)} m out from the tower axis`);
+ok('at cab height, not on the ground', steamAt.y - steamAt.benchY > 6,
+  `y ${steamAt.y.toFixed(1)}, walker eye ${steamAt.benchY.toFixed(1)}`);
+
+// The check the whole billboard family actually needs: PIXELS. This session
+// found the mist and the breath had never rendered a single frame — their
+// billboard winding faces away from the camera and FrontSide culled them,
+// with zero page errors and zero warnings. Geometry assertions can't see
+// that; only the drawing buffer can. Stage every steam quad, stand at the
+// bench facing the cab, and demand the wisp be measurably brighter than the
+// dark cab face behind it.
+const steamPixels = await page.evaluate(() => new Promise(res => {
+  const L = __bh.layout();
+  __bh.teleport(L.bench.x, L.bench.z);
+  __bh.face(Math.atan2(-(L.tower.x - L.bench.x), -(L.tower.z - L.bench.z)), 0.28);
+  __bh.steamBurst();
+  setTimeout(() => requestAnimationFrame(() => {
+    const src = document.getElementById('scene');
+    const gl = src.getContext('webgl2') || src.getContext('webgl');
+    // A tight box on the cab face where the wisp rises. The bench view is
+    // deterministic, so the framing is too.
+    const x0 = Math.floor(src.width * 0.45), w = Math.floor(src.width * 0.10);
+    const yTop = Math.floor(src.height * 0.14), h = Math.floor(src.height * 0.15);
+    const buf = new Uint8Array(w * h * 4);
+    gl.readPixels(x0, src.height - (yTop + h), w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    const lums = [];
+    for (let i = 0; i < buf.length; i += 4) {
+      lums.push(0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2]);
+    }
+    lums.sort((a, b) => a - b);
+    res({
+      median: lums[lums.length >> 1],
+      max: lums[lums.length - 1],
+      alpha: __bh.steam().alpha0,
+    });
+  }), 1400);
+}));
+ok('and the steam is pixels, not just geometry', steamPixels.max > steamPixels.median + 18,
+  `max ${steamPixels.max.toFixed(0)} vs median ${steamPixels.median.toFixed(0)}, quad alpha ${steamPixels.alpha.toFixed(2)}`);
+
+group('above the fog line the beats change in kind');
+// Ladder 7: the transmission exists ONLY at altitude — no low-altitude fog
+// can reach its gate — and it answers itself: a carrier burst, then the same
+// burst back fainter and delayed. Your own static, from nowhere.
+const gates = await page.evaluate(async () => {
+  __bh.teleport(0, 140);
+  await new Promise(r => setTimeout(r, 200));
+  const below = __bh.dreadCandidates(1.0);       // thickest possible fog, low down
+  const L = __bh.layout();
+  __bh.teleport(L.bench.x, L.bench.z);
+  await new Promise(r => setTimeout(r, 200));
+  const above = __bh.dreadCandidates(0.0);       // clearest fog, high up
+  return { below, above };
+});
+ok('no amount of fog reaches the transmission from below', !gates.below.includes('transmission'),
+  gates.below.join(', '));
+ok('and above the fog line it is simply there', gates.above.includes('transmission'),
+  gates.above.join(', '));
+
+const transmission = await page.evaluate(() => {
+  const fired = __bh.fireDread('transmission');
+  return { fired, last: __bh.lastRadio() };
+});
+ok('the carrier opens at the summit', transmission.fired === 'transmission' && !!transmission.last);
+ok('answered by nothing but your own delayed static', transmission.last.echoGain === 0.5,
+  `echo ${transmission.last.echoGain}`);
+
+group('the headlamp');
+// Ladder 6: findable at the cabin, one toggle, and honest — the cone is a
+// real light and the world outside it genuinely darkens while it burns.
+const beforeFound = await page.evaluate(async () => {
+  __bh.teleport(0, 140);           // nowhere near the cabin
+  await new Promise(r => setTimeout(r, 200));
+  return __bh.headlamp();
+});
+await page.keyboard.press('KeyF');
+await wait(300);
+const fNoLamp = await page.evaluate(() => __bh.headlamp());
+ok('F does nothing before the lamp is found', !beforeFound.found && !fNoLamp.on);
+
+const pickup = await page.evaluate(async () => {
+  const h = __bh.layout().headlamp;
+  __bh.teleport(h.x, h.z);
+  await new Promise(r => setTimeout(r, 400));
+  return { lamp: __bh.headlamp(), chip: document.getElementById('cairn-chip').textContent };
+});
+ok('walking to the cabin step finds it', pickup.lamp.found, JSON.stringify(pickup.chip));
+
+const ambientOff = await page.evaluate(() => __bh.headlamp().ambient);
+await page.keyboard.press('KeyF');
+await wait(2800);       // the mix eases over ~5 world frames; give slow GL room
+const lit = await page.evaluate(() => ({ lamp: __bh.headlamp(), music: __bh.music() }));
+ok('one press and it burns', lit.lamp.on && lit.lamp.intensity > 20,
+  `intensity ${lit.lamp.intensity.toFixed(0)}`);
+ok('and the world outside the cone genuinely darkens', lit.lamp.ambient < ambientOff * 0.75,
+  `ambient ${ambientOff.toFixed(2)} down to ${lit.lamp.ambient.toFixed(2)}`);
+ok('the drone carries a barely-there partial while it burns', lit.music.voices.d5 > 0,
+  `d5 ${lit.music.voices.d5}`);
+
+// The dread director reads the lamp: eyes land just past the cone's edge.
+const litEyes = await page.evaluate(async () => {
+  const d = __bh.dread;
+  d._gaze.fill(0);
+  __bh.face(0.5, 0);
+  await new Promise(r => setTimeout(r, 200));
+  const angles = [];
+  for (let i = 0; i < 5; i++) {
+    d._gaze.fill(0);
+    __bh.fireDread('eyes');
+    const e = d.eyesInfo();
+    const p = __bh.pos();
+    let diff = Math.atan2(-(e.x - p.x), -(e.z - p.z)) - 0.5;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    while (diff < -Math.PI) diff += 2 * Math.PI;
+    angles.push(Math.abs(diff));
+  }
+  return angles;
+});
+ok('beats hug the darkness just past the cone while it burns',
+  litEyes.every(a => a > 0.35 && a < 0.85),
+  litEyes.map(a => (a * 180 / Math.PI).toFixed(0) + '°').join(', '));
+
+await page.keyboard.press('KeyF');
+await wait(800);
+const dark = await page.evaluate(() => ({ lamp: __bh.headlamp(), music: __bh.music() }));
+ok('a second press puts it out', !dark.lamp.on && dark.music.voices.d5 === 0);
+await page.screenshot({ path: path.join(SHOTS, 'headlamp.png') });
 
 group('the frame rate here');
 // Every timing number below is hostage to this. Measure it rather than assume.
