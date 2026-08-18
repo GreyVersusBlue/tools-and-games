@@ -1,0 +1,29 @@
+{#- "On this page" contents. Built at render time from the page's own HTML
+    (see the tocData filter in eleventy.config.mjs) — no client-side JS needed
+    for the list itself. Ships closed so it never buries the page on a phone;
+    the script below opens it at desktop widths, where there is room. -#}
+<details class="toc" data-pagefind-ignore>
+  <summary>On this page</summary>
+  <nav aria-label="On this page">
+    <ol class="toc__list">
+      {%- for group in tocData.groups %}
+      <li>
+        <a href="#{{ group.id }}">{{ group.text | safe }}</a>
+        {%- if group.children.length %}
+        <ol class="toc__sub{% if group.wide %} toc__sub--wide{% endif %}">
+          {%- for child in group.children %}
+          <li><a href="#{{ child.id }}">{{ child.text | safe }}</a></li>
+          {%- endfor %}
+        </ol>
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ol>
+  </nav>
+</details>
+<script>
+  (function () {
+    var d = document.currentScript.previousElementSibling;
+    if (d && window.matchMedia("(min-width: 52rem)").matches) d.open = true;
+  })();
+</script>

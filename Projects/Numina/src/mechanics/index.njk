@@ -13,7 +13,7 @@ section: Mechanics
     {% include "partials/ornaments/divider.njk" %}
     <div class="card-grid">
       {% for pg in nav.sections[1].pages %}
-      {% set entry = collections.all | selectattr("url", "equalto", pg.url) | first %}
+      {% set entry = collections.all | pageByUrl(pg.url) %}
       <a class="card" href="{{ pg.url }}">
         <h2>{{ pg.title }}</h2>
         {% if entry %}<p>{{ entry.data.summary }}</p>{% endif %}

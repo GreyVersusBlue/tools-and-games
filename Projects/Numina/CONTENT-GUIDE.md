@@ -33,8 +33,16 @@ title: Faith & Religion
 order: 5            # position in the section sidebar
 summary: One-sentence teaser shown on section landing pages.
 printable: true     # only on mechanics pages meant for the print packet
+toc: false          # optional; force the "On this page" contents off or on
 ---
 ```
+
+Long pages get an **"On this page"** contents block automatically: it appears
+when the rendered page has at least 1,200 words *and* at least four `##`/`###`
+headings, which covers every ported rules chapter and nation while leaving
+stubs and short pages alone. Set `toc: true` to force it onto a shorter page, or
+`toc: false` to suppress it. Nothing else is needed — the list is generated from
+the page's own headings at build time.
 
 **Nation page** (`src/lore/nations/*.md`):
 

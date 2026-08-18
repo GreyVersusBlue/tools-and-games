@@ -57,8 +57,16 @@ const builtHtml = GENERATED.filter((g) => existsSync(join(root, g))).flatMap((g)
 });
 let badLinks = [];
 let badHosts = new Set();
+let badFragments = [];
 for (const file of builtHtml) {
   const html = readFileSync(file, "utf8");
+  // Same-page fragments (TOC entries, heading permalinks) are skipped by the
+  // path check below — the pattern needs at least one character before "#" —
+  // so they are validated here against the ids the page actually emits.
+  const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
+  for (const m of html.matchAll(/href="#([^"]+)"/g)) {
+    if (!ids.has(m[1])) badFragments.push(`${relative(root, file)} → #${m[1]}`);
+  }
   for (const m of html.matchAll(/(?:href|src)="([^"#?]+)[^"]*"/g)) {
     const url = m[1];
     const offsite = url.match(/^https?:\/\/([^/]+)/);
@@ -77,6 +85,7 @@ for (const file of builtHtml) {
 }
 ok(badLinks.length === 0, `all internal links resolve${badLinks.length ? `:\n      ${badLinks.slice(0, 10).join("\n      ")}` : ""}`);
 ok(badHosts.size === 0, `no unexpected offsite hosts in HTML${badHosts.size ? `: ${[...badHosts].join(", ")}` : ""}`);
+ok(badFragments.length === 0, `all same-page #fragments resolve to an id${badFragments.length ? `:\n      ${badFragments.slice(0, 10).join("\n      ")}` : ""}`);
 
 const cssJs = walk(join(root, "css"), () => true).concat(walk(join(root, "js"), () => true));
 const offsiteCssJs = cssJs.filter((f) => /https?:\/\//.test(readFileSync(f, "utf8")));

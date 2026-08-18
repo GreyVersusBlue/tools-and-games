@@ -6,6 +6,10 @@ layout: layouts/base.njk
   <main data-pagefind-body data-pagefind-meta="section:{{ section }}">
     <p class="crumb"><a href="{{ '/lore/' if section == 'Lore' else '/mechanics/' }}">{{ section }}</a></p>
     <h1>{{ title }}</h1>
+    {%- set tocData = content | tocData %}
+    {% if toc != false and (toc == true or tocData.qualifies) %}
+      {% include "partials/toc.njk" %}
+    {% endif %}
     {% if printable %}
     <p class="print-action"><button type="button" onclick="window.print()">Print this page</button></p>
     {% endif %}
