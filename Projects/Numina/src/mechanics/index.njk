@@ -1,0 +1,24 @@
+---
+layout: layouts/base.njk
+title: Mechanics
+section: Mechanics
+eleventyExcludeFromCollections: true
+---
+<div class="shell">
+  {% include "partials/sidebar.njk" %}
+  <main>
+    <h1>Mechanics</h1>
+    <p class="lede">How Numina is played: the Accelerant rules the game is built on, the etiquette
+    and safety measures that keep it welcoming, and everything you need to build and grow a character.</p>
+    <p>New to LARP or to Numina? <a href="/mechanics/new-players/">Start here.</a></p>
+    <div class="card-grid">
+      {% for pg in nav.sections[1].pages %}
+      {% set entry = collections.all | selectattr("url", "equalto", pg.url) | first %}
+      <a class="card" href="{{ pg.url }}">
+        <h2>{{ pg.title }}</h2>
+        {% if entry %}<p>{{ entry.data.summary }}</p>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </main>
+</div>

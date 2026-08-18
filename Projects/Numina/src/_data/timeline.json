@@ -1,0 +1,119 @@
+[
+  {
+    "sort": -1450,
+    "date": "1450 AF",
+    "era": "Before the Age of Works",
+    "title": "Fate is destroyed",
+    "summary": "Thinking mortals become purposed and the world is thrown into imbalance."
+  },
+  {
+    "sort": -1400,
+    "date": "1400 AF",
+    "era": "Before the Age of Works",
+    "title": "Garioch strikes Rues from the world",
+    "summary": "Rues is isolated behind its barrier and the Lattice is broken.",
+    "nations": ["rues"],
+    "href": "/lore/nations/rues/"
+  },
+  {
+    "sort": -182,
+    "date": "182 AF",
+    "era": "Before the Age of Works",
+    "title": "The Night of Guardian's Glory",
+    "summary": "The renegade Zenith Ravvin makes a bid for divinity and is prevented."
+  },
+  {
+    "sort": -175,
+    "date": "175 AF",
+    "era": "Before the Age of Works",
+    "title": "The Great Rebalancing",
+    "summary": "Death, Magic, and Purpose are brought into balance and protected from Corruption.",
+    "nations": ["rues"],
+    "href": "/lore/nations/rues/"
+  },
+  {
+    "sort": -133,
+    "date": "133 AF",
+    "era": "Before the Age of Works",
+    "title": "Lattice travel is rediscovered",
+    "summary": "Threshold travel begins reconnecting the isolated nations of Aeledd.",
+    "href": "/lore/travel-commerce/"
+  },
+  {
+    "sort": 0,
+    "date": "0 AW",
+    "era": "Age of Works",
+    "title": "The Desuetude Pronouncement",
+    "summary": "Large churches are disbanded in favor of good-works based convocations.",
+    "href": "/lore/religion/"
+  },
+  {
+    "sort": 62,
+    "date": "62 AW",
+    "era": "Age of Works",
+    "title": "Nira's mark revealed in Spyndelmere",
+    "summary": "Regent Berkeley Evers reveals Nira's mark and takes his seat on the Compass Rose.",
+    "nations": ["spyndelmere"],
+    "href": "/lore/nations/spyndelmere/"
+  },
+  {
+    "sort": 81,
+    "date": "81 AW",
+    "era": "Age of Works",
+    "title": "An Empress crowned on Rues",
+    "summary": "Evenia Mercurio Pentratheron is crowned Empress of the Mecurian Empire.",
+    "nations": ["rues"],
+    "href": "/lore/nations/rues/"
+  },
+  {
+    "sort": 111,
+    "date": "111 AW",
+    "era": "Age of Works",
+    "title": "A Diamondback skin is found in T'barris",
+    "summary": "The discovery leads to the elevation of King Y'vain Pelle.",
+    "nations": ["tbarris"],
+    "href": "/lore/nations/tbarris/"
+  },
+  {
+    "sort": 112,
+    "date": "112 AW",
+    "era": "Age of Works",
+    "title": "Valarmore is destroyed",
+    "summary": "The Vargoth invasion claims the city of Valarmore."
+  },
+  {
+    "sort": 114,
+    "date": "114 AW",
+    "era": "Age of Works",
+    "title": "Pestilence wracks Konnigstrava",
+    "summary": "Disease sweeps the already-struggling kingdom.",
+    "nations": ["konnigstrava"],
+    "href": "/lore/nations/konnigstrava/"
+  },
+  {
+    "sort": 116,
+    "date": "116–117 AW",
+    "era": "Age of Works",
+    "title": "Twin floods sweep Aluvair",
+    "summary": "Two major floods in rapid succession reshape the alluvial plain.",
+    "nations": ["aluvair"],
+    "href": "/lore/nations/aluvair/"
+  },
+  {
+    "sort": 123,
+    "date": "123 AW",
+    "era": "Age of Works",
+    "title": "The Farthest Star conference is attacked",
+    "summary": "Called at Fortune's Bend to discuss the Vargoth threat, the conference is attacked by the Vargoth. The current campaign begins.",
+    "href": "/lore/world/"
+  },
+  {
+    "sort": 124,
+    "date": "124 AW",
+    "era": "Age of Works",
+    "title": "The Vargoth Empire proclaims itself — and Eltiel falls",
+    "summary": "The Vargoth seek diplomatic relations as a nation; Eltiel falls suddenly without explanation and mists blanket what was once the Skyways.",
+    "nations": ["mists-of-eltiel"],
+    "href": "/lore/nations/mists-of-eltiel/"
+  }
+]

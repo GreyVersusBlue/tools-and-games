@@ -1,0 +1,28 @@
+/* Print packet styling — linked with media="print" on every page. */
+@page { margin: 2cm; }
+
+.site-header, .sidebar, .site-footer, .print-action,
+.theme-toggle, .header-search, .mobile-nav, .world-map, .crumb {
+  display: none !important;
+}
+body {
+  background: #fff !important;
+  color: #000 !important;
+  font-size: 12pt;
+  line-height: 1.5;
+}
+.shell { display: block; max-width: none; padding: 0; }
+main { max-width: none; }
+h1, h2, h3 { color: #000; }
+main h1::after {
+  content: " — Numina Reference";
+  font-size: 0.5em;
+  font-weight: normal;
+  color: #444;
+}
+a { color: #000; text-decoration: none; }
+main a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.85em; }
+blockquote, table, li, dl { break-inside: avoid; }
+.printable main h2 { break-before: page; }
+.printable main h2:first-of-type { break-before: avoid; }
+.infobox { float: none; border: 1px solid #999; box-shadow: none; }
