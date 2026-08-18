@@ -1,0 +1,17 @@
+---
+layout: layouts/base.njk
+---
+<div class="shell">
+  {% include "partials/sidebar.njk" %}
+  <main data-pagefind-body data-pagefind-meta="section:{{ section }}">
+    <p class="crumb"><a href="{{ '/lore/' if section == 'Lore' else '/mechanics/' }}">{{ section }}</a></p>
+    <h1>{{ title }}</h1>
+    {% if printable %}
+    <p class="print-action"><button type="button" onclick="window.print()">Print this page</button></p>
+    {% endif %}
+    {{ content | safe }}
+    {% if showTimeline %}
+      {% include "partials/timeline.njk" %}
+    {% endif %}
+  </main>
+</div>

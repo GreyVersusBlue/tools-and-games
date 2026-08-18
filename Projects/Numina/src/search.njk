@@ -1,0 +1,26 @@
+---
+layout: layouts/base.njk
+title: Search
+eleventyExcludeFromCollections: true
+---
+<div class="shell shell--single">
+  <main>
+    <h1>Search</h1>
+    <link rel="stylesheet" href="/pagefind/pagefind-ui.css">
+    <div id="search"></div>
+    <noscript><p>Search needs JavaScript. Try the <a href="/lore/">Lore</a> and <a href="/mechanics/">Mechanics</a> indexes instead.</p></noscript>
+    <script src="/pagefind/pagefind-ui.js"></script>
+    <script>
+      window.addEventListener("DOMContentLoaded", function () {
+        var ui = new PagefindUI({
+          element: "#search",
+          bundlePath: "../pagefind/",
+          showSubResults: true,
+          showImages: false
+        });
+        var q = new URLSearchParams(location.search).get("q");
+        if (q) ui.triggerSearch(q);
+      });
+    </script>
+  </main>
+</div>

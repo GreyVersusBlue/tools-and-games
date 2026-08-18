@@ -1,0 +1,13 @@
+---
+layout: layouts/page.njk
+---
+<aside class="infobox" style="--nation-color: {{ color }}">
+  <p class="infobox__flag" aria-hidden="true"></p>
+  <dl>
+    {% if capital %}<dt>Capital</dt><dd>{{ capital }}</dd>{% endif %}
+    {% if demonym %}<dt>Demonym</dt><dd>{{ demonym }}</dd>{% endif %}
+    <dt>See also</dt><dd><a href="/lore/nations/">All nations</a></dd>
+  </dl>
+</aside>
+<p class="lede">{{ summary }}</p>
+{{ content | safe }}

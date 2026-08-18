@@ -16,6 +16,8 @@ export default function (eleventyConfig) {
 
   // Converted book content is plain markdown — no template syntax inside .md files.
   eleventyConfig.setTemplateFormats(["md", "njk", "html"]);
+  // Passthrough-only docs, not pages.
+  eleventyConfig.ignores.add("src/fonts/README.md");
   eleventyConfig.amendLibrary("md", () => {});
   eleventyConfig.setFrontMatterParsingOptions({ excerpt: false });
 

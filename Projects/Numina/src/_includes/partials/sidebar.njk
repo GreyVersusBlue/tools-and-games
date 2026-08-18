@@ -1,0 +1,30 @@
+{% set currentSection = nav.sections[0] if page.url.startsWith("/lore/") else nav.sections[1] %}
+<nav class="sidebar" aria-label="{{ currentSection.title }} pages">
+  <details class="sidebar__disclosure" open>
+    <summary>{{ currentSection.title }}</summary>
+    <ol>
+      {% for pg in currentSection.pages %}
+      <li>
+        <a href="{{ pg.url }}"{% if page.url == pg.url %} aria-current="page"{% endif %}>{{ pg.title }}</a>
+        {% if pg.nations %}
+        <details{% if page.url.startsWith("/lore/nations/") and page.url != "/lore/nations/" %} open{% endif %}>
+          <summary>All nations</summary>
+          <ol class="sidebar__sub">
+            {% for n in collections.nations %}
+            <li><a href="{{ n.url }}"{% if page.url == n.url %} aria-current="page"{% endif %}>{{ n.data.name }}</a></li>
+            {% endfor %}
+          </ol>
+        </details>
+        {% endif %}
+        {% if pg.children %}
+        <ol class="sidebar__sub">
+          {% for c in pg.children %}
+          <li><a href="{{ c.url }}"{% if page.url == c.url %} aria-current="page"{% endif %}>{{ c.title }}</a></li>
+          {% endfor %}
+        </ol>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </details>
+</nav>

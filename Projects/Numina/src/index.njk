@@ -1,0 +1,35 @@
+---
+layout: layouts/base.njk
+eleventyExcludeFromCollections: true
+---
+<main class="home">
+  <section class="hero">
+    <p class="hero__kicker">Numina III · The Age of Works</p>
+    <h1>{{ site.title }}</h1>
+    <p class="hero__tagline">{{ site.tagline }} — where Fortune's Bend has appeared once more, and heroes gather to shape history.</p>
+    <p class="hero__actions">
+      <a class="button" href="/mechanics/new-players/">New player? Start here</a>
+      <a class="button button--ghost" href="/lore/world/">Enter the world</a>
+    </p>
+  </section>
+
+  <section class="home-cards">
+    <a class="home-card" href="/lore/">
+      <h2>Lore</h2>
+      <p>The world of Aeledd — its sixteen nations, peoples, faiths, history, and the realms beyond.</p>
+    </a>
+    <a class="home-card" href="/mechanics/">
+      <h2>Mechanics</h2>
+      <p>The rules of the game — safety and etiquette, character building, skills, and crafting.</p>
+    </a>
+    <a class="home-card" href="/search/">
+      <h2>Search</h2>
+      <p>Find any rule, nation, or term across the whole site.</p>
+    </a>
+  </section>
+
+  <section class="home-map">
+    {% set mapClass = "world-map--home" %}
+    {% include "partials/world-map.njk" %}
+  </section>
+</main>

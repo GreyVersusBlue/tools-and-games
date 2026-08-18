@@ -1,0 +1,17 @@
+{% set events = timeline | sort(false, false, "sort") %}
+<ol class="timeline">
+  {% for ev in events %}
+  {% if loop.first or ev.era != events[loop.index0 - 1].era %}
+  <li class="timeline__era" aria-hidden="true"><span>{{ ev.era }}</span></li>
+  {% endif %}
+  <li class="timeline__event{% if ev.nations %} has-nations{% endif %}"
+      {%- if ev.nations %} style="--nation-color: {% for n in collections.nations %}{% if n.fileSlug == ev.nations[0] %}{{ n.data.color }}{% endif %}{% endfor %}"{% endif %}>
+    <span class="timeline__date">{{ ev.date }}</span>
+    <div class="timeline__body">
+      <h3>{{ ev.title }}</h3>
+      <p>{{ ev.summary }}
+        {%- if ev.href %} <a class="timeline__more" href="{{ ev.href }}">Read more</a>{% endif %}</p>
+    </div>
+  </li>
+  {% endfor %}
+</ol>

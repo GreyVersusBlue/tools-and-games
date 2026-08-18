@@ -1,0 +1,25 @@
+---
+layout: layouts/base.njk
+title: Nations & Cultures
+section: Lore
+summary: The sixteen nations of Aeledd, from flood-carved Aluvair to the mist-shrouded remains of Eltiel.
+eleventyExcludeFromCollections: true
+---
+<div class="shell">
+  {% include "partials/sidebar.njk" %}
+  <main data-pagefind-body data-pagefind-meta="section:Lore">
+    <p class="crumb"><a href="/lore/">Lore</a></p>
+    <h1>Nations &amp; Cultures</h1>
+    <p class="lede">Sixteen nations claim the known parts of Aeledd — though much of the world
+    remains wilderness between them. Select a nation on the map or browse the cards below.</p>
+    {% include "partials/world-map.njk" %}
+    <div class="card-grid card-grid--nations">
+      {% for n in collections.nations %}
+      <a class="card card--nation" href="{{ n.url }}" style="--nation-color: {{ n.data.color }}">
+        <h2>{{ n.data.name }}</h2>
+        <p>{{ n.data.summary }}</p>
+      </a>
+      {% endfor %}
+    </div>
+  </main>
+</div>
