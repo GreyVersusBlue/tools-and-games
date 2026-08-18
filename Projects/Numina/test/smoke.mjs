@@ -139,6 +139,31 @@ if (existsSync(sitemapPath)) {
   ok(existsSync(robots) && readFileSync(robots, "utf8").includes(`${ORIGIN}${PREFIX}sitemap.xml`), "repo-root robots.txt points at the sitemap");
 }
 
+// 7. Navigation drift: _data/nav.json duplicates page order and titles by hand,
+// so a page added under src/lore or src/mechanics without a nav.json entry
+// builds and is linkable but never appears in any sidebar.
+console.log("# navigation");
+const nav = JSON.parse(readFileSync(join(root, "src", "_data", "nav.json"), "utf8"));
+const navUrls = new Set();
+for (const section of nav.sections) {
+  navUrls.add(section.url);
+  for (const pg of section.pages) {
+    navUrls.add(pg.url);
+    for (const child of pg.children ?? []) navUrls.add(child.url);
+  }
+}
+// Nation pages are exempt: the sidebar generates them from the nations
+// collection, so they cannot drift.
+const contentUrls = builtHtml
+  .filter((f) => /^(lore|mechanics)[\\/]/.test(relative(root, f)))
+  .map((f) => "/" + relative(root, f).replace(/\\/g, "/").replace(/index\.html$/, ""))
+  .filter((u) => !/^\/lore\/nations\/./.test(u));
+const orphaned = contentUrls.filter((u) => !navUrls.has(u));
+ok(
+  orphaned.length === 0,
+  `every built lore/mechanics page is in nav.json (${contentUrls.length})${orphaned.length ? `, missing: ${orphaned.join(", ")}` : ""}`
+);
+
 // 7. Output hygiene: clean manifest covers every generated top-level entry.
 console.log("# hygiene");
 const expectedTopLevel = new Set([

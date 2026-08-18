@@ -18,7 +18,6 @@ export default function (eleventyConfig) {
   eleventyConfig.setTemplateFormats(["md", "njk", "html"]);
   // Passthrough-only docs, not pages.
   eleventyConfig.ignores.add("src/fonts/README.md");
-  eleventyConfig.amendLibrary("md", () => {});
   eleventyConfig.setFrontMatterParsingOptions({ excerpt: false });
 
   eleventyConfig.addPassthroughCopy({ "src/css": "css" });

@@ -1,0 +1,49 @@
+# Build checks for the Numina site. The built output is committed and served
+# as-is, so the thing most worth catching is a PR that edits src/ and forgets
+# to rebuild — the deployed site would then not match its source.
+name: Numina CI
+
+on:
+  pull_request:
+    paths:
+      - "Projects/Numina/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: numina-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: Projects/Numina
+
+jobs:
+  build:
+    name: build, rebuild check, smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Projects/Numina/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Verify the committed build is up to date
+        run: |
+          # -N so files the build newly created show up in `git diff` too.
+          git add -A -N .
+          if ! git diff --quiet -- .; then
+            echo "::error::The committed build is stale. Run 'npm run build' in Projects/Numina and commit the regenerated output alongside your source change."
+            git diff --stat -- .
+            exit 1
+          fi
+
+      - run: npm test
