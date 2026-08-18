@@ -18,13 +18,19 @@ export default function (eleventyConfig) {
   eleventyConfig.setTemplateFormats(["md", "njk", "html"]);
   // Passthrough-only docs, not pages.
   eleventyConfig.ignores.add("src/fonts/README.md");
-  eleventyConfig.amendLibrary("md", () => {});
   eleventyConfig.setFrontMatterParsingOptions({ excerpt: false });
 
   eleventyConfig.addPassthroughCopy({ "src/css": "css" });
   eleventyConfig.addPassthroughCopy({ "src/js": "js" });
   eleventyConfig.addPassthroughCopy({ "src/fonts": "fonts" });
   eleventyConfig.addPassthroughCopy({ "src/assets": "assets" });
+
+  // Every published page's URL, sorted. Sorted rather than left in date order
+  // because file dates do not survive a git clone, and a sitemap that reshuffles
+  // on a fresh checkout would fail the "did you rebuild?" check in CI.
+  eleventyConfig.addCollection("sitemap", (api) =>
+    api.getAll().map((item) => item.url).filter(Boolean).sort()
+  );
 
   eleventyConfig.addCollection("nations", (api) =>
     api

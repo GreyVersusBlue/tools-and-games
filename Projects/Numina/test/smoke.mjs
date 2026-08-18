@@ -8,8 +8,10 @@ import { dirname, join, relative, sep } from "node:path";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PREFIX = "/Projects/Numina/";
 // Must match tools/clean.mjs's GENERATED list.
-const GENERATED = ["index.html", "search", "lore", "mechanics", "css", "js", "fonts", "assets", "pagefind"];
-const OFFSITE_ALLOWED = ["www.numinalarp.com", "discord.gg", "pagefind.app"];
+const GENERATED = ["index.html", "sitemap.xml", "search", "lore", "mechanics", "css", "js", "fonts", "assets", "pagefind"];
+// greyversusblue.com is our own deployed origin: canonical/OG URLs are absolute
+// by spec, so they show up as offsite hrefs here.
+const OFFSITE_ALLOWED = ["www.numinalarp.com", "discord.gg", "pagefind.app", "greyversusblue.com"];
 
 let failures = 0;
 function ok(cond, label) {
@@ -36,9 +38,14 @@ const sourcePages = walk(join(root, "src"), (p) => /\.(md|njk)$/.test(p)).filter
 );
 for (const src of sourcePages) {
   const rel = relative(join(root, "src"), src).replace(/\\/g, "/").replace(/\.(md|njk)$/, "");
-  const outPath = rel === "index" || rel.endsWith("/index")
-    ? join(root, rel.replace(/index$/, ""), "index.html")
-    : join(root, rel, "index.html");
+  // A template with an explicit permalink (sitemap.xml) lands where it says,
+  // not at <rel>/index.html.
+  const permalink = readFileSync(src, "utf8").match(/^permalink:\s*(\S+)\s*$/m);
+  const outPath = permalink
+    ? join(root, permalink[1].replace(/^\//, ""))
+    : rel === "index" || rel.endsWith("/index")
+      ? join(root, rel.replace(/index$/, ""), "index.html")
+      : join(root, rel, "index.html");
   ok(existsSync(outPath) && statSync(outPath).size > 0, `built: ${rel}`);
 }
 
@@ -102,7 +109,62 @@ const mainCss = readFileSync(join(root, "css", "main.css"), "utf8");
 const fontRefs = [...mainCss.matchAll(/url\("\.\.\/fonts\/([^"]+)"\)/g)].map((m) => m[1]);
 ok(fontRefs.length >= 5 && fontRefs.every((f) => existsSync(join(root, "fonts", f))), `all ${fontRefs.length} font files present`);
 
-// 6. Output hygiene: clean manifest covers every generated top-level entry.
+// 6. Sharing/SEO metadata: every page carries canonical + OG, and the sitemap
+// lists exactly the pages that were built.
+console.log("# metadata");
+const ORIGIN = "https://greyversusblue.com";
+const missingMeta = builtHtml.filter((f) => {
+  const html = readFileSync(f, "utf8");
+  return !/<link rel="canonical" href="https:\/\//.test(html) ||
+    !/<meta property="og:title"/.test(html) ||
+    !/<meta property="og:image" content="https:\/\//.test(html) ||
+    !/<meta name="twitter:card"/.test(html);
+});
+ok(missingMeta.length === 0, `canonical + OG + twitter card on all ${builtHtml.length} pages${missingMeta.length ? `: ${missingMeta.slice(0, 3).map((f) => relative(root, f)).join(", ")}` : ""}`);
+ok(existsSync(join(root, "assets", "favicon.svg")), "favicon.svg published");
+ok(existsSync(join(root, "assets", "social-card.png")), "og:image social card published");
+
+const sitemapPath = join(root, "sitemap.xml");
+ok(existsSync(sitemapPath), "sitemap.xml generated");
+if (existsSync(sitemapPath)) {
+  const locs = [...readFileSync(sitemapPath, "utf8").matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  const pageUrls = new Set(
+    builtHtml.map((f) => ORIGIN + PREFIX + relative(root, f).replace(/\\/g, "/").replace(/index\.html$/, ""))
+  );
+  const missing = [...pageUrls].filter((u) => !locs.includes(u));
+  const extra = locs.filter((u) => !pageUrls.has(u));
+  ok(missing.length === 0, `sitemap lists every built page${missing.length ? `, missing: ${missing.slice(0, 5).join(", ")}` : ` (${locs.length})`}`);
+  ok(extra.length === 0, `sitemap has no dangling entries${extra.length ? `: ${extra.slice(0, 5).join(", ")}` : ""}`);
+  const robots = join(root, "..", "..", "robots.txt");
+  ok(existsSync(robots) && readFileSync(robots, "utf8").includes(`${ORIGIN}${PREFIX}sitemap.xml`), "repo-root robots.txt points at the sitemap");
+}
+
+// 7. Navigation drift: _data/nav.json duplicates page order and titles by hand,
+// so a page added under src/lore or src/mechanics without a nav.json entry
+// builds and is linkable but never appears in any sidebar.
+console.log("# navigation");
+const nav = JSON.parse(readFileSync(join(root, "src", "_data", "nav.json"), "utf8"));
+const navUrls = new Set();
+for (const section of nav.sections) {
+  navUrls.add(section.url);
+  for (const pg of section.pages) {
+    navUrls.add(pg.url);
+    for (const child of pg.children ?? []) navUrls.add(child.url);
+  }
+}
+// Nation pages are exempt: the sidebar generates them from the nations
+// collection, so they cannot drift.
+const contentUrls = builtHtml
+  .filter((f) => /^(lore|mechanics)[\\/]/.test(relative(root, f)))
+  .map((f) => "/" + relative(root, f).replace(/\\/g, "/").replace(/index\.html$/, ""))
+  .filter((u) => !/^\/lore\/nations\/./.test(u));
+const orphaned = contentUrls.filter((u) => !navUrls.has(u));
+ok(
+  orphaned.length === 0,
+  `every built lore/mechanics page is in nav.json (${contentUrls.length})${orphaned.length ? `, missing: ${orphaned.join(", ")}` : ""}`
+);
+
+// 7. Output hygiene: clean manifest covers every generated top-level entry.
 console.log("# hygiene");
 const expectedTopLevel = new Set([
   ...GENERATED, "src", "test", "tools", "source-material", "node_modules",

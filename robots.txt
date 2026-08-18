@@ -1,0 +1,5 @@
+# greyversusblue — everything here is public; nothing to keep crawlers out of.
+User-agent: *
+Allow: /
+
+Sitemap: https://greyversusblue.com/Projects/Numina/sitemap.xml

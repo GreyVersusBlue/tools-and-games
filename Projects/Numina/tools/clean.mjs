@@ -9,6 +9,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 export const GENERATED = [
   "index.html",
+  "sitemap.xml",
   "search",
   "lore",
   "mechanics",
