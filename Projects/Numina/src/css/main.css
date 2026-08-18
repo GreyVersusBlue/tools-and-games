@@ -857,4 +857,18 @@ main { min-width: 0; max-width: 70ch; }
   .timeline__event::before { left: 0.14rem; }
   .timeline__date { text-align: left; }
   .timeline__era { position: static; }
+
+  /* The map scales with the viewport, so 18px inside a 1000-unit viewBox lands
+     around 6px on a phone. Enlarge the nation labels and drop the decorative
+     terrain, which is what they would otherwise collide with. */
+  .map-region text { font-size: 28px; letter-spacing: 0; stroke-width: 6px; }
+  .map-decor { display: none; }
+}
+
+@media (max-width: 30rem) {
+  /* Below ~480px, 28px still only renders around 10px, and going larger is not
+     an option: at 30px the longest names start overlapping their neighbors.
+     The card grid under the map links every nation, so drop the labels here and
+     let the map read as a color key instead. */
+  .map-region text { display: none; }
 }
