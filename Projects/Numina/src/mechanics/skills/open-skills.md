@@ -5,7 +5,34 @@ summary: >-
   Skills available to any character.
 ---
 
-> **Stub page.** The matching rulebook chapter goes here — see the porting
-> format in `CONTENT-GUIDE.md` at the project root.
-
 ## Open Skills
+
+Open skills are available for any player to purchase.
+
+| Skill Name | Cost | Verbal | Description | Attribute |
+|---|---|---|---|---|
+| Agility | 4 | N/A | You get the benefit of wearing light armor without having to wear armor. This includes the ability to use skills or items which affect armor by applying them to your costuming instead. **Agility only replaces the need for a Light Armor phys rep. If you want the benefits of Medium or Heavy armor, you must wear the appropriate phys rep for that armor type.** | N/A |
+| Archery | 3 | N/A | You can use a bow or crossbow in combat. You may block with your bow, but not wield a weapon in your other hand. You get 5 shots, to prepare 5 more shots you must Short Rest. Called missile effects do not count against the number of shots in your quiver. If you block an attack with your bow or crossbow, your bow cannot be used for any missile attacks, either called or uncalled, until you take a 10 second Rest. Note: Core rules specifically say if you miss with a missile attack, or it is blocked you do not use up the attributes. (You do use one of your arrows from your quiver) | N/A |
+| Buckler | 3 | N/A | Use a buckler in combat. You can wield in combat any one handed weapon you are skilled with. | N/A |
+| True Sight | 2 | N/A | Between events you can send a Yes/ No question about something you learned in-game that is related to cosmological events. You will receive a reply that will confirm or refute the information in a 100% certain answer. An example might be 'I learned at this event there are 5 Genesori, is this true?' The answer you would get to this question is yes or no. You can send two of these per event. | N/A |
+| Cornucopia | 2 | 'Heal All' | When you sell an OOG item for in-game coin while in a Place of Peace, you can use a touch packet on the person who purchased the item to 'heal all'. | N/A |
+| Courier | 4 | N/A | You can send a physical message across the Lattice to a recipient that you have met and been formally or informally introduced to or for whom you have a skill or plot effect granting you the ability to reach out to that person. For example, if you saw the Monarch of your country from the other side of a building, that is not an introduction. However, if you went before them and your name given to them, then you have been introduced. This is a physical letter, while it travels the magics of the Lattice and therefore can arrive in a short time, letters **cannot** be sent to great beings of the Shade or spirits of the dead or similar beings who don't get mail. **As this is a letter and there is no guarantee they will respond, but cultural expectations say they will.** | N/A |
+| Disarm Traps | 1 | N/A | You can use tools or your hands to disable traps you find in-game. You cannot destroy any item or prop in-game without an NPC's permission. That means, unless told so, you cannot cut lines, break boxes, or otherwise damage the props. You will be given clear guidance if you can do such things as part of disarming a trap. | N/A |
+| Effortless Armor Repair | 3 | N/A | You may also take a Short Rest while spending time to repair armor. If you have a skill which reduces the time required for either your Short Rest or your armor repair, this skill does not reduce the time for the second activity. | N/A |
+| Hafted Weapons | 2 | N/A | You gain the ability to use hafted weapons (72'). | N/A |
+| Healing Circle | 2 | 'Heal All' | When you take a Long Rest in a Place of Peace with a group of people no larger than 6 including yourself, use a touch packet to 'heal all' to everyone in the circle. | N/A |
+| Healing Touch | 4 | 'Heal 2 by Magic' | You can wield magic to heal a minor wound | 1 Fortitude |
+| Magical Strike | 4 | '3 Damage by Force' | You can wield magical forces to conjure a packet attack of 3 damage by force. | 1 Insight |
+| Medium Armor | 3 | N/A | You may wear up to 3 points of armor. | N/A |
+| Merchant | 2 | N/A | When you check in you gain 3 coins. Additionally, you can sell out of game items for in-game coin. | N/A |
+| Pick Locks | 1 | N/A | Certain challenges will be identified as a "lock". You cannot engage on solving that puzzle (which may be picking an actual lock) if you do not have this skill. | N/A |
+| Platform | 2 | N/A | You can bring a stone / platform with you that is no larger than 30 inches on any side. You can lay this platform down and pick it up at will. Once laid on the ground it acts as safe ground on any terrain effect. | N/A |
+| Quick Reflexes | 1 | 'Avoid' | 1x / Short Rest, if you would take an effect from a terrain effect such as Lava or a Pit on the floor, you can avoid the effect. *You can purchase this skill up to 3 times.* | N/A |
+| Research | 4 | N/A | From your foundation and culture you can gain research topics. If you have access to a research topic you can submit a research request on a given topic. This skill does not provide topics by default. Topics can be earned in game through role play or purchased from your Culture or Foundation. When you submit a question, plot will reply with details on the topic. If the question is too broad or very deep, then plot may reply with some information and say, "There is more information here, but I don't have time to include it now". That means if you want the additional information, you should submit a continuation of research request the next event. *You will be able to gain additional research topics through the game.* | N/A |
+| Resourceful | 2 | N/A | When you check in for the event you gain 2 random components. | N/A |
+| Shield | 3 | N/A | Use a shield in combat. You can wield in combat any basic one handed weapon you are skilled with. | N/A |
+| Summon Light | 1 | N/A | You can turn on a non-candle light prop for yourself. You can hand it out, but you can't create a new one for yourself till you get it back or the next night. The prop should not be brighter than a glow stick. *Note: You should not wear this around your neck, as that is reserved for people with medical conditions for visibility.* *Note: As a courtesy rule, if someone asks you to turn off or cover the light due to its brightness, please do.* | N/A |
+| Summon Music | 1 | N/A | In your cabin or another not majorly public area, or during a special event in the tavern, you can set up background music. Note: As a courtesy rule, if someone asks you to turn off the music, please do. | N/A |
+| Thrown Weapons | 3 | N/A | You may carry and use throwing weapons. When you pick up a weapon off the ground, you must take 10 seconds of activity to clean and prepare the weapon before it may be thrown again. Note, that all your collected weapons can be prepared simultaneously. You must take a Short Rest between uses of Thrown Weapons. | N/A |
+| Two Weapon fighting | 3 | N/A | Use two weapons up to 46' each. | N/A |
+| Weapon Strike | 4 | '3 Damage' | You can wield a weapon to make a melee attack for 3 damage. | 1 Prowess |

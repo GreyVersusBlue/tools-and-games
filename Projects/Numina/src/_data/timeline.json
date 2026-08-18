@@ -66,6 +66,23 @@
     "href": "/lore/nations/rues/"
   },
   {
+    "sort": 108,
+    "date": "108 AW",
+    "era": "Age of Works",
+    "title": "Valaq is abandoned in Merrigor",
+    "summary": "Valaq is abandoned to the forest and Lasaldi is named the seventh city in its place.",
+    "nations": ["merrigor"],
+    "href": "/lore/nations/merrigor/"
+  },
+  {
+    "sort": 110,
+    "date": "110–120 AW",
+    "era": "Age of Works",
+    "title": "Heroes of Old Fortune's Bend appear",
+    "summary": "New heroes begin appearing throughout the world, gathering at Fortune's Bend.",
+    "href": "/lore/world/"
+  },
+  {
     "sort": 111,
     "date": "111 AW",
     "era": "Age of Works",
@@ -80,6 +97,15 @@
     "era": "Age of Works",
     "title": "Valarmore is destroyed",
     "summary": "The Vargoth invasion claims the city of Valarmore."
+  },
+  {
+    "sort": 113,
+    "date": "113 AW",
+    "era": "Age of Works",
+    "title": "Eviar Leonate elected Crown Prince of Ophrailes",
+    "summary": "Eviar Leonate is elected Crown Prince of Ophrailes.",
+    "nations": ["ophrailes"],
+    "href": "/lore/nations/ophrailes/"
   },
   {
     "sort": 114,

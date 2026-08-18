@@ -114,7 +114,7 @@ blockquote {
   font-style: italic;
 }
 code { background: var(--paper-sunken); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }
-table { border-collapse: collapse; width: 100%; margin: 1.2rem 0; }
+table { border-collapse: collapse; width: 100%; margin: 1.2rem 0; display: block; overflow-x: auto; }
 th, td { border: 1px solid var(--edge); padding: 0.4rem 0.7rem; text-align: left; }
 th { font-family: var(--caps); background: var(--paper-sunken); }
 hr { border: none; border-top: 1px solid var(--edge); margin: 2rem 0; }
