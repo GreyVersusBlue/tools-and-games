@@ -235,7 +235,7 @@ This Hestia can be used to grant 2 protection. When a charge is expended, call "
 
 ## Numina Magic Items
 
-### Holdings in Numina
+### Holdings in Numina:
 
 A Holding represents a resource, position, or sphere of influence your character can draw upon between events to shape the game world. These are not just flavor or background details-they are actionable assets tied to the game's mechanics.
 
