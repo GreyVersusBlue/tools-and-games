@@ -2,7 +2,7 @@
 name: Vale of Scyllina
 title: Vale of Scyllina
 order: 16
-color: "#97b0b8"
+color: "#4292ad"
 capital: ""
 demonym: Scyllinari
 summary: >-

@@ -2,7 +2,7 @@
 name: T'barris, the Serpent Kingdom
 title: T'barris, the Serpent Kingdom
 order: 15
-color: "#2f6b57"
+color: "#14584a"
 capital: ""
 demonym: ""
 summary: >-

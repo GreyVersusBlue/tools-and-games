@@ -2,7 +2,7 @@
 name: Spyndelmere
 title: Spyndelmere
 order: 14
-color: "#55915f"
+color: "#55913d"
 capital: Thornwen
 demonym: Spyndelmerian
 summary: >-

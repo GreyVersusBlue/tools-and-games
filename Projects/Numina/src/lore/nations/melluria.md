@@ -2,7 +2,7 @@
 name: Melluria
 title: Melluria
 order: 8
-color: "#6f6a85"
+color: "#4c55a0"
 capital: Saphiren City
 demonym: Mellurian
 summary: >-

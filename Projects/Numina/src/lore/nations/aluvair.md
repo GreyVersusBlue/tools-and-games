@@ -2,7 +2,7 @@
 name: Aluvair
 title: Aluvair
 order: 1
-color: "#86a35e"
+color: "#8b942b"
 capital: Durade
 demonym: Aluvain
 summary: >-

@@ -2,7 +2,7 @@
 name: The Principalities of the Reach
 title: The Principalities of the Reach
 order: 12
-color: "#8f8f5f"
+color: "#8e2f45"
 capital: ""
 demonym: ""
 summary: >-

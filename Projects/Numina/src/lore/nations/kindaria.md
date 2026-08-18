@@ -2,7 +2,7 @@
 name: Kindaria
 title: Kindaria
 order: 5
-color: "#4e7d6a"
+color: "#2c8a62"
 capital: ""
 demonym: Kindarian
 summary: >-

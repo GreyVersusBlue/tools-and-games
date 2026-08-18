@@ -2,7 +2,7 @@
 name: L'Dahn Linenation
 title: L'Dahn Linenation
 order: 7
-color: "#c2a45c"
+color: "#cfb04a"
 capital: Dahnhelm
 demonym: "L'Dahn"
 summary: >-
