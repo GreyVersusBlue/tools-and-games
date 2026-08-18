@@ -31,7 +31,8 @@
           { "title": "Excellencies", "url": "/mechanics/skills/excellencies/" },
           { "title": "Expressions", "url": "/mechanics/skills/expressions/" },
           { "title": "Open Skills", "url": "/mechanics/skills/open-skills/" },
-          { "title": "Attributes & Vitality", "url": "/mechanics/skills/attributes-vitality/" }
+          { "title": "Attributes & Vitality", "url": "/mechanics/skills/attributes-vitality/" },
+          { "title": "Hidden Excellencies and Expressions", "url": "/mechanics/skills/hidden-excellencies-expressions/" }
         ]},
         { "title": "Crafting & Magic Items", "url": "/mechanics/crafting/" },
         { "title": "Weapon Construction", "url": "/mechanics/weapon-construction/" }

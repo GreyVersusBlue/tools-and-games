@@ -84,15 +84,13 @@ Nation slugs: `aluvair`, `dovenost`, `mists-of-eltiel`, `five-duchies`,
 | Foundations | `src/mechanics/skills/foundations.md` |
 | Cultures | `src/mechanics/skills/cultures.md` |
 | Domains | `src/mechanics/skills/domains.md` |
-| Excellencies | `src/mechanics/skills/excellencies.md` |
+| Excellencies | `src/mechanics/skills/excellencies.md` (still a stub — not yet converted from the PDF) |
 | Expressions | `src/mechanics/skills/expressions.md` |
 | Open Skills | `src/mechanics/skills/open-skills.md` |
 | Attributes + Vitality | `src/mechanics/skills/attributes-vitality.md` |
+| Hidden Excellencies and Expressions | `src/mechanics/skills/hidden-excellencies-expressions.md` |
 | Alchemy / Tinkering / Arcaneering Formulas + Magic Items | `src/mechanics/crafting.md` |
 | Numina Weapon Construction Guidelines | `src/mechanics/weapon-construction.md` |
-
-(Hidden Excellencies and Expressions: only include if it's meant to be public —
-check before publishing.)
 
 ## Timeline data (`src/_data/timeline.json`)
 
