@@ -4,6 +4,15 @@ import markdownItAnchor from "markdown-it-anchor";
 
 export const PATH_PREFIX = "/Projects/Numina/";
 
+// A page gets an "On this page" table of contents when it is long enough to be
+// hard to scan AND actually has structure to navigate. Frontmatter `toc: true`
+// or `toc: false` overrides the heuristic either way.
+const TOC_MIN_WORDS = 1200;
+const TOC_MIN_HEADINGS = 4;
+// h3 groups longer than this render as multiple columns so they stay scannable
+// (Core Rules' "Effects and Calls" alone has 55 subsections).
+const TOC_WIDE_GROUP = 8;
+
 // Visible, copyable permalink on every h2/h3. The § mark is drawn by CSS rather
 // than sitting in the markup: Pagefind builds its sub-result titles from the
 // heading's own text, so any real characters here (a symbol, or visually hidden
@@ -21,6 +30,37 @@ const renderPermalink = markdownItAnchor.permalink.linkInsideHeader({
   }),
 });
 
+function stripTags(html) {
+  return html
+    .replace(/<a class="heading-anchor"[\s\S]*?<\/a>/g, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Build the TOC from the *rendered* page HTML, so it reflects exactly the
+// heading ids markdown-it-anchor emitted (no second slugify to drift out of sync).
+function tocData(content) {
+  const html = String(content ?? "");
+  const groups = [];
+  for (const m of html.matchAll(/<h([23])\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/h\1>/g)) {
+    const [, level, id, inner] = m;
+    const text = stripTags(inner);
+    if (!text) continue;
+    if (level === "2" || groups.length === 0) groups.push({ id, text, children: [] });
+    else groups[groups.length - 1].children.push({ id, text });
+  }
+  for (const g of groups) g.wide = g.children.length > TOC_WIDE_GROUP;
+  const count = groups.reduce((n, g) => n + 1 + g.children.length, 0);
+  const words = stripTags(html).split(/\s+/).filter(Boolean).length;
+  return {
+    groups,
+    count,
+    words,
+    qualifies: words >= TOC_MIN_WORDS && count >= TOC_MIN_HEADINGS,
+  };
+}
+
 export default function (eleventyConfig) {
   eleventyConfig.addPlugin(EleventyHtmlBasePlugin);
 
@@ -36,6 +76,8 @@ export default function (eleventyConfig) {
       },
     })
   );
+
+  eleventyConfig.addFilter("tocData", tocData);
 
   // Converted book content is plain markdown — no template syntax inside .md files.
   eleventyConfig.setTemplateFormats(["md", "njk", "html"]);

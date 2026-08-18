@@ -3,7 +3,7 @@
 
 .site-header, .sidebar, .site-footer, .print-action,
 .theme-toggle, .header-search, .mobile-nav, .world-map, .crumb,
-.heading-anchor {
+.toc, .heading-anchor {
   display: none !important;
 }
 body {
