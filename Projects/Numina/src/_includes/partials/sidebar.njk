@@ -27,4 +27,14 @@
       {% endfor %}
     </ol>
   </details>
+  {# The disclosure ships open so it is correct without JS on desktop, where the
+     sidebar is a column beside the content. On narrow screens it stacks above
+     the content and an open list pushes the page most of a viewport down, so
+     collapse it here — inline and before paint, so it never renders open. #}
+  <script>
+    (function () {
+      var d = document.querySelector(".sidebar__disclosure");
+      if (d && window.matchMedia("(max-width: 52rem)").matches) d.open = false;
+    })();
+  </script>
 </nav>

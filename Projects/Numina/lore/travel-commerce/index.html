@@ -139,6 +139,13 @@
       
     </ol>
   </details>
+  
+  <script>
+    (function () {
+      var d = document.querySelector(".sidebar__disclosure");
+      if (d && window.matchMedia("(max-width: 52rem)").matches) d.open = false;
+    })();
+  </script>
 </nav>
 
   <main data-pagefind-body="" data-pagefind-meta="section:Lore">
