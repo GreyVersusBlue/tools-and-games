@@ -26,6 +26,13 @@ export default function (eleventyConfig) {
   eleventyConfig.addPassthroughCopy({ "src/fonts": "fonts" });
   eleventyConfig.addPassthroughCopy({ "src/assets": "assets" });
 
+  // Every published page's URL, sorted. Sorted rather than left in date order
+  // because file dates do not survive a git clone, and a sitemap that reshuffles
+  // on a fresh checkout would fail the "did you rebuild?" check in CI.
+  eleventyConfig.addCollection("sitemap", (api) =>
+    api.getAll().map((item) => item.url).filter(Boolean).sort()
+  );
+
   eleventyConfig.addCollection("nations", (api) =>
     api
       .getFilteredByGlob("src/lore/nations/*.md")

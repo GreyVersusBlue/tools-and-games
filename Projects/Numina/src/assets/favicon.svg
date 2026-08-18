@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Numina">
+  <!-- The site's leaf-and-vine ornament (the orn-leaf mask in css/main.css),
+       laid on the diagonal so it fills a square tab icon, thickened a little so
+       the vine survives 16px, and drawn in a mid gold that holds contrast on
+       both light and dark browser tabs. Transparent ground. -->
+  <g transform="translate(16 16) scale(0.98) rotate(-28) translate(-17.5 -10.25)"
+     fill="#b9913c" stroke="none">
+    <path d="M1 16 Q13 12.5 34 9.5" fill="none" stroke="#b9913c" stroke-width="2" stroke-linecap="round"/>
+    <path d="M3 12.5 Q10 4.5 19.5 6 Q14 12 5.5 13.5 Q3.8 13.3 3 12.5 Z"/>
+    <path d="M16.5 13.5 Q23.5 7.5 32.5 9.5 Q26 14.5 18 15.3 Q17 14.6 16.5 13.5 Z"/>
+    <circle cx="34" cy="9.3" r="1.9"/>
+  </g>
+</svg>

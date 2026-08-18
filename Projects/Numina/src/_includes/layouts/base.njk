@@ -1,10 +1,28 @@
+{#- Absolute URLs for canonical/OG. site.origin is the only place the deployed
+    origin is written down, so a custom-domain move is a one-line data change;
+    the `url` filter supplies the /Projects/Numina/ path prefix. -#}
+{%- set pageTitle = (title + " · " + site.title) if (title and page.url != "/") else (site.title + " — " + site.tagline) -%}
+{%- set pageDescription = summary or site.description -%}
+{%- set pageUrl = site.origin + (page.url | url) -%}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if title and page.url != "/" %}{{ title }} · {{ site.title }}{% else %}{{ site.title }} — {{ site.tagline }}{% endif %}</title>
-  <meta name="description" content="{{ summary or site.description }}">
+  <title>{{ pageTitle }}</title>
+  <meta name="description" content="{{ pageDescription }}">
+  <link rel="canonical" href="{{ pageUrl }}">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <meta property="og:title" content="{{ pageTitle }}">
+  <meta property="og:description" content="{{ pageDescription }}">
+  <meta property="og:type" content="{{ "website" if page.url == "/" else "article" }}">
+  <meta property="og:url" content="{{ pageUrl }}">
+  <meta property="og:site_name" content="{{ site.title }}">
+  <meta property="og:image" content="{{ site.origin }}{{ "/assets/social-card.png" | url }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="{{ site.title }} — {{ site.tagline }}">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/print.css" media="print">
   <script>
