@@ -2,7 +2,7 @@
 name: Merrigor
 title: Merrigor
 order: 9
-color: "#7d5b6d"
+color: "#96336a"
 capital: ""
 demonym: Merrigorean
 summary: >-

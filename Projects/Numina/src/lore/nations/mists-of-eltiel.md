@@ -2,7 +2,7 @@
 name: The Mists of Eltiel
 title: The Mists of Eltiel
 order: 3
-color: "#8d86a8"
+color: "#7a5fa3"
 capital: ""
 demonym: the Eltiel
 summary: >-

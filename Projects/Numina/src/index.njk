@@ -4,9 +4,11 @@ eleventyExcludeFromCollections: true
 ---
 <main class="home">
   <section class="hero">
+    {% include "partials/ornaments/arch.njk" %}
     <p class="hero__kicker">Numina III · The Age of Works</p>
     <h1>{{ site.title }}</h1>
     <p class="hero__tagline">{{ site.tagline }} — where Fortune's Bend has appeared once more, and heroes gather to shape history.</p>
+    {% include "partials/ornaments/rule.njk" %}
     <p class="hero__actions">
       <a class="button" href="/mechanics/new-players/">New player? Start here</a>
       <a class="button button--ghost" href="/lore/world/">Enter the world</a>

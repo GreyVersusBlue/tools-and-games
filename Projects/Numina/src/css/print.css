@@ -26,3 +26,20 @@ blockquote, table, li, dl { break-inside: avoid; }
 .printable main h2 { break-before: page; }
 .printable main h2:first-of-type { break-before: avoid; }
 .infobox { float: none; border: 1px solid #999; box-shadow: none; }
+
+/* neutralize screen ornamentation for print */
+.orn { display: none !important; }
+body { background-image: none !important; }
+.card::before, .card::after,
+.home-card::before, .home-card::after,
+.infobox::before, .infobox::after,
+.site-header::after, .site-footer::before,
+.wordmark::before, hr::before, hr::after,
+.shell main > h2::after { content: none !important; display: none !important; }
+h1, h2, h3, h4, p::first-letter { text-shadow: none !important; }
+.shell main > h2 { background: none !important; border-bottom: 1px solid #000; }
+hr { background: none !important; border-top: 1px solid #999; }
+table { border: 1px solid #999 !important; box-shadow: none !important; padding: 0 !important; }
+th, td { border: 1px solid #999 !important; background: none !important; }
+.infobox__flag { clip-path: none; box-shadow: none; }
+blockquote { border-top: none; border-bottom: none; }

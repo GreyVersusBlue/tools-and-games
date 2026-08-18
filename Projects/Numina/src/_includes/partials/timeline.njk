@@ -1,17 +1,29 @@
 {% set events = timeline | sort(false, false, "sort") %}
+{# Events are grouped per era so each sticky era banner releases when its own
+   group scrolls past, instead of piling up under the next banner. #}
+{% set eras = [] %}
+{% for ev in events %}
+  {% if ev.era not in eras %}{% set eras = (eras.push(ev.era), eras) %}{% endif %}
+{% endfor %}
 <ol class="timeline">
-  {% for ev in events %}
-  {% if loop.first or ev.era != events[loop.index0 - 1].era %}
-  <li class="timeline__era" aria-hidden="true"><span>{{ ev.era }}</span></li>
-  {% endif %}
-  <li class="timeline__event{% if ev.nations %} has-nations{% endif %}"
-      {%- if ev.nations %} style="--nation-color: {% for n in collections.nations %}{% if n.fileSlug == ev.nations[0] %}{{ n.data.color }}{% endif %}{% endfor %}"{% endif %}>
-    <span class="timeline__date">{{ ev.date }}</span>
-    <div class="timeline__body">
-      <h3>{{ ev.title }}</h3>
-      <p>{{ ev.summary }}
-        {%- if ev.href %} <a class="timeline__more" href="{{ ev.href }}">Read more</a>{% endif %}</p>
-    </div>
+  {% for era in eras %}
+  <li class="timeline__group">
+    <p class="timeline__era" aria-hidden="true"><span>{{ era }}</span></p>
+    <ol class="timeline__events">
+      {% for ev in events %}
+      {% if ev.era == era %}
+      <li class="timeline__event{% if ev.nations %} has-nations{% endif %}"
+          {%- if ev.nations %} style="--nation-color: {% for n in collections.nations %}{% if n.fileSlug == ev.nations[0] %}{{ n.data.color }}{% endif %}{% endfor %}"{% endif %}>
+        <span class="timeline__date">{{ ev.date }}</span>
+        <div class="timeline__body">
+          <h3>{{ ev.title }}</h3>
+          <p>{{ ev.summary }}
+            {%- if ev.href %} <a class="timeline__more" href="{{ ev.href }}">Read more</a>{% endif %}</p>
+        </div>
+      </li>
+      {% endif %}
+      {% endfor %}
+    </ol>
   </li>
   {% endfor %}
 </ol>

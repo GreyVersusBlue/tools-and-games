@@ -3,6 +3,7 @@ layout: layouts/page.njk
 ---
 <aside class="infobox" style="--nation-color: {{ color }}">
   <p class="infobox__flag" aria-hidden="true"></p>
+  {% include "partials/ornaments/divider.njk" %}
   <dl>
     {% if capital %}<dt>Capital</dt><dd>{{ capital }}</dd>{% endif %}
     {% if demonym %}<dt>Demonym</dt><dd>{{ demonym }}</dd>{% endif %}
