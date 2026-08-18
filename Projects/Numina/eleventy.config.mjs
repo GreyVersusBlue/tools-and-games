@@ -79,6 +79,16 @@ export default function (eleventyConfig) {
 
   eleventyConfig.addFilter("tocData", tocData);
 
+  // Look up a built page by URL. Replaces a `collections.all |
+  // selectattr("url", "equalto", pg.url) | first` chain in the two section
+  // landing pages: Nunjucks has no `equalto` test, so selectattr fell through
+  // to a plain truthiness filter and every card rendered collections.all[0]'s
+  // summary. It also made the build machine-dependent, because collections.all
+  // is ordered by file date and file dates do not survive a git clone.
+  eleventyConfig.addFilter("pageByUrl", (pages, url) =>
+    pages.find((page) => page.url === url)
+  );
+
   // Converted book content is plain markdown — no template syntax inside .md files.
   eleventyConfig.setTemplateFormats(["md", "njk", "html"]);
   // Passthrough-only docs, not pages.
