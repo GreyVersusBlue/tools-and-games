@@ -2,7 +2,7 @@
 name: Konnigstrava
 title: Konnigstrava
 order: 6
-color: "#a5814b"
+color: "#c08519"
 capital: Alberstadt
 demonym: ""
 summary: >-

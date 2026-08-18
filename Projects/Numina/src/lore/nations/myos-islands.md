@@ -2,7 +2,7 @@
 name: Myos Islands
 title: Myos Islands
 order: 10
-color: "#4f8f8b"
+color: "#25a9b4"
 capital: ""
 demonym: Myosian
 summary: >-

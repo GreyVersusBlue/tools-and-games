@@ -2,7 +2,7 @@
 name: The Five Duchies
 title: The Five Duchies
 order: 4
-color: "#8a6f52"
+color: "#ab8a4d"
 capital: "None — each duchy has its own seat (Boar's Run Township, Stonekeep, Cattle Ridge, Northfield, Oakdale)"
 demonym: ""
 summary: >-

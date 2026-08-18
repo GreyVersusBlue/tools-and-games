@@ -60,6 +60,13 @@
   <svg viewBox="0 0 1000 700" role="img" aria-label="Map of the nations of Aeledd">
     <rect class="map-sea" x="0" y="0" width="1000" height="700" rx="14"/>
     <path class="map-land" d="M 140 62 Q 300 48 450 58 Q 620 50 745 72 Q 782 180 770 300 Q 778 420 735 505 Q 640 528 505 522 Q 492 575 480 632 Q 300 655 125 640 Q 88 500 82 360 Q 76 200 96 100 Q 115 70 140 62 Z"/>
+    <rect class="map-frame" x="7" y="7" width="986" height="686" rx="10"/>
+    <g class="map-compass" transform="translate(905 100)" aria-hidden="true">
+      <circle r="30" class="map-compass__ring"/>
+      <path class="map-compass__star map-compass__star--minor" transform="rotate(45)" d="M0 -16 L3 -3 L16 0 L3 3 L0 16 L-3 3 L-16 0 L-3 -3 Z"/>
+      <path class="map-compass__star" d="M0 -26 L5 -5 L26 0 L5 5 L0 26 L-5 5 L-26 0 L-5 -5 Z"/>
+      <text y="-36" class="map-compass__n">N</text>
+    </g>
     {% for n in collections.nations %}
     {% set slug = n.fileSlug %}
     {% if mapPaths[slug] %}
@@ -70,6 +77,12 @@
     </a>
     {% endif %}
     {% endfor %}
+    <g class="map-cartouche" aria-hidden="true">
+      <rect x="690" y="598" width="286" height="76" rx="6"/>
+      <rect x="697" y="605" width="272" height="62" rx="4"/>
+      <text x="833" y="630" text-anchor="middle" class="map-cartouche__kicker">THE REALM OF</text>
+      <text x="833" y="660" text-anchor="middle" class="map-cartouche__title">Aeledd</text>
+    </g>
   </svg>
   <figcaption>The nations of Aeledd <span class="world-map__note">(placeholder geography — select a nation to read its chapter)</span></figcaption>
 </figure>

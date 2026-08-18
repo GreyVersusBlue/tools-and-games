@@ -26,3 +26,13 @@ blockquote, table, li, dl { break-inside: avoid; }
 .printable main h2 { break-before: page; }
 .printable main h2:first-of-type { break-before: avoid; }
 .infobox { float: none; border: 1px solid #999; box-shadow: none; }
+
+/* neutralize screen-theme ornaments in print */
+body { background-image: none !important; }
+h2::before, h2::after { content: none !important; }
+h2 { border-bottom: 1px solid #999; }
+hr { border: none; border-top: 1px solid #777; }
+hr::before { display: none !important; }
+.flourish, .infobox::before, .home-card::before { display: none !important; }
+.shell main > p.lede + p::first-letter,
+.shell main > h1 + p:not(.lede):not(.print-action)::first-letter { text-shadow: none; color: #000; }

@@ -2,7 +2,7 @@
 name: Rues
 title: Rues
 order: 13
-color: "#b04a4a"
+color: "#c93838"
 capital: ""
 demonym: ""
 summary: >-

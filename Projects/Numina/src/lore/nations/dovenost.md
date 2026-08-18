@@ -2,7 +2,7 @@
 name: Dovenost
 title: Dovenost
 order: 2
-color: "#5e7f99"
+color: "#3d7ec0"
 capital: Glavni
 demonym: Dovenosti
 summary: >-

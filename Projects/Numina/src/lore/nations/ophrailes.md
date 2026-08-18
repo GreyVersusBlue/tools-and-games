@@ -2,7 +2,7 @@
 name: Republic of Ophrailes
 title: Republic of Ophrailes
 order: 11
-color: "#b3703e"
+color: "#cd5f26"
 capital: Nanamont
 demonym: Ophralian
 summary: >-
