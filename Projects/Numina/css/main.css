@@ -138,7 +138,9 @@
 
 /* ---------- base ---------- */
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
 body {
   margin: 0;
   background-color: var(--paper);
@@ -152,6 +154,11 @@ img, svg { max-width: 100%; height: auto; }
 ::selection { background: var(--gold-dim); color: var(--ink); }
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
+h1, h2, h3, h4, h5, h6 {
+  /* anchor jumps (permalinks, TOC, Pagefind sub-results, glossary links) must
+     land below the sticky header, not underneath it */
+  scroll-margin-top: calc(var(--header-h) + 1.5rem);
+}
 h1, h2, h3, h4 {
   font-family: var(--display);
   font-weight: 700;
