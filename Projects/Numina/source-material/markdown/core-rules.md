@@ -878,7 +878,7 @@ Permanent effects might last indefinitely. If you end the event with a Permanent
 
 #### Ambient
 
-Someone precedes an attack verbal with 'Ambient' to indicate that the effect is a result of an environmental or a plot condition and not an effect that originates from the creature that calls it. Although the effect itself remains unchanged, this indicates to the players that disabling the creature calling the effect will not prevent the effect.This modifier is usually used with plot deliveries to indicate plot driven effects.
+Someone precedes an attack verbal with 'Ambient' to indicate that the effect is a result of an environmental or a plot condition and not an effect that originates from the creature that calls it. Although the effect itself remains unchanged, this indicates to the players that disabling the creature calling the effect will not prevent the effect. This modifier is usually used with plot deliveries to indicate plot driven effects.
 
 If, for example, someone from plot called out 'By My Voice, Ambient Agony by Fire' then the players would know that throwing a Silence effect or trying to Paralyze the creature calling the effect would not prevent the plot person from calling the effect. A plot person could also call something like 'By Your Name, Travis, Ambient Agony by Disease' to indicate that some plot condition is causing Travis pain but it isn't related to the creature calling the effect.
 
