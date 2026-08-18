@@ -1,0 +1,51 @@
+## The Lattice
+
+Under and throughout the entire world runs a lattice of magic. Where the lattice lines cross there are nodes that can be used to power great workings, especially travel. There are many conflicting theories about the origins and purpose of the lattice – of one the most notable being that it's a fundamental part of the world and has no separate origin or purpose – but no one knows for sure. What is definitively known is that it's essential to travel and communicate in a world as large as Aeledd.
+
+## Travel
+
+### Travel by Threshold
+
+Where Nodes in the Lattice exist, it is possible to create Thresholds. Each Threshold allows travel to several specific other Thresholds in the blink of an eye. They vary greatly in size. Many are only large enough to accommodate a few travelers, or perhaps a small cart, but others are able to transport caravans, ships or entire armies.
+
+### Travel by Gate
+
+Where there is no convenient Threshold, it is possible to travel by opening a Gate. People with certain specialized skills, tools, bloodlines or blessings can access the lattice directly without need for a Threshold. However this requires substantial skill to perform at all, and the difficulty increases greatly with the distance to be traveled or the size of the group to be moved. No known being can match even a moderately sized Threshold with a Gate.
+
+### Travel by Water
+
+Aeledd is vast, and much of the interior of the continents are trackless. Overland travel is an arduous endeavor. Travel by water is comparatively swift, but even by ship, travel is difficult and dangerous. The best way to transport large amounts of goods or people is by combining ship and threshold, such as via the famous Myosi Sea Gates.
+
+### Travel by Air
+
+The people of Eltiel travel between mountain peaks using a series of mechanisms and cables known as the Skyways. These devices are built in fixed places using technology known only to the Eltiel military.
+
+Legends tell of a group of heroes who traveled the world in a flying ship. Tinkers, arcaneers and shipwrights have been trying to duplicate this supposed feat for generations without success and despair that it will ever be duplicated.
+
+## Economy
+
+The Merchant's Guild is the crux of the economy of Aeledd. This guild gives stability to the world's money and lets international trading be conducted fairly and equitably. The Merchant's Guild officially recognizes three denominations of coin, the Drakar, the Ketch and the Reel. Many places may ascribe other names to the currency, either to be more convenient, or to pay homage to their older currency, but these three coins are recognized the world over.
+
+Different nations and organizations occasionally mint coins with varying colors and imprints, but by far the most common are the Mysoi trade coins which were adopted by the Merchant's Guild as its standard coinage. These coins are silver and embossed with images of sailing ships. Regardless of the make of a coin however, Drakar are always circular, Ketch rectangular and Reels octagonal. Ten Drakar are worth one Ketch and ten Ketch are worth one Reel.
+
+Originally the coins were the docking fees for types of ships. Drakar was for a non-cargo ship to dock, meaning it either was passengers, privateers, fishing vessels or privately owned ships for non-mercantile purposes. A Ketch was for a cargo ship, trading goods between ports. The actual ship size was immaterial and more relied on the purpose for the ship. A Reel was a separate "type" of coin that was made after, when traders began to accumulate more and more money via trading. High end items may occasionally be sold using this currency, but it is more a currency to show off wealth, or to measure value of large sums/trade routes.
+
+While prices might vary depending on the location, a Drakar would normally cover a night at an inn for a traveler, along with a meal that night (forever stew-type), per person. If the place you are at has a more fancy room available and/or provided a more substantial meal, they might go anywhere from 3 Drakar to a Ketch.
+
+A Drakar would probably buy food for a person for a couple days, though it again depends on the type of food they want, and where they are. More fish could be obtained in a fishing village than the middle of a desert for the same cost, etc. A Ketch would buy significant amounts of basic foodstuffs, or could provide a few individuals a meal in a restaurant. A Reel would likely not be used as a measure of money for purchasing food, except perhaps in the MOST extravagant of restaurants.
+
+Basic tools, such as a hoe, rake or shovel, would generally be a couple Drakar, though as with everything else, scarcity can change that price. Larger tools, like a plow to be hooked up to larger animals, would cost 5 Drakar to a Ketch. These tools usually lasted for a very long time however. A Reel would almost never be used to purchase tools.
+
+Many places would often use a barter system between individuals in a small village, where one farmer might trade some food grown for tools from a blacksmith. Thus currency is usually used more for international trading and exchange than an everyday measure of what items might be worth.
+
+### Merchants
+
+It's expected that the heroes of Fortunes Bend will have various items for sale, both those they have empowered using their specific skills as well as more mundane commodities. However the Merchants Guild also offers for sale a standard array of items, including alchemical concoctions, tinker constructions, arcaneered inventions and even some wholly magical and enchanted items. The basic items will almost always be available at a cost slightly above what it would take to craft them. But those looking for something more powerful, or something very specific, need to arrange a face-to-face meeting with a member of the Merchant's Guild. A single individual can only bear so many objects of power, so even the fabulously wealthy are not adorned with magic objects. The merchants' guild also employs crafters that are able to repair weapons and armor in addition to selling new goods.
+
+### Banks
+
+A new development in the world of Aeledd is banking. The Merchants Guild stores coin for their customers, ensuring that they always have plenty on hand and that travelers and adventurers don't need to drag heavy coin purses with them. All coin placed in a Guild deposit box is absolutely vouchsafed by the guild. It can be withdrawn again at any point, but that is seldom necessary. A writ authorizing payment from the merchants' guild is accepted by nearly everyone as payment.
+
+### Money Makes the World Go Round
+
+Throughout Aeledd, coin solves many problems. Everything from commonplace goods to exotic ritual components, from corrupt administrators to the health benefits of eating well is available for purchase if you know where to look. Sedentary nobles and merchant princes may accumulate great wealth, but adventurers know that money does more good – for them and for others – if it's spent.
