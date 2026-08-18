@@ -1,0 +1,897 @@
+## Welcome
+
+You are preparing to enter a game world using the Accelerant system. The system is designed to be simple in concept and execution yet have a rich and varied set of skills and abilities with which to develop characters and stories. To do this we have created a set of Core Rules that defines all the effects of the game and presents them to you within the first chapter of the rule book. All skills and special abilities refer to these Core Rules, so once you have learned the Core Rules you know how to react to effects from any Accelerant game, even though the skills or abilities that allow a character to use those effects may be very different.
+
+## Game Actions
+
+The system is designed to keep the game running as smoothly and fluidly as possible. The game takes place in a site full of props, buildings, and other players. The rules define how you interact with the environment and other players. The game has removed actions and effects that players cannot actually perform from the gameplay. There are no creatures stepping through solid walls, no flying creatures, and no activities that cannot be played without interrupting the flow of the game. Characters that step into rifts and turn to spirit, or characters that die and rise as spirits are still visible as they walk off. You cannot attempt actions such as chopping up bodies or breaking down doors that cannot be performed for logistical or safety reasons.
+
+## Always In Game
+
+Players stay in-game and in character from the start of the event to its end. There is no "out-of-game" except during emergencies. There are no out-of-game indicators such as white headbands, and no people should be wandering about unless they are in the actual game. The idea is to keep the game flowing so players can stay in character and be immersed in the story. If you have a question, attempt to word it and ask it in-game. If you feel you must leave game, walk to the edge of the game area in character and leave the game for a time. You should never interrupt the flow of the game.
+
+The system is also designed to minimize the times where you cannot act on what you see, hear and feel. You are always in-game, even if your character is unconscious, dead, or affected by a game condition that incapacitates you. Your spirit still remains with you, and it can experience the game world around you. You do not need to pretend you did not experience the game even under these conditions. If your eyes are closed then you might not see what is going on, but you will remember what you hear, smell, and feel. Your character will also realize this and knows that sometimes dead men do tell tales.
+
+There is no information that is out-of-game. If you don't want other players to know something in-game, don't talk about it out-of-game. Keep your in-game secrets to yourself, and if you talk out-of-game about something other players can decide they learned that information in-game if they feel that the conversation unfairly inflicts knowledge upon them they did not want to know. If you want in-game secrets, keep out-of-game secrets.
+
+The only caveat is that sometimes players experienced with a game play different characters altogether. Perhaps you have lost a previous character to death and are playing a new character. Perhaps, as a change of pace, you are participating as a non-player character or you are playing a plot character for a time. If you play a different character, creature, or plot role within the same game world we ask you do not transfer anything you learn to other characters.
+
+## Rules Restrictions
+
+As you play the game and wander around the world, there is a lot you can do to affect the game environment around you. Conversely, there are lots of effects that can change how you play the game, for both good and bad. Other characters may attempt to inflict unpleasant fates upon you, and you might attempt to do the same to them.
+
+There are three restrictions on your activities:
+
+1. **Environmental Restriction** - When you come across props that represent certain environments, such as tarp walls representing solid walls, you must play as if that condition was real.
+   - You cannot move tarp walls
+   - You cannot walk across black pits
+   - You cannot enter areas marked out-of-game
+2. **Effect Restriction** - If an effect has been inflicted upon you, you must abide by the restriction of that effect until it is removed.
+   - If you have a Slow effect you cannot run
+   - If you have the Maim effect you cannot use the maimed limb
+   - Effects can be inflicted upon you in a variety of ways
+3. **Skill Restriction** - If there is a skill that specifically allows you to manipulate a prop or perform some action, you cannot attempt to perform that action or manipulate that prop unless you have that skill.
+   - You cannot pick up weapons and try to fight unless you have the skill to do so
+   - You cannot manipulate traps unless you have the skill to do so, although you can attempt to avoid them
+
+### Prop Restrictions
+
+1. **Forbidden Props** - You are not allowed to bring to an event any prop that resembles or could be mistaken for common or unique game items provided by plot without the express permission of the game staff.
+   - You cannot attempt to duplicate or forge game money, item props, tags, or logistical documents such as character or monster cards
+   - Any attempt to use in-game means to create fakes of any items must be approved by the plot committee
+2. **No Destruction** - You are not allowed to break, destroy, or take apart any prop.
+   - If a prop is attached to a wall by a chain, for example, you cannot attempt to break or detach that chain in any way
+   - The Destroy effect does not change the basic structure of a prop; it just makes the item unusable for any game related purpose
+3. **Non-Game Props** - Most props have no in-game worth.
+   - Costuming, jewelry, weapons, and area props cannot be moved from the area they are placed in except by the owner
+   - These props provide no in-game benefit and disallowing their removal ensures these props are not broken or lost
+   - Props may be handled but must be put back where they are found unless they have a sticker
+4. **Sticker Meanings** - Small circular stickers indicate special rules about handling an item.
+   - **Red Circle** - Cannot be moved at all. It cannot be picked up or touched. It will not move.
+   - **Yellow Sticker** - Seems valuable. The prop may be taken but it must be turned in at checkout.
+   - **Green Sticker** - Seems valuable. You can take the prop and hold on to it.
+   - **Red Sticker with Rune/Number** - Characters may not pick up or touch the item unless they have a skill or ability that allows them to manipulate objects marked by that symbol or number.
+5. **Ribbon Markers** - Items may also be marked by attaching a short green, yellow, or red ribbon to indicate the item's in-game status.
+   - These ribbons replace the sticker and have the same meaning
+   - A ribbon can be used to mark small items that don't have room for a sticker, such as rings
+   - May also be used on items where plot feels that a ribbon would look better or be more evident to the players
+   - This ribbon may have codes or markings on it in the same manner that stickers can have markings for players with specific skills to recognize
+6. **Effect Stickers** - Some game effects will enhance an object such as a weapon or a piece of armor.
+   - When an item has been enhanced by a game effect, an effect sticker will be placed upon it so long as the enhancement is in place
+   - Items with effect stickers are treated as though they were yellow sticker items
+   - If you have an effect sticker upon your weapon, that prop can be stolen from you
+   - You should bring back up props if you want to use item enhancements
+
+### Game Environment
+
+Games take place at a site, usually a campground. This site defines the boundaries of the game. During game play, a player may attempt to enter any area within the game boundaries unless the area is marked with a yellow information sign. Areas marked with information signs are either special areas with additional rules described by the sign or they are out-of-game and impassable.
+
+### Out of Game Areas
+
+Areas that are out-of-game are marked by the yellow or hazard orange signs with text marking it Out of Game. You may not enter these areas. The text of the sign indicates why, in-game, this area cannot be entered. Some areas might be described as collapsed and ruined piles of rubble that have no real interior. Other areas might be marked as impassable swamp.
+
+### Special Areas
+
+Areas with special restrictions or rules will be marked by the yellow or hazard orange signs with game information printed on it. This sign will have game information written upon it that will describe the circumstances that make the area special.
+
+### Gates
+
+Portals ringed with strings of decorative light are magical portals. These portals lead to other places. Some lead to other places in this world, some lead to places beyond this world. If a portal is ringed with lights and they are not lit then you cannot go through that portal.
+
+The areas beyond gates are often marked with yellow information signs, so you should always look around after going through a gate. Gates have a disorienting effect to compensate for the time it takes to spot and read a yellow sign.
+
+White gates are open portals. If the lights are on, anyone may step through the gate. White gates will always appear in ruined areas.
+
+Colored gates are special. Only special staff characters that control the gate may bring you through a gate with colored lights. If there is no guide you cannot enter the gate. Some colored gates are free standing, with no actual area on the other side. If you enter such a gate at the request of a staff character then you will become a spirit. You will not be affected by any attacks and you must reply "Spirit" to any attack that strikes you. You cannot use any game skills or converse with any one else. You are visible to others, but you cannot converse with them and you can only enter an area indicated by the spirit guide who leads you. You must follow the spirit guide until you exit through another gate and your guide indicates you have assumed your normal form.
+
+### Turn Back Markers
+
+Some games have locations in a game site, that are normally accessible to players, but are sometimes closed for specific encounters or modules. While this is usually handled with yellow information signs, it is often difficult to spot and read information signs without entering the encounter area to read them, especially at night. To make this easier, areas can be marked with circular information signs (rather than the usual octagonal signs) and at night these signs are lit with circular rings created with looped glow bracelets. If you spot these Turn Back Markers hanging in the area, it means that the area is inaccessible and you should stay away unless you are led to the area by a spirit, a scout, or a similar guide.
+
+It is often left to the player to explain why they cannot proceed when they spot Turn Back Markers. One common reason is that the area ahead is an impassable swamp. Another, is that a mist has risen and players cannot find their way through the area. Sometimes players simply state that the area ahead looks uninteresting and turn back. It is left to you and your companions to come up with a plausible reason that you cannot proceed when you spot a Turn Back Marker.
+
+### Combat
+
+During the course of the game, you can be the subject of a wide variety of attacks. Each attack will attempt to inflict an effect upon you. Some effects can benefit you, and some will deliver unpleasant effects upon you. Each attack has a verbal that describes what the attack does and a delivery that determines how the attack is used against the target.
+
+### Verbals
+
+A verbal is a short phrase that is called out when an ability is used to explain the effect of that attack. Each verbal can have an effect and a trait for that attack. The trait indicates the flavor of the attack so you may role play the effects and perhaps use a defense to negate the attack if it strikes you. The effect indicates what the attack does to you.
+
+A verbal is an out-of-game phrase. You must call your verbal even if you are affected by Silence. If you hear the beginning of a verbal you must listen to the phrase and play out the effect.
+
+Verbals for melee attacks are called out as you swing your weapon. Verbals for missile and packet attacks are called out before you release the projectile from your hand. You call out a phrase that takes the form of `[Effect]` by Trait. For example, a poison that freezes you in place would use the verbal "Paralyze by Poison" and a bolt of fire that causes 5 points of damage would use "5 Damage by Fire" as the verbal.
+
+If you hear a verbal, your character knows what happened. The verbal not only tells you the effect out-of-game, but it represents the sight, sound and feel of the attack in-game. You never have to play it dumb. The verbal "4 Damage by Fire" might represent a roar of flame. The verbal "Maim by Lightning" might represent a flash of light. The verbal "Paralyze by Fear" might represent the hairs rising on the back of your neck. However you imagine it, the verbal tells you what happened both in-game and out-of-game.
+
+Verbals should not be confused with incantations. Incantations are magical words that are used to cast a spell. These are in-game magical phrases that are required for all but the most powerful mages to cast magic. Spells usually have incantations, but they also end with a verbal. Remember that there are two rules that apply to all called attacks:
+
+1. **Timing** - You must finish the Verbal for a called attack **BEFORE** launching a packet or missile attack. You call out the Verbal as you swing a melee attack. If there is an incantation, which is an in-game phrase associated with an attack, then that must be clearly spoken before the Verbal. This is true for melee, missile and packet attacks.
+2. **Acknowledgement** - All called hits must be acknowledged with role play. Many skills are consumed only if the recipient calls out a defense or role-plays the effects of the attack. If you don't role play the effect, the attacker may assume that you were not struck and the skill not used.
+
+### Traits
+
+A trait is a label that is given to a character, an attack, a defense, or an item. Traits help describe the flavor of game effects and define how abilities interact with each other. There are four types of traits. A character trait is any trait that is somehow given to a character. An attack trait is added to an attack verbal and defines the flavor of that attack. A defense trait is added to a defense call. An item trait is added to a tagged item and gives that trait to anyone carrying that item.
+
+An attack trait tells you which defenses can be used against that attack. A character or item trait can be used to determine if certain effects worked against you. If you had the 'Undead' trait, for example, then an attack that caused "5 Damage to Undead" would be effective against you. A defense trait is generally used for flavor, but it is possible to have skills or abilities that can be used only if a defense with an appropriate trait is used.
+
+A character's race is always considered a trait. Characters with no explicit race have the Human trait. If you have a sub-race then both your sub-race and your general race will be considered to be traits. So a Wood Elf has the Elf trait as well as the Wood Elf trait.
+
+### Deliveries
+
+Each ability must be delivered to its target in some way. These deliveries are the physical action needed to determine whether an ability has been successfully used on an opponent.
+
+There are several different ways to deliver game effects, but there are three basic attack deliveries that are used most often in combat. Melee attacks are delivered with a successful strike with a hand held weapon. Packet attacks are delivered by throwing a bean bag like projectile and striking an opponent. Missile attacks are delivered by throwing or firing a special foam weapon prop, although some games use packet based arrows and bolts that are firing by aiming a missile weapon prop at an enemy and then throwing a packet prop and striking that opponent with the projectile.
+
+It is always up to the defender to make the final decision whether an ability has struck or affected them, and thus whether the ability has been delivered. It is important that players do not abuse this honor system. If a player does not count legal hits, the game breaks down. Individuals that are reported for not counting hits will be reviewed and if necessary asked to leave the game.
+
+### Melee Attacks
+
+Melee attacks require special hand held padded weapons to deliver an attack. Melee weapons cannot be thrown. You must have both hands on a two handed weapon in order to use it in combat unless some game ability specifically states otherwise. These padded weapons have a strict set of creation rules and must pass a safety inspection at each and every event where you intend to use them.
+
+To add to the atmosphere of role playing, we expect our players to role play in combat. Although we allow light weapons for safety and comfort, we ask that players keep the pace of their swings in line with what a heavier weapon might require. Melee swings that are entirely generated by snapping or rotating the wrist or forearm are discouraged. Although you are expected to role play full weapon swings where the weapon moves at least 45 degrees, the actual contact cannot be too hard. A tap from a weapon is sufficient to deliver an attack. Melee attacks that are blocked by another weapon or shield wielded by a character with the appropriate skill to do so are not counted. Attacks to the head and neck, the hands, or the groin are illegal and are not counted.
+
+If you are unskilled with a melee weapon you cannot make attacks with that weapon. If someone strikes that weapon or you try to parry with that weapon, you must either take the blow or the weapon is ripped from your hand. If you do not take the blow, you must drop the weapon as if you had been affected by the Disarm effect.
+
+You may hold only one weapon or shield in your hand during combat. If you are holding more than one item in a hand, and a melee attack strikes one of those items, then you will take the blow or be disarmed of both items as if you were unskilled in their use.
+
+A melee attack that has no verbal causes 1 point of damage. These are known as "uncalled attacks." If an uncalled attack removes your last point of Vitality you will fall unconscious but you will remain stable as described in the Vitality section below. A melee attack with a verbal is known as a 'called attack.' A successful attack delivers the effect in the verbal to the recipient.
+
+Skills and abilities that allow you to use called melee attacks are only used up, as a default, if the attack strikes a legal target area and the recipient acknowledges the hit by role playing the effect or calling out a defense to negate the attack. The melee attack is not used up if the attack misses or the target blocks the attack with a weapon or a shield.
+
+Some skills work only on limb hits. A limb hit is a strike to the arm or leg. A torso hit includes the chest from the belt up to the top of the chest. Any hit to the leg or buttock is a leg hit. Any hit to the arm or the outer shoulder is an arm hit. Hits that come down on the shoulder or that come down between the shoulder and the neck are also arm hits.
+
+### The Flurry Rule
+
+A flurry is a series of melee swings delivered at an enemy in combat with little or no pause. You can make no more than three consecutive attacks against a particular enemy where your weapon contacts an opponent or their weapons, including their shield, before you must reset. To reset your flurry you must step out of weapon range between you and your opponent and stop all attacks on your previous target for at least a second.
+
+Players pursuing enemies need not interrupt pursuit by stepping back to reset their Flurry. The pursuer needs only to pause for a second while at a distance just within their maximum weapon range.
+
+That's all you need to remember, everything else are clarifications and answers for specific questions:
+
+1. **What Counts as a Flurry Swing** - Blocked swings that contact a weapon or shield and successful hits that contact the body are counted as flurry swings. Feints and swings that do not make contact against weapons, shield, or body do not count as a flurry swing. You must reset your flurry after you have made three swings with contact before resuming attacks on that opponent.
+2. **Resetting While Being Pursued** - An opponent can't try to prevent you from resetting your flurry by advancing. If you have retreated in an attempt to get out of weapon range but your opponent's advance has prevented you from doing so then you may reset your flurry after a full second pause.
+3. **Incidental Contact** - Incidental weapon contact and aggressively engaging an opponent's weapon with beat attacks or offensive parries can make flurry determination confusing. We realize it is difficult to determine if these types of weapon maneuvers count as a strike in a flurry.
+
+> **Rule of Etiquette**
+> As a Rule of Etiquette, if both your elbow and the weapon tip move forward and contact an opponent's weapon then count that as one of your Flurry strikes even if it was not your intention to launch an attack. This might mean that both combatants use up a Flurry swing during incidental weapon contact.
+
+### The Proximity Rule
+
+You must maintain a safe distance from any active opponent. If you can reach out and touch the torso of an opponent with your hand then you are too close and you must back away. If there is a significant difference in the reach of two opponents, the opponent with the shorter reach may approach close enough so that they can strike their opponent with their weapon so long as they cannot touch the torso of the opponent.
+
+### Claws and Natural Weaponry
+
+Some characters have the ability to use claws or natural weaponry instead of, or in addition to, weapons. These weapon props are red, though some plot creatures may have props that are constructed to appear to be part of that creature.
+
+Claws are considered to be melee weapons and can be used to block melee attacks. Claws are not affected by Disarm. Destroy effects delivered to such weaponry will cause a Maim effect to the limb using the weapon.
+
+Claws and natural weaponry are not bladed weapons, and cannot be used with skills or effects that require bladed weapons. If you are holding a claw that is struck by a melee or missile attack, and you cannot legally block with the claw due to some game effect, you will be affected by the attack since you cannot drop the claw in response to the strike.
+
+### Packet Attacks
+
+A packet is a small bean bag filled with bird seed that represents some sort of mystical, psychic, or supernatural ranged attack form. Packets have strict construction guidelines. You call a verbal and throw a packet at a target to deliver the attack. If the packet hits the target, or any direct possession of the target, then the effect is delivered to the target. You cannot throw packets too hard. If you are winding up to throw the packet, then you are throwing too hard.
+
+Packets are not solid objects and cannot be affected by Disarm or Destroy, but they are a visible, in-game effect. If someone is carrying packets and you see the packets, you can assume they have some sort of aura that makes you realize they are capable of something special. Because of this, you cannot carry or throw packets unless you have the power to use them for something.
+
+If a packet clearly strikes a target and they do not acknowledge the hit with role play or by negating it with a defense, the attributes or their equivalent are not exhausted. If the packet misses, or you cannot tell whether the packet hit, then attributes or resources are exhausted normally.
+
+To deliver a packet attack, the arm that is delivering the packet must be free and the hand empty except for the packet itself. A free arm cannot have props tucked under it or tied to it other than armor. You cannot deliver packet attacks if you cannot use game skills, or with an arm that is affected by something that prevents its use such as a Maim effect or shackles. Some packet based skills have additional requirements as well.
+
+Packet attacks cannot be used while you are being hit. Successful melee attacks interrupt your ability to throw packet attacks, forcing you to wait for one full second before attempting to throw again. It is impossible to get off packet attacks during the Flurry pause. missile and packet attacks will also interrupt your verbal if they land while you are speaking it, but you may begin a new verbal immediately and do not have to wait for one second in these cases. An interrupted ability is not used up and attributes or their equivalent are not wasted, but you must begin the verbal again.
+
+Like melee attacks, any packet attack that has no verbal causes 1 point of damage. Packet attacks with no verbal are "uncalled strikes" and cause someone to fall unconscious but stable when they reduce Vitality to zero. Packet attacks that use called damage effects cause enemies to become unstable when they fall unconscious just like called melee attacks.
+
+> **Rule of Etiquette**
+> In order to encourage the use of good costuming and add a little more realism, we have the Costume Rule. If a packet attack clearly misses a target and passes by the body, yet that packet hits a cloak or costuming piece after it has gone past, the defender can call out "costume." This rule cannot be used if the costuming is in front of the defender or if the packet has not already passed the body. The rule is in place to encourage cloaks, back banners, and some directed character costuming such as wings without adding an unacceptable disadvantage to the character in combat.
+
+### Concentrate
+
+Concentrate is a special plot verbal that indicates the caster who called it can throw packet attacks while being hit. The caster calls out Concentrate and can throw a number of follow up packet attacks, including spells, while being hit by incoming attacks. You do not have to call Concentrate before every spell; one call covers a number of attacks. Each skill or special ability that allows the use of Concentrate requires you to call out "Concentrate" when you use it.
+
+> **Rule of Etiquette**
+> If a character using Concentrate is in a swirling fight where new combatants are coming into fighting range, then the caster should call out "Concentrate" each time they willingly switch targets so everyone in the fight knows what is going on.
+
+### Missile Attacks (Packet)
+
+For many games, missile attacks typically use packets that represent arrows or crossbow bolts. To differentiate missile attacks from normal packet attacks, the attacker has two additional requirements when attacking. First, you must have a prop in your free hand that is aimed at the target. Second, you must go through a firing motion for each missile attack. Bows require you make a drawing motion, and bring the packet to your cheek before throwing. Crossbows require that you pull the packet along the stock of the crossbow and pull it up to aim. After your motion you throw the attack while still pointing at the target with your free hand.
+
+Although this system is typically used for bows and crossbows, games can use this system for thrown weapons, wands, or other ranged attacks that can be, in setting, blocked with weapons or shields.
+
+Like melee attacks, any missile attack that has no verbal causes 1 point of damage. Missile attacks with no verbal are "uncalled strikes" and cause someone to fall unconscious but stable when they reduce Vitality to zero. Missile weapons that use called damage effects cause enemies to become unstable when they fall unconscious just like called melee attacks.
+
+Like packet attacks, missile weapons cannot be used while you are being hit by a melee weapon unless you have the ability to use the Concentrate ability as described above.
+
+Some skills that allow you to use a weapon or shield to block melee attacks also allow that defender to block missile attacks.
+
+### Missile Attacks (Props)
+
+Some games require special props for missile attacks. Foam balls for arrows and bolts, foam thrown weapons, nerf arrows, and other non-packet systems are possible in Accelerant games. Foam balls used as arrows or bolts require the attacker to point the launcher or implement at the target as described when using missile attacks with packets. Foam thrown weapons only need to be thrown at the target. Other missile props such as nerf bows, are aimed and fired when they are used.
+
+Foam weapons are always blockable by those skilled with weapons or shields in a manner similar to melee attacks. Like melee attacks, any foam missile attack that has no verbal causes 1 point of damage. Missile attacks with no verbal are "uncalled strikes" and cause someone to fall unconscious but stable when they reduce Vitality to zero. Missile weapons that use called damage effects cause enemies to become unstable when they fall unconscious just like called melee attacks.
+
+### Touch Delivery
+
+If a skill or ability is delivered with a touch, then the effect is delivered by touching a packet to the shoulder or arm of a willing or helpless recipient.
+
+### Special Attacks
+
+Special attacks are delivered in unusual ways rather than using the regular melee, missile, and packet combat system. They represent large scale effects and atmospheric conditions. Special attacks always begin with the person or area that the attack affects and that is followed by a verbal. If you have a defense that works against the verbal of a special attack you can use it to negate that attack. Once the verbal of these attacks has begun the effect is already delivered. You cannot, for example, retroactively turn to a spirit during the verbal to negate it. The individual types are detailed below.
+
+## Effects and Calls
+
+### Affliction
+
+Someone delivers an effect to your immobile or unconscious form by touching a weapon or packet to your torso and stating "Affliction One, Affliction Two, Affliction Three" clearly and slowly followed by a verbal. This works like a Death Strike and can be interrupted in the same manner as a Death Strike. The verbal may be a standard effect, or it may deliver an Inflict effect in which case the player will give you an effect card.
+
+### Gaze
+
+Someone who has met your gaze for a full three seconds calls out or whispers "By My Gaze" followed by a verbal. A vampire might whisper "By My Gaze, Paralyze by Will." Other creatures might cause fear or other effects.
+
+### Gesture
+
+Someone points at you with a hand or a weapon and calls out 'By My Gesture' followed by a verbal. If the effect has a duration that is not instantaneous, then instead of the normal duration, the effect lasts so long as they point at you.
+
+### Name
+
+Someone calls out "By Your Name," states your name, part of your name, or some pseudonym that you have used and calls out a verbal. The attack is delivered to you if you recognize that name as a name you have used or a name that person might use to refer to you. Basically if you know they are talking about you then you take the effect.
+
+### Room
+
+Someone calls out "In This Room" and an effect and everyone in that room will be affected by it. Doorways and gates act as room dividers. This delivery is commonly used for traps and performances. The attack only works in an enclosed room with normal doorways and corridors leaving it. The attack will affect you if any part of you is within the room when the verbal is called.
+
+### Search Response
+
+Someone calls out an effect after you search them or use a special Search effect upon them. If multiple people are currently searching a creature (for some reason) then all searching characters take the effect.
+
+### Voice
+
+Someone calls out "By My Voice" and an effect and everyone who hears it will be affected by it. You cannot defend against Voice attacks by intentionally obscuring the sound of the verbal with loud noise or by plugging your ears.
+
+### Vitality
+
+Vitality is a count of how much damage you can take before you collapse. As you take damage, your Vitality points are exhausted. These points can never drop below zero. Healing refreshes Vitality, and these points are also refreshed at the beginning of each event. If your Vitality ever reaches zero you will collapse and become unconscious. Unconscious characters that are taken down by uncalled melee or missile hits are stable. Characters taken down by any other kind of damage, from called melee or missile hits, from firearms, from traps, from packets, or from anything with a verbal become unstable.
+
+If you fall unconscious but you are stable, you will remain unconscious for five minutes. After that time you will wake up with 1 point of Vitality. If someone hits you with an attack for called damage while you are unconscious and stable you will become unstable and begin your 1 minute count. Other effects can be inflicted upon you while you are unconscious and stable and those effects will still be active when you wake up. If healing raises your Vitality above 0 then you will become conscious. A death strike successfully delivered to your torso will kill you.
+
+If you are unconscious and you are unstable you are dying from blood loss and shock. You will linger for one minute before dying. A Stabilize effect will change your condition to stable and you will begin your 5 minute count. Other effects can be inflicted upon you while you are unstable and those effects will still be active if you wake up. If healing raises your Vitality above 0 then you will become conscious. A death strike successfully delivered to your torso will kill you. If someone begins to use First Aid on you, your count will be suspended until they stop the First Aid. If they call Stabilize you become stable and start your five minute count. If they do not finish the First Aid, your one minute death count will continue where it was before they started using the skill.
+
+When you die, all active effects on your person end unless an Imbue or Inflict effect specifically says otherwise on the effect card. Your remains will linger for five minutes before you change to a spirit of the dead and begin to walk to the gate of death. Only effects with "to Spirit" or with "to Dead" traits will affect a spirit of the dead.
+
+### Unconscious
+
+You are incapacitated and must collapse to the ground. You must close your eyes and you cannot move or speak while you are unconscious. You cannot use game skills unless a skill explicitly explains that it can be used while unconscious.
+
+> **Rule of Etiquette**
+> Players who are unconscious close to combat may open their eyes to watch for out-of-game danger if the battle moves too close. It is important for players to be able to protect themselves during these times. If you open your eyes for safety reasons then we ask that anything you see during that time remain outside the normal knowledge of the game.
+
+### Death
+
+There are four ways you can die in this game:
+
+1. **Bleeding Out** - You can be knocked unconscious and unstable and remain that way for a full minute. This is referred to as "bleeding out" and is described above.
+2. **Death Strike** - You can be killed if someone delivers a successful Death Strike to your torso.
+3. **Death Effect** - You will be killed by an attack with a Death effect that you cannot negate.
+4. **Mishaps** - Special areas might cause your death if you have a mishap.
+
+### Death Strike
+
+A death strike is used to kill an unconscious or immobile victim. You must touch a weapon to the torso of the victim while saying "Death strike one, death strike two, death strike three". This verbal must be spoken clearly and at a normal speaking pace. You do not need to have skill with the weapon to inflict a death strike.
+
+To inflict a death strike, the victim must be unmoving. The victim can be unconscious or unmoving because of a game effect, but you cannot inflict a death strike on a body until it comes to rest after an attack, nor can you inflict a death strike on a helpless but struggling victim. If the victim can move, the victim can prevent a death strike. First you must render the victim unconscious or unmoving, and then you may inflict a death strike.
+
+To interrupt a death strike, you must strike the person attempting to deliver the death strike with a melee, missile or packet attack. You may also interrupt the death strike by striking the weapon used to perform the death strike with a weapon of your own. You do not have to force the weapon away. A death strike that is interrupted is canceled and has no effect.
+
+### The "Death" Effect
+
+Any effect that successfully inflicts a Death effect kills you immediately. Of all the various game effects, only the Death effect will kill you outright. The Death effect may be nullified by an appropriate defense.
+
+### Mishaps
+
+There might be large scale traps, challenges, and mishaps in special areas that can cause you to perish if you are unfortunate enough to stumble into them. Closing walls, deep pits, and other deadly traps might kill you outright. These areas will be marked or made clear to you during the course of the game.
+
+### Spirits Of The Dead
+
+After 5 minutes of death, a dead character becomes a spirit of the dead. Your spirit and everything you still carry is drawn to a special area of the game marked as a Death area. Your spirit will even pick up your own weapons if they are within reach unless someone else possesses them. When you rise as a spirit you must proceed directly to the Death area. You must walk with your head bowed and your arms at your side. You cannot interact with any other character unless they use an ability that allows you to do so. You cannot drop items. You cannot use any game ability. If someone tries to interact with you, reply "Spirit" and continue on your way.
+
+While you are a spirit of the dead, there are very few effects that will work on you. The only effects that will work are effects with "to Spirit" or "to Dead" in the verbal. These are Bane effects specifically designed to affect spirits. The most common is a "Speak to Dead" effect. This type of "Speak" effect will allow you to converse quietly with the character who used the effect. You cannot stray from your path or use any game skill while talking. You are not compelled to communicate, but you may do so. Other effects might include "Imbue to Spirit" and "Inflict to Spirit." If the description on the effect card states that it works on a spirit of the dead then you must follow the instructions given therein. You may use Resist and Purge defenses while you are a spirit of the dead if they are appropriate for an attack that strikes you or affects you.
+
+### Final Death
+
+If the spirit cannot return from the Death area then the character passes beyond this world and is said to have taken a final death. Final death means that you can no longer play the character in question, and adds an air of danger to the game by threatening your in-game persona.
+
+### Attack Effects
+
+The effect of an attack describes how that attack benefits or impairs you. The effect is the first part of any verbal. Some effects target items rather than characters. Each effect has a duration, but curing or removing that effect will end it.
+
+### Game Time
+
+As the game progresses during an event, players generally spend time interacting with other characters, moving from place to place, and engaging in combat and other game activities. Some skills or game effects require a specific passage of time as a requirement of their use or removal. Players are expected to count out this time. This counted time is spent either to Rest or to Focus.
+
+Time spent to rest or focus is interrupted if you use a game skill. This includes making an attack or blocking an attack with a weapon or shield. Spending time to rest or focus must be obvious to those observing you; you cannot spend time, for example, to rest or focus if you are standing in a combat stance or otherwise appear to be participating in active combat.
+
+When spending time as a requirement of using game skills, interruptions require you to begin the process at the start but these interruptions don't generally exhaust the costs of using the skill or ability unless that ability explicitly says otherwise. If you begin, for example, to Focus for one minute to use a skill which can only be used once per event, or which uses an attribute point, the skill or attribute is not generally used up if you are interrupted while trying to use the skill.
+
+Many games have a set of skills or attributes that can be refreshed when you have a chance to rest. Some games also define skills or resets that require you to be within a safe zone, workshop, haven, or sanctuary while you focus or rest. This prevents you from using these resets or skills while you are out in the field or away from these areas.
+
+### Rest
+
+Resting involves spending time out of action where you have a chance to regain your energy and composure. Rest requires you to be sitting, lying, or kneeling. It must be obvious that you are resting. You cannot walk or run. You can interact with those nearby while resting. You are resting if you are dead, paralyzed, stunned, or unconscious. Paralyzed characters are resting even if they are standing or in some other paralyzed position.
+
+Resting is not generally interrupted by game effects, regardless of delivery. Although you cannot use optional defenses without interrupting your rest, calling out mandatory defenses does not interrupt rest. Calling out "Spirit," "No Effect," "Guard," "Elude," or "Shield," for example, would not interrupt rest unless the specifics of the skill or ability you were using somehow made the call optional.
+
+> **Rule of Etiquette**
+> Players with bad knees or physical impairments may be given plot permission to stand with their arms raised and their hands behind their head to indicate they are resting on the field.
+>
+> Effects which require rest can overlap; what this means is that a single rest time can be used for multiple effects. If you had a game skill that allowed you to reset some kind of magical defense after a minute of rest, and you were affected by a Root effect, and you were affected by a Weakness effect you could rest for five minutes and apply the time to all three benefits. The Root would end, the Weakness would end, and the skill could be used to reset the defense.
+
+Game skills will instruct you by saying "Rest for," followed by a time period, followed by the results of the rest.
+
+> "Rest for one minute to end this effect."
+>
+> "Rest for ten seconds and call out "Heal 2 to Self" to use this skill.
+
+### You Are Well Rested
+
+If you are in the process of resting, particularly when resetting skills or attributes, and a game character tells you "You Are Well Rested" then your rest time is considered completed. Effects that end with rest are removed, and attributes and skills that require rest are refreshed. This will not end Imbue or Inflict effects, or effects that last for an entire event or more. If a reset has, in addition to the rest time, costs associated with it then you are still responsible for paying those costs to gain the benefit of the rest.
+
+### Focus
+
+Focusing represents some task that requires your concentration. Focusing might be required to repair armor, mend wounds, or meditate to remove an effect. You must spend the time role playing in a manner appropriate for the skill or ability you are using. You may talk with others during this role play time if you wish so long as the skill or ability description does not have additional restrictions which prevent this. Focusing requires that you stay in one area as you role play the activity. You cannot walk or run. Using other game skills, using called attacks, or using called defenses interrupts your focus time. Skills and abilities which require Focus do not overlap; what this means is that if you have two different skills with a Focus requirement the Focus time spent on one ability cannot be applied to any other activity. You have to role play each Focus time separately to use the associated ability. Effects that prevent you from using game skills also prevent you from spending time to Focus to use or refresh abilities. You cannot Rest while you Focus; the times do not overlap.
+
+Game skills will instruct you by saying "Focus for," followed by a time period, followed by the role play needed to act out the skill, followed by the result of the Focus.
+
+> "Focus for one minute, repairing your armor at a forge, to refresh your armor points."
+>
+> "Focus for one minute, binding the limb of the wounded character" and call "Cure Maim" to tend to the broken limb.
+>
+> "Focus for three seconds, shaking off your fear, to purge one Fear effect."
+
+Focusing is interrupted if any game effect that is not beneficial affects you regardless of the delivery. While you do not exhaust any costs associated with the skill or ability (unless the description explicitly states otherwise) you must start the entire process from the beginning. This means that calling any defense, optional or otherwise, interrupts your focus.
+
+Travis and Gerard, for example, each have a skill that provides armor points. Travis has a skill that requires Rest for one minute to refresh his armor points. Gerard has a skill that requires Focus for one minute, where he role plays repairing his armor, to refresh his armor points. Both sit down to rest off a Weakness effect. During that time, Travis may also refresh his armor points. Gerard would still have to focus for one minute to refresh his armor.
+
+### Beneficial Effects
+
+Effects that are intended to aid, bolster, or benefit a character are marked as Beneficial effects. If, for some reason, the recipient does not want to receive the benefit of one of these effects they may say 'Refuse' to negate the attack or delivery.
+
+### Effect Listing
+
+### Agony
+
+You are wracked with pain. You cannot attack or use most game skills. You may run, defend yourself by blocking with weapon skills and can use called defenses. Agony lasts for 10 seconds.
+
+### Cure, Remove...
+
+**Beneficial Effect (Cure only)**
+
+Cure removes one effect on the target. A Cure `[Effect]` will remove one instance of the specified effect. A Cure Trait will remove one effect with the appropriate trait except Imbue and Inflict unless the Imbue or Inflict card specifically says otherwise. If the Cure verbal is followed by 'All' then all appropriate effects end. If you have more than one appropriate effect, you may choose which will end when a Cure effect is applied to you. Cure will never restore Vitality. Cure is a beneficial effect.
+
+**Step-by-step Example:**
+
+- Travis has been affected by the following attacks:
+  - Slow by Disease
+  - Slow by Will
+  - Drain by Will
+- If Travis receives a **Cure Slow** effect:
+  - He can choose to remove either:
+    - The Slow by Disease, **or**
+    - The Slow by Will
+- If Travis receives a **Cure Will** effect:
+  - He can choose to remove either:
+    - The Slow by Will, **or**
+    - The Drain by Will
+    - (since both have the Will trait)
+- If Travis receives a **Cure All Slow** effect:
+  - Both Slow effects are removed:
+    - Slow by Disease
+    - Slow by Will
+
+**Special Cure Cases:**
+
+If a "Cure Maim" effect references a specific limb, the effect will only remove Maim effects on that limb. If the Cure Maim effect does not specify a limb, it will cure one Maim effect active upon the target. If an ability or skill allows you to use the "Cure Maim" effect on a specific limb, you touch a packet to the specified limb to indicate which limb. A 'Cure All Maims' effect will remove all Maim effects upon you regardless of limb.
+
+A "Cure Death" effect will restore a dead target to life and leave them with 1 Vitality unless that target has transformed to a Spirit of the dead.
+
+Once a character has transformed to a Spirit of the dead, only the rare "Cure Death to Spirit" effect can restore them to life, and only if it is used before the Spirit reaches its destination.
+
+A "Cure [Trait Name] Trait" effect will remove a trait given to you by an Inflict, Imbue, or other effect that is temporary. It has no effect on a permanent trait granted by race, skill, or the like.
+
+**Remove vs Cure:**
+
+Remove is used to simulate dispels or forced removal of effects. Remove works just like Cure except it is not a beneficial effect. This has several side effects. Where Cure can be touch cast, Remove cannot be touch cast. Where Cure can be refused because it is beneficial, Remove cannot be refused. Where Cure will not interrupt Focus, Remove will interrupt Focus. Where Cure is not negated by and does not consume Shield, Elude and Guard defenses, Remove will be stopped by and consume Shield, Elude, and Guard. Otherwise Remove works like Cure.
+
+### Damage
+
+This effect removes Vitality points as described in the section on Vitality. Unlike typical effects, Damage is instantaneous. It removes Vitality points and then the effect ends. You cannot remove or dispel damage. Vitality points must be restored though healing.
+
+### Death
+
+An attack with this effect kills you. You fall down dead, as if you had been struck with a death strike. All temporary effects upon you end when you are killed except for Imbue and Inflict effects that are not specifically removed by death. Death lasts for 5 minutes, after which you will rise as a spirit and travel to the Death area. This process is described in greater detail in the Spirits of the Dead section.
+
+Cure Death and certain special abilities can affect you while you are dead. Some strengthen your spirit so it is not weakened by the presence of Death. Some might even restore you to life. Others might cause unpleasant effects. All of these will be handled using an Imbue or Inflict effect. In these cases you will be given an effect card that explains the results of the Imbue or Inflict effect.
+
+### Destroy...
+
+An item is destroyed and cannot be used for any game skill or effect until it is repaired. For most melee delivered effects, the verbal is simply 'Destroy' and the strike will destroy the weapon it hits. For missile and packet attacks the verbal will include the name of the item and any strike will destroy that named item. A melee attack that strikes your shield and uses the 'Destroy Shield' verbal will render your shield unusable. The effect is permanent until the item is restored with a Repair effect. Some items may be truly destroyed if no Repair effect exists in the game to restore them. The item does not crumble away or disappear; the prop represents the broken item.
+
+An attack that uses the 'Destroy Armor' verbal will exhaust all of your armor points. The armor points can be refreshed or repaired normally as if they had been removed by damage. Melee attacks must successfully strike you to deliver a Destroy Armor effect. Some creatures might take some kind of detrimental effect when struck by this attack. If you want to attempt to harm a construct directly with this effect you would call out 'Destroy Form' as the verbal.
+
+Items without tags or safety stickers (such as clothing, belts, pouches, and the like) cannot be affected by Destroy.
+
+### Diagnose
+
+This effect is used to determine if the recipient is inflicted with a specific effect, trait, or game condition.
+
+**Key points:**
+
+- Skills with the Diagnose effect allow you to use Diagnose to determine the presence of specific effects or traits, **except** for Imbue or Inflict effects.
+- A skill might also allow you to use Diagnose to determine if the recipient is currently **Stable, Unstable, Dead, or** Damage.
+- To use Diagnose:
+  - Touch the recipient with a packet.
+  - Say "Diagnose" followed by an effect, trait, or game condition.
+  - The recipient says **"Yes"** if they are afflicted with the named effect, an effect with the named trait, or if they suffer the game condition. Otherwise, they say **"No."**
+
+**Example:**
+
+> Travis is lying on the ground unstable and has been inflicted by a Slow by Disease and a Paralyze by Magic. Another player approaches and tries to help:
+>
+> **Player:** "Diagnose Stable." **Travis:** "No."
+>
+> **Player:** "Diagnose Unstable." **Travis:** "Yes."
+>
+> She uses a Heal effect on Travis, but he still doesn't move. Puzzled, she continues:
+>
+> **Player:** "Diagnose Stun." **Travis:** "No."
+>
+> **Player:** "Diagnose Paralyze." **Travis:** "Yes."
+>
+> She has the ability to Cure Poison, so she checks:
+>
+> **Player:** "Diagnose Poison." **Travis:** "No."
+>
+> She decides to wait until the Paralyze wears off.
+
+**Special Note:**
+
+- If someone uses "Diagnose Damage" on you, you may choose, for the sake of expediency, to include in your reply the current number of Vitality points that have been removed by Damage.
+  - For example, if you have taken two damage that has not been healed and someone uses "Diagnose Damage" on you, you may reply with a simple **"Yes"** or you may reply with **"Yes, two."**
+  - The choice of how to respond is up to you.
+
+### Disarm...
+
+You must drop everything in the hand indicated by the verbal. You can pick up items immediately after they have come to rest. You may pick up an item as soon as it stops moving. The verbal will contain either "Disarm right hand" or "Disarm left hand." If you are holding a fragile or breakable prop, including an air gun, you may put it down rather than drop it, but in this case you cannot pick it up for a full five seconds.
+
+Delivering this effect with a melee attack requires you to strike that weapon while calling the Disarm effect. You do not need to specify a hand. The hand that is holding the weapon will be affected. A melee delivered Disarm will not affect a shield unless the "Disarm Shield" verbal is used. You cannot disarm a shield unless a skill or ability specifically allows the use of "Disarm Shield."
+
+> **Rule of Etiquette**
+> Delivering a Disarm effect against a weapon requires an attack against the opponent's weapon. You must finish the verbal and move your weapon forward, attacking with the legal striking surface. You cannot call Disarm if you are simply blocking your opponent's attack, you must be making an effort to strike at the weapon.
+
+### Disengage
+
+To initiate this ability either take a step back or plant your feet for 3 seconds. Gesture at any number of opponents with your weapons. You cannot move towards any target. Everyone who is attacking you and everyone indicated by the gesture of your weapon must move back out of weapon range so that you cannot cross extended weapons. Targets that are rooted or cannot move back may cross their arms and lean away from the effect instead of backing up. Once the distance has been increased and the space indicated by the Disengage has been cleared by all targets (or everyone has crossed their arms and leaned away) the effect ends. Disengage will not force a target into a dangerous area. A target may choose to cross arms and lean back rather than stepping back into an area that will cause them some detrimental effect. Disengage is not a melee delivered attack and cannot be negated by defenses that stop melee attacks.
+
+### Drain
+
+For a simple Drain effect, you cannot run or use any game skill, including weapon and shield skills. If the verbal is followed by a skill or ability name then you cannot use that particular skill. Drain can also be used to suppress entire skill headers. If a header is drained, you cannot use any skill that falls under that header. Drain can be used in this manner to suppress racial abilities and empowered named items. If an item is named after a Drain effect then no abilities from that item can be used until the Drain ends. Only simple Drain effects prevent you from running. The Drain effect will last until you rest for five minutes.
+
+### Expose...
+
+The Expose effect is followed by one trait. If you have that trait and are subjected to this effect, you must cry out, revealing the fact that you have the trait and revealing your position. You must cry out as loudly as the Expose effect was called.
+
+Although you may cry out softly if the Expose was called softly, you still must make every effort to ensure that you are revealed to the person who called the effect. The Expose effect is audible and you must cry out even if you are unconscious or under the effects of a Silence, Stun, Paralyze, or other disabling effect.
+
+You are not affected if you are Dead or have the Spirit defense unless the Expose effect targets those specific traits. This effect is one of the few that will commonly be delivered by voice.
+
+### Frenzy
+
+This effect causes you to attack the closest creature to you, regardless of recognition or consequence. You may attack with any standard skill that is not beneficial, though you are not forced to use consumable skills in this attack. If you are affected by a Repel effect, or if you are not affecting the creature in question, or if you cannot find a way to reach the creature for 10 seconds you will move on to the next closest creature. If someone else attacks you and that creature is more convenient than your current target then that creature will become your new target. The effect ends when you are rendered dead or unconscious.
+
+### Grant...
+
+**Beneficial Effect**
+
+You receive a boon, blessing, or magical buff that enhances you in some way. There are a number of specific Grant effects, each with their own benefit. All Grant effects end if you die, and when the event ends.
+
+Grant effects have some restrictions:
+
+- As a default you can have no more than three Grant effects at one time.
+- Each type of Grant listed below also has its own additional restriction.
+
+Grant effects are negated with the Remove effect. A "Remove Grant" effect will negate one Grant effect of your choice, while a "Remove All Grants" will remove all existing Grant effects. Remove effects can also specify a type, such as "Remove Armor Grant" or "Remove All Defense Grants." In addition, a Remove `<Trait>` effect will negate any Grant effect that also used that trait.
+
+There are five types of Grant effects.
+
+#### ...Armor
+
+> "Grant Armor"
+>
+> "Grant 2 Armor by Inspiration"
+
+This Grant adds additional armor points to either physical armor or armor from other abilities. These points are refreshed when your armor points are refreshed. If no number is indicated then this effect boosts your armor points by 1. The effect might indicate a higher number in the verbal such as "Grant 2 Armor" to indicate that a greater number of armor points have been granted.
+
+You may only have one Grant Armor effect active.
+
+#### ...Attribute
+
+> "Grant Fortitude"
+>
+> "Grant 2 Vitality by Magic"
+>
+> "Grant 2 Insight by Inspiration"
+
+This Grant adds to the total of one numeric attribute. Any points added with this effect are available immediately for use. Effects which refresh that attribute can also refresh these additional points. These extra points can be exhausted to fuel skills and abilities in the same manner as regular attribute points.
+
+If the attribute indicated is Vitality then Heal effects will also restore these additional points. Vitality calculations and other secondary attribute calculations are not affected by points added by the Grant effect to another attribute used in that calculation.
+
+No attribute can be modified by more than one Grant effect.
+
+#### ...Protection
+
+> "Grant Protection"
+>
+> "Grant 3 Protection by Inspiration"
+
+This Grant adds additional protection points that negate points of damage. These protection points work in a manner similar to armor, negating the indicated amount of damage regardless of the source. The number of points is indicated after the "Grant" in the verbal, and if no number is indicated then the ability grants a single protection point. Protection points are always lost after armor points. Protection points are not affected by Waste Vitality effects. Protection points cannot be refreshed or renewed. Once they are used to negate damage the effect ends.
+
+You may only have one Grant Protection effect active.
+
+#### ...[Type] Defense
+
+> "Grant Poison Defense, Shield"
+>
+> "Grant Defense by Inspiration, Elude by Blur"
+>
+> "Grant Melee Defense by Magic, Parry"
+>
+> "Grant Packet or Missile Defense, Avoid"
+
+This Grant gives you a called defense that works against the Trait or Effect indicated in the [Type] portion of the verbal. The first half of the verbal is information about the Grant itself, and it can include a trait. The second half of the verbal tells you what to call when you use the defense. If no [Type] is specified then the defense can be used against any melee, missile, or packet attack.
+
+Once this defense is used the Grant effect ends. Grant effects which give you Elude, Guard or Shield effects must be used against the first appropriate attack that strikes you. Grant effects which give you Avoid, Parry or Resist defenses can be used against any appropriate attack and you can choose whether or not you will use the defense. The Purge defense requires you to wait for three seconds and call Purge to end an appropriate effect. Elude, Guard, and Shield defenses that protect against melee attacks must be used against uncalled melee attacks that strike you.
+
+Once you have a Grant that protects against a specific [Type] of attack you cannot have another Grant that also defends against the type. You must choose which one to keep. This restriction also applies to a Grant Defense call which has no specified type; you cannot only have one Grant Defense effect that is unspecified.
+
+- A "Grant Defense by Shadow, Avoid by Shadow" would give you one defense against any melee, missile, or packet attack. You could choose to take an attack and save the defense for later. You would call out "Avoid by Shadow" when you used the ability.
+- A "Grant Poison Defense, Shield" would give you one defense against any attack with the Poison trait. You would have to use this defense against the first Poison attack that strikes you. You would call out "Shield" when you used the ability.
+- A "Grant Missile Defense by Wind, Avoid by Air" would give you one Avoid defense against a missile attack. You could choose to take the attack and save the defense for later. You would call out "Avoid by Air" when you used the ability.
+
+Sylla has an active grant effect with the verbal "Grant Poison Defense, Shield" on her. She receives a new Grant effect with the verbal "Grant Poison Defense by Faerie, Resist." Sylla cannot have two Grant Defense effects with the same type, so she must choose one and decides to take the resist and let the shield end. Later, Sylla receives a new Grant effect with the verbal "Grant Disease Defense, Resist." Sylla can accept that Grant effect since her current Grant works against Poison and the new Grant effect works against Disease.
+
+Travis has an active Grant effect with the verbal "Grant Defense, Avoid." He knows he can call out "Avoid" to negate one melee, missile or packet attack because the type isn't specified. Travis receives a "Grant Defense, Shield" but decides to keep the avoid and the new Grant effect is lost. Later, Travis receives a "Grant Packet Defense, Avoid." He can keep that defense and his previous Grant because the type in the Grant verbal is not the same as one is unspecified and thus defaults to "Melee, Missile and Packet" and the other is specified as a "Packet" defense.
+
+#### ...[Delivery] Attack
+
+> "Grant Melee Attack, 2 Damage"
+>
+> "Grant Missile Attack by Venom, Agony by Poison"
+>
+> "Grant Packet Attack by Magic, Stun by Fear"
+>
+> "Grant Attack by Arcane, 5 Damage by Fire"
+>
+> 'Grant Touch Attack, Heal 2'
+
+This Grant gives you one called attack that uses the appropriate delivery. If the delivery is omitted the recipient may choose melee, missile or packet for the delivery when they receive the effect. You may use a melee or missile attack only if you have a skill that allows you to make such attacks and the props on hand to make an attack with the specified delivery. You may use a packet attack only if you have a packet on hand to make the attack. For melee and missile attacks, the attack is exhausted and the Grant effect ends only if the strike lands and the opponent acknowledges it with role play or negates it with a defense. For packet attacks the Grant effect ends when you use the attack whether it hit or missed. If the attack is a beneficial effect the delivery can also be specified as 'Touch.'
+
+As a default you can have no more than one Grant Attack effect.
+
+- A "Grant Melee Attack by Shadow, Weakness by Shadow" would give you one melee attack with the Weakness by Shadow effect. You would call out "Weakness by Shadow" when you used the ability.
+- A "Grant Packet Attack, 2 Damage by Fire" would give you one packet attack and you would call out "2 Damage by Fire" when you used the ability.
+- A "Grant Attack, Paralyze by Will" would allow you to choose melee, missile, or packet as the delivery and you would gain one attack of that type with "Paralyze by Will" as the verbal.
+- 'Grant Touch Attack by Divine, Cure Poison' would allow you to touch a packet to a willing subject to cure a poison effect. Like any beneficial effect, the recipient could refuse the effect.
+
+#### Grant Extra...
+
+Grant effects that begin with "Grant Extra" can overcome stacking in the following ways:
+
+- An attribute modified by a Grant effect can also have one "Grant Extra" effect that stacks.
+- Armor modified by a Grant effect can also have one "Grant Extra" effect that stacks.
+- You can have both a "Grant ... Protection" and one "Grant Extra ... Protection" effect and the effects stack.
+- You can have both a "Grant ... Defense" and one "Grant Extra ... Defense" at the same time.
+- You can have both a "Grant ... Attack" and one "Grant Extra ... Attack" at the same time.
+- Grant Extra effects do not count towards your three Grant effects.
+
+If you already have an active "Grant Extra" effect, you can accept one regular Grant effect; you need not receive the "Grant Extra" effect after a regular Grant effect to allow them to stack. You cannot accept two 'Grant Extra' effects, even if you have no Grant effect that did not include 'Extra' in the verbal.
+
+**Example:**
+
+> Travis has a "Grant 2 Armor" effect that brings his armor total to 4. A servant of his divine patron visits him before a big battle and gives him a "Grant Extra Armor" effect on him. He now has an armor total of 5, but he could not have an addition "Grant Armor" nor another "Grant Extra Armor" active.
+>
+> Sylla has only a "Grant Extra Magic Defense, Resist" upon her. A friendly wizard gives her a "Grant Magic Defense, Shield" to her. She can accept this effect because her other "Grant ... Defense" effect is an "Extra" Grant effect.
+
+#### Double and Triple
+
+Grant effects with the Double or Triple qualifier will provide multiple uses of the specified attack or defense but only count as a single Grant effect. In other words, you can have a "Triple Grant Melee Attack by Skill, 2 Damage" effect that grants you three melee attacks each which do "2 Damage" even though you are normally allowed only one Grant effect with the Skill trait. Since numeric effects do not stack this is only relevant for Grant Attack and Grant Defense effects.
+
+### Heal...
+
+**Beneficial Effect**
+
+This effect restores one point of Vitality. If the effect is followed by a number, then it restores Vitality equal to the indicated number. If the effect is followed by the term 'All' then all of your Vitality is restored. Otherwise it restores one point. If you are unconscious with no Vitality then Heal will restore one or more Vitality points and you will wake immediately unless some other effect is preventing you from doing so.
+
+### Imbue...
+
+**Beneficial Effect**
+
+This effect can be used in one of two ways. An Imbue effect with the verbal 'Imbue [Trait Name] Trait' will give you the specified trait for the remainder of the event.
+
+Otherwise, this effect is some enhancement or extra ability that is described on an effect card that is given to you after the effect is used upon you. An Imbue effect with no trait will not take effect until you have read the effect card. Imbue will usually give you some ability that can be used during the current event, although the effect card might describe some effect that lasts beyond the current event.
+
+Imbue effect cards can have a wide variety of long term plot effects. Examples include granting a defense against certain types of attack, strengthening the spirit of a dead character, and similar exceptional abilities.
+
+If a player can use an Imbue effect, that ability will always have some in-game action that must be accomplished before you can use the ability. You might need to gather and mix components. You might need to construct some item from strange parts. These actions earn you the effect card needed to use this effect. You can never use an Imbue ability without the appropriate effect card to represent the properly prepared components.
+
+### Inflict...
+
+This effect can be used in one of two ways. An Inflict effect with the verbal 'Inflict [Trait Name] Trait' will give you the specified trait for the remainder of the event.
+
+Otherwise, this effect is some affliction or detrimental effect that is described on an effect card that is given to you after the effect is used upon you. An Inflict effect with no trait will not take effect until you have read the effect card, so a character engaged in combat may not be affected by Inflict effects described on Inflict cards immediately; they have time to retrieve the effect card and read it when it is convenient and unobtrusive to do so. Unconscious or dead characters must read the card immediately. Inflict cards will give you some unusual detriment that will have an effect and a duration described on the effect card.
+
+Inflict effect cards can have a wide variety of long term plot effects. Examples include causing death after a certain amount of time, causing you to transform into some type of creature, inflicting you with a disease that cannot be healed normally, weakening the spirit of a dead character, and similar exceptional abilities.
+
+Defenses can be used to negate Inflict attacks if those defenses will stop an attack with the appropriate delivery or trait.
+
+If a player can use an Inflict effect, that ability will always have some in-game action that must be accomplished before you can use it. You might need to gather and mix components. You might need to construct some item from strange parts. These actions earn you the effect card needed to use the ability. A player can never use an Inflict ability without an effect card to represent the properly prepared components.
+
+### Maim
+
+One limb becomes useless. An arm must hang at your side and cannot be used for any game ability. A leg becomes unusable. You must go down on one knee - you cannot hop. You may crawl using your other limbs. A Maim effect will last for the duration of the event. If a Maim effect is delivered by a melee or missile attack, the limb struck will be affected. If a Maim effect delivered by a melee or missile attack strikes the torso then the Maim effect is ignored. If a Maim effect is delivered by a packet, the attacker can include the limb in the verbal. For example, a caster might call out "Maim Right Leg by Fire." If the limb is not specified, then the subject may choose one limb that is not already affected by a Maim. Maim only works on arms and legs.
+
+### Paralyze
+
+You must stand frozen. You cannot move, but you are aware of what is happening around you. If you are rendered unconscious, or someone tries to change your pose, you will collapse to the ground. Paralyze will last until you rest for five minutes. You are resting while you are paralyzed even if you are standing.
+
+### Refresh...
+
+**Beneficial Effect**
+
+Refresh is always followed by either an attribute or a skill that has a limited number of uses. You recover one or more uses of the named skill or one or more points of the named attribute. If you do not have the named skill or attribute then the Refresh has no effect. As a default, Refresh restores one point or use of a skill. If a number is placed before the attribute or skill name then you will restore more attribute points or uses of a skill. Skills that require attributes cannot be restored directly and are unaffected by a Refresh effect. Refresh will never raise above your maximum attribute or give you more uses of a skill than you would have at the start of an event.
+
+Refresh can also be used to restore abilities of an empowered item. If the item has a unique name and Refresh is followed by that name then the abilities of the item are restored.
+
+### Repair...
+
+**Beneficial Effect**
+
+You restore one item that has been rendered unusable by a Destroy effect. For an item you are touching you need not specify a target in the verbal. For other types of abilities you specify a target after the Repair verbal. Repair may also be used to refresh armor points. A "Repair Armor" effect will restore one armor point of your current active armor. A Repair `<Number>` Armor effect will restore a number of armor points equal to the indicated amount, or all armor points if the number of exhausted armor points is lower than the indicated amount. "Repair All Armor" will restore your armor to its maximum value.
+
+### Repel
+
+This effect prevents you from using melee, missile, or packet attacks on the attacker. You will also attempt to stay 10 feet away from the attacker unless doing so would endanger you. If this is the case you may move to a safer position even if it takes you within 10 feet, so long as you then attempt once again to stay 10 feet away from the attacker. You cannot use melee, missile, or packet attacks on the attacker in any case. The Repel effect will last until you rest for five minutes unless the attacker strikes you with a melee attack that does not cause a Repel effect. If the attacker strikes you with a melee attack using an effect that is not Repel then this effect ends immediately.
+
+The attacker is not immune to the attacks of a character affected by the Repel. That character is free to launch attacks at other creatures so the attacker should be careful to stay clear of other potential targets and avoid attacks launched at other characters.
+
+### Root
+
+You cannot move your right foot from its spot. You may pivot on that foot, and you may move your left foot. A Root effect will last until you rest for five minutes.
+
+### Silence
+
+You cannot talk or make any in-game verbal noise. You cannot use game skills that require incantations. You must still call out during Expose effects. You must still use out-of-game phrases as normal. A Silence effect will last until you rest for five minutes.
+
+### Slam
+
+Some great force knocks you back and off your feet. When you are struck with this effect you role play an extremely forceful blow or blast. You may take up to three steps backwards and fall down. The steps backward are optional. The effect ends when your chest or back touches the ground. If falling to the ground is an issue due to ground quality, crowding or health you may opt to instead take your steps, drop to a knee and place both hands palm down on the ground as shake your head for three seconds.
+
+Some Slam effects are so powerful they knock you back through a shield. If you hear "Shield Slam" it works even if it strikes your shield. This attack can be blocked by a weapon and would count as a strike to the limb holding the shield.
+
+### Slow
+
+You cannot run. You may only walk at a normal pace. The Slow effect will last until you rest for five minutes.
+
+### Stabilize
+
+**Beneficial Effect**
+
+If you are at 0 Vitality and unstable this effect makes you stable. You start your 5 minute count. Otherwise you call "No Effect."
+
+### Stricken
+
+You are unaffected by any beneficial effect unless it removes the Stricken effect from you. Call "No Effect" to any other beneficial effect used on you.
+
+There is one exception; if someone uses First Aid on you then the Stabilize effect will work. Only a "Cure Stricken" effect or a Cure effect applied to the trait of this attack will remove this effect. An effect that removes the Stricken effect from you will not remove other effects. Stricken does not work on items you carry or wear and items may be affected by Repair or Imbue effects. The Stricken effect will last until you rest for five minutes.
+
+> For example, if you have a Stricken by Poison and a Paralyze by Poison effect upon you, a Cure Poison effect will remove the Stricken effect but it won't also remove the Cure Paralyze effect. A second Cure Poison would be needed to remove the Paralyze by Poison effect.
+
+### Stun
+
+You are knocked unconscious. Stun will last until you rest for five minutes. You are resting while you are stunned. Another character may take a full minute of role play to revive you and end this effect.
+
+### Speak
+
+**Beneficial Effect**
+
+This effect allows you to converse with a creature or being that cannot otherwise communicate with you. It is usually used with the Bane trait, allowing you to speak with specific types of creatures. The subject is under no obligation or compulsion to speak with you, but it may do so if it wishes. The Speak effect will last until a participant uses another game skill or until a participant moves out of reasonable conversation range.
+
+### Waste...
+
+Waste is always followed by either an attribute or a skill that has a limited number of uses. You lose one or more uses of the named skill or one or more points of the named attribute. Waste has no effect if you have no attribute points or skill uses left. If you do not have the named skill then Waste to that skill has no effect. As a default, Waste removes one point or use of a skill. If a number is placed before the attribute or skill name then you will lose more attribute points or uses of the skill. Skills that require attributes cannot be wasted directly and are unaffected by a Waste effect.
+
+Wasted attribute points and skill uses can be refreshed. A Cure Waste effect will restore points or skill uses lost to Waste effects unless they have already been refreshed or restored by some other means. Once a wasted attribute or skill use has been refreshed a Cure Waste effect will have no effect on you. Attributes and skills lost to a Waste effect are always refreshed before points lost through normal use.
+
+Waste can also be used to remove abilities of an empowered item. If the item has a unique name and Waste is followed by that name then any charged abilities of the item are removed as if they had been used.
+
+A Waste Vitality effect will reduce your current Vitality total. This effect ignores armor points, but is otherwise treated as a called Damage effect and will render you unstable if it removes the last of your Vitality points.
+
+### Weakness
+
+Your ability to strike with melee attacks is severely weakened. You cannot deliver any called effects with your melee attacks. Weakness does not affect uncalled strikes or any other weapon skill. The Weakness effect will last until you rest for five minutes.
+
+### Attack Traits
+
+Most attacks include a descriptive trait. This trait is indicated by the second part of the verbal. The trait of an attack adds flavor to the attack and determines whether certain defenses can be used to negate the attack. If an attack is "5 Damage by Fire" then the trait of the attack would be Fire.
+
+The "by Weapon" trait is dropped from the verbal of normal melee attacks to reduce noise. Any melee or missile attack with no trait is assumed to have the "Weapon" trait.
+
+Most attack traits allow you to role play the effect. You may step back or cry out in reaction to the attack. If you are surprised by an attack, however, you cannot add additional role play to the effect. For example, if you were hit by a "Stun by Force" from a visible enemy then you could add the role play of crying out or staggering back. But if someone sneaks up behind you and calls out "Stun" with a melee attack then you should just go down. If someone sneaks up and surprises you with a spell that you honestly did not see coming, you should not cry out to warn your friends.
+
+#### Elemental Traits
+
+These include **Air**, **Cold**, **Earth**, **Fire**, **Ice**, **Lightning**, **Water**, and **Wind**. The effect is caused by elemental power. Abilities that work against Elemental effects will work against effects with any of these traits. You may role play an Elemental effect by crying out or stepping backwards as the effect is inflicted.
+
+#### Mental Traits
+
+These include **Awe**, **Confusion**, **Despair**, **Fear**, **Gloom**, **Inspiration**, **Madness**, **Presence**, **Trance**, and **Will**. The effect is caused by some mental or emotional reaction. Abilities that work against Mental effects will work against effects with any of these traits. You may role play a Mental effect by crying out or stepping backwards as the effect is inflicted.
+
+#### Metabolic Traits
+
+These include **Aging**, **Air**, **Cold**, **Disease**, **Poison**, **Radiation**, and **Sleep**. The effect is caused by a Metabolic reaction. Abilities that work against Metabolic effects will work against effects with any of these traits. You may role play a Metabolic effect by crying out or stepping backwards as the effect is inflicted.
+
+#### Physical Traits
+
+These include **Crystal**, **Earth**, **Force**, **Ice**, **Silver**, **Thorns**, **Weapon**, **Web**, and **Wind**. The effect is caused by a Physical force. Abilities that work against Physical effects will work against effects with any of these traits. You may role play a Physical effect by crying out or stepping backwards as the effect is inflicted.
+
+#### Special Traits
+
+All traits not included above are Special traits. These can include, but are not limited to, **Acid**, **Blessing**, **Curse**, **Light**, **Magic**, **Malediction**, and **Shadow**. These traits are not included in any general trait, so abilities must specifically include them. Special attacks allow no additional role playing; you will suffer the effect of a Special attack immediately.
+
+### Bane
+
+This is a unique attack trait that works against another specific trait, and targets only those creatures that have that trait. Instead of saying "by" you would say "to" and state the trait that is targeted. An attack that stated "10 Damage to Undead" would be an example of an attack with the Bane trait, and the attack would only affect creatures with the Undead trait. If you somehow lose the trait that a Bane effect targets while under that effect, then the effect ends immediately. So, if you had a 'to Dead' effect upon you and you were brought back to life then the 'to Dead' effect would end. Remember that the race of a character is always considered to be a trait of that character. Bane attacks allow no additional role playing; you will suffer the effect of a Special attack immediately.
+
+Some effects may have both a normal trait and a bane trait. In this case the attack affects only those targeted by the Bane affect but it may be resisted by defenses that work against the normal trait. An attack that stated "Paralyze by Fear to Elf" would only affect characters with the Elf trait but it could be negated by a Resist Fear defense.
+
+### Self
+
+This trait indicates that the effect works only on the person using it. Instead of saying "by" you would say "to Self" after the effect. This indicates that you are the only target of the called effect.
+
+## Defenses
+
+These abilities allow you to negate abilities used against you. Although there are a large number of possible defenses that can be used against specific causes and effects, all defenses can be summarized as one of the following types.
+
+When it is possible to apply multiple defenses to an attack the defender decides which defense to use. Although Elude, Guard, and Shield defense must be used if an attack would affect you, it is possible, for example, to use a skill that provides a Resist defense when an appropriate attack strikes you to 'protect' and Shield type defense. You could, for example, use a Resist against Fear to save a Shield against any Mental trait.
+
+### Elude, Guard, Shield
+
+You negate the first attack of the appropriate type that strikes you. Although different verbals are used to indicate the nature of your defense and to add flavor to the game, all of these defenses work the same way. You must call out the defense when it is used.
+
+### Avoid, Parry, Resist
+
+You choose one attack of the appropriate type to negate when it strikes you. You can allow an attack to affect you and negate a later attack. Although different verbals are used to indicate the nature of your defense and to add flavor to the game, all of these defenses work the same way. You must call out the defense when it is used.
+
+### Purge
+
+You may negate an attack after it has affected you. You must spend three seconds to role play this defense as you shake off the effect, during which time you must remain relatively still. You cannot use game skills while role playing the purge. You cannot use Purge while unconscious unless doing so would wake you. You cannot use Purge when you are dead unless the skill specifically allows you to use 'Purge Death' in the verbal.
+
+### No Effect
+
+You are unaffected by the attack in question. This indicates a defense that is not consumable. The attack does not affect you, nor will it ever affect you.
+
+### Reduce, Absorb
+
+You are affected by the attack in question, but the effect has been mitigated, lessened, or changed entirely. The actual reduction is determined by the skill or ability that allows you to use this defense. Reduce is often used to indicate the effect has been lessened while Absorb often indicates that the attack had a different effect entirely. The verbal for this defense might be followed by "to" and the modified effect such as "Reduce to Maim" or "Absorb to Heal 2." You must role play the new effect appropriately.
+
+### Increased
+
+While not exactly a defense, this call indicates that the effect had a greater than normal effect on the target. If the target calls 'Increased' in response to a beneficial effect, the target might have an ability or skill that allows them to receive additional benefit from the effect in question. If the target calls 'Increased' in response to an attack, the target might have a weakness or vulnerability to the effect or trait that was used against them. Some games might use 'Increased to...' followed by an effect to specify extra information about the game effect.
+
+### Reflect
+
+You choose one melee, missile, or packet attack of the appropriate type to rebound back at the attacker when it strikes you. Call this defense to negate the effects of the attack. If your attack is reflected then you must take the attack as if your melee, missile or packet had struck you. The attack retains all of the original traits so it might not actually affect you. You may use defenses to negate the attack, including using Reflect to bounce it back on the original target.
+
+### Spirit
+
+You are insubstantial and are unaffected by most attacks. You call "Spirit" to any attack that you negate for this reason. You cannot use game abilities unless specifically allowed to do so. You cannot speak or converse with other characters unless they use an ability that allows you to do so. If someone tries to talk with you, you may call "Spirit" to inform them that you cannot speak. You cannot drop any items. No one may search you, nor can items that you carry be removed from your person. Nothing can be thrown over you. You cannot rest while in spirit form, and effects that last until you rest will not be removed. You cannot block doorways or portals. If someone tries to move through a portal that you are blocking then you are forced to move.
+
+Characters who have died and are traveling to the Realm of Death are spirits. If you gain the Spirit trait because you have died and you have become a Spirit of the Dead then you also gain the Dead trait. Effects with the trait "to Spirit" affect all spirits, while effects with the trait "to Dead" affect only spirits of the dead. You must walk with your head bowed and your hands at your side.
+
+Some abilities allow a living character to become a spirit for a time, but these abilities usually have special restrictions or will not be absolute in their protection. You might gain a trait and become vulnerable to attacks with that trait even though you are a spirit. Some of these skills last until you move. In these cases you cannot move or speak without ending the effect. If you turn into a spirit in a place which blocks a portal or doorway then you are forced to move to allow someone through. Since this can end the effect you must be careful to use these types of skills so as to not block confined areas.
+
+### Defense Traits
+
+A defense might have a trait associated with it. The verbal should include the defense and the trait with a "by" between them. This can be done to add flavor to an ability, to differentiate two similar skills, or to allow other skills to key off certain defenses.
+
+### Chained Defense
+
+A chained defense has an effect that is called immediately after the defense. The verbal should include the defense and the additional effect with an "and" between them. If the additional effect is an attack then that attack must be launched immediately as the defense is called. Using the additional effect could be optional or required. If the additional effect affects the character using the chained defense then the ability must use the Self trait, and the character must role play that effect as if they had been struck by it.
+
+> For example, a Fire based attack strikes a Fire Elemental. The creature calls out "Resist and Heal to Self" to indicate that the attack was negated and the creature was healed by using the defense.
+>
+> For example, a strong creature can tear out of some physical effects but it takes damage doing so. The creature is struck by the appropriate attack, role plays for 3 seconds, calls out "Purge and 2 Damage to Self" and then role plays the damage effect.
+>
+> For example, a character has an ability that simulates a Riposte. The character is struck by a successful melee attack, calls out "Parry and 3 Damage," and immediately swings at the person who attacked her.
+>
+> For example, a creature has an ability that can shoot attacks with the Magic trait back at the attacker. The creature is struck by a "Paralyze by Magic." The character calls "Resist and Paralyze by Magic" and throws a packet back at the attacker.
+
+### Armor Points
+
+Armor provides points of Protection that act as a buffer against damage effects. Armor points are removed by damage effects in a manner similar to Vitality. Armor points are lost before Vitality points. The method by which exhausted armor points are restored varies depending on the type of armor you are using and the skills and abilities of the Accelerant game you are playing.
+
+You may only have one base type of armor active at a time. If you try to restore or activate or wear one type of armor while you have active points from another type of armor, the armor type with the lower number of active armor points will be exhausted. If there is a tie, then the new armor points will be immediately exhausted. Exhausted armor points are gone and must be restored just as if they were exhausted by Damage.
+
+For example, Travis is wearing a 2 point suit of armor. He role plays and activates a skill that gives him 3 points of armor. The armor points from the suit of armor are exhausted and he has 3 armor points from his skill. If he wants to use the armor points from his suit of armor later, he will have to have the armor suit repaired.
+
+### Traps
+
+Traps are devices or substances set to deliver an effect to anyone who disturbs them or attempts to get past them. Anyone can avoid a trap, but no one can attempt to manipulate a trap by moving it, disarming it, or affecting the individual components unless they have a skill that allows them to do so.
+
+Most traps will cause an effect to the person who set them off. If someone manages to trigger a trap with a thrown object, then the object will take the affect instead. If the trap affects the entire room or corridor, then this trick will not provide much help. Some traps will work multiple times, while some will work once. If an item is causing a trap to go off continuously then anyone who touches the item will take the effect.
+
+If a trap is set in a small box, chest, or other enclosed area no larger than 3 feet in any dimension then setting it off will destroy everything inside the area. Coins, items, paper, and everything else inside will be destroyed and cannot be removed from the box. If any living creature has somehow crawled into an enclosed area no more than 3 feet in any dimension with a trap and the trap goes off then that fool will be killed instantly. There are four types of traps.
+
+#### Snap Trap
+
+These traps make a snap sound when they go off. They are represented by mousetraps, party poppers, and snaps. These traps cause 2 Damage to whoever sets them off.
+
+#### Buzzer Trap
+
+These traps make an electronic sound of some kind when they are set off. Sounds used for these traps include beepers, buzzers, and electronic sound effects like the moaning of a rigged welcome mat you might find at Halloween. These traps cause 5 Damage to whoever sets them off.
+
+#### Verbal Trap
+
+When these traps are set off and you will hear a trap sound and a voice will call out a verbal associated with them. Whoever set the trap off must take the effect of that verbal. If no verbal is present, then the sound determines the type of trap as described above.
+
+#### Gas Trap
+
+As a magical trap, but the verbal will begin with the words "In This Room…" Everybody in the room will take the effect. This trap only works in an enclosed room with normal doorways and corridors leaving it. The trap will affect you if any part of you is within the room when the trap goes off.
+
+#### Contact Poison
+
+This attack is represented by petroleum jelly. If you touch the jelly with bare skin, you will take an effect of "5 Damage by Poison." A character with the appropriate skill may apply such a substance directly from the vial it was created in.
+
+Once applied to a surface, the jelly cannot be scraped off onto another object. Only a character with an appropriate skill may wipe the substance off a surface with a cloth or cloth like substance, but the contact poison is destroyed in the process.
+
+An item with contact poison is considered a Red Sticker item. The fumes and burning of the poison are overwhelming, even to a character who is immune to it. The object cannot be moved from its place or handled until the poison is removed by a character with the appropriate skill to do so.
+
+### Shackles
+
+Shackles are a prop that binds the wrists or legs of a character. An in-game lock is affixed to each prop to represent the locking mechanism of that prop. The prop must be loose enough to remain comfortable and, for safety, the player must be able to easily remove the prop if an out of game need arises.
+
+Shackles can only be placed on a helpless or willing character if the lock is open. You place the shackle prop on the helpless or willing target and close the lock. Shackles placed on the arm restrict movement and make it impossible to use any skill that requires that the arms must be free, including using weapons, using packet attacks, and using First Aid. You may use a skill that allows you to attempt to open a game lock on your own shackles. Shackles placed on the legs make it impossible to run and restrict movement to the extent of the shackles. A prop placed on the ankles must be constructed to allow the player to stand and walk slowly.
+
+Shackles can be removed by opening the lock or by using an appropriate skill to remove them. Each game will have a skill assigned to destroy and remove shackles by taking a minute and using the appropriate props and role playing. Skills that allow a character to slip out of bonds are possible as well.
+
+### Verbal Modifiers
+
+There are certain phrases that can be added to verbals to change the effect. These can modify the duration or add additional effects to an attack. For simplicity, a single attack can only be modified by one verbal modifier.
+
+#### Short
+
+Someone precedes an attack verbal with "Short" and calls out an effect that lasts until you rest or lasts for the entire event. That effect instead lasts until you rest for 10 seconds. If used with Frenzy then the effect will only last 10 seconds.
+
+#### Permanent
+
+Someone precedes an attack verbal with "Permanent" and calls out an effect with a duration. The effect will last at least for the remainder of the event. Permanent effects may not be removed by resting, but may still be removed by the Cure effect.
+
+Permanent effects might last indefinitely. If you end the event with a Permanent effect submit to plot a description of the effect and how you received it.
+
+#### Ambient
+
+Someone precedes an attack verbal with 'Ambient' to indicate that the effect is a result of an environmental or a plot condition and not an effect that originates from the creature that calls it. Although the effect itself remains unchanged, this indicates to the players that disabling the creature calling the effect will not prevent the effect. This modifier is usually used with plot deliveries to indicate plot driven effects.
+
+If, for example, someone from plot called out 'By My Voice, Ambient Agony by Fire' then the players would know that throwing a Silence effect or trying to Paralyze the creature calling the effect would not prevent the plot person from calling the effect. A plot person could also call something like 'By Your Name, Travis, Ambient Agony by Disease' to indicate that some plot condition is causing Travis pain but it isn't related to the creature calling the effect.
+
+#### Double and Triple
+
+One single delivery causes multiple attacks to affect the target. "Double" causes two of the specified attack to be delivered, while "Triple" causes three attacks to be delivered. Each attack requires a separate defense.
+
+For example, a wizard calls out "Triple 10 Damage by Fire" and throws a packet that hits you. You must take three "10 Damage by Fire" attacks. "Resist Fire" would negate one of these attacks and you would still take two attacks. You may use multiple defenses against these attacks.
+
+### Chained Effects
+
+Two effects can be chained in one attack. The verbal should name the effects with an "and" between them. If both effects have the same trait then the trait is called only at the end of the attack. If both effects have different traits then a trait is called for each effect. A defense that negates one of the effects or one of the traits if they are different would only affect that portion of the attack. In the case where both effects have the same trait, however, a defense that negated the appropriate trait would negate all effects. The attack is still considered a single melee, missile, or packet attack so a defense that negates a hit from a specific delivery such as melee, missile, or packet will negate the entire attack.
+
+> For example, a spider calls out "Drain and Slow by Poison" and hits a player with a packet. The defense "Resist Poison" would negate the entire attack. The defense "Resist Slow" would negate the Slow effect, but the character would still be affected by the Drain effect. If the character had both "Resist Slow" and "Resist Drain" defenses then both could be used to negate the effects of the attack.
+>
+> For example, a wraith calls out "Paralyze by Fear and 2 Damage" and hits the player with a melee attack. The defense "Resist Fear" would negate the Paralyze effect. The defense "Resist Weapon" would negate the Damage effect. A skill that negates one melee strike would negate the entire attack.

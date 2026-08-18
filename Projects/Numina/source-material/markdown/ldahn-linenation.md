@@ -1,0 +1,97 @@
+<!-- capital: Dahnhelm; demonym: L'Dahn -->
+
+The people of the L'Dahn Linenation are known across the world as people of great patience, knowledge, and understanding. They can be found living and traveling through all of the known countries. From childhood they are brought up to believe in "service to others for the betterment of all." Because of this mantra and their wandering lifestyle, many L'Dahn see themselves as caretakers for the world.
+
+The Journey of the Lines that each L'Dahn must complete to become a full member of their society is what helps them achieve that reputation. While many L'Dahn choose to travel from place to place their whole lives, there are some who choose to settle in either their home city of Dahnhelm or in the various places that resonate the most with them from their own Journey. The minimum amount of time each person spends in their set travel to become a full member of society is based on which group they choose to belong to: Fixers, Guardians or Advocates.
+
+No one knows exactly where their home city lies as it is cloaked in mystery. Part of the reason for this secrecy is that there can only be a certain number of L'Dahn in their home city at any time. While no one knows exactly what will happen should too many L'Dahn be present in Dahnhelm, most believe it would mean the utter destruction of the city and choose not to make their permanent homes there and only visit for specific occasions.
+
+## Geography, History, and Climate
+
+While the L'Dahn are an open and honest people, their home city's location in the world is unknown. The only way to get in and out of Dahnhelm is through the Lattice. There are whispers of special rituals known only to senior L'Dahn that would bring people to Dahnhelm. It is thought to be impossible for anyone to point out where the city is on the world map. The only clue to its location is that mountains can be seen in the distance from the top of the city's epicenter, Skytower Observatory.
+
+The city itself is a large size, with buildings that are kept in good repair by the local Fixers. Notable structures within the city are the Salma Archives, the Skytower Observatory, the Lyceum Major, the Lyceum Minor and the Fanum Catacombs. The Lyceum Major is where the High Council of L'Dahn meet and make decisions; Lyceum Minor is where performances are done and art is displayed. The Fanum Catacombs, which stretch in many paths below the city with multiple entries, are where many L'Dahn choose to be remembered by their loved ones and are tended to by Remembrancers when the families are away.
+
+The Salma Archives is known for its eclectic collection. The only requirement for an item's entry into the Archives is that a L'Dahn found something they wanted to share - be it from their Journey or their everyday lives. It is a lot like their game Quadrum that is an amalgamation of different items from around the world.
+
+There are farms outside of the city proper but still considered part of it, and just beyond the farms is a long stretching dense forest. The L'Dahn do not travel deep into the forest even when they are hunting and foraging there. If a L'Dahn travels too deep into the forest, they feel the urge to return. Most don't want to know what would happen if they go too deep into the darker parts of the forest.
+
+### History
+
+The bards and storytellers of the L'Dahn share the origin story of their people starting with Archibald Dahniley, his partner Lestor Leshon, and their adopted daughter Dihnora L'Dahn. The three of them, and their journey across the world assisting people, were the basis for the groups of the L'Dahn. The journey they went on was the first Journey of the Lines. Those who joined them in their travels were the beginnings of the L'Dahn as a people.
+
+At some point in every L'Dahn's life, they must take The Journey of the Lines. The start of every Journey begins at the center of Dahnhelm and is marked with a ceremony called the Linking to the Lines. The Journey of the Lines is a time when L'Dahn are not allowed to return back to the place they call home. Its purpose is to help them learn their chosen skill set in as many forms as possible but also to learn more about those in the world around them.
+
+During The Journey, the new and learning L'Dahn are also not allowed to stay any place for longer than 6 months. This requirement is to ensure those Journeying learn and see as much as possible during their individual adventures. Permission must be granted by the High Council of the L'Dahn to stay somewhere longer than six months. Some L'Dahn choose to migrate all of their lives, staying only a few months to years in one place.
+
+The L'Dahn Journey is seen as a rite of passage. In order to be a fully participating member of the Linenation society, the Journey and the conclusion Ceremony of the Circle must be completed. Once finished, the member is considered to have Crossed the Lines. Some of their rights as members of the society include serving on the High Council and having their own dwelling in Dahnhelm. While there are rare instances of a L'Dahn choosing to not make The Journey, they typically do not remain with the L'Dahn and join other nations.
+
+L'Dahn that are on their Journey are considered "Linked to the Lines"; marked by the emblems that they wear in the open to mark the type of L'Dahn group they belong to and to confirm what stage of their Journey they are on. Each L'Dahn bears a mark of their type somewhere on their person to signify who they are and what type of work they do. If they are on their Journey, the emblem is surrounded by one straight line for each year they have completed. Once their minimum time is completed, they are no longer "Linked to the Lines." Their crests are changed from straight, disconnected lines surrounding their emblem into one solid shape. That shape includes the same number of lines as the number of years it took for them to complete their Journey.
+
+**The L'Dahn generally divide themselves into three groups:**
+
+The Fixers are the tradespeople of the culture. The bakers, tinkerers, blacksmiths, healers, traders, merchants, etc. If something needs fixing or adjustment they are the ones to be called. If the Council needs some timber for a new roof on a building, or a building is broken and a stone mason is needed to repair it, or the stone mason drops a brick on his foot and needs a healer, a Fixer will be there. They have the mark of a silver cogwheel. Fixers must Journey for a minimum of 3 years. Because they tend to be in the center of the varying cultures of the world, they have the shortest Journey. When they have completed their Journey the silver cogwheel is outlined by a silver equilateral triangle.
+
+The Guardians are the soldiers and sentinels of the culture. They are guards for various caravans, for the other L'Dahn, for the trade routes, for important meetings between nations where one nation may not trust another, and even the Lattice. They are highly skilled warriors known for their prowess in a variety of situations. Many Guardians know a myriad of fighting styles that vary from martial weapons to magic. They have a mark of a gold sword. Guardians Journey for four years. While they are more involved with basic needs of a community, long parts of their Journey may be disconnected from communities. When they have completed their Journey the gold sword is outlined by a gold square.
+
+The Advocates are the politicians, priests, and ambassadors of the culture. They are the most visible to the other nations as these are the ones who tend to broker trade agreements, peace treaties, land disputes, etc. They have the mark of a copper gavel. Advocates, because of their need for understanding all people and spending less time with the day to day running of a place, must Journey for five years. When they complete it, their gavel is outlined by copper pentagon.
+
+## Politics, Government, and Economy
+
+"Service to others for the betterment of all" is one of the core structures of L'Dahn society. Because of this philosophy, based on the teachings and life of Archibald Dahniley, people of the Linenation are generally respected and welcomed wherever they travel. Be it in trade, land disputes or political negotiations, the L'Dahn are often seen as the people who are both a part of all nations and separate and might be called on for assistance in a dispute.
+
+The L'Dahn are ruled/supervised by the High Council of Linenation that does everything from grant permissions for a longer stay in one location during a Journey to passing judgment on the rare L'Dahn who breaks the laws. The Council meets in the Lyceum Major regularly. They are also regarded as an impartial entity throughout the world and many rulers will seek their counsel when troubled.
+
+Every L'Dahn must go to Dahnhelm, the sanctuary city, to be Linked to the Lines when they begin their Journey and must return to participate in the completion ritual, the Ceremony of the Circle. The rituals to start and end the Journey are closely guarded secrets of the L'Dahn and it is something they take great pride in, though rumor has it some special outsiders have been allowed to view the ceremonies given unique circumstances. When a L'Dahn completes their required Journey time it is a cause of great celebration.
+
+The High Council is made up of 15 members. Nine are Elders, those who have passed the trials of Wisdom, Community, and Balance. The other six are those who have completed their Journeys within the last 3 years, known as Primes. Of the Nine Elders, three are Fixers, three are Guardians, and three are Advocates. Of the Primes, there are two each from the three various groups. Terms for Council members are a minimum of two years with no more than five consecutive years. In order for most judgments to be passed by the Council, a two-thirds majority must prevail.
+
+Some of the current standing Elder members of the Council include Landry Hale (an Elder Advocate), Sol Elfrish (an Elder Guardian), and Arden Lockland (an Elder Fixer). A few of the Primes include Sybil Driffen (year three Prime Advocate), Cedar Wuveth (year one Prime Fixer), and Lianie Oshuni (year two Prime Guardian). Lianie Oshuni took up the Prime Guardian slot left vacant after the death of Clay Raynar. While some who serve on the Council only do the shortest time possible, others vary time served including choosing to serve the full five years. Hollis Lowtrow, who served as a Prime Fixer on the High Council for three years, stepped down after the completion of their three years instead of taking the Trials and decided to leave Dahnhelm and go to T'barris.
+
+The L'Dahn get a lot of their goods through trade from members on their Journeys. The visitors who come to Dahnhelm usually come to visit the galleries and concert halls in the Lyceum Minor or do research in the Salma Archives. Those who come are welcomed with open arms, and many provide monetary donations or tangible gifts.
+
+## Everyday Life
+
+When a L'Dahn moves to a new place, they browse through the town's posting boards and listen to word of mouth to find where they might be of use or where they can learn more of their chosen trade. Most tend to do small jobs that the locals are either unable or unwilling to do. They find lodgings in the town and live the same lives as those around them; though they try to keep an open table for anyone who is in need.
+
+Many L'Dahn will keep journals of their daily experiences so they can remember what they see, but not all of them are bookish in that sense.
+
+## Current Events
+
+The Council has recognized the turmoil in Aeledd in regards to the Vargoth, especially with them declaring themselves as a sovereign nation. At this time, the stance of the Council is that the L'Dahn as a nation will remain neutral. As always, the Council will never dictate the specific actions of the people of the Linenation.
+
+Something strange has been going on within the home city. There have been whispers and echos in the catacombs. Strange beings with glowing eyes on their hands have been said to have been spotted within the depths.
+
+Many of those who had made homes in Dahnhelm have been leaving unexpectedly to Journey again. Most with little notice to their loved ones.
+
+There have been expeditions exploring the still broken parts of the Lattice to learn more about its constructions, repair, and maintenance.
+
+### Notes for Players
+
+All L'Dahn, because they do not hold power in any nation are often but not always, the ones that other people turn to when easy conclusions are not found. While the L'Dahn have no power to make any final resolutions, they are honored for their impartiality and neutrality. This means they will often be asked to step in as mediators to make sure all sides in a conflict are heard. The request for assistance from a L'Dahn can be from two farmers arguing over livestock or two nations arguing over trade routes. The request can always be declined. Declining to be a mediator is seen as a mark of self-awareness and is respected. Once the mediation is completed it is up to the arguing parties to decide if they are amenable to the suggestions provided.
+
+Anyone from anywhere in the world is welcome to join the L'Dahn, but those not born into the culture are expected to take a much longer Journey of the Lines to become a full member.
+
+## Cultural Plot and Themes
+
+A common phrase of exasperation or swearing that many L'Dahn use is "by the lines." Also used frequently is the phrase "square up" for needing to watch your back or guard something. "Cogs be with us" when there are a lot of things that need to be fixed in a situation is also used.
+
+It is also thought that the LoreKeeper, one of the gargoyle guardians created by Fate long ago, has a special bond with the Salma Archives because of how things are added to it. All of the gargoyles' tenets are followed as a way of life for the L'Dahn.
+
+### Notable L'Dahn:
+
+- Archibald Dahniley: the proposed founder of the L'Dahn way of life. He traveled for most of his long life after his home was destroyed in a great war. While he started to travel in order to find a new home, he was never able to find a place where he could settle.
+- Lester Leshon: Partner and protector of Archibald, proposed co-founder of the L'Dahn way of life. Helped establish Dahnhelm after Archibald passed.
+- Dihnora L'Dahn: Adopted daughter of Archibald and Lester, made a point of expanding the kindness and fairness of the L'Dahn.
+- Honor Dante: Honor is a Fixer who is known for spending a lot of time after the completion of the Journey of the Lines in Melluria. Using expertise gained while Journeying, Honor was able to refine some of Melluria's mining practices. The efficiency of large machinery was so well improved by Honor's engineering innovations that an invitation to join the Machinist's Guild was issued, something rare for those not part of Mellurian Society.
+- Clay Raynar, who nearly finished his three years as a Prime Guardian, was killed in the line of duty when attending a council in Fortune's Bend. He had completed both the Trials of Wisdom and Community and was expected to face and complete the Trial of Balance. This would have allowed Clay to continue as an Elder of the Council for 2 more years. Had he been able to complete the Trials he would have been the first Prime in 25 years to choose to serve the full five years and the first Prime Guardian to choose to do so in more than three times that length of time. His aunt, Viatrix, was made an ambassador between Fortune's Bend and the L'Dahn High Council after his death as she has served many times on the High Council and is a respected Fixer.
+- Kit Jantith: Known throughout the Myosi Islands as fair but shrewd, Kit became renowned at many Myosi trade negotiations for bringing balance and liked compromises as a L'Dahn Advocate. Kit is also well known for embracing the Myosi celebrations and over indulging in the parties after the negotiations were settled.
+- Devan Khoarst: Devan is a Guardian of old who was known to establish a combined form school of fighting for young L'Dahn and anyone who wished to join. Some even say that all L'Dahn learn the basics of Devan's forms as part of their cultural heritage.
+
+Because of the varying nature of the L'Dahn as a culture, a PC can expect anything from a field fight to a negotiation, or a research task to a mystery for adventures that they might be called to assist on. Also, these adventures can take place anywhere in the world. If you want a primarily nomadic culture, the L'Dahn are an option. Some L'Dahn choose to not move around as much once their Journey is completed, but will also move as they desire.
+
+Themes for stories dealing with the L'Dahn can include but are not limited to conflict negotiation, cracks in a tight knit society, mysteries and fighting for balance in an unbalanced world. Some scenarios that players could see as a L'Dahn could vary from protecting trade caravans, to helping settle disputes, to research in the Salma Archives or even exploring the catacombs.
+
+## Costume and RP Themes
+
+For many L'Dahn the more utilitarian the better for their clothing, however, even they have their preferences on some styles. Because of their Journey of the Lines, lines and geometric shapes hold a strong presence in their culture so they show up a lot on their clothing. Many fabrics, while durable, will have geometric patterns in the weaves or embroidery. Stripes of varying widths are also a common sight. Their weapons, shields, bags, and tools are also often marked with the symbol of their group. (Fixers with the triangle and cogwheel, Guardians with the square and sword, Advocates with the pentagon and gavel) Coloring varies by personal taste but many who are still on their Journey or who Journey throughout their lives tend to choose more neutral colors for simple ease of acquisition.
