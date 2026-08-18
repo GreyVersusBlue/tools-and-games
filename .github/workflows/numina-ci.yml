@@ -40,9 +40,14 @@ jobs:
         run: |
           # -N so files the build newly created show up in `git diff` too.
           git add -A -N .
-          if ! git diff --quiet -- .; then
+          # pagefind/ is excluded: its index chunk names are content hashes over
+          # a sharding that is not stable across machines, so a fresh runner
+          # rebuilds the same search index under different filenames even at the
+          # pinned 1.5.2. Everything Pagefind derives from — the HTML — is
+          # covered, and `npm test` separately checks the index is not stale.
+          if ! git diff --quiet -- . ':!pagefind'; then
             echo "::error::The committed build is stale. Run 'npm run build' in Projects/Numina and commit the regenerated output alongside your source change."
-            git diff --stat -- .
+            git diff --stat -- . ':!pagefind'
             exit 1
           fi
 
