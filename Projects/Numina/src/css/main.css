@@ -569,6 +569,10 @@ main { min-width: 0; max-width: 70ch; }
 .map-waves use, .map-waves path { stroke: var(--map-sea-line); fill: none; opacity: 0.55; }
 .map-decor { pointer-events: none; }
 .map-decor use, .map-decor path { stroke: var(--map-ink); fill: var(--map-paper-deep); opacity: 0.75; }
+.map-decor .beast-line { fill: none; stroke: var(--map-ink); stroke-width: 1.8; stroke-linecap: round; }
+.map-decor .beast-solid { fill: var(--map-paper-deep); stroke: var(--map-ink); stroke-width: 1.4; }
+.map-decor .beast-sail { fill: var(--map-paper); stroke: var(--map-ink); stroke-width: 1.1; }
+.map-decor .beast-eye { fill: var(--map-ink); stroke: none; }
 .map-region path {
   fill: var(--nation-color, var(--edge));
   fill-opacity: 0.5;
@@ -755,7 +759,8 @@ main { min-width: 0; max-width: 70ch; }
 /* ---------- responsive ---------- */
 @media (max-width: 52rem) {
   .site-nav, .header-search { display: none; }
-  .mobile-nav { display: block; margin-left: auto; }
+  .theme-toggle { margin-left: auto; }
+  .mobile-nav { display: block; margin-left: 0; }
   .shell { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .sidebar__disclosure { border: 1px solid var(--gold-dim); border-radius: 3px; padding: 0.5rem 0.9rem; }
   .sidebar__disclosure:not([open]) { padding-bottom: 0.5rem; }

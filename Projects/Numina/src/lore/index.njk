@@ -11,6 +11,7 @@ eleventyExcludeFromCollections: true
     <p class="lede">Everything from the Numina campaign guide: the world, its sixteen nations,
     its peoples and faiths, the Lattice that binds it together, and the history that brought
     it to the Age of Works.</p>
+    {% include "partials/ornaments/divider.njk" %}
     <div class="card-grid">
       {% for pg in nav.sections[0].pages %}
       {% set entry = collections.all | selectattr("url", "equalto", pg.url) | first %}
