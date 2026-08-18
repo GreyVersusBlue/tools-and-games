@@ -191,6 +191,33 @@ a:hover { color: var(--accent-soft); }
   background-color: var(--gold);
 }
 
+/* ---------- heading permalinks (§) ---------- */
+/* The mark is CSS-generated so it stays out of the heading's text content (and
+   therefore out of Pagefind's sub-result titles); the link is named by
+   aria-label. Space is reserved at all times (opacity, not display) so
+   revealing the mark never reflows the heading. */
+.heading-anchor__mark::before { content: "\A7"; }
+.heading-anchor {
+  color: var(--gold);
+  text-decoration: none;
+  font-family: var(--caps);
+  font-weight: 400;
+  font-size: 0.66em;
+  vertical-align: 0.22em;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+h2:hover > .heading-anchor,
+h3:hover > .heading-anchor,
+.heading-anchor:focus,
+.heading-anchor:hover { opacity: 1; }
+.heading-anchor:hover { color: var(--gold-bright); }
+:target > .heading-anchor { opacity: 1; }
+/* no hover on touch: keep the mark permanently visible there */
+@media (hover: none) {
+  .heading-anchor { opacity: 0.8; }
+}
+
 blockquote {
   margin: 1.4rem 0;
   padding: 0.7rem 1.1rem;

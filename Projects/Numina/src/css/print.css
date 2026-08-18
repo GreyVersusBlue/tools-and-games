@@ -2,7 +2,8 @@
 @page { margin: 2cm; }
 
 .site-header, .sidebar, .site-footer, .print-action,
-.theme-toggle, .header-search, .mobile-nav, .world-map, .crumb {
+.theme-toggle, .header-search, .mobile-nav, .world-map, .crumb,
+.heading-anchor {
   display: none !important;
 }
 body {

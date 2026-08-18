@@ -4,6 +4,23 @@ import markdownItAnchor from "markdown-it-anchor";
 
 export const PATH_PREFIX = "/Projects/Numina/";
 
+// Visible, copyable permalink on every h2/h3. The § mark is drawn by CSS rather
+// than sitting in the markup: Pagefind builds its sub-result titles from the
+// heading's own text, so any real characters here (a symbol, or visually hidden
+// label text) would show up in search results as "Vitality §Link to this
+// section". The accessible name comes from aria-label instead.
+const renderPermalink = markdownItAnchor.permalink.linkInsideHeader({
+  class: "heading-anchor",
+  symbol: '<span class="heading-anchor__mark" aria-hidden="true"></span>',
+  placement: "after",
+  ariaHidden: false,
+  renderAttrs: () => ({
+    "aria-label": "Link to this section",
+    title: "Link to this section",
+    "data-pagefind-ignore": "",
+  }),
+});
+
 export default function (eleventyConfig) {
   eleventyConfig.addPlugin(EleventyHtmlBasePlugin);
 
@@ -11,6 +28,12 @@ export default function (eleventyConfig) {
     "md",
     markdownIt({ html: true, typographer: true }).use(markdownItAnchor, {
       tabIndex: false,
+      // Ids on every heading level (glossary/search anchors rely on them);
+      // the visible permalink only on the levels players cite.
+      permalink: (slug, opts, state, idx) => {
+        const tag = state.tokens[idx].tag;
+        if (tag === "h2" || tag === "h3") renderPermalink(slug, opts, state, idx);
+      },
     })
   );
 
@@ -18,7 +41,6 @@ export default function (eleventyConfig) {
   eleventyConfig.setTemplateFormats(["md", "njk", "html"]);
   // Passthrough-only docs, not pages.
   eleventyConfig.ignores.add("src/fonts/README.md");
-  eleventyConfig.amendLibrary("md", () => {});
   eleventyConfig.setFrontMatterParsingOptions({ excerpt: false });
 
   eleventyConfig.addPassthroughCopy({ "src/css": "css" });
