@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth — a small living island</title>
-<!-- Hearth v2 · Sprint 10: what the hands learn — crafts and mastery, a mill that grinds and a well that waters, the works that come after the buildings, and the boat that comes back (on top of Sprints 1–9). Single file, no dependencies. -->
+<!-- Hearth v2 · Sprint 11: the island answers — the year's fortunes (drought, hard winter, fever, shoal), the ways a village learns for good (sail, plough, kiln, the book of days), each island's own temper, a view the watcher can lean into, and the quiet stone: the island noticing the one who watches it (on top of Sprints 1–10). Single file, no dependencies. -->
 <style>
   :root{--ink:#e8dcc4;--dim:#9a8b6d;--panel:rgba(18,14,10,.86);--gold:#f0b35a;--line:#3a3020}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -97,7 +97,7 @@
   <button id="b-help" aria-label="what the watcher can do">?</button>
 </div>
 <div id="log"></div>
-<div id="hint">click an islander to meet them, or at night for a dream · a sleeping child gets a lullaby · grass: a sapling, hold for a spring<br>water: skip a stone, drag for a gust · a cloud's shadow: rain, there · the fire: a story · the sound is worth turning on</div>
+<div id="hint">click an islander to meet them, or at night for a dream · a sleeping child gets a lullaby · grass: a sapling, hold for a spring<br>water: skip a stone, drag for a gust · a cloud's shadow: rain, there · the fire: a story · the sound is worth turning on<br>scroll, pinch, or + and − to lean closer · drag the land, or the arrow keys, to look around</div>
 <aside id="card" hidden aria-live="polite">
   <button class="x" id="card-x" aria-label="close">×</button>
   <div class="top"><canvas id="face" width="16" height="16"></canvas><div><h2 id="c-name">—<small id="c-sub"></small></h2><div class="traits" id="c-traits"></div></div></div>
@@ -142,6 +142,12 @@ const CRAFTS=['field','wood','sea','frame','store'];
 const CRAFT_EPITHET=['who keeps the fields','who reads the trees','who reads the water','who raises the beams','who keeps the store'];
 let works=[],dry01=0,breadYr=0,retYr=0;
 const hasW=k=>works.some(w=>w.wk===k&&w.done);
+// sprint 11 state: the island's temper, the year's fortunes (arcs), the ways the village learns for good, and the quiet account it keeps of the watcher
+const TEMPERS=['kind','rainy','dry','windy','cold'];
+let temper='kind',arc=null,arcYr=0,wayYr=0,bookYr=0,ways=0,lastStormDay=0,rainedDay=0,wreckYr=0,famDone=false;
+let faith=0,faithSt=0,acts=[],prayer=null;
+const hasWay=i=>!!(ways>>i&1);
+const arcK=()=>arc?arc.k:'';
 let RM=false;try{const mq=matchMedia('(prefers-reduced-motion: reduce)');RM=mq.matches;
   if(mq.addEventListener)mq.addEventListener('change',e=>{RM=e.matches});else if(mq.addListener)mq.addListener(e=>{RM=e.matches})}catch(e){}
 const V=()=>village||'the village';
@@ -170,6 +176,7 @@ function newWorld(s){
   seed=s;R=mulberry(seed);document.getElementById('seedlbl').textContent='island '+seed.toString(36);
   const n1=noise2(),n2=noise2();tiles=new Uint8Array(W*H);elev=new Float32Array(W*H);trees=[];houses=[];farms=[];people=[];stumps=[];fx=[];fires=[];graves=[];dead=[];events=[];shore=[];
   wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
+  faith=0;faithSt=0;acts=[];prayer=null;arc=null;arcYr=0;wayYr=0;bookYr=0;ways=0;lastStormDay=0;rainedDay=0;wreckYr=0;famDone=false;temper=TEMPERS[(seed>>>0)%5]; // temper from the seed alone: no rnd(), so old links keep their terrain
   const cx=W/2,cy=H/2;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     const dx=(x-cx)/cx,dy=(y-cy)/cy;const d=Math.sqrt(dx*dx*.9+dy*dy*1.5);
@@ -266,8 +273,15 @@ function paintTerrain(){
   const pal={[WATER]:['#274c78','#2b5687','#2f5f93'],[SAND]:['#cdb98a','#d4c294','#c6ad7c'],[GRASS]:GRASS_PAL[s],[ROCK]:['#6f6a60','#7b756a','#645f56']};
   const ICE=['#b9d3e3','#c4dbe8','#adc9dc'];
   const rr=mulberry(seed^99);
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const t=tiles[idx(x,y)],e=elev[idx(x,y)];const r1=rr(),r2=rr(),r3=rr(),r4=rr(),r5=rr(); // fixed draw per tile so repaints don't shuffle the ground
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const t=tiles[idx(x,y)],e=elev[idx(x,y)];const r1=rr(),r2=rr(),r3=rr(),r4=rr(),r5=rr(),r6=rr(),r7=rr(); // fixed draw per tile so repaints don't shuffle the ground
     const c=pal[t]||pal[GRASS];tg.fillStyle=c[(r1*c.length)|0];tg.fillRect(x*T,y*T,T,T);
+    // a little more grain in the ground (sprint 11): depth in the water, mottle and flowers in the grass, speckle in the sand, cracks in the rock
+    if(t===WATER){if(e<.06){tg.fillStyle='#22436b';tg.fillRect(x*T,y*T,T,T);if(r6<.2){tg.fillStyle='#274c78';tg.fillRect(x*T+((r7*5)|0),y*T+((r3*6)|0),3,1)}}
+      else if(r6<.12){tg.fillStyle='#3a6ba3';tg.fillRect(x*T+((r7*6)|0),y*T+((r4*7)|0),2,1)}}
+    if(t===GRASS&&r6<.14){tg.fillStyle=GRASS_PAL[s][3];tg.fillRect(x*T+((r7*5)|0),y*T+((r5*5)|0),3,2)}
+    if(t===GRASS&&(s==='spring'||s==='summer')&&r7<.045){tg.fillStyle=s==='spring'?(r6<.5?'#e8a0b8':'#e6e2d8'):'#e2c25a';tg.fillRect(x*T+((r3*6)|0)+1,y*T+((r4*6)|0)+1,1,1)}
+    if(t===SAND&&r6<.3){tg.fillStyle=r7<.5?'#b8a172':'#e0d2a8';tg.fillRect(x*T+((r3*6)|0),y*T+((r4*6)|0),1,1);tg.fillRect(x*T+((r7*6)|0),y*T+((r5*6)|0),1,1)}
+    if(t===ROCK&&r6<.22){tg.fillStyle='#54504a';tg.fillRect(x*T+((r7*4)|0),y*T+2+((r3*4)|0),3,1)}
     if(t===GRASS&&r2<.12){tg.fillStyle=TUFT[s];tg.fillRect(x*T+((r3*6)|0),y*T+((r4*6)|0),2,1)}
     if(t===WATER&&frozen&&e>.16){tg.fillStyle=ICE[(r1*3)|0];tg.fillRect(x*T,y*T,T,T);if(r5<.15){tg.fillStyle='#8fb0c8';tg.fillRect(x*T+((r3*5)|0),y*T+((r4*7)|0),3,1)}}
     else if(t===WATER&&at(x,y-1)!==WATER){tg.fillStyle='#8fb6d6';tg.fillRect(x*T,y*T,T,1)}
@@ -313,7 +327,7 @@ function blockedStop(p){if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p
 function walk(p,dt){
   if(p.tx!==p._vx||p.ty!==p._vy){p._vx=p.tx;p._vy=p.ty;p.via=routeVia(p.x,p.y,p.tx,p.ty)}
   const txx=p.via?p.via.x:p.tx,tyy=p.via?p.via.y:p.ty;
-  const dx=txx-p.x,dy=tyy-p.y,d=Math.hypot(dx,dy);let sp=(isNight()?1.6:2.6)*dt*(1-hunger*.3);if(isElder(p))sp*=.7;if(isKid(p))sp*=.85;if(snowD>.5&&at(p.x|0,p.y|0)!==WATER)sp*=.85;
+  const dx=txx-p.x,dy=tyy-p.y,d=Math.hypot(dx,dy);let sp=(isNight()?1.6:2.6)*dt*(1-hunger*.3);if(isElder(p))sp*=.7;if(isKid(p))sp*=.85;if(p.sick)sp*=.65;if(snowD>.5&&at(p.x|0,p.y|0)!==WATER)sp*=.85;
   const wading=at(p.x|0,p.y|0)===WATER&&canWade(p.x,p.y);
   if(wading){sp*=.55;if(p.waded!==dayCount){p.waded=dayCount;say(`${B(p)} hitches up and wades the stream, feeling for the stones.`,false,'wade')}}
   if(d<sp){if(p.via){p.x=txx;p.y=tyy;p.via=null;return false}
@@ -330,7 +344,7 @@ function popCap(){return 4+houses.length*2}
 const has=(p,t)=>p.tr.includes(t);
 // which craft a task teaches (and is sped by): field, wood, sea, frame, store
 const CRAFT_TASK={till:0,harvest:0,water:0,chop:1,fish:2,boat:2,build:3,carry:4};
-const workRate=p=>(has(p,'patient')?1.15:1)*(isElder(p)?.7:1)*(1-hunger*.5)*(p.craft>=0&&CRAFT_TASK[p.task]===p.craft?1+.35*p.cxp:1);
+const workRate=p=>(has(p,'patient')?1.15:1)*(isElder(p)?.7:1)*(1-hunger*.5)*(p.sick?.45:1)*(p.craft>=0&&CRAFT_TASK[p.task]===p.craft?1+.35*p.cxp:1);
 // what the hands learn: a finished cycle of work teaches. The craftless drift into whatever they do most; the crafted deepen.
 const CRAFT_WORK=['the fields','the woodpile','the nets','the framing','the store'];
 const MILE=[
@@ -533,6 +547,24 @@ const G=[
   {c:x=>x.oldhouse&&x.elder&&x.b,t:'{A} tells {B} that whoever set the old stones would be glad of the roof. {B} asks how anyone would know. {A} says you would know.'},
   {c:x=>x.racks&&x.gulls,t:'The gulls have opinions about the drying racks and state them all day. The racks stay shut.'},
   {c:x=>x.boat2&&!x.night&&!x.storm,t:'Both boats are out past the shallows at once, and from the shore {village} looks, briefly, like a port.'},
+  // the year's fortunes, the ways, and the quiet stone (sprint 11)
+  {c:x=>x.drought,t:'The stream is down to a whisper and the field path stands in dust. {A} taps the rain barrel out of habit, and it answers hollow.'},
+  {c:x=>x.drought&&x.kid,t:'{A} asks when the rain is coming back. Nobody answers quickly enough, and {A} files that away.'},
+  {c:x=>x.drought&&x.well,t:'The line at the well starts before the light now. Nobody pushes in. Everyone counts the buckets ahead of them.'},
+  {c:x=>x.hardw,t:'The cold has got into the walls and set up house. {A} wears everything {A} owns, in layers, and rattles slightly when walking.'},
+  {c:x=>x.hardw&&x.b,t:'{A} and {B} split the last of the split wood, and neither will take the bigger share, which takes a while.'},
+  {c:x=>x.feverA&&!x.sick,t:'{A} carries broth to the houses where the fever is and leaves it on the steps, and knocks, and does not wait.'},
+  {c:x=>x.sick,t:'{A} is up and dressed and insisting on working, and is walked firmly back to bed by whoever is nearest.'},
+  {c:x=>x.shoalA&&!x.night,t:'The water past the shallows has been silver-backed since morning. Even {A} takes a line down, and even {A} catches.'},
+  {c:x=>x.sail&&!x.night&&!x.storm,t:'The boat goes out under its little sail now and is back before the light goes, and the rowing songs are turning into sailing songs.'},
+  {c:x=>x.plough&&!x.night,t:'{A} walks the ploughed rows just to look at them: long and clean, like handwriting that finally settled down.'},
+  {c:x=>x.kiln,t:'{A} taps a fired pot with one knuckle in passing, for the ring of it. Everyone does this now. Nobody has said why.'},
+  {c:x=>x.book&&x.elder,t:'{A} asks for the book of days to be opened to an argument from two winters ago, and is proven right, and is gracious about it for nearly an hour.'},
+  {c:x=>x.book&&x.kid,t:'{A} is shown the line in the book of days where {A} was born, and reads it with one finger, twice.'},
+  {c:x=>x.stone&&x.kid,t:'{A} tells the quiet stone a secret, cupped hands against the cold of it, in case something is listening. Something is.'},
+  {c:x=>x.stone&&!x.night,t:'There is something small in the hollow at the foot of the quiet stone again this morning. Nobody saw it left. Nobody moves it.'},
+  {c:x=>x.stone&&x.faithHi&&x.elder,t:'{A} says you can live a whole life on an island like this and never once catch it in the act of being kind. That, says {A}, is how you know.'},
+  {c:x=>x.stone&&x.b&&x.rel==='rival',t:'{A} and {B} arrive at the quiet stone at the same moment, and take turns, in silence, and leave in different directions.'},
 ];
 const ARRIVED=p=>pick([`${p.name} rowed in out of nowhere and asked to stay, and stayed.`,
   `${p.name} came ashore with everything ${p.name} owned in one bag, and was given bread before any questions.`,
@@ -546,7 +578,8 @@ function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
   const c=cand.length>2?pick(cand.filter(p=>p!==a&&p!==b)):null;
   const td=tide();
   const ctx={a,b,c,rel:rel?rel.k:null,night:isNight(),dusk:isDusk(),rain,storm,thunder:storm,market:hasB('market'),mill:hasB('mill'),well:hasB('well'),hall:hasB('hall'),light:hasB('light'),hut:hasB('hut'),smoke:hasB('smoke'),bridge:hasB('bridge'),trader:!!trader,road:roadV>0,named:!!village,deer:wild.some(w=>w.k==='deer'),rabbits:wild.some(w=>w.k==='rabbit'),farms:farms.length>0,fox:wild.some(w=>w.k==='fox'),gulls:gulls.length>0,fireflies:flies.length>0,geese:geeseDay===dayCount,whale:!!whale||whaleDay===dayCount,fish:fishSh.length>0&&!frozen,far:!!farIsle,voyaged:!!voyage,away:!!voyage&&voyage.st==='away',stayed:!!voyage&&voyage.st==='stayed',ruin:!!ruin&&ruinSeen>0,spring:springs.length>0,story:storyDay===dayCount,dreamt:dreamAny===dayCount,cloudrain:clouds.some(c=>c.r>0),fog:wx==='fog',snow:wx==='snow',overcast:wx==='overcast',ice:frozen,hungry:hunger>.25,leaves:seaDay()>=2,blossom:seaDay()<=3,lowtide:td<-.6,hightide:td>.6,sea:seasonOf(dayCount),ev:eventLabel(),graves:graves.length>0,elder:isElder(a),kid:isKid(a),
-    crf:a.craft,cxpv:a.cxp||0,orchard:hasW('orchard'),hives:hasW('hives'),swingw:hasW('swing'),ringw:hasW('ring'),bench:hasW('bench'),oldhouse:hasW('ruin3'),racks:hasW('racks'),boat2:hasW('boat2'),dryg:dry01>.6};
+    crf:a.craft,cxpv:a.cxp||0,orchard:hasW('orchard'),hives:hasW('hives'),swingw:hasW('swing'),ringw:hasW('ring'),bench:hasW('bench'),oldhouse:hasW('ruin3'),racks:hasW('racks'),boat2:hasW('boat2'),dryg:dry01>.6,
+    drought:arcK()==='drought',hardw:arcK()==='longwinter',feverA:arcK()==='fever',shoalA:arcK()==='shoal',sick:!!a.sick,sail:hasWay(0),plough:hasWay(1),kiln:hasWay(2),book:hasWay(3),stone:hasW('shrine'),faithHi:faith>=.5};
   for(const t of TRAITS)ctx[t]=has(a,t);
   const ok=G.filter(t=>t.c(ctx)&&(usedTpl.get(t)||0)<dayCount);if(!ok.length)return;
   const wt=ok.map(t=>t.w||1);s=wt.reduce((x,y)=>x+y,0);r=R()*s;let tpl=ok[0];for(let i=0;i<ok.length;i++){r-=wt[i];if(r<=0){tpl=ok[i];break}}
@@ -556,6 +589,24 @@ function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
 function newDay(){saidToday=new Set();
   const yr=yearOf(dayCount),s=sea();
   wakeDreams();
+  // the island shows its temper early, and once
+  if(dayCount===8){const TL={kind:'It is, on the whole, a kind island; the weather forgives more than it punishes. Everyone has privately decided this, and nobody says it out loud, in case that changes it.',
+    rainy:'It rains here more than anywhere anyone remembers living. The green is the payment, and the mud is the price.',
+    dry:'It is a dry island. The sky here is generous with light and stingy with everything else. A well will matter, when there is one.',
+    windy:'The wind never entirely stops on this island. Everything grows leaning slightly the same way, and by now so do the people.',
+    cold:'It is a cold island. The winters will be long here, and wood will be worth more than it looks.'};
+    say(TL[temper],true);addEvent('temper','the temper of the island',TL[temper])}
+  // the year turns up its fortune card, at most one a year
+  if(!arc&&yr!==arcYr&&seaDay()===1&&dayCount>YEAR&&R()<.32){const cands=[];
+    if(s==='summer'&&temper!=='rainy')cands.push(['drought',temper==='dry'?3:1,6,10]);
+    if(s==='winter')cands.push(['longwinter',temper==='cold'?3:1,3,3]);
+    if((s==='spring'||s==='autumn')&&people.length>=10)cands.push(['fever',1,4,7]);
+    if((s==='spring'||s==='summer')&&hasB('hut'))cands.push(['shoal',temper==='kind'?2:1,4,6]);
+    if(cands.length){let sum=cands.reduce((a,c)=>a+c[1],0),r=R()*sum,c=cands[0];for(const cc of cands){r-=cc[1];if(r<=0){c=cc;break}}
+      arcYr=yr;startArc(c[0],c[2]+((R()*(c[3]-c[2]+1))|0))}}
+  arcDay();
+  if(arcK()!=='fever'&&people.some(p=>p.sick))people.forEach(p=>p.sick=0); // no fever, no fevered: stray flags heal
+  wayDay(yr);faithDay();
   // paths where people walk; cobbles once the village is big
   {let ch=false;const cob=houses.length>=10;for(let i=0;i<W*H;i++){const h=heat[i];heat[i]=h*.8;const t=tiles[i];if(t===WATER||t===FARM||t===ROCK)continue;
       if(h>26&&road[i]===0){road[i]=1;ch=true}else if(cob&&h>60&&road[i]===1){road[i]=2;ch=true}}
@@ -583,6 +634,7 @@ function newDay(){saidToday=new Set();
   // hunger drives people away
   if(hunger>.7&&R()<hunger*.4){const cand=people.filter(p=>!p.dead&&!isKid(p)&&!people.some(k=>k.parents.includes(p.name)));if(cand.length>1){const wts=cand.map(p=>(has(p,'restless')?2.5:1)*(has(p,'homesick')?2.5:1)*(p.partner?.4:1));let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum,p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}leave(p)}}
   if(yr!==lastYear){lastYear=yr;const oldest=people.filter(p=>!p.dead).sort((a,b)=>ageOf(b)-ageOf(a))[0];say(`A new year begins. ${oldest?B(oldest)+' is the eldest now, at '+ageI(oldest)+'.':''}`,true);
+    if(hasWay(3)&&bookYr!==yr){bookYr=yr;addEvent('book',`the book of days, year ${yr-1}`,`The book of days for year ${yr-1}: ${people.length} people, ${houses.length} ${houses.length===1?'house':'houses'}, ${graves.length} ${graves.length===1?'stone':'stones'} on the hill, ${granary} in the store at the turn. Written fair, and argued over anyway.`)}
     // sometimes, in a kind year, one of the ones who left comes back
     if(gone.length&&retYr!==yr&&people.length<popCap()&&food+granary>people.length*5&&landings.length&&R()<.4){retYr=yr;
       const g=gone[gone.length-1];if(!names.has(g.name))spawnBoat('return2',landings[0],{ret:g})}}
@@ -659,6 +711,7 @@ const WORKS={
   boat2:{name:'a second boat',cond:()=>hasB('hut')&&landings.length>1,site:()=>{const h=getB('hut');return{x:h.x,y:h.y+1}}},
   hives:{name:'beehives by the orchard',cond:()=>hasW('orchard'),site:()=>{const o=works.find(w=>w.wk==='orchard');return freeSpotNear(o.x,o.y,2,4,1)||freeSpot(6,14,1)}},
   bench:{name:'a bench at the lighthouse',cond:()=>hasB('light'),site:()=>{const l=getB('light');return freeSpotNear(l.x,l.y,1,4,1)}},
+  shrine:{name:'the quiet stone',cond:()=>false,site:()=>freeSpot(2,5,1)||freeSpot(2,8,1)||{x:center.x+2,y:center.y+1}}, // never chosen by ambition — only by the noticing
   ruin1:{name:'the raising of the fallen stones',cond:()=>!!ruin&&ruinSeen>0,site:()=>({x:ruin.x,y:ruin.y+1.5})},
   ruin2:{name:'the mending of the old stones',cond:()=>hasW('ruin1')&&yearOf(dayCount)>workYear('ruin1'),site:()=>({x:ruin.x,y:ruin.y+1.5})},
   ruin3:{name:'a roof over the old stones',cond:()=>hasW('ruin2')&&yearOf(dayCount)>workYear('ruin2'),site:()=>({x:ruin.x,y:ruin.y+1.5})}};
@@ -668,6 +721,7 @@ const workYear=k=>{const w=works.find(w=>w.wk===k&&w.done);return w?w.y0:99};
 function applyWork(w){
   if(w.wk==='orchard'){if(!trees.some(t=>t.o)){for(let i=0;i<3;i++)trees.push({x:w.x+.5+i*1.4,y:w.y+.8,s:.55,hp:3,b:true,a:.2+i*.3,o:1})}spots.push({l:'the orchard',x:w.x+1.5,y:w.y+1.6})}
   else if(w.wk==='bench')spots.push({l:'the bench',x:w.x+.5,y:w.y+.8});
+  else if(w.wk==='shrine')spots.push({l:'the quiet stone',x:w.x+.5,y:w.y+1.2});
   else if(w.wk==='ruin1'){if(ruin)for(const st of ruin.st)st.f=false}
   else if(w.wk==='ruin2'){if(ruin&&!ruin.mended){ruin.mended=1;ruin.st.push({x:ruin.x-1.2,y:ruin.y+.6,h:2,f:false,w:1},{x:ruin.x+1.4,y:ruin.y-.8,h:2,f:false,w:1})}}
   else if(w.wk==='ruin3'){if(ruin){ruin.roof=1;spots.push({l:'the old house',x:ruin.x,y:ruin.y+1.6})}}}
@@ -682,16 +736,19 @@ function finishWork(p,w){w.done=true;w.y0=yearOf(dayCount);applyWork(w);
     bench:`${B(p)} sets a bench by the lighthouse, facing the water, for whoever turns out to need it.`,
     ruin1:`${B(p)} levers the last of the fallen stones upright. They stand the way someone once meant them to stand, and the grass moves around them differently now.`,
     ruin2:`${B(p)} fits the last stone into the old work. Whole, for the first time in anyone's memory, or their grandmother's.`,
-    ruin3:`${B(p)} lays the last of the roof over the old stones. There is an old house now, and it does not feel empty any more.`};
+    ruin3:`${B(p)} lays the last of the roof over the old stones. There is an old house now, and it does not feel empty any more.`,
+    shrine:`${B(p)} stands the flat stone upright and sets a hollowed stone at its foot, for whatever wants leaving, and does not explain, and is not asked to.`};
   say(L[w.wk],true);p.hist.push({d:dayCount,s:`made ${WORKS[w.wk].name} for ${V()}`});
-  addEvent('work',`the ${sea()} ${WORKS[w.wk].name.replace(/^(an?|the) /,'the ')} was made`,`${p.name} made ${WORKS[w.wk].name} in the ${sea()} of year ${yearOf(dayCount)}, because nobody needed it and everybody wanted it.`);
+  if(w.wk==='shrine'){faith=Math.min(1,faith+.1);
+    addEvent('shrine','the raising of the quiet stone',`${p.name} set a flat stone upright near the hearth, with a hollow at its foot for whatever wants leaving. Nobody called it anything but the quiet stone, and nobody had to be told what it was for.`)}
+  else addEvent('work',`the ${sea()} ${WORKS[w.wk].name.replace(/^(an?|the) /,'the ')} was made`,`${p.name} made ${WORKS[w.wk].name} in the ${sea()} of year ${yearOf(dayCount)}, because nobody needed it and everybody wanted it.`);
   if(w.wk==='ruin1'||w.wk==='ruin3'){const f=FOUND[(R()*FOUND.length)|0];
     say(`Under the stones there was ${f}. It goes on the shelf in the hall, and everyone has held it once.`,true);
     addEvent('found',`the finding of ${f.split(',')[0]}`,`Working on the old stones, they turned up ${f}. Whoever it belonged to is long past asking for it back.`)}}
 function stepBoats(dt){for(const b of boats){
     if(!isFinite(b.x)||!isFinite(b.y)){try{console.warn('hearth: non-finite boat',b.kind)}catch(e){}b.gone=true;if(b.p){b.p.inBoat=false;b.p.x=b.land.x;b.p.y=b.land.y;b.p.task='idle';b.p.t=1}continue}
     if(b.gvx){const nx=b.x+b.gvx*dt,ny=b.y+b.gvy*dt;if(at(nx|0,ny|0)===WATER){b.x=nx;b.y=ny;if(b.p){b.p.x=nx;b.p.y=ny}}const k=Math.pow(.12,dt);b.gvx*=k;b.gvy*=k;if(Math.abs(b.gvx)+Math.abs(b.gvy)<.08)b.gvx=b.gvy=0}
-    if(b.st==='in'||b.st==='out'||b.st==='back'){const dx=b.tx-b.x,dy=b.ty-b.y,d=Math.hypot(dx,dy),sp=(b.kind==='trade'?2.2:b.kind==='away'||b.kind==='return'?2.4:2.8)*dt*(storm?.6:1);
+    if(b.st==='in'||b.st==='out'||b.st==='back'){const dx=b.tx-b.x,dy=b.ty-b.y,d=Math.hypot(dx,dy),sp=(b.kind==='trade'?2.2:b.kind==='away'||b.kind==='return'?2.4:2.8)*(hasWay(0)&&b.kind==='fish'?1.35:1)*dt*(storm?.6:1);
       if(d<sp){b.x=b.tx;b.y=b.ty;boatArrive(b)}else{b.x+=dx/d*sp;b.y+=dy/d*sp;if(R()<dt*6)fx.push({x:b.x-dx/d*.6,y:b.y-dy/d*.6+.2,vx:0,vy:0,c:'#cfe6ff',l:.8})}
       if(b.p){b.p.x=b.x;b.p.y=b.y}}
     else if(b.st==='wait'){b.t-=dt;if(b.t<=0){b.st='out';b.tx=b.land.x+b.land.dx*20;b.ty=b.land.y+b.land.dy*20;if(b.kind==='trade'){trader=null;say(`The trader's boat pulls out into the channel. A few people stay on the shore until it is small.`,false,'tradeout')}}}
@@ -699,8 +756,16 @@ function stepBoats(dt){for(const b of boats){
   }
   boats=boats.filter(b=>!b.gone)}
 function boatArrive(b){
-  if(b.kind==='arrival'&&b.st==='in'){b.gone=true;const p=addPerson(b.land.x,b.land.y,{age:b.age});meet(p,1,3);const f=p.rels[0]?byName(p.rels[0].who):null;
-    say(`A stranger named ${B(p)} pulls a boat up on the sand and asks to stay.${f?' '+f.name+' is the first to walk down.':''}`);addEvent('arrival',`the day ${p.name} came ashore`,ARRIVED(p))}
+  if(b.kind==='arrival'&&b.st==='in'){b.gone=true;
+    if(b.fam){const a=addPerson(b.land.x,b.land.y,{age:rnd(24,38)|0,how:'came ashore with a whole family in one boat'}),c=addPerson(b.land.x,b.land.y,{age:rnd(24,38)|0,how:'came ashore with a whole family in one boat'});
+      a.partner=c.name;c.partner=a.name;relate(a,c,'partner');a.wantHouse=c.wantHouse=true;
+      const kd=addPerson(b.land.x+.5,b.land.y,{child:true,age:rnd(2,8)|0,parents:[a.name,c.name],how:'came ashore asleep in the bottom of the family\'s boat'});
+      relate(a,kd,'child');relate(c,kd,'child');kd.col=R()<.5?a.col:c.col;kd.hair=R()<.5?a.hair:c.hair;
+      meet(a,1,2);meet(c,1,2);
+      say(`A boat comes in carrying a whole family: ${B(a)}, ${B(c)}, and small ${B(kd)}, who sleeps through the entire business of arriving somewhere forever.`,true);
+      addEvent('family',`the day ${a.name} and ${c.name} brought their boat in`,`${a.name} and ${c.name} came ashore with everything they had and a sleeping child, ${kd.name}, and by the next evening it was as if they had always been coming.`)}
+    else{const p=addPerson(b.land.x,b.land.y,{age:b.age});meet(p,1,3);const f=p.rels[0]?byName(p.rels[0].who):null;
+      say(`A stranger named ${B(p)} pulls a boat up on the sand and asks to stay.${f?' '+f.name+' is the first to walk down.':''}`);addEvent('arrival',`the day ${p.name} came ashore`,ARRIVED(p))}}
   else if(b.kind==='trade'&&b.st==='in'){b.st='wait';b.t=45;trader=b;
     // the trade answers the stock now, and whoever keeps the store does the talking
     const talker=people.filter(q=>!q.dead&&q.craft===4).sort((a,c)=>c.cxp-a.cxp)[0]||null;
@@ -716,7 +781,7 @@ function boatArrive(b){
     const wav=people.filter(p=>!p.dead&&p.task!=='sleep'&&p.task!=='boat'&&p.task!=='voyage'&&p.task!=='build'&&!p.inside).sort(()=>R()-.5).slice(0,8);
     for(const q of wav){const s=nearestShore(b.land.x+rnd(-3,3),b.land.y+rnd(-3,3))||b.land;goTo(q,s.x,s.y,'wave',rnd(12,30));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null}
     if(R()<.5&&wav.length){const q=pick(wav);q.hist.push({d:dayCount,s:pick(['bought a length of red cloth off the trader','traded a carved bird to the trader for a knife','asked the trader for news of home and got some'])})}}
-  else if(b.kind==='fish'){if(b.st==='in'){b.st='fishing';b.t=rnd(10,16)}else if(b.st==='back'){b.gone=true;const p=b.p;if(p){p.task='idle';p.t=1;p.inBoat=false;p.x=b.land.x;p.y=b.land.y;p.tx=p.x;p.ty=p.y;/* step ashore, not out at the mooring */const n=(sea()==='winter'?3:6)+(hasW('racks')?1:0);if(hasB('smoke')&&(sea()==='autumn'||sea()==='winter'))granary+=n;else food+=n;craftUp(p,2);p.boats=(p.boats||0)+1;if(p.boats===1)p.hist.push({d:dayCount,s:'first took the boat out past the shallows'});if(R()<.3)say(`${B(p)} rows in with the bottom of the boat silver, and hands the fish up the beach.`,false,'boatin')}}}
+  else if(b.kind==='fish'){if(b.st==='in'){b.st='fishing';b.t=rnd(10,16)}else if(b.st==='back'){b.gone=true;const p=b.p;if(p){p.task='idle';p.t=1;p.inBoat=false;p.x=b.land.x;p.y=b.land.y;p.tx=p.x;p.ty=p.y;/* step ashore, not out at the mooring */const n=(sea()==='winter'?3:6)+(hasW('racks')?1:0)+(hasWay(0)?1:0)+(arcK()==='shoal'?5:0);if(hasB('smoke')&&(sea()==='autumn'||sea()==='winter'))granary+=n;else food+=n;craftUp(p,2);p.boats=(p.boats||0)+1;if(p.boats===1)p.hist.push({d:dayCount,s:'first took the boat out past the shallows'});if(R()<.3)say(`${B(p)} rows in with the bottom of the boat silver, and hands the fish up the beach.`,false,'boatin')}}}
   else if(b.kind==='return2'&&b.st==='in'){b.gone=true;const g=b.ret;gone=gone.filter(x=>x!==g);
     const aged=g.age0!==undefined?Math.min(72,(g.age0+(dayCount-g.born)/YEAR)|0):undefined;
     const p=addPerson(b.land.x,b.land.y,{name:g.name,age:aged,how:'came back, older, in a kind season, and was given bread before any questions, the same as the first day'});
@@ -776,7 +841,7 @@ function stepWild(dt){const s=sea(),night=isNight();
   }
   wild=wild.filter(w=>!w.gone);
   // gulls
-  const fb=boats.find(b=>b.kind==='fish'&&(b.st==='back'||b.st==='fishing'));const ng=storm?1:wx==='fog'?2:night?2:(fb?7:5);
+  const fb=boats.find(b=>b.kind==='fish'&&(b.st==='back'||b.st==='fishing'));const ng=storm?1:wx==='fog'?2:night?2:(fb?7:5)+(arcK()==='shoal'?3:0);
   if(gulls.length<ng&&R()<dt*.6)addGull(fb&&R()<.7?fb:null);else if(gulls.length>ng&&R()<dt*.4)gulls.pop();
   for(const gl of gulls){gl.a+=gl.sp*dt;gl.t-=dt;if(gl.t<=0){gl.t=rnd(5,14);const s=fb&&R()<.6?fb:R()<.4&&hasB('hut')?getB('hut'):pick(shore)||center;gl.nx=s.x+.5;gl.ny=s.y+.5}
     if(gl.nx!==undefined){const dx=gl.nx-gl.cx,dy=gl.ny-gl.cy,d=Math.hypot(dx,dy),sp=1.6*dt;if(d<sp){gl.cx=gl.nx;gl.cy=gl.ny;gl.nx=undefined}else{gl.cx+=dx/d*sp;gl.cy+=dy/d*sp}}
@@ -820,7 +885,7 @@ function stepClouds(dt){const n=CLOUDN[wx]||0,v=(CLOUDV[wx]||.3)*wind;
     else if(c.rt>0)c.rt-=dt}
   clouds=clouds.filter(c=>c.x>-cloudW(c)&&c.x<W+cloudW(c))}
 function cloudAt(x,y){for(const c of clouds){if(c.r>0||c.rt>0)continue;if(Math.abs(x-c.x)<cloudW(c)*.34&&Math.abs(y-c.y)<cloudH(c)*.32)return c}return null}
-function rainOn(c){c.r=rnd(16,26);whoosh(c.x,c.y,1.8);actDone('cloudrain');
+function rainOn(c){c.r=rnd(16,26);whoosh(c.x,c.y,1.8);actDone('cloudrain');noteAct('cloudrain',.06);rainedDay=dayCount;dry01=Math.max(0,dry01-.3); // a rained cloud counts as rain: it eases the dry ground, and the stone gets the credit
   const near=people.filter(p=>!p.inside&&Math.abs(p.x-c.x)<cloudW(c)*.5&&Math.abs(p.y-c.y)<cloudH(c)*.5);
   const dry=farms.some(f=>f.g<1&&Math.abs(f.x-c.x)<cloudW(c)*.5&&Math.abs(f.y-c.y)<cloudH(c)*.5);
   say(dry?'One cloud stops over the fields and lets go of everything it was holding.':near.length?`One cloud out of a whole sky rains, and it rains on ${B(pick(near))}, who looks up.`:'A single cloud lets go of its rain, in one place, for no reason anyone can see.',true)}
@@ -834,7 +899,7 @@ function makeSpring(cx,cy){const r=rnd(1.3,2.1),hit=[];
   if(hit.length<4)return false;
   for(const i of hit){tiles[i]=WATER;elev[i]=.19;road[i]=0}
   trees=trees.filter(t=>Math.hypot(t.x-cx,t.y-cy)>r+.3);stumps=stumps.filter(t=>Math.hypot(t.x-cx,t.y-cy)>r+.3);
-  springs.push({x:cx,y:cy,r,ph:R()});spots.push({l:'the spring',x:cx,y:cy+1.6});actDone('spring');
+  springs.push({x:cx,y:cy,r,ph:R()});spots.push({l:'the spring',x:cx,y:cy+1.6});actDone('spring');noteAct('spring',.07);
   if(R()<.5)fishSh.push({x:cx,y:cy,tx:cx,ty:cy,n:2,t:0,ph:R()*6,st:true});
   paintTerrain();splash(cx,cy);
   for(let i=0;i<16;i++)fx.push({x:cx+rnd(-r,r),y:cy+rnd(-r*.7,r*.7),vx:rnd(-.4,.4),vy:-rnd(.4,1.3),c:'#cfe6ff',l:rnd(.5,1.3)});
@@ -844,14 +909,14 @@ function makeSpring(cx,cy){const r=rnd(1.3,2.1),hit=[];
 // a stone, skipped
 const ring=(x,y)=>fx.push({x,y,vx:0,vy:0,rg:1,l:.9,l0:.9,c:'#cfe6ff'});
 function skipStone(x,y){let dx=x-center.x,dy=y-center.y;const d=Math.hypot(dx,dy)||1;
-  skips.push({x,y,vx:dx/d*11,vy:dy/d*7.5,n:2+((R()*4)|0),t:.14});plink(.15);actDone('stone')}
+  skips.push({x,y,vx:dx/d*11,vy:dy/d*7.5,n:2+((R()*4)|0),t:.14});plink(.15);actDone('stone');noteAct('stone',.01)}
 function stepSkips(dt){for(const k of skips){k.x+=k.vx*dt;k.y+=k.vy*dt;k.t-=dt;
     if(k.t<=0){k.n--;k.t=.13+R()*.07;k.vx*=.86;k.vy*=.86;ring(k.x,k.y);if(k.n>0)plink(.05+R()*.04)}
     if(k.n<=0||k.x<0||k.y<0||k.x>=W||k.y>=H||at(k.x|0,k.y|0)!==WATER)k.gone=true}
   skips=skips.filter(k=>!k.gone)}
 // a gust, dragged across the water
 function gustAt(x0,y0,x1,y1){const dx=x1-x0,dy=y1-y0,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
-  gusts.push({x:x0,y:y0,ux,uy,len:d,t:1.8});whoosh((x0+x1)/2,(y0+y1)/2,1.1);actDone('gust');
+  gusts.push({x:x0,y:y0,ux,uy,len:d,t:1.8});whoosh((x0+x1)/2,(y0+y1)/2,1.1);actDone('gust');noteAct('gust',.025);
   let pushed=null;
   for(const b of boats){if(Math.hypot(b.x-x1,b.y-y1)>9)continue;b.gvx=(b.gvx||0)+ux*3.2;b.gvy=(b.gvy||0)+uy*3.2;pushed=b}
   for(const gl of gulls){if(Math.hypot(gl.cx-x1,gl.cy-y1)>10)continue;gl.cx+=ux*1.6;gl.cy+=uy*1.6}
@@ -864,6 +929,7 @@ function stepGusts(dt){for(const gu of gusts){gu.t-=dt;
   gusts=gusts.filter(gu=>gu.t>0)}
 // dreams, given at night, that sometimes come true by morning
 const DREAMS=[
+  {k:'heal',c:p=>!!p.sick,t:p=>`${B(p)} dreams of cold spring water moving over stones, and of drinking it, and of being told — by whom? — to sleep now.`},
   {k:'mend',c:p=>!!relOf(p,'rival'),t:(p,q)=>`${B(p)} dreams of ${q.name}, of all people, holding a rope out from a boat, and takes it.`},
   {k:'tool',c:p=>dayCount>6&&!isKid(p),t:p=>`${B(p)} dreams of the axe head that went missing, lying in the grass exactly where it was left.`},
   {k:'settle',c:p=>has(p,'homesick'),t:p=>`${B(p)} dreams of the house with the blue door. Nobody in it is waiting up, and that turns out to be all right.`},
@@ -881,9 +947,9 @@ const DREAMS=[
 function dreamOf(p){if(p.dreamt===dayCount||p.dead)return false;
   const q=relOf(p,'rival'),gr=graves.length?pick(graves):null;
   const ok=DREAMS.filter(d=>d.c(p));if(!ok.length)return false;
-  const d=pick(ok);p.dreamt=dayCount;dreamAny=dayCount;actDone('dream');
+  const d=p.sick&&ok[0].k==='heal'?ok[0]:pick(ok);p.dreamt=dayCount;dreamAny=dayCount;actDone('dream');noteAct('dream',.035);
   say(d.t(p,q,gr),true);
-  if(d.k&&R()<.5)p.pend={k:d.k,who:q?q.name:null,gr};
+  if(d.k&&(R()<.5||d.k==='heal'))p.pend={k:d.k,who:q?q.name:null,gr};
   return true}
 function wakeDreams(){for(const p of people){const d=p.pend;if(!d)continue;p.pend=null;
     if(d.k==='mend'){const q=byName(d.who);if(!q)continue;const r=p.rels.find(r=>r.who===q.name),r2=q.rels.find(r=>r.who===p.name);
@@ -898,6 +964,7 @@ function wakeDreams(){for(const p of people){const d=p.pend;if(!d)continue;p.pen
     else if(d.k==='calling'){const old=p.craft;if(old>=0){let nc=(R()*4)|0;if(nc>=old)nc++;p.craft=nc;p.cxp=Math.max(.1,+(p.cxp*.4).toFixed(2));
       say(`${B(p)} spends the morning at ${CRAFT_WORK[nc]}, and does not go back to ${CRAFT_WORK[old]}.`,true);
       p.hist.push({d:dayCount,s:'changed work overnight, and could not say why'})}}
+    else if(d.k==='heal'){if(p.sick){p.sick=0;say(`${B(p)} wakes with the fever broken and an appetite, and tells the dream to everyone, twice.`,true);p.hist.push({d:dayCount,s:'dreamed the fever away, or so it is told'})}}
     else if(d.k==='far')p.dreamFar=1;
     else if(d.k==='fish')p.luck=1;
     else if(d.k==='grow'){const sp=freeSpot(3,14);if(sp){trees.push(mkTree(sp.x+.5,sp.y+.5,.6));say('There is a young tree at the edge of the clearing that nobody remembers being that tall.',false,'growtree')}}
@@ -905,7 +972,7 @@ function wakeDreams(){for(const p of people){const d=p.pend;if(!d)continue;p.pen
 // the fire, and the story told at it
 function tellStory(){if(storyDay===dayCount)return false;
   const cand=people.filter(p=>!p.dead&&p.task!=='boat'&&p.task!=='voyage');if(!cand.length)return false;
-  storyDay=dayCount;actDone('story');
+  storyDay=dayCount;actDone('story');noteAct('story',.05);
   for(const q of cand){if(q.task==='shelter')continue;if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.inside=false;
     goTo(q,center.x+rnd(-3,3),center.y+rnd(-2.2,2.2),'gather',rnd(24,44))}
   const grown=cand.filter(p=>!isKid(p)),teller=grown.sort((a,b)=>ageOf(b)-ageOf(a))[0]||cand[0];
@@ -921,14 +988,104 @@ function tellStory(){if(storyDay===dayCount)return false;
     if(R()<.5)teller.hist.push({d:dayCount,s:'told the whole story of the island at the fire, from the landing on'})}
   say(L.join('<br>'),true);
   return true}
+// ---------- the year's fortunes (sprint 11): every year turns up its own card ----------
+function startArc(k,len){arc={k,d0:dayCount,end:dayCount+(len||6)};
+  if(k==='drought'){say('The rain has stopped coming. Not dramatically — it simply does not come, and after enough days of that everyone is watching the sky the same way.',true);
+    addEvent('drought',`the dry ${sea()} of year ${yearOf(dayCount)}`,`The rain stopped for most of a ${sea()} in year ${yearOf(dayCount)}, and the fields cracked, and the well earned its digging.`)}
+  else if(k==='longwinter'){say('This winter has teeth. The cold gets into the walls in the first week and does not leave, and the store is counted more often than it changes.',true);
+    addEvent('hardwinter',`the hard winter of year ${yearOf(dayCount)}`,`The winter of year ${yearOf(dayCount)} was the kind that gets talked about in other winters. The store was counted daily, and everyone came out of it lean.`)}
+  else if(k==='fever'){const cand=people.filter(p=>!p.dead&&!isKid(p));const n=Math.min(cand.length,2+((people.length/8)|0));
+    for(let i=0;i<n;i++){const p=pick(cand);if(!p.sick){p.sick=1;p.hist.push({d:dayCount,s:'took the fever, and was made to lie down, eventually'})}}
+    say('A fever comes into the village with the turn of the weather. It starts as a cough in one house and is in three houses by evening. The pot of broth at the fire stops being anyone\'s in particular.',true);
+    addEvent('fever',`the fever of year ${yearOf(dayCount)}`,`A fever went through ${V()} in year ${yearOf(dayCount)}. Broth was carried, doors were left open for listening, and the village held its breath a while.`)}
+  else if(k==='shoal'){say('The first boat back can hardly lift its own catch. Something has driven the silver fish inshore in a body, and for a few days the sea is a field that harvests itself.',true);
+    addEvent('shoal',`the ${sea()} the fish came inshore`,`In year ${yearOf(dayCount)} the fish came inshore in a great shoal, and for days every line came up heavy, and the racks were full.`)}}
+function arcDay(){if(!arc)return;
+  if(arc.k==='fever'){let any=false;
+    for(const p of people){if(!p.sick)continue;any=true;
+      if(R()<.35){p.sick=0;say(`${B(p)} is up again, thin and cross about the lost days, and goes back to work too early, and is watched.`,false,'feverup');p.hist.push({d:dayCount,s:'shook the fever off'})}
+      else if(isElder(p)&&R()<.07){p.hist.push({d:dayCount,s:'was taken by the fever'});die(p)}}
+    if(!any){arc=null;say('The fever burns itself out the way they do: one morning there is simply nobody left in bed, and the broth pot goes back to being somebody\'s.',true);return}}
+  if(dayCount>=arc.end){const k=arc.k;arc=null;
+    if(k==='drought'){setWx('thunder');say('The sky goes the colour of a bruise all in one afternoon, and breaks. People stand out in the rain on purpose. Nobody hurries indoors, not even the sensible ones.',true);
+      addEvent('rainscame','the day the rain came back',`The drought of year ${yearOf(dayCount)} broke in one great storm, and people stood out in it on purpose, and the fields drank for two days straight.`)}
+    else if(k==='longwinter')say('The worst of the winter lets go. It will still snow, but the cold has stopped meaning it, and everyone can feel the difference through the walls.',true);
+    else if(k==='fever'){for(const p of people)p.sick=0;say('The fever burns itself out the way they do: one morning there is simply nobody left in bed.',true)}
+    else if(k==='shoal')say('The shoal moves on as suddenly as it came. The racks are full, the store smells of the sea, and the gulls take a few days to accept it.',true)}}
+// ---------- the ways (sprint 11): what the village learns for good, in whatever order its masters come ----------
+const WAYS=[
+ {n:'the sail',ci:2,cond:()=>hasB('hut')&&people.some(p=>!p.dead&&p.craft===2&&p.cxp>=1),
+  l:p=>`${B(p)} steps a short mast in the boat and hangs a woven square from it, and the boat leans and goes without anyone pulling. The children run the shoreline to keep up. ${V()} has the sail now, and the sea is smaller than it was this morning.`},
+ {n:'the plough',ci:0,cond:()=>hasB('well')&&farms.length>=5&&people.some(p=>!p.dead&&p.craft===0&&p.cxp>=1),
+  l:p=>`${B(p)} binds a shaped blade to a beam and walks it down a field in one morning that used to take three. People come just to watch the ground turn over in a long clean wave. The plough has come to ${V()}, and the fields will not go back.`},
+ {n:'the kiln',ci:3,cond:()=>houses.length>=6&&people.some(p=>!p.dead&&p.craft===3&&p.cxp>=1),
+  l:p=>`${B(p)} builds a fire inside a hill of clay and keeps it fed for two days, and what comes out rings when it is tapped: fired pots, hard as stone. The damp has been stealing from the store for years. The kiln puts a stop to it.`},
+ {n:'the book of days',ci:4,cond:()=>hasB('hall')&&people.some(p=>!p.dead&&p.craft===4&&p.cxp>=.66),
+  l:p=>`${B(p)} rules lines on a boiled hide and begins setting down the store's counts, and then the days, and then the years. ${V()} has a book now. From here on, what happened is written, not only remembered.`}];
+function wayDay(yr){if(wayYr===yr||seaDay()!==3||dayCount<=YEAR||R()>=.3)return;
+  for(let i=0;i<WAYS.length;i++){if(hasWay(i))continue;const D=WAYS[i];if(!D.cond())continue;
+    ways|=1<<i;wayYr=yr;const m=people.filter(p=>!p.dead&&p.craft===D.ci&&p.cxp>=.66).sort((a,b)=>b.cxp-a.cxp)[0]||people.filter(p=>!p.dead&&!isKid(p))[0];if(!m)return;
+    say(D.l(m),true);m.hist.push({d:dayCount,s:`worked out ${D.n}, and gave it to everyone`});
+    addEvent('way',`the year ${D.n} came to ${V()}`,`In year ${yr}, ${m.name} worked out ${D.n}, and after that nothing was done the old way again.`);break}}
+// ---------- the noticing (sprint 11): the island keeps a quiet account of what the watcher does ----------
+function noteAct(k,amt){acts.push({d:dayCount,k});if(acts.length>40)acts.shift();faith=Math.min(1,faith+(amt||.03)*(hasW('shrine')?1.5:1))}
+const OFFER=['a heel of bread','a smooth blue stone','a carved bird no bigger than a thumb','a knot of dried flowers','the best of the windfalls','a good fish hook'];
+const PRAYW={rain:'rain on the fields',food:'a full pot',calm:'a kind sea under the boat',heal:'the fever to pass',dream:'a good dream for the child'};
+function faithDay(){const yr=yearOf(dayCount);faith=Math.max(0,faith-.005);
+  const adults=people.filter(p=>!p.dead&&!isKid(p));if(!adults.length)return;
+  const recent=acts.filter(a=>a.d>=dayCount-3).length;
+  if(faithSt===0&&faith>=.14){faithSt=1;const p=pick(adults);
+    say(`${B(p)} says, quietly, at the fire, that this island answers. Saplings nobody planted. Rain that comes when the fields want it. Nobody laughs, and nobody quite argues either.`,true);
+    addEvent('noticed','the year the island was first thanked','People had begun to notice that the island answers — small things, kindly done, never seen being done. Nobody named it. Everyone thanked it anyway, each in their own way.')}
+  else if(faithSt===1&&faith>=.34&&!hasW('shrine')&&!works.some(w=>w.wk==='shrine')){faithSt=2;
+    const s0=WORKS.shrine.site();works.push({wk:'shrine',x:s0.x,y:s0.y,y0:yr,done:false,prog:0,paid:1,said:1});
+    say(`${B(pick(adults))} spends a morning choosing a flat stone from the shore, and pacing the grass near the hearth, and does not explain. Everyone already knows what the stone will be for.`,true)}
+  if(faithSt>=2&&!hasW('shrine')&&!works.some(w=>w.wk==='shrine')){const s0=WORKS.shrine.site();works.push({wk:'shrine',x:s0.x,y:s0.y,y0:yr,done:false,prog:0,paid:1,said:1})}
+  // what is asked at the stone, and whether it comes — by the watcher's hand or by weather, and nobody can tell the difference, which is the point
+  if(prayer){const q=prayer.who?byName(prayer.who):null;
+    const got=(prayer.k==='rain'&&rainedDay>=prayer.d)||(prayer.k==='food'&&food+granary>people.length*5)||(prayer.k==='calm'&&dayCount>=prayer.d+2&&lastStormDay<=prayer.d)||(prayer.k==='heal'&&q&&!q.sick&&!q.dead)||(prayer.k==='dream'&&q&&q.dreamt>=prayer.d);
+    if(got){faith=Math.min(1,faith+.12);const p=pick(adults);
+      say(`What was asked at the quiet stone has come, the way asked-for things sometimes do. ${B(p)} goes and stands by the stone a moment, and touches the top of it, and leaves.`,true);
+      if(R()<.5)addEvent('answered',`the ${sea()} the stone answered`,`Something asked at the quiet stone — ${PRAYW[prayer.k]} — came. Whether it would have come anyway is not the kind of question anyone asks out loud.`);
+      prayer=null}
+    else if(dayCount>prayer.d+4){faith=Math.max(0,faith-.05);
+      say('The stone keeps its own counsel this time. The offering is lifted off it gently, and eaten, because times are what they are.',false,'unanswered');prayer=null}}
+  else if(hasW('shrine')&&R()<.3){let k=null,who=null;
+    const sickP=people.find(p=>p.sick),kid=people.find(p=>isKid(p)&&!p.dead);
+    if(sickP){k='heal';who=sickP.name}
+    else if(dry01>.5)k='rain';
+    else if(hunger>.25)k='food';
+    else if(dayCount-lastStormDay<=2&&hasB('hut'))k='calm';
+    else if(kid&&R()<.35){k='dream';who=kid.name}
+    if(k){prayer={k,d:dayCount,who};
+      say(`${B(pick(adults))} leaves ${pick(OFFER)} in the hollow at the foot of the quiet stone, and asks, not out loud, for ${k==='heal'&&who?`the fever to leave ${who}`:k==='dream'&&who?`a good dream for ${who}`:PRAYW[k]}.`,true)}}
+  // too much, or exactly enough
+  if(faith>=.5&&recent>=9&&R()<.25)say('The talk at the fire has gone strange lately: less of what anyone will do tomorrow, more of what the island will do for them. Somebody says the fields should probably still be weeded either way, and is right.',false,'depend');
+  if(faith>=.55&&recent===0&&R()<.1){const eld=adults.filter(isElder);
+    if(eld.length)say(`${B(pick(eld))} says whatever keeps this island keeps it the right way: you are never quite sure it has done anything at all.`,false,'kept')}}
 // ---------- weather ----------
-function pickWx(){const s=sea(),r=R();
-  if(s==='winter')return r<.32?'clear':r<.55?'overcast':r<.9?'snow':'fog';
-  if(s==='spring')return r<.33?'clear':r<.5?'overcast':r<.8?'rain':r<.9?'thunder':'fog';
-  if(s==='summer')return r<.5?'clear':r<.62?'overcast':r<.78?'rain':r<.94?'thunder':'fog';
-  return r<.3?'clear':r<.5?'overcast':r<.78?'rain':r<.86?'thunder':'fog'}
+function pickWx(){const s=sea(),r=R();let w;
+  if(s==='winter')w=r<.32?'clear':r<.55?'overcast':r<.9?'snow':'fog';
+  else if(s==='spring')w=r<.33?'clear':r<.5?'overcast':r<.8?'rain':r<.9?'thunder':'fog';
+  else if(s==='summer')w=r<.5?'clear':r<.62?'overcast':r<.78?'rain':r<.94?'thunder':'fog';
+  else w=r<.3?'clear':r<.5?'overcast':r<.78?'rain':r<.86?'thunder':'fog';
+  // the island's temper leans on the dial, and a drought holds the rain off entirely
+  if(temper==='rainy'&&w==='clear'&&R()<.25)w=s==='winter'?'snow':'rain';
+  else if(temper==='dry'&&w==='rain'&&R()<.45)w='overcast';
+  else if(temper==='windy'&&w==='overcast'&&R()<.18)w='thunder';
+  else if(temper==='cold'&&w==='clear'&&R()<.15)w='overcast';
+  if(arc&&arc.k==='drought'&&(w==='rain'||w==='thunder'))w=R()<.5?'clear':'overcast';
+  return w}
 function setWx(n){const o=wx;wx=n;rain=n==='rain'||n==='thunder';storm=n==='thunder';
+  if(storm)lastStormDay=dayCount;if(rain)rainedDay=dayCount;
   wxT=n==='clear'?rnd(70,200):n==='overcast'?rnd(40,110):n==='rain'?rnd(40,90):n==='thunder'?rnd(30,50):n==='fog'?rnd(30,70):rnd(35,90);
+  // sometimes a storm leaves the tide line paid: wreck-wood, and once in a while somebody clinging to it
+  if(o==='thunder'&&n!=='thunder'&&yearOf(dayCount)!==wreckYr&&dayCount>YEAR&&R()<.3){wreckYr=yearOf(dayCount);wood+=8;
+    say('When the storm lets go, the tide line is a scatter of planks and rope out of somebody else\'s bad night. The wood is carried up before the sea changes its mind.',true);
+    addEvent('wreck',`the wreck-wood of year ${yearOf(dayCount)}`,`After the storm the sea left planks and rope along the tide line — some other boat's bad night, made into firewood and shelf.`);
+    if(R()<.35&&people.length<popCap()&&landings.length){const l=landings[0];const p=addPerson(l.x,l.y,{age:rnd(19,40)|0,how:'washed ashore alive from a wreck, and was wrapped in a blanket before being asked anything'});meet(p,1,2);
+      say(`Down among the wreck-wood there is a person, half-drowned and all the way alive: ${B(p)}, who will not talk about the boat yet.`,true);
+      addEvent('washed',`the ${sea()} the sea gave up ${p.name}`,`${p.name} washed ashore alive from a wreck, and stayed, and never did say much about the boat.`)}}
   if(n==='thunder'){say('The sky goes the colour of slate and the wind gets up. This is a storm.',true);addEvent('storm',`the storm of year ${yearOf(dayCount)}`,`A storm came over in the ${sea()} of year ${yearOf(dayCount)}, and is still brought up.`);thunderT=rnd(2,6)}
   else if(n==='rain')say(o==='thunder'?'The storm settles into a steady rain.':'Rain moves in from the west. The fields drink.');
   else if(n==='snow')say(o==='overcast'?'Snow begins, quietly, and keeps on.':'Snow comes in off the sea, sideways at first, then straight down.');
@@ -953,25 +1110,26 @@ function step(dt){
     if(farms.length&&R()<dt*.02){const cand=farms.filter(f=>f.g>.3);if(cand.length){const f=pick(cand);f.g*=.2;say('The wind lays a field flat. Someone will have to start it again.',false,'flat')}}
     if(trees.length>5&&R()<dt*.006){const cand=trees.filter(t=>t.s>.8&&t.hp>0);if(cand.length){const t=pick(cand);t.hp=0;stumps.push({x:t.x,y:t.y});wood+=3;say('A crack in the dark: the storm takes a tree down. In the morning there will be wood to gather.',false,'treefall')}}}
   // snow lies, and melts
-  if(wx==='snow')snowD=Math.min(1,snowD+dt*.006);else if(rain)snowD=Math.max(0,snowD-dt*.006);else if(s!=='winter')snowD=Math.max(0,snowD-dt*.0025);else snowD=Math.max(0,snowD-dt*.0002);
+  if(wx==='snow')snowD=Math.min(1,snowD+dt*(arcK()==='longwinter'?.01:.006));else if(rain)snowD=Math.max(0,snowD-dt*.006);else if(s!=='winter')snowD=Math.max(0,snowD-dt*.0025*(temper==='cold'?.6:1));else snowD=Math.max(0,snowD-dt*.0002);
   const fr=snowD>.3;if(fr!==frozen){frozen=fr;if(fr)say('The shallows have frozen over. The water goes still and white at the edges.',true);else say('The ice goes out of the shallows with a sound like something breaking a long way off.',true)}
-  // dry spells: the ground remembers how long since rain (spring and summer only; sprint 11's arcs will lean on this)
-  if((s==='spring'||s==='summer')&&!rain)dry01=Math.min(1,dry01+dt*.0016);else dry01=Math.max(0,dry01-dt*(rain?.02:.004));
-  // farms grow — not in winter, slowly in autumn, not under snow, and grudgingly when the ground is dry
-  const grow={spring:1,summer:1.15,autumn:.65,winter:0}[s]*(snowD>.5?0:1)*(dry01>.7?.5:1);
+  // dry spells: the ground remembers how long since rain — and a drought arc turns the screw hard
+  if((s==='spring'||s==='summer')&&!rain)dry01=Math.min(1,dry01+dt*.0016*(temper==='dry'?1.5:1)*(arcK()==='drought'?3.2:1));else dry01=Math.max(0,dry01-dt*(rain?.02:.004));
+  // farms grow — not in winter, slowly in autumn, not under snow, grudgingly when the ground is dry, and better behind the plough
+  const grow={spring:1,summer:1.15,autumn:.65,winter:0}[s]*(snowD>.5?0:1)*(dry01>.85?.25:dry01>.7?.5:1)*(hasWay(1)?1.25:1);
   if(grow>0)for(const f of farms)if(f.g<1)f.g+=dt*(rain?.022:.011)*(isNight()?.4:1)*grow;
   // leaves and petals
   if(s==='autumn'&&trees.length&&R()<dt*8){const t=pick(trees);if(t.s>.5)fx.push({x:t.x+rnd(-.5,.5),y:t.y-.9,vx:rnd(-.7,.2),vy:rnd(.25,.5),c:t.a<.35?'#c47a2a':t.a<.7?'#b8402a':'#b09a2c',l:rnd(1.5,2.6)})}
   if(s==='spring'&&seaDay()<=3&&trees.length&&R()<dt*2){const t=pick(trees);if(t.b&&t.s>.6)fx.push({x:t.x+rnd(-.5,.5),y:t.y-.9,vx:rnd(-.5,.3),vy:rnd(.2,.4),c:'#e8a0b8',l:rnd(1.5,2.5)})}
-  // winter fires eat wood
-  if(s==='winter'&&isNight()&&R()<dt*.02*houses.length)wood=Math.max(0,wood-1);
+  // winter fires eat wood (kiln-dried, it burns longer)
+  if(s==='winter'&&isNight()&&R()<dt*.02*houses.length*(hasWay(2)?.7:1))wood=Math.max(0,wood-1);
   // saplings grow / regrow forest
   for(const t of trees)if(t.hp>0&&t.s<1)t.s+=dt*.012;
   if(sea()!=='winter'&&trees.length<260&&R()<dt*.3){const s=freeSpot(11,40);if(s&&(R()<.3||trees.some(t=>Math.hypot(t.x-s.x,t.y-s.y)<3)))trees.push(mkTree(s.x+.5,s.y+.5,.15))}
   // arrivals
   arrivalT-=dt;if(arrivalT<=0){arrivalT=rnd(70,140)*(1+people.length/10)*(hasB('light')?.75:1);if(people.length<popCap()&&people.length<48&&food>people.length*2&&!storm&&!boats.some(b=>b.kind==='arrival')){
     const age=R()<.2?rnd(50,64)|0:rnd(18,42)|0;
-    if(landings.length){const l=landings[(R()*Math.min(landings.length,6))|0];spawnBoat('arrival',l,{age})}
+    const fam=!famDone&&people.length>=8&&people.length<popCap()-2&&R()<.14; // once, a whole family in one boat
+    if(landings.length){const l=landings[(R()*Math.min(landings.length,6))|0];if(fam)famDone=true;spawnBoat('arrival',l,{age,fam})}
     else{let s=null;for(let k=0;k<200&&!s;k++){const x=(R()*W)|0,y=(R()*H)|0;if(at(x,y)===SAND)s={x,y}}
       if(s){const p=addPerson(s.x,s.y,{age});meet(p,1,3);say(`A stranger named ${B(p)} lands on the shore and asks to stay.`);addEvent('arrival',`the day ${p.name} came ashore`,ARRIVED(p))}}}}
   // the trader comes once a season, on the third day, in the morning
@@ -1098,7 +1256,7 @@ function step(dt){
         else{const f=p.wtgt;if(f&&f.g<1)f.g=Math.min(1,f.g+.15);p.wtgt=null;craftUp(p,0);p.task='idle';p.t=1;if(R()<.25)say(`${B(p)} carries well water to the fields, two buckets at a time, and the rows drink it standing up.`,false,'water')}}break;
       case 'fish': if(storm&&!has(p,'brave')){p.task='idle';p.t=1;break} // light rain is only water; work goes on
         if(walk(p,dt)){p.work=(p.work||0)+dt;if(R()<dt*.8)fx.push({x:p.x+rnd(-1,1),y:p.y+rnd(.5,1.5),vx:0,vy:-.3,c:'#cfe6ff',l:.4});
-          if(p.work>7){p.work=0;let n=rain?4:frozen?(R()<.25?1:0):s==='winter'?(R()<.4?1:0):2;if(p.luck){p.luck=0;n=n*3+3;say(`${B(p)} comes up from the water with more fish than the line should hold, and says nothing about a dream.`,true)}food+=n;craftUp(p,2);p.task='idle';p.t=1;if(storm){p.fishRain++;if(p.fishRain===1){p.hist.push({d:dayCount,s:'first went out fishing in a storm, and came back'})}}if(R()<.3)say(rain?`${B(p)} comes back from the water soaked through, with fish.`:`${B(p)} comes up from the shore with a few fish on a string.`)}}break;
+          if(p.work>7){p.work=0;let n=rain?4:frozen?(R()<.25?1:0):s==='winter'?(R()<.4?1:0):2;if(arcK()==='shoal')n+=3;if(p.luck){p.luck=0;n=n*3+3;say(`${B(p)} comes up from the water with more fish than the line should hold, and says nothing about a dream.`,true)}food+=n;craftUp(p,2);p.task='idle';p.t=1;if(storm){p.fishRain++;if(p.fishRain===1){p.hist.push({d:dayCount,s:'first went out fishing in a storm, and came back'})}}if(R()<.3)say(rain?`${B(p)} comes back from the water soaked through, with fish.`:`${B(p)} comes up from the shore with a few fish on a string.`)}}break;
       case 'boat': break;
       case 'voyage': if(walk(p,dt)){const l=landings[0];const b=spawnBoat('away',l,{p,x:l.x+l.dx*.9,y:l.y+l.dy*.9,st:'out',tx:l.x+l.dx*24,ty:l.y+l.dy*24});p.task='boat';p.inBoat=true;voyage.st='away';voyage.day=dayCount;voyage.n=2+((R()*3)|0);
         p.hist.push({d:dayCount,s:'took the boat out alone to see the far island'});addEvent('voyage',`the ${sea()} ${p.name} sailed for the far island`,`${p.name} rowed out alone for the far island, and five people stood on the shore and watched it happen.`);
@@ -1116,8 +1274,8 @@ function step(dt){
           p.task='idle';p.t=2}}break;
     }
   }
-  people.forEach(p=>{if(people.length>1&&R()<dt*.02){if(food>0)food-=1;else if(granary>0)granary-=1}});
-  if(food>40&&R()<dt*food*.0025)food-=1; // fresh food does not keep
+  people.forEach(p=>{if(people.length>1&&R()<dt*(arcK()==='longwinter'?.027:.02)){if(food>0)food-=1;else if(granary>0)granary-=1}});
+  if(food>40&&R()<dt*food*.0025*(hasWay(2)?.5:1))food-=1; // fresh food does not keep — though fired pots slow the damp's stealing
   // once, in the first year only: the boat they came in had one more sack in it
   if(food<=0&&granary<=0&&people.length>1&&!sackUsed&&dayCount<=YEAR){sackUsed=true;food+=10;
     say('The bottom of the boat turns out to hold one more sack, kept against exactly this, and nobody asks why it was not mentioned before.',true);
@@ -1175,6 +1333,7 @@ function drawFace(ctx,p){const rr=mulberry(p.seed);const kid=isKid(p),eld=isElde
 const cardEl=document.getElementById('card'),faceCv=document.getElementById('face'),faceCtx=faceCv.getContext('2d');
 let cardT=0;
 function whyText(p){const w=WX();
+  if(p.sick)return `Should be lying down. The fever is going round, and ${p.name} has it, and is being ${has(p,'stubborn')?'exactly as stubborn about it as you would expect':'stubborn about it'}.`;
   switch(p.task){
     case 'sleep':return `Asleep${homeOf(p)?' at home':' by the fire'}. ${has(p,'restless')?'Lightly.':has(p,'dreamy')?'Dreaming, probably.':''}`;
     case 'gohome':return `Heading home for the night${p.partner&&byName(p.partner)?', where '+p.partner+' will be':''}.`;
@@ -1217,6 +1376,9 @@ addEventListener('keydown',e=>{if(e.key==='Escape')showCard(null)});
 function draw(){
   const s=sea(),sd=seaDay();
   if(paintedKey!==s+'|'+Math.round(snowD*6)/6+'|'+frozen+'|'+roadV)paintTerrain();
+  // the view: everything below draws in world pixels; one transform carries the zoom and the look-around
+  g.setTransform(1,0,0,1,0,0);g.fillStyle='#0b0d12';g.fillRect(0,0,cv.width,cv.height);
+  const vk=vScale();g.setTransform(vk,0,0,vk,cv.width/2-camX*T*vk,cv.height/2-camY*T*vk);g.imageSmoothingEnabled=false;
   g.drawImage(ter,0,0);
   const L=light();
   // tide: the sand ring breathes twice a day
@@ -1237,6 +1399,7 @@ function draw(){
   const occSet=new Set();for(const p of people)if(p.inside&&p.shelterH)occSet.add(p.shelterH); // a house someone is waiting out the storm in shows a light
   for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;g.fillStyle='#b8a17e';g.fillRect(x+1,y+7,14,9);g.fillStyle=h.r;g.beginPath();g.moveTo(x-1,y+8);g.lineTo(x+8,y);g.lineTo(x+17,y+8);g.fill();
     if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+8-7*cap,y+7*cap);g.lineTo(x+8,y);g.lineTo(x+8+7*cap,y+7*cap);g.fill();g.fillRect(x+1,y+7,14,1)}
+    if(hasWay(2)){g.fillStyle='#a34a2a';g.fillRect(x+11,y+1,2,3);g.fillStyle='#6b2f1e';g.fillRect(x+11,y+1,2,1)} // kiln-fired chimney pots
     g.fillStyle=(L<.5||occSet.has(h))?'#f5c463':'#2b2b3a';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3);g.fillStyle='#4a2f16';g.fillRect(x+7,y+11,3,5)}});
   // buildings (bridge and hut sit low; the lighthouse sorts by its foot)
   const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
@@ -1269,11 +1432,16 @@ function draw(){
       case 'boat2':if(boats.filter(bb=>bb.kind==='fish').length<2){g.fillStyle='rgba(0,0,0,.2)';g.fillRect(x,y+3,9,1);g.fillStyle='#8a6a44';g.fillRect(x+1,y,7,1);g.fillStyle='#6b4a2a';g.fillRect(x,y+1,9,1);g.fillStyle='#4a2f16';g.fillRect(x+1,y+2,7,1)}break;
       case 'hives':g.fillStyle='#c9a24a';g.fillRect(x,y-2,3,3);g.fillRect(x+5,y-2,3,3);g.fillStyle='#8a6a2a';g.fillRect(x,y-2,3,1);g.fillRect(x+5,y-2,3,1);g.fillStyle='#2a1c12';g.fillRect(x+1,y,1,1);g.fillRect(x+6,y,1,1);break;
       case 'bench':g.fillStyle='#8a6a44';g.fillRect(x,y,6,1);g.fillStyle='#6f4b32';g.fillRect(x,y+1,1,2);g.fillRect(x+5,y+1,1,2);break;
+      case 'shrine':g.fillStyle='rgba(0,0,0,.22)';g.fillRect(x-2,y+1,8,1);
+        g.fillStyle='#8c8478';g.fillRect(x,y-6,3,7);g.fillStyle='#a49e92';g.fillRect(x,y-6,1,7);g.fillRect(x,y-6,3,1);g.fillStyle='#5e5850';g.fillRect(x+2,y-5,1,6);
+        g.fillStyle='#6f6a60';g.fillRect(x+4,y-1,3,2);g.fillStyle='#3a3a30';g.fillRect(x+5,y-1,1,1);
+        if(faith>.45){g.fillStyle='#c9a24a';g.fillRect(x+5,y-2,1,1);g.fillStyle='#8a3d2f';g.fillRect(x-2,y-1,1,1)}break;
     }}});
   if(ruin&&ruin.roof)ents.push({y:ruin.y+1.2,d:()=>{const x=Math.round(ruin.x*T),y=Math.round(ruin.y*T);g.fillStyle='#6f4b32';g.beginPath();g.moveTo(x-13,y+2);g.lineTo(x,y-8);g.lineTo(x+13,y+2);g.fill();g.fillStyle='#4a2f16';g.fillRect(x-12,y+2,24,1);if(snowD>.15){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x-11,y+1);g.lineTo(x,y-8);g.lineTo(x+11,y+1);g.fill()}}});
   for(const b of boats)ents.push({y:b.y+.4,d:()=>{const x=b.x*T,y=b.y*T;const bob=Math.sin(time*3+b.x)*.6;
     if(b.kind==='trade'){g.fillStyle='#5a3a1e';g.fillRect(x-6,y+bob,12,4);g.fillStyle='#8a6a44';g.fillRect(x-6,y+bob,12,1);g.fillStyle='#4a2f16';g.fillRect(x,y-9+bob,1,9);g.fillStyle='#e8dcc4';g.beginPath();g.moveTo(x+1,y-9+bob);g.lineTo(x+7,y-2+bob);g.lineTo(x+1,y-2+bob);g.fill();g.fillStyle='#c96b4a';g.fillRect(x-4,y-3+bob,3,3);g.fillStyle='#f1cfa5';g.fillRect(x-4,y-5+bob,3,2)}
     else{g.fillStyle='#6b4a2a';g.fillRect(x-4,y+bob,8,3);g.fillStyle='#4a2f16';g.fillRect(x-4,y+bob,8,1);g.fillStyle='#8a6a44';g.fillRect(x-5,y+1+bob,1,1);g.fillRect(x+4,y+1+bob,1,1);
+      if(b.kind==='fish'&&hasWay(0)){g.fillStyle='#4a2f16';g.fillRect(x,y-7+bob,1,7);g.fillStyle='#e8dcc4';g.beginPath();g.moveTo(x+1,y-7+bob);g.lineTo(x+5,y-2+bob);g.lineTo(x+1,y-2+bob);g.fill()}
       if(b.kind==='arrival'){g.fillStyle='#7fa85b';g.fillRect(x-1,y-3+bob,3,3);g.fillStyle='#f1cfa5';g.fillRect(x-1,y-5+bob,3,2)}}}});
   for(const gr of graves)ents.push({y:gr.y,d:()=>{const x=gr.x*T,y=gr.y*T;g.fillStyle='#8c8478';g.fillRect(x-1,y-4,3,5);g.fillStyle='#d9d4c8';g.fillRect(x-1,y-4,1,4);g.fillStyle='#4a4640';g.fillRect(x+1,y-3,1,4);g.fillStyle='#5a7a3a';g.fillRect(x-2,y,5,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-1,y-5,3,1)}}});
   if(ruin)for(const st of ruin.st)ents.push({y:st.y,d:()=>{const x=Math.round(st.x*T),y=Math.round(st.y*T);g.fillStyle='rgba(0,0,0,.22)';g.fillRect(x-3,y+1,8,1);
@@ -1462,7 +1630,7 @@ function renderChron(){let h='',cy=0;
   for(const e of chron){if(e.y!==cy){cy=e.y;h+=`<h4>year ${cy}</h4>`}h+=`<p><i>day ${e.d}</i>${e.st||e.label}</p>`}
   rollEl.innerHTML=h||'<p>Nothing has happened yet that anyone will remember.</p>';
   document.getElementById('chron-t').firstChild.textContent=village?`The Chronicle of ${village}`:'The Chronicle';
-  document.getElementById('chron-s').textContent=`island ${seed.toString(36)} · year ${yearOf(dayCount)}, day ${dayCount}`;
+  document.getElementById('chron-s').textContent=`island ${seed.toString(36)} · year ${yearOf(dayCount)}, day ${dayCount}`+(hasWay(3)?' · written in the book of days':'');
   document.getElementById('chron-n').textContent=chron.length===1?'one thing remembered':`${chron.length} things remembered`;
   rollEl.scrollTop=rollEl.scrollHeight}
 function exportChron(){const L=[`The chronicle of ${village||'an island with no name'}`,`island ${seed.toString(36)}`,''];let cy=0;
@@ -1489,10 +1657,11 @@ function lzDec(b64){const b=atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
     const k=get();let e;if(k<256)e=String.fromCharCode(k);else if(d.has(k))e=d.get(k);else e=w+w[0];
     out+=e;if(n<65536)d.set(n++,w+e[0]);w=e}
   return decodeURIComponent(escape(out))}
-const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0,p.keeper?1:0,p.craft===undefined?-1:p.craft,+(p.cxp||0).toFixed(2),p.shadN?[p.shadN,p.shadC|0]:0];
+const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0,p.keeper?1:0,p.craft===undefined?-1:p.craft,+(p.cxp||0).toFixed(2),p.shadN?[p.shadN,p.shadC|0]:0,p.sick?1:0];
 function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]===v)n++;else{rd.push(v,n);v=road[i];n=1}}rd.push(v,n)}
-  return{v:6,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),
+  return{v:7,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),
     dr:+dry01.toFixed(2),br:breadYr,ry:retYr,wk:works.filter(w=>w.done).map(w=>[w.wk,+w.x.toFixed(1),+w.y.toFixed(1),w.y0]),
+    fa:+faith.toFixed(2),fs:faithSt,py:prayer?[prayer.k,prayer.d,prayer.who||0]:0,ay:ways,ax:arc?[arc.k,arc.d0,arc.end]:0,az:arcYr,aw:wayYr,ab:bookYr,al:lastStormDay,am:rainedDay,an:wreckYr,af:famDone?1:0,
     wx,wt:+wxT.toFixed(1),sn:+snowD.toFixed(3),fz:frozen?1:0,fo:+fogA.toFixed(2),vn:village||0,rv:roadV,td:traderDay,be:belled,rs:ruinSeen,
     gd:geeseDay,wd:whaleDay,ar:+arrivalT.toFixed(1),sp:speed,wi:wind,sy:storyDay,sk:sackUsed?1:0,
     pe:people.map(packP),de:dead.map(p=>[p.name,p.rels.map(r=>[r.who,r.k])]),go:gone.map(p=>p.name),
@@ -1511,6 +1680,8 @@ function unpack(o){
   wx=o.wx;rain=wx==='rain'||wx==='thunder';storm=wx==='thunder';wxT=o.wt;snowD=o.sn;frozen=!!o.fz;fogA=o.fo;
   village=o.vn||null;roadV=o.rv;traderDay=o.td;belled=o.be;ruinSeen=o.rs;geeseDay=o.gd;whaleDay=o.wd;arrivalT=o.ar;speed=o.sp||1;wind=o.wi||1;storyDay=o.sy||0;sackUsed=!!o.sk;
   dry01=o.dr||0;breadYr=o.br||0;retYr=o.ry||0;
+  faith=o.fa||0;faithSt=o.fs||0;prayer=o.py?{k:o.py[0],d:o.py[1],who:o.py[2]||null}:null;ways=o.ay||0;
+  arc=o.ax?{k:o.ax[0],d0:o.ax[1],end:o.ax[2]}:null;arcYr=o.az||0;wayYr=o.aw||0;bookYr=o.ab||0;lastStormDay=o.al||0;rainedDay=o.am||0;wreckYr=o.an||0;famDone=!!o.af;
   houses=o.ho.map(h=>({x:h[0],y:h[1],r:h[2],owners:h[3].slice()}));
   farms=o.fm.map(f=>({x:f[0],y:f[1],g:f[2]}));
   trees=o.tr.map(t=>({x:t[0],y:t[1],s:t[2],hp:t[3],b:!!t[4],a:t[5],o:t[6]||0}));
@@ -1533,7 +1704,7 @@ function unpack(o){
       task:'idle',t:rnd(.5,2),tx:a[0],ty:a[1],carry:0,seed:hash(a[2])^seed,visits:0};
     if(a[13])p.child=true;if(a[18])p.wantHouse=true;if(a[19])p.dreamFar=1;if(a[20])p.luck=1;
     if(a[21])p.pend={k:a[21][0],who:a[21][1]||null,gr:a[21][2]?graves.find(g=>g.name===a[21][2]):null};if(a[22])p.keeper=1;
-    p.craft=a[23]===undefined?-1:a[23];p.cxp=a[24]||0;if(a[25]){p.shadN=a[25][0];p.shadC=a[25][1]}return p};
+    p.craft=a[23]===undefined?-1:a[23];p.cxp=a[24]||0;if(a[25]){p.shadN=a[25][0];p.shadC=a[25][1]}if(a[26])p.sick=1;return p};
   names=new Set();people=o.pe.map(mk);people.forEach(p=>names.add(p.name));
   dead=o.de.map(a=>({name:a[0],rels:a[1].map(r=>({who:r[0],k:r[1]})),dead:true,hist:[],tr:[]}));
   gone=o.go.map(n=>({name:n}));
@@ -1554,7 +1725,7 @@ function unpack(o){
   document.getElementById('seedlbl').textContent=(village?village+' · ':'')+'island '+seed.toString(36);
   say(`The island is as it was left. ${village?village+', year':'Year'} ${yearOf(dayCount)}, day ${dayCount}: ${people.length} people, ${houses.length} ${houses.length===1?'house':'houses'}, ${graves.length} ${graves.length===1?'stone':'stones'} on the hill.`,true)}
 function loadHash(){const h=(location.hash||'').replace(/^#/,'');if(h.length<40)return false;
-  const o=JSON.parse(lzDec(h));if(!o||(o.v!==5&&o.v!==6)||!o.pe)return false;unpack(o);return true}
+  const o=JSON.parse(lzDec(h));if(!o||!(o.v>=5&&o.v<=7)||!o.pe)return false;unpack(o);return true}
 function saveHash(){let str;
   try{str=lzEnc(JSON.stringify(pack()))}catch(err){say('Something about this island will not fit in a link.',true);return}
   try{history.replaceState(null,'','#'+str)}catch(err){location.hash=str}
@@ -1592,23 +1763,47 @@ function hintTick(rdt){if(paused||innerWidth>520||hintsDone.size>=HINTS.length||
 const hintEl=document.getElementById('hint');
 document.getElementById('b-help').onclick=()=>hintEl.classList.toggle('show');
 hintEl.addEventListener('click',()=>hintEl.classList.remove('show'));
-// ---------- input ----------
-function fit(){const s=Math.min(innerWidth/(W*T),innerHeight/(H*T));cv.style.width=(W*T*s)+'px';cv.style.height=(H*T*s)+'px'}
+// ---------- input, and the view (sprint 11: the watcher can lean in) ----------
+let zoom=1,camX=W/2,camY=H/2,vw=1,vh=1,dprE=1,fitS=1,pinch=null;
+const ptrs=new Map();
+function fit(){vw=Math.max(1,innerWidth);vh=Math.max(1,innerHeight);
+  const dpr=Math.min(devicePixelRatio||1,3);dprE=Math.max(1,Math.min(dpr,2,Math.sqrt(2.6e6/(vw*vh)))); // sharper than before, capped so mid phones stay smooth
+  cv.width=Math.round(vw*dprE);cv.height=Math.round(vh*dprE);cv.style.width=vw+'px';cv.style.height=vh+'px';
+  fitS=Math.min(vw/(W*T),vh/(H*T));g.imageSmoothingEnabled=false;clampCam()}
+const vScale=()=>fitS*zoom*dprE;
+function clampCam(){const k=vScale(),hw=cv.width/2/(k*T),hh=cv.height/2/(k*T);
+  camX=hw>=W/2?W/2:Math.max(hw,Math.min(W-hw,camX));
+  camY=hh>=H/2?H/2:Math.max(hh,Math.min(H-hh,camY))}
+function setZoom(z,wx,wy){const z0=zoom;zoom=Math.max(1,Math.min(4,z));if(zoom===z0)return;
+  if(wx!==undefined){camX=wx-(wx-camX)*z0/zoom;camY=wy-(wy-camY)*z0/zoom}clampCam()}
 addEventListener('resize',fit);fit();
 let press=null,lpT=0;
-const toWorld=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H}};
-cv.addEventListener('pointerdown',e=>{const w=toWorld(e);cur.x=w.x;cur.y=w.y;
-  press={x0:w.x,y0:w.y,x:w.x,y:w.y,moved:0,done:false,water:at(w.x|0,w.y|0)===WATER};
+const toWorld=e=>{const r=cv.getBoundingClientRect(),k=vScale();
+  return{x:((e.clientX-r.left)*dprE-(cv.width/2-camX*T*k))/(k*T),y:((e.clientY-r.top)*dprE-(cv.height/2-camY*T*k))/(k*T)}};
+cv.addEventListener('wheel',e=>{e.preventDefault();const w=toWorld(e);setZoom(zoom*Math.exp(-e.deltaY*.0016),w.x,w.y)},{passive:false});
+cv.addEventListener('pointerdown',e=>{ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   try{cv.setPointerCapture(e.pointerId)}catch(err){}
+  if(ptrs.size>=2){if(lpT){clearTimeout(lpT);lpT=0}press=null; // a second finger means the view, not a blessing
+    const a=[...ptrs.values()];pinch={d0:Math.max(20,Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)),z0:zoom,mx:(a[0].x+a[1].x)/2,my:(a[0].y+a[1].y)/2};return}
+  const w=toWorld(e);cur.x=w.x;cur.y=w.y;
+  press={x0:w.x,y0:w.y,x:w.x,y:w.y,cx:e.clientX,cy:e.clientY,sm:0,moved:0,done:false,water:at(w.x|0,w.y|0)===WATER};
   if(at(w.x|0,w.y|0)===GRASS){lpT=setTimeout(()=>{lpT=0;if(!press||press.moved>1.1)return;press.done=true;
     if(!makeSpring(press.x0,press.y0)){for(let i=0;i<7;i++)fx.push({x:press.x0,y:press.y0,vx:rnd(-.7,.7),vy:-rnd(.3,1),c:'#9fd66a',l:.5});
       say('The ground here holds its water, and keeps it.',false,'nospring')}},520)}});
-cv.addEventListener('pointermove',e=>{const w=toWorld(e);cur.x=w.x;cur.y=w.y;if(!press)return;
+cv.addEventListener('pointermove',e=>{const pt=ptrs.get(e.pointerId);if(pt){pt.x=e.clientX;pt.y=e.clientY}
+  if(pinch&&ptrs.size>=2){const a=[...ptrs.values()],k=vScale();
+    const d=Math.max(20,Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)),mx=(a[0].x+a[1].x)/2,my=(a[0].y+a[1].y)/2;
+    camX-=(mx-pinch.mx)*dprE/(k*T);camY-=(my-pinch.my)*dprE/(k*T);pinch.mx=mx;pinch.my=my;
+    setZoom(pinch.z0*d/pinch.d0);clampCam();return}
+  const w=toWorld(e);cur.x=w.x;cur.y=w.y;if(!press)return;
+  const sdx=e.clientX-press.cx,sdy=e.clientY-press.cy;press.cx=e.clientX;press.cy=e.clientY;press.sm+=Math.abs(sdx)+Math.abs(sdy);
+  if(press.sm>8&&lpT){clearTimeout(lpT);lpT=0}
+  if(!press.water&&zoom>1.02&&press.sm>8){press.pan=true;const k=vScale();camX-=sdx*dprE/(k*T);camY-=sdy*dprE/(k*T);clampCam();return} // dragging the land drags the view; the water keeps its gust
   press.moved=Math.max(press.moved,Math.hypot(w.x-press.x0,w.y-press.y0));press.x=w.x;press.y=w.y;
   if(press.moved>1.1&&lpT){clearTimeout(lpT);lpT=0}
   if(press.water&&press.moved>1.5&&R()<.35)fx.push({x:w.x,y:w.y,vx:0,vy:0,c:'#dceeff',l:.3})});
 function endPress(e){if(!press)return;const pr=press;press=null;if(lpT){clearTimeout(lpT);lpT=0}
-  if(pr.done)return;
+  if(pr.done||pr.pan)return;
   const x=pr.x0,y=pr.y0;
   // a gust, dragged across the water
   if(pr.water&&pr.moved>2.2&&at(pr.x|0,pr.y|0)===WATER){gustAt(x,y,pr.x,pr.y);return}
@@ -1616,7 +1811,7 @@ function endPress(e){if(!press)return;const pr=press;press=null;if(lpT){clearTim
   // an islander, and at night a dream
   let best=null,bd=1.4;for(const p of people){if(p.inside)continue;const d=Math.hypot(p.x-x,p.y-y+.6);if(d<bd){bd=d;best=p}}
   if(best){showCard(best);
-    if(isNight()){if(isKid(best)&&best.task==='sleep'){lullaby(best.x,best.y);actDone('lullaby');
+    if(isNight()){if(isKid(best)&&best.task==='sleep'){lullaby(best.x,best.y);actDone('lullaby');noteAct('lullaby',.03);
         say(`Somewhere in the dark somebody is humming, very quietly, and ${B(best)} turns over and sleeps on.`,true)}
       dreamOf(best)}
     return}
@@ -1625,11 +1820,12 @@ function endPress(e){if(!press)return;const pr=press;press=null;if(lpT){clearTim
   // a cloud's shadow
   const c=cloudAt(x,y);if(c){rainOn(c);return}
   const t=at(x|0,y|0);
-  if(t===GRASS){trees.push(mkTree((x|0)+.5,(y|0)+.5,.2));actDone('sapling');for(let i=0;i<6;i++)fx.push({x,y,vx:rnd(-1,1),vy:rnd(-1.5,-.3),c:'#9fd66a',l:.6});
+  if(t===GRASS){trees.push(mkTree((x|0)+.5,(y|0)+.5,.2));actDone('sapling');noteAct('sapling',.025);for(let i=0;i<6;i++)fx.push({x,y,vx:rnd(-1,1),vy:rnd(-1.5,-.3),c:'#9fd66a',l:.6});
     if(R()<.3)say('Someone unseen plants a sapling. The islanders do not question it.')}
   else if(t===WATER)skipStone(x,y)}
-cv.addEventListener('pointerup',endPress);cv.addEventListener('pointercancel',()=>{press=null;if(lpT){clearTimeout(lpT);lpT=0}});
-addEventListener('pointerup',e=>{if(press&&e.target!==cv)endPress(e)});
+cv.addEventListener('pointerup',e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;endPress(e)});
+cv.addEventListener('pointercancel',e=>{ptrs.delete(e.pointerId);pinch=null;press=null;if(lpT){clearTimeout(lpT);lpT=0}});
+addEventListener('pointerup',e=>{if(e.target!==cv){ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;if(press)endPress(e)}});
 document.getElementById('b-pause').onclick=()=>{paused=!paused;syncCtl()};
 document.getElementById('b-s1').onclick=()=>setSpeed(1);
 document.getElementById('b-s3').onclick=()=>setSpeed(3);
@@ -1655,7 +1851,13 @@ addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
   else if(k==='m')skipToMorning();
   else if(k==='c')showChron(chronEl.hidden);
   else if(k==='s')document.getElementById('b-audio').click();
-  else if(k==='n')document.getElementById('b-music').click()});
+  else if(k==='n')document.getElementById('b-music').click()
+  else if(k==='+'||k==='=')setZoom(zoom*1.25,camX,camY);
+  else if(k==='-'||k==='_')setZoom(zoom/1.25,camX,camY);
+  else if(e.key==='ArrowLeft'){camX-=5/zoom;clampCam();e.preventDefault()}
+  else if(e.key==='ArrowRight'){camX+=5/zoom;clampCam();e.preventDefault()}
+  else if(e.key==='ArrowUp'){camY-=4/zoom;clampCam();e.preventDefault()}
+  else if(e.key==='ArrowDown'){camY+=4/zoom;clampCam();e.preventDefault()}});
 // ---------- loop ----------
 {const mb=document.getElementById('b-music');if(pref('mus')==='0'){musOn=false;mb.textContent='music off'}else mb.classList.add('on');
   if(pref('snd')!=='1')mb.classList.add('dim')}
@@ -1665,14 +1867,16 @@ addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
       removeEventListener('pointerdown',kick,true);removeEventListener('keydown',kick,true)};
     addEventListener('pointerdown',kick,true);addEventListener('keydown',kick,true)}}
 {let ok=false;try{ok=loadHash()}catch(err){ok=false}
-  if(!ok){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(o&&(o.v===5||o.v===6)&&o.pe){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
+  if(!ok){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(o&&o.v>=5&&o.v<=7&&o.pe){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
   if(!ok)newWorld(seed);syncCtl()}
 let last=performance.now();
 function loop(now){let dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now;if(!paused)for(let i=0;i<speed;i++)step(dt); // clamped at 0: the first frame's timestamp can predate performance.now(), and time must never run backward
   audioTick(dt);hintTick(dt);cardT-=dt;renderCard(false);draw();requestAnimationFrame(loop)}
 requestAnimationFrame(loop);
 // exposed for headless testing only
-window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get seed(){return seed},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,setFood:v=>food=v,setGranary:v=>granary=v,landAt,canWalk,canWade,routeVia,autoSave,get wadeTiles(){return wadeTiles},get bridgeUp(){return bridgeUp},get bridgeSite(){return bridgeSite},get works(){return works},get dry01(){return dry01},setDry:v=>dry01=v,get breadYr(){return breadYr},WORKS,WORK_ORDER,hasW,get spots(){return spots},get sackUsed(){return sackUsed},get musOn(){return musOn},set musOn(v){musOn=v},newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};
+window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get seed(){return seed},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,setFood:v=>food=v,setGranary:v=>granary=v,landAt,canWalk,canWade,routeVia,autoSave,get wadeTiles(){return wadeTiles},get bridgeUp(){return bridgeUp},get bridgeSite(){return bridgeSite},get works(){return works},get dry01(){return dry01},setDry:v=>dry01=v,get breadYr(){return breadYr},WORKS,WORK_ORDER,hasW,get spots(){return spots},
+get faith(){return faith},setFaith:v=>faith=v,get faithSt(){return faithSt},get prayer(){return prayer},get arc(){return arc},startArc,get ways(){return ways},setWays:v=>ways=v,hasWay,get temper(){return temper},noteAct,get acts(){return acts},get sickCount(){return people.filter(p=>p.sick).length},
+setZoom,get zoom(){return zoom},get view(){return{zoom,camX,camY,dprE,fitS}},toWorld,fit,get sackUsed(){return sackUsed},get musOn(){return musOn},set musOn(v){musOn=v},newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};
 })();
 </script>
 </body>
