@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth — a small living island</title>
-<!-- Hearth v2 · Sprint 6: sound as place — a mixer, placed one-shots, waves off the cursor, seasonal music (on top of Sprints 1–5). Single file, no dependencies. -->
+<!-- Hearth v2 · Sprint 7: the quality pass — lit windows in a storm, deer that stop at the water, a child who keeps the fire, work through light rain, a sack against the first hard winter, a music toggle (on top of Sprints 1–6). Single file, no dependencies. -->
 <style>
   :root{--ink:#e8dcc4;--dim:#9a8b6d;--panel:rgba(18,14,10,.86);--gold:#f0b35a;--line:#3a3020}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -87,6 +87,7 @@
   <button id="b-chron" title="the chronicle (c)">chronicle</button>
   <button id="b-share" title="put this island in the address bar">keep</button>
   <button id="b-audio">sound off</button>
+  <button id="b-music" title="just the music, on or off (n)">music on</button>
   <button id="b-new">new island</button>
 </div>
 <div id="log"></div>
@@ -126,6 +127,8 @@ let bldg=[],bldgTgt=null,boats=[],heat,road,roadV=0,village=null,landings=[],lig
 let deep=[],wild=[],flies=[],gulls=[],geese=null,geeseDay=0,whale=null,whaleT=0,whaleDay=0,farIsle=null,voyage=null,ruin=null,fishSh=[],ruinSeen=0;
 // sprint 5 state: the watcher's blessings, clouds, the chronicle, time
 let springs=[],clouds=[],cloudSp=[],gusts=[],skips=[],chron=[],wind=1,paused=false,storyDay=0,dreamAny=0;
+// sprint 7 state: the sack kept against the first hard year
+let sackUsed=false;
 let RM=false;try{const mq=matchMedia('(prefers-reduced-motion: reduce)');RM=mq.matches;
   if(mq.addEventListener)mq.addEventListener('change',e=>{RM=e.matches});else if(mq.addListener)mq.addListener(e=>{RM=e.matches})}catch(e){}
 const V=()=>village||'the village';
@@ -153,7 +156,7 @@ const mkTree=(x,y,s)=>({x,y,s,hp:3,b:R()<.45,a:R()});
 function newWorld(s){
   seed=s;R=mulberry(seed);document.getElementById('seedlbl').textContent='island '+seed.toString(36);
   const n1=noise2(),n2=noise2();tiles=new Uint8Array(W*H);elev=new Float32Array(W*H);trees=[];houses=[];farms=[];people=[];stumps=[];fx=[];fires=[];graves=[];dead=[];events=[];shore=[];
-  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
+  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
   const cx=W/2,cy=H/2;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     const dx=(x-cx)/cx,dy=(y-cy)/cy;const d=Math.sqrt(dx*dx*.9+dy*dy*1.5);
@@ -595,7 +598,9 @@ function stepWild(dt){const s=sea(),night=isNight();
           if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=Math.hypot(dx,dy)||1;let tx=w.x+dx/d*8,ty=w.y+dy/d*6;for(let k=0;k<6&&!landAt(tx,ty);k++){const a=rnd(6.28);tx=w.x+Math.cos(a)*7;ty=w.y+Math.sin(a)*5}w.tx=tx;w.ty=ty;w.f=dx<0?-1:1;if(th.task==='chop'&&R()<.15)say(`A deer breaks from the trees at the sound of the axe and is gone before ${B(th)} has looked up.`,false,'deerflee')}}
         if(w.home&&(w.home.hp<=0||!trees.includes(w.home))){w.home=forestTree()}}
       if(w.st==='graze'){w.t-=dt;if(w.t<=0){w.st='move';const h=w.home||center;let tx=h.x+rnd(-4,4),ty=h.y+rnd(-2.5,3.5);for(let k=0;k<5&&!landAt(tx,ty);k++){tx=h.x+rnd(-4,4);ty=h.y+rnd(-2.5,3.5)}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1;if(R()<.12&&w.home){w.home=forestTree()||w.home}}}
-      else{const sp=(w.st==='flee'?7:night?.6:1.3)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){w.x=w.tx;w.y=w.ty;w.st='graze';w.t=rnd(2,7)}else{w.x+=dx/d*sp;w.y+=dy/d*sp}}}
+      else{const sp=(w.st==='flee'?7:night?.6:1.3)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){w.x=w.tx;w.y=w.ty;w.st='graze';w.t=rnd(2,7)}
+        else{const nx=w.x+dx/d*sp,ny=w.y+dy/d*sp; // a deer runs along the shore, not into the sea
+          if(landAt(nx,ny)){w.x=nx;w.y=ny}else if(landAt(nx,w.y)){w.x=nx}else if(landAt(w.x,ny)){w.y=ny}else{w.st='graze';w.t=rnd(1,3)}}}}
     else if(w.k==='rabbit'){if(w.chk<=0){w.chk=.3;if(w.st!=='hide'&&w.st!=='flee'){let th=null;for(const p of people){if(p.inside||p.task==='sleep')continue;if(Math.hypot(p.x-w.x,p.y-w.y)<2.6){th=p;break}}if(!th&&fox&&Math.hypot(fox.x-w.x,fox.y-w.y)<5)th=fox;
           if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=Math.hypot(dx,dy)||1;let tx=w.x+dx/d*5,ty=w.y+dy/d*3.5;for(let k=0;k<5&&!landAt(tx,ty);k++){tx=w.home.x+rnd(-2,2);ty=w.home.y+rnd(-2,2)}w.tx=tx;w.ty=ty;w.f=dx<0?-1:1}}}
       if(w.st==='hide'){w.t-=dt;if(w.t<=0&&!(snowD>.6&&R()<.7)){w.st='sit';w.t=rnd(1,3);w.x=w.home.x+rnd(-1,1);w.y=w.home.y+rnd(-1,1)}}
@@ -813,7 +818,10 @@ function step(dt){
   stepBoats(dt);stepWild(dt);stepClouds(dt);stepSkips(dt);stepGusts(dt);
   // smokehouse smoke; winter chimneys
   {const sm=getB('smoke');if(sm&&R()<dt*3)fx.push({x:sm.x+1.7,y:sm.y-.4,vx:rnd(-.2,.2)+(storm?.8:0),vy:-.35,c:'#8c8478',l:rnd(1.5,2.5)});
-    if(s==='winter'&&houses.length&&R()<dt*houses.length*.35){const h=pick(houses);fx.push({x:h.x+1.6,y:h.y-.2,vx:rnd(-.15,.15)+(storm?.6:0),vy:-.3,c:'#a09890',l:rnd(1.2,2)})}}
+    if(s==='winter'&&houses.length&&R()<dt*houses.length*.35){const h=pick(houses);fx.push({x:h.x+1.6,y:h.y-.2,vx:rnd(-.15,.15)+(storm?.6:0),vy:-.3,c:'#a09890',l:rnd(1.2,2)})}
+    // a sheltering house shows it is lived in: smoke torn sideways off the chimney
+    if(storm){const occ=houses.filter(h=>people.some(p=>p.inside&&p.shelterH===h));
+      if(occ.length&&R()<dt*occ.length*.5){const h=pick(occ);fx.push({x:h.x+1.6,y:h.y-.2,vx:rnd(-.2,.2)+wind*.9,vy:-.18,c:'#a09890',l:rnd(.8,1.4)})}}}
   // the hall bell at dawn
   if(hasB('hall')&&belled!==dayCount&&dayFrac()>edges()[0]+.02&&!isNight()){belled=dayCount;bell(3);if(R()<.15)say(`The bell rings the sun up over ${V()}.${people.some(p=>has(p,'restless'))?' Someone was already awake.':''}`)}
   // flavor lines
@@ -847,7 +855,16 @@ function step(dt){
             else if(p.task==='visit'&&p.vg)say(`${B(p)} stops at ${p.vg.name}'s stone and straightens it, though it was straight.`,false,'visit')}}
         else p.said=false;break;
       case 'play':{p.t-=dt;if(p.t<=0){p.t=rnd(2,5);const par=p.parents.map(byName).find(q=>q&&!q.dead);const anchor=R()<.5&&par?par:(homeOf(p)?{x:homeOf(p).x+1,y:homeOf(p).y+2.5}:center);p.tx=anchor.x+rnd(-2.5,2.5);p.ty=anchor.y+rnd(-2,2)}walk(p,dt);break}
-      case 'idle':{if(p.child){p.task='play';p.t=0;break}
+      case 'tend':{if(people.some(q=>q!==p&&!isKid(q))){p.task='idle';p.t=1;break} // a grown-up again: back to being a child
+        if(walk(p,dt)){p.dwell-=dt;if(p.dwell<=0){
+          if(p.tendOut){p.tendOut=0;food+=1;goTo(p,center.x+rnd(-1.5,1.5),center.y+rnd(-1,1),'tend',rnd(5,9));if(R()<.2)say(`${B(p)} lays what the tide left down beside the fire. Not much, and enough.`,false,'tend')}
+          else{p.tendOut=1;const sh=nearestShore(p.x,p.y)||center;goTo(p,sh.x,sh.y,'tend',rnd(2,4))}}}break}
+      case 'idle':{if(p.child){
+        // a child with nobody grown left does not only play: someone has to keep the fire
+        if(!people.some(q=>q!==p&&!isKid(q))){
+          if(!p.keeper){p.keeper=1;say(`${B(p)} builds the fire up alone, the way the grown ones did it.`,true);p.hist.push({d:dayCount,s:'was left to keep the fire alone, and kept it'});addEvent('keeper',`the ${sea()} ${p.name} kept the fire alone`,`Everyone grown was gone, and ${p.name}, a child, kept the fire going alone until a boat should come.`)}
+          p.tendOut=1;const sh=nearestShore(p.x,p.y)||center;goTo(p,sh.x,sh.y,'tend',rnd(2,4));break}
+        p.task='play';p.t=0;break}
         p.t-=dt;if(p.t>0){if(R()<dt*.6){p.tx=p.x+rnd(-2,2);p.ty=p.y+rnd(-2,2)}walk(p,dt);break}
         // trait detours
         if(has(p,'restless')&&R()<.22){const far=spots[0];goTo(p,far.x,far.y,'wander',rnd(6,12));break}
@@ -866,7 +883,7 @@ function step(dt){
         const site=canBuild?((ruin&&ruinSeen&&R()<.4&&freeSpotNear(ruin.x,ruin.y,4,7,2))||freeSpot(3,11,2)||freeSpot(3,15,2)):null;
         if(site){const s=site;{wood-=18;p.tgt={x:s.x,y:s.y,prog:0,forCouple:p.wantHouse?[p.name,p.partner]:null};if(p.wantHouse){p.wantHouse=false;const q=byName(p.partner);if(q)q.wantHouse=false}p.tx=s.x+1;p.ty=s.y+2.2;p.task='build';const nearR=ruin&&Math.hypot(s.x-ruin.x,s.y-ruin.y)<8&&!ruin.built;if(nearR){ruin.built=true;p.hist.push({d:dayCount,s:'built the first house in the lee of the old stones'})}say(nearR?`${B(p)} paces out a plot in the lee of the old stones. It is out of the wind there, ${p.name} says, and it is not only that.`:p.wantHouse?`${B(p)} paces out a plot for a house of their own.`:`${B(p)} paces out a plot for a new house.`)}}
         else if(ripe.length&&!proud&&keen){const f=ripe.sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];f.claimed=true;p.tgt=f;p.tx=f.x+.5;p.ty=f.y+.5;p.task='harvest'}
-        else if(needFood&&(rain?has(p,'brave'):R()<(hunger>.2?.7:s==='winter'?.45:.35))&&shore.length){const s=nearestShore(p.x,p.y);if(s){p.tgt=s;p.tx=s.x+.5;p.ty=s.y+.5;p.task='fish';p.work=0}else p.t=1}
+        else if(needFood&&(storm?has(p,'brave'):R()<(hunger>.2?.7:s==='winter'?.45:.35))&&shore.length){const s=nearestShore(p.x,p.y);if(s){p.tgt=s;p.tx=s.x+.5;p.ty=s.y+.5;p.task='fish';p.work=0}else p.t=1}
         else if(needFood&&!proud&&s!=='winter'&&snowD<.4&&farms.length<people.length*.7+2&&R()<.7){const s=freeSpot(3,9);if(s){p.tgt=s;p.tx=s.x+.5;p.ty=s.y+.5;p.task='till'}else p.t=1}
         else if(wood<70&&(needWood||proud||R()<.4)){const t=nearestTree(p.x,p.y);if(t&&(needWood||trees.length>12)){p.tgt=t;p.tx=t.x;p.ty=t.y+.4;p.task='chop'}else p.t=2}
         else{p.tx=center.x+rnd(-4,4);p.ty=center.y+rnd(-3,3);p.t=rnd(2,4)}}
@@ -877,9 +894,9 @@ function step(dt){
       case 'till': if(walk(p,dt)){p.work=(p.work||0)+dt*workRate(p);if(p.work>2.5){p.work=0;const s=p.tgt;tiles[idx(s.x,s.y)]=FARM;farms.push({x:s.x,y:s.y,g:0});if(farms.length===1){say(`${B(p)} breaks the first ground for a field.`);p.hist.push({d:dayCount,s:'broke the first ground for a field'});addEvent('field','the day the first field was dug',`${p.name} broke the first ground for a field, which was the beginning of eating properly.`)}p.task='idle';p.t=1}}break;
       case 'harvest': if(walk(p,dt)){p.work=(p.work||0)+dt*workRate(p);if(R()<dt*4)fx.push({x:p.x,y:p.y-.5,vx:rnd(-.5,.5),vy:-1,c:'#e8c86a',l:.6});
         if(p.work>2){p.work=0;p.tgt.g=0;p.tgt.claimed=false;const store=(s==='autumn'||(s==='summer'&&seaDay()>=4))&&granary<people.length*12;if(store)granary+=4;else food+=4;p.task='idle';p.t=1;if(R()<.25)say(store?`${B(p)} carries a basket of grain to the store, against the winter.`:`${B(p)} brings in a basket of grain.`,false,'basket')}}break;
-      case 'fish': if(rain&&!has(p,'brave')){p.task='idle';p.t=1;break}
+      case 'fish': if(storm&&!has(p,'brave')){p.task='idle';p.t=1;break} // light rain is only water; work goes on
         if(walk(p,dt)){p.work=(p.work||0)+dt;if(R()<dt*.8)fx.push({x:p.x+rnd(-1,1),y:p.y+rnd(.5,1.5),vx:0,vy:-.3,c:'#cfe6ff',l:.4});
-          if(p.work>7){p.work=0;let n=rain?4:frozen?(R()<.25?1:0):s==='winter'?(R()<.4?1:0):2;if(p.luck){p.luck=0;n=n*3+3;say(`${B(p)} comes up from the water with more fish than the line should hold, and says nothing about a dream.`,true)}food+=n;p.task='idle';p.t=1;if(rain){p.fishRain++;if(p.fishRain===1){p.hist.push({d:dayCount,s:'first went out fishing in a storm, and came back'})}}if(R()<.3)say(rain?`${B(p)} comes back from the water soaked through, with fish.`:`${B(p)} comes up from the shore with a few fish on a string.`)}}break;
+          if(p.work>7){p.work=0;let n=rain?4:frozen?(R()<.25?1:0):s==='winter'?(R()<.4?1:0):2;if(p.luck){p.luck=0;n=n*3+3;say(`${B(p)} comes up from the water with more fish than the line should hold, and says nothing about a dream.`,true)}food+=n;p.task='idle';p.t=1;if(storm){p.fishRain++;if(p.fishRain===1){p.hist.push({d:dayCount,s:'first went out fishing in a storm, and came back'})}}if(R()<.3)say(rain?`${B(p)} comes back from the water soaked through, with fish.`:`${B(p)} comes up from the shore with a few fish on a string.`)}}break;
       case 'boat': break;
       case 'voyage': if(walk(p,dt)){const l=landings[0];const b=spawnBoat('away',l,{p,x:l.x+l.dx*.9,y:l.y+l.dy*.9,st:'out',tx:l.x+l.dx*24,ty:l.y+l.dy*24});p.task='boat';p.inBoat=true;voyage.st='away';voyage.day=dayCount;voyage.n=2+((R()*3)|0);
         p.hist.push({d:dayCount,s:'took the boat out alone to see the far island'});addEvent('voyage',`the ${sea()} ${p.name} sailed for the far island`,`${p.name} rowed out alone for the far island, and five people stood on the shore and watched it happen.`);
@@ -897,6 +914,10 @@ function step(dt){
   }
   people.forEach(p=>{if(people.length>1&&R()<dt*.02){if(food>0)food-=1;else if(granary>0)granary-=1}});
   if(food>40&&R()<dt*food*.0025)food-=1; // fresh food does not keep
+  // once, in the first year only: the boat they came in had one more sack in it
+  if(food<=0&&granary<=0&&people.length>1&&!sackUsed&&dayCount<=YEAR){sackUsed=true;food+=10;
+    say('The bottom of the boat turns out to hold one more sack, kept against exactly this, and nobody asks why it was not mentioned before.',true);
+    addEvent('sack','the sack from the boat','The store ran out in the first year, and the last sack from the boat, kept against exactly this, was opened.')}
   const starving=food<=0&&granary<=0&&people.length>1;
   hunger=Math.max(0,Math.min(1,hunger+dt*(starving?.005:-.004)));
   if(starving&&R()<dt*.02)say(hunger>.6?'The store is empty. Nobody says so at the fire, which is how everyone knows.':'The store is empty. Whatever the sea gives today is dinner.',false,'empty');
@@ -956,7 +977,7 @@ function whyText(p){const w=WX();
     case 'chop':return `Chopping a tree. ${has(p,'proud')?'Would rather do this than farm.':wood<14?'The woodpile is low.':'It needs doing.'}`;
     case 'till':return `Breaking new ground for a field. Food is short and someone has to.`;
     case 'harvest':return sea()==='autumn'?`Bringing in a ripe field for the store. Winter is coming.`:`Bringing in a ripe field before the birds do.`;
-    case 'fish':return rain?`Fishing in ${w}. Brave enough not to mind, and the fish bite better.`:frozen?`Fishing through a hole in the ice. Not much is biting.`:`Down at the shore with a line. Food is short.`;
+    case 'fish':return storm?`Fishing in ${w}. Brave enough not to mind, and the fish bite better.`:rain?`Fishing in the rain, which is only water. The fish bite better for it.`:frozen?`Fishing through a hole in the ice. Not much is biting.`:`Down at the shore with a line. Food is short.`;
     case 'shelter':return p.inside?`Indoors, waiting out the storm.`:`Hurrying to get under a roof before the worst of it.`;
     case 'boat':return voyage&&voyage.p===p?`Rowing for the far island, alone. ${has(p,'brave')?'Not afraid, or not admitting it.':'It is further than it looks.'}`:`Out in the boat past the shallows, where the water goes dark and the fish are bigger.`;
     case 'voyage':return `Walking down to the landing to take the boat out to the far island. Nobody has, before. ${p.name} may not come back.`;
@@ -970,6 +991,7 @@ function whyText(p){const w=WX();
     case 'visit':return p.vg?`Visiting ${p.vg.name}'s stone on the hill.`:'On the hill.';
     case 'mourn':return `On the hill, at the burying.`;
     case 'play':return `Playing near ${p.parents.length?p.parents[0]:'the fire'}, in the way of children.`;
+    case 'tend':return `Keeping the fire and walking the tideline for food, because there is nobody grown left to do it.`;
     default:return isKid(p)?'Wandering after the grown-ups.':`Between tasks, deciding what needs doing${has(p,'patient')?', unhurried':''}.`}}
 function showCard(p){selected=p;if(!p){cardEl.hidden=true;return}cardEl.hidden=false;renderCard(true)}
 function renderCard(full){const p=selected;if(!p||cardEl.hidden)return;
@@ -1006,16 +1028,21 @@ function draw(){
   for(const t of trees)ents.push({y:t.y,d:()=>{const r=T*.7*t.s*shrink,c=canopy(t);g.fillStyle='#4a2f16';g.fillRect(t.x*T-1,t.y*T-r*.6,2,r*.9);g.fillStyle=c[0];g.beginPath();g.arc(t.x*T,t.y*T-r,r,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.arc(t.x*T-r*.3,t.y*T-r*1.2,r*.6,0,6.283);g.fill();
     if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(t.x*T-r*.6,t.y*T-r*1.1,2,2);g.fillRect(t.x*T+r*.3,t.y*T-r*1.5,2,2);g.fillRect(t.x*T+r*.1,t.y*T-r*.6,2,2)}
     if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();g.arc(t.x*T-r*.2,t.y*T-r*1.35,r*.55*cap,0,6.283);g.fill()}}});
+  const occSet=new Set();for(const p of people)if(p.inside&&p.shelterH)occSet.add(p.shelterH); // a house someone is waiting out the storm in shows a light
   for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;g.fillStyle='#b8a17e';g.fillRect(x+1,y+7,14,9);g.fillStyle=h.r;g.beginPath();g.moveTo(x-1,y+8);g.lineTo(x+8,y);g.lineTo(x+17,y+8);g.fill();
     if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+8-7*cap,y+7*cap);g.lineTo(x+8,y);g.lineTo(x+8+7*cap,y+7*cap);g.fill();g.fillRect(x+1,y+7,14,1)}
-    g.fillStyle=L<.5?'#f5c463':'#2b2b3a';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3);g.fillStyle='#4a2f16';g.fillRect(x+7,y+11,3,5)}});
+    g.fillStyle=(L<.5||occSet.has(h))?'#f5c463':'#2b2b3a';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3);g.fillStyle='#4a2f16';g.fillRect(x+7,y+11,3,5)}});
   // buildings (bridge and hut sit low; the lighthouse sorts by its foot)
   const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
   for(const b of bAll())ents.push({y:b.y+b.h,d:()=>{const x=b.x*T,y=b.y*T,done=b.done,pr=done?1:Math.min(1,b.prog/b.work);
     if(!done){g.fillStyle='rgba(60,45,25,.5)';g.fillRect(x,y,b.w*T,b.h*T);g.fillStyle='#8a6a44';for(let i=0;i<b.w*T;i+=4)g.fillRect(x+i,y+b.h*T-2-pr*6,2,2+pr*6);return}
     switch(b.kind){
       case 'hut':g.fillStyle='#8a6a44';g.fillRect(x+1,y-1,14,8);g.fillStyle='#6f4b32';g.fillRect(x,y-4,16,4);g.fillStyle='#4a3a2a';g.fillRect(x+6,y+2,3,5);g.fillStyle='#3a3a30';g.fillRect(x+11,y+1,3,4);g.fillRect(x+12,y-6,1,6);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x,y-4,16,Math.ceil(2*cap))}
-        if(!boats.some(bb=>bb.kind==='fish')){g.fillStyle='#6b4a2a';g.fillRect(x-4+b.w*T*(b.x>center.x?1:0)-(b.x>center.x?0:0),y+8,7,3);g.fillStyle='#4a2f16';g.fillRect(x-4+b.w*T*(b.x>center.x?1:0),y+8,7,1)}break;
+        if(!boats.some(bb=>bb.kind==='fish')){const bx=x+(b.x>center.x?b.w*T+1:-10),by=y+8; // the boat, pulled up on the sand beside the hut
+          g.fillStyle='rgba(0,0,0,.2)';g.fillRect(bx,by+3,9,1);
+          g.fillStyle='#8a6a44';g.fillRect(bx+1,by,7,1);g.fillRect(bx+7,by-4,1,4);g.fillRect(bx+6,by-5,2,1);
+          g.fillStyle='#6b4a2a';g.fillRect(bx,by+1,9,1);
+          g.fillStyle='#4a2f16';g.fillRect(bx+1,by+2,7,1);g.fillRect(bx+3,by,1,1)}break;
       case 'well':g.fillStyle='#8c8478';g.fillRect(x+1,y+2,6,5);g.fillStyle='#3a3a30';g.fillRect(x+2,y+3,4,3);g.fillStyle='#6f4b32';g.fillRect(x+1,y-2,1,5);g.fillRect(x+6,y-2,1,5);g.fillRect(x,y-3,8,1);g.fillStyle='#d9d4c8';g.fillRect(x+1,y+2,6,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x,y-4,8,1)}break;
       case 'market':for(let i=0;i<3;i++){const sx=x+2+i*8,sy=y+(i===1?14:2);g.fillStyle=['#8a3d2f','#4c5f78','#c9a24a'][i];g.fillRect(sx,sy,6,3);g.fillStyle='#6f4b32';g.fillRect(sx,sy+3,1,4);g.fillRect(sx+5,sy+3,1,4);g.fillStyle='#b8a17e';g.fillRect(sx+1,sy+5,4,2)}break;
       case 'mill':{g.fillStyle='#a89880';g.fillRect(x+3,y+3,10,13);g.fillStyle='#8c8478';g.fillRect(x+12,y+3,1,13);g.fillStyle='#4c5f78';g.beginPath();g.moveTo(x+2,y+4);g.lineTo(x+8,y-2);g.lineTo(x+14,y+4);g.fill();if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+8-6*cap,y+4-6*(1-cap));g.lineTo(x+8,y-2);g.lineTo(x+8+6*cap,y+4-6*(1-cap));g.fill()}g.fillStyle='#4a2f16';g.fillRect(x+7,y+11,3,5);
@@ -1092,7 +1119,7 @@ function draw(){
 }
 // ---------- audio: the island, heard (sprint 6) ----------
 // everything here uses Math.random, never R() — sound must not touch the simulation's stream
-let AC=null,audioOn=false,master=null,ambG,sfxG,musG,windG,windF,rainG,crickG,waveG,waveF,sprG,padG,nBuf=null;
+let AC=null,audioOn=false,musOn=true,master=null,ambG,sfxG,musG,windG,windF,rainG,crickG,waveG,waveF,sprG,padG,nBuf=null;
 let padOsc=[],birdT=0,gullT=3,creakT=5,musT=3,musKey='',sfxN=0,lastKnock=0;
 const cur={x:0,y:0};
 const ar=(a,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a);
@@ -1200,7 +1227,7 @@ function audioTick(dt){sfxN=0;if(!AC||!audioOn)return;const t=AC.currentTime,s=s
     sprG.gain.setTargetAtTime(d<9?.022*(1-d/9):0,t,.9)}
   // music: the season's key, gone by nightfall
   tuneMusic();
-  const want=(!night&&!storm)?.5:0;musG.gain.setTargetAtTime(want*duck,t,want?7:4);
+  const want=(!night&&!storm&&musOn)?.5:0;musG.gain.setTargetAtTime(want*duck,t,want?7:4);
   if(want>0){musT-=dt;if(musT<=0){musT=ar(1.9,4.2);const k=KEYS[s],sc=k[1];
     const deg=sc[(Math.random()*sc.length)|0],oct=Math.random()<.28?12:0,pan=ar(-.55,.55);
     const f=k[0]*Math.pow(2,(deg+oct)/12);
@@ -1245,11 +1272,11 @@ function lzDec(b64){const b=atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
     const k=get();let e;if(k<256)e=String.fromCharCode(k);else if(d.has(k))e=d.get(k);else e=w+w[0];
     out+=e;if(n<65536)d.set(n++,w+e[0]);w=e}
   return decodeURIComponent(escape(out))}
-const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0];
+const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0,p.keeper?1:0];
 function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]===v)n++;else{rd.push(v,n);v=road[i];n=1}}rd.push(v,n)}
   return{v:5,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),
     wx,wt:+wxT.toFixed(1),sn:+snowD.toFixed(3),fz:frozen?1:0,fo:+fogA.toFixed(2),vn:village||0,rv:roadV,td:traderDay,be:belled,rs:ruinSeen,
-    gd:geeseDay,wd:whaleDay,ar:+arrivalT.toFixed(1),sp:speed,wi:wind,sy:storyDay,
+    gd:geeseDay,wd:whaleDay,ar:+arrivalT.toFixed(1),sp:speed,wi:wind,sy:storyDay,sk:sackUsed?1:0,
     pe:people.map(packP),de:dead.map(p=>[p.name,p.rels.map(r=>[r.who,r.k])]),go:gone.map(p=>p.name),
     ho:houses.map(h=>[h.x,h.y,h.r,h.owners]),fm:farms.map(f=>[f.x,f.y,+f.g.toFixed(2)]),
     tr:trees.map(t=>[+t.x.toFixed(2),+t.y.toFixed(2),+t.s.toFixed(2),t.hp,t.b?1:0,+t.a.toFixed(2)]),
@@ -1264,7 +1291,7 @@ function unpack(o){
   newWorld(o.s);
   time=o.t;dayCount=o.d;lastYear=o.ly;lastSea=o.ls;wood=o.w;food=o.f;granary=o.g;hunger=o.hu;
   wx=o.wx;rain=wx==='rain'||wx==='thunder';storm=wx==='thunder';wxT=o.wt;snowD=o.sn;frozen=!!o.fz;fogA=o.fo;
-  village=o.vn||null;roadV=o.rv;traderDay=o.td;belled=o.be;ruinSeen=o.rs;geeseDay=o.gd;whaleDay=o.wd;arrivalT=o.ar;speed=o.sp||1;wind=o.wi||1;storyDay=o.sy||0;
+  village=o.vn||null;roadV=o.rv;traderDay=o.td;belled=o.be;ruinSeen=o.rs;geeseDay=o.gd;whaleDay=o.wd;arrivalT=o.ar;speed=o.sp||1;wind=o.wi||1;storyDay=o.sy||0;sackUsed=!!o.sk;
   houses=o.ho.map(h=>({x:h[0],y:h[1],r:h[2],owners:h[3].slice()}));
   farms=o.fm.map(f=>({x:f[0],y:f[1],g:f[2]}));
   trees=o.tr.map(t=>({x:t[0],y:t[1],s:t[2],hp:t[3],b:!!t[4],a:t[5]}));
@@ -1286,7 +1313,7 @@ function unpack(o){
       spot:{l:a[14][0],x:a[14][1],y:a[14][2]},off:a[15],fishRain:a[16]||0,boats:a[17]||0,
       task:'idle',t:rnd(.5,2),tx:a[0],ty:a[1],carry:0,seed:hash(a[2])^seed,visits:0};
     if(a[13])p.child=true;if(a[18])p.wantHouse=true;if(a[19])p.dreamFar=1;if(a[20])p.luck=1;
-    if(a[21])p.pend={k:a[21][0],who:a[21][1]||null,gr:a[21][2]?graves.find(g=>g.name===a[21][2]):null};return p};
+    if(a[21])p.pend={k:a[21][0],who:a[21][1]||null,gr:a[21][2]?graves.find(g=>g.name===a[21][2]):null};if(a[22])p.keeper=1;return p};
   names=new Set();people=o.pe.map(mk);people.forEach(p=>names.add(p.name));
   dead=o.de.map(a=>({name:a[0],rels:a[1].map(r=>({who:r[0],k:r[1]})),dead:true,hist:[],tr:[]}));
   gone=o.go.map(n=>({name:n}));
@@ -1371,14 +1398,18 @@ document.getElementById('b-new').onclick=()=>{try{history.replaceState(null,'',l
 document.getElementById('b-audio').onclick=e=>{if(!AC)startAudio();audioOn=!audioOn;if(AC.state==='suspended')AC.resume();
   master.gain.setTargetAtTime(audioOn?1:0,AC.currentTime,.12);
   e.target.textContent=audioOn?'sound on':'sound off';e.target.classList.toggle('on',audioOn);store('snd',audioOn?'1':'0')};
+document.getElementById('b-music').onclick=e=>{musOn=!musOn;e.target.textContent=musOn?'music on':'music off';e.target.classList.toggle('on',musOn);store('mus',musOn?'1':'0');
+  if(AC&&!musOn)musG.gain.setTargetAtTime(0,AC.currentTime,.5)};
 addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
   const k=e.key.toLowerCase();
   if(k===' '||e.code==='Space'){paused=!paused;syncCtl();e.preventDefault()}
   else if(k==='1')setSpeed(1);else if(k==='3')setSpeed(3);else if(k==='0')setSpeed(10);
   else if(k==='m')skipToMorning();
   else if(k==='c')showChron(chronEl.hidden);
-  else if(k==='s')document.getElementById('b-audio').click()});
+  else if(k==='s')document.getElementById('b-audio').click();
+  else if(k==='n')document.getElementById('b-music').click()});
 // ---------- loop ----------
+{const mb=document.getElementById('b-music');if(pref('mus')==='0'){musOn=false;mb.textContent='music off'}else mb.classList.add('on')}
 {const ab=document.getElementById('b-audio');                                  // the sound toggle is remembered, but the browser still wants a gesture first
   if(pref('snd')==='1'){audioOn=true;ab.textContent='sound on';ab.classList.add('on');
     const kick=()=>{if(!AC)startAudio();if(AC&&AC.state==='suspended')AC.resume();
@@ -1391,7 +1422,7 @@ function loop(now){let dt=Math.min(.05,(now-last)/1000);last=now;if(!paused)for(
   audioTick(dt);cardT-=dt;renderCard(false);draw();requestAnimationFrame(loop)}
 requestAnimationFrame(loop);
 // exposed for headless testing only
-window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get seed(){return seed},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};
+window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get seed(){return seed},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,setFood:v=>food=v,setGranary:v=>granary=v,landAt,get sackUsed(){return sackUsed},get musOn(){return musOn},set musOn(v){musOn=v},newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};
 })();
 </script>
 </body>
