@@ -28,6 +28,8 @@ function newDay(){saidToday=new Set();
     if(cand.length){const un=cand.filter(e=>!lorePl.includes(e.kind));
       const e=un.length?un[0]:(R()<.25?cand[(R()*cand.length)|0]:null);
       if(e){const D=LORE_PLACE[e.kind],pos=D.at();if(pos)walkP={d:dayCount,k:e.kind,l:D.l,x:pos.x,y:pos.y,named:lorePl.includes(e.kind)}}}}
+  // and once a year, in spring, with enough named ground and an elder to lead and children to show: the walking of the bounds (sprint 14)
+  if(s==='spring'&&seaDay()===3&&yr!==boundsYr&&lorePl.length>=2&&people.some(p=>isElder(p)&&!p.dead)&&people.some(p=>isKid(p)&&ageOf(p)>=5)&&R()<.6){boundsYr=yr;boundsP={d:dayCount}}
   // paths where people walk; cobbles once the village is big
   {let ch=false;const cob=houses.length>=10;for(let i=0;i<W*H;i++){const h=heat[i];heat[i]=h*.8;const t=tiles[i];if(t===WATER||t===FARM||t===ROCK)continue;
       if(h>26&&road[i]===0){road[i]=1;ch=true}else if(cob&&h>60&&road[i]===1){road[i]=2;ch=true}}

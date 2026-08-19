@@ -71,6 +71,7 @@ function whyText(p){const w=WX();
     case 'water':return `Hauling well water to the fields, two buckets at a time. The sky has not been helping.`;
     case 'tend':return `Keeping the fire and walking the tideline for food, because there is nobody grown left to do it.`;
     case 'pilgrim':return `Walking out to ${p.pilgL||'a place out of the stories'}, to stand where the story happens. The story is better there.`;
+    case 'bounds':return p.bLead?`Leading the walking of the bounds: every named place, in order, with the children. Someone must show them where everything happened.`:`Being walked round the named places, and shown where everything happened. There will be questions.`;
     default:return isKid(p)?'Wandering after the grown-ups.':`Between tasks, deciding what needs doing${has(p,'patient')?', unhurried':''}.`}}
 function showCard(p){selected=p;if(!p){cardEl.hidden=true;return}actDone('card');cardEl.hidden=false;renderCard(true)}
 function renderCard(full){const p=selected;if(!p||cardEl.hidden)return;
@@ -163,6 +164,13 @@ function draw(){
       if(b.kind==='fish'&&hasWay(0)){g.fillStyle='#4a2f16';g.fillRect(x,y-7+bob,1,7);g.fillStyle='#e8dcc4';g.beginPath();g.moveTo(x+1,y-7+bob);g.lineTo(x+5,y-2+bob);g.lineTo(x+1,y-2+bob);g.fill()}
       if(b.kind==='arrival'){g.fillStyle='#7fa85b';g.fillRect(x-1,y-3+bob,3,3);g.fillStyle='#f1cfa5';g.fillRect(x-1,y-5+bob,3,2)}}}});
   for(const gr of graves)ents.push({y:gr.y,d:()=>{const x=gr.x*T,y=gr.y*T;g.fillStyle='#8c8478';g.fillRect(x-1,y-4,3,5);g.fillStyle='#d9d4c8';g.fillRect(x-1,y-4,1,4);g.fillStyle='#4a4640';g.fillRect(x+1,y-3,1,4);g.fillStyle='#5a7a3a';g.fillRect(x-2,y,5,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-1,y-5,3,1)}}});
+  // the named ground shows its walking (sprint 14): worn grass first, then the stones the walks leave, then a small cairn
+  for(const sp of spots){if(!sp.lore)continue;const n=loreN[sp.k]||0;if(!n)continue;
+    ents.push({y:sp.y-.1,d:()=>{const x=Math.round(sp.x*T),y=Math.round(sp.y*T);
+      g.fillStyle='rgba(74,58,38,.3)';g.fillRect(x-3,y-1,6,2);g.fillRect(x-1,y-2,3,1);
+      if(n>=2){g.fillStyle='#8c8478';g.fillRect(x-2,y-1,2,1);g.fillRect(x+1,y,1,1)}
+      if(n>=4){g.fillStyle='#8c8478';g.fillRect(x-1,y-2,3,1);g.fillStyle='#a49e92';g.fillRect(x-1,y-2,1,1);g.fillStyle='#5e5850';g.fillRect(x+1,y-1,1,1)}
+      if(n>=7){g.fillStyle='#8c8478';g.fillRect(x,y-3,1,1);g.fillStyle='#a49e92';g.fillRect(x-2,y-1,1,1);g.fillStyle='#5e5850';g.fillRect(x+1,y-2,1,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-1,y-4,3,1)}}}})}
   if(ruin)for(const st of ruin.st)ents.push({y:st.y,d:()=>{const x=Math.round(st.x*T),y=Math.round(st.y*T);g.fillStyle='rgba(0,0,0,.22)';g.fillRect(x-3,y+1,8,1);
     if(st.f){g.fillStyle='#8c8478';g.fillRect(x-4,y-2,8,3);g.fillStyle='#a49e92';g.fillRect(x-4,y-2,8,1);g.fillStyle='#5e5850';g.fillRect(x-4,y,8,1);g.fillStyle='#5a7a3a';g.fillRect(x-2,y-3,2,1);g.fillRect(x+2,y,1,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-4,y-3,8,1)}}
     else{const h=st.h*3+3;g.fillStyle='#8c8478';g.fillRect(x-2,y-h,5,h+1);g.fillStyle='#a49e92';g.fillRect(x-2,y-h,2,h);g.fillRect(x-2,y-h,5,1);g.fillStyle='#5e5850';g.fillRect(x+2,y-h+1,1,h);g.fillStyle='#4a4640';g.fillRect(x-1,y-h+3,1,1);g.fillStyle='#5a7a3a';g.fillRect(x-2,y-2,1,2);g.fillRect(x+1,y-1,1,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-2,y-h-1,5,1)}}}});

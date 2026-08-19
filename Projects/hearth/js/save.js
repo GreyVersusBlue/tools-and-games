@@ -1,4 +1,4 @@
-// Hearth — the chronicle panel, and pack/unpack — the whole island in the address bar (save v:9).
+// Hearth — the chronicle panel, and pack/unpack — the whole island in the address bar (save v:10).
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- the chronicle ----------
 const chronEl=document.getElementById('chron'),rollEl=document.getElementById('chron-roll');
@@ -36,7 +36,7 @@ function lzDec(b64){const b=atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
   return decodeURIComponent(escape(out))}
 const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0,p.keeper?1:0,p.craft===undefined?-1:p.craft,+(p.cxp||0).toFixed(2),p.shadN?[p.shadN,p.shadC|0]:0,p.sick?1:0];
 function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]===v)n++;else{rd.push(v,n);v=road[i];n=1}}rd.push(v,n)}
-  return{v:9,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),lp:lorePl,
+  return{v:10,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),lp:lorePl,ln:Object.keys(loreN).map(k=>[k,loreN[k]]),by:boundsYr,
     dr:+dry01.toFixed(2),br:breadYr,ry:retYr,wk:works.map(w=>[w.wk,+w.x.toFixed(1),+w.y.toFixed(1),w.y0,w.done?1:0,+(w.prog||0).toFixed(1),w.paid?1:0,w.said?1:0]),
     hl:things.map(t=>[t.n,t.full,t.holder||0,t.src,t.ci===undefined?-1:t.ci,t.hist.map(h=>[h.d,h.s])]),hy:heirYr,
     fa:+faith.toFixed(2),fs:faithSt,py:prayer?[prayer.k,prayer.d,prayer.who||0]:0,ay:ways,ax:arc?[arc.k,arc.d0,arc.end]:0,az:arcYr,aw:wayYr,ab:bookYr,al:lastStormDay,am:rainedDay,an:wreckYr,af:famDone?1:0,
@@ -100,7 +100,9 @@ function unpack(o){
   for(const w of works)if(w.done)applyWork(w);
   // the named places come back from the list of kinds alone: at() reads the rebuilt world, so no coordinates need saving (v9; older saves read as none)
   lorePl=(o.lp||[]).filter(k=>LORE_PLACE[k]);walkP=null;
-  for(const k of lorePl){const D=LORE_PLACE[k],pos=D.at();if(pos&&!spots.some(sp=>sp.l===D.l))spots.push({l:D.l,x:pos.x,y:pos.y,lore:1})}
+  for(const k of lorePl){const D=LORE_PLACE[k],pos=D.at();if(pos&&!spots.some(sp=>sp.l===D.l))spots.push({l:D.l,x:pos.x,y:pos.y,lore:1,k})}
+  loreN={};for(const a of (o.ln||[]))if(LORE_PLACE[a[0]])loreN[a[0]]=a[1]; // v10 carries the walk counts; older saves start their piles fresh
+  boundsYr=o.by||0;boundsP=null;
   heat=new Float32Array(W*H);boats=[];fx=[];skips=[];gusts=[];fires=houses.length?[{x:center.x,y:center.y,t:0}]:[];
   saidToday=new Set();usedTpl=new Map();
   paintedKey='';paintTerrain();spawnWildlife();clouds=[];for(let i=0;i<2;i++)addCloud(false);
@@ -108,7 +110,7 @@ function unpack(o){
   document.getElementById('seedlbl').textContent=(village?village+' · ':'')+'island '+seed.toString(36);
   say(`The island is as it was left. ${village?village+', year':'Year'} ${yearOf(dayCount)}, day ${dayCount}: ${people.length} people, ${houses.length} ${houses.length===1?'house':'houses'}, ${graves.length} ${graves.length===1?'stone':'stones'} on the hill.`,true)}
 function loadHash(){const h=(location.hash||'').replace(/^#/,'');if(h.length<40)return false;
-  const o=JSON.parse(lzDec(h));if(!o||!(o.v>=5&&o.v<=9)||!o.pe)return false;unpack(o);return true}
+  const o=JSON.parse(lzDec(h));if(!o||!(o.v>=5&&o.v<=10)||!o.pe)return false;unpack(o);return true}
 function saveHash(){let str;
   try{str=lzEnc(JSON.stringify(pack()))}catch(err){say('Something about this island will not fit in a link.',true);return}
   try{history.replaceState(null,'','#'+str)}catch(err){location.hash=str}

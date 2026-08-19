@@ -156,14 +156,15 @@ if (mode === 'depth') {
         things: H.things.map(t => `${t.n}(${t.holder || 'shelf'},${t.hist.length})`).join(', '),
         heirs: H.chron.filter(e => e.kind === 'heir').length,
         grown: H.chron.filter(e => e.gr).length, ways: H.wayN(),
-        places: H.spots.filter(s => s.lore).map(s => s.l).join('; '),
+        places: H.spots.filter(s => s.lore).map(s => `${s.l} ×${H.loreN[s.k] || 0}`).join('; '),
+        bounds: H.chron.filter(e => e.kind === 'bounds').length,
       };
     });
     console.log(`seed ${seed} @ day ${s.day}: pop ${s.pop}`);
     console.log(`  crafts field/wood/sea/frame/store: ${s.crafts.join('/')} (uncrafted ${s.none}), masters ${s.masters}, kids shadowing ${s.shad}`);
     console.log(`  works: [${s.works}]  bread-days ${s.breads}  returners ${s.backs}  found-objects ${s.found}  mastery-events ${s.mastEvents}  store ${s.granary}`);
     console.log(`  things: [${s.things}]  handings-down ${s.heirs}  stories-grown ${s.grown}  ways ${s.ways}`);
-    console.log(`  named places: [${s.places || 'none yet'}]`);
+    console.log(`  named places: [${s.places || 'none yet'}]  bounds-walked ${s.bounds}`);
     if (viol.length) { failed = true; console.log('  VIOLATIONS:'); [...new Set(viol)].slice(0, 10).forEach(v => console.log('   ' + v)); }
     if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
     await ctx.close();
@@ -439,7 +440,7 @@ if (mode === 'thirteen') {
     return { v: o.v, lp: o.lp, lorePl: h.lorePl.slice(), spot: h.spots.some(s => s.lore) };
   });
   console.log(`round trip: pack v${rt.v} carries lp=[${rt.lp}], after unpack lorePl=[${rt.lorePl}] spot=${rt.spot}`);
-  if (rt.v !== 9 || !rt.lp.length || !rt.lorePl.length || !rt.spot) { failed = true; console.log('FAIL: named places did not survive pack/unpack'); }
+  if (rt.v < 9 || !rt.lp.length || !rt.lorePl.length || !rt.spot) { failed = true; console.log('FAIL: named places did not survive pack/unpack'); }
 
   // a v8-shaped save (no lp key) still loads, with no lore and no error
   const v8ok = await H(() => {
@@ -477,6 +478,87 @@ if (mode === 'thirteen') {
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
   await ctx.close();
   console.log(failed ? '\nFAIL' : '\nPASS: sprint 13 systems behave — the stories have somewhere to stand');
+}
+
+if (mode === 'fourteen') {
+  // sprint 14 observation & force tests: two named places, the walking of the bounds (leader leaves a stone at each),
+  // cairns draw at every tier, walk counts survive pack/unpack (v10), and a v9 save (no ln/by) still loads.
+  const warns = [];
+  const { ctx, page } = await openIsland(browser, 7, warns);
+  const H = fn => page.evaluate(fn);
+  for (let d = 0; d < 8; d++) await runDay(page, 1e9);
+
+  // a pre-grown rainscame entry joins the chronicle, so two kinds of ground can take names
+  await H(() => {
+    const h = window.__hearth;
+    h.chron.push({ d: h.dayCount, y: Math.floor((h.dayCount - 1) / 20) + 1, kind: 'rainscame',
+      label: 'the day the rain came back', st: 'The drought broke in one great storm, and people stood out in it on purpose.', tl: 3, gr: 1 });
+  });
+  let named = 0, nights = 0;
+  for (let d = 0; d < 16 && named < 2; d++) {
+    await H(() => window.__hearth.tellStory());
+    nights++;
+    await runDay(page, 1e9);
+    named = await H(() => window.__hearth.lorePl.length);
+  }
+  const n0 = await H(() => ({ ...window.__hearth.loreN }));
+  console.log(`named ground after ${nights} fire nights: ${await H(() => window.__hearth.lorePl.join(', '))} (walks so far: ${JSON.stringify(n0)})`);
+  if (named < 2) { failed = true; console.log('FAIL: sixteen fire nights produced fewer than two named places'); }
+
+  // the walking of the bounds: force an elder and a child to exist, then send them out and let the day run.
+  // runDay ends at midnight, and a bounds launched into the night just walks home — the game only ever
+  // launches it after dawn, so the test must get to morning first (and re-pause, since skipToMorning unpauses).
+  const led = await H(() => {
+    const h = window.__hearth;
+    h.skipToMorning();
+    const bp = document.getElementById('b-pause'); if (bp.textContent !== '▶') bp.click();
+    const adults = h.people.filter(p => !p.child && !p.inBoat && !p.inside && !p.sick && p.task !== 'boat' && p.task !== 'voyage');
+    adults[0].age0 = 66; adults[0].born = h.dayCount;                       /* an elder to lead */
+    const k = adults[adults.length - 1]; k.age0 = 8; k.born = h.dayCount;   /* a child to be shown */
+    return h.boundsOut();
+  });
+  await runDay(page, 1e9);
+  const b = await H(() => {
+    const h = window.__hearth;
+    return { ev: h.chron.some(e => e.kind === 'bounds'), loreN: { ...h.loreN },
+      led: h.people.some(p => p.hist.some(x => x.s.includes('walking of the bounds'))),
+      shown: h.people.some(p => p.hist.some(x => x.s.includes('shown where everything happened'))) };
+  });
+  const sum = o => Object.values(o).reduce((a, v) => a + v, 0);
+  console.log(`bounds walked: launched ${led}, chronicled ${b.ev}, stones ${JSON.stringify(n0)} -> ${JSON.stringify(b.loreN)}, leader hist ${b.led}, child hist ${b.shown}`);
+  if (!led || !b.ev || !b.led || !b.shown) { failed = true; console.log('FAIL: the bounds did not walk'); }
+  if (sum(b.loreN) < sum(n0) + 2) { failed = true; console.log('FAIL: the leader did not leave a stone at each place'); }
+
+  // cairns draw at every tier
+  const cairn = await H(() => {
+    const h = window.__hearth;
+    for (const n of [1, 2, 4, 7, 12]) { h.setLoreN(h.lorePl[0], n); try { h.draw(); } catch (e) { return 'threw at n=' + n + ': ' + e.message; } }
+    return 'ok';
+  });
+  console.log(`cairn draw at tiers 1/2/4/7/12: ${cairn}`);
+  if (cairn !== 'ok') failed = true;
+
+  // walk counts and the bounds year survive the save (v10)
+  const rt = await H(() => {
+    const h = window.__hearth; const o = h.pack();
+    h.unpack(JSON.parse(JSON.stringify(o)));
+    return { v: o.v, ln: o.ln, by: o.by, loreN: { ...h.loreN }, spotKinds: h.spots.filter(s => s.lore).map(s => s.k) };
+  });
+  console.log(`round trip: pack v${rt.v} carries ln=${JSON.stringify(rt.ln)} by=${rt.by}; after unpack loreN=${JSON.stringify(rt.loreN)} spot kinds=[${rt.spotKinds}]`);
+  if (rt.v !== 10 || !rt.ln.length || sum(rt.loreN) < 2 || rt.spotKinds.length < 2) { failed = true; console.log('FAIL: walk counts did not survive pack/unpack'); }
+
+  // a v9-shaped save (lp but no ln/by) still loads: places named, piles fresh
+  const v9ok = await H(() => {
+    const h = window.__hearth; const o = h.pack(); o.v = 9; delete o.ln; delete o.by;
+    try { h.unpack(o); } catch (e) { return 'threw: ' + e.message; }
+    return h.people.length > 0 && h.lorePl.length >= 2 && Object.keys(h.loreN).length === 0 ? 'ok' : 'bad state';
+  });
+  console.log(`v9 save compat: ${v9ok}`);
+  if (v9ok !== 'ok') failed = true;
+
+  if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
+  await ctx.close();
+  console.log(failed ? '\nFAIL' : '\nPASS: sprint 14 systems behave — the walking has somewhere to lead');
 }
 
 if (mode === 'determinism') {

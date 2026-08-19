@@ -136,7 +136,7 @@ addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
       removeEventListener('pointerdown',kick,true);removeEventListener('keydown',kick,true)};
     addEventListener('pointerdown',kick,true);addEventListener('keydown',kick,true)}}
 {let ok=false;try{ok=loadHash()}catch(err){ok=false}
-  if(!ok){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(o&&o.v>=5&&o.v<=9&&o.pe){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
+  if(!ok){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(o&&o.v>=5&&o.v<=10&&o.pe){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
   if(!ok)newWorld(seed);syncCtl()}
 let last=performance.now();
 function loop(now){let dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now;if(!paused)for(let i=0;i<speed;i++)step(dt); // clamped at 0: the first frame's timestamp can predate performance.now(), and time must never run backward
@@ -147,4 +147,5 @@ window.__hearth={step,draw,get trees(){return trees},get people(){return people}
 get faith(){return faith},setFaith:v=>faith=v,get faithSt(){return faithSt},get prayer(){return prayer},get arc(){return arc},startArc,get ways(){return ways},setWays:v=>ways=v,hasWay,get temper(){return temper},noteAct,get acts(){return acts},get sickCount(){return people.filter(p=>p.sick).length},
 get things(){return things},get heirYr(){return heirYr},thingsOf,craftUp,finishWork,die,stoneTap,wayTune,wayN,
 get lorePl(){return lorePl},get walkP(){return walkP},madeOf:ci=>MADE(ci),LORE_PLACE,
+get loreN(){return loreN},setLoreN:(k,n)=>loreN[k]=n,boundsOut,get boundsYr(){return boundsYr},get boundsP(){return boundsP},
 setZoom,get zoom(){return zoom},get view(){return{zoom,camX,camY,dprE,fitS}},toWorld,fit,get sackUsed(){return sackUsed},get musOn(){return musOn},set musOn(v){musOn=v},newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};

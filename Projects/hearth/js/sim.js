@@ -55,11 +55,14 @@ function step(dt){
     const kids=people.filter(q=>isKid(q)&&ageOf(q)>=5&&free(q)),dr=people.filter(q=>!isKid(q)&&has(q,'dreamy')&&free(q));
     const w=kids.length?kids[(R()*kids.length)|0]:dr.length?dr[(R()*dr.length)|0]:(e.named?null:people.filter(q=>!isKid(q)&&!isElder(q)&&free(q)).sort((a,b)=>ageOf(a)-ageOf(b))[0]);
     if(w){if(w.tgt&&w.tgt.claimed)w.tgt.claimed=false;w.tgt=null;w.pilgL=e.l;goTo(w,e.x,e.y,'pilgrim',rnd(8,14));
-      if(!e.named){lorePl.push(e.k);if(!spots.some(sp=>sp.l===e.l))spots.push({l:e.l,x:e.x,y:e.y,lore:1});
+      loreN[e.k]=(loreN[e.k]||0)+1; /* every walk leaves a stone (sprint 14) */
+      if(!e.named){lorePl.push(e.k);if(!spots.some(sp=>sp.l===e.l))spots.push({l:e.l,x:e.x,y:e.y,lore:1,k:e.k});
         say(`${B(w)} is up and out at first light, to stand where the story happens with both feet. By evening the place has the name the fire gave it: ${e.l}.`,true);
         addEvent('place',`the naming of ${e.l}`,`After the story had grown big enough, ${w.name} walked out at first light to stand in it. The ground has been called ${e.l} ever since, and the children can point to it.`);
         w.hist.push({d:dayCount,s:`walked out at first light and gave the ground its story-name: ${e.l}`})}
       else if(R()<.4)say(`${B(w)} walks out to ${e.l} before the day starts properly, to stand in the story a moment.`,false,'walkstory')}}
+  // the walking of the bounds, launched once the light is up (sprint 14)
+  if(boundsP&&boundsP.d===dayCount&&!isNight()&&!storm&&dayFrac()>edges()[0]+.07){boundsP=null;boundsOut()}
   stepBoats(dt);stepWild(dt);stepClouds(dt);stepSkips(dt);stepGusts(dt);
   // smokehouse smoke; winter chimneys
   {const sm=getB('smoke');if(sm&&R()<dt*3)fx.push({x:sm.x+1.7,y:sm.y-.4,vx:rnd(-.2,.2)+(storm?.8:0),vy:-.35,c:'#8c8478',l:rnd(1.5,2.5)});
@@ -179,6 +182,13 @@ function step(dt){
         if(walk(p,dt)){p.work=(p.work||0)+dt;if(R()<dt*.8)fx.push({x:p.x+rnd(-1,1),y:p.y+rnd(.5,1.5),vx:0,vy:-.3,c:'#cfe6ff',l:.4});
           if(p.work>7){p.work=0;let n=rain?4:frozen?(R()<.25?1:0):s==='winter'?(R()<.4?1:0):2;if(arcK()==='shoal')n+=3;if(p.luck){p.luck=0;n=n*3+3;say(`${B(p)} comes up from the water with more fish than the line should hold, and says nothing about a dream.`,true)}food+=n;craftUp(p,2);p.task='idle';p.t=1;if(storm){p.fishRain++;if(p.fishRain===1){p.hist.push({d:dayCount,s:'first went out fishing in a storm, and came back'})}}if(R()<.3)say(rain?`${B(p)} comes back from the water soaked through, with fish.`:`${B(p)} comes up from the shore with a few fish on a string.`)}}break;
       case 'boat': break;
+      case 'bounds':{if(!p.stops){p.task='idle';p.t=1;break}
+        if(walk(p,dt)){p.dwell-=dt;if(p.dwell<=0){
+          if(p.bLead)loreN[p.stops[p.si].k]=(loreN[p.stops[p.si].k]||0)+1; /* the leader leaves the stone */
+          p.si++;
+          if(p.si>=p.stops.length){p.stops=null;p.task='idle';p.t=1;
+            if(p.bLead)say(`${B(p)} comes back from the bounds with empty pockets, having left a stone at every place, and sits down like someone who has finished something.`,true)}
+          else{const s2=p.stops[p.si];goTo(p,s2.x,s2.y,'bounds',rnd(5,9))}}}break}
       case 'voyage': if(walk(p,dt)){const l=landings[0];const b=spawnBoat('away',l,{p,x:l.x+l.dx*.9,y:l.y+l.dy*.9,st:'out',tx:l.x+l.dx*24,ty:l.y+l.dy*24});p.task='boat';p.inBoat=true;voyage.st='away';voyage.day=dayCount;voyage.n=2+((R()*3)|0);
         p.hist.push({d:dayCount,s:'took the boat out alone to see the far island'});addEvent('voyage',`the ${sea()} ${p.name} sailed for the far island`,`${p.name} rowed out alone for the far island, and five people stood on the shore and watched it happen.`);
         const w=people.filter(q=>q!==p&&!q.dead&&q.task!=='sleep'&&q.task!=='boat'&&!q.inside).sort(()=>R()-.5).slice(0,5);for(const q of w){const s=nearestShore(l.x+rnd(-3,3),l.y+rnd(-3,3))||l;goTo(q,s.x,s.y,'wave',rnd(10,20));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.hist.push({d:dayCount,s:`watched ${p.name} row out toward the far island`})}
