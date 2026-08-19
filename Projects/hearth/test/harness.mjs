@@ -127,6 +127,41 @@ if (mode === 'soak' || mode === 'nan') {
   console.log(`\n${failed ? 'FAIL' : 'PASS'}: ${seeds.length} islands, ${seeds.length * days} sim-days, ~${totalAudits} full-cast audits, ${failed ? 'violations above' : '0 violations, 0 breadcrumbs'}`);
 }
 
+if (mode === 'depth') {
+  // sprint 10 observation run: do crafts, works, bread, trade, and returners actually happen?
+  const days = parseInt(arg('days', '120'));
+  const seeds = arg('seeds', '7,20260819').split(',').map(Number);
+  for (const seed of seeds) {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, seed, warns);
+    let viol = [];
+    for (let d = 0; d < days; d++) { const r = await runDay(page, 50); viol = viol.concat(r.viol); }
+    const s = await page.evaluate(() => {
+      const H = window.__hearth;
+      const adults = H.people.filter(p => !p.child);
+      const crafts = [0, 0, 0, 0, 0]; let none = 0, masters = 0, shad = 0;
+      for (const p of adults) { if (p.craft >= 0) crafts[p.craft]++; else none++; if (p.cxp >= 1) masters++; }
+      for (const p of H.people) if (p.shadN) shad++;
+      const backs = H.chron.filter(e => e.kind === 'back').length;
+      const found = H.chron.filter(e => e.kind === 'found').length;
+      const breads = H.chron.filter(e => e.kind === 'bread').length;
+      const mast = H.chron.filter(e => e.kind === 'mastery').length;
+      return {
+        day: H.dayCount, pop: H.people.length, crafts, none, masters, shad,
+        works: H.works.map(w => w.wk + (w.done ? '' : '(wip)')).join(','),
+        breads, backs, found, mastEvents: mast, granary: H.granary, dry: H.dry01,
+      };
+    });
+    console.log(`seed ${seed} @ day ${s.day}: pop ${s.pop}`);
+    console.log(`  crafts field/wood/sea/frame/store: ${s.crafts.join('/')} (uncrafted ${s.none}), masters ${s.masters}, kids shadowing ${s.shad}`);
+    console.log(`  works: [${s.works}]  bread-days ${s.breads}  returners ${s.backs}  found-objects ${s.found}  mastery-events ${s.mastEvents}  store ${s.granary}`);
+    if (viol.length) { failed = true; console.log('  VIOLATIONS:'); [...new Set(viol)].slice(0, 10).forEach(v => console.log('   ' + v)); }
+    if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
+    await ctx.close();
+  }
+  console.log(failed ? '\nFAIL' : '\nPASS: no violations; stats above for eyeballing');
+}
+
 if (mode === 'determinism') {
   const days = parseInt(arg('days', '30'));
   const seed = parseInt(arg('seed', '7'));
