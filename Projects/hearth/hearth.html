@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth — a small living island</title>
-<!-- Hearth v2 · Sprint 7: the quality pass — lit windows in a storm, deer that stop at the water, a child who keeps the fire, work through light rain, a sack against the first hard winter, a music toggle (on top of Sprints 1–6). Single file, no dependencies. -->
+<!-- Hearth v2 · Sprint 8: the short list — all wildlife respects the shore, the keeper child knows the store, an honest music button (on top of Sprints 1–7). Single file, no dependencies. -->
 <style>
   :root{--ink:#e8dcc4;--dim:#9a8b6d;--panel:rgba(18,14,10,.86);--gold:#f0b35a;--line:#3a3020}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -21,6 +21,7 @@
   button{font:12px Georgia,serif;letter-spacing:.06em;color:var(--ink);background:var(--panel);border:1px solid var(--line);padding:5px 10px;border-radius:2px;cursor:pointer}
   button:hover,button:focus-visible{border-color:var(--gold);outline:none}
   button.on{color:var(--gold);border-color:var(--gold)}
+  button.dim{opacity:.5} /* the music button, while the sound itself is off: remembered, not currently playing */
   #log{position:fixed;left:14px;bottom:14px;width:min(360px,60vw);max-height:38vh;overflow:hidden;font-size:13px;line-height:1.5;pointer-events:none;
        -webkit-mask-image:linear-gradient(transparent,#000 35%);mask-image:linear-gradient(transparent,#000 35%)}
   #log p{opacity:0;animation:rise .8s ease forwards;text-shadow:0 1px 3px #000}
@@ -550,6 +551,7 @@ function finishBuilding(p,t){t.done=true;bldgTgt=null;bldg.push(t);const nm=BLD[
 function bell(n){if(!AC||!audioOn)return;const m=storm?.3:rain?.6:wx==='fog'?.75:1;for(let i=0;i<n;i++){const t=AC.currentTime+i*1.6;for(const [f,v0] of [[880,.09],[1318,.04],[587,.03]]){const v=v0*m;const o=AC.createOscillator(),gn=AC.createGain();o.type='sine';o.frequency.value=f;gn.gain.setValueAtTime(v,t);gn.gain.exponentialRampToValueAtTime(.001,t+1.4);o.connect(gn).connect(sfxG||AC.destination);o.start(t);o.stop(t+1.5)}}}
 function spawnBoat(kind,land,o){const b={kind,land,x:land.x+land.dx*17,y:land.y+land.dy*17,tx:land.x+land.dx*.9,ty:land.y+land.dy*.9,st:'in',t:0,...o};boats.push(b);return b}
 function stepBoats(dt){for(const b of boats){
+    if(!isFinite(b.x)||!isFinite(b.y)){try{console.warn('hearth: non-finite boat',b.kind)}catch(e){}b.gone=true;if(b.p){b.p.inBoat=false;b.p.x=b.land.x;b.p.y=b.land.y;b.p.task='idle';b.p.t=1}continue}
     if(b.gvx){const nx=b.x+b.gvx*dt,ny=b.y+b.gvy*dt;if(at(nx|0,ny|0)===WATER){b.x=nx;b.y=ny;if(b.p){b.p.x=nx;b.p.y=ny}}const k=Math.pow(.12,dt);b.gvx*=k;b.gvy*=k;if(Math.abs(b.gvx)+Math.abs(b.gvy)<.08)b.gvx=b.gvy=0}
     if(b.st==='in'||b.st==='out'||b.st==='back'){const dx=b.tx-b.x,dy=b.ty-b.y,d=Math.hypot(dx,dy),sp=(b.kind==='trade'?2.2:b.kind==='away'||b.kind==='return'?2.4:2.8)*dt*(storm?.6:1);
       if(d<sp){b.x=b.tx;b.y=b.ty;boatArrive(b)}else{b.x+=dx/d*sp;b.y+=dy/d*sp;if(R()<dt*6)fx.push({x:b.x-dx/d*.6,y:b.y-dy/d*.6+.2,vx:0,vy:0,c:'#cfe6ff',l:.8})}
@@ -584,6 +586,8 @@ function spawnWildlife(){wild=[];const nd=Math.min(5,1+((trees.length/45)|0));fo
   for(let i=0;i<2&&stream.length>10;i++){const s=stream[(R()*stream.length)|0];fishSh.push({x:s.x+.5,y:s.y+.5,tx:s.x+.5,ty:s.y+.5,n:2,t:0,ph:R()*6,st:true})}}
 function addGull(near){const s=near||(hasB('hut')&&R()<.5?getB('hut'):pick(shore))||center;gulls.push({cx:s.x+.5,cy:s.y+.5,r:rnd(2,5),a:rnd(6.28),sp:rnd(.7,1.3)*(R()<.5?1:-1),x:0,y:0,t:rnd(4,12),ph:rnd(6.28)})}
 function stepWild(dt){const s=sea(),night=isNight();
+  // nothing walks into the sea: take the step if it lands, slide along the shore if one axis does, refuse otherwise
+  const slide=(w,nx,ny)=>{if(landAt(nx,ny)){w.x=nx;w.y=ny;return true}if(landAt(nx,w.y)){w.x=nx;return true}if(landAt(w.x,ny)){w.y=ny;return true}return false};
   // deer, rabbits, fox
   const ndeer=s==='winter'?2:Math.min(5,1+((trees.length/45)|0)), nrab=snowD>.6?2:5;
   const cd=wild.filter(w=>w.k==='deer').length,cr=wild.filter(w=>w.k==='rabbit').length;
@@ -593,25 +597,26 @@ function stepWild(dt){const s=sea(),night=isNight();
   if(!fox&&night&&!storm&&s!=='winter'&&R()<dt*.02){const t=forestTree();if(t){wild.push({k:'fox',x:t.x,y:t.y+.8,tx:t.x,ty:t.y+.8,st:'trot',t:0,chk:R(),f:1});if(R()<.25)say('A fox comes down through the trees after dark, low and quick, and the rabbits are already gone.',false,'fox')}}
   else if(fox&&!night){fox.st='leave';fox.tx=fox.x+(fox.x<center.x?-30:30);fox.ty=fox.y}
   for(const w of wild){w.chk-=dt;
+    // anything that somehow ended up in the sea goes home (a fox just leaves)
+    if(!landAt(w.x,w.y)&&w.st!=='leave'){if(w.k==='fox'){w.gone=true;continue}const hm=w.home||center;w.x=hm.x;w.y=hm.y;w.tx=hm.x;w.ty=hm.y;w.st=w.k==='deer'?'graze':'sit';w.t=rnd(1,3)}
     if(w.k==='deer'){if(w.chk<=0){w.chk=.35;if(w.st!=='flee'){let th=null;for(const p of people){if(p.inside||p.task==='sleep')continue;const d=Math.hypot(p.x-w.x,p.y-w.y);if(d<(p.task==='chop'?5.5:3.2)){th=p;break}}
           if(!th&&fox&&Math.hypot(fox.x-w.x,fox.y-w.y)<3)th=fox;
           if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=Math.hypot(dx,dy)||1;let tx=w.x+dx/d*8,ty=w.y+dy/d*6;for(let k=0;k<6&&!landAt(tx,ty);k++){const a=rnd(6.28);tx=w.x+Math.cos(a)*7;ty=w.y+Math.sin(a)*5}w.tx=tx;w.ty=ty;w.f=dx<0?-1:1;if(th.task==='chop'&&R()<.15)say(`A deer breaks from the trees at the sound of the axe and is gone before ${B(th)} has looked up.`,false,'deerflee')}}
         if(w.home&&(w.home.hp<=0||!trees.includes(w.home))){w.home=forestTree()}}
       if(w.st==='graze'){w.t-=dt;if(w.t<=0){w.st='move';const h=w.home||center;let tx=h.x+rnd(-4,4),ty=h.y+rnd(-2.5,3.5);for(let k=0;k<5&&!landAt(tx,ty);k++){tx=h.x+rnd(-4,4);ty=h.y+rnd(-2.5,3.5)}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1;if(R()<.12&&w.home){w.home=forestTree()||w.home}}}
-      else{const sp=(w.st==='flee'?7:night?.6:1.3)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){w.x=w.tx;w.y=w.ty;w.st='graze';w.t=rnd(2,7)}
-        else{const nx=w.x+dx/d*sp,ny=w.y+dy/d*sp; // a deer runs along the shore, not into the sea
-          if(landAt(nx,ny)){w.x=nx;w.y=ny}else if(landAt(nx,w.y)){w.x=nx}else if(landAt(w.x,ny)){w.y=ny}else{w.st='graze';w.t=rnd(1,3)}}}}
+      else{const sp=(w.st==='flee'?7:night?.6:1.3)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){if(landAt(w.tx,w.ty)){w.x=w.tx;w.y=w.ty}w.st='graze';w.t=rnd(2,7)}
+        else if(!slide(w,w.x+dx/d*sp,w.y+dy/d*sp)){w.st='graze';w.t=rnd(1,3)}}} // a deer with nowhere to run stands at the edge
     else if(w.k==='rabbit'){if(w.chk<=0){w.chk=.3;if(w.st!=='hide'&&w.st!=='flee'){let th=null;for(const p of people){if(p.inside||p.task==='sleep')continue;if(Math.hypot(p.x-w.x,p.y-w.y)<2.6){th=p;break}}if(!th&&fox&&Math.hypot(fox.x-w.x,fox.y-w.y)<5)th=fox;
           if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=Math.hypot(dx,dy)||1;let tx=w.x+dx/d*5,ty=w.y+dy/d*3.5;for(let k=0;k<5&&!landAt(tx,ty);k++){tx=w.home.x+rnd(-2,2);ty=w.home.y+rnd(-2,2)}w.tx=tx;w.ty=ty;w.f=dx<0?-1:1}}}
-      if(w.st==='hide'){w.t-=dt;if(w.t<=0&&!(snowD>.6&&R()<.7)){w.st='sit';w.t=rnd(1,3);w.x=w.home.x+rnd(-1,1);w.y=w.home.y+rnd(-1,1)}}
+      if(w.st==='hide'){w.t-=dt;if(w.t<=0&&!(snowD>.6&&R()<.7)){w.st='sit';w.t=rnd(1,3);const sx=w.home.x+rnd(-1,1),sy=w.home.y+rnd(-1,1);if(landAt(sx,sy)){w.x=sx;w.y=sy}else{w.x=w.home.x;w.y=w.home.y}}}
       else if(w.st==='sit'){w.t-=dt;if(w.t<=0){w.st='hop';let tx=w.home.x+rnd(-2.5,2.5),ty=w.home.y+rnd(-2,2);if(!landAt(tx,ty)){tx=w.home.x;ty=w.home.y}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1;if(R()<.06){const s=farms.length&&R()<.6?freeSpotNear(pick(farms).x,pick(farms).y,2,5,1):freeSpot(6,22);if(s)w.home={x:s.x+.5,y:s.y+.5}}}}
-      else{const sp=(w.st==='flee'?6:2.2)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){w.x=w.tx;w.y=w.ty;if(w.st==='flee'){w.st='hide';w.t=rnd(3,9);w.sc=(w.sc||0)+1;if(w.sc>3){w.sc=0;const s=freeSpot(9,24);if(s)w.home={x:s.x+.5,y:s.y+.5}}}else{w.st='sit';w.t=rnd(.6,3)}}else{w.x+=dx/d*sp;w.y+=dy/d*sp}}}
+      else{const sp=(w.st==='flee'?6:2.2)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){if(landAt(w.tx,w.ty)){w.x=w.tx;w.y=w.ty}if(w.st==='flee'){w.st='hide';w.t=rnd(3,9);w.sc=(w.sc||0)+1;if(w.sc>3){w.sc=0;const s=freeSpot(9,24);if(s)w.home={x:s.x+.5,y:s.y+.5}}}else{w.st='sit';w.t=rnd(.6,3)}}else if(!slide(w,w.x+dx/d*sp,w.y+dy/d*sp)){w.tx=w.x;w.ty=w.y}}} // a blocked rabbit goes to ground where it is
     else if(w.k==='fox'){if(w.st==='leave'){const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=4*dt;w.x+=dx/d*sp;w.y+=dy/d*sp;w.f=dx<0?-1:1;if(d<sp||w.x<0||w.x>W||!landAt(w.x,w.y))w.gone=true;continue}
       let prey=null;if(w.chk<=0){w.chk=.3;let bd=5;for(const r of wild)if(r.k==='rabbit'&&r.st!=='hide'){const d=Math.hypot(r.x-w.x,r.y-w.y);if(d<bd){bd=d;prey=r}}if(prey){w.prey=prey;w.st='chase'}else if(w.st==='chase'){w.st='trot';w.t=0}}
-      if(w.st==='chase'&&w.prey){if(w.prey.st==='hide'||w.prey.gone){w.st='trot';w.t=0;w.prey=null}else{w.tx=w.prey.x;w.ty=w.prey.y;const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=5.5*dt;if(d<.4){w.prey.gone=true;w.prey=null;w.st='eat';w.t=rnd(4,8);if(R()<.4)say('Out past the fields something small stops running. The fox has one of the rabbits, and the night goes on.',false,'foxeat')}else{w.x+=dx/d*sp;w.y+=dy/d*sp;w.f=dx<0?-1:1}}}
+      if(w.st==='chase'&&w.prey){if(w.prey.st==='hide'||w.prey.gone){w.st='trot';w.t=0;w.prey=null}else{w.tx=w.prey.x;w.ty=w.prey.y;const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=5.5*dt;if(d<.4){w.prey.gone=true;w.prey=null;w.st='eat';w.t=rnd(4,8);if(R()<.4)say('Out past the fields something small stops running. The fox has one of the rabbits, and the night goes on.',false,'foxeat')}else if(slide(w,w.x+dx/d*sp,w.y+dy/d*sp)){w.f=dx<0?-1:1}else{w.st='trot';w.t=0;w.prey=null}}} // a fox does not swim for a rabbit
       else if(w.st==='eat'){w.t-=dt;if(w.t<=0){w.st='trot';w.t=0}}
       else{w.t-=dt;if(w.t<=0){w.t=rnd(2,5);let tx=w.x+rnd(-7,7),ty=w.y+rnd(-5,5);for(let k=0;k<6&&(!landAt(tx,ty)||houses.some(h=>Math.hypot(h.x+1-tx,h.y+1-ty)<3)||Math.hypot(tx-center.x,ty-center.y)<4);k++){tx=w.x+rnd(-7,7);ty=w.y+rnd(-5,5)}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1}
-        const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=2.4*dt;if(d>sp){w.x+=dx/d*sp;w.y+=dy/d*sp}}}
+        const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=2.4*dt;if(d>sp&&!slide(w,w.x+dx/d*sp,w.y+dy/d*sp))w.t=0}}
   }
   wild=wild.filter(w=>!w.gone);
   // gulls
@@ -830,6 +835,11 @@ function step(dt){
   // people
   const night=isNight(),dusk=isDusk();
   for(const p of people){
+    // seen once in a long soak and never reproduced: a person whose position went non-finite walks forever and never arrives.
+    // heal them at the hearth and leave a breadcrumb naming the task, so the next sighting identifies its cause.
+    if(!isFinite(p.x)||!isFinite(p.y)||!isFinite(p.tx)||!isFinite(p.ty)){
+      try{console.warn('hearth: non-finite position on',p.name,'during',p.task)}catch(e){}
+      p.x=center.x;p.y=center.y;p.tx=center.x;p.ty=center.y;p.inBoat=false;p.inside=false;if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.task='idle';p.t=1}
     if(p.mourn&&!night&&p.task!=='mourn'){goTo(p,p.mourn.x,p.mourn.y+.7,'mourn',rnd(6,12));p.tgt=null;p.mourn=null;continue}
     // storms send everyone but the brave indoors
     const shelt=storm&&!(has(p,'brave')&&!isKid(p));
@@ -857,7 +867,10 @@ function step(dt){
       case 'play':{p.t-=dt;if(p.t<=0){p.t=rnd(2,5);const par=p.parents.map(byName).find(q=>q&&!q.dead);const anchor=R()<.5&&par?par:(homeOf(p)?{x:homeOf(p).x+1,y:homeOf(p).y+2.5}:center);p.tx=anchor.x+rnd(-2.5,2.5);p.ty=anchor.y+rnd(-2,2)}walk(p,dt);break}
       case 'tend':{if(people.some(q=>q!==p&&!isKid(q))){p.task='idle';p.t=1;break} // a grown-up again: back to being a child
         if(walk(p,dt)){p.dwell-=dt;if(p.dwell<=0){
-          if(p.tendOut){p.tendOut=0;food+=1;goTo(p,center.x+rnd(-1.5,1.5),center.y+rnd(-1,1),'tend',rnd(5,9));if(R()<.2)say(`${B(p)} lays what the tide left down beside the fire. Not much, and enough.`,false,'tend')}
+          if(p.tendOut){p.tendOut=0;const lean=sea()==='winter'||frozen;let got=lean?(R()<.35?1:0):1; // the tideline gives little under the ice
+            if(!got&&granary>0){granary-=1;got=1;if(R()<.3)say(`${B(p)} takes a careful measure from the store, the way the grown ones did, and puts the lid back.`,false,'tendstore')}
+            else if(got&&R()<.2)say(lean?`${B(p)} finds little under the ice, and brings the little back.`:`${B(p)} lays what the tide left down beside the fire. Not much, and enough.`,false,'tend');
+            food+=got;goTo(p,center.x+rnd(-1.5,1.5),center.y+rnd(-1,1),'tend',rnd(5,9))}
           else{p.tendOut=1;const sh=nearestShore(p.x,p.y)||center;goTo(p,sh.x,sh.y,'tend',rnd(2,4))}}}break}
       case 'idle':{if(p.child){
         // a child with nobody grown left does not only play: someone has to keep the fire
@@ -1397,7 +1410,8 @@ document.getElementById('b-share').onclick=saveHash;
 document.getElementById('b-new').onclick=()=>{try{history.replaceState(null,'',location.pathname+location.search)}catch(err){}newWorld((Math.random()*1e9)|0)};
 document.getElementById('b-audio').onclick=e=>{if(!AC)startAudio();audioOn=!audioOn;if(AC.state==='suspended')AC.resume();
   master.gain.setTargetAtTime(audioOn?1:0,AC.currentTime,.12);
-  e.target.textContent=audioOn?'sound on':'sound off';e.target.classList.toggle('on',audioOn);store('snd',audioOn?'1':'0')};
+  e.target.textContent=audioOn?'sound on':'sound off';e.target.classList.toggle('on',audioOn);store('snd',audioOn?'1':'0');
+  document.getElementById('b-music').classList.toggle('dim',!audioOn)};
 document.getElementById('b-music').onclick=e=>{musOn=!musOn;e.target.textContent=musOn?'music on':'music off';e.target.classList.toggle('on',musOn);store('mus',musOn?'1':'0');
   if(AC&&!musOn)musG.gain.setTargetAtTime(0,AC.currentTime,.5)};
 addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
@@ -1409,7 +1423,8 @@ addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
   else if(k==='s')document.getElementById('b-audio').click();
   else if(k==='n')document.getElementById('b-music').click()});
 // ---------- loop ----------
-{const mb=document.getElementById('b-music');if(pref('mus')==='0'){musOn=false;mb.textContent='music off'}else mb.classList.add('on')}
+{const mb=document.getElementById('b-music');if(pref('mus')==='0'){musOn=false;mb.textContent='music off'}else mb.classList.add('on');
+  if(pref('snd')!=='1')mb.classList.add('dim')}
 {const ab=document.getElementById('b-audio');                                  // the sound toggle is remembered, but the browser still wants a gesture first
   if(pref('snd')==='1'){audioOn=true;ab.textContent='sound on';ab.classList.add('on');
     const kick=()=>{if(!AC)startAudio();if(AC&&AC.state==='suspended')AC.resume();
