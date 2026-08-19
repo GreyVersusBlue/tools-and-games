@@ -70,6 +70,8 @@ function whyText(p){const w=WX();
     case 'carry':return `Carrying grain up to the mill and meal down to the store. The mill only matters if someone feeds it.`;
     case 'water':return `Hauling well water to the fields, two buckets at a time. The sky has not been helping.`;
     case 'tend':return `Keeping the fire and walking the tideline for food, because there is nobody grown left to do it.`;
+    case 'pilgrim':return `Walking out to ${p.pilgL||'a place out of the stories'}, to stand where the story happens. The story is better there.`;
+    case 'bounds':return p.bLead?`Leading the walking of the bounds: every named place, in order, with the children. Someone must show them where everything happened.`:`Being walked round the named places, and shown where everything happened. There will be questions.`;
     default:return isKid(p)?'Wandering after the grown-ups.':`Between tasks, deciding what needs doing${has(p,'patient')?', unhurried':''}.`}}
 function showCard(p){selected=p;if(!p){cardEl.hidden=true;return}actDone('card');cardEl.hidden=false;renderCard(true)}
 function renderCard(full){const p=selected;if(!p||cardEl.hidden)return;
@@ -134,7 +136,11 @@ function draw(){
       case 'bridge':{const hz=at(b.x-1,b.y)===WATER&&at(b.x+1,b.y)===WATER;g.fillStyle='#8a6a44';if(hz){g.fillRect(x-1,y+1,10,6);g.fillStyle='#6b4a2a';for(let i=0;i<5;i++)g.fillRect(x-1,y+1+i*1.5,10,.6);g.fillStyle='#4a2f16';g.fillRect(x-1,y,10,1);g.fillRect(x-1,y+7,10,1)}
         else{g.fillRect(x+1,y-1,6,10);g.fillStyle='#6b4a2a';for(let i=0;i<5;i++)g.fillRect(x+1+i*1.5,y-1,.6,10);g.fillStyle='#4a2f16';g.fillRect(x,y-1,1,10);g.fillRect(x+7,y-1,1,10)}break}
       case 'hall':g.fillStyle='#b8a17e';g.fillRect(x+1,y+5,22,11);g.fillStyle='#6f4b32';g.beginPath();g.moveTo(x-1,y+6);g.lineTo(x+12,y-2);g.lineTo(x+25,y+6);g.fill();g.fillStyle='#8c8478';g.fillRect(x+10,y-7,4,7);g.fillStyle='#6f4b32';g.fillRect(x+9,y-8,6,1);g.fillStyle='#f0b35a';g.fillRect(x+11,y-5,2,2);
-        g.fillStyle=L<.5?'#f5c463':'#2b2b3a';g.fillRect(x+4,y+8,3,3);g.fillRect(x+17,y+8,3,3);g.fillStyle='#4a2f16';g.fillRect(x+10,y+10,4,6);if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+12-11*cap,y+6-8*(1-cap));g.lineTo(x+12,y-2);g.lineTo(x+12+11*cap,y+6-8*(1-cap));g.fill()}break;
+        g.fillStyle=L<.5?'#f5c463':'#2b2b3a';g.fillRect(x+4,y+8,3,3);g.fillRect(x+17,y+8,3,3);g.fillStyle='#4a2f16';g.fillRect(x+10,y+10,4,6);
+        {const sh=things.filter(t=>!t.holder);if(sh.length){/* the shelf where things wait (sprint 13): a plank between the windows, and what sits on it */
+          g.fillStyle='#6b4a2a';g.fillRect(x+9,y+8,6,1);const TC=['#d9d4c8','#c9a24a','#4a5f8a'];
+          for(let i=0;i<Math.min(3,sh.length);i++){g.fillStyle=TC[i%3];g.fillRect(x+10+i*2,y+7,1,1)}}}
+        if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+12-11*cap,y+6-8*(1-cap));g.lineTo(x+12,y-2);g.lineTo(x+12+11*cap,y+6-8*(1-cap));g.fill()}break;
       case 'light':g.fillStyle='#e6e2d8';g.fillRect(x+1,y-10,6,16);g.fillStyle='#8a3d2f';g.fillRect(x+1,y-6,6,3);g.fillRect(x+1,y,6,3);g.fillStyle='#c9c4b8';g.fillRect(x+6,y-10,1,16);g.fillStyle='#4a4640';g.fillRect(x,y-11,8,1);g.fillStyle=L<.55?'#fff2b0':'#5a5a60';g.fillRect(x+2,y-14,4,3);g.fillStyle='#4a4640';g.fillRect(x+1,y-15,6,1);break;
     }}});
   for(const w of works)ents.push({y:w.y+1,d:()=>{const x=Math.round(w.x*T),y=Math.round(w.y*T);
@@ -158,6 +164,13 @@ function draw(){
       if(b.kind==='fish'&&hasWay(0)){g.fillStyle='#4a2f16';g.fillRect(x,y-7+bob,1,7);g.fillStyle='#e8dcc4';g.beginPath();g.moveTo(x+1,y-7+bob);g.lineTo(x+5,y-2+bob);g.lineTo(x+1,y-2+bob);g.fill()}
       if(b.kind==='arrival'){g.fillStyle='#7fa85b';g.fillRect(x-1,y-3+bob,3,3);g.fillStyle='#f1cfa5';g.fillRect(x-1,y-5+bob,3,2)}}}});
   for(const gr of graves)ents.push({y:gr.y,d:()=>{const x=gr.x*T,y=gr.y*T;g.fillStyle='#8c8478';g.fillRect(x-1,y-4,3,5);g.fillStyle='#d9d4c8';g.fillRect(x-1,y-4,1,4);g.fillStyle='#4a4640';g.fillRect(x+1,y-3,1,4);g.fillStyle='#5a7a3a';g.fillRect(x-2,y,5,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-1,y-5,3,1)}}});
+  // the named ground shows its walking (sprint 14): worn grass first, then the stones the walks leave, then a small cairn
+  for(const sp of spots){if(!sp.lore)continue;const n=loreN[sp.k]||0;if(!n)continue;
+    ents.push({y:sp.y-.1,d:()=>{const x=Math.round(sp.x*T),y=Math.round(sp.y*T);
+      g.fillStyle='rgba(74,58,38,.3)';g.fillRect(x-3,y-1,6,2);g.fillRect(x-1,y-2,3,1);
+      if(n>=2){g.fillStyle='#8c8478';g.fillRect(x-2,y-1,2,1);g.fillRect(x+1,y,1,1)}
+      if(n>=4){g.fillStyle='#8c8478';g.fillRect(x-1,y-2,3,1);g.fillStyle='#a49e92';g.fillRect(x-1,y-2,1,1);g.fillStyle='#5e5850';g.fillRect(x+1,y-1,1,1)}
+      if(n>=7){g.fillStyle='#8c8478';g.fillRect(x,y-3,1,1);g.fillStyle='#a49e92';g.fillRect(x-2,y-1,1,1);g.fillStyle='#5e5850';g.fillRect(x+1,y-2,1,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-1,y-4,3,1)}}}})}
   if(ruin)for(const st of ruin.st)ents.push({y:st.y,d:()=>{const x=Math.round(st.x*T),y=Math.round(st.y*T);g.fillStyle='rgba(0,0,0,.22)';g.fillRect(x-3,y+1,8,1);
     if(st.f){g.fillStyle='#8c8478';g.fillRect(x-4,y-2,8,3);g.fillStyle='#a49e92';g.fillRect(x-4,y-2,8,1);g.fillStyle='#5e5850';g.fillRect(x-4,y,8,1);g.fillStyle='#5a7a3a';g.fillRect(x-2,y-3,2,1);g.fillRect(x+2,y,1,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-4,y-3,8,1)}}
     else{const h=st.h*3+3;g.fillStyle='#8c8478';g.fillRect(x-2,y-h,5,h+1);g.fillStyle='#a49e92';g.fillRect(x-2,y-h,2,h);g.fillRect(x-2,y-h,5,1);g.fillStyle='#5e5850';g.fillRect(x+2,y-h+1,1,h);g.fillStyle='#4a4640';g.fillRect(x-1,y-h+3,1,1);g.fillStyle='#5a7a3a';g.fillRect(x-2,y-2,1,2);g.fillRect(x+1,y-1,1,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-2,y-h-1,5,1)}}}});

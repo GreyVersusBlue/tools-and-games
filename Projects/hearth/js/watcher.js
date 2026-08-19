@@ -130,6 +130,21 @@ function tellStory(nat){if(storyDay===dayCount)return false;
     if(R()<.5)teller.hist.push({d:dayCount,s:'told the whole story of the island at the fire, from the landing on'})}
   say(L.join('<br>'),true);
   return true}
+// the walking of the bounds (sprint 14): once a year, in spring, an elder leads the children round every named place, oldest story
+// first, and puts a stone down at each. Queued by newDay, launched by step() once the light is up; each walker carries their own
+// copy of the route, so the procession strings out by walking speed, which is how processions go.
+function boundsOut(){const stops=lorePl.map(k=>spots.find(sp=>sp.lore&&sp.k===k)).filter(Boolean);if(stops.length<2)return false;
+  const free=p=>!p.dead&&!p.inside&&p.task!=='boat'&&p.task!=='voyage'&&!p.sick;
+  const eld=people.filter(p=>isElder(p)&&free(p)).sort((a,b)=>ageOf(b)-ageOf(a))[0];if(!eld)return false;
+  const kids=people.filter(p=>isKid(p)&&ageOf(p)>=5&&free(p)).slice(0,4);
+  const first=!chron.some(e=>e.kind==='bounds');
+  for(const p of [eld,...kids]){if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;
+    p.stops=stops.map(s=>({l:s.l,x:s.x,y:s.y,k:s.k}));p.si=0;p.bLead=p===eld?1:0;goTo(p,stops[0].x,stops[0].y,'bounds',rnd(5,9))}
+  say(`${B(eld)} calls the children away from whatever they were doing and sets out to walk the named places in order, oldest story first${kids.length?'':', alone, which is not how it is supposed to go'}. Nobody asks why. It is obviously a thing that should be done.`,true);
+  if(first)addEvent('bounds','the first walking of the bounds',`In the spring of year ${yearOf(dayCount)}, ${eld.name} led the children out to stand in every story the island has ground for, in order, and put a stone down at each. It had never been done before. It was immediately old.`);
+  eld.hist.push({d:dayCount,s:first?'led the first walking of the bounds, and put a stone down at every named place':'led the walking of the bounds, the way it is done'});
+  for(const k of kids)k.hist.push({d:dayCount,s:`was walked round the named places by ${eld.name}, and shown where everything happened`});
+  return true}
 // ---------- the year's fortunes (sprint 11): every year turns up its own card ----------
 function startArc(k,len){arc={k,d0:dayCount,end:dayCount+(len||6)};
   if(k==='drought'){say('The rain has stopped coming. Not dramatically — it simply does not come, and after enough days of that everyone is watching the sky the same way.',true);

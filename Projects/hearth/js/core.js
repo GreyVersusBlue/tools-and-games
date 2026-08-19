@@ -37,11 +37,22 @@ const hasWay=i=>!!(ways>>i&1);
 const arcK=()=>arc?arc.k:'';
 // sprint 12 state: the things that get handed down, each with its own small history, and the year of the first handing
 let things=[],heirYr=0;
+// sprint 13 state: the places the grown stories put names on, and the walk that does the naming (walkP is the morning's errand; it is not saved)
+let lorePl=[],walkP=null;
+// sprint 14 state: how often each named place has been walked (the stones pile up), and the year's walking of the bounds (boundsP is transient)
+let loreN={},boundsP=null,boundsYr=0;
 const thingsOf=n=>things.filter(t=>t.holder===n);
 const wayN=()=>(ways&1)+(ways>>1&1)+(ways>>2&1)+(ways>>3&1);
 const Cap=s=>s[0].toUpperCase()+s.slice(1);
-// what a master makes, once, in the year of the mastering — per craft: [the full first description, the short name it goes by after]
-const MADE=[['a seed jar with a lid worked like weather','the seed jar'],['a bowl turned from a burl, thin as an eggshell','the burl bowl'],['a knife with a whalebone handle','the whalebone knife'],['a child\'s chair, joined without one peg showing','the little chair'],['a balance-scale small enough for a pocket','the pocket scale']];
+// what a master makes, once, in the year of the mastering — per craft, three ways it might come out (sprint 13: which one is the island's,
+// from the seed alone — no rnd(), so old links keep their exact streams). MADE(ci) -> [the full first description, the short name it goes by after]
+const MADEV=[
+ [['a seed jar with a lid worked like weather','the seed jar'],['a seed jar with a lid carved as a wave about to land','the wave-lid jar'],['a seed jar rubbed with green ochre, the colour of the first shoots','the green jar']],
+ [['a bowl turned from a burl, thin as an eggshell','the burl bowl'],['a bowl turned from the storm-oak, dark as the night it fell','the storm-oak bowl'],['a bowl turned so thin the light comes through it','the pale bowl']],
+ [['a knife with a whalebone handle','the whalebone knife'],['a knife with a driftwood handle worn to silk','the driftwood knife'],['a knife hafted in cord, waxed till it might as well be stone','the corded knife']],
+ [['a child\'s chair, joined without one peg showing','the little chair'],['a child\'s chair with arms carved like two gulls\' heads','the gull chair'],['a cradle that rocks true in any draught','the cradle']],
+ [['a balance-scale small enough for a pocket','the pocket scale'],['a measuring-cup marked in rings, honest to a grain','the honest cup'],['a counting-frame whose beads click like rain starting','the counting frame']]];
+const MADE=ci=>MADEV[ci][(seed>>>(ci*2+1))%3];
 // how the big stories grow, once they have been told at the fire enough times
 const GROW={
   drought:['By now the dust in the story stands higher than it ever stood on the fields.','In the telling, the well never once ran dry, which is nearly true.'],
@@ -65,7 +76,23 @@ const GROW={
   temper:['The island in that story grows a little kinder every year, or a little fiercer, depending on who is telling.'],
   death:['The hill is a little higher each time it is climbed in the telling.'],
   mastery:['In the story nobody ever taught them; the hands simply knew. There was teaching. The story has no room for it.'],
-  bread:['Every winter the loaves in that story come out bigger, and the night outside them colder.']};
+  bread:['Every winter the loaves in that story come out bigger, and the night outside them colder.'],
+  place:['In the story the name was always there, the way the hill was, and the walk out to it only went to check.'],
+  bounds:['Each spring the walk gets longer in the telling, and the stone in the pocket heavier, and the children better behaved than any children have ever been.']};
+// sprint 13: the ground under the big stories. When a story has grown, the place it happened can take a name and join the island's
+// geography for good. at() reads live world state and must stay rnd()-free — it is re-run at load to put the named places back.
+const LORE_PLACE={
+ landing:{l:'where the boat first came in',at:()=>landings.length?{x:landings[0].x,y:landings[0].y}:(nearestShore(center.x,center.y)||center)},
+ back:{l:'where they watch for boats',at:()=>landings.length?{x:landings[0].x,y:landings[0].y}:(nearestShore(center.x,center.y)||center)},
+ rainscame:{l:'where they stood in the rain',at:()=>farms.length?{x:farms[0].x+.5,y:farms[0].y+.5}:center},
+ shoal:{l:'where the fish came in',at:()=>{const h=getB('hut');return(h?nearestShore(h.x,h.y):nearestShore(center.x,center.y))||center}},
+ stayed:{l:'the shore that faces the far island',at:()=>{if(!farIsle)return null;const fx=farIsle.x+farIsle.w/2;let b=null,bd=1e9;for(const s of shore){const d=Math.hypot(s.x-fx,s.y);if(d<bd){bd=d;b=s}}return b}},
+ found:{l:'where the ground gave it up',at:()=>ruin?{x:ruin.x,y:ruin.y+1.6}:null},
+ bread:{l:'the mill path',at:()=>{const m=getB('mill');return m?{x:m.x+1,y:m.y+2.6}:null}},
+ way:{l:'where the new way was tried first',at:()=>{const e=chron.find(x=>x.kind==='way'&&x.gr);if(!e)return null;
+   if(e.label.includes('the sail')){const h=getB('hut');return h?nearestShore(h.x,h.y):null}
+   if(e.label.includes('the plough'))return farms.length?{x:farms[0].x+.5,y:farms[0].y+.5}:null;
+   return null}}}; /* the kiln and the book have no one place; that is allowed — some stories happen everywhere */
 let RM=false;try{const mq=matchMedia('(prefers-reduced-motion: reduce)');RM=mq.matches;
   if(mq.addEventListener)mq.addEventListener('change',e=>{RM=e.matches});else if(mq.addListener)mq.addListener(e=>{RM=e.matches})}catch(e){}
 const V=()=>village||'the village';
@@ -93,7 +120,7 @@ const mkTree=(x,y,s,o)=>({x,y,s,hp:3,b:R()<.45,a:R(),o:o||0});
 function newWorld(s){
   seed=s;R=mulberry(seed);document.getElementById('seedlbl').textContent='island '+seed.toString(36);
   const n1=noise2(),n2=noise2();tiles=new Uint8Array(W*H);elev=new Float32Array(W*H);trees=[];houses=[];farms=[];people=[];stumps=[];fx=[];fires=[];graves=[];dead=[];events=[];shore=[];
-  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
+  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;lorePl=[];walkP=null;loreN={};boundsP=null;boundsYr=0;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
   faith=0;faithSt=0;acts=[];prayer=null;arc=null;arcYr=0;wayYr=0;bookYr=0;ways=0;lastStormDay=0;rainedDay=0;wreckYr=0;famDone=false;temper=TEMPERS[(seed>>>0)%5]; // temper from the seed alone: no rnd(), so old links keep their terrain
   const cx=W/2,cy=H/2;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
@@ -280,7 +307,7 @@ function craftUp(p,ci){if(!p||p.dead||isKid(p))return;
     if(i===2){p.hist.push({d:dayCount,s:`known now as the one ${CRAFT_EPITHET[ci]}`});
       addEvent('mastery',`the ${sea()} ${p.name} mastered ${CRAFT_WORK[ci]}`,`By the ${sea()} of year ${yearOf(dayCount)} there was no one better at ${CRAFT_WORK[ci]} than ${p.name}, and everyone knew it, and ${p.name} never said it.`);
       // once per craft per island, the mastering leaves a thing behind — the kind that outlives its maker (sprint 12)
-      if(!things.some(t=>t.src==='made'&&t.ci===ci)&&R()<.6){const [f,sn]=MADE[ci];
+      if(!things.some(t=>t.src==='made'&&t.ci===ci)&&R()<.6){const [f,sn]=MADE(ci);
         things.push({n:sn,full:f,holder:p.name,src:'made',ci,hist:[{d:dayCount,s:`made by ${p.name}, in the year of the mastering`}]});
         say(`${B(p)} spends the quiet ends of a month's evenings making ${f}, and does not say who it is for, and keeps it.`,true);
         p.hist.push({d:dayCount,s:`made ${sn}, the best thing those hands have made`})}}
