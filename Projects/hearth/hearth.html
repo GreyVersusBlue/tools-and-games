@@ -57,6 +57,7 @@
   #chron .roll h4:first-child{margin-top:0}
   #chron .roll p{padding-left:52px;text-indent:-52px;margin-bottom:3px;opacity:.92}
   #chron .roll p i{font-style:normal;color:var(--dim);font-size:11px;display:inline-block;width:52px;text-indent:0}
+  #chron .roll p em.tl{font-style:italic;color:var(--dim);font-size:11px}
   #chron .foot{margin-top:10px;padding-top:8px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
   #chron .foot span{font-size:11px;color:var(--dim);font-style:italic}
   #ctl{display:flex;gap:0}
@@ -148,6 +149,37 @@ let temper='kind',arc=null,arcYr=0,wayYr=0,bookYr=0,ways=0,lastStormDay=0,rained
 let faith=0,faithSt=0,acts=[],prayer=null;
 const hasWay=i=>!!(ways>>i&1);
 const arcK=()=>arc?arc.k:'';
+// sprint 12 state: the things that get handed down, each with its own small history, and the year of the first handing
+let things=[],heirYr=0;
+const thingsOf=n=>things.filter(t=>t.holder===n);
+const wayN=()=>(ways&1)+(ways>>1&1)+(ways>>2&1)+(ways>>3&1);
+const Cap=s=>s[0].toUpperCase()+s.slice(1);
+// what a master makes, once, in the year of the mastering — per craft: [the full first description, the short name it goes by after]
+const MADE=[['a seed jar with a lid worked like weather','the seed jar'],['a bowl turned from a burl, thin as an eggshell','the burl bowl'],['a knife with a whalebone handle','the whalebone knife'],['a child\'s chair, joined without one peg showing','the little chair'],['a balance-scale small enough for a pocket','the pocket scale']];
+// how the big stories grow, once they have been told at the fire enough times
+const GROW={
+  drought:['By now the dust in the story stands higher than it ever stood on the fields.','In the telling, the well never once ran dry, which is nearly true.'],
+  rainscame:['The storm that broke it gets bigger every winter it is told.','Half the village now remembers standing out in that rain. It was not half the village. It is now.'],
+  hardwinter:['The snow in that story has been getting deeper for years.','Every telling, one more wolf is heard in it. No wolf was ever seen.'],
+  fever:['In the telling now, nobody was ever really afraid, which is not how it was.'],
+  shoal:['The fish in that story have grown a hand-span since it happened.','By now the story says you could walk across the bay on them, and nobody says otherwise.'],
+  left:['The sea in that story has grown rougher with the years, to make the going kinder.'],
+  stayed:['The light on the far island burns brighter in the story than it ever does on the water.'],
+  found:['In the story now, the stones give it up on purpose, into the right hands.'],
+  answered:['Each telling, the asking and the coming stand a little closer together.'],
+  noticed:['The first saplings in that story are a whole wood now.'],
+  way:['In the story it came all at once, in one morning, like weather. It did not. It is better that way.'],
+  back:['The boat that came back rides lower in the story every year, loaded with everything the years away were supposed to have been.'],
+  keeper:['The fire in that story burns three nights now. It was one. It has earned the other two.'],
+  shrine:['The flat stone has grown in the telling; by now it took four to raise it. It took one.'],
+  build:['The raising of it goes quicker in the story than it went in the weather.'],
+  heir:['The list of hands it has passed through gets one hand longer every few tellings.'],
+  landing:['The boat in that story has been getting smaller, and the sea bigger, for years now.','In the telling there was nothing here at all when they landed, not even the birds. The birds were here.'],
+  name:['By now the story insists the name was always there, waiting under the grass to be found.'],
+  temper:['The island in that story grows a little kinder every year, or a little fiercer, depending on who is telling.'],
+  death:['The hill is a little higher each time it is climbed in the telling.'],
+  mastery:['In the story nobody ever taught them; the hands simply knew. There was teaching. The story has no room for it.'],
+  bread:['Every winter the loaves in that story come out bigger, and the night outside them colder.']};
 let RM=false;try{const mq=matchMedia('(prefers-reduced-motion: reduce)');RM=mq.matches;
   if(mq.addEventListener)mq.addEventListener('change',e=>{RM=e.matches});else if(mq.addListener)mq.addListener(e=>{RM=e.matches})}catch(e){}
 const V=()=>village||'the village';
@@ -175,7 +207,7 @@ const mkTree=(x,y,s,o)=>({x,y,s,hp:3,b:R()<.45,a:R(),o:o||0});
 function newWorld(s){
   seed=s;R=mulberry(seed);document.getElementById('seedlbl').textContent='island '+seed.toString(36);
   const n1=noise2(),n2=noise2();tiles=new Uint8Array(W*H);elev=new Float32Array(W*H);trees=[];houses=[];farms=[];people=[];stumps=[];fx=[];fires=[];graves=[];dead=[];events=[];shore=[];
-  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
+  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
   faith=0;faithSt=0;acts=[];prayer=null;arc=null;arcYr=0;wayYr=0;bookYr=0;ways=0;lastStormDay=0;rainedDay=0;wreckYr=0;famDone=false;temper=TEMPERS[(seed>>>0)%5]; // temper from the seed alone: no rnd(), so old links keep their terrain
   const cx=W/2,cy=H/2;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
@@ -360,7 +392,12 @@ function craftUp(p,ci){if(!p||p.dead||isKid(p))return;
   const th=[.33,.66,1];for(let i=0;i<3;i++)if(was<th[i]&&p.cxp>=th[i]){
     say(MILE[ci][i].replace(/{A}/g,B(p)),true);
     if(i===2){p.hist.push({d:dayCount,s:`known now as the one ${CRAFT_EPITHET[ci]}`});
-      addEvent('mastery',`the ${sea()} ${p.name} mastered ${CRAFT_WORK[ci]}`,`By the ${sea()} of year ${yearOf(dayCount)} there was no one better at ${CRAFT_WORK[ci]} than ${p.name}, and everyone knew it, and ${p.name} never said it.`)}
+      addEvent('mastery',`the ${sea()} ${p.name} mastered ${CRAFT_WORK[ci]}`,`By the ${sea()} of year ${yearOf(dayCount)} there was no one better at ${CRAFT_WORK[ci]} than ${p.name}, and everyone knew it, and ${p.name} never said it.`);
+      // once per craft per island, the mastering leaves a thing behind — the kind that outlives its maker (sprint 12)
+      if(!things.some(t=>t.src==='made'&&t.ci===ci)&&R()<.6){const [f,sn]=MADE[ci];
+        things.push({n:sn,full:f,holder:p.name,src:'made',ci,hist:[{d:dayCount,s:`made by ${p.name}, in the year of the mastering`}]});
+        say(`${B(p)} spends the quiet ends of a month's evenings making ${f}, and does not say who it is for, and keeps it.`,true);
+        p.hist.push({d:dayCount,s:`made ${sn}, the best thing those hands have made`})}}
     break}}
 function homeOf(p){if(p.home&&houses.includes(p.home))return p.home;if(p.child){const par=p.parents.map(byName).find(q=>q&&q.home);if(par){p.home=par.home;return p.home}}
   const h=houses.find(h=>h.owners.length<2&&!h.owners.some(n=>{const q=byName(n);return q&&q.partner&&q.partner!==p.name}));if(h&&!isKid(p)){h.owners.push(p.name);p.home=h;return h}return null}
@@ -565,6 +602,16 @@ const G=[
   {c:x=>x.stone&&!x.night,t:'There is something small in the hollow at the foot of the quiet stone again this morning. Nobody saw it left. Nobody moves it.'},
   {c:x=>x.stone&&x.faithHi&&x.elder,t:'{A} says you can live a whole life on an island like this and never once catch it in the act of being kind. That, says {A}, is how you know.'},
   {c:x=>x.stone&&x.b&&x.rel==='rival',t:'{A} and {B} arrive at the quiet stone at the same moment, and take turns, in silence, and leave in different directions.'},
+  // what is handed down, and how the stories grow (sprint 12)
+  {c:x=>x.keeps,t:'{A} takes {thing} out in a quiet moment, turns it over twice, and puts it away again.',w:.8},
+  {c:x=>x.keeps&&x.night,t:'{A} sets {thing} where the firelight can find it, and sits with it being older than everyone in the room.'},
+  {c:x=>x.keeps&&x.b,t:'{B} asks to hold {thing}, and holds it carefully, and hands it back a little changed.'},
+  {c:x=>x.keeps&&x.kid&&x.b,t:'{B} shows {A} {thing} and says where it came from. {A} asks to hear where it came from again.'},
+  {c:x=>x.shelf,t:'Somebody has dusted the shelf in the hall again, and set what waits there a little straighter.',w:.7},
+  {c:x=>x.shelf&&x.kid,t:'{A} is lifted up to see the shelf in the hall, and reaches, and is lowered again, unrepentant.'},
+  {c:x=>x.legend&&x.kid&&x.b,t:'{A} asks {B} for the story of {leg}, the long way, with all the grown parts in.'},
+  {c:x=>x.legend&&x.elder,t:'{A} tells {leg} the old way, the short true way, and is outvoted.'},
+  {c:x=>x.legend&&x.gossipy,t:'{A} adds a small detail to the story of {leg} that was not in it yesterday, and by evening it always was.'},
 ];
 const ARRIVED=p=>pick([`${p.name} rowed in out of nowhere and asked to stay, and stayed.`,
   `${p.name} came ashore with everything ${p.name} owned in one bag, and was given bread before any questions.`,
@@ -579,11 +626,13 @@ function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
   const td=tide();
   const ctx={a,b,c,rel:rel?rel.k:null,night:isNight(),dusk:isDusk(),rain,storm,thunder:storm,market:hasB('market'),mill:hasB('mill'),well:hasB('well'),hall:hasB('hall'),light:hasB('light'),hut:hasB('hut'),smoke:hasB('smoke'),bridge:hasB('bridge'),trader:!!trader,road:roadV>0,named:!!village,deer:wild.some(w=>w.k==='deer'),rabbits:wild.some(w=>w.k==='rabbit'),farms:farms.length>0,fox:wild.some(w=>w.k==='fox'),gulls:gulls.length>0,fireflies:flies.length>0,geese:geeseDay===dayCount,whale:!!whale||whaleDay===dayCount,fish:fishSh.length>0&&!frozen,far:!!farIsle,voyaged:!!voyage,away:!!voyage&&voyage.st==='away',stayed:!!voyage&&voyage.st==='stayed',ruin:!!ruin&&ruinSeen>0,spring:springs.length>0,story:storyDay===dayCount,dreamt:dreamAny===dayCount,cloudrain:clouds.some(c=>c.r>0),fog:wx==='fog',snow:wx==='snow',overcast:wx==='overcast',ice:frozen,hungry:hunger>.25,leaves:seaDay()>=2,blossom:seaDay()<=3,lowtide:td<-.6,hightide:td>.6,sea:seasonOf(dayCount),ev:eventLabel(),graves:graves.length>0,elder:isElder(a),kid:isKid(a),
     crf:a.craft,cxpv:a.cxp||0,orchard:hasW('orchard'),hives:hasW('hives'),swingw:hasW('swing'),ringw:hasW('ring'),bench:hasW('bench'),oldhouse:hasW('ruin3'),racks:hasW('racks'),boat2:hasW('boat2'),dryg:dry01>.6,
-    drought:arcK()==='drought',hardw:arcK()==='longwinter',feverA:arcK()==='fever',shoalA:arcK()==='shoal',sick:!!a.sick,sail:hasWay(0),plough:hasWay(1),kiln:hasWay(2),book:hasWay(3),stone:hasW('shrine'),faithHi:faith>=.5};
+    drought:arcK()==='drought',hardw:arcK()==='longwinter',feverA:arcK()==='fever',shoalA:arcK()==='shoal',sick:!!a.sick,sail:hasWay(0),plough:hasWay(1),kiln:hasWay(2),book:hasWay(3),stone:hasW('shrine'),faithHi:faith>=.5,
+    keeps:thingsOf(a.name).length>0,shelf:hasB('hall')&&things.some(t=>!t.holder),legend:chron.some(e=>e.gr)};
   for(const t of TRAITS)ctx[t]=has(a,t);
+  const ka=thingsOf(a.name),grown=chron.filter(e=>e.gr),legLbl=grown.length?grown[(R()*grown.length)|0].label:null;
   const ok=G.filter(t=>t.c(ctx)&&(usedTpl.get(t)||0)<dayCount);if(!ok.length)return;
   const wt=ok.map(t=>t.w||1);s=wt.reduce((x,y)=>x+y,0);r=R()*s;let tpl=ok[0];for(let i=0;i<ok.length;i++){r-=wt[i];if(r<=0){tpl=ok[i];break}}
-  const txt=tpl.t.replace(/{A}/g,B(a)).replace(/{B}/g,b?B(b):'someone').replace(/{C}/g,c?B(c):'someone').replace(/{spot}/g,a.spot.l).replace(/{sea}/g,ctx.sea).replace(/{wx}/g,WX()).replace(/{ev}/g,ctx.ev||'the first landing').replace(/{village}/g,V()).replace(/{voy}/g,voyage?voyage.name:'someone');
+  const txt=tpl.t.replace(/{A}/g,B(a)).replace(/{B}/g,b?B(b):'someone').replace(/{C}/g,c?B(c):'someone').replace(/{spot}/g,a.spot.l).replace(/{sea}/g,ctx.sea).replace(/{wx}/g,WX()).replace(/{ev}/g,ctx.ev||'the first landing').replace(/{village}/g,V()).replace(/{voy}/g,voyage?voyage.name:'someone').replace(/{thing}/g,ka.length?ka[0].n:'a small thing').replace(/{leg}/g,legLbl||'the first landing');
   if(say(txt))usedTpl.set(tpl,dayCount)}
 // ---------- life ----------
 function newDay(){saidToday=new Set();
@@ -623,6 +672,8 @@ function newDay(){saidToday=new Set();
     else{voyage.st='stayed';farIsle.lit=true;say(`${B(voyage.p)} has not come back from the far island. Nobody says it at the fire, but at dusk they look that way.`,true);addEvent('stayed',`the ${sea()} ${voyage.name} did not come back from the far island`,`${voyage.name} did not come back from the far island. After that there was a light out there on clear nights, and everyone had an opinion about it.`);
       for(const q of people){const r=q.rels.find(r=>r.who===voyage.name);if(r)q.hist.push({d:dayCount,s:`stopped waiting for ${voyage.name} to come back from the far island`})}}}
   if(dayCount===10&&!village){village=pick(NAME1)+pick(NAME2);say(`By now the place has a name. Nobody decided it; it is simply ${village}, and has been for a while.`,true);addEvent('name',`the naming of ${village}`,`The place turned out to be called ${village}. Nobody decided it and nobody argued.`);document.getElementById('seedlbl').textContent=village+' · island '+seed.toString(36)}
+  // midwinter: the village keeps its own fire night, and the stories get told whether the watcher is watching or not (sprint 12)
+  if(s==='winter'&&seaDay()===2&&people.length>=6&&chron.length>=4&&R()<.75)tellStory(true);
   if(s!==lastSea){lastSea=s;say(SEASON_LINE[s],true);if(s==='winter'){const need=people.length*13;say(granary+food>=need?`The store holds ${granary}. It should see the village through.`:granary+food>=need*.5?`The store holds ${granary}. It will be a thin winter.`:`The store holds ${granary}, and that is not enough. Someone will have to go down to the ice with a line.`,true)}}
   // the works: once the village has its buildings, smaller ambitions surface, about one a year
   if(seaDay()===0&&dayCount>YEAR&&bldg.length>=6&&!bldgTgt&&!works.some(w=>!w.done)&&R()<.35){
@@ -677,13 +728,25 @@ function remove(p){p.dead=true;p.alive=false;names.delete(p.name);people=people.
   if(selected===p)showCard(null)}
 function leave(p){remove(p);gone.push(p);const s=sea();
   say(`${B(p)} takes the small boat at first light, quietly, so as not to be talked out of it. There was not enough to go round.`,true);addEvent('left',`the ${s} ${p.name} sailed away`,`${p.name} took the small boat and left in a hungry ${s}. There had not been enough to go round.`);
+  for(const t of thingsOf(p.name)){t.holder=0;t.hist.push({d:dayCount,s:`left on the shelf in the hall the morning ${p.name} sailed, on purpose, where it would be found`})}
   for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(!r)continue;q.hist.push({d:dayCount,s:`watched ${p.name} sail away in a hungry ${s}`});if(r.k==='partner')q.partner=null}}
 function die(p){remove(p);dead.push(p);
   // grave on the hill
   const k=graves.length,gx=hill.x+((k%4)-1.5)*1.6,gy=hill.y+Math.floor(k/4)*1.4;const gr={x:gx,y:gy,name:p.name,d:dayCount,y2:yearOf(dayCount),age:ageI(p)};graves.push(gr);trees=trees.filter(t=>Math.hypot(t.x-gx,t.y-gy)>1.6);
   const sea=seasonOf(dayCount);say(`${B(p)} died in the night, at ${ageI(p)}. The village carries ${p.name} up the hill in the ${sea} light.`,true);addEvent('death',`the ${sea} ${p.name} died`,`${p.name} died at ${ageI(p)}, and was carried up the hill in the ${sea} light.`);
   for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(!r)continue;q.hist.push({d:dayCount,s:`lost ${r.k==='partner'?'their partner':r.k==='parent'?'their parent':r.k==='child'?'their child':r.k==='rival'?'an old rival':'a friend'}, ${p.name}`});
-    if(r.k==='partner')q.partner=null;q.mourn=gr}}
+    if(r.k==='partner')q.partner=null;q.mourn=gr}
+  // what p kept is handed down: partner first, then a grown child, then a friend, then the shelf in the hall (sprint 12)
+  for(const t of thingsOf(p.name)){let h=p.partner?byName(p.partner):null;
+    if(!h||h.dead)h=people.find(q=>!q.dead&&!isKid(q)&&q.parents.includes(p.name))||null;
+    if(!h){const fr=p.rels.filter(r=>r.k==='friend').map(r=>byName(r.who)).filter(q=>q&&!q.dead&&!isKid(q));h=fr[0]||null}
+    t.holder=h?h.name:0;
+    if(h){t.hist.push({d:dayCount,s:`passed to ${h.name} when ${p.name} died`});h.hist.push({d:dayCount,s:`was given ${t.n} when ${p.name} died, and carries it`});
+      say(`${Cap(t.n)} that ${p.name} kept goes to ${B(h)}, who holds it a long time before putting it away.`,true);
+      if(!heirYr){heirYr=yearOf(dayCount);addEvent('heir','the first handing down',`When ${p.name} died, ${t.n} passed to ${h.name}. It was the first thing in ${V()} old enough to be handed down, and it will not be the last.`)}
+      else if(R()<.4)addEvent('heir',`the ${sea} ${t.n} changed hands`,`${Cap(t.n)} — ${p.name}'s once — went to ${h.name}, with everything it remembers.`)}
+    else{t.hist.push({d:dayCount,s:`set on the shelf in the hall when ${p.name} died, there being no one to take it`});
+      say(`${Cap(t.n)} that ${p.name} kept goes onto the shelf in the hall, where things wait.`,true)}}}
 // ---------- buildings, boats, roads ----------
 function nextBuild(){if(bldgTgt)return null;for(const k in BLD){if(hasB(k))continue;const d=BLD[k];if(wood<d.wood||!d.cond())continue;let s=null;
     if(k==='hut'){const l=landings[0];s={x:l.x,y:l.y}}
@@ -739,12 +802,14 @@ function finishWork(p,w){w.done=true;w.y0=yearOf(dayCount);applyWork(w);
     ruin3:`${B(p)} lays the last of the roof over the old stones. There is an old house now, and it does not feel empty any more.`,
     shrine:`${B(p)} stands the flat stone upright and sets a hollowed stone at its foot, for whatever wants leaving, and does not explain, and is not asked to.`};
   say(L[w.wk],true);p.hist.push({d:dayCount,s:`made ${WORKS[w.wk].name} for ${V()}`});
-  if(w.wk==='shrine'){faith=Math.min(1,faith+.1);
+  if(w.wk==='shrine'){faith=Math.min(1,faith+.1);stoneTap(w.x,w.y);
     addEvent('shrine','the raising of the quiet stone',`${p.name} set a flat stone upright near the hearth, with a hollow at its foot for whatever wants leaving. Nobody called it anything but the quiet stone, and nobody had to be told what it was for.`)}
   else addEvent('work',`the ${sea()} ${WORKS[w.wk].name.replace(/^(an?|the) /,'the ')} was made`,`${p.name} made ${WORKS[w.wk].name} in the ${sea()} of year ${yearOf(dayCount)}, because nobody needed it and everybody wanted it.`);
-  if(w.wk==='ruin1'||w.wk==='ruin3'){const f=FOUND[(R()*FOUND.length)|0];
-    say(`Under the stones there was ${f}. It goes on the shelf in the hall, and everyone has held it once.`,true);
-    addEvent('found',`the finding of ${f.split(',')[0]}`,`Working on the old stones, they turned up ${f}. Whoever it belonged to is long past asking for it back.`)}}
+  if(w.wk==='ruin1'||w.wk==='ruin3'){const av=FOUND.filter(f=>!things.some(t=>t.full===f)),f=av[(R()*av.length)|0]||FOUND[0],sn=f.split(',')[0];
+    say(`Under the stones there was ${f}. Everyone has held it once. It should go on the shelf in the hall, and it will, eventually; for now it stays in ${B(p)}'s pocket, and everyone pretends not to know.`,true);
+    addEvent('found',`the finding of ${sn}`,`Working on the old stones, they turned up ${f}. Whoever it belonged to is long past asking for it back. It was ${p.name} who lifted it out, and ${p.name} who kept it.`);
+    things.push({n:sn,full:f,holder:p.name,src:'found',hist:[{d:dayCount,s:`came up out of the old stones, into ${p.name}'s hands`}]});
+    p.hist.push({d:dayCount,s:`lifted ${sn} out of the old stones, and kept it`})}}
 function stepBoats(dt){for(const b of boats){
     if(!isFinite(b.x)||!isFinite(b.y)){try{console.warn('hearth: non-finite boat',b.kind)}catch(e){}b.gone=true;if(b.p){b.p.inBoat=false;b.p.x=b.land.x;b.p.y=b.land.y;b.p.task='idle';b.p.t=1}continue}
     if(b.gvx){const nx=b.x+b.gvx*dt,ny=b.y+b.gvy*dt;if(at(nx|0,ny|0)===WATER){b.x=nx;b.y=ny;if(b.p){b.p.x=nx;b.p.y=ny}}const k=Math.pow(.12,dt);b.gvx*=k;b.gvy*=k;if(Math.abs(b.gvx)+Math.abs(b.gvy)<.08)b.gvx=b.gvy=0}
@@ -790,6 +855,9 @@ function boatArrive(b){
       p.rels.push({who:q.name,k:{friend:'friend',rival:'rival',parent:'child',child:'parent'}[r.k]||'friend'})}
     say(`A boat comes in that nobody sent for. It is ${B(p)}, older, asking if the house is still short a pair of hands.`,true);
     addEvent('back',`the ${sea()} ${p.name} came back`,`${p.name}, who left in a hungry season, came back when the seasons turned kind, and was given bread before any questions.`);
+    for(const t of things){if(t.holder===0&&t.hist.some(h=>h.s.includes(p.name+' sailed'))){t.holder=p.name; // what was left on the shelf goes back into the pocket it knows
+      t.hist.push({d:dayCount,s:`came back off the shelf the day ${p.name} returned, from exactly where it was left`});
+      say(`${B(p)} goes into the hall before going anywhere else, and comes out with ${t.n}, which has been waiting the whole time.`,true)}}
     for(const q of people){if(q===p)continue;const r=q.rels.find(r=>r.who===p.name);if(r)q.hist.push({d:dayCount,s:`was on the shore the day ${p.name} came back`})}}
   else if(b.kind==='away'&&b.st==='out'){b.gone=true;const p=b.p;p.inBoat=false;people=people.filter(q=>q!==p);if(selected===p)showCard(null)}
   else if(b.kind==='return'&&b.st==='in'){b.gone=true;const p=b.p;p.x=b.land.x;p.y=b.land.y;p.task='idle';p.t=2;p.inBoat=false;p.inside=false;p.tgt=null;people.push(p);voyage.st='back';farIsle.lit=false;
@@ -970,9 +1038,9 @@ function wakeDreams(){for(const p of people){const d=p.pend;if(!d)continue;p.pen
     else if(d.k==='grow'){const sp=freeSpot(3,14);if(sp){trees.push(mkTree(sp.x+.5,sp.y+.5,.6));say('There is a young tree at the edge of the clearing that nobody remembers being that tall.',false,'growtree')}}
   }}
 // the fire, and the story told at it
-function tellStory(){if(storyDay===dayCount)return false;
+function tellStory(nat){if(storyDay===dayCount)return false;
   const cand=people.filter(p=>!p.dead&&p.task!=='boat'&&p.task!=='voyage');if(!cand.length)return false;
-  storyDay=dayCount;actDone('story');noteAct('story',.05);
+  storyDay=dayCount;if(!nat){actDone('story');noteAct('story',.05)} // a midwinter fire is the village's own doing; the stone gets no credit for it
   for(const q of cand){if(q.task==='shelter')continue;if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.inside=false;
     goTo(q,center.x+rnd(-3,3),center.y+rnd(-2.2,2.2),'gather',rnd(24,44))}
   const grown=cand.filter(p=>!isKid(p)),teller=grown.sort((a,b)=>ageOf(b)-ageOf(a))[0]||cand[0];
@@ -983,7 +1051,13 @@ function tellStory(){if(storyDay===dayCount)return false;
     const n=Math.min(5,src.length),seen=new Set(),ch=[];
     for(let i=0;i<n;i++){const e=src[Math.round(i*(src.length-1)/(n-1))];if(!seen.has(e)){seen.add(e);ch.push(e)}}
     const last=src[src.length-1];if(!seen.has(last))ch.push(last);
-    for(const e of ch)L.push(`<i>year ${e.y}</i>${e.st}`);
+    // the teller comes back around to a favorite, if the island has grown one (sprint 12)
+    const leg=src.filter(e=>e.gr&&!seen.has(e));if(leg.length&&R()<.6){const e=leg[(R()*leg.length)|0];seen.add(e);ch.push(e)}
+    let grew=null;
+    for(const e of ch){e.tl=(e.tl||0)+1; // every telling leaves a thumbprint on the story
+      if(!grew&&!e.gr&&e.tl>=3&&GROW[e.kind]){e.gr=1;const g=GROW[e.kind];e.st=e.st+' '+g[(R()*g.length)|0];grew=e}
+      L.push(`<i>year ${e.y}</i>${e.st}`)}
+    if(grew)L.push(`That part is longer than it used to be. Nobody minds. That is what the good parts are for.`);
     L.push(pick(['Nobody corrects any of it. Most of it is true.','When it is done the fire has burned low, and somebody builds it up again anyway.','Then it is late, and nobody moves for a while.','The children have heard it before and listen anyway, in case it changes.']));
     if(R()<.5)teller.hist.push({d:dayCount,s:'told the whole story of the island at the fire, from the landing on'})}
   say(L.join('<br>'),true);
@@ -1025,7 +1099,7 @@ const WAYS=[
 function wayDay(yr){if(wayYr===yr||seaDay()!==3||dayCount<=YEAR||R()>=.3)return;
   for(let i=0;i<WAYS.length;i++){if(hasWay(i))continue;const D=WAYS[i];if(!D.cond())continue;
     ways|=1<<i;wayYr=yr;const m=people.filter(p=>!p.dead&&p.craft===D.ci&&p.cxp>=.66).sort((a,b)=>b.cxp-a.cxp)[0]||people.filter(p=>!p.dead&&!isKid(p))[0];if(!m)return;
-    say(D.l(m),true);m.hist.push({d:dayCount,s:`worked out ${D.n}, and gave it to everyone`});
+    say(D.l(m),true);wayTune();m.hist.push({d:dayCount,s:`worked out ${D.n}, and gave it to everyone`});
     addEvent('way',`the year ${D.n} came to ${V()}`,`In year ${yr}, ${m.name} worked out ${D.n}, and after that nothing was done the old way again.`);break}}
 // ---------- the noticing (sprint 11): the island keeps a quiet account of what the watcher does ----------
 function noteAct(k,amt){acts.push({d:dayCount,k});if(acts.length>40)acts.shift();faith=Math.min(1,faith+(amt||.03)*(hasW('shrine')?1.5:1))}
@@ -1057,7 +1131,7 @@ function faithDay(){const yr=yearOf(dayCount);faith=Math.max(0,faith-.005);
     else if(hunger>.25)k='food';
     else if(dayCount-lastStormDay<=2&&hasB('hut'))k='calm';
     else if(kid&&R()<.35){k='dream';who=kid.name}
-    if(k){prayer={k,d:dayCount,who};
+    if(k){prayer={k,d:dayCount,who};const sw=works.find(w=>w.wk==='shrine'&&w.done);if(sw)stoneTap(sw.x,sw.y);
       say(`${B(pick(adults))} leaves ${pick(OFFER)} in the hollow at the foot of the quiet stone, and asks, not out loud, for ${k==='heal'&&who?`the fever to leave ${who}`:k==='dream'&&who?`a good dream for ${who}`:PRAYW[k]}.`,true)}}
   // too much, or exactly enough
   if(faith>=.5&&recent>=9&&R()<.25)say('The talk at the fire has gone strange lately: less of what anyone will do tomorrow, more of what the island will do for them. Somebody says the fields should probably still be weeded either way, and is right.',false,'depend');
@@ -1126,7 +1200,7 @@ function step(dt){
   for(const t of trees)if(t.hp>0&&t.s<1)t.s+=dt*.012;
   if(sea()!=='winter'&&trees.length<260&&R()<dt*.3){const s=freeSpot(11,40);if(s&&(R()<.3||trees.some(t=>Math.hypot(t.x-s.x,t.y-s.y)<3)))trees.push(mkTree(s.x+.5,s.y+.5,.15))}
   // arrivals
-  arrivalT-=dt;if(arrivalT<=0){arrivalT=rnd(70,140)*(1+people.length/10)*(hasB('light')?.75:1);if(people.length<popCap()&&people.length<48&&food>people.length*2&&!storm&&!boats.some(b=>b.kind==='arrival')){
+  arrivalT-=dt;if(arrivalT<=0){arrivalT=rnd(70,140)*(1+people.length/10)*(hasB('light')?.75:1)*(1+wayN()*.35);/* a village that has learned its ways fills slower, and stays a village longer */if(people.length<popCap()&&people.length<48&&food>people.length*2&&!storm&&!boats.some(b=>b.kind==='arrival')){
     const age=R()<.2?rnd(50,64)|0:rnd(18,42)|0;
     const fam=!famDone&&people.length>=8&&people.length<popCap()-2&&R()<.14; // once, a whole family in one boat
     if(landings.length){const l=landings[(R()*Math.min(landings.length,6))|0];if(fam)famDone=true;spawnBoat('arrival',l,{age,fam})}
@@ -1367,7 +1441,8 @@ function renderCard(full){const p=selected;if(!p||cardEl.hidden)return;
     document.getElementById('c-doing').textContent=whyText(p);
     const RW={friend:'friend of',rival:'rival of',partner:'partner of',child:'parent of',parent:'child of'};const rels=p.rels.map(r=>{const q=byName(r.who);return`${RW[r.k]||r.k} ${q?`<button data-n="${r.who}">${r.who}</button>`:r.who+' (gone)'}`});
     document.getElementById('c-rels').innerHTML=rels.length?rels.join(' · '):'<i>knows no one well yet</i>';
-    document.getElementById('c-hist').innerHTML=p.hist.map(h=>`<li><i>day ${h.d}</i>${h.s}</li>`).join('')}
+    const kp=thingsOf(p.name); // what this one keeps, and where it has been (sprint 12)
+    document.getElementById('c-hist').innerHTML=kp.map(t=>`<li><i>keeps</i>${t.full}${t.hist.length>1?'; it '+t.hist[t.hist.length-1].s:''}</li>`).join('')+p.hist.map(h=>`<li><i>day ${h.d}</i>${h.s}</li>`).join('')}
 }
 cardEl.querySelector('.rels').addEventListener('click',e=>{const b=e.target.closest('button');if(b){const q=byName(b.dataset.n);if(q)showCard(q)}});
 document.getElementById('card-x').onclick=()=>showCard(null);
@@ -1557,6 +1632,9 @@ function knock(x,y,f0,f1,body,nf,nq,nv,ndur,lv){if(!AC||!audioOn||sfxN>5)return;
   n.connect(bp).connect(ng).connect(pan);n.start(t);n.stop(t+ndur+.02)}
 const thock=(x,y)=>knock(x,y,190,68,.13,1500,1.2,.1,.1,.15);      // the axe going in
 const hammer=(x,y)=>knock(x,y,340,150,.05,2700,1.6,.07,.06,.1);   // a nail, or something like one
+const stoneTap=(x,y)=>knock(x,y,520,230,.09,850,2.4,.045,.11,.08); // stone set on stone, or something small left on it
+function wayTune(){if(!AC||!audioOn)return;const k=KEYS[sea()],t=AC.currentTime; // three rising notes, once, the day a way is worked out
+  [0,2,4].forEach((d,i)=>note(k[0]*Math.pow(2,k[1][d]/12),1.4,.05,'triangle',0,sfxG,t+i*.36))}
 function creak(x,y){if(!AC||!audioOn||sfxN>5)return;sfxN++;const P=place(x,y),t=AC.currentTime;
   const o=AC.createOscillator();o.type='sawtooth';o.frequency.setValueAtTime(118,t);o.frequency.linearRampToValueAtTime(96,t+.9);
   const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=620;bp.Q.value=6;
@@ -1627,14 +1705,14 @@ function audioTick(dt){sfxN=0;if(!AC||!audioOn)return;const t=AC.currentTime,s=s
 const chronEl=document.getElementById('chron'),rollEl=document.getElementById('chron-roll');
 function showChron(v){chronEl.hidden=!v;document.getElementById('b-chron').classList.toggle('on',!!v);if(v){if(innerWidth<=520)showCard(null);renderChron()}}
 function renderChron(){let h='',cy=0;
-  for(const e of chron){if(e.y!==cy){cy=e.y;h+=`<h4>year ${cy}</h4>`}h+=`<p><i>day ${e.d}</i>${e.st||e.label}</p>`}
+  for(const e of chron){if(e.y!==cy){cy=e.y;h+=`<h4>year ${cy}</h4>`}h+=`<p><i>day ${e.d}</i>${e.st||e.label}${e.gr?' <em class="tl">— as it is told now</em>':''}</p>`}
   rollEl.innerHTML=h||'<p>Nothing has happened yet that anyone will remember.</p>';
   document.getElementById('chron-t').firstChild.textContent=village?`The Chronicle of ${village}`:'The Chronicle';
   document.getElementById('chron-s').textContent=`island ${seed.toString(36)} · year ${yearOf(dayCount)}, day ${dayCount}`+(hasWay(3)?' · written in the book of days':'');
   document.getElementById('chron-n').textContent=chron.length===1?'one thing remembered':`${chron.length} things remembered`;
   rollEl.scrollTop=rollEl.scrollHeight}
 function exportChron(){const L=[`The chronicle of ${village||'an island with no name'}`,`island ${seed.toString(36)}`,''];let cy=0;
-  for(const e of chron){if(e.y!==cy){cy=e.y;L.push('',`YEAR ${cy}`,'')}L.push(`  day ${String(e.d).padStart(4)}   ${(e.st||e.label).replace(/<[^>]+>/g,'')}`)}
+  for(const e of chron){if(e.y!==cy){cy=e.y;L.push('',`YEAR ${cy}`,'')}L.push(`  day ${String(e.d).padStart(4)}   ${(e.st||e.label).replace(/<[^>]+>/g,'')}${e.gr?' (as it is told now)':''}`)}
   L.push('','',`It is year ${yearOf(dayCount)}, day ${dayCount}. There are ${people.length} people here, ${houses.length} houses, and ${graves.length} stones on the hill.`);
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([L.join('\n')],{type:'text/plain'}));
   a.download=(village||'island-'+seed.toString(36)).toLowerCase()+'-chronicle.txt';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
@@ -1659,8 +1737,9 @@ function lzDec(b64){const b=atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
   return decodeURIComponent(escape(out))}
 const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0,p.keeper?1:0,p.craft===undefined?-1:p.craft,+(p.cxp||0).toFixed(2),p.shadN?[p.shadN,p.shadC|0]:0,p.sick?1:0];
 function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]===v)n++;else{rd.push(v,n);v=road[i];n=1}}rd.push(v,n)}
-  return{v:7,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),
-    dr:+dry01.toFixed(2),br:breadYr,ry:retYr,wk:works.filter(w=>w.done).map(w=>[w.wk,+w.x.toFixed(1),+w.y.toFixed(1),w.y0]),
+  return{v:8,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),
+    dr:+dry01.toFixed(2),br:breadYr,ry:retYr,wk:works.map(w=>[w.wk,+w.x.toFixed(1),+w.y.toFixed(1),w.y0,w.done?1:0,+(w.prog||0).toFixed(1),w.paid?1:0,w.said?1:0]),
+    hl:things.map(t=>[t.n,t.full,t.holder||0,t.src,t.ci===undefined?-1:t.ci,t.hist.map(h=>[h.d,h.s])]),hy:heirYr,
     fa:+faith.toFixed(2),fs:faithSt,py:prayer?[prayer.k,prayer.d,prayer.who||0]:0,ay:ways,ax:arc?[arc.k,arc.d0,arc.end]:0,az:arcYr,aw:wayYr,ab:bookYr,al:lastStormDay,am:rainedDay,an:wreckYr,af:famDone?1:0,
     wx,wt:+wxT.toFixed(1),sn:+snowD.toFixed(3),fz:frozen?1:0,fo:+fogA.toFixed(2),vn:village||0,rv:roadV,td:traderDay,be:belled,rs:ruinSeen,
     gd:geeseDay,wd:whaleDay,ar:+arrivalT.toFixed(1),sp:speed,wi:wind,sy:storyDay,sk:sackUsed?1:0,
@@ -1671,7 +1750,7 @@ function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]
     bl:bldg.map(b=>[b.kind,b.x,b.y]),bt:bldgTgt?[bldgTgt.kind,bldgTgt.x,bldgTgt.y,+bldgTgt.prog.toFixed(1)]:0,
     gv:graves.map(g=>[+g.x.toFixed(2),+g.y.toFixed(2),g.name,g.d,g.y2,g.age]),
     sr:springs.map(s=>[+s.x.toFixed(2),+s.y.toFixed(2),+s.r.toFixed(2),+s.ph.toFixed(2)]),
-    ch:chron.map(e=>[e.d,e.y,e.kind,e.label,e.st||0]),ev:events.map(e=>[e.d,e.y,e.kind,e.label]),
+    ch:chron.map(e=>[e.d,e.y,e.kind,e.label,e.st||0,e.tl||0,e.gr?1:0]),ev:events.map(e=>[e.d,e.y,e.kind,e.label]),
     vo:voyage?[voyage.name,voyage.st,voyage.day,voyage.back?1:0,voyage.n||0,voyage.st==='away'?packP(voyage.p):0]:0,
     rb:ruin&&ruin.built?1:0,fl:farIsle&&farIsle.lit?1:0,rd}}
 function unpack(o){
@@ -1690,7 +1769,8 @@ function unpack(o){
   springs=o.sr.map(a=>({x:a[0],y:a[1],r:a[2],ph:a[3]}));
   bldg=o.bl.map(a=>({kind:a[0],x:a[1],y:a[2],w:BLD[a[0]].w,h:BLD[a[0]].h,prog:BLD[a[0]].work,work:BLD[a[0]].work,done:true}));
   bldgTgt=o.bt?{kind:o.bt[0],x:o.bt[1],y:o.bt[2],w:BLD[o.bt[0]].w,h:BLD[o.bt[0]].h,prog:o.bt[3],work:BLD[o.bt[0]].work,done:false}:null;
-  chron=o.ch.map(a=>({d:a[0],y:a[1],kind:a[2],label:a[3],st:a[4]||null}));
+  chron=o.ch.map(a=>({d:a[0],y:a[1],kind:a[2],label:a[3],st:a[4]||null,tl:a[5]||0,gr:!!a[6]}));
+  things=(o.hl||[]).map(a=>({n:a[0],full:a[1],holder:a[2]||0,src:a[3],ci:a[4]>=0?a[4]:undefined,hist:a[5].map(h=>({d:h[0],s:h[1]}))}));heirYr=o.hy||0;
   events=o.ev.map(a=>({d:a[0],y:a[1],kind:a[2],label:a[3]}));
   for(const s of springs){for(let y=Math.floor(s.y-s.r-1);y<=s.y+s.r+1;y++)for(let x=Math.floor(s.x-s.r-1);x<=s.x+s.r+1;x++){
       if(x<1||y<1||x>=W-1||y>=H-1)continue;if(Math.hypot(x+.5-s.x,(y+.5-s.y)*1.3)>s.r)continue;if(at(x,y)!==GRASS)continue;
@@ -1717,7 +1797,8 @@ function unpack(o){
     else if(b.kind==='well')spots.push({l:'the well',x:b.x+.5,y:b.y+.8});
     else if(b.kind==='light')spots.push({l:'the lighthouse',x:b.x+.5,y:b.y+.8});
     else if(b.kind==='bridge'){spots.push({l:'the bridge',x:b.x+.5,y:b.y+.5});bridgeUp=true}}
-  works=(o.wk||[]).map(a=>({wk:a[0],x:a[1],y:a[2],y0:a[3],done:true,prog:99}));for(const w of works)applyWork(w);
+  works=(o.wk||[]).map(a=>o.v>=8?{wk:a[0],x:a[1],y:a[2],y0:a[3],done:!!a[4],prog:a[5]||0,paid:a[6]?1:0,said:a[7]?1:0}:{wk:a[0],x:a[1],y:a[2],y0:a[3],done:true,prog:99}); // v8 carries works in progress; older saves only ever recorded the finished ones
+  for(const w of works)if(w.done)applyWork(w);
   heat=new Float32Array(W*H);boats=[];fx=[];skips=[];gusts=[];fires=houses.length?[{x:center.x,y:center.y,t:0}]:[];
   saidToday=new Set();usedTpl=new Map();
   paintedKey='';paintTerrain();spawnWildlife();clouds=[];for(let i=0;i<2;i++)addCloud(false);
@@ -1725,7 +1806,7 @@ function unpack(o){
   document.getElementById('seedlbl').textContent=(village?village+' · ':'')+'island '+seed.toString(36);
   say(`The island is as it was left. ${village?village+', year':'Year'} ${yearOf(dayCount)}, day ${dayCount}: ${people.length} people, ${houses.length} ${houses.length===1?'house':'houses'}, ${graves.length} ${graves.length===1?'stone':'stones'} on the hill.`,true)}
 function loadHash(){const h=(location.hash||'').replace(/^#/,'');if(h.length<40)return false;
-  const o=JSON.parse(lzDec(h));if(!o||!(o.v>=5&&o.v<=7)||!o.pe)return false;unpack(o);return true}
+  const o=JSON.parse(lzDec(h));if(!o||!(o.v>=5&&o.v<=8)||!o.pe)return false;unpack(o);return true}
 function saveHash(){let str;
   try{str=lzEnc(JSON.stringify(pack()))}catch(err){say('Something about this island will not fit in a link.',true);return}
   try{history.replaceState(null,'','#'+str)}catch(err){location.hash=str}
@@ -1867,7 +1948,7 @@ addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
       removeEventListener('pointerdown',kick,true);removeEventListener('keydown',kick,true)};
     addEventListener('pointerdown',kick,true);addEventListener('keydown',kick,true)}}
 {let ok=false;try{ok=loadHash()}catch(err){ok=false}
-  if(!ok){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(o&&o.v>=5&&o.v<=7&&o.pe){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
+  if(!ok){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(o&&o.v>=5&&o.v<=8&&o.pe){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
   if(!ok)newWorld(seed);syncCtl()}
 let last=performance.now();
 function loop(now){let dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now;if(!paused)for(let i=0;i<speed;i++)step(dt); // clamped at 0: the first frame's timestamp can predate performance.now(), and time must never run backward
@@ -1876,6 +1957,7 @@ requestAnimationFrame(loop);
 // exposed for headless testing only
 window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get seed(){return seed},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,setFood:v=>food=v,setGranary:v=>granary=v,landAt,canWalk,canWade,routeVia,autoSave,get wadeTiles(){return wadeTiles},get bridgeUp(){return bridgeUp},get bridgeSite(){return bridgeSite},get works(){return works},get dry01(){return dry01},setDry:v=>dry01=v,get breadYr(){return breadYr},WORKS,WORK_ORDER,hasW,get spots(){return spots},
 get faith(){return faith},setFaith:v=>faith=v,get faithSt(){return faithSt},get prayer(){return prayer},get arc(){return arc},startArc,get ways(){return ways},setWays:v=>ways=v,hasWay,get temper(){return temper},noteAct,get acts(){return acts},get sickCount(){return people.filter(p=>p.sick).length},
+get things(){return things},get heirYr(){return heirYr},thingsOf,craftUp,finishWork,die,stoneTap,wayTune,wayN,
 setZoom,get zoom(){return zoom},get view(){return{zoom,camX,camY,dprE,fitS}},toWorld,fit,get sackUsed(){return sackUsed},get musOn(){return musOn},set musOn(v){musOn=v},newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};
 })();
 </script>
