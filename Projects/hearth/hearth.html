@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth — a small living island</title>
+<!-- Hearth v2 · Sprint 5: the watcher — blessings, the chronicle, save/load in the hash, time controls (on top of Sprints 1–4). Single file, no dependencies. -->
+<style>
+  :root{--ink:#e8dcc4;--dim:#9a8b6d;--panel:rgba(18,14,10,.86);--gold:#f0b35a;--line:#3a3020}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#0b0d12;color:var(--ink);font-family:Georgia,'Iowan Old Style',serif;overflow:hidden}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges}
+  #c{cursor:crosshair}
+  #hud{position:fixed;left:0;right:0;top:0;padding:10px 14px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:linear-gradient(#0b0d12,rgba(11,13,18,0));pointer-events:none}
+  #hud>*{pointer-events:auto}
+  h1{font-size:18px;font-weight:normal;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+  h1 small{display:block;font-size:10px;letter-spacing:.08em;color:var(--dim);text-transform:none;font-style:italic}
+  .stat{font-size:12px;color:var(--dim)}.stat b{color:var(--ink);font-weight:normal;font-size:14px}.stat em{font-style:normal;margin-right:4px}
+  #s-time-s{display:none}
+  button{font:12px Georgia,serif;letter-spacing:.06em;color:var(--ink);background:var(--panel);border:1px solid var(--line);padding:5px 10px;border-radius:2px;cursor:pointer}
+  button:hover,button:focus-visible{border-color:var(--gold);outline:none}
+  button.on{color:var(--gold);border-color:var(--gold)}
+  #log{position:fixed;left:14px;bottom:14px;width:min(360px,60vw);max-height:38vh;overflow:hidden;font-size:13px;line-height:1.5;pointer-events:none;
+       -webkit-mask-image:linear-gradient(transparent,#000 35%);mask-image:linear-gradient(transparent,#000 35%)}
+  #log p{opacity:0;animation:rise .8s ease forwards;text-shadow:0 1px 3px #000}
+  #log p i{color:var(--dim);font-style:normal;margin-right:8px;font-size:11px}
+  #log b{font-weight:normal;color:var(--gold)}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  #hint{position:fixed;right:14px;bottom:14px;font-size:12px;color:var(--dim);font-style:italic;text-align:right;text-shadow:0 1px 3px #000}
+  /* islander card */
+  #card{position:fixed;right:14px;top:58px;width:min(300px,calc(100vw - 28px));max-height:calc(100vh - 80px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:12px 14px 14px;font-size:13px;line-height:1.45;box-shadow:0 8px 30px rgba(0,0,0,.5);backdrop-filter:blur(3px)}
+  #card[hidden]{display:none}
+  #card .top{display:flex;gap:12px;align-items:flex-start}
+  #face{width:64px;height:64px;flex:none;border:1px solid var(--line);background:#1a1510}
+  #card h2{font-size:18px;font-weight:normal;color:var(--gold);letter-spacing:.04em}
+  #card h2 small{display:block;font-size:11px;color:var(--dim);letter-spacing:.06em;font-style:italic;margin-top:2px}
+  #card .traits{margin-top:4px;font-size:12px}
+  #card .traits span{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:0 7px;margin:2px 3px 0 0;color:var(--ink)}
+  #card .x,#chron .x{position:absolute;right:6px;top:6px;padding:2px 8px;border-color:transparent}
+  #card h3{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:12px 0 4px;font-weight:normal}
+  #card .doing{font-style:italic}
+  #card .rels button{border:none;background:none;padding:0;color:var(--gold);font-size:13px;letter-spacing:0;text-decoration:underline dotted;cursor:pointer}
+  #card ol{list-style:none}
+  #card ol li{padding-left:44px;text-indent:-44px;color:var(--ink);opacity:.9}
+  #card ol li i{font-style:normal;color:var(--dim);font-size:11px;display:inline-block;width:44px;text-indent:0}
+  /* chronicle */
+  #chron{position:fixed;left:14px;top:58px;width:min(400px,calc(100vw - 28px));max-height:calc(100vh - 92px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:12px 8px 12px 14px;box-shadow:0 8px 30px rgba(0,0,0,.5);backdrop-filter:blur(3px)}
+  #chron[hidden]{display:none}
+  #chron h2{font-size:15px;font-weight:normal;color:var(--gold);letter-spacing:.06em;padding-right:24px}
+  #chron h2 small{display:block;font-size:11px;color:var(--dim);font-style:italic;letter-spacing:.04em;margin-top:2px}
+  #chron .roll{overflow-y:auto;margin:10px 6px 0 0;padding-right:8px;font-size:13px;line-height:1.5}
+  #chron .roll h4{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:normal;margin:14px 0 4px;border-bottom:1px solid var(--line);padding-bottom:3px}
+  #chron .roll h4:first-child{margin-top:0}
+  #chron .roll p{padding-left:52px;text-indent:-52px;margin-bottom:3px;opacity:.92}
+  #chron .roll p i{font-style:normal;color:var(--dim);font-size:11px;display:inline-block;width:52px;text-indent:0}
+  #chron .foot{margin-top:10px;padding-top:8px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+  #chron .foot span{font-size:11px;color:var(--dim);font-style:italic}
+  #ctl{display:flex;gap:0}
+  #ctl button{border-radius:0;border-right-width:0}
+  #ctl button:first-child{border-radius:2px 0 0 2px}
+  #ctl button:last-child{border-radius:0 2px 2px 0;border-right-width:1px}
+  #ctl button:focus-visible{position:relative;z-index:1}
+  @media (max-width:520px){#card{right:8px;left:8px;width:auto;top:auto;bottom:8px;max-height:52vh}#log{max-height:22vh}#hint{display:none}
+    #chron{left:8px;right:8px;width:auto;max-height:60vh}
+    #hud{gap:9px;padding:8px 10px}h1{font-size:15px}h1 small{display:none}.stat em{display:none}.stat::before{content:attr(data-i);color:var(--dim);margin-right:3px;font-size:12px}
+    #s-time{display:none}#s-time-s{display:inline}button{padding:4px 7px;font-size:11px}}
+  @media (prefers-reduced-motion:reduce){#log p{animation:none;opacity:1}}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="hud">
+  <h1>Hearth<small id="seedlbl">island —</small></h1>
+  <span class="stat" data-i="☺"><em>people</em><b id="s-pop">0</b></span>
+  <span class="stat" data-i="♠"><em>wood</em><b id="s-wood">0</b></span>
+  <span class="stat" data-i="✿"><em>food</em><b id="s-food">0</b></span>
+  <span class="stat" data-i="▤" title="the granary — grain put by for winter"><em>store</em><b id="s-store">0</b></span>
+  <span class="stat" id="s-time">dawn</span><span class="stat" id="s-time-s">dawn</span>
+  <span id="ctl">
+    <button id="b-pause" title="pause (space)" aria-label="pause">❚❚</button>
+    <button id="b-s1" class="on" title="normal time">1×</button>
+    <button id="b-s3" title="three times">3×</button>
+    <button id="b-s10" title="ten times">10×</button>
+  </span>
+  <button id="b-morning" title="skip to morning (m)">morning</button>
+  <button id="b-chron" title="the chronicle (c)">chronicle</button>
+  <button id="b-share" title="put this island in the address bar">keep</button>
+  <button id="b-audio">sound off</button>
+  <button id="b-new">new island</button>
+</div>
+<div id="log"></div>
+<div id="hint">click an islander to meet them, or at night to give them a dream · click grass for a sapling, hold for a spring<br>click water to skip a stone, drag for a gust · click a cloud's shadow to make it rain there · click the fire for a story</div>
+<aside id="card" hidden aria-live="polite">
+  <button class="x" id="card-x" aria-label="close">×</button>
+  <div class="top"><canvas id="face" width="16" height="16"></canvas><div><h2 id="c-name">—<small id="c-sub"></small></h2><div class="traits" id="c-traits"></div></div></div>
+  <h3>right now</h3><p class="doing" id="c-doing"></p>
+  <h3>people</h3><div class="rels" id="c-rels"></div>
+  <h3>their story</h3><ol id="c-hist"></ol>
+</aside>
+<aside id="chron" hidden aria-label="the chronicle">
+  <button class="x" id="chron-x" aria-label="close">×</button>
+  <h2 id="chron-t">The Chronicle<small id="chron-s">of an island with no name yet</small></h2>
+  <div class="roll" id="chron-roll" tabindex="0"></div>
+  <div class="foot"><button id="chron-dl">export .txt</button><span id="chron-n"></span></div>
+</aside>
+<script>
+(()=>{
+// ---------- rng & noise ----------
+let seed=(Math.random()*1e9)|0;
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let R;
+const rnd=(a=1,b)=>b===undefined?R()*a:a+R()*(b-a), pick=a=>a[(R()*a.length)|0], hash=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0};
+function noise2(){const p=[];for(let i=0;i<256;i++)p[i]=R();const h=(x,y)=>p[((x*49+y*131)&255)^((x*7)&255)];const sm=t=>t*t*(3-2*t);
+  return(x,y)=>{const xi=Math.floor(x),yi=Math.floor(y),xf=sm(x-xi),yf=sm(y-yi);
+  const a=h(xi,yi),b=h(xi+1,yi),c=h(xi,yi+1),d=h(xi+1,yi+1);return a+(b-a)*xf+(c-a)*yf+(a-b-c+d)*xf*yf}}
+// ---------- world ----------
+const W=110,H=70,T=8,YEAR=20;const cv=document.getElementById('c');cv.width=W*T;cv.height=H*T;const g=cv.getContext('2d');
+const ter=document.createElement('canvas');ter.width=W*T;ter.height=H*T;const tg=ter.getContext('2d');
+let tiles,elev,trees,houses,farms,people,stumps,fx,wood,food,time,dayLen=140,dayCount,rain,storm,speed=1,center,names,evT,arrivalT,fires,shore,spots,hill,graves,dead,events,saidToday,usedTpl,selected,lastYear;
+// sprint 2 state: weather machine, snow/ice, granary & hunger, tides, fog
+let wx='clear',wxT=0,fogA=0,flash=0,snowD=0,frozen=false,granary=0,hunger=0,lastSea='spring',tideTiles=[],thunderT=0,paintedKey='',gone=[],leafT=0;
+// sprint 3 state: buildings, boats, roads, village name
+let bldg=[],bldgTgt=null,boats=[],heat,road,roadV=0,village=null,landings=[],lightSite=null,stream=[],bridgeSite=null,traderDay=0,belled=0,trader=null,smokeT=0;
+// sprint 4 state: wildlife, the far island and its voyage, ruins
+let deep=[],wild=[],flies=[],gulls=[],geese=null,geeseDay=0,whale=null,whaleT=0,whaleDay=0,farIsle=null,voyage=null,ruin=null,fishSh=[],ruinSeen=0;
+// sprint 5 state: the watcher's blessings, clouds, the chronicle, time
+let springs=[],clouds=[],cloudSp=[],gusts=[],skips=[],chron=[],wind=1,paused=false,storyDay=0,dreamAny=0;
+const V=()=>village||'the village';
+const BLD={
+  hut:{name:'the fishing hut',w:2,h:1,wood:16,work:36,cond:()=>people.length>=7&&landings.length>0},
+  well:{name:'the well',w:1,h:1,wood:8,work:24,cond:()=>people.length>=10},
+  market:{name:'the market square',w:3,h:3,wood:12,work:44,cond:()=>people.length>=13&&houses.length>=6},
+  mill:{name:'the mill',w:2,h:2,wood:24,work:60,cond:()=>farms.length>=8&&people.length>=11},
+  smoke:{name:'the smokehouse',w:2,h:1,wood:18,work:44,cond:()=>hasB('hut')&&people.length>=15},
+  bridge:{name:'the bridge',w:1,h:1,wood:12,work:30,cond:()=>!!bridgeSite&&dayCount>=12},
+  hall:{name:'the hall',w:3,h:2,wood:30,work:80,cond:()=>people.length>=17},
+  light:{name:'the lighthouse',w:1,h:1,wood:30,work:70,cond:()=>people.length>=20&&!!lightSite}};
+const hasB=k=>bldg.some(b=>b.kind===k), getB=k=>bldg.find(b=>b.kind===k);
+const NAME1=['Salt','Grey','Fen','Low','High','Bell','Stone','Ash','Wyn','Rook','Little','Hearth','Gull','Elm','Cold','Fair','Nether','Wend'],NAME2=['wick','ford','stead','holm','ness','mere','by','combe','stow','haven','strand','hollow','thorpe','sea','shaw'];
+const fogCv=document.createElement('canvas');fogCv.width=W*T;fogCv.height=H*T;const fg=fogCv.getContext('2d');
+const SEASONS=['spring','summer','autumn','winter'];
+const SEASON_LINE={spring:'The first green comes back to the trees, and somewhere on the island something is in blossom.',summer:'The days stretch long and gold. It is summer.',autumn:'The canopy turns. Leaves come down on the paths, and the store begins to matter.',winter:'The first hard frost. Winter has come to the island and the days are short.'};
+const WATER=0,SAND=1,GRASS=2,ROCK=3,FARM=4;
+const idx=(x,y)=>y*W+x, at=(x,y)=>(x<0||y<0||x>=W||y>=H)?WATER:tiles[idx(x,y)];
+const SYL=['ma','ri','en','tho','bel','wyn','ar','os','ka','lin','dor','fen','ha','yv','tam','ro','sel','ing','ula','bra','nis','eo','gwen','ily'];
+const TRAITS=['patient','restless','gossipy','gentle','proud','dreamy','stubborn','brave','homesick','funny'];
+function mkName(){let n=pick(SYL)+pick(SYL);if(R()<.4)n+=pick(SYL);return n[0].toUpperCase()+n.slice(1)}
+const yearOf=d=>Math.floor((d-1)/YEAR)+1, seasonOf=d=>SEASONS[Math.floor(((d-1)%YEAR)/5)], seaDay=()=>((dayCount-1)%YEAR)%5, sea=()=>seasonOf(dayCount);
+const mkTree=(x,y,s)=>({x,y,s,hp:3,b:R()<.45,a:R()});
+function newWorld(s){
+  seed=s;R=mulberry(seed);document.getElementById('seedlbl').textContent='island '+seed.toString(36);
+  const n1=noise2(),n2=noise2();tiles=new Uint8Array(W*H);elev=new Float32Array(W*H);trees=[];houses=[];farms=[];people=[];stumps=[];fx=[];fires=[];graves=[];dead=[];events=[];shore=[];
+  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
+  const cx=W/2,cy=H/2;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const dx=(x-cx)/cx,dy=(y-cy)/cy;const d=Math.sqrt(dx*dx*.9+dy*dy*1.5);
+    let e=n1(x/14,y/14)*.6+n1(x/6,y/6)*.3+n2(x/3,y/3)*.1;e=e-d*d*1.1+.18;elev[idx(x,y)]=e;
+    let t=WATER;if(e>.55)t=ROCK;else if(e>.29)t=GRASS;else if(e>.24)t=SAND;
+    tiles[idx(x,y)]=t;
+    if(t===GRASS&&n2(x/9,y/9)>.55&&R()<.55)trees.push(mkTree(x+rnd(.2,.8),y+rnd(.2,.8),rnd(.6,1)));
+  }
+  // a stream on some islands: from a high inland tile, downhill to the sea (or a pond where it gives up)
+  if(R()<.65){let sx=-1,sy=-1,se=-1;for(let k=0;k<300;k++){const x=(R()*W)|0,y=(R()*H)|0;const e=elev[idx(x,y)];if(at(x,y)!==WATER&&e>se&&e<.6){se=e;sx=x;sy=y}}
+    let x=sx,y=sy,seen=new Set();for(let k=0;k<45&&x>0&&y>0&&x<W-1&&y<H-1;k++){if(at(x,y)===WATER&&!seen.has(idx(x,y)))break;seen.add(idx(x,y));stream.push({x,y});
+      let bx=x,by=y,be=1e9;for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const e=elev[idx(x+dx,y+dy)]+(seen.has(idx(x+dx,y+dy))?9:0);if(e<be){be=e;bx=x+dx;by=y+dy}}if(be>8)break;x=bx;y=by}
+    if(stream.length<8)stream=[];for(const s of stream){tiles[idx(s.x,s.y)]=WATER;elev[idx(s.x,s.y)]=.19}trees=trees.filter(t=>!stream.some(s=>Math.hypot(s.x+.5-t.x,s.y+.5-t.y)<1))}
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(at(x,y)===SAND&&(at(x+1,y)===WATER||at(x-1,y)===WATER||at(x,y+1)===WATER||at(x,y-1)===WATER))shore.push({x,y});
+  // tide band: sand/water tiles within a hair of the waterline; fog mask: low ground and water
+  tideTiles=[];fg.clearRect(0,0,W*T,H*T);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const e=elev[idx(x,y)],t=at(x,y);
+    if(e>.215&&e<.265&&(t===WATER||t===SAND))tideTiles.push({x,y,e,t});
+    const a=e<.36?Math.min(1,(.36-e)/.14):0;if(a>0){fg.fillStyle=`rgba(226,232,238,${(a*.85).toFixed(2)})`;fg.fillRect(x*T,y*T,T,T)}}
+  // village site: grass tile with lots of grass around, near middle
+  let best=null,bs=-1;
+  for(let y=6;y<H-6;y+=2)for(let x=6;x<W-6;x+=2){if(at(x,y)!==GRASS)continue;let c=0;
+    for(let j=-5;j<=5;j++)for(let i=-5;i<=5;i++)if(at(x+i,y+j)===GRASS)c++;
+    const sc=c-Math.hypot(x-cx,y-cy)*.6;if(sc>bs){bs=sc;best={x,y}}}
+  center=best||{x:cx|0,y:cy|0};
+  trees=trees.filter(t=>Math.hypot(t.x-center.x,t.y-center.y)>3.5);
+  // hill for graves: highest grass tile 8–22 tiles from the hearth
+  hill=null;let he=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){if(at(x,y)!==GRASS)continue;const d=Math.hypot(x-center.x,y-center.y);if(d<8||d>22)continue;const e=elev[idx(x,y)];if(e>he){he=e;hill={x,y}}}
+  if(!hill)hill={x:center.x+6,y:center.y-4};
+  // ruins on some islands: a broken stone circle or an old wall, on grass away from the hearth
+  if(R()<.55){let site=null;for(let k=0;k<400&&!site;k++){const x=(R()*(W-8)+4)|0,y=(R()*(H-8)+4)|0;if(at(x,y)!==GRASS)continue;const d=Math.hypot(x-center.x,y-center.y);if(d<9||d>26||Math.hypot(x-hill.x,y-hill.y)<5)continue;let ok=true;for(let j=-3;j<=3&&ok;j++)for(let i=-3;i<=3;i++)if(at(x+i,y+j)!==GRASS){ok=false;break}if(ok)site={x,y}}
+    if(site){const kind=R()<.55?'circle':'wall',st=[];
+      if(kind==='circle'){const n=7+((R()*3)|0);for(let i=0;i<n;i++){if(R()<.3)continue;const a=i/n*6.283;st.push({x:site.x+.5+Math.cos(a)*2.6,y:site.y+.5+Math.sin(a)*1.8,h:2+((R()*3)|0),f:R()<.3,w:1})}}
+      else{const dx=R()<.5?1:0,dy=1-dx,n=8+((R()*4)|0);for(let i=0;i<n;i++){if(R()<.15)continue;st.push({x:site.x+.5+(i-n/2)*dx*.8+rnd(-.05,.05),y:site.y+.5+(i-n/2)*dy*.7+rnd(-.05,.05),h:1+((R()*2)|0),f:R()<.3,w:dx?1:0})}}
+      const legend=kind==='circle'?pick(['the ring the giants left','the ring where the first fires were lit','the ring of the ones who were here before','the dancing stones']):pick(['the wall the sea people built','the old wall nobody finished','the wall the ones before us raised against something']);
+      ruin={kind,x:site.x+.5,y:site.y+.5,st,legend};trees=trees.filter(t=>Math.hypot(t.x-ruin.x,t.y-ruin.y)>3.4)}}
+  // the far island: only ever a silhouette on the horizon (the top edge, over open water), on the side away from the hearth
+  {const w=8+((R()*5)|0);let best=null,bs=-1;for(let x0=3;x0<W-w-3;x0++){let c=0;for(let i=0;i<w;i++)for(let j=0;j<7;j++)if(at(x0+i,j)===WATER)c++;const sc=c+Math.abs(x0+w/2-center.x)*.4+R()*3;if(c>=w*6&&sc>bs){bs=sc;best=x0}}
+    if(best===null){best=center.x<W/2?W-w-4:4}farIsle={x:best,w,h:5+((R()*4)|0),lit:false,k:R()};
+    // deep water for the whale: well out from any land
+    deep=[];for(let y=6;y<H-6;y+=2)for(let x=6;x<W-6;x+=2){if(elev[idx(x,y)]<.02){let ok=true;for(let j=-6;j<=6&&ok;j+=2)for(let i=-6;i<=6;i+=2)if(at(x+i,y+j)!==WATER){ok=false;break}if(ok)deep.push({x,y})}}}
+  // favourite spots
+  const far=shore.reduce((a,b)=>Math.hypot(b.x-center.x,b.y-center.y)>Math.hypot(a.x-center.x,a.y-center.y)?b:a,shore[0]||center);
+  const near=shore.reduce((a,b)=>Math.hypot(b.x-center.x,b.y-center.y)<Math.hypot(a.x-center.x,a.y-center.y)?b:a,shore[0]||center);
+  let rock=null;for(let k=0;k<400&&!rock;k++){const x=(R()*W)|0,y=(R()*H)|0;if(at(x,y)===ROCK)rock={x,y}}
+  const oak=trees.reduce((a,b)=>b.s>a.s?b:a,trees[0]||{x:center.x+2,y:center.y+2});
+  spots=[{l:'the far shore',x:far.x,y:far.y},{l:'the near beach',x:near.x,y:near.y},{l:'the hilltop',x:hill.x,y:hill.y},{l:'the fire',x:center.x,y:center.y},{l:'the old tree',x:oak.x,y:oak.y+.6},{l:'the fields',x:center.x+4,y:center.y+3}];
+  if(rock)spots.push({l:'the grey rocks',x:rock.x,y:rock.y});
+  if(ruin)spots.push({l:'the old stones',x:ruin.x,y:ruin.y+1.6});
+  // landings: shore tiles with open water straight out to sea (boats row in along the ray from the hearth)
+  for(const s of shore){let dx=s.x-center.x,dy=s.y-center.y;const d=Math.hypot(dx,dy)||1;dx/=d;dy/=d;let ok=true;for(let k=1;k<=14&&ok;k++){const x=Math.round(s.x+dx*k),y=Math.round(s.y+dy*k);if(x>=0&&y>=0&&x<W&&y<H&&at(x,y)!==WATER)ok=false}
+    if(ok)landings.push({x:s.x,y:s.y,dx,dy,d})}
+  landings.sort((a,b)=>a.d-b.d);
+  // lighthouse: the rock (or sand) tile with the most sea around it, well away from the hearth
+  {let best=null,bs=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){const t=at(x,y);if(t!==ROCK&&t!==SAND)continue;let w=0;for(let j=-3;j<=3;j++)for(let i=-3;i<=3;i++)if(at(x+i,y+j)===WATER)w++;if(w<14)continue;const sc=w+(t===ROCK?12:0)-Math.hypot(x-center.x,y-center.y)*.15;if(sc>bs){bs=sc;lightSite={x,y}}}}
+  if(stream.length){let bd=1e9;for(const s of stream){const d=Math.hypot(s.x-center.x,s.y-center.y);if(d<bd&&d>2){bd=d;bridgeSite=s}}}
+  for(let i=0;i<4;i++)addPerson(center.x+rnd(-2,2),center.y+rnd(-2,2),{age:i===0?rnd(54,61)|0:rnd(20,38)|0,born:1,how:i===0?'waded ashore with the first four, the eldest of them':'waded ashore with the first four'});
+  people.forEach(p=>meet(p,1,3));
+  paintTerrain();document.getElementById('log').innerHTML='';showCard(null);showChron(false);
+  addEvent('landing','the day the four of them came ashore','Four of them waded ashore out of a small boat and chose a clearing for a fire.');
+  if(ruin){addEvent('ruin',ruin.legend,`They found ${ruin.kind==='circle'?'a ring of standing stones':'a length of old wall'} standing on the grass, older than anyone, and called it ${ruin.legend}.`)}
+  spawnWildlife();mkCloudSprites();for(let i=0;i<2;i++)addCloud(false);
+  say(`Four travellers wade ashore and choose a clearing for their hearth.`);
+}
+function addPerson(x,y,o={}){let n=o.name;if(!n){do n=mkName();while(names.has(n))}names.add(n);
+  const age=o.age!==undefined?o.age:rnd(18,44)|0, born=dayCount, tr=[];
+  if(o.child){/* children get traits when grown */}else{tr.push(pick(TRAITS));let t2;do t2=pick(TRAITS);while(t2===tr[0]);tr.push(t2)}
+  const p={x,y,name:n,age0:age,born,tr,spot:pick(spots),rels:[],hist:[],task:'idle',t:rnd(1,3),tx:x,ty:y,carry:0,col:pick(['#c96b4a','#5b8db8','#c9a24a','#7fa85b','#a06fb8','#d08fa0','#6ab0a8']),
+    hair:pick(['#2a1c12','#4a2f1a','#6b3d1f','#8a5a2b','#b07a3a','#c9a24a','#7a2e1e','#1a1a1e']),home:null,off:rnd(6.28),seed:hash(n)^seed,partner:null,parents:o.parents||[],alive:true,dead:false,fishRain:0,visits:0};
+  if(o.child)p.child=true;
+  p.hist.push({d:dayCount,s:o.how||(o.child?'born here':'came ashore in a small boat')});
+  people.push(p);return p}
+const ageOf=p=>p.age0+(dayCount-p.born)/YEAR, ageI=p=>Math.floor(ageOf(p)), isKid=p=>ageOf(p)<14, isElder=p=>ageOf(p)>=60;
+const B=p=>`<b>${p.name}</b>`;
+const byName=n=>people.find(p=>p.name===n);
+function relate(a,b,k){if(a===b||a.rels.some(r=>r.who===b.name))return;a.rels.push({who:b.name,k});const inv={friend:'friend',rival:'rival',partner:'partner',parent:'child',child:'parent'}[k];b.rels.push({who:a.name,k:inv})}
+function meet(p,lo,hi){const others=people.filter(q=>q!==p&&!isKid(q)&&!q.dead);const n=Math.min(others.length,lo+(R()*(hi-lo+1))|0);
+  for(let i=0;i<n;i++){const q=pick(others);if(q.rels.some(r=>r.who===p.name))continue;const k=R()<.72?'friend':'rival';relate(p,q,k)}}
+function relOf(p,k){const r=p.rels.filter(r=>(!k||r.k===k)&&byName(r.who));return r.length?byName(pick(r).who):null}
+function addEvent(kind,label,st){const e={d:dayCount,y:yearOf(dayCount),kind,label,st:st||null};events.push({d:e.d,y:e.y,kind,label});if(events.length>40)events.shift();
+  chron.push(e);if(chronEl&&!chronEl.hidden)renderChron()}
+// ---------- terrain painting ----------
+const GRASS_PAL={spring:['#5f8f3e','#5a8a3b','#659745','#568437'],summer:['#6c923f','#678d3c','#729a46','#618639'],autumn:['#7c8a3d','#76853a','#838f45','#6f7f36'],winter:['#5c7a45','#587643','#617f4a','#546f40']};
+const TUFT={spring:'#4e7a31',summer:'#5a7a2e',autumn:'#8a7a2e',winter:'#4a6638'};
+function paintTerrain(){
+  const s=sea(),sq=Math.round(snowD*6)/6;paintedKey=s+'|'+sq+'|'+frozen+'|'+roadV;
+  const pal={[WATER]:['#274c78','#2b5687','#2f5f93'],[SAND]:['#cdb98a','#d4c294','#c6ad7c'],[GRASS]:GRASS_PAL[s],[ROCK]:['#6f6a60','#7b756a','#645f56']};
+  const ICE=['#b9d3e3','#c4dbe8','#adc9dc'];
+  const rr=mulberry(seed^99);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const t=tiles[idx(x,y)],e=elev[idx(x,y)];const r1=rr(),r2=rr(),r3=rr(),r4=rr(),r5=rr(); // fixed draw per tile so repaints don't shuffle the ground
+    const c=pal[t]||pal[GRASS];tg.fillStyle=c[(r1*c.length)|0];tg.fillRect(x*T,y*T,T,T);
+    if(t===GRASS&&r2<.12){tg.fillStyle=TUFT[s];tg.fillRect(x*T+((r3*6)|0),y*T+((r4*6)|0),2,1)}
+    if(t===WATER&&frozen&&e>.16){tg.fillStyle=ICE[(r1*3)|0];tg.fillRect(x*T,y*T,T,T);if(r5<.15){tg.fillStyle='#8fb0c8';tg.fillRect(x*T+((r3*5)|0),y*T+((r4*7)|0),3,1)}}
+    else if(t===WATER&&at(x,y-1)!==WATER){tg.fillStyle='#8fb6d6';tg.fillRect(x*T,y*T,T,1)}
+    if(t===ROCK&&r2<.3){tg.fillStyle='#e6e2d8';tg.fillRect(x*T+2,y*T+1,3,2)}
+    const rd=road[idx(x,y)];if(rd===1){tg.fillStyle=r1<.5?'#8a7248':'#7e6841';tg.fillRect(x*T,y*T,T,T);tg.fillStyle='#6b5735';tg.fillRect(x*T+((r3*6)|0),y*T+((r4*7)|0),2,1)}
+    else if(rd===2){tg.fillStyle=r1<.5?'#a39682':'#968a76';tg.fillRect(x*T,y*T,T,T);tg.fillStyle='#b5a892';tg.fillRect(x*T+1,y*T+1,3,2);tg.fillRect(x*T+5,y*T+4,2,2);tg.fillStyle='#7a6f5e';tg.fillRect(x*T+4,y*T+1,1,2);tg.fillRect(x*T+1,y*T+5,2,1);tg.fillRect(x*T+3,y*T+6,3,1)}
+    if(sq>0&&t!==WATER&&t!==FARM){const cover=(t===ROCK?1.2:t===SAND?.8:rd?.6:1)*sq;if(r5<cover*1.05){tg.fillStyle=r4<.8?'#eef2f4':'#dfe6ea';tg.fillRect(x*T,y*T,T,T);if(r3<.2){tg.fillStyle='#f8fafb';tg.fillRect(x*T+((r4*6)|0),y*T+((r1*6)|0),2,1)}}
+      else if(r5<cover*1.6){tg.fillStyle='#eef2f4';tg.fillRect(x*T+((r4*4)|0),y*T+((r1*4)|0),4,3)}}
+  }
+}
+// ---------- log ----------
+const logEl=document.getElementById('log');
+function say(s,force,tag){const key=tag||s.replace(/<[^>]+>/g,'');if(!force&&saidToday.has(key))return false;saidToday.add(key);
+  const p=document.createElement('p');p.innerHTML=`<i>day ${dayCount}</i>${s}`;logEl.appendChild(p);while(logEl.children.length>9)logEl.removeChild(logEl.firstChild);return true}
+// ---------- helpers ----------
+const dayFrac=()=>(time%dayLen)/dayLen; // 0 midnight .. .5 noon
+const EDGE={spring:[.2,.8],summer:[.15,.86],autumn:[.2,.8],winter:[.27,.73]}; // when night ends / begins, by season (winter days are short)
+const edges=()=>EDGE[sea()];
+const isNight=()=>{const f=dayFrac(),e=edges();return f<e[0]||f>e[1]};
+const isDusk=()=>{const f=dayFrac(),e=edges();return f>e[1]-.1&&f<e[1]};
+const light=()=>{const f=dayFrac(),e=edges();const t=Math.max(-.15,Math.min(1.15,(f-e[0])/(e[1]-e[0])));return Math.max(0,Math.min(1,(Math.sin(t*Math.PI)+.45)/1.15))};
+const tide=()=>Math.sin(dayFrac()*4*Math.PI+(seed%7)); // two tides a day; +1 high, -1 low
+function nearestTree(x,y){let b=null,bd=1e9;for(const t of trees){if(t.hp<=0||t.s<.5)continue;const d=Math.hypot(t.x-x,t.y-y);if(d<bd){bd=d;b=t}}return b}
+function nearestShore(x,y){let b=null,bd=1e9;for(const s of shore){const d=Math.hypot(s.x-x,s.y-y);if(d<bd){bd=d;b=s}}return b}
+const bAll=()=>bldgTgt?bldg.concat([bldgTgt]):bldg;
+function freeSpot(r0,r1,need=1){for(let k=0;k<80;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(center.x+Math.cos(a)*r),y=Math.round(center.y+Math.sin(a)*r*.75);
+  let ok=true;for(let j=0;j<need&&ok;j++)for(let i=0;i<need;i++){if(at(x+i,y+j)!==GRASS){ok=false;break}
+    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
+  if(ok)return{x,y}}return null}
+function freeSpotNear(cx,cy,r0,r1,need){for(let k=0;k<60;k++){const a=rnd(6.28),r=rnd(r0,r1);const x=Math.round(cx+Math.cos(a)*r),y=Math.round(cy+Math.sin(a)*r*.75);
+  let ok=true;for(let j=0;j<need&&ok;j++)for(let i=0;i<need;i++){if(at(x+i,y+j)!==GRASS){ok=false;break}
+    if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
+  if(ok)return{x,y}}return null}
+function walk(p,dt){const dx=p.tx-p.x,dy=p.ty-p.y,d=Math.hypot(dx,dy);let sp=(isNight()?1.6:2.6)*dt*(1-hunger*.3);if(isElder(p))sp*=.7;if(isKid(p))sp*=.85;if(snowD>.5&&at(p.x|0,p.y|0)!==WATER)sp*=.85;if(d<sp){p.x=p.tx;p.y=p.ty;return true}p.x+=dx/d*sp;p.y+=dy/d*sp;const hi=idx(p.x|0,p.y|0);if(hi>=0&&hi<W*H)heat[hi]+=dt;return false}
+function popCap(){return 4+houses.length*2}
+const has=(p,t)=>p.tr.includes(t);
+const workRate=p=>(has(p,'patient')?1.15:1)*(isElder(p)?.7:1)*(1-hunger*.5);
+function homeOf(p){if(p.home&&houses.includes(p.home))return p.home;if(p.child){const par=p.parents.map(byName).find(q=>q&&q.home);if(par){p.home=par.home;return p.home}}
+  const h=houses.find(h=>h.owners.length<2&&!h.owners.some(n=>{const q=byName(n);return q&&q.partner&&q.partner!==p.name}));if(h&&!isKid(p)){h.owners.push(p.name);p.home=h;return h}return null}
+function goTo(p,x,y,task,dwell){p.tx=x+rnd(-.4,.4);p.ty=y+rnd(-.3,.3);p.task=task;p.dwell=dwell||0}
+// ---------- log grammar ----------
+// each template: {c: cond(ctx)->bool, t: text with slots, w: weight}. Slots: {A} {B} {C} names, {rel} A–B relation, {spot} A's favourite spot, {sea} season, {wx} weather word, {ev} a remembered event, {age}
+const WX=()=>storm?'the storm':rain?'the rain':wx==='snow'?'the snow':wx==='fog'?'the fog':isNight()?'the dark':dayFrac()<edges()[0]+.1?'the early light':dayFrac()>edges()[1]-.1?'the evening':wx==='overcast'?'the grey':'the sun';
+const G=[
+  // relationships
+  {c:x=>x.b&&x.rel==='friend'&&x.night,t:'{A} and {B} sit late by the fire. Neither of them is saying much.'},
+  {c:x=>x.b&&x.rel==='friend'&&x.ev,t:'{A} and {B} sit by the fire; {A} is telling the story of {ev} again.'},
+  {c:x=>x.b&&x.rel==='friend'&&!x.night,t:'{A} and {B} share the shade at {spot} and talk about nothing in particular.'},
+  {c:x=>x.b&&x.rel==='rival',t:'{A} and {B} disagree, again, about the right way to stack a woodpile.'},
+  {c:x=>x.b&&x.rel==='rival'&&x.rain,t:'{A} says the rain is {B}\'s fault somehow. {B} does not dignify it.'},
+  {c:x=>x.b&&x.rel==='rival'&&x.stubborn,t:'{A} will not be the first to speak to {B}. It has been three days.'},
+  {c:x=>x.b&&x.rel==='partner',t:'{A} saves the softer bread for {B} without mentioning it.'},
+  {c:x=>x.b&&x.rel==='partner'&&x.night,t:'{A} and {B} walk home together in {wx}, not hurrying.'},
+  {c:x=>x.b&&x.rel==='partner'&&x.rain,t:'{A} holds a cloak over {B}\'s head all the way from the fields.'},
+  {c:x=>x.b&&x.rel==='child',t:'{A} shows {B} how to tell a ripe ear from a green one. {B} is more interested in a beetle.'},
+  {c:x=>x.b&&x.rel==='child'&&x.night,t:'{A} carries {B} home asleep from the fire.'},
+  {c:x=>x.b&&x.rel==='parent',t:'{A} tries to walk exactly in {B}\'s footprints.'},
+  {c:x=>x.b&&x.rel==='parent'&&x.dusk,t:'{A} sits on {B}\'s knee at dusk and asks where the sun goes.'},
+  // gossipy
+  {c:x=>x.gossipy&&x.b&&x.c,t:'{A} tells {B} something about {C} that {C} would rather stayed private.'},
+  {c:x=>x.gossipy&&x.b,t:'{A} has a theory about why {B} was late this morning, and shares it widely.'},
+  {c:x=>x.gossipy&&x.c&&x.b,t:'According to {A}, {B} and {C} were seen at {spot} together. Twice.'},
+  {c:x=>x.gossipy,t:'{A} counts the loaves in the store and tells everyone the number.'},
+  // restless / homesick / dreamy
+  {c:x=>x.restless&&!x.night,t:'{A} walks the whole shore before breakfast and comes back no calmer.'},
+  {c:x=>x.restless&&x.night,t:'{A} lies awake listening to the water and thinking about the far side of it.'},
+  {c:x=>x.homesick,t:'{A} looks out to sea from {spot} and names the people who are not here.'},
+  {c:x=>x.homesick&&x.rain,t:'{A} says the rain sounds like the rain at home. It sounds like rain.'},
+  {c:x=>x.homesick&&x.b,t:'{A} tells {B} about a house that had a blue door. {B} has heard about the blue door.'},
+  {c:x=>x.dreamy&&!x.night,t:'{A} stops halfway through a task to watch a cloud change its mind.'},
+  {c:x=>x.dreamy&&x.night,t:'{A} counts the stars over the water and loses the count on purpose.'},
+  {c:x=>x.dreamy&&x.b,t:'{A} tells {B} what the island will look like in a hundred years. {B} nods, kindly.'},
+  // gentle / patient / stubborn / proud / brave / funny
+  {c:x=>x.gentle&&x.b,t:'{A} notices {B} is tired and quietly takes the heavier basket.'},
+  {c:x=>x.gentle&&x.graves,t:'{A} pulls the weeds from around the stones on the hill.'},
+  {c:x=>x.gentle,t:'{A} sets a bit of grain out for the birds and pretends it was spilled.'},
+  {c:x=>x.patient,t:'{A} sharpens the axe for a long time before using it once.'},
+  {c:x=>x.patient&&x.b,t:'{A} explains a knot to {B} for the fourth time, no differently from the first.'},
+  {c:x=>x.stubborn,t:'{A} finishes the row in {wx} because {A} said the row would be finished.'},
+  {c:x=>x.stubborn&&x.b,t:'{B} suggests a shorter path. {A} takes the long one.'},
+  {c:x=>x.proud,t:'{A} will not be seen pulling weeds, and takes the axe instead.'},
+  {c:x=>x.proud&&x.b,t:'{A} corrects {B}\'s grip on the hammer. It was fine.'},
+  {c:x=>x.brave&&x.rain,t:'{A} goes down to the water in {wx} with a line and comes back wet and pleased.'},
+  {c:x=>x.brave,t:'{A} climbs the grey rocks to see what is on the other side. Sea, mostly.'},
+  {c:x=>x.funny&&x.b,t:'{A} does an impression of {B} that {B} pretends not to enjoy.'},
+  {c:x=>x.funny&&x.rain,t:'{A} announces that {wx} is a good sign, and refuses to say of what.'},
+  {c:x=>x.funny&&x.c&&x.b,t:'{A} makes {B} laugh so hard that {C} comes over to see what happened.'},
+  // weather / season / general
+  {c:x=>x.storm,t:'The wind takes the smoke sideways. {A} ties down the woodpile.'},
+  {c:x=>x.rain&&!x.night,t:'{A} stands under the eaves and watches {wx} fill the ruts.'},
+  {c:x=>x.sea==='spring',t:'{A} finds the first green shoots and tells everyone, in case they had not seen.'},
+  {c:x=>x.sea==='summer'&&!x.night,t:'{A} lies in the long grass at {spot} through the hot part of the day.'},
+  {c:x=>x.sea==='autumn',t:'{A} smells woodsmoke and cold on the wind and says the year is turning.'},
+  {c:x=>x.sea==='winter'&&x.night,t:'{A} feeds the fire twice before sleeping. The nights are long now.'},
+  {c:x=>x.elder,t:'{A} sits by the fire and tells anyone who passes that the winters used to be worse.'},
+  {c:x=>x.elder&&x.b,t:'{A} tells {B} how the first house was raised. {B} has heard it. {B} listens anyway.'},
+  {c:x=>x.kid&&x.b,t:'{A} follows {B} around the fields asking why.'},
+  {c:x=>x.kid,t:'{A} finds a crab at {spot} and names it.'},
+  {c:x=>x.ev&&x.b,t:'{B} asks {A} about {ev}. {A} tells it a little differently each time.'},
+  {c:x=>x.hungry&&!x.kid,t:'{A} pretends not to be hungry so the others will eat.'},
+  {c:x=>true,t:'{A} finds a smooth blue stone at {spot} and keeps it.',w:.5},
+  {c:x=>!x.kid,t:'{A} hums an old song while working. Nobody knows the words.',w:.5},
+  {c:x=>x.b&&!x.kid,t:'{A} and {B} argue about whether the wind smells like rain.',w:.5},
+  // weather fronts, seasons, store, tide (sprint 2)
+  {c:x=>x.fog,t:'{A} walks into the fog and comes back out of it somewhere else, surprised.'},
+  {c:x=>x.fog&&x.b,t:'{A} calls to {B} through the fog and gets an answer from the wrong direction.'},
+  {c:x=>x.fog&&x.homesick,t:'{A} says a fog like this could hide a whole coast. {A} looks for one anyway.'},
+  {c:x=>x.snow&&!x.kid,t:'{A} holds out a hand and lets the snow settle on it, and does not brush it off.'},
+  {c:x=>x.snow&&x.kid,t:'{A} tries to catch snow on the tongue and reports on the taste.'},
+  {c:x=>x.snow&&x.b,t:'{A} and {B} stamp the path down to the water so it will still be there tomorrow.'},
+  {c:x=>x.thunder,t:'{A} counts between the flash and the sound, and says it is getting closer.'},
+  {c:x=>x.thunder&&x.brave,t:'{A} stands in the doorway watching the lightning while everyone else pretends not to.'},
+  {c:x=>x.thunder&&x.kid&&x.b,t:'{A} climbs into {B}\'s lap at the first crack of thunder and stays there.'},
+  {c:x=>x.thunder&&x.b&&x.rel==='rival',t:'{A} and {B} end up under the same roof for the storm and manage not to speak of it.'},
+  {c:x=>x.ice&&!x.kid,t:'{A} tests the ice on the shallows with one foot, then the other, then walks back.'},
+  {c:x=>x.ice&&x.kid,t:'{A} slides across the frozen shallows and falls, and does it again.'},
+  {c:x=>x.hungry&&x.b,t:'{A} and {B} both say they ate already. Neither did.'},
+  {c:x=>x.hungry&&x.gossipy,t:'{A} has worked out exactly how many days the store will last, and tells everyone.'},
+  {c:x=>x.hungry&&x.patient,t:'{A} makes the thin soup last by stirring it for a long time.'},
+  {c:x=>x.hungry&&x.kid&&x.b,t:'{B} gives {A} the larger half and says it was the smaller.'},
+  {c:x=>x.sea==='autumn'&&x.b&&!x.night,t:'{A} and {B} carry the last baskets to the store and stand looking at it, weighing the winter.'},
+  {c:x=>x.sea==='autumn'&&x.leaves,t:'{A} walks through the fallen leaves on purpose, for the sound.'},
+  {c:x=>x.sea==='winter'&&!x.night,t:'{A} feeds the fire and looks at the woodpile and does the arithmetic.'},
+  {c:x=>x.sea==='winter'&&x.night&&x.b,t:'{A} and {B} sleep close for the warmth and say it is only for the warmth.'},
+  {c:x=>x.sea==='spring'&&x.b&&x.blossom,t:'{A} shakes a blossoming branch over {B} and pretends it was the wind.'},
+  {c:x=>x.sea==='summer'&&x.night,t:'{A} sleeps outside because the house holds the heat, and wakes wet with dew.'},
+  {c:x=>x.sea==='summer'&&!x.night&&x.b,t:'{A} and {B} wade out to the knees at noon and stand there, saying nothing about work.',w:.5},
+  {c:x=>x.lowtide&&!x.night,t:'{A} walks out on the wet sand at low tide and finds a shell the size of a hand.',w:.5},
+  {c:x=>x.hightide&&x.kid,t:'{A} draws a line in the sand and waits for the tide to take it.'},
+  {c:x=>x.overcast,t:'{A} says it will rain. It does not rain. {A} says it will rain tomorrow.'},
+  // the town (sprint 3)
+  {c:x=>x.market&&!x.night&&x.b,t:'{A} and {B} meet at the market and settle nothing about the price of anything.'},
+  {c:x=>x.market&&x.gossipy,t:'{A} holds court at the market and knows who has been buying what, and why.'},
+  {c:x=>x.market&&x.kid,t:'{A} runs between the stalls and is given a broken biscuit at each one.'},
+  {c:x=>x.mill&&x.dreamy,t:'{A} watches the mill sail go round until it is not clear who is turning whom.'},
+  {c:x=>x.mill&&x.kid&&x.b,t:'{B} lifts {A} to touch the mill sail as it passes, and {A} screams, happily.'},
+  {c:x=>x.well&&x.b,t:'{A} and {B} meet at the well and take a long time about a short bucket.'},
+  {c:x=>x.well&&x.hungry,t:'{A} drinks at the well and calls it a meal.'},
+  {c:x=>x.hall&&x.night,t:'{A} sits in the hall after the others have gone and listens to the bell rope creak.'},
+  {c:x=>x.hall&&x.b&&x.rel==='rival',t:'{A} and {B} sit on opposite benches in the hall and address the room, not each other.'},
+  {c:x=>x.light&&x.night,t:'{A} counts the beam going round from the doorstep. Nine, and then nine again.'},
+  {c:x=>x.light&&x.homesick&&x.night,t:'{A} watches the lighthouse sweep the dark and wonders if anyone out there sees it.'},
+  {c:x=>x.hut&&x.b,t:'{A} mends a net on the hut steps while {B} tells the story of the one that was bigger.'},
+  {c:x=>x.smoke,t:'{A} comes back from the smokehouse smelling of it and denies it.'},
+  {c:x=>x.bridge&&x.kid,t:'{A} drops sticks off the bridge and races them to the other side.'},
+  {c:x=>x.bridge&&x.b,t:'{A} and {B} stop halfway across the bridge, which is where the talking happens.'},
+  {c:x=>x.trader&&x.b,t:'{A} and {B} stand on the shore pretending not to be waiting for the trader\'s boat.'},
+  {c:x=>x.trader&&x.gossipy,t:'{A} has already asked the trader three questions and answered two of them.'},
+  {c:x=>x.road&&!x.night,t:'{A} walks the path to the fields without looking down. It knows the way.',w:.35},
+  {c:x=>x.named&&x.homesick,t:'{A} says the name of {village} out loud, once, to see how it sounds. It sounds all right.',w:.4},
+  {c:x=>x.named&&x.elder,t:'{A} remembers when {village} was four people and a fire, and says so, and is not contradicted.'},
+  // wildlife and the wider world (sprint 4)
+  {c:x=>x.deer&&x.kid,t:'{A} sees a deer at the edge of the trees and stands very still, and it goes anyway.'},
+  {c:x=>x.deer&&x.gentle,t:'{A} leaves the last of the windfalls under the trees for the deer, and says the birds must have had them.'},
+  {c:x=>x.deer&&x.brave&&x.b,t:'{A} tells {B} the deer are getting bolder. {B} says it is {A} who is getting slower.'},
+  {c:x=>x.gulls&&x.funny,t:'{A} does the gulls, all of them, in order. The gulls do not think it is funny either.'},
+  {c:x=>x.gulls&&x.hut&&x.b,t:'{A} and {B} eat on the hut steps and lose half of it to the gulls, who were counting on it.'},
+  {c:x=>x.gulls&&x.gossipy,t:'{A} says the gulls know when the boat is coming in before anyone, and is right, and is insufferable about it.'},
+  {c:x=>x.rabbits&&x.farms&&!x.night,t:'{A} chases a rabbit out of the field and it comes back in behind {A}, and this goes on for a while.'},
+  {c:x=>x.rabbits&&x.kid&&x.b,t:'{A} shows {B} where the rabbits come out at dusk, and they both lie in the grass to watch, and fall asleep.'},
+  {c:x=>x.fox&&x.night,t:'Something small screams once out in the dark. {A} says fox, and it was.'},
+  {c:x=>x.fox&&x.night&&x.b,t:'{A} sees the fox cross the path in the light of the fire, and tells {B}, who says there is no fox, and there is.'},
+  {c:x=>x.fireflies&&x.kid,t:'{A} runs after the little lights over the grass with cupped hands and comes back with nothing, and is delighted.'},
+  {c:x=>x.fireflies&&x.dreamy,t:'{A} sits in the long grass with the fireflies and does not come in until they have gone out.'},
+  {c:x=>x.fireflies&&x.b&&x.rel==='partner',t:'{A} and {B} watch the fireflies from the doorstep and do not need to say anything about them.'},
+  {c:x=>x.geese&&x.homesick,t:'The geese go over in a long V, going the way {A} came from. {A} watches them out of sight.'},
+  {c:x=>x.geese&&x.kid,t:'{A} counts the geese going over and gets a different number every time.'},
+  {c:x=>x.geese&&x.elder,t:'{A} hears the geese before anyone sees them and says it will be a hard winter. {A} says this every year.'},
+  {c:x=>x.whale&&x.dreamy,t:'Far out, something breathes. {A} sees the spout go up and does not tell anyone, and keeps it.'},
+  {c:x=>x.whale&&x.b,t:'{A} points out to sea and by the time {B} looks it is gone. {B} believes {A}, mostly.'},
+  {c:x=>x.whale&&x.elder,t:'{A} says the big fish come past this time of year, and always have, and always will.'},
+  {c:x=>x.fish&&x.kid,t:'{A} lies on the sand and watches the fish shadows in the shallows go where they go.'},
+  {c:x=>x.fish&&x.patient,t:'{A} stands in the shallows very still until the fish forget about the feet.'},
+  {c:x=>x.far&&x.restless&&!x.fog,t:'{A} looks at the far island on the horizon for a long time. It has not moved.'},
+  {c:x=>x.far&&x.homesick&&x.dusk,t:'At dusk the far island is a darker line on the dark. {A} wonders who lights fires there, if anyone.'},
+  {c:x=>x.far&&x.kid&&x.b,t:'{A} asks {B} what is on the far island. {B} says giants. {A} thinks about this for a long time.'},
+  {c:x=>x.far&&x.dreamy&&x.b,t:'{A} tells {B} the far island is where the weather is kept. {B} lets it stand.'},
+  {c:x=>x.far&&x.brave&&!x.voyaged,t:'{A} says someone should take a boat out to the far island and see. Nobody says who.'},
+  {c:x=>x.away&&x.b,t:'{A} and {B} both look out to the far island and neither of them says the name that is on both their minds.'},
+  {c:x=>x.away&&x.gossipy,t:'{A} has three theories about what {voy} found on the far island, and shares them, and prefers the worst one.'},
+  {c:x=>x.stayed&&x.night&&!x.fog,t:'There is a light on the far island tonight. It could be anyone. Everyone at the fire says it is {voy}.'},
+  {c:x=>x.stayed&&x.homesick,t:'{A} looks out at the far island and says {voy} chose it, and that some people do.'},
+  {c:x=>x.ruin&&x.kid,t:'{A} climbs the old stones and is told to get down, and gets down, and climbs them again.'},
+  {c:x=>x.ruin&&x.elder&&x.b,t:'{A} tells {B} the old stones were here before the trees. {B} asks how {A} knows. {A} was told, by someone who was told.'},
+  {c:x=>x.ruin&&x.gossipy,t:'{A} has worked out that the old stones were put up by giants, and cannot be talked out of it.'},
+  {c:x=>x.ruin&&x.dreamy&&x.night,t:'{A} sits among the old stones after dark to see if anything happens. Nothing happens, and it is very good.'},
+  {c:x=>x.ruin&&x.brave,t:'{A} lifts one of the fallen stones and cannot, and pretends that was not what {A} was doing.'},
+  {c:x=>x.ruin&&x.gentle,t:'{A} pulls the ivy back from the old stones so that whoever set them would know they were seen.'},
+  {c:x=>x.ruin&&x.b&&x.rel==='rival',t:'{A} and {B} disagree about who built the old stones. Neither of them was there.'},
+];
+function eventLabel(){if(!events.length)return null;const e=events[(R()*events.length)|0];return e.label}
+function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
+  // gossipy islanders are picked more often
+  const wts=cand.map(p=>has(p,'gossipy')?2.2:1);let s=wts.reduce((a,b)=>a+b,0),r=R()*s,a=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){a=cand[i];break}}
+  const rel=a.rels.length&&R()<.75?a.rels[(R()*a.rels.length)|0]:null;const b=rel?byName(rel.who):(cand.length>1?pick(cand.filter(p=>p!==a)):null);
+  const c=cand.length>2?pick(cand.filter(p=>p!==a&&p!==b)):null;
+  const td=tide();
+  const ctx={a,b,c,rel:rel?rel.k:null,night:isNight(),dusk:isDusk(),rain,storm,thunder:storm,market:hasB('market'),mill:hasB('mill'),well:hasB('well'),hall:hasB('hall'),light:hasB('light'),hut:hasB('hut'),smoke:hasB('smoke'),bridge:hasB('bridge'),trader:!!trader,road:roadV>0,named:!!village,deer:wild.some(w=>w.k==='deer'),rabbits:wild.some(w=>w.k==='rabbit'),farms:farms.length>0,fox:wild.some(w=>w.k==='fox'),gulls:gulls.length>0,fireflies:flies.length>0,geese:geeseDay===dayCount,whale:!!whale||whaleDay===dayCount,fish:fishSh.length>0&&!frozen,far:!!farIsle,voyaged:!!voyage,away:!!voyage&&voyage.st==='away',stayed:!!voyage&&voyage.st==='stayed',ruin:!!ruin&&ruinSeen>0,fog:wx==='fog',snow:wx==='snow',overcast:wx==='overcast',ice:frozen,hungry:hunger>.25,leaves:seaDay()>=2,blossom:seaDay()<=3,lowtide:td<-.6,hightide:td>.6,sea:seasonOf(dayCount),ev:eventLabel(),graves:graves.length>0,elder:isElder(a),kid:isKid(a)};
+  for(const t of TRAITS)ctx[t]=has(a,t);
+  const ok=G.filter(t=>t.c(ctx)&&(usedTpl.get(t)||0)<dayCount);if(!ok.length)return;
+  const wt=ok.map(t=>t.w||1);s=wt.reduce((x,y)=>x+y,0);r=R()*s;let tpl=ok[0];for(let i=0;i<ok.length;i++){r-=wt[i];if(r<=0){tpl=ok[i];break}}
+  const txt=tpl.t.replace(/{A}/g,B(a)).replace(/{B}/g,b?B(b):'someone').replace(/{C}/g,c?B(c):'someone').replace(/{spot}/g,a.spot.l).replace(/{sea}/g,ctx.sea).replace(/{wx}/g,WX()).replace(/{ev}/g,ctx.ev||'the first landing').replace(/{village}/g,V()).replace(/{voy}/g,voyage?voyage.name:'someone');
+  if(say(txt))usedTpl.set(tpl,dayCount)}
+// ---------- life ----------
+function newDay(){saidToday=new Set();
+  const yr=yearOf(dayCount),s=sea();
+  wakeDreams();
+  // paths where people walk; cobbles once the village is big
+  {let ch=false;const cob=houses.length>=10;for(let i=0;i<W*H;i++){const h=heat[i];heat[i]=h*.8;const t=tiles[i];if(t===WATER||t===FARM||t===ROCK)continue;
+      if(h>26&&road[i]===0){road[i]=1;ch=true}else if(cob&&h>60&&road[i]===1){road[i]=2;ch=true}}
+    if(ch){roadV++;if(roadV===1)say('There is a path now, worn between the fire and the fields, that nobody made on purpose.');else if(cob&&!saidToday.has('cob')&&road.some(r=>r===2)&&R()<.3)say(`Someone has started laying stones on the muddy stretch by the well. ${V()} has a street.`,false,'cob')}}
+  // the old stones get noticed, and named
+  if(ruin&&!ruinSeen&&dayCount>=2){ruinSeen=dayCount;const p=pick(people.filter(q=>!q.dead&&!isKid(q))||people);const what=ruin.kind==='circle'?'a ring of standing stones, some fallen, that nobody living set':'a length of old wall, tumbled, that nobody living built';
+    say(`Beyond the trees there is ${what}. ${B(p)} says it is ${ruin.legend}, and that is what it will be called.`,true);p.hist.push({d:dayCount,s:`named the old stones: ${ruin.legend}`})}
+  // once, someone decides to see the far island
+  if(farIsle&&!voyage&&dayCount>=16&&people.length>=8&&landings.length&&R()<.09){const cand=people.filter(p=>!p.dead&&!isKid(p)&&!isElder(p)&&!p.partner&&!people.some(k=>k.parents.includes(p.name)));
+    if(cand.length>=2){const wts=cand.map(p=>(has(p,'restless')?3:0)+(has(p,'brave')?2:0)+(has(p,'homesick')?2:0)+(has(p,'dreamy')?1.5:0)+(p.dreamFar?4:0)+.3);let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum,p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}
+      voyage={name:p.name,st:'decided',p,day:dayCount,back:R()<(has(p,'brave')?.75:has(p,'homesick')?.3:has(p,'restless')?.45:.55)}}}
+  if(voyage&&voyage.st==='away'&&dayCount>=voyage.day+(voyage.back?voyage.n:4)){
+    if(voyage.back){const l=landings[0];spawnBoat('return',l,{p:voyage.p})}
+    else{voyage.st='stayed';farIsle.lit=true;say(`${B(voyage.p)} has not come back from the far island. Nobody says it at the fire, but at dusk they look that way.`,true);addEvent('stayed',`the ${sea()} ${voyage.name} did not come back from the far island`,`${voyage.name} did not come back from the far island. After that there was a light out there on clear nights, and everyone had an opinion about it.`);
+      for(const q of people){const r=q.rels.find(r=>r.who===voyage.name);if(r)q.hist.push({d:dayCount,s:`stopped waiting for ${voyage.name} to come back from the far island`})}}}
+  if(dayCount===10&&!village){village=pick(NAME1)+pick(NAME2);say(`By now the place has a name. Nobody decided it; it is simply ${village}, and has been for a while.`,true);addEvent('name',`the naming of ${village}`,`The place turned out to be called ${village}. Nobody decided it and nobody argued.`);document.getElementById('seedlbl').textContent=village+' · island '+seed.toString(36)}
+  if(s!==lastSea){lastSea=s;say(SEASON_LINE[s],true);if(s==='winter'){const need=people.length*13;say(granary+food>=need?`The store holds ${granary}. It should see the village through.`:granary+food>=need*.5?`The store holds ${granary}. It will be a thin winter.`:`The store holds ${granary}, and that is not enough. Someone will have to go down to the ice with a line.`,true)}}
+  // hunger drives people away
+  if(hunger>.7&&R()<hunger*.4){const cand=people.filter(p=>!p.dead&&!isKid(p)&&!people.some(k=>k.parents.includes(p.name)));if(cand.length>1){const wts=cand.map(p=>(has(p,'restless')?2.5:1)*(has(p,'homesick')?2.5:1)*(p.partner?.4:1));let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum,p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}leave(p)}}
+  if(yr!==lastYear){lastYear=yr;const oldest=people.filter(p=>!p.dead).sort((a,b)=>ageOf(b)-ageOf(a))[0];say(`A new year begins. ${oldest?B(oldest)+' is the eldest now, at '+ageI(oldest)+'.':''}`,true)}
+  const alive=people.filter(p=>!p.dead);
+  // grow up
+  for(const p of alive)if(p.child&&!isKid(p)){p.child=false;p.tr=[];const par=p.parents.map(byName).filter(Boolean);
+    if(par.length&&R()<.5)p.tr.push(pick(par[0].tr));while(p.tr.length<2){const t=pick(TRAITS);if(!p.tr.includes(t))p.tr.push(t)}
+    p.hist.push({d:dayCount,s:'grown now, and took up work beside the others'});meet(p,0,2);say(`${B(p)} is fourteen and grown, and no longer follows anyone around the fields.`);addEvent('grown',`the year ${p.name} came of age`,`${p.name} turned fourteen and went to work beside the others.`)}
+  // friendships drift into being
+  if(alive.length>2&&R()<.35){const a=pick(alive),b=pick(alive);if(a!==b&&!isKid(a)&&!isKid(b)&&a.rels.length<5&&b.rels.length<6&&!a.rels.some(r=>r.who===b.name)){relate(a,b,'friend');say(`${B(a)} and ${B(b)} have started eating together. Nobody comments.`)}}
+  // partnerships
+  const single=alive.filter(p=>!p.partner&&!isKid(p)&&ageOf(p)>=18&&ageOf(p)<58);
+  for(const a of single){if(a.partner)continue;const fr=a.rels.filter(r=>r.k==='friend').map(r=>byName(r.who)).filter(b=>b&&!b.partner&&!isKid(b)&&ageOf(b)>=18&&ageOf(b)<58&&!b.dead&&!a.parents.includes(b.name)&&!b.parents.includes(a.name));
+    if(fr.length&&R()<.16){const b=pick(fr);a.partner=b.name;b.partner=a.name;a.rels=a.rels.filter(r=>r.who!==b.name);b.rels=b.rels.filter(r=>r.who!==a.name);relate(a,b,'partner');
+      const s=`decided, with ${b.name}, to build a house together`;a.hist.push({d:dayCount,s});b.hist.push({d:dayCount,s:`decided, with ${a.name}, to build a house together`});a.wantHouse=b.wantHouse=true;
+      // give up separate homes
+      for(const p of[a,b])if(p.home){p.home.owners=p.home.owners.filter(n=>n!==p.name);p.home=null}
+      say(`${B(a)} and ${B(b)} have decided to build a house together. There is a lot of nodding around the fire.`);addEvent('partner',`the spring ${a.name} and ${b.name} built their house`.replace('the spring','the '+seasonOf(dayCount)),`${a.name} and ${b.name} decided to build a house together, which surprised nobody.`)}}
+  // births
+  for(const a of alive){if(!a.partner||a.child)continue;const b=byName(a.partner);if(!b||b.dead||a.name>b.name)continue;
+    if(a.home&&a.home===b.home&&ageOf(a)<46&&ageOf(b)<46&&people.length<popCap()+1&&food>people.length*3&&R()<.025){
+      const kids=people.filter(p=>p.parents.includes(a.name)&&!p.dead).length;if(kids>=3)continue;
+      let nm=null;const anc=dead.filter(d=>d.rels.some(r=>r.who===a.name||r.who===b.name)&&!names.has(d.name));
+      if(anc.length&&R()<.6)nm=pick(anc).name;
+      const k=addPerson(a.home.x+1,a.home.y+2.4,{child:true,age:0,name:nm,parents:[a.name,b.name],how:`born in the ${seasonOf(dayCount)} of year ${yearOf(dayCount)}, to ${a.name} and ${b.name}`+(nm?`, and named for ${nm} who came before`:'')});
+      relate(a,k,'child');relate(b,k,'child');k.home=a.home;k.col=R()<.5?a.col:b.col;k.hair=R()<.5?a.hair:b.hair;
+      const s=`a child, ${k.name}, was born`;a.hist.push({d:dayCount,s});b.hist.push({d:dayCount,s});
+      say(`A child is born to ${B(a)} and ${B(b)}. They call the child ${B(k)}${nm?', after '+nm:''}.`);addEvent('birth',`the ${seasonOf(dayCount)} ${k.name} was born`,`A child, ${k.name}, was born to ${a.name} and ${b.name} in the ${seasonOf(dayCount)}.`)}}
+  // old age
+  for(const p of alive){const a=ageOf(p);if(a<55)continue;const chance=Math.pow((a-54)/18,3);if(R()<chance)die(p)}
+}
+function remove(p){p.dead=true;p.alive=false;names.delete(p.name);people=people.filter(q=>q!==p);
+  if(p.home){p.home.owners=p.home.owners.filter(n=>n!==p.name)}
+  if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;
+  if(selected===p)showCard(null)}
+function leave(p){remove(p);gone.push(p);const s=sea();
+  say(`${B(p)} takes the small boat at first light, quietly, so as not to be talked out of it. There was not enough to go round.`,true);addEvent('left',`the ${s} ${p.name} sailed away`,`${p.name} took the small boat and left in a hungry ${s}. There had not been enough to go round.`);
+  for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(!r)continue;q.hist.push({d:dayCount,s:`watched ${p.name} sail away in a hungry ${s}`});if(r.k==='partner')q.partner=null}}
+function die(p){remove(p);dead.push(p);
+  // grave on the hill
+  const k=graves.length,gx=hill.x+((k%4)-1.5)*1.6,gy=hill.y+Math.floor(k/4)*1.4;const gr={x:gx,y:gy,name:p.name,d:dayCount,y2:yearOf(dayCount),age:ageI(p)};graves.push(gr);trees=trees.filter(t=>Math.hypot(t.x-gx,t.y-gy)>1.6);
+  const sea=seasonOf(dayCount);say(`${B(p)} died in the night, at ${ageI(p)}. The village carries ${p.name} up the hill in the ${sea} light.`,true);addEvent('death',`the ${sea} ${p.name} died`,`${p.name} died at ${ageI(p)}, and was carried up the hill in the ${sea} light.`);
+  for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(!r)continue;q.hist.push({d:dayCount,s:`lost ${r.k==='partner'?'their partner':r.k==='parent'?'their parent':r.k==='child'?'their child':r.k==='rival'?'an old rival':'a friend'}, ${p.name}`});
+    if(r.k==='partner')q.partner=null;q.mourn=gr}}
+// ---------- buildings, boats, roads ----------
+function nextBuild(){if(bldgTgt)return null;for(const k in BLD){if(hasB(k))continue;const d=BLD[k];if(wood<d.wood||!d.cond())continue;let s=null;
+    if(k==='hut'){const l=landings[0];s={x:l.x,y:l.y}}
+    else if(k==='light')s=lightSite;else if(k==='bridge')s=bridgeSite;
+    else if(k==='smoke'){const h=getB('hut');for(let n=0;n<60&&!s;n++){const x=h.x+((rnd(-4,5))|0),y=h.y+((rnd(-4,5))|0),t=at(x,y),t2=at(x+1,y);if((t===SAND||t===GRASS)&&(t2===SAND||t2===GRASS)&&Math.hypot(x-h.x,y-h.y)>=2&&!bAll().some(b=>x>=b.x-2&&x<=b.x+b.w&&y>=b.y-1&&y<=b.y+b.h)&&!houses.some(hh=>Math.abs(hh.x-x)<3&&Math.abs(hh.y-y)<3))s={x,y}}}
+    else if(k==='well')s=freeSpot(2,5,1)||freeSpot(2,8,1);else if(k==='mill')s=freeSpot(5,11,2)||freeSpot(4,14,2);else if(k==='market')s=freeSpot(2,7,3)||freeSpot(2,12,3)||freeSpot(2,16,3);else if(k==='hall')s=freeSpot(3,9,3)||freeSpot(3,14,3)||freeSpot(3,18,3);
+    if(s)return{kind:k,x:s.x,y:s.y,w:d.w,h:d.h,prog:0,work:d.work,done:false}}return null}
+function finishBuilding(p,t){t.done=true;bldgTgt=null;bldg.push(t);const nm=BLD[t.kind].name;
+  const lines={hut:`${B(p)} hangs the last net on ${nm}. There is a boat now, and the sea is a little less far away.`,well:`${B(p)} draws the first bucket from ${nm}. It is cold and tastes of stone, and everyone has some.`,
+    market:`${B(p)} sets the last stone of ${nm}. By noon there are three stalls and an argument about prices.`,mill:`${B(p)} lets go of the brake and the sail of ${nm} turns for the first time. The children run under it.`,
+    smoke:`${B(p)} lights ${nm}. From now on the fish keep, and everything smells faintly of it.`,bridge:`${B(p)} lays the last plank of ${nm}. Nobody has to wade the stream any more, and several people do anyway.`,
+    hall:`${B(p)} hangs the bell in ${nm}. It rings once, badly, and then rings properly at dawn.`,light:`${B(p)} climbs ${nm} at dusk and lights the lamp. Out on the water, something that was dark is not dark now.`};
+  say(lines[t.kind],true);addEvent('build',`the ${sea()} ${nm} was built`,`${p.name} finished ${nm}, and the place was different afterwards.`);p.hist.push({d:dayCount,s:`finished ${nm}`});
+  if(t.kind==='market'){for(let j=0;j<3;j++)for(let i=0;i<3;i++)road[idx(t.x+i,t.y+j)]=2;roadV++;spots.push({l:'the market',x:t.x+1.5,y:t.y+1.5})}
+  if(t.kind==='well')spots.push({l:'the well',x:t.x+.5,y:t.y+.8});if(t.kind==='light')spots.push({l:'the lighthouse',x:t.x+.5,y:t.y+.8});if(t.kind==='bridge')spots.push({l:'the bridge',x:t.x+.5,y:t.y+.5});
+  if(t.kind==='hall')bell(1);}
+function bell(n){if(!AC||!audioOn)return;const m=storm?.3:rain?.6:wx==='fog'?.75:1;for(let i=0;i<n;i++){const t=AC.currentTime+i*1.6;for(const [f,v0] of [[880,.09],[1318,.04],[587,.03]]){const v=v0*m;const o=AC.createOscillator(),gn=AC.createGain();o.type='sine';o.frequency.value=f;gn.gain.setValueAtTime(v,t);gn.gain.exponentialRampToValueAtTime(.001,t+1.4);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+1.5)}}}
+function spawnBoat(kind,land,o){const b={kind,land,x:land.x+land.dx*17,y:land.y+land.dy*17,tx:land.x+land.dx*.9,ty:land.y+land.dy*.9,st:'in',t:0,...o};boats.push(b);return b}
+function stepBoats(dt){for(const b of boats){
+    if(b.gvx){const nx=b.x+b.gvx*dt,ny=b.y+b.gvy*dt;if(at(nx|0,ny|0)===WATER){b.x=nx;b.y=ny;if(b.p){b.p.x=nx;b.p.y=ny}}const k=Math.pow(.12,dt);b.gvx*=k;b.gvy*=k;if(Math.abs(b.gvx)+Math.abs(b.gvy)<.08)b.gvx=b.gvy=0}
+    if(b.st==='in'||b.st==='out'||b.st==='back'){const dx=b.tx-b.x,dy=b.ty-b.y,d=Math.hypot(dx,dy),sp=(b.kind==='trade'?2.2:b.kind==='away'||b.kind==='return'?2.4:2.8)*dt*(storm?.6:1);
+      if(d<sp){b.x=b.tx;b.y=b.ty;boatArrive(b)}else{b.x+=dx/d*sp;b.y+=dy/d*sp;if(R()<dt*6)fx.push({x:b.x-dx/d*.6,y:b.y-dy/d*.6+.2,vx:0,vy:0,c:'#cfe6ff',l:.8})}
+      if(b.p){b.p.x=b.x;b.p.y=b.y}}
+    else if(b.st==='wait'){b.t-=dt;if(b.t<=0){b.st='out';b.tx=b.land.x+b.land.dx*20;b.ty=b.land.y+b.land.dy*20;if(b.kind==='trade'){trader=null;say(`The trader's boat pulls out into the channel. A few people stay on the shore until it is small.`,false,'tradeout')}}}
+    else if(b.st==='fishing'){b.t-=dt;if(R()<dt*.6)fx.push({x:b.x+rnd(-1,1),y:b.y+rnd(.4,1.2),vx:0,vy:-.3,c:'#cfe6ff',l:.4});if(b.t<=0||storm){b.st='back';b.tx=b.land.x+b.land.dx*.9;b.ty=b.land.y+b.land.dy*.9}}
+  }
+  boats=boats.filter(b=>!b.gone)}
+function boatArrive(b){
+  if(b.kind==='arrival'&&b.st==='in'){b.gone=true;const p=addPerson(b.land.x,b.land.y,{age:b.age});meet(p,1,3);const f=p.rels[0]?byName(p.rels[0].who):null;
+    say(`A stranger named ${B(p)} pulls a boat up on the sand and asks to stay.${f?' '+f.name+' is the first to walk down.':''}`);addEvent('arrival',`the day ${p.name} came ashore`,`${p.name} rowed in out of nowhere and asked to stay, and stayed.`)}
+  else if(b.kind==='trade'&&b.st==='in'){b.st='wait';b.t=45;trader=b;const r=R();let eff;
+    if(r<.4&&wood>=8){wood-=8;food+=14;eff='takes eight lengths of good timber and leaves salt fish and a sack of meal'}else if(r<.7){granary+=10;wood+=4;eff='trades meal for stories, mostly, and does badly out of it'}else{wood+=10;eff='leaves seasoned planks in exchange for a promise about next season'}
+    say(`A trader's boat comes in to ${V()} and everyone who can finds a reason to be on the shore. The trader ${eff}.`,true);addEvent('trade',`the ${sea()} the trader came`,`The trader's boat came in and everyone who could find a reason was on the shore for it.`);
+    const wav=people.filter(p=>!p.dead&&p.task!=='sleep'&&p.task!=='boat'&&p.task!=='voyage'&&p.task!=='build'&&!p.inside).sort(()=>R()-.5).slice(0,8);
+    for(const q of wav){const s=nearestShore(b.land.x+rnd(-3,3),b.land.y+rnd(-3,3))||b.land;goTo(q,s.x,s.y,'wave',rnd(12,30));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null}
+    if(R()<.5&&wav.length){const q=pick(wav);q.hist.push({d:dayCount,s:pick(['bought a length of red cloth off the trader','traded a carved bird to the trader for a knife','asked the trader for news of home and got some'])})}}
+  else if(b.kind==='fish'){if(b.st==='in'){b.st='fishing';b.t=rnd(10,16)}else if(b.st==='back'){b.gone=true;const p=b.p;if(p){p.task='idle';p.t=1;p.inBoat=false;const n=sea()==='winter'?3:6;if(hasB('smoke')&&(sea()==='autumn'||sea()==='winter'))granary+=n;else food+=n;p.boats=(p.boats||0)+1;if(p.boats===1)p.hist.push({d:dayCount,s:'first took the boat out past the shallows'});if(R()<.3)say(`${B(p)} rows in with the bottom of the boat silver, and hands the fish up the beach.`,false,'boatin')}}}
+  else if(b.kind==='away'&&b.st==='out'){b.gone=true;const p=b.p;p.inBoat=false;people=people.filter(q=>q!==p);if(selected===p)showCard(null)}
+  else if(b.kind==='return'&&b.st==='in'){b.gone=true;const p=b.p;p.x=b.land.x;p.y=b.land.y;p.task='idle';p.t=2;p.inBoat=false;p.inside=false;p.tgt=null;people.push(p);voyage.st='back';farIsle.lit=false;
+    const found=pick(['a stone in each pocket, and says there is nothing there but gulls and a wall, and will not say more','a bird\'s skull and a story about a cold fire pit, older than any of ours','less than went out, and says the far island is only rock, and does not sound sure','a bit of green glass and says the sea goes on past it, further than anyone thought']);
+    say(`A boat comes in from the far island. It is ${B(p)}, back with ${found}.`,true);p.hist.push({d:dayCount,s:`came back from the far island with ${found.split(',')[0]}`});addEvent('returned',`the ${sea()} ${p.name} came back from the far island`,`${p.name} came back from the far island, with ${found.split(',')[0]}.`);
+    for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(r&&q!==p)q.hist.push({d:dayCount,s:`was on the shore when ${p.name} came back from the far island`})}}
+  else if(b.st==='out')b.gone=true}
+// ---------- wildlife (sprint 4) ----------
+const landAt=(x,y)=>{const t=at(x|0,y|0);return t===GRASS||t===SAND||t===ROCK||t===FARM};
+function forestTree(){for(let k=0;k<30;k++){const t=pick(trees);if(t&&t.hp>0&&t.s>.6&&Math.hypot(t.x-center.x,t.y-center.y)>9&&!houses.some(h=>Math.hypot(h.x-t.x,h.y-t.y)<5))return t}return null}
+function spawnWildlife(){wild=[];const nd=Math.min(5,1+((trees.length/45)|0));for(let i=0;i<nd;i++){const t=forestTree();if(t)wild.push({k:'deer',x:t.x+rnd(-1,1),y:t.y+rnd(.5,1.5),tx:0,ty:0,home:t,st:'graze',t:rnd(1,5),chk:R(),f:R()<.5?1:-1})}
+  for(let i=0;i<4;i++){const s=freeSpot(6,22);if(s)wild.push({k:'rabbit',x:s.x+.5,y:s.y+.5,tx:0,ty:0,home:{x:s.x+.5,y:s.y+.5},st:'sit',t:rnd(1,3),chk:R(),f:1})}
+  gulls=[];for(let i=0;i<4;i++)addGull();fishSh=[];const shal=[];for(let y=2;y<H-2;y+=2)for(let x=2;x<W-2;x+=2){const e=elev[idx(x,y)];if(at(x,y)===WATER&&e>.13&&e<.235&&(at(x-1,y)===WATER&&at(x+1,y)===WATER))shal.push({x,y})}
+  for(let i=0;i<9&&shal.length;i++){const s=pick(shal);fishSh.push({x:s.x+.5,y:s.y+.5,tx:s.x+.5,ty:s.y+.5,n:2+((R()*3)|0),t:0,ph:R()*6})}
+  for(let i=0;i<2&&stream.length>10;i++){const s=stream[(R()*stream.length)|0];fishSh.push({x:s.x+.5,y:s.y+.5,tx:s.x+.5,ty:s.y+.5,n:2,t:0,ph:R()*6,st:true})}}
+function addGull(near){const s=near||(hasB('hut')&&R()<.5?getB('hut'):pick(shore))||center;gulls.push({cx:s.x+.5,cy:s.y+.5,r:rnd(2,5),a:rnd(6.28),sp:rnd(.7,1.3)*(R()<.5?1:-1),x:0,y:0,t:rnd(4,12),ph:rnd(6.28)})}
+function stepWild(dt){const s=sea(),night=isNight();
+  // deer, rabbits, fox
+  const ndeer=s==='winter'?2:Math.min(5,1+((trees.length/45)|0)), nrab=snowD>.6?2:5;
+  const cd=wild.filter(w=>w.k==='deer').length,cr=wild.filter(w=>w.k==='rabbit').length;
+  if(cd<ndeer&&R()<dt*.008){const t=forestTree();if(t)wild.push({k:'deer',x:t.x+rnd(-1,1),y:t.y+rnd(.5,1.5),tx:0,ty:0,home:t,st:'graze',t:rnd(1,5),chk:R(),f:1})}
+  if(cr<nrab&&R()<dt*.012){const s=(farms.length&&R()<.6)?freeSpotNear(pick(farms).x,pick(farms).y,2,5,1):freeSpot(6,22);if(s)wild.push({k:'rabbit',x:s.x+.5,y:s.y+.5,tx:0,ty:0,home:{x:s.x+.5,y:s.y+.5},st:'sit',t:rnd(1,3),chk:R(),f:1})}
+  const fox=wild.find(w=>w.k==='fox');
+  if(!fox&&night&&!storm&&s!=='winter'&&R()<dt*.02){const t=forestTree();if(t){wild.push({k:'fox',x:t.x,y:t.y+.8,tx:t.x,ty:t.y+.8,st:'trot',t:0,chk:R(),f:1});if(R()<.25)say('A fox comes down through the trees after dark, low and quick, and the rabbits are already gone.',false,'fox')}}
+  else if(fox&&!night){fox.st='leave';fox.tx=fox.x+(fox.x<center.x?-30:30);fox.ty=fox.y}
+  for(const w of wild){w.chk-=dt;
+    if(w.k==='deer'){if(w.chk<=0){w.chk=.35;if(w.st!=='flee'){let th=null;for(const p of people){if(p.inside||p.task==='sleep')continue;const d=Math.hypot(p.x-w.x,p.y-w.y);if(d<(p.task==='chop'?5.5:3.2)){th=p;break}}
+          if(!th&&fox&&Math.hypot(fox.x-w.x,fox.y-w.y)<3)th=fox;
+          if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=Math.hypot(dx,dy)||1;let tx=w.x+dx/d*8,ty=w.y+dy/d*6;for(let k=0;k<6&&!landAt(tx,ty);k++){const a=rnd(6.28);tx=w.x+Math.cos(a)*7;ty=w.y+Math.sin(a)*5}w.tx=tx;w.ty=ty;w.f=dx<0?-1:1;if(th.task==='chop'&&R()<.15)say(`A deer breaks from the trees at the sound of the axe and is gone before ${B(th)} has looked up.`,false,'deerflee')}}
+        if(w.home&&(w.home.hp<=0||!trees.includes(w.home))){w.home=forestTree()}}
+      if(w.st==='graze'){w.t-=dt;if(w.t<=0){w.st='move';const h=w.home||center;let tx=h.x+rnd(-4,4),ty=h.y+rnd(-2.5,3.5);for(let k=0;k<5&&!landAt(tx,ty);k++){tx=h.x+rnd(-4,4);ty=h.y+rnd(-2.5,3.5)}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1;if(R()<.12&&w.home){w.home=forestTree()||w.home}}}
+      else{const sp=(w.st==='flee'?7:night?.6:1.3)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){w.x=w.tx;w.y=w.ty;w.st='graze';w.t=rnd(2,7)}else{w.x+=dx/d*sp;w.y+=dy/d*sp}}}
+    else if(w.k==='rabbit'){if(w.chk<=0){w.chk=.3;if(w.st!=='hide'&&w.st!=='flee'){let th=null;for(const p of people){if(p.inside||p.task==='sleep')continue;if(Math.hypot(p.x-w.x,p.y-w.y)<2.6){th=p;break}}if(!th&&fox&&Math.hypot(fox.x-w.x,fox.y-w.y)<5)th=fox;
+          if(th){w.st='flee';const dx=w.x-th.x,dy=w.y-th.y,d=Math.hypot(dx,dy)||1;let tx=w.x+dx/d*5,ty=w.y+dy/d*3.5;for(let k=0;k<5&&!landAt(tx,ty);k++){tx=w.home.x+rnd(-2,2);ty=w.home.y+rnd(-2,2)}w.tx=tx;w.ty=ty;w.f=dx<0?-1:1}}}
+      if(w.st==='hide'){w.t-=dt;if(w.t<=0&&!(snowD>.6&&R()<.7)){w.st='sit';w.t=rnd(1,3);w.x=w.home.x+rnd(-1,1);w.y=w.home.y+rnd(-1,1)}}
+      else if(w.st==='sit'){w.t-=dt;if(w.t<=0){w.st='hop';let tx=w.home.x+rnd(-2.5,2.5),ty=w.home.y+rnd(-2,2);if(!landAt(tx,ty)){tx=w.home.x;ty=w.home.y}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1;if(R()<.06){const s=farms.length&&R()<.6?freeSpotNear(pick(farms).x,pick(farms).y,2,5,1):freeSpot(6,22);if(s)w.home={x:s.x+.5,y:s.y+.5}}}}
+      else{const sp=(w.st==='flee'?6:2.2)*dt,dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy);if(d<sp){w.x=w.tx;w.y=w.ty;if(w.st==='flee'){w.st='hide';w.t=rnd(3,9);w.sc=(w.sc||0)+1;if(w.sc>3){w.sc=0;const s=freeSpot(9,24);if(s)w.home={x:s.x+.5,y:s.y+.5}}}else{w.st='sit';w.t=rnd(.6,3)}}else{w.x+=dx/d*sp;w.y+=dy/d*sp}}}
+    else if(w.k==='fox'){if(w.st==='leave'){const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=4*dt;w.x+=dx/d*sp;w.y+=dy/d*sp;w.f=dx<0?-1:1;if(d<sp||w.x<0||w.x>W||!landAt(w.x,w.y))w.gone=true;continue}
+      let prey=null;if(w.chk<=0){w.chk=.3;let bd=5;for(const r of wild)if(r.k==='rabbit'&&r.st!=='hide'){const d=Math.hypot(r.x-w.x,r.y-w.y);if(d<bd){bd=d;prey=r}}if(prey){w.prey=prey;w.st='chase'}else if(w.st==='chase'){w.st='trot';w.t=0}}
+      if(w.st==='chase'&&w.prey){if(w.prey.st==='hide'||w.prey.gone){w.st='trot';w.t=0;w.prey=null}else{w.tx=w.prey.x;w.ty=w.prey.y;const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=5.5*dt;if(d<.4){w.prey.gone=true;w.prey=null;w.st='eat';w.t=rnd(4,8);if(R()<.4)say('Out past the fields something small stops running. The fox has one of the rabbits, and the night goes on.',false,'foxeat')}else{w.x+=dx/d*sp;w.y+=dy/d*sp;w.f=dx<0?-1:1}}}
+      else if(w.st==='eat'){w.t-=dt;if(w.t<=0){w.st='trot';w.t=0}}
+      else{w.t-=dt;if(w.t<=0){w.t=rnd(2,5);let tx=w.x+rnd(-7,7),ty=w.y+rnd(-5,5);for(let k=0;k<6&&(!landAt(tx,ty)||houses.some(h=>Math.hypot(h.x+1-tx,h.y+1-ty)<3)||Math.hypot(tx-center.x,ty-center.y)<4);k++){tx=w.x+rnd(-7,7);ty=w.y+rnd(-5,5)}w.tx=tx;w.ty=ty;w.f=tx<w.x?-1:1}
+        const dx=w.tx-w.x,dy=w.ty-w.y,d=Math.hypot(dx,dy),sp=2.4*dt;if(d>sp){w.x+=dx/d*sp;w.y+=dy/d*sp}}}
+  }
+  wild=wild.filter(w=>!w.gone);
+  // gulls
+  const fb=boats.find(b=>b.kind==='fish'&&(b.st==='back'||b.st==='fishing'));const ng=storm?1:wx==='fog'?2:night?2:(fb?7:5);
+  if(gulls.length<ng&&R()<dt*.6)addGull(fb&&R()<.7?fb:null);else if(gulls.length>ng&&R()<dt*.4)gulls.pop();
+  for(const gl of gulls){gl.a+=gl.sp*dt;gl.t-=dt;if(gl.t<=0){gl.t=rnd(5,14);const s=fb&&R()<.6?fb:R()<.4&&hasB('hut')?getB('hut'):pick(shore)||center;gl.nx=s.x+.5;gl.ny=s.y+.5}
+    if(gl.nx!==undefined){const dx=gl.nx-gl.cx,dy=gl.ny-gl.cy,d=Math.hypot(dx,dy),sp=1.6*dt;if(d<sp){gl.cx=gl.nx;gl.cy=gl.ny;gl.nx=undefined}else{gl.cx+=dx/d*sp;gl.cy+=dy/d*sp}}
+    else if(fb&&R()<dt*.5){gl.nx=fb.x;gl.ny=fb.y}
+    gl.x=gl.cx+Math.cos(gl.a)*gl.r;gl.y=gl.cy+Math.sin(gl.a)*gl.r*.55}
+  // fish shadows: drift about the shallows
+  if(!frozen)for(const f of fishSh){f.t-=dt;if(f.t<=0){f.t=rnd(3,8);for(let k=0;k<6;k++){const tx=f.x+rnd(-3,3),ty=f.y+rnd(-2,2);const e=elev[idx(tx|0,ty|0)]||0;if(at(tx|0,ty|0)===WATER&&(f.st?e<.2:(e>.11&&e<.235))){f.tx=tx;f.ty=ty;break}}}
+    const dx=f.tx-f.x,dy=f.ty-f.y,d=Math.hypot(dx,dy),sp=.7*dt;if(d>sp){f.x+=dx/d*sp;f.y+=dy/d*sp}
+    for(const p of people)if(p.task==='fish'&&Math.hypot(p.x-f.x,p.y-f.y)<1.5){f.tx=f.x+(f.x-p.x)*2;f.ty=f.y+(f.y-p.y)*2;break}}
+  // fireflies: summer twilight over the grass
+  const fl=s==='summer'&&!rain&&wx!=='fog'&&light()<.45&&light()>0&&!isNight()||(s==='summer'&&!rain&&isNight()&&dayFrac()>edges()[1]&&dayFrac()<edges()[1]+.06);
+  if(fl&&flies.length<36&&R()<dt*20){const sp=freeSpot(3,20);if(sp)flies.push({x:sp.x+rnd(),y:sp.y+rnd(),ph:rnd(6.28),vx:0,vy:0,l:rnd(30,80)})}
+  for(const f of flies){f.vx+=rnd(-.6,.6)*dt;f.vy+=rnd(-.4,.4)*dt;f.vx*=.98;f.vy*=.98;f.x+=f.vx*dt;f.y+=f.vy*dt;f.l-=dt*(fl?1:6)}flies=flies.filter(f=>f.l>0);
+  // geese in autumn, at dawn or dusk
+  if(!geese&&s==='autumn'&&geeseDay!==dayCount&&!storm&&wx!=='fog'&&!rain){const f=dayFrac(),e=edges();if(((f>e[0]+.02&&f<e[0]+.1)||(f>e[1]-.12&&f<e[1]-.02))&&R()<dt*.08){geeseDay=dayCount;const fromLeft=R()<.5;geese={x:fromLeft?-6:W+6,y:rnd(6,H*.5),vx:(fromLeft?1:-1)*rnd(4.5,6),vy:rnd(1.2,2.4),n:7+((R()*5)|0),ph:R()*6};
+      say(pick(['A long V of geese goes over, high, calling to each other about the way south.','Geese go over in a ragged V, and everyone stops what they are doing to watch until they are gone.']),false,'geese')}}
+  if(geese){geese.x+=geese.vx*dt;geese.y+=geese.vy*dt;if(geese.x<-14||geese.x>W+14||geese.y>H+8)geese=null}
+  // the whale, far out
+  if(!whale){whaleT-=dt;if(whaleT<=0){whaleT=rnd(140,420);if(deep.length&&!frozen&&!storm&&wx!=='fog'&&!night&&s!=='winter'){const d=pick(deep);whale={x:d.x+.5,y:d.y+.5,t:0,dur:rnd(5,8),dir:R()<.5?1:-1};whaleDay=dayCount;
+      if(R()<.4)say(pick(['Far out past the shallows, something breathes. A spout goes up white against the water, hangs, and is gone.','Out where the water is dark, a back like a wet hill rolls over and goes under, and a while later the spout drifts off on the wind.']),false,'whale')}}}
+  else{whale.t+=dt;if(whale.t<2.2&&R()<dt*40)fx.push({x:whale.x+rnd(-.2,.2),y:whale.y-.3-whale.t*.4,vx:rnd(-.3,.3)+(storm?.6:0),vy:-rnd(.6,1.4),c:'#eaf3ff',l:rnd(.5,1.1)});whale.x+=whale.dir*dt*.25;if(whale.t>whale.dur)whale=null}
+}
+// ---------- the watcher (sprint 5): clouds, blessings, dreams, stories ----------
+function mkCloudSprites(){cloudSp=[];const rr=mulberry(seed^0x5a17);
+  for(let i=0;i<3;i++){const c=document.createElement('canvas');c.width=112;c.height=64;const x=c.getContext('2d');
+    for(let k=0;k<11;k++){const cx=18+rr()*76,cy=16+rr()*32,r=9+rr()*17;const gr=x.createRadialGradient(cx,cy,0,cx,cy,r);
+      gr.addColorStop(0,'rgba(12,20,38,.30)');gr.addColorStop(.55,'rgba(12,20,38,.16)');gr.addColorStop(1,'rgba(12,20,38,0)');x.fillStyle=gr;x.fillRect(cx-r,cy-r,r*2,r*2)}
+    cloudSp.push(c)}}
+const cloudW=c=>112*c.s/T, cloudH=c=>64*c.s/T;
+const CLOUDN={clear:2,overcast:6,rain:7,thunder:8,snow:5,fog:0};
+const CLOUDV={clear:.32,overcast:.5,rain:.7,thunder:1.5,snow:.45,fog:.15};
+function addCloud(edge){const s=rnd(.65,1.5),w=112*s/T;
+  clouds.push({x:edge?(wind>0?-w*.6:W+w*.6):rnd(w*.5,W-w*.5),y:rnd(2,H-3),s,i:(R()*3)|0,r:0,rt:0,ph:rnd(6.28)})}
+function stepClouds(dt){const n=CLOUDN[wx]||0,v=(CLOUDV[wx]||.3)*wind;
+  if(clouds.length<n&&R()<dt*.5)addCloud(true);
+  for(const c of clouds){c.x+=v*dt;c.y+=Math.sin(time*.04+c.ph)*dt*.12;
+    if(c.r>0){c.r-=dt;const w=cloudW(c)*.42,h=cloudH(c)*.4;
+      if(R()<dt*10){const rx=c.x+rnd(-w,w),ry=c.y+rnd(-h,h);if(rx>0&&ry>0&&rx<W&&ry<H&&at(rx|0,ry|0)!==WATER)fx.push({x:rx,y:ry,vx:0,vy:0,c:'#cfe6ff',l:.3})}
+      for(const f of farms)if(f.g<1&&Math.abs(f.x+.5-c.x)<w&&Math.abs(f.y+.5-c.y)<h)f.g=Math.min(1,f.g+dt*.03);
+      if(c.r<=0)c.rt=60}
+    else if(c.rt>0)c.rt-=dt}
+  clouds=clouds.filter(c=>c.x>-cloudW(c)&&c.x<W+cloudW(c))}
+function cloudAt(x,y){for(const c of clouds){if(c.r>0||c.rt>0)continue;if(Math.abs(x-c.x)<cloudW(c)*.34&&Math.abs(y-c.y)<cloudH(c)*.32)return c}return null}
+function rainOn(c){c.r=rnd(16,26);
+  const near=people.filter(p=>!p.inside&&Math.abs(p.x-c.x)<cloudW(c)*.5&&Math.abs(p.y-c.y)<cloudH(c)*.5);
+  const dry=farms.some(f=>f.g<1&&Math.abs(f.x-c.x)<cloudW(c)*.5&&Math.abs(f.y-c.y)<cloudH(c)*.5);
+  say(dry?'One cloud stops over the fields and lets go of everything it was holding.':near.length?`One cloud out of a whole sky rains, and it rains on ${B(pick(near))}, who looks up.`:'A single cloud lets go of its rain, in one place, for no reason anyone can see.',true)}
+// a spring, from a long press on the grass
+function makeSpring(cx,cy){const r=rnd(1.3,2.1),hit=[];
+  for(let y=Math.floor(cy-r-1);y<=cy+r+1;y++)for(let x=Math.floor(cx-r-1);x<=cx+r+1;x++){
+    if(x<1||y<1||x>=W-1||y>=H-1)continue;if(Math.hypot(x+.5-cx,(y+.5-cy)*1.3)>r)continue;if(at(x,y)!==GRASS)continue;
+    if(Math.hypot(center.x-x,center.y-y)<3.5)return false;
+    if(houses.some(h=>x>=h.x-1&&x<=h.x+2&&y>=h.y-1&&y<=h.y+3)||bAll().some(b=>x>=b.x-1&&x<=b.x+b.w&&y>=b.y-1&&y<=b.y+b.h)||graves.some(gr=>Math.hypot(gr.x-x,gr.y-y)<2.2))return false;
+    hit.push(idx(x,y))}
+  if(hit.length<4)return false;
+  for(const i of hit){tiles[i]=WATER;elev[i]=.19;road[i]=0}
+  trees=trees.filter(t=>Math.hypot(t.x-cx,t.y-cy)>r+.3);stumps=stumps.filter(t=>Math.hypot(t.x-cx,t.y-cy)>r+.3);
+  springs.push({x:cx,y:cy,r,ph:R()});spots.push({l:'the spring',x:cx,y:cy+1.6});
+  if(R()<.5)fishSh.push({x:cx,y:cy,tx:cx,ty:cy,n:2,t:0,ph:R()*6,st:true});
+  paintTerrain();
+  for(let i=0;i<16;i++)fx.push({x:cx+rnd(-r,r),y:cy+rnd(-r*.7,r*.7),vx:rnd(-.4,.4),vy:-rnd(.4,1.3),c:'#cfe6ff',l:rnd(.5,1.3)});
+  say(springs.length===1?'Water comes up through the grass where there was none, finds a shape to sit in, and stays.':'Somewhere else the ground gives up more water, and there is another pool by evening.',true);
+  addEvent('spring','the day the spring came up',`Water came up through the grass ${springs.length===1?'where there had never been any':'a second time'}, and the ground has been wet there ever since.`);
+  return true}
+// a stone, skipped
+const ring=(x,y)=>fx.push({x,y,vx:0,vy:0,rg:1,l:.9,l0:.9,c:'#cfe6ff'});
+function skipStone(x,y){let dx=x-center.x,dy=y-center.y;const d=Math.hypot(dx,dy)||1;
+  skips.push({x,y,vx:dx/d*11,vy:dy/d*7.5,n:2+((R()*4)|0),t:.14});plink(.15)}
+function stepSkips(dt){for(const k of skips){k.x+=k.vx*dt;k.y+=k.vy*dt;k.t-=dt;
+    if(k.t<=0){k.n--;k.t=.13+R()*.07;k.vx*=.86;k.vy*=.86;ring(k.x,k.y);if(k.n>0)plink(.05+R()*.04)}
+    if(k.n<=0||k.x<0||k.y<0||k.x>=W||k.y>=H||at(k.x|0,k.y|0)!==WATER)k.gone=true}
+  skips=skips.filter(k=>!k.gone)}
+// a gust, dragged across the water
+function gustAt(x0,y0,x1,y1){const dx=x1-x0,dy=y1-y0,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
+  gusts.push({x:x0,y:y0,ux,uy,len:d,t:1.8});
+  let pushed=null;
+  for(const b of boats){if(Math.hypot(b.x-x1,b.y-y1)>9)continue;b.gvx=(b.gvx||0)+ux*3.2;b.gvy=(b.gvy||0)+uy*3.2;pushed=b}
+  for(const gl of gulls){if(Math.hypot(gl.cx-x1,gl.cy-y1)>10)continue;gl.cx+=ux*1.6;gl.cy+=uy*1.6}
+  for(const f of fishSh)if(Math.hypot(f.x-x1,f.y-y1)<5){f.tx=f.x+ux*2.5;f.ty=f.y+uy*2.5}
+  if(pushed&&pushed.p)say(`A gust comes off the water and takes the boat sideways. ${B(pushed.p)} leans into it and lets it.`,true);
+  else if(pushed)say('A gust comes off the water and shoves the boat along faster than anyone is rowing.',true);
+  else say('Something moves over the water in a line, and the water goes dark under it, and then light again.',false,'gust')}
+function stepGusts(dt){for(const gu of gusts){gu.t-=dt;
+    if(R()<dt*26){const k=rnd(0,gu.len);fx.push({x:gu.x+gu.ux*k+rnd(-.8,.8),y:gu.y+gu.uy*k+rnd(-.6,.6),vx:gu.ux*3.5,vy:gu.uy*3.5,c:'#dceeff',l:rnd(.3,.6)})}}
+  gusts=gusts.filter(gu=>gu.t>0)}
+// dreams, given at night, that sometimes come true by morning
+const DREAMS=[
+  {k:'mend',c:p=>!!relOf(p,'rival'),t:(p,q)=>`${B(p)} dreams of ${q.name}, of all people, holding a rope out from a boat, and takes it.`},
+  {k:'tool',c:p=>dayCount>6&&!isKid(p),t:p=>`${B(p)} dreams of the axe head that went missing, lying in the grass exactly where it was left.`},
+  {k:'settle',c:p=>has(p,'homesick'),t:p=>`${B(p)} dreams of the house with the blue door. Nobody in it is waiting up, and that turns out to be all right.`},
+  {k:'visit',c:p=>graves.length>0,t:(p,q,gr)=>`${B(p)} dreams of ${gr.name}, who is not at all surprised, and says nothing worth remembering, kindly.`},
+  {k:'far',c:p=>!!farIsle&&!voyage&&!isKid(p),t:p=>`${B(p)} dreams the far island is close enough to wade to, and wakes up certain of it.`},
+  {k:'fish',c:p=>shore.length>0,t:p=>`${B(p)} dreams the shallows are so thick with silver you could walk out on the backs of them.`},
+  {k:'grow',c:p=>trees.length>4,t:p=>`${B(p)} dreams of a tree that was not there yesterday, already taller than the house.`},
+  {k:'',c:p=>isKid(p),t:p=>`${B(p)} dreams of being tall enough to reach the high shelf, and of what turns out to be on it.`},
+  {k:'',c:p=>has(p,'dreamy'),t:p=>`${B(p)} dreams in weather: a long green wind, and a hill that turns over in its sleep.`},
+  {k:'',c:p=>events.length>0,t:p=>`${B(p)} dreams of ${eventLabel()} again, but the ending is different, and better.`},
+  {k:'',c:p=>!!p.partner&&!!byName(p.partner),t:p=>`${B(p)} dreams of ${p.partner} coming up the path with both hands full, and nothing else happens in it at all.`},
+  {k:'',c:p=>true,t:p=>`${B(p)} dreams of the island from above, the way a gull has it, with everyone on it very small and very busy.`},
+];
+function dreamOf(p){if(p.dreamt===dayCount||p.dead)return false;
+  const q=relOf(p,'rival'),gr=graves.length?pick(graves):null;
+  const ok=DREAMS.filter(d=>d.c(p));if(!ok.length)return false;
+  const d=pick(ok);p.dreamt=dayCount;dreamAny=dayCount;
+  say(d.t(p,q,gr),true);
+  if(d.k&&R()<.5)p.pend={k:d.k,who:q?q.name:null,gr};
+  return true}
+function wakeDreams(){for(const p of people){const d=p.pend;if(!d)continue;p.pend=null;
+    if(d.k==='mend'){const q=byName(d.who);if(!q)continue;const r=p.rels.find(r=>r.who===q.name),r2=q.rels.find(r=>r.who===p.name);
+      if(r&&r.k==='rival'){r.k='friend';if(r2)r2.k='friend';
+        say(`${B(p)} and ${B(q)}, who have not agreed about anything in a year, walk down to the fields together. Neither of them mentions a dream.`,true);
+        p.hist.push({d:dayCount,s:`made it up with ${q.name}, and could not say why`});q.hist.push({d:dayCount,s:`made it up with ${p.name}, and could not say why`});
+        addEvent('mend',`the ${sea()} ${p.name} and ${q.name} made it up`,`${p.name} and ${q.name} stopped being rivals overnight, and neither would explain it.`)}}
+    else if(d.k==='tool'){wood+=6;say(`${B(p)} goes out before breakfast and comes back with the axe head that has been lost since the storm.`,true);p.hist.push({d:dayCount,s:'found the axe head that had been lost since the storm'})}
+    else if(d.k==='settle'){const i=p.tr.indexOf('homesick');if(i>=0){p.tr[i]=pick(['patient','gentle','funny','dreamy']);
+      say(`${B(p)} does not go down to the water at dusk tonight, and does not notice not going.`,true);p.hist.push({d:dayCount,s:'stopped counting the days since leaving home'})}}
+    else if(d.k==='visit'){if(d.gr&&graves.includes(d.gr)){p.mourn=d.gr;p.hist.push({d:dayCount,s:`went up the hill to sit with ${d.gr.name}, for no particular reason`})}}
+    else if(d.k==='far')p.dreamFar=1;
+    else if(d.k==='fish')p.luck=1;
+    else if(d.k==='grow'){const sp=freeSpot(3,14);if(sp){trees.push(mkTree(sp.x+.5,sp.y+.5,.6));say('There is a young tree at the edge of the clearing that nobody remembers being that tall.',true)}}
+  }}
+// the fire, and the story told at it
+function tellStory(){if(storyDay===dayCount)return false;
+  const cand=people.filter(p=>!p.dead&&p.task!=='boat'&&p.task!=='voyage');if(!cand.length)return false;
+  storyDay=dayCount;
+  for(const q of cand){if(q.task==='shelter')continue;if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.inside=false;
+    goTo(q,center.x+rnd(-3,3),center.y+rnd(-2.2,2.2),'gather',rnd(24,44))}
+  const grown=cand.filter(p=>!isKid(p)),teller=grown.sort((a,b)=>ageOf(b)-ageOf(a))[0]||cand[0];
+  const src=chron.filter(e=>e.st),L=['Somebody puts more wood on the fire than it needs, and the island comes to it.'];
+  if(src.length<2)L.push('There is not much to tell yet. They sit with the fire anyway, which is most of it.');
+  else{L.push(`${B(teller)} tells it, and gets to, because ${teller.name} was there for most of it.`);
+    const n=Math.min(5,src.length),seen=new Set(),ch=[];
+    for(let i=0;i<n;i++){const e=src[Math.round(i*(src.length-1)/(n-1))];if(!seen.has(e)){seen.add(e);ch.push(e)}}
+    const last=src[src.length-1];if(!seen.has(last))ch.push(last);
+    for(const e of ch)L.push(`<i>year ${e.y}</i>${e.st}`);
+    L.push(pick(['Nobody corrects any of it. Most of it is true.','When it is done the fire has burned low, and somebody builds it up again anyway.','Then it is late, and nobody moves for a while.','The children have heard it before and listen anyway, in case it changes.']));
+    if(R()<.5)teller.hist.push({d:dayCount,s:'told the whole story of the island at the fire, from the landing on'})}
+  say(L.join('<br>'),true);
+  return true}
+// ---------- weather ----------
+function pickWx(){const s=sea(),r=R();
+  if(s==='winter')return r<.32?'clear':r<.55?'overcast':r<.9?'snow':'fog';
+  if(s==='spring')return r<.33?'clear':r<.5?'overcast':r<.8?'rain':r<.9?'thunder':'fog';
+  if(s==='summer')return r<.5?'clear':r<.62?'overcast':r<.78?'rain':r<.94?'thunder':'fog';
+  return r<.3?'clear':r<.5?'overcast':r<.78?'rain':r<.86?'thunder':'fog'}
+function setWx(n){const o=wx;wx=n;rain=n==='rain'||n==='thunder';storm=n==='thunder';
+  wxT=n==='clear'?rnd(70,200):n==='overcast'?rnd(40,110):n==='rain'?rnd(40,90):n==='thunder'?rnd(30,50):n==='fog'?rnd(30,70):rnd(35,90);
+  if(n==='thunder'){say('The sky goes the colour of slate and the wind gets up. This is a storm.',true);addEvent('storm',`the storm of year ${yearOf(dayCount)}`,`A storm came over in the ${sea()} of year ${yearOf(dayCount)}, and is still brought up.`);thunderT=rnd(2,6)}
+  else if(n==='rain')say(o==='thunder'?'The storm settles into a steady rain.':'Rain moves in from the west. The fields drink.');
+  else if(n==='snow')say(o==='overcast'?'Snow begins, quietly, and keeps on.':'Snow comes in off the sea, sideways at first, then straight down.');
+  else if(n==='fog')say('Fog comes in off the water and the far shore is gone.');
+  else if(n==='overcast'){if(o==='clear')say('Cloud closes over the island, low and grey.',false,'overcast');else if(o==='snow')say('The snow thins out to nothing under a low sky.')}
+  else if(n==='clear'){if(o==='thunder')say('The storm blows itself out. Everything drips and shines.');else if(o==='rain')say('The rain lifts. Everything drips and shines.');else if(o==='snow')say('The snow stops. The island is very quiet under it.');else if(o==='fog')say('The fog burns off and the sea comes back.');else if(o==='overcast')say('The cloud breaks up and the light comes through in pieces.',false,'clear')}}
+// ---------- simulation ----------
+function step(dt){
+  const d0=Math.floor(time/dayLen);time+=dt;if(Math.floor(time/dayLen)!==d0){dayCount++;newDay()}
+  const s=sea();
+  // weather fronts
+  wxT-=dt;if(wxT<=0){let n;
+    if(wx==='thunder')n=R()<.6?'rain':'clear';
+    else if(wx==='clear'||wx==='overcast'){n=pickWx();if(n===wx)n=wx==='clear'?'overcast':'clear';if(wx==='clear'&&(n==='rain'||n==='thunder')&&R()<.35)n='overcast'}
+    else n=R()<.5?'clear':'overcast';
+    const f=dayFrac();if(n==='fog'&&f>.35&&f<.72)n='overcast';
+    if(n==='rain'&&s==='winter')n='snow';if(n==='snow'&&s!=='winter'&&!(s==='autumn'&&seaDay()===4))n=R()<.5?'rain':'overcast';
+    setWx(n)}
+  flash=Math.max(0,flash-dt*5);fogA+=((wx==='fog'?1:0)-fogA)*Math.min(1,dt*.12);
+  if(storm){thunderT-=dt;if(thunderT<=0){thunderT=rnd(1.5,7);flash=1;thunder(rnd(.3,3.2))}
+    // storms flatten crops and take down the odd tree
+    if(farms.length&&R()<dt*.02){const cand=farms.filter(f=>f.g>.3);if(cand.length){const f=pick(cand);f.g*=.2;say('The wind lays a field flat. Someone will have to start it again.',false,'flat')}}
+    if(trees.length>5&&R()<dt*.006){const cand=trees.filter(t=>t.s>.8&&t.hp>0);if(cand.length){const t=pick(cand);t.hp=0;stumps.push({x:t.x,y:t.y});wood+=3;say('A crack in the dark: the storm takes a tree down. In the morning there will be wood to gather.',false,'treefall')}}}
+  // snow lies, and melts
+  if(wx==='snow')snowD=Math.min(1,snowD+dt*.006);else if(rain)snowD=Math.max(0,snowD-dt*.006);else if(s!=='winter')snowD=Math.max(0,snowD-dt*.0025);else snowD=Math.max(0,snowD-dt*.0002);
+  const fr=snowD>.3;if(fr!==frozen){frozen=fr;if(fr)say('The shallows have frozen over. The water goes still and white at the edges.',true);else say('The ice goes out of the shallows with a sound like something breaking a long way off.',true)}
+  // farms grow — not in winter, slowly in autumn, not under snow
+  const grow={spring:1,summer:1.15,autumn:.65,winter:0}[s]*(snowD>.5?0:1);
+  if(grow>0)for(const f of farms)if(f.g<1)f.g+=dt*(rain?.022:.011)*(isNight()?.4:1)*grow;
+  // leaves and petals
+  if(s==='autumn'&&trees.length&&R()<dt*8){const t=pick(trees);if(t.s>.5)fx.push({x:t.x+rnd(-.5,.5),y:t.y-.9,vx:rnd(-.7,.2),vy:rnd(.25,.5),c:t.a<.35?'#c47a2a':t.a<.7?'#b8402a':'#b09a2c',l:rnd(1.5,2.6)})}
+  if(s==='spring'&&seaDay()<=3&&trees.length&&R()<dt*2){const t=pick(trees);if(t.b&&t.s>.6)fx.push({x:t.x+rnd(-.5,.5),y:t.y-.9,vx:rnd(-.5,.3),vy:rnd(.2,.4),c:'#e8a0b8',l:rnd(1.5,2.5)})}
+  // winter fires eat wood
+  if(s==='winter'&&isNight()&&R()<dt*.02*houses.length)wood=Math.max(0,wood-1);
+  // saplings grow / regrow forest
+  for(const t of trees)if(t.hp>0&&t.s<1)t.s+=dt*.012;
+  if(sea()!=='winter'&&trees.length<260&&R()<dt*.3){const s=freeSpot(11,40);if(s&&(R()<.3||trees.some(t=>Math.hypot(t.x-s.x,t.y-s.y)<3)))trees.push(mkTree(s.x+.5,s.y+.5,.15))}
+  // arrivals
+  arrivalT-=dt;if(arrivalT<=0){arrivalT=rnd(70,140)*(1+people.length/10)*(hasB('light')?.75:1);if(people.length<popCap()&&people.length<48&&food>people.length*2&&!storm&&!boats.some(b=>b.kind==='arrival')){
+    const age=R()<.2?rnd(50,64)|0:rnd(18,42)|0;
+    if(landings.length){const l=landings[(R()*Math.min(landings.length,6))|0];spawnBoat('arrival',l,{age})}
+    else{let s=null;for(let k=0;k<200&&!s;k++){const x=(R()*W)|0,y=(R()*H)|0;if(at(x,y)===SAND)s={x,y}}
+      if(s){const p=addPerson(s.x,s.y,{age});meet(p,1,3);say(`A stranger named ${B(p)} lands on the shore and asks to stay.`);addEvent('arrival',`the day ${p.name} came ashore`,`${p.name} came ashore out of the weather and asked to stay.`)}}}}
+  // the trader comes once a season, on the third day, in the morning
+  if(seaDay()===2&&traderDay!==dayCount&&dayFrac()>.32&&!storm&&!frozen&&people.length>=6&&landings.length){traderDay=dayCount;const h=getB('hut');const l=h?landings.find(l=>l.x===h.x&&l.y===h.y)||landings[0]:landings[0];spawnBoat('trade',l,{})}
+  // the fishing boat goes out
+  {const h=getB('hut');if(h&&!frozen&&!storm&&wx!=='fog'&&!isNight()&&dayFrac()<edges()[1]-.16&&!boats.some(b=>b.kind==='fish')&&R()<dt*.08){
+    const cand=people.filter(p=>p.task==='idle'&&!isKid(p)&&!p.inside&&Math.hypot(p.x-h.x,p.y-h.y)<40);if(cand.length){const p=cand.reduce((a,b)=>(has(b,'brave')?0:1)+R()<(has(a,'brave')?0:1)+R()?b:a);const l=landings.find(l=>l.x===h.x&&l.y===h.y)||landings[0];
+      const k=rnd(6,11);spawnBoat('fish',l,{p,x:l.x+l.dx*.9,y:l.y+l.dy*.9,tx:l.x+l.dx*k+rnd(-2,2),ty:l.y+l.dy*k+rnd(-2,2)});p.task='boat';p.inBoat=true;if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null}}}
+  if(voyage&&voyage.st==='decided'&&!isNight()&&!storm&&dayFrac()>edges()[0]+.06&&voyage.p.task!=='boat'){const p=voyage.p;voyage.st='going';const l=landings[0];if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.inside=false;goTo(p,l.x,l.y,'voyage',0);
+    say(`${B(p)} says, at breakfast, that ${p.name} is going to see the far island, and that it is not up for discussion.`,true)}
+  stepBoats(dt);stepWild(dt);stepClouds(dt);stepSkips(dt);stepGusts(dt);
+  // smokehouse smoke; winter chimneys
+  {const sm=getB('smoke');if(sm&&R()<dt*3)fx.push({x:sm.x+1.7,y:sm.y-.4,vx:rnd(-.2,.2)+(storm?.8:0),vy:-.35,c:'#8c8478',l:rnd(1.5,2.5)});
+    if(s==='winter'&&houses.length&&R()<dt*houses.length*.35){const h=pick(houses);fx.push({x:h.x+1.6,y:h.y-.2,vx:rnd(-.15,.15)+(storm?.6:0),vy:-.3,c:'#a09890',l:rnd(1.2,2)})}}
+  // the hall bell at dawn
+  if(hasB('hall')&&belled!==dayCount&&dayFrac()>edges()[0]+.02&&!isNight()){belled=dayCount;bell(3);if(R()<.15)say(`The bell rings the sun up over ${V()}.${people.some(p=>has(p,'restless'))?' Someone was already awake.':''}`)}
+  // flavor lines
+  evT-=dt;if(evT<=0){evT=rnd(16,34)/(1+people.filter(p=>has(p,'gossipy')).length*.25);flavor()}
+  for(const f of fires){f.t+=dt}
+  // people
+  const night=isNight(),dusk=isDusk();
+  for(const p of people){
+    if(p.mourn&&!night&&p.task!=='mourn'){goTo(p,p.mourn.x,p.mourn.y+.7,'mourn',rnd(6,12));p.tgt=null;p.mourn=null;continue}
+    // storms send everyone but the brave indoors
+    const shelt=storm&&!(has(p,'brave')&&!isKid(p));
+    if(p.task==='boat')continue;
+    if(shelt&&p.task!=='shelter'&&p.task!=='sleep'&&p.task!=='gohome'&&p.task!=='voyage'){p.task='shelter';let h=homeOf(p);if(!h&&houses.length)h=houses.reduce((a,b)=>Math.hypot(b.x-p.x,b.y-p.y)<Math.hypot(a.x-p.x,a.y-p.y)?b:a);
+      p.inside=false;p.shelterH=h;p.tx=h?h.x+1+rnd(-.5,.5):center.x+rnd(-1.5,1.5);p.ty=h?h.y+2.2:center.y+rnd(-1,1);if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;continue}
+    if(!storm&&p.task==='shelter'){p.task='idle';p.inside=false;p.t=rnd(.5,2)}
+    if(night&&p.task!=='sleep'&&p.task!=='gohome'&&p.task!=='shelter'&&p.task!=='wave'&&p.task!=='voyage'&&p.task!=='gather'){p.task='gohome';const h=homeOf(p);const hx=h?h.x+1:center.x,hy=h?h.y+2.2:center.y;p.tx=hx+rnd(-.6,.6);p.ty=hy+rnd(-.4,.4);if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;continue}
+    if(!night&&p.task==='sleep'){p.task='idle';p.t=rnd(.5,2)}
+    // homesick islanders go to the shore at dusk
+    if(dusk&&has(p,'homesick')&&!p.dusked&&p.task==='idle'){p.dusked=dayCount;const s=nearestShore(p.x,p.y);if(s)goTo(p,s.x,s.y,'look',rnd(8,14))}
+    if(!dusk&&p.dusked&&p.dusked!==dayCount)p.dusked=0;
+    switch(p.task){
+      case 'gohome': if(walk(p,dt))p.task='sleep';break;
+      case 'shelter': if(walk(p,dt)&&p.shelterH)p.inside=true;break;
+      case 'sleep': break;
+      case 'mourn': case 'look': case 'wander': case 'visit': case 'linger': case 'wave': case 'market': case 'gather':
+        if(walk(p,dt)){p.dwell-=dt;if(p.dwell<=0){p.task='idle';p.t=rnd(1,2)}
+          else if(!p.said){p.said=true;
+            if(p.task==='mourn')say(`${B(p)} stands a while on the hill, and comes down slowly.`,false,'mourn');
+            else if(p.task==='look')say(`${B(p)} stands at the water's edge at dusk, looking the way the boat came.`,false,'look');
+            else if(p.task==='wander')say(`${B(p)} walks out to the far shore alone and stands looking at the water.`,false,'wander');
+            else if(p.task==='visit'&&p.vg)say(`${B(p)} stops at ${p.vg.name}'s stone and straightens it, though it was straight.`,false,'visit')}}
+        else p.said=false;break;
+      case 'play':{p.t-=dt;if(p.t<=0){p.t=rnd(2,5);const par=p.parents.map(byName).find(q=>q&&!q.dead);const anchor=R()<.5&&par?par:(homeOf(p)?{x:homeOf(p).x+1,y:homeOf(p).y+2.5}:center);p.tx=anchor.x+rnd(-2.5,2.5);p.ty=anchor.y+rnd(-2,2)}walk(p,dt);break}
+      case 'idle':{if(p.child){p.task='play';p.t=0;break}
+        p.t-=dt;if(p.t>0){if(R()<dt*.6){p.tx=p.x+rnd(-2,2);p.ty=p.y+rnd(-2,2)}walk(p,dt);break}
+        // trait detours
+        if(has(p,'restless')&&R()<.22){const far=spots[0];goTo(p,far.x,far.y,'wander',rnd(6,12));break}
+        if(has(p,'gentle')&&graves.length&&R()<.1){const gr=pick(graves);p.vg=gr;goTo(p,gr.x,gr.y+.7,'visit',rnd(4,8));break}
+        if(graves.length&&p.rels.length===0&&dead.some(d=>d.rels.some(r=>r.who===p.name))&&R()<.06){const gr=pick(graves);p.vg=gr;goTo(p,gr.x,gr.y+.7,'visit',rnd(4,8));break}
+        if((has(p,'dreamy')||has(p,'homesick'))&&R()<.1){goTo(p,p.spot.x,p.spot.y,'linger',rnd(5,9));break}
+        // the market at midday
+        {const m=getB('market');const f=dayFrac();if(m&&f>.45&&f<.56&&!p.marketed&&R()<.5){p.marketed=dayCount;goTo(p,m.x+1.5+rnd(-1,1),m.y+1.6+rnd(-.8,.8),'market',rnd(8,16));break}if(p.marketed&&p.marketed!==dayCount&&f>.6)p.marketed=0}
+        // choose job
+        const needFood=food<people.length*4, needWood=wood<14, canBuild=wood>=18&&(people.length>=popCap()-1||p.wantHouse), proud=has(p,'proud');
+        const ripe=farms.filter(f=>f.g>=1&&!f.claimed), keen=needFood||s==='autumn'||(s==='summer'&&seaDay()>=3)||R()<.45;
+        const nb=wood>=8&&!p.child?nextBuild():null;
+        if(nb){wood-=BLD[nb.kind].wood;bldgTgt=nb;p.tgt=nb;p.tx=nb.x+nb.w/2;p.ty=nb.y+nb.h+.3;p.task='build';say(`${B(p)} paces out ground for ${BLD[nb.kind].name}, and explains the idea to anyone who will listen.`,true)}
+        else if(bldgTgt&&!bldgTgt.done&&R()<.35){p.tgt=bldgTgt;p.tx=bldgTgt.x+bldgTgt.w/2+rnd(-.8,.8);p.ty=bldgTgt.y+bldgTgt.h+.3;p.task='build'}
+        else{
+        const site=canBuild?((ruin&&ruinSeen&&R()<.4&&freeSpotNear(ruin.x,ruin.y,4,7,2))||freeSpot(3,11,2)||freeSpot(3,15,2)):null;
+        if(site){const s=site;{wood-=18;p.tgt={x:s.x,y:s.y,prog:0,forCouple:p.wantHouse?[p.name,p.partner]:null};if(p.wantHouse){p.wantHouse=false;const q=byName(p.partner);if(q)q.wantHouse=false}p.tx=s.x+1;p.ty=s.y+2.2;p.task='build';const nearR=ruin&&Math.hypot(s.x-ruin.x,s.y-ruin.y)<8&&!ruin.built;if(nearR){ruin.built=true;p.hist.push({d:dayCount,s:'built the first house in the lee of the old stones'})}say(nearR?`${B(p)} paces out a plot in the lee of the old stones. It is out of the wind there, ${p.name} says, and it is not only that.`:p.wantHouse?`${B(p)} paces out a plot for a house of their own.`:`${B(p)} paces out a plot for a new house.`)}}
+        else if(ripe.length&&!proud&&keen){const f=ripe.sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0];f.claimed=true;p.tgt=f;p.tx=f.x+.5;p.ty=f.y+.5;p.task='harvest'}
+        else if(needFood&&(rain?has(p,'brave'):R()<(hunger>.2?.7:s==='winter'?.45:.35))&&shore.length){const s=nearestShore(p.x,p.y);if(s){p.tgt=s;p.tx=s.x+.5;p.ty=s.y+.5;p.task='fish';p.work=0}else p.t=1}
+        else if(needFood&&!proud&&s!=='winter'&&snowD<.4&&farms.length<people.length*.7+2&&R()<.7){const s=freeSpot(3,9);if(s){p.tgt=s;p.tx=s.x+.5;p.ty=s.y+.5;p.task='till'}else p.t=1}
+        else if(wood<70&&(needWood||proud||R()<.4)){const t=nearestTree(p.x,p.y);if(t&&(needWood||trees.length>12)){p.tgt=t;p.tx=t.x;p.ty=t.y+.4;p.task='chop'}else p.t=2}
+        else{p.tx=center.x+rnd(-4,4);p.ty=center.y+rnd(-3,3);p.t=rnd(2,4)}}
+        break}
+      case 'chop': if(walk(p,dt)){if(!p.tgt||p.tgt.hp<=0){p.tgt=null;p.task='idle';p.t=1;break}p.work=(p.work||0)+dt*workRate(p);if(R()<dt*3)fx.push({x:p.tgt.x,y:p.tgt.y,vx:rnd(-1,1),vy:-rnd(.5,1.5),c:'#8a5a2b',l:.5});
+        if(p.work>4){p.work=0;p.tgt.hp=0;stumps.push({x:p.tgt.x,y:p.tgt.y});wood+=4;p.tgt=null;p.task='idle';p.t=rnd(1,2)}}break;
+      case 'till': if(walk(p,dt)){p.work=(p.work||0)+dt*workRate(p);if(p.work>2.5){p.work=0;const s=p.tgt;tiles[idx(s.x,s.y)]=FARM;farms.push({x:s.x,y:s.y,g:0});if(farms.length===1){say(`${B(p)} breaks the first ground for a field.`);p.hist.push({d:dayCount,s:'broke the first ground for a field'});addEvent('field','the day the first field was dug',`${p.name} broke the first ground for a field, which was the beginning of eating properly.`)}p.task='idle';p.t=1}}break;
+      case 'harvest': if(walk(p,dt)){p.work=(p.work||0)+dt*workRate(p);if(R()<dt*4)fx.push({x:p.x,y:p.y-.5,vx:rnd(-.5,.5),vy:-1,c:'#e8c86a',l:.6});
+        if(p.work>2){p.work=0;p.tgt.g=0;p.tgt.claimed=false;const store=(s==='autumn'||(s==='summer'&&seaDay()>=4))&&granary<people.length*12;if(store)granary+=4;else food+=4;p.task='idle';p.t=1;if(R()<.25)say(store?`${B(p)} carries a basket of grain to the store, against the winter.`:`${B(p)} brings in a basket of grain.`,false,'basket')}}break;
+      case 'fish': if(rain&&!has(p,'brave')){p.task='idle';p.t=1;break}
+        if(walk(p,dt)){p.work=(p.work||0)+dt;if(R()<dt*.8)fx.push({x:p.x+rnd(-1,1),y:p.y+rnd(.5,1.5),vx:0,vy:-.3,c:'#cfe6ff',l:.4});
+          if(p.work>7){p.work=0;let n=rain?4:frozen?(R()<.25?1:0):s==='winter'?(R()<.4?1:0):2;if(p.luck){p.luck=0;n=n*3+3;say(`${B(p)} comes up from the water with more fish than the line should hold, and says nothing about a dream.`,true)}food+=n;p.task='idle';p.t=1;if(rain){p.fishRain++;if(p.fishRain===1){p.hist.push({d:dayCount,s:'first went out fishing in a storm, and came back'})}}if(R()<.3)say(rain?`${B(p)} comes back from the water soaked through, with fish.`:`${B(p)} comes up from the shore with a few fish on a string.`)}}break;
+      case 'boat': break;
+      case 'voyage': if(walk(p,dt)){const l=landings[0];const b=spawnBoat('away',l,{p,x:l.x+l.dx*.9,y:l.y+l.dy*.9,st:'out',tx:l.x+l.dx*24,ty:l.y+l.dy*24});p.task='boat';p.inBoat=true;voyage.st='away';voyage.day=dayCount;voyage.n=2+((R()*3)|0);
+        p.hist.push({d:dayCount,s:'took the boat out alone to see the far island'});addEvent('voyage',`the ${sea()} ${p.name} sailed for the far island`,`${p.name} rowed out alone for the far island, and five people stood on the shore and watched it happen.`);
+        const w=people.filter(q=>q!==p&&!q.dead&&q.task!=='sleep'&&q.task!=='boat'&&!q.inside).sort(()=>R()-.5).slice(0,5);for(const q of w){const s=nearestShore(l.x+rnd(-3,3),l.y+rnd(-3,3))||l;goTo(q,s.x,s.y,'wave',rnd(10,20));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.hist.push({d:dayCount,s:`watched ${p.name} row out toward the far island`})}
+        say(`${B(p)} pushes off from the landing and rows straight out, and does not look back until ${p.name} is small.`,true)}break;
+      case 'build': if(!p.tgt||p.tgt.done){p.task='idle';p.t=1;break}if(walk(p,dt)){p.tgt.prog+=dt*workRate(p);if(R()<dt*2)fx.push({x:p.tgt.x+rnd(0,p.tgt.w||2),y:p.tgt.y+rnd(0,p.tgt.h||2),vx:0,vy:-.6,c:'#ddd',l:.7});
+        if(p.tgt.kind){if(p.tgt.prog>p.tgt.work){finishBuilding(p,p.tgt);p.task='idle';p.t=2}break}
+        if(p.tgt.prog>12){const h={x:p.tgt.x,y:p.tgt.y,r:pick(['#8a3d2f','#6f4b32','#4c5f78']),owners:[]};houses.push(h);fires.push({x:center.x,y:center.y,t:0});
+          if(p.tgt.forCouple){for(const n of p.tgt.forCouple){const q=byName(n);if(q){if(q.home)q.home.owners=q.home.owners.filter(m=>m!==n);q.home=h;h.owners.push(n);q.wantHouse=false;q.hist.push({d:dayCount,s:`moved into the house they built with ${n===p.name?p.partner:p.name}`})}}
+            say(`${B(p)} sets the last beam on the house for ${p.tgt.forCouple.join(' and ')}. Someone hangs a bit of green over the door.`)}
+          else{say(`${B(p)} sets the last beam. ${houses.length===1?'The first house stands.':V()+' grows to '+houses.length+' houses.'}`);if(houses.length===1){addEvent('house','the raising of the first house',`${p.name} set the last beam on the first house. Before that everyone had slept beside the fire.`);p.hist.push({d:dayCount,s:'raised the first house'})}else if(R()<.5)p.hist.push({d:dayCount,s:`raised the ${['','','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth'][houses.length]||houses.length+'th'} house`})}
+          p.task='idle';p.t=2}}break;
+    }
+  }
+  people.forEach(p=>{if(people.length>1&&R()<dt*.02){if(food>0)food-=1;else if(granary>0)granary-=1}});
+  if(food>40&&R()<dt*food*.0025)food-=1; // fresh food does not keep
+  const starving=food<=0&&granary<=0&&people.length>1;
+  hunger=Math.max(0,Math.min(1,hunger+dt*(starving?.005:-.004)));
+  if(starving&&R()<dt*.02)say(hunger>.6?'The store is empty. Nobody says so at the fire, which is how everyone knows.':'The store is empty. Whatever the sea gives today is dinner.',false,'empty');
+  food=Math.max(0,food);
+  trees=trees.filter(t=>t.hp>0);
+  for(const f of fx){f.x+=f.vx*dt;f.y+=f.vy*dt;f.l-=dt}fx=fx.filter(f=>f.l>0);
+}
+// ---------- portraits ----------
+const SKIN=[['#f1cfa5','#d9ac7c'],['#e6b98d','#c48f63'],['#c98a5c','#a56a3f'],['#a86a44','#87502e'],['#7a4b2e','#5c351d']];
+const EYES=['#2a2a3a','#3d5a3a','#4a5f8a','#5a3a2a'];
+function drawFace(ctx,p){const rr=mulberry(p.seed);const kid=isKid(p),eld=isElder(p),age=ageOf(p);
+  ctx.clearRect(0,0,16,16);
+  const skin=SKIN[(rr()*SKIN.length)|0],eye=EYES[(rr()*EYES.length)|0];const style=(rr()*4)|0;
+  let hair=p.hair;if(age>52){const t=Math.min(1,(age-52)/20);hair=t>.6?'#d9d4c8':'#8c8478'}
+  const shade=c=>{const n=parseInt(c.slice(1),16);const f=.72;return'#'+[(n>>16)&255,(n>>8)&255,n&255].map(v=>Math.round(v*f).toString(16).padStart(2,'0')).join('')};
+  const px=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h)};
+  // background wash + subtle vignette
+  px(0,0,16,16,'#221a12');px(0,0,16,1,'#2b2117');
+  // shoulders / shirt (person colour)
+  px(3,13,10,3,p.col);px(3,13,10,1,shade(p.col));px(7,13,2,3,shade(p.col));
+  const hy=kid?4:3, hh=kid?8:9; // head top, height
+  // head outline (dark, one rule: right & bottom get the outline, top-left gets light)
+  px(4,hy,8,hh,skin[0]);px(11,hy+1,1,hh-2,skin[1]);px(5,hy+hh-1,6,1,skin[1]);px(4,hy+1,1,hh-2,'#f7dcb8');
+  px(3,hy+1,1,hh-2,'#1a120c');px(12,hy+1,1,hh-2,'#1a120c');px(5,hy+hh,6,1,'#1a120c');px(4,hy+hh-1,1,1,'#1a120c');px(11,hy+hh-1,1,1,'#1a120c');
+  // hair
+  const hd=shade(hair);
+  if(style===0){px(4,hy-1,8,2,hair);px(3,hy,1,2,hair);px(12,hy,1,3,hd);px(11,hy,1,2,hd)}
+  else if(style===1){px(4,hy-1,8,2,hair);px(3,hy,1,hh-2,hair);px(12,hy,1,hh-2,hd);px(3,hy-1,1,1,hd)}
+  else if(style===2){px(4,hy-1,8,2,hair);px(6,hy-2,4,1,hair);px(11,hy,1,2,hd);px(3,hy,1,1,hair)}
+  else{if(eld&&rr()<.5){px(3,hy+1,1,4,hair);px(12,hy+1,1,4,hd)}else{px(4,hy-1,8,1,hair);px(3,hy,1,3,hair);px(12,hy,1,3,hd);px(11,hy-1,1,1,hd)}}
+  px(3,hy-1,1,1,'#1a120c');px(12,hy-1,1,1,'#1a120c');
+  // hat / headband by trait
+  if(has(p,'proud')&&rr()<.6){px(3,hy-1,10,1,'#4c5f78');px(4,hy-3,8,2,'#4c5f78');px(11,hy-3,1,2,'#33435a');px(4,hy-2,1,1,'#6c7f98')}
+  else if(has(p,'brave')&&rr()<.6){px(3,hy+1,10,1,'#8a3d2f');px(12,hy+1,1,1,'#5c2820')}
+  else if(!kid&&rr()<.18){px(3,hy-1,10,1,'#6f4b32');px(4,hy-3,8,2,'#6f4b32');px(11,hy-3,1,2,'#4a3221')}
+  // eyes
+  const ey=hy+(kid?4:4);px(6,ey,1,1,eye);px(9,ey,1,1,eye);px(6,ey-1,1,1,skin[1]);px(9,ey-1,1,1,skin[1]);
+  if(has(p,'dreamy'))px(9,ey,1,1,'#7a9ac9');
+  // brows: stubborn/proud heavier
+  if(has(p,'stubborn')||has(p,'proud')){px(5,ey-1,2,1,hd);px(9,ey-1,2,1,hd)}
+  // mouth
+  const my=hy+hh-3;if(has(p,'funny')||has(p,'gentle')){px(6,my,1,1,skin[1]);px(7,my+1,2,1,skin[1]);px(9,my,1,1,skin[1])}
+  else if(has(p,'proud')||has(p,'stubborn'))px(6,my+1,4,1,skin[1]);else px(7,my+1,2,1,skin[1]);
+  // freckles / wrinkles / blush
+  if(kid){px(5,ey+2,1,1,'#e39a8a');px(10,ey+2,1,1,'#e39a8a')}
+  if(eld){px(5,ey+1,1,1,skin[1]);px(10,ey+1,1,1,skin[1]);px(4,hy+3,1,1,skin[1])}
+  // beard for some non-kids
+  if(!kid&&rr()<.3&&style!==2){px(5,hy+hh-2,6,2,hair);px(6,hy+hh,4,1,hd)}
+}
+// ---------- card ----------
+const cardEl=document.getElementById('card'),faceCv=document.getElementById('face'),faceCtx=faceCv.getContext('2d');
+let cardT=0;
+function whyText(p){const w=WX();
+  switch(p.task){
+    case 'sleep':return `Asleep${homeOf(p)?' at home':' by the fire'}. ${has(p,'restless')?'Lightly.':has(p,'dreamy')?'Dreaming, probably.':''}`;
+    case 'gohome':return `Heading home for the night${p.partner&&byName(p.partner)?', where '+p.partner+' will be':''}.`;
+    case 'chop':return `Chopping a tree. ${has(p,'proud')?'Would rather do this than farm.':wood<14?'The woodpile is low.':'It needs doing.'}`;
+    case 'till':return `Breaking new ground for a field. Food is short and someone has to.`;
+    case 'harvest':return sea()==='autumn'?`Bringing in a ripe field for the store. Winter is coming.`:`Bringing in a ripe field before the birds do.`;
+    case 'fish':return rain?`Fishing in ${w}. Brave enough not to mind, and the fish bite better.`:frozen?`Fishing through a hole in the ice. Not much is biting.`:`Down at the shore with a line. Food is short.`;
+    case 'shelter':return p.inside?`Indoors, waiting out the storm.`:`Hurrying to get under a roof before the worst of it.`;
+    case 'boat':return voyage&&voyage.p===p?`Rowing for the far island, alone. ${has(p,'brave')?'Not afraid, or not admitting it.':'It is further than it looks.'}`:`Out in the boat past the shallows, where the water goes dark and the fish are bigger.`;
+    case 'voyage':return `Walking down to the landing to take the boat out to the far island. Nobody has, before. ${p.name} may not come back.`;
+    case 'wave':return `Down on the shore because the trader's boat is in. Waving, mostly.`;
+    case 'gather':return `At the fire with everyone else, because a story is being told and this one is long.`;
+    case 'market':return `At the market at midday, buying nothing, hearing everything.`;
+    case 'build':return p.tgt&&p.tgt.kind?`Working on ${BLD[p.tgt.kind].name}. ${V()} is becoming a place with things in it.`:p.tgt&&p.tgt.forCouple?`Building a house to share with ${p.partner}.`:`Raising a new house. The village has outgrown its roofs.`;
+    case 'wander':return `Walking to the far shore. Restless, as always. Will be back before dark.`;
+    case 'look':return `Standing at the water at dusk, looking the way the boat came. Homesick.`;
+    case 'linger':return `Lingering at ${p.spot.l}, which is where ${p.name} goes to think.`;
+    case 'visit':return p.vg?`Visiting ${p.vg.name}'s stone on the hill.`:'On the hill.';
+    case 'mourn':return `On the hill, at the burying.`;
+    case 'play':return `Playing near ${p.parents.length?p.parents[0]:'the fire'}, in the way of children.`;
+    default:return isKid(p)?'Wandering after the grown-ups.':`Between tasks, deciding what needs doing${has(p,'patient')?', unhurried':''}.`}}
+function showCard(p){selected=p;if(!p){cardEl.hidden=true;return}cardEl.hidden=false;renderCard(true)}
+function renderCard(full){const p=selected;if(!p||cardEl.hidden)return;
+  if(full||cardT<=0){cardT=1;drawFace(faceCtx,p);
+    document.getElementById('c-name').firstChild.textContent=p.name;
+    document.getElementById('c-sub').textContent=`${ageI(p)} · ${isKid(p)?'a child':isElder(p)?'an elder':'grown'} · loves ${p.spot.l}`;
+    document.getElementById('c-traits').innerHTML=p.tr.length?p.tr.map(t=>`<span>${t}</span>`).join(''):'<span>still becoming someone</span>';
+    document.getElementById('c-doing').textContent=whyText(p);
+    const RW={friend:'friend of',rival:'rival of',partner:'partner of',child:'parent of',parent:'child of'};const rels=p.rels.map(r=>{const q=byName(r.who);return`${RW[r.k]||r.k} ${q?`<button data-n="${r.who}">${r.who}</button>`:r.who+' (gone)'}`});
+    document.getElementById('c-rels').innerHTML=rels.length?rels.join(' · '):'<i>knows no one well yet</i>';
+    document.getElementById('c-hist').innerHTML=p.hist.map(h=>`<li><i>day ${h.d}</i>${h.s}</li>`).join('')}
+}
+cardEl.querySelector('.rels').addEventListener('click',e=>{const b=e.target.closest('button');if(b){const q=byName(b.dataset.n);if(q)showCard(q)}});
+document.getElementById('card-x').onclick=()=>showCard(null);
+addEventListener('keydown',e=>{if(e.key==='Escape')showCard(null)});
+// ---------- render ----------
+function draw(){
+  const s=sea(),sd=seaDay();
+  if(paintedKey!==s+'|'+Math.round(snowD*6)/6+'|'+frozen+'|'+roadV)paintTerrain();
+  g.drawImage(ter,0,0);
+  const L=light();
+  // tide: the sand ring breathes twice a day
+  if(!frozen){const th=.24+tide()*.018;for(const t of tideTiles){if(t.t===SAND&&t.e<th){g.fillStyle='#3d6a9a';g.fillRect(t.x*T,t.y*T,T,T)}else if(t.t===WATER&&t.e>=th){g.fillStyle='#b39f78';g.fillRect(t.x*T,t.y*T,T,T)}}}
+  const wt=time*2;g.fillStyle='rgba(180,220,255,.25)';
+  if(!frozen)for(let i=0;i<60;i++){const x=(i*37+((wt*13)|0))%(W*T),y=(i*53+((Math.sin(wt+i)*8)|0)+400)%(H*T);if(at((x/T)|0,(y/T)|0)===WATER&&elev[idx((x/T)|0,(y/T)|0)]<.16)g.fillRect(x,y,3,1)}
+  if(!frozen&&L>.15){g.fillStyle=`rgba(14,30,58,${(.42*L).toFixed(2)})`;for(const f of fishSh){const dx=f.tx-f.x,dy=f.ty-f.y,hz=Math.abs(dx)>=Math.abs(dy);for(let i=0;i<f.n;i++){const o=Math.sin(time*2.2+f.ph+i)*1.5;const x=f.x*T+(hz?i*3-3:o),y=f.y*T+(hz?o:i*2-2);g.fillRect(x,y,hz?3:1,hz?1:3)}}}
+  for(const f of farms){g.fillStyle=snowD>.4?'#dfe6ea':'#7a5a37';g.fillRect(f.x*T,f.y*T,T,T);if(snowD>.4)continue;g.fillStyle=f.g>=1?'#e2c25a':s==='autumn'?'#a8a04a':'#7fb64c';const n=Math.min(4,1+(f.g*4)|0);for(let i=0;i<n;i++)g.fillRect(f.x*T+1+i*2,f.y*T+6-(f.g*4|0),1,1+(f.g*4|0))}
+  for(const s of stumps){g.fillStyle='#5a3a1e';g.fillRect(s.x*T-1,s.y*T-1,3,2)}
+  const ents=[];
+  const CAN={spring:['#2f6a2b','#3f8a37'],summer:['#2c6a2a','#3f9038'],winter:['#28452a','#375a33']};
+  const canopy=t=>s==='autumn'?(t.a<.35?['#8a4a1e','#c47a2a']:t.a<.7?['#8a2e1e','#b8402a']:['#7a6a20','#b09a2c']):CAN[s];
+  const shrink=s==='autumn'&&sd===4?.85:1, blossom=s==='spring'&&sd<=3, cap=snowD>.15?Math.min(1,snowD*1.4):0;
+  for(const t of trees)ents.push({y:t.y,d:()=>{const r=T*.7*t.s*shrink,c=canopy(t);g.fillStyle='#4a2f16';g.fillRect(t.x*T-1,t.y*T-r*.6,2,r*.9);g.fillStyle=c[0];g.beginPath();g.arc(t.x*T,t.y*T-r,r,0,6.283);g.fill();g.fillStyle=c[1];g.beginPath();g.arc(t.x*T-r*.3,t.y*T-r*1.2,r*.6,0,6.283);g.fill();
+    if(blossom&&t.b&&t.s>.6){g.fillStyle='#e8a0b8';g.fillRect(t.x*T-r*.6,t.y*T-r*1.1,2,2);g.fillRect(t.x*T+r*.3,t.y*T-r*1.5,2,2);g.fillRect(t.x*T+r*.1,t.y*T-r*.6,2,2)}
+    if(cap>0&&t.s>.4){g.fillStyle='#eef2f4';g.beginPath();g.arc(t.x*T-r*.2,t.y*T-r*1.35,r*.55*cap,0,6.283);g.fill()}}});
+  for(const h of houses)ents.push({y:h.y+2,d:()=>{const x=h.x*T,y=h.y*T;g.fillStyle='#b8a17e';g.fillRect(x+1,y+7,14,9);g.fillStyle=h.r;g.beginPath();g.moveTo(x-1,y+8);g.lineTo(x+8,y);g.lineTo(x+17,y+8);g.fill();
+    if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+8-7*cap,y+7*cap);g.lineTo(x+8,y);g.lineTo(x+8+7*cap,y+7*cap);g.fill();g.fillRect(x+1,y+7,14,1)}
+    g.fillStyle=L<.5?'#f5c463':'#2b2b3a';g.fillRect(x+4,y+10,3,3);g.fillRect(x+10,y+10,3,3);g.fillStyle='#4a2f16';g.fillRect(x+7,y+11,3,5)}});
+  // buildings (bridge and hut sit low; the lighthouse sorts by its foot)
+  const wind={clear:.7,overcast:1,rain:1.3,thunder:2.4,fog:.4,snow:.9}[wx];
+  for(const b of bAll())ents.push({y:b.y+b.h,d:()=>{const x=b.x*T,y=b.y*T,done=b.done,pr=done?1:Math.min(1,b.prog/b.work);
+    if(!done){g.fillStyle='rgba(60,45,25,.5)';g.fillRect(x,y,b.w*T,b.h*T);g.fillStyle='#8a6a44';for(let i=0;i<b.w*T;i+=4)g.fillRect(x+i,y+b.h*T-2-pr*6,2,2+pr*6);return}
+    switch(b.kind){
+      case 'hut':g.fillStyle='#8a6a44';g.fillRect(x+1,y-1,14,8);g.fillStyle='#6f4b32';g.fillRect(x,y-4,16,4);g.fillStyle='#4a3a2a';g.fillRect(x+6,y+2,3,5);g.fillStyle='#3a3a30';g.fillRect(x+11,y+1,3,4);g.fillRect(x+12,y-6,1,6);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x,y-4,16,Math.ceil(2*cap))}
+        if(!boats.some(bb=>bb.kind==='fish')){g.fillStyle='#6b4a2a';g.fillRect(x-4+b.w*T*(b.x>center.x?1:0)-(b.x>center.x?0:0),y+8,7,3);g.fillStyle='#4a2f16';g.fillRect(x-4+b.w*T*(b.x>center.x?1:0),y+8,7,1)}break;
+      case 'well':g.fillStyle='#8c8478';g.fillRect(x+1,y+2,6,5);g.fillStyle='#3a3a30';g.fillRect(x+2,y+3,4,3);g.fillStyle='#6f4b32';g.fillRect(x+1,y-2,1,5);g.fillRect(x+6,y-2,1,5);g.fillRect(x,y-3,8,1);g.fillStyle='#d9d4c8';g.fillRect(x+1,y+2,6,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x,y-4,8,1)}break;
+      case 'market':for(let i=0;i<3;i++){const sx=x+2+i*8,sy=y+(i===1?14:2);g.fillStyle=['#8a3d2f','#4c5f78','#c9a24a'][i];g.fillRect(sx,sy,6,3);g.fillStyle='#6f4b32';g.fillRect(sx,sy+3,1,4);g.fillRect(sx+5,sy+3,1,4);g.fillStyle='#b8a17e';g.fillRect(sx+1,sy+5,4,2)}break;
+      case 'mill':{g.fillStyle='#a89880';g.fillRect(x+3,y+3,10,13);g.fillStyle='#8c8478';g.fillRect(x+12,y+3,1,13);g.fillStyle='#4c5f78';g.beginPath();g.moveTo(x+2,y+4);g.lineTo(x+8,y-2);g.lineTo(x+14,y+4);g.fill();if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+8-6*cap,y+4-6*(1-cap));g.lineTo(x+8,y-2);g.lineTo(x+8+6*cap,y+4-6*(1-cap));g.fill()}g.fillStyle='#4a2f16';g.fillRect(x+7,y+11,3,5);
+        const cx=x+8,cy=y+2,a=time*(.5+wind*.9);g.strokeStyle='#e8dcc4';g.lineWidth=1.5;g.beginPath();for(let i=0;i<4;i++){const an=a+i*Math.PI/2;g.moveTo(cx,cy);g.lineTo(cx+Math.cos(an)*9,cy+Math.sin(an)*9)}g.stroke();g.strokeStyle='#8a6a44';g.lineWidth=1;g.beginPath();for(let i=0;i<4;i++){const an=a+i*Math.PI/2+.25;g.moveTo(cx+Math.cos(an)*3,cy+Math.sin(an)*3);g.lineTo(cx+Math.cos(an)*8,cy+Math.sin(an)*8)}g.stroke();g.fillStyle='#4a2f16';g.fillRect(cx-1,cy-1,2,2);break}
+      case 'smoke':g.fillStyle='#4a3a2a';g.fillRect(x+1,y,14,7);g.fillStyle='#3a2a1a';g.fillRect(x,y-3,16,3);g.fillStyle='#2a1c12';g.fillRect(x+6,y+2,3,5);g.fillStyle='#8c8478';g.fillRect(x+12,y-6,2,3);break;
+      case 'bridge':{const hz=at(b.x-1,b.y)===WATER&&at(b.x+1,b.y)===WATER;g.fillStyle='#8a6a44';if(hz){g.fillRect(x-1,y+1,10,6);g.fillStyle='#6b4a2a';for(let i=0;i<5;i++)g.fillRect(x-1,y+1+i*1.5,10,.6);g.fillStyle='#4a2f16';g.fillRect(x-1,y,10,1);g.fillRect(x-1,y+7,10,1)}
+        else{g.fillRect(x+1,y-1,6,10);g.fillStyle='#6b4a2a';for(let i=0;i<5;i++)g.fillRect(x+1+i*1.5,y-1,.6,10);g.fillStyle='#4a2f16';g.fillRect(x,y-1,1,10);g.fillRect(x+7,y-1,1,10)}break}
+      case 'hall':g.fillStyle='#b8a17e';g.fillRect(x+1,y+5,22,11);g.fillStyle='#6f4b32';g.beginPath();g.moveTo(x-1,y+6);g.lineTo(x+12,y-2);g.lineTo(x+25,y+6);g.fill();g.fillStyle='#8c8478';g.fillRect(x+10,y-7,4,7);g.fillStyle='#6f4b32';g.fillRect(x+9,y-8,6,1);g.fillStyle='#f0b35a';g.fillRect(x+11,y-5,2,2);
+        g.fillStyle=L<.5?'#f5c463':'#2b2b3a';g.fillRect(x+4,y+8,3,3);g.fillRect(x+17,y+8,3,3);g.fillStyle='#4a2f16';g.fillRect(x+10,y+10,4,6);if(cap>0){g.fillStyle='#eef2f4';g.beginPath();g.moveTo(x+12-11*cap,y+6-8*(1-cap));g.lineTo(x+12,y-2);g.lineTo(x+12+11*cap,y+6-8*(1-cap));g.fill()}break;
+      case 'light':g.fillStyle='#e6e2d8';g.fillRect(x+1,y-10,6,16);g.fillStyle='#8a3d2f';g.fillRect(x+1,y-6,6,3);g.fillRect(x+1,y,6,3);g.fillStyle='#c9c4b8';g.fillRect(x+6,y-10,1,16);g.fillStyle='#4a4640';g.fillRect(x,y-11,8,1);g.fillStyle=L<.55?'#fff2b0':'#5a5a60';g.fillRect(x+2,y-14,4,3);g.fillStyle='#4a4640';g.fillRect(x+1,y-15,6,1);break;
+    }}});
+  for(const b of boats)ents.push({y:b.y+.4,d:()=>{const x=b.x*T,y=b.y*T;const bob=Math.sin(time*3+b.x)*.6;
+    if(b.kind==='trade'){g.fillStyle='#5a3a1e';g.fillRect(x-6,y+bob,12,4);g.fillStyle='#8a6a44';g.fillRect(x-6,y+bob,12,1);g.fillStyle='#4a2f16';g.fillRect(x,y-9+bob,1,9);g.fillStyle='#e8dcc4';g.beginPath();g.moveTo(x+1,y-9+bob);g.lineTo(x+7,y-2+bob);g.lineTo(x+1,y-2+bob);g.fill();g.fillStyle='#c96b4a';g.fillRect(x-4,y-3+bob,3,3);g.fillStyle='#f1cfa5';g.fillRect(x-4,y-5+bob,3,2)}
+    else{g.fillStyle='#6b4a2a';g.fillRect(x-4,y+bob,8,3);g.fillStyle='#4a2f16';g.fillRect(x-4,y+bob,8,1);g.fillStyle='#8a6a44';g.fillRect(x-5,y+1+bob,1,1);g.fillRect(x+4,y+1+bob,1,1);
+      if(b.kind==='arrival'){g.fillStyle='#7fa85b';g.fillRect(x-1,y-3+bob,3,3);g.fillStyle='#f1cfa5';g.fillRect(x-1,y-5+bob,3,2)}}}});
+  for(const gr of graves)ents.push({y:gr.y,d:()=>{const x=gr.x*T,y=gr.y*T;g.fillStyle='#8c8478';g.fillRect(x-1,y-4,3,5);g.fillStyle='#d9d4c8';g.fillRect(x-1,y-4,1,4);g.fillStyle='#4a4640';g.fillRect(x+1,y-3,1,4);g.fillStyle='#5a7a3a';g.fillRect(x-2,y,5,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-1,y-5,3,1)}}});
+  if(ruin)for(const st of ruin.st)ents.push({y:st.y,d:()=>{const x=Math.round(st.x*T),y=Math.round(st.y*T);g.fillStyle='rgba(0,0,0,.22)';g.fillRect(x-3,y+1,8,1);
+    if(st.f){g.fillStyle='#8c8478';g.fillRect(x-4,y-2,8,3);g.fillStyle='#a49e92';g.fillRect(x-4,y-2,8,1);g.fillStyle='#5e5850';g.fillRect(x-4,y,8,1);g.fillStyle='#5a7a3a';g.fillRect(x-2,y-3,2,1);g.fillRect(x+2,y,1,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-4,y-3,8,1)}}
+    else{const h=st.h*3+3;g.fillStyle='#8c8478';g.fillRect(x-2,y-h,5,h+1);g.fillStyle='#a49e92';g.fillRect(x-2,y-h,2,h);g.fillRect(x-2,y-h,5,1);g.fillStyle='#5e5850';g.fillRect(x+2,y-h+1,1,h);g.fillStyle='#4a4640';g.fillRect(x-1,y-h+3,1,1);g.fillStyle='#5a7a3a';g.fillRect(x-2,y-2,1,2);g.fillRect(x+1,y-1,1,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-2,y-h-1,5,1)}}}});
+  for(const w of wild){if(w.st==='hide')continue;ents.push({y:w.y,d:()=>{const x=w.x*T,y=w.y*T,f=w.f||1,mv=(w.st==='move'||w.st==='flee'||w.st==='hop'||w.st==='trot'||w.st==='chase'||w.st==='leave');
+    if(w.k==='deer'){const bob=mv?Math.sin(time*(w.st==='flee'?18:8))*1:0,lie=isNight()&&w.st==='graze';g.fillStyle='rgba(0,0,0,.22)';g.fillRect(x-4,y,8,1);
+      if(lie){g.fillStyle='#8a6a44';g.fillRect(x-4,y-3,8,3);g.fillStyle='#a58252';g.fillRect(x-4,y-3,8,1);g.fillStyle='#6b4a2a';g.fillRect(x+f*3-1,y-5,2,3);g.fillRect(x+f*3,y-6,1,1);return}
+      g.fillStyle='#8a6a44';g.fillRect(x-4,y-5+bob,8,4);g.fillStyle='#a58252';g.fillRect(x-4,y-5+bob,8,1);g.fillStyle='#e8dcc4';g.fillRect(x-f*4,y-3+bob,1,2);
+      g.fillStyle='#6b4a2a';g.fillRect(x-4+bob*0,y-1,1,2);g.fillRect(x-1,y-1,1,2);g.fillRect(x+1,y-1,1,2);g.fillRect(x+3,y-1,1,2);g.fillRect(x+f*4-(f>0?0:1),y-8+bob,2,4);g.fillRect(x+f*5-(f>0?0:1),y-7+bob,1,1);g.fillStyle='#4a2f16';g.fillRect(x+f*4,y-9+bob,1,1);g.fillRect(x+f*4-f,y-10+bob,1,2)}
+    else if(w.k==='rabbit'){const bob=mv?Math.abs(Math.sin(time*14))*2:0;g.fillStyle='rgba(0,0,0,.2)';g.fillRect(x-2,y,4,1);g.fillStyle=snowD>.5?'#e8e8e4':'#a89880';g.fillRect(x-2,y-3-bob,4,3);g.fillRect(x+f*1,y-5-bob,1,2);g.fillStyle=snowD>.5?'#d0d0cc':'#8c8478';g.fillRect(x-f*2,y-2-bob,1,1)}
+    else if(w.k==='fox'){const bob=mv?Math.sin(time*12)*1:0;g.fillStyle='rgba(0,0,0,.2)';g.fillRect(x-4,y,8,1);g.fillStyle='#b8552a';g.fillRect(x-3,y-3+bob,6,2);g.fillRect(x+f*3,y-4+bob,2,2);g.fillStyle='#e8dcc4';g.fillRect(x-f*4,y-2+bob,2,1);g.fillStyle='#4a2f16';g.fillRect(x-3,y-1,1,1);g.fillRect(x+2,y-1,1,1);g.fillRect(x+f*3,y-5+bob,1,1);g.fillStyle='#e8dcc4';g.fillRect(x+f*3+(f>0?1:0),y-3+bob,1,1)}
+  }})}
+  if(whale)ents.push({y:whale.y,d:()=>{const x=whale.x*T,y=whale.y*T,k=Math.sin(Math.min(1,whale.t/whale.dur)*Math.PI);if(k<.05)return;const w=Math.round(12*k),h=Math.max(1,Math.round(4*k));g.fillStyle='#2b3542';g.fillRect(x-w,y-h,w*2,h);g.fillRect(x-w+2,y-h-1,w*2-4,1);g.fillStyle='#4a5868';g.fillRect(x-w+2,y-h,w*2-4,1);g.fillStyle='#1e2630';g.fillRect(x-w,y-1,w*2,1);if(whale.t>whale.dur*.55){g.fillStyle='#2b3542';g.fillRect(x+whale.dir*(w+1),y-h-3*k,2,Math.round(4*k))}g.fillStyle='rgba(220,235,255,.35)';g.fillRect(x-w-2,y,w*2+4,1)}});
+  for(const p of people)ents.push({y:p.y+(p.inBoat?.5:0),d:()=>{if(p.inside)return;const x=p.x*T,y=p.y*T+(p.inBoat?-1:0),busy=p.task==='chop'||p.task==='build'||p.task==='till'||p.task==='harvest',bob=busy?Math.sin(time*12+p.off)*1.2:0;const k=isKid(p)?.55+ageOf(p)/31:1;
+    if(p===selected){g.fillStyle='rgba(240,179,90,.55)';g.fillRect(x-4,y+1,9,1);g.fillRect(x-4,y-1,1,2);g.fillRect(x+4,y-1,1,2)}
+    if(p.task==='sleep'){g.fillStyle=p.col;g.fillRect(x-2,y-2,5,3);return}
+    g.fillStyle='rgba(0,0,0,.25)';g.fillRect(x-2,y,5,1);g.fillStyle=p.col;g.fillRect(x-1.5,y-5*k+bob,3,4*k);g.fillStyle='#f1cfa5';g.fillRect(x-1.5,y-8*k+bob,3,3);g.fillStyle=p.hair;g.fillRect(x-1.5,y-8*k+bob,3,1);
+    if(p.task==='chop'){g.fillStyle='#999';g.fillRect(x+2,y-7+bob*2,2,2)}
+    if(p.task==='fish'){g.fillStyle='#e8dcc4';g.fillRect(x+2,y-6,1,7)}
+    if(p.task==='wave'&&Math.hypot(p.tx-p.x,p.ty-p.y)<.05){g.fillStyle='#f1cfa5';g.fillRect(x+2,y-9*k+Math.sin(time*9+p.off)*1.5,1,3)}}});
+  ents.push({y:center.y,d:()=>{const x=center.x*T,y=center.y*T;g.fillStyle='#3a2a1a';g.fillRect(x-4,y-1,8,3);const fl=isNight()||L<.6;
+    if(fl){for(let i=0;i<4;i++){g.fillStyle=i%2?'#ffb347':'#ff6a2b';const s=2+Math.sin(time*10+i)*1.5;g.fillRect(x-1+Math.sin(time*7+i)*1.5,y-3-i*1.5-s,2,s)}}}});
+  ents.sort((a,b)=>a.y-b.y).forEach(e=>e.d());
+  for(const f of fx){g.fillStyle=f.c;g.fillRect(f.x*T,f.y*T,2,2)}
+  for(const gl of gulls){const x=gl.x*T,y=gl.y*T,up=Math.sin(time*7+gl.ph)>0;g.fillStyle='rgba(0,0,0,.12)';g.fillRect(x-2,y+9,5,1);g.fillStyle='#f0f0ea';if(up){g.fillRect(x-3,y-1,2,1);g.fillRect(x-1,y,3,1);g.fillRect(x+2,y-1,2,1)}else{g.fillRect(x-3,y+1,2,1);g.fillRect(x-1,y,3,1);g.fillRect(x+2,y+1,2,1)}g.fillStyle='#8c8478';g.fillRect(x,y,1,1)}
+  if(geese){g.fillStyle='#2a2620';const dir=Math.sign(geese.vx);for(let i=0;i<geese.n;i++){const k=Math.ceil(i/2),side=i%2?1:-1;const x=(geese.x-dir*k*1.35)*T,y=(geese.y+side*k*.75)*T,fl=Math.sin(time*9+geese.ph+i)>0?0:1;g.fillRect(x-1,y+fl,3,1);g.fillRect(x-2,y-fl+1,1,1);g.fillRect(x+2,y-fl+1,1,1)}}
+  if(rain){g.strokeStyle=storm?'rgba(200,220,255,.5)':'rgba(200,220,255,.35)';g.beginPath();const n=storm?300:180;for(let i=0;i<n;i++){const x=(i*97+((time*300)|0)*(i%3+1))%(W*T),y=(i*61+((time*400)|0))%(H*T);g.moveTo(x,y);g.lineTo(x-(storm?4:2),y+6)}g.stroke()}
+  if(wx==='snow'){g.fillStyle='rgba(255,255,255,.85)';for(let i=0;i<150;i++){const x=(i*97+((time*20)|0)*(i%3+1)+((Math.sin(time*.8+i)*5)|0)+2000)%(W*T),y=(i*61+((time*34)|0))%(H*T);g.fillRect(x,y,i%4?1:2,i%4?1:2)}}
+  // sky: season tint, cloud, fog
+  const f=dayFrac(),e=edges();
+  if(s==='summer'&&L>.5){g.fillStyle=`rgba(255,200,90,${(L-.5)*.14})`;g.fillRect(0,0,W*T,H*T)}
+  if(s==='winter'){g.fillStyle='rgba(150,180,220,.10)';g.fillRect(0,0,W*T,H*T)}
+  if(wx==='overcast'||wx==='snow'||wx==='fog'){g.fillStyle=`rgba(120,130,150,${wx==='snow'?.28:.2})`;g.fillRect(0,0,W*T,H*T)}
+  if(fogA>.01){const dx=Math.sin(time*.06)*10;g.globalAlpha=fogA*.55;g.drawImage(fogCv,dx,0);g.globalAlpha=fogA*.4;g.drawImage(fogCv,-dx*.6,Math.cos(time*.05)*4);g.globalAlpha=1;
+    g.fillStyle=`rgba(230,236,240,${(fogA*.16).toFixed(3)})`;for(let i=0;i<10;i++){const y=(i*67+13)%(H*T),x=((i*151+time*(6+i%3)*3)%(W*T*1.4))-W*T*.2;g.fillRect(x,y,120+i*20,7);g.fillRect(x+30,y+7,80+i*10,4)}}
+  if(farIsle&&fogA<.9){const fi=farIsle,x0=fi.x*T,w=fi.w*T,h=fi.h*1.7,al=(1-fogA)*(wx==='overcast'||rain||wx==='snow'?.55:.8);g.fillStyle=L>.5?`rgba(44,58,86,${(al*.85).toFixed(2)})`:`rgba(18,24,44,${al.toFixed(2)})`;
+    g.beginPath();g.moveTo(x0,0);g.quadraticCurveTo(x0+w*.22,h*1.5,x0+w*.42,h*.7);g.quadraticCurveTo(x0+w*.6,h*2.1,x0+w*.8,h*.9);g.quadraticCurveTo(x0+w*.92,h*.4,x0+w,0);g.closePath();g.fill();
+    g.fillStyle=`rgba(200,214,232,${(al*.18*(L>.5?1:.3)).toFixed(3)})`;g.fillRect(x0-6,h*1.9,w+12,1)}
+  const dark=1-L;g.fillStyle=`rgba(12,16,48,${(dark*.72+(storm?.12:rain?.06:0))*(1-flash*.9)})`;g.fillRect(0,0,W*T,H*T);
+  if(flash>0){g.fillStyle=`rgba(255,255,255,${flash*.35})`;g.fillRect(0,0,W*T,H*T)}
+  const gold=Math.max(0,1-Math.abs(f-(e[0]+.02))*9)+Math.max(0,1-Math.abs(f-(e[1]-.01))*9);if(gold>0&&wx!=='fog'&&!rain){g.fillStyle=`rgba(255,140,60,${gold*(s==='summer'?.22:.18)})`;g.fillRect(0,0,W*T,H*T)}
+  if(dark>.3){g.globalCompositeOperation='lighter';const glow=(x,y,r,a)=>{const gr=g.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,`rgba(255,180,90,${a})`);gr.addColorStop(1,'rgba(255,180,90,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2)};
+    glow(center.x*T,center.y*T-2,40,.5*dark);for(const h of houses)glow(h.x*T+8,h.y*T+11,18,.35*dark);
+    if(farIsle&&farIsle.lit&&fogA<.6&&(time*2.3|0)%9!==0){const lx=(farIsle.x+farIsle.w*.6)*T,ly=farIsle.h*1.7*1.5;g.fillStyle=`rgba(255,190,110,${(.9*(dark-.3)).toFixed(2)})`;g.fillRect(lx,ly,1,1);glow(lx,ly,7,.5*(dark-.3))}
+    g.globalCompositeOperation='source-over'}
+  if(flies.length){g.globalCompositeOperation='lighter';for(const fl of flies){const b=Math.sin(time*2.6+fl.ph);if(b<.2)continue;const a=(b-.2)*1.1*Math.min(1,fl.l/6);const x=fl.x*T,y=fl.y*T-2;g.fillStyle=`rgba(190,255,120,${(a*.35).toFixed(2)})`;g.fillRect(x-1,y-1,3,3);g.fillStyle=`rgba(230,255,170,${a.toFixed(2)})`;g.fillRect(x,y,1,1)}g.globalCompositeOperation='source-over'}
+  {const lh=getB('light');if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=time*.9,al=(dark-.35)*.22*(wx==='fog'?1.6:1);g.globalCompositeOperation='lighter';g.fillStyle=`rgba(255,240,180,${al})`;
+    for(const off of [0,Math.PI]){g.beginPath();g.moveTo(lx,ly);g.arc(lx,ly,120,a+off-.13,a+off+.13);g.closePath();g.fill()}g.globalCompositeOperation='source-over'}}
+  if(dark>.5&&wx==='clear'){g.fillStyle=`rgba(255,255,255,${(dark-.5)*1.2})`;const rr=mulberry(seed^7);for(let i=0;i<70;i++){const x=rr()*W*T,y=rr()*H*T;if(at((x/T)|0,(y/T)|0)===WATER&&(time*3+i)%7<6)g.fillRect(x,y,1,1)}}
+  document.getElementById('s-pop').textContent=people.length;document.getElementById('s-wood').textContent=wood;document.getElementById('s-food').textContent=food;document.getElementById('s-store').textContent=granary;
+  const lbl=f<e[0]?'night':f<e[0]+.1?'dawn':f<.5?'morning':f<e[1]-.1?'afternoon':f<e[1]?'dusk':'night';const wxl={clear:'',overcast:' · overcast',rain:' · rain',thunder:' · storm',fog:' · fog',snow:' · snow'}[wx]+(hunger>.3?' · hungry':'');
+  document.getElementById('s-time').textContent=`year ${yearOf(dayCount)} · day ${dayCount} · ${s} · ${lbl}${wxl}`;document.getElementById('s-time-s').textContent=`d${dayCount} · ${s} · ${lbl}${wxl}`;
+}
+// ---------- audio ----------
+let AC=null,audioOn=false,windG,rainG,birdT=0,crickG;
+function noiseBuf(){const b=AC.createBuffer(1,AC.sampleRate*2,AC.sampleRate);const d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;return b}
+function startAudio(){AC=new (window.AudioContext||window.webkitAudioContext)();const src=AC.createBufferSource();src.buffer=noiseBuf();src.loop=true;
+  const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=380;bp.Q.value=.6;windG=AC.createGain();windG.gain.value=.05;src.connect(bp).connect(windG).connect(AC.destination);src.start();
+  const lfo=AC.createOscillator();lfo.frequency.value=.11;const lg=AC.createGain();lg.gain.value=.03;lfo.connect(lg).connect(windG.gain);lfo.start();
+  const rs=AC.createBufferSource();rs.buffer=noiseBuf();rs.loop=true;const hp=AC.createBiquadFilter();hp.type='highpass';hp.frequency.value=2200;rainG=AC.createGain();rainG.gain.value=0;rs.connect(hp).connect(rainG).connect(AC.destination);rs.start();
+  const cr=AC.createOscillator();cr.type='triangle';cr.frequency.value=4200;const cl=AC.createOscillator();cl.frequency.value=17;const clg=AC.createGain();clg.gain.value=1;cl.connect(clg);crickG=AC.createGain();crickG.gain.value=0;
+  const cg2=AC.createGain();cg2.gain.value=0;clg.connect(cg2.gain);cr.connect(cg2).connect(crickG).connect(AC.destination);cr.start();cl.start();}
+function chirp(){if(!AC)return;const o=AC.createOscillator(),gn=AC.createGain(),t=AC.currentTime;o.type='sine';const f=2200+Math.random()*1800;o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(f*1.5,t+.06);o.frequency.exponentialRampToValueAtTime(f*.9,t+.13);
+  gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(.06,t+.02);gn.gain.linearRampToValueAtTime(0,t+.15);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+.16)}
+function plink(){if(!AC)return;const o=AC.createOscillator(),gn=AC.createGain(),t=AC.currentTime;o.frequency.setValueAtTime(600,t);o.frequency.exponentialRampToValueAtTime(180,t+.25);gn.gain.setValueAtTime(.15,t);gn.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+.3)}
+function thunder(d){if(!AC||!audioOn)return;const t=AC.currentTime+d*.9;const src=AC.createBufferSource();src.buffer=noiseBuf();const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.setValueAtTime(160,t);lp.frequency.exponentialRampToValueAtTime(50,t+1.6+d*.4);
+  const gn=AC.createGain();const v=.5/(1+d*.5);gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(v,t+.05+d*.03);gn.gain.exponentialRampToValueAtTime(.001,t+1.8+d*.5);src.connect(lp).connect(gn).connect(AC.destination);src.start(t);src.stop(t+2.2+d*.5)}
+function audioTick(dt){if(!AC||!audioOn)return;const t=AC.currentTime,s=sea();rainG.gain.setTargetAtTime(rain?(storm?.14:.09):0,t,1.5);
+  windG.gain.setTargetAtTime(({clear:.045,overcast:.06,rain:.07,thunder:.12,fog:.03,snow:.055})[wx]+(s==='winter'?.012:0),t,2);crickG.gain.setTargetAtTime(isNight()&&!rain&&s!=='winter'?.045:0,t,2);
+  birdT-=dt;if(birdT<=0){birdT=rnd(.3,3);if(!isNight()&&!rain&&wx!=='snow'&&Math.random()<(s==='winter'?.2:.7)){chirp();if(Math.random()<.5)setTimeout(chirp,120+Math.random()*100)}}}
+// ---------- input ----------
+function fit(){const s=Math.min(innerWidth/(W*T),innerHeight/(H*T));cv.style.width=(W*T*s)+'px';cv.style.height=(H*T*s)+'px'}
+addEventListener('resize',fit);fit();
+cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect();const x=(e.clientX-r.left)/r.width*W,y=(e.clientY-r.top)/r.height*H;
+  // islander first
+  let best=null,bd=1.4;for(const p of people){if(p.inside)continue;const d=Math.hypot(p.x-x,p.y-y+.6);if(d<bd){bd=d;best=p}}
+  if(best){showCard(best);return}
+  const tx=x|0,ty=y|0;const t=at(tx,ty);
+  if(t===GRASS){trees.push(mkTree(tx+.5,ty+.5,.2));for(let i=0;i<6;i++)fx.push({x,y,vx:rnd(-1,1),vy:rnd(-1.5,-.3),c:'#9fd66a',l:.6});if(R()<.3)say('Someone unseen plants a sapling. The islanders don\'t question it.')}
+  else if(t===WATER){for(let i=0;i<4;i++)fx.push({x:x+i*1.1,y,vx:0,vy:-.4,c:'#cfe6ff',l:.5+i*.15});plink()}
+});
+document.getElementById('b-speed').onclick=e=>{speed=speed===1?2:speed===2?4:1;e.target.textContent=speed+'×'};
+document.getElementById('b-new').onclick=()=>newWorld((Math.random()*1e9)|0);
+document.getElementById('b-audio').onclick=e=>{if(!AC)startAudio();audioOn=!audioOn;if(AC.state==='suspended')AC.resume();windG.gain.value=audioOn?.05:0;if(!audioOn){rainG.gain.value=0;crickG.gain.value=0}e.target.textContent=audioOn?'sound on':'sound off';e.target.classList.toggle('on',audioOn)};
+// ---------- loop ----------
+newWorld(seed);
+let last=performance.now();
+function loop(now){let dt=Math.min(.05,(now-last)/1000);last=now;for(let i=0;i<speed;i++)step(dt);audioTick(dt);cardT-=dt;renderCard(false);draw();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+// exposed for headless testing only
+window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed:s=>speed=s,newWorld,flavor,drawFace,byName};
+})();
+</script>
+</body>
+</html>
