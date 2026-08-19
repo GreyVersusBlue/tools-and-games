@@ -18,7 +18,7 @@ import { pathToFileURL, fileURLToPath } from 'url';
 import path from 'path';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const GAME = pathToFileURL(path.join(HERE, '..', 'hearth.html')).href;
+const GAME = pathToFileURL(path.join(HERE, '..', 'index.html')).href;
 const DT = 0.05; // the step used by skipToMorning; one sim day = dayLen/DT = 2800 steps
 
 function arg(name, dflt) {

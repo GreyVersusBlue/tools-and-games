@@ -46,6 +46,17 @@ Deliverable: `hearth.html` (single file, ~225 KB, zero deps, runs from `file://`
 - The rich-island cap overshoot (49 via births) is pre-existing and mild; if it grates, the `popCap()+1` allowance in the birth rule is the number.
 - The listening pass now exists as a harness mode; **run it whenever a sound is added or a gain touched** — it is one command and it prints a table worth eyeballing.
 
+## Postscript: the file became a directory
+
+After the sprint proper, the single `hearth.html` was split into components following the repo's convention (the orbital layout: classic scripts, not ES modules — the game must keep running from `file://`, which modules cannot):
+
+- `index.html` — head + markup + the ordered `<script src>` list
+- `css/hearth.css`
+- `js/core.js → flavor.js → life.js → watcher.js → sim.js → render.js → audio.js → save.js → main.js` — the old single script cut at its own section banners, **in original order**. Top-level `let`/`const` share one global lexical scope across classic scripts, and all boot execution sits in `main.js`, so semantics are unchanged — proven, not assumed: the split build's 30-day `pack()` hash on seed 7 is byte-identical to the single file's (`4afab34f:27803`), and the whole harness suite passes against `index.html`.
+- `hearth.html` is now a redirect stub that carries `location.hash` across the hop, because old share links hold a whole island in the hash. The homepage card points at `Projects/hearth/`.
+
+Rules that now matter: **load order is the old file's order and is load-bearing** (add new files to the list in `index.html`, never reorder); don't add `"use strict"` (the code predates it); don't declare the same top-level name in two files; keep boot-time execution in `main.js`. The `/* */`-only comment rule near dense lines still applies everywhere.
+
 ## Where the thing stands
 
 Sprints 1–12 in, ~225 KB of ~250 KB, one file, no dependencies, save v:8 (v:5–v:7 accepted), harness green across soak / determinism / save / depth / eleven / twelve. The island now keeps things as well as people: the comb out of the old stones has a pocket to live in and a list of hands to pass through, the landing story is bigger than the landing was, and once a year, in the deep of winter, they tell it all again whether you are watching or not.

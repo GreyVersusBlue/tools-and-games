@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth — a small living island</title>
+<!-- Hearth v2 · Sprints 1–12 · a small living island and the quiet spirit watching it.
+     Split from the original single file into css/hearth.css and js/* (classic scripts, ordered — see js/main.js last);
+     still zero dependencies, still runs from file:// and GitHub Pages. hearth.html redirects here, hash intact,
+     because old share links carry a whole island in the hash. -->
+<link rel="stylesheet" href="css/hearth.css">
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="hud">
+  <h1>Hearth<small id="seedlbl">island —</small></h1>
+  <span class="stat" data-i="☺"><em>people</em><b id="s-pop">0</b></span>
+  <span class="stat" data-i="♠"><em>wood</em><b id="s-wood">0</b></span>
+  <span class="stat" data-i="✿"><em>food</em><b id="s-food">0</b></span>
+  <span class="stat" data-i="▤" title="the granary — grain put by for winter"><em>store</em><b id="s-store">0</b></span>
+  <span class="stat" id="s-time">dawn</span><span class="stat" id="s-time-s">dawn</span>
+  <span id="ctl">
+    <button id="b-pause" title="pause (space)" aria-label="pause">❚❚</button>
+    <button id="b-s1" class="on" title="normal time">1×</button>
+    <button id="b-s3" title="three times">3×</button>
+    <button id="b-s10" title="ten times">10×</button>
+  </span>
+  <button id="b-morning" title="skip to morning (m)">morning</button>
+  <button id="b-chron" title="the chronicle (c)">chronicle</button>
+  <button id="b-share" title="put this island in the address bar">keep</button>
+  <button id="b-audio">sound off</button>
+  <button id="b-music" title="just the music, on or off (n)">music on</button>
+  <button id="b-new">new island</button>
+  <button id="b-help" aria-label="what the watcher can do">?</button>
+</div>
+<div id="log"></div>
+<div id="hint">click an islander to meet them, or at night for a dream · a sleeping child gets a lullaby · grass: a sapling, hold for a spring<br>water: skip a stone, drag for a gust · a cloud's shadow: rain, there · the fire: a story · the sound is worth turning on<br>scroll, pinch, or + and − to lean closer · drag the land, or the arrow keys, to look around</div>
+<aside id="card" hidden aria-live="polite">
+  <button class="x" id="card-x" aria-label="close">×</button>
+  <div class="top"><canvas id="face" width="16" height="16"></canvas><div><h2 id="c-name">—<small id="c-sub"></small></h2><div class="traits" id="c-traits"></div></div></div>
+  <h3>right now</h3><p class="doing" id="c-doing"></p>
+  <h3>people</h3><div class="rels" id="c-rels"></div>
+  <h3>their story</h3><ol id="c-hist"></ol>
+</aside>
+<aside id="chron" hidden aria-label="the chronicle">
+  <button class="x" id="chron-x" aria-label="close">×</button>
+  <h2 id="chron-t">The Chronicle<small id="chron-s">of an island with no name yet</small></h2>
+  <div class="roll" id="chron-roll" tabindex="0"></div>
+  <div class="foot"><button id="chron-dl">export .txt</button><span id="chron-n"></span></div>
+</aside>
+<script src="js/core.js"></script>
+<script src="js/flavor.js"></script>
+<script src="js/life.js"></script>
+<script src="js/watcher.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/render.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/save.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
