@@ -22,6 +22,12 @@ function newDay(){saidToday=new Set();
   arcDay();
   if(arcK()!=='fever'&&people.some(p=>p.sick))people.forEach(p=>p.sick=0); // no fever, no fevered: stray flags heal
   wayDay(yr);faithDay();
+  // the morning after a fire night, someone may walk out to stand where a grown story happens — and the first walk names the ground (sprint 13).
+  // walkP only queues the errand; step() launches it once the light is up. An unnamed place is walked for certain; a named one, sometimes, again.
+  if(storyDay===dayCount-1){const cand=chron.filter(e=>e.gr&&LORE_PLACE[e.kind]);
+    if(cand.length){const un=cand.filter(e=>!lorePl.includes(e.kind));
+      const e=un.length?un[0]:(R()<.25?cand[(R()*cand.length)|0]:null);
+      if(e){const D=LORE_PLACE[e.kind],pos=D.at();if(pos)walkP={d:dayCount,k:e.kind,l:D.l,x:pos.x,y:pos.y,named:lorePl.includes(e.kind)}}}}
   // paths where people walk; cobbles once the village is big
   {let ch=false;const cob=houses.length>=10;for(let i=0;i<W*H;i++){const h=heat[i];heat[i]=h*.8;const t=tiles[i];if(t===WATER||t===FARM||t===ROCK)continue;
       if(h>26&&road[i]===0){road[i]=1;ch=true}else if(cob&&h>60&&road[i]===1){road[i]=2;ch=true}}

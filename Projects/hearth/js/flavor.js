@@ -210,6 +210,11 @@ const G=[
   {c:x=>x.legend&&x.kid&&x.b,t:'{A} asks {B} for the story of {leg}, the long way, with all the grown parts in.'},
   {c:x=>x.legend&&x.elder,t:'{A} tells {leg} the old way, the short true way, and is outvoted.'},
   {c:x=>x.legend&&x.gossipy,t:'{A} adds a small detail to the story of {leg} that was not in it yesterday, and by evening it always was.'},
+  // the named ground (sprint 13): where the grown stories happen
+  {c:x=>x.lore,t:'{A} takes the long way round past {lore}, the way everyone does now, without ever deciding to.',w:.7},
+  {c:x=>x.lore&&x.kid&&x.b,t:'{A} makes {B} come and stand at {lore} for the telling, because that is where it happens, and stories go better standing in them.'},
+  {c:x=>x.lore&&x.elder,t:'{A} remembers when {lore} was a stretch of ground like any other. It is not any more, and {A} was there when it stopped.'},
+  {c:x=>x.lore&&x.dreamy&&!x.night,t:'{A} stands at {lore} fitting the story over the ground. The story has outgrown it. {A} decides the ground is what is wrong.'},
 ];
 const ARRIVED=p=>pick([`${p.name} rowed in out of nowhere and asked to stay, and stayed.`,
   `${p.name} came ashore with everything ${p.name} owned in one bag, and was given bread before any questions.`,
@@ -225,10 +230,11 @@ function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
   const ctx={a,b,c,rel:rel?rel.k:null,night:isNight(),dusk:isDusk(),rain,storm,thunder:storm,market:hasB('market'),mill:hasB('mill'),well:hasB('well'),hall:hasB('hall'),light:hasB('light'),hut:hasB('hut'),smoke:hasB('smoke'),bridge:hasB('bridge'),trader:!!trader,road:roadV>0,named:!!village,deer:wild.some(w=>w.k==='deer'),rabbits:wild.some(w=>w.k==='rabbit'),farms:farms.length>0,fox:wild.some(w=>w.k==='fox'),gulls:gulls.length>0,fireflies:flies.length>0,geese:geeseDay===dayCount,whale:!!whale||whaleDay===dayCount,fish:fishSh.length>0&&!frozen,far:!!farIsle,voyaged:!!voyage,away:!!voyage&&voyage.st==='away',stayed:!!voyage&&voyage.st==='stayed',ruin:!!ruin&&ruinSeen>0,spring:springs.length>0,story:storyDay===dayCount,dreamt:dreamAny===dayCount,cloudrain:clouds.some(c=>c.r>0),fog:wx==='fog',snow:wx==='snow',overcast:wx==='overcast',ice:frozen,hungry:hunger>.25,leaves:seaDay()>=2,blossom:seaDay()<=3,lowtide:td<-.6,hightide:td>.6,sea:seasonOf(dayCount),ev:eventLabel(),graves:graves.length>0,elder:isElder(a),kid:isKid(a),
     crf:a.craft,cxpv:a.cxp||0,orchard:hasW('orchard'),hives:hasW('hives'),swingw:hasW('swing'),ringw:hasW('ring'),bench:hasW('bench'),oldhouse:hasW('ruin3'),racks:hasW('racks'),boat2:hasW('boat2'),dryg:dry01>.6,
     drought:arcK()==='drought',hardw:arcK()==='longwinter',feverA:arcK()==='fever',shoalA:arcK()==='shoal',sick:!!a.sick,sail:hasWay(0),plough:hasWay(1),kiln:hasWay(2),book:hasWay(3),stone:hasW('shrine'),faithHi:faith>=.5,
-    keeps:thingsOf(a.name).length>0,shelf:hasB('hall')&&things.some(t=>!t.holder),legend:chron.some(e=>e.gr)};
+    keeps:thingsOf(a.name).length>0,shelf:hasB('hall')&&things.some(t=>!t.holder),legend:chron.some(e=>e.gr),lore:spots.some(s=>s.lore)};
   for(const t of TRAITS)ctx[t]=has(a,t);
   const ka=thingsOf(a.name),grown=chron.filter(e=>e.gr),legLbl=grown.length?grown[(R()*grown.length)|0].label:null;
+  const loreSp=spots.filter(s=>s.lore),loreL=loreSp.length?loreSp[(R()*loreSp.length)|0].l:null;
   const ok=G.filter(t=>t.c(ctx)&&(usedTpl.get(t)||0)<dayCount);if(!ok.length)return;
   const wt=ok.map(t=>t.w||1);s=wt.reduce((x,y)=>x+y,0);r=R()*s;let tpl=ok[0];for(let i=0;i<ok.length;i++){r-=wt[i];if(r<=0){tpl=ok[i];break}}
-  const txt=tpl.t.replace(/{A}/g,B(a)).replace(/{B}/g,b?B(b):'someone').replace(/{C}/g,c?B(c):'someone').replace(/{spot}/g,a.spot.l).replace(/{sea}/g,ctx.sea).replace(/{wx}/g,WX()).replace(/{ev}/g,ctx.ev||'the first landing').replace(/{village}/g,V()).replace(/{voy}/g,voyage?voyage.name:'someone').replace(/{thing}/g,ka.length?ka[0].n:'a small thing').replace(/{leg}/g,legLbl||'the first landing');
+  const txt=tpl.t.replace(/{A}/g,B(a)).replace(/{B}/g,b?B(b):'someone').replace(/{C}/g,c?B(c):'someone').replace(/{spot}/g,a.spot.l).replace(/{sea}/g,ctx.sea).replace(/{wx}/g,WX()).replace(/{ev}/g,ctx.ev||'the first landing').replace(/{village}/g,V()).replace(/{voy}/g,voyage?voyage.name:'someone').replace(/{thing}/g,ka.length?ka[0].n:'a small thing').replace(/{leg}/g,legLbl||'the first landing').replace(/{lore}/g,loreL||'the shore');
   if(say(txt))usedTpl.set(tpl,dayCount)}

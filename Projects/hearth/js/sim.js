@@ -48,6 +48,18 @@ function step(dt){
       const k=rnd(6,11);spawnBoat('fish',l,{p,x:l.x+l.dx*.9,y:l.y+l.dy*.9,tx:l.x+l.dx*k+rnd(-2,2),ty:l.y+l.dy*k+rnd(-2,2)});p.task='boat';p.inBoat=true;if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null}}}
   if(voyage&&(voyage.st==='decided'||(voyage.st==='going'&&voyage.p.task!=='voyage'))&&!isNight()&&!storm&&dayFrac()>edges()[0]+.06&&voyage.p.task!=='boat'){const p=voyage.p;const first=voyage.st==='decided';voyage.st='going';const l=landings[0];if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.inside=false;goTo(p,l.x,l.y,'voyage',0);
     if(first)say(`${B(p)} says, at breakfast, that ${p.name} is going to see the far island, and that it is not up for discussion.`,true)}
+  // the story walk (sprint 13): queued at dawn by newDay, launched once the light is up. Children first — it is their kind of errand —
+  // then the dreamy, then whoever is youngest; the first walk to a place is what gives the ground its story-name, for good.
+  if(walkP&&walkP.d===dayCount&&!isNight()&&!storm&&dayFrac()>edges()[0]+.05){const e=walkP;walkP=null;
+    const free=q=>!q.dead&&!q.inside&&q.task!=='boat'&&q.task!=='voyage'&&!q.sick;
+    const kids=people.filter(q=>isKid(q)&&ageOf(q)>=5&&free(q)),dr=people.filter(q=>!isKid(q)&&has(q,'dreamy')&&free(q));
+    const w=kids.length?kids[(R()*kids.length)|0]:dr.length?dr[(R()*dr.length)|0]:(e.named?null:people.filter(q=>!isKid(q)&&!isElder(q)&&free(q)).sort((a,b)=>ageOf(a)-ageOf(b))[0]);
+    if(w){if(w.tgt&&w.tgt.claimed)w.tgt.claimed=false;w.tgt=null;w.pilgL=e.l;goTo(w,e.x,e.y,'pilgrim',rnd(8,14));
+      if(!e.named){lorePl.push(e.k);if(!spots.some(sp=>sp.l===e.l))spots.push({l:e.l,x:e.x,y:e.y,lore:1});
+        say(`${B(w)} is up and out at first light, to stand where the story happens with both feet. By evening the place has the name the fire gave it: ${e.l}.`,true);
+        addEvent('place',`the naming of ${e.l}`,`After the story had grown big enough, ${w.name} walked out at first light to stand in it. The ground has been called ${e.l} ever since, and the children can point to it.`);
+        w.hist.push({d:dayCount,s:`walked out at first light and gave the ground its story-name: ${e.l}`})}
+      else if(R()<.4)say(`${B(w)} walks out to ${e.l} before the day starts properly, to stand in the story a moment.`,false,'walkstory')}}
   stepBoats(dt);stepWild(dt);stepClouds(dt);stepSkips(dt);stepGusts(dt);
   // smokehouse smoke; winter chimneys
   {const sm=getB('smoke');if(sm&&R()<dt*3)fx.push({x:sm.x+1.7,y:sm.y-.4,vx:rnd(-.2,.2)+(storm?.8:0),vy:-.35,c:'#8c8478',l:rnd(1.5,2.5)});
@@ -91,13 +103,14 @@ function step(dt){
       case 'gohome': if(walk(p,dt))p.task='sleep';break;
       case 'shelter': if(walk(p,dt)&&p.shelterH)p.inside=true;break;
       case 'sleep': break;
-      case 'mourn': case 'look': case 'wander': case 'visit': case 'linger': case 'wave': case 'market': case 'gather':
+      case 'mourn': case 'look': case 'wander': case 'visit': case 'linger': case 'wave': case 'market': case 'gather': case 'pilgrim':
         if(walk(p,dt)){p.dwell-=dt;if(p.dwell<=0){p.task='idle';p.t=rnd(1,2)}
           else if(!p.said){p.said=true;
             if(p.task==='mourn')say(`${B(p)} stands a while on the hill, and comes down slowly.`,false,'mourn');
             else if(p.task==='look')say(`${B(p)} stands at the water's edge at dusk, looking the way the boat came.`,false,'look');
             else if(p.task==='wander')say(`${B(p)} walks out to the far shore alone and stands looking at the water.`,false,'wander');
-            else if(p.task==='visit'&&p.vg)say(`${B(p)} stops at ${p.vg.name}'s stone and straightens it, though it was straight.`,false,'visit')}}
+            else if(p.task==='visit'&&p.vg)say(`${B(p)} stops at ${p.vg.name}'s stone and straightens it, though it was straight.`,false,'visit');
+            else if(p.task==='pilgrim')say(`${B(p)} stands a while at ${p.pilgL||'the place in the story'}, matching the ground to the telling, and the ground holds still for it.`,false,'pilg')}}
         else p.said=false;break;
       case 'play':{p.t-=dt;if(p.t<=0){p.t=rnd(2,5);let anchor=null;
         if(ageOf(p)>=5&&R()<.4){ // old enough to follow the work around, asking why

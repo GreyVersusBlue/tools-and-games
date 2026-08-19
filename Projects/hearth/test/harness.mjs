@@ -156,12 +156,14 @@ if (mode === 'depth') {
         things: H.things.map(t => `${t.n}(${t.holder || 'shelf'},${t.hist.length})`).join(', '),
         heirs: H.chron.filter(e => e.kind === 'heir').length,
         grown: H.chron.filter(e => e.gr).length, ways: H.wayN(),
+        places: H.spots.filter(s => s.lore).map(s => s.l).join('; '),
       };
     });
     console.log(`seed ${seed} @ day ${s.day}: pop ${s.pop}`);
     console.log(`  crafts field/wood/sea/frame/store: ${s.crafts.join('/')} (uncrafted ${s.none}), masters ${s.masters}, kids shadowing ${s.shad}`);
     console.log(`  works: [${s.works}]  bread-days ${s.breads}  returners ${s.backs}  found-objects ${s.found}  mastery-events ${s.mastEvents}  store ${s.granary}`);
     console.log(`  things: [${s.things}]  handings-down ${s.heirs}  stories-grown ${s.grown}  ways ${s.ways}`);
+    console.log(`  named places: [${s.places || 'none yet'}]`);
     if (viol.length) { failed = true; console.log('  VIOLATIONS:'); [...new Set(viol)].slice(0, 10).forEach(v => console.log('   ' + v)); }
     if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
     await ctx.close();
@@ -400,6 +402,81 @@ if (mode === 'twelve') {
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
   await ctx.close();
   console.log(failed ? '\nFAIL' : '\nPASS: sprint 12 systems behave, and the island has been listened to');
+}
+
+if (mode === 'thirteen') {
+  // sprint 13 observation & force tests: a grown story names its ground and someone walks it the next morning,
+  // the named place survives pack/unpack and re-derives its spot, v8 saves still load (no lore, no error),
+  // made things vary by seed, and the hall shelf draws without error.
+  const warns = [];
+  const { ctx, page } = await openIsland(browser, 7, warns);
+  const H = fn => page.evaluate(fn);
+  for (let d = 0; d < 8; d++) await runDay(page, 1e9); // let people and chron entries exist
+
+  // fire nights until a story grows and the ground gets named (growth at tl>=3; the walk is the next morning)
+  let named = 0, nights = 0;
+  for (let d = 0; d < 14 && !named; d++) {
+    await H(() => window.__hearth.tellStory());
+    nights++;
+    await runDay(page, 1e9);
+    named = await H(() => window.__hearth.chron.filter(e => e.kind === 'place').length);
+  }
+  const st = await H(() => {
+    const h = window.__hearth;
+    return { lorePl: h.lorePl.slice(), spots: h.spots.filter(s => s.lore).map(s => s.l),
+      placeEv: h.chron.filter(e => e.kind === 'place').map(e => e.label),
+      walker: h.people.some(p => p.hist.some(x => x.s.includes('story-name'))) };
+  });
+  console.log(`ground named after ${nights} fire nights: ${st.placeEv.join(' / ') || 'NO'} (kinds: ${st.lorePl.join(',')})`);
+  if (!named) { failed = true; console.log('FAIL: fourteen fire nights grew no named place'); }
+  if (named && !st.spots.length) { failed = true; console.log('FAIL: a named place produced no lore spot'); }
+  if (named && !st.walker) { failed = true; console.log('FAIL: nobody has the walk in their history'); }
+
+  // the named place survives the save: kinds are packed (v9), the spot re-derives from the rebuilt world
+  const rt = await H(() => {
+    const h = window.__hearth; const o = h.pack();
+    h.unpack(JSON.parse(JSON.stringify(o)));
+    return { v: o.v, lp: o.lp, lorePl: h.lorePl.slice(), spot: h.spots.some(s => s.lore) };
+  });
+  console.log(`round trip: pack v${rt.v} carries lp=[${rt.lp}], after unpack lorePl=[${rt.lorePl}] spot=${rt.spot}`);
+  if (rt.v !== 9 || !rt.lp.length || !rt.lorePl.length || !rt.spot) { failed = true; console.log('FAIL: named places did not survive pack/unpack'); }
+
+  // a v8-shaped save (no lp key) still loads, with no lore and no error
+  const v8ok = await H(() => {
+    const h = window.__hearth; const o = h.pack(); o.v = 8; delete o.lp;
+    try { h.unpack(o); } catch (e) { return 'threw: ' + e.message; }
+    return h.people.length > 0 && h.lorePl.length === 0 && !h.spots.some(s => s.lore) ? 'ok' : 'bad state';
+  });
+  console.log(`v8 save compat: ${v8ok}`);
+  if (v8ok !== 'ok') failed = true;
+
+  // the shelf in the hall draws when something waits on it
+  const shelf = await H(() => {
+    const h = window.__hearth;
+    h.things.push({ n: 'a test comb', full: 'a test comb', holder: 0, src: 'found', hist: [] });
+    try { h.draw(); } catch (e) { return 'threw: ' + e.message; }
+    h.things.pop();
+    return 'ok';
+  });
+  console.log(`hall shelf draw: ${shelf}`);
+  if (shelf !== 'ok') failed = true;
+
+  // made things vary by seed (and are stable within one): compare all five crafts across two islands
+  const made7 = await H(() => [0, 1, 2, 3, 4].map(ci => window.__hearth.madeOf(ci)));
+  const made7b = await H(() => [0, 1, 2, 3, 4].map(ci => window.__hearth.madeOf(ci)));
+  await H(() => window.__hearth.newWorld(20260819));
+  const madeB = await H(() => [0, 1, 2, 3, 4].map(ci => window.__hearth.madeOf(ci)));
+  const shape = m => m.every(v => Array.isArray(v) && v.length === 2 && v.every(s => typeof s === 'string' && s.length > 3));
+  const differs = made7.some((v, i) => v[1] !== madeB[i][1]);
+  console.log(`made things, seed 7:        ${made7.map(v => v[1]).join(', ')}`);
+  console.log(`made things, seed 20260819: ${madeB.map(v => v[1]).join(', ')}`);
+  if (!shape(made7) || !shape(madeB)) { failed = true; console.log('FAIL: a made-thing entry is malformed'); }
+  if (JSON.stringify(made7) !== JSON.stringify(made7b)) { failed = true; console.log('FAIL: made things are not stable within a seed'); }
+  if (!differs) { failed = true; console.log('FAIL: two islands make identical things (per-seed variation is not varying)'); }
+
+  if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
+  await ctx.close();
+  console.log(failed ? '\nFAIL' : '\nPASS: sprint 13 systems behave — the stories have somewhere to stand');
 }
 
 if (mode === 'determinism') {
