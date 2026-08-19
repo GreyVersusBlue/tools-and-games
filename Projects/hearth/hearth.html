@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth — a small living island</title>
-<!-- Hearth v2 · Sprint 8: the short list — all wildlife respects the shore, the keeper child knows the store, an honest music button (on top of Sprints 1–7). Single file, no dependencies. -->
+<!-- Hearth v2 · Sprint 9: solid ground — people respect the shore too (the stream can be waded, the bridge carries), the island keeps itself between visits, and the watcher is told what a watcher can do (on top of Sprints 1–8). Single file, no dependencies. -->
 <style>
   :root{--ink:#e8dcc4;--dim:#9a8b6d;--panel:rgba(18,14,10,.86);--gold:#f0b35a;--line:#3a3020}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -26,7 +26,9 @@
        -webkit-mask-image:linear-gradient(transparent,#000 35%);mask-image:linear-gradient(transparent,#000 35%)}
   #log p{opacity:0;animation:rise .8s ease forwards;text-shadow:0 1px 3px #000}
   #log p i{color:var(--dim);font-style:normal;margin-right:8px;font-size:11px}
+  #log p.h{color:var(--dim);font-style:italic}
   #log b{font-weight:normal;color:var(--gold)}
+  #b-help{display:none}
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   #hint{position:fixed;right:14px;bottom:14px;max-width:min(430px,42vw);font-size:12px;line-height:1.5;color:var(--dim);font-style:italic;text-align:right;text-shadow:0 1px 3px #000}
   /* islander card */
@@ -63,6 +65,8 @@
   #ctl button:last-child{border-radius:0 2px 2px 0;border-right-width:1px}
   #ctl button:focus-visible{position:relative;z-index:1}
   @media (max-width:520px){#card{right:8px;left:8px;width:auto;top:auto;bottom:8px;max-height:52vh}#log{max-height:22vh}#hint{display:none}
+    #b-help{display:inline-block}
+    #hint.show{display:block;left:8px;right:8px;bottom:8px;max-width:none;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:10px 12px;text-align:left;pointer-events:auto;z-index:5}
     #chron{left:8px;right:8px;width:auto;max-height:60vh}
     #hud{gap:9px;padding:8px 10px}h1{font-size:15px}h1 small{display:none}.stat em{display:none}.stat::before{content:attr(data-i);color:var(--dim);margin-right:3px;font-size:12px}
     #s-time{display:none}#s-time-s{display:inline}button{padding:4px 7px;font-size:11px}}
@@ -90,6 +94,7 @@
   <button id="b-audio">sound off</button>
   <button id="b-music" title="just the music, on or off (n)">music on</button>
   <button id="b-new">new island</button>
+  <button id="b-help" aria-label="what the watcher can do">?</button>
 </div>
 <div id="log"></div>
 <div id="hint">click an islander to meet them, or at night for a dream · a sleeping child gets a lullaby · grass: a sapling, hold for a spring<br>water: skip a stone, drag for a gust · a cloud's shadow: rain, there · the fire: a story · the sound is worth turning on</div>
@@ -130,6 +135,8 @@ let deep=[],wild=[],flies=[],gulls=[],geese=null,geeseDay=0,whale=null,whaleT=0,
 let springs=[],clouds=[],cloudSp=[],gusts=[],skips=[],chron=[],wind=1,paused=false,storyDay=0,dreamAny=0;
 // sprint 7 state: the sack kept against the first hard year
 let sackUsed=false;
+// sprint 9 state: which water a person may wade (the stream), and whether the bridge is up to carry them over it
+let wadeTiles=new Set(),bridgeUp=false;
 let RM=false;try{const mq=matchMedia('(prefers-reduced-motion: reduce)');RM=mq.matches;
   if(mq.addEventListener)mq.addEventListener('change',e=>{RM=e.matches});else if(mq.addListener)mq.addListener(e=>{RM=e.matches})}catch(e){}
 const V=()=>village||'the village';
@@ -171,6 +178,7 @@ function newWorld(s){
     let x=sx,y=sy,seen=new Set();for(let k=0;k<45&&x>0&&y>0&&x<W-1&&y<H-1;k++){if(at(x,y)===WATER&&!seen.has(idx(x,y)))break;seen.add(idx(x,y));stream.push({x,y});
       let bx=x,by=y,be=1e9;for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const e=elev[idx(x+dx,y+dy)]+(seen.has(idx(x+dx,y+dy))?9:0);if(e<be){be=e;bx=x+dx;by=y+dy}}if(be>8)break;x=bx;y=by}
     if(stream.length<8)stream=[];for(const s of stream){tiles[idx(s.x,s.y)]=WATER;elev[idx(s.x,s.y)]=.19}trees=trees.filter(t=>!stream.some(s=>Math.hypot(s.x+.5-t.x,s.y+.5-t.y)<1))}
+  wadeTiles=new Set();for(const s of stream)wadeTiles.add(idx(s.x,s.y));bridgeUp=false;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(at(x,y)===SAND&&(at(x+1,y)===WATER||at(x-1,y)===WATER||at(x,y+1)===WATER||at(x,y-1)===WATER))shore.push({x,y});
   // tide band: sand/water tiles within a hair of the waterline; fog mask: low ground and water
   tideTiles=[];fg.clearRect(0,0,W*T,H*T);
@@ -282,7 +290,31 @@ function freeSpotNear(cx,cy,r0,r1,need){for(let k=0;k<60;k++){const a=rnd(6.28),
   let ok=true;for(let j=0;j<need&&ok;j++)for(let i=0;i<need;i++){if(at(x+i,y+j)!==GRASS){ok=false;break}
     if(houses.some(h=>Math.abs(h.x-x-i)<2.6&&Math.abs(h.y-y-j)<2.6)||bAll().some(b=>x+i>=b.x-1&&x+i<=b.x+b.w&&y+j>=b.y-1&&y+j<=b.y+b.h)||farms.some(f=>f.x===x+i&&f.y===y+j)||(ruin&&Math.hypot(ruin.x-x-i-.5,ruin.y-y-j-.5)<3.6)||graves.some(gr=>Math.hypot(gr.x-x-i,gr.y-y-j)<3)||trees.some(t=>t.hp>0&&Math.hypot(t.x-x-i-.5,t.y-y-j-.5)<1.2)){ok=false;break}}
   if(ok)return{x,y}}return null}
-function walk(p,dt){const dx=p.tx-p.x,dy=p.ty-p.y,d=Math.hypot(dx,dy);let sp=(isNight()?1.6:2.6)*dt*(1-hunger*.3);if(isElder(p))sp*=.7;if(isKid(p))sp*=.85;if(snowD>.5&&at(p.x|0,p.y|0)!==WATER)sp*=.85;if(d<sp){p.x=p.tx;p.y=p.ty;return true}p.x+=dx/d*sp;p.y+=dy/d*sp;const hi=idx(p.x|0,p.y|0);if(hi>=0&&hi<W*H)heat[hi]+=dt;return false}
+// people walk on land. The stream can be waded — slowly, feeling for the stones — and once the bridge is up it carries them over dry. The sea refuses.
+const canWalk=(x,y)=>at(x|0,y|0)!==WATER||(bridgeUp&&bridgeSite&&(x|0)===bridgeSite.x&&(y|0)===bridgeSite.y);
+const canWade=(x,y)=>wadeTiles.has(idx(x|0,y|0));
+// if the straight line to a target crosses the stream and the bridge is up, go round by the bridge (no rnd() in here: replays depend on it)
+function routeVia(x0,y0,x1,y1){if(!bridgeUp||!bridgeSite)return null;const d=Math.hypot(x1-x0,y1-y0);if(d<5)return null;
+  const n=Math.ceil(d);let cross=false;for(let i=1;i<n&&!cross;i++){const k=i/n;if(canWade(x0+(x1-x0)*k,y0+(y1-y0)*k))cross=true}
+  return cross?{x:bridgeSite.x+.5,y:bridgeSite.y+.5}:null}
+// a person with nowhere left to step lets the task go where they stand (deterministic: no rnd())
+function blockedStop(p){if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.via=null;p.task=p.task==='gohome'?'sleep':'idle';p.t=1;return false}
+function walk(p,dt){
+  if(p.tx!==p._vx||p.ty!==p._vy){p._vx=p.tx;p._vy=p.ty;p.via=routeVia(p.x,p.y,p.tx,p.ty)}
+  const txx=p.via?p.via.x:p.tx,tyy=p.via?p.via.y:p.ty;
+  const dx=txx-p.x,dy=tyy-p.y,d=Math.hypot(dx,dy);let sp=(isNight()?1.6:2.6)*dt*(1-hunger*.3);if(isElder(p))sp*=.7;if(isKid(p))sp*=.85;if(snowD>.5&&at(p.x|0,p.y|0)!==WATER)sp*=.85;
+  const wading=at(p.x|0,p.y|0)===WATER&&canWade(p.x,p.y);
+  if(wading){sp*=.55;if(p.waded!==dayCount){p.waded=dayCount;say(`${B(p)} hitches up and wades the stream, feeling for the stones.`,false,'wade')}}
+  if(d<sp){if(p.via){p.x=txx;p.y=tyy;p.via=null;return false}
+    if(canWalk(p.tx,p.ty)||canWade(p.tx,p.ty)){p.x=p.tx;p.y=p.ty}
+    return true}
+  if(!p.via&&d<1.2&&!canWalk(p.tx,p.ty)&&!canWade(p.tx,p.ty))return true; // the target tile is sea: the water's edge is close enough
+  const nx=p.x+dx/d*sp,ny=p.y+dy/d*sp;
+  if(canWalk(nx,ny)||canWade(nx,ny)){p.x=nx;p.y=ny}
+  else if(canWalk(nx,p.y)||canWade(nx,p.y))p.x=nx;
+  else if(canWalk(p.x,ny)||canWade(p.x,ny))p.y=ny;
+  else return blockedStop(p);
+  const hi=idx(p.x|0,p.y|0);if(hi>=0&&hi<W*H)heat[hi]+=dt;return false}
 function popCap(){return 4+houses.length*2}
 const has=(p,t)=>p.tr.includes(t);
 const workRate=p=>(has(p,'patient')?1.15:1)*(isElder(p)?.7:1)*(1-hunger*.5);
@@ -518,7 +550,10 @@ function newDay(){saidToday=new Set();
       say(`A child is born to ${B(a)} and ${B(b)}. They call the child ${B(k)}${nm?', after '+nm:''}.`);addEvent('birth',`the ${seasonOf(dayCount)} ${k.name} was born`,`A child, ${k.name}, was born to ${a.name} and ${b.name} in the ${seasonOf(dayCount)}.`)}}
   // old age
   for(const p of alive){const a=ageOf(p);if(a<55)continue;const chance=Math.pow((a-54)/18,3);if(R()<chance)die(p)}
+  autoSave();
 }
+// sprint 9: the island keeps itself. Written at each dawn; read back at boot when no link is pinned in the address bar.
+function autoSave(){try{store('auto',lzEnc(JSON.stringify(pack())))}catch(e){}}
 function remove(p){p.dead=true;p.alive=false;names.delete(p.name);people=people.filter(q=>q!==p);
   if(p.home){p.home.owners=p.home.owners.filter(n=>n!==p.name)}
   if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;
@@ -546,7 +581,7 @@ function finishBuilding(p,t){t.done=true;bldgTgt=null;bldg.push(t);const nm=BLD[
     hall:`${B(p)} hangs the bell in ${nm}. It rings once, badly, and then rings properly at dawn.`,light:`${B(p)} climbs ${nm} at dusk and lights the lamp. Out on the water, something that was dark is not dark now.`};
   say(lines[t.kind],true);addEvent('build',`the ${sea()} ${nm} was built`,pick([`${p.name} finished ${nm}, and the place was different afterwards.`,`${nm} went up, and it was ${p.name} who set the last of it.`,`${p.name} put the last hand to ${nm}, and everyone found a reason to walk past it.`]));p.hist.push({d:dayCount,s:`finished ${nm}`});
   if(t.kind==='market'){for(let j=0;j<3;j++)for(let i=0;i<3;i++)road[idx(t.x+i,t.y+j)]=2;roadV++;spots.push({l:'the market',x:t.x+1.5,y:t.y+1.5})}
-  if(t.kind==='well')spots.push({l:'the well',x:t.x+.5,y:t.y+.8});if(t.kind==='light')spots.push({l:'the lighthouse',x:t.x+.5,y:t.y+.8});if(t.kind==='bridge')spots.push({l:'the bridge',x:t.x+.5,y:t.y+.5});
+  if(t.kind==='well')spots.push({l:'the well',x:t.x+.5,y:t.y+.8});if(t.kind==='light')spots.push({l:'the lighthouse',x:t.x+.5,y:t.y+.8});if(t.kind==='bridge'){spots.push({l:'the bridge',x:t.x+.5,y:t.y+.5});bridgeUp=true}
   if(t.kind==='hall')bell(1);}
 function bell(n){if(!AC||!audioOn)return;const m=storm?.3:rain?.6:wx==='fog'?.75:1;for(let i=0;i<n;i++){const t=AC.currentTime+i*1.6;for(const [f,v0] of [[880,.09],[1318,.04],[587,.03]]){const v=v0*m;const o=AC.createOscillator(),gn=AC.createGain();o.type='sine';o.frequency.value=f;gn.gain.setValueAtTime(v,t);gn.gain.exponentialRampToValueAtTime(.001,t+1.4);o.connect(gn).connect(sfxG||AC.destination);o.start(t);o.stop(t+1.5)}}}
 function spawnBoat(kind,land,o){const b={kind,land,x:land.x+land.dx*17,y:land.y+land.dy*17,tx:land.x+land.dx*.9,ty:land.y+land.dy*.9,st:'in',t:0,...o};boats.push(b);return b}
@@ -569,7 +604,7 @@ function boatArrive(b){
     const wav=people.filter(p=>!p.dead&&p.task!=='sleep'&&p.task!=='boat'&&p.task!=='voyage'&&p.task!=='build'&&!p.inside).sort(()=>R()-.5).slice(0,8);
     for(const q of wav){const s=nearestShore(b.land.x+rnd(-3,3),b.land.y+rnd(-3,3))||b.land;goTo(q,s.x,s.y,'wave',rnd(12,30));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null}
     if(R()<.5&&wav.length){const q=pick(wav);q.hist.push({d:dayCount,s:pick(['bought a length of red cloth off the trader','traded a carved bird to the trader for a knife','asked the trader for news of home and got some'])})}}
-  else if(b.kind==='fish'){if(b.st==='in'){b.st='fishing';b.t=rnd(10,16)}else if(b.st==='back'){b.gone=true;const p=b.p;if(p){p.task='idle';p.t=1;p.inBoat=false;const n=sea()==='winter'?3:6;if(hasB('smoke')&&(sea()==='autumn'||sea()==='winter'))granary+=n;else food+=n;p.boats=(p.boats||0)+1;if(p.boats===1)p.hist.push({d:dayCount,s:'first took the boat out past the shallows'});if(R()<.3)say(`${B(p)} rows in with the bottom of the boat silver, and hands the fish up the beach.`,false,'boatin')}}}
+  else if(b.kind==='fish'){if(b.st==='in'){b.st='fishing';b.t=rnd(10,16)}else if(b.st==='back'){b.gone=true;const p=b.p;if(p){p.task='idle';p.t=1;p.inBoat=false;p.x=b.land.x;p.y=b.land.y;p.tx=p.x;p.ty=p.y;/* step ashore, not out at the mooring */const n=sea()==='winter'?3:6;if(hasB('smoke')&&(sea()==='autumn'||sea()==='winter'))granary+=n;else food+=n;p.boats=(p.boats||0)+1;if(p.boats===1)p.hist.push({d:dayCount,s:'first took the boat out past the shallows'});if(R()<.3)say(`${B(p)} rows in with the bottom of the boat silver, and hands the fish up the beach.`,false,'boatin')}}}
   else if(b.kind==='away'&&b.st==='out'){b.gone=true;const p=b.p;p.inBoat=false;people=people.filter(q=>q!==p);if(selected===p)showCard(null)}
   else if(b.kind==='return'&&b.st==='in'){b.gone=true;const p=b.p;p.x=b.land.x;p.y=b.land.y;p.task='idle';p.t=2;p.inBoat=false;p.inside=false;p.tgt=null;people.push(p);voyage.st='back';farIsle.lit=false;
     const found=pick(['a stone in each pocket, and says there is nothing there but gulls and a wall, and will not say more','a bird\'s skull and a story about a cold fire pit, older than any of ours','less than went out, and says the far island is only rock, and does not sound sure','a bit of green glass and says the sea goes on past it, further than anyone thought']);
@@ -664,7 +699,7 @@ function stepClouds(dt){const n=CLOUDN[wx]||0,v=(CLOUDV[wx]||.3)*wind;
     else if(c.rt>0)c.rt-=dt}
   clouds=clouds.filter(c=>c.x>-cloudW(c)&&c.x<W+cloudW(c))}
 function cloudAt(x,y){for(const c of clouds){if(c.r>0||c.rt>0)continue;if(Math.abs(x-c.x)<cloudW(c)*.34&&Math.abs(y-c.y)<cloudH(c)*.32)return c}return null}
-function rainOn(c){c.r=rnd(16,26);whoosh(c.x,c.y,1.8);
+function rainOn(c){c.r=rnd(16,26);whoosh(c.x,c.y,1.8);actDone('cloudrain');
   const near=people.filter(p=>!p.inside&&Math.abs(p.x-c.x)<cloudW(c)*.5&&Math.abs(p.y-c.y)<cloudH(c)*.5);
   const dry=farms.some(f=>f.g<1&&Math.abs(f.x-c.x)<cloudW(c)*.5&&Math.abs(f.y-c.y)<cloudH(c)*.5);
   say(dry?'One cloud stops over the fields and lets go of everything it was holding.':near.length?`One cloud out of a whole sky rains, and it rains on ${B(pick(near))}, who looks up.`:'A single cloud lets go of its rain, in one place, for no reason anyone can see.',true)}
@@ -678,7 +713,7 @@ function makeSpring(cx,cy){const r=rnd(1.3,2.1),hit=[];
   if(hit.length<4)return false;
   for(const i of hit){tiles[i]=WATER;elev[i]=.19;road[i]=0}
   trees=trees.filter(t=>Math.hypot(t.x-cx,t.y-cy)>r+.3);stumps=stumps.filter(t=>Math.hypot(t.x-cx,t.y-cy)>r+.3);
-  springs.push({x:cx,y:cy,r,ph:R()});spots.push({l:'the spring',x:cx,y:cy+1.6});
+  springs.push({x:cx,y:cy,r,ph:R()});spots.push({l:'the spring',x:cx,y:cy+1.6});actDone('spring');
   if(R()<.5)fishSh.push({x:cx,y:cy,tx:cx,ty:cy,n:2,t:0,ph:R()*6,st:true});
   paintTerrain();splash(cx,cy);
   for(let i=0;i<16;i++)fx.push({x:cx+rnd(-r,r),y:cy+rnd(-r*.7,r*.7),vx:rnd(-.4,.4),vy:-rnd(.4,1.3),c:'#cfe6ff',l:rnd(.5,1.3)});
@@ -688,14 +723,14 @@ function makeSpring(cx,cy){const r=rnd(1.3,2.1),hit=[];
 // a stone, skipped
 const ring=(x,y)=>fx.push({x,y,vx:0,vy:0,rg:1,l:.9,l0:.9,c:'#cfe6ff'});
 function skipStone(x,y){let dx=x-center.x,dy=y-center.y;const d=Math.hypot(dx,dy)||1;
-  skips.push({x,y,vx:dx/d*11,vy:dy/d*7.5,n:2+((R()*4)|0),t:.14});plink(.15)}
+  skips.push({x,y,vx:dx/d*11,vy:dy/d*7.5,n:2+((R()*4)|0),t:.14});plink(.15);actDone('stone')}
 function stepSkips(dt){for(const k of skips){k.x+=k.vx*dt;k.y+=k.vy*dt;k.t-=dt;
     if(k.t<=0){k.n--;k.t=.13+R()*.07;k.vx*=.86;k.vy*=.86;ring(k.x,k.y);if(k.n>0)plink(.05+R()*.04)}
     if(k.n<=0||k.x<0||k.y<0||k.x>=W||k.y>=H||at(k.x|0,k.y|0)!==WATER)k.gone=true}
   skips=skips.filter(k=>!k.gone)}
 // a gust, dragged across the water
 function gustAt(x0,y0,x1,y1){const dx=x1-x0,dy=y1-y0,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
-  gusts.push({x:x0,y:y0,ux,uy,len:d,t:1.8});whoosh((x0+x1)/2,(y0+y1)/2,1.1);
+  gusts.push({x:x0,y:y0,ux,uy,len:d,t:1.8});whoosh((x0+x1)/2,(y0+y1)/2,1.1);actDone('gust');
   let pushed=null;
   for(const b of boats){if(Math.hypot(b.x-x1,b.y-y1)>9)continue;b.gvx=(b.gvx||0)+ux*3.2;b.gvy=(b.gvy||0)+uy*3.2;pushed=b}
   for(const gl of gulls){if(Math.hypot(gl.cx-x1,gl.cy-y1)>10)continue;gl.cx+=ux*1.6;gl.cy+=uy*1.6}
@@ -724,7 +759,7 @@ const DREAMS=[
 function dreamOf(p){if(p.dreamt===dayCount||p.dead)return false;
   const q=relOf(p,'rival'),gr=graves.length?pick(graves):null;
   const ok=DREAMS.filter(d=>d.c(p));if(!ok.length)return false;
-  const d=pick(ok);p.dreamt=dayCount;dreamAny=dayCount;
+  const d=pick(ok);p.dreamt=dayCount;dreamAny=dayCount;actDone('dream');
   say(d.t(p,q,gr),true);
   if(d.k&&R()<.5)p.pend={k:d.k,who:q?q.name:null,gr};
   return true}
@@ -745,7 +780,7 @@ function wakeDreams(){for(const p of people){const d=p.pend;if(!d)continue;p.pen
 // the fire, and the story told at it
 function tellStory(){if(storyDay===dayCount)return false;
   const cand=people.filter(p=>!p.dead&&p.task!=='boat'&&p.task!=='voyage');if(!cand.length)return false;
-  storyDay=dayCount;
+  storyDay=dayCount;actDone('story');
   for(const q of cand){if(q.task==='shelter')continue;if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.inside=false;
     goTo(q,center.x+rnd(-3,3),center.y+rnd(-2.2,2.2),'gather',rnd(24,44))}
   const grown=cand.filter(p=>!isKid(p)),teller=grown.sort((a,b)=>ageOf(b)-ageOf(a))[0]||cand[0];
@@ -777,7 +812,7 @@ function setWx(n){const o=wx;wx=n;rain=n==='rain'||n==='thunder';storm=n==='thun
   else if(n==='clear'){if(o==='thunder')say('The storm blows itself out. Everything drips and shines.');else if(o==='rain')say('The rain lifts. Everything drips and shines.');else if(o==='snow')say('The snow stops. The island is very quiet under it.');else if(o==='fog')say('The fog burns off and the sea comes back.');else if(o==='overcast')say('The cloud breaks up and the light comes through in pieces.',false,'clear')}}
 // ---------- simulation ----------
 function step(dt){
-  const d0=Math.floor(time/dayLen);time+=dt;if(Math.floor(time/dayLen)!==d0){dayCount++;newDay()}
+  const d0=Math.floor(time/dayLen);time+=dt;if(Math.floor(time/dayLen)>d0){dayCount++;newDay()} // > not !==: a backward wobble across a boundary must not run a day twice
   const s=sea();
   // weather fronts
   wxT-=dt;if(wxT<=0){let n;
@@ -818,8 +853,8 @@ function step(dt){
   {const h=getB('hut');if(h&&!frozen&&!storm&&wx!=='fog'&&!isNight()&&dayFrac()<edges()[1]-.16&&!boats.some(b=>b.kind==='fish')&&R()<dt*.08){
     const cand=people.filter(p=>p.task==='idle'&&!isKid(p)&&!p.inside&&Math.hypot(p.x-h.x,p.y-h.y)<40);if(cand.length){const p=cand.reduce((a,b)=>(has(b,'brave')?0:1)+R()<(has(a,'brave')?0:1)+R()?b:a);const l=landings.find(l=>l.x===h.x&&l.y===h.y)||landings[0];
       const k=rnd(6,11);spawnBoat('fish',l,{p,x:l.x+l.dx*.9,y:l.y+l.dy*.9,tx:l.x+l.dx*k+rnd(-2,2),ty:l.y+l.dy*k+rnd(-2,2)});p.task='boat';p.inBoat=true;if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null}}}
-  if(voyage&&voyage.st==='decided'&&!isNight()&&!storm&&dayFrac()>edges()[0]+.06&&voyage.p.task!=='boat'){const p=voyage.p;voyage.st='going';const l=landings[0];if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.inside=false;goTo(p,l.x,l.y,'voyage',0);
-    say(`${B(p)} says, at breakfast, that ${p.name} is going to see the far island, and that it is not up for discussion.`,true)}
+  if(voyage&&(voyage.st==='decided'||(voyage.st==='going'&&voyage.p.task!=='voyage'))&&!isNight()&&!storm&&dayFrac()>edges()[0]+.06&&voyage.p.task!=='boat'){const p=voyage.p;const first=voyage.st==='decided';voyage.st='going';const l=landings[0];if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.inside=false;goTo(p,l.x,l.y,'voyage',0);
+    if(first)say(`${B(p)} says, at breakfast, that ${p.name} is going to see the far island, and that it is not up for discussion.`,true)}
   stepBoats(dt);stepWild(dt);stepClouds(dt);stepSkips(dt);stepGusts(dt);
   // smokehouse smoke; winter chimneys
   {const sm=getB('smoke');if(sm&&R()<dt*3)fx.push({x:sm.x+1.7,y:sm.y-.4,vx:rnd(-.2,.2)+(storm?.8:0),vy:-.35,c:'#8c8478',l:rnd(1.5,2.5)});
@@ -840,6 +875,8 @@ function step(dt){
     if(!isFinite(p.x)||!isFinite(p.y)||!isFinite(p.tx)||!isFinite(p.ty)){
       try{console.warn('hearth: non-finite position on',p.name,'during',p.task)}catch(e){}
       p.x=center.x;p.y=center.y;p.tx=center.x;p.ty=center.y;p.inBoat=false;p.inside=false;if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.task='idle';p.t=1}
+    // and, like the animals: anyone stranded in open water steps out at the nearest shore (deterministic — no rnd())
+    if(!p.inBoat&&at(p.x|0,p.y|0)===WATER&&!canWade(p.x,p.y)&&!canWalk(p.x,p.y)){const sh=nearestShore(p.x,p.y);if(sh){p.x=sh.x+.5;p.y=sh.y+.5}else{p.x=center.x;p.y=center.y}}
     if(p.mourn&&!night&&p.task!=='mourn'){goTo(p,p.mourn.x,p.mourn.y+.7,'mourn',rnd(6,12));p.tgt=null;p.mourn=null;continue}
     // storms send everyone but the brave indoors
     const shelt=storm&&!(has(p,'brave')&&!isKid(p));
@@ -868,7 +905,10 @@ function step(dt){
       case 'tend':{if(people.some(q=>q!==p&&!isKid(q))){p.task='idle';p.t=1;break} // a grown-up again: back to being a child
         if(walk(p,dt)){p.dwell-=dt;if(p.dwell<=0){
           if(p.tendOut){p.tendOut=0;const lean=sea()==='winter'||frozen;let got=lean?(R()<.35?1:0):1; // the tideline gives little under the ice
-            if(!got&&granary>0){granary-=1;got=1;if(R()<.3)say(`${B(p)} takes a careful measure from the store, the way the grown ones did, and puts the lid back.`,false,'tendstore')}
+            if(!got&&granary>0){granary-=1;got=1;
+              if(granary===0)say(`${B(p)} takes the last measure from the store and sets the empty lid down beside it, gently.`,true);
+              else if(granary<4)say(`${B(p)} takes a careful measure and stands a while looking at what is left. ${granary===1?'One measure more.':granary+' measures more.'}`,false,'tendlow');
+              else if(R()<.3)say(`${B(p)} takes a careful measure from the store, the way the grown ones did, and puts the lid back.`,false,'tendstore')}
             else if(got&&R()<.2)say(lean?`${B(p)} finds little under the ice, and brings the little back.`:`${B(p)} lays what the tide left down beside the fire. Not much, and enough.`,false,'tend');
             food+=got;goTo(p,center.x+rnd(-1.5,1.5),center.y+rnd(-1,1),'tend',rnd(5,9))}
           else{p.tendOut=1;const sh=nearestShore(p.x,p.y)||center;goTo(p,sh.x,sh.y,'tend',rnd(2,4))}}}break}
@@ -1006,7 +1046,7 @@ function whyText(p){const w=WX();
     case 'play':return `Playing near ${p.parents.length?p.parents[0]:'the fire'}, in the way of children.`;
     case 'tend':return `Keeping the fire and walking the tideline for food, because there is nobody grown left to do it.`;
     default:return isKid(p)?'Wandering after the grown-ups.':`Between tasks, deciding what needs doing${has(p,'patient')?', unhurried':''}.`}}
-function showCard(p){selected=p;if(!p){cardEl.hidden=true;return}cardEl.hidden=false;renderCard(true)}
+function showCard(p){selected=p;if(!p){cardEl.hidden=true;return}actDone('card');cardEl.hidden=false;renderCard(true)}
 function renderCard(full){const p=selected;if(!p||cardEl.hidden)return;
   if(full||cardT<=0){cardT=1;drawFace(faceCtx,p);
     document.getElementById('c-name').firstChild.textContent=p.name;
@@ -1338,7 +1378,7 @@ function unpack(o){
   for(const b of bldg){if(b.kind==='market')spots.push({l:'the market',x:b.x+1.5,y:b.y+1.5});
     else if(b.kind==='well')spots.push({l:'the well',x:b.x+.5,y:b.y+.8});
     else if(b.kind==='light')spots.push({l:'the lighthouse',x:b.x+.5,y:b.y+.8});
-    else if(b.kind==='bridge')spots.push({l:'the bridge',x:b.x+.5,y:b.y+.5})}
+    else if(b.kind==='bridge'){spots.push({l:'the bridge',x:b.x+.5,y:b.y+.5});bridgeUp=true}}
   heat=new Float32Array(W*H);boats=[];fx=[];skips=[];gusts=[];fires=houses.length?[{x:center.x,y:center.y,t:0}]:[];
   saidToday=new Set();usedTpl=new Map();
   paintedKey='';paintTerrain();spawnWildlife();clouds=[];for(let i=0;i<2;i++)addCloud(false);
@@ -1360,6 +1400,30 @@ function skipToMorning(){const e=edges(),f=dayFrac(),d0=Math.floor(time/dayLen);
   const tgt=(d0+(f<e[0]?0:1))*dayLen+(e[0]+.03)*dayLen;
   let n=0;while(time<tgt&&n<3400){step(.05);n++}
   paused=false;syncCtl();say('The night goes over the island quickly, the way nights do when you are not in them.',false,'skip')}
+// ---------- sprint 9: the watcher, told what a watcher can do ----------
+// small screens hide the hint line, so the log teaches instead: one quiet line at a time, only for acts never yet used, never again once they have been
+const HINTS=[
+ ['card','Any islander, looked at closely, will hold still for it.'],
+ ['sapling','The grass would take a seed, if something planted one.'],
+ ['stone','The water would take a stone, if something skipped it.'],
+ ['spring','Held long enough, the ground might give up water.'],
+ ['gust','A hand drawn across the water would move what floats on it.'],
+ ['cloudrain','A cloud\'s shadow, pressed, would let its rain down early.'],
+ ['dream','At night, a sleeper gently touched is given a dream.'],
+ ['lullaby','A sleeping child, touched, hears a hum from nowhere.'],
+ ['story','The fire, touched, remembers out loud.']];
+const hintsDone=new Set((pref('hints')||'').split(',').filter(Boolean));
+function actDone(k){if(hintsDone.has(k))return;hintsDone.add(k);store('hints',Array.from(hintsDone).join(','))}
+let hintT=75,hintIdx=0; // real seconds, not sim time: hints are presentation and never touch the island
+function hintTick(rdt){if(paused||innerWidth>520||hintsDone.size>=HINTS.length||hintIdx>=HINTS.length)return;
+  hintT-=rdt;if(hintT>0)return;hintT=60;
+  while(hintIdx<HINTS.length&&hintsDone.has(HINTS[hintIdx][0]))hintIdx++;
+  if(hintIdx>=HINTS.length)return;
+  const el=document.createElement('p');el.className='h';el.textContent=HINTS[hintIdx++][1];
+  logEl.appendChild(el);while(logEl.children.length>9)logEl.removeChild(logEl.firstChild)}
+const hintEl=document.getElementById('hint');
+document.getElementById('b-help').onclick=()=>hintEl.classList.toggle('show');
+hintEl.addEventListener('click',()=>hintEl.classList.remove('show'));
 // ---------- input ----------
 function fit(){const s=Math.min(innerWidth/(W*T),innerHeight/(H*T));cv.style.width=(W*T*s)+'px';cv.style.height=(H*T*s)+'px'}
 addEventListener('resize',fit);fit();
@@ -1384,7 +1448,7 @@ function endPress(e){if(!press)return;const pr=press;press=null;if(lpT){clearTim
   // an islander, and at night a dream
   let best=null,bd=1.4;for(const p of people){if(p.inside)continue;const d=Math.hypot(p.x-x,p.y-y+.6);if(d<bd){bd=d;best=p}}
   if(best){showCard(best);
-    if(isNight()){if(isKid(best)&&best.task==='sleep'){lullaby(best.x,best.y);
+    if(isNight()){if(isKid(best)&&best.task==='sleep'){lullaby(best.x,best.y);actDone('lullaby');
         say(`Somewhere in the dark somebody is humming, very quietly, and ${B(best)} turns over and sleeps on.`,true)}
       dreamOf(best)}
     return}
@@ -1393,7 +1457,7 @@ function endPress(e){if(!press)return;const pr=press;press=null;if(lpT){clearTim
   // a cloud's shadow
   const c=cloudAt(x,y);if(c){rainOn(c);return}
   const t=at(x|0,y|0);
-  if(t===GRASS){trees.push(mkTree((x|0)+.5,(y|0)+.5,.2));for(let i=0;i<6;i++)fx.push({x,y,vx:rnd(-1,1),vy:rnd(-1.5,-.3),c:'#9fd66a',l:.6});
+  if(t===GRASS){trees.push(mkTree((x|0)+.5,(y|0)+.5,.2));actDone('sapling');for(let i=0;i<6;i++)fx.push({x,y,vx:rnd(-1,1),vy:rnd(-1.5,-.3),c:'#9fd66a',l:.6});
     if(R()<.3)say('Someone unseen plants a sapling. The islanders do not question it.')}
   else if(t===WATER)skipStone(x,y)}
 cv.addEventListener('pointerup',endPress);cv.addEventListener('pointercancel',()=>{press=null;if(lpT){clearTimeout(lpT);lpT=0}});
@@ -1407,7 +1471,9 @@ document.getElementById('b-chron').onclick=()=>showChron(chronEl.hidden);
 document.getElementById('chron-x').onclick=()=>showChron(false);
 document.getElementById('chron-dl').onclick=exportChron;
 document.getElementById('b-share').onclick=saveHash;
-document.getElementById('b-new').onclick=()=>{try{history.replaceState(null,'',location.pathname+location.search)}catch(err){}newWorld((Math.random()*1e9)|0)};
+document.getElementById('b-new').onclick=()=>{try{history.replaceState(null,'',location.pathname+location.search)}catch(err){}
+  try{localStorage.removeItem('hearth.auto')}catch(e){} // a new island is chosen on purpose; the old one must not come back at the next boot
+  newWorld((Math.random()*1e9)|0)};
 document.getElementById('b-audio').onclick=e=>{if(!AC)startAudio();audioOn=!audioOn;if(AC.state==='suspended')AC.resume();
   master.gain.setTargetAtTime(audioOn?1:0,AC.currentTime,.12);
   e.target.textContent=audioOn?'sound on':'sound off';e.target.classList.toggle('on',audioOn);store('snd',audioOn?'1':'0');
@@ -1431,13 +1497,14 @@ addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
       removeEventListener('pointerdown',kick,true);removeEventListener('keydown',kick,true)};
     addEventListener('pointerdown',kick,true);addEventListener('keydown',kick,true)}}
 {let ok=false;try{ok=loadHash()}catch(err){ok=false}
+  if(!ok){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(o&&o.v===5&&o.pe){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
   if(!ok)newWorld(seed);syncCtl()}
 let last=performance.now();
-function loop(now){let dt=Math.min(.05,(now-last)/1000);last=now;if(!paused)for(let i=0;i<speed;i++)step(dt);
-  audioTick(dt);cardT-=dt;renderCard(false);draw();requestAnimationFrame(loop)}
+function loop(now){let dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now;if(!paused)for(let i=0;i<speed;i++)step(dt); // clamped at 0: the first frame's timestamp can predate performance.now(), and time must never run backward
+  audioTick(dt);hintTick(dt);cardT-=dt;renderCard(false);draw();requestAnimationFrame(loop)}
 requestAnimationFrame(loop);
 // exposed for headless testing only
-window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get seed(){return seed},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,setFood:v=>food=v,setGranary:v=>granary=v,landAt,get sackUsed(){return sackUsed},get musOn(){return musOn},set musOn(v){musOn=v},newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};
+window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get seed(){return seed},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,setFood:v=>food=v,setGranary:v=>granary=v,landAt,canWalk,canWade,routeVia,autoSave,get wadeTiles(){return wadeTiles},get bridgeUp(){return bridgeUp},get bridgeSite(){return bridgeSite},get sackUsed(){return sackUsed},get musOn(){return musOn},set musOn(v){musOn=v},newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};
 })();
 </script>
 </body>

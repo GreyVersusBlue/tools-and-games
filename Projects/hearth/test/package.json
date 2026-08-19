@@ -1,0 +1,16 @@
+{
+  "name": "hearth-test",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Headless soak & determinism harness for Hearth (see harness.mjs)",
+  "type": "module",
+  "scripts": {
+    "soak": "node harness.mjs soak",
+    "determinism": "node harness.mjs determinism",
+    "save": "node harness.mjs save",
+    "nan": "node harness.mjs nan"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
