@@ -1,0 +1,66 @@
+  :root{--ink:#e8dcc4;--dim:#9a8b6d;--panel:rgba(18,14,10,.86);--gold:#f0b35a;--line:#3a3020}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#0b0d12;color:var(--ink);font-family:Georgia,'Iowan Old Style',serif;overflow:hidden}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges}
+  #c{cursor:crosshair}
+  #hud{position:fixed;left:0;right:0;top:0;padding:10px 14px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:linear-gradient(#0b0d12,rgba(11,13,18,0));pointer-events:none}
+  #hud>*{pointer-events:auto}
+  h1{font-size:18px;font-weight:normal;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+  h1 small{display:block;font-size:10px;letter-spacing:.08em;color:var(--dim);text-transform:none;font-style:italic}
+  .stat{font-size:12px;color:var(--dim)}.stat b{color:var(--ink);font-weight:normal;font-size:14px}.stat em{font-style:normal;margin-right:4px}
+  #s-time-s{display:none}
+  button{font:12px Georgia,serif;letter-spacing:.06em;color:var(--ink);background:var(--panel);border:1px solid var(--line);padding:5px 10px;border-radius:2px;cursor:pointer}
+  button:hover,button:focus-visible{border-color:var(--gold);outline:none}
+  button.on{color:var(--gold);border-color:var(--gold)}
+  button.dim{opacity:.5} /* the music button, while the sound itself is off: remembered, not currently playing */
+  #log{position:fixed;left:14px;bottom:14px;width:min(360px,60vw);max-height:38vh;overflow:hidden;font-size:13px;line-height:1.5;pointer-events:none;
+       -webkit-mask-image:linear-gradient(transparent,#000 35%);mask-image:linear-gradient(transparent,#000 35%)}
+  #log p{opacity:0;animation:rise .8s ease forwards;text-shadow:0 1px 3px #000}
+  #log p i{color:var(--dim);font-style:normal;margin-right:8px;font-size:11px}
+  #log p.h{color:var(--dim);font-style:italic}
+  #log b{font-weight:normal;color:var(--gold)}
+  #b-help{display:none}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  #hint{position:fixed;right:14px;bottom:14px;max-width:min(430px,42vw);font-size:12px;line-height:1.5;color:var(--dim);font-style:italic;text-align:right;text-shadow:0 1px 3px #000}
+  /* islander card */
+  #card{position:fixed;right:14px;top:58px;width:min(300px,calc(100vw - 28px));max-height:calc(100vh - 80px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:12px 14px 14px;font-size:13px;line-height:1.45;box-shadow:0 8px 30px rgba(0,0,0,.5);backdrop-filter:blur(3px)}
+  #card[hidden]{display:none}
+  #card .top{display:flex;gap:12px;align-items:flex-start}
+  #face{width:64px;height:64px;flex:none;border:1px solid var(--line);background:#1a1510}
+  #card h2{font-size:18px;font-weight:normal;color:var(--gold);letter-spacing:.04em}
+  #card h2 small{display:block;font-size:11px;color:var(--dim);letter-spacing:.06em;font-style:italic;margin-top:2px}
+  #card .traits{margin-top:4px;font-size:12px}
+  #card .traits span{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:0 7px;margin:2px 3px 0 0;color:var(--ink)}
+  #card .x,#chron .x{position:absolute;right:6px;top:6px;padding:2px 8px;border-color:transparent}
+  #card h3{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:12px 0 4px;font-weight:normal}
+  #card .doing{font-style:italic}
+  #card .rels button{border:none;background:none;padding:0;color:var(--gold);font-size:13px;letter-spacing:0;text-decoration:underline dotted;cursor:pointer}
+  #card ol{list-style:none}
+  #card ol li{padding-left:44px;text-indent:-44px;color:var(--ink);opacity:.9}
+  #card ol li i{font-style:normal;color:var(--dim);font-size:11px;display:inline-block;width:44px;text-indent:0}
+  /* chronicle */
+  #chron{position:fixed;left:14px;top:58px;width:min(400px,calc(100vw - 28px));max-height:calc(100vh - 92px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:12px 8px 12px 14px;box-shadow:0 8px 30px rgba(0,0,0,.5);backdrop-filter:blur(3px)}
+  #chron[hidden]{display:none}
+  #chron h2{font-size:15px;font-weight:normal;color:var(--gold);letter-spacing:.06em;padding-right:24px}
+  #chron h2 small{display:block;font-size:11px;color:var(--dim);font-style:italic;letter-spacing:.04em;margin-top:2px}
+  #chron .roll{overflow-y:auto;margin:10px 6px 0 0;padding-right:8px;font-size:13px;line-height:1.5}
+  #chron .roll h4{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:normal;margin:14px 0 4px;border-bottom:1px solid var(--line);padding-bottom:3px}
+  #chron .roll h4:first-child{margin-top:0}
+  #chron .roll p{padding-left:52px;text-indent:-52px;margin-bottom:3px;opacity:.92}
+  #chron .roll p i{font-style:normal;color:var(--dim);font-size:11px;display:inline-block;width:52px;text-indent:0}
+  #chron .roll p em.tl{font-style:italic;color:var(--dim);font-size:11px}
+  #chron .foot{margin-top:10px;padding-top:8px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+  #chron .foot span{font-size:11px;color:var(--dim);font-style:italic}
+  #ctl{display:flex;gap:0}
+  #ctl button{border-radius:0;border-right-width:0}
+  #ctl button:first-child{border-radius:2px 0 0 2px}
+  #ctl button:last-child{border-radius:0 2px 2px 0;border-right-width:1px}
+  #ctl button:focus-visible{position:relative;z-index:1}
+  @media (max-width:520px){#card{right:8px;left:8px;width:auto;top:auto;bottom:8px;max-height:52vh}#log{max-height:22vh}#hint{display:none}
+    #b-help{display:inline-block}
+    #hint.show{display:block;left:8px;right:8px;bottom:8px;max-width:none;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:10px 12px;text-align:left;pointer-events:auto;z-index:5}
+    #chron{left:8px;right:8px;width:auto;max-height:60vh}
+    #hud{gap:9px;padding:8px 10px}h1{font-size:15px}h1 small{display:none}.stat em{display:none}.stat::before{content:attr(data-i);color:var(--dim);margin-right:3px;font-size:12px}
+    #s-time{display:none}#s-time-s{display:inline}button{padding:4px 7px;font-size:11px}}
+  @media (prefers-reduced-motion:reduce){#log p{animation:none;opacity:1}}

@@ -18,7 +18,7 @@ import { pathToFileURL, fileURLToPath } from 'url';
 import path from 'path';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const GAME = pathToFileURL(path.join(HERE, '..', 'hearth.html')).href;
+const GAME = pathToFileURL(path.join(HERE, '..', 'index.html')).href;
 const DT = 0.05; // the step used by skipToMorning; one sim day = dayLen/DT = 2800 steps
 
 function arg(name, dflt) {
@@ -106,8 +106,10 @@ async function soakSeed(browser, seed, days, auditEvery, opts = {}) {
   return { seed, viol, warns, audits, last };
 }
 
-// use the environment's Chromium when the pinned playwright version's own download is absent
-const browser = await chromium.launch().catch(() => chromium.launch({ executablePath: '/opt/pw-browsers/chromium' }));
+// use the environment's Chromium when the pinned playwright version's own download is absent.
+// autoplay flag: the 'twelve' listening pass needs a running AudioContext without a user gesture.
+const LAUNCH = { args: ['--autoplay-policy=no-user-gesture-required'] };
+const browser = await chromium.launch(LAUNCH).catch(() => chromium.launch({ ...LAUNCH, executablePath: '/opt/pw-browsers/chromium' }));
 const mode = process.argv[2] || 'soak';
 let failed = false;
 
@@ -151,11 +153,15 @@ if (mode === 'depth') {
         day: H.dayCount, pop: H.people.length, crafts, none, masters, shad,
         works: H.works.map(w => w.wk + (w.done ? '' : '(wip)')).join(','),
         breads, backs, found, mastEvents: mast, granary: H.granary, dry: H.dry01,
+        things: H.things.map(t => `${t.n}(${t.holder || 'shelf'},${t.hist.length})`).join(', '),
+        heirs: H.chron.filter(e => e.kind === 'heir').length,
+        grown: H.chron.filter(e => e.gr).length, ways: H.wayN(),
       };
     });
     console.log(`seed ${seed} @ day ${s.day}: pop ${s.pop}`);
     console.log(`  crafts field/wood/sea/frame/store: ${s.crafts.join('/')} (uncrafted ${s.none}), masters ${s.masters}, kids shadowing ${s.shad}`);
     console.log(`  works: [${s.works}]  bread-days ${s.breads}  returners ${s.backs}  found-objects ${s.found}  mastery-events ${s.mastEvents}  store ${s.granary}`);
+    console.log(`  things: [${s.things}]  handings-down ${s.heirs}  stories-grown ${s.grown}  ways ${s.ways}`);
     if (viol.length) { failed = true; console.log('  VIOLATIONS:'); [...new Set(viol)].slice(0, 10).forEach(v => console.log('   ' + v)); }
     if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
     await ctx.close();
@@ -263,6 +269,137 @@ if (mode === 'eleven') {
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
   await ctx.close();
   console.log(failed ? '\nFAIL' : '\nPASS: sprint 11 systems behave');
+}
+
+if (mode === 'twelve') {
+  // sprint 12 observation & force tests: heirlooms made and handed down, stories that grow in the telling,
+  // works-in-progress surviving a save, v7 compat, and the audio listening pass — measured, not vibed.
+  const warns = [];
+  const { ctx, page } = await openIsland(browser, 7, warns);
+  const H = fn => page.evaluate(fn);
+  for (let d = 0; d < 10; d++) await runDay(page, 1e9); // let people, rels and chron entries exist
+
+  // a master makes a thing, once per craft; force masteries until one appears
+  const made = await H(() => {
+    const h = window.__hearth;
+    const adults = h.people.filter(p => !p.child);
+    for (let ci = 0; ci < 5 && !h.things.length; ci++) {
+      const p = adults[ci % adults.length]; if (!p) break;
+      p.craft = ci; p.cxp = .995; h.craftUp(p, ci);
+    }
+    return h.things.map(t => ({ n: t.n, holder: t.holder, src: t.src }));
+  });
+  console.log(`made things after forced masteries: ${JSON.stringify(made)}`);
+  if (!made.length) { failed = true; console.log('FAIL: five masteries produced no made thing (p=.6 each)'); }
+
+  // the handing down: kill the holder, the thing moves and both histories say so
+  const heir = await H(() => {
+    const h = window.__hearth;
+    const t = h.things[0]; const holder = h.people.find(p => p.name === t.holder);
+    const before = t.hist.length;
+    h.die(holder);
+    return { was: holder.name, now: t.holder, grew: t.hist.length > before,
+      last: t.hist[t.hist.length - 1].s, heirEv: h.chron.some(e => e.kind === 'heir'), heirYr: h.heirYr };
+  });
+  console.log(`handed down: ${heir.was} -> ${heir.now || 'the shelf'} ("${heir.last}"), chronicled ${heir.heirEv}`);
+  if (heir.now === heir.was || !heir.grew) { failed = true; console.log('FAIL: the thing did not move when its holder died'); }
+  if (heir.now && !heir.heirEv) { failed = true; console.log('FAIL: a first handing down was not chronicled'); }
+
+  // the telling: story nights until some chronicle entry grows
+  let grown = 0, tells = 0;
+  for (let d = 0; d < 12 && !grown; d++) {
+    await H(() => window.__hearth.tellStory());
+    tells++;
+    await runDay(page, 1e9);
+    grown = await H(() => window.__hearth.chron.filter(e => e.gr).length);
+  }
+  const gs = await H(() => { const e = window.__hearth.chron.find(e => e.gr); return e ? { kind: e.kind, tl: e.tl, st: e.st.slice(-70) } : null; });
+  console.log(`stories grown after ${tells} fire nights: ${grown}${gs ? ` (a ${gs.kind}, told ${gs.tl}x: "...${gs.st}")` : ''}`);
+  if (!grown) { failed = true; console.log('FAIL: twelve nights of telling grew no story'); }
+
+  // works in progress survive the save now (the shrine used to re-arm from faith; a half-built ring used to vanish)
+  const wip = await H(() => {
+    const h = window.__hearth;
+    h.works.push({ wk: 'ring', x: 40, y: 30, y0: 2, done: false, prog: 7.5, paid: 1, said: 1 });
+    const o = h.pack(); h.unpack(o);
+    const w = h.works.find(w => w.wk === 'ring');
+    return w ? { done: w.done, prog: w.prog, paid: w.paid } : null;
+  });
+  console.log(`wip work through pack/unpack: ${JSON.stringify(wip)}`);
+  if (!wip || wip.done || wip.prog !== 7.5 || !wip.paid) { failed = true; console.log('FAIL: a work in progress did not survive the save'); }
+
+  // a v7-shaped save (4-field works, 5-field chronicle rows, no heirloom keys) still loads
+  const v7ok = await H(() => {
+    const h = window.__hearth; const o = h.pack(); o.v = 7;
+    delete o.hl; delete o.hy;
+    o.wk = o.wk.filter(w => w[4]).map(w => w.slice(0, 4));
+    o.ch = o.ch.map(a => a.slice(0, 5));
+    try { h.unpack(o); } catch (e) { return 'threw: ' + e.message; }
+    return h.people.length > 0 && h.things.length === 0 && h.works.every(w => w.done) ? 'ok' : 'bad state';
+  });
+  console.log(`v7 save compat: ${v7ok}`);
+  if (v7ok !== 'ok') failed = true;
+
+  // ---- the listening pass, measured: every one-shot through an analyser on the master bus ----
+  const audio = await page.evaluate(async () => {
+    const h = window.__hearth;
+    h.audioOn = true; // before startAudio: the master gain is stamped from audioOn when the graph is built
+    if (!h.AC) h.startAudio();
+    const AC = h.AC; await AC.resume();
+    if (AC.state !== 'running') return { skip: 'AudioContext ' + AC.state };
+    h.buses.master.gain.value = 1;
+    const t0c = AC.currentTime; await new Promise(r => setTimeout(r, 300));
+    if (AC.currentTime === t0c) return { skip: 'AudioContext clock not advancing (no audio device?)' };
+    const an = AC.createAnalyser(); an.fftSize = 2048;
+    h.buses.master.connect(an);
+    const buf = new Float32Array(an.fftSize);
+    const peakFor = ms => new Promise(res => {
+      let peak = 0; const t0 = performance.now();
+      const iv = setInterval(() => {
+        an.getFloatTimeDomainData(buf);
+        for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > peak) peak = a; }
+        if (performance.now() - t0 > ms) { clearInterval(iv); res(peak); }
+      }, 25);
+    });
+    const settle = async () => { h.audioTick(.05); await peakFor(250); }; // let tails die between shots
+    const x = h.cur.x, y = h.cur.y, out = {};
+    const shots = [
+      ['thock', () => h.thock(x, y)], ['hammer', () => h.hammer(x, y)], ['stoneTap', () => h.stoneTap(x, y)],
+      ['splash', () => h.splash(x, y)], ['whoosh', () => h.whoosh(x, y, .9)], ['gullCry', () => h.gullCry(x, y)],
+      ['creak', () => h.creak(x, y)], ['bell', () => h.bell(1)], ['plink', () => h.plink(.15)],
+      ['chirp', () => h.chirp()], ['thunder', () => h.thunder(.2)], ['lullaby', () => h.lullaby(x, y)],
+      ['wayTune', () => h.wayTune()],
+    ];
+    for (const [name, fn] of shots) {
+      h.audioTick(.05); // resets the per-frame sfx cap so every shot actually fires
+      fn(); out[name] = +(await peakFor(name === 'thunder' || name === 'bell' ? 2200 : 1300)).toFixed(4);
+      await settle();
+    }
+    // ducking: under a thunderstorm the sfx bus steps back and the rain bed itself keeps headroom.
+    // (a peak comparison of the same hammer is confounded — the analyser hears the storm bed under it —
+    // so assert on the duck gain the game actually applies, and on the bed's own level)
+    h.setWx('thunder'); for (let i = 0; i < 40; i++) h.audioTick(.1); await peakFor(1800);
+    const sfxStorm = h.buses.sfxG.gain.value, bedStorm = await peakFor(900);
+    h.setWx('clear'); for (let i = 0; i < 40; i++) h.audioTick(.1); await peakFor(1800);
+    const sfxClear = h.buses.sfxG.gain.value;
+    out.duck = { sfxStorm: +sfxStorm.toFixed(3), sfxClear: +sfxClear.toFixed(3), bedStorm: +bedStorm.toFixed(4) };
+    return out;
+  });
+  if (audio.skip) { failed = true; console.log(`FAIL: listening pass skipped (${audio.skip})`); }
+  else {
+    console.log('listening pass, master-bus peaks per one-shot:');
+    const names = Object.keys(audio).filter(k => k !== 'duck');
+    for (const k of names) console.log(`  ${k.padEnd(10)} ${audio[k].toFixed(3)}${audio[k] > .9 ? '  !! CLIPPING RISK' : audio[k] < .004 ? '  !! INAUDIBLE' : ''}`);
+    const d = audio.duck;
+    console.log(`  duck bus: sfx gain ${d.sfxStorm} in storm vs ${d.sfxClear} clear; storm bed peaks ${d.bedStorm}`);
+    for (const k of names) if (audio[k] > .9 || audio[k] < .004) failed = true;
+    if (!(d.sfxStorm < d.sfxClear - .1)) { failed = true; console.log('FAIL: the sfx bus does not step back under a storm'); }
+    if (d.bedStorm > .5) { failed = true; console.log('FAIL: the storm bed itself is running hot'); }
+  }
+
+  if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
+  await ctx.close();
+  console.log(failed ? '\nFAIL' : '\nPASS: sprint 12 systems behave, and the island has been listened to');
 }
 
 if (mode === 'determinism') {
