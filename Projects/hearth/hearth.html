@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth — a small living island</title>
-<!-- Hearth v2 · Sprint 5: the watcher — blessings, the chronicle, save/load in the hash, time controls (on top of Sprints 1–4). Single file, no dependencies. -->
+<!-- Hearth v2 · Sprint 6: sound as place — a mixer, placed one-shots, waves off the cursor, seasonal music (on top of Sprints 1–5). Single file, no dependencies. -->
 <style>
   :root{--ink:#e8dcc4;--dim:#9a8b6d;--panel:rgba(18,14,10,.86);--gold:#f0b35a;--line:#3a3020}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -27,7 +27,7 @@
   #log p i{color:var(--dim);font-style:normal;margin-right:8px;font-size:11px}
   #log b{font-weight:normal;color:var(--gold)}
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  #hint{position:fixed;right:14px;bottom:14px;font-size:12px;color:var(--dim);font-style:italic;text-align:right;text-shadow:0 1px 3px #000}
+  #hint{position:fixed;right:14px;bottom:14px;max-width:min(430px,42vw);font-size:12px;line-height:1.5;color:var(--dim);font-style:italic;text-align:right;text-shadow:0 1px 3px #000}
   /* islander card */
   #card{position:fixed;right:14px;top:58px;width:min(300px,calc(100vw - 28px));max-height:calc(100vh - 80px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:12px 14px 14px;font-size:13px;line-height:1.45;box-shadow:0 8px 30px rgba(0,0,0,.5);backdrop-filter:blur(3px)}
   #card[hidden]{display:none}
@@ -90,7 +90,7 @@
   <button id="b-new">new island</button>
 </div>
 <div id="log"></div>
-<div id="hint">click an islander to meet them, or at night to give them a dream · click grass for a sapling, hold for a spring<br>click water to skip a stone, drag for a gust · click a cloud's shadow to make it rain there · click the fire for a story</div>
+<div id="hint">click an islander to meet them, or at night for a dream · a sleeping child gets a lullaby · grass: a sapling, hold for a spring<br>water: skip a stone, drag for a gust · a cloud's shadow: rain, there · the fire: a story · the sound is worth turning on</div>
 <aside id="card" hidden aria-live="polite">
   <button class="x" id="card-x" aria-label="close">×</button>
   <div class="top"><canvas id="face" width="16" height="16"></canvas><div><h2 id="c-name">—<small id="c-sub"></small></h2><div class="traits" id="c-traits"></div></div></div>
@@ -126,6 +126,8 @@ let bldg=[],bldgTgt=null,boats=[],heat,road,roadV=0,village=null,landings=[],lig
 let deep=[],wild=[],flies=[],gulls=[],geese=null,geeseDay=0,whale=null,whaleT=0,whaleDay=0,farIsle=null,voyage=null,ruin=null,fishSh=[],ruinSeen=0;
 // sprint 5 state: the watcher's blessings, clouds, the chronicle, time
 let springs=[],clouds=[],cloudSp=[],gusts=[],skips=[],chron=[],wind=1,paused=false,storyDay=0,dreamAny=0;
+let RM=false;try{const mq=matchMedia('(prefers-reduced-motion: reduce)');RM=mq.matches;
+  if(mq.addEventListener)mq.addEventListener('change',e=>{RM=e.matches});else if(mq.addListener)mq.addListener(e=>{RM=e.matches})}catch(e){}
 const V=()=>village||'the village';
 const BLD={
   hut:{name:'the fishing hut',w:2,h:1,wood:16,work:36,cond:()=>people.length>=7&&landings.length>0},
@@ -176,7 +178,7 @@ function newWorld(s){
   for(let y=6;y<H-6;y+=2)for(let x=6;x<W-6;x+=2){if(at(x,y)!==GRASS)continue;let c=0;
     for(let j=-5;j<=5;j++)for(let i=-5;i<=5;i++)if(at(x+i,y+j)===GRASS)c++;
     const sc=c-Math.hypot(x-cx,y-cy)*.6;if(sc>bs){bs=sc;best={x,y}}}
-  center=best||{x:cx|0,y:cy|0};
+  center=best||{x:cx|0,y:cy|0};cur.x=center.x;cur.y=center.y;
   trees=trees.filter(t=>Math.hypot(t.x-center.x,t.y-center.y)>3.5);
   // hill for graves: highest grass tile 8–22 tiles from the hearth
   hill=null;let he=-1;for(let y=2;y<H-2;y++)for(let x=2;x<W-2;x++){if(at(x,y)!==GRASS)continue;const d=Math.hypot(x-center.x,y-center.y);if(d<8||d>22)continue;const e=elev[idx(x,y)];if(e>he){he=e;hill={x,y}}}
@@ -432,7 +434,22 @@ const G=[
   {c:x=>x.ruin&&x.brave,t:'{A} lifts one of the fallen stones and cannot, and pretends that was not what {A} was doing.'},
   {c:x=>x.ruin&&x.gentle,t:'{A} pulls the ivy back from the old stones so that whoever set them would know they were seen.'},
   {c:x=>x.ruin&&x.b&&x.rel==='rival',t:'{A} and {B} disagree about who built the old stones. Neither of them was there.'},
+  // the watcher's blessings (sprint 5)
+  {c:x=>x.spring&&!x.night,t:'{A} kneels at the spring and drinks straight out of it, and says it tastes like the inside of a stone.'},
+  {c:x=>x.spring&&x.b,t:'{A} and {B} disagree, pleasantly, about whether the spring was always there. It was not.'},
+  {c:x=>x.spring&&x.kid,t:'{A} floats a leaf on the pond and follows it round the edge until it sinks.'},
+  {c:x=>x.spring&&x.dreamy&&x.night,t:'{A} sits by the new water after dark and listens to it doing nothing in particular.'},
+  {c:x=>x.cloudrain,t:'One cloud is raining, out of a whole sky that is not. {A} goes and stands under it on purpose.'},
+  {c:x=>x.cloudrain&&x.gossipy,t:'{A} has an explanation for rain falling on one field and nowhere else. It is wrong, and it is very confident.'},
+  {c:x=>x.story&&x.night,t:'Long after the story {A} is still awake, fitting the pieces of it together a different way.'},
+  {c:x=>x.story&&x.kid&&x.b,t:'{A} asks {B} to tell the part about the boat again. {B} tells it again, longer.'},
+  {c:x=>x.dreamt&&x.b,t:'{A} tries to tell {B} a dream, gets it wrong twice, and starts again from the beginning.'},
+  {c:x=>x.dreamt&&x.elder,t:'{A} says the dreams on this island are not like the dreams at home, and will not be drawn on it.'},
 ];
+const ARRIVED=p=>pick([`${p.name} rowed in out of nowhere and asked to stay, and stayed.`,
+  `${p.name} came ashore with everything ${p.name} owned in one bag, and was given bread before any questions.`,
+  `A boat put in on the sand and ${p.name} got out of it, and never quite got back in.`,
+  `${p.name} arrived off the water in the ${sea()}, and by evening was carrying something for somebody.`]);
 function eventLabel(){if(!events.length)return null;const e=events[(R()*events.length)|0];return e.label}
 function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
   // gossipy islanders are picked more often
@@ -440,7 +457,7 @@ function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
   const rel=a.rels.length&&R()<.75?a.rels[(R()*a.rels.length)|0]:null;const b=rel?byName(rel.who):(cand.length>1?pick(cand.filter(p=>p!==a)):null);
   const c=cand.length>2?pick(cand.filter(p=>p!==a&&p!==b)):null;
   const td=tide();
-  const ctx={a,b,c,rel:rel?rel.k:null,night:isNight(),dusk:isDusk(),rain,storm,thunder:storm,market:hasB('market'),mill:hasB('mill'),well:hasB('well'),hall:hasB('hall'),light:hasB('light'),hut:hasB('hut'),smoke:hasB('smoke'),bridge:hasB('bridge'),trader:!!trader,road:roadV>0,named:!!village,deer:wild.some(w=>w.k==='deer'),rabbits:wild.some(w=>w.k==='rabbit'),farms:farms.length>0,fox:wild.some(w=>w.k==='fox'),gulls:gulls.length>0,fireflies:flies.length>0,geese:geeseDay===dayCount,whale:!!whale||whaleDay===dayCount,fish:fishSh.length>0&&!frozen,far:!!farIsle,voyaged:!!voyage,away:!!voyage&&voyage.st==='away',stayed:!!voyage&&voyage.st==='stayed',ruin:!!ruin&&ruinSeen>0,fog:wx==='fog',snow:wx==='snow',overcast:wx==='overcast',ice:frozen,hungry:hunger>.25,leaves:seaDay()>=2,blossom:seaDay()<=3,lowtide:td<-.6,hightide:td>.6,sea:seasonOf(dayCount),ev:eventLabel(),graves:graves.length>0,elder:isElder(a),kid:isKid(a)};
+  const ctx={a,b,c,rel:rel?rel.k:null,night:isNight(),dusk:isDusk(),rain,storm,thunder:storm,market:hasB('market'),mill:hasB('mill'),well:hasB('well'),hall:hasB('hall'),light:hasB('light'),hut:hasB('hut'),smoke:hasB('smoke'),bridge:hasB('bridge'),trader:!!trader,road:roadV>0,named:!!village,deer:wild.some(w=>w.k==='deer'),rabbits:wild.some(w=>w.k==='rabbit'),farms:farms.length>0,fox:wild.some(w=>w.k==='fox'),gulls:gulls.length>0,fireflies:flies.length>0,geese:geeseDay===dayCount,whale:!!whale||whaleDay===dayCount,fish:fishSh.length>0&&!frozen,far:!!farIsle,voyaged:!!voyage,away:!!voyage&&voyage.st==='away',stayed:!!voyage&&voyage.st==='stayed',ruin:!!ruin&&ruinSeen>0,spring:springs.length>0,story:storyDay===dayCount,dreamt:dreamAny===dayCount,cloudrain:clouds.some(c=>c.r>0),fog:wx==='fog',snow:wx==='snow',overcast:wx==='overcast',ice:frozen,hungry:hunger>.25,leaves:seaDay()>=2,blossom:seaDay()<=3,lowtide:td<-.6,hightide:td>.6,sea:seasonOf(dayCount),ev:eventLabel(),graves:graves.length>0,elder:isElder(a),kid:isKid(a)};
   for(const t of TRAITS)ctx[t]=has(a,t);
   const ok=G.filter(t=>t.c(ctx)&&(usedTpl.get(t)||0)<dayCount);if(!ok.length)return;
   const wt=ok.map(t=>t.w||1);s=wt.reduce((x,y)=>x+y,0);r=R()*s;let tpl=ok[0];for(let i=0;i<ok.length;i++){r-=wt[i];if(r<=0){tpl=ok[i];break}}
@@ -484,7 +501,7 @@ function newDay(){saidToday=new Set();
       const s=`decided, with ${b.name}, to build a house together`;a.hist.push({d:dayCount,s});b.hist.push({d:dayCount,s:`decided, with ${a.name}, to build a house together`});a.wantHouse=b.wantHouse=true;
       // give up separate homes
       for(const p of[a,b])if(p.home){p.home.owners=p.home.owners.filter(n=>n!==p.name);p.home=null}
-      say(`${B(a)} and ${B(b)} have decided to build a house together. There is a lot of nodding around the fire.`);addEvent('partner',`the spring ${a.name} and ${b.name} built their house`.replace('the spring','the '+seasonOf(dayCount)),`${a.name} and ${b.name} decided to build a house together, which surprised nobody.`)}}
+      say(`${B(a)} and ${B(b)} have decided to build a house together. There is a lot of nodding around the fire.`);addEvent('partner',`the spring ${a.name} and ${b.name} built their house`.replace('the spring','the '+seasonOf(dayCount)),pick([`${a.name} and ${b.name} decided to build a house together, which surprised nobody.`,`${a.name} and ${b.name} paced out a plot for the two of them, and there was a lot of nodding about it.`,`${a.name} and ${b.name} stopped pretending and started building.`]))}}
   // births
   for(const a of alive){if(!a.partner||a.child)continue;const b=byName(a.partner);if(!b||b.dead||a.name>b.name)continue;
     if(a.home&&a.home===b.home&&ageOf(a)<46&&ageOf(b)<46&&people.length<popCap()+1&&food>people.length*3&&R()<.025){
@@ -523,11 +540,11 @@ function finishBuilding(p,t){t.done=true;bldgTgt=null;bldg.push(t);const nm=BLD[
     market:`${B(p)} sets the last stone of ${nm}. By noon there are three stalls and an argument about prices.`,mill:`${B(p)} lets go of the brake and the sail of ${nm} turns for the first time. The children run under it.`,
     smoke:`${B(p)} lights ${nm}. From now on the fish keep, and everything smells faintly of it.`,bridge:`${B(p)} lays the last plank of ${nm}. Nobody has to wade the stream any more, and several people do anyway.`,
     hall:`${B(p)} hangs the bell in ${nm}. It rings once, badly, and then rings properly at dawn.`,light:`${B(p)} climbs ${nm} at dusk and lights the lamp. Out on the water, something that was dark is not dark now.`};
-  say(lines[t.kind],true);addEvent('build',`the ${sea()} ${nm} was built`,`${p.name} finished ${nm}, and the place was different afterwards.`);p.hist.push({d:dayCount,s:`finished ${nm}`});
+  say(lines[t.kind],true);addEvent('build',`the ${sea()} ${nm} was built`,pick([`${p.name} finished ${nm}, and the place was different afterwards.`,`${nm} went up, and it was ${p.name} who set the last of it.`,`${p.name} put the last hand to ${nm}, and everyone found a reason to walk past it.`]));p.hist.push({d:dayCount,s:`finished ${nm}`});
   if(t.kind==='market'){for(let j=0;j<3;j++)for(let i=0;i<3;i++)road[idx(t.x+i,t.y+j)]=2;roadV++;spots.push({l:'the market',x:t.x+1.5,y:t.y+1.5})}
   if(t.kind==='well')spots.push({l:'the well',x:t.x+.5,y:t.y+.8});if(t.kind==='light')spots.push({l:'the lighthouse',x:t.x+.5,y:t.y+.8});if(t.kind==='bridge')spots.push({l:'the bridge',x:t.x+.5,y:t.y+.5});
   if(t.kind==='hall')bell(1);}
-function bell(n){if(!AC||!audioOn)return;const m=storm?.3:rain?.6:wx==='fog'?.75:1;for(let i=0;i<n;i++){const t=AC.currentTime+i*1.6;for(const [f,v0] of [[880,.09],[1318,.04],[587,.03]]){const v=v0*m;const o=AC.createOscillator(),gn=AC.createGain();o.type='sine';o.frequency.value=f;gn.gain.setValueAtTime(v,t);gn.gain.exponentialRampToValueAtTime(.001,t+1.4);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+1.5)}}}
+function bell(n){if(!AC||!audioOn)return;const m=storm?.3:rain?.6:wx==='fog'?.75:1;for(let i=0;i<n;i++){const t=AC.currentTime+i*1.6;for(const [f,v0] of [[880,.09],[1318,.04],[587,.03]]){const v=v0*m;const o=AC.createOscillator(),gn=AC.createGain();o.type='sine';o.frequency.value=f;gn.gain.setValueAtTime(v,t);gn.gain.exponentialRampToValueAtTime(.001,t+1.4);o.connect(gn).connect(sfxG||AC.destination);o.start(t);o.stop(t+1.5)}}}
 function spawnBoat(kind,land,o){const b={kind,land,x:land.x+land.dx*17,y:land.y+land.dy*17,tx:land.x+land.dx*.9,ty:land.y+land.dy*.9,st:'in',t:0,...o};boats.push(b);return b}
 function stepBoats(dt){for(const b of boats){
     if(b.gvx){const nx=b.x+b.gvx*dt,ny=b.y+b.gvy*dt;if(at(nx|0,ny|0)===WATER){b.x=nx;b.y=ny;if(b.p){b.p.x=nx;b.p.y=ny}}const k=Math.pow(.12,dt);b.gvx*=k;b.gvy*=k;if(Math.abs(b.gvx)+Math.abs(b.gvy)<.08)b.gvx=b.gvy=0}
@@ -540,10 +557,10 @@ function stepBoats(dt){for(const b of boats){
   boats=boats.filter(b=>!b.gone)}
 function boatArrive(b){
   if(b.kind==='arrival'&&b.st==='in'){b.gone=true;const p=addPerson(b.land.x,b.land.y,{age:b.age});meet(p,1,3);const f=p.rels[0]?byName(p.rels[0].who):null;
-    say(`A stranger named ${B(p)} pulls a boat up on the sand and asks to stay.${f?' '+f.name+' is the first to walk down.':''}`);addEvent('arrival',`the day ${p.name} came ashore`,`${p.name} rowed in out of nowhere and asked to stay, and stayed.`)}
+    say(`A stranger named ${B(p)} pulls a boat up on the sand and asks to stay.${f?' '+f.name+' is the first to walk down.':''}`);addEvent('arrival',`the day ${p.name} came ashore`,ARRIVED(p))}
   else if(b.kind==='trade'&&b.st==='in'){b.st='wait';b.t=45;trader=b;const r=R();let eff;
     if(r<.4&&wood>=8){wood-=8;food+=14;eff='takes eight lengths of good timber and leaves salt fish and a sack of meal'}else if(r<.7){granary+=10;wood+=4;eff='trades meal for stories, mostly, and does badly out of it'}else{wood+=10;eff='leaves seasoned planks in exchange for a promise about next season'}
-    say(`A trader's boat comes in to ${V()} and everyone who can finds a reason to be on the shore. The trader ${eff}.`,true);addEvent('trade',`the ${sea()} the trader came`,`The trader's boat came in and everyone who could find a reason was on the shore for it.`);
+    say(`A trader's boat comes in to ${V()} and everyone who can finds a reason to be on the shore. The trader ${eff}.`,true);addEvent('trade',`the ${sea()} the trader came`,pick([`The trader's boat came in and everyone who could find a reason was on the shore for it.`,`The trader came, and went, and the store was a little different after.`,`A trading boat put in for a day and left news behind as well as goods.`]));
     const wav=people.filter(p=>!p.dead&&p.task!=='sleep'&&p.task!=='boat'&&p.task!=='voyage'&&p.task!=='build'&&!p.inside).sort(()=>R()-.5).slice(0,8);
     for(const q of wav){const s=nearestShore(b.land.x+rnd(-3,3),b.land.y+rnd(-3,3))||b.land;goTo(q,s.x,s.y,'wave',rnd(12,30));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null}
     if(R()<.5&&wav.length){const q=pick(wav);q.hist.push({d:dayCount,s:pick(['bought a length of red cloth off the trader','traded a carved bird to the trader for a knife','asked the trader for news of home and got some'])})}}
@@ -637,7 +654,7 @@ function stepClouds(dt){const n=CLOUDN[wx]||0,v=(CLOUDV[wx]||.3)*wind;
     else if(c.rt>0)c.rt-=dt}
   clouds=clouds.filter(c=>c.x>-cloudW(c)&&c.x<W+cloudW(c))}
 function cloudAt(x,y){for(const c of clouds){if(c.r>0||c.rt>0)continue;if(Math.abs(x-c.x)<cloudW(c)*.34&&Math.abs(y-c.y)<cloudH(c)*.32)return c}return null}
-function rainOn(c){c.r=rnd(16,26);
+function rainOn(c){c.r=rnd(16,26);whoosh(c.x,c.y,1.8);
   const near=people.filter(p=>!p.inside&&Math.abs(p.x-c.x)<cloudW(c)*.5&&Math.abs(p.y-c.y)<cloudH(c)*.5);
   const dry=farms.some(f=>f.g<1&&Math.abs(f.x-c.x)<cloudW(c)*.5&&Math.abs(f.y-c.y)<cloudH(c)*.5);
   say(dry?'One cloud stops over the fields and lets go of everything it was holding.':near.length?`One cloud out of a whole sky rains, and it rains on ${B(pick(near))}, who looks up.`:'A single cloud lets go of its rain, in one place, for no reason anyone can see.',true)}
@@ -653,7 +670,7 @@ function makeSpring(cx,cy){const r=rnd(1.3,2.1),hit=[];
   trees=trees.filter(t=>Math.hypot(t.x-cx,t.y-cy)>r+.3);stumps=stumps.filter(t=>Math.hypot(t.x-cx,t.y-cy)>r+.3);
   springs.push({x:cx,y:cy,r,ph:R()});spots.push({l:'the spring',x:cx,y:cy+1.6});
   if(R()<.5)fishSh.push({x:cx,y:cy,tx:cx,ty:cy,n:2,t:0,ph:R()*6,st:true});
-  paintTerrain();
+  paintTerrain();splash(cx,cy);
   for(let i=0;i<16;i++)fx.push({x:cx+rnd(-r,r),y:cy+rnd(-r*.7,r*.7),vx:rnd(-.4,.4),vy:-rnd(.4,1.3),c:'#cfe6ff',l:rnd(.5,1.3)});
   say(springs.length===1?'Water comes up through the grass where there was none, finds a shape to sit in, and stays.':'Somewhere else the ground gives up more water, and there is another pool by evening.',true);
   addEvent('spring','the day the spring came up',`Water came up through the grass ${springs.length===1?'where there had never been any':'a second time'}, and the ground has been wet there ever since.`);
@@ -668,7 +685,7 @@ function stepSkips(dt){for(const k of skips){k.x+=k.vx*dt;k.y+=k.vy*dt;k.t-=dt;
   skips=skips.filter(k=>!k.gone)}
 // a gust, dragged across the water
 function gustAt(x0,y0,x1,y1){const dx=x1-x0,dy=y1-y0,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
-  gusts.push({x:x0,y:y0,ux,uy,len:d,t:1.8});
+  gusts.push({x:x0,y:y0,ux,uy,len:d,t:1.8});whoosh((x0+x1)/2,(y0+y1)/2,1.1);
   let pushed=null;
   for(const b of boats){if(Math.hypot(b.x-x1,b.y-y1)>9)continue;b.gvx=(b.gvx||0)+ux*3.2;b.gvy=(b.gvy||0)+uy*3.2;pushed=b}
   for(const gl of gulls){if(Math.hypot(gl.cx-x1,gl.cy-y1)>10)continue;gl.cx+=ux*1.6;gl.cy+=uy*1.6}
@@ -713,7 +730,7 @@ function wakeDreams(){for(const p of people){const d=p.pend;if(!d)continue;p.pen
     else if(d.k==='visit'){if(d.gr&&graves.includes(d.gr)){p.mourn=d.gr;p.hist.push({d:dayCount,s:`went up the hill to sit with ${d.gr.name}, for no particular reason`})}}
     else if(d.k==='far')p.dreamFar=1;
     else if(d.k==='fish')p.luck=1;
-    else if(d.k==='grow'){const sp=freeSpot(3,14);if(sp){trees.push(mkTree(sp.x+.5,sp.y+.5,.6));say('There is a young tree at the edge of the clearing that nobody remembers being that tall.',true)}}
+    else if(d.k==='grow'){const sp=freeSpot(3,14);if(sp){trees.push(mkTree(sp.x+.5,sp.y+.5,.6));say('There is a young tree at the edge of the clearing that nobody remembers being that tall.',false,'growtree')}}
   }}
 // the fire, and the story told at it
 function tellStory(){if(storyDay===dayCount)return false;
@@ -722,9 +739,10 @@ function tellStory(){if(storyDay===dayCount)return false;
   for(const q of cand){if(q.task==='shelter')continue;if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.inside=false;
     goTo(q,center.x+rnd(-3,3),center.y+rnd(-2.2,2.2),'gather',rnd(24,44))}
   const grown=cand.filter(p=>!isKid(p)),teller=grown.sort((a,b)=>ageOf(b)-ageOf(a))[0]||cand[0];
-  const src=chron.filter(e=>e.st),L=['Somebody puts more wood on the fire than it needs, and the island comes to it.'];
+  const big=chron.filter(e=>e.st&&e.kind!=='arrival'&&e.kind!=='trade'),src=big.length>=4?big:chron.filter(e=>e.st),
+    L=['Somebody puts more wood on the fire than it needs, and the island comes to it.'];
   if(src.length<2)L.push('There is not much to tell yet. They sit with the fire anyway, which is most of it.');
-  else{L.push(`${B(teller)} tells it, and gets to, because ${teller.name} was there for most of it.`);
+  else{L.push(`${B(teller)} tells it, and gets to tell it, having been here for most of it.`);
     const n=Math.min(5,src.length),seen=new Set(),ch=[];
     for(let i=0;i<n;i++){const e=src[Math.round(i*(src.length-1)/(n-1))];if(!seen.has(e)){seen.add(e);ch.push(e)}}
     const last=src[src.length-1];if(!seen.has(last))ch.push(last);
@@ -760,7 +778,7 @@ function step(dt){
     if(n==='rain'&&s==='winter')n='snow';if(n==='snow'&&s!=='winter'&&!(s==='autumn'&&seaDay()===4))n=R()<.5?'rain':'overcast';
     setWx(n)}
   flash=Math.max(0,flash-dt*5);fogA+=((wx==='fog'?1:0)-fogA)*Math.min(1,dt*.12);
-  if(storm){thunderT-=dt;if(thunderT<=0){thunderT=rnd(1.5,7);flash=1;thunder(rnd(.3,3.2))}
+  if(storm){thunderT-=dt;if(thunderT<=0){thunderT=rnd(1.5,7);flash=RM?.3:1;thunder(rnd(.3,3.2))}
     // storms flatten crops and take down the odd tree
     if(farms.length&&R()<dt*.02){const cand=farms.filter(f=>f.g>.3);if(cand.length){const f=pick(cand);f.g*=.2;say('The wind lays a field flat. Someone will have to start it again.',false,'flat')}}
     if(trees.length>5&&R()<dt*.006){const cand=trees.filter(t=>t.s>.8&&t.hp>0);if(cand.length){const t=pick(cand);t.hp=0;stumps.push({x:t.x,y:t.y});wood+=3;say('A crack in the dark: the storm takes a tree down. In the morning there will be wood to gather.',false,'treefall')}}}
@@ -783,7 +801,7 @@ function step(dt){
     const age=R()<.2?rnd(50,64)|0:rnd(18,42)|0;
     if(landings.length){const l=landings[(R()*Math.min(landings.length,6))|0];spawnBoat('arrival',l,{age})}
     else{let s=null;for(let k=0;k<200&&!s;k++){const x=(R()*W)|0,y=(R()*H)|0;if(at(x,y)===SAND)s={x,y}}
-      if(s){const p=addPerson(s.x,s.y,{age});meet(p,1,3);say(`A stranger named ${B(p)} lands on the shore and asks to stay.`);addEvent('arrival',`the day ${p.name} came ashore`,`${p.name} came ashore out of the weather and asked to stay.`)}}}}
+      if(s){const p=addPerson(s.x,s.y,{age});meet(p,1,3);say(`A stranger named ${B(p)} lands on the shore and asks to stay.`);addEvent('arrival',`the day ${p.name} came ashore`,ARRIVED(p))}}}}
   // the trader comes once a season, on the third day, in the morning
   if(seaDay()===2&&traderDay!==dayCount&&dayFrac()>.32&&!storm&&!frozen&&people.length>=6&&landings.length){traderDay=dayCount;const h=getB('hut');const l=h?landings.find(l=>l.x===h.x&&l.y===h.y)||landings[0]:landings[0];spawnBoat('trade',l,{})}
   // the fishing boat goes out
@@ -853,7 +871,8 @@ function step(dt){
         else if(wood<70&&(needWood||proud||R()<.4)){const t=nearestTree(p.x,p.y);if(t&&(needWood||trees.length>12)){p.tgt=t;p.tx=t.x;p.ty=t.y+.4;p.task='chop'}else p.t=2}
         else{p.tx=center.x+rnd(-4,4);p.ty=center.y+rnd(-3,3);p.t=rnd(2,4)}}
         break}
-      case 'chop': if(walk(p,dt)){if(!p.tgt||p.tgt.hp<=0){p.tgt=null;p.task='idle';p.t=1;break}p.work=(p.work||0)+dt*workRate(p);if(R()<dt*3)fx.push({x:p.tgt.x,y:p.tgt.y,vx:rnd(-1,1),vy:-rnd(.5,1.5),c:'#8a5a2b',l:.5});
+      case 'chop': if(walk(p,dt)){if(!p.tgt||p.tgt.hp<=0){p.tgt=null;p.task='idle';p.t=1;break}p.work=(p.work||0)+dt*workRate(p);
+        p.swing=(p.swing||0)+dt;if(p.swing>.58){p.swing=0;thock(p.x,p.y)}if(R()<dt*3)fx.push({x:p.tgt.x,y:p.tgt.y,vx:rnd(-1,1),vy:-rnd(.5,1.5),c:'#8a5a2b',l:.5});
         if(p.work>4){p.work=0;p.tgt.hp=0;stumps.push({x:p.tgt.x,y:p.tgt.y});wood+=4;p.tgt=null;p.task='idle';p.t=rnd(1,2)}}break;
       case 'till': if(walk(p,dt)){p.work=(p.work||0)+dt*workRate(p);if(p.work>2.5){p.work=0;const s=p.tgt;tiles[idx(s.x,s.y)]=FARM;farms.push({x:s.x,y:s.y,g:0});if(farms.length===1){say(`${B(p)} breaks the first ground for a field.`);p.hist.push({d:dayCount,s:'broke the first ground for a field'});addEvent('field','the day the first field was dug',`${p.name} broke the first ground for a field, which was the beginning of eating properly.`)}p.task='idle';p.t=1}}break;
       case 'harvest': if(walk(p,dt)){p.work=(p.work||0)+dt*workRate(p);if(R()<dt*4)fx.push({x:p.x,y:p.y-.5,vx:rnd(-.5,.5),vy:-1,c:'#e8c86a',l:.6});
@@ -866,7 +885,8 @@ function step(dt){
         p.hist.push({d:dayCount,s:'took the boat out alone to see the far island'});addEvent('voyage',`the ${sea()} ${p.name} sailed for the far island`,`${p.name} rowed out alone for the far island, and five people stood on the shore and watched it happen.`);
         const w=people.filter(q=>q!==p&&!q.dead&&q.task!=='sleep'&&q.task!=='boat'&&!q.inside).sort(()=>R()-.5).slice(0,5);for(const q of w){const s=nearestShore(l.x+rnd(-3,3),l.y+rnd(-3,3))||l;goTo(q,s.x,s.y,'wave',rnd(10,20));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.hist.push({d:dayCount,s:`watched ${p.name} row out toward the far island`})}
         say(`${B(p)} pushes off from the landing and rows straight out, and does not look back until ${p.name} is small.`,true)}break;
-      case 'build': if(!p.tgt||p.tgt.done){p.task='idle';p.t=1;break}if(walk(p,dt)){p.tgt.prog+=dt*workRate(p);if(R()<dt*2)fx.push({x:p.tgt.x+rnd(0,p.tgt.w||2),y:p.tgt.y+rnd(0,p.tgt.h||2),vx:0,vy:-.6,c:'#ddd',l:.7});
+      case 'build': if(!p.tgt||p.tgt.done){p.task='idle';p.t=1;break}if(walk(p,dt)){p.tgt.prog+=dt*workRate(p);
+        p.swing=(p.swing||0)+dt;if(p.swing>.74){p.swing=0;hammer(p.x+.2,p.y-.2)}if(R()<dt*2)fx.push({x:p.tgt.x+rnd(0,p.tgt.w||2),y:p.tgt.y+rnd(0,p.tgt.h||2),vx:0,vy:-.6,c:'#ddd',l:.7});
         if(p.tgt.kind){if(p.tgt.prog>p.tgt.work){finishBuilding(p,p.tgt);p.task='idle';p.t=2}break}
         if(p.tgt.prog>12){const h={x:p.tgt.x,y:p.tgt.y,r:pick(['#8a3d2f','#6f4b32','#4c5f78']),owners:[]};houses.push(h);fires.push({x:center.x,y:center.y,t:0});
           if(p.tgt.forCouple){for(const n of p.tgt.forCouple){const q=byName(n);if(q){if(q.home)q.home.owners=q.home.owners.filter(m=>m!==n);q.home=h;h.owners.push(n);q.wantHouse=false;q.hist.push({d:dayCount,s:`moved into the house they built with ${n===p.name?p.partner:p.name}`})}}
@@ -975,6 +995,7 @@ function draw(){
   if(!frozen){const th=.24+tide()*.018;for(const t of tideTiles){if(t.t===SAND&&t.e<th){g.fillStyle='#3d6a9a';g.fillRect(t.x*T,t.y*T,T,T)}else if(t.t===WATER&&t.e>=th){g.fillStyle='#b39f78';g.fillRect(t.x*T,t.y*T,T,T)}}}
   const wt=time*2;g.fillStyle='rgba(180,220,255,.25)';
   if(!frozen)for(let i=0;i<60;i++){const x=(i*37+((wt*13)|0))%(W*T),y=(i*53+((Math.sin(wt+i)*8)|0)+400)%(H*T);if(at((x/T)|0,(y/T)|0)===WATER&&elev[idx((x/T)|0,(y/T)|0)]<.16)g.fillRect(x,y,3,1)}
+  for(const sp of springs){for(let j=0;j<2;j++){const k=(time*.45+sp.ph+j*.5)%1;g.strokeStyle=`rgba(196,228,255,${(.4*(1-k)*Math.max(.25,L)).toFixed(2)})`;g.lineWidth=1;g.beginPath();g.arc(sp.x*T,sp.y*T,1+k*sp.r*7,0,6.283);g.stroke()}}
   if(!frozen&&L>.15){g.fillStyle=`rgba(14,30,58,${(.42*L).toFixed(2)})`;for(const f of fishSh){const dx=f.tx-f.x,dy=f.ty-f.y,hz=Math.abs(dx)>=Math.abs(dy);for(let i=0;i<f.n;i++){const o=Math.sin(time*2.2+f.ph+i)*1.5;const x=f.x*T+(hz?i*3-3:o),y=f.y*T+(hz?o:i*2-2);g.fillRect(x,y,hz?3:1,hz?1:3)}}}
   for(const f of farms){g.fillStyle=snowD>.4?'#dfe6ea':'#7a5a37';g.fillRect(f.x*T,f.y*T,T,T);if(snowD>.4)continue;g.fillStyle=f.g>=1?'#e2c25a':s==='autumn'?'#a8a04a':'#7fb64c';const n=Math.min(4,1+(f.g*4)|0);for(let i=0;i<n;i++)g.fillRect(f.x*T+1+i*2,f.y*T+6-(f.g*4|0),1,1+(f.g*4|0))}
   for(const s of stumps){g.fillStyle='#5a3a1e';g.fillRect(s.x*T-1,s.y*T-1,3,2)}
@@ -1031,13 +1052,19 @@ function draw(){
     if(p.task==='fish'){g.fillStyle='#e8dcc4';g.fillRect(x+2,y-6,1,7)}
     if(p.task==='wave'&&Math.hypot(p.tx-p.x,p.ty-p.y)<.05){g.fillStyle='#f1cfa5';g.fillRect(x+2,y-9*k+Math.sin(time*9+p.off)*1.5,1,3)}}});
   ents.push({y:center.y,d:()=>{const x=center.x*T,y=center.y*T;g.fillStyle='#3a2a1a';g.fillRect(x-4,y-1,8,3);const fl=isNight()||L<.6;
-    if(fl){for(let i=0;i<4;i++){g.fillStyle=i%2?'#ffb347':'#ff6a2b';const s=2+Math.sin(time*10+i)*1.5;g.fillRect(x-1+Math.sin(time*7+i)*1.5,y-3-i*1.5-s,2,s)}}}});
+    if(fl){for(let i=0;i<4;i++){g.fillStyle=i%2?'#ffb347':'#ff6a2b';const s=RM?2.2:2+Math.sin(time*10+i)*1.5;g.fillRect(x-1+(RM?0:Math.sin(time*7+i)*1.5),y-3-i*1.5-s,2,s)}}}});
   ents.sort((a,b)=>a.y-b.y).forEach(e=>e.d());
-  for(const f of fx){g.fillStyle=f.c;g.fillRect(f.x*T,f.y*T,2,2)}
-  for(const gl of gulls){const x=gl.x*T,y=gl.y*T,up=Math.sin(time*7+gl.ph)>0;g.fillStyle='rgba(0,0,0,.12)';g.fillRect(x-2,y+9,5,1);g.fillStyle='#f0f0ea';if(up){g.fillRect(x-3,y-1,2,1);g.fillRect(x-1,y,3,1);g.fillRect(x+2,y-1,2,1)}else{g.fillRect(x-3,y+1,2,1);g.fillRect(x-1,y,3,1);g.fillRect(x+2,y+1,2,1)}g.fillStyle='#8c8478';g.fillRect(x,y,1,1)}
+  for(const f of fx){if(f.rg){const k=1-f.l/f.l0;g.strokeStyle=`rgba(200,230,255,${(.55*(1-k)).toFixed(2)})`;g.lineWidth=1;g.beginPath();g.arc(f.x*T,f.y*T,1+k*9,0,6.283);g.stroke()}else{g.fillStyle=f.c;g.fillRect(f.x*T,f.y*T,2,2)}}
+  for(const k of skips){g.fillStyle='#3a3a34';g.fillRect(k.x*T-1,k.y*T-2,2,2)}
+  if(clouds.length&&cloudSp.length){const cl=Math.max(.16,L*.95);
+    for(const c of clouds){const w=112*c.s,h=64*c.s;g.globalAlpha=Math.min(1,(c.r>0?1.15:.75)*cl);g.drawImage(cloudSp[c.i],Math.round(c.x*T-w/2),Math.round(c.y*T-h/2),w,h)}
+    g.globalAlpha=1;
+    for(const c of clouds){if(c.r<=0)continue;const w=112*c.s*.42,h=64*c.s*.42,cx=c.x*T,cy=c.y*T;g.strokeStyle='rgba(200,220,255,.42)';g.beginPath();
+      for(let i=0;i<46;i++){const x=cx-w+((i*53+((time*300)|0)*(i%3+1))%(w*2)),y=cy-h+((i*37+((time*400)|0))%(h*2));g.moveTo(x,y);g.lineTo(x-2,y+6)}g.stroke()}}
+  for(const gl of gulls){const x=gl.x*T,y=gl.y*T,up=Math.sin(time*(RM?2.5:7)+gl.ph)>0;g.fillStyle='rgba(0,0,0,.12)';g.fillRect(x-2,y+9,5,1);g.fillStyle='#f0f0ea';if(up){g.fillRect(x-3,y-1,2,1);g.fillRect(x-1,y,3,1);g.fillRect(x+2,y-1,2,1)}else{g.fillRect(x-3,y+1,2,1);g.fillRect(x-1,y,3,1);g.fillRect(x+2,y+1,2,1)}g.fillStyle='#8c8478';g.fillRect(x,y,1,1)}
   if(geese){g.fillStyle='#2a2620';const dir=Math.sign(geese.vx);for(let i=0;i<geese.n;i++){const k=Math.ceil(i/2),side=i%2?1:-1;const x=(geese.x-dir*k*1.35)*T,y=(geese.y+side*k*.75)*T,fl=Math.sin(time*9+geese.ph+i)>0?0:1;g.fillRect(x-1,y+fl,3,1);g.fillRect(x-2,y-fl+1,1,1);g.fillRect(x+2,y-fl+1,1,1)}}
-  if(rain){g.strokeStyle=storm?'rgba(200,220,255,.5)':'rgba(200,220,255,.35)';g.beginPath();const n=storm?300:180;for(let i=0;i<n;i++){const x=(i*97+((time*300)|0)*(i%3+1))%(W*T),y=(i*61+((time*400)|0))%(H*T);g.moveTo(x,y);g.lineTo(x-(storm?4:2),y+6)}g.stroke()}
-  if(wx==='snow'){g.fillStyle='rgba(255,255,255,.85)';for(let i=0;i<150;i++){const x=(i*97+((time*20)|0)*(i%3+1)+((Math.sin(time*.8+i)*5)|0)+2000)%(W*T),y=(i*61+((time*34)|0))%(H*T);g.fillRect(x,y,i%4?1:2,i%4?1:2)}}
+  if(rain){g.strokeStyle=storm?'rgba(200,220,255,.5)':'rgba(200,220,255,.35)';g.beginPath();const n=(storm?300:180)*(RM?.5:1);for(let i=0;i<n;i++){const x=(i*97+((time*300)|0)*(i%3+1))%(W*T),y=(i*61+((time*400)|0))%(H*T);g.moveTo(x,y);g.lineTo(x-(storm?4:2),y+6)}g.stroke()}
+  if(wx==='snow'){g.fillStyle='rgba(255,255,255,.85)';const sn=RM?70:150;for(let i=0;i<sn;i++){const x=(i*97+((time*20)|0)*(i%3+1)+((Math.sin(time*.8+i)*5)|0)+2000)%(W*T),y=(i*61+((time*34)|0))%(H*T);g.fillRect(x,y,i%4?1:2,i%4?1:2)}}
   // sky: season tint, cloud, fog
   const f=dayFrac(),e=edges();
   if(s==='summer'&&L>.5){g.fillStyle=`rgba(255,200,90,${(L-.5)*.14})`;g.fillRect(0,0,W*T,H*T)}
@@ -1055,7 +1082,7 @@ function draw(){
     glow(center.x*T,center.y*T-2,40,.5*dark);for(const h of houses)glow(h.x*T+8,h.y*T+11,18,.35*dark);
     if(farIsle&&farIsle.lit&&fogA<.6&&(time*2.3|0)%9!==0){const lx=(farIsle.x+farIsle.w*.6)*T,ly=farIsle.h*1.7*1.5;g.fillStyle=`rgba(255,190,110,${(.9*(dark-.3)).toFixed(2)})`;g.fillRect(lx,ly,1,1);glow(lx,ly,7,.5*(dark-.3))}
     g.globalCompositeOperation='source-over'}
-  if(flies.length){g.globalCompositeOperation='lighter';for(const fl of flies){const b=Math.sin(time*2.6+fl.ph);if(b<.2)continue;const a=(b-.2)*1.1*Math.min(1,fl.l/6);const x=fl.x*T,y=fl.y*T-2;g.fillStyle=`rgba(190,255,120,${(a*.35).toFixed(2)})`;g.fillRect(x-1,y-1,3,3);g.fillStyle=`rgba(230,255,170,${a.toFixed(2)})`;g.fillRect(x,y,1,1)}g.globalCompositeOperation='source-over'}
+  if(flies.length){g.globalCompositeOperation='lighter';for(const fl of flies){const b=RM?.85:Math.sin(time*2.6+fl.ph);if(b<.2)continue;const a=(b-.2)*1.1*Math.min(1,fl.l/6);const x=fl.x*T,y=fl.y*T-2;g.fillStyle=`rgba(190,255,120,${(a*.35).toFixed(2)})`;g.fillRect(x-1,y-1,3,3);g.fillStyle=`rgba(230,255,170,${a.toFixed(2)})`;g.fillRect(x,y,1,1)}g.globalCompositeOperation='source-over'}
   {const lh=getB('light');if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=time*.9,al=(dark-.35)*.22*(wx==='fog'?1.6:1);g.globalCompositeOperation='lighter';g.fillStyle=`rgba(255,240,180,${al})`;
     for(const off of [0,Math.PI]){g.beginPath();g.moveTo(lx,ly);g.arc(lx,ly,120,a+off-.13,a+off+.13);g.closePath();g.fill()}g.globalCompositeOperation='source-over'}}
   if(dark>.5&&wx==='clear'){g.fillStyle=`rgba(255,255,255,${(dark-.5)*1.2})`;const rr=mulberry(seed^7);for(let i=0;i<70;i++){const x=rr()*W*T,y=rr()*H*T;if(at((x/T)|0,(y/T)|0)===WATER&&(time*3+i)%7<6)g.fillRect(x,y,1,1)}}
@@ -1063,44 +1090,308 @@ function draw(){
   const lbl=f<e[0]?'night':f<e[0]+.1?'dawn':f<.5?'morning':f<e[1]-.1?'afternoon':f<e[1]?'dusk':'night';const wxl={clear:'',overcast:' · overcast',rain:' · rain',thunder:' · storm',fog:' · fog',snow:' · snow'}[wx]+(hunger>.3?' · hungry':'');
   document.getElementById('s-time').textContent=`year ${yearOf(dayCount)} · day ${dayCount} · ${s} · ${lbl}${wxl}`;document.getElementById('s-time-s').textContent=`d${dayCount} · ${s} · ${lbl}${wxl}`;
 }
-// ---------- audio ----------
-let AC=null,audioOn=false,windG,rainG,birdT=0,crickG;
+// ---------- audio: the island, heard (sprint 6) ----------
+// everything here uses Math.random, never R() — sound must not touch the simulation's stream
+let AC=null,audioOn=false,master=null,ambG,sfxG,musG,windG,windF,rainG,crickG,waveG,waveF,sprG,padG,nBuf=null;
+let padOsc=[],birdT=0,gullT=3,creakT=5,musT=3,musKey='',sfxN=0,lastKnock=0;
+const cur={x:0,y:0};
+const ar=(a,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a);
+const store=(k,v)=>{try{localStorage.setItem('hearth.'+k,v)}catch(e){}};
+const pref=k=>{try{return localStorage.getItem('hearth.'+k)}catch(e){return null}};
+const KEYS={spring:[293.66,[0,2,4,7,9]],summer:[196.00,[0,2,4,7,9]],autumn:[220.00,[0,3,5,7,10]],winter:[164.81,[0,3,5,7,10]]};
 function noiseBuf(){const b=AC.createBuffer(1,AC.sampleRate*2,AC.sampleRate);const d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;return b}
-function startAudio(){AC=new (window.AudioContext||window.webkitAudioContext)();const src=AC.createBufferSource();src.buffer=noiseBuf();src.loop=true;
-  const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=380;bp.Q.value=.6;windG=AC.createGain();windG.gain.value=.05;src.connect(bp).connect(windG).connect(AC.destination);src.start();
-  const lfo=AC.createOscillator();lfo.frequency.value=.11;const lg=AC.createGain();lg.gain.value=.03;lfo.connect(lg).connect(windG.gain);lfo.start();
-  const rs=AC.createBufferSource();rs.buffer=noiseBuf();rs.loop=true;const hp=AC.createBiquadFilter();hp.type='highpass';hp.frequency.value=2200;rainG=AC.createGain();rainG.gain.value=0;rs.connect(hp).connect(rainG).connect(AC.destination);rs.start();
-  const cr=AC.createOscillator();cr.type='triangle';cr.frequency.value=4200;const cl=AC.createOscillator();cl.frequency.value=17;const clg=AC.createGain();clg.gain.value=1;cl.connect(clg);crickG=AC.createGain();crickG.gain.value=0;
-  const cg2=AC.createGain();cg2.gain.value=0;clg.connect(cg2.gain);cr.connect(cg2).connect(crickG).connect(AC.destination);cr.start();cl.start();}
-function chirp(){if(!AC)return;const o=AC.createOscillator(),gn=AC.createGain(),t=AC.currentTime;o.type='sine';const f=2200+Math.random()*1800;o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(f*1.5,t+.06);o.frequency.exponentialRampToValueAtTime(f*.9,t+.13);
-  gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(.06,t+.02);gn.gain.linearRampToValueAtTime(0,t+.15);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+.16)}
-function plink(){if(!AC)return;const o=AC.createOscillator(),gn=AC.createGain(),t=AC.currentTime;o.frequency.setValueAtTime(600,t);o.frequency.exponentialRampToValueAtTime(180,t+.25);gn.gain.setValueAtTime(.15,t);gn.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+.3)}
-function thunder(d){if(!AC||!audioOn)return;const t=AC.currentTime+d*.9;const src=AC.createBufferSource();src.buffer=noiseBuf();const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.setValueAtTime(160,t);lp.frequency.exponentialRampToValueAtTime(50,t+1.6+d*.4);
-  const gn=AC.createGain();const v=.5/(1+d*.5);gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(v,t+.05+d*.03);gn.gain.exponentialRampToValueAtTime(.001,t+1.8+d*.5);src.connect(lp).connect(gn).connect(AC.destination);src.start(t);src.stop(t+2.2+d*.5)}
-function audioTick(dt){if(!AC||!audioOn)return;const t=AC.currentTime,s=sea();rainG.gain.setTargetAtTime(rain?(storm?.14:.09):0,t,1.5);
-  windG.gain.setTargetAtTime(({clear:.045,overcast:.06,rain:.07,thunder:.12,fog:.03,snow:.055})[wx]+(s==='winter'?.012:0),t,2);crickG.gain.setTargetAtTime(isNight()&&!rain&&s!=='winter'?.045:0,t,2);
-  birdT-=dt;if(birdT<=0){birdT=rnd(.3,3);if(!isNight()&&!rain&&wx!=='snow'&&Math.random()<(s==='winter'?.2:.7)){chirp();if(Math.random()<.5)setTimeout(chirp,120+Math.random()*100)}}}
+function mkPan(p){if(!AC.createStereoPanner)return AC.createGain();const n=AC.createStereoPanner();n.pan.value=Math.max(-1,Math.min(1,p));return n}
+// how loud and how far to the side a thing at (x,y) is, from wherever the watcher is looking
+function place(x,y){const dx=x-cur.x,d=Math.hypot(dx,y-cur.y);return{g:Math.max(.08,1-d/42),p:Math.max(-1,Math.min(1,dx/30))}}
+function startAudio(){AC=new (window.AudioContext||window.webkitAudioContext)();nBuf=noiseBuf();
+  master=AC.createGain();master.gain.value=audioOn?1:0;master.connect(AC.destination);
+  ambG=AC.createGain();ambG.connect(master);sfxG=AC.createGain();sfxG.connect(master);musG=AC.createGain();musG.gain.value=0;musG.connect(master);
+  const loop=dest=>{const s=AC.createBufferSource();s.buffer=nBuf;s.loop=true;s.connect(dest);s.start();return s};
+  const lfo=(hz,depth,param)=>{const o=AC.createOscillator();o.type='sine';o.frequency.value=hz;const g=AC.createGain();g.gain.value=depth;o.connect(g).connect(param);o.start()};
+  // wind: bandpassed noise that opens up in a storm
+  windF=AC.createBiquadFilter();windF.type='bandpass';windF.frequency.value=380;windF.Q.value=.6;
+  windG=AC.createGain();windG.gain.value=.05;windF.connect(windG).connect(ambG);loop(windF);lfo(.11,.03,windG.gain);
+  // waves: a low wash that swells, louder the closer the shore is to where you are looking
+  waveF=AC.createBiquadFilter();waveF.type='lowpass';waveF.frequency.value=560;waveF.Q.value=.9;
+  waveG=AC.createGain();waveG.gain.value=0;waveF.connect(waveG).connect(ambG);loop(waveF);
+  lfo(.085,240,waveF.frequency);lfo(.062,.016,waveG.gain);
+  // rain goes straight to the master: it is the thing everything else ducks under
+  {const hp=AC.createBiquadFilter();hp.type='highpass';hp.frequency.value=2200;rainG=AC.createGain();rainG.gain.value=0;hp.connect(rainG).connect(master);loop(hp)}
+  // a spring, if you are standing near one
+  {const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=3000;bp.Q.value=1.6;sprG=AC.createGain();sprG.gain.value=0;bp.connect(sprG).connect(ambG);loop(bp);lfo(.7,900,bp.frequency)}
+  // crickets
+  {const cr=AC.createOscillator();cr.type='triangle';cr.frequency.value=4200;const cl=AC.createOscillator();cl.frequency.value=17;const clg=AC.createGain();clg.gain.value=1;cl.connect(clg);
+    crickG=AC.createGain();crickG.gain.value=0;const cg2=AC.createGain();cg2.gain.value=0;clg.connect(cg2.gain);cr.connect(cg2).connect(crickG).connect(ambG);cr.start();cl.start()}
+  // the pad the music sits on: root and fifth, retuned when the season turns
+  padG=AC.createGain();padG.gain.value=.055;padG.connect(musG);
+  for(let i=0;i<2;i++){const o=AC.createOscillator();o.type='triangle';o.frequency.value=110;const g=AC.createGain();g.gain.value=i?.34:.5;o.connect(g).connect(padG);o.start();padOsc.push(o)}
+  musKey='';tuneMusic()}
+function tuneMusic(){if(!AC||!padOsc.length)return;const s=sea();if(s===musKey)return;musKey=s;
+  const k=KEYS[s][0]/2,t=AC.currentTime;padOsc[0].frequency.setTargetAtTime(k,t,4);padOsc[1].frequency.setTargetAtTime(k*Math.pow(2,7/12),t,4)}
+function note(f,dur,vol,type,pan,bus,when){if(!AC)return;const t=when||AC.currentTime;
+  const o=AC.createOscillator(),g=AC.createGain();o.type=type||'sine';o.frequency.value=f;
+  g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(vol,t+.14);g.gain.exponentialRampToValueAtTime(.0004,t+dur);
+  const p=mkPan(pan||0);o.connect(g).connect(p).connect(bus||musG);o.start(t);o.stop(t+dur+.06)}
+// one-shots, all of them placed in the world
+function knock(x,y,f0,f1,body,nf,nq,nv,ndur,lv){if(!AC||!audioOn||sfxN>5)return;
+  const t=AC.currentTime;if(t-lastKnock<.085)return;                     // a village at work, not a machine shop
+  lastKnock=t;sfxN++;
+  const P=place(x,y),pan=mkPan(P.p);pan.connect(sfxG);
+  const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(f1,t+body);
+  g.gain.setValueAtTime(lv*P.g,t);g.gain.exponentialRampToValueAtTime(.001,t+body*1.3);o.connect(g).connect(pan);o.start(t);o.stop(t+body*1.4);
+  const n=AC.createBufferSource();n.buffer=nBuf;n.playbackRate.value=1+Math.random()*.3;
+  const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=nf;bp.Q.value=nq;
+  const ng=AC.createGain();ng.gain.setValueAtTime(nv*P.g,t);ng.gain.exponentialRampToValueAtTime(.001,t+ndur);
+  n.connect(bp).connect(ng).connect(pan);n.start(t);n.stop(t+ndur+.02)}
+const thock=(x,y)=>knock(x,y,190,68,.13,1500,1.2,.1,.1,.15);      // the axe going in
+const hammer=(x,y)=>knock(x,y,340,150,.05,2700,1.6,.07,.06,.1);   // a nail, or something like one
+function creak(x,y){if(!AC||!audioOn||sfxN>5)return;sfxN++;const P=place(x,y),t=AC.currentTime;
+  const o=AC.createOscillator();o.type='sawtooth';o.frequency.setValueAtTime(118,t);o.frequency.linearRampToValueAtTime(96,t+.9);
+  const bp=AC.createBiquadFilter();bp.type='bandpass';bp.frequency.value=620;bp.Q.value=6;
+  const g=AC.createGain();g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.055*P.g,t+.25);g.gain.exponentialRampToValueAtTime(.0005,t+1);
+  const v=AC.createOscillator();v.frequency.value=5.5;const vg=AC.createGain();vg.gain.value=6;v.connect(vg).connect(o.frequency);v.start(t);v.stop(t+1.1);
+  o.connect(bp).connect(g).connect(mkPan(P.p)).connect(sfxG);o.start(t);o.stop(t+1.1)}
+function gullCry(x,y){if(!AC||!audioOn||sfxN>5)return;sfxN++;const P=place(x,y),t=AC.currentTime;
+  const o=AC.createOscillator();o.type='sawtooth';const f=760+Math.random()*260;
+  o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(f*1.7,t+.09);o.frequency.exponentialRampToValueAtTime(f*.72,t+.34);
+  const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2600;
+  const g=AC.createGain();g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.062*P.g,t+.04);g.gain.exponentialRampToValueAtTime(.0005,t+.38);
+  o.connect(lp).connect(g).connect(mkPan(P.p)).connect(sfxG);o.start(t);o.stop(t+.4)}
+function whoosh(x,y,len){if(!AC||!audioOn)return;const P=place(x,y),t=AC.currentTime,d=len||.9;
+  const n=AC.createBufferSource();n.buffer=nBuf;n.loop=true;
+  const bp=AC.createBiquadFilter();bp.type='bandpass';bp.Q.value=1.1;
+  bp.frequency.setValueAtTime(300,t);bp.frequency.exponentialRampToValueAtTime(1700,t+d*.45);bp.frequency.exponentialRampToValueAtTime(380,t+d);
+  const g=AC.createGain();g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.11*P.g,t+d*.3);g.gain.exponentialRampToValueAtTime(.0005,t+d);
+  n.connect(bp).connect(g).connect(mkPan(P.p)).connect(sfxG);n.start(t);n.stop(t+d+.05)}
+function splash(x,y){if(!AC||!audioOn)return;const P=place(x,y),t=AC.currentTime;
+  const n=AC.createBufferSource();n.buffer=nBuf;const bp=AC.createBiquadFilter();bp.type='bandpass';bp.Q.value=.9;
+  bp.frequency.setValueAtTime(1600,t);bp.frequency.exponentialRampToValueAtTime(500,t+.5);
+  const g=AC.createGain();g.gain.setValueAtTime(.12*P.g,t);g.gain.exponentialRampToValueAtTime(.0005,t+.6);
+  n.connect(bp).connect(g).connect(mkPan(P.p)).connect(sfxG);n.start(t);n.stop(t+.65)}
+// a lullaby, for a sleeping child: five notes down the season's scale, twice, slowly
+function lullaby(x,y){if(!AC||!audioOn)return;const P=place(x,y),k=KEYS[sea()],t=AC.currentTime;
+  const seq=[4,3,2,1,0,2,1,0];
+  seq.forEach((d,i)=>{const f=k[0]*Math.pow(2,k[1][d]/12)*(d>3?1:2)/2;
+    note(f,i===seq.length-1?2.4:1.1,.055*P.g,'sine',P.p*.5,sfxG,t+i*.62+(i>4?.3:0))})}
+function chirp(){if(!AC||!audioOn)return;const o=AC.createOscillator(),gn=AC.createGain(),t=AC.currentTime;o.type='sine';const f=2200+Math.random()*1800;
+  o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(f*1.5,t+.06);o.frequency.exponentialRampToValueAtTime(f*.9,t+.13);
+  gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(.06,t+.02);gn.gain.linearRampToValueAtTime(0,t+.15);
+  o.connect(gn).connect(mkPan(ar(-.6,.6))).connect(ambG);o.start(t);o.stop(t+.16)}
+function plink(v){if(!AC||!audioOn)return;const o=AC.createOscillator(),gn=AC.createGain(),t=AC.currentTime;
+  o.frequency.setValueAtTime(600,t);o.frequency.exponentialRampToValueAtTime(180,t+.25);
+  gn.gain.setValueAtTime(v||.15,t);gn.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(gn).connect(sfxG);o.start(t);o.stop(t+.3)}
+function thunder(d){if(!AC||!audioOn)return;const t=AC.currentTime+d*.9;const src=AC.createBufferSource();src.buffer=nBuf;
+  const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.setValueAtTime(160,t);lp.frequency.exponentialRampToValueAtTime(50,t+1.6+d*.4);
+  const gn=AC.createGain();const v=.5/(1+d*.5);gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(v,t+.05+d*.03);gn.gain.exponentialRampToValueAtTime(.001,t+1.8+d*.5);
+  src.connect(lp).connect(gn).connect(master);src.start(t);src.stop(t+2.2+d*.5)}
+function audioTick(dt){sfxN=0;if(!AC||!audioOn)return;const t=AC.currentTime,s=sea(),night=isNight();
+  const duck=storm?.4:rain?.62:wx==='snow'?.85:1;                        // everything steps back under rain
+  ambG.gain.setTargetAtTime(duck,t,1.2);sfxG.gain.setTargetAtTime(.5+.5*duck,t,.7);
+  rainG.gain.setTargetAtTime(rain?(storm?.14:.09):0,t,1.5);
+  windG.gain.setTargetAtTime(({clear:.045,overcast:.06,rain:.07,thunder:.12,fog:.03,snow:.055})[wx]+(s==='winter'?.012:0),t,2);
+  windF.frequency.setTargetAtTime(storm?640:wx==='fog'?250:380,t,4);
+  crickG.gain.setTargetAtTime(night&&!rain&&s!=='winter'?.045:0,t,2);
+  // the sea, from where you are looking
+  {const sh=nearestShore(cur.x,cur.y),d=sh?Math.hypot(sh.x-cur.x,sh.y-cur.y):40;
+    const v=Math.max(0,1-d/18)*(frozen?.3:1)*(storm?1.8:rain?1.2:1);
+    waveG.gain.setTargetAtTime(.01+v*.075,t,.7)}
+  // and the spring, if there is one near
+  {let d=99;for(const sp of springs)d=Math.min(d,Math.hypot(sp.x-cur.x,sp.y-cur.y));
+    sprG.gain.setTargetAtTime(d<9?.022*(1-d/9):0,t,.9)}
+  // music: the season's key, gone by nightfall
+  tuneMusic();
+  const want=(!night&&!storm)?.5:0;musG.gain.setTargetAtTime(want*duck,t,want?7:4);
+  if(want>0){musT-=dt;if(musT<=0){musT=ar(1.9,4.2);const k=KEYS[s],sc=k[1];
+    const deg=sc[(Math.random()*sc.length)|0],oct=Math.random()<.28?12:0,pan=ar(-.55,.55);
+    const f=k[0]*Math.pow(2,(deg+oct)/12);
+    note(f,ar(1.8,2.9),.042,'sine',pan);
+    if(Math.random()<.34)note(f*Math.pow(2,(Math.random()<.5?3:4)/12),2.3,.026,'triangle',pan*-.6,musG,t+ar(.3,.7))}}
+  // birds, gulls, and the mill turning
+  birdT-=dt;if(birdT<=0){birdT=ar(.3,3);if(!night&&!rain&&wx!=='snow'&&Math.random()<(s==='winter'?.2:.7)){chirp();if(Math.random()<.5)setTimeout(chirp,120+Math.random()*100)}}
+  gullT-=dt;if(gullT<=0){gullT=ar(4,15);if(gulls.length>2&&!night&&Math.random()<.6){const g=gulls[(Math.random()*gulls.length)|0];gullCry(g.x,g.y)}}
+  creakT-=dt;if(creakT<=0){creakT=ar(4,10);const m=getB('mill');
+    if(m&&Math.random()<({clear:.4,overcast:.55,rain:.6,thunder:.9,fog:.25,snow:.5})[wx])creak(m.x+1,m.y+1)}}
+// ---------- the chronicle ----------
+const chronEl=document.getElementById('chron'),rollEl=document.getElementById('chron-roll');
+function showChron(v){chronEl.hidden=!v;document.getElementById('b-chron').classList.toggle('on',!!v);if(v){if(innerWidth<=520)showCard(null);renderChron()}}
+function renderChron(){let h='',cy=0;
+  for(const e of chron){if(e.y!==cy){cy=e.y;h+=`<h4>year ${cy}</h4>`}h+=`<p><i>day ${e.d}</i>${e.st||e.label}</p>`}
+  rollEl.innerHTML=h||'<p>Nothing has happened yet that anyone will remember.</p>';
+  document.getElementById('chron-t').firstChild.textContent=village?`The Chronicle of ${village}`:'The Chronicle';
+  document.getElementById('chron-s').textContent=`island ${seed.toString(36)} · year ${yearOf(dayCount)}, day ${dayCount}`;
+  document.getElementById('chron-n').textContent=chron.length===1?'one thing remembered':`${chron.length} things remembered`;
+  rollEl.scrollTop=rollEl.scrollHeight}
+function exportChron(){const L=[`The chronicle of ${village||'an island with no name'}`,`island ${seed.toString(36)}`,''];let cy=0;
+  for(const e of chron){if(e.y!==cy){cy=e.y;L.push('',`YEAR ${cy}`,'')}L.push(`  day ${String(e.d).padStart(4)}   ${(e.st||e.label).replace(/<[^>]+>/g,'')}`)}
+  L.push('','',`It is year ${yearOf(dayCount)}, day ${dayCount}. There are ${people.length} people here, ${houses.length} houses, and ${graves.length} stones on the hill.`);
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([L.join('\n')],{type:'text/plain'}));
+  a.download=(village||'island-'+seed.toString(36)).toLowerCase()+'-chronicle.txt';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+// ---------- save & load: the whole island, in the address bar ----------
+function lzEnc(str){const s=unescape(encodeURIComponent(str)),d=new Map(),codes=[];let n=256,w='';
+  for(const c of s){const wc=w+c;if(d.has(wc))w=wc;else{if(w){codes.push(d.has(w)?d.get(w):w.charCodeAt(0));if(n<65536)d.set(wc,n++)}w=c}}
+  if(w)codes.push(d.has(w)?d.get(w):w.charCodeAt(0));
+  let bits=9,cap=256,buf=0,nb=0,out='';                                   // codes widen from 9 to 16 bits as the dictionary fills
+  for(const v of codes){buf=(buf<<bits)|v;nb+=bits;while(nb>=8){nb-=8;out+=String.fromCharCode((buf>>nb)&255)}buf&=(1<<nb)-1;
+    cap++;if(cap===(1<<bits)&&bits<16)bits++}
+  if(nb>0)out+=String.fromCharCode((buf<<(8-nb))&255);
+  const L=codes.length;out=String.fromCharCode((L>>16)&255,(L>>8)&255,L&255)+out;
+  return btoa(out).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+function lzDec(b64){const b=atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
+  const L=(b.charCodeAt(0)<<16)|(b.charCodeAt(1)<<8)|b.charCodeAt(2);if(!L)return '';
+  let bits=9,pos=3,buf=0,nb=0;
+  const get=()=>{while(nb<bits){buf=(buf<<8)|(pos<b.length?b.charCodeAt(pos++):0);nb+=8}nb-=bits;const v=(buf>>nb)&((1<<bits)-1);buf&=(1<<nb)-1;return v};
+  const d=new Map();let n=256,w=String.fromCharCode(get()),out=w;
+  for(let i=1;i<L;i++){if(n+1===(1<<bits)&&bits<16)bits++;
+    const k=get();let e;if(k<256)e=String.fromCharCode(k);else if(d.has(k))e=d.get(k);else e=w+w[0];
+    out+=e;if(n<65536)d.set(n++,w+e[0]);w=e}
+  return decodeURIComponent(escape(out))}
+const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0];
+function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]===v)n++;else{rd.push(v,n);v=road[i];n=1}}rd.push(v,n)}
+  return{v:5,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),
+    wx,wt:+wxT.toFixed(1),sn:+snowD.toFixed(3),fz:frozen?1:0,fo:+fogA.toFixed(2),vn:village||0,rv:roadV,td:traderDay,be:belled,rs:ruinSeen,
+    gd:geeseDay,wd:whaleDay,ar:+arrivalT.toFixed(1),sp:speed,wi:wind,sy:storyDay,
+    pe:people.map(packP),de:dead.map(p=>[p.name,p.rels.map(r=>[r.who,r.k])]),go:gone.map(p=>p.name),
+    ho:houses.map(h=>[h.x,h.y,h.r,h.owners]),fm:farms.map(f=>[f.x,f.y,+f.g.toFixed(2)]),
+    tr:trees.map(t=>[+t.x.toFixed(2),+t.y.toFixed(2),+t.s.toFixed(2),t.hp,t.b?1:0,+t.a.toFixed(2)]),
+    su:stumps.map(t=>[+t.x.toFixed(1),+t.y.toFixed(1)]),
+    bl:bldg.map(b=>[b.kind,b.x,b.y]),bt:bldgTgt?[bldgTgt.kind,bldgTgt.x,bldgTgt.y,+bldgTgt.prog.toFixed(1)]:0,
+    gv:graves.map(g=>[+g.x.toFixed(2),+g.y.toFixed(2),g.name,g.d,g.y2,g.age]),
+    sr:springs.map(s=>[+s.x.toFixed(2),+s.y.toFixed(2),+s.r.toFixed(2),+s.ph.toFixed(2)]),
+    ch:chron.map(e=>[e.d,e.y,e.kind,e.label,e.st||0]),ev:events.map(e=>[e.d,e.y,e.kind,e.label]),
+    vo:voyage?[voyage.name,voyage.st,voyage.day,voyage.back?1:0,voyage.n||0,voyage.st==='away'?packP(voyage.p):0]:0,
+    rb:ruin&&ruin.built?1:0,fl:farIsle&&farIsle.lit?1:0,rd}}
+function unpack(o){
+  newWorld(o.s);
+  time=o.t;dayCount=o.d;lastYear=o.ly;lastSea=o.ls;wood=o.w;food=o.f;granary=o.g;hunger=o.hu;
+  wx=o.wx;rain=wx==='rain'||wx==='thunder';storm=wx==='thunder';wxT=o.wt;snowD=o.sn;frozen=!!o.fz;fogA=o.fo;
+  village=o.vn||null;roadV=o.rv;traderDay=o.td;belled=o.be;ruinSeen=o.rs;geeseDay=o.gd;whaleDay=o.wd;arrivalT=o.ar;speed=o.sp||1;wind=o.wi||1;storyDay=o.sy||0;
+  houses=o.ho.map(h=>({x:h[0],y:h[1],r:h[2],owners:h[3].slice()}));
+  farms=o.fm.map(f=>({x:f[0],y:f[1],g:f[2]}));
+  trees=o.tr.map(t=>({x:t[0],y:t[1],s:t[2],hp:t[3],b:!!t[4],a:t[5]}));
+  stumps=o.su.map(t=>({x:t[0],y:t[1]}));
+  graves=o.gv.map(a=>({x:a[0],y:a[1],name:a[2],d:a[3],y2:a[4],age:a[5]}));
+  springs=o.sr.map(a=>({x:a[0],y:a[1],r:a[2],ph:a[3]}));
+  bldg=o.bl.map(a=>({kind:a[0],x:a[1],y:a[2],w:BLD[a[0]].w,h:BLD[a[0]].h,prog:BLD[a[0]].work,work:BLD[a[0]].work,done:true}));
+  bldgTgt=o.bt?{kind:o.bt[0],x:o.bt[1],y:o.bt[2],w:BLD[o.bt[0]].w,h:BLD[o.bt[0]].h,prog:o.bt[3],work:BLD[o.bt[0]].work,done:false}:null;
+  chron=o.ch.map(a=>({d:a[0],y:a[1],kind:a[2],label:a[3],st:a[4]||null}));
+  events=o.ev.map(a=>({d:a[0],y:a[1],kind:a[2],label:a[3]}));
+  for(const s of springs){for(let y=Math.floor(s.y-s.r-1);y<=s.y+s.r+1;y++)for(let x=Math.floor(s.x-s.r-1);x<=s.x+s.r+1;x++){
+      if(x<1||y<1||x>=W-1||y>=H-1)continue;if(Math.hypot(x+.5-s.x,(y+.5-s.y)*1.3)>s.r)continue;if(at(x,y)!==GRASS)continue;
+      tiles[idx(x,y)]=WATER;elev[idx(x,y)]=.19}
+    spots.push({l:'the spring',x:s.x,y:s.y+1.6})}
+  for(const f of farms)tiles[idx(f.x,f.y)]=FARM;
+  road=new Uint8Array(W*H);{let i=0;for(let k=0;k+1<o.rd.length;k+=2){const v=o.rd[k],n=o.rd[k+1];for(let j=0;j<n&&i<W*H;j++)road[i++]=v}}
+  const mk=a=>{const p={x:a[0],y:a[1],name:a[2],age0:a[3],born:a[4],tr:a[5],rels:a[6].map(r=>({who:r[0],k:r[1]})),hist:a[7].map(h=>({d:h[0],s:h[1]})),
+      col:a[8],hair:a[9],home:a[10]>=0?houses[a[10]]:null,partner:a[11]||null,parents:a[12]||[],alive:true,dead:false,
+      spot:{l:a[14][0],x:a[14][1],y:a[14][2]},off:a[15],fishRain:a[16]||0,boats:a[17]||0,
+      task:'idle',t:rnd(.5,2),tx:a[0],ty:a[1],carry:0,seed:hash(a[2])^seed,visits:0};
+    if(a[13])p.child=true;if(a[18])p.wantHouse=true;if(a[19])p.dreamFar=1;if(a[20])p.luck=1;
+    if(a[21])p.pend={k:a[21][0],who:a[21][1]||null,gr:a[21][2]?graves.find(g=>g.name===a[21][2]):null};return p};
+  names=new Set();people=o.pe.map(mk);people.forEach(p=>names.add(p.name));
+  dead=o.de.map(a=>({name:a[0],rels:a[1].map(r=>({who:r[0],k:r[1]})),dead:true,hist:[],tr:[]}));
+  gone=o.go.map(n=>({name:n}));
+  voyage=o.vo?{name:o.vo[0],st:o.vo[1],day:o.vo[2],back:!!o.vo[3],n:o.vo[4],p:o.vo[5]?mk(o.vo[5]):byName(o.vo[0])}:null;
+  if(voyage&&!voyage.p)voyage=null;
+  if(voyage&&voyage.st==='going')voyage.p.task='voyage';
+  if(ruin&&o.rb)ruin.built=true;
+  if(farIsle)farIsle.lit=!!o.fl;
+  for(const b of bldg){if(b.kind==='market')spots.push({l:'the market',x:b.x+1.5,y:b.y+1.5});
+    else if(b.kind==='well')spots.push({l:'the well',x:b.x+.5,y:b.y+.8});
+    else if(b.kind==='light')spots.push({l:'the lighthouse',x:b.x+.5,y:b.y+.8});
+    else if(b.kind==='bridge')spots.push({l:'the bridge',x:b.x+.5,y:b.y+.5})}
+  heat=new Float32Array(W*H);boats=[];fx=[];skips=[];gusts=[];fires=houses.length?[{x:center.x,y:center.y,t:0}]:[];
+  saidToday=new Set();usedTpl=new Map();
+  paintedKey='';paintTerrain();spawnWildlife();clouds=[];for(let i=0;i<2;i++)addCloud(false);
+  selected=null;showCard(null);document.getElementById('log').innerHTML='';
+  document.getElementById('seedlbl').textContent=(village?village+' · ':'')+'island '+seed.toString(36);
+  say(`The island is as it was left. ${village?village+', year':'Year'} ${yearOf(dayCount)}, day ${dayCount}: ${people.length} people, ${houses.length} ${houses.length===1?'house':'houses'}, ${graves.length} ${graves.length===1?'stone':'stones'} on the hill.`,true)}
+function loadHash(){const h=(location.hash||'').replace(/^#/,'');if(h.length<40)return false;
+  const o=JSON.parse(lzDec(h));if(!o||o.v!==5||!o.pe)return false;unpack(o);return true}
+function saveHash(){let str;
+  try{str=lzEnc(JSON.stringify(pack()))}catch(err){say('Something about this island will not fit in a link.',true);return}
+  try{history.replaceState(null,'','#'+str)}catch(err){location.hash=str}
+  const done=ok=>say(ok?'This island is copied. The link holds everyone in it, exactly as they are now.':'This island is in the address bar now. Copy that line to keep it.',true);
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(location.href).then(()=>done(true),()=>done(false));else done(false)}
+// ---------- time ----------
+function syncCtl(){for(const [id,v] of [['b-s1',1],['b-s3',3],['b-s10',10]])document.getElementById(id).classList.toggle('on',!paused&&speed===v);
+  const b=document.getElementById('b-pause');b.classList.toggle('on',paused);b.textContent=paused?'▶':'❚❚';b.setAttribute('aria-label',paused?'resume':'pause')}
+function setSpeed(v){speed=v;paused=false;syncCtl()}
+function skipToMorning(){const e=edges(),f=dayFrac(),d0=Math.floor(time/dayLen);
+  const tgt=(d0+(f<e[0]?0:1))*dayLen+(e[0]+.03)*dayLen;
+  let n=0;while(time<tgt&&n<3400){step(.05);n++}
+  paused=false;syncCtl();say('The night goes over the island quickly, the way nights do when you are not in them.',false,'skip')}
 // ---------- input ----------
 function fit(){const s=Math.min(innerWidth/(W*T),innerHeight/(H*T));cv.style.width=(W*T*s)+'px';cv.style.height=(H*T*s)+'px'}
 addEventListener('resize',fit);fit();
-cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect();const x=(e.clientX-r.left)/r.width*W,y=(e.clientY-r.top)/r.height*H;
-  // islander first
+let press=null,lpT=0;
+const toWorld=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H}};
+cv.addEventListener('pointerdown',e=>{const w=toWorld(e);cur.x=w.x;cur.y=w.y;
+  press={x0:w.x,y0:w.y,x:w.x,y:w.y,moved:0,done:false,water:at(w.x|0,w.y|0)===WATER};
+  try{cv.setPointerCapture(e.pointerId)}catch(err){}
+  if(at(w.x|0,w.y|0)===GRASS){lpT=setTimeout(()=>{lpT=0;if(!press||press.moved>1.1)return;press.done=true;
+    if(!makeSpring(press.x0,press.y0)){for(let i=0;i<7;i++)fx.push({x:press.x0,y:press.y0,vx:rnd(-.7,.7),vy:-rnd(.3,1),c:'#9fd66a',l:.5});
+      say('The ground here holds its water, and keeps it.',false,'nospring')}},520)}});
+cv.addEventListener('pointermove',e=>{const w=toWorld(e);cur.x=w.x;cur.y=w.y;if(!press)return;
+  press.moved=Math.max(press.moved,Math.hypot(w.x-press.x0,w.y-press.y0));press.x=w.x;press.y=w.y;
+  if(press.moved>1.1&&lpT){clearTimeout(lpT);lpT=0}
+  if(press.water&&press.moved>1.5&&R()<.35)fx.push({x:w.x,y:w.y,vx:0,vy:0,c:'#dceeff',l:.3})});
+function endPress(e){if(!press)return;const pr=press;press=null;if(lpT){clearTimeout(lpT);lpT=0}
+  if(pr.done)return;
+  const x=pr.x0,y=pr.y0;
+  // a gust, dragged across the water
+  if(pr.water&&pr.moved>2.2&&at(pr.x|0,pr.y|0)===WATER){gustAt(x,y,pr.x,pr.y);return}
+  if(pr.moved>1.4)return;
+  // an islander, and at night a dream
   let best=null,bd=1.4;for(const p of people){if(p.inside)continue;const d=Math.hypot(p.x-x,p.y-y+.6);if(d<bd){bd=d;best=p}}
-  if(best){showCard(best);return}
-  const tx=x|0,ty=y|0;const t=at(tx,ty);
-  if(t===GRASS){trees.push(mkTree(tx+.5,ty+.5,.2));for(let i=0;i<6;i++)fx.push({x,y,vx:rnd(-1,1),vy:rnd(-1.5,-.3),c:'#9fd66a',l:.6});if(R()<.3)say('Someone unseen plants a sapling. The islanders don\'t question it.')}
-  else if(t===WATER){for(let i=0;i<4;i++)fx.push({x:x+i*1.1,y,vx:0,vy:-.4,c:'#cfe6ff',l:.5+i*.15});plink()}
-});
-document.getElementById('b-speed').onclick=e=>{speed=speed===1?2:speed===2?4:1;e.target.textContent=speed+'×'};
-document.getElementById('b-new').onclick=()=>newWorld((Math.random()*1e9)|0);
-document.getElementById('b-audio').onclick=e=>{if(!AC)startAudio();audioOn=!audioOn;if(AC.state==='suspended')AC.resume();windG.gain.value=audioOn?.05:0;if(!audioOn){rainG.gain.value=0;crickG.gain.value=0}e.target.textContent=audioOn?'sound on':'sound off';e.target.classList.toggle('on',audioOn)};
+  if(best){showCard(best);
+    if(isNight()){if(isKid(best)&&best.task==='sleep'){lullaby(best.x,best.y);
+        say(`Somewhere in the dark somebody is humming, very quietly, and ${B(best)} turns over and sleeps on.`,true)}
+      dreamOf(best)}
+    return}
+  // the fire, and the story at it
+  if(Math.hypot(x-center.x,y-center.y)<2.3){if(!tellStory())say('The fire has already had its story out of tonight.',false,'toldalready');return}
+  // a cloud's shadow
+  const c=cloudAt(x,y);if(c){rainOn(c);return}
+  const t=at(x|0,y|0);
+  if(t===GRASS){trees.push(mkTree((x|0)+.5,(y|0)+.5,.2));for(let i=0;i<6;i++)fx.push({x,y,vx:rnd(-1,1),vy:rnd(-1.5,-.3),c:'#9fd66a',l:.6});
+    if(R()<.3)say('Someone unseen plants a sapling. The islanders do not question it.')}
+  else if(t===WATER)skipStone(x,y)}
+cv.addEventListener('pointerup',endPress);cv.addEventListener('pointercancel',()=>{press=null;if(lpT){clearTimeout(lpT);lpT=0}});
+addEventListener('pointerup',e=>{if(press&&e.target!==cv)endPress(e)});
+document.getElementById('b-pause').onclick=()=>{paused=!paused;syncCtl()};
+document.getElementById('b-s1').onclick=()=>setSpeed(1);
+document.getElementById('b-s3').onclick=()=>setSpeed(3);
+document.getElementById('b-s10').onclick=()=>setSpeed(10);
+document.getElementById('b-morning').onclick=skipToMorning;
+document.getElementById('b-chron').onclick=()=>showChron(chronEl.hidden);
+document.getElementById('chron-x').onclick=()=>showChron(false);
+document.getElementById('chron-dl').onclick=exportChron;
+document.getElementById('b-share').onclick=saveHash;
+document.getElementById('b-new').onclick=()=>{try{history.replaceState(null,'',location.pathname+location.search)}catch(err){}newWorld((Math.random()*1e9)|0)};
+document.getElementById('b-audio').onclick=e=>{if(!AC)startAudio();audioOn=!audioOn;if(AC.state==='suspended')AC.resume();
+  master.gain.setTargetAtTime(audioOn?1:0,AC.currentTime,.12);
+  e.target.textContent=audioOn?'sound on':'sound off';e.target.classList.toggle('on',audioOn);store('snd',audioOn?'1':'0')};
+addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
+  const k=e.key.toLowerCase();
+  if(k===' '||e.code==='Space'){paused=!paused;syncCtl();e.preventDefault()}
+  else if(k==='1')setSpeed(1);else if(k==='3')setSpeed(3);else if(k==='0')setSpeed(10);
+  else if(k==='m')skipToMorning();
+  else if(k==='c')showChron(chronEl.hidden);
+  else if(k==='s')document.getElementById('b-audio').click()});
 // ---------- loop ----------
-newWorld(seed);
+{const ab=document.getElementById('b-audio');                                  // the sound toggle is remembered, but the browser still wants a gesture first
+  if(pref('snd')==='1'){audioOn=true;ab.textContent='sound on';ab.classList.add('on');
+    const kick=()=>{if(!AC)startAudio();if(AC&&AC.state==='suspended')AC.resume();
+      removeEventListener('pointerdown',kick,true);removeEventListener('keydown',kick,true)};
+    addEventListener('pointerdown',kick,true);addEventListener('keydown',kick,true)}}
+{let ok=false;try{ok=loadHash()}catch(err){ok=false}
+  if(!ok)newWorld(seed);syncCtl()}
 let last=performance.now();
-function loop(now){let dt=Math.min(.05,(now-last)/1000);last=now;for(let i=0;i<speed;i++)step(dt);audioTick(dt);cardT-=dt;renderCard(false);draw();requestAnimationFrame(loop)}
+function loop(now){let dt=Math.min(.05,(now-last)/1000);last=now;if(!paused)for(let i=0;i<speed;i++)step(dt);
+  audioTick(dt);cardT-=dt;renderCard(false);draw();requestAnimationFrame(loop)}
 requestAnimationFrame(loop);
 // exposed for headless testing only
-window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed:s=>speed=s,newWorld,flavor,drawFace,byName};
+window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get seed(){return seed},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};
 })();
 </script>
 </body>
