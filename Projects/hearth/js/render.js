@@ -3,9 +3,12 @@
 // ---------- portraits ----------
 const SKIN=[['#f1cfa5','#d9ac7c'],['#e6b98d','#c48f63'],['#c98a5c','#a56a3f'],['#a86a44','#87502e'],['#7a4b2e','#5c351d']];
 const EYES=['#2a2a3a','#3d5a3a','#4a5f8a','#5a3a2a'];
+/* sprint 16: which skin a face gets — inherited (fSk, set at birth) or derived from the seed the way it always was */
+const skinOf=p=>p.fSk>=0?p.fSk:(mulberry(p.seed)()*SKIN.length)|0;
 function drawFace(ctx,p){const rr=mulberry(p.seed);const kid=isKid(p),eld=isElder(p),age=ageOf(p);
   ctx.clearRect(0,0,16,16);
-  const skin=SKIN[(rr()*SKIN.length)|0],eye=EYES[(rr()*EYES.length)|0];const style=(rr()*4)|0;
+  const r1=rr(); /* the first draw is still consumed either way, so every pre-sprint-16 face is pixel-identical */
+  const skin=SKIN[p.fSk>=0?p.fSk:(r1*SKIN.length)|0],eye=EYES[(rr()*EYES.length)|0];const style=(rr()*4)|0;
   let hair=p.hair;if(age>52){const t=Math.min(1,(age-52)/20);hair=t>.6?'#d9d4c8':'#8c8478'}
   const shade=c=>{const n=parseInt(c.slice(1),16);const f=.72;return'#'+[(n>>16)&255,(n>>8)&255,n&255].map(v=>Math.round(v*f).toString(16).padStart(2,'0')).join('')};
   const px=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h)};
@@ -71,8 +74,18 @@ function whyText(p){const w=WX();
     case 'water':return `Hauling well water to the fields, two buckets at a time. The sky has not been helping.`;
     case 'tend':return `Keeping the fire and walking the tideline for food, because there is nobody grown left to do it.`;
     case 'pilgrim':return `Walking out to ${p.pilgL||'a place out of the stories'}, to stand where the story happens. The story is better there.`;
+    case 'chat':return `Stopped in the path with ${p.chatW||'someone'}, talking. ${p.heard?'There is news being handed over.':'About nothing, at length.'}`;
+    case 'kidskip':return `Down at the water with a flat stone, doing the thing the island does with them.`;
+    case 'tag':return `Playing tag with ${p.tagW||'the others'}. The rules are being invented at running speed.`;
+    case 'snowman':return `Building a snowman, seriously, with cold hands. It will be the best one there has ever been.`;
     case 'bounds':return p.bLead?`Leading the walking of the bounds: every named place, in order, with the children. Someone must show them where everything happened.`:`Being walked round the named places, and shown where everything happened. There will be questions.`;
     default:return isKid(p)?'Wandering after the grown-ups.':`Between tasks, deciding what needs doing${has(p,'patient')?', unhurried':''}.`}}
+/* sprint 16: one generation further up. A parent's parents, found through the living or recovered from the dead list's relations. */
+function kinOf(p){const out=[];
+  for(const pn of p.parents){const par=byName(pn)||dead.find(d2=>d2.name===pn);if(!par)continue;
+    const gps=par.parents&&par.parents.length?par.parents:(par.rels||[]).filter(r=>r.k==='parent').map(r=>r.who);
+    for(const gn of gps){if(gn===p.name||out.includes(gn))continue;out.push(gn)}}
+  return out}
 function showCard(p){selected=p;if(!p){cardEl.hidden=true;return}actDone('card');cardEl.hidden=false;renderCard(true)}
 function renderCard(full){const p=selected;if(!p||cardEl.hidden)return;
   if(full||cardT<=0){cardT=1;drawFace(faceCtx,p);
@@ -81,14 +94,24 @@ function renderCard(full){const p=selected;if(!p||cardEl.hidden)return;
     document.getElementById('c-traits').innerHTML=p.tr.length?p.tr.map(t=>`<span>${t}</span>`).join(''):'<span>still becoming someone</span>';
     document.getElementById('c-doing').textContent=whyText(p);
     const RW={friend:'friend of',rival:'rival of',partner:'partner of',child:'parent of',parent:'child of'};const rels=p.rels.map(r=>{const q=byName(r.who);return`${RW[r.k]||r.k} ${q?`<button data-n="${r.who}">${r.who}</button>`:r.who+' (gone)'}`});
+    for(const gn of kinOf(p)){const q=byName(gn);rels.push(`grandchild of ${q?`<button data-n="${gn}">${gn}</button>`:gn}`)} /* sprint 16: the line above the parents shows too */
     document.getElementById('c-rels').innerHTML=rels.length?rels.join(' · '):'<i>knows no one well yet</i>';
     const kp=thingsOf(p.name); // what this one keeps, and where it has been (sprint 12)
-    document.getElementById('c-hist').innerHTML=kp.map(t=>`<li><i>keeps</i>${t.full}${t.hist.length>1?'; it '+t.hist[t.hist.length-1].s:''}</li>`).join('')+p.hist.map(h=>`<li><i>day ${h.d}</i>${h.s}</li>`).join('')}
+    const yn0=yearName(yearOf(p.hist.length?p.hist[0].d:p.born)); /* sprint 16: the first line of a life gets its year's name, once the year has earned one */
+    document.getElementById('c-hist').innerHTML=kp.map(t=>`<li><i>keeps</i>${t.full}${t.hist.length>1?'; it '+t.hist[t.hist.length-1].s:''}</li>`).join('')+p.hist.map((h,i)=>`<li><i>day ${h.d}</i>${h.s}${i===0&&yn0&&yn0!=='a quiet year'?' — '+yn0:''}</li>`).join('')}
 }
 cardEl.querySelector('.rels').addEventListener('click',e=>{const b=e.target.closest('button');if(b){const q=byName(b.dataset.n);if(q)showCard(q)}});
 document.getElementById('card-x').onclick=()=>showCard(null);
 addEventListener('keydown',e=>{if(e.key==='Escape')showCard(null)});
 // ---------- render ----------
+// sprint 16 presentation state — none of it touches the sim or the save.
+// The rainbow is one cached sprite; the footprints are a fixed ring buffer (no allocation in the loop).
+let rbCv=null;
+function rbSprite(){if(rbCv)return rbCv;rbCv=document.createElement('canvas');rbCv.width=440;rbCv.height=220;const c=rbCv.getContext('2d');
+  const cols=['#c0392b','#d4813a','#d4c04a','#5a9a4a','#4a7ab8','#6a5aa8','#8a5a9a'];
+  for(let i=0;i<7;i++){c.strokeStyle=cols[i];c.globalAlpha=.55;c.lineWidth=5;c.beginPath();c.arc(220,220,206-i*5.4,Math.PI,2*Math.PI);c.stroke()}
+  return rbCv}
+const prints=[];for(let i=0;i<256;i++)prints.push({x:0,y:0,t0:-1e9});let printC=0;
 function draw(){
   const s=sea(),sd=seaDay();
   if(paintedKey!==s+'|'+Math.round(snowD*6)/6+'|'+frozen+'|'+roadV)paintTerrain();
@@ -97,6 +120,9 @@ function draw(){
   const vk=vScale();g.setTransform(vk,0,0,vk,cv.width/2-camX*T*vk,cv.height/2-camY*T*vk);g.imageSmoothingEnabled=false;
   g.drawImage(ter,0,0);
   const L=light();
+  // high-summer afternoons shimmer (sprint 16): a few terrain slices re-drawn a pixel out of true, faintly, and only when the air would
+  if(s==='summer'&&L>.85&&sd>=2&&!RM&&zoom<=2.5&&wx==='clear'){g.globalAlpha=.12;
+    for(let i=0;i<8;i++){const y0=(i*67)%(H*T-8),off=Math.sin(time*3+i*2.1)>0?1:-1;g.drawImage(ter,0,y0,W*T,6,off,y0,W*T,6)}g.globalAlpha=1}
   // tide: the sand ring breathes twice a day
   if(!frozen){const th=.24+tide()*.018;for(const t of tideTiles){if(t.t===SAND&&t.e<th){g.fillStyle='#3d6a9a';g.fillRect(t.x*T,t.y*T,T,T)}else if(t.t===WATER&&t.e>=th){g.fillStyle='#b39f78';g.fillRect(t.x*T,t.y*T,T,T)}}}
   const wt=time*2;g.fillStyle='rgba(180,220,255,.25)';
@@ -105,6 +131,11 @@ function draw(){
   if(!frozen&&L>.15){g.fillStyle=`rgba(14,30,58,${(.42*L).toFixed(2)})`;for(const f of fishSh){const dx=f.tx-f.x,dy=f.ty-f.y,hz=Math.abs(dx)>=Math.abs(dy);for(let i=0;i<f.n;i++){const o=Math.sin(time*2.2+f.ph+i)*1.5;const x=f.x*T+(hz?i*3-3:o),y=f.y*T+(hz?o:i*2-2);g.fillRect(x,y,hz?3:1,hz?1:3)}}}
   for(const f of farms){g.fillStyle=snowD>.4?'#dfe6ea':'#7a5a37';g.fillRect(f.x*T,f.y*T,T,T);if(snowD>.4)continue;g.fillStyle=f.g>=1?'#e2c25a':s==='autumn'?'#a8a04a':'#7fb64c';const n=Math.min(4,1+(f.g*4)|0);for(let i=0;i<n;i++)g.fillRect(f.x*T+1+i*2,f.y*T+6-(f.g*4|0),1,1+(f.g*4|0))}
   for(const s of stumps){g.fillStyle='#5a3a1e';g.fillRect(s.x*T-1,s.y*T-1,3,2)}
+  // deep snow keeps footprints a while (sprint 16): a fixed ring of marks behind whoever walks, fading as the snow reclaims them
+  if(snowD>.55){for(const p of people){if(p.inside||p.inBoat||p.task==='sleep')continue;
+      const dx=p.x-(p._px===undefined?p.x:p._px),dy=p.y-(p._py===undefined?p.y:p._py);
+      if(p._px===undefined||dx*dx+dy*dy>.32){if(p._px!==undefined&&at(p.x|0,p.y|0)!==WATER){const pr=prints[printC++&255];pr.x=p.x;pr.y=p.y+.15;pr.t0=time}p._px=p.x;p._py=p.y}}
+    for(const pr of prints){const ag=time-pr.t0;if(ag<0||ag>=18)continue;g.fillStyle=`rgba(150,168,186,${(.4*(1-ag/18)).toFixed(2)})`;g.fillRect(pr.x*T-1,pr.y*T,1,1);g.fillRect(pr.x*T+1,pr.y*T-1,1,1)}}
   const ents=[];
   const CAN={spring:['#2f6a2b','#3f8a37'],summer:['#2c6a2a','#3f9038'],winter:['#28452a','#375a33']};
   const canopy=t=>s==='autumn'?(t.a<.35?['#8a4a1e','#c47a2a']:t.a<.7?['#8a2e1e','#b8402a']:['#7a6a20','#b09a2c']):CAN[s];
@@ -169,6 +200,13 @@ function draw(){
     if(vn>=6){g.fillStyle='#7fa85b';g.fillRect(x-3,y-1,1,1);g.fillStyle='#c96b8a';g.fillRect(x-3,y-2,1,1)}
     if(vn>=12){g.fillStyle='rgba(122,150,90,.4)';g.fillRect(x-1,y-2,2,2)}
     if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-1,y-5,3,1)}}});
+  // what the children build when the ground goes white (sprint 16): it stands as tall as the snow allows, and no taller
+  for(const sn2 of snowmen)ents.push({y:sn2.y,d:()=>{const x=sn2.x*T,y=sn2.y*T,k2=sn2.s;if(k2<.15)return;
+    g.fillStyle='rgba(0,0,0,.15)';g.fillRect(x-3,y,6,1);
+    g.fillStyle='#eef2f4';g.beginPath();g.arc(x,y-2.5*k2,3*k2,0,6.283);g.fill();g.beginPath();g.arc(x,y-6.5*k2,2.1*k2,0,6.283);g.fill();
+    g.fillStyle='#dfe6ea';g.beginPath();g.arc(x+1*k2,y-2*k2,2*k2,0,6.283);g.fill();
+    if(k2>.5){g.fillStyle='#2a2a3a';g.fillRect(x-1,y-7*k2,1,1);g.fillRect(x+1,y-7*k2,1,1);
+      g.fillStyle='#6f4b32';g.fillRect(x+2,y-5*k2,3*k2,1);g.fillStyle='#d4813a';g.fillRect(x,y-6*k2,1,1)}}});
   // the named ground shows its walking (sprint 14): worn grass first, then the stones the walks leave, then a small cairn
   for(const sp of spots){if(!sp.lore)continue;const n=loreN[sp.k]||0;if(!n)continue;
     ents.push({y:sp.y-.1,d:()=>{const x=Math.round(sp.x*T),y=Math.round(sp.y*T);
@@ -194,7 +232,15 @@ function draw(){
     g.fillStyle='rgba(0,0,0,.25)';g.fillRect(x-2,y,5,1);g.fillStyle=p.col;g.fillRect(x-1.5,y-5*k+bob,3,4*k);g.fillStyle='#f1cfa5';g.fillRect(x-1.5,y-8*k+bob,3,3);g.fillStyle=p.hair;g.fillRect(x-1.5,y-8*k+bob,3,1);
     if(p.task==='chop'){g.fillStyle='#999';g.fillRect(x+2,y-7+bob*2,2,2)}
     if(p.task==='fish'){g.fillStyle='#e8dcc4';g.fillRect(x+2,y-6,1,7)}
-    if(p.task==='wave'&&Math.hypot(p.tx-p.x,p.ty-p.y)<.05){g.fillStyle='#f1cfa5';g.fillRect(x+2,y-9*k+Math.sin(time*9+p.off)*1.5,1,3)}}});
+    if(p.task==='wave'&&Math.hypot(p.tx-p.x,p.ty-p.y)<.05){g.fillStyle='#f1cfa5';g.fillRect(x+2,y-9*k+Math.sin(time*9+p.off)*1.5,1,3)}
+    /* sprint 16: a talk you can see — the pip leans toward whoever it is for, and carries a bright grain when there is news in it */
+    if(p.task==='chat'&&p.chatSd&&Math.hypot(p.tx-p.x,p.ty-p.y)<.2&&Math.sin(time*2.3+p.off)>.25){const q=byName(p.chatW),ox=q&&q.x<p.x?-4:4;
+      g.fillStyle='#e8e4da';g.fillRect(x+ox-1,y-11*k,3,2);g.fillRect(x+(ox>0?2:-2),y-9*k,1,1);
+      if(p.heard){g.fillStyle='#f0b35a';g.fillRect(x+ox,y-10*k,1,1)}}
+    /* and a song you can almost hear: note pips over the singers at a fire night, and now and then over the work */
+    if(songs.length){const sings=(p.task==='gather'&&storyDay===dayCount&&Math.sin(time*1.8+p.off)>.55)||
+        ((p.task==='chop'||p.task==='till'||p.task==='harvest'||p.task==='fish')&&Math.sin(time*.7+p.off*3)>.94);
+      if(sings&&songs.some(sg=>!sg.lost&&sg.kn.includes(p.name))){g.fillStyle='#f0d488';g.fillRect(x+3,y-10*k,1,1);g.fillRect(x+4,y-12*k,1,2);g.fillRect(x+4,y-12*k,2,1)}}}});
   ents.push({y:center.y,d:()=>{const x=center.x*T,y=center.y*T;g.fillStyle='#3a2a1a';g.fillRect(x-4,y-1,8,3);const fl=isNight()||L<.6;
     if(fl){for(let i=0;i<4;i++){g.fillStyle=i%2?'#ffb347':'#ff6a2b';const s=RM?2.2:2+Math.sin(time*10+i)*1.5;g.fillRect(x-1+(RM?0:Math.sin(time*7+i)*1.5),y-3-i*1.5-s,2,s)}}}});
   ents.sort((a,b)=>a.y-b.y).forEach(e=>e.d());
@@ -213,9 +259,15 @@ function draw(){
   const f=dayFrac(),e=edges();
   if(s==='summer'&&L>.5){g.fillStyle=`rgba(255,200,90,${(L-.5)*.14})`;g.fillRect(0,0,W*T,H*T)}
   if(s==='winter'){g.fillStyle='rgba(150,180,220,.10)';g.fillRect(0,0,W*T,H*T)}
+  // a rainbow hangs where the rain just was (sprint 16): one cached sprite, fading over half a minute of sim time
+  if(rbUntil>time&&L>.35&&!rain&&wx!=='fog'){g.globalAlpha=Math.min(1,(rbUntil-time)/8)*.38;
+    g.drawImage(rbSprite(),(center.x-26)*T,(center.y-24)*T,52*T,26*T);g.globalAlpha=1}
   if(wx==='overcast'||wx==='snow'||wx==='fog'){g.fillStyle=`rgba(120,130,150,${wx==='snow'?.28:.2})`;g.fillRect(0,0,W*T,H*T)}
   if(fogA>.01){const dx=Math.sin(time*.06)*10;g.globalAlpha=fogA*.55;g.drawImage(fogCv,dx,0);g.globalAlpha=fogA*.4;g.drawImage(fogCv,-dx*.6,Math.cos(time*.05)*4);g.globalAlpha=1;
     g.fillStyle=`rgba(230,236,240,${(fogA*.16).toFixed(3)})`;for(let i=0;i<10;i++){const y=(i*67+13)%(H*T),x=((i*151+time*(6+i%3)*3)%(W*T*1.4))-W*T*.2;g.fillRect(x,y,120+i*20,7);g.fillRect(x+30,y+7,80+i*10,4)}}
+  // spring and autumn dawns raise a mist off the low ground (sprint 16), and the first hour of sun takes it back
+  {const mist=(wx==='clear'||wx==='overcast')&&(s==='spring'||s==='autumn')&&f>e[0]&&f<e[0]+.09?1-(f-e[0])/.09:0;
+    if(mist>0&&fogA<.4){g.globalAlpha=mist*.3;g.drawImage(fogCv,Math.sin(time*.05)*6,0);g.globalAlpha=mist*.18;g.drawImage(fogCv,-4,3);g.globalAlpha=1}}
   if(farIsle&&fogA<.9){const fi=farIsle,x0=fi.x*T,w=fi.w*T,h=fi.h*1.7,al=(1-fogA)*(wx==='overcast'||rain||wx==='snow'?.55:.8);g.fillStyle=L>.5?`rgba(44,58,86,${(al*.85).toFixed(2)})`:`rgba(18,24,44,${al.toFixed(2)})`;
     g.beginPath();g.moveTo(x0,0);g.quadraticCurveTo(x0+w*.22,h*1.5,x0+w*.42,h*.7);g.quadraticCurveTo(x0+w*.6,h*2.1,x0+w*.8,h*.9);g.quadraticCurveTo(x0+w*.92,h*.4,x0+w,0);g.closePath();g.fill();
     g.fillStyle=`rgba(200,214,232,${(al*.18*(L>.5?1:.3)).toFixed(3)})`;g.fillRect(x0-6,h*1.9,w+12,1)}
@@ -225,11 +277,20 @@ function draw(){
   if(dark>.3){g.globalCompositeOperation='lighter';const glow=(x,y,r,a)=>{const gr=g.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,`rgba(255,180,90,${a})`);gr.addColorStop(1,'rgba(255,180,90,0)');g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2)};
     glow(center.x*T,center.y*T-2,40,.5*dark);for(const h of houses)glow(h.x*T+8,h.y*T+11,18,.35*dark);
     if(farIsle&&farIsle.lit&&fogA<.6&&(time*2.3|0)%9!==0){const lx=(farIsle.x+farIsle.w*.6)*T,ly=farIsle.h*1.7*1.5;g.fillStyle=`rgba(255,190,110,${(.9*(dark-.3)).toFixed(2)})`;g.fillRect(lx,ly,1,1);glow(lx,ly,7,.5*(dark-.3))}
+    /* the aurora (sprint 16): cold clear winter nights, more often on cold-tempered islands. Whether tonight has one is a pure
+       function of seed and day — same on every device that opens this island — and the bands' geometry is fixed per island. */
+    if(wx==='clear'&&auroraNight()){
+      const rr2=mulberry(seed^0xA0);for(let i=0;i<4;i++){const bx=(rr2()*W*.8+W*.1)*T+Math.sin(time*.13+i*1.7)*26,bw=18+rr2()*30,bh=(H*.26+rr2()*H*.12)*T;
+        const gr2=g.createLinearGradient(0,0,0,bh);const a1=(.15*(dark-.3)).toFixed(3),a2=(.07*(dark-.3)).toFixed(3);
+        gr2.addColorStop(0,`rgba(96,225,160,${a1})`);gr2.addColorStop(.55,`rgba(70,165,195,${a2})`);gr2.addColorStop(1,'rgba(70,165,195,0)');
+        g.fillStyle=gr2;g.fillRect(bx-bw/2,0,bw,bh)}}
     g.globalCompositeOperation='source-over'}
   if(flies.length){g.globalCompositeOperation='lighter';for(const fl of flies){const b=RM?.85:Math.sin(time*2.6+fl.ph);if(b<.2)continue;const a=(b-.2)*1.1*Math.min(1,fl.l/6);const x=fl.x*T,y=fl.y*T-2;g.fillStyle=`rgba(190,255,120,${(a*.35).toFixed(2)})`;g.fillRect(x-1,y-1,3,3);g.fillStyle=`rgba(230,255,170,${a.toFixed(2)})`;g.fillRect(x,y,1,1)}g.globalCompositeOperation='source-over'}
   {const lh=getB('light');if(lh&&dark>.35){const lx=lh.x*T+4,ly=lh.y*T-13,a=time*.9,al=(dark-.35)*.22*(wx==='fog'?1.6:1);g.globalCompositeOperation='lighter';g.fillStyle=`rgba(255,240,180,${al})`;
     for(const off of [0,Math.PI]){g.beginPath();g.moveTo(lx,ly);g.arc(lx,ly,120,a+off-.13,a+off+.13);g.closePath();g.fill()}g.globalCompositeOperation='source-over'}}
   if(dark>.5&&wx==='clear'){g.fillStyle=`rgba(255,255,255,${(dark-.5)*1.2})`;const rr=mulberry(seed^7);for(let i=0;i<70;i++){const x=rr()*W*T,y=rr()*H*T;if(at((x/T)|0,(y/T)|0)===WATER&&(time*3+i)%7<6)g.fillRect(x,y,1,1)}}
+  for(const st of shoots){const x=st.x*T,y=st.y*T,a=Math.min(1,st.l/.7);g.fillStyle=`rgba(255,255,255,${(a*.9).toFixed(2)})`;g.fillRect(x,y,2,1);
+    g.fillStyle=`rgba(255,255,255,${(a*.3).toFixed(2)})`;g.fillRect(x-st.vx*.03*T,y-st.vy*.03*T,2,1);g.fillRect(x-st.vx*.06*T,y-st.vy*.06*T,1,1)}
   document.getElementById('s-pop').textContent=people.length;document.getElementById('s-wood').textContent=wood;document.getElementById('s-food').textContent=food;document.getElementById('s-store').textContent=granary;
   const lbl=f<e[0]?'night':f<e[0]+.1?'dawn':f<.5?'morning':f<e[1]-.1?'afternoon':f<e[1]?'dusk':'night';const wxl={clear:'',overcast:' · overcast',rain:' · rain',thunder:' · storm',fog:' · fog',snow:' · snow'}[wx]+(hunger>.3?' · hungry':'');
   document.getElementById('s-time').textContent=`year ${yearOf(dayCount)} · day ${dayCount} · ${s} · ${lbl}${wxl}`;document.getElementById('s-time-s').textContent=`d${dayCount} · ${s} · ${lbl}${wxl}`;

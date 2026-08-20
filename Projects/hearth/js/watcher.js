@@ -45,7 +45,8 @@ function makeSpring(cx,cy){const r=rnd(1.3,2.1),hit=[];
 // a stone, skipped
 const ring=(x,y)=>fx.push({x,y,vx:0,vy:0,rg:1,l:.9,l0:.9,c:'#cfe6ff'});
 function skipStone(x,y){let dx=x-center.x,dy=y-center.y;const d=Math.hypot(dx,dy)||1;
-  skips.push({x,y,vx:dx/d*11,vy:dy/d*7.5,n:2+((R()*4)|0),t:.14});plink(.15);actDone('stone');noteAct('stone',.01)}
+  skips.push({x,y,vx:dx/d*11,vy:dy/d*7.5,n:2+((R()*4)|0),t:.14});plink(.15);actDone('stone');noteAct('stone',.01);
+  skipN++ /* sprint 16: the island remembers seeing it done (saved, unlike the per-device hints) — the children copy what they have watched */}
 function stepSkips(dt){for(const k of skips){k.x+=k.vx*dt;k.y+=k.vy*dt;k.t-=dt;
     if(k.t<=0){k.n--;k.t=.13+R()*.07;k.vx*=.86;k.vy*=.86;ring(k.x,k.y);if(k.n>0)plink(.05+R()*.04)}
     if(k.n<=0||k.x<0||k.y<0||k.x>=W||k.y>=H||at(k.x|0,k.y|0)!==WATER)k.gone=true}
@@ -121,13 +122,29 @@ function tellStory(nat){if(storyDay===dayCount)return false;
     const last=src[src.length-1];if(!seen.has(last))ch.push(last);
     // the teller comes back around to a favorite, if the island has grown one (sprint 12)
     const leg=src.filter(e=>e.gr&&!seen.has(e));if(leg.length&&R()<.6){const e=leg[(R()*leg.length)|0];seen.add(e);ch.push(e)}
-    let grew=null;
+    let grew=null,made=null;
     for(const e of ch){e.tl=(e.tl||0)+1; // every telling leaves a thumbprint on the story
       if(!grew&&!e.gr&&e.tl>=3&&GROW[e.kind]){e.gr=1;const g=GROW[e.kind];e.st=e.st+' '+g[(R()*g.length)|0];grew=e}
+      // a story that has grown and keeps being asked for stops fitting in plain words (sprint 16): somebody puts a tune under it
+      if(!made&&e.gr&&e.tl>=6){const ci=chron.indexOf(e);
+        if(ci>=0&&!songs.some(sg=>sg.ci===ci)){
+          let mus=grown.filter(q=>musical(q));if(!mus.length)mus=grown.filter(q=>has(q,'dreamy')||has(q,'funny'));
+          if(mus.length){const cp=mus[(R()*mus.length)|0];
+            songs.push({ci,comp:cp.name,kn:cand.filter(q=>!isKid(q)||ageOf(q)>=5).map(q=>q.name),lost:0,d:dayCount});made=e;
+            cp.hist.push({d:dayCount,s:`put the story of ${e.label} to a tune, and the tune stuck`});
+            addEvent('song',`the making of the song of ${e.label}`,`After enough tellings the story of ${e.label} stopped fitting in plain words, and ${cp.name} put a tune under it, and by the end of that night everyone at the fire had the refrain.`)}}}
       L.push(`<i>year ${e.y}</i>${e.st}`)}
     if(grew)L.push(`That part is longer than it used to be. Nobody minds. That is what the good parts are for.`);
+    if(made)L.push(`Then ${B(byName(songs[songs.length-1].comp)||teller)} does a thing that has not been done here before: sings it. By the second time through, everyone at the fire has the refrain, and the story of ${made.label} has a tune now, for good — or for as long as somebody still carries it.`);
+    else{const known=songs.filter(sg=>!sg.lost&&chron[sg.ci]&&cand.some(q=>sg.kn.includes(q.name))); // an older song gets an airing, and everyone present leaves knowing it
+      if(known.length&&R()<.6){const sg=known[(R()*known.length)|0],kk=cand.find(q=>sg.kn.includes(q.name));
+        L.push(`Near the end ${B(kk)} starts the song of ${chron[sg.ci].label}, and the ones who know it come in on the parts they know, and the ones who do not have it by the last verse.`);
+        for(const q of cand)if((!isKid(q)||ageOf(q)>=5)&&!sg.kn.includes(q.name))sg.kn.push(q.name)}}
     L.push(pick(['Nobody corrects any of it. Most of it is true.','When it is done the fire has burned low, and somebody builds it up again anyway.','Then it is late, and nobody moves for a while.','The children have heard it before and listen anyway, in case it changes.']));
     if(R()<.5)teller.hist.push({d:dayCount,s:'told the whole story of the island at the fire, from the landing on'})}
+  {const nw=cand.find(h=>h.heard&&h.heard.d>=dayCount-4); /* sprint 16: news that has been walking person to person reaches the fire, and stops being news */
+    if(nw){L.push(`${B(nw)} adds the news of ${nw.heard.l}${nw.heard.f?`, having had it from ${nw.heard.f}`:', having been there for it'}.`);
+      for(const h of cand)h.heard=null}}
   say(L.join('<br>'),true);
   return true}
 // the walking of the bounds (sprint 14): once a year, in spring, an elder leads the children round every named place, oldest story
@@ -238,6 +255,7 @@ function pickWx(){const s=sea(),r=R();let w;
   return w}
 function setWx(n){const o=wx;wx=n;rain=n==='rain'||n==='thunder';storm=n==='thunder';
   if(storm)lastStormDay=dayCount;if(rain)rainedDay=dayCount;
+  if((o==='rain'||o==='thunder')&&n==='clear'&&light()>.4)rbUntil=time+30; /* sprint 16: rain breaking into daylight hangs a rainbow (transient, never saved) */
   wxT=n==='clear'?rnd(70,200):n==='overcast'?rnd(40,110):n==='rain'?rnd(40,90):n==='thunder'?rnd(30,50):n==='fog'?rnd(30,70):rnd(35,90);
   // sometimes a storm leaves the tide line paid: wreck-wood, and once in a while somebody clinging to it
   if(o==='thunder'&&n!=='thunder'&&yearOf(dayCount)!==wreckYr&&dayCount>YEAR&&R()<.3){wreckYr=yearOf(dayCount);wood+=8;

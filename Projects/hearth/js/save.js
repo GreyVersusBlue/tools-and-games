@@ -1,17 +1,17 @@
-// Hearth — the chronicle panel, and pack/unpack — the whole island in the address bar (save v:10).
+// Hearth — the chronicle panel, and pack/unpack — the whole island in the address bar (save v:12).
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- the chronicle ----------
 const chronEl=document.getElementById('chron'),rollEl=document.getElementById('chron-roll');
 function showChron(v){chronEl.hidden=!v;document.getElementById('b-chron').classList.toggle('on',!!v);if(v){if(innerWidth<=520)showCard(null);renderChron()}}
 function renderChron(){let h='',cy=0;
-  for(const e of chron){if(e.y!==cy){cy=e.y;h+=`<h4>year ${cy}</h4>`}h+=`<p><i>day ${e.d}</i>${e.st||e.label}${e.gr?' <em class="tl">— as it is told now</em>':''}</p>`}
+  for(const e of chron){if(e.y!==cy){cy=e.y;const yn=yearName(cy);h+=`<h4>year ${cy}${yn?' — '+yn:''}</h4>`}h+=`<p><i>day ${e.d}</i>${e.st||e.label}${e.gr?' <em class="tl">— as it is told now</em>':''}</p>`}
   rollEl.innerHTML=h||'<p>Nothing has happened yet that anyone will remember.</p>';
   document.getElementById('chron-t').firstChild.textContent=village?`The Chronicle of ${village}`:'The Chronicle';
   document.getElementById('chron-s').textContent=`island ${seed.toString(36)} · year ${yearOf(dayCount)}, day ${dayCount}`+(hasWay(3)?' · written in the book of days':'');
   document.getElementById('chron-n').textContent=chron.length===1?'one thing remembered':`${chron.length} things remembered`;
   rollEl.scrollTop=rollEl.scrollHeight}
 function exportChron(){const L=[`The chronicle of ${village||'an island with no name'}`,`island ${seed.toString(36)}`,''];let cy=0;
-  for(const e of chron){if(e.y!==cy){cy=e.y;L.push('',`YEAR ${cy}`,'')}L.push(`  day ${String(e.d).padStart(4)}   ${(e.st||e.label).replace(/<[^>]+>/g,'')}${e.gr?' (as it is told now)':''}`)}
+  for(const e of chron){if(e.y!==cy){cy=e.y;const yn=yearName(cy);L.push('',`YEAR ${cy}${yn?' — '+yn:''}`,'')}L.push(`  day ${String(e.d).padStart(4)}   ${(e.st||e.label).replace(/<[^>]+>/g,'')}${e.gr?' (as it is told now)':''}`)}
   L.push('','',`It is year ${yearOf(dayCount)}, day ${dayCount}. There are ${people.length} people here, ${houses.length} houses, and ${graves.length} stones on the hill.`);
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([L.join('\n')],{type:'text/plain'}));
   a.download=(village||'island-'+seed.toString(36)).toLowerCase()+'-chronicle.txt';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
@@ -34,9 +34,10 @@ function lzDec(b64){const b=atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
     const k=get();let e;if(k<256)e=String.fromCharCode(k);else if(d.has(k))e=d.get(k);else e=w+w[0];
     out+=e;if(n<65536)d.set(n++,w+e[0]);w=e}
   return decodeURIComponent(escape(out))}
-const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0,p.keeper?1:0,p.craft===undefined?-1:p.craft,+(p.cxp||0).toFixed(2),p.shadN?[p.shadN,p.shadC|0]:0,p.sick?1:0];
+const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0,p.keeper?1:0,p.craft===undefined?-1:p.craft,+(p.cxp||0).toFixed(2),p.shadN?[p.shadN,p.shadC|0]:0,p.sick?1:0,p.heard?[p.heard.l,p.heard.d,p.heard.f||0]:0,p.fSk===undefined?-1:p.fSk]; /* v12 adds 27 (news carried) and 28 (inherited skin) */
 function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]===v)n++;else{rd.push(v,n);v=road[i];n=1}}rd.push(v,n)}
-  return{v:11,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),lp:lorePl,ln:Object.keys(loreN).map(k=>[k,loreN[k]]),by:boundsYr,
+  return{v:12,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),lp:lorePl,ln:Object.keys(loreN).map(k=>[k,loreN[k]]),by:boundsYr,
+    sg:songs.map(s=>[s.ci,s.comp,s.kn,s.lost?1:0,s.d]),sm:snowmen.map(s=>[+s.x.toFixed(1),+s.y.toFixed(1),+s.s.toFixed(2),s.d]),ss:skipN,
     dr:+dry01.toFixed(2),br:breadYr,ry:retYr,wk:works.map(w=>[w.wk,+w.x.toFixed(1),+w.y.toFixed(1),w.y0,w.done?1:0,+(w.prog||0).toFixed(1),w.paid?1:0,w.said?1:0]),
     hl:things.map(t=>[t.n,t.full,t.holder||0,t.src,t.ci===undefined?-1:t.ci,t.hist.map(h=>[h.d,h.s])]),hy:heirYr,
     fa:+faith.toFixed(2),fs:faithSt,py:prayer?[prayer.k,prayer.d,prayer.who||0]:0,ay:ways,ax:arc?[arc.k,arc.d0,arc.end]:0,az:arcYr,aw:wayYr,ab:bookYr,al:lastStormDay,am:rainedDay,an:wreckYr,af:famDone?1:0,
@@ -65,10 +66,13 @@ function unpack(o){
   trees=o.tr.map(t=>({x:t[0],y:t[1],s:t[2],hp:t[3],b:!!t[4],a:t[5],o:t[6]||0}));
   stumps=o.su.map(t=>({x:t[0],y:t[1]}));
   graves=o.gv.map(a=>({x:a[0],y:a[1],name:a[2],d:a[3],y2:a[4],age:a[5],vn:a[6]||0})); // v11 carries how often each stone has been visited; older saves start clean
+  songs=(o.sg||[]).filter(a=>a[0]>=0).map(a=>({ci:a[0],comp:a[1],kn:a[2].slice(),lost:!!a[3],d:a[4]})); // v12 carries the songs; older saves have none yet
+  snowmen=(o.sm||[]).map(a=>({x:a[0],y:a[1],s:a[2],d:a[3]}));skipN=o.ss||0;rbUntil=0;shoots=[];starDay=0;
   springs=o.sr.map(a=>({x:a[0],y:a[1],r:a[2],ph:a[3]}));
   bldg=o.bl.map(a=>({kind:a[0],x:a[1],y:a[2],w:BLD[a[0]].w,h:BLD[a[0]].h,prog:BLD[a[0]].work,work:BLD[a[0]].work,done:true}));
   bldgTgt=o.bt?{kind:o.bt[0],x:o.bt[1],y:o.bt[2],w:BLD[o.bt[0]].w,h:BLD[o.bt[0]].h,prog:o.bt[3],work:BLD[o.bt[0]].work,done:false}:null;
   chron=o.ch.map(a=>({d:a[0],y:a[1],kind:a[2],label:a[3],st:a[4]||null,tl:a[5]||0,gr:!!a[6]}));
+  songs=songs.filter(s=>s.ci<chron.length); /* a song's story is its chron entry; an index past the rebuilt chronicle is no song at all */
   things=(o.hl||[]).map(a=>({n:a[0],full:a[1],holder:a[2]||0,src:a[3],ci:a[4]>=0?a[4]:undefined,hist:a[5].map(h=>({d:h[0],s:h[1]}))}));heirYr=o.hy||0;
   events=o.ev.map(a=>({d:a[0],y:a[1],kind:a[2],label:a[3]}));
   for(const s of springs){for(let y=Math.floor(s.y-s.r-1);y<=s.y+s.r+1;y++)for(let x=Math.floor(s.x-s.r-1);x<=s.x+s.r+1;x++){
@@ -83,7 +87,8 @@ function unpack(o){
       task:'idle',t:rnd(.5,2),tx:a[0],ty:a[1],carry:0,seed:hash(a[2])^seed,visits:0};
     if(a[13])p.child=true;if(a[18])p.wantHouse=true;if(a[19])p.dreamFar=1;if(a[20])p.luck=1;
     if(a[21])p.pend={k:a[21][0],who:a[21][1]||null,gr:a[21][2]?graves.find(g=>g.name===a[21][2]):null};if(a[22])p.keeper=1;
-    p.craft=a[23]===undefined?-1:a[23];p.cxp=a[24]||0;if(a[25]){p.shadN=a[25][0];p.shadC=a[25][1]}if(a[26])p.sick=1;return p};
+    p.craft=a[23]===undefined?-1:a[23];p.cxp=a[24]||0;if(a[25]){p.shadN=a[25][0];p.shadC=a[25][1]}if(a[26])p.sick=1;
+    if(a[27])p.heard={l:a[27][0],d:a[27][1],f:a[27][2]||0};if(a[28]!==undefined&&a[28]>=0)p.fSk=a[28];return p};
   names=new Set();people=o.pe.map(mk);people.forEach(p=>names.add(p.name));
   dead=o.de.map(a=>({name:a[0],rels:a[1].map(r=>({who:r[0],k:r[1]})),dead:true,hist:[],tr:[]}));
   gone=o.go.map(n=>({name:n}));
@@ -110,7 +115,7 @@ function unpack(o){
   document.getElementById('seedlbl').textContent=(village?village+' · ':'')+'island '+seed.toString(36);
   say(`The island is as it was left. ${village?village+', year':'Year'} ${yearOf(dayCount)}, day ${dayCount}: ${people.length} people, ${houses.length} ${houses.length===1?'house':'houses'}, ${graves.length} ${graves.length===1?'stone':'stones'} on the hill.`,true)}
 function loadHash(){const h=(location.hash||'').replace(/^#/,'');if(h.length<40)return false;
-  const o=JSON.parse(lzDec(h));if(!o||!(o.v>=5&&o.v<=11)||!o.pe)return false;unpack(o);return true}
+  const o=JSON.parse(lzDec(h));if(!o||!(o.v>=5&&o.v<=12)||!o.pe)return false;unpack(o);return true}
 function saveHash(){let str;
   try{str=lzEnc(JSON.stringify(pack()))}catch(err){say('Something about this island will not fit in a link.',true);return}
   try{history.replaceState(null,'','#'+str)}catch(err){location.hash=str}
