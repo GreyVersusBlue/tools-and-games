@@ -138,12 +138,15 @@ function boundsOut(){const stops=lorePl.map(k=>spots.find(sp=>sp.lore&&sp.k===k)
   const eld=people.filter(p=>isElder(p)&&free(p)).sort((a,b)=>ageOf(b)-ageOf(a))[0];if(!eld)return false;
   const kids=people.filter(p=>isKid(p)&&ageOf(p)>=5&&free(p)).slice(0,4);
   const first=!chron.some(e=>e.kind==='bounds');
+  const atHill=graves.length>0; // sprint 15: the walk ends on the hill, where the elder names the dead, oldest first
+  const route=stops.map(s=>({l:s.l,x:s.x,y:s.y,k:s.k}));
+  if(atHill)route.push({l:'the hill',x:hill.x,y:hill.y+.7,k:null,grave:1});
   for(const p of [eld,...kids]){if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;
-    p.stops=stops.map(s=>({l:s.l,x:s.x,y:s.y,k:s.k}));p.si=0;p.bLead=p===eld?1:0;goTo(p,stops[0].x,stops[0].y,'bounds',rnd(5,9))}
+    p.stops=route.map(s=>({...s}));p.si=0;p.bLead=p===eld?1:0;goTo(p,route[0].x,route[0].y,'bounds',rnd(5,9))}
   say(`${B(eld)} calls the children away from whatever they were doing and sets out to walk the named places in order, oldest story first${kids.length?'':', alone, which is not how it is supposed to go'}. Nobody asks why. It is obviously a thing that should be done.`,true);
-  if(first)addEvent('bounds','the first walking of the bounds',`In the spring of year ${yearOf(dayCount)}, ${eld.name} led the children out to stand in every story the island has ground for, in order, and put a stone down at each. It had never been done before. It was immediately old.`);
+  if(first)addEvent('bounds','the first walking of the bounds',`In the spring of year ${yearOf(dayCount)}, ${eld.name} led the children out to stand in every story the island has ground for, in order, and put a stone down at each${atHill?', finishing on the hill, where the dead were named in the same order things always get told in: oldest first':''}. It had never been done before. It was immediately old.`);
   eld.hist.push({d:dayCount,s:first?'led the first walking of the bounds, and put a stone down at every named place':'led the walking of the bounds, the way it is done'});
-  for(const k of kids)k.hist.push({d:dayCount,s:`was walked round the named places by ${eld.name}, and shown where everything happened`});
+  for(const k of kids)k.hist.push({d:dayCount,s:atHill?`was walked round the named places by ${eld.name}, and up the hill at the end, and told who is under every stone`:`was walked round the named places by ${eld.name}, and shown where everything happened`});
   return true}
 // ---------- the year's fortunes (sprint 11): every year turns up its own card ----------
 function startArc(k,len){arc={k,d0:dayCount,end:dayCount+(len||6)};

@@ -158,6 +158,7 @@ if (mode === 'depth') {
         grown: H.chron.filter(e => e.gr).length, ways: H.wayN(),
         places: H.spots.filter(s => s.lore).map(s => `${s.l} ×${H.loreN[s.k] || 0}`).join('; '),
         bounds: H.chron.filter(e => e.kind === 'bounds').length,
+        graves: H.graves.length, visits: H.graves.reduce((a, g) => a + (g.vn || 0), 0),
       };
     });
     console.log(`seed ${seed} @ day ${s.day}: pop ${s.pop}`);
@@ -165,6 +166,7 @@ if (mode === 'depth') {
     console.log(`  works: [${s.works}]  bread-days ${s.breads}  returners ${s.backs}  found-objects ${s.found}  mastery-events ${s.mastEvents}  store ${s.granary}`);
     console.log(`  things: [${s.things}]  handings-down ${s.heirs}  stories-grown ${s.grown}  ways ${s.ways}`);
     console.log(`  named places: [${s.places || 'none yet'}]  bounds-walked ${s.bounds}`);
+    console.log(`  hill: ${s.graves} stone${s.graves === 1 ? '' : 's'}, ${s.visits} visit${s.visits === 1 ? '' : 's'} left across them`);
     if (viol.length) { failed = true; console.log('  VIOLATIONS:'); [...new Set(viol)].slice(0, 10).forEach(v => console.log('   ' + v)); }
     if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
     await ctx.close();
@@ -545,7 +547,7 @@ if (mode === 'fourteen') {
     return { v: o.v, ln: o.ln, by: o.by, loreN: { ...h.loreN }, spotKinds: h.spots.filter(s => s.lore).map(s => s.k) };
   });
   console.log(`round trip: pack v${rt.v} carries ln=${JSON.stringify(rt.ln)} by=${rt.by}; after unpack loreN=${JSON.stringify(rt.loreN)} spot kinds=[${rt.spotKinds}]`);
-  if (rt.v !== 10 || !rt.ln.length || sum(rt.loreN) < 2 || rt.spotKinds.length < 2) { failed = true; console.log('FAIL: walk counts did not survive pack/unpack'); }
+  if (rt.v < 10 || !rt.ln.length || sum(rt.loreN) < 2 || rt.spotKinds.length < 2) { failed = true; console.log('FAIL: walk counts did not survive pack/unpack'); }
 
   // a v9-shaped save (lp but no ln/by) still loads: places named, piles fresh
   const v9ok = await H(() => {
@@ -559,6 +561,101 @@ if (mode === 'fourteen') {
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
   await ctx.close();
   console.log(failed ? '\nFAIL' : '\nPASS: sprint 14 systems behave — the walking has somewhere to lead');
+}
+
+if (mode === 'fifteen') {
+  // sprint 15 observation & force tests: a fresh grave draws natural mourning visits, the visit tiers draw at every
+  // threshold, the walking of the bounds now finishes on the hill and touches every stone, and grave visit counts
+  // survive pack/unpack (v11); a v10-shaped save (no vn field) still loads clean.
+  const warns = [];
+  const { ctx, page } = await openIsland(browser, 7, warns);
+  const H = fn => page.evaluate(fn);
+  for (let d = 0; d < 8; d++) await runDay(page, 1e9);
+
+  // kill two islanders with existing relationships, so their deaths draw natural mourning visits from the living
+  const died = await H(() => {
+    const h = window.__hearth;
+    const cand = h.people.filter(p => !p.child && p.rels.length > 0).slice(0, 2);
+    const names = cand.map(p => p.name);
+    for (const p of cand) h.die(p);
+    return names;
+  });
+  console.log(`killed for graves: ${died.join(', ') || '(none with relationships found)'}`);
+  if (died.length < 2) { failed = true; console.log('FAIL: could not find two related islanders to kill'); }
+
+  for (let d = 0; d < 4; d++) await runDay(page, 1e9); // let natural mourning visits happen
+  const v0 = await H(() => window.__hearth.graves.map(g => ({ name: g.name, vn: g.vn || 0 })));
+  console.log(`grave visits after 4 days of natural mourning: ${JSON.stringify(v0)}`);
+  if (!v0.some(g => g.vn > 0)) { failed = true; console.log('FAIL: nobody visited a fresh grave in 4 days'); }
+
+  // the visit marks draw at every tier without throwing
+  const tier = await H(() => {
+    const h = window.__hearth;
+    for (const n of [1, 2, 6, 12]) { h.graves[0].vn = n; try { h.draw(); } catch (e) { return 'threw at vn=' + n + ': ' + e.message; } }
+    return 'ok';
+  });
+  console.log(`grave draw at tiers 1/2/6/12: ${tier}`);
+  if (tier !== 'ok') failed = true;
+
+  // grow two named places (same technique as fourteen mode) so the bounds is eligible to walk
+  await H(() => {
+    const h = window.__hearth;
+    h.chron.push({ d: h.dayCount, y: Math.floor((h.dayCount - 1) / 20) + 1, kind: 'rainscame',
+      label: 'the day the rain came back', st: 'The drought broke in one great storm, and people stood out in it on purpose.', tl: 3, gr: 1 });
+  });
+  let named = 0;
+  for (let d = 0; d < 16 && named < 2; d++) {
+    await H(() => window.__hearth.tellStory());
+    await runDay(page, 1e9);
+    named = await H(() => window.__hearth.lorePl.length);
+  }
+  if (named < 2) { failed = true; console.log('FAIL: could not grow two named places to set up the bounds'); }
+
+  // force an elder and a child, clear the graves' counts, and send the walk out — it should finish on the hill
+  const led = await H(() => {
+    const h = window.__hearth;
+    h.skipToMorning();
+    const bp = document.getElementById('b-pause'); if (bp.textContent !== '▶') bp.click();
+    const adults = h.people.filter(p => !p.child && !p.inBoat && !p.inside && !p.sick && p.task !== 'boat' && p.task !== 'voyage');
+    adults[0].age0 = 66; adults[0].born = h.dayCount;
+    const k = adults[adults.length - 1]; k.age0 = 8; k.born = h.dayCount;
+    for (const g of h.graves) g.vn = 0;
+    return h.boundsOut();
+  });
+  await runDay(page, 1e9);
+  const b = await H(() => {
+    const h = window.__hearth;
+    return {
+      shown: h.people.some(p => p.hist.some(x => x.s.includes('who is under every stone'))),
+      vn: h.graves.map(g => g.vn || 0),
+    };
+  });
+  // the "names said" line is a forced say() so it always fires, but the log keeps only its last 9 lines and a
+  // full day of other activity can push it out before this check runs — the grave touches are the durable signal.
+  console.log(`bounds reached the hill: launched ${led}, kid told ${b.shown}, grave touches ${JSON.stringify(b.vn)}`);
+  if (!led || !b.shown || b.vn.some(v => v < 1)) { failed = true; console.log('FAIL: the bounds did not finish on the hill'); }
+
+  // grave visit counts survive the save (v11); a v10-shaped save (no vn field) still loads clean, counts fresh
+  const rt = await H(() => {
+    const h = window.__hearth; const o = h.pack();
+    h.unpack(JSON.parse(JSON.stringify(o)));
+    return { v: o.v, vn: h.graves.map(g => g.vn || 0) };
+  });
+  console.log(`round trip: pack v${rt.v}, graves carry vn=${JSON.stringify(rt.vn)}`);
+  if (rt.v < 11 || !rt.vn.some(v => v > 0)) { failed = true; console.log('FAIL: grave visit counts did not survive pack/unpack'); }
+
+  const v10ok = await H(() => {
+    const h = window.__hearth; const o = h.pack(); o.v = 10;
+    o.gv = o.gv.map(a => a.slice(0, 6)); // v10-shaped: no vn field
+    try { h.unpack(o); } catch (e) { return 'threw: ' + e.message; }
+    return h.graves.length > 0 && h.graves.every(g => (g.vn || 0) === 0) ? 'ok' : 'bad state';
+  });
+  console.log(`v10 save compat: ${v10ok}`);
+  if (v10ok !== 'ok') failed = true;
+
+  if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
+  await ctx.close();
+  console.log(failed ? '\nFAIL' : '\nPASS: sprint 15 systems behave — the hill remembers too');
 }
 
 if (mode === 'determinism') {
