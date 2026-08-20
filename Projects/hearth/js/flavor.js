@@ -61,7 +61,7 @@ const G=[
   {c:x=>x.ev&&x.b,t:'{B} asks {A} about {ev}. {A} tells it a little differently each time.'},
   {c:x=>x.hungry&&!x.kid,t:'{A} pretends not to be hungry so the others will eat.'},
   {c:x=>true,t:'{A} finds a smooth blue stone at {spot} and keeps it.',w:.5},
-  {c:x=>!x.kid,t:'{A} hums an old song while working. Nobody knows the words.',w:.5},
+  {c:x=>!x.kid&&!x.knows,t:'{A} hums an old song while working. Nobody knows the words.',w:.5},
   {c:x=>x.b&&!x.kid,t:'{A} and {B} argue about whether the wind smells like rain.',w:.5},
   // weather fronts, seasons, store, tide (sprint 2)
   {c:x=>x.fog,t:'{A} walks into the fog and comes back out of it somewhere else, surprised.'},
@@ -219,6 +219,22 @@ const G=[
   {c:x=>x.cairn,t:'{A} passes {lore} and touches the top stone of the little pile there, the way everyone does now, without breaking stride.',w:.7},
   {c:x=>x.cairn&&x.kid,t:'{A} counts the stones at {lore} and reports the number, which is the number of times anyone has bothered. It is a good number.'},
   {c:x=>x.cairn&&x.elder&&x.b,t:'{A} tells {B} which stone at {lore} is {A}\'s. It is not possible to know that. {A} knows it anyway.'},
+  // the island talks to itself (sprint 16): named years, songs, news on foot, the sky's occasions, the children's games
+  {c:x=>x.yrname&&x.elder,t:'{A} still calls last year {yrname}, and will for the rest of {A}\'s life.'},
+  {c:x=>x.yrname&&x.kid&&x.b,t:'{A} asks {B} why it is called {yrname}. {B} starts at the beginning.'},
+  {c:x=>x.knows&&!x.night,t:'{A} hums the song of {song} over the work, half under the breath, and the work keeps the time.'},
+  {c:x=>x.knows&&x.kid,t:'{A} sings the song of {song} out at the tideline, all the verses, with the hard word in the middle taken carefully.'},
+  {c:x=>x.songy&&x.b&&x.rel==='partner',t:'{A} hums the first line of the song of {song} and {B} takes the second without looking up.'},
+  {c:x=>x.songlost&&x.elder,t:'{A} says there was a tune to that story once, and hums three notes of nothing, and lets it go.'},
+  {c:x=>x.news&&x.b,t:'{A} has news and has not told {B} yet, and is enjoying the not telling almost too much to end it.'},
+  {c:x=>x.starday&&x.dreamy,t:'{A} is still thinking about the star that fell, and where fallen things land, and whether you could walk there.'},
+  {c:x=>x.starday&&x.kid&&x.b,t:'{A} tells {B} about the star that fell last night, making it bigger. It was big enough.'},
+  {c:x=>x.aurora&&x.night,t:'The sky over the island is moving in slow green folds. Nobody goes in until it has finished.'},
+  {c:x=>x.aurora&&x.night&&x.elder,t:'{A} says the sky did this the winter {A} was small, and that it means nothing, and watches it to the end anyway.'},
+  {c:x=>x.rb,t:'A rainbow stands over the island with both feet in the sea. Work does not exactly stop, and does not exactly go on either.'},
+  {c:x=>x.snowman,t:'The snowman has been given somebody\'s hat. Nobody has missed it yet, and everybody knows whose it is.',w:.7},
+  {c:x=>x.snowman&&x.kid,t:'{A} reports to the snowman on the state of the village, which the snowman receives with composure.'},
+  {c:x=>x.gravev&&x.elder,t:'{A} says the moss on the most-visited stone on the hill is the hill\'s own answer, and does not say to what.'},
 ];
 const ARRIVED=p=>pick([`${p.name} rowed in out of nowhere and asked to stay, and stayed.`,
   `${p.name} came ashore with everything ${p.name} owned in one bag, and was given bread before any questions.`,
@@ -234,11 +250,16 @@ function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
   const ctx={a,b,c,rel:rel?rel.k:null,night:isNight(),dusk:isDusk(),rain,storm,thunder:storm,market:hasB('market'),mill:hasB('mill'),well:hasB('well'),hall:hasB('hall'),light:hasB('light'),hut:hasB('hut'),smoke:hasB('smoke'),bridge:hasB('bridge'),trader:!!trader,road:roadV>0,named:!!village,deer:wild.some(w=>w.k==='deer'),rabbits:wild.some(w=>w.k==='rabbit'),farms:farms.length>0,fox:wild.some(w=>w.k==='fox'),gulls:gulls.length>0,fireflies:flies.length>0,geese:geeseDay===dayCount,whale:!!whale||whaleDay===dayCount,fish:fishSh.length>0&&!frozen,far:!!farIsle,voyaged:!!voyage,away:!!voyage&&voyage.st==='away',stayed:!!voyage&&voyage.st==='stayed',ruin:!!ruin&&ruinSeen>0,spring:springs.length>0,story:storyDay===dayCount,dreamt:dreamAny===dayCount,cloudrain:clouds.some(c=>c.r>0),fog:wx==='fog',snow:wx==='snow',overcast:wx==='overcast',ice:frozen,hungry:hunger>.25,leaves:seaDay()>=2,blossom:seaDay()<=3,lowtide:td<-.6,hightide:td>.6,sea:seasonOf(dayCount),ev:eventLabel(),graves:graves.length>0,elder:isElder(a),kid:isKid(a),
     crf:a.craft,cxpv:a.cxp||0,orchard:hasW('orchard'),hives:hasW('hives'),swingw:hasW('swing'),ringw:hasW('ring'),bench:hasW('bench'),oldhouse:hasW('ruin3'),racks:hasW('racks'),boat2:hasW('boat2'),dryg:dry01>.6,
     drought:arcK()==='drought',hardw:arcK()==='longwinter',feverA:arcK()==='fever',shoalA:arcK()==='shoal',sick:!!a.sick,sail:hasWay(0),plough:hasWay(1),kiln:hasWay(2),book:hasWay(3),stone:hasW('shrine'),faithHi:faith>=.5,
-    keeps:thingsOf(a.name).length>0,shelf:hasB('hall')&&things.some(t=>!t.holder),legend:chron.some(e=>e.gr),lore:spots.some(s=>s.lore),cairn:spots.some(s=>s.lore&&(loreN[s.k]||0)>=2)};
+    keeps:thingsOf(a.name).length>0,shelf:hasB('hall')&&things.some(t=>!t.holder),legend:chron.some(e=>e.gr),lore:spots.some(s=>s.lore),cairn:spots.some(s=>s.lore&&(loreN[s.k]||0)>=2),
+    yrname:(()=>{const yn=yearName(yearOf(dayCount)-1);return yn&&yn!=='a quiet year'?yn:null})(),
+    knows:songs.some(sg=>!sg.lost&&sg.kn.includes(a.name)),songy:songs.some(sg=>!sg.lost),songlost:songs.some(sg=>sg.lost),
+    news:!!(a.heard&&a.heard.d>=dayCount-3),starday:starDay===dayCount,aurora:auroraNight()&&wx==='clear',rb:rbUntil>time,
+    snowman:snowmen.length>0,gravev:graves.some(g2=>(g2.vn||0)>=12)};
   for(const t of TRAITS)ctx[t]=has(a,t);
   const ka=thingsOf(a.name),grown=chron.filter(e=>e.gr),legLbl=grown.length?grown[(R()*grown.length)|0].label:null;
   const loreSp=spots.filter(s=>s.lore),loreL=loreSp.length?loreSp[(R()*loreSp.length)|0].l:null;
+  const sgs=songs.filter(sg=>!sg.lost&&chron[sg.ci]),songL=sgs.length?chron[sgs[(R()*sgs.length)|0].ci].label:null;
   const ok=G.filter(t=>t.c(ctx)&&(usedTpl.get(t)||0)<dayCount);if(!ok.length)return;
   const wt=ok.map(t=>t.w||1);s=wt.reduce((x,y)=>x+y,0);r=R()*s;let tpl=ok[0];for(let i=0;i<ok.length;i++){r-=wt[i];if(r<=0){tpl=ok[i];break}}
-  const txt=tpl.t.replace(/{A}/g,B(a)).replace(/{B}/g,b?B(b):'someone').replace(/{C}/g,c?B(c):'someone').replace(/{spot}/g,a.spot.l).replace(/{sea}/g,ctx.sea).replace(/{wx}/g,WX()).replace(/{ev}/g,ctx.ev||'the first landing').replace(/{village}/g,V()).replace(/{voy}/g,voyage?voyage.name:'someone').replace(/{thing}/g,ka.length?ka[0].n:'a small thing').replace(/{leg}/g,legLbl||'the first landing').replace(/{lore}/g,loreL||'the shore');
+  const txt=tpl.t.replace(/{A}/g,B(a)).replace(/{B}/g,b?B(b):'someone').replace(/{C}/g,c?B(c):'someone').replace(/{spot}/g,a.spot.l).replace(/{sea}/g,ctx.sea).replace(/{wx}/g,WX()).replace(/{ev}/g,ctx.ev||'the first landing').replace(/{village}/g,V()).replace(/{voy}/g,voyage?voyage.name:'someone').replace(/{thing}/g,ka.length?ka[0].n:'a small thing').replace(/{leg}/g,legLbl||'the first landing').replace(/{lore}/g,loreL||'the shore').replace(/{song}/g,songL||'the landing').replace(/{yrname}/g,ctx.yrname||'the year that was');
   if(say(txt))usedTpl.set(tpl,dayCount)}

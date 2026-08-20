@@ -159,6 +159,11 @@ if (mode === 'depth') {
         places: H.spots.filter(s => s.lore).map(s => `${s.l} ×${H.loreN[s.k] || 0}`).join('; '),
         bounds: H.chron.filter(e => e.kind === 'bounds').length,
         graves: H.graves.length, visits: H.graves.reduce((a, g) => a + (g.vn || 0), 0),
+        songs: H.songs.map(s => `${(H.chron[s.ci] || { label: '?' }).label}${s.lost ? ' (LOST)' : ' kn' + s.kn.filter(n => H.people.some(p => p.name === n)).length}`).join('; '),
+        yearNames: (() => { const out = []; for (let y = 1; y < Math.floor((H.dayCount - 1) / 20) + 1; y++) out.push(H.yearName(y)); return out.join(' | '); })(),
+        heard: H.people.filter(p => p.heard).length, faces: H.people.filter(p => p.fSk >= 0).length,
+        annivs: H.people.filter(p => p.hist.some(x => x.s.includes('a year to the day'))).length,
+        toldDead: H.people.filter(p => p.hist.some(x => x.s.includes('who died before'))).length,
       };
     });
     console.log(`seed ${seed} @ day ${s.day}: pop ${s.pop}`);
@@ -167,6 +172,8 @@ if (mode === 'depth') {
     console.log(`  things: [${s.things}]  handings-down ${s.heirs}  stories-grown ${s.grown}  ways ${s.ways}`);
     console.log(`  named places: [${s.places || 'none yet'}]  bounds-walked ${s.bounds}`);
     console.log(`  hill: ${s.graves} stone${s.graves === 1 ? '' : 's'}, ${s.visits} visit${s.visits === 1 ? '' : 's'} left across them`);
+    console.log(`  songs: [${s.songs || 'none yet'}]  news in pockets ${s.heard}  inherited faces ${s.faces}  anniversary-keepers ${s.annivs}  told-of-the-dead ${s.toldDead}`);
+    console.log(`  the years, as they are called: ${s.yearNames || '(year 1 not done)'}`);
     if (viol.length) { failed = true; console.log('  VIOLATIONS:'); [...new Set(viol)].slice(0, 10).forEach(v => console.log('   ' + v)); }
     if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
     await ctx.close();
@@ -656,6 +663,231 @@ if (mode === 'fifteen') {
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
   await ctx.close();
   console.log(failed ? '\nFAIL' : '\nPASS: sprint 15 systems behave — the hill remembers too');
+}
+
+if (mode === 'sixteen') {
+  // sprint 16 observation & force tests: named years derive from the chronicle, conversations carry news to the fire,
+  // the children's games run (tag, snowman + melt, stone-skipping behind the watcher's example), the sky layers draw,
+  // songs compose / teach / lose, faces inherit (stream discipline holds), anniversaries reach the hill, kin terms resolve,
+  // and save v12 round-trips while a forged v11 loads clean.
+  const warns = [];
+  const { ctx, page } = await openIsland(browser, 7, warns);
+  const H = fn => page.evaluate(fn);
+  for (let d = 0; d < 8; d++) await runDay(page, 1e9);
+
+  // ---- A-1: two idle adults fall into talk and the news walks with them ----
+  const chat = await H(() => {
+    const h = window.__hearth;
+    h.skipToMorning(); const bp = document.getElementById('b-pause'); if (bp.textContent !== '▶') bp.click();
+    h.events.push({ d: h.dayCount, y: 1, kind: 'arrival', label: 'the day the news test landed' });
+    const far = h.spots[0]; // the far shore: away from the village, so they talk to each other
+    const ad = h.people.filter(p => !p.child && !p.inBoat && !p.sick).slice(0, 2);
+    if (ad.length < 2) return { fail: 'not enough adults' };
+    let chatSeen = false;
+    for (let i = 0; i < 4000 && !(ad[0].heard && ad[1].heard); i++) {
+      for (const p of ad) {
+        if (p.task === 'chat') { chatSeen = true; continue; }
+        p.task = 'idle'; p.t = 0; p.chatD = 0; p.inside = false;
+        p.x = far.x + (p === ad[0] ? -0.6 : 0.6); p.y = far.y; p.tx = p.x; p.ty = p.y;
+        if (p.tgt && p.tgt.claimed) p.tgt.claimed = false; p.tgt = null;
+      }
+      h.step(0.05);
+      if (ad[0].task === 'chat' || ad[1].task === 'chat') chatSeen = true;
+    }
+    /* a whole chat can start, arrive, and exchange inside one step (the pair spawn adjacent), so the heard fields —
+       not a glimpse of the task — are the durable signal */
+    return { chatSeen, h0: ad[0].heard ? ad[0].heard.l : null, h1: ad[1].heard ? ad[1].heard.l : null,
+      f0: ad[0].heard ? ad[0].heard.f : null, f1: ad[1].heard ? ad[1].heard.f : null };
+  });
+  console.log(`chat: task glimpsed ${chat.chatSeen}, heard "${chat.h0}" / "${chat.h1}" (had it from: ${chat.f0 || 'was there'} / ${chat.f1 || 'was there'})`);
+  if (chat.fail || !chat.h0 || !chat.h1 || !(chat.f0 || chat.f1)) { failed = true; console.log('FAIL: conversations did not carry the news'); }
+  const fire = await H(() => {
+    const h = window.__hearth;
+    const ok = h.tellStory();
+    const line = document.getElementById('log').textContent.includes('adds the news of');
+    return { ok, line, cleared: h.people.every(p => !p.heard || p.heard.d < h.dayCount - 4) };
+  });
+  console.log(`fire night: told ${fire.ok}, news line ${fire.line}, heard cleared ${fire.cleared}`);
+  if (!fire.ok || !fire.line || !fire.cleared) { failed = true; console.log('FAIL: the fire did not collect the news'); }
+
+  // ---- B-2: a grown, much-told story gets a tune, the tune teaches, and dies with its last knower ----
+  await runDay(page, 1e9);
+  const song = await H(() => {
+    const h = window.__hearth;
+    const e = h.chron[0]; e.gr = 1; e.tl = 6; if (!e.st) e.st = e.label; // the landing: always in the fire's spread
+    const ad = h.people.filter(p => !p.child);
+    if (!ad.some(p => h.musical(p)) && !ad.some(p => p.tr.includes('dreamy') || p.tr.includes('funny'))) ad[0].tr[0] = 'dreamy';
+    h.tellStory();
+    const sg = h.songs[0];
+    return { n: h.songs.length, ev: h.chron.some(x => x.kind === 'song'), kn: sg ? sg.kn.length : 0, ci: sg ? sg.ci : -1, comp: sg ? sg.comp : null };
+  });
+  console.log(`song composed: ${song.n} (of chron[${song.ci}], by ${song.comp}, ${song.kn} knowers), chronicled ${song.ev}`);
+  if (song.n < 1 || !song.ev || song.kn < 1 || song.ci !== 0) { failed = true; console.log('FAIL: a grown story told six times produced no song'); }
+  let taught = false, nights = 0;
+  if (song.n) {
+    await H(() => { const sg = window.__hearth.songs[0]; window.__hearth.__pulled = sg.kn.pop(); }); // one knower forgets, so the fire can teach them back
+    for (let d = 0; d < 6 && !taught; d++) {
+      await runDay(page, 1e9); nights++;
+      await H(() => window.__hearth.tellStory());
+      taught = await H(() => { const h = window.__hearth; return h.people.some(p => p.name === h.__pulled) ? h.songs[0].kn.includes(h.__pulled) : true; });
+    }
+    console.log(`song taught back after ${nights} fire nights: ${taught}`);
+    if (!taught) { failed = true; console.log('FAIL: six fire nights taught the song to nobody'); }
+  }
+
+  // ---- C: a partner dies; the song they alone carried dies with them; a year later, the anniversary walk ----
+  const loss = await H(() => {
+    const h = window.__hearth;
+    const ad = h.people.filter(p => !p.child && !p.inBoat).sort((a, b) => (a.age0 + (h.dayCount - a.born) / 20) - (b.age0 + (h.dayCount - b.born) / 20));
+    const a = ad[ad.length - 1], b = ad[0]; // the eldest free adult dies; the youngest carries the year
+    if (!a || !b || a === b) return { fail: 'not enough adults' };
+    a.rels = a.rels.filter(r => r.who !== b.name); b.rels = b.rels.filter(r => r.who !== a.name);
+    a.rels.push({ who: b.name, k: 'partner' }); b.rels.push({ who: a.name, k: 'partner' }); a.partner = b.name; b.partner = a.name;
+    h.songs.push({ ci: 0, comp: a.name, kn: [a.name], lost: 0, d: h.dayCount });
+    const sg = h.songs[h.songs.length - 1];
+    h.die(a);
+    window.__widow = b.name; window.__grave = a.name;
+    return { lost: !!sg.lost, ev: h.chron.some(x => x.kind === 'songlost'), other: !!h.songs[0].lost, day: h.dayCount };
+  });
+  console.log(`song loss: sentinel lost ${loss.lost}, chronicled ${loss.ev}, shared song untouched ${!loss.other}`);
+  if (loss.fail || !loss.lost || !loss.ev || loss.other) { failed = true; console.log('FAIL: the last knower died and the song did not die with them'); }
+  for (let d = 0; d < 22; d++) await runDay(page, 1e9);
+  const anniv = await H(() => {
+    const h = window.__hearth;
+    const b = h.people.find(p => p.name === window.__widow);
+    const gr = h.graves.find(g => g.name === window.__grave);
+    return { alive: !!b, hist: b ? b.hist.some(x => x.s.includes('a year to the day')) : false, vn: gr ? gr.vn || 0 : -1 };
+  });
+  console.log(`anniversary: widow alive ${anniv.alive}, hist line ${anniv.hist}, grave visits ${anniv.vn}`);
+  if (anniv.alive && (!anniv.hist || anniv.vn < 1)) { failed = true; console.log('FAIL: the anniversary did not reach the hill'); }
+
+  // ---- B-1: named years are pure derivation, first match wins (year 1 is long finished by now) ----
+  const yn = await H(() => {
+    const h = window.__hearth;
+    h.chron.push({ d: 3, y: 1, kind: 'fever', label: 'a forged fever', st: 'x', tl: 0, gr: 0 });
+    const a = h.yearName(1); h.chron.pop();
+    const b = h.yearName(1);
+    const c = h.yearName(Math.floor((h.dayCount - 1) / 20) + 1); // the running year has no name yet
+    h.renderChron();
+    const hdr = document.getElementById('chron-roll').innerHTML.includes('year 1 — ');
+    return { a, b, c: c === null ? 'null' : c, hdr };
+  });
+  console.log(`year names: forged fever "${yn.a}", plain year 1 "${yn.b}", unfinished ${yn.c}, header carries name ${yn.hdr}`);
+  if (yn.a !== 'the year of the fever' || !yn.b || yn.b === 'a quiet year' || yn.c !== 'null' || !yn.hdr) { failed = true; console.log('FAIL: yearName derivation is wrong'); }
+
+  // ---- kin terms resolve one generation up, through the living and the dead ----
+  const kin = await H(() => {
+    const h = window.__hearth;
+    const ad = h.people.filter(p => !p.child).slice(0, 3);
+    if (ad.length < 3) return { fail: 'not enough adults' };
+    ad[0].parents = [ad[1].name]; ad[1].parents = [ad[2].name];
+    const viaLiving = h.kinOf(ad[0]).includes(ad[2].name);
+    h.dead.push({ name: 'Testgran', rels: [{ who: ad[1].name, k: 'child' }], dead: true, hist: [], tr: [] });
+    ad[1].parents = []; ad[1].rels.push({ who: 'Testgran', k: 'parent' });
+    const viaDead = h.kinOf(ad[0]).includes('Testgran');
+    ad[0].parents = []; ad[1].parents = []; ad[1].rels = ad[1].rels.filter(r => r.who !== 'Testgran'); h.dead.pop();
+    return { viaLiving, viaDead };
+  });
+  console.log(`kin: grandparent via living ${kin.viaLiving}, via the dead list ${kin.viaDead}`);
+  if (kin.fail || !kin.viaLiving || !kin.viaDead) { failed = true; console.log('FAIL: kinOf does not climb one generation'); }
+
+  // ---- faces: the substitution path is pixel-identical for the derived skin, and actually substitutes for another ----
+  const face = await H(() => {
+    const h = window.__hearth;
+    const p = h.people.find(q => !q.child);
+    const cv2 = document.createElement('canvas'); cv2.width = cv2.height = 16; const c2 = cv2.getContext('2d');
+    const snap = () => { h.drawFace(c2, p); return cv2.toDataURL(); };
+    const base = snap(); const der = h.skinOf(p);
+    p.fSk = der; const same = snap() === base;
+    p.fSk = (der + 1) % 5; const diff = snap() !== base;
+    delete p.fSk;
+    return { der, same, diff };
+  });
+  console.log(`faces: derived skin ${face.der}; fSk=derived is pixel-identical ${face.same}; fSk=other differs ${face.diff}`);
+  if (!face.same || !face.diff) { failed = true; console.log('FAIL: the drawFace stream discipline broke'); }
+
+  // ---- A-2: the children's games, forced in daylight ----
+  const kids = await H(() => {
+    const h = window.__hearth;
+    h.skipToMorning(); const bp = document.getElementById('b-pause'); if (bp.textContent !== '▶') bp.click();
+    const free = h.people.filter(p => !p.child && !p.inBoat && !p.inside && !p.sick && p.task !== 'boat' && p.task !== 'voyage');
+    if (free.length < 2) return { fail: 'not enough free adults to make kids of' };
+    const k1 = free[0], k2 = free[free.length - 1];
+    for (const k of [k1, k2]) { k.age0 = 8; k.born = h.dayCount; k.child = true; k.partner = null; }
+    const fireSpot = h.spots.find(s => s.l === 'the fire');
+    let tagSeen = false;
+    for (let i = 0; i < 1500 && !tagSeen; i++) {
+      for (const k of [k1, k2]) if (k.task !== 'tag') { k.task = 'play'; k.t = 0; k.x = fireSpot.x + (k === k1 ? -1 : 1); k.y = fireSpot.y + 2; k.tx = k.x; k.ty = k.y; if (k.tgt && k.tgt.claimed) k.tgt.claimed = false; k.tgt = null; }
+      h.step(0.05);
+      if (k1.task === 'tag' || k2.task === 'tag') tagSeen = true;
+    }
+    h.setSnow(0.9);
+    let snowman = 0;
+    for (let i = 0; i < 3000 && !snowman; i++) {
+      for (const k of [k1, k2]) if (k.task !== 'snowman') { k.task = 'play'; k.t = 0; k.x = fireSpot.x + (k === k1 ? -2 : 2); k.y = fireSpot.y + 2; k.tx = k.x; k.ty = k.y; }
+      h.step(0.05);
+      snowman = h.snowmen.length;
+    }
+    const builtAt = h.snowmen.length;
+    h.setSnow(0); h.step(0.05);
+    const melted = h.snowmen.length === 0;
+    h.setSkipN(1);
+    const beach = h.spots.find(s => s.l === 'the near beach');
+    let skipSeen = false;
+    for (let i = 0; i < 2500 && !skipSeen; i++) {
+      for (const k of [k1, k2]) if (k.task !== 'kidskip') { k.task = 'play'; k.t = 0; k.x = beach.x; k.y = beach.y; k.tx = k.x; k.ty = k.y; }
+      h.step(0.05);
+      if (h.skips.length) skipSeen = true;
+    }
+    return { tagSeen, builtAt, melted, skipSeen };
+  });
+  console.log(`kids: tag ${kids.tagSeen}, snowman built ${kids.builtAt > 0}, melted when the snow went ${kids.melted}, stone skipped ${kids.skipSeen}`);
+  if (kids.fail || !kids.tagSeen || !kids.builtAt || !kids.melted || !kids.skipSeen) { failed = true; console.log('FAIL: the children did not play'); }
+
+  // ---- A-3: every sky layer draws without error; the aurora predicate is pure ----
+  const sky = await H(() => {
+    const h = window.__hearth;
+    try {
+      h.rbSet(h.time + 30); h.draw();
+      h.shoots.push({ x: 40, y: 10, vx: 18, vy: 6, l: 0.7 }); h.draw();
+      h.snowmen.push({ x: 41, y: 31, s: 1, d: 1 });
+      for (const s of [1, 0.6, 0.2]) { h.snowmen[0].s = s; h.draw(); }
+      h.snowmen.pop(); h.shoots.pop(); h.rbSet(0);
+      h.setSnow(0.9); h.draw(); h.step(0.05); h.draw(); h.setSnow(0); // footprints path
+    } catch (e) { return 'threw: ' + e.message; }
+    const a1 = h.auroraNight(), a2 = h.auroraNight();
+    return a1 === a2 ? 'ok' : 'aurora not pure';
+  });
+  console.log(`sky layers draw: ${sky}`);
+  if (sky !== 'ok') failed = true;
+
+  // ---- save: v12 round-trips the new state; a forged v11 loads clean ----
+  const rt = await H(() => {
+    const h = window.__hearth;
+    h.setSkipN(3); h.snowmen.push({ x: 40, y: 30, s: 0.8, d: h.dayCount });
+    const p0 = h.people.find(p => !p.child) || h.people[0];
+    p0.heard = { l: 'a carried thing', d: h.dayCount, f: 0 }; p0.fSk = 2;
+    const o = h.pack(); h.unpack(JSON.parse(JSON.stringify(o)));
+    const q0 = h.people.find(p => p.name === p0.name);
+    return { v: o.v, songs: h.songs.length, lost: h.songs.filter(s => s.lost).length, snowmen: h.snowmen.length,
+      skipN: h.skipN, heard: q0 && q0.heard ? q0.heard.l : null, fSk: q0 ? q0.fSk : -9 };
+  });
+  console.log(`round trip: pack v${rt.v} — songs ${rt.songs} (${rt.lost} lost), snowmen ${rt.snowmen}, skipN ${rt.skipN}, heard "${rt.heard}", fSk ${rt.fSk}`);
+  if (rt.v < 12 || rt.songs < 2 || rt.lost < 1 || rt.snowmen < 1 || rt.skipN !== 3 || rt.heard !== 'a carried thing' || rt.fSk !== 2) { failed = true; console.log('FAIL: v12 state did not survive pack/unpack'); }
+  const v11ok = await H(() => {
+    const h = window.__hearth; const o = h.pack(); o.v = 11;
+    delete o.sg; delete o.sm; delete o.ss;
+    o.pe.forEach(a => a.length = 27);
+    try { h.unpack(o); } catch (e) { return 'threw: ' + e.message; }
+    return h.people.length > 0 && h.songs.length === 0 && h.snowmen.length === 0 && h.skipN === 0 &&
+      h.people.every(p => p.fSk === undefined && !p.heard) ? 'ok' : 'bad state';
+  });
+  console.log(`v11 save compat: ${v11ok}`);
+  if (v11ok !== 'ok') failed = true;
+
+  if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
+  await ctx.close();
+  console.log(failed ? '\nFAIL' : '\nPASS: sprint 16 systems behave — the island talks to itself');
 }
 
 if (mode === 'determinism') {

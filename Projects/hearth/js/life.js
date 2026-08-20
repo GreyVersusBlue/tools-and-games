@@ -4,6 +4,15 @@
 function newDay(){saidToday=new Set();
   const yr=yearOf(dayCount),s=sea();
   wakeDreams();
+  // sprint 16: the day comes round again. On the anniversary of a death, whoever lost a partner or a parent walks up the hill —
+  // the same mourn plumbing every grave visit uses, so the stone keeps its own count of who still comes.
+  for(const p of people){if(p.dead||isKid(p)||p.mourn)continue;
+    for(const r of p.rels){if(r.k!=='partner'&&r.k!=='parent')continue;if(byName(r.who))continue;
+      const gr=graves.find(g2=>g2.name===r.who);if(!gr||dayCount<=gr.d||((dayCount-gr.d)%YEAR)!==0)continue;
+      p.mourn=gr;
+      if(dayCount-gr.d===YEAR){p.hist.push({d:dayCount,s:`walked up the hill a year to the day after ${gr.name} died, without anyone suggesting it`});
+        if(R()<.6)say(`${B(p)} is up the hill early. It is a year to the day, and ${p.name} did not need the book to know it.`,false,'anniv')}
+      break}}
   // the island shows its temper early, and once
   if(dayCount===8){const TL={kind:'It is, on the whole, a kind island; the weather forgives more than it punishes. Everyone has privately decided this, and nobody says it out loud, in case that changes it.',
     rainy:'It rains here more than anywhere anyone remembers living. The green is the payment, and the mud is the price.',
@@ -59,6 +68,7 @@ function newDay(){saidToday=new Set();
   // hunger drives people away
   if(hunger>.7&&R()<hunger*.4){const cand=people.filter(p=>!p.dead&&!isKid(p)&&!people.some(k=>k.parents.includes(p.name)));if(cand.length>1){const wts=cand.map(p=>(has(p,'restless')?2.5:1)*(has(p,'homesick')?2.5:1)*(p.partner?.4:1));let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum,p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}leave(p)}}
   if(yr!==lastYear){lastYear=yr;const oldest=people.filter(p=>!p.dead).sort((a,b)=>ageOf(b)-ageOf(a))[0];say(`A new year begins. ${oldest?B(oldest)+' is the eldest now, at '+ageI(oldest)+'.':''}`,true);
+    {const yn=yearName(yr-1);if(yn&&yn!=='a quiet year')say(`The year that ended is already being called ${yn}. Nobody decided that either.`,true)} /* sprint 16: the year's name arrives the way the village's did */
     if(hasWay(3)&&bookYr!==yr){bookYr=yr;addEvent('book',`the book of days, year ${yr-1}`,`The book of days for year ${yr-1}: ${people.length} people, ${houses.length} ${houses.length===1?'house':'houses'}, ${graves.length} ${graves.length===1?'stone':'stones'} on the hill, ${granary} in the store at the turn. Written fair, and argued over anyway.`)}
     // sometimes, in a kind year, one of the ones who left comes back
     if(gone.length&&retYr!==yr&&people.length<popCap()&&food+granary>people.length*5&&landings.length&&R()<.4){retYr=yr;
@@ -72,6 +82,13 @@ function newDay(){saidToday=new Set();
     if(m0&&m0.craft>=0){p.craft=m0.craft;p.cxp=.1;p.hist.push({d:dayCount,s:`took up ${CRAFT_WORK[m0.craft]}, the way ${m0.name} does it`});say(`${B(p)} goes first to ${m0.name}'s work, having watched it for years.`)}}
   // friendships drift into being
   if(alive.length>2&&R()<.35){const a=pick(alive),b=pick(alive);if(a!==b&&!isKid(a)&&!isKid(b)&&a.rels.length<5&&b.rels.length<6&&!a.rels.some(r=>r.who===b.name)){relate(a,b,'friend');say(`${B(a)} and ${B(b)} have started eating together. Nobody comments.`)}}
+  // sprint 16: the dead get said out loud. An elder who knew somebody under a stone tells a child about them, so the names keep working.
+  if(dead.length&&R()<.05){const elds=alive.filter(isElder),kds=alive.filter(p=>isKid(p)&&ageOf(p)>=5);
+    if(elds.length&&kds.length){const el=pick(elds),kd=pick(kds);
+      const kn=dead.filter(d2=>d2.rels&&d2.rels.some(r=>r.who===el.name));
+      if(kn.length){const d2=pick(kn);
+        say(`${B(el)} tells ${B(kd)} about ${d2.name}, who is under one of the stones on the hill, and ${kd.name} repeats the name to get it right.`,false,'tolddead');
+        if(R()<.3)kd.hist.push({d:dayCount,s:`was told about ${d2.name}, who died before ${kd.name} was born`})}}}
   // partnerships
   const single=alive.filter(p=>!p.partner&&!isKid(p)&&ageOf(p)>=18&&ageOf(p)<58);
   for(const a of single){if(a.partner)continue;const fr=a.rels.filter(r=>r.k==='friend').map(r=>byName(r.who)).filter(b=>b&&!b.partner&&!isKid(b)&&ageOf(b)>=18&&ageOf(b)<58&&!b.dead&&!a.parents.includes(b.name)&&!b.parents.includes(a.name));
@@ -87,7 +104,7 @@ function newDay(){saidToday=new Set();
       let nm=null;const anc=dead.filter(d=>d.rels.some(r=>r.who===a.name||r.who===b.name)&&!names.has(d.name));
       if(anc.length&&R()<.6)nm=pick(anc).name;
       const k=addPerson(a.home.x+1,a.home.y+2.4,{child:true,age:0,name:nm,parents:[a.name,b.name],how:`born in the ${seasonOf(dayCount)} of year ${yearOf(dayCount)}, to ${a.name} and ${b.name}`+(nm?`, and named for ${nm} who came before`:'')});
-      relate(a,k,'child');relate(b,k,'child');k.home=a.home;k.col=R()<.5?a.col:b.col;k.hair=R()<.5?a.hair:b.hair;
+      relate(a,k,'child');relate(b,k,'child');k.home=a.home;k.col=R()<.5?a.col:b.col;k.hair=R()<.5?a.hair:b.hair;k.fSk=R()<.5?skinOf(a):skinOf(b); /* sprint 16: the face carries the family */
       const s=`a child, ${k.name}, was born`;a.hist.push({d:dayCount,s});b.hist.push({d:dayCount,s});
       say(`A child is born to ${B(a)} and ${B(b)}. They call the child ${B(k)}${nm?', after '+nm:''}.`);addEvent('birth',`the ${seasonOf(dayCount)} ${k.name} was born`,`A child, ${k.name}, was born to ${a.name} and ${b.name} in the ${seasonOf(dayCount)}.`)}}
   // old age
@@ -96,15 +113,29 @@ function newDay(){saidToday=new Set();
 }
 // sprint 9: the island keeps itself. Written at each dawn; read back at boot when no link is pinned in the address bar.
 function autoSave(){try{store('auto',lzEnc(JSON.stringify(pack())))}catch(e){}}
+// sprint 16: what passes between two people who stop to talk. Fresh news enters the world at whichever chat happens nearest to it —
+// the elder of the two "was there" — and then walks person to person until a fire night collects it and it stops being news.
+function chatNews(p,q){const fresh=h=>h&&h.d>=dayCount-3;
+  if(!fresh(p.heard)&&!fresh(q.heard)){const e=events[events.length-1];
+    if(e&&e.d>=dayCount-3&&R()<.5){(ageOf(p)>=ageOf(q)?p:q).heard={l:e.label,d:e.d,f:0}}}
+  if(fresh(p.heard)&&(!fresh(q.heard)||p.heard.d>q.heard.d))q.heard={l:p.heard.l,d:p.heard.d,f:p.name};
+  else if(fresh(q.heard)&&(!fresh(p.heard)||q.heard.d>p.heard.d))p.heard={l:q.heard.l,d:q.heard.d,f:q.name};
+  if(R()<.05)p.hist.push({d:dayCount,s:`fell into talk with ${q.name} on the way past, and the work waited the little it took`})}
+// sprint 16: a song lives only in the people who carry it. When the last of them goes, it goes with them — the story stays; the tune does not.
+function loseSongs(p,how){for(const sg of songs){if(sg.lost||!sg.kn.includes(p.name))continue;
+    if(people.some(q=>!q.dead&&q!==p&&sg.kn.includes(q.name)))continue;
+    sg.lost=1;const lbl=chron[sg.ci]?chron[sg.ci].label:'the island';
+    say(`Nobody now knows the tune of ${lbl}. The story is still told, plainly now. The song went ${how==='left'?'out in the boat':'up the hill'} with ${p.name}.`,true);
+    addEvent('songlost',`the losing of the song of ${lbl}`,`When ${p.name} ${how==='left'?'sailed':'died'}, the song of ${lbl} went too — ${p.name} was the last who had the tune. It was never written down, because it never needed to be, until it did.`)}}
 function remove(p){p.dead=true;p.alive=false;names.delete(p.name);people=people.filter(q=>q!==p);
   if(p.home){p.home.owners=p.home.owners.filter(n=>n!==p.name)}
   if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;
   if(selected===p)showCard(null)}
-function leave(p){remove(p);gone.push(p);const s=sea();
+function leave(p){remove(p);gone.push(p);const s=sea();loseSongs(p,'left');
   say(`${B(p)} takes the small boat at first light, quietly, so as not to be talked out of it. There was not enough to go round.`,true);addEvent('left',`the ${s} ${p.name} sailed away`,`${p.name} took the small boat and left in a hungry ${s}. There had not been enough to go round.`);
   for(const t of thingsOf(p.name)){t.holder=0;t.hist.push({d:dayCount,s:`left on the shelf in the hall the morning ${p.name} sailed, on purpose, where it would be found`})}
   for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(!r)continue;q.hist.push({d:dayCount,s:`watched ${p.name} sail away in a hungry ${s}`});if(r.k==='partner')q.partner=null}}
-function die(p){remove(p);dead.push(p);
+function die(p){remove(p);dead.push(p);loseSongs(p,'died');
   // grave on the hill
   const k=graves.length,gx=hill.x+((k%4)-1.5)*1.6,gy=hill.y+Math.floor(k/4)*1.4;const gr={x:gx,y:gy,name:p.name,d:dayCount,y2:yearOf(dayCount),age:ageI(p),vn:0};graves.push(gr);trees=trees.filter(t=>Math.hypot(t.x-gx,t.y-gy)>1.6);
   const sea=seasonOf(dayCount);say(`${B(p)} died in the night, at ${ageI(p)}. The village carries ${p.name} up the hill in the ${sea} light.`,true);addEvent('death',`the ${sea} ${p.name} died`,`${p.name} died at ${ageI(p)}, and was carried up the hill in the ${sea} light.`);
@@ -199,7 +230,7 @@ function boatArrive(b){
     if(b.fam){const a=addPerson(b.land.x,b.land.y,{age:rnd(24,38)|0,how:'came ashore with a whole family in one boat'}),c=addPerson(b.land.x,b.land.y,{age:rnd(24,38)|0,how:'came ashore with a whole family in one boat'});
       a.partner=c.name;c.partner=a.name;relate(a,c,'partner');a.wantHouse=c.wantHouse=true;
       const kd=addPerson(b.land.x+.5,b.land.y,{child:true,age:rnd(2,8)|0,parents:[a.name,c.name],how:'came ashore asleep in the bottom of the family\'s boat'});
-      relate(a,kd,'child');relate(c,kd,'child');kd.col=R()<.5?a.col:c.col;kd.hair=R()<.5?a.hair:c.hair;
+      relate(a,kd,'child');relate(c,kd,'child');kd.col=R()<.5?a.col:c.col;kd.hair=R()<.5?a.hair:c.hair;kd.fSk=R()<.5?skinOf(a):skinOf(c);
       meet(a,1,2);meet(c,1,2);
       say(`A boat comes in carrying a whole family: ${B(a)}, ${B(c)}, and small ${B(kd)}, who sleeps through the entire business of arriving somewhere forever.`,true);
       addEvent('family',`the day ${a.name} and ${c.name} brought their boat in`,`${a.name} and ${c.name} came ashore with everything they had and a sleeping child, ${kd.name}, and by the next evening it was as if they had always been coming.`)}
@@ -217,7 +248,7 @@ function boatArrive(b){
       eff='trades small things for smaller ones and leaves everyone feeling they did well out of it'}
     if(talker){craftUp(talker,4);if(R()<.5)talker.hist.push({d:dayCount,s:'did the talking when the trader came, and did it well'})}
     say(`A trader's boat comes in to ${V()} and everyone who can finds a reason to be on the shore. The trader ${eff}.`,true);addEvent('trade',`the ${sea()} the trader came`,pick([`The trader's boat came in and everyone who could find a reason was on the shore for it.`,`The trader came, and went, and the store was a little different after.`,`A trading boat put in for a day and left news behind as well as goods.`]));
-    const wav=people.filter(p=>!p.dead&&p.task!=='sleep'&&p.task!=='boat'&&p.task!=='voyage'&&p.task!=='build'&&!p.inside).sort(()=>R()-.5).slice(0,8);
+    const wav=people.filter(p=>!p.dead&&p.task!=='sleep'&&p.task!=='boat'&&p.task!=='voyage'&&p.task!=='build'&&p.task!=='bounds'&&!p.inside).sort(()=>R()-.5).slice(0,8); /* sprint 16: the procession does not break for the trader */
     for(const q of wav){const s=nearestShore(b.land.x+rnd(-3,3),b.land.y+rnd(-3,3))||b.land;goTo(q,s.x,s.y,'wave',rnd(12,30));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null}
     if(R()<.5&&wav.length){const q=pick(wav);q.hist.push({d:dayCount,s:pick(['bought a length of red cloth off the trader','traded a carved bird to the trader for a knife','asked the trader for news of home and got some'])})}}
   else if(b.kind==='fish'){if(b.st==='in'){b.st='fishing';b.t=rnd(10,16)}else if(b.st==='back'){b.gone=true;const p=b.p;if(p){p.task='idle';p.t=1;p.inBoat=false;p.x=b.land.x;p.y=b.land.y;p.tx=p.x;p.ty=p.y;/* step ashore, not out at the mooring */const n=(sea()==='winter'?3:6)+(hasW('racks')?1:0)+(hasWay(0)?1:0)+(arcK()==='shoal'?5:0);if(hasB('smoke')&&(sea()==='autumn'||sea()==='winter'))granary+=n;else food+=n;craftUp(p,2);p.boats=(p.boats||0)+1;if(p.boats===1)p.hist.push({d:dayCount,s:'first took the boat out past the shallows'});if(R()<.3)say(`${B(p)} rows in with the bottom of the boat silver, and hands the fish up the beach.`,false,'boatin')}}}
@@ -232,6 +263,9 @@ function boatArrive(b){
     for(const t of things){if(t.holder===0&&t.hist.some(h=>h.s.includes(p.name+' sailed'))){t.holder=p.name; // what was left on the shelf goes back into the pocket it knows
       t.hist.push({d:dayCount,s:`came back off the shelf the day ${p.name} returned, from exactly where it was left`});
       say(`${B(p)} goes into the hall before going anywhere else, and comes out with ${t.n}, which has been waiting the whole time.`,true)}}
+    for(const sg of songs){if(sg.lost&&sg.kn.includes(p.name)&&chron[sg.ci]){sg.lost=0; /* sprint 16: a tune that left in a boat can come back in one */
+      say(`At the fire that night it turns out ${B(p)} still carries the tune of ${chron[sg.ci].label}, which everyone had agreed was gone. It is sung twice.`,true);
+      addEvent('songback',`the ${sea()} the song of ${chron[sg.ci].label} came back`,`The song of ${chron[sg.ci].label} came back the day ${p.name} did — it had been away, not lost, the whole time.`)}}
     for(const q of people){if(q===p)continue;const r=q.rels.find(r=>r.who===p.name);if(r)q.hist.push({d:dayCount,s:`was on the shore the day ${p.name} came back`})}}
   else if(b.kind==='away'&&b.st==='out'){b.gone=true;const p=b.p;p.inBoat=false;people=people.filter(q=>q!==p);if(selected===p)showCard(null)}
   else if(b.kind==='return'&&b.st==='in'){b.gone=true;const p=b.p;p.x=b.land.x;p.y=b.land.y;p.task='idle';p.t=2;p.inBoat=false;p.inside=false;p.tgt=null;people.push(p);voyage.st='back';farIsle.lit=false;
