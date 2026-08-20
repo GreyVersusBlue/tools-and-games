@@ -90,7 +90,7 @@ function step(dt){
       p.x=center.x;p.y=center.y;p.tx=center.x;p.ty=center.y;p.inBoat=false;p.inside=false;if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.task='idle';p.t=1}
     // and, like the animals: anyone stranded in open water steps out at the nearest shore (deterministic — no rnd())
     if(!p.inBoat&&at(p.x|0,p.y|0)===WATER&&!canWade(p.x,p.y)&&!canWalk(p.x,p.y)){const sh=nearestShore(p.x,p.y);if(sh){p.x=sh.x+.5;p.y=sh.y+.5}else{p.x=center.x;p.y=center.y}}
-    if(p.mourn&&!night&&p.task!=='mourn'){goTo(p,p.mourn.x,p.mourn.y+.7,'mourn',rnd(6,12));p.tgt=null;p.mourn=null;continue}
+    if(p.mourn&&!night&&p.task!=='mourn'){p.vg=p.mourn;goTo(p,p.mourn.x,p.mourn.y+.7,'mourn',rnd(6,12));p.tgt=null;p.mourn=null;continue}
     // storms send everyone but the brave indoors
     const shelt=storm&&!(has(p,'brave')&&!isKid(p));
     if(p.task==='boat')continue;
@@ -109,10 +109,10 @@ function step(dt){
       case 'mourn': case 'look': case 'wander': case 'visit': case 'linger': case 'wave': case 'market': case 'gather': case 'pilgrim':
         if(walk(p,dt)){p.dwell-=dt;if(p.dwell<=0){p.task='idle';p.t=rnd(1,2)}
           else if(!p.said){p.said=true;
-            if(p.task==='mourn')say(`${B(p)} stands a while on the hill, and comes down slowly.`,false,'mourn');
+            if(p.task==='mourn'){if(p.vg)p.vg.vn=(p.vg.vn||0)+1;say(`${B(p)} stands a while on the hill, and comes down slowly.`,false,'mourn')}
             else if(p.task==='look')say(`${B(p)} stands at the water's edge at dusk, looking the way the boat came.`,false,'look');
             else if(p.task==='wander')say(`${B(p)} walks out to the far shore alone and stands looking at the water.`,false,'wander');
-            else if(p.task==='visit'&&p.vg)say(`${B(p)} stops at ${p.vg.name}'s stone and straightens it, though it was straight.`,false,'visit');
+            else if(p.task==='visit'&&p.vg){p.vg.vn=(p.vg.vn||0)+1;say(`${B(p)} stops at ${p.vg.name}'s stone and straightens it, though it was straight.`,false,'visit')}
             else if(p.task==='pilgrim')say(`${B(p)} stands a while at ${p.pilgL||'the place in the story'}, matching the ground to the telling, and the ground holds still for it.`,false,'pilg')}}
         else p.said=false;break;
       case 'play':{p.t-=dt;if(p.t<=0){p.t=rnd(2,5);let anchor=null;
@@ -184,7 +184,12 @@ function step(dt){
       case 'boat': break;
       case 'bounds':{if(!p.stops){p.task='idle';p.t=1;break}
         if(walk(p,dt)){p.dwell-=dt;if(p.dwell<=0){
-          if(p.bLead)loreN[p.stops[p.si].k]=(loreN[p.stops[p.si].k]||0)+1; /* the leader leaves the stone */
+          const st=p.stops[p.si];
+          if(p.bLead){if(st.grave){for(const gr of graves)gr.vn=(gr.vn||0)+1; /* the last stop: every stone on the hill gets touched too */
+              if(graves.length){const names=graves.slice().sort((a,b)=>a.d-b.d).map(g=>g.name);
+                const said=names.length<=4?names.join(', '):names.slice(0,4).join(', ')+`, and ${names.length-4} more before them`;
+                say(`${B(p)} stops at the hill and says the names, oldest first: ${said}.`,true)}}
+            else loreN[st.k]=(loreN[st.k]||0)+1} /* the leader leaves the stone */
           p.si++;
           if(p.si>=p.stops.length){p.stops=null;p.task='idle';p.t=1;
             if(p.bLead)say(`${B(p)} comes back from the bounds with empty pockets, having left a stone at every place, and sits down like someone who has finished something.`,true)}

@@ -163,7 +163,12 @@ function draw(){
     else{g.fillStyle='#6b4a2a';g.fillRect(x-4,y+bob,8,3);g.fillStyle='#4a2f16';g.fillRect(x-4,y+bob,8,1);g.fillStyle='#8a6a44';g.fillRect(x-5,y+1+bob,1,1);g.fillRect(x+4,y+1+bob,1,1);
       if(b.kind==='fish'&&hasWay(0)){g.fillStyle='#4a2f16';g.fillRect(x,y-7+bob,1,7);g.fillStyle='#e8dcc4';g.beginPath();g.moveTo(x+1,y-7+bob);g.lineTo(x+5,y-2+bob);g.lineTo(x+1,y-2+bob);g.fill()}
       if(b.kind==='arrival'){g.fillStyle='#7fa85b';g.fillRect(x-1,y-3+bob,3,3);g.fillStyle='#f1cfa5';g.fillRect(x-1,y-5+bob,3,2)}}}});
-  for(const gr of graves)ents.push({y:gr.y,d:()=>{const x=gr.x*T,y=gr.y*T;g.fillStyle='#8c8478';g.fillRect(x-1,y-4,3,5);g.fillStyle='#d9d4c8';g.fillRect(x-1,y-4,1,4);g.fillStyle='#4a4640';g.fillRect(x+1,y-3,1,4);g.fillStyle='#5a7a3a';g.fillRect(x-2,y,5,1);if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-1,y-5,3,1)}}});
+  // a stone gets visited more than it gets forgotten (sprint 15): a pebble at two visits, a flower at six, moss softening the stone by twelve
+  for(const gr of graves)ents.push({y:gr.y,d:()=>{const x=gr.x*T,y=gr.y*T,vn=gr.vn||0;g.fillStyle='#8c8478';g.fillRect(x-1,y-4,3,5);g.fillStyle='#d9d4c8';g.fillRect(x-1,y-4,1,4);g.fillStyle='#4a4640';g.fillRect(x+1,y-3,1,4);g.fillStyle='#5a7a3a';g.fillRect(x-2,y,5,1);
+    if(vn>=2){g.fillStyle='#8c8478';g.fillRect(x-3,y,1,1);g.fillRect(x+3,y,1,1)}
+    if(vn>=6){g.fillStyle='#7fa85b';g.fillRect(x-3,y-1,1,1);g.fillStyle='#c96b8a';g.fillRect(x-3,y-2,1,1)}
+    if(vn>=12){g.fillStyle='rgba(122,150,90,.4)';g.fillRect(x-1,y-2,2,2)}
+    if(cap>0){g.fillStyle='#eef2f4';g.fillRect(x-1,y-5,3,1)}}});
   // the named ground shows its walking (sprint 14): worn grass first, then the stones the walks leave, then a small cairn
   for(const sp of spots){if(!sp.lore)continue;const n=loreN[sp.k]||0;if(!n)continue;
     ents.push({y:sp.y-.1,d:()=>{const x=Math.round(sp.x*T),y=Math.round(sp.y*T);

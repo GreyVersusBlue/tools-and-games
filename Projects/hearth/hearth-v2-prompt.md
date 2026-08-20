@@ -56,7 +56,7 @@ Take it from "a nice toy" to "a place people leave open all afternoon and tell s
 - 60 fps on a mid-range phone at the current world size; batch draws, cache static layers, don't allocate in the loop.
 - Pixel art must stay coherent: one palette, one light direction, one outline rule.
 - Copy in the log is warm, specific, and never repeats within a day. No exclamation points.
-- No dependencies, no build step, no external fonts or images. One file. Under ~250 KB.
+- No dependencies, no build step, no external fonts or images. Classic scripts only, `file://`-runnable — no arbitrary size ceiling; a few extra seconds of load time is an acceptable trade for room to grow.
 - Keyboard-reachable controls, visible focus, sensible on portrait phones (HUD collapses to icons).
 
 ## Deliverable per sprint
