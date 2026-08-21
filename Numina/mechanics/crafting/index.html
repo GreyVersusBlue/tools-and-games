@@ -1,0 +1,1041 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crafting &amp; Magic Items · Numina</title>
+  <meta name="description" content="Alchemy, Tinkering, and Arcaneering formulas — and the magic items of Numina.">
+  <link rel="canonical" href="https://greyversusblue.com/Numina/mechanics/crafting/">
+  <link rel="icon" href="/Numina/assets/favicon.svg" type="image/svg+xml">
+  <meta property="og:title" content="Crafting &amp; Magic Items · Numina">
+  <meta property="og:description" content="Alchemy, Tinkering, and Arcaneering formulas — and the magic items of Numina.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://greyversusblue.com/Numina/mechanics/crafting/">
+  <meta property="og:site_name" content="Numina">
+  <meta property="og:image" content="https://greyversusblue.com/Numina/assets/social-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Numina — A live-action roleplay campaign in the world of Aeledd">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/Numina/css/main.css">
+  <link rel="stylesheet" href="/Numina/css/print.css" media="print">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("numina.theme");
+        if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body class="printable">
+  <header class="site-header">
+  <a class="wordmark" href="/Numina/">Numina</a>
+  <nav class="site-nav" aria-label="Site">
+    <a href="/Numina/new-to-numina/">New to Numina</a>
+    <a href="/Numina/lore/">Lore</a>
+    <a href="/Numina/mechanics/" aria-current="true">Mechanics</a>
+  </nav>
+  <form class="header-search" action="/Numina/search/" method="get" role="search">
+    <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
+  </form>
+  <button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Toggle color theme" hidden="">◐</button>
+  <details class="mobile-nav">
+    <summary aria-label="Menu">Menu</summary>
+    <nav aria-label="Site (mobile)">
+      <a href="/Numina/new-to-numina/">New to Numina</a>
+      <a href="/Numina/lore/">Lore</a>
+      <a href="/Numina/mechanics/">Mechanics</a>
+      <a href="/Numina/search/">Search</a>
+    </nav>
+  </details>
+</header>
+
+  <div class="shell">
+  
+<nav class="sidebar" aria-label="Mechanics pages">
+  <details class="sidebar__disclosure" open="">
+    <summary>Mechanics</summary>
+    <ol>
+      
+      <li>
+        <a href="/Numina/mechanics/new-players/">New Players Start Here</a>
+        
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/etiquette-safety/">Etiquette &amp; Safety</a>
+        
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/core-rules/">Core Rules</a>
+        
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/building-a-character/">Building a Character</a>
+        
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/skills/">Skills</a>
+        
+        
+        <ol class="sidebar__sub">
+          
+          <li><a href="/Numina/mechanics/skills/aspects/">Aspects</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/foundations/">Foundations</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/cultures/">Cultures</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/domains/">Domains</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/excellencies/">Excellencies</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/expressions/">Expressions</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/open-skills/">Open Skills</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/attributes-vitality/">Attributes &amp; Vitality</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/hidden-excellencies-expressions/">Hidden Excellencies and Expressions</a></li>
+          
+        </ol>
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/crafting/" aria-current="page">Crafting &amp; Magic Items</a>
+        
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/weapon-construction/">Weapon Construction</a>
+        
+        
+      </li>
+      
+    </ol>
+  </details>
+  
+  <script>
+    (function () {
+      var d = document.querySelector(".sidebar__disclosure");
+      if (d && window.matchMedia("(max-width: 52rem)").matches) d.open = false;
+    })();
+  </script>
+</nav>
+
+  
+  <main data-pagefind-body="" data-pagefind-meta="section:Mechanics">
+    <p class="crumb"><a href="/Numina/mechanics/">Mechanics</a></p>
+    <h1>Crafting &amp; Magic Items</h1>
+    
+      <details class="toc" data-pagefind-ignore="">
+  <summary>On this page</summary>
+  <nav aria-label="On this page">
+    <ol class="toc__list">
+      <li>
+        <a href="#alchemy-formulas">Alchemy Formulas</a>
+        <ol class="toc__sub">
+          <li><a href="#elixirs">Elixirs</a></li>
+          <li><a href="#venoms">Venoms</a></li>
+          <li><a href="#volatiles">Volatiles</a></li>
+        </ol>
+      </li>
+      <li>
+        <a href="#tinkering-formulas">Tinkering Formulas</a>
+        <ol class="toc__sub">
+          <li><a href="#armaments">Armaments</a></li>
+          <li><a href="#utility-apparatus">Utility Apparatus</a></li>
+          <li><a href="#enhancements">Enhancements</a></li>
+          <li><a href="#defensive-implements">Defensive Implements</a></li>
+        </ol>
+      </li>
+      <li>
+        <a href="#arcaneering-formulas">Arcaneering Formulas</a>
+        <ol class="toc__sub">
+          <li><a href="#air">Air</a></li>
+          <li><a href="#earth">Earth</a></li>
+          <li><a href="#fire">Fire</a></li>
+          <li><a href="#water">Water</a></li>
+          <li><a href="#lightning">Lightning</a></li>
+          <li><a href="#ice">Ice</a></li>
+        </ol>
+      </li>
+      <li>
+        <a href="#numina-magic-items">Numina Magic Items</a>
+        <ol class="toc__sub">
+          <li><a href="#holdings-in-numina%3A">Holdings in Numina:</a></li>
+          <li><a href="#1.-purchasing-items">1. Purchasing Items</a></li>
+          <li><a href="#2.-finding-magic-items%3A">2. Finding Magic Items:</a></li>
+          <li><a href="#3.-purchase-%2F-binding-limits">3. Purchase / Binding Limits</a></li>
+          <li><a href="#4.-renewing-items">4. Renewing Items</a></li>
+          <li><a href="#5.-back-room-access">5. Back Room Access</a></li>
+        </ol>
+      </li>
+    </ol>
+  </nav>
+</details>
+<script>
+  (function () {
+    var d = document.currentScript.previousElementSibling;
+    if (d && window.matchMedia("(min-width: 52rem)").matches) d.open = true;
+  })();
+</script>
+
+    
+    
+    <p class="print-action"><button type="button" onclick="window.print()">Print this page</button></p>
+    
+    <h2 id="alchemy-formulas">Alchemy Formulas <a class="heading-anchor" href="#alchemy-formulas" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
+<p>Alchemy is the creation of potions, poisons, and other draughts and drafts. Alchemy can be broken up into three common paths, Elixirs, Venoms, and Volatiles. Elixirs are imbibed healing and curative mixtures. Blade venoms are poisons put on weapons. Volatiles are substances that are thrown at opponents for effects. There is said to be at least one other known path of Alchemy, Mutagens which change the user, but this must be found in-game. To create alchemical substances of a given type, you must have the specific skill for that path of alchemy.</p>
+<p>When you create an alchemical substance, you store it on your person in a flask, vial or similar device you carry on your person. These bottles should be durable and unlikely to shatter and are referred to as Flasks. If you creature multiple types of substance, you should have a vessel that represents each type of alchemy you create. In the case of volatiles, you may choose to carry a pouch instead of a vessel. This pouch must be used only for your representation of reaching for a volatile.</p>
+<p>By default, you cannot pass any alchemical substance off to another player. You can only use the substance on another player.</p>
+<h3 id="elixirs">Elixirs <a class="heading-anchor" href="#elixirs" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>A character who wishes to use elixirs should carry one or more prop bottles of some kind where they store their Elixirs. All Elixirs are in bottled form in your Elixir flask until you use them. Using an Elixir requires a motion drinking or pouring from the Elixir Flask, which should take no less than 3 seconds. You may carry up to 5 elixirs total in your flasks at any time, regardless of how many flasks you carry. Unless otherwise noted, the effect of an Elixir takes effect immediately after they are imbibed.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Purgative</td>
+<td>Cure Physical, Mental, Metabolic or Elemental by Poison (choose one trait group at time of creation)</td>
+<td>Cure Physical, Mental, Metabolic or Elemental by Poison (choose two trait groups at time of creation)</td>
+<td>Cure Physical, Mental, Metabolic or Elemental by Poison (choose two trait group at time of use)</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Throat Coat</td>
+<td>Cure Silence by Poison</td>
+<td>Two uses of Cure Silence by Poison</td>
+<td>Three uses of Cure Silence by Poison</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Calcifying Draught</td>
+<td>Cure Maim by Poison</td>
+<td>Two uses of Cure Maim by Poison</td>
+<td>Three uses of Cure Maim by Poison</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Coagulant Powder</td>
+<td>Two uses of Heal 2</td>
+<td>Four uses of Heal 2</td>
+<td>Six uses of Heal 2</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Rhino Hide Potion</td>
+<td>Grant Melee Defense: Shield</td>
+<td>Grant Physical Defense: Shield</td>
+<td>Grant Physical Defense: Resist</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Antivenom</td>
+<td>Grant Metabolic Defense: Shield</td>
+<td>Grant Metabolic Defense: Resist</td>
+<td>Grant Extra Metabolic Defense: Resist</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Light Step</td>
+<td>After ingesting this Elixir, if the user’s next step triggers a trap or effect card, the user may call “resist”. This does not work for hazard effects that apply to the entire ground area (i.e. the entire floor in a jumpy stone area)</td>
+<td>The effect of this Elixir does not trigger on the next step, but may be activated when needed. If not used, this effect fades when the user takes a Long Rest.</td>
+<td>This Elixir may be used on hazard effects that apply to the entire ground area (i.e. the entire floor in a jumpy stone area)</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Potion of Speed</td>
+<td>Grant Slow Defense: Resist</td>
+<td>Grant Slow/Root Defense: Resist</td>
+<td>Grant Slow/Root/Paralyze Defense: Resist</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Stabilizer</td>
+<td>This Elixir item may be added to any other Elixir. The target Elixir may be bottled and given to others to be used at a later time. It is the responsibility of the alchemist to make sure any character they give their Elixirs to knows how to use the Elixir. A bottled Elixir does not count against your limit of 5 carried Elixirs in your flask. This Elixir does not count as a Magic Item for any rules or limitations.</td>
+<td>There is no common enhanced Stabilizer</td>
+<td>This Elixir may be added to any Elixir, Volatile, or Venom. In addition, the target Alchemical item does not expire at the end of the event and may be kept up to one year or until used. <strong>The cost of Stabilizer when you use a rare component is 1 Ketch</strong></td>
+<td>1 Insight</td>
+</tr>
+</tbody>
+</table>
+<p>Some other elixirs rumored to exist include ones that can refresh attributes and increase Vitality.</p>
+<h3 id="venoms">Venoms <a class="heading-anchor" href="#venoms" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>All Venom effects are by Poison unless otherwise noted.</p>
+<p>A character who wishes to use Venoms should carry one or more prop vials of some kind where they store their venoms. <em>All Venoms remain in your Venom vials until applied. Applying a Venom requires a motion pouring or rubbing the Venom on a weapon, which should take no more than 3 seconds.</em></p>
+<p>You may carry up to 5 unapplied venoms at any time. Venoms may be used on your own weapons or on the weapons of others.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Snakebite</td>
+<td>Grant melee attack: 3 Damage</td>
+<td>Grant melee attack: 5 Damage</td>
+<td>Grant melee attack: Double 4 Damage</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Jellyfish Tentacle</td>
+<td>Grant 2 Melee Attacks: 2 Damage</td>
+<td>Grant 4 Melee attacks: 2 damage</td>
+<td>Grant 6 Melee attacks: 2 Damage</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Red Helebore</td>
+<td>Grant melee attack: Agony</td>
+<td>Grant melee attack: Double Agony</td>
+<td>Grant melee attack: Short Drain</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Manticore venom</td>
+<td>Grant melee attack: Short Weakness</td>
+<td>Grant melee attack: Weakness</td>
+<td>Grant melee attack: Stricken</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Banshee’s Bane</td>
+<td>Grant melee attack: Short Silence</td>
+<td>Grant melee attack: Silence</td>
+<td>Grant melee attack: Short Stun</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Withering Eel</td>
+<td>Grant melee attack: Short Maim</td>
+<td>Grant melee attack: Maim</td>
+<td>Grant melee attack: Short Paralyze</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Cruelty’s Bliss</td>
+<td>You may convert the trait of any single Venom from “by Poison” to “By Acid”. The base form of this elixir does not cost coin</td>
+<td>Until your next long rest You may convert the trait of all your Venoms from “by Poison” to “By Acid”. This is a Thread Skill. The common form of this elixir costs 1 Drakar</td>
+<td>For the duration of the event, You may convert the trait of all your Venoms from “by Poison” to “By Acid”. This is a Thread Skill. The rare form of this elixir costs 1 Drakar</td>
+<td>1 Insight</td>
+</tr>
+</tbody>
+</table>
+<p>Some other venoms rumored to exist include ones that can destroy weapons and armor and a killing venom.</p>
+<h3 id="volatiles">Volatiles <a class="heading-anchor" href="#volatiles" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>All Volatile effects are by Poison unless otherwise noted.</p>
+<p><em>All Volatile effects once crafted remain in your Volatile kit until prepared. Preparing a Volatile requires a motion drawing the Volatile from your kit, which should take no more than 3 seconds. Volatiles are Packet Attacks. If you make an attack with a Volatile and miss, the volatile is spent.</em></p>
+<p>You may carry up to 5 Volatiles at any time. Volitiles may only be used by someone with the skill Craft</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Venom Splash</td>
+<td>2x 3 Damage</td>
+<td>4x 3 Damage</td>
+<td>6x 3 Damage</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Acid Bomb</td>
+<td>4 Damage By Acid</td>
+<td>6 damage by Acid</td>
+<td>Double 5 Damage by Acid</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Burning Tar</td>
+<td>Short Maim &lt;limb&gt;</td>
+<td>Maim &lt;limb&gt;</td>
+<td>Agony and Maim &lt;limb&gt;</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Paralytic Gas</td>
+<td>Short Root</td>
+<td>Root</td>
+<td>Paralyze</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Whisper Gas</td>
+<td>Short Silence</td>
+<td>Silence</td>
+<td>Paralyze</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Tanglefoot</td>
+<td>Short Slow</td>
+<td>Slow</td>
+<td>Drain</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Double Batch<br>2 Drakar</td>
+<td>Create a treatment for one basic Volatile so that it may be used twice without the need to prepare it a second time.</td>
+<td>Create a treatment for one common Volatile so that it may be used twice without the need to prepare it a second time.</td>
+<td>Create a treatment for one rare Volatile so that it may be used twice without the need to prepare it a second time.</td>
+<td>1 Insight</td>
+</tr>
+</tbody>
+</table>
+<p>Some other volatiles rumored to exist include ones that can stun the target and ones that can kill.</p>
+<h2 id="tinkering-formulas">Tinkering Formulas <a class="heading-anchor" href="#tinkering-formulas" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
+<p>A Tinker crafts various implements at a lab and carries the resultant devices in a toolkit. A character who wishes to use tinkered devices should carry a kit or pouch where they store their various tools and devices. If a pouch is used, then this pouch may not be used to carry other items, but the toolkit itself may be stored inside another bag if desired. It is not required to carry a separate prop for each device you have prepared.</p>
+<p><em>Once crafted, Devices remain in your toolkit until readied. Readying a Device requires a motion drawing the Device from your toolkit, which should take no less than 3 seconds. Some tinkered devices are applied directly to weapons, armor, or players. These devices do not require a Phys Rep as their effects are immediate after being crafted and are not carried in a Toolkit.</em></p>
+<h3 id="armaments">Armaments <a class="heading-anchor" href="#armaments" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Armaments are devices a tinker crafts to aid them directly in battle. Armaments can only be used by characters with the Craft Armament skill. A tinker can carry up to 5 armaments at any time.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Static Generator</td>
+<td>Make a Packet attack of 4 Damage by Lightning</td>
+<td>Make a Packet attack of 6 Damage by Lightning</td>
+<td>Make a packet attack of Triple 3 Damage by Lightning</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Dissassembler</td>
+<td>Make a melee attack of 5 Damage to Construct</td>
+<td>Make a melee attack of Double 4 Damage to Construct</td>
+<td>Make a melee attack of 10 Damage to Construct</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Electrical Discharge</td>
+<td>Make a Packet attack of Agony By Lightning</td>
+<td>Make a Packet attack of Short Weakness by Lightning</td>
+<td>Make a Packet attack of Short Paralyze by Lightning</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Electrocution</td>
+<td>Make a Packet attack of Short Destroy by Lightning</td>
+<td>Make a Packet attack of Destroy by Lightning</td>
+<td>Make a Packet attack of Destroy and 3 Damage by Lightning</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Repulsion Field</td>
+<td>You may use either a combat-safe device or a weapon to call Disengage</td>
+<td>Your Repulsion Field has 2 Uses</td>
+<td>N/A</td>
+<td>1 Fortitude</td>
+</tr>
+</tbody>
+</table>
+<h3 id="utility-apparatus">Utility Apparatus <a class="heading-anchor" href="#utility-apparatus" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Utility Apparatus are devices designed for specific non-combat purposes. These items can only be used by a character with the skill Craft Utility Apparatus.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lock Breaker</td>
+<td>Expend this Device to open a lock. (Note: Do not physically destroy the lock.)</td>
+<td>Your Lock Breaker has 2 uses before being expended.</td>
+<td>Your Lock Breaker has 3 uses before being expended.</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Trap Breaker</td>
+<td>Expend this Device to Disable a Trap. This does not set off the trap while removing the Trap prop. (Note: Do not physically destroy the trap.)</td>
+<td>Your Trap Breaker has 2 uses before being expended.</td>
+<td>Your Trap Breaker has 3 uses before being expended.</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Portal Generator<br>0 Coin</td>
+<td>Expend this device to place a protection on a cabin. Everyone who sleeps there gains 2 protection when they awaken and leave the dwelling. Put a sign on the door of the dwelling which reminds people of this effect. Cost.</td>
+<td>4 Protection</td>
+<td>6 Protection</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Safety Line</td>
+<td>A Safety Line allows you to call Avoid to any one environmental effect written on an Effect card or explained as a module effect. This does not have to be Readied ahead of time.</td>
+<td>You can use the Safety Line to pull you into a protected position for a limited time. Use the device to gain the Spirit defense for 10 seconds.</td>
+<td>By using the Safety line as a Grapnel you may safely travel short distances across dangerous terrain. <strong>You must carry a yellow colored prop that meets all requirements for a thrown weapon.</strong> Throw this grapnel and immediately become a spirit and walk directly to where it lands. You have the Spirit defense the entire time you are traveling to your Grapnel prop. If you are unable to find your Grapnel or are prevented from reaching it by a Gate, magical barrier, or similar impediment after 30 seconds, you lose the spirit defense and fall unstable.</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Lubricant Pack</td>
+<td>You can activate the Lubricant Pack to escape from bonds. Roleplay for 30 seconds and then remove any shackle or rope props. This requires no verbal.</td>
+<td></td>
+<td></td>
+<td>1 Prowess</td>
+</tr>
+</tbody>
+</table>
+<h3 id="enhancements">Enhancements <a class="heading-anchor" href="#enhancements" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Enhancements are Tinkered devices that are placed on weapons or other objects. These devices may be used by characters other than the Tinker that created them, but the effect must be fully explained or presented in written form to the user.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Magical Channel</td>
+<td>This enhancement is placed on a weapon or buckler. The wielder of that object may cast while holding the weapon or buckler in their off hand. This object may not be given to another once it is attuned to the magics of one user. This effect fades when the user takes a Long Rest.<br><em>Note, you may tuck a weapon under your arm that has the other weapon or buckler and still cast.</em></td>
+<td>The Magical Channel Enhancement does not fade when the user takes a Long Rest.</td>
+<td>N/A</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Crank Mechanism</td>
+<td>Expend this device to instantly re-string a bow.</td>
+<td>The Crank Mechanism has 2 uses</td>
+<td>The Crank Mechanism has 3 uses</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Universal Weapon Kit</td>
+<td>This Enhancement is placed on a weapon, pair of weapons, or a shield. These weapons can be picked up and used by someone without the skills to use them. Once a user picks up these weapons, the Enhancement only works for that character. This effect fades when the user takes a long rest</td>
+<td>The Weapon Attachment effect does not fade when the user takes a Long Rest.</td>
+<td>N/A</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Portable Forge</td>
+<td>You modify one of the pieces of your forge to allow it to carry its effectiveness when in the field. When you have traveled away from town, place the enhanced item on the ground or other flat surface. Until it is moved, all abilities that repair weapons may be done in half time</td>
+<td>N/A</td>
+<td>N/A</td>
+<td>1 Fortitude</td>
+</tr>
+</tbody>
+</table>
+<h3 id="defensive-implements">Defensive Implements <a class="heading-anchor" href="#defensive-implements" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Defensive implements are designed to protect their users. These devices are activated on a target when they are crafted and are not carried in a Toolkit.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Patch Kit</td>
+<td>Grant touch attack Repair 2 armor to self</td>
+<td>2 uses</td>
+<td>Repair 3 armor, 3 uses</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Ablative Plating</td>
+<td>Grant Weapon Defense, Guard.</td>
+<td>Grant Weapon Defense Resist</td>
+<td>Grant Physical Defense Resist</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Hardening</td>
+<td>Grant 3 protection</td>
+<td>Imbue 1 armor. This effect fades when the user takes a Long Rest. This imbue does not stack with Grant Armor effects.</td>
+<td>Grant 1 armor</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Fiber Latticework</td>
+<td>Grant Defense, Resist Destroy</td>
+<td>Imbue by Device: The user may call No Effect to any destroy effects against the targeted weapon. This Implement lasts until the user takes a Long Rest.</td>
+<td>The user may call No Effect to any destroy effects against the targeted weapon</td>
+<td>1 Insight</td>
+</tr>
+</tbody>
+</table>
+<h2 id="arcaneering-formulas">Arcaneering Formulas <a class="heading-anchor" href="#arcaneering-formulas" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
+<p>Arcaneering is the science of harnessing the elements into fabricated objects. These objects fortify and enhance aspects a Domain or some small aspect of a domain to others. Arcaneering can create two types of object: Machina and Hestia.</p>
+<p>Machina are elementally attuned devices using crystals or other small foci to channel the elemental forces into effects. These can be carried by the Arcaneer and used on themself or others. When using Machina which allow you to reuse an attack (e.g. Automated Quiver), additional Thread skills may not be applied to the reused attack.</p>
+<p>Hestia are large emplacements that can be used by anyone to draw out elemental power.</p>
+<p>A Hestia must:</p>
+<ul>
+<li>Stand a minimum of 24 inches tall</li>
+<li>Be constructed with a counter of some kind for players to interact with</li>
+</ul>
+<p>A Hestia has a set number of uses before it runs out of power. Each time a character uses the Hestia, they must reduce the counter by 1. Hestia may have more charges added to them, and the individual Hestia will describe how to do so.</p>
+<p>It takes an Arcaneer 1 minute to place a Hestia, and if it is picked up the Arcaneer must spend 5 minutes recalibrating the Elements of the Hestia before it can be placed again.</p>
+<p>Hestia are Red Tag items, so may not be moved or interacted with except by the Arcaneer who created it or by those to whom the Arcaneer has explained the Hestia.</p>
+<h3 id="air">Air <a class="heading-anchor" href="#air" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Air Arcaneering harnesses the element of Air to enhance ranged projectile attacks.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Target Marker</td>
+<td>Your projectile and thrown attacks do +1 damage against a single target you choose. <strong>This is a Thread Skill.</strong></td>
+<td>Your projectile and thrown attacks do +1 damage against a single target you choose. You may switch targets once if your first target is killed. <strong>This is a Thread Skill.</strong></td>
+<td>Your projectile and thrown attacks do +1 damage against a single target you choose. You may switch targets once if your first target is killed. You may use this Machina twice before it is expended. <strong>This is a Thread Skill.</strong></td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Tensioner</td>
+<td>You may touch a packet to a bow that has been de-strung by blocking a melee strike. You may instantly re-string your bow.</td>
+<td>You may use the Tensioner twice before it is expended.</td>
+<td>N/A</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Automated Quiver</td>
+<td>When making a missile or thrown called damage attack you expend the Automated Quiver to make the same attack twice, but subtract 1 damage from each attack.</td>
+<td>You may use the Automated Quiver twice before it is expended.</td>
+<td>When making a projectile or thrown attack you may expend this Machina to make the same attack twice, and add 1 damage to each attack.</td>
+<td>1 Insight</td>
+</tr>
+</tbody>
+</table>
+<h4 id="hestia%3A-arrow-dispenser">Hestia: Arrow Dispenser</h4>
+<p>This Hestia can be used to draw arrows into a quiver. When created it carries 10 arrows. More arrows can be added by spending 1 additional insight for 10 arrows or 1 Drakar for 5 arrows. This Hestia may not hold more than 30 arrows at any time.</p>
+<p>Cost: 1 common component and 3 Drakar</p>
+<h4 id="hestia%3A-windwalking-pylon">Hestia: Windwalking pylon</h4>
+<p>Set up two terminus points following the normal Hestia rules. When this Hestia is activated, the user gains the Spirit defense and travels immediately to the other pylon. This Hestia has 5 charges when created. You may spend 1 insight to increase this by 5 charges. This Hestia cannot have more than 10 total charges. If you are unable to find your pylon or are prevented from reaching it by a Gate, magical barrier, or similar impediment after 30 seconds, you lose the spirit defense and fall unstable. Cost: 1 Common Component and 3 Drakar</p>
+<h3 id="earth">Earth <a class="heading-anchor" href="#earth" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Earth Arcaneering harnesses the element of Earth to enhance the Earth domain.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Focusing Crystal</td>
+<td>Exhaust this Machina, touch a player and call “Imbue Centered”</td>
+<td>You may use this Machina 3 times before it is expended.</td>
+<td>You may use this Machina once each time you take a Long Rest.</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Earth Channel</td>
+<td></td>
+<td>While Centered if you use a Heal or Grant Protection effect you heal 1 to self or grant 1 protection. <strong>This is a Thread Skill</strong></td>
+<td>Earth Channel is now an Extra <strong>Thread Skill.</strong></td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Earthen Magnet</td>
+<td>When you Center, Expend this Machina to gain a Guard Elemental defense. This Machina has 2 uses</td>
+<td>When you Center, Expend this Machina to gain a Resist Elemental defense. This Machina has 2 uses</td>
+<td>When you Center, Expend this Machina to gain a Resist Elemental or Resist Mental defense. This Machina has 3 uses</td>
+<td>1 Prowess</td>
+</tr>
+</tbody>
+</table>
+<h4 id="hestia%3A-emplaced-repair-armor-device">Hestia: Emplaced Repair Armor Device</h4>
+<p>This Hestia can be used to instantly repair armor. Each charge can repair 1 armor. This Hestia begins with 10 charges and can be further enhanced by spending 1 Prowess for 10 more charges or 1 Drakar for 5 additional charges. This Hestia may have a maximum of 20 charges.</p>
+<p>Cost: 1 Common Component and 5 Drakar</p>
+<h3 id="fire">Fire <a class="heading-anchor" href="#fire" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Fire Arcaneering harnesses the element of Fire to enhance the offensive magic.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Everburning Flame</td>
+<td>Expend this Machina to reuse any attack or ability that uses an elemental trait.<br>This second use costs no additional attributes.</td>
+<td>You may use this Machina twice before it is expended.</td>
+<td>You may use this Machina three times before it is expended.</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Scorching Focus</td>
+<td>When this Machina is expended, the user may change the trait of all their offensive packet attacks to “By Fire”.<br>Additionally, if the user has damaged a target with a “By Fire” effect, they may increase all their Fire damage to that specific target by 1. <strong>This effect lasts until the user takes a Short Rest.</strong><br><em>This is a thread skill.**</em></td>
+<td>This Machina may be used twice before it is expended.</td>
+<td>This Machina may be used once per Long Rest.</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Heatwave</td>
+<td>Expend this Machina and throw a packet of “repel by fire”.</td>
+<td>This Machina may be used twice before it is expended.</td>
+<td>The effect changes to “3 damage and repel by Fire”. You may use this 2 times before this Machina is expended.</td>
+<td>1 Fortitude</td>
+</tr>
+</tbody>
+</table>
+<h4 id="hestia%3A-dominus%E2%80%99-torch">Hestia: Dominus’ Torch</h4>
+<p>This Hestia can be used to grant packet attacks of “2 damage by fire”. When a charge is expended, call “Grant Extra packet attack, 2 damage by fire”. A character may only have 1 charge from this Hestia active at any time. A base Hestia has 10 charges. You can create a Hestia with 20 charges by either spending an additional 1 Insight or 2 Drakkar.</p>
+<p>Cost: 1 Common Component and 3 Drakar</p>
+<h3 id="water">Water <a class="heading-anchor" href="#water" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Water Arcaneering harnesses the element of Water to enhance healing and curing abilities.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tidal Focus</td>
+<td>Expend this Machina to immediately re-use a cure effect with no attribute cost. This second use may not be saved and must be used immediately after the first cure effect. This Machina may not be used on a “Cure Death” Effect.</td>
+<td>You may use this Machina 2 times before it is expended</td>
+<td>You may use this Machina once each time you take a Long Rest.</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Flow Regulator</td>
+<td>Expend this Machina. You may divide your heal effects into multiple uses. I.e. instead of “Heal 5” you may instead call out “heal 2” and “heal 3”. You may use this Machina twice before it is expended. This Machina does not change any traits. <strong>This is a Thread Skill.</strong></td>
+<td>When activated you may use the effect of this Machina until your next Long Rest</td>
+<td>This Machina may be activated Four times before it is expended.</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Focusing Nozzle</td>
+<td>Expend this Machina to remove the delay time between uses of beneficial effects. This effect lasts until your next Short Rest</td>
+<td>This Machina may be used twice before it is expended.</td>
+<td>This Machina may be used once per Long Rest.</td>
+<td>1 Insight</td>
+</tr>
+</tbody>
+</table>
+<h4 id="hestia%3A-stabilizing-field">Hestia: Stabilizing Field</h4>
+<p>Each charge of this Hestia allows a user to call out “Stabilize by Water”. To use a charge of this Hestia you must be within arm’s reach of both the Hestia and the Target of the Stabilize effect. This Hestia does not have a limit of charges, but must be activated and placed prior to use. Once this Hestia is moved after activation, it is immediately expended and cannot be used again.</p>
+<p>Cost: 1 Common Component and 2 Drakar</p>
+<h3 id="lightning">Lightning <a class="heading-anchor" href="#lightning" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Lightning Arcaneering harnesses the element of Lightning to enhance the melee attackers.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Electrical Focus</td>
+<td>Expend this Machina when a Melee attack is negated with a called defense. That melee attack may be used again at no attribute cost.</td>
+<td>This Machina may be used 3 times before it is expended</td>
+<td>This Machina may be used once per Long Rest</td>
+<td>1 Insight</td>
+</tr>
+<tr>
+<td>Tazing Current</td>
+<td>Expend this Machina to add “And Agony” to any called melee strike. This Machina also changes the trait of the attack to “By Lightning” This is a Thread Skill.</td>
+<td>This Machina may be used 3 times before it is expended</td>
+<td>This Machina may be used once per Long Rest</td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Reanimating Jolt</td>
+<td>Expend this Machina and call out “Grant Extra Maim Defense: Guard”</td>
+<td>Expend this Machina and make a packet attack of “Cure Maim by Lightning”</td>
+<td>Expend this Machina and make a packet attack of “Cure All Maim by Lightning”</td>
+<td>1 Fortitude</td>
+</tr>
+</tbody>
+</table>
+<h4 id="hestia%3A-grounding-rod">Hestia: Grounding Rod</h4>
+<p>This Hestia can be used to grant packet attacks of “2 damage by Lightning”. When a charge is expended, call “Grant Extra melee attack, 2 damage by Lightning”. A character may only have 1 charge from this Hestia active at any time. A base Hestia has 10 charges. You can create a Hestia with 20 charges by either spending an additional 1 Insight or 2 Drakkar.</p>
+<p>Cost: 1 Common Component and 3 Drakar</p>
+<h3 id="ice">Ice <a class="heading-anchor" href="#ice" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Ice Arcaneering harnesses the element of Ice to enhance Defense.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Effect</th>
+<th>Common Component</th>
+<th>Rare Component</th>
+<th>Attribute</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Icy Protector</td>
+<td>Expend this Machina to modify a shield to be usable by someone without the shield skill. This lasts until the character using the shield takes a long rest. The call to use this is Imbue by Arcaneering.</td>
+<td>The effect of this Machina lasts until the end of the event.</td>
+<td>The effect of this Machina lasts until the end of the event. Additionally, the shield arm does not count as occupied for the purpose of delivering beneficial packet effects.</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Ablative Ice Coating</td>
+<td>Expend this Machina and call out “Grant extra Melee defense: Guard”.</td>
+<td>This Machina may be used twice before it is expended.</td>
+<td>Change the effect of this Machina to “Parry” instead of “Guard”.</td>
+<td>1 Fortitude</td>
+</tr>
+<tr>
+<td>Instant Freeze</td>
+<td>Expend this Machina. Until the user takes a Long Rest they may convert any “Heal” effects they receive into “Repair Armor” effects of the same numeric value.</td>
+<td>The effect of this Machina may be split. I.e. a “heal 5” effect may be converted into “repair 2 armor and heal 3”. This Machina lasts until the user takes a Long Rest.</td>
+<td></td>
+<td>1 Prowess</td>
+</tr>
+<tr>
+<td>Ice Wall</td>
+<td>When taking a rest of any kind, you may place this Machina within reach. You may call “Guard by Ice” to negate the first non-beneficial effect which hits you, without interrupting your rest. This Machina ceases to function when used.</td>
+<td>When taking a rest of any kind, you may place this Machina within reach. You may call “resist by Earth” to negate a single non-beneficial effect which hits you, without interrupting your rest. This Machina ceases to function when used.</td>
+<td>This Machina uses the common effect and may be used a total of twice. This machina may be picked up and moved until its second use has been expended.</td>
+<td>1 Prowess</td>
+</tr>
+</tbody>
+</table>
+<h4 id="hestia%3A-crystalline-chamber">Hestia: Crystalline Chamber</h4>
+<p>This Hestia can be used to grant 2 protection. When a charge is expended, call “Grant 2 protection by Ice”. A base Hestia has 10 charges. You can create a Hestia with 20 charges by either spending an additional 1 Insight or 2 Drakkar. Cost: 1 Common Component and 2 Drakar</p>
+<h2 id="numina-magic-items">Numina Magic Items <a class="heading-anchor" href="#numina-magic-items" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
+<h3 id="holdings-in-numina%3A">Holdings in Numina: <a class="heading-anchor" href="#holdings-in-numina%3A" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>A Holding represents a resource, position, or sphere of influence your character can draw upon between events to shape the game world. These are not just flavor or background details-they are actionable assets tied to the game’s mechanics.</p>
+<p>Holdings allow you to submit Info Skills that leverage these resources to affect the game world. For example, “I use my ship to deliver rice to the Isles of Light for the Midsummer Festival.” The staff will treat this as a meaningful interaction through your Holding, and it will count as one of your two Info Skills submissions for the event cycle.</p>
+<p><strong>You may only use one Holding skill per between event submission. You may not use a Holding twice even though you can submit Two Info Skills.</strong></p>
+<p>Holdings can be almost anything tangible or intangible that provides in-game leverage: a merchant ship, an inn, a vineyard, a minor position in a royal court, or even a mystical grove occupied by an Arcanii. A Holding represents your character’s ability to mobilize this asset in meaningful ways, assuming you have paid to maintain it.</p>
+<p>While characters may own ships, estates, or businesses or be a member of a guild, convocation or noble house in their backstory or through in-game roleplay, this does <em>not</em> automatically grant them a Holding. A Holding is more than a possession-it’s a resource with mechanical impact. If your character owns a ship, the ship must participate in trade or fishing or the like to stay funded. It’s assumed to break even financially and requires no attention. But if you wish to use that ship to smuggle, trade, explore, or influence world events, it must be a registered Holding and you must actively pay for its operation.</p>
+<p>You may roleplay any background you’d like (like being a farmer) without needing a Holding. For example, you can say you “grew up on a farm” or “run a small family farm” as part of your character’s story. A farm holding is only required if you want your farm to provide between-game actions, resources, or ongoing world impact. Without a Holding, staff may acknowledge these details in roleplay, but they do not grant between event actions.</p>
+<p>Holdings come in three levels, from small operations to vast, multi-regional enterprises. Level 1 Holdings may represent a single ship or shop; Level 2 could mean a small group of ships, a chain of shops, or regional influence; Level 3 reflects wide-reaching operations or elite status, such as being on a Convocation or leading a transnational shopping chain.</p>
+<p>Importantly, Holdings must be approved by Plot. You cannot declare ownership of something like a national circus or influence in a court unless Plot agrees that it fits the world. In general, creative and immersive ideas are welcome, but some concepts are explicitly off-limits for balance and story reasons (e.g., a personal army or a private research library). To obtain approval, submit your Holding idea to NuminaHistory@gmail.com.</p>
+<p>Holdings evolve in play. You may gain one through a Foundation skill, purchase one with in-game coin, or earn one through roleplay. They can grow in power, but only through substantial in-game influence not by spending coin or CP alone. Plot will watch how you use your Holding, and if you create meaningful change in the world, your Holding may increase in level. Conversely, if you misuse or neglect your Holding, it may degrade over time.</p>
+<p>Holdings are tools of narrative agency, economy, and world-building. Used well, they give your character reach beyond Fortunes Bend-into politics, trade, shadowy networks, and mystical connections. They reward planning, creativity, and investment-and help you tell a bigger story.</p>
+<h4 id="holdings%3A-game-mechanics-and-rules-summary">Holdings: Game Mechanics and Rules Summary</h4>
+<h4 id="what-is-a-holding%3F">What Is a Holding?</h4>
+<p>A Holding is a defined, plot-approved asset that you can use to influence the game world between events. It must be paid for (via CP or IG coin) to function and is used through the Info Skill system.</p>
+<h4 id="how-to-obtain-a-holding-(level-1)%3A">How to Obtain a Holding (Level 1):</h4>
+<p>You may only have one Holding.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Foundation Skill</td>
+<td>4 CP for the Holding skill</td>
+</tr>
+<tr>
+<td>2. Purchased with Coin</td>
+<td>Base cost is 1 Reel, specialized holdings may cost more</td>
+</tr>
+<tr>
+<td>3. Earned via Plot</td>
+<td>This is a plot reward and the cost will be determined in that plotline</td>
+</tr>
+</tbody>
+</table>
+<h4 id="levels-of-holdings%3A">Levels of Holdings:</h4>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Description</th>
+<th>Use Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>One meaningful resource (a ship, shop, minor influence)</td>
+<td>1 Ketch (or no cost if skill purchased)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Larger or multiple assets (fleet of five ships, regional network, minor organization)</td>
+<td>5 Ketch (or 4 Ketch with the skill)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Major scale (multi-kingdom operation, Convocation seat, etc.)</td>
+<td>2 Reel</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Level 2 and 3 Holdings must be earned through in-game actions.</li>
+<li>You may use a higher-level Holding as a lower-level one (e.g., Level 3 as a Level 1) for reduced cost.</li>
+<li>Level 3 Holdings must be used every event at least at Level 1, or they risk degrading over time.</li>
+</ul>
+<h4 id="using-your-holding%3A">Using Your Holding:</h4>
+<ul>
+<li>Submit an Info Skill titled ‘Holding’ with a clear description of what your resource is doing.</li>
+<li>This counts as one of your two Info Skills.</li>
+<li>You must pay at the event before you intend to use your Holding (e.g., pay at Summer 2025 to use post-event).</li>
+<li>If you haven’t paid (or invested CP), you may not use your Holding.</li>
+</ul>
+<h4 id="restrictions%3A">Restrictions:</h4>
+<ul>
+<li>All Holdings must be approved by Plot.</li>
+<li>Not Allowed as Holdings:
+<ul>
+<li>Libraries, laboratories and workshops (use Research skill instead)</li>
+<li>Courier networks (use Courier skill instead)</li>
+<li>Military Holdings Exception: Owning an offensive military force removes you from the Pact and is grounds for character retirement. Defensive mercenaries or peaceful scouts will be considered, but require additional information and plot oversight.</li>
+<li>Evil Holdings (e.g., slave markets, torture pits, etc) will not be approved. Try again with something less grim.</li>
+</ul>
+</li>
+</ul>
+<h4 id="risks-and-consequences%3A">Risks and Consequences:</h4>
+<ul>
+<li>Holdings used for aggressive or risky actions (e.g., smuggling during a blockade, interfering with nobles) may suffer negative consequences:
+<ul>
+<li>Lose a level</li>
+<li>Become unusable temporarily</li>
+<li>Require additional costs to repair or recover</li>
+</ul>
+</li>
+<li>You may not use your Holding to do the impossible (e.g., mining gold from an iron mine).</li>
+</ul>
+<h4 id="growing-a-holding%3A">Growing a Holding:</h4>
+<ul>
+<li>Holdings do not level up from coin or CP.</li>
+<li>You must cause in-game change or influence using your Holding to grow it.</li>
+<li>For example: using your circus to recruit new acts during a major event may result in a Level 2 upgrade.</li>
+<li>Info Skills like ‘How do I grow my Holding?’ will not work. You must drive the growth through gameplay.</li>
+</ul>
+<h3 id="1.-purchasing-items">1. Purchasing Items <a class="heading-anchor" href="#1.-purchasing-items" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<ul>
+<li>Magic items are available for purchase from in-game merchants.</li>
+<li>The cost is listed directly on the item.</li>
+<li>When you purchase an item, it becomes bound to you - you cannot give it away or transfer ownership.</li>
+</ul>
+<h3 id="2.-finding-magic-items%3A">2. Finding Magic Items: <a class="heading-anchor" href="#2.-finding-magic-items%3A" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<ul>
+<li>You may find magic items in-game. They will have the same tag format as purchased magic items.</li>
+<li>The first person to use the item is now bound to it.</li>
+<li>There is no cost to bound a found item</li>
+</ul>
+<h3 id="3.-purchase-%2F-binding-limits">3. Purchase / Binding Limits <a class="heading-anchor" href="#3.-purchase-%2F-binding-limits" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<ul>
+<li>One Item Per Event Limit: You may only bind one item from each unique series at a time. So if you find an item from the Dawn series, you cannot bind a second item from that series.</li>
+<li>You may only bind a total of three items, each from a different series.</li>
+</ul>
+<h3 id="4.-renewing-items">4. Renewing Items <a class="heading-anchor" href="#4.-renewing-items" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<ul>
+<li>The first event you find or buy an item, that item is good for the remainder of that event and the full event of the next event you attend.</li>
+<li>In the second event you attend, you must renew the item at the Merchants if you want it to remain for the third event you attend.</li>
+<li>Merchants will take both coin and bank script.</li>
+<li>The cost of renewing an item doubles each time it is renewed. For example:
+<ul>
+<li>Initial cost: 1 Drakkar</li>
+<li>1st Renewal: 2 Drakkar</li>
+<li>2nd Renewal: 4 Drakkar</li>
+<li>3rd Renewal: 8 Drakkar</li>
+<li>…and so on.</li>
+</ul>
+</li>
+<li>Any item not renewed during an event, after the first event you purchase the item, stops functioning at the end of that event.</li>
+<li>If you do not attend an event, the cost does not increase and the renewal is still in effect.</li>
+<li>You may renew an item as many times as you like.</li>
+</ul>
+<h3 id="5.-back-room-access">5. Back Room Access <a class="heading-anchor" href="#5.-back-room-access" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<ul>
+<li>Characters with the <strong>What’s in Back</strong> skill may purchase items that are specifically labeled as Back Room items.</li>
+<li>These items are not available to characters who do not have this skill.</li>
+<li>These items count toward the one-item-per-event limit.</li>
+</ul>
+
+    
+  </main>
+</div>
+
+  <footer class="site-footer">
+  
+<svg class="orn orn--rule" viewBox="0 0 600 46" width="600" height="46" aria-hidden="true" focusable="false">
+  <g fill="none" stroke="currentColor" stroke-linecap="round">
+    <path d="M18 26 Q160 22.5 288 24 Q440 25.5 582 23.5" stroke-width="2"></path>
+    <path d="M34 31 Q170 28 298 29 Q430 30 566 28.5" stroke-width="1"></path>
+    <path d="M18 26 Q7.5 25 5.5 17.5 Q9.5 11.5 15.5 14.5 Q19.5 18 18 26" stroke-width="1.6"></path>
+    <path d="M582 23.5 Q593 23.5 595.5 30.5 Q591.5 36.5 585.5 33.5 Q581.5 30 582 23.5" stroke-width="1.6"></path>
+    <path d="M258 24 Q251 17.5 242 18.5" stroke-width="1.3"></path>
+    <path d="M342 24.6 Q350 31 359 29.4" stroke-width="1.3"></path>
+  </g>
+  <path d="M300 7.5 Q306.5 13.5 303.5 20.5 Q300 25.5 296.4 20 Q294.2 13 300 7.5 Z" fill="currentColor"></path>
+  <path d="M287 23.6 Q280 17.5 271 19 Q276.5 24.8 285.5 24.8 Q286.4 24.3 287 23.6 Z" fill="var(--gold-bright)"></path>
+  <path d="M313 24.4 Q320.5 30.5 329.5 28.6 Q323.5 22.8 314.8 23.2 Q313.8 23.8 313 24.4 Z" fill="var(--gold-bright)"></path>
+  <circle cx="300" cy="27.4" r="2" fill="currentColor"></circle>
+  <circle cx="242" cy="18.3" r="1.4" fill="currentColor"></circle>
+  <circle cx="359" cy="29.2" r="1.4" fill="currentColor"></circle>
+</svg>
+
+  <p>
+    Numina is created by Zyz Adventures, LLC.
+    <a href="http://www.numinalarp.com" rel="external">Official site</a> ·
+    <a href="https://discord.gg/YUbmyK4Ehb" rel="external">Discord</a>
+  </p>
+  <p class="site-footer__fine">Unofficial player reference. Content © Zyz Adventures, LLC.</p>
+</footer>
+
+  <script src="/Numina/js/theme.js" defer=""></script>
+</body>
+</html>

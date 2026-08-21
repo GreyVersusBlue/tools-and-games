@@ -6,7 +6,7 @@ name: Numina CI
 on:
   pull_request:
     paths:
-      - "Projects/Numina/**"
+      - "Numina/**"
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: Projects/Numina
+    working-directory: Numina
 
 jobs:
   build:
@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: Projects/Numina/package-lock.json
+          cache-dependency-path: Numina/package-lock.json
 
       - run: npm ci
 
@@ -46,7 +46,7 @@ jobs:
           # pinned 1.5.2. Everything Pagefind derives from — the HTML — is
           # covered, and `npm test` separately checks the index is not stale.
           if ! git diff --quiet -- . ':!pagefind'; then
-            echo "::error::The committed build is stale. Run 'npm run build' in Projects/Numina and commit the regenerated output alongside your source change."
+            echo "::error::The committed build is stale. Run 'npm run build' in Numina and commit the regenerated output alongside your source change."
             git diff --stat -- . ':!pagefind'
             exit 1
           fi

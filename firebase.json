@@ -5,11 +5,12 @@
       "firebase.json",
       "**/.*",
       "**/node_modules/**",
-      "**/source-material/**"
+      "**/source-material/**",
+      "**/discord-logs/**"
     ],
     "headers": [
       {
-        "source": "/Projects/Numina/pagefind/**",
+        "source": "/Numina/pagefind/**",
         "headers": [
           { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
         ]
