@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Building a Character · Numina</title>
+  <meta name="description" content="The nuts and bolts of creating a Numina character.">
+  <link rel="canonical" href="https://greyversusblue.com/Numina/mechanics/building-a-character/">
+  <link rel="icon" href="/Numina/assets/favicon.svg" type="image/svg+xml">
+  <meta property="og:title" content="Building a Character · Numina">
+  <meta property="og:description" content="The nuts and bolts of creating a Numina character.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://greyversusblue.com/Numina/mechanics/building-a-character/">
+  <meta property="og:site_name" content="Numina">
+  <meta property="og:image" content="https://greyversusblue.com/Numina/assets/social-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Numina — A live-action roleplay campaign in the world of Aeledd">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/Numina/css/main.css">
+  <link rel="stylesheet" href="/Numina/css/print.css" media="print">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("numina.theme");
+        if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body class="printable">
+  <header class="site-header">
+  <a class="wordmark" href="/Numina/">Numina</a>
+  <nav class="site-nav" aria-label="Site">
+    <a href="/Numina/new-to-numina/">New to Numina</a>
+    <a href="/Numina/lore/">Lore</a>
+    <a href="/Numina/mechanics/" aria-current="true">Mechanics</a>
+  </nav>
+  <form class="header-search" action="/Numina/search/" method="get" role="search">
+    <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
+  </form>
+  <button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Toggle color theme" hidden="">◐</button>
+  <details class="mobile-nav">
+    <summary aria-label="Menu">Menu</summary>
+    <nav aria-label="Site (mobile)">
+      <a href="/Numina/new-to-numina/">New to Numina</a>
+      <a href="/Numina/lore/">Lore</a>
+      <a href="/Numina/mechanics/">Mechanics</a>
+      <a href="/Numina/search/">Search</a>
+    </nav>
+  </details>
+</header>
+
+  <div class="shell">
+  
+<nav class="sidebar" aria-label="Mechanics pages">
+  <details class="sidebar__disclosure" open="">
+    <summary>Mechanics</summary>
+    <ol>
+      
+      <li>
+        <a href="/Numina/mechanics/new-players/">New Players Start Here</a>
+        
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/etiquette-safety/">Etiquette &amp; Safety</a>
+        
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/core-rules/">Core Rules</a>
+        
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/building-a-character/" aria-current="page">Building a Character</a>
+        
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/skills/">Skills</a>
+        
+        
+        <ol class="sidebar__sub">
+          
+          <li><a href="/Numina/mechanics/skills/aspects/">Aspects</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/foundations/">Foundations</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/cultures/">Cultures</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/domains/">Domains</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/excellencies/">Excellencies</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/expressions/">Expressions</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/open-skills/">Open Skills</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/attributes-vitality/">Attributes &amp; Vitality</a></li>
+          
+          <li><a href="/Numina/mechanics/skills/hidden-excellencies-expressions/">Hidden Excellencies and Expressions</a></li>
+          
+        </ol>
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/crafting/">Crafting &amp; Magic Items</a>
+        
+        
+      </li>
+      
+      <li>
+        <a href="/Numina/mechanics/weapon-construction/">Weapon Construction</a>
+        
+        
+      </li>
+      
+    </ol>
+  </details>
+  
+  <script>
+    (function () {
+      var d = document.querySelector(".sidebar__disclosure");
+      if (d && window.matchMedia("(max-width: 52rem)").matches) d.open = false;
+    })();
+  </script>
+</nav>
+
+  
+  <main data-pagefind-body="" data-pagefind-meta="section:Mechanics">
+    <p class="crumb"><a href="/Numina/mechanics/">Mechanics</a></p>
+    <h1>Building a Character</h1>
+    
+      <details class="toc" data-pagefind-ignore="">
+  <summary>On this page</summary>
+  <nav aria-label="On this page">
+    <ol class="toc__list">
+      <li>
+        <a href="#building-a-character">Building a Character</a>
+        <ol class="toc__sub">
+          <li><a href="#assign-your-attributes">Assign Your Attributes</a></li>
+          <li><a href="#wrapping-up">Wrapping Up</a></li>
+          <li><a href="#the-future">The Future</a></li>
+        </ol>
+      </li>
+      <li>
+        <a href="#character-points">Character Points</a>
+        <ol class="toc__sub">
+          <li><a href="#earning-cp">Earning CP</a></li>
+          <li><a href="#numina-cp-cap">Numina CP Cap</a></li>
+        </ol>
+      </li>
+      <li>
+        <a href="#choosing-skills">Choosing Skills</a>
+        <ol class="toc__sub">
+          <li><a href="#explore-your-past">Explore Your Past</a></li>
+          <li><a href="#define-your-role">Define Your Role</a></li>
+        </ol>
+      </li>
+    </ol>
+  </nav>
+</details>
+<script>
+  (function () {
+    var d = document.currentScript.previousElementSibling;
+    if (d && window.matchMedia("(min-width: 52rem)").matches) d.open = true;
+  })();
+</script>
+
+    
+    
+    <p class="print-action"><button type="button" onclick="window.print()">Print this page</button></p>
+    
+    <h2 id="building-a-character">Building a Character <a class="heading-anchor" href="#building-a-character" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
+<p>To get you started building a character for Numina, we have broken it down into logical steps. You start by looking at your character’s past. What does your character look like (Aspect), where did they come from (Culture), and what did they do when they lived there (Foundation). Then you look at your character’s present. Think about when trouble comes to town, or you go to find trouble, how do you manage it? Do you pick up a pair of swords, do you heal the fallen, call down magics upon your foes, or a different path? Then look at the specifics of how you could represent the vision using the rules of the game. Do you want to craft poisons and potions, bring the dead back to life, or kill the living? (Excellencies). Finish off your character by purchasing attributes so you can power your skills that you use in-game.</p>
+<p><strong>Here are the steps broken down for creating a character.</strong></p>
+<p>Before you get started, know that as all players are Adventurers, you start the game with a set of adventurer skills. These allow you to perform many of the core functions of an adventurer such as wielding a basic weapon or bandage someone who is wounded. Adventurer skills do not cost any CP.</p>
+<h3 id="assign-your-attributes">Assign Your Attributes <a class="heading-anchor" href="#assign-your-attributes" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>Attributes power actions in Numina. You need your attributes to perform skills and take blows from others. The more attributes you have, the more times you can do things.</p>
+<ol>
+<li><strong>Step 8</strong> - Purchase Prowess, Fortitude and Insight. Spend these attributes to use skills.</li>
+<li><strong>Step 9</strong> - Purchase Purpose. Void and Purpose allow you to refresh your other attributes after taking a Short or Long Rest so you can continue your adventures. Void cannot currently be purchased.</li>
+<li><strong>Step 10</strong> - Purchase Vitality. Vitality defines how many hits your character can take before they fall Unstable.</li>
+</ol>
+<h3 id="wrapping-up">Wrapping Up <a class="heading-anchor" href="#wrapping-up" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>At this point you are done, and you have a character. You are ready to start playing Numina!</p>
+<p>Of course, some people create their characters differently, they start with costuming or by doing a full mathematical analysis of all potential options or putting the options on a roulette wheel and see where luck takes them. The approach you take is up to you, but we offer the above path to help guide you in your journey.</p>
+<h3 id="the-future">The Future <a class="heading-anchor" href="#the-future" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>The rules in this rulebook only define what you can take as a starting character. Numina is a living campaign influenced by the stories created by the community. Through in-game roleplay, you will have the opportunity to find new skills, new character options, ways to purchase locked excellencies / expressions and more.</p>
+<p>Some players feel restricted when they create a character that a decision is permanent, and they will forever be locked into what they chose. Numina offers options and opportunities for characters to change skills, Excellencies, and other facets of your character. These often require cost and roleplay to achieve, but they are available so that your character can grow and change over time.</p>
+<p>Another note for the future, there are more things to spend CP on than are listed in this book. That includes things that are hinted within these pages and more. As Numina begins these, like other plot options will be out there in the world to find. As with any aspect of a LARP, these achievements are not gained simply or quickly. Just as your character may have a goal to gain a title within their culture, a membership in a restricted club, or the friendship of a reticent person, so too finding details on where these skills might reside, locating trainers and then gaining trainers for them are quests within the world Numina presents. Though, as with many things in a magical world, sometimes things such as this appear when you do not expect them whereas other times they are elusive. Do embrace the journey and as you establish relationships within the world so too will the knowledge held by those you cherish be revealed.</p>
+<h2 id="character-points">Character Points <a class="heading-anchor" href="#character-points" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
+<h3 id="earning-cp">Earning CP <a class="heading-anchor" href="#earning-cp" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>You can earn CP by supporting the Numina community. Methods include:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>CP Amount</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Attending a Numina Event as a PC or NPC</td>
+<td>1 CP</td>
+</tr>
+<tr>
+<td>Helping Set up for a Numina Event by doing a called-out Setup Task</td>
+<td>.5 CP</td>
+</tr>
+<tr>
+<td>Helping Clean up for a Numina Event by doing a called out Cleanup Task</td>
+<td>.5 CP</td>
+</tr>
+<tr>
+<td>Sending in a PEL</td>
+<td>.5 CP</td>
+</tr>
+<tr>
+<td>Donating time or props to Numina As defined for the task.</td>
+<td>—</td>
+</tr>
+<tr>
+<td>NPC’ing a LARP event at a LARP that shares CP with Numina (See the website for the latest list of CP Sharing LARPS).</td>
+<td>Up to 2 CP (Attendance, Cleanup/Setup, PEL)</td>
+</tr>
+<tr>
+<td>Special Incredibly Rare Effects in-game As defined by the effect.</td>
+<td>—</td>
+</tr>
+<tr>
+<td>A player can donate any CP beyond their initial CP to another player as long as this donation does not take them over the CP Cap. Donations can be made from CP that would be over a person’s maximum CP Cap. (see below on CP Cap)</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Note:</strong> The standard CP a player can earn per event is up to 2 CP:
+<strong>(1 CP for attendance + 0.5 CP for setup + 0.5 CP for cleanup OR 1 CP for attendance + 0.5 CP for PEL + 0.5 CP for either setup or cleanup).</strong></p>
+<p><em>In rare cases, additional CP may be awarded for specific event service or support beyond standard participation.</em></p>
+<h3 id="numina-cp-cap">Numina CP Cap <a class="heading-anchor" href="#numina-cp-cap" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<ul>
+<li>Beginning in 2026, a player’s accrued (banked) CP is capped at 100.</li>
+<li>Players may earn any amount of CP during the year; however, no player may hold more than 100 CP in their bank at any time.</li>
+<li>You cannot bank CP above the CP Cap, but you may donate that excess CP, as long as the recipient remains within the CP Cap.</li>
+<li>Any CP earned beyond your starting CP may be donated to another player.</li>
+<li>The CP Cap increases by 15 each year, for example it will be 115 at the start of 2027.</li>
+</ul>
+<h2 id="choosing-skills">Choosing Skills <a class="heading-anchor" href="#choosing-skills" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
+<h3 id="explore-your-past">Explore Your Past <a class="heading-anchor" href="#explore-your-past" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>This represents who your character was before they arrived at the game. Skills in this section provide opportunities for you to explore aspects of your characters history and share it with others.</p>
+<ol>
+<li><strong>Step 1</strong> - Choose 1 or 2 Aspects. These Aspects do not cost CP.
+<em>Note: You can purchase a total of 3 Aspect skills from your Aspects</em></li>
+<li><strong>Step 2</strong> - Choose 1 Foundation. This Foundation does not cost CP.
+<em>Note: You can purchase up to 2 Foundation skills from your Foundation</em></li>
+<li><strong>Step 3</strong> - Choose 1 Culture. This Cultures does not cost CP.
+<em>Note: You can purchase up to 2 Culture skills from your Culture.</em></li>
+</ol>
+<h3 id="define-your-role">Define Your Role <a class="heading-anchor" href="#define-your-role" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
+<p>This defines what you do now that you are an adventurer. Do you hold back the enemy with your sword and shield, do you heal those who fall, or do you choose a different set of skills than the world. While these skills define what you can do, they do not define who or what your character is. You do not take an Aspect and become a ‘Wizard.’ If you see yourself as a Wizard, then you should take on that role and title. Multiple people with different sets of Excellencies or Domains can see themselves as Wizards. The rules do not set those as Traits, you define them through your character history and roleplay. Let your vision decide who your character is, not the names in this rulebook. Expressions represent areas often outside of combat which includes visions, performance, religion, and other pursuits. These help flesh out your character beyond combat.</p>
+<ol>
+<li><strong>Step 4</strong> - Choose your one Domain: This Domain does not cost CP.</li>
+<li><strong>Step 5</strong> - Choose up to three Excellencies*: Your first Excellency costs five CP, each subsequent Excellency costs one additional CP (i.e. the second costs six CP, and the third costs seven CP, etc.). You may purchase up to three Excellencies total (this is a hard limit). Additionally Excellency purchases must be unlocked in-game.
+<strong>Note:</strong> <em>Excellencies</em> marked as hidden require Staff approval before they are unlocked.</li>
+<li><strong>Step 6</strong> - Choose up to two Expressions: Your first Expression costs five CP, each subsequent Expression costs one additional CP. (i.e. the second costs six CP, the third would cost seven CP, etc.). At character creation you may purchase up to two Expressions. Additionally Expression purchases must be unlocked in-game.</li>
+<li><strong>Step 7</strong> - Purchase Skills. Skills come from all the different things you have selected previously and also include Open Skills. Open Skills include a lot of different skills that are available to all players. Skills are of variable costs.</li>
+</ol>
+
+    
+  </main>
+</div>
+
+  <footer class="site-footer">
+  
+<svg class="orn orn--rule" viewBox="0 0 600 46" width="600" height="46" aria-hidden="true" focusable="false">
+  <g fill="none" stroke="currentColor" stroke-linecap="round">
+    <path d="M18 26 Q160 22.5 288 24 Q440 25.5 582 23.5" stroke-width="2"></path>
+    <path d="M34 31 Q170 28 298 29 Q430 30 566 28.5" stroke-width="1"></path>
+    <path d="M18 26 Q7.5 25 5.5 17.5 Q9.5 11.5 15.5 14.5 Q19.5 18 18 26" stroke-width="1.6"></path>
+    <path d="M582 23.5 Q593 23.5 595.5 30.5 Q591.5 36.5 585.5 33.5 Q581.5 30 582 23.5" stroke-width="1.6"></path>
+    <path d="M258 24 Q251 17.5 242 18.5" stroke-width="1.3"></path>
+    <path d="M342 24.6 Q350 31 359 29.4" stroke-width="1.3"></path>
+  </g>
+  <path d="M300 7.5 Q306.5 13.5 303.5 20.5 Q300 25.5 296.4 20 Q294.2 13 300 7.5 Z" fill="currentColor"></path>
+  <path d="M287 23.6 Q280 17.5 271 19 Q276.5 24.8 285.5 24.8 Q286.4 24.3 287 23.6 Z" fill="var(--gold-bright)"></path>
+  <path d="M313 24.4 Q320.5 30.5 329.5 28.6 Q323.5 22.8 314.8 23.2 Q313.8 23.8 313 24.4 Z" fill="var(--gold-bright)"></path>
+  <circle cx="300" cy="27.4" r="2" fill="currentColor"></circle>
+  <circle cx="242" cy="18.3" r="1.4" fill="currentColor"></circle>
+  <circle cx="359" cy="29.2" r="1.4" fill="currentColor"></circle>
+</svg>
+
+  <p>
+    Numina is created by Zyz Adventures, LLC.
+    <a href="http://www.numinalarp.com" rel="external">Official site</a> ·
+    <a href="https://discord.gg/YUbmyK4Ehb" rel="external">Discord</a>
+  </p>
+  <p class="site-footer__fine">Unofficial player reference. Content © Zyz Adventures, LLC.</p>
+</footer>
+
+  <script src="/Numina/js/theme.js" defer=""></script>
+</body>
+</html>

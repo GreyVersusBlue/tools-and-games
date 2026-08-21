@@ -2,4 +2,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://greyversusblue.com/Projects/Numina/sitemap.xml
+Sitemap: https://greyversusblue.com/Numina/sitemap.xml

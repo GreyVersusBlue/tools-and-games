@@ -1,0 +1,25 @@
+---
+layout: layouts/base.njk
+title: New to Numina
+section: New to Numina
+---
+<div class="shell">
+  {% include "partials/sidebar.njk" %}
+  <main>
+    <h1>New to Numina</h1>
+    <p class="lede">Everything the rulebook doesn't cover: what a weekend actually feels like, what to
+    pack, how to try NPCing, and the story so far — written by and for the people who show up and play it.</p>
+    <p>Looking for the rules themselves? <a href="/mechanics/new-players/">Start with New Players Start Here.</a></p>
+    {% include "partials/ornaments/divider.njk" %}
+    <div class="card-grid">
+      {% set navSection = nav.sections | sectionForTitle("New to Numina") %}
+      {% for pg in navSection.pages %}
+      {% set entry = collections.all | pageByUrl(pg.url) %}
+      <a class="card" href="{{ pg.url }}">
+        <h2>{{ pg.title }}</h2>
+        {% if entry %}<p>{{ entry.data.summary }}</p>{% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </main>
+</div>
