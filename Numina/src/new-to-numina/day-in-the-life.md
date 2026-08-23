@@ -15,8 +15,9 @@ knowledge written down.
 Events run four times a year — roughly March, May, August, and November —
 Friday evening through Sunday afternoon, at one of two sites in Virginia that
 alternate through the year. **Camp Horizons**, near Harrisonburg, hosts the
-season-opener and season-closer and has rustic, unheated cabins, so it tends to
-be the colder events. **Prince William Forest Park** hosts the two events in
+season-opener and season-closer and has rustic cabins at the cold end of the
+year, so pack for cold regardless of what the forecast promises.
+**Prince William Forest Park** hosts the two events in
 between and has no air conditioning, so it tends to be the hot ones. Prince
 William books its LARP dates through a park-wide lottery shared with other
 groups, so even staff often do not know those exact dates until after New

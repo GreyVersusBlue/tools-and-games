@@ -34,7 +34,9 @@
     })();
   </script>
 </head>
-<body{% if printable %} class="printable"{% endif %}>
+{#- printable adds the print button and per-chapter page breaks; cardsheet is the
+    dense variant that must stay on one or two sheets, so it cancels those breaks. -#}
+<body{% if printable or cardsheet %} class="{% if printable %}printable{% endif %}{% if printable and cardsheet %} {% endif %}{% if cardsheet %}cardsheet{% endif %}"{% endif %}>
   {% include "partials/header.njk" %}
   {{ content | safe }}
   {% include "partials/footer.njk" %}
