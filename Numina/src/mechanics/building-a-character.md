@@ -1,6 +1,6 @@
 ---
 title: Building a Character
-order: 4
+order: 5
 summary: >-
   The nuts and bolts of creating a Numina character.
 printable: true

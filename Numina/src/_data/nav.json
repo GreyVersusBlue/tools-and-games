@@ -9,7 +9,8 @@
         { "title": "NPCing", "url": "/new-to-numina/npcing/" },
         { "title": "The Story So Far", "url": "/new-to-numina/story-so-far/" },
         { "title": "Community & Etiquette", "url": "/new-to-numina/community-and-etiquette/" },
-        { "title": "Quick Reference", "url": "/new-to-numina/quick-reference/" }
+        { "title": "Quick Reference", "url": "/new-to-numina/quick-reference/" },
+        { "title": "FAQ", "url": "/new-to-numina/faq/" }
       ]
     },
     {
@@ -24,6 +25,7 @@
         { "title": "Travel & Commerce", "url": "/lore/travel-commerce/" },
         { "title": "The Realms", "url": "/lore/realms/" },
         { "title": "A Brief History", "url": "/lore/history/" },
+        { "title": "Notable Figures", "url": "/lore/notable-figures/" },
         { "title": "Glossary", "url": "/lore/glossary/" }
       ]
     },
@@ -34,6 +36,7 @@
         { "title": "New Players Start Here", "url": "/mechanics/new-players/" },
         { "title": "Etiquette & Safety", "url": "/mechanics/etiquette-safety/" },
         { "title": "Core Rules", "url": "/mechanics/core-rules/" },
+        { "title": "Combat Quick Reference", "url": "/mechanics/combat-reference/" },
         { "title": "Building a Character", "url": "/mechanics/building-a-character/" },
         { "title": "Skills", "url": "/mechanics/skills/", "children": [
           { "title": "Aspects", "url": "/mechanics/skills/aspects/" },

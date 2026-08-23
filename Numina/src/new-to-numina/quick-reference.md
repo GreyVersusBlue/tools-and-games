@@ -32,14 +32,34 @@ new-player and NPC ones.
 
 ## What an event costs
 
-Budget roughly $100 per event, which includes two nights of lodging. Meals
-are optional and only catered at Camp Horizons; Prince William Forest Park has
-no catering, so bring your own food or split a grocery run. Prepaying for all
-four events in a season nets a one-time bonus Character Point, but only
-during the early-year prepay window — ask on Discord when that opens.
-Payment is by PayPal or, at most sites, cash or check at the door — **except**
-Prince William Forest Park, which does not allow cash on site because of park
-rules, so plan to pay in advance or bring exact cash for check-in there.
+The event fee is **$125**, and two nights in a cabin are included in that. It
+is worth checking the registration store when you sign up rather than assuming,
+because the fee has gone up more than once over the years.
+
+Meals are separate, optional, and only offered at Camp Horizons — figure
+somewhere around $36 for two breakfasts and Saturday dinner. You have to commit
+to meals **in advance**; there is a cutoff roughly a week before the event and
+you cannot buy in at the door. Prince William Forest Park has no meal service at
+all, so bring a cooler or plan on a twenty to thirty minute drive each way to
+find food.
+
+Prepaying the whole season in one payment during the early-year window earns
+half a bonus Character Point. The window is genuinely limited to the start of
+the year, so ask on Discord when it opens rather than waiting for an
+announcement to find you.
+
+You can pay by PayPal to ZYZ LLC (**@NuminaLarp**), or by cash or check at
+check-in — that works at both sites, whatever you may have heard to the
+contrary. If you pay in advance, screenshot the receipt before you leave home.
+There is no cell service at either site, so a receipt you can only reach online
+is a receipt you do not have.
+
+There is no late fee, and registration stays open right up to game time. The
+meal cutoff is the only deadline that actually bites.
+
+If money is the thing standing between you and an event, come as an NPC
+instead — it costs nothing and your meals are covered. See
+[NPCing](/new-to-numina/npcing/).
 
 ## Character Points and Post-Event Letters
 
@@ -65,8 +85,8 @@ online system is down, email **NuminaPEL@gmail.com** instead.
 ## The two sites
 
 - **Camp Horizons** (Harrisonburg, VA) hosts the season-opener and
-  season-closer. Expect an unheated, rustic cabin, a real hill between the
-  tavern and the mod sites, and cooler weather — pack accordingly, see
+  season-closer. Expect a rustic cabin, a real hill between the tavern and the
+  mod sites, and the coldest weather of the season — pack for cold, see
   [What to Pack](/new-to-numina/what-to-pack/).
 - **Prince William Forest Park** hosts the two events in between. It shares
   its site through a park-wide lottery with other groups, so its exact dates

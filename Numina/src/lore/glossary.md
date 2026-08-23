@@ -1,6 +1,6 @@
 ---
 title: Glossary
-order: 9
+order: 10
 summary: >-
   Terms of the world, linkable from anywhere on the site.
 ---

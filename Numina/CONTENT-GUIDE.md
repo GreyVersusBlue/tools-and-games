@@ -33,9 +33,23 @@ title: Faith & Religion
 order: 5            # position in the section sidebar
 summary: One-sentence teaser shown on section landing pages.
 printable: true     # only on mechanics pages meant for the print packet
+cardsheet: true     # dense one-or-two-sheet card; see below
 toc: false          # optional; force the "On this page" contents off or on
 ---
 ```
+
+`printable` adds a "Print this page" button and starts each `##` section on a
+fresh sheet — right for a long rules chapter, wrong for a cheat sheet. Pages
+that must stay short in print (currently just Combat Quick Reference) set
+`cardsheet: true` **as well**, which cancels those page breaks and shrinks the
+type. If you add content to a cardsheet page, re-check the print preview: the
+target is one or two sheets.
+
+**A new page also needs an entry in `src/_data/nav.json`.** Nothing else picks
+it up — the sidebars and the section landing-page cards are both generated from
+that file, and `npm test` fails if a built page under `lore/`, `mechanics/`, or
+`new-to-numina/` is missing from it. Nation pages are the one exception; they
+come from a collection.
 
 Long pages get an **"On this page"** contents block automatically: it appears
 when the rendered page has at least 1,200 words *and* at least four `##`/`###`
@@ -99,6 +113,42 @@ Nation slugs: `aluvair`, `dovenost`, `mists-of-eltiel`, `five-duchies`,
 | Hidden Excellencies and Expressions | `src/mechanics/skills/hidden-excellencies-expressions.md` |
 | Alchemy / Tinkering / Arcaneering Formulas + Magic Items | `src/mechanics/crafting.md` |
 | Numina Weapon Construction Guidelines | `src/mechanics/weapon-construction.md` |
+
+### Pages with no book chapter behind them
+
+Some pages are written rather than ported, and are maintained by hand:
+
+| Page | What it is |
+| --- | --- |
+| `src/new-to-numina/*.md` | Community knowledge — what a weekend feels like, packing, NPCing, etiquette, the FAQ. Sourced from the Discord logs, not the books. |
+| `src/lore/glossary.md` | One `##` per term; the site's cross-link hub. |
+| `src/lore/notable-figures.md` | Index of named individuals. Each entry is one line plus a link to the page that actually covers them — deliberately not a second copy of the nation pages. |
+| `src/mechanics/combat-reference.md` | A condensation of Core Rules and Etiquette & Safety onto one printable card. Derived, so if a rule changes, change it in the source chapter *and* here. |
+
+### Writing from the Discord logs
+
+`discord-logs/` (gitignored, not in version control) holds channel exports plus
+digests under `summaries/`, and question-and-answer versions under
+`summaries/new-player-friendly/`. When you write a page from them:
+
+1. **Site voice, no real names.** These are semi-private community
+   conversations and the site is public. Write "the community's own rule is…",
+   never "so-and-so said in Discord that…". This applies to staff too.
+2. **Don't hardcode anything volatile.** Prices, dates, and system URLs move.
+   Point at the official site or the registration store instead — the "$100 per
+   event" that sat on Quick Reference for two years was a verbatim lift of a
+   2024 Discord message.
+3. **Check the logs against each other, and against the site.** They contain
+   years of superseded answers and a fair number of contradictions. Prefer the
+   most recent statement from staff, and if two sources disagree, ask rather
+   than picking one.
+4. **Link, don't duplicate.** Most new-player questions are already answered
+   somewhere on the site. A second copy will drift from the first.
+5. **Mind spoilers and provenance for in-play material.** The plot channels mix
+   live campaign secrets, player theories, staff-run NPCs, and player
+   characters, sometimes in the same sentence. Anything player-facing gets a
+   spoiler warning; anything you cannot confidently identify as an NPC stays
+   off the page.
 
 ## Timeline data (`src/_data/timeline.json`)
 

@@ -11,7 +11,7 @@ const PREFIX = "/Numina/";
 const GENERATED = ["index.html", "sitemap.xml", "search", "new-to-numina", "lore", "mechanics", "css", "js", "fonts", "assets", "pagefind"];
 // greyversusblue.com is our own deployed origin: canonical/OG URLs are absolute
 // by spec, so they show up as offsite hrefs here.
-const OFFSITE_ALLOWED = ["www.numinalarp.com", "discord.gg", "pagefind.app", "greyversusblue.com"];
+const OFFSITE_ALLOWED = ["www.numinalarp.com", "numina.lorelogic.info", "discord.gg", "pagefind.app", "greyversusblue.com"];
 
 let failures = 0;
 function ok(cond, label) {

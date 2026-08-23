@@ -26,6 +26,22 @@ main a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.85em; }
 blockquote, table, li, dl { break-inside: avoid; }
 .printable main h2 { break-before: page; }
 .printable main h2:first-of-type { break-before: avoid; }
+
+/* Card sheets are meant to be folded and carried, so they must stay dense: no
+   per-section page breaks, tighter type, and tables that keep their rows
+   together instead of spreading over several sheets. */
+.cardsheet main h2 { break-before: auto; }
+.cardsheet { font-size: 7.5pt; line-height: 1.18; }
+.cardsheet main h1 { font-size: 14pt; margin-bottom: 0.15rem; }
+.cardsheet main h1::after { content: none; }
+.cardsheet main h2 { font-size: 10pt; margin: 0.35rem 0 0.1rem; }
+.cardsheet main h3 { font-size: 8.5pt; margin: 0.25rem 0 0.05rem; }
+.cardsheet main p { margin: 0.15rem 0; }
+.cardsheet main .lede { font-size: 8pt; }
+.cardsheet main table { margin: 0.15rem 0; width: 100%; }
+.cardsheet main th, .cardsheet main td { padding: 1px 4px !important; }
+.cardsheet main h2, .cardsheet main h3, .cardsheet main table { break-inside: avoid; }
+.cardsheet main h2, .cardsheet main h3 { break-after: avoid; }
 .infobox { float: none; border: 1px solid #999; box-shadow: none; }
 
 /* neutralize screen ornamentation for print */
