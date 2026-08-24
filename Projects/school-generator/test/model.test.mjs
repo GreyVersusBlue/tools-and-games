@@ -1,17 +1,19 @@
 // Data-model tests for the parts of School Generator that don't need a browser:
-// grid.js, props.js and the save format. Run `node --test` from
-// Projects/school-generator (no dependencies, no build step).
+// grid.js, props.js and the save format. Polygon rooms have their own file
+// (shapes.test.mjs). Run `node --test` from Projects/school-generator
+// (no dependencies, no build step).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
   CELL, FLOOR_H, MAX_FLOORS,
-  createState, createFloor, buildSampleSchool,
+  createState, createFloor,
   activeFloor, floorBaseY, topOfBuilding, wallHeightOf, floorCellCount,
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
   setTile, getCell, floodRegion, computeLabels, cellIdx, edgeHIdx,
 } from '../js/grid.js';
+import { buildSampleSchool } from '../js/sample.js';
 import {
   addProp, removeProp, getProp, propsOnFloor, propCell,
   addLink, removeLink, linksOnFloor, normalizeProp, normalizeLink, reseedIds,
@@ -215,7 +217,7 @@ test('links connect two different floors', () => {
 
 // ---------- save format ----------
 
-test('a v2 design round-trips unchanged', () => {
+test('a design round-trips unchanged, polygon rooms included', () => {
   const s = buildSampleSchool();
   duplicateFloor(s, 0);
   addProp(s, 'teacher-desk', { x: 30.5, z: 34.25, rotationY: 1.2, data: { finish: 'oak' } });
@@ -230,9 +232,11 @@ test('a v2 design round-trips unchanged', () => {
   assert.deepEqual(back.floors[1].edgesV, s.floors[1].edgesV);
   assert.deepEqual(back.props, s.props);
   assert.deepEqual(back.links, s.links);
+  assert.deepEqual(back.floors[0].shapes, s.floors[0].shapes);
+  assert.ok(back.floors[0].shapes.length, 'the sample school has a polygon room in it');
 });
 
-test('a v1 save loads as a one-floor v2 design', () => {
+test('a v1 save loads as a one-floor current-version design', () => {
   // Exactly the shape v1 wrote: flat grid, no floors/props/links.
   const v1 = {
     version: 1,
@@ -257,6 +261,7 @@ test('a v1 save loads as a one-floor v2 design', () => {
   assert.equal(s.floors[0].edgesH[7], 1);
   assert.equal(s.floors[0].edgesV[9], 2);
   assert.equal(floorCellCount(s.floors[0]), 2);
+  assert.deepEqual(s.floors[0].shapes, [], 'an old design simply has no polygon rooms');
 });
 
 test('load rejects hostile or malformed content instead of trusting it', () => {

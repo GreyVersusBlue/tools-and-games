@@ -1,10 +1,17 @@
 // grid.js — grid data model, pure helpers (no three.js imports)
 // Units are feet. One cell = 4ft x 4ft. Walls live on cell edges.
 //
-// State shape (v2):
+// State shape (v3):
 //   { version, cellFt, floorHt, w, h,
-//     floors: [ { w, h, cells[], edgesH[], edgesV[] }, ... ],
+//     floors: [ { w, h, cells[], edgesH[], edgesV[], shapes[] }, ... ],
 //     currentFloor, props: [], links: [], nextId }
+//
+// A floor carries two room representations side by side. The cell grid is the
+// fast rectangular mode — most of a school is rectangles, and laying them on a
+// 4ft lattice is quicker than drawing them. `shapes[]` (see shapes.js) holds
+// polygon rooms for everything the lattice can't say: angled corners, alcoves,
+// breakout rooms, courtyards. Neither is going away; `convertRegion()` in
+// shapes.js promotes a grid region to a polygon when a room outgrows the grid.
 //
 // All floors share one footprint (w x h) and one grid origin. That is a
 // deliberate constraint: stairs, mezzanine openings and floor cuts all need
@@ -42,12 +49,15 @@ export function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
     edgesH: new Array(w * (h + 1)).fill(0),
     // edgesV[y*(w+1) + x] = edge between cell (x-1,y) and (x,y), x in 0..w. 0 none, 1 wall, 2 door
     edgesV: new Array((w + 1) * h).fill(0),
+    // Polygon rooms on this storey — see shapes.js. Free-floating outlines in
+    // world feet, not tied to the lattice above.
+    shapes: [],
   };
 }
 
 export function createState(w = DEFAULT_W, h = DEFAULT_H) {
   return {
-    version: 2,
+    version: 3,
     cellFt: CELL,
     floorHt: FLOOR_H,
     w, h,
@@ -171,6 +181,16 @@ export function floorCellCount(f) {
   return n;
 }
 
+export const floorShapeCount = (f) => (f && Array.isArray(f.shapes) ? f.shapes.length : 0);
+
+// Ids for props, links and polygon rooms all come off one monotonic counter so
+// nothing in a save file can collide.
+function nextShapeId(s) {
+  const id = Math.max(1, Math.floor(s.nextId || 1));
+  s.nextId = id + 1;
+  return id;
+}
+
 // ---------- floor management ----------
 //
 // Inserting or removing a level renumbers everything above it, so props and
@@ -205,6 +225,19 @@ export function duplicateFloor(s, index = s.currentFloor) {
     cells: src.cells.map((c) => (c ? { room: c.room, color: c.color } : null)),
     edgesH: src.edgesH.slice(),
     edgesV: src.edgesV.slice(),
+    // Copied polygon rooms are new rooms: same outline, fresh ids, so a tool
+    // holding a selection can't end up editing both storeys at once. Cloned
+    // here rather than through shapes.js so grid.js stays a leaf module.
+    shapes: (src.shapes || []).map((sh) => ({
+      id: nextShapeId(s),
+      name: sh.name,
+      color: sh.color,
+      rings: sh.rings.map((r) => ({
+        pts: r.pts.map((p) => ({ x: p.x, z: p.z })),
+        walls: r.walls.slice(),
+        openings: r.openings.map((o) => ({ seg: o.seg, t: o.t, w: o.w })),
+      })),
+    })),
   });
   remapFloorRefs(s, (i) => (i >= at ? i + 1 : i));
   s.currentFloor = at;
@@ -226,73 +259,4 @@ export function setCurrentFloor(s, i) {
   if (n === s.currentFloor) return false;
   s.currentFloor = n;
   return true;
-}
-
-// ---------- sample school (first-run demo content) ----------
-
-function floorRect(f, x0, y0, x1, y1) {
-  for (let y = y0; y <= y1; y++)
-    for (let x = x0; x <= x1; x++) setTile(f, x, y, true);
-}
-
-function wallRect(f, x0, y0, x1, y1) {
-  for (let x = x0; x <= x1; x++) {
-    f.edgesH[edgeHIdx(f, x, y0)] = 1;
-    f.edgesH[edgeHIdx(f, x, y1 + 1)] = 1;
-  }
-  for (let y = y0; y <= y1; y++) {
-    f.edgesV[edgeVIdx(f, x0, y)] = 1;
-    f.edgesV[edgeVIdx(f, x1 + 1, y)] = 1;
-  }
-}
-
-function assignRoom(f, x, y, name, color) {
-  for (const c of floodRegion(f, x, y)) {
-    const cell = f.cells[cellIdx(f, c.x, c.y)];
-    cell.room = name;
-    cell.color = color;
-  }
-}
-
-export function buildSampleSchool() {
-  const s = createState();
-  const f = s.floors[0];
-  // Main hall: x 6..33, y 13..15
-  floorRect(f, 6, 13, 33, 15);
-  // Classrooms north of the hall: four 7x6 rooms, y 7..12
-  for (let r = 0; r < 4; r++) floorRect(f, 6 + r * 7, 7, 12 + r * 7, 12);
-  // South side: office + two classrooms, y 16..21
-  floorRect(f, 6, 16, 12, 21);   // office
-  floorRect(f, 13, 16, 22, 21);  // room 105
-  floorRect(f, 23, 16, 33, 21);  // room 106
-  // Outer shell + interior partitions
-  wallRect(f, 6, 7, 33, 21);
-  for (let r = 1; r < 4; r++)
-    for (let y = 7; y <= 12; y++) f.edgesV[edgeVIdx(f, 6 + r * 7, y)] = 1;
-  for (let x = 6; x <= 33; x++) {
-    f.edgesH[edgeHIdx(f, x, 13)] = 1;
-    f.edgesH[edgeHIdx(f, x, 16)] = 1;
-  }
-  for (let y = 16; y <= 21; y++) {
-    f.edgesV[edgeVIdx(f, 13, y)] = 1;
-    f.edgesV[edgeVIdx(f, 23, y)] = 1;
-  }
-  // Doors: each north room into the hall
-  for (let r = 0; r < 4; r++) f.edgesH[edgeHIdx(f, 8 + r * 7, 13)] = 2;
-  // South rooms into the hall
-  f.edgesH[edgeHIdx(f, 9, 16)] = 2;
-  f.edgesH[edgeHIdx(f, 17, 16)] = 2;
-  f.edgesH[edgeHIdx(f, 28, 16)] = 2;
-  // Main entrance on the west end of the hall
-  f.edgesV[edgeVIdx(f, 6, 14)] = 2;
-  // Labels
-  assignRoom(f, 7, 8, 'Room 101', ROOM_COLORS[0]);
-  assignRoom(f, 14, 8, 'Room 102', ROOM_COLORS[1]);
-  assignRoom(f, 21, 8, 'Room 103', ROOM_COLORS[2]);
-  assignRoom(f, 28, 8, 'Room 104', ROOM_COLORS[3]);
-  assignRoom(f, 8, 14, 'Main Hall', '#e9e4da');
-  assignRoom(f, 8, 18, 'Office', ROOM_COLORS[4]);
-  assignRoom(f, 16, 18, 'Room 105', ROOM_COLORS[5]);
-  assignRoom(f, 28, 18, 'Room 106', ROOM_COLORS[6]);
-  return s;
 }

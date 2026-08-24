@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { CELL, EYE_H, cellIdx, activeFloor, floorBaseY, topOfBuilding } from './grid.js';
+import { shapesOf, shapeArea, shapeBBox, interiorPoint } from './shapes.js';
 
 const WALK_SPEED = 12;   // ft/s
 const SPRINT_SPEED = 24; // ft/s
@@ -34,6 +35,20 @@ export function initWalkthrough(camera, domElement) {
           minY = Math.min(minY, y); maxY = Math.max(maxY, y);
         }
     if (n === 0) {
+      // A storey can be all polygon rooms and no grid cells — stand in the
+      // biggest one rather than in the middle of an empty lattice.
+      const biggest = shapesOf(f).reduce(
+        (best, s) => (!best || shapeArea(s) > shapeArea(best) ? s : best), null);
+      if (biggest) {
+        const p = interiorPoint(biggest);
+        const bb = shapeBBox(biggest);
+        const wide = bb.x1 - bb.x0 >= bb.z1 - bb.z0;
+        return {
+          x: p.x, z: p.z,
+          lookX: wide ? (bb.x1 - p.x >= p.x - bb.x0 ? 1 : -1) : 0,
+          lookZ: wide ? 0 : (bb.z1 - p.z >= p.z - bb.z0 ? 1 : -1),
+        };
+      }
       return { x: (f.w * CELL) / 2, z: (f.h * CELL) / 2, lookX: 0, lookZ: -1 };
     }
     // nearest floored cell to the centroid, so we spawn inside the building

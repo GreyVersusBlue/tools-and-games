@@ -1,4 +1,9 @@
-// editor.js — grid editor: tools, pointer handling, pan/zoom, undo/redo.
+// editor.js — editor shell: tools, pointer handling, pan/zoom, undo/redo.
+//
+// The grid tools live here. The polygon tools live in polyedit.js and are
+// driven through the same pointer stream — this file decides which of the two
+// room representations a click is aimed at, which for the shared tools (wall,
+// door, room, erase) means "whichever is nearer the cursor".
 
 import * as THREE from 'three';
 import {
@@ -6,11 +11,18 @@ import {
   cellIdx, edgeHIdx, edgeVIdx, inGrid, getCell, setTile, floodRegion,
   activeFloor, floorBaseY,
 } from './grid.js';
+import {
+  SEG_NONE, SEG_WALL, nearestSegment, shapeAt, setSegWall, toggleOpening, removeShape,
+} from './shapes.js';
+import { initPolyEdit } from './polyedit.js';
 
 const MAX_UNDO = 100;
 
-export function initEditor({ canvas, renderApi, getState, onChange }) {
-  let tool = 'floor'; // floor | wall | door | room | erase
+// How close to a polygon wall counts as clicking it, in feet.
+const SEG_GRAB = 1.6;
+
+export function initEditor({ canvas, renderApi, getState, onChange, onStatus, onHoleMode }) {
+  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex
   let roomName = 'Room 101';
   let roomColor = ROOM_COLORS[0];
 
@@ -94,6 +106,7 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
     const data = JSON.parse(json);
     Object.assign(s, data);
     onChange({ structural: true });
+    poly.refresh();
   }
 
   function undo() {
@@ -108,7 +121,33 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
     restore(redoStack.pop());
   }
 
+  // --- polygon tools ---
+  // polyedit owns its own overlay and calls back in here for undo, redraws and
+  // the status line, so both halves of the editor share one history.
+  const poly = initPolyEdit({
+    getState,
+    renderApi,
+    host: {
+      pushUndo, dropUndo: () => { undoStack.pop(); },
+      changed: (info = {}) => onChange({ structural: true, ...info }),
+      status: (text) => onStatus && onStatus(text),
+      holeModeChanged: (v) => onHoleMode && onHoleMode(v),
+      cursorStyle: (v) => { canvas.style.cursor = v; },
+      roomName: () => roomName || 'Room',
+      roomColor: () => roomColor,
+    },
+  });
+
   // --- tool application ---
+
+  // Nearest polygon wall to the cursor, if one is within grabbing distance and
+  // closer than the grid edge the cursor is over.
+  function nearPolySeg(f, wx, wz, gridDistFt) {
+    const seg = nearestSegment(f, wx, wz, SEG_GRAB);
+    if (!seg) return null;
+    return gridDistFt === undefined || seg.dist < gridDistFt ? seg : null;
+  }
+
   function applyAt(wx, wz, isClick) {
     const f = activeFloor(getState());
     if (tool === 'floor') {
@@ -116,16 +155,37 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
       if (c && setTile(f, c.x, c.y, true)) strokeChanged = true;
     } else if (tool === 'wall') {
       const e = nearestEdge(f, wx, wz);
+      const seg = nearPolySeg(f, wx, wz, e.dist * CELL);
+      if (seg) {
+        if (setSegWall(seg.shape, seg.ring, seg.seg, SEG_WALL)) strokeChanged = true;
+        return;
+      }
       const ref = edgeRef(f, e);
       if (ref.arr[ref.i] !== 1) { ref.arr[ref.i] = 1; strokeChanged = true; }
     } else if (tool === 'door') {
       if (!isClick) return; // doors place on click, not drag
       const e = nearestEdge(f, wx, wz);
+      // On a polygon wall a doorway is cut where you clicked along the run,
+      // not at the middle of a lattice edge — a 30ft wall can hold several.
+      const seg = nearPolySeg(f, wx, wz, e.dist * CELL);
+      if (seg) {
+        toggleOpening(seg.shape, seg.ring, seg.seg, seg.t);
+        strokeChanged = true;
+        return;
+      }
       const ref = edgeRef(f, e);
       ref.arr[ref.i] = ref.arr[ref.i] === 2 ? 1 : 2; // toggle door <-> wall
       strokeChanged = true;
     } else if (tool === 'room') {
       if (!isClick) return;
+      // Polygon rooms sit on top of the grid, so they answer the click first.
+      const shape = shapeAt(f, wx, wz);
+      if (shape) {
+        shape.name = roomName || 'Room';
+        shape.color = roomColor;
+        strokeChanged = true;
+        return;
+      }
       const c = cellAt(f, wx, wz);
       if (!c || !getCell(f, c.x, c.y)) return;
       const region = floodRegion(f, c.x, c.y);
@@ -137,11 +197,26 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
       strokeChanged = true;
     } else if (tool === 'erase') {
       const e = nearestEdge(f, wx, wz);
+      const seg = nearPolySeg(f, wx, wz, e.dist * CELL);
+      if (seg) {
+        // Erasing a polygon wall takes its doorways with it — they were
+        // openings *in* that wall, and there's nothing left to be an opening in.
+        if (setSegWall(seg.shape, seg.ring, seg.seg, SEG_NONE)) strokeChanged = true;
+        return;
+      }
       const ref = edgeRef(f, e);
       if (e.dist < 0.28 && ref.arr[ref.i] !== 0) {
         ref.arr[ref.i] = 0;
         strokeChanged = true;
       } else {
+        // A whole room is a lot to lose to a stray drag, so a polygon room only
+        // goes on a deliberate click.
+        const shape = isClick ? shapeAt(f, wx, wz) : null;
+        if (shape) {
+          removeShape(f, shape.id);
+          strokeChanged = true;
+          return;
+        }
         const c = cellAt(f, wx, wz);
         if (c && setTile(f, c.x, c.y, false)) strokeChanged = true;
       }
@@ -170,7 +245,10 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
     const f = activeFloor(s);
     const baseY = floorBaseY(s, s.currentFloor);
     const p = e && pointerToWorld(e);
-    if (!enabled || !p) { cellCursor.visible = edgeCursor.visible = false; return; }
+    if (!enabled || !p || tool === 'poly' || tool === 'vertex') {
+      cellCursor.visible = edgeCursor.visible = false;
+      return;
+    }
     const isErase = tool === 'erase';
     const color = isErase ? 0xff5f56 : tool === 'door' ? 0xd9a05b : 0x4da3ff;
 
@@ -214,6 +292,11 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
     if (e.button !== 0) return;
     const p = pointerToWorld(e);
     if (!p) return;
+    if (tool === 'poly' || tool === 'vertex') {
+      canvas.setPointerCapture(e.pointerId);
+      poly.pointerDown(p, e);
+      return;
+    }
     pushUndo();
     strokeActive = true;
     strokeChanged = false;
@@ -234,6 +317,11 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
       return;
     }
     updateCursor(e);
+    if (tool === 'poly' || tool === 'vertex') {
+      const pp = pointerToWorld(e);
+      if (pp) poly.pointerMove(pp, e);
+      return;
+    }
     if (!strokeActive) return;
     const p = pointerToWorld(e);
     if (!p) return;
@@ -245,6 +333,7 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
 
   function endStroke(e) {
     if (panning) { panning = false; panLast = null; }
+    if (poly.pointerUp()) return;
     if (!strokeActive) return;
     strokeActive = false;
     lastWorld = null;
@@ -253,18 +342,33 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
   }
   canvas.addEventListener('pointerup', endStroke);
   canvas.addEventListener('pointercancel', endStroke);
-  canvas.addEventListener('pointerleave', () => { cellCursor.visible = edgeCursor.visible = false; });
+  canvas.addEventListener('pointerleave', () => {
+    cellCursor.visible = edgeCursor.visible = false;
+    poly.clearHover();
+  });
 
   canvas.addEventListener('wheel', (e) => {
     if (!enabled) return;
     e.preventDefault();
     const view = renderApi.editView;
     view.height = Math.min(1000, Math.max(30, view.height * Math.exp(e.deltaY * 0.001)));
+    poly.refresh(); // handles and snap radius are sized off the zoom level
   }, { passive: false });
 
   return {
     get tool() { return tool; },
-    setTool(t) { tool = t; updateCursor(null); },
+    setTool(t) {
+      tool = t;
+      poly.setTool(t);
+      updateCursor(null);
+      if (t !== 'vertex') canvas.style.cursor = '';
+    },
+    // Keys the polygon tools claim (close, cancel, backtrack, delete). Returns
+    // true when one was used, so the caller knows to stop handling it.
+    handleKey: (e) => poly.key(e),
+    get holeMode() { return poly.holeMode; },
+    setHoleMode: (v) => poly.setHoleMode(v),
+    refreshOverlay: () => poly.refresh(),
     setRoom(name, color) { roomName = name; roomColor = color; },
     get roomName() { return roomName; },
     get roomColor() { return roomColor; },
@@ -277,6 +381,9 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
     clearHistory() { undoStack.length = 0; redoStack.length = 0; },
     setEnabled(v) {
       enabled = v;
+      // Walkthrough hides the overlay entirely; an unfinished outline doesn't
+      // survive the round trip, which is the same deal the stroke tools get.
+      poly.setTool(v ? tool : null);
       if (!v) { cellCursor.visible = edgeCursor.visible = false; strokeActive = false; }
     },
   };

@@ -3,16 +3,19 @@
 // Save format history:
 //   v1 — single floor, flat { w, h, cells, edgesH, edgesV }
 //   v2 — { floors: [...], currentFloor, props, links } on a shared footprint
+//   v3 — floors carry `shapes[]`: polygon rooms alongside the cell grid
 //
-// v1 files (and v1 autosaves already sitting in someone's browser) keep loading
-// forever: `deserialize` migrates them into a one-floor v2 state. The autosave
-// key is deliberately unchanged so an in-progress design survives the upgrade.
+// Older files keep loading forever: a v1 or v2 design is simply one with no
+// polygon rooms in it, so migration is additive and nothing has to be guessed.
+// The autosave key is deliberately unchanged so an in-progress design survives
+// the upgrade — that was true of the v2 bump and stays true here.
 
 import { CELL, FLOOR_H, MAX_FLOORS, createFloor, createState } from './grid.js';
 import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from './props.js';
+import { normalizeShape, MAX_SHAPES } from './shapes.js';
 
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 const MIN_DIM = 4;
 const MAX_DIM = 200;
@@ -49,6 +52,15 @@ function readFloor(raw, w, h) {
     copyCells(raw.cells, f.cells);
     copyEdges(raw.edgesH, f.edgesH);
     copyEdges(raw.edgesV, f.edgesV);
+    if (Array.isArray(raw.shapes)) {
+      for (const rs of raw.shapes.slice(0, MAX_SHAPES)) {
+        // Polygon rooms are unbounded by the footprint on purpose — a wing can
+        // stick out past the lattice — so they're clamped to a sane extent
+        // rather than to w x h.
+        const shape = normalizeShape(rs, Math.max(w, h) * CELL * 4);
+        if (shape) f.shapes.push(shape);
+      }
+    }
   }
   return f;
 }
@@ -95,6 +107,7 @@ export function deserialize(json) {
   reseedIds(state);
   for (const p of state.props) if (!p.id) p.id = state.nextId++;
   for (const l of state.links) if (!l.id) l.id = state.nextId++;
+  for (const f of state.floors) for (const sh of f.shapes) if (!sh.id) sh.id = state.nextId++;
   return state;
 }
 
