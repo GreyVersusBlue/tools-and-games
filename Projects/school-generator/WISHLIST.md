@@ -24,9 +24,10 @@ under the right phase rather than starting a second list.
 `js/propplace.js`, `js/stairs.js`, `js/collide.js`, `js/templates.js`,
 `js/sample.js`, `js/editor.js`, `js/polyedit.js`, `js/propedit.js`,
 `js/stairedit.js`, `js/templateedit.js`, `js/render.js`, `js/walkthrough.js`,
-`js/save-load.js`, `test/model.test.mjs`, `test/shapes.test.mjs`,
-`test/catalog.test.mjs`, `test/propplace.test.mjs`, `test/stairs.test.mjs`,
-`test/collide.test.mjs`, `test/templates.test.mjs`)
+`js/save-load.js`, `js/blueprint.js`, `test/model.test.mjs`,
+`test/shapes.test.mjs`, `test/catalog.test.mjs`, `test/propplace.test.mjs`,
+`test/stairs.test.mjs`, `test/collide.test.mjs`, `test/templates.test.mjs`,
+`test/blueprint.test.mjs`, `test/save-slots.test.mjs`)
 
 - **Two room representations, side by side.** The cell grid is the fast
   rectangular mode: a floor is a flat `cells[]` array (4ft cells) plus
@@ -611,12 +612,98 @@ already built for a different reason.
   checking every template stamps only real catalog types, keys don't
   collide, and placement composes rotation correctly.
 
-## Phase 7 — Sharing & export
+## Phase 7 — Sharing & export ✅ *done*
 
-- [ ] Export the top-down layout to an image or PDF (a printable floor
-  plan / blueprint view), distinct from the 3D walkthrough.
-- [ ] Multiple save slots / named designs, beyond the current single
-  localStorage autosave key.
+- [x] **Export the top-down layout to an image or PDF** (`js/blueprint.js`,
+  🖨 Export in the top bar) — a printable floor plan / blueprint view, built
+  from scratch rather than screenshotting the editor's own 3D top-down
+  camera (see below for why). Architectural-style symbols: walls drawn by
+  kind (solid/glass-dashed/railing-dotted), a door leaf + quarter-circle
+  swing at every opening (grid door or polygon doorway alike), a
+  tread-and-arrow stair symbol for a run placed on the floor you're
+  exporting and a dashed "OPEN BELOW" hole for the floor a stair from below
+  cuts into, room labels with square footage, a dimension line for the
+  building's overall width and depth, a scale bar, a north arrow and a title
+  block. "This floor" or "All floors", with dimensions and furniture as
+  independent toggles.
+  - **PNG** downloads straight off an offscreen canvas per floor
+    (`renderFloorPlanCanvas` + `downloadCanvasPNG`).
+  - **PDF** goes through the browser's own print pipeline rather than a
+    hand-rolled PDF writer: each selected floor's canvas becomes a
+    full-page `<img>` in a normally-hidden `#print-area`, `@media print`
+    hides everything else, and `window.print()` opens the OS "Save as PDF"
+    path every browser already has. No new dependency, and nothing to
+    vendor into `libs/`.
+- [x] **Multiple save slots / named designs** (`js/save-load.js`, 🗂 Designs
+  in the top bar) — a small localStorage index of `{ id, name, updatedAt }`
+  plus one JSON blob per slot (`saveDesign`/`loadDesign`/`deleteDesign`/
+  `renameDesign`/`listDesigns`), sitting *beside* the single autosave key
+  rather than replacing it. Save the current work under a name, come back
+  later and load it, rename or delete it, or overwrite a slot in place —
+  all without the file-download/upload round trip Save/Load already offered
+  and still offer unchanged.
+
+**Decisions made:**
+
+- **The plan is computed from the model, not captured from the editor's
+  own top-down camera.** The edit view's orthographic camera looks straight
+  down on the *3D* scene — walls have height, doors are 3D cutouts, a stair
+  run is a ramp of geometry — so a screenshot of it would show roofs and
+  foreshortened stair treads, not a blueprint. `computeFloorPlan` reads the
+  same cells/edges/shapes/props/links every other module does and turns
+  them into flat, 2D architectural symbols instead, which is also what
+  makes it unit-testable (`test/blueprint.test.mjs`) the way `render.js`'s
+  3D geometry never has been.
+- **A door's swing is a fixed hand, not a correct one.** Nothing in the
+  model says which side of a wall is "the room" a door opens into — that's
+  as true of a polygon wall's `{ seg, t, w }` opening as it is of a grid
+  edge — so every swing arc opens 90° to the left of the wall's own
+  direction. Consistent and readable beats guessing which side is right.
+- **Polygon wall openings reuse `solidSpans` from `collide.js`** — the same
+  cut-the-run-at-each-opening arithmetic the walkthrough collider uses —
+  so a plan's door gaps are, by construction, exactly the gaps you can
+  walk through in first person, not a second approximation of them.
+- **A stair's own symbol and the hole it cuts are drawn from two different
+  queries, same as the 3D renderer keeps them.** `linksFrom(state, floorIndex)`
+  is the run placed *on* this floor (treads, direction arrow); `floorCuts(state,
+  floorIndex)` is the hole *cut into* this floor by a run rising from the
+  floor below. They never collide, so both draw unconditionally.
+- **PDF is the browser's print dialog, not a hand-rolled writer.** The
+  project has no build step and no vendored dependencies beyond three.js;
+  adding a PDF-generation library (or writing a minimal one, which is very
+  possible for image-only pages but still real surface area) would have
+  been the first exception to that. Routing through `window.print()` with a
+  `@media print` stylesheet gets the same "hand someone a PDF" outcome for
+  free, using a path every browser already ships.
+- **Slots are metadata beside the design, not a field inside it.** A save
+  slot's name and timestamp live in a separate localStorage index
+  (`SLOTS_KEY`) from the design JSON itself (`SLOT_PREFIX + id`), so listing
+  saved designs never parses a whole design just to show its name, and nothing
+  about the save-format version changes — a v4 file saved into a slot loads
+  back exactly as `deserialize()` already reads it.
+- **The single autosave key is untouched.** It's still exactly what you're
+  looking at right now, restored on reload the same way it always was;
+  slots are a library you save *into* deliberately, not a replacement for
+  the safety net that already existed.
+- **No save format change.** Both features read the existing model and the
+  existing save file; a v4 design plans and slots identically before and
+  after this phase.
+
+**What that changed elsewhere:**
+
+- **Two new top-bar buttons** (`🗂 Designs`, `🖨 Export`), each opening a
+  full-screen modal styled the same way the walkthrough's start/exit
+  overlay already was — the first modal-shaped UI in the app beyond that
+  one, reusing its pattern rather than inventing a second one.
+- **`test/blueprint.test.mjs`** — 12 `node --test` cases for
+  `computeFloorPlan`: door gaps (grid and polygon), wall kinds, polygon room
+  area/label, a stair's symbol vs. the hole it cuts on the floor above,
+  floor-opening vs. staircase as distinct symbol kinds, catalog-driven
+  furniture footprints (including an unknown type skipped rather than
+  crashing), and bounds that grow to fit a room or prop hanging outside the
+  grid footprint. **`test/save-slots.test.mjs`** — 10 more cases against an
+  in-memory `localStorage` shim: create/list/load/rename/delete, overwrite
+  vs. new slot, name trimming, and the slot-count limit.
 
 ## Phase 8 — Mobile & accessibility
 
@@ -636,13 +723,13 @@ editor-polish pass on top of it. The model says everything a building needs
 it to say, you can walk the building it describes, and the editor itself
 stopped fighting you while you build one.
 
-**What's left (7-8) is still optional in the way Phase 6 was** — nothing below
-blocks anything else, and pick up whichever one the tool actually needs next.
-Phase 7's printable floor plan now has a second storey, a stair symbol, and
-room-section selections to draw from — worth sketching what a plan view
-should show before building it. Phase 8 is unstarted; touch controls matter
-more the moment anyone tries this on a tablet, and the accessibility pass is
-overdue precisely because nothing forces it the way a missing feature does.
+Phase 7 is done too: a printable blueprint distinct from both the 3D editor
+view and the walkthrough, and named save slots beside the single autosave.
+
+**What's left (8) is still optional in the way Phase 6 was.** Touch controls
+matter more the moment anyone tries this on a tablet, and the accessibility
+pass is overdue precisely because nothing forces it the way a missing
+feature does.
 
 Two smaller things Phase 5 left on the table, neither urgent:
 
