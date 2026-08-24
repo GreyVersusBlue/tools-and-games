@@ -1,21 +1,28 @@
-// walkthrough.js — first-person pointer-lock camera. Still no-clip: collision
-// and stair navigation are Phase 5, once there are props to bump into. What
-// multi-floor adds here is a spawn on the storey you were editing, and a
-// vertical range that reaches the whole building rather than one 10ft slice.
+// walkthrough.js — first-person pointer-lock camera. Still no-clip against
+// walls and props: that is Phase 5, and it wants a capsule and a broadphase.
+// What it does have is stairs — walk onto a run and the camera rides it up to
+// the next storey, which is the difference between a multi-floor building you
+// can inspect and one you have to fly around inside.
 
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { CELL, EYE_H, cellIdx, activeFloor, floorBaseY, topOfBuilding } from './grid.js';
 import { shapesOf, shapeArea, shapeBBox, interiorPoint } from './shapes.js';
+import { stairUnder } from './stairs.js';
 
 const WALK_SPEED = 12;   // ft/s
 const SPRINT_SPEED = 24; // ft/s
+// How far the camera may be off a stair's surface and still be considered to
+// be standing on it. Generous enough to catch you stepping on at either end,
+// tight enough that flying over a stairwell doesn't snap you down onto the run.
+const RIDE_BAND = 7;     // ft
 
 export function initWalkthrough(camera, domElement) {
   const controls = new PointerLockControls(camera, domElement);
   const keys = new Set();
   let active = false;
   let ceiling = 80;   // fly-up limit, raised to clear the tallest building
+  let world = null;   // the state being walked, for the stairs under our feet
 
   document.addEventListener('keydown', (e) => {
     if (!active) return;
@@ -76,6 +83,7 @@ export function initWalkthrough(camera, domElement) {
     controls,
     enable(state) {
       active = true;
+      world = state;
       keys.clear();
       // Start on the floor you were just editing, not always the ground.
       const p = spawnPoint(activeFloor(state));
@@ -86,6 +94,7 @@ export function initWalkthrough(camera, domElement) {
     },
     disable() {
       active = false;
+      world = null;
       keys.clear();
       if (controls.isLocked) controls.unlock();
     },
@@ -97,7 +106,23 @@ export function initWalkthrough(camera, domElement) {
       const up = (keys.has('Space') ? 1 : 0) - (keys.has('KeyC') ? 1 : 0);
       if (fwd) controls.moveForward(fwd * speed * dt);
       if (right) controls.moveRight(right * speed * dt);
-      if (up) camera.position.y = Math.min(ceiling, Math.max(1.5, camera.position.y + up * speed * dt));
+      if (up) {
+        // Flying is still how you get anywhere quickly, and it has to beat the
+        // stairs — otherwise a run you happen to be over pins you to it.
+        camera.position.y = Math.min(ceiling, Math.max(1.5, camera.position.y + up * speed * dt));
+        return;
+      }
+      if (!world || !(fwd || right)) return;
+
+      // Ride a stair. The camera doesn't fall or collide yet, so this is not
+      // gravity: it's "if there's a tread under your feet, stand on it". The
+      // band check is what keeps it from grabbing you off the storey above or
+      // below a stairwell you happen to be standing over.
+      const ride = stairUnder(world, camera.position.x, camera.position.z, camera.position.y - EYE_H);
+      if (!ride) return;
+      const target = ride.y + EYE_H;
+      if (Math.abs(camera.position.y - target) > RIDE_BAND) return;
+      camera.position.y = target;
     },
   };
 }

@@ -43,10 +43,26 @@ export const MIN_DOOR_W = 2;
 export const MAX_DOOR_W = 16;
 
 // Per-segment wall state. Same vocabulary as the grid's edge arrays minus the
-// door, which is an opening rather than a segment kind. Phase 4's glass wall
-// slots in here as 2 without moving anything else.
+// door, which is an opening rather than a segment kind. Glass took the 2 that
+// Phase 2 reserved for it; railing follows as 3.
+//
+// A railing is the one that isn't a wall in the ordinary sense: waist-high, no
+// enclosure, and it exists to stop you falling off an open floor edge rather
+// than to divide two rooms. It shares this enum anyway because everything that
+// walks a boundary — the renderer, the doorway bookkeeping, the walkthrough —
+// wants to ask one question per segment, not three.
 export const SEG_NONE = 0;
 export const SEG_WALL = 1;
+export const SEG_GLASS = 2;
+export const SEG_RAIL = 3;
+export const SEG_KINDS = [SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL];
+
+// Anything that isn't SEG_NONE is *something* built on that segment, which is
+// what most callers actually mean when they check for a wall.
+export const isBuilt = (v) => v === SEG_WALL || v === SEG_GLASS || v === SEG_RAIL;
+// ...and these are the kinds a doorway can be cut through. A gap in a railing
+// is a real thing (it's where the stair lands), so it counts too.
+export const canOpen = (v) => isBuilt(v);
 
 // ---------- small vector helpers ----------
 
@@ -381,9 +397,12 @@ export function deleteVertex(shape, ringIdx, idx) {
 export function setSegWall(shape, ringIdx, seg, val) {
   const ring = shape.rings[ringIdx];
   if (!ring || seg < 0 || seg >= ring.walls.length) return false;
-  const v = val === SEG_WALL ? SEG_WALL : SEG_NONE;
+  const v = SEG_KINDS.includes(val) ? val : SEG_NONE;
   if (ring.walls[seg] === v) return false;
   ring.walls[seg] = v;
+  // Changing *kind* keeps the doorways — a door in a wall that becomes a glass
+  // partition is a door in a glass partition. Clearing the segment takes them,
+  // since there's nothing left for them to be an opening in.
   if (v === SEG_NONE) ring.openings = ring.openings.filter((o) => o.seg !== seg);
   return true;
 }
@@ -395,7 +414,7 @@ export const openingsOnSeg = (ring, seg) => ring.openings.filter((o) => o.seg ==
 export function addOpening(shape, ringIdx, seg, t, w = DOOR_W) {
   const ring = shape.rings[ringIdx];
   if (!ring || seg < 0 || seg >= ring.walls.length) return null;
-  if (ring.walls[seg] !== SEG_WALL) return null;
+  if (!canOpen(ring.walls[seg])) return null;
   const [a, b] = segEnds(ring, seg);
   const len = segLength(a, b);
   const width = Math.min(MAX_DOOR_W, Math.max(MIN_DOOR_W, w));
@@ -420,7 +439,7 @@ export function toggleOpening(shape, ringIdx, seg, t, w = DOOR_W) {
     ring.openings.splice(ring.openings.indexOf(hit), 1);
     return null;
   }
-  if (ring.walls[seg] !== SEG_WALL) ring.walls[seg] = SEG_WALL;
+  if (!canOpen(ring.walls[seg])) ring.walls[seg] = SEG_WALL;
   return addOpening(shape, ringIdx, seg, t, w);
 }
 
@@ -653,7 +672,14 @@ function readRing(raw, extent, outer) {
 
   const n = ring.pts.length;
   if (Array.isArray(raw.walls)) {
-    for (let i = 0; i < n; i++) ring.walls[i] = raw.walls[i] === SEG_NONE ? SEG_NONE : SEG_WALL;
+    // An unrecognized kind from a newer file falls back to a plain wall rather
+    // than to nothing: a wall you can't render the fancy way is still a wall,
+    // and dropping it would open a room up.
+    for (let i = 0; i < n; i++) {
+      ring.walls[i] = SEG_KINDS.includes(raw.walls[i])
+        ? raw.walls[i]
+        : (raw.walls[i] === undefined ? ring.walls[i] : SEG_WALL);
+    }
   }
   if (Array.isArray(raw.openings)) {
     for (const o of raw.openings.slice(0, MAX_RING_PTS)) {
@@ -661,7 +687,7 @@ function readRing(raw, extent, outer) {
       // A doorway that names a segment the ring doesn't have is dropped, not
       // clamped: sliding it onto a different wall would invent a hole in one.
       const seg = Number.isInteger(o.seg) ? o.seg : -1;
-      if (seg < 0 || seg >= n || ring.walls[seg] !== SEG_WALL) continue;
+      if (seg < 0 || seg >= n || !canOpen(ring.walls[seg])) continue;
       ring.openings.push({
         seg,
         t: num(o.t, 0.5, 0, 1),

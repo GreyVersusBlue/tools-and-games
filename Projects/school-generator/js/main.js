@@ -9,7 +9,8 @@ import {
 import { buildSampleSchool } from './sample.js';
 import { catalogByCategory } from './catalog.js';
 import { initRender } from './render.js';
-import { initEditor } from './editor.js';
+import { initEditor, WALL_KINDS } from './editor.js';
+import { stairMetrics, linksFrom } from './stairs.js';
 import { initWalkthrough } from './walkthrough.js';
 import {
   downloadSave, loadFromFile, autosave, autosaveNow, loadAutosave, clearAutosave,
@@ -47,6 +48,7 @@ const editor = initEditor({
     autosave(state);
     updateUndoButtons();
     renderFloorList();
+    renderStairReadout();
   },
   // The polygon tools have more to say than a fixed per-tool hint — how many
   // corners are down, how big the room is — so they drive the status line.
@@ -99,16 +101,18 @@ walk.controls.addEventListener('unlock', () => {
 const TOOL_KEYS = {
   Digit1: 'floor', Digit2: 'wall', Digit3: 'door', Digit4: 'room',
   Digit5: 'erase', Digit6: 'poly', Digit7: 'vertex', Digit8: 'prop',
+  Digit9: 'stair',
 };
 const HINTS = {
   floor: 'Floor — click / drag to lay floor tiles',
-  wall: 'Wall — drag along cell edges, or click a polygon wall to raise it',
+  wall: 'Wall — drag along cell edges, or click a polygon wall to raise it. G switches between solid, glass and railing.',
   door: 'Door — click a wall edge, or anywhere along a polygon wall',
   room: 'Room — pick a name & color, then click a floor area to label it',
   erase: 'Eraser — drag to remove walls, doors, and floor; click a polygon room to delete it',
   poly: 'Polygon — click to place corners, click the first one (or Enter) to close. Alt = ignore snapping, Shift = 15° steps.',
   vertex: 'Shape — click a room to select it. A grid room becomes a polygon when you do.',
   prop: 'Furniture — pick a piece, click to place. Click/drag a piece to move it, drag empty space to box-select. R rotates, Delete removes, Ctrl+C/V/D copy/paste/duplicate.',
+  stair: 'Stairs — click to place a run up to the next level, which cuts its own opening in that floor. R rotates, drag to move, Delete removes.',
 };
 
 function selectTool(t) {
@@ -120,6 +124,9 @@ function selectTool(t) {
   $('room-panel').classList.toggle('hidden', t !== 'room' && t !== 'poly');
   $('poly-extra').classList.toggle('hidden', t !== 'poly');
   $('prop-panel').classList.toggle('hidden', t !== 'prop');
+  $('wall-panel').classList.toggle('hidden', t !== 'wall');
+  $('stair-panel').classList.toggle('hidden', t !== 'stair');
+  if (t === 'stair') renderStairReadout();
   // Hole mode is sticky, so coming back to the polygon tool has to say which
   // of the two things a loop is going to do.
   $('status').textContent = t === 'poly' && editor.holeMode
@@ -175,6 +182,72 @@ catalogByCategory().forEach(({ category, entries }) => {
   palette.appendChild(row);
 });
 
+// --- wall type panel ---
+// The wall tool builds one of three things. Which one is editor state (the grid
+// and the polygon rooms spell each differently), so the buttons just set it.
+const wallKinds = $('wall-kinds');
+function renderWallKinds() {
+  wallKinds.querySelectorAll('.kind-item').forEach((b) =>
+    b.classList.toggle('active', b.dataset.kind === editor.wallKind));
+}
+WALL_KINDS.forEach((k) => {
+  const b = document.createElement('button');
+  b.className = 'kind-item';
+  b.dataset.kind = k.kind;
+  b.innerHTML = `<span class="icon">${k.icon}</span>${k.label}`;
+  b.addEventListener('click', () => { editor.setWallKind(k.kind); renderWallKinds(); });
+  wallKinds.appendChild(b);
+});
+renderWallKinds();
+
+function cycleWallKind() {
+  const i = WALL_KINDS.findIndex((k) => k.kind === editor.wallKind);
+  const next = WALL_KINDS[(i + 1) % WALL_KINDS.length];
+  editor.setWallKind(next.kind);
+  renderWallKinds();
+  $('status').textContent = `Wall — building ${next.label.toLowerCase()}. G cycles.`;
+}
+
+// --- stairs panel ---
+const STAIR_KINDS = [
+  { type: 'stair', icon: '🪜', label: 'Staircase' },
+  { type: 'opening', icon: '⬛', label: 'Floor opening' },
+];
+const stairKinds = $('stair-kinds');
+function renderStairKinds() {
+  stairKinds.querySelectorAll('.kind-item').forEach((b) =>
+    b.classList.toggle('active', b.dataset.type === editor.stairType));
+}
+STAIR_KINDS.forEach((k) => {
+  const b = document.createElement('button');
+  b.className = 'kind-item';
+  b.dataset.type = k.type;
+  b.innerHTML = `<span class="icon">${k.icon}</span>${k.label}`;
+  b.addEventListener('click', () => { editor.setStairType(k.type); renderStairKinds(); renderStairReadout(); });
+  stairKinds.appendChild(b);
+});
+renderStairKinds();
+
+// The run a stair will have is fixed by the floor-to-floor height, so it can be
+// reported before anything is placed — the number that decides whether a
+// staircase fits the room you meant to put it in.
+function renderStairReadout() {
+  const m = stairMetrics(state);
+  const here = linksFrom(state, state.currentFloor);
+  const stairs = here.filter((l) => l.type === 'stair').length;
+  const holes = here.length - stairs;
+  const above = state.floors[state.currentFloor + 1];
+  const tally = [
+    stairs ? `${stairs} stair${stairs === 1 ? '' : 's'}` : null,
+    holes ? `${holes} opening${holes === 1 ? '' : 's'}` : null,
+  ].filter(Boolean).join(' · ');
+  $('stair-readout').innerHTML =
+    `${m.steps} risers at ${(m.riser * 12).toFixed(1)}in · ${m.run.toFixed(1)}ft of run<br />` +
+    (above
+      ? `Rises to ${floorLabel(state.currentFloor + 1)}` + (tally ? `<br />${tally} here` : '')
+      : 'Nothing above this level yet — add one first.');
+}
+
 // --- floor panel ---
 // Editing is one storey at a time; the level below shows through as a ghost so
 // walls can be lined up between floors. Listed top-down, the way you'd read a
@@ -192,8 +265,13 @@ function renderFloorList() {
     const count = document.createElement('span');
     count.className = 'count';
     const shapes = floorShapeCount(state.floors[i]);
+    // Only staircases are counted here — a floor opening has no footprint worth
+    // reporting, and the stairs panel gives the precise tally for the storey
+    // you're actually editing.
+    const stairs = linksFrom(state, i).filter((l) => l.type === 'stair').length;
     count.textContent = `${floorCellCount(state.floors[i])} cells` +
-      (shapes ? ` · ${shapes} poly` : '');
+      (shapes ? ` · ${shapes} poly` : '') +
+      (stairs ? ` · ${stairs} stair` : '');
     b.append(name, count);
     b.addEventListener('click', () => goToFloor(i));
     floorList.appendChild(b);
@@ -210,6 +288,7 @@ function goToFloor(i) {
   renderApi.applyFloorVisibility();
   editor.refreshOverlay();   // handles belong to the storey you're editing
   renderFloorList();
+  renderStairReadout();
   autosave(state);
   $('status').textContent = `${floorLabel(state.currentFloor)} — editing this floor`;
 }
@@ -221,6 +300,7 @@ function floorEdit(mutate) {
   if (!mutate()) { editor.dropUndo(); return; }
   rebuild();
   renderFloorList();
+  renderStairReadout();
   autosave(state);
   updateUndoButtons();
   $('status').textContent = `${floorLabel(state.currentFloor)} — editing this floor`;
@@ -258,6 +338,7 @@ $('file-input').addEventListener('change', async (e) => {
     rebuild();
     editor.refreshOverlay();
     renderFloorList();
+    renderStairReadout();
     autosaveNow(state);
     updateUndoButtons();
   } catch (err) {
@@ -274,6 +355,7 @@ $('new-btn').addEventListener('click', () => {
   rebuild();
   editor.refreshOverlay();
   renderFloorList();
+  renderStairReadout();
   updateUndoButtons();
 });
 
@@ -322,6 +404,7 @@ document.addEventListener('keydown', (e) => {
     editor.redo(); autosave(state); updateUndoButtons();
     return;
   }
+  if (e.code === 'KeyG' && editor.tool === 'wall') { cycleWallKind(); return; }
   if (e.code === 'BracketLeft')  { goToFloor(state.currentFloor - 1); return; }
   if (e.code === 'BracketRight') { goToFloor(state.currentFloor + 1); return; }
   if (TOOL_KEYS[e.code]) selectTool(TOOL_KEYS[e.code]);
@@ -341,6 +424,7 @@ function loop() {
 
 selectTool('floor');
 renderFloorList();
+renderStairReadout();
 updateUndoButtons();
 loop();
 

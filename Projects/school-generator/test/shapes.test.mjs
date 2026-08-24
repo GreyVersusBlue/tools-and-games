@@ -10,7 +10,7 @@ import {
   duplicateFloor, addFloor,
 } from '../js/grid.js';
 import {
-  SEG_NONE, SEG_WALL, MAX_SHAPES,
+  SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt, canOpen, MAX_SHAPES,
   addShape, addHole, removeShape, makeShape, cleanRing,
   ringSignedArea, ringIsCCW, pointInShape, shapeArea, shapeBBox, interiorPoint,
   shapeAt, shapeById, nearestSegment, nearestVertex, segEnds,
@@ -205,6 +205,64 @@ test('the door tool toggles the doorway you clicked', () => {
   setSegWall(shape, 0, 1, SEG_NONE);
   assert.ok(toggleOpening(shape, 0, 1, 0.5));
   assert.equal(shape.rings[0].walls[1], SEG_WALL);
+});
+
+// ---------- wall kinds ----------
+
+test('a segment can be solid, glazed or a railing — or nothing at all', () => {
+  const shape = makeShape(RECT);
+  for (const kind of [SEG_GLASS, SEG_RAIL, SEG_WALL]) {
+    assert.equal(setSegWall(shape, 0, 0, kind), true);
+    assert.equal(shape.rings[0].walls[0], kind);
+  }
+  assert.equal(setSegWall(shape, 0, 0, 99), true, 'an unknown kind clears the segment');
+  assert.equal(shape.rings[0].walls[0], SEG_NONE);
+  assert.deepEqual(
+    [SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL].map(isBuilt),
+    [false, true, true, true]
+  );
+});
+
+test('changing a wall to glass keeps its doorways; erasing it does not', () => {
+  const shape = makeShape(RECT);
+  addOpening(shape, 0, 0, 0.5);
+  setSegWall(shape, 0, 0, SEG_GLASS);
+  assert.equal(shape.rings[0].openings.length, 1, 'a door in a glazed partition is still a door');
+  setSegWall(shape, 0, 0, SEG_NONE);
+  assert.deepEqual(shape.rings[0].openings, []);
+});
+
+test('a gap can be cut in a railing — that is where a stair arrives', () => {
+  const shape = makeShape(RECT);
+  setSegWall(shape, 0, 0, SEG_RAIL);
+  assert.ok(canOpen(SEG_RAIL));
+  assert.ok(addOpening(shape, 0, 0, 0.5), 'a railing takes an opening');
+  setSegWall(shape, 0, 1, SEG_NONE);
+  assert.equal(addOpening(shape, 0, 1, 0.5), null, 'an empty segment does not');
+});
+
+test('a loaded file keeps the kind of each wall, and guesses safely at the rest', () => {
+  const shape = normalizeShape({
+    rings: [{ pts: RECT, walls: [SEG_GLASS, SEG_RAIL, 42, SEG_NONE] }],
+  });
+  assert.deepEqual(
+    shape.rings[0].walls,
+    [SEG_GLASS, SEG_RAIL, SEG_WALL, SEG_NONE],
+    'a kind from a newer build falls back to a plain wall rather than to a gap'
+  );
+});
+
+test('wall kinds survive a save round-trip on both representations', () => {
+  const s = createState(10, 10);
+  const shape = addShape(s, 0, RECT, {});
+  setSegWall(shape, 0, 0, SEG_GLASS);
+  setSegWall(shape, 0, 2, SEG_RAIL);
+  s.floors[0].edgesH[edgeHIdx(s.floors[0], 2, 2)] = 3;  // glass
+  s.floors[0].edgesV[edgeVIdx(s.floors[0], 3, 3)] = 4;  // railing
+  const back = deserialize(serialize(s));
+  assert.deepEqual(back.floors[0].shapes[0].rings[0].walls, shape.rings[0].walls);
+  assert.equal(back.floors[0].edgesH[edgeHIdx(back.floors[0], 2, 2)], 3);
+  assert.equal(back.floors[0].edgesV[edgeVIdx(back.floors[0], 3, 3)], 4);
 });
 
 // ---------- snapping ----------

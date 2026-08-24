@@ -1,7 +1,7 @@
 // grid.js — grid data model, pure helpers (no three.js imports)
 // Units are feet. One cell = 4ft x 4ft. Walls live on cell edges.
 //
-// State shape (v3):
+// State shape (v4):
 //   { version, cellFt, floorHt, w, h,
 //     floors: [ { w, h, cells[], edgesH[], edgesV[], shapes[] }, ... ],
 //     currentFloor, props: [], links: [], nextId }
@@ -22,11 +22,26 @@
 
 export const CELL = 4;        // ft per grid cell
 export const WALL_H = 10;     // wall height (ceiling plane), ft
+// Guardrail height. Waist-high on purpose: a railing has to read as an edge you
+// can see over, never as an enclosure the way a wall does.
+export const RAIL_H = 3.5;    // ft — a school's code minimum
 export const FLOOR_H = 12;    // floor-to-floor height, ft (10ft ceiling + 2ft plenum)
 export const WALL_T = 0.5;    // wall thickness, ft
 export const DOOR_W = 3;      // door opening width, ft
 export const DOOR_H = 7;      // door opening height, ft
 export const EYE_H = 5.5;     // first-person eye height, ft
+
+// Edge kinds on the lattice. 0-2 are v1's vocabulary and can't move; glass and
+// railing are appended, so an old save reads exactly as it did. Everything
+// non-zero bounds a region for flood fill, which is the point of the ordering:
+// `if (edge)` still means "something is in the way", and only the renderer and
+// the walkthrough care which kind of something it is.
+export const EDGE_NONE = 0;
+export const EDGE_WALL = 1;
+export const EDGE_DOOR = 2;
+export const EDGE_GLASS = 3;
+export const EDGE_RAIL = 4;
+export const EDGE_KINDS = [EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL];
 
 export const DEFAULT_W = 40;  // cells
 export const DEFAULT_H = 30;  // cells
@@ -45,9 +60,9 @@ export function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
     w, h,
     // cells[i] = null (no floor) or { room: string|null, color: '#rrggbb'|null }
     cells: new Array(w * h).fill(null),
-    // edgesH[y*w + x] = edge between cell (x,y-1) and (x,y), y in 0..h. 0 none, 1 wall, 2 door
+    // edgesH[y*w + x] = edge between cell (x,y-1) and (x,y), y in 0..h. See EDGE_* above.
     edgesH: new Array(w * (h + 1)).fill(0),
-    // edgesV[y*(w+1) + x] = edge between cell (x-1,y) and (x,y), x in 0..w. 0 none, 1 wall, 2 door
+    // edgesV[y*(w+1) + x] = edge between cell (x-1,y) and (x,y), x in 0..w. See EDGE_* above.
     edgesV: new Array((w + 1) * h).fill(0),
     // Polygon rooms on this storey — see shapes.js. Free-floating outlines in
     // world feet, not tied to the lattice above.
@@ -57,7 +72,7 @@ export function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
 
 export function createState(w = DEFAULT_W, h = DEFAULT_H) {
   return {
-    version: 3,
+    version: 4,
     cellFt: CELL,
     floorHt: FLOOR_H,
     w, h,
@@ -65,8 +80,8 @@ export function createState(w = DEFAULT_W, h = DEFAULT_H) {
     currentFloor: 0,
     // Free-floating objects in world feet — see props.js
     props: [],
-    // Inter-floor connections (stairs, mezzanine openings) — see props.js.
-    // Phase 1 defines and preserves the table; Phase 4 gives it meaning.
+    // Inter-floor connections — stairs and the floor openings they cut. See
+    // props.js for the record shape and stairs.js for what one means.
     links: [],
     nextId: 1,
   };
@@ -106,7 +121,8 @@ export function setTile(f, x, y, on) {
 }
 
 // Can we walk/flood from (x,y) to its neighbor in direction d?
-// Both walls and doors bound a room region.
+// Every edge kind bounds a room region — a glass partition separates two rooms
+// as surely as a plastered one does, and a railing is the edge of the floor.
 const DIRS = [
   { dx: 1, dy: 0 },  // east  -> edgesV(x+1, y)
   { dx: -1, dy: 0 }, // west  -> edgesV(x, y)
@@ -121,7 +137,7 @@ export function edgeBetween(f, x, y, dx, dy) {
   return { arr: f.edgesH, i: edgeHIdx(f, x, y) };
 }
 
-// Flood fill from (x,y) across floored cells, bounded by walls and doors.
+// Flood fill from (x,y) across floored cells, bounded by any edge kind.
 // Returns array of {x, y} cells in the region (empty if start has no floor).
 export function floodRegion(f, x, y) {
   if (!getCell(f, x, y)) return [];
@@ -137,7 +153,7 @@ export function floodRegion(f, x, y) {
       const ni = cellIdx(f, nx, ny);
       if (seen.has(ni) || !f.cells[ni]) continue;
       const e = edgeBetween(f, c.x, c.y, d.dx, d.dy);
-      if (e.arr[e.i] !== 0) continue; // wall or door blocks region spread
+      if (e.arr[e.i] !== EDGE_NONE) continue; // anything on the edge stops the region
       seen.add(ni);
       stack.push({ x: nx, y: ny });
     }

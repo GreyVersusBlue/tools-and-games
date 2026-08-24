@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  CELL, FLOOR_H, MAX_FLOORS,
+  CELL, FLOOR_H, MAX_FLOORS, EDGE_WALL, EDGE_GLASS, EDGE_RAIL,
   createState, createFloor,
   activeFloor, floorBaseY, topOfBuilding, wallHeightOf, floorCellCount,
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
@@ -226,7 +226,7 @@ test('a design round-trips unchanged, polygon rooms included', () => {
 
   const back = deserialize(serialize(s));
   assert.equal(back.version, SAVE_VERSION);
-  assert.equal(back.floors.length, 2);
+  assert.equal(back.floors.length, s.floors.length);
   assert.equal(back.currentFloor, 1);
   assert.deepEqual(back.floors[0].cells, s.floors[0].cells);
   assert.deepEqual(back.floors[1].edgesV, s.floors[1].edgesV);
@@ -307,4 +307,32 @@ test('cell and edge counts follow the shared footprint on every floor', () => {
     assert.equal(f.edgesH.length, 12 * 10);
     assert.equal(f.edgesV.length, 13 * 9);
   }
+});
+
+// ---------- edge kinds ----------
+
+test('glass and railings bound a region the way a wall does', () => {
+  const s = createState(6, 6);
+  const f = s.floors[0];
+  for (let x = 0; x < 4; x++) for (let y = 0; y < 4; y++) setTile(f, x, y, true);
+  assert.equal(floodRegion(f, 0, 0).length, 16);
+
+  for (const kind of [EDGE_WALL, EDGE_GLASS, EDGE_RAIL]) {
+    for (let x = 0; x < 4; x++) f.edgesH[edgeHIdx(f, x, 2)] = kind;
+    assert.equal(floodRegion(f, 0, 0).length, 8,
+      `kind ${kind} splits the room — a glazed partition separates two rooms, a railing is the floor's edge`);
+  }
+});
+
+test('an edge kind from a newer build loads as a wall, not as a gap', () => {
+  const s = createState(6, 6);
+  const f = s.floors[0];
+  f.edgesH[edgeHIdx(f, 0, 0)] = EDGE_GLASS;
+  const json = JSON.parse(serialize(s));
+  json.floors[0].edgesH[1] = 9;    // a kind this build has never heard of
+  json.floors[0].edgesH[2] = -3;
+  const back = deserialize(JSON.stringify(json));
+  assert.equal(back.floors[0].edgesH[0], EDGE_GLASS, 'known kinds come through as themselves');
+  assert.equal(back.floors[0].edgesH[1], EDGE_WALL, 'and unknown ones fall back to solid');
+  assert.equal(back.floors[0].edgesH[2], EDGE_WALL);
 });
