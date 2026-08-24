@@ -2,10 +2,11 @@
 
 import * as THREE from 'three';
 import {
-  createState, buildSampleSchool, ROOM_COLORS, MAX_FLOORS,
-  floorLabel, floorCellCount,
+  createState, ROOM_COLORS, MAX_FLOORS,
+  floorLabel, floorCellCount, floorShapeCount,
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
 } from './grid.js';
+import { buildSampleSchool } from './sample.js';
 import { initRender } from './render.js';
 import { initEditor } from './editor.js';
 import { initWalkthrough } from './walkthrough.js';
@@ -45,6 +46,13 @@ const editor = initEditor({
     autosave(state);
     updateUndoButtons();
     renderFloorList();
+  },
+  // The polygon tools have more to say than a fixed per-tool hint — how many
+  // corners are down, how big the room is — so they drive the status line.
+  onStatus: (text) => { $('status').textContent = text; },
+  onHoleMode: (on) => {
+    $('hole-btn').classList.toggle('on', on);
+    $('hole-btn').setAttribute('aria-pressed', String(on));
   },
 });
 
@@ -87,22 +95,36 @@ walk.controls.addEventListener('unlock', () => {
 });
 
 // --- tool buttons ---
-const TOOL_KEYS = { Digit1: 'floor', Digit2: 'wall', Digit3: 'door', Digit4: 'room', Digit5: 'erase' };
+const TOOL_KEYS = {
+  Digit1: 'floor', Digit2: 'wall', Digit3: 'door', Digit4: 'room',
+  Digit5: 'erase', Digit6: 'poly', Digit7: 'vertex',
+};
 const HINTS = {
   floor: 'Floor — click / drag to lay floor tiles',
-  wall: 'Wall — drag along cell edges to raise walls',
-  door: 'Door — click a wall edge to toggle a doorway',
+  wall: 'Wall — drag along cell edges, or click a polygon wall to raise it',
+  door: 'Door — click a wall edge, or anywhere along a polygon wall',
   room: 'Room — pick a name & color, then click a floor area to label it',
-  erase: 'Eraser — drag to remove walls, doors, and floor',
+  erase: 'Eraser — drag to remove walls, doors, and floor; click a polygon room to delete it',
+  poly: 'Polygon — click to place corners, click the first one (or Enter) to close. Alt = ignore snapping, Shift = 15° steps.',
+  vertex: 'Shape — click a room to select it. A grid room becomes a polygon when you do.',
 };
 
 function selectTool(t) {
   editor.setTool(t);
   document.querySelectorAll('#toolbar .tool').forEach((b) =>
     b.classList.toggle('active', b.dataset.tool === t));
-  $('room-panel').classList.toggle('hidden', t !== 'room');
-  $('status').textContent = HINTS[t];
+  // The polygon tool names its room from the same panel the room tool uses —
+  // one place to pick a name and a color, whichever kind of room it lands on.
+  $('room-panel').classList.toggle('hidden', t !== 'room' && t !== 'poly');
+  $('poly-extra').classList.toggle('hidden', t !== 'poly');
+  // Hole mode is sticky, so coming back to the polygon tool has to say which
+  // of the two things a loop is going to do.
+  $('status').textContent = t === 'poly' && editor.holeMode
+    ? 'Cut hole — draw a loop inside a polygon room to carve an opening out of it.'
+    : HINTS[t];
 }
+
+$('hole-btn').addEventListener('click', () => editor.setHoleMode(!editor.holeMode));
 
 document.querySelectorAll('#toolbar .tool').forEach((b) =>
   b.addEventListener('click', () => selectTool(b.dataset.tool)));
@@ -140,7 +162,9 @@ function renderFloorList() {
     name.textContent = floorLabel(i);
     const count = document.createElement('span');
     count.className = 'count';
-    count.textContent = `${floorCellCount(state.floors[i])} cells`;
+    const shapes = floorShapeCount(state.floors[i]);
+    count.textContent = `${floorCellCount(state.floors[i])} cells` +
+      (shapes ? ` · ${shapes} poly` : '');
     b.append(name, count);
     b.addEventListener('click', () => goToFloor(i));
     floorList.appendChild(b);
@@ -155,6 +179,7 @@ function renderFloorList() {
 function goToFloor(i) {
   if (!setCurrentFloor(state, i)) return;
   renderApi.applyFloorVisibility();
+  editor.refreshOverlay();   // handles belong to the storey you're editing
   renderFloorList();
   autosave(state);
   $('status').textContent = `${floorLabel(state.currentFloor)} — editing this floor`;
@@ -202,6 +227,7 @@ $('file-input').addEventListener('change', async (e) => {
     state = await loadFromFile(file);
     renderApi.fitEditView(state);
     rebuild();
+    editor.refreshOverlay();
     renderFloorList();
     autosaveNow(state);
     updateUndoButtons();
@@ -217,6 +243,7 @@ $('new-btn').addEventListener('click', () => {
   clearAutosave();
   renderApi.fitEditView(state);
   rebuild();
+  editor.refreshOverlay();
   renderFloorList();
   updateUndoButtons();
 });
@@ -231,6 +258,14 @@ document.addEventListener('keydown', (e) => {
   const typing = e.target.tagName === 'INPUT';
   if (e.code === 'Tab' && !typing) { e.preventDefault(); setMode(mode === 'edit' ? 'walk' : 'edit'); return; }
   if (mode !== 'edit' || typing) return;
+  // Enter / Escape / Backspace / Delete belong to the polygon tools while one
+  // of them is holding an outline or a selection.
+  if (!e.ctrlKey && !e.metaKey && editor.handleKey(e)) {
+    e.preventDefault();
+    autosave(state);
+    updateUndoButtons();
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
     e.preventDefault();
     e.shiftKey ? editor.redo() : editor.undo();

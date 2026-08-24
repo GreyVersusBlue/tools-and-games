@@ -17,6 +17,9 @@ import {
   CELL, WALL_H, WALL_T, DOOR_W, DOOR_H,
   FLOOR_H, computeLabels, floorBaseY, wallHeightOf, topOfBuilding,
 } from './grid.js';
+import {
+  SEG_WALL, shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint,
+} from './shapes.js';
 
 // ---------- procedural textures ----------
 
@@ -369,6 +372,23 @@ export function initRender(canvas) {
     return sprite;
   }
 
+  // A polygon room's slab and ceiling. Built in the XY plane and laid flat,
+  // because that's what ShapeGeometry triangulates; `flip` picks which way the
+  // face looks. ShapeGeometry emits world UVs (the shape's own coordinates), so
+  // dividing by CELL lands the same texture scale the grid cells use.
+  function shapeSlabGeometry(shape, flip) {
+    const ring = (pts) => pts.map((p) => new THREE.Vector2(p.x, flip ? p.z : -p.z));
+    const outline = new THREE.Shape(ring(shape.rings[0].pts));
+    for (let i = 1; i < shape.rings.length; i++) {
+      outline.holes.push(new THREE.Path(ring(shape.rings[i].pts)));
+    }
+    const geo = new THREE.ShapeGeometry(outline);
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / CELL, uv.getY(i) / CELL);
+    geo.rotateX(flip ? Math.PI / 2 : -Math.PI / 2);
+    return geo;
+  }
+
   // Build one storey's merged geometry into `group` / `ceil` / `labels`.
   function buildFloor(floor, baseY, wallH, group, ceil, labels) {
     const floorGeos = [], ceilGeos = [], wallGeos = [], fixtureGeos = [];
@@ -441,6 +461,58 @@ export function initRender(canvas) {
         }
       }
     };
+    // A wall on an arbitrary segment: same slab-with-a-header construction as
+    // buildEdge, but the run is any length at any angle and a doorway is a
+    // position along it rather than a whole edge of the lattice.
+    const addOriented = (len, h, d, x, y, z, angle, color) => {
+      const g = new THREE.BoxGeometry(len, h, d);
+      // A grid wall is one cell wide and gets one tile of the wall texture; a
+      // polygon wall is whatever length it is, so its long faces repeat per
+      // cell instead of stretching one tile across the whole run. BoxGeometry
+      // lays its faces out px, nx, py, ny, pz, nz — four vertices each — so
+      // the two long faces are the last eight.
+      const uv = g.attributes.uv;
+      const repeat = len / CELL;
+      for (let i = 16; i < uv.count; i++) uv.setX(i, uv.getX(i) * repeat);
+      g.rotateY(-angle);
+      g.translate(x, y, z);
+      coloredGeo(g, color);
+      wallGeos.push(g);
+    };
+    const buildSegWall = (a, b, openings) => {
+      const L = segLength(a, b);
+      if (L < 0.01) return;
+      const angle = Math.atan2(b.z - a.z, b.x - a.x);
+      const ux = (b.x - a.x) / L, uz = (b.z - a.z) / L;
+      const at = (t, pad = 0) => ({ x: a.x + ux * (t * L + pad), z: a.z + uz * (t * L + pad) });
+      const span = (t0, t1, h, cy, color, depth = WALL_T, grow = 0) => {
+        // Overhang the outer ends by half a wall thickness so corners close.
+        const p0 = at(t0, (t0 <= 0 ? -WALL_T / 2 : 0) - grow);
+        const p1 = at(t1, (t1 >= 1 ? WALL_T / 2 : 0) + grow);
+        const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+        if (len < 0.02) return;
+        addOriented(len, h, depth, (p0.x + p1.x) / 2, cy, (p0.z + p1.z) / 2, angle, color);
+      };
+
+      const cuts = openings
+        .map((o) => {
+          const half = o.w / 2 / L;
+          return { t0: Math.max(0, o.t - half), t1: Math.min(1, o.t + half) };
+        })
+        .sort((p, q) => p.t0 - q.t0);
+
+      const headH = wallH - DOOR_H;
+      let cursor = 0;
+      for (const c of cuts) {
+        if (c.t0 > cursor) span(cursor, c.t0, wallH, baseY + wallH / 2, _white);
+        span(c.t0, c.t1, headH, baseY + DOOR_H + headH / 2, _doorTint);
+        // door frame trim, a touch proud of the wall for readability
+        span(c.t0, c.t1, 0.25, baseY + DOOR_H + 0.125, _doorTint, WALL_T + 0.2, 0.25);
+        cursor = Math.max(cursor, c.t1);
+      }
+      if (cursor < 1) span(cursor, 1, wallH, baseY + wallH / 2, _white);
+    };
+
     for (let y = 0; y <= floor.h; y++)
       for (let x = 0; x < floor.w; x++) {
         const v = floor.edgesH[y * floor.w + x];
@@ -451,6 +523,48 @@ export function initRender(canvas) {
         const v = floor.edgesV[y * (floor.w + 1) + x];
         if (v) buildEdge(v, x * CELL, (y + 0.5) * CELL, false);
       }
+
+    // ---- polygon rooms ----
+    // Same merged meshes as the grid: a polygon room is a different way of
+    // describing a room, not a different kind of thing to draw.
+    shapesOf(floor).forEach((shape, si) => {
+      // Coincident planes: a polygon room drawn over grid cells, or over
+      // another polygon room, needs somewhere to be. A fraction of an inch is
+      // enough to settle the depth test and invisible at building scale.
+      const lift = 0.02 + (si % 8) * 0.006;
+
+      const slab = shapeSlabGeometry(shape, false);
+      slab.translate(0, baseY + lift, 0);
+      tmpColor.set(shape.color || _white);
+      coloredGeo(slab, tmpColor);
+      floorGeos.push(slab);
+
+      const ceilGeo = shapeSlabGeometry(shape, true);
+      ceilGeo.translate(0, baseY + WALL_H - lift, 0);
+      ceilGeos.push(ceilGeo);
+
+      for (const ring of shape.rings) {
+        for (let i = 0; i < ring.pts.length; i++) {
+          if (ring.walls[i] !== SEG_WALL) continue;
+          const [a, b] = segEnds(ring, i);
+          buildSegWall(a, b, ring.openings.filter((o) => o.seg === i));
+        }
+      }
+
+      // Troffers on the same 8ft lattice the grid cells use, clipped to the
+      // room — so a polygon room is lit like its rectangular neighbours.
+      const bb = shapeBBox(shape);
+      for (let z = Math.floor(bb.z0 / CELL) | 0; z <= Math.ceil(bb.z1 / CELL); z++) {
+        for (let x = Math.floor(bb.x0 / CELL) | 0; x <= Math.ceil(bb.x1 / CELL); x++) {
+          if (x % 2 !== 1 || z % 2 !== 1) continue;
+          const cx = (x + 0.5) * CELL, cz = (z + 0.5) * CELL;
+          if (!pointInShape(shape, cx, cz)) continue;
+          const fg = new THREE.BoxGeometry(3.6, 0.15, 1.6);
+          fg.translate(cx, baseY + WALL_H - 0.1, cz);
+          fixtureGeos.push(fg);
+        }
+      }
+    });
 
     if (floorGeos.length) {
       const mesh = new THREE.Mesh(mergeGeometries(floorGeos), floorMat);
@@ -477,6 +591,15 @@ export function initRender(canvas) {
     for (const l of computeLabels(floor)) {
       const sprite = makeLabelSprite(l.name, l.color);
       sprite.position.set(l.cx, baseY + WALL_H + 2.5, l.cz);
+      labels.add(sprite);
+    }
+    // Polygon rooms label from the point deepest inside them — the centroid of
+    // an L-shaped room can land in a wall, or outside the room altogether.
+    for (const shape of shapesOf(floor)) {
+      if (!shape.name) continue;
+      const p = interiorPoint(shape);
+      const sprite = makeLabelSprite(shape.name, shape.color);
+      sprite.position.set(p.x, baseY + WALL_H + 2.5, p.z);
       labels.add(sprite);
     }
   }

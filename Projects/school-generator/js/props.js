@@ -153,11 +153,15 @@ export const linksOnFloor = (state, floorIndex) =>
   state.links.filter((l) => l.from === floorIndex || l.to === floorIndex);
 
 // Highest id in use + 1 — used after loading a file so freshly placed props
-// can't collide with ids that came in from the save.
+// can't collide with ids that came in from the save. Polygon rooms draw on the
+// same counter, so they're counted here too.
 export function reseedIds(state) {
   let max = 0;
   for (const p of state.props) max = Math.max(max, p.id);
   for (const l of state.links) max = Math.max(max, l.id);
+  for (const f of state.floors || []) {
+    for (const s of f.shapes || []) max = Math.max(max, s.id || 0);
+  }
   state.nextId = max + 1;
   return state.nextId;
 }
