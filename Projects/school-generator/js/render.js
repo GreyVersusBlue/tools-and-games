@@ -14,13 +14,19 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
-  CELL, WALL_H, WALL_T, DOOR_W, DOOR_H,
+  CELL, WALL_H, WALL_T, DOOR_W, DOOR_H, RAIL_H,
+  EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
   FLOOR_H, computeLabels, floorBaseY, wallHeightOf, topOfBuilding,
 } from './grid.js';
 import {
-  SEG_WALL, shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint,
+  SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt,
+  shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint,
 } from './shapes.js';
 import { catalogEntry } from './catalog.js';
+import {
+  stairMetrics, stairsOf, openingRails,
+  floorCuts, inFloorCut, cellCut, stairWidth,
+} from './stairs.js';
 
 // ---------- procedural textures ----------
 
@@ -193,17 +199,51 @@ export function initRender(canvas) {
     roughness: 0.78,
     metalness: 0.04,
   });
+  // Glazing. Transparent surfaces don't write depth — otherwise a pane hides
+  // whatever is behind it from every later draw, which is exactly the thing a
+  // window is for not doing — and they draw after the opaque pass.
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color: 0xcfe4ee,
+    transparent: true,
+    opacity: 0.26,
+    roughness: 0.05,
+    metalness: 0.0,
+    reflectivity: 0.6,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  // Guardrails and handrails: brushed metal posts with a wood-toned cap, both
+  // baked into the vertex colors the way props are.
+  const railMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.35,
+    metalness: 0.65,
+  });
+  // Stair treads — poured concrete with a nosing strip, so a run reads as a
+  // stair from across the building rather than as a ramp.
+  const stairMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.88,
+    metalness: 0.0,
+  });
+
   // Ghosted copies for the level below the one being edited — enough to line
   // up walls between storeys without the lower floor competing for attention.
   const floorMatGhost = floorMat.clone();
   const wallMatGhost = wallMat.clone();
-  for (const m of [floorMatGhost, wallMatGhost]) {
+  const glassMatGhost = glassMat.clone();
+  const railMatGhost = railMat.clone();
+  const stairMatGhost = stairMat.clone();
+  for (const m of [floorMatGhost, wallMatGhost, railMatGhost, stairMatGhost]) {
     m.transparent = true;
     m.depthWrite = false;
     m.roughness = 1.0;
   }
   floorMatGhost.opacity = 0.30;
   wallMatGhost.opacity = 0.22;
+  railMatGhost.opacity = 0.28;
+  stairMatGhost.opacity = 0.30;
+  glassMatGhost.opacity = 0.12;
 
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
   for (const m of [floorMat, wallMat, ceilMat, groundMat]) {
@@ -324,6 +364,11 @@ export function initRender(canvas) {
 
   const _white = new THREE.Color(1, 1, 1);
   const _doorTint = new THREE.Color('#c98f5f');
+  const _glassFrame = new THREE.Color('#8d949c');
+  const _railPost = new THREE.Color('#9aa3ad');
+  const _railCap = new THREE.Color('#8a5a3a');
+  const _tread = new THREE.Color('#c8c6c0');
+  const _nosing = new THREE.Color('#5d6067');
 
   // `color` is usually a shared THREE.Color the caller already has (_white,
   // _doorTint, a per-cell tmpColor); accepting a plain '#rrggbb' string too
@@ -546,11 +591,20 @@ export function initRender(canvas) {
   // because that's what ShapeGeometry triangulates; `flip` picks which way the
   // face looks. ShapeGeometry emits world UVs (the shape's own coordinates), so
   // dividing by CELL lands the same texture scale the grid cells use.
-  function shapeSlabGeometry(shape, flip) {
+  function shapeSlabGeometry(shape, flip, cuts = []) {
     const ring = (pts) => pts.map((p) => new THREE.Vector2(p.x, flip ? p.z : -p.z));
     const outline = new THREE.Shape(ring(shape.rings[0].pts));
     for (let i = 1; i < shape.rings.length; i++) {
       outline.holes.push(new THREE.Path(ring(shape.rings[i].pts)));
+    }
+    // A stair's opening is a hole in whatever room it lands in — the same thing
+    // Phase 2's carved alcoves already are, arrived at from the other end. Only
+    // cuts lying wholly inside the room are taken: one hanging half over the
+    // edge of a slab isn't a hole in it, and a hole crossing the outline
+    // triangulates into confetti.
+    for (const cut of cuts) {
+      if (!cut.every((c) => pointInShape(shape, c.x, c.z))) continue;
+      outline.holes.push(new THREE.Path(ring(cut)));
     }
     const geo = new THREE.ShapeGeometry(outline);
     const uv = geo.attributes.uv;
@@ -560,58 +614,220 @@ export function initRender(canvas) {
   }
 
   // Build one storey's merged geometry into `group` / `ceil` / `labels`.
-  function buildFloor(floor, baseY, wallH, group, ceil, labels) {
+  //
+  // `ctx` is what the storey can't work out on its own: the holes cut in its
+  // slab by stairs arriving from below (`cuts`), the holes in its ceiling from
+  // stairs leaving it (`ceilCuts`), and the links themselves — the runs that
+  // start here and the guardrails around the openings that land here.
+  function buildFloor(floor, baseY, wallH, group, ceil, labels, ctx = {}) {
     const floorGeos = [], ceilGeos = [], wallGeos = [], fixtureGeos = [];
+    const glassGeos = [], railGeos = [], stairGeos = [];
+    const cuts = ctx.cuts || [];
+    const ceilCuts = ctx.ceilCuts || [];
+    const metrics = ctx.metrics || null;
     const tmpColor = new THREE.Color();
 
     for (let y = 0; y < floor.h; y++) {
       for (let x = 0; x < floor.w; x++) {
         const cell = floor.cells[y * floor.w + x];
         if (!cell) continue;
+        // A cell under an opening isn't drawn at all — that is what makes the
+        // hole a hole, rather than a stair pressed up against an intact slab.
+        const cut = cellCut(cuts, x, y);
+        const ceilCut = cellCut(ceilCuts, x, y);
         const cx = (x + 0.5) * CELL, cz = (y + 0.5) * CELL;
 
-        const f = new THREE.PlaneGeometry(CELL, CELL);
-        f.rotateX(-Math.PI / 2);
-        f.translate(cx, baseY, cz);
-        // continuous tiling across cells
-        const uv = f.attributes.uv;
-        for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + x, uv.getY(i) + y);
-        tmpColor.set(cell.color || _white);
-        coloredGeo(f, tmpColor);
-        floorGeos.push(f);
+        if (!cut) {
+          const f = new THREE.PlaneGeometry(CELL, CELL);
+          f.rotateX(-Math.PI / 2);
+          f.translate(cx, baseY, cz);
+          // continuous tiling across cells
+          const uv = f.attributes.uv;
+          for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + x, uv.getY(i) + y);
+          tmpColor.set(cell.color || _white);
+          coloredGeo(f, tmpColor);
+          floorGeos.push(f);
+        }
 
-        const cg = new THREE.PlaneGeometry(CELL, CELL);
-        cg.rotateX(Math.PI / 2);
-        cg.translate(cx, baseY + WALL_H, cz);
-        const cuv = cg.attributes.uv;
-        for (let i = 0; i < cuv.count; i++) cuv.setXY(i, cuv.getX(i) + x, cuv.getY(i) + y);
-        ceilGeos.push(cg);
+        // The ceiling belongs to this storey but the hole in it belongs to the
+        // one above — a stair leaving here opens both planes, or you'd climb
+        // into a ceiling tile.
+        if (!ceilCut) {
+          const cg = new THREE.PlaneGeometry(CELL, CELL);
+          cg.rotateX(Math.PI / 2);
+          cg.translate(cx, baseY + WALL_H, cz);
+          const cuv = cg.attributes.uv;
+          for (let i = 0; i < cuv.count; i++) cuv.setXY(i, cuv.getX(i) + x, cuv.getY(i) + y);
+          ceilGeos.push(cg);
 
-        // a 2x4ft light fixture on every other cell in both directions
-        if (x % 2 === 1 && y % 2 === 1) {
-          const fg = new THREE.BoxGeometry(3.6, 0.15, 1.6);
-          fg.translate(cx, baseY + WALL_H - 0.1, cz);
-          fixtureGeos.push(fg);
+          // a 2x4ft light fixture on every other cell in both directions
+          if (x % 2 === 1 && y % 2 === 1) {
+            const fg = new THREE.BoxGeometry(3.6, 0.15, 1.6);
+            fg.translate(cx, baseY + WALL_H - 0.1, cz);
+            fixtureGeos.push(fg);
+          }
         }
       }
     }
 
-    // walls & doors on edges
+    // ---- walls, glazing and railings ----
+    //
+    // Four things can stand on a boundary: a wall, a doorway through one, a
+    // glazed partition, a guardrail. The lattice and the polygon rooms say
+    // *where* differently, but they want the same things built — so a grid edge
+    // is handed to the same span builders as a polygon segment, as a run that
+    // happens to be one cell long.
+
     const jamb = (CELL - DOOR_W) / 2;
+    const GLASS_BAY = 5;       // ft between mullions
+    const GLASS_SILL = 0.4;    // ft of solid under the pane
+    const GLASS_HEAD = 0.5;    // ft of frame over it
+    const POST_GAP = 4;        // ft between guardrail posts
+
     const addBox = (w, h, d, x, y, z, color) => {
       const g = new THREE.BoxGeometry(w, h, d);
       g.translate(x, y, z);
       coloredGeo(g, color);
       wallGeos.push(g);
     };
+
+    // A run of anything at any angle: the box is built along +X and turned to
+    // face down the segment (see the rotation note in propplace.js — this is
+    // the same convention, one axis over).
+    const addOriented = (len, h, d, x, y, z, angle, color, target = wallGeos) => {
+      const g = new THREE.BoxGeometry(len, h, d);
+      // A grid wall is one cell wide and gets one tile of the wall texture; a
+      // polygon wall is whatever length it is, so its long faces repeat per
+      // cell instead of stretching one tile across the whole run. BoxGeometry
+      // lays its faces out px, nx, py, ny, pz, nz — four vertices each — so
+      // the two long faces are the last eight.
+      const uv = g.attributes.uv;
+      const repeat = len / CELL;
+      for (let i = 16; i < uv.count; i++) uv.setX(i, uv.getX(i) * repeat);
+      g.rotateY(-angle);
+      g.translate(x, y, z);
+      coloredGeo(g, color);
+      target.push(g);
+    };
+
+    // Glazing: sill, head, mullions every few feet, and one pane per bay. The
+    // frame is ordinary wall geometry; only the pane goes in the transparent
+    // pile, so glass costs one extra draw call per storey and no sorting
+    // headaches for anything else.
+    const glazedRun = (p0, p1, len, angle, h, y0 = baseY) => {
+      const cx = (p0.x + p1.x) / 2, cz = (p0.z + p1.z) / 2;
+      addOriented(len, GLASS_SILL, WALL_T, cx, y0 + GLASS_SILL / 2, cz, angle, _glassFrame);
+      addOriented(len, GLASS_HEAD, WALL_T, cx, y0 + h - GLASS_HEAD / 2, cz, angle, _glassFrame);
+      const paneH = h - GLASS_SILL - GLASS_HEAD;
+      if (paneH <= 0.2) return;
+      const ux = (p1.x - p0.x) / len, uz = (p1.z - p0.z) / len;
+      const bays = Math.max(1, Math.round(len / GLASS_BAY));
+      for (let i = 1; i < bays; i++) {
+        const t = (i / bays) * len;
+        addOriented(0.25, paneH, WALL_T, p0.x + ux * t, y0 + GLASS_SILL + paneH / 2, p0.z + uz * t,
+          angle, _glassFrame);
+      }
+      const pane = new THREE.BoxGeometry(len, paneH, WALL_T * 0.35);
+      pane.rotateY(-angle);
+      pane.translate(cx, y0 + GLASS_SILL + paneH / 2, cz);
+      glassGeos.push(pane);
+    };
+
+    // A guardrail: posts, a cap you could put a hand on, and one mid rail so it
+    // doesn't read as a row of sticks from across the building.
+    const railRun = (p0, p1, len, angle, y0 = baseY) => {
+      const ux = (p1.x - p0.x) / len, uz = (p1.z - p0.z) / len;
+      const posts = Math.max(1, Math.round(len / POST_GAP));
+      for (let i = 0; i <= posts; i++) {
+        const t = (i / posts) * len;
+        addOriented(0.16, RAIL_H, 0.16, p0.x + ux * t, y0 + RAIL_H / 2, p0.z + uz * t,
+          angle, _railPost, railGeos);
+      }
+      const cx = (p0.x + p1.x) / 2, cz = (p0.z + p1.z) / 2;
+      addOriented(len, 0.18, 0.3, cx, y0 + RAIL_H, cz, angle, _railCap, railGeos);
+      addOriented(len, 0.09, 0.09, cx, y0 + RAIL_H * 0.52, cz, angle, _railPost, railGeos);
+    };
+
+    // One full-height piece of boundary, whichever kind it is. Everything that
+    // knows about doorways calls this and stays out of the material business.
+    const fillSpan = (kind, p0, p1, angle, h) => {
+      const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+      if (len < 0.02) return;
+      if (kind === SEG_RAIL) railRun(p0, p1, len, angle);
+      else if (kind === SEG_GLASS) glazedRun(p0, p1, len, angle, h);
+      else {
+        addOriented(len, h, WALL_T, (p0.x + p1.x) / 2, baseY + h / 2, (p0.z + p1.z) / 2,
+          angle, _white);
+      }
+    };
+
+    // A boundary run with its doorways cut out of it. `kind` picks what the
+    // solid stretches are made of; the header over an opening is the same
+    // trimmed frame whatever the wall around it is, because that is what reads
+    // as a door from thirty feet away.
+    const buildSegWall = (a, b, openings, kind = SEG_WALL) => {
+      const L = segLength(a, b);
+      if (L < 0.01) return;
+      const angle = Math.atan2(b.z - a.z, b.x - a.x);
+      const ux = (b.x - a.x) / L, uz = (b.z - a.z) / L;
+      const h = kind === SEG_RAIL ? RAIL_H : wallH;
+      const at = (t, pad = 0) => ({ x: a.x + ux * (t * L + pad), z: a.z + uz * (t * L + pad) });
+      // Overhang the outer ends by half a wall thickness so corners close.
+      const ends = (t0, t1, grow = 0) => [
+        at(t0, (t0 <= 0 ? -WALL_T / 2 : 0) - grow),
+        at(t1, (t1 >= 1 ? WALL_T / 2 : 0) + grow),
+      ];
+      const span = (t0, t1) => {
+        const [p0, p1] = ends(t0, t1);
+        fillSpan(kind, p0, p1, angle, h);
+      };
+      const header = (t0, t1, hh, cy, color, depth = WALL_T, grow = 0) => {
+        const [p0, p1] = ends(t0, t1, grow);
+        const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+        if (len < 0.02) return;
+        addOriented(len, hh, depth, (p0.x + p1.x) / 2, cy, (p0.z + p1.z) / 2, angle, color);
+      };
+
+      const cuts = openings
+        .map((o) => {
+          const half = o.w / 2 / L;
+          return { t0: Math.max(0, o.t - half), t1: Math.min(1, o.t + half) };
+        })
+        .sort((p, q) => p.t0 - q.t0);
+
+      const headH = h - DOOR_H;
+      let cursor = 0;
+      for (const c of cuts) {
+        if (c.t0 > cursor) span(cursor, c.t0);
+        // A gap in a railing is just a gap — there is nothing to hang a header
+        // from, which is exactly what makes it the top of a stair.
+        if (kind !== SEG_RAIL && headH > 0.05) {
+          header(c.t0, c.t1, headH, baseY + DOOR_H + headH / 2, _doorTint);
+          // door frame trim, a touch proud of the wall for readability
+          header(c.t0, c.t1, 0.25, baseY + DOOR_H + 0.125, _doorTint, WALL_T + 0.2, 0.25);
+        }
+        cursor = Math.max(cursor, c.t1);
+      }
+      if (cursor < 1) span(cursor, 1);
+    };
+
+    // A lattice edge, expressed as a one-cell segment. The doorway is the one
+    // case the grid still says its own way: an edge is a whole cell wide, so a
+    // door in one is fixed at its middle rather than placed along it.
     const buildEdge = (val, cx, cz, horizontal) => {
-      // horizontal: wall runs along X at z=cz; vertical: along Z at x=cx
       const L = CELL + WALL_T; // overlap so corners join cleanly
+      const half = L / 2;
+      const a = horizontal ? { x: cx - half, z: cz } : { x: cx, z: cz - half };
+      const b = horizontal ? { x: cx + half, z: cz } : { x: cx, z: cz + half };
       const mid = baseY + wallH / 2;
-      if (val === 1) {
+      if (val === EDGE_WALL) {
         if (horizontal) addBox(L, wallH, WALL_T, cx, mid, cz, _white);
         else addBox(WALL_T, wallH, L, cx, mid, cz, _white);
-      } else if (val === 2) {
+      } else if (val === EDGE_GLASS) {
+        glazedRun(a, b, L, horizontal ? 0 : Math.PI / 2, wallH);
+      } else if (val === EDGE_RAIL) {
+        railRun(a, b, L, horizontal ? 0 : Math.PI / 2);
+      } else if (val === EDGE_DOOR) {
         const off = DOOR_W / 2 + jamb / 2 + WALL_T / 2;
         const jw = jamb + WALL_T;
         const headH = wallH - DOOR_H;
@@ -631,57 +847,6 @@ export function initRender(canvas) {
         }
       }
     };
-    // A wall on an arbitrary segment: same slab-with-a-header construction as
-    // buildEdge, but the run is any length at any angle and a doorway is a
-    // position along it rather than a whole edge of the lattice.
-    const addOriented = (len, h, d, x, y, z, angle, color) => {
-      const g = new THREE.BoxGeometry(len, h, d);
-      // A grid wall is one cell wide and gets one tile of the wall texture; a
-      // polygon wall is whatever length it is, so its long faces repeat per
-      // cell instead of stretching one tile across the whole run. BoxGeometry
-      // lays its faces out px, nx, py, ny, pz, nz — four vertices each — so
-      // the two long faces are the last eight.
-      const uv = g.attributes.uv;
-      const repeat = len / CELL;
-      for (let i = 16; i < uv.count; i++) uv.setX(i, uv.getX(i) * repeat);
-      g.rotateY(-angle);
-      g.translate(x, y, z);
-      coloredGeo(g, color);
-      wallGeos.push(g);
-    };
-    const buildSegWall = (a, b, openings) => {
-      const L = segLength(a, b);
-      if (L < 0.01) return;
-      const angle = Math.atan2(b.z - a.z, b.x - a.x);
-      const ux = (b.x - a.x) / L, uz = (b.z - a.z) / L;
-      const at = (t, pad = 0) => ({ x: a.x + ux * (t * L + pad), z: a.z + uz * (t * L + pad) });
-      const span = (t0, t1, h, cy, color, depth = WALL_T, grow = 0) => {
-        // Overhang the outer ends by half a wall thickness so corners close.
-        const p0 = at(t0, (t0 <= 0 ? -WALL_T / 2 : 0) - grow);
-        const p1 = at(t1, (t1 >= 1 ? WALL_T / 2 : 0) + grow);
-        const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
-        if (len < 0.02) return;
-        addOriented(len, h, depth, (p0.x + p1.x) / 2, cy, (p0.z + p1.z) / 2, angle, color);
-      };
-
-      const cuts = openings
-        .map((o) => {
-          const half = o.w / 2 / L;
-          return { t0: Math.max(0, o.t - half), t1: Math.min(1, o.t + half) };
-        })
-        .sort((p, q) => p.t0 - q.t0);
-
-      const headH = wallH - DOOR_H;
-      let cursor = 0;
-      for (const c of cuts) {
-        if (c.t0 > cursor) span(cursor, c.t0, wallH, baseY + wallH / 2, _white);
-        span(c.t0, c.t1, headH, baseY + DOOR_H + headH / 2, _doorTint);
-        // door frame trim, a touch proud of the wall for readability
-        span(c.t0, c.t1, 0.25, baseY + DOOR_H + 0.125, _doorTint, WALL_T + 0.2, 0.25);
-        cursor = Math.max(cursor, c.t1);
-      }
-      if (cursor < 1) span(cursor, 1, wallH, baseY + wallH / 2, _white);
-    };
 
     for (let y = 0; y <= floor.h; y++)
       for (let x = 0; x < floor.w; x++) {
@@ -694,6 +859,69 @@ export function initRender(canvas) {
         if (v) buildEdge(v, x * CELL, (y + 0.5) * CELL, false);
       }
 
+    // ---- stairs and floor openings ----
+    //
+    // The run is drawn with the storey it climbs *from*; the guardrail around
+    // the hole is drawn with the storey the hole is *in*. Splitting them that
+    // way means each piece hides, ghosts and lights with the level it belongs
+    // to, without either floor needing to know about the other's geometry.
+
+    // A box in the link's own frame — local +Z is up the run.
+    const localBox = (link, w, h, d, lx, ly, lz, color, target) => {
+      const g = new THREE.BoxGeometry(w, h, d);
+      g.translate(lx, ly, lz);
+      g.rotateY(link.rotationY || 0);
+      g.translate(link.x, baseY, link.z);
+      coloredGeo(g, color);
+      target.push(g);
+    };
+
+    const buildStairRun = (link) => {
+      if (!metrics) return;
+      const w = stairWidth(link);
+      // Each step is a solid block from the slab up to its own tread, not a
+      // floating board: overlapping boxes merge into one mass, so the run has
+      // an underside when you walk past it on the floor below.
+      for (let i = 0; i < metrics.steps; i++) {
+        const top = (i + 1) * metrics.riser;
+        const z0 = i * metrics.tread;
+        localBox(link, w, top, metrics.tread, 0, top / 2, z0 + metrics.tread / 2, _tread, stairGeos);
+        localBox(link, w, 0.09, 0.2, 0, top - 0.045, z0 + metrics.tread - 0.1, _nosing, stairGeos);
+      }
+      // Handrails: a sloped cap either side, on posts that grow with the run.
+      const pitch = Math.atan2(metrics.rise, metrics.run);
+      const slope = Math.hypot(metrics.run, metrics.rise);
+      const posts = Math.max(2, Math.round(metrics.run / POST_GAP));
+      for (const sx of [-1, 1]) {
+        const lx = sx * (w / 2 - 0.12);
+        for (let i = 0; i <= posts; i++) {
+          const t = i / posts;
+          localBox(link, 0.13, RAIL_H, 0.13, lx, t * metrics.rise + RAIL_H / 2, t * metrics.run,
+            _railPost, railGeos);
+        }
+        const g = new THREE.BoxGeometry(0.18, 0.18, slope);
+        g.rotateX(-pitch);
+        g.translate(lx, RAIL_H + metrics.rise / 2, metrics.run / 2);
+        g.rotateY(link.rotationY || 0);
+        g.translate(link.x, baseY, link.z);
+        coloredGeo(g, _railCap);
+        railGeos.push(g);
+      }
+    };
+
+    for (const link of ctx.risers || []) {
+      if (link.type === 'stair') buildStairRun(link);
+    }
+    // Guardrails around every hole in *this* floor, minus the side a stair
+    // arrives on — see openingRails() for why that one is left open.
+    for (const link of ctx.guarded || []) {
+      for (const seg of openingRails(link, metrics, floor)) {
+        const len = Math.hypot(seg.b.x - seg.a.x, seg.b.z - seg.a.z);
+        if (len < 0.05) continue;
+        railRun(seg.a, seg.b, len, Math.atan2(seg.b.z - seg.a.z, seg.b.x - seg.a.x));
+      }
+    }
+
     // ---- polygon rooms ----
     // Same merged meshes as the grid: a polygon room is a different way of
     // describing a room, not a different kind of thing to draw.
@@ -703,21 +931,21 @@ export function initRender(canvas) {
       // enough to settle the depth test and invisible at building scale.
       const lift = 0.02 + (si % 8) * 0.006;
 
-      const slab = shapeSlabGeometry(shape, false);
+      const slab = shapeSlabGeometry(shape, false, cuts);
       slab.translate(0, baseY + lift, 0);
       tmpColor.set(shape.color || _white);
       coloredGeo(slab, tmpColor);
       floorGeos.push(slab);
 
-      const ceilGeo = shapeSlabGeometry(shape, true);
+      const ceilGeo = shapeSlabGeometry(shape, true, ceilCuts);
       ceilGeo.translate(0, baseY + WALL_H - lift, 0);
       ceilGeos.push(ceilGeo);
 
       for (const ring of shape.rings) {
         for (let i = 0; i < ring.pts.length; i++) {
-          if (ring.walls[i] !== SEG_WALL) continue;
+          if (!isBuilt(ring.walls[i])) continue;
           const [a, b] = segEnds(ring, i);
-          buildSegWall(a, b, ring.openings.filter((o) => o.seg === i));
+          buildSegWall(a, b, ring.openings.filter((o) => o.seg === i), ring.walls[i]);
         }
       }
 
@@ -729,6 +957,7 @@ export function initRender(canvas) {
           if (x % 2 !== 1 || z % 2 !== 1) continue;
           const cx = (x + 0.5) * CELL, cz = (z + 0.5) * CELL;
           if (!pointInShape(shape, cx, cz)) continue;
+          if (inFloorCut(ceilCuts, cx, cz)) continue;   // no troffer hanging over a stairwell
           const fg = new THREE.BoxGeometry(3.6, 0.15, 1.6);
           fg.translate(cx, baseY + WALL_H - 0.1, cz);
           fixtureGeos.push(fg);
@@ -747,6 +976,29 @@ export function initRender(canvas) {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData.mats = { solid: wallMat, ghost: wallMatGhost };
+      group.add(mesh);
+    }
+    if (glassGeos.length) {
+      const mesh = new THREE.Mesh(mergeGeometries(glassGeos), glassMat);
+      mesh.renderOrder = 10;   // after the opaque pass, so it blends over it
+      // A pane that cast a shadow would be a window that darkens the room it
+      // lights. The frame around it, which is ordinary wall geometry, still does.
+      mesh.userData.noShadow = true;
+      mesh.userData.mats = { solid: glassMat, ghost: glassMatGhost };
+      group.add(mesh);
+    }
+    if (railGeos.length) {
+      const mesh = new THREE.Mesh(mergeGeometries(railGeos), railMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData.mats = { solid: railMat, ghost: railMatGhost };
+      group.add(mesh);
+    }
+    if (stairGeos.length) {
+      const mesh = new THREE.Mesh(mergeGeometries(stairGeos), stairMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData.mats = { solid: stairMat, ghost: stairMatGhost };
       group.add(mesh);
     }
     if (ceilGeos.length) {
@@ -821,7 +1073,7 @@ export function initRender(canvas) {
       for (const mesh of g.children) {
         if (!mesh.userData.mats) continue;
         mesh.material = ghost ? mesh.userData.mats.ghost : mesh.userData.mats.solid;
-        mesh.castShadow = !ghost;
+        mesh.castShadow = !ghost && !mesh.userData.noShadow;
       }
       // Props don't ghost — they just disappear below the storey you're
       // editing, the same as their labels do.
@@ -840,12 +1092,20 @@ export function initRender(canvas) {
     disposeGroup(ceilingGroup);
     disposeGroup(labelGroup);
 
+    const metrics = stairMetrics(state);
+    const links = stairsOf(state);
     state.floors.forEach((floor, i) => {
       const group = new THREE.Group();
       const ceil = new THREE.Group();
       const labels = new THREE.Group();
       group.userData.floor = ceil.userData.floor = labels.userData.floor = i;
-      buildFloor(floor, floorBaseY(state, i), wallHeightOf(state, i), group, ceil, labels);
+      buildFloor(floor, floorBaseY(state, i), wallHeightOf(state, i), group, ceil, labels, {
+        metrics,
+        cuts: floorCuts(state, i),
+        ceilCuts: floorCuts(state, i + 1),
+        risers: links.filter((l) => l.from === i),
+        guarded: links.filter((l) => l.to === i),
+      });
       const propsGroup = new THREE.Group();
       buildPropsGroup(state, i, floorBaseY(state, i), propsGroup);
       group.add(propsGroup);

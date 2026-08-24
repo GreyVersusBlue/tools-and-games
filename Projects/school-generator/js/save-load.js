@@ -4,18 +4,21 @@
 //   v1 — single floor, flat { w, h, cells, edgesH, edgesV }
 //   v2 — { floors: [...], currentFloor, props, links } on a shared footprint
 //   v3 — floors carry `shapes[]`: polygon rooms alongside the cell grid
+//   v4 — glass and railing edge/segment kinds, and `links[]` carrying stairs
+//        and floor openings
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
-// polygon rooms in it, so migration is additive and nothing has to be guessed.
+// polygon rooms in it, and a v3 one has no glass and no stairs, so every
+// migration so far is additive and nothing has to be guessed.
 // The autosave key is deliberately unchanged so an in-progress design survives
 // the upgrade — that was true of the v2 bump and stays true here.
 
-import { CELL, FLOOR_H, MAX_FLOORS, createFloor, createState } from './grid.js';
+import { CELL, FLOOR_H, MAX_FLOORS, EDGE_KINDS, createFloor, createState } from './grid.js';
 import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from './props.js';
 import { normalizeShape, MAX_SHAPES } from './shapes.js';
 
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 const MIN_DIM = 4;
 const MAX_DIM = 200;
@@ -41,7 +44,10 @@ function copyCells(src, dst) {
 function copyEdges(src, dst) {
   if (!Array.isArray(src)) return;
   for (let i = 0; i < Math.min(src.length, dst.length); i++) {
-    dst[i] = src[i] === 1 || src[i] === 2 ? src[i] : 0;
+    // An edge kind this build doesn't know is kept as a plain wall rather than
+    // dropped: losing it would open a room up, which is the worse of the two
+    // ways to be wrong about a file from a newer version.
+    dst[i] = EDGE_KINDS.includes(src[i]) ? src[i] : (src[i] ? 1 : 0);
   }
 }
 

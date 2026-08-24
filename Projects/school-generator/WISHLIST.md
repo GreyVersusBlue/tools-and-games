@@ -2,14 +2,15 @@
 
 Living reference for where this tool goes next. The v1 model (merged in #38)
 was a single-floor, grid-based editor + first-person walkthrough: rectilinear
-rooms only, no furniture, no multi-story. **Phases 1 through 3 have since
-landed** — the state is multi-floor, rooms can be arbitrary polygons, and
-there's a furnished prop layer with a catalog, a placement tool and instanced
-rendering (see those sections for what was decided and what it means for the
-phases below). This document breaks down the remaining improvements — stairs,
-mezzanines, glass walls, walkthrough collision — into a rough build order, and
-calls out where each one collides with assumptions baked into the current
-code.
+rooms only, no furniture, no multi-story. **Phases 1 through 4 have since
+landed** — the state is multi-floor, rooms can be arbitrary polygons, there's a
+furnished prop layer with a catalog and instanced rendering, and the storeys are
+now joined: stairs that cut their own opening in the floor above, railed
+mezzanine voids, and glass walls on both room representations (see those
+sections for what was decided and what it means for the phases below). This
+document breaks down the remaining improvements — walkthrough collision, editor
+polish, export — into a rough build order, and calls out where each one collides
+with assumptions baked into the current code.
 
 Not a spec — a scoped list to pull from and refine before starting each
 piece. Check items off (or strike them) as they land, and add new ideas
@@ -18,10 +19,11 @@ under the right phase rather than starting a second list.
 ## Current architecture, in brief
 
 (`js/grid.js`, `js/shapes.js`, `js/props.js`, `js/catalog.js`,
-`js/propplace.js`, `js/sample.js`, `js/editor.js`, `js/polyedit.js`,
-`js/propedit.js`, `js/render.js`, `js/walkthrough.js`, `js/save-load.js`,
-`test/model.test.mjs`, `test/shapes.test.mjs`, `test/catalog.test.mjs`,
-`test/propplace.test.mjs`)
+`js/propplace.js`, `js/stairs.js`, `js/sample.js`, `js/editor.js`,
+`js/polyedit.js`, `js/propedit.js`, `js/stairedit.js`, `js/render.js`,
+`js/walkthrough.js`, `js/save-load.js`, `test/model.test.mjs`,
+`test/shapes.test.mjs`, `test/catalog.test.mjs`, `test/propplace.test.mjs`,
+`test/stairs.test.mjs`)
 
 - **Two room representations, side by side.** The cell grid is the fast
   rectangular mode: a floor is a flat `cells[]` array (4ft cells) plus
@@ -38,9 +40,19 @@ under the right phase rather than starting a second list.
   world feet with ids, floors, rotation, scale and mount kind; `js/catalog.js`
   gives `type` meaning (footprint, mount, procedural geometry key) and
   `js/propedit.js` is the placement/selection tool, palette-driven the same
-  way the room-color swatches drive the room tool. `state.links[]` still just
-  holds inter-floor connections, unused until Phase 4. `assets/models/` is
+  way the room-color swatches drive the room tool. `assets/models/` is
   still an empty placeholder (`.gitkeep` only) — Phase 3 stayed procedural.
+- **`state.links[]` joins the storeys.** A link is a stair or a plain floor
+  opening: it stands on `from`, arrives at `to = from + 1`, and cuts a hole in
+  that upper floor's slab *and* the lower one's ceiling. `js/stairs.js` owns
+  every measurement — run, riser, the point up the flight where headroom fails
+  and the cut has to start, the guardrails around the hole — and
+  `js/stairedit.js` is the tool, built the way `propedit.js` is.
+- **A boundary has a kind.** Grid edges run `0 none, 1 wall, 2 door, 3 glass,
+  4 railing`; polygon segments run `SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL`.
+  Anything non-zero bounds a room for flood fill — glass separates two rooms as
+  surely as drywall does — and only the renderer and the walkthrough care which
+  kind it is.
 - **Rendering merges structure into a few big meshes, props into one
   `InstancedMesh` per type per floor.** Floor/wall/ceiling/fixture geometry is
   `mergeGeometries`'d per material, per storey, rebuilt from scratch on every
@@ -48,13 +60,16 @@ under the right phase rather than starting a second list.
   different: each catalog type's geometry is built once and cached, and every
   placed instance of it on a floor is one `InstancedMesh`, so a classroom's
   worth of desks costs one draw call rather than one `Mesh` each.
-- **Walkthrough is no-clip.** `PointerLockControls` with WASD + fly up/down,
-  no collision against walls, no stairs to walk up/down. It does spawn on the
-  storey you were editing (in the biggest polygon room, if that storey has no
-  grid cells), and the fly-up range covers the whole building.
-- **Save format is versioned** (`version: 3`): floors (cells, edges, shapes) +
+- **Walkthrough is no-clip, but it climbs stairs.** `PointerLockControls` with
+  WASD + fly up/down and still no collision against walls or props — what it
+  does have is `stairUnder()`: walk onto a run and the camera rides its surface
+  up to the next storey. It spawns on the storey you were editing (in the
+  biggest polygon room, if that storey has no grid cells), and the fly-up range
+  covers the whole building.
+- **Save format is versioned** (`version: 4`): floors (cells, edges, shapes) +
   props + links. `deserialize()` validates/clamps everything on load and
-  migrates v1 and v2 files forward.
+  migrates v1, v2 and v3 files forward — every bump so far has been additive,
+  so an older file is simply a design with none of the newer things in it.
 
 ## Phase 1 — Foundational data model changes ✅ *done*
 
@@ -286,45 +301,117 @@ placement tool, snapping, and instanced rendering.
   for all three snap kinds plus the free-placement escape hatch, run the
   same `node --test` way as the rest of the suite.
 
-## Phase 4 — Architectural features
+## Phase 4 — Architectural features ✅ *done*
 
-- [ ] **Stairs.** A placeable object (like a prop, but structural) that:
-  - Connects two floors at specific (x, z) locations
-  - Cuts a floor-opening polygon in the floor above (so you can see/walk
-    up through it) — a floor cut is a hole in a polygon room, which Phase 2
-    already models; what's missing is a stair that owns one
-  - Blocks/guides walkthrough movement realistically (see Phase 6)
-- [ ] **Mezzanine** — a partial second floor with an open edge overlooking
-  the floor below:
-  - A floor region that doesn't extend wall-to-wall, with a guardrail/
-    railing along the open edge instead of a wall
-  - Needs the floor-opening concept from stairs (the "look down" cutout)
-  - Railings as their own renderable type — not quite a wall (partial
-    height, often has balusters/glass panel) and not quite a prop
-- [ ] **Glass walls / windows.** On the grid, walls are a binary
-  `1 = wall / 2 = door` in `edgesH`/`edgesV`; on a polygon, `walls[i]` is
-  already an enum with room in it (`2 = glass`, per Phase 2's note). Add glass
-  to both with its own transparent/reflective material in `render.js`, and decide
-  whether glass blocks the walkthrough flood-fill-style room boundary the
-  same way solid walls do (it should visually separate rooms but likely
-  still counts as a boundary for room detection).
-  - Could extend to partial-height glass (interior half-wall with glass
-    above) as a follow-up once the wall-type model supports more than a
-    binary state.
+The other structurally invasive phase: everything here needed the polygon model
+underneath it, because a floor cut is a hole in a room and a railing is a
+boundary segment whose kind isn't "wall".
+
+- [x] **Stairs** (`js/stairs.js`, `js/stairedit.js`, `🪜 Stairs`, key 9) — a
+  placeable structural object living in `state.links[]`, not in `props[]`,
+  because it connects two storeys rather than sitting on one. Click to place a
+  run out of the storey you're editing, `R`/`Shift+R` to turn it, drag to move
+  it, `Delete` to remove. It:
+  - Connects two floors at a specific (x, z) and heading — `from` and
+    `to = from + 1`, since a run that skips a level isn't a stair, it's two.
+  - Cuts its own floor opening in the level above, and the matching hole in
+    the ceiling below it, so the run arrives somewhere instead of into a slab.
+  - Rails that opening automatically on every side but the one you step off
+    onto.
+  - Is walkable: `stairUnder()` puts the walkthrough camera on the tread under
+    its feet, so you climb to the next storey rather than flying through it.
+- [x] **Mezzanine** — a partial upper floor overlooking the level below:
+  - A `type: 'opening'` link is the same record without the treads: a hole in
+    the floor above looking down into the floor below, sized however you want.
+    That plus an upper storey that doesn't reach wall-to-wall *is* a mezzanine
+    — the sample school's main hall is now two storeys tall with a railed
+    corridor around it.
+  - Railings are their own renderable thing: waist-high posts, a cap rail and
+    a mid rail, drawn for a floor opening automatically and available by hand
+    (`EDGE_RAIL` / `SEG_RAIL`) anywhere else.
+- [x] **Glass walls** — `EDGE_GLASS` on the lattice, `SEG_GLASS` on a polygon
+  segment (the `2` Phase 2 reserved for exactly this). Drawn as a framed
+  curtain wall: sill, head, mullions every 5ft, and a transparent pane per
+  bay in its own material. Glass bounds a room for flood fill the same way a
+  solid wall does — the wishlist's own guess, and it's right: it separates two
+  rooms without enclosing either.
+
+**Decisions made, since the rest of the list depends on them:**
+
+- **The wall tool builds one of three things, rather than there being three
+  tools.** `WALL_KINDS` in `editor.js` maps a choice — solid, glass, railing —
+  onto both an edge value and a segment value, and the Wall panel (or `G`)
+  picks it. A fourth kind is a row in that table; it isn't a fourth button in
+  a toolbar that's already nine deep.
+- **Every boundary kind bounds a region.** `floodRegion` stops at anything
+  non-zero, unchanged from v1. Glass separating two rooms is the case the
+  wishlist called out, and a railing is the *edge of the floor*, which bounds a
+  room more definitively than a wall does.
+- **A stair's dimensions are derived, never chosen.** 7in risers and 11in
+  treads against the storey height give 21 risers and 19.25ft of run at the
+  default 12ft; change `floorHt` and every stair in the design re-proportions
+  itself. The one number the tool exposes is width. Where the floor above has
+  to open is derived too: the cut starts exactly where a climber's headroom
+  would hit the slab.
+- **The opening belongs to the floor above; the run belongs to the floor
+  below.** `floorCuts(state, i)` asks "what is missing from this storey's
+  slab", and the same list cuts the ceiling under it. Splitting it that way
+  means each piece hides, ghosts and lights with the storey it belongs to, and
+  neither floor's builder has to know about the other's geometry.
+- **Cuts are computed, not baked.** Nothing mutates `cells[]` or a room's
+  rings when a stair is placed — the renderer skips a cell (or hands
+  `ShapeGeometry` an extra hole) wherever a cut covers it. Moving a stair
+  therefore un-cuts the floor behind it for free, undo needs no special case,
+  and deleting the link restores the slab.
+- **A cell is cut if *any* of it is over the hole**, not if its centre is:
+  half a cell hanging over a void reads as a mistake from the floor below.
+- **A guardrail is only drawn where someone could walk up to it.**
+  `openingRails()` probes just outside each side of the hole for floor on that
+  storey and drops the sides that find none — otherwise an opening at the edge
+  of a partial upper floor fences off thin air.
+- **An unknown boundary kind from a newer save loads as a solid wall**, not as
+  a gap. Losing a wall opens a room up; drawing an exotic one plainly does not.
+
+**What that changed elsewhere, beyond the data model:**
+
+- **The sample school is two storeys.** A staircase in the ground-floor stair
+  hall climbs to Level 2 through the opening it cuts; 32ft of the main hall is
+  left open as a railed atrium through both levels; the office fronts the hall
+  in glass, the media centre upstairs does the same, and the Learning Commons
+  polygon has a glazed curtain wall.
+- **The toolbar hangs from the top** instead of being vertically centred — a
+  centred column of nine tools reached the floor panel — and the side panels
+  line up with it.
+- **Save format v4.** New edge and segment kinds plus a populated `links[]`;
+  both additive, so a v1/v2/v3 file loads as a design with no glass and no
+  stairs in it, and the autosave key is unchanged again.
+- **`test/stairs.test.mjs`** — 29 more `node --test` cases: the run geometry
+  and its fallbacks, the headroom rule that positions the cut, the local frame
+  and its round-trip, cut/footprint polygons under rotation, cell cutting,
+  which sides get railed, walking up a run (including two stacked in one
+  stairwell), placement refusals, floor-deletion cleanup, save round-trips and
+  hostile-input clamping. Plus wall-kind coverage in `shapes.test.mjs` and
+  `model.test.mjs`.
 
 ## Phase 5 — Walkthrough mode improvements
 
-- [ ] **Collision detection.** Walkthrough is currently no-clip
-  (`walkthrough.js` moves the camera freely through walls). Once there are
-  props to bump into and floors to fall off of, add basic capsule/AABB
-  collision against walls and prop footprints.
-- [ ] **Floor-to-floor navigation** via stairs once multi-floor + stairs
-  exist — walking up a staircase should move the camera's floor/Y
-  appropriately rather than just flying through geometry.
-- [ ] **Falling off mezzanines / floor edges** — once there's an open floor
-  edge, decide whether walkthrough mode should have basic gravity/fall
-  behavior or just block movement at the edge (simpler, may be enough for
-  the tool's purpose).
+- [ ] **Collision detection.** Walkthrough is still no-clip against walls
+  (`walkthrough.js` moves the camera freely through them). Everything to
+  collide *with* now exists — polygon walls give it real line segments,
+  props give it footprints, and glass and railings are segments it should
+  stop at exactly like solid walls. This is the last big one.
+- [x] **Floor-to-floor navigation** via stairs — landed with Phase 4, since a
+  staircase you can't walk up is a decoration. `stairUnder()` in `stairs.js`
+  answers "what is under my feet, and how high is it there"; the camera takes
+  the tread's height whenever it's within a band of it, so you climb a run by
+  walking at it. Deliberately a ramp rather than 21 discrete steps: a
+  first-person camera stepping up in 7in jumps reads as a stutter.
+- [ ] **Falling off mezzanines / floor edges** — now a real question rather
+  than a hypothetical one, since a floor opening is a hole you can walk into.
+  Decide between basic gravity and simply blocking movement at the edge
+  (simpler, and may be enough for the tool's purpose). Note that the floor
+  under the camera is already computable: `floorCuts()` says where a storey
+  is missing, and `floorSolidAt()` says whether there's anything to stand on.
 - [ ] Real PBR texture sets, per the upgrade path already documented in
   `assets/textures/README.md` (currently all procedural canvas textures).
 
@@ -360,15 +447,18 @@ placement tool, snapping, and instanced rendering.
 
 ## Suggested build order
 
-Phases 1 through 3 are done. **Architectural features (Phase 4) come next**:
-the other structurally invasive piece, and the polygon model is now the thing
-they sit on — a floor cut is a hole in a room, a railing is a segment with a
-wall state that isn't "wall". **Walkthrough collision (Phase 5)** matters most
-once there's something to collide with, which is true now on two counts —
-polygon walls give it real line segments to collide against rather than a
-lattice, and Phase 3 filled rooms with props to bump into — so it's reasonable
-to fold in alongside or right after Phase 4. Polish phases (6-8) are ongoing,
-pick up opportunistically. A few got cheaper along the way: `shapeArea()` is
-the measurement readout Phase 6 wants (the Shape tool already reports ft² in
-the status bar), and both rooms and props now have an *object* for
-multi-select/copy-paste to work with rather than a plain-string coping.
+Phases 1 through 4 are done, and with them every structurally invasive piece:
+the model now says everything a building needs it to say. **Walkthrough
+collision (Phase 5) comes next** — it's the one remaining item that changes how
+the tool *feels* rather than what it can describe, and everything it needs is
+in place: polygon walls are line segments, props have footprints, railings mark
+the edges you shouldn't walk off, and `floorCuts()` already knows where the
+floor isn't. Falling versus blocking at an edge is the only open design
+question in it.
+
+Polish phases (6-8) are ongoing, pick up opportunistically. Several got cheaper
+along the way: `shapeArea()` is most of the measurement readout Phase 6 wants
+(the Shape tool already reports ft² in the status bar), rooms and props both
+have an *object* for multi-select and copy/paste to work with, and Phase 7's
+printable floor plan now has a second storey and a stair symbol to draw — worth
+sketching what a plan view should show before building it.

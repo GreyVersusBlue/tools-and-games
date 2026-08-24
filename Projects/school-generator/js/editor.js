@@ -8,24 +8,38 @@
 import * as THREE from 'three';
 import {
   CELL, WALL_H, WALL_T, ROOM_COLORS,
+  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
   cellIdx, edgeHIdx, edgeVIdx, inGrid, getCell, setTile, floodRegion,
   activeFloor, floorBaseY,
 } from './grid.js';
 import {
-  SEG_NONE, SEG_WALL, nearestSegment, shapeAt, setSegWall, toggleOpening, removeShape,
+  SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
+  nearestSegment, shapeAt, setSegWall, toggleOpening, removeShape,
 } from './shapes.js';
 import { initPolyEdit } from './polyedit.js';
 import { initPropEdit } from './propedit.js';
+import { initStairEdit } from './stairedit.js';
 
 const MAX_UNDO = 100;
 
 // How close to a polygon wall counts as clicking it, in feet.
 const SEG_GRAB = 1.6;
 
+// The wall tool builds one of three things, and the two room representations
+// spell each of them differently — so the choice is made once, here, and both
+// halves of the editor read it out of the same table.
+export const WALL_KINDS = [
+  { kind: 'wall',  label: 'Solid',   icon: '▬', edge: EDGE_WALL,  seg: SEG_WALL,  color: 0x4da3ff },
+  { kind: 'glass', label: 'Glass',   icon: '⬚', edge: EDGE_GLASS, seg: SEG_GLASS, color: 0x67d5e8 },
+  { kind: 'rail',  label: 'Railing', icon: '⑊', edge: EDGE_RAIL,  seg: SEG_RAIL,  color: 0x7ce0a0 },
+];
+const wallKindOf = (k) => WALL_KINDS.find((w) => w.kind === k) || WALL_KINDS[0];
+
 export function initEditor({ canvas, renderApi, getState, onChange, onStatus, onHoleMode }) {
-  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex
+  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair
   let roomName = 'Room 101';
   let roomColor = ROOM_COLORS[0];
+  let wallKind = 'wall';
 
   const undoStack = [];
   const redoStack = [];
@@ -151,6 +165,19 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     },
   });
 
+  // stairedit owns the links table the same way propedit owns props — and, like
+  // both of the others, hands its undo/redo to this file rather than keeping a
+  // history of its own.
+  const stairTool = initStairEdit({
+    getState,
+    renderApi,
+    host: {
+      pushUndo, dropUndo: () => { undoStack.pop(); },
+      changed: (info = {}) => onChange({ structural: true, ...info }),
+      status: (text) => onStatus && onStatus(text),
+    },
+  });
+
   // --- tool application ---
 
   // Nearest polygon wall to the cursor, if one is within grabbing distance and
@@ -167,14 +194,15 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       const c = cellAt(f, wx, wz);
       if (c && setTile(f, c.x, c.y, true)) strokeChanged = true;
     } else if (tool === 'wall') {
+      const kind = wallKindOf(wallKind);
       const e = nearestEdge(f, wx, wz);
       const seg = nearPolySeg(f, wx, wz, e.dist * CELL);
       if (seg) {
-        if (setSegWall(seg.shape, seg.ring, seg.seg, SEG_WALL)) strokeChanged = true;
+        if (setSegWall(seg.shape, seg.ring, seg.seg, kind.seg)) strokeChanged = true;
         return;
       }
       const ref = edgeRef(f, e);
-      if (ref.arr[ref.i] !== 1) { ref.arr[ref.i] = 1; strokeChanged = true; }
+      if (ref.arr[ref.i] !== kind.edge) { ref.arr[ref.i] = kind.edge; strokeChanged = true; }
     } else if (tool === 'door') {
       if (!isClick) return; // doors place on click, not drag
       const e = nearestEdge(f, wx, wz);
@@ -187,7 +215,10 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
         return;
       }
       const ref = edgeRef(f, e);
-      ref.arr[ref.i] = ref.arr[ref.i] === 2 ? 1 : 2; // toggle door <-> wall
+      // Toggling a door off leaves the kind of wall the tool would build now —
+      // a glazed partition with a door in it is a door tool click away, and one
+      // more puts the glass back rather than a stretch of drywall.
+      ref.arr[ref.i] = ref.arr[ref.i] === EDGE_DOOR ? wallKindOf(wallKind).edge : EDGE_DOOR;
       strokeChanged = true;
     } else if (tool === 'room') {
       if (!isClick) return;
@@ -218,8 +249,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
         return;
       }
       const ref = edgeRef(f, e);
-      if (e.dist < 0.28 && ref.arr[ref.i] !== 0) {
-        ref.arr[ref.i] = 0;
+      if (e.dist < 0.28 && ref.arr[ref.i] !== EDGE_NONE) {
+        ref.arr[ref.i] = EDGE_NONE;
         strokeChanged = true;
       } else {
         // A whole room is a lot to lose to a stray drag, so a polygon room only
@@ -258,12 +289,17 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const f = activeFloor(s);
     const baseY = floorBaseY(s, s.currentFloor);
     const p = e && pointerToWorld(e);
-    if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop') {
+    if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop' || tool === 'stair') {
       cellCursor.visible = edgeCursor.visible = false;
       return;
     }
     const isErase = tool === 'erase';
-    const color = isErase ? 0xff5f56 : tool === 'door' ? 0xd9a05b : 0x4da3ff;
+    // The wall cursor takes the colour of the thing it would build, so glass
+    // and railing are distinguishable before you commit to one.
+    const color = isErase ? 0xff5f56
+      : tool === 'door' ? 0xd9a05b
+      : tool === 'wall' ? wallKindOf(wallKind).color
+      : 0x4da3ff;
 
     if (tool === 'wall' || tool === 'door' || (isErase && nearestEdge(f, p.x, p.z).dist < 0.28)) {
       const edge = nearestEdge(f, p.x, p.z);
@@ -315,6 +351,11 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       propTool.pointerDown(p, e);
       return;
     }
+    if (tool === 'stair') {
+      canvas.setPointerCapture(e.pointerId);
+      stairTool.pointerDown(p, e);
+      return;
+    }
     pushUndo();
     strokeActive = true;
     strokeChanged = false;
@@ -345,6 +386,11 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       if (pp) propTool.pointerMove(pp, e);
       return;
     }
+    if (tool === 'stair') {
+      const pp = pointerToWorld(e);
+      if (pp) stairTool.pointerMove(pp, e);
+      return;
+    }
     if (!strokeActive) return;
     const p = pointerToWorld(e);
     if (!p) return;
@@ -358,6 +404,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (panning) { panning = false; panLast = null; }
     if (poly.pointerUp()) return;
     if (propTool.pointerUp()) return;
+    if (stairTool.pointerUp()) return;
     if (!strokeActive) return;
     strokeActive = false;
     lastWorld = null;
@@ -370,6 +417,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     cellCursor.visible = edgeCursor.visible = false;
     poly.clearHover();
     propTool.clearHover();
+    stairTool.clearHover();
   });
 
   canvas.addEventListener('wheel', (e) => {
@@ -379,6 +427,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     view.height = Math.min(1000, Math.max(30, view.height * Math.exp(e.deltaY * 0.001)));
     poly.refresh(); // handles and snap radius are sized off the zoom level
     propTool.refresh();
+    stairTool.refresh();
   }, { passive: false });
 
   return {
@@ -387,21 +436,29 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       tool = t;
       poly.setTool(t);
       propTool.setTool(t);
+      stairTool.setTool(t);
       updateCursor(null);
       if (t !== 'vertex') canvas.style.cursor = '';
     },
     // Keys the polygon and prop tools claim (close/cancel/backtrack/delete,
     // rotate/delete/escape). Returns true when one was used, so the caller
     // knows to stop handling it.
-    handleKey: (e) => poly.key(e) || propTool.key(e),
+    handleKey: (e) => poly.key(e) || propTool.key(e) || stairTool.key(e),
     get holeMode() { return poly.holeMode; },
     setHoleMode: (v) => poly.setHoleMode(v),
-    refreshOverlay: () => { poly.refresh(); propTool.refresh(); },
+    refreshOverlay: () => { poly.refresh(); propTool.refresh(); stairTool.refresh(); },
     setRoom(name, color) { roomName = name; roomColor = color; },
     get roomName() { return roomName; },
     get roomColor() { return roomColor; },
     setPropType: (t) => propTool.setType(t),
     get propType() { return propTool.currentType; },
+    // What the wall tool builds — shared by the grid and the polygon rooms, so
+    // it lives on the editor rather than inside either half.
+    setWallKind(k) { wallKind = wallKindOf(k).kind; updateCursor(null); },
+    get wallKind() { return wallKind; },
+    setStairType: (t) => stairTool.setType(t),
+    get stairType() { return stairTool.currentType; },
+    get stairCount() { return stairTool.countHere(); },
     // Ctrl combos never reach handleKey (see main.js), so copy/paste/duplicate
     // are called directly.
     propCopy: () => propTool.copySelection(),
@@ -420,6 +477,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       // survive the round trip, which is the same deal the stroke tools get.
       poly.setTool(v ? tool : null);
       propTool.setTool(v ? tool : null);
+      stairTool.setTool(v ? tool : null);
       if (!v) { cellCursor.visible = edgeCursor.visible = false; strokeActive = false; }
     },
   };
