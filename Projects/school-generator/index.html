@@ -151,6 +151,16 @@
       margin-top: 8px; font-size: 10.5px; line-height: 1.7; color: var(--text-dim);
     }
 
+    /* template panel — same slot and look as the prop panel */
+    #template-panel {
+      position: fixed; left: 114px; top: 74px;
+      padding: 12px; z-index: 10; width: 210px;
+    }
+    #template-panel .keys {
+      margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
+      font-size: 10.5px; line-height: 1.7; color: var(--text-dim);
+    }
+
     /* floor panel */
     #floor-panel {
       position: fixed; left: 12px; bottom: 12px;
@@ -171,6 +181,21 @@
     }
     #floor-actions { display: flex; gap: 4px; }
     #floor-actions button { flex: 1; padding: 5px 0; font-size: 13px; }
+
+    /* layers panel — toggling what's drawn while editing, not tied to a tool */
+    #layers-panel {
+      position: fixed; right: 12px; bottom: 12px;
+      padding: 10px 12px; z-index: 10; width: 168px;
+    }
+    #layers-panel h2 {
+      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
+    }
+    #layers-panel label {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 12px; color: var(--text); padding: 3px 0; cursor: pointer;
+    }
+    #layers-panel input { accent-color: var(--accent); width: 14px; height: 14px; }
 
     /* status */
     /* The polygon tools report corner counts and square footage here, so this
@@ -217,7 +242,9 @@
     body[data-mode="walk"] #wall-panel,
     body[data-mode="walk"] #stair-panel,
     body[data-mode="walk"] #prop-panel,
+    body[data-mode="walk"] #template-panel,
     body[data-mode="walk"] #floor-panel,
+    body[data-mode="walk"] #layers-panel,
     body[data-mode="walk"] #status { display: none; }
 
     .hidden { display: none !important; }
@@ -247,6 +274,7 @@
     <button class="tool" data-tool="vertex"><span class="icon">✥</span>Shape<span class="key">7</span></button>
     <button class="tool" data-tool="prop"><span class="icon">🪑</span>Furniture<span class="key">8</span></button>
     <button class="tool" data-tool="stair"><span class="icon">🪜</span>Stairs<span class="key">9</span></button>
+    <button class="tool" data-tool="template"><span class="icon">🏫</span>Layout<span class="key">0</span></button>
   </div>
 
   <div id="room-panel" class="panel hidden">
@@ -296,6 +324,16 @@
     </div>
   </div>
 
+  <div id="template-panel" class="panel hidden">
+    <div id="template-palette" class="palette-row"></div>
+    <div class="keys">
+      Click to stamp the whole layout &nbsp; <kbd>R</kbd>/<kbd>⇧R</kbd> rotates it first<br />
+      <kbd>Alt</kbd> ignore grid snapping<br />
+      Each piece lands as an ordinary prop — move, rotate or delete them
+      individually afterward with the Furniture tool.
+    </div>
+  </div>
+
   <div id="floor-panel" class="panel">
     <h2>Floors</h2>
     <div id="floor-list"></div>
@@ -304,6 +342,14 @@
       <button id="floor-dup" title="Copy this floor to a new level above">⧉</button>
       <button id="floor-del" title="Delete this floor">🗑</button>
     </div>
+  </div>
+
+  <div id="layers-panel" class="panel">
+    <h2>Layers</h2>
+    <label><input type="checkbox" id="layer-structure" checked /> Structure</label>
+    <label><input type="checkbox" id="layer-props" checked /> Furniture</label>
+    <label><input type="checkbox" id="layer-ghost-below" checked /> Ghost floor below</label>
+    <label><input type="checkbox" id="layer-ghost-above" /> Ghost floor above</label>
   </div>
 
   <div id="status" class="panel">Floor — click / drag to lay floor tiles</div>

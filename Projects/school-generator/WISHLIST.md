@@ -21,11 +21,12 @@ under the right phase rather than starting a second list.
 ## Current architecture, in brief
 
 (`js/grid.js`, `js/shapes.js`, `js/props.js`, `js/catalog.js`,
-`js/propplace.js`, `js/stairs.js`, `js/collide.js`, `js/sample.js`,
-`js/editor.js`, `js/polyedit.js`, `js/propedit.js`, `js/stairedit.js`,
-`js/render.js`, `js/walkthrough.js`, `js/save-load.js`,
-`test/model.test.mjs`, `test/shapes.test.mjs`, `test/catalog.test.mjs`,
-`test/propplace.test.mjs`, `test/stairs.test.mjs`, `test/collide.test.mjs`)
+`js/propplace.js`, `js/stairs.js`, `js/collide.js`, `js/templates.js`,
+`js/sample.js`, `js/editor.js`, `js/polyedit.js`, `js/propedit.js`,
+`js/stairedit.js`, `js/templateedit.js`, `js/render.js`, `js/walkthrough.js`,
+`js/save-load.js`, `test/model.test.mjs`, `test/shapes.test.mjs`,
+`test/catalog.test.mjs`, `test/propplace.test.mjs`, `test/stairs.test.mjs`,
+`test/collide.test.mjs`, `test/templates.test.mjs`)
 
 - **Two room representations, side by side.** The cell grid is the fast
   rectangular mode: a floor is a flat `cells[]` array (4ft cells) plus
@@ -496,18 +497,119 @@ same model/interaction split `shapes.js`/`polyedit.js` uses.
   mid-air exemption, opening guardrails, and two walks through the sample
   school that have to end against a wall.
 
-## Phase 6 — Editor UX polish
+## Phase 6 — Editor UX polish ✅ *done*
 
-- [ ] Layers panel: toggle visibility of floors independently, and props
-  vs. structure, while editing (useful once multi-floor exists — you don't
-  want to always see the floor above/below).
-- [ ] Measurement / dimension display (room square footage, wall length)
-  — `floodRegion`/`computeLabels` already compute region cell counts, which
-  is most of the math needed for a footage readout.
-- [ ] Room/prop templates or presets ("standard classroom", "computer lab
-  row") to speed up repetitive layout work.
-- [ ] Extend multi-select, copy/paste, and mirror/rotate to whole room
-  sections, not just individual props.
+Polish, and — unlike the first five phases — genuinely optional: nothing here
+changed the save format or what a building can describe, only how it feels to
+build one. All four items turned out to lean on machinery earlier phases had
+already built for a different reason.
+
+- [x] **Layers panel** (bottom-right, `js/render.js`'s `layers`/`setLayers`) —
+  four checkboxes: Structure, Furniture, Ghost floor below, Ghost floor above.
+  The first two hide whichever half of the *current* storey you don't need to
+  see (laying out furniture in a room with the walls hidden, or checking a
+  wall run with the desks out of the way); the last two are what Phase 1's
+  "ghost the floor below" default becomes once it's a choice instead of a
+  constant — a design with something worth aligning to *above* the storey
+  you're on can ghost that instead, or both, or neither.
+- [x] **Measurement / dimension display** — no new data, since the wishlist's
+  own guess was right: `floodRegion` already had the cell count, `shapeArea`
+  already had the polygon math (Phase 2), so this was routing what already
+  existed to the status line at the moment it's useful. A grid room reports
+  its square footage the instant you flood-fill it with the Room tool, the
+  same way a polygon room already did; a wall reports the length of the run
+  you just built (a polygon segment's own length on the click that raises it,
+  a grid stroke's running total in cells × 4ft on release, since one grid edge
+  is always exactly one cell wide); the floor panel's per-storey line reports
+  total square footage — cells plus every polygon room's `shapeArea()` — in
+  place of the plain cell count it used to show.
+- [x] **Room/prop templates** (`js/templates.js`, `js/templateedit.js`, `🏫
+  Layout`, key 0) — a preset is a named list of catalog props at fixed offsets
+  from a click point, stamped all at once the way `sample.js` hand-places
+  Room 101's furniture. Three ship with the tool: Standard Classroom (rows of
+  desks, a teacher's desk, a whiteboard, a shelf), Computer Lab Row (a single
+  dense row along a wall), Reading Corner (rug, low shelf, floor lamp). Same
+  interaction shape as the stairs tool — a footprint ghost, `R`/`⇧R` to turn
+  it before you commit, click to place — because a template *is* a
+  single placeable thing right up until the moment it lands, at which point
+  it's just ordinary props the Furniture tool already knows how to move,
+  rotate or delete one at a time.
+- [x] **Whole-room-section multi-select, copy/paste, mirror/rotate**
+  (`js/polyedit.js`'s Shape tool, `js/shapes.js`'s `rotateShape90`/
+  `mirrorShapeX`/`translateShape`/`addShapeCopy`) — Shift-click adds a
+  polygon room to the selection instead of replacing it; Delete removes every
+  selected room, Ctrl+C/V/D copy, paste and duplicate them, and `R`/`⇧R`/`M`
+  rotate 90° or mirror the selection around its combined bounding-box centre.
+  Any prop sitting inside a selected room's footprint (`pointInShape`) rides
+  along with it through every one of those operations, so "move this
+  classroom's layout" is one selection and one keystroke rather than
+  re-placing a room's worth of furniture by hand.
+
+**Decisions made:**
+
+- **Sections are a polygon-room thing, not a grid-room thing.** Phase 2 already
+  drew this line — "a grid room is a label; a polygon room is an object" — and
+  a Set of ids to rotate or duplicate needs an object on the other end of each
+  id. A grid region has no id at all; it's cells sharing a flood-fill. The
+  existing click-to-promote path (Shape tool → click a grid room → it's a
+  polygon room now) is the on-ramp when a layout needs section-editing more
+  than it needs the lattice, the same as it always was for freeform outlines.
+- **Corner handles only show for a selection of exactly one.** Dragging a
+  single vertex of a five-room selection has no sensible meaning, so a wider
+  selection shows outlines only and answers to the whole-section operations
+  instead — the vertex tool's per-corner editing and its section editing don't
+  fight over what a drag means, because only one of them is ever listening.
+- **A section's pivot is the selection's combined bounding box, not each
+  room's own centre.** Rotating three rooms that make up one classroom wing
+  has to turn them *as* a wing — pivoting each one individually would scatter
+  them relative to each other. `sectionCenter()` in `polyedit.js` is one
+  number for the whole gesture.
+- **Reflection re-derives winding rather than tracking it.** `mirrorShapeX`
+  transforms every point and then calls the existing `orientRing` to settle
+  outer-CCW/hole-CW again — the same bookkeeping `reverseRing` already does
+  correctly for `walls[]`/`openings[]`, reused instead of duplicated. A 90°
+  rotation doesn't need it (rotation preserves winding), but gets the same
+  call for free since `orientRing` is a no-op when the winding is already
+  right.
+- **A prop's own facing has to counter-rotate against its position.**
+  `propplace.js`'s documented `rotationY` convention rotates a local point
+  into world space the *opposite* way a plain `(x, z)` point rotates under
+  the same angle (see the comment on `rotateShape90`/`rotatePoint90` in
+  shapes.js) — so a prop caught inside a rotating section gets
+  `rotationY -= φ` alongside the position transform, not `+= φ`, or the desk
+  would spin the wrong way relative to the room turning around it. Verified
+  in the browser, not just unit tests: a rotate/mirror/duplicate/undo pass on
+  a room with a prop in it round-trips exactly, checked interactively before
+  this shipped.
+- **A template places ordinary props, not a new kind of object.** There's no
+  "template instance" in the save format — `templatePlacements()` returns
+  the same `{ type, x, z, y, rotationY, mount }` shape `addProp` already
+  takes, so a stamped classroom is indistinguishable from one built by hand,
+  and needs no new save-format version, migration, or renderer path.
+- **No save format change.** Every Phase 6 feature reads the existing model
+  (props, shapes, floors) and writes through the existing mutators (`addProp`,
+  `addShapeCopy`, `rotateShape90`, …) — a v4 file behaves exactly the same
+  before and after this phase, and the layers panel's state lives in the
+  renderer, not the design, the same way the current tool or the walkthrough
+  camera aren't part of a save either.
+
+**What that changed elsewhere:**
+
+- **`js/render.js`'s `applyFloorVisibility` reads a `layers` object** instead
+  of hardcoding "ghost the floor below, show props only on the current one".
+  The defaults reproduce the old hardcoded behavior exactly, so a first run
+  of the updated tool looks identical to before anyone touches a checkbox.
+- **`js/editor.js` gained a fourth interactive tool module** (`templateedit.js`,
+  alongside `polyedit.js`/`propedit.js`/`stairedit.js`) and two more
+  Ctrl-combo entry points (`shapeCopy`/`shapePaste`/`shapeDuplicate`,
+  parallel to the prop tool's) — `main.js`'s Ctrl+C/V/D handlers now try the
+  prop tool's clipboard first and the vertex tool's section clipboard second,
+  since exactly one of the two is ever the active tool.
+- **`test/shapes.test.mjs`** — 7 more `node --test` cases for the transform
+  primitives (translate, rotate, mirror, round-trip winding and area, the
+  per-floor cap on copies). **`test/templates.test.mjs`** — a new suite
+  checking every template stamps only real catalog types, keys don't
+  collide, and placement composes rotation correctly.
 
 ## Phase 7 — Sharing & export
 
@@ -528,21 +630,19 @@ same model/interaction split `shapes.js`/`polyedit.js` uses.
 
 ## Suggested build order
 
-Phases 1 through 5 are done: every structurally invasive piece, plus the one
-item that changed how the tool *feels* rather than what it can describe. The
-model says everything a building needs it to say, and you can now walk the
-building it describes.
+Phases 1 through 6 are done: every structurally invasive piece, the one item
+that changed how the tool *feels* rather than what it can describe, and the
+editor-polish pass on top of it. The model says everything a building needs
+it to say, you can walk the building it describes, and the editor itself
+stopped fighting you while you build one.
 
-**What's left is polish, and it's all optional in a way the first five phases
-weren't.** Pick up 6-8 opportunistically; nothing below blocks anything else.
-Several got cheaper along the way: `shapeArea()` is most of the measurement
-readout Phase 6 wants (the Shape tool already reports ft² in the status bar),
-rooms and props both have an *object* for multi-select and copy/paste to work
-with, and Phase 7's printable floor plan now has a second storey and a stair
-symbol to draw — worth sketching what a plan view should show before building
-it. Of the three, **the layers panel (Phase 6) is the one that pays back
-soonest**: multi-floor editing has been squinting through a ghosted level
-below since Phase 1.
+**What's left (7-8) is still optional in the way Phase 6 was** — nothing below
+blocks anything else, and pick up whichever one the tool actually needs next.
+Phase 7's printable floor plan now has a second storey, a stair symbol, and
+room-section selections to draw from — worth sketching what a plan view
+should show before building it. Phase 8 is unstarted; touch controls matter
+more the moment anyone tries this on a tablet, and the accessibility pass is
+overdue precisely because nothing forces it the way a missing feature does.
 
 Two smaller things Phase 5 left on the table, neither urgent:
 
