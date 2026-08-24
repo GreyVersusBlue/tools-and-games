@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>School Generator</title>
+  <meta name="description" content="Design a school on a grid, then walk through it in first person." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23233042'/%3E%3Crect x='6' y='12' width='20' height='14' fill='%23e9e6df'/%3E%3Cpolygon points='16,4 4,12 28,12' fill='%23c96f5f'/%3E%3Crect x='13' y='18' width='6' height='8' fill='%235a4632'/%3E%3C/svg%3E" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./libs/three.module.js",
+      "three/addons/": "./libs/addons/"
+    }
+  }
+  </script>
+  <style>
+    :root {
+      --panel: rgba(22, 26, 34, 0.88);
+      --panel-border: rgba(255, 255, 255, 0.09);
+      --text: #e8ecf2;
+      --text-dim: #9aa5b5;
+      --accent: #4da3ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background: #1a2029;
+      color: var(--text);
+      user-select: none;
+    }
+    #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    /* top bar */
+    #topbar {
+      position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; z-index: 10;
+    }
+    #topbar h1 { font-size: 14px; font-weight: 650; letter-spacing: 0.02em; margin-right: 6px; white-space: nowrap; }
+    #topbar h1 span { color: var(--text-dim); font-weight: 500; }
+
+    button {
+      font: inherit; color: var(--text);
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px; padding: 7px 11px;
+      cursor: pointer; white-space: nowrap;
+    }
+    button:hover { background: rgba(255, 255, 255, 0.14); }
+    button:disabled { opacity: 0.4; cursor: default; }
+    button.primary { background: var(--accent); border-color: transparent; color: #0b1622; font-weight: 650; }
+    button.primary:hover { background: #6cb4ff; }
+    #fx-btn.off { opacity: 0.45; text-decoration: line-through; }
+
+    /* toolbar */
+    #toolbar {
+      position: fixed; left: 12px; top: 50%; transform: translateY(-50%);
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 8px; z-index: 10;
+    }
+    #toolbar .tool {
+      width: 88px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+      padding: 8px 4px; font-size: 12px; color: var(--text-dim);
+    }
+    #toolbar .tool .icon { font-size: 20px; line-height: 1; }
+    #toolbar .tool.active { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
+    #toolbar .key { font-size: 10px; opacity: 0.55; }
+
+    /* room panel */
+    #room-panel {
+      position: fixed; left: 116px; top: 50%; transform: translateY(-50%);
+      padding: 12px; z-index: 10; width: 180px;
+    }
+    #room-panel label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+    #room-name {
+      width: 100%; font: inherit; color: var(--text);
+      background: rgba(0, 0, 0, 0.3); border: 1px solid var(--panel-border);
+      border-radius: 6px; padding: 6px 8px; margin-bottom: 10px;
+    }
+    #swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .swatch { aspect-ratio: 1; border-radius: 6px; border: 2px solid transparent; padding: 0; }
+    .swatch.active { border-color: #fff; }
+
+    /* status */
+    #status {
+      position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+      padding: 7px 14px; font-size: 12.5px; color: var(--text-dim);
+      z-index: 10; white-space: nowrap;
+    }
+
+    /* walkthrough overlay */
+    #walk-overlay {
+      position: fixed; inset: 0; z-index: 20;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(10, 13, 18, 0.55);
+    }
+    #walk-overlay .panel { padding: 28px 34px; text-align: center; max-width: 420px; }
+    #walk-overlay h2 { font-size: 18px; margin-bottom: 10px; }
+    #walk-overlay p { font-size: 13px; color: var(--text-dim); line-height: 1.6; margin-bottom: 18px; }
+    #walk-overlay .row { display: flex; gap: 10px; justify-content: center; }
+    kbd {
+      background: rgba(255, 255, 255, 0.1); border: 1px solid var(--panel-border);
+      border-radius: 4px; padding: 1px 5px; font-size: 11px; font-family: inherit;
+    }
+
+    #crosshair {
+      position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      font-size: 20px; color: rgba(255, 255, 255, 0.8); z-index: 15;
+      pointer-events: none; display: none;
+    }
+    body[data-mode="walk"] #crosshair { display: block; }
+    body[data-mode="walk"] #toolbar,
+    body[data-mode="walk"] #room-panel,
+    body[data-mode="walk"] #status { display: none; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body data-mode="edit">
+  <canvas id="view"></canvas>
+
+  <div id="topbar" class="panel">
+    <h1>🏫 School Generator</h1>
+    <button id="undo-btn" title="Undo (Ctrl+Z)">↩︎</button>
+    <button id="redo-btn" title="Redo (Ctrl+Y)">↪︎</button>
+    <button id="new-btn" title="New empty school">New</button>
+    <button id="save-btn" title="Download design as JSON">Save</button>
+    <button id="load-btn" title="Load a JSON design">Load</button>
+    <button id="fx-btn" title="Toggle post-processing">FX</button>
+    <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)">🚶 Walk Through</button>
+  </div>
+
+  <div id="toolbar" class="panel">
+    <button class="tool active" data-tool="floor"><span class="icon">▦</span>Floor<span class="key">1</span></button>
+    <button class="tool" data-tool="wall"><span class="icon">▬</span>Wall<span class="key">2</span></button>
+    <button class="tool" data-tool="door"><span class="icon">🚪</span>Door<span class="key">3</span></button>
+    <button class="tool" data-tool="room"><span class="icon">🎨</span>Room<span class="key">4</span></button>
+    <button class="tool" data-tool="erase"><span class="icon">⌫</span>Erase<span class="key">5</span></button>
+  </div>
+
+  <div id="room-panel" class="panel hidden">
+    <label for="room-name">Room name</label>
+    <input id="room-name" type="text" maxlength="40" value="Room 101" />
+    <label>Color</label>
+    <div id="swatches"></div>
+  </div>
+
+  <div id="status" class="panel">Floor — click / drag to lay floor tiles</div>
+
+  <div id="walk-overlay" class="hidden">
+    <div class="panel">
+      <h2>Walkthrough Mode</h2>
+      <p>
+        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; mouse look<br />
+        <kbd>Shift</kbd> sprint &nbsp;·&nbsp; <kbd>Space</kbd>/<kbd>C</kbd> fly up / down &nbsp;·&nbsp; <kbd>Esc</kbd> release mouse
+      </p>
+      <div class="row">
+        <button id="walk-start" class="primary">Click to Walk</button>
+        <button id="walk-exit">Back to Editor</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="crosshair">·</div>
+  <input id="file-input" type="file" accept=".json,application/json" class="hidden" />
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
