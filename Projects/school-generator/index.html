@@ -202,6 +202,16 @@
       pointer-events: none; display: none;
     }
     body[data-mode="walk"] #crosshair { display: block; }
+
+    /* Where you are and what body you're in, while walking. */
+    #walk-hud {
+      position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+      z-index: 15; display: none; pointer-events: none;
+      background: var(--panel); border: 1px solid var(--panel-border);
+      border-radius: 6px; padding: 5px 12px;
+      font-size: 12px; color: var(--text-dim); white-space: nowrap;
+    }
+    body[data-mode="walk"] #walk-hud { display: block; }
     body[data-mode="walk"] #toolbar,
     body[data-mode="walk"] #room-panel,
     body[data-mode="walk"] #wall-panel,
@@ -302,9 +312,14 @@
     <div class="panel">
       <h2>Walkthrough Mode</h2>
       <p>
-        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; mouse look<br />
-        <kbd>Shift</kbd> sprint &nbsp;·&nbsp; <kbd>Space</kbd>/<kbd>C</kbd> fly up / down &nbsp;·&nbsp; <kbd>Esc</kbd> release mouse<br />
-        You start on the floor you were editing. Walk onto a staircase to climb it.
+        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; <kbd>Shift</kbd> sprint<br />
+        <kbd>Space</kbd> jump &nbsp;·&nbsp; <kbd>F</kbd> ghost mode (no-clip, <kbd>Space</kbd>/<kbd>C</kbd> to fly)<br />
+        <kbd>Esc</kbd> release mouse
+      </p>
+      <p>
+        Walls, glass, railings and furniture stop you; doorways don't. You start
+        on the floor you were editing — walk onto a staircase to climb it, and
+        you'll stop at the edge of a mezzanine rather than walk off it.
       </p>
       <div class="row">
         <button id="walk-start" class="primary">Click to Walk</button>
@@ -314,6 +329,7 @@
   </div>
 
   <div id="crosshair">·</div>
+  <div id="walk-hud">Level 1 · walking</div>
   <input id="file-input" type="file" accept=".json,application/json" class="hidden" />
 
   <script type="module" src="./js/main.js"></script>

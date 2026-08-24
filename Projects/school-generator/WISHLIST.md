@@ -2,15 +2,17 @@
 
 Living reference for where this tool goes next. The v1 model (merged in #38)
 was a single-floor, grid-based editor + first-person walkthrough: rectilinear
-rooms only, no furniture, no multi-story. **Phases 1 through 4 have since
+rooms only, no furniture, no multi-story. **Phases 1 through 5 have since
 landed** — the state is multi-floor, rooms can be arbitrary polygons, there's a
-furnished prop layer with a catalog and instanced rendering, and the storeys are
-now joined: stairs that cut their own opening in the floor above, railed
-mezzanine voids, and glass walls on both room representations (see those
-sections for what was decided and what it means for the phases below). This
-document breaks down the remaining improvements — walkthrough collision, editor
-polish, export — into a rough build order, and calls out where each one collides
-with assumptions baked into the current code.
+furnished prop layer with a catalog and instanced rendering, the storeys are
+joined (stairs that cut their own opening in the floor above, railed mezzanine
+voids, glass walls on both room representations), and the walkthrough camera
+now has a body: it collides with all of that, climbs the stairs, and stops at
+the edge of a floor instead of walking off it (see those sections for what was
+decided and what it means for the phases below). This document breaks down the
+remaining improvements — editor polish, export, mobile — into a rough build
+order, and calls out where each one collides with assumptions baked into the
+current code.
 
 Not a spec — a scoped list to pull from and refine before starting each
 piece. Check items off (or strike them) as they land, and add new ideas
@@ -19,11 +21,11 @@ under the right phase rather than starting a second list.
 ## Current architecture, in brief
 
 (`js/grid.js`, `js/shapes.js`, `js/props.js`, `js/catalog.js`,
-`js/propplace.js`, `js/stairs.js`, `js/sample.js`, `js/editor.js`,
-`js/polyedit.js`, `js/propedit.js`, `js/stairedit.js`, `js/render.js`,
-`js/walkthrough.js`, `js/save-load.js`, `test/model.test.mjs`,
-`test/shapes.test.mjs`, `test/catalog.test.mjs`, `test/propplace.test.mjs`,
-`test/stairs.test.mjs`)
+`js/propplace.js`, `js/stairs.js`, `js/collide.js`, `js/sample.js`,
+`js/editor.js`, `js/polyedit.js`, `js/propedit.js`, `js/stairedit.js`,
+`js/render.js`, `js/walkthrough.js`, `js/save-load.js`,
+`test/model.test.mjs`, `test/shapes.test.mjs`, `test/catalog.test.mjs`,
+`test/propplace.test.mjs`, `test/stairs.test.mjs`, `test/collide.test.mjs`)
 
 - **Two room representations, side by side.** The cell grid is the fast
   rectangular mode: a floor is a flat `cells[]` array (4ft cells) plus
@@ -60,12 +62,16 @@ under the right phase rather than starting a second list.
   different: each catalog type's geometry is built once and cached, and every
   placed instance of it on a floor is one `InstancedMesh`, so a classroom's
   worth of desks costs one draw call rather than one `Mesh` each.
-- **Walkthrough is no-clip, but it climbs stairs.** `PointerLockControls` with
-  WASD + fly up/down and still no collision against walls or props — what it
-  does have is `stairUnder()`: walk onto a run and the camera rides its surface
-  up to the next storey. It spawns on the storey you were editing (in the
-  biggest polygon room, if that storey has no grid cells), and the fly-up range
-  covers the whole building.
+- **The walkthrough camera has a body.** `PointerLockControls` with WASD, and
+  a 0.9ft circle that walls, glass, railings and floor-standing furniture stop
+  — doorways excepted. `js/collide.js` is the pure half of it: `wallSegments()`
+  turns a storey (both room representations, openings cut out) into line
+  segments, `supportAt()` says what surface is under a point (slab, stair
+  tread, or the site outside), and `moveWalker()` resolves one step, sliding
+  along a wall it can't go through and refusing one that would step off an
+  edge. It spawns on the storey you were editing (in the biggest polygon room,
+  if that storey has no grid cells); `F` drops the body for the old no-clip
+  flight, which is still how you reach a storey with no stairs to it yet.
 - **Save format is versioned** (`version: 4`): floors (cells, edges, shapes) +
   props + links. `deserialize()` validates/clamps everything on load and
   migrates v1, v2 and v3 files forward — every bump so far has been additive,
@@ -393,27 +399,102 @@ boundary segment whose kind isn't "wall".
   hostile-input clamping. Plus wall-kind coverage in `shapes.test.mjs` and
   `model.test.mjs`.
 
-## Phase 5 — Walkthrough mode improvements
+## Phase 5 — Walkthrough mode improvements ✅ *the movement half is done*
 
-- [ ] **Collision detection.** Walkthrough is still no-clip against walls
-  (`walkthrough.js` moves the camera freely through them). Everything to
-  collide *with* now exists — polygon walls give it real line segments,
-  props give it footprints, and glass and railings are segments it should
-  stop at exactly like solid walls. This is the last big one.
+The phase that changes how the tool *feels* rather than what it can describe.
+Everything it needed was already in the model: polygon walls are line segments,
+props have footprints, railings mark the edges you shouldn't walk off, and
+`floorCuts()` knows where the floor isn't. What was missing was something that
+asked those questions once a frame — `js/collide.js`, pure and headless, the
+same model/interaction split `shapes.js`/`polyedit.js` uses.
+
+- [x] **Collision detection** (`js/collide.js`). The camera has a body: a
+  0.9ft circle that walls, glass, railings and floor-standing furniture all
+  stop. Doorways don't — a grid door's opening and a polygon wall's
+  `{ seg, t, w }` openings both come out of `wallSegments()` as a hole in a
+  run. Walking at a wall on the diagonal slides along it (the whole step is
+  tried first, then each axis alone), and a step long enough to jump a wall
+  outright is refused rather than resolved, so a stalled frame can't put you
+  on the wrong side of one.
 - [x] **Floor-to-floor navigation** via stairs — landed with Phase 4, since a
   staircase you can't walk up is a decoration. `stairUnder()` in `stairs.js`
   answers "what is under my feet, and how high is it there"; the camera takes
   the tread's height whenever it's within a band of it, so you climb a run by
   walking at it. Deliberately a ramp rather than 21 discrete steps: a
-  first-person camera stepping up in 7in jumps reads as a stutter.
-- [ ] **Falling off mezzanines / floor edges** — now a real question rather
-  than a hypothetical one, since a floor opening is a hole you can walk into.
-  Decide between basic gravity and simply blocking movement at the edge
-  (simpler, and may be enough for the tool's purpose). Note that the floor
-  under the camera is already computable: `floorCuts()` says where a storey
-  is missing, and `floorSolidAt()` says whether there's anything to stand on.
+  first-person camera stepping up in 7in jumps reads as a stutter. Phase 5
+  folds it into `supportAt()`, so a tread is now just one more kind of surface
+  a walker can be standing on.
+- [x] **Falling off mezzanines / floor edges** — decided: **the edge blocks
+  you**, it doesn't drop you. See the decisions below for why. Gravity is in
+  there (32 ft/s², terminal velocity, a 1.2ft jump on `Space`) but it only
+  ever runs when you left the ground on purpose.
+- [x] **Ghost mode** (`F`) — the pre-Phase-5 no-clip flight, kept rather than
+  replaced. Inspecting a design from inside a wall is a legitimate thing to
+  want from a floor-plan tool, and a building whose upper storey has no stairs
+  yet has no other way up.
 - [ ] Real PBR texture sets, per the upgrade path already documented in
-  `assets/textures/README.md` (currently all procedural canvas textures).
+  `assets/textures/README.md` (currently all procedural canvas textures). Not
+  a code change so much as an asset one — the loader path is the easy half,
+  and nothing else in this phase depends on it, which is why it's still here.
+
+**Decisions made, since the rest of the list depends on them:**
+
+- **A floor edge stops you rather than dropping you.** This was the wishlist's
+  own open question, and the simpler answer is the right one for a design
+  tool: a fall costs you the viewpoint you were inspecting, and off the
+  outside of a building it leaves you in the car park hunting for a door. So a
+  *grounded* walker is refused any step whose destination is more than
+  `STEP_DOWN` (1.5ft) below their feet — the same test that keeps you from
+  walking off a mezzanine keeps you from walking off the building. Gravity
+  still exists, because "what happens when I jump, or when I drop out of ghost
+  mode in mid-air" needs an answer, but you only ever leave the floor
+  deliberately.
+- **The walker is a circle, not a capsule.** A school is vertical walls and
+  floor-standing furniture; the only thing a capsule would buy over a circle
+  plus a height test is ducking under a table, which nobody wants to do in a
+  floor-plan tool. The height test that *is* there is one line: a prop under
+  0.75ft (a rug) is something you walk over, not into.
+- **You collide with the storey you're standing on**, not with all eight.
+  `storeyAt()` divides your feet by the floor height and deliberately floors
+  rather than rounds, so climbing a run hands you to the level above exactly
+  when you arrive at it — halfway up a flight you are still colliding with the
+  stairwell you left.
+- **Every boundary kind blocks, doorways excepted.** Glass is a wall you can
+  see through and a railing exists precisely to stop you, so both are in the
+  segment list beside drywall. This is the same "anything non-zero is
+  something" rule `floodRegion` has followed since v1, and it means a new
+  boundary kind blocks by default rather than being silently walk-through.
+- **Openings are widened by exactly what collision inflates them by.** Walls
+  are drawn as boxes centred on their segment, so collision runs against the
+  segment inflated by half a wall thickness — which would close a 3ft doorway
+  in from both sides. `solidSpans()` pulls each cut end back by the same
+  amount, so the gap you aim at is the gap the renderer drew.
+- **A floor opening's guardrails are collision too.** They're the one boundary
+  that isn't in a floor's own data — `openingRails()` derives them per link —
+  so `buildCollider()` asks for them separately. Without that you'd stop at
+  the *edge* of a mezzanine void rather than at the rail a foot in front of
+  it, which at that distance is an obvious clip.
+- **The collider is built once, when walkthrough mode starts.** Editing can't
+  happen while you're walking, so there is exactly one invalidation point.
+  Per storey, lazily, and thrown away on exit.
+
+**What that changed elsewhere:**
+
+- **`js/walkthrough.js` splits in two.** It keeps the camera, the keys and the
+  timestep; every geometric question moved into `collide.js` where it can be
+  tested headless. The old fly-anywhere update loop survives verbatim as
+  `updateGhost()`.
+- **A walk HUD** (bottom centre) says which level you're on and which body
+  you're in, because "why won't it let me through here" is much less puzzling
+  when the answer *ghost mode is off* is on screen.
+- **No save format change.** Phase 5 reads the model and adds nothing to it —
+  a v4 file walks exactly as it saved.
+- **`test/collide.test.mjs`** — 35 more `node --test` cases: span cutting,
+  every boundary kind, a door a body actually fits through, prop obstacles and
+  the rug that isn't one, push-out and inside corners, anti-tunnelling,
+  support over slabs / holes / stairs / the site, the edge refusal and the
+  mid-air exemption, opening guardrails, and two walks through the sample
+  school that have to end against a wall.
 
 ## Phase 6 — Editor UX polish
 
@@ -447,18 +528,31 @@ boundary segment whose kind isn't "wall".
 
 ## Suggested build order
 
-Phases 1 through 4 are done, and with them every structurally invasive piece:
-the model now says everything a building needs it to say. **Walkthrough
-collision (Phase 5) comes next** — it's the one remaining item that changes how
-the tool *feels* rather than what it can describe, and everything it needs is
-in place: polygon walls are line segments, props have footprints, railings mark
-the edges you shouldn't walk off, and `floorCuts()` already knows where the
-floor isn't. Falling versus blocking at an edge is the only open design
-question in it.
+Phases 1 through 5 are done: every structurally invasive piece, plus the one
+item that changed how the tool *feels* rather than what it can describe. The
+model says everything a building needs it to say, and you can now walk the
+building it describes.
 
-Polish phases (6-8) are ongoing, pick up opportunistically. Several got cheaper
-along the way: `shapeArea()` is most of the measurement readout Phase 6 wants
-(the Shape tool already reports ft² in the status bar), rooms and props both
-have an *object* for multi-select and copy/paste to work with, and Phase 7's
-printable floor plan now has a second storey and a stair symbol to draw — worth
-sketching what a plan view should show before building it.
+**What's left is polish, and it's all optional in a way the first five phases
+weren't.** Pick up 6-8 opportunistically; nothing below blocks anything else.
+Several got cheaper along the way: `shapeArea()` is most of the measurement
+readout Phase 6 wants (the Shape tool already reports ft² in the status bar),
+rooms and props both have an *object* for multi-select and copy/paste to work
+with, and Phase 7's printable floor plan now has a second storey and a stair
+symbol to draw — worth sketching what a plan view should show before building
+it. Of the three, **the layers panel (Phase 6) is the one that pays back
+soonest**: multi-floor editing has been squinting through a ghosted level
+below since Phase 1.
+
+Two smaller things Phase 5 left on the table, neither urgent:
+
+- `collide.js` is a linear scan over every wall on a storey, several times a
+  frame. Fine at a school's scale (the sample's ground floor is a couple of
+  hundred segments) and measurably fine at 60fps; if a design ever gets big
+  enough to feel it, the fix is a uniform grid over the segment list, not a
+  cleverer resolver.
+- Nothing collides vertically. A walker is a circle with no height, so you can
+  walk under a stair run and out the other side of it. Giving the body a head
+  is a small change to `supportAt()`'s caller and a large one to what has to be
+  in the segment list — worth doing only if headroom ever becomes the thing
+  someone is using the tool to check.
