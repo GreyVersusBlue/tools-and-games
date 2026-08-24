@@ -20,6 +20,7 @@ import {
 import {
   SEG_WALL, shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint,
 } from './shapes.js';
+import { catalogEntry } from './catalog.js';
 
 // ---------- procedural textures ----------
 
@@ -184,6 +185,14 @@ export function initRender(canvas) {
     emissiveIntensity: 1.5,
     roughness: 0.4,
   });
+  // One material for every prop: each catalog type's geometry carries its own
+  // baked-in vertex colors (same trick as the wall/door tinting above), so a
+  // desk and a bookshelf can share a material and still look different.
+  const propMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.78,
+    metalness: 0.04,
+  });
   // Ghosted copies for the level below the one being edited — enough to line
   // up walls between storeys without the lower floor competing for attention.
   const floorMatGhost = floorMat.clone();
@@ -316,13 +325,171 @@ export function initRender(canvas) {
   const _white = new THREE.Color(1, 1, 1);
   const _doorTint = new THREE.Color('#c98f5f');
 
+  // `color` is usually a shared THREE.Color the caller already has (_white,
+  // _doorTint, a per-cell tmpColor); accepting a plain '#rrggbb' string too
+  // means a catalog entry's `color` field can be passed straight through —
+  // handing this a bare string without the isColor check silently bakes
+  // `undefined` (color.r/g/b on a String) into the buffer as NaN, which reads
+  // back as black and, worse, poisons an entire bloom pass downstream.
   function coloredGeo(geo, color) {
+    const c = color && color.isColor ? color : new THREE.Color(color);
     const n = geo.attributes.position.count;
     const arr = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-      arr[i * 3] = color.r; arr[i * 3 + 1] = color.g; arr[i * 3 + 2] = color.b;
+      arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+    return geo;
+  }
+
+  // ---------- prop geometry ----------
+  //
+  // v1 for the prop layer is procedural primitives, same call the rest of the
+  // scene makes: matches the existing canvas-texture approach, and a box/
+  // cylinder kit gives enough shape variety per catalog entry without needing
+  // an asset pipeline. `assets/models/` stays the upgrade path if glTF pieces
+  // show up later — see its README.
+  //
+  // Every builder returns one merged, vertex-colored BufferGeometry sized to
+  // the catalog entry's own w/d/h, sitting on the local XZ plane with its
+  // bottom at local y=0 — so placing an instance is just translate(x, baseY +
+  // prop.y, z) · rotateY(rotationY) · scale(prop.scale), no per-type offset.
+
+  const _tintColor = new THREE.Color();
+  function tint(hex, dl, ds = 0) {
+    _tintColor.set(hex);
+    const hsl = {};
+    _tintColor.getHSL(hsl);
+    return _tintColor.clone().setHSL(hsl.h, Math.min(1, Math.max(0, hsl.s + ds)), Math.min(1, Math.max(0, hsl.l + dl)));
+  }
+
+  function box(w, h, d, x, y, z, color) {
+    const g = new THREE.BoxGeometry(w, h, d);
+    g.translate(x, y, z);
+    return coloredGeo(g, color);
+  }
+
+  function cyl(rt, rb, h, segs, x, y, z, color) {
+    const g = new THREE.CylinderGeometry(rt, rb, h, segs);
+    g.translate(x, y, z);
+    return coloredGeo(g, color);
+  }
+
+  const buildDesk = (e) => {
+    const legColor = tint(e.color, -0.28);
+    const legT = 0.15, topT = 0.1;
+    const parts = [box(e.w, topT, e.d, 0, e.h - topT / 2, 0, e.color)];
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      parts.push(box(legT, e.h - topT, legT,
+        sx * (e.w / 2 - legT), (e.h - topT) / 2, sz * (e.d / 2 - legT), legColor));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildChair = (e) => {
+    const seatH = e.h * 0.52, legT = 0.12, legColor = tint(e.color, -0.25);
+    const parts = [
+      box(e.w, 0.1, e.d, 0, seatH, 0, e.color),
+      box(e.w, e.h - seatH, 0.08, 0, seatH + (e.h - seatH) / 2, -e.d / 2 + 0.04, tint(e.color, -0.1)),
+    ];
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      parts.push(box(legT, seatH, legT, sx * (e.w / 2 - legT), seatH / 2, sz * (e.d / 2 - legT), legColor));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildCabinet = (e) => {
+    const parts = [box(e.w, e.h, e.d, 0, e.h / 2, 0, e.color)];
+    const drawers = Math.max(2, Math.round(e.h / 1.3));
+    const handleColor = tint(e.color, -0.35);
+    for (let i = 0; i < drawers; i++) {
+      const y = (e.h / drawers) * (i + 0.85);
+      parts.push(box(e.w * 0.5, 0.05, 0.06, 0, y, e.d / 2 + 0.01, handleColor));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildShelf = (e) => {
+    const t = 0.08, sideColor = tint(e.color, -0.12), shelfColor = tint(e.color, 0.06);
+    const parts = [
+      box(t, e.h, e.d, -e.w / 2 + t / 2, e.h / 2, 0, sideColor),
+      box(t, e.h, e.d, e.w / 2 - t / 2, e.h / 2, 0, sideColor),
+      box(e.w, t, e.d, 0, t / 2, 0, sideColor),
+      box(e.w - t * 2, t, e.d - 0.06, 0, e.h - t / 2, 0.03, shelfColor),
+    ];
+    const shelves = Math.max(2, Math.round(e.h / 1.4));
+    for (let i = 1; i < shelves; i++) {
+      const y = (e.h / shelves) * i;
+      parts.push(box(e.w - t * 2, t, e.d - 0.06, 0, y, 0.03, shelfColor));
+    }
+    return mergeGeometries(parts);
+  };
+
+  // A shelf unit with vertical dividers added — reuses buildShelf's frame
+  // wholesale (mergeGeometries is happy to merge an already-merged geometry
+  // back into a bigger one).
+  const buildCubby = (e) => {
+    const parts = [buildShelf(e)];
+    const cols = Math.max(2, Math.round(e.w / 1.3));
+    const dividerColor = tint(e.color, -0.15);
+    for (let i = 1; i < cols; i++) {
+      const x = -e.w / 2 + (e.w / cols) * i;
+      parts.push(box(0.06, e.h, e.d - 0.06, x, e.h / 2, 0.03, dividerColor));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildLamp = (e) => {
+    const shadeColor = tint(e.color, 0.08);
+    const poleColor = tint(e.color, -0.4);
+    return mergeGeometries([
+      cyl(e.w * 0.22, e.w * 0.28, 0.08, 16, 0, 0.04, 0, poleColor),
+      cyl(0.045, 0.045, e.h - 0.7, 8, 0, (e.h - 0.7) / 2 + 0.08, 0, poleColor),
+      cyl(e.w * 0.16, e.w * 0.36, 0.55, 16, 0, e.h - 0.3, 0, shadeColor),
+    ]);
+  };
+
+  // Wall-mounted panel (TV, smart board, whiteboard): a slab whose face sits
+  // at local z = +d/2 — the side propplace.js's wall snap turns to face the
+  // room — with a thin bezel tint so it doesn't read as a flat color swatch.
+  const buildPanel = (e) => mergeGeometries([
+    box(e.w, e.h, e.d, 0, e.h / 2, 0, tint(e.color, -0.15)),
+    box(e.w - 0.15, e.h - 0.15, e.d * 0.4, 0, e.h / 2, e.d * 0.2, e.color),
+  ]);
+
+  const buildRug = (e) => mergeGeometries([
+    box(e.w, e.h, e.d, 0, e.h / 2, 0, e.color),
+    box(e.w - 0.7, e.h, e.d - 0.7, 0, e.h + 0.005, 0, tint(e.color, 0.14)),
+  ]);
+
+  const buildBin = (e) => cyl(e.w / 2 * 0.82, e.w / 2, e.h, 12, 0, e.h / 2, 0, e.color);
+
+  const buildSink = (e) => {
+    const cabColor = tint(e.color, -0.35);
+    const counterH = e.h * 0.82;
+    return mergeGeometries([
+      box(e.w, counterH, e.d, 0, counterH / 2, 0, cabColor),
+      box(e.w + 0.1, e.h - counterH, e.d + 0.1, 0, counterH + (e.h - counterH) / 2, 0, e.color),
+      box(e.w * 0.55, (e.h - counterH) * 0.5, e.d * 0.5, 0, e.h - 0.02, -e.d * 0.15, tint(e.color, -0.2)),
+      cyl(0.03, 0.03, 0.35, 6, 0, e.h + 0.15, -e.d / 2 + 0.15, cabColor),
+    ]);
+  };
+
+  const PROP_GEO_BUILDERS = {
+    desk: buildDesk, chair: buildChair, cabinet: buildCabinet, shelf: buildShelf,
+    cubby: buildCubby, lamp: buildLamp, panel: buildPanel, rug: buildRug,
+    bin: buildBin, sink: buildSink,
+  };
+
+  // Cached per catalog type (not rebuilt on every edit like the structural
+  // meshes) — a prop's geometry never changes shape, only its transform does.
+  const propGeoCache = new Map();
+  function getPropGeometry(entry) {
+    let geo = propGeoCache.get(entry.type);
+    if (geo) return geo;
+    const build = PROP_GEO_BUILDERS[entry.geo] || buildDesk;
+    geo = build(entry);
+    propGeoCache.set(entry.type, geo);
     return geo;
   }
 
@@ -333,7 +500,10 @@ export function initRender(canvas) {
     for (const child of [...group.children]) {
       group.remove(child);
       if (child.isGroup) { disposeGroup(child); continue; }
-      if (child.geometry) child.geometry.dispose();
+      // Prop instances share cached, per-type geometry (see getPropGeometry)
+      // that outlives any single rebuild — freeing it here would leave every
+      // other instance of that type pointing at disposed GPU buffers.
+      if (child.geometry && !child.userData.sharedGeo) child.geometry.dispose();
       if (child.isSprite && child.material) {
         if (child.material.map) child.material.map.dispose();
         child.material.dispose();
@@ -604,6 +774,39 @@ export function initRender(canvas) {
     }
   }
 
+  // One InstancedMesh per prop type present on the floor — cheap even with
+  // hundreds of desks, since it's one draw call per type rather than one
+  // Mesh per prop. Rebuilt alongside the structural meshes on every edit;
+  // only the (cached, shared) geometry survives the rebuild.
+  const _dummy = new THREE.Object3D();
+  function buildPropsGroup(state, floorIndex, baseY, group) {
+    const byType = new Map();
+    for (const p of state.props) {
+      if (p.floor !== floorIndex) continue;
+      if (!byType.has(p.type)) byType.set(p.type, []);
+      byType.get(p.type).push(p);
+    }
+    for (const [type, list] of byType) {
+      const entry = catalogEntry(type);
+      if (!entry) continue; // an unknown type from a newer save — nothing to draw it with
+      const mesh = new THREE.InstancedMesh(getPropGeometry(entry), propMat, list.length);
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      mesh.frustumCulled = false;
+      mesh.userData.sharedGeo = true;
+      list.forEach((p, idx) => {
+        _dummy.position.set(p.x, baseY + (p.y || 0), p.z);
+        _dummy.rotation.set(0, p.rotationY || 0, 0);
+        const s = p.scale > 0 ? p.scale : 1;
+        _dummy.scale.set(s, s, s);
+        _dummy.updateMatrix();
+        mesh.setMatrixAt(idx, _dummy.matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      group.add(mesh);
+    }
+  }
+
   // Which storeys are drawn, and how. Editing is one floor at a time: the
   // level below shows through as a ghost for alignment, everything else is
   // out of the way. Walkthrough shows the whole building.
@@ -620,6 +823,9 @@ export function initRender(canvas) {
         mesh.material = ghost ? mesh.userData.mats.ghost : mesh.userData.mats.solid;
         mesh.castShadow = !ghost;
       }
+      // Props don't ghost — they just disappear below the storey you're
+      // editing, the same as their labels do.
+      if (g.userData.propsGroup) g.userData.propsGroup.visible = !edit || i === cur;
     }
     for (const g of labelGroup.children) {
       g.visible = !edit || g.userData.floor === cur;
@@ -640,6 +846,10 @@ export function initRender(canvas) {
       const labels = new THREE.Group();
       group.userData.floor = ceil.userData.floor = labels.userData.floor = i;
       buildFloor(floor, floorBaseY(state, i), wallHeightOf(state, i), group, ceil, labels);
+      const propsGroup = new THREE.Group();
+      buildPropsGroup(state, i, floorBaseY(state, i), propsGroup);
+      group.add(propsGroup);
+      group.userData.propsGroup = propsGroup;
       buildingGroup.add(group);
       ceilingGroup.add(ceil);
       labelGroup.add(labels);

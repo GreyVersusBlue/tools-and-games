@@ -15,6 +15,7 @@ import {
   SEG_NONE, SEG_WALL, nearestSegment, shapeAt, setSegWall, toggleOpening, removeShape,
 } from './shapes.js';
 import { initPolyEdit } from './polyedit.js';
+import { initPropEdit } from './propedit.js';
 
 const MAX_UNDO = 100;
 
@@ -138,6 +139,18 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     },
   });
 
+  // propedit owns the prop palette's current type and selection, and calls
+  // back in here the same way polyedit does — one undo history for all three.
+  const propTool = initPropEdit({
+    getState,
+    renderApi,
+    host: {
+      pushUndo, dropUndo: () => { undoStack.pop(); },
+      changed: (info = {}) => onChange({ structural: true, ...info }),
+      status: (text) => onStatus && onStatus(text),
+    },
+  });
+
   // --- tool application ---
 
   // Nearest polygon wall to the cursor, if one is within grabbing distance and
@@ -245,7 +258,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const f = activeFloor(s);
     const baseY = floorBaseY(s, s.currentFloor);
     const p = e && pointerToWorld(e);
-    if (!enabled || !p || tool === 'poly' || tool === 'vertex') {
+    if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop') {
       cellCursor.visible = edgeCursor.visible = false;
       return;
     }
@@ -297,6 +310,11 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       poly.pointerDown(p, e);
       return;
     }
+    if (tool === 'prop') {
+      canvas.setPointerCapture(e.pointerId);
+      propTool.pointerDown(p, e);
+      return;
+    }
     pushUndo();
     strokeActive = true;
     strokeChanged = false;
@@ -322,6 +340,11 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       if (pp) poly.pointerMove(pp, e);
       return;
     }
+    if (tool === 'prop') {
+      const pp = pointerToWorld(e);
+      if (pp) propTool.pointerMove(pp, e);
+      return;
+    }
     if (!strokeActive) return;
     const p = pointerToWorld(e);
     if (!p) return;
@@ -334,6 +357,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   function endStroke(e) {
     if (panning) { panning = false; panLast = null; }
     if (poly.pointerUp()) return;
+    if (propTool.pointerUp()) return;
     if (!strokeActive) return;
     strokeActive = false;
     lastWorld = null;
@@ -345,6 +369,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   canvas.addEventListener('pointerleave', () => {
     cellCursor.visible = edgeCursor.visible = false;
     poly.clearHover();
+    propTool.clearHover();
   });
 
   canvas.addEventListener('wheel', (e) => {
@@ -353,6 +378,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const view = renderApi.editView;
     view.height = Math.min(1000, Math.max(30, view.height * Math.exp(e.deltaY * 0.001)));
     poly.refresh(); // handles and snap radius are sized off the zoom level
+    propTool.refresh();
   }, { passive: false });
 
   return {
@@ -360,18 +386,27 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     setTool(t) {
       tool = t;
       poly.setTool(t);
+      propTool.setTool(t);
       updateCursor(null);
       if (t !== 'vertex') canvas.style.cursor = '';
     },
-    // Keys the polygon tools claim (close, cancel, backtrack, delete). Returns
-    // true when one was used, so the caller knows to stop handling it.
-    handleKey: (e) => poly.key(e),
+    // Keys the polygon and prop tools claim (close/cancel/backtrack/delete,
+    // rotate/delete/escape). Returns true when one was used, so the caller
+    // knows to stop handling it.
+    handleKey: (e) => poly.key(e) || propTool.key(e),
     get holeMode() { return poly.holeMode; },
     setHoleMode: (v) => poly.setHoleMode(v),
-    refreshOverlay: () => poly.refresh(),
+    refreshOverlay: () => { poly.refresh(); propTool.refresh(); },
     setRoom(name, color) { roomName = name; roomColor = color; },
     get roomName() { return roomName; },
     get roomColor() { return roomColor; },
+    setPropType: (t) => propTool.setType(t),
+    get propType() { return propTool.currentType; },
+    // Ctrl combos never reach handleKey (see main.js), so copy/paste/duplicate
+    // are called directly.
+    propCopy: () => propTool.copySelection(),
+    propPaste: () => propTool.pasteClipboard(),
+    propDuplicate: () => propTool.duplicateSelection(),
     undo, redo, pushUndo,
     // Discard the most recent pushUndo() when the edit it was staged for
     // turned out to be a no-op.
@@ -384,6 +419,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       // Walkthrough hides the overlay entirely; an unfinished outline doesn't
       // survive the round trip, which is the same deal the stroke tools get.
       poly.setTool(v ? tool : null);
+      propTool.setTool(v ? tool : null);
       if (!v) { cellCursor.visible = edgeCursor.visible = false; strokeActive = false; }
     },
   };

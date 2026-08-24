@@ -60,7 +60,7 @@ function cleanData(raw) {
 }
 
 const TAU = Math.PI * 2;
-const wrapAngle = (a) => {
+export const wrapAngle = (a) => {
   const n = typeof a === 'number' && Number.isFinite(a) ? a % TAU : 0;
   return n < 0 ? n + TAU : n;
 };

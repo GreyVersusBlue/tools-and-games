@@ -2,13 +2,14 @@
 
 Living reference for where this tool goes next. The v1 model (merged in #38)
 was a single-floor, grid-based editor + first-person walkthrough: rectilinear
-rooms only, no furniture, no multi-story. **Phases 1 and 2 have since landed** —
-the state is multi-floor, there's a prop layer, rooms can be arbitrary polygons,
-and the save format is at v3 (see those sections for what was decided and what
-it means for the phases below). This document breaks down the remaining
-improvements — prop placement, stairs, mezzanines, glass walls — into a rough
-build order, and calls out where each one collides with assumptions baked into
-the current code.
+rooms only, no furniture, no multi-story. **Phases 1 through 3 have since
+landed** — the state is multi-floor, rooms can be arbitrary polygons, and
+there's a furnished prop layer with a catalog, a placement tool and instanced
+rendering (see those sections for what was decided and what it means for the
+phases below). This document breaks down the remaining improvements — stairs,
+mezzanines, glass walls, walkthrough collision — into a rough build order, and
+calls out where each one collides with assumptions baked into the current
+code.
 
 Not a spec — a scoped list to pull from and refine before starting each
 piece. Check items off (or strike them) as they land, and add new ideas
@@ -16,9 +17,11 @@ under the right phase rather than starting a second list.
 
 ## Current architecture, in brief
 
-(`js/grid.js`, `js/shapes.js`, `js/props.js`, `js/sample.js`, `js/editor.js`,
-`js/polyedit.js`, `js/render.js`, `js/walkthrough.js`, `js/save-load.js`,
-`test/model.test.mjs`, `test/shapes.test.mjs`)
+(`js/grid.js`, `js/shapes.js`, `js/props.js`, `js/catalog.js`,
+`js/propplace.js`, `js/sample.js`, `js/editor.js`, `js/polyedit.js`,
+`js/propedit.js`, `js/render.js`, `js/walkthrough.js`, `js/save-load.js`,
+`test/model.test.mjs`, `test/shapes.test.mjs`, `test/catalog.test.mjs`,
+`test/propplace.test.mjs`)
 
 - **Two room representations, side by side.** The cell grid is the fast
   rectangular mode: a floor is a flat `cells[]` array (4ft cells) plus
@@ -31,16 +34,20 @@ under the right phase rather than starting a second list.
   walls/doors, tagged with a name + color. A polygon room is an explicit
   `{ id, name, color, rings }` record that owns its own boundary, per-segment
   walls and doorways. `convertRegion()` promotes the first into the second.
-- **A prop layer exists but nothing draws it yet.** `props.js` holds free-
-  floating objects in world feet with ids, floors, rotation, scale and mount
-  kind; `state.links[]` holds inter-floor connections. There is no catalog and
-  no placement tool — that's Phase 3. `assets/models/` is still an empty
-  placeholder (`.gitkeep` only).
-- **Rendering merges everything into a few big meshes** (`mergeGeometries`
-  per material, per storey: one floor mesh, one wall mesh, one ceiling mesh,
-  one fixture mesh) rebuilt from scratch on every edit — polygon rooms merge
-  into the same meshes as the grid. Fine at grid scale; will need rethinking
-  once there are hundreds of individually-selectable props.
+- **The prop layer is furnished.** `props.js` holds free-floating objects in
+  world feet with ids, floors, rotation, scale and mount kind; `js/catalog.js`
+  gives `type` meaning (footprint, mount, procedural geometry key) and
+  `js/propedit.js` is the placement/selection tool, palette-driven the same
+  way the room-color swatches drive the room tool. `state.links[]` still just
+  holds inter-floor connections, unused until Phase 4. `assets/models/` is
+  still an empty placeholder (`.gitkeep` only) — Phase 3 stayed procedural.
+- **Rendering merges structure into a few big meshes, props into one
+  `InstancedMesh` per type per floor.** Floor/wall/ceiling/fixture geometry is
+  `mergeGeometries`'d per material, per storey, rebuilt from scratch on every
+  edit — polygon rooms merge into the same meshes as the grid. Props are
+  different: each catalog type's geometry is built once and cached, and every
+  placed instance of it on a floor is one `InstancedMesh`, so a classroom's
+  worth of desks costs one draw call rather than one `Mesh` each.
 - **Walkthrough is no-clip.** `PointerLockControls` with WASD + fly up/down,
   no collision against walls, no stairs to walk up/down. It does spawn on the
   storey you were editing (in the biggest polygon room, if that storey has no
@@ -183,37 +190,101 @@ at all before this.
   grid→polygon trace (including a region with a courtyard in it), floor
   duplication, save round-trips and hostile-input clamping.
 
-## Phase 3 — Prop / furniture placement
+## Phase 3 — Prop / furniture placement ✅ *done*
 
-Phase 1's prop layer is in place and empty — nothing renders props yet, and
-there is no way to create one from the UI. That's this phase's job.
+Phase 1's prop layer was in place and empty — nothing rendered props, and
+there was no way to create one from the UI. This phase gave it a catalog, a
+placement tool, snapping, and instanced rendering.
 
-- [ ] **Prop catalog** — a data-driven list of placeable types, each with a
-  category, footprint (for collision/snapping), and default rotation:
-  - Desks: student desk, teacher desk
-  - Seating: student chair, teacher chair
-  - Storage: file cabinet, bookshelf (full-height), bookshelf (half-height/
-    low), cubby unit
-  - Fixtures: lamp/floor lamp, TV / interactive smart board (wall-mounted —
-    needs a "attach to wall" placement mode, not just floor placement)
-  - Whatever else comes up in use (rugs, trash cans, sinks, whiteboards —
-    keep the catalog easy to extend rather than hardcoding a fixed set)
-- [ ] **Placement tool**: pick a prop from a palette (parallel to the
-  existing room-color swatch panel), click to place, drag to reposition,
-  rotate (keyboard modifier or handle), delete.
-- [ ] **Snapping**: to grid, to wall (for wall-mounted items like TVs and
-  smart boards), and to other props (align two desks in a row).
-- [ ] **Geometry source**: v1 procedural boxes/primitives (fast, matches the
-  current procedural-texture approach in `render.js`) vs. glTF models
-  dropped into `assets/models/` (currently empty). Recommend starting
-  procedural for shape variety at low effort, and treating `assets/models/`
-  as a later upgrade path — same tradeoff the project already made for wall/
-  floor textures per `assets/textures/README.md`.
-- [ ] **Rendering at scale**: once a classroom has 30+ desks/chairs,
-  per-prop `Mesh` objects will hurt perf compared to the current merged-
-  geometry approach. Plan for `InstancedMesh` per prop type from the start
-  rather than retrofitting later.
-- [ ] Multi-select + copy/paste for props (place one desk row, duplicate it).
+- [x] **Prop catalog** (`js/catalog.js`) — a data-driven list of 14 placeable
+  types across five categories (Desks, Seating, Storage, Fixtures, Extras),
+  each a plain row of `{ type, category, w, d, h, y, color, mount, geo }`.
+  Desks, chairs, a file cabinet, two bookshelf heights, a cubby unit, a floor
+  lamp, a wall-mounted TV/smart board and whiteboard, a rug, a trash can and
+  a sink. Adding a new one is adding a row — `props.js`'s open-string `type`
+  and `propedit.js`'s palette both read the catalog rather than a hardcoded
+  list, per the decision Phase 1 made for exactly this.
+- [x] **Placement tool** (`js/propedit.js`, `⑧` Furniture) — a palette panel
+  (parallel to the room-color swatches) picks the current type; click empty
+  ground to place it, click an existing prop to select it (Shift adds to the
+  selection), drag a selected prop (or the whole selection, offsets
+  preserved) to move it, `R`/`Shift+R` rotates 15° at a time, `Delete`
+  removes. Dragging from empty ground instead draws a marquee box that
+  selects whatever it covers — a deliberate split (see below) so a drag never
+  half-places something.
+- [x] **Snapping** (`js/propplace.js`, pure/no-three.js so it's unit-tested
+  independently of the renderer) — three tiers, tried in order: a
+  wall-mounted type snaps flush against the nearest wall (grid edge or
+  polygon segment, whichever is closer) and turns to face whichever side of
+  it the cursor was on; a floor-standing type snaps alongside a neighbouring
+  prop of the same mount kind when the cursor lands near one of its four
+  edges, matching that neighbour's rotation (the "line up a row of desks"
+  case); failing both, it snaps to a 2ft furniture lattice (finer than the
+  4ft wall grid — half as coarse reads right for 2ft-wide furniture).
+  Alt ignores every tier for free placement, same modifier the polygon tools
+  use.
+- [x] **Geometry source**: procedural, as recommended — each catalog entry's
+  `geo` key (`desk`, `chair`, `cabinet`, `shelf`, `cubby`, `lamp`, `panel`,
+  `rug`, `bin`, `sink`) maps to a small box/cylinder kit in `render.js`,
+  merged into one vertex-colored `BufferGeometry` per *type* and cached —
+  same procedural-texture-over-asset-pipeline tradeoff the project already
+  made, and `assets/models/` is still there as the upgrade path.
+- [x] **Rendering at scale**: one `THREE.InstancedMesh` per (floor, prop
+  type), rebuilt alongside the structural meshes on every edit but pointed at
+  the *cached* geometry rather than rebuilding it — so 30 student desks cost
+  one draw call, not thirty `Mesh` objects. `disposeGroup()` knows not to
+  free geometry tagged `sharedGeo`.
+- [x] Multi-select + copy/paste — marquee-select (see placement tool above),
+  `Ctrl+C`/`Ctrl+V` copy and paste the selection at a small offset (repeated
+  pastes step further out), `Ctrl+D` duplicates in one keystroke. These are
+  Ctrl combos, which `editor.js`'s generic key routing deliberately never
+  forwards to the polygon/prop tools (Escape/Delete/Enter etc. only), so
+  `main.js` calls `editor.propCopy()/propPaste()/propDuplicate()` directly.
+
+**Decisions made, since later phases depend on them:**
+
+- **Selection lives in the tool, not in saved state.** `propedit.js` holds
+  its own `Set` of selected ids, resolved back to live props by id on every
+  use (and dropped if the prop's floor no longer matches the one being
+  edited) — the same "re-resolve by id" pattern `polyedit.js` uses for its
+  selected shape. Nothing about a selection is undoable or saved; only
+  actual prop mutations push undo.
+- **A click places, a drag marquee-selects — never both from one gesture.**
+  Committing to which one a pointer-down *is* has to wait for pointer-up (or
+  a movement threshold), because placing on every pixel of a drag would spam
+  props the way the grid tools' `applyStroke` deliberately doesn't for a
+  one-shot tool. The threshold and the snap tolerance both scale off
+  `editView.height`, the same zoom-independent-feel trick `polyedit.js`
+  already used for handle sizes.
+- **Wall snap only applies to wall-mounted types.** A floor-standing desk
+  drifting to face a wall it merely passed near would be surprising; a TV
+  ignoring the wall it's obviously meant for would be useless. The catalog's
+  `mount` field is what `propplace.js`'s `snapProp` branches on.
+- **Rotation convention is `Object3D.rotation.y`, chosen once and used
+  everywhere.** `propplace.js`'s `faceDirection(dx, dz)` computes the angle
+  that makes a prop's local +Z axis point at a world direction — the
+  convention every geometry builder in `render.js` was authored against (a
+  panel's face, a chair's seat) and the one `propplace.js`'s tests check
+  directly rather than trusting visually.
+- **One shared material for every prop.** `propMat` is a single
+  `MeshStandardMaterial` with `vertexColors: true`; each cached geometry
+  bakes its own per-part colors in (the same trick `buildFloor` uses for
+  cell tints and door jambs), so a desk and a bookshelf differ without a
+  second material or texture. `coloredGeo()` (the helper both paths share)
+  now also normalizes a plain `'#rrggbb'` string to a `THREE.Color` before
+  reading `.r/.g/.b` off it — passing a bare string used to silently bake
+  `NaN` into the color buffer, invisible until it reached a bloom pass.
+
+**What that changed elsewhere, beyond the data model:**
+
+- **`buildSampleSchool()` furnishes Room 101** — two rows of student
+  desks/chairs, a teacher's desk and chair, a bookshelf, a rug and a wall
+  whiteboard — both a demo and the thing that first exercised this phase's
+  render path end to end.
+- **`test/catalog.test.mjs`** and **`test/propplace.test.mjs`** — the
+  catalog's shape and uniqueness, and picking/footprint/snap-tier coverage
+  for all three snap kinds plus the free-placement escape hatch, run the
+  same `node --test` way as the rest of the suite.
 
 ## Phase 4 — Architectural features
 
@@ -289,17 +360,15 @@ there is no way to create one from the UI. That's this phase's job.
 
 ## Suggested build order
 
-Phases 1 and 2 are done. **Props (Phase 3) come next**: lower-risk and highly
-visible, they don't require touching the wall/room model at all, just the prop
-layer that's still sitting there unused — and they're the thing that validates
-that layer in practice before anything structural is built on it.
-**Architectural features (Phase 4)** are the other invasive piece, and the
-polygon model is now the thing they sit on: a floor cut is a hole in a room, a
-railing is a segment with a wall state that isn't "wall". Walkthrough collision
-(Phase 5) matters most once there's something to collide with — reasonable to
-fold in alongside or right after props, and polygon walls give it real line
-segments to collide against rather than a lattice. Polish phases (6-8) are
-ongoing, pick up opportunistically. Two of them got cheaper in Phase 2:
-`shapeArea()` is the measurement readout Phase 6 wants (the Shape tool already
-reports ft² in the status bar), and multi-select/copy-paste now has a room
-*object* to copy.
+Phases 1 through 3 are done. **Architectural features (Phase 4) come next**:
+the other structurally invasive piece, and the polygon model is now the thing
+they sit on — a floor cut is a hole in a room, a railing is a segment with a
+wall state that isn't "wall". **Walkthrough collision (Phase 5)** matters most
+once there's something to collide with, which is true now on two counts —
+polygon walls give it real line segments to collide against rather than a
+lattice, and Phase 3 filled rooms with props to bump into — so it's reasonable
+to fold in alongside or right after Phase 4. Polish phases (6-8) are ongoing,
+pick up opportunistically. A few got cheaper along the way: `shapeArea()` is
+the measurement readout Phase 6 wants (the Shape tool already reports ft² in
+the status bar), and both rooms and props now have an *object* for
+multi-select/copy-paste to work with rather than a plain-string coping.
