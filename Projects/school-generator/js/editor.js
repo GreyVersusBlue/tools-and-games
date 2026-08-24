@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import {
   CELL, WALL_H, WALL_T, ROOM_COLORS,
-  cellIdx, edgeHIdx, edgeVIdx, inGrid, getCell, setFloor, floodRegion,
+  cellIdx, edgeHIdx, edgeVIdx, inGrid, getCell, setTile, floodRegion,
+  activeFloor, floorBaseY,
 } from './grid.js';
 
 const MAX_UNDO = 100;
@@ -50,11 +51,13 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
   }
 
   // Nearest edge to a world point: {kind:'H'|'V', x, y, dist} (dist in cell fractions)
-  function nearestEdge(s, wx, wz) {
+  // All of these take a *floor* record — the editor only ever touches the
+  // storey currently selected in the floor panel.
+  function nearestEdge(f, wx, wz) {
     const fx = wx / CELL, fz = wz / CELL;
     let cx = Math.floor(fx), cz = Math.floor(fz);
-    cx = Math.min(Math.max(cx, 0), s.w - 1);
-    cz = Math.min(Math.max(cz, 0), s.h - 1);
+    cx = Math.min(Math.max(cx, 0), f.w - 1);
+    cz = Math.min(Math.max(cz, 0), f.h - 1);
     const dx = fx - cx, dz = fz - cz;
     const cands = [
       { kind: 'V', x: cx,     y: cz, dist: Math.abs(dx) },
@@ -66,15 +69,15 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
     return cands[0];
   }
 
-  function cellAt(s, wx, wz) {
+  function cellAt(f, wx, wz) {
     const x = Math.floor(wx / CELL), y = Math.floor(wz / CELL);
-    return inGrid(s, x, y) ? { x, y } : null;
+    return inGrid(f, x, y) ? { x, y } : null;
   }
 
-  function edgeRef(s, e) {
+  function edgeRef(f, e) {
     return e.kind === 'H'
-      ? { arr: s.edgesH, i: edgeHIdx(s, e.x, e.y) }
-      : { arr: s.edgesV, i: edgeVIdx(s, e.x, e.y) };
+      ? { arr: f.edgesH, i: edgeHIdx(f, e.x, e.y) }
+      : { arr: f.edgesV, i: edgeVIdx(f, e.x, e.y) };
   }
 
   // --- undo/redo ---
@@ -107,40 +110,40 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
 
   // --- tool application ---
   function applyAt(wx, wz, isClick) {
-    const s = getState();
+    const f = activeFloor(getState());
     if (tool === 'floor') {
-      const c = cellAt(s, wx, wz);
-      if (c && setFloor(s, c.x, c.y, true)) strokeChanged = true;
+      const c = cellAt(f, wx, wz);
+      if (c && setTile(f, c.x, c.y, true)) strokeChanged = true;
     } else if (tool === 'wall') {
-      const e = nearestEdge(s, wx, wz);
-      const ref = edgeRef(s, e);
+      const e = nearestEdge(f, wx, wz);
+      const ref = edgeRef(f, e);
       if (ref.arr[ref.i] !== 1) { ref.arr[ref.i] = 1; strokeChanged = true; }
     } else if (tool === 'door') {
       if (!isClick) return; // doors place on click, not drag
-      const e = nearestEdge(s, wx, wz);
-      const ref = edgeRef(s, e);
+      const e = nearestEdge(f, wx, wz);
+      const ref = edgeRef(f, e);
       ref.arr[ref.i] = ref.arr[ref.i] === 2 ? 1 : 2; // toggle door <-> wall
       strokeChanged = true;
     } else if (tool === 'room') {
       if (!isClick) return;
-      const c = cellAt(s, wx, wz);
-      if (!c || !getCell(s, c.x, c.y)) return;
-      const region = floodRegion(s, c.x, c.y);
+      const c = cellAt(f, wx, wz);
+      if (!c || !getCell(f, c.x, c.y)) return;
+      const region = floodRegion(f, c.x, c.y);
       for (const rc of region) {
-        const cell = s.cells[cellIdx(s, rc.x, rc.y)];
+        const cell = f.cells[cellIdx(f, rc.x, rc.y)];
         cell.room = roomName || 'Room';
         cell.color = roomColor;
       }
       strokeChanged = true;
     } else if (tool === 'erase') {
-      const e = nearestEdge(s, wx, wz);
-      const ref = edgeRef(s, e);
+      const e = nearestEdge(f, wx, wz);
+      const ref = edgeRef(f, e);
       if (e.dist < 0.28 && ref.arr[ref.i] !== 0) {
         ref.arr[ref.i] = 0;
         strokeChanged = true;
       } else {
-        const c = cellAt(s, wx, wz);
-        if (c && setFloor(s, c.x, c.y, false)) strokeChanged = true;
+        const c = cellAt(f, wx, wz);
+        if (c && setTile(f, c.x, c.y, false)) strokeChanged = true;
       }
     }
   }
@@ -164,30 +167,32 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
   // --- hover feedback ---
   function updateCursor(e) {
     const s = getState();
+    const f = activeFloor(s);
+    const baseY = floorBaseY(s, s.currentFloor);
     const p = e && pointerToWorld(e);
     if (!enabled || !p) { cellCursor.visible = edgeCursor.visible = false; return; }
     const isErase = tool === 'erase';
     const color = isErase ? 0xff5f56 : tool === 'door' ? 0xd9a05b : 0x4da3ff;
 
-    if (tool === 'wall' || tool === 'door' || (isErase && nearestEdge(s, p.x, p.z).dist < 0.28)) {
-      const edge = nearestEdge(s, p.x, p.z);
+    if (tool === 'wall' || tool === 'door' || (isErase && nearestEdge(f, p.x, p.z).dist < 0.28)) {
+      const edge = nearestEdge(f, p.x, p.z);
       edgeCursor.visible = true;
       cellCursor.visible = false;
       edgeCursor.material.color.setHex(color);
       if (edge.kind === 'H') {
         edgeCursor.rotation.y = 0;
-        edgeCursor.position.set((edge.x + 0.5) * CELL, WALL_H + 0.5, edge.y * CELL);
+        edgeCursor.position.set((edge.x + 0.5) * CELL, baseY + WALL_H + 0.5, edge.y * CELL);
       } else {
         edgeCursor.rotation.y = Math.PI / 2;
-        edgeCursor.position.set(edge.x * CELL, WALL_H + 0.5, (edge.y + 0.5) * CELL);
+        edgeCursor.position.set(edge.x * CELL, baseY + WALL_H + 0.5, (edge.y + 0.5) * CELL);
       }
     } else {
-      const c = cellAt(s, p.x, p.z);
+      const c = cellAt(f, p.x, p.z);
       edgeCursor.visible = false;
       cellCursor.visible = !!c;
       if (c) {
         cellCursor.material.color.setHex(color);
-        cellCursor.position.set((c.x + 0.5) * CELL, 0.08, (c.y + 0.5) * CELL);
+        cellCursor.position.set((c.x + 0.5) * CELL, baseY + 0.08, (c.y + 0.5) * CELL);
       }
     }
   }
@@ -264,6 +269,9 @@ export function initEditor({ canvas, renderApi, getState, onChange }) {
     get roomName() { return roomName; },
     get roomColor() { return roomColor; },
     undo, redo, pushUndo,
+    // Discard the most recent pushUndo() when the edit it was staged for
+    // turned out to be a no-op.
+    dropUndo() { undoStack.pop(); },
     get canUndo() { return undoStack.length > 0; },
     get canRedo() { return redoStack.length > 0; },
     clearHistory() { undoStack.length = 0; redoStack.length = 0; },

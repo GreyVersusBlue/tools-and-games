@@ -1,7 +1,11 @@
 // main.js — bootstrap and UI wiring.
 
 import * as THREE from 'three';
-import { createState, buildSampleSchool, ROOM_COLORS } from './grid.js';
+import {
+  createState, buildSampleSchool, ROOM_COLORS, MAX_FLOORS,
+  floorLabel, floorCellCount,
+  addFloor, duplicateFloor, removeFloor, setCurrentFloor,
+} from './grid.js';
 import { initRender } from './render.js';
 import { initEditor } from './editor.js';
 import { initWalkthrough } from './walkthrough.js';
@@ -40,6 +44,7 @@ const editor = initEditor({
     rebuild(!!info.throttled);
     autosave(state);
     updateUndoButtons();
+    renderFloorList();
   },
 });
 
@@ -119,6 +124,63 @@ ROOM_COLORS.forEach((c, i) => {
 $('room-name').value = editor.roomName;
 $('room-name').addEventListener('input', (e) => editor.setRoom(e.target.value, editor.roomColor));
 
+// --- floor panel ---
+// Editing is one storey at a time; the level below shows through as a ghost so
+// walls can be lined up between floors. Listed top-down, the way you'd read a
+// building section.
+const floorList = $('floor-list');
+
+function renderFloorList() {
+  floorList.textContent = '';
+  for (let i = state.floors.length - 1; i >= 0; i--) {
+    const b = document.createElement('button');
+    b.className = 'floor' + (i === state.currentFloor ? ' active' : '');
+    b.dataset.floor = String(i);
+    const name = document.createElement('span');
+    name.textContent = floorLabel(i);
+    const count = document.createElement('span');
+    count.className = 'count';
+    count.textContent = `${floorCellCount(state.floors[i])} cells`;
+    b.append(name, count);
+    b.addEventListener('click', () => goToFloor(i));
+    floorList.appendChild(b);
+  }
+  $('floor-add').disabled = state.floors.length >= MAX_FLOORS;
+  $('floor-dup').disabled = state.floors.length >= MAX_FLOORS;
+  $('floor-del').disabled = state.floors.length <= 1;
+}
+
+// Switching floors doesn't change the design, so it skips undo and reuses the
+// geometry already built — only which storeys are drawn changes.
+function goToFloor(i) {
+  if (!setCurrentFloor(state, i)) return;
+  renderApi.applyFloorVisibility();
+  renderFloorList();
+  autosave(state);
+  $('status').textContent = `${floorLabel(state.currentFloor)} — editing this floor`;
+}
+
+// Adding, copying and deleting a storey all change the design, so they go
+// through undo and force a full geometry rebuild.
+function floorEdit(mutate) {
+  editor.pushUndo();
+  if (!mutate()) { editor.dropUndo(); return; }
+  rebuild();
+  renderFloorList();
+  autosave(state);
+  updateUndoButtons();
+  $('status').textContent = `${floorLabel(state.currentFloor)} — editing this floor`;
+}
+
+$('floor-add').addEventListener('click', () => floorEdit(() => addFloor(state) >= 0));
+$('floor-dup').addEventListener('click', () => floorEdit(() => duplicateFloor(state) >= 0));
+$('floor-del').addEventListener('click', () => {
+  if (state.floors.length <= 1) return;
+  const label = floorLabel(state.currentFloor);
+  if (!confirm(`Delete ${label}? Anything on it goes with it. (Undoable.)`)) return;
+  floorEdit(() => removeFloor(state));
+});
+
 // --- undo/redo ---
 function updateUndoButtons() {
   $('undo-btn').disabled = !editor.canUndo;
@@ -140,6 +202,7 @@ $('file-input').addEventListener('change', async (e) => {
     state = await loadFromFile(file);
     renderApi.fitEditView(state);
     rebuild();
+    renderFloorList();
     autosaveNow(state);
     updateUndoButtons();
   } catch (err) {
@@ -154,6 +217,7 @@ $('new-btn').addEventListener('click', () => {
   clearAutosave();
   renderApi.fitEditView(state);
   rebuild();
+  renderFloorList();
   updateUndoButtons();
 });
 
@@ -178,6 +242,8 @@ document.addEventListener('keydown', (e) => {
     editor.redo(); autosave(state); updateUndoButtons();
     return;
   }
+  if (e.code === 'BracketLeft')  { goToFloor(state.currentFloor - 1); return; }
+  if (e.code === 'BracketRight') { goToFloor(state.currentFloor + 1); return; }
   if (TOOL_KEYS[e.code]) selectTool(TOOL_KEYS[e.code]);
 });
 
@@ -194,6 +260,7 @@ function loop() {
 }
 
 selectTool('floor');
+renderFloorList();
 updateUndoButtons();
 loop();
 

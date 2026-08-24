@@ -1,8 +1,11 @@
-// walkthrough.js — first-person pointer-lock camera. No-clip movement (v1).
+// walkthrough.js — first-person pointer-lock camera. Still no-clip: collision
+// and stair navigation are Phase 5, once there are props to bump into. What
+// multi-floor adds here is a spawn on the storey you were editing, and a
+// vertical range that reaches the whole building rather than one 10ft slice.
 
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { CELL, EYE_H, cellIdx } from './grid.js';
+import { CELL, EYE_H, cellIdx, activeFloor, floorBaseY, topOfBuilding } from './grid.js';
 
 const WALK_SPEED = 12;   // ft/s
 const SPRINT_SPEED = 24; // ft/s
@@ -11,6 +14,7 @@ export function initWalkthrough(camera, domElement) {
   const controls = new PointerLockControls(camera, domElement);
   const keys = new Set();
   let active = false;
+  let ceiling = 80;   // fly-up limit, raised to clear the tallest building
 
   document.addEventListener('keydown', (e) => {
     if (!active) return;
@@ -19,25 +23,25 @@ export function initWalkthrough(camera, domElement) {
   });
   document.addEventListener('keyup', (e) => keys.delete(e.code));
 
-  function spawnPoint(state) {
+  function spawnPoint(f) {
     let sx = 0, sy = 0, n = 0;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (let y = 0; y < state.h; y++)
-      for (let x = 0; x < state.w; x++)
-        if (state.cells[cellIdx(state, x, y)]) {
+    for (let y = 0; y < f.h; y++)
+      for (let x = 0; x < f.w; x++)
+        if (f.cells[cellIdx(f, x, y)]) {
           sx += x + 0.5; sy += y + 0.5; n++;
           minX = Math.min(minX, x); maxX = Math.max(maxX, x);
           minY = Math.min(minY, y); maxY = Math.max(maxY, y);
         }
     if (n === 0) {
-      return { x: (state.w * CELL) / 2, z: (state.h * CELL) / 2, lookX: 0, lookZ: -1 };
+      return { x: (f.w * CELL) / 2, z: (f.h * CELL) / 2, lookX: 0, lookZ: -1 };
     }
     // nearest floored cell to the centroid, so we spawn inside the building
     const cx = sx / n, cy = sy / n;
     let best = null, bestD = Infinity;
-    for (let y = 0; y < state.h; y++)
-      for (let x = 0; x < state.w; x++)
-        if (state.cells[cellIdx(state, x, y)]) {
+    for (let y = 0; y < f.h; y++)
+      for (let x = 0; x < f.w; x++)
+        if (f.cells[cellIdx(f, x, y)]) {
           const d = (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2;
           if (d < bestD) { bestD = d; best = { x: x + 0.5, y: y + 0.5 }; }
         }
@@ -58,9 +62,12 @@ export function initWalkthrough(camera, domElement) {
     enable(state) {
       active = true;
       keys.clear();
-      const p = spawnPoint(state);
-      camera.position.set(p.x, EYE_H, p.z);
-      camera.lookAt(p.x + p.lookX * 20, EYE_H, p.z + p.lookZ * 20);
+      // Start on the floor you were just editing, not always the ground.
+      const p = spawnPoint(activeFloor(state));
+      const eye = floorBaseY(state, state.currentFloor) + EYE_H;
+      ceiling = topOfBuilding(state) + 40;
+      camera.position.set(p.x, eye, p.z);
+      camera.lookAt(p.x + p.lookX * 20, eye, p.z + p.lookZ * 20);
     },
     disable() {
       active = false;
@@ -75,7 +82,7 @@ export function initWalkthrough(camera, domElement) {
       const up = (keys.has('Space') ? 1 : 0) - (keys.has('KeyC') ? 1 : 0);
       if (fwd) controls.moveForward(fwd * speed * dt);
       if (right) controls.moveRight(right * speed * dt);
-      if (up) camera.position.y = Math.min(80, Math.max(1.5, camera.position.y + up * speed * dt));
+      if (up) camera.position.y = Math.min(ceiling, Math.max(1.5, camera.position.y + up * speed * dt));
     },
   };
 }

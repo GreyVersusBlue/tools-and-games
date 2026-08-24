@@ -13,7 +13,10 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CELL, WALL_H, WALL_T, DOOR_W, DOOR_H, computeLabels } from './grid.js';
+import {
+  CELL, WALL_H, WALL_T, DOOR_W, DOOR_H,
+  FLOOR_H, computeLabels, floorBaseY, wallHeightOf, topOfBuilding,
+} from './grid.js';
 
 // ---------- procedural textures ----------
 
@@ -178,6 +181,18 @@ export function initRender(canvas) {
     emissiveIntensity: 1.5,
     roughness: 0.4,
   });
+  // Ghosted copies for the level below the one being edited — enough to line
+  // up walls between storeys without the lower floor competing for attention.
+  const floorMatGhost = floorMat.clone();
+  const wallMatGhost = wallMat.clone();
+  for (const m of [floorMatGhost, wallMatGhost]) {
+    m.transparent = true;
+    m.depthWrite = false;
+    m.roughness = 1.0;
+  }
+  floorMatGhost.opacity = 0.30;
+  wallMatGhost.opacity = 0.22;
+
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
   for (const m of [floorMat, wallMat, ceilMat, groundMat]) {
     if (m.map) m.map.anisotropy = Math.min(8, maxAniso);
@@ -191,6 +206,8 @@ export function initRender(canvas) {
   scene.add(ground);
 
   // --- dynamic building content ---
+  // Each of these holds one child Group per storey, indexed by floor number,
+  // so a floor can be shown, ghosted or hidden without rebuilding geometry.
   const buildingGroup = new THREE.Group();
   const ceilingGroup = new THREE.Group();   // hidden in edit mode
   ceilingGroup.visible = false;             // starts in edit mode
@@ -198,19 +215,24 @@ export function initRender(canvas) {
   scene.add(buildingGroup, ceilingGroup, labelGroup);
 
   let gridHelper = null;
+  let built = null;         // last state passed to buildFromState
+  let labelledFloor = -1;   // storey whose labels walk mode is currently showing
 
   // --- cameras ---
-  const editCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 500);
+  // far plane clears the top of an 8-storey building plus the camera's own
+  // standoff (see editView.camY)
+  const editCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 800);
   editCamera.up.set(0, 0, -1);
   const walkCamera = new THREE.PerspectiveCamera(72, 1, 0.3, 1200);
 
   // edit view state (world-space center + view height in ft)
-  const editView = { x: 0, z: 0, height: 140 };
+  const editView = { x: 0, z: 0, height: 140, camY: 200 };
 
   function fitEditView(state) {
     editView.x = (state.w * CELL) / 2;
     editView.z = (state.h * CELL) / 2;
     editView.height = state.h * CELL * 1.15;
+    editView.camY = 200 + topOfBuilding(state);
   }
 
   function applyEditCamera() {
@@ -220,7 +242,7 @@ export function initRender(canvas) {
     editCamera.right = halfH * aspect;
     editCamera.top = halfH;
     editCamera.bottom = -halfH;
-    editCamera.position.set(editView.x, 200, editView.z);
+    editCamera.position.set(editView.x, editView.camY, editView.z);
     editCamera.lookAt(editView.x, 0, editView.z);
     editCamera.updateProjectionMatrix();
   }
@@ -254,6 +276,7 @@ export function initRender(canvas) {
     ceilingGroup.visible = !edit;
     if (gridHelper) gridHelper.visible = edit;
     scene.fog = edit ? null : walkFog;
+    applyFloorVisibility();
     buildComposer();
   }
 
@@ -266,8 +289,21 @@ export function initRender(canvas) {
     buildComposer();
   }
 
+  // In walkthrough, only label the storey the camera is standing on —
+  // otherwise every room name on every floor stacks up in the same corridor.
+  function updateWalkLabels() {
+    if (!built) return;
+    const ht = built.floorHt || FLOOR_H;
+    const i = Math.min(built.floors.length - 1,
+      Math.max(0, Math.floor((walkCamera.position.y + 1) / ht)));
+    if (i === labelledFloor) return;
+    labelledFloor = i;
+    for (const g of labelGroup.children) g.visible = g.userData.floor === i;
+  }
+
   function render() {
     if (mode === 'edit') applyEditCamera();
+    else updateWalkLabels();
     if (fxEnabled && composer) composer.render();
     else renderer.render(scene, mode === 'edit' ? editCamera : walkCamera);
   }
@@ -287,12 +323,18 @@ export function initRender(canvas) {
     return geo;
   }
 
+  // Recursive: these groups now nest one level deep (a subgroup per storey),
+  // and a rebuild runs on every edit stroke, so nothing may be left behind.
+  // Surface materials are shared and reused; only per-sprite ones are freed.
   function disposeGroup(group) {
     for (const child of [...group.children]) {
       group.remove(child);
+      if (child.isGroup) { disposeGroup(child); continue; }
       if (child.geometry) child.geometry.dispose();
-      if (child.material && child.material.map && child.isSprite) child.material.map.dispose();
-      if (child.material && child.isSprite) child.material.dispose();
+      if (child.isSprite && child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
     }
   }
 
@@ -327,24 +369,20 @@ export function initRender(canvas) {
     return sprite;
   }
 
-  function buildFromState(state) {
-    disposeGroup(buildingGroup);
-    disposeGroup(ceilingGroup);
-    disposeGroup(labelGroup);
-
+  // Build one storey's merged geometry into `group` / `ceil` / `labels`.
+  function buildFloor(floor, baseY, wallH, group, ceil, labels) {
     const floorGeos = [], ceilGeos = [], wallGeos = [], fixtureGeos = [];
-
-    // floors + ceilings
     const tmpColor = new THREE.Color();
-    for (let y = 0; y < state.h; y++) {
-      for (let x = 0; x < state.w; x++) {
-        const cell = state.cells[y * state.w + x];
+
+    for (let y = 0; y < floor.h; y++) {
+      for (let x = 0; x < floor.w; x++) {
+        const cell = floor.cells[y * floor.w + x];
         if (!cell) continue;
         const cx = (x + 0.5) * CELL, cz = (y + 0.5) * CELL;
 
         const f = new THREE.PlaneGeometry(CELL, CELL);
         f.rotateX(-Math.PI / 2);
-        f.translate(cx, 0, cz);
+        f.translate(cx, baseY, cz);
         // continuous tiling across cells
         const uv = f.attributes.uv;
         for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + x, uv.getY(i) + y);
@@ -354,7 +392,7 @@ export function initRender(canvas) {
 
         const cg = new THREE.PlaneGeometry(CELL, CELL);
         cg.rotateX(Math.PI / 2);
-        cg.translate(cx, WALL_H, cz);
+        cg.translate(cx, baseY + WALL_H, cz);
         const cuv = cg.attributes.uv;
         for (let i = 0; i < cuv.count; i++) cuv.setXY(i, cuv.getX(i) + x, cuv.getY(i) + y);
         ceilGeos.push(cg);
@@ -362,7 +400,7 @@ export function initRender(canvas) {
         // a 2x4ft light fixture on every other cell in both directions
         if (x % 2 === 1 && y % 2 === 1) {
           const fg = new THREE.BoxGeometry(3.6, 0.15, 1.6);
-          fg.translate(cx, WALL_H - 0.1, cz);
+          fg.translate(cx, baseY + WALL_H - 0.1, cz);
           fixtureGeos.push(fg);
         }
       }
@@ -379,63 +417,110 @@ export function initRender(canvas) {
     const buildEdge = (val, cx, cz, horizontal) => {
       // horizontal: wall runs along X at z=cz; vertical: along Z at x=cx
       const L = CELL + WALL_T; // overlap so corners join cleanly
+      const mid = baseY + wallH / 2;
       if (val === 1) {
-        if (horizontal) addBox(L, WALL_H, WALL_T, cx, WALL_H / 2, cz, _white);
-        else addBox(WALL_T, WALL_H, L, cx, WALL_H / 2, cz, _white);
+        if (horizontal) addBox(L, wallH, WALL_T, cx, mid, cz, _white);
+        else addBox(WALL_T, wallH, L, cx, mid, cz, _white);
       } else if (val === 2) {
         const off = DOOR_W / 2 + jamb / 2 + WALL_T / 2;
         const jw = jamb + WALL_T;
-        const headH = WALL_H - DOOR_H;
+        const headH = wallH - DOOR_H;
+        const headY = baseY + DOOR_H + headH / 2;
+        const trimY = baseY + DOOR_H + 0.125;
         if (horizontal) {
-          addBox(jw, WALL_H, WALL_T, cx - off, WALL_H / 2, cz, _white);
-          addBox(jw, WALL_H, WALL_T, cx + off, WALL_H / 2, cz, _white);
-          addBox(DOOR_W, headH, WALL_T, cx, DOOR_H + headH / 2, cz, _doorTint);
+          addBox(jw, wallH, WALL_T, cx - off, mid, cz, _white);
+          addBox(jw, wallH, WALL_T, cx + off, mid, cz, _white);
+          addBox(DOOR_W, headH, WALL_T, cx, headY, cz, _doorTint);
           // thin door frame trim for readability
-          addBox(DOOR_W + 0.5, 0.25, WALL_T + 0.2, cx, DOOR_H + 0.125, cz, _doorTint);
+          addBox(DOOR_W + 0.5, 0.25, WALL_T + 0.2, cx, trimY, cz, _doorTint);
         } else {
-          addBox(WALL_T, WALL_H, jw, cx, WALL_H / 2, cz - off, _white);
-          addBox(WALL_T, WALL_H, jw, cx, WALL_H / 2, cz + off, _white);
-          addBox(WALL_T, headH, DOOR_W, cx, DOOR_H + headH / 2, cz, _doorTint);
-          addBox(WALL_T + 0.2, 0.25, DOOR_W + 0.5, cx, DOOR_H + 0.125, cz, _doorTint);
+          addBox(WALL_T, wallH, jw, cx, mid, cz - off, _white);
+          addBox(WALL_T, wallH, jw, cx, mid, cz + off, _white);
+          addBox(WALL_T, headH, DOOR_W, cx, headY, cz, _doorTint);
+          addBox(WALL_T + 0.2, 0.25, DOOR_W + 0.5, cx, trimY, cz, _doorTint);
         }
       }
     };
-    for (let y = 0; y <= state.h; y++)
-      for (let x = 0; x < state.w; x++) {
-        const v = state.edgesH[y * state.w + x];
+    for (let y = 0; y <= floor.h; y++)
+      for (let x = 0; x < floor.w; x++) {
+        const v = floor.edgesH[y * floor.w + x];
         if (v) buildEdge(v, (x + 0.5) * CELL, y * CELL, true);
       }
-    for (let y = 0; y < state.h; y++)
-      for (let x = 0; x <= state.w; x++) {
-        const v = state.edgesV[y * (state.w + 1) + x];
+    for (let y = 0; y < floor.h; y++)
+      for (let x = 0; x <= floor.w; x++) {
+        const v = floor.edgesV[y * (floor.w + 1) + x];
         if (v) buildEdge(v, x * CELL, (y + 0.5) * CELL, false);
       }
 
     if (floorGeos.length) {
-      const floor = new THREE.Mesh(mergeGeometries(floorGeos), floorMat);
-      floor.receiveShadow = true;
-      buildingGroup.add(floor);
+      const mesh = new THREE.Mesh(mergeGeometries(floorGeos), floorMat);
+      mesh.receiveShadow = true;
+      mesh.userData.mats = { solid: floorMat, ghost: floorMatGhost };
+      group.add(mesh);
     }
     if (wallGeos.length) {
-      const walls = new THREE.Mesh(mergeGeometries(wallGeos), wallMat);
-      walls.castShadow = true;
-      walls.receiveShadow = true;
-      buildingGroup.add(walls);
+      const mesh = new THREE.Mesh(mergeGeometries(wallGeos), wallMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData.mats = { solid: wallMat, ghost: wallMatGhost };
+      group.add(mesh);
     }
     if (ceilGeos.length) {
-      const ceil = new THREE.Mesh(mergeGeometries(ceilGeos), ceilMat);
-      ceil.receiveShadow = true;
-      ceilingGroup.add(ceil);
+      const mesh = new THREE.Mesh(mergeGeometries(ceilGeos), ceilMat);
+      mesh.receiveShadow = true;
+      ceil.add(mesh);
     }
     if (fixtureGeos.length) {
-      ceilingGroup.add(new THREE.Mesh(mergeGeometries(fixtureGeos), fixtureMat));
+      ceil.add(new THREE.Mesh(mergeGeometries(fixtureGeos), fixtureMat));
     }
 
-    for (const l of computeLabels(state)) {
+    for (const l of computeLabels(floor)) {
       const sprite = makeLabelSprite(l.name, l.color);
-      sprite.position.set(l.cx, WALL_H + 2.5, l.cz);
-      labelGroup.add(sprite);
+      sprite.position.set(l.cx, baseY + WALL_H + 2.5, l.cz);
+      labels.add(sprite);
     }
+  }
+
+  // Which storeys are drawn, and how. Editing is one floor at a time: the
+  // level below shows through as a ghost for alignment, everything else is
+  // out of the way. Walkthrough shows the whole building.
+  function applyFloorVisibility() {
+    if (!built) return;
+    const edit = mode === 'edit';
+    const cur = built.currentFloor;
+    for (const g of buildingGroup.children) {
+      const i = g.userData.floor;
+      const ghost = edit && i === cur - 1;
+      g.visible = !edit || i === cur || ghost;
+      for (const mesh of g.children) {
+        if (!mesh.userData.mats) continue;
+        mesh.material = ghost ? mesh.userData.mats.ghost : mesh.userData.mats.solid;
+        mesh.castShadow = !ghost;
+      }
+    }
+    for (const g of labelGroup.children) {
+      g.visible = !edit || g.userData.floor === cur;
+    }
+    labelledFloor = -1;   // let walk mode recompute from the camera
+    if (gridHelper) gridHelper.position.y = floorBaseY(built, cur) + 0.04;
+  }
+
+  function buildFromState(state) {
+    built = state;
+    disposeGroup(buildingGroup);
+    disposeGroup(ceilingGroup);
+    disposeGroup(labelGroup);
+
+    state.floors.forEach((floor, i) => {
+      const group = new THREE.Group();
+      const ceil = new THREE.Group();
+      const labels = new THREE.Group();
+      group.userData.floor = ceil.userData.floor = labels.userData.floor = i;
+      buildFloor(floor, floorBaseY(state, i), wallHeightOf(state, i), group, ceil, labels);
+      buildingGroup.add(group);
+      ceilingGroup.add(ceil);
+      labelGroup.add(labels);
+    });
 
     // grid helper + sun sized to the grid
     const gw = state.w * CELL, gh = state.h * CELL;
@@ -460,13 +545,17 @@ export function initRender(canvas) {
       sun.shadow.camera.far = 500;
       sun.shadow.camera.updateProjectionMatrix();
     }
+
+    editView.camY = 200 + topOfBuilding(state);
+    applyFloorVisibility();
   }
 
   buildComposer();
 
   return {
     renderer, scene, editCamera, walkCamera, editView,
-    buildFromState, fitEditView, applyEditCamera, setMode, resize, render,
+    buildFromState, applyFloorVisibility, fitEditView, applyEditCamera,
+    setMode, resize, render,
     get mode() { return mode; },
     get fxEnabled() { return fxEnabled; },
     set fxEnabled(v) { fxEnabled = v; },
