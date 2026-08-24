@@ -13,10 +13,12 @@ import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt, canOpen, MAX_SHAPES,
   addShape, addHole, removeShape, makeShape, cleanRing,
   ringSignedArea, ringIsCCW, pointInShape, shapeArea, shapeBBox, interiorPoint,
-  shapeAt, shapeById, nearestSegment, nearestVertex, segEnds,
+  shapeAt, shapeById, nearestSegment, nearestVertex, segEnds, segLength,
   insertVertex, deleteVertex, moveVertex, setSegWall, addOpening, toggleOpening, orientRing,
   snapPoint, constrainAngle, enclosingShape, regionToPolygon, convertRegion,
-  normalizeShape,
+  normalizeShape, cloneShape,
+  translateShape, rotateShape90, mirrorShapeX, rotatePoint90, mirrorPointX,
+  addShapeCopy, totalShapeArea,
 } from '../js/shapes.js';
 import { serialize, deserialize } from '../js/save-load.js';
 
@@ -412,6 +414,79 @@ test('duplicating a floor copies its polygon rooms without sharing them', () => 
   assert.equal(copy.rings.length, 2, 'holes come along');
   moveVertex(copy, 0, 0, 99, 99);
   assert.deepEqual(ground.rings[0].pts[0], { x: 0, z: 0 }, 'edits do not leak between storeys');
+});
+
+// ---------- whole-room transforms (Phase 6 section tool) ----------
+
+test('translating a room moves every ring by the same offset', () => {
+  const shape = makeShape(RECT);
+  addHole(shape, rect(4, 4, 8, 8));
+  const before = cloneShape(shape);
+  translateShape(shape, 5, -3);
+  shape.rings.forEach((ring, ri) => {
+    ring.pts.forEach((p, i) => {
+      assert.equal(p.x, before.rings[ri].pts[i].x + 5);
+      assert.equal(p.z, before.rings[ri].pts[i].z - 3);
+    });
+  });
+  assert.deepEqual(shape.rings[0].walls, before.rings[0].walls, 'walls travel with the room');
+});
+
+test('rotating a room 90 degrees keeps its winding and its area', () => {
+  const shape = makeShape(RECT); // 20x12, area 240
+  addOpening(shape, 0, 1, 0.5);  // a door on the east wall
+  const eastLen = 12;
+  rotateShape90(shape, 10, 6, true); // around its own centre
+  assert.equal(shapeArea(shape), 240, 'a quarter turn does not change area');
+  assert.ok(ringIsCCW(shape.rings[0].pts), 'still wound outward');
+  // The door followed its wall: still one opening, same width, same segment
+  // fraction along whichever wall it landed on.
+  assert.equal(shape.rings[0].openings.length, 1);
+  const o = shape.rings[0].openings[0];
+  const [a, b] = segEnds(shape.rings[0], o.seg);
+  assert.equal(Math.round(segLength(a, b)), eastLen);
+  assert.ok(Math.abs(o.t - 0.5) < 1e-9);
+});
+
+test('rotatePoint90 turns a quarter circle either way around a pivot', () => {
+  assert.deepEqual(rotatePoint90({ x: 10, z: 0 }, 0, 0, true), { x: 0, z: 10 });
+  assert.deepEqual(rotatePoint90({ x: 10, z: 0 }, 0, 0, false), { x: 0, z: -10 });
+  // four quarter turns come home
+  let p = { x: 3, z: -7 };
+  for (let i = 0; i < 4; i++) p = rotatePoint90(p, 1, 1, true);
+  assert.ok(Math.abs(p.x - 3) < 1e-9 && Math.abs(p.z + 7) < 1e-9);
+});
+
+test('mirroring a room flips its winding and keeps it a valid outline', () => {
+  const shape = makeShape(RECT);
+  addOpening(shape, 0, 0, 0.25); // north wall, nearer the west end
+  mirrorShapeX(shape, 10); // reflect across the room's own vertical centreline
+  assert.equal(shapeArea(shape), 240, 'reflection does not change area');
+  assert.ok(ringIsCCW(shape.rings[0].pts), 're-oriented outward after the flip');
+  assert.equal(shape.rings[0].openings.length, 1, 'the doorway survives the flip');
+  assert.deepEqual(mirrorPointX({ x: 4, z: 9 }, 10), { x: 16, z: 9 });
+});
+
+test('addShapeCopy makes an independent, offset room with a fresh id', () => {
+  const s = createState();
+  const shape = addShape(s, 0, RECT, { name: 'Room A', color: '#fff' });
+  const copy = addShapeCopy(s, 0, shape, 3, 3);
+  assert.notEqual(copy.id, shape.id);
+  assert.equal(copy.name, 'Room A');
+  assert.equal(copy.rings[0].pts[0].x, shape.rings[0].pts[0].x + 3);
+  moveVertex(copy, 0, 0, 999, 999);
+  assert.notEqual(shape.rings[0].pts[0].x, 999, 'copy does not alias the original');
+
+  for (let i = 0; i < MAX_SHAPES - 1; i++) addShape(s, 0, rect(0, 0, 1, 1), {});
+  assert.equal(addShapeCopy(s, 0, shape, 1, 1), null, 'refuses past the per-floor cap');
+});
+
+test('totalShapeArea sums every room on a storey', () => {
+  const s = createState();
+  assert.equal(totalShapeArea(s.floors[0]), 0);
+  addShape(s, 0, rect(0, 0, 10, 10), {});   // 100 ft²
+  addShape(s, 0, rect(20, 20, 30, 24), {}); // 40 ft²
+  assert.equal(totalShapeArea(s.floors[0]), 140);
 });
 
 test('polygon rooms survive a save round trip, ids and all', () => {

@@ -2,12 +2,14 @@
 
 import * as THREE from 'three';
 import {
-  createState, ROOM_COLORS, MAX_FLOORS,
+  createState, ROOM_COLORS, MAX_FLOORS, CELL,
   floorLabel, floorCellCount, floorShapeCount,
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
 } from './grid.js';
+import { totalShapeArea } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
 import { catalogByCategory } from './catalog.js';
+import { ROOM_TEMPLATES } from './templates.js';
 import { initRender } from './render.js';
 import { initEditor, WALL_KINDS } from './editor.js';
 import { stairMetrics, linksFrom } from './stairs.js';
@@ -104,7 +106,7 @@ walk.controls.addEventListener('unlock', () => {
 const TOOL_KEYS = {
   Digit1: 'floor', Digit2: 'wall', Digit3: 'door', Digit4: 'room',
   Digit5: 'erase', Digit6: 'poly', Digit7: 'vertex', Digit8: 'prop',
-  Digit9: 'stair',
+  Digit9: 'stair', Digit0: 'template',
 };
 const HINTS = {
   floor: 'Floor — click / drag to lay floor tiles',
@@ -113,9 +115,10 @@ const HINTS = {
   room: 'Room — pick a name & color, then click a floor area to label it',
   erase: 'Eraser — drag to remove walls, doors, and floor; click a polygon room to delete it',
   poly: 'Polygon — click to place corners, click the first one (or Enter) to close. Alt = ignore snapping, Shift = 15° steps.',
-  vertex: 'Shape — click a room to select it. A grid room becomes a polygon when you do.',
+  vertex: 'Shape — click a room to select it, Shift-click to select several. Drag a corner, Alt-click removes one. Delete removes the selection, R/⇧R rotates it 90°, M mirrors it, Ctrl+C/V/D copy/paste/duplicate it (with any props inside).',
   prop: 'Furniture — pick a piece, click to place. Click/drag a piece to move it, drag empty space to box-select. R rotates, Delete removes, Ctrl+C/V/D copy/paste/duplicate.',
   stair: 'Stairs — click to place a run up to the next level, which cuts its own opening in that floor. R rotates, drag to move, Delete removes.',
+  template: 'Layout — pick a preset, click to stamp its whole furniture list at once. R/⇧R rotates it before you place it.',
 };
 
 function selectTool(t) {
@@ -129,6 +132,7 @@ function selectTool(t) {
   $('prop-panel').classList.toggle('hidden', t !== 'prop');
   $('wall-panel').classList.toggle('hidden', t !== 'wall');
   $('stair-panel').classList.toggle('hidden', t !== 'stair');
+  $('template-panel').classList.toggle('hidden', t !== 'template');
   if (t === 'stair') renderStairReadout();
   // Hole mode is sticky, so coming back to the polygon tool has to say which
   // of the two things a loop is going to do.
@@ -183,6 +187,24 @@ catalogByCategory().forEach(({ category, entries }) => {
     row.appendChild(b);
   });
   palette.appendChild(row);
+});
+
+// --- template (room layout) palette ---
+// One button per preset, same look as the prop palette above — the "color"
+// being picked here is a whole furniture layout rather than one piece.
+const templatePalette = $('template-palette');
+ROOM_TEMPLATES.forEach((tpl) => {
+  const b = document.createElement('button');
+  b.className = 'palette-item' + (tpl.key === editor.templateKey ? ' active' : '');
+  b.dataset.key = tpl.key;
+  b.title = `${tpl.name} — ${tpl.stamps.length} pieces, ~${tpl.footprint.w}×${tpl.footprint.d}ft`;
+  b.innerHTML = `<span class="icon">${tpl.icon}</span>${tpl.name}`;
+  b.addEventListener('click', () => {
+    editor.setTemplateKey(tpl.key);
+    templatePalette.querySelectorAll('.palette-item').forEach((x) => x.classList.remove('active'));
+    b.classList.add('active');
+  });
+  templatePalette.appendChild(b);
 });
 
 // --- wall type panel ---
@@ -272,7 +294,8 @@ function renderFloorList() {
     // reporting, and the stairs panel gives the precise tally for the storey
     // you're actually editing.
     const stairs = linksFrom(state, i).filter((l) => l.type === 'stair').length;
-    count.textContent = `${floorCellCount(state.floors[i])} cells` +
+    const sqft = floorCellCount(state.floors[i]) * CELL * CELL + totalShapeArea(state.floors[i]);
+    count.textContent = `${Math.round(sqft).toLocaleString()} ft²` +
       (shapes ? ` · ${shapes} poly` : '') +
       (stairs ? ` · ${stairs} stair` : '');
     b.append(name, count);
@@ -367,6 +390,23 @@ $('fx-btn').addEventListener('click', () => {
   $('fx-btn').classList.toggle('off', !renderApi.fxEnabled);
 });
 
+// --- layers panel ---
+// What's drawn while editing, independent of which tool is active — see
+// render.js's `layers`/`setLayers`. The checkboxes start matching its
+// defaults (structure and this floor's furniture on, the floor below ghosted
+// through, the floor above hidden), so opening the tool for the first time
+// looks exactly like it always has.
+const LAYER_CHECKBOXES = [
+  ['layer-structure', 'structure'],
+  ['layer-props', 'props'],
+  ['layer-ghost-below', 'ghostBelow'],
+  ['layer-ghost-above', 'ghostAbove'],
+];
+for (const [id, key] of LAYER_CHECKBOXES) {
+  $(id).checked = renderApi.layers[key];
+  $(id).addEventListener('change', (e) => renderApi.setLayers({ [key]: e.target.checked }));
+}
+
 // --- keyboard shortcuts ---
 document.addEventListener('keydown', (e) => {
   const typing = e.target.tagName === 'INPUT';
@@ -380,18 +420,20 @@ document.addEventListener('keydown', (e) => {
     updateUndoButtons();
     return;
   }
-  // Copy/paste/duplicate for the prop tool's selection — Ctrl combos, so they
-  // never reach editor.handleKey above.
-  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC' && editor.propCopy()) {
+  // Copy/paste/duplicate for whichever selection owns them — the prop tool's
+  // or the vertex tool's whole-room-section selection. Ctrl combos, so they
+  // never reach editor.handleKey above; each call below checks its own tool
+  // and no-ops otherwise, so only the active one actually does anything.
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC' && (editor.propCopy() || editor.shapeCopy())) {
     e.preventDefault();
     return;
   }
-  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV' && editor.propPaste()) {
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV' && (editor.propPaste() || editor.shapePaste())) {
     e.preventDefault();
     autosave(state); updateUndoButtons();
     return;
   }
-  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD' && editor.propDuplicate()) {
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD' && (editor.propDuplicate() || editor.shapeDuplicate())) {
     e.preventDefault();
     autosave(state); updateUndoButtons();
     return;

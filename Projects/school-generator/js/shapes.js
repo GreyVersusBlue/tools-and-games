@@ -732,3 +732,79 @@ export function cloneShape(shape) {
     })),
   };
 }
+
+// ---------- whole-room transforms ----------
+//
+// Phase 6: the vertex tool can move, rotate and mirror a *selection* of rooms
+// as a unit (see polyedit.js), not just drag one corner at a time. These are
+// the pure geometry primitives that make that safe: they only ever move
+// points and re-derive winding, so `walls[]`/`openings[]` stay aligned with
+// `pts` the same way every other mutation in this file keeps them aligned.
+// A prop caught inside the room gets the identical point transform applied to
+// its (x, z) by the caller — this file only knows about rooms.
+
+// Rebuild every ring's points through `fn`, then re-settle winding (outer CCW,
+// holes CW). A pure translation never needs the re-orientation (it can't flip
+// a ring inside-out), but a reflection always does, and re-deriving it from
+// the signed area is simpler and safer than each transform tracking its own
+// parity — `orientRing` already reverses `walls[]`/`openings[]` correctly
+// when it has to (see `reverseRing` above), which is the bookkeeping this
+// would otherwise have to duplicate.
+function transformShapePoints(shape, fn) {
+  shape.rings.forEach((ring, ri) => {
+    ring.pts = ring.pts.map(fn);
+    orientRing(ring, ri === 0);
+  });
+  return shape;
+}
+
+export function translateShape(shape, dx, dz) {
+  if (!dx && !dz) return shape;
+  return transformShapePoints(shape, (p) => ({ x: p.x + dx, z: p.z + dz }));
+}
+
+// Rotate every point 90° around (cx, cz); `ccw` picks the direction. A
+// quarter turn keeps segments axis-swapped rather than off-angle, so a
+// rectangular room rotated this way stays snapped to the lattice.
+export function rotatePoint90(p, cx, cz, ccw = true) {
+  const lx = p.x - cx, lz = p.z - cz;
+  return ccw ? { x: cx - lz, z: cz + lx } : { x: cx + lz, z: cz - lx };
+}
+
+export function rotateShape90(shape, cx, cz, ccw = true) {
+  return transformShapePoints(shape, (p) => rotatePoint90(p, cx, cz, ccw));
+}
+
+// Reflect every point across the vertical line x = cx.
+export function mirrorPointX(p, cx) {
+  return { x: 2 * cx - p.x, z: p.z };
+}
+
+export function mirrorShapeX(shape, cx) {
+  return transformShapePoints(shape, (p) => mirrorPointX(p, cx));
+}
+
+// Usable floor area across every room on a storey — most of the math a
+// building-wide footage readout needs, since each room's own area is already
+// tracked (`shapeArea`).
+export function totalShapeArea(floor) {
+  let a = 0;
+  for (const shape of shapesOf(floor)) a += shapeArea(shape);
+  return a;
+}
+
+// A free-standing copy of `shape`, offset by (dx, dz) and given a fresh id —
+// what Ctrl+C/V and Ctrl+D need to clone a room (or several) onto the same
+// floor without colliding with the original's id. Caps at MAX_SHAPES like
+// `addShape`.
+export function addShapeCopy(state, floorIndex, shape, dx = 0, dz = 0) {
+  const floor = state.floors[floorIndex];
+  if (!floor) return null;
+  if (!Array.isArray(floor.shapes)) floor.shapes = [];
+  if (floor.shapes.length >= MAX_SHAPES) return null;
+  const clone = cloneShape(shape);
+  clone.id = takeId(state);
+  if (dx || dz) translateShape(clone, dx, dz);
+  floor.shapes.push(clone);
+  return clone;
+}

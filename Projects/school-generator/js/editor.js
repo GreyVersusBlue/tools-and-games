@@ -15,10 +15,12 @@ import {
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   nearestSegment, shapeAt, setSegWall, toggleOpening, removeShape,
+  segEnds, segLength,
 } from './shapes.js';
 import { initPolyEdit } from './polyedit.js';
 import { initPropEdit } from './propedit.js';
 import { initStairEdit } from './stairedit.js';
+import { initTemplateEdit } from './templateedit.js';
 
 const MAX_UNDO = 100;
 
@@ -45,6 +47,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   const redoStack = [];
   let strokeActive = false;
   let strokeChanged = false;
+  let strokeWallFt = 0;   // grid wall footage built so far this stroke — see applyAt('wall')
   let enabled = true;
 
   // --- hover cursors ---
@@ -178,6 +181,19 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     },
   });
 
+  // templateedit stamps a whole preset's worth of props at once — same host
+  // wiring as propedit, since a placement is just several addProp() calls
+  // sharing one undo entry.
+  const templateTool = initTemplateEdit({
+    getState,
+    renderApi,
+    host: {
+      pushUndo, dropUndo: () => { undoStack.pop(); },
+      changed: (info = {}) => onChange({ structural: true, ...info }),
+      status: (text) => onStatus && onStatus(text),
+    },
+  });
+
   // --- tool application ---
 
   // Nearest polygon wall to the cursor, if one is within grabbing distance and
@@ -198,11 +214,23 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       const e = nearestEdge(f, wx, wz);
       const seg = nearPolySeg(f, wx, wz, e.dist * CELL);
       if (seg) {
-        if (setSegWall(seg.shape, seg.ring, seg.seg, kind.seg)) strokeChanged = true;
+        if (setSegWall(seg.shape, seg.ring, seg.seg, kind.seg)) {
+          strokeChanged = true;
+          // A polygon wall can be any length, so its own segment length is
+          // worth reporting the moment you raise it — the grid case below
+          // reports its running total on stroke end instead, since one edge
+          // is always exactly one cell wide.
+          const [a, b] = segEnds(seg.shape.rings[seg.ring], seg.seg);
+          onStatus && onStatus(`Wall — ${kind.label.toLowerCase()}, ${segLength(a, b).toFixed(1)}ft.`);
+        }
         return;
       }
       const ref = edgeRef(f, e);
-      if (ref.arr[ref.i] !== kind.edge) { ref.arr[ref.i] = kind.edge; strokeChanged = true; }
+      if (ref.arr[ref.i] !== kind.edge) {
+        if (ref.arr[ref.i] === EDGE_NONE) strokeWallFt += CELL;
+        ref.arr[ref.i] = kind.edge;
+        strokeChanged = true;
+      }
     } else if (tool === 'door') {
       if (!isClick) return; // doors place on click, not drag
       const e = nearestEdge(f, wx, wz);
@@ -239,6 +267,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
         cell.color = roomColor;
       }
       strokeChanged = true;
+      onStatus && onStatus(`${roomName || 'Room'} — ${region.length * CELL * CELL} ft², ${region.length} cell${region.length === 1 ? '' : 's'}.`);
     } else if (tool === 'erase') {
       const e = nearestEdge(f, wx, wz);
       const seg = nearPolySeg(f, wx, wz, e.dist * CELL);
@@ -289,7 +318,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const f = activeFloor(s);
     const baseY = floorBaseY(s, s.currentFloor);
     const p = e && pointerToWorld(e);
-    if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop' || tool === 'stair') {
+    if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop' || tool === 'stair' || tool === 'template') {
       cellCursor.visible = edgeCursor.visible = false;
       return;
     }
@@ -356,9 +385,15 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       stairTool.pointerDown(p, e);
       return;
     }
+    if (tool === 'template') {
+      canvas.setPointerCapture(e.pointerId);
+      templateTool.pointerDown(p, e);
+      return;
+    }
     pushUndo();
     strokeActive = true;
     strokeChanged = false;
+    strokeWallFt = 0;
     lastWorld = null;
     applyStroke(p.x, p.z, true);
     if (strokeChanged) onChange({ structural: true });
@@ -391,6 +426,11 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       if (pp) stairTool.pointerMove(pp, e);
       return;
     }
+    if (tool === 'template') {
+      const pp = pointerToWorld(e);
+      if (pp) templateTool.pointerMove(pp, e);
+      return;
+    }
     if (!strokeActive) return;
     const p = pointerToWorld(e);
     if (!p) return;
@@ -405,11 +445,19 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (poly.pointerUp()) return;
     if (propTool.pointerUp()) return;
     if (stairTool.pointerUp()) return;
+    if (templateTool.pointerUp()) return;
     if (!strokeActive) return;
     strokeActive = false;
     lastWorld = null;
-    if (!strokeChanged) undoStack.pop(); // nothing happened; drop the snapshot
-    else onChange({ structural: true, commit: true });
+    if (!strokeChanged) { undoStack.pop(); return; } // nothing happened; drop the snapshot
+    onChange({ structural: true, commit: true });
+    // The grid-wall case in applyAt() only knows the length of the one edge
+    // it just built; the running total for the whole drag is only known here,
+    // once the stroke is done. A single polygon-wall click already reported
+    // its own segment length in applyAt() and left strokeWallFt at 0.
+    if (tool === 'wall' && strokeWallFt > 0) {
+      onStatus && onStatus(`Wall — built ${strokeWallFt.toFixed(0)}ft.`);
+    }
   }
   canvas.addEventListener('pointerup', endStroke);
   canvas.addEventListener('pointercancel', endStroke);
@@ -418,6 +466,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     poly.clearHover();
     propTool.clearHover();
     stairTool.clearHover();
+    templateTool.clearHover();
   });
 
   canvas.addEventListener('wheel', (e) => {
@@ -428,6 +477,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     poly.refresh(); // handles and snap radius are sized off the zoom level
     propTool.refresh();
     stairTool.refresh();
+    templateTool.refresh();
   }, { passive: false });
 
   return {
@@ -437,16 +487,17 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       poly.setTool(t);
       propTool.setTool(t);
       stairTool.setTool(t);
+      templateTool.setTool(t);
       updateCursor(null);
       if (t !== 'vertex') canvas.style.cursor = '';
     },
     // Keys the polygon and prop tools claim (close/cancel/backtrack/delete,
-    // rotate/delete/escape). Returns true when one was used, so the caller
-    // knows to stop handling it.
-    handleKey: (e) => poly.key(e) || propTool.key(e) || stairTool.key(e),
+    // rotate/delete/escape/mirror). Returns true when one was used, so the
+    // caller knows to stop handling it.
+    handleKey: (e) => poly.key(e) || propTool.key(e) || stairTool.key(e) || templateTool.key(e),
     get holeMode() { return poly.holeMode; },
     setHoleMode: (v) => poly.setHoleMode(v),
-    refreshOverlay: () => { poly.refresh(); propTool.refresh(); stairTool.refresh(); },
+    refreshOverlay: () => { poly.refresh(); propTool.refresh(); stairTool.refresh(); templateTool.refresh(); },
     setRoom(name, color) { roomName = name; roomColor = color; },
     get roomName() { return roomName; },
     get roomColor() { return roomColor; },
@@ -459,11 +510,17 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     setStairType: (t) => stairTool.setType(t),
     get stairType() { return stairTool.currentType; },
     get stairCount() { return stairTool.countHere(); },
+    setTemplateKey: (k) => templateTool.setType(k),
+    get templateKey() { return templateTool.currentKey; },
     // Ctrl combos never reach handleKey (see main.js), so copy/paste/duplicate
-    // are called directly.
+    // are called directly — for whichever of the prop or vertex tool is
+    // active; each checks its own `tool` and no-ops otherwise.
     propCopy: () => propTool.copySelection(),
     propPaste: () => propTool.pasteClipboard(),
     propDuplicate: () => propTool.duplicateSelection(),
+    shapeCopy: () => poly.sectionCopy(),
+    shapePaste: () => poly.sectionPaste(),
+    shapeDuplicate: () => poly.sectionDuplicate(),
     undo, redo, pushUndo,
     // Discard the most recent pushUndo() when the edit it was staged for
     // turned out to be a no-op.
@@ -478,6 +535,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       poly.setTool(v ? tool : null);
       propTool.setTool(v ? tool : null);
       stairTool.setTool(v ? tool : null);
+      templateTool.setTool(v ? tool : null);
       if (!v) { cellCursor.visible = edgeCursor.visible = false; strokeActive = false; }
     },
   };

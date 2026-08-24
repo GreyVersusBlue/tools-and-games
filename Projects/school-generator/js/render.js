@@ -270,6 +270,13 @@ export function initRender(canvas) {
   let built = null;         // last state passed to buildFromState
   let labelledFloor = -1;   // storey whose labels walk mode is currently showing
 
+  // Phase 6 layers panel: what's drawn while editing. Ghosting the floor below
+  // is the v1-through-5 default (it's what lines walls up between storeys);
+  // ghosting the one above and hiding structure/props outright are new. None
+  // of this touches walkthrough mode — there you're standing in the building,
+  // not squinting at a cross-section of it, so the whole thing always shows.
+  const layers = { structure: true, props: true, ghostBelow: true, ghostAbove: false };
+
   // --- cameras ---
   // far plane clears the top of an 8-storey building plus the camera's own
   // standoff (see editView.camY)
@@ -1068,16 +1075,23 @@ export function initRender(canvas) {
     const cur = built.currentFloor;
     for (const g of buildingGroup.children) {
       const i = g.userData.floor;
-      const ghost = edit && i === cur - 1;
-      g.visible = !edit || i === cur || ghost;
+      const isCurrent = i === cur;
+      const ghost = edit && !isCurrent &&
+        ((layers.ghostBelow && i === cur - 1) || (layers.ghostAbove && i === cur + 1));
+      g.visible = !edit || isCurrent || ghost;
+      const structureOn = !edit || layers.structure;
       for (const mesh of g.children) {
         if (!mesh.userData.mats) continue;
         mesh.material = ghost ? mesh.userData.mats.ghost : mesh.userData.mats.solid;
         mesh.castShadow = !ghost && !mesh.userData.noShadow;
+        mesh.visible = structureOn;
       }
       // Props don't ghost — they just disappear below the storey you're
-      // editing, the same as their labels do.
-      if (g.userData.propsGroup) g.userData.propsGroup.visible = !edit || i === cur;
+      // editing, the same as their labels do — and the props layer toggle
+      // only applies to the storey you're actually on.
+      if (g.userData.propsGroup) {
+        g.userData.propsGroup.visible = isCurrent ? (!edit || layers.props) : !edit;
+      }
     }
     for (const g of labelGroup.children) {
       g.visible = !edit || g.userData.floor === cur;
@@ -1152,5 +1166,11 @@ export function initRender(canvas) {
     get mode() { return mode; },
     get fxEnabled() { return fxEnabled; },
     set fxEnabled(v) { fxEnabled = v; },
+    // Layers panel: which parts of the design are drawn while editing. A
+    // shallow copy out, a merge in — `applyFloorVisibility` re-derives every
+    // mesh's visibility from it immediately, so a toggle takes effect the
+    // same frame without a full rebuild.
+    get layers() { return { ...layers }; },
+    setLayers(patch) { Object.assign(layers, patch); applyFloorVisibility(); },
   };
 }
