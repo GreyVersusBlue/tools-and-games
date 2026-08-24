@@ -1,11 +1,14 @@
 # School Generator — Feature Wishlist
 
 Living reference for where this tool goes next. The v1 model (merged in #38)
-is a working single-floor, grid-based editor + first-person walkthrough:
-rectilinear rooms only, no furniture, no multi-story. This document breaks
-down the requested improvements — polygon rooms, prop placement, stairs,
-mezzanines, glass walls — into a rough build order, and calls out where each
-one collides with assumptions baked into the current code.
+was a single-floor, grid-based editor + first-person walkthrough: rectilinear
+rooms only, no furniture, no multi-story. **Phase 1 has since landed** — the
+state is multi-floor, there's a prop layer, and the save format is at v2 (see
+that section for what was decided and what it means for the phases below).
+This document breaks down the remaining improvements — polygon rooms, prop
+placement, stairs, mezzanines, glass walls — into a rough build order, and
+calls out where each one collides with assumptions baked into the current
+code.
 
 Not a spec — a scoped list to pull from and refine before starting each
 piece. Check items off (or strike them) as they land, and add new ideas
@@ -13,51 +16,93 @@ under the right phase rather than starting a second list.
 
 ## Current architecture, in brief
 
-(`js/grid.js`, `js/editor.js`, `js/render.js`, `js/walkthrough.js`,
-`js/save-load.js`)
+(`js/grid.js`, `js/props.js`, `js/editor.js`, `js/render.js`,
+`js/walkthrough.js`, `js/save-load.js`, `test/model.test.mjs`)
 
-- **One uniform grid, one floor.** `createState(w, h)` is a flat `cells[]`
-  array (4ft cells) plus `edgesH[]`/`edgesV[]` arrays for walls/doors living
-  *between* cells. Everything is axis-aligned to that grid — there's no
-  concept of an angled wall, a non-grid-aligned point, or a second story.
+- **One uniform grid, stacked floors.** A floor is a flat `cells[]` array
+  (4ft cells) plus `edgesH[]`/`edgesV[]` arrays for walls/doors living
+  *between* cells; `state.floors[]` stacks those on a shared footprint at
+  12ft intervals. Everything is still axis-aligned to that grid — there's no
+  concept of an angled wall or a non-grid-aligned point.
 - **Rooms are a label, not a shape.** "Room" is just a flood-fill (`floodRegion`)
   over contiguous floored cells bounded by walls/doors, tagged with a name +
   color. There's no polygon, no room object with its own vertices.
-- **No object/prop layer at all.** State is only floor cells + wall/door
-  edges. `assets/models/` is an empty placeholder (`.gitkeep` only).
+- **A prop layer exists but nothing draws it yet.** `props.js` holds free-
+  floating objects in world feet with ids, floors, rotation, scale and mount
+  kind; `state.links[]` holds inter-floor connections. There is no catalog and
+  no placement tool — that's Phase 3. `assets/models/` is still an empty
+  placeholder (`.gitkeep` only).
 - **Rendering merges everything into a few big meshes** (`mergeGeometries`
-  per material: one floor mesh, one wall mesh, one ceiling mesh, one fixture
-  mesh) rebuilt from scratch on every edit. Fine at grid scale; will need
-  rethinking once there are hundreds of individually-selectable props.
+  per material, per storey: one floor mesh, one wall mesh, one ceiling mesh,
+  one fixture mesh) rebuilt from scratch on every edit. Fine at grid scale;
+  will need rethinking once there are hundreds of individually-selectable
+  props.
 - **Walkthrough is no-clip.** `PointerLockControls` with WASD + fly up/down,
-  no collision against walls, no floor concept to walk up/down between.
-- **Save format is versioned but minimal** (`version: 1`): grid dims + cells
-  + edges only. `deserialize()` already validates/clamps on load, which is
-  the right pattern to extend rather than replace.
+  no collision against walls, no stairs to walk up/down. It does spawn on the
+  storey you were editing, and the fly-up range covers the whole building.
+- **Save format is versioned** (`version: 2`): floors + props + links.
+  `deserialize()` validates/clamps everything on load and migrates v1 files
+  into a one-floor v2 design.
 
-## Phase 1 — Foundational data model changes
+## Phase 1 — Foundational data model changes ✅ *done*
 
-These are prerequisites for almost everything below, so they come first even
+These were prerequisites for almost everything below, so they came first even
 though none of them are visible features on their own.
 
-- [ ] **Multi-floor state.** Replace the single grid with a `floors: []`
-  array (each floor = today's `{w, h, cells, edgesH, edgesV}`), plus a
-  `currentFloor` index for editing and an inter-floor link table for stairs.
-  Decide whether floors share one footprint/grid origin (simplifies
-  aligning stairs/mezzanine openings) or are independent.
-- [ ] **A generic object/prop layer**, separate from the cell grid:
-  `props: [{ id, type, floor, x, z, rotationY, scale, ...type-specific }]`.
-  Free-floating (x, z) in feet, not grid-snapped by default, so furniture
-  can sit anywhere — with optional snap-to-grid / snap-to-wall as an editor
-  aid, not a data constraint.
-- [ ] **Save format version bump + migration.** `deserialize()` in
-  `save-load.js` already has the right shape for this — extend it to accept
-  `version: 2+`, default-fill `floors`/`props` when loading a v1 file, and
-  keep old saves loading forever.
-- [ ] Decide the **undo/redo strategy** once state includes floors + props —
-  current `snapshot()`/`restore()` just JSON-clones the whole state, which
-  still works but will get slower as prop count grows. Revisit if it becomes
-  a problem; don't pre-optimize.
+- [x] **Multi-floor state.** `state.floors[]` replaces the single grid; each
+  entry is exactly the old `{w, h, cells, edgesH, edgesV}` record, so every
+  pure helper in `grid.js` now takes a *floor* and its body is unchanged.
+  `currentFloor` picks the storey being edited and `state.links[]` is the
+  inter-floor table stairs will use.
+- [x] **A generic object/prop layer** (`js/props.js`), separate from the cell
+  grid: `props: [{ id, type, floor, x, z, y, rotationY, scale, mount, data }]`.
+  Free-floating (x, z) in feet, not grid-snapped.
+- [x] **Save format version bump + migration.** `deserialize()` accepts v2 and
+  migrates v1 files (and v1 autosaves already in someone's browser) into a
+  one-floor v2 design. The autosave key is deliberately unchanged so an
+  in-progress design survives the upgrade.
+- [x] **Undo/redo strategy:** unchanged — `snapshot()`/`restore()` still
+  JSON-clones the whole state, which now includes floors and props. Fine at
+  present scale; revisit when prop counts make it feel slow rather than
+  pre-optimizing now.
+
+**Decisions made, since the rest of the list depends on them:**
+
+- **Floors share one footprint and one grid origin.** `state.w`/`state.h`
+  belong to the building, not the storey. Aligning stairs, mezzanine openings
+  and floor cuts is the whole point of multi-floor, and a shared origin makes
+  "the same cell on the level above" a plain index lookup. The cost is that
+  you can't have a differently-sized upper storey — you leave its cells empty
+  instead, which is what a real partial upper floor looks like anyway.
+- **Floor-to-floor height is 12ft** (`FLOOR_H`): the existing 10ft `WALL_H`
+  ceiling plus a 2ft plenum. Walls on any storey with something above it are
+  drawn the full 12ft so the exterior has no gap band between levels; the
+  ceiling mesh still sits at 10ft, so interiors are unchanged.
+- **Max 8 storeys** (`MAX_FLOORS`), which also bounds what a save file can
+  ask the renderer to build.
+- **Prop `type` is an open string.** `props.js` deliberately ships no catalog
+  — Phase 3 owns that, and keeping the layer catalog-free means an unknown
+  type from a newer save survives a round-trip instead of being dropped.
+  Type-specific fields ride in `data` (scalars, one level deep) so the core
+  prop shape stays fixed as the catalog grows.
+- **`mount: 'floor' | 'wall' | 'ceiling'`** is in the shape from the start, so
+  Phase 3's wall-mounted TVs and smart boards don't need a second data model.
+- **Ids are per-design and monotonic** (`state.nextId`). After a load,
+  `reseedIds()` moves the counter past anything in the file so new placements
+  can't collide with saved ids.
+
+**What that changed elsewhere, beyond the data model:**
+
+- A **floor panel** (bottom-left, `[` / `]` to move between storeys) — add,
+  duplicate, delete, and switch. Not the Phase 6 layers panel, just enough UI
+  to exercise the model: editing is one storey at a time, with the level below
+  ghosted through for alignment.
+- **Walkthrough** spawns on the storey you were editing and can fly the full
+  height of the building. Still no-clip; labels show only for the floor the
+  camera is on.
+- **`test/model.test.mjs`** — `node --test` from this directory, no deps, no
+  build step. Covers floor stacking, insert/remove renumbering of props and
+  links, prop and link validation, v1→v2 migration, and hostile-input clamping.
 
 ## Phase 2 — Polygon room editor
 
@@ -89,7 +134,8 @@ a shape at all.
 
 ## Phase 3 — Prop / furniture placement
 
-Depends on Phase 1's prop layer.
+Phase 1's prop layer is in place and empty — nothing renders props yet, and
+there is no way to create one from the UI. That's this phase's job.
 
 - [ ] **Prop catalog** — a data-driven list of placeable types, each with a
   category, footprint (for collision/snapping), and default rotation:
@@ -192,13 +238,13 @@ Depends on Phase 1's prop layer.
 
 ## Suggested build order
 
-Phase 1 unblocks nearly everything else, so it goes first regardless of
-which visible feature is most exciting. After that, **props (Phase 3)** are
-lower-risk and highly visible — they don't require touching the wall/room
-model at all, just the new prop layer. **Polygon rooms (Phase 2)** and
-**architectural features (Phase 4)** are the biggest, most invasive pieces
-(new wall representation, floor openings) and depend on each other, so
-tackle them together once props have validated the Phase 1 data model in
-practice. Walkthrough collision (Phase 5) matters most once there's
-something to collide with — reasonable to fold in alongside or right after
-props. Polish phases (6-8) are ongoing, pick up opportunistically.
+Phase 1 is done. **Props (Phase 3) come next**: lower-risk and highly
+visible, they don't require touching the wall/room model at all, just the
+prop layer that's now sitting there unused — and they're the thing that
+validates that layer in practice before anything structural is built on it.
+**Polygon rooms (Phase 2)** and **architectural features (Phase 4)** are the
+biggest, most invasive pieces (new wall representation, floor openings) and
+depend on each other, so tackle them together after props. Walkthrough
+collision (Phase 5) matters most once there's something to collide with —
+reasonable to fold in alongside or right after props. Polish phases (6-8) are
+ongoing, pick up opportunistically.
