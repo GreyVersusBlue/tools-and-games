@@ -59,7 +59,10 @@ const editor = initEditor({
   },
 });
 
-const walk = initWalkthrough(renderApi.walkCamera, canvas);
+const walkHud = $('walk-hud');
+const walk = initWalkthrough(renderApi.walkCamera, canvas, {
+  onHud: (text) => { walkHud.textContent = text; },
+});
 
 // --- initial view ---
 renderApi.fitEditView(state);
@@ -429,4 +432,4 @@ updateUndoButtons();
 loop();
 
 // debug/test hook
-window.app = { get state() { return state; }, setMode, renderApi, editor };
+window.app = { get state() { return state; }, setMode, renderApi, editor, walk };
