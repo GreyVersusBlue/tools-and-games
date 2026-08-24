@@ -7,6 +7,7 @@ import {
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
 } from './grid.js';
 import { buildSampleSchool } from './sample.js';
+import { catalogByCategory } from './catalog.js';
 import { initRender } from './render.js';
 import { initEditor } from './editor.js';
 import { initWalkthrough } from './walkthrough.js';
@@ -97,7 +98,7 @@ walk.controls.addEventListener('unlock', () => {
 // --- tool buttons ---
 const TOOL_KEYS = {
   Digit1: 'floor', Digit2: 'wall', Digit3: 'door', Digit4: 'room',
-  Digit5: 'erase', Digit6: 'poly', Digit7: 'vertex',
+  Digit5: 'erase', Digit6: 'poly', Digit7: 'vertex', Digit8: 'prop',
 };
 const HINTS = {
   floor: 'Floor — click / drag to lay floor tiles',
@@ -107,6 +108,7 @@ const HINTS = {
   erase: 'Eraser — drag to remove walls, doors, and floor; click a polygon room to delete it',
   poly: 'Polygon — click to place corners, click the first one (or Enter) to close. Alt = ignore snapping, Shift = 15° steps.',
   vertex: 'Shape — click a room to select it. A grid room becomes a polygon when you do.',
+  prop: 'Furniture — pick a piece, click to place. Click/drag a piece to move it, drag empty space to box-select. R rotates, Delete removes, Ctrl+C/V/D copy/paste/duplicate.',
 };
 
 function selectTool(t) {
@@ -117,6 +119,7 @@ function selectTool(t) {
   // one place to pick a name and a color, whichever kind of room it lands on.
   $('room-panel').classList.toggle('hidden', t !== 'room' && t !== 'poly');
   $('poly-extra').classList.toggle('hidden', t !== 'poly');
+  $('prop-panel').classList.toggle('hidden', t !== 'prop');
   // Hole mode is sticky, so coming back to the polygon tool has to say which
   // of the two things a loop is going to do.
   $('status').textContent = t === 'poly' && editor.holeMode
@@ -145,6 +148,32 @@ ROOM_COLORS.forEach((c, i) => {
 });
 $('room-name').value = editor.roomName;
 $('room-name').addEventListener('input', (e) => editor.setRoom(e.target.value, editor.roomColor));
+
+// --- prop palette ---
+// One button per catalog entry, grouped under its category — parallel to the
+// room-color swatches, but the "color" being picked is a whole prop type.
+const palette = $('palette');
+catalogByCategory().forEach(({ category, entries }) => {
+  const h = document.createElement('h3');
+  h.textContent = category;
+  palette.appendChild(h);
+  const row = document.createElement('div');
+  row.className = 'palette-row';
+  entries.forEach((entry) => {
+    const b = document.createElement('button');
+    b.className = 'palette-item' + (entry.type === editor.propType ? ' active' : '');
+    b.dataset.type = entry.type;
+    b.title = `${entry.name} — ${entry.w}×${entry.d}ft`;
+    b.innerHTML = `<span class="icon">${entry.icon}</span>${entry.name}`;
+    b.addEventListener('click', () => {
+      editor.setPropType(entry.type);
+      palette.querySelectorAll('.palette-item').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+    });
+    row.appendChild(b);
+  });
+  palette.appendChild(row);
+});
 
 // --- floor panel ---
 // Editing is one storey at a time; the level below shows through as a ghost so
@@ -264,6 +293,22 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     autosave(state);
     updateUndoButtons();
+    return;
+  }
+  // Copy/paste/duplicate for the prop tool's selection — Ctrl combos, so they
+  // never reach editor.handleKey above.
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC' && editor.propCopy()) {
+    e.preventDefault();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV' && editor.propPaste()) {
+    e.preventDefault();
+    autosave(state); updateUndoButtons();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD' && editor.propDuplicate()) {
+    e.preventDefault();
+    autosave(state); updateUndoButtons();
     return;
   }
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {

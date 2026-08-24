@@ -9,6 +9,9 @@ import {
   ROOM_COLORS, createState, setTile, floodRegion, cellIdx, edgeHIdx, edgeVIdx,
 } from './grid.js';
 import { addShape, setSegWall, addOpening } from './shapes.js';
+import { addProp } from './props.js';
+
+const HALF_PI = Math.PI / 2;
 
 function floorRect(f, x0, y0, x1, y1) {
   for (let y = y0; y <= y1; y++)
@@ -95,6 +98,24 @@ export function buildSampleSchool() {
     addOpening(commons, 0, (shared + 2) % ring.pts.length, 0.5);
   }
   f.edgesV[edgeVIdx(f, 34, 14)] = 2;
+
+  // Room 101 (x 24-52ft, z 28-52ft; the door is on its south wall into the
+  // hall) gets furnished — a first exercise of the prop layer, and proof it
+  // renders before anything else gets built on top of it. Two rows of desks
+  // facing the teacher's, up front by the north wall.
+  const chairFacingNorth = Math.PI; // local +Z toward -Z world = faceDirection(0, -1)
+  [30, 36, 42].forEach((x) => {
+    [37, 43].forEach((z) => {
+      addProp(s, 'student-desk', { x, z, floor: 0 });
+      addProp(s, 'student-chair', { x, z: z + 1.6, rotationY: chairFacingNorth, floor: 0 });
+    });
+  });
+  addProp(s, 'teacher-desk', { x: 38, z: 30.5, floor: 0 });
+  addProp(s, 'teacher-chair', { x: 38, z: 32.2, rotationY: chairFacingNorth, floor: 0 });
+  addProp(s, 'bookshelf-full', { x: 25, z: 40, rotationY: HALF_PI, floor: 0 }); // faces east, into the room
+  addProp(s, 'rug', { x: 36, z: 41, floor: 0 });
+  // Flush against the north wall (WALL_T/2 + the panel's own depth/2 out from it).
+  addProp(s, 'whiteboard', { x: 38, z: 28.325, y: 3.6, rotationY: 0, mount: 'wall', floor: 0 });
 
   return s;
 }
