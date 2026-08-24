@@ -16,7 +16,9 @@ import { stairMetrics, linksFrom } from './stairs.js';
 import { initWalkthrough } from './walkthrough.js';
 import {
   downloadSave, loadFromFile, autosave, autosaveNow, loadAutosave, clearAutosave,
+  listDesigns, saveDesign, loadDesign, deleteDesign, renameDesign,
 } from './save-load.js';
+import { renderFloorPlanCanvas, downloadCanvasPNG } from './blueprint.js';
 
 const canvas = document.getElementById('view');
 const $ = (id) => document.getElementById(id);
@@ -84,6 +86,8 @@ function setMode(m) {
     editor.setEnabled(false);
     walk.enable(state);
     walkOverlay.classList.remove('hidden');
+    $('designs-overlay').classList.add('hidden');
+    $('export-overlay').classList.add('hidden');
     $('mode-btn').textContent = '✏️ Edit Mode';
   } else {
     walk.disable();
@@ -372,6 +376,156 @@ $('file-input').addEventListener('change', async (e) => {
   }
 });
 
+// --- named designs (localStorage slots, on top of the single autosave) ---
+const designsOverlay = $('designs-overlay');
+const designsList = $('designs-list');
+
+function fmtDate(ts) {
+  return new Date(ts).toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+}
+
+function renderDesignsList() {
+  designsList.textContent = '';
+  const designs = listDesigns();
+  if (!designs.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No saved designs yet — name your current work above and save it.';
+    designsList.appendChild(empty);
+    return;
+  }
+  for (const d of designs) {
+    const row = document.createElement('div');
+    row.className = 'design-row';
+    const info = document.createElement('div');
+    info.className = 'design-info';
+    const name = document.createElement('div');
+    name.className = 'design-name';
+    name.textContent = d.name;
+    const meta = document.createElement('div');
+    meta.className = 'design-meta';
+    meta.textContent = `Saved ${fmtDate(d.updatedAt)}`;
+    info.append(name, meta);
+
+    const loadBtn = document.createElement('button');
+    loadBtn.textContent = '📂 Load';
+    loadBtn.title = 'Replace the current design with this one';
+    loadBtn.addEventListener('click', () => {
+      try {
+        editor.pushUndo();
+        state = loadDesign(d.id);
+        renderApi.fitEditView(state);
+        rebuild();
+        editor.refreshOverlay();
+        renderFloorList();
+        renderStairReadout();
+        autosaveNow(state);
+        updateUndoButtons();
+        designsOverlay.classList.add('hidden');
+        $('status').textContent = `Loaded "${d.name}"`;
+      } catch (err) {
+        alert('Could not load that design: ' + err.message);
+      }
+    });
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = '💾 Save';
+    saveBtn.title = 'Overwrite this saved design with the current work';
+    saveBtn.addEventListener('click', () => {
+      try {
+        saveDesign(state, d.name, d.id);
+        renderDesignsList();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    const renameBtn = document.createElement('button');
+    renameBtn.textContent = '✏️';
+    renameBtn.title = 'Rename';
+    renameBtn.addEventListener('click', () => {
+      const next = prompt('Rename design:', d.name);
+      if (next === null) return;
+      renameDesign(d.id, next);
+      renderDesignsList();
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '🗑';
+    delBtn.title = 'Delete';
+    delBtn.addEventListener('click', () => {
+      if (!confirm(`Delete "${d.name}"? This can't be undone.`)) return;
+      deleteDesign(d.id);
+      renderDesignsList();
+    });
+
+    row.append(info, loadBtn, saveBtn, renameBtn, delBtn);
+    designsList.appendChild(row);
+  }
+}
+
+$('designs-btn').addEventListener('click', () => {
+  $('designs-new-name').value = '';
+  renderDesignsList();
+  designsOverlay.classList.remove('hidden');
+});
+$('designs-close').addEventListener('click', () => designsOverlay.classList.add('hidden'));
+$('designs-save-new').addEventListener('click', () => {
+  try {
+    saveDesign(state, $('designs-new-name').value);
+    $('designs-new-name').value = '';
+    renderDesignsList();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+$('designs-new-name').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('designs-save-new').click();
+});
+
+// --- export: printable top-down floor plan (PNG / print-to-PDF) ---
+const exportOverlay = $('export-overlay');
+const printArea = $('print-area');
+
+function exportScope() {
+  const all = document.querySelector('input[name="export-scope"]:checked').value === 'all';
+  return all ? state.floors.map((_, i) => i) : [state.currentFloor];
+}
+
+function exportOpts() {
+  return { showDimensions: $('export-dims').checked, showFurniture: $('export-furniture').checked };
+}
+
+$('export-btn').addEventListener('click', () => exportOverlay.classList.remove('hidden'));
+$('export-close').addEventListener('click', () => exportOverlay.classList.add('hidden'));
+
+$('export-png').addEventListener('click', () => {
+  const opts = exportOpts();
+  for (const i of exportScope()) {
+    const canvas = renderFloorPlanCanvas(state, i, opts);
+    if (canvas) downloadCanvasPNG(canvas, `school-floor-plan-level-${i + 1}.png`);
+  }
+});
+
+$('export-print').addEventListener('click', () => {
+  const opts = exportOpts();
+  printArea.textContent = '';
+  for (const i of exportScope()) {
+    const canvas = renderFloorPlanCanvas(state, i, opts);
+    if (!canvas) continue;
+    const page = document.createElement('div');
+    page.className = 'print-page';
+    const img = document.createElement('img');
+    img.src = canvas.toDataURL('image/png');
+    page.appendChild(img);
+    printArea.appendChild(page);
+  }
+  exportOverlay.classList.add('hidden');
+  window.print();
+});
+
 $('new-btn').addEventListener('click', () => {
   if (!confirm('Start a new empty school? (Current design stays in your undo history.)')) return;
   editor.pushUndo();
@@ -409,6 +563,12 @@ for (const [id, key] of LAYER_CHECKBOXES) {
 
 // --- keyboard shortcuts ---
 document.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && !designsOverlay.classList.contains('hidden')) {
+    designsOverlay.classList.add('hidden'); return;
+  }
+  if (e.code === 'Escape' && !exportOverlay.classList.contains('hidden')) {
+    exportOverlay.classList.add('hidden'); return;
+  }
   const typing = e.target.tagName === 'INPUT';
   if (e.code === 'Tab' && !typing) { e.preventDefault(); setMode(mode === 'edit' ? 'walk' : 'edit'); return; }
   if (mode !== 'edit' || typing) return;

@@ -12,6 +12,11 @@
 // migration so far is additive and nothing has to be guessed.
 // The autosave key is deliberately unchanged so an in-progress design survives
 // the upgrade — that was true of the v2 bump and stays true here.
+//
+// Phase 7 adds named save slots (see "named save slots" below) alongside the
+// autosave and the file-based Save/Load — a separate localStorage index, not
+// a save-format change, so nothing here invalidates an older file or an
+// in-progress autosave.
 
 import { CELL, FLOOR_H, MAX_FLOORS, EDGE_KINDS, createFloor, createState } from './grid.js';
 import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from './props.js';
@@ -157,4 +162,92 @@ export function loadAutosave() {
 
 export function clearAutosave() {
   try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) { /* ignore */ }
+}
+
+// ---------- named save slots ----------
+//
+// The autosave above is a single scratch buffer — whatever you're looking at
+// right now, keyed the same way since v1 so an in-progress design always
+// survives a reload. Slots are a library on top of it: any number of named
+// designs, each its own localStorage entry, so you can park a finished
+// building and start a different one without the file-download/upload round
+// trip. A slot is metadata (id, name, updatedAt) plus its own JSON blob under
+// a per-slot key — listing designs never has to parse every design to do it.
+
+const SLOTS_KEY = 'school-generator-slots-v1';
+const SLOT_PREFIX = 'school-generator-slot-';
+export const MAX_SLOTS = 30;
+const MAX_SLOT_NAME = 60;
+
+function readSlotIndex() {
+  try {
+    const raw = localStorage.getItem(SLOTS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((s) => s && typeof s.id === 'string' && typeof s.name === 'string');
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeSlotIndex(list) {
+  try { localStorage.setItem(SLOTS_KEY, JSON.stringify(list)); } catch (e) { /* ignore */ }
+}
+
+// Newest first — the design you just touched is the one you're most likely
+// to want back.
+export function listDesigns() {
+  return readSlotIndex().sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function newSlotId() {
+  return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// Save `state` into a slot: a new one if `id` is omitted or unknown, an
+// overwrite of the existing one otherwise. Returns the slot id, or throws if
+// storage is full/blocked or the slot limit is reached (creating only —
+// overwriting an existing slot never grows the list).
+export function saveDesign(state, name, id = null) {
+  const list = readSlotIndex();
+  const trimmedName = (typeof name === 'string' && name.trim() ? name.trim() : 'Untitled').slice(0, MAX_SLOT_NAME);
+  let slot = id ? list.find((s) => s.id === id) : null;
+  if (!slot) {
+    if (list.length >= MAX_SLOTS) {
+      throw new Error(`You can keep up to ${MAX_SLOTS} saved designs — delete one first.`);
+    }
+    slot = { id: newSlotId(), name: trimmedName, updatedAt: 0 };
+    list.push(slot);
+  } else {
+    slot.name = trimmedName;
+  }
+  slot.updatedAt = Date.now();
+  try {
+    localStorage.setItem(SLOT_PREFIX + slot.id, serialize(state));
+  } catch (e) {
+    throw new Error('Could not save — local storage may be full.');
+  }
+  writeSlotIndex(list);
+  return slot.id;
+}
+
+export function loadDesign(id) {
+  let json = null;
+  try { json = localStorage.getItem(SLOT_PREFIX + id); } catch (e) { /* ignore */ }
+  if (!json) throw new Error('That saved design is missing, or was deleted in another tab.');
+  return deserialize(json);
+}
+
+export function deleteDesign(id) {
+  writeSlotIndex(readSlotIndex().filter((s) => s.id !== id));
+  try { localStorage.removeItem(SLOT_PREFIX + id); } catch (e) { /* ignore */ }
+}
+
+export function renameDesign(id, name) {
+  const list = readSlotIndex();
+  const slot = list.find((s) => s.id === id);
+  if (!slot) return false;
+  slot.name = (typeof name === 'string' && name.trim() ? name.trim() : 'Untitled').slice(0, MAX_SLOT_NAME);
+  writeSlotIndex(list);
+  return true;
 }
