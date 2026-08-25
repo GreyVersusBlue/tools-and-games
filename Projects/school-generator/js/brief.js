@@ -87,6 +87,16 @@ export const BAND_RULES = [
   { value: 'elementary', match: /elementary|primary school|grade school|\bprimary\b|infant school|\bk-?5\b|\bk-?6\b|kindergarten|grades? k/ },
 ];
 
+// Which of the three schemes to lay out. Phase 10 gave the word "generate"
+// three meanings; this is the row that lets a sentence pick one. Ordered like
+// every other table here — "compact courtyard" reads as a courtyard, because
+// the shape of the plan is the noun and "compact" is doing adjective duty.
+export const SCHEME_RULES = [
+  { value: 'courtyard', match: /courtyard|court ?yard|quad(?:rangle)?|round a court|ring plan|atrium plan/ },
+  { value: 'compact', match: /compact|deep plan|deep-plan|one block|single block|square plan|stacked plan/ },
+  { value: 'spine', match: /spine|finger plan|wings?\b|comb plan|corridor plan/ },
+];
+
 const FLAG_RULES = [
   { field: 'gym', value: false, match: /\bno gym|without a gym|no gymnasium|\bno pe\b/ },
   { field: 'gym', value: true, match: /\bwith a gym|\bgymnasium\b|\bgym\b|sports hall/ },
@@ -208,7 +218,15 @@ export function parseBrief(text, base = DEFAULT_BRIEF) {
     break;
   }
 
-  // 4. Storeys written as words.
+  // 4. The scheme, if a shape was named.
+  for (const rule of SCHEME_RULES) {
+    const m = s.match(rule.match);
+    if (!m) continue;
+    say('scheme', rule.value, m[0], m.index, m[0].length);
+    break;
+  }
+
+  // 5. Storeys written as words.
   if (!matched.some((m) => m.field === 'storeys')) {
     for (const rule of STOREY_WORDS) {
       const m = s.match(rule.match);
@@ -218,7 +236,7 @@ export function parseBrief(text, base = DEFAULT_BRIEF) {
     }
   }
 
-  // 5. The flags. First row per field wins, so a "no gym" ahead of the plain
+  // 6. The flags. First row per field wins, so a "no gym" ahead of the plain
   // "gym" row is what makes the negative readable at all.
   const claimed = new Set();
   for (const rule of FLAG_RULES) {
@@ -246,6 +264,7 @@ function describe(m) {
   if (m.field === 'band') return `${m.value} school`;
   if (m.field === 'storeys') return `${m.value} storey${m.value === 1 ? '' : 's'}`;
   if (m.field === 'seed') return `seed ${m.value}`;
+  if (m.field === 'scheme') return `a ${m.value} plan`;
   return `${m.value ? 'with' : 'without'} a ${m.field === 'site' ? 'site' : m.field}`;
 }
 

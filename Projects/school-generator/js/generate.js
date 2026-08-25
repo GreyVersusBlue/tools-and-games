@@ -59,7 +59,7 @@ import { terrainFor, raiseTerrain, smoothTerrain } from './terrain.js';
 import { normalizeRoof } from './roof.js';
 import { FACADE_KEYS } from './finish.js';
 import { rng } from './agents.js';
-import { buildProgram, bandEntry } from './program.js';
+import { buildProgram, bandEntry, DEFAULT_SCHEME, schemeEntry } from './program.js';
 import { roomOccupancy } from './occupancy.js';
 import { STAIR_IN_PER_OCC } from './egress.js';
 import { MIN_STAIR_W, MAX_STAIR_W } from './stairs.js';
@@ -177,6 +177,15 @@ function splitCorridor(r, axis) {
   // eslint-disable-next-line no-unused-vars -- w and h are destructured to
   // *exclude* them from `tags`, which is the whole point of this line.
   const { kind, x0, y0, x1, y1, w, h, ...tags } = r;
+  // The two sides that lie at the *ends* of the run being cut. A junction the
+  // caller asked for on one of them belongs to the segment that still has that
+  // end — put it on all of them and the middle of a corridor opens into a
+  // classroom; drop it and a ring corridor comes back as a horseshoe, which is
+  // what this used to do and what nothing noticed until a scheme had a loop in
+  // it. (The south half of a courtyard was reachable only by going outside.)
+  const along = axis === 'x' ? ['w', 'e'] : ['n', 's'];
+  const want = Array.isArray(r.door) ? r.door : (r.door ? [r.door] : []);
+  const cross = want.filter((d) => !along.includes(d));
   const out = [];
   for (let i = 0; i < parts; i++) {
     const a = Math.round((len * i) / parts);
@@ -184,18 +193,44 @@ function splitCorridor(r, axis) {
     const seg = axis === 'x'
       ? rect(kind, x0 + a, y0, x0 + b, y1, tags)
       : rect(kind, x0, y0 + a, x1, y0 + b, tags);
+    const sides = [...cross];
+    if (i === 0 && want.includes(along[0])) sides.push(along[0]);
+    if (i === parts - 1 && want.includes(along[1])) sides.push(along[1]);
     if (i > 0) {
       seg.name = `${r.name} ${i + 1}`;
-      seg.door = axis === 'x' ? 'w' : 'n';
+      // The cut itself: a full-width pair of doors back to the segment before,
+      // which is the smoke compartment this whole function exists to draw.
+      // A junction inherited from the caller comes through as a pair too — one
+      // rectangle carries one kind of opening, and a pair of doors where an
+      // arch was asked for is a compartment line rather than a mistake.
+      sides.push(along[0]);
       seg.doorKind = 'double';
       seg.doorFull = true;
     }
+    seg.door = sides.length ? sides : null;
     out.push(seg);
   }
   return out;
 }
 
+// The three schemes share this door: a brief (or a program) in, a plan out,
+// and nothing downstream knows which of them drew it. `buildSchool` reads
+// `rects`, `links`, `exits`, `footprint`, `entry`, `envelope` and `style`, and
+// that list is the contract — a fourth scheme is a fourth function against it
+// and no changes anywhere else.
 export function layoutSchool(briefOrProgram) {
+  const program = briefOrProgram && briefOrProgram.rooms
+    ? briefOrProgram
+    : buildProgram(briefOrProgram);
+  const scheme = (program.brief && program.brief.scheme) || DEFAULT_SCHEME;
+  if (scheme === 'courtyard') return layoutCourtyard(program);
+  if (scheme === 'compact') return layoutCompact(program);
+  return layoutSpine(program);
+}
+
+// ---------- the spine, and the two that are not it ----------
+
+function layoutSpine(briefOrProgram) {
   const program = briefOrProgram && briefOrProgram.rooms
     ? briefOrProgram
     : buildProgram(briefOrProgram);
@@ -591,6 +626,7 @@ export function layoutSchool(briefOrProgram) {
   return {
     program,
     brief,
+    scheme: 'spine',
     storeys,
     wings,
     bayLen,
@@ -599,6 +635,14 @@ export function layoutSchool(briefOrProgram) {
     wingX,
     wingY0,
     spine: { x0: originX, y0: spineY, len: spineLen, w: SPINE_W },
+    // The box the grounds are laid out around. Every scheme has one; only this
+    // one also has a spine, which is why the site builder reads the envelope
+    // rather than the spine it used to. The numbers are the spine's own, so a
+    // spine-scheme site is the site it always was.
+    envelope: {
+      x0: originX, y0: spineY,
+      x1: originX + spineLen, y1: wingY0 + wingH,
+    },
     footprint,
     rects: storeyRects,
     storeyOcc,
@@ -619,6 +663,791 @@ export function layoutSchool(briefOrProgram) {
       roof: brief.storeys > 1 || rand() > 0.4 ? 'parapet' : 'gable',
       fieldEast: rand() > 0.35,
     },
+  };
+}
+
+
+// ---------- what the three schemes share ----------
+//
+// `layoutSpine` above is Phase 8's, untouched. The two below are Phase 10's,
+// and between writing them the pieces that were never about a spine came out
+// into these four functions: how rooms are dealt across the storeys, how they
+// are dealt into runs, what happens to the remainder of a run on a storey with
+// another one above it, and how the classrooms get numbered afterwards. A
+// fourth scheme is those four calls and its own geometry.
+
+// A run is a straight line of rooms with their doors all on one side of it —
+// one side of a wing, one band of a ring, one edge of a corridor. `axis` is
+// the way rooms are stacked along it and `depth` is how deep they are; between
+// them that is every rectangle the run will ever produce.
+function makeRun(key, opts) {
+  return {
+    key,
+    axis: opts.axis,
+    x0: opts.x0, y0: opts.y0,
+    depth: opts.depth,
+    cap: Math.max(0, Math.floor(opts.cap)),
+    door: opts.door,
+    daylight: opts.daylight !== false,
+    skipExit: opts.skipExit || null,
+    used: 0,
+    rooms: [],
+  };
+}
+
+// The run, as rectangles. Rooms stack from the run's own origin outward, which
+// is why a run that has to start clear of something (a stair tower, a lobby)
+// says so by starting somewhere else rather than by carrying an offset.
+function runRects(run, storey) {
+  const out = [];
+  let at = 0;
+  for (const room of run.rooms) {
+    const base = {
+      key: room.key,
+      name: roomName(room, storey),
+      tpl: room.tpl,
+      door: run.door,
+      daylight: run.daylight
+        && !['custodial', 'mech', 'restroom-g', 'restroom-b'].includes(room.key),
+      storey,
+      run: run.key,
+      skipExit: run.skipExit,
+    };
+    out.push(run.axis === 'x'
+      ? rect('room', run.x0 + at, run.y0, run.x0 + at + room.w - 1, run.y0 + run.depth - 1, base)
+      : rect('room', run.x0, run.y0 + at, run.x0 + run.depth - 1, run.y0 + at + room.w - 1, base));
+    at += room.w;
+  }
+  return out;
+}
+
+// Which storey each room lands on, dealt round-robin *within each kind* so a
+// two-storey school gets half its classrooms, half its labs and half its
+// restrooms upstairs rather than a ground floor of specials. The seed's first
+// job, and the same one it has in the spine.
+function dealStoreys(rooms, storeys, rand) {
+  const byStorey = Array.from({ length: storeys }, () => []);
+  const byKind = new Map();
+  for (const r of rooms) {
+    if (!byKind.has(r.key)) byKind.set(r.key, []);
+    byKind.get(r.key).push(r);
+  }
+  let turn = 0;
+  for (const list of byKind.values()) {
+    shuffle(list, rand);
+    for (const r of list) byStorey[turn++ % storeys].push(r);
+  }
+  for (const list of byStorey) {
+    list.sort((a, b) => rank(WING_ORDER, a.key) - rank(WING_ORDER, b.key) || a.seq - b.seq);
+  }
+  return byStorey;
+}
+
+// Deal a storey's rooms into its runs, round-robin but never skipping a room
+// that would fit, and grow the runs a cell at a time until nothing is left
+// over. The estimate that sized them ignores how rooms pack; growing rather
+// than guessing is what keeps a school from quietly dropping four classrooms.
+function packRuns(byStorey, makeRuns, len0, lenCap) {
+  let len = Math.max(1, len0);
+  let plans = [];
+  let unplaced = [];
+  for (let attempt = 0; attempt < 96; attempt++) {
+    plans = [];
+    unplaced = [];
+    for (let s = 0; s < byStorey.length; s++) {
+      const runs = makeRuns(len, s);
+      let si = 0;
+      for (const room of byStorey[s]) {
+        let found = -1;
+        for (let k = 0; k < runs.length; k++) {
+          const i = (si + k) % runs.length;
+          if (runs[i].used + room.w <= runs[i].cap) { found = i; break; }
+        }
+        if (found < 0) { unplaced.push(room); continue; }
+        runs[found].rooms.push(room);
+        runs[found].used += room.w;
+        si = (found + 1) % runs.length;
+      }
+      plans.push(runs);
+    }
+    if (!unplaced.length || len >= lenCap) break;
+    len += 1;
+  }
+  return { len, plans, unplaced };
+}
+
+// Whatever is left at the end of a run on a storey that has another one above
+// it becomes a room — storage where the remainder is small, a flex room where
+// it is a room's worth. That is what makes every storey a complete rectangle
+// and every upper one inside the footprint below by construction, which is
+// shadow.js's rule held rather than checked.
+function fillRuns(plans) {
+  const fillers = [];
+  for (let s = 0; s + 1 < plans.length; s++) {
+    for (const run of plans[s]) {
+      const spare = run.cap - run.used;
+      if (spare <= 0) continue;
+      if (spare < 3 && run.rooms.length) {
+        run.rooms[run.rooms.length - 1].w += spare;
+        run.used += spare;
+        continue;
+      }
+      const big = spare >= 5;
+      const room = {
+        key: big ? 'flex' : 'storage',
+        base: big ? 'Flex Room' : 'Storeroom',
+        name: big ? 'Flex Room' : 'Storeroom',
+        seq: fillers.length + 1,
+        numbered: true,
+        w: spare,
+        d: WING_BAY_D,
+        group: 'wing',
+        tpl: null,
+      };
+      fillers.push(room);
+      run.rooms.push(room);
+      run.used += spare;
+    }
+  }
+  return fillers;
+}
+
+// Classroom numbers, assigned once the storeys are settled: along the runs in
+// order, ground floor in the hundreds.
+function numberRooms(plans) {
+  for (const runs of plans) {
+    let n = 1;
+    for (const run of runs) {
+      for (const room of run.rooms) if (room.key === 'classroom') room.seq = n++;
+    }
+  }
+}
+
+// The three room lists every scheme starts from: what is too deep for a bay,
+// what lines a main hall, and what fills the ordinary runs.
+function sortProgram(all) {
+  const blocks = all.filter((r) => r.group === 'block' || BLOCK_ORDER.includes(r.key))
+    .sort((a, b) => rank(BLOCK_ORDER, a.key) - rank(BLOCK_ORDER, b.key) || a.seq - b.seq);
+  const spineRooms = all.filter((r) => SPINE_ORDER.includes(r.key))
+    .sort((a, b) => rank(SPINE_ORDER, a.key) - rank(SPINE_ORDER, b.key) || a.seq - b.seq);
+  const wingRooms = all.filter((r) => !blocks.includes(r) && !spineRooms.includes(r))
+    .sort((a, b) => rank(WING_ORDER, a.key) - rank(WING_ORDER, b.key) || a.seq - b.seq);
+  return { blocks, spineRooms, wingRooms };
+}
+
+// A way *through* a band of rooms: two or three cells of corridor cut from the
+// band's middle, joining the hall behind it to the outside in front of it.
+// One line of geometry, and the difference between a four-hundred-foot
+// building whose only ways out are at its corners and one where nobody walks
+// more than half a wing. `cutShellExits` finds the door at the far end of it
+// once the walls are standing, because a passage is a corridor with an
+// exposed run and that is exactly what it looks for.
+// Wide enough to be a way out *and* to stand a stair in: an exit passage
+// through a four-hundred-foot band is where the upper storeys want to come
+// down, and a stair that discharges straight into one is the arrangement the
+// travel-distance table is asking for rather than a compromise with it.
+export const PASSAGE_W = 6;      // cells — 24ft
+
+function passage(key, name, x0, y0, x1, y1, storey, doors) {
+  return rect('corridor', x0, y0, x1, y1, {
+    key, name, color: '#e9e4da', fin: 'terrazzo', storey,
+    door: doors, doorKind: 'opening', doorFull: true,
+  });
+}
+
+// The half of a plan the seed decides about the shell rather than about the
+// rooms. Identical for all three schemes, and drawn in the same order so that
+// one seed gives one building whichever scheme is asked for.
+function shellStyle(brief, rand) {
+  return {
+    north: Math.round(rand() * 8) * 45,
+    facade: FACADE_KEYS[Math.floor(rand() * FACADE_KEYS.length) % FACADE_KEYS.length],
+    roof: brief.storeys > 1 || rand() > 0.4 ? 'parapet' : 'gable',
+    fieldEast: rand() > 0.35,
+  };
+}
+
+// ---------- the courtyard ----------
+//
+// A ring of rooms round an open court, with the corridor loop on the inside of
+// the ring so that every room has an outside wall and every corridor has the
+// court to look at. The blocks take the north band, where they are deep enough
+// to need it; a stair tower stands at each of the four corners, which is what
+// gives this scheme four remote ways out without a single stub corridor.
+//
+// **The court is not a way out.** It is enclosed on all four sides, and this
+// tool's outside is one node — so a door onto the court would read to
+// `egressField` as a door onto the street, and a fire drill would "evacuate"
+// into a sealed yard. The corridors get windows onto it and `skipExit` says
+// why.
+
+export const COURT_MIN = 8;      // cells — 32ft, the smallest court worth having
+export const LOBBY_W = 5;        // cells — 20ft of entrance hall
+
+function layoutCourtyard(program) {
+  const brief = program.brief;
+  const storeys = Math.min(MAX_FLOORS, Math.max(1, brief.storeys));
+  const rand = rng(brief.seed);
+  const { blocks, spineRooms, wingRooms } = sortProgram(expandProgram(program));
+
+  const bay = WING_BAY_D;
+  const corr = WING_CORR_W;
+  const stair = HEAD_STAIR_W;
+  // The north band is as deep as the deepest block, because that is what it
+  // is for; never shallower than an ordinary bay.
+  const blockDepth = Math.max(bay, blocks.reduce((n, r) => Math.max(n, r.d), 0));
+  const blockSpan = blocks.reduce((n, r) => n + r.w, 0);
+
+  // Admin lines the ring with everything else — a courtyard school has no
+  // spine to put a suite on, and the office wants to be beside the front door
+  // rather than at the back of a wing, which is what the lobby's position
+  // arranges for it.
+  const rooms = [...spineRooms, ...wingRooms];
+  const byStorey = dealStoreys(rooms, storeys, rand);
+
+  // **The ring is double-loaded**, which is the one decision that makes this
+  // scheme a courtyard rather than a very expensive corridor. Rooms line both
+  // faces of the loop: the outer ones look out at the site, the inner ones
+  // look into the court. Single-loaded, the ring's capacity grows with the
+  // court's *perimeter* while its area grows with the square of it, and a
+  // six-hundred-pupil school comes out with a two-hundred-foot quad and a walk
+  // right round it. Double-loaded it comes out with a light court, which is
+  // what the plan this is named after actually has.
+  //
+  //   outer band | corridor | inner band | COURT | inner | corridor | outer
+  //
+  // Every extra cell of court buys seven cells of run, and that ratio is the
+  // whole of the sizing below.
+  const ring = bay + corr + bay;             // one side of the ring, court aside
+  // **Width is set by the frontage, height by the roll.** The blocks want a
+  // long north face and there is only one of it, so the building's width comes
+  // out of them exactly the way the spine's length does; the court is then as
+  // wide as whatever is left between the two sides of the ring, and the only
+  // dimension still free is how far down the sides run. A square court is not
+  // worth insisting on: what makes this scheme a courtyard is the loop, and
+  // insisting on the square is what turns a school with a gym in it into a
+  // four-hundred-foot quad.
+  const W = Math.min(LATTICE_MAX - 2 * MARGIN,
+    Math.max(blockSpan + 2 * stair, 2 * ring + COURT_MIN));
+  const courtW = Math.max(COURT_MIN, W - 2 * ring);
+  const sideOf = (h) => h + 2 * bay;         // the ring's own north-south run
+  const heightOf = (h) => blockDepth + corr + sideOf(h) + corr + bay;
+  const perStorey = Math.ceil(rooms.length / storeys);
+  const demand = rooms.slice(0, perStorey).reduce((n, r) => n + r.w, 0);
+  // Every extra cell down the sides buys four cells of run — one on each face
+  // of the two side corridors — and the north and south bands are already as
+  // long as they are going to get.
+  const fixed = 2 * courtW + (W - 2 * stair - PASSAGE_W) - LOBBY_W;
+  let court = Math.max(COURT_MIN, Math.ceil((demand - fixed) / 4) - 2 * bay);
+  const courtCap = Math.max(COURT_MIN,
+    LATTICE_MAX - 2 * MARGIN - (blockDepth + 2 * corr + 3 * bay));
+  court = Math.min(court, courtCap);
+
+  const x0 = MARGIN;
+  const y0 = MARGIN;
+  const runsFor = (c, storey) => {
+    const H = heightOf(c);
+    const top = y0 + blockDepth + corr;       // the first row of the ring's sides
+    const bottom = y0 + H - bay - corr - 1;   // ...and the last
+    const L = bottom - top + 1;
+    const list = [];
+    // Upstairs the blocks are not there — a gym with a classroom over it is a
+    // floor with nothing under it for eighty feet — so the north band becomes
+    // a run like any other, pushed against the corridor so that it stays
+    // inside the footprint below.
+    const half = Math.floor((W - 2 * stair - PASSAGE_W) / 2);
+    const gate = x0 + stair + half;          // where the passage cuts the band
+    if (storey > 0) {
+      list.push(makeRun('north-w', {
+        axis: 'x', x0: x0 + stair, y0: y0 + blockDepth - bay, depth: bay,
+        cap: half, door: 's',
+      }));
+      list.push(makeRun('north-e', {
+        axis: 'x', x0: gate + PASSAGE_W, y0: y0 + blockDepth - bay, depth: bay,
+        cap: W - 2 * stair - half - PASSAGE_W, door: 's',
+      }));
+    }
+    list.push(makeRun('north-court', {
+      axis: 'x', x0: x0 + ring, y0: top, depth: bay,
+      cap: courtW, door: 'n', skipExit: ['s'],
+    }));
+    list.push(makeRun('south-court', {
+      axis: 'x', x0: x0 + ring, y0: bottom - bay + 1, depth: bay,
+      cap: courtW, door: 's', skipExit: ['n'],
+    }));
+    list.push(makeRun('south-w', {
+      axis: 'x', x0: x0 + stair, y0: y0 + H - bay, depth: bay,
+      cap: half, door: 'n',
+    }));
+    list.push(makeRun('south-e', {
+      axis: 'x', x0: gate + PASSAGE_W, y0: y0 + H - bay, depth: bay,
+      cap: W - 2 * stair - half - PASSAGE_W, door: 'n',
+    }));
+    list.push(makeRun('west', {
+      axis: 'y', x0, y0: top + LOBBY_W, depth: bay,
+      cap: L - LOBBY_W, door: 'e',
+    }));
+    list.push(makeRun('west-court', {
+      axis: 'y', x0: x0 + bay + corr, y0: top, depth: bay,
+      cap: L, door: 'w', skipExit: ['e'],
+    }));
+    list.push(makeRun('east', {
+      axis: 'y', x0: x0 + W - bay, y0: top, depth: bay,
+      cap: L, door: 'w',
+    }));
+    list.push(makeRun('east-court', {
+      axis: 'y', x0: x0 + W - ring, y0: top, depth: bay,
+      cap: L, door: 'e', skipExit: ['w'],
+    }));
+    return list;
+  };
+
+  const packed = packRuns(byStorey, runsFor, court, Math.max(court, courtCap));
+  court = packed.len;
+  const fillers = fillRuns(packed.plans);
+  numberRooms(packed.plans);
+
+  const H = heightOf(court);
+  const top = y0 + blockDepth + corr;
+  const side = sideOf(court);
+  const oversize = packed.unplaced.length > 0
+    || x0 + W + MARGIN > LATTICE_MAX || y0 + H + MARGIN > LATTICE_MAX;
+  const footprint = {
+    w: Math.min(LATTICE_MAX, x0 + W + MARGIN),
+    h: Math.min(LATTICE_MAX, y0 + H + MARGIN),
+  };
+
+  // --- the ring, drawn once and repeated on every storey ---
+  const ringFor = (storey) => {
+    const out = [];
+    const halls = [
+      ['NW', x0, y0, x0 + stair - 1, y0 + blockDepth - 1, 's'],
+      ['NE', x0 + W - stair, y0, x0 + W - 1, y0 + blockDepth - 1, 's'],
+      ['SW', x0, y0 + H - bay, x0 + stair - 1, y0 + H - 1, 'n'],
+      ['SE', x0 + W - stair, y0 + H - bay, x0 + W - 1, y0 + H - 1, 'n'],
+    ];
+    for (const [name, ax, ay, bx, by, door] of halls) {
+      out.push(rect('room', ax, ay, bx, by, {
+        key: 'stair-hall', name: `${name} Stair`, color: '#dcd7cc', fin: 'terrazzo',
+        storey, stairHall: true, door, daylight: true, corner: name,
+      }));
+    }
+    out.push(...splitCorridor(rect('corridor', x0, y0 + blockDepth, x0 + W - 1, y0 + blockDepth + corr - 1, {
+      key: 'ring-n', name: 'North Hall', color: '#e9e4da', fin: 'terrazzo',
+      tpl: 'locker-hallway', storey,
+    }), 'x'));
+    out.push(...splitCorridor(rect('corridor', x0, y0 + H - bay - corr, x0 + W - 1, y0 + H - bay - 1, {
+      key: 'ring-s', name: 'South Hall', color: '#e9e4da', fin: 'terrazzo',
+      tpl: 'locker-hallway', storey,
+    }), 'x'));
+    // The two sides of the loop, each opening into the halls at both ends of
+    // it across the full width of the junction. A corridor that merely merged
+    // into another would be one room to `floodRegion`, and a ring left whole
+    // is a single four-hundred-foot "room" with every trip in the building
+    // routed through wherever its middle happened to land.
+    // The two ways through the outer bands, north and south, so that the
+    // middle of a four-hundred-foot band is not a two-hundred-foot walk to the
+    // nearest corner tower. On the ground floor the north band is blocks and
+    // the passage runs between two of them.
+    const half = Math.floor((W - 2 * stair - PASSAGE_W) / 2);
+    const gate = x0 + stair + half;
+    out.push(passage('pass-s', 'South Exit Hall', gate, y0 + H - bay, gate + PASSAGE_W - 1, y0 + H - 1, storey, ['n']));
+    out.push(passage('pass-n', 'North Exit Hall', gate, y0 + blockDepth - bay, gate + PASSAGE_W - 1, y0 + blockDepth - 1, storey, ['s']));
+    for (const [key, cx, name] of [
+      ['ring-w', x0 + bay, 'West Hall'],
+      ['ring-e', x0 + W - bay - corr, 'East Hall'],
+    ]) {
+      out.push(...splitCorridor(rect('corridor', cx, top, cx + corr - 1, top + side - 1, {
+        key, name, color: '#e9e4da', fin: 'terrazzo', tpl: 'locker-hallway', storey,
+        door: ['n', 's'], doorKind: 'opening', doorFull: true,
+      }), 'z'));
+    }
+    return out;
+  };
+
+  const storeyRects = [];
+  for (let s = 0; s < storeys; s++) {
+    const list = ringFor(s);
+    if (s === 0) {
+      // The blocks, left to right along the north band, each the full depth of
+      // it, fronting the north hall — in the two stretches the north passage
+      // leaves, so that the way out through the middle stays a way out.
+      const half = Math.floor((W - 2 * stair - PASSAGE_W) / 2);
+      const gate = x0 + stair + half;
+      const stretches = [
+        { at: x0 + stair, end: gate - 1 },
+        { at: gate + PASSAGE_W, end: x0 + W - stair - 1 },
+      ];
+      let si = 0;
+      for (const b of blocks) {
+        while (si < stretches.length && stretches[si].at + b.w - 1 > stretches[si].end) si++;
+        if (si >= stretches.length) break;
+        const at = stretches[si].at;
+        list.push(rect('room', at, y0, at + b.w - 1, y0 + blockDepth - 1, {
+          key: b.key, name: b.base, tpl: b.tpl, door: 's', storey: 0,
+          daylight: b.key !== 'kitchen',
+        }));
+        stretches[si].at += b.w;
+      }
+      // Whatever the blocks left of the north band, so the band is solid.
+      for (const st of stretches) {
+        const spare = st.end - st.at + 1;
+        if (spare <= 0) continue;
+        list.push(rect('room', st.at, y0, st.end, y0 + blockDepth - 1, {
+          key: spare >= 5 ? 'flex' : 'storage',
+          name: spare >= 5 ? 'Flex Room' : 'Storeroom',
+          door: 's', storey: 0, daylight: true,
+        }));
+      }
+    }
+    // The entrance hall, at the north end of the west band, where the buses
+    // come in — which is the one thing about the site that every scheme has to
+    // agree on, since `buildSite` puts the loop west of the building.
+    list.push(rect('room', x0, top, x0 + bay - 1, top + LOBBY_W - 1, {
+      key: 'lobby', name: s === 0 ? 'Entrance Hall' : `${floorWord(s)} Lobby`,
+      color: '#e9e4da', fin: 'terrazzo', door: 'e', storey: s, daylight: true,
+    }));
+    for (const run of packed.plans[s]) list.push(...runRects(run, s));
+    storeyRects.push(list.map((r) => ({ ...r, storey: s })));
+  }
+
+  const storeyOcc = storeyRects.map((list) => list
+    .filter((r) => r.kind === 'room')
+    .reduce((n, r) => n + roomOccupancy({
+      name: r.name, area: r.w * r.h * CELL * CELL,
+    }).occ, 0));
+  const upperOcc = storeyOcc.slice(1).reduce((a, b) => a + b, 0);
+
+  // A stair in each corner tower, and one lift beside whichever of them the
+  // seed picked. The runs climb north–south, because a corner tower is deeper
+  // than it is wide and a 19ft run plus two landings has to lie down somewhere.
+  const stairW = storeys > 1
+    ? Math.min(MAX_STAIR_W, Math.max(MIN_STAIR_W + 1,
+      Math.ceil((upperOcc * STAIR_IN_PER_OCC) / 12 / 6 * 2) / 2))
+    : MIN_STAIR_W + 1;
+  const links = [];
+  const liftCorner = Math.floor(rand() * 4) % 4;
+  const gate = x0 + stair + Math.floor((W - 2 * stair - PASSAGE_W) / 2);
+  const towers = [
+    { x: x0 + stair / 2, y: y0 + blockDepth / 2, down: true },
+    { x: x0 + W - stair / 2, y: y0 + blockDepth / 2, down: true },
+    { x: x0 + stair / 2, y: y0 + H - bay / 2, down: false },
+    { x: x0 + W - stair / 2, y: y0 + H - bay / 2, down: false },
+    // ...and one in each exit passage, halfway along the two long bands.
+    { x: gate + PASSAGE_W / 2, y: y0 + blockDepth - bay / 2, down: true, plain: true },
+    { x: gate + PASSAGE_W / 2, y: y0 + H - bay / 2, down: false, plain: true },
+  ];
+  for (let s = 0; s + 1 < storeys; s++) {
+    towers.forEach((t, i) => {
+      const cx = t.x * CELL;
+      const cz = t.y * CELL;
+      links.push({
+        type: 'stair', from: s,
+        x: t.plain ? cx : cx - 4, z: t.down ? cz - 11 : cz + 11,
+        rotationY: t.down ? 0 : Math.PI,
+        width: Math.min(stairW, (t.plain ? PASSAGE_W : stair) * CELL - 10),
+      });
+      if (i === liftCorner) {
+        links.push({
+          type: 'elevator', from: s,
+          x: cx + 7, z: cz,
+          rotationY: t.down ? 0 : Math.PI,
+        });
+      }
+    });
+  }
+
+  // The front door, through the entrance hall. Every other way out is a corner
+  // tower, and `cutShellExits` finds those once the walls are standing.
+  const exits = [
+    { edge: 'w', x: x0, y: top + Math.floor(LOBBY_W / 2), kind: EDGE_DOOR2, main: true },
+  ];
+
+  return {
+    program,
+    brief,
+    scheme: 'courtyard',
+    storeys,
+    wings: 4,
+    court: { x0: x0 + ring, y0: top + bay, w: courtW, h: court },
+    envelope: { x0, y0, x1: x0 + W, y1: y0 + H },
+    footprint,
+    rects: storeyRects,
+    storeyOcc,
+    upperOcc,
+    stairW,
+    links,
+    exits,
+    unplaced: packed.unplaced,
+    fillers,
+    oversize,
+    entry: { x: x0 * CELL, z: (top + LOBBY_W / 2) * CELL },
+    style: shellStyle(brief, rand),
+  };
+}
+
+// ---------- the compact block ----------
+//
+// One deep rectangle. Two corridors run its length with three bands of rooms
+// between and either side of them, a hall crosses at each end joining the two,
+// and the blocks take the north face where they can be as deep as they like.
+// It is the shortest walk and the smallest footprint of the three, and the
+// middle band's rooms have no outside wall at all — which is a real trade a
+// real school makes, and which the daylight section of the report will say out
+// loud rather than this file pretending otherwise.
+
+export const CROSS_W = 6;        // cells — 24ft of end hall, wide enough to hold a stair
+
+function layoutCompact(program) {
+  const brief = program.brief;
+  const storeys = Math.min(MAX_FLOORS, Math.max(1, brief.storeys));
+  const rand = rng(brief.seed);
+  const { blocks, spineRooms, wingRooms } = sortProgram(expandProgram(program));
+
+  const bay = WING_BAY_D;
+  const corr = WING_CORR_W;
+  const stairD = STAIR_HALL_D;
+  const blockDepth = Math.max(bay, blocks.reduce((n, r) => Math.max(n, r.d), 0));
+  const blockSpan = blocks.reduce((n, r) => n + r.w, 0);
+
+  const rooms = [...spineRooms, ...wingRooms];
+  const byStorey = dealStoreys(rooms, storeys, rand);
+
+  // Depth is fixed by the section — block band, corridor, two bays back to
+  // back, corridor, bay — and only the length is free. Four runs to a storey
+  // and no light court to pay for, which is what makes this the smallest
+  // footprint of the three and the one whose middle band never sees a window.
+  const depth = blockDepth + corr + bay + bay + corr + bay;
+  const perStorey = Math.ceil(rooms.length / storeys);
+  const demand = rooms.slice(0, perStorey).reduce((n, r) => n + r.w, 0);
+
+  // **How often it is cut through.** A compact block long enough to hold a
+  // gym is four hundred feet long, and a four-hundred-foot block with its
+  // only ways out at the ends is a travel-distance failure in the report and
+  // a building nobody would be allowed to build. So a cross hall runs the
+  // whole depth every hundred feet or so: through the north band to the
+  // street, across between the two main corridors, and out through the south
+  // band to the street again. Segments of the bands sit between them.
+  const segCap = (n) => Math.floor(
+    (LATTICE_MAX - 2 * MARGIN - 2 * CROSS_W - n * CROSS_W) / (n + 1));
+  let crosses = 0;
+  let seg = 0;
+  for (; crosses <= 6; crosses++) {
+    seg = Math.max(6,
+      Math.ceil(demand / (3 * (crosses + 1))),
+      Math.ceil(blockSpan / (crosses + 1)));
+    if (seg <= CORRIDOR_SEG || seg >= segCap(crosses)) break;
+  }
+  const segMax = Math.max(6, segCap(crosses));
+
+  const x0 = MARGIN;
+  const y0 = MARGIN;
+  const bandX = x0 + CROSS_W;
+  const rowA = y0;                                  // block band (rooms upstairs)
+  const rowC1 = y0 + blockDepth;                    // corridor one
+  const rowB = rowC1 + corr;                        // the inner pair, back to back
+  const rowC2 = rowB + 2 * bay;                     // corridor two
+  const rowD = rowC2 + corr;                        // the south band
+  const segAt = (n, i) => bandX + i * (n + CROSS_W);
+  const crossAt = (n, i) => segAt(n, i) + n;
+  const lenOf = (n) => (crosses + 1) * n + crosses * CROSS_W;
+
+  const runsFor = (n, storey) => {
+    const list = [];
+    for (let i = 0; i <= crosses; i++) {
+      const at = segAt(n, i);
+      if (storey > 0) {
+        list.push(makeRun(`north-${i}`, {
+          axis: 'x', x0: at, y0: rowC1 - bay, depth: bay, cap: n, door: 's',
+        }));
+      }
+      list.push(makeRun(`inner-n-${i}`, {
+        axis: 'x', x0: at, y0: rowB, depth: bay, cap: n, door: 'n', daylight: false,
+      }));
+      list.push(makeRun(`inner-s-${i}`, {
+        axis: 'x', x0: at, y0: rowB + bay, depth: bay, cap: n, door: 's', daylight: false,
+      }));
+      list.push(makeRun(`south-${i}`, {
+        axis: 'x', x0: at, y0: rowD, depth: bay, cap: n, door: 'n',
+      }));
+    }
+    return list;
+  };
+
+  const packed = packRuns(byStorey, runsFor, Math.min(seg, segMax), segMax);
+  seg = packed.len;
+  const fillers = fillRuns(packed.plans);
+  numberRooms(packed.plans);
+
+  const len = lenOf(seg);
+  const W = len + 2 * CROSS_W;
+  const oversize = packed.unplaced.length > 0
+    || x0 + W + MARGIN > LATTICE_MAX || y0 + depth + MARGIN > LATTICE_MAX;
+  const footprint = {
+    w: Math.min(LATTICE_MAX, x0 + W + MARGIN),
+    h: Math.min(LATTICE_MAX, y0 + depth + MARGIN),
+  };
+
+  const shellFor = (storey) => {
+    const out = [];
+    for (const [side, hx] of [['W', x0], ['E', x0 + W - CROSS_W]]) {
+      out.push(rect('room', hx, y0, hx + CROSS_W - 1, y0 + stairD - 1, {
+        key: 'stair-hall', name: `${side} Stair N`, color: '#dcd7cc', fin: 'terrazzo',
+        storey, stairHall: true, door: 's', daylight: true,
+      }));
+      out.push(rect('room', hx, y0 + depth - stairD, hx + CROSS_W - 1, y0 + depth - 1, {
+        key: 'stair-hall', name: `${side} Stair S`, color: '#dcd7cc', fin: 'terrazzo',
+        storey, stairHall: true, door: 'n', daylight: true,
+      }));
+      out.push(...splitCorridor(rect('corridor', hx, y0 + stairD, hx + CROSS_W - 1, y0 + depth - stairD - 1, {
+        key: `cross-${side}`, name: `${side === 'W' ? 'West' : 'East'} Hall`,
+        color: '#e9e4da', fin: 'terrazzo', tpl: 'locker-hallway', storey,
+      }), 'z'));
+    }
+    for (const [key, row, name] of [['hall-1', rowC1, 'Main Hall'], ['hall-2', rowC2, 'South Hall']]) {
+      out.push(...splitCorridor(rect('corridor', bandX, row, bandX + len - 1, row + corr - 1, {
+        key, name: storey === 0 ? name : `${floorWord(storey)} ${name}`,
+        color: '#e9e4da', fin: 'terrazzo', tpl: 'locker-hallway', storey,
+        // Both ends open across the whole width into the end halls, which is
+        // the junction this scheme is built out of.
+        door: ['w', 'e'], doorKind: 'opening', doorFull: true,
+      }), 'x'));
+    }
+    // The cross halls, in three pieces because a rectangle cannot cross a
+    // corridor without being drawn on top of it: north band to the street,
+    // between the two main corridors, and south band to the street.
+    for (let i = 0; i < crosses; i++) {
+      const cx = crossAt(seg, i);
+      const cx1 = cx + CROSS_W - 1;
+      out.push(passage(`cross-n-${i}`, `North Exit Hall ${i + 1}`, cx, rowA, cx1, rowC1 - 1, storey, ['s']));
+      out.push(passage(`cross-m-${i}`, `Cross Hall ${i + 1}`, cx, rowB, cx1, rowC2 - 1, storey, ['n', 's']));
+      out.push(passage(`cross-s-${i}`, `South Exit Hall ${i + 1}`, cx, rowD, cx1, y0 + depth - 1, storey, ['n']));
+    }
+    return out;
+  };
+
+  const storeyRects = [];
+  for (let s = 0; s < storeys; s++) {
+    const list = shellFor(s);
+    if (s === 0) {
+      // The blocks take the whole north band, dealt into the stretches the
+      // cross halls leave between them — first stretch that will hold the
+      // thing, which is the same rule the runs use and for the same reason.
+      const stretches = [];
+      for (let i = 0; i <= crosses; i++) {
+        stretches.push({ at: segAt(seg, i), end: segAt(seg, i) + seg - 1 });
+      }
+      let si = 0;
+      for (const b of blocks) {
+        while (si < stretches.length && stretches[si].at + b.w - 1 > stretches[si].end) si++;
+        if (si >= stretches.length) break;
+        const at = stretches[si].at;
+        list.push(rect('room', at, rowA, at + b.w - 1, rowC1 - 1, {
+          key: b.key, name: b.base, tpl: b.tpl, door: 's', storey: 0,
+          daylight: b.key !== 'kitchen',
+        }));
+        stretches[si].at += b.w;
+      }
+      for (const st of stretches) {
+        const spare = st.end - st.at + 1;
+        if (spare <= 0) continue;
+        list.push(rect('room', st.at, rowA, st.end, rowC1 - 1, {
+          key: spare >= 5 ? 'flex' : 'storage',
+          name: spare >= 5 ? 'Flex Room' : 'Storeroom',
+          door: 's', storey: 0, daylight: true,
+        }));
+      }
+    }
+    for (const run of packed.plans[s]) list.push(...runRects(run, s));
+    storeyRects.push(list.map((r) => ({ ...r, storey: s })));
+  }
+
+  const storeyOcc = storeyRects.map((list) => list
+    .filter((r) => r.kind === 'room')
+    .reduce((n, r) => n + roomOccupancy({
+      name: r.name, area: r.w * r.h * CELL * CELL,
+    }).occ, 0));
+  const upperOcc = storeyOcc.slice(1).reduce((a, b) => a + b, 0);
+
+  // A stair in each corner tower *and* one in every cross hall. The towers
+  // alone would leave the middle of an upper storey a two-hundred-foot walk
+  // from anything that goes down, which is the same failure the cross halls
+  // fix on the ground and the same fix.
+  const towerCount = 4 + crosses;
+  const stairW = storeys > 1
+    ? Math.min(MAX_STAIR_W, Math.max(MIN_STAIR_W + 1,
+      Math.ceil((upperOcc * STAIR_IN_PER_OCC) / 12 / towerCount * 2) / 2))
+    : MIN_STAIR_W + 1;
+  const links = [];
+  const liftTower = Math.floor(rand() * 4) % 4;
+  const towers = [
+    { x: x0 + CROSS_W / 2, y: y0 + stairD / 2, down: true },
+    { x: x0 + W - CROSS_W / 2, y: y0 + stairD / 2, down: true },
+    { x: x0 + CROSS_W / 2, y: y0 + depth - stairD / 2, down: false },
+    { x: x0 + W - CROSS_W / 2, y: y0 + depth - stairD / 2, down: false },
+  ];
+  for (let s = 0; s + 1 < storeys; s++) {
+    towers.forEach((t, i) => {
+      const cx = t.x * CELL;
+      const cz = t.y * CELL;
+      // The run and the car stand *beside* each other across the tower's
+      // width, not one behind the other along its depth: a 19ft run and an
+      // 8ft car in line need forty feet of hall and the tower has thirty-two.
+      links.push({
+        type: 'stair', from: s,
+        x: cx - 6, z: t.down ? cz - 11 : cz + 11,
+        rotationY: t.down ? 0 : Math.PI,
+        width: Math.min(stairW, CROSS_W * CELL / 2 - 2),
+      });
+      if (i === liftTower) {
+        links.push({
+          type: 'elevator', from: s,
+          x: cx + 7, z: cz,
+          rotationY: t.down ? 0 : Math.PI,
+        });
+      }
+    });
+    // ...and one in the middle of every cross hall, which is what keeps an
+    // upper storey's walk to a stair the same length as the ground floor's
+    // walk to a door.
+    for (let i = 0; i < crosses; i++) {
+      links.push({
+        type: 'stair', from: s,
+        x: (crossAt(seg, i) + CROSS_W / 2) * CELL - 6,
+        z: (rowB + bay) * CELL - 11,
+        rotationY: 0,
+        width: Math.min(stairW, CROSS_W * CELL / 2 - 2),
+      });
+    }
+  }
+
+  const entryY = y0 + Math.floor(depth / 2);
+  const exits = [
+    { edge: 'w', x: x0, y: entryY, kind: EDGE_DOOR2, main: true },
+    { edge: 'e', x: x0 + W, y: entryY, kind: EDGE_DOOR2 },
+  ];
+
+  return {
+    program,
+    brief,
+    scheme: 'compact',
+    storeys,
+    wings: crosses + 1,
+    bandLen: len,
+    crosses,
+    envelope: { x0, y0, x1: x0 + W, y1: y0 + depth },
+    footprint,
+    rects: storeyRects,
+    storeyOcc,
+    upperOcc,
+    stairW,
+    links,
+    exits,
+    unplaced: packed.unplaced,
+    fillers,
+    oversize,
+    entry: { x: x0 * CELL, z: entryY * CELL },
+    style: shellStyle(brief, rand),
   };
 }
 
@@ -801,8 +1630,18 @@ function cutDoors(state, floorIndex, rects, zone) {
   const f = state.floors[floorIndex];
   for (const r of rects) {
     if (!r.door) continue;
-    const run = sideRun(r, r.door);
-    if (!run.length) continue;
+    // A room has one door onto its corridor; a corridor can have a way into
+    // another one at each end of it, which is what a scheme with a corridor
+    // *loop* rather than a corridor tree needs. So `door` is a side or a list
+    // of them, and everything below runs once per side.
+    for (const side of (Array.isArray(r.door) ? r.door : [r.door])) cutSide(f, r, side);
+  }
+}
+
+function cutSide(f, r, door) {
+  {
+    const run = sideRun(r, door);
+    if (!run.length) return;
     const pair = PAIRED_DOORS.has(r.key);
     const kind = r.doorKind === 'opening' ? EDGE_OPENING
       : r.doorKind === 'double' || pair ? EDGE_DOOR2 : EDGE_DOOR;
@@ -817,13 +1656,13 @@ function cutDoors(state, floorIndex, rects, zone) {
       : pair && run.length >= 12
         ? [run[Math.floor(run.length * 0.28)], run[Math.floor(run.length * 0.72)]]
         : [midOf(run)];
-    for (const pos of spots) setSide(f, r, r.door, pos, kind);
+    for (const pos of spots) setSide(f, r, door, pos, kind);
     // The rooms a hall should be able to see into front it in glass, with the
     // door left exactly where it was: the partition still bounds the room, it
     // just isn't opaque.
     if (GLAZED_FRONT.has(r.key)) {
       for (const pos of run) {
-        if (!spots.includes(pos)) setSide(f, r, r.door, pos, EDGE_GLASS);
+        if (!spots.includes(pos)) setSide(f, r, door, pos, EDGE_GLASS);
       }
     }
   }
@@ -896,6 +1735,12 @@ function cutShellExits(state, rects, zone) {
     if (r.kind !== 'corridor' && !big) continue;
     const need = r.kind === 'corridor' ? EXIT_RUN : r.stairHall ? EXIT_RUN : BLOCK_EXIT_RUN;
     for (const side of ['n', 's', 'e', 'w']) {
+      // A courtyard is not a way out. `egressField` treats every exterior door
+      // as discharging to a public way, and a school that "evacuates" into a
+      // sealed court is a school with an egress table nobody should believe —
+      // so a scheme that wraps a room in the building says which sides face
+      // it, and gets windows there rather than doors.
+      if (r.skipExit && r.skipExit.includes(side)) continue;
       for (const run of runsOn(r, side)) {
         if (run.length < need) continue;
         setSide(f, r, side, midOf(run), EDGE_DOOR2);
@@ -927,10 +1772,10 @@ function parkingSize(stalls) {
 function buildSite(state, plan) {
   const b = plan.brief;
   const band = bandEntry(b.band);
-  const x0 = plan.spine.x0 * CELL;
-  const x1 = (plan.spine.x0 + plan.spine.len) * CELL;
-  const north = plan.spine.y0 * CELL;
-  const south = (plan.wingY0 + plan.wingH) * CELL;
+  const x0 = plan.envelope.x0 * CELL;
+  const x1 = plan.envelope.x1 * CELL;
+  const north = plan.envelope.y0 * CELL;
+  const south = plan.envelope.y1 * CELL;
   const lot = parkingSize(plan.program.parking);
 
   // Room for the building, a car park to the west, and a field to the east —
@@ -1108,9 +1953,12 @@ export function exteriorDoors(state) {
 
 export function generationSummary(plan, state) {
   const rooms = plan.rects.flat().filter((r) => r.kind === 'room');
+  const scheme = schemeEntry(plan.scheme);
   return {
     students: plan.brief.students,
     band: plan.program.band.label,
+    scheme: scheme.key,
+    schemeLabel: scheme.label,
     storeys: plan.storeys,
     wings: plan.wings,
     rooms: rooms.length,

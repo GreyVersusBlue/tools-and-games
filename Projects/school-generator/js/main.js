@@ -47,7 +47,9 @@ import {
 import { buildReport, reportCSV } from './report.js';
 import { isTouchCapable, joystickAxes } from './touch.js';
 // --- Phase 8 ---
-import { BANDS, DEFAULT_BRIEF, normalizeBrief, buildProgram, programLines } from './program.js';
+import {
+  BANDS, SCHEMES, schemeEntry, DEFAULT_BRIEF, normalizeBrief, buildProgram, programLines,
+} from './program.js';
 import { parseBrief } from './brief.js';
 import { layoutSchool, buildSchool, generationSummary } from './generate.js';
 import { AUTO_ENTRY, AUTO_KEY } from './templateedit.js';
@@ -2453,6 +2455,15 @@ BANDS.forEach((b) => {
   opt.textContent = b.label;
   genBand.appendChild(opt);
 });
+// Phase 10's one control: what the word "generate" means. Until it there was
+// exactly one scheme and it was a property of the file rather than a choice.
+const genScheme = $('gen-scheme');
+SCHEMES.forEach((s) => {
+  const opt = document.createElement('option');
+  opt.value = s.key;
+  opt.textContent = s.label;
+  genScheme.appendChild(opt);
+});
 
 const GEN_FIELDS = {
   students: 'gen-students', storeys: 'gen-storeys', seed: 'gen-seed',
@@ -2466,7 +2477,7 @@ const GEN_FLAGS = {
 let genBrief = { ...DEFAULT_BRIEF };
 
 function readGenFields() {
-  const raw = { band: genBand.value };
+  const raw = { band: genBand.value, scheme: genScheme.value };
   for (const [key, id] of Object.entries(GEN_FIELDS)) raw[key] = Number($(id).value);
   for (const [key, id] of Object.entries(GEN_FLAGS)) raw[key] = $(id).checked;
   return normalizeBrief(raw);
@@ -2474,11 +2485,13 @@ function readGenFields() {
 
 function writeGenFields(brief) {
   genBand.value = brief.band;
+  genScheme.value = brief.scheme;
   for (const [key, id] of Object.entries(GEN_FIELDS)) $(id).value = String(brief[key]);
   for (const [key, id] of Object.entries(GEN_FLAGS)) $(id).checked = brief[key];
 }
 
 function renderGenSchedule() {
+  $('gen-scheme-note').textContent = schemeEntry(genBrief.scheme).note;
   const program = buildProgram(genBrief);
   const lines = programLines(program);
   const rows = lines.map((l) =>
@@ -2500,7 +2513,7 @@ function genChanged() {
   renderGenSchedule();
 }
 
-for (const id of [...Object.values(GEN_FIELDS), ...Object.values(GEN_FLAGS), 'gen-band']) {
+for (const id of [...Object.values(GEN_FIELDS), ...Object.values(GEN_FLAGS), 'gen-band', 'gen-scheme']) {
   $(id).addEventListener('change', genChanged);
   $(id).addEventListener('input', genChanged);
 }
@@ -2542,9 +2555,9 @@ $('gen-go').addEventListener('click', () => {
       adoptState(next);
       const sum = generationSummary(plan, next);
       const bits = [
+        `${sum.schemeLabel.toLowerCase()}`,
         `${sum.students} students`,
         `${sum.rooms} rooms on ${sum.storeys} storey${sum.storeys === 1 ? '' : 's'}`,
-        `${sum.wings} wing${sum.wings === 1 ? '' : 's'}`,
         `${sum.footprintFt.w}×${sum.footprintFt.d} ft`,
         `${sum.exits} ways out`,
         `${sum.props.toLocaleString()} pieces of furniture`,

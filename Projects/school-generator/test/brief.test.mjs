@@ -137,3 +137,18 @@ test('the same sentence always parses the same way', () => {
   const s = 'a two-storey middle school for 640 students with a library, seed 3';
   assert.deepEqual(parseBrief(s), parseBrief(s));
 });
+
+
+test('a sentence can name the scheme, and says so when it did', () => {
+  const court = parseBrief('a two-storey courtyard school for 600');
+  assert.equal(court.brief.scheme, 'courtyard');
+  assert.match(court.echo, /courtyard plan/);
+  assert.equal(parseBrief('a compact deep-plan middle school').brief.scheme, 'compact');
+  assert.equal(parseBrief('a high school with three classroom wings').brief.scheme, 'spine');
+  // The shape of the plan is the noun: "compact" in front of "courtyard" is
+  // doing adjective duty and does not win the field.
+  assert.equal(parseBrief('a compact courtyard school').brief.scheme, 'courtyard');
+  // ...and a sentence that names no shape leaves whatever the sheet had.
+  assert.equal(parseBrief('a middle school for 600').brief.scheme, 'spine');
+  assert.equal(parseBrief('a middle school for 600', { scheme: 'compact' }).brief.scheme, 'compact');
+});
