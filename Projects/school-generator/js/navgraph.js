@@ -11,13 +11,23 @@
 // readers: it derives, it never stores, and re-deriving it after an edit is the
 // whole of keeping it correct. There is no `state.nav`.
 //
-// **Rooms are hubs, doorways are nodes.** The graph is the classic portal
-// graph with one addition: every room contributes a hub node at an interior
-// point, and its doorways connect through the hub rather than to each other.
-// That costs a little accuracy in a square room (you walk via the middle) and
-// buys the thing a school actually needs, which is an L-shaped corridor whose
-// two ends are not in line of sight. A hub is also somewhere to *be* — an
-// agent with nowhere to go stands at one.
+// **Rooms are surfaces, not hubs.** Phase 6 put one node in the middle of
+// every room and hung its doorways off it, which is honest about topology and
+// a liar about distance: two classrooms forty feet apart on one corridor
+// routed through that corridor's *midpoint*, and a generated three-storey
+// school reported travel distances ten to twenty feet worse than anybody
+// walks. Phase 10 replaces the hub with `navmesh.js`'s tiles — a room is a
+// handful of convex rectangles covering its floor — and connects everything
+// standing on one tile to everything else standing on it at the straight-line
+// distance between them, which inside a convex empty rectangle is the truth.
+// Where two tiles of a room meet, a **gate** node sits in the opening, so an
+// L-shaped corridor keeps the corner it has to be walked round.
+//
+// The room node survives all of that, and does what it always did except
+// measure: it is a name for the room, a thing an agent can be assigned to, and
+// somewhere to stand when you have nowhere to go. It is now one more anchor on
+// one more tile, and a route that merely passes through a room no longer
+// visits it.
 //
 // **The outside is one node.** Every exterior door on the ground floor lands
 // on it. That is a deliberate flattening: the site is open ground and Phase 5
@@ -35,6 +45,7 @@ import {
   shapesOf, shapeArea, segEnds, isBuilt, isDoorOpening, interiorPoint, shapeAt,
 } from './shapes.js';
 import { gridOpeningWidth } from './openings.js';
+import { meshFloor, tileFor } from './navmesh.js';
 import {
   stairsOf, stairMetrics, runLength, localToWorld, elevatorSize, isRun, isElevator,
   LANDING,
@@ -86,7 +97,6 @@ export const MIN_ACCESSIBLE_W = MIN_CLEAR_W + CLEAR_LOSS;
 export const clearWidth = (w, leafed = true) =>
   Math.max(0, w - (leafed ? CLEAR_LOSS : 0));
 
-const dist2d = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 // ---------- rooms ----------
 
@@ -163,17 +173,20 @@ export function floorRooms(state, floorIndex) {
 
 // ---------- the graph ----------
 
-// Every edge carries two numbers: what it *costs* to route over (stairs are
-// slower than corridor, a lift is mostly waiting) and how far it actually is
-// in feet. Phase 6 only ever wanted the first; Phase 7's travel distances are
-// measured against a code limit written in feet, so they want the second.
-// `dist` defaults to `cost`, which is right for every edge that is simply a
-// walk across a floor.
-function addEdge(adj, a, b, cost, dist = cost) {
+// Every edge carries three things: what it *costs* to route over (stairs are
+// slower than corridor, a lift is mostly waiting), how far it actually is in
+// feet, and which room it lies in. Phase 6 only ever wanted the first; Phase
+// 7's travel distances are measured against a code limit written in feet, so
+// they want the second; and Phase 10's mesh wants the third, because an edge
+// between two doorways now crosses a room rather than passing through its
+// hub, and a reader threading a route has no other way to know which side of
+// a doorway it came out on. `room` is null for the two edges that lie in no
+// room at all — a door onto the outside, and the climb inside a stair.
+function addEdge(adj, a, b, cost, dist = cost, room = null) {
   if (!adj.has(a)) adj.set(a, []);
   if (!adj.has(b)) adj.set(b, []);
-  adj.get(a).push({ to: b, cost, dist });
-  adj.get(b).push({ to: a, cost, dist });
+  adj.get(a).push({ to: b, cost, dist, room });
+  adj.get(b).push({ to: a, cost, dist, room });
 }
 
 // One doorway, as the two rooms it joins and the point you pass through.
@@ -211,7 +224,10 @@ export function buildNav(state, opts = {}) {
   const portals = [];
   const links = [];
   const exits = [];
+  const gates = [];
   const perFloor = [];
+  const mesh = [];
+  const tiles = new Map();
   const floorHt = (state && state.floorHt) || FLOOR_H;
 
   const put = (node) => { nodes.set(node.id, node); return node; };
@@ -221,7 +237,46 @@ export function buildNav(state, opts = {}) {
     const fr = floorRooms(state, i);
     perFloor.push(fr);
     for (const r of fr.rooms) { put(r); rooms.push(r); adj.set(r.id, []); }
+    // The walkable surface, cut into convex tiles. This is the whole of what
+    // Phase 10 added to this file: everything below hangs points on tiles, and
+    // the graph falls out of which points share one.
+    const m = meshFloor(state, i, fr);
+    mesh.push(m);
+    for (const t of m.tiles) tiles.set(t.id, t);
+    for (const g of m.gates) { put(g); gates.push(g); adj.set(g.id, []); }
   }
+
+  // Somewhere to stand, hung on the tile it stands on. `extra` and `span` are
+  // what a *vertical* anchor carries: the head of a stair is a point in the
+  // upper room that costs a climb to reach from anywhere else on that tile,
+  // and charging it here rather than on a separate edge is what keeps a stair
+  // one node instead of two.
+  const attach = (floorIndex, roomId, id, x, z, extra = 0, span = 0) => {
+    if (!roomId) return false;
+    const found = tileFor(mesh[floorIndex], roomId, x, z);
+    if (!found) return false;
+    found.tile.anchors.push({ id, x, z, extra, span });
+    return true;
+  };
+
+  // A gate belongs to exactly two tiles, and is the only anchor that does —
+  // which is precisely why it is the thing that joins them. Hung on both by
+  // name rather than by position: the gate sits *on* the boundary, and asking
+  // which tile a boundary point is in has no right answer.
+  for (const m of mesh) {
+    for (const g of m.gates) {
+      for (const tid of [g.a, g.b]) {
+        const t = tiles.get(tid);
+        if (t) t.anchors.push({ id: g.id, x: g.x, z: g.z, extra: 0, span: 0 });
+      }
+    }
+  }
+
+  // The room node, on whichever of its tiles its own point falls. It measures
+  // nothing any more — it is a name, an assignment target and somewhere to
+  // stand — but it still has to be *on* the mesh, or a room with a door at the
+  // far end of it would be a room nothing could route out of.
+  for (const r of rooms) attach(r.floor, r.id, r.id, r.x, r.z);
 
   // Which room is at a point, as a node id — or null for the outside. The
   // outside is deliberately not a room: rooms are things you can be assigned
@@ -268,12 +323,14 @@ export function buildNav(state, opts = {}) {
     // The normal points out of the building when one side is the outside, so
     // "away from the door" is a direction anything queueing can use.
     const outward = a ? -1 : 1;
+    const pa = { x: x + nx * DOOR_OFFSET, z: z + nz * DOOR_OFFSET };
+    const pb = { x: x - nx * DOOR_OFFSET, z: z - nz * DOOR_OFFSET };
     const portal = makePortal(`p${pn++}`, x, z, nx * outward, nz * outward, w,
       floorIndex, a || null, b || null, {
         exterior,
         rep,
-        pa: { x: x + nx * DOOR_OFFSET, z: z + nz * DOOR_OFFSET },
-        pb: { x: x - nx * DOOR_OFFSET, z: z - nz * DOOR_OFFSET },
+        pa,
+        pb,
         muster: exterior
           ? { x: x + nx * outward * MUSTER_FT, z: z + nz * outward * MUSTER_FT }
           : null,
@@ -281,19 +338,20 @@ export function buildNav(state, opts = {}) {
     put(portal);
     portals.push(portal);
     adj.set(portal.id, []);
-    const inner = a || b;
-    const other = exterior ? ensureOutside().id : (a === inner ? b : a);
-    addEdge(adj, portal.id, inner, dist2d(portal, nodes.get(inner)));
+    // A doorway stands on the tile either side of it, three feet out. That is
+    // the whole of joining it to the building now: the tile's own wiring
+    // connects it to every other door, gate and stair standing on the same
+    // patch of floor, at the distance between them.
+    if (a) attach(floorIndex, a, portal.id, pa.x, pa.z);
+    if (b) attach(floorIndex, b, portal.id, pb.x, pb.z);
     if (exterior) {
       // The outside hub has no position of its own worth trusting, so the
       // cost of leaving is the walk to the muster point rather than to a
       // notional centre of the site.
       // Reaching the door is reaching the exit, so the walk out to the muster
       // point costs a route something and measures as nothing.
-      addEdge(adj, portal.id, other, MUSTER_FT, 0);
+      addEdge(adj, portal.id, ensureOutside().id, MUSTER_FT, 0, null);
       exits.push(portal);
-    } else {
-      addEdge(adj, portal.id, other, dist2d(portal, nodes.get(other)));
     }
     return portal;
   };
@@ -388,17 +446,52 @@ export function buildNav(state, opts = {}) {
     adj.set(node.id, []);
     const below = roomIdAt(link.from, foot.x, foot.z);
     const above = roomIdAt(link.to, head.x, head.z);
-    const climb = cost + FLOOR_PENALTY;
-    if (below) {
-      addEdge(adj, node.id, below, dist2d(node, nodes.get(below)) + climb / 2,
-        dist2d(node, nodes.get(below)) + span / 2);
-    }
-    if (above) {
-      addEdge(adj, node.id, above, dist2d(node.b, nodes.get(above)) + climb / 2,
-        dist2d(node.b, nodes.get(above)) + span / 2);
-    }
+    // The climb is charged on the *upper* anchor rather than split across two
+    // edges: every route between the storey above and this stair pays it once,
+    // and a route that merely walks past the foot of it pays nothing.
+    attach(link.from, below, node.id, foot.x, foot.z, 0, 0);
+    attach(link.to, above, node.id, head.x, head.z, cost + FLOOR_PENALTY, span);
     // A stair that lands in nothing on either end joins nothing; it stays in
     // the node list so a reader can say so, but it is not a route.
+  }
+
+  // ---- the tiles, wired ----
+  //
+  // Everything standing on one convex rectangle is joined to everything else
+  // standing on it, at the straight line between them — which is the true
+  // walking distance, because there is nothing in a tile to walk round. This
+  // one loop is the whole of what replaced the hub.
+  for (const m of mesh) {
+    for (const t of m.tiles) {
+      const as = t.anchors;
+      for (let i = 0; i < as.length; i++) {
+        for (let j = i + 1; j < as.length; j++) {
+          if (as[i].id === as[j].id) continue;
+          const d = Math.hypot(as[i].x - as[j].x, as[i].z - as[j].z);
+          addEdge(adj, as[i].id, as[j].id,
+            d + as[i].extra + as[j].extra,
+            d + as[i].span + as[j].span,
+            t.room);
+        }
+      }
+    }
+  }
+
+  // Which doorways and links belong to a room, by construction rather than by
+  // walking the graph. A door at the far end of a long room is no longer a
+  // neighbour of that room's node — it is a neighbour of the *tile* it stands
+  // on — so a reader counting the ways out of a room has to ask this instead.
+  const portalsByRoom = new Map();
+  const linksByRoom = new Map();
+  const push = (map, id, v) => {
+    if (!id) return;
+    if (!map.has(id)) map.set(id, []);
+    map.get(id).push(v);
+  };
+  for (const p of portals) { push(portalsByRoom, p.a, p); push(portalsByRoom, p.b, p); }
+  for (const l of links) {
+    push(linksByRoom, roomIdAt(l.link.from, l.a.x, l.a.z), l);
+    push(linksByRoom, roomIdAt(l.link.to, l.b.x, l.b.z), l);
   }
 
   return {
@@ -406,11 +499,20 @@ export function buildNav(state, opts = {}) {
     accessible,
     minWidth,
     nodes, adj,
-    rooms, portals, links, exits,
+    rooms, portals, links, exits, gates,
+    mesh,
     outside: outside ? outside.id : null,
     perFloor,
     roomIdAt,
     node: (id) => nodes.get(id) || null,
+    tileAt: (floorIndex, x, z) => {
+      const id = roomIdAt(floorIndex, x, z);
+      if (!id) return null;
+      const found = tileFor(mesh[floorIndex], id, x, z);
+      return found && found.inside ? found.tile : null;
+    },
+    portalsOf: (roomId) => portalsByRoom.get(roomId) || [],
+    linksOf: (roomId) => linksByRoom.get(roomId) || [],
   };
 }
 
@@ -441,17 +543,32 @@ export function nodeAt(nav, floorIndex, x, z) {
 
 // ---------- routing ----------
 
+// The edge joining two adjacent nodes, so a reader threading a path can ask
+// which room it was walking through. `opts.adj` is the one-node overlay a
+// route from an arbitrary point hangs itself on — see `pointEntry`.
+const edgeOn = (nav, a, b, opts = {}) => {
+  const list = (opts.adj && opts.adj.has(a)) ? opts.adj.get(a) : (nav.adj.get(a) || []);
+  return list.find((e) => e.to === b) || null;
+};
+
+const adjOf = (nav, id, opts) =>
+  ((opts.adj && opts.adj.has(id)) ? opts.adj.get(id) : (nav.adj.get(id) || []));
+const nodeOf = (nav, id, opts) =>
+  ((opts.nodes && opts.nodes.has(id)) ? opts.nodes.get(id) : nav.nodes.get(id));
+
 // A* over the graph. The heuristic is the straight line plus a flat charge per
 // storey — admissible as long as no edge is cheaper than the distance it
 // covers, which is why every vertical cost above is a *penalty on top of*
 // its own geometry rather than a replacement for it.
-export function findPath(nav, fromId, toId) {
+export function findPath(nav, fromId, toId, opts = {}) {
   if (!nav || !fromId || !toId) return null;
   if (fromId === toId) return [fromId];
-  if (!nav.nodes.has(fromId) || !nav.nodes.has(toId)) return null;
-  const goal = nav.nodes.get(toId);
+  const start = nodeOf(nav, fromId, opts);
+  const goal = nodeOf(nav, toId, opts);
+  if (!start || !goal) return null;
   const h = (id) => {
-    const n = nav.nodes.get(id);
+    const n = nodeOf(nav, id, opts);
+    if (!n) return 0;
     const flat = Math.hypot(n.x - goal.x, n.z - goal.z);
     return flat + Math.abs((n.floor || 0) - (goal.floor || 0)) * FLOOR_PENALTY;
   };
@@ -475,7 +592,7 @@ export function findPath(nav, fromId, toId) {
     }
     if (done.has(cur.id)) continue;
     done.add(cur.id);
-    for (const e of nav.adj.get(cur.id) || []) {
+    for (const e of adjOf(nav, cur.id, opts)) {
       if (done.has(e.to)) continue;
       const tentative = (g.get(cur.id) ?? Infinity) + e.cost;
       if (tentative >= (g.get(e.to) ?? Infinity)) continue;
@@ -487,68 +604,110 @@ export function findPath(nav, fromId, toId) {
   return null;
 }
 
-// A node path, as somewhere to put your feet. Rooms and portals contribute one
-// point each; a link contributes two — the landing you walk to and the one you
-// arrive at — in whichever order this path is travelling it.
+// A node path, as somewhere to put your feet. Gates and room nodes contribute
+// one point each; a doorway contributes two — the side you arrive at and the
+// side you leave by — and a link contributes two, the landing you walk to and
+// the one you arrive at.
+//
+// **Which side of a doorway you came from is read off the edge you came in
+// on**, not off the node before it. Under the portal graph the node before a
+// doorway was always one of the two rooms it joined, so comparing ids was
+// enough; on the mesh a route arrives at a door from the gate or the door it
+// was last standing beside, and the only thing that still knows which room
+// the walk was crossing is the edge itself.
 export function waypoints(nav, path, opts = {}) {
   if (!path || !path.length) return [];
   const out = [];
-  let floor = opts.floor ?? (nav.nodes.get(path[0])?.floor ?? 0);
-  let prev = null;
-  for (const id of path) {
-    const n = nav.nodes.get(id);
+  let floor = opts.floor ?? (nodeOf(nav, path[0], opts)?.floor ?? 0);
+  for (let i = 0; i < path.length; i++) {
+    const n = nodeOf(nav, path[i], opts);
     if (!n) continue;
+    const inEdge = i > 0 ? edgeOn(nav, path[i - 1], path[i], opts) : null;
+    const outEdge = i + 1 < path.length ? edgeOn(nav, path[i], path[i + 1], opts) : null;
     if (n.kind === 'portal') {
-      // Which side you are coming from decides the order. Failing that (a
-      // route that starts at a door), the side nearest whoever is walking it.
-      let fromA = prev ? prev === n.a : null;
-      if (fromA === null) {
+      // `room === n.a` reads true for an exterior door approached from the
+      // outside as well, since both sides of that comparison are null there.
+      let fromA;
+      if (inEdge) fromA = inEdge.room === n.a;
+      else if (outEdge) fromA = outEdge.room !== n.a;
+      else {
         const at = opts.at || out[out.length - 1] || n.pa;
         fromA = (at.x - n.pa.x) ** 2 + (at.z - n.pa.z) ** 2
           <= (at.x - n.pb.x) ** 2 + (at.z - n.pb.z) ** 2;
       }
       const first = fromA ? n.pa : n.pb;
       const second = fromA ? n.pb : n.pa;
-      out.push({ x: first.x, z: first.z, floor: n.floor, kind: 'door', node: id, portal: n });
-      out.push({ x: second.x, z: second.z, floor: n.floor, kind: 'door', node: id, portal: n });
+      out.push({ x: first.x, z: first.z, floor: n.floor, kind: 'door', node: n.id, portal: n });
+      out.push({ x: second.x, z: second.z, floor: n.floor, kind: 'door', node: n.id, portal: n });
       floor = n.floor;
-      prev = id;
-      continue;
-    }
-    prev = id;
-    if (n.kind === 'link') {
+    } else if (n.kind === 'link') {
+      // Which way you are travelling it: whichever end you are not already on.
+      // A link reached from the room below is climbed; one reached from above
+      // is descended, and a route that only walks past its foot never gets
+      // here at all.
       const up = Math.abs(floor - n.a.floor) <= Math.abs(floor - n.b.floor);
       const first = up ? n.a : n.b;
       const second = up ? n.b : n.a;
-      out.push({ x: first.x, z: first.z, floor: first.floor, kind: 'link', node: id, link: n.link });
-      out.push({ x: second.x, z: second.z, floor: second.floor, kind: 'ride', node: id, link: n.link });
+      out.push({ x: first.x, z: first.z, floor: first.floor, kind: 'link', node: n.id, link: n.link });
+      out.push({ x: second.x, z: second.z, floor: second.floor, kind: 'ride', node: n.id, link: n.link });
       floor = second.floor;
     } else if (n.kind === 'outside') {
       // The outside hub has no place of its own: the last real point on the
       // way out was the door, and where you go from there is the caller's
       // business (a muster point, a bus, a bench).
       continue;
+    } else if (n.kind === 'point') {
+      // Where the walker already is. It is in the path so that the first edge
+      // out of it knows which room it crosses; it is not somewhere to walk to.
+      continue;
     } else {
-      out.push({ x: n.x, z: n.z, floor: n.floor, kind: n.kind, node: id });
+      out.push({
+        x: n.x, z: n.z, floor: n.floor,
+        kind: n.kind === 'gate' ? 'walk' : n.kind,
+        node: n.id,
+      });
       floor = n.floor;
     }
   }
   return out;
 }
 
-// A whole route between two points, as waypoints. The start and end points
-// themselves are not in it — an agent is already at one and steers to the
-// other — but the rooms they are in are where the graph is entered and left.
+// A point on the mesh, as a node the graph doesn't have: joined to everything
+// standing on the tile the point is standing on, at the straight line to each.
+// This is what makes a route start from where somebody actually is rather than
+// from the middle of the room they are in — the last detour the hub left
+// behind, and the cheapest one to remove.
+export function pointEntry(nav, from) {
+  const roomId = nav.roomIdAt(from.floor ?? 0, from.x, from.z);
+  if (!roomId) return nav.outside ? { id: nav.outside } : null;
+  const found = tileFor(nav.mesh[from.floor ?? 0], roomId, from.x, from.z);
+  if (!found || !found.tile.anchors.length) return { id: roomId };
+  const id = '@';
+  const node = { id, kind: 'point', floor: from.floor ?? 0, x: from.x, z: from.z, room: roomId };
+  const edges = found.tile.anchors.map((a) => {
+    const d = Math.hypot(a.x - from.x, a.z - from.z);
+    return { to: a.id, cost: d + a.extra, dist: d + a.span, room: found.tile.room };
+  });
+  return {
+    id,
+    opts: { nodes: new Map([[id, node]]), adj: new Map([[id, edges]]) },
+  };
+}
+
+// A whole route between two points, as waypoints. The start point itself is
+// not in it — an agent is already standing on it — but every step after it is
+// measured from there rather than from the middle of the room it is in.
 export function route(nav, from, toId) {
-  const startId = nodeAt(nav, from.floor, from.x, from.z);
-  if (!startId) return null;
-  const path = findPath(nav, startId, toId);
+  const entry = pointEntry(nav, from);
+  if (!entry) return null;
+  const opts = entry.opts || {};
+  const path = findPath(nav, entry.id, toId, opts);
   if (!path) return null;
-  const wp = waypoints(nav, path, { floor: from.floor, at: from });
-  // The first waypoint is the hub of the room you are already standing in.
-  // Walking to it first is a detour to the middle of the room you are leaving,
-  // so it goes — unless it is where you were headed.
-  if (wp.length > 1 && wp[0].node === startId) wp.shift();
+  const wp = waypoints(nav, path, { ...opts, floor: from.floor, at: from });
+  // A route that begins at the room you are standing in begins with a walk to
+  // that room's own node, which is a detour to the middle of the room you are
+  // leaving. It goes — unless it is where you were headed.
+  if (wp.length > 1 && wp[0].node === entry.id) wp.shift();
   return wp;
 }
 
@@ -562,10 +721,11 @@ export function egressField(nav, opts = {}) {
   // `metric` walks the same graph on real feet rather than on routing cost —
   // what Phase 7 measures against a code limit. The route a body takes is the
   // cheap one either way; this only changes the number written beside it.
-  const weight = opts.metric ? (e) => e.dist : (e) => e.cost;
+  const metric = !!opts.metric;
+  const weight = metric ? (e) => e.dist : (e) => e.cost;
   const dist = new Map();
   const via = new Map();
-  if (!nav || !nav.exits.length) return { dist, via, reached: 0 };
+  if (!nav || !nav.exits.length) return { dist, via, reached: 0, metric };
   const open = [];
   for (const e of nav.exits) {
     dist.set(e.id, 0);
@@ -589,19 +749,46 @@ export function egressField(nav, opts = {}) {
       open.push({ id: e.to, d });
     }
   }
-  return { dist, via, reached: dist.size };
+  return { dist, via, reached: dist.size, metric };
+}
+
+// How far it is out of the building **from a point**, rather than from the
+// room the point is in. This is the mesh cashed in: the tile under your feet
+// is convex, so the walk to anything standing on it is the straight line, and
+// the field already knows how far each of those is from a door. Phase 7's
+// travel distances were the hub's distance plus the room's own radius, which
+// double-counted the room every time; this is what a tape measure says.
+// `known` names the room the point belongs to when the caller already knows —
+// a room's own corner sits *on* its boundary, and asking a point-in-polygon
+// test which side of itself a vertex is on has no answer worth having.
+export function pointField(nav, field, floorIndex, x, z, known = null) {
+  if (!nav || !field) return null;
+  const roomId = known || nav.roomIdAt(floorIndex, x, z);
+  if (!roomId) return null;
+  const found = nav.mesh[floorIndex] ? tileFor(nav.mesh[floorIndex], roomId, x, z) : null;
+  if (!found) {
+    const d = field.dist.get(roomId);
+    return d === undefined ? null : { dist: d, via: field.via.get(roomId), room: roomId };
+  }
+  let best = null;
+  for (const a of found.tile.anchors) {
+    const reach = field.dist.get(a.id);
+    if (reach === undefined) continue;
+    const step = Math.hypot(a.x - x, a.z - z) + (field.metric ? a.span : a.extra);
+    const total = reach + step;
+    if (!best || total < best.dist) best = { dist: total, via: field.via.get(a.id), room: roomId };
+  }
+  return best;
 }
 
 // The exit a point should leave by, and how far it is. Null when the design
 // has no exterior door, or when this part of it can't reach one — which is
 // itself worth knowing, and is exactly what Phase 7 will report.
 export function nearestExit(nav, field, floorIndex, x, z) {
-  const id = nav.roomIdAt(floorIndex, x, z);
-  if (!id) return null;
-  const exitId = field.via.get(id);
-  if (!exitId) return null;
-  const exit = nav.nodes.get(exitId);
-  return { exit, dist: field.dist.get(id) ?? Infinity };
+  const at = pointField(nav, field, floorIndex, x, z);
+  if (!at || !at.via) return null;
+  const exit = nav.nodes.get(at.via);
+  return { exit, dist: at.dist };
 }
 
 // Rooms with no way out at all, for a caller that wants to say so.
@@ -620,6 +807,10 @@ export function navSummary(nav) {
     doors,
     exits: nav.exits.length,
     links: nav.links.length,
+    // What the rooms are actually made of, since Phase 10: the rectangles the
+    // walk is measured across, and the seams between them.
+    tiles: nav.mesh.reduce((n, m) => n + m.tiles.length, 0),
+    gates: nav.gates.length,
     outside: !!nav.outside,
   };
 }

@@ -2167,8 +2167,8 @@ function renderLifeReadout() {
   if (!life.on) {
     const nav = life.nav || buildNav(state);
     const sum = navSummary(nav);
-    el.innerHTML = `<b>${sum.rooms}</b> rooms · <b>${sum.doors}</b> doors · ` +
-      `<b>${sum.links}</b> stairs &amp; lifts<br />` +
+    el.innerHTML = `<b>${sum.rooms}</b> rooms (<b>${sum.tiles}</b> tiles) · ` +
+      `<b>${sum.doors}</b> doors · <b>${sum.links}</b> stairs &amp; lifts<br />` +
       (sum.exits
         ? `<b>${sum.exits}</b> way${sum.exits === 1 ? '' : 's'} out. Populate to fill it.`
         : '<span class="warn">No exterior doors</span> — nobody could get out.');

@@ -74,14 +74,34 @@ test('a sealed building fails on the first finding and stops', () => {
   assert.equal(r.findings[0].code, 'no-exits');
 });
 
-test('travel distance is the walk from the far corner, not from the hub', () => {
+test('travel distance is the walk from the far corner, over the mesh', () => {
   const s = corridorSchool({ len: 8 });
   const r = egressAnalysis(s);
   const cls = r.rooms.find((x) => x.name === 'Room 101');
   assert.ok(cls.reached);
   assert.ok(cls.reach > 0, 'the far corner is somewhere else from the hub');
-  assert.ok(Math.abs(cls.travel - (cls.hub + cls.reach)) < 1e-9);
+  // Farther than the walk from the room's own node, because the far corner is
+  // farther from the door than the middle of the room is...
   assert.ok(cls.travel > cls.hub);
+  // ...and *shorter* than that walk plus the room's whole radius, which is
+  // what this was before Phase 10 put a mesh under it. The old sum walked to
+  // the middle of the room and then out to the corner and back again.
+  assert.ok(cls.travel < cls.hub + cls.reach,
+    'the mesh measures the corner, it does not add the room to itself');
+});
+
+test('a corridor is no longer one hub, so two doors off it are not a detour', () => {
+  // Two classrooms at opposite ends of a long corridor, and the exit beyond
+  // one of them. Under the portal graph the near room walked to the middle of
+  // the corridor and back, which is the ten-to-twenty feet Phase 8 measured.
+  const s = corridorSchool({ len: 30 });
+  const r = egressAnalysis(s);
+  const corridor = r.rooms.find((x) => x.name === 'Corridor');
+  // The corridor is 30 cells — 120ft — with the way out at its west end, so
+  // the farthest point in it is a shade over 120ft from the door and nothing
+  // in the building is farther than the building is long.
+  assert.ok(corridor.travel > 110 && corridor.travel < 130,
+    `a 120ft corridor should measure about 120ft, not ${corridor.travel}`);
 });
 
 test('a long enough corridor puts the classroom past the travel limit', () => {
