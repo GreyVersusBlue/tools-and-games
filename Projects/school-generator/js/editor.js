@@ -172,10 +172,15 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   // move, turn, fade, calibrate — goes through overlay.js's `setOverlay`,
   // which returns a new normalized object, so a reference held here is a
   // snapshot of what the overlay was, not a live view of what it is.
+  // Phase 9 adds the second record with the same problem and gives it the
+  // same answer: `models` carries whole glTF files as data URLs, so it
+  // travels beside the JSON by reference too. The same one reason makes it
+  // safe — models.js never mutates a record or its array in place; every
+  // edit (`addModel`, `removeModel`, `updateModel`) returns new ones.
   function snapshot() {
     const s = getState();
-    const { overlay, ...rest } = s;
-    return { json: JSON.stringify(rest), overlay: overlay || null };
+    const { overlay, models, ...rest } = s;
+    return { json: JSON.stringify(rest), overlay: overlay || null, models: models || null };
   }
 
   function pushUndo() {
@@ -188,12 +193,14 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const s = getState();
     const data = JSON.parse(snap.json);
     if (snap.overlay) data.overlay = snap.overlay;
+    if (snap.models) data.models = snap.models;
     // Keys the snapshot doesn't have are keys the design didn't have.
     // `Object.assign` only ever adds and overwrites, so without this an undo
     // across the moment something was *first* written — the first site region,
     // the first grading stroke, the first tracing image — leaves that record
     // behind and the undo silently does nothing. Every optional record on the
-    // state (terrain, site, roof, life, overlay) is one of these.
+    // state (terrain, site, roof, life, overlay, tours, models) is one of
+    // these.
     for (const key of Object.keys(s)) if (!(key in data)) delete s[key];
     Object.assign(s, data);
     onChange({ structural: true });

@@ -251,3 +251,62 @@ test('modelDataURL and modelSize agree about what a record costs', () => {
   assert.equal(modelSize(null), 0);
   assert.equal(librarySize(null), 0);
 });
+
+// ---------- save v10 ----------
+
+test('a design with no imported models writes no models key', async () => {
+  const { serialize, SAVE_VERSION } = await import('../js/save-load.js');
+  const { createState } = await import('../js/grid.js');
+  assert.equal(SAVE_VERSION, 10);
+  const json = JSON.parse(serialize(createState(10, 10)));
+  assert.ok(!('models' in json));
+});
+
+test('an imported model survives a save round trip, bytes and all', async () => {
+  const { serialize, deserialize } = await import('../js/save-load.js');
+  const { createState } = await import('../js/grid.js');
+  const state = createState(10, 10);
+  state.models = addModel([], model({ name: 'Oak Chair', w: 2, d: 2, h: 3, mount: 'floor' })).models;
+  state.props = [{ id: 1, type: 'model:m1', floor: 0, x: 10, z: 10, y: 0, rotationY: 0, scale: 1, mount: 'floor' }];
+
+  const back = deserialize(serialize(state));
+  assert.equal(back.models.length, 1);
+  assert.equal(back.models[0].id, 'm1');
+  assert.equal(back.models[0].name, 'Oak Chair');
+  assert.equal(back.models[0].data, state.models[0].data);
+  assert.deepEqual(modelBytes(back.models[0]).subarray(0, 8), GLB.subarray(0, 8));
+  assert.equal(back.props[0].type, 'model:m1', 'the prop still points at it');
+});
+
+test('omitModels sheds the files and keeps the props that were placed from them', async () => {
+  const { serialize, deserialize } = await import('../js/save-load.js');
+  const { createState } = await import('../js/grid.js');
+  const state = createState(10, 10);
+  state.models = addModel([], model({ name: 'Oak Chair' })).models;
+  state.props = [{ id: 1, type: 'model:m1', floor: 0, x: 10, z: 10, y: 0, rotationY: 0, scale: 1, mount: 'floor' }];
+
+  const lean = serialize(state, { omitModels: true });
+  assert.ok(lean.length < serialize(state).length);
+  const back = deserialize(lean);
+  assert.equal(back.models, undefined);
+  assert.equal(back.props.length, 1);
+  assert.equal(back.props[0].type, 'model:m1', 'an unknown type survives, as it always has');
+});
+
+test('a hostile models key cannot stop a design from opening', async () => {
+  const { deserialize, serialize } = await import('../js/save-load.js');
+  const { createState } = await import('../js/grid.js');
+  const base = JSON.parse(serialize(createState(10, 10)));
+  for (const models of ['nope', 7, [null], [{}], [{ id: 'm1' }], [{ data: 'x' }]]) {
+    assert.equal(deserialize(JSON.stringify({ ...base, models })).models, undefined);
+  }
+});
+
+test('a v9 file loads as a design with nothing imported', async () => {
+  const { deserialize } = await import('../js/save-load.js');
+  const state = deserialize(JSON.stringify({
+    version: 9, w: 12, h: 12, floorHt: 12, floors: [], currentFloor: 0, props: [], links: [],
+  }));
+  assert.equal(state.models, undefined);
+  assert.equal(state.version, 10);
+});

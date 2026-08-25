@@ -780,19 +780,28 @@ function drawTitleBlock(ctx, plan, layout, canvasW, opts) {
   ctx.fillText(opts.date || new Date().toLocaleDateString(), canvasW - layout.margin, layout.titleH * 0.75);
 }
 
-// Draws one floor's plan into a 2D context whose canvas is already sized for
-// it (see `renderFloorPlanCanvas`, which sizes and calls this).
-export function drawFloorPlan(ctx, plan, layout, opts = {}) {
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+// The drawing itself, without any of the sheet furniture around it: rooms,
+// walls, openings, stairs, and optionally the furniture and the tags. Split
+// out in Phase 9 for the minimap, which wants the plan at thumbnail size and
+// emphatically does not want a title block, a legend or a north arrow drawn
+// over the top of a 168-pixel square.
+export function drawPlanBody(ctx, plan, layout, opts = {}) {
   drawRooms(ctx, plan, layout);
   drawWalls(ctx, plan, layout);
   drawDoors(ctx, plan, layout);
   drawStairs(ctx, plan, layout);
   if (opts.showFurniture) drawProps(ctx, plan, layout);
-  drawLabels(ctx, plan, layout);
+  if (opts.showLabels !== false) drawLabels(ctx, plan, layout);
   if (opts.showOccupancy) drawOccupancy(ctx, plan, layout);
   if (opts.showDimensions) drawDimensions(ctx, plan, layout);
+}
+
+// Draws one floor's plan into a 2D context whose canvas is already sized for
+// it (see `renderFloorPlanCanvas`, which sizes and calls this).
+export function drawFloorPlan(ctx, plan, layout, opts = {}) {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  drawPlanBody(ctx, plan, layout, opts);
   if (opts.showFinishes !== false) {
     drawFinishLegend(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
   }

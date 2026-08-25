@@ -326,3 +326,57 @@ test('a playback rate is clamped to something watchable', () => {
   assert.equal(startPlayback(tour, { rate: 99 }).rate, 8);
   assert.equal(startPlayback(tour, { rate: 0 }).rate, 0.1);
 });
+
+// ---------- save v10 ----------
+
+test('a design with no tour in it writes no tours key', async () => {
+  const { serialize, SAVE_VERSION } = await import('../js/save-load.js');
+  const { createState } = await import('../js/grid.js');
+  const state = createState(10, 10);
+  assert.equal(SAVE_VERSION, 10);
+  const json = JSON.parse(serialize(state));
+  assert.ok(!('tours' in json), 'a v9 design still round-trips as the same bytes');
+  state.tours = [];
+  assert.ok(!('tours' in JSON.parse(serialize(state))));
+});
+
+test('a recorded tour survives a save round trip, with its id', async () => {
+  const { serialize, deserialize } = await import('../js/save-load.js');
+  const { createState } = await import('../js/grid.js');
+  const state = createState(10, 10);
+  let tour = makeTour('Open Day');
+  tour = addKey(tour, cam(10, 10, { yaw: 1.2, floor: 0 }), { hold: 2, label: 'Entrance' });
+  tour = addKey(tour, cam(40, 10, { yaw: -1.2, floor: 1 }), { sec: 4 });
+  tour.loop = true;
+  state.tours = [tour];
+
+  const back = deserialize(serialize(state));
+  assert.equal(back.tours.length, 1);
+  assert.equal(back.tours[0].name, 'Open Day');
+  assert.equal(back.tours[0].loop, true);
+  assert.equal(back.tours[0].keys.length, 2);
+  assert.equal(back.tours[0].keys[0].label, 'Entrance');
+  assert.equal(back.tours[0].keys[1].floor, 1);
+  assert.ok(Math.abs(back.tours[0].keys[0].yaw - 1.2) < 1e-9);
+  assert.ok(back.tours[0].id > 0, 'ids come off the same counter as everything else');
+  assert.ok(back.tours[0].id < back.nextId);
+});
+
+test('a hostile tours key cannot stop a design from opening', async () => {
+  const { deserialize, serialize } = await import('../js/save-load.js');
+  const { createState } = await import('../js/grid.js');
+  const base = JSON.parse(serialize(createState(10, 10)));
+  for (const tours of ['nope', 42, [null], [{}], [{ keys: 'no' }]]) {
+    const state = deserialize(JSON.stringify({ ...base, tours }));
+    assert.deepEqual(state.tours, undefined);
+  }
+});
+
+test('a v9 file loads as a design with no tours in it', async () => {
+  const { deserialize } = await import('../js/save-load.js');
+  const state = deserialize(JSON.stringify({
+    version: 9, w: 12, h: 12, floorHt: 12, floors: [], currentFloor: 0, props: [], links: [],
+  }));
+  assert.equal(state.tours, undefined);
+  assert.equal(state.version, 10);
+});

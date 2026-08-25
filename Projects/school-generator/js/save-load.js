@@ -17,6 +17,8 @@
 //   v8 — `life`: how many people are in the building and the seed that puts
 //        them there (see agents.js)
 //   v9 — `overlay`: a scaled tracing image under the plan (see overlay.js)
+//   v10 — `tours` (recorded camera paths, see tour.js) and `models` (imported
+//        glTF files wearing catalog rows, see models.js)
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
 // polygon rooms in it, a v3 one has no glass and no stairs, a v4 one has no
@@ -71,6 +73,8 @@ import { normalizeRegion, MAX_REGIONS } from './site.js';
 import { normalizeRoof, isDefaultRoof } from './roof.js';
 import { normalizeLife, isDefaultLife } from './agents.js';
 import { normalizeOverlay } from './overlay.js';
+import { normalizeTours } from './tour.js';
+import { normalizeModels, librarySize } from './models.js';
 
 // v9 is the first bump that is not free.
 //
@@ -88,8 +92,21 @@ import { normalizeOverlay } from './overlay.js';
 // localStorage key, and referring to it by id. That keeps saves small and
 // makes a design you email somebody arrive without the drawing they traced —
 // which is the wrong half to lose.
+// v10 adds the second and third records that carry weight, and splits them
+// deliberately. `tours` is a handful of numbers per stop — free, in the sense
+// every version before v9 was free. `models` is the opposite: glTF files as
+// data URLs, which is the same problem the overlay posed and gets the same
+// answer, one hatch wider. `serialize` now takes `{ omitOverlay, omitModels }`
+// and the autosave sheds them in that order — the picture first, because a
+// design without its tracing paper is still the design, and the furniture
+// only if it must be.
+//
+// A design that has shed its models on the way into localStorage still has
+// the *props* placed from them: props.js has always let an unknown type
+// survive a round trip untouched, so re-importing the same file under the
+// same id brings a room's worth of chairs back rather than leaving holes.
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 const MIN_DIM = 4;
 const MAX_DIM = 200;
@@ -119,6 +136,13 @@ export function serialize(state, opts = {}) {
   // keep the design without the picture than lose both.
   const overlay = opts.omitOverlay ? null : normalizeOverlay(out.overlay);
   if (overlay) out.overlay = overlay; else delete out.overlay;
+  // v10's two. A design with no recorded tour and no imported model writes
+  // neither key, so a v9 file still round-trips as the same bytes it went in
+  // as — the fifth time that promise has been kept.
+  const tours = normalizeTours(out.tours);
+  if (tours.length) out.tours = tours; else delete out.tours;
+  const models = opts.omitModels ? [] : normalizeModels(out.models);
+  if (models.length) out.models = models; else delete out.models;
   return JSON.stringify(out);
 }
 
@@ -230,6 +254,13 @@ export function deserialize(json) {
   // all of them land here as null.
   const overlay = normalizeOverlay(d.overlay);
   if (overlay) state.overlay = overlay;
+  // v10, on the same terms as the eight optional records above it: an
+  // unreadable tour is a design with no tour in it, and an unreadable model
+  // is one import fewer, never a design that won't open.
+  const tours = normalizeTours(d.tours);
+  if (tours.length) state.tours = tours;
+  const models = normalizeModels(d.models);
+  if (models.length) state.models = models;
 
   if (Array.isArray(d.props)) {
     for (const raw of d.props.slice(0, MAX_PROPS)) {
@@ -252,6 +283,12 @@ export function deserialize(json) {
   // region and a room can never collide.
   for (const r of (state.site ? state.site.regions : [])) {
     if (!r.id || r.id >= state.nextId) r.id = state.nextId++;
+  }
+  // A tour is an object with an id, the way a polygon room and a prop are,
+  // and off the same counter — so the tour list and the room list can never
+  // name the same number.
+  for (const t of (state.tours || [])) {
+    if (!t.id || t.id >= state.nextId) t.id = state.nextId++;
   }
   return state;
 }
@@ -287,6 +324,11 @@ function writeAutosave(state) {
   try {
     localStorage.setItem(AUTOSAVE_KEY, serialize(state, { omitOverlay: true }));
     return state && state.overlay ? 'partial' : 'failed';
+  } catch (e) { /* fall through — the models are the other heavy record */ }
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, serialize(state, { omitOverlay: true, omitModels: true }));
+    const shed = state && (state.overlay || librarySize(state.models));
+    return shed ? 'partial' : 'failed';
   } catch (e) {
     return 'failed';
   }

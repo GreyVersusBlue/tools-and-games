@@ -7,9 +7,9 @@ import assert from 'node:assert/strict';
 
 import {
   XR_MODE, REFERENCE_SPACES, XR_SPEED, DEADZONE, SNAP_ANGLE, TURN_PRESS,
-  TURN_RELEASE, TURN_MODES, TELEPORT_RANGE,
+  TURN_RELEASE, TURN_MODES,
   xrAvailability, describeXR, rigPosition, headPosition, rotateRigAbout,
-  stickVector, moveVector, snapTurn, smoothTurn, turnStep, teleportTarget, xrHud,
+  stickVector, moveVector, snapTurn, smoothTurn, turnStep,
 } from '../js/xr.js';
 
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -178,24 +178,4 @@ test('one entry point covers both comfort modes', () => {
   assert.equal(turnStep('smooth', true, 1, 0.1).latched, false);
   assert.equal(turnStep('snap', false, 1, 0.1).latched, true);
   assert.deepEqual(TURN_MODES, ['snap', 'smooth']);
-});
-
-// ---------- teleport ----------
-
-test('a teleport lands where the ray hit, unless that is out of range', () => {
-  const from = { x: 0, z: 0 };
-  const near30 = teleportTarget(from, { x: 30, y: 0, z: 0 });
-  assert.equal(near30.x, 30);
-  assert.equal(near30.distance, 30);
-  assert.equal(teleportTarget(from, { x: TELEPORT_RANGE + 1, y: 0, z: 0 }), null);
-  assert.equal(teleportTarget(from, null), null);
-  assert.ok(teleportTarget(from, { x: 200, y: 0, z: 0 }, 400));
-});
-
-// ---------- the readout ----------
-
-test('the headset hud says the storey and the comfort setting', () => {
-  assert.match(xrHud({ floorLabel: 'Level 2', turnMode: 'snap' }), /Level 2 · 30° snap/);
-  assert.match(xrHud({ turnMode: 'smooth' }), /Level 1 · smooth turn/);
-  assert.match(xrHud({ teleport: true }), /teleport ready/);
 });

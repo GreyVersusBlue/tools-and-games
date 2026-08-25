@@ -184,27 +184,3 @@ export function turnStep(mode, latched, x, dt, opts = {}) {
   if (mode === 'smooth') return { turn: smoothTurn(x, dt, opts.rate, opts.dead), latched: false };
   return snapTurn(latched, x, opts);
 }
-
-// ---------- teleport ----------
-
-// The other locomotion everybody expects, and the one that never makes
-// anybody ill. Given where the ray hit the floor, this is the whole of it:
-// a target, refused if it is further than the beam is meant to reach.
-export const TELEPORT_RANGE = 60; // ft
-
-export function teleportTarget(from, hit, range = TELEPORT_RANGE) {
-  if (!hit) return null;
-  const d = Math.hypot(num(hit.x) - num(from.x), num(hit.z) - num(from.z));
-  if (d > num(range, TELEPORT_RANGE)) return null;
-  return { x: num(hit.x), z: num(hit.z), y: num(hit.y), distance: d };
-}
-
-// ---------- the readout ----------
-
-export function xrHud(state = {}) {
-  const parts = [];
-  parts.push(state.floorLabel || 'Level 1');
-  parts.push(state.turnMode === 'smooth' ? 'smooth turn' : `${Math.round((state.snapAngle || SNAP_ANGLE) * 180 / Math.PI)}° snap`);
-  if (state.teleport) parts.push('teleport ready');
-  return parts.join(' · ');
-}
