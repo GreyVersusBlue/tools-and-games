@@ -13,7 +13,10 @@ import { ROOM_TEMPLATES } from './templates.js';
 import { initRender } from './render.js';
 import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
 import { stairMetrics, linksFrom, elevatorsOn, RAMP_SLOPES } from './stairs.js';
-import { FLOOR_FINISHES, DEFAULT_FINISH } from './finish.js';
+import { FLOOR_FINISHES, DEFAULT_FINISH, FACADE_MATERIALS, DEFAULT_FACADE } from './finish.js';
+import { SITE_SURFACES, SITE_MARKINGS, surfaceEntry, markingEntry, regionArea, siteSchedule } from './site.js';
+import { terrainField, terrainRange, ensureTerrain } from './terrain.js';
+import { ROOF_STYLES, ensureRoof, normalizeRoof, isPitched, roofPlan } from './roof.js';
 import {
   SUN_PRESETS, MONTH_NAMES, MAX_LAT, normalizeEnv, presetMinutes, daysInMonth,
   formatClock, formatDate, formatLat, skyState,
@@ -26,7 +29,7 @@ import {
   downloadSave, loadFromFile, autosave, autosaveNow, loadAutosave, clearAutosave,
   listDesigns, saveDesign, loadDesign, deleteDesign, renameDesign,
 } from './save-load.js';
-import { renderFloorPlanCanvas, downloadCanvasPNG } from './blueprint.js';
+import { renderFloorPlanCanvas, renderSitePlanCanvas, downloadCanvasPNG } from './blueprint.js';
 import { isTouchCapable, joystickAxes } from './touch.js';
 
 const canvas = document.getElementById('view');
@@ -79,6 +82,7 @@ const editor = initEditor({
     updateUndoButtons();
     renderFloorList();
     renderStairReadout();
+    renderSiteReadout();
     // Placing or deleting a fixture changes what the light budget is doing,
     // and the sky panel is the only place that says so.
     renderEnvReadout();
@@ -274,6 +278,9 @@ const TOOL_KEYS = {
   Digit1: 'floor', Digit2: 'wall', Digit3: 'door', Digit4: 'room',
   Digit5: 'erase', Digit6: 'poly', Digit7: 'vertex', Digit8: 'prop',
   Digit9: 'stair', Digit0: 'template',
+  // The eleventh tool, on the key that comes after the ten digits on every
+  // keyboard there is.
+  Minus: 'site', NumpadSubtract: 'site',
 };
 const HINTS = {
   floor: 'Floor — click / drag to lay floor tiles',
@@ -286,6 +293,7 @@ const HINTS = {
   prop: 'Furniture — pick a piece, click to place. Click/drag a piece to move it, drag empty space to box-select. R rotates, Delete removes, Ctrl+C/V/D copy/paste/duplicate.',
   stair: 'Vertical — stairs, ramps, elevators and plain floor openings. Click to place one up to the next level. R rotates, drag to move, Delete removes.',
   template: 'Layout — pick a preset, click to stamp its whole furniture list at once. R/⇧R rotates it before you place it.',
+  site: 'Site — lay hardscape and fields, or grade the ground. Region: click corners, close the loop. Grade: drag to raise, ⇧ to lower, Alt to smooth.',
 };
 
 function selectTool(t) {
@@ -304,7 +312,9 @@ function selectTool(t) {
   $('door-panel').classList.toggle('hidden', t !== 'door');
   $('stair-panel').classList.toggle('hidden', t !== 'stair');
   $('template-panel').classList.toggle('hidden', t !== 'template');
+  $('site-panel').classList.toggle('hidden', t !== 'site');
   if (t === 'stair') renderStairReadout();
+  if (t === 'site') renderSitePanel();
   // Hole mode is sticky, so coming back to the polygon tool has to say which
   // of the two things a loop is going to do.
   $('status').textContent = t === 'poly' && editor.holeMode
@@ -726,6 +736,7 @@ $('file-input').addEventListener('change', async (e) => {
     renderFloorList();
     renderStairReadout();
     renderEnvPanel();
+    renderSitePanel();
     adoptedByAudio();
     autosaveNow(state);
     updateUndoButtons();
@@ -780,6 +791,7 @@ function renderDesignsList() {
         renderFloorList();
         renderStairReadout();
         renderEnvPanel();
+        renderSitePanel();
         adoptedByAudio();
         autosaveNow(state);
         updateUndoButtons();
@@ -859,8 +871,13 @@ function exportOpts() {
     showDimensions: $('export-dims').checked,
     showFurniture: $('export-furniture').checked,
     showFinishes: $('export-finishes').checked,
+    contours: $('export-contours').checked,
   };
 }
+
+// The site plan is a sheet, not a floor — it has no storey — so it rides
+// alongside the floor scope rather than inside it.
+const wantsSite = () => $('export-site').checked;
 
 $('export-btn').addEventListener('click', () => openModal(exportOverlay));
 $('export-close').addEventListener('click', () => closeModal(exportOverlay));
@@ -871,21 +888,28 @@ $('export-png').addEventListener('click', () => {
     const canvas = renderFloorPlanCanvas(state, i, opts);
     if (canvas) downloadCanvasPNG(canvas, `school-floor-plan-level-${i + 1}.png`);
   }
+  if (wantsSite()) {
+    const canvas = renderSitePlanCanvas(state, opts);
+    if (canvas) downloadCanvasPNG(canvas, 'school-site-plan.png');
+  }
 });
 
 $('export-print').addEventListener('click', () => {
   const opts = exportOpts();
   printArea.textContent = '';
-  for (const i of exportScope()) {
-    const canvas = renderFloorPlanCanvas(state, i, opts);
-    if (!canvas) continue;
+  const sheet = (canvas) => {
+    if (!canvas) return;
     const page = document.createElement('div');
     page.className = 'print-page';
     const img = document.createElement('img');
     img.src = canvas.toDataURL('image/png');
     page.appendChild(img);
     printArea.appendChild(page);
-  }
+  };
+  // The site plan leads, the way it does in a real set: you look at where the
+  // building sits before you look at what is inside it.
+  if (wantsSite()) sheet(renderSitePlanCanvas(state, opts));
+  for (const i of exportScope()) sheet(renderFloorPlanCanvas(state, i, opts));
   closeModal(exportOverlay);
   window.print();
 });
@@ -901,6 +925,7 @@ $('new-btn').addEventListener('click', () => {
   renderFloorList();
   renderStairReadout();
   renderEnvPanel();
+  renderSitePanel();
   adoptedByAudio();
   updateUndoButtons();
 });
@@ -926,6 +951,181 @@ const LAYER_CHECKBOXES = [
 for (const [id, key] of LAYER_CHECKBOXES) {
   $(id).checked = renderApi.layers[key];
   $(id).addEventListener('change', (e) => renderApi.setLayers({ [key]: e.target.checked }));
+}
+
+// --- site panel: the ground, what's laid on it, and what caps the building ---
+//
+// Three groups of controls that all mean "the outside": the region tool's
+// surface and marking, the grading brush, and the roof and facade. They share
+// a panel because they share a mental mode — you are looking at the building
+// from outside it — and because none of them is big enough to earn its own.
+//
+// The surface and marking pickers do double duty, the way the room panel's do:
+// they set what the *next* region will be, and they restyle the selected one.
+
+const siteSurfaceSel = $('site-surface');
+SITE_SURFACES.forEach((row) => {
+  const o = document.createElement('option');
+  o.value = row.key;
+  o.textContent = row.label;
+  siteSurfaceSel.appendChild(o);
+});
+
+const siteMarkingSel = $('site-marking');
+{
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'None';
+  siteMarkingSel.appendChild(none);
+  for (const m of SITE_MARKINGS) {
+    const o = document.createElement('option');
+    o.value = m.key;
+    o.textContent = m.label;
+    siteMarkingSel.appendChild(o);
+  }
+}
+
+const SITE_MODES = [
+  { mode: 'region', label: 'Region', title: 'Draw a paved, planted or playing surface' },
+  { mode: 'grade', label: 'Grade', title: 'Raise, lower and smooth the ground' },
+];
+const siteModes = $('site-modes');
+SITE_MODES.forEach((m) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.mode = m.mode;
+  b.textContent = m.label;
+  b.title = m.title;
+  b.addEventListener('click', () => {
+    editor.setSiteMode(m.mode);
+    renderSitePanel();
+    $('status').textContent = HINTS.site;
+  });
+  siteModes.appendChild(b);
+});
+
+const siteRoofSel = $('site-roof');
+ROOF_STYLES.forEach((r) => {
+  const o = document.createElement('option');
+  o.value = r.key;
+  o.textContent = r.label;
+  siteRoofSel.appendChild(o);
+});
+
+const siteFacadeSel = $('site-facade');
+FACADE_MATERIALS.forEach((f) => {
+  const o = document.createElement('option');
+  o.value = f.key;
+  o.textContent = f.label;
+  siteFacadeSel.appendChild(o);
+});
+
+function siteStyleChanged() {
+  // `setSiteStyle` restyles the selected region if there is one, and reports
+  // whether it actually changed anything — so a picker that only sets the next
+  // region's surface doesn't push an undo entry.
+  if (editor.setSiteStyle(siteSurfaceSel.value, siteMarkingSel.value || null)) {
+    $('status').textContent = 'Region restyled.';
+  }
+  renderSiteReadout();
+}
+
+siteSurfaceSel.addEventListener('change', () => {
+  // Picking a marking implies a surface, so choosing one the other way round
+  // shouldn't silently keep a court's paint on a lawn.
+  const m = markingEntry(siteMarkingSel.value);
+  if (m && m.surf !== siteSurfaceSel.value) siteMarkingSel.value = '';
+  siteStyleChanged();
+});
+siteMarkingSel.addEventListener('change', () => {
+  const m = markingEntry(siteMarkingSel.value);
+  if (m) siteSurfaceSel.value = m.surf;
+  siteStyleChanged();
+});
+
+$('site-brush').addEventListener('input', (e) => {
+  editor.setSiteBrush(e.target.value);
+  $('site-brush-value').textContent = `${editor.siteBrush} ft`;
+});
+
+// A roof change is a change to the design but not an undoable edit, the same
+// call the sky panel makes — nobody wants Ctrl+Z to walk back through the
+// eleven pitches a slider passed through.
+function roofChanged() {
+  state.roof = normalizeRoof(state.roof);
+  rebuild();
+  autosave(state);
+  renderSitePanel();
+}
+
+siteRoofSel.addEventListener('change', (e) => {
+  ensureRoof(state).style = e.target.value;
+  roofChanged();
+});
+$('site-pitch').addEventListener('input', (e) => {
+  ensureRoof(state).pitch = Number(e.target.value);
+  roofChanged();
+});
+siteFacadeSel.addEventListener('change', (e) => {
+  ensureRoof(state).facade = e.target.value;
+  roofChanged();
+});
+
+// What the site currently is, in the two numbers a civil drawing would lead
+// with: how much of it is paved, and how much it falls across.
+function renderSiteReadout() {
+  const el = $('site-readout');
+  if (!el) return;
+  const rows = siteSchedule(state);
+  const relief = terrainRange(terrainField(state)).relief;
+  const total = rows.reduce((n, r) => n + r.sqft, 0);
+  const paved = rows
+    .filter((r) => ['asphalt', 'concrete', 'court', 'track'].includes(r.key))
+    .reduce((n, r) => n + r.sqft, 0);
+  const sel = editor.siteSelection;
+  const lines = [];
+  if (sel) {
+    const entry = surfaceEntry(sel.surf);
+    const m = sel.mark ? markingEntry(sel.mark) : null;
+    lines.push(`<b>${sel.name || entry.label}</b> — ${Math.round(regionArea(sel)).toLocaleString()} ft²` +
+      (m ? ` · ${m.label}` : ''));
+  }
+  lines.push(rows.length
+    ? `${editor.siteRegionCount} regions · ${Math.round(total).toLocaleString()} ft² ` +
+      `(${Math.round(paved).toLocaleString()} paved)`
+    : 'No site regions yet.');
+  lines.push(relief > 0.05
+    ? `Relief ${relief.toFixed(1)} ft across the site.`
+    : 'Level site — nothing graded yet.');
+  const plan = roofPlan(state);
+  lines.push(`Roof: ${plan.style}${isPitched(plan.style) ? ` ${plan.pitch}:12` : ''} · ` +
+    `${plan.blocks.length || plan.outlines.length} mass${(plan.blocks.length || plan.outlines.length) === 1 ? '' : 'es'}.`);
+  el.innerHTML = lines.join('<br />');
+}
+
+function renderSitePanel() {
+  const mode = editor.siteMode;
+  siteModes.querySelectorAll('button').forEach((b) => {
+    const on = b.dataset.mode === mode;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  $('site-region-opts').classList.toggle('hidden', mode !== 'region');
+  $('site-grade-opts').classList.toggle('hidden', mode !== 'grade');
+  siteSurfaceSel.value = editor.siteSurface;
+  siteMarkingSel.value = editor.siteMarking || '';
+  $('site-brush').value = String(editor.siteBrush);
+  $('site-brush-value').textContent = `${editor.siteBrush} ft`;
+  const roof = normalizeRoof(state.roof);
+  siteRoofSel.value = roof.style;
+  siteFacadeSel.value = roof.facade;
+  $('site-pitch').value = String(roof.pitch);
+  $('site-pitch-value').textContent = `${roof.pitch}:12`;
+  // Pitch is meaningless on a flat roof, so it isn't offered on one.
+  const pitched = isPitched(roof.style);
+  $('site-pitch').disabled = !pitched;
+  $('site-pitch-label').style.opacity = pitched ? '' : '0.45';
+  renderSiteReadout();
 }
 
 // --- sky panel: the sun, the date and the building's own lights ---
@@ -1347,6 +1547,7 @@ selectTool('floor');
 renderFloorList();
 renderStairReadout();
 renderEnvPanel();
+renderSitePanel();
 renderAudioPanel();
 audio.setWorld(state);
 updateUndoButtons();

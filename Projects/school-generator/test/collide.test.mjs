@@ -30,6 +30,9 @@ import {
   openingRailSegments, elevatorSegments, doorSegments,
 } from '../js/collide.js';
 import { elevatorSize } from '../js/stairs.js';
+import {
+  ensureTerrain, terrainField, raiseTerrain, groundAt, MIN_BRUSH, MAX_BRUSH,
+} from '../js/terrain.js';
 
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 
@@ -612,4 +615,110 @@ test('the collider pads each wall by its own half-thickness', () => {
   const pads = segs.map((x) => x.pad).sort();
   assert.deepEqual(pads, [WALL_T_INT / 2, WALL_T_EXT / 2]);
   assert.ok(segs.every((x) => x.t === x.pad * 2));
+});
+
+// ---------- the site under your feet ----------
+//
+// Phase 5 of the second arc: `GROUND_Y` stops being the answer to "what is
+// outside the building" and becomes only the answer for a design that never
+// graded anything.
+
+test('a design with no terrain still stands on datum', () => {
+  const s = walledRoom();
+  assert.equal(supportAt(s, 70, 70, 0).y, GROUND_Y);
+  assert.equal(supportAt(s, 70, 70, 0).kind, 'ground');
+});
+
+test('graded ground is what holds you up outside', () => {
+  const s = walledRoom();
+  const t = ensureTerrain(s);
+  raiseTerrain(t, 300, 300, MAX_BRUSH, 8);
+  const site = terrainField(s);
+  const under = supportAt(s, 300, 300, 8, { site });
+  assert.equal(under.kind, 'ground');
+  assert.ok(under.y > 6, `the berm holds you at ${under.y}ft`);
+  // ...and the slab still wins inside, because the pad holds it at datum.
+  const inside = supportAt(s, 16, 14, 0, { site });
+  assert.equal(inside.kind, 'floor');
+  assert.equal(inside.y, 0);
+});
+
+test('the collider carries the site it was built against', () => {
+  const s = walledRoom();
+  const t = ensureTerrain(s);
+  raiseTerrain(t, 300, 300, MAX_BRUSH, 8);
+  const c = collide(s);
+  assert.ok(c.site, 'built one for itself');
+  // A step taken with that collider is resolved against the graded ground
+  // without the caller having to say so.
+  const r = moveWalker(s, c, feetAt(300, 300, 8), 0.4, 0, { grounded: true });
+  assert.ok(r.support.y > 6, 'the walker is standing on the berm');
+});
+
+test('a bank too steep to step up refuses you, and one you can does not', () => {
+  const s = walledRoom();
+  const t = ensureTerrain(s);
+  // A tight, tall mound: a wall of earth on its flank.
+  raiseTerrain(t, 300, 300, MIN_BRUSH, 20);
+  const c = collide(s);
+  const flank = moveWalker(s, c, feetAt(300 - MIN_BRUSH, 300, 0), -0.0, 0, { grounded: true });
+  assert.ok(flank.support, 'there is ground under you at the foot of it');
+  const climb = tryStep(s, c, feetAt(300 - MIN_BRUSH + 1, 300, 0), -0, 0, { grounded: true });
+  assert.ok(climb === null || climb.support.y <= STEP_UP + 1e-6,
+    'you never end up more than a step above where you started');
+});
+
+test('a berm hands you the ground storey, not the one above it', () => {
+  const s = walledRoom();
+  addFloor(s, 1);
+  const t = ensureTerrain(s);
+  raiseTerrain(t, 300, 300, MAX_BRUSH, 15);
+  const site = terrainField(s);
+  const g = groundAt(site, 300, 300);
+  assert.ok(g > FLOOR_H, 'the mound really is taller than a storey');
+  assert.equal(storeyAt(s, g), 1, 'measured from datum it reads as level two');
+  assert.equal(storeyAt(s, g, g), 0, 'measured from the ground under you it does not');
+});
+
+test('a walker crossing the sample school\'s site follows the ground', () => {
+  const s = buildSampleSchool();
+  const site = terrainField(s);
+  const c = buildCollider(s, 0, catalogEntry, { site });
+  // Start on the entry plaza just outside the west door and walk west, across
+  // the bus loop and out over the graded ground beyond it. A lane a few feet
+  // north of the door, because the flagpole stands right outside it — and
+  // being stopped by a flagpole is the collider working, not failing.
+  let pos = { x: 12, y: 0, z: 50 };
+  let steps = 0, offGround = 0;
+  for (let i = 0; i < 300; i++) {
+    const r = moveWalker(s, c, pos, -0.4, 0, { grounded: true, site });
+    if (r.blocked) break;
+    pos = { x: r.x, y: r.support ? r.support.y : pos.y, z: r.z };
+    steps++;
+    // Whatever it is standing on, it is standing on the surface the model
+    // says is there — never floating over it or sunk into it.
+    const expect = r.support.kind === 'ground' ? groundAt(site, pos.x, pos.z) : r.support.y;
+    if (Math.abs(pos.y - expect) > 1e-6) offGround++;
+  }
+  assert.ok(steps > 60, `it got somewhere (${steps} steps)`);
+  assert.equal(offGround, 0, 'and never left the surface under it');
+  assert.ok(pos.x < 0, `it made it off the plaza (x = ${pos.x.toFixed(1)})`);
+});
+
+test('the sample school\'s berm is walkable, not a cliff', () => {
+  const s = buildSampleSchool();
+  const site = terrainField(s);
+  const c = buildCollider(s, 0, catalogEntry, { site });
+  // The lot sits below datum and the field above it; walking between them
+  // should never present a step bigger than a walker can take.
+  let pos = { x: 150, y: groundAt(site, 150, 150), z: 150 };
+  let worst = 0;
+  for (let i = 0; i < 400; i++) {
+    const r = moveWalker(s, c, pos, 0.5, 0, { grounded: true, site });
+    if (r.blocked) break;
+    worst = Math.max(worst, Math.abs((r.support ? r.support.y : pos.y) - pos.y));
+    pos = { x: r.x, y: r.support ? r.support.y : pos.y, z: r.z };
+  }
+  assert.ok(worst <= STEP_UP + 1e-6, `the biggest step was ${worst.toFixed(2)}ft`);
+  assert.ok(pos.x > 200, `and it crossed onto the field (x = ${pos.x.toFixed(0)})`);
 });

@@ -9,6 +9,13 @@
 // stair symbol (or a dashed hole for the floor a stair opens into), room
 // labels with square footage, a scale bar and a north arrow. Nothing here
 // changes the save format; it only reads it.
+//
+// Phase 5 of the second arc adds a second sheet on the same terms: the *site*
+// plan. Same pure-then-draw split (`computeSitePlan`, then `drawSitePlan`),
+// same symbols where they apply, and one new one — contour lines, which come
+// straight out of terrain.js's marching squares over the same field the walker
+// stands on. The building appears on it as an outline and nothing else, which
+// is what a site plan is: the ground, and where the building sits on it.
 
 import {
   CELL, EDGE_WALL, EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW,
@@ -29,6 +36,9 @@ import { footprintOf } from './propplace.js';
 import { wallProbe } from './walls.js';
 import { finishSchedule } from './finish.js';
 import { segLeaves, leafEnd, leafAngle, gridDoorSpec, gridWindowSpec, gridOpeningWidth } from './openings.js';
+import { regionsOf, markingsFor, surfaceEntry, markingEntry, siteSchedule, regionArea } from './site.js';
+import { terrainField, contours, terrainRange, CONTOUR_FT } from './terrain.js';
+import { roofMask, maskOutlines } from './roof.js';
 
 const EDGE_KIND_NAME = { [EDGE_WALL]: 'wall', [EDGE_GLASS]: 'glass', [EDGE_RAIL]: 'rail' };
 const SEG_KIND_NAME = { [SEG_WALL]: 'wall', [SEG_GLASS]: 'glass', [SEG_RAIL]: 'rail' };
@@ -171,7 +181,12 @@ function planProps(state, floorIndex) {
     const entry = catalogEntry(p.type);
     if (!entry) continue;
     const { hw, hd } = footprintOf(entry, p);
-    out.push({ x: p.x, z: p.z, hw, hd, rotationY: p.rotationY || 0, mount: p.mount, name: entry.name });
+    // `site` rides along so the site plan can pick out the outdoor pieces
+    // without looking the catalog row up a second time.
+    out.push({
+      x: p.x, z: p.z, hw, hd, rotationY: p.rotationY || 0,
+      mount: p.mount, name: entry.name, site: !!entry.site, geo: entry.geo,
+    });
   }
   return out;
 }
@@ -259,6 +274,63 @@ export function computeFloorPlan(state, floorIndex) {
     finishes: finishSchedule(floor),
     props: propsList,
     stairs,
+  };
+}
+
+// ---------- the site plan ----------
+
+// Everything a site plan needs to draw, in world feet, with no canvas/DOM
+// dependency — the same bargain `computeFloorPlan` strikes, and the reason
+// both are testable headless.
+//
+// The building is one outline here, taken from the *ground* storey's mask
+// rather than from its walls: a site plan cares where the building meets the
+// earth, not how it is partitioned inside.
+export function computeSitePlan(state, opts = {}) {
+  const field = terrainField(state);
+  const regions = regionsOf(state).map((r) => ({
+    id: r.id,
+    name: r.name,
+    surf: r.surf,
+    label: surfaceEntry(r.surf).label,
+    color: surfaceEntry(r.surf).color,
+    hatch: surfaceEntry(r.surf).hatch,
+    mark: r.mark ? markingEntry(r.mark).label : null,
+    sqft: regionArea(r),
+    pts: r.pts.map((p) => ({ x: p.x, z: p.z })),
+    strokes: markingsFor(r),
+  }));
+  const ground = state.floors[0] || null;
+  const building = ground ? maskOutlines(roofMask(ground, state.w, state.h)) : [];
+  const lines = opts.contours === false ? [] : contours(field, opts.interval || CONTOUR_FT);
+  // Site props only: a desk inside the building has no business on a site
+  // plan, and the catalog already says which rows are outdoor pieces.
+  const propsList = planProps(state, 0).filter((p) => p.site);
+
+  const b = { minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity };
+  for (const r of regions) for (const p of r.pts) extendBounds(b, p.x, p.z);
+  for (const loop of building) for (const p of loop) extendBounds(b, p.x, p.z);
+  for (const p of propsList) {
+    const rad = Math.hypot(p.hw, p.hd);
+    extendBounds(b, p.x - rad, p.z - rad); extendBounds(b, p.x + rad, p.z + rad);
+  }
+  if (!Number.isFinite(b.minX)) {
+    b.minX = 0; b.minZ = 0;
+    b.maxX = (state.w || 0) * CELL; b.maxZ = (state.h || 0) * CELL;
+  }
+  const pad = 12;
+  b.minX -= pad; b.minZ -= pad; b.maxX += pad; b.maxZ += pad;
+
+  return {
+    label: 'Site',
+    bounds: b,
+    regions,
+    building,
+    contours: lines,
+    props: propsList,
+    schedule: siteSchedule(state),
+    relief: terrainRange(field),
+    interval: opts.interval || CONTOUR_FT,
   };
 }
 
@@ -663,7 +735,7 @@ function drawTitleBlock(ctx, plan, layout, canvasW, opts) {
   ctx.fillText(opts.title || 'School Generator', layout.margin, layout.titleH * 0.42);
   ctx.font = '12px system-ui, sans-serif';
   ctx.fillStyle = '#5a6472';
-  ctx.fillText(`${plan.label} — Floor Plan`, layout.margin, layout.titleH * 0.75);
+  ctx.fillText(`${plan.label} — ${opts.sheet || 'Floor Plan'}`, layout.margin, layout.titleH * 0.75);
   ctx.textAlign = 'right';
   ctx.fillText(opts.date || new Date().toLocaleDateString(), canvasW - layout.margin, layout.titleH * 0.75);
 }
@@ -687,6 +759,219 @@ export function drawFloorPlan(ctx, plan, layout, opts = {}) {
   drawTitleBlock(ctx, plan, layout, ctx.canvas.width, opts);
 }
 
+// ---------- drawing the site plan ----------
+
+function drawSiteRegions(ctx, plan, layout) {
+  for (const r of plan.regions) {
+    ctx.fillStyle = r.color + 'cc';
+    fillPath(ctx, plan, layout, r.pts);
+    ctx.strokeStyle = '#5a6472';
+    ctx.lineWidth = 1;
+    strokePath(ctx, plan, layout, r.pts, true);
+  }
+}
+
+function drawSiteMarkings(ctx, plan, layout) {
+  ctx.lineCap = 'butt';
+  for (const r of plan.regions) {
+    for (const stroke of r.strokes) {
+      ctx.strokeStyle = stroke.color || '#ffffff';
+      // Painted lines are inches wide and a plan is at eight pixels to the
+      // foot, so a stripe drawn to scale would vanish. Held at a hairline
+      // minimum instead, which is what a drawing does.
+      ctx.lineWidth = Math.max(0.8, (stroke.w || 0.33) * layout.scale);
+      strokePath(ctx, plan, layout, stroke.pts, !!stroke.closed);
+    }
+  }
+}
+
+// The ground, as a surveyor draws it: a light line per interval, a heavier one
+// every fifth, and the elevation written on the heavy ones.
+function drawContours(ctx, plan, layout) {
+  if (!plan.contours.length) return;
+  ctx.lineCap = 'round';
+  for (const line of plan.contours) {
+    const index = Math.abs(Math.round(line.level / plan.interval)) % 5 === 0;
+    ctx.strokeStyle = index ? 'rgba(120,96,64,0.75)' : 'rgba(140,120,90,0.42)';
+    ctx.lineWidth = index ? 1.4 : 0.8;
+    ctx.beginPath();
+    for (const [a, b] of line.segs) {
+      const p0 = toPx(plan, layout, a.x, a.z);
+      const p1 = toPx(plan, layout, b.x, b.z);
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+    }
+    ctx.stroke();
+    if (index && line.segs.length) {
+      // One label per index contour, on its longest segment — enough to read
+      // the direction of fall without turning the sheet into a number soup.
+      let best = null, bestLen = 0;
+      for (const [a, b] of line.segs) {
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        if (len > bestLen) { bestLen = len; best = [a, b]; }
+      }
+      const mid = toPx(plan, layout, (best[0].x + best[1].x) / 2, (best[0].z + best[1].z) / 2);
+      ctx.font = '9px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(mid.x - 11, mid.y - 6, 22, 11);
+      ctx.fillStyle = '#7a6240';
+      ctx.fillText(`${line.level > 0 ? '+' : ''}${line.level}`, mid.x, mid.y + 3);
+    }
+  }
+}
+
+function drawBuildingOutline(ctx, plan, layout) {
+  // Opaque, not a tint. On a site plan the building is the one thing that is
+  // *not* ground, and washing the lawn through it makes it read as another
+  // kind of surface — which was exactly the mistake the first draft made.
+  for (const loop of plan.building) {
+    ctx.fillStyle = '#e8e6e1';
+    fillPath(ctx, plan, layout, loop);
+    ctx.strokeStyle = '#1a2029';
+    ctx.lineWidth = 2.5;
+    strokePath(ctx, plan, layout, loop, true);
+  }
+  // ...and a hatch across it, so it reads as a mass rather than as a hole in
+  // the drawing. Forty-five degrees, at a spacing that stays legible however
+  // far the sheet has been scaled down.
+  if (!plan.building.length) return;
+  ctx.save();
+  ctx.beginPath();
+  for (const loop of plan.building) {
+    loop.forEach((p, i) => {
+      const { x, y } = toPx(plan, layout, p.x, p.z);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+  }
+  ctx.clip();
+  const a = toPx(plan, layout, plan.bounds.minX, plan.bounds.minZ);
+  const b = toPx(plan, layout, plan.bounds.maxX, plan.bounds.maxZ);
+  ctx.strokeStyle = 'rgba(26,32,41,0.16)';
+  ctx.lineWidth = 1;
+  const step = 9;
+  ctx.beginPath();
+  for (let d = a.x - (b.y - a.y); d < b.x; d += step) {
+    ctx.moveTo(d, a.y);
+    ctx.lineTo(d + (b.y - a.y), b.y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Planting draws round, everything else draws square. It is the one symbol a
+// site plan has that a floor plan doesn't, and it is the difference between a
+// row of trees and a row of filing cabinets.
+const ROUND_GEO = new Set(['tree', 'shrub', 'planter', 'boulder']);
+
+function drawSiteProps(ctx, plan, layout) {
+  for (const p of plan.props) {
+    if (ROUND_GEO.has(p.geo)) {
+      const { x, y } = toPx(plan, layout, p.x, p.z);
+      const r = Math.max(2, Math.max(p.hw, p.hd) * layout.scale);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = p.geo === 'tree' ? 'rgba(74,122,58,0.30)' : 'rgba(96,132,84,0.28)';
+      ctx.fill();
+      ctx.strokeStyle = '#4f7a3f';
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+      if (p.geo === 'tree') {
+        // The nurseryman's symbol: a cross at the trunk, so a canopy that
+        // overlaps a walk still says where the thing is actually planted.
+        ctx.beginPath();
+        ctx.moveTo(x - r * 0.35, y); ctx.lineTo(x + r * 0.35, y);
+        ctx.moveTo(x, y - r * 0.35); ctx.lineTo(x, y + r * 0.35);
+        ctx.stroke();
+      }
+      continue;
+    }
+    const c = Math.cos(p.rotationY || 0), s = Math.sin(p.rotationY || 0);
+    const corners = [[-p.hw, -p.hd], [p.hw, -p.hd], [p.hw, p.hd], [-p.hw, p.hd]]
+      .map(([lx, lz]) => ({ x: p.x + lx * c + lz * s, z: p.z - lx * s + lz * c }));
+    ctx.fillStyle = 'rgba(90,100,114,0.24)';
+    fillPath(ctx, plan, layout, corners);
+    ctx.strokeStyle = '#5a6472';
+    ctx.lineWidth = 1.1;
+    strokePath(ctx, plan, layout, corners, true);
+  }
+}
+
+function drawSiteLabels(ctx, plan, layout) {
+  ctx.textAlign = 'center';
+  for (const r of plan.regions) {
+    if (!r.name && !r.mark) continue;
+    let cx = 0, cz = 0;
+    for (const p of r.pts) { cx += p.x; cz += p.z; }
+    cx /= r.pts.length; cz /= r.pts.length;
+    const { x, y } = toPx(plan, layout, cx, cz);
+    const text = r.name || r.mark;
+    ctx.font = '600 11px system-ui, sans-serif';
+    const w = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    ctx.fillRect(x - w / 2 - 4, y - 9, w + 8, 15);
+    ctx.fillStyle = '#1a2029';
+    ctx.fillText(text, x, y + 2);
+    ctx.font = '9px system-ui, sans-serif';
+    ctx.fillStyle = '#5a6472';
+    ctx.fillText(`${Math.round(r.sqft).toLocaleString()} ft²`, x, y + 14);
+  }
+}
+
+function drawSiteLegend(ctx, plan, layout, canvasW, canvasH) {
+  const rows = plan.schedule.filter((r) => r.sqft > 0);
+  if (!rows.length) return;
+  const lineH = 15, pad = 8, boxW = 240;
+  const boxH = pad * 2 + 16 + rows.length * lineH + 16;
+  const x0 = 12, y0 = canvasH - boxH - 12;
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.fillRect(x0, y0, boxW, boxH);
+  ctx.strokeStyle = '#d3d7de';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, boxW - 1, boxH - 1);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#1a2029';
+  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.fillText('SITE SURFACE SCHEDULE', x0 + pad, y0 + pad + 10);
+  ctx.font = '10px system-ui, sans-serif';
+  rows.forEach((r, i) => {
+    const y = y0 + pad + 16 + i * lineH + 8;
+    ctx.fillStyle = r.color;
+    ctx.fillRect(x0 + pad, y - 8, 10, 10);
+    ctx.strokeStyle = '#9aa5b5';
+    ctx.strokeRect(x0 + pad + 0.5, y - 7.5, 9, 9);
+    ctx.fillStyle = '#1a2029';
+    ctx.fillText(r.label, x0 + pad + 16, y);
+    ctx.fillStyle = '#5a6472';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${Math.round(r.sqft).toLocaleString()} ft²`, x0 + boxW - pad, y);
+    ctx.textAlign = 'left';
+  });
+  ctx.fillStyle = '#5a6472';
+  ctx.font = '10px system-ui, sans-serif';
+  const relief = plan.relief.relief;
+  ctx.fillText(
+    relief > 0.05
+      ? `Contours at ${plan.interval} ft · ${plan.relief.lo.toFixed(1)} to ${plan.relief.hi.toFixed(1)} ft`
+      : 'Level site — no contours',
+    x0 + pad, y0 + boxH - pad - 2);
+}
+
+export function drawSitePlan(ctx, plan, layout, opts = {}) {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  drawSiteRegions(ctx, plan, layout);
+  if (opts.contours !== false) drawContours(ctx, plan, layout);
+  drawSiteMarkings(ctx, plan, layout);
+  drawBuildingOutline(ctx, plan, layout);
+  if (opts.showFurniture !== false) drawSiteProps(ctx, plan, layout);
+  drawSiteLabels(ctx, plan, layout);
+  if (opts.showFinishes !== false) drawSiteLegend(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
+  drawScaleAndNorth(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
+  drawTitleBlock(ctx, plan, layout, ctx.canvas.width, { ...opts, sheet: 'Site Plan' });
+}
+
 const MARGIN = 40;
 const TITLE_H = 56;
 const MAX_PX = 4000; // sane cap on export canvas size
@@ -706,6 +991,26 @@ export function renderFloorPlanCanvas(state, floorIndex, opts = {}) {
   canvas.height = Math.ceil(hFt * scale + MARGIN * 2 + TITLE_H);
   const ctx = canvas.getContext('2d');
   drawFloorPlan(ctx, plan, layout, opts);
+  return canvas;
+}
+
+// The site plan's own canvas. Same sizing rules as a floor plan's — a site is
+// four or five times as wide, so it usually lands on the MAX_PX cap and comes
+// out at two or three pixels to the foot rather than eight.
+export function renderSitePlanCanvas(state, opts = {}) {
+  const plan = computeSitePlan(state, opts);
+  if (!plan) return null;
+  const wFt = plan.bounds.maxX - plan.bounds.minX;
+  const hFt = plan.bounds.maxZ - plan.bounds.minZ;
+  let scale = opts.scale || 4; // px per ft — a site is a wider drawing
+  const rawW = wFt * scale + MARGIN * 2;
+  const rawH = hFt * scale + MARGIN * 2 + TITLE_H;
+  if (rawW > MAX_PX || rawH > MAX_PX) scale *= Math.min(MAX_PX / rawW, MAX_PX / rawH);
+  const layout = { scale, margin: MARGIN, titleH: TITLE_H };
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(wFt * scale + MARGIN * 2);
+  canvas.height = Math.ceil(hFt * scale + MARGIN * 2 + TITLE_H);
+  drawSitePlan(canvas.getContext('2d'), plan, layout, opts);
   return canvas;
 }
 

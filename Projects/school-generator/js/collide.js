@@ -40,6 +40,7 @@ import {
   openingRails, elevatorsOn, elevatorWalls,
 } from './stairs.js';
 import { wallProbe } from './walls.js';
+import { terrainField, emptyField, groundAt } from './terrain.js';
 import {
   collectDoorLeaves, leafSegment, updateLeaves, closeAll,
   gridOpeningWidth, LEAF_T,
@@ -69,7 +70,11 @@ export const JUMP_V = 9;          // ft/s — about a 1.2ft hop
 // Props shorter than this are things you walk over, not into: a rug is not an
 // obstacle, and a design tool that treats one as a wall feels broken.
 export const MIN_OBSTACLE_H = 0.75; // ft
-export const GROUND_Y = 0;        // ft — the site outside the building
+// Datum. Until Phase 5 this *was* the site — one number, the ground everywhere
+// outside the building. It survives as the elevation of a design with no
+// terrain in it, which is what `groundAt(null, ...)` returns and what every
+// caller that doesn't hand `supportAt` a site field still gets.
+export const GROUND_Y = 0;        // ft
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -273,11 +278,16 @@ export function elevatorSegments(state, floorIndex) {
 // segment that number implies is computed at the moment it's needed rather
 // than stored. So the world is still built once; it simply has a few hinges
 // in it now, and `resolvePoint` asks each hinge where it currently is.
-export function buildCollider(state, floorIndex, catalogGet) {
+export function buildCollider(state, floorIndex, catalogGet, opts = {}) {
   const floor = state.floors[floorIndex];
   const probe = floor ? wallProbe(floor) : null;
   return {
     floor: floorIndex,
+    // The graded ground, built once for the whole building and shared between
+    // its storeys rather than recomputed eight times — `terrainField` is a
+    // sweep over the site, and it doesn't change between levels. A caller with
+    // one already (walkthrough.js makes one at walk-start) passes it in.
+    site: opts.site || terrainField(state),
     segs: wallSegments(floor, probe)
       .concat(openingRailSegments(state, floorIndex))
       .concat(elevatorSegments(state, floorIndex)),
@@ -287,7 +297,7 @@ export function buildCollider(state, floorIndex, catalogGet) {
   };
 }
 
-export const emptyCollider = () => ({ floor: -1, segs: [], props: [], doors: [] });
+export const emptyCollider = () => ({ floor: -1, segs: [], props: [], doors: [], site: emptyField() });
 
 // Swing this storey's leaves toward (or away from) a walker at (x, z), and
 // report whether anything moved — walkthrough.js drives this once a frame and
@@ -396,10 +406,16 @@ export function crossesWall(collider, x0, z0, x1, z1) {
 // Which storey a pair of feet is on. Floors stack at fixed intervals, so this
 // is a division — and it deliberately floors rather than rounds, so climbing a
 // run hands you to the level above only once you have actually arrived.
-export function storeyAt(state, feetY) {
+//
+// `groundY` is Phase 5's one correction to it. Walk up a fifteen-foot berm
+// outside and your feet are at fifteen feet, which used to mean "second
+// storey" and handed you the wrong collider — the trees on the hill stopped
+// being solid. Measuring from the ground under you instead costs one argument
+// and is a no-op inside the building, where the pad holds the ground at datum.
+export function storeyAt(state, feetY, groundY = 0) {
   const ht = state.floorHt || FLOOR_H;
   const n = state.floors.length;
-  return clamp(Math.floor(feetY / ht + 1e-6), 0, n - 1);
+  return clamp(Math.floor((feetY - groundY) / ht + 1e-6), 0, n - 1);
 }
 
 // The highest walkable surface under (x, z) that a walker with their feet at
@@ -436,7 +452,14 @@ export function supportAt(state, x, z, feetY, opts = {}) {
   // The site itself, considered last so that a slab laid on it wins the tie —
   // standing on the ground floor is standing on a floor, and a caller that
   // asks what kind of surface it is should hear so.
-  if (opts.ground !== false) consider(GROUND_Y, 'ground', -1);
+  //
+  // This is the line the whole phase turns on. It used to read `GROUND_Y`, a
+  // constant zero; it is now a lookup into the graded heightfield, and every
+  // other behaviour the walker has out on the site — refusing a bank that is
+  // too steep to step up, landing on a slope after a jump, being handed the
+  // right storey's collider on a berm — falls out of it without another line
+  // of physics.
+  if (opts.ground !== false) consider(groundAt(opts.site || null, x, z), 'ground', -1);
 
   return best;
 }
@@ -447,9 +470,12 @@ export function supportAt(state, x, z, feetY, opts = {}) {
 // `pos.y` is the *feet*, not the eye — every height in this module is.
 export function tryStep(state, collider, pos, dx, dz, opts = {}) {
   const r = opts.radius ?? WALKER_R;
+  // The collider already carries the site it was built against, so a caller
+  // never has to remember to hand the ground to a function about walking.
+  const o = opts.site || !collider || !collider.site ? opts : { ...opts, site: collider.site };
   const p = resolvePoint(collider, pos.x + dx, pos.z + dz, r);
   if (crossesWall(collider, pos.x, pos.z, p.x, p.z)) return null;
-  const support = supportAt(state, p.x, p.z, pos.y, opts);
+  const support = supportAt(state, p.x, p.z, pos.y, o);
   if (!support) return null;
   // Grounded, a drop is an edge you stop at rather than fall off. Airborne
   // (a jump, or dropping out of ghost mode), there is nothing to stop at.
@@ -461,9 +487,10 @@ export function tryStep(state, collider, pos, dx, dz, opts = {}) {
 // is what makes walking into a wall at an angle slide along it rather than
 // stop dead. Returns where you ended up and what is under you there.
 export function moveWalker(state, collider, pos, dx, dz, opts = {}) {
+  const site = opts.site || (collider && collider.site) || null;
   const stay = (blocked) => ({
     x: pos.x, z: pos.z, blocked,
-    support: supportAt(state, pos.x, pos.z, pos.y, opts),
+    support: supportAt(state, pos.x, pos.z, pos.y, site ? { ...opts, site } : opts),
     slid: false,
   });
   if (!dx && !dz) return stay(false);

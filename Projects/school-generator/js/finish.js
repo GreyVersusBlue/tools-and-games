@@ -49,6 +49,41 @@ export const FLOOR_FINISHES = [
   { key: 'terrazzo', label: 'Terrazzo', color: '#c3bdb2', grain: 'chip', tile: 3, hatch: 'chips', absorb: 0.02 },
 ];
 
+// ---------- the outside of the building ----------
+//
+// Phase 5 of the second arc. A facade material is the same kind of row as a
+// floor finish and lives beside it for the same reason: "what this material
+// is" is one fact, and the renderer, the site plan and the bill of materials
+// should all read it off the same line. `color` is the material's own colour,
+// `grain` the procedural texture over it, `tile` how many feet of wall one
+// tile of that texture covers, and `hatch` how the plan draws it.
+//
+// These are the five things a mid-century American school is actually clad in,
+// plus wood for the one that isn't. Every colour is a real product colour: red
+// face brick, buff split-face block, a grey factory-finished metal panel,
+// sand-coloured EIFS, and the pale grey of precast.
+export const FACADE_MATERIALS = [
+  { key: 'brick', label: 'Face brick', color: '#9a5744', grain: 'brick', tile: 4, hatch: 'brick' },
+  { key: 'brick-buff', label: 'Buff brick', color: '#bda781', grain: 'brick', tile: 4, hatch: 'brick' },
+  { key: 'block', label: 'Split-face block', color: '#a49f93', grain: 'block', tile: 4, hatch: 'grid' },
+  { key: 'panel', label: 'Metal panel', color: '#77808a', grain: 'rib', tile: 2, hatch: 'lines' },
+  { key: 'stucco', label: 'Stucco / EIFS', color: '#cbc2b0', grain: 'speck', tile: 8, hatch: 'plain' },
+  { key: 'precast', label: 'Precast concrete', color: '#b0ada4', grain: 'speck', tile: 10, hatch: 'plain' },
+  { key: 'wood', label: 'Wood cladding', color: '#a2743f', grain: 'plank', tile: 2, hatch: 'lines' },
+];
+
+export const FACADE_KEYS = FACADE_MATERIALS.map((f) => f.key);
+export const DEFAULT_FACADE = 'brick';
+const FACADE_BY_KEY = new Map(FACADE_MATERIALS.map((f) => [f.key, f]));
+export const facadeEntry = (key) => FACADE_BY_KEY.get(key) || FACADE_BY_KEY.get(DEFAULT_FACADE);
+export const readFacade = (v) => (typeof v === 'string' && FACADE_BY_KEY.has(v) ? v : null);
+
+// What a roof deck is covered in. Not a knob: a flat roof is a membrane and a
+// pitched one is shingled, because that is what they are — one fewer thing to
+// choose and one fewer invalid combination to guard.
+export const ROOF_MEMBRANE = { color: '#6d7076', grain: 'speck', tile: 8 };
+export const ROOF_SHINGLE = { color: '#4d4a48', grain: 'shingle', tile: 3 };
+
 export const FINISH_KEYS = FLOOR_FINISHES.map((f) => f.key);
 export const DEFAULT_FINISH = 'vct';
 // Off-white, because that is what a school is painted, and because a tint
