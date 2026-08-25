@@ -62,6 +62,18 @@
     button.primary:hover { background: #6cb4ff; }
     #fx-btn.off { opacity: 0.45; text-decoration: line-through; }
 
+    /* Focus states: the panels' dark backgrounds swallow a browser's default
+       thin focus ring, so every keyboard-focusable control in the editor
+       chrome gets an explicit, high-contrast one instead. `:focus-visible`
+       (not plain `:focus`) so a mouse click still doesn't ring every button
+       it lands on — only actual keyboard/AT navigation does. */
+    button:focus-visible, input:focus-visible, .swatch:focus-visible {
+      outline: 2px solid var(--accent); outline-offset: 2px;
+    }
+    #toolbar .tool:focus-visible, .kind-item:focus-visible, .palette-item:focus-visible {
+      outline: 2px solid var(--accent); outline-offset: -2px;
+    }
+
     /* toolbar */
     /* Hung from the top rather than centred: the tool list grows as the editor
        does, and a centred column of nine eventually reaches the floor panel. */
@@ -271,6 +283,41 @@
       pointer-events: none; display: none;
     }
     body[data-mode="walk"] #crosshair { display: block; }
+    /* Touch doesn't lock the pointer, so the crosshair (a locked-pointer
+       affordance) is the one walk-mode element that stays off — the joystick
+       and drag-anywhere-to-look already say "you're walking" plainly enough. */
+    body.touch-walk #crosshair { display: none; }
+
+    /* Touch walkthrough controls — joystick, jump/sprint, exit. Only shown
+       once a touch device actually starts walking (main.js toggles the
+       `touch-walk` body class); a mouse/keyboard session never sees these. */
+    #touch-controls {
+      position: fixed; inset: 0; z-index: 16; display: none; pointer-events: none;
+    }
+    body[data-mode="walk"].touch-walk #touch-controls { display: block; }
+    #touch-joystick {
+      position: fixed; left: 22px; bottom: 22px; width: 116px; height: 116px;
+      border-radius: 50%; background: rgba(20, 24, 32, 0.4);
+      border: 1px solid var(--panel-border); touch-action: none; pointer-events: auto;
+    }
+    #touch-joystick-knob {
+      position: absolute; left: 50%; top: 50%; width: 50px; height: 50px;
+      margin: -25px 0 0 -25px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.28); border: 1px solid rgba(255, 255, 255, 0.45);
+    }
+    #touch-actions {
+      position: fixed; right: 20px; bottom: 22px; z-index: 16;
+      display: flex; flex-direction: column; gap: 12px; align-items: center;
+      pointer-events: auto;
+    }
+    #touch-jump, #touch-sprint {
+      width: 62px; height: 62px; border-radius: 50%; font-size: 20px;
+      touch-action: none; display: flex; align-items: center; justify-content: center;
+    }
+    #touch-sprint[aria-pressed="true"] { background: rgba(77, 163, 255, 0.35); border-color: var(--accent); }
+    #touch-exit {
+      position: fixed; top: 12px; right: 12px; z-index: 17; pointer-events: auto; touch-action: none;
+    }
 
     /* Where you are and what body you're in, while walking. */
     #walk-hud {
@@ -292,6 +339,12 @@
     body[data-mode="walk"] #status { display: none; }
 
     .hidden { display: none !important; }
+    /* Screen-reader-only text: an associated label for a control whose visual
+       design is a placeholder rather than a visible label. */
+    .visually-hidden {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
 
     /* Off-screen until the moment `window.print()` runs — @media print's id
        selector (specificity 100) beats .hidden's class selector (10), so
@@ -313,28 +366,28 @@
 
   <div id="topbar" class="panel">
     <h1>🏫 School Generator</h1>
-    <button id="undo-btn" title="Undo (Ctrl+Z)">↩︎</button>
-    <button id="redo-btn" title="Redo (Ctrl+Y)">↪︎</button>
+    <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↩︎</button>
+    <button id="redo-btn" title="Redo (Ctrl+Y)" aria-label="Redo">↪︎</button>
     <button id="new-btn" title="New empty school">New</button>
     <button id="save-btn" title="Download design as JSON">Save</button>
     <button id="load-btn" title="Load a JSON design">Load</button>
     <button id="designs-btn" title="Named designs saved in this browser">🗂 Designs</button>
     <button id="export-btn" title="Printable top-down floor plan (PNG / PDF)">🖨 Export</button>
-    <button id="fx-btn" title="Toggle post-processing">FX</button>
+    <button id="fx-btn" title="Toggle post-processing" aria-pressed="true">FX</button>
     <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)">🚶 Walk Through</button>
   </div>
 
-  <div id="toolbar" class="panel">
-    <button class="tool active" data-tool="floor"><span class="icon">▦</span>Floor<span class="key">1</span></button>
-    <button class="tool" data-tool="wall"><span class="icon">▬</span>Wall<span class="key">2</span></button>
-    <button class="tool" data-tool="door"><span class="icon">🚪</span>Door<span class="key">3</span></button>
-    <button class="tool" data-tool="room"><span class="icon">🎨</span>Room<span class="key">4</span></button>
-    <button class="tool" data-tool="erase"><span class="icon">⌫</span>Erase<span class="key">5</span></button>
-    <button class="tool" data-tool="poly"><span class="icon">⬠</span>Polygon<span class="key">6</span></button>
-    <button class="tool" data-tool="vertex"><span class="icon">✥</span>Shape<span class="key">7</span></button>
-    <button class="tool" data-tool="prop"><span class="icon">🪑</span>Furniture<span class="key">8</span></button>
-    <button class="tool" data-tool="stair"><span class="icon">🪜</span>Stairs<span class="key">9</span></button>
-    <button class="tool" data-tool="template"><span class="icon">🏫</span>Layout<span class="key">0</span></button>
+  <div id="toolbar" class="panel" role="group" aria-label="Tools">
+    <button class="tool active" data-tool="floor" aria-pressed="true"><span class="icon">▦</span>Floor<span class="key">1</span></button>
+    <button class="tool" data-tool="wall" aria-pressed="false"><span class="icon">▬</span>Wall<span class="key">2</span></button>
+    <button class="tool" data-tool="door" aria-pressed="false"><span class="icon">🚪</span>Door<span class="key">3</span></button>
+    <button class="tool" data-tool="room" aria-pressed="false"><span class="icon">🎨</span>Room<span class="key">4</span></button>
+    <button class="tool" data-tool="erase" aria-pressed="false"><span class="icon">⌫</span>Erase<span class="key">5</span></button>
+    <button class="tool" data-tool="poly" aria-pressed="false"><span class="icon">⬠</span>Polygon<span class="key">6</span></button>
+    <button class="tool" data-tool="vertex" aria-pressed="false"><span class="icon">✥</span>Shape<span class="key">7</span></button>
+    <button class="tool" data-tool="prop" aria-pressed="false"><span class="icon">🪑</span>Furniture<span class="key">8</span></button>
+    <button class="tool" data-tool="stair" aria-pressed="false"><span class="icon">🪜</span>Stairs<span class="key">9</span></button>
+    <button class="tool" data-tool="template" aria-pressed="false"><span class="icon">🏫</span>Layout<span class="key">0</span></button>
   </div>
 
   <div id="room-panel" class="panel hidden">
@@ -398,9 +451,9 @@
     <h2>Floors</h2>
     <div id="floor-list"></div>
     <div id="floor-actions">
-      <button id="floor-add" title="Add an empty floor above this one">＋</button>
-      <button id="floor-dup" title="Copy this floor to a new level above">⧉</button>
-      <button id="floor-del" title="Delete this floor">🗑</button>
+      <button id="floor-add" title="Add an empty floor above this one" aria-label="Add floor">＋</button>
+      <button id="floor-dup" title="Copy this floor to a new level above" aria-label="Duplicate floor">⧉</button>
+      <button id="floor-del" title="Delete this floor" aria-label="Delete floor">🗑</button>
     </div>
   </div>
 
@@ -412,12 +465,12 @@
     <label><input type="checkbox" id="layer-ghost-above" /> Ghost floor above</label>
   </div>
 
-  <div id="status" class="panel">Floor — click / drag to lay floor tiles</div>
+  <div id="status" class="panel" role="status" aria-live="polite">Floor — click / drag to lay floor tiles</div>
 
-  <div id="walk-overlay" class="hidden">
+  <div id="walk-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="walk-overlay-title">
     <div class="panel">
-      <h2>Walkthrough Mode</h2>
-      <p>
+      <h2 id="walk-overlay-title">Walkthrough Mode</h2>
+      <p id="walk-controls-hint">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; <kbd>Shift</kbd> sprint<br />
         <kbd>Space</kbd> jump &nbsp;·&nbsp; <kbd>F</kbd> ghost mode (no-clip, <kbd>Space</kbd>/<kbd>C</kbd> to fly)<br />
         <kbd>Esc</kbd> release mouse
@@ -434,10 +487,11 @@
     </div>
   </div>
 
-  <div id="designs-overlay" class="hidden">
+  <div id="designs-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="designs-overlay-title">
     <div class="panel">
-      <h2>🗂 Saved Designs</h2>
+      <h2 id="designs-overlay-title">🗂 Saved Designs</h2>
       <div class="save-row">
+        <label for="designs-new-name" class="visually-hidden">Name this design</label>
         <input id="designs-new-name" type="text" maxlength="60" placeholder="Name this design…" />
         <button id="designs-save-new" class="primary">Save Current</button>
       </div>
@@ -448,9 +502,9 @@
     </div>
   </div>
 
-  <div id="export-overlay" class="hidden">
+  <div id="export-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="export-overlay-title">
     <div class="panel">
-      <h2>🖨 Export Floor Plan</h2>
+      <h2 id="export-overlay-title">🖨 Export Floor Plan</h2>
       <div class="section-label">Which floor</div>
       <div class="radio-group">
         <label><input type="radio" name="export-scope" value="current" checked /> This floor only</label>
@@ -475,7 +529,19 @@
   <div id="print-area" class="hidden"></div>
 
   <div id="crosshair">·</div>
-  <div id="walk-hud">Level 1 · walking</div>
+  <div id="walk-hud" role="status" aria-live="polite">Level 1 · walking</div>
+
+  <div id="touch-controls">
+    <div id="touch-joystick" aria-hidden="true">
+      <div id="touch-joystick-knob"></div>
+    </div>
+    <div id="touch-actions">
+      <button id="touch-sprint" type="button" aria-pressed="false" aria-label="Toggle sprint">🏃</button>
+      <button id="touch-jump" type="button" aria-label="Jump">⤒</button>
+    </div>
+    <button id="touch-exit" class="panel" type="button" aria-label="Exit walkthrough">✕</button>
+  </div>
+
   <input id="file-input" type="file" accept=".json,application/json" class="hidden" />
 
   <script type="module" src="./js/main.js"></script>

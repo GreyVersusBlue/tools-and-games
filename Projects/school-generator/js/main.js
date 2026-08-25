@@ -19,9 +19,27 @@ import {
   listDesigns, saveDesign, loadDesign, deleteDesign, renameDesign,
 } from './save-load.js';
 import { renderFloorPlanCanvas, downloadCanvasPNG } from './blueprint.js';
+import { isTouchCapable, joystickAxes } from './touch.js';
 
 const canvas = document.getElementById('view');
 const $ = (id) => document.getElementById(id);
+
+// --- modal focus management ---
+// A keyboard/AT user needs focus to land inside a dialog when it opens (a
+// panel with only `.hidden` toggled leaves focus stranded on a button that's
+// no longer visible) and to come back to whatever opened it when it closes.
+let modalReturnFocus = null;
+function openModal(overlay, focusEl) {
+  modalReturnFocus = document.activeElement;
+  overlay.classList.remove('hidden');
+  (focusEl || overlay.querySelector('button, input, [tabindex]'))?.focus();
+}
+function closeModal(overlay) {
+  if (overlay.classList.contains('hidden')) return; // already closed — don't steal focus again
+  overlay.classList.add('hidden');
+  if (modalReturnFocus && document.body.contains(modalReturnFocus)) modalReturnFocus.focus();
+  modalReturnFocus = null;
+}
 
 // --- state ---
 let state = loadAutosave() || buildSampleSchool();
@@ -68,6 +86,74 @@ const walk = initWalkthrough(renderApi.walkCamera, canvas, {
   onHud: (text) => { walkHud.textContent = text; },
 });
 
+// --- touch walkthrough controls ---
+// A touch device has no pointer to lock, so walking there skips Pointer Lock
+// entirely (see walkthrough.js's enableTouch()) in favor of an on-screen
+// joystick for movement and a drag-anywhere-on-the-canvas look, wired here.
+const isTouch = isTouchCapable();
+const JOY_RADIUS = 44; // px — half the base minus the knob, kept in step with the CSS
+
+const joystickEl = $('touch-joystick');
+const joystickKnob = $('touch-joystick-knob');
+let joyPointerId = null;
+let joyCenter = null;
+
+function joystickReset() {
+  joystickKnob.style.transform = '';
+  walk.setMoveAxes(0, 0);
+}
+function joystickUpdate(e) {
+  const axes = joystickAxes(e.clientX - joyCenter.x, e.clientY - joyCenter.y, JOY_RADIUS);
+  joystickKnob.style.transform = `translate(${axes.x * JOY_RADIUS}px, ${-axes.y * JOY_RADIUS}px)`;
+  walk.setMoveAxes(axes.x, axes.y);
+}
+joystickEl.addEventListener('pointerdown', (e) => {
+  if (joyPointerId !== null) return;
+  joyPointerId = e.pointerId;
+  const r = joystickEl.getBoundingClientRect();
+  joyCenter = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  joystickEl.setPointerCapture(e.pointerId);
+  joystickUpdate(e);
+});
+joystickEl.addEventListener('pointermove', (e) => { if (e.pointerId === joyPointerId) joystickUpdate(e); });
+function joystickEnd(e) {
+  if (e.pointerId !== joyPointerId) return;
+  joyPointerId = null;
+  joystickReset();
+}
+joystickEl.addEventListener('pointerup', joystickEnd);
+joystickEl.addEventListener('pointercancel', joystickEnd);
+
+// Jump is held (matches Space on a keyboard); sprint is a toggle, since
+// holding a second on-screen button down alongside the joystick thumb is
+// awkward on a phone-sized screen.
+const touchJumpBtn = $('touch-jump');
+touchJumpBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); walk.touchKey('Space', true); });
+touchJumpBtn.addEventListener('pointerup', () => walk.touchKey('Space', false));
+touchJumpBtn.addEventListener('pointercancel', () => walk.touchKey('Space', false));
+
+const touchSprintBtn = $('touch-sprint');
+let touchSprintOn = false;
+touchSprintBtn.addEventListener('click', () => {
+  touchSprintOn = !touchSprintOn;
+  walk.touchKey('ShiftLeft', touchSprintOn);
+  touchSprintBtn.setAttribute('aria-pressed', String(touchSprintOn));
+});
+function resetTouchWalkUI() {
+  touchSprintOn = false;
+  touchSprintBtn.setAttribute('aria-pressed', 'false');
+  joyPointerId = null;
+  joystickReset();
+}
+
+if (isTouch) {
+  $('walk-start').textContent = 'Tap to Walk';
+  $('walk-controls-hint').innerHTML =
+    'Left joystick to move &nbsp;·&nbsp; drag anywhere else to look<br />' +
+    '🏃 toggles sprint &nbsp;·&nbsp; ⤒ jumps<br />' +
+    '✕ (top right) exits';
+}
+
 // --- initial view ---
 renderApi.fitEditView(state);
 renderApi.resize();
@@ -85,25 +171,36 @@ function setMode(m) {
   if (m === 'walk') {
     editor.setEnabled(false);
     walk.enable(state);
-    walkOverlay.classList.remove('hidden');
-    $('designs-overlay').classList.add('hidden');
-    $('export-overlay').classList.add('hidden');
+    openModal(walkOverlay, $('walk-start'));
+    closeModal($('designs-overlay'));
+    closeModal($('export-overlay'));
     $('mode-btn').textContent = '✏️ Edit Mode';
   } else {
     walk.disable();
-    walkOverlay.classList.add('hidden');
+    closeModal(walkOverlay);
+    document.body.classList.remove('touch-walk');
+    resetTouchWalkUI();
     editor.setEnabled(true);
     $('mode-btn').textContent = '🚶 Walk Through';
   }
 }
 
 $('mode-btn').addEventListener('click', () => setMode(mode === 'edit' ? 'walk' : 'edit'));
-$('walk-start').addEventListener('click', () => walk.controls.lock());
+$('walk-start').addEventListener('click', () => {
+  if (isTouch) {
+    walk.enableTouch();
+    document.body.classList.add('touch-walk');
+    closeModal(walkOverlay);
+  } else {
+    walk.controls.lock();
+  }
+});
 $('walk-exit').addEventListener('click', () => setMode('edit'));
+$('touch-exit').addEventListener('click', () => setMode('edit'));
 
-walk.controls.addEventListener('lock', () => walkOverlay.classList.add('hidden'));
+walk.controls.addEventListener('lock', () => closeModal(walkOverlay));
 walk.controls.addEventListener('unlock', () => {
-  if (mode === 'walk') walkOverlay.classList.remove('hidden');
+  if (mode === 'walk') openModal(walkOverlay, $('walk-start'));
 });
 
 // --- tool buttons ---
@@ -127,8 +224,11 @@ const HINTS = {
 
 function selectTool(t) {
   editor.setTool(t);
-  document.querySelectorAll('#toolbar .tool').forEach((b) =>
-    b.classList.toggle('active', b.dataset.tool === t));
+  document.querySelectorAll('#toolbar .tool').forEach((b) => {
+    const on = b.dataset.tool === t;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
   // The polygon tool names its room from the same panel the room tool uses —
   // one place to pick a name and a color, whichever kind of room it lands on.
   $('room-panel').classList.toggle('hidden', t !== 'room' && t !== 'poly');
@@ -157,9 +257,15 @@ ROOM_COLORS.forEach((c, i) => {
   b.className = 'swatch' + (i === 0 ? ' active' : '');
   b.style.background = c;
   b.title = c;
+  b.setAttribute('aria-label', `Room color ${c}`);
+  b.setAttribute('aria-pressed', String(i === 0));
   b.addEventListener('click', () => {
-    swatches.querySelectorAll('.swatch').forEach((s) => s.classList.remove('active'));
+    swatches.querySelectorAll('.swatch').forEach((s) => {
+      s.classList.remove('active');
+      s.setAttribute('aria-pressed', 'false');
+    });
     b.classList.add('active');
+    b.setAttribute('aria-pressed', 'true');
     editor.setRoom($('room-name').value, c);
   });
   swatches.appendChild(b);
@@ -182,11 +288,16 @@ catalogByCategory().forEach(({ category, entries }) => {
     b.className = 'palette-item' + (entry.type === editor.propType ? ' active' : '');
     b.dataset.type = entry.type;
     b.title = `${entry.name} — ${entry.w}×${entry.d}ft`;
+    b.setAttribute('aria-pressed', String(entry.type === editor.propType));
     b.innerHTML = `<span class="icon">${entry.icon}</span>${entry.name}`;
     b.addEventListener('click', () => {
       editor.setPropType(entry.type);
-      palette.querySelectorAll('.palette-item').forEach((x) => x.classList.remove('active'));
+      palette.querySelectorAll('.palette-item').forEach((x) => {
+        x.classList.remove('active');
+        x.setAttribute('aria-pressed', 'false');
+      });
       b.classList.add('active');
+      b.setAttribute('aria-pressed', 'true');
     });
     row.appendChild(b);
   });
@@ -202,11 +313,16 @@ ROOM_TEMPLATES.forEach((tpl) => {
   b.className = 'palette-item' + (tpl.key === editor.templateKey ? ' active' : '');
   b.dataset.key = tpl.key;
   b.title = `${tpl.name} — ${tpl.stamps.length} pieces, ~${tpl.footprint.w}×${tpl.footprint.d}ft`;
+  b.setAttribute('aria-pressed', String(tpl.key === editor.templateKey));
   b.innerHTML = `<span class="icon">${tpl.icon}</span>${tpl.name}`;
   b.addEventListener('click', () => {
     editor.setTemplateKey(tpl.key);
-    templatePalette.querySelectorAll('.palette-item').forEach((x) => x.classList.remove('active'));
+    templatePalette.querySelectorAll('.palette-item').forEach((x) => {
+      x.classList.remove('active');
+      x.setAttribute('aria-pressed', 'false');
+    });
     b.classList.add('active');
+    b.setAttribute('aria-pressed', 'true');
   });
   templatePalette.appendChild(b);
 });
@@ -216,8 +332,11 @@ ROOM_TEMPLATES.forEach((tpl) => {
 // and the polygon rooms spell each differently), so the buttons just set it.
 const wallKinds = $('wall-kinds');
 function renderWallKinds() {
-  wallKinds.querySelectorAll('.kind-item').forEach((b) =>
-    b.classList.toggle('active', b.dataset.kind === editor.wallKind));
+  wallKinds.querySelectorAll('.kind-item').forEach((b) => {
+    const on = b.dataset.kind === editor.wallKind;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
 }
 WALL_KINDS.forEach((k) => {
   const b = document.createElement('button');
@@ -244,8 +363,11 @@ const STAIR_KINDS = [
 ];
 const stairKinds = $('stair-kinds');
 function renderStairKinds() {
-  stairKinds.querySelectorAll('.kind-item').forEach((b) =>
-    b.classList.toggle('active', b.dataset.type === editor.stairType));
+  stairKinds.querySelectorAll('.kind-item').forEach((b) => {
+    const on = b.dataset.type === editor.stairType;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
 }
 STAIR_KINDS.forEach((k) => {
   const b = document.createElement('button');
@@ -469,9 +591,9 @@ function renderDesignsList() {
 $('designs-btn').addEventListener('click', () => {
   $('designs-new-name').value = '';
   renderDesignsList();
-  designsOverlay.classList.remove('hidden');
+  openModal(designsOverlay, $('designs-new-name'));
 });
-$('designs-close').addEventListener('click', () => designsOverlay.classList.add('hidden'));
+$('designs-close').addEventListener('click', () => closeModal(designsOverlay));
 $('designs-save-new').addEventListener('click', () => {
   try {
     saveDesign(state, $('designs-new-name').value);
@@ -498,8 +620,8 @@ function exportOpts() {
   return { showDimensions: $('export-dims').checked, showFurniture: $('export-furniture').checked };
 }
 
-$('export-btn').addEventListener('click', () => exportOverlay.classList.remove('hidden'));
-$('export-close').addEventListener('click', () => exportOverlay.classList.add('hidden'));
+$('export-btn').addEventListener('click', () => openModal(exportOverlay));
+$('export-close').addEventListener('click', () => closeModal(exportOverlay));
 
 $('export-png').addEventListener('click', () => {
   const opts = exportOpts();
@@ -522,7 +644,7 @@ $('export-print').addEventListener('click', () => {
     page.appendChild(img);
     printArea.appendChild(page);
   }
-  exportOverlay.classList.add('hidden');
+  closeModal(exportOverlay);
   window.print();
 });
 
@@ -542,6 +664,7 @@ $('new-btn').addEventListener('click', () => {
 $('fx-btn').addEventListener('click', () => {
   renderApi.fxEnabled = !renderApi.fxEnabled;
   $('fx-btn').classList.toggle('off', !renderApi.fxEnabled);
+  $('fx-btn').setAttribute('aria-pressed', String(renderApi.fxEnabled));
 });
 
 // --- layers panel ---
@@ -564,10 +687,10 @@ for (const [id, key] of LAYER_CHECKBOXES) {
 // --- keyboard shortcuts ---
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && !designsOverlay.classList.contains('hidden')) {
-    designsOverlay.classList.add('hidden'); return;
+    closeModal(designsOverlay); return;
   }
   if (e.code === 'Escape' && !exportOverlay.classList.contains('hidden')) {
-    exportOverlay.classList.add('hidden'); return;
+    closeModal(exportOverlay); return;
   }
   const typing = e.target.tagName === 'INPUT';
   if (e.code === 'Tab' && !typing) { e.preventDefault(); setMode(mode === 'edit' ? 'walk' : 'edit'); return; }

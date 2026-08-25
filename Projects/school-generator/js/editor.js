@@ -21,6 +21,7 @@ import { initPolyEdit } from './polyedit.js';
 import { initPropEdit } from './propedit.js';
 import { initStairEdit } from './stairedit.js';
 import { initTemplateEdit } from './templateedit.js';
+import { pinchZoomHeight } from './touch.js';
 
 const MAX_UNDO = 100;
 
@@ -73,12 +74,13 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   const _v3 = new THREE.Vector3();
   const _ndc = new THREE.Vector2();
 
-  function pointerToWorld(e) {
+  function pointerToWorldXY(clientX, clientY) {
     const r = canvas.getBoundingClientRect();
-    _ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    _ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(_ndc, renderApi.editCamera);
     return raycaster.ray.intersectPlane(groundPlane, _v3) ? { x: _v3.x, z: _v3.z } : null;
   }
+  function pointerToWorld(e) { return pointerToWorldXY(e.clientX, e.clientY); }
 
   // Nearest edge to a world point: {kind:'H'|'V', x, y, dist} (dist in cell fractions)
   // All of these take a *floor* record — the editor only ever touches the
@@ -359,17 +361,10 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  canvas.addEventListener('pointerdown', (e) => {
-    if (!enabled) return;
-    if (e.button === 1 || e.button === 2) {
-      panning = true;
-      panLast = { x: e.clientX, y: e.clientY };
-      canvas.setPointerCapture(e.pointerId);
-      return;
-    }
-    if (e.button !== 0) return;
-    const p = pointerToWorld(e);
-    if (!p) return;
+  // The actual tool dispatch, shared by the mouse/pen path (called straight
+  // from pointerdown) and the touch path (called once a touch is confirmed
+  // not to be the first finger of a pinch — see the touch section below).
+  function dispatchPointerDown(e, p) {
     if (tool === 'poly' || tool === 'vertex') {
       canvas.setPointerCapture(e.pointerId);
       poly.pointerDown(p, e);
@@ -398,49 +393,21 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     applyStroke(p.x, p.z, true);
     if (strokeChanged) onChange({ structural: true });
     canvas.setPointerCapture(e.pointerId);
-  });
+  }
 
-  canvas.addEventListener('pointermove', (e) => {
-    if (!enabled) return;
-    if (panning && panLast) {
-      const view = renderApi.editView;
-      const ftPerPx = view.height / canvas.clientHeight;
-      view.x -= (e.clientX - panLast.x) * ftPerPx;
-      view.z -= (e.clientY - panLast.y) * ftPerPx;
-      panLast = { x: e.clientX, y: e.clientY };
-      return;
-    }
-    updateCursor(e);
-    if (tool === 'poly' || tool === 'vertex') {
-      const pp = pointerToWorld(e);
-      if (pp) poly.pointerMove(pp, e);
-      return;
-    }
-    if (tool === 'prop') {
-      const pp = pointerToWorld(e);
-      if (pp) propTool.pointerMove(pp, e);
-      return;
-    }
-    if (tool === 'stair') {
-      const pp = pointerToWorld(e);
-      if (pp) stairTool.pointerMove(pp, e);
-      return;
-    }
-    if (tool === 'template') {
-      const pp = pointerToWorld(e);
-      if (pp) templateTool.pointerMove(pp, e);
-      return;
-    }
-    if (!strokeActive) return;
-    const p = pointerToWorld(e);
-    if (!p) return;
+  function dispatchPointerMove(e, p) {
+    if (tool === 'poly' || tool === 'vertex') { if (p) poly.pointerMove(p, e); return; }
+    if (tool === 'prop') { if (p) propTool.pointerMove(p, e); return; }
+    if (tool === 'stair') { if (p) stairTool.pointerMove(p, e); return; }
+    if (tool === 'template') { if (p) templateTool.pointerMove(p, e); return; }
+    if (!strokeActive || !p) return;
     const before = strokeChanged;
     applyStroke(p.x, p.z, false);
     if (strokeChanged && strokeChanged !== before) onChange({ structural: true });
     else if (strokeChanged) onChange({ structural: true, throttled: true });
-  });
+  }
 
-  function endStroke(e) {
+  function dispatchPointerUp() {
     if (panning) { panning = false; panLast = null; }
     if (poly.pointerUp()) return;
     if (propTool.pointerUp()) return;
@@ -459,8 +426,182 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       onStatus && onStatus(`Wall — built ${strokeWallFt.toFixed(0)}ft.`);
     }
   }
-  canvas.addEventListener('pointerup', endStroke);
-  canvas.addEventListener('pointercancel', endStroke);
+
+  // --- touch: a single finger drives the current tool exactly like a mouse
+  // click/drag would; a second finger pinch-zooms and pans the view instead.
+  // Both fingers of a pinch typically land within a few tens of ms of each
+  // other, so the first finger's action is held back briefly rather than
+  // applied immediately — long enough to catch the second finger, short
+  // enough (and cut short by the first sign of movement) that a real
+  // single-finger tap or drag never feels delayed.
+  const touchPts = new Map();      // pointerId -> {x, y}, every live touch
+  let pendingTouch = null;         // { id, e, startX, startY, timer } — undecided yet
+  let committedTouchId = null;     // the touch currently driving dispatchPointer*
+  let touchGesture = null;         // { ids: [a, b], dist0, height0 } — pinch/pan
+
+  const TOUCH_HOLDOFF_MS = 90;
+  const TOUCH_MOVE_COMMIT_PX = 6;
+
+  function touchDist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+  // applyEditCamera() alone repositions the camera and refreshes its
+  // projection matrix, but a camera's *world* matrix — what
+  // raycaster.setFromCamera() actually reads — is normally only refreshed
+  // once per animation frame, by the renderer, right before it draws. The
+  // pinch/pan math below raycasts again immediately after moving the camera,
+  // several times a gesture, so it has to force that refresh itself or every
+  // "after" reading would still see the pre-move camera.
+  function applyCameraNow() {
+    renderApi.applyEditCamera();
+    renderApi.editCamera.updateMatrixWorld(true);
+  }
+
+  function beginTouchGesture() {
+    const ids = [...touchPts.keys()].slice(0, 2);
+    const [a, b] = ids.map((id) => touchPts.get(id));
+    touchGesture = { ids, dist0: touchDist(a, b), height0: renderApi.editView.height };
+  }
+
+  // Zoom by the pinch-distance ratio, then re-center so the world point under
+  // the pinch's midpoint stays under it — which, for two fingers translating
+  // together at a constant distance, is exactly a two-finger pan for free.
+  function updateTouchGesture() {
+    if (!touchGesture) return;
+    const [a, b] = touchGesture.ids.map((id) => touchPts.get(id));
+    if (!a || !b) return;
+    const view = renderApi.editView;
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const before = pointerToWorldXY(mid.x, mid.y);
+    view.height = pinchZoomHeight(touchGesture.height0, touchGesture.dist0, touchDist(a, b));
+    applyCameraNow();
+    const after = pointerToWorldXY(mid.x, mid.y);
+    if (before && after) {
+      view.x += before.x - after.x;
+      view.z += before.z - after.z;
+      applyCameraNow();
+    }
+    poly.refresh(); propTool.refresh(); stairTool.refresh(); templateTool.refresh();
+  }
+
+  function commitPendingTouch() {
+    if (!pendingTouch) return;
+    clearTimeout(pendingTouch.timer);
+    const { id, e } = pendingTouch;
+    pendingTouch = null;
+    const pt = touchPts.get(id);
+    if (!pt) return;
+    const p = pointerToWorldXY(pt.x, pt.y);
+    if (!p) return;
+    committedTouchId = id;
+    dispatchPointerDown(e, p);
+  }
+
+  function armPendingTouch(id, e) {
+    const pt = touchPts.get(id);
+    pendingTouch = {
+      id, e, startX: pt.x, startY: pt.y,
+      timer: setTimeout(commitPendingTouch, TOUCH_HOLDOFF_MS),
+    };
+  }
+
+  function resetTouchState() {
+    touchPts.clear();
+    if (pendingTouch) clearTimeout(pendingTouch.timer);
+    pendingTouch = null;
+    committedTouchId = null;
+    touchGesture = null;
+  }
+
+  function touchPointerDown(e) {
+    if (!enabled) return;
+    touchPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    canvas.setPointerCapture(e.pointerId);
+    // A tool interaction (or a gesture) is already under way — an extra
+    // finger (a resting palm, a stray touch) is simply tracked and ignored,
+    // rather than interrupting whichever one is running.
+    if (touchGesture || committedTouchId !== null) return;
+    if (touchPts.size >= 2) {
+      if (pendingTouch) { clearTimeout(pendingTouch.timer); pendingTouch = null; }
+      beginTouchGesture();
+      return;
+    }
+    armPendingTouch(e.pointerId, e);
+  }
+
+  function touchPointerMove(e) {
+    if (!enabled || !touchPts.has(e.pointerId)) return;
+    touchPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touchGesture) { updateTouchGesture(); return; }
+    if (pendingTouch && pendingTouch.id === e.pointerId) {
+      const dist = Math.hypot(e.clientX - pendingTouch.startX, e.clientY - pendingTouch.startY);
+      if (dist > TOUCH_MOVE_COMMIT_PX) commitPendingTouch();
+      return;
+    }
+    if (committedTouchId === e.pointerId) {
+      updateCursor(e);
+      dispatchPointerMove(e, pointerToWorld(e));
+    }
+  }
+
+  function endTouch(id) {
+    // commitPendingTouch() reads this touch's last position out of touchPts,
+    // so the entry has to survive until after it runs — delete it last.
+    if (pendingTouch && pendingTouch.id === id) {
+      // Lifted before the hold-off decided anything — a plain tap.
+      commitPendingTouch();
+      dispatchPointerUp();
+      committedTouchId = null;
+      touchPts.delete(id);
+      return;
+    }
+    if (committedTouchId === id) {
+      dispatchPointerUp();
+      committedTouchId = null;
+      touchPts.delete(id);
+      return;
+    }
+    if (touchGesture && touchGesture.ids.includes(id)) touchGesture = null;
+    touchPts.delete(id);
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!enabled) return;
+    if (e.pointerType === 'touch') { touchPointerDown(e); return; }
+    if (e.button === 1 || e.button === 2) {
+      panning = true;
+      panLast = { x: e.clientX, y: e.clientY };
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    if (e.button !== 0) return;
+    const p = pointerToWorld(e);
+    if (!p) return;
+    dispatchPointerDown(e, p);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!enabled) return;
+    if (e.pointerType === 'touch') { touchPointerMove(e); return; }
+    if (panning && panLast) {
+      const view = renderApi.editView;
+      const ftPerPx = view.height / canvas.clientHeight;
+      view.x -= (e.clientX - panLast.x) * ftPerPx;
+      view.z -= (e.clientY - panLast.y) * ftPerPx;
+      panLast = { x: e.clientX, y: e.clientY };
+      return;
+    }
+    updateCursor(e);
+    dispatchPointerMove(e, pointerToWorld(e));
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    if (e.pointerType === 'touch') { endTouch(e.pointerId); return; }
+    dispatchPointerUp();
+  });
+  canvas.addEventListener('pointercancel', (e) => {
+    if (e.pointerType === 'touch') { endTouch(e.pointerId); return; }
+    dispatchPointerUp();
+  });
   canvas.addEventListener('pointerleave', () => {
     cellCursor.visible = edgeCursor.visible = false;
     poly.clearHover();
@@ -536,7 +677,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       propTool.setTool(v ? tool : null);
       stairTool.setTool(v ? tool : null);
       templateTool.setTool(v ? tool : null);
-      if (!v) { cellCursor.visible = edgeCursor.visible = false; strokeActive = false; }
+      if (!v) { cellCursor.visible = edgeCursor.visible = false; strokeActive = false; resetTouchState(); }
     },
   };
 }
