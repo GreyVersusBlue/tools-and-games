@@ -24,6 +24,7 @@ import { initPolyEdit } from './polyedit.js';
 import { initPropEdit } from './propedit.js';
 import { initStairEdit } from './stairedit.js';
 import { initTemplateEdit } from './templateedit.js';
+import { initSiteEdit } from './siteedit.js';
 import { pinchZoomHeight } from './touch.js';
 
 const MAX_UNDO = 100;
@@ -58,7 +59,7 @@ export const DOOR_KINDS = [
 const doorKindOf = (k) => DOOR_KINDS.find((d) => d.kind === k) || DOOR_KINDS[0];
 
 export function initEditor({ canvas, renderApi, getState, onChange, onStatus, onHoleMode }) {
-  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair
+  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair | template | site
   let roomName = 'Room 101';
   let roomColor = ROOM_COLORS[0];
   let roomFinish = DEFAULT_FINISH;
@@ -230,6 +231,18 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     },
   });
 
+  // siteedit owns the ground and everything laid on it. Same host wiring as
+  // the other four — the site has no history of its own either.
+  const siteTool = initSiteEdit({
+    getState,
+    renderApi,
+    host: {
+      pushUndo, dropUndo: () => { undoStack.pop(); },
+      changed: (info = {}) => onChange({ structural: true, ...info }),
+      status: (text) => onStatus && onStatus(text),
+    },
+  });
+
   // --- tool application ---
 
   // Nearest polygon wall to the cursor, if one is within grabbing distance and
@@ -369,7 +382,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const baseY = floorBaseY(s, s.currentFloor);
     const p = e && pointerToWorld(e);
     if (p) hoverWorld = p;
-    if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop' || tool === 'stair' || tool === 'template') {
+    if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop' ||
+        tool === 'stair' || tool === 'template' || tool === 'site') {
       cellCursor.visible = edgeCursor.visible = false;
       return;
     }
@@ -499,6 +513,11 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       templateTool.pointerDown(p, e);
       return;
     }
+    if (tool === 'site') {
+      canvas.setPointerCapture(e.pointerId);
+      siteTool.pointerDown(p, e);
+      return;
+    }
     pushUndo();
     // Any ordinary edit ends the run of curve adjustments — the memo points at
     // a segment index the edit may well have moved.
@@ -517,6 +536,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (tool === 'prop') { if (p) propTool.pointerMove(p, e); return; }
     if (tool === 'stair') { if (p) stairTool.pointerMove(p, e); return; }
     if (tool === 'template') { if (p) templateTool.pointerMove(p, e); return; }
+    if (tool === 'site') { if (p) siteTool.pointerMove(p, e); return; }
     if (!strokeActive || !p) return;
     const before = strokeChanged;
     applyStroke(p.x, p.z, false);
@@ -530,6 +550,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (propTool.pointerUp()) return;
     if (stairTool.pointerUp()) return;
     if (templateTool.pointerUp()) return;
+    if (siteTool.pointerUp()) return;
     if (!strokeActive) return;
     strokeActive = false;
     lastWorld = null;
@@ -725,6 +746,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     propTool.clearHover();
     stairTool.clearHover();
     templateTool.clearHover();
+    siteTool.clearHover();
   });
 
   canvas.addEventListener('wheel', (e) => {
@@ -736,6 +758,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     propTool.refresh();
     stairTool.refresh();
     templateTool.refresh();
+    siteTool.refresh();
   }, { passive: false });
 
   return {
@@ -747,6 +770,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       propTool.setTool(t);
       stairTool.setTool(t);
       templateTool.setTool(t);
+      siteTool.setTool(t);
       updateCursor(null);
       if (t !== 'vertex') canvas.style.cursor = '';
     },
@@ -754,10 +778,13 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     // rotate/delete/escape/mirror). Returns true when one was used, so the
     // caller knows to stop handling it.
     handleKey: (e) => editorKey(e) || poly.key(e) || propTool.key(e) ||
-      stairTool.key(e) || templateTool.key(e),
+      stairTool.key(e) || templateTool.key(e) || siteTool.key(e),
     get holeMode() { return poly.holeMode; },
     setHoleMode: (v) => poly.setHoleMode(v),
-    refreshOverlay: () => { poly.refresh(); propTool.refresh(); stairTool.refresh(); templateTool.refresh(); },
+    refreshOverlay: () => {
+      poly.refresh(); propTool.refresh(); stairTool.refresh();
+      templateTool.refresh(); siteTool.refresh();
+    },
     setRoom(name, color) { roomName = name; roomColor = color; },
     get roomName() { return roomName; },
     get roomColor() { return roomColor; },
@@ -785,6 +812,18 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     get stairCount() { return stairTool.countHere(); },
     setTemplateKey: (k) => templateTool.setType(k),
     get templateKey() { return templateTool.currentKey; },
+    // The site tool's own knobs. `setSiteStyle` doubles as "restyle the
+    // selected region", which is why it reports whether it changed anything.
+    setSiteMode: (m) => siteTool.setMode(m),
+    get siteMode() { return siteTool.mode; },
+    setSiteStyle: (surf, mark) => siteTool.setStyle(surf, mark),
+    get siteSurface() { return siteTool.surface; },
+    get siteMarking() { return siteTool.marking; },
+    setSiteBrush: (v) => siteTool.setBrush(v),
+    get siteBrush() { return siteTool.brush; },
+    get siteSelection() { return siteTool.selected; },
+    get siteRegionCount() { return siteTool.regionCount; },
+    get siteRelief() { return siteTool.relief; },
     // Ctrl combos never reach handleKey (see main.js), so copy/paste/duplicate
     // are called directly — for whichever of the prop or vertex tool is
     // active; each checks its own `tool` and no-ops otherwise.
@@ -809,6 +848,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       propTool.setTool(v ? tool : null);
       stairTool.setTool(v ? tool : null);
       templateTool.setTool(v ? tool : null);
+      siteTool.setTool(v ? tool : null);
       if (!v) { cellCursor.visible = edgeCursor.visible = false; strokeActive = false; resetTouchState(); }
     },
   };

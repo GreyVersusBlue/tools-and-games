@@ -18,7 +18,9 @@ import {
 import { addStair } from '../js/stairs.js';
 import { applyFinish } from '../js/finish.js';
 import { addProp } from '../js/props.js';
-import { computeFloorPlan } from '../js/blueprint.js';
+import { computeFloorPlan, computeSitePlan } from '../js/blueprint.js';
+import { regionsOf } from '../js/site.js';
+import { buildSampleSchool } from '../js/sample.js';
 
 function boxRoom(s, floorIndex, x0, y0, x1, y1) {
   const f = s.floors[floorIndex];
@@ -273,4 +275,59 @@ test('a curved wall reaches the plan as the segments it became', () => {
   const after = computeFloorPlan(s, 0).walls;
   assert.equal(after.length, before + n - 1, 'one wall run per chord, and nothing special about it');
   assert.ok(after.every((w) => Number.isFinite(w.ax) && Number.isFinite(w.t)));
+});
+
+// ---------- the site plan ----------
+//
+// Phase 5's second sheet. Same pure-then-draw split as the floor plan, so the
+// same kind of check applies: the model it hands the drawing code has to say
+// the same things the model itself does.
+
+test('a site plan reads the regions, the building and the ground', () => {
+  const s = buildSampleSchool();
+  const plan = computeSitePlan(s);
+  assert.equal(plan.regions.length, regionsOf(s).length, 'every region is on the sheet');
+  assert.ok(plan.building.length, 'and the building is one outline on it');
+  assert.ok(plan.contours.length, 'a graded site has contours');
+  assert.ok(plan.schedule.length, 'and a surface schedule');
+  for (const r of plan.regions) {
+    assert.ok(r.label && r.color, `${r.surf} has a legend entry`);
+    assert.ok(r.sqft > 0);
+  }
+});
+
+test('a site plan carries only the outdoor props', () => {
+  const s = buildSampleSchool();
+  const plan = computeSitePlan(s);
+  assert.ok(plan.props.length, 'there are some');
+  for (const p of plan.props) assert.equal(p.site, true, `${p.name} is an outdoor piece`);
+  const names = plan.props.map((p) => p.name);
+  assert.ok(!names.includes('Student Desk'), 'and none of the furniture is');
+});
+
+test('the site plan frames everything on the site', () => {
+  const s = buildSampleSchool();
+  const plan = computeSitePlan(s);
+  for (const r of plan.regions) {
+    for (const p of r.pts) {
+      assert.ok(p.x >= plan.bounds.minX && p.x <= plan.bounds.maxX, 'region inside the sheet in x');
+      assert.ok(p.z >= plan.bounds.minZ && p.z <= plan.bounds.maxZ, 'and in z');
+    }
+  }
+});
+
+test('a bare site still yields a drawable plan', () => {
+  const plan = computeSitePlan(createState(10, 10));
+  assert.deepEqual(plan.regions, []);
+  assert.deepEqual(plan.contours, [], 'level ground has no contours');
+  assert.ok(plan.bounds.maxX > plan.bounds.minX, 'and the sheet still has an extent');
+});
+
+test('contours can be turned off without touching anything else', () => {
+  const s = buildSampleSchool();
+  const on = computeSitePlan(s);
+  const off = computeSitePlan(s, { contours: false });
+  assert.ok(on.contours.length);
+  assert.deepEqual(off.contours, []);
+  assert.equal(off.regions.length, on.regions.length);
 });
