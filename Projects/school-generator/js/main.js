@@ -42,6 +42,16 @@ import {
 import { renderFloorPlanCanvas, renderSitePlanCanvas, downloadCanvasPNG } from './blueprint.js';
 import { buildReport, reportCSV } from './report.js';
 import { isTouchCapable, joystickAxes } from './touch.js';
+// --- Phase 8 ---
+import { BANDS, DEFAULT_BRIEF, normalizeBrief, buildProgram, programLines } from './program.js';
+import { parseBrief } from './brief.js';
+import { layoutSchool, buildSchool, generationSummary } from './generate.js';
+import { AUTO_ENTRY, AUTO_KEY } from './templateedit.js';
+import {
+  ALL_FLOORS, MAX_PIXELS, MAX_BYTES,
+  makeOverlay, setOverlay, calibrate, describeOverlay, centreOn, showsOn,
+} from './overlay.js';
+import { buildingOverhang, floorOverhang } from './shadow.js';
 
 const canvas = document.getElementById('view');
 const $ = (id) => document.getElementById(id);
@@ -94,6 +104,9 @@ const editor = initEditor({
     renderFloorList();
     renderStairReadout();
     renderSiteReadout();
+    // The tracing image is part of the design, so undo and redo can move it,
+    // fade it or take it away entirely — and the panel has to follow.
+    if (editor.tool === 'overlay') renderOverlayPanel();
     // Placing or deleting a fixture changes what the light budget is doing,
     // and the sky panel is the only place that says so.
     renderEnvReadout();
@@ -123,6 +136,10 @@ const editor = initEditor({
     $('hole-btn').classList.toggle('on', on);
     $('hole-btn').setAttribute('aria-pressed', String(on));
   },
+  // The overlay tool has taken a measurement and wants to know what it is.
+  // The dialog belongs to the shell, not to the tool — same division of
+  // labour every other prompt in this file follows.
+  onMeasure: (a, b) => askMeasurement(a, b),
 });
 
 const walkHud = $('walk-hud');
@@ -309,6 +326,8 @@ const TOOL_KEYS = {
   // The eleventh tool, on the key that comes after the ten digits on every
   // keyboard there is.
   Minus: 'site', NumpadSubtract: 'site',
+  // ...and the twelfth, on the key after that one.
+  Equal: 'overlay', NumpadAdd: 'overlay',
 };
 const HINTS = {
   floor: 'Floor — click / drag to lay floor tiles',
@@ -322,6 +341,7 @@ const HINTS = {
   stair: 'Vertical — stairs, ramps, elevators and plain floor openings. Click to place one up to the next level. R rotates, drag to move, Delete removes.',
   template: 'Layout — pick a preset, click to stamp its whole furniture list at once. R/⇧R rotates it before you place it.',
   site: 'Site — lay hardscape and fields, or grade the ground. Region: click corners, close the loop. Grade: drag to raise, ⇧ to lower, Alt to smooth.',
+  overlay: 'Overlay — a plan or a sketch to trace over. Load an image, measure something you know the length of, say what it is, and the picture is scaled to match. Drag to move, R to turn.',
 };
 
 function selectTool(t) {
@@ -341,8 +361,10 @@ function selectTool(t) {
   $('stair-panel').classList.toggle('hidden', t !== 'stair');
   $('template-panel').classList.toggle('hidden', t !== 'template');
   $('site-panel').classList.toggle('hidden', t !== 'site');
+  $('overlay-panel').classList.toggle('hidden', t !== 'overlay');
   if (t === 'stair') renderStairReadout();
   if (t === 'site') renderSitePanel();
+  if (t === 'overlay') renderOverlayPanel();
   // Hole mode is sticky, so coming back to the polygon tool has to say which
   // of the two things a loop is going to do.
   $('status').textContent = t === 'poly' && editor.holeMode
@@ -501,12 +523,22 @@ paletteSearch.addEventListener('keydown', (e) => {
 // --- template (room layout) palette ---
 // One button per preset, same look as the prop palette above — the "color"
 // being picked here is a whole furniture layout rather than one piece.
+//
+// Phase 8 puts one more swatch at the top of it: "Auto", which doesn't stamp a
+// fixed layout at all — it reads the room you clicked, picks the layout its
+// *name* asks for, turns it to face the door and drops whatever doesn't fit.
+// It is the same gesture as every other swatch here, which is why it lives in
+// the same palette rather than in a menu of its own.
 const templatePalette = $('template-palette');
-ROOM_TEMPLATES.forEach((tpl) => {
+[AUTO_ENTRY, ...ROOM_TEMPLATES].forEach((tpl) => {
+  const auto = tpl.key === AUTO_KEY;
   const b = document.createElement('button');
   b.className = 'palette-item' + (tpl.key === editor.templateKey ? ' active' : '');
   b.dataset.key = tpl.key;
-  b.title = `${tpl.name} — ${tpl.stamps.length} pieces, ~${tpl.footprint.w}×${tpl.footprint.d}ft`;
+  b.title = auto
+    ? 'Click a room and it gets the layout its name asks for — "Science Lab 2" ' +
+      'gets benches, "Room 104" gets desks, and anything too big for the room is dropped.'
+    : `${tpl.name} — ${tpl.stamps.length} pieces, ~${tpl.footprint.w}×${tpl.footprint.d}ft`;
   b.setAttribute('aria-pressed', String(tpl.key === editor.templateKey));
   b.innerHTML = `<span class="icon">${tpl.icon}</span>${tpl.name}`;
   b.addEventListener('click', () => {
@@ -703,6 +735,48 @@ function renderFloorList() {
   $('floor-add').disabled = state.floors.length >= MAX_FLOORS;
   $('floor-dup').disabled = state.floors.length >= MAX_FLOORS;
   $('floor-del').disabled = state.floors.length <= 1;
+  renderShadowReadout();
+}
+
+// --- the structural shadow ---
+//
+// Phase 8's rule, and the whole of its interface: on an upper storey you build
+// inside the footprint of the storey below unless you say otherwise, the
+// shadow is drawn under the plan so you can see what that footprint is, and
+// what you have already built outside it is counted in one line.
+//
+// The switch is on the floor panel rather than in a dialog because it belongs
+// to the storey you are on, and the readout is a sentence rather than a
+// warning triangle because a cantilever is a thing people draw on purpose.
+const floorOverhangRow = $('floor-overhang-row');
+const floorOverhangBox = $('floor-overhang');
+
+floorOverhangBox.addEventListener('change', (e) => {
+  editor.setAllowOverhang(e.target.checked);
+  renderShadowReadout();
+  $('status').textContent = e.target.checked
+    ? 'Overhangs on — you can build past the storey below. Nothing carries what hangs over.'
+    : 'Overhangs off — this storey is limited to the footprint below it.';
+});
+
+function renderShadowReadout() {
+  const upper = state.currentFloor > 0;
+  floorOverhangRow.classList.toggle('hidden', !upper);
+  const el = $('floor-shadow-readout');
+  if (!upper) {
+    el.textContent = 'The ground floor stands on the ground — nothing to line up with.';
+    return;
+  }
+  const o = floorOverhang(state, state.currentFloor);
+  const below = floorLabel(state.currentFloor - 1);
+  if (!o.count) {
+    el.textContent = `Every part of this storey stands on ${below}.` +
+      (editor.allowOverhang ? ' Overhangs are allowed.' : '');
+    return;
+  }
+  el.textContent = `${Math.round(o.area).toLocaleString()} ft² of this storey — ` +
+    `${Math.round(o.ratio * 100)}% of it — is outside ${below}. ` +
+    'Measured at 4ft lattice resolution.';
 }
 
 // Switching floors doesn't change the design, so it skips undo and reuses the
@@ -710,6 +784,7 @@ function renderFloorList() {
 function goToFloor(i) {
   if (!setCurrentFloor(state, i)) return;
   renderApi.applyFloorVisibility();
+  renderOverlayPanel();
   editor.refreshOverlay();   // handles belong to the storey you're editing
   renderFloorList();
   renderStairReadout();
@@ -760,6 +835,33 @@ function afterEdit() {
 }
 
 // --- file actions ---
+
+// Replacing the whole design — New, Load, a saved slot, or the generator —
+// is the same eight calls every time, and Phase 8 made it ten: the tracing
+// overlay and the structural shadow both belong to the design and both have to
+// be re-read when it changes underneath them. One function, so a new way of
+// arriving at a design can't forget one of them.
+//
+// `keepAutosave` is the New button's exception: it has just cleared the
+// autosave on purpose and writing an empty school straight back over it would
+// undo that.
+function adoptState(next, opts = {}) {
+  state = next;
+  renderApi.fitEditView(state);
+  rebuild();
+  editor.refreshOverlay();
+  renderApi.refreshOverlay(state);
+  renderFloorList();
+  renderStairReadout();
+  renderEnvPanel();
+  renderSitePanel();
+  renderOverlayPanel();
+  adoptedByAudio();
+  reportInvalidate();
+  if (!opts.keepAutosave) autosaveNow(state);
+  updateUndoButtons();
+}
+
 $('save-btn').addEventListener('click', () => downloadSave(state, 'school.json'));
 
 $('load-btn').addEventListener('click', () => $('file-input').click());
@@ -769,17 +871,7 @@ $('file-input').addEventListener('change', async (e) => {
   if (!file) return;
   try {
     editor.pushUndo();
-    state = await loadFromFile(file);
-    renderApi.fitEditView(state);
-    rebuild();
-    editor.refreshOverlay();
-    renderFloorList();
-    renderStairReadout();
-    renderEnvPanel();
-    renderSitePanel();
-    adoptedByAudio();
-    autosaveNow(state);
-    updateUndoButtons();
+    adoptState(await loadFromFile(file));
   } catch (err) {
     alert('Could not load that file: ' + err.message);
   }
@@ -824,17 +916,7 @@ function renderDesignsList() {
     loadBtn.addEventListener('click', () => {
       try {
         editor.pushUndo();
-        state = loadDesign(d.id);
-        renderApi.fitEditView(state);
-        rebuild();
-        editor.refreshOverlay();
-        renderFloorList();
-        renderStairReadout();
-        renderEnvPanel();
-        renderSitePanel();
-        adoptedByAudio();
-        autosaveNow(state);
-        updateUndoButtons();
+        adoptState(loadDesign(d.id));
         designsOverlay.classList.add('hidden');
         $('status').textContent = `Loaded "${d.name}"`;
       } catch (err) {
@@ -958,17 +1040,8 @@ $('export-print').addEventListener('click', () => {
 $('new-btn').addEventListener('click', () => {
   if (!confirm('Start a new empty school? (Current design stays in your undo history.)')) return;
   editor.pushUndo();
-  state = createState();
   clearAutosave();
-  renderApi.fitEditView(state);
-  rebuild();
-  editor.refreshOverlay();
-  renderFloorList();
-  renderStairReadout();
-  renderEnvPanel();
-  renderSitePanel();
-  adoptedByAudio();
-  updateUndoButtons();
+  adoptState(createState(), { keepAutosave: true });
 });
 
 $('fx-btn').addEventListener('click', () => {
@@ -988,11 +1061,274 @@ const LAYER_CHECKBOXES = [
   ['layer-props', 'props'],
   ['layer-ghost-below', 'ghostBelow'],
   ['layer-ghost-above', 'ghostAbove'],
+  ['layer-overlay', 'overlay'],
+  ['layer-shadow', 'shadow'],
 ];
 for (const [id, key] of LAYER_CHECKBOXES) {
   $(id).checked = renderApi.layers[key];
   $(id).addEventListener('change', (e) => renderApi.setLayers({ [key]: e.target.checked }));
 }
+
+// --- overlay panel: the tracing image ---
+//
+// The image itself lives on the design (overlay.js, save v9) and is drawn by
+// render.js. This panel is the five things you can do to it — load one, move
+// or measure it, fade it, pin it to a storey, lock it — plus a readout that
+// says how big the picture turned out to be, which is the number that tells
+// you whether the measurement was right.
+//
+// Importing resamples. A phone photograph of a sketch is four thousand pixels
+// across and eight megabytes, and putting eight megabytes in a design that
+// autosaves to localStorage on every edit is how you lose a design. So an
+// import is drawn into a canvas at most `MAX_PIXELS` on its long side and
+// re-encoded as WebP, which takes a typical plan scan to a few hundred
+// kilobytes without visibly touching what you are tracing.
+
+const OVERLAY_MODES = [
+  { key: 'move', label: 'Move' },
+  { key: 'measure', label: 'Measure' },
+];
+
+const overlayModes = $('overlay-modes');
+OVERLAY_MODES.forEach((m) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = m.label;
+  b.title = m.key === 'measure'
+    ? 'Click the two ends of something you know the length of'
+    : 'Drag the image into place';
+  b.addEventListener('click', () => {
+    editor.setOverlayMode(m.key);
+    renderOverlayPanel();
+    $('status').textContent = m.key === 'measure'
+      ? 'Measure — click one end of something you know the length of, then the other.'
+      : HINTS.overlay;
+  });
+  overlayModes.appendChild(b);
+});
+
+function overlayOf() { return state.overlay || null; }
+
+// Read a file, resample it, and hand back a data URL plus the pixel size the
+// overlay records. Rejects rather than guesses when the browser can't decode
+// what it was given.
+function importOverlayImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) { reject(new Error('No file.')); return; }
+    if (!/^image\//.test(file.type)) {
+      reject(new Error('That is not an image. PNG, JPEG, WebP, GIF, AVIF or BMP — not PDF.'));
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const long = Math.max(img.naturalWidth, img.naturalHeight);
+      const k = long > MAX_PIXELS ? MAX_PIXELS / long : 1;
+      const w = Math.max(1, Math.round(img.naturalWidth * k));
+      const h = Math.max(1, Math.round(img.naturalHeight * k));
+      const cv = document.createElement('canvas');
+      cv.width = w;
+      cv.height = h;
+      const ctx = cv.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, w, h);
+      // WebP first; a browser that doesn't encode it hands back a PNG data
+      // URL from the same call, which is still something overlay.js accepts.
+      let src = cv.toDataURL('image/webp', 0.82);
+      if (!/^data:image\/webp/.test(src)) src = cv.toDataURL('image/png');
+      if (src.length > MAX_BYTES) src = cv.toDataURL('image/jpeg', 0.7);
+      if (src.length > MAX_BYTES) {
+        reject(new Error('That image is too big to keep inside a design, even resampled.'));
+        return;
+      }
+      resolve({ src, w, h, resampled: k < 1 });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('This browser could not decode that image.'));
+    };
+    img.src = url;
+  });
+}
+
+// Where a freshly loaded picture lands: over the middle of what is already
+// drawn, or over the middle of the lattice when the design is empty.
+function designCentre() {
+  const cells = floorCellCount(state.floors[state.currentFloor]);
+  if (!cells) return { x0: 0, z0: 0, x1: state.w * CELL, z1: state.h * CELL };
+  return { x0: 0, z0: 0, x1: state.w * CELL, z1: state.h * CELL };
+}
+
+$('overlay-load').addEventListener('click', () => $('overlay-file').click());
+
+$('overlay-file').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  $('status').textContent = 'Reading the image…';
+  try {
+    const img = await importOverlayImage(file);
+    let o = makeOverlay(img.src, img.w, img.h, { floor: ALL_FLOORS });
+    if (!o) throw new Error('That image could not be used as an overlay.');
+    o = centreOn(o, designCentre());
+    editor.pushUndo();
+    state.overlay = o;
+    applyOverlayChange();
+    $('status').textContent = `${file.name} loaded${img.resampled ? ' (resampled)' : ''} — ` +
+      'switch to Measure and click the two ends of something you know the length of.';
+  } catch (err) {
+    $('status').textContent = err.message || 'Could not load that image.';
+  }
+  renderOverlayPanel();
+});
+
+$('overlay-clear').addEventListener('click', () => {
+  if (!overlayOf()) return;
+  editor.pushUndo();
+  delete state.overlay;
+  applyOverlayChange();
+  $('status').textContent = 'Tracing image removed.';
+  renderOverlayPanel();
+});
+
+$('overlay-opacity').addEventListener('input', (e) => {
+  const o = overlayOf();
+  if (!o) return;
+  state.overlay = setOverlay(o, { opacity: Number(e.target.value) / 100 });
+  renderApi.refreshOverlay(state);
+  $('overlay-opacity-value').textContent = `${e.target.value}%`;
+});
+$('overlay-opacity').addEventListener('change', () => { if (overlayOf()) applyOverlayChange(); });
+
+$('overlay-floor').addEventListener('change', (e) => {
+  const o = overlayOf();
+  if (!o) return;
+  editor.pushUndo();
+  const v = e.target.value;
+  state.overlay = setOverlay(o, { floor: v === 'all' ? ALL_FLOORS : Number(v) });
+  applyOverlayChange();
+  renderOverlayPanel();
+});
+
+$('overlay-lock').addEventListener('change', (e) => {
+  const o = overlayOf();
+  if (!o) return;
+  state.overlay = setOverlay(o, { locked: e.target.checked });
+  applyOverlayChange();
+  renderOverlayPanel();
+});
+
+// One place to say "the overlay changed": redraw the plane, refresh the tool's
+// handles, and autosave — which is the call that can fail on a full
+// localStorage, so it is also the one place that says so.
+function applyOverlayChange() {
+  renderApi.refreshOverlay(state);
+  editor.refreshOverlay();
+  updateUndoButtons();
+  autosave(state, (result) => {
+    if (result === 'partial') {
+      $('status').textContent = 'Autosaved without the tracing image — it is too big for ' +
+        "this browser's storage. Use Save to keep a file with the image in it.";
+    } else if (result === 'failed') {
+      $('status').textContent = 'Autosave failed — this browser refused to store the design.';
+    }
+  });
+}
+
+function renderOverlayPanel() {
+  const o = overlayOf();
+  $('overlay-clear').disabled = !o;
+  $('overlay-lock').checked = !!(o && o.locked);
+  $('overlay-lock').disabled = !o;
+  $('overlay-opacity').disabled = !o;
+  $('overlay-floor').disabled = !o;
+  const pct = Math.round((o ? o.opacity : 0.55) * 100);
+  $('overlay-opacity').value = String(pct);
+  $('overlay-opacity-value').textContent = `${pct}%`;
+
+  const sel = $('overlay-floor');
+  const want = o ? (o.floor === ALL_FLOORS ? 'all' : String(o.floor)) : 'all';
+  sel.textContent = '';
+  const all = document.createElement('option');
+  all.value = 'all';
+  all.textContent = 'Every storey';
+  sel.appendChild(all);
+  state.floors.forEach((_, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = floorLabel(i);
+    sel.appendChild(opt);
+  });
+  sel.value = want;
+
+  for (const b of overlayModes.children) {
+    const on = b.textContent === (editor.overlayMode === 'measure' ? 'Measure' : 'Move');
+    b.classList.toggle('active', on);
+  }
+
+  const lines = [describeOverlay(o)];
+  if (o && !showsOn(o, state.currentFloor)) {
+    lines.push(`Hidden here — it is pinned to ${floorLabel(o.floor)}.`);
+  }
+  if (o && !o.cal) {
+    lines.push('Measure something on it and the scale follows. Until then the ' +
+      'size above is a placeholder, not a reading.');
+  }
+  $('overlay-readout').textContent = lines.join(' ');
+}
+
+// --- the measurement prompt ---
+//
+// The tool has two points on the picture; this asks what the distance between
+// them is and hands the answer to `calibrate`. A dialog rather than an inline
+// field because the answer is a number somebody has to go and look up, and
+// because the two clicks that produced it are worth confirming — the detail
+// line says how far apart they were in pixels, which is how you notice you
+// mis-clicked before you scale the whole image by it.
+let pendingMeasure = null;
+
+function askMeasurement(a, b) {
+  const o = overlayOf();
+  if (!o) return;
+  pendingMeasure = { a, b };
+  const px = Math.hypot(b.u - a.u, b.v - a.v);
+  const now = px * o.scale;
+  $('measure-detail').textContent =
+    `${Math.round(px)} pixels apart, which is ${now.toFixed(1)} ft at the current scale.`;
+  const input = $('measure-ft');
+  input.value = String(Math.max(0.5, Math.round(now * 2) / 2));
+  openModal($('measure-overlay'), input);
+  input.select();
+}
+
+function closeMeasure() {
+  pendingMeasure = null;
+  closeModal($('measure-overlay'));
+  editor.cancelMeasure();
+}
+
+$('measure-cancel').addEventListener('click', closeMeasure);
+$('measure-ok').addEventListener('click', () => {
+  const o = overlayOf();
+  if (!o || !pendingMeasure) { closeMeasure(); return; }
+  const ft = Number($('measure-ft').value);
+  const r = calibrate(o, pendingMeasure.a, pendingMeasure.b, ft);
+  if (!r.ok) {
+    $('measure-detail').textContent = r.reason;
+    return;
+  }
+  editor.pushUndo();
+  state.overlay = r.overlay;
+  applyOverlayChange();
+  closeMeasure();
+  renderOverlayPanel();
+  $('status').textContent = `Scaled — the image is now ${Math.round(r.size.w).toLocaleString()} × ` +
+    `${Math.round(r.size.d).toLocaleString()} ft.` + (r.reason ? ` ${r.reason}` : '');
+});
+$('measure-ft').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); $('measure-ok').click(); }
+});
 
 // --- site panel: the ground, what's laid on it, and what caps the building ---
 //
@@ -1946,6 +2282,16 @@ function reportSections(r) {
       r.acoustics.summary.over ? `<b>${r.acoustics.summary.over}</b>` : 'none'),
   ]);
 
+  if (r.structure && r.summary.storeys > 1) {
+    const st = r.structure;
+    sec('Structure', [
+      row('Upper storeys checked', plural(st.floors.length, 'storey')),
+      row('Standing on nothing', st.area
+        ? `<span class="warn">${ft(st.area)} ft²</span>`
+        : 'none'),
+    ]);
+  }
+
   if (r.takeoff) {
     const t = r.takeoff.totals;
     sec('Materials', [
@@ -2015,6 +2361,137 @@ $('report-csv').addEventListener('click', () => {
   a.download = 'school-analysis.csv';
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+
+// --- the generator ---
+//
+// Phase 8's front door. Everything it does is in program.js, brief.js and
+// generate.js; this is the sheet that collects five numbers, prints the
+// schedule of accommodation those numbers imply, and then replaces the design.
+//
+// Two things about it are deliberate. The schedule is shown *before* you press
+// Generate, because a list of rooms is checkable and a building is not; and the
+// sentence box is labelled as a phrase table rather than as an assistant,
+// because it is one. What it understood and what it ignored are both printed.
+
+const genOverlay = $('gen-overlay');
+const genBand = $('gen-band');
+BANDS.forEach((b) => {
+  const opt = document.createElement('option');
+  opt.value = b.key;
+  opt.textContent = b.label;
+  genBand.appendChild(opt);
+});
+
+const GEN_FIELDS = {
+  students: 'gen-students', storeys: 'gen-storeys', seed: 'gen-seed',
+};
+const GEN_FLAGS = {
+  gym: 'gen-gym', cafeteria: 'gen-cafeteria', library: 'gen-library', site: 'gen-site',
+};
+
+// The brief the sheet is currently showing, kept normalized so the schedule
+// below it is always the schedule of what the controls say.
+let genBrief = { ...DEFAULT_BRIEF };
+
+function readGenFields() {
+  const raw = { band: genBand.value };
+  for (const [key, id] of Object.entries(GEN_FIELDS)) raw[key] = Number($(id).value);
+  for (const [key, id] of Object.entries(GEN_FLAGS)) raw[key] = $(id).checked;
+  return normalizeBrief(raw);
+}
+
+function writeGenFields(brief) {
+  genBand.value = brief.band;
+  for (const [key, id] of Object.entries(GEN_FIELDS)) $(id).value = String(brief[key]);
+  for (const [key, id] of Object.entries(GEN_FLAGS)) $(id).checked = brief[key];
+}
+
+function renderGenSchedule() {
+  const program = buildProgram(genBrief);
+  const lines = programLines(program);
+  const rows = lines.map((l) =>
+    `<div class="row-line" title="${esc(l.rule)}"><span>${esc(l.label)}</span>` +
+    `<span>${esc(l.size)} · ${Math.round(l.area).toLocaleString()} ft²</span></div>`).join('');
+  const totals =
+    `<div class="totals"><div class="row-line"><span>${program.stations} teaching stations</span>` +
+    `<span>${program.roomCount} rooms</span></div>` +
+    `<div class="row-line"><span>${Math.round(program.netArea).toLocaleString()} ft² of rooms</span>` +
+    `<span>~${Math.round(program.grossArea).toLocaleString()} ft² gross</span></div>` +
+    `<div class="row-line"><span>${program.staff} staff</span>` +
+    `<span>${program.parking} parking spaces</span></div></div>`;
+  $('gen-schedule').innerHTML = rows + totals +
+    `<p class="hint">${esc(program.caveat)}</p>`;
+}
+
+function genChanged() {
+  genBrief = readGenFields();
+  renderGenSchedule();
+}
+
+for (const id of [...Object.values(GEN_FIELDS), ...Object.values(GEN_FLAGS), 'gen-band']) {
+  $(id).addEventListener('change', genChanged);
+  $(id).addEventListener('input', genChanged);
+}
+
+$('gen-read').addEventListener('click', () => {
+  const r = parseBrief($('gen-brief').value, readGenFields());
+  genBrief = r.brief;
+  writeGenFields(genBrief);
+  renderGenSchedule();
+  const read = `<span class="read">Read: ${esc(r.echo)}.</span>`;
+  const ignored = r.ignored.length
+    ? ` <span class="ignored">Ignored: ${esc(r.ignored.join(', '))}.</span>`
+    : ' <span class="read">Nothing was ignored.</span>';
+  $('gen-echo').innerHTML = read + ignored;
+});
+
+$('gen-btn').addEventListener('click', openGenerator);
+
+function openGenerator() {
+  if (mode === 'walk') setMode('edit');
+  writeGenFields(genBrief);
+  renderGenSchedule();
+  openModal(genOverlay, $('gen-brief'));
+}
+
+$('gen-cancel').addEventListener('click', () => closeModal(genOverlay));
+genOverlay.addEventListener('click', (e) => { if (e.target === genOverlay) closeModal(genOverlay); });
+
+$('gen-go').addEventListener('click', () => {
+  genBrief = readGenFields();
+  const furnish = $('gen-furnish').checked;
+  $('gen-go').disabled = true;
+  $('status').textContent = 'Generating…';
+  // One frame, so the status line paints before a second of arithmetic.
+  requestAnimationFrame(() => {
+    try {
+      const plan = layoutSchool(genBrief);
+      const next = buildSchool(plan, { furnish });
+      adoptState(next);
+      const sum = generationSummary(plan, next);
+      const bits = [
+        `${sum.students} students`,
+        `${sum.rooms} rooms on ${sum.storeys} storey${sum.storeys === 1 ? '' : 's'}`,
+        `${sum.wings} wing${sum.wings === 1 ? '' : 's'}`,
+        `${sum.footprintFt.w}×${sum.footprintFt.d} ft`,
+        `${sum.exits} ways out`,
+        `${sum.props.toLocaleString()} pieces of furniture`,
+      ];
+      let text = `Generated — ${bits.join(', ')}.`;
+      if (plan.oversize) {
+        text += ` ${plan.unplaced.length} room${plan.unplaced.length === 1 ? '' : 's'} ` +
+          "didn't fit on the grid: this brief wants more building than the 800ft lattice holds.";
+      }
+      text += ' Open the Report to see what it got wrong.';
+      $('status').textContent = text;
+      closeModal(genOverlay);
+    } catch (err) {
+      $('status').textContent = `Could not generate that: ${err.message}`;
+    } finally {
+      $('gen-go').disabled = false;
+    }
+  });
 });
 
 // --- photo mode ---
@@ -2091,6 +2568,15 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.code === 'Escape' && !exportOverlay.classList.contains('hidden')) {
     closeModal(exportOverlay); return;
+  }
+  // The measure prompt goes first: it is the one dialog that can be open on
+  // top of another, and Escape there means "I mis-clicked", not "close the
+  // generator".
+  if (e.code === 'Escape' && !$('measure-overlay').classList.contains('hidden')) {
+    closeMeasure(); return;
+  }
+  if (e.code === 'Escape' && !genOverlay.classList.contains('hidden')) {
+    closeModal(genOverlay); return;
   }
   // A shortcut must never fire while somebody is filling in a field — and the
   // sky panel added the first <select> to the page, so this can't just be

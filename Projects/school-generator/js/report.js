@@ -25,6 +25,7 @@ import { egressAnalysis, accessibleAnalysis } from './egress.js';
 import { daylightAnalysis } from './daylight.js';
 import { takeoff, takeoffCSV, csvRows } from './takeoff.js';
 import { roomsOnFloor } from './acoustics.js';
+import { buildingOverhang } from './shadow.js';
 
 // Worst first. A panel prints this order and a title block prints the first
 // row of it, so it is the one piece of editorial judgement in the phase.
@@ -118,12 +119,18 @@ export function buildReport(state, opts = {}) {
     ? { rooms: [], summary: { rooms: 0, graded: 0, over: 0, worst: null }, findings: [] }
     : acousticsSection(state, { catalogGet });
   const materials = opts.takeoff === false ? null : takeoff(state, { catalogGet });
+  // Phase 8's one addition to the report, and the only structural question the
+  // tool asks: is every storey standing on the one below it. It reads nothing
+  // the other sections read — no graph, no occupant loads, just two footprints
+  // compared cell by cell — which is why it costs almost nothing to include.
+  const structure = buildingOverhang(state);
 
   const sections = [
     ['egress', egress],
     ['accessible', accessible],
     ['daylight', daylight],
     ['acoustics', acoustics],
+    ['structure', structure],
   ];
   const findings = [];
   for (const [section, part] of sections) {
@@ -152,6 +159,7 @@ export function buildReport(state, opts = {}) {
     accessible,
     daylight,
     acoustics,
+    structure,
     takeoff: materials,
     findings,
     summary: {
@@ -192,6 +200,10 @@ export function reportCSV(report) {
   rows.push(['Exits', s.exits, '', '', '', '']);
   rows.push(['Longest travel distance', round(s.travel), 'ft',
     `limit ${report.egress.limits.travel} ft`, '', '']);
+  if (report.structure) {
+    rows.push(['Unsupported upper storey', round(report.structure.area), 'ft²',
+      'outside the footprint below', '', '']);
+  }
   rows.push([]);
 
   rows.push(['Findings', 'Level', 'Section', 'Detail', '', '']);

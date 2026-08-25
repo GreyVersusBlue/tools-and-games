@@ -11,6 +11,20 @@ import { floorBaseY } from './grid.js';
 import { addProp, MAX_PROPS, wrapAngle } from './props.js';
 import { gridSnap } from './propplace.js';
 import { ROOM_TEMPLATES, templateByKey, templatePlacements } from './templates.js';
+import { furnishRoom, roomGeometry, templateForRoom } from './autofurnish.js';
+import { floorRooms } from './navgraph.js';
+
+// Phase 8's "make this a science lab": a pseudo-template that reads the room
+// you clicked, picks the layout its *name* asks for, aims it at the door and
+// culls whatever won't fit. It sits in the same palette as the hand-picked
+// layouts because it is the same gesture — click a room, get furniture — and
+// it is the piece the whole-school generator calls too.
+export const AUTO_KEY = 'auto';
+export const AUTO_ENTRY = {
+  key: AUTO_KEY,
+  name: 'Auto (from the room name)',
+  icon: '✨',
+};
 
 const GHOST_OK = 0x7ce0a0;
 const GHOST_BAD = 0xff5f56;
@@ -57,6 +71,18 @@ export function initTemplateEdit({ getState, renderApi, host }) {
     return floorBaseY(s, s.currentFloor) + 0.05;
   };
 
+  // The room under a point on the current storey, if there is one. Only the
+  // auto layout needs this — every other template lands where you click,
+  // room or no room.
+  function roomUnder(s, x, z) {
+    const rooms = floorRooms(s, s.currentFloor).rooms;
+    for (const r of rooms) {
+      const geo = roomGeometry(s, s.currentFloor, r);
+      if (geo && geo.inside(x, z)) return { room: r, geo };
+    }
+    return null;
+  }
+
   function refresh() {
     const s = getState();
     const tpl = templateByKey(currentKey);
@@ -65,7 +91,7 @@ export function initTemplateEdit({ getState, renderApi, host }) {
       ghostGroup.visible = true;
       ghostGroup.position.set(hover.x, baseY(), hover.z);
       ghostGroup.rotation.y = pendingRotationY;
-      ghostPlane.scale.set(tpl.footprint.w, tpl.footprint.d, 1);
+      ghostPlane.scale.set(tpl.footprint.w, 1, tpl.footprint.d);
       marker.position.set(0, 0.02, tpl.footprint.d / 2 + 0.6);
       const wouldFit = s.props.length + tpl.stamps.length <= MAX_PROPS;
       ghostMat.color.setHex(wouldFit ? GHOST_OK : GHOST_BAD);
@@ -114,6 +140,7 @@ export function initTemplateEdit({ getState, renderApi, host }) {
     if (mode === 'cancelled') { refresh(); return true; }
 
     const s = getState();
+    if (currentKey === AUTO_KEY) { autoFurnishAt(s); refresh(); return true; }
     const tpl = templateByKey(currentKey);
     if (!tpl || !hover) { refresh(); return true; }
     const placements = templatePlacements(tpl, hover.x, hover.z, pendingRotationY);
@@ -142,6 +169,51 @@ export function initTemplateEdit({ getState, renderApi, host }) {
     return true;
   }
 
+  // Furnish the room under the cursor from its own name. Unlike a stamp this
+  // is not placed *at* a point — the point only says which room — so the
+  // rotation the R key set is offered as a hint and overridden by the room's
+  // own doorway when there is one.
+  function autoFurnishAt(s) {
+    if (!hover) return;
+    const hit = roomUnder(s, hover.x, hover.z);
+    if (!hit) {
+      host.status('Auto layout — click inside a room.');
+      return;
+    }
+    const { room, geo } = hit;
+    if (!room.name) {
+      host.status('That room has no name. Name it with the Room tool and the ' +
+        'layout follows from what you called it.');
+      return;
+    }
+    const key = templateForRoom(room.name);
+    if (!key) {
+      host.status(`Nothing in the layout table matches “${room.name}” — ` +
+        'pick a layout from the palette instead.');
+      return;
+    }
+    const r = furnishRoom(s, s.currentFloor, room, { geometry: geo });
+    if (!r.placements.length) {
+      host.status(`${r.tpl.name} doesn't fit in ${room.name} — every piece landed in a wall.`);
+      return;
+    }
+    if (s.props.length + r.placements.length > MAX_PROPS) {
+      host.status('Prop limit reached — nothing placed.');
+      return;
+    }
+    host.pushUndo();
+    let added = 0;
+    for (const pl of r.placements) {
+      if (addProp(s, pl.type, {
+        x: pl.x, z: pl.z, y: pl.y, rotationY: pl.rotationY, mount: pl.mount, scale: 1,
+      })) added++;
+    }
+    if (!added) { host.dropUndo(); host.status('Could not place that layout.'); return; }
+    host.changed();
+    host.status(`${room.name} → ${r.tpl.name}, ${added} piece${added === 1 ? '' : 's'}` +
+      `${r.dropped ? `, ${r.dropped} dropped for want of room` : ''}.`);
+  }
+
   // --- keyboard: rotate before placing ---
 
   function key(e) {
@@ -156,7 +228,7 @@ export function initTemplateEdit({ getState, renderApi, host }) {
   }
 
   function setType(key_) {
-    if (!templateByKey(key_)) return;
+    if (key_ !== AUTO_KEY && !templateByKey(key_)) return;
     currentKey = key_;
     refresh();
   }

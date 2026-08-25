@@ -22,6 +22,7 @@
 
 import * as THREE from 'three';
 import { CELL, inGrid, activeFloor, floorBaseY } from './grid.js';
+import { pointSupported } from './shadow.js';
 import { wrapAngle, addProp } from './props.js';
 import {
   MIN_SEG,
@@ -230,6 +231,24 @@ export function initPolyEdit({ getState, renderApi, host }) {
 
   // --- drawing ---
 
+  // How much of a ring stands on the storey below: its corners and its
+  // midpoints, which is a coarse probe and exactly as coarse as shadow.js's
+  // own 4ft rasterization. The ground floor stands on the ground, so this is
+  // always "all of it" there.
+  function supportOf(s, pts) {
+    let inside = 0, total = 0;
+    const probe = (x, z) => {
+      total++;
+      if (pointSupported(s, s.currentFloor, x, z)) inside++;
+    };
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      probe(a.x, a.z);
+      probe((a.x + b.x) / 2, (a.z + b.z) / 2);
+    }
+    return { inside, outside: total - inside, total };
+  }
+
   function commitDraft() {
     const pts = cleanRing(draft);
     draft = [];
@@ -255,6 +274,21 @@ export function initPolyEdit({ getState, renderApi, host }) {
       selectedIds = new Set([target.id]);
       host.status(`Cut an opening in ${target.name || 'the room'} — ${Math.round(shapeArea(target))} ft².`);
     } else {
+      // Phase 8's structural shadow, the polygon half. The lattice can refuse
+      // one cell at a time as you paint; a polygon arrives all at once, so the
+      // rule is applied to the room rather than to a cell: a room drawn
+      // entirely off the storey below is refused, and one that only overhangs
+      // in part is placed and *reported*. Clipping a ring to a footprint mask
+      // would be a different tool, and a room silently trimmed to a staircase
+      // of 4ft steps is not what anybody drew.
+      const support = supportOf(s, pts);
+      if (!host.allowOverhang() && support.outside === support.total) {
+        host.dropUndo();
+        host.status('That room is entirely off the storey below — turn on ' +
+          '“Allow overhangs” in the Floor panel to build there.');
+        refresh();
+        return;
+      }
       const shape = addShape(s, s.currentFloor, pts, { name: host.roomName(), color: host.roomColor() });
       if (!shape) {
         host.dropUndo();
@@ -263,7 +297,12 @@ export function initPolyEdit({ getState, renderApi, host }) {
         return;
       }
       selectedIds = new Set([shape.id]);
-      host.status(`${shape.name || 'Room'} — ${Math.round(shapeArea(shape))} ft², ${shape.rings[0].pts.length} corners.`);
+      if (support.outside) {
+        host.status(`${shape.name || 'Room'} — ${Math.round(shapeArea(shape))} ft², and it ` +
+          'overhangs the storey below. Nothing carries the part that hangs over.');
+      } else {
+        host.status(`${shape.name || 'Room'} — ${Math.round(shapeArea(shape))} ft², ${shape.rings[0].pts.length} corners.`);
+      }
     }
     host.changed();
     refresh();
