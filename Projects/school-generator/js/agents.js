@@ -47,7 +47,6 @@ import { stairUnder, stairMetrics } from './stairs.js';
 // other in a 3ft doorway without either of them being pushed through a jamb,
 // and the camera's 0.9 is sized for one.
 export const AGENT_R = 0.72;         // ft
-export const EYE = 5.4;              // ft — an agent's own eye height, for follow mode
 // Walking, hurrying between classes, and evacuating. A corridor at a passing
 // period is genuinely faster than a corridor at any other time, and a drill is
 // faster again without ever being a run — nobody runs in a fire drill, which
@@ -206,7 +205,6 @@ export function rng(seed) {
 }
 
 const pick = (rand, list) => list[Math.floor(rand() * list.length) % list.length];
-const dirOf = (facing) => ({ x: Math.sin(facing), z: Math.cos(facing) });
 const facingTo = (dx, dz) => Math.atan2(dx, dz);
 const angleLerp = (from, to, t) => {
   let d = ((to - from + Math.PI) % (Math.PI * 2)) - Math.PI;

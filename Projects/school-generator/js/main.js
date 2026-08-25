@@ -738,8 +738,19 @@ function updateUndoButtons() {
   $('undo-btn').disabled = !editor.canUndo;
   $('redo-btn').disabled = !editor.canRedo;
 }
-$('undo-btn').addEventListener('click', () => { editor.undo(); autosave(state); updateUndoButtons(); });
-$('redo-btn').addEventListener('click', () => { editor.redo(); autosave(state); updateUndoButtons(); });
+$('undo-btn').addEventListener('click', () => { editor.undo(); afterEdit(); });
+$('redo-btn').addEventListener('click', () => { editor.redo(); afterEdit(); });
+
+// Undo restores the model in place, which the crowd is standing on: its graph
+// is now describing a building that has been edited out from under it.
+function afterEdit() {
+  autosave(state);
+  updateUndoButtons();
+  if (life.on) {
+    lifeRebuildWorld();
+    retargetAll(life.ctx, life.agents);
+  }
+}
 
 // --- file actions ---
 $('save-btn').addEventListener('click', () => downloadSave(state, 'school.json'));
@@ -1315,6 +1326,16 @@ const audioPanel = $('audio-panel');
 function adoptedByAudio() {
   audio.setWorld(state);
   renderAudioPanel();
+  adoptedByLife();
+}
+
+// A different design is a different building, and the crowd in it was walking
+// around the old one — its graph, its colliders and its timetables all name
+// rooms that may not exist any more. So a new state restarts the school rather
+// than trying to carry it over: same size, same seed, new building.
+function adoptedByLife() {
+  if (life.on) lifeStart();
+  else if (!lifePanel.classList.contains('hidden')) renderLifePanel();
 }
 
 function renderAudioPanel() {
@@ -1945,12 +1966,12 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
     e.preventDefault();
     e.shiftKey ? editor.redo() : editor.undo();
-    autosave(state); updateUndoButtons();
+    afterEdit();
     return;
   }
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') {
     e.preventDefault();
-    editor.redo(); autosave(state); updateUndoButtons();
+    editor.redo(); afterEdit();
     return;
   }
   if (e.code === 'KeyG' && editor.tool === 'wall') { cycleWallKind(); return; }

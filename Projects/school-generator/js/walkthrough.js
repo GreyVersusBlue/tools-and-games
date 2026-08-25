@@ -40,7 +40,7 @@ import { stride, footstepFor } from './sound.js';
 import { terrainField, emptyField, groundAt } from './terrain.js';
 import { siteSurfaceAt, surfaceEntry } from './site.js';
 import {
-  GRAVITY, TERMINAL_V, JUMP_V, STEP_UP, WALKER_R,
+  GRAVITY, TERMINAL_V, JUMP_V, STEP_UP,
   buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoorsFor,
 } from './collide.js';
 import { lookEulerDelta } from './touch.js';

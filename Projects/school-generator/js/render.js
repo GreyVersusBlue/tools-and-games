@@ -3988,7 +3988,7 @@ export function initRender(canvas) {
   // A body, in feet, at scale 1. Sizes are a person: 5.8ft to the crown, 2.9ft
   // to the hip, a 13in shoulder width.
   const BODY = {
-    hip: 2.85, thigh: 1.5, shin: 1.35, torso: 1.9, neck: 0.3, head: 0.44,
+    hip: 2.85, thigh: 1.5, shin: 1.35, torso: 1.9, head: 0.44,
     // How far below the top of the torso the shoulders are, and how far out
     // from the middle — two different measurements that a single `shoulder`
     // number conflated in the first cut of this, with the arms coming out of
