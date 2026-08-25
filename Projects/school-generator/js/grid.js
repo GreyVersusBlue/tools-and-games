@@ -1,7 +1,7 @@
 // grid.js — grid data model, pure helpers (no three.js imports)
 // Units are feet. One cell = 4ft x 4ft. Walls live on cell edges.
 //
-// State shape (v4):
+// State shape (v5):
 //   { version, cellFt, floorHt, w, h,
 //     floors: [ { w, h, cells[], edgesH[], edgesV[], shapes[] }, ... ],
 //     currentFloor, props: [], links: [], nextId }
@@ -26,9 +26,17 @@ export const WALL_H = 10;     // wall height (ceiling plane), ft
 // can see over, never as an enclosure the way a wall does.
 export const RAIL_H = 3.5;    // ft — a school's code minimum
 export const FLOOR_H = 12;    // floor-to-floor height, ft (10ft ceiling + 2ft plenum)
-export const WALL_T = 0.5;    // wall thickness, ft
+// Wall thickness. `WALL_T` stays the nominal figure every pre-Phase-2 caller
+// used and is still the fallback where nothing better is known; the two below
+// are what a boundary is *actually* built at once walls.js has looked at what
+// is on either side of it. An interior partition is a stud wall between two
+// rooms; an exterior wall carries the building and is drawn thicker for it.
+export const WALL_T = 0.5;    // wall thickness, ft — nominal / fallback
+export const WALL_T_INT = 0.4;  // ft — a partition with rooms on both sides
+export const WALL_T_EXT = 0.8;  // ft — a wall with weather on one side
 export const DOOR_W = 3;      // door opening width, ft
 export const DOOR_H = 7;      // door opening height, ft
+export const DOUBLE_DOOR_W = 6; // ft — a corridor/egress pair
 export const EYE_H = 5.5;     // first-person eye height, ft
 
 // Edge kinds on the lattice. 0-2 are v1's vocabulary and can't move; glass and
@@ -41,7 +49,26 @@ export const EDGE_WALL = 1;
 export const EDGE_DOOR = 2;
 export const EDGE_GLASS = 3;
 export const EDGE_RAIL = 4;
-export const EDGE_KINDS = [EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL];
+// Phase 2 appends two more, on the same terms: a window is a wall with a
+// glazed band in it (solid to a walker, which is what keeps it out of the
+// `EDGE_DOOR` family), and a double door is the corridor pair. The lattice has
+// nowhere to put per-opening options — an edge is a value, not a record — so
+// each variant that a polygon room spells with fields is its own kind here.
+export const EDGE_WINDOW = 5;
+export const EDGE_DOOR2 = 6;
+// A cased opening: the hole without the door. The lattice needs its own kind
+// for it because `EDGE_DOOR` now hangs a leaf, and a corridor arch that swings
+// shut when you walk at it is not what anyone drew.
+export const EDGE_OPENING = 7;
+export const EDGE_KINDS = [
+  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
+  EDGE_WINDOW, EDGE_DOOR2, EDGE_OPENING,
+];
+// The kinds you can walk through. Everything else on a boundary stops a body,
+// which is why this is a short list rather than an exception in six places.
+// (A window is emphatically not on it — see the note in `wallSegments`.)
+export const EDGE_DOORS = [EDGE_DOOR, EDGE_DOOR2, EDGE_OPENING];
+export const isDoorEdge = (v) => EDGE_DOORS.includes(v);
 
 export const DEFAULT_W = 40;  // cells
 export const DEFAULT_H = 30;  // cells
@@ -58,7 +85,13 @@ export const ROOM_COLORS = [
 export function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
   return {
     w, h,
-    // cells[i] = null (no floor) or { room: string|null, color: '#rrggbb'|null }
+    // cells[i] = null (no floor), or a room record:
+    //   { room, color, fin, paint }
+    // `room`/`color` are the label and its plan tint (v1); `fin`/`paint` are
+    // the floor finish key and wall colour Phase 2 added (see finish.js).
+    // A grid room has no identity of its own — it's a flood-fill label — so
+    // all four live on every cell and the room tool writes them across a
+    // region at once.
     cells: new Array(w * h).fill(null),
     // edgesH[y*w + x] = edge between cell (x,y-1) and (x,y), y in 0..h. See EDGE_* above.
     edgesH: new Array(w * (h + 1)).fill(0),
@@ -72,7 +105,7 @@ export function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
 
 export function createState(w = DEFAULT_W, h = DEFAULT_H) {
   return {
-    version: 4,
+    version: 5,
     cellFt: CELL,
     floorHt: FLOOR_H,
     w, h,
@@ -115,7 +148,7 @@ export function getCell(f, x, y) {
 export function setTile(f, x, y, on) {
   if (!inGrid(f, x, y)) return false;
   const i = cellIdx(f, x, y);
-  if (on && !f.cells[i]) { f.cells[i] = { room: null, color: null }; return true; }
+  if (on && !f.cells[i]) { f.cells[i] = { room: null, color: null, fin: null, paint: null }; return true; }
   if (!on && f.cells[i]) { f.cells[i] = null; return true; }
   return false;
 }
@@ -238,7 +271,7 @@ export function duplicateFloor(s, index = s.currentFloor) {
   const at = index + 1;
   s.floors.splice(at, 0, {
     w: src.w, h: src.h,
-    cells: src.cells.map((c) => (c ? { room: c.room, color: c.color } : null)),
+    cells: src.cells.map((c) => (c ? { ...c } : null)),
     edgesH: src.edgesH.slice(),
     edgesV: src.edgesV.slice(),
     // Copied polygon rooms are new rooms: same outline, fresh ids, so a tool
@@ -248,10 +281,14 @@ export function duplicateFloor(s, index = s.currentFloor) {
       id: nextShapeId(s),
       name: sh.name,
       color: sh.color,
+      fin: sh.fin || null,
+      paint: sh.paint || null,
       rings: sh.rings.map((r) => ({
         pts: r.pts.map((p) => ({ x: p.x, z: p.z })),
         walls: r.walls.slice(),
-        openings: r.openings.map((o) => ({ seg: o.seg, t: o.t, w: o.w })),
+        // Spread rather than pick: an opening carries optional door/window
+        // fields (see shapes.js) and a duplicated floor has to keep all of them.
+        openings: r.openings.map((o) => ({ ...o })),
       })),
     })),
   });

@@ -208,7 +208,9 @@ test('links connect two different floors', () => {
   const s = createState();
   addFloor(s);
   assert.equal(addLink(s, 'stair', { from: 0, to: 0 }), null, 'a link needs two levels');
-  assert.equal(normalizeLink({ type: 'elevator', from: 0, to: 1 }), null, 'unknown kind');
+  assert.equal(normalizeLink({ type: 'escalator', from: 0, to: 1 }), null, 'unknown kind');
+  assert.ok(normalizeLink({ type: 'elevator', from: 0, to: 1 }), 'Phase 2 kinds are known');
+  assert.ok(normalizeLink({ type: 'ramp', from: 0, to: 1 }), 'Phase 2 kinds are known');
   const l = addLink(s, 'stair', { from: 0, to: 1, x: 12, z: 16 });
   assert.deepEqual(linksOnFloor(s, 1).map((x) => x.id), [l.id]);
   assert.equal(removeLink(s, l.id), true);
@@ -257,7 +259,10 @@ test('a v1 save loads as a one-floor current-version design', () => {
   assert.equal(s.currentFloor, 0);
   assert.deepEqual(s.props, []);
   assert.deepEqual(s.links, []);
-  assert.deepEqual(s.floors[0].cells[7], { room: 'Room 101', color: '#f5d491' });
+  // A v1 cell arrives with Phase 2's finish fields present and empty — the
+  // room is still VCT and off-white, it just now says so by not saying so.
+  assert.deepEqual(s.floors[0].cells[7],
+    { room: 'Room 101', color: '#f5d491', fin: null, paint: null });
   assert.equal(s.floors[0].edgesH[7], 1);
   assert.equal(s.floors[0].edgesV[9], 2);
   assert.equal(floorCellCount(s.floors[0]), 2);

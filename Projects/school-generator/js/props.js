@@ -19,9 +19,11 @@ export const MAX_LINKS = 512;
 // data model for "things that aren't on the ground".
 export const MOUNTS = ['floor', 'wall', 'ceiling'];
 
-// Inter-floor link kinds. Phase 4 (stairs, mezzanines) fills these in; the
-// table is defined and round-tripped now so saves written today stay valid.
-export const LINK_TYPES = ['stair', 'opening'];
+// Inter-floor link kinds. Phase 4 (stairs, mezzanines) filled the first two
+// in; Phase 2 of the second arc appends the accessible pair. Appending is the
+// only safe move here — a link whose `type` this build doesn't recognize is
+// dropped by `normalizeLink`, so the list has to grow rather than change.
+export const LINK_TYPES = ['stair', 'opening', 'ramp', 'elevator'];
 
 const nextId = (state) => {
   const id = Math.max(1, Math.floor(state.nextId || 1));

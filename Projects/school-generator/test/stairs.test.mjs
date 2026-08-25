@@ -17,6 +17,9 @@ import {
   floorCuts, inFloorCut, cellCut, openingRails,
   stairSurfaceAt, stairUnder, linkAt, linkById, linksFrom, addStair, stairsOf,
   floorSolidAt,
+  RAMP_SLOPE, RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, ELEV_W, ELEV_D,
+  LINK_KINDS, RUN_TYPES, isRun, isElevator, rampSlope, runLength, runMetrics,
+  elevatorSize, elevatorWalls, elevatorDoorWidth, elevatorsOn, elevatorAt,
 } from '../js/stairs.js';
 
 const HALF_PI = Math.PI / 2;
@@ -378,4 +381,156 @@ test('an empty design has no stairs to draw and nothing to cut', () => {
   assert.equal(stairUnder(s, 0, 0, 0), null);
   addShape(s, 0, [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 10 }]);
   assert.deepEqual(floorCuts(s, 0), [], 'a polygon room alone opens no holes');
+});
+
+
+// ---------- ramps ----------
+//
+// A ramp is the stair's own machinery at a different pitch, so most of what is
+// tested here is that it went through the *same* code — not a parallel path.
+
+test('a ramp is a run whose length comes off its slope, not its risers', () => {
+  const s = twoFloors();
+  const { link } = addStair(s, 0, { type: 'ramp', x: 20, z: 20 });
+  assert.ok(link);
+  const m = stairMetrics(s);
+  assert.equal(runLength(link, m), m.rise * RAMP_SLOPE);
+  assert.equal(runLength(link, m), FLOOR_H * 12, '144ft at the ADA maximum, and we say so');
+  const rm = runMetrics(link, m);
+  assert.equal(rm.steps, 0, 'no risers');
+  assert.equal(rm.riser, 0);
+  assert.ok(rm.pitch > 0 && rm.pitch < 0.1, 'and a very shallow pitch');
+});
+
+test('a ramp gets steeper on demand, and never past the limits', () => {
+  const s = twoFloors();
+  const steep = addStair(s, 0, { type: 'ramp', x: 20, z: 20, slope: 8 }).link;
+  assert.equal(rampSlope(steep), 8);
+  assert.equal(runLength(steep, stairMetrics(s)), FLOOR_H * 8);
+  assert.equal(rampSlope({ type: 'ramp', data: { slope: 900 } }), MAX_RAMP_SLOPE);
+  assert.equal(rampSlope({ type: 'ramp', data: { slope: 0.1 } }), MIN_RAMP_SLOPE);
+  assert.equal(rampSlope({ type: 'ramp', data: {} }), RAMP_SLOPE);
+});
+
+test('a ramp is walkable end to end, as a continuous slope', () => {
+  const s = twoFloors();
+  const { link } = addStair(s, 0, { type: 'ramp', x: 20, z: 20, slope: 8 });
+  const m = stairMetrics(s);
+  const run = runLength(link, m);
+  assert.ok(isRun(link));
+  assert.equal(stairSurfaceAt(link, m, 20, 20), 0, 'at the bottom you are on the floor');
+  assert.ok(near(stairSurfaceAt(link, m, 20, 20 + run / 2), m.rise / 2), 'halfway up, halfway');
+  assert.equal(stairSurfaceAt(link, m, 20, 20 + run), m.rise, 'and at the top, arrived');
+  assert.equal(stairSurfaceAt(link, m, 20, 20 + run + LANDING + 1), null, 'past the landing, off it');
+  assert.equal(stairSurfaceAt(link, m, 20 + RAMP_W, 20 + run / 2), null, 'and off the side is off it');
+});
+
+test('a ramp cuts its own hole the same way a stair does', () => {
+  const s = twoFloors();
+  const { link } = addStair(s, 0, { type: 'ramp', x: 20, z: 20, slope: 8 });
+  const m = stairMetrics(s);
+  const box = cutBox(link, m);
+  const run = runLength(link, m);
+  assert.ok(box.z1 > run, 'the cut runs past the top step onto the landing');
+  assert.ok(box.z0 > 0 && box.z0 < run, 'and starts where headroom runs out, not at the bottom');
+  assert.equal(floorCuts(s, 1).length, 1);
+  assert.deepEqual(openingRails(link, m).map((r) => r.side).sort(),
+    ['left', 'near', 'right'], 'railed everywhere but the landing you walk off');
+});
+
+// ---------- elevators ----------
+
+test('an elevator serves two levels and cuts nothing at all', () => {
+  const s = twoFloors();
+  const { link } = addStair(s, 0, { type: 'elevator', x: 40, z: 40 });
+  assert.ok(link);
+  assert.ok(isElevator(link));
+  assert.equal(isRun(link), false, 'there is no run to walk up');
+  const m = stairMetrics(s);
+  assert.equal(cutBox(link, m), null);
+  assert.equal(cutPolygon(link, m), null);
+  assert.deepEqual(floorCuts(s, 1), [], 'the slab above is whole — you arrive on top of it');
+  assert.deepEqual(openingRails(link, m), [], 'and there is no hole to rail');
+  assert.equal(stairSurfaceAt(link, m, 40, 40), null, 'nothing to stand on but the floor');
+});
+
+test('an elevator belongs to both its storeys, unlike every other link', () => {
+  const s = twoFloors();
+  const { link } = addStair(s, 0, { type: 'elevator', x: 40, z: 40 });
+  addStair(s, 0, { type: 'stair', x: 80, z: 40 });
+  assert.deepEqual(elevatorsOn(s, 0).map((l) => l.id), [link.id]);
+  assert.deepEqual(elevatorsOn(s, 1).map((l) => l.id), [link.id], 'the car is a room on each');
+  // ...and can be picked from either, which `linksFrom` alone would not allow.
+  assert.equal(linkAt(s, 0, 40, 40).id, link.id);
+  assert.equal(linkAt(s, 1, 40, 40).id, link.id);
+});
+
+test('standing in a car finds the other floor; standing beside it does not', () => {
+  const s = twoFloors();
+  const { link } = addStair(s, 0, { type: 'elevator', x: 40, z: 40 });
+  const ht = s.floorHt;
+  const up = elevatorAt(s, 40, 40, 0);
+  assert.ok(up);
+  assert.equal(up.to, 1);
+  assert.equal(up.y, ht);
+  const down = elevatorAt(s, 40, 40, 1);
+  assert.equal(down.to, 0, 'and it goes back');
+  assert.equal(down.y, 0);
+  assert.equal(elevatorAt(s, 40 + ELEV_W, 40, 0), null, 'leaning on the outside is not riding');
+  assert.equal(elevatorAt(s, 40, 40, 0).link.id, link.id);
+});
+
+test('an elevator turns with its rotation, doors and all', () => {
+  const s = twoFloors();
+  const { link } = addStair(s, 0, { type: 'elevator', x: 0, z: 0, rotationY: HALF_PI });
+  assert.ok(elevatorAt(s, 0, 0, 0), 'still in the car when it is turned');
+  // The car is 7 wide (local x) by 5.5 deep (local z); turned a quarter turn,
+  // those swap over in world space — so the car is now the long way along z.
+  assert.ok(elevatorAt(s, 0, 2.5, 0), 'roomy along world z now, where the width went');
+  assert.equal(elevatorAt(s, 3.5, 0, 0), null, 'and tight along world x, where the depth went');
+  assert.equal(elevatorAt(s, 0, ELEV_W / 2 + 1, 0), null, 'past the end of it either way');
+});
+
+test('the shaft walls bound the car and leave one way in', () => {
+  const s = twoFloors();
+  const { link } = addStair(s, 0, { type: 'elevator', x: 40, z: 40 });
+  const walls = elevatorWalls(link);
+  assert.equal(walls.length, 5, 'three sides plus two jambs');
+  assert.deepEqual(walls.map((w) => w.side), ['left', 'right', 'back', 'jamb', 'jamb']);
+  const door = elevatorDoorWidth(link);
+  assert.ok(door > 2.5 && door < elevatorSize(link).w, 'wide enough to walk through, narrower than the car');
+  // Every wall is a real segment, not a degenerate point.
+  for (const w of walls) {
+    assert.ok(Math.hypot(w.b.x - w.a.x, w.b.z - w.a.z) > 0.1, `${w.side} has length`);
+  }
+});
+
+test('the new kinds need a level above, and say so in their own words', () => {
+  const s = createState(20, 20);   // one storey
+  for (const type of ['ramp', 'elevator']) {
+    const { link, reason } = addStair(s, 0, { type });
+    assert.equal(link, null);
+    assert.ok(/above first/.test(reason), `${type}: ${reason}`);
+  }
+});
+
+test('ramps and elevators survive a save round trip with their settings', () => {
+  const s = twoFloors();
+  addStair(s, 0, { type: 'ramp', x: 12, z: 12, slope: 10, width: 5 });
+  addStair(s, 0, { type: 'elevator', x: 40, z: 40, w: 8, d: 6 });
+  const back = deserialize(serialize(s));
+  assert.deepEqual(back.links, s.links);
+  const [ramp, lift] = back.links;
+  assert.equal(rampSlope(ramp), 10);
+  assert.equal(stairWidth(ramp), 5);
+  assert.deepEqual(elevatorSize(lift), { w: 8, d: 6 });
+});
+
+test('every link kind is a known link kind', () => {
+  assert.deepEqual(LINK_KINDS, ['stair', 'opening', 'ramp', 'elevator']);
+  assert.deepEqual(RUN_TYPES, ['stair', 'ramp']);
+  assert.equal(isRun({ type: 'opening' }), false);
+  assert.equal(isRun(null), false);
+  assert.equal(isElevator(null), false);
+  assert.ok(ELEV_W >= 6 && ELEV_D >= 5, 'a school car takes a wheelchair and an attendant');
 });

@@ -30,7 +30,7 @@
 // Pure module: no three.js. Everything here is exercised by test/model.test.mjs.
 
 import {
-  CELL, DOOR_W,
+  CELL, DOOR_W, DOOR_H, DOUBLE_DOOR_W, WALL_H,
   cellIdx, edgeHIdx, edgeVIdx, inGrid, getCell, floodRegion,
 } from './grid.js';
 
@@ -41,6 +41,107 @@ export const MIN_SEG = 0.25;        // ft — closer than this and it's the same
 export const MIN_AREA = 1;          // ft² — anything smaller is a mis-click, not a room
 export const MIN_DOOR_W = 2;
 export const MAX_DOOR_W = 16;
+
+// ---------- what an opening is ----------
+//
+// v1's opening was a hole: `{ seg, t, w }`, a stretch of wall that isn't
+// there. Phase 2 keeps that record and lets it say more about itself, because
+// every richer thing this phase wants — a door with leaves that swing, a
+// window with a sill — is still "a stretch of wall that is different here",
+// positioned exactly the way an opening already was.
+//
+//   k     kind: OP_DOOR (a hole you walk through) or OP_WINDOW (a glazed band)
+//   h     clear height, ft — head height for a door, pane height for a window
+//   sill  ft above the floor the opening starts at — 0 for a door
+//   leaf  LEAF_NONE (a cased opening), LEAF_SINGLE, LEAF_DOUBLE
+//   lite  vision panel in the leaf
+//   bar   push bar across the leaf — a corridor or egress door
+//   hand  which jamb the leaf hinges on: +1 the start of the run, -1 the end
+//   sw    which side of the wall it swings toward: +1 left of the run, -1 right
+//
+// Every one of those is optional and every default is v1's behaviour, so a v3
+// or v4 opening loads as exactly the cased hole it has always been — and
+// writes back out as the same three fields, since `writeOpening` only records
+// what differs from the default.
+export const OP_DOOR = 0;
+export const OP_WINDOW = 1;
+export const OP_KINDS = [OP_DOOR, OP_WINDOW];
+
+export const LEAF_NONE = 0;
+export const LEAF_SINGLE = 1;
+export const LEAF_DOUBLE = 2;
+export const LEAF_KINDS = [LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE];
+
+// Window defaults: a 3ft sill is desk height, which is what a classroom window
+// sits at, and 4ft of glass over it stops a foot short of a 10ft ceiling.
+export const WINDOW_SILL = 3;
+export const WINDOW_H = 4;
+export const WINDOW_W = 6;
+export const MIN_SILL = 0;
+export const MAX_SILL = WALL_H - 1;
+export const MIN_OPEN_H = 0.75;
+
+const isBool = (v) => v === true || v === false;
+const sign = (v) => (v === -1 ? -1 : 1);
+
+// The full description of an opening, defaults filled in. Everything
+// downstream — leaves, glazing, collision, the plan symbol — reads this rather
+// than poking at the record, so "absent means the v1 default" is stated once.
+export function openingSpec(o) {
+  const kind = o && o.k === OP_WINDOW ? OP_WINDOW : OP_DOOR;
+  const window = kind === OP_WINDOW;
+  const sill = window
+    ? Math.min(MAX_SILL, Math.max(MIN_SILL, Number.isFinite(o && o.sill) ? o.sill : WINDOW_SILL))
+    : 0;
+  const dflt = window ? WINDOW_H : DOOR_H;
+  const h = Math.min(WALL_H - sill,
+    Math.max(MIN_OPEN_H, Number.isFinite(o && o.h) ? o.h : dflt));
+  const leaf = window ? LEAF_NONE
+    : (LEAF_KINDS.includes(o && o.leaf) ? o.leaf : LEAF_NONE);
+  return {
+    kind, window, sill, h, head: sill + h, leaf,
+    lite: !window && o ? o.lite === true : false,
+    bar: !window && o ? o.bar === true : false,
+    hand: sign(o && o.hand),
+    sw: sign(o && o.sw),
+    w: Number.isFinite(o && o.w) ? o.w : DOOR_W,
+    t: Number.isFinite(o && o.t) ? o.t : 0.5,
+    seg: Number.isInteger(o && o.seg) ? o.seg : 0,
+  };
+}
+
+// A window is glazed, not open: it never becomes a gap in a wall a body could
+// pass through, which is the one question collision and the blueprint's
+// wall-run splitting actually ask.
+export const isWindowOpening = (o) => !!o && o.k === OP_WINDOW;
+export const isDoorOpening = (o) => !isWindowOpening(o);
+
+// The canonical record for a set of options — only what differs from the
+// default is written, so a plain doorway stays `{ seg, t, w }` on disk exactly
+// as it was in v3.
+export function writeOpening(seg, t, w, opts = {}) {
+  const o = { seg, t, w };
+  const spec = openingSpec({ ...opts, seg, t, w });
+  if (spec.kind !== OP_DOOR) o.k = spec.kind;
+  if (spec.window) {
+    if (spec.sill !== WINDOW_SILL) o.sill = spec.sill;
+    if (spec.h !== WINDOW_H) o.h = spec.h;
+  } else {
+    if (spec.h !== DOOR_H) o.h = spec.h;
+    if (spec.leaf !== LEAF_NONE) o.leaf = spec.leaf;
+    if (spec.lite) o.lite = true;
+    if (spec.bar) o.bar = true;
+  }
+  if (spec.hand === -1) o.hand = -1;
+  if (spec.sw === -1) o.sw = -1;
+  return o;
+}
+
+// The width an opening of this kind wants when the tool doesn't say.
+export function defaultOpeningWidth(opts = {}) {
+  if (opts.k === OP_WINDOW) return WINDOW_W;
+  return opts.leaf === LEAF_DOUBLE ? DOUBLE_DOOR_W : DOOR_W;
+}
 
 // Per-segment wall state. Same vocabulary as the grid's edge arrays minus the
 // door, which is an opening rather than a segment kind. Glass took the 2 that
@@ -243,6 +344,17 @@ export function shapeAt(floor, x, z) {
 
 export const shapeById = (floor, id) => shapesOf(floor).find((s) => s.id === id) || null;
 
+// Is there anything to stand on at (x, z) on this storey? Either half of the
+// room model counts — a polygon room is as much floor as a grid cell is.
+// It lives here rather than in stairs.js (where it started life) because it is
+// the same question the wall-thickness probe asks: "is there a room on this
+// side?" — see walls.js.
+export function floorSolidAt(floor, x, z) {
+  if (!floor) return false;
+  if (getCell(floor, Math.floor(x / CELL), Math.floor(z / CELL))) return true;
+  return !!shapeAt(floor, x, z);
+}
+
 // {shape, ring, seg, t, x, z, dist} for the closest boundary segment on the floor.
 export function nearestSegment(floor, x, z, maxDist = Infinity) {
   let best = null;
@@ -294,6 +406,11 @@ export function makeShape(pts, opts = {}) {
     id: 0,
     name: opts.name || null,
     color: opts.color || null,
+    // Present-and-null rather than absent, so a shape built here and a shape
+    // read out of a save file are the same record — which is what lets the
+    // round-trip test compare them field for field.
+    fin: opts.fin || null,
+    paint: opts.paint || null,
     rings: [ring],
   };
 }
@@ -409,26 +526,38 @@ export function setSegWall(shape, ringIdx, seg, val) {
 
 export const openingsOnSeg = (ring, seg) => ring.openings.filter((o) => o.seg === seg);
 
+// A field-complete copy. Openings grew optional fields in Phase 2 and every
+// clone path (duplicate floor, copy room, undo snapshots that go through
+// `cloneShape`) has to carry them, so there is one copier rather than four
+// destructurings that each forgot a different field.
+export const copyOpening = (o) => ({ ...o });
+
 // Doorways can't run off the ends of their wall, and a segment shorter than a
-// door plus its jambs can't hold one at all.
-export function addOpening(shape, ringIdx, seg, t, w = DOOR_W) {
+// door plus its jambs can't hold one at all. `opts` carries the Phase 2 fields
+// (kind, leaf, sill, and the rest — see `openingSpec`); omit it and you get the
+// plain cased hole every earlier version placed.
+export function addOpening(shape, ringIdx, seg, t, w = null, opts = {}) {
   const ring = shape.rings[ringIdx];
   if (!ring || seg < 0 || seg >= ring.walls.length) return null;
   if (!canOpen(ring.walls[seg])) return null;
   const [a, b] = segEnds(ring, seg);
   const len = segLength(a, b);
-  const width = Math.min(MAX_DOOR_W, Math.max(MIN_DOOR_W, w));
+  const want = Number.isFinite(w) ? w : defaultOpeningWidth(opts);
+  const width = Math.min(MAX_DOOR_W, Math.max(MIN_DOOR_W, want));
   if (len < width + 0.5) return null;
   const half = (width / 2 + 0.25) / len;
-  const opening = { seg, t: Math.min(1 - half, Math.max(half, t)), w: width };
-  if (openingsOnSeg(ring, seg).some((o) => Math.abs(o.t - opening.t) * len < width)) return null;
+  const at = Math.min(1 - half, Math.max(half, t));
+  if (openingsOnSeg(ring, seg).some((o) => Math.abs(o.t - at) * len < (width + o.w) / 2)) return null;
+  const opening = writeOpening(seg, at, width, opts);
   ring.openings.push(opening);
   return opening;
 }
 
 // Toggle a doorway under the cursor: remove the one you clicked, or cut a new
-// one where you clicked.
-export function toggleOpening(shape, ringIdx, seg, t, w = DOOR_W) {
+// one where you clicked. Clicking one that is already there but of a *different*
+// kind re-cuts it rather than removing it — switching a door to a window is one
+// click with the window option picked, not a delete and a replace.
+export function toggleOpening(shape, ringIdx, seg, t, w = null, opts = {}) {
   const ring = shape.rings[ringIdx];
   if (!ring) return null;
   const [a, b] = segEnds(ring, seg);
@@ -436,11 +565,181 @@ export function toggleOpening(shape, ringIdx, seg, t, w = DOOR_W) {
   const hit = openingsOnSeg(ring, seg)
     .find((o) => Math.abs(o.t - t) * len <= o.w / 2 + 0.5);
   if (hit) {
+    const want = writeOpening(hit.seg, hit.t, hit.w, opts);
+    const same = openingSpec(hit), next = openingSpec(want);
     ring.openings.splice(ring.openings.indexOf(hit), 1);
-    return null;
+    if (same.kind === next.kind && same.leaf === next.leaf &&
+        same.lite === next.lite && same.bar === next.bar &&
+        same.hand === next.hand && same.sw === next.sw) {
+      return null;   // same thing clicked twice — that's a removal
+    }
+    return addOpening(shape, ringIdx, seg, hit.t, hit.w, opts);
   }
   if (!canOpen(ring.walls[seg])) ring.walls[seg] = SEG_WALL;
-  return addOpening(shape, ringIdx, seg, t, w);
+  return addOpening(shape, ringIdx, seg, t, w, opts);
+}
+
+// Flip a door's hinge jamb, or the side it swings toward. Both are one field
+// each and neither can be wrong, so they toggle rather than validate.
+export function flipOpening(opening, what = 'hand') {
+  if (!opening) return false;
+  const spec = openingSpec(opening);
+  if (spec.window || spec.leaf === LEAF_NONE) return false;
+  const key = what === 'swing' ? 'sw' : 'hand';
+  const next = (key === 'swing' ? spec.sw : spec[key]) === 1 ? -1 : 1;
+  if (next === 1) delete opening[key]; else opening[key] = -1;
+  return true;
+}
+
+// ---------- curved walls ----------
+//
+// The wishlist's biggest schema ask, answered without a schema change.
+//
+// Everything downstream of a ring — collision, the blueprint, the renderer,
+// the flood fill, `solidSpans` — assumes a boundary is a sequence of straight
+// segments. Storing an arc as a per-segment `bulge` would mean teaching all
+// five of them about a second kind of segment, and re-deriving the chords
+// every time any of them looked. The wishlist's own instruction is the way
+// out: "arcs should tessellate into segments at the model boundary". So they
+// do, and the model boundary is the *authoring* moment. Curving a wall inserts
+// real vertices into the ring; from that point on it is an ordinary polygon
+// with a lot of short segments, and every reader is already correct about it.
+//
+// The trade is that curvature isn't a live parameter — a curved wall doesn't
+// remember it was curved. `straightenRun` is what makes that survivable: the
+// tool keeps its own memo of the arc it just laid down and can flatten it back
+// to the chord before re-curving at a new radius, so adjusting a curve is one
+// straighten and one curve rather than an accumulating pile of arcs. The memo
+// is tool state, never saved state, which is the same rule selections follow.
+
+// Sagitta as a fraction of the chord. 0.5 is a semicircle; past that the arc
+// is more than half a circle and the ends start to close on each other.
+export const MAX_BULGE = 0.9;
+export const MIN_ARC_CHORD = 1.5;   // ft — shorter than this and there's no room to curve
+export const MAX_ARC_STEPS = 32;
+export const ARC_CHORD_FT = 2;      // aim for a chord about this long
+
+const TAU = Math.PI * 2;
+const wrapPi = (a) => {
+  let v = a % TAU;
+  if (v > Math.PI) v -= TAU;
+  if (v <= -Math.PI) v += TAU;
+  return v;
+};
+
+// The circle through a and b whose apex sits `bulge * |ab|` off the chord,
+// toward the chord's left-hand normal for a positive bulge.
+export function arcGeometry(a, b, bulge) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const L = Math.hypot(dx, dz);
+  const h = bulge * L;
+  if (L < 1e-6 || Math.abs(h) < 1e-6) return null;
+  const R = (L * L / 4 + h * h) / (2 * Math.abs(h));
+  const ux = dx / L, uz = dz / L;
+  const nx = -uz, nz = ux;                       // left of the run
+  const mx = a.x + dx / 2, mz = a.z + dz / 2;
+  const sgn = Math.sign(h);
+  const off = R - Math.abs(h);                   // centre-to-chord distance
+  return {
+    R, L, h,
+    cx: mx - nx * sgn * off,
+    cz: mz - nz * sgn * off,
+    apex: { x: mx + nx * h, z: mz + nz * h },
+  };
+}
+
+// `steps` chords from a to b along that arc, as `steps + 1` points (the two
+// endpoints included). Pass steps = 0 to let the chord length pick.
+export function arcPoints(a, b, bulge, steps = 0) {
+  const g = arcGeometry(a, b, bulge);
+  if (!g) return [{ x: a.x, z: a.z }, { x: b.x, z: b.z }];
+  const t0 = Math.atan2(a.z - g.cz, a.x - g.cx);
+  const t1 = Math.atan2(b.z - g.cz, b.x - g.cx);
+  const tap = Math.atan2(g.apex.z - g.cz, g.apex.x - g.cx);
+  // Two ways round the circle from a to b; the arc we want is the one the
+  // apex is on. Testing for it beats a minor/major-arc case split, which gets
+  // the sign wrong exactly at the semicircle.
+  let sweep = wrapPi(t1 - t0);
+  const onArc = (s) => {
+    const d = wrapPi(tap - t0);
+    return s >= 0 ? (d >= -1e-9 && d <= s + 1e-9) : (d <= 1e-9 && d >= s - 1e-9);
+  };
+  if (!onArc(sweep)) sweep += sweep >= 0 ? -TAU : TAU;
+
+  const arcLen = Math.abs(sweep) * g.R;
+  const n = steps > 0
+    ? Math.min(MAX_ARC_STEPS, Math.max(2, Math.round(steps)))
+    : Math.min(MAX_ARC_STEPS, Math.max(3, Math.round(arcLen / ARC_CHORD_FT)));
+  const out = [];
+  for (let i = 0; i <= n; i++) {
+    const th = t0 + (sweep * i) / n;
+    out.push({ x: g.cx + Math.cos(th) * g.R, z: g.cz + Math.sin(th) * g.R });
+  }
+  // Land exactly on the endpoints rather than within a rounding error of them:
+  // a ring's corners have to still meet its neighbours' after this.
+  out[0] = { x: a.x, z: a.z };
+  out[n] = { x: b.x, z: b.z };
+  return out;
+}
+
+// Replace segment `seg` with a tessellated arc. Returns the number of segments
+// it became (1 means nothing happened).
+//
+// Openings on the curved segment are dropped. A run of 2ft chords has nowhere
+// to put a 3ft door, and the alternative — sliding it onto whichever chord it
+// nearly fits — would put a doorway somewhere nobody asked for. This is the
+// same call `deleteVertex` makes about openings on a segment that stops
+// existing; the tool says so in the status line rather than losing one quietly.
+export function curveSegment(shape, ringIdx, seg, bulge, steps = 0) {
+  const ring = shape && shape.rings[ringIdx];
+  if (!ring || seg < 0 || seg >= ring.pts.length) return 1;
+  const b = Math.min(MAX_BULGE, Math.max(-MAX_BULGE, bulge));
+  if (Math.abs(b) < 0.01) return 1;
+  const [p0, p1] = segEnds(ring, seg);
+  if (segLength(p0, p1) < MIN_ARC_CHORD) return 1;
+
+  const pts = arcPoints(p0, p1, b, steps);
+  const mid = pts.slice(1, pts.length - 1);
+  if (!mid.length) return 1;
+  if (ring.pts.length + mid.length > MAX_RING_PTS) return 1;
+
+  const at = seg + 1;
+  ring.pts.splice(at, 0, ...mid);
+  ring.walls.splice(at, 0, ...new Array(mid.length).fill(ring.walls[seg]));
+  ring.openings = ring.openings
+    .filter((o) => o.seg !== seg)
+    .map((o) => (o.seg > seg ? { ...o, seg: o.seg + mid.length } : o));
+  return mid.length + 1;
+}
+
+// Merge `count` consecutive segments starting at `seg` back into one straight
+// chord — the inverse of `curveSegment`, and the reason re-curving a wall
+// doesn't stack arcs on arcs. Returns true if anything was removed.
+export function straightenRun(shape, ringIdx, seg, count) {
+  const ring = shape && shape.rings[ringIdx];
+  if (!ring || count <= 1 || seg < 0 || seg >= ring.pts.length) return false;
+  const drop = Math.min(count - 1, ring.pts.length - 3);
+  if (drop <= 0) return false;
+  const kind = ring.walls[seg];
+  // The vertices to remove are the ones *between* the run's ends, which for a
+  // run that wraps the ring's start point are not one contiguous slice — so
+  // they're collected by index and removed high-to-low.
+  const n = ring.pts.length;
+  const idx = [];
+  for (let i = 1; i <= drop; i++) idx.push((seg + i) % n);
+  const gone = new Set(idx);
+  idx.sort((a, b) => b - a);
+  for (const i of idx) { ring.pts.splice(i, 1); ring.walls.splice(i, 1); }
+  ring.openings = ring.openings
+    .filter((o) => !gone.has(o.seg))
+    .map((o) => {
+      let shift = 0;
+      for (const i of idx) if (o.seg > i) shift++;
+      return shift ? { ...o, seg: o.seg - shift } : o;
+    });
+  const keep = seg > n - 1 - drop ? seg - drop : seg;
+  ring.walls[Math.min(keep, ring.walls.length - 1)] = kind;
+  return true;
 }
 
 // ---------- snapping ----------
@@ -623,13 +922,18 @@ export function convertRegion(state, floorIndex, gx, gy) {
   const loops = regionToPolygon(floor, region);
   if (!loops.length) return null;
 
-  let name = null, color = null;
+  // The promoted room keeps the finishes the cells carried, not just the name
+  // and tint — converting a room shouldn't repaint it.
+  let name = null, color = null, fin = null, paint = null;
   for (const c of region) {
     const cell = floor.cells[cellIdx(floor, c.x, c.y)];
-    if (cell && cell.room) { name = cell.room; color = cell.color; break; }
+    if (!cell) continue;
+    if (!fin && cell.fin) fin = cell.fin;
+    if (!paint && cell.paint) paint = cell.paint;
+    if (!name && cell.room) { name = cell.room; color = cell.color; }
   }
 
-  const shape = { id: takeId(state), name, color, rings: [] };
+  const shape = { id: takeId(state), name, color, fin, paint, rings: [] };
   loops.forEach((loop, li) => {
     const ring = { pts: loop.pts, walls: [], openings: [] };
     loop.segs.forEach((sg, i) => {
@@ -688,11 +992,16 @@ function readRing(raw, extent, outer) {
       // clamped: sliding it onto a different wall would invent a hole in one.
       const seg = Number.isInteger(o.seg) ? o.seg : -1;
       if (seg < 0 || seg >= n || !canOpen(ring.walls[seg])) continue;
-      ring.openings.push({
+      // Everything past `{seg, t, w}` runs through `openingSpec`, which clamps
+      // each field and answers the v1 default for anything missing or strange —
+      // so an opening from a newer file arrives as the nearest thing this build
+      // can build, never as an invalid one.
+      ring.openings.push(writeOpening(
         seg,
-        t: num(o.t, 0.5, 0, 1),
-        w: num(o.w, DOOR_W, MIN_DOOR_W, MAX_DOOR_W),
-      });
+        num(o.t, 0.5, 0, 1),
+        num(o.w, DOOR_W, MIN_DOOR_W, MAX_DOOR_W),
+        o,
+      ));
     }
   }
   orientRing(ring, outer);
@@ -710,6 +1019,12 @@ export function normalizeShape(raw, extent = 4000) {
     id: Math.round(num(raw.id, 0, 0, Number.MAX_SAFE_INTEGER)),
     name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 60) : null,
     color: typeof raw.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.color) ? raw.color : null,
+    // Phase 2 finishes. Validated by shape rather than by finish.js so this
+    // module keeps its no-imports-but-grid property; an unknown key is null,
+    // which every reader turns into the default material.
+    fin: typeof raw.fin === 'string' && raw.fin.length <= 20 ? raw.fin : null,
+    paint: typeof raw.paint === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.paint)
+      ? raw.paint.toLowerCase() : null,
     rings: [outer],
   };
   for (const r of rings.slice(1, MAX_HOLES + 1)) {
@@ -725,10 +1040,12 @@ export function cloneShape(shape) {
     id: shape.id,
     name: shape.name,
     color: shape.color,
+    fin: shape.fin || null,
+    paint: shape.paint || null,
     rings: shape.rings.map((r) => ({
       pts: r.pts.map((p) => ({ x: p.x, z: p.z })),
       walls: r.walls.slice(),
-      openings: r.openings.map((o) => ({ seg: o.seg, t: o.t, w: o.w })),
+      openings: r.openings.map(copyOpening),
     })),
   };
 }

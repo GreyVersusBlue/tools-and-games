@@ -31,25 +31,32 @@
 //   Which storey that is comes off the height of your feet (`storeyAt`), so a
 //   run of stairs hands you over to the level above exactly when you arrive.
 
-import {
-  CELL, WALL_T, DOOR_W, FLOOR_H,
-  EDGE_DOOR,
-} from './grid.js';
-import { shapesOf, segEnds, isBuilt } from './shapes.js';
+import { CELL, WALL_T, FLOOR_H, isDoorEdge } from './grid.js';
+import { shapesOf, segEnds, isBuilt, isDoorOpening } from './shapes.js';
 import { propsOnFloor } from './props.js';
 import { footprintOf } from './propplace.js';
 import {
   stairsOf, stairMetrics, stairSurfaceAt, floorCuts, inFloorCut, floorSolidAt,
-  openingRails,
+  openingRails, elevatorsOn, elevatorWalls,
 } from './stairs.js';
+import { wallProbe } from './walls.js';
+import {
+  collectDoorLeaves, leafSegment, updateLeaves, closeAll,
+  gridOpeningWidth, LEAF_T,
+} from './openings.js';
 
 // Body radius. A person is about 1.5ft across the shoulders; 0.9 leaves a
 // 3ft doorway 1.2ft of clear space to aim at once both jambs are inflated,
 // which is forgiving without letting you slip through a wall corner.
 export const WALKER_R = 0.9;      // ft
-// Walls are drawn as boxes centred on their segment, so collision runs
-// against the segment inflated by half that thickness.
+// Walls are drawn as boxes centred on their segment, so collision runs against
+// the segment inflated by half that thickness. Since Phase 2 that thickness is
+// per-boundary (walls.js works out which walls are exterior), so every segment
+// carries its own `pad` and this is only the fallback for one that doesn't.
 export const WALL_PAD = WALL_T / 2;
+// Half a door leaf. A leaf is thin enough that the walker's own radius does
+// nearly all the work, but a leaf with no thickness lets you stand *in* it.
+export const LEAF_PAD = LEAF_T / 2;
 // The step you can take up without a stair — a threshold or a curb, not a
 // storey. Anything taller has to be a run.
 export const STEP_UP = 1.5;       // ft
@@ -118,36 +125,55 @@ export function solidSpans(len, cuts, trim = 0) {
   return out;
 }
 
-// Every segment on a storey that a body can't pass through, in world feet.
-// Glass and railings are in here with drywall: a curtain wall is a wall you
-// can see through, and a guardrail exists precisely to stop you.
+// Every segment on a storey that a body can't pass through, in world feet, each
+// carrying the half-thickness it should be inflated by. Glass and railings are
+// in here with drywall: a curtain wall is a wall you can see through, and a
+// guardrail exists precisely to stop you.
 //
-// Doors are the one thing that isn't solid. On the lattice a door is an edge
-// value with the opening fixed at the middle of the cell; on a polygon it's an
-// `{ seg, t, w }` opening anywhere along a run. Both end up as the same thing
-// here — a segment with a hole in it.
-export function wallSegments(floor, trim = WALL_PAD) {
+// Two things are *not* solid, and only two. A **doorway** is a hole you walk
+// through — on the lattice an edge value with the opening fixed at the middle
+// of the cell, on a polygon an `{ seg, t, w }` opening anywhere along a run;
+// both end up here as a segment with a hole in it. A **door leaf**, if the
+// doorway hangs one, closes that hole again — but it swings, so it isn't baked
+// in here at all (see `buildCollider` and openings.js).
+//
+// A **window** is not in either group. It is a hole in the *elevation*, not in
+// the plan: the wall under it and over it is still there, and a body walking
+// at chest height meets glass. So a window opening never becomes a cut, which
+// is the single line that keeps you from strolling out of a second-storey
+// classroom — and the reason windows are an opening variant rather than a new
+// segment kind pays for itself right here, since every other reader of an
+// opening (position along a run, width, plan symbol) needed no change at all.
+//
+// `probe` is walls.js's per-boundary thickness lookup; pass one in to share
+// its cache with another consumer, or leave it out and one is made here.
+export function wallSegments(floor, probe = null) {
   const out = [];
   if (!floor) return out;
-
-  const push = (ax, az, bx, bz) => { out.push({ ax, az, bx, bz }); };
+  const thick = probe || wallProbe(floor);
 
   const run = (ax, az, bx, bz, cuts) => {
     const len = Math.hypot(bx - ax, bz - az);
     if (len < 0.01) return;
-    if (!cuts || !cuts.length) { push(ax, az, bx, bz); return; }
+    // Thickness is a property of the whole boundary, so it's resolved from the
+    // uncut run — a jamb either side of a door is the same wall as the door.
+    const t = thick(ax, az, bx, bz);
+    const pad = t / 2;
+    if (!cuts || !cuts.length) { out.push({ ax, az, bx, bz, t, pad }); return; }
     const ux = (bx - ax) / len, uz = (bz - az) / len;
-    for (const [s, e] of solidSpans(len, cuts, trim)) {
-      push(ax + ux * s, az + uz * s, ax + ux * e, az + uz * e);
+    // Trim each span back from the opening it abuts by the same half-thickness
+    // it will be inflated by, so the gap a walker aims at is the gap the
+    // geometry draws — now per wall rather than per building.
+    for (const [s, e] of solidSpans(len, cuts, pad)) {
+      out.push({ ax: ax + ux * s, az: az + uz * s, bx: ax + ux * e, bz: az + uz * e, t, pad });
     }
   };
 
+  // A lattice edge's opening, if it has one, is always centred: an edge is a
+  // whole cell wide and has nowhere to record a position along itself.
   const edge = (val, ax, az, bx, bz) => {
-    if (val === EDGE_DOOR) {
-      run(ax, az, bx, bz, [{ a: (CELL - DOOR_W) / 2, b: (CELL + DOOR_W) / 2 }]);
-    } else {
-      run(ax, az, bx, bz, null);
-    }
+    const w = isDoorEdge(val) ? gridOpeningWidth(val) : 0;
+    run(ax, az, bx, bz, w > 0 ? [{ a: (CELL - w) / 2, b: (CELL + w) / 2 }] : null);
   };
 
   for (let y = 0; y <= floor.h; y++) {
@@ -170,7 +196,7 @@ export function wallSegments(floor, trim = WALL_PAD) {
         const [a, b] = segEnds(ring, i);
         const len = Math.hypot(b.x - a.x, b.z - a.z);
         const cuts = ring.openings
-          .filter((o) => o.seg === i)
+          .filter((o) => o.seg === i && isDoorOpening(o))
           .map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
         run(a.x, a.z, b.x, b.z, cuts);
       }
@@ -214,24 +240,62 @@ export function openingRailSegments(state, floorIndex) {
   for (const link of stairsOf(state)) {
     if (link.to !== floorIndex) continue;
     for (const side of openingRails(link, metrics, floor)) {
-      out.push({ ax: side.a.x, az: side.a.z, bx: side.b.x, bz: side.b.z });
+      // A guardrail is a rail, not a wall: it gets the nominal pad rather than
+      // walls.js's interior/exterior answer, which is about construction.
+      out.push({ ax: side.a.x, az: side.a.z, bx: side.b.x, bz: side.b.z,
+        t: WALL_T, pad: WALL_PAD });
+    }
+  }
+  return out;
+}
+
+// The three shaft walls an elevator car stands inside, on either of the two
+// storeys it serves. A stair's boundary is the rail around the hole it cut; an
+// elevator cuts nothing, so the shaft is what keeps you in the car.
+export function elevatorSegments(state, floorIndex) {
+  const out = [];
+  for (const link of elevatorsOn(state, floorIndex)) {
+    for (const w of elevatorWalls(link)) {
+      out.push({ ax: w.a.x, az: w.a.z, bx: w.b.x, bz: w.b.z, t: WALL_T, pad: WALL_PAD });
     }
   }
   return out;
 }
 
 // Everything on one storey that a walker can hit, built once when walkthrough
-// mode starts. Editing can't happen while you're walking, so this is a cache
-// with exactly one invalidation point: entering the mode.
+// mode starts. Editing can't happen while you're walking, so `segs` and
+// `props` are a cache with exactly one invalidation point: entering the mode.
+//
+// `doors` is the exception, and it is worth being precise about what kind of
+// exception it is. It is not a hole in the cache — the leaves it lists were
+// collected at the same moment as everything else and no leaf appears or
+// disappears mid-walk. What changes is one number per leaf (`open`), and the
+// segment that number implies is computed at the moment it's needed rather
+// than stored. So the world is still built once; it simply has a few hinges
+// in it now, and `resolvePoint` asks each hinge where it currently is.
 export function buildCollider(state, floorIndex, catalogGet) {
+  const floor = state.floors[floorIndex];
+  const probe = floor ? wallProbe(floor) : null;
   return {
     floor: floorIndex,
-    segs: wallSegments(state.floors[floorIndex]).concat(openingRailSegments(state, floorIndex)),
+    segs: wallSegments(floor, probe)
+      .concat(openingRailSegments(state, floorIndex))
+      .concat(elevatorSegments(state, floorIndex)),
     props: propObstacles(state, floorIndex, catalogGet),
+    doors: closeAll(collectDoorLeaves(state, floorIndex)),
+    probe,
   };
 }
 
-export const emptyCollider = () => ({ floor: -1, segs: [], props: [] });
+export const emptyCollider = () => ({ floor: -1, segs: [], props: [], doors: [] });
+
+// Swing this storey's leaves toward (or away from) a walker at (x, z), and
+// report whether anything moved — walkthrough.js drives this once a frame and
+// hands the result to the renderer.
+export function updateDoors(collider, x, z, dt, opts = {}) {
+  if (!collider || !collider.doors || !collider.doors.length) return false;
+  return updateLeaves(collider.doors, x, z, dt, opts);
+}
 
 // ---------- resolution ----------
 
@@ -263,24 +327,48 @@ function pushOutOfBox(obj, x, z, r) {
 // Move a point out of everything it overlaps. Several passes, because pushing
 // out of one wall can push you into the next one — an inside corner needs two
 // and a doorway reveal can need three.
+// The leaves on this storey as segments, at whatever angle they're currently
+// hanging. Recomputed rather than cached: it's a sin/cos per leaf, and a
+// cached one would be wrong the frame after a door started moving.
+export function doorSegments(collider) {
+  const out = [];
+  for (const leaf of collider.doors || []) {
+    const s = leafSegment(leaf);
+    s.t = LEAF_T;
+    s.pad = LEAF_PAD;
+    out.push(s);
+  }
+  return out;
+}
+
+function pushOutOfSeg(s, px, pz, r) {
+  const wallR = r + (s.pad ?? WALL_PAD);
+  const c = closestOnSeg(s.ax, s.az, s.bx, s.bz, px, pz);
+  if (c.d >= wallR) return null;
+  if (c.d < 1e-9) {
+    // Dead on the line: leave along its normal rather than dividing by zero.
+    const dx = s.bx - s.ax, dz = s.bz - s.az;
+    const len = Math.hypot(dx, dz) || 1;
+    return { x: c.x - (dz / len) * wallR, z: c.z + (dx / len) * wallR };
+  }
+  return {
+    x: c.x + ((px - c.x) / c.d) * wallR,
+    z: c.z + ((pz - c.z) / c.d) * wallR,
+  };
+}
+
 export function resolvePoint(collider, x, z, r = WALKER_R, passes = 3) {
   let px = x, pz = z;
-  const wallR = r + WALL_PAD;
+  const doors = doorSegments(collider);
   for (let pass = 0; pass < passes; pass++) {
     let moved = false;
     for (const s of collider.segs) {
-      const c = closestOnSeg(s.ax, s.az, s.bx, s.bz, px, pz);
-      if (c.d >= wallR) continue;
-      if (c.d < 1e-9) {
-        // Dead on the line: leave along its normal rather than dividing by zero.
-        const dx = s.bx - s.ax, dz = s.bz - s.az;
-        const len = Math.hypot(dx, dz) || 1;
-        px = c.x - (dz / len) * wallR; pz = c.z + (dx / len) * wallR;
-      } else {
-        px = c.x + ((px - c.x) / c.d) * wallR;
-        pz = c.z + ((pz - c.z) / c.d) * wallR;
-      }
-      moved = true;
+      const out = pushOutOfSeg(s, px, pz, r);
+      if (out) { px = out.x; pz = out.z; moved = true; }
+    }
+    for (const s of doors) {
+      const out = pushOutOfSeg(s, px, pz, r);
+      if (out) { px = out.x; pz = out.z; moved = true; }
     }
     for (const p of collider.props) {
       const out = pushOutOfBox(p, px, pz, r);
@@ -291,9 +379,13 @@ export function resolvePoint(collider, x, z, r = WALKER_R, passes = 3) {
   return { x: px, z: pz };
 }
 
-// Did a step pass clean through a wall? See `segsCross`.
+// Did a step pass clean through a wall — or through a shut door? See
+// `segsCross`.
 export function crossesWall(collider, x0, z0, x1, z1) {
   for (const s of collider.segs) {
+    if (segsCross(x0, z0, x1, z1, s.ax, s.az, s.bx, s.bz)) return true;
+  }
+  for (const s of doorSegments(collider)) {
     if (segsCross(x0, z0, x1, z1, s.ax, s.az, s.bx, s.bz)) return true;
   }
   return false;

@@ -11,19 +11,25 @@ import assert from 'node:assert/strict';
 
 import {
   createState, setTile, addFloor, CELL, DOOR_W, WALL_T, FLOOR_H,
-  edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
+  WALL_T_INT, WALL_T_EXT,
+  edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_RAIL,
+  EDGE_WINDOW, EDGE_OPENING,
 } from '../js/grid.js';
-import { addShape, setSegWall, addOpening, SEG_WALL, SEG_NONE, SEG_GLASS } from '../js/shapes.js';
+import {
+  addShape, setSegWall, addOpening, SEG_WALL, SEG_NONE, SEG_GLASS,
+  LEAF_SINGLE, LEAF_DOUBLE, OP_WINDOW,
+} from '../js/shapes.js';
 import { addProp } from '../js/props.js';
 import { addStair, stairMetrics } from '../js/stairs.js';
 import { catalogEntry } from '../js/catalog.js';
 import { buildSampleSchool } from '../js/sample.js';
 import {
   WALKER_R, WALL_PAD, STEP_UP, STEP_DOWN, MIN_OBSTACLE_H, GROUND_Y,
-  solidSpans, segsCross, wallSegments, propObstacles, buildCollider,
+  solidSpans, segsCross, wallSegments, propObstacles, buildCollider, updateDoors,
   resolvePoint, crossesWall, storeyAt, supportAt, tryStep, moveWalker,
-  openingRailSegments,
+  openingRailSegments, elevatorSegments, doorSegments,
 } from '../js/collide.js';
+import { elevatorSize } from '../js/stairs.js';
 
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 
@@ -95,9 +101,14 @@ test('a grid door leaves a gap a walker actually fits through', () => {
   assert.equal(segs.length, 2, 'two jambs, one opening');
   const inner = [Math.max(segs[0].ax, segs[0].bx), Math.min(segs[1].ax, segs[1].bx)].sort((a, b) => a - b);
   const gap = inner[1] - inner[0];
-  assert.ok(near(gap, DOOR_W + 2 * WALL_PAD),
+  // Since Phase 2 the trim is the *segment's own* half-thickness, not one
+  // figure for the whole building — this wall has open air on one side, so it
+  // is an exterior wall and trims back further than a partition would.
+  const pad = segs[0].pad;
+  assert.ok(pad > WALL_PAD, 'a wall with nothing behind it is an exterior wall');
+  assert.ok(near(gap, DOOR_W + 2 * pad),
     'the gap opens up by the trim so inflating the jambs gives back a true door width');
-  const clear = gap - 2 * (WALKER_R + WALL_PAD);
+  const clear = gap - 2 * (WALKER_R + pad);
   assert.ok(clear > 0.5, `a body has ${clear.toFixed(2)}ft of room to aim at`);
 });
 
@@ -276,6 +287,10 @@ test('a doorway is walkable, and the wall either side of it is not', () => {
   const doorX = (4 + 0.5) * CELL;
   let pos = feetAt(doorX, 10);
   for (let i = 0; i < 30; i++) {
+    // Since Phase 2 the doorway hangs a leaf, and a shut leaf is as solid as
+    // the wall it hangs in — so walking through one means letting it open,
+    // which is what the walkthrough's own loop does every frame.
+    updateDoors(c, pos.x, pos.z, 1 / 30);
     const r = moveWalker(s, c, pos, 0, -0.4);
     pos = { x: r.x, y: 0, z: r.z };
   }
@@ -283,6 +298,7 @@ test('a doorway is walkable, and the wall either side of it is not', () => {
 
   let beside = feetAt(doorX + CELL, 10);
   for (let i = 0; i < 30; i++) {
+    updateDoors(c, beside.x, beside.z, 1 / 30);
     const r = moveWalker(s, c, beside, 0, -0.4);
     beside = { x: r.x, y: 0, z: r.z };
   }
@@ -447,4 +463,153 @@ test('a stair leaves its landing side open — the rail is not a gate', () => {
   const out = moveWalker(s, c, landing, 0, 0.5, { grounded: true });
   assert.equal(out.blocked, false);
   assert.ok(out.z > landing.z);
+});
+
+
+// ---------- windows are not doors ----------
+
+test('a window glazes a wall; it never opens a hole you can walk through', () => {
+  const s = walledRoom(2, 2, 6, 5);
+  const f = s.floors[0];
+  const solid = wallSegments(f).length;
+  f.edgesH[edgeHIdx(f, 4, 2)] = EDGE_WINDOW;
+  // The run is split into two jambs the way a door's is — the wall is drawn in
+  // pieces — but the gap between them is glass, so the collider keeps it shut.
+  const withWindow = wallSegments(f);
+  assert.ok(withWindow.length >= solid, 'the wall is still there');
+
+  const doorX = (4 + 0.5) * CELL;
+  const c = collide(s);
+  let pos = feetAt(doorX, 10);
+  for (let i = 0; i < 40; i++) {
+    updateDoors(c, pos.x, pos.z, 1 / 30);
+    const r = moveWalker(s, c, pos, 0, -0.4);
+    pos = { x: r.x, y: 0, z: r.z };
+  }
+  assert.ok(pos.z >= 8, `a window is not a way out (ended at z=${pos.z.toFixed(2)})`);
+});
+
+test('a window on a polygon wall leaves the run unbroken', () => {
+  const s = createState(20, 20);
+  const shape = addShape(s, 0, [
+    { x: 10, z: 10 }, { x: 40, z: 10 }, { x: 40, z: 30 }, { x: 10, z: 30 },
+  ], { name: 'Gym' });
+  const before = wallSegments(s.floors[0]).length;
+  addOpening(shape, 0, 0, 0.5, 10, { k: OP_WINDOW });
+  assert.equal(wallSegments(s.floors[0]).length, before, 'no gap appeared');
+  addOpening(shape, 0, 1, 0.5, DOOR_W, { leaf: LEAF_SINGLE });
+  assert.equal(wallSegments(s.floors[0]).length, before + 1, 'but a doorway does open one');
+});
+
+// ---------- door leaves ----------
+
+function roomWithLeafDoor(edge = EDGE_DOOR) {
+  const s = walledRoom(2, 2, 6, 5);
+  s.floors[0].edgesH[edgeHIdx(s.floors[0], 4, 2)] = edge;
+  return s;
+}
+
+test('a shut door is as solid as the wall it hangs in', () => {
+  const s = roomWithLeafDoor();
+  const c = collide(s);
+  assert.equal(c.doors.length, 1);
+  const doorX = (4 + 0.5) * CELL;
+  // No updateDoors call at all: the leaf never moves, so it never lets you by.
+  let pos = feetAt(doorX, 10);
+  for (let i = 0; i < 40; i++) {
+    const r = moveWalker(s, c, pos, 0, -0.4);
+    pos = { x: r.x, y: 0, z: r.z };
+  }
+  assert.ok(pos.z >= 8, `shut means shut (ended at z=${pos.z.toFixed(2)})`);
+});
+
+test('a cased opening hangs no leaf, so it is a hole and stays one', () => {
+  const s = roomWithLeafDoor(EDGE_OPENING);
+  const c = collide(s);
+  assert.equal(c.doors.length, 0);
+  const doorX = (4 + 0.5) * CELL;
+  let pos = feetAt(doorX, 10);
+  for (let i = 0; i < 30; i++) {
+    const r = moveWalker(s, c, pos, 0, -0.4);
+    pos = { x: r.x, y: 0, z: r.z };
+  }
+  assert.ok(pos.z < 7, 'walked straight through, with nothing to open');
+});
+
+test('a double door opens as a pair and lets a body through the middle', () => {
+  const s = roomWithLeafDoor(EDGE_DOOR2);
+  const c = collide(s);
+  assert.equal(c.doors.length, 2);
+  const doorX = (4 + 0.5) * CELL;
+  let pos = feetAt(doorX, 11);
+  const peak = c.doors.map(() => 0);
+  for (let i = 0; i < 60; i++) {
+    updateDoors(c, pos.x, pos.z, 1 / 30);
+    c.doors.forEach((d, k) => { peak[k] = Math.max(peak[k], d.open); });
+    const r = moveWalker(s, c, pos, 0, -0.35);
+    pos = { x: r.x, y: 0, z: r.z };
+  }
+  assert.ok(peak.every((v) => v > 0.5), `both halves moved (peaked at ${peak})`);
+  assert.ok(pos.z < 7, `and a body fits between them (ended at z=${pos.z.toFixed(2)})`);
+  // ...and they shut again once you're well down the corridor, which is the
+  // other half of the behaviour and the reason `peak` is tracked at all.
+  assert.ok(c.doors.every((d) => d.open < 0.5), 'and closed behind them');
+});
+
+test('door segments track the leaves, and change when they swing', () => {
+  const s = roomWithLeafDoor();
+  const c = collide(s);
+  const shut = doorSegments(c)[0];
+  c.doors[0].open = 1;
+  const open = doorSegments(c)[0];
+  assert.ok(near(shut.ax, open.ax) && near(shut.az, open.az), 'the hinge does not move');
+  assert.ok(Math.hypot(open.bx - shut.bx, open.bz - shut.bz) > 1, 'the free edge does');
+  assert.ok(open.pad > 0 && open.pad < WALL_T_INT, 'a leaf is thinner than a wall');
+});
+
+test('a step that would cross a shut leaf is refused outright', () => {
+  const s = roomWithLeafDoor();
+  const c = collide(s);
+  const doorX = (4 + 0.5) * CELL;
+  assert.equal(crossesWall(c, doorX, 9, doorX, 7), true, 'shut, it is in the way');
+  c.doors[0].open = 1;
+  assert.equal(crossesWall(c, doorX, 9, doorX, 7), false, 'open, it is not');
+});
+
+// ---------- elevators ----------
+
+test('a shaft keeps you in the car and lets you in one way', () => {
+  const s = createState(20, 20);
+  addFloor(s);
+  s.currentFloor = 0;
+  const f = s.floors[0];
+  for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) setTile(f, x, y, true);
+  const { link } = addStair(s, 0, { type: 'elevator', x: 24, z: 24, rotationY: 0 });
+  const segs = elevatorSegments(s, 0);
+  assert.equal(segs.length, 5);
+  assert.equal(elevatorSegments(s, 1).length, 5, 'on both storeys, because the car is on both');
+
+  const { w, d } = elevatorSize(link);
+  const c = { floor: 0, segs, props: [], doors: [] };
+  // Pushed out of the back wall, back into the car.
+  const inside = resolvePoint(c, 24, 24 + d / 2 - 0.1);
+  assert.ok(inside.z < 24 + d / 2 - WALKER_R, 'the back wall stops you');
+  // The entry face is open in the middle and solid at the jambs.
+  assert.equal(crossesWall(c, 24, 24 - d, 24, 24), false, 'straight in through the doors');
+  assert.equal(crossesWall(c, 24 + w / 2 - 0.4, 24 - d, 24 + w / 2 - 0.4, 24), true,
+    'but not through the jamb beside them');
+});
+
+// ---------- thickness ----------
+
+test('the collider pads each wall by its own half-thickness', () => {
+  const s = createState(20, 20);
+  const f = s.floors[0];
+  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 8; x++) setTile(f, x, y, true);
+  f.edgesH[edgeHIdx(f, 3, 1)] = EDGE_WALL;   // the north face — nothing beyond it
+  f.edgesH[edgeHIdx(f, 3, 3)] = EDGE_WALL;   // a partition, rooms both sides
+  const segs = wallSegments(f);
+  const pads = segs.map((x) => x.pad).sort();
+  assert.deepEqual(pads, [WALL_T_INT / 2, WALL_T_EXT / 2]);
+  assert.ok(segs.every((x) => x.t === x.pad * 2));
 });

@@ -6,14 +6,23 @@
 // since Phase 4 — a second storey reached by a real staircase, with a railed
 // mezzanine over the main hall and glazed partitions on both levels. Opening
 // the tool should show you what it can do, not a blank lattice.
+//
+// Phase 2 of the second arc adds the rest of a believable shell to it: windows
+// down every exterior classroom wall, a double door at the main entrance, an
+// elevator beside the stair, a curved wall on the Learning Commons, and a
+// floor finish per room. All of it is placed the same way anyone would place
+// it with the tools — no sample-only shortcuts.
 
 import {
   ROOM_COLORS, createState, setTile, floodRegion, cellIdx, edgeHIdx, edgeVIdx,
-  EDGE_WALL, EDGE_DOOR, EDGE_GLASS, addFloor,
+  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_WINDOW, addFloor,
 } from './grid.js';
-import { addShape, setSegWall, addOpening, SEG_GLASS } from './shapes.js';
+import {
+  addShape, setSegWall, addOpening, curveSegment, SEG_GLASS, LEAF_SINGLE, OP_WINDOW,
+} from './shapes.js';
 import { addProp } from './props.js';
 import { addStair } from './stairs.js';
+import { applyFinish } from './finish.js';
 
 const HALF_PI = Math.PI / 2;
 
@@ -43,11 +52,15 @@ function edgeRunV(f, x, y0, y1, val) {
   for (let y = y0; y <= y1; y++) f.edgesV[edgeVIdx(f, x, y)] = val;
 }
 
-function assignRoom(f, x, y, name, color) {
+// Name, tint and finish a whole grid region at once — the same four fields the
+// room tool writes, since a grid room is a flood-fill label rather than an
+// object to hang them on.
+function assignRoom(f, x, y, name, color, fin = null, paint = null) {
   for (const c of floodRegion(f, x, y)) {
     const cell = f.cells[cellIdx(f, c.x, c.y)];
     cell.room = name;
     cell.color = color;
+    applyFinish(cell, fin, paint);
   }
 }
 
@@ -80,22 +93,34 @@ export function buildSampleSchool() {
   f.edgesH[edgeHIdx(f, 9, 16)] = 2;
   f.edgesH[edgeHIdx(f, 17, 16)] = 2;
   f.edgesH[edgeHIdx(f, 28, 16)] = 2;
-  // Main entrance on the west end of the hall
-  f.edgesV[edgeVIdx(f, 6, 14)] = 2;
+  // Main entrance on the west end of the hall: a pair, which is what an
+  // entrance is, and what the lattice's EDGE_DOOR2 exists for.
+  f.edgesV[edgeVIdx(f, 6, 14)] = EDGE_DOOR2;
+  // Windows down every exterior classroom wall — the north face for the four
+  // rooms above the hall, the south face for the three below it. A window is
+  // a glazed band in a wall, not a hole in it: it lights the room and you
+  // still can't walk out of one.
+  for (let r = 0; r < 4; r++) edgeRunH(f, 7 + r * 7, 11 + r * 7, 7, EDGE_WINDOW);
+  edgeRunH(f, 7, 11, 22, EDGE_WINDOW);    // office
+  edgeRunH(f, 14, 21, 22, EDGE_WINDOW);   // room 105
+  edgeRunH(f, 24, 32, 22, EDGE_WINDOW);   // room 106
   // The office fronts the hall in glass, with its door left where it was — the
   // partition still bounds the room for flood fill, it just isn't opaque.
   edgeRunH(f, 6, 12, 16, EDGE_GLASS);
   f.edgesH[edgeHIdx(f, 9, 16)] = EDGE_DOOR;
-  // Labels
+  // Labels and finishes. Classrooms are VCT (the default, so they say nothing
+  // about it), the halls are terrazzo, the office is carpet — which is roughly
+  // how a real school is specified, and enough to put three rows in the plan's
+  // finish schedule.
   assignRoom(f, 7, 8, 'Room 101', ROOM_COLORS[0]);
   assignRoom(f, 14, 8, 'Room 102', ROOM_COLORS[1]);
   assignRoom(f, 21, 8, 'Room 103', ROOM_COLORS[2]);
   // The east classroom is the stair hall — it's where the run to Level 2 lands,
   // and a school puts its stairs in a room built for them rather than in the
   // corner of a classroom.
-  assignRoom(f, 28, 8, 'Stair Hall', '#dcd7cc');
-  assignRoom(f, 8, 14, 'Main Hall', '#e9e4da');
-  assignRoom(f, 8, 18, 'Office', ROOM_COLORS[4]);
+  assignRoom(f, 28, 8, 'Stair Hall', '#dcd7cc', 'terrazzo');
+  assignRoom(f, 8, 14, 'Main Hall', '#e9e4da', 'terrazzo');
+  assignRoom(f, 8, 18, 'Office', ROOM_COLORS[4], 'carpet', '#dfe7ea');
   assignRoom(f, 16, 18, 'Room 105', ROOM_COLORS[5]);
   assignRoom(f, 28, 18, 'Room 106', ROOM_COLORS[6]);
 
@@ -107,39 +132,50 @@ export function buildSampleSchool() {
   const commons = addShape(s, 0, [
     { x: 136, z: 52 }, { x: 160, z: 44 }, { x: 172, z: 60 },
     { x: 154, z: 74 }, { x: 136, z: 64 },
-  ], { name: 'Learning Commons', color: ROOM_COLORS[7] });
+  ], { name: 'Learning Commons', color: ROOM_COLORS[7], fin: 'wood' });
   if (commons) {
     const ring = commons.rings[0];
+    const n0 = ring.pts.length;
     const shared = ring.pts.findIndex((p, i) => {
-      const q = ring.pts[(i + 1) % ring.pts.length];
+      const q = ring.pts[(i + 1) % n0];
       return p.x === 136 && q.x === 136;
     });
     if (shared >= 0) setSegWall(commons, 0, shared, 0);
     // ...and an exterior door on the far side, so the room reads as a room.
-    addOpening(commons, 0, (shared + 2) % ring.pts.length, 0.5);
+    addOpening(commons, 0, (shared + 2) % n0, 0.5, null, { leaf: LEAF_SINGLE });
     // Its north-east wall is a glazed curtain wall: a polygon segment carrying
     // SEG_GLASS, the polygon half of the same feature the office front is.
-    setSegWall(commons, 0, (shared + 1) % ring.pts.length, SEG_GLASS);
+    setSegWall(commons, 0, (shared + 1) % n0, SEG_GLASS);
+    // ...and a window in the wall opposite, because a room this size with one
+    // glazed face and no other opening is a corridor with ambitions.
+    addOpening(commons, 0, (shared + 4) % n0, 0.5, 10, { k: OP_WINDOW, sill: 2.5 });
+    // The south wall bows out. Curving tessellates it into chords in place
+    // (see shapes.js), so from here on it is an ordinary polygon wall that
+    // happens to have a lot of corners — which is exactly the point.
+    curveSegment(commons, 0, (shared + 3) % n0, 0.3);
   }
   f.edgesV[edgeVIdx(f, 34, 14)] = 2;
 
-  // Room 101 (x 24-52ft, z 28-52ft; the door is on its south wall into the
-  // hall) gets furnished — a first exercise of the prop layer, and proof it
-  // renders before anything else gets built on top of it. Two rows of desks
-  // facing the teacher's, up front by the north wall.
-  const chairFacingNorth = Math.PI; // local +Z toward -Z world = faceDirection(0, -1)
+  // Room 101 (x 24-52ft, z 28-52ft) gets furnished — a first exercise of the
+  // prop layer, and proof it renders before anything else gets built on top of
+  // it. The room faces the corridor wall rather than the exterior one, which
+  // is what a classroom with windows down one side actually does: the board
+  // goes on the solid wall, and nobody teaches into the daylight.
+  const chairFacingSouth = 0;       // local +Z toward +Z world
+  const facingNorth = Math.PI;      // ...and the other way, back at the class
   [30, 36, 42].forEach((x) => {
     [37, 43].forEach((z) => {
       addProp(s, 'student-desk', { x, z, floor: 0 });
-      addProp(s, 'student-chair', { x, z: z + 1.6, rotationY: chairFacingNorth, floor: 0 });
+      addProp(s, 'student-chair', { x, z: z - 1.6, rotationY: chairFacingSouth, floor: 0 });
     });
   });
-  addProp(s, 'teacher-desk', { x: 38, z: 30.5, floor: 0 });
-  addProp(s, 'teacher-chair', { x: 38, z: 32.2, rotationY: chairFacingNorth, floor: 0 });
-  addProp(s, 'bookshelf-full', { x: 25, z: 40, rotationY: HALF_PI, floor: 0 }); // faces east, into the room
+  addProp(s, 'teacher-desk', { x: 44, z: 48.5, rotationY: facingNorth, floor: 0 });
+  addProp(s, 'teacher-chair', { x: 44, z: 50.2, rotationY: facingNorth, floor: 0 });
+  addProp(s, 'bookshelf-full', { x: 25, z: 34, rotationY: HALF_PI, floor: 0 }); // faces east, into the room
   addProp(s, 'rug', { x: 36, z: 41, floor: 0 });
-  // Flush against the north wall (WALL_T/2 + the panel's own depth/2 out from it).
-  addProp(s, 'whiteboard', { x: 38, z: 28.325, y: 3.6, rotationY: 0, mount: 'wall', floor: 0 });
+  // Flush against the corridor wall at z = 52 (half a partition plus the
+  // panel's own depth out from it), facing back into the room.
+  addProp(s, 'whiteboard', { x: 44, z: 51.7, y: 3.6, rotationY: facingNorth, mount: 'wall', floor: 0 });
 
   buildUpperLevel(s);
   s.currentFloor = 0;   // open on the ground floor whatever the builder left
@@ -173,12 +209,16 @@ function buildUpperLevel(s) {
   edgeRunH(up, 13, 19, 13, EDGE_GLASS);
   for (const x of [8, 16, 23, 30]) up.edgesH[edgeHIdx(up, x, 13)] = EDGE_DOOR;
   for (const x of [10, 24]) up.edgesH[edgeHIdx(up, x, 16)] = EDGE_DOOR;
+  // The upper floor gets the same window walls as the one below it.
+  for (let r = 0; r < 4; r++) edgeRunH(up, 7 + r * 7, 11 + r * 7, 7, EDGE_WINDOW);
+  edgeRunH(up, 7, 14, 22, EDGE_WINDOW);
+  edgeRunH(up, 17, 32, 22, EDGE_WINDOW);
 
   assignRoom(up, 8, 8, 'Room 201', ROOM_COLORS[1]);
-  assignRoom(up, 16, 8, 'Media Center', ROOM_COLORS[2]);
+  assignRoom(up, 16, 8, 'Media Center', ROOM_COLORS[2], 'carpet');
   assignRoom(up, 23, 8, 'Room 203', ROOM_COLORS[3]);
-  assignRoom(up, 30, 8, 'Stair Hall', '#dcd7cc');
-  assignRoom(up, 8, 14, 'Upper Hall', '#e9e4da');
+  assignRoom(up, 30, 8, 'Stair Hall', '#dcd7cc', 'terrazzo');
+  assignRoom(up, 8, 14, 'Upper Hall', '#e9e4da', 'terrazzo');
   assignRoom(up, 10, 18, 'Room 205', ROOM_COLORS[5]);
   assignRoom(up, 24, 18, 'Room 206', ROOM_COLORS[6]);
 
@@ -186,6 +226,11 @@ function buildUpperLevel(s) {
   // east. Its run and the opening it cuts upstairs both come out of stairs.js —
   // nothing here picks a length, because the storey height already decided it.
   addStair(s, 0, { x: 110, z: 40, rotationY: HALF_PI, width: 4 });
+
+  // ...and a lift beside it, because a school with a stair and no elevator has
+  // an upper floor half its occupants can't reach. It cuts nothing: the car
+  // stands on the slab at each end, and `E` inside it rides between them.
+  addStair(s, 0, { type: 'elevator', x: 124, z: 30, rotationY: HALF_PI });
 
   // ...and the atrium: 32ft of the hall left open through both storeys, with
   // 4ft of corridor either side of it to walk round.

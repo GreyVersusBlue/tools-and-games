@@ -8,15 +8,18 @@
 import * as THREE from 'three';
 import {
   CELL, WALL_H, WALL_T, ROOM_COLORS,
-  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
+  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_RAIL,
+  EDGE_WINDOW, EDGE_OPENING,
   cellIdx, edgeHIdx, edgeVIdx, inGrid, getCell, setTile, floodRegion,
   activeFloor, floorBaseY,
 } from './grid.js';
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   nearestSegment, shapeAt, setSegWall, toggleOpening, removeShape,
-  segEnds, segLength,
+  curveSegment, straightenRun, segEnds, segLength,
+  OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
 } from './shapes.js';
+import { applyFinish, DEFAULT_FINISH } from './finish.js';
 import { initPolyEdit } from './polyedit.js';
 import { initPropEdit } from './propedit.js';
 import { initStairEdit } from './stairedit.js';
@@ -38,11 +41,40 @@ export const WALL_KINDS = [
 ];
 const wallKindOf = (k) => WALL_KINDS.find((w) => w.kind === k) || WALL_KINDS[0];
 
+// What the door tool cuts. The same table serves both halves of the room
+// model, as WALL_KINDS does: `edge` is the lattice value, `opts` is what a
+// polygon opening records. The lattice needs one kind per variant because an
+// edge is a value with nowhere to keep options — see EDGE_OPENING in grid.js.
+export const DOOR_KINDS = [
+  { kind: 'single', label: 'Single door', icon: '🚪', edge: EDGE_DOOR,
+    opts: { k: OP_DOOR, leaf: LEAF_SINGLE } },
+  { kind: 'double', label: 'Double door', icon: '🚪🚪', edge: EDGE_DOOR2,
+    opts: { k: OP_DOOR, leaf: LEAF_DOUBLE, lite: true, bar: true } },
+  { kind: 'cased',  label: 'Cased opening', icon: '⌷', edge: EDGE_OPENING,
+    opts: { k: OP_DOOR, leaf: LEAF_NONE } },
+  { kind: 'window', label: 'Window', icon: '🪟', edge: EDGE_WINDOW,
+    opts: { k: OP_WINDOW } },
+];
+const doorKindOf = (k) => DOOR_KINDS.find((d) => d.kind === k) || DOOR_KINDS[0];
+
 export function initEditor({ canvas, renderApi, getState, onChange, onStatus, onHoleMode }) {
   let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair
   let roomName = 'Room 101';
   let roomColor = ROOM_COLORS[0];
+  let roomFinish = DEFAULT_FINISH;
+  let roomPaint = null;      // null = whatever the renderer paints by default
   let wallKind = 'wall';
+  let doorKind = 'single';
+  // Per-door options the panel sets and every new opening inherits. `hand` is
+  // which jamb the leaf hangs on, `sw` which side it swings toward; both are
+  // toggles rather than validated values, since neither can be wrong.
+  const doorOpts = { hand: 1, sw: 1, lite: false, bar: false, sill: WINDOW_SILL };
+
+  // The arc the wall tool laid down last, so pressing the curve key again
+  // re-curves the same chord instead of curving one of its own chords. Tool
+  // state, never saved state — the same rule selections follow. See the
+  // "curved walls" note in shapes.js for why curvature isn't a stored field.
+  let curveMemo = null;   // { shape, ring, seg, count, bulge }
 
   const undoStack = [];
   const redoStack = [];
@@ -131,12 +163,14 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
 
   function undo() {
     if (!undoStack.length) return;
+    curveMemo = null;
     redoStack.push(snapshot());
     restore(undoStack.pop());
   }
 
   function redo() {
     if (!redoStack.length) return;
+    curveMemo = null;
     undoStack.push(snapshot());
     restore(redoStack.pop());
   }
@@ -235,20 +269,27 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       }
     } else if (tool === 'door') {
       if (!isClick) return; // doors place on click, not drag
+      const dk = doorKindOf(doorKind);
       const e = nearestEdge(f, wx, wz);
-      // On a polygon wall a doorway is cut where you clicked along the run,
+      // On a polygon wall an opening is cut where you clicked along the run,
       // not at the middle of a lattice edge — a 30ft wall can hold several.
       const seg = nearPolySeg(f, wx, wz, e.dist * CELL);
       if (seg) {
-        toggleOpening(seg.shape, seg.ring, seg.seg, seg.t);
+        const opts = { ...dk.opts, hand: doorOpts.hand, sw: doorOpts.sw };
+        if (dk.kind === 'single') { opts.lite = doorOpts.lite; opts.bar = doorOpts.bar; }
+        if (dk.kind === 'window') opts.sill = doorOpts.sill;
+        const cut = toggleOpening(seg.shape, seg.ring, seg.seg, seg.t, null, opts);
         strokeChanged = true;
+        onStatus && onStatus(cut
+          ? `${dk.label} — ${cut.w.toFixed(1)}ft, cut into a ${segLength(...segEnds(seg.shape.rings[seg.ring], seg.seg)).toFixed(1)}ft wall.`
+          : `${dk.label} removed.`);
         return;
       }
       const ref = edgeRef(f, e);
-      // Toggling a door off leaves the kind of wall the tool would build now —
-      // a glazed partition with a door in it is a door tool click away, and one
-      // more puts the glass back rather than a stretch of drywall.
-      ref.arr[ref.i] = ref.arr[ref.i] === EDGE_DOOR ? wallKindOf(wallKind).edge : EDGE_DOOR;
+      // Clicking the same kind again takes it out and leaves the kind of wall
+      // the wall tool would build now — a glazed partition with a door in it is
+      // one click away, and one more puts the glass back rather than drywall.
+      ref.arr[ref.i] = ref.arr[ref.i] === dk.edge ? wallKindOf(wallKind).edge : dk.edge;
       strokeChanged = true;
     } else if (tool === 'room') {
       if (!isClick) return;
@@ -257,6 +298,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       if (shape) {
         shape.name = roomName || 'Room';
         shape.color = roomColor;
+        applyFinish(shape, roomFinish, roomPaint);
         strokeChanged = true;
         return;
       }
@@ -267,6 +309,10 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
         const cell = f.cells[cellIdx(f, rc.x, rc.y)];
         cell.room = roomName || 'Room';
         cell.color = roomColor;
+        // A grid room is a flood-fill label, not an object, so its finishes
+        // are written across every cell in the region — the standing tax the
+        // retrospective describes, paid once more.
+        applyFinish(cell, roomFinish, roomPaint);
       }
       strokeChanged = true;
       onStatus && onStatus(`${roomName || 'Room'} — ${region.length * CELL * CELL} ft², ${region.length} cell${region.length === 1 ? '' : 's'}.`);
@@ -315,11 +361,14 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   }
 
   // --- hover feedback ---
+  let hoverWorld = null;   // last cursor position in world feet, for the curve keys
+
   function updateCursor(e) {
     const s = getState();
     const f = activeFloor(s);
     const baseY = floorBaseY(s, s.currentFloor);
     const p = e && pointerToWorld(e);
+    if (p) hoverWorld = p;
     if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop' || tool === 'stair' || tool === 'template') {
       cellCursor.visible = edgeCursor.visible = false;
       return;
@@ -355,6 +404,71 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     }
   }
 
+  // --- curving a wall ---
+  //
+  // `,` and `.` bend the polygon wall under the cursor — not `[` and `]`,
+  // which have switched storeys since Phase 1 and are worth more there.
+  // shapes.js tessellates
+  // the arc into real vertices (see its "curved walls" note), so there is no
+  // stored curvature to nudge — which is exactly why the memo below exists:
+  // pressing the key again straightens what it laid down last time and re-lays
+  // it at the new radius, instead of curving one chord of the previous arc.
+  const CURVE_STEP = 0.08;
+  const CURVE_MAX = 0.9;
+
+  function curveUnderCursor(delta) {
+    if (!hoverWorld) return false;
+    const s = getState();
+    const f = activeFloor(s);
+
+    // Re-bending the arc we just made: put the chord back first.
+    if (curveMemo && f.shapes.includes(curveMemo.shape)) {
+      const next = Math.max(-CURVE_MAX, Math.min(CURVE_MAX, curveMemo.bulge + delta));
+      pushUndo();
+      straightenRun(curveMemo.shape, curveMemo.ring, curveMemo.seg, curveMemo.count);
+      const count = curveSegment(curveMemo.shape, curveMemo.ring, curveMemo.seg, next);
+      curveMemo = Math.abs(next) < 0.01
+        ? null
+        : { ...curveMemo, bulge: next, count };
+      onChange({ structural: true, commit: true });
+      onStatus && onStatus(Math.abs(next) < 0.01
+        ? 'Wall straightened.'
+        : `Curved wall — ${count} segments, rise ${(next * 100).toFixed(0)}% of the chord. , and . adjust.`);
+      return true;
+    }
+
+    const seg = nearestSegment(f, hoverWorld.x, hoverWorld.z, SEG_GRAB);
+    if (!seg) {
+      onStatus && onStatus('Curve — point at a polygon wall first. The lattice only builds straight edges.');
+      return true;
+    }
+    pushUndo();
+    const [a, b] = segEnds(seg.shape.rings[seg.ring], seg.seg);
+    const had = seg.shape.rings[seg.ring].openings.some((o) => o.seg === seg.seg);
+    const count = curveSegment(seg.shape, seg.ring, seg.seg, delta);
+    if (count <= 1) {
+      dropUndoTop();
+      onStatus && onStatus(`Curve — that wall is only ${segLength(a, b).toFixed(1)}ft; there's no room to bend it.`);
+      return true;
+    }
+    curveMemo = { shape: seg.shape, ring: seg.ring, seg: seg.seg, count, bulge: delta };
+    onChange({ structural: true, commit: true });
+    onStatus && onStatus(had
+      ? `Curved wall — ${count} segments. The doorway in it was dropped: a 2ft chord has nowhere to put a 3ft door.`
+      : `Curved wall — ${count} segments. , and . adjust, and they re-bend this same wall rather than stacking arcs.`);
+    return true;
+  }
+
+  function dropUndoTop() { undoStack.pop(); }
+
+  // Keys this file claims for itself, before the sub-tools get a look in.
+  function editorKey(e) {
+    if (tool !== 'wall') return false;
+    if (e.code === 'Period') return curveUnderCursor(CURVE_STEP);
+    if (e.code === 'Comma') return curveUnderCursor(-CURVE_STEP);
+    return false;
+  }
+
   // --- pointer events ---
   let panning = false;
   let panLast = null;
@@ -386,6 +500,9 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       return;
     }
     pushUndo();
+    // Any ordinary edit ends the run of curve adjustments — the memo points at
+    // a segment index the edit may well have moved.
+    curveMemo = null;
     strokeActive = true;
     strokeChanged = false;
     strokeWallFt = 0;
@@ -625,6 +742,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     get tool() { return tool; },
     setTool(t) {
       tool = t;
+      curveMemo = null;
       poly.setTool(t);
       propTool.setTool(t);
       stairTool.setTool(t);
@@ -635,19 +753,33 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     // Keys the polygon and prop tools claim (close/cancel/backtrack/delete,
     // rotate/delete/escape/mirror). Returns true when one was used, so the
     // caller knows to stop handling it.
-    handleKey: (e) => poly.key(e) || propTool.key(e) || stairTool.key(e) || templateTool.key(e),
+    handleKey: (e) => editorKey(e) || poly.key(e) || propTool.key(e) ||
+      stairTool.key(e) || templateTool.key(e),
     get holeMode() { return poly.holeMode; },
     setHoleMode: (v) => poly.setHoleMode(v),
     refreshOverlay: () => { poly.refresh(); propTool.refresh(); stairTool.refresh(); templateTool.refresh(); },
     setRoom(name, color) { roomName = name; roomColor = color; },
     get roomName() { return roomName; },
     get roomColor() { return roomColor; },
+    // Floor finish and wall paint travel with the room tool, alongside the
+    // name and the label tint — one panel decides everything about a room.
+    setRoomFinish(fin, paint) {
+      if (fin !== undefined) roomFinish = fin;
+      if (paint !== undefined) roomPaint = paint;
+    },
+    get roomFinish() { return roomFinish; },
+    get roomPaint() { return roomPaint; },
     setPropType: (t) => propTool.setType(t),
     get propType() { return propTool.currentType; },
     // What the wall tool builds — shared by the grid and the polygon rooms, so
     // it lives on the editor rather than inside either half.
     setWallKind(k) { wallKind = wallKindOf(k).kind; updateCursor(null); },
     get wallKind() { return wallKind; },
+    // What the door tool cuts, and how the leaf in it hangs.
+    setDoorKind(k) { doorKind = doorKindOf(k).kind; curveMemo = null; updateCursor(null); },
+    get doorKind() { return doorKind; },
+    setDoorOpts(patch) { Object.assign(doorOpts, patch); },
+    get doorOpts() { return { ...doorOpts }; },
     setStairType: (t) => stairTool.setType(t),
     get stairType() { return stairTool.currentType; },
     get stairCount() { return stairTool.countHere(); },

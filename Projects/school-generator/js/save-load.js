@@ -6,10 +6,26 @@
 //   v3 — floors carry `shapes[]`: polygon rooms alongside the cell grid
 //   v4 — glass and railing edge/segment kinds, and `links[]` carrying stairs
 //        and floor openings
+//   v5 — doors and windows as opening variants (leaves, sills, hands), the
+//        cased-opening / window / double-door lattice kinds, room finishes
+//        (`fin`/`paint` on cells and shapes), and ramp/elevator links
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
-// polygon rooms in it, and a v3 one has no glass and no stairs, so every
-// migration so far is additive and nothing has to be guessed.
+// polygon rooms in it, a v3 one has no glass and no stairs, and a v4 one has
+// no windows, no door leaves and no finishes — so every migration so far is
+// additive and nothing has to be guessed.
+//
+// The v5 bump is additive in an unusually strict sense, worth stating because
+// it is what keeps this cheap: every field it adds is *optional with a default
+// equal to v4's behaviour*, and `writeOpening` only records a field that
+// differs from that default. So a v4 design doesn't merely still load — it
+// round-trips through v5 as the same bytes it went in as, minus nothing.
+//
+// The one thing v5 changes about an old design's *behaviour* is deliberate: an
+// `EDGE_DOOR` that was a hole in a wall now hangs a leaf that swings, because
+// that is the phase. Nothing about the file changed; the building simply has
+// doors in it now. A design that wants the hole back says `EDGE_OPENING`.
+//
 // The autosave key is deliberately unchanged so an in-progress design survives
 // the upgrade — that was true of the v2 bump and stays true here.
 //
@@ -21,9 +37,10 @@
 import { CELL, FLOOR_H, MAX_FLOORS, EDGE_KINDS, createFloor, createState } from './grid.js';
 import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from './props.js';
 import { normalizeShape, MAX_SHAPES } from './shapes.js';
+import { readFinish, readPaint } from './finish.js';
 
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 const MIN_DIM = 4;
 const MAX_DIM = 200;
@@ -42,6 +59,10 @@ function copyCells(src, dst) {
     dst[i] = {
       room: typeof c.room === 'string' ? c.room.slice(0, 60) : null,
       color: typeof c.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(c.color) ? c.color : null,
+      // Phase 2's finishes. An unknown finish key reads as null — the room
+      // falls back to the default material rather than to no floor at all.
+      fin: readFinish(c.fin),
+      paint: readPaint(c.paint),
     };
   }
 }
