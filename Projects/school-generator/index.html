@@ -349,6 +349,76 @@
        crowd in it, so the panel goes away but the people stay. */
     body.photo #life-panel { display: none !important; }
 
+    /* report panel — Phase 7. The one panel that says nothing about what the
+       building looks like and everything about whether it works: occupant
+       load, travel distance, the accessible route, glazing, reverberation and
+       what it is all made of. It reads the same model everything else does,
+       so it is stale the moment you draw a wall and says so until it is
+       rebuilt. Editor-side by nature — you fix a finding by editing — but it
+       stays in the rail during a walkthrough because a fire drill and an
+       egress table are two views of the same sentence. */
+    #report-panel { padding: 10px 12px; width: 268px; }
+    #report-panel h2 {
+      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    }
+    #report-panel label {
+      display: block; font-size: 10.5px; color: var(--text-dim);
+      margin: 9px 0 3px; letter-spacing: 0.02em;
+    }
+    #report-panel label.opt {
+      display: flex; align-items: center; gap: 7px; font-size: 11px;
+      color: var(--text); cursor: pointer; margin: 8px 0 0;
+    }
+    #report-panel label.opt input { accent-color: var(--accent); width: 14px; height: 14px; }
+    #report-verdict {
+      display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px;
+    }
+    #report-verdict .mark { font-size: 17px; }
+    #report-verdict .line { font-size: 11.5px; color: var(--text); line-height: 1.35; }
+    #report-verdict.fail .mark { color: #e05c48; }
+    #report-verdict.warn .mark { color: #e8a33d; }
+    #report-verdict.ok .mark { color: #5db07a; }
+    #report-acts { display: flex; gap: 4px; margin-top: 10px; }
+    #report-acts button { flex: 1; padding: 5px 0; font-size: 11px; }
+    #report-findings { margin-top: 9px; display: flex; flex-direction: column; gap: 6px; }
+    .finding {
+      border-left: 2px solid var(--panel-border); padding: 1px 0 1px 7px;
+      font-size: 10.5px; line-height: 1.5; color: var(--text-dim);
+    }
+    .finding b { color: var(--text); font-weight: 600; display: block; }
+    .finding.fail { border-left-color: #e05c48; }
+    .finding.warn { border-left-color: #e8a33d; }
+    .finding.note { border-left-color: #6d7f96; }
+    .finding.ok { border-left-color: #5db07a; }
+    .finding .why { display: none; }
+    .finding.open .why { display: block; margin-top: 2px; }
+    .finding button {
+      all: unset; cursor: pointer; display: block; width: 100%;
+    }
+    .finding button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #report-readout {
+      margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
+      font-size: 10.5px; line-height: 1.6; color: var(--text-dim);
+    }
+    #report-readout b { color: var(--text); font-weight: 600; }
+    #report-readout .row { display: flex; justify-content: space-between; gap: 8px; }
+    #report-readout .sec {
+      margin-top: 7px; padding-top: 6px; border-top: 1px dashed var(--panel-border);
+    }
+    #report-readout .sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+    #report-readout .k {
+      font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em;
+      color: #7d8898; margin-bottom: 2px;
+    }
+    #report-stale {
+      font-size: 10px; color: #e8a33d; font-weight: 600; text-transform: none;
+      letter-spacing: 0;
+    }
+    /* A report is not part of the photograph, same as the crowd panel. */
+    body.photo #report-panel { display: none !important; }
+
     /* photo mode — a walkthrough-only panel, and the one place the HUD and the
        crosshair get out of the way on purpose. */
     #photo-panel {
@@ -572,6 +642,7 @@
     <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true">☀ Sky</button>
     <button id="audio-btn" title="Sound, and how the room you're in rings (U)" aria-pressed="false">🔊 Sound</button>
     <button id="life-btn" title="People in the building, and the bell schedule (L)" aria-pressed="false">👥 Life</button>
+    <button id="report-btn" title="Occupancy, egress, access, daylight and materials (M)" aria-pressed="false">📋 Report</button>
     <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)">🚶 Walk Through</button>
   </div>
 
@@ -802,6 +873,28 @@
 
     <div id="life-readout"></div>
   </div>
+
+  <div id="report-panel" class="panel hidden" role="group" aria-label="Analysis report">
+    <h2>Report <span id="report-stale" class="hidden">stale</span></h2>
+
+    <div id="report-verdict" role="status" aria-live="polite">
+      <span class="mark">•</span>
+      <span class="line">Checking…</span>
+    </div>
+
+    <label class="opt">
+      <input type="checkbox" id="report-sprinklered" checked />
+      Sprinklered building
+    </label>
+
+    <div id="report-acts">
+      <button id="report-refresh" title="Re-read the model">↻ Refresh</button>
+      <button id="report-csv" title="Download every number as a spreadsheet">⬇ CSV</button>
+    </div>
+
+    <div id="report-findings"></div>
+    <div id="report-readout"></div>
+  </div>
   </div>
 
   <div id="photo-panel" class="panel" role="group" aria-label="Photo mode">
@@ -843,6 +936,7 @@
         <kbd>E</kbd> ride the elevator you're standing in &nbsp;·&nbsp; <kbd>P</kbd> photo mode<br />
         <kbd>B</kbd> ring the bell &nbsp;·&nbsp; <kbd>N</kbd> PA announcement &nbsp;·&nbsp; <kbd>U</kbd> sound panel<br />
         <kbd>L</kbd> school life &nbsp;·&nbsp; <kbd>V</kbd> follow somebody &nbsp;·&nbsp; <kbd>K</kbd> fire drill &nbsp;·&nbsp; <kbd>H</kbd> heatmap<br />
+        <kbd>M</kbd> the report — occupancy, egress, access, daylight<br />
         <kbd>Esc</kbd> release mouse
       </p>
       <p>
@@ -860,6 +954,15 @@
         drives the bells and the sun together; <kbd>V</kbd> follows somebody
         through their day; <kbd>K</kbd> sounds a fire drill and <kbd>H</kbd>
         shows you where the crowd got stuck on the way out.
+      </p>
+      <p>
+        And it can be measured. The report (<kbd>M</kbd>) reads the same model
+        you are walking through and answers the questions a drawing has to
+        survive: how many people each room holds, how far the farthest one of
+        them walks to a door, whether a wheelchair can reach every room,
+        whether there is enough glass and how long each room rings. Every
+        finding says which rule it applied and what it measured, and the whole
+        thing downloads as a spreadsheet with the bill of materials under it.
       </p>
       <p>
         The building has a sound now: your footsteps take their material from
@@ -902,6 +1005,7 @@
       <label class="opt"><input type="checkbox" id="export-dims" checked /> Dimensions</label>
       <label class="opt"><input type="checkbox" id="export-furniture" checked /> Furniture</label>
       <label class="opt"><input type="checkbox" id="export-finishes" checked /> Floor finish schedule</label>
+      <label class="opt"><input type="checkbox" id="export-occupancy" /> Occupant load per room</label>
       <label class="opt"><input type="checkbox" id="export-site" checked /> Site plan sheet</label>
       <label class="opt"><input type="checkbox" id="export-contours" checked /> Contour lines on the site plan</label>
       <p class="hint">

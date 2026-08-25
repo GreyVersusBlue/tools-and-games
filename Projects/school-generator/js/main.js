@@ -40,6 +40,7 @@ import {
   listDesigns, saveDesign, loadDesign, deleteDesign, renameDesign,
 } from './save-load.js';
 import { renderFloorPlanCanvas, renderSitePlanCanvas, downloadCanvasPNG } from './blueprint.js';
+import { buildReport, reportCSV } from './report.js';
 import { isTouchCapable, joystickAxes } from './touch.js';
 
 const canvas = document.getElementById('view');
@@ -109,6 +110,11 @@ const editor = initEditor({
       retargetAll(life.ctx, life.agents);
       renderLifeReadout();
     }
+    // ...and the report, which is the most derived thing in the building: an
+    // edit invalidates every number in it. It is a second of arithmetic on a
+    // real school, so it is marked stale now and rebuilt when the drawing hand
+    // stops rather than on every cell of a drag.
+    if (!info.throttled) reportInvalidate();
   },
   // The polygon tools have more to say than a fixed per-tool hint — how many
   // corners are down, how big the room is — so they drive the status line.
@@ -750,6 +756,7 @@ function afterEdit() {
     lifeRebuildWorld();
     retargetAll(life.ctx, life.agents);
   }
+  reportInvalidate();
 }
 
 // --- file actions ---
@@ -904,6 +911,7 @@ function exportOpts() {
     showDimensions: $('export-dims').checked,
     showFurniture: $('export-furniture').checked,
     showFinishes: $('export-finishes').checked,
+    showOccupancy: $('export-occupancy').checked,
     contours: $('export-contours').checked,
   };
 }
@@ -1327,6 +1335,7 @@ function adoptedByAudio() {
   audio.setWorld(state);
   renderAudioPanel();
   adoptedByLife();
+  reportInvalidate();
 }
 
 // A different design is a different building, and the crowd in it was walking
@@ -1830,6 +1839,184 @@ $('life-heat').addEventListener('click', () => {
 
 $('life-follow').addEventListener('click', () => lifeFollow());
 
+// --- the report ---
+//
+// Phase 7. Everything above this line draws a building; this asks whether the
+// building works. The arithmetic all lives in the pure modules (occupancy,
+// egress, daylight, takeoff, and report.js composing them), so what is left
+// here is the same four things every panel in this file is: a staleness rule,
+// a renderer, a download, and a key.
+//
+// **The staleness rule is the interesting one.** A report is the most derived
+// thing in the codebase — a graph, an occupant load per room, a multi-source
+// Dijkstra, a reverberation estimate per room and a takeoff over every wall —
+// and it is wrong the instant a wall moves. Rebuilding it on every frame of a
+// drag would be absurd; leaving a stale number on screen would be worse than
+// showing nothing. So an edit marks it stale, the badge says so, and the
+// rebuild happens a beat after the drawing hand stops.
+const reportPanel = $('report-panel');
+const report = {
+  data: null,
+  stale: true,
+  sprinklered: true,
+  timer: 0,
+};
+
+const REPORT_DEBOUNCE = 500;   // ms after the last edit
+
+// Room names come from a text field, and this panel prints them into markup.
+const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function reportInvalidate() {
+  report.stale = true;
+  if (reportPanel.classList.contains('hidden')) return;
+  renderReportStale();
+  clearTimeout(report.timer);
+  report.timer = setTimeout(() => reportBuild(), REPORT_DEBOUNCE);
+}
+
+function reportBuild() {
+  clearTimeout(report.timer);
+  report.data = buildReport(state, { sprinklered: report.sprinklered });
+  report.stale = false;
+  renderReportPanel();
+}
+
+function renderReportStale() {
+  $('report-stale').classList.toggle('hidden', !report.stale);
+}
+
+const VERDICTS = {
+  fail: { mark: '✕', line: (r) => `${plural(r.summary.fails, 'thing')} to fix before this is a school.` },
+  warn: { mark: '!', line: (r) => `Nothing failing, ${plural(r.summary.warns, 'thing')} worth a look.` },
+  ok: { mark: '✓', line: () => 'Passes every check this tool knows how to make.' },
+};
+
+function findingHTML(f, i) {
+  return `<div class="finding ${f.level}" data-finding="${i}">` +
+    `<button type="button" aria-expanded="false">` +
+    `<b>${esc(f.title)}</b><span class="why">${esc(f.detail)}</span>` +
+    `</button></div>`;
+}
+
+// The sections under the findings: the numbers themselves, in the order a
+// person reads a building — how many people, how they get out, who can get
+// in, what it is like inside, and what it is made of.
+function reportSections(r) {
+  const out = [];
+  const sec = (key, lines) => out.push(
+    `<div class="sec"><div class="k">${key}</div>${lines.join('')}</div>`);
+  const row = (a, b) => `<div class="row"><span>${a}</span><span>${b}</span></div>`;
+
+  const uses = r.occupancy.byUse.filter((u) => u.occ > 0).slice(0, 4);
+  sec('Occupancy', [
+    row(`<b>${r.summary.occupants}</b> occupants`, `${ft(r.summary.area)} ft²`),
+    ...uses.map((u) => row(esc(u.label), `<b>${u.occ}</b>`)),
+  ]);
+
+  const e = r.egress.summary;
+  const worst = e.worst;
+  sec('Egress', [
+    row(`${plural(e.exits, 'exit')} · carries <b>${e.capacity}</b>`,
+      e.capacity >= e.occupants ? 'enough' : '<span class="warn">short</span>'),
+    worst
+      ? row('Longest walk out', `<b>${ft(worst.travel)} ft</b> / ${r.egress.limits.travel}`)
+      : row('Longest walk out', '—'),
+    r.egress.deadEnds.length
+      ? row('Deepest dead end', `<b>${ft(r.egress.deadEnds[0].depth)} ft</b> / ${r.egress.limits.deadEnd}`)
+      : row('Dead ends', 'none'),
+  ]);
+
+  const a = r.accessible.summary;
+  sec('Accessible route', [
+    row(`${plural(a.entrances, 'entrance')} · ${plural(a.lifts, 'lift')}`,
+      `${a.ramps ? plural(a.ramps, 'ramp') : 'no ramps'}`),
+    row('Reachable on wheels', a.unreachable
+      ? `<b>${a.reachable}</b> of ${a.reachable + a.unreachable}`
+      : 'every room'),
+  ]);
+
+  const d = r.daylight.summary;
+  sec('Daylight & sound', [
+    row('Glazing, whole building', `<b>${(d.ratio * 100).toFixed(1)}%</b> of floor`),
+    row(`${plural(d.rooms, 'room')} held to 8%`, d.dark
+      ? `<span class="warn">${d.dark} under</span>` : 'all over'),
+    row('Rooms over the ANSI reverb limit',
+      r.acoustics.summary.over ? `<b>${r.acoustics.summary.over}</b>` : 'none'),
+  ]);
+
+  if (r.takeoff) {
+    const t = r.takeoff.totals;
+    sec('Materials', [
+      row('Walls', `<b>${ft(t.wallLf)} lf</b> (${ft(t.exteriorLf)} ext)`),
+      row('Glazing', `${ft(t.glazing)} ft² · ${t.bays} bays`),
+      row('Doors &amp; windows', `${t.doors} · ${t.windows}`),
+      row('Furniture', `${t.props} pieces`),
+      row('Roof / site', `${ft(t.roof)} · ${ft(t.site)} ft²`),
+    ]);
+  }
+  return out.join('');
+}
+
+function renderReportPanel() {
+  renderReportStale();
+  const r = report.data;
+  const verdictEl = $('report-verdict');
+  if (!r) {
+    verdictEl.className = '';
+    verdictEl.innerHTML = '<span class="mark">•</span><span class="line">Reading the model…</span>';
+    $('report-findings').innerHTML = '';
+    $('report-readout').innerHTML = '';
+    return;
+  }
+  const v = VERDICTS[r.summary.verdict];
+  verdictEl.className = r.summary.verdict;
+  verdictEl.innerHTML = `<span class="mark">${v.mark}</span><span class="line">${v.line(r)}</span>`;
+  $('report-findings').innerHTML = r.findings.map(findingHTML).join('');
+  $('report-readout').innerHTML = reportSections(r);
+}
+
+// A finding is a headline until you ask it why.
+$('report-findings').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  const host = btn && btn.closest('.finding');
+  if (!host) return;
+  const open = host.classList.toggle('open');
+  btn.setAttribute('aria-expanded', String(open));
+});
+
+$('report-btn').addEventListener('click', () => {
+  const hidden = reportPanel.classList.toggle('hidden');
+  $('report-btn').classList.toggle('off', hidden);
+  $('report-btn').setAttribute('aria-pressed', String(!hidden));
+  if (hidden) { clearTimeout(report.timer); return; }
+  if (report.stale || !report.data) reportBuild();
+  else renderReportPanel();
+  // The rail is a scrolling column and this is the tallest thing in it: with
+  // the sky panel open above, a report opened at the bottom of the rail opens
+  // off the bottom of the screen.
+  reportPanel.scrollIntoView({ block: 'nearest' });
+});
+
+$('report-refresh').addEventListener('click', () => reportBuild());
+
+$('report-sprinklered').addEventListener('change', (e) => {
+  report.sprinklered = e.target.checked;
+  reportBuild();
+});
+
+$('report-csv').addEventListener('click', () => {
+  if (report.stale || !report.data) reportBuild();
+  const blob = new Blob([reportCSV(report.data)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'school-analysis.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+
 // --- photo mode ---
 //
 // A walkthrough affordance, not an editor one: it takes the walker off its
@@ -1930,6 +2117,10 @@ document.addEventListener('keydown', (e) => {
   // The crowd's four, in both modes: the panel, the drill, the heatmap, and
   // whose shoulder you are looking over.
   if (e.code === 'KeyL' && !typing && !e.ctrlKey && !e.metaKey) { $('life-btn').click(); return; }
+  // The report is the sixth panel and the last free letter next to them: M for
+  // the measurements, in both modes, because a finding you read while walking
+  // is a finding about the corridor you are standing in.
+  if (e.code === 'KeyM' && !typing && !e.ctrlKey && !e.metaKey) { $('report-btn').click(); return; }
   if (e.code === 'KeyK' && !typing && !e.ctrlKey && !e.metaKey) { lifeSetDrill(!life.drill); return; }
   if (e.code === 'KeyH' && !typing && !e.ctrlKey && !e.metaKey) { $('life-heat').click(); return; }
   if (e.code === 'KeyV' && !typing && !e.ctrlKey && !e.metaKey && mode === 'walk') {
@@ -2013,4 +2204,5 @@ window.app = {
   setMode, renderApi, editor, walk,
   setPhotoMode, envChanged, audio,
   life, lifeStart, lifeStop, lifeSetDrill, lifeFollow,
+  report, reportBuild,
 };

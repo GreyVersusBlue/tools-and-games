@@ -35,6 +35,7 @@ import { catalogEntry } from './catalog.js';
 import { footprintOf } from './propplace.js';
 import { wallProbe } from './walls.js';
 import { finishSchedule } from './finish.js';
+import { floorOccupancy } from './occupancy.js';
 import { segLeaves, leafEnd, leafAngle, gridDoorSpec, gridWindowSpec, gridOpeningWidth } from './openings.js';
 import { regionsOf, markingsFor, surfaceEntry, markingEntry, siteSchedule, regionArea } from './site.js';
 import { terrainField, contours, terrainRange, CONTOUR_FT } from './terrain.js';
@@ -67,6 +68,10 @@ function pushOpening(openings, spec, a, b, t) {
     kind: spec.window ? 'window' : 'door',
     hx: a.x + ux * (at - spec.w / 2), hz: a.z + uz * (at - spec.w / 2),
     ux, uz, w: spec.w, t,
+    // The plan never draws these two — an elevation would, and Phase 7's
+    // takeoff prices glass by the square foot, so the opening carries its
+    // own height rather than leaving a reader to assume one.
+    h: spec.h, sill: spec.sill,
     leaves: segLeaves(spec, a, b).map((leaf) => ({
       hx: leaf.hx, hz: leaf.hz, len: leaf.len,
       open: leafAngle(leaf, 1), shut: leafAngle(leaf, 0),
@@ -246,7 +251,13 @@ function computeBounds(floor, rooms, propsList, stairs) {
 
 // The pure half: everything a floor plan needs to draw, in world feet, with
 // no canvas/DOM dependency so it can run under `node --test`.
-export function computeFloorPlan(state, floorIndex) {
+// `opts.occupancy` adds the one thing a plan has never carried: how many
+// people each room is allowed to hold. It is off by default because a plan is
+// a drawing of a building and this is a statement about it — but a drawing
+// that says "Room 101 · 672 ft² · 34 occupants" is the plan an authority
+// having jurisdiction asks for, and Phase 6's crowd finally gave the number a
+// reason to be on the sheet.
+export function computeFloorPlan(state, floorIndex, opts = {}) {
   const floor = state.floors[floorIndex];
   if (!floor) return null;
   // One thickness probe for the whole plan: a plan asks about every boundary
@@ -274,6 +285,12 @@ export function computeFloorPlan(state, floorIndex) {
     finishes: finishSchedule(floor),
     props: propsList,
     stairs,
+    // Every room the occupancy reader can price, at the same interior point
+    // `polyRooms` labels a polygon room at — so the tag lands in the room
+    // rather than beside it, on both representations.
+    occupancy: opts.occupancy
+      ? floorOccupancy(state, floorIndex).rooms.filter((r) => r.occ > 0)
+      : null,
   };
 }
 
@@ -409,6 +426,29 @@ function drawLabels(ctx, plan, layout) {
   };
   for (const l of plan.gridLabels) draw(l.name, l.count * CELL * CELL, l.cx, l.cz);
   for (const r of plan.rooms) if (r.name) draw(r.name, r.sqft, r.labelX, r.labelZ);
+}
+
+// The occupant load, as a tag under the room's name. Deliberately its own
+// pass rather than a third line in `drawLabels`: a room with no name still
+// gets a number, and a plan printed without this option is exactly the plan
+// Phase 5 printed.
+function drawOccupancy(ctx, plan, layout) {
+  if (!plan.occupancy || !plan.occupancy.length) return;
+  ctx.textAlign = 'center';
+  const size = Math.max(7, Math.round(layout.scale * 0.75));
+  for (const r of plan.occupancy) {
+    const p = toPx(plan, layout, r.x, r.z);
+    const text = `${r.occ} occ`;
+    ctx.font = `600 ${size}px system-ui, sans-serif`;
+    const w = ctx.measureText(text).width;
+    const y = p.y + layout.scale * 1.75;
+    ctx.fillStyle = 'rgba(26, 32, 41, 0.86)';
+    ctx.beginPath();
+    ctx.roundRect(p.x - w / 2 - 4, y - size, w + 8, size + 5, 3);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, p.x, y);
+  }
 }
 
 function drawWalls(ctx, plan, layout) {
@@ -751,6 +791,7 @@ export function drawFloorPlan(ctx, plan, layout, opts = {}) {
   drawStairs(ctx, plan, layout);
   if (opts.showFurniture) drawProps(ctx, plan, layout);
   drawLabels(ctx, plan, layout);
+  if (opts.showOccupancy) drawOccupancy(ctx, plan, layout);
   if (opts.showDimensions) drawDimensions(ctx, plan, layout);
   if (opts.showFinishes !== false) {
     drawFinishLegend(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
@@ -977,7 +1018,7 @@ const TITLE_H = 56;
 const MAX_PX = 4000; // sane cap on export canvas size
 
 export function renderFloorPlanCanvas(state, floorIndex, opts = {}) {
-  const plan = computeFloorPlan(state, floorIndex);
+  const plan = computeFloorPlan(state, floorIndex, { occupancy: !!opts.showOccupancy });
   if (!plan) return null;
   const wFt = plan.bounds.maxX - plan.bounds.minX;
   const hFt = plan.bounds.maxZ - plan.bounds.minZ;
