@@ -47,6 +47,10 @@ export const CATEGORIES = [
   'Tables & Desks', 'Seating', 'Storage', 'Fixtures', 'Lighting',
   'Subject Rooms', 'Cafeteria', 'Gym & Stage', 'Library & Office', 'Restroom',
   'Decor', 'Outdoor', 'Landscape',
+  // Phase 9. Not a table of rows — the category an imported glTF file lands
+  // in, kept last so the palette reads as "everything this build ships, then
+  // everything you brought".
+  'Imported',
 ];
 
 // Every geometry key a catalog row may name. render.js's builder table must
@@ -72,6 +76,10 @@ export const GEO_KEYS = [
   'tree', 'hedge', 'shrub', 'planter', 'boulder',
   'troffer', 'pendant', 'sconce', 'polelight',
   'gongbell', 'diffuser',
+  // Phase 9: not a builder at all. A row with `geo: 'model'` carries a glTF
+  // file instead (see models.js), and render.js reads its geometry out of the
+  // library rather than out of PROP_GEO_BUILDERS.
+  'model',
 ];
 
 export const PROP_CATALOG = [
@@ -280,12 +288,42 @@ export const PROP_CATALOG = [
 
 const BY_TYPE = new Map(PROP_CATALOG.map((e) => [e.type, e]));
 
-export const catalogEntry = (type) => BY_TYPE.get(type) || null;
+// --- Phase 9: rows that came from a file ---
+//
+// The table above is what this build ships. A design may also carry imported
+// glTF models (models.js), and every one of them has to look like a catalog
+// row to the eight modules that ask `catalogEntry(type)` a question —
+// propplace for its footprint, collide for its obstacle, blueprint for its
+// symbol, takeoff for its count, lights and sound for the emitters it hasn't
+// got. Rather than teach all eight about a second table, the design's rows
+// are *registered* here and the two lookups below see them.
+//
+// It's a registry rather than a merge because the rows belong to the open
+// design: `registerRows` replaces the whole set on load, on New and on undo,
+// which is exactly the lifetime a design has. `type` is namespaced by
+// models.js, so an imported row can never shadow a built-in one.
+let extraRows = [];
+const BY_EXTRA = new Map();
+
+export function registerRows(rows) {
+  extraRows = [];
+  BY_EXTRA.clear();
+  for (const row of rows || []) {
+    if (!row || typeof row.type !== 'string' || BY_TYPE.has(row.type)) continue;
+    extraRows.push(row);
+    BY_EXTRA.set(row.type, row);
+  }
+  return extraRows.length;
+}
+
+export const registeredRows = () => extraRows.slice();
+
+export const catalogEntry = (type) => BY_TYPE.get(type) || BY_EXTRA.get(type) || null;
 
 export function catalogByCategory() {
   const out = CATEGORIES.map((category) => ({ category, entries: [] }));
   const idx = new Map(out.map((g) => [g.category, g]));
-  for (const entry of PROP_CATALOG) {
+  for (const entry of PROP_CATALOG.concat(extraRows)) {
     const g = idx.get(entry.category);
     if (g) g.entries.push(entry);
   }

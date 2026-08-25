@@ -115,7 +115,7 @@ export function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
 
 export function createState(w = DEFAULT_W, h = DEFAULT_H) {
   return {
-    version: 9,
+    version: 10,
     cellFt: CELL,
     floorHt: FLOOR_H,
     w, h,
@@ -129,11 +129,12 @@ export function createState(w = DEFAULT_W, h = DEFAULT_H) {
     // When and where this building stands, for the sun. See sky.js.
     env: defaultEnv(),
     // `roof` (roof.js), `terrain` (terrain.js) and `site` (site.js) are
-    // deliberately *not* here. All three are absent until somebody grades
-    // something, draws something or asks for a roof other than the default,
-    // which is what keeps a design that has none of them byte-identical to a
-    // pre-Phase-5 one — and it is why grid.js stays a leaf module that imports
-    // only the sky.
+    // deliberately *not* here — and neither are `tours` (tour.js) or `models`
+    // (models.js), for the same reason. All five are absent until somebody
+    // grades something, draws something, asks for a roof other than the
+    // default, records a camera path or imports a file, which is what keeps a
+    // design that has none of them byte-identical to a pre-Phase-5 one — and
+    // it is why grid.js stays a leaf module that imports only the sky.
     nextId: 1,
   };
 }

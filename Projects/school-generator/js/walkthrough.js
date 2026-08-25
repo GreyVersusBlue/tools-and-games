@@ -44,6 +44,7 @@ import {
   buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoorsFor,
 } from './collide.js';
 import { lookEulerDelta } from './touch.js';
+import { stickVector, turnStep, XR_SPEED, XR_SPRINT, SNAP_ANGLE } from './xr.js';
 
 const WALK_SPEED = 12;   // ft/s
 const SPRINT_SPEED = 24; // ft/s
@@ -95,6 +96,15 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   let follow = null;
 
   const fwdV = new THREE.Vector3();
+
+  // Where the eye is. Ordinarily this *is* `camera.position` — the same
+  // object, aliased, so every line below reads and writes the camera directly
+  // and nothing costs a copy. In a headset it can't be: three.js writes the
+  // camera's own transform from the head pose every frame, so the walker
+  // keeps its position here and render.js's rig is moved to put the head
+  // where this says it is. One alias, and the whole of the physics below is
+  // unchanged between the two.
+  let body = camera.position;
 
   // Touch: Pointer Lock is desktop-only (PointerLockControls drives off a
   // locked pointer's mousemove, which a touchscreen never sends), so touch
@@ -156,9 +166,9 @@ export function initWalkthrough(camera, domElement, opts = {}) {
 
   function reportHud() {
     if (!opts.onHud) return;
-    const feet = camera.position.y - EYE_H;
+    const feet = body.y - EYE_H;
     const level = world
-      ? storeyAt(world, feet, groundAt(site, camera.position.x, camera.position.z)) + 1 : 1;
+      ? storeyAt(world, feet, groundAt(site, body.x, body.z)) + 1 : 1;
     const text = follow && follow.agent
       ? `Level ${level} · following ${follow.agent.name} (${follow.mode === 'fps' ? 'first person' : 'over the shoulder'})`
       : `Level ${level} · ${ghost ? 'ghost (no-clip)' : 'walking'}`;
@@ -187,10 +197,10 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   // in a lift" is a point-in-box test, not a state machine.
   function rideElevator() {
     if (!world) return false;
-    const feet = camera.position.y - EYE_H;
-    const car = elevatorAt(world, camera.position.x, camera.position.z, storeyAt(world, feet));
+    const feet = body.y - EYE_H;
+    const car = elevatorAt(world, body.x, body.z, storeyAt(world, feet));
     if (!car) return false;
-    camera.position.y = car.y + EYE_H;
+    body.y = car.y + EYE_H;
     vy = 0;
     grounded = true;
     hudText = '';
@@ -262,21 +272,21 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     if (fwd) controls.moveForward(fwd * speed * dt);
     if (right) controls.moveRight(right * speed * dt);
     if (up) {
-      camera.position.y = Math.min(ceiling, Math.max(1.5, camera.position.y + up * speed * dt));
+      body.y = Math.min(ceiling, Math.max(1.5, body.y + up * speed * dt));
       return;
     }
     if (!world || !(fwd || right)) return;
-    const ride = stairUnder(world, camera.position.x, camera.position.z, camera.position.y - EYE_H);
+    const ride = stairUnder(world, body.x, body.z, body.y - EYE_H);
     if (!ride) return;
     const target = ride.y + EYE_H;
-    if (Math.abs(camera.position.y - target) > RIDE_BAND) return;
-    camera.position.y = target;
+    if (Math.abs(body.y - target) > RIDE_BAND) return;
+    body.y = target;
   }
 
   // Walking: a circle on a surface. Horizontal movement is resolved against
   // the storey under your feet, then the surface it found decides your height.
   function updateWalk(dt, fwd, right, speed) {
-    const feet = camera.position.y - EYE_H;
+    const feet = body.y - EYE_H;
 
     // Heading, flattened: looking at the ceiling shouldn't slow you down or
     // walk you into the floor.
@@ -295,15 +305,15 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       dz = (dz / mag) * step;
     } else { dx = 0; dz = 0; }
 
-    const floorIndex = storeyAt(world, feet, groundAt(site, camera.position.x, camera.position.z));
+    const floorIndex = storeyAt(world, feet, groundAt(site, body.x, body.z));
     const collider = colliderFor(floorIndex);
     // You walk around the crowd, and it walks around you: the same body list,
     // resolved by the same `moveWalker`, from both sides.
-    const moved = moveWalker(world, collider, { x: camera.position.x, y: feet, z: camera.position.z },
+    const moved = moveWalker(world, collider, { x: body.x, y: feet, z: body.z },
       dx, dz, { grounded, bodies: bodiesOn(floorIndex) });
-    const walked = Math.hypot(moved.x - camera.position.x, moved.z - camera.position.z);
-    camera.position.x = moved.x;
-    camera.position.z = moved.z;
+    const walked = Math.hypot(moved.x - body.x, moved.z - body.z);
+    body.x = moved.x;
+    body.z = moved.z;
 
     // Vertical. `support` came back from the same query that vetted the step,
     // so standing and walking agree about what the floor is.
@@ -332,7 +342,57 @@ export function initWalkthrough(camera, domElement, opts = {}) {
         y = surface; vy = 0; grounded = true;
       } else y = next;
     }
-    camera.position.y = y + EYE_H;
+    body.y = y + EYE_H;
+  }
+
+  // Doors answer to where you *ended up*, and they answer on every storey you
+  // might be standing on — including in ghost mode, where a corridor of doors
+  // opening ahead of you is half the reason to fly down it. Its own function
+  // since Phase 9, because a headset walks the same corridors and opens the
+  // same doors.
+  function updateDoors(dt) {
+    if (!world) return;
+    const floorIndex = storeyAt(world, body.y - EYE_H);
+    const collider = colliderFor(floorIndex);
+    // The camera is one body among however many; a leaf answers to whoever is
+    // nearest it, which in a busy corridor is rarely you.
+    const crowd = bodiesOn(floorIndex);
+    const bodies = [{ x: body.x, z: body.z, open: true }];
+    if (crowd) for (const b of crowd) bodies.push(b);
+    if (updateDoorsFor(collider, bodies, dt) && opts.onDoors) {
+      opts.onDoors(collider.doors);
+    }
+  }
+
+  // --- Phase 9: walking in a headset ---
+  //
+  // The whole of VR locomotion, and it is four lines of new physics because
+  // there is no new physics: the thumbstick produces the same `fwd`/`right`
+  // pair the W and D keys do, `updateWalk` resolves it against the same
+  // collider, and the doors open by the same test. What is genuinely
+  // different is only this — the camera is not ours to move, so the walker's
+  // position lives in `body` and gets handed out as a pose for render.js's
+  // rig, and turning is a snap rather than a mouse, because a smoothly
+  // rotating world makes people ill.
+  let xr = null;
+
+  function xrStep(dt) {
+    const input = xr.input ? xr.input() : null;
+    const stick = stickVector(input ? input.move.x : 0, input ? input.move.y : 0);
+    const turn = turnStep(xr.turnMode, xr.latched, input ? input.turn : 0, dt, { angle: xr.snapAngle });
+    xr.latched = turn.latched;
+    // Turning about the head is turning on the spot, and the head is exactly
+    // where `body` says it is — so a snap is one addition here and nothing at
+    // all in the physics.
+    if (turn.turn) xr.yaw += turn.turn;
+    const speed = input && input.sprint ? XR_SPRINT : XR_SPEED;
+    // `updateWalk` takes its heading from the camera's own world direction,
+    // which in a session is the direction the head is actually facing — so
+    // "forward" means what a person wearing it expects, with no extra term.
+    if (world) updateWalk(dt, -stick.y, stick.x, speed);
+    updateDoors(dt);
+    if (xr.onPose) xr.onPose({ x: body.x, y: body.y - EYE_H, z: body.z, yaw: xr.yaw });
+    reportHud();
   }
 
   // One foot hitting one surface. The material is whatever the room under that
@@ -405,6 +465,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       ceiling = topOfBuilding(state) + 40;
       camera.position.set(p.x, eye, p.z);
       camera.lookAt(p.x + p.lookX * 20, eye, p.z + p.lookZ * 20);
+      if (body !== camera.position) body.copy(camera.position);
       reportHud();
     },
     disable() {
@@ -438,8 +499,50 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     // Touch has no E key, so the same on-screen button that jumps can call
     // this — it's a no-op anywhere but inside a car.
     rideElevator,
+    // --- Phase 9: the headset ---
+    //
+    // `input` is polled once a frame and answers { move: {x, y}, turn,
+    // sprint }; `onPose` receives where the rig has to stand. Neither this
+    // file nor render.js describes a controller to the other — main.js reads
+    // the session's gamepads, because that is where every other input path in
+    // this build is read too.
+    get xr() { return !!xr; },
+    get xrYaw() { return xr ? xr.yaw : 0; },
+    enableXR(o = {}) {
+      // A headset is a body, not a ghost: no-clip flight with a real head in
+      // it is the fastest way to make somebody ill, and the stairs work.
+      ghost = false;
+      follow = null;
+      vy = 0;
+      grounded = true;
+      body = new THREE.Vector3().copy(camera.position);
+      xr = {
+        input: o.input || null,
+        onPose: o.onPose || null,
+        turnMode: o.turnMode === 'smooth' ? 'smooth' : 'snap',
+        snapAngle: Number.isFinite(o.snapAngle) ? o.snapAngle : SNAP_ANGLE,
+        yaw: 0,
+        latched: false,
+      };
+      if (xr.onPose) xr.onPose({ x: body.x, y: body.y - EYE_H, z: body.z, yaw: 0 });
+      reportHud();
+    },
+    disableXR() {
+      if (!xr) return;
+      // Put the desktop camera back where the headset left the walker, so
+      // taking it off doesn't teleport you home.
+      camera.position.copy(body);
+      body = camera.position;
+      xr = null;
+      reportHud();
+    },
+    setXRComfort(mode) { if (xr) xr.turnMode = mode === 'smooth' ? 'smooth' : 'snap'; },
     update(dt) {
-      if (!active || (!controls.isLocked && !touchActive)) return;
+      if (!active) return;
+      // A session drives its own frames off the headset's clock; the page's
+      // loop stands down while one is running (see render.js's enterXR).
+      if (xr) { xrStep(dt); return; }
+      if (!controls.isLocked && !touchActive) return;
       // Riding along with somebody. The camera stops steering itself and
       // becomes a property of the agent — which is why this is four lines
       // rather than a mode: everything about *where* it goes is already being
@@ -455,21 +558,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       const right = touchActive ? moveAxes.x : (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
       if (ghost || !world) updateGhost(dt, fwd, right, speed);
       else updateWalk(dt, fwd, right, speed);
-      // Doors answer to where you *ended up*, and they answer on every storey
-      // you might be standing on — including in ghost mode, where a corridor
-      // of doors opening ahead of you is half the reason to fly down it.
-      if (world) {
-        const floorIndex = storeyAt(world, camera.position.y - EYE_H);
-        const collider = colliderFor(floorIndex);
-        // The camera is one body among however many; a leaf answers to
-        // whoever is nearest it, which in a busy corridor is rarely you.
-        const crowd = bodiesOn(floorIndex);
-        const bodies = [{ x: camera.position.x, z: camera.position.z, open: true }];
-        if (crowd) for (const b of crowd) bodies.push(b);
-        if (updateDoorsFor(collider, bodies, dt) && opts.onDoors) {
-          opts.onDoors(collider.doors);
-        }
-      }
+      updateDoors(dt);
       reportHud();
     },
   };

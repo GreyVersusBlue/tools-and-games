@@ -38,8 +38,12 @@ import { roomsOnFloor, isOutside } from './acoustics.js';
 import {
   downloadSave, loadFromFile, autosave, autosaveNow, loadAutosave, clearAutosave,
   listDesigns, saveDesign, loadDesign, deleteDesign, renameDesign,
+  serialize, deserialize,
 } from './save-load.js';
-import { renderFloorPlanCanvas, renderSitePlanCanvas, downloadCanvasPNG } from './blueprint.js';
+import {
+  renderFloorPlanCanvas, renderSitePlanCanvas, downloadCanvasPNG,
+  computeFloorPlan, drawPlanBody,
+} from './blueprint.js';
 import { buildReport, reportCSV } from './report.js';
 import { isTouchCapable, joystickAxes } from './touch.js';
 // --- Phase 8 ---
@@ -51,7 +55,26 @@ import {
   ALL_FLOORS, MAX_PIXELS, MAX_BYTES,
   makeOverlay, setOverlay, calibrate, describeOverlay, centreOn, showsOn,
 } from './overlay.js';
-import { floorOverhang } from './shadow.js';
+import { floorOverhang, floorBounds } from './shadow.js';
+// --- Phase 9 ---
+import { registerRows } from './catalog.js';
+import { loadModel as readModelFile, FT_TO_M } from './gltf.js';
+import {
+  MAX_MODELS, modelRows, modelsOf, importModel, addModel, removeModel,
+  updateModel, describeModel, modelUseCount, modelType,
+} from './models.js';
+import {
+  encodeShare, decodeShare, shareURL, readShareFragment, shareStatus, omissionNote,
+} from './share.js';
+import {
+  MAX_TOURS, MAX_KEYS, makeTour, addKey, removeKey, moveKey, updateKey,
+  toursOf, tourSummary, tourDuration, sampleTour, startPlayback, stepPlayback,
+} from './tour.js';
+import {
+  MINI_SIZE, MIN_RANGE, MAX_RANGE, minimapView, worldToMini, viewCone,
+  markerAngle, scaleBar, nextMode, nextOrient, describeMinimap,
+} from './minimap.js';
+import { xrAvailability, rigPosition } from './xr.js';
 
 const canvas = document.getElementById('view');
 const $ = (id) => document.getElementById(id);
@@ -98,7 +121,15 @@ const editor = initEditor({
   renderApi,
   getState: () => state,
   onChange: (info = {}) => {
+    // Phase 9. An undo can restore (or take away) the whole model library and
+    // a tour list, so both are checked against what is registered before the
+    // rebuild that would otherwise draw stand-in boxes. The check is an
+    // identity comparison, not a re-parse: models.js never mutates a record
+    // or its array in place, so a changed library is a different array.
+    syncModelsIfChanged();
     rebuild(!!info.throttled);
+    // ...and any structural edit is a different plan under the minimap.
+    if (!info.throttled) invalidateMinimap();
     autosave(state);
     updateUndoButtons();
     renderFloorList();
@@ -275,12 +306,19 @@ function setMode(m) {
     doorState = new Map();
     if (life.on) walk.setBodies((i) => bodiesOn(life.agents, i));
     audio.setWorld(state);
+    // The map is drawn from the plan, and the plan may have changed since the
+    // last walk.
+    invalidateMinimap();
+    updateMinimapButtons();
+    renderTourPanel();
     openModal(walkOverlay, $('walk-start'));
     closeModal($('designs-overlay'));
     closeModal($('export-overlay'));
     $('mode-btn').textContent = '✏️ Edit Mode';
   } else {
     setPhotoMode(false);
+    tourStop();
+    document.body.classList.remove('tours');
     walk.setFollow(null);
     walk.disable();
     audio.setActive(false);
@@ -453,7 +491,14 @@ PAINTS.forEach((c, i) => {
 // click handlers and the active state never have to be re-wired.
 const palette = $('palette');
 const paletteSearch = $('palette-search');
-const paletteGroups = [];
+let paletteGroups = [];
+// Phase 9 makes this a function rather than a run-once loop: an imported
+// model is a catalog row that arrives (and leaves) while the tool is open, so
+// the palette is rebuilt whenever the design's model library changes — on
+// import, on delete, on load and on undo.
+function buildPalette() {
+paletteGroups = [];
+palette.textContent = '';
 catalogByCategory().forEach(({ category, entries }) => {
   const group = document.createElement('div');
   group.className = 'palette-group';
@@ -491,6 +536,9 @@ catalogByCategory().forEach(({ category, entries }) => {
   palette.appendChild(group);
   paletteGroups.push({ group, head, items });
 });
+filterPalette();
+}
+
 function filterPalette() {
   const q = paletteSearch.value.trim().toLowerCase();
   for (const g of paletteGroups) {
@@ -509,6 +557,7 @@ function filterPalette() {
     }
   }
 }
+buildPalette();
 paletteSearch.addEventListener('input', filterPalette);
 paletteSearch.addEventListener('keydown', (e) => {
   // Esc clears the filter (and stops here rather than reaching the editor's
@@ -847,6 +896,11 @@ function afterEdit() {
 // undo that.
 function adoptState(next, opts = {}) {
   state = next;
+  // Phase 9: the model library belongs to the design, so it is registered
+  // with the catalog and parsed *before* the first rebuild — otherwise the
+  // rebuild draws a stand-in box for every imported prop and then has to be
+  // told to do it again.
+  syncModels({ quiet: true });
   renderApi.fitEditView(state);
   rebuild();
   editor.refreshOverlay();
@@ -858,6 +912,12 @@ function adoptState(next, opts = {}) {
   renderOverlayPanel();
   adoptedByAudio();
   reportInvalidate();
+  // A different design is a different plan under the minimap and a different
+  // list of tours in the panel.
+  invalidateMinimap();
+  tourStop();
+  tourIndex = 0;
+  renderTourPanel();
   if (!opts.keepAutosave) autosaveNow(state);
   updateUndoButtons();
 }
@@ -1216,6 +1276,18 @@ $('overlay-lock').addEventListener('change', (e) => {
   applyOverlayChange();
   renderOverlayPanel();
 });
+
+// What a partial or failed autosave sounds like. Phase 8 said it once, for
+// the tracing image; Phase 9 has a second heavy record (imported models) and
+// so the sentence is shared rather than repeated.
+function autosaveNote(result) {
+  if (result === 'partial') {
+    $('status').textContent = "Autosaved without the tracing image and imported models — " +
+      "they are too big for this browser's storage. Use Save to keep a file with everything in it.";
+  } else if (result === 'failed') {
+    $('status').textContent = 'Autosave failed — this browser refused to store the design.';
+  }
+}
 
 // One place to say "the overlay changed": redraw the plane, refresh the tool's
 // handles, and autosave — which is the call that can fail on a full
@@ -2611,6 +2683,22 @@ document.addEventListener('keydown', (e) => {
     lifeFollow();
     return;
   }
+  // --- Phase 9's three, all walkthrough-only ---
+  if (mode === 'walk' && !typing && !e.ctrlKey && !e.metaKey) {
+    if (e.code === 'KeyT') {
+      const on = document.body.classList.toggle('tours');
+      if (on) renderTourPanel();
+      return;
+    }
+    if (e.code === 'KeyJ') { miniOn = !miniOn; updateMinimapButtons(); return; }
+    if (e.code === 'KeyR') { tourMark(); return; }
+    if (e.code === 'Enter' && document.body.classList.contains('tours')) {
+      tourPlay ? tourStop() : tourStart(false);
+      return;
+    }
+    // Escape stops a tour before it stops the walkthrough.
+    if (e.code === 'Escape' && tourPlay) { tourStop(); e.preventDefault(); return; }
+  }
   if (mode !== 'edit' || typing) return;
   // Enter / Escape / Backspace / Delete belong to the polygon tools while one
   // of them is holding an outline or a selection.
@@ -2658,20 +2746,951 @@ document.addEventListener('keydown', (e) => {
 window.addEventListener('beforeunload', () => autosaveNow(state));
 window.addEventListener('resize', () => renderApi.resize());
 
+
+// ============================================================
+// Phase 9 — sharing, and beyond the tab
+// ============================================================
+
+// The last model library that was registered, by identity. See the editor's
+// onChange above for why identity is enough.
+let registeredModels = null;
+
+function syncModelsIfChanged() {
+  // `state.models` itself, not `modelsOf`, which manufactures a fresh empty
+  // array for a design that has none — and would therefore never compare
+  // equal to itself.
+  const models = state.models || null;
+  if (models === registeredModels) return;
+  syncModels({ quiet: true });
+  renderTourPanel();
+}
+
+// --- imported models ---
+//
+// The library lives on the design (`state.models`), the rows it produces are
+// registered with catalog.js, and the geometry is parsed once by render.js.
+// This is the one function that keeps those three in step, and it is called
+// from every place a design can change underneath them: load, import, delete,
+// undo.
+function syncModels(opts = {}) {
+  const models = modelsOf(state);
+  registeredModels = state.models || null;
+  registerRows(modelRows(models));
+  const failed = renderApi.setModels(models);
+  buildPalette();
+  if (!models.length) $('model-manage').textContent = 'Manage';
+  else $('model-manage').textContent = `Manage (${models.length})`;
+  if (failed.length && !opts.quiet) {
+    alert(`Could not read ${failed.length === 1 ? 'a model' : `${failed.length} models`}:\n` +
+      failed.map((f) => `· ${f.name}: ${f.message}`).join('\n'));
+  }
+  return failed;
+}
+
+const modelOverlay = $('model-overlay');
+const modelsOverlay = $('models-overlay');
+// The file waiting on the "how big is it?" dialog: its bytes, its suggested
+// name, and the size the file itself claims to be.
+let pendingModel = null;
+
+$('model-import').addEventListener('click', () => $('model-file').click());
+$('models-add').addEventListener('click', () => $('model-file').click());
+
+$('model-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (modelsOf(state).length >= MAX_MODELS) {
+    alert(`This design already has ${MAX_MODELS} imported models.`);
+    return;
+  }
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    // Parse it *now*, so a file that isn't a model fails at the file input
+    // rather than three dialogs later.
+    const { model } = importModel(bytes, file.name);
+    // ...and read its own bounding box, so the dialog can open with the size
+    // the file thinks it is rather than with a guess. glTF is metres; this
+    // build is feet.
+    let suggested = null;
+    try {
+      const read = readModelFile(bytes, null);
+      const b = read.bbox;
+      const ft = (v) => Math.round((v / FT_TO_M) * 4) / 4;
+      suggested = {
+        w: Math.max(0.25, ft(b.maxX - b.minX)),
+        d: Math.max(0.25, ft(b.maxZ - b.minZ)),
+        h: Math.max(0.25, ft(b.maxY - b.minY)),
+        tris: read.triangles,
+      };
+    } catch { /* the fit dialog's defaults will do */ }
+    pendingModel = { bytes, name: model.name, suggested };
+    $('model-name').value = model.name;
+    $('model-w').value = suggested ? suggested.w : 3;
+    $('model-d').value = suggested ? suggested.d : 3;
+    $('model-h').value = suggested ? suggested.h : 3;
+    $('model-mount').value = 'floor';
+    $('model-stretch').checked = false;
+    $('model-site').checked = false;
+    $('model-detail').textContent = suggested
+      ? `${file.name} — ${suggested.tris.toLocaleString()} triangles, and the file says it is ` +
+        `${suggested.w} × ${suggested.d} × ${suggested.h} ft. Change the numbers to resize it; ` +
+        `the model is fitted to whatever box you give it.`
+      : `${file.name} — set the size this should stand at, in feet.`;
+    closeModal(modelsOverlay);
+    openModal(modelOverlay, $('model-name'));
+  } catch (err) {
+    alert(`Could not import that model: ${err.message}`);
+  }
+});
+
+$('model-cancel').addEventListener('click', () => { pendingModel = null; closeModal(modelOverlay); });
+
+$('model-ok').addEventListener('click', () => {
+  if (!pendingModel) return closeModal(modelOverlay);
+  const numOr = (id, fallback) => {
+    const v = Number($(id).value);
+    return Number.isFinite(v) && v > 0 ? v : fallback;
+  };
+  try {
+    const { model } = importModel(pendingModel.bytes, pendingModel.name, {
+      name: $('model-name').value,
+      w: numOr('model-w', 3),
+      d: numOr('model-d', 3),
+      h: numOr('model-h', 3),
+      mount: $('model-mount').value,
+      fit: $('model-stretch').checked ? 'stretch' : 'contain',
+      site: $('model-site').checked,
+    });
+    editor.pushUndo();
+    const added = addModel(modelsOf(state), model);
+    state.models = added.models;
+    pendingModel = null;
+    closeModal(modelOverlay);
+    // `syncModels` registers the row, parses the file and rebuilds the
+    // palette; all that is left is to pick the thing that just arrived,
+    // because importing something and then having to find it in the palette
+    // is a step nobody wanted.
+    const failed = syncModels();
+    if (!failed.length) {
+      selectTool('prop');
+      editor.setPropType(modelType(added.model.id));
+      buildPalette();
+      $('status').textContent = `Imported "${added.model.name}" — click in a room to place it`;
+    }
+    autosave(state, autosaveNote);
+    rebuild();
+    updateUndoButtons();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+function renderModelsList() {
+  const list = $('models-list');
+  list.textContent = '';
+  const models = modelsOf(state);
+  if (!models.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'Nothing imported yet — bring in a .glb and it becomes a prop type.';
+    list.appendChild(empty);
+    return;
+  }
+  for (const m of models) {
+    const uses = modelUseCount(state, m.id);
+    const row = document.createElement('div');
+    row.className = 'model';
+
+    const name = document.createElement('div');
+    name.className = 'name';
+    const title = document.createElement('input');
+    title.type = 'text';
+    title.value = m.name;
+    title.maxLength = 40;
+    title.setAttribute('aria-label', `Name of ${m.name}`);
+    title.addEventListener('change', () => {
+      editor.pushUndo();
+      state.models = updateModel(modelsOf(state), m.id, { name: title.value });
+      syncModels();
+      renderModelsList();
+      autosave(state, autosaveNote);
+    });
+    const meta = document.createElement('small');
+    meta.textContent = describeModel(m, uses);
+    name.append(title, meta);
+
+    // Resizing re-fits the geometry into the new box, which is why it lives
+    // here rather than on the prop: every copy of an imported chair is the
+    // same chair, the way every student desk is the same desk.
+    const dims = document.createElement('div');
+    for (const key of ['w', 'd', 'h']) {
+      const n = document.createElement('input');
+      n.type = 'number';
+      n.min = '0.25'; n.max = '60'; n.step = '0.25';
+      n.value = String(m[key]);
+      n.title = { w: 'Width (ft)', d: 'Depth (ft)', h: 'Height (ft)' }[key];
+      n.setAttribute('aria-label', `${n.title} of ${m.name}`);
+      n.addEventListener('change', () => {
+        const v = Number(n.value);
+        if (!Number.isFinite(v) || v <= 0) return;
+        editor.pushUndo();
+        state.models = updateModel(modelsOf(state), m.id, { [key]: v });
+        syncModels();
+        renderModelsList();
+        rebuild();
+        autosave(state, autosaveNote);
+      });
+      dims.appendChild(n);
+    }
+
+    const del = document.createElement('button');
+    del.textContent = '🗑';
+    del.title = 'Remove this model from the design';
+    del.setAttribute('aria-label', `Remove ${m.name}`);
+    del.addEventListener('click', () => {
+      if (uses && !confirm(`${m.name} is placed ${uses} time${uses === 1 ? '' : 's'}. ` +
+        'Removing the model leaves those props in the design with nothing to draw them — ' +
+        'importing the same file again brings them back. Remove it?')) return;
+      editor.pushUndo();
+      state.models = removeModel(modelsOf(state), m.id);
+      syncModels();
+      renderModelsList();
+      rebuild();
+      autosave(state, autosaveNote);
+      updateUndoButtons();
+    });
+
+    row.append(name, dims, del);
+    list.appendChild(row);
+  }
+}
+
+$('model-manage').addEventListener('click', () => {
+  renderModelsList();
+  openModal(modelsOverlay, $('models-close'));
+});
+$('models-close').addEventListener('click', () => closeModal(modelsOverlay));
+
+// --- sharing ---
+
+const shareOverlay = $('share-overlay');
+let shareHref = '';
+
+async function buildShareLink() {
+  const note = $('share-note');
+  const box = $('share-link');
+  box.value = 'Compressing…';
+  note.textContent = '';
+  note.className = '';
+  try {
+    // The two megabyte-sized records are dropped rather than truncated, and
+    // the dialog says so above the link — see share.js's `omissionNote`.
+    const json = serializeForShare(state);
+    const payload = await encodeShare(json);
+    const href = shareURL(location.href, payload);
+    const status = shareStatus(payload, location.href.split('#')[0]);
+    if (!status.ok) {
+      box.value = '';
+      shareHref = '';
+      note.textContent = status.note;
+      note.className = 'bad';
+      $('share-copy').disabled = true;
+      $('share-open').disabled = true;
+      return;
+    }
+    shareHref = href;
+    box.value = href;
+    const omitted = omissionNote(state);
+    note.textContent = omitted ? `${status.note} ${omitted}` : status.note;
+    note.className = status.comfortable ? '' : 'warn';
+    $('share-copy').disabled = false;
+    $('share-open').disabled = false;
+  } catch (err) {
+    box.value = '';
+    note.textContent = `Could not build a link: ${err.message}`;
+    note.className = 'bad';
+  }
+}
+
+// A link carries the design and not the heavy records — the tracing image and
+// the imported model files, both of which are megabytes and neither of which
+// survives base64 in a URL.
+function serializeForShare(st) {
+  return serialize(st, { omitOverlay: true, omitModels: true });
+}
+
+$('share-btn').addEventListener('click', () => {
+  openModal(shareOverlay, $('share-copy'));
+  buildShareLink();
+});
+$('share-close').addEventListener('click', () => closeModal(shareOverlay));
+$('share-open').addEventListener('click', () => { if (shareHref) window.open(shareHref, '_blank', 'noopener'); });
+$('share-copy').addEventListener('click', async () => {
+  if (!shareHref) return;
+  const box = $('share-link');
+  try {
+    await navigator.clipboard.writeText(shareHref);
+    $('share-copy').textContent = '✓ Copied';
+    setTimeout(() => { $('share-copy').textContent = '📋 Copy link'; }, 1600);
+  } catch {
+    // Clipboard permission refused, or an insecure origin: select it and let
+    // the person press the two keys themselves.
+    box.focus();
+    box.select();
+    $('share-note').textContent = 'Press Ctrl+C (⌘C on a Mac) to copy the selected link.';
+  }
+});
+
+// A link that was *opened* rather than made. Runs once, after everything else
+// is wired, and replaces whatever the autosave restored — which is the right
+// way round: somebody who clicked a link wants the school in the link.
+async function openSharedDesign() {
+  const payload = readShareFragment(location.hash);
+  if (!payload) return;
+  try {
+    const json = await decodeShare(payload);
+    const shared = deserialize(json);
+    // The autosave is left alone until the shared design is edited, so
+    // opening somebody's link doesn't cost you your own work in progress.
+    adoptState(shared, { keepAutosave: true });
+    $('status').textContent = 'Opened a shared design — save it to keep it.';
+  } catch (err) {
+    $('status').textContent = `That link could not be opened: ${err.message}`;
+  }
+}
+
+// --- the building, as a 3D file ---
+
+$('export-glb').addEventListener('click', () => {
+  const opts = {
+    site: $('export-glb-site').checked,
+    terrain: $('export-glb-terrain').checked,
+    ceilings: $('export-glb-ceilings').checked,
+  };
+  const btn = $('export-glb');
+  const was = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Writing…';
+  // A frame's grace so the button repaints before a hundred thousand
+  // triangles are copied into a buffer.
+  setTimeout(() => {
+    try {
+      const stats = renderApi.exportStats(opts);
+      const bytes = renderApi.downloadGLB('school.glb', opts);
+      $('export-glb-note').textContent =
+        `Wrote ${(bytes / 1048576).toFixed(1)} MB — ${stats.triangles.toLocaleString()} triangles, ` +
+        `in metres, one material, colours baked into the vertices.`;
+    } catch (err) {
+      alert(`Could not write the model: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = was;
+    }
+  }, 30);
+});
+
+// --- guided tours ---
+
+const tourPanel = $('tour-panel');
+// Which tour is selected, whether one is playing, and whether the playback is
+// being recorded to a file. None of it belongs in the design — the tours do,
+// the playhead does not.
+let tourIndex = 0;
+let tourPlay = null;
+// Which stop the panel is currently highlighting, so playback repaints it
+// once per stop rather than once per frame.
+let tourShown = -1;
+// Set for the fraction of a second between a tour running out and the
+// recorder being told to stop.
+let tourEnding = false;
+let tourRecorder = null;
+let tourChunks = [];
+
+const tours = () => toursOf(state);
+const currentTour = () => tours()[tourIndex] || null;
+
+function setTours(list) {
+  state.tours = list;
+  if (!list.length) delete state.tours;
+  tourIndex = Math.min(tourIndex, Math.max(0, list.length - 1));
+}
+
+function replaceTour(next) {
+  const list = tours().slice();
+  list[tourIndex] = next;
+  setTours(list);
+}
+
+// Where the camera is, as a tour stop: position, the two angles, and which
+// storey it is standing on.
+function cameraStop() {
+  const cam = renderApi.walkCamera;
+  const e = new THREE.Euler().setFromQuaternion(cam.quaternion, 'YXZ');
+  return {
+    x: cam.position.x, y: cam.position.y, z: cam.position.z,
+    yaw: e.y, pitch: e.x,
+    floor: storeyAt(state, cam.position.y - EYE_H),
+  };
+}
+
+function applyStop(at) {
+  const cam = renderApi.walkCamera;
+  cam.position.set(at.x, at.y, at.z);
+  cam.quaternion.setFromEuler(new THREE.Euler(at.pitch, at.yaw, 0, 'YXZ'));
+}
+
+function renderTourPanel() {
+  const list = tours();
+  const pick = $('tour-pick');
+  pick.textContent = '';
+  list.forEach((t, i) => {
+    const o = document.createElement('option');
+    o.value = String(i);
+    o.textContent = `${t.name} — ${tourSummary(t)}`;
+    pick.appendChild(o);
+  });
+  if (!list.length) {
+    const o = document.createElement('option');
+    o.value = '0';
+    o.textContent = 'No tours yet';
+    pick.appendChild(o);
+  }
+  pick.value = String(tourIndex);
+  pick.disabled = !list.length;
+
+  const tour = currentTour();
+  $('tour-name').value = tour ? tour.name : '';
+  $('tour-name').disabled = !tour;
+  $('tour-loop').checked = !!(tour && tour.loop);
+  $('tour-loop').disabled = !tour;
+  // Deliberately live with no tour selected: `tourMark` starts one, so the
+  // first stop you record is also the tour you didn't have to think about
+  // making.
+  $('tour-mark').disabled = !!tour && tour.keys.length >= MAX_KEYS;
+  $('tour-play').disabled = !tour || tour.keys.length < 2;
+  $('tour-record').disabled = !tour || tour.keys.length < 2 || !canRecordVideo();
+  $('tour-delete').disabled = !tour;
+  $('tour-play').textContent = tourPlay ? '⏹ Stop' : '▶ Play';
+
+  const stops = $('tour-stops');
+  stops.textContent = '';
+  if (!tour) return;
+  const at = tourPlay ? sampleTour(tour, tourPlay.t) : null;
+  tour.keys.forEach((k, i) => {
+    const row = document.createElement('div');
+    row.className = 'stop' + (at && at.index === i ? ' at' : '');
+    const n = document.createElement('span');
+    n.className = 'n';
+    n.textContent = String(i + 1);
+    const where = document.createElement('span');
+    where.className = 'where';
+    where.textContent = k.label || `Level ${k.floor + 1} · ${Math.round(k.x)}, ${Math.round(k.z)} ft`;
+    where.title = i === 0
+      ? 'The tour starts here'
+      : `${k.sec.toFixed(1)}s to get here${k.hold ? `, then holds ${k.hold.toFixed(1)}s` : ''}`;
+    const go = document.createElement('button');
+    go.textContent = '↦';
+    go.title = 'Stand here';
+    go.addEventListener('click', () => { applyStop(k); });
+    const up = document.createElement('button');
+    up.textContent = '↑';
+    up.title = 'Move this stop earlier';
+    up.disabled = i === 0;
+    up.addEventListener('click', () => { replaceTour(moveKey(currentTour(), i, -1)); afterTourEdit(); });
+    const hold = document.createElement('button');
+    hold.textContent = k.hold ? `⏸${k.hold.toFixed(0)}s` : '⏸';
+    hold.title = 'Wait here for another second before moving on';
+    hold.addEventListener('click', () => {
+      replaceTour(updateKey(currentTour(), i, { hold: (k.hold || 0) + 1 > 6 ? 0 : (k.hold || 0) + 1 }));
+      afterTourEdit();
+    });
+    const del = document.createElement('button');
+    del.textContent = '✕';
+    del.title = 'Remove this stop';
+    del.addEventListener('click', () => { replaceTour(removeKey(currentTour(), i)); afterTourEdit(); });
+    row.append(n, where, go, up, hold, del);
+    stops.appendChild(row);
+  });
+
+  const out = $('tour-readout');
+  out.textContent = '';
+  const line = document.createElement('div');
+  line.innerHTML = `<b>${tour.keys.length}</b> stop${tour.keys.length === 1 ? '' : 's'} · <b>${
+    Math.round(tourDuration(tour) * 10) / 10}s</b>`;
+  out.appendChild(line);
+  if (tourRecorder) {
+    const rec = document.createElement('div');
+    rec.className = 'rec';
+    rec.textContent = '⏺ Recording — the file downloads when the tour ends';
+    out.appendChild(rec);
+  }
+}
+
+function afterTourEdit() {
+  autosave(state, autosaveNote);
+  renderTourPanel();
+  updateUndoButtons();
+}
+
+$('tour-pick').addEventListener('change', (e) => {
+  tourIndex = Number(e.target.value) || 0;
+  renderTourPanel();
+});
+$('tour-name').addEventListener('change', () => {
+  const tour = currentTour();
+  if (!tour) return;
+  replaceTour({ ...tour, name: $('tour-name').value.slice(0, 40) || 'Tour' });
+  afterTourEdit();
+});
+$('tour-loop').addEventListener('change', () => {
+  const tour = currentTour();
+  if (!tour) return;
+  replaceTour({ ...tour, loop: $('tour-loop').checked });
+  afterTourEdit();
+});
+$('tour-new').addEventListener('click', () => {
+  if (tours().length >= MAX_TOURS) { alert(`A design holds ${MAX_TOURS} tours.`); return; }
+  editor.pushUndo();
+  const tour = makeTour(`Tour ${tours().length + 1}`);
+  tour.id = state.nextId++;
+  setTours(tours().concat([tour]));
+  tourIndex = tours().length - 1;
+  afterTourEdit();
+});
+$('tour-delete').addEventListener('click', () => {
+  const tour = currentTour();
+  if (!tour) return;
+  if (tour.keys.length && !confirm(`Delete "${tour.name}"?`)) return;
+  editor.pushUndo();
+  setTours(tours().filter((_, i) => i !== tourIndex));
+  afterTourEdit();
+});
+$('tour-mark').addEventListener('click', () => tourMark());
+
+function tourMark() {
+  let tour = currentTour();
+  if (!tour) {
+    editor.pushUndo();
+    tour = makeTour('Tour 1');
+    tour.id = state.nextId++;
+    setTours(tours().concat([tour]));
+    tourIndex = tours().length - 1;
+    tour = currentTour();
+  } else {
+    editor.pushUndo();
+  }
+  replaceTour(addKey(tour, cameraStop()));
+  afterTourEdit();
+  $('status').textContent = `Stop ${currentTour().keys.length} recorded`;
+}
+
+// --- playback ---
+
+function tourStart(record = false) {
+  const tour = currentTour();
+  if (!tour || tour.keys.length < 2) return;
+  tourPlay = startPlayback(tour);
+  document.body.classList.add('touring');
+  if (record) startTourRecording();
+  renderTourPanel();
+}
+
+function tourStop() {
+  if (!tourPlay) return;
+  tourPlay = null;
+  tourShown = -1;
+  document.body.classList.remove('touring');
+  stopTourRecording();
+  renderTourPanel();
+}
+
+$('tour-play').addEventListener('click', () => (tourPlay ? tourStop() : tourStart(false)));
+$('tour-record').addEventListener('click', () => { if (!tourPlay) tourStart(true); });
+
+// The video, from the canvas the tour is already being drawn on. No new
+// dependency: `captureStream` plus `MediaRecorder` is the whole of it, and the
+// file that comes out is a WebM anybody can drop into a video editor.
+const VIDEO_TYPES = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+
+function videoType() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  return VIDEO_TYPES.find((t) => MediaRecorder.isTypeSupported(t)) || null;
+}
+const canRecordVideo = () => !!videoType() && typeof canvas.captureStream === 'function';
+
+function startTourRecording() {
+  const type = videoType();
+  if (!type) return;
+  try {
+    const stream = canvas.captureStream(60);
+    tourChunks = [];
+    tourRecorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 12000000 });
+    tourRecorder.ondataavailable = (e) => { if (e.data && e.data.size) tourChunks.push(e.data); };
+    tourRecorder.onstop = () => {
+      const blob = new Blob(tourChunks, { type });
+      tourChunks = [];
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(currentTour() || { name: 'tour' }).name.replace(/[^\w -]/g, '') || 'tour'}.webm`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      $('status').textContent = `Saved ${(blob.size / 1048576).toFixed(1)} MB of video`;
+    };
+    tourRecorder.start();
+  } catch (err) {
+    tourRecorder = null;
+    alert(`Could not record: ${err.message}`);
+  }
+}
+
+function stopTourRecording() {
+  if (!tourRecorder) return;
+  if (tourRecorder.state !== 'inactive') tourRecorder.stop();
+  tourRecorder = null;
+}
+
+// One frame of a tour. Called from the main loop instead of walk.update, and
+// it is the entire runtime cost of the feature: sample, pose, done.
+function tourUpdate(dt) {
+  if (!tourPlay) return;
+  tourPlay = stepPlayback(tourPlay, dt);
+  const at = sampleTour(tourPlay.tour, tourPlay.t);
+  if (at) applyStop(at);
+  if (!tourPlay.playing && !tourEnding) {
+    // A recorder needs the last frames to have been drawn before it is asked
+    // to stop, so the stop is deferred — once, which is what the flag is for.
+    tourEnding = true;
+    setTimeout(() => { tourEnding = false; tourStop(); }, 200);
+  }
+}
+
+// --- the minimap ---
+
+let miniOn = true;
+let miniMode = 'follow';
+let miniOrient = 'heading';
+let miniRange = 90;
+// One computed plan per storey — the expensive half, and the half that only
+// changes when the design does — and one *raster* per (storey, scale), which
+// is the cheap half and the one that has to follow the zoom.
+//
+// The scale matters more than it looks: a plan rastered at four pixels to the
+// foot and then blitted at a seventh of that has hairline walls that fall
+// between pixels and vanish. Drawing it at roughly the scale it will be shown
+// at keeps a wall a wall, which is why the raster is keyed by a bucketed
+// scale rather than drawn once and squeezed.
+const MINI_SCALES = [0.25, 0.5, 1, 2, 4];
+let miniPlans = new Map();   // floor -> { plan, bounds } | null
+let miniRasters = new Map(); // `${floor}:${scale}` -> canvas
+const miniCanvas = $('minimap');
+const miniCtx = miniCanvas.getContext('2d');
+
+function invalidateMinimap() {
+  miniPlans = new Map();
+  miniRasters = new Map();
+}
+
+function miniPlanFor(floorIndex) {
+  let cached = miniPlans.get(floorIndex);
+  if (cached !== undefined) return cached;
+  const plan = computeFloorPlan(state, floorIndex);
+  cached = plan ? { plan, bounds: miniBounds(state.floors[floorIndex], plan) } : null;
+  miniPlans.set(floorIndex, cached);
+  return cached;
+}
+
+// A plan's own bounds are drawn around *everything on the sheet*, which on the
+// ground storey includes the trees at the far end of the car park — so "whole
+// floor" on a generated school is a thumbnail of a field with a school in the
+// middle of it. The map wants the storey's structure instead, which shadow.js
+// already measures for the overhang check, padded enough to show the doors in
+// the outside wall. The plan's bounds are the fallback for a storey that has
+// no structure at all yet.
+const MINI_BOUND_PAD = 12; // ft
+function miniBounds(floor, plan) {
+  const b = floorBounds(floor);
+  if (!b) return plan.bounds;
+  return {
+    minX: Math.max(plan.bounds.minX, b.x0 * CELL - MINI_BOUND_PAD),
+    minZ: Math.max(plan.bounds.minZ, b.y0 * CELL - MINI_BOUND_PAD),
+    maxX: Math.min(plan.bounds.maxX, (b.x1 + 1) * CELL + MINI_BOUND_PAD),
+    maxZ: Math.min(plan.bounds.maxZ, (b.y1 + 1) * CELL + MINI_BOUND_PAD),
+  };
+}
+
+const miniScaleFor = (want) => MINI_SCALES.find((s) => s >= want) || MINI_SCALES[MINI_SCALES.length - 1];
+
+// The raster is drawn against the *plan's* own bounds, because that is what
+// blueprint.js measures its coordinates from — `record.bounds` is only what
+// the view is fitted to, and using it here would slide the drawing sideways.
+function miniRasterFor(floorIndex, record, scale) {
+  const key = `${floorIndex}:${scale}`;
+  let c = miniRasters.get(key);
+  if (c !== undefined) return c;
+  const b = record.plan.bounds;
+  const w = Math.max(1, Math.ceil((b.maxX - b.minX) * scale));
+  const h = Math.max(1, Math.ceil((b.maxZ - b.minZ) * scale));
+  // A plan bigger than this is a school the size of a town; the cap keeps a
+  // hostile footprint from asking for a gigabyte of canvas.
+  if (w > 4000 || h > 4000) { miniRasters.set(key, null); return null; }
+  c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f4f2ec';
+  ctx.fillRect(0, 0, w, h);
+  // No translate: blueprint.js's own `toPx` already measures from the plan's
+  // bounds, so a zero margin puts the north-west corner on the origin.
+  // `drawPlanBody` draws in world feet through the same layout record the
+  // export sheet uses — with no margin and no title block, which is the whole
+  // reason it was split out of `drawFloorPlan`.
+  drawPlanBody(ctx, record.plan, { scale, margin: 0, titleH: 0 }, {
+    // Furniture only when there are pixels to draw it with: at a quarter of a
+    // pixel to the foot a desk is smaller than the wall beside it.
+    showFurniture: scale >= 1,
+    showLabels: false,
+    showDimensions: false,
+  });
+  miniRasters.set(key, c);
+  return c;
+}
+
+function drawMinimap() {
+  const cam = renderApi.walkCamera;
+  const floorIndex = Math.max(0, Math.min(state.floors.length - 1,
+    storeyAt(state, cam.position.y - EYE_H)));
+  const record = miniPlanFor(floorIndex);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const size = MINI_SIZE;
+  if (miniCanvas.width !== size * dpr) {
+    miniCanvas.width = size * dpr;
+    miniCanvas.height = size * dpr;
+  }
+  const e = new THREE.Euler().setFromQuaternion(cam.quaternion, 'YXZ');
+  const eye = { x: cam.position.x, z: cam.position.z, yaw: e.y };
+  const view = minimapView(record ? record.bounds : null, eye,
+    { size, mode: miniMode, orient: miniOrient, range: miniRange });
+  const raster = record ? miniRasterFor(floorIndex, record, miniScaleFor(view.scale)) : null;
+
+  miniCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  miniCtx.clearRect(0, 0, size, size);
+  miniCtx.fillStyle = '#f4f2ec';
+  miniCtx.fillRect(0, 0, size, size);
+
+  if (raster) {
+    // World feet straight onto the thumbnail: the same transform
+    // `worldToMini` describes, handed to the canvas so the cached plan can be
+    // blitted in one call.
+    miniCtx.save();
+    miniCtx.translate(size / 2, size / 2);
+    miniCtx.rotate(view.rotation);
+    miniCtx.scale(view.scale, view.scale);
+    miniCtx.translate(-view.cx, -view.cz);
+    const b = record.plan.bounds;
+    miniCtx.drawImage(raster, b.minX, b.minZ, b.maxX - b.minX, b.maxZ - b.minZ);
+    miniCtx.restore();
+  }
+
+  // What the camera can see.
+  const cone = viewCone(view, eye);
+  miniCtx.beginPath();
+  miniCtx.moveTo(cone.at.x, cone.at.y);
+  miniCtx.lineTo(cone.left.x, cone.left.y);
+  miniCtx.lineTo(cone.right.x, cone.right.y);
+  miniCtx.closePath();
+  miniCtx.fillStyle = 'rgba(77, 163, 255, 0.28)';
+  miniCtx.fill();
+
+  // ...and where it is standing. A triangle rather than a dot, because under
+  // north-up the heading has to be readable from the marker itself.
+  const at = worldToMini(view, eye.x, eye.z);
+  const a = markerAngle(view, eye.yaw);
+  miniCtx.save();
+  miniCtx.translate(at.x, at.y);
+  miniCtx.rotate(a);
+  miniCtx.beginPath();
+  miniCtx.moveTo(0, -6);
+  miniCtx.lineTo(4.2, 5);
+  miniCtx.lineTo(0, 3);
+  miniCtx.lineTo(-4.2, 5);
+  miniCtx.closePath();
+  miniCtx.fillStyle = '#2f6fd0';
+  miniCtx.strokeStyle = '#ffffff';
+  miniCtx.lineWidth = 1.2;
+  miniCtx.fill();
+  miniCtx.stroke();
+  miniCtx.restore();
+
+  // The scale bar, bottom-left, so a window of feet reads as a distance.
+  const bar = scaleBar(view);
+  miniCtx.strokeStyle = 'rgba(26, 32, 41, 0.75)';
+  miniCtx.lineWidth = 2;
+  miniCtx.beginPath();
+  miniCtx.moveTo(8, size - 10);
+  miniCtx.lineTo(8 + bar.px, size - 10);
+  miniCtx.stroke();
+  miniCtx.fillStyle = 'rgba(26, 32, 41, 0.8)';
+  miniCtx.font = '9px system-ui, sans-serif';
+  miniCtx.fillText(bar.label, 8, size - 14);
+
+  const note = $('minimap-note');
+  const text = `Level ${floorIndex + 1} · ${describeMinimap(view)}`;
+  if (note.textContent !== text) note.textContent = text;
+}
+
+function updateMinimapButtons() {
+  $('minimap-mode').textContent = miniMode === 'fit' ? 'Whole floor' : 'Follow';
+  $('minimap-orient').textContent = miniOrient === 'heading' ? 'Heading' : 'North';
+  $('minimap-in').disabled = miniMode === 'fit' || miniRange <= MIN_RANGE;
+  $('minimap-out').disabled = miniMode === 'fit' || miniRange >= MAX_RANGE;
+  document.body.classList.toggle('minimap', miniOn);
+}
+
+$('minimap-mode').addEventListener('click', () => { miniMode = nextMode(miniMode); updateMinimapButtons(); });
+$('minimap-orient').addEventListener('click', () => { miniOrient = nextOrient(miniOrient); updateMinimapButtons(); });
+$('minimap-in').addEventListener('click', () => {
+  miniRange = Math.max(MIN_RANGE, Math.round(miniRange / 1.5));
+  updateMinimapButtons();
+});
+$('minimap-out').addEventListener('click', () => {
+  miniRange = Math.min(MAX_RANGE, Math.round(miniRange * 1.5));
+  updateMinimapButtons();
+});
+
+// --- the headset ---
+
+let xrStatus = { supported: false, reason: 'unknown', note: 'Checking for a headset…' };
+let xrSession = null;
+
+xrAvailability(navigator.xr).then((status) => {
+  xrStatus = status;
+  const btn = $('walk-vr');
+  btn.disabled = !status.supported;
+  btn.title = status.note;
+  if (!status.supported) btn.textContent = '🥽 VR unavailable';
+});
+
+// The controllers, read once a frame. WebXR reports a gamepad per hand; the
+// left stick walks and the right stick turns, which is the layout every VR
+// application has used since the first one. A headset with one controller
+// gets both jobs on it.
+function readXRInput() {
+  const session = xrSession;
+  const out = { move: { x: 0, y: 0 }, turn: 0, sprint: false };
+  if (!session) return out;
+  for (const src of session.inputSources) {
+    const pad = src.gamepad;
+    if (!pad || !pad.axes) continue;
+    // Axes 2/3 are the thumbstick on every WebXR profile that has one; 0/1
+    // are the trackpad, used as a fallback for the devices that only have
+    // that.
+    const x = pad.axes.length > 2 ? pad.axes[2] : (pad.axes[0] || 0);
+    const y = pad.axes.length > 3 ? pad.axes[3] : (pad.axes[1] || 0);
+    const squeeze = pad.buttons && pad.buttons[1] && pad.buttons[1].pressed;
+    if (src.handedness === 'right') {
+      out.turn = x;
+    } else {
+      out.move.x = x;
+      out.move.y = y;
+    }
+    if (squeeze) out.sprint = true;
+    // One controller: it does both, with the stick walking and the trigger
+    // sprinting, rather than leaving somebody unable to turn.
+    if (session.inputSources.length === 1) {
+      out.move.x = 0;
+      out.move.y = y;
+      out.turn = x;
+    }
+  }
+  return out;
+}
+
+async function enterVR() {
+  if (xrSession) return;
+  try {
+    // Walking is a prerequisite: the collider, the doors and the crowd are
+    // all built by walk.enable(), and a headset uses every one of them.
+    if (mode !== 'walk') setMode('walk');
+    closeModal(walkOverlay);
+    audio.setActive(true);
+    const session = await renderApi.enterXR({
+      onFrame: (dt) => {
+        // The session's own clock drives everything the page loop drives,
+        // minus the render call — render.js does that one itself, because in
+        // XR it has to happen inside the headset's frame.
+        walk.update(dt);
+        audio.update(dt);
+        lifeUpdate(dt);
+      },
+      onEnd: () => {
+        xrSession = null;
+        walk.disableXR();
+        document.body.classList.remove('xr');
+        $('walk-vr').textContent = '🥽 Enter VR';
+        if (mode === 'walk') openModal(walkOverlay, $('walk-start'));
+      },
+    });
+    xrSession = session;
+    document.body.classList.add('xr');
+    $('walk-vr').textContent = '🥽 Exit VR';
+    walk.enableXR({
+      input: readXRInput,
+      // The rig stands wherever puts the head where the walker says it is —
+      // see xr.js. The head's own offset comes back from render.js, because
+      // the rig is the renderer's object and the headset writes the camera.
+      onPose: (pose) => {
+        renderApi.setXRRig({ ...rigPosition(pose, renderApi.xrHeadLocal(), pose.y), yaw: pose.yaw });
+      },
+    });
+  } catch (err) {
+    xrSession = null;
+    alert(`Could not start VR: ${err.message}`);
+  }
+}
+
+$('walk-vr').addEventListener('click', () => {
+  if (xrSession) renderApi.exitXR();
+  else enterVR();
+});
+
 // --- main loop ---
 const clock = new THREE.Clock();
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.1);
-  if (mode === 'walk') { walk.update(dt); audio.update(dt); }
+  // A headset drives its own frames off its own clock (see render.js's
+  // enterXR), so the page's loop does nothing at all while one is running —
+  // including the render call, which has to happen inside an XR frame.
+  if (renderApi.xrPresenting) return;
+  if (mode === 'walk') {
+    // A tour has the camera; the walker does not get a vote while one plays.
+    if (tourPlay) tourUpdate(dt);
+    else walk.update(dt);
+    audio.update(dt);
+  }
   // The school runs in both modes. A crowd seen from 200ft up, moving between
   // periods over a plan you are drawing, is half of what this phase is for —
   // and the other half is meeting one of them in a corridor.
   lifeUpdate(dt);
   renderApi.render(dt);
+  // Drawn after the 3D frame so the map is over it, and only while walking —
+  // it is a thing you carry, not a thing on the drawing board.
+  if (mode === 'walk' && miniOn && !document.body.classList.contains('photo')) drawMinimap();
+  // The panel follows the playhead, but only when the playhead has actually
+  // moved to another stop — rebuilding a list of DOM nodes sixty times a
+  // second to highlight the same row is the sort of thing that shows up as a
+  // dropped frame in the video being recorded.
+  if (tourPlay) {
+    const at = sampleTour(tourPlay.tour, tourPlay.t);
+    if (at && at.index !== tourShown) { tourShown = at.index; renderTourPanel(); }
+  }
 }
 
 selectTool('floor');
+syncModels({ quiet: true });
+updateMinimapButtons();
+renderTourPanel();
 renderFloorList();
 renderStairReadout();
 renderEnvPanel();
@@ -2681,6 +3700,9 @@ renderLifePanel();
 audio.setWorld(state);
 updateUndoButtons();
 loop();
+// A design that arrived in the address bar, opened last so it replaces
+// whatever the autosave restored rather than racing it.
+openSharedDesign();
 
 // debug/test hook
 window.app = {
@@ -2689,4 +3711,9 @@ window.app = {
   setPhotoMode, envChanged, audio,
   life, lifeStart, lifeStop, lifeSetDrill, lifeFollow,
   report, reportBuild,
+  // --- Phase 9 ---
+  syncModels, buildShareLink, enterVR,
+  get tours() { return toursOf(state); },
+  tourMark, tourStart, tourStop,
+  get xrStatus() { return xrStatus; },
 };

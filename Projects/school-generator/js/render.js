@@ -44,6 +44,10 @@ import {
 import { terrainField, groundAt, emptyField } from './terrain.js';
 import { regionsOf, surfaceEntry, markingsFor } from './site.js';
 import { roofPlan, roofTop, PARAPET_H, COPING_T } from './roof.js';
+// --- Phase 9 ---
+import { loadModel, writeGLB, FT_TO_M } from './gltf.js';
+import { modelBytes, modelsOf } from './models.js';
+import { REFERENCE_SPACES, XR_MODE, rigPosition } from './xr.js';
 import {
   collectDoorLeaves, leafAngle, mullionPositions, gridOpeningWidth,
   gridWindowSpec, windowBand, LEAF_T, MULLION_BAY,
@@ -2819,6 +2823,97 @@ export function initRender(canvas) {
     gongbell: buildGongbell, diffuser: buildDiffuser,
   };
 
+  // ---------- Phase 9: geometry that came from a file ----------
+  //
+  // A catalog row with `geo: 'model'` has no builder above; it names a row of
+  // the design's model library instead, and the geometry comes out of a glTF
+  // file. Everything after this point treats it like any other prop geometry
+  // — one merged, vertex-coloured BufferGeometry, bottom at y=0, sized from
+  // the catalog row — which is the whole reason instancing, collision,
+  // blueprints and the bill of materials needed no changes for imports.
+  //
+  // The parse happens once per model per design, here, rather than per
+  // instance: a hundred imported chairs are one file read and one draw call,
+  // exactly like a hundred procedural ones.
+  const modelGeoCache = new Map(); // model id -> BufferGeometry | null
+
+  function mergeModelParts(model) {
+    // gltf.js hands back one part per primitive, each indexed from zero;
+    // they are concatenated into the single geometry an InstancedMesh wants.
+    let verts = 0, indices = 0;
+    for (const part of model.meshes) {
+      verts += part.position.length / 3;
+      indices += part.index.length;
+    }
+    const position = new Float32Array(verts * 3);
+    const normal = new Float32Array(verts * 3);
+    const color = new Float32Array(verts * 3);
+    const index = verts > 65535 ? new Uint32Array(indices) : new Uint16Array(indices);
+    let vAt = 0, iAt = 0;
+    for (const part of model.meshes) {
+      position.set(part.position, vAt * 3);
+      normal.set(part.normal, vAt * 3);
+      color.set(part.color, vAt * 3);
+      for (let i = 0; i < part.index.length; i++) index[iAt + i] = part.index[i] + vAt;
+      vAt += part.position.length / 3;
+      iAt += part.index.length;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(position, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(color, 3));
+    geo.setIndex(new THREE.BufferAttribute(index, 1));
+    geo.computeBoundingSphere();
+    return geo;
+  }
+
+  // The design's whole library, (re)built. Called on load, on import, on
+  // delete and on undo — the same lifetime catalog.js's row registry has, for
+  // the same reason. Returns what failed, so the panel can say which file
+  // rather than going quietly blank.
+  function setModels(list) {
+    const models = list || [];
+    const keep = new Set(models.map((m) => m.id));
+    for (const [id, geo] of modelGeoCache) {
+      if (!keep.has(id)) {
+        if (geo) geo.dispose();
+        modelGeoCache.delete(id);
+        propGeoCache.delete(`model:${id}`);
+      }
+    }
+    const failed = [];
+    for (const model of models) {
+      // A model already parsed under the same id and box is left alone; a
+      // resized one is rebuilt, because the fit is baked into the vertices.
+      const key = `${model.w}x${model.d}x${model.h}:${model.fit}:${model.data.length}`;
+      const cached = modelGeoCache.get(model.id);
+      if (cached && cached.userData.key === key) continue;
+      if (cached) cached.dispose();
+      propGeoCache.delete(`model:${model.id}`);
+      try {
+        const bytes = modelBytes(model);
+        if (!bytes) throw new Error('the file could not be read back');
+        const geo = mergeModelParts(loadModel(bytes, model, { mode: model.fit }));
+        geo.userData.key = key;
+        modelGeoCache.set(model.id, geo);
+      } catch (err) {
+        modelGeoCache.delete(model.id);
+        failed.push({ id: model.id, name: model.name, message: err.message || String(err) });
+      }
+    }
+    return failed;
+  }
+
+  // A stand-in for an import that failed or has been deleted: a wireframe-ish
+  // box at the row's own size, so a prop whose model is missing is visibly
+  // *there* rather than invisibly gone. Losing a chair silently is how you
+  // lose a room's furniture without noticing.
+  function missingModelGeo(entry) {
+    const g = new THREE.BoxGeometry(entry.w, entry.h, entry.d);
+    g.translate(0, entry.h / 2, 0);
+    return coloredGeo(g, entry.color || '#8a8f96');
+  }
+
   // Cached per catalog type (not rebuilt on every edit like the structural
   // meshes) — a prop's geometry never changes shape, only its transform does.
   //
@@ -2830,6 +2925,12 @@ export function initRender(canvas) {
   function getPropGeometry(entry) {
     let geo = propGeoCache.get(entry.type);
     if (geo) return geo;
+    if (entry.geo === 'model') {
+      const fromFile = modelGeoCache.get(entry.model);
+      geo = { body: fromFile || missingModelGeo(entry), lens: null };
+      propGeoCache.set(entry.type, geo);
+      return geo;
+    }
     const build = PROP_GEO_BUILDERS[entry.geo] || buildDesk;
     const built = build(entry);
     geo = built && built.body ? { body: built.body, lens: built.lens || null } : { body: built, lens: null };
@@ -4506,6 +4607,209 @@ export function initRender(canvas) {
     return url;
   }
 
+  // ---------- Phase 9: the building, as a file ----------
+  //
+  // The wishlist's second item — "take the school into Blender" — and the
+  // reason gltf.js writes as well as reads. What leaves here is what is on
+  // screen: the merged structural meshes, the roof, the site, and every prop
+  // instance expanded into its own triangles, all in world feet, all vertex
+  // coloured. One material, because that is what the whole scene has been
+  // since Phase 1 of the first arc; gltf.js scales the root node into metres
+  // so the school arrives in Blender at the size it says it is.
+  //
+  // Instances are expanded rather than exported as glTF's own instancing
+  // extension: `EXT_mesh_gpu_instancing` is an extension, and an extension is
+  // a thing the importer at the other end may not have. A school of ten
+  // thousand desks is a bigger file this way and it opens everywhere.
+  const _exportMatrix = new THREE.Matrix4();
+  const _exportNormalMat = new THREE.Matrix3();
+  const _exportV = new THREE.Vector3();
+
+  // One mesh's geometry, transformed into world space and pushed onto the
+  // list gltf.js takes.
+  function pushExportMesh(out, geometry, matrix, name, fallbackColor) {
+    const posAttr = geometry.getAttribute('position');
+    if (!posAttr) return;
+    const count = posAttr.count;
+    const position = new Float32Array(count * 3);
+    const normal = new Float32Array(count * 3);
+    const color = new Float32Array(count * 3);
+    const nrmAttr = geometry.getAttribute('normal');
+    const colAttr = geometry.getAttribute('color');
+    _exportNormalMat.getNormalMatrix(matrix);
+    for (let i = 0; i < count; i++) {
+      _exportV.fromBufferAttribute(posAttr, i).applyMatrix4(matrix);
+      position[i * 3] = _exportV.x; position[i * 3 + 1] = _exportV.y; position[i * 3 + 2] = _exportV.z;
+      if (nrmAttr) {
+        _exportV.fromBufferAttribute(nrmAttr, i).applyMatrix3(_exportNormalMat).normalize();
+        normal[i * 3] = _exportV.x; normal[i * 3 + 1] = _exportV.y; normal[i * 3 + 2] = _exportV.z;
+      }
+      if (colAttr) {
+        color[i * 3] = colAttr.getX(i); color[i * 3 + 1] = colAttr.getY(i); color[i * 3 + 2] = colAttr.getZ(i);
+      } else {
+        color[i * 3] = fallbackColor.r; color[i * 3 + 1] = fallbackColor.g; color[i * 3 + 2] = fallbackColor.b;
+      }
+    }
+    const idx = geometry.getIndex();
+    const index = idx ? Uint32Array.from(idx.array) : null;
+    out.push({ name, position, normal, color, index: index || null });
+  }
+
+  const _exportColor = new THREE.Color();
+
+  function collectExport(opts = {}) {
+    scene.updateMatrixWorld(true);
+    const out = [];
+    const groups = [
+      { group: buildingGroup, name: 'Structure' },
+      { group: roofGroup, name: 'Roof' },
+    ];
+    if (opts.ceilings) groups.push({ group: ceilingGroup, name: 'Ceilings' });
+    if (opts.site !== false) groups.push({ group: siteGroup, name: 'Site' });
+    for (const { group, name } of groups) {
+      group.traverse((obj) => {
+        if (!obj.isMesh || !obj.geometry || obj.isSprite) return;
+        if (!obj.visible) return;
+        _exportColor.set(obj.material && obj.material.color ? obj.material.color : 0xffffff);
+        if (obj.isInstancedMesh) {
+          for (let i = 0; i < obj.count; i++) {
+            obj.getMatrixAt(i, _exportMatrix);
+            _exportMatrix.premultiply(obj.matrixWorld);
+            pushExportMesh(out, obj.geometry, _exportMatrix, `${name}-${obj.id}-${i}`, _exportColor);
+          }
+        } else {
+          pushExportMesh(out, obj.geometry, obj.matrixWorld, `${name}-${obj.id}`, _exportColor);
+        }
+      });
+    }
+    // The ground plane is a mile wide and would arrive as a horizon rather
+    // than as a site, so the graded terrain goes only when it has actually
+    // been graded and only when asked for.
+    if (opts.terrain && terrainMesh && terrainMesh.visible) {
+      _exportColor.set(0xffffff);
+      pushExportMesh(out, terrainMesh.geometry, terrainMesh.matrixWorld, 'Terrain', _exportColor);
+    }
+    return out;
+  }
+
+  // What an export would weigh, before anybody waits for it. A whole school
+  // with its furniture expanded is tens of megabytes, and knowing that in
+  // advance is the difference between a progress note and a hung tab.
+  function exportStats(opts = {}) {
+    const meshes = collectExport(opts);
+    let vertices = 0, triangles = 0;
+    for (const m of meshes) {
+      vertices += m.position.length / 3;
+      triangles += (m.index ? m.index.length : m.position.length / 3) / 3;
+    }
+    return { meshes: meshes.length, vertices, triangles, bytes: vertices * 36 + triangles * 12 };
+  }
+
+  function exportGLB(opts = {}) {
+    const meshes = collectExport(opts);
+    if (!meshes.length) throw new Error('There is nothing built to export yet');
+    return writeGLB(meshes, {
+      name: opts.name || 'School',
+      generator: 'School Generator (gltf.js)',
+      unitScale: opts.unitScale === undefined ? FT_TO_M : opts.unitScale,
+    });
+  }
+
+  function downloadGLB(filename = 'school.glb', opts = {}) {
+    const buf = exportGLB(opts);
+    const blob = new Blob([buf], { type: 'model/gltf-binary' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    return blob.size;
+  }
+
+  // ---------- Phase 9: the headset ----------
+  //
+  // Three things and no more, because three.js's `renderer.xr` does the rest:
+  // a rig for the camera to be a child of (the headset writes the camera's
+  // own transform, so nothing else may), a session, and an animation loop —
+  // XR frames come from the headset's own clock at 72 or 90Hz, not from
+  // `requestAnimationFrame`, so main.js's loop stands down while this runs.
+  //
+  // Post-processing stands down too. The composer renders one full-screen
+  // pass at a time into its own targets, which is not how a stereo XR frame
+  // is drawn; bloom in one eye and not the other is worse than no bloom.
+  const xrRig = new THREE.Group();
+  scene.add(xrRig);
+  let xrSession = null;
+  let xrOnFrame = null;
+
+  function setXRRig(pose) {
+    if (!pose) return;
+    xrRig.position.set(pose.x || 0, pose.y || 0, pose.z || 0);
+    xrRig.rotation.y = pose.yaw || 0;
+  }
+
+  // Where the head is relative to the rig, in *world* axes — which is what
+  // the walker needs in order to put the rig somewhere that lands the head
+  // where it wants it. World axes rather than rig-local ones because the rig
+  // turns: a head half a metre to its left is half a metre along whichever
+  // way the rig is currently facing, and subtracting the unrotated offset
+  // would swing the building every time somebody snapped a turn.
+  const _xrHead = new THREE.Vector3();
+  function xrHeadLocal() {
+    xrRig.updateMatrixWorld(true);
+    walkCamera.getWorldPosition(_xrHead);
+    return {
+      x: _xrHead.x - xrRig.position.x,
+      y: _xrHead.y - xrRig.position.y,
+      z: _xrHead.z - xrRig.position.z,
+    };
+  }
+
+  async function enterXR(opts = {}) {
+    if (xrSession) return xrSession;
+    const xr = navigator.xr;
+    if (!xr) throw new Error('This browser has no WebXR');
+    const session = await xr.requestSession(XR_MODE, {
+      optionalFeatures: REFERENCE_SPACES.concat(['bounded-floor', 'hand-tracking']),
+    });
+    xrSession = session;
+    xrOnFrame = opts.onFrame || null;
+    // The camera becomes the rig's child for the length of the session and
+    // goes back to the scene afterwards, so nothing outside XR has to know
+    // the rig exists.
+    xrRig.add(walkCamera);
+    renderer.xr.enabled = true;
+    // `local-floor` is what puts the model's floor under real feet; three.js
+    // falls back on its own if the device refuses it.
+    renderer.xr.setReferenceSpaceType(REFERENCE_SPACES[0]);
+    await renderer.xr.setSession(session);
+    session.addEventListener('end', () => { cleanupXR(); if (opts.onEnd) opts.onEnd(); }, { once: true });
+    const clock = new THREE.Clock();
+    renderer.setAnimationLoop(() => {
+      const dt = Math.min(clock.getDelta(), 0.1);
+      if (xrOnFrame) xrOnFrame(dt, session);
+      renderer.render(scene, walkCamera);
+    });
+    return session;
+  }
+
+  function cleanupXR() {
+    renderer.setAnimationLoop(null);
+    renderer.xr.enabled = false;
+    if (walkCamera.parent === xrRig) scene.add(walkCamera);
+    xrRig.position.set(0, 0, 0);
+    xrRig.rotation.set(0, 0, 0);
+    xrSession = null;
+    xrOnFrame = null;
+    // The canvas was resized for the headset; put it back for the page.
+    resize();
+  }
+
+  function exitXR() {
+    if (xrSession) xrSession.end().catch(() => cleanupXR());
+  }
+
   function downloadCapture(scale = 2, filename = 'school-photo.png') {
     const a = document.createElement('a');
     a.href = capture(scale);
@@ -4565,6 +4869,16 @@ export function initRender(canvas) {
       renderer.toneMappingExposure = envState.palette.exposure * exposureBias;
     },
     capture, downloadCapture,
+    // --- Phase 9 ---
+    //
+    // The library of imported models, the building on its way to Blender, and
+    // the headset. All three are one write and one read, the arrangement
+    // every phase since the third has settled on.
+    setModels,
+    get modelCount() { return modelGeoCache.size; },
+    exportGLB, downloadGLB, exportStats,
+    enterXR, exitXR, setXRRig, xrHeadLocal,
+    get xrPresenting() { return !!xrSession; },
     get mode() { return mode; },
     get fxEnabled() { return fxEnabled; },
     set fxEnabled(v) { fxEnabled = v; },
