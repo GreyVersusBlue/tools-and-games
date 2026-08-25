@@ -3,7 +3,8 @@
 Living reference for where this tool goes next. The first arc of this project
 — eight phases, from a single-floor grid editor to a multi-story, furnished,
 polygon-roomed building you can blueprint, save, and walk through on desktop
-or touch — is **done**. This document is now two things: a compact
+or touch — is **done**, and so is the second arc's Phase 8, which is where the
+tool started deserving the word *generator* in its name. This document is now two things: a compact
 retrospective of that v1 build (what shipped, what worked, what fought back,
 what a future builder needs to know), and a fresh phase system for everything
 after it, starting with a much bigger prop catalog and running through the
@@ -48,7 +49,16 @@ that allows), `js/egress.js` (how far to the door, how wide the door is, and
 what a wheelchair can reach), `js/daylight.js` (glass over floor),
 `js/takeoff.js` (what the building is made of) and `js/report.js` (all of them
 at once, sorted worst-first) — plus one panel and no new save version, because
-an analysis is a reading of the model rather than a part of it.)
+an analysis is a reading of the model rather than a part of it. Phase 8 adds
+six more and the first save bump in two phases: `js/program.js` (how many
+rooms of what kind a school for N students needs), `js/brief.js` (a sentence
+read into that program by a phrase table, with no model behind it),
+`js/generate.js` (where those rooms go, as a spine with wings),
+`js/autofurnish.js` (which layout a room's own name asks for),
+`js/shadow.js` (what an upper storey is standing on) and `js/overlay.js` (a
+tracing image under the plan, scaled by measuring something on it) — plus
+`js/overlayedit.js`, the tool that drags and measures it, and save v9, which
+is the first version to carry something measured in megabytes.)
 
 - **Units are feet, everywhere.** 4ft grid cells (`CELL`), 10ft walls
   (`WALL_H`), 12ft floor-to-floor (`FLOOR_H`), max 8 storeys. Props, polygon
@@ -86,9 +96,12 @@ an analysis is a reading of the model rather than a part of it.)
   for a whole school at once: an agent is this walker with a timetable instead
   of a keyboard, and the camera is one body in the crowd rather than the only
   one in the building.
-- **Saves are versioned** (v8 as of Phase 6 of the second arc) and every bump
+- **Saves are versioned** (v9 as of Phase 8 of the second arc) and every bump
   has been additive, with `deserialize()` clamping hostile input and migrating
-  every earlier version forward. Named
+  every earlier version forward. v9 is the first one that is not free: an
+  `overlay` carries an image as a data URL, so a design with tracing paper in
+  it can be large enough that localStorage refuses it — which is why
+  `serialize` takes `{ omitOverlay }` and the autosave retries without it. Named
   save slots live beside a never-renamed autosave key; blueprint export
   (`blueprint.js`) recomputes 2D plans from the model rather than
   screenshotting the 3D view.
@@ -198,7 +211,17 @@ an analysis is a reading of the model rather than a part of it.)
   keep that contract and instancing keeps working. One shared material;
   colors are baked per-vertex.
 - The editor holds selection state in tools (resolved by id per use), never
-  in saved state.
+  in saved state. Phase 8 added a second thing that belongs there and not in
+  the file: whether overhangs are allowed. It is a decision about this editing
+  session, and `shadow.js` reads the overhangs back off the geometry whenever
+  anybody asks.
+- A `PlaneGeometry` flattened with `rotateX(-π/2)` has its two extents in
+  local **X and Z** — `scale.set(w, d, 1)` gives a plane one unit deep. Four
+  ghost previews were wrong this way for two arcs before anybody noticed.
+- Undo restores a snapshot with `Object.assign`, which only ever adds. Any
+  *optional* record on the state (`terrain`, `site`, `roof`, `life`,
+  `overlay`) has to be deleted when the snapshot doesn't have it, or undoing
+  past the moment it was first written silently does nothing.
 
 ## Phase 1 — Prop catalog expansion (high fidelity, real scale)
 
@@ -1266,27 +1289,198 @@ module with tests, per the house rule.
   edition, an occupancy group, a design occupant load somebody typed — is what
   would open save v9.
 
-## Phase 8 — Generation & AI
+## Phase 8 — Generation, tracing & the structural shadow ✅
 
-The name of the tool, finally cashed in.
+The name of the tool, finally cashed in — and renamed, because the half of
+this phase called "AI" turned out not to need any. **Done** — six new pure
+modules (`js/program.js`, `js/brief.js`, `js/generate.js`, `js/autofurnish.js`,
+`js/overlay.js`, `js/shadow.js`), one new tool (`js/overlayedit.js`), a
+generate sheet, a measurement dialog, save v9, one new report section, 133 new
+tests, and two long-standing bugs found on the way.
 
-- [ ] Parametric school generator: seed + student count + grade band +
-  site shape → corridors, classroom wings, gym/cafeteria/library/office
-  blocks, stairs where they're needed, every room furnished from its
-  label's template, and a car park sized to the staff count. `sample.js` is
-  the proto-generator — it now builds a twenty-acre site as well as a
-  building — and templates are the furnishing vocabulary.
-- [ ] Auto-furnish one room from its label ("make this a science lab") —
-  the generator's smallest useful piece, shippable first.
-- [ ] Prompt-to-floorplan: natural language → parameters (and maybe room
-  adjacency wishes) feeding the same generator — the model stays the
-  contract, so generated output is just a design like any other.
-- [ ] Generate-then-edit is sacred: output is ordinary state — rooms,
-  props, links — never a special "generated" object.
+- [x] Parametric school generator: seed + student count + grade band →
+  corridors, classroom wings, gym/cafeteria/library/office blocks, stairs
+  where they're needed, every room furnished from its label's template, and a
+  car park sized to the staff count. It is a spine with wings — the finger
+  plan every district built between 1955 and now — and `layoutSchool` is pure
+  geometry so the plan can be checked without building it.
+- [x] Auto-furnish one room from its label ("make this a science lab") — the
+  generator's smallest useful piece, shipped first and then called by the
+  generator, which is what proves it was the right piece.
+- [x] ~~Prompt-to-floorplan: natural language → parameters~~ — **a phrase
+  table, not a model.** There is no LLM here and the box says so. It reads
+  student counts, grade bands, storey counts, a seed and four flags, and it
+  prints every word it ignored. See "what fought back" for why that turned out
+  to be the more useful thing anyway.
+- [x] Generate-then-edit is sacred: output is ordinary state. There is no
+  `state.generated`, no marker and no provenance field — the moment a design
+  carries one, some tool starts reading it.
+- [x] **A tracing overlay** (not on the original list): a PNG, JPEG or WebP
+  under the plan, scaled by measuring something on it and saying how long that
+  thing is. One division, no fitting, no guessing.
+- [x] **The structural shadow** (also new): an upper storey is limited to the
+  footprint of the storey below it, the footprint is drawn under the plan
+  while you edit, and overhangs are switched *on* rather than switched off.
 
 *Leans on:* room labels, templates, and the additive save format;
-*collides with:* nothing structurally, which is exactly why the phases
-before it matter.
+*collides with:* nothing structurally, which is exactly why the phases before
+it mattered.
+
+### How it actually landed
+
+- **The program is not the plan, and separating them was the whole trick.**
+  `program.js` turns six hundred students into twenty-nine teaching stations,
+  a cafeteria that seats a third of the school, and sixty-six parking spaces,
+  with the rule that produced each row printed beside it. It draws nothing.
+  `generate.js` takes that schedule and decides where things go. The split
+  means the numbers are checkable without a building — the generate sheet
+  prints the schedule *before* you press the button — and the layout can be
+  tested against numbers it didn't invent.
+- **One scheme, chosen, not searched.** A spine along the top with the gym,
+  cafeteria, kitchen and library north of it; wings hanging south at a seeded
+  pitch, each a double-loaded corridor with a stair tower at both ends; light
+  courts between the wings with the admin suite lining them. There is no
+  optimizer and no scoring. The layout is a decision, and Phase 7's report is
+  what says whether the decision was any good — which is the loop the build
+  order promised: seed a plan, run the report, move a door, run it again.
+- **The generator sizes its own stairs from its own occupant load.** The one
+  dimension in the whole scheme that comes from the program rather than from
+  the proportions: IBC gives 0.3in of stair per person upstairs, the layout
+  can price its own rooms because an occupant load is a name and an area and
+  it has just written both, and an eight-foot stair falls out. Phase 7's
+  promise — "occupant load is one call away" — cashed in exactly as advertised.
+- **Every storey but the top is built out solid, and that is what makes the
+  shadow rule true by construction.** The wings are identical on every level;
+  what differs is how many rooms got dealt into them. Filling the remainder of
+  each lower bay with a storeroom or a flex room means an upper storey is
+  inside the one below it because it is drawn from the same rectangles, not
+  because anything checked. A hundred and ninety-two briefs across four bands
+  and four storey counts produce zero unsupported cells.
+- **Exits are cut twice: once by the plan, once by the shell.** The scheme
+  puts a door at each end of the spine and at the foot of every wing, which is
+  what a scheme drawing shows. What it cannot know until the walls are
+  standing is where else the building touches the outside — and a stair tower
+  that discharges straight to the grass is worth about a hundred and twenty
+  feet of travel distance on an upper floor. Adding that one rule took a
+  fourteen-hundred-student three-storey school from twenty-three rooms over
+  the travel limit to two.
+- **Scaling an image is one division, and refusing to guess is the feature.**
+  A picture arrives with no idea how big it is. Click the two ends of a door,
+  type three feet, done. The calibration is kept in image pixels so it
+  survives a move, a rotation and a save, and the panel prints what the
+  picture turned out to be — "that scan is 344ft across" — which is the sanity
+  check somebody actually reads.
+- **The brief parser's best feature is the list of words it ignored.** Typing
+  "a warm, community-facing campus that feels like home" returns *nothing
+  recognised* and six ignored words, and the controls don't move. A parser
+  that quietly did its best with that sentence would produce a building nobody
+  asked for and no way to tell that had happened.
+
+### What fought back
+
+- **There is no model here, and the phase is better for it.** The original
+  item wanted natural language feeding the generator. Without an LLM the
+  honest version is a table of phrases — and writing it made the actual
+  question obvious: the sentence was never the input. The five controls are
+  the input; the sentence is a *shortcut for filling them in*, and it has to
+  show its work or it is worse than no shortcut. The box is labelled as a
+  phrase table in the dialog itself, because a tool that lets you think it is
+  cleverer than it is will be trusted exactly once.
+- **A portal graph flattens a room to one hub, and a corridor is a room.** Left
+  whole, a four-hundred-foot spine routes every trip in the building through
+  its own midpoint, and the travel-distance table reports walks nobody takes.
+  Cross-corridor doors every 120ft fix it — they are real, they are what a
+  smoke compartment is, and they cut the reported distances by a third. What
+  they do not fix is the residual: a three-storey generated school still reads
+  ten or twenty feet worse than it walks, because every corridor is still one
+  node. The honest fix is a nav mesh, which Phase 6 wanted and did not build.
+- **Splitting a corridor helps and hurts at the same time.** Shorter segments
+  put each hub nearer the rooms it serves; more segments mean more hub-to-hub
+  hops, and each hop double-counts. Twelve-cell compartments measured *worse*
+  than thirty-cell ones. The number in `CORRIDOR_SEG` is the outcome of a grid
+  search over the sample briefs, not a principle.
+- **A wide room's door has to go in the middle.** The first version put two
+  doors at 28% and 72% of any side longer than twelve cells, on the theory
+  that a big room empties through two. A stair hall is nineteen cells wide and
+  the corridor it opens onto is three, so both doors opened into the
+  classrooms either side and fourteen upper-floor rooms became unreachable.
+  Two doors is now a rule about assembly rooms, and everything else gets one
+  door in the middle of the side, which is the only position guaranteed to
+  actually be on the corridor.
+- **The seed did nothing for an afternoon.** The layout was deterministic in
+  the program's numbers, so `seed: 7` and `seed: 8` produced the same building
+  down to the room numbers — a knob that lies. It now shuffles which
+  interchangeable classroom lands on which storey, jitters the light courts,
+  picks the wing with the lift, and chooses the facade, the roof and the
+  compass bearing. Two of four seeds pass the travel check on the same brief,
+  which is the point: the seed is a choice with consequences, or it shouldn't
+  be there.
+- **`Object.assign` only ever adds.** Undo restores a snapshot by assigning it
+  over the live state, so undoing across the moment something was *first*
+  written left the record behind — the first site region, the first grading
+  stroke, and now the first tracing image, which is what made it visible.
+  Every optional record on the state had this bug since Phase 5 and nobody had
+  drawn the right undo to notice.
+- **A plane rotated flat is scaled in Z, not in Y.** `geo.rotateX(-π/2)` bakes
+  the rotation into the vertices, so the plane's two extents become local X and
+  local *Z* and local Y is zero everywhere. Every flat ghost preview in the
+  editor — furniture, stairs, room layouts — has been scaled `(w, d, 1)` and
+  drawn one foot deep since Phase 3 of the first arc. Four call sites, one
+  line each, and the layout tool's footprint ghost is a rectangle for the
+  first time.
+- **The image is the first thing in the file measured in megabytes.** Every
+  save bump before this one added tens of bytes. A data URL is hundreds of
+  kilobytes at best, which is fine in a file and not fine in localStorage on
+  every keystroke. Imports are resampled to 2048px and re-encoded as WebP, the
+  autosave retries without the overlay when storage refuses it and says so,
+  and `serialize` takes `{ omitOverlay }` for exactly that caller. Keeping the
+  image outside the design would have kept saves small and made a design you
+  email somebody arrive without the drawing they traced — the wrong half to
+  lose.
+- **Twelve tools don't fit down the side of a laptop screen.** The toolbar has
+  been one column since v1 and the comment about it reaching the floor panel
+  has been there since Phase 6. Two more tools finally collected: the buttons
+  lost a few pixels each and the overhang switch moved to the layers panel,
+  beside the shadow layer it governs.
+
+### Deliberately left for later
+
+- **One scheme.** A spine with wings is a school; it is not the only school.
+  A courtyard plan, a compact two-storey block, a campus of separate
+  buildings — each is a different `layoutSchool`, and the rect-list contract
+  between the layout and the builder is deliberately narrow enough that a
+  second one is a second function rather than a rewrite.
+- **The generator can't read a room adjacency wish.** "Put the art room next
+  to the kiln" is the obvious next thing the brief box should understand and
+  the layout has nowhere to put it: rooms are dealt round-robin into wing
+  slots and the dealing has no notion of who wants to be near whom.
+- **Polygon rooms are refused wholesale or allowed wholesale.** The lattice
+  can decline one cell at a time as you paint; a polygon arrives all at once,
+  so a room drawn entirely off the storey below is refused and one that
+  overhangs in part is placed and reported. Clipping a ring to a footprint
+  mask is a different tool, and a room silently trimmed to a staircase of 4ft
+  steps is not what anybody drew.
+- **The shadow is measured at 4ft.** A wing that oversails by three feet
+  doesn't register and a room whose corner clips a cell centre registers as a
+  whole cell. The alternative is polygon clipping between two floors' worth of
+  rings on every pointer move.
+- **The overlay doesn't print.** It is an edit-mode underlay only: the
+  blueprint export draws the model, not the tracing paper, which is almost
+  certainly right and is worth saying out loud since somebody will want the
+  scan on the sheet.
+- **Nothing traces the overlay for you.** Edge detection over the image to
+  propose walls is the obvious pie-in-the-sky follow-on and would need a real
+  image-processing pass; measuring by hand and drawing on top is the honest
+  version and takes about a minute.
+- **A generated school is furnished before it is checked.** `furnishAll` runs
+  over every named room and stops at the prop cap; a four-thousand-student
+  high school lands eight thousand pieces of furniture and nothing asks
+  whether the cap was hit in the middle of a classroom. The budget is
+  reported, not respected room by room.
+- **A four-storey school still fails its travel check.** The scheme's wings
+  get long and the hub problem compounds with every storey. It is a real
+  finding about a real limitation of a spine plan at that size, and it is also
+  partly the graph — telling the two apart needs the nav mesh.
 
 ## Phase 9 — Sharing & beyond the tab
 
@@ -1320,23 +1514,39 @@ Each item here prices the no-build-step, no-deps stance explicitly.
 
 ## Suggested build order
 
-Phases 1 through 7 are done. Phase 8 (generation & AI) is next by the default
-ordering, and analysis turns out to have been the right thing to build in front
-of it: a generator needs to know when it has produced something bad, and it now
-has a reader that says so in sentences. Seed a plan, run the report, move a
-door, run it again — that loop is the whole of parametric design, and both
-halves of it now exist.
+Phases 1 through 8 are done. Phase 9 (sharing & beyond the tab) is next by the
+default ordering, and Phase 1 — the prop catalog expansion — is the one item
+from the second arc's own list that never got built and that everything else
+has quietly been leaning on. The generator furnishes ninety rooms from a
+catalog of a hundred and fifty-five types; every type that gets added makes
+every generated school better for free, which is the best argument for pulling
+it forward that any item on this list has.
 
-What Phase 7 leaves for the generator specifically: occupant load per room is
-the sizing rule a wing should be laid out from (a school for 600 needs *this*
-much classroom and *this* many exits, and both numbers are one call away);
-travel distance is the constraint that decides where a second stair goes; and
-the takeoff is how two generated schemes get compared without anybody walking
-either of them.
+Phase 7 turned out to be exactly the right thing to build in front of the
+generator, and the claim held literally: occupant load per room is what sizes
+the stairs (`generate.js` calls `roomOccupancy` on its own rectangles before it
+has written a single tile); travel distance is what decided that every wing
+gets a stair tower at *both* ends rather than one; and the report is what says
+which of two seeds produced the better school. Seed a plan, read the report,
+move a door, read it again — that loop is the whole of parametric design and
+both halves of it now exist and are wired to each other.
 
-Phases 8–10 are ordered generation → sharing → play: each band leans on the
-ones before it (generation needs templates worth stamping, a site to put the
-building on, a crowd to size it for, and now a way to score what it produced).
-But the ordering is a default, not a law — phase 9's smaller items (glTF
-import, the minimap, guided tours) are self-contained enough to pull forward
-whenever one is wanted.
+What Phase 8 leaves for whatever comes next, in the order it would help:
+
+- **A nav mesh.** Phase 6 wanted one, Phase 7 wanted one for the common path
+  of egress travel, and Phase 8 now has a concrete number attached: a
+  generated three-storey school reports travel distances ten to twenty feet
+  worse than anybody actually walks, because a corridor is one node in a
+  portal graph. It is the single biggest source of false findings in the tool.
+- **More schemes.** `layoutSchool` is one function producing a list of
+  rectangles. A courtyard plan or a compact block is a second function against
+  the same contract, and the generate sheet already has room for the picker.
+- **Adjacency.** The brief box reads counts and flags; it cannot read "put the
+  band room away from the library", and the layout has nowhere to put it if it
+  could.
+
+Phases 9–10 are ordered sharing → play: each band leans on the ones before it.
+The ordering is a default, not a law — phase 9's smaller items (glTF import,
+the minimap, guided tours) are self-contained enough to pull forward whenever
+one is wanted, and the prop catalog is self-contained enough to pull forward
+*now*.
