@@ -1,10 +1,11 @@
 // grid.js — grid data model, pure helpers (no three.js imports)
 // Units are feet. One cell = 4ft x 4ft. Walls live on cell edges.
 //
-// State shape (v7):
+// State shape (v9):
 //   { version, cellFt, floorHt, w, h,
 //     floors: [ { w, h, cells[], edgesH[], edgesV[], shapes[] }, ... ],
-//     currentFloor, props: [], links: [], env, roof, terrain?, site?, nextId }
+//     currentFloor, props: [], links: [], env, roof, terrain?, site?, life?,
+//     overlay?, nextId }
 //
 // `env` is Phase 3's one addition: the date, hour, latitude and compass
 // orientation the design is lit by, plus whether its own lights are burning.
@@ -114,7 +115,7 @@ export function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
 
 export function createState(w = DEFAULT_W, h = DEFAULT_H) {
   return {
-    version: 8,
+    version: 9,
     cellFt: CELL,
     floorHt: FLOOR_H,
     w, h,

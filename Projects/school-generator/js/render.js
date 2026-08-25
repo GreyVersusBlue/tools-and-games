@@ -35,6 +35,8 @@ import {
   floorCuts, inFloorCut, cellCut, stairWidth,
 } from './stairs.js';
 import { wallProbe, solidBeside } from './walls.js';
+import { overlaySize, showsOn } from './overlay.js';
+import { floorBounds, unionBounds, footprintMask } from './shadow.js';
 import {
   finishEntry, wallPaint, DEFAULT_FINISH, DEFAULT_PAINT,
   facadeEntry, ROOF_MEMBRANE, ROOF_SHINGLE,
@@ -755,7 +757,18 @@ export function initRender(canvas) {
   // the reason ceilings are — you cannot draw a plan through a roof.
   const roofGroup = new THREE.Group();
   roofGroup.visible = false;
-  scene.add(buildingGroup, ceilingGroup, labelGroup, siteGroup, roofGroup);
+  // Phase 8's two edit-mode underlays. Neither is part of the building:
+  // `overlayGroup` is the tracing image somebody loaded, and `shadowGroup` is
+  // the footprint of the storey below the one being edited, drawn so you can
+  // see what an upper floor is allowed to stand on. Both are edit-only and
+  // both draw over the plan rather than under it — tracing paper you put on
+  // top of the drawing, which is what you do with tracing paper.
+  const overlayGroup = new THREE.Group();
+  const shadowGroup = new THREE.Group();
+  overlayGroup.visible = false;
+  shadowGroup.visible = false;
+  scene.add(buildingGroup, ceilingGroup, labelGroup, siteGroup, roofGroup,
+    overlayGroup, shadowGroup);
 
   let gridHelper = null;
   let built = null;         // last state passed to buildFromState
@@ -769,7 +782,11 @@ export function initRender(canvas) {
   // ghosting the one above and hiding structure/props outright are new. None
   // of this touches walkthrough mode — there you're standing in the building,
   // not squinting at a cross-section of it, so the whole thing always shows.
-  const layers = { structure: true, props: true, ghostBelow: true, ghostAbove: false };
+  const layers = {
+    structure: true, props: true, ghostBelow: true, ghostAbove: false,
+    // Phase 8: the tracing image, and the shadow an upper storey stands on.
+    overlay: true, shadow: true,
+  };
 
   // --- cameras ---
   // far plane clears the top of an 8-storey building plus the camera's own
@@ -3628,6 +3645,168 @@ export function initRender(canvas) {
     }
   }
 
+
+  // ---------- the tracing overlay ----------
+  //
+  // One textured plane, sized in world feet from the overlay's own scale, sat
+  // just above the storey being edited. It is drawn with `depthTest: false` and
+  // a render order between the building and the tools, so it reads as tracing
+  // paper laid over the plan: you can see the picture, you can see the walls
+  // you have already drawn on top of it, and the tool cursors stay above both.
+  //
+  // The texture is cached by data URL. An overlay's image doesn't change unless
+  // somebody loads a different one, and decoding a couple of megabytes of PNG
+  // on every rebuild would make dragging a wall feel like opening a file.
+  const OVERLAY_ORDER = 400;
+  let overlayTexture = null;
+  let overlaySrc = null;
+  let overlayMesh = null;
+  let overlayMat = null;
+
+  function overlayPlane() {
+    if (overlayMesh) return overlayMesh;
+    const geo = new THREE.PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    overlayMat = new THREE.MeshBasicMaterial({
+      transparent: true, depthTest: false, depthWrite: false,
+      toneMapped: false, side: THREE.DoubleSide,
+    });
+    overlayMesh = new THREE.Mesh(geo, overlayMat);
+    overlayMesh.renderOrder = OVERLAY_ORDER;
+    overlayMesh.frustumCulled = false;
+    overlayGroup.add(overlayMesh);
+    return overlayMesh;
+  }
+
+  // Decoding is asynchronous, so the first `applyOverlay` after an image is
+  // loaded has nothing to show and leaves the group hidden. The decode calls
+  // `applyOverlay` again when it lands, which is what actually turns the plane
+  // on — and which terminates, because by then `src === overlaySrc` and this
+  // returns before doing any work.
+  function setOverlayTexture(src) {
+    if (src === overlaySrc) return;
+    if (overlayTexture) { overlayTexture.dispose(); overlayTexture = null; }
+    overlaySrc = src;
+    if (!src) return;
+    const image = new Image();
+    image.onload = () => {
+      // A load that finished after somebody swapped the picture is stale;
+      // dropping it is cheaper than cancelling the decode.
+      if (overlaySrc !== src) return;
+      const tex = new THREE.Texture(image);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      overlayTexture = tex;
+      const mesh = overlayPlane();
+      mesh.material.map = tex;
+      mesh.material.needsUpdate = true;
+      applyOverlay(built);
+    };
+    // Leave `overlaySrc` set to the source that failed: clearing it would make
+    // the `src === overlaySrc` guard miss and restart a multi-megabyte decode
+    // on every rebuild, forever, for a picture that is never going to load.
+    image.onerror = () => { /* keep the guard armed; there is nothing to draw */ };
+    image.src = src;
+  }
+
+  // Position the plane from the overlay record and the storey being edited.
+  // Called on every rebuild and every time the overlay tool nudges it, which
+  // is cheap: nothing here rebuilds geometry.
+  function applyOverlay(state) {
+    if (!state) { overlayGroup.visible = false; return; }
+    const o = state.overlay || null;
+    const edit = mode === 'edit';
+    if (!o || !edit || !layers.overlay || !showsOn(o, state.currentFloor)) {
+      overlayGroup.visible = false;
+      // Still keep the texture — the toggle comes back on more often than the
+      // picture changes.
+      if (o) setOverlayTexture(o.src);
+      return;
+    }
+    setOverlayTexture(o.src);
+    const mesh = overlayPlane();
+    const size = overlaySize(o);
+    // `geo.rotateX(-π/2)` bakes the plane into the XZ plane, so its depth is
+    // the mesh's local *Z* and not its local Y. Scaling (w, d, 1) gives a
+    // picture one foot deep — see the ghost-preview note in propedit.js.
+    mesh.scale.set(Math.max(0.01, size.w), 1, Math.max(0.01, size.d));
+    mesh.position.set(o.x, floorBaseY(state, state.currentFloor) + 0.06, o.z);
+    // The plane's local +Y points up after the geometry rotation, so the
+    // image's own rotation about the world's vertical axis is a negative
+    // rotation.y — the same sign flip every top-down plane in this file makes.
+    mesh.rotation.set(0, -o.rot, 0);
+    mesh.material.opacity = o.opacity;
+    overlayGroup.visible = !!overlayTexture;
+  }
+
+  // ---------- the structural shadow ----------
+  //
+  // While editing an upper storey, the footprint of the storey below is drawn
+  // as a soft field with the cells you have built *outside* it picked out in
+  // amber. That is the whole visual half of the rule: the pale area is what
+  // you can build on, and the amber is what you built anyway.
+  //
+  // Deliberately quiet. An overhang is a design decision, not an error, so it
+  // gets a tint and a line in the status bar rather than a red outline and a
+  // dialog — the same register Phase 7's report uses for a note.
+  const SHADOW_COLOR = 0x4da3ff;
+  const OVERHANG_COLOR = 0xf0a44a;
+
+  function buildShadow(state) {
+    disposeGroup(shadowGroup);
+    const cur = state ? state.currentFloor : 0;
+    if (!state || mode !== 'edit' || !layers.shadow || cur <= 0) {
+      shadowGroup.visible = false;
+      return;
+    }
+    const below = state.floors[cur - 1];
+    const here = state.floors[cur];
+    const bounds = unionBounds(floorBounds(here), floorBounds(below));
+    if (!bounds) { shadowGroup.visible = false; return; }
+    const support = footprintMask(below, bounds);
+    const mine = footprintMask(here, bounds);
+    const y = floorBaseY(state, cur) + 0.03;
+
+    // Two instanced meshes, one per tint: a storey is at most a few thousand
+    // cells and this rebuilds on every structural edit, so it has to be one
+    // draw call each rather than a mesh per cell.
+    const cells = { support: [], overhang: [] };
+    for (let cy = bounds.y0; cy <= bounds.y1; cy++) {
+      for (let cx = bounds.x0; cx <= bounds.x1; cx++) {
+        const under = support.at(cx, cy);
+        const over = mine.at(cx, cy);
+        if (over && !under) cells.overhang.push([cx, cy]);
+        else if (under && !over) cells.support.push([cx, cy]);
+      }
+    }
+    const geo = new THREE.PlaneGeometry(CELL * 0.94, CELL * 0.94);
+    geo.rotateX(-Math.PI / 2);
+    for (const [key, color, opacity, order] of [
+      ['support', SHADOW_COLOR, 0.16, 380],
+      ['overhang', OVERHANG_COLOR, 0.45, 382],
+    ]) {
+      const list = cells[key];
+      if (!list.length) continue;
+      const mat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false,
+      });
+      const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+      mesh.renderOrder = order;
+      mesh.frustumCulled = false;
+      list.forEach(([cx, cy], i) => {
+        _dummy.position.set((cx + 0.5) * CELL, y, (cy + 0.5) * CELL);
+        _dummy.rotation.set(0, 0, 0);
+        _dummy.scale.set(1, 1, 1);
+        _dummy.updateMatrix();
+        mesh.setMatrixAt(i, _dummy.matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      shadowGroup.add(mesh);
+    }
+    shadowGroup.visible = shadowGroup.children.length > 0;
+  }
+
   // Which storeys are drawn, and how. Editing is one floor at a time: the
   // level below shows through as a ghost for alignment, everything else is
   // out of the way. Walkthrough shows the whole building.
@@ -3670,6 +3849,11 @@ export function initRender(canvas) {
     }
     labelledFloor = -1;   // let walk mode recompute from the camera
     if (gridHelper) gridHelper.position.y = floorBaseY(built, cur) + 0.04;
+    // Phase 8's underlays follow the storey being edited, so switching floors
+    // moves the tracing paper up with you and redraws the shadow you are now
+    // standing on.
+    applyOverlay(built);
+    buildShadow(built);
   }
 
   // ---------- the site ----------
@@ -4390,6 +4574,16 @@ export function initRender(canvas) {
     // same frame without a full rebuild.
     get layers() { return { ...layers }; },
     setLayers(patch) { Object.assign(layers, patch); applyFloorVisibility(); },
+    // --- Phase 8: the tracing overlay and the structural shadow ---
+    //
+    // Both are read straight off the state, the same arrangement the site and
+    // the roof have. `refreshOverlay` is the cheap one — it moves and rescales
+    // a plane the overlay tool is dragging, with no geometry to rebuild —
+    // while `refreshShadow` re-rasterizes the storey below and so belongs with
+    // a structural edit rather than with a pointer move.
+    refreshOverlay(state) { if (state) { built = state; } applyOverlay(built); },
+    refreshShadow(state) { if (state) { built = state; } buildShadow(built); },
+    get overlayReady() { return !!overlayTexture; },
     // --- Phase 6: the people in it ---
     //
     // `setCrowd` takes agents.js's own array and poses it; `setHeat` takes

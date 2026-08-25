@@ -81,13 +81,18 @@
       position: fixed; left: 12px; top: 74px;
       display: flex; flex-direction: column; gap: 5px;
       padding: 7px; z-index: 10;
-      max-height: calc(100vh - 250px); overflow-y: auto;
+      max-height: calc(100vh - 208px); overflow-y: auto;
     }
+    /* Twelve tools as of Phase 8, which is two more than the column had room
+       for at the old size. Rather than let the last two scroll out of sight
+       — Overlay in particular being a tool nobody would think to look for —
+       the buttons lose a few pixels each and the whole set fits again on a
+       laptop screen. */
     #toolbar .tool {
-      width: 86px; display: flex; flex-direction: column; align-items: center; gap: 1px;
-      padding: 6px 4px; font-size: 11.5px; color: var(--text-dim);
+      width: 86px; display: flex; flex-direction: column; align-items: center; gap: 0;
+      padding: 4px 4px; font-size: 11px; color: var(--text-dim);
     }
-    #toolbar .tool .icon { font-size: 18px; line-height: 1.1; }
+    #toolbar .tool .icon { font-size: 16px; line-height: 1.05; }
     #toolbar .tool.active { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
     #toolbar .key { font-size: 10px; opacity: 0.55; }
 
@@ -236,6 +241,15 @@
       position: fixed; left: 12px; bottom: 12px;
       padding: 10px; z-index: 10; width: 208px;
     }
+    /* The overhang switch sits under the shadow layer it governs: one is what
+       you can see of the storey below, the other is whether you may build past
+       it, and they are the same idea twice. */
+    #overhang-group {
+      margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--panel-border);
+    }
+    #floor-shadow-readout {
+      font-size: 10.5px; color: var(--text-dim); line-height: 1.45; margin-top: 5px;
+    }
     #floor-panel h2 {
       font-size: 11px; font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
@@ -255,7 +269,7 @@
     /* layers panel — toggling what's drawn while editing, not tied to a tool */
     #layers-panel {
       position: fixed; right: 12px; bottom: 12px;
-      padding: 10px 12px; z-index: 10; width: 168px;
+      padding: 10px 12px; z-index: 10; width: 192px;
     }
     #layers-panel h2 {
       font-size: 11px; font-weight: 600; color: var(--text-dim);
@@ -489,11 +503,14 @@
     #walk-overlay .row { display: flex; gap: 10px; justify-content: center; }
 
     /* designs & export overlays — same full-screen modal shape as walkthrough's */
-    #designs-overlay, #export-overlay {
+    #designs-overlay, #export-overlay, #gen-overlay, #measure-overlay {
       position: fixed; inset: 0; z-index: 25;
       display: flex; align-items: center; justify-content: center;
       background: rgba(10, 13, 18, 0.55);
     }
+    /* The measure prompt sits over the generate sheet's slot but is never open
+       at the same time as it; a higher z keeps it above the overlay panel. */
+    #measure-overlay { z-index: 26; }
     #designs-overlay .panel, #export-overlay .panel {
       padding: 22px 26px; width: 420px; max-width: 90vw;
     }
@@ -531,6 +548,77 @@
     }
     #export-overlay .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
     #export-overlay p.hint { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; margin-top: 4px; }
+    /* generate & measure dialogs — same slot and look as the export sheet */
+    #gen-overlay .panel {
+      padding: 22px 26px; width: 460px; max-width: 92vw;
+      max-height: 92vh; overflow-y: auto;
+    }
+    #measure-overlay .panel { padding: 20px 24px; width: 340px; max-width: 90vw; }
+    #gen-overlay h2, #measure-overlay h2 { font-size: 16px; margin-bottom: 12px; }
+    #gen-overlay .section-label, #measure-overlay .section-label {
+      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      letter-spacing: 0.04em; text-transform: uppercase; margin: 14px 0 6px;
+    }
+    #gen-overlay textarea, #gen-overlay input, #gen-overlay select,
+    #measure-overlay input {
+      font: inherit; color: var(--text); background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--panel-border); border-radius: 6px; padding: 7px 9px;
+    }
+    #gen-overlay textarea { width: 100%; resize: vertical; min-height: 52px; line-height: 1.45; }
+    #gen-overlay .fields {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px;
+    }
+    #gen-overlay .fields label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+    #gen-overlay .fields input, #gen-overlay .fields select { width: 100%; }
+    #gen-overlay label.opt, #measure-overlay label.opt {
+      display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; cursor: pointer;
+    }
+    #gen-overlay .opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+    #gen-overlay .row, #measure-overlay .row {
+      display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px;
+    }
+    #gen-overlay p.hint, #measure-overlay p.hint {
+      font-size: 11.5px; color: var(--text-dim); line-height: 1.5; margin-top: 6px;
+    }
+    #gen-echo { font-size: 12px; line-height: 1.5; margin-top: 8px; }
+    #gen-echo .read { color: var(--text); }
+    #gen-echo .ignored { color: var(--warn, #f0a44a); }
+    #gen-schedule {
+      max-height: 30vh; overflow-y: auto; margin-top: 6px;
+      font-size: 11.5px; line-height: 1.55; color: var(--text-dim);
+    }
+    #gen-schedule .row-line { display: flex; justify-content: space-between; gap: 10px; }
+    #gen-schedule .row-line span:first-child { color: var(--text); }
+    #gen-schedule .totals {
+      margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--panel-border); color: var(--text);
+    }
+    #measure-overlay .measure-row { display: flex; align-items: center; gap: 8px; }
+    #measure-overlay .measure-row input { flex: 1; }
+
+    /* overlay panel — the same slot every tool panel uses, beside the toolbar */
+    #overlay-panel {
+      position: fixed; left: 114px; top: 74px;
+      width: 232px; padding: 12px 14px; z-index: 10;
+      max-height: calc(100vh - 110px); overflow-y: auto;
+    }
+    #overlay-panel label { display: block; font-size: 11px; color: var(--text-dim); margin: 10px 0 4px; }
+    #overlay-panel label:first-of-type { margin-top: 0; }
+    #overlay-panel label.opt {
+      display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); margin: 8px 0 0;
+    }
+    #overlay-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
+    #overlay-panel select { width: 100%; font-size: 12px; }
+    #overlay-panel .readout {
+      margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
+      font-size: 11.5px; color: var(--text-dim); line-height: 1.5;
+    }
+    #overlay-panel .keys {
+      margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
+      font-size: 11px; color: var(--text-dim); line-height: 1.6;
+    }
+    #overlay-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+    #overlay-buttons button { flex: 1; min-width: 64px; padding: 6px 4px; font-size: 12px; }
+
     kbd {
       background: rgba(255, 255, 255, 0.1); border: 1px solid var(--panel-border);
       border-radius: 4px; padding: 1px 5px; font-size: 11px; font-family: inherit;
@@ -588,6 +676,7 @@
     }
     body[data-mode="walk"] #walk-hud { display: block; }
     body[data-mode="walk"] #toolbar,
+    body[data-mode="walk"] #overlay-panel,
     body[data-mode="walk"] #room-panel,
     body[data-mode="walk"] #wall-panel,
     body[data-mode="walk"] #door-panel,
@@ -637,6 +726,7 @@
     <button id="save-btn" title="Download design as JSON">Save</button>
     <button id="load-btn" title="Load a JSON design">Load</button>
     <button id="designs-btn" title="Named designs saved in this browser">🗂 Designs</button>
+    <button id="gen-btn" title="Generate a whole school from a brief">✨ Generate</button>
     <button id="export-btn" title="Printable top-down floor plan (PNG / PDF)">🖨 Export</button>
     <button id="fx-btn" title="Toggle post-processing" aria-pressed="true">FX</button>
     <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true">☀ Sky</button>
@@ -658,6 +748,7 @@
     <button class="tool" data-tool="stair" aria-pressed="false"><span class="icon">🪜</span>Stairs<span class="key">9</span></button>
     <button class="tool" data-tool="template" aria-pressed="false"><span class="icon">🏫</span>Layout<span class="key">0</span></button>
     <button class="tool" data-tool="site" aria-pressed="false"><span class="icon">🌳</span>Site<span class="key">-</span></button>
+    <button class="tool" data-tool="overlay" aria-pressed="false"><span class="icon">🖼</span>Overlay<span class="key">=</span></button>
   </div>
 
   <div id="room-panel" class="panel hidden">
@@ -752,6 +843,34 @@
     </div>
   </div>
 
+  <div id="overlay-panel" class="panel hidden" role="group" aria-label="Tracing overlay">
+    <div id="overlay-buttons">
+      <button id="overlay-load" type="button" title="Load a PNG, JPEG or WebP to trace over">📂 Image…</button>
+      <button id="overlay-clear" type="button" title="Remove the tracing image">🗑 Clear</button>
+    </div>
+    <input id="overlay-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/bmp" class="hidden" />
+
+    <label>Tool</label>
+    <div class="seg" id="overlay-modes" role="group" aria-label="Overlay mode"></div>
+
+    <label for="overlay-opacity">Opacity <span class="env-value" id="overlay-opacity-value">55%</span></label>
+    <input id="overlay-opacity" type="range" min="5" max="100" step="5" value="55" />
+
+    <label for="overlay-floor">Show on</label>
+    <select id="overlay-floor" aria-label="Which storey the overlay shows on"></select>
+
+    <label class="opt"><input type="checkbox" id="overlay-lock" /> Lock in place</label>
+
+    <div id="overlay-readout" class="readout"></div>
+    <div class="keys">
+      <kbd>R</kbd> turn 5° &nbsp; <kbd>⇧R</kbd> 0.25° &nbsp; <kbd>⌥R</kbd> back<br />
+      <kbd>←↑↓→</kbd> nudge a foot &nbsp; <kbd>⇧</kbd> three inches<br />
+      Measure needs two clicks — one at each end of something you know the
+      length of — and then it asks you what that length is. Everything after
+      that is one division, so measure the longest thing you can find.
+    </div>
+  </div>
+
   <div id="site-panel" class="panel hidden" role="group" aria-label="Site">
     <label>Site tool</label>
     <div class="seg" id="site-modes" role="group" aria-label="Site mode"></div>
@@ -803,6 +922,12 @@
     <label><input type="checkbox" id="layer-props" checked /> Furniture</label>
     <label><input type="checkbox" id="layer-ghost-below" checked /> Ghost floor below</label>
     <label><input type="checkbox" id="layer-ghost-above" /> Ghost floor above</label>
+    <label><input type="checkbox" id="layer-overlay" checked /> Tracing overlay</label>
+    <label><input type="checkbox" id="layer-shadow" checked /> Structural shadow</label>
+    <div id="overhang-group">
+      <label id="floor-overhang-row"><input type="checkbox" id="floor-overhang" /> Allow overhangs</label>
+      <div id="floor-shadow-readout"></div>
+    </div>
   </div>
 
   <div id="right-rail">
@@ -971,6 +1096,17 @@
         and surfaces say it should. The sound panel (<kbd>U</kbd>) shows the
         number and holds the volume.
       </p>
+      <p>
+        And you no longer have to draw one first. <b>✨ Generate</b> turns a
+        student count and a grade band into a whole school — corridors,
+        classroom wings, a gym and a cafeteria, stairs where the travel
+        distance says they go, every room furnished from its own name, and a
+        car park sized to the staff. What comes out is an ordinary design:
+        nothing is marked as generated, and the first thing to do with it is
+        move a wall. If you have a plan already, the <b>🖼 Overlay</b> tool
+        puts it under the grid — measure something on it, say how long that
+        thing is, and trace.
+      </p>
       <div class="row">
         <button id="walk-start" class="primary">Click to Walk</button>
         <button id="walk-exit">Back to Editor</button>
@@ -1018,6 +1154,91 @@
         <button id="export-close">Close</button>
         <button id="export-print">🖨 Print / Save as PDF</button>
         <button id="export-png" class="primary">⬇ Download PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="gen-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="gen-overlay-title">
+    <div class="panel">
+      <h2 id="gen-overlay-title">✨ Generate a School</h2>
+
+      <div class="section-label">Brief</div>
+      <label for="gen-brief" class="visually-hidden">Describe the school in a sentence</label>
+      <textarea id="gen-brief" rows="2" maxlength="400"
+        placeholder="a two-storey middle school for 600 students with a library…"></textarea>
+      <div class="row" style="margin-top:8px; justify-content:flex-start">
+        <button id="gen-read" type="button">Read the brief</button>
+      </div>
+      <div id="gen-echo"></div>
+      <p class="hint">
+        There is no language model behind this box — it is a table of phrases.
+        It reads student counts, grade bands, storey counts, a seed, and
+        whether you want a gym, a cafeteria, a library or a site, and it tells
+        you every word it ignored. The controls below are the actual input;
+        the sentence just fills them in.
+      </p>
+
+      <div class="section-label">Program</div>
+      <div class="fields">
+        <div>
+          <label for="gen-students">Students</label>
+          <input id="gen-students" type="number" min="30" max="4000" step="10" value="600" />
+        </div>
+        <div>
+          <label for="gen-band">Grade band</label>
+          <select id="gen-band"></select>
+        </div>
+        <div>
+          <label for="gen-storeys">Storeys</label>
+          <input id="gen-storeys" type="number" min="1" max="4" step="1" value="2" />
+        </div>
+        <div>
+          <label for="gen-seed">Seed</label>
+          <input id="gen-seed" type="number" min="1" max="99999" step="1" value="1" />
+        </div>
+      </div>
+      <div class="opts" style="margin-top:10px">
+        <label class="opt"><input type="checkbox" id="gen-gym" checked /> Gymnasium</label>
+        <label class="opt"><input type="checkbox" id="gen-cafeteria" checked /> Cafeteria</label>
+        <label class="opt"><input type="checkbox" id="gen-library" checked /> Library</label>
+        <label class="opt"><input type="checkbox" id="gen-site" checked /> Site &amp; car park</label>
+        <label class="opt"><input type="checkbox" id="gen-furnish" checked /> Furnish every room</label>
+      </div>
+
+      <div class="section-label">Schedule of accommodation</div>
+      <div id="gen-schedule"></div>
+
+      <div class="row">
+        <button id="gen-cancel">Cancel</button>
+        <button id="gen-go" class="primary">✨ Generate</button>
+      </div>
+      <p class="hint">
+        This replaces the design you have open — save it first if you want it.
+        What comes out is an ordinary design: rooms, walls, furniture, a site.
+        Nothing about it is marked as generated and every tool works on it
+        normally. Run the Report afterwards; a generated school is a first
+        draft that knows how to tell you what is wrong with it.
+      </p>
+    </div>
+  </div>
+
+  <div id="measure-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="measure-overlay-title">
+    <div class="panel">
+      <h2 id="measure-overlay-title">📏 How long is that?</h2>
+      <p class="hint" id="measure-detail" style="margin-top:0"></p>
+      <div class="measure-row">
+        <label for="measure-ft" class="visually-hidden">Distance in feet</label>
+        <input id="measure-ft" type="number" min="0.05" max="20000" step="0.5" value="10" />
+        <span>ft</span>
+      </div>
+      <p class="hint">
+        Whatever you measured — a door, a wall, a scale bar — type what it
+        really is and the whole image is scaled to match. Measure the longest
+        thing you are sure about: the error divides by the length.
+      </p>
+      <div class="row">
+        <button id="measure-cancel">Cancel</button>
+        <button id="measure-ok" class="primary">Set the scale</button>
       </div>
     </div>
   </div>

@@ -25,6 +25,8 @@ import { initPropEdit } from './propedit.js';
 import { initStairEdit } from './stairedit.js';
 import { initTemplateEdit } from './templateedit.js';
 import { initSiteEdit } from './siteedit.js';
+import { initOverlayEdit } from './overlayedit.js';
+import { cellSupported } from './shadow.js';
 import { pinchZoomHeight } from './touch.js';
 
 const MAX_UNDO = 100;
@@ -58,8 +60,8 @@ export const DOOR_KINDS = [
 ];
 const doorKindOf = (k) => DOOR_KINDS.find((d) => d.kind === k) || DOOR_KINDS[0];
 
-export function initEditor({ canvas, renderApi, getState, onChange, onStatus, onHoleMode }) {
-  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair | template | site
+export function initEditor({ canvas, renderApi, getState, onChange, onStatus, onHoleMode, onMeasure }) {
+  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair | template | site | overlay
   let roomName = 'Room 101';
   let roomColor = ROOM_COLORS[0];
   let roomFinish = DEFAULT_FINISH;
@@ -76,6 +78,16 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   // state, never saved state — the same rule selections follow. See the
   // "curved walls" note in shapes.js for why curvature isn't a stored field.
   let curveMemo = null;   // { shape, ring, seg, count, bulge }
+
+  // Whether an upper storey may be built outside the footprint below it.
+  // Off by default — the shadow is the rule — and when it is on, the cells
+  // that land outside get counted so the stroke can say how much of the
+  // building is now standing on nothing. Tool state, never saved state: an
+  // overhang is a fact about the design that shadow.js reads back off the
+  // geometry, not a flag the file carries.
+  let allowOverhang = false;
+  let overhangRefused = 0;   // cells this stroke declined to build
+  let strokeOverhang = 0;    // ...and cells it built outside the shadow anyway
 
   const undoStack = [];
   const redoStack = [];
@@ -146,7 +158,25 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   }
 
   // --- undo/redo ---
-  function snapshot() { return JSON.stringify(getState()); }
+  //
+  // A snapshot is JSON, which is what makes undo a two-line feature and what
+  // the v1 retrospective calls out as O(design). Phase 8 added the one field
+  // that breaks that arithmetic: an `overlay` carries an image as a data URL,
+  // and stringifying up to three megabytes of base64 on every pointerdown,
+  // a hundred deep, is a hundred megabytes of undo history for a picture
+  // nobody edits.
+  //
+  // So the overlay travels beside the JSON rather than inside it, by
+  // reference. That is safe for exactly one reason and it is worth stating:
+  // **an overlay record is never mutated in place.** Every change to it —
+  // move, turn, fade, calibrate — goes through overlay.js's `setOverlay`,
+  // which returns a new normalized object, so a reference held here is a
+  // snapshot of what the overlay was, not a live view of what it is.
+  function snapshot() {
+    const s = getState();
+    const { overlay, ...rest } = s;
+    return { json: JSON.stringify(rest), overlay: overlay || null };
+  }
 
   function pushUndo() {
     undoStack.push(snapshot());
@@ -154,9 +184,17 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     redoStack.length = 0;
   }
 
-  function restore(json) {
+  function restore(snap) {
     const s = getState();
-    const data = JSON.parse(json);
+    const data = JSON.parse(snap.json);
+    if (snap.overlay) data.overlay = snap.overlay;
+    // Keys the snapshot doesn't have are keys the design didn't have.
+    // `Object.assign` only ever adds and overwrites, so without this an undo
+    // across the moment something was *first* written — the first site region,
+    // the first grading stroke, the first tracing image — leaves that record
+    // behind and the undo silently does nothing. Every optional record on the
+    // state (terrain, site, roof, life, overlay) is one of these.
+    for (const key of Object.keys(s)) if (!(key in data)) delete s[key];
     Object.assign(s, data);
     onChange({ structural: true });
     poly.refresh();
@@ -190,6 +228,10 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       cursorStyle: (v) => { canvas.style.cursor = v; },
       roomName: () => roomName || 'Room',
       roomColor: () => roomColor,
+      // Phase 8's structural shadow, shared with the floor tool: the same
+      // switch governs both halves of the room model, which is the whole
+      // reason it lives on the editor rather than inside either of them.
+      allowOverhang: () => allowOverhang,
     },
   });
 
@@ -243,6 +285,27 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     },
   });
 
+  // The overlay tool writes one field on the state and asks the shell to ask a
+  // question — "how long is that?" — which no other tool here needs, so it is
+  // the one host with two extra hooks on it.
+  const overlayTool = initOverlayEdit({
+    getState,
+    renderApi,
+    host: {
+      pushUndo, dropUndo: () => { undoStack.pop(); },
+      changed: (info = {}) => onChange({ structural: false, overlay: true, ...info }),
+      status: (text) => onStatus && onStatus(text),
+      setOverlay: (o, info = {}) => {
+        const st = getState();
+        if (o) st.overlay = o;
+        onChange({ structural: false, overlay: true, ...info });
+      },
+      // Both ends of a measurement, in image pixels. The shell puts up the
+      // "how many feet is that?" prompt, because a dialog is not a tool's job.
+      measured: (a, b) => onMeasure && onMeasure(a, b),
+    },
+  });
+
   // --- tool application ---
 
   // Nearest polygon wall to the cursor, if one is within grabbing distance and
@@ -254,10 +317,25 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   }
 
   function applyAt(wx, wz, isClick) {
-    const f = activeFloor(getState());
+    const s = getState();
+    const f = activeFloor(s);
     if (tool === 'floor') {
       const c = cellAt(f, wx, wz);
-      if (c && setTile(f, c.x, c.y, true)) strokeChanged = true;
+      if (!c) return;
+      // Phase 8's structural shadow. An upper storey is limited to the
+      // footprint of the one below it by default — you cannot lay slab over
+      // thin air by accident — and overhangs are switched on rather than
+      // switched off, because a cantilever is something somebody decides to
+      // draw. The refusal is a status line and nothing else: no dialog, no
+      // beep, no red flash. See the note on `allowOverhang` below.
+      if (!allowOverhang && !cellSupported(s, s.currentFloor, c.x, c.y)) {
+        overhangRefused++;
+        return;
+      }
+      if (setTile(f, c.x, c.y, true)) {
+        strokeChanged = true;
+        if (allowOverhang && !cellSupported(s, s.currentFloor, c.x, c.y)) strokeOverhang++;
+      }
     } else if (tool === 'wall') {
       const kind = wallKindOf(wallKind);
       const e = nearestEdge(f, wx, wz);
@@ -518,6 +596,11 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       siteTool.pointerDown(p, e);
       return;
     }
+    if (tool === 'overlay') {
+      canvas.setPointerCapture(e.pointerId);
+      overlayTool.pointerDown(p, e);
+      return;
+    }
     pushUndo();
     // Any ordinary edit ends the run of curve adjustments — the memo points at
     // a segment index the edit may well have moved.
@@ -525,6 +608,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     strokeActive = true;
     strokeChanged = false;
     strokeWallFt = 0;
+    overhangRefused = 0;
+    strokeOverhang = 0;
     lastWorld = null;
     applyStroke(p.x, p.z, true);
     if (strokeChanged) onChange({ structural: true });
@@ -537,6 +622,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (tool === 'stair') { if (p) stairTool.pointerMove(p, e); return; }
     if (tool === 'template') { if (p) templateTool.pointerMove(p, e); return; }
     if (tool === 'site') { if (p) siteTool.pointerMove(p, e); return; }
+    if (tool === 'overlay') { if (p) overlayTool.pointerMove(p, e); return; }
     if (!strokeActive || !p) return;
     const before = strokeChanged;
     applyStroke(p.x, p.z, false);
@@ -551,10 +637,17 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (stairTool.pointerUp()) return;
     if (templateTool.pointerUp()) return;
     if (siteTool.pointerUp()) return;
+    if (overlayTool.pointerUp()) return;
     if (!strokeActive) return;
     strokeActive = false;
     lastWorld = null;
-    if (!strokeChanged) { undoStack.pop(); return; } // nothing happened; drop the snapshot
+    if (!strokeChanged) {
+      undoStack.pop();
+      // A stroke that built nothing because all of it was off the shadow is
+      // the one case worth a word — otherwise the tool looks broken.
+      if (overhangRefused) reportRefusal();
+      return;
+    }
     onChange({ structural: true, commit: true });
     // The grid-wall case in applyAt() only knows the length of the one edge
     // it just built; the running total for the whole drag is only known here,
@@ -563,6 +656,24 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (tool === 'wall' && strokeWallFt > 0) {
       onStatus && onStatus(`Wall — built ${strokeWallFt.toFixed(0)}ft.`);
     }
+    if (overhangRefused) reportRefusal();
+    else if (strokeOverhang) {
+      const area = strokeOverhang * CELL * CELL;
+      onStatus && onStatus(`Overhang — ${area.toLocaleString()} ft² of this storey now ` +
+        'stands on nothing below.');
+    }
+  }
+
+  // Unobtrusive on purpose: one line in the status bar naming the switch that
+  // turns the limit off, and no interruption. The rule is a default, not a
+  // verdict, and a tool that argued with you about a canopy would be worse
+  // than one that let you draw a classroom in mid-air.
+  function reportRefusal() {
+    const cells = overhangRefused;
+    overhangRefused = 0;
+    onStatus && onStatus(
+      `${cells === 1 ? 'That cell is' : `${cells} cells are`} outside the storey below — ` +
+      'turn on “Allow overhangs” in the Layers panel to build there anyway.');
   }
 
   // --- touch: a single finger drives the current tool exactly like a mouse
@@ -747,6 +858,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     stairTool.clearHover();
     templateTool.clearHover();
     siteTool.clearHover();
+    overlayTool.clearHover();
   });
 
   canvas.addEventListener('wheel', (e) => {
@@ -759,6 +871,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     stairTool.refresh();
     templateTool.refresh();
     siteTool.refresh();
+    overlayTool.refresh();
   }, { passive: false });
 
   return {
@@ -771,6 +884,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       stairTool.setTool(t);
       templateTool.setTool(t);
       siteTool.setTool(t);
+      overlayTool.setTool(t);
       updateCursor(null);
       if (t !== 'vertex') canvas.style.cursor = '';
     },
@@ -778,12 +892,12 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     // rotate/delete/escape/mirror). Returns true when one was used, so the
     // caller knows to stop handling it.
     handleKey: (e) => editorKey(e) || poly.key(e) || propTool.key(e) ||
-      stairTool.key(e) || templateTool.key(e) || siteTool.key(e),
+      stairTool.key(e) || templateTool.key(e) || siteTool.key(e) || overlayTool.key(e),
     get holeMode() { return poly.holeMode; },
     setHoleMode: (v) => poly.setHoleMode(v),
     refreshOverlay: () => {
       poly.refresh(); propTool.refresh(); stairTool.refresh();
-      templateTool.refresh(); siteTool.refresh();
+      templateTool.refresh(); siteTool.refresh(); overlayTool.refresh();
     },
     setRoom(name, color) { roomName = name; roomColor = color; },
     get roomName() { return roomName; },
@@ -824,6 +938,16 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     get siteSelection() { return siteTool.selected; },
     get siteRegionCount() { return siteTool.regionCount; },
     get siteRelief() { return siteTool.relief; },
+    // The overlay tool's two knobs, and the structural-shadow switch the floor
+    // tool reads. `allowOverhang` lives here rather than in saved state because
+    // it is a decision about *this editing session*, not about the design —
+    // shadow.js reads the overhangs back off the geometry whenever anybody asks.
+    setOverlayMode: (m) => overlayTool.setMode(m),
+    get overlayMode() { return overlayTool.mode; },
+    get overlayMeasuring() { return overlayTool.measuring; },
+    cancelMeasure: () => overlayTool.cancelMeasure(),
+    setAllowOverhang(v) { allowOverhang = !!v; },
+    get allowOverhang() { return allowOverhang; },
     // Ctrl combos never reach handleKey (see main.js), so copy/paste/duplicate
     // are called directly — for whichever of the prop or vertex tool is
     // active; each checks its own `tool` and no-ops otherwise.
@@ -849,6 +973,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       stairTool.setTool(v ? tool : null);
       templateTool.setTool(v ? tool : null);
       siteTool.setTool(v ? tool : null);
+      overlayTool.setTool(v ? tool : null);
       if (!v) { cellCursor.visible = edgeCursor.visible = false; strokeActive = false; resetTouchState(); }
     },
   };

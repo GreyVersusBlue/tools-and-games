@@ -136,7 +136,13 @@ export function initPropEdit({ getState, renderApi, host }) {
       ghostGroup.visible = true;
       ghostGroup.position.set(hover.x, baseY(), hover.z);
       ghostGroup.rotation.y = hover.rotationY;
-      ghostPlane.scale.set(hw * 2, hd * 2, 1);
+      // The geometry was rotated flat with `rotateX(-π/2)`, which bakes the
+      // rotation into the vertices: the plane's two extents are then local X
+      // and local *Z*, and local Y is zero everywhere. Scaling (w, d, 1)
+      // therefore stretches nothing and leaves a one-foot sliver, which is
+      // what this drew from Phase 3 of the first arc until Phase 8 of the
+      // second one put a fourth plane on the same rake.
+      ghostPlane.scale.set(hw * 2, 1, hd * 2);
       marker.position.set(0, 0.02, hd);
       ghostMat.color.setHex(s.props.length >= MAX_PROPS ? GHOST_BAD : GHOST_OK);
     } else {

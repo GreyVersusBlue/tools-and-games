@@ -14,6 +14,9 @@
 //   v7 — the site: `terrain` (a graded heightfield, see terrain.js), `site`
 //        (hardscape and field regions with their surfaces and markings, see
 //        site.js) and `roof` (style, pitch and facade material, see roof.js)
+//   v8 — `life`: how many people are in the building and the seed that puts
+//        them there (see agents.js)
+//   v9 — `overlay`: a scaled tracing image under the plan (see overlay.js)
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
 // polygon rooms in it, a v3 one has no glass and no stairs, a v4 one has no
@@ -67,9 +70,26 @@ import { normalizeTerrain, packTerrain } from './terrain.js';
 import { normalizeRegion, MAX_REGIONS } from './site.js';
 import { normalizeRoof, isDefaultRoof } from './roof.js';
 import { normalizeLife, isDefaultLife } from './agents.js';
+import { normalizeOverlay } from './overlay.js';
 
+// v9 is the first bump that is not free.
+//
+// Every version before it added fields measured in bytes: an environment is
+// six numbers, a roof is three, a whole graded heightfield packs into a few
+// kilobytes. `overlay` carries an image, as a data URL, and an image is
+// megabytes. The bargain the format has kept since v5 — an older design
+// round-trips as the same bytes it went in as — still holds, because a design
+// with no tracing paper in it records no `overlay`. What changes is that a
+// design *with* one can now be large enough that localStorage refuses it, and
+// that has to be handled rather than hoped about: see `serialize`'s
+// `omitOverlay` and the retry in `autosaveNow`.
+//
+// The alternative was keeping the image outside the file, in its own
+// localStorage key, and referring to it by id. That keeps saves small and
+// makes a design you email somebody arrive without the drawing they traced —
+// which is the wrong half to lose.
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 const MIN_DIM = 4;
 const MAX_DIM = 200;
@@ -80,9 +100,12 @@ const MAX_DIM = 200;
 // no regions and an ordinary roof records no roof — and it is the whole reason
 // a file from an older build survives a round trip through a newer one
 // unchanged.
-export function serialize(state) {
+export function serialize(state, opts = {}) {
   if (!state) return JSON.stringify(state);
   const out = { ...state };
+  // Whatever a state in memory says it is, what goes in the file is what this
+  // build writes. A design loaded from v3 and edited is a v9 design.
+  out.version = SAVE_VERSION;
   if (!out.env || isDefaultEnv(out.env)) delete out.env;
   const packed = packTerrain(out.terrain);
   if (packed) out.terrain = packed; else delete out.terrain;
@@ -91,6 +114,11 @@ export function serialize(state) {
   // v8: how many people are in the building, and the seed that puts them
   // there. Never the people themselves — see agents.js.
   if (isDefaultLife(out.life)) delete out.life; else out.life = normalizeLife(out.life);
+  // v9's tracing image. `omitOverlay` is the escape hatch for the one caller
+  // that has somewhere too small to put it — the autosave, which would rather
+  // keep the design without the picture than lose both.
+  const overlay = opts.omitOverlay ? null : normalizeOverlay(out.overlay);
+  if (overlay) out.overlay = overlay; else delete out.overlay;
   return JSON.stringify(out);
 }
 
@@ -196,6 +224,12 @@ export function deserialize(json) {
   // the default school in it.
   const life = normalizeLife(d.life);
   if (!isDefaultLife(life)) state.life = life;
+  // v9, on the same terms as everything above it: an unreadable overlay is a
+  // design with no overlay, never a design that won't open. An image type this
+  // build can't decode, a data URL over the size cap, a missing pixel size —
+  // all of them land here as null.
+  const overlay = normalizeOverlay(d.overlay);
+  if (overlay) state.overlay = overlay;
 
   if (Array.isArray(d.props)) {
     for (const raw of d.props.slice(0, MAX_PROPS)) {
@@ -237,18 +271,38 @@ export function loadFromFile(file) {
 }
 
 let autosaveTimer = null;
-export function autosave(state) {
+// Write the design, and if the browser won't take it, write it again without
+// the tracing image. Returns what actually happened, so a caller can say
+// "autosaved without the overlay — it's too big for this browser's storage"
+// rather than leaving somebody to discover it after a reload.
+//
+//   'full'    the whole design, overlay included
+//   'partial' the design, with the overlay dropped to make it fit
+//   'failed'  storage refused both, or is blocked entirely
+function writeAutosave(state) {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, serialize(state));
+    return 'full';
+  } catch (e) { /* fall through — usually QuotaExceededError */ }
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, serialize(state, { omitOverlay: true }));
+    return state && state.overlay ? 'partial' : 'failed';
+  } catch (e) {
+    return 'failed';
+  }
+}
+
+export function autosave(state, onResult = null) {
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(AUTOSAVE_KEY, serialize(state));
-    } catch (e) { /* storage full or blocked — skip */ }
+    const result = writeAutosave(state);
+    if (onResult) onResult(result);
   }, 400);
 }
 
 export function autosaveNow(state) {
   clearTimeout(autosaveTimer);
-  try { localStorage.setItem(AUTOSAVE_KEY, serialize(state)); } catch (e) { /* ignore */ }
+  return writeAutosave(state);
 }
 
 export function loadAutosave() {
@@ -322,10 +376,16 @@ export function saveDesign(state, name, id = null) {
     slot.name = trimmedName;
   }
   slot.updatedAt = Date.now();
+  // A named slot is a deliberate act, so it says so when the tracing image is
+  // what didn't fit rather than quietly dropping it: an overlay is part of the
+  // design, and somebody saving one under a name should know if it is gone.
   try {
     localStorage.setItem(SLOT_PREFIX + slot.id, serialize(state));
   } catch (e) {
-    throw new Error('Could not save — local storage may be full.');
+    throw new Error(state && state.overlay
+      ? 'Could not save — local storage is full. The tracing image is usually what fills it; ' +
+        'remove it, or use Save to download the design as a file instead.'
+      : 'Could not save — local storage may be full.');
   }
   writeSlotIndex(list);
   return slot.id;

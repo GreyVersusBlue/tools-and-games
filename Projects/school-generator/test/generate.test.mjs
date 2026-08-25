@@ -1,0 +1,304 @@
+// The generator. Two suites' worth of question in one file: does the layout
+// produce a coherent set of rectangles, and does the design it writes read
+// back as an ordinary school through every reader the tool already has.
+//
+// The second half is the one that matters. A generator that produces something
+// only it understands is a generator nobody can edit, so most of what follows
+// runs Phase 6's nav graph and Phase 7's report over the output and asks the
+// same things of it that they ask of a design somebody drew.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { CELL, MAX_FLOORS, getCell, isDoorEdge, edgeHIdx, edgeVIdx, EDGE_WINDOW } from '../js/grid.js';
+import { buildProgram } from '../js/program.js';
+import { parseBrief } from '../js/brief.js';
+import { serialize, deserialize } from '../js/save-load.js';
+import { buildNav, navSummary, floorRooms } from '../js/navgraph.js';
+import { buildReport } from '../js/report.js';
+import { buildingOccupancy } from '../js/occupancy.js';
+import { buildingOverhang } from '../js/shadow.js';
+import { catalogEntry } from '../js/catalog.js';
+import { computeFloorPlan } from '../js/blueprint.js';
+import {
+  SPINE_W, WING_CORR_W, WING_BAY_D, HEAD_STAIR_W,
+  layoutSchool, buildSchool, expandProgram, generationSummary, exteriorDoors,
+} from '../js/generate.js';
+
+const BRIEF = { students: 600, band: 'middle', storeys: 2, seed: 1 };
+const PLAN = layoutSchool(BRIEF);
+const SCHOOL = buildSchool(PLAN);
+
+// ---------- the program, expanded ----------
+
+test('expandProgram produces one entry per room, sized in whole cells', () => {
+  const program = buildProgram(BRIEF);
+  const rooms = expandProgram(program);
+  assert.equal(rooms.length, program.roomCount);
+  for (const r of rooms) {
+    assert.ok(Number.isInteger(r.w) && r.w >= 1, `${r.name}: bad width`);
+    assert.ok(Number.isInteger(r.d) && r.d >= 1, `${r.name}: bad depth`);
+    assert.ok(r.w * CELL >= 0);
+  }
+});
+
+// ---------- the layout ----------
+
+test('every rectangle is well formed and inside the footprint', () => {
+  for (const storey of PLAN.rects) {
+    for (const r of storey) {
+      assert.ok(r.x1 >= r.x0 && r.y1 >= r.y0, `${r.name}: inside out`);
+      assert.equal(r.w, r.x1 - r.x0 + 1);
+      assert.equal(r.h, r.y1 - r.y0 + 1);
+      assert.ok(r.x0 >= 0 && r.y0 >= 0, `${r.name}: off the lattice`);
+      assert.ok(r.x1 < PLAN.footprint.w && r.y1 < PLAN.footprint.h, `${r.name}: past the footprint`);
+      assert.ok(r.name, 'a rectangle with no name');
+    }
+  }
+});
+
+test('no two rectangles on a storey overlap', () => {
+  for (const storey of PLAN.rects) {
+    for (let i = 0; i < storey.length; i++) {
+      for (let j = i + 1; j < storey.length; j++) {
+        const a = storey[i], b = storey[j];
+        const hit = a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
+        assert.ok(!hit, `${a.name} overlaps ${b.name}`);
+      }
+    }
+  }
+});
+
+test('the scheme is the scheme: a spine, wings off it, a stair at each end', () => {
+  assert.ok(PLAN.wings >= 1);
+  assert.equal(PLAN.spine.w, SPINE_W);
+  const ground = PLAN.rects[0];
+  const corridors = ground.filter((r) => r.kind === 'corridor');
+  assert.ok(corridors.length >= 1 + PLAN.wings, 'a spine and a corridor per wing');
+  for (let i = 0; i < PLAN.wings; i++) {
+    const halls = ground.filter((r) => r.stairHall && r.wing === i);
+    assert.equal(halls.length, 2, `wing ${i} should have a stair at each end`);
+    assert.ok(halls.some((h) => h.head), 'one of them at the head');
+  }
+  // The head stair takes the first bay on the west side, so no room starts
+  // above it.
+  for (let i = 0; i < PLAN.wings; i++) {
+    const west = ground.filter((r) => r.kind === 'room' && r.side === -1 && r.wing === i);
+    for (const r of west) assert.ok(r.y0 >= PLAN.wingY0 + HEAD_STAIR_W, `${r.name} is on top of the head stair`);
+  }
+});
+
+test('every room the program asked for is somewhere in the plan', () => {
+  assert.deepEqual(PLAN.unplaced, [], 'the layout dropped a room');
+  const placed = PLAN.rects.flat().filter((r) => r.kind === 'room').length;
+  assert.ok(placed >= PLAN.program.roomCount, 'fewer rooms on the plan than in the program');
+});
+
+test('classroom numbers run in the hundreds, one hundred per storey', () => {
+  PLAN.rects.forEach((storey, s) => {
+    for (const r of storey) {
+      const m = /^Room (\d+)$/.exec(r.name || '');
+      if (!m) continue;
+      assert.equal(Math.floor(Number(m[1]) / 100), s + 1, `${r.name} is on the wrong storey`);
+    }
+  });
+});
+
+test('the same brief always lays out the same school, and a different seed does not', () => {
+  assert.deepEqual(layoutSchool(BRIEF), layoutSchool({ ...BRIEF }));
+  const other = layoutSchool({ ...BRIEF, seed: 9 });
+  assert.notDeepEqual(other.rects, PLAN.rects, 'the seed changed nothing');
+  // ...but the program it was built from is identical, which is the point:
+  // the seed rearranges the school, it does not resize it.
+  assert.deepEqual(other.program.rooms, PLAN.program.rooms);
+});
+
+test('the layout survives the whole plausible range of briefs', () => {
+  for (const students of [30, 120, 400, 900, 2400, 4000]) {
+    for (const band of ['elementary', 'middle', 'high']) {
+      for (const storeys of [1, 2, 4]) {
+        const p = layoutSchool({ students, band, storeys, seed: 3 });
+        assert.ok(p.footprint.w <= 200 && p.footprint.h <= 200,
+          `${students}/${band}/${storeys}: footprint ${p.footprint.w}x${p.footprint.h} off the lattice`);
+        // Rooms may be left over only when the brief asked for more building
+        // than the lattice can hold, and then it says so.
+        if (p.unplaced.length) {
+          assert.ok(p.oversize, `${students}/${band}/${storeys}: rooms dropped without saying so`);
+        }
+        assert.ok(p.storeys <= MAX_FLOORS);
+      }
+    }
+  }
+});
+
+// ---------- the design it writes ----------
+
+test('the state is an ordinary state, with no generator marker on it', () => {
+  assert.equal(SCHOOL.generated, undefined, 'generate-then-edit is sacred');
+  assert.equal(SCHOOL.currentFloor, 0);
+  assert.equal(SCHOOL.floors.length, BRIEF.storeys);
+  const raw = JSON.parse(serialize(SCHOOL));
+  for (const key of Object.keys(raw)) {
+    assert.ok(['version', 'cellFt', 'floorHt', 'w', 'h', 'floors', 'currentFloor', 'props',
+      'links', 'env', 'roof', 'terrain', 'site', 'life', 'nextId'].includes(key),
+    `an unexpected field made it into the save: ${key}`);
+  }
+});
+
+test('it round-trips through save and load unchanged in every way that matters', () => {
+  const back = deserialize(serialize(SCHOOL));
+  assert.equal(back.floors.length, SCHOOL.floors.length);
+  assert.equal(back.props.length, SCHOOL.props.length);
+  assert.equal(back.links.length, SCHOOL.links.length);
+  assert.equal(buildingOccupancy(back).total, buildingOccupancy(SCHOOL).total);
+});
+
+test('every prop it places is a real catalog row on a real floor', () => {
+  assert.ok(SCHOOL.props.length > 100, 'a generated school should be furnished');
+  for (const p of SCHOOL.props) {
+    assert.ok(catalogEntry(p.type), `${p.type} is not in the catalog`);
+    assert.ok(p.floor >= 0 && p.floor < SCHOOL.floors.length);
+    assert.ok(Number.isFinite(p.x) && Number.isFinite(p.z));
+  }
+});
+
+test('every room the plan drew is a room the nav graph finds, with a name', () => {
+  for (let i = 0; i < SCHOOL.floors.length; i++) {
+    const rooms = floorRooms(SCHOOL, i).rooms;
+    assert.ok(rooms.length > 0, `no rooms on storey ${i}`);
+    for (const r of rooms) assert.ok(r.name, `an unnamed room on storey ${i}`);
+  }
+});
+
+test('the building is connected: every room can reach a way out', () => {
+  const report = buildReport(SCHOOL);
+  const stranded = report.egress.rooms.filter((r) => !r.reached);
+  assert.deepEqual(stranded.map((r) => r.name), [], 'rooms with no route to an exit');
+  assert.ok(report.egress.summary.exits >= 4, 'a school this size needs more than a couple of doors');
+});
+
+test('every storey above the ground stands entirely on the one below it', () => {
+  // The scheme guarantees this rather than checking it — see the note on
+  // building the storeys out solid in generate.js — so this is the assertion
+  // that the guarantee is real.
+  for (const students of [120, 600, 1400, 2400]) {
+    for (const storeys of [2, 3, 4]) {
+      const s = buildSchool({ students, band: 'high', storeys, seed: 2 });
+      const o = buildingOverhang(s);
+      assert.equal(o.cells, 0, `${students}/${storeys}: ${o.area} ft² hanging in the air`);
+    }
+  }
+});
+
+test('the upper storeys are reachable, and reachable without stairs', () => {
+  const report = buildReport(SCHOOL);
+  assert.ok(report.nav.links >= 2, 'no vertical circulation');
+  assert.equal(report.accessible.summary.unreachable, 0,
+    'a generated school should have a lift that reaches every storey');
+});
+
+test('the occupant load it produces is in the right country for the enrollment', () => {
+  // An IBC occupant load is a maximum, not a roll call — it comes out around
+  // twice the enrollment for a school, and a generator that produced a
+  // building holding a tenth of its students has laid out the wrong thing.
+  const occ = buildingOccupancy(SCHOOL);
+  assert.ok(occ.total > BRIEF.students, `${occ.total} for ${BRIEF.students} students is too small`);
+  assert.ok(occ.total < BRIEF.students * 5, `${occ.total} for ${BRIEF.students} students is absurd`);
+  assert.equal(occ.unnamed, 0, 'the generator should not leave a room unnamed');
+});
+
+test('the exterior wall has windows in it and doors through it', () => {
+  const doors = exteriorDoors(SCHOOL);
+  assert.ok(doors >= 4, `only ${doors} doors to the outside`);
+  const f = SCHOOL.floors[0];
+  let windows = 0;
+  for (let y = 0; y <= f.h; y++) {
+    for (let x = 0; x < f.w; x++) if (f.edgesH[edgeHIdx(f, x, y)] === EDGE_WINDOW) windows++;
+  }
+  for (let y = 0; y < f.h; y++) {
+    for (let x = 0; x <= f.w; x++) if (f.edgesV[edgeVIdx(f, x, y)] === EDGE_WINDOW) windows++;
+  }
+  assert.ok(windows > 20, `only ${windows} window bays on the ground floor`);
+});
+
+test('every room has a way into it', () => {
+  // Not through the graph — off the plan, edge by edge, so a room whose only
+  // door opened into the next classroom would be caught here rather than as a
+  // routing oddity three readers downstream.
+  for (let i = 0; i < SCHOOL.floors.length; i++) {
+    const f = SCHOOL.floors[i];
+    for (const room of floorRooms(SCHOOL, i).rooms) {
+      if (room.rep !== 'grid') continue;
+      let doors = 0;
+      for (let y = 0; y < f.h; y++) {
+        for (let x = 0; x < f.w; x++) {
+          if (!getCell(f, x, y)) continue;
+          const cell = f.cells[y * f.w + x];
+          if (cell.room !== room.name) continue;
+          for (const v of [
+            f.edgesH[edgeHIdx(f, x, y)], f.edgesH[edgeHIdx(f, x, y + 1)],
+            f.edgesV[edgeVIdx(f, x, y)], f.edgesV[edgeVIdx(f, x + 1, y)],
+          ]) if (isDoorEdge(v)) doors++;
+        }
+      }
+      assert.ok(doors > 0, `${room.name} on storey ${i} has no door`);
+    }
+  }
+});
+
+test('the blueprint can draw it', () => {
+  const plan = computeFloorPlan(SCHOOL, 0);
+  assert.ok(plan, 'no plan came back');
+  // A generated school is all lattice rooms, so the plan's polygon list is
+  // empty by construction and the walls and the labels are what it drew.
+  assert.ok(plan.walls.length > 50, 'a plan with no walls in it');
+  assert.ok(plan.gridLabels.length > 10, 'a plan with no room labels on it');
+  assert.ok(plan.doors.length > 20, 'a plan with no openings in it');
+});
+
+test('a brief written as a sentence generates the school it describes', () => {
+  const { brief } = parseBrief('a single-storey elementary school for 400 students with no gym');
+  const s = buildSchool(brief);
+  assert.equal(s.floors.length, 1);
+  const names = floorRooms(s, 0).rooms.map((r) => r.name);
+  assert.ok(!names.some((n) => /gym/i.test(n)), 'it built a gym nobody asked for');
+  assert.ok(names.some((n) => /kindergarten|room 1/i.test(n)), 'no classrooms');
+});
+
+test('turning the site off leaves the building and nothing round it', () => {
+  const withSite = buildSchool({ ...BRIEF, site: true });
+  const without = buildSchool({ ...BRIEF, site: false });
+  assert.ok(withSite.site && withSite.site.regions.length > 4);
+  assert.ok(!without.site || !without.site.regions.length);
+  assert.equal(without.floors.length, withSite.floors.length);
+});
+
+test('the population it sets matches the enrollment it was asked for', () => {
+  assert.ok(SCHOOL.life, 'no population settings');
+  assert.equal(SCHOOL.life.seed, BRIEF.seed);
+  assert.ok(SCHOOL.life.students > 0 && SCHOOL.life.students <= BRIEF.students);
+});
+
+test('generationSummary reports what was actually built', () => {
+  const sum = generationSummary(PLAN, SCHOOL);
+  assert.equal(sum.students, BRIEF.students);
+  assert.equal(sum.storeys, BRIEF.storeys);
+  assert.equal(sum.props, SCHOOL.props.length);
+  assert.equal(sum.links, SCHOOL.links.length);
+  assert.ok(sum.exits >= 4);
+  assert.deepEqual(sum.unplaced, []);
+  assert.ok(sum.footprintFt.w > 100 && sum.footprintFt.d > 100);
+});
+
+test('a whole sweep of briefs builds something the report can read', () => {
+  for (const students of [120, 600, 1600]) {
+    for (const storeys of [1, 3]) {
+      const s = buildSchool({ students, band: 'high', storeys, seed: 5, site: false });
+      const r = buildReport(s);
+      assert.ok(r.summary.rooms > 0);
+      assert.equal(r.egress.rooms.filter((x) => !x.reached).length, 0,
+        `${students}/${storeys}: stranded rooms`);
+      assert.ok(navSummary(buildNav(s)).exits > 0);
+    }
+  }
+});

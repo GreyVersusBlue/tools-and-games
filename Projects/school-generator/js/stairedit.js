@@ -134,7 +134,7 @@ export function initStairEdit({ getState, renderApi, host }) {
       ghostGroup.visible = true;
       ghostGroup.position.set(hover.x, baseY() - 0.3, hover.z);
       ghostGroup.rotation.y = pendingRotationY;
-      ghostPlane.scale.set(box.x1 - box.x0, box.z1 - box.z0, 1);
+      ghostPlane.scale.set(box.x1 - box.x0, 1, box.z1 - box.z0);
       // The footprint runs from the bottom of the stair forward, so its centre
       // isn't the placement point — a stair is placed by the step you take first.
       ghostPlane.position.set((box.x0 + box.x1) / 2, 0, (box.z0 + box.z1) / 2);
