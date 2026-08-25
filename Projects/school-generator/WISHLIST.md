@@ -42,7 +42,13 @@ Phase 6 adds the three that put people in it: `js/navgraph.js` (rooms as hubs,
 doorways as portals, stairs as links, and A* over the lot), `js/schedule.js`
 (the school day as five numbers, the blocks they imply, and the bells that mark
 them) and `js/agents.js` (a seeded population with timetables, steered by the
-graph and resolved by `collide.js`'s walker).)
+graph and resolved by `collide.js`'s walker). Phase 7 adds five that store
+nothing at all — `js/occupancy.js` (what a room is for, and how many people
+that allows), `js/egress.js` (how far to the door, how wide the door is, and
+what a wheelchair can reach), `js/daylight.js` (glass over floor),
+`js/takeoff.js` (what the building is made of) and `js/report.js` (all of them
+at once, sorted worst-first) — plus one panel and no new save version, because
+an analysis is a reading of the model rather than a part of it.)
 
 - **Units are feet, everywhere.** 4ft grid cells (`CELL`), 10ft walls
   (`WALL_H`), 12ft floor-to-floor (`FLOOR_H`), max 8 storeys. Props, polygon
@@ -1103,29 +1109,162 @@ route across, and `groundAt` already tells it what height it is at.
   lockers and the PA works; a school where people use them is a different
   project, and a delightful one.
 
-## Phase 7 — Analysis & rigor
+## Phase 7 — Analysis & rigor ✅
 
-The tool starts answering "is this a *good* school building?"
+The tool starts answering "is this a *good* school building?" **Done** — five
+new pure modules (`js/occupancy.js`, `js/egress.js`, `js/daylight.js`,
+`js/takeoff.js`, `js/report.js`), one new panel, one new option on `buildNav`,
+occupant loads on the plan sheet, a CSV of every number the tool knows, 87 new
+tests — and no save-format change at all, because none of this is stored.
 
-- [ ] Egress checks: travel distance to the nearest exit from any point,
+- [x] Egress checks: travel distance to the nearest exit from any point,
   door widths against occupancy, dead-end corridor detection — all
   computable from the same model the blueprint reads, and now continuing past
   the door onto Phase 5's walks (a discharge route is a site question).
-- [ ] ADA/accessible routes: can a wheelchair (no stairs, ramp/elevator
+- [x] ADA/accessible routes: can a wheelchair (no stairs, ramp/elevator
   links only, door widths) reach every room? Phase 2's ramps and elevators
   make the answer sometimes-yes.
-- [ ] Capacity: per-room occupancy from area and room label; a roll-up per
+- [x] Capacity: per-room occupancy from area and room label; a roll-up per
   floor and building.
-- [ ] Cost / bill of materials: walls by the foot, glass by the bay, props
+- [x] Cost / bill of materials: walls by the foot, glass by the bay, props
   by the row, paving by the square foot — a spreadsheet-ish export beside the
   blueprint. `finishSchedule` and `siteSchedule` already do the arithmetic;
   this is the reader that prints it.
-- [ ] Daylight and acoustics first passes: window area per room area,
+- [x] Daylight and acoustics first passes: window area per room area,
   reverb estimates from volume — honest approximations, labeled as such.
 
 *Leans on:* `computeFloorPlan`'s model-not-pixels approach — every analysis
 is another pure reader over the same state, and belongs in a headless
 module with tests, per the house rule.
+
+### How it actually landed
+
+- **The phase was mostly reading.** The build order's claim — that every check
+  already had its data — held almost exactly. `egressField` was written in
+  Phase 6 with a comment saying Phase 7 would want it; `roomsOnFloor` was
+  written in Phase 4 with a comment saying the same; `finishSchedule` and
+  `siteSchedule` both say it in as many words. Four of the five modules are a
+  loop over something that existed, and the fifth is the one option nobody had
+  written yet. A phase that spends its time on presentation rather than on
+  plumbing is what a well-stocked larder buys.
+- **Cost is not distance, and a code limit is written in feet.** The graph
+  charges a stair at 1.7× its length plus eight feet a storey, which is the
+  right way to *choose* a route and the wrong number to compare with a 250ft
+  travel limit. Every edge now carries both — `cost` to route on, `dist` to
+  report — and `egressField` takes `{ metric: true }`. Room 201 in the sample
+  school went from an alarming 312 "cost feet" to a true 260, which is still
+  ten feet over the limit and now for a reason somebody can pace out.
+- **The accessible route really was one option.** `buildNav(state, {
+  accessible: true })` skips stair links and doorways under three feet, and
+  everything downstream — reachability, which rooms are stranded, whether the
+  upper storey is on a route at all — is the same reader run against a smaller
+  graph. Take the sample school's lift out and Level 2 turns stairs-only in a
+  single line of output.
+- **A finding is a sentence, not a boolean.** Every check reports which rule it
+  applied, what it measured and what the limit was: *"437 occupants need 87 in
+  of clear exit width; the doors provide 76 in, which carries 380."* That was
+  a presentation decision at first and turned into a design constraint — a
+  check that can't say why it fired doesn't get written, which is why there is
+  no scoring, no grade and no single number for how good the building is.
+- **The sample school fails its own report, and every failure is real.** Two
+  doors for 437 people, a classroom 260ft from the nearest one, 48 inches of
+  stair for a storey that needs 65, and thirteen rooms over the ANSI
+  reverberation limit. Phase 6 already knew: the fire drill's stragglers and
+  the travel-distance table are the same finding twice, one of them walked and
+  one of them measured.
+- **The takeoff prices the plan's own geometry.** `floorTakeoff` calls
+  `computeFloorPlan` rather than re-walking the walls, so the wall the drawing
+  prints is the wall the schedule prices, by construction — the same bargain
+  `solidSpans` struck between the collider and the plan two arcs ago. It cost
+  one small addition: an opening now carries its height, so glass can be
+  bought by the square foot.
+- **The classification is a guess made out loud.** A room's occupant load
+  comes from the name somebody typed, so the table is ordered specific-first,
+  every row reports the factor it used, and a room nobody named is counted at
+  100 ft² a head and *listed* as unnamed rather than folded silently into the
+  total. The alternative — defaulting an unnamed room to "classroom" — fills a
+  building with occupants nobody put there.
+
+### What fought back
+
+- **Counting the corridors doubles the school.** A hall's occupants are the
+  classrooms' occupants walking through it, and an occupant load that adds
+  both is wrong by a factor approaching two in a building that is mostly
+  corridor. Circulation and restrooms carry a factor of zero, which is the
+  single most load-bearing line in the use table and the one that looks most
+  like an oversight.
+- **"Storeroom" contains "room" and "Learning Commons" contains "commons".**
+  Name matching is a table walked in order, and the order is the design:
+  storage above classroom, library above assembly, and a classroom matching a
+  room *number* rather than the bare word. Three real school room names broke
+  three different orderings before it settled.
+- **Door width almost never fails, and door count almost always does.** At
+  0.2in per occupant, 32 inches of clear door carries 160 people — so a
+  classroom of eighty with one 3ft door is comfortably legal on width and
+  plainly illegal on count. The first version of the test assumed one rule and
+  asserted the other; two separate findings now say so separately.
+- **A portal graph has no idea what a dead end is.** The definition that
+  worked is *onward portals*: the neighbours through which the exit is closer
+  than it is from here. Two of them is a corridor with a choice at each end;
+  exactly one is a pocket, and its depth is the farthest point in it measured
+  from that one way out. It finds the sample school's upper hall at 97 feet,
+  which is exactly right and took three wrong definitions to reach.
+- **One room, two names.** `acoustics.js` calls a room `s7` or `g0:184` and
+  predates the graph; `navgraph.js` calls the same room `r0:s7` or `r0:g184`.
+  The parts are identical — a shape's id, or a region's lowest cell — so the
+  join is a string rewrite, but it is a string rewrite in the middle of a
+  report, and the comment explaining it is longer than the code.
+- **Grid rooms have no identity, still.** Measuring how far it is across a
+  lattice room means rebuilding the room's own cell list out of `cellRoom`,
+  because `floorRooms` returns a count and not the cells. The v1
+  retrospective's standing tax, collected again, in a phase that never touches
+  the editor.
+- **A report is the most derived thing in the codebase.** A graph, a load per
+  room, a multi-source Dijkstra, a reverberation estimate per room and a
+  takeoff over every wall — about sixty milliseconds on the sample school, and
+  wrong the instant a wall moves. Rebuilding on every frame of a drag is
+  absurd; leaving a stale number on screen is worse than showing nothing. An
+  edit marks it stale, the badge says so, and the rebuild lands half a second
+  after the drawing hand stops.
+
+### Deliberately left for later
+
+- **The discharge route stops at the door.** `navgraph.js` flattens the whole
+  outdoors into one node, so a route out ends at the exit and a muster point
+  45ft beyond it — which is fine for a drill and not the *exit discharge* a
+  code means, where the walk from the door to the public way is measured over
+  Phase 5's walks. The site has regions and a heightfield; nothing yet routes
+  across them.
+- **No prices, on purpose.** The takeoff counts what is drawn and stops there.
+  Unit costs are local, dated and trade-by-trade, and a tool that guessed at
+  them would be wrong in a way that looks authoritative. Quantities are the
+  honest half, and they are the half a spreadsheet wants.
+- **Daylight is a glazing ratio, not a daylight factor.** Nothing here knows
+  about orientation, overhangs, the roof, or room depth from the window —
+  Phase 3's sky model could answer the first three, and the answer would still
+  be a simulation rather than a reading. The 2.5×-head-height depth rule is
+  the obvious next honest approximation.
+- **Common path of egress travel is a constant that nothing measures.** The
+  number is in the limits table and no check uses it: measuring where two
+  directions of travel become available needs distances *inside* a room, which
+  is the nav mesh Phase 6 also wanted and did not build.
+- **The crowd doesn't know the occupant load.** `life.students` is still a
+  slider; the report now knows the building holds 437, and populating it with
+  exactly that many is one line and a nice idea. Nothing yet cross-checks the
+  fire drill's stragglers against the travel-distance table either, though
+  they are the same building failing the same way.
+- **Accessibility stops at routes.** Doorway clear width and stairs, yes;
+  turning circles at fixtures, reach ranges, counter heights, the 60in circle
+  a restroom needs — no. The catalog has the props and the model has no notion
+  of clearance around one.
+- **The report doesn't print.** The CSV is the export, and a title-block code
+  panel on the blueprint — occupant load, exits, travel distance, per storey —
+  is the natural other half of the occupancy tags this phase put on the plan.
+- **Sprinklered is a checkbox, not a property of the design.** It changes the
+  limits and is not saved, because nothing else about the analysis is saved
+  either. The first thing that genuinely belongs *in* the file — a code
+  edition, an occupancy group, a design occupant load somebody typed — is what
+  would open save v9.
 
 ## Phase 8 — Generation & AI
 
@@ -1181,23 +1320,23 @@ Each item here prices the no-build-step, no-deps stance explicitly.
 
 ## Suggested build order
 
-Phases 1 through 6 are done. Phase 7 (analysis & rigor) is next by the default
-ordering, and it is the phase everything so far has been quietly stocking a
-larder for. Every check it asks for already has its data: egress distance is
-`egressField` with a number printed instead of a route walked; door widths are
-on every portal; capacity is `roomsOnFloor` plus a rule per label; the bill of
-materials is `finishSchedule` and `siteSchedule` with a reader in front of
-them; daylight is window area over floor area, and both are already computed.
-The one genuinely new thing is the accessible-route check, which is the same
-A* as Phase 6's with stairs taken out of the graph — one option on `buildNav`.
+Phases 1 through 7 are done. Phase 8 (generation & AI) is next by the default
+ordering, and analysis turns out to have been the right thing to build in front
+of it: a generator needs to know when it has produced something bad, and it now
+has a reader that says so in sentences. Seed a plan, run the report, move a
+door, run it again — that loop is the whole of parametric design, and both
+halves of it now exist.
 
-It is also the phase that turns Phase 6's findings into findings. A fire drill
-that strands somebody is currently a number in a panel; egress analysis is that
-number with a reason, a distance and a room name attached.
+What Phase 7 leaves for the generator specifically: occupant load per room is
+the sizing rule a wing should be laid out from (a school for 600 needs *this*
+much classroom and *this* many exits, and both numbers are one call away);
+travel distance is the constraint that decides where a second stair goes; and
+the takeoff is how two generated schemes get compared without anybody walking
+either of them.
 
-Phases 7–10 are ordered analysis → generation → sharing → play: each band leans
-on the ones before it (analysis needs ramps and elevators; generation needs
-templates worth stamping, a site to put the building on, and now a crowd to
-size it for). But the ordering is a default, not a law — phase 9's smaller
-items (glTF import, the minimap, guided tours) are self-contained enough to
-pull forward whenever one is wanted.
+Phases 8–10 are ordered generation → sharing → play: each band leans on the
+ones before it (generation needs templates worth stamping, a site to put the
+building on, a crowd to size it for, and now a way to score what it produced).
+But the ordering is a default, not a law — phase 9's smaller items (glTF
+import, the minimap, guided tours) are self-contained enough to pull forward
+whenever one is wanted.
