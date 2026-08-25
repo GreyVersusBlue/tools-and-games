@@ -11,8 +11,9 @@ import { buildSampleSchool } from './sample.js';
 import { catalogByCategory } from './catalog.js';
 import { ROOM_TEMPLATES } from './templates.js';
 import { initRender } from './render.js';
-import { initEditor, WALL_KINDS } from './editor.js';
-import { stairMetrics, linksFrom } from './stairs.js';
+import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
+import { stairMetrics, linksFrom, elevatorsOn, RAMP_SLOPES } from './stairs.js';
+import { FLOOR_FINISHES, DEFAULT_FINISH } from './finish.js';
 import { initWalkthrough } from './walkthrough.js';
 import {
   downloadSave, loadFromFile, autosave, autosaveNow, loadAutosave, clearAutosave,
@@ -84,6 +85,10 @@ const editor = initEditor({
 const walkHud = $('walk-hud');
 const walk = initWalkthrough(renderApi.walkCamera, canvas, {
   onHud: (text) => { walkHud.textContent = text; },
+  // The leaves the walker is being stopped by are the leaves the renderer
+  // poses. Neither side describes a door to the other — they're the same
+  // objects, matched by openings.js's keys.
+  onDoors: (leaves) => renderApi.poseDoors(leaves),
 });
 
 // --- touch walkthrough controls ---
@@ -131,6 +136,11 @@ const touchJumpBtn = $('touch-jump');
 touchJumpBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); walk.touchKey('Space', true); });
 touchJumpBtn.addEventListener('pointerup', () => walk.touchKey('Space', false));
 touchJumpBtn.addEventListener('pointercancel', () => walk.touchKey('Space', false));
+
+// The elevator button is the touch equivalent of E: a no-op anywhere but
+// inside a car, which is why it can sit on screen all the time.
+const touchLiftBtn = $('touch-lift');
+touchLiftBtn.addEventListener('click', () => walk.rideElevator());
 
 const touchSprintBtn = $('touch-sprint');
 let touchSprintOn = false;
@@ -211,14 +221,14 @@ const TOOL_KEYS = {
 };
 const HINTS = {
   floor: 'Floor — click / drag to lay floor tiles',
-  wall: 'Wall — drag along cell edges, or click a polygon wall to raise it. G switches between solid, glass and railing.',
-  door: 'Door — click a wall edge, or anywhere along a polygon wall',
-  room: 'Room — pick a name & color, then click a floor area to label it',
+  wall: 'Wall — drag along cell edges, or click a polygon wall to raise it. G switches between solid, glass and railing; , and . curve a polygon wall into an arc.',
+  door: 'Door — pick single, double, cased opening or window, then click a wall edge or anywhere along a polygon wall. Clicking the same kind again removes it.',
+  room: 'Room — pick a name, color, floor finish and wall paint, then click a floor area to apply them',
   erase: 'Eraser — drag to remove walls, doors, and floor; click a polygon room to delete it',
   poly: 'Polygon — click to place corners, click the first one (or Enter) to close. Alt = ignore snapping, Shift = 15° steps.',
   vertex: 'Shape — click a room to select it, Shift-click to select several. Drag a corner, Alt-click removes one. Delete removes the selection, R/⇧R rotates it 90°, M mirrors it, Ctrl+C/V/D copy/paste/duplicate it (with any props inside).',
   prop: 'Furniture — pick a piece, click to place. Click/drag a piece to move it, drag empty space to box-select. R rotates, Delete removes, Ctrl+C/V/D copy/paste/duplicate.',
-  stair: 'Stairs — click to place a run up to the next level, which cuts its own opening in that floor. R rotates, drag to move, Delete removes.',
+  stair: 'Vertical — stairs, ramps, elevators and plain floor openings. Click to place one up to the next level. R rotates, drag to move, Delete removes.',
   template: 'Layout — pick a preset, click to stamp its whole furniture list at once. R/⇧R rotates it before you place it.',
 };
 
@@ -235,6 +245,7 @@ function selectTool(t) {
   $('poly-extra').classList.toggle('hidden', t !== 'poly');
   $('prop-panel').classList.toggle('hidden', t !== 'prop');
   $('wall-panel').classList.toggle('hidden', t !== 'wall');
+  $('door-panel').classList.toggle('hidden', t !== 'door');
   $('stair-panel').classList.toggle('hidden', t !== 'stair');
   $('template-panel').classList.toggle('hidden', t !== 'template');
   if (t === 'stair') renderStairReadout();
@@ -272,6 +283,50 @@ ROOM_COLORS.forEach((c, i) => {
 });
 $('room-name').value = editor.roomName;
 $('room-name').addEventListener('input', (e) => editor.setRoom(e.target.value, editor.roomColor));
+
+// --- room finishes ---
+// The label tint above says which wing a room is in; these say what it's made
+// of. Two different questions, so two different controls — and the plan's
+// finish schedule reads the second one, never the first.
+const roomFinish = $('room-finish');
+FLOOR_FINISHES.forEach((f) => {
+  const o = document.createElement('option');
+  o.value = f.key;
+  o.textContent = f.label;
+  roomFinish.appendChild(o);
+});
+roomFinish.value = DEFAULT_FINISH;
+roomFinish.addEventListener('change', (e) => {
+  editor.setRoomFinish(e.target.value, undefined);
+  $('status').textContent =
+    `Room — click a floor area to lay ${e.target.selectedOptions[0].textContent.toLowerCase()}.`;
+});
+
+// Paint. The first swatch is "none", which is not a colour but the absence of
+// one: it clears the field so the room renders in the default off-white the
+// scene has always used, rather than being painted off-white.
+const PAINTS = [null, '#e9e6df', '#dfe7ea', '#e6e3ee', '#e9e4d6',
+  '#d7e3d5', '#f0dcd8', '#cfd6dd', '#c9d8d2'];
+const paintSwatches = $('paint-swatches');
+PAINTS.forEach((c, i) => {
+  const b = document.createElement('button');
+  b.className = 'swatch' + (i === 0 ? ' active' : '');
+  b.style.background = c || 'transparent';
+  if (!c) b.style.border = '1px dashed rgba(255,255,255,0.45)';
+  b.title = c || 'Default paint';
+  b.setAttribute('aria-label', c ? `Wall paint ${c}` : 'Default wall paint');
+  b.setAttribute('aria-pressed', String(i === 0));
+  b.addEventListener('click', () => {
+    paintSwatches.querySelectorAll('.swatch').forEach((sw) => {
+      sw.classList.remove('active');
+      sw.setAttribute('aria-pressed', 'false');
+    });
+    b.classList.add('active');
+    b.setAttribute('aria-pressed', 'true');
+    editor.setRoomFinish(undefined, c);
+  });
+  paintSwatches.appendChild(b);
+});
 
 // --- prop palette ---
 // One button per catalog entry, grouped under its category — parallel to the
@@ -401,9 +456,66 @@ function cycleWallKind() {
   $('status').textContent = `Wall — building ${next.label.toLowerCase()}. G cycles.`;
 }
 
+// --- door panel ---
+// The door tool cuts one of four things, and the options under them only apply
+// to some of those — a window has no push bar, a cased opening has no hand —
+// so the panel hides what the current kind can't use rather than offering
+// controls that quietly do nothing.
+const doorKinds = $('door-kinds');
+function renderDoorKinds() {
+  const kind = editor.doorKind;
+  doorKinds.querySelectorAll('.kind-item').forEach((b) => {
+    const on = b.dataset.kind === kind;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  const opts = editor.doorOpts;
+  const isWindow = kind === 'window';
+  const hasLeaf = kind === 'single' || kind === 'double';
+  $('door-lite').parentElement.hidden = kind !== 'single';
+  $('door-bar').parentElement.hidden = kind !== 'single';
+  document.querySelector('#door-opts .flip').hidden = !hasLeaf;
+  $('door-sill-row').hidden = !isWindow;
+  $('door-lite').checked = !!opts.lite;
+  $('door-bar').checked = !!opts.bar;
+  $('door-sill').value = String(opts.sill);
+  $('door-hand').textContent = `Hinge: ${opts.hand === 1 ? 'left' : 'right'}`;
+  $('door-swing').textContent = `Swing: ${opts.sw === 1 ? 'left' : 'right'}`;
+}
+DOOR_KINDS.forEach((k) => {
+  const b = document.createElement('button');
+  b.className = 'kind-item';
+  b.dataset.kind = k.kind;
+  b.innerHTML = `<span class="icon">${k.icon}</span>${k.label}`;
+  b.addEventListener('click', () => { editor.setDoorKind(k.kind); renderDoorKinds(); });
+  doorKinds.appendChild(b);
+});
+$('door-lite').addEventListener('change', (e) => {
+  editor.setDoorOpts({ lite: e.target.checked });
+});
+$('door-bar').addEventListener('change', (e) => {
+  editor.setDoorOpts({ bar: e.target.checked });
+});
+$('door-hand').addEventListener('click', () => {
+  editor.setDoorOpts({ hand: editor.doorOpts.hand === 1 ? -1 : 1 });
+  renderDoorKinds();
+});
+$('door-swing').addEventListener('click', () => {
+  editor.setDoorOpts({ sw: editor.doorOpts.sw === 1 ? -1 : 1 });
+  renderDoorKinds();
+});
+$('door-sill').addEventListener('change', (e) => {
+  const v = Number(e.target.value);
+  editor.setDoorOpts({ sill: Number.isFinite(v) ? Math.min(9, Math.max(0, v)) : 3 });
+  renderDoorKinds();
+});
+renderDoorKinds();
+
 // --- stairs panel ---
 const STAIR_KINDS = [
   { type: 'stair', icon: '🪜', label: 'Staircase' },
+  { type: 'ramp', icon: '📐', label: 'Ramp' },
+  { type: 'elevator', icon: '🛗', label: 'Elevator' },
   { type: 'opening', icon: '⬛', label: 'Floor opening' },
 ];
 const stairKinds = $('stair-kinds');
@@ -430,17 +542,38 @@ renderStairKinds();
 function renderStairReadout() {
   const m = stairMetrics(state);
   const here = linksFrom(state, state.currentFloor);
-  const stairs = here.filter((l) => l.type === 'stair').length;
-  const holes = here.length - stairs;
   const above = state.floors[state.currentFloor + 1];
+  const count = (t) => here.filter((l) => l.type === t).length;
   const tally = [
-    stairs ? `${stairs} stair${stairs === 1 ? '' : 's'}` : null,
-    holes ? `${holes} opening${holes === 1 ? '' : 's'}` : null,
+    count('stair') ? `${count('stair')} stair${count('stair') === 1 ? '' : 's'}` : null,
+    count('ramp') ? `${count('ramp')} ramp${count('ramp') === 1 ? '' : 's'}` : null,
+    elevatorsOn(state, state.currentFloor).length
+      ? `${elevatorsOn(state, state.currentFloor).length} lift(s)` : null,
+    count('opening') ? `${count('opening')} opening${count('opening') === 1 ? '' : 's'}` : null,
   ].filter(Boolean).join(' · ');
-  $('stair-readout').innerHTML =
-    `${m.steps} risers at ${(m.riser * 12).toFixed(1)}in · ${m.run.toFixed(1)}ft of run<br />` +
+
+  // Each kind's own headline number — the one that decides whether it fits the
+  // room you meant to put it in. For a ramp that number is uncomfortable on
+  // purpose: a 12ft rise at the ADA maximum of 1:12 is 144ft of run, and a
+  // tool that quietly steepened it to something that fits would be lying about
+  // whether the route is accessible.
+  let head;
+  if (editor.stairType === 'ramp') {
+    const run = m.rise * RAMP_SLOPES[0];
+    head = `1:${RAMP_SLOPES[0]} over a ${m.rise}ft rise · ${run.toFixed(0)}ft of run<br />` +
+      '<em>An elevator is the usual accessible route between storeys.</em>';
+  } else if (editor.stairType === 'elevator') {
+    head = 'Car stands on both levels · press <kbd>E</kbd> inside it to ride<br />' +
+      'Cuts no hole — you arrive on the slab above.';
+  } else if (editor.stairType === 'opening') {
+    head = 'A hole in the level above, railed all round.';
+  } else {
+    head = `${m.steps} risers at ${(m.riser * 12).toFixed(1)}in · ${m.run.toFixed(1)}ft of run`;
+  }
+
+  $('stair-readout').innerHTML = `${head}<br />` +
     (above
-      ? `Rises to ${floorLabel(state.currentFloor + 1)}` + (tally ? `<br />${tally} here` : '')
+      ? `Serves ${floorLabel(state.currentFloor + 1)}` + (tally ? `<br />${tally} here` : '')
       : 'Nothing above this level yet — add one first.');
 }
 
@@ -662,7 +795,11 @@ function exportScope() {
 }
 
 function exportOpts() {
-  return { showDimensions: $('export-dims').checked, showFurniture: $('export-furniture').checked };
+  return {
+    showDimensions: $('export-dims').checked,
+    showFurniture: $('export-furniture').checked,
+    showFinishes: $('export-finishes').checked,
+  };
 }
 
 $('export-btn').addEventListener('click', () => openModal(exportOverlay));

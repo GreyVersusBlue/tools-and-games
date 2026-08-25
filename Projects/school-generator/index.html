@@ -106,15 +106,35 @@
     .swatch { aspect-ratio: 1; border-radius: 6px; border: 2px solid transparent; padding: 0; }
     .swatch.active { border-color: #fff; }
 
-    /* wall & stair panels — same slot and look as the room panel */
-    #wall-panel, #stair-panel {
+    /* wall, door & stair panels — same slot and look as the room panel */
+    #wall-panel, #stair-panel, #door-panel {
       position: fixed; left: 114px; top: 74px;
       padding: 12px; z-index: 10; width: 196px;
     }
-    #wall-panel label, #stair-panel label {
+    #wall-panel label, #stair-panel label, #door-panel > label {
       display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 6px;
     }
-    #wall-kinds, #stair-kinds { display: flex; flex-direction: column; gap: 4px; }
+    #wall-kinds, #stair-kinds, #door-kinds { display: flex; flex-direction: column; gap: 4px; }
+    /* door options: checkboxes and the two hand toggles */
+    #door-opts { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+    #door-opts label.opt {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--text-dim); margin: 0; cursor: pointer;
+    }
+    #door-opts input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; }
+    #door-opts .flip { display: flex; gap: 4px; }
+    #door-opts .flip button {
+      flex: 1; font-size: 11px; padding: 4px 2px;
+      background: rgba(255, 255, 255, 0.06); border: 1px solid var(--panel-border);
+      border-radius: 5px; color: var(--text-dim); cursor: pointer;
+    }
+    #door-opts .flip button:hover { color: var(--text); }
+    #door-sill-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
+    #door-sill { width: 56px; }
+    /* room finishes */
+    #finish-row { margin-top: 12px; }
+    #room-finish { width: 100%; }
+    #paint-swatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
     .kind-item {
       display: flex; align-items: center; gap: 8px;
       justify-content: flex-start; width: 100%; font-size: 12px; padding: 6px 8px;
@@ -122,7 +142,7 @@
     }
     .kind-item .icon { font-size: 15px; line-height: 1; width: 16px; text-align: center; }
     .kind-item.active { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
-    #wall-panel .keys, #stair-panel .keys {
+    #wall-panel .keys, #stair-panel .keys, #door-panel .keys {
       margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
       font-size: 10.5px; line-height: 1.7; color: var(--text-dim);
     }
@@ -343,6 +363,7 @@
     body[data-mode="walk"] #toolbar,
     body[data-mode="walk"] #room-panel,
     body[data-mode="walk"] #wall-panel,
+    body[data-mode="walk"] #door-panel,
     body[data-mode="walk"] #stair-panel,
     body[data-mode="walk"] #prop-panel,
     body[data-mode="walk"] #template-panel,
@@ -405,8 +426,14 @@
   <div id="room-panel" class="panel hidden">
     <label for="room-name">Room name</label>
     <input id="room-name" type="text" maxlength="40" value="Room 101" />
-    <label>Color</label>
+    <label>Label color</label>
     <div id="swatches"></div>
+    <div id="finish-row">
+      <label for="room-finish">Floor finish</label>
+      <select id="room-finish"></select>
+      <label for="paint-swatches" style="margin-top:10px">Wall paint</label>
+      <div id="paint-swatches"></div>
+    </div>
     <div id="poly-extra" class="hidden">
       <button id="hole-btn" type="button" aria-pressed="false" title="Draw inside a room to carve an opening (H)">✂︎ Cut hole (H)</button>
       <div class="keys">
@@ -421,9 +448,37 @@
     <label>Wall type</label>
     <div id="wall-kinds"></div>
     <div class="keys">
-      <kbd>G</kbd> cycle type<br />
+      <kbd>G</kbd> cycle type &nbsp; <kbd>,</kbd> <kbd>.</kbd> curve<br />
       Glass and railings bound a room the same way a solid wall does — a
-      doorway through one is still a doorway.
+      doorway through one is still a doorway.<br />
+      Point at a <em>polygon</em> wall and press <kbd>,</kbd> or <kbd>.</kbd> to
+      bend it into an arc; keep pressing to open or tighten the same curve.
+      Walls are drawn 0.4ft thick between two rooms and 0.8ft where the
+      building meets the outside — that's read off the plan, not set here.
+    </div>
+  </div>
+
+  <div id="door-panel" class="panel hidden">
+    <label>Opening</label>
+    <div id="door-kinds"></div>
+    <div id="door-opts">
+      <label class="opt"><input type="checkbox" id="door-lite" /> Vision lite</label>
+      <label class="opt"><input type="checkbox" id="door-bar" /> Push bar</label>
+      <div class="flip">
+        <button id="door-hand" type="button" title="Which jamb the leaf hangs on">Hinge: left</button>
+        <button id="door-swing" type="button" title="Which side the leaf swings toward">Swing: in</button>
+      </div>
+      <div id="door-sill-row">
+        <label for="door-sill" style="margin:0">Sill height</label>
+        <input id="door-sill" type="number" min="0" max="9" step="0.5" value="3" /> ft
+      </div>
+    </div>
+    <div class="keys">
+      Click a wall edge, or anywhere along a polygon wall.<br />
+      Clicking the same kind again removes it; clicking a different one swaps it.<br />
+      A window glazes the wall rather than opening it — you can see through one,
+      never walk through it. In the walkthrough, doors swing open as you come
+      and always away from you.
     </div>
   </div>
 
@@ -486,12 +541,14 @@
       <p id="walk-controls-hint">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; <kbd>Shift</kbd> sprint<br />
         <kbd>Space</kbd> jump &nbsp;·&nbsp; <kbd>F</kbd> ghost mode (no-clip, <kbd>Space</kbd>/<kbd>C</kbd> to fly)<br />
-        <kbd>Esc</kbd> release mouse
+        <kbd>E</kbd> ride the elevator you're standing in &nbsp;·&nbsp; <kbd>Esc</kbd> release mouse
       </p>
       <p>
-        Walls, glass, railings and furniture stop you; doorways don't. You start
-        on the floor you were editing — walk onto a staircase to climb it, and
-        you'll stop at the edge of a mezzanine rather than walk off it.
+        Walls, glass, railings, windows and furniture stop you; doors open as you
+        approach and shut behind you. You start on the floor you were editing —
+        walk onto a staircase or a ramp to climb it, step into an elevator and
+        press <kbd>E</kbd>, and you'll stop at the edge of a mezzanine rather
+        than walk off it.
       </p>
       <div class="row">
         <button id="walk-start" class="primary">Click to Walk</button>
@@ -526,6 +583,7 @@
       <div class="section-label">Show</div>
       <label class="opt"><input type="checkbox" id="export-dims" checked /> Dimensions</label>
       <label class="opt"><input type="checkbox" id="export-furniture" checked /> Furniture</label>
+      <label class="opt"><input type="checkbox" id="export-finishes" checked /> Floor finish schedule</label>
       <p class="hint">
         PNG downloads one image per floor. Print / Save as PDF opens your
         browser's print dialog with one page per floor — choose "Save as PDF"
@@ -550,6 +608,7 @@
     </div>
     <div id="touch-actions">
       <button id="touch-sprint" type="button" aria-pressed="false" aria-label="Toggle sprint">🏃</button>
+      <button id="touch-lift" type="button" aria-label="Ride the elevator you are standing in">🛗</button>
       <button id="touch-jump" type="button" aria-label="Jump">⤒</button>
     </div>
     <button id="touch-exit" class="panel" type="button" aria-label="Exit walkthrough">✕</button>

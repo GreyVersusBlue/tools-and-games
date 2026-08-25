@@ -14,19 +14,27 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
-  CELL, WALL_H, WALL_T, DOOR_W, DOOR_H, RAIL_H,
-  EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
+  CELL, WALL_H, WALL_T, DOOR_H, RAIL_H,
+  EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW, isDoorEdge,
   FLOOR_H, computeLabels, floorBaseY, wallHeightOf, topOfBuilding,
 } from './grid.js';
 import {
   SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt,
   shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint,
+  openingSpec,
 } from './shapes.js';
 import { catalogEntry } from './catalog.js';
 import {
-  stairMetrics, stairsOf, openingRails,
+  stairMetrics, stairsOf, openingRails, runMetrics,
+  elevatorSize, elevatorDoorWidth, elevatorsOn,
   floorCuts, inFloorCut, cellCut, stairWidth,
 } from './stairs.js';
+import { wallProbe } from './walls.js';
+import { finishEntry, wallPaint, DEFAULT_FINISH, DEFAULT_PAINT } from './finish.js';
+import {
+  collectDoorLeaves, leafAngle, mullionPositions, gridOpeningWidth,
+  gridWindowSpec, windowBand, LEAF_T, MULLION_BAY,
+} from './openings.js';
 
 // ---------- procedural textures ----------
 
@@ -68,6 +76,71 @@ function makeFloorAlbedo() {
     for (let i = 0; i <= 4; i++) {
       ctx.beginPath(); ctx.moveTo(i * tile, 0); ctx.lineTo(i * tile, S); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(0, i * tile); ctx.lineTo(S, i * tile); ctx.stroke();
+    }
+  });
+}
+
+// One albedo per floor finish. `makeFloorAlbedo` above is still what a room
+// with nothing said about it gets — VCT, and the texture this scene has always
+// laid down — and everything here is the same trick at other materials: a base
+// colour out of the finish table with a grain drawn over it. Procedural, on
+// canvas, no asset pipeline, exactly as the rest of the scene is.
+//
+// A finish costs one texture and one material, made the first time a room asks
+// for it and cached forever after, so a design with three finishes in it draws
+// three floor meshes per storey instead of one.
+function makeFinishAlbedo(entry) {
+  const base = entry.color;
+  return canvasTex(512, (ctx, S) => {
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, S, S);
+    if (entry.grain === 'tile') {
+      const n = 4, tile = S / n;
+      for (let ty = 0; ty < n; ty++) {
+        for (let tx = 0; tx < n; tx++) {
+          ctx.fillStyle = `rgba(255,255,255,${(Math.random() * 0.06).toFixed(3)})`;
+          ctx.fillRect(tx * tile, ty * tile, tile, tile);
+        }
+      }
+      speckle(ctx, S, 2200, ['rgba(255,255,255,0.30)', 'rgba(0,0,0,0.10)'], 0.4, 1.3);
+      ctx.strokeStyle = 'rgba(30,28,24,0.22)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i <= n; i++) {
+        ctx.beginPath(); ctx.moveTo(i * tile, 0); ctx.lineTo(i * tile, S); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i * tile); ctx.lineTo(S, i * tile); ctx.stroke();
+      }
+    } else if (entry.grain === 'fiber') {
+      // Carpet: a dense short-pile scatter, no seams. Loop pile does show tile
+      // joints in real life, but at 4ft per texture repeat they'd read as a
+      // grid of squares rather than as carpet.
+      speckle(ctx, S, 26000, ['rgba(255,255,255,0.11)', 'rgba(0,0,0,0.13)'], 0.4, 1.5);
+    } else if (entry.grain === 'plank') {
+      const rows = 8, hgt = S / rows;
+      for (let r = 0; r < rows; r++) {
+        const l = (Math.random() - 0.5) * 0.09;
+        ctx.fillStyle = `rgba(${l > 0 ? 255 : 0},${l > 0 ? 240 : 20},${l > 0 ? 210 : 10},${Math.abs(l).toFixed(3)})`;
+        ctx.fillRect(0, r * hgt, S, hgt);
+        ctx.strokeStyle = 'rgba(60,38,18,0.28)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(0, r * hgt); ctx.lineTo(S, r * hgt); ctx.stroke();
+        // grain, running the length of the plank
+        ctx.strokeStyle = 'rgba(90,58,26,0.16)';
+        ctx.lineWidth = 1;
+        for (let g = 0; g < 5; g++) {
+          const y = r * hgt + 3 + Math.random() * (hgt - 6);
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.bezierCurveTo(S / 3, y + 3, (2 * S) / 3, y - 3, S, y);
+          ctx.stroke();
+        }
+      }
+    } else if (entry.grain === 'chip') {
+      // Terrazzo: big aggregate chips in a matrix.
+      speckle(ctx, S, 900, ['rgba(255,255,255,0.5)', 'rgba(40,60,80,0.35)',
+        'rgba(120,60,50,0.3)', 'rgba(60,80,60,0.3)'], 1.5, 4.5);
+      speckle(ctx, S, 3000, ['rgba(0,0,0,0.10)'], 0.4, 1.2);
+    } else {
+      speckle(ctx, S, 5200, ['rgba(255,255,255,0.16)', 'rgba(0,0,0,0.14)'], 0.4, 2);
     }
   });
 }
@@ -248,6 +321,39 @@ export function initRender(canvas) {
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
   for (const m of [floorMat, wallMat, ceilMat, groundMat]) {
     if (m.map) m.map.anisotropy = Math.min(8, maxAniso);
+  }
+
+  // --- floor finishes ---
+  //
+  // The default finish reuses the material this scene has always had, so a
+  // design that never picks one renders byte-identically to how it did before
+  // Phase 2 — and pays for no extra texture. Everything else is built on
+  // demand and cached for the life of the page: a rebuild reuses the material,
+  // the same way `sharedGeo` reuses prop geometry.
+  const finishMats = new Map([[DEFAULT_FINISH, { solid: floorMat, ghost: floorMatGhost }]]);
+
+  function finishMaterials(key) {
+    let m = finishMats.get(key);
+    if (m) return m;
+    const entry = finishEntry(key);
+    const map = makeFinishAlbedo(entry);
+    map.anisotropy = Math.min(8, maxAniso);
+    map.repeat.set(1 / entry.tile, 1 / entry.tile);
+    const solid = new THREE.MeshStandardMaterial({
+      map,
+      roughnessMap: makeFloorRoughness(),
+      roughness: entry.grain === 'fiber' ? 1.0 : 0.92,
+      metalness: 0.0,
+      vertexColors: true,
+    });
+    const ghost = solid.clone();
+    ghost.transparent = true;
+    ghost.depthWrite = false;
+    ghost.roughness = 1.0;
+    ghost.opacity = 0.30;
+    m = { solid, ghost };
+    finishMats.set(key, m);
+    return m;
   }
 
   // --- static ground ---
@@ -1645,13 +1751,110 @@ export function initRender(canvas) {
   // slab by stairs arriving from below (`cuts`), the holes in its ceiling from
   // stairs leaving it (`ceilCuts`), and the links themselves — the runs that
   // start here and the guardrails around the openings that land here.
+  // ---------- door leaves ----------
+  //
+  // The one part of the building that isn't merged into a per-storey mesh,
+  // because it is the one part that moves. Each leaf gets its own Group,
+  // pivoted at its hinge with the panel built along local +X, so posing a door
+  // is setting one rotation — no geometry is rebuilt when a door swings.
+  //
+  // Leaf geometry is shared by (length, height, lite, bar), so a corridor of
+  // identical doors builds one BufferGeometry and hangs it forty times. That's
+  // forty draw calls rather than one, which is the price of an independently
+  // rotating object; at school scale it is well inside the noise next to the
+  // instanced prop layer.
+  const leafGeoCache = new Map();
+
+  function leafGeometry(leaf) {
+    const key = `${leaf.len.toFixed(2)}|${leaf.h.toFixed(2)}|${leaf.lite ? 1 : 0}|${leaf.bar ? 1 : 0}`;
+    let geo = leafGeoCache.get(key);
+    if (geo) return geo;
+    const L = Math.max(0.4, leaf.len), H = Math.max(1, leaf.h);
+    const wood = _doorTint, edge = tint('#c98f5f', -0.12), metal = new THREE.Color('#9aa3ad');
+    const parts = [
+      box(L, H, LEAF_T, L / 2, H / 2, 0, wood),
+      // A stile down the hinge side and one down the lock side: without them a
+      // leaf is a flat rectangle and reads as a poster rather than a door.
+      box(0.09, H, LEAF_T + 0.02, 0.05, H / 2, 0, edge),
+      box(0.09, H, LEAF_T + 0.02, L - 0.05, H / 2, 0, edge),
+      // Lever handle, on the swinging edge at the height one actually sits.
+      box(0.5, 0.1, 0.1, L - 0.35, 3.1, LEAF_T / 2 + 0.05, metal),
+      box(0.5, 0.1, 0.1, L - 0.35, 3.1, -LEAF_T / 2 - 0.05, metal),
+    ];
+    if (leaf.lite) {
+      // Vision lite: a narrow tall pane, the school-corridor kind. Baked as a
+      // pale panel rather than real glass — it swings with the leaf, and a
+      // transparent mesh per door would want sorting nobody is doing here.
+      parts.push(box(L * 0.42, H * 0.42, LEAF_T + 0.04, L / 2, H * 0.63, 0,
+        new THREE.Color('#b8ccd4')));
+    }
+    if (leaf.bar) {
+      parts.push(box(L * 0.82, 0.16, 0.16, L / 2, 3.0, LEAF_T / 2 + 0.12, metal));
+      for (const sx of [-1, 1]) {
+        parts.push(box(0.12, 0.12, 0.28, L / 2 + sx * L * 0.36, 3.0, LEAF_T / 2 + 0.05, metal));
+      }
+    }
+    geo = mergeGeometries(parts);
+    leafGeoCache.set(key, geo);
+    return geo;
+  }
+
+  // The live pivots, keyed the way openings.js keys its leaves — which is the
+  // whole contract between this file and collide.js: neither describes a door
+  // to the other, they just agree on the key.
+  const doorPivots = new Map();
+
+  function buildDoorGroup(leaves, baseY, group) {
+    const doors = new THREE.Group();
+    for (const leaf of leaves) {
+      const mesh = new THREE.Mesh(leafGeometry(leaf), propMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      const pivot = new THREE.Group();
+      pivot.position.set(leaf.hx, baseY, leaf.hz);
+      pivot.rotation.y = -leafAngle(leaf, leaf.open || 0);
+      pivot.add(mesh);
+      doors.add(pivot);
+      doorPivots.set(leaf.key, pivot);
+    }
+    group.add(doors);
+    group.userData.doorGroup = doors;
+    return doors;
+  }
+
   function buildFloor(floor, baseY, wallH, group, ceil, labels, ctx = {}) {
-    const floorGeos = [], ceilGeos = [], wallGeos = [], fixtureGeos = [];
+    // Floor geometry is bucketed by finish rather than pooled: one mesh per
+    // material present on the storey. Everything else still merges into one
+    // mesh apiece, exactly as before.
+    const floorGeosBy = new Map();
+    const ceilGeos = [], wallGeos = [], fixtureGeos = [];
     const glassGeos = [], railGeos = [], stairGeos = [];
     const cuts = ctx.cuts || [];
     const ceilCuts = ctx.ceilCuts || [];
     const metrics = ctx.metrics || null;
     const tmpColor = new THREE.Color();
+
+    const pushFloor = (key, geo) => {
+      const k = key || DEFAULT_FINISH;
+      let list = floorGeosBy.get(k);
+      if (!list) { list = []; floorGeosBy.set(k, list); }
+      list.push(geo);
+    };
+
+    // Thickness and paint are both *derived* from what is on either side of a
+    // boundary (walls.js, finish.js). Both are probes over the storey's rooms,
+    // so both are memoized for the length of one rebuild.
+    const thickness = wallProbe(floor);
+    const _paint = new THREE.Color();
+    const paintOf = (ax, az, bx, bz) => {
+      const hex = wallPaint(floor, ax, az, bx, bz);
+      // An unpainted room keeps the plain white multiplier the wall texture
+      // has always been drawn with, so a design from before Phase 2 renders
+      // exactly as it did.
+      if (hex === DEFAULT_PAINT) return _white;
+      _paint.set(hex);
+      return _paint;
+    };
 
     for (let y = 0; y < floor.h; y++) {
       for (let x = 0; x < floor.w; x++) {
@@ -1670,9 +1873,12 @@ export function initRender(canvas) {
           // continuous tiling across cells
           const uv = f.attributes.uv;
           for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + x, uv.getY(i) + y);
+          // The cell's `color` is still the room's label tint, multiplied over
+          // whatever the finish's own texture is — the two say different things
+          // and both survive.
           tmpColor.set(cell.color || _white);
           coloredGeo(f, tmpColor);
-          floorGeos.push(f);
+          pushFloor(cell.fin, f);
         }
 
         // The ceiling belongs to this storey but the hole in it belongs to the
@@ -1704,8 +1910,7 @@ export function initRender(canvas) {
     // is handed to the same span builders as a polygon segment, as a run that
     // happens to be one cell long.
 
-    const jamb = (CELL - DOOR_W) / 2;
-    const GLASS_BAY = 5;       // ft between mullions
+    const GLASS_BAY = 5;       // ft between mullions in a full-height curtain wall
     const GLASS_SILL = 0.4;    // ft of solid under the pane
     const GLASS_HEAD = 0.5;    // ft of frame over it
     const POST_GAP = 4;        // ft between guardrail posts
@@ -1740,22 +1945,57 @@ export function initRender(canvas) {
     // frame is ordinary wall geometry; only the pane goes in the transparent
     // pile, so glass costs one extra draw call per storey and no sorting
     // headaches for anything else.
-    const glazedRun = (p0, p1, len, angle, h, y0 = baseY) => {
+    const glazedRun = (p0, p1, len, angle, h, y0 = baseY, t = WALL_T) => {
       const cx = (p0.x + p1.x) / 2, cz = (p0.z + p1.z) / 2;
-      addOriented(len, GLASS_SILL, WALL_T, cx, y0 + GLASS_SILL / 2, cz, angle, _glassFrame);
-      addOriented(len, GLASS_HEAD, WALL_T, cx, y0 + h - GLASS_HEAD / 2, cz, angle, _glassFrame);
+      addOriented(len, GLASS_SILL, t, cx, y0 + GLASS_SILL / 2, cz, angle, _glassFrame);
+      addOriented(len, GLASS_HEAD, t, cx, y0 + h - GLASS_HEAD / 2, cz, angle, _glassFrame);
       const paneH = h - GLASS_SILL - GLASS_HEAD;
       if (paneH <= 0.2) return;
       const ux = (p1.x - p0.x) / len, uz = (p1.z - p0.z) / len;
       const bays = Math.max(1, Math.round(len / GLASS_BAY));
       for (let i = 1; i < bays; i++) {
-        const t = (i / bays) * len;
-        addOriented(0.25, paneH, WALL_T, p0.x + ux * t, y0 + GLASS_SILL + paneH / 2, p0.z + uz * t,
+        const at = (i / bays) * len;
+        addOriented(0.25, paneH, t, p0.x + ux * at, y0 + GLASS_SILL + paneH / 2, p0.z + uz * at,
           angle, _glassFrame);
       }
-      const pane = new THREE.BoxGeometry(len, paneH, WALL_T * 0.35);
+      const pane = new THREE.BoxGeometry(len, paneH, t * 0.35);
       pane.rotateY(-angle);
       pane.translate(cx, y0 + GLASS_SILL + paneH / 2, cz);
+      glassGeos.push(pane);
+    };
+
+    // A window: the band of glazing that sits in the middle of a wall, with
+    // the wall itself carrying on above and below it. Same construction as the
+    // curtain wall above — frame, mullions, one pane — at a tighter spacing,
+    // because a punched window is a smaller thing than a storefront bay.
+    const windowRun = (p0, p1, len, angle, band, t, color) => {
+      const cx = (p0.x + p1.x) / 2, cz = (p0.z + p1.z) / 2;
+      const ux = (p1.x - p0.x) / len, uz = (p1.z - p0.z) / len;
+      // Wall under the sill and over the head — this is the line that makes a
+      // window a window rather than a hole you can step out of.
+      if (band.sill > 0.05) {
+        addOriented(len, band.sill, t, cx, baseY + band.sill / 2, cz, angle, color);
+      }
+      const over = wallH - band.head;
+      if (over > 0.05) {
+        addOriented(len, over, t, cx, baseY + band.head + over / 2, cz, angle, color);
+      }
+      const paneH = band.head - band.sill;
+      if (paneH <= 0.15) return;
+      // The frame: a sill board proud of the wall, a head, and jambs.
+      addOriented(len, 0.18, t + 0.25, cx, baseY + band.sill + 0.09, cz, angle, _glassFrame);
+      addOriented(len, 0.14, t + 0.06, cx, baseY + band.head - 0.07, cz, angle, _glassFrame);
+      for (const at of [0.08, len - 0.08]) {
+        addOriented(0.16, paneH, t + 0.04, p0.x + ux * at, baseY + band.sill + paneH / 2,
+          p0.z + uz * at, angle, _glassFrame);
+      }
+      for (const at of mullionPositions(len, MULLION_BAY)) {
+        addOriented(0.2, paneH - 0.2, t + 0.04, p0.x + ux * at,
+          baseY + band.sill + paneH / 2, p0.z + uz * at, angle, _glassFrame);
+      }
+      const pane = new THREE.BoxGeometry(len, paneH - 0.2, t * 0.3);
+      pane.rotateY(-angle);
+      pane.translate(cx, baseY + band.sill + paneH / 2, cz);
       glassGeos.push(pane);
     };
 
@@ -1776,102 +2016,110 @@ export function initRender(canvas) {
 
     // One full-height piece of boundary, whichever kind it is. Everything that
     // knows about doorways calls this and stays out of the material business.
-    const fillSpan = (kind, p0, p1, angle, h) => {
+    const fillSpan = (kind, p0, p1, angle, h, t, color) => {
       const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
       if (len < 0.02) return;
       if (kind === SEG_RAIL) railRun(p0, p1, len, angle);
-      else if (kind === SEG_GLASS) glazedRun(p0, p1, len, angle, h);
+      else if (kind === SEG_GLASS) glazedRun(p0, p1, len, angle, h, baseY, t);
       else {
-        addOriented(len, h, WALL_T, (p0.x + p1.x) / 2, baseY + h / 2, (p0.z + p1.z) / 2,
-          angle, _white);
+        addOriented(len, h, t, (p0.x + p1.x) / 2, baseY + h / 2, (p0.z + p1.z) / 2,
+          angle, color);
       }
     };
 
-    // A boundary run with its doorways cut out of it. `kind` picks what the
-    // solid stretches are made of; the header over an opening is the same
-    // trimmed frame whatever the wall around it is, because that is what reads
-    // as a door from thirty feet away.
+    // A boundary run with its openings taken out of it. `kind` picks what the
+    // solid stretches are made of; each opening then fills its own stretch
+    // according to what *it* is — a door leaves a hole with a header over it,
+    // a window fills the stretch with wall, glass and wall again.
+    //
+    // Thickness and paint are per run, resolved once from the uncut segment:
+    // a jamb is the same wall as the door beside it, and painting one of them
+    // and not the other would be a visible seam.
     const buildSegWall = (a, b, openings, kind = SEG_WALL) => {
       const L = segLength(a, b);
       if (L < 0.01) return;
       const angle = Math.atan2(b.z - a.z, b.x - a.x);
       const ux = (b.x - a.x) / L, uz = (b.z - a.z) / L;
       const h = kind === SEG_RAIL ? RAIL_H : wallH;
-      const at = (t, pad = 0) => ({ x: a.x + ux * (t * L + pad), z: a.z + uz * (t * L + pad) });
+      const t = kind === SEG_RAIL ? WALL_T : thickness(a.x, a.z, b.x, b.z);
+      const color = kind === SEG_WALL ? paintOf(a.x, a.z, b.x, b.z).clone() : _white;
+      const at = (v, pad = 0) => ({ x: a.x + ux * (v * L + pad), z: a.z + uz * (v * L + pad) });
       // Overhang the outer ends by half a wall thickness so corners close.
       const ends = (t0, t1, grow = 0) => [
-        at(t0, (t0 <= 0 ? -WALL_T / 2 : 0) - grow),
-        at(t1, (t1 >= 1 ? WALL_T / 2 : 0) + grow),
+        at(t0, (t0 <= 0 ? -t / 2 : 0) - grow),
+        at(t1, (t1 >= 1 ? t / 2 : 0) + grow),
       ];
       const span = (t0, t1) => {
         const [p0, p1] = ends(t0, t1);
-        fillSpan(kind, p0, p1, angle, h);
+        fillSpan(kind, p0, p1, angle, h, t, color);
       };
-      const header = (t0, t1, hh, cy, color, depth = WALL_T, grow = 0) => {
+      const header = (t0, t1, hh, cy, col, depth = t, grow = 0) => {
         const [p0, p1] = ends(t0, t1, grow);
         const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
         if (len < 0.02) return;
-        addOriented(len, hh, depth, (p0.x + p1.x) / 2, cy, (p0.z + p1.z) / 2, angle, color);
+        addOriented(len, hh, depth, (p0.x + p1.x) / 2, cy, (p0.z + p1.z) / 2, angle, col);
       };
 
       const cuts = openings
         .map((o) => {
+          const spec = openingSpec(o);
           const half = o.w / 2 / L;
-          return { t0: Math.max(0, o.t - half), t1: Math.min(1, o.t + half) };
+          return { t0: Math.max(0, o.t - half), t1: Math.min(1, o.t + half), spec };
         })
         .sort((p, q) => p.t0 - q.t0);
 
-      const headH = h - DOOR_H;
       let cursor = 0;
       for (const c of cuts) {
         if (c.t0 > cursor) span(cursor, c.t0);
-        // A gap in a railing is just a gap — there is nothing to hang a header
-        // from, which is exactly what makes it the top of a stair.
-        if (kind !== SEG_RAIL && headH > 0.05) {
-          header(c.t0, c.t1, headH, baseY + DOOR_H + headH / 2, _doorTint);
-          // door frame trim, a touch proud of the wall for readability
-          header(c.t0, c.t1, 0.25, baseY + DOOR_H + 0.125, _doorTint, WALL_T + 0.2, 0.25);
+        if (c.spec.window) {
+          // A window is a *filled* stretch, not an empty one: glass in the
+          // band, wall above and below. Nothing about the run's own kind
+          // changes — a window in a glazed partition is still glass either
+          // side of it, which is why the sill/head pieces take `color`.
+          const [p0, p1] = ends(c.t0, c.t1);
+          const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+          if (len > 0.05 && kind !== SEG_RAIL) {
+            windowRun(p0, p1, len, angle, windowBand(c.spec), t, color);
+          }
+        } else {
+          // A gap in a railing is just a gap — there is nothing to hang a
+          // header from, which is exactly what makes it the top of a stair.
+          const headH = h - c.spec.h;
+          if (kind !== SEG_RAIL && headH > 0.05) {
+            header(c.t0, c.t1, headH, baseY + c.spec.h + headH / 2, _doorTint);
+            // door frame trim, a touch proud of the wall for readability
+            header(c.t0, c.t1, 0.25, baseY + c.spec.h + 0.125, _doorTint, t + 0.2, 0.25);
+          }
         }
         cursor = Math.max(cursor, c.t1);
       }
       if (cursor < 1) span(cursor, 1);
     };
 
-    // A lattice edge, expressed as a one-cell segment. The doorway is the one
-    // case the grid still says its own way: an edge is a whole cell wide, so a
-    // door in one is fixed at its middle rather than placed along it.
+    // A lattice edge, expressed as a one-cell segment handed to the same span
+    // builder a polygon wall uses. The opening is the one case the grid still
+    // says its own way: an edge is a whole cell wide, so anything cut into one
+    // is fixed at its middle rather than placed along it (see
+    // `gridOpeningWidth`).
     const buildEdge = (val, cx, cz, horizontal) => {
-      const L = CELL + WALL_T; // overlap so corners join cleanly
+      const L = CELL;
       const half = L / 2;
       const a = horizontal ? { x: cx - half, z: cz } : { x: cx, z: cz - half };
       const b = horizontal ? { x: cx + half, z: cz } : { x: cx, z: cz + half };
-      const mid = baseY + wallH / 2;
-      if (val === EDGE_WALL) {
-        if (horizontal) addBox(L, wallH, WALL_T, cx, mid, cz, _white);
-        else addBox(WALL_T, wallH, L, cx, mid, cz, _white);
-      } else if (val === EDGE_GLASS) {
-        glazedRun(a, b, L, horizontal ? 0 : Math.PI / 2, wallH);
-      } else if (val === EDGE_RAIL) {
+      if (val === EDGE_RAIL) {
         railRun(a, b, L, horizontal ? 0 : Math.PI / 2);
-      } else if (val === EDGE_DOOR) {
-        const off = DOOR_W / 2 + jamb / 2 + WALL_T / 2;
-        const jw = jamb + WALL_T;
-        const headH = wallH - DOOR_H;
-        const headY = baseY + DOOR_H + headH / 2;
-        const trimY = baseY + DOOR_H + 0.125;
-        if (horizontal) {
-          addBox(jw, wallH, WALL_T, cx - off, mid, cz, _white);
-          addBox(jw, wallH, WALL_T, cx + off, mid, cz, _white);
-          addBox(DOOR_W, headH, WALL_T, cx, headY, cz, _doorTint);
-          // thin door frame trim for readability
-          addBox(DOOR_W + 0.5, 0.25, WALL_T + 0.2, cx, trimY, cz, _doorTint);
-        } else {
-          addBox(WALL_T, wallH, jw, cx, mid, cz - off, _white);
-          addBox(WALL_T, wallH, jw, cx, mid, cz + off, _white);
-          addBox(WALL_T, headH, DOOR_W, cx, headY, cz, _doorTint);
-          addBox(WALL_T + 0.2, 0.25, DOOR_W + 0.5, cx, trimY, cz, _doorTint);
-        }
+        return;
       }
+      const kind = val === EDGE_GLASS ? SEG_GLASS : SEG_WALL;
+      const w = gridOpeningWidth(val);
+      const openings = [];
+      if (val === EDGE_WINDOW) {
+        const spec = gridWindowSpec();
+        openings.push({ seg: 0, t: 0.5, w, k: 1, sill: spec.sill, h: spec.h });
+      } else if (isDoorEdge(val)) {
+        openings.push({ seg: 0, t: 0.5, w });
+      }
+      buildSegWall(a, b, openings, kind);
     };
 
     for (let y = 0; y <= floor.h; y++)
@@ -1905,29 +2153,57 @@ export function initRender(canvas) {
     const buildStairRun = (link) => {
       if (!metrics) return;
       const w = stairWidth(link);
-      // Each step is a solid block from the slab up to its own tread, not a
-      // floating board: overlapping boxes merge into one mass, so the run has
-      // an underside when you walk past it on the floor below.
-      for (let i = 0; i < metrics.steps; i++) {
-        const top = (i + 1) * metrics.riser;
-        const z0 = i * metrics.tread;
-        localBox(link, w, top, metrics.tread, 0, top / 2, z0 + metrics.tread / 2, _tread, stairGeos);
-        localBox(link, w, 0.09, 0.2, 0, top - 0.045, z0 + metrics.tread - 0.1, _nosing, stairGeos);
+      const m = runMetrics(link, metrics);
+      if (m.run <= 0) return;
+      if (link.type === 'ramp') {
+        // A ramp is the same run without the risers, which is the whole of
+        // what the model says about one — so it is the same solid mass with a
+        // sloped top instead of a staircase of them. Built as a box sheared by
+        // its own pitch, plus a curb either side so the edge reads at a
+        // distance the way a nosing does on a stair.
+        const slope = Math.hypot(m.run, m.rise);
+        const deck = new THREE.BoxGeometry(w, 0.5, slope);
+        deck.translate(0, -0.25, 0);
+        deck.rotateX(-m.pitch);
+        deck.translate(0, m.rise / 2, m.run / 2);
+        deck.rotateY(link.rotationY || 0);
+        deck.translate(link.x, baseY, link.z);
+        coloredGeo(deck, _tread);
+        stairGeos.push(deck);
+        for (const sx of [-1, 1]) {
+          const curb = new THREE.BoxGeometry(0.28, 0.4, slope);
+          curb.rotateX(-m.pitch);
+          curb.translate(sx * (w / 2 - 0.14), m.rise / 2 + 0.2, m.run / 2);
+          curb.rotateY(link.rotationY || 0);
+          curb.translate(link.x, baseY, link.z);
+          coloredGeo(curb, _nosing);
+          stairGeos.push(curb);
+        }
+      } else {
+        // Each step is a solid block from the slab up to its own tread, not a
+        // floating board: overlapping boxes merge into one mass, so the run has
+        // an underside when you walk past it on the floor below.
+        for (let i = 0; i < m.steps; i++) {
+          const top = (i + 1) * m.riser;
+          const z0 = i * m.tread;
+          localBox(link, w, top, m.tread, 0, top / 2, z0 + m.tread / 2, _tread, stairGeos);
+          localBox(link, w, 0.09, 0.2, 0, top - 0.045, z0 + m.tread - 0.1, _nosing, stairGeos);
+        }
       }
       // Handrails: a sloped cap either side, on posts that grow with the run.
-      const pitch = Math.atan2(metrics.rise, metrics.run);
-      const slope = Math.hypot(metrics.run, metrics.rise);
-      const posts = Math.max(2, Math.round(metrics.run / POST_GAP));
+      // Identical for both — a ramp needs them more than a stair does.
+      const slope = Math.hypot(m.run, m.rise);
+      const posts = Math.max(2, Math.round(m.run / POST_GAP));
       for (const sx of [-1, 1]) {
         const lx = sx * (w / 2 - 0.12);
         for (let i = 0; i <= posts; i++) {
           const t = i / posts;
-          localBox(link, 0.13, RAIL_H, 0.13, lx, t * metrics.rise + RAIL_H / 2, t * metrics.run,
+          localBox(link, 0.13, RAIL_H, 0.13, lx, t * m.rise + RAIL_H / 2, t * m.run,
             _railPost, railGeos);
         }
         const g = new THREE.BoxGeometry(0.18, 0.18, slope);
-        g.rotateX(-pitch);
-        g.translate(lx, RAIL_H + metrics.rise / 2, metrics.run / 2);
+        g.rotateX(-m.pitch);
+        g.translate(lx, RAIL_H + m.rise / 2, m.run / 2);
         g.rotateY(link.rotationY || 0);
         g.translate(link.x, baseY, link.z);
         coloredGeo(g, _railCap);
@@ -1935,9 +2211,50 @@ export function initRender(canvas) {
       }
     };
 
+    // An elevator, drawn on *both* the storeys it serves — it is the one link
+    // that is a room on each of them rather than a run between them. Three
+    // shaft walls, a lintel over the opening, a metal frame around it and a
+    // call panel beside it; the car doors are drawn parked in their pockets,
+    // since a sliding door that shuts is a door you can't board.
+    const buildElevator = (link) => {
+      const { w, d } = elevatorSize(link);
+      const doorW = elevatorDoorWidth(link);
+      const hw = w / 2, hd = d / 2, t = WALL_T;
+      const jambW = (w - doorW) / 2;
+      const shaft = tint('#b9bdc4', 0);
+      localBox(link, t, wallH, d, -hw + t / 2, wallH / 2, 0, shaft, wallGeos);
+      localBox(link, t, wallH, d, hw - t / 2, wallH / 2, 0, shaft, wallGeos);
+      localBox(link, w, wallH, t, 0, wallH / 2, hd - t / 2, shaft, wallGeos);
+      for (const sx of [-1, 1]) {
+        localBox(link, jambW, wallH, t, sx * (hw - jambW / 2), wallH / 2, -hd + t / 2,
+          shaft, wallGeos);
+      }
+      const headH = wallH - DOOR_H;
+      if (headH > 0.05) {
+        localBox(link, doorW, headH, t, 0, DOOR_H + headH / 2, -hd + t / 2, shaft, wallGeos);
+      }
+      // Brushed frame and the two parked door panels.
+      localBox(link, doorW + 0.5, 0.3, t + 0.3, 0, DOOR_H + 0.15, -hd + t / 2,
+        _railPost, railGeos);
+      for (const sx of [-1, 1]) {
+        localBox(link, 0.3, DOOR_H, t + 0.24, sx * (doorW / 2 + 0.15), DOOR_H / 2, -hd + t / 2,
+          _railPost, railGeos);
+        localBox(link, doorW / 2 - 0.1, DOOR_H - 0.1, 0.12,
+          sx * (doorW / 2 + jambW / 2), (DOOR_H - 0.1) / 2, -hd + t / 2 + 0.2,
+          _railPost, railGeos);
+      }
+      // Call panel, on the jamb you can actually see from outside.
+      localBox(link, 0.5, 0.9, 0.08, -(doorW / 2 + jambW / 2), 4, -hd - 0.02,
+        _nosing, wallGeos);
+      // Car floor and ceiling, a hair off the slab so they read as a cab.
+      localBox(link, w - t * 2, 0.08, d - t * 2, 0, 0.06, 0, _tread, stairGeos);
+      localBox(link, w - t * 2, 0.12, d - t * 2, 0, WALL_H - 0.4, 0, _railCap, railGeos);
+    };
+
     for (const link of ctx.risers || []) {
-      if (link.type === 'stair') buildStairRun(link);
+      if (link.type === 'stair' || link.type === 'ramp') buildStairRun(link);
     }
+    for (const link of ctx.elevators || []) buildElevator(link);
     // Guardrails around every hole in *this* floor, minus the side a stair
     // arrives on — see openingRails() for why that one is left open.
     for (const link of ctx.guarded || []) {
@@ -1961,7 +2278,7 @@ export function initRender(canvas) {
       slab.translate(0, baseY + lift, 0);
       tmpColor.set(shape.color || _white);
       coloredGeo(slab, tmpColor);
-      floorGeos.push(slab);
+      pushFloor(shape.fin, slab);
 
       const ceilGeo = shapeSlabGeometry(shape, true, ceilCuts);
       ceilGeo.translate(0, baseY + WALL_H - lift, 0);
@@ -1991,10 +2308,14 @@ export function initRender(canvas) {
       }
     });
 
-    if (floorGeos.length) {
-      const mesh = new THREE.Mesh(mergeGeometries(floorGeos), floorMat);
+    if (ctx.leaves && ctx.leaves.length) buildDoorGroup(ctx.leaves, baseY, group);
+
+    for (const [key, geos] of floorGeosBy) {
+      if (!geos.length) continue;
+      const mats = finishMaterials(key);
+      const mesh = new THREE.Mesh(mergeGeometries(geos), mats.solid);
       mesh.receiveShadow = true;
-      mesh.userData.mats = { solid: floorMat, ghost: floorMatGhost };
+      mesh.userData.mats = mats;
       group.add(mesh);
     }
     if (wallGeos.length) {
@@ -2111,6 +2432,13 @@ export function initRender(canvas) {
       if (g.userData.propsGroup) {
         g.userData.propsGroup.visible = isCurrent ? (!edit || layers.props) : !edit;
       }
+      // Door leaves are part of the structure but can't take the ghost
+      // material (they're their own meshes, on a shared prop material), so a
+      // ghosted storey simply doesn't draw them — a solid door floating over
+      // the plan you're editing reads as a mistake.
+      if (g.userData.doorGroup) {
+        g.userData.doorGroup.visible = structureOn && !ghost;
+      }
     }
     for (const g of labelGroup.children) {
       g.visible = !edit || g.userData.floor === cur;
@@ -2127,6 +2455,8 @@ export function initRender(canvas) {
 
     const metrics = stairMetrics(state);
     const links = stairsOf(state);
+    // Pivots are per-build: the Groups they point at are about to be disposed.
+    doorPivots.clear();
     state.floors.forEach((floor, i) => {
       const group = new THREE.Group();
       const ceil = new THREE.Group();
@@ -2138,6 +2468,8 @@ export function initRender(canvas) {
         ceilCuts: floorCuts(state, i + 1),
         risers: links.filter((l) => l.from === i),
         guarded: links.filter((l) => l.to === i),
+        elevators: elevatorsOn(state, i),
+        leaves: collectDoorLeaves(state, i),
       });
       const propsGroup = new THREE.Group();
       buildPropsGroup(state, i, floorBaseY(state, i), propsGroup);
@@ -2191,5 +2523,15 @@ export function initRender(canvas) {
     // same frame without a full rebuild.
     get layers() { return { ...layers }; },
     setLayers(patch) { Object.assign(layers, patch); applyFloorVisibility(); },
+    // Swing the doors. `leaves` is openings.js's own list — the same one
+    // collide.js is resolving against — so the door you walk through is the
+    // door you see move, keyed rather than described.
+    poseDoors(leaves) {
+      if (!leaves) return;
+      for (const leaf of leaves) {
+        const pivot = doorPivots.get(leaf.key);
+        if (pivot) pivot.rotation.y = -leafAngle(leaf, leaf.open);
+      }
+    },
   };
 }

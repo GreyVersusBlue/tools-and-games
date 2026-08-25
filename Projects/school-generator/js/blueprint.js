@@ -10,59 +10,94 @@
 // labels with square footage, a scale bar and a north arrow. Nothing here
 // changes the save format; it only reads it.
 
-import { CELL, DOOR_W, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL, computeLabels, floorLabel } from './grid.js';
-import { shapesOf, segEnds, shapeArea, interiorPoint, SEG_WALL, SEG_GLASS, SEG_RAIL } from './shapes.js';
+import {
+  CELL, EDGE_WALL, EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW,
+  isDoorEdge, computeLabels, floorLabel,
+} from './grid.js';
+import {
+  shapesOf, segEnds, shapeArea, interiorPoint, openingSpec, isWindowOpening,
+  SEG_WALL, SEG_GLASS, SEG_RAIL,
+} from './shapes.js';
 import { solidSpans } from './collide.js';
-import { stairMetrics, linksFrom, floorCuts, footprintPolygon, stairWidth } from './stairs.js';
+import {
+  stairMetrics, linksFrom, floorCuts, footprintPolygon, stairWidth, runMetrics,
+  rampSlope, elevatorsOn, elevatorSize,
+} from './stairs.js';
 import { propsOnFloor } from './props.js';
 import { catalogEntry } from './catalog.js';
 import { footprintOf } from './propplace.js';
+import { wallProbe } from './walls.js';
+import { finishSchedule } from './finish.js';
+import { segLeaves, leafEnd, leafAngle, gridDoorSpec, gridWindowSpec, gridOpeningWidth } from './openings.js';
 
 const EDGE_KIND_NAME = { [EDGE_WALL]: 'wall', [EDGE_GLASS]: 'glass', [EDGE_RAIL]: 'rail' };
 const SEG_KIND_NAME = { [SEG_WALL]: 'wall', [SEG_GLASS]: 'glass', [SEG_RAIL]: 'rail' };
 
-function pushWallRun(walls, kind, ax, az, bx, bz) {
+function pushWallRun(walls, kind, ax, az, bx, bz, t) {
   if (Math.hypot(bx - ax, bz - az) < 0.01) return;
-  walls.push({ ax, az, bx, bz, kind });
+  walls.push({ ax, az, bx, bz, kind, t });
 }
 
-// A door is drawn as the gap in the wall (the caller never draws a wall
-// across it) plus a leaf + quarter-circle swing arc. The swing always opens
-// 90° to the left of the wall's own direction — a fixed hand rather than a
-// "correct" one, since nothing in the model says which side of a wall is the
-// room the door opens into.
-function pushDoor(doors, ax, az, bx, bz, t0, t1) {
-  const len = Math.hypot(bx - ax, bz - az);
-  if (len < 0.01 || t1 <= t0) return;
-  const ux = (bx - ax) / len, uz = (bz - az) / len;
-  doors.push({ hx: ax + ux * t0, hz: az + uz * t0, ux, uz, w: t1 - t0 });
+// An opening's plan symbol. Both kinds are the gap in the wall (the caller
+// never draws a wall across one) plus something drawn into it:
+//
+//   a door    the leaf at 90° with the quarter-circle it sweeps — the hand and
+//             the swing side come off the record now, so the plan states which
+//             way the door was designed to open rather than a fixed guess.
+//   a window  the glazing line across the gap, jamb to jamb.
+//
+// The leaves come from openings.js, which is also what the renderer hangs and
+// what the walker is stopped by — one description of a door, drawn three ways.
+function pushOpening(openings, spec, a, b, t) {
+  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  if (len < 0.01) return;
+  const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+  const at = spec.t * len;
+  openings.push({
+    kind: spec.window ? 'window' : 'door',
+    hx: a.x + ux * (at - spec.w / 2), hz: a.z + uz * (at - spec.w / 2),
+    ux, uz, w: spec.w, t,
+    leaves: segLeaves(spec, a, b).map((leaf) => ({
+      hx: leaf.hx, hz: leaf.hz, len: leaf.len,
+      open: leafAngle(leaf, 1), shut: leafAngle(leaf, 0),
+      end: leafEnd(leaf, 1),
+    })),
+  });
 }
 
-function addGridEdge(v, ax, az, bx, bz, walls, doors) {
+function addGridEdge(v, ax, az, bx, bz, walls, openings, thick) {
   const kind = EDGE_KIND_NAME[v];
-  if (v === EDGE_DOOR) {
+  const a = { x: ax, z: az }, b = { x: bx, z: bz };
+  const t = thick(ax, az, bx, bz);
+  if (isDoorEdge(v) || v === EDGE_WINDOW) {
     const len = Math.hypot(bx - ax, bz - az);
-    const jamb = (CELL - DOOR_W) / 2;
+    const w = gridOpeningWidth(v);
+    const jamb = (CELL - w) / 2;
     const ux = (bx - ax) / len, uz = (bz - az) / len;
-    pushWallRun(walls, 'wall', ax, az, ax + ux * jamb, az + uz * jamb);
-    pushWallRun(walls, 'wall', ax + ux * (jamb + DOOR_W), az + uz * (jamb + DOOR_W), bx, bz);
-    pushDoor(doors, ax, az, bx, bz, jamb, jamb + DOOR_W);
+    // A grid opening is centred in its cell, so the two jambs are the same
+    // length; either can be zero (a double door fills the whole edge).
+    pushWallRun(walls, 'wall', ax, az, ax + ux * jamb, az + uz * jamb, t);
+    pushWallRun(walls, 'wall', ax + ux * (jamb + w), az + uz * (jamb + w), bx, bz, t);
+    const spec = v === EDGE_WINDOW
+      ? { ...gridWindowSpec(), t: 0.5, w }
+      : { ...gridDoorSpec(v), t: 0.5, w };
+    pushOpening(openings, spec, a, b, t);
   } else if (kind) {
-    pushWallRun(walls, kind, ax, az, bx, bz);
+    pushWallRun(walls, kind, ax, az, bx, bz, t);
   }
 }
 
-function gridWalls(floor, walls, doors) {
+function gridWalls(floor, walls, openings, thick) {
   for (let y = 0; y <= floor.h; y++) {
     for (let x = 0; x < floor.w; x++) {
       const v = floor.edgesH[y * floor.w + x];
-      if (v) addGridEdge(v, x * CELL, y * CELL, (x + 1) * CELL, y * CELL, walls, doors);
+      if (v) addGridEdge(v, x * CELL, y * CELL, (x + 1) * CELL, y * CELL, walls, openings, thick);
     }
   }
   for (let y = 0; y < floor.h; y++) {
     for (let x = 0; x <= floor.w; x++) {
       const v = floor.edgesV[y * (floor.w + 1) + x];
-      if (v) addGridEdge(v, x * CELL, y * CELL, x * CELL, (y + 1) * CELL, walls, doors);
+      if (v) addGridEdge(v, x * CELL, y * CELL, x * CELL, (y + 1) * CELL, walls, openings, thick);
     }
   }
 }
@@ -70,7 +105,7 @@ function gridWalls(floor, walls, doors) {
 // Polygon walls reuse `solidSpans` — the same cut-the-run-at-each-opening
 // logic the walkthrough collider uses — so a plan's gaps line up with the
 // doorways you can actually walk through.
-function polyWalls(floor, walls, doors) {
+function polyWalls(floor, walls, openings, thick) {
   for (const shape of shapesOf(floor)) {
     for (const ring of shape.rings) {
       for (let i = 0; i < ring.pts.length; i++) {
@@ -79,20 +114,23 @@ function polyWalls(floor, walls, doors) {
         const [a, b] = segEnds(ring, i);
         const len = Math.hypot(b.x - a.x, b.z - a.z);
         if (len < 0.01) continue;
-        const openings = ring.openings.filter((o) => o.seg === i);
+        const t = thick(a.x, a.z, b.x, b.z);
+        const here = ring.openings.filter((o) => o.seg === i);
         const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
-        if (!openings.length) {
-          pushWallRun(walls, kind, a.x, a.z, b.x, b.z);
+        if (!here.length) {
+          pushWallRun(walls, kind, a.x, a.z, b.x, b.z, t);
           continue;
         }
-        const cuts = openings.map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
+        // A window doesn't break the wall run: in plan the wall carries on
+        // through it and the glazing is drawn over the top. Only a doorway is
+        // a gap — the same rule the collider follows, from the same predicate.
+        const cuts = here
+          .filter((o) => !isWindowOpening(o))
+          .map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
         for (const [s, e] of solidSpans(len, cuts, 0)) {
-          pushWallRun(walls, kind, a.x + ux * s, a.z + uz * s, a.x + ux * e, a.z + uz * e);
+          pushWallRun(walls, kind, a.x + ux * s, a.z + uz * s, a.x + ux * e, a.z + uz * e, t);
         }
-        for (const o of openings) {
-          const t0 = Math.max(0, o.t * len - o.w / 2), t1 = Math.min(len, o.t * len + o.w / 2);
-          pushDoor(doors, a.x, a.z, b.x, b.z, t0, t1);
-        }
+        for (const o of here) pushOpening(openings, openingSpec(o), a, b, t);
       }
     }
   }
@@ -143,13 +181,27 @@ function stairSymbols(state, floorIndex) {
   const out = [];
   for (const link of linksFrom(state, floorIndex)) {
     const poly = footprintPolygon(link, metrics);
-    if (link.type === 'stair') {
+    if (link.type === 'stair' || link.type === 'ramp') {
+      const m = runMetrics(link, metrics);
       out.push({
-        kind: 'stair', poly, link, steps: metrics.steps, run: metrics.run, width: stairWidth(link),
+        kind: link.type, poly, link, width: stairWidth(link),
+        steps: m.steps, run: m.run,
+        // A ramp's plan symbol carries its slope, because that number is the
+        // difference between an accessible route and a decorative one.
+        slope: link.type === 'ramp' ? rampSlope(link) : 0,
       });
-    } else {
+    } else if (link.type !== 'elevator') {
       out.push({ kind: 'opening', poly });
     }
+  }
+  // An elevator belongs to both its storeys, so it is drawn on both — from
+  // `elevatorsOn`, not `linksFrom`.
+  for (const link of elevatorsOn(state, floorIndex)) {
+    const { w, d } = elevatorSize(link);
+    out.push({
+      kind: 'elevator', poly: footprintPolygon(link, metrics), link,
+      caption: `ELEV ${Math.round(w)}'×${Math.round(d)}'`,
+    });
   }
   // Holes this floor's slab has cut into it by a stair rising from the level
   // below — a different set of links than the ones placed on this floor.
@@ -182,9 +234,13 @@ function computeBounds(floor, rooms, propsList, stairs) {
 export function computeFloorPlan(state, floorIndex) {
   const floor = state.floors[floorIndex];
   if (!floor) return null;
-  const walls = [], doors = [];
-  gridWalls(floor, walls, doors);
-  polyWalls(floor, walls, doors);
+  // One thickness probe for the whole plan: a plan asks about every boundary
+  // twice (once for the wall run, once for the opening in it), and walls.js's
+  // probe is a point-in-polygon walk apiece.
+  const thick = wallProbe(floor);
+  const walls = [], openings = [];
+  gridWalls(floor, walls, openings, thick);
+  polyWalls(floor, walls, openings, thick);
   const rooms = polyRooms(floor);
   const propsList = planProps(state, floorIndex);
   const stairs = stairSymbols(state, floorIndex);
@@ -196,7 +252,11 @@ export function computeFloorPlan(state, floorIndex) {
     gridLabels: computeLabels(floor),
     rooms,
     walls,
-    doors,
+    // Doors *and* windows, each carrying its own leaves. Kept under the name
+    // the plan has always used so a caller that only wanted door swings still
+    // finds them here.
+    doors: openings,
+    finishes: finishSchedule(floor),
     props: propsList,
     stairs,
   };
@@ -283,13 +343,18 @@ function drawWalls(ctx, plan, layout) {
   for (const w of plan.walls) {
     const a = toPx(plan, layout, w.ax, w.az);
     const b = toPx(plan, layout, w.bx, w.bz);
+    // Line weight is the wall's real thickness now, so an exterior wall reads
+    // heavier than a partition the way it does on a drawn plan — and it does
+    // so without anyone having drawn it that way, because walls.js worked out
+    // which is which from the rooms either side.
+    const t = w.t || WALL_T_FT;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.lineCap = 'square';
     if (w.kind === 'glass') {
       ctx.strokeStyle = '#4da3ff';
-      ctx.lineWidth = Math.max(1.5, WALL_T_FT * layout.scale * 0.6);
+      ctx.lineWidth = Math.max(1.5, t * layout.scale * 0.6);
       ctx.setLineDash([layout.scale * 0.5, layout.scale * 0.35]);
     } else if (w.kind === 'rail') {
       ctx.strokeStyle = '#9aa5b5';
@@ -297,7 +362,7 @@ function drawWalls(ctx, plan, layout) {
       ctx.setLineDash([layout.scale * 0.2, layout.scale * 0.25]);
     } else {
       ctx.strokeStyle = '#1a2029';
-      ctx.lineWidth = Math.max(2, WALL_T_FT * layout.scale);
+      ctx.lineWidth = Math.max(2, t * layout.scale);
       ctx.setLineDash([]);
     }
     ctx.stroke();
@@ -305,25 +370,69 @@ function drawWalls(ctx, plan, layout) {
   }
 }
 
-function drawDoors(ctx, plan, layout) {
+// A door: each leaf drawn at 90° with the quarter-circle it sweeps, which is
+// the symbol every floor plan uses. A doorway with no leaves — a cased opening
+// — draws neither, and correctly so: there is nothing there to swing.
+function drawDoorLeaves(ctx, plan, layout, d) {
   ctx.strokeStyle = '#1a2029';
   ctx.lineWidth = Math.max(1, layout.scale * 0.08);
-  ctx.setLineDash([]);
-  for (const d of plan.doors) {
-    const nx = -d.uz, nz = d.ux; // 90° left of the wall's own direction
-    const hinge = toPx(plan, layout, d.hx, d.hz);
-    const leafEnd = toPx(plan, layout, d.hx + nx * d.w, d.hz + nz * d.w);
-    const jambEnd = toPx(plan, layout, d.hx + d.ux * d.w, d.hz + d.uz * d.w);
+  for (const leaf of d.leaves) {
+    const hinge = toPx(plan, layout, leaf.hx, leaf.hz);
+    const open = toPx(plan, layout, leaf.end.x, leaf.end.z);
     ctx.beginPath();
     ctx.moveTo(hinge.x, hinge.y);
-    ctx.lineTo(leafEnd.x, leafEnd.y);
+    ctx.lineTo(open.x, open.y);
     ctx.stroke();
-    const r = Math.hypot(leafEnd.x - hinge.x, leafEnd.y - hinge.y);
-    const a0 = Math.atan2(leafEnd.y - hinge.y, leafEnd.x - hinge.x);
-    const a1 = Math.atan2(jambEnd.y - hinge.y, jambEnd.x - hinge.x);
+    // The arc runs from where the leaf is drawn back to where it shuts. Canvas
+    // angles are screen-space and the plan's +z runs down the page, so both
+    // ends are measured in pixels rather than converted from world angles.
+    const shut = toPx(plan, layout,
+      leaf.hx + Math.cos(leaf.shut) * leaf.len, leaf.hz + Math.sin(leaf.shut) * leaf.len);
+    const r = Math.hypot(open.x - hinge.x, open.y - hinge.y);
+    const a0 = Math.atan2(open.y - hinge.y, open.x - hinge.x);
+    const a1 = Math.atan2(shut.y - hinge.y, shut.x - hinge.x);
+    let sweep = a1 - a0;
+    while (sweep > Math.PI) sweep -= Math.PI * 2;
+    while (sweep < -Math.PI) sweep += Math.PI * 2;
     ctx.beginPath();
-    ctx.arc(hinge.x, hinge.y, r, a0, a1, false);
+    ctx.arc(hinge.x, hinge.y, r, a0, a1, sweep < 0);
     ctx.stroke();
+  }
+}
+
+// A window: the glazing line across the opening, with the wall's own faces
+// carried through either side of it — the standard symbol, and the one that
+// makes a window unmistakably not a door at a glance.
+function drawWindow(ctx, plan, layout, d) {
+  const nx = -d.uz, nz = d.ux;
+  const half = (d.t || WALL_T_FT) / 2;
+  const from = { x: d.hx, z: d.hz };
+  const to = { x: d.hx + d.ux * d.w, z: d.hz + d.uz * d.w };
+  ctx.strokeStyle = '#1a2029';
+  ctx.lineWidth = Math.max(1, layout.scale * 0.07);
+  for (const off of [-half, half]) {
+    const a = toPx(plan, layout, from.x + nx * off, from.z + nz * off);
+    const b = toPx(plan, layout, to.x + nx * off, to.z + nz * off);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = '#4da3ff';
+  ctx.lineWidth = Math.max(1, layout.scale * 0.09);
+  const a = toPx(plan, layout, from.x, from.z);
+  const b = toPx(plan, layout, to.x, to.z);
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+}
+
+function drawDoors(ctx, plan, layout) {
+  ctx.setLineDash([]);
+  for (const d of plan.doors) {
+    if (d.kind === 'window') drawWindow(ctx, plan, layout, d);
+    else drawDoorLeaves(ctx, plan, layout, d);
   }
 }
 
@@ -363,9 +472,23 @@ function drawStairs(ctx, plan, layout) {
       ctx.fillText('FLOOR OPENING', c.x, c.y);
       continue;
     }
+    if (s.kind === 'elevator') {
+      // The plan symbol for a lift is the shaft with its diagonals — one
+      // rectangle nobody mistakes for a room.
+      const [p0, p1, p2, p3] = pts;
+      strokePath(ctx, plan, layout, [p0, p2]);
+      strokePath(ctx, plan, layout, [p1, p3]);
+      const c = captionAt(pts);
+      ctx.fillStyle = '#5a6472';
+      ctx.font = `${Math.round(layout.scale * 0.6)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(s.caption, c.x, c.y);
+      continue;
+    }
     // Tread lines evenly spaced along the run, plus an arrow the direction
     // you climb — the same "ramp, not 21 discrete steps" run the walkthrough
-    // climbs, drawn here as its plan symbol.
+    // climbs, drawn here as its plan symbol. A ramp draws the arrow and the
+    // slope instead of treads, since a ramp with tread lines is a stair.
     const link = s.link;
     const hw = s.width / 2;
     for (let k = 1; k < s.steps; k++) {
@@ -376,7 +499,56 @@ function drawStairs(ctx, plan, layout) {
     const tail = ptWorld(link, 0, s.run * 0.15);
     const head = ptWorld(link, 0, s.run * 0.85);
     drawArrow(ctx, plan, layout, tail, head);
+    if (s.kind === 'ramp') {
+      const at = ptWorld(link, 0, s.run * 0.5);
+      const c = toPx(plan, layout, at.x, at.z);
+      const label = `RAMP 1:${Math.round(s.slope)}`;
+      ctx.font = `${Math.round(layout.scale * 0.6)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      const w = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(c.x - w / 2 - 3, c.y - layout.scale * 0.55, w + 6, layout.scale * 0.85);
+      ctx.fillStyle = '#5a6472';
+      ctx.fillText(label, c.x, c.y);
+    }
   }
+}
+
+// The finish schedule: what each floor is made of, printed as a legend under
+// the title block. Same numbers Phase 7's bill of materials will want, which
+// is why they're summed in finish.js rather than counted here.
+function drawFinishLegend(ctx, plan, layout, canvasW, canvasH) {
+  const rows = (plan.finishes || []).filter((r) => r.sqft > 0);
+  if (!rows.length) return;
+  const lineH = 15;
+  const pad = 8;
+  const boxW = 210;
+  const boxH = pad * 2 + 16 + rows.length * lineH;
+  const x0 = 12;
+  const y0 = canvasH - boxH - 12;
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.fillRect(x0, y0, boxW, boxH);
+  ctx.strokeStyle = '#d3d7de';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, boxW - 1, boxH - 1);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#1a2029';
+  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.fillText('FLOOR FINISH SCHEDULE', x0 + pad, y0 + pad + 10);
+  ctx.font = '10px system-ui, sans-serif';
+  rows.forEach((r, i) => {
+    const y = y0 + pad + 16 + i * lineH + 8;
+    ctx.fillStyle = r.color;
+    ctx.fillRect(x0 + pad, y - 8, 10, 10);
+    ctx.strokeStyle = '#9aa5b5';
+    ctx.strokeRect(x0 + pad + 0.5, y - 7.5, 9, 9);
+    ctx.fillStyle = '#1a2029';
+    ctx.fillText(r.label, x0 + pad + 16, y);
+    ctx.fillStyle = '#5a6472';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${Math.round(r.sqft).toLocaleString()} ft²`, x0 + boxW - pad, y);
+    ctx.textAlign = 'left';
+  });
 }
 
 function ptWorld(link, lx, lz) {
@@ -508,6 +680,9 @@ export function drawFloorPlan(ctx, plan, layout, opts = {}) {
   if (opts.showFurniture) drawProps(ctx, plan, layout);
   drawLabels(ctx, plan, layout);
   if (opts.showDimensions) drawDimensions(ctx, plan, layout);
+  if (opts.showFinishes !== false) {
+    drawFinishLegend(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
+  }
   drawScaleAndNorth(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
   drawTitleBlock(ctx, plan, layout, ctx.canvas.width, opts);
 }

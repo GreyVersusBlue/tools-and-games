@@ -16,6 +16,8 @@ import {
   shapeAt, shapeById, nearestSegment, nearestVertex, segEnds, segLength,
   insertVertex, deleteVertex, moveVertex, setSegWall, addOpening, toggleOpening, orientRing,
   snapPoint, constrainAngle, enclosingShape, regionToPolygon, convertRegion,
+  arcGeometry, arcPoints, curveSegment, straightenRun, MAX_BULGE, MIN_ARC_CHORD,
+  ringLen, LEAF_SINGLE,
   normalizeShape, cloneShape,
   translateShape, rotateShape90, mirrorShapeX, rotatePoint90, mirrorPointX,
   addShapeCopy, totalShapeArea,
@@ -538,4 +540,147 @@ test('a save file cannot smuggle in more rooms than a floor holds', () => {
   }));
   assert.equal(s.floors[0].shapes.length, MAX_SHAPES);
   assert.ok(s.floors[0].shapes.every((sh) => sh.id > 0), 'everything that loads gets an id');
+});
+
+
+// ---------- curved walls ----------
+//
+// The wishlist's "arcs tessellate at the model boundary" made concrete: a
+// curved wall *is* a run of straight segments, so most of what matters here is
+// that the ring is still a well-formed ring afterward — walls and openings
+// aligned with points, winding intact, and reversible.
+
+const near2 = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+const square = () => makeShape([
+  { x: 0, z: 0 }, { x: 20, z: 0 }, { x: 20, z: 20 }, { x: 0, z: 20 },
+]);
+
+test('an arc bulges toward the left of its chord, by the fraction asked for', () => {
+  const a = { x: 0, z: 0 }, b = { x: 10, z: 0 };
+  const g = arcGeometry(a, b, 0.25);
+  assert.ok(near2(g.apex.x, 5));
+  assert.ok(near2(g.apex.z, 2.5), 'a quarter of the chord, to the left of +x, which is +z');
+  assert.ok(near2(arcGeometry(a, b, -0.25).apex.z, -2.5), 'and the other way for a negative one');
+  assert.equal(arcGeometry(a, b, 0), null, 'a straight line is not an arc');
+});
+
+test('a tessellated arc starts and ends exactly on its own endpoints', () => {
+  const a = { x: 3, z: 7 }, b = { x: 19, z: -4 };
+  for (const bulge of [0.1, 0.5, 0.9, -0.35]) {
+    const pts = arcPoints(a, b, bulge, 6);
+    assert.equal(pts.length, 7);
+    assert.deepEqual(pts[0], { x: 3, z: 7 }, 'the corner has to still meet its neighbour');
+    assert.deepEqual(pts[6], { x: 19, z: -4 });
+    // Every point is the same distance from the arc's centre — which is the
+    // whole claim that this is a circle and not a wobble.
+    const g = arcGeometry(a, b, bulge);
+    for (const p of pts) {
+      assert.ok(near2(Math.hypot(p.x - g.cx, p.z - g.cz), g.R, 1e-6), `r at ${p.x},${p.z}`);
+    }
+  }
+});
+
+test('a half-circle is bulge 0.5, and more than half still works', () => {
+  const a = { x: 0, z: 0 }, b = { x: 10, z: 0 };
+  const half = arcPoints(a, b, 0.5, 8);
+  assert.ok(near2(arcGeometry(a, b, 0.5).R, 5), 'a semicircle on a 10ft chord has a 5ft radius');
+  assert.ok(half.every((p) => p.z >= -1e-9), 'and never crosses back over the chord');
+  const major = arcPoints(a, b, 0.9, 8);
+  assert.ok(Math.min(...major.map((p) => p.x)) < 0, 'past half, the arc reaches back past its ends');
+});
+
+test('curving a segment replaces it with chords and keeps the ring aligned', () => {
+  const shape = square();
+  const before = ringLen(shape.rings[0]);
+  const n = curveSegment(shape, 0, 0, 0.3);
+  const ring = shape.rings[0];
+  assert.ok(n > 1, 'it became several segments');
+  assert.equal(ringLen(ring), before + n - 1);
+  assert.equal(ring.walls.length, ring.pts.length, 'one wall state per segment, still');
+  assert.ok(ring.walls.slice(0, n).every((w) => w === SEG_WALL), 'all of them the wall it was');
+  assert.ok(ringIsCCW(ring.pts), 'and the outer ring is still wound outward');
+});
+
+test('curving the segment that wraps the ring works like any other', () => {
+  const shape = square();
+  const last = ringLen(shape.rings[0]) - 1;
+  const n = curveSegment(shape, 0, last, 0.3);
+  assert.ok(n > 1);
+  assert.ok(straightenRun(shape, 0, last, n));
+  assert.deepEqual(shape.rings[0].pts, square().rings[0].pts, 'and straightens back to the chord');
+});
+
+test('straightening puts the chord back, exactly', () => {
+  const shape = square();
+  const original = shape.rings[0].pts.map((p) => ({ ...p }));
+  const n = curveSegment(shape, 0, 1, 0.4);
+  assert.notDeepEqual(shape.rings[0].pts, original);
+  straightenRun(shape, 0, 1, n);
+  assert.deepEqual(shape.rings[0].pts, original);
+  assert.equal(shape.rings[0].walls.length, 4);
+});
+
+test('re-curving means straighten-then-curve, not arcs on arcs', () => {
+  // The tool's memo (see editor.js) exists so that adjusting a curve puts the
+  // chord back first. What it has to be worth is this: the result is
+  // indistinguishable from having curved the original wall once, at the final
+  // radius — no accumulated vertices, no arc laid over an arc.
+  const once = square();
+  const nOnce = curveSegment(once, 0, 0, 0.5);
+
+  const twice = square();
+  const n1 = curveSegment(twice, 0, 0, 0.2);
+  straightenRun(twice, 0, 0, n1);
+  const nTwice = curveSegment(twice, 0, 0, 0.5);
+
+  assert.equal(nTwice, nOnce);
+  assert.deepEqual(twice.rings[0].pts, once.rings[0].pts);
+  assert.deepEqual(twice.rings[0].walls, once.rings[0].walls);
+});
+
+test('a doorway on a curved segment is dropped, and the others renumber', () => {
+  const shape = square();
+  addOpening(shape, 0, 0, 0.5, DOOR_W, { leaf: LEAF_SINGLE });
+  addOpening(shape, 0, 2, 0.5, DOOR_W);
+  const ring = shape.rings[0];
+  assert.equal(ring.openings.length, 2);
+  const n = curveSegment(shape, 0, 0, 0.3);
+  assert.equal(ring.openings.length, 1, 'a 2ft chord has nowhere to put a 3ft door');
+  const kept = ring.openings[0];
+  assert.equal(kept.seg, 2 + n - 1, 'the survivor followed its wall along');
+  const [a, b] = segEnds(ring, kept.seg);
+  assert.ok(segLength(a, b) > DOOR_W, 'and is still on a wall long enough to hold it');
+});
+
+test('a wall too short to bend is left alone, and so is a silly bulge', () => {
+  const shape = makeShape([{ x: 0, z: 0 }, { x: 1, z: 0 }, { x: 1, z: 8 }, { x: 0, z: 8 }]);
+  assert.equal(curveSegment(shape, 0, 0, 0.4), 1, `under ${MIN_ARC_CHORD}ft there is no room`);
+  assert.equal(ringLen(shape.rings[0]), 4);
+  const big = square();
+  assert.equal(curveSegment(big, 0, 0, 0.0001), 1, 'and a bulge that small is a straight wall');
+  assert.equal(curveSegment(big, 0, 9, 0.4), 1, 'a segment the ring does not have does nothing');
+  // A bulge past the cap is clamped rather than refused.
+  const clamped = square();
+  assert.ok(curveSegment(clamped, 0, 0, 5) > 1);
+  const g = arcGeometry({ x: 0, z: 0 }, { x: 20, z: 0 }, MAX_BULGE);
+  assert.ok(g.R > 0 && Number.isFinite(g.R));
+});
+
+test('straightening refuses to eat a ring down below a triangle', () => {
+  const shape = makeShape([{ x: 0, z: 0 }, { x: 20, z: 0 }, { x: 10, z: 20 }]);
+  assert.equal(straightenRun(shape, 0, 0, 8), false, 'nothing to remove without collapsing it');
+  assert.equal(straightenRun(shape, 0, 0, 1), false, 'and a run of one is already straight');
+  assert.equal(ringLen(shape.rings[0]), 3);
+});
+
+test('a curved room saves and loads as the polygon it now is', () => {
+  const s = createState(30, 30);
+  const shape = addShape(s, 0, [
+    { x: 0, z: 0 }, { x: 20, z: 0 }, { x: 20, z: 20 }, { x: 0, z: 20 },
+  ], { name: 'Rotunda' });
+  const n = curveSegment(shape, 0, 0, 0.45);
+  const back = deserialize(serialize(s));
+  assert.deepEqual(back.floors[0].shapes, s.floors[0].shapes);
+  assert.equal(ringLen(back.floors[0].shapes[0].rings[0]), 3 + n,
+    'no schema for curvature means nothing extra to migrate');
 });

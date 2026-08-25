@@ -5,12 +5,27 @@
 // which is why it lives in `state.links[]` (the inter-floor table Phase 1
 // defined and left empty) rather than in `state.props[]`.
 //
-//   { id, type: 'stair' | 'opening', from, to, x, z, rotationY, data }
+//   { id, type, from, to, x, z, rotationY, data }
 //
 // `from` is the storey the stair starts on and `to` the one it arrives at —
 // always `from + 1`, because a run that skips a level isn't a stair, it's two.
 // A plain `opening` is the same record without the treads: a hole in `to`
 // looking down into `from`, which is what makes a mezzanine a mezzanine.
+//
+// Phase 2 adds the two links an accessible route is made of, and they slot in
+// beside the first two rather than beneath them:
+//
+//   ramp      a stair with no risers. Everything about it is the stair's own
+//             machinery at a different pitch — a run, a headroom-derived cut,
+//             guardrails, a linear walkable surface — so it shares all of it
+//             and differs only in how long the run is: `slope` feet of run per
+//             foot of rise, 12 for the ADA maximum of 1:12.
+//   elevator  the one link whose walkable answer isn't a surface at all. The
+//             car is a small room standing on both storeys, the shaft walls
+//             bound it on three sides, and arriving is a teleport rather than
+//             a climb. It is also the only link that cuts *nothing*: the slab
+//             above stays whole, because you arrive on top of it rather than
+//             through it.
 //
 // Local frame, shared with props (see propplace.js's rotation note): a stair
 // climbs toward its local +Z, centred on local x, with local (0, 0) at the
@@ -20,8 +35,8 @@
 // geometry that draws it is render.js, and both read everything from here so
 // the footprint the cursor snaps to is the footprint that gets built.
 
-import { FLOOR_H, RAIL_H, CELL, getCell } from './grid.js';
-import { pointInRing, shapeAt } from './shapes.js';
+import { FLOOR_H, RAIL_H, CELL } from './grid.js';
+import { pointInRing, floorSolidAt } from './shapes.js';
 import { addLink, MAX_LINKS } from './props.js';
 
 // Tread and riser: 7in up, 11in forward is the standard school run, and at a
@@ -48,7 +63,35 @@ export const OPENING_D = 8;
 export const MIN_OPENING = 3;
 export const MAX_OPENING = 120;
 
-export const STAIR_TYPES = ['stair', 'opening'];
+// Ramps. 1:12 is the ADA maximum and the default; the shallower options exist
+// because a floor-to-floor ramp at 1:12 is 144ft of run, which is a real
+// number a real building has to find room for and this tool should say out
+// loud rather than quietly steepen.
+export const RAMP_SLOPE = 12;              // ft of run per ft of rise
+export const RAMP_SLOPES = [12, 10, 8, 6];
+export const MIN_RAMP_SLOPE = 4;
+export const MAX_RAMP_SLOPE = 20;
+export const RAMP_W = 4;                   // ft — 3ft clear plus the rails
+export const MIN_RAMP_W = 3;
+export const MAX_RAMP_W = 12;
+
+// Elevator car: a 3500lb school passenger car is about 6'8" x 5'5" clear.
+// The shaft is the car plus its walls, which is what the footprint describes.
+export const ELEV_W = 7;
+export const ELEV_D = 5.5;
+export const MIN_ELEV = 4;
+export const MAX_ELEV = 20;
+export const ELEV_DOOR_W = 3.5;            // ft — the clear opening you walk through
+export const ELEV_WALL_T = 0.5;
+
+export const LINK_KINDS = ['stair', 'opening', 'ramp', 'elevator'];
+// The name the rest of the codebase learned this list by. Same array, and it
+// still means "every kind of link", which is what every caller wanted.
+export const STAIR_TYPES = LINK_KINDS;
+// The links you climb: a run with a walkable surface between two storeys.
+export const RUN_TYPES = ['stair', 'ramp'];
+export const isRun = (l) => !!l && RUN_TYPES.includes(l.type);
+export const isElevator = (l) => !!l && l.type === 'elevator';
 export { RAIL_H };
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -65,9 +108,53 @@ export function stairRun(floorHt = FLOOR_H) {
 
 export const stairMetrics = (state) => stairRun(state && state.floorHt);
 
-export const stairWidth = (link) =>
-  clamp(Number.isFinite(link && link.data && link.data.width) ? link.data.width : STAIR_W,
-    MIN_STAIR_W, MAX_STAIR_W);
+// A run's width. Stairs and ramps carry it the same way (`data.width`) and
+// only their limits differ, so one accessor serves both.
+export const stairWidth = (link) => {
+  const ramp = link && link.type === 'ramp';
+  const dflt = ramp ? RAMP_W : STAIR_W;
+  const lo = ramp ? MIN_RAMP_W : MIN_STAIR_W;
+  const hi = ramp ? MAX_RAMP_W : MAX_STAIR_W;
+  return clamp(Number.isFinite(link && link.data && link.data.width) ? link.data.width : dflt, lo, hi);
+};
+
+export const rampSlope = (link) =>
+  clamp(Number.isFinite(link && link.data && link.data.slope) ? link.data.slope : RAMP_SLOPE,
+    MIN_RAMP_SLOPE, MAX_RAMP_SLOPE);
+
+// The car's clear size, the way `openingSize` reads a plain opening's.
+export const elevatorSize = (link) => ({
+  w: clamp(Number.isFinite(link && link.data && link.data.w) ? link.data.w : ELEV_W,
+    MIN_ELEV, MAX_ELEV),
+  d: clamp(Number.isFinite(link && link.data && link.data.d) ? link.data.d : ELEV_D,
+    MIN_ELEV, MAX_ELEV),
+});
+
+// How much floor a link eats climbing one storey. A stair's run comes off the
+// riser count; a ramp's comes off its slope; nothing else has one.
+export function runLength(link, metrics) {
+  if (!link) return 0;
+  if (link.type === 'ramp') return metrics.rise * rampSlope(link);
+  if (link.type === 'stair') return metrics.run;
+  return 0;
+}
+
+// The per-link version of `stairMetrics`, which only knows about the building.
+// Everything that draws or walks a run reads this rather than reaching for
+// `metrics.run` directly, so a ramp is never accidentally 19ft long.
+export function runMetrics(link, metrics) {
+  const run = runLength(link, metrics);
+  const ramp = link && link.type === 'ramp';
+  return {
+    rise: metrics.rise,
+    run,
+    steps: ramp ? 0 : metrics.steps,
+    riser: ramp ? 0 : metrics.riser,
+    tread: ramp ? 0 : metrics.tread,
+    slope: ramp ? rampSlope(link) : metrics.run / metrics.rise,
+    pitch: run > 0 ? Math.atan2(metrics.rise, run) : 0,
+  };
+}
 
 // A plain opening carries its own size; a stair's comes off the run.
 export const openingSize = (link) => ({
@@ -79,9 +166,9 @@ export const openingSize = (link) => ({
 
 // Where the run stops clearing the floor above. Below this the stair is under
 // solid ceiling; above it, the floor has to be open or you'd walk into it.
-export function cutStart(metrics) {
+export function cutStart(metrics, run = metrics.run) {
   const t = 1 - HEADROOM / metrics.rise;
-  return clamp(t, 0, 0.95) * metrics.run;
+  return clamp(t, 0, 0.95) * run;
 }
 
 // ---------- local <-> world ----------
@@ -108,15 +195,27 @@ export function footprintBox(link, metrics) {
     const { w, d } = openingSize(link);
     return { x0: -w / 2, x1: w / 2, z0: -d / 2, z1: d / 2 };
   }
+  if (link.type === 'elevator') {
+    // The car is centred on the placement point and you enter from local -Z,
+    // which makes `rotationY` mean the same thing it does for a stair: the way
+    // you are facing as you step in.
+    const { w, d } = elevatorSize(link);
+    return { x0: -w / 2, x1: w / 2, z0: -d / 2, z1: d / 2 };
+  }
   const hw = stairWidth(link) / 2;
-  return { x0: -hw, x1: hw, z0: 0, z1: metrics.run };
+  return { x0: -hw, x1: hw, z0: 0, z1: runLength(link, metrics) };
 }
 
-// The hole this link opens in the floor above.
+// The hole this link opens in the floor above, or null for one that opens
+// none. An elevator is the only link with nothing to cut: its car stands on
+// the slab at each end rather than passing through it, so the floor above is
+// whole and you arrive standing on it.
 export function cutBox(link, metrics) {
+  if (link.type === 'elevator') return null;
   if (link.type === 'opening') return footprintBox(link, metrics);
   const hw = stairWidth(link) / 2 + CUT_MARGIN;
-  return { x0: -hw, x1: hw, z0: cutStart(metrics), z1: metrics.run + LANDING };
+  const run = runLength(link, metrics);
+  return { x0: -hw, x1: hw, z0: cutStart(metrics, run), z1: run + LANDING };
 }
 
 // Local box -> world polygon, wound the same way whichever way it's turned.
@@ -137,7 +236,10 @@ export function rectCorners(link, box) {
 }
 
 export const footprintPolygon = (link, metrics) => rectCorners(link, footprintBox(link, metrics));
-export const cutPolygon = (link, metrics) => rectCorners(link, cutBox(link, metrics));
+export const cutPolygon = (link, metrics) => {
+  const box = cutBox(link, metrics);
+  return box ? rectCorners(link, box) : null;
+};
 
 export const pointInPolygon = (pts, x, z) => pointInRing(pts, x, z);
 
@@ -159,7 +261,8 @@ export function floorCuts(state, floorIndex) {
   const metrics = stairMetrics(state);
   return stairsOf(state)
     .filter((l) => l.to === floorIndex)
-    .map((l) => cutPolygon(l, metrics));
+    .map((l) => cutPolygon(l, metrics))
+    .filter(Boolean);
 }
 
 // Is (x, z) inside a hole in this storey's floor? Grid cells and polygon slabs
@@ -196,13 +299,10 @@ export function cellCut(cuts, gx, gy, cell = CELL) {
 // on the very edge of a slab still finds it.
 const RAIL_PROBE = 1.5;   // ft
 
-// Is there anything to stand on at (x, z) on this storey? Either half of the
-// room model counts — a polygon room is as much floor as a grid cell is.
-export function floorSolidAt(floor, x, z) {
-  if (!floor) return false;
-  if (getCell(floor, Math.floor(x / CELL), Math.floor(z / CELL))) return true;
-  return !!shapeAt(floor, x, z);
-}
+// `floorSolidAt` moved to shapes.js — the wall-thickness probe asks the same
+// question — and is re-exported here so every caller that learned it from this
+// module keeps working.
+export { floorSolidAt };
 
 // Pass the storey the hole is in and each side is kept only if someone could
 // walk up to it: a rail along an edge with no floor behind it is a fence in
@@ -210,6 +310,7 @@ export function floorSolidAt(floor, x, z) {
 // floor would otherwise leave you with. Omit `floor` for every side.
 export function openingRails(link, metrics, floor = null) {
   const box = cutBox(link, metrics);
+  if (!box) return [];   // an elevator opens no hole, so it needs no rail
   const corner = (lx, lz) => localToWorld(link, lx, lz);
   const sides = [
     { a: corner(box.x0, box.z0), b: corner(box.x1, box.z0), side: 'near',
@@ -221,9 +322,9 @@ export function openingRails(link, metrics, floor = null) {
     { a: corner(box.x0, box.z1), b: corner(box.x1, box.z1), side: 'far',
       at: [(box.x0 + box.x1) / 2, box.z1], out: [0, 1] },
   ];
-  // The far edge of a stair's cut is the landing you walk out onto; railing it
-  // would fence the stair off from the floor it serves.
-  const wanted = link.type === 'stair' ? sides.filter((s) => s.side !== 'far') : sides;
+  // The far edge of a run's cut is the landing you walk out onto; railing it
+  // would fence the stair (or ramp) off from the floor it serves.
+  const wanted = isRun(link) ? sides.filter((s) => s.side !== 'far') : sides;
   if (!floor) return wanted;
   return wanted.filter((s) => {
     const p = localToWorld(link, s.at[0] + s.out[0] * RAIL_PROBE, s.at[1] + s.out[1] * RAIL_PROBE);
@@ -238,12 +339,14 @@ export function openingRails(link, metrics, floor = null) {
 // discrete treads the geometry draws: a first-person camera stepping up in
 // 7in jumps reads as a stutter, and nobody sees their own feet.
 export function stairSurfaceAt(link, metrics, x, z) {
-  if (link.type !== 'stair') return null;
+  if (!isRun(link)) return null;
+  const run = runLength(link, metrics);
+  if (run <= 0) return null;
   const { lx, lz } = worldToLocal(link, x, z);
   const hw = stairWidth(link) / 2;
-  if (Math.abs(lx) > hw || lz < -CUT_MARGIN || lz > metrics.run + LANDING) return null;
-  if (lz > metrics.run) return metrics.rise;   // the landing at the top
-  return clamp(lz / metrics.run, 0, 1) * metrics.rise;
+  if (Math.abs(lx) > hw || lz < -CUT_MARGIN || lz > run + LANDING) return null;
+  if (lz > run) return metrics.rise;   // the landing at the top
+  return clamp(lz / run, 0, 1) * metrics.rise;
 }
 
 // The stair under a point, with the world Y of its surface — what walkthrough
@@ -263,6 +366,55 @@ export function stairUnder(state, x, z, atY = null) {
   return best;
 }
 
+// ---------- elevators ----------
+//
+// An elevator is the only link that puts walls up. A stair's boundaries are
+// the guardrails around the hole it cut; an elevator cuts nothing, so the
+// thing that stops you walking out of the car sideways has to be the shaft
+// itself. These come back as world segments — the same shape `openingRails`
+// hands back — so collide.js and render.js consume them the same way.
+
+// The clear opening you step through, on the car's local -Z face.
+export const elevatorDoorWidth = (link) =>
+  Math.min(ELEV_DOOR_W, elevatorSize(link).w - 1);
+
+// Three solid sides plus the two jambs either side of the door. Every segment
+// is world-space {a, b}, wound so nothing depends on which way you read it.
+export function elevatorWalls(link) {
+  const { w, d } = elevatorSize(link);
+  const hw = w / 2, hd = d / 2;
+  const door = elevatorDoorWidth(link) / 2;
+  const at = (lx, lz) => localToWorld(link, lx, lz);
+  return [
+    { a: at(-hw, -hd), b: at(-hw, hd), side: 'left' },
+    { a: at(hw, -hd), b: at(hw, hd), side: 'right' },
+    { a: at(-hw, hd), b: at(hw, hd), side: 'back' },
+    { a: at(-hw, -hd), b: at(-door, -hd), side: 'jamb' },
+    { a: at(door, -hd), b: at(hw, -hd), side: 'jamb' },
+  ];
+}
+
+// The elevators standing on a storey — an elevator belongs to *both* its
+// levels, unlike a stair, because the car is a room on each of them.
+export const elevatorsOn = (state, floorIndex) =>
+  (state.links || []).filter((l) => l.type === 'elevator' &&
+    (l.from === floorIndex || l.to === floorIndex));
+
+// Are you inside a car, and if so where does it go? `inset` keeps the answer
+// to someone actually standing in it rather than leaning on the outside of
+// the shaft wall.
+export function elevatorAt(state, x, z, floorIndex, inset = 0.4) {
+  const ht = state.floorHt || FLOOR_H;
+  for (const link of elevatorsOn(state, floorIndex)) {
+    const { w, d } = elevatorSize(link);
+    const { lx, lz } = worldToLocal(link, x, z);
+    if (Math.abs(lx) > w / 2 - inset || Math.abs(lz) > d / 2 - inset) continue;
+    const to = link.from === floorIndex ? link.to : link.from;
+    return { link, from: floorIndex, to, y: to * ht };
+  }
+  return null;
+}
+
 // ---------- picking & mutation ----------
 
 // The link under a point on the storey being edited. Later links win, the same
@@ -270,7 +422,10 @@ export function stairUnder(state, x, z, atY = null) {
 // you select.
 export function linkAt(state, floorIndex, x, z, pad = 0) {
   const metrics = stairMetrics(state);
-  const list = linksFrom(state, floorIndex);
+  // An elevator stands on both of its levels, so it can be picked from either;
+  // everything else belongs to the storey it rises out of.
+  const list = stairsOf(state).filter((l) =>
+    l.from === floorIndex || (l.type === 'elevator' && l.to === floorIndex));
   for (let i = list.length - 1; i >= 0; i--) {
     const box = footprintBox(list[i], metrics);
     const { lx, lz } = worldToLocal(list[i], x, z);
@@ -286,25 +441,45 @@ export const linkById = (state, id) => (state.links || []).find((l) => l.id === 
 // Place a stair or an opening rising out of `floorIndex`. Returns the new link,
 // or null with a reason — the tool turns that into a status line rather than
 // guessing why nothing appeared.
+const NEEDS_LEVEL = {
+  stair: 'A stair has to arrive somewhere — add a level above first.',
+  ramp: 'A ramp has to arrive somewhere — add a level above first.',
+  elevator: 'An elevator has to serve two levels — add one above first.',
+  opening: 'A floor opening looks up into the next level — add one above first.',
+};
+
+function linkData(type, opts) {
+  if (type === 'stair') {
+    return { width: clamp(opts.width || STAIR_W, MIN_STAIR_W, MAX_STAIR_W) };
+  }
+  if (type === 'ramp') {
+    return {
+      width: clamp(opts.width || RAMP_W, MIN_RAMP_W, MAX_RAMP_W),
+      slope: clamp(opts.slope || RAMP_SLOPE, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE),
+    };
+  }
+  if (type === 'elevator') {
+    return {
+      w: clamp(opts.w || ELEV_W, MIN_ELEV, MAX_ELEV),
+      d: clamp(opts.d || ELEV_D, MIN_ELEV, MAX_ELEV),
+    };
+  }
+  return {
+    w: clamp(opts.w || OPENING_W, MIN_OPENING, MAX_OPENING),
+    d: clamp(opts.d || OPENING_D, MIN_OPENING, MAX_OPENING),
+  };
+}
+
 export function addStair(state, floorIndex, opts = {}) {
-  const type = STAIR_TYPES.includes(opts.type) ? opts.type : 'stair';
+  const type = LINK_KINDS.includes(opts.type) ? opts.type : 'stair';
   const from = Math.floor(floorIndex);
   const to = from + 1;
   if (!state.floors[from]) return { link: null, reason: 'No such floor.' };
-  if (!state.floors[to]) {
-    return { link: null, reason: type === 'stair'
-      ? 'A stair has to arrive somewhere — add a level above first.'
-      : 'A floor opening looks up into the next level — add one above first.' };
-  }
+  if (!state.floors[to]) return { link: null, reason: NEEDS_LEVEL[type] };
   if ((state.links || []).length >= MAX_LINKS) {
-    return { link: null, reason: 'This design is at its limit for stairs and openings.' };
+    return { link: null, reason: 'This design is at its limit for stairs, ramps and openings.' };
   }
-  const data = type === 'stair'
-    ? { width: clamp(opts.width || STAIR_W, MIN_STAIR_W, MAX_STAIR_W) }
-    : {
-      w: clamp(opts.w || OPENING_W, MIN_OPENING, MAX_OPENING),
-      d: clamp(opts.d || OPENING_D, MIN_OPENING, MAX_OPENING),
-    };
+  const data = linkData(type, opts);
   const link = addLink(state, type, {
     from, to, x: opts.x || 0, z: opts.z || 0, rotationY: opts.rotationY || 0, data,
   });

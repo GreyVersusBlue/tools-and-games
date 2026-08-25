@@ -11,16 +11,25 @@
 // Ghost mode (`F`) is the old no-clip flight, kept because inspecting a design
 // from inside a wall is a legitimate thing to want from a floor-plan tool —
 // and because a building with no stairs yet has no other way up.
+//
+// Phase 2 adds the two things in a building that respond to you rather than
+// just standing there. Doors swing open as you approach and shut behind you —
+// the leaves live on the collider (see openings.js), this file only advances
+// them once a frame and hands the result to the renderer to pose. And an
+// elevator moves you: step into a car, press E, and you are on the other
+// storey. That is the whole of "teleport with doors", and it is deliberately
+// not an animation — a lift that takes eight seconds to arrive is realism
+// nobody inspecting a floor plan asked for.
 
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { CELL, EYE_H, cellIdx, activeFloor, floorBaseY, topOfBuilding } from './grid.js';
 import { shapesOf, shapeArea, shapeBBox, interiorPoint } from './shapes.js';
 import { catalogEntry } from './catalog.js';
-import { stairUnder } from './stairs.js';
+import { stairUnder, elevatorAt } from './stairs.js';
 import {
   GRAVITY, TERMINAL_V, JUMP_V, STEP_UP,
-  buildCollider, emptyCollider, moveWalker, supportAt, storeyAt,
+  buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoors,
 } from './collide.js';
 import { lookEulerDelta } from './touch.js';
 
@@ -105,9 +114,26 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     opts.onHud(text);
   }
 
+  // Ride the elevator you are standing in. Nothing happens if you aren't in
+  // one, which is why this is a key rather than a prompt: the answer to "am I
+  // in a lift" is a point-in-box test, not a state machine.
+  function rideElevator() {
+    if (!world) return false;
+    const feet = camera.position.y - EYE_H;
+    const car = elevatorAt(world, camera.position.x, camera.position.z, storeyAt(world, feet));
+    if (!car) return false;
+    camera.position.y = car.y + EYE_H;
+    vy = 0;
+    grounded = true;
+    hudText = '';
+    reportHud();
+    return true;
+  }
+
   document.addEventListener('keydown', (e) => {
     if (!active) return;
     if (e.code === 'KeyF') { ghost = !ghost; vy = 0; grounded = false; reportHud(); return; }
+    if (e.code === 'KeyE') { rideElevator(); return; }
     keys.add(e.code);
     if (e.code === 'Space') e.preventDefault();
   });
@@ -277,6 +303,9 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     // keyboard would, so updateWalk()/updateGhost() need no touch-specific
     // branch for either.
     touchKey(code, down) { down ? keys.add(code) : keys.delete(code); },
+    // Touch has no E key, so the same on-screen button that jumps can call
+    // this — it's a no-op anywhere but inside a car.
+    rideElevator,
     update(dt) {
       if (!active || (!controls.isLocked && !touchActive)) return;
       const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED;
@@ -284,6 +313,15 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       const right = touchActive ? moveAxes.x : (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
       if (ghost || !world) updateGhost(dt, fwd, right, speed);
       else updateWalk(dt, fwd, right, speed);
+      // Doors answer to where you *ended up*, and they answer on every storey
+      // you might be standing on — including in ghost mode, where a corridor
+      // of doors opening ahead of you is half the reason to fly down it.
+      if (world) {
+        const collider = colliderFor(storeyAt(world, camera.position.y - EYE_H));
+        if (updateDoors(collider, camera.position.x, camera.position.z, dt) && opts.onDoors) {
+          opts.onDoors(collider.doors);
+        }
+      }
       reportHud();
     },
   };

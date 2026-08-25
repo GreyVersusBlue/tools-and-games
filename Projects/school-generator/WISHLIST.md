@@ -22,7 +22,10 @@ the right phase rather than starting a second list.
 `js/touch.js`, `js/sample.js`, `js/editor.js`, `js/polyedit.js`,
 `js/propedit.js`, `js/stairedit.js`, `js/templateedit.js`, `js/render.js`,
 `js/walkthrough.js`, `js/save-load.js`, `js/blueprint.js`, `js/main.js`,
-plus a `node --test` suite per pure module in `test/`)
+plus a `node --test` suite per pure module in `test/`. Phase 2 of the
+second arc adds three more pure modules on the same terms —
+`js/openings.js` (door leaves, swing, window bands), `js/walls.js`
+(derived wall thickness) and `js/finish.js` (floor material, wall paint).)
 
 - **Units are feet, everywhere.** 4ft grid cells (`CELL`), 10ft walls
   (`WALL_H`), 12ft floor-to-floor (`FLOOR_H`), max 8 storeys. Props, polygon
@@ -316,27 +319,28 @@ geometric fidelity while staying procedural and instanced.
   validity, sane dimension ranges (nothing taller than `FLOOR_H` unless
   flagged outdoor, wall mounts within `WALL_H`), every `geo` key resolved.
 
-## Phase 2 — Doors, windows & deeper building modeling
+## Phase 2 — Doors, windows & deeper building modeling ✅
 
 The model says "opening"; a walker sees a gap. This phase makes the shell
-believable up close.
+believable up close. **Done** — save format v5, two new pure modules
+(`js/openings.js`, `js/walls.js`) plus `js/finish.js`, and 271 tests.
 
-- [ ] Door leaves — an opening can carry a door (single/double, with lite,
+- [x] Door leaves — an opening can carry a door (single/double, with lite,
   push bar for corridors) that swings open as the walker approaches and
   shows correctly in the blueprint's existing swing symbol.
-- [ ] First-class windows: a wall segment kind (or opening variant) with
+- [x] First-class windows: a wall segment kind (or opening variant) with
   sill height, mullions and glazing — exterior walls stop being blank or
   all-glass. Blinds/curtains from Phase 1 mount into them.
-- [ ] Curved walls (arcs as polygon segments) — the biggest schema ask
+- [x] Curved walls (arcs as polygon segments) — the biggest schema ask
   here; everything downstream (collision, blueprint, rendering) currently
   assumes line segments, so arcs should tessellate into segments at the
   model boundary.
-- [ ] Ramps and elevators as link types beside stairs — the accessible
+- [x] Ramps and elevators as link types beside stairs — the accessible
   routes Phase 7 will want to check. An elevator is a link whose walkable
   answer is "teleport with doors"; a ramp is a stair with no risers.
-- [ ] Per-room finishes: floor material and wall paint on the room record,
+- [x] Per-room finishes: floor material and wall paint on the room record,
   feeding both renderer and blueprint legend.
-- [ ] Wall thickness options (interior 0.4ft vs exterior 0.8ft) — collision
+- [x] Wall thickness options (interior 0.4ft vs exterior 0.8ft) — collision
   and door-gap widening already parameterize on half-thickness, so this is
   plumbing a constant into a field.
 
@@ -345,6 +349,92 @@ good), `wallSegments()`/`solidSpans()`, blueprint symbol drawing, and the
 "collider built once per walk" rule — an animated door is the first thing
 that changes the world mid-walk, so doors need their own dynamic collision
 path or a collider invalidation hook.
+
+### How it actually landed
+
+- **A window is an opening variant, not a segment kind.** The wishlist
+  offered both; the variant won and paid for itself immediately. Position
+  along a run, width, the plan symbol, the save validation, the tool that
+  places one — all of it was already written for doorways. The entire
+  difference between a window and a door is *one predicate*: `isDoorOpening`
+  decides whether an opening becomes a gap in `wallSegments()`. That single
+  line is what stops you strolling out of a second-storey classroom.
+- **Wall thickness is derived, not stored** (`js/walls.js`). A wall with a
+  room on both sides is a partition; one with open air on a side is
+  exterior. Both answers are already in the model, so nothing records them:
+  `walls.js` probes `floorSolidAt` either side of a run and hands back
+  0.4ft or 0.8ft. No migration, no stale field, and drawing a new wing up
+  against an exterior wall silently turns it into an interior one. Third
+  time this codebase has taken that trade (after stair cuts and
+  guardrails), and the cheapest of the three.
+- **Curvature is an authoring act, not a field.** `curveSegment()`
+  tessellates an arc into real vertices in place, so a curved wall is an
+  ordinary polygon with a lot of corners and every downstream reader was
+  already correct about it. What makes that survivable is `straightenRun()`
+  — the wall tool keeps a memo of the arc it just laid down and flattens it
+  back to the chord before re-bending, so adjusting a curve doesn't stack
+  arcs on arcs. The memo is tool state, never saved state.
+- **Doors were the only genuinely hard one**, and not for the reason
+  expected. The dynamic collision path was easy: the collider stays built
+  once, and gains a short list of leaves whose *current* segment is
+  computed on demand rather than baked. The hard part was that a leaf
+  swinging toward an approaching walker is unusable — `collide.js` pushes
+  the body out of the leaf exactly as fast as the leaf sweeps into the
+  body, and a door and a person shove each other back down the corridor.
+  The fix is that **a door opens away from whoever approaches it**
+  (`faceLeafAway`), which makes every door double-acting for the duration
+  of a walk; the record's own hand is untouched and is still what the plan
+  draws. A second rule — a leaf won't swing through a body already standing
+  in its sweep — covers stepping into a door that is already moving.
+- **v5 round-trips a v4 file byte for byte.** `writeOpening()` records only
+  what differs from the v4 default, so a plain doorway is still
+  `{ seg, t, w }` on disk. The one *behavioural* change is deliberate: an
+  `EDGE_DOOR` that was a hole in a wall now hangs a leaf. A design that
+  wants the hole back says `EDGE_OPENING`.
+
+### What fought back
+
+- **The lattice has nowhere to put options.** A polygon opening is a record
+  and can carry a sill, a hand, a leaf count; a grid edge is an integer.
+  So every variant the polygon side spells with fields costs the grid a new
+  edge kind — `EDGE_WINDOW`, `EDGE_DOOR2`, `EDGE_OPENING` — and its width is
+  fixed at the middle of the cell. Three kinds was tolerable; the next batch
+  won't be. This is the two-representations tax again, and the first phase
+  where it visibly bounded a feature rather than just costing work.
+- **Door leaves can't be instanced.** Everything else on a storey merges
+  into a handful of meshes; a leaf rotates independently, so it is one draw
+  call each. Forty doors is forty draw calls — fine at school scale, and
+  the geometry is still shared per (length, height, lite, bar).
+- **`[` and `]` were already the floor keys.** The curve controls went to
+  `,` and `.` rather than take them back.
+- **A floor-to-floor ramp at 1:12 is 144ft of run.** That is the honest
+  number and the tool prints it rather than quietly steepening the slope;
+  the readout says outright that an elevator is the usual accessible route
+  between storeys. See the deferred list below.
+
+### Deliberately left for later
+
+- **Switchback ramps.** A ramp here is one straight run, so the ADA-compliant
+  version is 144ft long and rarely placeable indoors. Folding it into
+  parallel legs with landings is the fix, and it needs a real walkable
+  surface function (which leg, which landing, which direction) rather than
+  the single linear one `stairSurfaceAt` uses now.
+- **An elevator that moves.** The car teleports with `E`; there is no ride,
+  no call button outside, and the doors are drawn parked open because a
+  sliding door that shuts is a door you can't board. Phase 4's sound and
+  Phase 6's schedule both want the animated version.
+- **Re-editing a curve after a reload.** Curvature isn't stored, so the
+  tool's memo only lasts as long as the tool does. Reopening a design and
+  bending the same wall again starts from its chords.
+- **Blinds and curtains mounting *into* a window.** Phase 1 shipped the
+  props; they still sit against a wall at a height you pick rather than
+  snapping to a window's sill and head.
+- **Wall paint on the room's own side.** A wall is one object here, so a
+  boundary between two painted rooms picks one colour (the lower hex, for
+  stability). Painting each face separately means splitting wall geometry
+  by side, which is a renderer change, not a model one.
+- **Curved walls in the collider are chords**, so a walker feels the facets
+  of a tight arc. At 2ft chords nobody has noticed.
 
 ## Phase 3 — Light, sky & atmosphere
 
@@ -493,6 +583,10 @@ Each item here prices the no-build-step, no-deps stance explicitly.
   variants).
 
 ## Suggested build order
+
+Phases 1 and 2 are done. Phase 3 (light, sky and atmosphere) is next by the
+default ordering, and the windows Phase 2 just put in every exterior wall
+are exactly what a sun study needs something to shine through.
 
 Phase 1 first: it's pure content on a proven pipeline, no schema risk, and
 almost everything later (seated NPCs, furnished generation, VR at 1:1)
