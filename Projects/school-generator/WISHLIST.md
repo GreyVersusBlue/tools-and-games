@@ -1925,7 +1925,7 @@ here is load-bearing, and that was the whole idea.
 
 **Done** — three new pure modules (`js/decor.js`, `js/shove.js`, `js/hunt.js`),
 a colour reader and a swatch row in `catalog.js`, three new geometry builders,
-ten new catalog rows, seventeen rows flagged light, 54 new tests, and — as
+ten new catalog rows, seventeen rows flagged light, 60 new tests, and — as
 promised in Phase 10's audit of the remainder — **no save-format bump**. The
 claim held to the byte: `cleanData()` had validated `data.color` since Phase 1,
 and a shove and a hunt are runtime state that `save-load.js` never hears about.
@@ -1985,15 +1985,20 @@ phase in either arc that no other phase was waiting on.
   `panel` in white. `trim` is the second colour named on the row the way
   `buildTree` names its bark — fixed, so a repainted garland keeps its cream
   bunting instead of going monochrome.
-- **The shove is `pushOutOfBox` with a minus sign in front of it.** That
-  function returns where the *walker* would be moved to; the difference is the
-  separation, and the prop takes it in the opposite direction scaled by how
-  light it is. Everything else in `shove.js` is refusals: a per-frame cap, a
-  floor under which a contact is a rounding error rather than a bump, and a
-  clearance test that cancels a shove which would end inside a wall, a door
-  leaf or another prop. A chair against a wall stays against the wall because
-  there is nowhere for it to go, not because anything knows it is against a
-  wall.
+- **The shove takes its direction from `pushOutOfBox` and its distance from
+  somewhere else entirely.** That function returns the way *out* for the
+  walker, so its opposite is the way in for the chair — that part really is a
+  minus sign. What it cannot supply is how far, because by the time this runs
+  `moveWalker` has resolved the walker to exactly touching and the penetration
+  is zero every frame by construction. The distance is instead **the step this
+  frame took away from you** — asked for minus got — projected onto the
+  direction the chair has to go. Walk into a chair and it moves at about the
+  speed you were walking; lean on it and it does not move at all, because
+  standing still is not blocked. Everything else in `shove.js` is refusals: a
+  per-frame cap, a floor under which a shove is a rounding error, and a
+  clearance test that cancels one which would end inside a wall, a door leaf or
+  another prop. A chair against a wall stays against the wall because there is
+  nowhere for it to go, not because anything knows it is against a wall.
 - **An off-centre shove turns the thing, and the torque needs no contact
   point.** The cross product of "where you hit it relative to its middle" with
   "which way you pushed" is zero for a head-on shove and grows as you catch it
@@ -2037,6 +2042,25 @@ phase in either arc that no other phase was waiting on.
   "this feels sticky", which is the worst kind of bug to find by playing. The
   index grew a `reindex(i, from, to)`, and the test that catches it walks a
   hundred and twenty frames into a chair and asserts it kept moving.
+- **Zero penetration, forever.** The first cut sized a shove by how far the
+  walker was *inside* the chair, which is the obvious reading of "the same
+  arithmetic pointed the other way" and is worth exactly nothing: `moveWalker`
+  runs first and leaves the walker precisely touching, so the overlap is
+  always zero and the chair never moves a foot. Every unit test passed —
+  they placed the walker inside the prop, because that is what the API asked
+  for — and the feature did not work at all in the browser. The fix is the
+  blocked-step measure above, plus a few inches of `REACH` so that "pressed
+  against this" is a state a contact test can see rather than an instant it
+  always just misses. The tests now stand the walker exactly where the
+  walkthrough would, which is the only place worth testing.
+- **A refused shove is a frame-rate-dependent shove.** Under software
+  rendering a frame is a second long, a step is clamped to `MAX_STEP`, and the
+  shove that comes out is the full per-frame cap — more than the gap between a
+  chair and the desk in front of it. Cancelling outright made that chair
+  immovable at one frame rate and freely shovable at another: the same walk,
+  a different answer. It now tries the whole shove, then half, then a quarter,
+  and takes the first that fits, so a chair ends up snug against the desk
+  either way. Three tries is not a solver.
 - **`candidates()` reuses the array it hands back**, which is documented and
   correct and quietly fatal here: `shoveProps` iterates that list and
   `shoveClear` queries again inside the loop, rewriting it mid-iteration. The
@@ -2071,6 +2095,11 @@ phase in either arc that no other phase was waiting on.
   is a chair whose second colour is fixed on the row. The `trim` parameter is
   how the packs get their second colour, and it is a property of the row rather
   than of the prop — a repainted garland keeps its trim.
+- **A shove backs off in thirds, not to the exact fit.** When the whole
+  distance will not go, `shoveProps` tries half and then a quarter and takes
+  the first that clears — so a chair stops a few inches short of the desk it
+  was pushed at rather than flush against it. Binary-searching the last inch
+  would close the gap and would also be the solver this file is not.
 - **The shove treats a prop as a circle of its own half-width** for the
   clearance test. Light props are small and roughly square, so it is close
   enough; a six-foot bench would be able to slide a little way into a wall
@@ -2142,12 +2171,16 @@ Phase 11 is done, and it landed in the order it predicted for the reason it
 predicted: the colour variants first, because the decoration packs are the
 colour variants wearing a hat, and doing them the other way round would have
 meant thirty-six near-duplicate catalog rows. What it did not predict is which
-half would be the fiddly one. The physics and the hunt are each about a hundred
-and fifty lines of arithmetic that worked nearly first time; the *catalog* is
-where the mistakes were — two `light` flags on rows that can never be walked
-into, four hanging rows poking through the ceiling. Both were caught by tests
-that already existed or by one written in the same hour, which is the argument
-for a table with a test in front of it.
+half would be the fiddly one. The hunt is a hundred and fifty lines of
+arithmetic that worked nearly first time; the physics is a hundred and fifty
+that passed every test it had and did nothing whatsoever in the browser, twice,
+for two different reasons — and both of them were about the *contract with the
+frame*, not about the arithmetic. The catalog is where the rest of the mistakes
+were: two `light` flags on rows that can never be walked into, four hanging
+rows poking through the ceiling, both caught by tests that already existed.
+The lesson is the one this project keeps relearning in a new costume: a pure
+module is only as honest as the state its tests put it in, and the state to
+put it in is the one its caller actually produces.
 
 And the finding that made the Phase 10/11 split free, which fell out of
 auditing the remainder rather than out of building anything, held all the way

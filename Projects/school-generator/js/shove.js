@@ -6,10 +6,20 @@
 // building you can walk through and not touch is a diorama.
 //
 // It is also, deliberately, almost no new arithmetic. `collide.js` spends its
-// whole length answering "where does this box push the walker to"; a shove is
-// that same answer, negated. Where the walker would have been moved a foot to
-// the left by a chair, the chair is moved a foot to the right instead, and the
-// walker keeps walking.
+// whole length answering "where does this box push the walker to"; a shove
+// takes its *direction* from that same answer, negated — the way out for the
+// walker is the way in for the chair.
+//
+// What it does not take from there is the distance, and that is the one thing
+// worth understanding before reading on. By the time this runs, `moveWalker`
+// has already resolved the walker to exactly touching: penetration is zero,
+// every frame, by construction. So a shove sized by how far the walker is
+// *inside* a chair would be a shove of zero feet, forever. It is sized instead
+// by how far the walker was **prevented from moving** this frame — the step
+// they asked for minus the step they got — projected onto the direction the
+// chair would have to go. Walk into a chair and it moves at about the speed
+// you were walking; stand still against it and it does not move at all,
+// because standing still is not blocked.
 //
 // Three things this is not, all of them on purpose:
 //
@@ -27,15 +37,24 @@
 
 import { WALKER_R, candidates, pushOutOfBox, pushOutOfSeg, doorSegments } from './collide.js';
 
-// How far a prop may travel in one frame. A person walking at 5ft/s into a
-// chair moves it about that far per second; the cap is what stops a long
-// frame (a tab that was in the background, a headset re-projecting) from
-// launching it across the gym.
+// How far a prop may travel in one frame. A walking step is about a sixth of
+// this at sixty frames a second, so the cap never bites during ordinary
+// walking — it is there to stop a long frame (a tab that was in the
+// background, a headset re-projecting) from launching a chair across the gym.
 export const MAX_SHOVE = 0.35;    // ft per frame
-// Below this the contact is a rounding error rather than a bump. Without it a
-// walker standing still against a chair jitters it forever, which costs a
-// renderer update every frame and looks like the furniture is shivering.
+// Below this the shove is a rounding error rather than a bump. Without it a
+// walker pressed against a chair jitters it forever, which costs a renderer
+// update every frame and looks like the furniture is shivering.
 export const MIN_SHOVE = 0.004;   // ft
+// How far past the walker's own body a shove reaches. `moveWalker` leaves the
+// walker *exactly* touching whatever stopped them — zero penetration — so a
+// contact test at the body's own radius finds nothing at all. A few inches of
+// slack is what makes "I am pressed up against this chair" a state that can be
+// detected rather than an instant that is always just missed.
+export const REACH = 0.3;         // ft
+// The fractions of a shove to try, in order, when the whole of it will not
+// fit. See the loop in `shoveProps`.
+export const BACKOFF = [1, 0.5, 0.25];
 // How much of the off-centre part of a shove turns the prop instead of sliding
 // it. Tuned by eye to "a chair caught with a hip turns a little", not to any
 // moment of inertia — there is no mass in this file.
@@ -72,15 +91,26 @@ export function shoveClear(collider, p, x, z) {
   return true;
 }
 
-// One frame of it. Walks the props near (x, z), moves the light ones out from
-// under the walker, and returns the ones that actually went anywhere so the
-// renderer can move the matching instances. Mutates the collider's obstacle
-// records in place — that is the whole of the "no persistence" story: those
-// records are the collider's, and the collider is the walk's.
-export function shoveProps(collider, x, z, r = WALKER_R, opts = {}) {
+// One frame of it. `blocked` is the step the walker asked for minus the step
+// they got — the motion this frame's collisions took away from them — and it
+// is what sizes every shove below. Walks the props within reach of (x, z),
+// moves the light ones that were in the way of that motion, and returns the
+// ones that actually went anywhere so the renderer can move the matching
+// instances.
+//
+// Mutates the collider's obstacle records in place, and that is the whole of
+// the "no persistence" story: those records are the collider's, and the
+// collider is the walk's.
+export function shoveProps(collider, x, z, blocked, opts = {}) {
   const moved = [];
   if (!collider || !collider.props || !collider.props.length) return moved;
+  const bx = (blocked && blocked.dx) || 0;
+  const bz = (blocked && blocked.dz) || 0;
+  // Nothing took anything away from you, so you pushed nothing. This is also
+  // what makes standing still against a chair leave it alone.
+  if (Math.hypot(bx, bz) < MIN_SHOVE) return moved;
   const maxStep = opts.maxStep ?? MAX_SHOVE;
+  const r = (opts.r ?? WALKER_R) + REACH;
   const near = candidates(collider, x - r, z - r, x + r, z + r);
   // `candidates` hands back an array it reuses between queries, and
   // `shoveClear` below queries again — so the list is copied before anything
@@ -90,16 +120,37 @@ export function shoveProps(collider, x, z, r = WALKER_R, opts = {}) {
     const w = shoveWeight(p);
     if (w <= 0) continue;
     const out = pushOutOfBox(p, x, z, r);
-    if (!out) continue;                        // not touching it
-    // The negation. `out` is where the walker would have been pushed to; the
-    // prop goes the other way by the same amount, scaled by how light it is.
-    let dx = (x - out.x) * w;
-    let dz = (z - out.z) * w;
-    const d = Math.hypot(dx, dz);
-    if (d < MIN_SHOVE) continue;
-    if (d > maxStep) { dx *= maxStep / d; dz *= maxStep / d; }
-    const tx = p.x + dx, tz = p.z + dz;
-    if (!shoveClear(collider, p, tx, tz)) continue;
+    if (!out) continue;                        // not within reach of it
+    // The negation: `out` is the way *out* for the walker, so its opposite is
+    // the way the prop has to go. Direction only — the distance comes next.
+    let nx = x - out.x, nz = z - out.z;
+    const n = Math.hypot(nx, nz);
+    if (n < 1e-9) continue;
+    nx /= n; nz /= n;
+    // How much of the motion you lost was lost into *this* prop. A chair
+    // beside you as you walk past takes none of it and does not move; the one
+    // in front of you takes all of it.
+    const into = bx * nx + bz * nz;
+    if (into <= 0) continue;
+    const want = Math.min(into * w, maxStep);
+    if (want < MIN_SHOVE) continue;
+    // Try the whole shove, then half of it, then a quarter. Refusing outright
+    // when the full distance will not fit makes a chair a foot from a desk
+    // immovable on a slow frame and perfectly shovable on a fast one — the
+    // same walk, a different answer, decided by the frame rate. Three tries is
+    // not a solver; it is the difference between "it stops against the desk"
+    // and "it refuses to move at all".
+    let amount = 0, tx = 0, tz = 0;
+    for (const f of BACKOFF) {
+      const a = want * f;
+      if (a < MIN_SHOVE) break;
+      const cx = p.x + nx * a, cz = p.z + nz * a;
+      if (!shoveClear(collider, p, cx, cz)) continue;
+      amount = a; tx = cx; tz = cz;
+      break;
+    }
+    if (!amount) continue;
+    const dx = nx * amount, dz = nz * amount;
     // A shove that misses the centre turns the thing as well as moving it.
     // The lever arm is where you hit it relative to its middle, and the cross
     // product of that with the push is the whole of the torque — no contact

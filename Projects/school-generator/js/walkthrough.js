@@ -313,17 +313,19 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     const moved = moveWalker(world, collider, { x: body.x, y: feet, z: body.z },
       dx, dz, { grounded, bodies: bodiesOn(floorIndex) });
     const walked = Math.hypot(moved.x - body.x, moved.z - body.z);
+    // Phase 11: what stopped you is what you push. The step this frame took
+    // away from you — asked for minus got — is the whole input to the shove,
+    // because `moveWalker` has already resolved you to exactly touching and
+    // there is no penetration left to measure. Read *before* `body` is
+    // updated, since that is what the difference is against.
+    const blocked = { dx: dx - (moved.x - body.x), dz: dz - (moved.z - body.z) };
     body.x = moved.x;
     body.z = moved.z;
 
-    // Phase 11: and what you walked into, walks away. `moveWalker` has already
-    // decided where you end up — a chair never gets to stop you and get shoved
-    // in the same frame — so this runs after it and reads the position you
-    // actually reached. It answers on the storey you're on, and only when your
-    // feet are near the floor: a chair on the level below shouldn't scatter
-    // because somebody flew over it in ghost mode.
+    // Only when your feet are near the floor: a chair on the level below
+    // shouldn't scatter because somebody flew over it in ghost mode.
     if (grounded && opts.onShove) {
-      const shoved = shoveProps(collider, body.x, body.z);
+      const shoved = shoveProps(collider, body.x, body.z, blocked);
       if (shoved.length) opts.onShove(shoved, floorIndex);
     }
 
