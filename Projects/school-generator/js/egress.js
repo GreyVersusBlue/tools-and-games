@@ -8,13 +8,21 @@
 // three together is the whole of this file, which is why it is a reader rather
 // than a system — there is nothing here the model didn't already contain.
 //
-// **What a number here means.** Travel distance is measured the way the graph
-// routes: from the farthest point in a room, to that room's hub, out through
-// its doorway, and on to the exit. That is longer than a straight line and
-// shorter than the walk a body with a shoulder actually takes, because the
-// graph has no furniture in it. It is an estimate, it is labelled as one, and
-// it is the same estimate the crowd walks — a drill that strands somebody and
-// a travel distance that says 340 feet are the same finding twice.
+// **What a number here means.** Travel distance is measured from the farthest
+// point in a room to the nearest exit, over Phase 10's nav mesh: the tile
+// under that point, the straight line to whichever doorway, gate or stair
+// standing on it starts the shortest walk out, and the graph's own distance
+// from there. That is longer than a straight line and shorter than the walk a
+// body with a shoulder actually takes, because the mesh has no furniture in
+// it. It is an estimate, it is labelled as one, and it is the same estimate
+// the crowd walks — a drill that strands somebody and a travel distance that
+// says 340 feet are the same finding twice.
+//
+// Until Phase 10 it was the room's *hub* distance plus the room's own radius,
+// which counted the room twice over and put every trip through the middle of
+// whatever corridor it crossed. Every number in this file moved when that
+// went, and the tests below moved with them: they are the acceptance criteria
+// for the mesh rather than an obstacle to it.
 //
 // **The accessible route is this graph with two things taken out** — stairs,
 // and doorways too narrow to roll through. That is `buildNav`'s one new
@@ -33,7 +41,7 @@ import { CELL, cellIdx, floorLabel } from './grid.js';
 import { shapesOf } from './shapes.js';
 import { stairsOf, stairWidth, isRun, isElevator, elevatorDoorWidth } from './stairs.js';
 import {
-  buildNav, egressField, clearWidth, MIN_CLEAR_W, MIN_ACCESSIBLE_W,
+  buildNav, egressField, pointField, clearWidth, MIN_CLEAR_W, MIN_ACCESSIBLE_W,
 } from './navgraph.js';
 import { buildingOccupancy } from './occupancy.js';
 
@@ -120,24 +128,13 @@ export function farthestFrom(samples, id, from) {
 
 // ---------- the analysis ----------
 
-// Every doorway on a room, as the width and the direction it leads.
-function portalsOn(nav, roomId) {
-  const out = [];
-  for (const e of nav.adj.get(roomId) || []) {
-    const n = nav.nodes.get(e.to);
-    if (n && n.kind === 'portal') out.push(n);
-  }
-  return out;
-}
-
-function linksOn(nav, roomId) {
-  const out = [];
-  for (const e of nav.adj.get(roomId) || []) {
-    const n = nav.nodes.get(e.to);
-    if (n && n.kind === 'link') out.push(n);
-  }
-  return out;
-}
+// Every doorway on a room, and every stair standing in one. Asked of the
+// graph rather than walked out of it: on the mesh a door at the far end of a
+// long room is a neighbour of the *tile* it stands on rather than of the room
+// node, so counting a room's neighbours would count the doors near its middle
+// and miss the rest.
+const portalsOn = (nav, roomId) => nav.portalsOf(roomId);
+const linksOn = (nav, roomId) => nav.linksOf(roomId);
 
 // A room's ways *onward* — the neighbours through which the exit is closer
 // than it is from here. Two of them is a corridor with a choice at both ends;
@@ -149,25 +146,45 @@ function onwardFrom(nav, field, roomId) {
   const out = [];
   for (const e of nav.adj.get(roomId) || []) {
     const n = nav.nodes.get(e.to);
-    if (!n || n.kind === 'room' || n.kind === 'outside') continue;
+    // A gate is a seam between two tiles of one room, not a way out of it —
+    // counting them would give every corridor cut into three tiles three ways
+    // onward and no dead end anywhere.
+    if (!n || n.kind === 'room' || n.kind === 'outside' || n.kind === 'gate') continue;
     const d = field.dist.get(e.to);
     if (d !== undefined && d < here - 0.01) out.push(n);
   }
   return out;
 }
 
+// The longest walk out of a room, measured from every point in it rather than
+// from its middle. Phase 10's whole argument in one function: the mesh knows
+// how far the corner of a classroom is from the door of it, and adding a
+// room's radius to its hub's distance — which is what this was — counted the
+// corridor outside twice and the room itself twice over.
+function worstTravel(nav, field, samples, room) {
+  const pts = samples.get(room.id) || [];
+  let worst = null;
+  for (const p of pts) {
+    const at = pointField(nav, field, room.floor, p.x, p.z, room.id);
+    if (!at) continue;
+    if (!worst || at.dist > worst.dist) worst = { ...at, x: p.x, z: p.z };
+  }
+  return worst;
+}
+
 // One room's egress: how far out, by which door, and whether the doors it has
 // are enough for the people in it.
 function roomEgress(nav, field, samples, room, load, limits) {
   const hub = field.dist.get(room.id);
-  const reached = hub !== undefined;
   const far = farthestFrom(samples, room.id, room);
   const doors = portalsOn(nav, room.id);
   const doorWidth = doors.reduce((w, p) => w + clearWidth(p.w), 0);
-  const viaId = field.via.get(room.id);
+  const worst = worstTravel(nav, field, samples, room);
+  const reached = !!worst || hub !== undefined;
+  const viaId = worst ? worst.via : field.via.get(room.id);
   const via = viaId ? nav.nodes.get(viaId) : null;
   const occ = load ? load.occ : 0;
-  const travel = reached ? hub + far : Infinity;
+  const travel = worst ? worst.dist : (hub !== undefined ? hub + far : Infinity);
   return {
     id: room.id,
     floor: room.floor,
@@ -175,8 +192,10 @@ function roomEgress(nav, field, samples, room, load, limits) {
     use: load ? load.use : 'unassigned',
     area: room.area,
     occ,
-    // The walk from this room's hub, and from its farthest corner.
-    hub: reached ? hub : Infinity,
+    // The walk from this room's own node, and how far across the room it is
+    // from there — both kept because a report that only prints the worst
+    // number cannot say whether the room or the walk to it is the problem.
+    hub: hub === undefined ? Infinity : hub,
     reach: far,
     travel,
     reached,
@@ -446,7 +465,11 @@ function egressFindings({ rooms, exits, stairs, summary }) {
     out.push(finding('warn', 'exit-width',
       `${narrowExits.length} exit${narrowExits.length === 1 ? '' : 's'} narrower than 32 in clear`,
       'A single 3 ft leaf is the smallest door that gives the 32 in clear ' +
-      'width an exit needs once the leaf is standing in the opening.'));
+      'width an exit needs once the leaf is standing in the opening.',
+      // Carried so that a reader with a plan in front of it can point at
+      // *that* door rather than go looking for it. Phase 10's minimap draws
+      // them; the panel has always been able to and never had them.
+      { doors: narrowExits.slice(0, 8) }));
   }
 
   const twoWays = rooms.filter((r) => r.needsTwo);
@@ -521,7 +544,8 @@ function accessibleFindings({ rooms, entrances, summary, narrowDoors }) {
     out.push(finding('note', 'narrow-doors',
       `${narrowDoors.length} doorway${narrowDoors.length === 1 ? '' : 's'} under 3 ft`,
       'A 3 ft leaf is the narrowest door that leaves 32 in clear with the ' +
-      'leaf open, which is what a wheelchair needs.'));
+      'leaf open, which is what a wheelchair needs.',
+      { doors: narrowDoors.slice(0, 8).map((p) => ({ id: p.id, floor: p.floor, x: p.x, z: p.z, w: p.w })) }));
   }
   return out;
 }

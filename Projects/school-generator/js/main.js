@@ -47,7 +47,9 @@ import {
 import { buildReport, reportCSV } from './report.js';
 import { isTouchCapable, joystickAxes } from './touch.js';
 // --- Phase 8 ---
-import { BANDS, DEFAULT_BRIEF, normalizeBrief, buildProgram, programLines } from './program.js';
+import {
+  BANDS, SCHEMES, schemeEntry, DEFAULT_BRIEF, normalizeBrief, buildProgram, programLines,
+} from './program.js';
 import { parseBrief } from './brief.js';
 import { layoutSchool, buildSchool, generationSummary } from './generate.js';
 import { AUTO_ENTRY, AUTO_KEY } from './templateedit.js';
@@ -73,6 +75,7 @@ import {
 import {
   MINI_SIZE, MIN_RANGE, MAX_RANGE, minimapView, worldToMini, viewCone,
   markerAngle, scaleBar, nextMode, nextOrient, describeMinimap,
+  findingMarks, markAt, markOnFloor, describeMark, markFill, markLine,
 } from './minimap.js';
 import { xrAvailability, rigPosition } from './xr.js';
 
@@ -2167,8 +2170,8 @@ function renderLifeReadout() {
   if (!life.on) {
     const nav = life.nav || buildNav(state);
     const sum = navSummary(nav);
-    el.innerHTML = `<b>${sum.rooms}</b> rooms · <b>${sum.doors}</b> doors · ` +
-      `<b>${sum.links}</b> stairs &amp; lifts<br />` +
+    el.innerHTML = `<b>${sum.rooms}</b> rooms (<b>${sum.tiles}</b> tiles) · ` +
+      `<b>${sum.doors}</b> doors · <b>${sum.links}</b> stairs &amp; lifts<br />` +
       (sum.exits
         ? `<b>${sum.exits}</b> way${sum.exits === 1 ? '' : 's'} out. Populate to fill it.`
         : '<span class="warn">No exterior doors</span> — nobody could get out.');
@@ -2452,6 +2455,15 @@ BANDS.forEach((b) => {
   opt.textContent = b.label;
   genBand.appendChild(opt);
 });
+// Phase 10's one control: what the word "generate" means. Until it there was
+// exactly one scheme and it was a property of the file rather than a choice.
+const genScheme = $('gen-scheme');
+SCHEMES.forEach((s) => {
+  const opt = document.createElement('option');
+  opt.value = s.key;
+  opt.textContent = s.label;
+  genScheme.appendChild(opt);
+});
 
 const GEN_FIELDS = {
   students: 'gen-students', storeys: 'gen-storeys', seed: 'gen-seed',
@@ -2465,7 +2477,10 @@ const GEN_FLAGS = {
 let genBrief = { ...DEFAULT_BRIEF };
 
 function readGenFields() {
-  const raw = { band: genBand.value };
+  // The controls do not carry the adjacency rules — nothing on the sheet
+  // edits them except the chips — so they come off the brief the sheet is
+  // already holding.
+  const raw = { band: genBand.value, scheme: genScheme.value, adjacency: genBrief.adjacency };
   for (const [key, id] of Object.entries(GEN_FIELDS)) raw[key] = Number($(id).value);
   for (const [key, id] of Object.entries(GEN_FLAGS)) raw[key] = $(id).checked;
   return normalizeBrief(raw);
@@ -2473,11 +2488,34 @@ function readGenFields() {
 
 function writeGenFields(brief) {
   genBand.value = brief.band;
+  genScheme.value = brief.scheme;
   for (const [key, id] of Object.entries(GEN_FIELDS)) $(id).value = String(brief[key]);
   for (const [key, id] of Object.entries(GEN_FLAGS)) $(id).checked = brief[key];
 }
 
+// The adjacency rules the sheet is holding, as chips with a way to take one
+// off again. They come only from the sentence box — there is no widget for
+// "pick two rooms and a relation", because the sentence *is* that widget and
+// a second way to say the same thing is a second thing to keep in step.
+function renderGenAdjacency() {
+  const el = $('gen-adjacency');
+  const rules = genBrief.adjacency || [];
+  el.classList.toggle('hidden', !rules.length);
+  el.innerHTML = rules.map((r, i) =>
+    `<span class="rule">${esc(r.a)} ${r.want === 'apart' ? 'away from' : 'next to'} ` +
+    `${esc(r.b)}<button type="button" data-rule="${i}" title="Drop this rule" ` +
+    `aria-label="Drop ${esc(r.a)} ${esc(r.want)} ${esc(r.b)}">×</button></span>`).join('');
+}
+
+$('gen-adjacency').addEventListener('click', (e) => {
+  const i = Number(e.target.dataset && e.target.dataset.rule);
+  if (!Number.isInteger(i)) return;
+  genBrief = normalizeBrief({ ...genBrief, adjacency: genBrief.adjacency.filter((_, n) => n !== i) });
+  renderGenAdjacency();
+});
+
 function renderGenSchedule() {
+  $('gen-scheme-note').textContent = schemeEntry(genBrief.scheme).note;
   const program = buildProgram(genBrief);
   const lines = programLines(program);
   const rows = lines.map((l) =>
@@ -2499,7 +2537,7 @@ function genChanged() {
   renderGenSchedule();
 }
 
-for (const id of [...Object.values(GEN_FIELDS), ...Object.values(GEN_FLAGS), 'gen-band']) {
+for (const id of [...Object.values(GEN_FIELDS), ...Object.values(GEN_FLAGS), 'gen-band', 'gen-scheme']) {
   $(id).addEventListener('change', genChanged);
   $(id).addEventListener('input', genChanged);
 }
@@ -2508,6 +2546,7 @@ $('gen-read').addEventListener('click', () => {
   const r = parseBrief($('gen-brief').value, readGenFields());
   genBrief = r.brief;
   writeGenFields(genBrief);
+  renderGenAdjacency();
   renderGenSchedule();
   const read = `<span class="read">Read: ${esc(r.echo)}.</span>`;
   const ignored = r.ignored.length
@@ -2521,6 +2560,7 @@ $('gen-btn').addEventListener('click', openGenerator);
 function openGenerator() {
   if (mode === 'walk') setMode('edit');
   writeGenFields(genBrief);
+  renderGenAdjacency();
   renderGenSchedule();
   openModal(genOverlay, $('gen-brief'));
 }
@@ -2541,14 +2581,25 @@ $('gen-go').addEventListener('click', () => {
       adoptState(next);
       const sum = generationSummary(plan, next);
       const bits = [
+        `${sum.schemeLabel.toLowerCase()}`,
         `${sum.students} students`,
         `${sum.rooms} rooms on ${sum.storeys} storey${sum.storeys === 1 ? '' : 's'}`,
-        `${sum.wings} wing${sum.wings === 1 ? '' : 's'}`,
         `${sum.footprintFt.w}×${sum.footprintFt.d} ft`,
         `${sum.exits} ways out`,
         `${sum.props.toLocaleString()} pieces of furniture`,
       ];
       let text = `Generated — ${bits.join(', ')}.`;
+      // What the brief asked about where two rooms sit, and whether the layout
+      // could do it. Said out loud in both directions.
+      const kept = sum.adjacency.filter((r) => r.done);
+      const missed = sum.adjacency.filter((r) => !r.done);
+      if (kept.length) {
+        text += ` Kept ${kept.map((r) => `${r.a} ${r.want === 'apart' ? 'away from' : 'next to'} ${r.b}`).join(' and ')}.`;
+      }
+      if (missed.length) {
+        text += ` Could not ${missed.map((r) => `put ${r.a} ${r.want === 'apart' ? 'away from' : 'next to'} ${r.b}` +
+          (r.why ? ` (${r.why})` : r.gap !== null ? ` (closest ${r.gap} ft)` : '')).join(' or ')}.`;
+      }
       if (plan.oversize) {
         text += ` ${plan.unplaced.length} room${plan.unplaced.length === 1 ? '' : 's'} ` +
           "didn't fit on the grid: this brief wants more building than the 800ft lattice holds.";
@@ -2692,6 +2743,12 @@ document.addEventListener('keydown', (e) => {
     }
     if (e.code === 'KeyJ') { miniOn = !miniOn; updateMinimapButtons(); return; }
     if (e.code === 'KeyR') { tourMark(); return; }
+    // Phase 10's one: the findings, on the map in your hand. Bracket keys
+    // step through them, which is the same gesture as the report panel's own
+    // list read top-down.
+    if (e.code === 'KeyO') { setMiniFindings(!miniFindings); return; }
+    if (e.code === 'BracketLeft') { stepMiniFinding(-1); return; }
+    if (e.code === 'BracketRight') { stepMiniFinding(1); return; }
     if (e.code === 'Enter' && document.body.classList.contains('tours')) {
       tourPlay ? tourStop() : tourStart(false);
       return;
@@ -3387,9 +3444,101 @@ let miniRasters = new Map(); // `${floor}:${scale}` -> canvas
 const miniCanvas = $('minimap');
 const miniCtx = miniCanvas.getContext('2d');
 
+// The findings, drawn on the plan. The report has sorted them worst-first
+// since Phase 7 and the map has drawn a floor since Phase 9; this is the wire
+// between them. `miniNav` is here rather than reused from `life.nav` because
+// the crowd is not necessarily running, and what this wants out of it is the
+// mesh — the rectangles a room is made of, which are what gets filled.
+let miniFindings = false;
+let miniMarks = [];
+let miniMarkIndex = 0;
+let miniMarksDirty = true;
+let miniMarksPending = false;
+let miniNav = null;
+
 function invalidateMinimap() {
   miniPlans = new Map();
   miniRasters = new Map();
+  // A different design is a different set of findings and a different mesh
+  // under them. Both are re-derived on the next frame that needs them.
+  miniNav = null;
+  miniMarksDirty = true;
+}
+
+function refreshMiniMarks() {
+  if (!miniFindings) { miniMarks = []; miniMarksDirty = false; return; }
+  if (!miniMarksDirty) return;
+  if (!report.data || report.stale) {
+    // A report on a generated school is a second or two of arithmetic, and
+    // this is called from inside a frame of a walkthrough. Building it here
+    // would freeze the walk for as long as it takes — so the frame that
+    // notices it is missing asks for it and draws without it, and the frame
+    // after it arrives draws it.
+    if (!miniMarksPending) {
+      miniMarksPending = true;
+      setTimeout(() => {
+        miniMarksPending = false;
+        reportBuild();
+        miniMarksDirty = true;
+        refreshMiniMarks();
+      }, 0);
+    }
+    return;
+  }
+  miniMarks = findingMarks(report.data);
+  if (miniMarkIndex >= miniMarks.length) miniMarkIndex = 0;
+  miniMarksDirty = false;
+  // The marks can arrive on any frame — the report the walk asked for, or one
+  // the panel was already building — and the step buttons are dead until they
+  // do. Whichever frame lands them is the one that turns the buttons on.
+  updateMinimapButtons();
+}
+
+// The wash, the pins and the door rings. Rooms are filled through the same
+// world-feet transform the plan is blitted with — `navmesh.js` cut them into
+// rectangles and this is the first thing to ask it for them — and the markers
+// are drawn afterwards in pixels, so a pin is the same size however far the
+// map is zoomed out.
+function drawMiniMarks(view, floorIndex, size) {
+  const mark = markAt(miniMarks, miniMarkIndex);
+  if (!mark) return;
+  if (!miniNav) miniNav = buildNav(state);
+  const here = markOnFloor(mark, floorIndex);
+  const mesh = miniNav.mesh[floorIndex];
+  if (!here.rooms.length && !here.doors.length) return;
+
+  miniCtx.save();
+  miniCtx.translate(size / 2, size / 2);
+  miniCtx.rotate(view.rotation);
+  miniCtx.scale(view.scale, view.scale);
+  miniCtx.translate(-view.cx, -view.cz);
+  miniCtx.fillStyle = markFill(mark.level);
+  for (const r of here.rooms) {
+    for (const t of (mesh && mesh.byRoom.get(r.id)) || []) {
+      miniCtx.fillRect(t.x0, t.z0, t.x1 - t.x0, t.z1 - t.z0);
+    }
+  }
+  miniCtx.restore();
+
+  miniCtx.strokeStyle = markLine(mark.level);
+  miniCtx.fillStyle = markLine(mark.level);
+  miniCtx.lineWidth = 1.6;
+  for (const r of here.rooms) {
+    const node = miniNav.node(r.id);
+    if (!node) continue;
+    const p = worldToMini(view, node.x, node.z);
+    miniCtx.beginPath();
+    miniCtx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    miniCtx.fill();
+  }
+  // A doorway is a ring rather than a dot: the finding is about the hole, and
+  // a filled dot on a 3ft opening covers the thing it is pointing at.
+  for (const d of here.doors) {
+    const p = worldToMini(view, d.x, d.z);
+    miniCtx.beginPath();
+    miniCtx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+    miniCtx.stroke();
+  }
 }
 
 function miniPlanFor(floorIndex) {
@@ -3534,9 +3683,27 @@ function drawMinimap() {
   miniCtx.font = '9px system-ui, sans-serif';
   miniCtx.fillText(bar.label, 8, size - 14);
 
+  if (miniFindings) {
+    refreshMiniMarks();
+    drawMiniMarks(view, floorIndex, size);
+  }
+
   const note = $('minimap-note');
   const text = `Level ${floorIndex + 1} · ${describeMinimap(view)}`;
   if (note.textContent !== text) note.textContent = text;
+
+  const caption = $('minimap-finding');
+  if (!miniFindings) {
+    caption.classList.add('hidden');
+  } else {
+    caption.classList.remove('hidden');
+    const mark = markAt(miniMarks, miniMarkIndex);
+    const line = mark
+      ? `<span class="lv ${esc(mark.level)}">${esc(mark.level.toUpperCase())}</span> ` +
+        esc(describeMark(miniMarks, miniMarkIndex, floorIndex))
+      : (miniMarksDirty ? 'Reading the report…' : 'Nothing on this plan to point at.');
+    if (caption.innerHTML !== line) caption.innerHTML = line;
+  }
 }
 
 function updateMinimapButtons() {
@@ -3544,8 +3711,32 @@ function updateMinimapButtons() {
   $('minimap-orient').textContent = miniOrient === 'heading' ? 'Heading' : 'North';
   $('minimap-in').disabled = miniMode === 'fit' || miniRange <= MIN_RANGE;
   $('minimap-out').disabled = miniMode === 'fit' || miniRange >= MAX_RANGE;
+  $('minimap-findings').classList.toggle('on', miniFindings);
+  $('minimap-prev').disabled = !miniFindings || miniMarks.length < 2;
+  $('minimap-next').disabled = !miniFindings || miniMarks.length < 2;
   document.body.classList.toggle('minimap', miniOn);
 }
+
+function setMiniFindings(on) {
+  miniFindings = on;
+  miniMarksDirty = true;
+  if (on) {
+    $('status').textContent = report.data && !report.stale
+      ? 'Findings on the plan — the map highlights one at a time, worst first.'
+      : 'Reading the report…';
+  }
+  updateMinimapButtons();
+}
+
+function stepMiniFinding(by) {
+  if (!miniFindings || !miniMarks.length) return;
+  miniMarkIndex = (miniMarkIndex + by + miniMarks.length) % miniMarks.length;
+  updateMinimapButtons();
+}
+
+$('minimap-findings').addEventListener('click', () => setMiniFindings(!miniFindings));
+$('minimap-prev').addEventListener('click', () => stepMiniFinding(-1));
+$('minimap-next').addEventListener('click', () => stepMiniFinding(1));
 
 $('minimap-mode').addEventListener('click', () => { miniMode = nextMode(miniMode); updateMinimapButtons(); });
 $('minimap-orient').addEventListener('click', () => { miniOrient = nextOrient(miniOrient); updateMinimapButtons(); });

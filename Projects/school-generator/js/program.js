@@ -110,11 +110,51 @@ export const MAX_STUDENTS = 4000;
 // What a person actually chooses. Everything else in this file is derived
 // from these five fields, which is why the generator's panel has five
 // controls and not fifty.
+// ---------- the schemes ----------
+//
+// What the word "generate" means. Until Phase 10 it meant exactly one thing —
+// a spine with wings — which was not wrong so much as unsaid: the scheme was a
+// property of the file rather than a choice on the sheet. Three of them is
+// enough to make the choice real, and the three are chosen to *disagree* with
+// each other in ways the report can see. The spine walks furthest and daylights
+// everything; the courtyard is the shortest walk with an outdoor room in the
+// middle of it; the compact block has the smallest footprint, the shortest
+// corridors and the worst inner daylight, and the daylight section will say so.
+export const SCHEMES = [
+  {
+    key: 'spine',
+    label: 'Spine & wings',
+    note: 'A main hall across the top with classroom wings hanging south off it, ' +
+      'light courts between them. The finger plan every district built after 1955.',
+  },
+  {
+    key: 'courtyard',
+    label: 'Courtyard',
+    note: 'A ring of rooms round an open court, with a corridor loop inside it. ' +
+      'Short walks, a stair at each corner, and an outdoor room nobody has to cross a road to reach.',
+  },
+  {
+    key: 'compact',
+    label: 'Compact block',
+    note: 'One deep rectangle: two corridors, three bands of rooms and a hall at ' +
+      'each end. The smallest footprint of the three, and the one with rooms that never see a window.',
+  },
+];
+export const DEFAULT_SCHEME = 'spine';
+export const SCHEME_KEYS = SCHEMES.map((s) => s.key);
+export const schemeEntry = (key) => SCHEMES.find((s) => s.key === key) || SCHEMES[0];
+
 export const DEFAULT_BRIEF = {
   students: 600,
   band: DEFAULT_BAND,
   storeys: 2,
   seed: 1,
+  scheme: DEFAULT_SCHEME,
+  // "Put the band room away from the library." A list of {a, b, want}, where
+  // a and b are room keys from the schedule below and `want` is 'near' or
+  // 'apart'. Empty by default, because a brief that says nothing about where
+  // two rooms sit relative to each other is not asking for anything.
+  adjacency: [],
   gym: true,
   cafeteria: true,
   library: true,
@@ -126,15 +166,49 @@ const clampInt = (v, dflt, lo, hi) => {
   return Math.min(hi, Math.max(lo, n));
 };
 
+// Every room key the schedule can produce — the vocabulary an adjacency rule
+// is allowed to name. Gathered here rather than written out twice: a band that
+// gains a special gains it in the rules too, and nothing has to remember.
+export const ROOM_KEYS = new Set([
+  'classroom', 'restroom-g', 'restroom-b',
+  'office', 'principal', 'health', 'counsel', 'workroom', 'custodial', 'mech',
+  'gym', 'locker-g', 'locker-b', 'cafeteria', 'kitchen', 'library',
+  ...BANDS.flatMap((b) => b.specials.map((sp) => sp.key)),
+]);
+
+export const ADJACENCY_WANTS = ['near', 'apart'];
+export const MAX_ADJACENCY_RULES = 6;
+
+// A rule names two *different* rooms the schedule can actually contain, and
+// one of two relations. Anything else is dropped rather than carried: a rule
+// the layout cannot act on is a rule the panel would print and the building
+// would ignore.
+function cleanAdjacency(raw, keys) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    if (!keys.has(r.a) || !keys.has(r.b) || r.a === r.b) continue;
+    if (!ADJACENCY_WANTS.includes(r.want)) continue;
+    if (out.some((o) => o.a === r.a && o.b === r.b && o.want === r.want)) continue;
+    out.push({ a: r.a, b: r.b, want: r.want });
+    if (out.length >= MAX_ADJACENCY_RULES) break;
+  }
+  return out;
+}
+
 export function normalizeBrief(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const band = BY_KEY.has(src.band) ? src.band : DEFAULT_BAND;
+  const scheme = SCHEME_KEYS.includes(src.scheme) ? src.scheme : DEFAULT_SCHEME;
   const bool = (v, dflt) => (typeof v === 'boolean' ? v : dflt);
   return {
     students: clampInt(src.students, DEFAULT_BRIEF.students, MIN_STUDENTS, MAX_STUDENTS),
     band,
     storeys: clampInt(src.storeys, DEFAULT_BRIEF.storeys, 1, 4),
     seed: clampInt(src.seed, DEFAULT_BRIEF.seed, 1, 0x7fffffff),
+    scheme,
+    adjacency: cleanAdjacency(src.adjacency, ROOM_KEYS),
     gym: bool(src.gym, DEFAULT_BRIEF.gym),
     cafeteria: bool(src.cafeteria, DEFAULT_BRIEF.cafeteria),
     library: bool(src.library, DEFAULT_BRIEF.library),

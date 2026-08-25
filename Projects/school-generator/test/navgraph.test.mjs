@@ -14,7 +14,7 @@ import { addStair } from '../js/stairs.js';
 import { buildSampleSchool } from '../js/sample.js';
 import {
   buildNav, floorRooms, nodeAt, findPath, waypoints, route,
-  egressField, nearestExit, unreachableRooms, navSummary,
+  egressField, nearestExit, pointField, pointEntry, unreachableRooms, navSummary,
   teachingRooms, commonRooms, runLandings, DOOR_OFFSET, MUSTER_FT,
   clearWidth, CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, STAIR_COST,
 } from '../js/navgraph.js';
@@ -394,4 +394,147 @@ test('the metric field measures feet where the cost field measures cost', () => 
   const ground = nav.rooms.find((r) => r.floor === 0 && r.name === 'Room 101');
   assert.ok(Math.abs(feet.dist.get(ground.id) - cost.dist.get(ground.id)) < 1e-9);
   assert.ok(STAIR_COST > 1);
+});
+
+
+// ---------- the mesh ----------
+//
+// Phase 10's whole thesis, tested where it is falsifiable: a corridor with two
+// doors near one end of it. Under the portal graph the walk between them was
+// door → the corridor's midpoint → door; on the mesh it is the straight line,
+// because a corridor tile is convex and there is nothing in it.
+
+// One long corridor with three doors off it: two rooms side by side at the
+// west end, and one at the far east end.
+function longCorridor(len = 30) {
+  const s = createState(len + 4, 12);
+  const f = s.floors[0];
+  for (let x = 1; x <= len; x++) setTile(f, x, 5, true);
+  for (let x = 1; x <= len; x++) {
+    f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL;
+    f.edgesH[edgeHIdx(f, x, 6)] = EDGE_WALL;
+  }
+  f.edgesV[edgeVIdx(f, 1, 5)] = EDGE_WALL;
+  f.edgesV[edgeVIdx(f, len + 1, 5)] = EDGE_WALL;
+  for (let x = 1; x <= len; x++) f.cells[5 * f.w + x].room = 'Hall';
+  // Three rooms north of it, at x = 2, x = 4 and x = len - 1.
+  const room = (x, name) => {
+    for (let y = 2; y <= 4; y++) setTile(f, x, y, true);
+    for (let y = 2; y <= 4; y++) {
+      f.edgesV[edgeVIdx(f, x, y)] = EDGE_WALL;
+      f.edgesV[edgeVIdx(f, x + 1, y)] = EDGE_WALL;
+    }
+    f.edgesH[edgeHIdx(f, x, 2)] = EDGE_WALL;
+    f.edgesH[edgeHIdx(f, x, 5)] = EDGE_DOOR;
+    for (let y = 2; y <= 4; y++) f.cells[y * f.w + x].room = name;
+  };
+  room(2, 'A');
+  room(4, 'B');
+  room(len - 1, 'C');
+  return s;
+}
+
+const named = (nav, name) => nav.rooms.find((r) => r.name === name);
+test('two doors near one end of a corridor do not route through its middle', () => {
+  const nav = buildNav(longCorridor(30));
+  const a = named(nav, 'A');
+  const b = named(nav, 'B');
+  const path = findPath(nav, a.id, b.id);
+  assert.ok(path, 'there is a way between them');
+  // The corridor is 120ft long and the two doors are eight feet apart. Adding
+  // up the edges actually walked has to come out near that, not near 120.
+  let feet = 0;
+  for (let i = 0; i + 1 < path.length; i++) {
+    const e = nav.adj.get(path[i]).find((x) => x.to === path[i + 1]);
+    feet += e.dist;
+  }
+  assert.ok(feet < 40, `two adjacent classrooms should be a short walk, got ${feet}`);
+  // ...and the room at the far end genuinely is far.
+  const c = named(nav, 'C');
+  const far = findPath(nav, a.id, c.id);
+  let farFeet = 0;
+  for (let i = 0; i + 1 < far.length; i++) {
+    const e = nav.adj.get(far[i]).find((x) => x.to === far[i + 1]);
+    farFeet += e.dist;
+  }
+  assert.ok(farFeet > 100, `the far end of a 120ft corridor is far, got ${farFeet}`);
+});
+
+test('a room is a set of tiles, and its doorways stand on them', () => {
+  const nav = buildNav(longCorridor(30));
+  const hall = named(nav, 'Hall');
+  const tiles = nav.mesh[0].byRoom.get(hall.id);
+  assert.equal(tiles.length, 1, 'a straight corridor is one rectangle');
+  const ids = new Set(tiles[0].anchors.map((a) => a.id));
+  // Its own node, and the corridor side of all three doorways.
+  assert.ok(ids.has(hall.id));
+  assert.equal(nav.portalsOf(hall.id).length, 3);
+  for (const p of nav.portalsOf(hall.id)) assert.ok(ids.has(p.id));
+});
+
+test('portalsOf finds a door at the far end, where adjacency would not', () => {
+  const nav = buildNav(longCorridor(30));
+  const hall = named(nav, 'Hall');
+  const neighbours = new Set((nav.adj.get(hall.id) || []).map((e) => e.to));
+  const far = nav.portals.find((p) => p.a === named(nav, 'C').id || p.b === named(nav, 'C').id);
+  assert.ok(nav.portalsOf(hall.id).includes(far), 'it is a door on the corridor');
+  assert.ok(neighbours.has(far.id), 'and on one tile it is a neighbour too');
+});
+
+test('an L-shaped room gets a gate, and a route round it goes through it', () => {
+  const s = createState(16, 16);
+  const f = s.floors[0];
+  // An L: an arm east along row 1, and a leg south at x = 1..2.
+  for (let x = 1; x <= 10; x++) for (let y = 1; y <= 2; y++) setTile(f, x, y, true);
+  for (let y = 3; y <= 10; y++) for (let x = 1; x <= 2; x++) setTile(f, x, y, true);
+  for (const c of f.cells) if (c) c.room = 'Bend';
+  const nav = buildNav(s);
+  assert.ok(nav.gates.length >= 1, 'the corner is a gate');
+  for (const g of nav.gates) assert.equal(nav.node(g.id).kind, 'gate');
+  // ...and a walk from one end of the L to the other is longer than the
+  // straight line between them, because it has to go round the corner.
+  const from = { floor: 0, x: 10 * CELL, z: 1.5 * CELL };
+  const wp = route(nav, from, named(nav, 'Bend').id);
+  assert.ok(wp.length >= 1);
+});
+
+test('a route starts from where the walker is, not from the middle of the room', () => {
+  const nav = buildNav(longCorridor(30));
+  const c = named(nav, 'C');
+  // Standing at the west end of the corridor. The first waypoint has to be
+  // ahead of the walker rather than back at the corridor's own node.
+  const from = { floor: 0, x: 2 * CELL, z: 5.5 * CELL };
+  const wp = route(nav, from, c.id);
+  assert.ok(wp && wp.length, 'there is a route');
+  assert.ok(!wp.some((p) => p.node === named(nav, 'Hall').id),
+    'a route across a room does not visit the middle of it');
+  assert.ok(wp[wp.length - 1].node === c.id);
+});
+
+test('pointField measures from a point rather than from a room', () => {
+  const s = longCorridor(30);
+  s.floors[0].edgesV[edgeVIdx(s.floors[0], 1, 5)] = EDGE_DOOR2;   // a way out, west end
+  const nav = buildNav(s);
+  const field = egressField(nav, { metric: true });
+  const west = pointField(nav, field, 0, 2 * CELL, 5.5 * CELL);
+  const east = pointField(nav, field, 0, 29 * CELL, 5.5 * CELL);
+  assert.ok(west && east);
+  assert.ok(east.dist > west.dist + 90,
+    'the far end of a 120ft corridor is a hundred feet farther out than the near end');
+  assert.equal(west.via, east.via, 'and both leave by the only door there is');
+  // A point outside the building has no answer at all.
+  assert.equal(pointField(nav, field, 0, -20, -20), null);
+});
+
+test('nearestExit answers for a point, and pointEntry hangs one on the mesh', () => {
+  const s = longCorridor(30);
+  s.floors[0].edgesV[edgeVIdx(s.floors[0], 1, 5)] = EDGE_DOOR2;
+  const nav = buildNav(s);
+  const field = egressField(nav, { metric: true });
+  const at = nearestExit(nav, field, 0, 20 * CELL, 5.5 * CELL);
+  assert.ok(at && at.exit.exterior);
+  assert.ok(at.dist > 60);
+  const entry = pointEntry(nav, { floor: 0, x: 20 * CELL, z: 5.5 * CELL });
+  assert.equal(entry.id, '@');
+  assert.ok(entry.opts.adj.get('@').length >= 2, 'joined to what shares its tile');
 });

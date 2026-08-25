@@ -622,6 +622,18 @@
     #gen-echo { font-size: 12px; line-height: 1.5; margin-top: 8px; }
     #gen-echo .read { color: var(--text); }
     #gen-echo .ignored { color: var(--warn, #f0a44a); }
+    /* What the brief asked about where two rooms sit. Chips rather than a
+       list, because it is a short list and each entry is three words. */
+    #gen-adjacency { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    #gen-adjacency.hidden { display: none; }
+    #gen-adjacency .rule {
+      font-size: 11px; padding: 2px 8px; border-radius: 10px;
+      background: var(--panel-2, rgba(127,127,127,0.12)); color: var(--text);
+    }
+    #gen-adjacency .rule button {
+      background: none; border: 0; padding: 0 0 0 6px; font-size: 12px;
+      color: var(--text-dim); cursor: pointer;
+    }
     #gen-schedule {
       max-height: 30vh; overflow-y: auto; margin-top: 6px;
       font-size: 11.5px; line-height: 1.55; color: var(--text-dim);
@@ -751,6 +763,22 @@
       display: flex; gap: 4px; margin-top: 6px; line-height: 1.4;
     }
     #minimap-bar button { flex: 1; padding: 3px 0; font-size: 10.5px; }
+    #minimap-bar.finds { margin-top: 4px; }
+    #minimap-bar.finds button:first-child { flex: 3; }
+    #minimap-bar.finds button.on { background: var(--accent, #4da3ff); color: #fff; }
+    /* The finding the map is drawing, under the caption. Two lines at most —
+       the panel beside it prints the whole thing, and this is the label on a
+       highlight rather than the finding itself. */
+    #minimap-finding {
+      font-size: 10px; line-height: 1.4; margin-top: 4px; max-width: 168px;
+      text-align: center; color: var(--text);
+    }
+    #minimap-finding.hidden { display: none; }
+    #minimap-finding .lv { font-weight: 600; }
+    #minimap-finding .fail { color: #d34a41; }
+    #minimap-finding .warn { color: #b97016; }
+    #minimap-finding .note { color: #2860aa; }
+    #minimap-finding .ok { color: #2c784e; }
     #minimap-note {
       font-size: 10px; color: var(--text-dim); margin-top: 4px; line-height: 1.4;
       text-align: center;
@@ -1217,7 +1245,14 @@
       <button id="minimap-out" type="button" title="Show more" aria-label="Zoom out">−</button>
       <button id="minimap-in" type="button" title="Show less" aria-label="Zoom in">＋</button>
     </div>
+    <div id="minimap-bar" class="finds">
+      <button id="minimap-findings" type="button"
+        title="Draw the report's findings on the plan">⚑ Findings</button>
+      <button id="minimap-prev" type="button" title="The finding before this one" aria-label="Previous finding">‹</button>
+      <button id="minimap-next" type="button" title="The next finding down the report" aria-label="Next finding">›</button>
+    </div>
     <div id="minimap-note"></div>
+    <div id="minimap-finding" class="hidden"></div>
   </div>
 
   <div id="status" class="panel" role="status" aria-live="polite">Floor — click / drag to lay floor tiles</div>
@@ -1232,6 +1267,8 @@
         <kbd>B</kbd> ring the bell &nbsp;·&nbsp; <kbd>N</kbd> PA announcement &nbsp;·&nbsp; <kbd>U</kbd> sound panel<br />
         <kbd>L</kbd> school life &nbsp;·&nbsp; <kbd>V</kbd> follow somebody &nbsp;·&nbsp; <kbd>K</kbd> fire drill &nbsp;·&nbsp; <kbd>H</kbd> heatmap<br />
         <kbd>M</kbd> the report — occupancy, egress, access, daylight<br />
+        <kbd>J</kbd> the minimap &nbsp;·&nbsp; <kbd>O</kbd> its findings &nbsp;·&nbsp;
+        <kbd>[</kbd> <kbd>]</kbd> step through them<br />
         <kbd>Esc</kbd> release mouse
       </p>
       <p>
@@ -1260,6 +1297,15 @@
         thing downloads as a spreadsheet with the bill of materials under it.
       </p>
       <p>
+        …and the findings are on the map in your hand. <b>⚑ Findings</b> on the
+        minimap (<kbd>O</kbd>) draws the report onto the plan a finding at a
+        time, worst first: the rooms it is about are washed in its colour and
+        the doorways it is about are ringed, so <i>this</i> corridor is the one
+        over the travel limit and <i>that</i> door is the one too narrow.
+        <kbd>[</kbd> and <kbd>]</kbd> step through them, and a finding on
+        another storey says which one to go to.
+      </p>
+      <p>
         The building has a sound now: your footsteps take their material from
         the floor finish under them, doors latch and shut, machines hum where
         they stand, and every room reverberates for as long as its own volume
@@ -1271,7 +1317,11 @@
         student count and a grade band into a whole school — corridors,
         classroom wings, a gym and a cafeteria, stairs where the travel
         distance says they go, every room furnished from its own name, and a
-        car park sized to the staff. What comes out is an ordinary design:
+        car park sized to the staff. Three schemes lay it out three ways: a
+        <b>spine and wings</b>, a <b>courtyard</b> round an open court, or a
+        <b>compact block</b> with the smallest footprint and the worst inner
+        daylight. Run the same brief through all three and read the report on
+        each — that comparison is what the word "generate" is for. What comes out is an ordinary design:
         nothing is marked as generated, and the first thing to do with it is
         move a wall. If you have a plan already, the <b>🖼 Overlay</b> tool
         puts it under the grid — measure something on it, say how long that
@@ -1407,17 +1457,18 @@
       <div class="section-label">Brief</div>
       <label for="gen-brief" class="visually-hidden">Describe the school in a sentence</label>
       <textarea id="gen-brief" rows="2" maxlength="400"
-        placeholder="a two-storey middle school for 600 students with a library…"></textarea>
+        placeholder="a two-storey courtyard middle school for 600 with the band room away from the library…"></textarea>
       <div class="row" style="margin-top:8px; justify-content:flex-start">
         <button id="gen-read" type="button">Read the brief</button>
       </div>
       <div id="gen-echo"></div>
       <p class="hint">
         There is no language model behind this box — it is a table of phrases.
-        It reads student counts, grade bands, storey counts, a seed, and
-        whether you want a gym, a cafeteria, a library or a site, and it tells
-        you every word it ignored. The controls below are the actual input;
-        the sentence just fills them in.
+        It reads student counts, grade bands, storey counts, a seed, which of
+        the three schemes to lay out, whether you want a gym, a cafeteria, a
+        library or a site, and where you want two rooms kept apart or put
+        together — and it tells you every word it ignored. The controls below
+        are the actual input; the sentence just fills them in.
       </p>
 
       <div class="section-label">Program</div>
@@ -1439,6 +1490,14 @@
           <input id="gen-seed" type="number" min="1" max="99999" step="1" value="1" />
         </div>
       </div>
+      <div class="fields" style="grid-template-columns: 1fr; margin-top: 10px">
+        <div>
+          <label for="gen-scheme">Scheme</label>
+          <select id="gen-scheme"></select>
+        </div>
+      </div>
+      <p class="hint" id="gen-scheme-note"></p>
+      <div id="gen-adjacency" class="hidden"></div>
       <div class="opts" style="margin-top:10px">
         <label class="opt"><input type="checkbox" id="gen-gym" checked /> Gymnasium</label>
         <label class="opt"><input type="checkbox" id="gen-cafeteria" checked /> Cafeteria</label>

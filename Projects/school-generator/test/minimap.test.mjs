@@ -9,7 +9,10 @@ import {
   MODES, ORIENTS, MINI_SIZE, MINI_RANGE, MIN_RANGE, MAX_RANGE, FIT_PAD, CONE_LEN,
   nextMode, nextOrient, clampCentre, minimapView, worldToMini, miniToWorld,
   inView, visibleWindow, markerAngle, viewCone, scaleBar, describeMinimap,
+  findingMarks, markAt, markOnFloor, describeMark, markFill, markLine,
 } from '../js/minimap.js';
+import { buildSampleSchool } from '../js/sample.js';
+import { buildReport } from '../js/report.js';
 
 const bounds = { minX: 0, minZ: 0, maxX: 300, maxZ: 200 };
 const eye = (x, z, yaw = 0) => ({ x, y: 5.5, z, yaw });
@@ -175,4 +178,79 @@ test('the readout says what the map is doing', () => {
   assert.match(describeMinimap(minimapView(bounds, eye(0, 0), { mode: 'fit', orient: 'north' })), /whole floor · north up/);
   assert.match(describeMinimap(minimapView(bounds, eye(0, 0), { range: 90, orient: 'heading' })), /90 ft across · heading up/);
   assert.equal(describeMinimap(null), '');
+});
+
+
+// ---------- the findings, on the plan ----------
+
+const report = (findings) => ({ findings });
+
+test('a finding with nowhere to point is not a mark', () => {
+  const marks = findingMarks(report([
+    { level: 'fail', code: 'exit-count', title: 'Not enough exits', detail: '' },
+    { level: 'warn', code: 'no-rooms', title: 'Nothing at all', detail: '', rooms: [] },
+  ]));
+  assert.deepEqual(marks, []);
+});
+
+test('rooms and doorways both become marks, in the report\'s own order', () => {
+  const marks = findingMarks(report([
+    {
+      level: 'fail', code: 'travel-distance', section: 'egress',
+      title: 'Too far', detail: 'x',
+      rooms: [{ id: 'r0:g4', floor: 0, name: 'Hall' }, { id: 'r1:s2', floor: 1, name: 'Lab' }],
+    },
+    {
+      level: 'note', code: 'narrow-doors', section: 'accessible',
+      title: 'Narrow', detail: 'y',
+      doors: [{ id: 'p3', floor: 0, x: 40, z: 12, w: 2.5 }],
+    },
+  ]));
+  assert.equal(marks.length, 2);
+  assert.equal(marks[0].code, 'travel-distance');
+  assert.deepEqual(marks[0].floors, [0, 1]);
+  assert.equal(marks[1].doors.length, 1);
+  assert.deepEqual(marks[1].floors, [0]);
+  // Only what is on the storey being drawn gets drawn.
+  assert.equal(markOnFloor(marks[0], 0).rooms.length, 1);
+  assert.equal(markOnFloor(marks[0], 1).rooms.length, 1);
+  assert.equal(markOnFloor(marks[0], 2).rooms.length, 0);
+});
+
+test('the index wraps in both directions', () => {
+  const marks = findingMarks(report([
+    { level: 'fail', code: 'a', title: 'A', rooms: [{ id: 'r0:g1', floor: 0 }] },
+    { level: 'warn', code: 'b', title: 'B', rooms: [{ id: 'r0:g2', floor: 0 }] },
+  ]));
+  assert.equal(markAt(marks, 0).code, 'a');
+  assert.equal(markAt(marks, 2).code, 'a');
+  assert.equal(markAt(marks, -1).code, 'b');
+  assert.equal(markAt([], 0), null);
+});
+
+test('the caption says which finding, and where to go to see it', () => {
+  const marks = findingMarks(report([
+    { level: 'warn', code: 'a', title: 'Two doors wanted', rooms: [{ id: 'r1:g1', floor: 1 }] },
+  ]));
+  assert.match(describeMark(marks, 0, 1), /^1\/1 · Two doors wanted \(1 here\)$/);
+  assert.match(describeMark(marks, 0, 0), /try Level 2/);
+  assert.equal(describeMark([], 0, 0), '');
+});
+
+test('every level has a wash and a line, and an unknown one falls back', () => {
+  for (const level of ['fail', 'warn', 'note', 'ok']) {
+    assert.ok(markFill(level).startsWith('rgba('));
+    assert.ok(markLine(level).startsWith('rgba('));
+  }
+  assert.equal(markFill('nonsense'), markFill('note'));
+  assert.equal(markLine(undefined), markLine('note'));
+});
+
+test('the sample school produces marks a map could draw', () => {
+  const marks = findingMarks(buildReport(buildSampleSchool(), { takeoff: false, acoustics: false }));
+  for (const m of marks) {
+    assert.ok(m.rooms.length || m.doors.length);
+    assert.ok(m.floors.length);
+    assert.ok(m.title);
+  }
 });
