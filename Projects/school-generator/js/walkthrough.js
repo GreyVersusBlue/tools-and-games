@@ -12,6 +12,14 @@
 // from inside a wall is a legitimate thing to want from a floor-plan tool —
 // and because a building with no stairs yet has no other way up.
 //
+// Phase 4 of the second arc adds the third thing the walker owes the rest of
+// the build: the moments worth hearing. This file is where the distance walked
+// and the surface under it are already known, so it is where a stride turns
+// into a footstep — the geometry stays in collide.js, the material lookup in
+// finish.js, the cadence arithmetic in sound.js, and what actually comes out of
+// the speaker in audio.js. This file only says *when*, which is the one part
+// none of them can see.
+//
 // Phase 2 adds the two things in a building that respond to you rather than
 // just standing there. Doors swing open as you approach and shut behind you —
 // the leaves live on the collider (see openings.js), this file only advances
@@ -26,7 +34,9 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 import { CELL, EYE_H, cellIdx, activeFloor, floorBaseY, topOfBuilding } from './grid.js';
 import { shapesOf, shapeArea, shapeBBox, interiorPoint } from './shapes.js';
 import { catalogEntry } from './catalog.js';
+import { finishAt } from './finish.js';
 import { stairUnder, elevatorAt } from './stairs.js';
+import { stride, footstepFor } from './sound.js';
 import {
   GRAVITY, TERMINAL_V, JUMP_V, STEP_UP,
   buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoors,
@@ -56,6 +66,10 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   let grounded = false;
   let colliders = new Map();
   let hudText = '';
+  // Distance carried between frames, so footsteps come out of how far you have
+  // walked rather than off a timer: walking slowly makes slower footsteps for
+  // free, and stopping mid-stride keeps the fraction for when you start again.
+  let strideAcc = 0;
 
   const fwdV = new THREE.Vector3();
 
@@ -230,6 +244,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     const collider = colliderFor(storeyAt(world, feet));
     const moved = moveWalker(world, collider, { x: camera.position.x, y: feet, z: camera.position.z },
       dx, dz, { grounded });
+    const walked = Math.hypot(moved.x - camera.position.x, moved.z - camera.position.z);
     camera.position.x = moved.x;
     camera.position.z = moved.z;
 
@@ -240,16 +255,39 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     let y = feet;
     if (grounded) {
       if (surface <= feet + STEP_UP) y = surface;
-      if (keys.has('Space')) { vy = JUMP_V; grounded = false; }
+      // Only a grounded walker takes steps. Airborne is silent, which is
+      // what being airborne sounds like.
+      if (walked > 0) {
+        const s = stride(strideAcc, walked);
+        strideAcc = s.acc;
+        for (let i = 0; i < s.steps; i++) footfall(moved.x, surface, moved.z, support, 1);
+      }
+      if (keys.has('Space')) { vy = JUMP_V; grounded = false; strideAcc = 0; }
     } else {
       vy = Math.max(-TERMINAL_V, vy - GRAVITY * dt);
       const next = feet + vy * dt;
       // Land using the surface found at the *start* of the fall, so a long
       // frame drops through a slab's height without dropping through the slab.
-      if (vy <= 0 && next <= surface) { y = surface; vy = 0; grounded = true; }
-      else y = next;
+      if (vy <= 0 && next <= surface) {
+        // How hard you landed, as a multiple of a plain hop. A step off a curb
+        // is a footstep; the bottom of a stairwell is not.
+        footfall(moved.x, surface, moved.z, support, Math.abs(vy) / JUMP_V, true);
+        y = surface; vy = 0; grounded = true;
+      } else y = next;
     }
     camera.position.y = y + EYE_H;
+  }
+
+  // One foot hitting one surface. The material is whatever the room under that
+  // point is finished in — unless the surface isn't a slab at all, in which
+  // case a stair tread or the ground outside has its own voice regardless of
+  // what the plan says the finish is.
+  function footfall(x, y, z, support, force, landing = false) {
+    if (!opts.onStep || !world) return;
+    const kind = support ? support.kind : 'ground';
+    const floor = support && support.floor >= 0 ? world.floors[support.floor] : null;
+    const spec = footstepFor(kind, floor ? finishAt(floor, x, z) : null);
+    opts.onStep(spec, { x, y, z, floor: support ? Math.max(0, support.floor) : 0 }, force, landing);
   }
 
   return {
@@ -274,6 +312,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       ghost = false;
       vy = 0;
       grounded = false;
+      strideAcc = 0;
       hudText = '';
       touchActive = false;
       moveAxes.x = 0; moveAxes.y = 0;

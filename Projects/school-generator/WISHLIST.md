@@ -30,7 +30,12 @@ Phase 3 adds two more — `js/sky.js` (solar position, the sky palette, the
 environment record) and `js/lights.js` (which props emit, and the clustering
 and cap that decide which of them the GPU actually carries) — plus the one
 piece of this arc that isn't a module or a tool: a hand-written
-`libs/addons/postprocessing/DepthOfFieldPass.js`.)
+`libs/addons/postprocessing/DepthOfFieldPass.js`. Phase 4 adds two pure
+modules and one impure one: `js/acoustics.js` (the room under a point, its
+volume, its absorption and its Sabine reverberation time) and `js/sound.js`
+(which props make a noise, how loud it is at the ear, and the voice budget),
+with `js/audio.js` holding the Web Audio graph the way `render.js` holds the
+three.js one.)
 
 - **Units are feet, everywhere.** 4ft grid cells (`CELL`), 10ft walls
   (`WALL_H`), 12ft floor-to-floor (`FLOOR_H`), max 8 storeys. Props, polygon
@@ -592,19 +597,154 @@ not the obstacle.
   to say *which* meridian, which is why sunrise here runs a few minutes off
   what a given town's almanac prints.
 
-## Phase 4 — Sound
+## Phase 4 — Sound ✅
 
-- [ ] The bell. Of course the bell.
-- [ ] Footsteps by surface (slab vs stair tread — `supportAt()` already
+The building makes a noise, and all of it is synthesized. **Done** — no save
+format change at all (the first phase of either arc that needed none), two new
+pure modules (`js/acoustics.js`, `js/sound.js`), one Web Audio module
+(`js/audio.js`), five new catalog rows, eight `sound` blocks on rows that were
+already there, and 366 tests.
+
+- [x] The bell. Of course the bell.
+- [x] Footsteps by surface (slab vs stair tread — `supportAt()` already
   knows), doors from Phase 2, ambient room tone.
-- [ ] Reverb sized to the room the walker is in — room identity and area
+- [x] Reverb sized to the room the walker is in — room identity and area
   exist (`floodRegion`/`shapeArea`); map volume to a convolver preset.
-- [ ] PA announcements and hallway ambience as placeable/ambient sources
-  with distance falloff (`THREE.PositionalAudio` handles the spatial half).
+- [x] PA announcements and hallway ambience as placeable/ambient sources
+  with distance falloff.
 
 *Leans on:* the walker's existing surface and room queries; no save-format
 change unless sources become placeable props (then they're just catalog
 rows with a `data.sound`).
+
+### How it actually landed
+
+- **Not one audio file.** This was the decision the whole phase hung on, and
+  it was settled by the constraints rather than by taste: no build step, no
+  dependencies, no binary assets. A struck bell is seven inharmonic partials
+  with different decay times; a footstep on terrazzo is a thump and a slap
+  through a bandpass; a diffuser is noise through one resonance. That is a
+  couple of hundred lines of oscillators, it weighs nothing, and — the part
+  that matters — it can be *derived from the model* rather than matched to
+  it. A sample library would have meant picking which of seven floor
+  finishes got a recording. Synthesis meant all seven got a row in a table,
+  the way every other material in this build does.
+- **The reverb is Sabine's equation and nothing else.** RT60 = 0.049 V / A,
+  imperial constant, published since 1898. The model already knew a room's
+  plan area, and Phase 2 already put a real flooring product under it, so the
+  only thing missing was an absorption coefficient per material — one column
+  added to `FLOOR_FINISHES`, beside the colour and the plan hatch, because
+  that is where "what this material is" already lives. There are no reverb
+  presets, no zones to author, no `reverb: 'large'` field on a room. Walk
+  from the carpeted media centre into the terrazzo stair hall and the tail
+  triples because the arithmetic says it should.
+- **Furnishing a room makes it quieter, and the tool can prove it.** Every
+  prop's footprint and category were already in the catalog for Phase 1's
+  reasons, so the sabins thirty desks and chairs contribute fall straight
+  out. Then one new row — an acoustic wall panel at α 0.85 — turns that from
+  a curiosity into a design tool: place two in the main hall, watch the
+  number drop, delete them, watch it come back. The sample school ships with
+  a pair on the hall wall for exactly that reason.
+- **Because the number is real, it can be held to a real standard.**
+  ANSI/ASA S12.60 asks for RT60 ≤ 0.6 s in a core learning space under
+  10,000 ft³ and ≤ 0.7 s up to 20,000. So the panel doesn't say "lively", it
+  says *0.84 s — Lively · over the 0.7 s limit*, and the editor-mode roll-up
+  says *9 enclosed rooms · 8 over the ANSI limit*. Phase 7's "acoustics
+  first pass, honest approximations labeled as such" arrived early and by
+  accident, because the sound needed the same numbers anyway.
+- **Levels are in dBA at three feet, because that is how the products are
+  specified.** A ceiling diffuser is 38, a refrigerated fountain 52, a
+  vending machine 55, a corridor gong 100. So the falloff is a law rather
+  than a taste — −6 dB per doubling, which is a thing a test can check
+  against arithmetic nobody has to read the function to verify — and there
+  is exactly one artistic constant in the file, stated once: playback
+  compresses, because the real 62 dB span from a diffuser to a bell does not
+  fit through a laptop speaker.
+- **Which props make a noise is catalog data**, the same way `emit` says
+  which ones are lights. The pleasing part is how many of the rows were
+  already there: a vending machine, a commercial fridge, a milk cooler, a
+  refrigerated drinking fountain, a radiator, an aquarium, a wall clock and a
+  PA speaker were all sitting in the catalog being silent. The phase added
+  five rows and eight `sound` blocks, and most of the noise in a school
+  turned out to already be modelled.
+- **Sixth time this codebase derived instead of stored.** Wall thickness,
+  stair cuts, guardrails, blueprint symbols, the sun's direction — and now
+  the reverberation time, the pre-delay, the wet/dry split and which sources
+  are worth a voice. Nothing about sound is in the save file. `serialize()`
+  was not touched.
+- **`AudioListener` from three, `PannerNode` by hand.** three's listener is
+  worth having: it rides the walk camera, so the Web Audio listener's
+  position and orientation come from the same transform the renderer draws
+  from and nothing has to be kept in step. `PositionalAudio` is not, because
+  every source here is a synthesized node graph rather than a buffer. Same
+  call `DepthOfFieldPass` got in Phase 3.
+
+### What fought back
+
+- **A hall with an atrium down the middle of it is not two rooms.** The first
+  ceiling probe answered per point: stand at one end of the sample school's
+  main hall and it said "12 ft, tile ceiling"; walk to the middle, under the
+  two-storey void, and it said "22 ft, open deck" — so the reverberation
+  readout changed as you crossed a room whose volume had not changed at all,
+  and the number tripled. A room has one volume, so it now gets one ceiling:
+  the mean over a lattice of probes inside it, with the ceiling *material*
+  mixed on the same evidence rather than picked by a threshold. A hall that
+  is 6% open is 6% deck and 94% tile. The lattice is coarse enough to miss a
+  light well the size of a desk, which is the intended trade.
+- **Distance was very nearly applied twice.** The budget's dB math and the
+  PannerNode's own inverse-square law are both correct and doing them both
+  makes everything past thirty feet vanish. The split that survived: the dB
+  math decides *which* sources are worth a voice and what the panel prints,
+  and the panner decides how loud each one is once it has one.
+- **The mix readout has to be about the same things it counts.** "8 sources ·
+  2 heard · 2 too far" is a line that does not add up, because five of those
+  eight are bells and speakers and clocks that are silent until something
+  rings them. Machines are counted with the machines and the kit is listed
+  beside them.
+- **`emissive` had a sibling.** Phase 3 found that a glowing lens needs its
+  own material; Phase 4 found that a *bell* needs its own scheduling. A gong
+  is three strikes 0.42 s apart, and the first two have to be cut short by
+  the next hammer or the partials pile into mud — a repeater rings shorter
+  than a single strike does, which is not obvious until you hear it wrong.
+- **Nothing may exist before a gesture.** An AudioContext created on page
+  load is a suspended context, a console warning and a tab the browser marks
+  as making noise. It is built on the click that enters the walkthrough,
+  which is the first gesture that means "I want to be in the building".
+- **The editor stays silent, on purpose.** A floor-plan tool that hums at you
+  is a bad neighbour. Leaving the walkthrough stops every voice rather than
+  muting them, because an editor that is quiet because its gain is zero is
+  still an editor running a mixer in the background.
+
+### Deliberately left for later
+
+- **Transmission loss is one number per situation, not a ray cast.** A wall
+  costs 17 dB and a lowpass at 900 Hz, a slab 24 dB at 500, the building
+  envelope 20 at 700 — regardless of how many walls are actually between you
+  and the source. The model could count them, but the real path through a
+  school is under a door and down a corridor, and a careful cast would give a
+  more precise answer to the wrong question. Two rooms deep sounds like one
+  room deep.
+- **No occlusion for sound and no early reflections.** The impulse response
+  is a decaying noise burst with a pre-delay and a damped tail; it has no
+  discrete first reflections in it, which is what a room's *shape* (as
+  opposed to its volume) actually sounds like.
+- **The bell has no schedule.** It rings when you press `B` or click the
+  button. Periods, passing periods and a clock that drives both Phase 3's sun
+  and this are Phase 6's, and deliberately left there.
+- **The PA says nothing.** The announcement is band-limited noise with a
+  syllable envelope — convincingly somebody talking down a corridor, and
+  nothing you can make out. Real speech would mean an audio file, which is
+  the one thing this phase is built around not having.
+- **Footsteps are your own only.** Nobody else is in the building yet; when
+  Phase 6 puts them there, `footstepFor` and the budget already take a
+  position rather than assuming the listener's.
+- **A room's own noise floor isn't modelled.** HVAC is placeable and the
+  ambient bed is a constant; there is no background level per room, which is
+  the other half of what an acoustics report would want beside RT60.
+- **`roomsOnFloor` has one caller.** It exists at full strength — every
+  distinct room on a storey with its complete acoustics — and the editor
+  panel prints three lines of it. It is Phase 7's reader, wired to something
+  now so it can't rot.
 
 ## Phase 5 — The site
 
@@ -721,9 +861,10 @@ Each item here prices the no-build-step, no-deps stance explicitly.
 
 ## Suggested build order
 
-Phases 1 and 2 are done. Phase 3 (light, sky and atmosphere) is next by the
-default ordering, and the windows Phase 2 just put in every exterior wall
-are exactly what a sun study needs something to shine through.
+Phases 1 through 4 are done. Phase 5 (the site) is next by the default
+ordering, and it is the first one that touches an assumption rather than
+adding to one: `collide.js` believes the ground is flat at y = 0 everywhere,
+and a heightfield is what stops it believing that.
 
 Phase 1 first: it's pure content on a proven pipeline, no schema risk, and
 almost everything later (seated NPCs, furnished generation, VR at 1:1)

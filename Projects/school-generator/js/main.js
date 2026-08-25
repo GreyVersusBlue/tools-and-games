@@ -8,7 +8,7 @@ import {
 } from './grid.js';
 import { totalShapeArea } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
-import { catalogByCategory } from './catalog.js';
+import { catalogByCategory, catalogEntry } from './catalog.js';
 import { ROOM_TEMPLATES } from './templates.js';
 import { initRender } from './render.js';
 import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
@@ -19,6 +19,9 @@ import {
   formatClock, formatDate, formatLat, skyState,
 } from './sky.js';
 import { initWalkthrough } from './walkthrough.js';
+import { initAudio } from './audio.js';
+import { doorEvents } from './sound.js';
+import { roomsOnFloor, isOutside } from './acoustics.js';
 import {
   downloadSave, loadFromFile, autosave, autosaveNow, loadAutosave, clearAutosave,
   listDesigns, saveDesign, loadDesign, deleteDesign, renameDesign,
@@ -79,6 +82,11 @@ const editor = initEditor({
     // Placing or deleting a fixture changes what the light budget is doing,
     // and the sky panel is the only place that says so.
     renderEnvReadout();
+    // Same for sound: a diffuser placed, a room's finish changed or a wall
+    // moved all change what there is to hear and how long it rings, and both
+    // answers are derived rather than stored, so re-deriving is the whole
+    // update. Skipped mid-drag — a stroke ends in an unthrottled call.
+    if (!info.throttled) { audio.setWorld(state); renderAudioReadout(); }
   },
   // The polygon tools have more to say than a fixed per-tool hint — how many
   // corners are down, how big the room is — so they drive the status line.
@@ -90,12 +98,42 @@ const editor = initEditor({
 });
 
 const walkHud = $('walk-hud');
+
+// --- sound ---
+//
+// The mixer is built around the walk camera because that camera *is* the
+// listener: three's AudioListener rides it, so the Web Audio listener's
+// position and orientation come from the same transform the renderer draws
+// from, and nothing has to be kept in step by hand.
+const audio = initAudio(renderApi.walkCamera, { catalogEntry });
+
+// The leaves' own open/shut fractions, remembered between frames so a latch
+// fires once rather than every frame the door is moving. sound.js does the
+// diff; this only holds the map.
+let doorState = new Map();
+
 const walk = initWalkthrough(renderApi.walkCamera, canvas, {
   onHud: (text) => { walkHud.textContent = text; },
   // The leaves the walker is being stopped by are the leaves the renderer
   // poses. Neither side describes a door to the other — they're the same
-  // objects, matched by openings.js's keys.
-  onDoors: (leaves) => renderApi.poseDoors(leaves),
+  // objects, matched by openings.js's keys. Phase 4 reads the same array a
+  // third time to hear them.
+  onDoors: (leaves) => {
+    renderApi.poseDoors(leaves);
+    const d = doorEvents(leaves, doorState);
+    doorState = d.next;
+    // A latch is about chest height, which is a couple of feet under the eye
+    // of whoever is close enough to it to have set it off.
+    for (const ev of d.events) {
+      audio.door(ev.kind, { x: ev.x, y: renderApi.walkCamera.position.y - 2, z: ev.z });
+    }
+  },
+  // A foot hitting a surface. walkthrough.js has already worked out which
+  // material and how hard; all that is left is to play it.
+  onStep: (spec, at, force, landing) => {
+    if (landing) audio.land(spec, at, force);
+    else audio.step(spec, at);
+  },
 });
 
 // --- touch walkthrough controls ---
@@ -188,6 +226,8 @@ function setMode(m) {
   if (m === 'walk') {
     editor.setEnabled(false);
     walk.enable(state);
+    doorState = new Map();
+    audio.setWorld(state);
     openModal(walkOverlay, $('walk-start'));
     closeModal($('designs-overlay'));
     closeModal($('export-overlay'));
@@ -195,6 +235,7 @@ function setMode(m) {
   } else {
     setPhotoMode(false);
     walk.disable();
+    audio.setActive(false);
     closeModal(walkOverlay);
     document.body.classList.remove('touch-walk');
     resetTouchWalkUI();
@@ -205,6 +246,11 @@ function setMode(m) {
 
 $('mode-btn').addEventListener('click', () => setMode(mode === 'edit' ? 'walk' : 'edit'));
 $('walk-start').addEventListener('click', () => {
+  // An AudioContext may only start inside a user gesture, and this click is
+  // the first one that means "I want to be in the building" — which is
+  // exactly when the building should start making a noise.
+  audio.setActive(true);
+  renderAudioPanel();
   if (isTouch) {
     walk.enableTouch();
     document.body.classList.add('touch-walk');
@@ -680,6 +726,7 @@ $('file-input').addEventListener('change', async (e) => {
     renderFloorList();
     renderStairReadout();
     renderEnvPanel();
+    adoptedByAudio();
     autosaveNow(state);
     updateUndoButtons();
   } catch (err) {
@@ -733,6 +780,7 @@ function renderDesignsList() {
         renderFloorList();
         renderStairReadout();
         renderEnvPanel();
+        adoptedByAudio();
         autosaveNow(state);
         updateUndoButtons();
         designsOverlay.classList.add('hidden');
@@ -853,6 +901,7 @@ $('new-btn').addEventListener('click', () => {
   renderFloorList();
   renderStairReadout();
   renderEnvPanel();
+  adoptedByAudio();
   updateUndoButtons();
 });
 
@@ -1026,6 +1075,121 @@ $('env-btn').addEventListener('click', () => {
   $('env-btn').setAttribute('aria-pressed', String(!hidden));
 });
 
+// --- sound panel ---
+//
+// Two jobs, and only the first one is about audio. The mix controls are
+// obvious. The readout is the interesting half: it prints what acoustics.js
+// derives about the room you are standing in — its volume, its total
+// absorption, its Sabine reverberation time — and holds that number against
+// the one ANSI/ASA S12.60 asks a classroom to meet. That makes it the first
+// piece of Phase 7's "is this a *good* building" analysis, arriving early
+// because the sound needed the same numbers anyway.
+//
+// While editing there is no walker to stand anywhere, so it rolls the whole
+// current storey up instead: how many rooms, and which of them ring too long.
+
+const audioPanel = $('audio-panel');
+
+function adoptedByAudio() {
+  audio.setWorld(state);
+  renderAudioPanel();
+}
+
+function renderAudioPanel() {
+  const vol = Math.round(audio.volume * 100);
+  $('audio-volume').value = String(vol);
+  $('audio-volume-value').textContent = `${vol}%`;
+  renderAudioReadout();
+}
+
+const ft = (n) => Math.round(n).toLocaleString();
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// The room the walker is in, in the terms the panel can be honest about.
+function roomLines(ac) {
+  if (!ac || isOutside(ac)) {
+    return '<b>Outside</b><br />No room, no reverberation — open air and whatever the wind is doing.';
+  }
+  const limit = ac.limit !== null
+    ? (ac.overLimit
+      ? ` · <span class="over">over the ${ac.limit.toFixed(1)} s limit</span>`
+      : ` · under the ${ac.limit.toFixed(1)} s limit`)
+    : '';
+  // The ceiling is a room-wide average now (see acoustics.js's roomCeiling), so
+  // a hall with an atrium down the middle of it says how much of it is open
+  // rather than claiming the whole lid is off.
+  const lid = ac.openFraction > 0
+    ? `${ac.height.toFixed(0)} ft, ${Math.round(ac.openFraction * 100)}% open above`
+    : `${ac.height.toFixed(0)} ft ceiling`;
+  return `<b>${ac.name || (ac.kind === 'shape' ? 'Unnamed room' : 'Unlabelled area')}</b><br />` +
+    `${ft(ac.area)} ft² · ${lid} · ${ft(ac.volume)} ft³<br />` +
+    `<b>RT60 ${ac.rt60.toFixed(2)} s</b> — ${ac.verdict}${limit}<br />` +
+    `${ft(ac.sabins)} sabins absorbing · ${plural(ac.props, 'piece')} of furniture`;
+}
+
+// What the mixer is carrying, and what it isn't. The same bargain the sky
+// panel's light budget makes: say what was dropped rather than let the cap be
+// something you find out about by wondering why the corridor went quiet.
+function mixLines(r) {
+  if (r.total === 0) {
+    return 'Nothing in this design makes a noise yet.<br />' +
+      'No bells placed — <b>B</b> rings one where you stand.';
+  }
+  const bits = [];
+  // The continuous sources, whose counts add up: every machine is either
+  // audible from here, over the voice budget, or out of earshot.
+  if (r.machines) {
+    bits.push(`${plural(r.machines, 'machine')} · <b>${r.heard} audible here</b>` +
+      (r.dropped ? ` · ${r.dropped} over budget` : '') +
+      (r.muted ? ` · ${r.muted} out of earshot` : ''));
+  }
+  const kit = [];
+  if (r.bells) kit.push(plural(r.bells, 'bell'));
+  if (r.speakers) kit.push(plural(r.speakers, 'speaker'));
+  if (r.clocks) kit.push(plural(r.clocks, 'clock'));
+  bits.push(kit.length ? kit.join(' · ') : 'No bells placed — <b>B</b> rings one where you stand.');
+  return bits.join('<br />');
+}
+
+// Editing: no walker, so roll the storey up instead. This is `roomsOnFloor`'s
+// only caller today and the reason it exists — the same reader Phase 7's
+// report will want, wired to something now so it can't rot.
+function floorLines() {
+  const rooms = roomsOnFloor(state, state.currentFloor, catalogEntry);
+  if (!rooms.length) return 'Nothing enclosed on this level yet.';
+  const over = rooms.filter((r) => r.overLimit);
+  const worst = [...rooms].sort((a, b) => b.rt60 - a.rt60).slice(0, 3);
+  const list = worst.map((r) =>
+    `<div><span>${r.name || (r.kind === 'shape' ? 'Unnamed room' : 'Unlabelled area')}</span>` +
+    `<span class="${r.overLimit ? 'over' : ''}">${r.rt60.toFixed(2)} s</span></div>`).join('');
+  return `<b>${floorLabel(state.currentFloor)}</b><br />` +
+    `${plural(rooms.length, 'enclosed room')}` +
+    (over.length ? ` · <span class="over">${over.length} over the ANSI limit</span>` : ' · all within the ANSI limit') +
+    `<div class="rooms">${list}</div>`;
+}
+
+function renderAudioReadout() {
+  if (audioPanel.classList.contains('hidden')) return;
+  const r = audio.report;
+  $('audio-readout').innerHTML = mode === 'walk'
+    ? `${roomLines(r.room)}<br />${mixLines(r)}`
+    : `${floorLines()}<br />${mixLines(r)}<br />Walk through the building (Tab) to hear it.`;
+}
+
+$('audio-volume').addEventListener('input', (e) => {
+  audio.setVolume(Number(e.target.value) / 100);
+  $('audio-volume-value').textContent = `${Math.round(audio.volume * 100)}%`;
+});
+$('audio-bell').addEventListener('click', () => { audio.ring(); renderAudioReadout(); });
+$('audio-pa').addEventListener('click', () => { audio.announce(); renderAudioReadout(); });
+
+$('audio-btn').addEventListener('click', () => {
+  const hidden = audioPanel.classList.toggle('hidden');
+  $('audio-btn').classList.toggle('off', hidden);
+  $('audio-btn').setAttribute('aria-pressed', String(!hidden));
+  if (!hidden) renderAudioPanel();
+});
+
 // --- photo mode ---
 //
 // A walkthrough affordance, not an editor one: it takes the walker off its
@@ -1111,6 +1275,14 @@ document.addEventListener('keydown', (e) => {
   // in both modes: the sky panel, and photo mode (walkthrough only — there is
   // nothing to photograph from 200ft above a floor plan).
   if (e.code === 'KeyY' && !typing && !e.ctrlKey && !e.metaKey) { $('env-btn').click(); return; }
+  // Sound's three, next to the sky's on the keyboard as well as in the rail.
+  if (e.code === 'KeyU' && !typing && !e.ctrlKey && !e.metaKey) { $('audio-btn').click(); return; }
+  if (e.code === 'KeyB' && !typing && !e.ctrlKey && !e.metaKey) {
+    audio.ring(); renderAudioReadout(); return;
+  }
+  if (e.code === 'KeyN' && !typing && !e.ctrlKey && !e.metaKey) {
+    audio.announce(); renderAudioReadout(); return;
+  }
   if (e.code === 'KeyP' && !typing && !e.ctrlKey && !e.metaKey && mode === 'walk') {
     setPhotoMode(!photoMode);
     return;
@@ -1167,7 +1339,7 @@ const clock = new THREE.Clock();
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.1);
-  if (mode === 'walk') walk.update(dt);
+  if (mode === 'walk') { walk.update(dt); audio.update(dt); }
   renderApi.render(dt);
 }
 
@@ -1175,6 +1347,8 @@ selectTool('floor');
 renderFloorList();
 renderStairReadout();
 renderEnvPanel();
+renderAudioPanel();
+audio.setWorld(state);
 updateUndoButtons();
 loop();
 
@@ -1182,5 +1356,5 @@ loop();
 window.app = {
   get state() { return state; },
   setMode, renderApi, editor, walk,
-  setPhotoMode, envChanged,
+  setPhotoMode, envChanged, audio,
 };
