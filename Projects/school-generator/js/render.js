@@ -7,7 +7,7 @@
 // one-line change per material.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -427,6 +427,63 @@ export function initRender(canvas) {
     return coloredGeo(g, color);
   }
 
+  // Rotating variants of the same two, for the parts a plain axis-aligned
+  // primitive can't say: splayed stool legs, a tilted slide chute, a star
+  // base's arms. Rotation order x, z, then y — tilt first, then turn.
+  function boxT(w, h, d, x, y, z, color, rx = 0, ry = 0, rz = 0) {
+    const g = new THREE.BoxGeometry(w, h, d);
+    if (rx) g.rotateX(rx);
+    if (rz) g.rotateZ(rz);
+    if (ry) g.rotateY(ry);
+    g.translate(x, y, z);
+    return coloredGeo(g, color);
+  }
+
+  function cylT(rt, rb, h, segs, x, y, z, color, rx = 0, rz = 0) {
+    const g = new THREE.CylinderGeometry(rt, rb, h, segs);
+    if (rx) g.rotateX(rx);
+    if (rz) g.rotateZ(rz);
+    g.translate(x, y, z);
+    return coloredGeo(g, color);
+  }
+
+  function sph(r, x, y, z, color, segs = 14) {
+    const g = new THREE.SphereGeometry(r, segs, Math.max(8, Math.round(segs * 0.7)));
+    g.translate(x, y, z);
+    return coloredGeo(g, color);
+  }
+
+  // Torus, flat (axis Y) by default — a hoop rim, a stool's foot ring. Pass
+  // rx: 0 for an upright ring (a bike-rack loop), arc for a partial one.
+  function ring(r, tube, x, y, z, color, { arc = Math.PI * 2, rx = Math.PI / 2, rz = 0 } = {}) {
+    const g = new THREE.TorusGeometry(r, tube, 8, 20, arc);
+    if (rx) g.rotateX(rx);
+    if (rz) g.rotateZ(rz);
+    g.translate(x, y, z);
+    return coloredGeo(g, color);
+  }
+
+  // Surface of revolution from an [r, y] profile — plant pots, a globe stand.
+  function lathe(profile, x, y, z, color, segs = 20) {
+    const g = new THREE.LatheGeometry(profile.map(([r, h]) => new THREE.Vector2(r, h)), segs);
+    g.translate(x, y, z);
+    return coloredGeo(g, color);
+  }
+
+  // Horizontal slab extruded from a 2D outline — the table tops a box can't
+  // make (trapezoid, kidney). Shape (x, y) lands at world (x, -z), so +y in
+  // the outline is the prop's back; underside sits at yBottom.
+  function slabGeo(shape, t, yBottom, color) {
+    let g = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false, curveSegments: 16 });
+    // ExtrudeGeometry is non-indexed, and mergeGeometries refuses to mix it
+    // with the indexed primitives everything else here is — welding it makes
+    // it indexed (and keeps the hard edges, since normals differ per face).
+    g = mergeVertices(g);
+    g.rotateX(-Math.PI / 2);
+    g.translate(0, yBottom, 0);
+    return coloredGeo(g, color);
+  }
+
   const buildDesk = (e) => {
     const legColor = tint(e.color, -0.28);
     const legT = 0.15, topT = 0.1;
@@ -438,25 +495,67 @@ export function initRender(canvas) {
     return mergeGeometries(parts);
   };
 
+  // One chair builder, four silhouettes: `style` on the catalog row picks
+  // basic (4 straight legs), stack (splayed tube-steel legs), task (5-star
+  // rolling base with arms) or rocker (runners and armrests).
   const buildChair = (e) => {
-    const seatH = e.h * 0.52, legT = 0.12, legColor = tint(e.color, -0.25);
-    const parts = [
-      box(e.w, 0.1, e.d, 0, seatH, 0, e.color),
-      box(e.w, e.h - seatH, 0.08, 0, seatH + (e.h - seatH) / 2, -e.d / 2 + 0.04, tint(e.color, -0.1)),
-    ];
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      parts.push(box(legT, seatH, legT, sx * (e.w / 2 - legT), seatH / 2, sz * (e.d / 2 - legT), legColor));
+    const style = e.style || 'basic';
+    const legColor = tint(e.color, -0.25);
+    const seatH = style === 'task' ? e.h * 0.45 : e.h * 0.52;
+    const parts = [box(e.w, 0.12, e.d * 0.92, 0, seatH, 0.02, e.color)];
+    if (style === 'stack') {
+      parts.push(box(e.w * 0.94, (e.h - seatH) * 0.55, 0.1, 0, e.h - (e.h - seatH) * 0.3, -e.d / 2 + 0.06, tint(e.color, -0.06)));
+    } else {
+      parts.push(box(e.w * 0.94, e.h - seatH - 0.08, 0.1, 0, seatH + (e.h - seatH) / 2 + 0.04, -e.d / 2 + 0.05, tint(e.color, -0.08)));
+    }
+    if (style === 'task') {
+      const base = Math.min(e.w, e.d) / 2 - 0.08;
+      parts.push(cyl(0.07, 0.07, seatH - 0.2, 10, 0, (seatH - 0.2) / 2 + 0.2, 0, legColor));
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        parts.push(boxT(0.14, 0.1, base, Math.sin(a) * base * 0.45, 0.14, Math.cos(a) * base * 0.45, legColor, 0, a, 0));
+        parts.push(sph(0.09, Math.sin(a) * base * 0.92, 0.09, Math.cos(a) * base * 0.92, tint(e.color, -0.35), 8));
+      }
+      for (const sx of [-1, 1]) {
+        parts.push(box(0.12, 0.1, e.d * 0.5, sx * (e.w / 2 - 0.1), seatH + 0.55, 0, legColor));
+        parts.push(box(0.12, 0.55, 0.12, sx * (e.w / 2 - 0.1), seatH + 0.27, e.d * 0.18, legColor));
+      }
+    } else if (style === 'rocker') {
+      for (const sx of [-1, 1]) {
+        parts.push(box(0.12, seatH - 0.08, 0.12, sx * (e.w / 2 - 0.12), (seatH - 0.08) / 2 + 0.14, e.d / 2 - 0.35, legColor));
+        parts.push(box(0.12, seatH - 0.08, 0.12, sx * (e.w / 2 - 0.12), (seatH - 0.08) / 2 + 0.14, -e.d / 2 + 0.4, legColor));
+        parts.push(box(0.1, 0.14, e.d * 1.05, sx * (e.w / 2 - 0.12), 0.07, 0, legColor));
+        parts.push(box(0.1, 0.1, e.d * 0.55, sx * (e.w / 2 - 0.1), seatH + 0.75, -0.05, legColor));
+      }
+    } else if (style === 'stack') {
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        parts.push(cylT(0.05, 0.05, seatH + 0.05, 8, sx * (e.w / 2 - 0.12), seatH / 2, sz * (e.d / 2 - 0.12), legColor, sz * -0.07, sx * 0.07));
+      }
+    } else {
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        parts.push(box(0.12, seatH, 0.12, sx * (e.w / 2 - 0.12), seatH / 2, sz * (e.d / 2 - 0.12), legColor));
+      }
     }
     return mergeGeometries(parts);
   };
 
+  // `front: 'doors'` swaps the drawer handles for a pair of tall doors — the
+  // same body serves a file cabinet and a supply cabinet.
   const buildCabinet = (e) => {
     const parts = [box(e.w, e.h, e.d, 0, e.h / 2, 0, e.color)];
-    const drawers = Math.max(2, Math.round(e.h / 1.3));
     const handleColor = tint(e.color, -0.35);
-    for (let i = 0; i < drawers; i++) {
-      const y = (e.h / drawers) * (i + 0.85);
-      parts.push(box(e.w * 0.5, 0.05, 0.06, 0, y, e.d / 2 + 0.01, handleColor));
+    if (e.front === 'doors') {
+      const doorColor = tint(e.color, 0.06);
+      for (const sx of [-1, 1]) {
+        parts.push(box(e.w / 2 - 0.08, e.h - 0.2, 0.05, sx * e.w / 4, e.h / 2, e.d / 2 + 0.02, doorColor));
+        parts.push(box(0.07, 0.5, 0.07, sx * 0.15, e.h * 0.5, e.d / 2 + 0.07, handleColor));
+      }
+    } else {
+      const drawers = Math.max(2, Math.round(e.h / 1.3));
+      for (let i = 0; i < drawers; i++) {
+        const y = (e.h / drawers) * (i + 0.85);
+        parts.push(box(e.w * 0.5, 0.05, 0.06, 0, y, e.d / 2 + 0.01, handleColor));
+      }
     }
     return mergeGeometries(parts);
   };
@@ -487,6 +586,21 @@ export function initRender(canvas) {
     for (let i = 1; i < cols; i++) {
       const x = -e.w / 2 + (e.w / cols) * i;
       parts.push(box(0.06, e.h, e.d - 0.06, x, e.h / 2, 0.03, dividerColor));
+    }
+    // `bins: true` fills each opening with a colored tote, angled slightly out
+    // of its slot — the same frame reads as a tote rack instead of shelving.
+    if (e.bins) {
+      const binColors = ['#b0503f', '#3f6fae', '#c99a3f', '#3f7a48'];
+      const rows = Math.max(2, Math.round(e.h / 1.4));
+      const cw = e.w / cols;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const x = -e.w / 2 + cw * (c + 0.5);
+          const y = (e.h / rows) * r + 0.14;
+          parts.push(box(cw - 0.24, (e.h / rows) * 0.55, e.d - 0.2, x, y + (e.h / rows) * 0.28, 0.09,
+            binColors[(r + c) % binColors.length]));
+        }
+      }
     }
     return mergeGeometries(parts);
   };
@@ -527,10 +641,915 @@ export function initRender(canvas) {
     ]);
   };
 
+  // ---------- Phase 1 builders: tables, seating, storage ----------
+
+  // Generic table: seatless by design (seating composes from the chair/stool
+  // types). `top` picks rect (default), round (pedestal base), trapezoid or
+  // kidney (extruded outlines); `base: 'folding'` angles the leg pairs in.
+  const buildTable = (e) => {
+    const topT = 0.12, legColor = tint(e.color, -0.3);
+    const parts = [];
+    const top = e.top || 'rect';
+    if (top === 'round') {
+      parts.push(cyl(e.w / 2, e.w / 2, topT, 28, 0, e.h - topT / 2, 0, e.color));
+      parts.push(cyl(0.15, 0.22, e.h - topT - 0.1, 12, 0, (e.h - topT) / 2, 0, legColor));
+      parts.push(cyl(e.w * 0.2, e.w * 0.24, 0.12, 18, 0, 0.06, 0, legColor));
+    } else {
+      if (top === 'trapezoid') {
+        const s = new THREE.Shape();
+        const wTop = e.w * 0.55;
+        s.moveTo(-e.w / 2, -e.d / 2); s.lineTo(e.w / 2, -e.d / 2);
+        s.lineTo(wTop / 2, e.d / 2); s.lineTo(-wTop / 2, e.d / 2); s.closePath();
+        parts.push(slabGeo(s, topT, e.h - topT, e.color));
+      } else if (top === 'kidney') {
+        const s = new THREE.Shape();
+        const w = e.w / 2, d = e.d / 2;
+        s.moveTo(-w, 0);
+        s.bezierCurveTo(-w, d, w, d, w, 0);
+        s.bezierCurveTo(w * 0.6, -d * 0.7, w * 0.25, -d * 0.15, 0, -d * 0.2);
+        s.bezierCurveTo(-w * 0.25, -d * 0.15, -w * 0.6, -d * 0.7, -w, 0);
+        parts.push(slabGeo(s, topT, e.h - topT, e.color));
+      } else {
+        parts.push(box(e.w, topT, e.d, 0, e.h - topT / 2, 0, e.color));
+      }
+      const inX = e.w / 2 - 0.35, inZ = e.d / 2 - 0.3;
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        if (e.base === 'folding') {
+          parts.push(cylT(0.06, 0.06, e.h - topT + 0.1, 8, sx * inX, (e.h - topT) / 2, sz * inZ, legColor, 0, sx * 0.18));
+        } else {
+          parts.push(cyl(0.07, 0.09, e.h - topT, 8, sx * inX, (e.h - topT) / 2, sz * inZ, legColor));
+        }
+      }
+      if (e.base === 'folding') {
+        parts.push(box(e.w * 0.8, 0.08, 0.1, 0, e.h * 0.4, 0, legColor));
+      }
+    }
+    return mergeGeometries(parts);
+  };
+
+  // Desk with a device on top: monitor + keyboard, a 3D printer frame, or a
+  // sewing machine. The desk half reuses buildDesk against a shorter row.
+  const buildWorkstation = (e) => {
+    const deskH = Math.min(2.5, e.h);
+    const parts = [buildDesk({ ...e, h: deskH })];
+    const dark = tint(e.color, -0.45, -0.2);
+    if (e.device === 'printer') {
+      const s = Math.min(e.w, e.d) * 0.72;
+      parts.push(box(s, 0.12, s, 0, deskH + 0.06, 0, dark));
+      for (const sx of [-1, 1]) parts.push(box(0.1, e.h - deskH - 0.2, s, sx * (s / 2 - 0.05), deskH + (e.h - deskH) / 2, 0, dark));
+      parts.push(box(s - 0.2, 0.12, s, 0, e.h - 0.12, 0, dark));
+      parts.push(box(0.5, 0.4, 0.5, 0, deskH + 0.45, 0, tint(e.color, 0.2)));
+      parts.push(cylT(0.18, 0.18, 0.15, 12, 0, e.h - 0.3, -e.d * 0.1, '#d8d3c8', Math.PI / 2, 0));
+    } else if (e.device === 'sewing') {
+      parts.push(box(e.w * 0.42, 0.22, e.d * 0.5, -e.w * 0.08, deskH + 0.11, 0, dark));
+      parts.push(box(0.24, 0.7, e.d * 0.32, -e.w * 0.25, deskH + 0.55, 0, dark));
+      parts.push(box(e.w * 0.36, 0.2, e.d * 0.3, -e.w * 0.08, deskH + 1.0, 0, dark));
+      parts.push(cyl(0.1, 0.1, 0.24, 10, e.w * 0.12, deskH + 0.34, 0, tint(e.color, 0.25)));
+    } else {
+      parts.push(box(e.w * 0.45, e.h * 0.35, 0.08, 0, deskH + e.h * 0.28, -e.d * 0.18, dark));
+      parts.push(box(0.3, 0.28, 0.2, 0, deskH + 0.14, -e.d * 0.18, dark));
+      parts.push(box(e.w * 0.32, 0.05, 0.5, 0, deskH + 0.03, e.d * 0.12, tint(e.color, 0.15)));
+    }
+    return mergeGeometries(parts);
+  };
+
+  // Study carrel: a desk wrapped in privacy panels on three sides.
+  const buildCarrel = (e) => {
+    const deskH = 2.5;
+    const panelColor = tint(e.color, 0.12);
+    return mergeGeometries([
+      buildDesk({ ...e, h: deskH }),
+      box(e.w, e.h - 0.4, 0.1, 0, (e.h - 0.4) / 2 + 0.4, -e.d / 2 + 0.05, panelColor),
+      box(0.1, e.h - 0.4, e.d, -e.w / 2 + 0.05, (e.h - 0.4) / 2 + 0.4, 0, panelColor),
+      box(0.1, e.h - 0.4, e.d, e.w / 2 - 0.05, (e.h - 0.4) / 2 + 0.4, 0, panelColor),
+    ]);
+  };
+
+  const buildPodium = (e) => {
+    const bodyColor = e.color;
+    return mergeGeometries([
+      box(e.w * 0.8, 0.15, e.d * 0.9, 0, 0.08, 0, tint(e.color, -0.2)),
+      boxT(e.w * 0.7, e.h - 0.5, e.d * 0.55, 0, (e.h - 0.5) / 2 + 0.1, 0, bodyColor, 0.06, 0, 0),
+      boxT(e.w, 0.12, e.d * 0.8, 0, e.h - 0.2, -0.1, tint(e.color, 0.08), -0.35, 0, 0),
+    ]);
+  };
+
+  // Lab bench / demo table / robotics bench: base cabinets under a resistant
+  // top. Robotics (`pegboard: true`) gets a tool board instead of a faucet.
+  const buildLabbench = (e) => {
+    const topColor = tint(e.color, -0.3), bodyColor = tint(e.color, 0.18);
+    const parts = [
+      box(e.w - 0.2, e.h - 0.35, e.d - 0.2, 0, (e.h - 0.35) / 2, 0, bodyColor),
+      box(e.w, 0.2, e.d, 0, e.h - 0.1, 0, topColor),
+    ];
+    const doors = Math.max(2, Math.round(e.w / 1.6));
+    for (let i = 0; i < doors; i++) {
+      const x = -e.w / 2 + (e.w / doors) * (i + 0.5);
+      parts.push(box(e.w / doors - 0.25, e.h - 0.7, 0.05, x, (e.h - 0.7) / 2 + 0.15, e.d / 2 - 0.06, tint(bodyColor, 0.06)));
+      parts.push(box(0.3, 0.06, 0.08, x, e.h - 0.55, e.d / 2, tint(e.color, -0.1)));
+    }
+    if (e.pegboard) {
+      parts.push(box(e.w, 1.6, 0.1, 0, e.h + 0.8, -e.d / 2 + 0.05, tint(e.color, 0.3)));
+    } else {
+      parts.push(cylT(0.05, 0.05, 0.6, 8, -e.w * 0.3, e.h + 0.28, -e.d * 0.2, '#b8bcc2', 0, 0));
+      parts.push(cylT(0.05, 0.05, 0.35, 8, -e.w * 0.3 + 0.17, e.h + 0.55, -e.d * 0.2, '#b8bcc2', 0, Math.PI / 2));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildStool = (e) => {
+    const seatH = e.h - 0.1, legColor = tint(e.color, -0.2);
+    const parts = [cyl(e.w / 2, e.w / 2 * 0.92, 0.18, 18, 0, seatH, 0, tint(e.color, 0.15))];
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      parts.push(cylT(0.05, 0.05, seatH, 8, Math.sin(a) * (e.w / 2 - 0.14), seatH / 2, Math.cos(a) * (e.w / 2 - 0.14), legColor, Math.cos(a) * 0.12, Math.sin(a) * -0.12));
+    }
+    parts.push(ring(e.w / 2 - 0.16, 0.035, 0, seatH * 0.4, 0, legColor));
+    return mergeGeometries(parts);
+  };
+
+  // Bench: slat seat on end legs; `back: true` adds a backrest (park bench).
+  const buildBench = (e) => {
+    const seatH = e.back ? e.h * 0.55 : e.h;
+    const legColor = tint(e.color, -0.25);
+    const parts = [];
+    for (let i = 0; i < 3; i++) {
+      parts.push(box(e.w, 0.1, (e.d * 0.8) / 3 - 0.05, 0, seatH - 0.05, -e.d * 0.4 + (e.d * 0.8) * (i + 0.5) / 3, tint(e.color, 0.06)));
+    }
+    for (const sx of [-1, 1]) {
+      parts.push(box(0.15, seatH - 0.1, e.d * 0.8, sx * (e.w / 2 - 0.3), (seatH - 0.1) / 2, 0, legColor));
+    }
+    if (e.back) {
+      for (let i = 0; i < 2; i++) {
+        parts.push(boxT(e.w, 0.35, 0.08, 0, seatH + 0.45 + i * 0.55, -e.d / 2 + 0.12 + (i * 0.04), tint(e.color, 0.06), -0.12, 0, 0));
+      }
+      for (const sx of [-1, 1]) {
+        parts.push(boxT(0.12, e.h - seatH + 0.3, 0.12, sx * (e.w / 2 - 0.3), seatH + (e.h - seatH) / 2 - 0.1, -e.d / 2 + 0.16, legColor, -0.12, 0, 0));
+      }
+    }
+    return mergeGeometries(parts);
+  };
+
+  // Soft seating: beanbag (lathed blob), floor cushion, lounge chair, sofa.
+  const buildSoftseat = (e) => {
+    const kind = e.kind || 'sofa';
+    if (kind === 'beanbag') {
+      const r = e.w / 2;
+      return mergeGeometries([
+        lathe([[0.01, 0], [r * 0.92, 0.06], [r, e.h * 0.4], [r * 0.6, e.h * 0.85], [0.12, e.h]], 0, 0, 0, e.color, 22),
+      ]);
+    }
+    if (kind === 'cushion') {
+      return mergeGeometries([
+        box(e.w, e.h * 0.75, e.d, 0, e.h * 0.375, 0, e.color),
+        box(e.w * 0.85, e.h * 0.25, e.d * 0.85, 0, e.h * 0.87, 0, tint(e.color, 0.1)),
+      ]);
+    }
+    // lounge / sofa share the frame; the sofa just has more seat cushions.
+    const seatH = e.h * 0.55, armW = 0.45;
+    const frame = tint(e.color, -0.12);
+    const parts = [
+      box(e.w, seatH * 0.55, e.d, 0, seatH * 0.28, 0, frame),
+      box(e.w, e.h - seatH * 0.55, 0.5, 0, (e.h - seatH * 0.55) / 2 + seatH * 0.55, -e.d / 2 + 0.25, frame),
+    ];
+    const cushions = kind === 'sofa' ? Math.max(2, Math.round(e.w / 2)) : 1;
+    const cw = (e.w - armW * 2) / cushions;
+    for (let i = 0; i < cushions; i++) {
+      const x = -e.w / 2 + armW + cw * (i + 0.5);
+      parts.push(box(cw - 0.12, 0.35, e.d - 0.7, x, seatH * 0.55 + 0.17, 0.1, tint(e.color, 0.08)));
+      parts.push(box(cw - 0.12, e.h - seatH - 0.3, 0.35, x, seatH + (e.h - seatH) / 2 - 0.05, -e.d / 2 + 0.55, tint(e.color, 0.05)));
+    }
+    for (const sx of [-1, 1]) {
+      parts.push(box(armW, e.h * 0.75, e.d, sx * (e.w / 2 - armW / 2), e.h * 0.375, 0, frame));
+    }
+    return mergeGeometries(parts);
+  };
+
+  // Auditorium seat: fold-up-style seat pan, high back, shared-row armrests.
+  const buildAudseat = (e) => {
+    const dark = tint(e.color, -0.3);
+    return mergeGeometries([
+      boxT(e.w - 0.4, 0.5, e.d * 0.55, 0, e.h * 0.35, 0.1, e.color, -0.5, 0, 0),
+      boxT(e.w - 0.4, e.h * 0.6, 0.25, 0, e.h * 0.62, -e.d / 2 + 0.3, e.color, -0.08, 0, 0),
+      box(0.14, e.h * 0.42, 0.14, -e.w / 2 + 0.1, e.h * 0.21, -e.d * 0.1, dark),
+      box(0.14, e.h * 0.42, 0.14, e.w / 2 - 0.1, e.h * 0.21, -e.d * 0.1, dark),
+      box(0.2, 0.08, e.d * 0.55, -e.w / 2 + 0.1, e.h * 0.44, -e.d * 0.05, dark),
+      box(0.2, 0.08, e.d * 0.55, e.w / 2 - 0.1, e.h * 0.44, -e.d * 0.05, dark),
+    ]);
+  };
+
+  // Locker bank: `doors` across, `tiers` high (1 = full-height, 2 = stacked
+  // half-lockers), each door with a vent stamp and a latch.
+  const buildLocker = (e) => {
+    const doors = Math.max(1, e.doors || Math.round(e.w));
+    const tiers = Math.max(1, e.tiers || 1);
+    const parts = [box(e.w, e.h, e.d, 0, e.h / 2, 0, tint(e.color, -0.18))];
+    const dw = e.w / doors, th = (e.h - 0.2) / tiers;
+    const doorColor = e.color, ventColor = tint(e.color, -0.3);
+    for (let i = 0; i < doors; i++) {
+      for (let t = 0; t < tiers; t++) {
+        const x = -e.w / 2 + dw * (i + 0.5);
+        const y0 = 0.1 + th * t;
+        parts.push(box(dw - 0.12, th - 0.1, 0.05, x, y0 + th / 2, e.d / 2 + 0.01, doorColor));
+        parts.push(box(dw * 0.5, 0.08, 0.03, x, y0 + th * 0.82, e.d / 2 + 0.05, ventColor));
+        parts.push(box(dw * 0.5, 0.08, 0.03, x, y0 + th * 0.72, e.d / 2 + 0.05, ventColor));
+        parts.push(box(0.1, 0.18, 0.06, x + dw * 0.28, y0 + th * 0.45, e.d / 2 + 0.04, ventColor));
+      }
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildCoatrack = (e) => {
+    const postColor = tint(e.color, -0.2);
+    const parts = [
+      box(0.5, 0.12, e.d, -e.w / 2 + 0.25, 0.06, 0, postColor),
+      box(0.5, 0.12, e.d, e.w / 2 - 0.25, 0.06, 0, postColor),
+      box(0.15, e.h - 0.4, 0.15, -e.w / 2 + 0.25, (e.h - 0.4) / 2 + 0.12, 0, postColor),
+      box(0.15, e.h - 0.4, 0.15, e.w / 2 - 0.25, (e.h - 0.4) / 2 + 0.12, 0, postColor),
+      cylT(0.05, 0.05, e.w - 0.3, 10, 0, e.h - 0.3, 0, tint(e.color, 0.1), 0, Math.PI / 2),
+      box(e.w - 0.5, 0.08, 0.6, 0, e.h - 0.05, 0, e.color),
+    ];
+    const hangers = Math.max(3, Math.round(e.w * 1.5));
+    for (let i = 0; i < hangers; i++) {
+      const x = -e.w / 2 + 0.5 + ((e.w - 1) / (hangers - 1)) * i;
+      parts.push(box(0.06, 0.5, 0.06, x, e.h - 0.55, 0, tint(e.color, 0.25)));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildCart = (e) => {
+    const frameColor = tint(e.color, -0.15);
+    const parts = [];
+    for (const level of [0.35, e.h * 0.55, e.h - 0.5]) {
+      parts.push(box(e.w, 0.08, e.d, 0, level, 0, e.color));
+    }
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      parts.push(box(0.08, e.h - 0.5, 0.08, sx * (e.w / 2 - 0.06), (e.h - 0.5) / 2 + 0.15, sz * (e.d / 2 - 0.06), frameColor));
+      parts.push(sph(0.14, sx * (e.w / 2 - 0.2), 0.14, sz * (e.d / 2 - 0.2), tint(e.color, -0.4), 8));
+    }
+    parts.push(cylT(0.045, 0.045, e.d, 8, e.w / 2 + 0.12, e.h - 0.25, 0, frameColor, Math.PI / 2, 0));
+    return mergeGeometries(parts);
+  };
+
+  // Double-sided library stack: a center spine with shelves both sides,
+  // closed off by end panels — two bookshelves standing back to back.
+  const buildStack = (e) => {
+    const t = 0.1, endColor = tint(e.color, -0.12), shelfColor = tint(e.color, 0.06);
+    const parts = [
+      box(e.w, e.h, t, 0, e.h / 2, 0, endColor),
+      box(t, e.h, e.d, -e.w / 2 + t / 2, e.h / 2, 0, endColor),
+      box(t, e.h, e.d, e.w / 2 - t / 2, e.h / 2, 0, endColor),
+      box(e.w, 0.3, e.d, 0, 0.15, 0, endColor),
+    ];
+    const shelves = Math.max(3, Math.round(e.h / 1.2));
+    for (let i = 1; i <= shelves; i++) {
+      const y = (e.h / shelves) * i - 0.05;
+      for (const sz of [-1, 1]) {
+        parts.push(box(e.w - t * 2, t, e.d / 2 - t, 0, y, sz * (e.d / 4 + t / 4), shelfColor));
+      }
+    }
+    return mergeGeometries(parts);
+  };
+
+  // Wall hook rail; `hung: true` dresses it with coats and backpacks.
+  const buildHookrail = (e) => {
+    const parts = [box(e.w, 0.35, 0.12, 0, e.h - 0.18, 0, e.color)];
+    const hooks = Math.max(3, Math.round(e.w * 1.2));
+    for (let i = 0; i < hooks; i++) {
+      const x = -e.w / 2 + 0.3 + ((e.w - 0.6) / (hooks - 1)) * i;
+      parts.push(box(0.06, 0.22, 0.18, x, e.h - 0.3, 0.12, tint(e.color, -0.3)));
+      if (e.hung && i % 3 !== 2) {
+        const coat = i % 3 === 0;
+        const c = coat ? tint(e.color, 0.15, 0.1) : ['#b0503f', '#3f6fae', '#c99a3f'][i % 3];
+        parts.push(box(coat ? 0.55 : 0.7, coat ? e.h - 0.6 : e.h * 0.55, coat ? 0.16 : 0.3, x, (coat ? (e.h - 0.6) / 2 : e.h * 0.35), 0.2, c));
+      }
+    }
+    return mergeGeometries(parts);
+  };
+
+  // ---------- Phase 1 builders: fixtures ----------
+
+  const buildClock = (e) => {
+    const r = e.w / 2;
+    return mergeGeometries([
+      cylT(r, r, e.d * 0.6, 24, 0, e.h / 2, e.d * 0.3, tint(e.color, -0.35), Math.PI / 2, 0),
+      cylT(r * 0.88, r * 0.88, 0.03, 24, 0, e.h / 2, e.d * 0.62, e.color, Math.PI / 2, 0),
+      box(0.05, r * 0.55, 0.02, 0, e.h / 2 + r * 0.27, e.d * 0.64, '#22262c'),
+      box(r * 0.4, 0.05, 0.02, r * 0.2, e.h / 2, e.d * 0.64, '#22262c'),
+    ]);
+  };
+
+  // Pull-down screen or blinds: housing at the top, a sheet hanging below it
+  // — `sheet` is how far down it's drawn (1 = fully, blinds sit partway).
+  const buildPulldown = (e) => {
+    const housingH = 0.4;
+    const drop = (e.h - housingH) * (e.sheet ?? 1);
+    const parts = [
+      cylT(0.18, 0.18, e.w, 14, 0, e.h - housingH / 2, 0, tint(e.color, -0.4), 0, Math.PI / 2),
+      box(e.w - 0.3, drop, 0.06, 0, e.h - housingH - drop / 2, 0.05, e.color),
+      box(e.w - 0.3, 0.1, 0.1, 0, e.h - housingH - drop, 0.05, tint(e.color, -0.35)),
+    ];
+    return mergeGeometries(parts);
+  };
+
+  // Ceiling projector: a stem up to the slab, the body hanging under it.
+  const buildProjector = (e) => {
+    return mergeGeometries([
+      cyl(0.06, 0.06, e.h - 0.6, 8, 0, e.h - (e.h - 0.6) / 2, 0, tint(e.color, -0.35)),
+      box(e.w, 0.5, e.d, 0, 0.35, 0, e.color),
+      cylT(0.14, 0.14, 0.1, 14, e.w * 0.25, 0.35, e.d / 2 + 0.04, '#2a2f36', Math.PI / 2, 0),
+      box(e.w * 0.6, 0.04, e.d * 0.5, 0, 0.08, 0, tint(e.color, -0.2)),
+    ]);
+  };
+
+  // Trophy case: base cabinet, framed "glass" (a pale baked tint — the one
+  // shared prop material is opaque), lit shelves and a few trophies.
+  const buildDisplaycase = (e) => {
+    const frame = tint(e.color, -0.15), glass = '#b8ccd4';
+    const baseH = 0.9;
+    const parts = [
+      box(e.w, baseH, e.d, 0, baseH / 2, 0, e.color),
+      box(e.w, 0.12, e.d, 0, e.h - 0.06, 0, frame),
+    ];
+    for (const sx of [-1, 1]) parts.push(box(0.12, e.h - baseH, e.d, sx * (e.w / 2 - 0.06), baseH + (e.h - baseH) / 2, 0, frame));
+    parts.push(box(e.w - 0.24, e.h - baseH - 0.12, 0.03, 0, baseH + (e.h - baseH) / 2, e.d / 2 - 0.05, glass));
+    parts.push(box(e.w - 0.24, e.h - baseH - 0.12, 0.06, 0, baseH + (e.h - baseH) / 2, -e.d / 2 + 0.04, tint(e.color, 0.25)));
+    const shelves = 2;
+    for (let i = 1; i <= shelves; i++) {
+      const y = baseH + ((e.h - baseH - 0.2) / (shelves + 1)) * i;
+      parts.push(box(e.w - 0.3, 0.06, e.d - 0.3, 0, y, 0, glass));
+      const across = Math.max(2, Math.round(e.w / 1.6));
+      for (let j = 0; j < across; j++) {
+        const x = -e.w / 2 + (e.w / across) * (j + 0.5);
+        parts.push(cyl(0.06, 0.14, 0.5, 8, x, y + 0.28, 0, '#c9a227'));
+        parts.push(sph(0.11, x, y + 0.62, 0, '#c9a227', 8));
+      }
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildFountain = (e) => {
+    const body = tint(e.color, -0.1);
+    return mergeGeometries([
+      box(e.w, e.h * 0.78, e.d, 0, e.h * 0.39, 0, body),
+      box(e.w + 0.12, 0.3, e.d + 0.12, 0, e.h * 0.78 + 0.1, 0, e.color),
+      box(e.w * 0.5, 0.1, e.d * 0.45, 0, e.h * 0.78 + 0.22, 0.05, tint(e.color, -0.3)),
+      cylT(0.04, 0.04, 0.3, 8, -e.w * 0.2, e.h * 0.78 + 0.36, 0, tint(e.color, -0.35), 0.9, 0),
+      box(e.w * 0.6, e.h * 0.22 + 0.2, 0.15, 0, e.h - (e.h * 0.22 + 0.2) / 2 + 0.15, -e.d / 2 + 0.08, body),
+    ]);
+  };
+
+  // Generic wall cabinet/box; `style` stamps the front: 'fire' (white cross),
+  // 'aed' (heart), 'grille' (speaker slats), default a plain door seam.
+  const buildWallbox = (e) => {
+    const parts = [box(e.w, e.h, e.d, 0, e.h / 2, 0, e.color)];
+    const front = e.d / 2 + 0.01;
+    if (e.style === 'fire') {
+      parts.push(box(e.w * 0.5, 0.14, 0.03, 0, e.h / 2, front, '#f4f4f2'));
+      parts.push(box(0.14, e.h * 0.4, 0.03, 0, e.h / 2, front, '#f4f4f2'));
+    } else if (e.style === 'aed') {
+      parts.push(box(e.w * 0.45, e.h * 0.4, 0.03, 0, e.h / 2, front, '#c0392b'));
+      parts.push(box(e.w * 0.6, 0.1, 0.03, 0, e.h * 0.85, front, '#c0392b'));
+    } else if (e.style === 'grille') {
+      for (let i = 0; i < 4; i++) {
+        parts.push(box(e.w * 0.7, 0.06, 0.03, 0, e.h * (0.25 + i * 0.17), front, tint(e.color, -0.3)));
+      }
+    } else {
+      parts.push(box(e.w * 0.85, e.h * 0.85, 0.03, 0, e.h / 2, front, tint(e.color, 0.08)));
+      parts.push(box(0.06, 0.25, 0.05, e.w * 0.3, e.h / 2, front + 0.03, tint(e.color, -0.3)));
+    }
+    return mergeGeometries(parts);
+  };
+
+  // Flag on an angled wall bracket, cloth hanging along the pole.
+  const buildFlagwall = (e) => {
+    const poleColor = '#c9a227';
+    const tiltZ = -0.7;
+    return mergeGeometries([
+      box(0.3, 0.5, 0.15, 0, 0.35, 0.07, tint(e.color, -0.3)),
+      cylT(0.04, 0.05, e.h * 0.95, 8, e.d * 0.28, e.h * 0.42, e.d * 0.35, poleColor, tiltZ, 0),
+      sph(0.08, e.d * 0.55, e.h * 0.78, e.d * 0.68, poleColor, 8),
+      boxT(0.05, e.h * 0.55, e.d * 0.55, e.d * 0.3, e.h * 0.38, e.d * 0.42, e.color, tiltZ, 0, 0),
+    ]);
+  };
+
+  const buildRadiator = (e) => {
+    const parts = [
+      box(e.w, 0.1, e.d, 0, e.h - 0.05, 0, tint(e.color, -0.1)),
+      box(0.15, e.h - 0.1, e.d, -e.w / 2 + 0.08, (e.h - 0.1) / 2, 0, e.color),
+      box(0.15, e.h - 0.1, e.d, e.w / 2 - 0.08, (e.h - 0.1) / 2, 0, e.color),
+    ];
+    const fins = Math.max(4, Math.round(e.w * 2.5));
+    for (let i = 1; i < fins; i++) {
+      const x = -e.w / 2 + (e.w / fins) * i;
+      parts.push(box(0.08, e.h - 0.35, e.d * 0.8, x, (e.h - 0.35) / 2 + 0.1, 0, tint(e.color, 0.06)));
+    }
+    return mergeGeometries(parts);
+  };
+
+  // ---------- Phase 1 builders: subject rooms ----------
+
+  const buildPiano = (e) => {
+    const body = e.color, keyH = 2.3;
+    return mergeGeometries([
+      box(e.w, e.h, e.d * 0.6, 0, e.h / 2, -e.d * 0.2, body),
+      box(e.w, 0.5, e.d * 0.95, 0, keyH + 0.25, 0, body),
+      box(e.w - 0.5, 0.12, e.d * 0.42, 0, keyH + 0.06, e.d * 0.22, '#efefec'),
+      ...Array.from({ length: 14 }, (_, i) => {
+        const x = -e.w / 2 + 0.45 + ((e.w - 0.9) / 13) * i;
+        return box(0.09, 0.08, e.d * 0.2, x, keyH + 0.16, e.d * 0.16, '#17181c');
+      }),
+      box(e.w * 0.5, 0.35, 0.1, 0, e.h - 0.6, -e.d * 0.49, tint(body, 0.15)),
+      box(0.4, 0.08, 0.3, -0.3, 0.35, e.d * 0.32, '#c9a227'),
+      box(0.4, 0.08, 0.3, 0.3, 0.35, e.d * 0.32, '#c9a227'),
+      ...[-1, 1].map((sx) => box(0.3, 0.6, 0.25, sx * (e.w / 2 - 0.2), 0.3, e.d * 0.15, body)),
+    ]);
+  };
+
+  const buildMusicstand = (e) => {
+    const c = e.color;
+    const parts = [cyl(0.04, 0.04, e.h * 0.55, 8, 0, e.h * 0.42, 0, c)];
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      parts.push(cylT(0.035, 0.035, 0.75, 6, Math.sin(a) * 0.35, 0.28, Math.cos(a) * 0.35, c, Math.cos(a) * 0.85, Math.sin(a) * -0.85));
+    }
+    parts.push(boxT(e.w * 0.85, e.h * 0.35, 0.05, 0, e.h * 0.82, -0.12, tint(c, 0.12), -0.4, 0, 0));
+    parts.push(boxT(e.w * 0.85, 0.1, 0.16, 0, e.h * 0.66, -0.02, tint(c, 0.12), -0.4, 0, 0));
+    return mergeGeometries(parts);
+  };
+
+  // Stepped platforms: a choir riser (shallow steps), a stage section
+  // (rows: 1), or a bleacher (`seats: true` puts a plank on each step).
+  const buildRiser = (e) => {
+    const rows = Math.max(1, e.rows || 1);
+    const parts = [];
+    const stepD = e.d / rows, stepH = e.h / rows;
+    const face = tint(e.color, -0.18);
+    for (let i = 0; i < rows; i++) {
+      const z = e.d / 2 - stepD * (i + 0.5);
+      const h = stepH * (i + 1);
+      parts.push(box(e.w, h, stepD, 0, h / 2, z, i % 2 ? tint(e.color, 0.05) : e.color));
+      parts.push(box(e.w, h, 0.05, 0, h / 2, z + stepD / 2 - 0.02, face));
+      if (e.seats) {
+        parts.push(box(e.w, 0.15, stepD * 0.55, 0, h + 0.08, z - stepD * 0.1, tint(e.color, 0.2)));
+      }
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildEasel = (e) => {
+    const c = tint(e.color, -0.1);
+    return mergeGeometries([
+      boxT(0.12, e.h, 0.12, -e.w / 2 + 0.2, e.h / 2, e.d * 0.12, c, 0.18, 0, 0.1),
+      boxT(0.12, e.h, 0.12, e.w / 2 - 0.2, e.h / 2, e.d * 0.12, c, 0.18, 0, -0.1),
+      boxT(0.12, e.h * 0.95, 0.12, 0, e.h * 0.47, -e.d * 0.3, c, -0.35, 0, 0),
+      boxT(e.w * 0.8, 0.12, 0.2, 0, e.h * 0.32, e.d * 0.2, c, 0.18, 0, 0),
+      boxT(e.w * 0.75, e.h * 0.45, 0.06, 0, e.h * 0.6, e.d * 0.14, '#f4f4f2', 0.18, 0, 0),
+    ]);
+  };
+
+  const buildDryrack = (e) => {
+    const frame = tint(e.color, -0.2);
+    const parts = [];
+    for (const sx of [-1, 1]) {
+      parts.push(box(0.1, e.h, 0.1, sx * (e.w / 2 - 0.05), e.h / 2, -e.d / 2 + 0.05, frame));
+      parts.push(box(0.1, e.h, 0.1, sx * (e.w / 2 - 0.05), e.h / 2, e.d / 2 - 0.05, frame));
+    }
+    const shelves = 8;
+    for (let i = 0; i < shelves; i++) {
+      parts.push(box(e.w - 0.15, 0.05, e.d - 0.1, 0, 0.5 + ((e.h - 0.8) / (shelves - 1)) * i, 0, e.color));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildKiln = (e) => {
+    const r = Math.min(e.w, e.d) / 2 - 0.1;
+    return mergeGeometries([
+      cyl(r, r, e.h * 0.75, 8, 0, e.h * 0.42, 0, e.color),
+      cyl(r + 0.06, r + 0.06, 0.2, 8, 0, e.h * 0.85, 0, tint(e.color, -0.2)),
+      box(r, 0.35, 0.12, 0, e.h * 0.85, r * 0.9, tint(e.color, -0.35)),
+      box(0.5, 0.7, 0.3, e.w / 2 - 0.2, e.h * 0.4, 0, '#3a3f45'),
+      box(e.w, 0.15, e.d, 0, 0.08, 0, tint(e.color, -0.3)),
+    ]);
+  };
+
+  const buildWheel = (e) => {
+    return mergeGeometries([
+      box(e.w * 0.7, e.h * 0.45, e.d * 0.8, -e.w * 0.1, e.h * 0.22, 0, e.color),
+      cyl(0.55, 0.6, 0.12, 20, -e.w * 0.1, e.h * 0.55, 0, tint(e.color, -0.25)),
+      cyl(0.62, 0.65, 0.18, 20, -e.w * 0.1, e.h * 0.42, 0, tint(e.color, 0.1)),
+      box(0.5, e.h * 0.35, 0.4, e.w * 0.32, e.h * 0.55, 0, tint(e.color, -0.35)),
+    ]);
+  };
+
+  const buildFumehood = (e) => {
+    const body = e.color, glass = '#b8ccd4';
+    return mergeGeometries([
+      box(e.w, 3, e.d, 0, 1.5, 0, tint(body, -0.12)),
+      box(e.w, 0.15, e.d, 0, 3.05, 0, '#20242a'),
+      box(e.w, e.h - 3.4, 0.15, 0, 3.2 + (e.h - 3.4) / 2, -e.d / 2 + 0.08, body),
+      ...[-1, 1].map((sx) => box(0.15, e.h - 3.4, e.d, sx * (e.w / 2 - 0.08), 3.2 + (e.h - 3.4) / 2, 0, body)),
+      box(e.w, 0.5, e.d, 0, e.h - 0.25, 0, body),
+      box(e.w - 0.4, e.h - 4.4, 0.05, 0, 3.4 + (e.h - 4.4) / 2, e.d / 2 - 0.1, glass),
+      box(e.w - 0.3, 0.12, 0.12, 0, 3.4, e.d / 2 - 0.08, tint(body, -0.3)),
+    ]);
+  };
+
+  const buildEyewash = (e) => {
+    const c = e.color;
+    return mergeGeometries([
+      cyl(0.06, 0.08, e.h * 0.75, 10, 0, e.h * 0.37, 0, tint(c, -0.35)),
+      cyl(e.w * 0.45, e.w * 0.32, 0.3, 16, 0, e.h * 0.78, 0.1, '#e8e6df'),
+      sph(0.07, -0.15, e.h * 0.82, 0.1, c, 8),
+      sph(0.07, 0.15, e.h * 0.82, 0.1, c, 8),
+      box(0.5, 0.5, 0.05, 0, e.h - 0.2, -0.1, c),
+    ]);
+  };
+
+  const buildSkeleton = (e) => {
+    const bone = e.color;
+    const parts = [
+      cyl(e.w * 0.4, e.w * 0.45, 0.1, 14, 0, 0.05, 0, '#3a3f45'),
+      cyl(0.05, 0.05, e.h - 0.8, 8, 0, (e.h - 0.8) / 2 + 0.1, -0.2, '#3a3f45'),
+      cylT(0.05, 0.05, 0.4, 6, 0, e.h - 0.65, -0.08, '#3a3f45', 0.6, 0),
+      sph(0.32, 0, e.h - 0.45, 0.05, bone, 12),
+      cyl(0.06, 0.06, e.h * 0.35, 6, 0, e.h * 0.6, 0.05, bone),
+    ];
+    for (let i = 0; i < 4; i++) {
+      const w = e.w * (0.55 - i * 0.06);
+      parts.push(boxT(w, 0.09, 0.35, 0, e.h * 0.72 - i * 0.22, 0.05, bone, 0, 0, 0));
+    }
+    parts.push(box(e.w * 0.5, 0.3, 0.3, 0, e.h * 0.42, 0.05, bone));
+    for (const sx of [-1, 1]) {
+      parts.push(cylT(0.045, 0.045, e.h * 0.32, 6, sx * e.w * 0.33, e.h * 0.6, 0.05, bone, 0, sx * 0.12));
+      parts.push(cyl(0.05, 0.05, e.h * 0.38, 6, sx * e.w * 0.12, e.h * 0.22, 0.05, bone));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildGlobe = (e) => {
+    const r = e.w / 2 - 0.15;
+    return mergeGeometries([
+      lathe([[0.01, 0], [e.w * 0.32, 0.04], [0.1, 0.12], [0.06, e.h - r * 2 - 0.2]], 0, 0, 0, '#7a6248', 16),
+      ring(r + 0.12, 0.04, 0, e.h - r - 0.1, 0, '#c9a227', { arc: Math.PI * 1.25, rx: 0, rz: Math.PI * 0.62 }),
+      sph(r, 0, e.h - r - 0.1, 0, e.color, 18),
+      sph(r * 0.55, r * 0.5, e.h - r - 0.1 + r * 0.45, 0.1, '#3f7a48', 10),
+    ]);
+  };
+
+  // ---------- Phase 1 builders: cafeteria, office machines, counters ----------
+
+  // Boxy appliances: `style` picks copier, vending (lit front), commercial
+  // fridge (two doors), or milk cooler (open chest).
+  const buildMachine = (e) => {
+    const parts = [];
+    const dark = tint(e.color, -0.3), light = tint(e.color, 0.15);
+    if (e.style === 'vending') {
+      parts.push(box(e.w, e.h, e.d, 0, e.h / 2, 0, e.color));
+      parts.push(box(e.w * 0.55, e.h * 0.75, 0.05, -e.w * 0.14, e.h * 0.55, e.d / 2 + 0.02, '#cfe3ee'));
+      parts.push(box(e.w * 0.22, e.h * 0.45, 0.05, e.w * 0.3, e.h * 0.65, e.d / 2 + 0.02, dark));
+      parts.push(box(e.w * 0.5, 0.3, 0.06, -e.w * 0.14, e.h * 0.12, e.d / 2 + 0.03, dark));
+    } else if (e.style === 'fridge') {
+      parts.push(box(e.w, e.h, e.d, 0, e.h / 2, 0, e.color));
+      for (const sx of [-1, 1]) {
+        parts.push(box(e.w / 2 - 0.15, e.h - 0.6, 0.06, sx * e.w / 4, e.h / 2 + 0.1, e.d / 2 + 0.02, light));
+        parts.push(box(0.08, e.h * 0.5, 0.1, sx * 0.2, e.h / 2 + 0.1, e.d / 2 + 0.08, dark));
+      }
+      parts.push(box(e.w, 0.5, e.d, 0, 0.25, 0, dark));
+    } else if (e.style === 'cooler') {
+      parts.push(box(e.w, e.h, e.d, 0, e.h / 2, 0, e.color));
+      parts.push(box(e.w - 0.2, 0.1, e.d - 0.2, 0, e.h - 0.05, 0, dark));
+      parts.push(box(e.w, e.h * 0.4, 0.05, 0, e.h * 0.45, e.d / 2 + 0.02, '#3f6fae'));
+    } else { // copier
+      parts.push(box(e.w, e.h * 0.75, e.d, 0, e.h * 0.375, 0, e.color));
+      parts.push(box(e.w, 0.2, e.d, 0, e.h * 0.75 + 0.1, 0, dark));
+      parts.push(box(e.w * 0.7, 0.08, e.d * 0.5, 0, e.h * 0.55, e.d * 0.3, light));
+      parts.push(boxT(e.w * 0.4, 0.05, e.d * 0.35, e.w * 0.1, e.h * 0.88, 0, light, 0.25, 0, 0));
+    }
+    return mergeGeometries(parts);
+  };
+
+  // Counters: base cabinets + a top. `guard: true` adds a sneeze guard
+  // (serving line), `tier: 2` a raised transaction top, `style: 'tray'` an
+  // open pass-through window.
+  const buildCounter = (e) => {
+    const counterH = e.tier === 2 ? e.h * 0.75 : e.style === 'tray' ? e.h * 0.6 : e.h;
+    const topColor = tint(e.color, 0.12), body = e.color;
+    const parts = [
+      box(e.w, counterH - 0.15, e.d - 0.3, 0, (counterH - 0.15) / 2, 0.1, body),
+      box(e.w + 0.15, 0.15, e.d, 0, counterH - 0.07, 0, topColor),
+    ];
+    if (e.guard) {
+      for (const sx of [-0.8, 0, 0.8]) {
+        parts.push(cyl(0.04, 0.04, 1.2, 8, sx * e.w / 2.2, counterH + 0.6, -e.d * 0.2, tint(body, -0.3)));
+      }
+      parts.push(boxT(e.w, 0.04, 0.9, 0, counterH + 1.1, -e.d * 0.05, '#b8ccd4', 0.5, 0, 0));
+    }
+    if (e.tier === 2) {
+      parts.push(box(e.w, e.h - counterH - 0.1, 0.3, 0, counterH + (e.h - counterH) / 2 - 0.05, -e.d / 2 + 0.15, body));
+      parts.push(box(e.w + 0.15, 0.12, 0.8, 0, e.h - 0.06, -e.d / 2 + 0.25, topColor));
+    }
+    if (e.style === 'tray') {
+      for (const sx of [-1, 1]) parts.push(box(0.3, e.h - counterH, 0.3, sx * (e.w / 2 - 0.15), counterH + (e.h - counterH) / 2, -e.d * 0.1, body));
+      parts.push(box(e.w, 0.25, 0.4, 0, e.h - 0.12, -e.d * 0.1, body));
+      parts.push(box(e.w - 0.6, e.h - counterH - 0.5, 0.05, 0, counterH + (e.h - counterH) / 2, -e.d * 0.1, '#2a2f36'));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildRecycle = (e) => {
+    const binColors = ['#3f6fae', '#3f7a48', '#5a6068'];
+    const bins = 3, bw = e.w / bins;
+    const parts = [box(e.w, 0.15, e.d, 0, e.h - 0.55, 0, tint(e.color, -0.1))];
+    for (let i = 0; i < bins; i++) {
+      const x = -e.w / 2 + bw * (i + 0.5);
+      parts.push(box(bw - 0.25, e.h - 0.8, e.d - 0.3, x, (e.h - 0.8) / 2, 0, binColors[i]));
+      parts.push(box(bw - 0.2, 0.12, e.d - 0.25, x, e.h - 0.42, 0, tint(binColors[i], -0.15)));
+      parts.push(cylT(0.28, 0.28, 0.14, 14, x, e.h - 0.34, 0, '#17181c', 0, 0));
+    }
+    for (const sx of [-1, 1]) parts.push(box(0.12, e.h - 0.4, 0.12, sx * (e.w / 2 - 0.06), (e.h - 0.4) / 2, -e.d / 2 + 0.06, tint(e.color, -0.1)));
+    return mergeGeometries(parts);
+  };
+
+  // ---------- Phase 1 builders: gym & stage ----------
+
+  // Basketball hoop. Wall mount: arms reach from the wall side (-z) to the
+  // board. `pole: true` is the outdoor version — the whole thing rides a
+  // pole, board near the top of `h`.
+  const buildHoop = (e) => {
+    const boardW = Math.min(e.w, 6), boardH = 3.5;
+    const rimColor = '#c9563f', boardColor = e.color;
+    const parts = [];
+    let boardBase; // local y of the board's bottom edge
+    if (e.pole) {
+      parts.push(cyl(0.14, 0.16, e.h - 2, 10, 0, (e.h - 2) / 2, -e.d / 2 + 0.3, tint(boardColor, -0.3)));
+      parts.push(cylT(0.1, 0.1, e.d * 0.7, 8, 0, e.h - 2, 0, tint(boardColor, -0.3), Math.PI / 2, 0));
+      boardBase = e.h - boardH - 0.2;
+    } else {
+      for (const sx of [-1, 1]) {
+        parts.push(cylT(0.07, 0.07, e.d * 0.9, 8, sx * boardW * 0.25, 1.6, 0, tint(boardColor, -0.35), Math.PI / 2, 0));
+      }
+      boardBase = 0.5;
+    }
+    parts.push(box(boardW, boardH, 0.15, 0, boardBase + boardH / 2, e.d / 2 - 0.1, boardColor));
+    parts.push(box(boardW * 0.4, boardH * 0.35, 0.03, 0, boardBase + boardH * 0.35, e.d / 2 - 0.01, '#c9563f'));
+    const rimY = boardBase + boardH * 0.18;
+    parts.push(ring(0.75, 0.05, 0, rimY, e.d / 2 + 0.65, rimColor));
+    parts.push(cyl(0.72, 0.45, 1.3, 12, 0, rimY - 0.68, e.d / 2 + 0.65, '#e8e6df'));
+    return mergeGeometries(parts);
+  };
+
+  const buildVolleyball = (e) => {
+    const postColor = e.color;
+    const parts = [];
+    for (const sx of [-1, 1]) {
+      parts.push(cyl(0.1, 0.1, e.h, 10, sx * (e.w / 2 - 0.3), e.h / 2, 0, postColor));
+      parts.push(cyl(0.5, 0.55, 0.15, 14, sx * (e.w / 2 - 0.3), 0.08, 0, tint(postColor, -0.2)));
+    }
+    parts.push(box(e.w - 1.2, 3, 0.04, 0, e.h - 1.6, 0, '#d8d3c8'));
+    parts.push(box(e.w - 1.2, 0.12, 0.06, 0, e.h - 0.15, 0, '#f4f4f2'));
+    return mergeGeometries(parts);
+  };
+
+  const buildBallrack = (e) => {
+    const frame = tint(e.color, -0.15);
+    const ballColors = ['#c9563f', '#3f6fae', '#c99a3f', '#3f7a48'];
+    const parts = [];
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      parts.push(box(0.08, e.h, 0.08, sx * (e.w / 2 - 0.05), e.h / 2, sz * (e.d / 2 - 0.05), frame));
+    }
+    for (const level of [0.4, e.h * 0.55]) {
+      parts.push(box(e.w, 0.08, e.d, 0, level, 0, frame));
+      const across = Math.max(3, Math.round(e.w / 1.1));
+      for (let i = 0; i < across; i++) {
+        const x = -e.w / 2 + (e.w / across) * (i + 0.5);
+        parts.push(sph(Math.min(0.42, e.d / 2 - 0.15), x, level + 0.45, 0, ballColors[(i + (level > 1 ? 1 : 0)) % ballColors.length], 12));
+      }
+    }
+    return mergeGeometries(parts);
+  };
+
+  // ---------- Phase 1 builders: restroom ----------
+
+  const buildToiletstall = (e) => {
+    const partition = tint(e.color, -0.15), fixture = '#e6e8ea';
+    return mergeGeometries([
+      box(e.w - 0.2, 4, 0.08, 0, 3, -e.d / 2 + 0.04, partition),
+      box(0.08, 4, e.d, -e.w / 2 + 0.04, 3, 0, partition),
+      box(0.08, 4, e.d, e.w / 2 - 0.04, 3, 0, partition),
+      box(e.w * 0.55, 3.5, 0.06, -e.w * 0.18, 2.8, e.d / 2 - 0.04, tint(e.color, -0.05)),
+      box(0.5, 1.2, 0.35, 0, 1.35, -e.d / 2 + 0.35, fixture),
+      cyl(0.55, 0.4, 0.5, 14, 0, 1.15, -e.d / 2 + 1.0, fixture),
+      cyl(0.6, 0.55, 0.1, 14, 0, 1.45, -e.d / 2 + 1.0, tint(fixture, -0.06)),
+    ]);
+  };
+
+  const buildUrinal = (e) => {
+    return mergeGeometries([
+      box(e.w, e.h, e.d * 0.5, 0, e.h / 2, e.d * 0.1, e.color),
+      boxT(e.w * 0.8, e.h * 0.45, e.d * 0.5, 0, e.h * 0.25, e.d * 0.32, tint(e.color, 0.05), 0.35, 0, 0),
+      box(e.w * 0.3, 0.5, 0.15, 0, e.h + 0.4, 0, tint(e.color, -0.15)),
+    ]);
+  };
+
+  const buildSinkcounter = (e) => {
+    const counterH = e.h;
+    const parts = [
+      box(e.w, 0.15, e.d, 0, counterH - 0.08, 0, e.color),
+      box(e.w, 0.5, 0.1, 0, counterH - 0.4, -e.d / 2 + 0.05, e.color),
+      box(e.w, 0.35, e.d, 0, counterH - 0.3, 0, tint(e.color, -0.08)),
+    ];
+    const basins = Math.max(1, Math.round(e.w / 2.4));
+    for (let i = 0; i < basins; i++) {
+      const x = -e.w / 2 + (e.w / basins) * (i + 0.5);
+      parts.push(box(1.1, 0.12, 0.9, x, counterH - 0.02, 0.1, tint(e.color, -0.25)));
+      parts.push(cylT(0.045, 0.045, 0.45, 8, x, counterH + 0.2, -0.35, '#b8bcc2', 0, 0));
+      parts.push(cylT(0.04, 0.04, 0.3, 8, x, counterH + 0.4, -0.22, '#b8bcc2', Math.PI / 2.4, 0));
+    }
+    return mergeGeometries(parts);
+  };
+
+  // ---------- Phase 1 builders: decor ----------
+
+  const buildPlant = (e) => {
+    const potR = e.w * 0.32;
+    const parts = [
+      lathe([[potR * 0.6, 0], [potR, e.h * 0.28], [potR * 0.85, e.h * 0.3]], 0, 0, 0, '#a9623f', 16),
+    ];
+    const fol = tint(e.color, 0.05);
+    parts.push(cyl(0.04, 0.05, e.h * 0.3, 6, 0, e.h * 0.4, 0, '#7a5230'));
+    parts.push(sph(e.w * 0.42, 0, e.h * 0.68, 0, e.color, 12));
+    parts.push(sph(e.w * 0.3, e.w * 0.2, e.h * 0.52, e.w * 0.12, fol, 10));
+    parts.push(sph(e.w * 0.28, -e.w * 0.22, e.h * 0.58, -e.w * 0.1, tint(e.color, -0.06), 10));
+    return mergeGeometries(parts);
+  };
+
+  const buildAquarium = (e) => {
+    const standH = e.h * 0.45;
+    return mergeGeometries([
+      box(e.w, standH, e.d, 0, standH / 2, 0, '#4a3a2e'),
+      box(e.w - 0.15, e.h - standH - 0.15, e.d - 0.15, 0, standH + (e.h - standH) / 2, 0, e.color),
+      box(e.w - 0.3, e.h - standH - 0.4, e.d - 0.3, 0, standH + (e.h - standH) / 2, 0, '#6fa8c9'),
+      box(e.w - 0.25, 0.15, e.d - 0.25, 0, standH + 0.1, 0, '#c9a06a'),
+      box(e.w, 0.1, e.d, 0, e.h - 0.05, 0, '#22262c'),
+    ]);
+  };
+
+  const buildCage = (e) => {
+    const standH = e.h * 0.45, frame = tint(e.color, -0.2);
+    const parts = [
+      box(e.w, standH, e.d, 0, standH / 2, 0, '#7a6248'),
+      box(e.w - 0.2, 0.12, e.d - 0.2, 0, standH + 0.06, 0, frame),
+      box(e.w - 0.2, 0.1, e.d - 0.2, 0, e.h - 0.05, 0, frame),
+    ];
+    const bars = Math.max(4, Math.round(e.w * 2.4));
+    for (let i = 0; i <= bars; i++) {
+      const x = -e.w / 2 + 0.12 + ((e.w - 0.24) / bars) * i;
+      for (const sz of [-1, 1]) {
+        parts.push(box(0.03, e.h - standH - 0.2, 0.03, x, standH + (e.h - standH) / 2, sz * (e.d / 2 - 0.12), e.color));
+      }
+    }
+    parts.push(box(0.6, 0.35, 0.5, -e.w * 0.2, standH + 0.3, 0, '#c99a3f'));
+    return mergeGeometries(parts);
+  };
+
+  const buildClutter = (e) => {
+    const bookColors = [e.color, '#3f6fae', '#3f7a48'];
+    const parts = [];
+    for (let i = 0; i < 3; i++) {
+      parts.push(boxT(0.9 - i * 0.08, 0.14, 0.65, -e.w * 0.22, 0.07 + i * 0.14, 0.05, bookColors[i], 0, i * 0.25, 0));
+    }
+    parts.push(box(0.55, 0.35, 0.4, e.w * 0.25, 0.18, -0.1, tint(e.color, -0.3)));
+    parts.push(box(0.5, 0.06, 0.35, e.w * 0.25, 0.4, -0.1, '#f4f4f2'));
+    return mergeGeometries(parts);
+  };
+
+  // ---------- Phase 1 builders: outdoor ----------
+
+  // The one deliberate exception to "seating is separate": a picnic table's
+  // benches are part of its structure.
+  const buildPicnic = (e) => {
+    const c = e.color, legColor = tint(c, -0.2);
+    const parts = [box(e.w * 0.45, 0.15, e.d, 0, e.h - 0.08, 0, c)];
+    for (const sx of [-1, 1]) {
+      parts.push(box(e.w * 0.16, 0.12, e.d, sx * e.w * 0.4, e.h * 0.62, 0, c));
+      parts.push(boxT(0.15, e.h + 0.3, 0.15, sx * e.w * 0.2, e.h / 2 - 0.05, e.d * 0.3, legColor, 0, 0, sx * 0.5));
+      parts.push(boxT(0.15, e.h + 0.3, 0.15, sx * e.w * 0.2, e.h / 2 - 0.05, -e.d * 0.3, legColor, 0, 0, sx * 0.5));
+    }
+    parts.push(box(e.w * 0.75, 0.15, 0.15, 0, e.h * 0.6, e.d * 0.3, legColor));
+    parts.push(box(e.w * 0.75, 0.15, 0.15, 0, e.h * 0.6, -e.d * 0.3, legColor));
+    return mergeGeometries(parts);
+  };
+
+  const buildBikerack = (e) => {
+    const parts = [];
+    const loops = 3;
+    for (let i = 0; i < loops; i++) {
+      const x = -e.w / 2 + (e.w / loops) * (i + 0.5);
+      parts.push(ring(e.h * 0.42, 0.06, x, e.h * 0.45, 0, e.color, { arc: Math.PI, rx: 0, rz: 0 }));
+      for (const sz of [-1, 1]) {
+        parts.push(cyl(0.06, 0.06, e.h * 0.45, 8, x + sz * e.h * 0.42, e.h * 0.225, 0, e.color));
+      }
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildFlagpole = (e) => {
+    return mergeGeometries([
+      cyl(0.35, 0.45, 0.6, 12, 0, 0.3, 0, tint(e.color, -0.25)),
+      cyl(0.05, 0.1, e.h - 0.8, 12, 0, (e.h - 0.8) / 2 + 0.6, 0, e.color),
+      sph(0.14, 0, e.h - 0.1, 0, '#c9a227', 10),
+      box(3, 1.9, 0.06, 1.6, e.h - 1.4, 0, '#8a2f3a'),
+    ]);
+  };
+
+  const buildSlide = (e) => {
+    const c = e.color, frame = tint(c, -0.25);
+    const platH = e.h * 0.62;
+    const parts = [
+      box(2.2, 0.15, 2.2, -e.w / 2 + 1.3, platH, 0, frame),
+      box(2.2, 1.5, 0.1, -e.w / 2 + 1.3, platH + 0.8, -1.05, frame),
+      box(0.1, 1.5, 2.2, -e.w / 2 + 0.25, platH + 0.8, 0, frame),
+    ];
+    for (const sz of [-1, 1]) {
+      parts.push(box(0.12, platH, 0.12, -e.w / 2 + 0.35, platH / 2, sz * 0.95, frame));
+      parts.push(box(0.12, platH, 0.12, -e.w / 2 + 2.3, platH / 2, sz * 0.95, frame));
+    }
+    for (let i = 0; i < 4; i++) {
+      parts.push(box(0.08, 0.08, 1.7, -e.w / 2 + 2.42, (platH / 5) * (i + 1), 0, frame));
+    }
+    const runL = e.w - 2.6;
+    const ang = Math.atan2(platH - 0.4, runL);
+    const cx = -e.w / 2 + 2.6 + runL / 2 - 0.2;
+    parts.push(boxT(runL / Math.cos(ang), 0.12, 1.6, cx, (platH + 0.3) / 2 + 0.05, 0, c, 0, 0, ang));
+    for (const sz of [-1, 1]) {
+      parts.push(boxT(runL / Math.cos(ang), 0.35, 0.1, cx, (platH + 0.3) / 2 + 0.25, sz * 0.78, tint(c, 0.12), 0, 0, ang));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildSwing = (e) => {
+    const frame = e.color;
+    const parts = [cylT(0.12, 0.12, e.w - 1, 10, 0, e.h - 0.15, 0, frame, 0, Math.PI / 2)];
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        parts.push(cylT(0.1, 0.12, e.h + 0.6, 10, sx * (e.w / 2 - 0.5), e.h / 2 - 0.1, sz * e.d * 0.32, frame, sz * 0.38, 0));
+      }
+    }
+    for (const sx of [-1, 1]) {
+      const x = sx * e.w * 0.16;
+      for (const dz of [-0.75, 0.75]) {
+        parts.push(box(0.05, e.h - 1.6, 0.05, x + dz * 0.45, (e.h - 1.6) / 2 + 1.3, 0, '#8a8f96'));
+      }
+      parts.push(box(1.3, 0.12, 0.5, x, 1.25, 0, '#22262c'));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildDumpster = (e) => {
+    const body = e.color;
+    return mergeGeometries([
+      box(e.w, e.h - 0.6, e.d, 0, (e.h - 0.6) / 2 + 0.35, 0, body),
+      boxT(e.w, 0.12, e.d + 0.1, 0, e.h - 0.12, 0, tint(body, -0.15), -0.12, 0, 0),
+      box(e.w, 0.3, 0.1, 0, e.h * 0.55, e.d / 2 + 0.04, tint(body, 0.1)),
+      ...[-1, 1].flatMap((sx) => [-1, 1].map((sz) =>
+        cylT(0.16, 0.16, 0.12, 10, sx * (e.w / 2 - 0.4), 0.16, sz * (e.d / 2 - 0.3), '#17181c', 0, Math.PI / 2))),
+      ...[-1, 1].map((sx) => box(0.5, 0.35, 0.25, sx * (e.w / 2 + 0.12), e.h * 0.4, 0, tint(body, -0.25))),
+    ]);
+  };
+
+  const buildPolesign = (e) => {
+    return mergeGeometries([
+      cyl(0.05, 0.07, e.h - 0.2, 8, 0, (e.h - 0.2) / 2, 0, '#8a8f96'),
+      boxT(1.8, 1.8, 0.06, 0, e.h - 1.3, 0.06, e.color, 0, 0, Math.PI / 4),
+      box(1.4, 0.5, 0.06, 0, e.h - 2.6, 0.06, tint(e.color, 0.2)),
+    ]);
+  };
+
   const PROP_GEO_BUILDERS = {
     desk: buildDesk, chair: buildChair, cabinet: buildCabinet, shelf: buildShelf,
     cubby: buildCubby, lamp: buildLamp, panel: buildPanel, rug: buildRug,
     bin: buildBin, sink: buildSink,
+    table: buildTable, workstation: buildWorkstation, carrel: buildCarrel,
+    podium: buildPodium, labbench: buildLabbench,
+    stool: buildStool, bench: buildBench, softseat: buildSoftseat,
+    audseat: buildAudseat,
+    locker: buildLocker, coatrack: buildCoatrack, cart: buildCart,
+    stack: buildStack, hookrail: buildHookrail,
+    clock: buildClock, pulldown: buildPulldown, projector: buildProjector,
+    displaycase: buildDisplaycase, fountain: buildFountain,
+    wallbox: buildWallbox, flagwall: buildFlagwall, radiator: buildRadiator,
+    piano: buildPiano, musicstand: buildMusicstand, riser: buildRiser,
+    easel: buildEasel, dryrack: buildDryrack, kiln: buildKiln,
+    wheel: buildWheel, fumehood: buildFumehood, eyewash: buildEyewash,
+    skeleton: buildSkeleton, globe: buildGlobe,
+    machine: buildMachine, counter: buildCounter, recycle: buildRecycle,
+    hoop: buildHoop, volleyball: buildVolleyball, ballrack: buildBallrack,
+    toiletstall: buildToiletstall, urinal: buildUrinal, sinkcounter: buildSinkcounter,
+    plant: buildPlant, aquarium: buildAquarium, cage: buildCage, clutter: buildClutter,
+    picnic: buildPicnic, bikerack: buildBikerack, flagpole: buildFlagpole,
+    slide: buildSlide, swing: buildSwing, dumpster: buildDumpster,
+    polesign: buildPolesign,
   };
 
   // Cached per catalog type (not rebuilt on every edit like the structural

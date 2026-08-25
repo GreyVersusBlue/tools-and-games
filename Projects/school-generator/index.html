@@ -136,19 +136,30 @@
       padding: 12px; z-index: 10; width: 210px;
       max-height: calc(100vh - 100px); overflow-y: auto;
     }
-    #palette h3 {
+    #palette-search {
+      width: 100%; margin-bottom: 8px; font-size: 12px; padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.05); color: var(--text);
+      border: 1px solid var(--panel-border); border-radius: 6px;
+    }
+    .palette-group { margin-top: 8px; border-top: 1px solid var(--panel-border); padding-top: 4px; }
+    .palette-group:first-child { margin-top: 0; border-top: none; padding-top: 0; }
+    .palette-head {
+      display: flex; align-items: center; gap: 6px; width: 100%;
       font-size: 10.5px; font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.05em; text-transform: uppercase;
-      margin: 10px 0 5px; padding-top: 6px; border-top: 1px solid var(--panel-border);
+      background: none; border: none; padding: 5px 2px; cursor: pointer;
     }
-    #palette h3:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+    .palette-head .chev { display: inline-block; transition: transform 0.12s; }
+    .palette-head .count { margin-left: auto; font-weight: 400; opacity: 0.55; }
+    .palette-group.collapsed .palette-row { display: none; }
+    .palette-group.collapsed .chev { transform: rotate(-90deg); }
     .palette-row { display: flex; flex-direction: column; gap: 3px; }
     .palette-item {
       display: flex; align-items: center; gap: 8px;
       justify-content: flex-start; width: 100%; font-size: 12px; padding: 6px 8px;
       color: var(--text-dim);
     }
-    .palette-item .icon { font-size: 15px; line-height: 1; }
+    .palette-item .icon { font-size: 15px; line-height: 1; width: 16px; text-align: center; }
     .palette-item.active { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
     #prop-panel .keys {
       margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
@@ -167,6 +178,7 @@
     #template-panel {
       position: fixed; left: 114px; top: 74px;
       padding: 12px; z-index: 10; width: 210px;
+      max-height: calc(100vh - 100px); overflow-y: auto;
     }
     #template-panel .keys {
       margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
@@ -428,6 +440,7 @@
   </div>
 
   <div id="prop-panel" class="panel hidden">
+    <input id="palette-search" type="search" placeholder="Filter furniture…" aria-label="Filter furniture types" autocomplete="off" />
     <div id="palette"></div>
     <div class="keys">
       Click to place &nbsp; <kbd>R</kbd>/<kbd>⇧R</kbd> rotate<br />

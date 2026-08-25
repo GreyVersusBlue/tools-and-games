@@ -178,22 +178,22 @@ geometric fidelity while staying procedural and instanced.
 
 ### Principles
 
-- [ ] **Real scale, sourced.** 1 world unit = 1 foot, and every `w/d/h/y`
+- [x] **Real scale, sourced.** 1 world unit = 1 foot, and every `w/d/h/y`
   comes from published furniture dimensions, not eyeball: a student desk top
   at 30in (2.5ft), chair seats at 16in, lockers 12in wide × 72in tall,
   counters at 36in, wall clocks at 12–14in dia. Wall/ceiling mounts respect
   the 10ft `WALL_H`.
-- [ ] **Scale-audit the existing 14 entries** against the same sources
+- [x] **Scale-audit the existing 14 entries** against the same sources
   first, and correct any that drift (the current student desk reads slightly
   small; chairs slightly wide).
-- [ ] **Seating is never baked into a desk or table.** Student desks, long
+- [x] **Seating is never baked into a desk or table.** Student desks, long
   desks, round tables and lab benches are seatless objects; chairs and
   stools are their own types, so any seat pairs with any surface. Combined
   layouts — desk+chair pair, round table + 4 chairs, cafeteria table +
   benches — ship as **templates** (`js/templates.js`), which stamp ordinary
   separate props. (One deliberate exception: the outdoor picnic table, whose
   benches are structurally part of the object.)
-- [ ] **Fidelity goes up, the pipeline doesn't change.** Builders stay
+- [x] **Fidelity goes up, the pipeline doesn't change.** Builders stay
   procedural, merged, vertex-colored and instanced — but the kit grows past
   boxes and cylinders: `LatheGeometry` (plant pots, globe stands, bin
   taper), `TorusGeometry`/tube segments (tube-steel chair frames, faucets,
@@ -202,10 +202,10 @@ geometric fidelity while staying procedural and instanced.
   racks), higher radial segment counts where silhouette matters. Geometry is
   built once per type and shared, so a richer desk costs vertices exactly
   once — keep round parts at modest segment counts anyway.
-- [ ] **glTF stays the later upgrade path** (`assets/models/`, see Phase 9)
+- [x] **glTF stays the later upgrade path** (`assets/models/`, see Phase 9)
   — this phase is about how far procedural can go, which also keeps the
   no-build-step, no-asset-pipeline property.
-- [ ] **The palette has to scale.** ~85 types can't be one flat column:
+- [x] **The palette has to scale.** ~85 types can't be one flat column:
   collapsible category groups and a text filter in `propedit.js`'s panel,
   same interaction bones as the existing palette. New categories are new
   strings in `CATEGORIES` (`catalog.js`) — proposed: Tables & Desks,
@@ -217,7 +217,7 @@ geometric fidelity while staying procedural and instanced.
 
 ### New props, by category (dims in feet, at rotationY = 0)
 
-- [ ] **Tables & Desks:** double student desk (5 × 2 × 2.5h), seminar table
+- [x] **Tables & Desks:** double student desk (5 × 2 × 2.5h), seminar table
   6ft (6 × 2.5) and 8ft (8 × 3), round table 4ft and 5ft dia (2.4h),
   trapezoid table (5 × 2.5), kidney table (6 × 4), computer workstation
   (4 × 2.5, with monitor/keyboard on top), standing desk (4 × 2 × 3.5h),
@@ -225,19 +225,19 @@ geometric fidelity while staying procedural and instanced.
   panels), folding cafeteria table (12 × 2.5 × 2.4h), science lab bench
   (6 × 2.5 × 3h, epoxy-black top, base cabinets, faucet), teacher
   podium/lectern (2 × 1.5 × 4h).
-- [ ] **Seating:** stackable chair (1.6 × 1.6 × 2.7h, tube-steel frame),
+- [x] **Seating:** stackable chair (1.6 × 1.6 × 2.7h, tube-steel frame),
   rolling task chair (2 × 2 × 3h, five-star base), lab stool 24in and 30in
   (1.2 dia), hallway bench (6 × 1.25 × 1.5h), bean bag (2.5 dia × 1.3h),
   floor cushion (1.8 × 1.8 × 0.4h), lounge chair (2.8 × 2.8 × 2.6h), sofa
   (6 × 2.8 × 2.7h), auditorium seat (1.8 × 2 × 3.2h, row-snapping via the
   existing neighbor tier), rocking chair (2 × 2.5 × 3.3h).
-- [ ] **Storage:** locker bank, 6 doors full-height (6 × 1.25 × 6h) and
+- [x] **Storage:** locker bank, 6 doors full-height (6 × 1.25 × 6h) and
   half-height (12 doors in the same shell), tall supply cabinet
   (3 × 1.5 × 6h), coat rack (4 × 1.5 × 5.5h), rolling book cart
   (3 × 1.5 × 3.5h), double-sided library stack (3 × 2 × 5.5h), tote-bin
   rack (3 × 1.3 × 3h, colored bins), backpack hook rail (4 × 0.3 × 0.5h,
   wall, y 3.5).
-- [ ] **Fixtures:** wall clock (1.2 dia, y 7), cork/bulletin board
+- [x] **Fixtures:** wall clock (1.2 dia, y 7), cork/bulletin board
   (6 × 0.1 × 4h, y 3.5), pull-down projection screen (7 × 0.3 × 0.5h
   housing, y 7.5) + ceiling projector (1.5 × 1.2 × 0.5h, ceiling mount),
   glass trophy case (6 × 1.5 × 6.5h), water fountain + bottle filler
@@ -246,7 +246,7 @@ geometric fidelity while staying procedural and instanced.
   PA speaker (1 × 0.8 × 1h, y 8), flag on wall bracket (angled pole +
   cloth, y 6), under-window radiator (4 × 0.8 × 2h), soap/paper-towel
   dispensers (small wall panels, y 4).
-- [ ] **Subject rooms:** upright piano (5 × 2 × 4h), music stand
+- [x] **Subject rooms:** upright piano (5 × 2 × 4h), music stand
   (1.5 × 1.5 × 4h), choir riser section (6 × 3 × 1.3h), artist easel
   (2 × 2 × 5.5h A-frame), drying rack (2.5 × 1.5 × 4h), kiln
   (2.5 × 2.5 × 3h), pottery wheel (2.5 × 2 × 1.8h), science demo table
@@ -255,34 +255,34 @@ geometric fidelity while staying procedural and instanced.
   globe on stand (1.5 dia × 3h), 3D printer on bench (2 × 2 × 4h),
   robotics workbench (6 × 2.5 × 3h with pegboard), sewing machine table
   (4 × 2 × 2.5h).
-- [ ] **Cafeteria:** serving line counter (6 × 2.5 × 3h with sneeze guard),
+- [x] **Cafeteria:** serving line counter (6 × 2.5 × 3h with sneeze guard),
   tray return (4 × 2 × 4h), milk cooler (3 × 2.5 × 3h), vending machine
   (3.3 × 2.8 × 6h, lit front), commercial fridge (4.5 × 2.7 × 6.8h),
   prep table (6 × 2.5 × 3h, stainless), trash + recycling station
   (4 × 2 × 3.5h, two-stream).
-- [ ] **Gym & Stage:** wall basketball hoop (6 × 3.5 backboard, rim at
+- [x] **Gym & Stage:** wall basketball hoop (6 × 3.5 backboard, rim at
   10ft — grazes a standard ceiling, so a real gym wants a two-storey room:
   an upper floor left open over the court, which the mezzanine machinery
   already supports; the entry should say so), folding bleacher section
   (8 × 7 × 5.5h, 3 rows), volleyball posts + net (30 × 1 × 8h), wall mat
   (6 × 0.2 × 6h, y 0), ball rack (4 × 2 × 3h with spheres), scoreboard
   (6 × 0.5 × 3h, y 6), stage platform section (8 × 4 × 2h, tileable).
-- [ ] **Library & Office:** circulation desk (6 × 2.5 × 3.2h), book
+- [x] **Library & Office:** circulation desk (6 × 2.5 × 3.2h), book
   display rack (2.5 × 1.5 × 5h, angled shelves), reception counter
   (6 × 2.5 × 3.5h, two-tier), waiting chair (as a type; rows via
   neighbor-snap), copier (2 × 2.3 × 3.8h), staff mail cubbies
   (3 × 1 × 3h, wall or counter).
-- [ ] **Restroom:** toilet with stall partition (5 × 3 × 5h, tileable into
+- [x] **Restroom:** toilet with stall partition (5 × 3 × 5h, tileable into
   a row), urinal (1.5 × 1.2 × 2h, wall, y 1.3), two-basin sink counter
   (5 × 1.8 × 2.8h), mirror (4 × 0.05 × 3h, y 3.5), hand dryer
   (1 × 0.7 × 1.2h, y 3.5).
-- [ ] **Decor & Life:** potted plant, floor (1.5 dia × 4h) and desk
+- [x] **Decor & Life:** potted plant, floor (1.5 dia × 4h) and desk
   (0.6 dia × 0.9h), aquarium on stand (3 × 1.3 × 4h), class pet cage
   (2.5 × 1.5 × 3h), poster (2 × 0.05 × 3h, y 4 — a few color/art
   variants via `data`), stacked books / paper-tray desk clutter
   (small, y placed on desks), coat + backpack on hook (0.3 deep, y 3.5),
   window blinds (4 × 0.2 × 0.8h housing, y 8).
-- [ ] **Outdoor:** picnic table (6 × 6 × 2.5h, integral benches — the
+- [x] **Outdoor:** picnic table (6 × 6 × 2.5h, integral benches — the
   documented exception), outdoor bench (6 × 2 × 2.8h), bike rack
   (6 × 2.5 × 2.5h), flagpole (1 dia base × 25h — taller than the building,
   fine on the site), playground slide (8 × 3 × 6h) and swing set
@@ -291,7 +291,7 @@ geometric fidelity while staying procedural and instanced.
 
 ### New templates alongside
 
-- [ ] Science Lab (benches + stools + fume hood + eyewash + demo table),
+- [x] Science Lab (benches + stools + fume hood + eyewash + demo table),
   Cafeteria Row (folding tables + benches or chairs), Library Aisle
   (double stacks + end display), Locker Hallway (banks along both walls),
   Gym (hoops + bleachers + volleyball + mats), Kindergarten Corner (kidney

@@ -276,14 +276,28 @@ $('room-name').addEventListener('input', (e) => editor.setRoom(e.target.value, e
 // --- prop palette ---
 // One button per catalog entry, grouped under its category — parallel to the
 // room-color swatches, but the "color" being picked is a whole prop type.
+// At Phase 1's catalog size the flat list stopped scaling, so each category
+// is a collapsible group and a filter box narrows the list by name; the
+// filter hides non-matching buttons rather than rebuilding them, so the
+// click handlers and the active state never have to be re-wired.
 const palette = $('palette');
+const paletteSearch = $('palette-search');
+const paletteGroups = [];
 catalogByCategory().forEach(({ category, entries }) => {
-  const h = document.createElement('h3');
-  h.textContent = category;
-  palette.appendChild(h);
+  const group = document.createElement('div');
+  group.className = 'palette-group';
+  const head = document.createElement('button');
+  head.type = 'button';
+  head.className = 'palette-head';
+  head.setAttribute('aria-expanded', 'true');
+  head.innerHTML = `<span class="chev" aria-hidden="true">▾</span>${category}<span class="count">${entries.length}</span>`;
+  head.addEventListener('click', () => {
+    const collapsed = group.classList.toggle('collapsed');
+    head.setAttribute('aria-expanded', String(!collapsed));
+  });
   const row = document.createElement('div');
   row.className = 'palette-row';
-  entries.forEach((entry) => {
+  const items = entries.map((entry) => {
     const b = document.createElement('button');
     b.className = 'palette-item' + (entry.type === editor.propType ? ' active' : '');
     b.dataset.type = entry.type;
@@ -300,8 +314,39 @@ catalogByCategory().forEach(({ category, entries }) => {
       b.setAttribute('aria-pressed', 'true');
     });
     row.appendChild(b);
+    return { b, entry };
   });
-  palette.appendChild(row);
+  group.append(head, row);
+  palette.appendChild(group);
+  paletteGroups.push({ group, head, items });
+});
+function filterPalette() {
+  const q = paletteSearch.value.trim().toLowerCase();
+  for (const g of paletteGroups) {
+    let shown = 0;
+    for (const { b, entry } of g.items) {
+      const hit = !q || entry.name.toLowerCase().includes(q) || entry.type.includes(q);
+      b.hidden = !hit;
+      if (hit) shown++;
+    }
+    g.group.hidden = shown === 0;
+    // A search that matches something inside a collapsed group should show
+    // it — otherwise the filter looks like it found nothing.
+    if (q && shown && g.group.classList.contains('collapsed')) {
+      g.group.classList.remove('collapsed');
+      g.head.setAttribute('aria-expanded', 'true');
+    }
+  }
+}
+paletteSearch.addEventListener('input', filterPalette);
+paletteSearch.addEventListener('keydown', (e) => {
+  // Esc clears the filter (and stops here rather than reaching the editor's
+  // global key handling, which would cancel the active tool instead).
+  if (e.key === 'Escape' && paletteSearch.value) {
+    paletteSearch.value = '';
+    filterPalette();
+    e.stopPropagation();
+  }
 });
 
 // --- template (room layout) palette ---
