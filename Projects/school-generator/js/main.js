@@ -9,6 +9,7 @@ import {
 import { totalShapeArea } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
 import { catalogByCategory, catalogEntry, PROP_PAINTS } from './catalog.js';
+import { DECOR_PACKS, packByKey, packPaint, packTypes } from './decor.js';
 import { ROOM_TEMPLATES } from './templates.js';
 import { initRender } from './render.js';
 import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
@@ -498,6 +499,9 @@ PAINTS.forEach((c, i) => {
 const palette = $('palette');
 const paletteSearch = $('palette-search');
 let paletteGroups = [];
+// The decoration pack in force, or null. Declared here rather than beside the
+// swatch row below because `buildPalette` reads it and runs first.
+let decorPack = null;
 // Phase 9 makes this a function rather than a run-once loop: an imported
 // model is a catalog row that arrives (and leaves) while the tool is open, so
 // the palette is rebuilt whenever the design's model library changes — on
@@ -505,7 +509,17 @@ let paletteGroups = [];
 function buildPalette() {
 paletteGroups = [];
 palette.textContent = '';
-catalogByCategory().forEach(({ category, entries }) => {
+// A decoration pack rides at the top as a group of its own — the same rows
+// that are still down under Decor, in the order the season wants them. It is
+// a shortcut, not a filter: nothing is hidden below it.
+const groups = catalogByCategory();
+if (decorPack) {
+  groups.unshift({
+    category: `${decorPack.icon} ${decorPack.name}`,
+    entries: packTypes(decorPack).map(catalogEntry).filter(Boolean),
+  });
+}
+groups.forEach(({ category, entries }) => {
   const group = document.createElement('div');
   group.className = 'palette-group';
   const head = document.createElement('button');
@@ -528,12 +542,19 @@ catalogByCategory().forEach(({ category, entries }) => {
     b.innerHTML = `<span class="icon">${entry.icon}</span>${entry.name}`;
     b.addEventListener('click', () => {
       editor.setPropType(entry.type);
+      // Matched by type rather than by button: a pack's pieces appear twice,
+      // once in its group and once under Decor, and both copies are the same
+      // choice.
       palette.querySelectorAll('.palette-item').forEach((x) => {
-        x.classList.remove('active');
-        x.setAttribute('aria-pressed', 'false');
+        const on = x.dataset.type === entry.type;
+        x.classList.toggle('active', on);
+        x.setAttribute('aria-pressed', String(on));
       });
-      b.classList.add('active');
-      b.setAttribute('aria-pressed', 'true');
+      // A piece the pack has an opinion about arrives wearing that opinion;
+      // anything else leaves the paint alone, so a pack never quietly
+      // repaints the desk you reached for next.
+      const packed = decorPack ? packPaint(decorPack, entry.type) : '';
+      if (packed) editor.setPropColor(packed);
       // A different row means a different default colour behind the paint.
       syncPropPaint();
     });
@@ -567,32 +588,51 @@ function filterPalette() {
 }
 buildPalette();
 
-// --- prop paint (Phase 11) ---
+// --- prop paint and the decoration packs (Phase 11) ---
 // The swatch row under the palette. Same gesture as the room panel's two
 // rows, and the same first cell: a dashed empty square that means "whatever
 // the catalog says", not a colour of its own. It paints the selection if
 // there is one and sets the paint for the next placement either way, so
 // select-then-click and click-then-place both do what they look like.
+//
+// A decoration pack swaps the colours in that row for a season's six, and
+// adds a group at the top of the palette holding the pieces that season is
+// about. Picking one of those pieces takes the pack's paint with it, so
+// "Winter Holidays → Wreath → click" puts a green wreath on the wall without
+// anybody choosing a green. Nothing about the pack is stored: what lands in
+// the design is an ordinary prop wearing an ordinary `data.color`, so
+// switching packs afterwards leaves the decorations you already hung alone.
 const propSwatches = $('prop-swatches');
 const propPaintChip = $('prop-paint-chip');
-PROP_PAINTS.forEach((c) => {
-  const b = document.createElement('button');
-  b.className = 'swatch';
-  b.dataset.color = c || '';
-  b.style.background = c || 'transparent';
-  if (!c) b.style.border = '2px dashed rgba(255,255,255,0.45)';
-  b.title = c || 'As catalogued';
-  b.setAttribute('aria-label', c ? `Furniture paint ${c}` : 'Catalog colour');
-  b.setAttribute('aria-pressed', 'false');
-  b.addEventListener('click', () => {
-    editor.setPropColor(c || '');
-    syncPropPaint();
+const decorPackSelect = $('decor-pack');
+const decorNote = $('decor-note');
+
+function buildPaintRow() {
+  const colors = decorPack ? [null, ...decorPack.palette] : PROP_PAINTS;
+  propSwatches.textContent = '';
+  colors.forEach((c) => {
+    const b = document.createElement('button');
+    b.className = 'swatch';
+    b.dataset.color = c || '';
+    b.style.background = c || 'transparent';
+    if (!c) b.style.border = '2px dashed rgba(255,255,255,0.45)';
+    b.title = c || 'As catalogued';
+    b.setAttribute('aria-label', c ? `Furniture paint ${c}` : 'Catalog colour');
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', () => {
+      editor.setPropColor(c || '');
+      syncPropPaint();
+    });
+    propSwatches.appendChild(b);
   });
-  propSwatches.appendChild(b);
-});
+}
 
 // Reads back off the tool rather than remembering what was clicked, because
-// selecting a prop moves the highlight to *its* colour.
+// selecting a prop moves the highlight to *its* colour. A paint that isn't in
+// the row — a pack colour still on the tool after the pack was switched, or a
+// prop painted under a different pack — simply lights nothing, which is
+// honest: the chip beside the heading still shows what the next placement
+// would actually be.
 function syncPropPaint() {
   const cur = editor.propColor || '';
   propSwatches.querySelectorAll('.swatch').forEach((b) => {
@@ -602,6 +642,29 @@ function syncPropPaint() {
   });
   propPaintChip.style.background = editor.propPreviewColor;
 }
+
+decorPackSelect.appendChild(Object.assign(document.createElement('option'),
+  { value: '', textContent: 'No decoration pack' }));
+DECOR_PACKS.forEach((p) => {
+  decorPackSelect.appendChild(Object.assign(document.createElement('option'),
+    { value: p.key, textContent: `${p.icon} ${p.name}` }));
+});
+decorPackSelect.addEventListener('change', (e) => {
+  decorPack = packByKey(e.target.value);
+  decorNote.textContent = decorPack ? decorPack.note : '';
+  buildPaintRow();
+  // The pack's own group goes at the top of the palette, so rebuild it — and
+  // take the pack's paint for whatever type is already selected, so switching
+  // from Harvest to Winter recolours the garland you were about to hang.
+  buildPalette();
+  editor.setPropColor(decorPack ? packPaint(decorPack, editor.propType) : '');
+  syncPropPaint();
+  $('status').textContent = decorPack
+    ? `${decorPack.name} — its pieces are at the top of the palette, in its colours.`
+    : 'Decoration pack off — furniture is back to its catalog colours.';
+});
+
+buildPaintRow();
 syncPropPaint();
 // Selecting a prop is not an edit, so it never reaches `onChange` — but it
 // does move the highlight onto that prop's own colour, so the row follows the

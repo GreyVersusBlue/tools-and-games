@@ -70,6 +70,10 @@ export const GEO_KEYS = [
   'hoop', 'volleyball', 'ballrack',
   'toiletstall', 'urinal', 'sinkcounter',
   'plant', 'aquarium', 'cage', 'clutter',
+  // Phase 11: the decor packs. Three builders, because the fourth through
+  // twentieth things a season needs are these three (and `tree`, and `panel`,
+  // and `plant`) in a different colour.
+  'garland', 'wreath', 'gourd',
   'picnic', 'bikerack', 'flagpole', 'slide', 'swing', 'dumpster', 'polesign',
   'goal', 'backstop', 'fence', 'shelter', 'pergola', 'sandbox', 'climber',
   'tetherball', 'bollard',
@@ -236,6 +240,26 @@ export const PROP_CATALOG = [
   { type: 'desk-clutter', name: 'Desk Clutter', category: 'Decor', icon: '📝', w: 1.5, d: 1, h: 0.5, y: 2.5, color: '#b0503f', mount: 'floor', geo: 'clutter', surface: true },
   { type: 'hooks-coats', name: 'Coats on Hooks', category: 'Decor', icon: '🎒', w: 4, d: 0.4, h: 2.5, y: 3, color: '#7a6248', mount: 'wall', geo: 'hookrail', hung: true },
   { type: 'blinds', name: 'Window Blinds', category: 'Decor', icon: '🪟', w: 4, d: 0.2, h: 5, y: 3.5, color: '#d8d3c8', mount: 'wall', geo: 'pulldown', sheet: 0.6 },
+
+  // ---- Decor: the seasonal kit (Phase 11) ----
+  //
+  // Nine rows, no season named on any of them. `decor.js` holds the packs,
+  // and a pack is a palette over exactly these: the same garland is October
+  // orange or December evergreen depending on the paint the prop carries, and
+  // the paint is `data.color`, which the whole of this phase's first item
+  // exists to make real. Shipping "Halloween Garland" and "Christmas Garland"
+  // and "Spring Garland" as three rows would have been the other way to do it,
+  // and would have been thirty rows by the fourth pack.
+  { type: 'garland', name: 'Garland', category: 'Decor', icon: '🎄', w: 8, d: 0.5, h: 1.6, y: 8.3, color: '#2f6b3a', mount: 'wall', geo: 'garland', trim: '#c0392b' },
+  { type: 'bunting', name: 'Pennant Bunting', category: 'Decor', icon: '🎏', w: 10, d: 0.4, h: 1.8, y: 8.1, color: '#3f6fae', mount: 'wall', geo: 'garland', style: 'pennant', trim: '#f2ece0' },
+  { type: 'streamers', name: 'Crepe Streamers', category: 'Decor', icon: '🎀', w: 9, d: 0.4, h: 2.2, y: 7.7, color: '#c9508a', mount: 'wall', geo: 'garland', style: 'streamer' },
+  { type: 'string-lights', name: 'String Lights', category: 'Decor', icon: '💡', w: 10, d: 0.4, h: 1.2, y: 8.7, color: '#3a4048', mount: 'wall', geo: 'garland', emit: { lm: 110, color: '#ffd9a0', range: 11, dy: 0.6 } },
+  { type: 'wreath', name: 'Wreath', category: 'Decor', icon: '🎍', w: 2.4, d: 0.5, h: 2.4, y: 4.5, color: '#2f6b3a', mount: 'wall', geo: 'wreath', trim: '#c0392b' },
+  { type: 'cutout', name: 'Paper Cutout', category: 'Decor', icon: '❄️', w: 1.6, d: 0.04, h: 1.6, y: 5, color: '#eef3f7', mount: 'wall', geo: 'panel' },
+  { type: 'banner', name: 'Banner', category: 'Decor', icon: '🚩', w: 8, d: 0.06, h: 2.5, y: 7, color: '#c0392b', mount: 'wall', geo: 'panel' },
+  { type: 'pumpkin', name: 'Pumpkin', category: 'Decor', icon: '🎃', w: 1.4, d: 1.4, h: 1.1, y: 0, color: '#d2691e', mount: 'floor', geo: 'gourd' },
+  { type: 'gourd', name: 'Gourd', category: 'Decor', icon: '🍐', w: 0.8, d: 0.8, h: 1, y: 2.5, color: '#c8a13a', mount: 'floor', geo: 'gourd', style: 'gourd', surface: true },
+  { type: 'tree-festive', name: 'Festive Tree', category: 'Decor', icon: '🌲', w: 4, d: 4, h: 7.5, y: 0, color: '#2f6b3a', mount: 'floor', geo: 'tree', style: 'conifer', trim: '#e5b33a' },
 
   // ---- Outdoor ----
   { type: 'picnic-table', name: 'Picnic Table', category: 'Outdoor', icon: '🧺', w: 6, d: 6, h: 2.5, y: 0, color: '#8a6a48', mount: 'floor', geo: 'picnic', site: true },

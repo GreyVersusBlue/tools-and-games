@@ -2249,6 +2249,120 @@ export function initRender(canvas) {
     return mergeGeometries(parts);
   };
 
+  // ---------- Phase 11 builders: the decor packs ----------
+  //
+  // Three builders for four seasons, which is the whole argument for having
+  // done the colour variants first. A garland is a garland whether it is
+  // orange crepe in October or evergreen in December; what changes is the
+  // paint, and paint is now a field on the prop rather than a row in this
+  // table. Anything a pack needs that these three don't make, an existing
+  // builder already did — a decorated conifer is `tree` with `trim`, a paper
+  // snowflake is `panel` in white, a poinsettia is `plant` in red.
+  //
+  // `trim` is the second colour, named on the row the way buildTree names its
+  // bark: fixed, so a repainted garland keeps its cream bunting rather than
+  // going monochrome. A row without one derives its accent from its own paint.
+  const trimOf = (e) => e.trim || tint(e.color, 0.22, 0.12);
+
+  // A swag strung between two points, hanging along local x with its ends
+  // pinned at the top of the row's box and its middle sagging by `sag`.
+  // Sixteen chords is enough that the curve reads as a curve at arm's length
+  // and cheap enough that a corridor of them still instances.
+  //   style 'bulb'      spheres hung from the rope — beads, baubles, lights
+  //   style 'pennant'   triangles hanging point-down — bunting
+  //   style 'streamer'  no ornaments, a fatter twist — crepe paper
+  // A row with `emit` hands its ornaments back as the lens, so a string of
+  // lights glows on the same instance matrices as the rope it hangs from.
+  const buildGarland = (e) => {
+    const style = e.style || 'bulb';
+    const segs = Math.max(8, Math.min(24, Math.round(e.w * 1.6)));
+    const sag = e.h * 0.72;
+    const ropeR = style === 'streamer' ? 0.075 : 0.045;
+    const rope = tint(e.color, -0.14);
+    // A parabola rather than a true catenary: at these spans the two curves
+    // differ by less than the rope is thick.
+    const yAt = (t) => e.h - sag * 4 * t * (1 - t);
+    const xAt = (t) => (t - 0.5) * e.w;
+    const parts = [];
+    for (let i = 0; i < segs; i++) {
+      const t0 = i / segs, t1 = (i + 1) / segs;
+      const x0 = xAt(t0), x1 = xAt(t1), y0 = yAt(t0), y1 = yAt(t1);
+      const dx = x1 - x0, dy = y1 - y0;
+      parts.push(boxT(Math.hypot(dx, dy) + ropeR, ropeR * 2, ropeR * 2,
+        (x0 + x1) / 2, (y0 + y1) / 2, 0, rope, 0, 0, Math.atan2(dy, dx)));
+    }
+    if (style === 'streamer') return mergeGeometries(parts);
+    // Ornaments hang from the interior nodes; the ends are where it is nailed
+    // to the wall, and a bauble there would be inside the plaster.
+    const orn = [];
+    const accent = trimOf(e);
+    const glow = emitOf(e) ? lensColor(e) : null;
+    for (let i = 1; i < segs; i++) {
+      const t = i / segs;
+      const x = xAt(t), y = yAt(t);
+      if (style === 'pennant') {
+        // A triangle is a two-segment cone: flat enough to read as cloth.
+        orn.push(cylT(0.01, e.w * 0.055, e.h * 0.5, 3, x, y - e.h * 0.25, 0,
+          i % 2 ? accent : e.color, Math.PI, 0));
+      } else {
+        const r = e.h * (i % 2 ? 0.16 : 0.12);
+        orn.push(sph(r, x, y - r - 0.04, 0, glow || (i % 2 ? accent : e.color), 8));
+      }
+    }
+    return glow ? lit(parts, orn) : mergeGeometries(parts.concat(orn));
+  };
+
+  // A ring on a wall, facing the room the way every other wall mount does.
+  // `berries` scatters a second colour around it; `bow` ties one on below.
+  const buildWreath = (e) => {
+    const r = Math.min(e.w, e.h) / 2;
+    const cy = e.h / 2;
+    const accent = trimOf(e);
+    const parts = [
+      ring(r * 0.78, r * 0.2, 0, cy, 0, e.color, { rx: 0 }),
+      // A second, thinner ring set forward and turned a little: two rings read
+      // as foliage where one reads as a doughnut.
+      ring(r * 0.8, r * 0.12, 0, cy, e.d * 0.25, tint(e.color, -0.1), { rx: 0, rz: 0.4 }),
+    ];
+    if (e.berries !== false) {
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + 0.4;
+        // Set forward of the front ring rather than level with it: berries
+        // buried inside the foliage are berries nobody sees from the corridor.
+        parts.push(sph(r * 0.12, Math.cos(a) * r * 0.74, cy + Math.sin(a) * r * 0.74, e.d * 0.42, accent, 6));
+      }
+    }
+    if (e.bow !== false) {
+      // A loop and a tail either side of a knot. Two small upright rings read
+      // as a bow from across a corridor where two flat triangles read as a
+      // bow tie, and the tails are what say which way is down.
+      const by = cy - r * 0.78;
+      for (const sx of [-1, 1]) {
+        parts.push(ring(r * 0.19, r * 0.06, sx * r * 0.23, by + r * 0.04, e.d * 0.28, accent, { rx: 0 }));
+        parts.push(boxT(r * 0.12, r * 0.6, e.d * 0.16, sx * r * 0.17, by - r * 0.32, e.d * 0.24, accent, 0, 0, sx * 0.33));
+      }
+      parts.push(sph(r * 0.11, 0, by, e.d * 0.3, tint(accent, -0.12), 8));
+    }
+    return mergeGeometries(parts);
+  };
+
+  // Pumpkins and gourds: a lathe with few enough segments that the facets read
+  // as ribs. `style: 'gourd'` is the same profile pulled into a neck.
+  const buildGourd = (e) => {
+    const r = e.w / 2, h = e.h;
+    const gourd = e.style === 'gourd';
+    const profile = gourd
+      ? [[0.02, 0], [r * 0.62, h * 0.03], [r, h * 0.22], [r * 0.92, h * 0.4],
+         [r * 0.4, h * 0.58], [r * 0.3, h * 0.76], [r * 0.36, h * 0.88], [r * 0.1, h * 0.93]]
+      : [[0.02, 0], [r * 0.72, h * 0.05], [r, h * 0.4], [r * 0.86, h * 0.76],
+         [r * 0.36, h * 0.93], [0.02, h * 0.95]];
+    return mergeGeometries([
+      lathe(profile, 0, 0, 0, e.color, gourd ? 9 : 11),
+      cylT(0.055, 0.1, h * 0.24, 6, 0, h * 1.02, r * 0.06, '#6f7a3a', 0, 0.25),
+    ]);
+  };
+
   // ---------- Phase 1 builders: outdoor ----------
 
   // The one deliberate exception to "seating is separate": a picnic table's
@@ -2376,6 +2490,28 @@ export function initRender(canvas) {
         const base = e.h * (0.16 + t * 0.28);
         parts.push(cyl(0, r * (1 - t * 0.55), e.h * 0.42, 10, 0, base + e.h * 0.21, 0,
           tint(e.color, -0.04 + i * 0.03)));
+      }
+      // Phase 11: `trim` turns the same conifer into a decorated one — a star
+      // and a spiral of baubles, in the row's trim colour. It is a parameter
+      // rather than a second builder because a decorated tree is a landscape
+      // tree that somebody got at with a box of ornaments.
+      if (e.trim) {
+        const star = e.trim;
+        const tipY = e.h * (0.16 + (2 / 3) * 0.28) + e.h * 0.42;
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          parts.push(boxT(e.h * 0.1, e.h * 0.028, e.h * 0.028, 0, tipY + e.h * 0.06, 0, star, 0, 0, a));
+        }
+        const n = 12;
+        for (let i = 0; i < n; i++) {
+          const t = (i + 0.5) / n;
+          const a = t * Math.PI * 5.5;
+          // Follow the cone in: the radius at height t, pulled just inside the
+          // needles so a bauble hangs off the tree rather than floating beside it.
+          const rr = r * (1 - t * 0.82) * 0.72;
+          parts.push(sph(e.h * 0.035, Math.cos(a) * rr, e.h * (0.28 + t * 0.5), Math.sin(a) * rr,
+            i % 2 ? star : tint(star, -0.18, 0.1), 6));
+        }
       }
       return mergeGeometries(parts);
     }
@@ -2810,6 +2946,7 @@ export function initRender(canvas) {
     hoop: buildHoop, volleyball: buildVolleyball, ballrack: buildBallrack,
     toiletstall: buildToiletstall, urinal: buildUrinal, sinkcounter: buildSinkcounter,
     plant: buildPlant, aquarium: buildAquarium, cage: buildCage, clutter: buildClutter,
+    garland: buildGarland, wreath: buildWreath, gourd: buildGourd,
     picnic: buildPicnic, bikerack: buildBikerack, flagpole: buildFlagpole,
     slide: buildSlide, swing: buildSwing, dumpster: buildDumpster,
     polesign: buildPolesign,

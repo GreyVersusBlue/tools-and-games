@@ -193,6 +193,9 @@
     /* prop paint — the same swatch row the room panel uses, at the size the
        narrower prop panel has room for */
     #prop-paint { margin-top: 10px; border-top: 1px solid var(--panel-border); padding-top: 9px; }
+    #prop-paint select { width: 100%; font-size: 12px; margin-bottom: 8px; }
+    #decor-note { font-size: 10px; line-height: 1.5; color: var(--text-dim); margin: -3px 0 7px; }
+    #decor-note:empty { display: none; }
     #prop-paint .paint-head {
       display: flex; align-items: center; gap: 6px;
       font-size: 10.5px; color: var(--text-dim); letter-spacing: 0.04em;
@@ -1007,6 +1010,8 @@
     </div>
     <input id="model-file" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" class="hidden" />
     <div id="prop-paint">
+      <select id="decor-pack" aria-label="Seasonal decoration pack"></select>
+      <p id="decor-note"></p>
       <div class="paint-head">
         <span>Paint</span>
         <span id="prop-paint-chip" aria-hidden="true"></span>
