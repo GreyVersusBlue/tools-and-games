@@ -66,11 +66,13 @@ three.js one.)
   and cached (`sharedGeo`). One vertex-colored material covers every prop.
 - **The walkthrough camera has a body**: a 0.9ft circle resolved by
   `collide.js` (pure, headless) against walls, glass, railings, furniture
-  and floor edges; `supportAt()` answers slab/tread/site, stairs walk as
-  ramps, `F` toggles the old no-clip ghost. Touch devices get a joystick +
+  and floor edges; `supportAt()` answers slab/tread/site — and since Phase 5
+  of the second arc "site" is a lookup into a heightfield rather than a
+  constant zero — stairs walk as ramps, `F` toggles the old no-clip ghost. Touch devices get a joystick +
   drag-look instead of Pointer Lock.
-- **Saves are versioned** (v4) and every bump has been additive, with
-  `deserialize()` clamping hostile input and migrating v1–v3 forward. Named
+- **Saves are versioned** (v7 as of Phase 5 of the second arc) and every bump
+  has been additive, with `deserialize()` clamping hostile input and migrating
+  every earlier version forward. Named
   save slots live beside a never-renamed autosave key; blueprint export
   (`blueprint.js`) recomputes 2D plans from the model rather than
   screenshotting the 3D view.
@@ -746,24 +748,199 @@ rows with a `data.sound`).
   panel prints three lines of it. It is Phase 7's reader, wired to something
   now so it can't rot.
 
-## Phase 5 — The site
+## Phase 5 — The site ✅
 
-- [ ] Terrain: a heightfield under and around the slab — `supportAt()`'s
+The building stops floating. **Done** — save v7 (three optional fields, none
+of them written unless used), three new pure modules (`js/terrain.js`,
+`js/site.js`, `js/roof.js`), one new tool (`js/siteedit.js`), a second
+blueprint sheet, 23 new catalog rows in a new Landscape category, and 465
+tests.
+
+- [x] Terrain: a heightfield under and around the slab — `supportAt()`'s
   "the site" answer becomes a lookup instead of a constant 0.
-- [ ] Hardscape: parking lots, bus loop, walkways, ball-court markings —
+- [x] Hardscape: parking lots, bus loop, walkways, ball-court markings —
   flat colored/striped regions, plausibly polygon rooms with a `site` flag
   rather than a new geometry system.
-- [ ] Sports fields with line markings, plus the Phase 1 outdoor props
+- [x] Sports fields with line markings, plus the Phase 1 outdoor props
   (playground, benches, racks) getting somewhere real to stand.
-- [ ] Landscaping: trees/hedges as instanced props (they're just catalog
+- [x] Landscaping: trees/hedges as instanced props (they're just catalog
   rows with `site` mount semantics).
-- [ ] Roofs and facade styles: parapet vs pitched, brick/panel/stucco
+- [x] Roofs and facade styles: parapet vs pitched, brick/panel/stucco
   facade materials — the exterior stops being extruded wall tops.
 
 *Collides with:* the flat-site assumption in `collide.js`, the
 footprint-bounded grid (polygon site regions already escape it, the way the
 Learning Commons does), and the blueprint (a site plan page is a natural
 addition).
+
+### How it actually landed
+
+- **This is the first phase that took an assumption back rather than adding
+  to one, and it cost exactly one line.** `supportAt()` ended with
+  `consider(GROUND_Y, 'ground', -1)` — a constant zero, the site, everywhere,
+  since Phase 5 of the first arc. It now reads `consider(groundAt(opts.site,
+  x, z), ...)` and *every* other outdoor behaviour fell out of it without a
+  second line of physics: a bank too steep to step up refuses you, a jump
+  lands on a slope, walking down a berm doesn't trigger the edge refusal.
+  The one thing that did need saying is that `storeyAt` measures from datum —
+  walk up a fifteen-foot mound and your feet are at fifteen feet, which used
+  to mean "second storey" and handed you the wrong collider, so the trees on
+  the hill stopped being solid. One extra argument, a no-op indoors because
+  the pad holds the ground at datum there.
+- **The building's pad is derived, and that is the decision the terrain hangs
+  on.** A slab is at y = 0 by definition, so ground running under the building
+  has to be too, or the school floats or is buried. The obvious fix is to
+  forbid grading there — a rule you would then have to re-enforce every time
+  somebody laid a floor tile. Instead the pad is a *field*: `terrainField()`
+  sweeps a distance transform out from the footprint and `groundAt` eases the
+  graded height to zero across it. Move a wall and the pad moves with it, for
+  free. Seventh time this codebase has taken that trade, after wall thickness,
+  stair cuts, guardrails, blueprint symbols, the sun's direction and RT60.
+- **The pad has to be interpolated as a *distance*, not as a weight.** The
+  first version pre-multiplied the pad into the height lattice per post, and a
+  forty-foot schoolhouse on a twenty-foot lattice bled a few inches of
+  hillside under its own slab — the apron was narrower than the spacing of the
+  posts that would have to record it. Interpolating the distance and applying
+  the falloff at sample time is one extra lerp and makes the apron exact at
+  any building size. The distance itself is swept on a four-foot lattice, not
+  a twenty-foot one, for the same reason.
+- **The wishlist's own guess was half right, and the wrong half was the
+  interesting one.** Site regions *are* polygon rings read with shapes.js's
+  helpers — a second ring implementation would have been a second set of
+  winding bugs. But they are emphatically not rooms with a flag. A site region
+  has no walls, no ceiling, no openings, no paint, no finish, no flood fill,
+  no acoustics and no storey; putting one in `floor.shapes[]` would have meant
+  the blueprint, the collider, walls.js, finish.js, acoustics.js and polyedit
+  each growing an `if (!s.site)` they could never drop again. The retrospective
+  calls two room representations "a standing tax"; a third one wearing a
+  room's clothes would have been worse. `state.site.regions[]`, and not one
+  room reader was touched.
+- **You do not draw a free-throw line.** You say "this asphalt is a basketball
+  court" and the court paints itself at 84 by 50 feet with a 19.75ft
+  three-point arc and a 12ft key, fitted into the region's own *minimum-area*
+  rectangle — so a court drawn at 30° to the grid comes out square to itself,
+  and a court drawn on a region too small for one shrinks rather than
+  overflowing. The same machinery stripes a car park at 9 by 18 with a 24ft
+  aisle, ladders a crosswalk, dashes a bus loop's centre line and lays out a
+  400m track. Nine markings, every one of them arithmetic over a rectangle,
+  every one of them with a test that checks it against the rule book rather
+  than against a golden image.
+- **Rotating calipers, of all things, earned its keep.** The minimum-area
+  rectangle of a hand-drawn region is what makes an angled court square; the
+  axis-aligned bounding box of a square turned 45° is half again as big as the
+  square. Twenty lines, exact rather than a search (one of the hull's own
+  edges is always a side of the answer), and it is the single function the
+  whole markings half rests on.
+- **A pitched roof over an arbitrary polygon is a straight skeleton, and a
+  rectangle's is arithmetic.** So the footprint is rasterized onto the cell
+  lattice, decomposed into a few large rectangles by the maximal-rectangle
+  sweep, and each gets an exactly correct hip or gable — which is also how an
+  L-shaped school is actually built, two rectangular masses meeting at a
+  valley. Eaves hang only on the sides where the building really stops, which
+  is a question the mask already answers. The parapet comes off the same
+  mask's boundary loops, and it is the default: a school that stops dead at
+  its wall tops is the unusual one, so an old file gains a cap the way a v5
+  file gained door leaves.
+- **The facade is two vertex colours, not two meshes.** An exterior wall is
+  one box with a painted classroom on one side and weather on the other, so it
+  cannot have two materials — but BoxGeometry lays its faces out in a fixed
+  order, `addOriented` builds every wall along +X and turns it, and that sends
+  local +Z to the run's left-hand normal, which is the same normal walls.js
+  probes with `side: +1`. "Which face is outside" was already a question the
+  model answered. Painting that face brick and leaving the other off-white
+  costs one colour write per wall. The parapet band and the gable ends, which
+  are exterior on both sides, get the real brick *texture*, and they are the
+  surfaces that carry the material anyway.
+- **Phase 4's footsteps went outside for one argument.** `footstepFor(kind,
+  finish)` gained a third parameter and site.js's surface table gained a
+  `step` column, and now walking off the terrazzo onto gravel sounds like
+  walking onto gravel. Three voices rather than ten, because the ear does not
+  distinguish a concrete walk from an asphalt drive and very much does
+  distinguish either from grass.
+- **The site plan is Phase 7 arriving early again**, the way the acoustics
+  roll-up did. Contours come out of the same marching-squares pass over the
+  same field the walker stands on, so a spot height on the drawing is a spot
+  height underfoot by construction; the surface schedule is the same
+  arithmetic a bill of materials wants; and the building appears as a hatched
+  outline off the roof mask, because a site plan cares where the building
+  meets the earth and not how it is partitioned inside.
+
+### What fought back
+
+- **Coplanar is the one thing a depth buffer cannot resolve.** A lawn drawn
+  first with a car park on top of it is how anybody would draw a site, and it
+  leaves two surfaces at exactly the same height — the first render came out
+  mottled green over every paved region. Regions now stack a fraction of a
+  foot apart in draw order, capped so a design with two hundred of them
+  doesn't end up on a plinth.
+- **...and the near-coplanar case fought back separately.** Even once the
+  surfaces were above the terrain, they still poked through it in patches,
+  because the ground *mesh* is two triangles per post cell and the ground
+  *field* is bilinear between posts. The gap between the two is the cell's
+  twist, a few tenths of a foot on a graded site. Halving the mesh spacing
+  quarters that, and paving now stands four inches proud of the earth — which
+  is, not by coincidence, what a course of asphalt on its base actually is.
+- **A lawn drawn over the whole site is a lawn on the corridor floor.** Site
+  surfaces are polygons draped on ground that isn't flat, so they are
+  triangulated and subdivided until no edge is long — and a coarse triangle
+  straddling the building line pushes a wedge of grass an inch above the
+  terrazzo. Triangles that straddle the footprint now keep splitting down to
+  two feet, and the ones over a slab are dropped. The test is `floorSolidAt`,
+  the same one the walker uses, so the ground you can see is the ground you
+  can stand on.
+- **The colour was applied twice, and everything looked like midnight.** A
+  site material bakes its colour into its texture the way a floor finish does,
+  and the vertex colour multiplies over it — so tinting the mesh with the
+  surface's own colour squares it, and a lawn comes out the colour of a pine
+  forest. Every draped surface, roof face and parapet is white-vertexed now,
+  meaning "the material as authored". This is the second time a three.js
+  colour pipeline has cost real debugging time in this codebase, after the
+  bare `'#rrggbb'` NaN in `coloredGeo`.
+- **`mergeGeometries` will not mix indexed with non-indexed.** A coping is a
+  BoxGeometry and a roof deck is a raw triangle list, and merging them into
+  one mesh throws. `slabGeo` already documented this in Phase 3; it was worth
+  rediscovering to learn that the fix is usually a second mesh rather than a
+  `mergeVertices`.
+- **A site is not a footprint.** `terrainFor` sizes itself to the building
+  plus a margin, and the default margin is two hundred feet — a car park. A
+  soccer pitch is three hundred and thirty feet long, so the sample school
+  asks for four hundred, and the whole site comes to about twenty acres and
+  2,300 elevation posts. That is 60kB of the save file, which is the largest
+  single thing in it and still nothing next to a texture.
+- **Grading under the building silently does nothing**, which is correct and
+  reads exactly like a bug. The tool now checks the pad weight on pointer-down
+  and says so rather than letting somebody drag at a slab for ten seconds.
+
+### Deliberately left for later
+
+- **A heightfield, and only a heightfield.** No caves, no overhangs, no
+  retaining walls, no cut-and-fill volumes. A school site is a graded plane
+  with some slope on it; anything that needs two elevations at one point needs
+  a different model, and nothing here does.
+- **The walker still has no head.** Vertical collision was skipped in the
+  first arc and stays skipped: you can walk under a tree canopy, which is
+  what you want, and also under a stair run, which is not.
+- **A pitched roof over a curve is still a rectangle.** The mask is at
+  four-foot resolution and the decomposition is rectilinear, so the Learning
+  Commons' curved wall gets a stepped eave. A straight skeleton would fix it
+  and is a phase of its own.
+- **Regions cannot be edited after they are drawn**, only restyled and
+  deleted. The vertex tool does this for rooms already; pointing it at site
+  regions is a small piece of work that wants the two selections unified
+  rather than duplicated, which is why it isn't here.
+- **No site props ride the terrain unless the catalog says `site`.** An
+  ordinary chair placed outside the building sits at datum, floating over a
+  berm. The rule is deliberately the catalog's rather than a per-prop
+  "am I over a slab?" test, which would move the furniture in a classroom the
+  moment somebody erased the floor under it.
+- **The track marking exists but the sample has nowhere to put one.** A 400m
+  oval needs 580 by 300 feet clear, which is bigger than the demo site's whole
+  east half. It is tested, it draws, and the first person to draw a big enough
+  region gets one.
+- **Drainage, kerbs, retaining walls, tree canopies that shade the building.**
+  All of them are things a real site plan has and none of them are things a
+  floor-plan tool needs before Phase 7 starts asking whether the building is
+  any good.
 
 ## Phase 6 — A living school
 
@@ -785,7 +962,9 @@ The walker stops being alone.
 
 *Collides with:* `collide.js` being camera-only and the collider's
 build-once lifecycle; performance wants instanced skinned crowds (or
-rigid-part puppets, which instance trivially).
+rigid-part puppets, which instance trivially). *Leans on:* Phase 5's site —
+an agent walking out of the building now has walks, a bus loop and a field to
+route across, and `groundAt` already tells it what height it is at.
 
 ## Phase 7 — Analysis & rigor
 
@@ -793,14 +972,17 @@ The tool starts answering "is this a *good* school building?"
 
 - [ ] Egress checks: travel distance to the nearest exit from any point,
   door widths against occupancy, dead-end corridor detection — all
-  computable from the same model the blueprint reads.
+  computable from the same model the blueprint reads, and now continuing past
+  the door onto Phase 5's walks (a discharge route is a site question).
 - [ ] ADA/accessible routes: can a wheelchair (no stairs, ramp/elevator
   links only, door widths) reach every room? Phase 2's ramps and elevators
   make the answer sometimes-yes.
 - [ ] Capacity: per-room occupancy from area and room label; a roll-up per
   floor and building.
 - [ ] Cost / bill of materials: walls by the foot, glass by the bay, props
-  by the row — a spreadsheet-ish export beside the blueprint.
+  by the row, paving by the square foot — a spreadsheet-ish export beside the
+  blueprint. `finishSchedule` and `siteSchedule` already do the arithmetic;
+  this is the reader that prints it.
 - [ ] Daylight and acoustics first passes: window area per room area,
   reverb estimates from volume — honest approximations, labeled as such.
 
@@ -815,8 +997,9 @@ The name of the tool, finally cashed in.
 - [ ] Parametric school generator: seed + student count + grade band +
   site shape → corridors, classroom wings, gym/cafeteria/library/office
   blocks, stairs where they're needed, every room furnished from its
-  label's template. `sample.js` is the proto-generator; templates are the
-  furnishing vocabulary.
+  label's template, and a car park sized to the staff count. `sample.js` is
+  the proto-generator — it now builds a twenty-acre site as well as a
+  building — and templates are the furnishing vocabulary.
 - [ ] Auto-furnish one room from its label ("make this a science lab") —
   the generator's smallest useful piece, shippable first.
 - [ ] Prompt-to-floorplan: natural language → parameters (and maybe room
@@ -861,18 +1044,18 @@ Each item here prices the no-build-step, no-deps stance explicitly.
 
 ## Suggested build order
 
-Phases 1 through 4 are done. Phase 5 (the site) is next by the default
-ordering, and it is the first one that touches an assumption rather than
-adding to one: `collide.js` believes the ground is flat at y = 0 everywhere,
-and a heightfield is what stops it believing that.
+Phases 1 through 5 are done. Phase 6 (a living school) is next by the default
+ordering, and like Phase 5 it starts by taking something back rather than
+adding to it: `collide.js`'s walker is the camera and only the camera, and a
+corridor with students in it needs the same body resolver running for N agents
+against a nav graph the model already describes. The site is the reason it can
+be worth doing — a fire drill routes to an exit that now has a car park on the
+other side of it, and a bell rings over a building that has somewhere to walk
+out into.
 
-Phase 1 first: it's pure content on a proven pipeline, no schema risk, and
-almost everything later (seated NPCs, furnished generation, VR at 1:1)
-gets better the richer and more accurately scaled the catalog is.
-
-Phases 2–10 are ordered structure → atmosphere → simulation → analysis →
-generation → sharing → play: each band leans on the ones before it (NPCs
-need doors and nav; analysis needs ramps and elevators; generation needs
-templates worth stamping). But the ordering is a default, not a law —
-phases 3, 4 and 9's smaller items (photo mode, the bell, glTF import,
-minimap) are self-contained enough to pull forward whenever one is wanted.
+Phases 6–10 are ordered simulation → analysis → generation → sharing → play:
+each band leans on the ones before it (NPCs need doors and nav; analysis needs
+ramps and elevators; generation needs templates worth stamping, and now a site
+to put the building on). But the ordering is a default, not a law — phase 9's
+smaller items (glTF import, the minimap, guided tours) are self-contained
+enough to pull forward whenever one is wanted.

@@ -679,3 +679,46 @@ test('a berm hands you the ground storey, not the one above it', () => {
   assert.equal(storeyAt(s, g), 1, 'measured from datum it reads as level two');
   assert.equal(storeyAt(s, g, g), 0, 'measured from the ground under you it does not');
 });
+
+test('a walker crossing the sample school\'s site follows the ground', () => {
+  const s = buildSampleSchool();
+  const site = terrainField(s);
+  const c = buildCollider(s, 0, catalogEntry, { site });
+  // Start on the entry plaza just outside the west door and walk west, across
+  // the bus loop and out over the graded ground beyond it. A lane a few feet
+  // north of the door, because the flagpole stands right outside it — and
+  // being stopped by a flagpole is the collider working, not failing.
+  let pos = { x: 12, y: 0, z: 50 };
+  let steps = 0, offGround = 0;
+  for (let i = 0; i < 300; i++) {
+    const r = moveWalker(s, c, pos, -0.4, 0, { grounded: true, site });
+    if (r.blocked) break;
+    pos = { x: r.x, y: r.support ? r.support.y : pos.y, z: r.z };
+    steps++;
+    // Whatever it is standing on, it is standing on the surface the model
+    // says is there — never floating over it or sunk into it.
+    const expect = r.support.kind === 'ground' ? groundAt(site, pos.x, pos.z) : r.support.y;
+    if (Math.abs(pos.y - expect) > 1e-6) offGround++;
+  }
+  assert.ok(steps > 60, `it got somewhere (${steps} steps)`);
+  assert.equal(offGround, 0, 'and never left the surface under it');
+  assert.ok(pos.x < 0, `it made it off the plaza (x = ${pos.x.toFixed(1)})`);
+});
+
+test('the sample school\'s berm is walkable, not a cliff', () => {
+  const s = buildSampleSchool();
+  const site = terrainField(s);
+  const c = buildCollider(s, 0, catalogEntry, { site });
+  // The lot sits below datum and the field above it; walking between them
+  // should never present a step bigger than a walker can take.
+  let pos = { x: 150, y: groundAt(site, 150, 150), z: 150 };
+  let worst = 0;
+  for (let i = 0; i < 400; i++) {
+    const r = moveWalker(s, c, pos, 0.5, 0, { grounded: true, site });
+    if (r.blocked) break;
+    worst = Math.max(worst, Math.abs((r.support ? r.support.y : pos.y) - pos.y));
+    pos = { x: r.x, y: r.support ? r.support.y : pos.y, z: r.z };
+  }
+  assert.ok(worst <= STEP_UP + 1e-6, `the biggest step was ${worst.toFixed(2)}ft`);
+  assert.ok(pos.x > 200, `and it crossed onto the field (x = ${pos.x.toFixed(0)})`);
+});
