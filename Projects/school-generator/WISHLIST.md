@@ -4,18 +4,17 @@ Living reference for where this tool goes next. The first arc of this project
 — eight phases, from a single-floor grid editor to a multi-story, furnished,
 polygon-roomed building you can blueprint, save, and walk through on desktop
 or touch — is **done**, and so is the whole of the second arc: Phases 1
-through 9, from a real furniture catalog through doors, light, sound, the
+through 10, from a real furniture catalog through doors, light, sound, the
 site, a living crowd, analysis, the generator that earned the tool its name,
-and the sharing that took it out of the tab it was drawn in. Everything
-checked off below has shipped, bar two items — one small one in Phase 1 that
-Phase 11 needs and carries, and real-time collaboration, which needs a server
-and says so.
+the sharing that took it out of the tab it was drawn in, and the nav mesh that
+made every number it prints true. Everything checked off below has shipped,
+bar two items — one small one in Phase 1 that Phase 11 needs and carries, and
+real-time collaboration, which needs a server and says so.
 
 This document is now three things: a compact retrospective of that v1 build
 (what shipped, what worked, what fought back, what a future builder needs to
-know), the same treatment per phase for the second arc, and two open bands for
-everything after it — **Phase 10, where the tool stops lying to you**, and
-**Phase 11, where it gets fun to be in**.
+know), the same treatment per phase for the second arc, and one open band for
+everything after it — **Phase 11, where it gets fun to be in**.
 
 Not a spec — a scoped list to pull from and refine before starting each
 piece. Check items off (or strike them) as they land, and add new ideas under
@@ -72,7 +71,13 @@ hand), `js/models.js` (an imported file wearing a catalog row), `js/share.js`
 and the curve through it), `js/minimap.js` (the arithmetic between a floor
 plan and a thumbnail) and `js/xr.js` (the rig, the sticks and the snap turn) —
 plus save v10 and one new seam in `catalog.js`, a registry that lets a
-design's own rows answer `catalogEntry` beside the built-in table.)
+design's own rows answer `catalogEntry` beside the built-in table. Phase 10
+adds exactly one — `js/navmesh.js` (a room's floor, cut into convex tiles) —
+and spends the rest of itself inside files that already existed: `navgraph.js`
+stands on the mesh instead of on a hub per room, `generate.js` grows two more
+schemes and an adjacency pass, `brief.js` two more tables, and `minimap.js` a
+reader that turns a report into marks. No save bump, because a mesh is derived
+and a brief is transient.)
 
 - **Units are feet, everywhere.** 4ft grid cells (`CELL`), 10ft walls
   (`WALL_H`), 12ft floor-to-floor (`FLOOR_H`), max 8 storeys. Props, polygon
@@ -1706,60 +1711,199 @@ save format, and Phase 1's insistence on real dimensions;
   is a thing the importer at the other end may not have — and the wrong one
   the first time somebody exports a school with ten thousand desks in it.
 
-## Phase 10 — Honesty
+## Phase 10 — Honesty ✅
 
-Four findings the tool has made about itself, unaddressed since Phase 8,
-share one sentence: **the model knows more than it says.** A corridor is one
-node, so every travel distance is wrong by ten to twenty feet. There is one
-layout scheme, so "generate" means "generate this shape". The brief reads
-counts but not relationships. The minimap knows where you are and the report
-knows what is wrong, and they have never met. Nothing in this phase is new
-capability — it is the capability already here, telling the truth.
+Four findings the tool had made about itself, unaddressed since Phase 8, shared
+one sentence: **the model knows more than it says.** A corridor was one node,
+so every travel distance was wrong by ten to twenty feet. There was one layout
+scheme, so "generate" meant "generate this shape". The brief read counts but
+not relationships. The minimap knew where you were and the report knew what was
+wrong, and they had never met.
 
-**Nothing here changes the save format.** The nav mesh is derived, the
-generator's inputs are transient (`save-load.js` stores no brief, no program
-and no scheme), and the report is a reading of the model rather than a part
-of it. Six of the eight phases in this arc carried a version bump; Phases 4
-and 7 are the exceptions and both said so proudly, which is the company this
-phase keeps. It is what makes this one safe to land in pieces, in this
-order:
+**Done** — one new pure module (`js/navmesh.js`, 327 lines), a rewritten graph
+in `navgraph.js`, two more schemes in `generate.js`, two more tables in
+`brief.js`, one overlay on the minimap, 43 new tests, and — as promised — **no
+save-format bump**. Nothing here was new capability. It was the capability
+already here, telling the truth.
 
-- [ ] **A nav mesh, replacing room-as-hub.** Phase 6 wanted one, Phase 7
-  wanted one for the common path of egress travel, and Phase 8 attached a
-  number: a generated three-storey school reports travel distances ten to
-  twenty feet worse than anybody actually walks, because `buildNav` collapses
-  a whole corridor to one node. It is the single biggest source of false
-  findings in the tool. Do it first and alone — `navgraph.js` has **ten
-  consumers** (`agents.js`, `egress.js`, `report.js`, `generate.js`,
-  `occupancy.js`, `daylight.js`, `autofurnish.js`, `templateedit.js`,
-  `main.js`, and itself), and every egress finding and report row moves when
-  it lands. The exported vocabulary — `findPath`, `waypoints`, `route`,
-  `egressField`, `nearestExit` — is the contract worth keeping, so the
-  consumers need not all be rewritten with it.
-- [ ] **The findings, drawn on the minimap.** The smallest item here and the
-  most visible. The report already sorts worst-first and `blueprint.js`
-  already draws a floor at thumbnail size, so a finding carrying a room id
-  becomes a highlight on the plan in your hand — *this* corridor is the one
-  over the travel limit, *that* door is the one too narrow. Second, not last:
-  it is the fastest way to see whether the mesh actually fixed the numbers.
-- [ ] **More layout schemes.** `layoutSchool` (`generate.js`) is one function
-  turning a program into a list of rectangles. A courtyard plan and a compact
-  block are two more against the same contract, and the generate sheet
-  already has room for the picker. The spine-with-wings is not wrong; it is
-  just the only thing the word "generate" currently means.
-- [ ] **Adjacency in the brief.** "Put the band room away from the library"
-  is a sentence `parseBrief` cannot read and `layoutSchool` has nowhere to
-  put. Both halves are this item: a rule table beside `BAND_RULES` turning
-  phrases into pairs, and a placement pass that reads them. It shares a seam
-  with the schemes, which is why it goes after them rather than before — a
-  second scheme is what proves the constraint is a constraint and not a
-  property of the spine.
+- [x] **A nav mesh, replacing room-as-hub.** Done first and alone, because
+  `navgraph.js` has ten consumers and every egress finding and report row moved
+  when it landed. Every room's floor is now cut into convex axis-aligned tiles
+  and everything standing on one tile is joined to everything else standing on
+  it at the straight line between them — which inside a convex empty rectangle
+  is the truth. The exported vocabulary is unchanged, which is what kept the
+  ten consumers from being rewritten.
+- [x] **The findings, drawn on the minimap.** The smallest item and the most
+  visible: `minimap.js` turns a report into marks and `main.js` fills the
+  rectangles the mesh already cut the rooms into. Second, not last, and the
+  claim held — a highlight on the plan is the fastest way to see whether the
+  mesh fixed the numbers.
+- [x] **More layout schemes.** A **courtyard** (a double-loaded ring round an
+  open court) and a **compact block** (one deep rectangle, two corridors,
+  three bands of rooms, a cross hall every hundred feet), against the same
+  contract as the spine and picked on the generate sheet. The spine is
+  untouched; what the two new ones had in common came out into four shared
+  functions.
+- [x] **Adjacency in the brief.** Two tables in `brief.js` — room words and the
+  two relations — and two passes in `generate.js`: blocks reordered in the row
+  they are laid in, everything else a greedy swap of two same-sized rooms. Both
+  halves report whether they managed it.
 
-*Leans on:* the portal graph's exported vocabulary, the report's room ids,
-and the generate sheet's existing controls;
-*collides with:* every number the tool currently prints — which is the point,
-and also why the existing egress and report tests are the acceptance criteria
-for the mesh rather than an obstacle to it.
+*Leaned on:* the portal graph's exported vocabulary, the report's room ids, and
+the generate sheet's existing controls;
+*collided with:* every number the tool prints — which was the point, and also
+why the existing egress and report tests were the acceptance criteria for the
+mesh rather than an obstacle to it. They all still pass.
+
+### How it actually landed
+
+- **A room is a set of rectangles, and that is the whole trick.** Greedy
+  meshing joins a lattice room's cells back into as few big rectangles as it
+  can; a polygon room is sampled onto a 2ft lattice inside its own bounding box
+  and meshed the same way, which makes its tiles an *inscribed* approximation —
+  a diagonal wall keeps its stair-step and the walk along it comes out a foot
+  or so long, which is the right way round for a phase about not flattering
+  yourself. Where two tiles of one room meet, a **gate** node sits in the open
+  run of the seam, so an L-shaped corridor keeps the corner it has to be walked
+  round. On a generated school every room is one rectangle and there are no
+  gates at all; the sample school's L-shaped rooms produce twenty.
+- **The graph did not grow — its edges moved.** Nodes are still rooms, doorways,
+  stairs and the outside, plus the gates. What changed is what a doorway is
+  connected *to*: the tile it stands on, and through it every other door, gate
+  and stair landing on the same patch of floor. `buildNav` on a three-storey
+  generated high school takes about 10ms.
+- **The room node survived, and stopped measuring.** It is still a name, still
+  something an agent can be assigned to, still somewhere to stand with nowhere
+  to go. It is now one more anchor on one more tile, and a route that merely
+  passes through a room no longer visits it.
+- **A stair charges its climb on the upper anchor** rather than splitting it
+  across two edges. Walking past the foot of one is therefore free, which is
+  what it should always have been, and the total up-cost is unchanged.
+- **Three exported functions got better for free.** `waypoints` reads which
+  side of a doorway it came out on from the *edge* it arrived on rather than
+  from the node before it — under the portal graph the node before a door was
+  always one of the two rooms it joined, and on the mesh it is whatever was
+  last standing beside it. `route` starts from where the walker actually is,
+  by hanging a one-node overlay on the tile under their feet, instead of from
+  the middle of the room they are in. And `pointField` is new: how far it is
+  out of the building **from a point**.
+- **The numbers moved, and by about what Phase 8 said they would.** Travel
+  distance was the room's hub distance plus the room's own radius, which
+  counted the room twice over. Measured from every point in the room over the
+  mesh instead, a generated three-storey high school loses a mean of 9ft per
+  room and 60ft off its worst one. "Ten to twenty feet" was a fair estimate of
+  the middle of that distribution.
+- **`egress.js` stopped asking the graph what doors a room has.** A door at the
+  far end of a long room is a neighbour of the *tile* it stands on, not of the
+  room, so counting a room's graph neighbours would have counted the doors near
+  its middle and missed the rest. `nav.portalsOf` answers by construction.
+- **A finding with nothing to point at is not a mark.** "Three exits where four
+  are needed" is about the design rather than about a place in it, and drawing
+  it somewhere would invent a location the report never claimed. Two findings
+  gained the ids they had always been able to carry and never did — the
+  narrow-exit warning now names its doors and the under-3ft doorway note names
+  its doorways — so "*that* door is the one too narrow" is a thing the map can
+  say.
+- **The courtyard's ring is double-loaded, and that is the decision that makes
+  it a courtyard.** Single-loaded was the first draft and it was wrong: a ring's
+  capacity grows with its perimeter while its court grows with the square of
+  it, so a six-hundred-pupil school came out with a two-hundred-foot quad and a
+  walk right round it. Rooms on both faces of the loop, and the court is a
+  light court.
+- **Width is set by the frontage, height by the roll.** The blocks want a long
+  north face and there is only one of it, so the courtyard's width falls out of
+  them the way the spine's length does; the only dimension still free is how
+  far down the sides run. Insisting on a square court is what turned a school
+  with a gym in it into a quadrangle.
+- **Adjacency is a pass over the finished layout, not a constraint threaded
+  through the dealing.** The schemes deal rooms into runs round-robin by kind,
+  and teaching a round-robin about pairs turns one legible loop into three
+  scheme-specific ones. A swap after the fact costs nothing, is the same
+  operation in all three schemes, and — the part that matters — can *say
+  whether it worked*.
+- **A swap exchanges what a room is, never where it is.** Key, name and
+  template move; which corridor the slot faces, whether it has an outside wall
+  and how big it is stay with the slot, because those are properties of the
+  hole and not of the thing in it. Which also means only same-sized rooms can
+  swap, and blocks — all different sizes — cannot, so a pair of *those* is
+  handled by reordering the row they are laid in.
+- **Distances between rooms are measured edge to edge.** A ninety-foot gym
+  beside a sixty-foot cafeteria has a hundred and thirty feet between their
+  centres and a shared wall between the rooms, and only one of those two
+  numbers is what anybody means by "next to".
+
+### What fought back
+
+- **A flood region can wrap around a wall.** A C-shaped corridor is one region
+  to `floodRegion`, and its two arms sit either side of the wall it wraps —
+  so a rectangle grown across them is a hole punched through the building.
+  Growing a tile therefore checks the lattice edge between every pair of cells
+  it swallows, and a polygon's tiles check the ring segments the same way.
+- **`splitCorridor` was dropping the junction at the far end of every corridor
+  it cut.** It gave each segment after the first a door back to the one before
+  it and kept only what the caller asked for on the *first* segment. A spine
+  never noticed, because a spine is a tree. A ring came back as a horseshoe:
+  the north and south halls of the first courtyard were joined only by going
+  outside, and the report's egress numbers were fine because every stair tower
+  has an exterior door. Found by asking whether every room could reach every
+  other room *without* leaving the building — which is now a test.
+- **A courtyard is not a way out.** This tool's outside is one node, so a door
+  onto an enclosed court reads to `egressField` as a door onto the street and a
+  fire drill "evacuates" into a sealed yard. `cutShellExits` now takes a list
+  of sides to leave alone, and those walls get windows.
+- **Both new schemes silently dropped a block that would not fit.** A courtyard
+  school came out with no library, and nothing said so. Both now carry the
+  widest block as slack when sizing the band it goes in — a block cannot
+  straddle a cross hall or an exit passage — and report anything still over as
+  `unplaced`, the way the spine always has.
+- **A four-hundred-foot block with its ways out at the ends is a
+  travel-distance failure**, and so is an upper storey whose only stairs are in
+  its corners. Both were the same fix twice: a cross hall through the whole
+  depth every hundred feet or so on the compact block, an exit passage through
+  the middle of each long band on the courtyard, and a stair in each of them.
+  Worst travel on a two-storey compact block went from 418ft to 219ft.
+- **A stair and a lift in line need forty feet of hall and a tower has
+  thirty-two.** They stand beside each other across the tower's width instead.
+  The first draft put them on top of each other and the lift was quietly not
+  added, which surfaced three checks later as "every room upstairs is reachable
+  only by stairs".
+- **A room whose name the use table cannot read is counted at 100 ft² per
+  person and reported as unnamed** — which is how "North Passage" turned into
+  five unnamed rooms. It is called an exit *hall* now, and the word "hall" is
+  in the circulation row.
+
+### Deliberately left for later
+
+- **The mesh is inscribed, not exact.** A polygon room's tiles are rectangles
+  sampled on a 2ft lattice, so a diagonal or curved wall is approximated from
+  the inside and the walk along it is a little long. A proper convex
+  decomposition of the polygon would fix it and would also give Phase 11 a
+  hiding place behind a curve.
+- **Gates are midpoints, not funnels.** A route across two tiles goes through
+  the middle of the seam between them rather than round the tightest corner it
+  could. String-pulling over the tile chain — the standard funnel algorithm —
+  would shave a few feet off an L-shaped walk. Nothing measures it yet.
+- **`findPath` still sorts an array for its open set.** At three hundred nodes
+  that is the right trade and it is written down where it happens; at three
+  thousand it would not be, and the mesh is what would get it there.
+- **The compact block cannot always honour an adjacency rule**, and says so. It
+  is a dense plan: "away from" wants a hundred and fifty feet of building
+  between two rooms and there often is not that much of it in any one
+  direction. That is a property of the scheme rather than a bug in the pass,
+  which is exactly why the pass reports per-rule rather than pass/fail.
+- **Adjacency cannot move a room into a bigger slot.** Only same-sized rooms
+  swap, so "the band room next to the library" is unachievable when no slot
+  beside the library is band-room-shaped. Growing a slot means re-running the
+  packing, which is the constraint-threaded-through-the-dealing design this
+  deliberately is not.
+- **A fourth scheme.** The contract is `rects`, `links`, `exits`, `footprint`,
+  `entry`, `envelope` and `style`, and the four shared functions do the dealing;
+  a tower plan or a campus of separate blocks is that list and its own geometry.
+  The campus one is the interesting one, because it is the first scheme where
+  the building is not one connected thing.
+- **The minimap's findings overlay draws one finding at a time.** All of them
+  at once would need a legend and a way to resolve two washes over the same
+  room, and the report panel beside it already prints the list.
 
 ## Phase 11 — Play
 
@@ -1783,22 +1927,26 @@ pack is more catalog rows.
   solver, no stacking and no persistence. Pure delight, and the one item on
   either list with no downstream consumer at all.
 - [ ] **Scavenger hunt / hide-and-seek over the nav graph** — a reason for a
-  kid to explore the building a parent just designed. Wants Phase 10's mesh
-  underneath it: a hiding place is a property of a walkable surface, not of a
-  room's centroid, and "behind the bleachers" is unsayable in a portal graph.
+  kid to explore the building a parent just designed. It wanted Phase 10's
+  mesh underneath it and now has one: a hiding place is a property of a
+  walkable surface rather than of a room's centroid, and `navmesh.js` hands
+  over that surface as rectangles — `nav.tileAt(floor, x, z)` says which one
+  you are standing on and `nav.mesh[i].byRoom` says what a room is made of.
+  "Behind the bleachers" is still unsayable, because furniture is not in the
+  mesh; "the far end of the third tile of the gym" is not.
 - [ ] **Holiday decoration packs** — the Decor category, seasonal. This is
   the colour-variant item wearing a hat: a pack is a handful of rows and a
   palette, not a handful of new builders. Which is the argument for doing the
   variants first rather than shipping thirty near-duplicate catalog rows.
 
-*Leans on:* the catalog's `data` field, the walker's collider, and whatever
-Phase 10 leaves behind as a walkable surface;
+*Leans on:* the catalog's `data` field, the walker's collider, and the tiles
+Phase 10 left behind as a walkable surface;
 *collides with:* nothing — rare enough to be worth saying. This is the first
 phase in either arc that no other phase is waiting on.
 
 ## Suggested build order
 
-Phases 1 through 9 are done, bar two items: colour variants in `data`, which
+Phases 1 through 10 are done, bar two items: colour variants in `data`, which
 Phase 11 carries, and real-time collaboration, which needs a server. Phase 1
 shipped *first*, out of order and in one commit, before Phase 2 — which is
 worth stating plainly, because earlier revisions of this paragraph spent two
@@ -1814,19 +1962,13 @@ which of two seeds produced the better school. Seed a plan, read the report,
 move a door, read it again — that loop is the whole of parametric design and
 both halves of it now exist and are wired to each other.
 
-What Phase 8 leaves for whatever comes next, in the order it would help:
-
-- **A nav mesh.** Phase 6 wanted one, Phase 7 wanted one for the common path
-  of egress travel, and Phase 8 now has a concrete number attached: a
-  generated three-storey school reports travel distances ten to twenty feet
-  worse than anybody actually walks, because a corridor is one node in a
-  portal graph. It is the single biggest source of false findings in the tool.
-- **More schemes.** `layoutSchool` is one function producing a list of
-  rectangles. A courtyard plan or a compact block is a second function against
-  the same contract, and the generate sheet already has room for the picker.
-- **Adjacency.** The brief box reads counts and flags; it cannot read "put the
-  band room away from the library", and the layout has nowhere to put it if it
-  could.
+What Phase 8 left for whatever came next was three things, and Phase 10 did
+all three: the nav mesh Phase 6 and Phase 7 had both wanted, the second and
+third layout schemes, and adjacency in the brief. The estimate attached to the
+first of them — ten to twenty feet of travel distance nobody walks — turned out
+to be a fair reading of the middle of the distribution: a generated
+three-storey high school lost a mean of 9ft per room and 60ft off its worst
+one.
 
 Phase 9 is done, and what it leaves behind is a shorter list than it started
 with. Sharing is a link, the building leaves as a file, furniture arrives as
@@ -1837,34 +1979,36 @@ wire too: grid cells have no identity, so there is nothing to name when two
 people edit the same room. That makes it downstream of the decision to promote
 every room to a polygon, not downstream of a sync library.
 
-That leaves two open bands, which are those four standing findings and the
-three play items sorted into the two sentences they actually belong to:
-**Phase 10, where the tool stops lying to you**, and **Phase 11, where it gets
-fun to be in**. Do them in that order, and inside Phase 10 do the nav mesh
-first.
+Phase 10 is done, and the argument for splitting it from Phase 11 rather than
+doing one big final phase held: `navgraph.js` has ten consumers and a chair
+that scoots has none, so a single phase would have made the fun half wait on
+the review pass for the risky half. The risky half needed that pass. Three of
+the seven things under "what fought back" were bugs one item's tests found in
+another item's code — the horseshoe ring, the vanished library, the lift that
+was never added — and none of them would have been as visible in a phase that
+also had a scavenger hunt in it.
 
-The argument for splitting rather than doing one big final phase is not that
-play matters less. It is that `navgraph.js` has ten consumers and a chair that
-scoots has none, so a single phase means the fun half waits on the review pass
-for the risky half. Phase 8 needed a whole "five fixes from the review pass"
-commit at six modules of surface; the mesh alone is more than that. Two
-theses, two phases, two review passes that can fail independently.
+That leaves one open band: **Phase 11, where it gets fun to be in.** Nothing is
+waiting on it and it is waiting on nothing; the mesh it wanted underneath the
+hunt exists, and the colour variants it carries from Phase 1 are the only
+prerequisite inside it.
 
-And the finding that makes the split free, which fell out of auditing the
-remainder rather than out of building anything: **nothing left on this list
-needs a save-format bump.** `cleanData()` already validates `data.color`; the
-nav mesh is derived; the generator's brief, program and scheme are transient
-(`save-load.js` mentions none of them); physics and a hunt are runtime state;
-a decor pack is rows. Six of this arc's eight phases were shaped in part by
-the cost of a version bump and the wish to spend it once — Phase 5 in
-particular reads the way it does because terrain, site and roof all had to
-land in v7 together. That pressure is simply absent now, as it was for Phases
-4 and 7. Splitting these costs a heading and nothing else, and either phase
-can land in pieces.
+And the finding that made the split free, which fell out of auditing the
+remainder rather than out of building anything, held too: **nothing left on
+this list needs a save-format bump.** Phase 10 changed no bytes — the mesh is
+derived, and the generator's brief, program, scheme and adjacency rules are
+transient (`save-load.js` mentions none of them). `cleanData()` already
+validates `data.color`; physics and a hunt are runtime state; a decor pack is
+rows. Six of this arc's ten phases were shaped in part by the cost of a
+version bump and the wish to spend it once — Phase 5 in particular reads the
+way it does because terrain, site and roof all had to land in v7 together.
+That pressure is simply absent now, as it was for Phases 4, 7 and 10.
 
 The three chores Phase 9 left behind — audio in the tour capture, the
 minimap's phone layout, and an `EXT_mesh_gpu_instancing` export — belong to
-neither thesis and should ride along with whichever phase is open when
-somebody has a spare hour. They stay listed under Phase 9's "deliberately left
-for later", where they were found; moving them up here would start exactly the
-second list this document keeps warning about.
+no thesis and should ride along with whichever phase is open when somebody has
+a spare hour. The middle one grew a little in Phase 10, which added a second
+button row and a caption to the same panel. They stay listed under Phase 9's
+"deliberately left for later", where they were found, along with Phase 10's
+own two — the inscribed mesh and the un-funnelled gates. Moving any of them up
+here would start exactly the second list this document keeps warning about.
