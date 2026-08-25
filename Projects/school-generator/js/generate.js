@@ -239,8 +239,9 @@ function layoutSpine(briefOrProgram) {
   const rand = rng(brief.seed);
 
   const all = expandProgram(program);
-  const blocks = all.filter((r) => r.group === 'block' || BLOCK_ORDER.includes(r.key))
-    .sort((a, b) => rank(BLOCK_ORDER, a.key) - rank(BLOCK_ORDER, b.key) || a.seq - b.seq);
+  const blocks = orderBlocks(all.filter((r) => r.group === 'block' || BLOCK_ORDER.includes(r.key))
+    .sort((a, b) => rank(BLOCK_ORDER, a.key) - rank(BLOCK_ORDER, b.key) || a.seq - b.seq),
+  brief.adjacency);
   const spineRooms = all.filter((r) => SPINE_ORDER.includes(r.key))
     .sort((a, b) => rank(SPINE_ORDER, a.key) - rank(SPINE_ORDER, b.key) || a.seq - b.seq);
   const wingRooms = all.filter((r) => !blocks.includes(r) && !spineRooms.includes(r))
@@ -553,6 +554,11 @@ function layoutSpine(briefOrProgram) {
   // an area and it has just written both. That is the wishlist's promise about
   // Phase 7 cashed in: the number a wing is sized from is one call away, and
   // here it is the number the stairs are sized from.
+  // "Put the band room away from the library", acted on before anything is
+  // counted, so the occupant loads and the stair widths below are the ones the
+  // building actually has.
+  const adjacency = applyAdjacency(storeyRects, brief.adjacency);
+
   const storeyOcc = storeyRects.map((list) => list
     .filter((r) => r.kind === 'room')
     .reduce((n, r) => n + roomOccupancy({
@@ -651,6 +657,7 @@ function layoutSpine(briefOrProgram) {
     links,
     exits,
     unplaced,
+    adjacency,
     oversize,
     entry: { x: originX * CELL, z: (spineY + SPINE_W / 2) * CELL },
     liftWing,
@@ -855,6 +862,38 @@ function passage(key, name, x0, y0, x1, y1, storey, doors) {
   });
 }
 
+// The blocks, reordered to suit whatever the brief said about them. They are
+// laid in a row in all three schemes, so a row is the whole lever: "the gym
+// next to the cafeteria" is the cafeteria moved to sit behind the gym, and
+// "the kitchen away from the library" is the kitchen moved to the far end.
+// Nothing else can act on a pair of blocks — they are all different sizes, so
+// the swap pass below cannot touch them.
+function orderBlocks(blocks, rules) {
+  if (!rules || !rules.length) return blocks;
+  const out = [...blocks];
+  const take = (key) => {
+    const got = out.filter((b) => b.key === key);
+    for (const b of got) out.splice(out.indexOf(b), 1);
+    return got;
+  };
+  for (const rule of rules) {
+    const has = (key) => blocks.some((b) => b.key === key);
+    if (!has(rule.a) || !has(rule.b)) continue;
+    const moved = take(rule.b);
+    if (rule.want === 'near') {
+      const after = out.map((b) => b.key).lastIndexOf(rule.a);
+      out.splice(after + 1, 0, ...moved);
+    } else {
+      const first = out.map((b) => b.key).indexOf(rule.a);
+      // The far end from wherever `a` ended up: the front of the row if `a` is
+      // in the back half of it, the back if it is in the front.
+      if (first > out.length / 2) out.unshift(...moved);
+      else out.push(...moved);
+    }
+  }
+  return out;
+}
+
 // The half of a plan the seed decides about the shell rather than about the
 // rooms. Identical for all three schemes, and drawn in the same order so that
 // one seed gives one building whichever scheme is asked for.
@@ -865,6 +904,110 @@ function shellStyle(brief, rand) {
     roof: brief.storeys > 1 || rand() > 0.4 ? 'parapet' : 'gable',
     fieldEast: rand() > 0.35,
   };
+}
+
+// ---------- adjacency ----------
+//
+// "Put the band room away from the library" is a sentence `parseBrief` can now
+// read, and this is the half that acts on it. It is deliberately a *pass over
+// the finished layout* rather than a constraint threaded through the dealing:
+// the schemes deal rooms into runs round-robin by kind, and teaching a
+// round-robin about pairs turns one legible loop into three scheme-specific
+// ones. Swapping two rooms of the same size after the fact costs nothing, is
+// the same operation in all three schemes, and — this is the part that
+// matters — can *say whether it worked*, which a constraint buried in a
+// dealing loop cannot.
+//
+// A swap exchanges only what a room *is*: its key, its name and the template
+// it will be furnished from. Where it is, which corridor it faces and whether
+// its slot has an outside wall all stay with the slot, because those are
+// properties of the hole and not of the thing in it.
+
+// What the two relations mean in feet, measured **between the rooms' edges
+// rather than between their middles**. A ninety-foot gym beside a sixty-foot
+// cafeteria has a hundred and thirty feet between their centres and a shared
+// wall between the rooms, and only one of those two numbers is what anybody
+// means by "next to". So: touching, or a corridor's width apart, is next to;
+// a hundred and fifty feet of building in between is away from.
+export const ADJACENT_FT = 24;
+export const APART_FT = 150;
+// What a storey between two rooms is worth. More than the stair is long,
+// because "upstairs from" is the strongest form of "away from" a building has.
+export const STOREY_FT = 40;
+
+// Rooms whose identity is structural rather than programmatic: a stair tower
+// is a stair tower because of where it is.
+const UNSWAPPABLE = new Set(['stair-hall', 'lobby']);
+
+// The clear gap between two rectangles, in feet — zero when they share a wall.
+const spread = (a, b) => {
+  const dx = Math.max(0, a.x0 - b.x1 - 1, b.x0 - a.x1 - 1);
+  const dz = Math.max(0, a.y0 - b.y1 - 1, b.y0 - a.y1 - 1);
+  return Math.hypot(dx, dz) * CELL
+    + Math.abs((a.storey || 0) - (b.storey || 0)) * STOREY_FT;
+};
+
+// How far apart two kinds of room are, as the *nearest* pair. "Away from the
+// library" is broken by the one band room next door to it and not satisfied by
+// the other three being at the far end; "next to" is satisfied by one of them
+// being there. Both are the same minimum.
+export function nearestPair(A, B) {
+  let best = Infinity;
+  for (const a of A) {
+    for (const b of B) best = Math.min(best, spread(a, b));
+  }
+  return best;
+}
+
+const ruleCost = (want, d) => (want === 'near'
+  ? Math.max(0, d - ADJACENT_FT)
+  : Math.max(0, APART_FT - d));
+
+export function applyAdjacency(storeyRects, rules) {
+  const out = [];
+  if (!rules || !rules.length) return out;
+  const rooms = storeyRects.flat().filter((r) => r.kind === 'room' && r.key);
+  const of = (key) => rooms.filter((r) => r.key === key);
+  const swap = (p, q) => {
+    for (const f of ['key', 'name', 'tpl']) {
+      const t = p[f]; p[f] = q[f]; q[f] = t;
+    }
+  };
+  for (const rule of rules) {
+    if (!of(rule.a).length || !of(rule.b).length) {
+      out.push({ ...rule, done: false, why: 'not in this program' });
+      continue;
+    }
+    const before = nearestPair(of(rule.a), of(rule.b));
+    let cost = ruleCost(rule.want, before);
+    // Move whichever kind there are fewer of: one band room is easier to place
+    // than twenty classrooms, and moving the many to suit the few is how a
+    // school ends up with its labs scattered.
+    const moving = of(rule.a).length <= of(rule.b).length ? rule.a : rule.b;
+    for (let pass = 0; pass < 4 && cost > 0; pass++) {
+      let best = null;
+      for (const r of of(moving)) {
+        for (const slot of rooms) {
+          if (slot === r || slot.key === moving) continue;
+          if (slot.w !== r.w || slot.h !== r.h) continue;
+          if (UNSWAPPABLE.has(slot.key) || UNSWAPPABLE.has(r.key)) continue;
+          swap(r, slot);
+          const c = ruleCost(rule.want, nearestPair(of(rule.a), of(rule.b)));
+          swap(r, slot);
+          if (c < cost - 0.5 && (!best || c < best.c)) best = { r, slot, c };
+        }
+      }
+      if (!best) break;
+      swap(best.r, best.slot);
+      cost = best.c;
+    }
+    const after = nearestPair(of(rule.a), of(rule.b));
+    // Reported whether it worked or not. A generator that quietly failed to
+    // honour a sentence somebody typed is a generator you cannot trust with
+    // the next one.
+    out.push({ ...rule, done: cost <= 0, before, after });
+  }
+  return out;
 }
 
 // ---------- the courtyard ----------
@@ -888,7 +1031,9 @@ function layoutCourtyard(program) {
   const brief = program.brief;
   const storeys = Math.min(MAX_FLOORS, Math.max(1, brief.storeys));
   const rand = rng(brief.seed);
-  const { blocks, spineRooms, wingRooms } = sortProgram(expandProgram(program));
+  const sorted = sortProgram(expandProgram(program));
+  const blocks = orderBlocks(sorted.blocks, brief.adjacency);
+  const { spineRooms, wingRooms } = sorted;
 
   const bay = WING_BAY_D;
   const corr = WING_CORR_W;
@@ -927,8 +1072,13 @@ function layoutCourtyard(program) {
   // worth insisting on: what makes this scheme a courtyard is the loop, and
   // insisting on the square is what turns a school with a gym in it into a
   // four-hundred-foot quad.
+  // The north band has to hold every block *and* the passage through the
+  // middle of it, and a block cannot straddle the passage — so the width
+  // carries the widest of them as slack, which is the worst a first-fit into
+  // two stretches can waste.
+  const widestBlock = blocks.reduce((n, r) => Math.max(n, r.w), 0);
   const W = Math.min(LATTICE_MAX - 2 * MARGIN,
-    Math.max(blockSpan + 2 * stair, 2 * ring + COURT_MIN));
+    Math.max(blockSpan + 2 * stair + PASSAGE_W + widestBlock, 2 * ring + COURT_MIN));
   const courtW = Math.max(COURT_MIN, W - 2 * ring);
   const sideOf = (h) => h + 2 * bay;         // the ring's own north-south run
   const heightOf = (h) => blockDepth + corr + sideOf(h) + corr + bay;
@@ -1010,6 +1160,10 @@ function layoutCourtyard(program) {
   const H = heightOf(court);
   const top = y0 + blockDepth + corr;
   const side = sideOf(court);
+  // A block that will not fit the north band, if it comes to that. Reported
+  // rather than dropped: a school that quietly lost its library is exactly
+  // what the spine's `unplaced` list exists to prevent.
+  const leftover = [];
   const oversize = packed.unplaced.length > 0
     || x0 + W + MARGIN > LATTICE_MAX || y0 + H + MARGIN > LATTICE_MAX;
   const footprint = {
@@ -1078,16 +1232,14 @@ function layoutCourtyard(program) {
         { at: x0 + stair, end: gate - 1 },
         { at: gate + PASSAGE_W, end: x0 + W - stair - 1 },
       ];
-      let si = 0;
       for (const b of blocks) {
-        while (si < stretches.length && stretches[si].at + b.w - 1 > stretches[si].end) si++;
-        if (si >= stretches.length) break;
-        const at = stretches[si].at;
-        list.push(rect('room', at, y0, at + b.w - 1, y0 + blockDepth - 1, {
+        const at = stretches.find((st) => st.at + b.w - 1 <= st.end);
+        if (!at) { leftover.push(b); continue; }
+        list.push(rect('room', at.at, y0, at.at + b.w - 1, y0 + blockDepth - 1, {
           key: b.key, name: b.base, tpl: b.tpl, door: 's', storey: 0,
           daylight: b.key !== 'kitchen',
         }));
-        stretches[si].at += b.w;
+        at.at += b.w;
       }
       // Whatever the blocks left of the north band, so the band is solid.
       for (const st of stretches) {
@@ -1110,6 +1262,11 @@ function layoutCourtyard(program) {
     for (const run of packed.plans[s]) list.push(...runRects(run, s));
     storeyRects.push(list.map((r) => ({ ...r, storey: s })));
   }
+
+  // "Put the band room away from the library", acted on before anything is
+  // counted, so the occupant loads and the stair widths below are the ones the
+  // building actually has.
+  const adjacency = applyAdjacency(storeyRects, brief.adjacency);
 
   const storeyOcc = storeyRects.map((list) => list
     .filter((r) => r.kind === 'room')
@@ -1178,9 +1335,10 @@ function layoutCourtyard(program) {
     stairW,
     links,
     exits,
-    unplaced: packed.unplaced,
+    unplaced: [...packed.unplaced, ...leftover],
     fillers,
-    oversize,
+    adjacency,
+    oversize: oversize || leftover.length > 0,
     entry: { x: x0 * CELL, z: (top + LOBBY_W / 2) * CELL },
     style: shellStyle(brief, rand),
   };
@@ -1202,7 +1360,9 @@ function layoutCompact(program) {
   const brief = program.brief;
   const storeys = Math.min(MAX_FLOORS, Math.max(1, brief.storeys));
   const rand = rng(brief.seed);
-  const { blocks, spineRooms, wingRooms } = sortProgram(expandProgram(program));
+  const sorted = sortProgram(expandProgram(program));
+  const blocks = orderBlocks(sorted.blocks, brief.adjacency);
+  const { spineRooms, wingRooms } = sorted;
 
   const bay = WING_BAY_D;
   const corr = WING_CORR_W;
@@ -1230,12 +1390,16 @@ function layoutCompact(program) {
   // band to the street again. Segments of the bands sit between them.
   const segCap = (n) => Math.floor(
     (LATTICE_MAX - 2 * MARGIN - 2 * CROSS_W - n * CROSS_W) / (n + 1));
+  const widestBlock = blocks.reduce((n, r) => Math.max(n, r.w), 0);
   let crosses = 0;
   let seg = 0;
   for (; crosses <= 6; crosses++) {
     seg = Math.max(6,
       Math.ceil(demand / (3 * (crosses + 1))),
-      Math.ceil(blockSpan / (crosses + 1)));
+      // The blocks are dealt into the stretches between the cross halls and
+      // none of them may straddle one, so every cross costs the row the widest
+      // block as slack. Without this the library quietly fell off the end.
+      Math.ceil((blockSpan + crosses * widestBlock) / (crosses + 1)));
     if (seg <= CORRIDOR_SEG || seg >= segCap(crosses)) break;
   }
   const segMax = Math.max(6, segCap(crosses));
@@ -1281,6 +1445,7 @@ function layoutCompact(program) {
 
   const len = lenOf(seg);
   const W = len + 2 * CROSS_W;
+  const leftover = [];
   const oversize = packed.unplaced.length > 0
     || x0 + W + MARGIN > LATTICE_MAX || y0 + depth + MARGIN > LATTICE_MAX;
   const footprint = {
@@ -1337,16 +1502,14 @@ function layoutCompact(program) {
       for (let i = 0; i <= crosses; i++) {
         stretches.push({ at: segAt(seg, i), end: segAt(seg, i) + seg - 1 });
       }
-      let si = 0;
       for (const b of blocks) {
-        while (si < stretches.length && stretches[si].at + b.w - 1 > stretches[si].end) si++;
-        if (si >= stretches.length) break;
-        const at = stretches[si].at;
-        list.push(rect('room', at, rowA, at + b.w - 1, rowC1 - 1, {
+        const at = stretches.find((st) => st.at + b.w - 1 <= st.end);
+        if (!at) { leftover.push(b); continue; }
+        list.push(rect('room', at.at, rowA, at.at + b.w - 1, rowC1 - 1, {
           key: b.key, name: b.base, tpl: b.tpl, door: 's', storey: 0,
           daylight: b.key !== 'kitchen',
         }));
-        stretches[si].at += b.w;
+        at.at += b.w;
       }
       for (const st of stretches) {
         const spare = st.end - st.at + 1;
@@ -1361,6 +1524,11 @@ function layoutCompact(program) {
     for (const run of packed.plans[s]) list.push(...runRects(run, s));
     storeyRects.push(list.map((r) => ({ ...r, storey: s })));
   }
+
+  // "Put the band room away from the library", acted on before anything is
+  // counted, so the occupant loads and the stair widths below are the ones the
+  // building actually has.
+  const adjacency = applyAdjacency(storeyRects, brief.adjacency);
 
   const storeyOcc = storeyRects.map((list) => list
     .filter((r) => r.kind === 'room')
@@ -1443,9 +1611,10 @@ function layoutCompact(program) {
     stairW,
     links,
     exits,
-    unplaced: packed.unplaced,
+    unplaced: [...packed.unplaced, ...leftover],
     fillers,
-    oversize,
+    adjacency,
+    oversize: oversize || leftover.length > 0,
     entry: { x: x0 * CELL, z: entryY * CELL },
     style: shellStyle(brief, rand),
   };
@@ -1975,5 +2144,13 @@ export function generationSummary(plan, state) {
     stairWidth: plan.stairW,
     occupants: plan.storeyOcc.reduce((a, b) => a + b, 0),
     unplaced: plan.unplaced.map((r) => r.name),
+    // What the brief asked for about where two rooms sit, and whether the
+    // layout managed it. Reported either way: a generator that quietly failed
+    // to honour a sentence somebody typed is one you cannot trust with the
+    // next one.
+    adjacency: (plan.adjacency || []).map((r) => ({
+      a: r.a, b: r.b, want: r.want, done: !!r.done, why: r.why || null,
+      gap: Number.isFinite(r.after) ? Math.round(r.after) : null,
+    })),
   };
 }

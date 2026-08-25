@@ -2477,7 +2477,10 @@ const GEN_FLAGS = {
 let genBrief = { ...DEFAULT_BRIEF };
 
 function readGenFields() {
-  const raw = { band: genBand.value, scheme: genScheme.value };
+  // The controls do not carry the adjacency rules — nothing on the sheet
+  // edits them except the chips — so they come off the brief the sheet is
+  // already holding.
+  const raw = { band: genBand.value, scheme: genScheme.value, adjacency: genBrief.adjacency };
   for (const [key, id] of Object.entries(GEN_FIELDS)) raw[key] = Number($(id).value);
   for (const [key, id] of Object.entries(GEN_FLAGS)) raw[key] = $(id).checked;
   return normalizeBrief(raw);
@@ -2489,6 +2492,27 @@ function writeGenFields(brief) {
   for (const [key, id] of Object.entries(GEN_FIELDS)) $(id).value = String(brief[key]);
   for (const [key, id] of Object.entries(GEN_FLAGS)) $(id).checked = brief[key];
 }
+
+// The adjacency rules the sheet is holding, as chips with a way to take one
+// off again. They come only from the sentence box — there is no widget for
+// "pick two rooms and a relation", because the sentence *is* that widget and
+// a second way to say the same thing is a second thing to keep in step.
+function renderGenAdjacency() {
+  const el = $('gen-adjacency');
+  const rules = genBrief.adjacency || [];
+  el.classList.toggle('hidden', !rules.length);
+  el.innerHTML = rules.map((r, i) =>
+    `<span class="rule">${esc(r.a)} ${r.want === 'apart' ? 'away from' : 'next to'} ` +
+    `${esc(r.b)}<button type="button" data-rule="${i}" title="Drop this rule" ` +
+    `aria-label="Drop ${esc(r.a)} ${esc(r.want)} ${esc(r.b)}">×</button></span>`).join('');
+}
+
+$('gen-adjacency').addEventListener('click', (e) => {
+  const i = Number(e.target.dataset && e.target.dataset.rule);
+  if (!Number.isInteger(i)) return;
+  genBrief = normalizeBrief({ ...genBrief, adjacency: genBrief.adjacency.filter((_, n) => n !== i) });
+  renderGenAdjacency();
+});
 
 function renderGenSchedule() {
   $('gen-scheme-note').textContent = schemeEntry(genBrief.scheme).note;
@@ -2522,6 +2546,7 @@ $('gen-read').addEventListener('click', () => {
   const r = parseBrief($('gen-brief').value, readGenFields());
   genBrief = r.brief;
   writeGenFields(genBrief);
+  renderGenAdjacency();
   renderGenSchedule();
   const read = `<span class="read">Read: ${esc(r.echo)}.</span>`;
   const ignored = r.ignored.length
@@ -2535,6 +2560,7 @@ $('gen-btn').addEventListener('click', openGenerator);
 function openGenerator() {
   if (mode === 'walk') setMode('edit');
   writeGenFields(genBrief);
+  renderGenAdjacency();
   renderGenSchedule();
   openModal(genOverlay, $('gen-brief'));
 }
@@ -2563,6 +2589,17 @@ $('gen-go').addEventListener('click', () => {
         `${sum.props.toLocaleString()} pieces of furniture`,
       ];
       let text = `Generated — ${bits.join(', ')}.`;
+      // What the brief asked about where two rooms sit, and whether the layout
+      // could do it. Said out loud in both directions.
+      const kept = sum.adjacency.filter((r) => r.done);
+      const missed = sum.adjacency.filter((r) => !r.done);
+      if (kept.length) {
+        text += ` Kept ${kept.map((r) => `${r.a} ${r.want === 'apart' ? 'away from' : 'next to'} ${r.b}`).join(' and ')}.`;
+      }
+      if (missed.length) {
+        text += ` Could not ${missed.map((r) => `put ${r.a} ${r.want === 'apart' ? 'away from' : 'next to'} ${r.b}` +
+          (r.why ? ` (${r.why})` : r.gap !== null ? ` (closest ${r.gap} ft)` : '')).join(' or ')}.`;
+      }
       if (plan.oversize) {
         text += ` ${plan.unplaced.length} room${plan.unplaced.length === 1 ? '' : 's'} ` +
           "didn't fit on the grid: this brief wants more building than the 800ft lattice holds.";

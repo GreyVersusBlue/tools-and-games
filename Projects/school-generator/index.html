@@ -622,6 +622,18 @@
     #gen-echo { font-size: 12px; line-height: 1.5; margin-top: 8px; }
     #gen-echo .read { color: var(--text); }
     #gen-echo .ignored { color: var(--warn, #f0a44a); }
+    /* What the brief asked about where two rooms sit. Chips rather than a
+       list, because it is a short list and each entry is three words. */
+    #gen-adjacency { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    #gen-adjacency.hidden { display: none; }
+    #gen-adjacency .rule {
+      font-size: 11px; padding: 2px 8px; border-radius: 10px;
+      background: var(--panel-2, rgba(127,127,127,0.12)); color: var(--text);
+    }
+    #gen-adjacency .rule button {
+      background: none; border: 0; padding: 0 0 0 6px; font-size: 12px;
+      color: var(--text-dim); cursor: pointer;
+    }
     #gen-schedule {
       max-height: 30vh; overflow-y: auto; margin-top: 6px;
       font-size: 11.5px; line-height: 1.55; color: var(--text-dim);
@@ -1445,7 +1457,7 @@
       <div class="section-label">Brief</div>
       <label for="gen-brief" class="visually-hidden">Describe the school in a sentence</label>
       <textarea id="gen-brief" rows="2" maxlength="400"
-        placeholder="a two-storey middle school for 600 students with a library…"></textarea>
+        placeholder="a two-storey courtyard middle school for 600 with the band room away from the library…"></textarea>
       <div class="row" style="margin-top:8px; justify-content:flex-start">
         <button id="gen-read" type="button">Read the brief</button>
       </div>
@@ -1485,6 +1497,7 @@
         </div>
       </div>
       <p class="hint" id="gen-scheme-note"></p>
+      <div id="gen-adjacency" class="hidden"></div>
       <div class="opts" style="margin-top:10px">
         <label class="opt"><input type="checkbox" id="gen-gym" checked /> Gymnasium</label>
         <label class="opt"><input type="checkbox" id="gen-cafeteria" checked /> Cafeteria</label>

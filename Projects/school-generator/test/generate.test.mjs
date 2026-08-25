@@ -23,6 +23,7 @@ import { computeFloorPlan } from '../js/blueprint.js';
 import {
   SPINE_W, WING_CORR_W, WING_BAY_D, HEAD_STAIR_W,
   layoutSchool, buildSchool, expandProgram, generationSummary, exteriorDoors,
+  applyAdjacency, nearestPair, ADJACENT_FT, APART_FT,
 } from '../js/generate.js';
 
 const BRIEF = { students: 600, band: 'middle', storeys: 2, seed: 1 };
@@ -422,4 +423,83 @@ test('the generation summary names the scheme it drew', () => {
     assert.ok(sum.schemeLabel.length > 0);
     assert.ok(sum.rooms > 0 && sum.exits > 0);
   }
+});
+
+
+// ---------- adjacency ----------
+
+const ruleFor = (plan, a, b) => plan.adjacency.find((r) => r.a === a && r.b === b);
+
+test('the layout keeps two blocks together when the brief asks it to', () => {
+  for (const scheme of SCHEME_KEYS) {
+    const plan = layoutSchool({
+      ...BRIEF, scheme,
+      adjacency: [{ a: 'gym', b: 'cafeteria', want: 'near' }],
+    });
+    const rule = ruleFor(plan, 'gym', 'cafeteria');
+    assert.ok(rule, `${scheme} reports what it did with the rule`);
+    assert.ok(rule.after <= rule.before + 1e-9,
+      `${scheme} did not push them further apart than they started`);
+  }
+  // The spine lays its blocks in a row, so this one is exact: they end up
+  // sharing a wall.
+  const spine = layoutSchool({ ...BRIEF, adjacency: [{ a: 'gym', b: 'cafeteria', want: 'near' }] });
+  assert.equal(ruleFor(spine, 'gym', 'cafeteria').after, 0);
+  assert.equal(ruleFor(spine, 'gym', 'cafeteria').done, true);
+});
+
+test('...and pushes two rooms apart when it asks for that instead', () => {
+  const near = layoutSchool({ ...BRIEF, scheme: 'courtyard' });
+  const apart = layoutSchool({
+    ...BRIEF, scheme: 'courtyard',
+    adjacency: [{ a: 'music', b: 'library', want: 'apart' }],
+  });
+  const rule = ruleFor(apart, 'music', 'library');
+  assert.ok(rule.after > rule.before, 'it moved them');
+  assert.ok(rule.after >= APART_FT, `${rule.after} ft is away from`);
+  assert.equal(rule.done, true);
+  // ...and the room count is untouched: a swap moves what a room is, never
+  // whether it exists.
+  const count = (plan, key) => plan.rects.flat().filter((r) => r.key === key).length;
+  for (const key of ['music', 'library', 'classroom', 'science']) {
+    assert.equal(count(apart, key), count(near, key), `${key} count is unchanged`);
+  }
+});
+
+test('a rule the program cannot honour is reported, not silently dropped', () => {
+  const plan = layoutSchool({
+    ...BRIEF, gym: false,
+    adjacency: [{ a: 'gym', b: 'cafeteria', want: 'near' }],
+  });
+  const rule = ruleFor(plan, 'gym', 'cafeteria');
+  assert.equal(rule.done, false);
+  assert.equal(rule.why, 'not in this program');
+  assert.equal(generationSummary(plan, null).adjacency[0].done, false);
+});
+
+test('distance between two rooms is measured edge to edge', () => {
+  const a = { x0: 0, y0: 0, x1: 9, y1: 9, storey: 0 };
+  const b = { x0: 10, y0: 0, x1: 19, y1: 9, storey: 0 };
+  assert.equal(nearestPair([a], [b]), 0, 'sharing a wall is no distance at all');
+  const far = { x0: 30, y0: 0, x1: 39, y1: 9, storey: 0 };
+  assert.equal(nearestPair([a], [far]), 20 * CELL);
+  // A storey between two rooms counts for more than the stair is long.
+  const above = { ...a, storey: 1 };
+  assert.ok(nearestPair([a], [above]) > ADJACENT_FT);
+});
+
+test('applyAdjacency swaps what a room is, never where it is', () => {
+  const rects = [[
+    { kind: 'room', key: 'music', name: 'Band Room', tpl: null, x0: 0, y0: 0, x1: 3, y1: 3, w: 4, h: 4, storey: 0 },
+    { kind: 'room', key: 'library', name: 'Library', tpl: null, x0: 5, y0: 0, x1: 8, y1: 3, w: 4, h: 4, storey: 0 },
+    { kind: 'room', key: 'classroom', name: 'Room 101', tpl: null, x0: 60, y0: 0, x1: 63, y1: 3, w: 4, h: 4, storey: 0 },
+  ]];
+  const before = rects[0].map((r) => `${r.x0},${r.y0}`);
+  const report = applyAdjacency(rects, [{ a: 'music', b: 'library', want: 'apart' }]);
+  assert.equal(report.length, 1);
+  assert.deepEqual(rects[0].map((r) => `${r.x0},${r.y0}`), before, 'nothing moved');
+  const music = rects[0].find((r) => r.key === 'music');
+  assert.equal(music.x0, 60, 'the band room is now the far slot');
+  assert.equal(music.name, 'Band Room', 'and it took its name with it');
+  assert.equal(report[0].done, true);
 });

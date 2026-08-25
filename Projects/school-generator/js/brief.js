@@ -97,6 +97,96 @@ export const SCHEME_RULES = [
   { value: 'spine', match: /spine|finger plan|wings?\b|comb plan|corridor plan/ },
 ];
 
+// ---------- rooms, as words ----------
+//
+// "Put the band room away from the library" is a sentence with three parts:
+// two rooms and a relation between them. This is the first part — the same
+// kind of table as every other one here, mapping the words somebody writes to
+// the program keys `program.js` deals in. Specific above general, so "art
+// studio" reaches `art` before "studio" reaches anything and "science lab"
+// reaches `science` before "lab" does.
+export const ROOM_WORDS = [
+  { key: 'music', match: /band ?rooms?|music rooms?|\bmusic\b|orchestra|choir|practice rooms?/ },
+  { key: 'library', match: /librar\w*|media cent\w*|learning commons/ },
+  { key: 'gym', match: /gymnasiums?|\bgyms?\b|sports halls?/ },
+  { key: 'cafeteria', match: /cafeterias?|dining halls?|dining rooms?|lunch ?rooms?|canteens?/ },
+  { key: 'kitchen', match: /kitchens?/ },
+  { key: 'science', match: /science labs?|science rooms?|\bscience\b|\blabs?\b|laborator\w*/ },
+  { key: 'art', match: /art studios?|art rooms?|\bart\b/ },
+  { key: 'shop', match: /wood ?shops?|metal ?shops?|\bshops?\b|workshops?|makerspaces?|technology rooms?/ },
+  { key: 'computer', match: /computer labs?|computer rooms?|\bcomputers?\b|\bict\b|it suites?/ },
+  { key: 'sped', match: /\bsped\b|special ed\w*|resource rooms?|learning support/ },
+  { key: 'principal', match: /principals?|head ?teachers?|heads? office/ },
+  { key: 'health', match: /health rooms?|nurses? offices?|\bnurse\b|medical rooms?|sick ?bay/ },
+  { key: 'counsel', match: /counsel\w*|guidance/ },
+  { key: 'office', match: /main offices?|reception|admin\w*|\boffices?\b/ },
+  { key: 'workroom', match: /staff ?rooms?|work ?rooms?|teachers? lounge|staff lounge/ },
+  { key: 'locker-g', match: /girls'? locker rooms?/ },
+  { key: 'locker-b', match: /boys'? locker rooms?/ },
+  { key: 'restroom-g', match: /girls'? (?:restrooms?|toilets?|bathrooms?)/ },
+  { key: 'restroom-b', match: /boys'? (?:restrooms?|toilets?|bathrooms?)/ },
+  { key: 'classroom', match: /classrooms?|home ?rooms?|general teaching/ },
+];
+
+// ...and the second part: the relation. Two lists, because "away from" and
+// "next to" are the only two things this can act on and pretending to read
+// "roughly near the north end" would be pretending.
+export const ADJACENCY_RULES = [
+  {
+    want: 'apart',
+    match: /\b(?:well )?away from|\bfar from|\bnowhere near|\bnot (?:near|next to|beside|by)|\bapart from|\bclear of|\baway\b/,
+  },
+  {
+    want: 'near',
+    match: /\bnext to|\bbeside|\badjacent to|\bclose to|\bnear(?:by)?\b|\bopposite|\bby the\b|\balongside/,
+  },
+];
+export const MAX_ADJACENCY = 6;
+
+// Every room word in the text, with where it was found.
+export function roomWordsIn(text) {
+  const out = [];
+  const s = String(text || '');
+  for (const row of ROOM_WORDS) {
+    for (const m of s.matchAll(new RegExp(row.match.source, 'g'))) {
+      out.push({ key: row.key, at: m.index, len: m[0].length, text: m[0] });
+    }
+  }
+  // Overlapping matches: the longest one that starts earliest wins, which is
+  // what puts "science lab" ahead of the bare "lab" inside it.
+  out.sort((a, b) => a.at - b.at || b.len - a.len);
+  const kept = [];
+  for (const w of out) {
+    if (kept.some((k) => w.at < k.at + k.len && k.at < w.at + w.len)) continue;
+    kept.push(w);
+  }
+  return kept;
+}
+
+// "Put the band room away from the library" → { a: 'music', b: 'library',
+// want: 'apart' }. The room word nearest on each side of the relation is the
+// pair; anything further away than that is a different sentence.
+export function adjacencyIn(text) {
+  const s = String(text || '');
+  const words = roomWordsIn(s);
+  const out = [];
+  const spans = [];
+  for (const rule of ADJACENCY_RULES) {
+    for (const m of s.matchAll(new RegExp(rule.match.source, 'g'))) {
+      const before = words.filter((w) => w.at + w.len <= m.index).pop();
+      const after = words.find((w) => w.at >= m.index + m[0].length);
+      if (!before || !after || before.key === after.key) continue;
+      if (m.index - (before.at + before.len) > NEAR_WINDOW) continue;
+      if (after.at - (m.index + m[0].length) > NEAR_WINDOW) continue;
+      if (out.some((r) => r.a === before.key && r.b === after.key)) continue;
+      if (out.length >= MAX_ADJACENCY) continue;
+      out.push({ a: before.key, b: after.key, want: rule.want });
+      spans.push([before.at, after.at + after.len]);
+    }
+  }
+  return { rules: out, spans };
+}
+
 const FLAG_RULES = [
   { field: 'gym', value: false, match: /\bno gym|without a gym|no gymnasium|\bno pe\b/ },
   { field: 'gym', value: true, match: /\bwith a gym|\bgymnasium\b|\bgym\b|sports hall/ },
@@ -236,7 +326,21 @@ export function parseBrief(text, base = DEFAULT_BRIEF) {
     }
   }
 
-  // 6. The flags. First row per field wins, so a "no gym" ahead of the plain
+  // 6. Adjacency: two rooms and a relation. It sets a *list* rather than a
+  // field, so it goes through `say` once per rule with the whole phrase
+  // claimed — which is what stops "the band room" coming back as an ignored
+  // word when it was the whole point of the sentence.
+  const adj = adjacencyIn(s);
+  if (adj.rules.length) {
+    out.adjacency = adj.rules;
+    adj.rules.forEach((rule, i) => {
+      const [from, to] = adj.spans[i];
+      matched.push({ field: 'adjacency', value: rule, phrase: s.slice(from, to) });
+      claim(from, to - from);
+    });
+  }
+
+  // 7. The flags. First row per field wins, so a "no gym" ahead of the plain
   // "gym" row is what makes the negative readable at all.
   const claimed = new Set();
   for (const rule of FLAG_RULES) {
@@ -265,6 +369,9 @@ function describe(m) {
   if (m.field === 'storeys') return `${m.value} storey${m.value === 1 ? '' : 's'}`;
   if (m.field === 'seed') return `seed ${m.value}`;
   if (m.field === 'scheme') return `a ${m.value} plan`;
+  if (m.field === 'adjacency') {
+    return `${m.value.a} ${m.value.want === 'apart' ? 'away from' : 'next to'} ${m.value.b}`;
+  }
   return `${m.value ? 'with' : 'without'} a ${m.field === 'site' ? 'site' : m.field}`;
 }
 

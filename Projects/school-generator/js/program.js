@@ -150,6 +150,11 @@ export const DEFAULT_BRIEF = {
   storeys: 2,
   seed: 1,
   scheme: DEFAULT_SCHEME,
+  // "Put the band room away from the library." A list of {a, b, want}, where
+  // a and b are room keys from the schedule below and `want` is 'near' or
+  // 'apart'. Empty by default, because a brief that says nothing about where
+  // two rooms sit relative to each other is not asking for anything.
+  adjacency: [],
   gym: true,
   cafeteria: true,
   library: true,
@@ -160,6 +165,37 @@ const clampInt = (v, dflt, lo, hi) => {
   const n = typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : dflt;
   return Math.min(hi, Math.max(lo, n));
 };
+
+// Every room key the schedule can produce — the vocabulary an adjacency rule
+// is allowed to name. Gathered here rather than written out twice: a band that
+// gains a special gains it in the rules too, and nothing has to remember.
+export const ROOM_KEYS = new Set([
+  'classroom', 'restroom-g', 'restroom-b',
+  'office', 'principal', 'health', 'counsel', 'workroom', 'custodial', 'mech',
+  'gym', 'locker-g', 'locker-b', 'cafeteria', 'kitchen', 'library',
+  ...BANDS.flatMap((b) => b.specials.map((sp) => sp.key)),
+]);
+
+export const ADJACENCY_WANTS = ['near', 'apart'];
+export const MAX_ADJACENCY_RULES = 6;
+
+// A rule names two *different* rooms the schedule can actually contain, and
+// one of two relations. Anything else is dropped rather than carried: a rule
+// the layout cannot act on is a rule the panel would print and the building
+// would ignore.
+function cleanAdjacency(raw, keys) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    if (!keys.has(r.a) || !keys.has(r.b) || r.a === r.b) continue;
+    if (!ADJACENCY_WANTS.includes(r.want)) continue;
+    if (out.some((o) => o.a === r.a && o.b === r.b && o.want === r.want)) continue;
+    out.push({ a: r.a, b: r.b, want: r.want });
+    if (out.length >= MAX_ADJACENCY_RULES) break;
+  }
+  return out;
+}
 
 export function normalizeBrief(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
@@ -172,6 +208,7 @@ export function normalizeBrief(raw) {
     storeys: clampInt(src.storeys, DEFAULT_BRIEF.storeys, 1, 4),
     seed: clampInt(src.seed, DEFAULT_BRIEF.seed, 1, 0x7fffffff),
     scheme,
+    adjacency: cleanAdjacency(src.adjacency, ROOM_KEYS),
     gym: bool(src.gym, DEFAULT_BRIEF.gym),
     cafeteria: bool(src.cafeteria, DEFAULT_BRIEF.cafeteria),
     library: bool(src.library, DEFAULT_BRIEF.library),

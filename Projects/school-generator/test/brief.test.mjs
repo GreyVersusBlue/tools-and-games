@@ -5,8 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseBrief, numbersIn } from '../js/brief.js';
-import { DEFAULT_BRIEF, MIN_STUDENTS, MAX_STUDENTS } from '../js/program.js';
+import { parseBrief, numbersIn, roomWordsIn, adjacencyIn } from '../js/brief.js';
+import { DEFAULT_BRIEF, MIN_STUDENTS, MAX_STUDENTS, normalizeBrief } from '../js/program.js';
 
 const parse = (s) => parseBrief(s);
 
@@ -151,4 +151,44 @@ test('a sentence can name the scheme, and says so when it did', () => {
   // ...and a sentence that names no shape leaves whatever the sheet had.
   assert.equal(parseBrief('a middle school for 600').brief.scheme, 'spine');
   assert.equal(parseBrief('a middle school for 600', { scheme: 'compact' }).brief.scheme, 'compact');
+});
+
+
+test('two rooms and a relation come back as a rule', () => {
+  const r = parseBrief('a middle school for 600 with the band room away from the library');
+  assert.deepEqual(r.brief.adjacency, [{ a: 'music', b: 'library', want: 'apart' }]);
+  assert.match(r.echo, /music away from library/);
+  // The whole phrase counts as understood, so "band room" is not reported as
+  // a word that was ignored.
+  assert.ok(!r.ignored.includes('band'));
+  assert.ok(!r.ignored.includes('library'));
+});
+
+test('both relations read, and more than one rule per sentence', () => {
+  const r = parseBrief('put the gym next to the cafeteria and keep the science labs away from the music rooms');
+  assert.equal(r.brief.adjacency.length, 2);
+  assert.ok(r.brief.adjacency.some((x) => x.a === 'gym' && x.b === 'cafeteria' && x.want === 'near'));
+  assert.ok(r.brief.adjacency.some((x) => x.want === 'apart' && x.a === 'science' && x.b === 'music'));
+});
+
+test('the longer room word wins the overlap it is inside', () => {
+  const words = roomWordsIn('the science lab next to the computer lab');
+  assert.deepEqual(words.map((w) => w.key), ['science', 'computer']);
+});
+
+test('a relation with nothing on one side of it is not a rule', () => {
+  assert.deepEqual(parseBrief('a school away from the road').brief.adjacency, []);
+  assert.deepEqual(parseBrief('the library next to the library').brief.adjacency, []);
+  // ...and neither is one whose rooms are half a sentence apart.
+  assert.deepEqual(
+    adjacencyIn('the band room, which every school argues about, away from the library').rules,
+    []);
+});
+
+test('a rule naming a room the schedule cannot make is dropped', () => {
+  assert.deepEqual(normalizeBrief({ adjacency: [{ a: 'planetarium', b: 'library', want: 'apart' }] }).adjacency, []);
+  assert.deepEqual(normalizeBrief({ adjacency: [{ a: 'music', b: 'music', want: 'apart' }] }).adjacency, []);
+  assert.deepEqual(normalizeBrief({ adjacency: [{ a: 'music', b: 'library', want: 'beside' }] }).adjacency, []);
+  assert.deepEqual(normalizeBrief({ adjacency: 'nonsense' }).adjacency, []);
+  assert.equal(normalizeBrief({}).adjacency.length, 0);
 });
