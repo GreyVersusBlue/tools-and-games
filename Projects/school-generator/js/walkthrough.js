@@ -41,7 +41,7 @@ import { terrainField, emptyField, groundAt } from './terrain.js';
 import { siteSurfaceAt, surfaceEntry } from './site.js';
 import {
   GRAVITY, TERMINAL_V, JUMP_V, STEP_UP,
-  buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoors,
+  buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoorsFor,
 } from './collide.js';
 import { lookEulerDelta } from './touch.js';
 
@@ -56,6 +56,12 @@ const RIDE_BAND = 7;     // ft
 // "blocked" rather than as teleporting through it; capping it here means a
 // dropped frame costs you distance instead of stopping you dead.
 const MAX_STEP = 1.5;    // ft
+// Following somebody: their own eye height, and where the over-the-shoulder
+// camera sits relative to them. Far enough back to see them walk, near enough
+// that a corridor doesn't put a wall between you.
+const EYE_FOLLOW = 5.4;  // ft
+const OTS_BACK = 8;      // ft
+const OTS_UP = 2.2;      // ft
 
 export function initWalkthrough(camera, domElement, opts = {}) {
   const controls = new PointerLockControls(camera, domElement);
@@ -77,6 +83,16 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   // walked rather than off a timer: walking slowly makes slower footsteps for
   // free, and stopping mid-stride keeps the fraction for when you start again.
   let strideAcc = 0;
+  // Phase 6. The other people in the building, if there are any: a function
+  // the caller hands over that answers "who else is on this storey", which is
+  // all this file ever needs to know about a crowd. Nobody by default, which
+  // is the whole of the pre-Phase-6 behaviour.
+  let bodiesOn = opts.bodies || (() => null);
+  // ...and whose eyes we are looking through, if anyone's. `follow` is null
+  // for the ordinary camera, or { agent, mode } while riding along with
+  // somebody — the wishlist's "day in the life", which turns out to be the
+  // camera giving up its own body rather than growing a new feature.
+  let follow = null;
 
   const fwdV = new THREE.Vector3();
 
@@ -118,7 +134,20 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   domElement.addEventListener('pointerup', onTouchLookUp);
   domElement.addEventListener('pointercancel', onTouchLookUp);
 
+  // Where a storey's collider comes from. Normally this file builds its own
+  // and caches it for the length of the walk — editing and walking are
+  // exclusive, so nothing can change underneath it.
+  //
+  // Phase 6 breaks that exclusivity, and the fix is not a second cache: it is
+  // **one** cache. A school with people in it has agents resolving against
+  // the same walls, and — the part that actually bites — against the same
+  // *door leaves*. Two colliders for one storey means two sets of leaves: the
+  // crowd walks into doors the camera has already opened, because the door it
+  // opened was a different object with the same key. So when there is a crowd,
+  // whoever owns it owns the colliders and hands them over here.
+  let colliderSource = null;
   const colliderFor = (i) => {
+    if (colliderSource) return colliderSource(i) || emptyCollider();
     if (!world || !world.floors[i]) return emptyCollider();
     let c = colliders.get(i);
     if (!c) { c = buildCollider(world, i, catalogEntry, { site }); colliders.set(i, c); }
@@ -130,10 +159,27 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     const feet = camera.position.y - EYE_H;
     const level = world
       ? storeyAt(world, feet, groundAt(site, camera.position.x, camera.position.z)) + 1 : 1;
-    const text = `Level ${level} · ${ghost ? 'ghost (no-clip)' : 'walking'}`;
+    const text = follow && follow.agent
+      ? `Level ${level} · following ${follow.agent.name} (${follow.mode === 'fps' ? 'first person' : 'over the shoulder'})`
+      : `Level ${level} · ${ghost ? 'ghost (no-clip)' : 'walking'}`;
     if (text === hudText) return;
     hudText = text;
     opts.onHud(text);
+  }
+
+  // Look through somebody else's eyes, or over their shoulder. Neither is an
+  // animation: an agent already has a position, a facing and a height, and
+  // both views are that record read from a different distance.
+  function rideAlong(agent, mode) {
+    const eye = agent.y + EYE_FOLLOW * (agent.height || 1);
+    const fx = Math.sin(agent.facing || 0), fz = Math.cos(agent.facing || 0);
+    if (mode === 'fps') {
+      camera.position.set(agent.x, eye, agent.z);
+      camera.lookAt(agent.x + fx * 20, eye - 1.2, agent.z + fz * 20);
+      return;
+    }
+    camera.position.set(agent.x - fx * OTS_BACK, eye + OTS_UP, agent.z - fz * OTS_BACK);
+    camera.lookAt(agent.x + fx * 6, eye - 0.4, agent.z + fz * 6);
   }
 
   // Ride the elevator you are standing in. Nothing happens if you aren't in
@@ -249,10 +295,12 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       dz = (dz / mag) * step;
     } else { dx = 0; dz = 0; }
 
-    const collider = colliderFor(
-      storeyAt(world, feet, groundAt(site, camera.position.x, camera.position.z)));
+    const floorIndex = storeyAt(world, feet, groundAt(site, camera.position.x, camera.position.z));
+    const collider = colliderFor(floorIndex);
+    // You walk around the crowd, and it walks around you: the same body list,
+    // resolved by the same `moveWalker`, from both sides.
     const moved = moveWalker(world, collider, { x: camera.position.x, y: feet, z: camera.position.z },
-      dx, dz, { grounded });
+      dx, dz, { grounded, bodies: bodiesOn(floorIndex) });
     const walked = Math.hypot(moved.x - camera.position.x, moved.z - camera.position.z);
     camera.position.x = moved.x;
     camera.position.z = moved.z;
@@ -317,6 +365,25 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       reportHud();
     },
     get touchActive() { return touchActive; },
+    // Whose eyes. `null` gives the camera its own body back where it stands.
+    get following() { return follow ? follow.agent : null; },
+    get followMode() { return follow ? follow.mode : null; },
+    setFollow(agent, mode = 'ots') {
+      follow = agent ? { agent, mode } : null;
+      if (follow) { vy = 0; grounded = true; }
+      hudText = '';
+      reportHud();
+    },
+    // The crowd, for collision and for the doors. Handing in a function rather
+    // than an array keeps this file out of the business of knowing when the
+    // population changed.
+    setBodies(fn) { bodiesOn = fn || (() => null); },
+    // ...and where the world they are resolved against comes from. Null gives
+    // this file its own back.
+    setColliders(fn) {
+      colliderSource = fn || null;
+      colliders = new Map();
+    },
     enable(state) {
       active = true;
       world = state;
@@ -342,6 +409,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     },
     disable() {
       active = false;
+      follow = null;
       world = null;
       site = emptyField();
       keys.clear();
@@ -372,6 +440,16 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     rideElevator,
     update(dt) {
       if (!active || (!controls.isLocked && !touchActive)) return;
+      // Riding along with somebody. The camera stops steering itself and
+      // becomes a property of the agent — which is why this is four lines
+      // rather than a mode: everything about *where* it goes is already being
+      // worked out by agents.js, once per frame, for a body that walks the
+      // same corridors under the same physics.
+      if (follow && follow.agent) {
+        rideAlong(follow.agent, follow.mode);
+        reportHud();
+        return;
+      }
       const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED;
       const fwd = touchActive ? moveAxes.y : (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
       const right = touchActive ? moveAxes.x : (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
@@ -381,8 +459,14 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       // you might be standing on — including in ghost mode, where a corridor
       // of doors opening ahead of you is half the reason to fly down it.
       if (world) {
-        const collider = colliderFor(storeyAt(world, camera.position.y - EYE_H));
-        if (updateDoors(collider, camera.position.x, camera.position.z, dt) && opts.onDoors) {
+        const floorIndex = storeyAt(world, camera.position.y - EYE_H);
+        const collider = colliderFor(floorIndex);
+        // The camera is one body among however many; a leaf answers to
+        // whoever is nearest it, which in a busy corridor is rarely you.
+        const crowd = bodiesOn(floorIndex);
+        const bodies = [{ x: camera.position.x, z: camera.position.z, open: true }];
+        if (crowd) for (const b of crowd) bodies.push(b);
+        if (updateDoorsFor(collider, bodies, dt) && opts.onDoors) {
           opts.onDoors(collider.doors);
         }
       }

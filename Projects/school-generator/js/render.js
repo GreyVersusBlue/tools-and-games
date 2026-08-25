@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { skyState, defaultEnv } from './sky.js';
+import { skyState, defaultEnv, mixHex } from './sky.js';
 import {
   budgetFor, spillAmbient, emitOf, LUMENS_TO_CANDELA, MAX_DYNAMIC_LIGHTS,
 } from './lights.js';
@@ -3963,6 +3963,268 @@ export function initRender(canvas) {
     return plan;
   }
 
+  // ---------- the crowd ----------
+  //
+  // Phase 6 puts people in the building, and they are drawn the way everything
+  // else that repeats is drawn here: instanced. A person is eight rigid parts
+  // — head, torso, two thighs, two shins, two arms — and each part is one
+  // `InstancedMesh` shared by the whole school, so a hundred and fifty people
+  // cost eight draw calls rather than twelve hundred.
+  //
+  // **No skinning, and no skeleton.** A rigid-part puppet instances trivially
+  // (a skinned one does not, without a texture of bone matrices), and at the
+  // distance a floor-plan tool is ever viewed from, a hinged plank of a leg
+  // reads as a leg. What matters is that the *right number of people* are in
+  // the right corridor facing the right way, which is a question about the
+  // building rather than about the animation.
+  //
+  // Every part geometry hangs from its own joint — a thigh's origin is the
+  // hip, an arm's is the shoulder — so posing a limb is setting a rotation
+  // rather than working out where a rotated box's centre ended up. Colours are
+  // per instance (`setColorAt`), which is why the geometries are baked white:
+  // `propMat` has `vertexColors` on, so white × instance colour is the
+  // instance colour.
+  const CROWD_MAX = 640;
+  // A body, in feet, at scale 1. Sizes are a person: 5.8ft to the crown, 2.9ft
+  // to the hip, a 13in shoulder width.
+  const BODY = {
+    hip: 2.85, thigh: 1.5, shin: 1.35, torso: 1.9, head: 0.44,
+    // How far below the top of the torso the shoulders are, and how far out
+    // from the middle — two different measurements that a single `shoulder`
+    // number conflated in the first cut of this, with the arms coming out of
+    // somebody's ribs.
+    shoulderDrop: 0.26, shoulderX: 0.66, hipX: 0.3, arm: 1.6,
+  };
+  const crowdGroup = new THREE.Group();
+  crowdGroup.visible = false;
+  scene.add(crowdGroup);
+  const heatGroup = new THREE.Group();
+  heatGroup.visible = false;
+  scene.add(heatGroup);
+  let crowdMeshes = null;
+  let heatMesh = null;
+  const _crowdColor = new THREE.Color();
+  const _crowdQ = new THREE.Quaternion();
+  const _crowdE = new THREE.Euler(0, 0, 0, 'YXZ');
+  const _crowdV = new THREE.Vector3();
+  const _crowdS = new THREE.Vector3(1, 1, 1);
+
+  function crowdGeometries() {
+    const w = '#ffffff';
+    return {
+      // Each hangs from its joint at the local origin.
+      // The head's pivot is the top of the torso and the sphere sits a
+      // fraction lower than its own radius, so it *rests* on the shoulders.
+      // Hung off a neck-length offset instead, it floats — which is precisely
+      // what the first version of this did, to everybody, all day.
+      head: sph(BODY.head, 0, BODY.head * 0.86, 0, w, 10),
+      torso: box(1.15, BODY.torso, 0.66, 0, BODY.torso / 2, 0, w),
+      thighL: box(0.42, BODY.thigh, 0.42, 0, -BODY.thigh / 2, 0, w),
+      thighR: box(0.42, BODY.thigh, 0.42, 0, -BODY.thigh / 2, 0, w),
+      shinL: box(0.36, BODY.shin, 0.4, 0, -BODY.shin / 2, 0, '#c8c8c8'),
+      shinR: box(0.36, BODY.shin, 0.4, 0, -BODY.shin / 2, 0, '#c8c8c8'),
+      // Arms and shins are baked a shade darker than white, so that when the
+      // instance colour multiplies through, a sleeve reads as a sleeve
+      // against the shirt beside it and a shoe reads as a shoe. Same trick as
+      // every prop in the catalog, one level down.
+      armL: box(0.26, BODY.arm, 0.28, 0, -BODY.arm / 2, 0, '#c6c6c6'),
+      armR: box(0.26, BODY.arm, 0.28, 0, -BODY.arm / 2, 0, '#c6c6c6'),
+    };
+  }
+
+  function buildCrowdMeshes() {
+    if (crowdMeshes) return crowdMeshes;
+    const geos = crowdGeometries();
+    crowdMeshes = {};
+    for (const [name, geo] of Object.entries(geos)) {
+      const mesh = new THREE.InstancedMesh(geo, propMat, CROWD_MAX);
+      mesh.frustumCulled = false;      // one mesh spans the whole school
+      mesh.castShadow = true;
+      mesh.receiveShadow = false;
+      mesh.count = 0;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      crowdMeshes[name] = mesh;
+      crowdGroup.add(mesh);
+    }
+    return crowdMeshes;
+  }
+
+  // Place one part: its joint in world space, its own swing, the body's
+  // facing. Rotation order is YXZ so the swing happens in the body's frame
+  // rather than the world's — turn first, then lift the leg.
+  function poseCrowdPart(mesh, i, jx, jy, jz, facing, swing, scale) {
+    _crowdE.set(swing, facing, 0);
+    _crowdQ.setFromEuler(_crowdE);
+    _crowdV.set(jx, jy, jz);
+    _crowdS.set(scale, scale, scale);
+    _dummy.matrix.compose(_crowdV, _crowdQ, _crowdS);
+    mesh.setMatrixAt(i, _dummy.matrix);
+  }
+
+  // The whole population, once a frame. `agents` is agents.js's own array —
+  // this reads it and never writes to it, the same deal `poseDoors` has with
+  // openings.js's leaves.
+  function setCrowd(agents, opts = {}) {
+    const meshes = buildCrowdMeshes();
+    if (!agents || !agents.length) {
+      for (const m of Object.values(meshes)) m.count = 0;
+      crowdGroup.visible = false;
+      return 0;
+    }
+    crowdGroup.visible = true;
+    const recolor = opts.recolor !== false;
+    const hideFloor = opts.hideAbove;      // edit mode draws one storey at a time
+    let n = 0;
+    for (const a of agents) {
+      if (a.state === 'out') continue;
+      if (hideFloor !== undefined && (a.floorIndex ?? 0) > hideFloor) continue;
+      if (n >= CROWD_MAX) break;
+      const s = a.height || 1;
+      const sit = a.state === 'sit';
+      const y = a.y + (sit && a.seat ? a.seat.h - BODY.hip * s : 0);
+      const f = a.facing || 0;
+      const cos = Math.cos(f), sin = Math.sin(f);
+      // Right-hand axis in the body's frame, for the parts that come in pairs.
+      const rx = cos, rz = -sin;
+      const hipY = y + BODY.hip * s;
+      const shoulderY = hipY + (BODY.torso - BODY.shoulderDrop) * s;
+      // The gait. A walker's legs swing about the hip and the arms answer
+      // them; somebody sitting has their thighs forward and their shins down;
+      // somebody standing still does neither.
+      const moving = a.state === 'walk';
+      const g = a.gait || 0;
+      const swing = moving ? Math.sin(g) * 0.3 : 0;
+      const thighL = sit ? -1.35 : swing;
+      const thighR = sit ? -1.35 : -swing;
+      const shinL = sit ? 0 : thighL + Math.max(0, swing) * 0.8;
+      const shinR = sit ? 0 : thighR + Math.max(0, -swing) * 0.8;
+      const armSwing = moving ? -swing * 0.8 : (sit ? -0.35 : 0.05);
+      const lean = moving ? 0.06 : 0;
+
+      const hipLX = a.x + rx * BODY.hipX * s, hipLZ = a.z + rz * BODY.hipX * s;
+      const hipRX = a.x - rx * BODY.hipX * s, hipRZ = a.z - rz * BODY.hipX * s;
+      const shX = BODY.shoulderX * s;
+
+      poseCrowdPart(meshes.torso, n, a.x, hipY, a.z, f, lean, s);
+      poseCrowdPart(meshes.head, n, a.x, hipY + BODY.torso * s, a.z, f, sit ? 0.1 : lean, s);
+      poseCrowdPart(meshes.thighL, n, hipLX, hipY, hipLZ, f, thighL, s);
+      poseCrowdPart(meshes.thighR, n, hipRX, hipY, hipRZ, f, thighR, s);
+      // The knee is wherever the thigh's far end ended up.
+      const kneeL = kneeAt(hipLX, hipY, hipLZ, f, thighL, BODY.thigh * s);
+      const kneeR = kneeAt(hipRX, hipY, hipRZ, f, thighR, BODY.thigh * s);
+      poseCrowdPart(meshes.shinL, n, kneeL.x, kneeL.y, kneeL.z, f, shinL, s);
+      poseCrowdPart(meshes.shinR, n, kneeR.x, kneeR.y, kneeR.z, f, shinR, s);
+      poseCrowdPart(meshes.armL, n, a.x + rx * shX, shoulderY, a.z + rz * shX, f, armSwing, s);
+      poseCrowdPart(meshes.armR, n, a.x - rx * shX, shoulderY, a.z - rz * shX, f, -armSwing, s);
+
+      if (recolor) {
+        _crowdColor.set(a.shirt);
+        meshes.torso.setColorAt(n, _crowdColor);
+        meshes.armL.setColorAt(n, _crowdColor);
+        meshes.armR.setColorAt(n, _crowdColor);
+        _crowdColor.set(a.trousers);
+        meshes.thighL.setColorAt(n, _crowdColor);
+        meshes.thighR.setColorAt(n, _crowdColor);
+        meshes.shinL.setColorAt(n, _crowdColor);
+        meshes.shinR.setColorAt(n, _crowdColor);
+        _crowdColor.set(a.skin);
+        meshes.head.setColorAt(n, _crowdColor);
+      }
+      n++;
+    }
+    for (const m of Object.values(meshes)) {
+      m.count = n;
+      m.instanceMatrix.needsUpdate = true;
+      if (recolor && m.instanceColor) m.instanceColor.needsUpdate = true;
+    }
+    return n;
+  }
+
+  function kneeAt(x, y, z, facing, swing, len) {
+    // The thigh points down, rotated by `swing` about the body's own X axis
+    // and then turned by `facing`: the same composition `poseCrowdPart` makes,
+    // applied to the single point that matters.
+    const dy = -Math.cos(swing) * len;
+    const dz = -Math.sin(swing) * len;
+    return {
+      x: x + Math.sin(facing) * dz,
+      y: y + dy,
+      z: z + Math.cos(facing) * dz,
+    };
+  }
+
+  function clearCrowd() {
+    if (!crowdMeshes) return;
+    for (const m of Object.values(crowdMeshes)) m.count = 0;
+    crowdGroup.visible = false;
+  }
+
+  // ---------- the crowding heatmap ----------
+  //
+  // One flat square per bin of agents.js's crowd field, coloured by how long
+  // the crowd stood in it. This is the playful face of Phase 7's egress
+  // analysis: a fire drill leaves a picture of where the building got tight,
+  // measured rather than predicted.
+  const HEAT_RAMP = [
+    { t: 0.0, c: '#2f6fbf' },
+    { t: 0.35, c: '#3fb08a' },
+    { t: 0.6, c: '#d8c24a' },
+    { t: 0.82, c: '#d9803f' },
+    { t: 1.0, c: '#c33b3b' },
+  ];
+
+  function heatColor(t) {
+    const v = Math.min(1, Math.max(0, t));
+    for (let i = 1; i < HEAT_RAMP.length; i++) {
+      if (v > HEAT_RAMP[i].t && i < HEAT_RAMP.length - 1) continue;
+      const a = HEAT_RAMP[i - 1], b = HEAT_RAMP[i];
+      const k = (v - a.t) / Math.max(1e-6, b.t - a.t);
+      return mixHex(a.c, b.c, Math.min(1, Math.max(0, k)));
+    }
+    return HEAT_RAMP[HEAT_RAMP.length - 1].c;
+  }
+
+  function buildHeatMesh(cells, cell, baseY) {
+    if (heatMesh) {
+      heatGroup.remove(heatMesh);
+      heatMesh.geometry.dispose();
+      heatMesh.material.dispose();
+      heatMesh = null;
+    }
+    if (!cells.length) return;
+    const geo = new THREE.PlaneGeometry(cell, cell);
+    geo.rotateX(-Math.PI / 2);
+    coloredGeo(geo, '#ffffff');
+    const mat = new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false,
+    });
+    heatMesh = new THREE.InstancedMesh(geo, mat, cells.length);
+    heatMesh.frustumCulled = false;
+    cells.forEach((c, i) => {
+      // A hair above the slab, so it reads as paint on the floor rather than
+      // z-fighting with it.
+      _dummy.position.set(c.x, baseY + 0.06, c.z);
+      _dummy.rotation.set(0, 0, 0);
+      _dummy.scale.set(1, 1, 1);
+      _dummy.updateMatrix();
+      heatMesh.setMatrixAt(i, _dummy.matrix);
+      _crowdColor.set(heatColor(c.t));
+      heatMesh.setColorAt(i, _crowdColor);
+    });
+    heatMesh.instanceMatrix.needsUpdate = true;
+    if (heatMesh.instanceColor) heatMesh.instanceColor.needsUpdate = true;
+    heatGroup.add(heatMesh);
+  }
+
+  // `cells` is agents.js's `crowdCells(field, floor)`, already normalised.
+  function setHeat(cells, opts = {}) {
+    const on = !!(cells && cells.length);
+    heatGroup.visible = on;
+    if (!on) { buildHeatMesh([], 4, 0); return 0; }
+    buildHeatMesh(cells, opts.cell || 4, opts.baseY || 0);
+    return cells.length;
+  }
+
   function buildFromState(state) {
     built = state;
     disposeGroup(buildingGroup);
@@ -4128,6 +4390,15 @@ export function initRender(canvas) {
     // same frame without a full rebuild.
     get layers() { return { ...layers }; },
     setLayers(patch) { Object.assign(layers, patch); applyFloorVisibility(); },
+    // --- Phase 6: the people in it ---
+    //
+    // `setCrowd` takes agents.js's own array and poses it; `setHeat` takes
+    // `crowdCells`. Neither module describes anything to the other — the
+    // renderer reads the simulation's records directly, the same arrangement
+    // `poseDoors` has with openings.js's leaves.
+    setCrowd, clearCrowd, setHeat,
+    get crowdVisible() { return crowdGroup.visible; },
+    set crowdVisible(v) { crowdGroup.visible = !!v; },
     // Swing the doors. `leaves` is openings.js's own list — the same one
     // collide.js is resolving against — so the door you walk through is the
     // door you see move, keyed rather than described.

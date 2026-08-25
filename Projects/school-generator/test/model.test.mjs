@@ -22,6 +22,7 @@ import { serialize, deserialize, SAVE_VERSION } from '../js/save-load.js';
 import { ensureTerrain, terrainField, groundAt, raiseTerrain } from '../js/terrain.js';
 import { addRegion, regionsOf } from '../js/site.js';
 import { ensureRoof } from '../js/roof.js';
+import { isDefaultLife, MAX_POP } from '../js/agents.js';
 
 const near2 = (a, b, eps) =>
   assert.ok(Math.abs(a - b) <= eps, `${a} vs ${b} (±${eps})`);
@@ -395,6 +396,38 @@ test('the environment survives every other kind of edit round-tripping', () => {
     month: 1, day: 8, minutes: 1020, lat: -33.9, north: 215, lights: 'on',
   });
   assert.equal(back.props.length, 1);
+});
+
+// ---------- v8: who is in the building ----------
+
+test('a fresh design carries no population settings', () => {
+  const s = createState(8, 8);
+  assert.equal(s.life, undefined);
+  assert.ok(!serialize(s).includes('"life"'), 'a v7 file round-trips through v8 unchanged');
+});
+
+test('a population setting survives a round trip, and a hostile one is clamped', () => {
+  const s = createState(12, 12);
+  s.life = { students: 240, seed: 77, schedule: { periods: 5, periodMin: 60 } };
+  const back = deserialize(serialize(s));
+  assert.equal(back.life.students, 240);
+  assert.equal(back.life.seed, 77);
+  assert.equal(back.life.schedule.periods, 5);
+  assert.equal(back.life.schedule.periodMin, 60);
+
+  const hostile = createState(12, 12);
+  hostile.life = { students: 1e9, seed: -4, schedule: 'nope' };
+  const clamped = deserialize(serialize(hostile));
+  assert.ok(clamped.life.students <= MAX_POP);
+  assert.ok(clamped.life.seed >= 1);
+  assert.equal(clamped.life.schedule, undefined, 'a default schedule is not written');
+});
+
+test('a v7 file loads into a school with the default population settings', () => {
+  const v7 = { version: 7, w: 12, h: 12, floorHt: 12, floors: [], currentFloor: 0, props: [], links: [] };
+  const s = deserialize(JSON.stringify(v7));
+  assert.equal(s.life, undefined);
+  assert.ok(isDefaultLife(s.life), 'which is the default one');
 });
 
 // ---------- v7: the site ----------

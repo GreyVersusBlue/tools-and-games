@@ -172,6 +172,11 @@ export function gridDoorSpec(val) {
 // Grid edges first (rows, then columns), then polygon rooms in `shapes[]`
 // order — deterministic so render.js and collide.js agree about which leaf is
 // which without exchanging anything but the key.
+//
+// The key carries the storey. It didn't have to while only one storey's doors
+// could be moving — the camera is on exactly one of them — but a school with
+// people in it has a door swinging on level 1 while another swings on level 2,
+// and an edge index means the same thing on both.
 export function collectDoorLeaves(state, floorIndex) {
   const floor = state && state.floors ? state.floors[floorIndex] : null;
   const out = [];
@@ -189,14 +194,14 @@ export function collectDoorLeaves(state, floorIndex) {
     for (let x = 0; x < floor.w; x++) {
       const i = y * floor.w + x;
       const v = floor.edgesH[i];
-      if (isDoorEdge(v)) grid(v, x * CELL, y * CELL, (x + 1) * CELL, y * CELL, `H:${i}`);
+      if (isDoorEdge(v)) grid(v, x * CELL, y * CELL, (x + 1) * CELL, y * CELL, `f${floorIndex}:H:${i}`);
     }
   }
   for (let y = 0; y < floor.h; y++) {
     for (let x = 0; x <= floor.w; x++) {
       const i = y * (floor.w + 1) + x;
       const v = floor.edgesV[i];
-      if (isDoorEdge(v)) grid(v, x * CELL, y * CELL, x * CELL, (y + 1) * CELL, `V:${i}`);
+      if (isDoorEdge(v)) grid(v, x * CELL, y * CELL, x * CELL, (y + 1) * CELL, `f${floorIndex}:V:${i}`);
     }
   }
 
@@ -208,7 +213,7 @@ export function collectDoorLeaves(state, floorIndex) {
         const spec = openingSpec(o);
         if (spec.leaf === LEAF_NONE) return;
         const [a, b] = segEnds(ring, o.seg);
-        for (const leaf of segLeaves(spec, a, b, `s:${shape.id}:${ri}:${oi}`)) out.push(leaf);
+        for (const leaf of segLeaves(spec, a, b, `f${floorIndex}:s:${shape.id}:${ri}:${oi}`)) out.push(leaf);
       });
     });
   }
@@ -280,6 +285,25 @@ export function faceLeafAway(leaf, x, z) {
 // you do. A leaf that already overlaps the body is allowed any move that
 // doesn't make the overlap worse, so it can never wedge.
 export function updateLeaves(leaves, x, z, dt, opts = {}) {
+  return updateLeavesFor(leaves, [{ x, z }], dt, opts);
+}
+
+// The crowd version, and since Phase 6 the one that does the work. A leaf
+// answers to whoever is *nearest* — which is the person who would push it —
+// and holds for anyone at all it would swing into, which is everyone else in
+// the doorway. Both halves matter: nearest-only would let a door sweep through
+// the second person in a queue, and all-of-them-equally would have a leaf
+// facing away from someone across the corridor.
+//
+// **A body with `open: false` never opens a door, but a door still won't shut
+// on it.** With one walker, proximity was intent: nobody stands next to a door
+// they aren't using. With forty, a queue walking *past* a classroom holds its
+// door open, and the open leaf — three feet of it, square across the corridor
+// — is then what the queue can't get past. So the crowd tells each leaf who is
+// actually heading through it, and everybody else is only ever something not
+// to swing into.
+export function updateLeavesFor(leaves, bodies, dt, opts = {}) {
+  if (!bodies || !bodies.length) return false;
   const near = opts.near ?? OPEN_NEAR;
   const far = opts.far ?? OPEN_FAR;
   const rate = opts.rate ?? OPEN_RATE;
@@ -288,17 +312,27 @@ export function updateLeaves(leaves, x, z, dt, opts = {}) {
   const step = clamp(dt * rate, 0, 1);
   let moved = false;
   for (const leaf of leaves) {
-    const d = Math.hypot(x - leaf.cx, z - leaf.cz);
-    if (d < near) leaf.want = 1;
-    else if (d > far) leaf.want = 0;
+    let closest = null, best = Infinity;
+    for (const b of bodies) {
+      if (b.open === false) continue;
+      const d = Math.hypot(b.x - leaf.cx, b.z - leaf.cz);
+      if (d < best) { best = d; closest = b; }
+    }
+    if (best < near) leaf.want = 1;
+    else if (best > far) leaf.want = 0;
     if (leaf.open === leaf.want) continue;
-    if (push && leaf.open === 0 && leaf.want === 1 && faceLeafAway(leaf, x, z)) moved = true;
+    if (push && closest && leaf.open === 0 && leaf.want === 1
+      && faceLeafAway(leaf, closest.x, closest.z)) moved = true;
     const delta = leaf.want - leaf.open;
     const next = Math.abs(delta) <= step ? leaf.want : leaf.open + Math.sign(delta) * step;
     if (body > 0) {
-      const here = leafDistanceTo(leaf, leaf.open, x, z);
-      const there = leafDistanceTo(leaf, next, x, z);
-      if (there < body && there < here) continue;   // it would close on them — hold
+      let blocked = false;
+      for (const b of bodies) {
+        const here = leafDistanceTo(leaf, leaf.open, b.x, b.z);
+        const there = leafDistanceTo(leaf, next, b.x, b.z);
+        if (there < body && there < here) { blocked = true; break; }
+      }
+      if (blocked) continue;   // it would close on somebody — hold
     }
     leaf.open = next;
     moved = true;

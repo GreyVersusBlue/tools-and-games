@@ -66,9 +66,10 @@ import { normalizeEnv, isDefaultEnv } from './sky.js';
 import { normalizeTerrain, packTerrain } from './terrain.js';
 import { normalizeRegion, MAX_REGIONS } from './site.js';
 import { normalizeRoof, isDefaultRoof } from './roof.js';
+import { normalizeLife, isDefaultLife } from './agents.js';
 
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 const MIN_DIM = 4;
 const MAX_DIM = 200;
@@ -87,6 +88,9 @@ export function serialize(state) {
   if (packed) out.terrain = packed; else delete out.terrain;
   if (!out.site || !Array.isArray(out.site.regions) || !out.site.regions.length) delete out.site;
   if (isDefaultRoof(out.roof)) delete out.roof;
+  // v8: how many people are in the building, and the seed that puts them
+  // there. Never the people themselves — see agents.js.
+  if (isDefaultLife(out.life)) delete out.life; else out.life = normalizeLife(out.life);
   return JSON.stringify(out);
 }
 
@@ -187,6 +191,11 @@ export function deserialize(json) {
   }
   const roof = normalizeRoof(d.roof);
   if (!isDefaultRoof(roof)) state.roof = roof;
+  // v8's population settings, on the same terms as everything above: an
+  // unreadable one is the default one, and a file from before v8 simply has
+  // the default school in it.
+  const life = normalizeLife(d.life);
+  if (!isDefaultLife(life)) state.life = life;
 
   if (Array.isArray(d.props)) {
     for (const raw of d.props.slice(0, MAX_PROPS)) {

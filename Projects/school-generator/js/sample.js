@@ -208,7 +208,10 @@ export function buildSampleSchool() {
   addProp(s, 'bell-corridor', { x: 56, z: 52.3, y: 8.4, rotationY: facingSouth, mount: 'wall', floor: 0 });
   addProp(s, 'speaker-pa', { x: 100, z: 52.3, y: 8, rotationY: facingSouth, mount: 'wall', floor: 0 });
   addProp(s, 'fountain', { x: 84, z: 53.2, rotationY: facingSouth, floor: 0 });
-  addProp(s, 'vending', { x: 118, z: 53.6, rotationY: facingSouth, floor: 0 });
+  // Clear of the stair hall's doorway at x = 118 — a vending machine parked
+  // across a door is a fire-drill finding, not a sample school. (It was one,
+  // until Phase 6 put people in the building and they all queued behind it.)
+  addProp(s, 'vending', { x: 126, z: 53.6, rotationY: facingSouth, floor: 0 });
   addProp(s, 'clock-wall', { x: 40, z: 51.7, y: 7, rotationY: facingNorth, mount: 'wall', floor: 0 });
   addProp(s, 'diffuser-hvac', { x: 38, z: 41, y: 9.6, mount: 'ceiling', floor: 0 });
   addProp(s, 'diffuser-hvac', { x: 40, z: 54, y: 9.6, mount: 'ceiling', floor: 0 });
@@ -348,8 +351,12 @@ function buildSampleSite(s) {
   for (let i = 0; i < 6; i++) P('tree-shade', -140 + i * 30, 22, 0);
   for (let i = 0; i < 4; i++) P('tree-shade', -196 + i * 46, 96, 0);
   for (let i = 0; i < 5; i++) P('tree-conifer', -246, 20 + i * 34, 0);
-  P('tree-ornamental', 34, 34, 0);
-  P('tree-ornamental', 34, 86, 0);
+  // Flanking the entry plaza, and *outside the building* — both of these used
+  // to stand at x = 34, which is fourteen feet inside Room 101. Nothing ever
+  // noticed until Phase 6 put a class in that room and three of them spent the
+  // fire drill walking into a tree.
+  P('tree-ornamental', 8, 32, 0);
+  P('tree-ornamental', 8, 88, 0);
   P('tree-young', 152, 120, 0);
   P('tree-columnar', 150, 32, 0);
   P('tree-columnar', 150, 60, 0);
