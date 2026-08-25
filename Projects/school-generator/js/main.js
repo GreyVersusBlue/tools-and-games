@@ -2867,10 +2867,12 @@ $('model-ok').addEventListener('click', () => {
     state.models = added.models;
     pendingModel = null;
     closeModal(modelOverlay);
+    // `syncModels` registers the row, parses the file and rebuilds the
+    // palette; all that is left is to pick the thing that just arrived,
+    // because importing something and then having to find it in the palette
+    // is a step nobody wanted.
     const failed = syncModels();
     if (!failed.length) {
-      // Select it: importing something and then having to find it in the
-      // palette is a step nobody wanted.
       selectTool('prop');
       editor.setPropType(modelType(added.model.id));
       buildPalette();
@@ -3052,7 +3054,6 @@ async function openSharedDesign() {
     // The autosave is left alone until the shared design is edited, so
     // opening somebody's link doesn't cost you your own work in progress.
     adoptState(shared, { keepAutosave: true });
-    syncModels({ quiet: true });
     $('status').textContent = 'Opened a shared design — save it to keep it.';
   } catch (err) {
     $('status').textContent = `That link could not be opened: ${err.message}`;

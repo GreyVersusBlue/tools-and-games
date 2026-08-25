@@ -4,7 +4,8 @@ Living reference for where this tool goes next. The first arc of this project
 — eight phases, from a single-floor grid editor to a multi-story, furnished,
 polygon-roomed building you can blueprint, save, and walk through on desktop
 or touch — is **done**, and so is the second arc's Phase 8, which is where the
-tool started deserving the word *generator* in its name. This document is now two things: a compact
+tool started deserving the word *generator* in its name — and so is Phase 9,
+which took it out of the tab it was drawn in. This document is now two things: a compact
 retrospective of that v1 build (what shipped, what worked, what fought back,
 what a future builder needs to know), and a fresh phase system for everything
 after it, starting with a much bigger prop catalog and running through the
@@ -58,7 +59,14 @@ read into that program by a phrase table, with no model behind it),
 `js/shadow.js` (what an upper storey is standing on) and `js/overlay.js` (a
 tracing image under the plan, scaled by measuring something on it) — plus
 `js/overlayedit.js`, the tool that drags and measures it, and save v9, which
-is the first version to carry something measured in megabytes.)
+is the first version to carry something measured in megabytes. Phase 9 adds
+six more and no dependencies: `js/gltf.js` (glTF 2.0, read and written by
+hand), `js/models.js` (an imported file wearing a catalog row), `js/share.js`
+(a design deflated into a URL fragment), `js/tour.js` (a recorded camera path
+and the curve through it), `js/minimap.js` (the arithmetic between a floor
+plan and a thumbnail) and `js/xr.js` (the rig, the sticks and the snap turn) —
+plus save v10 and one new seam in `catalog.js`, a registry that lets a
+design's own rows answer `catalogEntry` beside the built-in table.)
 
 - **Units are feet, everywhere.** 4ft grid cells (`CELL`), 10ft walls
   (`WALL_H`), 12ft floor-to-floor (`FLOOR_H`), max 8 storeys. Props, polygon
@@ -1482,26 +1490,182 @@ it mattered.
   finding about a real limitation of a spine plan at that size, and it is also
   partly the graph — telling the two apart needs the nav mesh.
 
-## Phase 9 — Sharing & beyond the tab
+## Phase 9 — Sharing & beyond the tab ✅
 
-Each item here prices the no-build-step, no-deps stance explicitly.
+Each item here priced the no-build-step, no-deps stance explicitly, and the
+bill came to zero: **done** — six new pure modules (`js/gltf.js`,
+`js/models.js`, `js/share.js`, `js/tour.js`, `js/minimap.js`, `js/xr.js`,
+1,848 lines between them), one new seam in `catalog.js`, save v10, three new
+dialogs and two new walkthrough panels, 153 new tests, and not one new
+dependency or vendored addon. The one item not built is the one that needs a
+server, and it says so.
 
-- [ ] glTF prop import (`GLTFLoader` is an addon, vendorable like the rest
-  of `libs/addons/`) — `assets/models/` finally earns its keep; catalog
-  rows point at a file instead of a `geo` key.
-- [ ] Whole-building glTF export — take the school into Blender.
-- [ ] Link-encoded sharing: a design compressed into a URL fragment for
-  small designs; cloud saves are the grown-up version and the first item
-  that needs a server.
-- [ ] Real-time collaboration — the big one; needs a sync layer and
-  per-object ids (polygon rooms and props have them; grid cells don't,
-  which is the hard part).
-- [ ] WebXR walkthrough (`renderer.xr` is core three.js) — the school at
-  1:1 scale in a headset; the real-scale discipline of Phase 1 is what
-  makes this land.
-- [ ] Guided tours: record camera paths, play them back, export video via
-  `MediaRecorder` — no new deps.
-- [ ] Minimap while walking, from the blueprint renderer at thumbnail size.
+- [x] glTF prop import — but **not** by vendoring `GLTFLoader`. `js/gltf.js`
+  reads `.glb` and `.gltf` by hand in 664 lines with a scope stated out loud,
+  against six thousand lines of somebody else's code that is mostly about
+  parts of the format this tool will never meet. `assets/models/` finally
+  earns its keep; a catalog row points at a file instead of at a `geo` key.
+- [x] Whole-building glTF export — the same module, writing. The school
+  leaves as one `.glb` in metres with the colours baked into the vertices; a
+  generated two-storey school is 56,552 triangles and about four megabytes.
+- [x] Link-encoded sharing: the design deflated into the URL fragment with
+  `CompressionStream` — platform, not a dependency. The sample school is 5.8
+  KB of link. Cloud saves are still the grown-up version and still the first
+  item that needs a server.
+- [ ] ~~Real-time collaboration~~ — **not built, and the only item here that
+  cannot be.** It needs a sync layer, which needs a server. See "deliberately
+  left for later" for what the rest of it would need on this side of the wire.
+- [x] WebXR walkthrough — `renderer.xr` is core three.js, and the real-scale
+  discipline of Phase 1 is exactly what makes it land: `local-floor` puts the
+  model's floor under real feet, so a 6ft person is 6ft tall in the building
+  with nothing to calibrate.
+- [x] Guided tours: stops recorded where you stand, a Catmull-Rom curve
+  through them, and video out through `MediaRecorder` — no new deps.
+- [x] Minimap while walking, from the blueprint renderer at thumbnail size —
+  which turned out to be literally true: `blueprint.js` gained one exported
+  function and lost nothing.
+
+*Leans on:* the blueprint renderer, the walkthrough's collider, the additive
+save format, and Phase 1's insistence on real dimensions;
+*collides with:* the camera, which in a headset is not ours to move.
+
+### How it actually landed
+
+- **Writing a glTF reader was cheaper than vendoring one.** The scope is the
+  whole argument: triangles, `POSITION`/`NORMAL`/`COLOR_0`, indexed or not,
+  the node hierarchy flattened by multiplying matrices down the tree, base
+  colour taken from the material factor and baked per-vertex. No textures, no
+  skins, no morph targets, no sparse accessors, no Draco — each refused with a
+  sentence rather than half-read. Every one of those exclusions is something
+  this build's prop contract could not have used anyway: a prop here is one
+  vertex-coloured material, bottom at y=0, sized from its catalog row.
+- **The import feature is one seam, and it is in `catalog.js`.** `registerRows`
+  lets a design's imported models answer `catalogEntry(type)` alongside the
+  built-in table. That single addition is why an imported chair snaps to a
+  wall, stops a walker, draws on a floor plan, counts in the bill of materials
+  and gets picked by auto-furnish — eight modules, none of which needed a line
+  changed, and none of which know that files exist.
+- **Fitting is what makes a file behave like a prop.** `fitModel` centres the
+  model on its footprint, sits it on y=0 and scales it into the row's w/d/h
+  box; `bakeFit` bakes that into the vertices before the geometry is cached.
+  An import needs no eyeballing to stand on the floor, and the "how big is
+  it?" dialog opens with the size the file itself claims (glTF is metres, this
+  is feet, and the division happens once).
+- **A link is a design, not a pointer to one.** The payload lives after the
+  `#`, which is the one part of a URL a browser never sends anywhere: nothing
+  is uploaded, nothing expires, there is nothing to take down. A school
+  compresses to under a tenth of its JSON because it is mostly repeated small
+  objects. Two thresholds rather than one — comfortable, and a hard refusal —
+  because the failure mode is a chat client cutting a link in half, which
+  `decodeShare` detects and names rather than throwing at the JSON parser.
+- **A tour's legs are timed from their own length.** Record a stop, walk, record
+  another: the leg costs its distance at 9 ft/s, so a tour played back runs at
+  roughly the pace it was walked, and a stop can hold. The curve is
+  Catmull-Rom because it passes *through* every stop — "the camera didn't go
+  where I put it" is the one complaint a recorded path must never earn — and
+  the ends mirror their neighbour rather than duplicating it, because a
+  duplicated endpoint gives the spline a zero tangent and the first leg crawls.
+- **The minimap was already written.** `blueprint.js` computes a plan in world
+  feet with no canvas in sight and draws one into any 2D context; all that was
+  missing was which patch of it a walker can see. `drawPlanBody` — the drawing
+  without the title block, legend and north arrow — is the only thing that had
+  to be split out, and `drawFloorPlan` now calls it.
+- **In a headset the walker keeps its own body.** `walkthrough.js` gained one
+  line, `let body = camera.position`, and every line of physics below it reads
+  and writes `body`. On a desktop that alias *is* the camera and costs
+  nothing; in a session it is a separate vector, because three.js writes the
+  camera's transform from the head pose every frame. VR locomotion is then
+  four lines: the thumbstick produces the same `fwd`/`right` pair the W and D
+  keys do, `updateWalk` resolves it against the same collider, and the doors
+  open by the same test.
+- **Save v10 keeps the bargain for the sixth time.** A design with no tour and
+  no imported model writes neither key, so a v9 file still round-trips as the
+  same bytes. What is new is that the autosave now sheds in an order: the
+  tracing image first, because a design without its tracing paper is still the
+  design, and the imported models only if it must.
+- **Undo learned about the second heavy record.** `models` travels beside the
+  undo snapshot by reference, exactly as `overlay` has since Phase 8, and for
+  exactly the same reason — stringifying megabytes of base64 on every
+  pointerdown, a hundred deep, is a hundred megabytes of history for furniture
+  nobody is editing. It is safe for the same one reason, too: models.js never
+  mutates a record or its array in place.
+
+### What fought back
+
+- **The camera is not yours in XR.** `WebXRManager` decomposes the head pose
+  straight into `camera.position` every frame, so anything that owns the
+  camera's position — which is to say the entire walkthrough — has to stop
+  owning it. The fix (a rig the camera parents to, and a body vector the
+  walker keeps) is small; finding out *why* the walker was being teleported
+  back to the headset's idea of the origin was not. The related trap: a rig
+  must be turned **about the head**, or a snap turn swings the body around the
+  room instead of turning it on the spot, and the head's offset has to be
+  taken in world axes rather than rig-local ones, or the building lurches
+  every time you turn.
+- **A floor plan's bounds are drawn around everything on the sheet.** On a
+  generated school that includes the trees at the far end of the car park, so
+  the minimap's "whole floor" was a thumbnail of a field with a school in the
+  middle of it. The map now measures the storey's *structure* with
+  `shadow.js`'s `floorBounds` — a function written for the overhang check two
+  phases ago — and pads it enough to show the doors in the outside wall.
+- **Rastering a plan once and squeezing it does not work.** A plan drawn at
+  four pixels to the foot and blitted at a seventh of that has hairline walls
+  that fall between pixels and vanish; the map read as an empty cream square
+  with some furniture in it. The raster is now keyed by a *bucketed* scale, so
+  it is drawn at roughly the size it will be shown at and a wall stays a wall.
+- **Two coordinate origins, one drawing.** The cached raster is sized from the
+  minimap's own (structural) bounds but drawn by `blueprint.js`, which
+  measures from the *plan's* bounds — one translate too many, and the whole
+  school slid off the corner of the thumbnail.
+- **`CompressionStream`'s writer rejects when the stream errors.** A corrupt
+  payload fails at the reader, which is where the error belongs, and *also*
+  rejects the un-awaited `write()` and `close()` promises, which surfaces as
+  an unhandled rejection racing the readable error. Both are swallowed
+  deliberately so a damaged link has exactly one place it is reported.
+- **Negative zero.** `moveVector` with a heading of exactly zero produces `-0`
+  for one component, and `Object.is(-0, 0)` is false — which a test noticed
+  and a caller comparing a delta against zero eventually would have.
+- **A button that overflows its dialog is a button the backdrop eats.** Four
+  buttons do not fit in a 420px row, so the fourth spilled outside the panel
+  and became unclickable while looking perfectly fine. `flex-wrap` and a
+  shorter label.
+
+### Deliberately left for later
+
+- **Real-time collaboration**, and it is worth being precise about what is
+  still missing on this side of the wire, because the wishlist's own guess was
+  right: props and polygon rooms have ids, and **grid cells do not**. A cell is
+  an index into a flat array, so "somebody else edited this room" has nothing
+  to name. The path is the one Phase 2 of the first arc already built —
+  `convertRegion()` promotes a grid room to a polygon room with an id — which
+  means collaboration is downstream of a decision to make polygons the only
+  representation, not downstream of a sync library.
+- **Cloud saves.** Still the first item that needs a server, and now with a
+  measured reason to want one: a design with a tracing image or imported
+  models cannot travel in a link at all, and that is stated in the share
+  dialog rather than discovered.
+- **glTF textures, PBR materials, skins, morph targets and Draco.** Every one
+  of them is a refusal with a sentence attached in `gltf.js`. Textures are the
+  one worth revisiting, and only alongside the PBR upgrade already documented
+  in `assets/textures/README.md` — the prop material has no map, so a textured
+  import has nowhere to put one today.
+- **Teleport locomotion and controller models in XR.** Smooth walking with a
+  snap turn is the comfortable minimum and it is what shipped; a teleport arc
+  needs a controller ray, a floor hit test and something to draw, and hand
+  tracking is asked for in the session's optional features but not used.
+- **A tour that does anything but move the camera.** Ringing the bell at a
+  stop, scrubbing the hour between two of them, starting the crowd at the
+  third — every one of those is a field on a keyframe and a call this build
+  already has. The video also has no audio track: `captureStream` takes the
+  canvas, and the Web Audio graph would have to be piped into the recorder
+  separately.
+- **The minimap on touch.** It draws and reads fine, but its four buttons are
+  desktop-sized and the panel has not been laid out for a phone.
+- **An `EXT_mesh_gpu_instancing` export.** Every prop instance is expanded into
+  its own triangles, which is why a furnished school is four megabytes rather
+  than a few hundred kilobytes. It is the right trade for now — an extension
+  is a thing the importer at the other end may not have — and the wrong one
+  the first time somebody exports a school with ten thousand desks in it.
 
 ## Phase 10 — Play
 
@@ -1514,13 +1678,10 @@ Each item here prices the no-build-step, no-deps stance explicitly.
 
 ## Suggested build order
 
-Phases 1 through 8 are done. Phase 9 (sharing & beyond the tab) is next by the
-default ordering, and Phase 1 — the prop catalog expansion — is the one item
-from the second arc's own list that never got built and that everything else
-has quietly been leaning on. The generator furnishes ninety rooms from a
-catalog of a hundred and fifty-five types; every type that gets added makes
-every generated school better for free, which is the best argument for pulling
-it forward that any item on this list has.
+Phases 1 through 9 are done, bar the one item in Phase 9 that needs a server.
+Phase 1 — the prop catalog expansion — is the one item from the second arc's
+own list that never got built and that everything else has quietly been
+leaning on, and it is the obvious next thing.
 
 Phase 7 turned out to be exactly the right thing to build in front of the
 generator, and the claim held literally: occupant load per room is what sizes
@@ -1545,8 +1706,27 @@ What Phase 8 leaves for whatever comes next, in the order it would help:
   band room away from the library", and the layout has nowhere to put it if it
   could.
 
-Phases 9–10 are ordered sharing → play: each band leans on the ones before it.
-The ordering is a default, not a law — phase 9's smaller items (glTF import,
-the minimap, guided tours) are self-contained enough to pull forward whenever
-one is wanted, and the prop catalog is self-contained enough to pull forward
-*now*.
+Phase 9 is done, and what it leaves behind is a shorter list than it started
+with. Sharing is a link, the building leaves as a file, furniture arrives as
+one, the camera can be recorded and the school can be stood in at full size.
+What did not get built is the one item that needs a server — and the finding
+worth carrying forward is that collaboration is blocked on *this* side of the
+wire too: grid cells have no identity, so there is nothing to name when two
+people edit the same room. That makes it downstream of the decision to promote
+every room to a polygon, not downstream of a sync library.
+
+That leaves Phase 10 (play) and Phase 1 (the prop catalog) as the two open
+bands, and the argument for the catalog is now stronger than it was rather
+than weaker: glTF import means a new prop type no longer has to be a geometry
+builder, so the seventy rows that phase asks for can be *any* mixture of
+procedural and imported. The generator furnishes ninety rooms from a catalog
+of a hundred and fifty-five types; every type added still makes every
+generated school better for free.
+
+The three findings from Phase 8 stand unchanged and unaddressed — the nav mesh
+first, then more schemes, then adjacency in the brief. Phase 9 added a fourth
+of its own, smaller and more concrete: **the minimap knows where you are and
+the report knows what is wrong, and they have never met.** A finding that
+could be drawn on the plan you are carrying — this corridor is the one over
+the travel limit, that door is the one too narrow — is a few lines away now
+that both halves exist.
