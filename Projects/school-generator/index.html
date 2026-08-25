@@ -751,6 +751,22 @@
       display: flex; gap: 4px; margin-top: 6px; line-height: 1.4;
     }
     #minimap-bar button { flex: 1; padding: 3px 0; font-size: 10.5px; }
+    #minimap-bar.finds { margin-top: 4px; }
+    #minimap-bar.finds button:first-child { flex: 3; }
+    #minimap-bar.finds button.on { background: var(--accent, #4da3ff); color: #fff; }
+    /* The finding the map is drawing, under the caption. Two lines at most —
+       the panel beside it prints the whole thing, and this is the label on a
+       highlight rather than the finding itself. */
+    #minimap-finding {
+      font-size: 10px; line-height: 1.4; margin-top: 4px; max-width: 168px;
+      text-align: center; color: var(--text);
+    }
+    #minimap-finding.hidden { display: none; }
+    #minimap-finding .lv { font-weight: 600; }
+    #minimap-finding .fail { color: #d34a41; }
+    #minimap-finding .warn { color: #b97016; }
+    #minimap-finding .note { color: #2860aa; }
+    #minimap-finding .ok { color: #2c784e; }
     #minimap-note {
       font-size: 10px; color: var(--text-dim); margin-top: 4px; line-height: 1.4;
       text-align: center;
@@ -1217,7 +1233,14 @@
       <button id="minimap-out" type="button" title="Show more" aria-label="Zoom out">−</button>
       <button id="minimap-in" type="button" title="Show less" aria-label="Zoom in">＋</button>
     </div>
+    <div id="minimap-bar" class="finds">
+      <button id="minimap-findings" type="button"
+        title="Draw the report's findings on the plan">⚑ Findings</button>
+      <button id="minimap-prev" type="button" title="The finding before this one" aria-label="Previous finding">‹</button>
+      <button id="minimap-next" type="button" title="The next finding down the report" aria-label="Next finding">›</button>
+    </div>
     <div id="minimap-note"></div>
+    <div id="minimap-finding" class="hidden"></div>
   </div>
 
   <div id="status" class="panel" role="status" aria-live="polite">Floor — click / drag to lay floor tiles</div>
@@ -1232,6 +1255,8 @@
         <kbd>B</kbd> ring the bell &nbsp;·&nbsp; <kbd>N</kbd> PA announcement &nbsp;·&nbsp; <kbd>U</kbd> sound panel<br />
         <kbd>L</kbd> school life &nbsp;·&nbsp; <kbd>V</kbd> follow somebody &nbsp;·&nbsp; <kbd>K</kbd> fire drill &nbsp;·&nbsp; <kbd>H</kbd> heatmap<br />
         <kbd>M</kbd> the report — occupancy, egress, access, daylight<br />
+        <kbd>J</kbd> the minimap &nbsp;·&nbsp; <kbd>O</kbd> its findings &nbsp;·&nbsp;
+        <kbd>[</kbd> <kbd>]</kbd> step through them<br />
         <kbd>Esc</kbd> release mouse
       </p>
       <p>
@@ -1258,6 +1283,15 @@
         whether there is enough glass and how long each room rings. Every
         finding says which rule it applied and what it measured, and the whole
         thing downloads as a spreadsheet with the bill of materials under it.
+      </p>
+      <p>
+        …and the findings are on the map in your hand. <b>⚑ Findings</b> on the
+        minimap (<kbd>O</kbd>) draws the report onto the plan a finding at a
+        time, worst first: the rooms it is about are washed in its colour and
+        the doorways it is about are ringed, so <i>this</i> corridor is the one
+        over the travel limit and <i>that</i> door is the one too narrow.
+        <kbd>[</kbd> and <kbd>]</kbd> step through them, and a finding on
+        another storey says which one to go to.
       </p>
       <p>
         The building has a sound now: your footsteps take their material from

@@ -201,3 +201,99 @@ export function describeMinimap(view) {
   const how = view.mode === 'fit' ? 'whole floor' : `${Math.round(view.range)} ft across`;
   return `${how} · ${view.orient === 'heading' ? 'heading up' : 'north up'}`;
 }
+
+// ---------- the findings, on the map ----------
+//
+// Phase 10's smallest item and its most visible. The report has sorted its
+// findings worst-first since Phase 7 and every one of them that is about
+// somewhere carries the room ids it is about; this map has drawn a floor plan
+// at thumbnail size since Phase 9. They had never met. A finding carrying a
+// room id is a highlight on the plan in your hand — *this* corridor is the one
+// over the travel limit, *that* door is the one too narrow — and the whole of
+// the arithmetic is deciding which of its rooms are on the storey you are
+// standing on.
+//
+// Nothing here draws: it turns a report into marks, and main.js fills the
+// rectangles `navmesh.js` already cut the rooms into. Which is the second
+// reason this item goes here rather than last — a highlight is the fastest way
+// to see whether the mesh actually fixed the numbers.
+
+// A wash over the plan, and a line round it. Alpha low enough that the walls
+// underneath stay legible: this is an annotation on a drawing, not a heatmap.
+export const MARK_FILL = {
+  fail: 'rgba(211, 74, 65, 0.30)',
+  warn: 'rgba(226, 150, 55, 0.28)',
+  note: 'rgba(70, 130, 210, 0.24)',
+  ok: 'rgba(74, 160, 110, 0.20)',
+};
+export const MARK_LINE = {
+  fail: 'rgba(176, 44, 36, 0.95)',
+  warn: 'rgba(186, 112, 22, 0.95)',
+  note: 'rgba(40, 96, 170, 0.9)',
+  ok: 'rgba(44, 120, 78, 0.9)',
+};
+export const markFill = (level) => MARK_FILL[level] || MARK_FILL.note;
+export const markLine = (level) => MARK_LINE[level] || MARK_LINE.note;
+
+// Every finding that points at somewhere on the plan, in the order the report
+// sorted them — worst first. A finding with nothing to point at (three exits
+// where four are needed; a building with no way out at all) is not a mark: it
+// is about the design rather than about a place in it, and drawing it
+// somewhere would be inventing a location the report never claimed.
+export function findingMarks(report) {
+  const out = [];
+  for (const f of (report && report.findings) || []) {
+    const rooms = (f.rooms || [])
+      .filter((r) => r && r.id)
+      .map((r) => ({ id: r.id, floor: r.floor ?? 0, name: r.name || null }));
+    const doors = [...(f.doors || []), ...(f.exits || [])]
+      .filter((d) => d && Number.isFinite(d.x) && Number.isFinite(d.z))
+      .map((d) => ({ id: d.id, floor: d.floor ?? 0, x: d.x, z: d.z, w: d.w }));
+    if (!rooms.length && !doors.length) continue;
+    out.push({
+      code: f.code,
+      section: f.section || null,
+      level: f.level,
+      title: f.title,
+      detail: f.detail,
+      rooms,
+      doors,
+      floors: [...new Set([...rooms, ...doors].map((t) => t.floor))].sort((a, b) => a - b),
+    });
+  }
+  return out;
+}
+
+// The mark at an index, wrapping in both directions — so a next button at the
+// end of the list goes back to the worst finding rather than stopping.
+export function markAt(marks, i) {
+  if (!marks || !marks.length) return null;
+  const n = marks.length;
+  return marks[((i % n) + n) % n];
+}
+
+// What of a mark is on the storey being drawn.
+export function markOnFloor(mark, floorIndex) {
+  if (!mark) return { rooms: [], doors: [] };
+  return {
+    rooms: mark.rooms.filter((r) => r.floor === floorIndex),
+    doors: mark.doors.filter((d) => d.floor === floorIndex),
+  };
+}
+
+// The caption under the thumbnail: which finding, out of how many, and — when
+// none of it is on this storey — where to go to see it.
+export function describeMark(marks, index, floorIndex) {
+  const mark = markAt(marks, index);
+  if (!mark) return '';
+  const n = marks.length;
+  const here = markOnFloor(mark, floorIndex);
+  const at = here.rooms.length + here.doors.length;
+  const where = at
+    ? `${at} here`
+    : (mark.floors.length
+      ? `none on this level — try Level ${mark.floors[0] + 1}`
+      : 'nowhere on the plan');
+  const i = ((index % n) + n) % n;
+  return `${i + 1}/${n} · ${mark.title} (${where})`;
+}

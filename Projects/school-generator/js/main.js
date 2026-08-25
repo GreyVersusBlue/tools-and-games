@@ -73,6 +73,7 @@ import {
 import {
   MINI_SIZE, MIN_RANGE, MAX_RANGE, minimapView, worldToMini, viewCone,
   markerAngle, scaleBar, nextMode, nextOrient, describeMinimap,
+  findingMarks, markAt, markOnFloor, describeMark, markFill, markLine,
 } from './minimap.js';
 import { xrAvailability, rigPosition } from './xr.js';
 
@@ -2692,6 +2693,12 @@ document.addEventListener('keydown', (e) => {
     }
     if (e.code === 'KeyJ') { miniOn = !miniOn; updateMinimapButtons(); return; }
     if (e.code === 'KeyR') { tourMark(); return; }
+    // Phase 10's one: the findings, on the map in your hand. Bracket keys
+    // step through them, which is the same gesture as the report panel's own
+    // list read top-down.
+    if (e.code === 'KeyO') { setMiniFindings(!miniFindings); return; }
+    if (e.code === 'BracketLeft') { stepMiniFinding(-1); return; }
+    if (e.code === 'BracketRight') { stepMiniFinding(1); return; }
     if (e.code === 'Enter' && document.body.classList.contains('tours')) {
       tourPlay ? tourStop() : tourStart(false);
       return;
@@ -3387,9 +3394,80 @@ let miniRasters = new Map(); // `${floor}:${scale}` -> canvas
 const miniCanvas = $('minimap');
 const miniCtx = miniCanvas.getContext('2d');
 
+// The findings, drawn on the plan. The report has sorted them worst-first
+// since Phase 7 and the map has drawn a floor since Phase 9; this is the wire
+// between them. `miniNav` is here rather than reused from `life.nav` because
+// the crowd is not necessarily running, and what this wants out of it is the
+// mesh — the rectangles a room is made of, which are what gets filled.
+let miniFindings = false;
+let miniMarks = [];
+let miniMarkIndex = 0;
+let miniMarksDirty = true;
+let miniNav = null;
+
 function invalidateMinimap() {
   miniPlans = new Map();
   miniRasters = new Map();
+  // A different design is a different set of findings and a different mesh
+  // under them. Both are re-derived on the next frame that needs them.
+  miniNav = null;
+  miniMarksDirty = true;
+}
+
+function refreshMiniMarks() {
+  if (!miniFindings) { miniMarks = []; miniMarksDirty = false; return; }
+  if (!miniMarksDirty) return;
+  if (report.stale || !report.data) reportBuild();
+  miniMarks = findingMarks(report.data);
+  if (miniMarkIndex >= miniMarks.length) miniMarkIndex = 0;
+  miniMarksDirty = false;
+}
+
+// The wash, the pins and the door rings. Rooms are filled through the same
+// world-feet transform the plan is blitted with — `navmesh.js` cut them into
+// rectangles and this is the first thing to ask it for them — and the markers
+// are drawn afterwards in pixels, so a pin is the same size however far the
+// map is zoomed out.
+function drawMiniMarks(view, floorIndex, size) {
+  const mark = markAt(miniMarks, miniMarkIndex);
+  if (!mark) return;
+  if (!miniNav) miniNav = buildNav(state);
+  const here = markOnFloor(mark, floorIndex);
+  const mesh = miniNav.mesh[floorIndex];
+  if (!here.rooms.length && !here.doors.length) return;
+
+  miniCtx.save();
+  miniCtx.translate(size / 2, size / 2);
+  miniCtx.rotate(view.rotation);
+  miniCtx.scale(view.scale, view.scale);
+  miniCtx.translate(-view.cx, -view.cz);
+  miniCtx.fillStyle = markFill(mark.level);
+  for (const r of here.rooms) {
+    for (const t of (mesh && mesh.byRoom.get(r.id)) || []) {
+      miniCtx.fillRect(t.x0, t.z0, t.x1 - t.x0, t.z1 - t.z0);
+    }
+  }
+  miniCtx.restore();
+
+  miniCtx.strokeStyle = markLine(mark.level);
+  miniCtx.fillStyle = markLine(mark.level);
+  miniCtx.lineWidth = 1.6;
+  for (const r of here.rooms) {
+    const node = miniNav.node(r.id);
+    if (!node) continue;
+    const p = worldToMini(view, node.x, node.z);
+    miniCtx.beginPath();
+    miniCtx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    miniCtx.fill();
+  }
+  // A doorway is a ring rather than a dot: the finding is about the hole, and
+  // a filled dot on a 3ft opening covers the thing it is pointing at.
+  for (const d of here.doors) {
+    const p = worldToMini(view, d.x, d.z);
+    miniCtx.beginPath();
+    miniCtx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+    miniCtx.stroke();
+  }
 }
 
 function miniPlanFor(floorIndex) {
@@ -3534,9 +3612,27 @@ function drawMinimap() {
   miniCtx.font = '9px system-ui, sans-serif';
   miniCtx.fillText(bar.label, 8, size - 14);
 
+  if (miniFindings) {
+    refreshMiniMarks();
+    drawMiniMarks(view, floorIndex, size);
+  }
+
   const note = $('minimap-note');
   const text = `Level ${floorIndex + 1} · ${describeMinimap(view)}`;
   if (note.textContent !== text) note.textContent = text;
+
+  const caption = $('minimap-finding');
+  if (!miniFindings) {
+    caption.classList.add('hidden');
+  } else {
+    caption.classList.remove('hidden');
+    const mark = markAt(miniMarks, miniMarkIndex);
+    const line = miniMarks.length
+      ? `<span class="lv ${esc(mark.level)}">${esc(mark.level.toUpperCase())}</span> ` +
+        esc(describeMark(miniMarks, miniMarkIndex, floorIndex))
+      : 'Nothing on this plan to point at.';
+    if (caption.innerHTML !== line) caption.innerHTML = line;
+  }
 }
 
 function updateMinimapButtons() {
@@ -3544,8 +3640,34 @@ function updateMinimapButtons() {
   $('minimap-orient').textContent = miniOrient === 'heading' ? 'Heading' : 'North';
   $('minimap-in').disabled = miniMode === 'fit' || miniRange <= MIN_RANGE;
   $('minimap-out').disabled = miniMode === 'fit' || miniRange >= MAX_RANGE;
+  $('minimap-findings').classList.toggle('on', miniFindings);
+  $('minimap-prev').disabled = !miniFindings || miniMarks.length < 2;
+  $('minimap-next').disabled = !miniFindings || miniMarks.length < 2;
   document.body.classList.toggle('minimap', miniOn);
 }
+
+function setMiniFindings(on) {
+  miniFindings = on;
+  miniMarksDirty = true;
+  if (on) {
+    refreshMiniMarks();
+    $('status').textContent = miniMarks.length
+      ? `${miniMarks.length} finding${miniMarks.length === 1 ? '' : 's'} on the plan — ` +
+        'the map highlights one at a time, worst first.'
+      : 'Nothing in the report points at a place on the plan.';
+  }
+  updateMinimapButtons();
+}
+
+function stepMiniFinding(by) {
+  if (!miniFindings || !miniMarks.length) return;
+  miniMarkIndex = (miniMarkIndex + by + miniMarks.length) % miniMarks.length;
+  updateMinimapButtons();
+}
+
+$('minimap-findings').addEventListener('click', () => setMiniFindings(!miniFindings));
+$('minimap-prev').addEventListener('click', () => stepMiniFinding(-1));
+$('minimap-next').addEventListener('click', () => stepMiniFinding(1));
 
 $('minimap-mode').addEventListener('click', () => { miniMode = nextMode(miniMode); updateMinimapButtons(); });
 $('minimap-orient').addEventListener('click', () => { miniOrient = nextOrient(miniOrient); updateMinimapButtons(); });

@@ -465,7 +465,11 @@ function egressFindings({ rooms, exits, stairs, summary }) {
     out.push(finding('warn', 'exit-width',
       `${narrowExits.length} exit${narrowExits.length === 1 ? '' : 's'} narrower than 32 in clear`,
       'A single 3 ft leaf is the smallest door that gives the 32 in clear ' +
-      'width an exit needs once the leaf is standing in the opening.'));
+      'width an exit needs once the leaf is standing in the opening.',
+      // Carried so that a reader with a plan in front of it can point at
+      // *that* door rather than go looking for it. Phase 10's minimap draws
+      // them; the panel has always been able to and never had them.
+      { doors: narrowExits.slice(0, 8) }));
   }
 
   const twoWays = rooms.filter((r) => r.needsTwo);
@@ -540,7 +544,8 @@ function accessibleFindings({ rooms, entrances, summary, narrowDoors }) {
     out.push(finding('note', 'narrow-doors',
       `${narrowDoors.length} doorway${narrowDoors.length === 1 ? '' : 's'} under 3 ft`,
       'A 3 ft leaf is the narrowest door that leaves 32 in clear with the ' +
-      'leaf open, which is what a wheelchair needs.'));
+      'leaf open, which is what a wheelchair needs.',
+      { doors: narrowDoors.slice(0, 8).map((p) => ({ id: p.id, floor: p.floor, x: p.x, z: p.z, w: p.w })) }));
   }
   return out;
 }
