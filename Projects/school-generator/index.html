@@ -313,6 +313,42 @@
     .seg button { flex: 1; padding: 4px 0; font-size: 11px; }
     .seg button.active { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
 
+    /* life panel — who is in the building, and what the clock is doing to
+       them. Same rail and same rules as the sky and the sound: an editor
+       panel that keeps working in the walkthrough, because a school with
+       people in it is worth watching from both. */
+    #life-panel { padding: 10px 12px; width: 234px; }
+    #life-panel h2 {
+      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
+    }
+    #life-panel label {
+      display: block; font-size: 10.5px; color: var(--text-dim);
+      margin: 9px 0 3px; letter-spacing: 0.02em;
+    }
+    #life-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
+    #life-clock {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 8px; margin-bottom: 8px;
+    }
+    #life-time { font-size: 19px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
+    #life-block { font-size: 10.5px; color: var(--text-dim); text-align: right; line-height: 1.35; }
+    #life-block .bell { color: #e8a33d; }
+    .life-acts { display: flex; gap: 4px; margin-top: 8px; }
+    .life-acts button { flex: 1; padding: 5px 0; font-size: 11px; }
+    .life-acts button.on { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
+    .life-acts button.drill.on { background: rgba(217, 90, 60, 0.28); border-color: #d95a3c; }
+    .life-acts button.wide { flex: 3; }
+    #life-readout {
+      margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
+      font-size: 10.5px; line-height: 1.65; color: var(--text-dim);
+    }
+    #life-readout b { color: var(--text); font-weight: 600; }
+    #life-readout .warn { color: #e8a33d; font-weight: 600; }
+    /* A photograph of an empty building is a different picture from one with a
+       crowd in it, so the panel goes away but the people stay. */
+    body.photo #life-panel { display: none !important; }
+
     /* photo mode — a walkthrough-only panel, and the one place the HUD and the
        crosshair get out of the way on purpose. */
     #photo-panel {
@@ -535,6 +571,7 @@
     <button id="fx-btn" title="Toggle post-processing" aria-pressed="true">FX</button>
     <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true">☀ Sky</button>
     <button id="audio-btn" title="Sound, and how the room you're in rings (U)" aria-pressed="false">🔊 Sound</button>
+    <button id="life-btn" title="People in the building, and the bell schedule (L)" aria-pressed="false">👥 Life</button>
     <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)">🚶 Walk Through</button>
   </div>
 
@@ -736,6 +773,35 @@
 
     <div id="audio-readout"></div>
   </div>
+
+  <div id="life-panel" class="panel hidden" role="group" aria-label="School life">
+    <h2>School Life</h2>
+
+    <div id="life-clock">
+      <span id="life-time">10:00 am</span>
+      <span id="life-block">Before school</span>
+    </div>
+
+    <label>Clock</label>
+    <div class="seg" id="life-rate" role="group" aria-label="Clock speed"></div>
+
+    <label for="life-students">Students <span class="env-value" id="life-students-value">90</span></label>
+    <input id="life-students" type="range" min="0" max="400" step="5" value="90" />
+
+    <div class="life-acts">
+      <button id="life-toggle" class="wide" title="Put people in the building (L)">👥 Populate</button>
+      <button id="life-reseed" title="A different intake, the same size">🎲</button>
+    </div>
+    <div class="life-acts">
+      <button id="life-drill" class="drill wide" title="Sound the alarm and route everyone to the nearest exit (K)" aria-pressed="false">🚨 Fire drill</button>
+      <button id="life-heat" title="Where the crowd has been (H)" aria-pressed="false">🔥</button>
+    </div>
+    <div class="life-acts">
+      <button id="life-follow" title="Follow a student — walkthrough only (V)" aria-pressed="false">👤 Follow a student</button>
+    </div>
+
+    <div id="life-readout"></div>
+  </div>
   </div>
 
   <div id="photo-panel" class="panel" role="group" aria-label="Photo mode">
@@ -776,6 +842,7 @@
         <kbd>Space</kbd> jump &nbsp;·&nbsp; <kbd>F</kbd> ghost mode (no-clip, <kbd>Space</kbd>/<kbd>C</kbd> to fly)<br />
         <kbd>E</kbd> ride the elevator you're standing in &nbsp;·&nbsp; <kbd>P</kbd> photo mode<br />
         <kbd>B</kbd> ring the bell &nbsp;·&nbsp; <kbd>N</kbd> PA announcement &nbsp;·&nbsp; <kbd>U</kbd> sound panel<br />
+        <kbd>L</kbd> school life &nbsp;·&nbsp; <kbd>V</kbd> follow somebody &nbsp;·&nbsp; <kbd>K</kbd> fire drill &nbsp;·&nbsp; <kbd>H</kbd> heatmap<br />
         <kbd>Esc</kbd> release mouse
       </p>
       <p>
@@ -784,6 +851,15 @@
         walk onto a staircase or a ramp to climb it, step into an elevator and
         press <kbd>E</kbd>, and you'll stop at the edge of a mezzanine rather
         than walk off it.
+      </p>
+      <p>
+        And it can have people in it. The school life panel (<kbd>L</kbd>)
+        fills the building with students and staff who walk to the room their
+        timetable says they should be in, sit down on the chairs that are
+        there, queue at doorways and get out of your way — or don't. The clock
+        drives the bells and the sun together; <kbd>V</kbd> follows somebody
+        through their day; <kbd>K</kbd> sounds a fire drill and <kbd>H</kbd>
+        shows you where the crowd got stuck on the way out.
       </p>
       <p>
         The building has a sound now: your footsteps take their material from

@@ -114,7 +114,7 @@ export function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
 
 export function createState(w = DEFAULT_W, h = DEFAULT_H) {
   return {
-    version: 7,
+    version: 8,
     cellFt: CELL,
     floorHt: FLOOR_H,
     w, h,

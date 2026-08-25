@@ -35,7 +35,9 @@ import {
   moveWalker, resolvePoint, supportAt, storeyAt, updateDoorsFor, STEP_UP, WALKER_R,
 } from './collide.js';
 import { groundAt } from './terrain.js';
-import { blocks, blockAt, normalizeSchedule, makeTimetable, fixedTimetable } from './schedule.js';
+import {
+  blocks, blockAt, normalizeSchedule, isDefaultSchedule, makeTimetable, fixedTimetable,
+} from './schedule.js';
 import {
   route, egressField, teachingRooms, commonRooms, runLandings, DOOR_OFFSET,
 } from './navgraph.js';
@@ -153,6 +155,40 @@ const FIRST_NAMES = [
   'Kit', 'Lena', 'Milo', 'Nia', 'Omar', 'Pia', 'Quinn', 'Rosa', 'Sam', 'Tess',
   'Uma', 'Vik', 'Wren', 'Xiu', 'Yara', 'Zane',
 ];
+
+// ---------- the settings a design carries ----------
+//
+// Agents themselves are never saved — a population is a pure function of the
+// design, a seed and a size, so saving one would be saving something that can
+// be recomputed, and (worse) a school full of people frozen mid-stride. What
+// the file carries is the three numbers that reproduce them.
+
+export const DEFAULT_LIFE = { students: 90, seed: 1 };
+
+export function normalizeLife(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const num = (v, dflt, lo, hi) => {
+    const n = typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : dflt;
+    return Math.min(hi, Math.max(lo, n));
+  };
+  const out = {
+    students: num(src.students, DEFAULT_LIFE.students, 0, MAX_POP),
+    seed: num(src.seed, DEFAULT_LIFE.seed, 1, 0x7fffffff),
+  };
+  // The schedule rides along only when it differs from the default one, the
+  // same rule the environment, the roof and a plain doorway follow.
+  const sched = normalizeSchedule(src.schedule);
+  if (!isDefaultSchedule(sched)) out.schedule = sched;
+  return out;
+}
+
+export const defaultLife = () => ({ ...DEFAULT_LIFE });
+
+export const isDefaultLife = (life) => {
+  if (!life) return true;
+  const l = normalizeLife(life);
+  return l.students === DEFAULT_LIFE.students && l.seed === DEFAULT_LIFE.seed && !l.schedule;
+};
 
 // ---------- randomness ----------
 

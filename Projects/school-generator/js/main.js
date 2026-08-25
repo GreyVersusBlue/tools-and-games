@@ -2,7 +2,7 @@
 
 import * as THREE from 'three';
 import {
-  createState, ROOM_COLORS, MAX_FLOORS, CELL,
+  createState, ROOM_COLORS, MAX_FLOORS, CELL, EYE_H, floorBaseY,
   floorLabel, floorCellCount, floorShapeCount,
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
 } from './grid.js';
@@ -15,13 +15,23 @@ import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
 import { stairMetrics, linksFrom, elevatorsOn, RAMP_SLOPES } from './stairs.js';
 import { FLOOR_FINISHES, DEFAULT_FINISH, FACADE_MATERIALS, DEFAULT_FACADE } from './finish.js';
 import { SITE_SURFACES, SITE_MARKINGS, surfaceEntry, markingEntry, regionArea, siteSchedule } from './site.js';
-import { terrainField, terrainRange, ensureTerrain } from './terrain.js';
+import { terrainField, terrainRange, ensureTerrain, groundAt } from './terrain.js';
 import { ROOF_STYLES, ensureRoof, normalizeRoof, isPitched, roofPlan } from './roof.js';
 import {
   SUN_PRESETS, MONTH_NAMES, MAX_LAT, normalizeEnv, presetMinutes, daysInMonth,
   formatClock, formatDate, formatLat, skyState,
 } from './sky.js';
 import { initWalkthrough } from './walkthrough.js';
+import { buildNav, navSummary } from './navgraph.js';
+import {
+  blockAt, bellsBetween, nextBell, clockText, countdownText, wrapMinutes,
+  normalizeSchedule,
+} from './schedule.js';
+import {
+  makePopulation, makeContext, retargetAll, stepAgents, census, drillReport,
+  bodiesOn, makeCrowdField, crowdCells, clearCrowd, normalizeLife,
+} from './agents.js';
+import { buildCollider, storeyAt, WALKER_R } from './collide.js';
 import { initAudio } from './audio.js';
 import { doorEvents } from './sound.js';
 import { roomsOnFloor, isOutside } from './acoustics.js';
@@ -91,6 +101,14 @@ const editor = initEditor({
     // answers are derived rather than stored, so re-deriving is the whole
     // update. Skipped mid-drag — a stroke ends in an unthrottled call.
     if (!info.throttled) { audio.setWorld(state); renderAudioReadout(); }
+    // ...and the same for the people. The graph is derived from the model, so
+    // an edited model is a stale graph — and the colliders the crowd walks
+    // against were built once, from the building that used to be there.
+    if (!info.throttled && life.on) {
+      lifeRebuildWorld();
+      retargetAll(life.ctx, life.agents);
+      renderLifeReadout();
+    }
   },
   // The polygon tools have more to say than a fixed per-tool hint — how many
   // corners are down, how big the room is — so they drive the status line.
@@ -210,6 +228,7 @@ if (isTouch) {
   $('walk-controls-hint').innerHTML =
     'Left joystick to move &nbsp;·&nbsp; drag anywhere else to look<br />' +
     '🏃 toggles sprint &nbsp;·&nbsp; ⤒ jumps<br />' +
+    '👥 Life fills the building with people<br />' +
     '✕ (top right) exits';
 }
 
@@ -231,6 +250,7 @@ function setMode(m) {
     editor.setEnabled(false);
     walk.enable(state);
     doorState = new Map();
+    if (life.on) walk.setBodies((i) => bodiesOn(life.agents, i));
     audio.setWorld(state);
     openModal(walkOverlay, $('walk-start'));
     closeModal($('designs-overlay'));
@@ -238,6 +258,7 @@ function setMode(m) {
     $('mode-btn').textContent = '✏️ Edit Mode';
   } else {
     setPhotoMode(false);
+    walk.setFollow(null);
     walk.disable();
     audio.setActive(false);
     closeModal(walkOverlay);
@@ -246,6 +267,7 @@ function setMode(m) {
     editor.setEnabled(true);
     $('mode-btn').textContent = '🚶 Walk Through';
   }
+  if (!lifePanel.classList.contains('hidden')) renderLifePanel();
 }
 
 $('mode-btn').addEventListener('click', () => setMode(mode === 'edit' ? 'walk' : 'edit'));
@@ -1390,6 +1412,403 @@ $('audio-btn').addEventListener('click', () => {
   if (!hidden) renderAudioPanel();
 });
 
+
+// --- school life ---
+//
+// Phase 6. The building gets people in it, and a clock that tells them where
+// to be. Everything about *what* they do lives in agents.js, navgraph.js and
+// schedule.js — this is the part that can't: a rebuild trigger, a frame loop,
+// a panel, and the two places the crowd touches something that already
+// existed (the camera walks around it; the bells it rings are the ones the
+// sound panel already knows how to play).
+//
+// The one structural thing worth saying: **the crowd's colliders have the same
+// lifetime as the crowd, not as a walkthrough.** collide.js builds a storey
+// once because editing and walking were exclusive; a school with people in it
+// is being edited *while* they walk, so an edit invalidates them and the next
+// frame builds what it needs again. That is the whole of the "collides with
+// the collider's build-once lifecycle" the wishlist warned about, and it costs
+// one `null` and a lazy rebuild.
+const life = {
+  on: false,
+  agents: [],
+  nav: null,
+  ctx: null,
+  colliders: new Map(),
+  site: null,
+  crowd: makeCrowdField(),
+  rate: 1,           // simulated minutes per real second, 0 = the clock is held
+  drill: false,
+  drillAt: 0,
+  heat: false,
+  followIdx: -1,
+  seed: 1,
+  students: 90,
+  heatAt: 0,
+  clockAcc: 0,
+};
+
+const lifePanel = $('life-panel');
+
+function lifeSettings() {
+  const l = normalizeLife(state.life);
+  return l;
+}
+
+// Everything derived from the design: the graph, the ground and the colliders.
+// Torn down on any edit and rebuilt on the next frame that needs it — the
+// crowd itself survives, because a wall moving is not a reason for the school
+// to go home.
+function lifeRebuildWorld() {
+  life.nav = buildNav(state);
+  life.site = terrainField(state);
+  life.colliders = new Map();
+  if (life.ctx) {
+    life.ctx.nav = life.nav;
+    life.ctx.site = life.site;
+    life.ctx.egress = null;
+    life.ctx.seats = new Map();
+    life.ctx.taken = new Set();
+  }
+}
+
+function lifeColliderFor(i) {
+  let c = life.colliders.get(i);
+  if (!c) {
+    c = buildCollider(state, i, catalogEntry, { site: life.site });
+    life.colliders.set(i, c);
+  }
+  return c;
+}
+
+function lifeStart() {
+  const settings = lifeSettings();
+  life.seed = settings.seed;
+  life.students = settings.students;
+  lifeRebuildWorld();
+  life.crowd = makeCrowdField();
+  life.ctx = makeContext(state, life.nav, {
+    site: life.site,
+    schedule: settings.schedule,
+    colliderFor: lifeColliderFor,
+    catalogGet: catalogEntry,
+    crowd: life.crowd,
+    minutes: state.env.minutes,
+  });
+  life.agents = makePopulation(state, life.nav, {
+    seed: life.seed, students: life.students, schedule: life.ctx.schedule,
+  });
+  life.drill = false;
+  life.drillAt = 0;
+  life.followIdx = -1;
+  life.on = life.agents.length > 0;
+  retargetAll(life.ctx, life.agents);
+  walk.setBodies((floorIndex) => (life.on ? bodiesOn(life.agents, floorIndex) : null));
+  // One collider per storey for the whole building, shared by the crowd and
+  // the camera — see walkthrough.js's `setColliders`. It also means an edit
+  // that invalidates the crowd's world invalidates the walker's, which is the
+  // first time in this codebase that has been true.
+  walk.setColliders(lifeColliderFor);
+  walk.setFollow(null);
+  renderLifePanel();
+  return life.on;
+}
+
+function lifeStop() {
+  life.on = false;
+  life.agents = [];
+  life.drill = false;
+  life.followIdx = -1;
+  walk.setBodies(null);
+  walk.setColliders(null);
+  walk.setFollow(null);
+  renderApi.clearCrowd();
+  renderApi.setHeat(null);
+  renderLifePanel();
+}
+
+// The clock. `life.rate` is simulated minutes per real second — the *clock*
+// runs fast, never the people: a corridor at ten times speed is a blur nobody
+// can read, and the thing worth watching is a passing period at the pace a
+// passing period actually happens.
+function lifeAdvanceClock(dt) {
+  if (!life.rate) return;
+  life.clockAcc += dt * life.rate;
+  // Whole minutes only. `env.minutes` is an integer — the sun is placed from
+  // it, and the sky panel redraws whenever it moves — so a clock that
+  // "advances" by four hundredths of a minute every frame would rebuild the
+  // environment sixty times a second to show the same time.
+  if (life.clockAcc < 1) return;
+  const step = Math.floor(life.clockAcc);
+  life.clockAcc -= step;
+  const before = state.env.minutes;
+  const next = wrapMinutes(before + step);
+  // The bells crossed on the way — rung once each, and only when there is an
+  // ear in the building to hear them.
+  for (const bell of bellsBetween(life.ctx.schedule, before, next)) {
+    if (audio.running) audio.ring();
+    lifeFlashBell(bell);
+  }
+  const blockBefore = blockAt(life.ctx.schedule, before);
+  state.env.minutes = next;
+  life.ctx.minutes = next;
+  envChanged();
+  // A new block is a new set of instructions for everybody. Re-derived at the
+  // moment the clock crosses it rather than per frame, because a route is a
+  // search and the answer only changes when the timetable does.
+  if (blockAt(life.ctx.schedule, next).label !== blockBefore.label && !life.drill) {
+    retargetAll(life.ctx, life.agents);
+  }
+}
+
+let bellFlash = 0;
+function lifeFlashBell(bell) {
+  bellFlash = 2.5;
+  $('life-block').innerHTML = `<span class="bell">🔔 ${bell.label}</span>`;
+}
+
+// One frame of school. Called from the main loop in both modes — a crowd is
+// worth watching from above as well as from inside it.
+function lifeUpdate(dt) {
+  if (!life.on || !life.ctx) return;
+  if (!life.nav) lifeRebuildWorld();
+  lifeAdvanceClock(dt);
+  // The camera is a body like any other, and the storey it is on already has
+  // its doors driven by walkthrough.js — so the crowd is told to leave that
+  // one alone rather than swinging the same leaves twice a frame.
+  const opts = {};
+  if (mode === 'walk') {
+    const eye = renderApi.walkCamera.position;
+    const floorIndex = storeyAt(state, eye.y - EYE_H, groundAt(life.site, eye.x, eye.z));
+    opts.bodies = [{ id: 'camera', x: eye.x, z: eye.z, r: WALKER_R, push: 1 }];
+    opts.skipFloors = new Set([floorIndex]);
+  }
+  stepAgents(life.ctx, life.agents, Math.min(dt, 0.05), opts);
+  // Doors the crowd moved on storeys the camera isn't on.
+  for (const collider of life.ctx.doorsMoved || []) renderApi.poseDoors(collider.doors);
+
+  renderApi.setCrowd(life.agents, {
+    // While editing, people below the storey you are working on would be
+    // walking through the slab you are drawing on. Same rule the props follow.
+    hideAbove: mode === 'edit' ? state.currentFloor : undefined,
+    recolor: true,
+  });
+  lifeFollowTick();
+  lifeHeatTick(dt);
+  if (bellFlash > 0) bellFlash -= dt;
+  lifeReadoutTick(dt);
+}
+
+let readoutAcc = 0;
+function lifeReadoutTick(dt) {
+  readoutAcc += dt;
+  if (readoutAcc < 0.4 || lifePanel.classList.contains('hidden')) return;
+  readoutAcc = 0;
+  renderLifeClock();
+  renderLifeReadout();
+}
+
+function lifeHeatTick(dt) {
+  if (!life.heat) return;
+  life.heatAt -= dt;
+  if (life.heatAt > 0) return;
+  life.heatAt = 0.75;
+  const floorIndex = mode === 'edit'
+    ? state.currentFloor
+    : storeyAt(state, renderApi.walkCamera.position.y - EYE_H);
+  renderApi.setHeat(crowdCells(life.crowd, floorIndex), {
+    cell: life.crowd.cell,
+    baseY: floorBaseY(state, floorIndex),
+  });
+}
+
+// --- following somebody ---
+
+const FOLLOW_MODES = ['ots', 'fps'];
+
+// Nobody → over the shoulder → first person → nobody. Three states on one
+// button, because "whose eyes" is one question with three answers rather than
+// two settings.
+function lifeFollow() {
+  if (!life.on || mode !== 'walk') return;
+  const inside = life.agents.filter((a) => a.state !== 'out');
+  if (!inside.length) return;
+  const current = walk.following;
+  if (!current) {
+    // Somebody who is actually going somewhere, if anyone is — following a
+    // person who is sitting in a chair for forty-seven minutes is a lesson,
+    // not a walkthrough.
+    const moving = inside.filter((a) => a.state === 'walk');
+    const pool = moving.length ? moving : inside;
+    walk.setFollow(pool[Math.floor(Math.random() * pool.length)], 'ots');
+  } else if (walk.followMode === 'ots') {
+    walk.setFollow(current, 'fps');
+  } else {
+    walk.setFollow(null);
+  }
+  renderFollowButton();
+}
+
+function renderFollowButton() {
+  const btn = $('life-follow');
+  const who = walk.following;
+  btn.setAttribute('aria-pressed', String(!!who));
+  btn.classList.toggle('on', !!who);
+  btn.textContent = who
+    ? (walk.followMode === 'fps' ? '👁 First person' : '👤 Over the shoulder')
+    : '👤 Follow a student';
+  renderLifeReadout();
+}
+
+// The person you are following can walk out of the building, and then you are
+// standing in a car park watching a bus loop. Hand the camera back instead.
+function lifeFollowTick() {
+  const who = walk.following;
+  if (!who) return;
+  if (who.state === 'out' || mode !== 'walk') {
+    walk.setFollow(null);
+    renderFollowButton();
+  }
+}
+
+// --- the drill ---
+
+function lifeSetDrill(on) {
+  if (!life.on) return;
+  life.drill = !!on;
+  life.ctx.mode = on ? 'drill' : 'day';
+  life.ctx.egress = null;
+  life.ctx.elapsed = 0;
+  life.drillAt = 0;
+  if (on) {
+    clearCrowd(life.crowd);
+    for (const a of life.agents) { a.state = a.state === 'out' ? 'walk' : a.state; a.outAt = null; }
+    if (audio.running) audio.announce();
+  }
+  retargetAll(life.ctx, life.agents);
+  $('life-drill').classList.toggle('on', life.drill);
+  $('life-drill').setAttribute('aria-pressed', String(life.drill));
+  renderLifePanel();
+}
+
+// --- the panel ---
+
+const LIFE_RATES = [
+  { key: 0, label: 'Hold' },
+  { key: 0.25, label: 'Slow' },
+  { key: 1, label: '1×' },
+  { key: 4, label: 'Fast' },
+];
+
+function renderLifeRates() {
+  const host = $('life-rate');
+  host.innerHTML = '';
+  for (const r of LIFE_RATES) {
+    const b = document.createElement('button');
+    b.textContent = r.label;
+    b.className = life.rate === r.key ? 'active' : '';
+    b.setAttribute('aria-pressed', String(life.rate === r.key));
+    b.title = r.key === 0 ? 'Stop the clock — the people keep moving'
+      : `${r.key} school minute${r.key === 1 ? '' : 's'} per second`;
+    b.addEventListener('click', () => { life.rate = r.key; renderLifeRates(); });
+    host.appendChild(b);
+  }
+}
+
+function renderLifeClock() {
+  $('life-time').textContent = clockText(state.env.minutes);
+  if (bellFlash > 0) return;
+  const sched = life.ctx ? life.ctx.schedule : normalizeSchedule(lifeSettings().schedule);
+  const b = blockAt(sched, state.env.minutes);
+  const next = nextBell(sched, state.env.minutes);
+  $('life-block').innerHTML = life.drill
+    ? '<span class="bell">🚨 Evacuating</span>'
+    : `${b.label}<br />next bell in ${next ? countdownText(next.in) : '—'}`;
+}
+
+function renderLifeReadout() {
+  const el = $('life-readout');
+  if (!life.on) {
+    const nav = life.nav || buildNav(state);
+    const sum = navSummary(nav);
+    el.innerHTML = `<b>${sum.rooms}</b> rooms · <b>${sum.doors}</b> doors · ` +
+      `<b>${sum.links}</b> stairs &amp; lifts<br />` +
+      (sum.exits
+        ? `<b>${sum.exits}</b> way${sum.exits === 1 ? '' : 's'} out. Populate to fill it.`
+        : '<span class="warn">No exterior doors</span> — nobody could get out.');
+    return;
+  }
+  const c = census(life.agents);
+  const lines = [
+    `<b>${c.total}</b> people — ${c.teachers} staff · <b>${c.walking}</b> walking · ` +
+    `<b>${c.seated}</b> seated · ${c.idle} standing`,
+  ];
+  if (life.drill) {
+    const r = drillReport(life.agents, life.ctx.elapsed);
+    lines.push(`<b>${r.out}/${r.total}</b> out in <b>${Math.round(r.elapsed)}s</b>` +
+      (r.longest ? ` · last out at ${Math.round(r.longest)}s` : ''));
+    if (r.stranded) lines.push(`<span class="warn">${r.stranded} with no way out</span>`);
+    if (r.done) lines.push('Building clear.');
+  } else if (c.out) {
+    lines.push(`${c.out} have left the building`);
+  }
+  if (walk.following) lines.push(`Following <b>${walk.following.name}</b>`);
+  el.innerHTML = lines.join('<br />');
+}
+
+function renderLifePanel() {
+  $('life-students-value').textContent = String(life.students);
+  $('life-students').value = String(life.students);
+  $('life-toggle').textContent = life.on ? '✖ Clear' : '👥 Populate';
+  $('life-toggle').classList.toggle('on', life.on);
+  $('life-drill').disabled = !life.on;
+  $('life-follow').disabled = !life.on || mode !== 'walk';
+  renderLifeRates();
+  renderLifeClock();
+  renderLifeReadout();
+}
+
+$('life-btn').addEventListener('click', () => {
+  const hidden = lifePanel.classList.toggle('hidden');
+  $('life-btn').classList.toggle('off', hidden);
+  $('life-btn').setAttribute('aria-pressed', String(!hidden));
+  if (!hidden) renderLifePanel();
+});
+
+$('life-toggle').addEventListener('click', () => {
+  if (life.on) lifeStop();
+  else if (!lifeStart()) renderLifeReadout();
+});
+
+$('life-reseed').addEventListener('click', () => {
+  state.life = { ...lifeSettings(), seed: Math.floor(Math.random() * 0x7ffffffe) + 1 };
+  autosave(state);
+  if (life.on) lifeStart(); else renderLifePanel();
+});
+
+$('life-students').addEventListener('input', (e) => {
+  const n = Number(e.target.value);
+  life.students = n;
+  $('life-students-value').textContent = String(n);
+});
+$('life-students').addEventListener('change', () => {
+  state.life = { ...lifeSettings(), students: life.students };
+  autosave(state);
+  if (life.on) lifeStart();
+});
+
+$('life-drill').addEventListener('click', () => lifeSetDrill(!life.drill));
+
+$('life-heat').addEventListener('click', () => {
+  life.heat = !life.heat;
+  life.heatAt = 0;
+  $('life-heat').classList.toggle('on', life.heat);
+  $('life-heat').setAttribute('aria-pressed', String(life.heat));
+  if (!life.heat) renderApi.setHeat(null);
+});
+
+$('life-follow').addEventListener('click', () => lifeFollow());
+
 // --- photo mode ---
 //
 // A walkthrough affordance, not an editor one: it takes the walker off its
@@ -1487,6 +1906,15 @@ document.addEventListener('keydown', (e) => {
     setPhotoMode(!photoMode);
     return;
   }
+  // The crowd's four, in both modes: the panel, the drill, the heatmap, and
+  // whose shoulder you are looking over.
+  if (e.code === 'KeyL' && !typing && !e.ctrlKey && !e.metaKey) { $('life-btn').click(); return; }
+  if (e.code === 'KeyK' && !typing && !e.ctrlKey && !e.metaKey) { lifeSetDrill(!life.drill); return; }
+  if (e.code === 'KeyH' && !typing && !e.ctrlKey && !e.metaKey) { $('life-heat').click(); return; }
+  if (e.code === 'KeyV' && !typing && !e.ctrlKey && !e.metaKey && mode === 'walk') {
+    lifeFollow();
+    return;
+  }
   if (mode !== 'edit' || typing) return;
   // Enter / Escape / Backspace / Delete belong to the polygon tools while one
   // of them is holding an outline or a selection.
@@ -1540,6 +1968,10 @@ function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.1);
   if (mode === 'walk') { walk.update(dt); audio.update(dt); }
+  // The school runs in both modes. A crowd seen from 200ft up, moving between
+  // periods over a plan you are drawing, is half of what this phase is for —
+  // and the other half is meeting one of them in a corridor.
+  lifeUpdate(dt);
   renderApi.render(dt);
 }
 
@@ -1549,6 +1981,7 @@ renderStairReadout();
 renderEnvPanel();
 renderSitePanel();
 renderAudioPanel();
+renderLifePanel();
 audio.setWorld(state);
 updateUndoButtons();
 loop();
@@ -1558,4 +1991,5 @@ window.app = {
   get state() { return state; },
   setMode, renderApi, editor, walk,
   setPhotoMode, envChanged, audio,
+  life, lifeStart, lifeStop, lifeSetDrill, lifeFollow,
 };
