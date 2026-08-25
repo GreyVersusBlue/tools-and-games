@@ -1,0 +1,314 @@
+// hunt.js — the scavenger hunt.
+//
+// Phase 11's reason for a kid to walk around the building a parent just
+// designed. Eight things are hidden in it; the panel says what they are and
+// roughly where, the walk says the rest.
+//
+// This wanted Phase 10's mesh underneath it and now has one, and the
+// difference is the whole design of this file. Against the Phase 6 graph a
+// room was a *point* — its centroid — so "hidden in the gym" could only ever
+// mean "at the exact middle of the gym", which is neither a hiding place nor a
+// sentence worth printing. `navmesh.js` hands over the walkable surface as
+// rectangles instead, so a hiding place is a property of a piece of floor:
+// `nav.mesh[f].byRoom` says what a room is made of, and a corner of one of
+// those rectangles is somewhere a person can actually stand.
+//
+// What is still unsayable is "behind the bleachers", because furniture is not
+// in the mesh. What is sayable — and is what the hints below say — is which
+// end of which room on which storey, which turns out to be exactly the amount
+// of help a hunt wants: enough to send you to the right room, not enough to
+// walk you to the spot.
+//
+// Pure module: no three.js, no DOM, no clock. The caller owns the frame loop
+// and hands positions in; everything here is a function of the design, the
+// seed and where you are standing.
+
+import { rng } from './agents.js';
+
+// How many things are hidden, and the bounds a caller may ask for.
+export const DEFAULT_COUNT = 8;
+export const MIN_COUNT = 3;
+export const MAX_COUNT = 20;
+
+// Close enough to have found it. Generous on purpose: a hunt whose last foot
+// is the hard part is a hunt about walking into corners.
+export const FIND_R = 3.5;        // ft
+// Where a token starts to fade in. Inside this you can see the thing; outside
+// it, the hint and the warmth are all you get.
+export const REVEAL_R = 15;       // ft
+// How far a hidden thing sits in from the edge of its tile — far enough not to
+// be inside the wall the tile stops at, near enough to read as "in the corner"
+// rather than "in the room".
+export const INSET = 1.8;         // ft
+// The smallest tile worth hiding something on. Below this the "corner" of it
+// is the middle of it, and two hiding places in one small room would sit on
+// top of each other.
+export const MIN_TILE_SIDE = 5;   // ft
+// A storey climbed, in feet of apparent distance, for the warmth reading only.
+// Warmth is a straight line and a straight line through a slab is a lie the
+// other way — without this the thing directly under your feet reads as
+// burning, and you spend a minute looking at the floor.
+export const FLOOR_FEET = 26;     // ft
+
+// What is hidden. Nine rows of school lost-property, cycled in seed order, so
+// a hunt is a list of *things* rather than a list of numbered markers — "the
+// class hamster is in the north-west corner of the Library" is a sentence a
+// seven-year-old will act on and "target 3 of 8" is not.
+export const HUNT_ITEMS = [
+  { key: 'hamster', name: 'the class hamster', icon: '🐹' },
+  { key: 'sneaker', name: 'a lost sneaker', icon: '👟' },
+  { key: 'lunchbox', name: 'somebody’s lunchbox', icon: '🍱' },
+  { key: 'book', name: 'an overdue library book', icon: '📕' },
+  { key: 'ball', name: 'a runaway kickball', icon: '⚽' },
+  { key: 'trophy', name: 'the missing trophy', icon: '🏆' },
+  { key: 'glasses', name: 'a pair of glasses', icon: '👓' },
+  { key: 'umbrella', name: 'a forgotten umbrella', icon: '☂️' },
+  { key: 'keys', name: 'the janitor’s keys', icon: '🔑' },
+];
+
+// How the warmth reads, coldest last. The caller prints `label`; `key` is
+// there so a stylesheet can colour it without parsing English.
+export const WARMTH_BANDS = [
+  { key: 'burning', label: 'Burning', within: 9 },
+  { key: 'hot', label: 'Hot', within: 20 },
+  { key: 'warm', label: 'Warm', within: 40 },
+  { key: 'cool', label: 'Cool', within: 80 },
+  { key: 'cold', label: 'Cold', within: 160 },
+  { key: 'freezing', label: 'Freezing', within: Infinity },
+];
+
+const clampInt = (v, lo, hi, dflt) =>
+  (Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : dflt);
+
+// ---------- where a room is ----------
+
+// The union of a room's tiles. A room is not a rectangle — an L-shaped
+// corridor is two of them and a polygon room is a staircase of them — so this
+// is the bounding box of the whole set, which is what "the north end of" is
+// measured against. A hint that said which end of which *tile* would be
+// correct and useless: nobody standing in a room can see where its tiles are.
+export function roomBounds(mesh, roomId) {
+  const list = (mesh && mesh.byRoom.get(roomId)) || [];
+  if (!list.length) return null;
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const t of list) {
+    x0 = Math.min(x0, t.x0); z0 = Math.min(z0, t.z0);
+    x1 = Math.max(x1, t.x1); z1 = Math.max(z1, t.z1);
+  }
+  return { x0, z0, x1, z1 };
+}
+
+// Which third of the room a point is in, as a phrase. +z is south here, the
+// same way round the plan sheet's north arrow has it, so a hint and a printed
+// plan never disagree about which end of the gym is which.
+export function quadrantOf(bounds, x, z) {
+  if (!bounds) return '';
+  const w = bounds.x1 - bounds.x0, h = bounds.z1 - bounds.z0;
+  const ew = x < bounds.x0 + w / 3 ? 'west' : x > bounds.x1 - w / 3 ? 'east' : '';
+  const ns = z < bounds.z0 + h / 3 ? 'north' : z > bounds.z1 - h / 3 ? 'south' : '';
+  if (ns && ew) return `${ns}-${ew}`;
+  return ns || ew;
+}
+
+// The hint itself. Deliberately a place and not a route.
+export function describePlace(bounds, x, z, roomName, floorIndex, floorCount = 1) {
+  const room = roomName || 'an unnamed room';
+  const q = quadrantOf(bounds, x, z);
+  const where = !q ? `the middle of ${room}`
+    : q.includes('-') ? `the ${q} corner of ${room}`
+      : `the ${q} end of ${room}`;
+  return floorCount > 1 ? `${where}, on Level ${floorIndex + 1}` : where;
+}
+
+// ---------- choosing the places ----------
+
+// The four inset corners of a tile, plus its middle as a last resort. Order is
+// fixed; which one gets used comes off the seed, and any of them may be
+// refused by `clear` (a corner with a filing cabinet in it is not a hiding
+// place, it is a place you cannot reach).
+function spotsOn(tile) {
+  const ix = Math.min(INSET, (tile.x1 - tile.x0) / 2.5);
+  const iz = Math.min(INSET, (tile.z1 - tile.z0) / 2.5);
+  return [
+    { x: tile.x0 + ix, z: tile.z0 + iz },
+    { x: tile.x1 - ix, z: tile.z0 + iz },
+    { x: tile.x1 - ix, z: tile.z1 - iz },
+    { x: tile.x0 + ix, z: tile.z1 - iz },
+    { x: tile.cx, z: tile.cz },
+  ];
+}
+
+const bigEnough = (t) =>
+  t.rect && (t.x1 - t.x0) >= MIN_TILE_SIDE && (t.z1 - t.z0) >= MIN_TILE_SIDE;
+
+// Every room that has somewhere to hide something, biggest tile first within
+// each. Rooms rather than tiles is the unit on purpose: eight things in eight
+// different rooms is a hunt around a building, and eight things on eight tiles
+// of one corridor is a hunt around a corridor.
+export function huntCandidates(nav) {
+  const out = [];
+  const meshes = (nav && nav.mesh) || [];
+  for (let f = 0; f < meshes.length; f++) {
+    const mesh = meshes[f];
+    if (!mesh || !mesh.byRoom) continue;
+    for (const [roomId, tiles] of mesh.byRoom) {
+      const usable = tiles.filter(bigEnough).sort((a, b) => b.area - a.area);
+      if (!usable.length) continue;
+      const node = nav.nodes ? nav.nodes.get(roomId) : null;
+      out.push({
+        floor: f,
+        room: roomId,
+        name: (node && node.name) || '',
+        area: usable.reduce((a, t) => a + t.area, 0),
+        tiles: usable,
+        bounds: roomBounds(mesh, roomId),
+      });
+    }
+  }
+  return out;
+}
+
+// Deal `count` hiding places out of those candidates. One per room until the
+// rooms run out, then a second pass — a small school with four rooms in it
+// still gets a hunt, it is just a hunt with two things in some of the rooms.
+//
+// `opts.clear(x, z, floor)` is the caller's chance to refuse a spot: pass
+// collide.js's resolver and a hiding place will never land inside a bookcase.
+// Optional, because a test has no colliders and a small design has no
+// furniture.
+export function hidingPlaces(nav, opts = {}) {
+  const count = clampInt(opts.count, MIN_COUNT, MAX_COUNT, DEFAULT_COUNT);
+  const rand = rng(clampInt(opts.seed, 1, 0xffffffff, 1));
+  const clear = typeof opts.clear === 'function' ? opts.clear : null;
+  const floorCount = (nav && nav.mesh && nav.mesh.length) || 1;
+  const rooms = huntCandidates(nav);
+  if (!rooms.length) return [];
+  // Shuffled, but weighted toward the bigger rooms: sort by area and then swap
+  // each entry with one a short way ahead of it. Every room still appears
+  // exactly once — a hunt that could silently drop a wing would be a hunt you
+  // could not finish — but a gym is far likelier to come out near the front
+  // than a broom cupboard is, and a hunt around eight broom cupboards is a
+  // chore rather than a game.
+  const pool = rooms.slice().sort((a, b) => b.area - a.area);
+  for (let i = 0; i < pool.length; i++) {
+    const j = i + Math.floor(rand() * Math.min(4, pool.length - i));
+    const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+  }
+
+  const places = [];
+  const used = new Set();          // "room|x|z", so a second pass can't repeat
+  for (let pass = 0; pass < 2 && places.length < count; pass++) {
+    for (const r of pool) {
+      if (places.length >= count) break;
+      const tile = r.tiles[Math.min(pass, r.tiles.length - 1)];
+      const spots = spotsOn(tile);
+      const start = Math.floor(rand() * spots.length);
+      let spot = null;
+      for (let k = 0; k < spots.length; k++) {
+        const s = spots[(start + k) % spots.length];
+        const key = `${r.room}|${s.x.toFixed(2)}|${s.z.toFixed(2)}`;
+        if (used.has(key)) continue;
+        if (clear && !clear(s.x, s.z, r.floor)) continue;
+        used.add(key);
+        spot = s;
+        break;
+      }
+      if (!spot) continue;
+      const item = HUNT_ITEMS[places.length % HUNT_ITEMS.length];
+      places.push({
+        id: `h${places.length}`,
+        item: item.key,
+        name: item.name,
+        icon: item.icon,
+        floor: r.floor,
+        room: r.room,
+        roomName: r.name,
+        tile: tile.id,
+        x: spot.x,
+        z: spot.z,
+        hint: describePlace(r.bounds, spot.x, spot.z, r.name, r.floor, floorCount),
+      });
+    }
+  }
+  return places;
+}
+
+// ---------- the hunt itself ----------
+
+// Runtime state and nothing else: a seed, the places it dealt, and which of
+// them have been found. Never written to a save file — a hunt is something you
+// do in a building, not something the building is.
+export function startHunt(nav, opts = {}) {
+  const seed = clampInt(opts.seed, 1, 0xffffffff, 1);
+  return {
+    seed,
+    places: hidingPlaces(nav, { ...opts, seed }),
+    found: new Set(),
+    startedAt: opts.now ?? 0,
+    endedAt: 0,
+  };
+}
+
+export const unfound = (hunt) =>
+  (hunt ? hunt.places : []).filter((p) => !hunt.found.has(p.id));
+
+// Apparent distance from a point to a place: the plan distance, plus a fixed
+// charge per storey between the two. See FLOOR_FEET.
+export function apparentDistance(place, at) {
+  const df = Math.abs((place.floor || 0) - (at.floor || 0));
+  return Math.hypot(place.x - at.x, place.z - at.z) + df * FLOOR_FEET;
+}
+
+// The nearest thing still hidden, and how near. Null once everything is found.
+export function nearestHidden(hunt, at) {
+  let best = null, bestD = Infinity;
+  for (const p of unfound(hunt)) {
+    const d = apparentDistance(p, at);
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best ? { place: best, dist: bestD } : null;
+}
+
+export function bandFor(dist) {
+  for (const b of WARMTH_BANDS) if (dist <= b.within) return b;
+  return WARMTH_BANDS[WARMTH_BANDS.length - 1];
+}
+
+// What the panel says while you walk: how close the nearest one is, in words.
+export function huntWarmth(hunt, at) {
+  const near = nearestHidden(hunt, at);
+  if (!near) return null;
+  return { ...bandFor(near.dist), dist: near.dist, place: near.place };
+}
+
+// Did standing here find anything? Only on the storey the thing is on and only
+// within FIND_R of it — being directly above the hamster is not finding the
+// hamster. Returns the place found, and marks it, or null.
+export function checkFind(hunt, at) {
+  if (!hunt) return null;
+  for (const p of unfound(hunt)) {
+    if (p.floor !== (at.floor || 0)) continue;
+    if (Math.hypot(p.x - at.x, p.z - at.z) > FIND_R) continue;
+    hunt.found.add(p.id);
+    if (hunt.found.size >= hunt.places.length) hunt.endedAt = at.now ?? 0;
+    return p;
+  }
+  return null;
+}
+
+// How close a token is to visible, 0 (nothing there) to 1 (right on top of
+// it). The renderer fades one in over the last REVEAL_R feet, which is the
+// "warmer... warmer..." made visible — and it is per storey for the same
+// reason `checkFind` is.
+export function revealAt(place, at, radius = REVEAL_R) {
+  if (place.floor !== (at.floor || 0)) return 0;
+  const d = Math.hypot(place.x - at.x, place.z - at.z);
+  if (d >= radius) return 0;
+  return Math.min(1, (radius - d) / Math.max(1e-6, radius - FIND_R));
+}
+
+export function huntSummary(hunt) {
+  const total = hunt ? hunt.places.length : 0;
+  const found = hunt ? hunt.found.size : 0;
+  return { found, total, done: total > 0 && found >= total };
+}

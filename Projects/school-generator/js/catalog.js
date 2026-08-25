@@ -35,6 +35,14 @@
 //                   reads it; a row without one is silent, however mechanical
 //                   it looks. Note how many of these landed on rows that were
 //                   already here — a vending machine was always going to hum.
+//   light: true|n — Phase 11: a person walking into this shoves it. `true` is
+//                   the ordinary case; a number 0..1 says this one is heavier
+//                   than that (a lounge chair slides half as far as a stool).
+//                   Only meaningful on a floor-standing row tall enough to be
+//                   an obstacle at all — a floor cushion is light and is also
+//                   something you walk straight over, so it isn't flagged.
+//                   shove.js reads it; nothing is stored, so a shoved chair is
+//                   back where it was drawn the moment the walk ends.
 //   absorb: n     — Phase 4: this row's sound absorption coefficient, 0..1,
 //                   overriding the per-category default in acoustics.js. Only
 //                   worth stating on the rows where the category lies: soft
@@ -70,6 +78,10 @@ export const GEO_KEYS = [
   'hoop', 'volleyball', 'ballrack',
   'toiletstall', 'urinal', 'sinkcounter',
   'plant', 'aquarium', 'cage', 'clutter',
+  // Phase 11: the decor packs. Three builders, because the fourth through
+  // twentieth things a season needs are these three (and `tree`, and `panel`,
+  // and `plant`) in a different colour.
+  'garland', 'wreath', 'gourd',
   'picnic', 'bikerack', 'flagpole', 'slide', 'swing', 'dumpster', 'polesign',
   'goal', 'backstop', 'fence', 'shelter', 'pergola', 'sandbox', 'climber',
   'tetherball', 'bollard',
@@ -101,18 +113,18 @@ export const PROP_CATALOG = [
   { type: 'podium', name: 'Lectern', category: 'Tables & Desks', icon: '🎤', w: 2, d: 1.5, h: 4, y: 0, color: '#7a5230', mount: 'floor', geo: 'podium' },
 
   // ---- Seating ----
-  { type: 'student-chair', name: 'Student Chair', category: 'Seating', icon: '💺', w: 1.4, d: 1.5, h: 2.7, y: 0, color: '#3f6fae', mount: 'floor', geo: 'chair' },
-  { type: 'chair-stack', name: 'Stackable Chair', category: 'Seating', icon: '🪑', w: 1.6, d: 1.6, h: 2.7, y: 0, color: '#7a3f3f', mount: 'floor', geo: 'chair', style: 'stack' },
-  { type: 'teacher-chair', name: 'Teacher Chair', category: 'Seating', icon: '🧑‍🏫', w: 2, d: 2, h: 3.3, y: 0, color: '#2c2c34', mount: 'floor', geo: 'chair', style: 'task' },
-  { type: 'chair-task', name: 'Rolling Task Chair', category: 'Seating', icon: '🌀', w: 2, d: 2, h: 3, y: 0, color: '#37474f', mount: 'floor', geo: 'chair', style: 'task' },
-  { type: 'chair-rocking', name: 'Rocking Chair', category: 'Seating', icon: '🧶', w: 2, d: 2.5, h: 3.3, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'chair', style: 'rocker' },
-  { type: 'stool-lab-24', name: 'Lab Stool 24in', category: 'Seating', icon: '🥼', w: 1.2, d: 1.2, h: 2, y: 0, color: '#31363c', mount: 'floor', geo: 'stool' },
-  { type: 'stool-lab-30', name: 'Lab Stool 30in', category: 'Seating', icon: '🧫', w: 1.2, d: 1.2, h: 2.5, y: 0, color: '#31363c', mount: 'floor', geo: 'stool' },
+  { type: 'student-chair', name: 'Student Chair', category: 'Seating', icon: '💺', w: 1.4, d: 1.5, h: 2.7, y: 0, color: '#3f6fae', mount: 'floor', geo: 'chair', light: true },
+  { type: 'chair-stack', name: 'Stackable Chair', category: 'Seating', icon: '🪑', w: 1.6, d: 1.6, h: 2.7, y: 0, color: '#7a3f3f', mount: 'floor', geo: 'chair', style: 'stack', light: true },
+  { type: 'teacher-chair', name: 'Teacher Chair', category: 'Seating', icon: '🧑‍🏫', w: 2, d: 2, h: 3.3, y: 0, color: '#2c2c34', mount: 'floor', geo: 'chair', style: 'task', light: 0.8 },
+  { type: 'chair-task', name: 'Rolling Task Chair', category: 'Seating', icon: '🌀', w: 2, d: 2, h: 3, y: 0, color: '#37474f', mount: 'floor', geo: 'chair', style: 'task', light: true },
+  { type: 'chair-rocking', name: 'Rocking Chair', category: 'Seating', icon: '🧶', w: 2, d: 2.5, h: 3.3, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'chair', style: 'rocker', light: 0.8 },
+  { type: 'stool-lab-24', name: 'Lab Stool 24in', category: 'Seating', icon: '🥼', w: 1.2, d: 1.2, h: 2, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true },
+  { type: 'stool-lab-30', name: 'Lab Stool 30in', category: 'Seating', icon: '🧫', w: 1.2, d: 1.2, h: 2.5, y: 0, color: '#31363c', mount: 'floor', geo: 'stool', light: true },
   { type: 'bench-hall', name: 'Hallway Bench', category: 'Seating', icon: '🛋️', w: 6, d: 1.25, h: 1.5, y: 0, color: '#9c7248', mount: 'floor', geo: 'bench' },
   { type: 'seat-auditorium', name: 'Auditorium Seat', category: 'Seating', icon: '🎟️', w: 1.8, d: 2, h: 3.2, y: 0, color: '#7c2f3e', mount: 'floor', geo: 'audseat' },
-  { type: 'chair-lounge', name: 'Lounge Chair', category: 'Seating', icon: '🧘', w: 2.8, d: 2.8, h: 2.6, y: 0, color: '#4f6f52', mount: 'floor', geo: 'softseat', kind: 'lounge' },
+  { type: 'chair-lounge', name: 'Lounge Chair', category: 'Seating', icon: '🧘', w: 2.8, d: 2.8, h: 2.6, y: 0, color: '#4f6f52', mount: 'floor', geo: 'softseat', kind: 'lounge', light: 0.5 },
   { type: 'sofa', name: 'Sofa', category: 'Seating', icon: '🛋', w: 6, d: 2.8, h: 2.7, y: 0, color: '#54617a', mount: 'floor', geo: 'softseat', kind: 'sofa' },
-  { type: 'beanbag', name: 'Bean Bag', category: 'Seating', icon: '🫧', w: 2.5, d: 2.5, h: 1.3, y: 0, color: '#b0503f', mount: 'floor', geo: 'softseat', kind: 'beanbag' },
+  { type: 'beanbag', name: 'Bean Bag', category: 'Seating', icon: '🫧', w: 2.5, d: 2.5, h: 1.3, y: 0, color: '#b0503f', mount: 'floor', geo: 'softseat', kind: 'beanbag', light: true },
   { type: 'cushion', name: 'Floor Cushion', category: 'Seating', icon: '🔶', w: 1.8, d: 1.8, h: 0.4, y: 0, color: '#c99a3f', mount: 'floor', geo: 'softseat', kind: 'cushion' },
 
   // ---- Storage ----
@@ -125,7 +137,7 @@ export const PROP_CATALOG = [
   { type: 'locker-bank', name: 'Locker Bank (Tall)', category: 'Storage', icon: '🔒', w: 6, d: 1.25, h: 6, y: 0, color: '#3f6fae', mount: 'floor', geo: 'locker', doors: 6 },
   { type: 'locker-bank-half', name: 'Locker Bank (Half)', category: 'Storage', icon: '🔐', w: 6, d: 1.25, h: 6, y: 0, color: '#a24a3f', mount: 'floor', geo: 'locker', doors: 6, tiers: 2 },
   { type: 'coat-rack', name: 'Coat Rack', category: 'Storage', icon: '🧥', w: 4, d: 1.5, h: 5.5, y: 0, color: '#7a6248', mount: 'floor', geo: 'coatrack' },
-  { type: 'book-cart', name: 'Book Cart', category: 'Storage', icon: '🛒', w: 3, d: 1.5, h: 3.5, y: 0, color: '#606a75', mount: 'floor', geo: 'cart' },
+  { type: 'book-cart', name: 'Book Cart', category: 'Storage', icon: '🛒', w: 3, d: 1.5, h: 3.5, y: 0, color: '#606a75', mount: 'floor', geo: 'cart', light: true },
   { type: 'hook-rail', name: 'Backpack Rail', category: 'Storage', icon: '🪝', w: 4, d: 0.3, h: 0.5, y: 3.5, color: '#8a6a48', mount: 'wall', geo: 'hookrail' },
 
   // ---- Fixtures ----
@@ -145,7 +157,7 @@ export const PROP_CATALOG = [
   { type: 'flag-wall', name: 'Flag on Bracket', category: 'Fixtures', icon: '🚩', w: 1, d: 2.5, h: 3, y: 6, color: '#8a2f3a', mount: 'wall', geo: 'flagwall' },
   { type: 'radiator', name: 'Radiator', category: 'Fixtures', icon: '♨️', w: 4, d: 0.8, h: 2, y: 0, color: '#c9c4b8', mount: 'floor', geo: 'radiator', sound: { kind: 'hiss', db: 42, hz: 520, q: 1.2, dy: 1 } },
   { type: 'dispenser', name: 'Towel Dispenser', category: 'Fixtures', icon: '🧻', w: 1, d: 0.5, h: 1.2, y: 4, color: '#d7dadd', mount: 'wall', geo: 'wallbox' },
-  { type: 'trash-can', name: 'Trash Can', category: 'Fixtures', icon: '🗑️', w: 1.2, d: 1.2, h: 2, y: 0, color: '#4a4f57', mount: 'floor', geo: 'bin' },
+  { type: 'trash-can', name: 'Trash Can', category: 'Fixtures', icon: '🗑️', w: 1.2, d: 1.2, h: 2, y: 0, color: '#4a4f57', mount: 'floor', geo: 'bin', light: true },
   { type: 'sink', name: 'Classroom Sink', category: 'Fixtures', icon: '🚰', w: 2, d: 1.8, h: 3, y: 0, color: '#dfe3e6', mount: 'floor', geo: 'sink' },
 
   // Phase 4. Three rows the building needed before it could make a noise, and
@@ -177,9 +189,9 @@ export const PROP_CATALOG = [
 
   // ---- Subject Rooms ----
   { type: 'piano-upright', name: 'Upright Piano', category: 'Subject Rooms', icon: '🎹', w: 5, d: 2, h: 4, y: 0, color: '#241f1d', mount: 'floor', geo: 'piano' },
-  { type: 'music-stand', name: 'Music Stand', category: 'Subject Rooms', icon: '🎼', w: 1.5, d: 1.5, h: 4, y: 0, color: '#2c2c34', mount: 'floor', geo: 'musicstand' },
+  { type: 'music-stand', name: 'Music Stand', category: 'Subject Rooms', icon: '🎼', w: 1.5, d: 1.5, h: 4, y: 0, color: '#2c2c34', mount: 'floor', geo: 'musicstand', light: true },
   { type: 'riser-choir', name: 'Choir Riser', category: 'Subject Rooms', icon: '🎶', w: 6, d: 3, h: 1.3, y: 0, color: '#7a6248', mount: 'floor', geo: 'riser', rows: 3 },
-  { type: 'easel-art', name: 'Art Easel', category: 'Subject Rooms', icon: '🖼️', w: 2, d: 2, h: 5.5, y: 0, color: '#a9825a', mount: 'floor', geo: 'easel' },
+  { type: 'easel-art', name: 'Art Easel', category: 'Subject Rooms', icon: '🖼️', w: 2, d: 2, h: 5.5, y: 0, color: '#a9825a', mount: 'floor', geo: 'easel', light: 0.6 },
   { type: 'rack-drying', name: 'Drying Rack', category: 'Subject Rooms', icon: '🖌️', w: 2.5, d: 1.5, h: 4, y: 0, color: '#8a8f96', mount: 'floor', geo: 'dryrack' },
   { type: 'kiln', name: 'Kiln', category: 'Subject Rooms', icon: '🔥', w: 2.5, d: 2.5, h: 3, y: 0, color: '#8f8a80', mount: 'floor', geo: 'kiln' },
   { type: 'pottery-wheel', name: 'Pottery Wheel', category: 'Subject Rooms', icon: '🏺', w: 2.5, d: 2, h: 1.8, y: 0, color: '#5f6a72', mount: 'floor', geo: 'wheel' },
@@ -189,7 +201,7 @@ export const PROP_CATALOG = [
   { type: 'fume-hood', name: 'Fume Hood', category: 'Subject Rooms', icon: '🌫️', w: 4, d: 2.5, h: 8, y: 0, color: '#cfd4d9', mount: 'floor', geo: 'fumehood' },
   { type: 'eyewash', name: 'Eyewash Station', category: 'Subject Rooms', icon: '🚿', w: 1.2, d: 1.2, h: 3.6, y: 0, color: '#3f9e4f', mount: 'floor', geo: 'eyewash' },
   { type: 'skeleton', name: 'Anatomy Skeleton', category: 'Subject Rooms', icon: '💀', w: 1.5, d: 1.5, h: 5.8, y: 0, color: '#e3ded2', mount: 'floor', geo: 'skeleton' },
-  { type: 'globe', name: 'Globe', category: 'Subject Rooms', icon: '🌍', w: 1.5, d: 1.5, h: 3, y: 0, color: '#3a6fae', mount: 'floor', geo: 'globe' },
+  { type: 'globe', name: 'Globe', category: 'Subject Rooms', icon: '🌍', w: 1.5, d: 1.5, h: 3, y: 0, color: '#3a6fae', mount: 'floor', geo: 'globe', light: 0.7 },
   { type: 'printer-3d', name: '3D Printer Bench', category: 'Subject Rooms', icon: '🖨️', w: 2, d: 2, h: 4, y: 0, color: '#5a6068', mount: 'floor', geo: 'workstation', device: 'printer' },
   { type: 'table-sewing', name: 'Sewing Table', category: 'Subject Rooms', icon: '🧵', w: 4, d: 2, h: 2.5, y: 0, color: '#8a5a3a', mount: 'floor', geo: 'workstation', device: 'sewing' },
 
@@ -200,7 +212,7 @@ export const PROP_CATALOG = [
   { type: 'vending', name: 'Vending Machine', category: 'Cafeteria', icon: '🥤', w: 3.3, d: 2.8, h: 6, y: 0, color: '#a23a45', mount: 'floor', geo: 'machine', style: 'vending', sound: { kind: 'hum', db: 55, hz: 120, q: 8, dy: 2 } },
   { type: 'fridge-commercial', name: 'Commercial Fridge', category: 'Cafeteria', icon: '❄️', w: 4.5, d: 2.7, h: 6.8, y: 0, color: '#c8ccd2', mount: 'floor', geo: 'machine', style: 'fridge', sound: { kind: 'hum', db: 58, hz: 120, q: 7, dy: 2 } },
   { type: 'table-prep', name: 'Prep Table', category: 'Cafeteria', icon: '🔪', w: 6, d: 2.5, h: 3, y: 0, color: '#c2c7cd', mount: 'floor', geo: 'table' },
-  { type: 'station-recycle', name: 'Recycling Station', category: 'Cafeteria', icon: '♻️', w: 4, d: 2, h: 3.5, y: 0, color: '#5a6a5f', mount: 'floor', geo: 'recycle' },
+  { type: 'station-recycle', name: 'Recycling Station', category: 'Cafeteria', icon: '♻️', w: 4, d: 2, h: 3.5, y: 0, color: '#5a6a5f', mount: 'floor', geo: 'recycle', light: 0.45 },
 
   // ---- Gym & Stage ----
   { type: 'hoop-wall', name: 'Basketball Hoop (Wall)', category: 'Gym & Stage', icon: '🏀', w: 6, d: 4, h: 3.5, y: 9, color: '#e8e6df', mount: 'wall', geo: 'hoop', tall: true },
@@ -228,7 +240,7 @@ export const PROP_CATALOG = [
 
   // ---- Decor ----
   { type: 'rug', name: 'Rug', category: 'Decor', icon: '▦', w: 6, d: 4, h: 0.08, y: 0, color: '#b0503f', mount: 'floor', geo: 'rug', absorb: 0.28 },
-  { type: 'plant-floor', name: 'Potted Plant', category: 'Decor', icon: '🪴', w: 1.5, d: 1.5, h: 4, y: 0, color: '#3f7a48', mount: 'floor', geo: 'plant' },
+  { type: 'plant-floor', name: 'Potted Plant', category: 'Decor', icon: '🪴', w: 1.5, d: 1.5, h: 4, y: 0, color: '#3f7a48', mount: 'floor', geo: 'plant', light: 0.5 },
   { type: 'plant-desk', name: 'Desk Plant', category: 'Decor', icon: '🌱', w: 0.6, d: 0.6, h: 0.9, y: 2.5, color: '#3f7a48', mount: 'floor', geo: 'plant', surface: true },
   { type: 'aquarium', name: 'Aquarium', category: 'Decor', icon: '🐠', w: 3, d: 1.3, h: 4, y: 0, color: '#3a6a8a', mount: 'floor', geo: 'aquarium', sound: { kind: 'burble', db: 44, hz: 900, q: 2, dy: 3 } },
   { type: 'pet-cage', name: 'Class Pet Cage', category: 'Decor', icon: '🐹', w: 2.5, d: 1.5, h: 3, y: 0, color: '#8a8f96', mount: 'floor', geo: 'cage' },
@@ -236,6 +248,26 @@ export const PROP_CATALOG = [
   { type: 'desk-clutter', name: 'Desk Clutter', category: 'Decor', icon: '📝', w: 1.5, d: 1, h: 0.5, y: 2.5, color: '#b0503f', mount: 'floor', geo: 'clutter', surface: true },
   { type: 'hooks-coats', name: 'Coats on Hooks', category: 'Decor', icon: '🎒', w: 4, d: 0.4, h: 2.5, y: 3, color: '#7a6248', mount: 'wall', geo: 'hookrail', hung: true },
   { type: 'blinds', name: 'Window Blinds', category: 'Decor', icon: '🪟', w: 4, d: 0.2, h: 5, y: 3.5, color: '#d8d3c8', mount: 'wall', geo: 'pulldown', sheet: 0.6 },
+
+  // ---- Decor: the seasonal kit (Phase 11) ----
+  //
+  // Nine rows, no season named on any of them. `decor.js` holds the packs,
+  // and a pack is a palette over exactly these: the same garland is October
+  // orange or December evergreen depending on the paint the prop carries, and
+  // the paint is `data.color`, which the whole of this phase's first item
+  // exists to make real. Shipping "Halloween Garland" and "Christmas Garland"
+  // and "Spring Garland" as three rows would have been the other way to do it,
+  // and would have been thirty rows by the fourth pack.
+  { type: 'garland', name: 'Garland', category: 'Decor', icon: '🎄', w: 8, d: 0.5, h: 1.6, y: 8.3, color: '#2f6b3a', mount: 'wall', geo: 'garland', trim: '#c0392b' },
+  { type: 'bunting', name: 'Pennant Bunting', category: 'Decor', icon: '🎏', w: 10, d: 0.4, h: 1.8, y: 8.1, color: '#3f6fae', mount: 'wall', geo: 'garland', style: 'pennant', trim: '#f2ece0' },
+  { type: 'streamers', name: 'Crepe Streamers', category: 'Decor', icon: '🎀', w: 9, d: 0.4, h: 2.2, y: 7.7, color: '#c9508a', mount: 'wall', geo: 'garland', style: 'streamer' },
+  { type: 'string-lights', name: 'String Lights', category: 'Decor', icon: '💡', w: 10, d: 0.4, h: 1.2, y: 8.7, color: '#3a4048', mount: 'wall', geo: 'garland', emit: { lm: 110, color: '#ffd9a0', range: 11, dy: 0.6 } },
+  { type: 'wreath', name: 'Wreath', category: 'Decor', icon: '🎍', w: 2.4, d: 0.5, h: 2.4, y: 4.5, color: '#2f6b3a', mount: 'wall', geo: 'wreath', trim: '#c0392b' },
+  { type: 'cutout', name: 'Paper Cutout', category: 'Decor', icon: '❄️', w: 1.6, d: 0.04, h: 1.6, y: 5, color: '#eef3f7', mount: 'wall', geo: 'panel' },
+  { type: 'banner', name: 'Banner', category: 'Decor', icon: '🚩', w: 8, d: 0.06, h: 2.5, y: 7, color: '#c0392b', mount: 'wall', geo: 'panel' },
+  { type: 'pumpkin', name: 'Pumpkin', category: 'Decor', icon: '🎃', w: 1.4, d: 1.4, h: 1.1, y: 0, color: '#d2691e', mount: 'floor', geo: 'gourd', light: true },
+  { type: 'gourd', name: 'Gourd', category: 'Decor', icon: '🍐', w: 0.8, d: 0.8, h: 1, y: 2.5, color: '#c8a13a', mount: 'floor', geo: 'gourd', style: 'gourd', surface: true },
+  { type: 'tree-festive', name: 'Festive Tree', category: 'Decor', icon: '🌲', w: 4, d: 4, h: 7.5, y: 0, color: '#2f6b3a', mount: 'floor', geo: 'tree', style: 'conifer', trim: '#e5b33a' },
 
   // ---- Outdoor ----
   { type: 'picnic-table', name: 'Picnic Table', category: 'Outdoor', icon: '🧺', w: 6, d: 6, h: 2.5, y: 0, color: '#8a6a48', mount: 'floor', geo: 'picnic', site: true },
@@ -329,3 +361,70 @@ export function catalogByCategory() {
   }
   return out.filter((g) => g.entries.length);
 }
+
+// --- Phase 11: colour variants ---
+//
+// A row's `color` is the colour that type is *usually* painted; a prop may
+// override it by carrying `data.color`. `cleanData()` (props.js) has validated
+// that field as a string since Phase 1 — what was missing until now was
+// anybody reading it, which is what these three do.
+//
+// They live here rather than in props.js because the fallback is the catalog
+// row's own colour, and here is the only place that knows it. Everything that
+// paints a prop — the renderer's geometry cache, the blueprint's fill, the
+// editor's swatch — goes through `propColor`, so a variant can never be
+// honoured in one view and ignored in another.
+
+const HEX6 = /^#[0-9a-f]{6}$/;
+const HEX3 = /^#[0-9a-f]{3}$/;
+
+// Normalize a candidate colour to a lowercase `#rrggbb`, or '' if it isn't a
+// colour at all. Three-digit shorthand is expanded, because a save file edited
+// by hand is allowed to be terse and a `#f00` chair should still be red rather
+// than silently grey.
+export function normalizeColor(v) {
+  if (typeof v !== 'string') return '';
+  const s = v.trim().toLowerCase();
+  if (HEX6.test(s)) return s;
+  if (HEX3.test(s)) return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
+  return '';
+}
+
+// The colour a given prop should actually be drawn in. `prop` is optional, so
+// a caller holding only a row (the palette, a legend) can ask the same
+// question. The last fallback matches `missingModelGeo`'s: a prop whose row
+// has lost its colour is grey, never `undefined` handed to a colour parser.
+export function propColor(entry, prop = null) {
+  const own = prop && prop.data ? normalizeColor(prop.data.color) : '';
+  return own || (entry && normalizeColor(entry.color)) || '#8a8f96';
+}
+
+// '' for a prop wearing its row's own colour, the variant hex otherwise. The
+// renderer's geometry cache appends this to the type, so the common case —
+// every desk in the building the same brown — is still one cache entry and one
+// draw call, and only a recoloured prop costs a second of each.
+export function variantKey(entry, prop) {
+  const own = prop && prop.data ? normalizeColor(prop.data.color) : '';
+  return own && own !== normalizeColor(entry && entry.color) ? own : '';
+}
+
+// The swatch row itself. Eleven paints and the absence of one — school
+// furniture colours rather than a colour wheel, because the point of the row
+// is to let somebody colour-code a wing or brighten a kindergarten, not to
+// match a brand. `null` is the first cell and is not a colour: it clears
+// `data.color` so the prop goes back to whatever its catalog row says, which
+// is a different thing from painting it that colour.
+export const PROP_PAINTS = [
+  null,
+  '#d9d5cc', // bone
+  '#c0392b', // schoolhouse red
+  '#e07b39', // orange
+  '#e5b33a', // marigold
+  '#5d8a4e', // fern
+  '#2f8f83', // teal
+  '#3f6fae', // the blue every student chair in this catalog already is
+  '#5b4b8a', // violet
+  '#b8567f', // rose
+  '#8a5a3a', // oak
+  '#3a4048', // charcoal
+];

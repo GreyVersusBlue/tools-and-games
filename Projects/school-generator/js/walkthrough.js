@@ -43,6 +43,7 @@ import {
   GRAVITY, TERMINAL_V, JUMP_V, STEP_UP,
   buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoorsFor,
 } from './collide.js';
+import { shoveProps } from './shove.js';
 import { lookEulerDelta } from './touch.js';
 import { stickVector, turnStep, XR_SPEED, XR_SPRINT, SNAP_ANGLE } from './xr.js';
 
@@ -312,8 +313,21 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     const moved = moveWalker(world, collider, { x: body.x, y: feet, z: body.z },
       dx, dz, { grounded, bodies: bodiesOn(floorIndex) });
     const walked = Math.hypot(moved.x - body.x, moved.z - body.z);
+    // Phase 11: what stopped you is what you push. The step this frame took
+    // away from you — asked for minus got — is the whole input to the shove,
+    // because `moveWalker` has already resolved you to exactly touching and
+    // there is no penetration left to measure. Read *before* `body` is
+    // updated, since that is what the difference is against.
+    const blocked = { dx: dx - (moved.x - body.x), dz: dz - (moved.z - body.z) };
     body.x = moved.x;
     body.z = moved.z;
+
+    // Only when your feet are near the floor: a chair on the level below
+    // shouldn't scatter because somebody flew over it in ghost mode.
+    if (grounded && opts.onShove) {
+      const shoved = shoveProps(collider, body.x, body.z, blocked);
+      if (shoved.length) opts.onShove(shoved, floorIndex);
+    }
 
     // Vertical. `support` came back from the same query that vetted the step,
     // so standing and walking agree about what the floor is.
@@ -425,6 +439,17 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       reportHud();
     },
     get touchActive() { return touchActive; },
+    // Where the walker is standing, storey included — the one question a
+    // caller cannot answer off `camera.position` alone, since which storey a
+    // height belongs to is `storeyAt`'s and the graded ground's business.
+    // Phase 11's hunt asks it once a frame.
+    get at() {
+      const feet = body.y - EYE_H;
+      return {
+        x: body.x, y: body.y, z: body.z,
+        floor: world ? storeyAt(world, feet, groundAt(site, body.x, body.z)) : 0,
+      };
+    },
     // Whose eyes. `null` gives the camera its own body back where it stands.
     get following() { return follow ? follow.agent : null; },
     get followMode() { return follow ? follow.mode : null; },

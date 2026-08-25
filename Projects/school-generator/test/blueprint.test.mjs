@@ -18,6 +18,7 @@ import {
 import { addStair } from '../js/stairs.js';
 import { applyFinish } from '../js/finish.js';
 import { addProp } from '../js/props.js';
+import { catalogEntry } from '../js/catalog.js';
 import { computeFloorPlan, computeSitePlan } from '../js/blueprint.js';
 import { regionsOf } from '../js/site.js';
 import { buildSampleSchool } from '../js/sample.js';
@@ -144,6 +145,20 @@ test('furniture is read from the catalog; an unknown prop type is skipped rather
   const plan = computeFloorPlan(s, 0);
   assert.equal(plan.props.length, 1);
   assert.equal(plan.props[0].name, 'Student Desk');
+});
+
+test('only a painted prop carries a colour onto the sheet', () => {
+  // The plan is deliberately near-monochrome: a desk in its catalog brown
+  // draws in the standard grey wash, and only a piece somebody chose a colour
+  // for is worth the ink.
+  const s = createState(20, 20);
+  addProp(s, 'student-desk', { floor: 0, x: 5, z: 5 });
+  addProp(s, 'student-desk', { floor: 0, x: 9, z: 5, data: { color: '#C0392B' } });
+  addProp(s, 'student-desk', { floor: 0, x: 13, z: 5, data: { color: catalogEntry('student-desk').color } });
+  const [plain, painted, restated] = computeFloorPlan(s, 0).props;
+  assert.equal(plain.color, '');
+  assert.equal(painted.color, '#c0392b', 'normalized, so the fill string is always 7 chars + alpha');
+  assert.equal(restated.color, '', 'a prop repainted its own catalog colour is not a variant');
 });
 
 test('a ceiling-mounted prop is skipped — nothing to show on a floor plan', () => {

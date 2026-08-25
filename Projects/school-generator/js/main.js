@@ -8,7 +8,9 @@ import {
 } from './grid.js';
 import { totalShapeArea } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
-import { catalogByCategory, catalogEntry } from './catalog.js';
+import { catalogByCategory, catalogEntry, PROP_PAINTS } from './catalog.js';
+import { DECOR_PACKS, packByKey, packPaint, packTypes } from './decor.js';
+import { MAX_SHOVE } from './shove.js';
 import { ROOM_TEMPLATES } from './templates.js';
 import { initRender } from './render.js';
 import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
@@ -24,6 +26,9 @@ import {
 import { initWalkthrough } from './walkthrough.js';
 import { buildNav, navSummary } from './navgraph.js';
 import {
+  startHunt, huntWarmth, checkFind, huntSummary, DEFAULT_COUNT,
+} from './hunt.js';
+import {
   blockAt, bellsBetween, nextBell, clockText, countdownText, wrapMinutes,
   normalizeSchedule,
 } from './schedule.js';
@@ -31,7 +36,7 @@ import {
   makePopulation, makeContext, retargetAll, stepAgents, census, drillReport,
   bodiesOn, makeCrowdField, crowdCells, clearCrowd, normalizeLife,
 } from './agents.js';
-import { buildCollider, storeyAt, WALKER_R } from './collide.js';
+import { buildCollider, storeyAt, resolvePoint, WALKER_R } from './collide.js';
 import { initAudio } from './audio.js';
 import { doorEvents } from './sound.js';
 import { roomsOnFloor, isOutside } from './acoustics.js';
@@ -144,6 +149,13 @@ const editor = initEditor({
     // Placing or deleting a fixture changes what the light budget is doing,
     // and the sky panel is the only place that says so.
     renderEnvReadout();
+    // A prop placed, painted, deleted or undone can change which swatch is
+    // lit and what colour the chip shows.
+    if (editor.tool === 'prop') syncPropPaint();
+    // A hunt's hints name rooms and its hiding places stand on tiles, and a
+    // structural edit is a different set of both. Rather than quietly leave
+    // the hamster inside a wall somebody has just drawn, the hunt ends.
+    if (hunt && info.structural !== false) huntStop();
     // Same for sound: a diffuser placed, a room's finish changed or a wall
     // moved all change what there is to hear and how long it rings, and both
     // answers are derived rather than stored, so re-deriving is the whole
@@ -191,6 +203,12 @@ const audio = initAudio(renderApi.walkCamera, { catalogEntry });
 // diff; this only holds the map.
 let doorState = new Map();
 
+// How often a shove is allowed to make a noise, and how far something has to
+// have gone to count as one. See `onShove` below.
+const SCOOT_GAP = 130;      // ms
+const SCOOT_MIN = 0.02;     // ft in one frame
+let lastScoot = 0;
+
 const walk = initWalkthrough(renderApi.walkCamera, canvas, {
   onHud: (text) => { walkHud.textContent = text; },
   // The leaves the walker is being stopped by are the leaves the renderer
@@ -212,6 +230,27 @@ const walk = initWalkthrough(renderApi.walkCamera, canvas, {
   onStep: (spec, at, force, landing) => {
     if (landing) audio.land(spec, at, force);
     else audio.step(spec, at);
+  },
+  // Phase 11: the chair you just walked into. shove.js has already decided
+  // what went where and refused anything that wouldn't fit; this moves the
+  // instances and, when something travelled far enough to hear, scrapes.
+  //
+  // The scrape is throttled rather than played per prop per frame: a shove
+  // lasts as long as you keep walking, and sixty scrapes a second is a
+  // machine shop. One voice every eighth of a second, from the piece that
+  // moved furthest, is a chair sliding.
+  onShove: (list) => {
+    renderApi.moveProps(list);
+    let far = list[0], best = -1;
+    for (const m of list) {
+      const d = Math.hypot(m.dx, m.dz);
+      if (d > best) { best = d; far = m; }
+    }
+    const now = performance.now();
+    if (best < SCOOT_MIN || now - lastScoot < SCOOT_GAP) return;
+    lastScoot = now;
+    audio.scoot({ x: far.x, y: renderApi.walkCamera.position.y - 4, z: far.z },
+      best / MAX_SHOVE);
   },
 });
 
@@ -495,6 +534,9 @@ PAINTS.forEach((c, i) => {
 const palette = $('palette');
 const paletteSearch = $('palette-search');
 let paletteGroups = [];
+// The decoration pack in force, or null. Declared here rather than beside the
+// swatch row below because `buildPalette` reads it and runs first.
+let decorPack = null;
 // Phase 9 makes this a function rather than a run-once loop: an imported
 // model is a catalog row that arrives (and leaves) while the tool is open, so
 // the palette is rebuilt whenever the design's model library changes — on
@@ -502,7 +544,17 @@ let paletteGroups = [];
 function buildPalette() {
 paletteGroups = [];
 palette.textContent = '';
-catalogByCategory().forEach(({ category, entries }) => {
+// A decoration pack rides at the top as a group of its own — the same rows
+// that are still down under Decor, in the order the season wants them. It is
+// a shortcut, not a filter: nothing is hidden below it.
+const groups = catalogByCategory();
+if (decorPack) {
+  groups.unshift({
+    category: `${decorPack.icon} ${decorPack.name}`,
+    entries: packTypes(decorPack).map(catalogEntry).filter(Boolean),
+  });
+}
+groups.forEach(({ category, entries }) => {
   const group = document.createElement('div');
   group.className = 'palette-group';
   const head = document.createElement('button');
@@ -525,12 +577,21 @@ catalogByCategory().forEach(({ category, entries }) => {
     b.innerHTML = `<span class="icon">${entry.icon}</span>${entry.name}`;
     b.addEventListener('click', () => {
       editor.setPropType(entry.type);
+      // Matched by type rather than by button: a pack's pieces appear twice,
+      // once in its group and once under Decor, and both copies are the same
+      // choice.
       palette.querySelectorAll('.palette-item').forEach((x) => {
-        x.classList.remove('active');
-        x.setAttribute('aria-pressed', 'false');
+        const on = x.dataset.type === entry.type;
+        x.classList.toggle('active', on);
+        x.setAttribute('aria-pressed', String(on));
       });
-      b.classList.add('active');
-      b.setAttribute('aria-pressed', 'true');
+      // A piece the pack has an opinion about arrives wearing that opinion;
+      // anything else leaves the paint alone, so a pack never quietly
+      // repaints the desk you reached for next.
+      const packed = decorPack ? packPaint(decorPack, entry.type) : '';
+      if (packed) editor.setPropColor(packed);
+      // A different row means a different default colour behind the paint.
+      syncPropPaint();
     });
     row.appendChild(b);
     return { b, entry };
@@ -561,6 +622,90 @@ function filterPalette() {
   }
 }
 buildPalette();
+
+// --- prop paint and the decoration packs (Phase 11) ---
+// The swatch row under the palette. Same gesture as the room panel's two
+// rows, and the same first cell: a dashed empty square that means "whatever
+// the catalog says", not a colour of its own. It paints the selection if
+// there is one and sets the paint for the next placement either way, so
+// select-then-click and click-then-place both do what they look like.
+//
+// A decoration pack swaps the colours in that row for a season's six, and
+// adds a group at the top of the palette holding the pieces that season is
+// about. Picking one of those pieces takes the pack's paint with it, so
+// "Winter Holidays → Wreath → click" puts a green wreath on the wall without
+// anybody choosing a green. Nothing about the pack is stored: what lands in
+// the design is an ordinary prop wearing an ordinary `data.color`, so
+// switching packs afterwards leaves the decorations you already hung alone.
+const propSwatches = $('prop-swatches');
+const propPaintChip = $('prop-paint-chip');
+const decorPackSelect = $('decor-pack');
+const decorNote = $('decor-note');
+
+function buildPaintRow() {
+  const colors = decorPack ? [null, ...decorPack.palette] : PROP_PAINTS;
+  propSwatches.textContent = '';
+  colors.forEach((c) => {
+    const b = document.createElement('button');
+    b.className = 'swatch';
+    b.dataset.color = c || '';
+    b.style.background = c || 'transparent';
+    if (!c) b.style.border = '2px dashed rgba(255,255,255,0.45)';
+    b.title = c || 'As catalogued';
+    b.setAttribute('aria-label', c ? `Furniture paint ${c}` : 'Catalog colour');
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', () => {
+      editor.setPropColor(c || '');
+      syncPropPaint();
+    });
+    propSwatches.appendChild(b);
+  });
+}
+
+// Reads back off the tool rather than remembering what was clicked, because
+// selecting a prop moves the highlight to *its* colour. A paint that isn't in
+// the row — a pack colour still on the tool after the pack was switched, or a
+// prop painted under a different pack — simply lights nothing, which is
+// honest: the chip beside the heading still shows what the next placement
+// would actually be.
+function syncPropPaint() {
+  const cur = editor.propColor || '';
+  propSwatches.querySelectorAll('.swatch').forEach((b) => {
+    const on = b.dataset.color === cur;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  propPaintChip.style.background = editor.propPreviewColor;
+}
+
+decorPackSelect.appendChild(Object.assign(document.createElement('option'),
+  { value: '', textContent: 'No decoration pack' }));
+DECOR_PACKS.forEach((p) => {
+  decorPackSelect.appendChild(Object.assign(document.createElement('option'),
+    { value: p.key, textContent: `${p.icon} ${p.name}` }));
+});
+decorPackSelect.addEventListener('change', (e) => {
+  decorPack = packByKey(e.target.value);
+  decorNote.textContent = decorPack ? decorPack.note : '';
+  buildPaintRow();
+  // The pack's own group goes at the top of the palette, so rebuild it — and
+  // take the pack's paint for whatever type is already selected, so switching
+  // from Harvest to Winter recolours the garland you were about to hang.
+  buildPalette();
+  editor.setPropColor(decorPack ? packPaint(decorPack, editor.propType) : '');
+  syncPropPaint();
+  $('status').textContent = decorPack
+    ? `${decorPack.name} — its pieces are at the top of the palette, in its colours.`
+    : 'Decoration pack off — furniture is back to its catalog colours.';
+});
+
+buildPaintRow();
+syncPropPaint();
+// Selecting a prop is not an edit, so it never reaches `onChange` — but it
+// does move the highlight onto that prop's own colour, so the row follows the
+// pointer as well as the model.
+canvas.addEventListener('pointerup', () => { if (editor.tool === 'prop') syncPropPaint(); });
+
 paletteSearch.addEventListener('input', filterPalette);
 paletteSearch.addEventListener('keydown', (e) => {
   // Esc clears the filter (and stops here rather than reaching the editor's
@@ -2747,6 +2892,10 @@ document.addEventListener('keydown', (e) => {
     // step through them, which is the same gesture as the report panel's own
     // list read top-down.
     if (e.code === 'KeyO') { setMiniFindings(!miniFindings); return; }
+    // Phase 11's one: start (or give up on) the scavenger hunt without going
+    // back out to the overlay for it — the overlay costs you the pointer lock,
+    // and losing the pointer lock in the middle of a hunt is losing the hunt.
+    if (e.code === 'KeyG') { $('walk-hunt').click(); return; }
     if (e.code === 'BracketLeft') { stepMiniFinding(-1); return; }
     if (e.code === 'BracketRight') { stepMiniFinding(1); return; }
     if (e.code === 'Enter' && document.body.classList.contains('tours')) {
@@ -3845,6 +3994,121 @@ $('walk-vr').addEventListener('click', () => {
   else enterVR();
 });
 
+// --- the scavenger hunt (Phase 11) ---
+//
+// Eight things hidden around the design and a panel that says roughly where.
+// Nothing about it is stored: `hunt` lives as long as the page does and the
+// design never learns it happened, which is the same bargain the shove
+// physics strikes and for the same reason — this is something you do in a
+// building, not something the building is.
+//
+// It runs off its own nav rather than the crowd's, because a hunt is worth
+// having in a school with nobody in it, and it is rebuilt on every start so a
+// wall moved since the last one is a wall the hints know about.
+let hunt = null;
+let huntWarm = '';          // the band last printed, so a frame that hasn't
+                            // changed it doesn't rebuild the line
+
+const huntPanel = $('hunt-panel');
+const huntList = $('hunt-list');
+const huntCount = $('hunt-count');
+const huntWarmthEl = $('hunt-warmth');
+const huntDone = $('hunt-done');
+
+// Somewhere a person could actually stand. A hiding place is a point on the
+// nav mesh, and the mesh knows about walls and knows nothing about furniture —
+// so this is the filing cabinet check, and it is collide.js's own resolver
+// asked whether a walker put down here would have to move.
+function huntClearance() {
+  const site = terrainField(state);
+  const cache = new Map();
+  return (x, z, floor) => {
+    let c = cache.get(floor);
+    if (!c) { c = buildCollider(state, floor, catalogEntry, { site }); cache.set(floor, c); }
+    const out = resolvePoint(c, x, z, WALKER_R);
+    return Math.hypot(out.x - x, out.z - z) < 0.05;
+  };
+}
+
+function huntStop(quiet = false) {
+  hunt = null;
+  huntWarm = '';
+  renderApi.setHunt([]);
+  document.body.classList.remove('hunting');
+  if (!quiet) $('status').textContent = 'Scavenger hunt ended.';
+}
+
+function huntBegin() {
+  const nav = buildNav(state);
+  hunt = startHunt(nav, {
+    seed: 1 + Math.floor(Math.random() * 0xfffffe),
+    count: DEFAULT_COUNT,
+    clear: huntClearance(),
+  });
+  if (!hunt.places.length) {
+    hunt = null;
+    $('status').textContent =
+      'Nothing to hide anything behind yet — draw a room or two first.';
+    return false;
+  }
+  renderApi.setHunt(hunt.places);
+  document.body.classList.add('hunting');
+  huntWarm = '';
+  renderHuntPanel();
+  return true;
+}
+
+function renderHuntPanel() {
+  if (!hunt) return;
+  const sum = huntSummary(hunt);
+  huntCount.textContent = `${sum.found} / ${sum.total}`;
+  huntList.textContent = '';
+  for (const p of hunt.places) {
+    const li = document.createElement('li');
+    const got = hunt.found.has(p.id);
+    li.className = got ? 'found' : '';
+    li.innerHTML = `<span class="ic">${p.icon}</span><span>${got ? p.name : `${p.name} — ${p.hint}`}</span>`;
+    huntList.appendChild(li);
+  }
+  huntDone.textContent = sum.done ? 'Every one of them found. Nicely walked.' : '';
+}
+
+// Once a frame while walking. Two questions: is anything close enough to be
+// found, and how close is the nearest thing that isn't.
+function huntUpdate(dt) {
+  if (!hunt) return;
+  const at = walk.at;
+  const got = checkFind(hunt, at);
+  if (got) {
+    audio.scoot({ x: got.x, y: at.y - 1, z: got.z }, 1);
+    const sum = huntSummary(hunt);
+    $('walk-hud').textContent = sum.done
+      ? `Found ${got.name} — that is all eight.`
+      : `Found ${got.name} — ${sum.total - sum.found} to go.`;
+    renderHuntPanel();
+  }
+  // The band changes rarely and the distance changes every frame, so the line
+  // is built once per band and only the number is written after that.
+  const warm = huntWarmth(hunt, at);
+  if (!warm) {
+    if (huntWarm !== 'done') { huntWarm = 'done'; huntWarmthEl.textContent = ''; }
+  } else {
+    if (warm.key !== huntWarm) {
+      huntWarm = warm.key;
+      huntWarmthEl.innerHTML =
+        `<span class="band ${warm.key}">${warm.label}</span> — nearest is <span id="hunt-dist"></span>ft away`;
+    }
+    const d = huntWarmthEl.querySelector('#hunt-dist');
+    if (d) d.textContent = String(Math.round(warm.dist));
+  }
+  renderApi.updateHunt(at, hunt.found, dt);
+}
+
+$('walk-hunt').addEventListener('click', () => {
+  if (hunt) { huntStop(); return; }
+  if (huntBegin()) closeModal(walkOverlay);
+});
+
 // --- main loop ---
 const clock = new THREE.Clock();
 function loop() {
@@ -3859,6 +4123,9 @@ function loop() {
     if (tourPlay) tourUpdate(dt);
     else walk.update(dt);
     audio.update(dt);
+    // A tour has the camera too, and a hunt found by a camera flying itself
+    // around is not a hunt.
+    if (!tourPlay) huntUpdate(dt);
   }
   // The school runs in both modes. A crowd seen from 200ft up, moving between
   // periods over a plan you are drawing, is half of what this phase is for —
@@ -3907,4 +4174,7 @@ window.app = {
   get tours() { return toursOf(state); },
   tourMark, tourStart, tourStop,
   get xrStatus() { return xrStatus; },
+  // --- Phase 11 ---
+  huntBegin, huntStop,
+  get hunt() { return hunt; },
 };

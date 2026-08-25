@@ -31,7 +31,7 @@ import {
   rampSlope, elevatorsOn, elevatorSize,
 } from './stairs.js';
 import { propsOnFloor } from './props.js';
-import { catalogEntry } from './catalog.js';
+import { catalogEntry, variantKey } from './catalog.js';
 import { footprintOf } from './propplace.js';
 import { wallProbe } from './walls.js';
 import { finishSchedule } from './finish.js';
@@ -191,6 +191,13 @@ function planProps(state, floorIndex) {
     out.push({
       x: p.x, z: p.z, hw, hd, rotationY: p.rotationY || 0,
       mount: p.mount, name: entry.name, site: !!entry.site, geo: entry.geo,
+      // Phase 11: '' for a prop painted the colour its catalog row says, the
+      // override hex otherwise. A plan sheet is deliberately near-monochrome,
+      // so only the props somebody has *chosen* a colour for get one here —
+      // filling every desk in its own brown would turn the drawing into a
+      // rendering, and the thing worth seeing on a sheet is which pieces are
+      // not standard.
+      color: variantKey(entry, p),
     });
   }
   return out;
@@ -696,7 +703,9 @@ function drawProps(ctx, plan, layout) {
     const c = Math.cos(p.rotationY || 0), s = Math.sin(p.rotationY || 0);
     const corners = [[-p.hw, -p.hd], [p.hw, -p.hd], [p.hw, p.hd], [-p.hw, p.hd]]
       .map(([lx, lz]) => ({ x: p.x + lx * c + lz * s, z: p.z - lx * s + lz * c }));
-    ctx.fillStyle = p.mount === 'wall' ? 'rgba(77,163,255,0.18)' : 'rgba(138,147,163,0.16)';
+    ctx.fillStyle = p.color
+      ? `${p.color}3d`
+      : (p.mount === 'wall' ? 'rgba(77,163,255,0.18)' : 'rgba(138,147,163,0.16)');
     fillPath(ctx, plan, layout, corners);
     strokePath(ctx, plan, layout, corners, true);
   }
@@ -922,7 +931,9 @@ function drawSiteProps(ctx, plan, layout) {
       const r = Math.max(2, Math.max(p.hw, p.hd) * layout.scale);
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = p.geo === 'tree' ? 'rgba(74,122,58,0.30)' : 'rgba(96,132,84,0.28)';
+      ctx.fillStyle = p.color
+        ? `${p.color}4d`
+        : (p.geo === 'tree' ? 'rgba(74,122,58,0.30)' : 'rgba(96,132,84,0.28)');
       ctx.fill();
       ctx.strokeStyle = '#4f7a3f';
       ctx.lineWidth = 1.1;
@@ -940,7 +951,7 @@ function drawSiteProps(ctx, plan, layout) {
     const c = Math.cos(p.rotationY || 0), s = Math.sin(p.rotationY || 0);
     const corners = [[-p.hw, -p.hd], [p.hw, -p.hd], [p.hw, p.hd], [-p.hw, p.hd]]
       .map(([lx, lz]) => ({ x: p.x + lx * c + lz * s, z: p.z - lx * s + lz * c }));
-    ctx.fillStyle = 'rgba(90,100,114,0.24)';
+    ctx.fillStyle = p.color ? `${p.color}45` : 'rgba(90,100,114,0.24)';
     fillPath(ctx, plan, layout, corners);
     ctx.strokeStyle = '#5a6472';
     ctx.lineWidth = 1.1;

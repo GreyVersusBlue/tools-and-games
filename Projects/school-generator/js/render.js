@@ -28,7 +28,8 @@ import {
   shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint,
   floorSolidAt, openingSpec,
 } from './shapes.js';
-import { catalogEntry } from './catalog.js';
+import { catalogEntry, propColor, variantKey } from './catalog.js';
+import { revealAt } from './hunt.js';
 import {
   stairMetrics, stairsOf, openingRails, runMetrics,
   elevatorSize, elevatorDoorWidth, elevatorsOn,
@@ -882,9 +883,65 @@ export function initRender(canvas) {
     }
   }
 
+  // Phase 11: re-pose the instances a walker has shoved. `list` is shove.js's
+  // own output — the obstacle records it moved — and nothing about the design
+  // has changed, which is exactly why this exists: a rebuild would put every
+  // chair back, because `state.props` never learned that any of them moved.
+  function moveProps(list) {
+    if (!list || !list.length) return 0;
+    let n = 0;
+    for (const m of list) {
+      const inst = propInstances.get(m.id);
+      if (!inst) continue;
+      _dummy.position.set(m.x, inst.y, m.z);
+      _dummy.rotation.set(0, m.rotationY || 0, 0);
+      _dummy.scale.set(inst.scale, inst.scale, inst.scale);
+      _dummy.updateMatrix();
+      inst.mesh.setMatrixAt(inst.idx, _dummy.matrix);
+      inst.mesh.instanceMatrix.needsUpdate = true;
+      if (inst.lens) {
+        inst.lens.setMatrixAt(inst.idx, _dummy.matrix);
+        inst.lens.instanceMatrix.needsUpdate = true;
+      }
+      shoved.add(m.id);
+      n++;
+    }
+    return n;
+  }
+
+  // Put them all back. A shove lives as long as the walk does and not a frame
+  // longer — coming back to the plan and finding the furniture rearranged
+  // would be a lie about a file that never changed.
+  function restoreProps() {
+    if (!shoved.size) return 0;
+    let n = 0;
+    for (const id of shoved) {
+      const inst = propInstances.get(id);
+      if (!inst) continue;
+      _dummy.position.set(inst.x, inst.y, inst.z);
+      _dummy.rotation.set(0, inst.rotationY, 0);
+      _dummy.scale.set(inst.scale, inst.scale, inst.scale);
+      _dummy.updateMatrix();
+      inst.mesh.setMatrixAt(inst.idx, _dummy.matrix);
+      inst.mesh.instanceMatrix.needsUpdate = true;
+      if (inst.lens) {
+        inst.lens.setMatrixAt(inst.idx, _dummy.matrix);
+        inst.lens.instanceMatrix.needsUpdate = true;
+      }
+      n++;
+    }
+    shoved.clear();
+    return n;
+  }
+
   function setMode(m) {
     mode = m;
     const edit = m === 'edit';
+    // Everything the walker pushed around goes back where it was drawn, and
+    // the hunt's tokens go back in the box — they are things in the building,
+    // not things on the drawing board.
+    if (edit) restoreProps();
+    huntGroup.visible = !edit && huntPlaces.length > 0;
     // Photo mode is a walkthrough affordance; going back to the plan puts the
     // ordinary walk lens back so the next walk doesn't start at 24mm.
     if (edit && photo.on) photo.on = false;
@@ -2249,6 +2306,120 @@ export function initRender(canvas) {
     return mergeGeometries(parts);
   };
 
+  // ---------- Phase 11 builders: the decor packs ----------
+  //
+  // Three builders for four seasons, which is the whole argument for having
+  // done the colour variants first. A garland is a garland whether it is
+  // orange crepe in October or evergreen in December; what changes is the
+  // paint, and paint is now a field on the prop rather than a row in this
+  // table. Anything a pack needs that these three don't make, an existing
+  // builder already did — a decorated conifer is `tree` with `trim`, a paper
+  // snowflake is `panel` in white, a poinsettia is `plant` in red.
+  //
+  // `trim` is the second colour, named on the row the way buildTree names its
+  // bark: fixed, so a repainted garland keeps its cream bunting rather than
+  // going monochrome. A row without one derives its accent from its own paint.
+  const trimOf = (e) => e.trim || tint(e.color, 0.22, 0.12);
+
+  // A swag strung between two points, hanging along local x with its ends
+  // pinned at the top of the row's box and its middle sagging by `sag`.
+  // Sixteen chords is enough that the curve reads as a curve at arm's length
+  // and cheap enough that a corridor of them still instances.
+  //   style 'bulb'      spheres hung from the rope — beads, baubles, lights
+  //   style 'pennant'   triangles hanging point-down — bunting
+  //   style 'streamer'  no ornaments, a fatter twist — crepe paper
+  // A row with `emit` hands its ornaments back as the lens, so a string of
+  // lights glows on the same instance matrices as the rope it hangs from.
+  const buildGarland = (e) => {
+    const style = e.style || 'bulb';
+    const segs = Math.max(8, Math.min(24, Math.round(e.w * 1.6)));
+    const sag = e.h * 0.72;
+    const ropeR = style === 'streamer' ? 0.075 : 0.045;
+    const rope = tint(e.color, -0.14);
+    // A parabola rather than a true catenary: at these spans the two curves
+    // differ by less than the rope is thick.
+    const yAt = (t) => e.h - sag * 4 * t * (1 - t);
+    const xAt = (t) => (t - 0.5) * e.w;
+    const parts = [];
+    for (let i = 0; i < segs; i++) {
+      const t0 = i / segs, t1 = (i + 1) / segs;
+      const x0 = xAt(t0), x1 = xAt(t1), y0 = yAt(t0), y1 = yAt(t1);
+      const dx = x1 - x0, dy = y1 - y0;
+      parts.push(boxT(Math.hypot(dx, dy) + ropeR, ropeR * 2, ropeR * 2,
+        (x0 + x1) / 2, (y0 + y1) / 2, 0, rope, 0, 0, Math.atan2(dy, dx)));
+    }
+    if (style === 'streamer') return mergeGeometries(parts);
+    // Ornaments hang from the interior nodes; the ends are where it is nailed
+    // to the wall, and a bauble there would be inside the plaster.
+    const orn = [];
+    const accent = trimOf(e);
+    const glow = emitOf(e) ? lensColor(e) : null;
+    for (let i = 1; i < segs; i++) {
+      const t = i / segs;
+      const x = xAt(t), y = yAt(t);
+      if (style === 'pennant') {
+        // A triangle is a two-segment cone: flat enough to read as cloth.
+        orn.push(cylT(0.01, e.w * 0.055, e.h * 0.5, 3, x, y - e.h * 0.25, 0,
+          i % 2 ? accent : e.color, Math.PI, 0));
+      } else {
+        const r = e.h * (i % 2 ? 0.16 : 0.12);
+        orn.push(sph(r, x, y - r - 0.04, 0, glow || (i % 2 ? accent : e.color), 8));
+      }
+    }
+    return glow ? lit(parts, orn) : mergeGeometries(parts.concat(orn));
+  };
+
+  // A ring on a wall, facing the room the way every other wall mount does.
+  // `berries` scatters a second colour around it; `bow` ties one on below.
+  const buildWreath = (e) => {
+    const r = Math.min(e.w, e.h) / 2;
+    const cy = e.h / 2;
+    const accent = trimOf(e);
+    const parts = [
+      ring(r * 0.78, r * 0.2, 0, cy, 0, e.color, { rx: 0 }),
+      // A second, thinner ring set forward and turned a little: two rings read
+      // as foliage where one reads as a doughnut.
+      ring(r * 0.8, r * 0.12, 0, cy, e.d * 0.25, tint(e.color, -0.1), { rx: 0, rz: 0.4 }),
+    ];
+    if (e.berries !== false) {
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + 0.4;
+        // Set forward of the front ring rather than level with it: berries
+        // buried inside the foliage are berries nobody sees from the corridor.
+        parts.push(sph(r * 0.12, Math.cos(a) * r * 0.74, cy + Math.sin(a) * r * 0.74, e.d * 0.42, accent, 6));
+      }
+    }
+    if (e.bow !== false) {
+      // A loop and a tail either side of a knot. Two small upright rings read
+      // as a bow from across a corridor where two flat triangles read as a
+      // bow tie, and the tails are what say which way is down.
+      const by = cy - r * 0.78;
+      for (const sx of [-1, 1]) {
+        parts.push(ring(r * 0.19, r * 0.06, sx * r * 0.23, by + r * 0.04, e.d * 0.28, accent, { rx: 0 }));
+        parts.push(boxT(r * 0.12, r * 0.6, e.d * 0.16, sx * r * 0.17, by - r * 0.32, e.d * 0.24, accent, 0, 0, sx * 0.33));
+      }
+      parts.push(sph(r * 0.11, 0, by, e.d * 0.3, tint(accent, -0.12), 8));
+    }
+    return mergeGeometries(parts);
+  };
+
+  // Pumpkins and gourds: a lathe with few enough segments that the facets read
+  // as ribs. `style: 'gourd'` is the same profile pulled into a neck.
+  const buildGourd = (e) => {
+    const r = e.w / 2, h = e.h;
+    const gourd = e.style === 'gourd';
+    const profile = gourd
+      ? [[0.02, 0], [r * 0.62, h * 0.03], [r, h * 0.22], [r * 0.92, h * 0.4],
+         [r * 0.4, h * 0.58], [r * 0.3, h * 0.76], [r * 0.36, h * 0.88], [r * 0.1, h * 0.93]]
+      : [[0.02, 0], [r * 0.72, h * 0.05], [r, h * 0.4], [r * 0.86, h * 0.76],
+         [r * 0.36, h * 0.93], [0.02, h * 0.95]];
+    return mergeGeometries([
+      lathe(profile, 0, 0, 0, e.color, gourd ? 9 : 11),
+      cylT(0.055, 0.1, h * 0.24, 6, 0, h * 1.02, r * 0.06, '#6f7a3a', 0, 0.25),
+    ]);
+  };
+
   // ---------- Phase 1 builders: outdoor ----------
 
   // The one deliberate exception to "seating is separate": a picnic table's
@@ -2376,6 +2547,28 @@ export function initRender(canvas) {
         const base = e.h * (0.16 + t * 0.28);
         parts.push(cyl(0, r * (1 - t * 0.55), e.h * 0.42, 10, 0, base + e.h * 0.21, 0,
           tint(e.color, -0.04 + i * 0.03)));
+      }
+      // Phase 11: `trim` turns the same conifer into a decorated one — a star
+      // and a spiral of baubles, in the row's trim colour. It is a parameter
+      // rather than a second builder because a decorated tree is a landscape
+      // tree that somebody got at with a box of ornaments.
+      if (e.trim) {
+        const star = e.trim;
+        const tipY = e.h * (0.16 + (2 / 3) * 0.28) + e.h * 0.42;
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          parts.push(boxT(e.h * 0.1, e.h * 0.028, e.h * 0.028, 0, tipY + e.h * 0.06, 0, star, 0, 0, a));
+        }
+        const n = 12;
+        for (let i = 0; i < n; i++) {
+          const t = (i + 0.5) / n;
+          const a = t * Math.PI * 5.5;
+          // Follow the cone in: the radius at height t, pulled just inside the
+          // needles so a bauble hangs off the tree rather than floating beside it.
+          const rr = r * (1 - t * 0.82) * 0.72;
+          parts.push(sph(e.h * 0.035, Math.cos(a) * rr, e.h * (0.28 + t * 0.5), Math.sin(a) * rr,
+            i % 2 ? star : tint(star, -0.18, 0.1), 6));
+        }
       }
       return mergeGeometries(parts);
     }
@@ -2810,6 +3003,7 @@ export function initRender(canvas) {
     hoop: buildHoop, volleyball: buildVolleyball, ballrack: buildBallrack,
     toiletstall: buildToiletstall, urinal: buildUrinal, sinkcounter: buildSinkcounter,
     plant: buildPlant, aquarium: buildAquarium, cage: buildCage, clutter: buildClutter,
+    garland: buildGarland, wreath: buildWreath, gourd: buildGourd,
     picnic: buildPicnic, bikerack: buildBikerack, flagpole: buildFlagpole,
     slide: buildSlide, swing: buildSwing, dumpster: buildDumpster,
     polesign: buildPolesign,
@@ -2911,7 +3105,7 @@ export function initRender(canvas) {
   function missingModelGeo(entry) {
     const g = new THREE.BoxGeometry(entry.w, entry.h, entry.d);
     g.translate(0, entry.h / 2, 0);
-    return coloredGeo(g, entry.color || '#8a8f96');
+    return coloredGeo(g, propColor(entry));
   }
 
   // Cached per catalog type (not rebuilt on every edit like the structural
@@ -2921,20 +3115,39 @@ export function initRender(canvas) {
   // builders hand back one geometry and get `lens: null`, the light fixtures
   // hand back both, and `buildPropsGroup` below only has to know that a lens
   // may or may not be there.
+  //
+  // Phase 11 adds the second half of the key. A prop carrying `data.color`
+  // wants the same shape in a different paint, and since the paint is baked
+  // into the vertices there is nothing to do but build it twice — so the key
+  // is the type *and* the variant, and the builder is handed a copy of the row
+  // wearing the new colour. Every builder derives its own shading from
+  // `e.color` through `tint()`, which is why a one-field copy is enough to
+  // recolour a chair's legs and its seat together rather than leaving a red
+  // chair on brown legs.
+  //
+  // `variantKey` returns '' for the overwhelmingly common case — a prop
+  // wearing its row's own colour — and the key is then the bare type, so the
+  // cache a design without a single variant in it builds is byte-for-byte the
+  // one it built before this phase, and `setModels` below can still delete an
+  // imported row's geometry by its type alone.
   const propGeoCache = new Map();
-  function getPropGeometry(entry) {
-    let geo = propGeoCache.get(entry.type);
+  function getPropGeometry(entry, variant = '') {
+    // An imported model's colours came out of its file; there are no builder
+    // parameters to re-run and nothing to re-tint, so a variant is dropped
+    // here rather than quietly caching a second identical copy of it.
+    const key = variant && entry.geo !== 'model' ? `${entry.type}|${variant}` : entry.type;
+    let geo = propGeoCache.get(key);
     if (geo) return geo;
     if (entry.geo === 'model') {
       const fromFile = modelGeoCache.get(entry.model);
       geo = { body: fromFile || missingModelGeo(entry), lens: null };
-      propGeoCache.set(entry.type, geo);
+      propGeoCache.set(key, geo);
       return geo;
     }
     const build = PROP_GEO_BUILDERS[entry.geo] || buildDesk;
-    const built = build(entry);
+    const built = build(variant ? { ...entry, color: variant } : entry);
     geo = built && built.body ? { body: built.body, lens: built.lens || null } : { body: built, lens: null };
-    propGeoCache.set(entry.type, geo);
+    propGeoCache.set(key, geo);
     return geo;
   }
 
@@ -3692,17 +3905,32 @@ export function initRender(canvas) {
   // Mesh per prop. Rebuilt alongside the structural meshes on every edit;
   // only the (cached, shared) geometry survives the rebuild.
   const _dummy = new THREE.Object3D();
+  // Phase 11: which instance of which mesh a given prop id is, so a chair that
+  // has been shoved can be re-posed without rebuilding the storey it is on.
+  // Filled by `buildPropsGroup` and thrown away with the meshes it points at;
+  // `restoreProps` below is what puts everything back, because a shove is a
+  // fact about the walk rather than about the design.
+  const propInstances = new Map();
+  const shoved = new Set();
   function buildPropsGroup(state, floorIndex, baseY, group, field = null) {
+    // Bucketed by type *and* colour variant since Phase 11: two instanced
+    // meshes share a draw call only if they share geometry, and a recoloured
+    // prop has its colour in its vertices. A design with no variants in it
+    // buckets exactly as it did before — one entry per type, keyed by the bare
+    // type string.
     const byType = new Map();
     for (const p of state.props) {
       if (p.floor !== floorIndex) continue;
-      if (!byType.has(p.type)) byType.set(p.type, []);
-      byType.get(p.type).push(p);
-    }
-    for (const [type, list] of byType) {
-      const entry = catalogEntry(type);
+      const entry = catalogEntry(p.type);
       if (!entry) continue; // an unknown type from a newer save — nothing to draw it with
-      const geo = getPropGeometry(entry);
+      const variant = variantKey(entry, p);
+      const key = variant ? `${p.type}|${variant}` : p.type;
+      let bucket = byType.get(key);
+      if (!bucket) { bucket = { entry, variant, list: [] }; byType.set(key, bucket); }
+      bucket.list.push(p);
+    }
+    for (const { entry, variant, list } of byType.values()) {
+      const geo = getPropGeometry(entry, variant);
       const emit = emitOf(entry);
       const mesh = new THREE.InstancedMesh(geo.body, propMat, list.length);
       mesh.castShadow = false;
@@ -3736,6 +3964,16 @@ export function initRender(canvas) {
         _dummy.updateMatrix();
         mesh.setMatrixAt(idx, _dummy.matrix);
         if (lens) lens.setMatrixAt(idx, _dummy.matrix);
+        // Only the rows a person can actually shove are worth remembering; a
+        // building of two thousand desks shouldn't carry two thousand map
+        // entries for a feature none of them take part in.
+        if (entry.light !== undefined) {
+          propInstances.set(p.id, {
+            mesh, lens, idx,
+            y: baseY + (p.y || 0) + lift, scale: s,
+            x: p.x, z: p.z, rotationY: p.rotationY || 0,
+          });
+        }
       });
       mesh.instanceMatrix.needsUpdate = true;
       group.add(mesh);
@@ -4286,6 +4524,24 @@ export function initRender(canvas) {
   const heatGroup = new THREE.Group();
   heatGroup.visible = false;
   scene.add(heatGroup);
+
+  // --- Phase 11: the scavenger hunt's tokens ---
+  //
+  // One small spinning thing per hiding place, and the whole of what makes
+  // them *hidden* is that each is invisible until you are nearly on top of it:
+  // `revealAt` fades one in over the last fifteen feet, so the hint sends you
+  // to the room and the token is what says you have arrived. Drawn with
+  // `depthTest` on, so a wall between you and one still hides it — a token
+  // glowing through a floor slab would give away every room at once.
+  //
+  // A Group of small Meshes rather than an InstancedMesh: there are eight of
+  // them, each has its own opacity this frame, and per-instance opacity is
+  // exactly the thing instancing does not do.
+  const huntGroup = new THREE.Group();
+  huntGroup.visible = false;
+  scene.add(huntGroup);
+  let huntPlaces = [];
+  let huntSpin = 0;
   let crowdMeshes = null;
   let heatMesh = null;
   const _crowdColor = new THREE.Color();
@@ -4438,6 +4694,62 @@ export function initRender(canvas) {
     };
   }
 
+  // The hiding places, as things in the world. `places` is hunt.js's own list;
+  // nothing is stored anywhere, and calling this with an empty list is how a
+  // hunt ends.
+  function setHunt(places) {
+    for (const child of [...huntGroup.children]) {
+      huntGroup.remove(child);
+      child.geometry.dispose();
+      child.material.dispose();
+    }
+    huntPlaces = places || [];
+    if (!huntPlaces.length) { huntGroup.visible = false; return 0; }
+    for (const p of huntPlaces) {
+      // OctahedronGeometry comes back non-indexed and TorusGeometry indexed,
+      // and mergeGeometries refuses to mix the two — `mergeVertices` welds the
+      // first, the same fix `slabGeo` above needs for the same reason.
+      const core = mergeVertices(new THREE.OctahedronGeometry(0.42, 0));
+      const halo = new THREE.TorusGeometry(0.7, 0.06, 6, 18);
+      halo.rotateX(Math.PI / 2);
+      const geo = mergeGeometries([
+        coloredGeo(core, '#ffd873'),
+        coloredGeo(halo, '#ffb03a'),
+      ]);
+      const mat = new THREE.MeshBasicMaterial({
+        vertexColors: true, transparent: true, opacity: 0, depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(p.x, floorBaseY(built, p.floor) + 2.4, p.z);
+      mesh.visible = false;
+      mesh.userData.place = p;
+      huntGroup.add(mesh);
+    }
+    huntGroup.visible = true;
+    return huntPlaces.length;
+  }
+
+  // Once a frame while a hunt is running. `at` is the walker — `{x, z, floor}`
+  // — and `found` the ids already collected, which simply stop being drawn.
+  function updateHunt(at, found, dt = 0) {
+    if (!huntGroup.visible) return;
+    huntSpin += dt * 1.6;
+    for (const mesh of huntGroup.children) {
+      const p = mesh.userData.place;
+      const gone = found && found.has ? found.has(p.id) : false;
+      const reveal = gone ? 0 : revealAt(p, at);
+      mesh.visible = reveal > 0.001;
+      if (!mesh.visible) continue;
+      mesh.material.opacity = 0.25 + reveal * 0.75;
+      mesh.rotation.y = huntSpin;
+      // A little bob, so a token reads as an object hovering rather than as a
+      // decal somebody stuck to the floor.
+      mesh.position.y = floorBaseY(built, p.floor) + 2.4 + Math.sin(huntSpin * 1.7) * 0.12;
+      const s = 0.7 + reveal * 0.4;
+      mesh.scale.set(s, s, s);
+    }
+  }
+
   function clearCrowd() {
     if (!crowdMeshes) return;
     for (const m of Object.values(crowdMeshes)) m.count = 0;
@@ -4527,6 +4839,9 @@ export function initRender(canvas) {
     const plan = buildRoofGroup(state);
     // Pivots are per-build: the Groups they point at are about to be disposed.
     doorPivots.clear();
+    // ...and so are the prop instances a shove would move.
+    propInstances.clear();
+    shoved.clear();
     state.floors.forEach((floor, i) => {
       const group = new THREE.Group();
       const ceil = new THREE.Group();
@@ -4821,6 +5136,9 @@ export function initRender(canvas) {
     renderer, scene, editCamera, walkCamera, editView,
     buildFromState, applyFloorVisibility, fitEditView, applyEditCamera,
     setMode, resize, render,
+    // --- Phase 11: the furniture you walked into ---
+    moveProps, restoreProps,
+    get shovedCount() { return shoved.size; },
     // --- Phase 3: sun, sky and the building's own lights ---
     //
     // `setEnvironment` is the one write; everything else reads back what it
@@ -4905,6 +5223,8 @@ export function initRender(canvas) {
     // renderer reads the simulation's records directly, the same arrangement
     // `poseDoors` has with openings.js's leaves.
     setCrowd, clearCrowd, setHeat,
+    // --- Phase 11: the scavenger hunt ---
+    setHunt, updateHunt,
     get crowdVisible() { return crowdGroup.visible; },
     set crowdVisible(v) { crowdGroup.visible = !!v; },
     // Swing the doors. `leaves` is openings.js's own list — the same one

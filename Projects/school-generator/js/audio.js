@@ -608,6 +608,19 @@ export function initAudio(camera, opts = {}) {
       burst(ch, { hz: spec.tone * 0.7, q: 0.6, level: spec.scuff * 1.2, decay: spec.decay });
     },
 
+    // Furniture sliding on a floor (Phase 11). A short low scrape with a bit
+    // of grit on top, quiet enough that walking down a row of chairs is a
+    // corridor rather than a machine shop. `force` is how far the thing
+    // actually went, 0..1 against shove.js's own per-frame cap.
+    scoot(at, force = 1) {
+      if (!this.running) return;
+      const f = clamp(force, 0.12, 1);
+      const ch = shotChannel(at, 44 + 10 * f);
+      if (!ch) return;
+      burst(ch, { hz: 300, q: 0.5, level: 0.34 * f, decay: 0.17 });
+      burst(ch, { hz: 1500, q: 1.3, level: 0.11 * f, decay: 0.09, delay: 0.012 });
+    },
+
     // --- the things the building does ---
 
     // The bell. Three strikes out of every bell fixture in the design; if
