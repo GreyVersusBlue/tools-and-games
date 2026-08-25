@@ -42,7 +42,7 @@ import {
 import { wallProbe } from './walls.js';
 import { terrainField, emptyField, groundAt } from './terrain.js';
 import {
-  collectDoorLeaves, leafSegment, updateLeaves, closeAll,
+  collectDoorLeaves, leafSegment, updateLeaves, updateLeavesFor, closeAll,
   gridOpeningWidth, LEAF_T,
 } from './openings.js';
 
@@ -281,6 +281,10 @@ export function elevatorSegments(state, floorIndex) {
 export function buildCollider(state, floorIndex, catalogGet, opts = {}) {
   const floor = state.floors[floorIndex];
   const probe = floor ? wallProbe(floor) : null;
+  const segs = wallSegments(floor, probe)
+    .concat(openingRailSegments(state, floorIndex))
+    .concat(elevatorSegments(state, floorIndex));
+  const props = propObstacles(state, floorIndex, catalogGet);
   return {
     floor: floorIndex,
     // The graded ground, built once for the whole building and shared between
@@ -288,16 +292,113 @@ export function buildCollider(state, floorIndex, catalogGet, opts = {}) {
     // sweep over the site, and it doesn't change between levels. A caller with
     // one already (walkthrough.js makes one at walk-start) passes it in.
     site: opts.site || terrainField(state),
-    segs: wallSegments(floor, probe)
-      .concat(openingRailSegments(state, floorIndex))
-      .concat(elevatorSegments(state, floorIndex)),
-    props: propObstacles(state, floorIndex, catalogGet),
+    segs,
+    props,
     doors: closeAll(collectDoorLeaves(state, floorIndex)),
+    // Phase 6: one walker could afford a linear scan; a hundred cannot. The
+    // index is built beside the arrays it indexes and never replaces them —
+    // every function here still works against a collider that has none, which
+    // is what keeps a hand-built test collider a two-line object.
+    index: opts.index === false ? null : buildIndex(segs, props),
+    // Bodies are the other walkers, and unlike everything above they change
+    // every frame. They are a slot rather than a build product: whoever is
+    // stepping fills it, and an empty one is a building with one person in it.
+    bodies: [],
     probe,
   };
 }
 
-export const emptyCollider = () => ({ floor: -1, segs: [], props: [], doors: [], site: emptyField() });
+export const emptyCollider = () => ({
+  floor: -1, segs: [], props: [], doors: [], bodies: [], index: null, site: emptyField(),
+});
+
+// ---------- the spatial index ----------
+//
+// A uniform grid over segments and props — the fix the v1 retrospective
+// records as "known if a design ever gets big enough to feel it". A crowd is
+// that design: the walker asks "what is within a foot of me" once a frame, and
+// a hundred of them asking it against every wall on the storey is the one
+// place this codebase has ever been O(n·m).
+//
+// Everything is bucketed by the cells its *inflated* extent covers, so a query
+// only has to look at the cells the body itself touches.
+
+export const INDEX_CELL = 16;     // ft — four lattice cells
+
+export function buildIndex(segs, props, cell = INDEX_CELL) {
+  const buckets = new Map();
+  const key = (cx, cz) => `${cx}|${cz}`;
+  const spread = (list, x0, z0, x1, z1, i) => {
+    const cx0 = Math.floor(x0 / cell), cx1 = Math.floor(x1 / cell);
+    const cz0 = Math.floor(z0 / cell), cz1 = Math.floor(z1 / cell);
+    for (let cx = cx0; cx <= cx1; cx++) {
+      for (let cz = cz0; cz <= cz1; cz++) {
+        const k = key(cx, cz);
+        let b = buckets.get(k);
+        if (!b) { b = { segs: [], props: [] }; buckets.set(k, b); }
+        b[list].push(i);
+      }
+    }
+  };
+
+  segs.forEach((s, i) => {
+    const pad = s.pad ?? WALL_PAD;
+    spread('segs', Math.min(s.ax, s.bx) - pad, Math.min(s.az, s.bz) - pad,
+      Math.max(s.ax, s.bx) + pad, Math.max(s.az, s.bz) + pad, i);
+  });
+  props.forEach((p, i) => {
+    // A rotated box's extent is its half-diagonal in both axes — cheaper than
+    // rotating four corners, and never smaller than the truth, which is the
+    // only direction a broad phase is allowed to be wrong in.
+    const r = Math.hypot(p.hw, p.hd);
+    spread('props', p.x - r, p.z - r, p.x + r, p.z + r, i);
+  });
+
+  // Marks, not sets: a query touches at most a handful of buckets and the same
+  // wall is in several of them, so dedupe is a stamp compare rather than a
+  // hash. The two output arrays are reused between queries — a caller consumes
+  // them before asking again, which every caller in this file does.
+  const segMark = new Int32Array(segs.length);
+  const propMark = new Int32Array(props.length);
+  const outSegs = [];
+  const outProps = [];
+  let stamp = 0;
+
+  return {
+    cell,
+    buckets,
+    counts: { segs: segs.length, props: props.length },
+    // Everything whose bucket overlaps the box (x0,z0)-(x1,z1).
+    near(x0, z0, x1, z1) {
+      stamp++;
+      outSegs.length = 0;
+      outProps.length = 0;
+      const cx0 = Math.floor(x0 / cell), cx1 = Math.floor(x1 / cell);
+      const cz0 = Math.floor(z0 / cell), cz1 = Math.floor(z1 / cell);
+      for (let cx = cx0; cx <= cx1; cx++) {
+        for (let cz = cz0; cz <= cz1; cz++) {
+          const b = buckets.get(key(cx, cz));
+          if (!b) continue;
+          for (const i of b.segs) if (segMark[i] !== stamp) { segMark[i] = stamp; outSegs.push(i); }
+          for (const i of b.props) if (propMark[i] !== stamp) { propMark[i] = stamp; outProps.push(i); }
+        }
+      }
+      return { segs: outSegs, props: outProps };
+    },
+  };
+}
+
+// The candidates near a box, as the objects themselves. Without an index this
+// is every wall and every prop on the storey — the pre-Phase-6 behaviour, and
+// still what a two-line test collider gets.
+export function candidates(collider, x0, z0, x1, z1) {
+  if (!collider.index) return { segs: collider.segs, props: collider.props };
+  const hit = collider.index.near(x0, z0, x1, z1);
+  return {
+    segs: hit.segs.map((i) => collider.segs[i]),
+    props: hit.props.map((i) => collider.props[i]),
+  };
+}
 
 // Swing this storey's leaves toward (or away from) a walker at (x, z), and
 // report whether anything moved — walkthrough.js drives this once a frame and
@@ -305,6 +406,15 @@ export const emptyCollider = () => ({ floor: -1, segs: [], props: [], doors: [],
 export function updateDoors(collider, x, z, dt, opts = {}) {
   if (!collider || !collider.doors || !collider.doors.length) return false;
   return updateLeaves(collider.doors, x, z, dt, opts);
+}
+
+// The same, for a building with a crowd in it: every leaf answers to whoever
+// is nearest to it, and holds for anyone it would close on. One call per
+// frame for the whole storey rather than one per person, because leaves are
+// shared and the last caller would otherwise win.
+export function updateDoorsFor(collider, bodies, dt, opts = {}) {
+  if (!collider || !collider.doors || !collider.doors.length) return false;
+  return updateLeavesFor(collider.doors, bodies, dt, opts);
 }
 
 // ---------- resolution ----------
@@ -367,12 +477,49 @@ function pushOutOfSeg(s, px, pz, r) {
   };
 }
 
-export function resolvePoint(collider, x, z, r = WALKER_R, passes = 3) {
+// Push a circle out of another circle — a body out of a body. Half the
+// overlap each would be the physical answer, but a walker resolved against a
+// list of neighbours is not a solver: each body moves itself fully clear and
+// the neighbour does the same on its own step, which converges over a frame or
+// two and never needs the two of them to agree.
+// `b.push` is how hard this body shoves — 1 for a wall-like body (the camera:
+// you are never standing inside somebody), less for a person. **A crowd that
+// separates fully every frame cannot flow through a door**: two people who
+// want the same three feet of doorway push each other apart exactly as hard as
+// they push forward, and the jam is stable forever. Half the separation per
+// frame is a shoulder brushing past a shoulder, which is what a corridor at a
+// passing period actually looks like, and it still converges to clear as soon
+// as there is room.
+export function pushOutOfCircle(b, x, z, r) {
+  const want = r + (b.r ?? WALKER_R);
+  const dx = x - b.x, dz = z - b.z;
+  const d = Math.hypot(dx, dz);
+  if (d >= want) return null;
+  const k = b.push ?? 1;
+  if (d < 1e-6) {
+    // Exactly on top of each other — two people spawned on the same cell, or a
+    // crowd squeezed into a doorway. Leave in *some* direction; which one
+    // doesn't matter as long as it is stable between frames, so it comes off
+    // the other body's position rather than off a random number.
+    const a = Math.atan2(b.z, b.x) + 1.2;
+    return { x: b.x + Math.cos(a) * want * k, z: b.z + Math.sin(a) * want * k };
+  }
+  const tx = b.x + (dx / d) * want, tz = b.z + (dz / d) * want;
+  return k >= 1 ? { x: tx, z: tz } : { x: x + (tx - x) * k, z: z + (tz - z) * k };
+}
+
+export function resolvePoint(collider, x, z, r = WALKER_R, passes = 3, opts = {}) {
   let px = x, pz = z;
   const doors = doorSegments(collider);
+  const bodies = opts.bodies || collider.bodies || null;
+  const skip = opts.skip;
   for (let pass = 0; pass < passes; pass++) {
     let moved = false;
-    for (const s of collider.segs) {
+    // The broad phase is re-queried each pass because the point moves: a
+    // corner can push you a foot sideways, and the wall that stops you next is
+    // one the first query never looked at.
+    const near = candidates(collider, px - r, pz - r, px + r, pz + r);
+    for (const s of near.segs) {
       const out = pushOutOfSeg(s, px, pz, r);
       if (out) { px = out.x; pz = out.z; moved = true; }
     }
@@ -380,9 +527,16 @@ export function resolvePoint(collider, x, z, r = WALKER_R, passes = 3) {
       const out = pushOutOfSeg(s, px, pz, r);
       if (out) { px = out.x; pz = out.z; moved = true; }
     }
-    for (const p of collider.props) {
+    for (const p of near.props) {
       const out = pushOutOfBox(p, px, pz, r);
       if (out) { px = out.x; pz = out.z; moved = true; }
+    }
+    if (bodies) {
+      for (const b of bodies) {
+        if (b.id !== undefined && b.id === skip) continue;
+        const out = pushOutOfCircle(b, px, pz, r);
+        if (out) { px = out.x; pz = out.z; moved = true; }
+      }
     }
     if (!moved) break;
   }
@@ -392,7 +546,10 @@ export function resolvePoint(collider, x, z, r = WALKER_R, passes = 3) {
 // Did a step pass clean through a wall — or through a shut door? See
 // `segsCross`.
 export function crossesWall(collider, x0, z0, x1, z1) {
-  for (const s of collider.segs) {
+  const near = candidates(collider,
+    Math.min(x0, x1) - WALL_T, Math.min(z0, z1) - WALL_T,
+    Math.max(x0, x1) + WALL_T, Math.max(z0, z1) + WALL_T);
+  for (const s of near.segs) {
     if (segsCross(x0, z0, x1, z1, s.ax, s.az, s.bx, s.bz)) return true;
   }
   for (const s of doorSegments(collider)) {
@@ -473,7 +630,8 @@ export function tryStep(state, collider, pos, dx, dz, opts = {}) {
   // The collider already carries the site it was built against, so a caller
   // never has to remember to hand the ground to a function about walking.
   const o = opts.site || !collider || !collider.site ? opts : { ...opts, site: collider.site };
-  const p = resolvePoint(collider, pos.x + dx, pos.z + dz, r);
+  const p = resolvePoint(collider, pos.x + dx, pos.z + dz, r, opts.passes ?? 3,
+    { bodies: opts.bodies, skip: opts.skip });
   if (crossesWall(collider, pos.x, pos.z, p.x, p.z)) return null;
   const support = supportAt(state, p.x, p.z, pos.y, o);
   if (!support) return null;
