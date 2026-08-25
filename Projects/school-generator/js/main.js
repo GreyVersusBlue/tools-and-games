@@ -51,7 +51,7 @@ import {
   ALL_FLOORS, MAX_PIXELS, MAX_BYTES,
   makeOverlay, setOverlay, calibrate, describeOverlay, centreOn, showsOn,
 } from './overlay.js';
-import { buildingOverhang, floorOverhang } from './shadow.js';
+import { floorOverhang } from './shadow.js';
 
 const canvas = document.getElementById('view');
 const $ = (id) => document.getElementById(id);
@@ -1152,13 +1152,11 @@ function importOverlayImage(file) {
   });
 }
 
-// Where a freshly loaded picture lands: over the middle of what is already
-// drawn, or over the middle of the lattice when the design is empty.
-function designCentre() {
-  const cells = floorCellCount(state.floors[state.currentFloor]);
-  if (!cells) return { x0: 0, z0: 0, x1: state.w * CELL, z1: state.h * CELL };
-  return { x0: 0, z0: 0, x1: state.w * CELL, z1: state.h * CELL };
-}
+// Where a freshly loaded picture lands: over the middle of the lattice, which
+// is where the building is and where the view is already pointed. Not over the
+// middle of what is *drawn* — an empty design has no middle, and a design with
+// one room in the corner would fling the picture off to meet it.
+const designCentre = () => ({ x0: 0, z0: 0, x1: state.w * CELL, z1: state.h * CELL });
 
 $('overlay-load').addEventListener('click', () => $('overlay-file').click());
 

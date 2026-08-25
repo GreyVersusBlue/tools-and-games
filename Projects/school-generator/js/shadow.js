@@ -26,7 +26,7 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/shadow.test.mjs.
 
-import { CELL, cellIdx, getCell, floorAt, floorLabel } from './grid.js';
+import { CELL, getCell, floorAt, floorLabel } from './grid.js';
 import { shapesOf, pointInShape, shapeBBox } from './shapes.js';
 
 // A cell's area, which is the unit every number below is counted in.

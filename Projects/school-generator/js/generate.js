@@ -56,10 +56,10 @@ import { addStair } from './stairs.js';
 import { applyFinish } from './finish.js';
 import { addRegion } from './site.js';
 import { terrainFor, raiseTerrain, smoothTerrain } from './terrain.js';
-import { ensureRoof, normalizeRoof } from './roof.js';
+import { normalizeRoof } from './roof.js';
 import { FACADE_KEYS } from './finish.js';
 import { rng } from './agents.js';
-import { buildProgram, normalizeBrief, bandEntry } from './program.js';
+import { buildProgram, bandEntry } from './program.js';
 import { roomOccupancy } from './occupancy.js';
 import { STAIR_IN_PER_OCC } from './egress.js';
 import { MIN_STAIR_W, MAX_STAIR_W } from './stairs.js';
@@ -127,7 +127,9 @@ export function expandProgram(program) {
       out.push({
         key: r.key,
         base: r.name,
-        // Filled in at storey assignment, when the number is known.
+        // The stem as it stands, for the "these didn't fit" report. What
+        // actually gets lettered onto the plan is `roomName(room, storey)`,
+        // which needs the storey and so can't be settled here.
         name: r.name,
         seq: i + 1,
         numbered: r.number,
@@ -172,6 +174,8 @@ function splitCorridor(r, axis) {
   // Everything about the corridor except where it is — `rect` spreads its
   // extras last, so leaving the geometry in here would put every segment back
   // on top of the original.
+  // eslint-disable-next-line no-unused-vars -- w and h are destructured to
+  // *exclude* them from `tags`, which is the whole point of this line.
   const { kind, x0, y0, x1, y1, w, h, ...tags } = r;
   const out = [];
   for (let i = 0; i < parts; i++) {

@@ -34,8 +34,8 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/autofurnish.test.mjs.
 
-import { CELL, cellIdx, getCell, edgeHIdx, edgeVIdx, isDoorEdge, floorAt } from './grid.js';
-import { shapesOf, shapeById, shapeBBox, pointInShape, segEnds, isDoorOpening } from './shapes.js';
+import { CELL, getCell, edgeHIdx, edgeVIdx, isDoorEdge, floorAt } from './grid.js';
+import { shapeById, shapeBBox, pointInShape, segEnds, isDoorOpening } from './shapes.js';
 import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 import { templateByKey, templatePlacements, ROOM_TEMPLATES } from './templates.js';
 import { floorRooms } from './navgraph.js';

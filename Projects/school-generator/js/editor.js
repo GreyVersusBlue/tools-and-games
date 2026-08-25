@@ -26,7 +26,7 @@ import { initStairEdit } from './stairedit.js';
 import { initTemplateEdit } from './templateedit.js';
 import { initSiteEdit } from './siteedit.js';
 import { initOverlayEdit } from './overlayedit.js';
-import { cellSupported, pointSupported } from './shadow.js';
+import { cellSupported } from './shadow.js';
 import { pinchZoomHeight } from './touch.js';
 
 const MAX_UNDO = 100;
