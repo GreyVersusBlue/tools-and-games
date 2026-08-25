@@ -3453,6 +3453,7 @@ let miniFindings = false;
 let miniMarks = [];
 let miniMarkIndex = 0;
 let miniMarksDirty = true;
+let miniMarksPending = false;
 let miniNav = null;
 
 function invalidateMinimap() {
@@ -3467,10 +3468,30 @@ function invalidateMinimap() {
 function refreshMiniMarks() {
   if (!miniFindings) { miniMarks = []; miniMarksDirty = false; return; }
   if (!miniMarksDirty) return;
-  if (report.stale || !report.data) reportBuild();
+  if (!report.data || report.stale) {
+    // A report on a generated school is a second or two of arithmetic, and
+    // this is called from inside a frame of a walkthrough. Building it here
+    // would freeze the walk for as long as it takes — so the frame that
+    // notices it is missing asks for it and draws without it, and the frame
+    // after it arrives draws it.
+    if (!miniMarksPending) {
+      miniMarksPending = true;
+      setTimeout(() => {
+        miniMarksPending = false;
+        reportBuild();
+        miniMarksDirty = true;
+        refreshMiniMarks();
+      }, 0);
+    }
+    return;
+  }
   miniMarks = findingMarks(report.data);
   if (miniMarkIndex >= miniMarks.length) miniMarkIndex = 0;
   miniMarksDirty = false;
+  // The marks can arrive on any frame — the report the walk asked for, or one
+  // the panel was already building — and the step buttons are dead until they
+  // do. Whichever frame lands them is the one that turns the buttons on.
+  updateMinimapButtons();
 }
 
 // The wash, the pins and the door rings. Rooms are filled through the same
@@ -3677,10 +3698,10 @@ function drawMinimap() {
   } else {
     caption.classList.remove('hidden');
     const mark = markAt(miniMarks, miniMarkIndex);
-    const line = miniMarks.length
+    const line = mark
       ? `<span class="lv ${esc(mark.level)}">${esc(mark.level.toUpperCase())}</span> ` +
         esc(describeMark(miniMarks, miniMarkIndex, floorIndex))
-      : 'Nothing on this plan to point at.';
+      : (miniMarksDirty ? 'Reading the report…' : 'Nothing on this plan to point at.');
     if (caption.innerHTML !== line) caption.innerHTML = line;
   }
 }
@@ -3700,11 +3721,9 @@ function setMiniFindings(on) {
   miniFindings = on;
   miniMarksDirty = true;
   if (on) {
-    refreshMiniMarks();
-    $('status').textContent = miniMarks.length
-      ? `${miniMarks.length} finding${miniMarks.length === 1 ? '' : 's'} on the plan — ` +
-        'the map highlights one at a time, worst first.'
-      : 'Nothing in the report points at a place on the plan.';
+    $('status').textContent = report.data && !report.stale
+      ? 'Findings on the plan — the map highlights one at a time, worst first.'
+      : 'Reading the report…';
   }
   updateMinimapButtons();
 }
