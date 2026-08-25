@@ -35,7 +35,14 @@ modules and one impure one: `js/acoustics.js` (the room under a point, its
 volume, its absorption and its Sabine reverberation time) and `js/sound.js`
 (which props make a noise, how loud it is at the ear, and the voice budget),
 with `js/audio.js` holding the Web Audio graph the way `render.js` holds the
-three.js one.)
+three.js one. Phase 5 adds `js/terrain.js`, `js/site.js` and
+`js/roof.js` — the ground, what is drawn on it, and what covers the building —
+plus `js/siteedit.js`, the first tool that edits something which is not a room.
+Phase 6 adds the three that put people in it: `js/navgraph.js` (rooms as hubs,
+doorways as portals, stairs as links, and A* over the lot), `js/schedule.js`
+(the school day as five numbers, the blocks they imply, and the bells that mark
+them) and `js/agents.js` (a seeded population with timetables, steered by the
+graph and resolved by `collide.js`'s walker).)
 
 - **Units are feet, everywhere.** 4ft grid cells (`CELL`), 10ft walls
   (`WALL_H`), 12ft floor-to-floor (`FLOOR_H`), max 8 storeys. Props, polygon
@@ -69,8 +76,11 @@ three.js one.)
   and floor edges; `supportAt()` answers slab/tread/site — and since Phase 5
   of the second arc "site" is a lookup into a heightfield rather than a
   constant zero — stairs walk as ramps, `F` toggles the old no-clip ghost. Touch devices get a joystick +
-  drag-look instead of Pointer Lock.
-- **Saves are versioned** (v7 as of Phase 5 of the second arc) and every bump
+  drag-look instead of Pointer Lock. Since Phase 6 the same body resolver runs
+  for a whole school at once: an agent is this walker with a timetable instead
+  of a keyboard, and the camera is one body in the crowd rather than the only
+  one in the building.
+- **Saves are versioned** (v8 as of Phase 6 of the second arc) and every bump
   has been additive, with `deserialize()` clamping hostile input and migrating
   every earlier version forward. Named
   save slots live beside a never-renamed autosave key; blueprint export
@@ -942,21 +952,25 @@ addition).
   floor-plan tool needs before Phase 7 starts asking whether the building is
   any good.
 
-## Phase 6 — A living school
+## Phase 6 — A living school ✅
 
-The walker stops being alone.
+The walker stops being alone. **Done** — save v8 (one optional field: how many
+people and which seed, never the people themselves), three new pure modules
+(`js/navgraph.js`, `js/schedule.js`, `js/agents.js`), one new panel, a crowd
+rendered as instanced rigid-part puppets, a fire drill with a heatmap, and 542
+tests.
 
-- [ ] Ambient students and teachers: capsule-simple bodies, walking the
+- [x] Ambient students and teachers: capsule-simple bodies, walking the
   halls, sitting at the Phase 1 desks (which is why seats are separate
   objects), using doors.
-- [ ] Navigation derived from the model: rooms, doorways and stairs already
+- [x] Navigation derived from the model: rooms, doorways and stairs already
   describe a nav graph; `collide.js`'s pure walker becomes a shared body
   resolver for N agents, not just the camera.
-- [ ] The bell schedule: periods, passing-period crowd surges, a clock that
+- [x] The bell schedule: periods, passing-period crowd surges, a clock that
   drives Phase 3's sun and Phase 4's bell.
-- [ ] "Day in the life": pick a generated student, follow their timetable
+- [x] "Day in the life": pick a generated student, follow their timetable
   first-person or over-the-shoulder.
-- [ ] Fire drill: everyone routes to the nearest exit; slow spots and
+- [x] Fire drill: everyone routes to the nearest exit; slow spots and
   door-width bottlenecks render as a heatmap — the playful face of Phase
   7's egress analysis.
 
@@ -965,6 +979,129 @@ build-once lifecycle; performance wants instanced skinned crowds (or
 rigid-part puppets, which instance trivially). *Leans on:* Phase 5's site —
 an agent walking out of the building now has walks, a bus loop and a field to
 route across, and `groundAt` already tells it what height it is at.
+
+### How it actually landed
+
+- **The walker took an `n` without being asked for one.** The prediction was
+  that `collide.js` would have to be rebuilt for a crowd. It didn't: an agent
+  *is* the camera with a timetable instead of a keyboard — same radius, same
+  `moveWalker`, same `supportAt`, and a stair is climbed by walking at it
+  because a stair was always a surface. What collide.js actually gained is
+  three things a hundred walkers need and one could do without: a uniform grid
+  over segments and props (the v1 retrospective's "known fix", finally worth
+  the fifty lines), circle-vs-circle resolution so bodies push each other, and
+  `updateDoorsFor` so one shared set of leaves can answer to a crowd rather
+  than to whichever caller went last.
+- **Rooms as hubs, doorways as two-sided portals.** The graph is the classic
+  portal graph with two additions, and walking it forced both. A room
+  contributes a hub node, so an L-shaped corridor routes round its own corner.
+  And a doorway contributes *two* waypoints, one either side, three feet out —
+  because a route that merely aims at a doorway leaves a body sliding along
+  the wall beside it forever. Threading a door is the single most load-bearing
+  detail in the phase.
+- **Everything is derived, again.** There is no `state.nav`, no saved agent,
+  no baked route. The graph is a reader over the model the way `blueprint.js`
+  and `acoustics.js` are; a population is a pure function of (design, seed,
+  size); an edit throws the graph away and the next frame builds another. What
+  the file carries is three numbers.
+- **The clock runs fast; the people never do.** `life.rate` is *simulated
+  minutes per real second* — a corridor at ten times speed is a blur nobody
+  can read, and the thing worth watching is a passing period at the pace a
+  passing period actually happens. So the bell schedule sprints and the crowd
+  walks, which is the pair of speeds a school day genuinely has.
+- **One collider per storey for the whole building.** This is the build-once
+  lifecycle the wishlist warned about, and the collision it caused was not the
+  one expected. Editing while people walk was easy — throw the cache away on
+  change. What bit was *two* caches: the walkthrough built its own colliders
+  and so did the crowd, which meant two sets of door leaves carrying the same
+  keys, and agents walking into doors the camera had already opened. One
+  cache, handed to the walkthrough by whoever owns the crowd.
+- **A fire drill is the feature that finds bugs in the building.** Two of the
+  sample school's own props turned out to be somewhere nothing had ever
+  noticed: a vending machine parked across the stair hall's doorway, and two
+  ornamental trees standing fourteen feet inside Room 101. Nobody had walked
+  there. Three students spent an entire drill walking into a tree.
+- **The bell already existed and so did the sun.** Phase 3 put the sun on a
+  clock and Phase 4 put a bell in the catalog; this phase only had to cross a
+  minute and ring what was already there. The three were built in the right
+  order by accident, and the seam between them is one call.
+
+### What fought back
+
+- **Crowd deadlock has more than one cause, and each fix reveals the next.**
+  In order, all of them real: a fully-separating body push means two people
+  wanting the same three feet of doorway shove each other apart forever (so
+  bodies push at half strength); braking for anybody in front means two people
+  walking at each other both stop and neither moves again (so you only follow
+  somebody going *your* way, and go round somebody coming the other way);
+  taking turns at a doorway chains into a polite, stationary building (so a
+  body that is itself waiting is not somebody to wait for, and nobody waits
+  more than two and a half seconds); and a three-foot doorway with a person
+  standing in it is a shut door, because an idle agent was an immovable
+  object. There is no single rule that produces a crowd. There are six, and
+  the last one is an escape valve that ignores the other five.
+- **The plug in the doorway.** The bug that cost the most: a body shoved
+  *into* a doorway by the queue behind it still wanted to reach the waypoint
+  three feet in front of it — which was now behind it — so it turned round,
+  walked back into the crowd, and corked the door for the rest of the drill.
+  Every evacuation stalled at about 40%. Standing in a doorway now counts as
+  having reached the near side of it.
+- **Re-planning is worse than being stuck.** An agent that asks the graph for
+  a new route whenever anything blocks it will pace a corridor forever: the
+  room it is standing in flips as it drifts across a threshold, and each room
+  answers with a route the other way. Skipping the blocked waypoint and
+  keeping the route is right; re-planning is the last resort, and rate-limited
+  even then.
+- **A queue walking past a classroom held its door open** — proximity was
+  intent when there was one walker and is not when there are ninety — **and
+  the open leaf was then the thing the queue couldn't get past.** A body now
+  tells a leaf whether it is *using* that door. It is still something the leaf
+  won't swing into either way.
+- **A stair's landing is inside the hole it cuts.** The obvious node for the
+  top of a run is the middle of its landing; `openingRails` fences every side
+  of that hole except the one you walk out of, so everybody routed there
+  queued at a handrail. It took a drill that never finished to see it. The
+  node sits past the far edge of the cut now, and `runLandings` is exported so
+  agents.js can find the same two points when somebody re-plans halfway up.
+- **Door leaf keys did not carry their storey.** Harmless while only the
+  camera's floor could have a door moving on it; a school with people in it
+  has two, and level 2's doors were posing level 1's meshes.
+- **A slow machine runs the simulation in slow motion, on purpose.** `dt` is
+  capped, so a frame that takes a second advances the school by fifty
+  milliseconds. The alternative is a crowd that teleports through walls on
+  every hitch, which is not a trade a design tool should make.
+
+### Deliberately left for later
+
+- **The last fifth of an evacuation is a tail.** Most of the school is out in
+  a plausible time; a handful spend a long while working their way out of a
+  corner a crowd shuffled them into. The cause is known and is the next item.
+- **There is no nav mesh inside a room.** The graph routes between rooms;
+  crossing one is a straight line at the hub, and furniture in the way is
+  handled by sidestepping rather than by pathing. It is why a class walks
+  round a desk row rather than down the aisle between them, and why a chair
+  boxed in between a desk and a wall never gets sat on. A coarse grid over
+  each room's floor, walked with the same A*, is the fix and is a phase's
+  worth of work on its own.
+- **Nobody has a head, still.** Agents are circles like the camera, so a crowd
+  on a stair is resolved in plan only. Two people on the same run at different
+  heights do not collide, which nobody has yet noticed.
+- **Lifts are a teleport with doors**, for agents exactly as for the camera. A
+  queue for a lift is a real thing in a real school and would need a car with
+  a position, a call button and a state machine — none of which a floor plan
+  is asking for yet.
+- **The timetable is random, not scheduled.** Every student gets a room per
+  period that isn't the one they were just in; nothing balances class sizes,
+  matches subjects to rooms, or keeps a cohort together. Phase 8's generator
+  is where a real timetable belongs, because it is the same problem as laying
+  out the building.
+- **The crowd is not in the blueprint and not in the acoustics.** A plan sheet
+  that showed occupancy, and a room that got louder with thirty people in it,
+  are both one reader away — and both belong to Phase 7, where a number on a
+  drawing has to mean something.
+- **Nobody carries anything, opens a locker, or talks.** The catalog has
+  lockers and the PA works; a school where people use them is a different
+  project, and a delightful one.
 
 ## Phase 7 — Analysis & rigor
 
@@ -1044,18 +1181,23 @@ Each item here prices the no-build-step, no-deps stance explicitly.
 
 ## Suggested build order
 
-Phases 1 through 5 are done. Phase 6 (a living school) is next by the default
-ordering, and like Phase 5 it starts by taking something back rather than
-adding to it: `collide.js`'s walker is the camera and only the camera, and a
-corridor with students in it needs the same body resolver running for N agents
-against a nav graph the model already describes. The site is the reason it can
-be worth doing — a fire drill routes to an exit that now has a car park on the
-other side of it, and a bell rings over a building that has somewhere to walk
-out into.
+Phases 1 through 6 are done. Phase 7 (analysis & rigor) is next by the default
+ordering, and it is the phase everything so far has been quietly stocking a
+larder for. Every check it asks for already has its data: egress distance is
+`egressField` with a number printed instead of a route walked; door widths are
+on every portal; capacity is `roomsOnFloor` plus a rule per label; the bill of
+materials is `finishSchedule` and `siteSchedule` with a reader in front of
+them; daylight is window area over floor area, and both are already computed.
+The one genuinely new thing is the accessible-route check, which is the same
+A* as Phase 6's with stairs taken out of the graph — one option on `buildNav`.
 
-Phases 6–10 are ordered simulation → analysis → generation → sharing → play:
-each band leans on the ones before it (NPCs need doors and nav; analysis needs
-ramps and elevators; generation needs templates worth stamping, and now a site
-to put the building on). But the ordering is a default, not a law — phase 9's
-smaller items (glTF import, the minimap, guided tours) are self-contained
-enough to pull forward whenever one is wanted.
+It is also the phase that turns Phase 6's findings into findings. A fire drill
+that strands somebody is currently a number in a panel; egress analysis is that
+number with a reason, a distance and a room name attached.
+
+Phases 7–10 are ordered analysis → generation → sharing → play: each band leans
+on the ones before it (analysis needs ramps and elevators; generation needs
+templates worth stamping, a site to put the building on, and now a crowd to
+size it for). But the ordering is a default, not a law — phase 9's smaller
+items (glTF import, the minimap, guided tours) are self-contained enough to
+pull forward whenever one is wanted.
