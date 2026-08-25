@@ -437,6 +437,17 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       reportHud();
     },
     get touchActive() { return touchActive; },
+    // Where the walker is standing, storey included — the one question a
+    // caller cannot answer off `camera.position` alone, since which storey a
+    // height belongs to is `storeyAt`'s and the graded ground's business.
+    // Phase 11's hunt asks it once a frame.
+    get at() {
+      const feet = body.y - EYE_H;
+      return {
+        x: body.x, y: body.y, z: body.z,
+        floor: world ? storeyAt(world, feet, groundAt(site, body.x, body.z)) : 0,
+      };
+    },
     // Whose eyes. `null` gives the camera its own body back where it stands.
     get following() { return follow ? follow.agent : null; },
     get followMode() { return follow ? follow.mode : null; },

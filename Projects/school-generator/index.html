@@ -761,6 +761,41 @@
     body[data-mode="walk"] #right-rail { top: 12px; max-height: calc(100vh - 80px); }
 
 
+    /* The scavenger hunt (Phase 11). Top-left in the walkthrough, out of the
+       way of the crosshair and above the minimap's corner — a list you glance
+       at rather than a panel you work in, so it takes no pointer events and
+       the pointer stays locked. */
+    #hunt-panel {
+      position: fixed; left: 12px; top: 58px; z-index: 15; display: none;
+      width: 226px; padding: 9px 11px; pointer-events: none;
+      max-height: calc(100vh - 310px); overflow: hidden;
+      font-size: 11.5px; line-height: 1.5;
+    }
+    body[data-mode="walk"].hunting #hunt-panel { display: block; }
+    body.photo #hunt-panel { display: none !important; }
+    #hunt-panel h2 {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--text-dim); margin: 0 0 6px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    #hunt-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+    #hunt-warmth {
+      margin: 0 0 7px; padding: 4px 7px; border-radius: 5px;
+      background: rgba(255, 255, 255, 0.06); color: var(--text);
+    }
+    #hunt-warmth .band { font-weight: 600; }
+    #hunt-warmth .burning { color: #ff8b52; }
+    #hunt-warmth .hot { color: #ffab5c; }
+    #hunt-warmth .warm { color: #ffd873; }
+    #hunt-warmth .cool { color: #8fc7ea; }
+    #hunt-warmth .cold, #hunt-warmth .freezing { color: #7fa6d0; }
+    #hunt-list { list-style: none; margin: 0; padding: 0; }
+    #hunt-list li { display: flex; gap: 6px; padding: 2px 0; color: var(--text-dim); }
+    #hunt-list li .ic { width: 15px; text-align: center; }
+    #hunt-list li.found { color: #6fbf8a; text-decoration: line-through; opacity: 0.7; }
+    #hunt-done { margin: 7px 0 0; color: #6fbf8a; font-weight: 600; }
+    #hunt-done:empty { display: none; }
+
     /* --- Phase 9 --- */
 
     /* The minimap: the blueprint renderer at thumbnail size, bottom-left,
@@ -1290,6 +1325,7 @@
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; <kbd>Shift</kbd> sprint<br />
         <kbd>Space</kbd> jump &nbsp;·&nbsp; <kbd>F</kbd> ghost mode (no-clip, <kbd>Space</kbd>/<kbd>C</kbd> to fly)<br />
         <kbd>E</kbd> ride the elevator you're standing in &nbsp;·&nbsp; <kbd>P</kbd> photo mode<br />
+        <kbd>G</kbd> start or stop the scavenger hunt<br />
         <kbd>B</kbd> ring the bell &nbsp;·&nbsp; <kbd>N</kbd> PA announcement &nbsp;·&nbsp; <kbd>U</kbd> sound panel<br />
         <kbd>L</kbd> school life &nbsp;·&nbsp; <kbd>V</kbd> follow somebody &nbsp;·&nbsp; <kbd>K</kbd> fire drill &nbsp;·&nbsp; <kbd>H</kbd> heatmap<br />
         <kbd>M</kbd> the report — occupancy, egress, access, daylight<br />
@@ -1355,6 +1391,7 @@
       </p>
       <div class="row">
         <button id="walk-start" class="primary">Click to Walk</button>
+        <button id="walk-hunt" title="Hide eight things around the building and go and find them">🎒 Scavenger hunt</button>
         <button id="walk-vr" title="Walk the building at 1:1 in a VR headset">🥽 Enter VR</button>
         <button id="walk-exit">Back to Editor</button>
       </div>
@@ -1573,6 +1610,13 @@
   <div id="print-area" class="hidden"></div>
 
   <div id="crosshair">·</div>
+  <div id="hunt-panel" class="panel" role="status" aria-live="polite">
+    <h2>🎒 Scavenger Hunt <span id="hunt-count">0 / 8</span></h2>
+    <p id="hunt-warmth"></p>
+    <ul id="hunt-list"></ul>
+    <p id="hunt-done"></p>
+  </div>
+
   <div id="walk-hud" role="status" aria-live="polite">Level 1 · walking</div>
 
   <div id="touch-controls">

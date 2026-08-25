@@ -29,6 +29,7 @@ import {
   floorSolidAt, openingSpec,
 } from './shapes.js';
 import { catalogEntry, propColor, variantKey } from './catalog.js';
+import { revealAt } from './hunt.js';
 import {
   stairMetrics, stairsOf, openingRails, runMetrics,
   elevatorSize, elevatorDoorWidth, elevatorsOn,
@@ -936,8 +937,11 @@ export function initRender(canvas) {
   function setMode(m) {
     mode = m;
     const edit = m === 'edit';
-    // Everything the walker pushed around goes back where it was drawn.
+    // Everything the walker pushed around goes back where it was drawn, and
+    // the hunt's tokens go back in the box — they are things in the building,
+    // not things on the drawing board.
     if (edit) restoreProps();
+    huntGroup.visible = !edit && huntPlaces.length > 0;
     // Photo mode is a walkthrough affordance; going back to the plan puts the
     // ordinary walk lens back so the next walk doesn't start at 24mm.
     if (edit && photo.on) photo.on = false;
@@ -4520,6 +4524,24 @@ export function initRender(canvas) {
   const heatGroup = new THREE.Group();
   heatGroup.visible = false;
   scene.add(heatGroup);
+
+  // --- Phase 11: the scavenger hunt's tokens ---
+  //
+  // One small spinning thing per hiding place, and the whole of what makes
+  // them *hidden* is that each is invisible until you are nearly on top of it:
+  // `revealAt` fades one in over the last fifteen feet, so the hint sends you
+  // to the room and the token is what says you have arrived. Drawn with
+  // `depthTest` on, so a wall between you and one still hides it — a token
+  // glowing through a floor slab would give away every room at once.
+  //
+  // A Group of small Meshes rather than an InstancedMesh: there are eight of
+  // them, each has its own opacity this frame, and per-instance opacity is
+  // exactly the thing instancing does not do.
+  const huntGroup = new THREE.Group();
+  huntGroup.visible = false;
+  scene.add(huntGroup);
+  let huntPlaces = [];
+  let huntSpin = 0;
   let crowdMeshes = null;
   let heatMesh = null;
   const _crowdColor = new THREE.Color();
@@ -4670,6 +4692,62 @@ export function initRender(canvas) {
       y: y + dy,
       z: z + Math.cos(facing) * dz,
     };
+  }
+
+  // The hiding places, as things in the world. `places` is hunt.js's own list;
+  // nothing is stored anywhere, and calling this with an empty list is how a
+  // hunt ends.
+  function setHunt(places) {
+    for (const child of [...huntGroup.children]) {
+      huntGroup.remove(child);
+      child.geometry.dispose();
+      child.material.dispose();
+    }
+    huntPlaces = places || [];
+    if (!huntPlaces.length) { huntGroup.visible = false; return 0; }
+    for (const p of huntPlaces) {
+      // OctahedronGeometry comes back non-indexed and TorusGeometry indexed,
+      // and mergeGeometries refuses to mix the two — `mergeVertices` welds the
+      // first, the same fix `slabGeo` above needs for the same reason.
+      const core = mergeVertices(new THREE.OctahedronGeometry(0.42, 0));
+      const halo = new THREE.TorusGeometry(0.7, 0.06, 6, 18);
+      halo.rotateX(Math.PI / 2);
+      const geo = mergeGeometries([
+        coloredGeo(core, '#ffd873'),
+        coloredGeo(halo, '#ffb03a'),
+      ]);
+      const mat = new THREE.MeshBasicMaterial({
+        vertexColors: true, transparent: true, opacity: 0, depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(p.x, floorBaseY(built, p.floor) + 2.4, p.z);
+      mesh.visible = false;
+      mesh.userData.place = p;
+      huntGroup.add(mesh);
+    }
+    huntGroup.visible = true;
+    return huntPlaces.length;
+  }
+
+  // Once a frame while a hunt is running. `at` is the walker — `{x, z, floor}`
+  // — and `found` the ids already collected, which simply stop being drawn.
+  function updateHunt(at, found, dt = 0) {
+    if (!huntGroup.visible) return;
+    huntSpin += dt * 1.6;
+    for (const mesh of huntGroup.children) {
+      const p = mesh.userData.place;
+      const gone = found && found.has ? found.has(p.id) : false;
+      const reveal = gone ? 0 : revealAt(p, at);
+      mesh.visible = reveal > 0.001;
+      if (!mesh.visible) continue;
+      mesh.material.opacity = 0.25 + reveal * 0.75;
+      mesh.rotation.y = huntSpin;
+      // A little bob, so a token reads as an object hovering rather than as a
+      // decal somebody stuck to the floor.
+      mesh.position.y = floorBaseY(built, p.floor) + 2.4 + Math.sin(huntSpin * 1.7) * 0.12;
+      const s = 0.7 + reveal * 0.4;
+      mesh.scale.set(s, s, s);
+    }
   }
 
   function clearCrowd() {
@@ -5145,6 +5223,8 @@ export function initRender(canvas) {
     // renderer reads the simulation's records directly, the same arrangement
     // `poseDoors` has with openings.js's leaves.
     setCrowd, clearCrowd, setHeat,
+    // --- Phase 11: the scavenger hunt ---
+    setHunt, updateHunt,
     get crowdVisible() { return crowdGroup.visible; },
     set crowdVisible(v) { crowdGroup.visible = !!v; },
     // Swing the doors. `leaves` is openings.js's own list — the same one

@@ -26,6 +26,9 @@ import {
 import { initWalkthrough } from './walkthrough.js';
 import { buildNav, navSummary } from './navgraph.js';
 import {
+  startHunt, huntWarmth, checkFind, huntSummary, DEFAULT_COUNT,
+} from './hunt.js';
+import {
   blockAt, bellsBetween, nextBell, clockText, countdownText, wrapMinutes,
   normalizeSchedule,
 } from './schedule.js';
@@ -33,7 +36,7 @@ import {
   makePopulation, makeContext, retargetAll, stepAgents, census, drillReport,
   bodiesOn, makeCrowdField, crowdCells, clearCrowd, normalizeLife,
 } from './agents.js';
-import { buildCollider, storeyAt, WALKER_R } from './collide.js';
+import { buildCollider, storeyAt, resolvePoint, WALKER_R } from './collide.js';
 import { initAudio } from './audio.js';
 import { doorEvents } from './sound.js';
 import { roomsOnFloor, isOutside } from './acoustics.js';
@@ -149,6 +152,10 @@ const editor = initEditor({
     // A prop placed, painted, deleted or undone can change which swatch is
     // lit and what colour the chip shows.
     if (editor.tool === 'prop') syncPropPaint();
+    // A hunt's hints name rooms and its hiding places stand on tiles, and a
+    // structural edit is a different set of both. Rather than quietly leave
+    // the hamster inside a wall somebody has just drawn, the hunt ends.
+    if (hunt && info.structural !== false) huntStop();
     // Same for sound: a diffuser placed, a room's finish changed or a wall
     // moved all change what there is to hear and how long it rings, and both
     // answers are derived rather than stored, so re-deriving is the whole
@@ -2885,6 +2892,10 @@ document.addEventListener('keydown', (e) => {
     // step through them, which is the same gesture as the report panel's own
     // list read top-down.
     if (e.code === 'KeyO') { setMiniFindings(!miniFindings); return; }
+    // Phase 11's one: start (or give up on) the scavenger hunt without going
+    // back out to the overlay for it — the overlay costs you the pointer lock,
+    // and losing the pointer lock in the middle of a hunt is losing the hunt.
+    if (e.code === 'KeyG') { $('walk-hunt').click(); return; }
     if (e.code === 'BracketLeft') { stepMiniFinding(-1); return; }
     if (e.code === 'BracketRight') { stepMiniFinding(1); return; }
     if (e.code === 'Enter' && document.body.classList.contains('tours')) {
@@ -3983,6 +3994,121 @@ $('walk-vr').addEventListener('click', () => {
   else enterVR();
 });
 
+// --- the scavenger hunt (Phase 11) ---
+//
+// Eight things hidden around the design and a panel that says roughly where.
+// Nothing about it is stored: `hunt` lives as long as the page does and the
+// design never learns it happened, which is the same bargain the shove
+// physics strikes and for the same reason — this is something you do in a
+// building, not something the building is.
+//
+// It runs off its own nav rather than the crowd's, because a hunt is worth
+// having in a school with nobody in it, and it is rebuilt on every start so a
+// wall moved since the last one is a wall the hints know about.
+let hunt = null;
+let huntWarm = '';          // the band last printed, so a frame that hasn't
+                            // changed it doesn't rebuild the line
+
+const huntPanel = $('hunt-panel');
+const huntList = $('hunt-list');
+const huntCount = $('hunt-count');
+const huntWarmthEl = $('hunt-warmth');
+const huntDone = $('hunt-done');
+
+// Somewhere a person could actually stand. A hiding place is a point on the
+// nav mesh, and the mesh knows about walls and knows nothing about furniture —
+// so this is the filing cabinet check, and it is collide.js's own resolver
+// asked whether a walker put down here would have to move.
+function huntClearance() {
+  const site = terrainField(state);
+  const cache = new Map();
+  return (x, z, floor) => {
+    let c = cache.get(floor);
+    if (!c) { c = buildCollider(state, floor, catalogEntry, { site }); cache.set(floor, c); }
+    const out = resolvePoint(c, x, z, WALKER_R);
+    return Math.hypot(out.x - x, out.z - z) < 0.05;
+  };
+}
+
+function huntStop(quiet = false) {
+  hunt = null;
+  huntWarm = '';
+  renderApi.setHunt([]);
+  document.body.classList.remove('hunting');
+  if (!quiet) $('status').textContent = 'Scavenger hunt ended.';
+}
+
+function huntBegin() {
+  const nav = buildNav(state);
+  hunt = startHunt(nav, {
+    seed: 1 + Math.floor(Math.random() * 0xfffffe),
+    count: DEFAULT_COUNT,
+    clear: huntClearance(),
+  });
+  if (!hunt.places.length) {
+    hunt = null;
+    $('status').textContent =
+      'Nothing to hide anything behind yet — draw a room or two first.';
+    return false;
+  }
+  renderApi.setHunt(hunt.places);
+  document.body.classList.add('hunting');
+  huntWarm = '';
+  renderHuntPanel();
+  return true;
+}
+
+function renderHuntPanel() {
+  if (!hunt) return;
+  const sum = huntSummary(hunt);
+  huntCount.textContent = `${sum.found} / ${sum.total}`;
+  huntList.textContent = '';
+  for (const p of hunt.places) {
+    const li = document.createElement('li');
+    const got = hunt.found.has(p.id);
+    li.className = got ? 'found' : '';
+    li.innerHTML = `<span class="ic">${p.icon}</span><span>${got ? p.name : `${p.name} — ${p.hint}`}</span>`;
+    huntList.appendChild(li);
+  }
+  huntDone.textContent = sum.done ? 'Every one of them found. Nicely walked.' : '';
+}
+
+// Once a frame while walking. Two questions: is anything close enough to be
+// found, and how close is the nearest thing that isn't.
+function huntUpdate(dt) {
+  if (!hunt) return;
+  const at = walk.at;
+  const got = checkFind(hunt, at);
+  if (got) {
+    audio.scoot({ x: got.x, y: at.y - 1, z: got.z }, 1);
+    const sum = huntSummary(hunt);
+    $('walk-hud').textContent = sum.done
+      ? `Found ${got.name} — that is all eight.`
+      : `Found ${got.name} — ${sum.total - sum.found} to go.`;
+    renderHuntPanel();
+  }
+  // The band changes rarely and the distance changes every frame, so the line
+  // is built once per band and only the number is written after that.
+  const warm = huntWarmth(hunt, at);
+  if (!warm) {
+    if (huntWarm !== 'done') { huntWarm = 'done'; huntWarmthEl.textContent = ''; }
+  } else {
+    if (warm.key !== huntWarm) {
+      huntWarm = warm.key;
+      huntWarmthEl.innerHTML =
+        `<span class="band ${warm.key}">${warm.label}</span> — nearest is <span id="hunt-dist"></span>ft away`;
+    }
+    const d = huntWarmthEl.querySelector('#hunt-dist');
+    if (d) d.textContent = String(Math.round(warm.dist));
+  }
+  renderApi.updateHunt(at, hunt.found, dt);
+}
+
+$('walk-hunt').addEventListener('click', () => {
+  if (hunt) { huntStop(); return; }
+  if (huntBegin()) closeModal(walkOverlay);
+});
+
 // --- main loop ---
 const clock = new THREE.Clock();
 function loop() {
@@ -3997,6 +4123,9 @@ function loop() {
     if (tourPlay) tourUpdate(dt);
     else walk.update(dt);
     audio.update(dt);
+    // A tour has the camera too, and a hunt found by a camera flying itself
+    // around is not a hunt.
+    if (!tourPlay) huntUpdate(dt);
   }
   // The school runs in both modes. A crowd seen from 200ft up, moving between
   // periods over a plan you are drawing, is half of what this phase is for —
@@ -4045,4 +4174,7 @@ window.app = {
   get tours() { return toursOf(state); },
   tourMark, tourStart, tourStop,
   get xrStatus() { return xrStatus; },
+  // --- Phase 11 ---
+  huntBegin, huntStop,
+  get hunt() { return hunt; },
 };
