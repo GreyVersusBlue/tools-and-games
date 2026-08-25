@@ -176,6 +176,18 @@ export function buildSampleSchool() {
   // Flush against the corridor wall at z = 52 (half a partition plus the
   // panel's own depth out from it), facing back into the room.
   addProp(s, 'whiteboard', { x: 44, z: 51.7, y: 3.6, rotationY: facingNorth, mount: 'wall', floor: 0 });
+  // Phase 3: the room is lit by its own fixtures rather than by an assumption.
+  // Four 2x4 troffers on a 12ft bay, plus an exit sign over the doorway and a
+  // pole light out front, so the sample school has something to *show* the
+  // moment somebody drags the clock to the evening.
+  [30, 46].forEach((x) => {
+    [35, 47].forEach((z) => {
+      addProp(s, 'troffer-2x4', { x, z, y: 9.5, mount: 'ceiling', floor: 0 });
+    });
+  });
+  addProp(s, 'sign-exit', { x: 38, z: 51.8, y: 7.5, rotationY: facingNorth, mount: 'wall', floor: 0 });
+  addProp(s, 'light-pole', { x: 12, z: 74, floor: 0 });
+  addProp(s, 'light-pole', { x: 12, z: 106, floor: 0 });
 
   buildUpperLevel(s);
   s.currentFloor = 0;   // open on the ground floor whatever the builder left

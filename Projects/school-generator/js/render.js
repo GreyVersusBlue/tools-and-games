@@ -8,11 +8,16 @@
 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { skyState, defaultEnv } from './sky.js';
+import {
+  budgetFor, spillAmbient, emitOf, LUMENS_TO_CANDELA, MAX_DYNAMIC_LIGHTS,
+} from './lights.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { DepthOfFieldPass } from 'three/addons/postprocessing/DepthOfFieldPass.js';
 import {
   CELL, WALL_H, WALL_T, DOOR_H, RAIL_H,
   EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW, isDoorEdge,
@@ -219,19 +224,104 @@ export function initRender(canvas) {
   renderer.toneMappingExposure = 1.05;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x9fc4e0);
   const walkFog = new THREE.Fog(0x9fc4e0, 220, 700);
 
+  // --- sky ---
+  //
+  // Phase 3 replaces the flat background colour with a gradient dome, because
+  // a dusk that is one shade of orange everywhere reads as a wall, not as a
+  // sky. It is deliberately the cheapest thing that works: a back-faced sphere
+  // with a 2 x 256 canvas gradient on it, redrawn only when the palette
+  // actually changes (a scrub through an hour touches it maybe twice). No
+  // shader, no atmosphere integral — the palette in sky.js already decided
+  // what the colours are, and this only has to put them in the right order
+  // from zenith to horizon.
+  const skyCanvas = document.createElement('canvas');
+  skyCanvas.width = 2;
+  skyCanvas.height = 256;
+  const skyCtx = skyCanvas.getContext('2d');
+  const skyTex = new THREE.CanvasTexture(skyCanvas);
+  skyTex.colorSpace = THREE.SRGBColorSpace;
+  const skyDome = new THREE.Mesh(
+    new THREE.SphereGeometry(1000, 24, 16),
+    new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, depthWrite: false, fog: false }),
+  );
+  skyDome.renderOrder = -1;
+  scene.add(skyDome);
+
+  let skyKey = '';
+  function paintSky(zenith, horizon) {
+    const key = zenith + horizon;
+    if (key === skyKey) return;
+    skyKey = key;
+    const g = skyCtx.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0, zenith);
+    g.addColorStop(0.62, zenith);
+    g.addColorStop(0.88, horizon);
+    // Below the horizon the dome is just the ground haze — a little darker
+    // than the horizon so the join doesn't read as a seam from a low camera.
+    g.addColorStop(1, horizon);
+    skyCtx.fillStyle = g;
+    skyCtx.fillRect(0, 0, 2, 256);
+    skyTex.needsUpdate = true;
+  }
+
+  // The sun itself. A flat disc turned toward the camera each frame, drawn
+  // with a basic material so the light rig can't dim the thing that *is* the
+  // light rig, and left bright enough that the bloom pass already in the chain
+  // gives it a halo for free. It hides below the horizon rather than being
+  // removed, so nothing has to be added back at dawn.
+  const sunDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(26, 24),
+    new THREE.MeshBasicMaterial({ color: 0xfff3dd, fog: false, transparent: true, opacity: 0.95, depthWrite: false }),
+  );
+  sunDisc.renderOrder = -1;
+  scene.add(sunDisc);
+
   // --- lights ---
+  //
+  // Every number below is now written by setEnvironment() out of sky.js's
+  // palette; what they start at is the Phase 2 fixed rig, which is also what
+  // the default environment resolves to. So this is the same scene it always
+  // was until somebody moves the clock.
   const hemi = new THREE.HemisphereLight(0xbedcf5, 0x8a8474, 1.15);
   const ambient = new THREE.AmbientLight(0xbfd0e0, 0.35);
-  scene.add(hemi, ambient);
+  // A second, separately-coloured flat fill for the *building's* light rather
+  // than the sky's. It exists because the two are different colours and
+  // multiplying is not adding: at night the sky ambient is very nearly black,
+  // and turning its intensity up to represent a lit corridor produces a
+  // brighter shade of midnight blue, not a lit corridor. This one is lamp
+  // coloured and starts at nothing.
+  const houseAmbient = new THREE.AmbientLight(0xffeedd, 0);
+  scene.add(hemi, ambient, houseAmbient);
   const sun = new THREE.DirectionalLight(0xfff3dd, 1.8);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.15;
   scene.add(sun, sun.target);
+
+  // The building's own lights, as a *fixed* pool.
+  //
+  // three.js compiles one shader program per (light count, light type) shape,
+  // so a pool that grows and shrinks as the walker moves stalls on a recompile
+  // every time a classroom comes into range — the exact moment you least want
+  // a frame hitch. Twelve lights, allocated once, never added or removed: an
+  // unused one sits at intensity 0, which costs a few instructions per
+  // fragment and nothing else. That is the budget strategy's other half; the
+  // first half (clustering a room's eight troffers into one source) lives in
+  // lights.js where it can be tested.
+  //
+  // None of them cast shadows. Twelve shadow maps is not a school-scale
+  // budget, and a shadowless interior fixture is a fluorescent ceiling — which
+  // is what most of these are.
+  const lightPool = [];
+  for (let i = 0; i < MAX_DYNAMIC_LIGHTS; i++) {
+    const l = new THREE.PointLight(0xffffff, 0, 30, 2);
+    l.castShadow = false;
+    scene.add(l);
+    lightPool.push(l);
+  }
 
   // --- materials ---
   const floorMat = new THREE.MeshStandardMaterial({
@@ -257,13 +347,45 @@ export function initRender(canvas) {
     roughness: 0.97,
     metalness: 0.0,
   });
-  // recessed fluorescent troffers — emissive so bloom gives them a soft glow
+  // recessed fluorescent troffers — emissive so bloom gives them a soft glow.
+  // Phase 3 drives the intensity off the sun: these are the ceiling's own
+  // house lights, and they go out when the daylight takes over.
+  const FIXTURE_GLOW = 1.5;
   const fixtureMat = new THREE.MeshStandardMaterial({
     color: 0xf4f2ea,
     emissive: 0xfff6e2,
-    emissiveIntensity: 1.5,
+    emissiveIntensity: FIXTURE_GLOW,
     roughness: 0.4,
   });
+
+  // Lamp lenses. A placeable fixture's geometry comes back in two halves (see
+  // the builder note below) and this is the material the glowing half wears.
+  //
+  // One material per lamp colour, cached, rather than one shared material with
+  // the colour in a vertex attribute: three.js's `emissive` is a uniform and
+  // is *not* modulated by vertex colours, so a shared material would give a
+  // green exit sign a warm white glow. Same trick as `finishMats` above — a
+  // Map keyed on the thing that actually differs.
+  //
+  // How bright a lit lens reads. Over 1 on purpose: the bloom pass thresholds
+  // at 0.88, so a lens has to overshoot to bloom at all, and a fixture that
+  // doesn't bloom doesn't look switched on.
+  const LAMP_GLOW = 2.4;
+  const lampMats = new Map();
+  let lampLevel = 0;      // 0..1, how hard the building's lights are burning
+  function lampMaterial(hex) {
+    let m = lampMats.get(hex);
+    if (m) return m;
+    m = new THREE.MeshStandardMaterial({
+      color: hex,
+      emissive: hex,
+      emissiveIntensity: lampLevel * LAMP_GLOW,
+      roughness: 0.55,
+      metalness: 0,
+    });
+    lampMats.set(hex, m);
+    return m;
+  }
   // One material for every prop: each catalog type's geometry carries its own
   // baked-in vertex colors (same trick as the wall/door tinting above), so a
   // desk and a bookshelf can share a material and still look different.
@@ -416,10 +538,29 @@ export function initRender(canvas) {
   let composer = null;
   let mode = 'edit';
   let fxEnabled = true;
+  let dofPass = null;
+
+  // Photo mode. A small bundle of camera settings that only exist while you
+  // are composing a shot: field of view, an exposure nudge on top of whatever
+  // the sky's own palette asked for, and the depth-of-field pass. Everything
+  // here is view state — none of it is saved with the design, because a
+  // photograph is not part of the building.
+  const photo = {
+    on: false,
+    fov: 60,
+    focus: 30,
+    aperture: 2.8,
+    dof: true,
+    bloom: 0.14,
+  };
+  let exposureBias = 1;
+  const WALK_FOV = 72;
 
   function buildComposer() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     const cam = mode === 'edit' ? editCamera : walkCamera;
+    if (composer) composer.dispose();
+    if (dofPass) { dofPass.dispose(); dofPass = null; }
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, cam));
     if (mode === 'walk') {
@@ -430,17 +571,43 @@ export function initRender(canvas) {
       ssao.maxDistance = 0.05;
       composer.addPass(ssao);
     }
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.14, 0.4, 0.88));
+    // Depth of field costs a second scene render, so it is built only while
+    // photo mode is actually open — and it goes *before* bloom, so a blurred
+    // highlight blooms as the soft blob it now is rather than as the pinpoint
+    // it used to be.
+    if (mode === 'walk' && photo.on && photo.dof) {
+      dofPass = new DepthOfFieldPass(scene, cam, w, h);
+      dofPass.focus = photo.focus;
+      dofPass.aperture = photo.aperture;
+      composer.addPass(dofPass);
+    }
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), photo.bloom, 0.4, 0.88));
     composer.addPass(new OutputPass());
     composer.setSize(w, h);
+  }
+
+  function applyPhotoCamera() {
+    walkCamera.fov = photo.on ? photo.fov : WALK_FOV;
+    walkCamera.updateProjectionMatrix();
+    if (dofPass) {
+      dofPass.focus = photo.focus;
+      dofPass.aperture = photo.aperture;
+    }
   }
 
   function setMode(m) {
     mode = m;
     const edit = m === 'edit';
+    // Photo mode is a walkthrough affordance; going back to the plan puts the
+    // ordinary walk lens back so the next walk doesn't start at 24mm.
+    if (edit && photo.on) photo.on = false;
+    applyPhotoCamera();
     ceilingGroup.visible = !edit;
     if (gridHelper) gridHelper.visible = edit;
     scene.fog = edit ? null : walkFog;
+    // The edit floor above only applies while editing, so switching modes
+    // changes the answer even though the environment hasn't moved.
+    applyAmbient();
     applyFloorVisibility();
     buildComposer();
   }
@@ -466,11 +633,212 @@ export function initRender(canvas) {
     for (const g of labelGroup.children) g.visible = g.userData.floor === i;
   }
 
+  // ---------- the environment: sun, sky, and the building's own lights ----------
+  //
+  // One entry point. `setEnvironment` takes the design's env record, asks
+  // sky.js where the sun is and what colour that makes everything, and writes
+  // the answer into the rig — light colours and intensities, the sky gradient,
+  // the fog, the tone mapping exposure, and how hard the fixtures burn. It is
+  // cheap enough to call on every frame of a sun-study scrub (the only
+  // allocation is the palette object; the gradient repaints only when its two
+  // colours actually change), which is what lets the scrub be a scrub rather
+  // than a stepped preview.
+
+  const site = { x: 0, z: 0, span: 200, top: 40 };
+  let envState = skyState(defaultEnv());
+  // How far out the directional light stands. Far enough to clear an 8-storey
+  // building and its shadow frustum, near enough that the shadow map still has
+  // texels to spare.
+  const SUN_DIST = 320;
+
+  function placeSun() {
+    const d = envState.dir;
+    sun.target.position.set(site.x, 0, site.z);
+    sun.position.set(
+      site.x + d.x * SUN_DIST,
+      Math.max(6, d.y * SUN_DIST),
+      site.z + d.z * SUN_DIST,
+    );
+    // A low sun throws long shadows, so the orthographic frustum has to grow
+    // as the sun sinks or the far end of the building falls out of the map and
+    // stops casting at all. Twice the site at noon, four times at dusk.
+    const stretch = 2 + 2 * (1 - Math.max(0, Math.min(1, envState.dir.y)));
+    const span = site.span * stretch * 0.5;
+    sun.shadow.camera.left = -span;
+    sun.shadow.camera.right = span;
+    sun.shadow.camera.top = span;
+    sun.shadow.camera.bottom = -span;
+    sun.shadow.camera.far = SUN_DIST * 2 + site.top;
+    sun.shadow.camera.updateProjectionMatrix();
+    // Below the horizon there is nothing to cast, and leaving the map running
+    // costs a full extra scene render for a black texture.
+    sun.castShadow = envState.daylight;
+
+    sunDisc.visible = d.y > -0.08;
+    sunDisc.position.set(site.x + d.x * 900, d.y * 900, site.z + d.z * 900);
+    sunDisc.material.color.set(envState.palette.sun);
+    // Fade the disc out as it touches the horizon rather than clipping it
+    // through the ground plane.
+    sunDisc.material.opacity = Math.max(0, Math.min(0.95, (d.y + 0.08) * 6));
+  }
+
+  function setEnvironment(env) {
+    envState = skyState(env);
+    const pal = envState.palette;
+
+    baseHemi = pal.hemiIntensity;
+    baseAmbient = pal.ambientIntensity;
+    sun.color.set(pal.sun);
+    sun.intensity = pal.sunIntensity;
+
+    paintSky(pal.zenith, pal.horizon);
+    walkFog.color.set(pal.horizon);
+    walkFog.near = pal.fogNear;
+    walkFog.far = pal.fogFar;
+    renderer.toneMappingExposure = pal.exposure * exposureBias;
+
+    // The fixtures. `lightLevel` is a ramp, not a switch, so scrubbing through
+    // dusk fades the building up instead of snapping it on between two frames.
+    lampLevel = envState.lightLevel;
+    fixtureMat.emissiveIntensity = FIXTURE_GLOW * lampLevel;
+    for (const m of lampMats.values()) m.emissiveIntensity = lampLevel * LAMP_GLOW;
+
+    placeSun();
+    markLightsDirty();
+    applyAmbient();
+    return envState;
+  }
+
+  // The flat fill is three terms on two lights, and keeping them apart matters:
+  //
+  //   baseAmbient   the sky's own contribution, written by the palette, on the
+  //                 sky-coloured `ambient`
+  //   fillAmbient   the building's, on the lamp-coloured `houseAmbient` — the
+  //                 unbudgeted fixtures' spill, plus a modest house term so an
+  //                 *unfurnished* school at night is dim rather than pitch
+  //                 black (a design with no fixtures in it still has a ceiling
+  //                 full of the generic troffers `buildFloor` bakes in, and
+  //                 this is them)
+  //   the edit floor, below
+  //
+  // The edit floor is the one concession the sun makes to the tool. A floor
+  // plan at midnight is a correct picture of a building at midnight and a
+  // useless thing to draw walls on, so while editing, the fill never falls
+  // below a legible minimum — the plan keeps the *colour* and the *shadows* of
+  // the hour you scrubbed to and stops taking its darkness from it. The
+  // walkthrough gets no such help: standing in an unlit school at midnight is
+  // supposed to be standing in an unlit school at midnight.
+  // Raising the *intensity* of a midnight-blue fill light is not the same as
+  // making the plan readable — it makes it a brighter midnight blue. So the
+  // edit floor pulls the fill's colour toward neutral as well as its level,
+  // and the amount it pulls is what decides how much of the hour still shows.
+  // At 0.6 a dusk plan is legibly grey-blue and a noon plan is unchanged
+  // (neutral pulled toward neutral is neutral).
+  let baseAmbient = 0.35;
+  let baseHemi = 1.15;
+  let fillAmbient = 0;
+  const HOUSE_FILL = 0.32;
+  const EDIT_MIN_AMBIENT = 0.62;
+  const EDIT_MIN_HEMI = 0.85;
+  const EDIT_TINT = 0.6;
+  const _editSky = new THREE.Color('#d2dbe6');
+  const _editGround = new THREE.Color('#9aa0a8');
+
+  function applyAmbient() {
+    const pal = envState.palette;
+    ambient.color.set(pal.ambient);
+    hemi.color.set(pal.hemiSky);
+    hemi.groundColor.set(pal.hemiGround);
+    houseAmbient.intensity = fillAmbient;
+    if (mode === 'edit') {
+      ambient.color.lerp(_editSky, EDIT_TINT);
+      hemi.color.lerp(_editSky, EDIT_TINT);
+      hemi.groundColor.lerp(_editGround, EDIT_TINT);
+      ambient.intensity = Math.max(EDIT_MIN_AMBIENT, baseAmbient);
+      hemi.intensity = Math.max(EDIT_MIN_HEMI, baseHemi);
+      return;
+    }
+    ambient.intensity = baseAmbient;
+    hemi.intensity = baseHemi;
+  }
+
+  // ---------- the dynamic light pool ----------
+  //
+  // Recomputed when the design changes, when the lights come on or go off, or
+  // when the eye has moved far enough for the ranking to plausibly differ —
+  // *not* every frame. The budget is a sort over every fixture in the
+  // building; at 4ft of movement it runs a couple of times a second while
+  // walking and not at all while standing still.
+  const LIGHT_REFRESH_FT = 4;
+  let lightsDirty = true;
+  let lastLightEye = { x: 1e9, y: 1e9, z: 1e9 };
+  let lastLampLevel = -1;
+
+  const markLightsDirty = () => { lightsDirty = true; };
+
+  function updateDynamicLights(eye) {
+    const moved = (eye.x - lastLightEye.x) ** 2 + (eye.y - lastLightEye.y) ** 2 +
+      (eye.z - lastLightEye.z) ** 2;
+    if (!lightsDirty && lampLevel === lastLampLevel && moved < LIGHT_REFRESH_FT ** 2) return;
+    lightsDirty = false;
+    lastLampLevel = lampLevel;
+    lastLightEye = { x: eye.x, y: eye.y, z: eye.z };
+
+    if (!built || lampLevel <= 0) {
+      for (const l of lightPool) l.intensity = 0;
+      fillAmbient = 0;
+      applyAmbient();
+      return;
+    }
+
+    const { lit, spillLm } = budgetFor(built, catalogEntry, eye, {
+      floorHt: built.floorHt,
+      cap: lightPool.length,
+    });
+    for (let i = 0; i < lightPool.length; i++) {
+      const l = lightPool[i];
+      const c = lit[i];
+      if (!c) { l.intensity = 0; continue; }
+      l.position.set(c.x, c.y, c.z);
+      l.color.set(c.color);
+      l.distance = c.range;
+      // Lumens are the catalog's honest number; candela is what three.js
+      // wants. LIGHT_GAIN is the one artistic constant in the chain — it says
+      // how bright a real 4,000lm troffer should read in a scene that is also
+      // being tone-mapped and bloomed.
+      l.intensity = c.lm * LUMENS_TO_CANDELA * LIGHT_GAIN * lampLevel;
+    }
+    fillAmbient = (spillAmbient(spillLm) + HOUSE_FILL) * lampLevel;
+    applyAmbient();
+  }
+
+  // Candela out of the conversion, scaled to this scene's exposure.
+  //
+  // This is the one artistic constant in an otherwise physical chain, and it
+  // is small because the rest of the chain is not: a 4,000lm troffer is 318
+  // candela, and 318 candela eight feet below a desk is an irradiance of five
+  // with ACES tone mapping already lifting the midtones. Tuned so one troffer
+  // lights the desk under it without flaring the ceiling it is set into, and a
+  // gym's high bays light the gym.
+  const LIGHT_GAIN = 0.14;
+
   function render() {
     if (mode === 'edit') applyEditCamera();
     else updateWalkLabels();
+    const cam = mode === 'edit' ? editCamera : walkCamera;
+    // The pool is ranked from wherever you are actually looking from — the
+    // orthographic camera's own position while editing (200ft up, so almost
+    // nothing is in range and the fixtures read as the glowing lenses they
+    // are), the walker's eye while walking.
+    updateDynamicLights(mode === 'edit'
+      ? { x: editView.x, y: 12, z: editView.z }
+      : cam.position);
+    // The sky dome and the sun disc travel with the camera so a 1,000ft sphere
+    // never has to be bigger than the far plane, and always face it.
+    skyDome.position.copy(cam.position);
+    sunDisc.lookAt(cam.position);
     if (fxEnabled && composer) composer.render();
-    else renderer.render(scene, mode === 'edit' ? editCamera : walkCamera);
+    else renderer.render(scene, cam);
   }
 
   // ---------- geometry building ----------
@@ -711,14 +1079,33 @@ export function initRender(canvas) {
     return mergeGeometries(parts);
   };
 
+  // Lamps. Phase 3 splits the bulb out of the shade so the thing can be seen
+  // to be on — and adds the desk variant, which is the same three pieces at a
+  // sixth the height with an arm instead of a pole.
   const buildLamp = (e) => {
     const shadeColor = tint(e.color, 0.08);
     const poleColor = tint(e.color, -0.4);
-    return mergeGeometries([
+    const glow = lensColor(e);
+    if (e.surface) {
+      const arm = e.h * 0.62;
+      return lit(
+        [
+          cyl(e.w * 0.4, e.w * 0.46, 0.1, 14, 0, 0.05, 0, poleColor),
+          cylT(0.04, 0.04, arm, 6, -e.w * 0.1, arm * 0.45, 0, poleColor, 0, 0.42),
+          cylT(e.w * 0.42, e.w * 0.2, 0.42, 14, e.w * 0.16, e.h - 0.24, 0, shadeColor, 0, -0.7),
+        ],
+        [sph(e.w * 0.15, e.w * 0.1, e.h - 0.38, 0, glow, 10)],
+      );
+    }
+    const body = [
       cyl(e.w * 0.22, e.w * 0.28, 0.08, 16, 0, 0.04, 0, poleColor),
       cyl(0.045, 0.045, e.h - 0.7, 8, 0, (e.h - 0.7) / 2 + 0.08, 0, poleColor),
       cyl(e.w * 0.16, e.w * 0.36, 0.55, 16, 0, e.h - 0.3, 0, shadeColor),
-    ]);
+    ];
+    // A lamp with no `emit` row is a prop that happens to look like a lamp;
+    // it keeps the old single-geometry shape and never glows.
+    if (!emitOf(e)) return mergeGeometries(body);
+    return lit(body, [sph(e.w * 0.17, 0, e.h - 0.5, 0, glow, 10)]);
   };
 
   // Wall-mounted panel (TV, smart board, whiteboard): a slab whose face sits
@@ -1632,6 +2019,153 @@ export function initRender(canvas) {
     ]);
   };
 
+  // ---------- light fixtures ----------
+  //
+  // The builder contract gains one clause in Phase 3, and only for these:
+  // a builder may return `{ body, lens }` instead of a bare geometry. `body`
+  // is ordinary vertex-coloured furniture on the shared prop material; `lens`
+  // is the part that glows, and gets its own emissive material keyed on the
+  // lamp colour (see `lampMaterial`). Everything else about the contract is
+  // untouched — both halves are merged, bottom at y=0, facing +Z, sized off
+  // the row — so instancing, snapping and blueprint footprints never learn
+  // that a light is different from a bookshelf.
+  //
+  // `lit()` is the whole of the new plumbing.
+  const lit = (bodyParts, lensParts) => ({
+    body: mergeGeometries(bodyParts),
+    lens: mergeGeometries(lensParts),
+  });
+
+  // The colour the glowing half is drawn in. It comes off the row's own `emit`
+  // block, so the catalog says once what a fixture's light looks like and both
+  // the lens and the point light read the same number.
+  const lensColor = (e) => (emitOf(e) || { color: '#fff2d8' }).color;
+
+  // Recessed ceiling fixtures: the 2x4 and 2x2 troffers, the utility strip and
+  // the track head rail. One builder, four rows — the housing is a frame and
+  // the lens is what sits inside it, and only the proportions change.
+  //   style 'strip'  a bare channel: no frame, a narrow lens tube
+  //   style 'track'  a rail with `heads` swivelled cans hanging off it
+  const buildTroffer = (e) => {
+    const glow = lensColor(e);
+    const shell = tint(e.color, -0.12);
+    if (e.style === 'track') {
+      const heads = Math.max(2, Math.round(e.heads || 4));
+      const rail = 0.22;
+      const body = [box(e.w, rail, e.d, 0, e.h - rail / 2, 0, tint(e.color, 0.05))];
+      const lens = [];
+      for (let i = 0; i < heads; i++) {
+        const x = -e.w / 2 + (e.w * (i + 0.5)) / heads;
+        body.push(cyl(0.05, 0.05, 0.3, 6, x, e.h - rail - 0.15, 0, shell));
+        body.push(cylT(0.26, 0.34, 0.55, 12, x, e.h - rail - 0.6, 0, shell, Math.PI, 0));
+        lens.push(cyl(0.24, 0.24, 0.05, 12, x, e.h - rail - 0.88, 0, glow));
+      }
+      return lit(body, lens);
+    }
+    if (e.style === 'strip') {
+      return lit(
+        [box(e.w, e.h * 0.5, e.d, 0, e.h * 0.75, 0, shell)],
+        [cylT(e.d * 0.42, e.d * 0.42, e.w * 0.95, 10, 0, e.h * 0.34, 0, glow, 0, Math.PI / 2)],
+      );
+    }
+    // A troffer is a shallow pan with a frame around a diffuser. Drawing the
+    // frame as four rails rather than a box with a hole in it keeps the whole
+    // thing four boxes and one plane.
+    const fr = 0.12, pan = e.h * 0.55;
+    const body = [
+      box(e.w, pan, e.d, 0, e.h - pan / 2, 0, shell),
+      box(e.w, e.h - pan, fr, 0, (e.h - pan) / 2, e.d / 2 - fr / 2, e.color),
+      box(e.w, e.h - pan, fr, 0, (e.h - pan) / 2, -e.d / 2 + fr / 2, e.color),
+      box(fr, e.h - pan, e.d - fr * 2, e.w / 2 - fr / 2, (e.h - pan) / 2, 0, e.color),
+      box(fr, e.h - pan, e.d - fr * 2, -e.w / 2 + fr / 2, (e.h - pan) / 2, 0, e.color),
+    ];
+    return lit(body, [box(e.w - fr * 2, 0.06, e.d - fr * 2, 0, e.h - pan - 0.03, 0, glow)]);
+  };
+
+  // Hanging fixtures: the corridor pendant and the gym high bay. Both are a
+  // stem, a reflector and a lamp under it; the high bay is just a much wider,
+  // much shallower reflector with a proper aluminium cone.
+  const buildPendant = (e) => {
+    const glow = lensColor(e);
+    const metal = tint(e.color, -0.25);
+    const r = Math.min(e.w, e.d) / 2;
+    if (e.style === 'highbay') {
+      const stem = e.h * 0.28;
+      return lit(
+        [
+          cyl(0.07, 0.07, stem, 8, 0, e.h - stem / 2, 0, metal),
+          cylT(r, r * 0.4, e.h - stem, 20, 0, (e.h - stem) / 2, 0, metal, Math.PI, 0),
+          ring(r * 0.98, 0.05, 0, 0.05, 0, tint(e.color, -0.35)),
+        ],
+        [cyl(r * 0.78, r * 0.86, 0.14, 20, 0, 0.12, 0, glow)],
+      );
+    }
+    const drop = e.h * 0.5;
+    return lit(
+      [
+        cyl(0.045, 0.045, drop, 6, 0, e.h - drop / 2, 0, metal),
+        cyl(0.16, 0.16, 0.1, 8, 0, e.h - 0.05, 0, metal),
+        lathe([[0, e.h - drop], [r * 0.5, e.h - drop - 0.12], [r, e.h - drop - 0.7], [r, e.h - drop - 0.8]],
+          0, 0, 0, tint(e.color, 0.08), 20),
+      ],
+      [sph(r * 0.42, 0, e.h - drop - 0.72, 0, glow, 12)],
+    );
+  };
+
+  // Wall-mounted: the interior sconce (a half-shade throwing light up the
+  // wall) and the exterior wall pack (a hooded box aimed down at the ground).
+  // Both hang off a backplate on the wall face, which is -d/2 in the prop's
+  // own frame — the same convention every other wall mount here uses.
+  const buildSconce = (e) => {
+    const glow = lensColor(e);
+    const shell = tint(e.color, -0.1);
+    if (e.style === 'pack') {
+      return lit(
+        [
+          box(e.w * 0.8, e.h * 0.9, 0.12, 0, e.h / 2, -e.d / 2 + 0.06, tint(e.color, -0.2)),
+          box(e.w, e.h * 0.55, e.d * 0.9, 0, e.h * 0.62, 0, shell),
+          boxT(e.w * 1.05, 0.1, e.d * 0.5, 0, e.h * 0.92, e.d * 0.2, tint(e.color, -0.3), -0.35, 0, 0),
+        ],
+        [boxT(e.w * 0.82, 0.08, e.d * 0.62, 0, e.h * 0.36, e.d * 0.06, glow, 0.35, 0, 0)],
+      );
+    }
+    return lit(
+      [
+        box(e.w * 0.55, e.h * 0.75, 0.1, 0, e.h / 2, -e.d / 2 + 0.05, tint(e.color, -0.25)),
+        cylT(e.w * 0.5, e.w * 0.32, e.h * 0.7, 14, 0, e.h * 0.55, e.d * 0.1, shell, 0.22, 0),
+      ],
+      [sph(e.w * 0.24, 0, e.h * 0.45, e.d * 0.06, glow, 10)],
+    );
+  };
+
+  // Site lighting: the parking-lot pole with its shoebox head on an arm, and
+  // the path bollard. Both stand on the ground, so `h` is the real mounting
+  // height — 22ft for a lot light, which is what they actually are.
+  const buildPolelight = (e) => {
+    const glow = lensColor(e);
+    const metal = tint(e.color, -0.15);
+    if (e.style === 'bollard') {
+      return lit(
+        [
+          cyl(0.34, 0.42, 0.18, 12, 0, 0.09, 0, tint(e.color, -0.3)),
+          cyl(0.28, 0.32, e.h - 0.6, 12, 0, (e.h - 0.6) / 2 + 0.18, 0, metal),
+          cyl(0.34, 0.3, 0.16, 12, 0, e.h - 0.08, 0, tint(e.color, 0.1)),
+        ],
+        [cyl(0.3, 0.3, 0.28, 12, 0, e.h - 0.34, 0, glow)],
+      );
+    }
+    const arm = e.w * 0.8;
+    return lit(
+      [
+        cyl(0.5, 0.6, 0.5, 10, 0, 0.25, 0, tint(e.color, -0.35)),
+        cyl(0.22, 0.3, e.h - 0.5, 10, 0, (e.h - 0.5) / 2 + 0.5, 0, metal),
+        box(arm, 0.2, 0.2, arm / 2, e.h - 0.1, 0, metal),
+        box(1.9, 0.45, 1.3, arm, e.h - 0.42, 0, tint(e.color, 0.08)),
+      ],
+      [box(1.6, 0.08, 1.05, arm, e.h - 0.66, 0, glow)],
+    );
+  };
+
   const PROP_GEO_BUILDERS = {
     desk: buildDesk, chair: buildChair, cabinet: buildCabinet, shelf: buildShelf,
     cubby: buildCubby, lamp: buildLamp, panel: buildPanel, rug: buildRug,
@@ -1656,16 +2190,24 @@ export function initRender(canvas) {
     picnic: buildPicnic, bikerack: buildBikerack, flagpole: buildFlagpole,
     slide: buildSlide, swing: buildSwing, dumpster: buildDumpster,
     polesign: buildPolesign,
+    troffer: buildTroffer, pendant: buildPendant, sconce: buildSconce,
+    polelight: buildPolelight,
   };
 
   // Cached per catalog type (not rebuilt on every edit like the structural
   // meshes) — a prop's geometry never changes shape, only its transform does.
+  //
+  // Normalized to `{ body, lens }` here rather than at every call site: most
+  // builders hand back one geometry and get `lens: null`, the light fixtures
+  // hand back both, and `buildPropsGroup` below only has to know that a lens
+  // may or may not be there.
   const propGeoCache = new Map();
   function getPropGeometry(entry) {
     let geo = propGeoCache.get(entry.type);
     if (geo) return geo;
     const build = PROP_GEO_BUILDERS[entry.geo] || buildDesk;
-    geo = build(entry);
+    const built = build(entry);
+    geo = built && built.body ? { body: built.body, lens: built.lens || null } : { body: built, lens: null };
     propGeoCache.set(entry.type, geo);
     return geo;
   }
@@ -2388,11 +2930,26 @@ export function initRender(canvas) {
     for (const [type, list] of byType) {
       const entry = catalogEntry(type);
       if (!entry) continue; // an unknown type from a newer save — nothing to draw it with
-      const mesh = new THREE.InstancedMesh(getPropGeometry(entry), propMat, list.length);
+      const geo = getPropGeometry(entry);
+      const emit = emitOf(entry);
+      const mesh = new THREE.InstancedMesh(geo.body, propMat, list.length);
       mesh.castShadow = false;
       mesh.receiveShadow = false;
       mesh.frustumCulled = false;
       mesh.userData.sharedGeo = true;
+      // A fixture's glowing half rides the *same* instance matrices as its
+      // housing — one loop, two meshes — so a lens can never drift away from
+      // the light it belongs to, and a lit type still costs two draw calls a
+      // storey rather than two per fixture.
+      const lens = geo.lens && emit
+        ? new THREE.InstancedMesh(geo.lens, lampMaterial(emit.color), list.length)
+        : null;
+      if (lens) {
+        lens.castShadow = false;
+        lens.receiveShadow = false;
+        lens.frustumCulled = false;
+        lens.userData.sharedGeo = true;
+      }
       list.forEach((p, idx) => {
         _dummy.position.set(p.x, baseY + (p.y || 0), p.z);
         _dummy.rotation.set(0, p.rotationY || 0, 0);
@@ -2400,9 +2957,14 @@ export function initRender(canvas) {
         _dummy.scale.set(s, s, s);
         _dummy.updateMatrix();
         mesh.setMatrixAt(idx, _dummy.matrix);
+        if (lens) lens.setMatrixAt(idx, _dummy.matrix);
       });
       mesh.instanceMatrix.needsUpdate = true;
       group.add(mesh);
+      if (lens) {
+        lens.instanceMatrix.needsUpdate = true;
+        group.add(lens);
+      }
     }
   }
 
@@ -2492,17 +3054,18 @@ export function initRender(canvas) {
       gridHelper.userData = { w: state.w, h: state.h };
       gridHelper.visible = mode === 'edit';
       scene.add(gridHelper);
-
-      sun.position.set(gw * 0.5 - 120, 160, gh * 0.5 + 90);
-      sun.target.position.set(gw * 0.5, 0, gh * 0.5);
-      const span = Math.max(gw, gh) * 0.75 + 40;
-      sun.shadow.camera.left = -span;
-      sun.shadow.camera.right = span;
-      sun.shadow.camera.top = span;
-      sun.shadow.camera.bottom = -span;
-      sun.shadow.camera.far = 500;
-      sun.shadow.camera.updateProjectionMatrix();
     }
+
+    // The site the sun swings around. Kept on the module rather than baked
+    // into the light, because the sun now moves every time the clock does and
+    // has to keep aiming at the same middle of the same building.
+    site.x = gw * 0.5;
+    site.z = gh * 0.5;
+    site.span = Math.max(gw, gh) * 0.75 + 40;
+    site.top = topOfBuilding(state);
+    // The environment travels with the design, so a rebuild is also where a
+    // loaded file's own date, hour and latitude take effect.
+    setEnvironment(state.env);
 
     editView.camY = 200 + topOfBuilding(state);
     applyFloorVisibility();
@@ -2510,10 +3073,89 @@ export function initRender(canvas) {
 
   buildComposer();
 
+  // ---------- capture ----------
+  //
+  // The blueprint exporter's trick, aimed at the 3D view: draw at a multiple of
+  // the on-screen size, read the pixels, put everything back. The renderer has
+  // no `preserveDrawingBuffer`, so the read has to happen in the same turn as
+  // the draw — hence the synchronous render/toDataURL pair, with no await
+  // between them. (Setting `preserveDrawingBuffer` instead would tax every
+  // frame of every walkthrough to make one button work.)
+  function capture(scale = 2) {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const s = Math.max(1, Math.min(4, scale));
+    const dpr = renderer.getPixelRatio();
+    renderer.setPixelRatio(s);
+    if (composer) composer.setSize(w, h);
+    renderer.setSize(w, h, false);
+    render();
+    const url = canvas.toDataURL('image/png');
+    renderer.setPixelRatio(dpr);
+    renderer.setSize(w, h, false);
+    if (composer) composer.setSize(w, h);
+    render();
+    return url;
+  }
+
+  function downloadCapture(scale = 2, filename = 'school-photo.png') {
+    const a = document.createElement('a');
+    a.href = capture(scale);
+    a.download = filename;
+    a.click();
+  }
+
   return {
     renderer, scene, editCamera, walkCamera, editView,
     buildFromState, applyFloorVisibility, fitEditView, applyEditCamera,
     setMode, resize, render,
+    // --- Phase 3: sun, sky and the building's own lights ---
+    //
+    // `setEnvironment` is the one write; everything else reads back what it
+    // worked out, so the UI never has to recompute a solar position that the
+    // renderer has already asked for.
+    setEnvironment,
+    get environment() { return envState; },
+    // What the budget is doing, for the sky panel's readout — a line that says
+    // "24 fixtures, 9 groups, 12 live at once" is the difference between
+    // trusting the cap and wondering about it.
+    //
+    // `sources` and `clustered` describe the *design* and so don't move as you
+    // walk; `lit` is what is switched on this instant, which is zero whenever
+    // the sun is doing the work.
+    lightReport(eye) {
+      const cap = lightPool.length;
+      if (!built) return { sources: 0, clustered: 0, lit: 0, cap, burning: false };
+      const at = eye || (mode === 'walk' ? walkCamera.position : { x: editView.x, y: 12, z: editView.z });
+      const r = budgetFor(built, catalogEntry, at, { floorHt: built.floorHt, cap });
+      return {
+        sources: r.sources,
+        clustered: r.clustered,
+        lit: lampLevel > 0 ? r.lit.length : 0,
+        cap,
+        burning: lampLevel > 0,
+      };
+    },
+    // --- photo mode ---
+    get photo() { return { ...photo }; },
+    setPhoto(patch) {
+      const wasOn = photo.on, hadDof = photo.dof;
+      Object.assign(photo, patch);
+      photo.fov = Math.min(110, Math.max(18, photo.fov));
+      photo.focus = Math.min(400, Math.max(1.5, photo.focus));
+      photo.aperture = Math.min(22, Math.max(1.2, photo.aperture));
+      applyPhotoCamera();
+      // Only the passes' *existence* needs a rebuild; focus and f-number are
+      // uniforms and take effect on the next frame.
+      if (photo.on !== wasOn || photo.dof !== hadDof || 'bloom' in patch) buildComposer();
+      applyPhotoCamera();
+      return { ...photo };
+    },
+    get exposureBias() { return exposureBias; },
+    set exposureBias(v) {
+      exposureBias = Math.min(3, Math.max(0.25, Number.isFinite(v) ? v : 1));
+      renderer.toneMappingExposure = envState.palette.exposure * exposureBias;
+    },
+    capture, downloadCapture,
     get mode() { return mode; },
     get fxEnabled() { return fxEnabled; },
     set fxEnabled(v) { fxEnabled = v; },

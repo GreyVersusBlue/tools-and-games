@@ -35,6 +35,11 @@ export const ROOM_TEMPLATES = [
       ]),
       { type: 'bookshelf-low', dx: 9, dz: 8, rotationY: -Math.PI / 2 },
       { type: 'trash-can', dx: 9, dz: -9, rotationY: 0 },
+      // Phase 3: a room's own lighting is part of its layout. Four 2x4
+      // troffers on a 10ft bay is what a 22ft classroom actually has, and
+      // stamping them here means a layout arrives already lit rather than
+      // going dark the first time somebody scrubs to the evening.
+      ...[-5, 5].flatMap((dx) => [-5, 5].map((dz) => ({ type: 'troffer-2x4', dx, dz, rotationY: 0 }))),
     ],
   },
   {
@@ -42,10 +47,25 @@ export const ROOM_TEMPLATES = [
     name: 'Computer Lab Row',
     icon: '💻',
     footprint: { w: 22, d: 6 },
-    stamps: [-7.5, -4.5, -1.5, 1.5, 4.5, 7.5].flatMap((dx) => [
-      { type: 'student-desk', dx, dz: -2, rotationY: 0 },
-      { type: 'student-chair', dx, dz: -0.4, rotationY: Math.PI },
-    ]),
+    stamps: [
+      ...[-7.5, -4.5, -1.5, 1.5, 4.5, 7.5].flatMap((dx) => [
+        { type: 'student-desk', dx, dz: -2, rotationY: 0 },
+        { type: 'student-chair', dx, dz: -0.4, rotationY: Math.PI },
+      ]),
+      ...[-6, 0, 6].map((dx) => ({ type: 'troffer-2x4', dx, dz: -1, rotationY: 0 })),
+    ],
+  },
+  {
+    // Nothing but light: a 2x3 bay of troffers on a 10ft grid, for lighting a
+    // room whose furniture came from somewhere else (or from nowhere — a
+    // corridor is a room too). It stands beside the furnished layouts rather
+    // than inside them because "light this space" is its own act.
+    key: 'lighting-bay',
+    name: 'Lighting Bay',
+    icon: '🔆',
+    footprint: { w: 24, d: 24 },
+    stamps: [-10, 0, 10].flatMap((dx) =>
+      [-8, 8].map((dz) => ({ type: 'troffer-2x4', dx, dz, rotationY: 0 }))),
   },
   {
     key: 'reading-corner',
@@ -128,6 +148,9 @@ export const ROOM_TEMPLATES = [
       { type: 'rack-ball', dx: 26, dz: -18, rotationY: 0 },
       { type: 'mat-wall', dx: -27.5, dz: 12, rotationY: Math.PI / 2 },
       { type: 'mat-wall', dx: -27.5, dz: -12, rotationY: Math.PI / 2 },
+      // A gym is lit by a handful of very bright fixtures rather than a grid
+      // of small ones, which is exactly what the budget's clustering wants.
+      ...[-20, 0, 20].flatMap((dx) => [-11, 11].map((dz) => ({ type: 'light-highbay', dx, dz, rotationY: 0 }))),
     ],
   },
   {

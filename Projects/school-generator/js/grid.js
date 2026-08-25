@@ -1,10 +1,17 @@
 // grid.js — grid data model, pure helpers (no three.js imports)
 // Units are feet. One cell = 4ft x 4ft. Walls live on cell edges.
 //
-// State shape (v5):
+// State shape (v6):
 //   { version, cellFt, floorHt, w, h,
 //     floors: [ { w, h, cells[], edgesH[], edgesV[], shapes[] }, ... ],
-//     currentFloor, props: [], links: [], nextId }
+//     currentFloor, props: [], links: [], env, nextId }
+//
+// `env` is Phase 3's one addition: the date, hour, latitude and compass
+// orientation the design is lit by, plus whether its own lights are burning.
+// It lives on the state rather than in the renderer because it is part of the
+// design — "this wing faces the morning sun" is a fact about the building, not
+// a view setting — and it defaults to a bright mid-morning, which is the fixed
+// rig every earlier version drew with. See sky.js.
 //
 // A floor carries two room representations side by side. The cell grid is the
 // fast rectangular mode — most of a school is rectangles, and laying them on a
@@ -19,6 +26,8 @@
 // the level above" a trivial lookup instead of a coordinate transform.
 // Each floor record still carries its own w/h so every pure helper below
 // takes a *floor* and reads exactly the fields the v1 state had.
+
+import { defaultEnv } from './sky.js';
 
 export const CELL = 4;        // ft per grid cell
 export const WALL_H = 10;     // wall height (ceiling plane), ft
@@ -105,7 +114,7 @@ export function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
 
 export function createState(w = DEFAULT_W, h = DEFAULT_H) {
   return {
-    version: 5,
+    version: 6,
     cellFt: CELL,
     floorHt: FLOOR_H,
     w, h,
@@ -116,6 +125,8 @@ export function createState(w = DEFAULT_W, h = DEFAULT_H) {
     // Inter-floor connections — stairs and the floor openings they cut. See
     // props.js for the record shape and stairs.js for what one means.
     links: [],
+    // When and where this building stands, for the sun. See sky.js.
+    env: defaultEnv(),
     nextId: 1,
   };
 }

@@ -9,11 +9,14 @@
 //   v5 — doors and windows as opening variants (leaves, sills, hands), the
 //        cased-opening / window / double-door lattice kinds, room finishes
 //        (`fin`/`paint` on cells and shapes), and ramp/elevator links
+//   v6 — `env`: the date, hour, latitude, compass orientation and interior-
+//        light mode the design is lit by (see sky.js)
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
-// polygon rooms in it, a v3 one has no glass and no stairs, and a v4 one has
-// no windows, no door leaves and no finishes — so every migration so far is
-// additive and nothing has to be guessed.
+// polygon rooms in it, a v3 one has no glass and no stairs, a v4 one has no
+// windows, no door leaves and no finishes, and a v5 one is a building that
+// never said what time of day it was — so every migration so far is additive
+// and nothing has to be guessed.
 //
 // The v5 bump is additive in an unusually strict sense, worth stating because
 // it is what keeps this cheap: every field it adds is *optional with a default
@@ -25,6 +28,12 @@
 // `EDGE_DOOR` that was a hole in a wall now hangs a leaf that swings, because
 // that is the phase. Nothing about the file changed; the building simply has
 // doors in it now. A design that wants the hole back says `EDGE_OPENING`.
+//
+// v6 keeps that bargain and takes the same shortcut: `env` is written only
+// when it differs from the default, so a v5 design still round-trips as the
+// same bytes, and the default environment is by construction the light the
+// fixed pre-Phase-3 rig drew with. Opening an old file changes nothing about
+// how it looks; it just gains a clock you can now move.
 //
 // The autosave key is deliberately unchanged so an in-progress design survives
 // the upgrade — that was true of the v2 bump and stays true here.
@@ -38,14 +47,22 @@ import { CELL, FLOOR_H, MAX_FLOORS, EDGE_KINDS, createFloor, createState } from 
 import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from './props.js';
 import { normalizeShape, MAX_SHAPES } from './shapes.js';
 import { readFinish, readPaint } from './finish.js';
+import { normalizeEnv, isDefaultEnv } from './sky.js';
 
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 const MIN_DIM = 4;
 const MAX_DIM = 200;
 
 export function serialize(state) {
+  // A design at the default environment doesn't record one — same rule
+  // `writeOpening` follows for a plain doorway, and it is what lets a v5 file
+  // survive a round trip through this build byte for byte.
+  if (state && state.env && isDefaultEnv(state.env)) {
+    const { env, ...rest } = state;
+    return JSON.stringify(rest);
+  }
   return JSON.stringify(state);
 }
 
@@ -122,6 +139,12 @@ export function deserialize(json) {
   state.currentFloor = typeof d.currentFloor === 'number'
     ? Math.min(top, Math.max(0, Math.floor(d.currentFloor)))
     : 0;
+
+  // Phase 3's environment. `normalizeEnv` never fails and never returns null,
+  // so a file with no `env`, a hostile one, or one from a build that spelled it
+  // differently all land on the default mid-morning rather than on a design
+  // that can't be lit.
+  state.env = normalizeEnv(d.env);
 
   if (Array.isArray(d.props)) {
     for (const raw of d.props.slice(0, MAX_PROPS)) {

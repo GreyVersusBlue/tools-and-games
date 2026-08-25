@@ -241,6 +241,65 @@
     }
     #layers-panel input { accent-color: var(--accent); width: 14px; height: 14px; }
 
+    /* sky panel — the sun's own controls. It sits above the layers panel on
+       the right, and it is the only editor panel that also has something to
+       say in walkthrough (the sun keeps moving while you walk through it), so
+       it is deliberately not in the "hide while walking" list below. */
+    #env-panel {
+      position: fixed; right: 12px; top: 58px;
+      padding: 10px 12px; z-index: 12; width: 230px;
+      max-height: calc(100vh - 210px); overflow-y: auto;
+    }
+    #env-panel h2 {
+      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
+    }
+    #env-panel label {
+      display: block; font-size: 10.5px; color: var(--text-dim);
+      margin: 9px 0 3px; letter-spacing: 0.02em;
+    }
+    #env-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
+    #env-panel select { width: 100%; }
+    .env-presets { display: flex; flex-wrap: wrap; gap: 4px; }
+    .env-presets button {
+      flex: 1 1 auto; padding: 4px 6px; font-size: 11px; min-width: 0;
+    }
+    .env-row { display: flex; gap: 6px; align-items: center; }
+    .env-row > * { flex: 1; min-width: 0; }
+    .env-value {
+      font-size: 11px; color: var(--text); font-variant-numeric: tabular-nums;
+      float: right; font-weight: 500;
+    }
+    #env-readout {
+      margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
+      font-size: 10.5px; line-height: 1.65; color: var(--text-dim);
+    }
+    #env-readout b { color: var(--text); font-weight: 600; }
+    .seg { display: flex; gap: 4px; }
+    .seg button { flex: 1; padding: 4px 0; font-size: 11px; }
+    .seg button.active { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
+
+    /* photo mode — a walkthrough-only panel, and the one place the HUD and the
+       crosshair get out of the way on purpose. */
+    #photo-panel {
+      position: fixed; left: 12px; top: 58px;
+      padding: 10px 12px; z-index: 16; width: 226px; display: none;
+    }
+    body[data-mode="walk"].photo #photo-panel { display: block; }
+    body.photo #crosshair, body.photo #walk-hud { display: none !important; }
+    body.photo #env-panel { z-index: 16; }
+    #photo-panel h2 {
+      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
+    }
+    #photo-panel label {
+      display: block; font-size: 10.5px; color: var(--text-dim); margin: 9px 0 3px;
+    }
+    #photo-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
+    #photo-panel .keys { margin-top: 9px; }
+    #photo-shots { display: flex; gap: 4px; margin-top: 10px; }
+    #photo-shots button { flex: 1; padding: 5px 0; font-size: 11px; }
+
     /* status */
     /* The polygon tools report corner counts and square footage here, so this
        has to hold more than a one-line hint. */
@@ -370,6 +429,11 @@
     body[data-mode="walk"] #floor-panel,
     body[data-mode="walk"] #layers-panel,
     body[data-mode="walk"] #status { display: none; }
+    /* The sky panel survives into the walkthrough — scrubbing the hour from
+       inside the building is the whole point of a sun study — but it moves out
+       from under the topbar, which is gone. */
+    body[data-mode="walk"] #env-panel { top: 12px; }
+    body[data-mode="walk"] #env-panel.hidden { display: none !important; }
 
     .hidden { display: none !important; }
     /* Screen-reader-only text: an associated label for a control whose visual
@@ -407,6 +471,7 @@
     <button id="designs-btn" title="Named designs saved in this browser">🗂 Designs</button>
     <button id="export-btn" title="Printable top-down floor plan (PNG / PDF)">🖨 Export</button>
     <button id="fx-btn" title="Toggle post-processing" aria-pressed="true">FX</button>
+    <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true">☀ Sky</button>
     <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)">🚶 Walk Through</button>
   </div>
 
@@ -533,6 +598,59 @@
     <label><input type="checkbox" id="layer-ghost-above" /> Ghost floor above</label>
   </div>
 
+  <div id="env-panel" class="panel" role="group" aria-label="Sun and sky">
+    <h2>Sun &amp; Sky</h2>
+    <div class="env-presets" id="env-presets"></div>
+
+    <label for="env-time">Time of day <span class="env-value" id="env-time-value">10:00 am</span></label>
+    <input id="env-time" type="range" min="0" max="1439" step="5" value="600" />
+
+    <label for="env-month">Date <span class="env-value" id="env-date-value">September 21</span></label>
+    <div class="env-row">
+      <select id="env-month" aria-label="Month"></select>
+      <input id="env-day" type="range" min="1" max="31" step="1" value="21" aria-label="Day of month" />
+    </div>
+
+    <label for="env-lat">Latitude <span class="env-value" id="env-lat-value">39° N</span></label>
+    <input id="env-lat" type="range" min="-66" max="66" step="1" value="39" />
+
+    <label for="env-north">Plan north <span class="env-value" id="env-north-value">0°</span></label>
+    <input id="env-north" type="range" min="0" max="355" step="5" value="0" />
+
+    <label>Interior lights</label>
+    <div class="seg" id="env-lights" role="group" aria-label="Interior lights"></div>
+
+    <div id="env-readout"></div>
+  </div>
+
+  <div id="photo-panel" class="panel" role="group" aria-label="Photo mode">
+    <h2>📷 Photo</h2>
+    <label for="photo-fov">Field of view <span class="env-value" id="photo-fov-value">60°</span></label>
+    <input id="photo-fov" type="range" min="18" max="110" step="1" value="60" />
+
+    <label for="photo-exposure">Exposure <span class="env-value" id="photo-exposure-value">1.00×</span></label>
+    <input id="photo-exposure" type="range" min="0.4" max="2.4" step="0.05" value="1" />
+
+    <label class="opt"><input type="checkbox" id="photo-dof" checked /> Depth of field</label>
+
+    <label for="photo-focus">Focus distance <span class="env-value" id="photo-focus-value">30 ft</span></label>
+    <input id="photo-focus" type="range" min="2" max="200" step="1" value="30" />
+
+    <label for="photo-aperture">Aperture <span class="env-value" id="photo-aperture-value">f/2.8</span></label>
+    <input id="photo-aperture" type="range" min="1.2" max="16" step="0.2" value="2.8" />
+
+    <div id="photo-shots">
+      <button id="photo-1x" title="Save at screen resolution">1×</button>
+      <button id="photo-2x" class="primary" title="Save at twice screen resolution">2×</button>
+      <button id="photo-4x" title="Save at four times screen resolution">4×</button>
+    </div>
+    <div class="keys">
+      <kbd>P</kbd> leave photo mode &nbsp; <kbd>Esc</kbd> release the mouse to reach these<br />
+      The camera is free-flying here: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> plus
+      <kbd>Space</kbd>/<kbd>C</kbd> to rise and fall.
+    </div>
+  </div>
+
   <div id="status" class="panel" role="status" aria-live="polite">Floor — click / drag to lay floor tiles</div>
 
   <div id="walk-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="walk-overlay-title">
@@ -541,7 +659,8 @@
       <p id="walk-controls-hint">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; <kbd>Shift</kbd> sprint<br />
         <kbd>Space</kbd> jump &nbsp;·&nbsp; <kbd>F</kbd> ghost mode (no-clip, <kbd>Space</kbd>/<kbd>C</kbd> to fly)<br />
-        <kbd>E</kbd> ride the elevator you're standing in &nbsp;·&nbsp; <kbd>Esc</kbd> release mouse
+        <kbd>E</kbd> ride the elevator you're standing in &nbsp;·&nbsp; <kbd>P</kbd> photo mode<br />
+        <kbd>Esc</kbd> release mouse
       </p>
       <p>
         Walls, glass, railings, windows and furniture stop you; doors open as you

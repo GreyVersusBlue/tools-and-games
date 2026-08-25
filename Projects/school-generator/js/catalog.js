@@ -21,13 +21,19 @@
 //                   open over the court, which the mezzanine machinery covers)
 //   surface: true — floor-mounted but meant to sit on furniture, so its
 //                   default y is a desk/counter height instead of 0
+//   emit: {...}   — Phase 3: this row is a light. `lm` is its real output in
+//                   lumens, `color` the lamp's own colour, `range` how far it
+//                   reaches in feet and `dy` the offset from the prop's origin
+//                   up to the emitter. lights.js reads it; the renderer turns
+//                   lumens into whatever three.js wants. A row without `emit`
+//                   is furniture, however lamp-shaped it looks.
 // plus builder parameters (`top`, `style`, `device`, `rows`, ...) documented
 // beside each geometry builder in render.js.
 
 export const CATEGORIES = [
-  'Tables & Desks', 'Seating', 'Storage', 'Fixtures', 'Subject Rooms',
-  'Cafeteria', 'Gym & Stage', 'Library & Office', 'Restroom', 'Decor',
-  'Outdoor',
+  'Tables & Desks', 'Seating', 'Storage', 'Fixtures', 'Lighting',
+  'Subject Rooms', 'Cafeteria', 'Gym & Stage', 'Library & Office', 'Restroom',
+  'Decor', 'Outdoor',
 ];
 
 // Every geometry key a catalog row may name. render.js's builder table must
@@ -48,6 +54,7 @@ export const GEO_KEYS = [
   'toiletstall', 'urinal', 'sinkcounter',
   'plant', 'aquarium', 'cage', 'clutter',
   'picnic', 'bikerack', 'flagpole', 'slide', 'swing', 'dumpster', 'polesign',
+  'troffer', 'pendant', 'sconce', 'polelight',
 ];
 
 export const PROP_CATALOG = [
@@ -97,7 +104,7 @@ export const PROP_CATALOG = [
   { type: 'hook-rail', name: 'Backpack Rail', category: 'Storage', icon: '🪝', w: 4, d: 0.3, h: 0.5, y: 3.5, color: '#8a6a48', mount: 'wall', geo: 'hookrail' },
 
   // ---- Fixtures ----
-  { type: 'floor-lamp', name: 'Floor Lamp', category: 'Fixtures', icon: '💡', w: 1, d: 1, h: 5.5, y: 0, color: '#d8cba0', mount: 'floor', geo: 'lamp' },
+  { type: 'floor-lamp', name: 'Floor Lamp', category: 'Fixtures', icon: '💡', w: 1, d: 1, h: 5.5, y: 0, color: '#d8cba0', mount: 'floor', geo: 'lamp', emit: { lm: 1200, color: '#ffe3b4', range: 18, dy: 5 } },
   { type: 'tv', name: 'TV / Smart Board', category: 'Fixtures', icon: '📺', w: 5.5, d: 0.3, h: 2.7, y: 3.4, color: '#15161a', mount: 'wall', geo: 'panel' },
   { type: 'whiteboard', name: 'Whiteboard', category: 'Fixtures', icon: '🖊️', w: 6, d: 0.15, h: 4, y: 2.8, color: '#f4f4f2', mount: 'wall', geo: 'panel' },
   { type: 'board-cork', name: 'Bulletin Board', category: 'Fixtures', icon: '📌', w: 6, d: 0.1, h: 4, y: 3.5, color: '#a9805a', mount: 'wall', geo: 'panel' },
@@ -108,13 +115,32 @@ export const PROP_CATALOG = [
   { type: 'fountain', name: 'Water Fountain', category: 'Fixtures', icon: '⛲', w: 1.5, d: 1.3, h: 3.3, y: 0, color: '#c8ccd2', mount: 'floor', geo: 'fountain' },
   { type: 'cabinet-fire', name: 'Fire Extinguisher Cabinet', category: 'Fixtures', icon: '🧯', w: 1, d: 0.6, h: 2.3, y: 3, color: '#b03a30', mount: 'wall', geo: 'wallbox', style: 'fire' },
   { type: 'cabinet-aed', name: 'AED Cabinet', category: 'Fixtures', icon: '🫀', w: 1.2, d: 0.6, h: 1.5, y: 4, color: '#e6e8ea', mount: 'wall', geo: 'wallbox', style: 'aed' },
-  { type: 'sign-exit', name: 'Exit Sign', category: 'Fixtures', icon: '🏃', w: 1, d: 0.2, h: 0.7, y: 7.5, color: '#2e8b46', mount: 'wall', geo: 'panel' },
+  { type: 'sign-exit', name: 'Exit Sign', category: 'Fixtures', icon: '🏃', w: 1, d: 0.2, h: 0.7, y: 7.5, color: '#2e8b46', mount: 'wall', geo: 'panel', emit: { lm: 90, color: '#8dffb0', range: 9, dy: 0.35 } },
   { type: 'speaker-pa', name: 'PA Speaker', category: 'Fixtures', icon: '🔊', w: 1, d: 0.8, h: 1, y: 8, color: '#3a3f45', mount: 'wall', geo: 'wallbox', style: 'grille' },
   { type: 'flag-wall', name: 'Flag on Bracket', category: 'Fixtures', icon: '🚩', w: 1, d: 2.5, h: 3, y: 6, color: '#8a2f3a', mount: 'wall', geo: 'flagwall' },
   { type: 'radiator', name: 'Radiator', category: 'Fixtures', icon: '♨️', w: 4, d: 0.8, h: 2, y: 0, color: '#c9c4b8', mount: 'floor', geo: 'radiator' },
   { type: 'dispenser', name: 'Towel Dispenser', category: 'Fixtures', icon: '🧻', w: 1, d: 0.5, h: 1.2, y: 4, color: '#d7dadd', mount: 'wall', geo: 'wallbox' },
   { type: 'trash-can', name: 'Trash Can', category: 'Fixtures', icon: '🗑️', w: 1.2, d: 1.2, h: 2, y: 0, color: '#4a4f57', mount: 'floor', geo: 'bin' },
   { type: 'sink', name: 'Classroom Sink', category: 'Fixtures', icon: '🚰', w: 2, d: 1.8, h: 3, y: 0, color: '#dfe3e6', mount: 'floor', geo: 'sink' },
+
+  // ---- Lighting ----
+  //
+  // Phase 3's emitters. Ceiling mounts are dimensioned so the housing's top
+  // lands on the 10ft ceiling plane (`y` is the bottom of the piece, `h` its
+  // depth), and every `lm` is a real product figure: a 2x4 LED troffer runs
+  // about 4,000lm, a corridor pendant 1,600, a gym high bay 20,000, a
+  // parking-lot pole 12,000.
+  { type: 'troffer-2x4', name: 'Troffer 2×4', category: 'Lighting', icon: '🔆', w: 4, d: 2, h: 0.5, y: 9.5, color: '#e8e9ea', mount: 'ceiling', geo: 'troffer', emit: { lm: 4000, color: '#fff4e2', range: 26, dy: -0.2 } },
+  { type: 'troffer-2x2', name: 'Troffer 2×2', category: 'Lighting', icon: '🔅', w: 2, d: 2, h: 0.5, y: 9.5, color: '#e8e9ea', mount: 'ceiling', geo: 'troffer', emit: { lm: 2400, color: '#fff4e2', range: 22, dy: -0.2 } },
+  { type: 'light-strip', name: 'Strip Light', category: 'Lighting', icon: '➖', w: 4, d: 0.6, h: 0.45, y: 9.55, color: '#d9dbdd', mount: 'ceiling', geo: 'troffer', style: 'strip', emit: { lm: 3000, color: '#fdf6e6', range: 24, dy: -0.2 } },
+  { type: 'light-track', name: 'Track Lighting', category: 'Lighting', icon: '🎯', w: 6, d: 0.5, h: 1.1, y: 8.9, color: '#3a3f45', mount: 'ceiling', geo: 'troffer', style: 'track', heads: 4, emit: { lm: 3200, color: '#ffeccb', range: 20, dy: -0.7 } },
+  { type: 'pendant-dome', name: 'Pendant Light', category: 'Lighting', icon: '🏮', w: 1.8, d: 1.8, h: 3, y: 7, color: '#d8cba0', mount: 'ceiling', geo: 'pendant', emit: { lm: 1600, color: '#ffe6bd', range: 20, dy: 0.5 } },
+  { type: 'light-highbay', name: 'Gym High Bay', category: 'Lighting', icon: '🛸', w: 2.2, d: 2.2, h: 2.2, y: 7.8, color: '#b9bfc6', mount: 'ceiling', geo: 'pendant', style: 'highbay', emit: { lm: 20000, color: '#fbfaf4', range: 70, dy: 0.4 } },
+  { type: 'sconce-wall', name: 'Wall Sconce', category: 'Lighting', icon: '🕯️', w: 1, d: 0.7, h: 1.4, y: 6, color: '#c8ccd2', mount: 'wall', geo: 'sconce', emit: { lm: 800, color: '#ffe2b6', range: 16, dy: 0.7 } },
+  { type: 'light-wallpack', name: 'Exterior Wall Pack', category: 'Lighting', icon: '🔦', w: 1.4, d: 1, h: 1.2, y: 8.6, color: '#4a4f57', mount: 'wall', geo: 'sconce', style: 'pack', site: true, emit: { lm: 6000, color: '#fdf3dd', range: 40, dy: -0.2 } },
+  { type: 'light-pole', name: 'Parking Lot Light', category: 'Lighting', icon: '🛣️', w: 2, d: 2, h: 22, y: 0, color: '#5a6068', mount: 'floor', geo: 'polelight', site: true, emit: { lm: 12000, color: '#f6f2e4', range: 90, dy: 21 } },
+  { type: 'light-bollard', name: 'Path Bollard', category: 'Lighting', icon: '📍', w: 0.8, d: 0.8, h: 3.5, y: 0, color: '#5a6068', mount: 'floor', geo: 'polelight', style: 'bollard', site: true, emit: { lm: 900, color: '#ffeecd', range: 16, dy: 3.1 } },
+  { type: 'lamp-desk', name: 'Desk Lamp', category: 'Lighting', icon: '🪔', w: 0.9, d: 0.9, h: 1.6, y: 2.5, color: '#c9a06a', mount: 'floor', geo: 'lamp', surface: true, emit: { lm: 450, color: '#ffe0aa', range: 9, dy: 1.4 } },
 
   // ---- Subject Rooms ----
   { type: 'piano-upright', name: 'Upright Piano', category: 'Subject Rooms', icon: '🎹', w: 5, d: 2, h: 4, y: 0, color: '#241f1d', mount: 'floor', geo: 'piano' },
