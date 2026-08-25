@@ -1,20 +1,23 @@
 # School Generator — Feature Wishlist
 
-Living reference for where this tool goes next. The first arc of this project
-— eight phases, from a single-floor grid editor to a multi-story, furnished,
-polygon-roomed building you can blueprint, save, and walk through on desktop
-or touch — is **done**, and so is the whole of the second arc: Phases 1
-through 10, from a real furniture catalog through doors, light, sound, the
-site, a living crowd, analysis, the generator that earned the tool its name,
-the sharing that took it out of the tab it was drawn in, and the nav mesh that
-made every number it prints true. Everything checked off below has shipped,
-bar two items — one small one in Phase 1 that Phase 11 needs and carries, and
-real-time collaboration, which needs a server and says so.
+Living reference for what this tool is and where it could still go. The first
+arc of this project — eight phases, from a single-floor grid editor to a
+multi-story, furnished, polygon-roomed building you can blueprint, save, and
+walk through on desktop or touch — is **done**, and so is the whole of the
+second arc: Phases 1 through 11, from a real furniture catalog through doors,
+light, sound, the site, a living crowd, analysis, the generator that earned the
+tool its name, the sharing that took it out of the tab it was drawn in, the nav
+mesh that made every number it prints true, and the last one, which is the only
+one that made the building fun to be in rather than accurate to stand in.
+Everything checked off below has shipped, bar one item — real-time
+collaboration, which needs a server and says so.
 
-This document is now three things: a compact retrospective of that v1 build
-(what shipped, what worked, what fought back, what a future builder needs to
-know), the same treatment per phase for the second arc, and one open band for
-everything after it — **Phase 11, where it gets fun to be in**.
+This document is now two things: a compact retrospective of that v1 build (what
+shipped, what worked, what fought back, what a future builder needs to know),
+and the same treatment per phase for the second arc. There is no open band. A
+third arc should start by reading the "deliberately left for later" list under
+whichever phase found the thing it wants, and the note at the very bottom about
+where the one unbuilt item is actually blocked.
 
 Not a spec — a scoped list to pull from and refine before starting each
 piece. Check items off (or strike them) as they land, and add new ideas under
@@ -77,7 +80,13 @@ and spends the rest of itself inside files that already existed: `navgraph.js`
 stands on the mesh instead of on a hub per room, `generate.js` grows two more
 schemes and an adjacency pass, `brief.js` two more tables, and `minimap.js` a
 reader that turns a report into marks. No save bump, because a mesh is derived
-and a brief is transient.)
+and a brief is transient. Phase 11 adds the last three, all of them optional to
+everything else: `js/decor.js` (a season, as a palette over rows that already
+existed), `js/shove.js` (`collide.js`'s arithmetic pointed the other way, so a
+chair moves when you walk into it) and `js/hunt.js` (eight things hidden on the
+mesh, and the hints that say roughly where) — plus the colour-variant reader in
+`catalog.js` that Phase 1 left open, and no save bump, because a paint was
+already a validated field and a shove and a hunt are runtime state.)
 
 - **Units are feet, everywhere.** 4ft grid cells (`CELL`), 10ft walls
   (`WALL_H`), 12ft floor-to-floor (`FLOOR_H`), max 8 storeys. Props, polygon
@@ -249,8 +258,8 @@ furnish a school. This phase made it a real furniture library: **~70 new
 types**, every one at real-world dimensions, with a visible step up in
 geometric fidelity while staying procedural and instanced. **Done** — in one
 commit, ahead of every phase numbered after it, which is what let all of them
-lean on it. One item is still open, at the bottom of the Principles list, and
-Phase 11 picks it up.
+lean on it. One item took ten phases to land: the colour variants at the bottom
+of the Principles list, which Phase 11 finally spent.
 
 ### Principles
 
@@ -287,12 +296,14 @@ Phase 11 picks it up.
   strings in `CATEGORIES` (`catalog.js`) — proposed: Tables & Desks,
   Seating, Storage, Fixtures, Subject Rooms, Cafeteria, Gym & Stage,
   Library & Office, Restroom, Decor, Outdoor.
-- [ ] **Color variants ride in `data`** (e.g. `data.color` overriding the
+- [x] **Color variants ride in `data`** (e.g. `data.color` overriding the
   catalog default) rather than as N near-duplicate rows — the field and its
-  validation already exist; the builder cache needs a variant-aware key.
-  **The one item of this phase that did not ship**, and the one Phase 11
-  needs before it can put a seasonal palette on the Decor rows. Carried
-  there; still lives here.
+  validation already exist; the builder cache needs a variant-aware key. The
+  one item of this phase that did not ship *here*: it waited until Phase 11,
+  which needed it before it could put a seasonal palette on the Decor rows,
+  and landed exactly as described — a reader in `catalog.js` and a
+  variant-aware key in `getPropGeometry`. The estimate held; it was the
+  cheapest item in either arc to carry.
 
 ### New props, by category (dims in feet, at rotationY = 0)
 
@@ -1877,8 +1888,8 @@ mesh rather than an obstacle to it. They all still pass.
 - **The mesh is inscribed, not exact.** A polygon room's tiles are rectangles
   sampled on a 2ft lattice, so a diagonal or curved wall is approximated from
   the inside and the walk along it is a little long. A proper convex
-  decomposition of the polygon would fix it and would also give Phase 11 a
-  hiding place behind a curve.
+  decomposition of the polygon would fix it and would also give Phase 11's
+  hunt a hiding place behind a curve, which it now cannot have.
 - **Gates are midpoints, not funnels.** A route across two tiles goes through
   the middle of the seam between them rather than round the tightest corner it
   could. String-pulling over the tile chain — the standard funnel algorithm —
@@ -1905,53 +1916,192 @@ mesh rather than an obstacle to it. They all still pass.
   at once would need a legend and a way to resolve two washes over the same
   room, and the report panel beside it already prints the list.
 
-## Phase 11 — Play
+## Phase 11 — Play ✅
 
-The rest of the list shares a different sentence: **the building is finished
-and nobody is playing in it.** A school you can walk through, hear and
+The rest of the list shared a different sentence: **the building was finished
+and nobody was playing in it.** A school you can walk through, hear and
 analyze is still a place you visit rather than a place you mess with. Nothing
-here is load-bearing, and that is the whole idea.
+here is load-bearing, and that was the whole idea.
 
-No save bump here either — physics and a hunt are runtime state, and a decor
-pack is more catalog rows.
+**Done** — three new pure modules (`js/decor.js`, `js/shove.js`, `js/hunt.js`),
+a colour reader and a swatch row in `catalog.js`, three new geometry builders,
+ten new catalog rows, seventeen rows flagged light, 54 new tests, and — as
+promised in Phase 10's audit of the remainder — **no save-format bump**. The
+claim held to the byte: `cleanData()` had validated `data.color` since Phase 1,
+and a shove and a hunt are runtime state that `save-load.js` never hears about.
 
-- [ ] **Colour variants in `data`** — the open item from Phase 1, and the
-  prerequisite for the bottom of this list. `cleanData()` (`props.js`)
-  already validates the field; what is missing is a reader for `data.color`
-  and a variant-aware key in `getPropGeometry()` (`render.js`), which today
-  caches on `entry.type` alone and bakes the row's colour into the vertices.
-  Then a swatch in `propedit.js` and the matching fill in `blueprint.js`.
-- [ ] **Light prop physics** — bump a chair and it scoots. `collide.js`
-  already resolves a walker against the world; this is that arithmetic
-  pointed the other way, on props flagged light enough to move, with no
-  solver, no stacking and no persistence. Pure delight, and the one item on
-  either list with no downstream consumer at all.
-- [ ] **Scavenger hunt / hide-and-seek over the nav graph** — a reason for a
-  kid to explore the building a parent just designed. It wanted Phase 10's
-  mesh underneath it and now has one: a hiding place is a property of a
-  walkable surface rather than of a room's centroid, and `navmesh.js` hands
-  over that surface as rectangles — `nav.tileAt(floor, x, z)` says which one
-  you are standing on and `nav.mesh[i].byRoom` says what a room is made of.
-  "Behind the bleachers" is still unsayable, because furniture is not in the
-  mesh; "the far end of the third tile of the gym" is not.
-- [ ] **Holiday decoration packs** — the Decor category, seasonal. This is
-  the colour-variant item wearing a hat: a pack is a handful of rows and a
-  palette, not a handful of new builders. Which is the argument for doing the
-  variants first rather than shipping thirty near-duplicate catalog rows.
+- [x] **Colour variants in `data`** — the open item from Phase 1, and the
+  prerequisite for the bottom of this list, so it went first. `catalog.js`
+  gained the reader (`normalizeColor`, `propColor`, `variantKey`), because the
+  fallback is the catalog row's own colour and that is the only file that knows
+  it. `getPropGeometry()` keys on the type *and* the variant and hands the
+  builder a one-field copy of the row; `buildPropsGroup` buckets its instanced
+  meshes the same way. A swatch row in `propedit.js` paints the selection and
+  sets the paint for the next placement in one gesture, and `blueprint.js`
+  fills a painted prop in its own colour.
+- [x] **Light prop physics** — bump a chair and it scoots. `collide.js` has
+  spent nine phases answering "where does this box push the walker to";
+  `shove.js` is that answer negated, on the seventeen rows flagged `light`. No
+  solver, no stacking, no persistence, and — as advertised — no downstream
+  consumer at all.
+- [x] **Scavenger hunt over the nav mesh** — eight things hidden around the
+  design, a hint per thing, and a hot-and-cold reading on the nearest one
+  still out there. It wanted Phase 10's mesh and the mesh is what makes the
+  hints sayable: `nav.mesh[f].byRoom` says what a room is made of, so a hiding
+  place is a corner of a rectangle rather than a room's centroid.
+- [x] **Holiday decoration packs** — four packs over ten seasonless Decor
+  rows. The colour-variant item wearing a hat, exactly as predicted: a pack is
+  a palette and a list, and the same Garland is October rust or December
+  evergreen depending on the paint the prop carries.
 
-*Leans on:* the catalog's `data` field, the walker's collider, and the tiles
+*Leaned on:* the catalog's `data` field, the walker's collider, and the tiles
 Phase 10 left behind as a walkable surface;
-*collides with:* nothing — rare enough to be worth saying. This is the first
-phase in either arc that no other phase is waiting on.
+*collided with:* nothing — rare enough to be worth saying. This was the first
+phase in either arc that no other phase was waiting on.
+
+### How it actually landed
+
+- **The variant is a second half of a cache key, and nothing else.** Every
+  builder in `render.js` derives its own shading from `e.color` through
+  `tint()`, which is why a copy of the row with one field changed recolours a
+  chair's legs along with its seat rather than leaving a red chair on brown
+  legs. `variantKey` returns `''` for a prop wearing its row's own colour, so
+  the key is then the bare type and a design with no variants in it builds
+  byte-for-byte the cache it built before this phase — the same entries, the
+  same draw calls. A prop repainted the colour it already was is not a variant
+  either, which is the case a template or a decor pack would otherwise hit
+  every time.
+- **A pack is a palette and a list, and that is what kept it to ten rows.**
+  Four seasons times nine pieces would have been thirty-six near-duplicate
+  catalog rows with their colours baked in. `decor.js` is 140 lines of table:
+  which rows a season leads with, and what colour it wants each of them. The
+  one line that justifies the whole phase ordering is `'plant-floor':
+  '#b02a2a'` in the winter pack — a potted plant in holly red is a poinsettia,
+  and it costs nothing.
+- **Three builders served four seasons.** A garland (a sagging swag, in bulb,
+  pennant and streamer styles, and a string of lights when the row emits), a
+  wreath and a gourd. Everything else a pack needed, a builder already made: a
+  decorated conifer is `tree` with a new `trim` parameter, a paper snowflake is
+  `panel` in white. `trim` is the second colour named on the row the way
+  `buildTree` names its bark — fixed, so a repainted garland keeps its cream
+  bunting instead of going monochrome.
+- **The shove is `pushOutOfBox` with a minus sign in front of it.** That
+  function returns where the *walker* would be moved to; the difference is the
+  separation, and the prop takes it in the opposite direction scaled by how
+  light it is. Everything else in `shove.js` is refusals: a per-frame cap, a
+  floor under which a contact is a rounding error rather than a bump, and a
+  clearance test that cancels a shove which would end inside a wall, a door
+  leaf or another prop. A chair against a wall stays against the wall because
+  there is nowhere for it to go, not because anything knows it is against a
+  wall.
+- **An off-centre shove turns the thing, and the torque needs no contact
+  point.** The cross product of "where you hit it relative to its middle" with
+  "which way you pushed" is zero for a head-on shove and grows as you catch it
+  with a hip. Two lines, no moment of inertia, no mass anywhere in the file.
+- **Nothing about a shove reaches the design, and the reason is a lifetime
+  rather than a guard.** The records `shove.js` moves are the *collider's* —
+  built when a walk starts, thrown away when it ends — so there was never a
+  write to `state.props` to suppress. The renderer keeps an id-to-instance map
+  for the shovable rows only and re-poses those instances in place; leaving the
+  walkthrough calls `restoreProps`, and every chair is back where it was drawn.
+- **A hiding place is a corner of a rectangle.** Under the Phase 6 graph a
+  room was a point, so "hidden in the gym" could only ever have meant the exact
+  middle of the gym — neither a hiding place nor a sentence worth printing. On
+  the mesh a hint says which third of which room on which storey, which is
+  exactly the right amount of help: enough to send you to the right room, not
+  enough to walk you to the spot. "Behind the bleachers" is still unsayable,
+  and still for the reason Phase 10 recorded.
+- **The clearance test is the caller's, not the module's.** The mesh knows
+  about walls and knows nothing about furniture, so a hiding place chosen off
+  the mesh alone can land inside a filing cabinet. `hidingPlaces` takes an
+  optional `clear(x, z, floor)` and `main.js` passes `collide.js`'s own
+  resolver — hunt.js stays pure, and a test with no colliders in it simply
+  doesn't pass one.
+- **The token is what makes it a hunt rather than a checklist.** Each hiding
+  place is a small spinning thing that is invisible until the last fifteen feet
+  and fades in over them — the warmer-warmer, made visible — and it is
+  depth-tested, so a wall between you and one still hides it. A token glowing
+  through a floor slab would give away every room at once.
+
+### What fought back
+
+- **Two `light: true` flags had to come straight back off.** A floor cushion is
+  light and is also 0.4ft tall, which is under `MIN_OBSTACLE_H` — `collide.js`
+  never offers it to the shove at all, so the flag promised a bump that could
+  not happen. A gourd is `surface: true` and sits on a desk, where shoving it
+  would slide it through the air at desk height. Both are now a test:
+  every row a person can shove is a row a person can walk into.
+- **The spatial index buckets props by where they were.** A shoved prop that is
+  never re-bucketed simply stops being found by the broad phase, so a chair
+  could be pushed exactly once and then became immovable — visible only as
+  "this feels sticky", which is the worst kind of bug to find by playing. The
+  index grew a `reindex(i, from, to)`, and the test that catches it walks a
+  hundred and twenty frames into a chair and asserts it kept moving.
+- **`candidates()` reuses the array it hands back**, which is documented and
+  correct and quietly fatal here: `shoveProps` iterates that list and
+  `shoveClear` queries again inside the loop, rewriting it mid-iteration. The
+  fix is a copy and one comment; the symptom was props silently stopping after
+  the first one in a bucket.
+- **`mergeGeometries` refuses to mix indexed and non-indexed geometry**, and
+  `OctahedronGeometry` is non-indexed where `TorusGeometry` is indexed — so the
+  hunt token threw on the first build and took the whole `setHunt` call with
+  it, leaving a hunt that was running with nothing to see. `slabGeo` had solved
+  this in Phase 1 with `mergeVertices`; the second occurrence took a browser
+  console to find because nothing between the two files says so.
+- **A wall-mounted garland's `h` is a drop, not a height**, and the catalog's
+  "every entry fits the building it will be placed in" test is what said so.
+  The geometry hangs from the top of the row's own box, so a 2.2ft streamer
+  mounted at 8ft tops out at 10.2 and pokes through the ceiling. The four
+  hanging rows are now pinned so their tops land at 9.9.
+- **The first bow read as a bow tie.** Two flat three-segment cones and a
+  stray bar under them; at corridor distance it looked like a red smear. Two
+  small upright rings and two tails, and it reads as a bow from across a room —
+  and the berries had to be pushed forward of the front ring, because berries
+  buried inside the foliage are berries nobody sees.
+
+### Deliberately left for later
+
+- **A variant cannot recolour an imported model.** Its colours came out of its
+  glTF file, there are no builder parameters to re-run, and there is nothing to
+  re-tint — so `getPropGeometry` drops the variant for `geo: 'model'` rather
+  than caching a second identical copy of it. Tinting an imported mesh would
+  mean multiplying its vertex colours, which is a different operation from
+  everything else this file does.
+- **One paint per prop.** `data.color` is a single field, so a two-tone chair
+  is a chair whose second colour is fixed on the row. The `trim` parameter is
+  how the packs get their second colour, and it is a property of the row rather
+  than of the prop — a repainted garland keeps its trim.
+- **The shove treats a prop as a circle of its own half-width** for the
+  clearance test. Light props are small and roughly square, so it is close
+  enough; a six-foot bench would be able to slide a little way into a wall
+  lengthwise, which is why nothing that long is flagged.
+- **Nobody else can shove anything.** The crowd resolves against the same
+  colliders and would move furniture perfectly well, but a hundred agents
+  rearranging a classroom while you watch is a different feature from bumping
+  a chair, and it would want a rule about putting things back.
+- **A hunt cannot survive an edit.** The hints name rooms and the places stand
+  on tiles, so a structural change ends the hunt rather than leaving the hamster
+  inside a newly drawn wall. Re-hiding everything on the same seed against the
+  new mesh would be the friendlier answer and is a few lines; it just wasn't
+  obviously *right*, since the room a hint names may no longer exist.
+- **Warmth is a straight line plus a charge per storey.** It is not a route,
+  so a thing thirty feet away through a wall reads as hot when the walk to it
+  is two hundred feet round a wing. `pointField` (Phase 10) would give the real
+  answer per frame and would also turn hot-and-cold into a solved maze, which
+  is less of a game rather than more of one.
+- **Nothing is hidden outdoors.** The mesh covers the building's rooms, so the
+  site — the yard, the pitch, the car park — has no tiles and therefore no
+  hiding places. The terrain and the site regions know their own shapes; giving
+  them a mesh is the same greedy meshing over a different raster.
 
 ## Suggested build order
 
-Phases 1 through 10 are done, bar two items: colour variants in `data`, which
-Phase 11 carries, and real-time collaboration, which needs a server. Phase 1
-shipped *first*, out of order and in one commit, before Phase 2 — which is
-worth stating plainly, because earlier revisions of this paragraph spent two
-phases calling it the thing that never got built and the obvious next thing to
-do. It was neither. Every phase after it leaned on it.
+Phases 1 through 11 are done, bar one item: real-time collaboration, which
+needs a server and says so. Phase 1 shipped *first*, out of order and in one
+commit, before Phase 2 — which is worth stating plainly, because earlier
+revisions of this paragraph spent two phases calling it the thing that never
+got built and the obvious next thing to do. It was neither. Every phase after
+it leaned on it, and Phase 11 finally spent the one field it had left over.
 
 Phase 7 turned out to be exactly the right thing to build in front of the
 generator, and the claim held literally: occupant load per room is what sizes
@@ -1988,27 +2138,45 @@ another item's code — the horseshoe ring, the vanished library, the lift that
 was never added — and none of them would have been as visible in a phase that
 also had a scavenger hunt in it.
 
-That leaves one open band: **Phase 11, where it gets fun to be in.** Nothing is
-waiting on it and it is waiting on nothing; the mesh it wanted underneath the
-hunt exists, and the colour variants it carries from Phase 1 are the only
-prerequisite inside it.
+Phase 11 is done, and it landed in the order it predicted for the reason it
+predicted: the colour variants first, because the decoration packs are the
+colour variants wearing a hat, and doing them the other way round would have
+meant thirty-six near-duplicate catalog rows. What it did not predict is which
+half would be the fiddly one. The physics and the hunt are each about a hundred
+and fifty lines of arithmetic that worked nearly first time; the *catalog* is
+where the mistakes were — two `light` flags on rows that can never be walked
+into, four hanging rows poking through the ceiling. Both were caught by tests
+that already existed or by one written in the same hour, which is the argument
+for a table with a test in front of it.
 
-And the finding that made the split free, which fell out of auditing the
-remainder rather than out of building anything, held too: **nothing left on
-this list needs a save-format bump.** Phase 10 changed no bytes — the mesh is
-derived, and the generator's brief, program, scheme and adjacency rules are
-transient (`save-load.js` mentions none of them). `cleanData()` already
-validates `data.color`; physics and a hunt are runtime state; a decor pack is
-rows. Six of this arc's ten phases were shaped in part by the cost of a
-version bump and the wish to spend it once — Phase 5 in particular reads the
-way it does because terrain, site and roof all had to land in v7 together.
-That pressure is simply absent now, as it was for Phases 4, 7 and 10.
+And the finding that made the Phase 10/11 split free, which fell out of
+auditing the remainder rather than out of building anything, held all the way
+to the end: **nothing left on this list needed a save-format bump, and none was
+spent.** Phase 10 changed no bytes and neither did Phase 11 — `cleanData()` had
+validated `data.color` since Phase 1, a shove and a hunt are runtime state, and
+a decor pack is rows. Six of this arc's eleven phases were shaped in part by
+the cost of a version bump and the wish to spend it once — Phase 5 in
+particular reads the way it does because terrain, site and roof all had to land
+in v7 together. That pressure was simply absent at the end, as it was for
+Phases 4, 7 and 10.
+
+**What is left, and where it lives.** There is no open band now. Real-time
+collaboration is the one named item never built, and the finding worth
+repeating is Phase 9's: it is blocked on *this* side of the wire, because grid
+cells have no identity and there is nothing to name when two people edit the
+same room. That makes it downstream of promoting every room to a polygon.
+Everything else worth doing is in the "deliberately left for later" list under
+whichever phase found it, which is where a future arc should start reading —
+the inscribed mesh and the un-funnelled gates under Phase 10, the outdoor mesh
+and the routed warmth under Phase 11, and Phase 9's three chores below.
 
 The three chores Phase 9 left behind — audio in the tour capture, the
 minimap's phone layout, and an `EXT_mesh_gpu_instancing` export — belong to
 no thesis and should ride along with whichever phase is open when somebody has
-a spare hour. The middle one grew a little in Phase 10, which added a second
-button row and a caption to the same panel. They stay listed under Phase 9's
-"deliberately left for later", where they were found, along with Phase 10's
-own two — the inscribed mesh and the un-funnelled gates. Moving any of them up
-here would start exactly the second list this document keeps warning about.
+a spare hour. The middle one grew twice: Phase 10 added a second button row and
+a caption to the same corner, and Phase 11 put the hunt's list in the opposite
+one. They stay listed under Phase 9's "deliberately left for later", where they
+were found, along with Phase 10's own two and Phase 11's six. Moving any of them
+up here would start exactly the second list this document keeps warning about —
+and with every phase closed, this document is now a retrospective with a
+backlog attached rather than a plan.

@@ -33,7 +33,7 @@
 // sits at the middle of it. Tile-to-tile is therefore tile → gate → tile, and
 // an L-shaped corridor gets the corner it actually has to walk round. Gates
 // are the one thing here that becomes a graph node; tiles themselves are
-// somewhere to *stand*, which navgraph.js and (one day) a scavenger hunt both
+// somewhere to *stand*, which navgraph.js and — since Phase 11 — hunt.js both
 // want and neither wants as a node.
 //
 // Pure module: no three.js, no DOM. Exercised by test/navmesh.test.mjs.
