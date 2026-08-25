@@ -55,6 +55,17 @@ test('anything that is not a weight is not light', () => {
   assert.equal(shoveWeight({ light: 2 }), 1, 'and nothing takes more than the whole separation');
 });
 
+test('an obstacle knows its own place in the array', () => {
+  // `shoveProps` hands `idx` to the index's `reindex`; if it ever disagreed
+  // with the array, a shove would re-bucket somebody else's prop.
+  const s = room();
+  addProp(s, 'student-chair', { floor: 0, x: 20, z: 20 });
+  addProp(s, 'teacher-desk', { floor: 0, x: 30, z: 20 });
+  addProp(s, 'stool-lab-24', { floor: 0, x: 40, z: 20 });
+  const obs = propObstacles(s, 0, catalogEntry);
+  obs.forEach((o, i) => assert.equal(o.idx, i, `${o.type} knows where it is`));
+});
+
 test('the obstacle record carries the id and the weight through', () => {
   const s = room();
   const chair = addProp(s, 'student-chair', { floor: 0, x: 20, z: 20 });

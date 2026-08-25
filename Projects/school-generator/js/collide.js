@@ -234,6 +234,9 @@ export function propObstacles(state, floorIndex, catalogGet) {
     out.push({
       id: p.id, x: p.x, z: p.z, hw, hd, rotationY: p.rotationY || 0, type: p.type,
       light: entry.light,
+      // Its own place in this array, so a shove can hand the index back to
+      // `reindex` without scanning for it every frame.
+      idx: out.length,
     });
   }
   return out;

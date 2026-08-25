@@ -57,11 +57,11 @@ export function shoveWeight(entry) {
 
 // Is there room for `p` at (x, z)? The prop is treated as a circle of its own
 // half-width for this test — light props are small and roughly square (a
-// chair, a stool, a bin, a cushion), and the alternative is a box-vs-box pass
-// that would be the solver this file is not. `self` is skipped so a prop never
+// chair, a stool, a bin), and the alternative is a box-vs-box pass that would
+// be the solver this file is not. `p` itself is skipped, so a prop never
 // blocks itself.
-export function shoveClear(collider, p, x, z, opts = {}) {
-  const r = Math.min(p.hw, p.hd) * (opts.snug === false ? 0.6 : 0.9);
+export function shoveClear(collider, p, x, z) {
+  const r = Math.min(p.hw, p.hd) * 0.9;
   const near = candidates(collider, x - r, z - r, x + r, z + r);
   for (const s of near.segs) if (pushOutOfSeg(s, x, z, r)) return false;
   for (const s of doorSegments(collider)) if (pushOutOfSeg(s, x, z, r)) return false;
@@ -111,10 +111,11 @@ export function shoveProps(collider, x, z, r = WALKER_R, opts = {}) {
     p.x = tx;
     p.z = tz;
     p.rotationY = (p.rotationY || 0) + spin;
-    if (collider.index) {
-      const i = collider.props.indexOf(p);
-      if (i >= 0) collider.index.reindex(i, from, p);
-    }
+    // The broad phase buckets props by where they *were*, so a prop that moves
+    // and is not re-bucketed simply stops being found — a chair you could push
+    // exactly once and never again. `idx` is the record's own place in
+    // `collider.props`, set when the obstacles were built.
+    if (collider.index && p.idx !== undefined) collider.index.reindex(p.idx, from, p);
     // `dx`/`dz` ride along because the caller wants to know how hard, not just
     // where: a chair nudged a thousandth of a foot and a chair kicked across
     // a classroom are the same record without them, and one of the two should
