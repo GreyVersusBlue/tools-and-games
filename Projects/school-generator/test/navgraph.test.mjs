@@ -16,6 +16,7 @@ import {
   buildNav, floorRooms, nodeAt, findPath, waypoints, route,
   egressField, nearestExit, unreachableRooms, navSummary,
   teachingRooms, commonRooms, runLandings, DOOR_OFFSET, MUSTER_FT,
+  clearWidth, CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, STAIR_COST,
 } from '../js/navgraph.js';
 
 // Two rooms side by side inside one shell, with a doorway between them and
@@ -337,4 +338,60 @@ test('waypoints of an empty or unknown path are empty, not a crash', () => {
   assert.deepEqual(waypoints(nav, ['nope']), []);
   assert.equal(findPath(nav, 'nope', nav.rooms[0].id), null);
   assert.equal(route(nav, { floor: 0, x: -900, z: -900 }, 'nope'), null);
+});
+
+// ---------- the accessible graph, and distance in feet ----------
+
+test('a doorway offers less clear width than it is wide', () => {
+  assert.equal(clearWidth(3), 3 - CLEAR_LOSS);
+  assert.equal(clearWidth(3, false), 3, 'a cased opening loses nothing');
+  assert.equal(clearWidth(0.1), 0.1 - CLEAR_LOSS > 0 ? 0.1 - CLEAR_LOSS : 0);
+  // The narrowest opening that passes is exactly a 3ft leaf.
+  assert.ok(clearWidth(MIN_ACCESSIBLE_W) >= MIN_CLEAR_W - 1e-9);
+  assert.ok(clearWidth(MIN_ACCESSIBLE_W - 0.01) < MIN_CLEAR_W);
+});
+
+test('the accessible graph drops stairs and narrow doors, keeps everything else', () => {
+  const s = buildSampleSchool();
+  const plain = buildNav(s);
+  const access = buildNav(s, { accessible: true });
+  assert.ok(!plain.accessible && access.accessible);
+  assert.equal(access.minWidth, MIN_ACCESSIBLE_W);
+  assert.ok(!access.links.some((l) => l.type === 'stair'));
+  assert.ok(access.links.some((l) => l.type === 'elevator'));
+  assert.equal(access.rooms.length, plain.rooms.length);
+  assert.equal(access.exits.length, plain.exits.length);
+});
+
+test('a 2ft doorway is a route on foot and not on wheels', () => {
+  const s = createState(20, 12);
+  const f = s.floors[0];
+  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 9; x++) setTile(f, x, y, true);
+  for (let x = 1; x <= 9; x++) { f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL; f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL; }
+  for (let y = 1; y <= 4; y++) {
+    f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL;
+    f.edgesV[edgeVIdx(f, 10, y)] = EDGE_WALL;
+    f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
+  }
+  const shape = addShape(s, 0, [
+    { x: 44, z: 4 }, { x: 64, z: 4 }, { x: 64, z: 20 }, { x: 44, z: 20 },
+  ], { name: 'Narrow' });
+  addOpening(shape, 0, 3, 0.5, 2, { leaf: LEAF_SINGLE });
+  assert.equal(buildNav(s).portals.length, 1);
+  assert.equal(buildNav(s, { accessible: true }).portals.length, 0);
+  // ...and the threshold is an option, so a caller can ask a wider question.
+  assert.equal(buildNav(s, { minWidth: 1 }).portals.length, 1);
+});
+
+test('the metric field measures feet where the cost field measures cost', () => {
+  const nav = buildNav(buildSampleSchool());
+  const cost = egressField(nav);
+  const feet = egressField(nav, { metric: true });
+  const upstairs = nav.rooms.find((r) => r.floor === 1 && r.name === 'Room 201');
+  assert.ok(feet.dist.get(upstairs.id) < cost.dist.get(upstairs.id),
+    'a stair charged at 1.7x and a storey penalty cost more than they measure');
+  // On the ground floor, with no stair in the way, the two agree.
+  const ground = nav.rooms.find((r) => r.floor === 0 && r.name === 'Room 101');
+  assert.ok(Math.abs(feet.dist.get(ground.id) - cost.dist.get(ground.id)) < 1e-9);
+  assert.ok(STAIR_COST > 1);
 });

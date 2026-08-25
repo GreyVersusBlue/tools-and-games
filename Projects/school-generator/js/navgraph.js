@@ -65,6 +65,27 @@ export const ELEVATOR_COST = 45;   // ft-equivalent, wait included
 // Changing storeys at all is worth avoiding when the alternative is level.
 export const FLOOR_PENALTY = 8;    // ft-equivalent per storey climbed
 
+// ---------- the accessible graph ----------
+//
+// Phase 7's one genuinely new piece of navigation, and it is an option rather
+// than a module: the accessible route is the same graph with the things a
+// wheelchair can't use left out of it. A stair is out; a ramp and a lift stay,
+// which is what Phase 2 built them for. A doorway too narrow to roll through
+// is out too, and that is a *width* question rather than a kind one.
+//
+// The clear width a doorway offers is not the hole in the wall: a leaf parked
+// at 90° and its stop eat into the opening, which is why a 36in door is the
+// smallest one that gives the 32in clear ADA asks for.
+export const CLEAR_LOSS = 0.33;    // ft — leaf and stop, off a doorway's width
+export const MIN_CLEAR_W = 32 / 12;  // ft — ADA 404.2.3
+// ...so the narrowest *opening* that passes, which is exactly a 3ft door.
+export const MIN_ACCESSIBLE_W = MIN_CLEAR_W + CLEAR_LOSS;
+
+// The clear width a doorway of this opening width actually offers. An opening
+// with no leaf in it (a cased opening, a corridor mouth) loses nothing.
+export const clearWidth = (w, leafed = true) =>
+  Math.max(0, w - (leafed ? CLEAR_LOSS : 0));
+
 const dist2d = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 // ---------- rooms ----------
@@ -142,11 +163,17 @@ export function floorRooms(state, floorIndex) {
 
 // ---------- the graph ----------
 
-function addEdge(adj, a, b, cost) {
+// Every edge carries two numbers: what it *costs* to route over (stairs are
+// slower than corridor, a lift is mostly waiting) and how far it actually is
+// in feet. Phase 6 only ever wanted the first; Phase 7's travel distances are
+// measured against a code limit written in feet, so they want the second.
+// `dist` defaults to `cost`, which is right for every edge that is simply a
+// walk across a floor.
+function addEdge(adj, a, b, cost, dist = cost) {
   if (!adj.has(a)) adj.set(a, []);
   if (!adj.has(b)) adj.set(b, []);
-  adj.get(a).push({ to: b, cost });
-  adj.get(b).push({ to: a, cost });
+  adj.get(a).push({ to: b, cost, dist });
+  adj.get(b).push({ to: a, cost, dist });
 }
 
 // One doorway, as the two rooms it joins and the point you pass through.
@@ -168,7 +195,16 @@ function makePortal(id, x, z, nx, nz, w, floor, a, b, opts = {}) {
   };
 }
 
+// `opts.accessible` builds the same graph with the routes a wheelchair can't
+// take left out of it — no stairs, and no doorway narrower than
+// `opts.minWidth` (default `MIN_ACCESSIBLE_W`). Everything else about it is
+// the graph the crowd walks, which is the point: an accessible route is not a
+// second model of the building, it is this one with two things removed.
 export function buildNav(state, opts = {}) {
+  const accessible = opts.accessible === true;
+  const minWidth = Number.isFinite(opts.minWidth)
+    ? opts.minWidth
+    : (accessible ? MIN_ACCESSIBLE_W : MIN_PORTAL_W);
   const nodes = new Map();
   const adj = new Map();
   const rooms = [];
@@ -219,7 +255,7 @@ export function buildNav(state, opts = {}) {
 
   let pn = 0;
   const joinPortal = (x, z, nx, nz, w, floorIndex, rep) => {
-    if (w < MIN_PORTAL_W) return null;
+    if (w < minWidth) return null;
     const a = roomIdAt(floorIndex, x + nx * PROBE, z + nz * PROBE);
     const b = roomIdAt(floorIndex, x - nx * PROBE, z - nz * PROBE);
     if (a && a === b) return null;              // a doorway inside one room
@@ -252,7 +288,9 @@ export function buildNav(state, opts = {}) {
       // The outside hub has no position of its own worth trusting, so the
       // cost of leaving is the walk to the muster point rather than to a
       // notional centre of the site.
-      addEdge(adj, portal.id, other, MUSTER_FT);
+      // Reaching the door is reaching the exit, so the walk out to the muster
+      // point costs a route something and measures as nothing.
+      addEdge(adj, portal.id, other, MUSTER_FT, 0);
       exits.push(portal);
     } else {
       addEdge(adj, portal.id, other, dist2d(portal, nodes.get(other)));
@@ -304,17 +342,24 @@ export function buildNav(state, opts = {}) {
   const metrics = stairMetrics(state);
   for (const link of stairsOf(state)) {
     if (!isRun(link) && !isElevator(link)) continue;   // a plain opening is a hole
+    // A stair is a route for most people and a wall for some. On the
+    // accessible graph it is simply not there, and whatever it was the only
+    // way to becomes unreachable — which is the finding Phase 7 is after.
+    if (accessible && link.type === 'stair') continue;
     const lo = Math.min(link.from, link.to);
     const hi = Math.max(link.from, link.to);
     if (!state.floors[lo] || !state.floors[hi]) continue;
 
-    let foot, head, cost;
+    let foot, head, cost, span;
     if (isElevator(link)) {
       // You enter a car from local -Z, which is the same convention its doors
       // and its `rotationY` already use, so both landings are the same point.
       const ends = runLandings(link, metrics);
       foot = ends.foot; head = ends.head;
       cost = ELEVATOR_COST;
+      // A lift is a ride, not a walk: it is no distance at all, which is one
+      // more reason egress is not allowed to count on one.
+      span = 0;
     } else {
       // The head is past the far edge of the cut, not in the middle of it: the
       // landing is inside the hole the run opens in the slab above, and
@@ -324,7 +369,8 @@ export function buildNav(state, opts = {}) {
       // (It took a fire drill that never finished to notice.)
       const ends = runLandings(link, metrics);
       foot = ends.foot; head = ends.head;
-      cost = runLength(link, metrics) * (link.type === 'ramp' ? RAMP_COST : STAIR_COST);
+      span = runLength(link, metrics);
+      cost = span * (link.type === 'ramp' ? RAMP_COST : STAIR_COST);
     }
     const node = put({
       id: `l${link.id}`,
@@ -343,14 +389,22 @@ export function buildNav(state, opts = {}) {
     const below = roomIdAt(link.from, foot.x, foot.z);
     const above = roomIdAt(link.to, head.x, head.z);
     const climb = cost + FLOOR_PENALTY;
-    if (below) addEdge(adj, node.id, below, dist2d(node, nodes.get(below)) + climb / 2);
-    if (above) addEdge(adj, node.id, above, dist2d(node.b, nodes.get(above)) + climb / 2);
+    if (below) {
+      addEdge(adj, node.id, below, dist2d(node, nodes.get(below)) + climb / 2,
+        dist2d(node, nodes.get(below)) + span / 2);
+    }
+    if (above) {
+      addEdge(adj, node.id, above, dist2d(node.b, nodes.get(above)) + climb / 2,
+        dist2d(node.b, nodes.get(above)) + span / 2);
+    }
     // A stair that lands in nothing on either end joins nothing; it stays in
     // the node list so a reader can say so, but it is not a route.
   }
 
   return {
     floorHt,
+    accessible,
+    minWidth,
     nodes, adj,
     rooms, portals, links, exits,
     outside: outside ? outside.id : null,
@@ -504,7 +558,11 @@ export function route(nav, from, toId) {
 // Multi-source Dijkstra, which is one queue rather than one search per exit —
 // and the answer Phase 7's egress checks want as much as this phase's fire
 // drill does.
-export function egressField(nav) {
+export function egressField(nav, opts = {}) {
+  // `metric` walks the same graph on real feet rather than on routing cost —
+  // what Phase 7 measures against a code limit. The route a body takes is the
+  // cheap one either way; this only changes the number written beside it.
+  const weight = opts.metric ? (e) => e.dist : (e) => e.cost;
   const dist = new Map();
   const via = new Map();
   if (!nav || !nav.exits.length) return { dist, via, reached: 0 };
@@ -524,7 +582,7 @@ export function egressField(nav) {
       // The outside is where you are going, not somewhere you pass through: a
       // route that leaves by one door and comes back in another is not egress.
       if (e.to === nav.outside) continue;
-      const d = cur.d + e.cost;
+      const d = cur.d + weight(e);
       if (d >= (dist.get(e.to) ?? Infinity)) continue;
       dist.set(e.to, d);
       via.set(e.to, via.get(cur.id));
