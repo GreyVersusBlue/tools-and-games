@@ -705,15 +705,140 @@ already built for a different reason.
   in-memory `localStorage` shim: create/list/load/rename/delete, overwrite
   vs. new slot, name trimming, and the slot-count limit.
 
-## Phase 8 — Mobile & accessibility
+## Phase 8 — Mobile & accessibility ✅ *done*
 
-- [ ] Touch controls for both the grid editor (pan/zoom/place already uses
-  pointer events, which is a reasonable base) and walkthrough mode
-  (`PointerLockControls` is desktop-oriented; touch-based look/move needs
-  its own control scheme).
-- [ ] Basic accessibility pass: keyboard-operable toolbar, focus states,
-  labeled controls — consistent with the a11y baseline the rest of the
-  toolkit uses elsewhere in this org's tools.
+- [x] **Touch controls for the grid editor.** Placing/dragging with one
+  finger already worked — pointer events don't distinguish touch from a
+  mouse — so what was actually missing was panning and zooming, which the
+  desktop build spends on a middle/right mouse button and a wheel, neither
+  of which exists on a touchscreen. A second finger now pinch-zooms and pans
+  the edit view; the first finger still drives whichever tool is selected.
+- [x] **Touch controls for walkthrough mode.** `PointerLockControls` needs
+  `requestPointerLock()`, which touch browsers don't reliably offer — so a
+  touch-capable device skips it entirely in favor of an on-screen joystick
+  (movement), drag-anywhere-on-the-canvas (look), and Jump/Sprint/Exit
+  buttons, feeding the same `updateWalk()`/`updateGhost()` the keyboard path
+  already had.
+- [x] **Basic accessibility pass**: every icon-only button got an
+  `aria-label`, every toggle-style button (tool, wall/stair kind, palette
+  item, room swatch, FX) now carries `aria-pressed` kept in sync with its
+  `.active` class, focus states are explicit (`:focus-visible`, since the
+  dark panels swallowed the browser default), the three overlays are real
+  dialogs (`role="dialog"`, `aria-modal`, focus moves in on open and back to
+  the trigger on close), and the status line / walk HUD are `aria-live`
+  regions so a screen reader hears what the mouse/keyboard already shows.
+
+**Decisions made:**
+
+- **Touch and mouse aren't simultaneous input paths on the same surface —
+  they're chosen once, by device capability.** `touch.js`'s
+  `isTouchCapable()` (checked once at load) decides whether the walkthrough
+  offers Pointer Lock or the joystick/drag-look pair; a touch-and-mouse
+  hybrid device (a touchscreen laptop) gets the touch flow, on the theory
+  that Pointer Lock behind a touchscreen's glass is the less reliable of the
+  two, not that mouse users are worse served — the on-screen joystick still
+  drags fine with a mouse, only the look-by-dragging-the-canvas path is
+  touch-only (see below). The editor makes the equivalent choice per
+  *gesture* instead of per device, because unlike the walkthrough it has to
+  keep working for a mouse at the same time: a touch pointerdown is what
+  triggers the editor's pinch/pan state machine, a mouse pointerdown never
+  does.
+- **A tool click is held back briefly, not applied immediately, on the first
+  finger down.** Two fingers of a pinch land somewhere around tens of
+  milliseconds apart, not in the same event — so if the first finger's
+  tool click fired the instant it touched down, a pinch would always draw
+  one stray floor tile (or worse) before the second finger arrived to
+  explain itself. `editor.js` holds a first touch in a `pendingTouch` state
+  for up to 90ms (or until it moves more than a few pixels, so a real drag
+  never feels delayed, or until it lifts, so a real tap still registers
+  immediately on release) before committing it to whichever tool is active.
+  If a second finger lands inside that window, the pending touch is
+  discarded — nothing was ever applied, so there's nothing to undo — and
+  both fingers become a pinch/pan gesture instead.
+- **A tool interaction already under way is never interrupted by another
+  finger.** Once a touch has committed to a tool (a stray palm, a second
+  finger during an active drag), it's tracked but ignored rather than
+  hijacked into a gesture — canceling a half-finished drag cleanly would
+  mean reaching into whichever of poly/prop/stair/template's own gesture
+  state happened to be live, which is exactly the kind of cross-module
+  reach the tool split was built to avoid. The cost is that a slow,
+  deliberate pinch that starts more than 90ms after the first finger
+  touches down while that finger is already dragging won't be recognized as
+  one — acceptable, since letting go and pinching fresh always works.
+- **Pinch-zoom and two-finger pan are one calculation, not two.** Panning
+  is nothing but "keep the world point under your fingers where your
+  fingers are" applied every frame; zooming by the pinch-distance ratio and
+  then re-deriving the pan correction from that same before/after
+  raycast makes a translate-together gesture a pan for free, with no
+  separate code path. The one subtlety it exposed:
+  `raycaster.setFromCamera()` reads a camera's `matrixWorld` directly, which
+  is normally only refreshed once a frame by the renderer right before it
+  draws — moving the camera and immediately raycasting again, several times
+  a gesture, needed its own explicit `camera.updateMatrixWorld(true)` or
+  every "after" reading would still see the pre-move camera and the
+  correction would silently be a no-op.
+- **Touch-look drags the canvas directly; it doesn't reuse
+  `PointerLockControls`.** That class computes its rotation from a locked
+  pointer's `movementX`/`movementY`, which only exists once the pointer is
+  actually locked — so touch has to do the same yaw/pitch math itself, from
+  an ordinary drag delta instead. `touch.js`'s `lookEulerDelta()` is that
+  math, factored out of `walkthrough.js` so it's the one piece of this phase
+  that's pure and unit-tested (`test/touch.test.mjs`) rather than only
+  exercisable from a real touchscreen.
+- **The joystick and jump/sprint buttons don't invent a second movement
+  model.** `walkthrough.js` already read `fwd`/`right` axes and a `keys` set
+  built from WASD/Space/Shift; the joystick's `setMoveAxes()` feeds the same
+  axes, and `touchKey()` lets the Jump/Sprint buttons add/remove from the
+  same `keys` Set a keyboard would — so `updateWalk()`/`updateGhost()`
+  needed no touch-specific branch at all, only the code that decides *which*
+  input feeds them.
+- **Ghost mode and PBR textures stay out of scope for touch.** Ghost's `F`
+  key toggle has no on-screen equivalent yet — a touch session always walks,
+  never flies — and the real-texture upgrade `assets/textures/README.md`
+  already documented is unrelated to input at all. Neither blocks anything
+  else here, so both are left as future, smaller additions rather than
+  folded into this phase.
+- **Focus return uses one slot, not a stack.** `openModal()`/`closeModal()`
+  in `main.js` remember a single `document.activeElement` to restore focus
+  to, which is correct for the common case (open a dialog, close it) and
+  degrades to "focus doesn't move" rather than a crash in the one scenario
+  it doesn't cover — tabbing past an un-trapped dialog into a control that
+  opens a second one. A real focus trap (cycling Tab within the open dialog)
+  would close that gap but is more than a "basic" pass needs; it's a
+  reasonable next step if the overlays grow more content.
+- **No save format change.** Every Phase 8 feature is input handling and
+  markup — it reads and writes through the same tools, mutators and DOM the
+  desktop build already had. A v4 file behaves identically before and
+  after this phase.
+
+**What that changed elsewhere:**
+
+- **`js/touch.js`** is new — pure math with no DOM or three.js dependency,
+  the same split `propplace.js`/`collide.js` already established:
+  `isTouchCapable()`, `pinchZoomHeight()`, `joystickAxes()` and
+  `lookEulerDelta()`. **`test/touch.test.mjs`** — 18 `node --test` cases
+  covering all four: capability sniffing against a mocked
+  navigator/window, zoom direction and clamping, the joystick's sign
+  convention and unit-circle clamping, and the look delta's yaw/pitch sign,
+  speed scaling and polar-angle clamping.
+- **`editor.js`'s pointer handling split into `dispatchPointerDown`/
+  `dispatchPointerMove`/`dispatchPointerUp`**, the exact logic the old
+  inline mouse listeners had, now shared by both the mouse/pen path and the
+  touch path's `commitPendingTouch()` — one implementation of "what a tool
+  does with a pointer," fed from two different decisions about *when* to
+  call it.
+- **`walkthrough.js` gained a parallel input path** (`touchActive`,
+  `moveAxes`, `touchKey()`, the canvas-drag look listeners) alongside the
+  existing `PointerLockControls`-driven one, chosen once per walk session
+  in `enable()`/`enableTouch()` rather than mixed per frame.
+- **`index.html`/`main.js`**: a joystick, Jump and Sprint buttons, and an
+  Exit button, shown only once a touch device actually starts walking
+  (`body.touch-walk`, toggled alongside the existing `data-mode="walk"`);
+  the walk overlay's copy swaps to touch-specific instructions and its
+  button reads "Tap to Walk" instead of "Click to Walk" when
+  `isTouchCapable()` says so at load. `main.js`'s new `openModal()`/
+  `closeModal()` pair is now what all three overlays (walkthrough, designs,
+  export) open and close through, in place of raw `classList` toggling.
 
 ## Suggested build order
 
@@ -726,12 +851,32 @@ stopped fighting you while you build one.
 Phase 7 is done too: a printable blueprint distinct from both the 3D editor
 view and the walkthrough, and named save slots beside the single autosave.
 
-**What's left (8) is still optional in the way Phase 6 was.** Touch controls
-matter more the moment anyone tries this on a tablet, and the accessibility
-pass is overdue precisely because nothing forces it the way a missing
-feature does.
+Phase 8 is done as well: the grid editor pinch-zooms and pans, the
+walkthrough offers a joystick and drag-to-look on a touch device instead of
+Pointer Lock, and the editor chrome — every icon-only button, every
+toggle-style control, the three overlays — carries the labels, pressed
+states, focus styling and dialog semantics a keyboard or screen-reader user
+needs. Nothing left on this list changes what the tool can describe; what
+remains is polish, scale, and the kind of thing that's only worth doing once
+someone's actually hit it.
 
-Two smaller things Phase 5 left on the table, neither urgent:
+A few smaller things this and Phase 5 left on the table, none urgent:
+
+- A full responsive reflow of the editor's panels (toolbar, room/wall/prop
+  panels, the floor and layers panels) for a phone-sized viewport is still
+  future work — Phase 8 made the *canvas* usable by touch (pan, zoom, place,
+  walk), not the surrounding chrome's layout on a narrow screen. The panels
+  already scroll internally where they're tall (`#toolbar`,` #prop-panel`)
+  rather than overflowing the viewport, which covers the worst case; a
+  purpose-built compact layout is a separate, larger pass.
+- Touch has no ghost-mode (no-clip flight) entry point — a touch session
+  always walks. Desktop's `F` key toggle still exists underneath; giving
+  touch its own button is a small, self-contained follow-up whenever a
+  touch user actually needs to fly through a wall to check a design.
+- The three overlays (walkthrough, designs, export) are real dialogs
+  (`role="dialog"`, `aria-modal`, focus in on open and back to the trigger
+  on close) but don't trap Tab within themselves — see Phase 8's own
+  decisions above for why that's a reasonable line to stop at for now.
 
 - `collide.js` is a linear scan over every wall on a storey, several times a
   frame. Fine at a school's scale (the sample's ground floor is a couple of

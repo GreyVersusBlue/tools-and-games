@@ -22,6 +22,7 @@ import {
   GRAVITY, TERMINAL_V, JUMP_V, STEP_UP,
   buildCollider, emptyCollider, moveWalker, supportAt, storeyAt,
 } from './collide.js';
+import { lookEulerDelta } from './touch.js';
 
 const WALK_SPEED = 12;   // ft/s
 const SPRINT_SPEED = 24; // ft/s
@@ -48,6 +49,44 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   let hudText = '';
 
   const fwdV = new THREE.Vector3();
+
+  // Touch: Pointer Lock is desktop-only (PointerLockControls drives off a
+  // locked pointer's mousemove, which a touchscreen never sends), so touch
+  // gets its own input path — a virtual joystick for movement, a drag
+  // anywhere else on the canvas to look, both landed in main.js/index.html —
+  // driving the exact same updateWalk()/updateGhost() this file already had.
+  let touchActive = false;
+  const moveAxes = { x: 0, y: 0 }; // {right, forward}, set by the on-screen joystick
+  let lookPointerId = null;
+  let lookLast = null;
+  const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+  function onTouchLookDown(e) {
+    if (!touchActive || e.pointerType !== 'touch' || lookPointerId !== null) return;
+    lookPointerId = e.pointerId;
+    lookLast = { x: e.clientX, y: e.clientY };
+    domElement.setPointerCapture(e.pointerId);
+  }
+  function onTouchLookMove(e) {
+    if (e.pointerId !== lookPointerId) return;
+    const dx = e.clientX - lookLast.x, dy = e.clientY - lookLast.y;
+    lookLast = { x: e.clientX, y: e.clientY };
+    lookEuler.setFromQuaternion(camera.quaternion);
+    const next = lookEulerDelta(
+      { x: lookEuler.x, y: lookEuler.y }, dx, dy,
+      controls.pointerSpeed, controls.minPolarAngle, controls.maxPolarAngle);
+    lookEuler.x = next.x; lookEuler.y = next.y;
+    camera.quaternion.setFromEuler(lookEuler);
+  }
+  function onTouchLookUp(e) {
+    if (e.pointerId !== lookPointerId) return;
+    lookPointerId = null;
+    lookLast = null;
+  }
+  domElement.addEventListener('pointerdown', onTouchLookDown);
+  domElement.addEventListener('pointermove', onTouchLookMove);
+  domElement.addEventListener('pointerup', onTouchLookUp);
+  domElement.addEventListener('pointercancel', onTouchLookUp);
 
   const colliderFor = (i) => {
     if (!world || !world.floors[i]) return emptyCollider();
@@ -190,6 +229,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   return {
     controls,
     get ghost() { return ghost; },
+    get touchActive() { return touchActive; },
     enable(state) {
       active = true;
       world = state;
@@ -199,6 +239,10 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       vy = 0;
       grounded = false;
       hudText = '';
+      touchActive = false;
+      moveAxes.x = 0; moveAxes.y = 0;
+      lookPointerId = null;
+      lookLast = null;
       // Start on the floor you were just editing, not always the ground.
       const p = spawnPoint(activeFloor(state));
       const eye = floorBaseY(state, state.currentFloor) + EYE_H;
@@ -212,13 +256,32 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       world = null;
       keys.clear();
       colliders = new Map();
+      touchActive = false;
+      moveAxes.x = 0; moveAxes.y = 0;
+      lookPointerId = null;
+      lookLast = null;
       if (controls.isLocked) controls.unlock();
     },
+    // Touch has no pointer to lock — enter walking straight from the overlay
+    // tap, and drive movement/looking from the joystick and canvas-drag
+    // instead of PointerLockControls. `enable()` still does the spawn/reset.
+    enableTouch() {
+      touchActive = true;
+      moveAxes.x = 0; moveAxes.y = 0;
+      reportHud();
+    },
+    // The joystick's own axes, already signed to match WASD (+y forward,
+    // +x right) — see touch.js's joystickAxes for the pixel-to-axis math.
+    setMoveAxes(x, y) { moveAxes.x = x; moveAxes.y = y; },
+    // Lets a touch UI button (jump, sprint) drive the same `keys` set a
+    // keyboard would, so updateWalk()/updateGhost() need no touch-specific
+    // branch for either.
+    touchKey(code, down) { down ? keys.add(code) : keys.delete(code); },
     update(dt) {
-      if (!active || !controls.isLocked) return;
+      if (!active || (!controls.isLocked && !touchActive)) return;
       const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED;
-      const fwd = (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
-      const right = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
+      const fwd = touchActive ? moveAxes.y : (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
+      const right = touchActive ? moveAxes.x : (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
       if (ghost || !world) updateGhost(dt, fwd, right, speed);
       else updateWalk(dt, fwd, right, speed);
       reportHud();
