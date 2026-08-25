@@ -48,6 +48,40 @@ test('teaching stations rise with enrollment and never hit zero', () => {
   }
 });
 
+test('the station count in a program is the station count for its own band', () => {
+  // `buildProgram` used to hand `teachingStations` the band *entry* rather
+  // than its key, so the lookup missed and every band was priced as a middle
+  // school — while the `rule` string it printed quoted the right numbers.
+  for (const band of ['elementary', 'middle', 'high']) {
+    for (const students of [120, 600, 2000]) {
+      const p = buildProgram({ students, band });
+      assert.equal(p.stations, teachingStations(students, band),
+        `${band}/${students}: the program disagrees with its own band`);
+      // A teaching station is a general classroom or one of the band's own
+      // specials — not the office, the kitchen or the staff workroom, which
+      // are wing-sized rooms nobody timetables a class into.
+      const keys = new Set(bandEntry(band).specials.map((sp) => sp.key));
+      const specials = p.rooms.filter((r) => keys.has(r.key)).reduce((n, r) => n + r.count, 0);
+      const teaching = specials +
+        p.rooms.filter((r) => r.key === 'classroom').reduce((n, r) => n + r.count, 0);
+      // A school small enough that its specials outnumber its stations gets
+      // the specials, which is a real answer and the one the tiny-school test
+      // above pins.
+      assert.equal(teaching, Math.max(p.stations, specials),
+        `${band}/${students}: rooms don't sum to stations`);
+    }
+  }
+  // The three bands must not all give the same answer, which is what the bug
+  // looked like from outside.
+  const counts = ['elementary', 'middle', 'high'].map((b) => buildProgram({ students: 2000, band: b }).stations);
+  assert.notEqual(counts[0], counts[1]);
+  assert.notEqual(counts[1], counts[2]);
+});
+
+test('teachingStations takes a key, and survives being handed an entry', () => {
+  assert.equal(teachingStations(600, 'high'), teachingStations(600, bandEntry('high')));
+});
+
 test('a secondary school needs more stations per student than an elementary one', () => {
   // Lower utilization plus a bigger class size is the trade; utilization wins,
   // which is the thing worth pinning because it is the counter-intuitive half.

@@ -158,7 +158,25 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   }
 
   // --- undo/redo ---
-  function snapshot() { return JSON.stringify(getState()); }
+  //
+  // A snapshot is JSON, which is what makes undo a two-line feature and what
+  // the v1 retrospective calls out as O(design). Phase 8 added the one field
+  // that breaks that arithmetic: an `overlay` carries an image as a data URL,
+  // and stringifying up to three megabytes of base64 on every pointerdown,
+  // a hundred deep, is a hundred megabytes of undo history for a picture
+  // nobody edits.
+  //
+  // So the overlay travels beside the JSON rather than inside it, by
+  // reference. That is safe for exactly one reason and it is worth stating:
+  // **an overlay record is never mutated in place.** Every change to it —
+  // move, turn, fade, calibrate — goes through overlay.js's `setOverlay`,
+  // which returns a new normalized object, so a reference held here is a
+  // snapshot of what the overlay was, not a live view of what it is.
+  function snapshot() {
+    const s = getState();
+    const { overlay, ...rest } = s;
+    return { json: JSON.stringify(rest), overlay: overlay || null };
+  }
 
   function pushUndo() {
     undoStack.push(snapshot());
@@ -166,9 +184,10 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     redoStack.length = 0;
   }
 
-  function restore(json) {
+  function restore(snap) {
     const s = getState();
-    const data = JSON.parse(json);
+    const data = JSON.parse(snap.json);
+    if (snap.overlay) data.overlay = snap.overlay;
     // Keys the snapshot doesn't have are keys the design didn't have.
     // `Object.assign` only ever adds and overwrites, so without this an undo
     // across the moment something was *first* written — the first site region,
@@ -654,7 +673,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     overhangRefused = 0;
     onStatus && onStatus(
       `${cells === 1 ? 'That cell is' : `${cells} cells are`} outside the storey below — ` +
-      'turn on “Allow overhangs” in the Floor panel to build there anyway.');
+      'turn on “Allow overhangs” in the Layers panel to build there anyway.');
   }
 
   // --- touch: a single finger drives the current tool exactly like a mouse

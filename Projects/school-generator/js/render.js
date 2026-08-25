@@ -3703,7 +3703,10 @@ export function initRender(canvas) {
       mesh.material.needsUpdate = true;
       applyOverlay(built);
     };
-    image.onerror = () => { overlaySrc = null; };
+    // Leave `overlaySrc` set to the source that failed: clearing it would make
+    // the `src === overlaySrc` guard miss and restart a multi-megabyte decode
+    // on every rebuild, forever, for a picture that is never going to load.
+    image.onerror = () => { /* keep the guard armed; there is nothing to draw */ };
     image.src = src;
   }
 

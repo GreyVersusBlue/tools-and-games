@@ -285,7 +285,7 @@ export function initPolyEdit({ getState, renderApi, host }) {
       if (!host.allowOverhang() && support.outside === support.total) {
         host.dropUndo();
         host.status('That room is entirely off the storey below — turn on ' +
-          '“Allow overhangs” in the Floor panel to build there.');
+          '“Allow overhangs” in the Layers panel to build there.');
         refresh();
         return;
       }

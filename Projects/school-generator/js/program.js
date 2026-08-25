@@ -174,7 +174,9 @@ function row(key, name, count, w, d, opts = {}) {
 // room a class can be timetabled into, so the count is enrollment over class
 // size, divided again by how much of the day a room is actually used.
 export function teachingStations(students, band) {
-  const b = bandEntry(band);
+  // Takes a band *key*. Passing the entry itself is the one way to call this
+  // wrong, so it is accepted rather than silently mis-resolved.
+  const b = bandEntry(band && typeof band === 'object' ? band.key : band);
   return Math.max(1, Math.ceil(students / b.classSize / b.utilization));
 }
 
@@ -279,7 +281,12 @@ export function buildProgram(brief) {
   const b = bandEntry(b0.band);
   const students = b0.students;
 
-  const stations = teachingStations(students, b);
+  // `b.key`, not `b`: `teachingStations` looks the band up by key, and handing
+  // it the object it already resolved made every lookup miss and fall back to
+  // the default band. The rule string below quoted the right numbers while the
+  // count came from the wrong ones, which is the worst way for this to be
+  // wrong and the reason there is now a test per band for it.
+  const stations = teachingStations(students, b.key);
   const specials = specialRows(students, b);
   const specialCount = specials.reduce((n, r) => n + r.count, 0);
   // General classrooms are what's left of the teaching stations after the

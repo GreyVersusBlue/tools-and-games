@@ -147,11 +147,17 @@ export function parseBrief(text, base = DEFAULT_BRIEF) {
   // 1. Numbers that sit next to a word naming what they count. `touching`
   // returns the span of that word so the phrase reported back — and the text
   // marked as understood — is "600 students" rather than a bare 600.
+  // A noun counts one number. Without that rule "600 students, 3 levels" reads
+  // the 3 as a second enrollment — "students" is still inside the backward
+  // window and a comma is a joiner — and comes back saying "600 students, 30
+  // students". So a keyword occurrence that an earlier number already consumed
+  // is not available to a later one, which is what `taken` checks.
+  const taken = (at, len) => used.some(([a, b]) => at < b && a < at + len);
   const touching = (num, pattern) => {
     const end = num.at + num.len;
     const after = s.slice(end, end + NEAR_WINDOW);
-    let m = after.match(pattern);
-    if (m && JOINER.test(after.slice(0, m.index))) {
+    const m = after.match(pattern);
+    if (m && JOINER.test(after.slice(0, m.index)) && !taken(end + m.index, m[0].length)) {
       return { at: num.at, len: end - num.at + m.index + m[0].length };
     }
     const from = Math.max(0, num.at - NEAR_WINDOW);
@@ -159,9 +165,9 @@ export function parseBrief(text, base = DEFAULT_BRIEF) {
     // The *last* occurrence in the window is the near one, so scan for it.
     let last = null;
     for (const b of before.matchAll(new RegExp(pattern.source, 'g'))) last = b;
-    m = last;
-    if (m && JOINER.test(before.slice(m.index + m[0].length))) {
-      return { at: from + m.index, len: end - (from + m.index) };
+    if (last && JOINER.test(before.slice(last.index + last[0].length)) &&
+        !taken(from + last.index, last[0].length)) {
+      return { at: from + last.index, len: end - (from + last.index) };
     }
     return null;
   };

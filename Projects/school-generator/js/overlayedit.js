@@ -178,7 +178,12 @@ export function initOverlayEdit({ getState, renderApi, host }) {
     const dx = p.x - drag.from.x, dz = p.z - drag.from.z;
     if (!drag.moved && Math.hypot(dx, dz) < 0.4) return true;
     drag.moved = true;
-    host.setOverlay(setOverlay(o, { x: drag.start.x + dx, z: drag.start.z + dz }), { live: true });
+    // `throttled` is the word every other drag tool uses, and the word the
+    // shell gates the expensive work on — the graph, the audio world and the
+    // report all sit behind it. A drag that didn't say it was throttled
+    // rebuilt the whole building on every pointermove.
+    host.setOverlay(setOverlay(o, { x: drag.start.x + dx, z: drag.start.z + dz }),
+      { throttled: true });
     refresh();
     return true;
   }

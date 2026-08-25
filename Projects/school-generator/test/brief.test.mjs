@@ -35,6 +35,23 @@ test('a number four words away from a keyword does not read as it', () => {
   assert.equal(r.matched.filter((m) => m.field === 'students').length, 1);
 });
 
+test('a noun counts one number', () => {
+  // "600 students, 3 levels" used to read the 3 as a second enrollment: the
+  // word "students" was still inside the backward window and a comma passes
+  // as a joiner, so the brief came back as 30 students on 2 storeys and the
+  // echo said "600 students, 30 students".
+  for (const text of [
+    '600 students, 3 levels',
+    'a school for 600 students over 3 floors',
+    '600 students and 3 storeys',
+  ]) {
+    const r = parse(text);
+    assert.equal(r.brief.students, 600, text);
+    assert.equal(r.brief.storeys, 3, text);
+    assert.equal(r.matched.filter((m) => m.field === 'students').length, 1, text);
+  }
+});
+
 test('a bare plausible number is read as enrollment, and said to be', () => {
   const r = parse('elementary for 350');
   assert.equal(r.brief.students, 350);
