@@ -3,13 +3,19 @@
 Living reference for where this tool goes next. The first arc of this project
 — eight phases, from a single-floor grid editor to a multi-story, furnished,
 polygon-roomed building you can blueprint, save, and walk through on desktop
-or touch — is **done**, and so is the second arc's Phase 8, which is where the
-tool started deserving the word *generator* in its name — and so is Phase 9,
-which took it out of the tab it was drawn in. This document is now two things: a compact
-retrospective of that v1 build (what shipped, what worked, what fought back,
-what a future builder needs to know), and a fresh phase system for everything
-after it, starting with a much bigger prop catalog and running through the
-genuinely pie-in-the-sky.
+or touch — is **done**, and so is the whole of the second arc: Phases 1
+through 9, from a real furniture catalog through doors, light, sound, the
+site, a living crowd, analysis, the generator that earned the tool its name,
+and the sharing that took it out of the tab it was drawn in. Everything
+checked off below has shipped, bar two items — one small one in Phase 1 that
+Phase 11 needs and carries, and real-time collaboration, which needs a server
+and says so.
+
+This document is now three things: a compact retrospective of that v1 build
+(what shipped, what worked, what fought back, what a future builder needs to
+know), the same treatment per phase for the second arc, and two open bands for
+everything after it — **Phase 10, where the tool stops lying to you**, and
+**Phase 11, where it gets fun to be in**.
 
 Not a spec — a scoped list to pull from and refine before starting each
 piece. Check items off (or strike them) as they land, and add new ideas under
@@ -231,12 +237,15 @@ design's own rows answer `catalogEntry` beside the built-in table.)
   `overlay`) has to be deleted when the snapshot doesn't have it, or undoing
   past the moment it was first written silently does nothing.
 
-## Phase 1 — Prop catalog expansion (high fidelity, real scale)
+## Phase 1 — Prop catalog expansion (high fidelity, real scale) ✅
 
-The catalog has 14 types — enough to prove the layer, nowhere near enough to
-furnish a school. This phase makes it a real furniture library: **~70 new
+The catalog had 14 types — enough to prove the layer, nowhere near enough to
+furnish a school. This phase made it a real furniture library: **~70 new
 types**, every one at real-world dimensions, with a visible step up in
-geometric fidelity while staying procedural and instanced.
+geometric fidelity while staying procedural and instanced. **Done** — in one
+commit, ahead of every phase numbered after it, which is what let all of them
+lean on it. One item is still open, at the bottom of the Principles list, and
+Phase 11 picks it up.
 
 ### Principles
 
@@ -276,6 +285,9 @@ geometric fidelity while staying procedural and instanced.
 - [ ] **Color variants ride in `data`** (e.g. `data.color` overriding the
   catalog default) rather than as N near-duplicate rows — the field and its
   validation already exist; the builder cache needs a variant-aware key.
+  **The one item of this phase that did not ship**, and the one Phase 11
+  needs before it can put a seasonal palette on the Decor rows. Carried
+  there; still lives here.
 
 ### New props, by category (dims in feet, at rotationY = 0)
 
@@ -377,6 +389,33 @@ geometric fidelity while staying procedural and instanced.
 - **`test/catalog.test.mjs` grows with the table**: uniqueness, category
   validity, sane dimension ranges (nothing taller than `FLOOR_H` unless
   flagged outdoor, wall mounts within `WALL_H`), every `geo` key resolved.
+
+### How it actually landed
+
+- **116 types in one commit**, across the eleven categories proposed above.
+  The table has since grown to **155 rows and 13 built-in categories** —
+  Phase 3 added Lighting, Phase 5 added Landscape, Phase 9 added Imported —
+  which makes this the one phase that every later phase extended rather than
+  merely used.
+- **The reuse target was optimistic, and that is fine.** The plan was ~20
+  well-parameterized builders for ~85 types; the reality is **83 builders for
+  155 rows**. The collapse happened exactly where predicted — lockers,
+  boards, mirrors, posters and signs are parameterized `cubby` and `panel` —
+  and refused to happen in Subject Rooms, because a kiln and a fume hood
+  share nothing but a floor. A builder per distinctive silhouette turns out
+  to be the honest ratio.
+- **Nine of the thirteen room templates are this phase's** — science lab,
+  cafeteria block, library aisle, locker hallway, gym court, kindergarten
+  corner, restroom, front office, music room. The seatless-surface rule is
+  what let every one of them stamp ordinary props instead of special-casing
+  furniture pairs, and it is the reason auto-furnish (Phase 8) could reuse
+  them unchanged.
+- **Shipping it first is why the rest of the arc reads the way it does.**
+  WebXR lands convincingly (Phase 9) because a 6ft person is 6ft tall next to
+  a 30in desk; occupant load and daylight (Phase 7) count real furniture; the
+  generator (Phase 8) furnishes ninety rooms because there was something to
+  furnish them with. The real-scale principle at the top of this section did
+  more work than the type count.
 
 ## Phase 2 — Doors, windows & deeper building modeling ✅
 
@@ -1667,21 +1706,104 @@ save format, and Phase 1's insistence on real dimensions;
   is a thing the importer at the other end may not have — and the wrong one
   the first time somebody exports a school with ten thousand desks in it.
 
-## Phase 10 — Play
+## Phase 10 — Honesty
 
-- [ ] Light prop physics: bump a chair and it scoots; nothing
-  load-bearing, pure delight.
-- [ ] Scavenger hunt / hide-and-seek modes over the nav graph — a reason
-  for a kid to explore the building a parent just designed.
-- [ ] Holiday decoration packs (Phase 1 decor category, seasonal
-  variants).
+Four findings the tool has made about itself, unaddressed since Phase 8,
+share one sentence: **the model knows more than it says.** A corridor is one
+node, so every travel distance is wrong by ten to twenty feet. There is one
+layout scheme, so "generate" means "generate this shape". The brief reads
+counts but not relationships. The minimap knows where you are and the report
+knows what is wrong, and they have never met. Nothing in this phase is new
+capability — it is the capability already here, telling the truth.
+
+**Nothing here changes the save format.** The nav mesh is derived, the
+generator's inputs are transient (`save-load.js` stores no brief, no program
+and no scheme), and the report is a reading of the model rather than a part
+of it. Six of the eight phases in this arc carried a version bump; Phases 4
+and 7 are the exceptions and both said so proudly, which is the company this
+phase keeps. It is what makes this one safe to land in pieces, in this
+order:
+
+- [ ] **A nav mesh, replacing room-as-hub.** Phase 6 wanted one, Phase 7
+  wanted one for the common path of egress travel, and Phase 8 attached a
+  number: a generated three-storey school reports travel distances ten to
+  twenty feet worse than anybody actually walks, because `buildNav` collapses
+  a whole corridor to one node. It is the single biggest source of false
+  findings in the tool. Do it first and alone — `navgraph.js` has **ten
+  consumers** (`agents.js`, `egress.js`, `report.js`, `generate.js`,
+  `occupancy.js`, `daylight.js`, `autofurnish.js`, `templateedit.js`,
+  `main.js`, and itself), and every egress finding and report row moves when
+  it lands. The exported vocabulary — `findPath`, `waypoints`, `route`,
+  `egressField`, `nearestExit` — is the contract worth keeping, so the
+  consumers need not all be rewritten with it.
+- [ ] **The findings, drawn on the minimap.** The smallest item here and the
+  most visible. The report already sorts worst-first and `blueprint.js`
+  already draws a floor at thumbnail size, so a finding carrying a room id
+  becomes a highlight on the plan in your hand — *this* corridor is the one
+  over the travel limit, *that* door is the one too narrow. Second, not last:
+  it is the fastest way to see whether the mesh actually fixed the numbers.
+- [ ] **More layout schemes.** `layoutSchool` (`generate.js`) is one function
+  turning a program into a list of rectangles. A courtyard plan and a compact
+  block are two more against the same contract, and the generate sheet
+  already has room for the picker. The spine-with-wings is not wrong; it is
+  just the only thing the word "generate" currently means.
+- [ ] **Adjacency in the brief.** "Put the band room away from the library"
+  is a sentence `parseBrief` cannot read and `layoutSchool` has nowhere to
+  put. Both halves are this item: a rule table beside `BAND_RULES` turning
+  phrases into pairs, and a placement pass that reads them. It shares a seam
+  with the schemes, which is why it goes after them rather than before — a
+  second scheme is what proves the constraint is a constraint and not a
+  property of the spine.
+
+*Leans on:* the portal graph's exported vocabulary, the report's room ids,
+and the generate sheet's existing controls;
+*collides with:* every number the tool currently prints — which is the point,
+and also why the existing egress and report tests are the acceptance criteria
+for the mesh rather than an obstacle to it.
+
+## Phase 11 — Play
+
+The rest of the list shares a different sentence: **the building is finished
+and nobody is playing in it.** A school you can walk through, hear and
+analyze is still a place you visit rather than a place you mess with. Nothing
+here is load-bearing, and that is the whole idea.
+
+No save bump here either — physics and a hunt are runtime state, and a decor
+pack is more catalog rows.
+
+- [ ] **Colour variants in `data`** — the open item from Phase 1, and the
+  prerequisite for the bottom of this list. `cleanData()` (`props.js`)
+  already validates the field; what is missing is a reader for `data.color`
+  and a variant-aware key in `getPropGeometry()` (`render.js`), which today
+  caches on `entry.type` alone and bakes the row's colour into the vertices.
+  Then a swatch in `propedit.js` and the matching fill in `blueprint.js`.
+- [ ] **Light prop physics** — bump a chair and it scoots. `collide.js`
+  already resolves a walker against the world; this is that arithmetic
+  pointed the other way, on props flagged light enough to move, with no
+  solver, no stacking and no persistence. Pure delight, and the one item on
+  either list with no downstream consumer at all.
+- [ ] **Scavenger hunt / hide-and-seek over the nav graph** — a reason for a
+  kid to explore the building a parent just designed. Wants Phase 10's mesh
+  underneath it: a hiding place is a property of a walkable surface, not of a
+  room's centroid, and "behind the bleachers" is unsayable in a portal graph.
+- [ ] **Holiday decoration packs** — the Decor category, seasonal. This is
+  the colour-variant item wearing a hat: a pack is a handful of rows and a
+  palette, not a handful of new builders. Which is the argument for doing the
+  variants first rather than shipping thirty near-duplicate catalog rows.
+
+*Leans on:* the catalog's `data` field, the walker's collider, and whatever
+Phase 10 leaves behind as a walkable surface;
+*collides with:* nothing — rare enough to be worth saying. This is the first
+phase in either arc that no other phase is waiting on.
 
 ## Suggested build order
 
-Phases 1 through 9 are done, bar the one item in Phase 9 that needs a server.
-Phase 1 — the prop catalog expansion — is the one item from the second arc's
-own list that never got built and that everything else has quietly been
-leaning on, and it is the obvious next thing.
+Phases 1 through 9 are done, bar two items: colour variants in `data`, which
+Phase 11 carries, and real-time collaboration, which needs a server. Phase 1
+shipped *first*, out of order and in one commit, before Phase 2 — which is
+worth stating plainly, because earlier revisions of this paragraph spent two
+phases calling it the thing that never got built and the obvious next thing to
+do. It was neither. Every phase after it leaned on it.
 
 Phase 7 turned out to be exactly the right thing to build in front of the
 generator, and the claim held literally: occupant load per room is what sizes
@@ -1715,18 +1837,34 @@ wire too: grid cells have no identity, so there is nothing to name when two
 people edit the same room. That makes it downstream of the decision to promote
 every room to a polygon, not downstream of a sync library.
 
-That leaves Phase 10 (play) and Phase 1 (the prop catalog) as the two open
-bands, and the argument for the catalog is now stronger than it was rather
-than weaker: glTF import means a new prop type no longer has to be a geometry
-builder, so the seventy rows that phase asks for can be *any* mixture of
-procedural and imported. The generator furnishes ninety rooms from a catalog
-of a hundred and fifty-five types; every type added still makes every
-generated school better for free.
+That leaves two open bands, which are those four standing findings and the
+three play items sorted into the two sentences they actually belong to:
+**Phase 10, where the tool stops lying to you**, and **Phase 11, where it gets
+fun to be in**. Do them in that order, and inside Phase 10 do the nav mesh
+first.
 
-The three findings from Phase 8 stand unchanged and unaddressed — the nav mesh
-first, then more schemes, then adjacency in the brief. Phase 9 added a fourth
-of its own, smaller and more concrete: **the minimap knows where you are and
-the report knows what is wrong, and they have never met.** A finding that
-could be drawn on the plan you are carrying — this corridor is the one over
-the travel limit, that door is the one too narrow — is a few lines away now
-that both halves exist.
+The argument for splitting rather than doing one big final phase is not that
+play matters less. It is that `navgraph.js` has ten consumers and a chair that
+scoots has none, so a single phase means the fun half waits on the review pass
+for the risky half. Phase 8 needed a whole "five fixes from the review pass"
+commit at six modules of surface; the mesh alone is more than that. Two
+theses, two phases, two review passes that can fail independently.
+
+And the finding that makes the split free, which fell out of auditing the
+remainder rather than out of building anything: **nothing left on this list
+needs a save-format bump.** `cleanData()` already validates `data.color`; the
+nav mesh is derived; the generator's brief, program and scheme are transient
+(`save-load.js` mentions none of them); physics and a hunt are runtime state;
+a decor pack is rows. Six of this arc's eight phases were shaped in part by
+the cost of a version bump and the wish to spend it once — Phase 5 in
+particular reads the way it does because terrain, site and roof all had to
+land in v7 together. That pressure is simply absent now, as it was for Phases
+4 and 7. Splitting these costs a heading and nothing else, and either phase
+can land in pieces.
+
+The three chores Phase 9 left behind — audio in the tour capture, the
+minimap's phone layout, and an `EXT_mesh_gpu_instancing` export — belong to
+neither thesis and should ride along with whichever phase is open when
+somebody has a spare hour. They stay listed under Phase 9's "deliberately left
+for later", where they were found; moving them up here would start exactly the
+second list this document keeps warning about.
