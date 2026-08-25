@@ -27,6 +27,19 @@
 //                   up to the emitter. lights.js reads it; the renderer turns
 //                   lumens into whatever three.js wants. A row without `emit`
 //                   is furniture, however lamp-shaped it looks.
+//   sound: {...}  — Phase 4: this row makes noise. `kind` names the voice
+//                   ('hum', 'hiss', 'burble', 'tick', 'pa', 'bell'), `db` is
+//                   its real level in dBA at three feet, `hz`/`q` are what
+//                   that noise is centred on and how peaky it is, and `dy`
+//                   offsets the emitter the way `emit.dy` does. sound.js
+//                   reads it; a row without one is silent, however mechanical
+//                   it looks. Note how many of these landed on rows that were
+//                   already here — a vending machine was always going to hum.
+//   absorb: n     — Phase 4: this row's sound absorption coefficient, 0..1,
+//                   overriding the per-category default in acoustics.js. Only
+//                   worth stating on the rows where the category lies: soft
+//                   furniture in a hard category, or a product whose entire
+//                   purpose is absorption.
 // plus builder parameters (`top`, `style`, `device`, `rows`, ...) documented
 // beside each geometry builder in render.js.
 
@@ -55,6 +68,7 @@ export const GEO_KEYS = [
   'plant', 'aquarium', 'cage', 'clutter',
   'picnic', 'bikerack', 'flagpole', 'slide', 'swing', 'dumpster', 'polesign',
   'troffer', 'pendant', 'sconce', 'polelight',
+  'gongbell', 'diffuser',
 ];
 
 export const PROP_CATALOG = [
@@ -106,22 +120,30 @@ export const PROP_CATALOG = [
   // ---- Fixtures ----
   { type: 'floor-lamp', name: 'Floor Lamp', category: 'Fixtures', icon: '💡', w: 1, d: 1, h: 5.5, y: 0, color: '#d8cba0', mount: 'floor', geo: 'lamp', emit: { lm: 1200, color: '#ffe3b4', range: 18, dy: 5 } },
   { type: 'tv', name: 'TV / Smart Board', category: 'Fixtures', icon: '📺', w: 5.5, d: 0.3, h: 2.7, y: 3.4, color: '#15161a', mount: 'wall', geo: 'panel' },
-  { type: 'whiteboard', name: 'Whiteboard', category: 'Fixtures', icon: '🖊️', w: 6, d: 0.15, h: 4, y: 2.8, color: '#f4f4f2', mount: 'wall', geo: 'panel' },
-  { type: 'board-cork', name: 'Bulletin Board', category: 'Fixtures', icon: '📌', w: 6, d: 0.1, h: 4, y: 3.5, color: '#a9805a', mount: 'wall', geo: 'panel' },
-  { type: 'clock-wall', name: 'Wall Clock', category: 'Fixtures', icon: '🕐', w: 1.2, d: 0.15, h: 1.2, y: 7, color: '#e8e6df', mount: 'wall', geo: 'clock' },
+  { type: 'whiteboard', name: 'Whiteboard', category: 'Fixtures', icon: '🖊️', w: 6, d: 0.15, h: 4, y: 2.8, color: '#f4f4f2', mount: 'wall', geo: 'panel', absorb: 0.02 },
+  { type: 'board-cork', name: 'Bulletin Board', category: 'Fixtures', icon: '📌', w: 6, d: 0.1, h: 4, y: 3.5, color: '#a9805a', mount: 'wall', geo: 'panel', absorb: 0.30 },
+  { type: 'clock-wall', name: 'Wall Clock', category: 'Fixtures', icon: '🕐', w: 1.2, d: 0.15, h: 1.2, y: 7, color: '#e8e6df', mount: 'wall', geo: 'clock', sound: { kind: 'tick', db: 38, hz: 2600, q: 6, every: 1 } },
   { type: 'screen-pulldown', name: 'Projection Screen', category: 'Fixtures', icon: '🎬', w: 7, d: 0.3, h: 5.5, y: 2.5, color: '#efefec', mount: 'wall', geo: 'pulldown' },
   { type: 'projector-ceiling', name: 'Ceiling Projector', category: 'Fixtures', icon: '📽️', w: 1.5, d: 1.2, h: 2, y: 8, color: '#d9d9d4', mount: 'ceiling', geo: 'projector' },
   { type: 'case-display', name: 'Display Case', category: 'Fixtures', icon: '🏆', w: 6, d: 1.5, h: 6.5, y: 0, color: '#6a5636', mount: 'floor', geo: 'displaycase' },
-  { type: 'fountain', name: 'Water Fountain', category: 'Fixtures', icon: '⛲', w: 1.5, d: 1.3, h: 3.3, y: 0, color: '#c8ccd2', mount: 'floor', geo: 'fountain' },
+  { type: 'fountain', name: 'Water Fountain', category: 'Fixtures', icon: '⛲', w: 1.5, d: 1.3, h: 3.3, y: 0, color: '#c8ccd2', mount: 'floor', geo: 'fountain', sound: { kind: 'hum', db: 52, hz: 110, q: 5, dy: 1 } },
   { type: 'cabinet-fire', name: 'Fire Extinguisher Cabinet', category: 'Fixtures', icon: '🧯', w: 1, d: 0.6, h: 2.3, y: 3, color: '#b03a30', mount: 'wall', geo: 'wallbox', style: 'fire' },
   { type: 'cabinet-aed', name: 'AED Cabinet', category: 'Fixtures', icon: '🫀', w: 1.2, d: 0.6, h: 1.5, y: 4, color: '#e6e8ea', mount: 'wall', geo: 'wallbox', style: 'aed' },
   { type: 'sign-exit', name: 'Exit Sign', category: 'Fixtures', icon: '🏃', w: 1, d: 0.2, h: 0.7, y: 7.5, color: '#2e8b46', mount: 'wall', geo: 'panel', emit: { lm: 90, color: '#8dffb0', range: 9, dy: 0.35 } },
-  { type: 'speaker-pa', name: 'PA Speaker', category: 'Fixtures', icon: '🔊', w: 1, d: 0.8, h: 1, y: 8, color: '#3a3f45', mount: 'wall', geo: 'wallbox', style: 'grille' },
+  { type: 'speaker-pa', name: 'PA Speaker', category: 'Fixtures', icon: '🔊', w: 1, d: 0.8, h: 1, y: 8, color: '#3a3f45', mount: 'wall', geo: 'wallbox', style: 'grille', sound: { kind: 'pa', db: 88, hz: 1200, q: 1 } },
   { type: 'flag-wall', name: 'Flag on Bracket', category: 'Fixtures', icon: '🚩', w: 1, d: 2.5, h: 3, y: 6, color: '#8a2f3a', mount: 'wall', geo: 'flagwall' },
-  { type: 'radiator', name: 'Radiator', category: 'Fixtures', icon: '♨️', w: 4, d: 0.8, h: 2, y: 0, color: '#c9c4b8', mount: 'floor', geo: 'radiator' },
+  { type: 'radiator', name: 'Radiator', category: 'Fixtures', icon: '♨️', w: 4, d: 0.8, h: 2, y: 0, color: '#c9c4b8', mount: 'floor', geo: 'radiator', sound: { kind: 'hiss', db: 42, hz: 520, q: 1.2, dy: 1 } },
   { type: 'dispenser', name: 'Towel Dispenser', category: 'Fixtures', icon: '🧻', w: 1, d: 0.5, h: 1.2, y: 4, color: '#d7dadd', mount: 'wall', geo: 'wallbox' },
   { type: 'trash-can', name: 'Trash Can', category: 'Fixtures', icon: '🗑️', w: 1.2, d: 1.2, h: 2, y: 0, color: '#4a4f57', mount: 'floor', geo: 'bin' },
   { type: 'sink', name: 'Classroom Sink', category: 'Fixtures', icon: '🚰', w: 2, d: 1.8, h: 3, y: 0, color: '#dfe3e6', mount: 'floor', geo: 'sink' },
+
+  // Phase 4. Three rows the building needed before it could make a noise, and
+  // one it needed before it could stop making one.
+  { type: 'bell-corridor', name: 'Corridor Bell', category: 'Fixtures', icon: '🔔', w: 0.9, d: 0.7, h: 0.9, y: 8.4, color: '#8a2f2f', mount: 'wall', geo: 'gongbell', sound: { kind: 'bell', db: 100, hz: 660, q: 1 } },
+  { type: 'diffuser-hvac', name: 'HVAC Diffuser', category: 'Fixtures', icon: '🌬️', w: 2, d: 2, h: 0.4, y: 9.6, color: '#dfe1e3', mount: 'ceiling', geo: 'diffuser', sound: { kind: 'hiss', db: 38, hz: 700, q: 0.9, dy: -0.2 } },
+  { type: 'speaker-ceiling', name: 'Ceiling Speaker', category: 'Fixtures', icon: '📢', w: 1.1, d: 1.1, h: 0.35, y: 9.65, color: '#e4e6e8', mount: 'ceiling', geo: 'diffuser', style: 'speaker', sound: { kind: 'pa', db: 84, hz: 1200, q: 1 } },
+  { type: 'panel-acoustic', name: 'Acoustic Wall Panel', category: 'Fixtures', icon: '🧱', w: 4, d: 0.25, h: 4, y: 3, color: '#6f7a86', mount: 'wall', geo: 'panel', absorb: 0.85 },
+  { type: 'baffle-acoustic', name: 'Acoustic Ceiling Baffle', category: 'Fixtures', icon: '☁️', w: 8, d: 1, h: 0.3, y: 9, color: '#7c8794', mount: 'ceiling', geo: 'panel', absorb: 0.90 },
 
   // ---- Lighting ----
   //
@@ -163,9 +185,9 @@ export const PROP_CATALOG = [
   // ---- Cafeteria ----
   { type: 'counter-serving', name: 'Serving Counter', category: 'Cafeteria', icon: '🍲', w: 6, d: 2.5, h: 3, y: 0, color: '#aab2ba', mount: 'floor', geo: 'counter', guard: true },
   { type: 'tray-return', name: 'Tray Return', category: 'Cafeteria', icon: '🍽', w: 4, d: 2, h: 4, y: 0, color: '#aab2ba', mount: 'floor', geo: 'counter', style: 'tray' },
-  { type: 'cooler-milk', name: 'Milk Cooler', category: 'Cafeteria', icon: '🥛', w: 3, d: 2.5, h: 3, y: 0, color: '#d7dadd', mount: 'floor', geo: 'machine', style: 'cooler' },
-  { type: 'vending', name: 'Vending Machine', category: 'Cafeteria', icon: '🥤', w: 3.3, d: 2.8, h: 6, y: 0, color: '#a23a45', mount: 'floor', geo: 'machine', style: 'vending' },
-  { type: 'fridge-commercial', name: 'Commercial Fridge', category: 'Cafeteria', icon: '❄️', w: 4.5, d: 2.7, h: 6.8, y: 0, color: '#c8ccd2', mount: 'floor', geo: 'machine', style: 'fridge' },
+  { type: 'cooler-milk', name: 'Milk Cooler', category: 'Cafeteria', icon: '🥛', w: 3, d: 2.5, h: 3, y: 0, color: '#d7dadd', mount: 'floor', geo: 'machine', style: 'cooler', sound: { kind: 'hum', db: 54, hz: 120, q: 7, dy: 1 } },
+  { type: 'vending', name: 'Vending Machine', category: 'Cafeteria', icon: '🥤', w: 3.3, d: 2.8, h: 6, y: 0, color: '#a23a45', mount: 'floor', geo: 'machine', style: 'vending', sound: { kind: 'hum', db: 55, hz: 120, q: 8, dy: 2 } },
+  { type: 'fridge-commercial', name: 'Commercial Fridge', category: 'Cafeteria', icon: '❄️', w: 4.5, d: 2.7, h: 6.8, y: 0, color: '#c8ccd2', mount: 'floor', geo: 'machine', style: 'fridge', sound: { kind: 'hum', db: 58, hz: 120, q: 7, dy: 2 } },
   { type: 'table-prep', name: 'Prep Table', category: 'Cafeteria', icon: '🔪', w: 6, d: 2.5, h: 3, y: 0, color: '#c2c7cd', mount: 'floor', geo: 'table' },
   { type: 'station-recycle', name: 'Recycling Station', category: 'Cafeteria', icon: '♻️', w: 4, d: 2, h: 3.5, y: 0, color: '#5a6a5f', mount: 'floor', geo: 'recycle' },
 
@@ -173,7 +195,7 @@ export const PROP_CATALOG = [
   { type: 'hoop-wall', name: 'Basketball Hoop (Wall)', category: 'Gym & Stage', icon: '🏀', w: 6, d: 4, h: 3.5, y: 9, color: '#e8e6df', mount: 'wall', geo: 'hoop', tall: true },
   { type: 'bleacher', name: 'Bleacher Section', category: 'Gym & Stage', icon: '🏟️', w: 8, d: 7, h: 5.5, y: 0, color: '#9c7248', mount: 'floor', geo: 'riser', rows: 3, seats: true },
   { type: 'volleyball-net', name: 'Volleyball Net', category: 'Gym & Stage', icon: '🏐', w: 30, d: 1, h: 8, y: 0, color: '#3a3f45', mount: 'floor', geo: 'volleyball' },
-  { type: 'mat-wall', name: 'Wall Mat', category: 'Gym & Stage', icon: '🥋', w: 6, d: 0.3, h: 6, y: 0.2, color: '#3f5fae', mount: 'wall', geo: 'panel' },
+  { type: 'mat-wall', name: 'Wall Mat', category: 'Gym & Stage', icon: '🥋', w: 6, d: 0.3, h: 6, y: 0.2, color: '#3f5fae', mount: 'wall', geo: 'panel', absorb: 0.35 },
   { type: 'rack-ball', name: 'Ball Rack', category: 'Gym & Stage', icon: '⚽', w: 4, d: 2, h: 3, y: 0, color: '#5a6068', mount: 'floor', geo: 'ballrack' },
   { type: 'scoreboard', name: 'Scoreboard', category: 'Gym & Stage', icon: '🔢', w: 6, d: 0.5, h: 3, y: 6, color: '#22262c', mount: 'wall', geo: 'panel' },
   { type: 'stage-section', name: 'Stage Platform', category: 'Gym & Stage', icon: '🎭', w: 8, d: 4, h: 2, y: 0, color: '#4a3a2e', mount: 'floor', geo: 'riser', rows: 1 },
@@ -194,10 +216,10 @@ export const PROP_CATALOG = [
   { type: 'hand-dryer', name: 'Hand Dryer', category: 'Restroom', icon: '💨', w: 1, d: 0.7, h: 1.2, y: 3.5, color: '#c8ccd2', mount: 'wall', geo: 'wallbox' },
 
   // ---- Decor ----
-  { type: 'rug', name: 'Rug', category: 'Decor', icon: '▦', w: 6, d: 4, h: 0.08, y: 0, color: '#b0503f', mount: 'floor', geo: 'rug' },
+  { type: 'rug', name: 'Rug', category: 'Decor', icon: '▦', w: 6, d: 4, h: 0.08, y: 0, color: '#b0503f', mount: 'floor', geo: 'rug', absorb: 0.28 },
   { type: 'plant-floor', name: 'Potted Plant', category: 'Decor', icon: '🪴', w: 1.5, d: 1.5, h: 4, y: 0, color: '#3f7a48', mount: 'floor', geo: 'plant' },
   { type: 'plant-desk', name: 'Desk Plant', category: 'Decor', icon: '🌱', w: 0.6, d: 0.6, h: 0.9, y: 2.5, color: '#3f7a48', mount: 'floor', geo: 'plant', surface: true },
-  { type: 'aquarium', name: 'Aquarium', category: 'Decor', icon: '🐠', w: 3, d: 1.3, h: 4, y: 0, color: '#3a6a8a', mount: 'floor', geo: 'aquarium' },
+  { type: 'aquarium', name: 'Aquarium', category: 'Decor', icon: '🐠', w: 3, d: 1.3, h: 4, y: 0, color: '#3a6a8a', mount: 'floor', geo: 'aquarium', sound: { kind: 'burble', db: 44, hz: 900, q: 2, dy: 3 } },
   { type: 'pet-cage', name: 'Class Pet Cage', category: 'Decor', icon: '🐹', w: 2.5, d: 1.5, h: 3, y: 0, color: '#8a8f96', mount: 'floor', geo: 'cage' },
   { type: 'poster', name: 'Poster', category: 'Decor', icon: '📃', w: 2, d: 0.05, h: 3, y: 4, color: '#3f6fae', mount: 'wall', geo: 'panel' },
   { type: 'desk-clutter', name: 'Desk Clutter', category: 'Decor', icon: '📝', w: 1.5, d: 1, h: 0.5, y: 2.5, color: '#b0503f', mount: 'floor', geo: 'clutter', surface: true },

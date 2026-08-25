@@ -1540,6 +1540,51 @@ export function initRender(canvas) {
     return mergeGeometries(parts);
   };
 
+  // ---------- Phase 4 builders: the things that make the noise ----------
+
+  // A corridor gong: a domed shell on a backplate with a striker beside it.
+  // The dome is a half-sphere squashed on Y, because a bell shell is wider
+  // than it is deep and a full sphere reads as a ball on the wall.
+  const buildGongbell = (e) => {
+    const metal = tint(e.color, 0.05, -0.1);
+    const r = e.w / 2;
+    const face = e.d * 0.55;
+    return mergeGeometries([
+      box(e.w * 0.95, e.h * 0.95, 0.12, 0, e.h / 2, -e.d / 2 + 0.06, tint(e.color, -0.22)),
+      // The shell: a cone lying on its side, wide at the wall and domed at the
+      // front, with a cap to round the apex off.
+      cylT(r * 0.45, r, face, 18, 0, e.h / 2, face / 2 - e.d * 0.35, e.color, Math.PI / 2),
+      sph(r * 0.45, 0, e.h / 2, face - e.d * 0.35, e.color, 12),
+      // The striker, hanging off the side where a gong's clapper actually is.
+      cyl(0.045, 0.045, e.w * 0.5, 6, r * 0.78, e.h * 0.36, -e.d * 0.1, metal),
+      sph(0.1, r * 0.78, e.h * 0.11, -e.d * 0.1, metal, 8),
+    ]);
+  };
+
+  // A ceiling diffuser is a stepped square cone; the same builder does the
+  // round ceiling speaker, whose grille is a shallow disc in a trim ring.
+  //   style 'speaker'  a round grille rather than a square throw pattern
+  const buildDiffuser = (e) => {
+    const trim = tint(e.color, -0.1);
+    if (e.style === 'speaker') {
+      const r = e.w / 2;
+      return mergeGeometries([
+        cyl(r, r, e.h * 0.35, 20, 0, e.h * 0.82, 0, trim),
+        cyl(r * 0.82, r * 0.82, e.h * 0.3, 20, 0, e.h * 0.45, 0, tint(e.color, -0.3)),
+        cyl(r * 0.34, r * 0.34, e.h * 0.2, 12, 0, e.h * 0.2, 0, trim),
+      ]);
+    }
+    const parts = [box(e.w, e.h * 0.3, e.d, 0, e.h * 0.85, 0, trim)];
+    // Three nested cones stepping down out of the plenum — what a supply
+    // diffuser is, and the reason it whispers rather than roars.
+    for (let i = 0; i < 3; i++) {
+      const k = 1 - (i + 1) * 0.22;
+      parts.push(box(e.w * k, e.h * 0.18, e.d * k, 0, e.h * (0.6 - i * 0.2), 0,
+        tint(e.color, -0.06 - i * 0.06)));
+    }
+    return mergeGeometries(parts);
+  };
+
   // ---------- Phase 1 builders: subject rooms ----------
 
   const buildPiano = (e) => {
@@ -2192,6 +2237,7 @@ export function initRender(canvas) {
     polesign: buildPolesign,
     troffer: buildTroffer, pendant: buildPendant, sconce: buildSconce,
     polelight: buildPolelight,
+    gongbell: buildGongbell, diffuser: buildDiffuser,
   };
 
   // Cached per catalog type (not rebuilt on every edit like the structural

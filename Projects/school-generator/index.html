@@ -241,14 +241,22 @@
     }
     #layers-panel input { accent-color: var(--accent); width: 14px; height: 14px; }
 
-    /* sky panel — the sun's own controls. It sits above the layers panel on
-       the right, and it is the only editor panel that also has something to
-       say in walkthrough (the sun keeps moving while you walk through it), so
-       it is deliberately not in the "hide while walking" list below. */
+    /* The right rail. Two panels want this corner and both of them survive into
+       the walkthrough — the sun keeps moving while you walk through the
+       building, and so does the room you are standing in — so rather than
+       fixing each one to a hand-picked `top`, they stack in a column and the
+       rail is what moves when the topbar goes away. */
+    #right-rail {
+      position: fixed; right: 12px; top: 58px; z-index: 12;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+      max-height: calc(100vh - 130px); overflow-y: auto;
+      pointer-events: none;
+    }
+    #right-rail > * { pointer-events: auto; }
+
+    /* sky panel — the sun's own controls. */
     #env-panel {
-      position: fixed; right: 12px; top: 58px;
-      padding: 10px 12px; z-index: 12; width: 230px;
-      max-height: calc(100vh - 210px); overflow-y: auto;
+      padding: 10px 12px; width: 230px;
     }
     #env-panel h2 {
       font-size: 11px; font-weight: 600; color: var(--text-dim);
@@ -287,7 +295,35 @@
     }
     body[data-mode="walk"].photo #photo-panel { display: block; }
     body.photo #crosshair, body.photo #walk-hud { display: none !important; }
-    body.photo #env-panel { z-index: 16; }
+    body.photo #right-rail { z-index: 16; }
+    /* A photograph is a silent thing. The mix has nothing to say while you are
+       framing one, and the panel is in the way of the sky's. */
+    body.photo #audio-panel { display: none !important; }
+
+    /* sound panel — the mix, and what the room you are standing in does to it.
+       Same rail, same rules as the sky: it is an editor panel that keeps
+       working in the walkthrough, because the acoustics readout is only ever
+       about where you are standing. */
+    #audio-panel { padding: 10px 12px; width: 230px; }
+    #audio-panel h2 {
+      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
+    }
+    #audio-panel label {
+      display: block; font-size: 10.5px; color: var(--text-dim);
+      margin: 9px 0 3px; letter-spacing: 0.02em;
+    }
+    #audio-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
+    #audio-shots { display: flex; gap: 4px; margin-top: 10px; }
+    #audio-shots button { flex: 1; padding: 5px 0; font-size: 11px; }
+    #audio-readout {
+      margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
+      font-size: 10.5px; line-height: 1.65; color: var(--text-dim);
+    }
+    #audio-readout b { color: var(--text); font-weight: 600; }
+    #audio-readout .over { color: #e8a33d; font-weight: 600; }
+    #audio-readout .rooms { margin-top: 6px; }
+    #audio-readout .rooms div { display: flex; justify-content: space-between; gap: 8px; }
     #photo-panel h2 {
       font-size: 11px; font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
@@ -429,11 +465,11 @@
     body[data-mode="walk"] #floor-panel,
     body[data-mode="walk"] #layers-panel,
     body[data-mode="walk"] #status { display: none; }
-    /* The sky panel survives into the walkthrough — scrubbing the hour from
-       inside the building is the whole point of a sun study — but it moves out
-       from under the topbar, which is gone. */
-    body[data-mode="walk"] #env-panel { top: 12px; }
-    body[data-mode="walk"] #env-panel.hidden { display: none !important; }
+    /* The right rail survives into the walkthrough — scrubbing the hour from
+       inside the building is the whole point of a sun study, and the room's
+       reverberation only means anything from inside it — but it moves out from
+       under the topbar, which is gone. */
+    body[data-mode="walk"] #right-rail { top: 12px; max-height: calc(100vh - 80px); }
 
     .hidden { display: none !important; }
     /* Screen-reader-only text: an associated label for a control whose visual
@@ -472,6 +508,7 @@
     <button id="export-btn" title="Printable top-down floor plan (PNG / PDF)">🖨 Export</button>
     <button id="fx-btn" title="Toggle post-processing" aria-pressed="true">FX</button>
     <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true">☀ Sky</button>
+    <button id="audio-btn" title="Sound, and how the room you're in rings (U)" aria-pressed="false">🔊 Sound</button>
     <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)">🚶 Walk Through</button>
   </div>
 
@@ -598,6 +635,7 @@
     <label><input type="checkbox" id="layer-ghost-above" /> Ghost floor above</label>
   </div>
 
+  <div id="right-rail">
   <div id="env-panel" class="panel" role="group" aria-label="Sun and sky">
     <h2>Sun &amp; Sky</h2>
     <div class="env-presets" id="env-presets"></div>
@@ -621,6 +659,21 @@
     <div class="seg" id="env-lights" role="group" aria-label="Interior lights"></div>
 
     <div id="env-readout"></div>
+  </div>
+
+  <div id="audio-panel" class="panel hidden" role="group" aria-label="Sound">
+    <h2>Sound</h2>
+
+    <label for="audio-volume">Volume <span class="env-value" id="audio-volume-value">70%</span></label>
+    <input id="audio-volume" type="range" min="0" max="100" step="1" value="70" />
+
+    <div id="audio-shots">
+      <button id="audio-bell" title="Ring the bell (B)">🔔 Bell</button>
+      <button id="audio-pa" title="Play a PA announcement (N)">📢 PA</button>
+    </div>
+
+    <div id="audio-readout"></div>
+  </div>
   </div>
 
   <div id="photo-panel" class="panel" role="group" aria-label="Photo mode">
@@ -660,6 +713,7 @@
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; <kbd>Shift</kbd> sprint<br />
         <kbd>Space</kbd> jump &nbsp;·&nbsp; <kbd>F</kbd> ghost mode (no-clip, <kbd>Space</kbd>/<kbd>C</kbd> to fly)<br />
         <kbd>E</kbd> ride the elevator you're standing in &nbsp;·&nbsp; <kbd>P</kbd> photo mode<br />
+        <kbd>B</kbd> ring the bell &nbsp;·&nbsp; <kbd>N</kbd> PA announcement &nbsp;·&nbsp; <kbd>U</kbd> sound panel<br />
         <kbd>Esc</kbd> release mouse
       </p>
       <p>
@@ -668,6 +722,13 @@
         walk onto a staircase or a ramp to climb it, step into an elevator and
         press <kbd>E</kbd>, and you'll stop at the edge of a mezzanine rather
         than walk off it.
+      </p>
+      <p>
+        The building has a sound now: your footsteps take their material from
+        the floor finish under them, doors latch and shut, machines hum where
+        they stand, and every room reverberates for as long as its own volume
+        and surfaces say it should. The sound panel (<kbd>U</kbd>) shows the
+        number and holds the volume.
       </p>
       <div class="row">
         <button id="walk-start" class="primary">Click to Walk</button>

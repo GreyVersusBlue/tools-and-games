@@ -32,14 +32,21 @@ import { shapesOf, shapeArea, shapeAt } from './shapes.js';
 // Everything here is a real school flooring product at a real colour: VCT in
 // corridors and classrooms, carpet tile in libraries and offices, ceramic in
 // restrooms, maple in the gym, terrazzo in a lobby that had a budget.
+//
+// Phase 4 of the second arc adds one column: `absorb`, the material's sound
+// absorption coefficient at 500 Hz, out of the same published product tables
+// the colours came from. It lives here rather than in acoustics.js because
+// this is where "what this material is" already lives — a floor finish that
+// says how it looks, how it draws on a plan and how it sounds is one fact in
+// one row, and acoustics.js reads it the way render.js reads `grain`.
 export const FLOOR_FINISHES = [
-  { key: 'vct', label: 'Vinyl tile (VCT)', color: '#d8d4cb', grain: 'tile', tile: 1, hatch: 'grid' },
-  { key: 'carpet', label: 'Carpet tile', color: '#7d8794', grain: 'fiber', tile: 2, hatch: 'dots' },
-  { key: 'tile', label: 'Ceramic tile', color: '#cdd6da', grain: 'tile', tile: 0.667, hatch: 'grid' },
-  { key: 'wood', label: 'Wood (maple)', color: '#c69a5e', grain: 'plank', tile: 1, hatch: 'lines' },
-  { key: 'rubber', label: 'Rubber / sport', color: '#5f6b63', grain: 'speck', tile: 3, hatch: 'dots' },
-  { key: 'concrete', label: 'Sealed concrete', color: '#a9a9a5', grain: 'speck', tile: 4, hatch: 'plain' },
-  { key: 'terrazzo', label: 'Terrazzo', color: '#c3bdb2', grain: 'chip', tile: 3, hatch: 'chips' },
+  { key: 'vct', label: 'Vinyl tile (VCT)', color: '#d8d4cb', grain: 'tile', tile: 1, hatch: 'grid', absorb: 0.03 },
+  { key: 'carpet', label: 'Carpet tile', color: '#7d8794', grain: 'fiber', tile: 2, hatch: 'dots', absorb: 0.30 },
+  { key: 'tile', label: 'Ceramic tile', color: '#cdd6da', grain: 'tile', tile: 0.667, hatch: 'grid', absorb: 0.02 },
+  { key: 'wood', label: 'Wood (maple)', color: '#c69a5e', grain: 'plank', tile: 1, hatch: 'lines', absorb: 0.10 },
+  { key: 'rubber', label: 'Rubber / sport', color: '#5f6b63', grain: 'speck', tile: 3, hatch: 'dots', absorb: 0.06 },
+  { key: 'concrete', label: 'Sealed concrete', color: '#a9a9a5', grain: 'speck', tile: 4, hatch: 'plain', absorb: 0.02 },
+  { key: 'terrazzo', label: 'Terrazzo', color: '#c3bdb2', grain: 'chip', tile: 3, hatch: 'chips', absorb: 0.02 },
 ];
 
 export const FINISH_KEYS = FLOOR_FINISHES.map((f) => f.key);

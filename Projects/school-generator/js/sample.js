@@ -189,6 +189,25 @@ export function buildSampleSchool() {
   addProp(s, 'light-pole', { x: 12, z: 74, floor: 0 });
   addProp(s, 'light-pole', { x: 12, z: 106, floor: 0 });
 
+  // Phase 4 of the second arc: the things that make the noise, so the sample
+  // school has something to *hear* the moment somebody presses B — the same
+  // argument the troffers above got for the sun. Everything here is on the
+  // hall's north wall (z = 52) or the ceiling above it, facing south into the
+  // hall at rotationY 0.
+  const facingSouth = 0;
+  addProp(s, 'bell-corridor', { x: 56, z: 52.3, y: 8.4, rotationY: facingSouth, mount: 'wall', floor: 0 });
+  addProp(s, 'speaker-pa', { x: 100, z: 52.3, y: 8, rotationY: facingSouth, mount: 'wall', floor: 0 });
+  addProp(s, 'fountain', { x: 84, z: 53.2, rotationY: facingSouth, floor: 0 });
+  addProp(s, 'vending', { x: 118, z: 53.6, rotationY: facingSouth, floor: 0 });
+  addProp(s, 'clock-wall', { x: 40, z: 51.7, y: 7, rotationY: facingNorth, mount: 'wall', floor: 0 });
+  addProp(s, 'diffuser-hvac', { x: 38, z: 41, y: 9.6, mount: 'ceiling', floor: 0 });
+  addProp(s, 'diffuser-hvac', { x: 40, z: 54, y: 9.6, mount: 'ceiling', floor: 0 });
+  // ...and two panels of the one product that makes a room quieter, on the
+  // wall of the loudest room in the building. Walk in, look at the sound
+  // panel, delete them, and watch the number go up.
+  addProp(s, 'panel-acoustic', { x: 32, z: 52.3, y: 3, rotationY: facingSouth, mount: 'wall', floor: 0 });
+  addProp(s, 'panel-acoustic', { x: 128, z: 52.3, y: 3, rotationY: facingSouth, mount: 'wall', floor: 0 });
+
   buildUpperLevel(s);
   s.currentFloor = 0;   // open on the ground floor whatever the builder left
   return s;
@@ -233,6 +252,11 @@ function buildUpperLevel(s) {
   assignRoom(up, 8, 14, 'Upper Hall', '#e9e4da', 'terrazzo');
   assignRoom(up, 10, 18, 'Room 205', ROOM_COLORS[5]);
   assignRoom(up, 24, 18, 'Room 206', ROOM_COLORS[6]);
+
+  // The upper hall gets its own speaker — a PA that only reaches one storey is
+  // half a PA, and it is the second source in the design far enough from the
+  // first to prove the slab between them costs something.
+  addProp(s, 'speaker-pa', { x: 60, z: 52.3, y: 8, rotationY: 0, mount: 'wall', floor: at });
 
   // The stair: bottom step at (110, 40) in the ground-floor stair hall, climbing
   // east. Its run and the opening it cuts upstairs both come out of stairs.js —
