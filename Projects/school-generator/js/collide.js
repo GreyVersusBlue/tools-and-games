@@ -226,7 +226,15 @@ export function propObstacles(state, floorIndex, catalogGet) {
     const scale = (typeof p.scale === 'number' && p.scale > 0) ? p.scale : 1;
     if ((entry.h || 0) * scale < MIN_OBSTACLE_H) continue;
     const { hw, hd } = footprintOf(entry, p);
-    out.push({ x: p.x, z: p.z, hw, hd, rotationY: p.rotationY || 0, type: p.type });
+    // `id` and `light` are Phase 11's: an obstacle that can be shoved has to
+    // be traceable back to the prop it came from (so the renderer can move the
+    // right instance) and has to say how easily it goes. Everything else here
+    // reads the obstacle as it always did, and a row with no `light` field is
+    // exactly as immovable as it was.
+    out.push({
+      id: p.id, x: p.x, z: p.z, hw, hd, rotationY: p.rotationY || 0, type: p.type,
+      light: entry.light,
+    });
   }
   return out;
 }
@@ -385,6 +393,29 @@ export function buildIndex(segs, props, cell = INDEX_CELL) {
       }
       return { segs: outSegs, props: outProps };
     },
+    // Phase 11: one prop has moved, so its buckets are wrong. Pull index `i`
+    // out of the cells its old extent covered and drop it into the cells its
+    // new one does. Called only when something is actually shoved, which is a
+    // handful of props over a whole walk rather than every prop every frame —
+    // so a splice out of a short array is the right cost, and rebuilding the
+    // whole index for a chair would not be.
+    reindex(i, from, to) {
+      const drop = (x, z, r) => {
+        const cx0 = Math.floor((x - r) / cell), cx1 = Math.floor((x + r) / cell);
+        const cz0 = Math.floor((z - r) / cell), cz1 = Math.floor((z + r) / cell);
+        for (let cx = cx0; cx <= cx1; cx++) {
+          for (let cz = cz0; cz <= cz1; cz++) {
+            const b = buckets.get(key(cx, cz));
+            if (!b) continue;
+            const at = b.props.indexOf(i);
+            if (at >= 0) b.props.splice(at, 1);
+          }
+        }
+      };
+      drop(from.x, from.z, Math.hypot(from.hw, from.hd));
+      const r = Math.hypot(to.hw, to.hd);
+      spread('props', to.x - r, to.z - r, to.x + r, to.z + r, i);
+    },
   };
 }
 
@@ -421,7 +452,7 @@ export function updateDoorsFor(collider, bodies, dt, opts = {}) {
 
 // Push a circle out of one rotated box, in the box's own frame (the prop
 // rotation convention, shared with propplace.js and stairs.js).
-function pushOutOfBox(obj, x, z, r) {
+export function pushOutOfBox(obj, x, z, r) {
   const c = Math.cos(obj.rotationY || 0), s = Math.sin(obj.rotationY || 0);
   const wx = x - obj.x, wz = z - obj.z;
   const lx = wx * c - wz * s, lz = wx * s + wz * c;
@@ -461,7 +492,7 @@ export function doorSegments(collider) {
   return out;
 }
 
-function pushOutOfSeg(s, px, pz, r) {
+export function pushOutOfSeg(s, px, pz, r) {
   const wallR = r + (s.pad ?? WALL_PAD);
   const c = closestOnSeg(s.ax, s.az, s.bx, s.bz, px, pz);
   if (c.d >= wallR) return null;

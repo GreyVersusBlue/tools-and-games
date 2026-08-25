@@ -10,6 +10,7 @@ import { totalShapeArea } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
 import { catalogByCategory, catalogEntry, PROP_PAINTS } from './catalog.js';
 import { DECOR_PACKS, packByKey, packPaint, packTypes } from './decor.js';
+import { MAX_SHOVE } from './shove.js';
 import { ROOM_TEMPLATES } from './templates.js';
 import { initRender } from './render.js';
 import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
@@ -195,6 +196,12 @@ const audio = initAudio(renderApi.walkCamera, { catalogEntry });
 // diff; this only holds the map.
 let doorState = new Map();
 
+// How often a shove is allowed to make a noise, and how far something has to
+// have gone to count as one. See `onShove` below.
+const SCOOT_GAP = 130;      // ms
+const SCOOT_MIN = 0.02;     // ft in one frame
+let lastScoot = 0;
+
 const walk = initWalkthrough(renderApi.walkCamera, canvas, {
   onHud: (text) => { walkHud.textContent = text; },
   // The leaves the walker is being stopped by are the leaves the renderer
@@ -216,6 +223,27 @@ const walk = initWalkthrough(renderApi.walkCamera, canvas, {
   onStep: (spec, at, force, landing) => {
     if (landing) audio.land(spec, at, force);
     else audio.step(spec, at);
+  },
+  // Phase 11: the chair you just walked into. shove.js has already decided
+  // what went where and refused anything that wouldn't fit; this moves the
+  // instances and, when something travelled far enough to hear, scrapes.
+  //
+  // The scrape is throttled rather than played per prop per frame: a shove
+  // lasts as long as you keep walking, and sixty scrapes a second is a
+  // machine shop. One voice every eighth of a second, from the piece that
+  // moved furthest, is a chair sliding.
+  onShove: (list) => {
+    renderApi.moveProps(list);
+    let far = list[0], best = -1;
+    for (const m of list) {
+      const d = Math.hypot(m.dx, m.dz);
+      if (d > best) { best = d; far = m; }
+    }
+    const now = performance.now();
+    if (best < SCOOT_MIN || now - lastScoot < SCOOT_GAP) return;
+    lastScoot = now;
+    audio.scoot({ x: far.x, y: renderApi.walkCamera.position.y - 4, z: far.z },
+      best / MAX_SHOVE);
   },
 });
 

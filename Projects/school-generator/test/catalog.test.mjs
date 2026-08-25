@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { MOUNTS } from '../js/props.js';
+import { MIN_OBSTACLE_H } from '../js/collide.js';
 import { WALL_H, FLOOR_H } from '../js/grid.js';
 import {
   CATEGORIES, GEO_KEYS, PROP_CATALOG, PROP_PAINTS,
@@ -156,4 +157,18 @@ test('cleanData keeps a colour through a normalize round trip', () => {
   // before anybody read it, and it still has to survive a save and a load.
   const p = normalizeProp({ type: 'student-chair', data: { color: '#c0392b' } });
   assert.equal(normalizeProp(JSON.parse(JSON.stringify(p))).data.color, '#c0392b');
+});
+
+test('every row a person can shove is a row a person can walk into', () => {
+  // A `light` flag on a wall mount, or on something short enough to step
+  // over, is dead data: `propObstacles` never offers it to shove.js, so the
+  // flag would promise a bump that can't happen.
+  for (const e of PROP_CATALOG) {
+    if (e.light === undefined) continue;
+    assert.ok(e.light === true || (typeof e.light === 'number' && e.light > 0 && e.light <= 1),
+      `${e.type}'s light is neither true nor a weight in 0..1`);
+    assert.equal(e.mount, 'floor', `${e.type} is not on the floor to be walked into`);
+    assert.ok(e.h >= MIN_OBSTACLE_H, `${e.type} is short enough to walk over`);
+    assert.ok(!e.surface, `${e.type} sits on furniture — shoving it would slide it through the air`);
+  }
 });

@@ -43,6 +43,7 @@ import {
   GRAVITY, TERMINAL_V, JUMP_V, STEP_UP,
   buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoorsFor,
 } from './collide.js';
+import { shoveProps } from './shove.js';
 import { lookEulerDelta } from './touch.js';
 import { stickVector, turnStep, XR_SPEED, XR_SPRINT, SNAP_ANGLE } from './xr.js';
 
@@ -314,6 +315,17 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     const walked = Math.hypot(moved.x - body.x, moved.z - body.z);
     body.x = moved.x;
     body.z = moved.z;
+
+    // Phase 11: and what you walked into, walks away. `moveWalker` has already
+    // decided where you end up — a chair never gets to stop you and get shoved
+    // in the same frame — so this runs after it and reads the position you
+    // actually reached. It answers on the storey you're on, and only when your
+    // feet are near the floor: a chair on the level below shouldn't scatter
+    // because somebody flew over it in ghost mode.
+    if (grounded && opts.onShove) {
+      const shoved = shoveProps(collider, body.x, body.z);
+      if (shoved.length) opts.onShove(shoved, floorIndex);
+    }
 
     // Vertical. `support` came back from the same query that vetted the step,
     // so standing and walking agree about what the floor is.

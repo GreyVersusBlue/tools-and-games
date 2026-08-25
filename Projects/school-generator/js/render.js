@@ -882,9 +882,62 @@ export function initRender(canvas) {
     }
   }
 
+  // Phase 11: re-pose the instances a walker has shoved. `list` is shove.js's
+  // own output — the obstacle records it moved — and nothing about the design
+  // has changed, which is exactly why this exists: a rebuild would put every
+  // chair back, because `state.props` never learned that any of them moved.
+  function moveProps(list) {
+    if (!list || !list.length) return 0;
+    let n = 0;
+    for (const m of list) {
+      const inst = propInstances.get(m.id);
+      if (!inst) continue;
+      _dummy.position.set(m.x, inst.y, m.z);
+      _dummy.rotation.set(0, m.rotationY || 0, 0);
+      _dummy.scale.set(inst.scale, inst.scale, inst.scale);
+      _dummy.updateMatrix();
+      inst.mesh.setMatrixAt(inst.idx, _dummy.matrix);
+      inst.mesh.instanceMatrix.needsUpdate = true;
+      if (inst.lens) {
+        inst.lens.setMatrixAt(inst.idx, _dummy.matrix);
+        inst.lens.instanceMatrix.needsUpdate = true;
+      }
+      shoved.add(m.id);
+      n++;
+    }
+    return n;
+  }
+
+  // Put them all back. A shove lives as long as the walk does and not a frame
+  // longer — coming back to the plan and finding the furniture rearranged
+  // would be a lie about a file that never changed.
+  function restoreProps() {
+    if (!shoved.size) return 0;
+    let n = 0;
+    for (const id of shoved) {
+      const inst = propInstances.get(id);
+      if (!inst) continue;
+      _dummy.position.set(inst.x, inst.y, inst.z);
+      _dummy.rotation.set(0, inst.rotationY, 0);
+      _dummy.scale.set(inst.scale, inst.scale, inst.scale);
+      _dummy.updateMatrix();
+      inst.mesh.setMatrixAt(inst.idx, _dummy.matrix);
+      inst.mesh.instanceMatrix.needsUpdate = true;
+      if (inst.lens) {
+        inst.lens.setMatrixAt(inst.idx, _dummy.matrix);
+        inst.lens.instanceMatrix.needsUpdate = true;
+      }
+      n++;
+    }
+    shoved.clear();
+    return n;
+  }
+
   function setMode(m) {
     mode = m;
     const edit = m === 'edit';
+    // Everything the walker pushed around goes back where it was drawn.
+    if (edit) restoreProps();
     // Photo mode is a walkthrough affordance; going back to the plan puts the
     // ordinary walk lens back so the next walk doesn't start at 24mm.
     if (edit && photo.on) photo.on = false;
@@ -3848,6 +3901,13 @@ export function initRender(canvas) {
   // Mesh per prop. Rebuilt alongside the structural meshes on every edit;
   // only the (cached, shared) geometry survives the rebuild.
   const _dummy = new THREE.Object3D();
+  // Phase 11: which instance of which mesh a given prop id is, so a chair that
+  // has been shoved can be re-posed without rebuilding the storey it is on.
+  // Filled by `buildPropsGroup` and thrown away with the meshes it points at;
+  // `restoreProps` below is what puts everything back, because a shove is a
+  // fact about the walk rather than about the design.
+  const propInstances = new Map();
+  const shoved = new Set();
   function buildPropsGroup(state, floorIndex, baseY, group, field = null) {
     // Bucketed by type *and* colour variant since Phase 11: two instanced
     // meshes share a draw call only if they share geometry, and a recoloured
@@ -3900,6 +3960,16 @@ export function initRender(canvas) {
         _dummy.updateMatrix();
         mesh.setMatrixAt(idx, _dummy.matrix);
         if (lens) lens.setMatrixAt(idx, _dummy.matrix);
+        // Only the rows a person can actually shove are worth remembering; a
+        // building of two thousand desks shouldn't carry two thousand map
+        // entries for a feature none of them take part in.
+        if (entry.light !== undefined) {
+          propInstances.set(p.id, {
+            mesh, lens, idx,
+            y: baseY + (p.y || 0) + lift, scale: s,
+            x: p.x, z: p.z, rotationY: p.rotationY || 0,
+          });
+        }
       });
       mesh.instanceMatrix.needsUpdate = true;
       group.add(mesh);
@@ -4691,6 +4761,9 @@ export function initRender(canvas) {
     const plan = buildRoofGroup(state);
     // Pivots are per-build: the Groups they point at are about to be disposed.
     doorPivots.clear();
+    // ...and so are the prop instances a shove would move.
+    propInstances.clear();
+    shoved.clear();
     state.floors.forEach((floor, i) => {
       const group = new THREE.Group();
       const ceil = new THREE.Group();
@@ -4985,6 +5058,9 @@ export function initRender(canvas) {
     renderer, scene, editCamera, walkCamera, editView,
     buildFromState, applyFloorVisibility, fitEditView, applyEditCamera,
     setMode, resize, render,
+    // --- Phase 11: the furniture you walked into ---
+    moveProps, restoreProps,
+    get shovedCount() { return shoved.size; },
     // --- Phase 3: sun, sky and the building's own lights ---
     //
     // `setEnvironment` is the one write; everything else reads back what it
