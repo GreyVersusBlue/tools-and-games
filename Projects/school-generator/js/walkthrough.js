@@ -255,6 +255,16 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   return {
     controls,
     get ghost() { return ghost; },
+    // Photo mode flies rather than walks — a camera that has to take the
+    // stairs can't be put where a photograph wants it — so it needs to set
+    // the ghost flag rather than ask the user to remember F.
+    setGhost(on) {
+      if (ghost === !!on) return;
+      ghost = !!on;
+      vy = 0;
+      grounded = false;
+      reportHud();
+    },
     get touchActive() { return touchActive; },
     enable(state) {
       active = true;

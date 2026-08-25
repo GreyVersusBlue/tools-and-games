@@ -14,6 +14,10 @@ import { initRender } from './render.js';
 import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
 import { stairMetrics, linksFrom, elevatorsOn, RAMP_SLOPES } from './stairs.js';
 import { FLOOR_FINISHES, DEFAULT_FINISH } from './finish.js';
+import {
+  SUN_PRESETS, MONTH_NAMES, MAX_LAT, normalizeEnv, presetMinutes, daysInMonth,
+  formatClock, formatDate, formatLat, skyState,
+} from './sky.js';
 import { initWalkthrough } from './walkthrough.js';
 import {
   downloadSave, loadFromFile, autosave, autosaveNow, loadAutosave, clearAutosave,
@@ -72,6 +76,9 @@ const editor = initEditor({
     updateUndoButtons();
     renderFloorList();
     renderStairReadout();
+    // Placing or deleting a fixture changes what the light budget is doing,
+    // and the sky panel is the only place that says so.
+    renderEnvReadout();
   },
   // The polygon tools have more to say than a fixed per-tool hint — how many
   // corners are down, how big the room is — so they drive the status line.
@@ -186,6 +193,7 @@ function setMode(m) {
     closeModal($('export-overlay'));
     $('mode-btn').textContent = '✏️ Edit Mode';
   } else {
+    setPhotoMode(false);
     walk.disable();
     closeModal(walkOverlay);
     document.body.classList.remove('touch-walk');
@@ -210,7 +218,9 @@ $('touch-exit').addEventListener('click', () => setMode('edit'));
 
 walk.controls.addEventListener('lock', () => closeModal(walkOverlay));
 walk.controls.addEventListener('unlock', () => {
-  if (mode === 'walk') openModal(walkOverlay, $('walk-start'));
+  // In photo mode the released pointer is the point — you let it go to reach
+  // the lens controls — so the overlay stays down.
+  if (mode === 'walk' && !photoMode) openModal(walkOverlay, $('walk-start'));
 });
 
 // --- tool buttons ---
@@ -669,6 +679,7 @@ $('file-input').addEventListener('change', async (e) => {
     editor.refreshOverlay();
     renderFloorList();
     renderStairReadout();
+    renderEnvPanel();
     autosaveNow(state);
     updateUndoButtons();
   } catch (err) {
@@ -721,6 +732,7 @@ function renderDesignsList() {
         editor.refreshOverlay();
         renderFloorList();
         renderStairReadout();
+        renderEnvPanel();
         autosaveNow(state);
         updateUndoButtons();
         designsOverlay.classList.add('hidden');
@@ -840,6 +852,7 @@ $('new-btn').addEventListener('click', () => {
   editor.refreshOverlay();
   renderFloorList();
   renderStairReadout();
+  renderEnvPanel();
   updateUndoButtons();
 });
 
@@ -866,6 +879,220 @@ for (const [id, key] of LAYER_CHECKBOXES) {
   $(id).addEventListener('change', (e) => renderApi.setLayers({ [key]: e.target.checked }));
 }
 
+// --- sky panel: the sun, the date and the building's own lights ---
+//
+// Everything here writes one field on `state.env` and then asks the renderer to
+// re-light the scene. Nothing rebuilds geometry: the sun is a light, not a
+// wall, so a scrub through an afternoon is a couple of uniform writes a frame
+// and the building itself is never touched. That is what makes the time slider
+// a *scrub* rather than a stepped preview, which was the point of the phase.
+const envPanel = $('env-panel');
+
+// A sky change is a change to the design (it saves, it's in the file), but it
+// is not an undoable *edit* the way drawing a wall is — nobody wants Ctrl+Z to
+// walk backwards through the sixty positions a slider passed through. So it
+// autosaves and skips the undo stack, the same call floor switching makes.
+function envChanged() {
+  state.env = normalizeEnv(state.env);
+  renderApi.setEnvironment(state.env);
+  renderEnvPanel();
+  autosave(state);
+}
+
+const envPresets = $('env-presets');
+SUN_PRESETS.forEach((p) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.preset = p.key;
+  b.title = `Jump to ${p.label.toLowerCase()} on this date, at this latitude`;
+  b.innerHTML = `<span aria-hidden="true">${p.icon}</span> ${p.label}`;
+  b.addEventListener('click', () => {
+    state.env.minutes = presetMinutes(p.key, state.env);
+    envChanged();
+    $('status').textContent =
+      `Sky — ${p.label.toLowerCase()}, ${formatClock(state.env.minutes)} on ${formatDate(state.env.month, state.env.day)}.`;
+  });
+  envPresets.appendChild(b);
+});
+
+const envMonth = $('env-month');
+MONTH_NAMES.forEach((name, i) => {
+  const o = document.createElement('option');
+  o.value = String(i + 1);
+  o.textContent = name;
+  envMonth.appendChild(o);
+});
+
+envMonth.addEventListener('change', (e) => {
+  state.env.month = Number(e.target.value);
+  // February 30th isn't a date. `normalizeEnv` would clamp it anyway, but
+  // moving the slider's own maximum keeps the control honest about it.
+  state.env.day = Math.min(state.env.day, daysInMonth(state.env.month));
+  envChanged();
+});
+$('env-day').addEventListener('input', (e) => {
+  state.env.day = Number(e.target.value);
+  envChanged();
+});
+$('env-time').addEventListener('input', (e) => {
+  state.env.minutes = Number(e.target.value);
+  envChanged();
+});
+$('env-lat').addEventListener('input', (e) => {
+  state.env.lat = Number(e.target.value);
+  envChanged();
+});
+$('env-north').addEventListener('input', (e) => {
+  state.env.north = Number(e.target.value);
+  envChanged();
+});
+
+const LIGHT_MODE_BUTTONS = [
+  { mode: 'auto', label: 'Auto', title: 'On when the sun is down' },
+  { mode: 'on', label: 'On', title: 'Always burning' },
+  { mode: 'off', label: 'Off', title: 'Never burning' },
+];
+const envLights = $('env-lights');
+LIGHT_MODE_BUTTONS.forEach((m) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.mode = m.mode;
+  b.textContent = m.label;
+  b.title = m.title;
+  b.addEventListener('click', () => {
+    state.env.lights = m.mode;
+    envChanged();
+  });
+  envLights.appendChild(b);
+});
+
+// The controls, told what the state says. Called after every change (including
+// a file load) so the panel can never disagree with the design.
+function renderEnvPanel() {
+  const env = state.env;
+  $('env-time').value = String(env.minutes);
+  $('env-time-value').textContent = formatClock(env.minutes);
+  envMonth.value = String(env.month);
+  $('env-day').max = String(daysInMonth(env.month));
+  $('env-day').value = String(env.day);
+  $('env-date-value').textContent = formatDate(env.month, env.day);
+  $('env-lat').value = String(Math.round(env.lat));
+  $('env-lat-value').textContent = formatLat(env.lat);
+  $('env-north').value = String(Math.round(env.north / 5) * 5);
+  $('env-north-value').textContent = `${Math.round(env.north)}°`;
+  for (const b of envLights.children) {
+    const on = b.dataset.mode === env.lights;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+  renderEnvReadout();
+}
+
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const bearingName = (deg) => COMPASS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+
+// What the numbers actually mean, in words. The sun's own position, when it
+// rises and sets on this date, and — the part that justifies having written a
+// budget at all — how many of the design's fixtures are real lights right now.
+function renderEnvReadout() {
+  const sky = skyState(state.env);
+  const t = sky.times;
+  const daylight = t.sunrise === null
+    ? (t.polar === 'day' ? 'Sun never sets here today' : 'Sun never rises here today')
+    : `Sunrise ${formatClock(t.sunrise)} · sunset ${formatClock(t.sunset)}`;
+  // The light budget, in the terms the panel can be honest about: how many
+  // fixtures the design holds, how few lights they cluster down to, and how
+  // many of those the renderer will make real at once. The last line says
+  // whether any of it is switched on, since in daylight the answer is none.
+  const lights = renderApi.lightReport();
+  const burning = lights.burning
+    ? `${lights.lit} lit here now`
+    : (sky.daylight ? 'off — daylight' : 'off');
+  const fixtures = lights.sources
+    ? `${lights.sources} fixture${lights.sources === 1 ? '' : 's'} · ` +
+      `${lights.clustered} group${lights.clustered === 1 ? '' : 's'}, ${lights.cap} live at once · ${burning}`
+    : `No fixtures placed — the ceiling's own troffers are ${lights.burning ? 'on' : 'off'}.`;
+  $('env-readout').innerHTML =
+    `<b>${sky.phase}</b><br />` +
+    `Sun ${sky.sun.altitude.toFixed(0)}° up, bearing ${sky.sun.azimuth.toFixed(0)}° (${bearingName(sky.sun.azimuth)})<br />` +
+    `${daylight}<br />` +
+    `Plan north points ${bearingName(state.env.north)}<br />` +
+    `${fixtures}`;
+}
+
+$('env-btn').addEventListener('click', () => {
+  const hidden = envPanel.classList.toggle('hidden');
+  $('env-btn').classList.toggle('off', hidden);
+  $('env-btn').setAttribute('aria-pressed', String(!hidden));
+});
+
+// --- photo mode ---
+//
+// A walkthrough affordance, not an editor one: it takes the walker off its
+// feet (free flight), takes the HUD and the crosshair off the screen, and puts
+// a lens on the camera. None of it is saved with the design — a photograph is
+// not part of the building.
+let photoMode = false;
+
+function setPhotoMode(on) {
+  if (on === photoMode) return;
+  if (on && mode !== 'walk') return;
+  photoMode = on;
+  document.body.classList.toggle('photo', on);
+  walk.setGhost(on);
+  renderApi.setPhoto({ on });
+  if (on) {
+    // The panel is unreachable behind a locked pointer, so entering photo mode
+    // releases it and — unlike every other unlock — does *not* raise the walk
+    // overlay over the controls you just asked for.
+    if (walk.controls.isLocked) walk.controls.unlock();
+    closeModal(walkOverlay);
+    renderPhotoPanel();
+  } else if (mode === 'walk' && !isTouch && !walk.controls.isLocked) {
+    openModal(walkOverlay, $('walk-start'));
+  }
+}
+
+function renderPhotoPanel() {
+  const p = renderApi.photo;
+  $('photo-fov').value = String(Math.round(p.fov));
+  $('photo-fov-value').textContent = `${Math.round(p.fov)}°`;
+  $('photo-focus').value = String(Math.round(p.focus));
+  $('photo-focus-value').textContent = `${Math.round(p.focus)} ft`;
+  $('photo-aperture').value = String(p.aperture);
+  $('photo-aperture-value').textContent = `f/${p.aperture.toFixed(1)}`;
+  $('photo-dof').checked = p.dof;
+  $('photo-exposure').value = String(renderApi.exposureBias);
+  $('photo-exposure-value').textContent = `${renderApi.exposureBias.toFixed(2)}×`;
+}
+
+$('photo-fov').addEventListener('input', (e) => {
+  renderApi.setPhoto({ fov: Number(e.target.value) });
+  renderPhotoPanel();
+});
+$('photo-focus').addEventListener('input', (e) => {
+  renderApi.setPhoto({ focus: Number(e.target.value) });
+  renderPhotoPanel();
+});
+$('photo-aperture').addEventListener('input', (e) => {
+  renderApi.setPhoto({ aperture: Number(e.target.value) });
+  renderPhotoPanel();
+});
+$('photo-dof').addEventListener('change', (e) => {
+  renderApi.setPhoto({ dof: e.target.checked });
+  renderPhotoPanel();
+});
+$('photo-exposure').addEventListener('input', (e) => {
+  renderApi.exposureBias = Number(e.target.value);
+  renderPhotoPanel();
+});
+for (const [id, scale] of [['photo-1x', 1], ['photo-2x', 2], ['photo-4x', 4]]) {
+  $(id).addEventListener('click', () => {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    renderApi.downloadCapture(scale, `school-photo-${stamp}.png`);
+  });
+}
+
 // --- keyboard shortcuts ---
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && !designsOverlay.classList.contains('hidden')) {
@@ -874,8 +1101,20 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && !exportOverlay.classList.contains('hidden')) {
     closeModal(exportOverlay); return;
   }
-  const typing = e.target.tagName === 'INPUT';
+  // A shortcut must never fire while somebody is filling in a field — and the
+  // sky panel added the first <select> to the page, so this can't just be
+  // "is it an input?" any more.
+  const typing = e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' ||
+    e.target.tagName === 'TEXTAREA';
   if (e.code === 'Tab' && !typing) { e.preventDefault(); setMode(mode === 'edit' ? 'walk' : 'edit'); return; }
+  // Two shortcuts that belong to the view rather than to a tool, so they work
+  // in both modes: the sky panel, and photo mode (walkthrough only — there is
+  // nothing to photograph from 200ft above a floor plan).
+  if (e.code === 'KeyY' && !typing && !e.ctrlKey && !e.metaKey) { $('env-btn').click(); return; }
+  if (e.code === 'KeyP' && !typing && !e.ctrlKey && !e.metaKey && mode === 'walk') {
+    setPhotoMode(!photoMode);
+    return;
+  }
   if (mode !== 'edit' || typing) return;
   // Enter / Escape / Backspace / Delete belong to the polygon tools while one
   // of them is holding an outline or a selection.
@@ -935,8 +1174,13 @@ function loop() {
 selectTool('floor');
 renderFloorList();
 renderStairReadout();
+renderEnvPanel();
 updateUndoButtons();
 loop();
 
 // debug/test hook
-window.app = { get state() { return state; }, setMode, renderApi, editor, walk };
+window.app = {
+  get state() { return state; },
+  setMode, renderApi, editor, walk,
+  setPhotoMode, envChanged,
+};

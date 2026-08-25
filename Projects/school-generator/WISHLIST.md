@@ -25,7 +25,12 @@ the right phase rather than starting a second list.
 plus a `node --test` suite per pure module in `test/`. Phase 2 of the
 second arc adds three more pure modules on the same terms —
 `js/openings.js` (door leaves, swing, window bands), `js/walls.js`
-(derived wall thickness) and `js/finish.js` (floor material, wall paint).)
+(derived wall thickness) and `js/finish.js` (floor material, wall paint).
+Phase 3 adds two more — `js/sky.js` (solar position, the sky palette, the
+environment record) and `js/lights.js` (which props emit, and the clustering
+and cap that decide which of them the GPU actually carries) — plus the one
+piece of this arc that isn't a module or a tool: a hand-written
+`libs/addons/postprocessing/DepthOfFieldPass.js`.)
 
 - **Units are feet, everywhere.** 4ft grid cells (`CELL`), 10ft walls
   (`WALL_H`), 12ft floor-to-floor (`FLOOR_H`), max 8 storeys. Props, polygon
@@ -436,17 +441,21 @@ path or a collider invalidation hook.
 - **Curved walls in the collider are chords**, so a walker feels the facets
   of a tight arc. At 2ft chords nobody has noticed.
 
-## Phase 3 — Light, sky & atmosphere
+## Phase 3 — Light, sky & atmosphere ✅
 
-- [ ] A sun with a position: date/time/latitude controls, real shadows,
+The fixed three-light rig becomes a sky with a sun in it. **Done** — save
+format v6, two new pure modules (`js/sky.js`, `js/lights.js`), one new
+post-processing addon, eleven new catalog rows, and 326 tests.
+
+- [x] A sun with a position: date/time/latitude controls, real shadows,
   and a sun-study scrub (drag the hour, watch the light move through the
   Phase 2 windows).
-- [ ] Day/night cycle with dusk/night presets; the building's own lights
+- [x] Day/night cycle with dusk/night presets; the building's own lights
   take over after dark.
-- [ ] Placeable light fixtures that actually emit (classroom troffers,
+- [x] Placeable light fixtures that actually emit (classroom troffers,
   pendants, the existing floor lamp) — with a budget strategy, since
   three.js point/spot counts are finite: bake or cluster beyond a cap.
-- [ ] Photo mode: free camera, FOV/DoF controls, hide-HUD, one-click
+- [x] Photo mode: free camera, FOV/DoF controls, hide-HUD, one-click
   high-res capture (the blueprint's offscreen-canvas trick, aimed at the
   3D scene).
 
@@ -454,6 +463,134 @@ path or a collider invalidation hook.
 in `render.js`; shadows × merged-mesh scale needs care (one shadow map, few
 casters); the bloom/SSAO chain already in `libs/addons/` is the foundation,
 not the obstacle.
+
+### How it actually landed
+
+- **The sun is real astronomy, and it was the cheap part.** Spencer's series
+  for declination and the equation of time, the standard hour-angle
+  altitude/azimuth pair, and the sunrise/sunset roots of the same equation —
+  about eighty lines, no dependencies, accurate to a hundredth of a degree.
+  A slider that just swings a light around would have been *more* code than
+  this once it grew a sunrise marker and a "which way does this classroom
+  face" answer. And it pays for itself immediately: the sun tracks low and
+  south in January and high and long in June, sunrise drifts through the
+  year, the panel can print *Sunrise 8:45 am · sunset 3:12 pm* at 58°N in
+  December and be right, and Phase 7's "does this room get morning sun?" now
+  has a number under it rather than a vibe.
+- **The palette is keyed on the sun's altitude, not on the clock.** One
+  seven-keyframe table serves a December afternoon in Oslo and a June
+  morning in Quito with no special cases, because altitude is what the sky
+  actually responds to. The `day` keyframe is *the Phase 2 fixed rig, to the
+  digit* — same sky blue, same hemisphere and ambient levels, same warm sun —
+  which is what makes the whole phase additive: the default environment
+  resolves to it, so an old design opens looking exactly as it did and simply
+  gains a clock you can now move. There is a test that holds those seven
+  numbers in place.
+- **v6 round-trips a v5 file byte for byte**, the same way v5 did v4:
+  `serialize()` drops `env` entirely when it is the default. Fourth format
+  bump, fourth time nobody loses anything.
+- **Lighting is catalog data, and the output is in lumens.** A row with an
+  `emit` block is a light; a row without one is furniture, however
+  lamp-shaped. A 2x4 troffer says 4,000lm, a gym high bay 20,000, a
+  parking-lot pole 12,000 — real product figures, converted to candela by
+  the physics (`lm / 4π`) with exactly one artistic constant on the end.
+  Phase 1 committed to real dimensions; there was no reason lighting should
+  be the exception, and stating the fact rather than a taste made the
+  brightness tuning a single number instead of eleven.
+- **The budget is two stages and the first one does the work.** A classroom
+  is eight troffers; as eight point lights that is eight times the cost for a
+  result nobody can tell from one brighter light in the middle of the
+  ceiling. So co-located fixtures cluster into one source at their
+  lumen-weighted centroid, and only then does the nearest-`cap` ranking run.
+  A hundred-fixture school comes out under twenty clusters. What doesn't make
+  the cut isn't dropped: its lumens fold into a flat fill, which is the
+  "bake" half of the strategy.
+- **The pool is fixed-size, not grown on demand.** three.js compiles a shader
+  program per light count, so a pool that resizes stalls on a recompile every
+  time the walker turns a corner — the exact moment you least want a hitch.
+  Twelve lights, allocated once, unused ones sitting at intensity 0.
+- **Depth of field is ~130 lines rather than vendored.** three.js ships
+  `BokehPass`, but this repo carries only the addons it uses, and the
+  requirement here is narrower — one focus plane, one aperture, no bokeh
+  shape. `DepthOfFieldPass` reuses the same "render the scene again into my
+  own target for its depth" trick `SSAOPass` was already doing in that
+  directory, and only exists while photo mode is open.
+- **Fifth time this codebase derived instead of stored.** Wall thickness,
+  stair cuts, guardrails, blueprint symbols — and now the sun's direction,
+  the shadow frustum's size, whether the lights are burning, and which of
+  them are real. The environment record holds six numbers a person chose;
+  everything else in the lighting rig is computed from them on demand.
+
+### What fought back
+
+- **Turning a fill light's *intensity* up is not the same as making it
+  brighter**, and that cost two rounds. The night ambient colour is nearly
+  black by design, so raising its level produces a brighter shade of
+  midnight blue and a corridor that is still a cave. It bit twice, and both
+  fixes are colour changes rather than level changes: the building's own
+  light now lives on a *second*, lamp-coloured ambient beside the sky's, and
+  the editor's legibility floor pulls the fill's colour toward neutral as
+  well as its level.
+- **A floor plan at midnight is a correct picture and a useless drawing
+  surface.** This is the one place the sun makes a concession to the tool:
+  while editing, the fill never falls below a legible minimum and is pulled
+  60% toward neutral, so the plan keeps the *colour* and the *shadows* of the
+  hour without taking its darkness from it. The walkthrough gets no such
+  help — standing in an unlit school at midnight is supposed to be exactly
+  that.
+- **`emissive` is a uniform and is not modulated by vertex colours.** Every
+  prop in this build shares one material and carries its colour per vertex;
+  a glowing lens can't. So a fixture's builder returns `{ body, lens }`
+  instead of one geometry, the lens gets a material cached per lamp colour
+  (the `finishMats` trick again), and both halves ride the *same* instance
+  matrices — one loop, two meshes, so a lens can never drift from the light
+  it belongs to. Without that, a green exit sign would glow warm white.
+- **A lattice can't express "near".** The first clustering pass bucketed
+  sources on a grid; a row of troffers 6in apart landed either side of a
+  bucket line and came out as two clusters of four. A test caught it
+  immediately. The replacement is a greedy sweep over a deterministically
+  ordered list with a frozen seed per cluster — still stable frame to frame,
+  which is the property that stops a light flickering between two positions
+  as the camera moves, and it actually clusters.
+- **The catalog test caught a wall pack hanging through the ceiling** before
+  anything was rendered. The Phase 1 dimension rules are still earning
+  their keep two phases later.
+- **`Y` was free but `P` was crowded.** Photo mode needed the pointer
+  *released* to reach its own sliders, which is the one unlock in the build
+  that must not raise the walkthrough overlay over the controls you just
+  asked for.
+
+### Deliberately left for later
+
+- **The generic ceiling troffers still don't emit.** Every other ceiling cell
+  gets a baked 2x4 fixture; it glows on the same schedule as everything else
+  but contributes only to the flat house fill, never a real light. That is
+  the deliberate bake — a corridor reads as lit, a *placed* fixture reads as
+  lighting something — and it is why the Lighting Bay template exists.
+- **No shadows from the building's own lights.** Twelve shadow maps is not a
+  school-scale budget, and a shadowless recessed fluorescent is a fair
+  picture of a recessed fluorescent. A single shadow-casting "hero" light for
+  photo mode is the obvious next move.
+- **Spot lights.** `emit.kind` accepts `'spot'` and nothing renders one yet;
+  every fixture is a point source, so a wall pack throws light up the wall
+  behind it as happily as down at the ground.
+- **Light doesn't respect geometry.** A cluster on the far side of a wall
+  still reaches you if you're inside its radius — there is no occlusion test
+  in the budget, only distance. At room scale it rarely shows; a long
+  interior wall with a bright room behind it is where it will.
+- **No moon, no stars, no clouds.** The night sky is a gradient. A moon is
+  the same disc the sun already uses with a different phase and a much
+  smaller intensity, which is a small job whenever it feels worth it.
+- **Photo mode is desktop-only.** It hangs off `P` and a panel of sliders;
+  touch has no key to press and no room for the panel.
+- **The sun study doesn't animate itself.** You scrub the hour by hand.
+  A play button that runs a day in ten seconds is a `requestAnimationFrame`
+  and a stop condition away, and would make the feature demo itself.
+- **Longitude and time zones.** The clock is local standard time at the
+  design's own meridian — "10am where this building is" — with the equation
+  of time applied so solar noon lands where it really does. There is nowhere
+  to say *which* meridian, which is why sunrise here runs a few minutes off
+  what a given town's almanac prints.
 
 ## Phase 4 — Sound
 

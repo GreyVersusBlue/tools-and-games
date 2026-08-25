@@ -19,6 +19,7 @@ import {
   addLink, removeLink, linksOnFloor, normalizeProp, normalizeLink, reseedIds,
 } from '../js/props.js';
 import { serialize, deserialize, SAVE_VERSION } from '../js/save-load.js';
+import { isDefaultEnv } from '../js/sky.js';
 
 // ---------- grid basics still hold, one floor at a time ----------
 
@@ -340,4 +341,52 @@ test('an edge kind from a newer build loads as a wall, not as a gap', () => {
   assert.equal(back.floors[0].edgesH[0], EDGE_GLASS, 'known kinds come through as themselves');
   assert.equal(back.floors[0].edgesH[1], EDGE_WALL, 'and unknown ones fall back to solid');
   assert.equal(back.floors[0].edgesH[2], EDGE_WALL);
+});
+
+// ---------- v6: the environment ----------
+
+test('a fresh design carries an environment, and it is the default one', () => {
+  const s = createState(8, 8);
+  assert.equal(s.version, 6);
+  assert.ok(isDefaultEnv(s.env));
+  assert.equal(s.env.lights, 'auto');
+});
+
+test('a v5 file loads as a building that never said what time it was', () => {
+  // No `env` anywhere in the file — which is every design saved before Phase 3.
+  const v5 = { version: 5, w: 12, h: 12, floorHt: 12, floors: [], currentFloor: 0, props: [], links: [] };
+  const s = deserialize(JSON.stringify(v5));
+  assert.ok(isDefaultEnv(s.env), 'and is lit exactly the way it always was');
+});
+
+test('a design at the default environment writes no environment at all', () => {
+  const s = createState(8, 8);
+  assert.ok(!serialize(s).includes('"env"'), 'a v5 file round-trips through v6 unchanged');
+  s.env.minutes = 1150;
+  assert.ok(serialize(s).includes('"env"'), 'but a moved clock is recorded');
+  assert.equal(deserialize(serialize(s)).env.minutes, 1150);
+});
+
+test('a hostile environment is clamped rather than believed', () => {
+  const s = createState(8, 8);
+  const raw = JSON.parse(serialize(s));
+  raw.env = { month: 77, day: 77, minutes: -5, lat: 1e6, north: 1e6, lights: { evil: true } };
+  const back = deserialize(JSON.stringify(raw));
+  assert.equal(back.env.month, 12);
+  assert.equal(back.env.minutes, 0);
+  assert.ok(Math.abs(back.env.lat) <= 66);
+  assert.ok(back.env.north >= 0 && back.env.north < 360);
+  assert.equal(back.env.lights, 'auto');
+});
+
+test('the environment survives every other kind of edit round-tripping', () => {
+  const s = createState(10, 10);
+  s.env = { month: 1, day: 8, minutes: 1020, lat: -33.9, north: 215, lights: 'on' };
+  setTile(s.floors[0], 2, 2, true);
+  addProp(s, 'troffer-2x4', { floor: 0, x: 10, z: 10, y: 9.5 });
+  const back = deserialize(serialize(s));
+  assert.deepEqual(back.env, {
+    month: 1, day: 8, minutes: 1020, lat: -33.9, north: 215, lights: 'on',
+  });
+  assert.equal(back.props.length, 1);
 });
