@@ -1808,31 +1808,29 @@ function cutDoors(state, floorIndex, rects, zone) {
 }
 
 function cutSide(f, r, door) {
-  {
-    const run = sideRun(r, door);
-    if (!run.length) return;
-    const pair = PAIRED_DOORS.has(r.key);
-    const kind = r.doorKind === 'opening' ? EDGE_OPENING
-      : r.doorKind === 'double' || pair ? EDGE_DOOR2 : EDGE_DOOR;
-    // A room the size of a gym or a cafeteria gets two doors rather than one,
-    // and they go a third of the way in from each end — one 3ft door on an
-    // assembly space is the first finding Phase 7 prints. Every other room
-    // gets one door in the middle of the side that faces its corridor, which
-    // is the only position guaranteed to *be* on the corridor: a wide room
-    // whose corridor is narrower than it is has walls at both ends of that
-    // side, and a door placed out there opens into the next classroom.
-    const spots = r.doorFull ? run
-      : pair && run.length >= 12
-        ? [run[Math.floor(run.length * 0.28)], run[Math.floor(run.length * 0.72)]]
-        : [midOf(run)];
-    for (const pos of spots) setSide(f, r, door, pos, kind);
-    // The rooms a hall should be able to see into front it in glass, with the
-    // door left exactly where it was: the partition still bounds the room, it
-    // just isn't opaque.
-    if (GLAZED_FRONT.has(r.key)) {
-      for (const pos of run) {
-        if (!spots.includes(pos)) setSide(f, r, door, pos, EDGE_GLASS);
-      }
+  const run = sideRun(r, door);
+  if (!run.length) return;
+  const pair = PAIRED_DOORS.has(r.key);
+  const kind = r.doorKind === 'opening' ? EDGE_OPENING
+    : r.doorKind === 'double' || pair ? EDGE_DOOR2 : EDGE_DOOR;
+  // A room the size of a gym or a cafeteria gets two doors rather than one,
+  // and they go a third of the way in from each end — one 3ft door on an
+  // assembly space is the first finding Phase 7 prints. Every other room
+  // gets one door in the middle of the side that faces its corridor, which
+  // is the only position guaranteed to *be* on the corridor: a wide room
+  // whose corridor is narrower than it is has walls at both ends of that
+  // side, and a door placed out there opens into the next classroom.
+  const spots = r.doorFull ? run
+    : pair && run.length >= 12
+      ? [run[Math.floor(run.length * 0.28)], run[Math.floor(run.length * 0.72)]]
+      : [midOf(run)];
+  for (const pos of spots) setSide(f, r, door, pos, kind);
+  // The rooms a hall should be able to see into front it in glass, with the
+  // door left exactly where it was: the partition still bounds the room, it
+  // just isn't opaque.
+  if (GLAZED_FRONT.has(r.key)) {
+    for (const pos of run) {
+      if (!spots.includes(pos)) setSide(f, r, door, pos, EDGE_GLASS);
     }
   }
 }
