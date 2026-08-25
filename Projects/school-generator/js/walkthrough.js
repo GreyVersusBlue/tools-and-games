@@ -37,6 +37,8 @@ import { catalogEntry } from './catalog.js';
 import { finishAt } from './finish.js';
 import { stairUnder, elevatorAt } from './stairs.js';
 import { stride, footstepFor } from './sound.js';
+import { terrainField, emptyField, groundAt } from './terrain.js';
+import { siteSurfaceAt, surfaceEntry } from './site.js';
 import {
   GRAVITY, TERMINAL_V, JUMP_V, STEP_UP,
   buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoors,
@@ -61,6 +63,11 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   let active = false;
   let ceiling = 80;   // fly-up limit, raised to clear the tallest building
   let world = null;   // the state being walked, for the stairs under our feet
+  // The graded ground, swept once at walk-start and shared by every storey's
+  // collider. It has the same lifetime as the colliders and for the same
+  // reason: editing and walking are exclusive, so the site cannot change
+  // under you mid-walk.
+  let site = emptyField();
   let ghost = false;  // no-clip flight — the pre-Phase-5 behaviour
   let vy = 0;         // vertical velocity, ft/s
   let grounded = false;
@@ -114,14 +121,15 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   const colliderFor = (i) => {
     if (!world || !world.floors[i]) return emptyCollider();
     let c = colliders.get(i);
-    if (!c) { c = buildCollider(world, i, catalogEntry); colliders.set(i, c); }
+    if (!c) { c = buildCollider(world, i, catalogEntry, { site }); colliders.set(i, c); }
     return c;
   };
 
   function reportHud() {
     if (!opts.onHud) return;
     const feet = camera.position.y - EYE_H;
-    const level = world ? storeyAt(world, feet) + 1 : 1;
+    const level = world
+      ? storeyAt(world, feet, groundAt(site, camera.position.x, camera.position.z)) + 1 : 1;
     const text = `Level ${level} · ${ghost ? 'ghost (no-clip)' : 'walking'}`;
     if (text === hudText) return;
     hudText = text;
@@ -241,7 +249,8 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       dz = (dz / mag) * step;
     } else { dx = 0; dz = 0; }
 
-    const collider = colliderFor(storeyAt(world, feet));
+    const collider = colliderFor(
+      storeyAt(world, feet, groundAt(site, camera.position.x, camera.position.z)));
     const moved = moveWalker(world, collider, { x: camera.position.x, y: feet, z: camera.position.z },
       dx, dz, { grounded });
     const walked = Math.hypot(moved.x - camera.position.x, moved.z - camera.position.z);
@@ -250,7 +259,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
 
     // Vertical. `support` came back from the same query that vetted the step,
     // so standing and walking agree about what the floor is.
-    const support = moved.support || supportAt(world, moved.x, moved.z, feet);
+    const support = moved.support || supportAt(world, moved.x, moved.z, feet, { site });
     const surface = support ? support.y : 0;
     let y = feet;
     if (grounded) {
@@ -286,7 +295,11 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     if (!opts.onStep || !world) return;
     const kind = support ? support.kind : 'ground';
     const floor = support && support.floor >= 0 ? world.floors[support.floor] : null;
-    const spec = footstepFor(kind, floor ? finishAt(floor, x, z) : null);
+    // Outside, what you are walking on is whichever site region you are
+    // standing in — the same lookup the renderer paints the ground with.
+    const surf = kind === 'ground' ? siteSurfaceAt(world, x, z) : null;
+    const spec = footstepFor(kind, floor ? finishAt(floor, x, z) : null,
+      surf ? surfaceEntry(surf).step : null);
     opts.onStep(spec, { x, y, z, floor: support ? Math.max(0, support.floor) : 0 }, force, landing);
   }
 
@@ -307,6 +320,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     enable(state) {
       active = true;
       world = state;
+      site = terrainField(state);
       keys.clear();
       colliders = new Map();
       ghost = false;
@@ -329,6 +343,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     disable() {
       active = false;
       world = null;
+      site = emptyField();
       keys.clear();
       colliders = new Map();
       touchActive = false;

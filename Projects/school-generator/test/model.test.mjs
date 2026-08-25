@@ -19,6 +19,12 @@ import {
   addLink, removeLink, linksOnFloor, normalizeProp, normalizeLink, reseedIds,
 } from '../js/props.js';
 import { serialize, deserialize, SAVE_VERSION } from '../js/save-load.js';
+import { ensureTerrain, terrainField, groundAt, raiseTerrain } from '../js/terrain.js';
+import { addRegion, regionsOf } from '../js/site.js';
+import { ensureRoof } from '../js/roof.js';
+
+const near2 = (a, b, eps) =>
+  assert.ok(Math.abs(a - b) <= eps, `${a} vs ${b} (±${eps})`);
 import { isDefaultEnv } from '../js/sky.js';
 
 // ---------- grid basics still hold, one floor at a time ----------
@@ -347,7 +353,7 @@ test('an edge kind from a newer build loads as a wall, not as a gap', () => {
 
 test('a fresh design carries an environment, and it is the default one', () => {
   const s = createState(8, 8);
-  assert.equal(s.version, 6);
+  assert.equal(s.version, SAVE_VERSION);
   assert.ok(isDefaultEnv(s.env));
   assert.equal(s.env.lights, 'auto');
 });
@@ -389,4 +395,66 @@ test('the environment survives every other kind of edit round-tripping', () => {
     month: 1, day: 8, minutes: 1020, lat: -33.9, north: 215, lights: 'on',
   });
   assert.equal(back.props.length, 1);
+});
+
+// ---------- v7: the site ----------
+
+test('a fresh design has no terrain, no site regions and no roof record', () => {
+  const s = createState(8, 8);
+  assert.equal(s.terrain, undefined, 'the ground is level until it is graded');
+  assert.equal(s.site, undefined, 'and bare until something is drawn on it');
+  assert.equal(s.roof, undefined, 'and roofed by the default until asked otherwise');
+  const json = serialize(s);
+  for (const key of ['terrain', 'site', 'roof']) {
+    assert.ok(!json.includes(`"${key}"`), `a v6 file round-trips through v7 with no "${key}"`);
+  }
+});
+
+test('a v6 file loads as a building on level ground with a bare site', () => {
+  const v6 = { version: 6, w: 12, h: 12, floorHt: 12, floors: [], currentFloor: 0, props: [], links: [] };
+  const s = deserialize(JSON.stringify(v6));
+  assert.equal(s.terrain, undefined);
+  assert.equal(s.site, undefined);
+  assert.equal(groundAt(terrainField(s), 40, 40), 0, 'and the ground under it is datum');
+});
+
+test('a graded site, a drawn region and a chosen roof all survive a round trip', () => {
+  const s = createState(12, 12);
+  raiseTerrain(ensureTerrain(s), 200, 200, 120, 6.4);
+  addRegion(s, [{ x: 0, z: 200 }, { x: 90, z: 200 }, { x: 90, z: 260 }, { x: 0, z: 260 }],
+    { surf: 'asphalt', mark: 'stalls', name: 'Staff lot' });
+  ensureRoof(s).style = 'gable';
+  s.roof.facade = 'panel';
+
+  const back = deserialize(serialize(s));
+  assert.ok(back.terrain, 'the terrain came back');
+  assert.equal(back.terrain.cols, s.terrain.cols);
+  near2(groundAt(terrainField(back), 200, 200), groundAt(terrainField(s), 200, 200), 0.05);
+  assert.equal(regionsOf(back).length, 1);
+  assert.equal(regionsOf(back)[0].surf, 'asphalt');
+  assert.equal(regionsOf(back)[0].mark, 'stalls');
+  assert.equal(regionsOf(back)[0].name, 'Staff lot');
+  assert.equal(back.roof.style, 'gable');
+  assert.equal(back.roof.facade, 'panel');
+});
+
+test('a hostile site cannot stop a design from loading', () => {
+  const s = deserialize(JSON.stringify({
+    version: 7, w: 10, h: 10, floors: [],
+    terrain: { cols: 'lots', rows: -3, h: 'yes' },
+    site: { regions: [null, 3, { pts: [] }] },
+    roof: { style: 'thatch', pitch: 'steep' },
+  }));
+  assert.equal(s.terrain, undefined, 'an unreadable terrain is a level one');
+  assert.equal(s.site, undefined, 'an unreadable region is one that is not there');
+  assert.equal(s.roof, undefined, 'and an unreadable roof is the default one');
+});
+
+test('a site region takes an id off the same counter rooms do', () => {
+  const s = createState(10, 10);
+  addRegion(s, [{ x: 0, z: 0 }, { x: 60, z: 0 }, { x: 60, z: 60 }, { x: 0, z: 60 }]);
+  const back = deserialize(serialize(s));
+  const region = regionsOf(back)[0];
+  assert.ok(region.id > 0);
+  assert.ok(back.nextId > region.id, 'and the counter is past it');
 });

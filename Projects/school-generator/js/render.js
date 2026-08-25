@@ -19,14 +19,14 @@ import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { DepthOfFieldPass } from 'three/addons/postprocessing/DepthOfFieldPass.js';
 import {
-  CELL, WALL_H, WALL_T, DOOR_H, RAIL_H,
+  CELL, WALL_H, WALL_T, WALL_T_EXT, DOOR_H, RAIL_H,
   EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW, isDoorEdge,
   FLOOR_H, computeLabels, floorBaseY, wallHeightOf, topOfBuilding,
 } from './grid.js';
 import {
   SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt,
   shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint,
-  openingSpec,
+  floorSolidAt, openingSpec,
 } from './shapes.js';
 import { catalogEntry } from './catalog.js';
 import {
@@ -34,8 +34,14 @@ import {
   elevatorSize, elevatorDoorWidth, elevatorsOn,
   floorCuts, inFloorCut, cellCut, stairWidth,
 } from './stairs.js';
-import { wallProbe } from './walls.js';
-import { finishEntry, wallPaint, DEFAULT_FINISH, DEFAULT_PAINT } from './finish.js';
+import { wallProbe, solidBeside } from './walls.js';
+import {
+  finishEntry, wallPaint, DEFAULT_FINISH, DEFAULT_PAINT,
+  facadeEntry, ROOF_MEMBRANE, ROOF_SHINGLE,
+} from './finish.js';
+import { terrainField, groundAt, emptyField } from './terrain.js';
+import { regionsOf, surfaceEntry, markingsFor } from './site.js';
+import { roofPlan, roofTop, PARAPET_H, COPING_T } from './roof.js';
 import {
   collectDoorLeaves, leafAngle, mullionPositions, gridOpeningWidth,
   gridWindowSpec, windowBand, LEAF_T, MULLION_BAY,
@@ -201,6 +207,136 @@ function makeCeilingAlbedo() {
     for (let i = 0; i <= 2; i++) {
       ctx.beginPath(); ctx.moveTo(i * tile + 3, 0); ctx.lineTo(i * tile + 3, S); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(0, i * tile + 3); ctx.lineTo(S, i * tile + 3); ctx.stroke();
+    }
+  });
+}
+
+// A site surface — asphalt, turf, a running track, a mulch bed. Same shape as
+// `makeFinishAlbedo` and for the same reason: what a material looks like is a
+// column in a table, and the builder reads the column.
+function makeSiteAlbedo(entry) {
+  return canvasTex(512, (ctx, S) => {
+    ctx.fillStyle = entry.color;
+    ctx.fillRect(0, 0, S, S);
+    if (entry.grain === 'fiber') {
+      speckle(ctx, S, 30000, ['rgba(255,255,255,0.09)', 'rgba(0,0,0,0.14)',
+        'rgba(150,190,110,0.16)'], 0.4, 1.6);
+    } else if (entry.grain === 'mow') {
+      // A mown field: alternating bands, because that is the single thing that
+      // makes turf read as *maintained* turf from the air.
+      const bands = 6, bh = S / bands;
+      for (let i = 0; i < bands; i++) {
+        ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)';
+        ctx.fillRect(0, i * bh, S, bh);
+      }
+      speckle(ctx, S, 18000, ['rgba(255,255,255,0.07)', 'rgba(0,0,0,0.10)'], 0.4, 1.4);
+    } else if (entry.grain === 'chip') {
+      speckle(ctx, S, 2600, ['rgba(255,255,255,0.22)', 'rgba(0,0,0,0.24)',
+        'rgba(160,120,80,0.25)'], 1.4, 4.5);
+      speckle(ctx, S, 6000, ['rgba(0,0,0,0.10)'], 0.4, 1.4);
+    } else {
+      speckle(ctx, S, 9000, ['rgba(255,255,255,0.10)', 'rgba(0,0,0,0.16)',
+        'rgba(140,140,150,0.10)'], 0.4, 1.8);
+    }
+  });
+}
+
+// The outside of the building. One tile covers `entry.tile` feet of wall, so
+// the brick courses come out at brick size rather than at whatever size the
+// wall happens to be.
+function makeFacadeAlbedo(entry) {
+  return canvasTex(512, (ctx, S) => {
+    ctx.fillStyle = entry.color;
+    ctx.fillRect(0, 0, S, S);
+    if (entry.grain === 'brick') {
+      // Running bond. At tile = 4ft a course is about 2.7in, which is a brick.
+      const courses = 18, ch = S / courses, bw = S / 6;
+      for (let r = 0; r < courses; r++) {
+        const off = (r % 2) * bw * 0.5;
+        for (let c = -1; c < 7; c++) {
+          const x = c * bw + off;
+          ctx.fillStyle = `rgba(${Math.random() > 0.5 ? '255,255,255' : '0,0,0'},${(Math.random() * 0.07).toFixed(3)})`;
+          ctx.fillRect(x + 1.5, r * ch + 1.5, bw - 3, ch - 3);
+        }
+      }
+      ctx.strokeStyle = 'rgba(228,224,214,0.55)';
+      ctx.lineWidth = 2.2;
+      for (let r = 0; r <= courses; r++) {
+        ctx.beginPath(); ctx.moveTo(0, r * ch); ctx.lineTo(S, r * ch); ctx.stroke();
+      }
+      for (let r = 0; r < courses; r++) {
+        const off = (r % 2) * bw * 0.5;
+        for (let c = -1; c < 7; c++) {
+          const x = c * bw + off;
+          ctx.beginPath(); ctx.moveTo(x, r * ch); ctx.lineTo(x, (r + 1) * ch); ctx.stroke();
+        }
+      }
+    } else if (entry.grain === 'block') {
+      // 8 x 16 CMU, split face — so the units are four times a brick and the
+      // surface is rough rather than smooth.
+      const courses = 6, ch = S / courses, bw = S / 3;
+      speckle(ctx, S, 9000, ['rgba(255,255,255,0.12)', 'rgba(0,0,0,0.16)'], 0.5, 2.2);
+      ctx.strokeStyle = 'rgba(120,116,108,0.5)';
+      ctx.lineWidth = 2.5;
+      for (let r = 0; r <= courses; r++) {
+        ctx.beginPath(); ctx.moveTo(0, r * ch); ctx.lineTo(S, r * ch); ctx.stroke();
+        const off = (r % 2) * bw * 0.5;
+        for (let c = -1; c < 4; c++) {
+          const x = c * bw + off;
+          ctx.beginPath(); ctx.moveTo(x, r * ch); ctx.lineTo(x, (r + 1) * ch); ctx.stroke();
+        }
+      }
+    } else if (entry.grain === 'rib') {
+      // Standing-seam metal: vertical ribs, a highlight on one side of each.
+      const ribs = 12, rw = S / ribs;
+      for (let i = 0; i < ribs; i++) {
+        ctx.fillStyle = 'rgba(255,255,255,0.10)';
+        ctx.fillRect(i * rw, 0, rw * 0.18, S);
+        ctx.fillStyle = 'rgba(0,0,0,0.14)';
+        ctx.fillRect(i * rw + rw * 0.18, 0, rw * 0.12, S);
+      }
+    } else if (entry.grain === 'plank') {
+      const rows = 12, hgt = S / rows;
+      for (let r = 0; r < rows; r++) {
+        ctx.fillStyle = `rgba(${Math.random() > 0.5 ? '255,240,210' : '30,20,10'},${(Math.random() * 0.08).toFixed(3)})`;
+        ctx.fillRect(0, r * hgt, S, hgt);
+        ctx.strokeStyle = 'rgba(50,32,16,0.30)';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(0, r * hgt); ctx.lineTo(S, r * hgt); ctx.stroke();
+      }
+    } else {
+      // Stucco and precast: a fine tooth, nothing more.
+      speckle(ctx, S, 16000, ['rgba(255,255,255,0.09)', 'rgba(0,0,0,0.09)'], 0.4, 1.5);
+    }
+  });
+}
+
+// A roof: a seamed membrane on a flat deck, courses of shingle on a pitched
+// one. Which of the two is not a setting — see the note beside ROOF_MEMBRANE.
+function makeRoofAlbedo(entry, shingle) {
+  return canvasTex(512, (ctx, S) => {
+    ctx.fillStyle = entry.color;
+    ctx.fillRect(0, 0, S, S);
+    if (shingle) {
+      const courses = 16, ch = S / courses, tab = S / 8;
+      for (let r = 0; r < courses; r++) {
+        const off = (r % 2) * tab * 0.5;
+        for (let c = -1; c < 9; c++) {
+          ctx.fillStyle = `rgba(${Math.random() > 0.5 ? '255,255,255' : '0,0,0'},${(Math.random() * 0.09).toFixed(3)})`;
+          ctx.fillRect(c * tab + off, r * ch, tab - 2, ch - 1);
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.22)';
+        ctx.fillRect(0, (r + 1) * ch - 2, S, 2);
+      }
+      speckle(ctx, S, 7000, ['rgba(255,255,255,0.08)', 'rgba(0,0,0,0.12)'], 0.4, 1.4);
+    } else {
+      const seams = 5, sw = S / seams;
+      speckle(ctx, S, 5000, ['rgba(255,255,255,0.06)', 'rgba(0,0,0,0.08)'], 0.5, 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+      ctx.lineWidth = 3;
+      for (let i = 0; i <= seams; i++) {
+        ctx.beginPath(); ctx.moveTo(i * sw, 0); ctx.lineTo(i * sw, S); ctx.stroke();
+      }
     }
   });
 }
@@ -478,12 +614,132 @@ export function initRender(canvas) {
     return m;
   }
 
-  // --- static ground ---
+  // --- site surfaces, facades and roofs ---
+  //
+  // All three follow the finish cache's bargain exactly: built on demand,
+  // cached for the life of the page, keyed on the table row. A design that
+  // never lays a parking lot never builds an asphalt texture.
+  const siteMats = new Map();
+  function siteMaterial(key) {
+    let m = siteMats.get(key);
+    if (m) return m;
+    const entry = surfaceEntry(key);
+    const map = makeSiteAlbedo(entry);
+    map.anisotropy = Math.min(8, maxAniso);
+    map.repeat.set(1 / entry.tile, 1 / entry.tile);
+    m = new THREE.MeshStandardMaterial({
+      map, roughness: entry.grain === 'fiber' || entry.grain === 'mow' ? 1.0 : 0.95,
+      metalness: 0, vertexColors: true,
+      // Every site surface is a skin laid on the terrain a few inches above
+      // it. Depth offset rather than height is what keeps a court from
+      // shimmering against the ground it is painted on at a hundred feet.
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    });
+    siteMats.set(key, m);
+    return m;
+  }
+
+  const facadeMats = new Map();
+  function facadeMaterial(key) {
+    let m = facadeMats.get(key);
+    if (m) return m;
+    const entry = facadeEntry(key);
+    const map = makeFacadeAlbedo(entry);
+    map.anisotropy = Math.min(8, maxAniso);
+    map.repeat.set(1 / entry.tile, 1 / entry.tile);
+    m = new THREE.MeshStandardMaterial({ map, roughness: 0.92, metalness: 0, vertexColors: true });
+    facadeMats.set(key, m);
+    return m;
+  }
+
+  const roofMats = new Map();
+  function roofMaterial(shingle) {
+    const key = shingle ? 'shingle' : 'membrane';
+    let m = roofMats.get(key);
+    if (m) return m;
+    const entry = shingle ? ROOF_SHINGLE : ROOF_MEMBRANE;
+    const map = makeRoofAlbedo(entry, shingle);
+    map.anisotropy = Math.min(8, maxAniso);
+    map.repeat.set(1 / entry.tile, 1 / entry.tile);
+    m = new THREE.MeshStandardMaterial({
+      map, roughness: 0.95, metalness: 0, vertexColors: true, side: THREE.DoubleSide,
+    });
+    roofMats.set(key, m);
+    return m;
+  }
+
+  // The paint on a court or a car park: white and yellow lines, unlit enough
+  // to stay legible at dusk, offset hard so they never fight the surface.
+  const markMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff, roughness: 0.9, metalness: 0, vertexColors: true,
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+  });
+
+  // --- the ground ---
+  //
+  // Two meshes, and which one you see depends on whether the design has been
+  // graded. `ground` is the flat plane every version before Phase 5 drew,
+  // still exactly that for a design with no terrain and costing nothing. When
+  // there *is* terrain, it is hidden and `terrainMesh` takes over: the same
+  // plane, lofted onto the heightfield, extended far enough past the site that
+  // the horizon is still ground rather than sky.
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.06;
   ground.receiveShadow = true;
   scene.add(ground);
+
+  let terrainMesh = null;
+  // How far past the graded site the lofted ground keeps going. `groundAt`
+  // holds the edge elevation outward, so the skirt is the site's own boundary
+  // slope carried to the horizon — and the walk fog closes in well before it
+  // ends, which is why it doesn't need to be larger.
+  const SITE_SKIRT = 500;   // ft
+  // Vertices per elevation post, per axis. Two, not one, and the reason is
+  // worth stating: the field is *bilinear* between posts, and two triangles
+  // over a whole post cell can only be planar. The gap between the two is the
+  // cell's twist — a few tenths of a foot on a graded site — and a car park
+  // laid on the ground at less than that pokes through it in patches.
+  // Halving the spacing quarters the error, and 30,000 vertices is a
+  // millisecond of a rebuild that already costs tens.
+  const TERRAIN_SUBDIV = 2;
+
+  function buildTerrain(field) {
+    if (terrainMesh) {
+      scene.remove(terrainMesh);
+      terrainMesh.geometry.dispose();
+      terrainMesh = null;
+    }
+    if (!field || field.flat || !field.cols) { ground.visible = true; return; }
+    ground.visible = false;
+    const x0 = field.x0 - SITE_SKIRT, z0 = field.z0 - SITE_SKIRT;
+    const x1 = field.x0 + (field.cols - 1) * field.step + SITE_SKIRT;
+    const z1 = field.z0 + (field.rows - 1) * field.step + SITE_SKIRT;
+    const w = x1 - x0, d = z1 - z0;
+    // One vertex per elevation post. Finer buys nothing — the field is
+    // bilinear between posts, so the extra vertices would land on the same
+    // plane the coarse ones already describe.
+    const grain = field.step / TERRAIN_SUBDIV;
+    const segX = Math.max(4, Math.min(400, Math.round(w / grain)));
+    const segZ = Math.max(4, Math.min(400, Math.round(d / grain)));
+    const geo = new THREE.PlaneGeometry(w, d, segX, segZ);
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(x0 + w / 2, 0, z0 + d / 2);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      pos.setY(i, groundAt(field, pos.getX(i), pos.getZ(i)) - 0.06);
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+    // The ground plane's texture repeats every fifty feet; keep that rate on
+    // the lofted one so a graded site doesn't suddenly look differently
+    // scaled from a flat one.
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (w / 50), uv.getY(i) * (d / 50));
+    terrainMesh = new THREE.Mesh(geo, groundMat);
+    terrainMesh.receiveShadow = true;
+    scene.add(terrainMesh);
+  }
 
   // --- dynamic building content ---
   // Each of these holds one child Group per storey, indexed by floor number,
@@ -492,10 +748,20 @@ export function initRender(canvas) {
   const ceilingGroup = new THREE.Group();   // hidden in edit mode
   ceilingGroup.visible = false;             // starts in edit mode
   const labelGroup = new THREE.Group();
-  scene.add(buildingGroup, ceilingGroup, labelGroup);
+  // Hardscape, fields and their paint. One group for the whole site rather
+  // than one per storey: the ground has no storeys.
+  const siteGroup = new THREE.Group();
+  // Parapets, roof decks and pitched masses. Hidden while editing for exactly
+  // the reason ceilings are — you cannot draw a plan through a roof.
+  const roofGroup = new THREE.Group();
+  roofGroup.visible = false;
+  scene.add(buildingGroup, ceilingGroup, labelGroup, siteGroup, roofGroup);
 
   let gridHelper = null;
   let built = null;         // last state passed to buildFromState
+  // The graded ground, swept once per rebuild and shared by the terrain mesh,
+  // the site surfaces and every prop that stands on the site.
+  let siteField = emptyField();
   let labelledFloor = -1;   // storey whose labels walk mode is currently showing
 
   // Phase 6 layers panel: what's drawn while editing. Ghosting the floor below
@@ -2064,6 +2330,297 @@ export function initRender(canvas) {
     ]);
   };
 
+  // ---------- the site ----------
+  //
+  // Phase 5 of the second arc. Nothing about the contract changes — merged,
+  // vertex-coloured, bottom at y = 0, facing +Z, sized off the row — but these
+  // are the first builders written for things that are twenty and thirty feet
+  // tall, so the segment counts are kept low deliberately: a shade tree is
+  // three overlapping spheres and a tapered trunk, and at the distance you
+  // ever see one from, a fourth sphere buys nothing.
+
+  // Five trees out of one builder, keyed on `style`. The canopy sits on the
+  // top two-thirds of the height and the trunk tapers, which is most of what
+  // makes a lump of green read as a tree rather than as a balloon.
+  const buildTree = (e) => {
+    const style = e.style || 'shade';
+    const bark = '#6a5240';
+    const parts = [];
+    const r = e.w / 2;
+    if (style === 'conifer') {
+      parts.push(cyl(0.25, 0.45, e.h * 0.22, 8, 0, e.h * 0.11, 0, bark));
+      // Three stacked skirts, each narrower and shorter than the one below.
+      for (let i = 0; i < 3; i++) {
+        const t = i / 3;
+        const base = e.h * (0.16 + t * 0.28);
+        parts.push(cyl(0, r * (1 - t * 0.55), e.h * 0.42, 10, 0, base + e.h * 0.21, 0,
+          tint(e.color, -0.04 + i * 0.03)));
+      }
+      return mergeGeometries(parts);
+    }
+    if (style === 'columnar') {
+      // A poplar is a sphere stretched until it stops being one.
+      const tall = new THREE.SphereGeometry(r, 10, 8);
+      tall.scale(1, (e.h * 0.44) / r, 1);
+      tall.translate(0, e.h * 0.56, 0);
+      return mergeGeometries([
+        cyl(0.2, 0.32, e.h * 0.18, 8, 0, e.h * 0.09, 0, bark),
+        coloredGeo(tall, e.color),
+      ]);
+    }
+    if (style === 'young') {
+      parts.push(cyl(0.12, 0.18, e.h * 0.55, 8, 0, e.h * 0.275, 0, bark));
+      parts.push(sph(r * 0.75, 0, e.h * 0.75, 0, e.color, 9));
+      // Two stakes and the ties between them — the whole reason this row is
+      // its own type rather than a smaller shade tree.
+      for (const sx of [-1, 1]) {
+        parts.push(cyl(0.07, 0.07, e.h * 0.45, 6, sx * r * 0.5, e.h * 0.225, 0, '#8a6a48'));
+        parts.push(box(r, 0.06, 0.06, sx * r * 0.25, e.h * 0.4, 0, '#2f7a4a'));
+      }
+      return mergeGeometries(parts);
+    }
+    const trunkH = style === 'ornamental' ? e.h * 0.3 : e.h * 0.36;
+    parts.push(cyl(r * 0.09, r * 0.16, trunkH, 8, 0, trunkH / 2, 0, bark));
+    // Two limbs, splayed, so the canopy has something under it.
+    for (const sx of [-1, 1]) {
+      parts.push(cylT(0.1, 0.16, e.h * 0.22, 6, sx * r * 0.18, trunkH + e.h * 0.06, 0, bark, 0, sx * 0.45));
+    }
+    const cr = style === 'ornamental' ? r * 0.85 : r * 0.62;
+    parts.push(sph(cr, 0, trunkH + cr * 0.75, 0, e.color, 12));
+    parts.push(sph(cr * 0.78, r * 0.3, trunkH + cr * 0.5, -r * 0.22, tint(e.color, 0.05), 10));
+    parts.push(sph(cr * 0.72, -r * 0.32, trunkH + cr * 0.55, r * 0.2, tint(e.color, -0.05), 10));
+    parts.push(sph(cr * 0.6, r * 0.05, trunkH + cr * 1.25, r * 0.1, tint(e.color, 0.03), 10));
+    return mergeGeometries(parts);
+  };
+
+  // A clipped hedge: a box with its top corners knocked off, which is what a
+  // hedge trimmer leaves and what stops it reading as a green wall.
+  const buildHedge = (e) => {
+    const g = e.color;
+    return mergeGeometries([
+      box(e.w, e.h * 0.86, e.d, 0, e.h * 0.43, 0, g),
+      box(e.w - 0.4, e.h * 0.2, e.d - 0.4, 0, e.h * 0.9, 0, tint(g, 0.05)),
+      box(e.w, 0.25, e.d, 0, 0.12, 0, '#4a3a2c'),
+    ]);
+  };
+
+  const buildShrub = (e) => {
+    if (e.style === 'grass') {
+      const parts = [];
+      // A clump of blades, fanned. Six is enough at any distance you see one.
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        parts.push(boxT(0.12, e.h, 0.05,
+          Math.cos(a) * e.w * 0.18, e.h * 0.45, Math.sin(a) * e.w * 0.18,
+          tint(e.color, (i % 3) * 0.04 - 0.04), Math.sin(a) * 0.28, 0, -Math.cos(a) * 0.28));
+      }
+      return mergeGeometries(parts);
+    }
+    const r = e.w / 2;
+    return mergeGeometries([
+      sph(r * 0.9, 0, e.h * 0.5, 0, e.color, 10),
+      sph(r * 0.6, r * 0.35, e.h * 0.32, r * 0.2, tint(e.color, -0.05), 8),
+      sph(r * 0.55, -r * 0.3, e.h * 0.34, -r * 0.25, tint(e.color, 0.05), 8),
+    ]);
+  };
+
+  const buildPlanter = (e) => {
+    const r = e.w / 2;
+    return mergeGeometries([
+      lathe([[r * 0.72, 0], [r, e.h * 0.85], [r, e.h], [r * 0.86, e.h], [r * 0.86, e.h * 0.7]],
+        0, 0, 0, e.color, 16),
+      cyl(r * 0.84, r * 0.84, 0.15, 14, 0, e.h * 0.72, 0, '#4a3a2c'),
+      sph(r * 0.6, 0, e.h * 0.95, 0, '#4a7a4a', 9),
+      sph(r * 0.4, r * 0.4, e.h * 0.85, 0, '#5c8a44', 8),
+    ]);
+  };
+
+  // A boulder: an icosahedron squashed to the row's dimensions, which gives
+  // flat facets and no two-sphere blobbiness.
+  const buildBoulder = (e) => {
+    const g = new THREE.IcosahedronGeometry(0.5, 1);
+    g.scale(e.w, e.h * 1.5, e.d);
+    g.translate(0, e.h * 0.42, 0);
+    return coloredGeo(g, e.color);
+  };
+
+  // A goal is a frame and a net, and the net is a grid of thin bars rather
+  // than a texture — it instances, and a texture with alpha would not.
+  const buildGoal = (e) => {
+    const post = 0.25;
+    const parts = [
+      box(post, e.h, post, -e.w / 2, e.h / 2, 0, e.color),
+      box(post, e.h, post, e.w / 2, e.h / 2, 0, e.color),
+      box(e.w + post, post, post, 0, e.h, 0, e.color),
+    ];
+    const net = tint(e.color, -0.25);
+    for (const sx of [-1, 1]) {
+      parts.push(boxT(post * 0.8, Math.hypot(e.h, e.d), post * 0.8,
+        sx * e.w / 2, e.h / 2, -e.d / 2, net, Math.atan2(e.d, e.h), 0, 0));
+    }
+    parts.push(box(e.w, post * 0.7, post * 0.7, 0, 0.1, -e.d, net));
+    for (let i = 1; i < 6; i++) {
+      const x = -e.w / 2 + (e.w / 6) * i;
+      parts.push(boxT(0.06, Math.hypot(e.h, e.d), 0.06, x, e.h / 2, -e.d / 2, net, Math.atan2(e.d, e.h), 0, 0));
+    }
+    for (let i = 1; i < 4; i++) {
+      const y = (e.h / 4) * i;
+      parts.push(box(e.w, 0.05, 0.05, 0, y, -(e.d * (1 - y / e.h)) * 0.9, net));
+    }
+    return mergeGeometries(parts);
+  };
+
+  // A backstop: two uprights, a curved hood and a mesh panel between them.
+  const buildBackstop = (e) => {
+    const parts = [];
+    const post = 0.35;
+    for (const sx of [-1, 1]) {
+      parts.push(cyl(post / 2, post / 2, e.h, 8, sx * e.w / 2, e.h / 2, 0, e.color));
+    }
+    parts.push(cylT(post / 2, post / 2, e.w, 8, 0, e.h, 0, e.color, 0, Math.PI / 2));
+    const meshC = tint(e.color, -0.18);
+    for (let i = 0; i <= 8; i++) {
+      parts.push(box(0.08, e.h, 0.08, -e.w / 2 + (e.w / 8) * i, e.h / 2, 0, meshC));
+    }
+    for (let i = 1; i <= 5; i++) {
+      parts.push(box(e.w, 0.08, 0.08, 0, (e.h / 6) * i, 0, meshC));
+    }
+    // The hood, angled back over the plate.
+    parts.push(boxT(e.w, 0.12, e.d * 0.7, 0, e.h + e.d * 0.2, -e.d * 0.3, meshC, 0.9, 0, 0));
+    return mergeGeometries(parts);
+  };
+
+  const buildFence = (e) => {
+    const post = 0.16;
+    const wire = tint(e.color, -0.1);
+    const parts = [
+      cyl(post, post, e.h, 8, -e.w / 2, e.h / 2, 0, e.color),
+      cyl(post, post, e.h, 8, e.w / 2, e.h / 2, 0, e.color),
+      box(e.w, 0.12, 0.12, 0, e.h - 0.1, 0, e.color),
+    ];
+    const gate = e.style === 'gate';
+    if (gate) {
+      parts.push(box(e.w - 0.4, 0.12, 0.12, 0, 0.3, 0, e.color));
+      parts.push(box(0.12, e.h - 0.5, 0.12, 0, (e.h - 0.5) / 2 + 0.3, 0, e.color));
+    }
+    // The fabric, as a lattice. Coarser than real chain-link on purpose:
+    // one instanced mesh per fence panel, and a real diamond weave would be
+    // thousands of triangles nobody can resolve past twenty feet.
+    const bays = Math.max(3, Math.round(e.w / 1.5));
+    for (let i = 1; i < bays; i++) {
+      parts.push(box(0.05, e.h - 0.3, 0.05, -e.w / 2 + (e.w / bays) * i, (e.h - 0.3) / 2, 0, wire));
+    }
+    for (let i = 1; i < 5; i++) {
+      parts.push(box(e.w, 0.05, 0.05, 0, (e.h / 5) * i, 0, wire));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildShelter = (e) => {
+    const glass = '#9fb6c4';
+    const frame = e.color;
+    const parts = [
+      boxT(e.w + 1, 0.2, e.d + 1, 0, e.h, -0.2, tint(frame, 0.1), -0.09, 0, 0),
+      box(e.w, 0.25, e.d, 0, 0.12, 0, '#8f8f8a'),
+    ];
+    for (const sx of [-1, 1]) {
+      parts.push(box(0.3, e.h, 0.3, sx * e.w / 2, e.h / 2, e.d / 2, frame));
+      parts.push(box(0.3, e.h, 0.3, sx * e.w / 2, e.h / 2, -e.d / 2, frame));
+      parts.push(box(0.12, e.h - 1, e.d - 0.6, sx * e.w / 2, (e.h - 1) / 2 + 0.4, 0, glass));
+    }
+    parts.push(box(e.w - 0.6, e.h - 1, 0.12, 0, (e.h - 1) / 2 + 0.4, -e.d / 2, glass));
+    // A bench along the back, because a shelter without one is a carport.
+    parts.push(box(e.w - 1.5, 0.2, 1.2, 0, 1.5, -e.d / 2 + 0.9, '#7a6248'));
+    for (const sx of [-1, 1]) {
+      parts.push(box(0.2, 1.4, 0.2, sx * (e.w / 2 - 1.2), 0.7, -e.d / 2 + 0.9, frame));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildPergola = (e) => {
+    const post = 0.7;
+    const wood = e.color;
+    const parts = [];
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        parts.push(box(post, e.h, post, sx * (e.w / 2 - post / 2), e.h / 2, sz * (e.d / 2 - post / 2), tint(wood, -0.1)));
+      }
+      parts.push(box(post * 0.7, 0.8, e.d, sx * (e.w / 2 - post / 2), e.h - 0.4, 0, wood));
+    }
+    // The slats. Six inches on, eighteen off, which is the ratio that throws
+    // a striped shadow rather than a solid one.
+    const slats = Math.max(4, Math.round(e.w / 2));
+    for (let i = 0; i <= slats; i++) {
+      parts.push(box(0.35, 0.55, e.d + 1, -e.w / 2 + (e.w / slats) * i, e.h + 0.15, 0, tint(wood, 0.06)));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildSandbox = (e) => {
+    const wood = e.color;
+    const rail = 0.6;
+    return mergeGeometries([
+      box(e.w - rail * 2, e.h * 0.5, e.d - rail * 2, 0, e.h * 0.25, 0, '#c4b287'),
+      box(e.w, e.h, rail, 0, e.h / 2, (e.d - rail) / 2, wood),
+      box(e.w, e.h, rail, 0, e.h / 2, -(e.d - rail) / 2, wood),
+      box(rail, e.h, e.d - rail * 2, (e.w - rail) / 2, e.h / 2, 0, wood),
+      box(rail, e.h, e.d - rail * 2, -(e.w - rail) / 2, e.h / 2, 0, wood),
+    ]);
+  };
+
+  // A play structure: two decks at different heights, a roof over one, a
+  // ladder up and a slide down. Deliberately generic — it is the thing in the
+  // middle of a playground, and the playground is what you are looking at.
+  const buildClimber = (e) => {
+    const post = 0.35;
+    const frame = e.color;
+    const deck = '#c9563f';
+    const parts = [];
+    const dx = e.w * 0.28, dz = e.d * 0.28;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        parts.push(cyl(post / 2, post / 2, e.h, 8, sx * dx, e.h / 2, sz * dz, frame));
+      }
+    }
+    parts.push(box(dx * 2 + post, 0.3, dz * 2 + post, 0, e.h * 0.45, 0, deck));
+    parts.push(box(dx * 2 + post, 0.25, dz * 2 + post, 0, e.h * 0.92, 0, tint(frame, 0.1)));
+    // Guard panels round the deck, on three sides.
+    for (const sx of [-1, 1]) {
+      parts.push(box(0.16, e.h * 0.28, dz * 2, sx * dx, e.h * 0.6, 0, tint(deck, 0.08)));
+    }
+    parts.push(box(dx * 2, e.h * 0.28, 0.16, 0, e.h * 0.6, -dz, tint(deck, 0.08)));
+    // The ladder up one side.
+    for (let i = 0; i < 4; i++) {
+      parts.push(cylT(0.08, 0.08, dx * 1.6, 6, 0, e.h * (0.12 + i * 0.1), dz + 1.2, '#dcdcda', 0, Math.PI / 2));
+    }
+    for (const sx of [-1, 1]) {
+      parts.push(cylT(0.1, 0.1, e.h * 0.55, 6, sx * dx * 0.8, e.h * 0.25, dz + 1.2, '#dcdcda', 0.35, 0));
+    }
+    // The slide off the other.
+    parts.push(boxT(2.4, 0.2, e.h * 0.8, 0, e.h * 0.24, -dz - e.d * 0.24, '#d8b13f', -0.62, 0, 0));
+    for (const sx of [-1, 1]) {
+      parts.push(boxT(0.18, 0.6, e.h * 0.8, sx * 1.2, e.h * 0.35, -dz - e.d * 0.24, tint('#d8b13f', -0.12), -0.62, 0, 0));
+    }
+    return mergeGeometries(parts);
+  };
+
+  const buildTetherball = (e) => {
+    return mergeGeometries([
+      cyl(0.9, 1.1, 0.3, 12, 0, 0.15, 0, '#9d9c96'),
+      cyl(0.14, 0.18, e.h - 0.3, 10, 0, (e.h - 0.3) / 2 + 0.3, 0, e.color),
+      cyl(0.03, 0.03, e.h * 0.42, 5, 0.35, e.h * 0.72, 0, '#e0dcd2'),
+      sph(0.42, 0.5, e.h * 0.5, 0, '#c94f3f', 10),
+    ]);
+  };
+
+  const buildBollard = (e) => {
+    return mergeGeometries([
+      cyl(e.w * 0.34, e.w * 0.42, e.h - 0.3, 12, 0, (e.h - 0.3) / 2, 0, e.color),
+      cyl(e.w * 0.36, e.w * 0.36, 0.3, 12, 0, e.h - 0.15, 0, tint(e.color, -0.2)),
+      cyl(e.w * 0.38, e.w * 0.38, 0.25, 12, 0, e.h * 0.62, 0, '#f2f0ec'),
+    ]);
+  };
+
   // ---------- light fixtures ----------
   //
   // The builder contract gains one clause in Phase 3, and only for these:
@@ -2235,6 +2792,11 @@ export function initRender(canvas) {
     picnic: buildPicnic, bikerack: buildBikerack, flagpole: buildFlagpole,
     slide: buildSlide, swing: buildSwing, dumpster: buildDumpster,
     polesign: buildPolesign,
+    goal: buildGoal, backstop: buildBackstop, fence: buildFence,
+    shelter: buildShelter, pergola: buildPergola, sandbox: buildSandbox,
+    climber: buildClimber, tetherball: buildTetherball, bollard: buildBollard,
+    tree: buildTree, hedge: buildHedge, shrub: buildShrub,
+    planter: buildPlanter, boulder: buildBoulder,
     troffer: buildTroffer, pendant: buildPendant, sconce: buildSconce,
     polelight: buildPolelight,
     gongbell: buildGongbell, diffuser: buildDiffuser,
@@ -2444,6 +3006,27 @@ export function initRender(canvas) {
       return _paint;
     };
 
+    // Phase 5's facade, and the smallest honest way to have one. An exterior
+    // wall is one box with a painted classroom on one side of it and weather
+    // on the other, so it cannot have two materials — but it can have two
+    // *colours*, because BoxGeometry lays its faces out in a fixed order and
+    // the two long ones are the last eight vertices. `addOriented` builds
+    // every wall along +X and turns it, which sends local +Z to the run's
+    // left-hand normal — the same normal walls.js probes with `side: +1`. So
+    // "which face is outside" is a question the model already answers, and
+    // painting that face brick while the other stays off-white costs one
+    // colour write per wall rather than a second mesh and a second texture.
+    const _facade = new THREE.Color(facadeEntry(ctx.facade).color);
+    const outwardFace = (ax, az, bx, bz) => {
+      if (!thickness.exterior(ax, az, bx, bz)) return 0;
+      // +1 if the left side is the outside, -1 if the right is, 0 if both are
+      // (a free-standing garden wall, which gets facade on both faces).
+      const left = solidBeside(floor, ax, az, bx, bz, 1);
+      const right = solidBeside(floor, ax, az, bx, bz, -1);
+      if (left === right) return 2;
+      return left ? -1 : 1;
+    };
+
     for (let y = 0; y < floor.h; y++) {
       for (let x = 0; x < floor.w; x++) {
         const cell = floor.cells[y * floor.w + x];
@@ -2513,7 +3096,7 @@ export function initRender(canvas) {
     // A run of anything at any angle: the box is built along +X and turned to
     // face down the segment (see the rotation note in propplace.js — this is
     // the same convention, one axis over).
-    const addOriented = (len, h, d, x, y, z, angle, color, target = wallGeos) => {
+    const addOriented = (len, h, d, x, y, z, angle, color, target = wallGeos, face = 0) => {
       const g = new THREE.BoxGeometry(len, h, d);
       // A grid wall is one cell wide and gets one tile of the wall texture; a
       // polygon wall is whatever length it is, so its long faces repeat per
@@ -2526,7 +3109,21 @@ export function initRender(canvas) {
       g.rotateY(-angle);
       g.translate(x, y, z);
       coloredGeo(g, color);
+      // ...and pz is 16-19, nz is 20-23. See `outwardFace`.
+      if (face) paintFace(g, face, _facade);
       target.push(g);
+    };
+
+    // Recolour one long face of a wall box. `face` is +1 for the +Z side
+    // (the run's left-hand normal), -1 for the -Z side, 2 for both.
+    const paintFace = (g, face, color) => {
+      const col = g.attributes.color;
+      if (!col) return;
+      const range = face === 1 ? [16, 20] : face === -1 ? [20, 24] : [16, 24];
+      for (let i = range[0]; i < range[1] && i < col.count; i++) {
+        col.setXYZ(i, color.r, color.g, color.b);
+      }
+      col.needsUpdate = true;
     };
 
     // Glazing: sill, head, mullions every few feet, and one pane per bay. The
@@ -2556,17 +3153,20 @@ export function initRender(canvas) {
     // the wall itself carrying on above and below it. Same construction as the
     // curtain wall above — frame, mullions, one pane — at a tighter spacing,
     // because a punched window is a smaller thing than a storefront bay.
-    const windowRun = (p0, p1, len, angle, band, t, color) => {
+    const windowRun = (p0, p1, len, angle, band, t, color, face = 0) => {
       const cx = (p0.x + p1.x) / 2, cz = (p0.z + p1.z) / 2;
       const ux = (p1.x - p0.x) / len, uz = (p1.z - p0.z) / len;
       // Wall under the sill and over the head — this is the line that makes a
       // window a window rather than a hole you can step out of.
+      // Spandrel and lintel are the same wall as the piers either side of the
+      // window, so they are clad the same way — otherwise a brick school comes
+      // out with a plaster band running under every classroom window.
       if (band.sill > 0.05) {
-        addOriented(len, band.sill, t, cx, baseY + band.sill / 2, cz, angle, color);
+        addOriented(len, band.sill, t, cx, baseY + band.sill / 2, cz, angle, color, wallGeos, face);
       }
       const over = wallH - band.head;
       if (over > 0.05) {
-        addOriented(len, over, t, cx, baseY + band.head + over / 2, cz, angle, color);
+        addOriented(len, over, t, cx, baseY + band.head + over / 2, cz, angle, color, wallGeos, face);
       }
       const paneH = band.head - band.sill;
       if (paneH <= 0.15) return;
@@ -2604,14 +3204,14 @@ export function initRender(canvas) {
 
     // One full-height piece of boundary, whichever kind it is. Everything that
     // knows about doorways calls this and stays out of the material business.
-    const fillSpan = (kind, p0, p1, angle, h, t, color) => {
+    const fillSpan = (kind, p0, p1, angle, h, t, color, face = 0) => {
       const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
       if (len < 0.02) return;
       if (kind === SEG_RAIL) railRun(p0, p1, len, angle);
       else if (kind === SEG_GLASS) glazedRun(p0, p1, len, angle, h, baseY, t);
       else {
         addOriented(len, h, t, (p0.x + p1.x) / 2, baseY + h / 2, (p0.z + p1.z) / 2,
-          angle, color);
+          angle, color, wallGeos, face);
       }
     };
 
@@ -2631,6 +3231,10 @@ export function initRender(canvas) {
       const h = kind === SEG_RAIL ? RAIL_H : wallH;
       const t = kind === SEG_RAIL ? WALL_T : thickness(a.x, a.z, b.x, b.z);
       const color = kind === SEG_WALL ? paintOf(a.x, a.z, b.x, b.z).clone() : _white;
+      // Which face of this run, if any, faces the weather. Resolved once per
+      // run for the same reason thickness and paint are: a door's jamb is the
+      // same wall as the door, and cladding one and not the other is a seam.
+      const face = kind === SEG_WALL ? outwardFace(a.x, a.z, b.x, b.z) : 0;
       const at = (v, pad = 0) => ({ x: a.x + ux * (v * L + pad), z: a.z + uz * (v * L + pad) });
       // Overhang the outer ends by half a wall thickness so corners close.
       const ends = (t0, t1, grow = 0) => [
@@ -2639,13 +3243,17 @@ export function initRender(canvas) {
       ];
       const span = (t0, t1) => {
         const [p0, p1] = ends(t0, t1);
-        fillSpan(kind, p0, p1, angle, h, t, color);
+        fillSpan(kind, p0, p1, angle, h, t, color, face);
       };
       const header = (t0, t1, hh, cy, col, depth = t, grow = 0) => {
         const [p0, p1] = ends(t0, t1, grow);
         const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
         if (len < 0.02) return;
-        addOriented(len, hh, depth, (p0.x + p1.x) / 2, cy, (p0.z + p1.z) / 2, angle, col);
+        // A header or a sill over an opening is the same wall as the run it
+        // interrupts, so it is clad the same way — but only when it is drawn
+        // in the run's own colour; a door's own trim keeps its own.
+        addOriented(len, hh, depth, (p0.x + p1.x) / 2, cy, (p0.z + p1.z) / 2, angle, col,
+          wallGeos, col === color ? face : 0);
       };
 
       const cuts = openings
@@ -2667,7 +3275,7 @@ export function initRender(canvas) {
           const [p0, p1] = ends(c.t0, c.t1);
           const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
           if (len > 0.05 && kind !== SEG_RAIL) {
-            windowRun(p0, p1, len, angle, windowBand(c.spec), t, color);
+            windowRun(p0, p1, len, angle, windowBand(c.spec), t, color, face);
           }
         } else {
           // A gap in a railing is just a gap — there is nothing to hang a
@@ -2966,7 +3574,7 @@ export function initRender(canvas) {
   // Mesh per prop. Rebuilt alongside the structural meshes on every edit;
   // only the (cached, shared) geometry survives the rebuild.
   const _dummy = new THREE.Object3D();
-  function buildPropsGroup(state, floorIndex, baseY, group) {
+  function buildPropsGroup(state, floorIndex, baseY, group, field = null) {
     const byType = new Map();
     for (const p of state.props) {
       if (p.floor !== floorIndex) continue;
@@ -2996,8 +3604,14 @@ export function initRender(canvas) {
         lens.frustumCulled = false;
         lens.userData.sharedGeo = true;
       }
+      // An outdoor piece on the ground storey stands on the *ground*, and
+      // since Phase 5 the ground has a height. Indoors nothing changes: the
+      // pad holds the terrain at datum under the building, so a desk on the
+      // ground floor is at baseY whether the site has been graded or not.
+      const onSite = entry.site && floorIndex === 0 && field && !field.flat;
       list.forEach((p, idx) => {
-        _dummy.position.set(p.x, baseY + (p.y || 0), p.z);
+        const lift = onSite ? groundAt(field, p.x, p.z) : 0;
+        _dummy.position.set(p.x, baseY + (p.y || 0) + lift, p.z);
         _dummy.rotation.set(0, p.rotationY || 0, 0);
         const s = p.scale > 0 ? p.scale : 1;
         _dummy.scale.set(s, s, s);
@@ -3020,6 +3634,9 @@ export function initRender(canvas) {
   function applyFloorVisibility() {
     if (!built) return;
     const edit = mode === 'edit';
+    // You cannot draw a plan through a roof, so the roof is off while editing
+    // — the same call the ceilings made in Phase 1 and for the same reason.
+    roofGroup.visible = !edit;
     const cur = built.currentFloor;
     for (const g of buildingGroup.children) {
       const i = g.userData.floor;
@@ -3055,6 +3672,297 @@ export function initRender(canvas) {
     if (gridHelper) gridHelper.position.y = floorBaseY(built, cur) + 0.04;
   }
 
+  // ---------- the site ----------
+  //
+  // A site surface is a polygon laid on ground that is not flat, which is the
+  // one thing a polygon is bad at. Rather than clip the region against the
+  // terrain lattice — which is real work and produces slivers — the region is
+  // triangulated once and then *subdivided* until no edge is longer than a
+  // few feet, and every vertex is dropped onto the ground. The result follows
+  // a slope as closely as the eye can tell at any scale a site is ever seen
+  // from, and it is fifteen lines rather than a clipper.
+  const DRAPE_EDGE = 12;        // ft — longest edge left undivided
+  // ...except along the building line, where a coarse triangle would push a
+  // wedge of lawn under the corridor floor. A triangle whose corners disagree
+  // about whether they are over a slab keeps splitting down to this, and then
+  // the ones that *are* over the slab are dropped. Two feet is half a grid
+  // cell: fine enough that the edge reads as the wall it follows.
+  const DRAPE_FINE = 2;         // ft
+  const DRAPE_MAX_TRIS = 8000;  // per region, a rail rather than a target
+  // How far a paved surface stands above the earth around it. Four inches,
+  // which is what a course of asphalt on its base actually is — and, not by
+  // coincidence, comfortably more than the terrain mesh can be wrong by.
+  const SURFACE_LIFT = 0.35;    // ft above the ground
+  // Regions stack: a lawn is drawn first and the car park goes on top of it,
+  // which is how anybody would draw a site and which leaves two surfaces at
+  // exactly the same height. Coplanar is the one thing a depth buffer cannot
+  // resolve, so each region in list order sits a fraction higher than the one
+  // before — enough to settle it at the far end of a twenty-acre site, capped
+  // so a design with two hundred regions doesn't end up on a plinth.
+  const REGION_STEP = 0.06;     // ft per region, in draw order
+  const REGION_STACK_MAX = 1.6; // ft
+  const MARK_LIFT = 0.10;       // ...and the paint above its own region
+
+  function subdivideTris(tris, maxEdge, maxTris, straddles = null) {
+    let cur = tris;
+    // Each pass splits every triangle that is still too big, so the count at
+    // most doubles per pass; the loop ends when a pass finds nothing to split
+    // or when the rail is reached. A twelve-acre lawn hits the rail, which is
+    // what the rail is for — its triangles end up about as coarse as the
+    // terrain lattice underneath them, and no coarser.
+    for (let pass = 0; pass < 16 && cur.length < maxTris; pass++) {
+      let split = false;
+      const next = [];
+      for (const t of cur) {
+        // Split the longest edge, which keeps the triangles from degenerating
+        // into slivers the way splitting a fixed edge would.
+        let li = 0, lm = 0;
+        for (let i = 0; i < 3; i++) {
+          const a = t[i], b = t[(i + 1) % 3];
+          const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          if (d > lm) { lm = d; li = i; }
+        }
+        const wanted = lm > maxEdge ||
+          (lm > DRAPE_FINE && straddles && straddles(t));
+        if (!wanted || next.length >= maxTris) { next.push(t); continue; }
+        const a = t[li], b = t[(li + 1) % 3], c = t[(li + 2) % 3];
+        const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        next.push([a, m, c], [m, b, c]);
+        split = true;
+      }
+      cur = next;
+      if (!split) break;
+    }
+    return cur;
+  }
+
+  // A ring of world (x, z) points, triangulated, subdivided and dropped onto
+  // the ground. Returns a geometry with planar UVs, so a surface texture tiles
+  // in feet rather than across the region.
+  //
+  // The vertex colour is white, deliberately. A site material already has its
+  // colour baked into its texture the way a floor finish does, and the vertex
+  // colour is a *multiplier* over it — so tinting the mesh with the surface's
+  // own colour as well squares it, and a lawn comes out the colour of a pine
+  // forest at midnight. White here means "the material as authored".
+  function drapedRegion(pts, field, lift, covered) {
+    if (!pts || pts.length < 3) return null;
+    const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, -p.z)));
+    const flat = new THREE.ShapeGeometry(shape).toNonIndexed();
+    const pos = flat.attributes.position;
+    const tris = [];
+    for (let i = 0; i + 2 < pos.count; i += 3) {
+      tris.push([0, 1, 2].map((k) => [pos.getX(i + k), -pos.getY(i + k)]));
+    }
+    flat.dispose();
+    if (!tris.length) return null;
+    // Does this triangle sit across the edge of the building? Only those get
+    // refined past `DRAPE_FINE`, so the cost is paid along the walls and
+    // nowhere else.
+    const straddles = covered
+      ? (t) => {
+        const a = covered(t[0][0], t[0][1]);
+        return t.some(([x, z]) => covered(x, z) !== a);
+      }
+      : null;
+    const out = subdivideTris(tris, DRAPE_EDGE, DRAPE_MAX_TRIS, straddles)
+      // Ground cover under a slab is ground cover nobody can see, and drawing
+      // it puts a lawn 1.2 inches above the corridor floor.
+      .filter((t) => !covered || !covered(
+        (t[0][0] + t[1][0] + t[2][0]) / 3, (t[0][1] + t[1][1] + t[2][1]) / 3));
+    if (!out.length) return null;
+    const verts = new Float32Array(out.length * 9);
+    const uvs = new Float32Array(out.length * 6);
+    let vi = 0, ui = 0;
+    for (const t of out) {
+      for (const [x, z] of t) {
+        verts[vi++] = x;
+        verts[vi++] = groundAt(field, x, z) + lift;
+        verts[vi++] = z;
+        uvs[ui++] = x;
+        uvs[ui++] = -z;
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geo.computeVertexNormals();
+    return coloredGeo(geo, '#ffffff');
+  }
+
+  // One painted line, as a ribbon of quads following the ground. Each segment
+  // is its own quad and they overlap at the joins, which is what keeps a
+  // three-point arc from opening a wedge at every vertex.
+  function markingRibbon(stroke, field, covered, lift) {
+    const pts = stroke.closed ? stroke.pts.concat([stroke.pts[0]]) : stroke.pts;
+    if (pts.length < 2) return null;
+    const half = Math.max(0.08, (stroke.w || 0.33) / 2);
+    const verts = [];
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const len = Math.hypot(dx, dz);
+      if (len < 1e-6) continue;
+      // A stripe that runs under the building is a stripe on the corridor
+      // floor. Per quad rather than per stroke, so a walk that passes under a
+      // canopy loses only the length that is actually covered.
+      if (covered && covered((a.x + b.x) / 2, (a.z + b.z) / 2)) continue;
+      const ux = dx / len, uz = dz / len;
+      const nx = -uz * half, nz = ux * half;
+      // Extend each end by half a width so consecutive quads overlap into a
+      // mitre rather than leaving a notch.
+      const ax = a.x - ux * half, az = a.z - uz * half;
+      const bx = b.x + ux * half, bz = b.z + uz * half;
+      const corner = [
+        [ax + nx, az + nz], [bx + nx, bz + nz], [bx - nx, bz - nz], [ax - nx, az - nz],
+      ];
+      for (const [ci, cj, ck] of [[0, 1, 2], [0, 2, 3]]) {
+        for (const k of [ci, cj, ck]) {
+          const [x, z] = corner[k];
+          verts.push(x, groundAt(field, x, z) + lift, z);
+        }
+      }
+    }
+    if (!verts.length) return null;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geo.computeVertexNormals();
+    return coloredGeo(geo, stroke.color || '#eceae4');
+  }
+
+  function buildSiteGroup(state, field) {
+    disposeGroup(siteGroup);
+    const ground = state.floors[0] || null;
+    // What counts as "under the building": the ground storey's own slab, grid
+    // cells and polygon rooms alike. Exactly the test `floorSolidAt` already
+    // answers for the walker, so the ground you can see is the ground you can
+    // stand on.
+    const covered = ground ? (x, z) => floorSolidAt(ground, x, z) : null;
+    const bySurface = new Map();
+    const marks = [];
+    regionsOf(state).forEach((region, i) => {
+      const lift = SURFACE_LIFT + Math.min(i * REGION_STEP, REGION_STACK_MAX);
+      const geo = drapedRegion(region.pts, field, lift, covered);
+      if (geo) {
+        let list = bySurface.get(region.surf);
+        if (!list) { list = []; bySurface.set(region.surf, list); }
+        list.push(geo);
+      }
+      for (const stroke of markingsFor(region)) {
+        const ribbon = markingRibbon(stroke, field, covered, lift + MARK_LIFT);
+        if (ribbon) marks.push(ribbon);
+      }
+    });
+    // One mesh per surface and one for all the paint on the whole site: a
+    // school with a car park, a court, a field and three lawns costs five
+    // draw calls, not one per region.
+    for (const [key, geos] of bySurface) {
+      const mesh = new THREE.Mesh(mergeGeometries(geos), siteMaterial(key));
+      mesh.receiveShadow = true;
+      siteGroup.add(mesh);
+    }
+    if (marks.length) {
+      const mesh = new THREE.Mesh(mergeGeometries(marks), markMat);
+      mesh.receiveShadow = true;
+      siteGroup.add(mesh);
+    }
+  }
+
+  // ---------- the roof ----------
+
+  // A run of parapet: an upstand along one boundary segment with a coping cap
+  // over it. Built off the same outline the site plan draws, so the cap you
+  // see from the street is the line on the drawing.
+  function parapetRun(a, b, y, wallGeos, capGeos) {
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 0.05) return;
+    const angle = Math.atan2(dz, dx);
+    const t = WALL_T_EXT;
+    const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2;
+    const band = new THREE.BoxGeometry(len + t, PARAPET_H, t);
+    const uv = band.attributes.uv;
+    for (let i = 16; i < uv.count; i++) uv.setX(i, uv.getX(i) * (len / CELL));
+    band.rotateY(-angle);
+    band.translate(cx, y + PARAPET_H / 2, cz);
+    wallGeos.push(coloredGeo(band, '#ffffff'));
+    const cap = new THREE.BoxGeometry(len + t + 0.2, COPING_T, t + 0.3);
+    cap.rotateY(-angle);
+    cap.translate(cx, y + PARAPET_H + COPING_T / 2, cz);
+    capGeos.push(coloredGeo(cap, '#ffffff'));
+  }
+
+  // A roof face — a triangle or a quad in 3D — with planar UVs off its own
+  // world footprint, so shingle courses come out at shingle size on a slope.
+  // White vertex colours, for the same reason `drapedRegion` uses them.
+  function roofFace(pts, color = '#ffffff') {
+    const verts = [];
+    const uvs = [];
+    for (let i = 1; i + 1 < pts.length; i++) {
+      for (const p of [pts[0], pts[i], pts[i + 1]]) {
+        verts.push(p.x, p.y, p.z);
+        uvs.push(p.x, -p.z);
+      }
+    }
+    if (!verts.length) return null;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.computeVertexNormals();
+    return coloredGeo(geo, color);
+  }
+
+  function buildRoofGroup(state) {
+    disposeGroup(roofGroup);
+    const plan = roofPlan(state);
+    if (plan.style === 'flat') return plan;
+    const wallGeos = [], capGeos = [], deckGeos = [], slopeGeos = [], gableGeos = [];
+
+    if (plan.parapetH > 0) {
+      for (const loop of plan.outlines) {
+        for (let i = 0; i < loop.length; i++) {
+          parapetRun(loop[i], loop[(i + 1) % loop.length], plan.eaveY, wallGeos, capGeos);
+        }
+      }
+    }
+    for (const rect of plan.deckRects) {
+      deckGeos.push(roofFace([
+        { x: rect.x0, y: plan.eaveY + 0.05, z: rect.z0 },
+        { x: rect.x1, y: plan.eaveY + 0.05, z: rect.z0 },
+        { x: rect.x1, y: plan.eaveY + 0.05, z: rect.z1 },
+        { x: rect.x0, y: plan.eaveY + 0.05, z: rect.z1 },
+      ]));
+    }
+    for (const block of plan.blocks) {
+      for (const f of block.faces) {
+        const geo = roofFace(f.pts);
+        if (geo) slopeGeos.push(geo);
+      }
+      for (const g of block.gables) {
+        const geo = roofFace(g.pts);
+        if (geo) gableGeos.push(geo);
+      }
+    }
+
+    const add = (geos, mat, shadow = true) => {
+      if (!geos.length) return;
+      const mesh = new THREE.Mesh(mergeGeometries(geos), mat);
+      mesh.castShadow = shadow;
+      mesh.receiveShadow = true;
+      roofGroup.add(mesh);
+    };
+    add(wallGeos, facadeMaterial(plan.facade));
+    add(gableGeos, facadeMaterial(plan.facade));
+    // A coping is precast, not brick, so it rides the membrane material,
+    // which is the right grey already. Its own mesh, though: a coping is a
+    // BoxGeometry and a deck is a raw triangle list, and `mergeGeometries`
+    // will not mix an indexed geometry with a non-indexed one.
+    add(capGeos, roofMaterial(false));
+    add(deckGeos, roofMaterial(false), false);
+    add(slopeGeos, roofMaterial(true));
+    return plan;
+  }
+
   function buildFromState(state) {
     built = state;
     disposeGroup(buildingGroup);
@@ -3063,6 +3971,13 @@ export function initRender(canvas) {
 
     const metrics = stairMetrics(state);
     const links = stairsOf(state);
+    // The graded ground, swept once. Everything that stands on it — the
+    // terrain mesh, the hardscape, the trees — reads this same field, so
+    // nothing can be at a different elevation from anything else.
+    siteField = terrainField(state);
+    buildTerrain(siteField);
+    buildSiteGroup(state, siteField);
+    const plan = buildRoofGroup(state);
     // Pivots are per-build: the Groups they point at are about to be disposed.
     doorPivots.clear();
     state.floors.forEach((floor, i) => {
@@ -3072,6 +3987,7 @@ export function initRender(canvas) {
       group.userData.floor = ceil.userData.floor = labels.userData.floor = i;
       buildFloor(floor, floorBaseY(state, i), wallHeightOf(state, i), group, ceil, labels, {
         metrics,
+        facade: plan.facade,
         cuts: floorCuts(state, i),
         ceilCuts: floorCuts(state, i + 1),
         risers: links.filter((l) => l.from === i),
@@ -3080,7 +3996,7 @@ export function initRender(canvas) {
         leaves: collectDoorLeaves(state, i),
       });
       const propsGroup = new THREE.Group();
-      buildPropsGroup(state, i, floorBaseY(state, i), propsGroup);
+      buildPropsGroup(state, i, floorBaseY(state, i), propsGroup, siteField);
       group.add(propsGroup);
       group.userData.propsGroup = propsGroup;
       buildingGroup.add(group);
@@ -3108,12 +4024,13 @@ export function initRender(canvas) {
     site.x = gw * 0.5;
     site.z = gh * 0.5;
     site.span = Math.max(gw, gh) * 0.75 + 40;
-    site.top = topOfBuilding(state);
+    // The tallest thing that casts a shadow is now the ridge, not the wall top.
+    site.top = Math.max(topOfBuilding(state), roofTop(plan));
     // The environment travels with the design, so a rebuild is also where a
     // loaded file's own date, hour and latitude take effect.
     setEnvironment(state.env);
 
-    editView.camY = 200 + topOfBuilding(state);
+    editView.camY = 200 + Math.max(topOfBuilding(state), roofTop(plan));
     applyFloorVisibility();
   }
 

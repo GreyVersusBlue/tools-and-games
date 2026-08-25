@@ -12,6 +12,13 @@
 // elevator beside the stair, a curved wall on the Learning Commons, and a
 // floor finish per room. All of it is placed the same way anyone would place
 // it with the tools — no sample-only shortcuts.
+//
+// Phase 5 adds the twenty acres it stands on: a bus loop up to the west
+// entrance, a staff lot, walks, a blacktop with a full-size basketball court,
+// a playground, a soccer pitch, planting, and enough grade on it that the
+// field sits a few feet above the car park. Same rule as everything else here
+// — every one of them is a region anyone could draw with the site tool, and
+// every marking on them is computed rather than placed.
 
 import {
   ROOM_COLORS, createState, setTile, floodRegion, cellIdx, edgeHIdx, edgeVIdx,
@@ -23,6 +30,9 @@ import {
 import { addProp } from './props.js';
 import { addStair } from './stairs.js';
 import { applyFinish } from './finish.js';
+import { addRegion } from './site.js';
+import { terrainFor, raiseTerrain, smoothTerrain } from './terrain.js';
+import { ensureRoof } from './roof.js';
 
 const HALF_PI = Math.PI / 2;
 
@@ -209,6 +219,7 @@ export function buildSampleSchool() {
   addProp(s, 'panel-acoustic', { x: 128, z: 52.3, y: 3, rotationY: facingSouth, mount: 'wall', floor: 0 });
 
   buildUpperLevel(s);
+  buildSampleSite(s);
   s.currentFloor = 0;   // open on the ground floor whatever the builder left
   return s;
 }
@@ -271,4 +282,120 @@ function buildUpperLevel(s) {
   // ...and the atrium: 32ft of the hall left open through both storeys, with
   // 4ft of corridor either side of it to walk round.
   addStair(s, 0, { type: 'opening', x: 72, z: 58, w: 32, d: 4 });
+}
+
+// ---------- the site ----------
+
+// A rectangle in world feet, wound the way `makeRegion` wants it.
+const rect = (x0, z0, x1, z1) => [
+  { x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 },
+];
+
+// The building runs x 24..136, z 28..88, and its main entrance is the double
+// door on the *west* face at (24, 58) — which is what decides where the bus
+// loop goes and, downstream of that, where everything else does.
+function buildSampleSite(s) {
+  // A site big enough for a pitch. `terrainFor`'s default margin is 200ft,
+  // which is a car park; a soccer field needs twice that.
+  s.terrain = terrainFor(s, 400);
+  // Gentle relief, and all of it in the right places: the playing field sits
+  // up on a shelf, the car park sits a little below the entrance so the walk
+  // to the door runs downhill for a bus and up for a car, and a berm screens
+  // the lot from the road. Nothing steeper than a walk can take.
+  raiseTerrain(s.terrain, 360, 115, 200, 6);
+  raiseTerrain(s.terrain, -120, 180, 190, -3.5);
+  raiseTerrain(s.terrain, -250, 60, 140, 7);
+  smoothTerrain(s.terrain, 60, 120, 200, 0.6);
+
+  // Lawn first, everything else on top of it: regions stack in list order, so
+  // the ground cover is simply the one drawn underneath.
+  addRegion(s, rect(-260, -240, 560, 420), { surf: 'turf', name: 'Lawn' });
+
+  // The bus loop, running west to east up to the entrance, with a dashed
+  // centre line and a crossing where the walk cuts it.
+  addRegion(s, rect(-150, 40, 22, 78), { surf: 'asphalt', mark: 'lane', name: 'Bus loop' });
+  addRegion(s, rect(-62, 40, -48, 78), { surf: 'asphalt', mark: 'crosswalk', name: 'Crossing' });
+
+  // Staff and visitor parking, south of the loop.
+  addRegion(s, rect(-212, 110, -32, 250), { surf: 'asphalt', mark: 'stalls', name: 'Staff lot' });
+  addRegion(s, rect(-48, 78, -32, 250), { surf: 'concrete', name: 'Lot walk' });
+
+  // The entrance plaza and the walks off it.
+  addRegion(s, rect(-2, 38, 26, 82), { surf: 'concrete', name: 'Entry plaza' });
+  addRegion(s, rect(12, 16, 22, 100), { surf: 'concrete', name: 'West walk' });
+  addRegion(s, rect(18, 16, 146, 26), { surf: 'concrete', name: 'North walk' });
+  addRegion(s, rect(136, 26, 146, 100), { surf: 'concrete', name: 'East walk' });
+  addRegion(s, rect(28, 92, 74, 104), { surf: 'garden', name: 'Entry planting' });
+
+  // The blacktop: a full-size court at 84 by 50, and it fits because the
+  // region is bigger than one — draw it smaller and the court shrinks with it.
+  addRegion(s, rect(20, 150, 136, 236), { surf: 'court', mark: 'basketball', name: 'Blacktop' });
+  addRegion(s, rect(148, 158, 180, 190), { surf: 'asphalt', mark: 'foursquare', name: 'Games' });
+  addRegion(s, rect(148, 200, 182, 216), { surf: 'asphalt', mark: 'hopscotch', name: 'Games' });
+
+  // Playground, on the safety surface a playground stands on.
+  addRegion(s, rect(16, 252, 116, 336), { surf: 'mulch', name: 'Playground' });
+
+  // ...and the field, up on its shelf.
+  addRegion(s, rect(190, 14, 530, 214), { surf: 'field', mark: 'soccer', name: 'Playing field' });
+  addRegion(s, rect(190, 226, 300, 260), { surf: 'gravel', name: 'Maintenance yard' });
+
+  // --- what stands on it ---
+  const P = (type, x, z, rotationY = 0) => addProp(s, type, { x, z, rotationY, floor: 0 });
+
+  // Shade trees down the bus loop and through the car park islands, an
+  // evergreen screen on the berm, and something ornamental at the door.
+  for (let i = 0; i < 6; i++) P('tree-shade', -140 + i * 30, 22, 0);
+  for (let i = 0; i < 4; i++) P('tree-shade', -196 + i * 46, 96, 0);
+  for (let i = 0; i < 5; i++) P('tree-conifer', -246, 20 + i * 34, 0);
+  P('tree-ornamental', 34, 34, 0);
+  P('tree-ornamental', 34, 86, 0);
+  P('tree-young', 152, 120, 0);
+  P('tree-columnar', 150, 32, 0);
+  P('tree-columnar', 150, 60, 0);
+  for (let i = 0; i < 5; i++) P('hedge-run', 30 + i * 7, 98, 0);
+  for (let i = 0; i < 3; i++) P('shrub-round', 6 + i * 6, 36, 0);
+  P('planter-concrete', 6, 46, 0);
+  P('planter-concrete', 6, 74, 0);
+  P('boulder', 122, 104, 0.6);
+  P('grass-ornamental', 128, 110, 0);
+
+  // The entrance itself.
+  P('flagpole', 2, 58, 0);
+  P('bike-rack', 30, 108, 0);
+  P('bike-rack', 38, 108, 0);
+  P('bench-outdoor', 16, 40, 0);
+  P('bus-shelter', -40, 30, 0);
+  P('sign-marquee', -70, 96, 0);
+  P('trash-outdoor', 20, 84, 0);
+  for (let i = 0; i < 4; i++) P('bollard', -6 + i * 8, 36, 0);
+
+  // Parking lot lighting and the service yard.
+  P('light-pole', -122, 148, 0);
+  P('light-pole', -122, 212, 0);
+  P('light-pole', -60, 58, 0);
+  P('dumpster', 214, 240, Math.PI / 2);
+  for (let i = 0; i < 4; i++) P('fence-chain', 190 + i * 10, 226, 0);
+
+  // The playground.
+  P('climber', 46, 288, 0);
+  P('slide', 88, 276, Math.PI);
+  P('swing-set', 84, 316, 0);
+  P('sandbox', 26, 320, 0);
+  P('picnic-table', 24, 262, 0);
+  P('picnic-table', 24, 276, 0);
+  P('pergola', 96, 244, 0);
+
+  // The court and the field.
+  P('hoop-pole', 32, 193, HALF_PI);
+  P('hoop-pole', 124, 193, -HALF_PI);
+  P('tetherball', 168, 230, 0);
+  P('soccer-goal', 200, 114, HALF_PI);
+  P('soccer-goal', 520, 114, -HALF_PI);
+  P('bleacher-outdoor', 360, 224, Math.PI);
+  P('bleacher-outdoor', 388, 224, Math.PI);
+
+  // The sample is brick, because a school built in the years this plan comes
+  // from is brick.
+  ensureRoof(s).facade = 'brick';
 }

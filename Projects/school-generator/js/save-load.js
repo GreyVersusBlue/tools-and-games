@@ -11,6 +11,9 @@
 //        (`fin`/`paint` on cells and shapes), and ramp/elevator links
 //   v6 — `env`: the date, hour, latitude, compass orientation and interior-
 //        light mode the design is lit by (see sky.js)
+//   v7 — the site: `terrain` (a graded heightfield, see terrain.js), `site`
+//        (hardscape and field regions with their surfaces and markings, see
+//        site.js) and `roof` (style, pitch and facade material, see roof.js)
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
 // polygon rooms in it, a v3 one has no glass and no stairs, a v4 one has no
@@ -35,6 +38,18 @@
 // fixed pre-Phase-3 rig drew with. Opening an old file changes nothing about
 // how it looks; it just gains a clock you can now move.
 //
+// v7 keeps the same bargain for the third time, and it is worth noting how
+// little it costs: `terrain` is written only when something has been graded,
+// `site` only when a region has been drawn, and `roof` only when it differs
+// from the default — so a v6 design still round-trips as the same bytes.
+//
+// It does change one thing about how an old design *looks*, deliberately and
+// for the second time in this arc: the default roof is a parapet, so a
+// building that used to stop dead at its wall tops now has a cap on it. Same
+// call the v5 bump made when an `EDGE_DOOR` that was a hole started hanging a
+// leaf. Nothing about the file changed; the building simply has a roof now. A
+// design that wants the old silhouette back says `roof: { style: 'flat' }`.
+//
 // The autosave key is deliberately unchanged so an in-progress design survives
 // the upgrade — that was true of the v2 bump and stays true here.
 //
@@ -48,22 +63,31 @@ import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from '.
 import { normalizeShape, MAX_SHAPES } from './shapes.js';
 import { readFinish, readPaint } from './finish.js';
 import { normalizeEnv, isDefaultEnv } from './sky.js';
+import { normalizeTerrain, packTerrain } from './terrain.js';
+import { normalizeRegion, MAX_REGIONS } from './site.js';
+import { normalizeRoof, isDefaultRoof } from './roof.js';
 
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 const MIN_DIM = 4;
 const MAX_DIM = 200;
 
+// Everything a design hasn't actually used is left out. The rule is one rule,
+// applied four times now — a plain doorway records no options, a mid-morning
+// records no environment, a level site records no terrain, a bare site records
+// no regions and an ordinary roof records no roof — and it is the whole reason
+// a file from an older build survives a round trip through a newer one
+// unchanged.
 export function serialize(state) {
-  // A design at the default environment doesn't record one — same rule
-  // `writeOpening` follows for a plain doorway, and it is what lets a v5 file
-  // survive a round trip through this build byte for byte.
-  if (state && state.env && isDefaultEnv(state.env)) {
-    const { env, ...rest } = state;
-    return JSON.stringify(rest);
-  }
-  return JSON.stringify(state);
+  if (!state) return JSON.stringify(state);
+  const out = { ...state };
+  if (!out.env || isDefaultEnv(out.env)) delete out.env;
+  const packed = packTerrain(out.terrain);
+  if (packed) out.terrain = packed; else delete out.terrain;
+  if (!out.site || !Array.isArray(out.site.regions) || !out.site.regions.length) delete out.site;
+  if (isDefaultRoof(out.roof)) delete out.roof;
+  return JSON.stringify(out);
 }
 
 const clampDim = (v) => Math.min(MAX_DIM, Math.max(MIN_DIM, Math.floor(v)));
@@ -146,6 +170,24 @@ export function deserialize(json) {
   // that can't be lit.
   state.env = normalizeEnv(d.env);
 
+  // The site. All three are optional and all three fail *safe*: an unreadable
+  // terrain is a level one, an unreadable region is one that isn't there, and
+  // an unreadable roof is the default one. None of them can stop a design from
+  // loading, which is the same promise `normalizeEnv` makes about the sky.
+  const terrain = normalizeTerrain(d.terrain);
+  if (terrain) state.terrain = terrain;
+  if (d.site && Array.isArray(d.site.regions)) {
+    const extent = Math.max(w, h) * CELL * 8;
+    const regions = [];
+    for (const raw of d.site.regions.slice(0, MAX_REGIONS)) {
+      const region = normalizeRegion(raw, extent);
+      if (region) regions.push(region);
+    }
+    if (regions.length) state.site = { regions };
+  }
+  const roof = normalizeRoof(d.roof);
+  if (!isDefaultRoof(roof)) state.roof = roof;
+
   if (Array.isArray(d.props)) {
     for (const raw of d.props.slice(0, MAX_PROPS)) {
       const p = normalizeProp(raw, state.floors.length);
@@ -163,6 +205,11 @@ export function deserialize(json) {
   for (const p of state.props) if (!p.id) p.id = state.nextId++;
   for (const l of state.links) if (!l.id) l.id = state.nextId++;
   for (const f of state.floors) for (const sh of f.shapes) if (!sh.id) sh.id = state.nextId++;
+  // Site regions take ids off the same counter everything else does, so a
+  // region and a room can never collide.
+  for (const r of (state.site ? state.site.regions : [])) {
+    if (!r.id || r.id >= state.nextId) r.id = state.nextId++;
+  }
   return state;
 }
 

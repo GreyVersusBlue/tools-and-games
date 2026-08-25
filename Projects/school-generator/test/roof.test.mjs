@@ -317,3 +317,15 @@ test('roofPlan reads the state\'s own roof when none is passed', () => {
   assert.equal(plan.facade, 'panel');
   assert.equal(roofPlan(box(8, 8)).style, DEFAULT_ROOF.style, 'and the default otherwise');
 });
+
+test('every roof gets a deck under it, flat or pitched', () => {
+  const s = box(10, 6);
+  for (const style of ['parapet', 'hip', 'gable']) {
+    const plan = roofPlan(s, { style });
+    assert.ok(plan.deckRects.length, `${style} has a deck`);
+    let area = 0;
+    for (const r of plan.deckRects) area += (r.x1 - r.x0) * (r.z1 - r.z0);
+    near(area, 40 * 24, 1e-9, `${style} deck covers the footprint exactly`);
+  }
+  assert.deepEqual(roofPlan(s, { style: 'flat' }).deckRects, [], 'except a flat one, which has no roof');
+});

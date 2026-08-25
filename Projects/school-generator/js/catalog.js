@@ -46,7 +46,7 @@
 export const CATEGORIES = [
   'Tables & Desks', 'Seating', 'Storage', 'Fixtures', 'Lighting',
   'Subject Rooms', 'Cafeteria', 'Gym & Stage', 'Library & Office', 'Restroom',
-  'Decor', 'Outdoor',
+  'Decor', 'Outdoor', 'Landscape',
 ];
 
 // Every geometry key a catalog row may name. render.js's builder table must
@@ -67,6 +67,9 @@ export const GEO_KEYS = [
   'toiletstall', 'urinal', 'sinkcounter',
   'plant', 'aquarium', 'cage', 'clutter',
   'picnic', 'bikerack', 'flagpole', 'slide', 'swing', 'dumpster', 'polesign',
+  'goal', 'backstop', 'fence', 'shelter', 'pergola', 'sandbox', 'climber',
+  'tetherball', 'bollard',
+  'tree', 'hedge', 'shrub', 'planter', 'boulder',
   'troffer', 'pendant', 'sconce', 'polelight',
   'gongbell', 'diffuser',
 ];
@@ -236,6 +239,43 @@ export const PROP_CATALOG = [
   { type: 'hoop-pole', name: 'Basketball Hoop (Pole)', category: 'Outdoor', icon: '⛹️', w: 4, d: 4, h: 12, y: 0, color: '#5a6068', mount: 'floor', geo: 'hoop', pole: true, site: true },
   { type: 'dumpster', name: 'Dumpster', category: 'Outdoor', icon: '🚛', w: 6, d: 3.5, h: 4.5, y: 0, color: '#3f5a46', mount: 'floor', geo: 'dumpster', site: true },
   { type: 'sign-school', name: 'School Zone Sign', category: 'Outdoor', icon: '🚸', w: 1, d: 1, h: 7, y: 0, color: '#d8b13f', mount: 'floor', geo: 'polesign', site: true },
+
+  // Phase 5 of the second arc. Everything a site needs standing on it once
+  // there is a site to stand on: the things that edge a lot, the things that
+  // shelter a queue, and the things a field is not a field without. All
+  // `site: true`, all mount 'floor' — which is what makes them obstacles to a
+  // walker and what puts them on the terrain rather than on a slab.
+  { type: 'soccer-goal', name: 'Soccer Goal', category: 'Outdoor', icon: '🥅', w: 24, d: 8, h: 8, y: 0, color: '#e4e6e8', mount: 'floor', geo: 'goal', site: true },
+  { type: 'backstop', name: 'Backstop', category: 'Outdoor', icon: '⚾', w: 30, d: 12, h: 16, y: 0, color: '#8a8f96', mount: 'floor', geo: 'backstop', site: true },
+  { type: 'bleacher-outdoor', name: 'Outdoor Bleachers', category: 'Outdoor', icon: '🏟', w: 24, d: 12, h: 9, y: 0, color: '#8a8f96', mount: 'floor', geo: 'riser', rows: 5, seats: true, site: true },
+  { type: 'fence-chain', name: 'Chain-link Fence', category: 'Outdoor', icon: '🔗', w: 10, d: 0.3, h: 6, y: 0, color: '#9aa1a8', mount: 'floor', geo: 'fence', site: true },
+  { type: 'fence-gate', name: 'Chain-link Gate', category: 'Outdoor', icon: '🚧', w: 8, d: 0.3, h: 6, y: 0, color: '#9aa1a8', mount: 'floor', geo: 'fence', style: 'gate', site: true },
+  { type: 'bus-shelter', name: 'Bus Shelter', category: 'Outdoor', icon: '🚌', w: 12, d: 5, h: 8, y: 0, color: '#5a6068', mount: 'floor', geo: 'shelter', site: true },
+  { type: 'pergola', name: 'Shade Structure', category: 'Outdoor', icon: '⛱️', w: 20, d: 12, h: 10, y: 0, color: '#8a6a48', mount: 'floor', geo: 'pergola', site: true },
+  { type: 'sandbox', name: 'Sandbox', category: 'Outdoor', icon: '🏖️', w: 10, d: 10, h: 1.2, y: 0, color: '#8a6a48', mount: 'floor', geo: 'sandbox', site: true },
+  { type: 'climber', name: 'Climbing Structure', category: 'Outdoor', icon: '🧗', w: 14, d: 12, h: 9, y: 0, color: '#3f8f7a', mount: 'floor', geo: 'climber', site: true },
+  { type: 'tetherball', name: 'Tetherball Pole', category: 'Outdoor', icon: '🎾', w: 2, d: 2, h: 10, y: 0, color: '#5a6068', mount: 'floor', geo: 'tetherball', site: true },
+  { type: 'bollard', name: 'Bollard', category: 'Outdoor', icon: '🟡', w: 1, d: 1, h: 3.5, y: 0, color: '#d8b13f', mount: 'floor', geo: 'bollard', site: true },
+  { type: 'trash-outdoor', name: 'Outdoor Receptacle', category: 'Outdoor', icon: '🗑', w: 2.2, d: 2.2, h: 3.2, y: 0, color: '#3f4a44', mount: 'floor', geo: 'bin', site: true },
+  { type: 'sign-marquee', name: 'Marquee Sign', category: 'Outdoor', icon: '🪧', w: 10, d: 2, h: 8, y: 0, color: '#7a5230', mount: 'floor', geo: 'polesign', style: 'marquee', site: true },
+
+  // ---- Landscape ----
+  //
+  // Planting, at the size the nursery tag says it will be in twenty years
+  // rather than the size it is on the day it goes in — a school's shade trees
+  // are the one thing on the site drawn at maturity, because a site plan is a
+  // promise about what the place will look like. `tree-young` is the exception
+  // and is staked, which is what makes it read as new.
+  { type: 'tree-shade', name: 'Shade Tree', category: 'Landscape', icon: '🌳', w: 26, d: 26, h: 32, y: 0, color: '#4a7a3a', mount: 'floor', geo: 'tree', site: true },
+  { type: 'tree-conifer', name: 'Evergreen', category: 'Landscape', icon: '🌲', w: 16, d: 16, h: 34, y: 0, color: '#2f5c3f', mount: 'floor', geo: 'tree', style: 'conifer', site: true },
+  { type: 'tree-ornamental', name: 'Ornamental Tree', category: 'Landscape', icon: '🌸', w: 14, d: 14, h: 16, y: 0, color: '#7a9a4a', mount: 'floor', geo: 'tree', style: 'ornamental', site: true },
+  { type: 'tree-columnar', name: 'Columnar Tree', category: 'Landscape', icon: '🎋', w: 8, d: 8, h: 26, y: 0, color: '#3f6b3a', mount: 'floor', geo: 'tree', style: 'columnar', site: true },
+  { type: 'tree-young', name: 'Young Tree (staked)', category: 'Landscape', icon: '🌱', w: 8, d: 8, h: 12, y: 0, color: '#5c8a44', mount: 'floor', geo: 'tree', style: 'young', site: true },
+  { type: 'hedge-run', name: 'Hedge', category: 'Landscape', icon: '🌿', w: 6, d: 3, h: 4, y: 0, color: '#3f6b3f', mount: 'floor', geo: 'hedge', site: true, absorb: 0.40 },
+  { type: 'shrub-round', name: 'Shrub', category: 'Landscape', icon: '🪺', w: 4, d: 4, h: 3.5, y: 0, color: '#4a7a4a', mount: 'floor', geo: 'shrub', site: true, absorb: 0.40 },
+  { type: 'grass-ornamental', name: 'Ornamental Grass', category: 'Landscape', icon: '🌾', w: 3, d: 3, h: 3, y: 0, color: '#9c9450', mount: 'floor', geo: 'shrub', style: 'grass', site: true },
+  { type: 'planter-concrete', name: 'Concrete Planter', category: 'Landscape', icon: '🪴', w: 4, d: 4, h: 2.5, y: 0, color: '#a8a49a', mount: 'floor', geo: 'planter', site: true },
+  { type: 'boulder', name: 'Landscape Boulder', category: 'Landscape', icon: '🪨', w: 5, d: 4, h: 3, y: 0, color: '#8a8478', mount: 'floor', geo: 'boulder', site: true },
 ];
 
 const BY_TYPE = new Map(PROP_CATALOG.map((e) => [e.type, e]));

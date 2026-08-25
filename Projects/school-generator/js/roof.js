@@ -91,6 +91,14 @@ export function normalizeRoof(raw) {
   };
 }
 
+// The state's roof record, created on first write. Same shape as
+// `ensureTerrain` and `ensureSite`, and for the same reason: a design that
+// never touches its roof never carries one.
+export const ensureRoof = (state) => {
+  if (!state.roof || typeof state.roof !== 'object') state.roof = defaultRoof();
+  return state.roof;
+};
+
 export const isDefaultRoof = (roof) => {
   const r = normalizeRoof(roof);
   return r.style === DEFAULT_ROOF.style && r.pitch === DEFAULT_ROOF.pitch &&
@@ -351,7 +359,7 @@ export function roofPlan(state, roof = null) {
   const eaveY = floorBaseY(state, top) + WALL_H;
   const plan = {
     style: r.style, pitch: r.pitch, facade: r.facade,
-    eaveY, outlines: [], blocks: [], rise: 0,
+    eaveY, outlines: [], deckRects: [], blocks: [], rise: 0,
     parapetH: r.style === 'parapet' ? PARAPET_H : 0,
   };
   // A flat roof is what every earlier version drew: the wall top, and nothing
@@ -360,13 +368,19 @@ export function roofPlan(state, roof = null) {
   const mask = roofMask(floor, state.w, state.h);
   if (!maskCount(mask)) return plan;
   plan.outlines = maskOutlines(mask);
+  // The deck. A flat roof needs one because there is nothing else up there,
+  // and a pitched roof needs one too: two masses of different width meet at a
+  // valley, and without a deck under them that valley is a hole you can see
+  // the classrooms through.
+  const rects = maskRects(mask);
+  plan.deckRects = rects;
 
   if (r.style === 'parapet') {
     plan.rise = PARAPET_H + COPING_T;
     return plan;
   }
 
-  for (const rect of maskRects(mask)) {
+  for (const rect of rects) {
     // An eave only hangs where the building actually ends.
     const x0 = rect.x0 - (sideIsOuter(mask, rect, 'w') ? EAVE : 0);
     const x1 = rect.x1 + (sideIsOuter(mask, rect, 'e') ? EAVE : 0);

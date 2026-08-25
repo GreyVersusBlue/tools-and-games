@@ -242,12 +242,24 @@ export const STAIR_STEP = { db: 68, hz: 230, tone: 5000, decay: 0.17, scuff: 0.2
 // Outside: asphalt and grit, dead and dull, with more scuff than strike.
 export const GROUND_STEP = { db: 56, hz: 130, tone: 1800, decay: 0.08, scuff: 0.6 };
 
+// Out on the site, keyed on the `step` column every surface row in site.js
+// carries. Three voices rather than ten, because the ear does not distinguish
+// a concrete walk from an asphalt drive and very much does distinguish either
+// from grass — and bare graded earth, where no region has been drawn, keeps
+// the plain GROUND_STEP it always had.
+export const SITE_STEPS = {
+  hard: { db: 60, hz: 150, tone: 2600, decay: 0.09, scuff: 0.42 },
+  soft: { db: 48, hz: 100, tone: 900, decay: 0.06, scuff: 0.72 },
+  gravel: { db: 58, hz: 120, tone: 3400, decay: 0.07, scuff: 0.9 },
+};
+
 // `surface` is `supportAt`'s own answer — 'floor', 'stair' or 'ground' — so
 // the sound and the collision agree about what you are standing on by
-// construction rather than by coincidence.
-export function footstepFor(surface, finish) {
+// construction rather than by coincidence. `site` is the third argument Phase
+// 5 of the second arc added: when the answer is 'ground', *which* ground.
+export function footstepFor(surface, finish, site = null) {
   if (surface === 'stair') return STAIR_STEP;
-  if (surface === 'ground') return GROUND_STEP;
+  if (surface === 'ground') return (site && SITE_STEPS[site]) || GROUND_STEP;
   return FOOTSTEPS[finish] || FOOTSTEPS.vct;
 }
 
