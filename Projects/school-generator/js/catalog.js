@@ -329,3 +329,70 @@ export function catalogByCategory() {
   }
   return out.filter((g) => g.entries.length);
 }
+
+// --- Phase 11: colour variants ---
+//
+// A row's `color` is the colour that type is *usually* painted; a prop may
+// override it by carrying `data.color`. `cleanData()` (props.js) has validated
+// that field as a string since Phase 1 — what was missing until now was
+// anybody reading it, which is what these three do.
+//
+// They live here rather than in props.js because the fallback is the catalog
+// row's own colour, and here is the only place that knows it. Everything that
+// paints a prop — the renderer's geometry cache, the blueprint's fill, the
+// editor's swatch — goes through `propColor`, so a variant can never be
+// honoured in one view and ignored in another.
+
+const HEX6 = /^#[0-9a-f]{6}$/;
+const HEX3 = /^#[0-9a-f]{3}$/;
+
+// Normalize a candidate colour to a lowercase `#rrggbb`, or '' if it isn't a
+// colour at all. Three-digit shorthand is expanded, because a save file edited
+// by hand is allowed to be terse and a `#f00` chair should still be red rather
+// than silently grey.
+export function normalizeColor(v) {
+  if (typeof v !== 'string') return '';
+  const s = v.trim().toLowerCase();
+  if (HEX6.test(s)) return s;
+  if (HEX3.test(s)) return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`;
+  return '';
+}
+
+// The colour a given prop should actually be drawn in. `prop` is optional, so
+// a caller holding only a row (the palette, a legend) can ask the same
+// question. The last fallback matches `missingModelGeo`'s: a prop whose row
+// has lost its colour is grey, never `undefined` handed to a colour parser.
+export function propColor(entry, prop = null) {
+  const own = prop && prop.data ? normalizeColor(prop.data.color) : '';
+  return own || (entry && normalizeColor(entry.color)) || '#8a8f96';
+}
+
+// '' for a prop wearing its row's own colour, the variant hex otherwise. The
+// renderer's geometry cache appends this to the type, so the common case —
+// every desk in the building the same brown — is still one cache entry and one
+// draw call, and only a recoloured prop costs a second of each.
+export function variantKey(entry, prop) {
+  const own = prop && prop.data ? normalizeColor(prop.data.color) : '';
+  return own && own !== normalizeColor(entry && entry.color) ? own : '';
+}
+
+// The swatch row itself. Eleven paints and the absence of one — school
+// furniture colours rather than a colour wheel, because the point of the row
+// is to let somebody colour-code a wing or brighten a kindergarten, not to
+// match a brand. `null` is the first cell and is not a colour: it clears
+// `data.color` so the prop goes back to whatever its catalog row says, which
+// is a different thing from painting it that colour.
+export const PROP_PAINTS = [
+  null,
+  '#d9d5cc', // bone
+  '#c0392b', // schoolhouse red
+  '#e07b39', // orange
+  '#e5b33a', // marigold
+  '#5d8a4e', // fern
+  '#2f8f83', // teal
+  '#3f6fae', // the blue every student chair in this catalog already is
+  '#5b4b8a', // violet
+  '#b8567f', // rose
+  '#8a5a3a', // oak
+  '#3a4048', // charcoal
+];

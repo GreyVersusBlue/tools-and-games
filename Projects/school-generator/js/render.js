@@ -28,7 +28,7 @@ import {
   shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint,
   floorSolidAt, openingSpec,
 } from './shapes.js';
-import { catalogEntry } from './catalog.js';
+import { catalogEntry, propColor, variantKey } from './catalog.js';
 import {
   stairMetrics, stairsOf, openingRails, runMetrics,
   elevatorSize, elevatorDoorWidth, elevatorsOn,
@@ -2911,7 +2911,7 @@ export function initRender(canvas) {
   function missingModelGeo(entry) {
     const g = new THREE.BoxGeometry(entry.w, entry.h, entry.d);
     g.translate(0, entry.h / 2, 0);
-    return coloredGeo(g, entry.color || '#8a8f96');
+    return coloredGeo(g, propColor(entry));
   }
 
   // Cached per catalog type (not rebuilt on every edit like the structural
@@ -2921,20 +2921,39 @@ export function initRender(canvas) {
   // builders hand back one geometry and get `lens: null`, the light fixtures
   // hand back both, and `buildPropsGroup` below only has to know that a lens
   // may or may not be there.
+  //
+  // Phase 11 adds the second half of the key. A prop carrying `data.color`
+  // wants the same shape in a different paint, and since the paint is baked
+  // into the vertices there is nothing to do but build it twice — so the key
+  // is the type *and* the variant, and the builder is handed a copy of the row
+  // wearing the new colour. Every builder derives its own shading from
+  // `e.color` through `tint()`, which is why a one-field copy is enough to
+  // recolour a chair's legs and its seat together rather than leaving a red
+  // chair on brown legs.
+  //
+  // `variantKey` returns '' for the overwhelmingly common case — a prop
+  // wearing its row's own colour — and the key is then the bare type, so the
+  // cache a design without a single variant in it builds is byte-for-byte the
+  // one it built before this phase, and `setModels` below can still delete an
+  // imported row's geometry by its type alone.
   const propGeoCache = new Map();
-  function getPropGeometry(entry) {
-    let geo = propGeoCache.get(entry.type);
+  function getPropGeometry(entry, variant = '') {
+    // An imported model's colours came out of its file; there are no builder
+    // parameters to re-run and nothing to re-tint, so a variant is dropped
+    // here rather than quietly caching a second identical copy of it.
+    const key = variant && entry.geo !== 'model' ? `${entry.type}|${variant}` : entry.type;
+    let geo = propGeoCache.get(key);
     if (geo) return geo;
     if (entry.geo === 'model') {
       const fromFile = modelGeoCache.get(entry.model);
       geo = { body: fromFile || missingModelGeo(entry), lens: null };
-      propGeoCache.set(entry.type, geo);
+      propGeoCache.set(key, geo);
       return geo;
     }
     const build = PROP_GEO_BUILDERS[entry.geo] || buildDesk;
-    const built = build(entry);
+    const built = build(variant ? { ...entry, color: variant } : entry);
     geo = built && built.body ? { body: built.body, lens: built.lens || null } : { body: built, lens: null };
-    propGeoCache.set(entry.type, geo);
+    propGeoCache.set(key, geo);
     return geo;
   }
 
@@ -3693,16 +3712,24 @@ export function initRender(canvas) {
   // only the (cached, shared) geometry survives the rebuild.
   const _dummy = new THREE.Object3D();
   function buildPropsGroup(state, floorIndex, baseY, group, field = null) {
+    // Bucketed by type *and* colour variant since Phase 11: two instanced
+    // meshes share a draw call only if they share geometry, and a recoloured
+    // prop has its colour in its vertices. A design with no variants in it
+    // buckets exactly as it did before — one entry per type, keyed by the bare
+    // type string.
     const byType = new Map();
     for (const p of state.props) {
       if (p.floor !== floorIndex) continue;
-      if (!byType.has(p.type)) byType.set(p.type, []);
-      byType.get(p.type).push(p);
-    }
-    for (const [type, list] of byType) {
-      const entry = catalogEntry(type);
+      const entry = catalogEntry(p.type);
       if (!entry) continue; // an unknown type from a newer save — nothing to draw it with
-      const geo = getPropGeometry(entry);
+      const variant = variantKey(entry, p);
+      const key = variant ? `${p.type}|${variant}` : p.type;
+      let bucket = byType.get(key);
+      if (!bucket) { bucket = { entry, variant, list: [] }; byType.set(key, bucket); }
+      bucket.list.push(p);
+    }
+    for (const { entry, variant, list } of byType.values()) {
+      const geo = getPropGeometry(entry, variant);
       const emit = emitOf(entry);
       const mesh = new THREE.InstancedMesh(geo.body, propMat, list.length);
       mesh.castShadow = false;

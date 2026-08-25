@@ -190,6 +190,20 @@
       margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
       font-size: 10.5px; line-height: 1.7; color: var(--text-dim);
     }
+    /* prop paint — the same swatch row the room panel uses, at the size the
+       narrower prop panel has room for */
+    #prop-paint { margin-top: 10px; border-top: 1px solid var(--panel-border); padding-top: 9px; }
+    #prop-paint .paint-head {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 10.5px; color: var(--text-dim); letter-spacing: 0.04em;
+      text-transform: uppercase; margin-bottom: 6px;
+    }
+    #prop-paint-chip {
+      margin-left: auto; width: 14px; height: 14px; border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+    }
+    #prop-swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+    #prop-swatches .swatch { border-radius: 5px; border-width: 2px; }
 
     /* polygon extras, shown inside the room panel for the polygon tool */
     #poly-extra { margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px; }
@@ -992,6 +1006,13 @@
       <button id="model-manage" type="button" title="Rename, resize or remove imported models">Manage</button>
     </div>
     <input id="model-file" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" class="hidden" />
+    <div id="prop-paint">
+      <div class="paint-head">
+        <span>Paint</span>
+        <span id="prop-paint-chip" aria-hidden="true"></span>
+      </div>
+      <div id="prop-swatches"></div>
+    </div>
     <div class="keys">
       Click to place &nbsp; <kbd>R</kbd>/<kbd>⇧R</kbd> rotate<br />
       <kbd>Del</kbd> remove &nbsp; <kbd>Alt</kbd> ignore snapping<br />

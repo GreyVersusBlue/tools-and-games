@@ -8,7 +8,7 @@ import {
 } from './grid.js';
 import { totalShapeArea } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
-import { catalogByCategory, catalogEntry } from './catalog.js';
+import { catalogByCategory, catalogEntry, PROP_PAINTS } from './catalog.js';
 import { ROOM_TEMPLATES } from './templates.js';
 import { initRender } from './render.js';
 import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
@@ -144,6 +144,9 @@ const editor = initEditor({
     // Placing or deleting a fixture changes what the light budget is doing,
     // and the sky panel is the only place that says so.
     renderEnvReadout();
+    // A prop placed, painted, deleted or undone can change which swatch is
+    // lit and what colour the chip shows.
+    if (editor.tool === 'prop') syncPropPaint();
     // Same for sound: a diffuser placed, a room's finish changed or a wall
     // moved all change what there is to hear and how long it rings, and both
     // answers are derived rather than stored, so re-deriving is the whole
@@ -531,6 +534,8 @@ catalogByCategory().forEach(({ category, entries }) => {
       });
       b.classList.add('active');
       b.setAttribute('aria-pressed', 'true');
+      // A different row means a different default colour behind the paint.
+      syncPropPaint();
     });
     row.appendChild(b);
     return { b, entry };
@@ -561,6 +566,48 @@ function filterPalette() {
   }
 }
 buildPalette();
+
+// --- prop paint (Phase 11) ---
+// The swatch row under the palette. Same gesture as the room panel's two
+// rows, and the same first cell: a dashed empty square that means "whatever
+// the catalog says", not a colour of its own. It paints the selection if
+// there is one and sets the paint for the next placement either way, so
+// select-then-click and click-then-place both do what they look like.
+const propSwatches = $('prop-swatches');
+const propPaintChip = $('prop-paint-chip');
+PROP_PAINTS.forEach((c) => {
+  const b = document.createElement('button');
+  b.className = 'swatch';
+  b.dataset.color = c || '';
+  b.style.background = c || 'transparent';
+  if (!c) b.style.border = '2px dashed rgba(255,255,255,0.45)';
+  b.title = c || 'As catalogued';
+  b.setAttribute('aria-label', c ? `Furniture paint ${c}` : 'Catalog colour');
+  b.setAttribute('aria-pressed', 'false');
+  b.addEventListener('click', () => {
+    editor.setPropColor(c || '');
+    syncPropPaint();
+  });
+  propSwatches.appendChild(b);
+});
+
+// Reads back off the tool rather than remembering what was clicked, because
+// selecting a prop moves the highlight to *its* colour.
+function syncPropPaint() {
+  const cur = editor.propColor || '';
+  propSwatches.querySelectorAll('.swatch').forEach((b) => {
+    const on = b.dataset.color === cur;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  propPaintChip.style.background = editor.propPreviewColor;
+}
+syncPropPaint();
+// Selecting a prop is not an edit, so it never reaches `onChange` — but it
+// does move the highlight onto that prop's own colour, so the row follows the
+// pointer as well as the model.
+canvas.addEventListener('pointerup', () => { if (editor.tool === 'prop') syncPropPaint(); });
+
 paletteSearch.addEventListener('input', filterPalette);
 paletteSearch.addEventListener('keydown', (e) => {
   // Esc clears the filter (and stops here rather than reaching the editor's

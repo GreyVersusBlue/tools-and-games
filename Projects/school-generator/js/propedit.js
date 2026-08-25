@@ -17,7 +17,7 @@
 
 import * as THREE from 'three';
 import { activeFloor, floorBaseY } from './grid.js';
-import { PROP_CATALOG, catalogEntry } from './catalog.js';
+import { PROP_CATALOG, catalogEntry, normalizeColor, propColor } from './catalog.js';
 import { addProp, removeProp, getProp, wrapAngle, MAX_PROPS } from './props.js';
 import { footprintOf, pickPropAt, propsInBox, snapProp } from './propplace.js';
 
@@ -36,6 +36,11 @@ const dragThreshold = (viewHeight) => Math.min(1.5, Math.max(0.25, viewHeight * 
 export function initPropEdit({ getState, renderApi, host }) {
   let tool = null;              // 'prop' | null
   let currentType = PROP_CATALOG[0].type;
+  // Phase 11: the paint the next placement wears, '' meaning "whatever the
+  // catalog row says". It rides beside `currentType` rather than inside it
+  // because a colour outlives the type you picked it with — choose red, then
+  // walk the palette placing a red chair, a red table and a red bin.
+  let currentColor = '';
   let pendingRotationY = 0;     // heading for the next placement, until something snaps it
   let selected = new Set();     // prop ids
   let hover = null;             // last snapped placement candidate: {x,z,rotationY,mount,kind}
@@ -307,6 +312,7 @@ export function initPropEdit({ getState, renderApi, host }) {
       host.pushUndo();
       const added = addProp(s, currentType, {
         x: hover.x, z: hover.z, y: entry.y || 0, rotationY: hover.rotationY, mount: hover.mount, scale: 1,
+        data: currentColor ? { color: currentColor } : {},
       });
       if (!added) { host.dropUndo(); host.status('Could not place that.'); refresh(); return true; }
       selected = new Set([added.id]);
@@ -408,6 +414,43 @@ export function initPropEdit({ getState, renderApi, host }) {
     refresh();
   }
 
+  // The colour swatch. One gesture, two effects, which is what makes it feel
+  // like a paintbrush rather than a preference: it sets the paint the next
+  // placement wears, *and* repaints whatever is selected right now. Passing ''
+  // (or anything that isn't a hex colour) strips the override, so a prop goes
+  // back to the colour its catalog row says it should be — which is a real
+  // edit and not the same as painting it that colour, since a row's colour may
+  // change under it later.
+  function setColor(hex) {
+    const c = normalizeColor(hex);
+    currentColor = c;
+    const items = liveSelected(getState());
+    if (!items.length) return false;
+    // Nothing to undo if every selected prop already wears this paint.
+    const changes = items.filter((p) => (p.data.color || '') !== c);
+    if (!changes.length) return false;
+    host.pushUndo();
+    for (const p of changes) {
+      if (c) p.data.color = c;
+      else delete p.data.color;
+    }
+    host.changed();
+    host.status(c
+      ? `Painted ${changes.length} prop${changes.length === 1 ? '' : 's'} ${c}.`
+      : `Reset ${changes.length} prop${changes.length === 1 ? '' : 's'} to the catalog colour.`);
+    refresh();
+    return true;
+  }
+
+  // What the swatch row should show as chosen. A single selected prop wins
+  // over the pending paint, so clicking a red chair moves the highlight to red
+  // rather than leaving it wherever it was last set.
+  function shownColor() {
+    const items = liveSelected(getState());
+    if (items.length === 1) return items[0].data.color || '';
+    return currentColor;
+  }
+
   function setTool(t) {
     if (t !== tool) { gesture = null; hover = null; }
     tool = t === 'prop' ? 'prop' : null;
@@ -420,6 +463,12 @@ export function initPropEdit({ getState, renderApi, host }) {
     get tool() { return tool; },
     setType,
     get currentType() { return currentType; },
+    setColor,
+    get currentColor() { return currentColor; },
+    shownColor,
+    // The colour a freshly placed prop of the current type would actually be —
+    // what the panel's "current" chip paints itself.
+    previewColor() { return propColor(catalogEntry(currentType), { data: { color: currentColor } }); },
     pointerDown, pointerMove, pointerUp, key,
     refresh,
     clearHover() { hover = null; refresh(); },

@@ -919,6 +919,12 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     get roomPaint() { return roomPaint; },
     setPropType: (t) => propTool.setType(t),
     get propType() { return propTool.currentType; },
+    // The prop tool's second knob (Phase 11): the paint. Same shape as the
+    // type — set it for the next placement, read back what the panel should
+    // highlight, which is the selected prop's own colour when there is one.
+    setPropColor: (c) => propTool.setColor(c),
+    get propColor() { return propTool.shownColor(); },
+    get propPreviewColor() { return propTool.previewColor(); },
     // What the wall tool builds — shared by the grid and the polygon rooms, so
     // it lives on the editor rather than inside either half.
     setWallKind(k) { wallKind = wallKindOf(k).kind; updateCursor(null); },
