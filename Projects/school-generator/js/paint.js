@@ -244,12 +244,15 @@ export function reapplyOpenings(shape, points, snap = OPENING_SNAP) {
         const vx = (b.x - a.x) / len, vz = (b.z - a.z) / len;
         // Same line, either direction: an opening is a hole in a wall, and a
         // wall does not care which way its run was written down.
-        const along = Math.abs(vx * p.ux + vz * p.uz);
-        if (along < 1 - 1e-3) continue;
+        const dot = vx * p.ux + vz * p.uz;
+        if (Math.abs(dot) < 1 - 1e-3) continue;
         const hit = projectOnSeg(a, b, p.x, p.z);
         if (hit.dist > snap) continue;
         if (!best || hit.dist < best.dist) {
-          best = { ring: ri, seg: i, t: hit.t, dist: hit.dist, flip: along > 0 && (vx * p.ux + vz * p.uz) < 0 };
+          // `flip` when the new run goes the other way down the same line:
+          // the hinge and the swing side both have to turn round with it, for
+          // the reason `bake` gives about `hand` and `sw`.
+          best = { ring: ri, seg: i, t: hit.t, dist: hit.dist, flip: dot < 0 };
         }
       }
     });
@@ -387,13 +390,17 @@ export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
     const shape = list.length
       ? { ...record, id: takeId(state), rings: [] }
       : { ...record, rings: [] };
+    let tooBig = false;
     loops.forEach((loop, li) => {
       const ring = { pts: loop.pts, walls: loop.segs.map((sg) => sg.kind), openings: [] };
-      if (ring.pts.length > MAX_RING_PTS) return;
+      // A ring past the cap is dropped — and if it is the *outer* one, the
+      // whole room goes with it rather than becoming a room that is only its
+      // own courtyard.
+      if (ring.pts.length > MAX_RING_PTS) { if (li === 0) tooBig = true; return; }
       orientRing(ring, li === 0);
       shape.rings.push(ring);
     });
-    if (!shape.rings.length) continue;
+    if (tooBig || !shape.rings.length) continue;
     list.push(shape);
     built.set(region.owner, list);
   }

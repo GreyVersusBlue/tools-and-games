@@ -171,6 +171,16 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   // The design as of the last commit, and what was hanging off it.
   let baseline = clone(design());
   let baseCarried = carried();
+  // Whether anything has happened since. Tracked rather than measured, because
+  // `canUndo` is read on every frame of a drag and diffing the whole design to
+  // answer it would cost more than the edit does. A false positive is
+  // harmless — `commit()` finds no change and pushes nothing — and a false
+  // negative would grey out a button that works, which is why every path that
+  // touches the design goes through `fire()`.
+  let dirty = false;
+
+  // Tell the shell something changed, and remember that something did.
+  const fire = (info) => { dirty = true; onChange(info); };
 
   // Close the open edit, if it changed anything. Returns true if it did.
   function commit() {
@@ -178,6 +188,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const st = step(baseline, now);
     const held = carried();
     const carriedMoved = held.overlay !== baseCarried.overlay || held.models !== baseCarried.models;
+    dirty = false;
     if (!st && !carriedMoved) return false;
     undoStack.push({
       back: st ? st.back : undefined,
@@ -214,6 +225,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     Object.assign(s, next);
     baseline = clone(data);
     baseCarried = held;
+    dirty = false;
     onChange({ structural: true });
     poly.refresh();
   }
@@ -241,9 +253,6 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     baseCarried = carried();
   }
 
-  // What the history actually costs, for anything that wants to say so.
-  const historyBytes = () =>
-    undoStack.reduce((n, e) => n + JSON.stringify(e.back || null).length, 0);
 
   // --- polygon tools ---
   // polyedit owns its own overlay and calls back in here for undo, redraws and
@@ -253,7 +262,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     renderApi,
     host: {
       pushUndo, dropUndo,
-      changed: (info = {}) => onChange({ structural: true, ...info }),
+      changed: (info = {}) => fire({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
       holeModeChanged: (v) => onHoleMode && onHoleMode(v),
       cursorStyle: (v) => { canvas.style.cursor = v; },
@@ -273,7 +282,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     renderApi,
     host: {
       pushUndo, dropUndo,
-      changed: (info = {}) => onChange({ structural: true, ...info }),
+      changed: (info = {}) => fire({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
   });
@@ -286,7 +295,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     renderApi,
     host: {
       pushUndo, dropUndo,
-      changed: (info = {}) => onChange({ structural: true, ...info }),
+      changed: (info = {}) => fire({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
   });
@@ -299,7 +308,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     renderApi,
     host: {
       pushUndo, dropUndo,
-      changed: (info = {}) => onChange({ structural: true, ...info }),
+      changed: (info = {}) => fire({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
   });
@@ -311,7 +320,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     renderApi,
     host: {
       pushUndo, dropUndo,
-      changed: (info = {}) => onChange({ structural: true, ...info }),
+      changed: (info = {}) => fire({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
   });
@@ -324,12 +333,12 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     renderApi,
     host: {
       pushUndo, dropUndo,
-      changed: (info = {}) => onChange({ structural: false, overlay: true, ...info }),
+      changed: (info = {}) => fire({ structural: false, overlay: true, ...info }),
       status: (text) => onStatus && onStatus(text),
       setOverlay: (o, info = {}) => {
         const st = getState();
         if (o) st.overlay = o;
-        onChange({ structural: false, overlay: true, ...info });
+        fire({ structural: false, overlay: true, ...info });
       },
       // Both ends of a measurement, in image pixels. The shell puts up the
       // "how many feet is that?" prompt, because a dialog is not a tool's job.
@@ -529,7 +538,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       curveMemo = Math.abs(next) < 0.01
         ? null
         : { ...curveMemo, bulge: next, count };
-      onChange({ structural: true, commit: true });
+      fire({ structural: true, commit: true });
       onStatus && onStatus(Math.abs(next) < 0.01
         ? 'Wall straightened.'
         : `Curved wall — ${count} segments, rise ${(next * 100).toFixed(0)}% of the chord. , and . adjust.`);
@@ -551,7 +560,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       return true;
     }
     curveMemo = { shape: seg.shape, ring: seg.ring, seg: seg.seg, count, bulge: delta };
-    onChange({ structural: true, commit: true });
+    fire({ structural: true, commit: true });
     onStatus && onStatus(had
       ? `Curved wall — ${count} segments. The doorway in it was dropped: a 2ft chord has nowhere to put a 3ft door.`
       : `Curved wall — ${count} segments. , and . adjust, and they re-bend this same wall rather than stacking arcs.`);
@@ -623,7 +632,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     strokeOverhang = 0;
     lastWorld = null;
     applyStroke(p.x, p.z, true);
-    if (strokeChanged) onChange({ structural: true });
+    if (strokeChanged) fire({ structural: true });
     canvas.setPointerCapture(e.pointerId);
   }
 
@@ -637,8 +646,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (!strokeActive || !p) return;
     const before = strokeChanged;
     applyStroke(p.x, p.z, false);
-    if (strokeChanged && strokeChanged !== before) onChange({ structural: true });
-    else if (strokeChanged) onChange({ structural: true, throttled: true });
+    if (strokeChanged && strokeChanged !== before) fire({ structural: true });
+    else if (strokeChanged) fire({ structural: true, throttled: true });
   }
 
   function dispatchPointerUp() {
@@ -659,7 +668,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       else if (strokeFrozen) reportFrozen();
       return;
     }
-    onChange({ structural: true, commit: true });
+    fire({ structural: true, commit: true });
     if (overhangRefused) reportRefusal();
     else if (strokeFrozen) reportFrozen();
     else if (strokeOverhang) {
@@ -986,11 +995,10 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     shapePaste: () => poly.sectionPaste(),
     shapeDuplicate: () => poly.sectionDuplicate(),
     undo, redo, pushUndo, dropUndo,
-    // `canUndo` has to close the open edit before it can answer: the last
-    // gesture is still pending until something commits it.
-    get canUndo() { return undoStack.length > 0 || !!step(baseline, design()); },
+    // The last gesture is still pending until something commits it, so
+    // `canUndo` is "there is a step, or there is one waiting to be made".
+    get canUndo() { return undoStack.length > 0 || dirty; },
     get canRedo() { return redoStack.length > 0; },
-    historyBytes,
     clearHistory() {
       undoStack.length = 0;
       redoStack.length = 0;
