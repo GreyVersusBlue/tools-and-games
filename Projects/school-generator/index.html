@@ -146,11 +146,19 @@
     #toolbar .tool.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
     #toolbar .key { font-size: var(--fs-xs); opacity: 0.55; }
 
-    /* room panel */
-    #room-panel {
+    /* The tool-panel slot: every tool's options panel hangs here, beside the
+       toolbar, at one width, so switching tools doesn't jump the panel's
+       seam around. Only the overlay panel keeps extra width — its slider
+       rows need it. */
+    .tool-slot {
       position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
-      padding: 12px; z-index: 10; width: 180px;
+      width: 212px; padding: 12px; z-index: 10;
+      max-height: calc(100vh - var(--topbar-h, 50px) - 48px);
+      overflow-y: auto;
     }
+    #overlay-panel.tool-slot { width: 232px; padding: 12px 14px; }
+
+    /* room panel */
     #room-panel label { display: block; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 4px; }
     #room-name {
       width: 100%; font: inherit; color: var(--text);
@@ -162,10 +170,6 @@
     .swatch.active { border-color: #fff; }
 
     /* wall, door & stair panels — same slot and look as the room panel */
-    #wall-panel, #stair-panel, #door-panel {
-      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
-      padding: 12px; z-index: 10; width: 196px;
-    }
     #wall-panel label, #stair-panel label, #door-panel > label {
       display: block; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 6px;
     }
@@ -206,11 +210,6 @@
     }
 
     /* prop panel */
-    #prop-panel {
-      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
-      padding: 12px; z-index: 10; width: 210px;
-      max-height: calc(100vh - 100px); overflow-y: auto;
-    }
     #palette-search {
       width: 100%; margin-bottom: 8px; font-size: var(--fs-md); padding: 6px 8px;
       background: rgba(255, 255, 255, 0.05); color: var(--text);
@@ -267,22 +266,12 @@
     }
 
     /* template panel — same slot and look as the prop panel */
-    #template-panel {
-      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
-      padding: 12px; z-index: 10; width: 210px;
-      max-height: calc(100vh - 100px); overflow-y: auto;
-    }
     #template-panel .keys {
       margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
       font-size: var(--fs-sm); line-height: 1.7; color: var(--text-dim);
     }
 
     /* site panel — same slot as the prop and template panels */
-    #site-panel {
-      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
-      padding: 12px; z-index: 10; width: 210px;
-      max-height: calc(100vh - 100px); overflow-y: auto;
-    }
     #site-panel h2 {
       font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase;
@@ -881,11 +870,6 @@
     #measure-overlay .measure-row input { flex: 1; }
 
     /* overlay panel — the same slot every tool panel uses, beside the toolbar */
-    #overlay-panel {
-      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
-      width: 232px; padding: 12px 14px; z-index: 10;
-      max-height: calc(100vh - 110px); overflow-y: auto;
-    }
     #overlay-panel label { display: block; font-size: var(--fs-sm); color: var(--text-dim); margin: 10px 0 4px; }
     #overlay-panel label:first-of-type { margin-top: 0; }
     #overlay-panel label.opt {
@@ -1200,7 +1184,7 @@
     <button class="tool" data-tool="overlay" aria-pressed="false"><span class="icon">🖼</span>Overlay<span class="key">=</span></button>
   </div>
 
-  <div id="room-panel" class="panel hidden">
+  <div id="room-panel" class="panel tool-slot hidden">
     <label for="room-name">Room name</label>
     <input id="room-name" type="text" maxlength="40" value="Room 101" />
     <label>Label color</label>
@@ -1236,7 +1220,7 @@
     </div>
   </div>
 
-  <div id="wall-panel" class="panel hidden">
+  <div id="wall-panel" class="panel tool-slot hidden">
     <label>Wall type</label>
     <div id="wall-kinds"></div>
     <div class="keys">
@@ -1252,7 +1236,7 @@
     </div>
   </div>
 
-  <div id="door-panel" class="panel hidden">
+  <div id="door-panel" class="panel tool-slot hidden">
     <label>Opening</label>
     <div id="door-kinds"></div>
     <div id="door-opts">
@@ -1276,7 +1260,7 @@
     </div>
   </div>
 
-  <div id="stair-panel" class="panel hidden">
+  <div id="stair-panel" class="panel tool-slot hidden">
     <label>Place</label>
     <div id="stair-kinds"></div>
     <div id="stair-readout" class="readout"></div>
@@ -1288,7 +1272,7 @@
     </div>
   </div>
 
-  <div id="prop-panel" class="panel hidden">
+  <div id="prop-panel" class="panel tool-slot hidden">
     <input id="palette-search" type="search" placeholder="Filter furniture…" aria-label="Filter furniture types" autocomplete="off" />
     <div id="palette"></div>
     <div id="model-row">
@@ -1313,7 +1297,7 @@
     </div>
   </div>
 
-  <div id="template-panel" class="panel hidden">
+  <div id="template-panel" class="panel tool-slot hidden">
     <div id="template-palette" class="palette-row"></div>
     <div class="keys">
       Click to stamp the whole layout &nbsp; <kbd>R</kbd>/<kbd>⇧R</kbd> rotates it first<br />
@@ -1323,7 +1307,7 @@
     </div>
   </div>
 
-  <div id="overlay-panel" class="panel hidden" role="group" aria-label="Tracing overlay">
+  <div id="overlay-panel" class="panel tool-slot hidden" role="group" aria-label="Tracing overlay">
     <div id="overlay-buttons">
       <button id="overlay-load" type="button" title="Load a PNG, JPEG or WebP to trace over">📂 Image…</button>
       <button id="overlay-fit" type="button" title="Grow the plan until the whole image is drawable">⤢ Fit plan</button>
@@ -1352,7 +1336,7 @@
     </div>
   </div>
 
-  <div id="site-panel" class="panel hidden" role="group" aria-label="Site">
+  <div id="site-panel" class="panel tool-slot hidden" role="group" aria-label="Site">
     <label>Site tool</label>
     <div class="seg" id="site-modes" role="group" aria-label="Site mode"></div>
 
