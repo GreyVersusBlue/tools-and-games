@@ -432,6 +432,8 @@
        fourth in a stack that scrolled. The fold is a real button (keyboard,
        aria-expanded), and main.js remembers the folds per browser. */
     .rail-panel { padding: 10px 12px; width: 236px; }
+    #env-play { padding: 2px 8px; font-size: var(--fs-sm); line-height: 1.6; flex: none; }
+    #env-play[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
     #report-panel.rail-panel { width: 268px; }
     .rail-panel h2 {
       font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
@@ -1590,7 +1592,10 @@
     <div class="env-presets" id="env-presets"></div>
 
     <label for="env-time">Time of day <span class="env-value" id="env-time-value">10:00 am</span></label>
-    <input id="env-time" type="range" min="0" max="1439" step="5" value="600" />
+    <div class="env-row">
+      <input id="env-time" type="range" min="0" max="1439" step="5" value="600" />
+      <button id="env-play" title="Play the sun study — a simulated hour per second" aria-pressed="false">▶</button>
+    </div>
 
     <label for="env-month">Date <span class="env-value" id="env-date-value">September 21</span></label>
     <div class="env-row">

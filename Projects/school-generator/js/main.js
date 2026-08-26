@@ -2242,6 +2242,53 @@ $('env-time').addEventListener('input', (e) => {
   state.env.minutes = Number(e.target.value);
   envChanged();
 });
+
+// The sun study plays itself: a simulated hour per second through the exact
+// path the slider drives, so what animates is what scrubbing shows. Under
+// prefers-reduced-motion it steps on the hour once a second instead of
+// sweeping — slower to watch, same study.
+{
+  const btn = $('env-play');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  // The float clock lives here: normalizeEnv rounds env.minutes to whole
+  // minutes, and on a fast display a frame is less than half a minute of sun
+  // — accumulating in state would round the advance away entirely.
+  let raf = 0, last = 0, acc = 0, clock = 0;
+  const stop = () => {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    btn.textContent = '\u25b6';
+    btn.setAttribute('aria-pressed', 'false');
+  };
+  const tick = (now) => {
+    const dt = Math.min(0.25, (now - last) / 1000);
+    last = now;
+    if (reduce.matches) {
+      acc += dt;
+      if (acc >= 1) {
+        acc = 0;
+        state.env.minutes = (Math.floor(state.env.minutes / 60) * 60 + 60) % 1440;
+        envChanged();
+      }
+    } else {
+      clock = (clock + dt * 60) % 1440;
+      state.env.minutes = clock;
+      envChanged();
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  btn.addEventListener('click', () => {
+    if (raf) { stop(); return; }
+    btn.textContent = '\u23f8';
+    btn.setAttribute('aria-pressed', 'true');
+    last = performance.now();
+    acc = 0;
+    clock = state.env.minutes;
+    raf = requestAnimationFrame(tick);
+  });
+  // Touching the slider by hand takes the wheel back.
+  $('env-time').addEventListener('pointerdown', stop);
+}
 $('env-lat').addEventListener('input', (e) => {
   state.env.lat = Number(e.target.value);
   envChanged();

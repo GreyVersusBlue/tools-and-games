@@ -505,10 +505,20 @@ them; the rest are unclaimed and can ride along with whatever is open.
   own half-width, which is why nothing long is flagged `light`.
 
 **Light, sound and picture**
-- The generic ceiling troffers don't emit; no shadows from the building's own
-  lights; `emit.kind: 'spot'` renders as a point; light doesn't respect
-  geometry, only distance.
-- No moon, no stars, no clouds. The sun study doesn't animate itself.
+- The generic ceiling troffers don't emit (the twelve-light budget is the
+  constraint — see the pool comment in render.js), and no shadows from the
+  building's own lights: twelve shadow maps is not a school-scale budget.
+  Light still doesn't respect geometry, only distance. `emit.kind: 'spot'`
+  is real now — a second fixed pool of four SpotLights, aimed down, driven
+  by the same budget with its own cap — so the high bay, the track heads
+  and the pole lights throw cones.
+- A moon and stars now, on the star-visibility ramp (the moon is the
+  anti-solar point, honestly commented — a permanently full moon, no phase,
+  no ephemeris). Still no clouds, deliberately: a canvas smear reads worse
+  than a clean gradient, and real clouds are a shader project. The sun
+  study animates itself — play on the sky panel, an hour a second through
+  the same code path the slider drives, stepping hourly under
+  prefers-reduced-motion.
 - Transmission loss is one number per situation rather than a ray cast, and
   there are no early reflections — a room's *shape* has no sound.
 - Photo mode and the minimap are both desktop-shaped; neither has been laid out

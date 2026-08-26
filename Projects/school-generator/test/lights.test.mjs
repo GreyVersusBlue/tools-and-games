@@ -15,7 +15,7 @@ import { createState } from '../js/grid.js';
 import { addProp } from '../js/props.js';
 import { catalogEntry, PROP_CATALOG } from '../js/catalog.js';
 import {
-  MAX_DYNAMIC_LIGHTS, CLUSTER_FT, LUMENS_TO_CANDELA, SPILL_MAX,
+  MAX_DYNAMIC_LIGHTS, MAX_SPOT_LIGHTS, CLUSTER_FT, LUMENS_TO_CANDELA, SPILL_MAX,
   emitOf, isEmitter, lightSources, clusterSources, budgetLights, budgetFor,
   spillAmbient,
 } from '../js/lights.js';
@@ -27,6 +27,7 @@ const TEST_ROWS = {
   bay: { type: 'bay', emit: { lm: 20000, color: '#ffffff', range: 70, dy: 0 } },
   pole: { type: 'pole', site: true, emit: { lm: 12000, color: '#f6f2e4', range: 90, dy: 21 } },
   desk: { type: 'desk' },
+  spot: { type: 'spot', emit: { lm: 8000, color: '#ffffff', range: 40, dy: 0, kind: 'spot', angle: 60, penumbra: 0.3 } },
   broken: { type: 'broken', emit: { lm: 0 } },
 };
 const testCatalog = (t) => TEST_ROWS[t] || null;
@@ -258,4 +259,57 @@ test('the spill fill rises with what was left out and is bounded', () => {
 
 test('lumens convert to candela the way the physics says', () => {
   assert.ok(Math.abs(4000 * LUMENS_TO_CANDELA - 318.31) < 0.01);
+});
+
+// ---------- spots ----------
+
+test('a spot emit carries its cone, with defaults for a bare kind', () => {
+  const e = emitOf({ emit: { lm: 100, kind: 'spot', angle: 60, penumbra: 0.3 } });
+  assert.equal(e.kind, 'spot');
+  assert.equal(e.angle, 60);
+  assert.equal(e.penumbra, 0.3);
+  const bare = emitOf({ emit: { lm: 100, kind: 'spot' } });
+  assert.equal(bare.angle, 65);
+  assert.equal(bare.penumbra, 0.4);
+  // a point has no cone to speak of
+  assert.equal(emitOf({ emit: { lm: 100 } }).angle, undefined);
+});
+
+test('a spot and a point in the same corner never merge', () => {
+  const props = [
+    { type: 'troffer', floor: 0, x: 10, z: 10, y: 9.5 },
+    { type: 'spot', floor: 0, x: 11, z: 10, y: 9.5 },
+  ];
+  const clusters = clusterSources(lightSources(design(props), testCatalog, 12), CLUSTER_FT);
+  assert.equal(clusters.length, 2);
+  const kinds = clusters.map((c) => c.kind).sort();
+  assert.deepEqual(kinds, ['point', 'spot']);
+  const spot = clusters.find((c) => c.kind === 'spot');
+  assert.equal(spot.angle, 60);
+  assert.equal(spot.penumbra, 0.3);
+});
+
+test('spots take spot slots, points take point slots, overflow spills', () => {
+  const props = [];
+  for (let i = 0; i < 6; i++) props.push({ type: 'spot', floor: 0, x: i * 30, z: 0, y: 9.5 });
+  for (let i = 0; i < 3; i++) props.push({ type: 'troffer', floor: 0, x: i * 30, z: 40, y: 9.5 });
+  const s = design(props);
+  const { lit, litSpots, spillLm } = budgetFor(s, testCatalog, { x: 0, y: 6, z: 0 },
+    { floorHt: 12, cap: 2, spotCap: 2 });
+  assert.equal(litSpots.length, 2);
+  assert.ok(litSpots.every((c) => c.kind === 'spot'));
+  assert.ok(lit.length <= 2);
+  assert.ok(lit.every((c) => c.kind === 'point'));
+  assert.ok(spillLm > 0, 'what found no slot joins the spill');
+});
+
+test('the default spot cap is the fixed pool size', () => {
+  const props = [];
+  for (let i = 0; i < MAX_SPOT_LIGHTS + 3; i++) {
+    props.push({ type: 'spot', floor: 0, x: i * 5, z: 0, y: 9.5 });
+  }
+  // 5ft apart clusters within CLUSTER_FT — spread them out instead
+  const spread = props.map((p, i) => ({ ...p, x: i * 30 }));
+  const { litSpots } = budgetFor(design(spread), testCatalog, { x: 90, y: 6, z: 0 }, { floorHt: 12 });
+  assert.ok(litSpots.length <= MAX_SPOT_LIGHTS);
 });

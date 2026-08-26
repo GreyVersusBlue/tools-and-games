@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_ENV, LIGHT_MODES, MAX_LAT, HORIZON_DIP, LIGHTS_ON_ALT,
   normalizeEnv, defaultEnv, isDefaultEnv, dayOfYear, daysInMonth,
-  declination, equationOfTime, solarPosition, sunVector, sunTimes,
+  declination, equationOfTime, solarPosition, sunVector, starVisibility, moonState, sunTimes,
   skyPalette, skyPhase, skyState, mixHex, formatClock, formatDate, formatLat,
   presetMinutes, SUN_PRESETS, lightsBurn, lightLevel,
 } from '../js/sky.js';
@@ -353,4 +353,49 @@ test('the default design is lit exactly the way the fixed rig used to light it',
   near(s.palette.sunIntensity, 1.8, 0.05, 'sun');
   near(s.palette.hemiIntensity, 1.15, 0.02, 'hemisphere');
   near(s.palette.ambientIntensity, 0.35, 0.01, 'ambient');
+});
+
+// ---------- the night sky ----------
+
+test('stars fade in through twilight and are gone by day', () => {
+  assert.equal(starVisibility(10), 0);
+  assert.equal(starVisibility(0), 0);
+  assert.equal(starVisibility(-4), 0);
+  assert.ok(starVisibility(-8) > 0 && starVisibility(-8) < 1);
+  assert.equal(starVisibility(-12), 1);
+  assert.equal(starVisibility(-40), 1);
+  // monotonic on the way down
+  let prev = -1;
+  for (let a = 10; a >= -30; a -= 1) {
+    const v = starVisibility(a);
+    assert.ok(v >= prev, `star visibility dipped at ${a} deg`);
+    prev = v;
+  }
+});
+
+test('the moon stands opposite the sun and keeps its hours', () => {
+  const midnight = { minutes: 0, month: 6, day: 21, lat: 39, north: 0 };
+  const sunAt = solarPosition(normalizeEnv(midnight));
+  const moon = moonState(midnight);
+  assert.ok(Math.abs(moon.altitude + sunAt.altitude) < 1e-9);
+  assert.ok(Math.abs(((moon.azimuth - sunAt.azimuth) % 360 + 360) % 360 - 180) < 1e-9);
+  // up at midnight, down at noon
+  assert.ok(moon.altitude > 0);
+  assert.ok(moon.visible);
+  const noonMoon = moonState({ ...midnight, minutes: 720 });
+  assert.ok(noonMoon.altitude < 0);
+  // the direction vector is the anti-solar one
+  const sv = sunVector(sunAt.altitude, sunAt.azimuth, 0);
+  assert.ok(Math.abs(moon.dir.x + sv.x) < 1e-9);
+  assert.ok(Math.abs(moon.dir.y + sv.y) < 1e-9);
+  assert.ok(Math.abs(moon.dir.z + sv.z) < 1e-9);
+});
+
+test('plan north turns the moon with the rest of the sky', () => {
+  const env = { minutes: 0, month: 6, day: 21, lat: 39, north: 90 };
+  const m0 = moonState({ ...env, north: 0 });
+  const m90 = moonState(env);
+  // same altitude, rotated bearing
+  assert.ok(Math.abs(m0.altitude - m90.altitude) < 1e-9);
+  assert.ok(Math.abs(m0.dir.y - m90.dir.y) < 1e-9);
 });

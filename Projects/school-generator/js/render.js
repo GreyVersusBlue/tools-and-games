@@ -8,9 +8,10 @@
 
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { skyState, defaultEnv, mixHex } from './sky.js';
+import { skyState, defaultEnv, mixHex, starVisibility, moonState } from './sky.js';
 import {
   budgetFor, spillAmbient, emitOf, LUMENS_TO_CANDELA, MAX_DYNAMIC_LIGHTS,
+  MAX_SPOT_LIGHTS,
 } from './lights.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -517,6 +518,44 @@ export function initRender(canvas) {
   sunDisc.renderOrder = -1;
   scene.add(sunDisc);
 
+  // The night sky. Stars are one Points cloud scattered on the dome — a child
+  // of the dome, so they follow the camera the way the gradient does — and
+  // the moon is the sun disc's opposite number, placed by sky.js's honest
+  // anti-solar approximation. Both fade with starVisibility(): a sun-study
+  // scrub fades them in through twilight rather than snapping them on.
+  const stars = (() => {
+    const N = 800, pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      // Uniform on the upper dome: y from a bias toward the zenith reads
+      // wrong, so sample the sphere and keep the sky half.
+      let x, y, z;
+      do {
+        const u = Math.random() * 2 - 1, t = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(1 - u * u);
+        x = r * Math.cos(t); y = u; z = r * Math.sin(t);
+      } while (y < 0.03);
+      pos[i * 3] = x * 950; pos[i * 3 + 1] = y * 950; pos[i * 3 + 2] = z * 950;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const m = new THREE.Points(g, new THREE.PointsMaterial({
+      color: 0xcfd8ea, size: 2, sizeAttenuation: false,
+      transparent: true, opacity: 0, depthWrite: false, fog: false,
+    }));
+    m.renderOrder = -1;
+    m.visible = false;
+    skyDome.add(m);
+    return m;
+  })();
+
+  const moonDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(19, 24),
+    new THREE.MeshBasicMaterial({ color: 0xe6ecf6, fog: false, transparent: true, opacity: 0, depthWrite: false }),
+  );
+  moonDisc.renderOrder = -1;
+  moonDisc.visible = false;
+  scene.add(moonDisc);
+
   // --- lights ---
   //
   // Every number below is now written by setEnvironment() out of sky.js's
@@ -560,6 +599,20 @@ export function initRender(canvas) {
     l.castShadow = false;
     scene.add(l);
     lightPool.push(l);
+  }
+
+  // The spot pool, on the same bargain: allocated once, at zero intensity, so
+  // the light-count shape the shaders compile against never changes at
+  // runtime. Four is enough for the directional fixtures the budget actually
+  // surfaces — high bays, track heads, pole lights — and they all aim
+  // straight down, which is what those fixtures do.
+  const spotPool = [];
+  for (let i = 0; i < MAX_SPOT_LIGHTS; i++) {
+    const l = new THREE.SpotLight(0xffffff, 0, 30, Math.PI / 5, 0.4, 2);
+    l.castShadow = false;
+    scene.add(l);
+    scene.add(l.target);
+    spotPool.push(l);
   }
 
   // --- materials ---
@@ -1154,6 +1207,19 @@ export function initRender(canvas) {
     // Fade the disc out as it touches the horizon rather than clipping it
     // through the ground plane.
     sunDisc.material.opacity = Math.max(0, Math.min(0.95, (d.y + 0.08) * 6));
+
+    // The night half of the same sky. Stars ride starVisibility's twilight
+    // ramp; the moon is the anti-solar disc, faded near its own horizon the
+    // way the sun is.
+    const starVis = starVisibility(envState.sun.altitude);
+    stars.material.opacity = starVis;
+    stars.visible = starVis > 0.01;
+    const moon = moonState(envState.env);
+    const md = moon.dir;
+    const moonUp = Math.max(0, Math.min(1, (md.y + 0.08) * 6));
+    moonDisc.material.opacity = moonUp * (0.25 + 0.75 * starVis);
+    moonDisc.visible = md.y > -0.08 && moonDisc.material.opacity > 0.02;
+    moonDisc.position.set(site.x + md.x * 900, md.y * 900, site.z + md.z * 900);
   }
 
   function setEnvironment(env) {
@@ -1260,14 +1326,16 @@ export function initRender(canvas) {
 
     if (!built || lampLevel <= 0) {
       for (const l of lightPool) l.intensity = 0;
+      for (const l of spotPool) l.intensity = 0;
       fillAmbient = 0;
       applyAmbient();
       return;
     }
 
-    const { lit, spillLm } = budgetFor(built, catalogEntry, eye, {
+    const { lit, litSpots, spillLm } = budgetFor(built, catalogEntry, eye, {
       floorHt: built.floorHt,
       cap: lightPool.length,
+      spotCap: spotPool.length,
     });
     for (let i = 0; i < lightPool.length; i++) {
       const l = lightPool[i];
@@ -1280,6 +1348,19 @@ export function initRender(canvas) {
       // wants. LIGHT_GAIN is the one artistic constant in the chain — it says
       // how bright a real 4,000lm troffer should read in a scene that is also
       // being tone-mapped and bloomed.
+      l.intensity = c.lm * LUMENS_TO_CANDELA * LIGHT_GAIN * lampLevel;
+    }
+    for (let i = 0; i < spotPool.length; i++) {
+      const l = spotPool[i];
+      const c = litSpots ? litSpots[i] : null;
+      if (!c) { l.intensity = 0; continue; }
+      l.position.set(c.x, c.y, c.z);
+      l.target.position.set(c.x, c.y - 10, c.z);
+      l.color.set(c.color);
+      l.distance = c.range;
+      // The catalog's angle is the full cone; three.js wants the half-angle.
+      l.angle = ((c.angle || 65) / 2) * (Math.PI / 180);
+      l.penumbra = c.penumbra ?? 0.4;
       l.intensity = c.lm * LUMENS_TO_CANDELA * LIGHT_GAIN * lampLevel;
     }
     fillAmbient = (spillAmbient(spillLm) + HOUSE_FILL) * lampLevel;
@@ -1311,6 +1392,7 @@ export function initRender(canvas) {
     // never has to be bigger than the far plane, and always face it.
     skyDome.position.copy(cam.position);
     sunDisc.lookAt(cam.position);
+    moonDisc.lookAt(cam.position);
     if (fxEnabled && composer) composer.render();
     else renderer.render(scene, cam);
   }
@@ -4081,6 +4163,31 @@ export function initRender(canvas) {
     }
   }
 
+  // The contact blob: a soft radial shadow on a small plane under each
+  // floor-standing prop. SSAO does this job when the FX chain is on; the blob
+  // is what keeps furniture from floating when it is off, at the cost of one
+  // shared texture and one instanced draw per type. Classic trick, honestly
+  // labelled: it is a gradient, not an occlusion term.
+  const blobTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(64, 64, 8, 64, 64, 62);
+    g.addColorStop(0, 'rgba(0,0,0,0.30)');
+    g.addColorStop(0.7, 'rgba(0,0,0,0.12)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.NoColorSpace;
+    return t;
+  })();
+  const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  const blobMat = new THREE.MeshBasicMaterial({
+    map: blobTex, transparent: true, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+  });
+
   // One InstancedMesh per prop type present on the floor — cheap even with
   // hundreds of desks, since it's one draw call per type rather than one
   // Mesh per prop. Rebuilt alongside the structural meshes on every edit;
@@ -4136,6 +4243,16 @@ export function initRender(canvas) {
       // pad holds the terrain at datum under the building, so a desk on the
       // ground floor is at baseY whether the site has been graded or not.
       const onSite = entry.site && floorIndex === 0 && field && !field.flat;
+      const grounded = (entry.mount || 'floor') === 'floor' && !entry.surface;
+      const blobs = grounded
+        ? new THREE.InstancedMesh(blobGeo, blobMat, list.length)
+        : null;
+      if (blobs) {
+        blobs.castShadow = false;
+        blobs.receiveShadow = false;
+        blobs.frustumCulled = false;
+        blobs.userData.sharedGeo = true;
+      }
       list.forEach((p, idx) => {
         const lift = onSite ? groundAt(field, p.x, p.z) : 0;
         _dummy.position.set(p.x, baseY + (p.y || 0) + lift, p.z);
@@ -4145,6 +4262,14 @@ export function initRender(canvas) {
         _dummy.updateMatrix();
         mesh.setMatrixAt(idx, _dummy.matrix);
         if (lens) lens.setMatrixAt(idx, _dummy.matrix);
+        if (blobs) {
+          // On the floor under the prop, a touch above it, sized a third
+          // wider than the footprint so the falloff has somewhere to go.
+          _dummy.position.set(p.x, baseY + lift + 0.04, p.z);
+          _dummy.scale.set(entry.w * s * 1.35, 1, entry.d * s * 1.35);
+          _dummy.updateMatrix();
+          blobs.setMatrixAt(idx, _dummy.matrix);
+        }
         // Only the rows a person can actually shove are worth remembering; a
         // building of two thousand desks shouldn't carry two thousand map
         // entries for a feature none of them take part in.
@@ -4161,6 +4286,10 @@ export function initRender(canvas) {
       if (lens) {
         lens.instanceMatrix.needsUpdate = true;
         group.add(lens);
+      }
+      if (blobs) {
+        blobs.instanceMatrix.needsUpdate = true;
+        group.add(blobs);
       }
     }
   }
