@@ -1079,6 +1079,21 @@ function reserveForFloorPanel() {
   if (h > 0) document.documentElement.style.setProperty('--floor-panel-h', `${h}px`);
 }
 
+// The topbar gets the same treatment from the other edge: it wraps on a
+// narrow window now, so its height is no longer a constant either, and the
+// toolbar, the tool panels and the right rail all hang from it. A
+// ResizeObserver rather than a resize listener, because the bar's height can
+// change without the window's (a button label growing, a font arriving).
+{
+  const topbar = $('topbar');
+  const reserve = () => {
+    const h = topbar.offsetHeight;
+    if (h > 0) document.documentElement.style.setProperty('--topbar-h', `${h}px`);
+  };
+  new ResizeObserver(reserve).observe(topbar);
+  reserve();
+}
+
 // --- the sheet ---
 //
 // Phase 13. The drawing surface was 160 x 120 ft and there was no way to

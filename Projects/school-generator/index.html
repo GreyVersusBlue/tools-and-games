@@ -60,13 +60,32 @@
     }
 
     /* top bar */
+    /* Sixteen buttons no longer fit one row on a laptop, so the bar wraps
+       instead of running off both edges (it is centred, so overflow used to
+       eat the *outermost* controls — Undo on one side, Walk Through on the
+       other). Everything hung below it reads the measured --topbar-h (set by
+       a ResizeObserver in main.js, same pattern as --floor-panel-h) rather
+       than assuming a one-row bar. */
     #topbar {
-      position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 12px; z-index: 10;
+      /* Centred by auto margins, not left:50%/translate — a fixed element
+         offset to 50% only gets half the viewport as its shrink-to-fit
+         width, and would wrap long before it had to. */
+      position: fixed; top: 12px; left: 12px; right: 12px;
+      width: fit-content; margin-inline: auto;
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+      gap: var(--sp-1) var(--sp-2);
+      padding: var(--sp-2) var(--sp-3); z-index: 10;
     }
     #topbar h1 { font-size: var(--fs-title); font-weight: 650; letter-spacing: 0.02em; margin-right: 6px; white-space: nowrap; }
     #topbar h1 span { color: var(--text-dim); font-weight: 500; }
+    /* The bar reads as clusters — history, file, make, out, view toggles,
+       mode — with a hairline seam between neighbours. The seam sits on the
+       group, not on a divider element, so wrapping never strands one. */
+    .tb-group { display: flex; align-items: center; gap: var(--sp-2); }
+    .tb-group + .tb-group { border-left: 1px solid var(--panel-border); padding-left: var(--sp-2); }
+    /* The five view toggles are states, not actions; they give back a little
+       width so the actions keep theirs. */
+    .tb-group.toggles button { padding: 6px 8px; font-size: var(--fs-md); }
 
     button {
       font: inherit; color: var(--text);
@@ -97,7 +116,7 @@
     /* Hung from the top rather than centred: the tool list grows as the editor
        does, and a centred column of nine eventually reaches the floor panel. */
     #toolbar {
-      position: fixed; left: 12px; top: 74px;
+      position: fixed; left: 12px; top: calc(var(--topbar-h, 50px) + 24px);
       display: flex; flex-direction: column; gap: 5px;
       padding: 7px; z-index: 10;
       /* Stop above the floor panel, which shares this column and is anchored
@@ -105,9 +124,10 @@
          storey, and since Phase 13 it also carries the plan size — so the
          reserve is measured (see `reserveForFloorPanel` in main.js) rather
          than guessed. The fallback is a one-storey panel, for the frame
-         before the first measurement. 98px is this panel's own top offset
-         plus the gaps at both ends. */
-      max-height: calc(100vh - 98px - var(--floor-panel-h, 200px));
+         before the first measurement. The topbar's height is measured too,
+         now that it wraps: 48px is this panel's own gap below the bar plus
+         the gaps at both ends of the column. */
+      max-height: calc(100vh - var(--topbar-h, 50px) - 48px - var(--floor-panel-h, 200px));
       overflow-y: auto;
     }
     /* Twelve tools as of Phase 8, which is two more than the column had room
@@ -128,7 +148,7 @@
 
     /* room panel */
     #room-panel {
-      position: fixed; left: 114px; top: 74px;
+      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
       padding: 12px; z-index: 10; width: 180px;
     }
     #room-panel label { display: block; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 4px; }
@@ -143,7 +163,7 @@
 
     /* wall, door & stair panels — same slot and look as the room panel */
     #wall-panel, #stair-panel, #door-panel {
-      position: fixed; left: 114px; top: 74px;
+      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
       padding: 12px; z-index: 10; width: 196px;
     }
     #wall-panel label, #stair-panel label, #door-panel > label {
@@ -187,7 +207,7 @@
 
     /* prop panel */
     #prop-panel {
-      position: fixed; left: 114px; top: 74px;
+      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
       padding: 12px; z-index: 10; width: 210px;
       max-height: calc(100vh - 100px); overflow-y: auto;
     }
@@ -248,7 +268,7 @@
 
     /* template panel — same slot and look as the prop panel */
     #template-panel {
-      position: fixed; left: 114px; top: 74px;
+      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
       padding: 12px; z-index: 10; width: 210px;
       max-height: calc(100vh - 100px); overflow-y: auto;
     }
@@ -259,7 +279,7 @@
 
     /* site panel — same slot as the prop and template panels */
     #site-panel {
-      position: fixed; left: 114px; top: 74px;
+      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
       padding: 12px; z-index: 10; width: 210px;
       max-height: calc(100vh - 100px); overflow-y: auto;
     }
@@ -356,9 +376,9 @@
        fixing each one to a hand-picked `top`, they stack in a column and the
        rail is what moves when the topbar goes away. */
     #right-rail {
-      position: fixed; right: 12px; top: 58px; z-index: 12;
+      position: fixed; right: 12px; top: calc(var(--topbar-h, 50px) + 8px); z-index: 12;
       display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
-      max-height: calc(100vh - 130px); overflow-y: auto;
+      max-height: calc(100vh - var(--topbar-h, 50px) - 80px); overflow-y: auto;
       pointer-events: none;
     }
     #right-rail > * { pointer-events: auto; }
@@ -862,7 +882,7 @@
 
     /* overlay panel — the same slot every tool panel uses, beside the toolbar */
     #overlay-panel {
-      position: fixed; left: 114px; top: 74px;
+      position: fixed; left: 114px; top: calc(var(--topbar-h, 50px) + 24px);
       width: 232px; padding: 12px 14px; z-index: 10;
       max-height: calc(100vh - 110px); overflow-y: auto;
     }
@@ -1132,23 +1152,37 @@
   <canvas id="view"></canvas>
 
   <div id="topbar" class="panel">
-    <h1>🏫 School Generator</h1>
-    <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↩︎</button>
-    <button id="redo-btn" title="Redo (Ctrl+Y)" aria-label="Redo">↪︎</button>
-    <button id="new-btn" title="New empty school">New</button>
-    <button id="save-btn" title="Download design as JSON">Save</button>
-    <button id="load-btn" title="Load a JSON design">Load</button>
-    <button id="designs-btn" title="Named designs saved in this browser">🗂 Designs</button>
-    <button id="gen-btn" title="Generate a whole school from a brief">✨ Generate</button>
-    <button id="export-btn" title="Printable top-down floor plan (PNG / PDF)">🖨 Export</button>
-    <button id="share-btn" title="Put this whole design in a link">🔗 Share</button>
-    <button id="session-btn" title="Draw this school with somebody else" aria-pressed="false">🤝 Session</button>
-    <button id="fx-btn" title="Toggle post-processing" aria-pressed="true">FX</button>
-    <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true">☀ Sky</button>
-    <button id="audio-btn" title="Sound, and how the room you're in rings (U)" aria-pressed="false">🔊 Sound</button>
-    <button id="life-btn" title="People in the building, and the bell schedule (L)" aria-pressed="false">👥 Life</button>
-    <button id="report-btn" title="Occupancy, egress, access, daylight and materials (M)" aria-pressed="false">📋 Report</button>
-    <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)">🚶 Walk Through</button>
+    <div class="tb-group" role="group" aria-label="School Generator">
+      <h1>🏫 School Generator</h1>
+    </div>
+    <div class="tb-group" role="group" aria-label="History">
+      <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↩︎</button>
+      <button id="redo-btn" title="Redo (Ctrl+Y)" aria-label="Redo">↪︎</button>
+    </div>
+    <div class="tb-group" role="group" aria-label="File">
+      <button id="new-btn" title="New empty school">New</button>
+      <button id="save-btn" title="Download design as JSON">Save</button>
+      <button id="load-btn" title="Load a JSON design">Load</button>
+      <button id="designs-btn" title="Named designs saved in this browser">🗂 Designs</button>
+    </div>
+    <div class="tb-group" role="group" aria-label="Make">
+      <button id="gen-btn" title="Generate a whole school from a brief">✨ Generate</button>
+    </div>
+    <div class="tb-group" role="group" aria-label="Out">
+      <button id="export-btn" title="Printable top-down floor plan (PNG / PDF)">🖨 Export</button>
+      <button id="share-btn" title="Put this whole design in a link">🔗 Share</button>
+      <button id="session-btn" title="Draw this school with somebody else" aria-pressed="false">🤝 Session</button>
+    </div>
+    <div class="tb-group toggles" role="group" aria-label="View panels">
+      <button id="fx-btn" title="Toggle post-processing" aria-pressed="true">FX</button>
+      <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true">☀ Sky</button>
+      <button id="audio-btn" title="Sound, and how the room you're in rings (U)" aria-pressed="false">🔊 Sound</button>
+      <button id="life-btn" title="People in the building, and the bell schedule (L)" aria-pressed="false">👥 Life</button>
+      <button id="report-btn" title="Occupancy, egress, access, daylight and materials (M)" aria-pressed="false">📋 Report</button>
+    </div>
+    <div class="tb-group" role="group" aria-label="Mode">
+      <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)">🚶 Walk Through</button>
+    </div>
   </div>
 
   <div id="toolbar" class="panel" role="group" aria-label="Tools">
