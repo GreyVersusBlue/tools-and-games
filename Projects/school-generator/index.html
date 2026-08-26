@@ -1204,6 +1204,25 @@
       overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
     }
 
+    /* A narrow desktop window — a small laptop, a half-screen snap. The bar
+       already wraps and everything hangs from its measured height; the side
+       chrome just gives back a little width, and the toggle cluster drops
+       its labels (every toggle keeps its title and aria-label). Phones are a
+       different project and stay on the backlog. */
+    @media (max-width: 900px) {
+      .rail-panel, #report-panel.rail-panel { width: 208px; }
+      .tool-slot, #overlay-panel.tool-slot { width: 200px; }
+      .tb-group.toggles button svg.icon { margin-right: 0; }
+      .tb-group.toggles button .tb-label { display: none; }
+      #status { max-width: 92vw; }
+      #toolbar .tool { min-height: 40px; }
+    }
+
+    /* Motion is a courtesy, not a requirement. */
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+
     /* Off-screen until the moment `window.print()` runs — @media print's id
        selector (specificity 100) beats .hidden's class selector (10), so
        this becomes the only visible thing on the printed/PDF page without
@@ -1279,10 +1298,10 @@
     </div>
     <div class="tb-group toggles" role="group" aria-label="View panels">
       <button id="fx-btn" title="Toggle post-processing" aria-pressed="true">FX</button>
-      <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg>Sky</button>
-      <button id="audio-btn" title="Sound, and how the room you're in rings (U)" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Sound</button>
-      <button id="life-btn" title="People in the building, and the bell schedule (L)" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-people"/></svg>Life</button>
-      <button id="report-btn" title="Occupancy, egress, access, daylight and materials (M)" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-report"/></svg>Report</button>
+      <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg><span class="tb-label">Sky</span></button>
+      <button id="audio-btn" title="Sound, and how the room you're in rings (U)" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg><span class="tb-label">Sound</span></button>
+      <button id="life-btn" title="People in the building, and the bell schedule (L)" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-people"/></svg><span class="tb-label">Life</span></button>
+      <button id="report-btn" title="Occupancy, egress, access, daylight and materials (M)" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-report"/></svg><span class="tb-label">Report</span></button>
     </div>
     <div class="tb-group" role="group" aria-label="Mode">
       <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)"><svg class="icon" aria-hidden="true"><use id="mode-btn-icon" href="#i-walk"/></svg><span id="mode-btn-label">Walk Through</span></button>
