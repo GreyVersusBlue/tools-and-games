@@ -358,7 +358,7 @@ function drawRooms(ctx, plan, layout) {
 
 function drawLabels(ctx, plan, layout) {
   ctx.textAlign = 'center';
-  ctx.font = `${Math.round(layout.scale * 1.1)}px system-ui, sans-serif`;
+  ctx.font = `${Math.round(layout.scale * 1.1)}px "Public Sans", system-ui, sans-serif`;
   const draw = (name, sqft, x, z) => {
     const p = toPx(plan, layout, x, z);
     const nameY = p.y - layout.scale * 0.15;
@@ -367,9 +367,9 @@ function drawLabels(ctx, plan, layout) {
     const nw = ctx.measureText(name).width;
     ctx.fillRect(p.x - nw / 2 - 3, nameY - layout.scale * 0.9, nw + 6, layout.scale * 1.6);
     ctx.fillStyle = INK.line;
-    ctx.font = `600 ${Math.round(layout.scale * 1.1)}px system-ui, sans-serif`;
+    ctx.font = `600 ${Math.round(layout.scale * 1.1)}px "Public Sans", system-ui, sans-serif`;
     ctx.fillText(name, p.x, nameY);
-    ctx.font = `${Math.round(layout.scale * 0.8)}px system-ui, sans-serif`;
+    ctx.font = `${Math.round(layout.scale * 0.8)}px "Public Sans", system-ui, sans-serif`;
     ctx.fillStyle = INK.dim;
     ctx.fillText(`${Math.round(sqft).toLocaleString()} ft²`, p.x, areaY);
   };
@@ -387,7 +387,7 @@ function drawOccupancy(ctx, plan, layout) {
   for (const r of plan.occupancy) {
     const p = toPx(plan, layout, r.x, r.z);
     const text = `${r.occ} occ`;
-    ctx.font = `600 ${size}px system-ui, sans-serif`;
+    ctx.font = `600 ${size}px "Public Sans", system-ui, sans-serif`;
     const w = ctx.measureText(text).width;
     const y = p.y + layout.scale * 1.75;
     ctx.fillStyle = 'rgba(26, 32, 41, 0.86)';
@@ -516,7 +516,7 @@ function drawStairs(ctx, plan, layout) {
       ctx.setLineDash([]);
       const c = captionAt(pts);
       ctx.fillStyle = INK.dim;
-      ctx.font = `${Math.round(layout.scale * 0.65)}px system-ui, sans-serif`;
+      ctx.font = `${Math.round(layout.scale * 0.65)}px "Public Sans", system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText('OPEN BELOW', c.x, c.y);
       continue;
@@ -527,7 +527,7 @@ function drawStairs(ctx, plan, layout) {
     if (s.kind === 'opening') {
       const c = captionAt(pts);
       ctx.fillStyle = INK.dim;
-      ctx.font = `${Math.round(layout.scale * 0.65)}px system-ui, sans-serif`;
+      ctx.font = `${Math.round(layout.scale * 0.65)}px "Public Sans", system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText('FLOOR OPENING', c.x, c.y);
       continue;
@@ -540,7 +540,7 @@ function drawStairs(ctx, plan, layout) {
       strokePath(ctx, plan, layout, [p1, p3]);
       const c = captionAt(pts);
       ctx.fillStyle = INK.dim;
-      ctx.font = `${Math.round(layout.scale * 0.6)}px system-ui, sans-serif`;
+      ctx.font = `${Math.round(layout.scale * 0.6)}px "Public Sans", system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(s.caption, c.x, c.y);
       continue;
@@ -563,7 +563,7 @@ function drawStairs(ctx, plan, layout) {
       const at = ptWorld(link, 0, s.run * 0.5);
       const c = toPx(plan, layout, at.x, at.z);
       const label = `RAMP 1:${Math.round(s.slope)}`;
-      ctx.font = `${Math.round(layout.scale * 0.6)}px system-ui, sans-serif`;
+      ctx.font = `${Math.round(layout.scale * 0.6)}px "Public Sans", system-ui, sans-serif`;
       ctx.textAlign = 'center';
       const w = ctx.measureText(label).width;
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
@@ -593,9 +593,9 @@ function drawFinishLegend(ctx, plan, layout, canvasW, canvasH) {
   ctx.strokeRect(x0 + 0.5, y0 + 0.5, boxW - 1, boxH - 1);
   ctx.textAlign = 'left';
   ctx.fillStyle = INK.line;
-  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.font = '600 11px "Public Sans", system-ui, sans-serif';
   ctx.fillText('FLOOR FINISH SCHEDULE', x0 + pad, y0 + pad + 10);
-  ctx.font = '10px system-ui, sans-serif';
+  ctx.font = '10px "Public Sans", system-ui, sans-serif';
   rows.forEach((r, i) => {
     const y = y0 + pad + 16 + i * lineH + 8;
     ctx.fillStyle = r.color;
@@ -663,7 +663,7 @@ function drawDimensions(ctx, plan, layout) {
   ctx.strokeStyle = INK.faint;
   ctx.fillStyle = INK.dim;
   ctx.lineWidth = 1;
-  ctx.font = `${Math.round(layout.scale * 0.7)}px system-ui, sans-serif`;
+  ctx.font = `${Math.round(layout.scale * 0.7)}px "IBM Plex Mono", ui-monospace, monospace`;
   ctx.textAlign = 'center';
   ctx.beginPath();
   ctx.moveTo(top.x, top.y - off); ctx.lineTo(topR.x, topR.y - off);
@@ -694,7 +694,7 @@ function drawScaleAndNorth(ctx, plan, layout, canvasW, canvasH) {
   ctx.lineTo(x0 + pxPerTick * 4, y0);
   ctx.stroke();
   ctx.textAlign = 'center';
-  ctx.font = '10px system-ui, sans-serif';
+  ctx.font = '10px "Public Sans", system-ui, sans-serif';
   for (let i = 0; i <= 4; i++) {
     const x = x0 + i * pxPerTick;
     ctx.beginPath(); ctx.moveTo(x, y0 - 4); ctx.lineTo(x, y0 + 4); ctx.stroke();
@@ -710,7 +710,7 @@ function drawScaleAndNorth(ctx, plan, layout, canvasW, canvasH) {
   ctx.lineTo(nx + 6, ny + 8);
   ctx.closePath();
   ctx.fill();
-  ctx.font = '11px system-ui, sans-serif';
+  ctx.font = '11px "Public Sans", system-ui, sans-serif';
   ctx.fillText('N', nx, ny - 18);
 }
 
@@ -778,7 +778,7 @@ const dayShape = (p) => ({
 // tool cannot be trusted about rectangles either, and a second panel stacked
 // under a mis-measured first one lands on top of it.
 function panelHeight(ctx, panel) {
-  ctx.font = '9px system-ui, sans-serif';
+  ctx.font = '9px "Public Sans", system-ui, sans-serif';
   const caveat = wrapLines(ctx, panel.caveat, PANEL_W - PANEL_PAD * 2);
   const storeys = panel.storeys.length;
   const bodyH = 30 + panel.rows.length * PANEL_LINE
@@ -803,7 +803,7 @@ function drawPanel(ctx, panel, x0, y0) {
   let y = y0 + pad + 10;
   ctx.textAlign = 'left';
   ctx.fillStyle = INK.line;
-  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.font = '600 11px "Public Sans", system-ui, sans-serif';
   ctx.fillText(panel.title, x0 + pad, y);
   ctx.textAlign = 'right';
   ctx.fillStyle = panel.verdict === 'fail' ? '#b33a3a'
@@ -811,7 +811,7 @@ function drawPanel(ctx, panel, x0, y0) {
   ctx.fillText(panel.badge, x0 + PANEL_W - pad, y);
   y += 6;
 
-  ctx.font = '10px system-ui, sans-serif';
+  ctx.font = '10px "Public Sans", system-ui, sans-serif';
   ctx.textAlign = 'left';
   ctx.fillStyle = INK.dim;
   y += lineH;
@@ -837,11 +837,11 @@ function drawPanel(ctx, panel, x0, y0) {
     y += 13;
     ctx.textAlign = 'left';
     ctx.fillStyle = INK.dim;
-    ctx.font = '600 9px system-ui, sans-serif';
+    ctx.font = '600 9px "Public Sans", system-ui, sans-serif';
     ctx.fillText(panel.storeyHead[0], x0 + pad, y);
     ctx.textAlign = 'right';
     ctx.fillText(panel.storeyHead[1], x0 + PANEL_W - pad, y);
-    ctx.font = '10px system-ui, sans-serif';
+    ctx.font = '10px "Public Sans", system-ui, sans-serif';
     for (const st of panel.storeys) {
       y += lineH;
       // The sheet's own storey in ink, the others greyed: one panel, printed
@@ -857,7 +857,7 @@ function drawPanel(ctx, panel, x0, y0) {
   y += 16;
   ctx.textAlign = 'left';
   ctx.fillStyle = '#8a93a3';
-  ctx.font = '9px system-ui, sans-serif';
+  ctx.font = '9px "Public Sans", system-ui, sans-serif';
   caveat.forEach((text, i) => ctx.fillText(text, x0 + pad, y + i * 10));
   return y0 + boxH;
 }
@@ -899,9 +899,9 @@ function drawTitleBlock(ctx, plan, layout, canvasW, opts) {
   ctx.fillRect(0, layout.titleH - 1, canvasW, 1);
   ctx.fillStyle = INK.line;
   ctx.textAlign = 'left';
-  ctx.font = '600 16px system-ui, sans-serif';
+  ctx.font = '600 16px "Public Sans", system-ui, sans-serif';
   ctx.fillText(opts.title || 'School Generator', layout.margin, layout.titleH * 0.42);
-  ctx.font = '12px system-ui, sans-serif';
+  ctx.font = '12px "Public Sans", system-ui, sans-serif';
   ctx.fillStyle = INK.dim;
   ctx.fillText(`${plan.label} — ${opts.sheet || 'Floor Plan'}`, layout.margin, layout.titleH * 0.75);
   ctx.textAlign = 'right';
@@ -993,7 +993,7 @@ function drawContours(ctx, plan, layout) {
         if (len > bestLen) { bestLen = len; best = [a, b]; }
       }
       const mid = toPx(plan, layout, (best[0].x + best[1].x) / 2, (best[0].z + best[1].z) / 2);
-      ctx.font = '9px system-ui, sans-serif';
+      ctx.font = '9px "Public Sans", system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = INK.paper;
       ctx.fillRect(mid.x - 11, mid.y - 6, 22, 11);
@@ -1091,13 +1091,13 @@ function drawSiteLabels(ctx, plan, layout) {
     cx /= r.pts.length; cz /= r.pts.length;
     const { x, y } = toPx(plan, layout, cx, cz);
     const text = r.name || r.mark;
-    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.font = '600 11px "Public Sans", system-ui, sans-serif';
     const w = ctx.measureText(text).width;
     ctx.fillStyle = 'rgba(255,255,255,0.82)';
     ctx.fillRect(x - w / 2 - 4, y - 9, w + 8, 15);
     ctx.fillStyle = INK.line;
     ctx.fillText(text, x, y + 2);
-    ctx.font = '9px system-ui, sans-serif';
+    ctx.font = '9px "Public Sans", system-ui, sans-serif';
     ctx.fillStyle = INK.dim;
     ctx.fillText(`${Math.round(r.sqft).toLocaleString()} ft²`, x, y + 14);
   }
@@ -1116,9 +1116,9 @@ function drawSiteLegend(ctx, plan, layout, canvasW, canvasH) {
   ctx.strokeRect(x0 + 0.5, y0 + 0.5, boxW - 1, boxH - 1);
   ctx.textAlign = 'left';
   ctx.fillStyle = INK.line;
-  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.font = '600 11px "Public Sans", system-ui, sans-serif';
   ctx.fillText('SITE SURFACE SCHEDULE', x0 + pad, y0 + pad + 10);
-  ctx.font = '10px system-ui, sans-serif';
+  ctx.font = '10px "Public Sans", system-ui, sans-serif';
   rows.forEach((r, i) => {
     const y = y0 + pad + 16 + i * lineH + 8;
     ctx.fillStyle = r.color;
@@ -1133,7 +1133,7 @@ function drawSiteLegend(ctx, plan, layout, canvasW, canvasH) {
     ctx.textAlign = 'left';
   });
   ctx.fillStyle = INK.dim;
-  ctx.font = '10px system-ui, sans-serif';
+  ctx.font = '10px "Public Sans", system-ui, sans-serif';
   const relief = plan.relief.relief;
   ctx.fillText(
     relief > 0.05
@@ -1243,7 +1243,7 @@ export function renderSpecSheetCanvas(spec, opts = {}) {
   const rowPad = 7;
   const lineH = 13;
   const measure = document.createElement('canvas').getContext('2d');
-  measure.font = '11px system-ui, sans-serif';
+  measure.font = '11px "Public Sans", system-ui, sans-serif';
 
   const rows = spec.lines.map((l) => {
     const cells = SPEC_COLS.map((c) => (c.wrap
@@ -1268,7 +1268,7 @@ export function renderSpecSheetCanvas(spec, opts = {}) {
   for (const c of SPEC_COLS) { xs.push(x); x += c.w; }
 
   let y = TITLE_H + margin;
-  ctx.font = '600 10px system-ui, sans-serif';
+  ctx.font = '600 10px "Public Sans", system-ui, sans-serif';
   ctx.fillStyle = INK.dim;
   ctx.textAlign = 'left';
   SPEC_COLS.forEach((c, i) => {
@@ -1280,7 +1280,7 @@ export function renderSpecSheetCanvas(spec, opts = {}) {
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(margin, y - 6.5); ctx.lineTo(SPEC_W - margin, y - 6.5); ctx.stroke();
 
-  ctx.font = '11px system-ui, sans-serif';
+  ctx.font = '11px "Public Sans", system-ui, sans-serif';
   let lastSystem = null;
   for (const r of rows) {
     if (y + r.h > canvas.height - notesH - margin) {
@@ -1312,7 +1312,7 @@ export function renderSpecSheetCanvas(spec, opts = {}) {
   ctx.strokeStyle = INK.line;
   ctx.beginPath(); ctx.moveTo(margin, y + 0.5); ctx.lineTo(SPEC_W - margin, y + 0.5); ctx.stroke();
   y += 18;
-  ctx.font = '10px system-ui, sans-serif';
+  ctx.font = '10px "Public Sans", system-ui, sans-serif';
   ctx.fillStyle = '#8a93a3';
   ctx.textAlign = 'left';
   for (const note of spec.disclaimer) {
