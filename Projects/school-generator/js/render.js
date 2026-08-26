@@ -172,10 +172,107 @@ function makeFloorRoughness() {
   return t;
 }
 
+// A grayscale data texture — bump and roughness maps — on the same canvas
+// terms as everything else. Mid-grey is "flat"; darker reads as a recess.
+function grayTex(size, draw) {
+  const t = canvasTex(size, draw);
+  t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
+
+// The joints between the VCT tiles, as relief: the one thing raking light
+// picks out of a tile floor. Drawn from the same 4x4 grid the albedo draws.
+function makeFloorBump() {
+  return grayTex(256, (ctx, S) => {
+    ctx.fillStyle = 'rgb(128,128,128)';
+    ctx.fillRect(0, 0, S, S);
+    const tile = S / 4;
+    ctx.strokeStyle = 'rgb(84,84,84)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i <= 4; i++) {
+      ctx.beginPath(); ctx.moveTo(i * tile, 0); ctx.lineTo(i * tile, S); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * tile); ctx.lineTo(S, i * tile); ctx.stroke();
+    }
+  });
+}
+
+// A finish's relief, matching its albedo's structure: plank seams, tile
+// joints. Carpet and terrazzo are flat and return null.
+function makeFinishBump(entry) {
+  if (entry.grain === 'plank') {
+    return grayTex(256, (ctx, S) => {
+      ctx.fillStyle = 'rgb(128,128,128)';
+      ctx.fillRect(0, 0, S, S);
+      const rows = 8, hgt = S / rows;
+      ctx.strokeStyle = 'rgb(90,90,90)';
+      ctx.lineWidth = 1.5;
+      for (let r = 0; r <= rows; r++) {
+        ctx.beginPath(); ctx.moveTo(0, r * hgt); ctx.lineTo(S, r * hgt); ctx.stroke();
+      }
+    });
+  }
+  if (entry.grain === 'tile') return makeFloorBump();
+  return null;
+}
+
+// The facade's relief: raked mortar joints on brick and block, the seam
+// shadow on standing-seam metal. Stucco keeps its tooth in the albedo alone.
+function makeFacadeBump(entry) {
+  if (entry.grain === 'brick' || entry.grain === 'block') {
+    const courses = entry.grain === 'brick' ? 18 : 6;
+    const across = entry.grain === 'brick' ? 6 : 3;
+    return grayTex(256, (ctx, S) => {
+      ctx.fillStyle = 'rgb(140,140,140)';
+      ctx.fillRect(0, 0, S, S);
+      const ch = S / courses, bw = S / across;
+      ctx.strokeStyle = 'rgb(70,70,70)';
+      ctx.lineWidth = entry.grain === 'brick' ? 2 : 2.5;
+      for (let r = 0; r <= courses; r++) {
+        ctx.beginPath(); ctx.moveTo(0, r * ch); ctx.lineTo(S, r * ch); ctx.stroke();
+        const off = (r % 2) * bw * 0.5;
+        for (let c = -1; c <= across; c++) {
+          const x = c * bw + off;
+          ctx.beginPath(); ctx.moveTo(x, r * ch); ctx.lineTo(x, (r + 1) * ch); ctx.stroke();
+        }
+      }
+    });
+  }
+  if (entry.grain === 'rib') {
+    return grayTex(256, (ctx, S) => {
+      ctx.fillStyle = 'rgb(128,128,128)';
+      ctx.fillRect(0, 0, S, S);
+      const ribs = 12, rw = S / ribs;
+      for (let i = 0; i < ribs; i++) {
+        ctx.fillStyle = 'rgb(190,190,190)';
+        ctx.fillRect(i * rw, 0, rw * 0.18, S);
+        ctx.fillStyle = 'rgb(80,80,80)';
+        ctx.fillRect(i * rw + rw * 0.18, 0, rw * 0.12, S);
+      }
+    });
+  }
+  return null;
+}
+
+// Painted drywall is not one sheen: scuffs and roller passes break the
+// constant 0.92 up under a low sun, which is most of what a wall shows.
+function makeWallRoughness() {
+  return grayTex(256, (ctx, S) => {
+    ctx.fillStyle = 'rgb(235,235,235)';
+    ctx.fillRect(0, 0, S, S);
+    speckle(ctx, S, 1200, ['rgb(215,215,215)', 'rgb(248,248,248)'], 0.6, 2.2);
+    ctx.strokeStyle = 'rgb(222,222,222)';
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 14; i++) {
+      const x = Math.random() * S;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + (Math.random() - 0.5) * 16, S); ctx.stroke();
+    }
+  });
+}
+
 // Painted drywall with a dark cove base along the bottom. Texture maps one
 // 4ft-wide x 10ft-tall wall segment.
 function makeWallAlbedo() {
-  return canvasTex(256, (ctx, S) => {
+  return canvasTex(512, (ctx, S) => {
     ctx.fillStyle = '#e9e6df';
     ctx.fillRect(0, 0, S, S);
     speckle(ctx, S, 1500, ['rgba(255,255,255,0.18)', 'rgba(150,145,135,0.10)'], 0.4, 1.2);
@@ -469,13 +566,20 @@ export function initRender(canvas) {
   const floorMat = new THREE.MeshStandardMaterial({
     map: makeFloorAlbedo(),
     roughnessMap: makeFloorRoughness(),
+    // The tile joints as relief — raking light picks them out, which is most
+    // of what a floor shows at walkthrough eye height.
+    bumpMap: makeFloorBump(),
+    bumpScale: 0.6,
     roughness: 1.0,
     metalness: 0.0,
     vertexColors: true,
   });
   const wallMat = new THREE.MeshStandardMaterial({
     map: makeWallAlbedo(),
-    roughness: 0.92,
+    // The map's mean grey lands at the old constant 0.92; the variation is
+    // scuffs and roller passes breaking the sheen up under a low sun.
+    roughnessMap: makeWallRoughness(),
+    roughness: 1.0,
     metalness: 0.0,
     vertexColors: true,
   });
@@ -603,13 +707,19 @@ export function initRender(canvas) {
     const map = makeFinishAlbedo(entry);
     map.anisotropy = Math.min(8, maxAniso);
     map.repeat.set(1 / entry.tile, 1 / entry.tile);
+    const bump = makeFinishBump(entry);
     const solid = new THREE.MeshStandardMaterial({
       map,
       roughnessMap: makeFloorRoughness(),
+      ...(bump ? { bumpMap: bump, bumpScale: 0.6 } : {}),
       roughness: entry.grain === 'fiber' ? 1.0 : 0.92,
       metalness: 0.0,
       vertexColors: true,
     });
+    if (bump) {
+      bump.anisotropy = Math.min(8, maxAniso);
+      bump.repeat.copy(map.repeat);
+    }
     const ghost = solid.clone();
     ghost.transparent = true;
     ghost.depthWrite = false;
@@ -653,7 +763,17 @@ export function initRender(canvas) {
     const map = makeFacadeAlbedo(entry);
     map.anisotropy = Math.min(8, maxAniso);
     map.repeat.set(1 / entry.tile, 1 / entry.tile);
-    m = new THREE.MeshStandardMaterial({ map, roughness: 0.92, metalness: 0, vertexColors: true });
+    // Mortar joints and seams as relief, from the same courses the albedo
+    // draws — brick under a raking sun stops reading as wallpaper.
+    const bump = makeFacadeBump(entry);
+    if (bump) {
+      bump.anisotropy = Math.min(8, maxAniso);
+      bump.repeat.copy(map.repeat);
+    }
+    m = new THREE.MeshStandardMaterial({
+      map, ...(bump ? { bumpMap: bump, bumpScale: 0.8 } : {}),
+      roughness: 0.92, metalness: 0, vertexColors: true,
+    });
     facadeMats.set(key, m);
     return m;
   }
