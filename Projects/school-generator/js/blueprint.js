@@ -713,6 +713,123 @@ function drawScaleAndNorth(ctx, plan, layout, canvasW, canvasH) {
   ctx.fillText('N', nx, ny - 18);
 }
 
+// ---------- the code panel ----------
+//
+// Phase 7's last unticked item, ticked in Phase 16: the numbers an authority
+// having jurisdiction asks for, in the corner of the sheet, beside the
+// occupancy tags that phase already put on the plan.
+//
+// It draws `report.js`'s `codePanel()` and invents nothing. The one piece of
+// judgement here is what it does when the report says the building fails: it
+// prints that, in the panel, in red. A drawing set that quietly omits its own
+// analysis is worse than one that has none.
+const CODE_PANEL_W = 232;
+
+function drawCodePanel(ctx, panel, layout, canvasW) {
+  if (!panel) return;
+  const pad = 9;
+  const lineH = 14;
+  const rows = panel.rows.length;
+  const storeys = panel.storeys.length;
+  // The caveat wraps, so the box has to be measured rather than guessed at —
+  // a panel whose last line falls outside its own border is a panel that says
+  // the tool cannot be trusted about rectangles either.
+  ctx.font = '9px system-ui, sans-serif';
+  const caveat = wrapLines(ctx, panel.caveat, CODE_PANEL_W - pad * 2);
+  const bodyH = 30 + rows * lineH + (storeys ? 23 + storeys * lineH : 0)
+    + 16 + (caveat.length - 1) * 10 + 4;
+  const boxH = pad * 2 + bodyH;
+  const x0 = canvasW - CODE_PANEL_W - 12;
+  const y0 = layout.titleH + 12;
+
+  ctx.fillStyle = 'rgba(255,255,255,0.94)';
+  ctx.fillRect(x0, y0, CODE_PANEL_W, boxH);
+  ctx.strokeStyle = '#9aa5b5';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, CODE_PANEL_W - 1, boxH - 1);
+
+  let y = y0 + pad + 10;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#1a2029';
+  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.fillText(panel.title, x0 + pad, y);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = panel.verdict === 'fail' ? '#b33a3a'
+    : panel.verdict === 'warn' ? '#a26a1e' : '#3d7a4a';
+  ctx.fillText(panel.verdict === 'fail' ? `${panel.fails} FAIL`
+    : panel.verdict === 'warn' ? `${panel.warns} REVIEW` : 'PASSES', x0 + CODE_PANEL_W - pad, y);
+  y += 6;
+
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#5a6472';
+  y += lineH;
+  ctx.fillText(`${panel.edition} · ${panel.sprinklered ? 'sprinklered' : 'unsprinklered'}`,
+    x0 + pad, y);
+
+  for (const [k, v] of panel.rows) {
+    y += lineH;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#5a6472';
+    ctx.fillText(k, x0 + pad, y);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#1a2029';
+    ctx.fillText(v, x0 + CODE_PANEL_W - pad, y);
+  }
+
+  if (storeys) {
+    y += 10;
+    ctx.strokeStyle = '#e0e3e8';
+    ctx.beginPath();
+    ctx.moveTo(x0 + pad, y + 0.5);
+    ctx.lineTo(x0 + CODE_PANEL_W - pad, y + 0.5);
+    ctx.stroke();
+    y += 13;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#5a6472';
+    ctx.font = '600 9px system-ui, sans-serif';
+    ctx.fillText('BY STOREY', x0 + pad, y);
+    ctx.textAlign = 'right';
+    ctx.fillText('AREA · LOAD · EXITS', x0 + CODE_PANEL_W - pad, y);
+    ctx.font = '10px system-ui, sans-serif';
+    for (const st of panel.storeys) {
+      y += lineH;
+      // The sheet's own storey in ink, the others greyed: one panel, printed
+      // on every sheet, that still says which sheet you are holding.
+      ctx.fillStyle = st.current ? '#1a2029' : '#8a93a3';
+      ctx.textAlign = 'left';
+      ctx.fillText(st.current ? `▸ ${st.label}` : st.label, x0 + pad, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(`${Math.round(st.area).toLocaleString()} ft² · ${st.occ} · ${st.exits}`,
+        x0 + CODE_PANEL_W - pad, y);
+    }
+  }
+
+  y += 16;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#8a93a3';
+  ctx.font = '9px system-ui, sans-serif';
+  caveat.forEach((text, i) => ctx.fillText(text, x0 + pad, y + i * 10));
+}
+
+// Canvas has no text wrapping, and a caveat that runs off the edge of a panel
+// is a caveat nobody reads. Word by word, measured.
+function wrapText(ctx, str, x, y, maxW, lineH) {
+  const words = String(str || '').split(/\s+/);
+  let line = '';
+  let ty = y;
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (ctx.measureText(next).width > maxW && line) {
+      ctx.fillText(line, x, ty);
+      ty += lineH;
+      line = w;
+    } else line = next;
+  }
+  if (line) ctx.fillText(line, x, ty);
+  return ty + lineH;
+}
+
 function drawTitleBlock(ctx, plan, layout, canvasW, opts) {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvasW, layout.titleH);
@@ -755,6 +872,10 @@ export function drawFloorPlan(ctx, plan, layout, opts = {}) {
     drawFinishLegend(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
   }
   drawScaleAndNorth(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
+  // Phase 16. The report, on the sheet. Passed in rather than computed: this
+  // module has no business building a nav graph, and the caller already has
+  // one report for the whole set.
+  if (opts.codePanel) drawCodePanel(ctx, opts.codePanel, layout, ctx.canvas.width);
   drawTitleBlock(ctx, plan, layout, ctx.canvas.width, opts);
 }
 
@@ -970,6 +1091,7 @@ export function drawSitePlan(ctx, plan, layout, opts = {}) {
   drawSiteLabels(ctx, plan, layout);
   if (opts.showFinishes !== false) drawSiteLegend(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
   drawScaleAndNorth(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
+  if (opts.codePanel) drawCodePanel(ctx, opts.codePanel, layout, ctx.canvas.width);
   drawTitleBlock(ctx, plan, layout, ctx.canvas.width, { ...opts, sheet: 'Site Plan' });
 }
 
@@ -1012,6 +1134,131 @@ export function renderSitePlanCanvas(state, opts = {}) {
   canvas.width = Math.ceil(wFt * scale + MARGIN * 2);
   canvas.height = Math.ceil(hFt * scale + MARGIN * 2 + TITLE_H);
   drawSitePlan(canvas.getContext('2d'), plan, layout, opts);
+  return canvas;
+}
+
+// ---------- the specification sheet ----------
+//
+// A sheet rather than a panel, which is the whole point of it: the takeoff
+// says how much VCT, `spec.js` says which VCT, and a specification that lives
+// in a side panel is a specification nobody on site has read. It prints with
+// the drawing set, in the same title block, at the same page width.
+//
+// Six columns and no drawing. The only real work is that two of them wrap, so
+// the row heights have to be measured before anything is painted.
+const SPEC_W = 1240;
+const SPEC_COLS = [
+  { key: 'systemLabel', title: 'System', w: 100, wrap: true },
+  { key: 'label', title: 'Assembly', w: 178, wrap: true },
+  { key: 'what', title: 'What it is', w: 268, wrap: true },
+  { key: 'where', title: 'Level', w: 104, wrap: true },
+  { key: 'roomsLabel', title: 'Rooms', w: 190, wrap: true },
+  { key: 'qty', title: 'Quantity', w: 88, right: true },
+  { key: 'rated', title: 'Rated at', w: 228, wrap: true },
+];
+
+function wrapLines(ctx, str, maxW) {
+  const words = String(str ?? '').split(/\s+/).filter(Boolean);
+  if (!words.length) return [''];
+  const out = [];
+  let line = '';
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (ctx.measureText(next).width > maxW && line) { out.push(line); line = w; }
+    else line = next;
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+const specCell = (line, col) => (col.key === 'qty'
+  ? `${Math.round(line.qty).toLocaleString()} ${line.unit}`
+  : line[col.key] || '—');
+
+export function renderSpecSheetCanvas(spec, opts = {}) {
+  if (!spec || !spec.lines.length) return null;
+  const margin = 28;
+  const rowPad = 7;
+  const lineH = 13;
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = '11px system-ui, sans-serif';
+
+  const rows = spec.lines.map((l) => {
+    const cells = SPEC_COLS.map((c) => (c.wrap
+      ? wrapLines(measure, specCell(l, c), c.w - 12)
+      : [specCell(l, c)]));
+    return { line: l, cells, h: Math.max(...cells.map((x) => x.length)) * lineH + rowPad * 2 };
+  });
+
+  const headH = 26;
+  const notesH = 18 + spec.disclaimer.length * 26;
+  const bodyH = rows.reduce((n, r) => n + r.h, 0);
+  const canvas = document.createElement('canvas');
+  canvas.width = SPEC_W;
+  canvas.height = Math.min(MAX_PX,
+    Math.ceil(TITLE_H + margin + headH + bodyH + notesH + margin));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const xs = [];
+  let x = margin;
+  for (const c of SPEC_COLS) { xs.push(x); x += c.w; }
+
+  let y = TITLE_H + margin;
+  ctx.font = '600 10px system-ui, sans-serif';
+  ctx.fillStyle = '#5a6472';
+  ctx.textAlign = 'left';
+  SPEC_COLS.forEach((c, i) => {
+    ctx.textAlign = c.right ? 'right' : 'left';
+    ctx.fillText(c.title.toUpperCase(), c.right ? xs[i] + c.w - 6 : xs[i], y + 12);
+  });
+  y += headH;
+  ctx.strokeStyle = '#1a2029';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(margin, y - 6.5); ctx.lineTo(SPEC_W - margin, y - 6.5); ctx.stroke();
+
+  ctx.font = '11px system-ui, sans-serif';
+  let lastSystem = null;
+  for (const r of rows) {
+    if (y + r.h > canvas.height - notesH - margin) {
+      ctx.fillStyle = '#8a93a3';
+      ctx.textAlign = 'left';
+      ctx.fillText('…sheet full; the CSV export carries every line.', margin, y + 12);
+      y += 20;
+      break;
+    }
+    // A hairline between systems rather than between every row: the eye wants
+    // the groups, and a full grid on a spec sheet is a spec sheet nobody
+    // finishes reading.
+    if (lastSystem !== null && r.line.system !== lastSystem) {
+      ctx.strokeStyle = '#e0e3e8';
+      ctx.beginPath(); ctx.moveTo(margin, y + 0.5); ctx.lineTo(SPEC_W - margin, y + 0.5); ctx.stroke();
+    }
+    lastSystem = r.line.system;
+    SPEC_COLS.forEach((c, i) => {
+      ctx.textAlign = c.right ? 'right' : 'left';
+      ctx.fillStyle = c.key === 'label' ? '#1a2029' : '#5a6472';
+      r.cells[i].forEach((text, li) => {
+        ctx.fillText(text, c.right ? xs[i] + c.w - 6 : xs[i], y + rowPad + 10 + li * lineH);
+      });
+    });
+    y += r.h;
+  }
+
+  y += 10;
+  ctx.strokeStyle = '#1a2029';
+  ctx.beginPath(); ctx.moveTo(margin, y + 0.5); ctx.lineTo(SPEC_W - margin, y + 0.5); ctx.stroke();
+  y += 18;
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = '#8a93a3';
+  ctx.textAlign = 'left';
+  for (const note of spec.disclaimer) {
+    y = wrapText(ctx, note, margin, y, SPEC_W - margin * 2, 12) + 2;
+  }
+
+  drawTitleBlock(ctx, { label: 'Whole building' }, { margin, titleH: TITLE_H }, SPEC_W,
+    { ...opts, sheet: 'Specification' });
   return canvas;
 }
 
