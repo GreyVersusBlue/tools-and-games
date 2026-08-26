@@ -47,9 +47,18 @@
 
 import {
   CELL, DOOR_W,
-  EDGE_NONE, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
-  EDGE_WINDOW, EDGE_DOOR2, EDGE_OPENING,
+  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
+  EDGE_WINDOW, EDGE_DOOR2, EDGE_OPENING, EDGE_KINDS, EDGE_DOORS, isDoorEdge,
 } from './grid.js';
+
+// The edge vocabulary belongs to the drawing surface, so it is re-exported
+// from here: everything that still speaks lattice — the save loader reading a
+// pre-v11 file, the generator, the paint brush — imports it from this module
+// and not from grid.js, which no longer has a lattice on it.
+export {
+  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
+  EDGE_WINDOW, EDGE_DOOR2, EDGE_OPENING, EDGE_KINDS, EDGE_DOORS, isDoorEdge,
+};
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   MAX_SHAPES, MAX_RING_PTS,
