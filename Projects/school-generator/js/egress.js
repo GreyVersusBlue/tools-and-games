@@ -42,7 +42,10 @@ import { shapesOf } from './shapes.js';
 import { stairsOf, stairWidth, isRun, isElevator, elevatorDoorWidth } from './stairs.js';
 import {
   buildNav, egressField, pointField, clearWidth, MIN_CLEAR_W, MIN_ACCESSIBLE_W,
+  dischargeField, dischargePath,
 } from './navgraph.js';
+import { ACCESSIBLE_GRADE, MAX_RAMP_GRADE, pathGrade } from './sitemesh.js';
+import { terrainField } from './terrain.js';
 import { buildingOccupancy } from './occupancy.js';
 
 // ---------- the code, as numbers ----------
@@ -61,6 +64,13 @@ export const MIN_EXIT_CLEAR = MIN_CLEAR_W;      // ft, 32in
 export const MIN_EGRESS_STAIR_W = 44 / 12;      // ft — a stair serving 50+
 // IBC 1006.2.1 — one way out is enough up to this many people in one room.
 export const SINGLE_EXIT_OCC = 49;
+// IBC 1028 — the exit discharge is the part of the way out that runs from the
+// exit to the public way, and it is not the part the travel limit is about.
+// There is no single number in the code for how long it may be, so this is not
+// a limit: it is the distance past which "the door is the way out" stops being
+// a fair description of the building, and the report says so as a note rather
+// than as a failure.
+export const DISCHARGE_NOTE = 200;              // ft
 
 // How many ways out a given occupant load needs (IBC 1006.3.2).
 export function requiredExits(occ) {
@@ -269,6 +279,131 @@ function stairRows(state) {
   return rows;
 }
 
+// ---------- exit discharge ----------
+
+// What happens after the door, which until Phase 17 was nothing: the graph
+// flattened the whole outdoors into a single node, so every exit "discharged"
+// the instant you crossed the threshold and the walk from there to the street
+// — which is what a code actually means by discharge — was unmeasurable. It
+// is now the same Dijkstra over more tiles.
+//
+// Three things come back per exit, and only the first is a distance:
+//
+//   `dist`   how far it is over the ground to the public way
+//   `grade`  the steepest piece of that ground the shortest route crosses
+//   `reaches` whether there is a route at all
+//
+// The grade is the half worth having. A discharge route steeper than 1:20 is a
+// ramp by definition, and a ramp needs handrails, landings and edge protection
+// this tool does not draw — so a school that discharges down a 9% bank is a
+// school with an accessible route it has not built yet, and that is a finding
+// the model can honestly make out of a heightfield it already had.
+export function dischargeAnalysis(state, opts = {}) {
+  const nav = opts.nav || buildNav(state);
+  const field = opts.discharge || dischargeField(nav);
+  const yard = nav.yard;
+  const site = opts.siteField || terrainField(state);
+  const rule = (nav.ways && nav.ways.rule) || (yard && yard.ways.rule) || 'none';
+  const rows = nav.exits.map((p) => {
+    const dist = field.dist.get(p.id);
+    const reaches = dist !== undefined && Number.isFinite(dist);
+    const path = reaches ? dischargePath(field, p.id) : null;
+    const grade = path
+      ? pathGrade(site, path.map((id) => nav.node(id)).filter(Boolean))
+      : 0;
+    const wayId = reaches ? field.via.get(p.id) : null;
+    const way = wayId ? nav.node(wayId) : null;
+    return {
+      id: p.id,
+      floor: p.floor,
+      x: p.x, z: p.z,
+      w: p.w,
+      dist: reaches ? dist : Infinity,
+      grade,
+      reaches,
+      // Where it comes out, so a plan can draw the route rather than assert it.
+      way: way ? { id: way.id, x: way.x, z: way.z, paved: !!way.paved } : null,
+      path,
+      steep: reaches && grade > ACCESSIBLE_GRADE,
+      impassable: reaches && grade > MAX_RAMP_GRADE,
+      long: reaches && dist > DISCHARGE_NOTE,
+    };
+  }).sort((a, b) => (b.reaches ? b.dist : Infinity) - (a.reaches ? a.dist : Infinity));
+
+  const reached = rows.filter((r) => r.reaches);
+  const summary = {
+    // Which rule found the public way — paving that reaches the property line,
+    // or the property line itself. A distance measured to a fence is worth
+    // having and worth labelling.
+    rule,
+    exits: rows.length,
+    reaching: reached.length,
+    stranded: rows.length - reached.length,
+    worst: reached.length ? reached[0] : null,
+    // The shortest way off the property from anywhere, which is the number a
+    // muster plan is written against.
+    best: reached.length ? reached[reached.length - 1] : null,
+    steep: reached.filter((r) => r.steep).length,
+    impassable: reached.filter((r) => r.impassable).length,
+    area: yard ? yard.tiles.reduce((a, t) => a + t.area, 0) : 0,
+    tiles: yard ? yard.tiles.length : 0,
+  };
+  return { nav, field, rows, summary, findings: dischargeFindings({ rows, summary }) };
+}
+
+function dischargeFindings({ rows, summary }) {
+  const out = [];
+  if (!rows.length) return out;
+  if (summary.rule === 'none') {
+    out.push(finding('note', 'discharge-unknown', 'Nowhere to discharge to',
+      'The site has no ground around the building that reaches its own ' +
+      'boundary, so there is nothing to measure the walk from the doors to.'));
+    return out;
+  }
+  const stranded = rows.filter((r) => !r.reaches);
+  if (stranded.length) {
+    out.push(finding('fail', 'discharge-blocked',
+      `${stranded.length} exit${stranded.length === 1 ? '' : 's'} discharge nowhere`,
+      'The ground outside these doors does not connect to the public way — a ' +
+      'planting bed, a bank too steep to walk, or a courtyard with the ' +
+      'building all the way round it. A door that opens into an enclosure is ' +
+      'not an exit.',
+      { doors: stranded.slice(0, 8) }));
+  }
+  const impassable = rows.filter((r) => r.impassable);
+  const steep = rows.filter((r) => r.steep && !r.impassable);
+  if (impassable.length) {
+    out.push(finding('fail', 'discharge-grade',
+      `${impassable.length} discharge route${impassable.length === 1 ? '' : 's'} steeper than 1:12`,
+      `The steepest is ${pct(impassable[0].grade)} — beyond what may be built ` +
+      'as a ramp at all, so this part of the site needs steps and a separate ' +
+      'accessible route round it.',
+      { doors: impassable.slice(0, 8) }));
+  } else if (steep.length) {
+    out.push(finding('warn', 'discharge-grade',
+      `${steep.length} discharge route${steep.length === 1 ? '' : 's'} steeper than 1:20`,
+      `${pct(steep[0].grade)} at the worst. Past 1:20 a walking surface is a ` +
+      'ramp, and a ramp needs handrails, level landings and edge protection ' +
+      'that nothing in this design draws yet.',
+      { doors: steep.slice(0, 8) }));
+  }
+  if (summary.worst && summary.worst.long) {
+    out.push(finding('note', 'discharge-distance',
+      `The longest discharge is ${ft(summary.worst.dist)}`,
+      `From that door it is ${ft(summary.worst.dist)} over the ground to the ` +
+      `${summary.rule === 'paved' ? 'paving that reaches the boundary' : 'edge of the site'}. ` +
+      'The code sets no limit on it, but it is the part of the way out that is ' +
+      'usually drawn as an arrow and never measured.'));
+  }
+  if (!out.length && summary.worst) {
+    out.push(finding('ok', 'discharge',
+      `Every exit reaches the public way, the farthest in ${ft(summary.worst.dist)}`,
+      `Measured over the site to the ${summary.rule === 'paved' ? 'paving at the boundary' : 'edge of the site'}, ` +
+      `at no more than ${pct(summary.worst.grade)} on the way.`));
+  }
+  return out;
+}
+
 export function egressAnalysis(state, opts = {}) {
   const nav = opts.nav || buildNav(state);
   const occupancy = opts.occupancy || buildingOccupancy(state, { nav });
@@ -294,6 +429,14 @@ export function egressAnalysis(state, opts = {}) {
   const worstLoss = exits.length ? exits[0].capacity : 0;
   const stairCapacity = stairs.filter((s) => s.egress).reduce((n, s) => n + s.capacity, 0);
 
+  // What happens after the door. Folded into this analysis rather than left
+  // beside it because a travel distance that stops at the threshold and a
+  // discharge that starts there are two halves of one walk, and a reader with
+  // only the first half of it will draw the arrow and never measure it.
+  const discharge = opts.discharge === false
+    ? null
+    : dischargeAnalysis(state, { nav, siteField: opts.siteField });
+
   const summary = {
     sprinklered,
     limits,
@@ -308,16 +451,30 @@ export function egressAnalysis(state, opts = {}) {
     stairsRequired: occupancy.upper,
     unreachable: rooms.filter((r) => !r.reached && r.occ > 0).length,
     worst: rooms.find((r) => r.reached) || null,
+    // The farthest anybody walks from where they are standing to the public
+    // way: the worst room's travel plus the discharge from the door it leaves
+    // by. Not a code number — the two halves are measured against different
+    // rules — but it is the answer to "how far is it out of here", which is
+    // the question people actually ask of a plan.
+    toPublicWay: null,
   };
+  if (discharge && summary.worst && summary.worst.exit) {
+    const row = discharge.rows.find((r) => r.id === summary.worst.exit.id);
+    if (row && row.reaches) summary.toPublicWay = summary.worst.travel + row.dist;
+  }
 
   return {
     nav, field, limits, sprinklered,
     rooms,
     exits,
     stairs,
+    discharge,
     deadEnds: deadEnds(nav, field, samples, loads, limits),
     summary,
-    findings: egressFindings({ rooms, exits, stairs, summary }),
+    findings: [
+      ...egressFindings({ rooms, exits, stairs, summary }),
+      ...(discharge ? discharge.findings : []),
+    ],
   };
 }
 
@@ -393,6 +550,7 @@ const finding = (level, code, title, detail, extra = {}) =>
   ({ level, code, title, detail, ...extra });
 
 const ft = (n) => `${Math.round(n)} ft`;
+const pct = (n) => `${(n * 100).toFixed(1)}%`;
 const inches = (n) => `${(n * 12).toFixed(0)} in`;
 const roomName = (r) => r.name || (r.floor !== undefined ? `an unnamed room on ${floorLabel(r.floor)}` : 'an unnamed room');
 

@@ -2415,8 +2415,13 @@ function lifeSettings() {
 // crowd itself survives, because a wall moving is not a reason for the school
 // to go home.
 function lifeRebuildWorld() {
-  life.nav = buildNav(state);
+  // The ground first, and handed to the graph: since Phase 17 `buildNav`
+  // meshes the site as well as the storeys, and the heightfield it needs to
+  // know which banks are too steep to walk is the one the walker is about to
+  // be handed anyway. Building it twice is thirty milliseconds nobody gets
+  // back.
   life.site = terrainField(state);
+  life.nav = buildNav(state, { siteField: life.site });
   life.colliders = new Map();
   if (life.ctx) {
     life.ctx.nav = life.nav;
@@ -3032,6 +3037,27 @@ function findingHTML(f, i) {
     `</button></div>`;
 }
 
+// Exit discharge, as the one or two rows a panel has room for. Empty for a
+// sealed design, which has nothing to discharge.
+function dischargeRows(d, row) {
+  if (!d || !d.rows.length) return [];
+  const out = [];
+  if (d.summary.stranded) {
+    out.push(row('Discharges nowhere',
+      `<span class="warn"><b>${d.summary.stranded}</b> of ${d.summary.exits}</span>`));
+  }
+  if (d.summary.worst) {
+    out.push(row(`Longest discharge · to the ${d.summary.rule === 'paved' ? 'paving' : 'site edge'}`,
+      `<b>${ft(d.summary.worst.dist)} ft</b>`));
+  }
+  if (d.summary.impassable || d.summary.steep) {
+    const n = d.summary.impassable || d.summary.steep;
+    out.push(row('Discharge routes over 1:20',
+      `<span class="warn"><b>${n}</b>${d.summary.impassable ? ' over 1:12' : ''}</span>`));
+  }
+  return out;
+}
+
 // The sections under the findings: the numbers themselves, in the order a
 // person reads a building — how many people, how they get out, who can get
 // in, what it is like inside, and what it is made of.
@@ -3058,6 +3084,11 @@ function reportSections(r) {
     r.egress.deadEnds.length
       ? row('Deepest dead end', `<b>${ft(r.egress.deadEnds[0].depth)} ft</b> / ${r.egress.limits.deadEnd}`)
       : row('Dead ends', 'none'),
+    // The half of the walk that used to stop at the threshold. No limit
+    // against it, because the code sets no number for it — but a panel that
+    // quotes a travel distance and says nothing about the car park after the
+    // door has told half the story.
+    ...dischargeRows(r.egress.discharge, row),
   ]);
 
   const a = r.accessible.summary;
@@ -4801,6 +4832,7 @@ $('export-glb').addEventListener('click', () => {
     site: $('export-glb-site').checked,
     terrain: $('export-glb-terrain').checked,
     ceilings: $('export-glb-ceilings').checked,
+    instancing: $('export-glb-instancing').checked,
   };
   const btn = $('export-glb');
   const was = btn.textContent;
@@ -4813,8 +4845,12 @@ $('export-glb').addEventListener('click', () => {
       const stats = renderApi.exportStats(opts);
       const bytes = renderApi.downloadGLB('school.glb', opts);
       $('export-glb-note').textContent =
-        `Wrote ${(bytes / 1048576).toFixed(1)} MB — ${stats.triangles.toLocaleString()} triangles, ` +
-        `in metres, one material, colours baked into the vertices.`;
+        `Wrote ${(bytes / 1048576).toFixed(1)} MB — ${stats.triangles.toLocaleString()} triangles` +
+        (stats.instances
+          ? ` written once and ${stats.instances.toLocaleString()} copies placed, ` +
+            `${stats.drawn.toLocaleString()} drawn`
+          : '') +
+        `, in metres, one material, colours baked into the vertices.`;
     } catch (err) {
       alert(`Could not write the model: ${err.message}`);
     } finally {

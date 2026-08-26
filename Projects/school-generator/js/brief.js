@@ -87,11 +87,15 @@ export const BAND_RULES = [
   { value: 'elementary', match: /elementary|primary school|grade school|\bprimary\b|infant school|\bk-?5\b|\bk-?6\b|kindergarten|grades? k/ },
 ];
 
-// Which of the three schemes to lay out. Phase 10 gave the word "generate"
-// three meanings; this is the row that lets a sentence pick one. Ordered like
-// every other table here — "compact courtyard" reads as a courtyard, because
-// the shape of the plan is the noun and "compact" is doing adjective duty.
+// Which of the four schemes to lay out. Phase 10 gave the word "generate"
+// three meanings and Phase 17 a fourth; this is the row that lets a sentence
+// pick one. Ordered like every other table here — "compact courtyard" reads as
+// a courtyard, because the shape of the plan is the noun and "compact" is
+// doing adjective duty. The campus is first for the same reason one step up:
+// "a campus round a quadrangle" is a campus, because how many buildings there
+// are outranks what shape one of them is.
 export const SCHEME_RULES = [
+  { value: 'campus', match: /campus|pavilions?|separate buildings|detached blocks?|covered walks?|bungalows?/ },
   { value: 'courtyard', match: /courtyard|court ?yard|quad(?:rangle)?|round a court|ring plan|atrium plan/ },
   { value: 'compact', match: /compact|deep plan|deep-plan|one block|single block|square plan|stacked plan/ },
   { value: 'spine', match: /spine|finger plan|wings?\b|comb plan|corridor plan/ },

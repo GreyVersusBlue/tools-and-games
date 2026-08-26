@@ -84,14 +84,24 @@ test('a negative reads before its positive', () => {
 });
 
 test('what it did not understand comes back', () => {
-  const r = parse('a warm, community-facing campus that feels like home');
+  // "campus" used to be one of the words in this sentence, and used to be
+  // ignored. Phase 17 gave it a scheme to mean, which is exactly what this
+  // table is for and exactly why the sentence had to change.
+  const r = parse('a warm, community-facing place that feels welcoming');
   assert.equal(r.matched.length, 0);
   assert.equal(r.echo, 'nothing recognised');
-  for (const word of ['warm', 'community-facing', 'campus', 'feels']) {
+  for (const word of ['warm', 'community-facing', 'place', 'feels']) {
     assert.ok(r.ignored.includes(word), `${word} should have been reported as ignored`);
   }
   // ...and the brief is untouched, rather than half-guessed.
   assert.deepEqual(r.brief, parseBrief('').brief);
+});
+
+test('a campus is a scheme now, and it outranks the court in it', () => {
+  assert.equal(parse('a campus for 800 middle schoolers').brief.scheme, 'campus');
+  assert.equal(parse('teaching pavilions round a quadrangle').brief.scheme, 'campus');
+  // ...but a quadrangle on its own is still the courtyard scheme.
+  assert.equal(parse('a school round a quadrangle').brief.scheme, 'courtyard');
 });
 
 test('words it did act on are not reported as ignored', () => {

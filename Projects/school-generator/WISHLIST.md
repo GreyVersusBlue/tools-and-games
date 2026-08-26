@@ -13,7 +13,8 @@ now, and it has an id** — and then stops to fix what a session with a real
 floor plan found, which is that **the sheet you draw on was a constant**. It
 goes on to two people editing one plan, and then to the sentence the whole arc
 was named for: **the tool knew everything about the building except who it was
-for**, and now it knows that too.
+for**, and now it knows that too. It ends by walking out of the front door:
+**the site was scenery, and it is now somewhere with distances in it.**
 
 **Everything on both of the first two lists has now shipped.** The last
 holdout was real-time collaboration, deferred by every arc for the same good
@@ -21,8 +22,11 @@ reason and built in Phase 14 — the client half of it entirely, and the server
 half as a contract, because a static site cannot host a relay. Phase 15 then
 did the thing arc three was named for: the building is full of *this* school
 rather than a plausible one, and the tool will say whether the building suits
-it. Twenty-three phases, 68 modules, ~39,500 lines, 1,237 tests, eleven
-save-format versions and no build step.
+it. Phase 16 priced it without ever holding a price, and Phase 17 meshed the
+ground around it — which turned out to be one change that lifted four separate
+refusals, the fourth layout scheme among them. **Arc three is finished.**
+Twenty-four phases, 74 modules, ~43,800 lines, 1,406 tests, eleven save-format
+versions and no build step.
 
 This document is two things, and the rule for a builder is the same as it has
 always been: read the first part before touching anything, and add to the
@@ -390,8 +394,13 @@ them; the rest are unclaimed and can ride along with whatever is open.
   chords. Curved walls are chords in the collider too.
 - Wall paint is one colour per wall, not per face — splitting it is a renderer
   change, not a model one.
-- Vertical collision: the walker is still a circle with no head, so you can
-  walk under a stair run. Skipped in both arcs. → *Phase 17.*
+- ~~Vertical collision: the walker is still a circle with no head~~ — done in
+  Phase 17. Still a circle, and now with a head on it: `overheadAt` is
+  `supportAt` looking the other way, and one comparison in `tryStep` against
+  the *structure* over you. What is still unmodelled is anything you would
+  duck under rather than walk into — a table, a soffit under six feet — and a
+  ceiling, which is drawn across the whole storey and which a stair climbs
+  through, so it is deliberately not what stops a body.
 - A pitched roof over a curve is a stepped rectangle; a straight skeleton would
   fix it and is a phase of its own.
 - Site regions can be restyled and deleted but not re-shaped.
@@ -400,7 +409,11 @@ them; the rest are unclaimed and can ride along with whatever is open.
   funnels.
 
 **Analysis**
-- The discharge route stops at the door: the outdoors is one node. → *Phase 17.*
+- ~~The discharge route stops at the door: the outdoors is one node~~ — done
+  in Phase 17. It is measured over `sitemesh.js`'s tiles to the public way,
+  and it carries the steepest ground the shortest route out actually crosses.
+  What it still cannot say is how *wide* the route is, or whether anything
+  stands in it: site props are not obstacles in the mesh.
 - ~~No prices, on purpose~~ — done in Phase 16, and still on purpose: the tool
   holds no prices, it holds a dated, sourced rate table somebody types in.
 - Daylight is a glazing ratio, not a daylight factor — nothing knows about
@@ -442,9 +455,12 @@ them; the rest are unclaimed and can ride along with whatever is open.
 - Nobody carries anything, opens a locker, or talks.
 
 **Generation**
-- Three schemes, not four. A campus of separate blocks is the interesting one,
-  because it is the first scheme where the building is not one connected
-  thing. → *Phase 17.*
+- ~~Three schemes, not four~~ — done in Phase 17, and it was the interesting
+  one for exactly the stated reason: it is the first scheme where the building
+  is not one connected thing, and it could not have been written before the
+  site was meshed. What it does not do is *vary* — a campus is always a front
+  building, a quadrangle and a row of pavilions, where a real one wraps a
+  hillside.
 - Adjacency cannot move a room into a bigger slot — only same-sized rooms swap,
   so "the band room next to the library" is unachievable when no slot beside
   the library is band-room-shaped. The compact block often cannot honour an
@@ -459,8 +475,11 @@ them; the rest are unclaimed and can ride along with whatever is open.
   sheet, and nothing traces it for you.
 
 **Play**
-- Nothing is hidden outdoors: the mesh covers rooms, so the hunt stops at the
-  walls. → *Phase 17.*
+- ~~Nothing is hidden outdoors: the mesh covers rooms~~ — done in Phase 17. A
+  named site region is a place to hide something, capped at a quarter of the
+  hunt so that a nine-acre playing field does not take every slot. Unnamed
+  ground is still left out, on purpose: "the south end of the lawn" on a
+  nine-acre site is a hunt about wandering.
 - A hunt cannot survive a structural edit — the hints name rooms that may no
   longer exist, so an edit ends it rather than re-hiding.
 - Warmth is a straight line plus a charge per storey, not a route, so a thing
@@ -522,7 +541,10 @@ them; the rest are unclaimed and can ride along with whatever is open.
 - The mesh samples every room at 2ft now, where a lattice room used to mesh at
   4ft off cells it already had. Overlaps are prefiltered by bounding box so it
   is not quadratic, but a very large storey does measurably more work than it
-  did. → *Phase 17 is where the performance items live.*
+  did — and since Phase 17 `buildNav` meshes the site as well, which is another
+  30–65ms on a big one. Callers that already hold a `terrainField` hand it over
+  (`buildNav(state, { siteField })`); the one that matters, `lifeRebuildWorld`,
+  does.
 - Undo is a diff, and arrays diff by index: splicing a prop out of the middle
   of a long list re-states everything after it. Rooms, props and links are
   appended far more often than inserted, so this is the right trade — and it is
@@ -562,10 +584,16 @@ them; the rest are unclaimed and can ride along with whatever is open.
 **Files and performance**
 - glTF textures, PBR materials, skins, morph targets and Draco are each a
   refusal with a sentence attached in `gltf.js`.
-- No `EXT_mesh_gpu_instancing` on export, so a furnished school is four
-  megabytes rather than a few hundred kilobytes. → *Phase 17.*
-- `findPath` sorts an array for its open set. Right at three hundred nodes,
-  wrong at three thousand. → *Phase 17.*
+- ~~No `EXT_mesh_gpu_instancing` on export~~ — done in Phase 17, as a choice
+  rather than a policy: a checkbox, on by default, and the expanded file one
+  click away for an importer that needs it. A furnished campus goes from 28.3MB
+  to 7.7MB. Not the "few hundred kilobytes" this line hoped for, because the
+  furniture was never the bulk of it — the *building* is, and getting that down
+  wants indexed and quantized attributes rather than an extension.
+- ~~`findPath` sorts an array for its open set~~ — done in Phase 17. `heap.js`,
+  used by `findPath` and by both multi-source Dijkstras: 1.5x on the A* and
+  2.8x on the egress field over a 480-node campus, which is about where the old
+  comment predicted the crossover would be.
 - A tour moves the camera and does nothing else — no bell at a stop, no hour
   scrubbed between two, no audio on the recording.
 - Cloud saves have a client and a contract (Phase 14) and no server. Four
@@ -587,17 +615,20 @@ below: Phase 13 is the one that was not planned, and it is here because using
 the tool is how it was found.)
 
 It could not name a room, so nothing outside the file could refer to one and
-nobody else could edit one with you. It fills the school with a plausible crowd
-rather than this school's crowd. It counts what the building is made of and
-refuses to say what that costs. And it stops at its own front door — the site
-is scenery, the discharge route ends at the threshold, and every scheme makes
-exactly one connected thing.
+nobody else could edit one with you. It filled the school with a plausible
+crowd rather than this school's crowd. It counted what the building is made of
+and refused to say what that costs. And it stopped at its own front door — the
+site was scenery, the discharge route ended at the threshold, and every scheme
+made exactly one connected thing. All four sentences are now in the past
+tense.
 
 **Phase 12 is done**, which is the first sentence above in the past tense and
 the prerequisite off the front of three of the other four. **Phase 14 is done
 as well**, and it is the one that cashed Phase 12 in: a room with an id is a
-thing two people can edit at once. Phase 17 is independent of all of them and
-is the one to reach for when the appetite is for a self-contained win.
+thing two people can edit at once. **Phase 17 is done too**, and it was
+independent of all of them exactly as this paragraph said — a self-contained
+win, and a bigger one than the list expected, because one mesh over the ground
+turned out to be the missing half of four unrelated-looking items.
 
 **Phase 13 is done as well, and it was never on either list.** It is what a
 walkthrough of the real tool with a real floor plan turned up, and the list is
@@ -607,8 +638,9 @@ you draw on was a constant, and the tool never said so*.
 **Phase 15 is done**, and it is the one the arc was named for: the tool now
 knows who the building is for. **Phase 16 is done too**, and with it the third
 sentence above goes into the past tense: the tool will say what the building
-costs, without ever claiming to know a price. **What is left is Phase 17** —
-the fourth sentence — and it is not blocked on anything.
+costs, without ever claiming to know a price. **Phase 17 is done**, and with it
+the fourth: the building no longer stops at its own front door. **Every phase
+this arc was planned around has shipped, and so has the one that wasn't.**
 
 ## Phase 12 — Identity ✅
 
@@ -1229,53 +1261,208 @@ has phased writes no `phasing` key, so every file written before this phase
 round-trips through it as the same bytes. The twelfth and thirteenth times that
 rule has been applied, and the thirteenth time nobody has lost a design.
 
-## Phase 17 — Outward
+## Phase 17 — Outward ✅
 
-**The building stops at its own front door.**
+**The building stopped at its own front door.** It doesn't now.
 
-Four separate refusals, one cause. Exit discharge ends at the threshold because
-`navgraph.js` flattens the whole outdoors into a single node. The scavenger
-hunt cannot hide anything on the playing field because the mesh covers rooms
-and nothing else. Every layout scheme makes exactly one connected thing. And
-the graph gets slow at exactly the size where you would want more than one
-building — because `findPath` sorts an array for its open set, which is the
-right trade at three hundred nodes and the wrong one at three thousand.
+Four separate refusals, one cause. Exit discharge ended at the threshold
+because `navgraph.js` flattened the whole outdoors into a single node. The
+scavenger hunt could not hide anything on the playing field because the mesh
+covered rooms and nothing else. Every layout scheme made exactly one connected
+thing. And the graph got slow at exactly the size where you would want more
+than one building.
 
-Nothing here was waiting on Phase 12, which makes this the phase to reach for
-when what is wanted is a self-contained win.
+The cause was a good decision that had expired. Phase 6 wrote it down: *the
+site is open ground and Phase 5 gave it a heightfield rather than obstacles, so
+routing across it is a straight line and a graph would only add nodes with
+nothing to say.* That was true until the ground grew regions with surfaces on
+them, a building standing in the middle of it, and slopes steep enough to be
+banks. Then it was a raster — and `navmesh.js` has greedy-meshed a raster into
+convex tiles since Phase 10.
 
-- [ ] **A mesh over the site.** `navmesh.js` already greedy-meshes a raster into
-  convex tiles; the site is a raster — regions, walks, the heightfield. Point
-  the same algorithm at it and the outdoors becomes somewhere with real
-  distances in it, which is the one change that makes the three items below
-  possible rather than merely easier.
-- [ ] **Exit discharge, measured to the public way.** The walk from the door to
-  the street is what a code actually means by discharge, and it is the finding
-  Phase 7 could not make. With a site mesh it is the same Dijkstra over more
-  tiles.
-- [ ] **The campus scheme.** The fourth `layoutSchool`, and the interesting one:
-  the first scheme where the building is not one connected thing. The contract
-  it has to meet — `rects`, `links`, `exits`, `footprint`, `entry`, `envelope`,
-  `style` — has been deliberately narrow since Phase 8 so that a fourth scheme
-  is a fourth function. A covered walk between two blocks is a route over the
-  site mesh, which is why this item belongs beside the first one.
-- [ ] **A head on the walker.** Skipped in both arcs and fine until now: a
-  campus has outdoor stairs and covered walks, and a walker who can stand
-  inside a soffit is a walker who will. Vertical collision is a height test on
-  the surface function that already exists.
-- [ ] **The performance work, all of it at once.** A heap for `findPath`'s open
-  set, `EXT_mesh_gpu_instancing` on export so a furnished school is a few
-  hundred kilobytes rather than four megabytes, and a look at whether
-  generation belongs in a worker. None of these are interesting alone; together
-  they are what makes a campus openable.
+- [x] **A mesh over the site.** `sitemesh.js`, and it is mostly *not* an
+  algorithm: it is the one raster the outdoors makes, handed to `greedyRects`
+  and `tileGate`. Not the building, not a planting bed, not a bank steeper than
+  25%, and never two surfaces in one tile — the seam between the lawn and the
+  car park is a seam rather than a wall, so it is a gate. 8ft cells, because a
+  site is fifty times the area of a storey and the finest thing out here is a
+  walk between two buildings. Derived, never stored: no `state.yard`, nothing
+  in the save file.
+- [x] **Exit discharge, measured to the public way.** `dischargeAnalysis` in
+  `egress.js` — how far it is over the ground from each door, and *how steep
+  the shortest route out actually is*. The public way is the rim of the site,
+  walked cell by cell with a node every forty feet, preferring paving where any
+  reaches the boundary; `rule` says which of the two happened. A door onto a
+  sealed court discharges nowhere and is a `fail`; a route over 1:12 is a
+  `fail` and over 1:20 a `warn`, because past 1:20 a walking surface is a ramp
+  and a ramp needs handrails, landings and edge protection nothing here draws.
+- [x] **The campus scheme.** The fourth `layoutSchool`, and the first where the
+  building is not one connected thing: a front building at the street with the
+  admin, gym, cafeteria and library, then a quadrangle, then a row (or rows) of
+  teaching pavilions, each a double-loaded bar with a stair hall at each end,
+  and concrete walks between them. Phase 8's contract held exactly as written.
+- [x] **A head on the walker.** `overheadAt` is `supportAt` looking the other
+  way, and one comparison in `tryStep`. The walker is still a circle; it just
+  has a top now.
+- [x] **The performance work, all of it at once.** `heap.js` in `findPath` and
+  both multi-source Dijkstras; `EXT_mesh_gpu_instancing` on export, with
+  geometries deduplicated across storeys; and a look at the worker, which came
+  back "no" with a number attached.
 
-*Leans on:* `navmesh.js`'s greedy meshing, `site.js`, `terrain.js`,
-`generate.js`'s scheme contract;
-*collides with:* `navgraph.js`, and therefore every number the tool prints —
-so the existing egress and report tests are the acceptance criteria, exactly as
-they were for Phase 10's mesh.
-*Save:* none. A site mesh is derived, a scheme is transient, and a faster heap
-is invisible.
+### What it cost, and what it taught
+
+**Two new modules, two new suites, one new scheme, one new checkbox, and no
+save version at all.** `sitemesh.js` and `heap.js`, 52 new tests, and — exactly
+as this list predicted — *nothing in the file*. A site mesh is derived, a
+scheme is transient, and a faster heap is invisible. The eleventh save version
+is still the eleventh.
+
+**The reason four unrelated items had one fix is that they were one item
+wearing four hats.** This is the third time this codebase has found that shape
+— Phase 10's four wishlist entries about travel distance, Phase 12's three
+about room identity, and now this. The tell is the same every time: several
+findings whose *workarounds* all describe the same missing sentence. Here the
+sentence was **the outdoors is somewhere, with distances in it.** Worth saying
+out loud because the list itself did not group them: "the discharge stops at
+the door" sat under Analysis, "three schemes, not four" under Generation,
+"nothing is hidden outdoors" under Play and "findPath sorts an array" under
+Performance, and only writing the phase brief put them next to each other.
+
+**The `out` node survived, and that was the load-bearing decision.** The
+obvious move was to delete it and let routes end on a tile. Keeping it — and
+giving it the meaning it should always have had, *off the property* — is what
+made every existing number stay put. Two rules do the work: every way node runs
+into `out` **one way only**, so nothing routes *through* the street to get
+somewhere else in the school; and `egressField` skips **every** outdoor node
+rather than just the hub, which is one comparison generalised. Egress distances
+are unmoved by construction rather than by luck, and the existing suites are
+the proof this phase was told to look for.
+
+**Real distances made a spine school walk its passing period through the light
+courts.** The first working version routed 53 of 70 rooms outdoors — and every
+one of those routes was *geometrically correct*, because cutting across a court
+between two wings genuinely is shorter than walking up one and down the other.
+It is still the wrong answer for a tool that has no idea what the weather is.
+The fix is the oldest idiom in `navgraph.js`: `OUTDOOR_COST`, sixty feet a
+doorway, charged on `cost` and never on `dist` — the same shape as
+`STAIR_COST`, `ELEVATOR_COST` and `FLOOR_PENALTY`, and for the same reason.
+Out-and-back has to save two hundred feet before anybody takes it. The three
+connected schemes went back to 0 of 70 outdoors; the campus stayed at 55 of 73,
+because a campus has nothing to compare the walk with. **A cost that is not a
+distance is how this file has always said "yes, but".**
+
+**The head test found a bug in itself twice, and a fire drill found both.** The
+first was the wrong hole: a ceiling is cut where the slab *above* it is cut,
+not where the slab you are standing on is, and getting it round the other way
+put a lid on the stairwell every run climbs through. Half the school stopped on
+the fourth tread. The second was subtler and better: with the hole right, the
+ceiling *plane* still cut across the lower half of every run, because it is
+drawn over the whole storey. So a step is tested against **structure** — a slab
+you would walk under, the soffit of a run — and not against a tile grid.
+`overheadAt` still reports the ceiling, because that is a true reading of the
+model; `tryStep` asks for `structural: true`, because that is what stops a
+body. Two honest answers to two different questions, which is the distinction
+Phase 15 and Phase 16 each had to make once and this file had to make again.
+
+**The invariant that came out of it is worth more than the feature.**
+`stairs.js` has sized the hole a run opens so the run clears `HEADROOM` (6.8ft)
+since Phase 4, and a walker is `HEAD_H` (5.9ft) tall. The first number being
+the larger one is *why a compliant stair is walkable*, and it was nowhere
+written down. It is a test now: walk every run in the sample school and assert
+the headroom over the treads. It also caught a real mistake — giving a slab a
+foot of thickness overhead, which contradicts `cutStart`'s arithmetic and would
+have cost 5.8ft of clearance where the model promises 6.8.
+
+**A hunt sorted honestly by area is a hunt around a car park.** The playing
+field is a hundred times the area of the gym, so the area-weighted pool put the
+entire site at the front of it and eight of eight things were hidden outdoors.
+Capping the outdoor *share* of a hunt at a quarter is the fix, and it is the
+right one because it is a statement rather than a fudge: the grounds are part
+of the school rather than most of it. Weighting the site down would have been
+the fudge — it would have got the same answer from a number nobody could
+defend.
+
+**The public way is a line, and modelling it as a place was the first thing
+that went wrong.** One node per rim tile put a door forty feet from the kerb
+four hundred feet from it, because the outdoors meshes into a handful of
+enormous rectangles and the middle of a nine-hundred-foot edge is nowhere near
+either end. Walking the rim cell by cell with a node every forty feet is
+obvious in hindsight and was not obvious at all. The same class of error, one
+level up, is why the *extent* is the site somebody drew rather than the ground
+`terrainFor` graded: the heightfield reaches two hundred feet past the building
+whether or not anybody asked for a site that big, and taking it as a property
+line measures every discharge to a boundary nobody drew.
+
+**"How steep is the route" belongs to the route, not to the search.** The first
+version carried a running maximum grade through the Dijkstra, which charged the
+steepest cell of a five-hundred-foot lawn to a route that clips one corner of
+it. Measuring the line the route actually walks, once, afterwards, is both
+cheaper and correct. The general form: *a property of the answer is not always
+a property of the search that found it.*
+
+**The campus grows a building where the other three grow a corridor.** Every
+scheme before this one absorbs an awkward program by lengthening a run;
+`packRuns` is written for exactly that. A campus has no corridor to lengthen,
+so the lever is the number of pavilions — pack, and if anything is left over
+add a building and pack again. That fell out of the existing helpers rather
+than fighting them, which is the clearest evidence that the four-function split
+Phase 10 made was the right one.
+
+**Phase 8's contract prediction was exactly right, and it is worth quoting
+because so few predictions in this document have been.** *"`rects`, `links`,
+`exits`, `footprint`, `entry`, `envelope` and `style`, and that list is the
+contract — a fourth scheme is a fourth function against it and no changes
+anywhere else."* The campus added one optional key, `walks`, which `buildSite`
+reads and no other scheme sets, and changed nothing else in `buildSchool`.
+Nine phases is a long time for an interface to hold.
+
+**Two tests had to change, and both were assertions about the world rather than
+about the code.** "The three schemes are three different buildings" is now
+four. "Every room can be walked to from every other, without going outside" is
+now scheme-aware — and it is a *better* test for it, because it asserts the
+opposite of itself for the campus and uses `goesOutdoors`, which had to learn
+that two doors on one piece of ground are joined directly and a walk can go
+outside without visiting a single outdoor node. A test that has to be edited
+for a feature is a test that was saying something.
+
+**The numbers, since this phase was half about numbers.** The heap is 1.5x on
+`findPath` and 2.8x on `egressField` over a 480-node campus — the crossover the
+old comment predicted, arriving roughly where it said it would. Instanced
+export takes a furnished campus from 28.3MB to 7.7MB (3.7x without the site,
+3.0x with it), and it is declared `extensionsRequired` as well as
+`extensionsUsed`, because an importer that silently reads one desk where there
+are eight hundred is worse than one that refuses the file. Deduplicating
+geometries across storeys by object identity — `getPropGeometry` caches one per
+type, so identity is the right test — saved another 3%, which says the
+furniture was never the bulk of it.
+
+**The worker: no, and here is the number.** Worst case measured — 2,500
+students, two storeys, campus, fully furnished — is 9ms of layout and 213ms of
+`buildSchool`, once, behind a button that already shows "Writing…". Moving that
+off the main thread costs a duplicated module graph, a structured clone of a
+state with 5,545 props in it, and a second copy of every geometry helper the
+worker would need; the clone alone is the same order as the work. What is
+actually worth 150–270ms per *edit* is `buildNav`, and that is not a job for a
+worker either, because everything that asks for it wants the answer in the same
+frame. The one real saving was free: `terrainField` is the expensive half of
+both `buildNav` and the walker's collider, so `lifeRebuildWorld` builds one and
+hands it to both.
+
+**What is left.** Site props are not obstacles in the site mesh, so a discharge
+route can walk through a bench. The mesh has no notion of route *width*, so a
+four-foot walk and a forty-foot plaza are the same to it. The campus is always
+the same campus — a front building, a quad and a row — where a real one wraps a
+hillside. There are no covered walkways in the geometry, only paving on the
+plan, so the campus's "covered walk" is covered only in the name. Nothing
+outdoors casts a soffit except a stair and an overhanging storey. And the head
+test blocks a step rather than reporting a finding, so a stair with genuinely
+poor headroom is something you cannot walk under rather than something the
+report tells you about.
+
+*Save:* **none**, exactly as this list predicted. The first phase since Phase 3
+to add nothing to the file, and the reason is the same one `navmesh.js` and
+`terrainField` gave: a site mesh is derived, and re-deriving it after an edit
+is the whole of keeping it correct.
 
 ## Suggested build order
 
@@ -1312,9 +1499,25 @@ place was smaller and the same shape — a takeoff quantity and an estimate line
 that share a name and answer different questions — and having had the argument
 once made it a comment rather than a bug.
 
-**17 is what is left.** It is independent of all of them, it clears six backlog
-items between them, and it can be started tomorrow against the code exactly as
-it stands today.
+**17 is done, and it was the last of them.** It was independent of all of them
+exactly as this paragraph said, and it cleared seven backlog items rather than
+six — which is the thing worth carrying forward. The list had those seven filed
+under four different headings (Analysis, Generation, Play, Files and
+performance), and writing the phase brief is what put them next to each other
+and showed they were one item. **A phase whose items sit under one heading is
+usually a phase; a phase whose items are scattered across four and share a
+workaround is usually a missing sentence.** That is the third time this
+codebase has found that shape and the first time it was found by re-reading the
+list rather than by a bug.
+
+**Doing 17 last was right, and not for the reason the list gave.** The stated
+reason was that it was independent, so it could go anywhere. The real one is
+that it needed Phase 5's heightfield, Phase 8's scheme contract, Phase 10's
+greedy mesher, Phase 12's room ids and Phase 16's report sections all to exist
+already — it is the only phase in the arc that reused something from every
+previous one, and it added less new code than any of them relative to what it
+changed. **The cheapest phase is the one whose parts were all built for other
+reasons.**
 
 **On save versions:** Phase 15 spent none of its own — a timetable is an
 append to v11, exactly as this section predicted, and a design that has never
@@ -1330,18 +1533,57 @@ a rate table and a phasing plan (16) are all appends to v11, which is the Phase
 5 lesson (terrain, site and roof all landed in v7 together) applied
 deliberately rather than discovered halfway through. Phase 16 spent two of them
 in one go and neither cost anything: a design nobody has priced writes no
-`rates` key and a design nobody has phased writes no `phasing` key.
+`rates` key and a design nobody has phased writes no `phasing` key. **Phase 17
+spent none and could not have**, which is the strongest form of that rule: a
+site mesh, a discharge distance, a scheme and a heap are all *derived*, and the
+one thing it did add to a design — the campus's covered walks — went in as
+ordinary site regions that somebody could have drawn by hand. Twenty-four
+phases, eleven save versions, and nobody has lost a design.
 
 **On scope:** the honest read of arc two is that the phases that went best were
 the ones with a single sentence behind them — Phase 10's "the model knows more
 than it says", Phase 7's "a drawing has to survive questions", Phase 12's
-"there is one kind of room". Each of the four left has one. If a phase starts
-growing a second thesis, that is the signal that it is two phases, which is
-exactly how Phase 10 and Phase 11 came to be split, and that split was the
-right call both times.
+"there is one kind of room". Each of the six in arc three had one, and Phase 17
+had the shortest of the lot — *the outdoors is somewhere, with distances in it*
+— while touching the most files. If a phase starts growing a second thesis,
+that is the signal that it is two phases, which is exactly how Phase 10 and
+Phase 11 came to be split, and that split was the right call both times.
 
 **On refactors, now that one has been done:** a phase whose deliverable is
 subtraction needs a test that would fail if the subtraction were wrong, and
 "every existing test still passes" is not that test. Phase 12's regression sat
 underneath a thousand passing assertions. Whatever the next one is, find the
 suite that runs the thing rather than calculating about it, and watch that one.
+Phase 17 took that literally and it paid twice: the head test's two bugs were
+both found by the fire drill — the suite that *runs* the building — while every
+suite that calculates about it stayed green. That is now three phases in a row
+where the simulation caught what the arithmetic could not.
+
+---
+
+## Where a fourth arc would start
+
+Arc three is finished and this document has no next phase in it, which is the
+right state for it to be in. What follows is not a plan; it is the shortest
+honest list of what the standing backlog above still says, grouped by the
+sentence each group is missing.
+
+**"A drawing is a set of sheets, not a picture."** The blueprint draws on
+canvas and is exercised by hand — the code panel, the specification sheet and
+the site plan all are. Nothing headless checks what any sheet *looks like*, and
+that is the largest untested surface left in the codebase.
+
+**"A design has a history somebody else can read."** Undo is a diff and a
+session is a stream, but neither is a record: there is no way to ask what
+changed between two versions of a design, and the collaboration phase made
+that a question two people can now genuinely have.
+
+**"The model knows what it does not know."** Several readers still answer with
+a number where they should answer with a range — daylight is a glazing ratio
+rather than a daylight factor, acoustics is Sabine and nothing else, and the
+cost has no contingency in it because it has no idea how uncertain it is.
+Every one of those is labelled honestly today; none of them is *quantified*.
+
+The rule for whoever picks this up is unchanged and is the first thing in this
+document: read part one before touching anything, and add to part two rather
+than starting a third list.

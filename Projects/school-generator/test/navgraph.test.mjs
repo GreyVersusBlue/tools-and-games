@@ -16,6 +16,7 @@ import {
   egressField, nearestExit, pointField, pointEntry, unreachableRooms, navSummary,
   teachingRooms, commonRooms, runLandings, DOOR_OFFSET, MUSTER_FT,
   clearWidth, CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, STAIR_COST,
+  outdoors, goesOutdoors, pathDistance, dischargeField, OUTDOOR_COST,
 } from '../js/navgraph.js';
 
 // Two rooms side by side inside one shell, with a doorway between them and
@@ -512,4 +513,76 @@ test('nearestExit answers for a point, and pointEntry hangs one on the mesh', ()
   const entry = pointEntry(nav, { floor: 0, x: 20 * CELL, z: 5.5 * CELL });
   assert.equal(entry.id, '@');
   assert.ok(entry.opts.adj.get('@').length >= 2, 'joined to what shares its tile');
+});
+
+// ---------- the outdoors, since Phase 17 ----------
+//
+// The outside used to be one node forty-five feet from every exterior door in
+// the school. What replaced it is `sitemesh.js`'s tiles, wired exactly as a
+// storey's are — so the tests below are about the three rules that keeps
+// honest: the street is a sink, the fire drill still may not walk through it,
+// and every number the tool printed before this phase is the number it prints
+// after it.
+
+test('an exterior door stands on the ground outside it, not on a hub', () => {
+  const nav = buildNav(twoRooms());
+  assert.ok(nav.yard, 'a design with a way out has an outdoors');
+  assert.ok(nav.ways.length > 0, 'and somewhere to leave by');
+  const exit = nav.exits[0];
+  // The door is joined to the site, and the edge across the site is charged
+  // the cost of stepping outside rather than a flat muster distance.
+  const out = (nav.adj.get(exit.id) || []).filter((e) => e.yard);
+  assert.ok(out.length > 0, 'the door has ground outside it');
+  for (const e of out) {
+    assert.ok(e.cost >= e.dist + OUTDOOR_COST - 1e-6,
+      'and going out costs a door, a coat and the weather');
+  }
+});
+
+test('the public way is a sink: nothing routes through the street', () => {
+  const nav = buildNav(twoRooms());
+  assert.deepEqual(nav.adj.get(nav.outside), [], 'nothing leads out of `out`');
+  for (const w of nav.ways) {
+    const arcs = nav.adj.get(w.id).filter((e) => e.to === nav.outside);
+    assert.equal(arcs.length, 1, 'one way only, and it is one way');
+  }
+  // ...so a route *to* the outside exists and a route *from* it does not.
+  const room = nav.rooms[0];
+  assert.ok(findPath(nav, room.id, nav.outside));
+  assert.equal(findPath(nav, nav.outside, room.id), null);
+});
+
+test('a fire drill still may not leave by one door and come back in another', () => {
+  const nav = buildNav(twoRooms());
+  const field = egressField(nav);
+  for (const [id] of field.dist) {
+    assert.ok(!outdoors(nav, id), `${id} is not on the egress field`);
+  }
+});
+
+test('the graph knows when a walk goes outside, edge by edge as well as node by node', () => {
+  const nav = buildNav(twoRooms({ exterior: false }));
+  const [a, b] = nav.rooms;
+  const path = findPath(nav, a.id, b.id);
+  assert.ok(!goesOutdoors(nav, path), 'a sealed building has no outdoors to walk through');
+  assert.equal(pathDistance(nav, path).outdoor, 0);
+});
+
+test('somebody standing outdoors routes from where they are, not from a hub', () => {
+  const nav = buildNav(twoRooms());
+  const exit = nav.exits[0];
+  const from = { floor: 0, x: exit.x + exit.nx * 30, z: exit.z + exit.nz * 30 };
+  const entry = pointEntry(nav, from);
+  assert.ok(entry);
+  assert.notEqual(entry.id, nav.outside, 'not the hub');
+  assert.ok(entry.opts, 'a one-node overlay on the tile they are standing on');
+  const wp = route(nav, from, nav.rooms.find((r) => r.id === (exit.a || exit.b)).id);
+  assert.ok(wp && wp.length, 'and they can walk back in');
+});
+
+test('a discharge field is nothing at all without a way out', () => {
+  const nav = buildNav(twoRooms({ exterior: false }));
+  const f = dischargeField(nav);
+  assert.equal(f.ways, 0);
+  assert.equal(f.dist.size, 0);
 });

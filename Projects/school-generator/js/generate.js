@@ -215,11 +215,13 @@ function splitCorridor(r, axis) {
   return out;
 }
 
-// The three schemes share this door: a brief (or a program) in, a plan out,
+// The four schemes share this door: a brief (or a program) in, a plan out,
 // and nothing downstream knows which of them drew it. `buildSchool` reads
 // `rects`, `links`, `exits`, `footprint`, `entry`, `envelope` and `style`, and
-// that list is the contract — a fourth scheme is a fourth function against it
-// and no changes anywhere else.
+// that list is the contract — the fourth scheme was a fourth function against
+// it, and the prediction Phase 8 made when it wrote that sentence held: the
+// campus added one optional key (`walks`, which `buildSite` reads) and changed
+// nothing else in this file's plumbing.
 export function layoutSchool(briefOrProgram) {
   const program = briefOrProgram && briefOrProgram.rooms
     ? briefOrProgram
@@ -227,6 +229,7 @@ export function layoutSchool(briefOrProgram) {
   const scheme = (program.brief && program.brief.scheme) || DEFAULT_SCHEME;
   if (scheme === 'courtyard') return layoutCourtyard(program);
   if (scheme === 'compact') return layoutCompact(program);
+  if (scheme === 'campus') return layoutCampus(program);
   return layoutSpine(program);
 }
 
@@ -676,14 +679,15 @@ function layoutSpine(briefOrProgram) {
 }
 
 
-// ---------- what the three schemes share ----------
+// ---------- what the schemes share ----------
 //
-// `layoutSpine` above is Phase 8's, untouched. The two below are Phase 10's,
-// and between writing them the pieces that were never about a spine came out
-// into these four functions: how rooms are dealt across the storeys, how they
-// are dealt into runs, what happens to the remainder of a run on a storey with
-// another one above it, and how the classrooms get numbered afterwards. A
-// fourth scheme is those four calls and its own geometry.
+// `layoutSpine` above is Phase 8's, untouched. The two below it are Phase
+// 10's, and between writing them the pieces that were never about a spine came
+// out into these four functions: how rooms are dealt across the storeys, how
+// they are dealt into runs, what happens to the remainder of a run on a storey
+// with another one above it, and how the classrooms get numbered afterwards. A
+// fourth scheme is those four calls and its own geometry — which Phase 17's
+// campus turned out to be, seven phases after this comment predicted it.
 
 // A run is a straight line of rooms with their doors all on one side of it —
 // one side of a wing, one band of a ring, one edge of a corridor. `axis` is
@@ -865,7 +869,7 @@ function passage(key, name, x0, y0, x1, y1, storey, doors) {
 }
 
 // The blocks, reordered to suit whatever the brief said about them. They are
-// laid in a row in all three schemes, so a row is the whole lever: "the gym
+// laid in a row in every scheme, so a row is the whole lever: "the gym
 // next to the cafeteria" is the cafeteria moved to sit behind the gym, and
 // "the kitchen away from the library" is the kitchen moved to the far end.
 // Nothing else can act on a pair of blocks — they are all different sizes, so
@@ -897,7 +901,7 @@ function orderBlocks(blocks, rules) {
 }
 
 // The half of a plan the seed decides about the shell rather than about the
-// rooms. Identical for all three schemes, and drawn in the same order so that
+// rooms. Identical for every scheme, and drawn in the same order so that
 // one seed gives one building whichever scheme is asked for.
 function shellStyle(brief, rand) {
   return {
@@ -916,7 +920,7 @@ function shellStyle(brief, rand) {
 // the schemes deal rooms into runs round-robin by kind, and teaching a
 // round-robin about pairs turns one legible loop into three scheme-specific
 // ones. Swapping two rooms of the same size after the fact costs nothing, is
-// the same operation in all three schemes, and — this is the part that
+// the same operation in every scheme, and — this is the part that
 // matters — can *say whether it worked*, which a constraint buried in a
 // dealing loop cannot.
 //
@@ -1622,8 +1626,322 @@ function layoutCompact(program) {
   };
 }
 
+// ---------- the campus ----------
+//
+// The fourth scheme, and the interesting one: **the first where the building
+// is not one connected thing.**
+//
+// Everything before this laid one figure on the lattice — a spine with wings
+// hanging off it, a ring round a court, one deep block — and every room in it
+// could be walked to from every other without going outside. That was never a
+// rule anybody wrote down; it was a consequence of `navgraph.js` flattening
+// the outdoors into a single node, which made a route between two blocks a
+// forty-five-foot lie in each direction and a covered walk a thing the model
+// had no way to measure. Phase 17 meshes the site, so a walk between two
+// buildings is a route over real ground, and this scheme is what that buys.
+//
+// The arrangement is the one a warm-climate district actually builds: a front
+// building holding everything the public comes for — admin at the street, the
+// gym, cafeteria, kitchen and library behind it — then a quadrangle, then a
+// row of teaching pavilions across the back, each a double-loaded bar with a
+// stair hall at each end. The walks between them are concrete on the plan and
+// tiles on the site mesh, which is the same thing said twice.
+//
+// The contract is unchanged, which was the point of stating it in Phase 8:
+// `rects`, `links`, `exits`, `footprint`, `entry`, `envelope` and `style`, and
+// one optional addition — `walks`, the paving this scheme wants laid between
+// its buildings, which `buildSite` reads and every other scheme leaves empty.
+
+// How far apart two buildings stand. Forty feet is a fire lane, a covered walk
+// and the width the site mesh needs to keep a tile in the gap once the walls
+// either side of it have taken their clearance.
+export const PAV_GAP = 10;       // cells — 40ft
+// The quadrangle between the front building and the teaching row.
+export const QUAD_D = 12;        // cells — 48ft
+// The covered walk along a building's face.
+export const WALK_D = 4;         // cells — 16ft
+// A pavilion longer than this is a corridor scheme wearing a campus's clothes.
+export const PAV_MAX_LEN = 30;   // cells — 120ft of run
+export const MAX_PAVILIONS = 12;
+
+function layoutCampus(program) {
+  const brief = program.brief;
+  const storeys = Math.min(MAX_FLOORS, Math.max(1, brief.storeys));
+  const rand = rng(brief.seed);
+  const sorted = sortProgram(expandProgram(program));
+  const blocks = orderBlocks(sorted.blocks, brief.adjacency);
+  const { spineRooms, wingRooms } = sorted;
+
+  const bay = WING_BAY_D;
+  const corr = WING_CORR_W;
+  const stair = CROSS_W;
+  const adminD = SPINE_BAY_D;
+  const blockDepth = Math.max(bay, blocks.reduce((n, r) => Math.max(n, r.d), 0));
+  const blockSpan = blocks.reduce((n, r) => n + r.w, 0);
+  const adminSpan = spineRooms.reduce((n, r) => n + r.w, 0);
+
+  // Only the teaching rooms are dealt across the storeys. The front building
+  // is one storey by construction — a gym is one storey whatever the brief
+  // says, and admin sits at the door because that is what it is for — so the
+  // upper storeys of a campus are pavilions and nothing else, which is also
+  // what keeps every one of them standing on the one below.
+  const byStorey = dealStoreys(wingRooms, storeys, rand);
+  const widest = wingRooms.reduce((n, r) => Math.max(n, r.w), 1);
+  const perStorey = Math.ceil(wingRooms.length / storeys);
+  const demand = wingRooms.slice(0, perStorey).reduce((n, r) => n + r.w, 0);
+
+  // The front building, sized by whichever of its two bands is longer.
+  const commonsW = Math.max(12, blockSpan, adminSpan);
+  const commonsH = adminD + corr + blockDepth;
+
+  // How many pavilions. Each offers two runs a storey, so the count is the
+  // smallest that keeps a run under a hundred and twenty feet — past that a
+  // pavilion is a wing and this is the spine scheme with gaps in it.
+  const lenFor = (n) => Math.min(PAV_MAX_LEN,
+    Math.max(widest, Math.ceil(demand / (2 * n))));
+  let pavs = Math.min(MAX_PAVILIONS,
+    Math.max(2, Math.ceil(demand / (2 * PAV_MAX_LEN))));
+  const pavDepth = 2 * bay + corr;
+  const pavW = (n) => 2 * stair + n;
+  // ...laid out in as many rows as it takes. A campus that would not fit
+  // across the lattice in one row does not get shorter pavilions, it gets a
+  // second row of them: the lattice is square, the front building and one row
+  // use a third of its depth, and a school of eight pavilions in two rows is a
+  // real arrangement where eight in a line eight hundred feet long is not.
+  const perRow = (n) => Math.max(1, Math.floor(
+    (LATTICE_MAX - 2 * MARGIN + PAV_GAP) / (pavW(n) + PAV_GAP)));
+  const rowsOf = (n) => Math.ceil(pavs / perRow(n));
+
+  const x0 = MARGIN;
+  const y0 = MARGIN;
+  const rowAdmin = y0;
+  const rowCCorr = y0 + adminD;
+  const rowBlock = rowCCorr + corr;
+  const quadY0 = y0 + commonsH;
+  const pavY0 = quadY0 + QUAD_D;
+  // Where pavilion `i` sits: along the row until the row is full, then the
+  // next row down.
+  const pavAt = (n, i) => {
+    const per = perRow(n);
+    return {
+      x: x0 + (i % per) * (pavW(n) + PAV_GAP),
+      y: pavY0 + Math.floor(i / per) * (pavDepth + PAV_GAP),
+    };
+  };
+
+  const runsFor = (n, storey) => {
+    const list = [];
+    for (let i = 0; i < pavs; i++) {
+      const at = pavAt(n, i);
+      list.push(makeRun(`pav-${i}-n`, {
+        axis: 'x', x0: at.x + stair, y0: at.y, depth: bay, cap: n, door: 's',
+      }));
+      list.push(makeRun(`pav-${i}-s`, {
+        axis: 'x', x0: at.x + stair, y0: at.y + bay + corr, depth: bay, cap: n, door: 'n',
+      }));
+    }
+    return list;
+  };
+
+  // Pack, and if anything is left over add a pavilion and pack again. The
+  // other three schemes grow a corridor when the rooms don't fit; this one
+  // grows a *building*, which is the one lever a campus has and the reason the
+  // estimate above only has to be close.
+  let packed = packRuns(byStorey, runsFor, lenFor(pavs), PAV_MAX_LEN);
+  while (packed.unplaced.length && pavs < MAX_PAVILIONS) {
+    pavs++;
+    packed = packRuns(byStorey, runsFor, lenFor(pavs), PAV_MAX_LEN);
+  }
+  const len = packed.len;
+  const fillers = fillRuns(packed.plans);
+  numberRooms(packed.plans);
+
+  const rows = rowsOf(len);
+  const rowW = Math.min(pavs, perRow(len)) * pavW(len)
+    + (Math.min(pavs, perRow(len)) - 1) * PAV_GAP;
+  const W = Math.max(commonsW, rowW);
+  const H = commonsH + QUAD_D + rows * pavDepth + (rows - 1) * PAV_GAP;
+  const leftover = [];
+  const oversize = packed.unplaced.length > 0
+    || x0 + W + MARGIN > LATTICE_MAX || y0 + H + MARGIN > LATTICE_MAX;
+  const footprint = {
+    w: Math.min(LATTICE_MAX, x0 + W + MARGIN),
+    h: Math.min(LATTICE_MAX, y0 + H + MARGIN),
+  };
+
+  // One pavilion: a stair hall at each end and a double-loaded corridor
+  // between them. Nothing joins it to the pavilion beside it, which is the
+  // whole scheme in one sentence.
+  const pavilionShell = (i, n, storey) => {
+    const out = [];
+    const at = pavAt(n, i);
+    const px = at.x;
+    const name = pavilionName(i);
+    for (const [side, hx] of [['W', px], ['E', px + pavW(n) - stair]]) {
+      out.push(rect('room', hx, at.y, hx + stair - 1, at.y + pavDepth - 1, {
+        key: 'stair-hall', name: `${name} ${side === 'W' ? 'West' : 'East'} Stair`,
+        color: '#dcd7cc', fin: 'terrazzo', storey, stairHall: true, daylight: true,
+      }));
+    }
+    out.push(...splitCorridor(rect('corridor', px + stair, at.y + bay,
+      px + pavW(n) - stair - 1, at.y + bay + corr - 1, {
+        key: `pav-hall-${i}`,
+        name: storey === 0 ? `${name} Hall` : `${floorWord(storey)} ${name} Hall`,
+        color: '#e9e4da', fin: 'terrazzo', tpl: 'locker-hallway', storey,
+        // Full-width openings into the stair hall at each end, which is how a
+        // pavilion is entered and how it is left.
+        door: ['w', 'e'], doorKind: 'opening', doorFull: true,
+      }), 'x'));
+    return out;
+  };
+
+  const commonsShell = () => {
+    const out = [];
+    out.push(...splitCorridor(rect('corridor', x0, rowCCorr, x0 + commonsW - 1, rowCCorr + corr - 1, {
+      key: 'commons-hall', name: 'Main Hall',
+      color: '#e9e4da', fin: 'terrazzo', tpl: 'locker-hallway', storey: 0,
+    }), 'x'));
+    // Admin at the street, north of the hall...
+    let at = x0;
+    for (const r of spineRooms) {
+      if (at + r.w - 1 > x0 + commonsW - 1) { leftover.push(r); continue; }
+      out.push(rect('room', at, rowAdmin, at + r.w - 1, rowCCorr - 1, {
+        key: r.key, name: r.base, tpl: r.tpl, door: 's', storey: 0, daylight: true,
+      }));
+      at += r.w;
+    }
+    if (x0 + commonsW - at >= 3) {
+      out.push(rect('room', at, rowAdmin, x0 + commonsW - 1, rowCCorr - 1, {
+        key: 'flex', name: 'Flex Room', door: 's', storey: 0, daylight: true,
+      }));
+    }
+    // ...and the big rooms behind it, facing the quad.
+    at = x0;
+    for (const b of blocks) {
+      if (at + b.w - 1 > x0 + commonsW - 1) { leftover.push(b); continue; }
+      out.push(rect('room', at, rowBlock, at + b.w - 1, rowBlock + blockDepth - 1, {
+        key: b.key, name: b.base, tpl: b.tpl, door: 'n', storey: 0,
+        daylight: b.key !== 'kitchen',
+      }));
+      at += b.w;
+    }
+    if (x0 + commonsW - at >= 3) {
+      out.push(rect('room', at, rowBlock, x0 + commonsW - 1, rowBlock + blockDepth - 1, {
+        key: 'flex', name: 'Flex Room', door: 'n', storey: 0, daylight: true,
+      }));
+    }
+    return out;
+  };
+
+  const storeyRects = [];
+  for (let s = 0; s < storeys; s++) {
+    const list = [];
+    if (s === 0) list.push(...commonsShell());
+    for (let i = 0; i < pavs; i++) list.push(...pavilionShell(i, len, s));
+    for (const run of packed.plans[s]) list.push(...runRects(run, s));
+    storeyRects.push(list.map((r) => ({ ...r, storey: s })));
+  }
+
+  const adjacency = applyAdjacency(storeyRects, brief.adjacency);
+
+  const storeyOcc = storeyRects.map((list) => list
+    .filter((r) => r.kind === 'room')
+    .reduce((n, r) => n + roomOccupancy({
+      name: r.name, area: r.w * r.h * CELL * CELL,
+    }).occ, 0));
+  const upperOcc = storeyOcc.slice(1).reduce((a, b) => a + b, 0);
+
+  // Two stairs to a pavilion, one in each end hall — which for a campus is not
+  // a redundancy argument but a geometry one: a pavilion is its own building,
+  // so an upper storey with one stair in it has one way down full stop.
+  const towerCount = pavs * 2;
+  const stairW = storeys > 1
+    ? Math.min(MAX_STAIR_W, Math.max(MIN_STAIR_W + 1,
+      Math.ceil((upperOcc * STAIR_IN_PER_OCC) / 12 / towerCount * 2) / 2))
+    : MIN_STAIR_W + 1;
+  const links = [];
+  const liftPav = Math.floor(rand() * pavs) % pavs;
+  for (let s = 0; s + 1 < storeys; s++) {
+    for (let i = 0; i < pavs; i++) {
+      const at = pavAt(len, i);
+      for (const [side, hx] of [['W', at.x], ['E', at.x + pavW(len) - stair]]) {
+        const cx = (hx + stair / 2) * CELL;
+        const cz = (at.y + pavDepth / 2) * CELL;
+        links.push({
+          type: 'stair', from: s, x: cx - 6, z: cz - 11, rotationY: 0,
+          width: Math.min(stairW, stair * CELL / 2 - 2),
+        });
+        if (i === liftPav && side === 'W') {
+          links.push({ type: 'elevator', from: s, x: cx + 7, z: cz + 8, rotationY: 0 });
+        }
+      }
+    }
+  }
+
+  // The front door is the front building's, at the street end of its hall.
+  // Everything else the shell wants is cut once the walls are standing —
+  // every pavilion has four exposed faces, which is the one thing a campus is
+  // never short of.
+  const exits = [
+    { edge: 'w', x: x0, y: rowCCorr + 1, kind: EDGE_DOOR2, main: true },
+    { edge: 'e', x: x0 + commonsW, y: rowCCorr + 1, kind: EDGE_DOOR2 },
+  ];
+
+  // The paving between the buildings: along the quad face of the front
+  // building, along the north face of the teaching row, and one link down the
+  // middle joining the two. On the plan it is concrete; on the site mesh it is
+  // the ground a route between two blocks is measured over, and it is what
+  // tells `publicWay` which edge of the site is a way off it.
+  const midX = x0 + Math.floor(W / 2) - Math.floor(WALK_D / 2);
+  const walks = [
+    { x0, y0: quadY0, x1: x0 + W - 1, y1: quadY0 + WALK_D - 1, name: 'Quad walk' },
+  ];
+  for (let r = 0; r < rows; r++) {
+    const top = pavY0 + r * (pavDepth + PAV_GAP);
+    walks.push({
+      x0, y0: top - WALK_D, x1: x0 + W - 1, y1: top - 1,
+      name: r ? `Pavilion walk ${r + 1}` : 'Pavilion walk',
+    });
+  }
+  walks.push({
+    x0: midX, y0: quadY0, x1: midX + WALK_D - 1,
+    y1: pavY0 + (rows - 1) * (pavDepth + PAV_GAP) - 1, name: 'Quad crossing',
+  });
+
+  return {
+    program,
+    brief,
+    scheme: 'campus',
+    storeys,
+    wings: pavs,
+    pavilions: pavs,
+    pavRows: rows,
+    pavLen: len,
+    quad: { x0, y0: quadY0, w: W, h: QUAD_D },
+    envelope: { x0, y0, x1: x0 + W, y1: y0 + H },
+    footprint,
+    rects: storeyRects,
+    storeyOcc,
+    upperOcc,
+    stairW,
+    links,
+    exits,
+    walks,
+    unplaced: [...packed.unplaced, ...leftover],
+    fillers,
+    adjacency,
+    oversize: oversize || leftover.length > 0,
+    entry: { x: x0 * CELL, z: (rowCCorr + corr / 2) * CELL },
+    style: shellStyle(brief, rand),
+  };
+}
+
 const WING_NAMES = ['North', 'East', 'South', 'West', 'Center'];
 const wingName = (i) => `${WING_NAMES[i % WING_NAMES.length]} Wing`;
+// A campus's buildings are lettered rather than compassed: a row of pavilions
+// has no north one, and "Building C" is what the sign on it says.
+const PAV_LETTERS = 'ABCDEFGHJKLM';   // no I, the same reason a lift has no 13
+const pavilionName = (i) => `Building ${PAV_LETTERS[i % PAV_LETTERS.length]}`;
 const FLOOR_WORDS = ['Main', 'Upper', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth'];
 const floorWord = (s) => FLOOR_WORDS[Math.min(s, FLOOR_WORDS.length - 1)];
 
@@ -1992,6 +2310,17 @@ function buildSite(state, plan) {
   addRegion(state, siteRect(x0 - 12, north - 22, x1 + 12, north - 8), { surf: 'concrete', name: 'North walk' });
   addRegion(state, siteRect(x1 + 8, north - 22, x1 + 22, south + 22), { surf: 'concrete', name: 'East walk' });
   addRegion(state, siteRect(x0 - 12, south + 8, x1 + 22, south + 22), { surf: 'concrete', name: 'South walk' });
+
+  // ...and whatever paving the scheme itself asked for. Only the campus does:
+  // its buildings are joined by walks rather than by corridors, and a walk
+  // that exists on the plan and not on the ground is a route the site mesh
+  // would measure across a lawn. Given in cells, like every other rectangle a
+  // plan carries.
+  for (const w of plan.walks || []) {
+    addRegion(state, siteRect(w.x0 * CELL, w.y0 * CELL, (w.x1 + 1) * CELL, (w.y1 + 1) * CELL), {
+      surf: 'concrete', name: w.name || 'Covered walk',
+    });
+  }
 
   // What the band actually plays on, on whichever side of the building the
   // seed put it: east of the wings, or south below them. Both are real
