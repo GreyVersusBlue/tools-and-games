@@ -42,6 +42,10 @@ import {
   route, egressField, teachingRooms, commonRooms, runLandings, DOOR_OFFSET,
 } from './navgraph.js';
 import { stairUnder, stairMetrics } from './stairs.js';
+import {
+  makeLifts, liftFor, callLift, canBoard, boardLift, canAlight, leaveLift,
+  liftStop, stepLifts, BOARD_REACH,
+} from './lift.js';
 
 // A body a little narrower than the camera's. Two people have to pass each
 // other in a 3ft doorway without either of them being pushed through a jamb,
@@ -272,7 +276,15 @@ function makeAgent(id, kind, rand, room, opts = {}) {
   return {
     id,
     kind,
-    name: `${pick(rand, FIRST_NAMES)} ${String.fromCharCode(65 + Math.floor(rand() * 26))}.`,
+    // A timetable names its teachers, so a teacher who came out of one keeps
+    // the name the timetable gave them — which is what makes "Ms. Ashdown is
+    // in 104" a sentence about this school rather than about a simulation.
+    // `rand` is drawn either way, so a named teacher and an anonymous one
+    // leave the seeded sequence in the same place.
+    name: (() => {
+      const made = `${pick(rand, FIRST_NAMES)} ${String.fromCharCode(65 + Math.floor(rand() * 26))}.`;
+      return opts.person || made;
+    })(),
     // Where the body is. `y` is the *feet*, the same datum every height in
     // collide.js uses, and the floor an agent is on is derived from it rather
     // than stored — exactly as `storeyAt` does it for the camera.
@@ -293,6 +305,11 @@ function makeAgent(id, kind, rand, room, opts = {}) {
     home: room ? room.id : null,
     lunch: opts.lunch || null,
     timetable: opts.timetable || [],
+    // Which group this person moves with, when a timetable said so. Null for
+    // the random intake, and the reason a follow-a-student readout can say
+    // "9-2" rather than "a student".
+    cohort: opts.cohort || null,
+    group: opts.group || null,
     // Where it is trying to be, and how it is getting there. Both are derived
     // from the schedule every time the block changes; neither is saved.
     goal: null,
@@ -304,6 +321,11 @@ function makeAgent(id, kind, rand, room, opts = {}) {
     lane: rand() * 2 - 1,
     stuck: 0,
     wait: 0,
+    // Which car this person is queueing for or riding in, and how long they
+    // have been doing it. Null for everybody who has never met a lift, which
+    // in a single-storey school is everybody.
+    lift: null,
+    liftWait: 0,
     yielding: false,
     yielded: 0,
     lastX: 0, lastZ: 0,
@@ -316,6 +338,19 @@ function makeAgent(id, kind, rand, room, opts = {}) {
 // A school's worth of people. Teachers first — one per teaching room, because
 // that is what makes a room a class — then students spread over the same
 // rooms' timetables.
+//
+// **`opts.plan` is Phase 15, and it is the whole difference between a
+// plausible school and this one.** Without it every student gets a random
+// room per period that isn't the one they were just in, which is what Phase 6
+// shipped and said out loud was random. With it a student belongs to a cohort,
+// walks its rooms in its order, and stays with the same twenty-five people all
+// day — and a teacher follows the sections the timetable actually gave them
+// rather than standing in one room from bell to bell.
+//
+// The plan is plain data (`timetablePlan` in timetable.js), not a timetable
+// object, for the same reason the schedule is five numbers rather than a list
+// of periods: the crowd should not have to import the thing that decides where
+// everybody goes, and this file has never known that a generator exists.
 export function makePopulation(state, nav, opts = {}) {
   const sched = normalizeSchedule(opts.schedule);
   const rand = rng(opts.seed ?? 1);
@@ -327,6 +362,9 @@ export function makePopulation(state, nav, opts = {}) {
 
   const lunchRoom = pickLunchroom(common, teaching);
   const wanted = Math.max(0, Math.min(MAX_POP, Math.round(opts.students ?? 90)));
+  const plan = planFor(opts.plan, nav, sched);
+  if (plan) return fromPlan(state, nav, plan, { rand, floorHt, sched, lunchRoom, wanted });
+
   const teacherCount = Math.max(0, Math.min(teaching.length,
     Math.round(opts.teachers ?? teaching.length)));
 
@@ -352,6 +390,73 @@ export function makePopulation(state, nav, opts = {}) {
       timetable: makeTimetable(rand, roomIds, sched, { home }),
       lunch: lunchRoom,
     }));
+  }
+  return agents;
+}
+
+// A plan worth using: one with at least one cohort that has somewhere to be.
+// A timetable whose rooms all belong to a building that has since been redrawn
+// is not a plan, and falling back to the random intake is better than a school
+// standing still in the car park.
+function planFor(plan, nav, sched) {
+  if (!plan || !Array.isArray(plan.cohorts) || !plan.cohorts.length) return null;
+  const usable = plan.cohorts.some((c) => (c.rooms || []).some((id) => id && nav.node(id)));
+  return usable ? plan : null;
+}
+
+// The population a timetable implies. A cohort's size is how many students it
+// is worth, capped by what the caller asked for — which is what keeps the
+// students slider meaningful with a timetable loaded: at half the roll you get
+// every cohort at half strength rather than half the cohorts at full.
+function fromPlan(state, nav, plan, ctx) {
+  const { rand, floorHt, sched, lunchRoom, wanted } = ctx;
+  const agents = [];
+  const periods = normalizeSchedule(sched).periods;
+  // A plan's rooms are indexed by *its* period count; a design whose bell
+  // schedule has since grown a period would read past the end of one. Padded
+  // with the last room rather than with null, which is the same thing
+  // `timetablePlan` does to a free period and for the same reason.
+  const laid = (rooms) => {
+    const out = new Array(periods + 1).fill(null);
+    let last = null;
+    for (let p = 0; p <= periods; p++) {
+      const id = rooms && rooms[p] && nav.node(rooms[p]) ? rooms[p] : last;
+      out[p] = id;
+      last = id || last;
+    }
+    return out;
+  };
+
+  let id = 1;
+  for (const teacher of plan.teachers || []) {
+    const timetable = laid(teacher.rooms);
+    const home = timetable[0];
+    const room = home ? nav.node(home) : null;
+    if (!room) continue;
+    agents.push(makeAgent(id++, 'teacher', rand, room, {
+      floorHt, timetable, lunch: home, cohort: null, person: teacher.name,
+    }));
+  }
+
+  const roll = plan.cohorts.reduce((n, c) => n + Math.max(1, c.size || 0), 0);
+  // Every cohort scaled by the same fraction, so a slider at 40% is a school
+  // at 40% rather than the first nine cohorts and nobody else.
+  const scale = roll > 0 ? Math.min(1, wanted / roll) : 0;
+  let budget = Math.min(wanted, MAX_POP - agents.length);
+  for (const cohort of plan.cohorts) {
+    if (budget <= 0) break;
+    const timetable = laid(cohort.rooms);
+    const home = timetable[0];
+    const room = home ? nav.node(home) : null;
+    if (!room) continue;
+    const size = Math.min(budget, Math.max(1, Math.round(Math.max(1, cohort.size || 0) * scale)));
+    for (let i = 0; i < size; i++) {
+      agents.push(makeAgent(id++, 'student', rand, room, {
+        floorHt, timetable, lunch: lunchRoom, cohort: cohort.id, group: cohort.name,
+      }));
+      budget--;
+      if (budget <= 0) break;
+    }
   }
   return agents;
 }
@@ -484,6 +589,10 @@ function neighbours(map, floorIndex, x, z) {
 // can't get to, and the agent in it stays put rather than walking through the
 // wall to prove a point.
 export function repath(ctx, agent, goalId) {
+  // A rider whose destination has changed steps out at the next opportunity
+  // rather than riding to a floor nobody wants any more — and a person in the
+  // queue stops holding the button.
+  releaseLift(ctx, agent);
   agent.goal = goalId;
   agent.wp = 0;
   agent.stuck = 0;
@@ -604,6 +713,19 @@ function releaseSeat(ctx, agent) {
   agent.seat = null;
 }
 
+// Get out of the car, wherever the car happens to be. Called on every
+// re-plan for the same reason `releaseSeat` is: a person whose period has
+// changed under them is a person who has stopped wanting to go where they
+// were going, and a rider nobody ever took out of the car holds one of eight
+// places in it for the rest of the school day.
+function releaseLift(ctx, agent) {
+  if (!agent.lift) return;
+  const car = ctx.lifts ? ctx.lifts.get(agent.lift) : null;
+  if (car) leaveLift(car, agent.id);
+  agent.lift = null;
+  agent.liftWait = 0;
+}
+
 // The gap to whoever is in front. Infinity if the way is clear — which is
 // what the person at the front of a queue always sees, and why a queue drains
 // from the front rather than shuffling as a block.
@@ -692,15 +814,29 @@ function stepAgent(ctx, agent, dt, bodies) {
     return;
   }
 
-  // An elevator is a teleport with doors — the same deal the walkthrough's E
-  // key makes, and for the same reason: a lift that takes eight seconds is
-  // realism nobody watching a floor plan asked for.
+  // **The lift.** Until Phase 15 this was a teleport with doors — walk into
+  // the shaft, arrive upstairs — and the reason given was that a lift taking
+  // eight seconds is realism nobody watching a floor plan asked for. A
+  // timetable is what made somebody ask: once a section is upstairs at ten
+  // past nine, the crush at the doors between second and third period is a
+  // real event, and a car everybody walks into at once is not it.
+  //
+  // So a rider does the four things a person at a lift does — press the
+  // button, wait, get in when there is room, get out at their floor — and a
+  // school with one car and forty people wanting it queues, which is the
+  // whole point of having built the car a state machine. `ctx.lifts` absent
+  // is the old behaviour verbatim, which is what keeps every suite that
+  // predates this reading the same answer.
   if (target.kind === 'ride' && target.link && target.link.type === 'elevator') {
-    if (Math.hypot(target.x - agent.x, target.z - agent.z) < ARRIVE * 2) {
-      agent.y = target.floor * floorHt;
-      agent.wp++;
+    const car = liftFor(ctx.lifts, target.link);
+    if (!car) {
+      if (Math.hypot(target.x - agent.x, target.z - agent.z) < ARRIVE * 2) {
+        agent.y = target.floor * floorHt;
+        agent.wp++;
+      }
       return;
     }
+    return rideLift(ctx, agent, car, target, dt, bodies, floorIndex);
   }
 
   // **Being in the room you were going to is arriving.** Not "reaching the
@@ -890,6 +1026,93 @@ function stepAgent(ctx, agent, dt, bodies) {
   crowdAdd(ctx.crowd, floorIndex, agent.x, agent.z, dt);
 }
 
+// One person, one car, one frame. Three states and nothing between them:
+// walking to the doors, standing at them, and standing in the car.
+//
+// A rider is snapped to the car rather than resolved against the world while
+// they are in it. The alternative — letting a body in a moving shaft be pushed
+// around by the collider — is a body that gets shoved through a shaft wall on
+// the frame the floor changes underneath it, which is exactly the bug the
+// walkthrough's own lift avoids by teleporting.
+function rideLift(ctx, agent, car, target, dt, bodies, floorIndex) {
+  const stop = liftStop(car.link, car.at, car.floorHt);
+  const want = target.floor;
+
+  // In the car: go where it goes, and get out when it opens at your floor.
+  if (agent.lift === car.id && car.riders.has(agent.id)) {
+    agent.state = 'ride';
+    // Riders share the car rather than standing on one point in it. `lane` is
+    // fixed per person, so eight of them make a car-load rather than a totem.
+    const { w, d } = { w: 2.2, d: 1.6 };
+    agent.x = stop.x + agent.lane * w * 0.5;
+    agent.z = stop.z + (agent.gait % 1 - 0.5) * d;
+    agent.y = car.y;
+    agent.facing = angleLerp(agent.facing, Math.atan2(0, -1), Math.min(1, dt * 4));
+    if (canAlight(car, agent.id)) {
+      leaveLift(car, agent.id);
+      agent.lift = null;
+      agent.liftWait = 0;
+      agent.y = car.at * car.floorHt;
+      agent.floorIndex = car.at;
+      agent.state = 'walk';
+      agent.wp++;
+    }
+    return;
+  }
+
+  // At the landing: press the button, hold your place, get in when you can.
+  const landing = { x: target.x, z: target.z };
+  const reach = Math.hypot(stop.x - agent.x, stop.z - agent.z);
+  if (reach > BOARD_REACH * 3) {
+    // Still walking to the doors — steer at the landing rather than at the
+    // waypoint on the far storey, which is directly above it and therefore no
+    // direction at all.
+    stepToward(ctx, agent, landing, dt, bodies, floorIndex);
+    agent.lift = car.id;
+    callLift(car, floorIndex);
+    return;
+  }
+
+  agent.lift = car.id;
+  agent.state = 'queue';
+  agent.liftWait += dt;
+  car.waited = Math.max(car.waited, agent.liftWait);
+  callLift(car, floorIndex);
+  if (canBoard(car, floorIndex) && boardLift(car, agent.id, want)) {
+    agent.state = 'ride';
+    return;
+  }
+  // Waiting is not being a bollard, the same way standing idle isn't: the
+  // queue at a lift is a crowd that shuffles, and somebody walking into it
+  // moves it.
+  const out = resolvePoint(ctx.colliderFor(floorIndex), agent.x, agent.z, AGENT_R, 2,
+    { bodies, skip: agent.id });
+  agent.x = out.x;
+  agent.z = out.z;
+  agent.y = supportOf(ctx, agent, floorIndex);
+  agent.facing = angleLerp(agent.facing, facingTo(stop.x - agent.x, stop.z - agent.z),
+    Math.min(1, dt * 3));
+}
+
+// The plainest possible "walk at that point": no doorway lanes, no queueing,
+// no arrival test. Used only by the walk up to a lift's doors, where the
+// waypoint the path offers is on the wrong storey and every one of the
+// refinements in `stepAgent` is about a target on this one.
+function stepToward(ctx, agent, at, dt, bodies, floorIndex) {
+  const dx = at.x - agent.x, dz = at.z - agent.z;
+  const len = Math.hypot(dx, dz) || 1;
+  const speed = ctx.speed * agent.speed;
+  const out = resolvePoint(ctx.colliderFor(floorIndex),
+    agent.x + (dx / len) * speed * dt, agent.z + (dz / len) * speed * dt,
+    AGENT_R, 3, { bodies, skip: agent.id });
+  agent.x = out.x;
+  agent.z = out.z;
+  agent.y = supportOf(ctx, agent, floorIndex);
+  agent.facing = angleLerp(agent.facing, facingTo(dx, dz), Math.min(1, dt * 6));
+  agent.state = 'walk';
+  agent.gait += speed * dt * 0.5;
+}
+
 function supportOf(ctx, agent, floorIndex) {
   const s = supportAt(ctx.state, agent.x, agent.z, agent.y, { site: ctx.site });
   return s ? s.y : floorIndex * (ctx.state.floorHt || FLOOR_H);
@@ -960,6 +1183,12 @@ export function makeContext(state, nav, opts = {}) {
     sitting: opts.sitting !== false,
     elapsed: 0,
     egress: null,
+    // Phase 15's cars. One per elevator link, built here rather than passed in
+    // because a car is a thing about *this run* of the school day and not a
+    // thing about the design — the same reason the seats map lives here.
+    // `opts.lifts: false` turns them off, and turning them off is the Phase 2
+    // teleport back, verbatim.
+    lifts: opts.lifts === false ? null : makeLifts(state),
   };
 }
 
@@ -1042,6 +1271,11 @@ export function stepAgents(ctx, agents, dt, opts = {}) {
     stepAgent(ctx, agent, dt, near);
   }
   if (ctx.crowd) ctx.crowd.seconds += dt;
+  // The cars run whether or not anybody is in them: a lift somebody called and
+  // then walked away from still has to come, open, wait and shut, which is
+  // what makes the one at the far end of the corridor be somewhere else when
+  // you want it.
+  if (ctx.lifts) stepLifts(ctx.lifts, dt);
   ctx.doorsMoved = swingDoors(ctx, agents, dt, opts);
   return agents;
 }
@@ -1077,6 +1311,11 @@ export function bodiesOn(agents, floorIndex, opts = {}) {
   const out = [];
   for (const a of agents) {
     if (a.state === 'out') continue;
+    // Somebody in the car is inside a shaft, behind three walls and a door.
+    // Resolving the walker against them is resolving it against a body it
+    // cannot reach, and on the frame the car passes a storey it is a body
+    // that appears in the middle of a corridor and shoves.
+    if (a.state === 'ride') continue;
     if ((a.floorIndex ?? 0) !== floorIndex) continue;
     out.push({ id: -a.id, x: a.x, z: a.z, r: opts.radius ?? AGENT_R });
   }
@@ -1090,7 +1329,7 @@ export function bodiesNear(agents, floorIndex, x, z, radius = 30, extra = null) 
   const out = extra ? [...extra] : [];
   const r2 = radius * radius;
   for (const a of agents) {
-    if (a.state === 'out' || (a.floorIndex ?? 0) !== floorIndex) continue;
+    if (a.state === 'out' || a.state === 'ride' || (a.floorIndex ?? 0) !== floorIndex) continue;
     if ((a.x - x) ** 2 + (a.z - z) ** 2 > r2) continue;
     // `open` is intent, and it is the whole difference between one walker and
     // forty: a body only opens a door it is actually walking through. Everyone
@@ -1107,12 +1346,17 @@ export function bodiesNear(agents, floorIndex, x, z, radius = 30, extra = null) 
 // ---------- reports ----------
 
 export function census(agents) {
-  const out = { total: agents.length, walking: 0, seated: 0, idle: 0, out: 0, teachers: 0 };
+  const out = {
+    total: agents.length, walking: 0, seated: 0, idle: 0, out: 0, teachers: 0,
+    queueing: 0, riding: 0,
+  };
   for (const a of agents) {
     if (a.kind === 'teacher') out.teachers++;
     if (a.state === 'walk') out.walking++;
     else if (a.state === 'sit') out.seated++;
     else if (a.state === 'out') out.out++;
+    else if (a.state === 'queue') out.queueing++;
+    else if (a.state === 'ride') out.riding++;
     else out.idle++;
   }
   return out;

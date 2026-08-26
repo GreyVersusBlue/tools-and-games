@@ -545,6 +545,35 @@ export function findPath(nav, fromId, toId, opts = {}) {
   return null;
 }
 
+// How far a path actually is, in feet, and which rooms it crossed on the way.
+//
+// `findPath` optimises `cost` — the number with the stair penalties and the
+// lift's wait folded into it — and every reader that wants to print a distance
+// wants `dist` instead, which is the same route measured in feet. Phase 7 got
+// away without this because egress measures its distances with a field rather
+// than a path; Phase 15's passing-period travel is one named room to another
+// named room, which is a path, and a number about the school day that quoted
+// the lift's wait in feet would be a number about nothing.
+export function pathDistance(nav, path, opts = {}) {
+  if (!nav || !path || path.length < 2) return { dist: 0, cost: 0, rooms: [], links: 0 };
+  let dist = 0, cost = 0, links = 0;
+  const rooms = [];
+  for (let i = 1; i < path.length; i++) {
+    const e = edgeOn(nav, path[i - 1], path[i], opts);
+    if (!e) continue;
+    dist += e.dist;
+    cost += e.cost;
+    if (e.room && rooms[rooms.length - 1] !== e.room) rooms.push(e.room);
+  }
+  // How many times the route changed storey — a stair, a ramp or a lift, each
+  // of which is one node in the path and none of which is a distance in feet.
+  for (const id of path) {
+    const n = nodeOf(nav, id, opts);
+    if (n && n.kind === 'link') links++;
+  }
+  return { dist, cost, rooms, links };
+}
+
 // A node path, as somewhere to put your feet. Gates and room nodes contribute
 // one point each; a doorway contributes two — the side you arrive at and the
 // side you leave by — and a link contributes two, the landing you walk to and

@@ -24,6 +24,13 @@
 //        is a polygon with an id (see lattice.js and shapes.js). A room record
 //        grows `group` and `load`, and the design grows `code` — the two
 //        questions Phase 7's analysis had nowhere to keep an answer to.
+//   v11+ — `timetable`: the school day this building is for — cohorts,
+//        teachers and one section per group per period, each bound to a room
+//        by the id v11 gave it (see timetable.js). An *append* to v11 rather
+//        than a bump of its own, which is Phase 5's lesson applied on purpose:
+//        a v11 file with no timetable in it reads identically either way, and
+//        a v11 file with one opens in a build that predates it as the same
+//        building minus a school day.
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
 // polygon rooms in it, a v3 one has no glass and no stairs, a v4 one has no
@@ -105,6 +112,7 @@ import { normalizeLife, isDefaultLife } from './agents.js';
 import { normalizeOverlay } from './overlay.js';
 import { normalizeTours } from './tour.js';
 import { normalizeModels, librarySize } from './models.js';
+import { normalizeTimetable, isEmptyTimetable } from './timetable.js';
 
 // v9 is the first bump that is not free.
 //
@@ -179,6 +187,11 @@ export function serialize(state, opts = {}) {
   // v11's one design-wide record, on the same terms as the nine above it: a
   // building nobody has answered a code question about writes no `code` key.
   if (isDefaultCode(out.code)) delete out.code; else out.code = normalizeCode(out.code);
+  // Phase 15's append, and the eleventh time the same rule has been applied: a
+  // design with no school day in it writes no `timetable` key, so every file
+  // written before this build round-trips through it as the same bytes.
+  const timetable = normalizeTimetable(out.timetable);
+  if (isEmptyTimetable(timetable)) delete out.timetable; else out.timetable = timetable;
   return JSON.stringify(out);
 }
 
@@ -305,6 +318,12 @@ export function deserialize(json, opts = {}) {
   // what every reader assumed before there was anywhere to say otherwise.
   const code = normalizeCode(d.code);
   if (!isDefaultCode(code)) state.code = code;
+  // Phase 15's timetable, on the same terms as everything above it: a section
+  // that names a cohort the file doesn't contain is dropped by
+  // `normalizeTimetable`, and an unreadable timetable is a design with no
+  // school day rather than a design that won't open.
+  const timetable = normalizeTimetable(d.timetable);
+  if (!isEmptyTimetable(timetable)) state.timetable = timetable;
   // v8's population settings, on the same terms as everything above: an
   // unreadable one is the default one, and a file from before v8 simply has
   // the default school in it.

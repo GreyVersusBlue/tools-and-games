@@ -64,7 +64,12 @@ export const LISTS = [
 // The design-wide singletons. Each is one record: change any part of the sun
 // and the whole `env` travels, which is a few dozen bytes and means the rule
 // above needs no exception.
-export const DESIGN_FIELDS = ['env', 'code', 'roof', 'terrain', 'site', 'life'];
+// Phase 15's timetable joins them as one record rather than one per section:
+// a school day is edited wholesale — generated, imported, cleared — and never
+// a section at a time, so the record that travels is the whole day. If a
+// section ever becomes something a person drags, it becomes a `LISTS` entry
+// with ids of its own and this line loses a word.
+export const DESIGN_FIELDS = ['env', 'code', 'roof', 'terrain', 'site', 'life', 'timetable'];
 
 // The drawing surface is its own record — the design's w/h and every storey's,
 // which Phase 13 made something somebody sets. It is one record rather than

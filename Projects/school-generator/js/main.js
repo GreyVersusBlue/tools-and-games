@@ -34,7 +34,7 @@ import {
 } from './schedule.js';
 import {
   makePopulation, makeContext, retargetAll, stepAgents, census, drillReport,
-  bodiesOn, makeCrowdField, crowdCells, clearCrowd, normalizeLife,
+  bodiesOn, makeCrowdField, crowdCells, clearCrowd, normalizeLife, MAX_POP, SPEED,
 } from './agents.js';
 import { buildCollider, storeyAt, resolvePoint, WALKER_R } from './collide.js';
 import { initAudio } from './audio.js';
@@ -50,11 +50,17 @@ import {
   computeFloorPlan, drawPlanBody,
 } from './blueprint.js';
 import { buildReport, reportCSV } from './report.js';
-import { codeOf, normalizeCode, isDefaultCode, USES } from './occupancy.js';
+import { codeOf, normalizeCode, isDefaultCode, USES, buildingOccupancy } from './occupancy.js';
+import {
+  buildTimetable, importTimetableCSV, timetableCSV, timetablePlan, timetableSummary,
+  timetableIssues, normalizeTimetable, isEmptyTimetable, bindTimetable, roomPool, rollFor,
+} from './timetable.js';
+import { crowdSize } from './utilisation.js';
 import { isTouchCapable, joystickAxes } from './touch.js';
 // --- Phase 8 ---
 import {
   BANDS, SCHEMES, schemeEntry, DEFAULT_BRIEF, normalizeBrief, buildProgram, programLines,
+  bandEntry,
 } from './program.js';
 import { parseBrief } from './brief.js';
 import { layoutSchool, buildSchool, generationSummary } from './generate.js';
@@ -2351,6 +2357,7 @@ const life = {
   followIdx: -1,
   seed: 1,
   students: 90,
+  plan: null,
   heatAt: 0,
   clockAcc: 0,
 };
@@ -2402,8 +2409,14 @@ function lifeStart() {
     crowd: life.crowd,
     minutes: state.env.minutes,
   });
+  // Phase 15: the school day the design carries, as the plan `makePopulation`
+  // builds cohorts out of. A design with no timetable hands over nothing and
+  // gets Phase 6's random intake, which is exactly what it got before.
+  const tt = timetableOf(state);
+  life.plan = isEmptyTimetable(tt) ? null : timetablePlan(tt, life.ctx.schedule);
   life.agents = makePopulation(state, life.nav, {
     seed: life.seed, students: life.students, schedule: life.ctx.schedule,
+    plan: life.plan,
   });
   life.drill = false;
   life.drillAt = 0;
@@ -2650,12 +2663,28 @@ function renderLifeReadout() {
     `<b>${c.total}</b> people — ${c.teachers} staff · <b>${c.walking}</b> walking · ` +
     `<b>${c.seated}</b> seated · ${c.idle} standing`,
   ];
+  if (c.queueing || c.riding) {
+    lines.push(`<b>${c.queueing}</b> waiting for the lift · <b>${c.riding}</b> in it`);
+  }
   if (life.drill) {
     const r = drillReport(life.agents, life.ctx.elapsed);
     lines.push(`<b>${r.out}/${r.total}</b> out in <b>${Math.round(r.elapsed)}s</b>` +
       (r.longest ? ` · last out at ${Math.round(r.longest)}s` : ''));
     if (r.stranded) lines.push(`<span class="warn">${r.stranded} with no way out</span>`);
-    if (r.done) lines.push('Building clear.');
+    // The other half of a finding the tool has had half of since Phase 7: the
+    // travel-distance table says how far the furthest person is from a door,
+    // and a drill says how long the last one actually took. One walk of that
+    // distance is the floor; anything much above it is the queue, the door and
+    // the corner the crowd shuffled somebody into — measured rather than
+    // assumed, which is the only reason it is worth printing.
+    const expected = report.data ? report.data.summary.travel / SPEED.drill : 0;
+    if (r.done && expected > 1) {
+      const ratio = r.longest / expected;
+      lines.push(`Building clear in <b>${ratio.toFixed(1)}×</b> the ` +
+        `${Math.round(expected)}s the travel-distance table implies.`);
+    } else if (r.done) {
+      lines.push('Building clear.');
+    }
   } else if (c.out) {
     lines.push(`${c.out} have left the building`);
   }
@@ -2670,6 +2699,7 @@ function renderLifePanel() {
   $('life-toggle').classList.toggle('on', life.on);
   $('life-drill').disabled = !life.on;
   $('life-follow').disabled = !life.on || mode !== 'walk';
+  renderLifeTimetable();
   renderLifeRates();
   renderLifeClock();
   renderLifeReadout();
@@ -2715,6 +2745,189 @@ $('life-heat').addEventListener('click', () => {
 });
 
 $('life-follow').addEventListener('click', () => lifeFollow());
+
+// --- the timetable ---
+//
+// Phase 15. The life panel has had a size and a seed since Phase 6 and has
+// never had a *source*: a population of ninety with a random room per period
+// is a plausible school and was never this one. This is the source, and it is
+// three buttons because it is three questions — build me one out of the rooms
+// I have drawn, read me the one I already have, or give me the random day back.
+//
+// A timetable is a fact about the design (it names this building's rooms by
+// their ids), so writing one is an edit: undo, autosave, and the report goes
+// stale exactly as it does when a wall moves.
+
+const timetableOf = (s2) => normalizeTimetable(s2 && s2.timetable);
+
+// The rooms a section can go in, and what the analysis says each of them
+// holds. Built off the same graph and the same occupant loads the report uses,
+// because a timetable that thought a room held thirty while the report said
+// twenty-four would be two panels arguing in public.
+function timetableWorld() {
+  const nav = life.nav || buildNav(state);
+  const occupancy = buildingOccupancy(state, { nav });
+  return { nav, occupancy, pool: roomPool(nav, { occupancy }) };
+}
+
+function setTimetable(tt) {
+  editor.pushUndo();
+  // Bound to the building as it stands before it is stored, never after: a
+  // section whose room id still resolves keeps it, one whose room was redrawn
+  // under the same name gets the new id, and one whose room is simply gone is
+  // left unplaced with its name intact so a later rebinding can still find it.
+  // Doing it here means the file never holds a binding this build knows is
+  // stale.
+  const next = isEmptyTimetable(normalizeTimetable(tt))
+    ? normalizeTimetable(null)
+    : bindTimetable(tt, timetableWorld().pool).timetable;
+  if (isEmptyTimetable(next)) delete state.timetable; else state.timetable = next;
+  autosave(state);
+  reportInvalidate();
+  updateUndoButtons();
+  if (life.on) lifeStart(); else renderLifePanel();
+}
+
+// One line about the school day, under the students slider: which timetable
+// this is, how big it is, and what it could not satisfy. The last of those is
+// the whole reason the packing reports rather than fudges — a panel that says
+// "24 groups, 168 sections" and nothing else is a panel hiding the four
+// sections that had nowhere to go.
+function renderLifeTimetable() {
+  const el = $('life-tt-state');
+  const tt = timetableOf(state);
+  const has = !isEmptyTimetable(tt);
+  $('life-tt-clear').disabled = !has;
+  $('life-tt-csv').disabled = !has;
+  if (!has) {
+    el.innerHTML = 'No timetable — every student\'s day is random. ' +
+      'Generate one, or read one in.';
+    return;
+  }
+  const sum = timetableSummary(tt);
+  const issues = timetableIssues(tt, timetableWorld().pool);
+  const lines = [
+    `<b>${sum.cohorts}</b> ${sum.cohorts === 1 ? 'group' : 'groups'} · ` +
+    `<b>${sum.sections}</b> ${sum.sections === 1 ? 'section' : 'sections'} · ` +
+    `<b>${sum.periods}</b> ${sum.periods === 1 ? 'period' : 'periods'} · ` +
+    `${sum.students} students`,
+    sum.source === 'csv' ? 'Read from a spreadsheet.' : 'Generated from this building.',
+  ];
+  if (issues.count) {
+    const bits = [];
+    if (issues.unplaced.length) bits.push(`${issues.unplaced.length} with no room`);
+    if (issues.missing.length) bits.push(`${issues.missing.length} naming a room that is gone`);
+    if (issues.over.length) bits.push(`${issues.over.length} over the room's load`);
+    if (issues.mismatched.length) bits.push(`${issues.mismatched.length} in the wrong kind of room`);
+    lines.push(`<span class="warn">${bits.join(' · ')}</span> — the report has the detail.`);
+  }
+  el.innerHTML = lines.join('<br />');
+}
+
+$('life-tt-make').addEventListener('click', () => {
+  const { pool } = timetableWorld();
+  if (!pool.length) {
+    $('life-tt-state').innerHTML =
+      '<span class="warn">No teaching rooms</span> — draw some rooms big enough to hold a class.';
+    return;
+  }
+  // How many children the building can actually teach — rooms times class
+  // size times utilisation, which is `program.js`'s own sizing arithmetic run
+  // backwards over the rooms somebody has drawn. Deliberately *not* the
+  // occupant load: that is what the building may hold, this is what it can
+  // give a lesson to, and the ⚖ button beside the slider is where the other
+  // number lives.
+  const band = bandEntry(genBrief.band);
+  const roll = rollFor(pool, {
+    classSize: band.classSize, utilization: band.utilization,
+  }).students || genBrief.students;
+  setTimetable(buildTimetable(pool, {
+    periods: lifeSettings().schedule ? lifeSettings().schedule.periods : undefined,
+    students: roll,
+    classSize: band.classSize,
+    band: band.key,
+    // The staff establishment, off the band's own students-per-adult ratio.
+    // Not every adult on site teaches a section, so two thirds of them do —
+    // which is the number that makes "no teacher free" mean something rather
+    // than never firing.
+    teachers: Math.max(1, Math.round((roll / band.staffRatio) * 0.66)),
+    seed: lifeSettings().seed,
+  }));
+});
+
+$('life-tt-clear').addEventListener('click', () => setTimetable(null));
+
+$('life-tt-import').addEventListener('click', () => $('life-tt-file').click());
+
+$('life-tt-file').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const { pool } = timetableWorld();
+    const band = bandEntry(genBrief.band);
+    const read = importTimetableCSV(String(reader.result || ''), pool, {
+      classSize: band.classSize,
+      name: file.name.replace(/\.csv$/i, ''),
+    });
+    if (read.error) {
+      $('life-tt-state').innerHTML = `<span class="warn">${esc(read.error)}</span>`;
+      return;
+    }
+    setTimetable(read.timetable);
+    // What it could not bind, said out loud and immediately. An import that
+    // silently loses four rooms answers a question about a school that isn't
+    // the one in the file.
+    if (read.unbound.length) {
+      const names = [...new Set(read.unbound.map((u) => u.token))].slice(0, 4);
+      $('life-tt-state').innerHTML +=
+        `<br /><span class="warn">${read.unbound.length} cell${read.unbound.length === 1 ? '' : 's'} ` +
+        `named no room here</span> — ${esc(names.join(', '))}` +
+        (names.length < new Set(read.unbound.map((u) => u.token)).size ? '…' : '') +
+        '. Rename the rooms to match, or edit the sheet.';
+    }
+  };
+  reader.onerror = () => {
+    $('life-tt-state').innerHTML = '<span class="warn">Could not read that file.</span>';
+  };
+  reader.readAsText(file);
+});
+
+$('life-tt-csv').addEventListener('click', () => {
+  const tt = timetableOf(state);
+  if (isEmptyTimetable(tt)) return;
+  const { pool } = timetableWorld();
+  const blob = new Blob([timetableCSV(tt, pool)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'school-timetable.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+
+// The crowd at the number the analysis worked out. One line, and the backlog
+// item it closes has been open since Phase 7 wrote the occupant loads down and
+// nothing read them: "the crowd doesn't know the occupant load the report
+// computed."
+$('life-atload').addEventListener('click', () => {
+  const { occupancy } = timetableWorld();
+  const at = crowdSize(occupancy, { timetable: timetableOf(state) });
+  if (!at.students) {
+    $('life-tt-state').innerHTML =
+      '<span class="warn">Nothing to count</span> — no room here reads as a teaching space.';
+    return;
+  }
+  const n = Math.min(MAX_POP, at.students);
+  life.students = n;
+  state.life = { ...lifeSettings(), students: n };
+  autosave(state);
+  if (life.on) lifeStart(); else renderLifePanel();
+  $('life-readout').innerHTML =
+    `Roll set to <b>${n}</b>${n < at.students ? ` (of ${at.students})` : ''} — ${esc(at.detail)}.`;
+});
+
 
 // --- the report ---
 //
@@ -2831,6 +3044,28 @@ function reportSections(r) {
       row('Standing on nothing', st.area
         ? `<span class="warn">${ft(st.area)} ft²</span>`
         : 'none'),
+    ]);
+  }
+
+  // Phase 15's section, and the only one that can be missing: it reads a
+  // timetable, and a design that has not been given one has nothing to say
+  // here rather than zeroes to print.
+  if (r.utilisation && r.utilisation.has) {
+    const u = r.utilisation;
+    const t = u.travel.summary;
+    sec('School day', [
+      row(`${plural(u.summary.cohorts, 'group')} · ${plural(u.summary.sections, 'section')}`,
+        `${u.summary.students} students`),
+      row('Rooms working', `<b>${Math.round(u.summary.utilisation * 100)}%</b> of the day`),
+      row('Empty at the busiest period', u.summary.idleAtPeak
+        ? `<b>${u.summary.idleAtPeak}</b> of ${u.summary.rooms}`
+        : 'none'),
+      row('Walk per student per day', `<b>${ft(t.perDay)} ft</b> · ${t.milesPerYear.toFixed(1)} mi/yr`),
+      t.worst
+        ? row('Longest move between bells', `<b>${ft(t.worst.dist)} ft</b> / ${Math.round(t.worst.seconds)} s`)
+        : row('Moves between bells', 'nobody changes room'),
+      row('Moves that miss the bell', t.late
+        ? `<span class="warn">${t.late}</span>` : 'none'),
     ]);
   }
 

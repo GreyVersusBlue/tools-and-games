@@ -26,6 +26,8 @@ import { daylightAnalysis } from './daylight.js';
 import { takeoff, takeoffCSV, csvRows } from './takeoff.js';
 import { roomsOnFloor } from './acoustics.js';
 import { buildingOverhang } from './shadow.js';
+import { utilisationAnalysis } from './utilisation.js';
+import { isEmptyTimetable, normalizeTimetable, roomPool } from './timetable.js';
 
 // Worst first. A panel prints this order and a title block prints the first
 // row of it, so it is the one piece of editorial judgement in the phase.
@@ -130,6 +132,19 @@ export function buildReport(state, opts = {}) {
   // the other sections read — no graph, no occupant loads, just two footprints
   // compared cell by cell — which is why it costs almost nothing to include.
   const structure = buildingOverhang(state);
+  // Phase 15's section, and the only one in the report that can be absent: it
+  // reads a timetable, and a design that has not been given one has nothing
+  // here to say. `utilisationAnalysis` answers with `has: false` rather than
+  // with null so a panel can print "no timetable" from the same shape it
+  // prints everything else from.
+  const timetable = normalizeTimetable(opts.timetable || (state && state.timetable));
+  const utilisation = opts.utilisation === false || isEmptyTimetable(timetable)
+    ? null
+    : utilisationAnalysis(state, {
+      nav, occupancy, timetable,
+      pool: roomPool(nav, { occupancy }),
+      schedule: opts.schedule || (state && state.life && state.life.schedule),
+    });
 
   const sections = [
     ['egress', egress],
@@ -137,6 +152,7 @@ export function buildReport(state, opts = {}) {
     ['daylight', daylight],
     ['acoustics', acoustics],
     ['structure', structure],
+    ['utilisation', utilisation || { findings: [] }],
   ];
   const findings = [];
   for (const [section, part] of sections) {
@@ -170,6 +186,7 @@ export function buildReport(state, opts = {}) {
     daylight,
     acoustics,
     structure,
+    utilisation,
     takeoff: materials,
     findings,
     summary: {
@@ -179,6 +196,9 @@ export function buildReport(state, opts = {}) {
       rooms: occupancy.rooms.length,
       exits: egress.summary.exits,
       travel: egress.summary.worst ? egress.summary.worst.travel : 0,
+      // Null rather than zero when there is no timetable: a school day nobody
+      // has described is not a school day of no length.
+      utilisation: utilisation ? utilisation.summary.utilisation : null,
       fails,
       warns,
       // The headline. "Passes" only ever means "passes the checks this tool
@@ -223,6 +243,55 @@ export function reportCSV(report) {
   rows.push(['Findings', 'Level', 'Section', 'Detail', '', '']);
   for (const f of report.findings) rows.push([f.title, f.level, f.section, f.detail, '', '']);
   rows.push([]);
+
+  // Phase 15's section, and the only one the sheet leaves out entirely when it
+  // has nothing to say. A design with no timetable has no school day, and a
+  // column of zeroes would read as a school that never uses its rooms.
+  const u = report.utilisation;
+  if (u && u.has) {
+    rows.push(['School day', '', '', '', '', '']);
+    rows.push(['Groups', u.summary.cohorts, '', `${u.summary.students} students`, '', '']);
+    rows.push(['Sections', u.summary.sections, '',
+      `${u.summary.placed} placed in a room`, '', '']);
+    rows.push(['Room utilisation', round(u.summary.utilisation * 100), '%',
+      `${u.summary.used} of ${u.summary.rooms} teaching rooms used`, '', '']);
+    if (u.summary.peak) {
+      rows.push(['Busiest period', u.summary.peak.period, '',
+        `${u.summary.peak.seated} seated in ${u.summary.peak.rooms} rooms, ` +
+        `${u.summary.idleAtPeak} rooms empty`, '', '']);
+    }
+    rows.push(['Walk per student per day', round(u.travel.summary.perDay), 'ft',
+      `${round(u.travel.summary.milesPerYear)} miles a year`, '', '']);
+    if (u.travel.summary.worst) {
+      const w = u.travel.summary.worst;
+      rows.push(['Longest move', round(w.dist), 'ft',
+        `${w.cohortName}, period ${w.period} to ${w.to}, ${Math.round(w.seconds)} s`, '', '']);
+    }
+    rows.push([]);
+
+    rows.push(['Room', 'Level', 'Use', 'Area ft²', 'Holds', 'Periods used',
+      'Of the day', 'Busiest', 'Mean class', 'Over load']);
+    for (const r of u.rooms) {
+      rows.push([
+        r.name || '(unnamed)', floorLabel(r.floor), r.useLabel, round(r.area), r.capacity,
+        r.used, round(r.share * 100), r.peak, round(r.mean), r.over,
+      ]);
+    }
+    rows.push([]);
+
+    rows.push(['Group', 'Period', 'To period', 'From', 'To', 'Walk ft', 'Seconds',
+      'Fits the bell', '', '']);
+    for (const m of u.travel.moves) {
+      const from = u.rooms.find((r) => r.id === m.from);
+      const to = u.rooms.find((r) => r.id === m.room);
+      rows.push([
+        m.cohortName, m.period, m.to,
+        (from && from.name) || m.from, (to && to.name) || m.room,
+        round(m.dist), Math.round(m.seconds), m.late ? 'no' : 'yes', '', '',
+      ]);
+    }
+    rows.push([]);
+  }
 
   const day = new Map(report.daylight.rooms.map((r) => [r.id, r]));
   const ac = new Map(report.acoustics.rooms.map((r) => [r.id, r]));

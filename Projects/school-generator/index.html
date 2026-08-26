@@ -408,6 +408,15 @@
       font-size: 10.5px; line-height: 1.65; color: var(--text-dim);
     }
     #life-readout b { color: var(--text); font-weight: 600; }
+    /* The timetable's own line. It says which school day the crowd is walking
+       — generated, imported or none — because a population that looks the same
+       either way needs to say which one it is. */
+    #life-tt-state {
+      font-size: 10.5px; line-height: 1.5; color: var(--text-dim);
+      padding: 5px 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.04);
+    }
+    #life-tt-state b { color: var(--text); font-weight: 600; }
+    #life-tt-state .warn { color: #e8a33d; font-weight: 600; }
     #life-readout .warn { color: #e8a33d; font-weight: 600; }
     /* A photograph of an empty building is a different picture from one with a
        crowd in it, so the panel goes away but the people stay. */
@@ -1342,11 +1351,29 @@
 
     <label for="life-students">Students <span class="env-value" id="life-students-value">90</span></label>
     <input id="life-students" type="range" min="0" max="400" step="5" value="90" />
+    <div class="life-acts">
+      <button id="life-atload" class="wide"
+        title="Set the roll to what the analysis says this building holds">⚖ At the occupant load</button>
+    </div>
 
     <div class="life-acts">
       <button id="life-toggle" class="wide" title="Put people in the building (L)">👥 Populate</button>
       <button id="life-reseed" title="A different intake, the same size">🎲</button>
     </div>
+
+    <label>Timetable</label>
+    <div id="life-tt-state">No timetable — every student's day is random.</div>
+    <div class="life-acts">
+      <button id="life-tt-make" class="wide"
+        title="Build a timetable out of the rooms this building actually has">🗓 Generate</button>
+      <button id="life-tt-clear" title="Back to a random day">✖</button>
+    </div>
+    <div class="life-acts">
+      <button id="life-tt-import"
+        title="Read a timetable out of a spreadsheet — the CSV the schedule tools export">⬆ CSV</button>
+      <button id="life-tt-csv" title="Write this timetable out as a spreadsheet">⬇ CSV</button>
+    </div>
+    <input id="life-tt-file" type="file" accept=".csv,text/csv" hidden />
     <div class="life-acts">
       <button id="life-drill" class="drill wide" title="Sound the alarm and route everyone to the nearest exit (K)" aria-pressed="false">🚨 Fire drill</button>
       <button id="life-heat" title="Where the crowd has been (H)" aria-pressed="false">🔥</button>
