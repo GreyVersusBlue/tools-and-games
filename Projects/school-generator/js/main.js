@@ -49,6 +49,7 @@ import {
   renderFloorPlanCanvas, renderSitePlanCanvas, renderSpecSheetCanvas, downloadCanvasPNG,
   computeFloorPlan, drawPlanBody,
 } from './blueprint.js';
+import { INK } from './theme.js';
 import { buildReport, reportCSV, codePanel, dayPanel } from './report.js';
 // --- Phase 16 ---
 import {
@@ -5362,7 +5363,7 @@ function miniRasterFor(floorIndex, record, scale) {
   c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#f4f2ec';
+  ctx.fillStyle = INK.miniPaper;
   ctx.fillRect(0, 0, w, h);
   // No translate: blueprint.js's own `toPx` already measures from the plan's
   // bounds, so a zero margin puts the north-west corner on the origin.
@@ -5399,7 +5400,7 @@ function drawMinimap() {
 
   miniCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   miniCtx.clearRect(0, 0, size, size);
-  miniCtx.fillStyle = '#f4f2ec';
+  miniCtx.fillStyle = INK.miniPaper;
   miniCtx.fillRect(0, 0, size, size);
 
   if (raster) {
