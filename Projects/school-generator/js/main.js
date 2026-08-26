@@ -49,6 +49,7 @@ import {
   renderFloorPlanCanvas, renderSitePlanCanvas, renderSpecSheetCanvas, downloadCanvasPNG,
   computeFloorPlan, drawPlanBody,
 } from './blueprint.js';
+import { INK } from './theme.js';
 import { buildReport, reportCSV, codePanel, dayPanel } from './report.js';
 // --- Phase 16 ---
 import {
@@ -272,6 +273,26 @@ const editor = initEditor({
   // The polygon tools have more to say than a fixed per-tool hint — how many
   // corners are down, how big the room is — so they drive the status line.
   onStatus: (text) => { $('status').textContent = text; },
+  // The same line, riding the pointer while a stroke is live. It lingers a
+  // beat after the stroke ends so a click's worth of feedback (a door cut,
+  // a room named) is readable, then gets out of the way.
+  onLiveMeasure: (() => {
+    const chip = $('measure');
+    let linger = 0;
+    return (text, x, y) => {
+      clearTimeout(linger);
+      if (text == null) {
+        linger = setTimeout(() => chip.classList.add('hidden'), 900);
+        return;
+      }
+      chip.textContent = text;
+      chip.classList.remove('hidden');
+      const pad = 16;
+      const cx = Math.min(x + pad, window.innerWidth - chip.offsetWidth - 8);
+      const cy = Math.min(y + pad, window.innerHeight - chip.offsetHeight - 8);
+      chip.style.transform = `translate(${cx}px, ${cy}px)`;
+    };
+  })(),
   onHoleMode: (on) => {
     $('hole-btn').classList.toggle('on', on);
     $('hole-btn').setAttribute('aria-pressed', String(on));
@@ -429,6 +450,18 @@ rebuild();
 
 // --- mode toggle ---
 const walkOverlay = $('walk-overlay');
+
+// The overlay's prose is behind a disclosure. It arrives open the first time
+// this browser ever sees the walkthrough and closed after that — the keys
+// grid is what a returning visitor needs, and it fits without scrolling.
+function openWalkOverlay() {
+  const more = $('walk-more');
+  let seen = false;
+  try { seen = localStorage.getItem('sg-walk-seen') === '1'; } catch { /* fine */ }
+  if (more) more.open = !seen;
+  try { localStorage.setItem('sg-walk-seen', '1'); } catch { /* fine */ }
+  openModal(walkOverlay, $('walk-start'));
+}
 let mode = 'edit';
 
 function setMode(m) {
@@ -447,10 +480,11 @@ function setMode(m) {
     invalidateMinimap();
     updateMinimapButtons();
     renderTourPanel();
-    openModal(walkOverlay, $('walk-start'));
+    openWalkOverlay();
     closeModal($('designs-overlay'));
     closeModal($('export-overlay'));
-    $('mode-btn').textContent = '✏️ Edit Mode';
+    $('mode-btn-label').textContent = 'Edit Mode';
+    $('mode-btn-icon').setAttribute('href', '#i-pencil');
   } else {
     setPhotoMode(false);
     tourStop();
@@ -462,7 +496,8 @@ function setMode(m) {
     document.body.classList.remove('touch-walk');
     resetTouchWalkUI();
     editor.setEnabled(true);
-    $('mode-btn').textContent = '🚶 Walk Through';
+    $('mode-btn-label').textContent = 'Walk Through';
+    $('mode-btn-icon').setAttribute('href', '#i-walk');
   }
   if (!lifePanel.classList.contains('hidden')) renderLifePanel();
 }
@@ -489,7 +524,7 @@ walk.controls.addEventListener('lock', () => closeModal(walkOverlay));
 walk.controls.addEventListener('unlock', () => {
   // In photo mode the released pointer is the point — you let it go to reach
   // the lens controls — so the overlay stays down.
-  if (mode === 'walk' && !photoMode) openModal(walkOverlay, $('walk-start'));
+  if (mode === 'walk' && !photoMode) openWalkOverlay();
 });
 
 // --- tool buttons ---
@@ -1077,6 +1112,52 @@ function renderFloorList() {
 function reserveForFloorPanel() {
   const h = $('floor-panel').offsetHeight;
   if (h > 0) document.documentElement.style.setProperty('--floor-panel-h', `${h}px`);
+}
+
+// The topbar gets the same treatment from the other edge: it wraps on a
+// narrow window now, so its height is no longer a constant either, and the
+// toolbar, the tool panels and the right rail all hang from it. A
+// ResizeObserver rather than a resize listener, because the bar's height can
+// change without the window's (a button label growing, a font arriving).
+{
+  const topbar = $('topbar');
+  const reserve = () => {
+    const h = topbar.offsetHeight;
+    if (h > 0) document.documentElement.style.setProperty('--topbar-h', `${h}px`);
+  };
+  new ResizeObserver(reserve).observe(topbar);
+  reserve();
+}
+
+// The rail panels fold to their headers, and the folds survive a reload — a
+// browser that always wants the sky open and the report closed gets to say so
+// once. Opening a panel from the topbar unfolds it: that press means "show
+// me", not "show me the header".
+const RAIL_FOLDS_KEY = 'sg-rail-folds';
+function railSetFold(panel, folded, save = true) {
+  panel.classList.toggle('folded', folded);
+  const btn = panel.querySelector('.rail-fold');
+  if (btn) btn.setAttribute('aria-expanded', String(!folded));
+  if (!save) return;
+  try {
+    const all = JSON.parse(localStorage.getItem(RAIL_FOLDS_KEY) || '{}');
+    all[panel.id] = folded;
+    localStorage.setItem(RAIL_FOLDS_KEY, JSON.stringify(all));
+  } catch { /* a private window remembers nothing, which is fine */ }
+}
+function railUnfold(panel) {
+  if (panel.classList.contains('folded')) railSetFold(panel, false);
+}
+{
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(RAIL_FOLDS_KEY) || '{}'); } catch { saved = {}; }
+  for (const panel of document.querySelectorAll('.rail-panel')) {
+    if (saved[panel.id]) railSetFold(panel, true, false);
+    const btn = panel.querySelector('.rail-fold');
+    if (btn) btn.addEventListener('click', () => {
+      railSetFold(panel, !panel.classList.contains('folded'));
+    });
+  }
 }
 
 // --- the sheet ---
@@ -2161,6 +2242,53 @@ $('env-time').addEventListener('input', (e) => {
   state.env.minutes = Number(e.target.value);
   envChanged();
 });
+
+// The sun study plays itself: a simulated hour per second through the exact
+// path the slider drives, so what animates is what scrubbing shows. Under
+// prefers-reduced-motion it steps on the hour once a second instead of
+// sweeping — slower to watch, same study.
+{
+  const btn = $('env-play');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  // The float clock lives here: normalizeEnv rounds env.minutes to whole
+  // minutes, and on a fast display a frame is less than half a minute of sun
+  // — accumulating in state would round the advance away entirely.
+  let raf = 0, last = 0, acc = 0, clock = 0;
+  const stop = () => {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    btn.textContent = '\u25b6';
+    btn.setAttribute('aria-pressed', 'false');
+  };
+  const tick = (now) => {
+    const dt = Math.min(0.25, (now - last) / 1000);
+    last = now;
+    if (reduce.matches) {
+      acc += dt;
+      if (acc >= 1) {
+        acc = 0;
+        state.env.minutes = (Math.floor(state.env.minutes / 60) * 60 + 60) % 1440;
+        envChanged();
+      }
+    } else {
+      clock = (clock + dt * 60) % 1440;
+      state.env.minutes = clock;
+      envChanged();
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  btn.addEventListener('click', () => {
+    if (raf) { stop(); return; }
+    btn.textContent = '\u23f8';
+    btn.setAttribute('aria-pressed', 'true');
+    last = performance.now();
+    acc = 0;
+    clock = state.env.minutes;
+    raf = requestAnimationFrame(tick);
+  });
+  // Touching the slider by hand takes the wheel back.
+  $('env-time').addEventListener('pointerdown', stop);
+}
 $('env-lat').addEventListener('input', (e) => {
   state.env.lat = Number(e.target.value);
   envChanged();
@@ -2247,6 +2375,7 @@ $('env-btn').addEventListener('click', () => {
   const hidden = envPanel.classList.toggle('hidden');
   $('env-btn').classList.toggle('off', hidden);
   $('env-btn').setAttribute('aria-pressed', String(!hidden));
+  if (!hidden) railUnfold(envPanel);
 });
 
 // --- sound panel ---
@@ -2372,7 +2501,7 @@ $('audio-btn').addEventListener('click', () => {
   const hidden = audioPanel.classList.toggle('hidden');
   $('audio-btn').classList.toggle('off', hidden);
   $('audio-btn').setAttribute('aria-pressed', String(!hidden));
-  if (!hidden) renderAudioPanel();
+  if (!hidden) { railUnfold(audioPanel); renderAudioPanel(); }
 });
 
 
@@ -2769,7 +2898,7 @@ $('life-btn').addEventListener('click', () => {
   const hidden = lifePanel.classList.toggle('hidden');
   $('life-btn').classList.toggle('off', hidden);
   $('life-btn').setAttribute('aria-pressed', String(!hidden));
-  if (!hidden) renderLifePanel();
+  if (!hidden) { railUnfold(lifePanel); renderLifePanel(); }
 });
 
 $('life-toggle').addEventListener('click', () => {
@@ -3235,6 +3364,7 @@ $('report-btn').addEventListener('click', () => {
   $('report-btn').classList.toggle('off', hidden);
   $('report-btn').setAttribute('aria-pressed', String(!hidden));
   if (hidden) { clearTimeout(report.timer); return; }
+  railUnfold(reportPanel);
   if (report.stale || !report.data) reportBuild();
   else renderReportPanel();
   // The rail is a scrolling column and this is the tallest thing in it: with
@@ -3789,7 +3919,7 @@ function setPhotoMode(on) {
     closeModal(walkOverlay);
     renderPhotoPanel();
   } else if (mode === 'walk' && !isTouch && !walk.controls.isLocked) {
-    openModal(walkOverlay, $('walk-start'));
+    openWalkOverlay();
   }
 }
 
@@ -4697,7 +4827,7 @@ function renderSessionPanel() {
 $('session-btn').addEventListener('click', () => {
   const panel = $('session-panel');
   const hidden = panel.classList.toggle('hidden');
-  if (!hidden) renderSessionPanel();
+  if (!hidden) { railUnfold(panel); renderSessionPanel(); }
   $('session-btn').setAttribute('aria-pressed', String(!hidden));
 });
 
@@ -5314,7 +5444,7 @@ function miniRasterFor(floorIndex, record, scale) {
   c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#f4f2ec';
+  ctx.fillStyle = INK.miniPaper;
   ctx.fillRect(0, 0, w, h);
   // No translate: blueprint.js's own `toPx` already measures from the plan's
   // bounds, so a zero margin puts the north-west corner on the origin.
@@ -5351,7 +5481,7 @@ function drawMinimap() {
 
   miniCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   miniCtx.clearRect(0, 0, size, size);
-  miniCtx.fillStyle = '#f4f2ec';
+  miniCtx.fillStyle = INK.miniPaper;
   miniCtx.fillRect(0, 0, size, size);
 
   if (raster) {
@@ -5571,7 +5701,7 @@ async function enterVR() {
         walk.disableXR();
         document.body.classList.remove('xr');
         $('walk-vr').textContent = '🥽 Enter VR';
-        if (mode === 'walk') openModal(walkOverlay, $('walk-start'));
+        if (mode === 'walk') openWalkOverlay();
       },
     });
     xrSession = session;

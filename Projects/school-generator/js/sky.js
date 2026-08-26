@@ -425,6 +425,35 @@ export function skyPhase(altitudeDeg) {
 
 // Everything a renderer needs for one environment, in one call — so nothing
 // downstream has to remember the order the pieces go together in.
+// ---------- the night sky ----------
+
+// How visible the stars are, 0..1: nothing until the sun is well into civil
+// twilight, everything by the end of nautical twilight. A ramp rather than a
+// switch, for the same reason lightLevel is — a sun-study scrub should fade
+// the stars in, not snap them.
+export function starVisibility(altitudeDeg) {
+  const a = Number.isFinite(altitudeDeg) ? altitudeDeg : 0;
+  return Math.max(0, Math.min(1, (-4 - a) / 8));
+}
+
+// Where the moon is. Honest approximation, and commented as such: this is the
+// anti-solar point — a permanently full moon opposite the sun — not lunar
+// ephemeris. It rises at sunset and sets at sunrise, which is what a night
+// walkthrough needs from it; phase and the real 27-day orbit are more
+// astronomy than a sun study asks for.
+export function moonState(env) {
+  const e = normalizeEnv(env);
+  const sun = solarPosition(e);
+  const altitude = -sun.altitude;
+  const azimuth = (sun.azimuth + 180) % 360;
+  return {
+    altitude,
+    azimuth,
+    dir: sunVector(altitude, azimuth, e.north),
+    visible: altitude > -5,
+  };
+}
+
 export function skyState(env) {
   const e = normalizeEnv(env);
   const sun = solarPosition(e);

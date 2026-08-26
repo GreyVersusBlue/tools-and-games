@@ -47,6 +47,12 @@ import { FLOOR_H } from './grid.js';
 // one predictable per-fragment cost.
 export const MAX_DYNAMIC_LIGHTS = 12;
 
+// The spot pool. Directional fixtures — high bays, track heads, pole lights —
+// are rarer than troffers and cost a little more per light, so they get a
+// smaller, separate fixed pool: the light-count shape the renderer compiles
+// against still never changes at runtime.
+export const MAX_SPOT_LIGHTS = 4;
+
 // How close two fixtures have to be to be treated as one. 12ft is about a
 // classroom bay: a row of troffers merges, a fixture in the next room doesn't.
 export const CLUSTER_FT = 12;
@@ -66,20 +72,28 @@ export const LUMENS_TO_CANDELA = 1 / (4 * Math.PI);
 //     range  ft at which the light has fallen to nothing (three's `distance`)
 //     dy     ft from the prop's own origin up to the emitter — usually
 //            negative for a ceiling fixture, whose origin is its mount height
-//     kind   'point' for now; the field exists so a future spot doesn't need
-//            a schema change
+//     kind   'point', or 'spot' for a directional downlight — a high bay, a
+//            track head, a pole light. A spot also reads:
+//     angle     full cone width in degrees (default 65)
+//     penumbra  0..1 softness of the cone's edge (default 0.4)
 export function emitOf(entry) {
   const e = entry && entry.emit;
   if (!e || typeof e !== 'object') return null;
   const lm = typeof e.lm === 'number' && Number.isFinite(e.lm) ? Math.max(0, e.lm) : 0;
   if (lm <= 0) return null;
-  return {
+  const kind = e.kind === 'spot' ? 'spot' : 'point';
+  const out = {
     lm,
     color: typeof e.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(e.color) ? e.color.toLowerCase() : '#fff2d8',
     range: typeof e.range === 'number' && e.range > 0 ? e.range : 30,
     dy: typeof e.dy === 'number' && Number.isFinite(e.dy) ? e.dy : 0,
-    kind: e.kind === 'spot' ? 'spot' : 'point',
+    kind,
   };
+  if (kind === 'spot') {
+    out.angle = typeof e.angle === 'number' && e.angle > 0 && e.angle < 180 ? e.angle : 65;
+    out.penumbra = typeof e.penumbra === 'number' && e.penumbra >= 0 && e.penumbra <= 1 ? e.penumbra : 0.4;
+  }
+  return out;
 }
 
 export const isEmitter = (entry) => emitOf(entry) !== null;
@@ -116,6 +130,8 @@ export function lightSources(state, catalogEntry, floorHt = null) {
       color: emit.color,
       range: emit.range * scale,
       kind: emit.kind,
+      angle: emit.angle,
+      penumbra: emit.penumbra,
       outdoor: !!(entry && entry.site),
       count: 1,
     });
@@ -158,15 +174,16 @@ export function clusterSources(sources, cellFt = CLUSTER_FT) {
   for (const s of ordered) {
     let hit = null;
     for (const c of clusters) {
-      if (c.floor !== s.floor || c.outdoor !== s.outdoor) continue;
+      if (c.floor !== s.floor || c.outdoor !== s.outdoor || c.kind !== (s.kind || 'point')) continue;
       const dx = s.x - c.seedX, dy = s.y - c.seedY, dz = s.z - c.seedZ;
       if (dx * dx + dy * dy + dz * dz <= r2) { hit = c; break; }
     }
     if (!hit) {
       hit = {
-        id: s.id, floor: s.floor, outdoor: s.outdoor,
+        id: s.id, floor: s.floor, outdoor: s.outdoor, kind: s.kind || 'point',
         seedX: s.x, seedY: s.y, seedZ: s.z,
         wx: 0, wy: 0, wz: 0, lm: 0, range: 0, color: s.color, count: 0, bright: -1,
+        angle: s.angle, penumbra: s.penumbra,
       };
       clusters.push(hit);
     }
@@ -176,13 +193,17 @@ export function clusterSources(sources, cellFt = CLUSTER_FT) {
     hit.lm += s.lm;
     hit.range = Math.max(hit.range, s.range);
     hit.count += s.count || 1;
-    if (s.lm > hit.bright) { hit.bright = s.lm; hit.color = s.color; hit.id = s.id; }
+    if (s.lm > hit.bright) {
+      hit.bright = s.lm; hit.color = s.color; hit.id = s.id;
+      hit.angle = s.angle; hit.penumbra = s.penumbra;
+    }
   }
 
   return clusters.map((c) => {
     const w = c.lm > 0 ? c.lm : 1;
     return {
-      id: c.id, floor: c.floor, outdoor: c.outdoor,
+      id: c.id, floor: c.floor, outdoor: c.outdoor, kind: c.kind,
+      angle: c.angle, penumbra: c.penumbra,
       x: c.lm > 0 ? c.wx / w : c.seedX,
       y: c.lm > 0 ? c.wy / w : c.seedY,
       z: c.lm > 0 ? c.wz / w : c.seedZ,
@@ -213,7 +234,7 @@ const dist2 = (a, b) => {
 // `spillLm` is everything that didn't make it — the number the renderer turns
 // into a flat ambient lift so a hall full of unbudgeted fixtures reads as lit
 // rather than as black.
-export function budgetLights(clusters, eye, cap = MAX_DYNAMIC_LIGHTS) {
+export function budgetLights(clusters, eye, cap = MAX_DYNAMIC_LIGHTS, spotCap = MAX_SPOT_LIGHTS) {
   const at = eye && Number.isFinite(eye.x) ? eye : { x: 0, y: 0, z: 0 };
   const ranked = clusters
     .map((c) => {
@@ -224,20 +245,28 @@ export function budgetLights(clusters, eye, cap = MAX_DYNAMIC_LIGHTS) {
     // In range beats out of range; within each group, nearer wins.
     .sort((a, b) => (a.inRange === b.inRange ? a.d2 - b.d2 : (a.inRange ? -1 : 1)));
 
+  // Two pools, one ranking: a spot cluster takes a spot slot, everything else
+  // a point slot, and whatever finds no slot joins the spill like it always
+  // did. `lit` stays the point list existing callers read.
   const lit = [];
+  const litSpots = [];
   let spillLm = 0;
   for (const r of ranked) {
-    if (lit.length < cap && r.inRange) lit.push(r.c);
+    const isSpot = r.c.kind === 'spot';
+    const pool = isSpot ? litSpots : lit;
+    const poolCap = isSpot ? spotCap : cap;
+    if (pool.length < poolCap && r.inRange) pool.push(r.c);
     else spillLm += r.c.lm;
   }
-  return { lit, spillLm, total: clusters.length, clustered: clusters.length };
+  return { lit, litSpots, spillLm, total: clusters.length, clustered: clusters.length };
 }
 
 // The whole budget in one call, for a renderer that just wants the answer.
 export function budgetFor(state, catalogEntry, eye, opts = {}) {
   const sources = lightSources(state, catalogEntry, opts.floorHt);
   const clusters = clusterSources(sources, opts.cellFt);
-  const out = budgetLights(clusters, eye, opts.cap ?? MAX_DYNAMIC_LIGHTS);
+  const out = budgetLights(clusters, eye, opts.cap ?? MAX_DYNAMIC_LIGHTS,
+    opts.spotCap ?? MAX_SPOT_LIGHTS);
   out.sources = sources.length;
   return out;
 }
