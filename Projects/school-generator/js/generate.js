@@ -679,14 +679,15 @@ function layoutSpine(briefOrProgram) {
 }
 
 
-// ---------- what the three schemes share ----------
+// ---------- what the schemes share ----------
 //
-// `layoutSpine` above is Phase 8's, untouched. The two below are Phase 10's,
-// and between writing them the pieces that were never about a spine came out
-// into these four functions: how rooms are dealt across the storeys, how they
-// are dealt into runs, what happens to the remainder of a run on a storey with
-// another one above it, and how the classrooms get numbered afterwards. A
-// fourth scheme is those four calls and its own geometry.
+// `layoutSpine` above is Phase 8's, untouched. The two below it are Phase
+// 10's, and between writing them the pieces that were never about a spine came
+// out into these four functions: how rooms are dealt across the storeys, how
+// they are dealt into runs, what happens to the remainder of a run on a storey
+// with another one above it, and how the classrooms get numbered afterwards. A
+// fourth scheme is those four calls and its own geometry — which Phase 17's
+// campus turned out to be, seven phases after this comment predicted it.
 
 // A run is a straight line of rooms with their doors all on one side of it —
 // one side of a wing, one band of a ring, one edge of a corridor. `axis` is
@@ -868,7 +869,7 @@ function passage(key, name, x0, y0, x1, y1, storey, doors) {
 }
 
 // The blocks, reordered to suit whatever the brief said about them. They are
-// laid in a row in all three schemes, so a row is the whole lever: "the gym
+// laid in a row in every scheme, so a row is the whole lever: "the gym
 // next to the cafeteria" is the cafeteria moved to sit behind the gym, and
 // "the kitchen away from the library" is the kitchen moved to the far end.
 // Nothing else can act on a pair of blocks — they are all different sizes, so
@@ -900,7 +901,7 @@ function orderBlocks(blocks, rules) {
 }
 
 // The half of a plan the seed decides about the shell rather than about the
-// rooms. Identical for all three schemes, and drawn in the same order so that
+// rooms. Identical for every scheme, and drawn in the same order so that
 // one seed gives one building whichever scheme is asked for.
 function shellStyle(brief, rand) {
   return {
@@ -919,7 +920,7 @@ function shellStyle(brief, rand) {
 // the schemes deal rooms into runs round-robin by kind, and teaching a
 // round-robin about pairs turns one legible loop into three scheme-specific
 // ones. Swapping two rooms of the same size after the fact costs nothing, is
-// the same operation in all three schemes, and — this is the part that
+// the same operation in every scheme, and — this is the part that
 // matters — can *say whether it worked*, which a constraint buried in a
 // dealing loop cannot.
 //
