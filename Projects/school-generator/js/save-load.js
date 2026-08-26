@@ -31,6 +31,13 @@
 //        a v11 file with no timetable in it reads identically either way, and
 //        a v11 file with one opens in a build that predates it as the same
 //        building minus a school day.
+//   v11+ — `rates` (the unit prices this design was costed against — dated,
+//        sourced, editable, see rates.js) and `phasing` (what gets built and
+//        in what order, as an ordered list of room ids, see phasing.js). Two
+//        more appends on the same terms as the timetable, and for the same
+//        reason: a rate table is a fact *about this design* — the prices that
+//        produced this estimate are half of what the estimate means — and a
+//        phasing plan is a set of references to rooms v11 gave ids to.
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
 // polygon rooms in it, a v3 one has no glass and no stairs, a v4 one has no
@@ -113,6 +120,8 @@ import { normalizeOverlay } from './overlay.js';
 import { normalizeTours } from './tour.js';
 import { normalizeModels, librarySize } from './models.js';
 import { normalizeTimetable, isEmptyTimetable } from './timetable.js';
+import { normalizeRates, isEmptyRates } from './rates.js';
+import { normalizePhasing, isEmptyPhasing } from './phasing.js';
 
 // v9 is the first bump that is not free.
 //
@@ -192,6 +201,14 @@ export function serialize(state, opts = {}) {
   // written before this build round-trips through it as the same bytes.
   const timetable = normalizeTimetable(out.timetable);
   if (isEmptyTimetable(timetable)) delete out.timetable; else out.timetable = timetable;
+  // Phase 16's two, and the twelfth and thirteenth times the same rule has
+  // been applied: a design nobody has priced writes no `rates` key and a
+  // design nobody has phased writes no `phasing` key, so every file written
+  // before this build still round-trips through it as the same bytes.
+  const rates = normalizeRates(out.rates);
+  if (isEmptyRates(rates)) delete out.rates; else out.rates = rates;
+  const phasing = normalizePhasing(out.phasing);
+  if (isEmptyPhasing(phasing)) delete out.phasing; else out.phasing = phasing;
   return JSON.stringify(out);
 }
 
@@ -324,6 +341,15 @@ export function deserialize(json, opts = {}) {
   // school day rather than a design that won't open.
   const timetable = normalizeTimetable(d.timetable);
   if (!isEmptyTimetable(timetable)) state.timetable = timetable;
+  // Phase 16's two, on the same terms as everything above them. A rate row
+  // keyed on an assembly this build has never heard of is *kept* — it is
+  // somebody's typed-in number, and dropping it would be the one unrecoverable
+  // thing a loader can do. A phase naming a room the file doesn't contain is
+  // dropped instead, because a reference to nothing is not data.
+  const rates = normalizeRates(d.rates);
+  if (!isEmptyRates(rates)) state.rates = rates;
+  const phasing = normalizePhasing(d.phasing);
+  if (!isEmptyPhasing(phasing)) state.phasing = phasing;
   // v8's population settings, on the same terms as everything above: an
   // unreadable one is the default one, and a file from before v8 simply has
   // the default school in it.

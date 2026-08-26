@@ -12,7 +12,9 @@ import { sheet } from './build.mjs';
 import { buildSampleSchool } from '../js/sample.js';
 import { buildNav } from '../js/navgraph.js';
 import { buildingOccupancy } from '../js/occupancy.js';
-import { LEVELS, buildReport, reportCSV, acousticsSection } from '../js/report.js';
+import { LEVELS, buildReport, reportCSV, acousticsSection, codePanel } from '../js/report.js';
+import { exampleRates, emptyRates, setRate } from '../js/rates.js';
+import { phaseByStorey } from '../js/phasing.js';
 
 const SAMPLE = buildSampleSchool();
 const REPORT = buildReport(SAMPLE);
@@ -158,4 +160,125 @@ test('an empty design reports nothing at length rather than throwing', () => {
   assert.equal(r.summary.rooms, 0);
   assert.equal(r.summary.verdict, 'fail', 'a building with no way out is a failure');
   assert.ok(reportCSV(r).length > 0);
+});
+
+// ---------- Phase 16: cost, spec and phasing, composed ----------
+
+test('the spec sheet is there whether or not anybody has priced anything', () => {
+  assert.ok(REPORT.spec);
+  assert.ok(REPORT.spec.lines.length > 0);
+  assert.ok(REPORT.cost, 'the cost section exists...');
+  assert.ok(!REPORT.cost.has, '...and says nothing is priced');
+  assert.equal(REPORT.summary.cost, null, 'a building nobody priced does not cost nothing');
+});
+
+test('one pass over the model feeds all three readers', () => {
+  const priced = buildReport(SAMPLE, { rates: exampleRates() });
+  assert.ok(priced.cost.has);
+  assert.equal(priced.summary.cost, priced.cost.summary.total);
+  assert.equal(priced.summary.perSqft, priced.cost.summary.perSqft);
+  // The spec sheet and the cost lines are two readings of one set of
+  // quantities, so every spec line is a cost line and the reverse.
+  const costKeys = new Set(priced.cost.lines.map((l) => l.key));
+  for (const l of priced.spec.lines) assert.ok(costKeys.has(l.key), l.key);
+});
+
+test('a cost finding reaches the finding list under its own section', () => {
+  const priced = buildReport(SAMPLE, { rates: exampleRates() });
+  const found = priced.findings.filter((f) => f.section === 'cost');
+  assert.ok(found.length > 0);
+  assert.ok(found.some((f) => f.code === 'example-rates'));
+});
+
+test('a design with no phasing plan says so once, in the phasing module', () => {
+  assert.ok(!REPORT.findings.some((f) => f.section === 'phasing'),
+    'the report does not nag about a plan nobody has made');
+  assert.ok(REPORT.phasing);
+  assert.ok(!REPORT.phasing.has);
+});
+
+test('an out-of-order phasing plan fails the whole report', () => {
+  const s = buildSampleSchool();
+  const plan = phaseByStorey(s);
+  const r = buildReport(s, {
+    rates: exampleRates(),
+    phasing: { phases: [plan.phases[1], plan.phases[0]] },
+  });
+  const finding = r.findings.find((f) => f.code === 'phase-order');
+  assert.ok(finding);
+  assert.equal(finding.section, 'phasing');
+  assert.equal(r.summary.verdict, 'fail');
+});
+
+test('the report reads the design\'s own rates and plan', () => {
+  const s = buildSampleSchool();
+  s.rates = setRate(emptyRates(), 'slab', 10);
+  s.phasing = phaseByStorey(s);
+  const r = buildReport(s);
+  assert.ok(r.cost.has);
+  assert.ok(r.phasing.has);
+  assert.equal(r.phasing.rows.length, 2);
+});
+
+// ---------- the title-block code panel ----------
+
+test('the code panel says which code, and what it measured against it', () => {
+  const panel = codePanel(REPORT, { floor: 0 });
+  assert.equal(panel.edition, REPORT.editionLabel);
+  assert.equal(panel.sprinklered, REPORT.sprinklered);
+  const rows = new Map(panel.rows);
+  assert.equal(rows.get('Occupant load'), String(REPORT.summary.occupants));
+  assert.ok(rows.get('Exits').includes(String(REPORT.egress.summary.exits)));
+  assert.ok(rows.get('Longest travel').includes(String(REPORT.egress.limits.travel)));
+  assert.ok(/Not a code review/.test(panel.caveat));
+});
+
+test('the panel counts exits where they are, not building-wide', () => {
+  const panel = codePanel(REPORT, { floor: 0 });
+  const total = panel.storeys.reduce((n, s) => n + s.exits, 0);
+  assert.equal(total, REPORT.egress.summary.exits);
+  assert.ok(panel.storeys[0].exits > 0, 'the sample school leaves at the ground');
+});
+
+test('the panel knows which sheet it is printed on', () => {
+  const ground = codePanel(REPORT, { floor: 0 });
+  const upper = codePanel(REPORT, { floor: 1 });
+  assert.deepEqual(ground.storeys.map((s) => s.current), [true, false]);
+  assert.deepEqual(upper.storeys.map((s) => s.current), [false, true]);
+  // ...and on a sheet that is not a storey at all — the site plan — nothing is
+  // marked rather than the ground floor being marked by accident.
+  assert.deepEqual(codePanel(REPORT).storeys.map((s) => s.current), [false, false]);
+});
+
+test('the panel carries the verdict, because a set that hides its own analysis is worse', () => {
+  const panel = codePanel(REPORT, { floor: 0 });
+  assert.equal(panel.verdict, REPORT.summary.verdict);
+  assert.equal(panel.fails, REPORT.summary.fails);
+  assert.equal(panel.warns, REPORT.summary.warns);
+});
+
+test('the area per storey adds up to the building area', () => {
+  const panel = codePanel(REPORT, { floor: 0 });
+  const area = panel.storeys.reduce((n, s) => n + s.area, 0);
+  assert.ok(Math.abs(area - REPORT.summary.area) < 1e-6);
+  const occ = panel.storeys.reduce((n, s) => n + s.occ, 0);
+  assert.equal(occ, REPORT.summary.occupants);
+});
+
+// ---------- the spreadsheet grew three sections ----------
+
+test('the CSV carries the specification, the cost and the phasing', () => {
+  const s = buildSampleSchool();
+  s.rates = exampleRates();
+  s.phasing = phaseByStorey(s);
+  const csv = reportCSV(buildReport(s));
+  assert.ok(csv.includes('System,Assembly,What it is'), 'the spec sheet');
+  assert.ok(csv.includes('Cost estimate'), 'the cost');
+  assert.ok(csv.includes('Phase,Rooms,Area ft²'), 'the phasing');
+});
+
+test('an unpriced design writes the spec but no cost table', () => {
+  const csv = reportCSV(REPORT);
+  assert.ok(csv.includes('System,Assembly,What it is'));
+  assert.ok(!csv.includes('Cost estimate'));
 });

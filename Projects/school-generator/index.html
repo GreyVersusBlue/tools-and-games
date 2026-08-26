@@ -628,7 +628,7 @@
 
     /* designs & export overlays — same full-screen modal shape as walkthrough's */
     #designs-overlay, #export-overlay, #gen-overlay, #measure-overlay,
-    #share-overlay, #models-overlay, #model-overlay {
+    #share-overlay, #models-overlay, #model-overlay, #cost-overlay {
       position: fixed; inset: 0; z-index: 25;
       display: flex; align-items: center; justify-content: center;
       background: rgba(10, 13, 18, 0.55);
@@ -758,6 +758,77 @@
       background: none; border: 0; padding: 0 0 0 6px; font-size: 12px;
       color: var(--text-dim); cursor: pointer;
     }
+
+    /* cost & phasing sheet — Phase 16. Wider than the other dialogs because a
+       rate table is a table: sixty rows of "what it is / what it costs", and a
+       narrower panel would wrap every label onto two lines. */
+    #cost-overlay .panel {
+      padding: 20px 24px; width: 720px; max-width: 94vw;
+      max-height: 92vh; overflow-y: auto;
+    }
+    #cost-overlay h2 { font-size: 16px; margin-bottom: 10px; }
+    #cost-overlay .section-label {
+      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      letter-spacing: 0.04em; text-transform: uppercase; margin: 16px 0 6px;
+    }
+    #cost-overlay p.hint { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; margin: 4px 0; }
+    #cost-overlay input, #cost-overlay select {
+      font: inherit; color: var(--text); background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--panel-border); border-radius: 6px; padding: 5px 8px;
+    }
+    #cost-overlay .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+    #cost-overlay .acts { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; }
+    #cost-overlay .acts button { font-size: 12px; padding: 5px 9px; }
+    #cost-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; }
+    #cost-meta label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+    #cost-meta input, #cost-meta select { width: 100%; box-sizing: border-box; }
+    #cost-meta .wide { grid-column: span 2; }
+    /* The banner the whole sheet leads with while nobody has touched a rate.
+       It is the one piece of UI in this build whose job is to be in the way. */
+    #cost-warning {
+      font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 8px;
+      background: rgba(232, 163, 61, 0.14); border: 1px solid rgba(232, 163, 61, 0.4);
+      color: #e8a33d; margin: 10px 0 0;
+    }
+    #cost-warning.hidden { display: none; }
+    #cost-rows { max-height: 34vh; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 8px; }
+    #cost-rows .grp {
+      font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--text-dim); padding: 8px 10px 4px;
+    }
+    #cost-rows .rate-row {
+      display: grid; grid-template-columns: 1fr 96px 88px 108px 1fr;
+      gap: 8px; align-items: center; padding: 3px 10px; font-size: 12px;
+    }
+    #cost-rows .rate-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #cost-rows .rate-row .qty { color: var(--text-dim); font-size: 11px; text-align: right; }
+    #cost-rows .rate-row input[type="number"] { width: 100%; box-sizing: border-box; text-align: right; }
+    #cost-rows .rate-row input[type="text"] { width: 100%; box-sizing: border-box; font-size: 11px; }
+    #cost-rows .rate-row.used { background: rgba(255, 255, 255, 0.04); }
+    #cost-readout { font-size: 12px; line-height: 1.6; margin-top: 8px; }
+    #cost-readout .row { display: flex; justify-content: space-between; gap: 10px; margin: 0; }
+    #cost-readout b { color: var(--text); font-weight: 600; }
+    #cost-readout .warn { color: #e8a33d; }
+    #phase-list { display: flex; flex-direction: column; gap: 6px; }
+    #phase-list .phase-row {
+      display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+      border-radius: 8px; background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--panel-border);
+    }
+    #phase-list .phase-row input[type="text"] { flex: 1; min-width: 0; }
+    #phase-list .phase-meta { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+    #phase-list .phase-row button { padding: 4px 7px; font-size: 12px; }
+    #phase-list .empty { font-size: 12px; color: var(--text-dim); padding: 4px 2px; }
+    #phase-rooms { max-height: 26vh; overflow-y: auto; margin-top: 8px; }
+    #phase-rooms .grp {
+      font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--text-dim); padding: 8px 2px 4px;
+    }
+    #phase-rooms .room-row {
+      display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 2px 2px;
+    }
+    #phase-rooms .room-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #phase-rooms .room-row select { width: 170px; font-size: 11.5px; }
     #gen-schedule {
       max-height: 30vh; overflow-y: auto; margin-top: 6px;
       font-size: 11.5px; line-height: 1.55; color: var(--text-dim);
@@ -1412,6 +1483,7 @@
     <div id="report-acts">
       <button id="report-refresh" title="Re-read the model">↻ Refresh</button>
       <button id="report-csv" title="Download every number as a spreadsheet">⬇ CSV</button>
+      <button id="cost-open" title="The rate table this design is priced against, and the phasing plan">💲 Costs</button>
     </div>
 
     <div id="report-findings"></div>
@@ -1659,11 +1731,16 @@
       <label class="opt"><input type="checkbox" id="export-occupancy" /> Occupant load per room</label>
       <label class="opt"><input type="checkbox" id="export-site" checked /> Site plan sheet</label>
       <label class="opt"><input type="checkbox" id="export-contours" checked /> Contour lines on the site plan</label>
+      <label class="opt"><input type="checkbox" id="export-code" /> Code panel in the title block</label>
+      <label class="opt"><input type="checkbox" id="export-spec" /> Specification sheet</label>
       <p class="hint">
         PNG downloads one image per sheet. Print / Save as PDF opens your
         browser's print dialog with one page per sheet — choose "Save as PDF"
         there for a PDF file. The site plan is one extra sheet, drawn from the
-        same model at a wider scale.
+        same model at a wider scale. The code panel prints the occupant load,
+        the exits, the travel distance and the area of each storey beside the
+        drawing; the specification sheet is one more page saying what each
+        assembly is and what this tool does and does not know about it.
       </p>
       <div class="section-label">The building itself</div>
       <label class="opt"><input type="checkbox" id="export-glb-site" checked /> Site and landscape</label>
@@ -1679,6 +1756,73 @@
         <button id="export-glb" title="Download the whole building as a glTF binary">⬇ 3D model</button>
         <button id="export-print">🖨 Print / Save as PDF</button>
         <button id="export-png" class="primary">⬇ Download PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cost-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="cost-overlay-title">
+    <div class="panel">
+      <h2 id="cost-overlay-title">💲 What It Costs</h2>
+      <p class="hint" style="margin-top:0">
+        This tool does not know what a square foot of anything costs where you
+        are building. It knows how to be told. Fill in the rates you have,
+        leave the ones you haven't — unpriced work is counted as zero and said
+        so, out loud, rather than guessed at. The table is saved with the
+        design, because the rates that priced this building are part of what
+        the price means.
+      </p>
+
+      <div id="cost-warning" class="hidden"></div>
+
+      <div class="section-label">The table</div>
+      <div id="cost-meta">
+        <div>
+          <label for="cost-currency">Currency</label>
+          <select id="cost-currency"></select>
+        </div>
+        <div>
+          <label for="cost-date">Dated</label>
+          <input id="cost-date" type="date" />
+        </div>
+        <div class="wide">
+          <label for="cost-source">Source</label>
+          <input id="cost-source" type="text" maxlength="120"
+            placeholder="Where these numbers came from" />
+        </div>
+      </div>
+      <div class="acts">
+        <button id="cost-example" title="Fill the table with order-of-magnitude figures you can overwrite">Load worked example</button>
+        <button id="cost-clear" title="Empty the table — nothing is priced">Clear</button>
+        <button id="cost-import" title="Read rates back out of a spreadsheet">⬆ Import CSV</button>
+        <button id="cost-export" title="Write the rate table out as a spreadsheet">⬇ Export CSV</button>
+        <input id="cost-file" type="file" accept=".csv,text/csv" hidden />
+      </div>
+
+      <div class="section-label">Rates</div>
+      <div id="cost-rows"></div>
+      <p class="hint" id="cost-unknown"></p>
+
+      <div class="section-label">What that comes to</div>
+      <div id="cost-readout"></div>
+
+      <div class="section-label">Phasing</div>
+      <p class="hint" style="margin-top:0">
+        What gets built, and in what order, when the whole thing cannot be
+        built at once. Roof, sitework and lifts belong to the building rather
+        than to a room, so one phase carries them or they stand on their own
+        row — they are never split across phases.
+      </p>
+      <div class="acts">
+        <button id="phase-storey" title="One phase per storey, ground first">One per storey</button>
+        <button id="phase-add" title="Add an empty phase">+ Phase</button>
+        <button id="phase-clear" title="Back to building it all at once">Clear</button>
+      </div>
+      <div id="phase-list"></div>
+      <div id="phase-rooms"></div>
+
+      <div class="row">
+        <button id="cost-close">Close</button>
+        <button id="cost-csv" class="primary" title="Cost, specification and phasing as one spreadsheet">⬇ CSV</button>
       </div>
     </div>
   </div>

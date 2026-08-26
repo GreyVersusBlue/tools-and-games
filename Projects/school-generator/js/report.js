@@ -28,6 +28,10 @@ import { roomsOnFloor } from './acoustics.js';
 import { buildingOverhang } from './shadow.js';
 import { utilisationAnalysis } from './utilisation.js';
 import { isEmptyTimetable, normalizeTimetable, roomPool } from './timetable.js';
+import { normalizeRates } from './rates.js';
+import { quantities, costing, costCSV } from './cost.js';
+import { specSheet, specCSV } from './spec.js';
+import { phasingOf, phasingCosts, phasingCSV } from './phasing.js';
 
 // Worst first. A panel prints this order and a title block prints the first
 // row of it, so it is the one piece of editorial judgement in the phase.
@@ -105,6 +109,14 @@ export function acousticsSection(state, opts = {}) {
 
 // ---------- the report ----------
 
+// The phasing plan a report is read against: the design's own, unless the
+// caller is asking a what-if. `opts.phasing === false` turns the section off
+// the same way `opts.takeoff === false` turns the takeoff off.
+function normalizePhasingOpt(opts, state) {
+  if (opts.phasing === false) return { phases: [] };
+  return opts.phasing ? phasingOf({ phasing: opts.phasing }) : phasingOf(state);
+}
+
 export function buildReport(state, opts = {}) {
   const catalogGet = opts.catalogGet || defaultCatalogEntry;
   // One graph, one set of occupant loads, shared by every section below —
@@ -146,6 +158,20 @@ export function buildReport(state, opts = {}) {
       schedule: opts.schedule || (state && state.life && state.life.schedule),
     });
 
+  // Phase 16. One pass over the model produces the quantities, and the cost,
+  // the spec sheet and the phasing plan are three readings of that one pass —
+  // the same bargain this file struck with the nav graph in Phase 7. A design
+  // with no rate table still gets a spec sheet, because a spec sheet is about
+  // what a thing *is*.
+  const rates = normalizeRates(opts.rates !== undefined ? opts.rates : (state && state.rates));
+  const qty = opts.takeoff === false ? null : quantities(state, { catalogGet });
+  const cost = qty ? costing(state, { rates, quantities: qty, catalogGet }) : null;
+  const spec = qty ? specSheet(state, { quantities: qty }) : null;
+  const phasing = normalizePhasingOpt(opts, state);
+  const phases = qty
+    ? phasingCosts(state, { rates, quantities: qty, phasing, catalogGet })
+    : null;
+
   const sections = [
     ['egress', egress],
     ['accessible', accessible],
@@ -153,6 +179,11 @@ export function buildReport(state, opts = {}) {
     ['acoustics', acoustics],
     ['structure', structure],
     ['utilisation', utilisation || { findings: [] }],
+    ['cost', cost || { findings: [] }],
+    // A phasing plan nobody has made has one thing to say and says it once;
+    // the note is suppressed here rather than in the module, because
+    // `phasingCosts` called on its own by a panel *should* say it.
+    ['phasing', phases && phases.has ? phases : { findings: [] }],
   ];
   const findings = [];
   for (const [section, part] of sections) {
@@ -188,6 +219,13 @@ export function buildReport(state, opts = {}) {
     structure,
     utilisation,
     takeoff: materials,
+    // Phase 16's three. `cost` is null only when the caller asked for no
+    // takeoff at all; `cost.has` is the flag that says whether anybody has
+    // priced anything, the same way `utilisation.has` reads a timetable.
+    rates,
+    cost,
+    spec,
+    phasing: phases,
     findings,
     summary: {
       occupants: occupancy.total,
@@ -199,12 +237,74 @@ export function buildReport(state, opts = {}) {
       // Null rather than zero when there is no timetable: a school day nobody
       // has described is not a school day of no length.
       utilisation: utilisation ? utilisation.summary.utilisation : null,
+      // Null rather than zero when nobody has given the design a rate table:
+      // a building nobody has priced does not cost nothing.
+      cost: cost && cost.has ? cost.summary.total : null,
+      perSqft: cost && cost.has ? cost.summary.perSqft : null,
       fails,
       warns,
       // The headline. "Passes" only ever means "passes the checks this tool
       // knows how to make", which is the phrase the panel prints with it.
       verdict: fails ? 'fail' : warns ? 'warn' : 'ok',
     },
+  };
+}
+
+// ---------- the title-block code panel ----------
+//
+// Phase 7's own last unticked item, and the reason it was left: a drawing that
+// quotes a limit without saying which code it is quoting is a drawing nobody
+// can check, and until v11 the design had nowhere to record that. It does now,
+// so the panel that goes on the sheet can lead with the edition.
+//
+// This returns *data*, not pixels. `blueprint.js` draws it, and the split is
+// the same one `computeFloorPlan` made: the module that knows the numbers has
+// no canvas in it, and the module with the canvas in it makes up no numbers.
+export function codePanel(report, opts = {}) {
+  const s = report.summary;
+  const e = report.egress;
+  const here = Number.isFinite(opts.floor) ? opts.floor : null;
+  // Exits are counted where they are: a title block that says "4 exits" on the
+  // second-floor sheet, where there are none, is a title block that has been
+  // copied rather than read.
+  const exitsOn = new Map();
+  for (const x of e.exits) exitsOn.set(x.floor, (exitsOn.get(x.floor) || 0) + 1);
+  const storeys = report.occupancy.floors.map((f) => ({
+    floor: f.floor,
+    label: f.label,
+    area: f.area,
+    occ: f.occ,
+    exits: exitsOn.get(f.floor) || 0,
+    current: here !== null && f.floor === here,
+  }));
+  const worst = e.summary.worst;
+  const rows = [
+    ['Occupant load', `${s.occupants}`],
+    ['Building area', `${Math.round(s.area).toLocaleString()} ft²`],
+    ['Storeys', `${s.storeys}`],
+    ['Exits', `${e.summary.exits} of ${e.summary.exitsRequired} required`],
+    ['Exit capacity', `${e.summary.capacity} / ${e.summary.occupants} people`],
+    ['Longest travel', worst
+      ? `${Math.round(worst.travel)} ft / ${e.limits.travel} ft`
+      : `— / ${e.limits.travel} ft`],
+    ['Dead end', e.deadEnds.length
+      ? `${Math.round(e.deadEnds[0].depth)} ft / ${e.limits.deadEnd} ft`
+      : `none / ${e.limits.deadEnd} ft`],
+  ];
+  return {
+    title: 'CODE INFORMATION',
+    edition: report.editionLabel,
+    sprinklered: report.sprinklered,
+    rows,
+    storeys,
+    verdict: s.verdict,
+    fails: s.fails,
+    warns: s.warns,
+    // Printed small under the panel. The tool has said this in the report
+    // panel since Phase 7; a sheet that leaves the room goes without it, and
+    // a sheet is the thing that ends up in front of somebody with authority.
+    caveat: 'Checked only against the rules this tool knows how to apply. ' +
+      'Not a code review.',
   };
 }
 
@@ -327,5 +427,12 @@ export function reportCSV(report) {
   rows.push([]);
 
   const csv = csvRows(rows);
-  return report.takeoff ? `${csv}\r\n${takeoffCSV(report.takeoff)}` : csv;
+  const parts = [csv];
+  if (report.takeoff) parts.push(takeoffCSV(report.takeoff));
+  // Phase 16's three, appended in the order a set is read: what it is made of,
+  // what that is, what it costs, and when it gets built.
+  if (report.spec) parts.push(specCSV(report.spec));
+  if (report.cost && report.cost.has) parts.push(costCSV(report.cost));
+  if (report.phasing && report.phasing.has) parts.push(phasingCSV(report.phasing));
+  return parts.join('\r\n');
 }

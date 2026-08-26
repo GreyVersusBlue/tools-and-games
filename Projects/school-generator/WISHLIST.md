@@ -76,6 +76,16 @@ in a room too small for it, how far 9th grade walks between second and third
 period every day for a year, and which corridor carries three cohorts at one
 bell.
 
+Since Phase 16 it will also say what the building costs — and it holds no
+prices to do it. Give it a rate table, dated and sourced and saved with the
+design, and it prices what the takeoff already counted: by system, by storey
+and room by room, worst first, with what is driving each; it prints a
+specification saying which VCT and what this tool does and does not know about
+it; it puts the occupant load, the exits and the travel distance in the title
+block of every sheet; and it will phase the work, so each stage has its own
+takeoff, its own cost and its own place in the running total. Whatever nobody
+has priced is counted as zero and said out loud, which is the whole bargain.
+
 ## The architecture that emerged
 
 **One pure module per question, one thin tool on top of it, one `node --test`
@@ -93,14 +103,15 @@ outlines) · `props.js` (the object layer and inter-floor links) · `catalog.js`
 (derived thickness, door leaves and window bands, floor and paint) ·
 `stairs.js` (runs, landings, the holes they cut) · `terrain.js` / `site.js` /
 `roof.js` (the ground, what is drawn on it, what covers the building) ·
+`rates.js` (what a square foot of something costs, because somebody said so) ·
 `history.js` (an edit as a diff) · `save-load.js` (v11, and the one migration
 that ever changed a shape).
 
 What it derives: `navgraph.js` + `navmesh.js` (the walkable surface as convex
 tiles, and the graph over it) · `collide.js` (what stops you, what holds you
 up) · `occupancy.js` / `egress.js` / `daylight.js` / `takeoff.js` /
-`acoustics.js` / `utilisation.js` / `report.js` (the analysis, none of it
-stored) ·
+`acoustics.js` / `utilisation.js` / `cost.js` / `spec.js` / `phasing.js` /
+`report.js` (the analysis, none of it stored) ·
 `lights.js` / `sky.js` / `sound.js` (which props emit, where the sun is, what
 there is to hear) · `shadow.js` (what an upper storey is standing on) ·
 `blueprint.js` (the printable sheet) · `minimap.js`.
@@ -350,7 +361,10 @@ distance per room and 60ft off its worst one — numbers nobody had ever walked.
   where the second was meant produced a page of findings that were every one of
   them arithmetically true and collectively useless. The fix was never a fudge
   factor: it was giving each number its own function, its own citation and its
-  own button. Phase 16 is about to introduce a third one.
+  own button. Phase 16 hit the same shape from the other side — the takeoff and
+  the estimate both have a number called "glazing" and they are deliberately
+  different, because one is priced by the square foot and one by the each. Same
+  name, two numbers, and the fix is never to average them.
 - **A queue that can hold a door open needs a bound on the holding.** Everybody
   waiting for a lift presses the button on every frame they are not aboard,
   which is what people do — and a car that answers each press, either by
@@ -387,15 +401,17 @@ them; the rest are unclaimed and can ride along with whatever is open.
 
 **Analysis**
 - The discharge route stops at the door: the outdoors is one node. → *Phase 17.*
-- No prices, on purpose. → *Phase 16 proposes the honest version.*
+- ~~No prices, on purpose~~ — done in Phase 16, and still on purpose: the tool
+  holds no prices, it holds a dated, sourced rate table somebody types in.
 - Daylight is a glazing ratio, not a daylight factor — nothing knows about
   orientation, overhangs or room depth.
 - Common path of egress travel is a constant that nothing measures.
 - Accessibility stops at routes: no turning circles, reach ranges or counter
   heights.
-- The report doesn't print. A title-block code panel on the blueprint is its
-  natural other half. → *Phase 16.* The school-day section is not on the sheet
-  either, for the same reason and by the same fix.
+- ~~The report doesn't print~~ — done in Phase 16: `codePanel()` puts occupant
+  load, exits, travel distance and area per storey in the title block of every
+  sheet, and the specification prints as a sheet of its own. The school-day
+  section is still not on the sheet, and now it is the only one that isn't.
 - ~~Sprinklered is a checkbox rather than a property of the design~~ — done in
   Phase 12, along with the code edition, the occupancy group and a design
   occupant load. What is *still* a session setting is nothing: every question
@@ -589,8 +605,10 @@ better for having been interrupted by it — the sentence under it is *the sheet
 you draw on was a constant, and the tool never said so*.
 
 **Phase 15 is done**, and it is the one the arc was named for: the tool now
-knows who the building is for. **What is left is Phase 16 and Phase 17**, and
-neither is blocked on anything.
+knows who the building is for. **Phase 16 is done too**, and with it the third
+sentence above goes into the past tense: the tool will say what the building
+costs, without ever claiming to know a price. **What is left is Phase 17** —
+the fourth sentence — and it is not blocked on anything.
 
 ## Phase 12 — Identity ✅
 
@@ -666,8 +684,9 @@ a drag: diffing the design to answer it cost more than the edit did, so it is a
 tracked flag.
 
 **What it unblocked.** Phase 14's session log has something to name; Phase 15's
-timetable has something to bind to that survives a rename; Phase 16's rate
-table has a room record to hang a cost on. The `r<floor>:s<id>` node id is
+timetable has something to bind to that survives a rename; Phase 16's estimate
+has a room record to hang a cost on and its phasing plan is a list of those
+same ids and nothing else. The `r<floor>:s<id>` node id is
 stable for as long as the room is, rather than for as long as its lowest cell
 happens to be.
 
@@ -1042,39 +1061,173 @@ a design that has never been given one writes no key at all, so every file
 written before this phase round-trips through it as the same bytes. Eleventh
 time that rule has been applied and the eleventh time nobody has lost a design.
 
-## Phase 16 — What it costs
+## Phase 16 — What it costs ✅
 
-**`takeoff.js` counts what is drawn and stops, on purpose.**
+**`takeoff.js` counted what is drawn and stopped, on purpose. It now knows how
+to be told what that is worth.**
 
 Phase 7 refused to price the building and gave a good reason: unit costs are
 local, dated and trade-by-trade, and a tool that guessed at them would be wrong
-in a way that looks authoritative. That reasoning is still correct — and it
-argues for a specific design rather than for never doing it. **The tool should
-not know what a square foot of VCT costs. It should know how to be told.**
+in a way that looks authoritative. That reasoning has not changed, and it never
+argued for never doing it — it argued for a specific design:
 
-- [ ] **A rate table you own.** Editable, dated, sourced, saved *with the
-  design* — because the rates that priced this building are part of what the
-  price means. Ships empty, with a worked example somebody can overwrite, and
-  says loudly what it does not know.
-- [ ] **Cost by room, by system and by storey**, with the same worst-first
-  treatment the report gives everything else: what the five most expensive
-  rooms are, and what is driving each. A number without a decomposition is a
-  number nobody can act on.
-- [ ] **A spec sheet.** The takeoff says how much VCT; this says *which* VCT.
-  Each assembly gets a line — what it is, where it is used, what it is rated
-  at — printed with the drawing set rather than living in a panel.
-- [ ] **The report prints.** Phase 7's own last item: a title-block code panel
-  on the blueprint with occupant load, exits, travel distance and area per
-  storey, beside the occupancy tags that phase already put on the plan.
-- [ ] **Phasing.** What gets built, and in what order, when the whole thing
-  cannot be built at once. A storey, a wing or a scheme's own blocks, each with
-  its own takeoff and its own cost — which is the question every real school
-  building project actually starts from.
+> **The tool should not know what a square foot of VCT costs. It should know
+> how to be told.**
 
-*Leans on:* `takeoff.js`, `report.js`, `blueprint.js`, `finish.js`;
-*collides with:* nothing structural. Every number here is a reading of a model
-that already exists, which is why this is the safest of the five.
-*Save:* the rate table and the phasing belong in the file. Another append.
+So there are no prices in this codebase. There is a *vocabulary* of assemblies,
+a rate table that lives in the design file, and four readers in front of them.
+
+- [x] **A rate table you own.** `rates.js`. A closed vocabulary of sixty-two
+  assemblies — one per floor finish, one per facade material, one per site
+  surface, one per catalog category, because "carpet at the price of VCT" is
+  exactly the answer a single `finish` row would give — each with a system, a
+  unit and a label. Beside it the table itself: currency, date, source, note,
+  and a row per assembly carrying its own date and source where they differ.
+  **It ships empty.** `exampleRates()` is a worked example whose own `source`
+  field reads *"WORKED EXAMPLE — not a quote. Replace with your own numbers."*,
+  and `isExampleRates` compares the table to the shipped one row for row so
+  every panel, every sheet and the CSV lead with a warning until somebody
+  changes a single number. It goes out as a spreadsheet listing *every*
+  assembly — a table that only shows the rows you have already filled in is a
+  table nobody can finish — and comes back in, saying what it could not read.
+- [x] **Cost by room, by system and by storey.** `cost.js`. Every quantity is
+  attributed to a room where a room can honestly own it: slab and floor finish
+  exactly, partitions and glazing probed for the room on each side and **split
+  between them**, doors and windows probed at the opening's midpoint, furniture
+  by `shapeAt` on the prop's own position. Worst first, five rooms, each with
+  what is driving it — and the drivers' tail is rolled into one row rather than
+  truncated, so they still add up to the room. What genuinely is not a room's —
+  the roof, the sitework, the stairs, the lift — is left in a named bucket
+  rather than smeared over the rooms pro rata, and a finding fires when that
+  bucket is over 40% of the money, because at that point the per-room table
+  describes less than half of it.
+- [x] **A spec sheet.** `spec.js`, and it prints with the drawing set rather
+  than living in a panel. Three columns: what it is (the product row out of the
+  table it came from), where it is used (the storeys, and the four biggest
+  rooms by quantity), and what it is rated at — **and only what this tool
+  actually measures**. A floor finish carries the absorption coefficient
+  `acoustics.js` already sums. A ramp carries its steepest slope against 1:12.
+  A door carries the 32in egress minimum. Everything else says what it does not
+  know, in the cell, rather than leaving it blank for a reader to fill in from
+  memory: *"0.4 ft — no fire or STC rating known"*.
+- [x] **The report prints.** Phase 7's own last item. `codePanel()` in
+  `report.js` returns the data and `blueprint.js` draws it — the same split
+  `computeFloorPlan` made, so the module that knows the numbers has no canvas
+  in it. Occupant load, building area, exits against the number required, exit
+  capacity against the load, longest travel and deepest dead end against their
+  limits, then a row per storey with area, load and **the exits that are on
+  that storey** — a title block that says "4 exits" on the second-floor sheet
+  where there are none is a title block that has been copied rather than read.
+  The panel carries the verdict, in red when it fails: a drawing set that
+  quietly omits its own analysis is worse than one that has none.
+- [x] **Phasing.** `phasing.js`. A phase is an ordered, named set of rooms, and
+  that is the whole data model — which covers all three cases the list named,
+  because since Phase 12 a storey, a wing and a scheme's own block are all just
+  lists of room ids. Each phase gets its own takeoff, its own cost, its own
+  £/ft² and the running total a funding schedule is actually written against.
+  One phase may *claim* the shared bucket; if none does it stands on its own
+  row. Rooms in no phase are listed separately rather than folded in, because a
+  plan that quietly drops a wing is worse than one that says it did. And there
+  is one buildability check the model can honestly make — **a room cannot be
+  built before the room holding it up** — which reads `shapeAt` on the storey
+  below at the room's own interior point, and is a `fail`.
+
+### What it cost, and what it taught
+
+**Four new modules, four new suites, one new dialog, two save appends, and no
+geometry touched.** `rates.js`, `cost.js`, `spec.js`, `phasing.js`, and 116
+tests. `report.js` grew three sections, one exported function and three blocks
+of spreadsheet; `blueprint.js` grew a code panel and a sheet of its own;
+`save-load.js` grew two keys. Exactly as the list predicted: *every number here
+is a reading of a model that already exists, which is why this is the safest of
+the five.*
+
+**Zero is a price and null is a silence, and nothing else in the phase matters
+as much.** A rate of zero says this costs nothing; no rate at all says nobody
+has told us. A reader that conflates them prints a total with a roof missing
+and no way to know. So `priced` is a field on every line, unpriced work is
+counted as zero *and named*, the finding says the total is "a floor rather than
+an estimate", and the CSV prints `no rate` rather than an empty cell.
+
+**The one unrecoverable thing a loader can do is drop somebody's typed-in
+number.** `finish.js` drops an unknown finish key, and it is right to: the
+fallback is a floor that still exists. Here the fallback is a rate somebody
+entered by hand, gone. So `normalizeRates` **keeps** a row whose assembly this
+build has never heard of, `costing` ignores it, and `ratesSummary` counts it so
+the panel can say "kept, and it prices nothing here". The same rule inverted,
+for the same reason both times: *what does the user lose if we are wrong?*
+
+**Two panels printing two different square footages of paint is worse than one
+guardrail priced as if somebody rolled it.** `takeoff.js`'s `paintArea`
+includes a rail's face, which is not right; matching it exactly was still the
+better trade, because the invariant that carries this phase is that the cost's
+quantities *are* the takeoff's quantities, checked line by line against the
+sample school. The same discipline broke the other way on glazing: the takeoff
+folds window area into `glazing`, the estimate cannot (a window is priced by
+the each), so they are deliberately different numbers with a comment saying so.
+**Same name, two numbers is the bug this codebase keeps finding;** the fix is
+never to average them, it is to say which question each one answers.
+
+**The bucket nobody predicted was found by an arithmetic test.** "Every room
+plus everything that is nobody's room is the whole estimate" failed on the
+sample school by $37,000 — and the reason is that the sample school furnishes
+its playground. A bench on the lawn is on a storey and in no room; so is a
+24 ft² length of garden wall with open air on both probes. That is not a bug,
+it is a third bucket, and it now has a name (`loose`), a number in the summary
+and a line in the CSV. **An invariant that fails is worth more than a number
+that looks right**, and this one turned a silently-wrong per-room table into a
+table that says what it does not cover.
+
+**A wall between two classrooms belongs to both of them, and the probe that
+says which two is one `finish.js` already had.** `wallPaint` walks a fixed
+distance off the boundary on each side to decide what colour to paint a wall;
+`roomsBeside` walks the same distance to decide whose cost it is. One probe,
+two questions, and the same answer to both — which is the fourth time this
+codebase has bought a property by probing the model instead of storing a field.
+
+**Phasing needed almost no new data, and that is Phase 12's dividend arriving
+for the third time.** A phase is a list of `r0:s7` strings. Ids are
+*positional* — `p1`, `p2`, assigned on normalize — because a phasing plan is a
+short ordered list edited in place, so position already is identity, and a
+second allocated identity would have bought an allocator, a save field and a
+class of bug (two phases, one id) in exchange for nothing.
+
+**The order check had to be per room, not per storey.** "No phase may contain
+an upper storey before a phase containing a lower one" is one line and is wrong
+for exactly the building this feature exists for: two wings phased separately,
+each built bottom-up, is a perfectly good plan that the storey-granular rule
+rejects. Asking `shapeAt` on the storey below, at the room's own interior
+point, is the same question `buildingOverhang` asks about the whole footprint —
+so a room that overhangs into thin air is already somebody else's finding, and
+this one only fires when there really is something underneath being built
+later.
+
+**Shipping example numbers at all was the risky decision of the phase.** A
+blank sixty-two-row table teaches nobody what a row is for; a filled-in one
+that stays filled in is a tool that prints authoritative-looking totals nobody
+has checked — which is precisely what Phase 7 refused to build. The resolution
+is that the example knows it is the example, by value: `isExampleRates`
+compares every key and every rate against the shipped table, so the warning
+banner, the report finding and the CSV's `WARNING` row all disappear the moment
+one number is typed over, and not before.
+
+**What is left.** No escalation, no location factor, no contingency and no soft
+costs — a rate table dated 2026 priced against a building opening in 2029 is
+off by whatever inflation did, and this tool does not know. No overhead and
+profit line. Nothing is priced by trade, only by assembly, so a table keyed to
+a bill of quantities has to be mapped by hand. The shared bucket cannot be
+split across phases at all, only claimed whole. The spec sheet names materials
+from the design's own tables and has nowhere to put a manufacturer, a series or
+a colour — deliberately, because inventing a product name is the same class of
+lie as inventing a unit price. And the code panel and the specification sheet
+draw on canvas, so like every drawing in this codebase they are exercised by
+hand rather than headlessly; what is tested is the data they are handed.
+
+*Save:* **two appends to v11**, exactly as this list predicted — `rates` and
+`phasing`. A design nobody has priced writes no `rates` key and a design nobody
+has phased writes no `phasing` key, so every file written before this phase
+round-trips through it as the same bytes. The twelfth and thirteenth times that
+rule has been applied, and the thirteenth time nobody has lost a design.
 
 ## Phase 17 — Outward
 
@@ -1150,12 +1303,18 @@ number — and 16 is about to price a building room by room, which is a third
 number that looks like the other two. Better to have had that argument before
 there was money in it.
 
-**16 next, then.** It is the safest of what is left and the most obviously
-finishable, and everything it needs already exists.
+**16 is done**, and it was the safest of what was left, exactly as this
+paragraph said — four new modules, four new suites, and not one line of
+geometry touched. The prediction that mattered was the one about *ordering*:
+doing 15 first was right because 15 turned up the roll-versus-occupant-load
+distinction before there was money riding on it. What 16 turned up in the same
+place was smaller and the same shape — a takeoff quantity and an estimate line
+that share a name and answer different questions — and having had the argument
+once made it a comment rather than a bug.
 
-**17 whenever.** It is independent of all of them, it clears six backlog items
-between them, and it is the only one of the five that could be started tomorrow
-against the code exactly as it stands today.
+**17 is what is left.** It is independent of all of them, it clears six backlog
+items between them, and it can be started tomorrow against the code exactly as
+it stands today.
 
 **On save versions:** Phase 15 spent none of its own — a timetable is an
 append to v11, exactly as this section predicted, and a design that has never
@@ -1166,10 +1325,12 @@ at all, because `w` and `h` have been in the file since v1 and the loader has
 always read them against the same range the editor now writes. Phase 14 spent
 none either, and could not have: a session is a thing that happens *to* a
 design rather than a thing in it, and the day the file has to record one is
-the day something has gone wrong with the split. A timetable (15)
-and a rate table (16) are appends to v11, which is the Phase 5 lesson (terrain,
-site and roof all landed in v7 together) applied deliberately rather than
-discovered halfway through.
+the day something has gone wrong with the split. A timetable (15),
+a rate table and a phasing plan (16) are all appends to v11, which is the Phase
+5 lesson (terrain, site and roof all landed in v7 together) applied
+deliberately rather than discovered halfway through. Phase 16 spent two of them
+in one go and neither cost anything: a design nobody has priced writes no
+`rates` key and a design nobody has phased writes no `phasing` key.
 
 **On scope:** the honest read of arc two is that the phases that went best were
 the ones with a single sentence behind them — Phase 10's "the model knows more

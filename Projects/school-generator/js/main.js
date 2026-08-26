@@ -46,10 +46,22 @@ import {
   serialize, deserialize,
 } from './save-load.js';
 import {
-  renderFloorPlanCanvas, renderSitePlanCanvas, downloadCanvasPNG,
+  renderFloorPlanCanvas, renderSitePlanCanvas, renderSpecSheetCanvas, downloadCanvasPNG,
   computeFloorPlan, drawPlanBody,
 } from './blueprint.js';
-import { buildReport, reportCSV } from './report.js';
+import { buildReport, reportCSV, codePanel } from './report.js';
+// --- Phase 16 ---
+import {
+  assemblies, systemEntry, normalizeRates, emptyRates, exampleRates,
+  isEmptyRates, ratesCSV, importRatesCSV, setRate, ratesSummary, CURRENCIES,
+} from './rates.js';
+import { costCSV } from './cost.js';
+import { specCSV } from './spec.js';
+import {
+  phasingOf, normalizePhasing, emptyPhasing, isEmptyPhasing, phaseByStorey,
+  addPhase, removePhase, movePhase, renamePhase, claimShared, assignRooms,
+  phasingCSV, roomIdOf,
+} from './phasing.js';
 import { codeOf, normalizeCode, isDefaultCode, USES, buildingOccupancy } from './occupancy.js';
 import {
   buildTimetable, importTimetableCSV, timetableCSV, timetablePlan, timetableSummary,
@@ -1468,15 +1480,37 @@ function exportScope() {
   return all ? state.floors.map((_, i) => i) : [state.currentFloor];
 }
 
+// Phase 16's two additions are the only ones that cost anything to prepare: a
+// code panel and a specification sheet are both readings of the report, and
+// the report is the most derived thing in the codebase. So it is built once,
+// here, and handed to every sheet — rather than each sheet building its own.
 function exportOpts() {
+  const wantsCode = $('export-code').checked;
+  const wantsSpec = $('export-spec').checked;
+  let data = null;
+  if (wantsCode || wantsSpec) {
+    if (report.stale || !report.data) reportBuild();
+    data = report.data;
+  }
   return {
     showDimensions: $('export-dims').checked,
     showFurniture: $('export-furniture').checked,
     showFinishes: $('export-finishes').checked,
     showOccupancy: $('export-occupancy').checked,
     contours: $('export-contours').checked,
+    report: data,
+    // The panel is per sheet — it says which storey you are holding — so what
+    // travels in the options is the report, and each sheet asks it for its own.
+    wantsCode,
+    spec: wantsSpec && data ? data.spec : null,
   };
 }
+
+// The plan options for one storey: the shared set, plus that storey's own code
+// panel when it was asked for.
+const sheetOpts = (opts, floorIndex) => (opts.wantsCode && opts.report
+  ? { ...opts, codePanel: codePanel(opts.report, { floor: floorIndex }) }
+  : opts);
 
 // The site plan is a sheet, not a floor — it has no storey — so it rides
 // alongside the floor scope rather than inside it.
@@ -1488,12 +1522,16 @@ $('export-close').addEventListener('click', () => closeModal(exportOverlay));
 $('export-png').addEventListener('click', () => {
   const opts = exportOpts();
   for (const i of exportScope()) {
-    const canvas = renderFloorPlanCanvas(state, i, opts);
+    const canvas = renderFloorPlanCanvas(state, i, sheetOpts(opts, i));
     if (canvas) downloadCanvasPNG(canvas, `school-floor-plan-level-${i + 1}.png`);
   }
   if (wantsSite()) {
-    const canvas = renderSitePlanCanvas(state, opts);
+    const canvas = renderSitePlanCanvas(state, sheetOpts(opts, null));
     if (canvas) downloadCanvasPNG(canvas, 'school-site-plan.png');
+  }
+  if (opts.spec) {
+    const canvas = renderSpecSheetCanvas(opts.spec, opts);
+    if (canvas) downloadCanvasPNG(canvas, 'school-specification.png');
   }
 });
 
@@ -1511,8 +1549,11 @@ $('export-print').addEventListener('click', () => {
   };
   // The site plan leads, the way it does in a real set: you look at where the
   // building sits before you look at what is inside it.
-  if (wantsSite()) sheet(renderSitePlanCanvas(state, opts));
-  for (const i of exportScope()) sheet(renderFloorPlanCanvas(state, i, opts));
+  if (wantsSite()) sheet(renderSitePlanCanvas(state, sheetOpts(opts, null)));
+  for (const i of exportScope()) sheet(renderFloorPlanCanvas(state, i, sheetOpts(opts, i)));
+  // The specification goes last, the way it does in a set: the drawings say
+  // where things are, and the spec says what they are.
+  if (opts.spec) sheet(renderSpecSheetCanvas(opts.spec, opts));
   closeModal(exportOverlay);
   window.print();
 });
@@ -3069,6 +3110,41 @@ function reportSections(r) {
     ]);
   }
 
+  // Phase 16's section, and the second one that can be missing: it reads a
+  // rate table, and a design nobody has priced has nothing here to say rather
+  // than a column of zeroes. `cost.has` is the same flag `utilisation.has` is.
+  if (r.cost && r.cost.has) {
+    const c = r.cost.summary;
+    const top = r.cost.bySystem[0];
+    const worst = r.cost.worstRooms[0];
+    sec('Cost', [
+      row('<b>Estimate</b>', `<b>${c.symbol}${ft(c.total)}</b>`),
+      row('Per square foot', `${c.symbol}${c.perSqft.toFixed(2)}`),
+      top ? row('Biggest system', `${esc(top.label)} · ${Math.round(top.share * 100)}%`) : '',
+      worst ? row('Dearest room',
+        `${esc(worst.name || 'unnamed')} · ${c.symbol}${ft(worst.cost)}`) : '',
+      row('Not in any room', `${Math.round(c.sharedShare * 100)}%`),
+      row('Unpriced assemblies', c.unpriced
+        ? `<span class="warn">${c.unpriced}</span>` : 'none'),
+    ]);
+  }
+
+  // Phasing, when there is a plan. The cumulative column is the one a funding
+  // schedule is written against, so it is the one printed.
+  if (r.phasing && r.phasing.has) {
+    const p = r.phasing;
+    sec('Phasing', [
+      ...p.rows.map((ph) => row(
+        `${esc(ph.name)}${ph.shared ? ' <span class="warn">+shared</span>' : ''}`,
+        `<b>${p.symbol}${ft(ph.cumulative)}</b>`)),
+      p.unassigned
+        ? row('<span class="warn">Not in any phase</span>',
+          `${p.symbol}${ft(p.unassigned.cost)}`)
+        : '',
+      p.shared ? row('Shared &amp; sitework', `${p.symbol}${ft(p.shared.cost)}`) : '',
+    ]);
+  }
+
   if (r.takeoff) {
     const t = r.takeoff.totals;
     sec('Materials', [
@@ -3158,6 +3234,312 @@ $('report-csv').addEventListener('click', () => {
   a.download = 'school-analysis.csv';
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+
+// --- what it costs ---
+//
+// Phase 16. The rate table, the estimate it produces and the phasing plan, in
+// one sheet — because they are one conversation: these are the prices, this is
+// what they come to, and this is the order it gets built in.
+//
+// **Everything in here is an edit to the design.** A rate is not a session
+// preference and a phase is not a view setting: both travel in the file, both
+// go on the undo stack, and both mark the report stale the same way moving a
+// wall does. That is the whole reason `rates` and `phasing` are save keys
+// rather than localStorage.
+const costOverlay = $('cost-overlay');
+
+const download = (text, name, type = 'text/csv;charset=utf-8') => {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+};
+
+const ratesNow = () => normalizeRates(state.rates);
+const phasingNow = () => phasingOf(state);
+
+function commitRates(next) {
+  editor.pushUndo();
+  const r = normalizeRates(next);
+  if (isEmptyRates(r)) delete state.rates; else state.rates = r;
+  autosave(state);
+  reportBuild();
+  renderCostSheet();
+  updateUndoButtons();
+}
+
+function commitPhasing(next) {
+  editor.pushUndo();
+  const p = normalizePhasing(next);
+  if (isEmptyPhasing(p)) delete state.phasing; else state.phasing = p;
+  autosave(state);
+  reportBuild();
+  renderCostSheet();
+  updateUndoButtons();
+}
+
+// How much of each assembly this design contains — the column that says which
+// of sixty rows are worth filling in. Read off the report rather than
+// recomputed, which is why the sheet asks for a fresh one when it opens.
+function assemblyQuantities() {
+  const map = new Map();
+  const cost = report.data && report.data.cost;
+  if (cost) for (const l of cost.lines) map.set(l.key, l.qty);
+  return map;
+}
+
+function renderRateRows() {
+  const rates = ratesNow();
+  const byKey = new Map(rates.rows.map((r) => [r.key, r]));
+  const qty = assemblyQuantities();
+  const host = $('cost-rows');
+  let html = '';
+  let system = null;
+  // In use first inside each system: the rows that matter to *this* design are
+  // the ones somebody is going to type into, and making them hunt is how a
+  // rate table stays empty.
+  const rows = assemblies().slice().sort((a, b) =>
+    (qty.get(b.key) ? 1 : 0) - (qty.get(a.key) ? 1 : 0) || a.label.localeCompare(b.label));
+  for (const sys of [...new Set(assemblies().map((a) => a.system))]) {
+    const mine = rows.filter((a) => a.system === sys);
+    if (!mine.length) continue;
+    if (sys !== system) { html += `<div class="grp">${esc(systemEntry(sys).label)}</div>`; system = sys; }
+    for (const a of mine) {
+      const row = byKey.get(a.key);
+      const q = qty.get(a.key) || 0;
+      html += `<div class="rate-row${q > 0 ? ' used' : ''}" data-key="${esc(a.key)}">` +
+        `<span class="name" title="${esc(a.label)}">${esc(a.label)}</span>` +
+        `<span class="qty">${q > 0 ? `${ft(q)} ${a.unit}` : '—'}</span>` +
+        `<input type="number" min="0" step="0.01" data-field="rate" ` +
+        `placeholder="per ${esc(a.unit)}" value="${row ? row.rate : ''}" ` +
+        `aria-label="${esc(a.label)} rate" />` +
+        `<input type="text" data-field="date" maxlength="10" placeholder="${esc(rates.date || 'YYYY-MM-DD')}" ` +
+        `value="${esc(row && row.date ? row.date : '')}" aria-label="${esc(a.label)} date" />` +
+        `<input type="text" data-field="source" maxlength="120" placeholder="${esc(rates.source || 'source')}" ` +
+        `value="${esc(row && row.source ? row.source : '')}" aria-label="${esc(a.label)} source" />` +
+        '</div>';
+    }
+  }
+  host.innerHTML = html;
+  const unknown = rates.rows.filter((r) => !assemblies().some((a) => a.key === r.key));
+  $('cost-unknown').textContent = unknown.length
+    ? `${plural(unknown.length, 'rate')} in this file are for assemblies this build ` +
+      'does not measure. They are kept and saved, and they price nothing here.'
+    : '';
+}
+
+function renderCostReadout() {
+  const cost = report.data && report.data.cost;
+  const host = $('cost-readout');
+  if (!cost || !cost.has) {
+    host.innerHTML = '<div class="row"><span>Nothing is priced yet.</span>' +
+      '<span>Fill in a rate.</span></div>';
+    return;
+  }
+  const c = cost.summary;
+  const row = (a, b) => `<div class="row"><span>${a}</span><span>${b}</span></div>`;
+  const parts = [
+    row('<b>Estimate</b>', `<b>${c.symbol}${ft(c.total)}</b>`),
+    row('Per square foot', `${c.symbol}${c.perSqft.toFixed(2)} over ${ft(c.area)} ft²`),
+    ...cost.bySystem.map((sy) =>
+      row(esc(sy.label), `${c.symbol}${ft(sy.cost)} · ${Math.round(sy.share * 100)}%`)),
+    row('Priced assemblies', `${c.priced} of ${c.assemblies}`),
+    row('Unpriced', c.unpriced
+      ? `<span class="warn">${c.unpriced} counted as zero</span>` : 'none'),
+  ];
+  if (cost.worstRooms.length) {
+    parts.push(row('<b>Dearest rooms</b>', 'cost · per ft²'));
+    for (const r of cost.worstRooms) {
+      parts.push(row(esc(r.name || 'unnamed room'),
+        `${c.symbol}${ft(r.cost)} · ${c.symbol}${r.perSqft.toFixed(0)}/ft²`));
+    }
+  }
+  host.innerHTML = parts.join('');
+}
+
+function renderPhaseList() {
+  const plan = report.data && report.data.phasing;
+  const phasing = phasingNow();
+  const host = $('phase-list');
+  if (!phasing.phases.length) {
+    host.innerHTML = '<div class="empty">No phasing plan — the whole building at once.</div>';
+    $('phase-rooms').innerHTML = '';
+    return;
+  }
+  const costOf = new Map(plan ? plan.rows.map((r) => [r.id, r]) : []);
+  host.innerHTML = phasing.phases.map((p, i) => {
+    const r = costOf.get(p.id);
+    return `<div class="phase-row" data-phase="${esc(p.id)}">` +
+      `<input type="text" maxlength="60" value="${esc(p.name)}" data-field="name" aria-label="Phase name" />` +
+      `<span class="phase-meta">${r ? `${plural(r.rooms, 'room')} · ${ft(r.area)} ft²` : '—'}</span>` +
+      `<span class="phase-meta">${r && plan ? `${plan.symbol}${ft(r.cost)}` : ''}</span>` +
+      `<button data-act="shared" class="${p.shared ? 'primary' : ''}" ` +
+      `title="This phase carries the roof, the sitework and the lifts">🏗</button>` +
+      `<button data-act="up" ${i === 0 ? 'disabled' : ''} title="Earlier">↑</button>` +
+      `<button data-act="down" ${i === phasing.phases.length - 1 ? 'disabled' : ''} title="Later">↓</button>` +
+      `<button data-act="del" title="Remove this phase">✖</button>` +
+      '</div>';
+  }).join('');
+
+  // One select per room. Not a selection tool: a phasing plan is edited once
+  // and read many times, and a list somebody can tab through beats a mode
+  // they have to enter.
+  const opts = (sel) => ['<option value="">—</option>',
+    ...phasing.phases.map((p) =>
+      `<option value="${esc(p.id)}"${p.id === sel ? ' selected' : ''}>${esc(p.name)}</option>`)].join('');
+  const of = new Map();
+  for (const p of phasing.phases) for (const id of p.rooms) of.set(id, p.id);
+  let html = '';
+  state.floors.forEach((floor, i) => {
+    const shapes = floor.shapes || [];
+    if (!shapes.length) return;
+    html += `<div class="grp">${esc(floorLabel(i))}</div>`;
+    for (const shape of shapes) {
+      const id = roomIdOf(i, shape);
+      html += `<div class="room-row" data-room="${esc(id)}">` +
+        `<span>${esc(shape.name || '(unnamed)')}</span>` +
+        `<select aria-label="Phase for ${esc(shape.name || 'unnamed room')}">${opts(of.get(id) || '')}</select>` +
+        '</div>';
+    }
+  });
+  $('phase-rooms').innerHTML = html;
+}
+
+function renderCostSheet() {
+  if (costOverlay.classList.contains('hidden')) return;
+  const rates = ratesNow();
+  const summary = ratesSummary(rates);
+  const warn = $('cost-warning');
+  if (summary.example) {
+    warn.textContent = 'These are the shipped worked-example rates. They are ' +
+      'order-of-magnitude US figures, they are not a bid, they are not local ' +
+      'to you, and every total below inherits that. Type over them.';
+    warn.classList.remove('hidden');
+  } else if (summary.empty) {
+    warn.textContent = 'No rates yet. Nothing below is priced, and that is the ' +
+      'honest answer until somebody tells this tool what things cost.';
+    warn.classList.remove('hidden');
+  } else warn.classList.add('hidden');
+
+  $('cost-currency').value = rates.currency;
+  $('cost-date').value = rates.date || '';
+  $('cost-source').value = rates.source || '';
+  renderRateRows();
+  renderCostReadout();
+  renderPhaseList();
+}
+
+$('cost-currency').innerHTML = CURRENCIES
+  .map((c) => `<option value="${c}">${c}</option>`).join('');
+
+$('cost-open').addEventListener('click', () => {
+  if (report.stale || !report.data) reportBuild();
+  openModal(costOverlay, $('cost-currency'));
+  renderCostSheet();
+});
+$('cost-close').addEventListener('click', () => closeModal(costOverlay));
+
+$('cost-currency').addEventListener('change', (e) => {
+  commitRates({ ...ratesNow(), currency: e.target.value });
+});
+$('cost-date').addEventListener('change', (e) => {
+  commitRates({ ...ratesNow(), date: e.target.value });
+});
+$('cost-source').addEventListener('change', (e) => {
+  commitRates({ ...ratesNow(), source: e.target.value });
+});
+
+// Typing a rate is an edit; typing a date or a source beside a rate that isn't
+// there yet is not, because there is no row to hang it on.
+$('cost-rows').addEventListener('change', (e) => {
+  const input = e.target.closest('input');
+  const host = input && input.closest('.rate-row');
+  if (!host) return;
+  const key = host.dataset.key;
+  const field = input.dataset.field;
+  const rates = ratesNow();
+  const row = rates.rows.find((r) => r.key === key) || null;
+  if (field === 'rate') {
+    const raw = input.value.trim();
+    commitRates(setRate(rates, key, raw === '' ? null : Number(raw)));
+    return;
+  }
+  if (!row) { input.value = ''; return; }
+  commitRates(setRate(rates, key, row.rate, { [field]: input.value }));
+});
+
+$('cost-example').addEventListener('click', () => {
+  if (!isEmptyRates(ratesNow()) &&
+    !confirm('Replace the rate table with the worked example?')) return;
+  commitRates(exampleRates());
+});
+$('cost-clear').addEventListener('click', () => {
+  if (isEmptyRates(ratesNow())) return;
+  if (!confirm('Empty the rate table? Nothing will be priced.')) return;
+  commitRates(emptyRates());
+});
+$('cost-export').addEventListener('click', () => {
+  download(ratesCSV(ratesNow(), { quantities: assemblyQuantities() }), 'school-rates.csv');
+});
+$('cost-import').addEventListener('click', () => $('cost-file').click());
+$('cost-file').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const res = importRatesCSV(await file.text(), { merge: ratesNow() });
+  if (!res.found) { alert('No Key and Rate columns in that file.'); return; }
+  commitRates(res.rates);
+  // Said out loud rather than swallowed: an import that quietly drops eleven
+  // rates is an import that prices a different building.
+  alert(`Read ${plural(res.read, 'rate')}.` +
+    (res.skipped ? ` ${plural(res.skipped, 'row')} had no usable number.` : '') +
+    (res.unknown ? ` ${res.unknown} are for assemblies this build does not measure — kept, unused.` : ''));
+});
+
+$('cost-csv').addEventListener('click', () => {
+  if (report.stale || !report.data) reportBuild();
+  const r = report.data;
+  const parts = [];
+  if (r.spec) parts.push(specCSV(r.spec));
+  if (r.cost) parts.push(costCSV(r.cost));
+  if (r.phasing && r.phasing.has) parts.push(phasingCSV(r.phasing));
+  download(parts.join('\r\n'), 'school-cost.csv');
+});
+
+$('phase-storey').addEventListener('click', () => commitPhasing(phaseByStorey(state)));
+$('phase-add').addEventListener('click', () => commitPhasing(addPhase(phasingNow())));
+$('phase-clear').addEventListener('click', () => {
+  if (isEmptyPhasing(phasingNow())) return;
+  if (!confirm('Drop the phasing plan? The building is costed all at once again.')) return;
+  commitPhasing(emptyPhasing());
+});
+
+$('phase-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  const host = btn && btn.closest('.phase-row');
+  if (!host) return;
+  const id = host.dataset.phase;
+  const p = phasingNow();
+  if (btn.dataset.act === 'up') commitPhasing(movePhase(p, id, -1));
+  else if (btn.dataset.act === 'down') commitPhasing(movePhase(p, id, 1));
+  else if (btn.dataset.act === 'shared') commitPhasing(claimShared(p, id));
+  else if (btn.dataset.act === 'del') commitPhasing(removePhase(p, id));
+});
+$('phase-list').addEventListener('change', (e) => {
+  const input = e.target.closest('input[data-field="name"]');
+  const host = input && input.closest('.phase-row');
+  if (!host) return;
+  commitPhasing(renamePhase(phasingNow(), host.dataset.phase, input.value));
+});
+
+$('phase-rooms').addEventListener('change', (e) => {
+  const sel = e.target.closest('select');
+  const host = sel && sel.closest('.room-row');
+  if (!host) return;
+  commitPhasing(assignRooms(phasingNow(), sel.value || null, [host.dataset.room]));
 });
 
 // --- the generator ---
