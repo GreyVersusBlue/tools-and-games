@@ -372,14 +372,29 @@
     }
     #right-rail > * { pointer-events: auto; }
 
-    /* sky panel — the sun's own controls. */
-    #env-panel {
-      padding: 10px 12px; width: 230px;
-    }
-    #env-panel h2 {
+    /* Rail panels share a header and a width, and every one folds to its
+       header — five of them want this one column, and the report used to sit
+       fourth in a stack that scrolled. The fold is a real button (keyboard,
+       aria-expanded), and main.js remembers the folds per browser. */
+    .rail-panel { padding: 10px 12px; width: 236px; }
+    #report-panel.rail-panel { width: 268px; }
+    .rail-panel h2 {
       font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
     }
+    .rail-fold {
+      background: none; border: 0; padding: 0; font: inherit; color: inherit;
+      letter-spacing: inherit; text-transform: inherit; cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .rail-fold:hover { background: none; color: var(--text); }
+    .rail-fold::before { content: '\25be'; color: var(--text-dim); }
+    .rail-panel.folded .rail-fold::before { content: '\25b8'; }
+    .rail-panel.folded > :not(h2) { display: none; }
+    .rail-panel.folded h2 { margin-bottom: 0; }
+
+    /* sky panel — the sun's own controls. */
     #env-panel label {
       display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
@@ -409,11 +424,6 @@
        them. Same rail and same rules as the sky and the sound: an editor
        panel that keeps working in the walkthrough, because a school with
        people in it is worth watching from both. */
-    #life-panel { padding: 10px 12px; width: 234px; }
-    #life-panel h2 {
-      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
-      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
-    }
     #life-panel label {
       display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
@@ -458,12 +468,6 @@
        rebuilt. Editor-side by nature — you fix a finding by editing — but it
        stays in the rail during a walkthrough because a fire drill and an
        egress table are two views of the same sentence. */
-    #report-panel { padding: 10px 12px; width: 268px; }
-    #report-panel h2 {
-      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
-      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
-      display: flex; justify-content: space-between; align-items: center; gap: 8px;
-    }
     #report-panel label {
       display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
@@ -524,11 +528,6 @@
        at all: who else is in it with you. It lives on the right rail with the
        sun and the report because presence has to survive the walkthrough —
        seeing where somebody else is standing is most of the point. */
-    #session-panel { padding: 10px 12px; width: 236px; }
-    #session-panel h2 {
-      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
-      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
-    }
     #session-panel label {
       display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
@@ -589,11 +588,6 @@
        Same rail, same rules as the sky: it is an editor panel that keeps
        working in the walkthrough, because the acoustics readout is only ever
        about where you are standing. */
-    #audio-panel { padding: 10px 12px; width: 230px; }
-    #audio-panel h2 {
-      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
-      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
-    }
     #audio-panel label {
       display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
@@ -1410,8 +1404,44 @@
   </div>
 
   <div id="right-rail">
-  <div id="env-panel" class="panel" role="group" aria-label="Sun and sky">
-    <h2>Sun &amp; Sky</h2>
+  <!-- The report leads the rail: it is the panel with the verdicts, and it
+       used to sit fourth in a column that scrolled. -->
+  <div id="report-panel" class="panel rail-panel hidden" role="group" aria-label="Analysis report">
+    <h2><button class="rail-fold" aria-expanded="true">Report</button> <span id="report-stale" class="hidden">stale</span></h2>
+
+    <div id="report-verdict" role="status" aria-live="polite">
+      <span class="mark">•</span>
+      <span class="line">Checking…</span>
+    </div>
+
+    <label class="opt">
+      <input type="checkbox" id="report-sprinklered" checked />
+      Sprinklered building
+    </label>
+    <label class="opt" style="gap: 6px">
+      Code
+      <select id="report-edition" style="flex: 1">
+        <option value="ibc2021">IBC 2021</option>
+        <option value="ibc2018">IBC 2018</option>
+        <option value="ibc2024">IBC 2024</option>
+      </select>
+    </label>
+    <p class="note" style="margin: 4px 0 0">
+      Both are facts about the building, so both are saved with it.
+    </p>
+
+    <div id="report-acts">
+      <button id="report-refresh" title="Re-read the model">↻ Refresh</button>
+      <button id="report-csv" title="Download every number as a spreadsheet">⬇ CSV</button>
+      <button id="cost-open" title="The rate table this design is priced against, and the phasing plan">💲 Costs</button>
+    </div>
+
+    <div id="report-findings"></div>
+    <div id="report-readout"></div>
+  </div>
+
+  <div id="env-panel" class="panel rail-panel" role="group" aria-label="Sun and sky">
+    <h2><button class="rail-fold" aria-expanded="true">Sun &amp; Sky</button></h2>
     <div class="env-presets" id="env-presets"></div>
 
     <label for="env-time">Time of day <span class="env-value" id="env-time-value">10:00 am</span></label>
@@ -1435,8 +1465,8 @@
     <div id="env-readout"></div>
   </div>
 
-  <div id="audio-panel" class="panel hidden" role="group" aria-label="Sound">
-    <h2>Sound</h2>
+  <div id="audio-panel" class="panel rail-panel hidden" role="group" aria-label="Sound">
+    <h2><button class="rail-fold" aria-expanded="true">Sound</button></h2>
 
     <label for="audio-volume">Volume <span class="env-value" id="audio-volume-value">70%</span></label>
     <input id="audio-volume" type="range" min="0" max="100" step="1" value="70" />
@@ -1449,8 +1479,8 @@
     <div id="audio-readout"></div>
   </div>
 
-  <div id="life-panel" class="panel hidden" role="group" aria-label="School life">
-    <h2>School Life</h2>
+  <div id="life-panel" class="panel rail-panel hidden" role="group" aria-label="School life">
+    <h2><button class="rail-fold" aria-expanded="true">School Life</button></h2>
 
     <div id="life-clock">
       <span id="life-time">10:00 am</span>
@@ -1496,42 +1526,8 @@
     <div id="life-readout"></div>
   </div>
 
-  <div id="report-panel" class="panel hidden" role="group" aria-label="Analysis report">
-    <h2>Report <span id="report-stale" class="hidden">stale</span></h2>
-
-    <div id="report-verdict" role="status" aria-live="polite">
-      <span class="mark">•</span>
-      <span class="line">Checking…</span>
-    </div>
-
-    <label class="opt">
-      <input type="checkbox" id="report-sprinklered" checked />
-      Sprinklered building
-    </label>
-    <label class="opt" style="gap: 6px">
-      Code
-      <select id="report-edition" style="flex: 1">
-        <option value="ibc2021">IBC 2021</option>
-        <option value="ibc2018">IBC 2018</option>
-        <option value="ibc2024">IBC 2024</option>
-      </select>
-    </label>
-    <p class="note" style="margin: 4px 0 0">
-      Both are facts about the building, so both are saved with it.
-    </p>
-
-    <div id="report-acts">
-      <button id="report-refresh" title="Re-read the model">↻ Refresh</button>
-      <button id="report-csv" title="Download every number as a spreadsheet">⬇ CSV</button>
-      <button id="cost-open" title="The rate table this design is priced against, and the phasing plan">💲 Costs</button>
-    </div>
-
-    <div id="report-findings"></div>
-    <div id="report-readout"></div>
-  </div>
-
-  <div id="session-panel" class="panel hidden" role="group" aria-label="Shared session">
-    <h2>Session</h2>
+  <div id="session-panel" class="panel rail-panel hidden" role="group" aria-label="Shared session">
+    <h2><button class="rail-fold" aria-expanded="true">Session</button></h2>
 
     <div id="session-state">Not in a session — this design is yours alone.</div>
 

@@ -1094,6 +1094,37 @@ function reserveForFloorPanel() {
   reserve();
 }
 
+// The rail panels fold to their headers, and the folds survive a reload — a
+// browser that always wants the sky open and the report closed gets to say so
+// once. Opening a panel from the topbar unfolds it: that press means "show
+// me", not "show me the header".
+const RAIL_FOLDS_KEY = 'sg-rail-folds';
+function railSetFold(panel, folded, save = true) {
+  panel.classList.toggle('folded', folded);
+  const btn = panel.querySelector('.rail-fold');
+  if (btn) btn.setAttribute('aria-expanded', String(!folded));
+  if (!save) return;
+  try {
+    const all = JSON.parse(localStorage.getItem(RAIL_FOLDS_KEY) || '{}');
+    all[panel.id] = folded;
+    localStorage.setItem(RAIL_FOLDS_KEY, JSON.stringify(all));
+  } catch { /* a private window remembers nothing, which is fine */ }
+}
+function railUnfold(panel) {
+  if (panel.classList.contains('folded')) railSetFold(panel, false);
+}
+{
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(RAIL_FOLDS_KEY) || '{}'); } catch { saved = {}; }
+  for (const panel of document.querySelectorAll('.rail-panel')) {
+    if (saved[panel.id]) railSetFold(panel, true, false);
+    const btn = panel.querySelector('.rail-fold');
+    if (btn) btn.addEventListener('click', () => {
+      railSetFold(panel, !panel.classList.contains('folded'));
+    });
+  }
+}
+
 // --- the sheet ---
 //
 // Phase 13. The drawing surface was 160 x 120 ft and there was no way to
@@ -2262,6 +2293,7 @@ $('env-btn').addEventListener('click', () => {
   const hidden = envPanel.classList.toggle('hidden');
   $('env-btn').classList.toggle('off', hidden);
   $('env-btn').setAttribute('aria-pressed', String(!hidden));
+  if (!hidden) railUnfold(envPanel);
 });
 
 // --- sound panel ---
@@ -2387,7 +2419,7 @@ $('audio-btn').addEventListener('click', () => {
   const hidden = audioPanel.classList.toggle('hidden');
   $('audio-btn').classList.toggle('off', hidden);
   $('audio-btn').setAttribute('aria-pressed', String(!hidden));
-  if (!hidden) renderAudioPanel();
+  if (!hidden) { railUnfold(audioPanel); renderAudioPanel(); }
 });
 
 
@@ -2784,7 +2816,7 @@ $('life-btn').addEventListener('click', () => {
   const hidden = lifePanel.classList.toggle('hidden');
   $('life-btn').classList.toggle('off', hidden);
   $('life-btn').setAttribute('aria-pressed', String(!hidden));
-  if (!hidden) renderLifePanel();
+  if (!hidden) { railUnfold(lifePanel); renderLifePanel(); }
 });
 
 $('life-toggle').addEventListener('click', () => {
@@ -3250,6 +3282,7 @@ $('report-btn').addEventListener('click', () => {
   $('report-btn').classList.toggle('off', hidden);
   $('report-btn').setAttribute('aria-pressed', String(!hidden));
   if (hidden) { clearTimeout(report.timer); return; }
+  railUnfold(reportPanel);
   if (report.stale || !report.data) reportBuild();
   else renderReportPanel();
   // The rail is a scrolling column and this is the tallest thing in it: with
@@ -4712,7 +4745,7 @@ function renderSessionPanel() {
 $('session-btn').addEventListener('click', () => {
   const panel = $('session-panel');
   const hidden = panel.classList.toggle('hidden');
-  if (!hidden) renderSessionPanel();
+  if (!hidden) { railUnfold(panel); renderSessionPanel(); }
   $('session-btn').setAttribute('aria-pressed', String(!hidden));
 });
 
