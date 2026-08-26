@@ -50,7 +50,7 @@ import {
   computeFloorPlan, drawPlanBody,
 } from './blueprint.js';
 import { buildReport, reportCSV } from './report.js';
-import { codeOf, normalizeCode, isDefaultCode } from './occupancy.js';
+import { codeOf, normalizeCode, isDefaultCode, USES } from './occupancy.js';
 import { isTouchCapable, joystickAxes } from './touch.js';
 // --- Phase 8 ---
 import {
@@ -523,6 +523,43 @@ roomFinish.addEventListener('change', (e) => {
   editor.setRoomFinish(e.target.value, undefined);
   $('status').textContent =
     `Room — click a floor area to lay ${e.target.selectedOptions[0].textContent.toLowerCase()}.`;
+});
+
+// --- what the room *is* ---
+//
+// v11's two room-record fields. The tool guesses both — the occupancy group
+// off the room's name, the occupant load off its area — and these are how
+// somebody says otherwise. Empty means "keep guessing", which is what every
+// version before this one did with nowhere to record an answer.
+const roomUse = $('room-use');
+{
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'From the name';
+  roomUse.appendChild(none);
+  for (const u of USES) {
+    const o = document.createElement('option');
+    o.value = u.key;
+    o.textContent = u.label;
+    roomUse.appendChild(o);
+  }
+}
+roomUse.addEventListener('change', (e) => {
+  editor.setRoomUse(e.target.value || null, undefined);
+  $('status').textContent = e.target.value
+    ? `Room — click a room to read it as ${e.target.selectedOptions[0].textContent.toLowerCase()}.`
+    : 'Room — click a room to read its use off its name again.';
+});
+
+const roomLoad = $('room-load');
+roomLoad.addEventListener('change', (e) => {
+  const v = parseInt(e.target.value, 10);
+  editor.setRoomUse(undefined, Number.isFinite(v) && v > 0 ? v : null);
+});
+$('room-load-clear').addEventListener('click', () => {
+  roomLoad.value = '';
+  editor.setRoomUse(undefined, null);
+  $('status').textContent = 'Room — occupant load back to what the area says.';
 });
 
 // Paint. The first swatch is "none", which is not a colour but the absence of

@@ -62,6 +62,12 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   let roomColor = ROOM_COLORS[0];
   let roomFinish = DEFAULT_FINISH;
   let roomPaint = null;      // null = whatever the renderer paints by default
+  // v11's two room-record fields, on the same terms as the finishes: the room
+  // tool carries them and writes them where you click. Null means "work it
+  // out" — from the name for the group, from the area for the load — which is
+  // what every version before this one did with no way to say otherwise.
+  let roomGroup = null;
+  let roomLoad = null;
   let wallKind = 'wall';
   let doorKind = 'single';
   // Per-door options the panel sets and every new opening inherits. `hand` is
@@ -389,10 +395,14 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       if (!shape) return;
       shape.name = roomName || 'Room';
       shape.color = roomColor;
+      shape.group = roomGroup;
+      shape.load = roomLoad;
       applyFinish(shape, roomFinish, roomPaint);
       strokeChanged = true;
-      onStatus && onStatus(
-        `${shape.name} — ${Math.round(shapeArea(shape)).toLocaleString()} ft².`);
+      const said = [`${Math.round(shapeArea(shape)).toLocaleString()} ft²`];
+      if (roomGroup) said.push(`read as ${roomGroup}`);
+      if (roomLoad) said.push(`${roomLoad} occupants`);
+      onStatus && onStatus(`${shape.name} — ${said.join(', ')}.`);
     } else if (tool === 'erase') {
       const seg = nearestSegment(f, wx, wz, SEG_GRAB);
       if (seg) {
@@ -914,6 +924,14 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     },
     get roomFinish() { return roomFinish; },
     get roomPaint() { return roomPaint; },
+    // ...and v11's two, which the room tool writes onto the record rather
+    // than onto the geometry.
+    setRoomUse(group, load) {
+      if (group !== undefined) roomGroup = group || null;
+      if (load !== undefined) roomLoad = Number.isFinite(load) && load > 0 ? Math.round(load) : null;
+    },
+    get roomGroup() { return roomGroup; },
+    get roomLoad() { return roomLoad; },
     setPropType: (t) => propTool.setType(t),
     get propType() { return propTool.currentType; },
     // The prop tool's second knob (Phase 11): the paint. Same shape as the

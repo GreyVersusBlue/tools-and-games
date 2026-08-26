@@ -989,6 +989,21 @@
       <label for="paint-swatches" style="margin-top:10px">Wall paint</label>
       <div id="paint-swatches"></div>
     </div>
+    <div id="use-row">
+      <label for="room-use">Occupancy group</label>
+      <select id="room-use"></select>
+      <label for="room-load" style="margin-top:10px">Occupant load</label>
+      <div class="flip">
+        <input id="room-load" type="number" min="0" max="9999" step="1"
+               placeholder="from the area" style="flex:1" />
+        <button id="room-load-clear" type="button" title="Back to the area's own answer">Clear</button>
+      </div>
+      <div class="keys">
+        Both are answers the tool would otherwise guess: the group comes from
+        the room's name, and the load from its area. Say either and the report
+        stops hedging about it.
+      </div>
+    </div>
     <div id="poly-extra" class="hidden">
       <button id="hole-btn" type="button" aria-pressed="false" title="Draw inside a room to carve an opening (H)">✂︎ Cut hole (H)</button>
       <div class="keys">
