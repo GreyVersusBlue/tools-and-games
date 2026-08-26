@@ -18,6 +18,7 @@ import {
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
 } from './shapes.js';
 import { paintCell, frozenAt } from './paint.js';
+import { step, apply, clone } from './history.js';
 import { applyFinish, DEFAULT_FINISH } from './finish.js';
 import { initPolyEdit } from './polyedit.js';
 import { initPropEdit } from './propedit.js';
@@ -132,67 +133,111 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
 
   // --- undo/redo ---
   //
-  // A snapshot is JSON, which is what makes undo a two-line feature and what
-  // the v1 retrospective calls out as O(design). Phase 8 added the one field
-  // that breaks that arithmetic: an `overlay` carries an image as a data URL,
-  // and stringifying up to three megabytes of base64 on every pointerdown,
-  // a hundred deep, is a hundred megabytes of undo history for a picture
-  // nobody edits.
+  // An undo step used to be a JSON clone of the whole design, which is what
+  // made undo a two-line feature and what the v1 retrospective named as the
+  // arithmetic that would bend first. Phase 12 gave every room an id, and with
+  // that a step can say *what changed* instead: `history.js` diffs the design
+  // against the one this file has been holding since the last commit, and the
+  // stack keeps the two patches rather than two buildings.
   //
-  // So the overlay travels beside the JSON rather than inside it, by
-  // reference. That is safe for exactly one reason and it is worth stating:
-  // **an overlay record is never mutated in place.** Every change to it —
-  // move, turn, fade, calibrate — goes through overlay.js's `setOverlay`,
-  // which returns a new normalized object, so a reference held here is a
-  // snapshot of what the overlay was, not a live view of what it is.
-  // Phase 9 adds the second record with the same problem and gives it the
-  // same answer: `models` carries whole glTF files as data URLs, so it
-  // travels beside the JSON by reference too. The same one reason makes it
-  // safe — models.js never mutates a record or its array in place; every
-  // edit (`addModel`, `removeModel`, `updateModel`) returns new ones.
-  function snapshot() {
+  // **The commit is lazy, and that is what keeps every tool's calling
+  // convention.** Fifteen call sites do `pushUndo()` and then mutate; a
+  // handful then decide the edit was a no-op. So `pushUndo()` does not push
+  // anything — it *closes* whatever edit was open and clears the redo stack.
+  // A gesture that changed nothing produces an empty diff and costs no
+  // history, which is what `dropUndo()` used to be for and is why it is now a
+  // no-op that nobody has to remember to call.
+  //
+  // The overlay and the model library still travel beside the diff, by
+  // reference, for the reason Phase 8 and Phase 9 gave: each carries megabytes
+  // of data URL that no edit here touches, and neither record is ever mutated
+  // in place — every change to one goes through a function that returns a new
+  // object — so a reference held here is what it was, not a view of what it is.
+  const design = () => {
+    const { overlay, models, ...rest } = getState();
+    return rest;
+  };
+  const carried = () => {
     const s = getState();
-    const { overlay, models, ...rest } = s;
-    return { json: JSON.stringify(rest), overlay: overlay || null, models: models || null };
+    return { overlay: s.overlay || null, models: s.models || null };
+  };
+
+  // The design as of the last commit, and what was hanging off it.
+  let baseline = clone(design());
+  let baseCarried = carried();
+
+  // Close the open edit, if it changed anything. Returns true if it did.
+  function commit() {
+    const now = design();
+    const st = step(baseline, now);
+    const held = carried();
+    const carriedMoved = held.overlay !== baseCarried.overlay || held.models !== baseCarried.models;
+    if (!st && !carriedMoved) return false;
+    undoStack.push({
+      back: st ? st.back : undefined,
+      fwd: st ? st.fwd : undefined,
+      before: baseCarried,
+      after: held,
+    });
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    baseline = clone(now);
+    baseCarried = held;
+    return true;
   }
 
   function pushUndo() {
-    undoStack.push(snapshot());
-    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    commit();
     redoStack.length = 0;
   }
 
-  function restore(snap) {
+  // Put the design back to `data`, which is a whole plain-JSON design rather
+  // than a patch — the patches have already been applied to produce it.
+  //
+  // Keys it doesn't have are keys the design didn't have. `Object.assign` only
+  // ever adds and overwrites, so without the delete pass an undo across the
+  // moment something was *first* written — the first site region, the first
+  // grading stroke, the first tracing image — leaves that record behind and
+  // the undo silently does nothing. Every optional record on the state
+  // (terrain, site, roof, code, life, overlay, tours, models) is one of these.
+  function restore(data, held) {
     const s = getState();
-    const data = JSON.parse(snap.json);
-    if (snap.overlay) data.overlay = snap.overlay;
-    if (snap.models) data.models = snap.models;
-    // Keys the snapshot doesn't have are keys the design didn't have.
-    // `Object.assign` only ever adds and overwrites, so without this an undo
-    // across the moment something was *first* written — the first site region,
-    // the first grading stroke, the first tracing image — leaves that record
-    // behind and the undo silently does nothing. Every optional record on the
-    // state (terrain, site, roof, life, overlay, tours, models) is one of
-    // these.
-    for (const key of Object.keys(s)) if (!(key in data)) delete s[key];
-    Object.assign(s, data);
+    const next = { ...data };
+    if (held.overlay) next.overlay = held.overlay;
+    if (held.models) next.models = held.models;
+    for (const key of Object.keys(s)) if (!(key in next)) delete s[key];
+    Object.assign(s, next);
+    baseline = clone(data);
+    baseCarried = held;
     onChange({ structural: true });
     poly.refresh();
   }
 
   function undo() {
+    commit();
     if (!undoStack.length) return;
     curveMemo = null;
-    redoStack.push(snapshot());
-    restore(undoStack.pop());
+    const entry = undoStack.pop();
+    redoStack.push(entry);
+    restore(apply(baseline, entry.back), entry.before);
   }
 
   function redo() {
     if (!redoStack.length) return;
     curveMemo = null;
-    undoStack.push(snapshot());
-    restore(redoStack.pop());
+    const entry = redoStack.pop();
+    undoStack.push(entry);
+    restore(apply(baseline, entry.fwd), entry.after);
   }
+
+  // Forget the open edit without recording it.
+  function markClean() {
+    baseline = clone(design());
+    baseCarried = carried();
+  }
+
+  // What the history actually costs, for anything that wants to say so.
+  const historyBytes = () =>
+    undoStack.reduce((n, e) => n + JSON.stringify(e.back || null).length, 0);
 
   // --- polygon tools ---
   // polyedit owns its own overlay and calls back in here for undo, redraws and
@@ -201,7 +246,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
+      pushUndo, dropUndo,
       changed: (info = {}) => onChange({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
       holeModeChanged: (v) => onHoleMode && onHoleMode(v),
@@ -221,7 +266,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
+      pushUndo, dropUndo,
       changed: (info = {}) => onChange({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
@@ -234,7 +279,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
+      pushUndo, dropUndo,
       changed: (info = {}) => onChange({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
@@ -247,7 +292,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
+      pushUndo, dropUndo,
       changed: (info = {}) => onChange({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
@@ -259,7 +304,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
+      pushUndo, dropUndo,
       changed: (info = {}) => onChange({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
@@ -272,7 +317,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
+      pushUndo, dropUndo,
       changed: (info = {}) => onChange({ structural: false, overlay: true, ...info }),
       status: (text) => onStatus && onStatus(text),
       setOverlay: (o, info = {}) => {
@@ -491,7 +536,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const had = seg.shape.rings[seg.ring].openings.some((o) => o.seg === seg.seg);
     const count = curveSegment(seg.shape, seg.ring, seg.seg, delta);
     if (count <= 1) {
-      dropUndoTop();
+      dropUndo();
       onStatus && onStatus(`Curve — that wall is only ${segLength(a, b).toFixed(1)}ft; there's no room to bend it.`);
       return true;
     }
@@ -503,7 +548,11 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     return true;
   }
 
-  function dropUndoTop() { undoStack.pop(); }
+  // Nothing to drop: an edit that changed nothing diffs to nothing, so a
+  // gesture that gave up costs no history without having to say so. Kept as a
+  // hook because six tools call it, and because the day one of them wants to
+  // *actually* discard a change it will want somewhere to say that.
+  function dropUndo() {}
 
   // Keys this file claims for itself, before the sub-tools get a look in.
   function editorKey(e) {
@@ -594,7 +643,6 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     strokeActive = false;
     lastWorld = null;
     if (!strokeChanged) {
-      undoStack.pop();
       // A stroke that built nothing is the one case worth a word — otherwise
       // the tool looks broken.
       if (overhangRefused) reportRefusal();
@@ -919,13 +967,21 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     shapeCopy: () => poly.sectionCopy(),
     shapePaste: () => poly.sectionPaste(),
     shapeDuplicate: () => poly.sectionDuplicate(),
-    undo, redo, pushUndo,
-    // Discard the most recent pushUndo() when the edit it was staged for
-    // turned out to be a no-op.
-    dropUndo() { undoStack.pop(); },
-    get canUndo() { return undoStack.length > 0; },
+    undo, redo, pushUndo, dropUndo,
+    // `canUndo` has to close the open edit before it can answer: the last
+    // gesture is still pending until something commits it.
+    get canUndo() { return undoStack.length > 0 || !!step(baseline, design()); },
     get canRedo() { return redoStack.length > 0; },
-    clearHistory() { undoStack.length = 0; redoStack.length = 0; },
+    historyBytes,
+    clearHistory() {
+      undoStack.length = 0;
+      redoStack.length = 0;
+      markClean();
+    },
+    // Forget the open edit without recording it — what a design that arrived
+    // from somewhere else (a shared link, a fresh start) wants, so that the
+    // next thing somebody draws is the first thing they can undo.
+    markClean,
     setEnabled(v) {
       enabled = v;
       // Walkthrough hides the overlay entirely; an unfinished outline doesn't

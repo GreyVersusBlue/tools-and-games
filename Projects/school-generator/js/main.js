@@ -173,6 +173,9 @@ const editor = initEditor({
     // Placing or deleting a fixture changes what the light budget is doing,
     // and the sky panel is the only place that says so.
     renderEnvReadout();
+    // The code settings are part of the design too, so an undo can put them
+    // back and the two controls have to follow.
+    renderCodePanel();
     // A prop placed, painted, deleted or undone can change which swatch is
     // lit and what colour the chip shows.
     if (editor.tool === 'prop') syncPropPaint();
@@ -1092,6 +1095,12 @@ function adoptState(next, opts = {}) {
   tourIndex = 0;
   renderTourPanel();
   if (!opts.keepAutosave) autosaveNow(state);
+  // A whole different design replaced the one the editor was holding. Callers
+  // that want the swap itself to be undoable push an undo step *before* they
+  // call in here (loading a file, opening a saved slot); everyone else — a
+  // shared link, a generated school, a fresh start — wants the new design to
+  // be where the history begins.
+  if (!opts.undoable) editor.markClean();
   updateUndoButtons();
 }
 
@@ -1104,7 +1113,7 @@ $('file-input').addEventListener('change', async (e) => {
   if (!file) return;
   try {
     editor.pushUndo();
-    adoptState(await loadFromFile(file, { onMigrate }));
+    adoptState(await loadFromFile(file, { onMigrate }), { undoable: true });
     sayIfMigrated();
   } catch (err) {
     alert('Could not load that file: ' + err.message);
@@ -1150,7 +1159,7 @@ function renderDesignsList() {
     loadBtn.addEventListener('click', () => {
       try {
         editor.pushUndo();
-        adoptState(loadDesign(d.id, { onMigrate }));
+        adoptState(loadDesign(d.id, { onMigrate }), { undoable: true });
         sayIfMigrated();
         designsOverlay.classList.add('hidden');
         $('status').textContent = `Loaded "${d.name}"`;
@@ -1276,7 +1285,7 @@ $('new-btn').addEventListener('click', () => {
   if (!confirm('Start a new empty school? (Current design stays in your undo history.)')) return;
   editor.pushUndo();
   clearAutosave();
-  adoptState(createState(), { keepAutosave: true });
+  adoptState(createState(), { keepAutosave: true, undoable: true });
 });
 
 $('fx-btn').addEventListener('click', () => {
