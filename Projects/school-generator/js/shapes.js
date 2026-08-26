@@ -34,7 +34,11 @@ import {
   cellIdx, edgeHIdx, edgeVIdx, inGrid, getCell, floodRegion,
 } from './grid.js';
 
-export const MAX_SHAPES = 128;      // per floor
+// Per floor. Raised from 128 in Phase 12: the polygon is now the only
+// representation of a room, so this is the cap on *every* room on a storey
+// rather than on the handful the lattice couldn't say. A generated
+// three-storey high school bakes to about sixty a floor.
+export const MAX_SHAPES = 512;
 export const MAX_RING_PTS = 400;
 export const MAX_HOLES = 24;
 export const MIN_SEG = 0.25;        // ft — closer than this and it's the same point
@@ -391,8 +395,9 @@ export function nearestVertex(floor, x, z, maxDist = Infinity) {
 // ---------- construction ----------
 
 // Ids come off the same monotonic counter props and links use, so a shape, a
-// prop and a stair can never collide in a save file.
-function takeId(state) {
+// prop and a stair can never collide in a save file. Exported since Phase 12,
+// because lattice.js bakes rooms too and they take their ids from here.
+export function takeId(state) {
   const id = Math.max(1, Math.floor(state.nextId || 1));
   state.nextId = id + 1;
   return id;
