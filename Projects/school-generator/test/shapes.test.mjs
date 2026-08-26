@@ -16,7 +16,7 @@ import {
   insertVertex, deleteVertex, moveVertex, setSegWall, addOpening, toggleOpening, orientRing,
   snapPoint, constrainAngle, enclosingShape,
   arcGeometry, arcPoints, curveSegment, straightenRun, MAX_BULGE, MIN_ARC_CHORD,
-  ringLen, LEAF_SINGLE,
+  ringLen, LEAF_SINGLE, segDir, unitDir, parallelDirs, PARALLEL_TOL,
   normalizeShape, cloneShape,
   translateShape, rotateShape90, mirrorShapeX, rotatePoint90, mirrorPointX,
   addShapeCopy, totalShapeArea,
@@ -115,6 +115,74 @@ test('nearest segment and vertex find what the cursor is over', () => {
   assert.equal(shapeAt(floor, 10, 6).id, shape.id);
   assert.equal(shapeAt(floor, 100, 100), null);
   assert.equal(shapeById(floor, shape.id).id, shape.id);
+});
+
+// ---------- staying on one line ----------
+//
+// Phase 13: the wall tool drags along a run, and used to grab whichever
+// segment was nearest — so drifting a foot sideways near a corner built the
+// wall at right angles to the one you were drawing.
+
+test('a direction is a line, not an arrow: opposite runs are parallel', () => {
+  const ring = makeShape(RECT).rings[0];
+  const north = segDir(ring, 0);
+  const south = segDir(ring, 2);
+  assert.ok(parallelDirs(north, south), 'a ring is wound; its two long walls run opposite ways');
+  assert.equal(parallelDirs(north, segDir(ring, 1)), false, 'the corner is not');
+  // Free-hand slop is inside the tolerance; a real turn is not.
+  const off = (deg) => ({ x: Math.cos((deg * Math.PI) / 180), z: Math.sin((deg * Math.PI) / 180) });
+  assert.ok(parallelDirs(off(0), off(30)), 'a chord of a curve is the same wall');
+  assert.equal(parallelDirs(off(0), off(45)), false, 'a chamfer is a corner');
+  assert.equal(parallelDirs(off(0), off(90)), false);
+  assert.ok(parallelDirs(off(0), off(180 - 30)), 'and the same, measured the other way round');
+  assert.equal(unitDir({ x: 3, z: 3 }, { x: 3, z: 3 }), null, 'a degenerate run has no direction');
+  assert.ok(parallelDirs(off(0), null), 'no direction to compare is not a refusal');
+});
+
+test('nearestSegment kept to one line finds the parallel wall, not the corner', () => {
+  const s = createState();
+  addShape(s, 0, RECT, {});
+  const floor = s.floors[0];
+  const along = segDir(makeShape(RECT).rings[0], 0);   // the north wall, +x
+
+  // A foot past the corner and a foot outside: the east wall is nearer, and
+  // it is the one the tool used to build.
+  const free = nearestSegment(floor, 20.4, 1, 1.6);
+  assert.equal(free.seg, 1, 'unfiltered, the corner wins');
+
+  const kept = nearestSegment(floor, 20.4, 1, 1.6, { parallelTo: along });
+  assert.equal(kept.seg, 0, 'the north wall is still well within reach');
+  assert.ok(parallelDirs(kept.dir, along));
+
+  // Drift far enough that no parallel run is in reach and the answer is
+  // nothing at all, rather than something at right angles.
+  assert.equal(nearestSegment(floor, 21, 6, 1.6, { parallelTo: along }), null);
+  assert.ok(nearestSegment(floor, 21, 6, 1.6), 'which is not the same as nothing being there');
+});
+
+test('a curved wall tessellates finely enough for a drag to follow it round', () => {
+  // The editor's wall drag moves from run to run along the same line, rolling
+  // its direction as it goes (see editor.js). A curve is a row of chords, so
+  // the two facts have to agree: every step of the most strongly curved wall
+  // this tool can draw has to fall inside `PARALLEL_TOL`, or dragging along an
+  // arc would stop partway round it.
+  const shape = makeShape(rect(0, 0, 40, 24));
+  curveSegment(shape, 0, 0, MAX_BULGE);
+  const ring = shape.rings[0];
+  let worst = 0;
+  for (let i = 0; i + 1 < ring.pts.length; i++) {
+    const a = segDir(ring, i), b = segDir(ring, i + 1);
+    if (!a || !b) continue;
+    const turn = Math.atan2(Math.abs(a.x * b.z - a.z * b.x), Math.abs(a.x * b.x + a.z * b.z));
+    // The one step that *should* fail is the corner where the arc rejoins the
+    // straight walls; every step within the arc has to pass.
+    if (turn < Math.PI / 4) worst = Math.max(worst, turn);
+  }
+  assert.ok(worst > 0, 'the arc really did become several chords');
+  assert.ok(worst <= PARALLEL_TOL, `worst step ${(worst * 180 / Math.PI).toFixed(1)}°`);
+  // ...and the tolerance that allows it still refuses the corner it is there
+  // to refuse, which is the other half of what pins the number.
+  assert.ok(PARALLEL_TOL < Math.PI / 4, 'a 45° chamfer must never read as the same wall');
 });
 
 test('the topmost room answers a click when two overlap', () => {

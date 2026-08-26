@@ -59,6 +59,15 @@ export const DEFAULT_W = 40;  // cells
 export const DEFAULT_H = 30;  // cells
 export const MAX_FLOORS = 8;
 
+// How small and how large the drawing surface may be, in cells. Since v1 these
+// were two private numbers in `save-load.js` that clamped a loaded design, and
+// nothing in the tool could reach the range because nothing in the tool could
+// change the size. Phase 13 made the footprint something somebody sets, so the
+// range belongs here, where the loader and the editor both read it: four cells
+// is a room and a corridor, two hundred is eight hundred feet square.
+export const MIN_CELLS = 4;
+export const MAX_CELLS = 200;
+
 // Pastel floor tints for rooms
 export const ROOM_COLORS = [
   '#f5d491', '#b8dfa2', '#a9d3e8', '#e8b4c8',

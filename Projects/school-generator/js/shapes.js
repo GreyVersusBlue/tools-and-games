@@ -182,11 +182,46 @@ export function projectOnSeg(a, b, x, z) {
   return { t, x: px, z: pz, dist: Math.hypot(x - px, z - pz) };
 }
 
+// The direction a run points, as a unit vector, or null if its two ends are
+// the same point. A ring is *wound*, so the sense of this is the ring's rather
+// than the wall's — which is why `parallelDirs` below compares the two lines
+// and not the two arrows. (The same distinction `hand` and `sw` turn on; see
+// the note about winding at the top of this file.)
+export function unitDir(a, b) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const len = Math.hypot(dx, dz);
+  return len > MIN_SEG / 8 ? { x: dx / len, z: dz / len } : null;
+}
+
+// How far off parallel two runs may be and still count as the same line.
+//
+// The number is pinned from both sides, and the test in shapes.test.mjs holds
+// it there. Below it: the sharpest step the arc tessellator can produce, which
+// is 28° between two chords of a wall curved to `MAX_BULGE` — a drag that
+// follows a curved wall has to clear that or it stops halfway round the arc.
+// Above it: 45°, the shallowest turn anybody draws *as a corner* (a chamfer),
+// which must never read as the same wall. 36° sits between the two with room
+// on both sides.
+export const PARALLEL_TOL = Math.PI / 5;   // 36°
+
+// Do these two directions lie along the same line, either way round? The
+// absolute cross and dot products make it a question about lines rather than
+// arrows: a ring's top and bottom walls run opposite ways and are parallel.
+export function parallelDirs(a, b, tol = PARALLEL_TOL) {
+  if (!a || !b) return true;
+  const cross = Math.abs(a.x * b.z - a.z * b.x);
+  const dot = Math.abs(a.x * b.x + a.z * b.z);
+  return Math.atan2(cross, dot) <= tol;
+}
+
 // ---------- rings ----------
 
 export const ringLen = (ring) => ring.pts.length;
 
 export const segEnds = (ring, i) => [ring.pts[i], ring.pts[(i + 1) % ring.pts.length]];
+
+// The direction of one of a ring's runs.
+export const segDir = (ring, i) => unitDir(...segEnds(ring, i));
 
 export function ringSignedArea(pts) {
   let a = 0;
@@ -355,17 +390,29 @@ export function floorSolidAt(floor, x, z) {
   return !!shapeAt(floor, x, z);
 }
 
-// {shape, ring, seg, t, x, z, dist} for the closest boundary segment on the floor.
-export function nearestSegment(floor, x, z, maxDist = Infinity) {
+// {shape, ring, seg, t, x, z, dist, dir} for the closest boundary segment on
+// the floor.
+//
+// `opts.parallelTo` is Phase 13's addition and the whole of the wall tool's
+// drag: given a direction, only runs along that same line are candidates. It
+// is a *filter on the search* rather than a test on the answer, and the
+// difference is the bug it fixes — drag along a wall, drift a foot past the
+// corner, and the nearest segment is the one at right angles to it, so a test
+// on the answer would refuse the stroke where the filter finds the parallel
+// wall that is still perfectly well within reach.
+export function nearestSegment(floor, x, z, maxDist = Infinity, opts = {}) {
+  const want = opts.parallelTo || null;
+  const tol = opts.tol === undefined ? PARALLEL_TOL : opts.tol;
   let best = null;
   for (const shape of shapesOf(floor)) {
     shape.rings.forEach((ring, ri) => {
       for (let i = 0; i < ring.pts.length; i++) {
         const [a, b] = segEnds(ring, i);
         const p = projectOnSeg(a, b, x, z);
-        if (p.dist <= maxDist && (!best || p.dist < best.dist)) {
-          best = { shape, ring: ri, seg: i, t: p.t, x: p.x, z: p.z, dist: p.dist };
-        }
+        if (p.dist > maxDist || (best && p.dist >= best.dist)) continue;
+        const dir = unitDir(a, b);
+        if (want && !parallelDirs(want, dir, tol)) continue;
+        best = { shape, ring: ri, seg: i, t: p.t, x: p.x, z: p.z, dist: p.dist, dir };
       }
     });
   }

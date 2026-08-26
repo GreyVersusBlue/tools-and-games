@@ -90,6 +90,34 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   let allowOverhang = false;
   let overhangRefused = 0;   // cells this stroke declined to build
   let strokeOverhang = 0;    // ...and cells it built outside the shadow anyway
+  // ...and cells that were off the drawing surface altogether. Phase 13: the
+  // sheet is a size somebody sets now, so "nothing happened when I painted
+  // there" has an answer — and it is the same answer whether the plan needs
+  // growing or the cursor simply wandered off the edge of it.
+  let strokeOffSheet = 0;
+
+  // The line the wall tool is drawing along, for as long as one stroke lasts.
+  //
+  // A drag used to take whichever segment was nearest the cursor, which is
+  // right for a click and wrong for a drag: run the cursor along a wall,
+  // wander a foot past its corner, and the nearest segment is the one at right
+  // angles — so tracing the top of a room laid a stub down its side. A stroke
+  // now takes its direction from the run it is on and will only move to
+  // another run along the same line, which is what "drag along a wall" has
+  // always meant.
+  //
+  // It rolls rather than anchoring on the first run, and the reason is curves:
+  // a curved wall is tessellated into chords (see shapes.js), so a drag round
+  // an arc is a sequence of runs each a few degrees off the last. Rolling
+  // follows that and still stops dead at a corner, because a corner is one
+  // step of ninety degrees rather than ten of nine. Tool state, never saved
+  // state, and forgotten the moment the pointer lifts.
+  let strokeDir = null;
+  // Which walls the stroke passed over for turning a corner — as a set of
+  // ids, not a count, because a drag samples the path several times a foot
+  // (see `applyStroke`) and counting samples would report one corner as
+  // seventeen walls.
+  const strokeSkewed = new Set();
 
   const undoStack = [];
   const redoStack = [];
@@ -353,7 +381,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const f = activeFloor(s);
     if (tool === 'floor') {
       const c = cellAt(f, wx, wz);
-      if (!c) return;
+      if (!c) { strokeOffSheet++; return; }
       // Phase 8's structural shadow. An upper storey is limited to the
       // footprint of the one below it by default — you cannot lay slab over
       // thin air by accident — and overhangs are switched on rather than
@@ -376,8 +404,17 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       }
     } else if (tool === 'wall') {
       const kind = wallKindOf(wallKind);
-      const seg = nearestSegment(f, wx, wz, SEG_GRAB);
-      if (!seg) return;
+      // Held to the stroke's own line — see `strokeDir`. A click has no line
+      // yet and takes whatever is under it, which is how the line gets set.
+      const seg = nearestSegment(f, wx, wz, SEG_GRAB, { parallelTo: strokeDir });
+      if (!seg) {
+        // Something *is* under the cursor, it just turns a corner. Noted so
+        // the stroke can say so rather than looking like it missed.
+        const off = strokeDir && nearestSegment(f, wx, wz, SEG_GRAB);
+        if (off) strokeSkewed.add(`${off.shape.id}:${off.ring}:${off.seg}`);
+        return;
+      }
+      strokeDir = seg.dir || strokeDir;
       if (setSegWall(seg.shape, seg.ring, seg.seg, kind.seg)) {
         strokeChanged = true;
         const [a, b] = segEnds(seg.shape.rings[seg.ring], seg.seg);
@@ -430,7 +467,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
         return;
       }
       const c = cellAt(f, wx, wz);
-      if (!c) return;
+      if (!c) { strokeOffSheet++; return; }
       const out = paintCell(s, s.currentFloor, c.x, c.y, false);
       if (out.changed) strokeChanged = true;
     }
@@ -482,9 +519,13 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     // The wall, door and erase tools all act on a room's own boundary now, so
     // the cursor follows the segment they would act on rather than a lattice
     // edge — which is also the only honest preview, since a wall can run at
-    // any angle and be any length.
+    // any angle and be any length. Mid-drag the wall cursor is held to the
+    // stroke's line as well, so what is highlighted is what the next sample
+    // will actually build rather than what is merely nearest.
     const seg = (tool === 'wall' || tool === 'door' || isErase)
-      ? nearestSegment(f, p.x, p.z, SEG_GRAB) : null;
+      ? nearestSegment(f, p.x, p.z, SEG_GRAB,
+        tool === 'wall' && strokeActive ? { parallelTo: strokeDir } : {})
+      : null;
     if (seg) {
       const [a, b] = segEnds(seg.shape.rings[seg.ring], seg.seg);
       const len = segLength(a, b);
@@ -630,6 +671,9 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     strokeFrozen = 0;
     overhangRefused = 0;
     strokeOverhang = 0;
+    strokeDir = null;
+    strokeSkewed.clear();
+    strokeOffSheet = 0;
     lastWorld = null;
     applyStroke(p.x, p.z, true);
     if (strokeChanged) fire({ structural: true });
@@ -661,16 +705,21 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (!strokeActive) return;
     strokeActive = false;
     lastWorld = null;
+    strokeDir = null;
     if (!strokeChanged) {
       // A stroke that built nothing is the one case worth a word — otherwise
       // the tool looks broken.
       if (overhangRefused) reportRefusal();
       else if (strokeFrozen) reportFrozen();
+      else if (strokeSkewed.size) reportSkewed();
+      else if (strokeOffSheet) reportOffSheet();
       return;
     }
     fire({ structural: true, commit: true });
     if (overhangRefused) reportRefusal();
     else if (strokeFrozen) reportFrozen();
+    else if (strokeSkewed.size) reportSkewed();
+    else if (strokeOffSheet) reportOffSheet();
     else if (strokeOverhang) {
       const area = strokeOverhang * CELL * CELL;
       onStatus && onStatus(`Overhang — ${area.toLocaleString()} ft² of this storey now ` +
@@ -685,6 +734,30 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   function reportFrozen() {
     onStatus && onStatus(`${strokeFrozen} cell${strokeFrozen === 1 ? '' : 's'} skipped — ` +
       'a free-drawn room is there. Use the vertex tool (V) to reshape it.');
+  }
+
+  // The corner the drag declined to turn. Worth one line, because "I dragged
+  // over it and nothing happened" is otherwise indistinguishable from a tool
+  // that has stopped working — and because the way to build that wall is a
+  // second stroke rather than a setting.
+  function reportSkewed() {
+    const n = strokeSkewed.size;
+    strokeSkewed.clear();
+    onStatus && onStatus(`${n === 1 ? 'A wall' : `${n} walls`} at an angle to this one ` +
+      'left alone — a drag follows one wall round a curve, but not round a corner. ' +
+      'Draw across them separately.');
+  }
+
+  // The edge of the sheet, named along with the way past it. Until Phase 13
+  // there was no way past it and the brush simply did nothing out here, which
+  // is exactly how a 160 x 120ft plan under a 300ft tracing image reads as a
+  // broken tool.
+  function reportOffSheet() {
+    const cells = strokeOffSheet;
+    strokeOffSheet = 0;
+    onStatus && onStatus(
+      `${cells === 1 ? 'That cell is' : `${cells} cells are`} off the plan — ` +
+      'the drawing surface ends there. Make it bigger with Plan in the Floors panel.');
   }
 
   // Unobtrusive on purpose: one line in the status bar naming the switch that

@@ -8,13 +8,14 @@ sound, the site, a living crowd, analysis, the generator that earned the tool
 its name, the sharing that took it out of the tab it was drawn in, the nav mesh
 that made every number it prints true, and a last one that made the building
 fun to be in rather than only accurate to stand in. The third opens with the
-one piece of surgery both of the others deferred: **there is one kind of room
-now, and it has an id.**
+one piece of surgery both of the others deferred — **there is one kind of room
+now, and it has an id** — and then stops to fix what a session with a real
+floor plan found, which is that **the sheet you draw on was a constant**.
 
 **Everything on the first two lists shipped, bar one item: real-time
-collaboration, which needs a server and is picked up below.** Twenty phases,
-60 modules, ~34,700 lines, 1,057 tests, eleven save-format versions and no
-build step.
+collaboration, which needs a server and is picked up below.** Twenty-one
+phases, 61 modules, ~35,300 lines, 1,084 tests, eleven save-format versions and
+no build step.
 
 This document is two things, and the rule for a builder is the same as it has
 always been: read the first part before touching anything, and add to the
@@ -67,7 +68,8 @@ and every phase has leaned on it. The geometry never touches three.js; the
 tools never do geometry.
 
 The model, bottom-up: `grid.js` (the footprint and its storeys, and nothing
-else since Phase 12) · `shapes.js` (rooms: rings, holes, per-segment walls, and
+else since Phase 12) · `footprint.js` (how big the sheet is, what has to fit on
+it, and what growing or shrinking it would do) · `shapes.js` (rooms: rings, holes, per-segment walls, and
 the record itself) · `lattice.js` (the 4ft drawing surface, and `bake()`, the
 one door out of it) · `paint.js` (the brush, over rooms that own their
 outlines) · `props.js` (the object layer and inter-floor links) · `catalog.js`
@@ -137,6 +139,14 @@ wrong.
   Keep that contract and instancing keeps working. One shared material;
   colours are baked per vertex, and since Phase 11 the cache key is the type
   *and* the paint.
+- **The sheet starts at the origin and grows +x and +z.** Every rasterizer,
+  `inGrid`, the editor's `cellAt` and the save format all read a cell index
+  straight off `floor(ft / CELL)`, so the drawing surface has a size but never
+  an origin. Phase 13 made the size settable and deliberately left the origin
+  alone; what follows is that fitting the sheet to something is two moves —
+  slide the *thing* onto the positive quadrant, then grow the sheet — and that
+  growing is always safe while shrinking can clip a room the brush later
+  repaints. See `footprint.js`.
 - **Selection lives in tools, never in the file.** So does anything that is a
   decision about this editing session rather than about the building: whether
   overhangs are allowed, which decoration pack is open, where a shoved chair
@@ -217,6 +227,7 @@ accessibility.
 | # | Phase | What it added | Save |
 |---|-------|---------------|------|
 | 12 | Identity | One kind of room, with an id; the lattice demoted to a drawing surface; a room record; delta undo | v11 |
+| 13 | The sheet | A plan you can resize, a tracing image the sheet fits itself to, a grid that is the shape it says it is, and a wall drag that stays on one wall | — |
 
 The two phases that turned out to matter most to everything after them were
 **Phase 1**, which shipped first and out of order and which every later phase
@@ -226,8 +237,18 @@ most obviously was **Phase 10**: measured over the mesh instead of over room
 hubs, a generated three-storey high school lost a mean of 9ft of travel
 distance per room and 60ft off its worst one — numbers nobody had ever walked.
 
-## What fought back, across twenty phases
+## What fought back, across twenty-one phases
 
+- **A constant nobody could reach is a limit, not a default, and it took a
+  stranger's floor plan to find one.** The drawing surface was 160 x 120ft from
+  v1 to Phase 12 because nothing could change it and nothing said it was there;
+  worse, the grid drawn under the plan was square while the surface was not, so
+  a quarter of what looked like the sheet silently refused the brush. Twelve
+  phases of tests, four of them about the lattice, and none of them could catch
+  it — the geometry was right, the *number* was a decision nobody had revisited
+  and the drawing of it was never compared with it. The lesson Phase 11 already
+  taught in a different key: test from the state the caller actually produces,
+  and now also *look at what the caller actually sees*.
 - **Two room representations was a standing tax, and Phase 12 paid it off.**
   For nineteen phases every shared tool — wall, door, erase, measurement,
   blueprint, collision, mesh — handled both, forever. It was the right trade
@@ -283,13 +304,13 @@ them; the rest are unclaimed and can ride along with whatever is open.
 - Switchback ramps — one straight run means an ADA-compliant ramp is 144ft
   long and rarely placeable indoors.
 - An elevator that moves. The car teleports with `E`; there is no ride, no call
-  button, and the doors are drawn parked open. → *Phase 14 wants the queue.*
+  button, and the doors are drawn parked open. → *Phase 15 wants the queue.*
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is one colour per wall, not per face — splitting it is a renderer
   change, not a model one.
 - Vertical collision: the walker is still a circle with no head, so you can
-  walk under a stair run. Skipped in both arcs. → *Phase 16.*
+  walk under a stair run. Skipped in both arcs. → *Phase 17.*
 - A pitched roof over a curve is a stepped rectangle; a straight skeleton would
   fix it and is a phase of its own.
 - Site regions can be restyled and deleted but not re-shaped.
@@ -298,15 +319,15 @@ them; the rest are unclaimed and can ride along with whatever is open.
   funnels.
 
 **Analysis**
-- The discharge route stops at the door: the outdoors is one node. → *Phase 16.*
-- No prices, on purpose. → *Phase 15 proposes the honest version.*
+- The discharge route stops at the door: the outdoors is one node. → *Phase 17.*
+- No prices, on purpose. → *Phase 16 proposes the honest version.*
 - Daylight is a glazing ratio, not a daylight factor — nothing knows about
   orientation, overhangs or room depth.
 - Common path of egress travel is a constant that nothing measures.
 - Accessibility stops at routes: no turning circles, reach ranges or counter
   heights.
 - The report doesn't print. A title-block code panel on the blueprint is its
-  natural other half. → *Phase 15.*
+  natural other half. → *Phase 16.*
 - ~~Sprinklered is a checkbox rather than a property of the design~~ — done in
   Phase 12, along with the code edition, the occupancy group and a design
   occupant load. What is *still* a session setting is nothing: every question
@@ -318,8 +339,8 @@ them; the rest are unclaimed and can ride along with whatever is open.
 
 **The crowd**
 - The timetable is random: nothing balances class sizes, matches subjects to
-  rooms, or keeps a cohort together. → *Phase 14.*
-- The crowd doesn't know the occupant load the report computed. → *Phase 14.*
+  rooms, or keeps a cohort together. → *Phase 15.*
+- The crowd doesn't know the occupant load the report computed. → *Phase 15.*
 - The last fifth of an evacuation is a tail — a few agents work their way out
   of a corner the crowd shuffled them into.
 - Nobody carries anything, opens a locker, or talks.
@@ -327,7 +348,7 @@ them; the rest are unclaimed and can ride along with whatever is open.
 **Generation**
 - Three schemes, not four. A campus of separate blocks is the interesting one,
   because it is the first scheme where the building is not one connected
-  thing. → *Phase 16.*
+  thing. → *Phase 17.*
 - Adjacency cannot move a room into a bigger slot — only same-sized rooms swap,
   so "the band room next to the library" is unachievable when no slot beside
   the library is band-room-shaped. The compact block often cannot honour an
@@ -343,7 +364,7 @@ them; the rest are unclaimed and can ride along with whatever is open.
 
 **Play**
 - Nothing is hidden outdoors: the mesh covers rooms, so the hunt stops at the
-  walls. → *Phase 16.*
+  walls. → *Phase 17.*
 - A hunt cannot survive a structural edit — the hints name rooms that may no
   longer exist, so an edit ends it rather than re-hiding.
 - Warmth is a straight line plus a charge per storey, not a route, so a thing
@@ -381,11 +402,31 @@ them; the rest are unclaimed and can ride along with whatever is open.
   rooms have ids, that is a verb rather than an accident.
 - `paint.js` rasterizes every lattice-aligned room on the storey for one cell.
   Fine at school scale and obviously wasteful; the fix is to rasterize only the
-  rooms whose bounding box the stroke touches.
+  rooms whose bounding box the stroke touches. Phase 13 raised the stakes: the
+  scratch lattice is `w * h` cells and the sheet can now be 200 x 200 of them,
+  so one brush sample on a large plan allocates forty thousand cells. → *Phase
+  17 is where the performance items live.*
+
+**The sheet, after Phase 13**
+- The drawing surface has a size but no origin, so a plan cannot extend into
+  negative feet — fitting the sheet to something out there moves the *thing*
+  instead. Giving it an origin would touch `inGrid`, `cellAt`, every rasterizer
+  and the save format, for a drawing nobody has asked to make.
+- Shrinking the sheet can strand a lattice-aligned room outside it, where the
+  next repaint of that storey clips it. It is named rather than refused, and
+  the missing verb underneath is "move everything on this storey by (dx, dz)",
+  which would also be the way to make room at the origin end of a plan.
+- A design's dimensions are not part of what a scheme generates against: the
+  generator sizes a fresh state from its own plan and overwrites whatever was
+  there, so "generate into the plan I have drawn" is still not a thing.
+- The wall drag's parallel rule is per-stroke and per-tool. The erase tool has
+  the same corner problem and deliberately does not take the same fix, because
+  a stroke that declines a segment falls through to erasing the floor cell
+  underneath it, which would be a worse surprise than the corner.
 - The mesh samples every room at 2ft now, where a lattice room used to mesh at
   4ft off cells it already had. Overlaps are prefiltered by bounding box so it
   is not quadratic, but a very large storey does measurably more work than it
-  did. → *Phase 16 is where the performance items live.*
+  did. → *Phase 17 is where the performance items live.*
 - Undo is a diff, and arrays diff by index: splicing a prop out of the middle
   of a long list re-states everything after it. Rooms, props and links are
   appended far more often than inserted, so this is the right trade — and it is
@@ -395,14 +436,14 @@ them; the rest are unclaimed and can ride along with whatever is open.
 - glTF textures, PBR materials, skins, morph targets and Draco are each a
   refusal with a sentence attached in `gltf.js`.
 - No `EXT_mesh_gpu_instancing` on export, so a furnished school is four
-  megabytes rather than a few hundred kilobytes. → *Phase 16.*
+  megabytes rather than a few hundred kilobytes. → *Phase 17.*
 - `findPath` sorts an array for its open set. Right at three hundred nodes,
-  wrong at three thousand. → *Phase 16.*
+  wrong at three thousand. → *Phase 17.*
 - A tour moves the camera and does nothing else — no bell at a stop, no hour
   scrubbed between two, no audio on the recording.
 - Cloud saves: the first item that needs a server, and now with a measured
   reason to want one, since a design with a tracing image or imported models
-  cannot travel in a link at all. → *Phase 13.*
+  cannot travel in a link at all. → *Phase 14.*
 
 ---
 
@@ -410,8 +451,10 @@ them; the rest are unclaimed and can ride along with whatever is open.
 
 Arc one made a building. Arc two made it real enough to measure and pleasant
 enough to stand in. What neither of them did is let anybody *use* it — and the
-five phases here share one sentence: **the tool knows everything about the
-building except who it is for.**
+five phases this arc was planned around share one sentence: **the tool knows
+everything about the building except who it is for.** (There are six sections
+below: Phase 13 is the one that was not planned, and it is here because using
+the tool is how it was found.)
 
 It could not name a room, so nothing outside the file could refer to one and
 nobody else could edit one with you. It fills the school with a plausible crowd
@@ -421,9 +464,14 @@ is scenery, the discharge route ends at the threshold, and every scheme makes
 exactly one connected thing.
 
 **Phase 12 is done**, which is the first sentence above in the past tense and
-the prerequisite off the front of three of the other four. Phase 16 is
+the prerequisite off the front of three of the other four. Phase 17 is
 independent of all of them and is the one to reach for when the appetite is for
 a self-contained win.
+
+**Phase 13 is done as well, and it was never on either list.** It is what a
+walkthrough of the real tool with a real floor plan turned up, and the list is
+better for having been interrupted by it — the sentence under it is *the sheet
+you draw on was a constant, and the tool never said so*.
 
 ## Phase 12 — Identity ✅
 
@@ -498,13 +546,96 @@ one thing that had to be watched was `canUndo`, which is read on every frame of
 a drag: diffing the design to answer it cost more than the edit did, so it is a
 tracked flag.
 
-**What it unblocked.** Phase 13's session log has something to name; Phase 14's
-timetable has something to bind to that survives a rename; Phase 15's rate
+**What it unblocked.** Phase 14's session log has something to name; Phase 15's
+timetable has something to bind to that survives a rename; Phase 16's rate
 table has a room record to hang a cost on. The `r<floor>:s<id>` node id is
 stable for as long as the room is, rather than for as long as its lowest cell
 happens to be.
 
-## Phase 13 — Two people, one plan
+## Phase 13 — The sheet you draw on ✅
+
+**Three things a session with a real floor plan found, and one cause under
+two of them.** Not a planned phase: somebody dropped a scan of an actual school
+into the tracing overlay, measured it, and hit all three inside a minute.
+
+- [x] **The plan is a size you can set.** `footprint.js` — the sheet, what has
+  to fit on it, and the two moves that make a tracing image drawable. Two
+  fields in feet in the Floors panel, rounded out to whole 4ft cells, between
+  16 and 800ft. The range is not new: `save-load.js` has clamped a loaded
+  design to 4–200 cells since v1, so the numbers moved to `grid.js` where the
+  loader and the editor both read them, and **no save version was spent** —
+  `w` and `h` have been in the file all along and nothing could write them.
+- [x] **A measurement fits the plan to the picture.** Measuring is the moment
+  an image of unknown size becomes three hundred feet of school, so the fit
+  happens there rather than waiting to be asked: the picture slides onto the
+  positive quadrant, the sheet grows to cover it, the view re-frames, and it is
+  all one undo step with the measurement. Two things it will not do: it never
+  shrinks, and it never moves a picture somebody has already traced from —
+  every wall drawn over it would come off the line it was traced from. There is
+  a Fit button in both panels for asking again later.
+- [x] **The grid on screen is the sheet you can draw on.** `THREE.GridHelper`
+  is square, so a 40x30 design drew a 160ft *square* of grid lines and the
+  bottom quarter of what looked like the drawing surface was ground the brush
+  silently refused. Replaced with a rectangle of the real footprint, in three
+  weights of line — 4ft cells, a 20ft rule to count by, and a brighter border
+  so the edge is a thing you can see rather than a thing you discover.
+- [x] **A wall drag stays on one wall.** The wall tool took whichever segment
+  was nearest the cursor, which is right for a click and wrong for a drag: run
+  along the top of a room, drift a foot past its corner, and the nearest
+  segment is the one at right angles. `nearestSegment` now takes a
+  `parallelTo` direction and filters the *search* by it, so the stroke finds
+  the parallel wall still well within reach instead of refusing. The direction
+  rolls from run to run, which is what lets a drag follow a curved wall — a
+  curve is chords a few degrees apart, a corner is one step of ninety.
+- [x] **The refusals all say something.** Paint off the edge of the sheet and
+  the status line names the edge and where to make it bigger; drag a wall round
+  a corner and it says the corner was left alone and why. Both were silent, and
+  a tool that silently does nothing is indistinguishable from a broken one.
+
+### What it cost, and what it taught
+
+**"I can't put walls in the bottom third" had two causes that look
+identical from the chair.** One is the constant: a measured image is three
+hundred feet across and the sheet is a hundred and sixty, so the bottom of the
+picture is off the drawing surface. The other is a rendering bug that has been
+there since Phase 1 and would have bitten with no image at all — `GridHelper`
+is square, so a 40 x 30 design drew 160 x 160ft of grid lines over a 160 x
+120ft surface, and the bottom quarter of what looked like the sheet was ground
+`cellAt` returned null for. Both end the same way: the brush does nothing and
+says nothing. Fixing either alone would have left somebody still stuck, which
+is the argument for chasing a complaint to its cause rather than to *a* cause.
+
+Nobody hit the second one in twelve phases because every design before this
+was drawn outward from the middle of the sheet, and the middle is honest.
+
+**A constant nobody could reach is not a default, it is a limit.** 160 x 120ft
+was chosen in v1 as a sensible starting size and read for twenty phases as if
+it were one. It was the ceiling on every design the tool has ever made.
+
+**The tolerance on "same wall" is pinned from both sides, and the test says
+so.** Below it, the sharpest chord step the arc tessellator produces — 28° on a
+wall curved to `MAX_BULGE` — because a drag that follows a curve has to clear
+that. Above it, 45°, the shallowest turn anybody draws as a corner. 36° sits
+between them, and the suite asserts both bounds rather than the number, so the
+day either the tessellation or the rule changes, the failure names itself.
+
+**Growing is safe; shrinking is not, and it says so instead of refusing.** The
+brush rasterizes a storey onto a lattice the size of the footprint, so a
+lattice-aligned room hanging off the edge comes back from the next repaint
+clipped. `atRisk` names those rooms and the status line says how many — the
+same register as the overhang refusal, and for the same reason: it is a thing
+somebody may mean to do, and the undo is right there. A free-drawn room is
+never at risk, because no repaint ever touches one.
+
+**Two panels have shared the left-hand column since Phase 1, and one of them
+had been quietly eating the other.** The toolbar reserved a constant for the
+floor panel below it, and the floor panel grows with every storey. The twelve
+tools had been sliding under it on a laptop screen since Phase 8; the reserve
+is measured now.
+
+*Save:* none — see above.
+
+## Phase 14 — Two people, one plan
 
 **The one item on either list that was never built.**
 
@@ -546,7 +677,7 @@ design studio with twelve people in it is not what this tool is for.
 strongest sign it is going right is that no geometry module changes.
 *Save:* none to the design. A session id and a log live beside the file.
 
-## Phase 14 — A real school day
+## Phase 15 — A real school day
 
 **The building is full of a plausible school. It has never been full of *this*
 school.**
@@ -601,7 +732,7 @@ grows a source.
 *Save:* a timetable is a thing about the design and belongs in the file — an
 append to v11, not a bump of its own.
 
-## Phase 15 — What it costs
+## Phase 16 — What it costs
 
 **`takeoff.js` counts what is drawn and stops, on purpose.**
 
@@ -635,7 +766,7 @@ not know what a square foot of VCT costs. It should know how to be told.**
 that already exists, which is why this is the safest of the five.
 *Save:* the rate table and the phasing belong in the file. Another append.
 
-## Phase 16 — Outward
+## Phase 17 — Outward
 
 **The building stops at its own front door.**
 
@@ -690,21 +821,29 @@ phase was the right call for the reason Phase 10 gave: the one regression it
 shipped crossed three module boundaries, and a phase with a second thesis in it
 would have buried the fire drill that found it.
 
-**Now whichever of 13, 14 and 15 the appetite is for.** They do not touch each
-other. 14 is the one that makes the tool useful to somebody who already has a
-school; 15 is the safest and the most obviously finishable; 13 is the one that
+**Phase 13 is done too**, and it was not on this list at all: it came out of
+somebody using the thing. Which is the argument for keeping a phase's worth of
+room for whatever a real session turns up, rather than working the list
+straight down.
+
+**Now whichever of 14, 15 and 16 the appetite is for.** They do not touch each
+other. 15 is the one that makes the tool useful to somebody who already has a
+school; 16 is the safest and the most obviously finishable; 14 is the one that
 has been on the list longest and the only one that needs infrastructure this
 project has never had.
 
-**16 whenever.** It is independent of all of them, it clears six backlog items
+**17 whenever.** It is independent of all of them, it clears six backlog items
 between them, and it is the only one of the five that could be started tomorrow
 against the code exactly as it stands today.
 
 **On save versions:** Phase 12 spent the expensive one, and spent it on a
 shape change rather than an append — which should be the last time that is ever
-necessary. A timetable (14) and a rate table (15) are appends to v11, which is
-the Phase 5 lesson (terrain, site and roof all landed in v7 together) applied
-deliberately rather than discovered halfway through.
+necessary. Phase 13 changed a design's dimensions without touching the format
+at all, because `w` and `h` have been in the file since v1 and the loader has
+always read them against the same range the editor now writes. A timetable (15)
+and a rate table (16) are appends to v11, which is the Phase 5 lesson (terrain,
+site and roof all landed in v7 together) applied deliberately rather than
+discovered halfway through.
 
 **On scope:** the honest read of arc two is that the phases that went best were
 the ones with a single sentence behind them — Phase 10's "the model knows more
