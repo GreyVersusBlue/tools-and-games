@@ -1,33 +1,35 @@
 # School Generator — Feature Wishlist
 
-Two arcs are finished. The first — eight phases, from a single-floor grid
-editor to a multi-storey, furnished, polygon-roomed building you can blueprint,
-save and walk through on desktop or touch. The second — eleven more, from a
-real furniture catalog through doors, light, sound, the site, a living crowd,
-analysis, the generator that earned the tool its name, the sharing that took it
-out of the tab it was drawn in, the nav mesh that made every number it prints
-true, and a last one that made the building fun to be in rather than only
-accurate to stand in.
+Two arcs are finished, and the third has begun. The first — eight phases, from
+a single-floor grid editor to a multi-storey, furnished, polygon-roomed
+building you can blueprint, save and walk through on desktop or touch. The
+second — eleven more, from a real furniture catalog through doors, light,
+sound, the site, a living crowd, analysis, the generator that earned the tool
+its name, the sharing that took it out of the tab it was drawn in, the nav mesh
+that made every number it prints true, and a last one that made the building
+fun to be in rather than only accurate to stand in. The third opens with the
+one piece of surgery both of the others deferred: **there is one kind of room
+now, and it has an id.**
 
-**Everything on both of those lists shipped, bar one item: real-time
-collaboration, which needs a server and is picked up below.** Nineteen phases,
-57 modules, ~34,000 lines, 998 tests, ten save-format versions and no build
-step.
+**Everything on the first two lists shipped, bar one item: real-time
+collaboration, which needs a server and is picked up below.** Twenty phases,
+60 modules, ~34,700 lines, 1,057 tests, eleven save-format versions and no
+build step.
 
-This document is now two things, and the rule for a builder is the same as it
-has always been: read the first part before touching anything, and add to the
+This document is two things, and the rule for a builder is the same as it has
+always been: read the first part before touching anything, and add to the
 second part rather than starting a third list.
 
 - **Part one — where the tool stands.** What it is, the architecture that
   emerged, the conventions a new builder has to know before their first edit,
-  what the nineteen phases shipped, what fought back, and the standing backlog
-  no phase has claimed.
-- **Part two — arc three.** Five phases, none of them started. Not a spec — a
+  what the twenty phases shipped, what fought back, and the standing backlog no
+  phase has claimed.
+- **Part two — arc three.** Five phases, one of them done. Not a spec — a
   scoped list to pull from and refine before beginning each piece.
 
-Each of the nineteen phases used to have its own retrospective here — what
-shipped, how it landed, what fought back, what was left. Those are condensed
-below into the parts that are still load-bearing; the long versions are in this
+Each phase used to have its own retrospective here — what shipped, how it
+landed, what fought back, what was left. The first nineteen are condensed below
+into the parts that are still load-bearing; the long versions are in this
 file's own history (`git log -p WISHLIST.md`) if a specific phase ever needs
 re-reading.
 
@@ -42,10 +44,10 @@ dependencies beyond a vendored three.js, no server. Open the file and it works;
 push the file and it is deployed.
 
 It draws a school in plan and walks through it in first person. The plan has
-storeys, grid rooms and polygon rooms, walls that know whether they are
-exterior, doors that swing, windows in bands, stairs and ramps and lifts that
-cut their own openings, a graded site with hardscape on it, and a roof over the
-lot. The walkthrough has collision, gravity, doors that open as you approach,
+storeys and **rooms** — polygons with ids, drawn free-hand or painted with a
+4ft brush — walls that know whether they are exterior, doors that swing,
+windows in bands, stairs and ramps and lifts that cut their own openings, a
+graded site with hardscape on it, and a roof over the lot. The walkthrough has collision, gravity, doors that open as you approach,
 footsteps that take their material from the floor under them, rooms that
 reverberate for as long as their own volume says they should, a sun that is in
 the right place for the date and latitude, and a school's worth of people
@@ -64,13 +66,17 @@ suite per module.** This is the single most load-bearing habit in the codebase
 and every phase has leaned on it. The geometry never touches three.js; the
 tools never do geometry.
 
-The model, bottom-up: `grid.js` (cells, edges, storeys) · `shapes.js` (polygon
-rooms, rings, holes, per-segment walls) · `props.js` (the object layer and
-inter-floor links) · `catalog.js` (every placeable type, as data) ·
-`walls.js` / `openings.js` / `finish.js` (derived thickness, door leaves and
-window bands, floor and paint) · `stairs.js` (runs, landings, the holes they
-cut) · `terrain.js` / `site.js` / `roof.js` (the ground, what is drawn on it,
-what covers the building) · `save-load.js` (v10, additive, migrating).
+The model, bottom-up: `grid.js` (the footprint and its storeys, and nothing
+else since Phase 12) · `shapes.js` (rooms: rings, holes, per-segment walls, and
+the record itself) · `lattice.js` (the 4ft drawing surface, and `bake()`, the
+one door out of it) · `paint.js` (the brush, over rooms that own their
+outlines) · `props.js` (the object layer and inter-floor links) · `catalog.js`
+(every placeable type, as data) · `walls.js` / `openings.js` / `finish.js`
+(derived thickness, door leaves and window bands, floor and paint) ·
+`stairs.js` (runs, landings, the holes they cut) · `terrain.js` / `site.js` /
+`roof.js` (the ground, what is drawn on it, what covers the building) ·
+`history.js` (an edit as a diff) · `save-load.js` (v11, and the one migration
+that ever changed a shape).
 
 What it derives: `navgraph.js` + `navmesh.js` (the walkable surface as convex
 tiles, and the graph over it) · `collide.js` (what stops you, what holds you
@@ -99,8 +105,8 @@ physics) · `gltf.js` + `models.js` (glTF read and written by hand) ·
 
 The editor is `editor.js` plus one tool per verb — `polyedit`, `propedit`,
 `stairedit`, `templateedit`, `siteedit`, `overlayedit` — each of them thin over
-a pure module (`propplace.js` picks and snaps; `shapes.js` does the rings), and
-`main.js` wires all of it to the DOM.
+a pure module (`propplace.js` picks and snaps; `shapes.js` does the rings;
+`paint.js` does the brush), and `main.js` wires all of it to the DOM.
 
 ## Conventions a new builder must know
 
@@ -108,10 +114,18 @@ Read these before the first edit. Every one of them was learned by getting it
 wrong.
 
 - **Add a pure module and its test suite together.** No exceptions. It is why
-  this codebase stays debuggable at 34,000 lines.
+  this codebase stays debuggable at 34,700 lines.
+- **There is one kind of room, and it has an id.** A room is a polygon with a
+  record: `{ id, name, color, fin, paint, group, load }`. The 4ft lattice is a
+  *drawing surface* (lattice.js, paint.js) and nothing else — everything that
+  paints, generates or loads goes through `bake()`, and nothing downstream of
+  it knows a lattice was ever involved. Anything that wants to name a room from
+  outside the file names its id.
 - **Save-format changes stay additive**, are validated in `deserialize()`, and
   never rename the autosave key. Unknown content survives; unknown boundaries
-  default to *more* solid, not less. Ten bumps and nobody has lost a design.
+  default to *more* solid, not less. Eleven bumps and nobody has lost a design
+  — v11 is the only one that changed a shape rather than adding to one, and it
+  should be the last that ever needs to.
 - **Derive, don't bake.** Stair cuts, guardrails, blueprint symbols, wall
   thickness, collision segments and the nav mesh are all computed on demand.
   Undo, moves and deletes need no special cases because nothing mutates
@@ -126,7 +140,10 @@ wrong.
 - **Selection lives in tools, never in the file.** So does anything that is a
   decision about this editing session rather than about the building: whether
   overhangs are allowed, which decoration pack is open, where a shoved chair
-  currently is.
+  currently is. The converse is now enforceable and was not before: anything
+  that is a fact about the *building* belongs in the file, which is where Phase
+  12 sent the occupancy group, the design occupant load, the code edition and
+  the sprinkler answer.
 - **The walkthrough collider is built once at walk-start.** Editing and
   walking are exclusive; anything that lets the world change mid-walk has to
   invalidate it. Since Phase 6 the crowd owns the colliders when it is running,
@@ -153,9 +170,24 @@ wrong.
 - **A pure module is only as honest as the state its tests put it in.** Phase
   11 shipped physics that passed every test and did nothing at all in the
   browser, because the tests placed the walker somewhere the walkthrough never
-  puts it. Test from the state the caller actually produces.
+  puts it. Test from the state the caller actually produces — which since Phase
+  12 means `test/build.mjs`: a suite draws on a scratch lattice and bakes it,
+  exactly as the editor, the generator and the loader do.
+- **A partition belongs to exactly one of the two rooms it divides.** Both
+  rooms have a boundary there; one builds a wall on it and the other leaves the
+  segment open, decided by reading order at bake time. Two rooms that each drew
+  their own copy would draw two walls in one place, stop a walker twice and
+  count double in the takeoff. Every reader that asks "whose wall is this?"
+  gets an owner and a neighbour, and anything that has to be true of *both*
+  sides — borrowed light was the one that caught it — has to say so explicitly.
+- **`hand` and `sw` are relative to the run, and a run has a direction.** The
+  lattice had none: a horizontal edge ran +X and a vertical one +Z, always. A
+  ring is wound, so half its segments run the other way, and a door copied onto
+  one without flipping both fields hangs on the far jamb and sweeps the other
+  half of its own doorway. `bake()` and `paint.js` both correct for it; anything
+  else that moves an opening between segments must too.
 
-## The two arcs, in brief
+## The three arcs, in brief
 
 **Arc one — from nothing to a building you can walk through.** Multi-floor
 state and the prop layer · polygon rooms with holes · a furniture placement
@@ -180,6 +212,12 @@ accessibility.
 | 10 | Honesty | A nav mesh replacing room-as-hub, two more layout schemes, adjacency in the brief, findings on the minimap | — |
 | 11 | Play | Colour variants, decoration packs, furniture that scoots when you walk into it, and a scavenger hunt | — |
 
+**Arc three — the building in use.**
+
+| # | Phase | What it added | Save |
+|---|-------|---------------|------|
+| 12 | Identity | One kind of room, with an id; the lattice demoted to a drawing surface; a room record; delta undo | v11 |
+
 The two phases that turned out to matter most to everything after them were
 **Phase 1**, which shipped first and out of order and which every later phase
 leaned on, and **Phase 7**, which put the analysis in front of the generator so
@@ -188,19 +226,21 @@ most obviously was **Phase 10**: measured over the mesh instead of over room
 hubs, a generated three-storey high school lost a mean of 9ft of travel
 distance per room and 60ft off its worst one — numbers nobody had ever walked.
 
-## What fought back, across nineteen phases
+## What fought back, across twenty phases
 
-- **Two room representations is a standing tax.** Every shared tool — wall,
-  door, erase, measurement, blueprint, collision, mesh — handles both, forever.
-  It was the right trade (the lattice really is faster for rectangles) and it
-  is paid on every new feature. Phase 12 below is the proposal to stop paying
-  it.
-- **Grid rooms have no identity.** A cell is an index into a flat array, so
-  there is nothing to name when something happens to a room. This blocked
-  section editing until rooms could be promoted to polygons, and it is what
-  real-time collaboration is *actually* blocked on — not a sync library.
-- **JSON-clone undo is O(design).** Fine at school scale, and the thing that
-  will bend first if prop counts grow tenfold.
+- **Two room representations was a standing tax, and Phase 12 paid it off.**
+  For nineteen phases every shared tool — wall, door, erase, measurement,
+  blueprint, collision, mesh — handled both, forever. It was the right trade
+  at the time (the lattice really is faster for rectangles) and it was paid on
+  every new feature rather than once. Removing it cost 700 lines added against
+  1,400 taken away, and the removal is what the three items below are past
+  tense about.
+- **Rooms have identity now, and it was the blocker under three others.** A
+  cell was an index into a flat array, so there was nothing to name when
+  something happened to a room. That is what blocked section editing until
+  rooms could be promoted, what kept the analysis out of the file, what made
+  undo a whole-design clone, and what real-time collaboration was *actually*
+  waiting on. One id per room unblocked all four in one phase.
 - **The save version is the expensive unit.** Six of arc two's eleven phases
   were shaped in part by the cost of a bump and the wish to spend it once;
   Phase 5 reads the way it does because terrain, site and roof all had to land
@@ -218,6 +258,20 @@ distance per room and 60ft off its worst one — numbers nobody had ever walked.
   refused at one frame rate and free at another, because a long frame asks for
   a longer step. Anything that compares a per-frame quantity against a fixed
   distance has this bug waiting in it.
+- **A refactor with no new feature in it still needs a test that fails.** Phase
+  12's acceptance criterion was "the tests all still pass", and that is exactly
+  the criterion a silent regression walks through: every module's own suite
+  passed while the fire drill lost a third of the building, because a baked
+  door hung on the wrong jamb and no unit test knew which jamb a door should be
+  on. What caught it was `agents.test.mjs`, which simulates rather than
+  calculates. Keep at least one test per arc that *runs the thing*.
+- **Deleting a branch changes an answer somewhere.** Three numbers moved when
+  the lattice went, all of them in the direction of the polygon half, and each
+  had to be understood before it could be accepted rather than after: borrowed
+  light was being credited to one room instead of two, the takeoff was
+  subtracting a window's width from its wall's length, and travel distance was
+  measured to cell centres rather than to corners. "Both halves agreed" was
+  never true; it was only never asked.
 
 ## The standing backlog
 
@@ -253,8 +307,14 @@ them; the rest are unclaimed and can ride along with whatever is open.
   heights.
 - The report doesn't print. A title-block code panel on the blueprint is its
   natural other half. → *Phase 15.*
-- Sprinklered is a checkbox rather than a property of the design, because
-  nothing about the analysis is saved. → *Phase 12.*
+- ~~Sprinklered is a checkbox rather than a property of the design~~ — done in
+  Phase 12, along with the code edition, the occupancy group and a design
+  occupant load. What is *still* a session setting is nothing: every question
+  the analysis asks about the building now has somewhere in the file to be
+  answered.
+- The code edition is printed, not applied. Three editions are offered and none
+  of them changes a factor or a limit, because this model's numbers happen not
+  to differ between them — which is fine until somebody picks one that does.
 
 **The crowd**
 - The timetable is random: nothing balances class sizes, matches subjects to
@@ -276,8 +336,8 @@ them; the rest are unclaimed and can ride along with whatever is open.
   the prop cap and nothing asks whether it was hit in the middle of a
   classroom.
 - The structural shadow is measured at 4ft, so a wing that oversails by three
-  feet doesn't register; a polygon room is refused or allowed wholesale rather
-  than clipped.
+  feet doesn't register; a room is refused or allowed wholesale rather than
+  clipped.
 - The tracing overlay is an edit-mode underlay only — it isn't on the printed
   sheet, and nothing traces it for you.
 
@@ -304,6 +364,33 @@ them; the rest are unclaimed and can ride along with whatever is open.
 - Photo mode and the minimap are both desktop-shaped; neither has been laid out
   for a phone.
 
+**The room model, after Phase 12**
+- A boundary that bounds no room cannot be drawn any more, and a pre-v11 file
+  that had one loses it. A free-standing garden wall and a wing wall that stops
+  halfway across a room are both real things somebody might want; neither is
+  something a polygon room can say. The honest fix is a boundary that belongs
+  to the *storey* rather than to a room, and it is a schema addition rather
+  than a repair.
+- The brush refuses a free-drawn room rather than straightening it, which is
+  right, and it means a room that has been curved once can never be painted
+  again. A "straighten this room back onto the lattice" verb would close the
+  loop and is half an hour of work whenever somebody trips over it.
+- Painting merges nothing: two rooms sitting against each other with no wall
+  between stay two rooms, because merging would silently delete a record. There
+  is no *deliberate* merge either — no "join these two rooms" — and now that
+  rooms have ids, that is a verb rather than an accident.
+- `paint.js` rasterizes every lattice-aligned room on the storey for one cell.
+  Fine at school scale and obviously wasteful; the fix is to rasterize only the
+  rooms whose bounding box the stroke touches.
+- The mesh samples every room at 2ft now, where a lattice room used to mesh at
+  4ft off cells it already had. Overlaps are prefiltered by bounding box so it
+  is not quadratic, but a very large storey does measurably more work than it
+  did. → *Phase 16 is where the performance items live.*
+- Undo is a diff, and arrays diff by index: splicing a prop out of the middle
+  of a long list re-states everything after it. Rooms, props and links are
+  appended far more often than inserted, so this is the right trade — and it is
+  the first place to look if a delta ever comes out surprisingly large.
+
 **Files and performance**
 - glTF textures, PBR materials, skins, morph targets and Draco are each a
   refusal with a sentence attached in `gltf.js`.
@@ -323,74 +410,99 @@ them; the rest are unclaimed and can ride along with whatever is open.
 
 Arc one made a building. Arc two made it real enough to measure and pleasant
 enough to stand in. What neither of them did is let anybody *use* it — and the
-five phases below share one sentence: **the tool knows everything about the
+five phases here share one sentence: **the tool knows everything about the
 building except who it is for.**
 
-It cannot name a room, so nothing outside the file can refer to one and nobody
-else can edit one with you. It fills the school with a plausible crowd rather
-than this school's crowd. It counts what the building is made of and refuses to
-say what that costs. And it stops at its own front door — the site is scenery,
-the discharge route ends at the threshold, and every scheme makes exactly one
-connected thing.
+It could not name a room, so nothing outside the file could refer to one and
+nobody else could edit one with you. It fills the school with a plausible crowd
+rather than this school's crowd. It counts what the building is made of and
+refuses to say what that costs. And it stops at its own front door — the site
+is scenery, the discharge route ends at the threshold, and every scheme makes
+exactly one connected thing.
 
-Phase 12 is the prerequisite for three of the other four and is the riskiest
-piece of work either arc has proposed. Phase 16 is independent of all of them
-and is the one to reach for when the appetite is for a self-contained win.
+**Phase 12 is done**, which is the first sentence above in the past tense and
+the prerequisite off the front of three of the other four. Phase 16 is
+independent of all of them and is the one to reach for when the appetite is for
+a self-contained win.
 
-## Phase 12 — Identity
+## Phase 12 — Identity ✅
 
-**The model can describe a building. It cannot refer to one.**
+**The model could describe a building. It could not refer to one.** Now it can.
 
-A polygon room is an object with an id. A grid room is a flood-fill label — a
-set of cells that happen to be connected this frame — and it has no id, no
-record, and no way to be pointed at from outside. This has been the answer to
-"why not?" four times now across two arcs: it is why section editing waited for
-polygons, it is why the analysis is not stored, it is why undo is a whole-design
-JSON clone, and (Phase 9 established this precisely) it is what real-time
-collaboration is blocked on, on *this* side of the wire, rather than on a sync
-library.
+- [x] **Every room is a polygon, with an id.** A floor is `{ w, h, shapes }`
+  and nothing else. `lattice.js` holds the 4ft raster and `bake()` — one flood
+  region becomes one room, collinear runs merge into segments, and every
+  opening kind on the lattice becomes an opening at a point along the run it
+  sat in. Everything that used to draw on a lattice still does: the generator
+  writes into a scratch one per storey, the sample school draws on one, and a
+  pre-v11 file is read onto one. All three bake, and nothing downstream knows.
+- [x] **A room record.** `{ id, name, color, fin, paint, group, load }`, plus
+  `code` on the design — the edition the analysis is quoted from and whether
+  the building is sprinklered. The four things Phase 7 said would open a bump
+  all landed on that one bump, and the room tool writes the two per-room ones
+  the same way it writes a finish.
+- [x] **Delta undo.** `history.js` diffs two JSON values and hands back the
+  patch. Three strokes of the brush cost 227 bytes of history where they used
+  to cost three copies of a ninety-kilobyte building.
+- [x] **Save v11, with a migration and a fixture per era.** Five real files in
+  `test/fixtures/` — v1, v2, v5, and two v10 designs written by the build
+  immediately before this phase — open, migrate, and are checked room by room,
+  door by door and square foot by square foot.
+- [x] **Delete the second path.** 700 lines of source added against 1,400 taken
+  away. `wallSegments`, `floorRooms`, `meshFloor`, `blueprint`, `collide`,
+  `egress`, `daylight`, `finish`, `acoustics`, `autofurnish`, `roof`,
+  `terrain`, `shadow`, `propplace`, `walkthrough`, `render` and four editors
+  each lost their lattice branch.
 
-It is also the standing tax. Every shared tool handles both representations,
-forever, and the cost is paid on each new feature rather than once.
+### What it cost, and what it taught
 
-The proposal is to stop paying it: **make the polygon the only representation
-of a room**, and give a room a record of its own. `convertRegion()` has done
-the promotion per-room since arc one, so the machinery exists and has been in
-use for nineteen phases; what is new is doing it to everything, on load, and
-deleting the other path.
+**The measure of success really was subtraction.** `autofurnish.js` lost the
+function that re-flooded a grid region out of a hub because a lattice room had
+no outline to ask; `navmesh.js` lost one of its two rasters; `openings.js` lost
+its whole grid half. Nothing in the room model is said twice any more, and the
+next feature will be written once.
 
-This is the expensive one. It touches every module that reads `floor.cells`, it
-opens save v11 with a real migration rather than an append, and it is the first
-phase in either arc where "the tests all still pass" is the acceptance
-criterion rather than a side effect.
+**A refactor whose acceptance criterion is "the tests still pass" is a refactor
+that will ship a silent regression.** This one did, and it is worth naming
+precisely because the phase's own plan invited it. Every module's suite passed
+while a fire drill on the sample school lost a third of the building: a baked
+door hung on the far jamb and swept the half of its doorway an off-centre
+walker was standing in. The lattice had no winding — a horizontal edge ran +X
+and a vertical one +Z, always — so `hand: +1` meant one fixed thing; a ring is
+wound and half its segments run the other way. What caught it was the one suite
+that *simulates* rather than calculates. Keep one of those per arc.
 
-- [ ] **Every room is a polygon, with an id.** Migrate on load: flood-fill each
-  grid region once and promote it, exactly as `convertRegion()` already does,
-  then never look at `cells[]` for room membership again. The lattice stays as
-  the *drawing* surface — painting floor with a 4ft brush is a good gesture and
-  nothing is proposing to lose it — but what it paints is a polygon's ring.
-- [ ] **A room record.** `{ id, name, group, finish, paint, load }` — and with
-  somewhere to put them, the four things Phase 7 said would open a bump finally
-  land: occupancy group, code edition, a design occupant load somebody typed,
-  and whether the building is sprinklered. The analysis stops being a reading
-  the file forgets.
-- [ ] **Delta undo.** With ids on everything, an undo step is a list of changed
-  records rather than a clone of the design. This is the item v1's retrospective
-  said would bend first, and it is nearly free once identity exists.
-- [ ] **Save v11, with a migration and a test per version.** Every earlier save
-  in `test/` opens, migrates, and round-trips to the same building. This is the
-  first bump that changes a shape rather than adding to one, and it should be
-  the last one that ever needs to.
-- [ ] **Delete the second path.** The measure of success is subtraction:
-  `wallSegments`, `floorRooms`, `meshFloor`, `blueprint`, `collide`, `egress`
-  and the four editors each lose their lattice branch. If the diff is not
-  mostly red, the phase did not happen.
+**Three numbers moved, all toward the polygon half's answer.** Borrowed light
+was being credited to one room instead of both sides of the pane. The takeoff
+was subtracting a window's width from its wall's linear feet on the lattice and
+never on a polygon — a wall's length does not change because there is glass set
+into it, so the exterior figure went up by exactly the width of every lattice
+window. Travel distance rose by a yard or two because a room is sampled at the
+corners of its outline rather than at its cell centres. "Both halves agreed"
+was never true; it had only never been asked.
 
-*Leans on:* `convertRegion()`, `shapes.js`, and nineteen phases of tests as the
-acceptance criteria;
-*collides with:* everything — which is the point, and the argument for doing it
-alone, first, and reviewing it as its own phase the way Phase 10 was.
-*Save:* v11, and the expensive kind.
+**One thing genuinely cannot survive, and it is stated rather than hidden.** A
+boundary that bounds no room — a wall drawn across empty cells, or a stub that
+pokes into a room without dividing it — is the one thing the polygon model has
+no way to say. `bake()` counts them, `deserialize` hands the count back, and
+the status line says how many. Inventing a room to hold one would put floor,
+ceiling and occupancy where the design has none. The honest fix is a
+storey-level boundary, and it is in the backlog above as an addition rather
+than a repair.
+
+**The lazy commit is what let fifteen call sites stay as they were.**
+`pushUndo()` no longer pushes: it closes whatever edit was open. A gesture that
+changed nothing diffs to nothing and costs no history, which is what
+`dropUndo()` was for and is why it is now a no-op nobody has to remember. The
+one thing that had to be watched was `canUndo`, which is read on every frame of
+a drag: diffing the design to answer it cost more than the edit did, so it is a
+tracked flag.
+
+**What it unblocked.** Phase 13's session log has something to name; Phase 14's
+timetable has something to bind to that survives a rename; Phase 15's rate
+table has a room record to hang a cost on. The `r<floor>:s<id>` node id is
+stable for as long as the room is, rather than for as long as its lowest cell
+happens to be.
 
 ## Phase 13 — Two people, one plan
 
@@ -398,8 +510,8 @@ alone, first, and reviewing it as its own phase the way Phase 10 was.
 
 Every arc has named it and every arc has been right to defer it. Phase 9 was
 the one that made the reason precise: it is not blocked on a CRDT library, it
-is blocked on there being nothing to name. Phase 12 removes that, and what is
-left is genuinely a networking phase — the first thing in this project that
+is blocked on there being nothing to name. **Phase 12 removed that**, and what
+is left is genuinely a networking phase — the first thing in this project that
 needs a server, and the second is right beside it.
 
 The honest scope is small. Two teachers round a laptop is the real use; a
@@ -408,8 +520,10 @@ design studio with twelve people in it is not what this tool is for.
 - [ ] **The design as a log, not a snapshot.** An edit becomes an operation
   against a room id, a prop id or a link id — `move`, `rename`, `restyle`,
   `add`, `remove`. The file stays what it is; the log is what travels. Phase
-  12's delta undo is the same list read backwards, which is the argument for
-  doing them in this order.
+  12's `history.js` is most of this already: an edit is a patch, both
+  directions, and a patch is plain JSON that goes on a wire without the module
+  knowing that is what happened to it. What is missing is *addressing* — a
+  patch says "floors[0].shapes[4]", where the log needs "room 27".
 - [ ] **A conflict rule anybody can predict.** Last-write-wins per record. Two
   people editing one *building* is the whole point; two people editing the same
   room in the same second is rare enough that losing one of the two edits is a
@@ -426,7 +540,7 @@ design studio with twelve people in it is not what this tool is for.
   as it does now; a session is something you opt into. Anything that makes the
   file-only path worse is out of scope by construction.
 
-*Leans on:* Phase 12's ids and its delta log, `save-load.js`'s serializer,
+*Leans on:* Phase 12's ids and `history.js`, `save-load.js`'s serializer,
 `share.js`;
 *collides with:* nothing in the model — this phase adds a transport, and the
 strongest sign it is going right is that no geometry module changes.
@@ -460,9 +574,9 @@ double-booked".
   places. Same shape of problem as `generate.js`'s packing, and it should
   report what it could not satisfy rather than quietly fudging it.
 - [ ] **Import one.** A CSV out of the schedule tools in `Tools/` binds
-  sections to rooms by name — and, once Phase 12 exists, by id, which is the
-  difference between a binding that survives a renamed room and one that does
-  not. This is the item that makes the whole phase worth doing for somebody who
+  sections to rooms by name — and, now that Phase 12 has shipped, by id, which
+  is the difference between a binding that survives a renamed room and one that
+  does not. This is the item that makes the whole phase worth doing for somebody who
   already has a timetable and wants to know whether their building suits it.
 - [ ] **Utilisation, in the report.** Rooms empty when the school is at
   capacity; rooms over their occupant load; the corridor that carries three
@@ -485,7 +599,7 @@ double-booked".
 *collides with:* the report, which grows a section, and the life panel, which
 grows a source.
 *Save:* a timetable is a thing about the design and belongs in the file — an
-append to Phase 12's v11, not a bump of its own, if the two are done in order.
+append to v11, not a bump of its own.
 
 ## Phase 15 — What it costs
 
@@ -533,7 +647,7 @@ the graph gets slow at exactly the size where you would want more than one
 building — because `findPath` sorts an array for its open set, which is the
 right trade at three hundred nodes and the wrong one at three thousand.
 
-Nothing here is waiting on Phase 12, which makes this the phase to reach for
+Nothing here was waiting on Phase 12, which makes this the phase to reach for
 when what is wanted is a self-contained win.
 
 - [ ] **A mesh over the site.** `navmesh.js` already greedy-meshes a raster into
@@ -571,13 +685,12 @@ is invisible.
 
 ## Suggested build order
 
-**Phase 12 first, alone, and reviewed as its own phase.** Three of the other
-four want room ids, it is the only one that changes a shape rather than adding
-to one, and Phase 10 established that risky work grouped together and reviewed
-together is how the bugs that cross module boundaries get found. If it goes
-badly it should go badly on its own.
+**Phase 12 is done**, and doing it first, alone, and reviewing it as its own
+phase was the right call for the reason Phase 10 gave: the one regression it
+shipped crossed three module boundaries, and a phase with a second thesis in it
+would have buried the fire drill that found it.
 
-**Then whichever of 13, 14 and 15 the appetite is for.** They do not touch each
+**Now whichever of 13, 14 and 15 the appetite is for.** They do not touch each
 other. 14 is the one that makes the tool useful to somebody who already has a
 school; 15 is the safest and the most obviously finishable; 13 is the one that
 has been on the list longest and the only one that needs infrastructure this
@@ -587,14 +700,22 @@ project has never had.
 between them, and it is the only one of the five that could be started tomorrow
 against the code exactly as it stands today.
 
-**On save versions:** Phase 12 spends the expensive one. If 14 and 15 follow
-it, their timetable and rate table are appends to v11 rather than bumps of
-their own — which is the Phase 5 lesson (terrain, site and roof all landed in
-v7 together) applied deliberately rather than discovered halfway through.
+**On save versions:** Phase 12 spent the expensive one, and spent it on a
+shape change rather than an append — which should be the last time that is ever
+necessary. A timetable (14) and a rate table (15) are appends to v11, which is
+the Phase 5 lesson (terrain, site and roof all landed in v7 together) applied
+deliberately rather than discovered halfway through.
 
 **On scope:** the honest read of arc two is that the phases that went best were
 the ones with a single sentence behind them — Phase 10's "the model knows more
-than it says", Phase 7's "a drawing has to survive questions". Each of the five
-above has one. If a phase starts growing a second thesis, that is the signal
-that it is two phases, which is exactly how Phase 10 and Phase 11 came to be
-split, and that split was the right call both times.
+than it says", Phase 7's "a drawing has to survive questions", Phase 12's
+"there is one kind of room". Each of the four left has one. If a phase starts
+growing a second thesis, that is the signal that it is two phases, which is
+exactly how Phase 10 and Phase 11 came to be split, and that split was the
+right call both times.
+
+**On refactors, now that one has been done:** a phase whose deliverable is
+subtraction needs a test that would fail if the subtraction were wrong, and
+"every existing test still passes" is not that test. Phase 12's regression sat
+underneath a thousand passing assertions. Whatever the next one is, find the
+suite that runs the thing rather than calculating about it, and watch that one.

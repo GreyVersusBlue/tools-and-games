@@ -10,7 +10,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CELL, MAX_FLOORS, getCell, isDoorEdge, edgeHIdx, edgeVIdx, EDGE_WINDOW } from '../js/grid.js';
+import { CELL, MAX_FLOORS } from '../js/grid.js';
+import {
+  shapesOf, isWindowOpening, isDoorOpening, isBuilt, segEnds, distToBoundary,
+  pointInShape,
+} from '../js/shapes.js';
 import { buildProgram, SCHEMES, normalizeBrief } from '../js/program.js';
 import { parseBrief } from '../js/brief.js';
 import { serialize, deserialize } from '../js/save-load.js';
@@ -211,38 +215,39 @@ test('the occupant load it produces is in the right country for the enrollment',
 test('the exterior wall has windows in it and doors through it', () => {
   const doors = exteriorDoors(SCHOOL);
   assert.ok(doors >= 4, `only ${doors} doors to the outside`);
-  const f = SCHOOL.floors[0];
   let windows = 0;
-  for (let y = 0; y <= f.h; y++) {
-    for (let x = 0; x < f.w; x++) if (f.edgesH[edgeHIdx(f, x, y)] === EDGE_WINDOW) windows++;
-  }
-  for (let y = 0; y < f.h; y++) {
-    for (let x = 0; x <= f.w; x++) if (f.edgesV[edgeVIdx(f, x, y)] === EDGE_WINDOW) windows++;
+  for (const shape of shapesOf(SCHOOL.floors[0])) {
+    for (const ring of shape.rings) {
+      windows += ring.openings.filter(isWindowOpening).length;
+    }
   }
   assert.ok(windows > 20, `only ${windows} window bays on the ground floor`);
 });
 
 test('every room has a way into it', () => {
-  // Not through the graph — off the plan, edge by edge, so a room whose only
+  // Not through the graph — off the plan, ring by ring, so a room whose only
   // door opened into the next classroom would be caught here rather than as a
   // routing oddity three readers downstream.
+  //
+  // Asked of the *boundary* rather than of the record, because since Phase 12
+  // a partition belongs to exactly one of the two rooms it divides: a
+  // classroom's door onto the corridor is very often written on the corridor's
+  // ring, and the classroom still has a way in.
   for (let i = 0; i < SCHOOL.floors.length; i++) {
-    const f = SCHOOL.floors[i];
-    for (const room of floorRooms(SCHOOL, i).rooms) {
-      if (room.rep !== 'grid') continue;
-      let doors = 0;
-      for (let y = 0; y < f.h; y++) {
-        for (let x = 0; x < f.w; x++) {
-          if (!getCell(f, x, y)) continue;
-          const cell = f.cells[y * f.w + x];
-          if (cell.room !== room.name) continue;
-          for (const v of [
-            f.edgesH[edgeHIdx(f, x, y)], f.edgesH[edgeHIdx(f, x, y + 1)],
-            f.edgesV[edgeVIdx(f, x, y)], f.edgesV[edgeVIdx(f, x + 1, y)],
-          ]) if (isDoorEdge(v)) doors++;
+    const doorPoints = [];
+    for (const shape of shapesOf(SCHOOL.floors[i])) {
+      for (const ring of shape.rings) {
+        for (const o of ring.openings) {
+          if (!isDoorOpening(o) || !isBuilt(ring.walls[o.seg])) continue;
+          const [a, b] = segEnds(ring, o.seg);
+          doorPoints.push({ x: a.x + (b.x - a.x) * o.t, z: a.z + (b.z - a.z) * o.t });
         }
       }
-      assert.ok(doors > 0, `${room.name} on storey ${i} has no door`);
+    }
+    for (const shape of shapesOf(SCHOOL.floors[i])) {
+      if (!shape.name) continue;
+      const doors = doorPoints.filter((p) => distToBoundary(shape, p.x, p.z) < 0.1).length;
+      assert.ok(doors > 0, `${shape.name} on storey ${i} has no door`);
     }
   }
 });
@@ -250,10 +255,9 @@ test('every room has a way into it', () => {
 test('the blueprint can draw it', () => {
   const plan = computeFloorPlan(SCHOOL, 0);
   assert.ok(plan, 'no plan came back');
-  // A generated school is all lattice rooms, so the plan's polygon list is
-  // empty by construction and the walls and the labels are what it drew.
   assert.ok(plan.walls.length > 50, 'a plan with no walls in it');
-  assert.ok(plan.gridLabels.length > 10, 'a plan with no room labels on it');
+  assert.ok(plan.rooms.length > 10, 'a plan with no rooms on it');
+  assert.ok(plan.rooms.filter((r) => r.name).length > 10, 'a plan with no room labels on it');
   assert.ok(plan.doors.length > 20, 'a plan with no openings in it');
 });
 
@@ -393,10 +397,11 @@ test('the three schemes are three different buildings', () => {
   const court = plans[1].court;
   assert.ok(court && court.w > 0 && court.h > 0);
   const state = buildSchool(plans[1], { furnish: false });
-  const f = state.floors[0];
+  const rooms = shapesOf(state.floors[0]);
   for (let y = court.y0; y < court.y0 + court.h; y++) {
     for (let x = court.x0; x < court.x0 + court.w; x++) {
-      assert.ok(!getCell(f, x, y), 'nothing is built in the court');
+      const cx = (x + 0.5) * CELL, cz = (y + 0.5) * CELL;
+      assert.ok(!rooms.some((r) => pointInShape(r, cx, cz)), 'nothing is built in the court');
     }
   }
 });

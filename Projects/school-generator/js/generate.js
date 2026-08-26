@@ -46,11 +46,13 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/generate.test.mjs.
 
+import { CELL, ROOM_COLORS, MAX_FLOORS, createState, addFloor } from './grid.js';
 import {
-  CELL, ROOM_COLORS, MAX_FLOORS,
-  createState, setTile, getCell, cellIdx, edgeHIdx, edgeVIdx, addFloor, isDoorEdge,
+  createLattice, setTile, cellIdx, edgeHIdx, edgeVIdx, bake,
   EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_WINDOW, EDGE_GLASS, EDGE_OPENING,
-} from './grid.js';
+} from './lattice.js';
+import { shapesOf, segEnds, isBuilt, isDoorOpening } from './shapes.js';
+import { wallProbe } from './walls.js';
 import { addProp, MAX_PROPS } from './props.js';
 import { addStair } from './stairs.js';
 import { applyFinish } from './finish.js';
@@ -1669,6 +1671,14 @@ function spineSideRects(rooms, wingX, wingW, originX, spineLen, spineY) {
 // with the tools. Nothing here knows it is a generator: `setTile` sets a tile,
 // `addStair` places a stair, `addProp` places a prop. That is the whole of the
 // generate-then-edit promise — there is no other kind of state to produce.
+//
+// Since Phase 12 the tiles and edges go onto a **scratch lattice** (see
+// lattice.js) rather than onto the floor, and each storey is baked into rooms
+// when its walls are standing. Nothing about the code below changed for that:
+// laying a school out on a 4ft grid of rectangles is exactly what the lattice
+// is still good at, and the bake is the same one the paint brush and the save
+// loader go through. What changed is that a storey ends up as rooms with ids
+// on them rather than as a raster somebody has to flood-fill to read.
 
 const ROOM_TINTS = {
   gym: '#cfe2d8', cafeteria: '#f0e2c8', kitchen: '#e6dccd', library: '#d8dcef',
@@ -1698,8 +1708,7 @@ const GLAZED_FRONT = new Set(['office', 'library']);
 // ...and the ones that emphatically do not.
 const NO_WINDOWS = new Set(['restroom-g', 'restroom-b', 'custodial', 'mech', 'kitchen']);
 
-function fillRect(state, floorIndex, r, tint) {
-  const f = state.floors[floorIndex];
+function fillRect(f, r, tint) {
   for (let y = r.y0; y <= r.y1; y++) {
     for (let x = r.x0; x <= r.x1; x++) {
       setTile(f, x, y, true);
@@ -1716,8 +1725,7 @@ function fillRect(state, floorIndex, r, tint) {
 // the two sides of an edge belong to the same room. This is the same question
 // `computeLabels` answers after the fact; doing it from the plan means the
 // walls are right the first time rather than being discovered.
-function zoneMap(state, floorIndex, rects) {
-  const f = state.floors[floorIndex];
+function zoneMap(f, rects) {
   const zone = new Int32Array(f.w * f.h).fill(-1);
   rects.forEach((r, i) => {
     for (let y = r.y0; y <= r.y1; y++) {
@@ -1734,8 +1742,7 @@ function zoneMap(state, floorIndex, rects) {
 // room and the weather. Corridors are walled from each other like anything
 // else and then opened across the full width of the junction — see the note
 // on `door: 'n'` in the wing corridor above for why that is worth doing.
-function buildWalls(state, floorIndex, rects, zone) {
-  const f = state.floors[floorIndex];
+function buildWalls(f, rects, zone) {
   const at = (x, y) => (x < 0 || y < 0 || x >= f.w || y >= f.h ? -1 : zone[cellIdx(f, x, y)]);
   const need = (a, b) => {
     if (a === b) return false;
@@ -1795,8 +1802,7 @@ function outsideAcross(f, zone, r, side, pos) {
 // already there.
 const midOf = (run) => run[Math.floor((run.length - 1) / 2)];
 
-function cutDoors(state, floorIndex, rects, zone) {
-  const f = state.floors[floorIndex];
+function cutDoors(f, rects) {
   for (const r of rects) {
     if (!r.door) continue;
     // A room has one door onto its corridor; a corridor can have a way into
@@ -1835,8 +1841,7 @@ function cutSide(f, r, door) {
   }
 }
 
-function glazeWindows(state, floorIndex, rects, zone) {
-  const f = state.floors[floorIndex];
+function glazeWindows(f, rects, zone) {
   for (const r of rects) {
     if (r.kind !== 'room' || !r.daylight || NO_WINDOWS.has(r.key)) continue;
     for (const side of ['n', 's', 'e', 'w']) {
@@ -1852,8 +1857,7 @@ function glazeWindows(state, floorIndex, rects, zone) {
   }
 }
 
-function cutExits(state, exits) {
-  const f = state.floors[0];
+function cutExits(f, exits) {
   for (const e of exits) {
     if (e.edge === 'w' || e.edge === 'e') f.edgesV[edgeVIdx(f, e.x, e.y)] = e.kind;
     else f.edgesH[edgeHIdx(f, e.x, e.y)] = e.kind;
@@ -1878,8 +1882,7 @@ function cutExits(state, exits) {
 const EXIT_RUN = 3;          // cells of exposed wall a corridor exit needs
 const BLOCK_EXIT_RUN = 5;    // ...and what a gym or a cafeteria wants
 
-function cutShellExits(state, rects, zone) {
-  const f = state.floors[0];
+function cutShellExits(f, rects, zone) {
   let added = 0;
   const runsOn = (r, side) => {
     const out = [];
@@ -2057,14 +2060,21 @@ export function buildSchool(briefOrPlan, opts = {}) {
 
   for (let s = 0; s < plan.storeys; s++) {
     const rects = plan.rects[s];
-    rects.forEach((r, i) => fillRect(state, s, r, tintFor(r, i)));
-    const zone = zoneMap(state, s, rects);
-    buildWalls(state, s, rects, zone);
-    cutDoors(state, s, rects, zone);
-    glazeWindows(state, s, rects, zone);
-    if (s === 0) shellExits = cutShellExits(state, rects, zone);
+    // One scratch lattice per storey, baked the moment its walls are up. The
+    // bake is what gives every room its id, and it is the same call the save
+    // loader and the paint brush make.
+    const lat = createLattice(plan.footprint.w, plan.footprint.h);
+    rects.forEach((r, i) => fillRect(lat, r, tintFor(r, i)));
+    const zone = zoneMap(lat, rects);
+    buildWalls(lat, rects, zone);
+    cutDoors(lat, rects);
+    glazeWindows(lat, rects, zone);
+    if (s === 0) {
+      shellExits = cutShellExits(lat, rects, zone);
+      cutExits(lat, plan.exits);
+    }
+    bake(state, s, lat);
   }
-  cutExits(state, plan.exits);
 
   for (const l of plan.links) {
     addStair(state, l.from, {
@@ -2099,20 +2109,22 @@ export function buildSchool(briefOrPlan, opts = {}) {
 // know about a generated shell and the one number that isn't in the plan,
 // since half of them are cut once the walls are standing.
 export function exteriorDoors(state) {
-  const f = state && state.floors ? state.floors[0] : null;
-  if (!f) return 0;
-  const on = (x, y) => !!getCell(f, x, y);
+  const floor = state && state.floors ? state.floors[0] : null;
+  if (!floor) return 0;
+  // A door is exterior when the wall it is cut into has weather on one side —
+  // which is the question walls.js already answers, and answers the same way
+  // for the renderer's facade and the thickness of the wall itself. Asking it
+  // here rather than comparing two cells is what makes this survive the room
+  // model no longer being a raster.
+  const thickness = wallProbe(floor);
   let n = 0;
-  for (let y = 0; y <= f.h; y++) {
-    for (let x = 0; x < f.w; x++) {
-      const v = f.edgesH[edgeHIdx(f, x, y)];
-      if (isDoorEdge(v) && on(x, y - 1) !== on(x, y)) n++;
-    }
-  }
-  for (let y = 0; y < f.h; y++) {
-    for (let x = 0; x <= f.w; x++) {
-      const v = f.edgesV[edgeVIdx(f, x, y)];
-      if (isDoorEdge(v) && on(x - 1, y) !== on(x, y)) n++;
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings) {
+      for (const o of ring.openings) {
+        if (!isDoorOpening(o) || !isBuilt(ring.walls[o.seg])) continue;
+        const [a, b] = segEnds(ring, o.seg);
+        if (thickness.exterior(a.x, a.z, b.x, b.z)) n++;
+      }
     }
   }
   return n;

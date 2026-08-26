@@ -31,13 +31,10 @@
 //
 // Pure module: no three.js. Exercised by test/openings.test.mjs.
 
-import {
-  CELL, DOOR_W, DOUBLE_DOOR_W, WALL_H, isDoorEdge,
-  EDGE_DOOR, EDGE_DOOR2, EDGE_WINDOW, EDGE_OPENING,
-} from './grid.js';
+import { DOOR_W, DOUBLE_DOOR_W, WALL_H } from './grid.js';
 import {
   shapesOf, segEnds, isBuilt, openingSpec, isDoorOpening,
-  LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, OP_WINDOW,
+  LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE,
   WINDOW_SILL, WINDOW_H,
 } from './shapes.js';
 
@@ -64,12 +61,6 @@ export const OPEN_BAND = WALL_H;    // ft
 // visibly the same construction at different sizes.
 export const MULLION_BAY = 4;       // ft between mullions
 export const FRAME_T = 0.22;        // ft of frame around a pane
-
-// A grid edge has no record to carry options, so each variant is a fixed
-// geometry: a single leaf in a 3ft opening, a pair filling the cell, or a
-// glazed band with a jamb either side.
-export const GRID_DOOR2_W = CELL;           // ft — the pair fills the edge
-export const GRID_WINDOW_W = CELL - 0.5;    // ft — a jamb each side reads as a mullion
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -153,57 +144,20 @@ export function leafSegment(leaf, open = leaf.open) {
 
 // ---------- collecting a storey's leaves ----------
 
-// A grid door as the same `{ spec, a, b }` a polygon opening produces, so one
-// leaf builder serves both halves of the room model. The lattice fixes the
-// opening at the middle of the cell — an edge is a whole cell wide and has
-// nowhere to record a position along itself.
-export function gridDoorSpec(val) {
-  const base = { window: false, t: 0.5, h: 7, sill: 0, lite: false, bar: false, hand: 1, sw: 1 };
-  if (val === EDGE_DOOR2) {
-    // A corridor pair: lites and push bars, because that is what a pair of
-    // doors across a school corridor always is.
-    return { ...base, leaf: LEAF_DOUBLE, w: GRID_DOOR2_W, lite: true, bar: true };
-  }
-  if (val === EDGE_OPENING) return { ...base, leaf: LEAF_NONE, w: DOOR_W };
-  return { ...base, leaf: LEAF_SINGLE, w: DOOR_W };
-}
-
-// Every swinging leaf on one storey, in a fixed order with stable keys.
-// Grid edges first (rows, then columns), then polygon rooms in `shapes[]`
-// order — deterministic so render.js and collide.js agree about which leaf is
-// which without exchanging anything but the key.
+// Every swinging leaf on one storey, in a fixed order with stable keys: rooms
+// in `shapes[]` order, rings, then openings — deterministic so render.js and
+// collide.js agree about which leaf is which without exchanging anything but
+// the key. Since Phase 12 the key carries the *room's id* rather than its
+// position in the list, so a leaf survives a room being drawn beside it.
 //
 // The key carries the storey. It didn't have to while only one storey's doors
 // could be moving — the camera is on exactly one of them — but a school with
 // people in it has a door swinging on level 1 while another swings on level 2,
-// and an edge index means the same thing on both.
+// and a room index means the same thing on both.
 export function collectDoorLeaves(state, floorIndex) {
   const floor = state && state.floors ? state.floors[floorIndex] : null;
   const out = [];
   if (!floor) return out;
-
-  const grid = (val, ax, az, bx, bz, key) => {
-    const spec = gridDoorSpec(val);
-    // The opening sits in the middle of a run that overlaps its neighbours by
-    // half a wall thickness in render.js; leaves are hung on the bare cell so
-    // a pair meets in the middle of the edge, not somewhere past it.
-    for (const leaf of segLeaves(spec, { x: ax, z: az }, { x: bx, z: bz }, key)) out.push(leaf);
-  };
-
-  for (let y = 0; y <= floor.h; y++) {
-    for (let x = 0; x < floor.w; x++) {
-      const i = y * floor.w + x;
-      const v = floor.edgesH[i];
-      if (isDoorEdge(v)) grid(v, x * CELL, y * CELL, (x + 1) * CELL, y * CELL, `f${floorIndex}:H:${i}`);
-    }
-  }
-  for (let y = 0; y < floor.h; y++) {
-    for (let x = 0; x <= floor.w; x++) {
-      const i = y * (floor.w + 1) + x;
-      const v = floor.edgesV[i];
-      if (isDoorEdge(v)) grid(v, x * CELL, y * CELL, x * CELL, (y + 1) * CELL, `f${floorIndex}:V:${i}`);
-    }
-  }
 
   for (const shape of shapesOf(floor)) {
     shape.rings.forEach((ring, ri) => {
@@ -367,23 +321,6 @@ export function windowBand(spec) {
   const sill = spec && Number.isFinite(spec.sill) ? spec.sill : WINDOW_SILL;
   const h = spec && Number.isFinite(spec.h) ? spec.h : WINDOW_H;
   return { sill, head: Math.min(WALL_H, sill + h), h };
-}
-
-// The grid's own window, as the spec a polygon one would have carried.
-export const gridWindowSpec = () => ({
-  window: true, kind: OP_WINDOW, leaf: LEAF_NONE, w: GRID_WINDOW_W, t: 0.5,
-  sill: WINDOW_SILL, h: WINDOW_H, head: WINDOW_SILL + WINDOW_H,
-  lite: false, bar: false, hand: 1, sw: 1,
-});
-
-// The width the lattice gives each of its opening kinds — the one number the
-// grid says differently from a polygon wall, wanted by the renderer, the
-// collider and the plan alike.
-export function gridOpeningWidth(val) {
-  if (val === EDGE_DOOR2) return GRID_DOOR2_W;
-  if (val === EDGE_WINDOW) return GRID_WINDOW_W;
-  if (val === EDGE_DOOR || val === EDGE_OPENING) return DOOR_W;
-  return 0;
 }
 
 export { DOOR_W, DOUBLE_DOOR_W, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE };

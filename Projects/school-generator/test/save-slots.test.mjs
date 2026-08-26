@@ -22,7 +22,7 @@ function installFakeLocalStorage() {
 installFakeLocalStorage();
 
 const { createState } = await import('../js/grid.js');
-const { setTile, edgeHIdx } = await import('../js/grid.js');
+const { sheet } = await import('./build.mjs');
 const {
   listDesigns, saveDesign, loadDesign, deleteDesign, renameDesign, MAX_SLOTS,
 } = await import('../js/save-load.js');
@@ -35,7 +35,7 @@ test('a fresh install has no saved designs', () => {
 test('saving a design returns an id that lists and loads it back', () => {
   globalThis.localStorage.clear();
   const s = createState(10, 10);
-  setTile(s.floors[0], 2, 2, true);
+  sheet(s, 0).fill(2, 2, 2, 2).bake();
   const id = saveDesign(s, 'My School');
   const list = listDesigns();
   assert.equal(list.length, 1);
@@ -43,7 +43,7 @@ test('saving a design returns an id that lists and loads it back', () => {
   assert.equal(list[0].name, 'My School');
   const loaded = loadDesign(id);
   assert.equal(loaded.floors[0].w, 10);
-  assert.ok(loaded.floors[0].cells[2 * 10 + 2]);
+  assert.equal(loaded.floors[0].shapes.length, 1, 'the room came back with it');
 });
 
 test('saving again with the same id overwrites in place rather than adding a slot', () => {

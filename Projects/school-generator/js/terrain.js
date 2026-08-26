@@ -192,27 +192,23 @@ export function rawHeightAt(t, x, z) {
 // rebuild and makes the apron mean what it says at any building size.
 const PAD_FINE = CELL;   // ft
 
-// Which fine cells sit over the building. Grid cells and polygon rooms both
-// count — a wing that escaped the lattice still has a slab under it — and only
-// the ground storey is asked, since that is the one in contact with the earth.
+// Which fine cells sit over the building. Only the ground storey is asked,
+// since that is the one in contact with the earth.
 function coveredMask(state, x0, z0, cols, rows, step) {
   const covered = new Uint8Array(cols * rows);
   const floor = (state.floors || [])[0];
   if (!floor) return covered;
-  // Prefiltering by bounding box turns "test every polygon at every cell" into
-  // "test the one polygon that could possibly contain it" — the difference
+  // Prefiltering by bounding box turns "test every room at every cell" into
+  // "test the one room that could possibly contain it" — the difference
   // between a sweep you notice and one you don't.
   const boxes = shapesOf(floor).map((shape) => ({ shape, b: shapeBBox(shape) }));
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const x = x0 + (c + 0.5) * step, z = z0 + (r + 0.5) * step;
-      const gx = Math.floor(x / CELL), gy = Math.floor(z / CELL);
-      let on = gx >= 0 && gy >= 0 && gx < floor.w && gy < floor.h && !!floor.cells[gy * floor.w + gx];
-      if (!on) {
-        for (const { shape, b } of boxes) {
-          if (x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) continue;
-          if (pointInShape(shape, x, z)) { on = true; break; }
-        }
+      let on = false;
+      for (const { shape, b } of boxes) {
+        if (x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) continue;
+        if (pointInShape(shape, x, z)) { on = true; break; }
       }
       if (on) covered[r * cols + c] = 1;
     }

@@ -1,24 +1,24 @@
 // editor.js — editor shell: tools, pointer handling, pan/zoom, undo/redo.
 //
-// The grid tools live here. The polygon tools live in polyedit.js and are
-// driven through the same pointer stream — this file decides which of the two
-// room representations a click is aimed at, which for the shared tools (wall,
-// door, room, erase) means "whichever is nearer the cursor".
+// The 4ft brush lives here; the free-drawing tools live in polyedit.js and are
+// driven through the same pointer stream. Until Phase 12 this file also had to
+// decide which of two room representations a click was aimed at, and every
+// shared tool — wall, door, room, erase — was written twice. There is one kind
+// of room now: the brush paints cells onto it through paint.js, and everything
+// else acts on the ring the cursor is nearest.
 
 import * as THREE from 'three';
 import {
-  CELL, WALL_H, WALL_T, ROOM_COLORS,
-  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_RAIL,
-  EDGE_WINDOW, EDGE_OPENING,
-  cellIdx, edgeHIdx, edgeVIdx, inGrid, getCell, setTile, floodRegion,
-  activeFloor, floorBaseY,
+  CELL, WALL_H, WALL_T, ROOM_COLORS, inGrid, activeFloor, floorBaseY,
 } from './grid.js';
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   nearestSegment, shapeAt, setSegWall, toggleOpening, removeShape,
-  curveSegment, straightenRun, segEnds, segLength,
+  curveSegment, straightenRun, segEnds, segLength, shapeArea,
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
 } from './shapes.js';
+import { paintCell, frozenAt } from './paint.js';
+import { step, apply, clone } from './history.js';
 import { applyFinish, DEFAULT_FINISH } from './finish.js';
 import { initPolyEdit } from './polyedit.js';
 import { initPropEdit } from './propedit.js';
@@ -34,28 +34,24 @@ const MAX_UNDO = 100;
 // How close to a polygon wall counts as clicking it, in feet.
 const SEG_GRAB = 1.6;
 
-// The wall tool builds one of three things, and the two room representations
-// spell each of them differently — so the choice is made once, here, and both
-// halves of the editor read it out of the same table.
+// The wall tool builds one of three things. The table survives Phase 12 with
+// its `edge` column dropped: there is one way to spell a wall now.
 export const WALL_KINDS = [
-  { kind: 'wall',  label: 'Solid',   icon: '▬', edge: EDGE_WALL,  seg: SEG_WALL,  color: 0x4da3ff },
-  { kind: 'glass', label: 'Glass',   icon: '⬚', edge: EDGE_GLASS, seg: SEG_GLASS, color: 0x67d5e8 },
-  { kind: 'rail',  label: 'Railing', icon: '⑊', edge: EDGE_RAIL,  seg: SEG_RAIL,  color: 0x7ce0a0 },
+  { kind: 'wall',  label: 'Solid',   icon: '▬', seg: SEG_WALL,  color: 0x4da3ff },
+  { kind: 'glass', label: 'Glass',   icon: '⬚', seg: SEG_GLASS, color: 0x67d5e8 },
+  { kind: 'rail',  label: 'Railing', icon: '⑊', seg: SEG_RAIL,  color: 0x7ce0a0 },
 ];
 const wallKindOf = (k) => WALL_KINDS.find((w) => w.kind === k) || WALL_KINDS[0];
 
-// What the door tool cuts. The same table serves both halves of the room
-// model, as WALL_KINDS does: `edge` is the lattice value, `opts` is what a
-// polygon opening records. The lattice needs one kind per variant because an
-// edge is a value with nowhere to keep options — see EDGE_OPENING in grid.js.
+// What the door tool cuts — `opts` is what the opening records.
 export const DOOR_KINDS = [
-  { kind: 'single', label: 'Single door', icon: '🚪', edge: EDGE_DOOR,
+  { kind: 'single', label: 'Single door', icon: '🚪',
     opts: { k: OP_DOOR, leaf: LEAF_SINGLE } },
-  { kind: 'double', label: 'Double door', icon: '🚪🚪', edge: EDGE_DOOR2,
+  { kind: 'double', label: 'Double door', icon: '🚪🚪',
     opts: { k: OP_DOOR, leaf: LEAF_DOUBLE, lite: true, bar: true } },
-  { kind: 'cased',  label: 'Cased opening', icon: '⌷', edge: EDGE_OPENING,
+  { kind: 'cased',  label: 'Cased opening', icon: '⌷',
     opts: { k: OP_DOOR, leaf: LEAF_NONE } },
-  { kind: 'window', label: 'Window', icon: '🪟', edge: EDGE_WINDOW,
+  { kind: 'window', label: 'Window', icon: '🪟',
     opts: { k: OP_WINDOW } },
 ];
 const doorKindOf = (k) => DOOR_KINDS.find((d) => d.kind === k) || DOOR_KINDS[0];
@@ -66,6 +62,12 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   let roomColor = ROOM_COLORS[0];
   let roomFinish = DEFAULT_FINISH;
   let roomPaint = null;      // null = whatever the renderer paints by default
+  // v11's two room-record fields, on the same terms as the finishes: the room
+  // tool carries them and writes them where you click. Null means "work it
+  // out" — from the name for the group, from the area for the load — which is
+  // what every version before this one did with no way to say otherwise.
+  let roomGroup = null;
+  let roomLoad = null;
   let wallKind = 'wall';
   let doorKind = 'single';
   // Per-door options the panel sets and every new opening inherits. `hand` is
@@ -93,7 +95,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   const redoStack = [];
   let strokeActive = false;
   let strokeChanged = false;
-  let strokeWallFt = 0;   // grid wall footage built so far this stroke — see applyAt('wall')
+  let strokeFrozen = 0;   // cells this stroke declined because a free-drawn
+                          // room was under them — see paint.js
   let enabled = true;
 
   // --- hover cursors ---
@@ -127,99 +130,129 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   }
   function pointerToWorld(e) { return pointerToWorldXY(e.clientX, e.clientY); }
 
-  // Nearest edge to a world point: {kind:'H'|'V', x, y, dist} (dist in cell fractions)
-  // All of these take a *floor* record — the editor only ever touches the
-  // storey currently selected in the floor panel.
-  function nearestEdge(f, wx, wz) {
-    const fx = wx / CELL, fz = wz / CELL;
-    let cx = Math.floor(fx), cz = Math.floor(fz);
-    cx = Math.min(Math.max(cx, 0), f.w - 1);
-    cz = Math.min(Math.max(cz, 0), f.h - 1);
-    const dx = fx - cx, dz = fz - cz;
-    const cands = [
-      { kind: 'V', x: cx,     y: cz, dist: Math.abs(dx) },
-      { kind: 'V', x: cx + 1, y: cz, dist: Math.abs(1 - dx) },
-      { kind: 'H', x: cx, y: cz,     dist: Math.abs(dz) },
-      { kind: 'H', x: cx, y: cz + 1, dist: Math.abs(1 - dz) },
-    ];
-    cands.sort((a, b) => a.dist - b.dist);
-    return cands[0];
-  }
-
+  // Which 4ft cell of the drawing surface a world point is over. The editor
+  // only ever touches the storey currently selected in the floor panel.
   function cellAt(f, wx, wz) {
     const x = Math.floor(wx / CELL), y = Math.floor(wz / CELL);
     return inGrid(f, x, y) ? { x, y } : null;
   }
 
-  function edgeRef(f, e) {
-    return e.kind === 'H'
-      ? { arr: f.edgesH, i: edgeHIdx(f, e.x, e.y) }
-      : { arr: f.edgesV, i: edgeVIdx(f, e.x, e.y) };
-  }
-
   // --- undo/redo ---
   //
-  // A snapshot is JSON, which is what makes undo a two-line feature and what
-  // the v1 retrospective calls out as O(design). Phase 8 added the one field
-  // that breaks that arithmetic: an `overlay` carries an image as a data URL,
-  // and stringifying up to three megabytes of base64 on every pointerdown,
-  // a hundred deep, is a hundred megabytes of undo history for a picture
-  // nobody edits.
+  // An undo step used to be a JSON clone of the whole design, which is what
+  // made undo a two-line feature and what the v1 retrospective named as the
+  // arithmetic that would bend first. Phase 12 gave every room an id, and with
+  // that a step can say *what changed* instead: `history.js` diffs the design
+  // against the one this file has been holding since the last commit, and the
+  // stack keeps the two patches rather than two buildings.
   //
-  // So the overlay travels beside the JSON rather than inside it, by
-  // reference. That is safe for exactly one reason and it is worth stating:
-  // **an overlay record is never mutated in place.** Every change to it —
-  // move, turn, fade, calibrate — goes through overlay.js's `setOverlay`,
-  // which returns a new normalized object, so a reference held here is a
-  // snapshot of what the overlay was, not a live view of what it is.
-  // Phase 9 adds the second record with the same problem and gives it the
-  // same answer: `models` carries whole glTF files as data URLs, so it
-  // travels beside the JSON by reference too. The same one reason makes it
-  // safe — models.js never mutates a record or its array in place; every
-  // edit (`addModel`, `removeModel`, `updateModel`) returns new ones.
-  function snapshot() {
+  // **The commit is lazy, and that is what keeps every tool's calling
+  // convention.** Fifteen call sites do `pushUndo()` and then mutate; a
+  // handful then decide the edit was a no-op. So `pushUndo()` does not push
+  // anything — it *closes* whatever edit was open and clears the redo stack.
+  // A gesture that changed nothing produces an empty diff and costs no
+  // history, which is what `dropUndo()` used to be for and is why it is now a
+  // no-op that nobody has to remember to call.
+  //
+  // The overlay and the model library still travel beside the diff, by
+  // reference, for the reason Phase 8 and Phase 9 gave: each carries megabytes
+  // of data URL that no edit here touches, and neither record is ever mutated
+  // in place — every change to one goes through a function that returns a new
+  // object — so a reference held here is what it was, not a view of what it is.
+  const design = () => {
+    const { overlay, models, ...rest } = getState();
+    return rest;
+  };
+  const carried = () => {
     const s = getState();
-    const { overlay, models, ...rest } = s;
-    return { json: JSON.stringify(rest), overlay: overlay || null, models: models || null };
+    return { overlay: s.overlay || null, models: s.models || null };
+  };
+
+  // The design as of the last commit, and what was hanging off it.
+  let baseline = clone(design());
+  let baseCarried = carried();
+  // Whether anything has happened since. Tracked rather than measured, because
+  // `canUndo` is read on every frame of a drag and diffing the whole design to
+  // answer it would cost more than the edit does. A false positive is
+  // harmless — `commit()` finds no change and pushes nothing — and a false
+  // negative would grey out a button that works, which is why every path that
+  // touches the design goes through `fire()`.
+  let dirty = false;
+
+  // Tell the shell something changed, and remember that something did.
+  const fire = (info) => { dirty = true; onChange(info); };
+
+  // Close the open edit, if it changed anything. Returns true if it did.
+  function commit() {
+    const now = design();
+    const st = step(baseline, now);
+    const held = carried();
+    const carriedMoved = held.overlay !== baseCarried.overlay || held.models !== baseCarried.models;
+    dirty = false;
+    if (!st && !carriedMoved) return false;
+    undoStack.push({
+      back: st ? st.back : undefined,
+      fwd: st ? st.fwd : undefined,
+      before: baseCarried,
+      after: held,
+    });
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    baseline = clone(now);
+    baseCarried = held;
+    return true;
   }
 
   function pushUndo() {
-    undoStack.push(snapshot());
-    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    commit();
     redoStack.length = 0;
   }
 
-  function restore(snap) {
+  // Put the design back to `data`, which is a whole plain-JSON design rather
+  // than a patch — the patches have already been applied to produce it.
+  //
+  // Keys it doesn't have are keys the design didn't have. `Object.assign` only
+  // ever adds and overwrites, so without the delete pass an undo across the
+  // moment something was *first* written — the first site region, the first
+  // grading stroke, the first tracing image — leaves that record behind and
+  // the undo silently does nothing. Every optional record on the state
+  // (terrain, site, roof, code, life, overlay, tours, models) is one of these.
+  function restore(data, held) {
     const s = getState();
-    const data = JSON.parse(snap.json);
-    if (snap.overlay) data.overlay = snap.overlay;
-    if (snap.models) data.models = snap.models;
-    // Keys the snapshot doesn't have are keys the design didn't have.
-    // `Object.assign` only ever adds and overwrites, so without this an undo
-    // across the moment something was *first* written — the first site region,
-    // the first grading stroke, the first tracing image — leaves that record
-    // behind and the undo silently does nothing. Every optional record on the
-    // state (terrain, site, roof, life, overlay, tours, models) is one of
-    // these.
-    for (const key of Object.keys(s)) if (!(key in data)) delete s[key];
-    Object.assign(s, data);
+    const next = { ...data };
+    if (held.overlay) next.overlay = held.overlay;
+    if (held.models) next.models = held.models;
+    for (const key of Object.keys(s)) if (!(key in next)) delete s[key];
+    Object.assign(s, next);
+    baseline = clone(data);
+    baseCarried = held;
+    dirty = false;
     onChange({ structural: true });
     poly.refresh();
   }
 
   function undo() {
+    commit();
     if (!undoStack.length) return;
     curveMemo = null;
-    redoStack.push(snapshot());
-    restore(undoStack.pop());
+    const entry = undoStack.pop();
+    redoStack.push(entry);
+    restore(apply(baseline, entry.back), entry.before);
   }
 
   function redo() {
     if (!redoStack.length) return;
     curveMemo = null;
-    undoStack.push(snapshot());
-    restore(redoStack.pop());
+    const entry = redoStack.pop();
+    undoStack.push(entry);
+    restore(apply(baseline, entry.fwd), entry.after);
   }
+
+  // Forget the open edit without recording it.
+  function markClean() {
+    baseline = clone(design());
+    baseCarried = carried();
+  }
+
 
   // --- polygon tools ---
   // polyedit owns its own overlay and calls back in here for undo, redraws and
@@ -228,8 +261,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
-      changed: (info = {}) => onChange({ structural: true, ...info }),
+      pushUndo, dropUndo,
+      changed: (info = {}) => fire({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
       holeModeChanged: (v) => onHoleMode && onHoleMode(v),
       cursorStyle: (v) => { canvas.style.cursor = v; },
@@ -248,8 +281,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
-      changed: (info = {}) => onChange({ structural: true, ...info }),
+      pushUndo, dropUndo,
+      changed: (info = {}) => fire({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
   });
@@ -261,8 +294,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
-      changed: (info = {}) => onChange({ structural: true, ...info }),
+      pushUndo, dropUndo,
+      changed: (info = {}) => fire({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
   });
@@ -274,8 +307,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
-      changed: (info = {}) => onChange({ structural: true, ...info }),
+      pushUndo, dropUndo,
+      changed: (info = {}) => fire({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
   });
@@ -286,8 +319,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
-      changed: (info = {}) => onChange({ structural: true, ...info }),
+      pushUndo, dropUndo,
+      changed: (info = {}) => fire({ structural: true, ...info }),
       status: (text) => onStatus && onStatus(text),
     },
   });
@@ -299,13 +332,13 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     getState,
     renderApi,
     host: {
-      pushUndo, dropUndo: () => { undoStack.pop(); },
-      changed: (info = {}) => onChange({ structural: false, overlay: true, ...info }),
+      pushUndo, dropUndo,
+      changed: (info = {}) => fire({ structural: false, overlay: true, ...info }),
       status: (text) => onStatus && onStatus(text),
       setOverlay: (o, info = {}) => {
         const st = getState();
         if (o) st.overlay = o;
-        onChange({ structural: false, overlay: true, ...info });
+        fire({ structural: false, overlay: true, ...info });
       },
       // Both ends of a measurement, in image pixels. The shell puts up the
       // "how many feet is that?" prompt, because a dialog is not a tool's job.
@@ -314,14 +347,6 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   });
 
   // --- tool application ---
-
-  // Nearest polygon wall to the cursor, if one is within grabbing distance and
-  // closer than the grid edge the cursor is over.
-  function nearPolySeg(f, wx, wz, gridDistFt) {
-    const seg = nearestSegment(f, wx, wz, SEG_GRAB);
-    if (!seg) return null;
-    return gridDistFt === undefined || seg.dist < gridDistFt ? seg : null;
-  }
 
   function applyAt(wx, wz, isClick) {
     const s = getState();
@@ -339,107 +364,81 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
         overhangRefused++;
         return;
       }
-      if (setTile(f, c.x, c.y, true)) {
+      // The brush paints a room's ring, not a cell in a file — see paint.js.
+      // A cell joins whichever room it can walk to, or starts one.
+      const out = paintCell(s, s.currentFloor, c.x, c.y, true, {
+        name: roomName || 'Room', color: roomColor, fin: roomFinish, paint: roomPaint,
+      });
+      if (out.refused) { strokeFrozen++; return; }
+      if (out.changed) {
         strokeChanged = true;
         if (allowOverhang && !cellSupported(s, s.currentFloor, c.x, c.y)) strokeOverhang++;
       }
     } else if (tool === 'wall') {
       const kind = wallKindOf(wallKind);
-      const e = nearestEdge(f, wx, wz);
-      const seg = nearPolySeg(f, wx, wz, e.dist * CELL);
-      if (seg) {
-        if (setSegWall(seg.shape, seg.ring, seg.seg, kind.seg)) {
-          strokeChanged = true;
-          // A polygon wall can be any length, so its own segment length is
-          // worth reporting the moment you raise it — the grid case below
-          // reports its running total on stroke end instead, since one edge
-          // is always exactly one cell wide.
-          const [a, b] = segEnds(seg.shape.rings[seg.ring], seg.seg);
-          onStatus && onStatus(`Wall — ${kind.label.toLowerCase()}, ${segLength(a, b).toFixed(1)}ft.`);
-        }
-        return;
-      }
-      const ref = edgeRef(f, e);
-      if (ref.arr[ref.i] !== kind.edge) {
-        if (ref.arr[ref.i] === EDGE_NONE) strokeWallFt += CELL;
-        ref.arr[ref.i] = kind.edge;
+      const seg = nearestSegment(f, wx, wz, SEG_GRAB);
+      if (!seg) return;
+      if (setSegWall(seg.shape, seg.ring, seg.seg, kind.seg)) {
         strokeChanged = true;
+        const [a, b] = segEnds(seg.shape.rings[seg.ring], seg.seg);
+        onStatus && onStatus(`Wall — ${kind.label.toLowerCase()}, ${segLength(a, b).toFixed(1)}ft.`);
       }
     } else if (tool === 'door') {
       if (!isClick) return; // doors place on click, not drag
       const dk = doorKindOf(doorKind);
-      const e = nearestEdge(f, wx, wz);
-      // On a polygon wall an opening is cut where you clicked along the run,
-      // not at the middle of a lattice edge — a 30ft wall can hold several.
-      const seg = nearPolySeg(f, wx, wz, e.dist * CELL);
-      if (seg) {
-        const opts = { ...dk.opts, hand: doorOpts.hand, sw: doorOpts.sw };
-        if (dk.kind === 'single') { opts.lite = doorOpts.lite; opts.bar = doorOpts.bar; }
-        if (dk.kind === 'window') opts.sill = doorOpts.sill;
-        const cut = toggleOpening(seg.shape, seg.ring, seg.seg, seg.t, null, opts);
-        strokeChanged = true;
-        onStatus && onStatus(cut
-          ? `${dk.label} — ${cut.w.toFixed(1)}ft, cut into a ${segLength(...segEnds(seg.shape.rings[seg.ring], seg.seg)).toFixed(1)}ft wall.`
-          : `${dk.label} removed.`);
-        return;
-      }
-      const ref = edgeRef(f, e);
-      // Clicking the same kind again takes it out and leaves the kind of wall
-      // the wall tool would build now — a glazed partition with a door in it is
-      // one click away, and one more puts the glass back rather than drywall.
-      ref.arr[ref.i] = ref.arr[ref.i] === dk.edge ? wallKindOf(wallKind).edge : dk.edge;
+      // An opening is cut where you clicked along the run rather than at the
+      // middle of anything — a 30ft wall can hold several.
+      const seg = nearestSegment(f, wx, wz, SEG_GRAB);
+      if (!seg) return;
+      const opts = { ...dk.opts, hand: doorOpts.hand, sw: doorOpts.sw };
+      if (dk.kind === 'single') { opts.lite = doorOpts.lite; opts.bar = doorOpts.bar; }
+      if (dk.kind === 'window') opts.sill = doorOpts.sill;
+      const cut = toggleOpening(seg.shape, seg.ring, seg.seg, seg.t, null, opts);
       strokeChanged = true;
+      onStatus && onStatus(cut
+        ? `${dk.label} — ${cut.w.toFixed(1)}ft, cut into a ${segLength(...segEnds(seg.shape.rings[seg.ring], seg.seg)).toFixed(1)}ft wall.`
+        : `${dk.label} removed.`);
     } else if (tool === 'room') {
       if (!isClick) return;
-      // Polygon rooms sit on top of the grid, so they answer the click first.
       const shape = shapeAt(f, wx, wz);
-      if (shape) {
-        shape.name = roomName || 'Room';
-        shape.color = roomColor;
-        applyFinish(shape, roomFinish, roomPaint);
+      if (!shape) return;
+      shape.name = roomName || 'Room';
+      shape.color = roomColor;
+      shape.group = roomGroup;
+      shape.load = roomLoad;
+      applyFinish(shape, roomFinish, roomPaint);
+      strokeChanged = true;
+      const said = [`${Math.round(shapeArea(shape)).toLocaleString()} ft²`];
+      if (roomGroup) said.push(`read as ${roomGroup}`);
+      if (roomLoad) said.push(`${roomLoad} occupants`);
+      onStatus && onStatus(`${shape.name} — ${said.join(', ')}.`);
+    } else if (tool === 'erase') {
+      const seg = nearestSegment(f, wx, wz, SEG_GRAB);
+      if (seg) {
+        // Erasing a wall takes its doorways with it — they were openings *in*
+        // that wall, and there's nothing left to be an opening in.
+        if (setSegWall(seg.shape, seg.ring, seg.seg, SEG_NONE)) strokeChanged = true;
+        return;
+      }
+      // A whole free-drawn room is a lot to lose to a stray drag, so one only
+      // goes on a deliberate click. A painted one rubs out a cell at a time,
+      // which is how it was drawn.
+      const frozen = isClick ? frozenAt(s, s.currentFloor, ...cellXY(f, wx, wz)) : null;
+      if (frozen) {
+        removeShape(f, frozen.id);
         strokeChanged = true;
         return;
       }
       const c = cellAt(f, wx, wz);
-      if (!c || !getCell(f, c.x, c.y)) return;
-      const region = floodRegion(f, c.x, c.y);
-      for (const rc of region) {
-        const cell = f.cells[cellIdx(f, rc.x, rc.y)];
-        cell.room = roomName || 'Room';
-        cell.color = roomColor;
-        // A grid room is a flood-fill label, not an object, so its finishes
-        // are written across every cell in the region — the standing tax the
-        // retrospective describes, paid once more.
-        applyFinish(cell, roomFinish, roomPaint);
-      }
-      strokeChanged = true;
-      onStatus && onStatus(`${roomName || 'Room'} — ${region.length * CELL * CELL} ft², ${region.length} cell${region.length === 1 ? '' : 's'}.`);
-    } else if (tool === 'erase') {
-      const e = nearestEdge(f, wx, wz);
-      const seg = nearPolySeg(f, wx, wz, e.dist * CELL);
-      if (seg) {
-        // Erasing a polygon wall takes its doorways with it — they were
-        // openings *in* that wall, and there's nothing left to be an opening in.
-        if (setSegWall(seg.shape, seg.ring, seg.seg, SEG_NONE)) strokeChanged = true;
-        return;
-      }
-      const ref = edgeRef(f, e);
-      if (e.dist < 0.28 && ref.arr[ref.i] !== EDGE_NONE) {
-        ref.arr[ref.i] = EDGE_NONE;
-        strokeChanged = true;
-      } else {
-        // A whole room is a lot to lose to a stray drag, so a polygon room only
-        // goes on a deliberate click.
-        const shape = isClick ? shapeAt(f, wx, wz) : null;
-        if (shape) {
-          removeShape(f, shape.id);
-          strokeChanged = true;
-          return;
-        }
-        const c = cellAt(f, wx, wz);
-        if (c && setTile(f, c.x, c.y, false)) strokeChanged = true;
-      }
+      if (!c) return;
+      const out = paintCell(s, s.currentFloor, c.x, c.y, false);
+      if (out.changed) strokeChanged = true;
     }
+  }
+
+  // The cell a world point is over, as the two arguments `frozenAt` wants.
+  function cellXY(f, wx, wz) {
+    return [Math.floor(wx / CELL), Math.floor(wz / CELL)];
   }
 
   // Sample along the drag path so fast strokes don't skip cells/edges
@@ -480,24 +479,34 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       : tool === 'wall' ? wallKindOf(wallKind).color
       : 0x4da3ff;
 
-    if (tool === 'wall' || tool === 'door' || (isErase && nearestEdge(f, p.x, p.z).dist < 0.28)) {
-      const edge = nearestEdge(f, p.x, p.z);
+    // The wall, door and erase tools all act on a room's own boundary now, so
+    // the cursor follows the segment they would act on rather than a lattice
+    // edge — which is also the only honest preview, since a wall can run at
+    // any angle and be any length.
+    const seg = (tool === 'wall' || tool === 'door' || isErase)
+      ? nearestSegment(f, p.x, p.z, SEG_GRAB) : null;
+    if (seg) {
+      const [a, b] = segEnds(seg.shape.rings[seg.ring], seg.seg);
+      const len = segLength(a, b);
       edgeCursor.visible = true;
       cellCursor.visible = false;
       edgeCursor.material.color.setHex(color);
-      if (edge.kind === 'H') {
-        edgeCursor.rotation.y = 0;
-        edgeCursor.position.set((edge.x + 0.5) * CELL, baseY + WALL_H + 0.5, edge.y * CELL);
-      } else {
-        edgeCursor.rotation.y = Math.PI / 2;
-        edgeCursor.position.set(edge.x * CELL, baseY + WALL_H + 0.5, (edge.y + 0.5) * CELL);
-      }
+      edgeCursor.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+      edgeCursor.scale.set(Math.max(0.2, len / (CELL + WALL_T)), 1, 1);
+      edgeCursor.position.set((a.x + b.x) / 2, baseY + WALL_H + 0.5, (a.z + b.z) / 2);
+    } else if (tool === 'wall' || tool === 'door') {
+      // Nothing within reach: say so by showing nothing rather than by
+      // offering a lattice edge there is no longer any such thing as.
+      edgeCursor.visible = cellCursor.visible = false;
     } else {
       const c = cellAt(f, p.x, p.z);
       edgeCursor.visible = false;
       cellCursor.visible = !!c;
       if (c) {
-        cellCursor.material.color.setHex(color);
+        // Red over a room the brush will not touch, so the refusal is visible
+        // before the click rather than only in the status line after it.
+        const frozen = (tool === 'floor' || isErase) && frozenAt(s, s.currentFloor, c.x, c.y);
+        cellCursor.material.color.setHex(frozen ? 0x8a94a6 : color);
         cellCursor.position.set((c.x + 0.5) * CELL, baseY + 0.08, (c.y + 0.5) * CELL);
       }
     }
@@ -529,7 +538,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       curveMemo = Math.abs(next) < 0.01
         ? null
         : { ...curveMemo, bulge: next, count };
-      onChange({ structural: true, commit: true });
+      fire({ structural: true, commit: true });
       onStatus && onStatus(Math.abs(next) < 0.01
         ? 'Wall straightened.'
         : `Curved wall — ${count} segments, rise ${(next * 100).toFixed(0)}% of the chord. , and . adjust.`);
@@ -546,19 +555,23 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const had = seg.shape.rings[seg.ring].openings.some((o) => o.seg === seg.seg);
     const count = curveSegment(seg.shape, seg.ring, seg.seg, delta);
     if (count <= 1) {
-      dropUndoTop();
+      dropUndo();
       onStatus && onStatus(`Curve — that wall is only ${segLength(a, b).toFixed(1)}ft; there's no room to bend it.`);
       return true;
     }
     curveMemo = { shape: seg.shape, ring: seg.ring, seg: seg.seg, count, bulge: delta };
-    onChange({ structural: true, commit: true });
+    fire({ structural: true, commit: true });
     onStatus && onStatus(had
       ? `Curved wall — ${count} segments. The doorway in it was dropped: a 2ft chord has nowhere to put a 3ft door.`
       : `Curved wall — ${count} segments. , and . adjust, and they re-bend this same wall rather than stacking arcs.`);
     return true;
   }
 
-  function dropUndoTop() { undoStack.pop(); }
+  // Nothing to drop: an edit that changed nothing diffs to nothing, so a
+  // gesture that gave up costs no history without having to say so. Kept as a
+  // hook because six tools call it, and because the day one of them wants to
+  // *actually* discard a change it will want somewhere to say that.
+  function dropUndo() {}
 
   // Keys this file claims for itself, before the sub-tools get a look in.
   function editorKey(e) {
@@ -614,12 +627,12 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     curveMemo = null;
     strokeActive = true;
     strokeChanged = false;
-    strokeWallFt = 0;
+    strokeFrozen = 0;
     overhangRefused = 0;
     strokeOverhang = 0;
     lastWorld = null;
     applyStroke(p.x, p.z, true);
-    if (strokeChanged) onChange({ structural: true });
+    if (strokeChanged) fire({ structural: true });
     canvas.setPointerCapture(e.pointerId);
   }
 
@@ -633,8 +646,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (!strokeActive || !p) return;
     const before = strokeChanged;
     applyStroke(p.x, p.z, false);
-    if (strokeChanged && strokeChanged !== before) onChange({ structural: true });
-    else if (strokeChanged) onChange({ structural: true, throttled: true });
+    if (strokeChanged && strokeChanged !== before) fire({ structural: true });
+    else if (strokeChanged) fire({ structural: true, throttled: true });
   }
 
   function dispatchPointerUp() {
@@ -649,26 +662,29 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     strokeActive = false;
     lastWorld = null;
     if (!strokeChanged) {
-      undoStack.pop();
-      // A stroke that built nothing because all of it was off the shadow is
-      // the one case worth a word — otherwise the tool looks broken.
+      // A stroke that built nothing is the one case worth a word — otherwise
+      // the tool looks broken.
       if (overhangRefused) reportRefusal();
+      else if (strokeFrozen) reportFrozen();
       return;
     }
-    onChange({ structural: true, commit: true });
-    // The grid-wall case in applyAt() only knows the length of the one edge
-    // it just built; the running total for the whole drag is only known here,
-    // once the stroke is done. A single polygon-wall click already reported
-    // its own segment length in applyAt() and left strokeWallFt at 0.
-    if (tool === 'wall' && strokeWallFt > 0) {
-      onStatus && onStatus(`Wall — built ${strokeWallFt.toFixed(0)}ft.`);
-    }
+    fire({ structural: true, commit: true });
     if (overhangRefused) reportRefusal();
+    else if (strokeFrozen) reportFrozen();
     else if (strokeOverhang) {
       const area = strokeOverhang * CELL * CELL;
       onStatus && onStatus(`Overhang — ${area.toLocaleString()} ft² of this storey now ` +
         'stands on nothing below.');
     }
+  }
+
+  // The brush and a free-drawn room don't mix: rasterizing an angled or curved
+  // outline would straighten it, so paint.js refuses and this says which tool
+  // does want that room. Same register as the overhang note below — a line in
+  // the status bar, no interruption.
+  function reportFrozen() {
+    onStatus && onStatus(`${strokeFrozen} cell${strokeFrozen === 1 ? '' : 's'} skipped — ` +
+      'a free-drawn room is there. Use the vertex tool (V) to reshape it.');
   }
 
   // Unobtrusive on purpose: one line in the status bar naming the switch that
@@ -917,6 +933,14 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     },
     get roomFinish() { return roomFinish; },
     get roomPaint() { return roomPaint; },
+    // ...and v11's two, which the room tool writes onto the record rather
+    // than onto the geometry.
+    setRoomUse(group, load) {
+      if (group !== undefined) roomGroup = group || null;
+      if (load !== undefined) roomLoad = Number.isFinite(load) && load > 0 ? Math.round(load) : null;
+    },
+    get roomGroup() { return roomGroup; },
+    get roomLoad() { return roomLoad; },
     setPropType: (t) => propTool.setType(t),
     get propType() { return propTool.currentType; },
     // The prop tool's second knob (Phase 11): the paint. Same shape as the
@@ -970,13 +994,20 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     shapeCopy: () => poly.sectionCopy(),
     shapePaste: () => poly.sectionPaste(),
     shapeDuplicate: () => poly.sectionDuplicate(),
-    undo, redo, pushUndo,
-    // Discard the most recent pushUndo() when the edit it was staged for
-    // turned out to be a no-op.
-    dropUndo() { undoStack.pop(); },
-    get canUndo() { return undoStack.length > 0; },
+    undo, redo, pushUndo, dropUndo,
+    // The last gesture is still pending until something commits it, so
+    // `canUndo` is "there is a step, or there is one waiting to be made".
+    get canUndo() { return undoStack.length > 0 || dirty; },
     get canRedo() { return redoStack.length > 0; },
-    clearHistory() { undoStack.length = 0; redoStack.length = 0; },
+    clearHistory() {
+      undoStack.length = 0;
+      redoStack.length = 0;
+      markClean();
+    },
+    // Forget the open edit without recording it — what a design that arrived
+    // from somewhere else (a shared link, a fresh start) wants, so that the
+    // next thing somebody draws is the first thing they can undo.
+    markClean,
     setEnabled(v) {
       enabled = v;
       // Walkthrough hides the overlay entirely; an unfinished outline doesn't

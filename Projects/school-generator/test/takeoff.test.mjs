@@ -5,10 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  createState, setTile, edgeHIdx, edgeVIdx, addFloor, CELL, WALL_H, FLOOR_H,
-  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_WINDOW,
-} from '../js/grid.js';
+import { createState, addFloor, CELL, WALL_H, FLOOR_H } from '../js/grid.js';
+import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_WINDOW } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import { WALL_T_INT, WALL_T_EXT } from '../js/walls.js';
 import { addShape } from '../js/shapes.js';
 import { addProp } from '../js/props.js';
@@ -19,19 +18,12 @@ import { floorTakeoff, takeoff, takeoffCSV, csvRows } from '../js/takeoff.js';
 
 // A 4×4-cell room inside a 12×10 lot: 16 ft of wall on each side, all of it
 // exterior because there is nothing on the far side of any of it.
-function shoebox() {
+function shoebox(extra = null) {
   const s = createState(12, 10);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 4; x++) setTile(f, x, y, true);
-  for (let x = 1; x <= 4; x++) {
-    f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL;
-  }
-  for (let y = 1; y <= 4; y++) {
-    f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
-  }
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 4; x++) f.cells[y * f.w + x].room = 'Room 101';
+  const f = sheet(s, 0);
+  f.box(1, 1, 4, 4, { name: 'Room 101' });
+  if (extra) extra(f);
+  f.bake();
   return s;
 }
 
@@ -53,17 +45,9 @@ test('a shoebox is four walls of sixteen feet, all exterior', () => {
 
 test('a partition between two rooms is interior, and thinner for it', () => {
   const s = createState(14, 10);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 9; x++) setTile(f, x, y, true);
-  for (let x = 1; x <= 9; x++) {
-    f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL;
-  }
-  for (let y = 1; y <= 4; y++) {
-    f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, 10, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
-  }
+  const f = sheet(s, 0);
+  f.box(1, 1, 9, 4).vrun(5, 1, 4, EDGE_WALL);
+  f.bake();
   const t = floorTakeoff(s, 0);
   const int = row(t.walls, 'wall:int');
   const ext = row(t.walls, 'wall:ext');
@@ -75,9 +59,7 @@ test('a partition between two rooms is interior, and thinner for it', () => {
 
 test('a doorway comes out of the wall run it is cut in', () => {
   const plain = floorTakeoff(shoebox(), 0);
-  const s = shoebox();
-  s.floors[0].edgesV[edgeVIdx(s.floors[0], 1, 2)] = EDGE_DOOR2;
-  const holed = floorTakeoff(s, 0);
+  const holed = floorTakeoff(shoebox((f) => f.edgeV(1, 2, EDGE_DOOR2)), 0);
   // A double door fills its whole cell, so exactly one cell of wall goes.
   assert.equal(plain.walls[0].lf - holed.walls[0].lf, CELL);
   assert.equal(holed.doors, 1);
@@ -85,12 +67,10 @@ test('a doorway comes out of the wall run it is cut in', () => {
 });
 
 test('doors and windows are grouped by kind, width and leaf count', () => {
-  const s = shoebox();
-  const f = s.floors[0];
-  f.edgesV[edgeVIdx(f, 1, 2)] = EDGE_DOOR;
-  f.edgesV[edgeVIdx(f, 1, 3)] = EDGE_DOOR;
-  f.edgesV[edgeVIdx(f, 5, 2)] = EDGE_DOOR2;
-  f.edgesH[edgeHIdx(f, 2, 1)] = EDGE_WINDOW;
+  const s = shoebox((f) => {
+    f.edgeV(1, 2, EDGE_DOOR).edgeV(1, 3, EDGE_DOOR)
+      .edgeV(5, 2, EDGE_DOOR2).edgeH(2, 1, EDGE_WINDOW);
+  });
   const t = floorTakeoff(s, 0);
   assert.equal(t.doors, 3);
   assert.equal(t.windows, 1);
@@ -102,9 +82,7 @@ test('doors and windows are grouped by kind, width and leaf count', () => {
 });
 
 test('glass is measured as area and bought in bays', () => {
-  const s = shoebox();
-  const f = s.floors[0];
-  for (let x = 1; x <= 4; x++) f.edgesH[edgeHIdx(f, x, 1)] = EDGE_GLASS;
+  const s = shoebox((f) => f.hrun(1, 4, 1, EDGE_GLASS));
   const t = floorTakeoff(s, 0);
   assert.equal(row(t.walls, 'glass:ext').lf, 4 * CELL);
   assert.equal(t.glazing, 4 * CELL * WALL_H);

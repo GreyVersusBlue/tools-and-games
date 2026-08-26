@@ -6,7 +6,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createState, setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR, CELL } from '../js/grid.js';
+import { createState, CELL } from '../js/grid.js';
+import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import { addShape } from '../js/shapes.js';
 import { buildSampleSchool } from '../js/sample.js';
 import { buildNav } from '../js/navgraph.js';
@@ -105,14 +107,12 @@ test('useEntry falls back rather than throwing', () => {
 // A tiny two-room building: one classroom, one corridor.
 function twoRooms() {
   const s = createState(12, 8);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 9; x++) setTile(f, x, y, true);
-  for (let x = 1; x <= 9; x++) { f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL; f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL; }
-  for (let y = 1; y <= 4; y++) { f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL; f.edgesV[edgeVIdx(f, 10, y)] = EDGE_WALL; }
-  for (let y = 1; y <= 4; y++) f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
-  f.edgesV[edgeVIdx(f, 5, 2)] = EDGE_DOOR;
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 4; x++) f.cells[y * f.w + x].room = 'Room 101';
-  for (let y = 1; y <= 4; y++) for (let x = 6; x <= 9; x++) f.cells[y * f.w + x].room = 'Corridor';
+  const f = sheet(s, 0);
+  f.box(1, 1, 9, 4);
+  f.vrun(5, 1, 4, EDGE_WALL).edgeV(5, 2, EDGE_DOOR);
+  f.label(1, 1, 4, 4, { name: 'Room 101' });
+  f.label(6, 1, 9, 4, { name: 'Corridor' });
+  f.bake();
   return s;
 }
 

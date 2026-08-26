@@ -20,8 +20,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { DepthOfFieldPass } from 'three/addons/postprocessing/DepthOfFieldPass.js';
 import {
   CELL, WALL_H, WALL_T, WALL_T_EXT, DOOR_H, RAIL_H,
-  EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW, isDoorEdge,
-  FLOOR_H, computeLabels, floorBaseY, wallHeightOf, topOfBuilding,
+  FLOOR_H, floorBaseY, wallHeightOf, topOfBuilding,
 } from './grid.js';
 import {
   SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt,
@@ -33,7 +32,7 @@ import { revealAt } from './hunt.js';
 import {
   stairMetrics, stairsOf, openingRails, runMetrics,
   elevatorSize, elevatorDoorWidth, elevatorsOn,
-  floorCuts, inFloorCut, cellCut, stairWidth,
+  floorCuts, inFloorCut, stairWidth,
 } from './stairs.js';
 import { wallProbe, solidBeside } from './walls.js';
 import { overlaySize, showsOn } from './overlay.js';
@@ -50,8 +49,8 @@ import { loadModel, writeGLB, FT_TO_M } from './gltf.js';
 import { modelBytes, modelsOf } from './models.js';
 import { REFERENCE_SPACES, XR_MODE, rigPosition } from './xr.js';
 import {
-  collectDoorLeaves, leafAngle, mullionPositions, gridOpeningWidth,
-  gridWindowSpec, windowBand, LEAF_T, MULLION_BAY,
+  collectDoorLeaves, leafAngle, mullionPositions,
+  windowBand, LEAF_T, MULLION_BAY,
 } from './openings.js';
 
 // ---------- procedural textures ----------
@@ -3358,59 +3357,12 @@ export function initRender(canvas) {
       return left ? -1 : 1;
     };
 
-    for (let y = 0; y < floor.h; y++) {
-      for (let x = 0; x < floor.w; x++) {
-        const cell = floor.cells[y * floor.w + x];
-        if (!cell) continue;
-        // A cell under an opening isn't drawn at all — that is what makes the
-        // hole a hole, rather than a stair pressed up against an intact slab.
-        const cut = cellCut(cuts, x, y);
-        const ceilCut = cellCut(ceilCuts, x, y);
-        const cx = (x + 0.5) * CELL, cz = (y + 0.5) * CELL;
-
-        if (!cut) {
-          const f = new THREE.PlaneGeometry(CELL, CELL);
-          f.rotateX(-Math.PI / 2);
-          f.translate(cx, baseY, cz);
-          // continuous tiling across cells
-          const uv = f.attributes.uv;
-          for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + x, uv.getY(i) + y);
-          // The cell's `color` is still the room's label tint, multiplied over
-          // whatever the finish's own texture is — the two say different things
-          // and both survive.
-          tmpColor.set(cell.color || _white);
-          coloredGeo(f, tmpColor);
-          pushFloor(cell.fin, f);
-        }
-
-        // The ceiling belongs to this storey but the hole in it belongs to the
-        // one above — a stair leaving here opens both planes, or you'd climb
-        // into a ceiling tile.
-        if (!ceilCut) {
-          const cg = new THREE.PlaneGeometry(CELL, CELL);
-          cg.rotateX(Math.PI / 2);
-          cg.translate(cx, baseY + WALL_H, cz);
-          const cuv = cg.attributes.uv;
-          for (let i = 0; i < cuv.count; i++) cuv.setXY(i, cuv.getX(i) + x, cuv.getY(i) + y);
-          ceilGeos.push(cg);
-
-          // a 2x4ft light fixture on every other cell in both directions
-          if (x % 2 === 1 && y % 2 === 1) {
-            const fg = new THREE.BoxGeometry(3.6, 0.15, 1.6);
-            fg.translate(cx, baseY + WALL_H - 0.1, cz);
-            fixtureGeos.push(fg);
-          }
-        }
-      }
-    }
-
     // ---- walls, glazing and railings ----
     //
     // Four things can stand on a boundary: a wall, a doorway through one, a
-    // glazed partition, a guardrail. The lattice and the polygon rooms say
-    // *where* differently, but they want the same things built — so a grid edge
-    // is handed to the same span builders as a polygon segment, as a run that
-    // happens to be one cell long.
+    // glazed partition, a guardrail. Until Phase 12 there were two ways of
+    // saying where each of them went and this section built both; there is one
+    // now, and a boundary is a run of a room's own ring.
 
     const GLASS_BAY = 5;       // ft between mullions in a full-height curtain wall
     const GLASS_SILL = 0.4;    // ft of solid under the pane
@@ -3623,43 +3575,6 @@ export function initRender(canvas) {
       if (cursor < 1) span(cursor, 1);
     };
 
-    // A lattice edge, expressed as a one-cell segment handed to the same span
-    // builder a polygon wall uses. The opening is the one case the grid still
-    // says its own way: an edge is a whole cell wide, so anything cut into one
-    // is fixed at its middle rather than placed along it (see
-    // `gridOpeningWidth`).
-    const buildEdge = (val, cx, cz, horizontal) => {
-      const L = CELL;
-      const half = L / 2;
-      const a = horizontal ? { x: cx - half, z: cz } : { x: cx, z: cz - half };
-      const b = horizontal ? { x: cx + half, z: cz } : { x: cx, z: cz + half };
-      if (val === EDGE_RAIL) {
-        railRun(a, b, L, horizontal ? 0 : Math.PI / 2);
-        return;
-      }
-      const kind = val === EDGE_GLASS ? SEG_GLASS : SEG_WALL;
-      const w = gridOpeningWidth(val);
-      const openings = [];
-      if (val === EDGE_WINDOW) {
-        const spec = gridWindowSpec();
-        openings.push({ seg: 0, t: 0.5, w, k: 1, sill: spec.sill, h: spec.h });
-      } else if (isDoorEdge(val)) {
-        openings.push({ seg: 0, t: 0.5, w });
-      }
-      buildSegWall(a, b, openings, kind);
-    };
-
-    for (let y = 0; y <= floor.h; y++)
-      for (let x = 0; x < floor.w; x++) {
-        const v = floor.edgesH[y * floor.w + x];
-        if (v) buildEdge(v, (x + 0.5) * CELL, y * CELL, true);
-      }
-    for (let y = 0; y < floor.h; y++)
-      for (let x = 0; x <= floor.w; x++) {
-        const v = floor.edgesV[y * (floor.w + 1) + x];
-        if (v) buildEdge(v, x * CELL, (y + 0.5) * CELL, false);
-      }
-
     // ---- stairs and floor openings ----
     //
     // The run is drawn with the storey it climbs *from*; the guardrail around
@@ -3792,13 +3707,11 @@ export function initRender(canvas) {
       }
     }
 
-    // ---- polygon rooms ----
-    // Same merged meshes as the grid: a polygon room is a different way of
-    // describing a room, not a different kind of thing to draw.
+    // ---- the rooms ----
     shapesOf(floor).forEach((shape, si) => {
-      // Coincident planes: a polygon room drawn over grid cells, or over
-      // another polygon room, needs somewhere to be. A fraction of an inch is
-      // enough to settle the depth test and invisible at building scale.
+      // Coincident planes: a room drawn over another one needs somewhere to
+      // be. A fraction of an inch is enough to settle the depth test and
+      // invisible at building scale.
       const lift = 0.02 + (si % 8) * 0.006;
 
       const slab = shapeSlabGeometry(shape, false, cuts);
@@ -3819,8 +3732,8 @@ export function initRender(canvas) {
         }
       }
 
-      // Troffers on the same 8ft lattice the grid cells use, clipped to the
-      // room — so a polygon room is lit like its rectangular neighbours.
+      // Troffers on an 8ft lattice, clipped to the room — so every room is
+      // lit on the same rhythm however its outline runs.
       const bb = shapeBBox(shape);
       for (let z = Math.floor(bb.z0 / CELL) | 0; z <= Math.ceil(bb.z1 / CELL); z++) {
         for (let x = Math.floor(bb.x0 / CELL) | 0; x <= Math.ceil(bb.x1 / CELL); x++) {
@@ -3884,13 +3797,8 @@ export function initRender(canvas) {
       ceil.add(new THREE.Mesh(mergeGeometries(fixtureGeos), fixtureMat));
     }
 
-    for (const l of computeLabels(floor)) {
-      const sprite = makeLabelSprite(l.name, l.color);
-      sprite.position.set(l.cx, baseY + WALL_H + 2.5, l.cz);
-      labels.add(sprite);
-    }
-    // Polygon rooms label from the point deepest inside them — the centroid of
-    // an L-shaped room can land in a wall, or outside the room altogether.
+    // A room labels from the point deepest inside it — the centroid of an
+    // L-shaped room can land in a wall, or outside the room altogether.
     for (const shape of shapesOf(floor)) {
       if (!shape.name) continue;
       const p = interiorPoint(shape);

@@ -12,7 +12,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createState, setTile, CELL, WALL_H, addFloor } from '../js/grid.js';
+import { createState, CELL, WALL_H, addFloor } from '../js/grid.js';
+import { slabOn } from './build.mjs';
 import { addShape } from '../js/shapes.js';
 import { FACADE_MATERIALS, FACADE_KEYS, DEFAULT_FACADE, facadeEntry, readFacade } from '../js/finish.js';
 import {
@@ -29,7 +30,7 @@ const near = (a, b, eps, msg) =>
 // A rectangular building `wc` x `hc` cells at the grid origin.
 function box(wc, hc, grid = 30) {
   const s = createState(grid, grid);
-  for (let y = 0; y < hc; y++) for (let x = 0; x < wc; x++) setTile(s.floors[0], x, y, true);
+  slabOn(s, 0, [0, 0, wc - 1, hc - 1]);
   return s;
 }
 
@@ -109,8 +110,7 @@ test('a rectangular footprint outlines as one loop of four corners', () => {
 
 test('an L-shaped footprint outlines as one loop of six corners', () => {
   const s = createState(20, 20);
-  for (let y = 0; y < 8; y++) for (let x = 0; x < 10; x++) setTile(s.floors[0], x, y, true);
-  for (let y = 8; y < 14; y++) for (let x = 0; x < 4; x++) setTile(s.floors[0], x, y, true);
+  slabOn(s, 0, [0, 0, 9, 7], [0, 8, 3, 13]);
   const loops = maskOutlines(roofMask(s.floors[0], s.w, s.h));
   assert.equal(loops.length, 1);
   assert.equal(loops[0].length, 6);
@@ -118,8 +118,7 @@ test('an L-shaped footprint outlines as one loop of six corners', () => {
 
 test('a courtyard is a second loop', () => {
   const s = createState(20, 20);
-  for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) setTile(s.floors[0], x, y, true);
-  for (let y = 3; y < 7; y++) for (let x = 3; x < 7; x++) setTile(s.floors[0], x, y, false);
+  slabOn(s, 0, [0, 0, 9, 9], [3, 3, 6, 6, false]);
   const loops = maskOutlines(roofMask(s.floors[0], s.w, s.h));
   assert.equal(loops.length, 2, 'the outside and the hole');
   const perims = loops.map(perimeter).sort((a, b) => a - b);
@@ -129,8 +128,7 @@ test('a courtyard is a second loop', () => {
 
 test('two detached wings outline as two loops', () => {
   const s = createState(30, 20);
-  for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) setTile(s.floors[0], x, y, true);
-  for (let y = 0; y < 5; y++) for (let x = 15; x < 20; x++) setTile(s.floors[0], x, y, true);
+  slabOn(s, 0, [0, 0, 4, 4], [15, 0, 19, 4]);
   assert.equal(maskOutlines(roofMask(s.floors[0], s.w, s.h)).length, 2);
 });
 
@@ -152,8 +150,7 @@ test('the largest rectangle in a solid mask is the whole thing', () => {
 test('the rectangles cover every masked cell exactly once', () => {
   const s = createState(20, 20);
   // A plus sign: the hardest small shape for a greedy decomposition.
-  for (let y = 4; y < 12; y++) for (let x = 0; x < 16; x++) setTile(s.floors[0], x, y, true);
-  for (let y = 0; y < 16; y++) for (let x = 5; x < 11; x++) setTile(s.floors[0], x, y, true);
+  slabOn(s, 0, [0, 4, 15, 11], [5, 0, 10, 15]);
   const m = roofMask(s.floors[0], s.w, s.h);
   const seen = new Uint8Array(m.w * m.h);
   for (const rect of maskRects(m)) {
@@ -172,8 +169,7 @@ test('the rectangles cover every masked cell exactly once', () => {
 
 test('rectangles come out biggest first', () => {
   const s = createState(20, 20);
-  for (let y = 0; y < 10; y++) for (let x = 0; x < 10; x++) setTile(s.floors[0], x, y, true);
-  for (let y = 10; y < 12; y++) for (let x = 0; x < 3; x++) setTile(s.floors[0], x, y, true);
+  slabOn(s, 0, [0, 0, 9, 9], [0, 10, 2, 11]);
   const rects = maskRects(roofMask(s.floors[0], s.w, s.h));
   const area = (r) => (r.c1 - r.c0) * (r.r1 - r.r0);
   for (let i = 1; i < rects.length; i++) {
@@ -183,8 +179,7 @@ test('rectangles come out biggest first', () => {
 
 test('an eave hangs where the building ends and nowhere else', () => {
   const s = createState(20, 20);
-  for (let y = 0; y < 8; y++) for (let x = 0; x < 10; x++) setTile(s.floors[0], x, y, true);
-  for (let y = 8; y < 14; y++) for (let x = 0; x < 4; x++) setTile(s.floors[0], x, y, true);
+  slabOn(s, 0, [0, 0, 9, 7], [0, 8, 3, 13]);
   const m = roofMask(s.floors[0], s.w, s.h);
   const big = { c0: 0, r0: 0, c1: 10, r1: 8 };
   assert.equal(sideIsOuter(m, big, 'n'), true, 'the north side is outside');
@@ -282,7 +277,7 @@ test('a pitched roof over a rectangle is one block, overhanging on all four side
 test('the roof sits on the top storey, not on the ground one', () => {
   const s = box(10, 6);
   addFloor(s, 1);
-  for (let y = 0; y < 6; y++) for (let x = 0; x < 10; x++) setTile(s.floors[1], x, y, true);
+  slabOn(s, 1, [0, 0, 9, 5]);
   const plan = roofPlan(s, { style: 'gable' });
   near(plan.eaveY, s.floorHt + WALL_H, 1e-9);
   assert.ok(roofTop(plan) > plan.eaveY, 'and stands above it');
@@ -290,8 +285,7 @@ test('the roof sits on the top storey, not on the ground one', () => {
 
 test('an L-shaped school is roofed as two masses that meet', () => {
   const s = createState(20, 20);
-  for (let y = 0; y < 8; y++) for (let x = 0; x < 12; x++) setTile(s.floors[0], x, y, true);
-  for (let y = 8; y < 16; y++) for (let x = 0; x < 5; x++) setTile(s.floors[0], x, y, true);
+  slabOn(s, 0, [0, 0, 11, 7], [0, 8, 4, 15]);
   const plan = roofPlan(s, { style: 'hip', pitch: 5 });
   assert.equal(plan.blocks.length, 2);
   // The joint between them gets no eave — it is inside the building.

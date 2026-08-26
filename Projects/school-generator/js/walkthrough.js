@@ -31,7 +31,7 @@
 
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { CELL, EYE_H, cellIdx, activeFloor, floorBaseY, topOfBuilding } from './grid.js';
+import { CELL, EYE_H, activeFloor, floorBaseY, topOfBuilding } from './grid.js';
 import { shapesOf, shapeArea, shapeBBox, interiorPoint } from './shapes.js';
 import { catalogEntry } from './catalog.js';
 import { finishAt } from './finish.js';
@@ -218,52 +218,28 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   });
   document.addEventListener('keyup', (e) => keys.delete(e.code));
 
+  // Where a walk starts: the deepest point inside the storey's biggest room,
+  // looking along the building's longer axis toward whichever side has more
+  // room to walk into. `interiorPoint` rather than a centroid, because the
+  // centre of area of an L-shaped corridor is in the wall beside it.
   function spawnPoint(f) {
-    let sx = 0, sy = 0, n = 0;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (let y = 0; y < f.h; y++)
-      for (let x = 0; x < f.w; x++)
-        if (f.cells[cellIdx(f, x, y)]) {
-          sx += x + 0.5; sy += y + 0.5; n++;
-          minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-          minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-        }
-    if (n === 0) {
-      // A storey can be all polygon rooms and no grid cells — stand in the
-      // biggest one rather than in the middle of an empty lattice.
-      const biggest = shapesOf(f).reduce(
-        (best, s) => (!best || shapeArea(s) > shapeArea(best) ? s : best), null);
-      if (biggest) {
-        const p = interiorPoint(biggest);
-        const bb = shapeBBox(biggest);
-        const wide = bb.x1 - bb.x0 >= bb.z1 - bb.z0;
-        return {
-          x: p.x, z: p.z,
-          lookX: wide ? (bb.x1 - p.x >= p.x - bb.x0 ? 1 : -1) : 0,
-          lookZ: wide ? 0 : (bb.z1 - p.z >= p.z - bb.z0 ? 1 : -1),
-        };
-      }
-      return { x: (f.w * CELL) / 2, z: (f.h * CELL) / 2, lookX: 0, lookZ: -1 };
+    const rooms = shapesOf(f);
+    const biggest = rooms.reduce(
+      (best, s2) => (!best || shapeArea(s2) > shapeArea(best) ? s2 : best), null);
+    if (!biggest) return { x: (f.w * CELL) / 2, z: (f.h * CELL) / 2, lookX: 0, lookZ: -1 };
+    const p = interiorPoint(biggest);
+    // The whole storey's extent decides which way to face, not the room's —
+    // standing in a corridor you want to be looking down the building.
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const shape of rooms) {
+      const b = shapeBBox(shape);
+      minX = Math.min(minX, b.x0); maxX = Math.max(maxX, b.x1);
+      minZ = Math.min(minZ, b.z0); maxZ = Math.max(maxZ, b.z1);
     }
-    // nearest floored cell to the centroid, so we spawn inside the building
-    const cx = sx / n, cy = sy / n;
-    let best = null, bestD = Infinity;
-    for (let y = 0; y < f.h; y++)
-      for (let x = 0; x < f.w; x++)
-        if (f.cells[cellIdx(f, x, y)]) {
-          const d = (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2;
-          if (d < bestD) { bestD = d; best = { x: x + 0.5, y: y + 0.5 }; }
-        }
-    // face along the building's longer axis, toward the side with more space
-    let lookX, lookZ;
-    if (maxX - minX >= maxY - minY) {
-      lookX = (maxX + 1 - best.x) >= (best.x - minX) ? 1 : -1;
-      lookZ = 0;
-    } else {
-      lookX = 0;
-      lookZ = (maxY + 1 - best.y) >= (best.y - minY) ? 1 : -1;
+    if (maxX - minX >= maxZ - minZ) {
+      return { x: p.x, z: p.z, lookX: maxX - p.x >= p.x - minX ? 1 : -1, lookZ: 0 };
     }
-    return { x: best.x * CELL, z: best.y * CELL, lookX, lookZ };
+    return { x: p.x, z: p.z, lookX: 0, lookZ: maxZ - p.z >= p.z - minZ ? 1 : -1 };
   }
 
   // Ghost flight: exactly what the camera did before this phase — no

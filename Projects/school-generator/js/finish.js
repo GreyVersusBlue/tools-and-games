@@ -11,7 +11,7 @@
 //   fin    a floor finish key out of the table below — VCT, carpet, tile...
 //   paint  a wall colour, '#rrggbb' or null for the default
 //
-// Grid cells carry them per cell (the grid has no room object to hang them on,
+// A room carries both (until Phase 12 the lattice had no room object to hang
 // which is the standing tax the retrospective describes) and the room tool
 // writes them across a flood-filled region the same way it writes the name.
 // Polygon rooms carry them once, on the shape.
@@ -22,7 +22,7 @@
 //
 // Pure module: no three.js. Exercised by test/finish.test.mjs.
 
-import { CELL, getCell } from './grid.js';
+import { CELL } from './grid.js';
 import { shapesOf, shapeArea, shapeAt } from './shapes.js';
 
 // The finish table. `color` is the floor's own base colour — what the material
@@ -104,14 +104,12 @@ export const readPaint = (v) =>
 
 // ---------- what's underfoot ----------
 
-// A polygon room drawn over grid cells is the room you are standing in — the
-// same rule `shapeAt` follows everywhere else — so it answers first.
+// The floor finish of the room at a point — `shapeAt`'s answer, so a room
+// drawn over another is the one you are standing in.
 export function finishAt(floor, x, z) {
   if (!floor) return DEFAULT_FINISH;
   const shape = shapeAt(floor, x, z);
-  if (shape) return readFinish(shape.fin) || DEFAULT_FINISH;
-  const cell = getCell(floor, Math.floor(x / CELL), Math.floor(z / CELL));
-  return (cell && readFinish(cell.fin)) || DEFAULT_FINISH;
+  return (shape && readFinish(shape.fin)) || DEFAULT_FINISH;
 }
 
 // The wall colour of the room at a point, or null where there is no room —
@@ -119,9 +117,7 @@ export function finishAt(floor, x, z) {
 export function paintAt(floor, x, z) {
   if (!floor) return null;
   const shape = shapeAt(floor, x, z);
-  if (shape) return readPaint(shape.paint);
-  const cell = getCell(floor, Math.floor(x / CELL), Math.floor(z / CELL));
-  return cell ? readPaint(cell.paint) : null;
+  return shape ? readPaint(shape.paint) : null;
 }
 
 // The colour to paint one boundary. A wall belongs to the rooms on either side
@@ -185,18 +181,6 @@ export function finishSchedule(floor) {
   };
   const note = (r, name) => { if (name && !r.rooms.includes(name)) r.rooms.push(name); };
 
-  // Grid cells: one region's cells all carry the same finish (the room tool
-  // writes it across a flood fill), so summing per cell and naming per cell is
-  // the same thing as summing per room.
-  for (let y = 0; y < floor.h; y++) {
-    for (let x = 0; x < floor.w; x++) {
-      const c = floor.cells[y * floor.w + x];
-      if (!c) continue;
-      const r = row(readFinish(c.fin) || DEFAULT_FINISH);
-      r.sqft += CELL * CELL;
-      note(r, c.room);
-    }
-  }
   for (const shape of shapesOf(floor)) {
     const r = row(readFinish(shape.fin) || DEFAULT_FINISH);
     r.sqft += shapeArea(shape);

@@ -1,11 +1,12 @@
-// shapes.js — polygon rooms: the non-rectilinear half of the room model.
+// shapes.js — rooms. Since Phase 12 there is one kind, and this is it.
 //
-// The grid (grid.js) stays exactly as it was: it is the fast rectangular mode,
-// and it is what most of a school is. This file adds the other representation —
-// a room that owns its own outline, so breakout rooms, alcoves and angled
-// corners stop being something the 4ft grid has to approximate.
+// For nineteen phases this was the *other* representation: the 4ft lattice was
+// what most of a school was, and a shape was what the lattice couldn't say —
+// breakout rooms, alcoves, angled corners. Phase 12 promoted every room to a
+// polygon on load and deleted the lattice branch from every reader, so a shape
+// is now simply a room: an object, with an id, that owns its own outline.
 //
-// A shape lives on one floor, in world feet, and is a list of *rings*:
+// A room lives on one floor, in world feet, and is a list of *rings*:
 //
 //   rings[0]        the outer boundary
 //   rings[1..]      holes — carved alcoves, courtyards, a room within a room
@@ -17,9 +18,9 @@
 //   }
 //
 // Walls being a per-segment array on the boundary itself is the schema change
-// the grid's `edgesH`/`edgesV` couldn't absorb: an edge array indexes a fixed
-// lattice, and there is no lattice here. A door is an *opening at a point along
-// a wall* rather than an edge value, because a polygon segment can be 30ft long
+// the lattice's `edgesH`/`edgesV` couldn't absorb: an edge array indexes a
+// fixed grid, and there is no grid here. A door is an *opening at a point
+// along a wall* rather than an edge value, because a segment can be 30ft long
 // and a door is 3ft of it.
 //
 // Winding is normalized: the outer ring is CCW in (x, z), holes are CW.
@@ -29,12 +30,13 @@
 //
 // Pure module: no three.js. Everything here is exercised by test/model.test.mjs.
 
-import {
-  CELL, DOOR_W, DOOR_H, DOUBLE_DOOR_W, WALL_H,
-  cellIdx, edgeHIdx, edgeVIdx, inGrid, getCell, floodRegion,
-} from './grid.js';
+import { CELL, DOOR_W, DOOR_H, DOUBLE_DOOR_W, WALL_H } from './grid.js';
 
-export const MAX_SHAPES = 128;      // per floor
+// Per floor. Raised from 128 in Phase 12: the polygon is now the only
+// representation of a room, so this is the cap on *every* room on a storey
+// rather than on the handful the lattice couldn't say. A generated
+// three-storey high school bakes to about sixty a floor.
+export const MAX_SHAPES = 512;
 export const MAX_RING_PTS = 400;
 export const MAX_HOLES = 24;
 export const MIN_SEG = 0.25;        // ft — closer than this and it's the same point
@@ -344,14 +346,12 @@ export function shapeAt(floor, x, z) {
 
 export const shapeById = (floor, id) => shapesOf(floor).find((s) => s.id === id) || null;
 
-// Is there anything to stand on at (x, z) on this storey? Either half of the
-// room model counts — a polygon room is as much floor as a grid cell is.
-// It lives here rather than in stairs.js (where it started life) because it is
-// the same question the wall-thickness probe asks: "is there a room on this
-// side?" — see walls.js.
+// Is there anything to stand on at (x, z) on this storey? It lives here rather
+// than in stairs.js (where it started life) because it is the same question
+// the wall-thickness probe asks: "is there a room on this side?" — see
+// walls.js.
 export function floorSolidAt(floor, x, z) {
   if (!floor) return false;
-  if (getCell(floor, Math.floor(x / CELL), Math.floor(z / CELL))) return true;
   return !!shapeAt(floor, x, z);
 }
 
@@ -391,13 +391,20 @@ export function nearestVertex(floor, x, z, maxDist = Infinity) {
 // ---------- construction ----------
 
 // Ids come off the same monotonic counter props and links use, so a shape, a
-// prop and a stair can never collide in a save file.
-function takeId(state) {
+// prop and a stair can never collide in a save file. Exported since Phase 12,
+// because lattice.js bakes rooms too and they take their ids from here.
+export function takeId(state) {
   const id = Math.max(1, Math.floor(state.nextId || 1));
   state.nextId = id + 1;
   return id;
 }
 
+// The room record. `id` is what Phase 12 exists for — every other module can
+// now refer to a room from outside the file. `group` and `load` are the two
+// fields Phase 7 said would open a save bump: which occupancy group a room is
+// read as, and a design occupant load somebody typed in place of the one the
+// area implies. Both default to null, which means "work it out from the name
+// and the area", which is what every earlier version did.
 export function makeShape(pts, opts = {}) {
   const ring = makeRing(pts, opts.wall ?? SEG_WALL);
   if (!ring) return null;
@@ -406,11 +413,13 @@ export function makeShape(pts, opts = {}) {
     id: 0,
     name: opts.name || null,
     color: opts.color || null,
-    // Present-and-null rather than absent, so a shape built here and a shape
+    // Present-and-null rather than absent, so a room built here and a room
     // read out of a save file are the same record — which is what lets the
     // round-trip test compare them field for field.
     fin: opts.fin || null,
     paint: opts.paint || null,
+    group: opts.group || null,
+    load: Number.isFinite(opts.load) && opts.load > 0 ? Math.round(opts.load) : null,
     rings: [ring],
   };
 }
@@ -744,10 +753,10 @@ export function straightenRun(shape, ringIdx, seg, count) {
 
 // ---------- snapping ----------
 //
-// Polygon rooms have to butt cleanly against grid-built ones, so the grid
-// lattice is a snap target even though polygons don't live on it. Order of
-// preference: an existing vertex, a grid corner, a point on an existing wall,
-// then a single grid axis.
+// Rooms drawn by hand have to butt cleanly against ones painted with the 4ft
+// brush, so the lattice is a snap target even though a room doesn't live on
+// it. Order of preference: an existing vertex, a lattice corner, a point on an
+// existing wall, then a single lattice axis.
 
 export function snapPoint(floor, x, z, tol = 1.5, opts = {}) {
   const skip = opts.skip || null;
@@ -795,167 +804,6 @@ export function constrainAngle(a, b, stepDeg = 15) {
   const step = (stepDeg * Math.PI) / 180;
   const ang = Math.round(Math.atan2(dz, dx) / step) * step;
   return { x: a.x + Math.cos(ang) * len, z: a.z + Math.sin(ang) * len };
-}
-
-// ---------- grid -> polygon ----------
-//
-// The migration path. Rather than run two room systems forever, any grid region
-// can be promoted to a polygon in place: trace its outline, carry the walls and
-// doors it already had, and hand the cells back. Walls shared with a
-// *neighbouring* grid room stay on the grid — that partition still belongs to
-// the room on the other side — and the polygon leaves that segment open so the
-// two never draw the same wall twice.
-
-// Walk the boundary of a set of cells and return one loop per outline.
-// Each loop is { pts: [{x,z}] in feet, segs: [{ val, shared, edges: [...] }] }.
-export function regionToPolygon(floor, cells) {
-  if (!cells || !cells.length) return [];
-  const region = new Set(cells.map((c) => c.y * floor.w + c.x));
-  const edges = [];
-
-  for (const c of cells) {
-    const { x, y } = c;
-    // Clockwise around the cell in (x, y): the region stays on our right.
-    const sides = [
-      { nx: x, ny: y - 1, a: [x, y], b: [x + 1, y], h: true, idx: edgeHIdx(floor, x, y) },
-      { nx: x + 1, ny: y, a: [x + 1, y], b: [x + 1, y + 1], h: false, idx: edgeVIdx(floor, x + 1, y) },
-      { nx: x, ny: y + 1, a: [x + 1, y + 1], b: [x, y + 1], h: true, idx: edgeHIdx(floor, x, y + 1) },
-      { nx: x - 1, ny: y, a: [x, y + 1], b: [x, y], h: false, idx: edgeVIdx(floor, x, y) },
-    ];
-    for (const s of sides) {
-      if (inGrid(floor, s.nx, s.ny) && region.has(s.ny * floor.w + s.nx)) continue;
-      edges.push({
-        a: s.a, b: s.b,
-        val: (s.h ? floor.edgesH : floor.edgesV)[s.idx],
-        shared: !!getCell(floor, s.nx, s.ny),
-        edge: { h: s.h, idx: s.idx },
-      });
-    }
-  }
-
-  const key = (p) => `${p[0]},${p[1]}`;
-  const starts = new Map();
-  edges.forEach((e, i) => {
-    const k = key(e.a);
-    if (!starts.has(k)) starts.set(k, []);
-    starts.get(k).push(i);
-  });
-
-  const used = new Array(edges.length).fill(false);
-  const loops = [];
-  for (let i = 0; i < edges.length; i++) {
-    if (used[i]) continue;
-    const chain = [];
-    let cur = i;
-    while (cur >= 0 && !used[cur]) {
-      used[cur] = true;
-      chain.push(edges[cur]);
-      const e = edges[cur];
-      const cands = (starts.get(key(e.b)) || []).filter((j) => !used[j]);
-      if (!cands.length) break;
-      // Where four cells meet at a corner the outline passes through the same
-      // point twice; hugging the interior (sharpest right turn) keeps the two
-      // passes on the loops they belong to.
-      const d = { x: e.b[0] - e.a[0], y: e.b[1] - e.a[1] };
-      cands.sort((ja, jb) => {
-        const score = (j) => {
-          const c = edges[j];
-          const v = { x: c.b[0] - c.a[0], y: c.b[1] - c.a[1] };
-          return [d.x * v.y - d.y * v.x, d.x * v.x + d.y * v.y];
-        };
-        const sa = score(ja), sb = score(jb);
-        return sb[0] - sa[0] || sb[1] - sa[1];
-      });
-      cur = cands[0];
-    }
-    if (chain.length >= 4) loops.push(chain);
-  }
-
-  // Merge collinear runs that agree on wall state. A doorway keeps its own 4ft
-  // segment so its opening lands in the middle of the doorway, not the wall.
-  const out = loops.map((chain) => {
-    const pts = [], segs = [];
-    for (const e of chain) {
-      const last = segs[segs.length - 1];
-      const dir = [e.b[0] - e.a[0], e.b[1] - e.a[1]];
-      const mergeable = last && last.val === e.val && last.shared === e.shared &&
-        e.val !== 2 && last.dir[0] === dir[0] && last.dir[1] === dir[1];
-      if (mergeable) {
-        last.edges.push(e.edge);
-        last.end = e.b;
-        continue;
-      }
-      segs.push({ val: e.val, shared: e.shared, edges: [e.edge], dir, start: e.a, end: e.b });
-    }
-    // The run that wraps the loop's start point is one run, not two.
-    if (segs.length > 2) {
-      const first = segs[0], last = segs[segs.length - 1];
-      if (first.val === last.val && first.shared === last.shared && first.val !== 2 &&
-          first.dir[0] === last.dir[0] && first.dir[1] === last.dir[1]) {
-        last.end = first.end;
-        last.edges.push(...first.edges);
-        segs.shift();
-        segs.unshift(segs.pop());
-      }
-    }
-    for (const s of segs) pts.push({ x: s.start[0] * CELL, z: s.start[1] * CELL });
-    return {
-      pts,
-      segs: segs.map((s) => ({ val: s.val, shared: s.shared, edges: s.edges })),
-    };
-  }).filter((l) => l.pts.length >= 3);
-
-  out.sort((a, b) => Math.abs(ringSignedArea(b.pts)) - Math.abs(ringSignedArea(a.pts)));
-  return out;
-}
-
-// Promote the grid region containing (gx, gy) into a polygon room on the same
-// floor, and hand back the cells it was using. Returns the new shape, or null.
-export function convertRegion(state, floorIndex, gx, gy) {
-  const floor = state.floors[floorIndex];
-  if (!floor) return null;
-  const region = floodRegion(floor, gx, gy);
-  if (!region.length) return null;
-  if (!Array.isArray(floor.shapes)) floor.shapes = [];
-  if (floor.shapes.length >= MAX_SHAPES) return null;
-
-  const loops = regionToPolygon(floor, region);
-  if (!loops.length) return null;
-
-  // The promoted room keeps the finishes the cells carried, not just the name
-  // and tint — converting a room shouldn't repaint it.
-  let name = null, color = null, fin = null, paint = null;
-  for (const c of region) {
-    const cell = floor.cells[cellIdx(floor, c.x, c.y)];
-    if (!cell) continue;
-    if (!fin && cell.fin) fin = cell.fin;
-    if (!paint && cell.paint) paint = cell.paint;
-    if (!name && cell.room) { name = cell.room; color = cell.color; }
-  }
-
-  const shape = { id: takeId(state), name, color, fin, paint, rings: [] };
-  loops.forEach((loop, li) => {
-    const ring = { pts: loop.pts, walls: [], openings: [] };
-    loop.segs.forEach((sg, i) => {
-      // A partition shared with the room next door stays a grid wall; drawing
-      // it here too would put two walls in the same place.
-      if (sg.shared) { ring.walls.push(SEG_NONE); return; }
-      ring.walls.push(sg.val ? SEG_WALL : SEG_NONE);
-      if (sg.val === 2) ring.openings.push({ seg: i, t: 0.5, w: DOOR_W });
-    });
-    orientRing(ring, li === 0);
-    shape.rings.push(ring);
-  });
-
-  for (const c of region) floor.cells[cellIdx(floor, c.x, c.y)] = null;
-  for (const loop of loops) {
-    for (const sg of loop.segs) {
-      if (sg.shared) continue;
-      for (const e of sg.edges) (e.h ? floor.edgesH : floor.edgesV)[e.idx] = 0;
-    }
-  }
-  floor.shapes.push(shape);
-  return shape;
 }
 
 // ---------- load-time validation ----------
@@ -1025,6 +873,12 @@ export function normalizeShape(raw, extent = 4000) {
     fin: typeof raw.fin === 'string' && raw.fin.length <= 20 ? raw.fin : null,
     paint: typeof raw.paint === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.paint)
       ? raw.paint.toLowerCase() : null,
+    // v11's two. Validated by shape rather than by occupancy.js so this module
+    // keeps its imports-only-grid property; an unknown group is null, which
+    // every reader turns back into "read it off the name".
+    group: typeof raw.group === 'string' && raw.group.length <= 12 ? raw.group : null,
+    load: Number.isFinite(raw.load) && raw.load > 0
+      ? Math.min(100000, Math.round(raw.load)) : null,
     rings: [outer],
   };
   for (const r of rings.slice(1, MAX_HOLES + 1)) {
@@ -1042,6 +896,8 @@ export function cloneShape(shape) {
     color: shape.color,
     fin: shape.fin || null,
     paint: shape.paint || null,
+    group: shape.group || null,
+    load: Number.isFinite(shape.load) ? shape.load : null,
     rings: shape.rings.map((r) => ({
       pts: r.pts.map((p) => ({ x: p.x, z: p.z })),
       walls: r.walls.slice(),

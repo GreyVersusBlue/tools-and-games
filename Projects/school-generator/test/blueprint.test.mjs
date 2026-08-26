@@ -6,11 +6,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { createState, addFloor, WALL_T_INT, WALL_T_EXT } from '../js/grid.js';
 import {
-  createState, addFloor, edgeHIdx, edgeVIdx, setTile, cellIdx,
-  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW, EDGE_OPENING,
-  WALL_T_INT, WALL_T_EXT,
-} from '../js/grid.js';
+  EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW, EDGE_OPENING,
+} from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import {
   addShape, setSegWall, addOpening, curveSegment, SEG_GLASS, SEG_WALL,
   LEAF_SINGLE, LEAF_DOUBLE, OP_WINDOW,
@@ -23,17 +23,14 @@ import { computeFloorPlan, computeSitePlan } from '../js/blueprint.js';
 import { regionsOf } from '../js/site.js';
 import { buildSampleSchool } from '../js/sample.js';
 
-function boxRoom(s, floorIndex, x0, y0, x1, y1) {
-  const f = s.floors[floorIndex];
-  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) setTile(f, x, y, true);
-  for (let x = x0; x < x1; x++) {
-    f.edgesH[edgeHIdx(f, x, y0)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, y1)] = EDGE_WALL;
-  }
-  for (let y = y0; y < y1; y++) {
-    f.edgesV[edgeVIdx(f, x0, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, x1, y)] = EDGE_WALL;
-  }
+// A walled box, painted on a scratch lattice and baked (see build.mjs). `x1`
+// and `y1` are exclusive here, which is this file's own convention. `extra`
+// gets the sheet before the bake, for a door or a finish.
+function boxRoom(s, floorIndex, x0, y0, x1, y1, extra = null) {
+  const sh = sheet(s, floorIndex);
+  sh.box(x0, y0, x1 - 1, y1 - 1);
+  if (extra) extra(sh);
+  sh.bake();
 }
 
 test('a floor with nothing on it still returns an empty, well-formed plan', () => {
@@ -42,7 +39,6 @@ test('a floor with nothing on it still returns an empty, well-formed plan', () =
   assert.equal(plan.walls.length, 0);
   assert.equal(plan.doors.length, 0);
   assert.equal(plan.rooms.length, 0);
-  assert.equal(plan.gridLabels.length, 0);
   assert.ok(plan.bounds.maxX > plan.bounds.minX);
 });
 
@@ -51,10 +47,9 @@ test('an unknown floor index returns null rather than throwing', () => {
   assert.equal(computeFloorPlan(s, 5), null);
 });
 
-test('a grid door is a gap in the wall plus a door symbol, not a solid run', () => {
+test('a door is a gap in the wall plus a door symbol, not a solid run', () => {
   const s = createState(10, 10);
-  boxRoom(s, 0, 1, 1, 5, 5);
-  s.floors[0].edgesH[edgeHIdx(s.floors[0], 2, 1)] = EDGE_DOOR;
+  boxRoom(s, 0, 1, 1, 5, 5, (sh) => sh.edgeH(2, 1, EDGE_DOOR));
   const plan = computeFloorPlan(s, 0);
   assert.equal(plan.doors.length, 1);
   // The door's own wall run is split into two stubs either side of the gap —
@@ -64,19 +59,18 @@ test('a grid door is a gap in the wall plus a door symbol, not a solid run', () 
   assert.equal(spanning.length, 0);
 });
 
-test('glass and railing edges keep their kind rather than reading as a wall', () => {
+test('glass and railing keep their kind rather than reading as a wall', () => {
   const s = createState(10, 10);
-  const f = s.floors[0];
-  setTile(f, 2, 2, true); setTile(f, 3, 2, true);
-  f.edgesH[edgeHIdx(f, 2, 2)] = EDGE_GLASS;
-  f.edgesV[edgeVIdx(f, 4, 2)] = EDGE_RAIL;
+  const sh = sheet(s, 0);
+  sh.tile(2, 2).tile(3, 2).edgeH(2, 2, EDGE_GLASS).edgeV(4, 2, EDGE_RAIL);
+  sh.bake();
   const plan = computeFloorPlan(s, 0);
   const kinds = plan.walls.map((w) => w.kind).sort();
   assert.ok(kinds.includes('glass'));
   assert.ok(kinds.includes('rail'));
 });
 
-test('a polygon wall opening cuts the same gap the walkthrough collider would', () => {
+test('a wall opening cuts the same gap the walkthrough collider would', () => {
   const s = createState(20, 20);
   const shape = addShape(s, 0, [
     { x: 0, z: 0 }, { x: 20, z: 0 }, { x: 20, z: 20 }, { x: 0, z: 20 },
@@ -184,11 +178,9 @@ test('bounds grow to fit a polygon room or prop that sits outside the grid footp
 
 test('a door plan symbol carries the leaves the model says it has', () => {
   const s = createState(14, 14);
-  boxRoom(s, 0, 2, 2, 8, 8);
-  const f = s.floors[0];
-  f.edgesH[edgeHIdx(f, 3, 2)] = EDGE_DOOR;
-  f.edgesH[edgeHIdx(f, 5, 2)] = EDGE_DOOR2;
-  f.edgesH[edgeHIdx(f, 6, 2)] = EDGE_OPENING;
+  boxRoom(s, 0, 2, 2, 8, 8, (sh) => {
+    sh.edgeH(3, 2, EDGE_DOOR).edgeH(5, 2, EDGE_DOOR2).edgeH(6, 2, EDGE_OPENING);
+  });
   const plan = computeFloorPlan(s, 0);
   const byLeaves = plan.doors.map((d) => d.leaves.length).sort();
   assert.deepEqual(byLeaves, [0, 1, 2], 'a cased opening, a single, and a pair');
@@ -202,22 +194,24 @@ test('a door plan symbol carries the leaves the model says it has', () => {
 });
 
 test('a window is drawn over the wall, not as a gap in it', () => {
+  const plain = createState(14, 14);
+  boxRoom(plain, 0, 2, 2, 8, 8);
+  const solidBefore = computeFloorPlan(plain, 0).walls.length;
+
   const s = createState(14, 14);
-  boxRoom(s, 0, 2, 2, 8, 8);
-  const f = s.floors[0];
-  const solidBefore = computeFloorPlan(s, 0).walls.length;
-  f.edgesH[edgeHIdx(f, 3, 2)] = EDGE_WINDOW;
+  boxRoom(s, 0, 2, 2, 8, 8, (sh) => sh.edgeH(3, 2, EDGE_WINDOW));
   const plan = computeFloorPlan(s, 0);
   const win = plan.doors.find((d) => d.kind === 'window');
   assert.ok(win, 'the window is in the opening list');
   assert.equal(win.leaves.length, 0, 'and hangs nothing');
-  // The cell's wall becomes two jambs, so the run count goes up by one — the
-  // same as a door. What differs is that nothing walks through it, which is
-  // collide.js's business, not the plan's.
-  assert.equal(plan.walls.length, solidBefore + 1);
+  // The wall carries straight on through it — the same rule a free-drawn wall
+  // follows, which since Phase 12 is the only rule there is. What differs from
+  // a door is that nothing walks through it, and that is collide.js's
+  // business rather than the plan's.
+  assert.equal(plan.walls.length, solidBefore);
 });
 
-test('a window in a polygon wall never breaks the wall run', () => {
+test('a window in a free-drawn wall never breaks the wall run either', () => {
   const s = createState(30, 30);
   const shape = addShape(s, 0, [
     { x: 0, z: 0 }, { x: 40, z: 0 }, { x: 40, z: 30 }, { x: 0, z: 30 },
@@ -268,11 +262,7 @@ test('a ramp draws its slope; an elevator draws on both its floors', () => {
 
 test('the plan carries a finish schedule for its legend', () => {
   const s = createState(20, 20);
-  boxRoom(s, 0, 2, 2, 6, 6);
-  const f = s.floors[0];
-  for (let y = 2; y < 6; y++) {
-    for (let x = 2; x < 6; x++) applyFinish(f.cells[cellIdx(f, x, y)], 'carpet', null);
-  }
+  boxRoom(s, 0, 2, 2, 6, 6, (sh) => sh.label(2, 2, 5, 5, { fin: 'carpet' }));
   const plan = computeFloorPlan(s, 0);
   assert.equal(plan.finishes.length, 1);
   assert.equal(plan.finishes[0].key, 'carpet');

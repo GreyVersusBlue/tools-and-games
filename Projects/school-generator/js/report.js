@@ -20,7 +20,7 @@
 import { floorLabel } from './grid.js';
 import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 import { buildNav, navSummary } from './navgraph.js';
-import { buildingOccupancy } from './occupancy.js';
+import { buildingOccupancy, codeOf, editionEntry } from './occupancy.js';
 import { egressAnalysis, accessibleAnalysis } from './egress.js';
 import { daylightAnalysis } from './daylight.js';
 import { takeoff, takeoffCSV, csvRows } from './takeoff.js';
@@ -110,7 +110,13 @@ export function buildReport(state, opts = {}) {
   // five modules itself.
   const nav = opts.nav || buildNav(state);
   const occupancy = buildingOccupancy(state, { nav });
-  const sprinklered = opts.sprinklered !== false;
+  // Which code the numbers are read against, and whether the building is
+  // sprinklered. Both are facts about the design and live in the file since
+  // v11 (see occupancy.js); `opts` still overrides, for a caller asking a
+  // hypothetical rather than reading the design.
+  const code = codeOf(state);
+  const sprinklered = opts.sprinklered === undefined ? code.sprinklered : opts.sprinklered !== false;
+  const edition = editionEntry(code.edition);
 
   const egress = egressAnalysis(state, { nav, occupancy, sprinklered });
   const accessible = accessibleAnalysis(state, { nav, occupancy, field: egress.field });
@@ -154,6 +160,10 @@ export function buildReport(state, opts = {}) {
   return {
     nav: navSummary(nav),
     sprinklered,
+    // Printed beside every table that quotes a limit: a sheet that says 250ft
+    // without saying under what is a sheet nobody can check.
+    edition: edition.key,
+    editionLabel: edition.label,
     occupancy,
     egress,
     accessible,
@@ -194,6 +204,10 @@ export function reportCSV(report) {
   const rows = [];
   const s = report.summary;
   rows.push(['School Generator — analysis', '', '', '', '', '']);
+  // What the limits below are quoted from. A sheet that says 250ft without
+  // saying under what is a sheet nobody can check.
+  rows.push(['Code', report.editionLabel, '',
+    report.sprinklered ? 'sprinklered' : 'unsprinklered', '', '']);
   rows.push(['Occupant load', s.occupants, 'people', '', '', '']);
   rows.push(['Floor area', round(s.area), 'ft²', '', '', '']);
   rows.push(['Storeys', s.storeys, '', '', '', '']);
@@ -214,8 +228,9 @@ export function reportCSV(report) {
   const ac = new Map(report.acoustics.rooms.map((r) => [r.id, r]));
   const eg = new Map(report.egress.rooms.map((r) => [r.id, r]));
   const acc = new Map(report.accessible.rooms.map((r) => [r.id, r]));
-  rows.push(['Rooms', 'Level', 'Use', 'Area ft²', 'Occupants', 'Travel ft',
-    'Doors', 'Clear door in', 'Glazing %', 'RT60 s', 'Accessible']);
+  rows.push(['Rooms', 'Level', 'Use', 'Use from', 'Area ft²', 'Occupants',
+    'Load from', 'Travel ft', 'Doors', 'Clear door in', 'Glazing %', 'RT60 s',
+    'Accessible']);
   for (const r of report.occupancy.rooms) {
     const e = eg.get(r.id);
     const d = day.get(r.id);
@@ -225,8 +240,13 @@ export function reportCSV(report) {
       r.name || '(unnamed)',
       floorLabel(r.floor),
       r.useLabel,
+      // Since v11 a room can be *told* what it is and how many it holds, so
+      // the sheet says which of the two numbers beside it was decided by a
+      // person and which was read off the plan.
+      r.chosen ? 'chosen' : r.guess ? 'unnamed' : 'name',
       round(r.area),
       r.occ,
+      r.stated === null ? 'area' : 'stated',
       e && e.reached ? round(e.travel) : 'unreachable',
       e ? e.doors : '',
       e ? round(e.doorWidth * 12) : '',

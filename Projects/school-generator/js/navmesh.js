@@ -15,19 +15,18 @@
 // solver anywhere: navgraph.js connects everything standing on one tile to
 // everything else standing on it, at the distance a tape measure would give.
 //
-// **Two rasters, one algorithm.** A lattice room is already rectangles — its
-// cells, at 4ft — and the greedy meshing below joins them back into as few
-// big ones as it can. A polygon room is sampled onto a 2ft lattice inside its
-// own bounding box and then meshed the same way, which makes the tiles an
-// *inscribed* approximation: a diagonal wall keeps its stair-step, and the
-// walk along it comes out a foot or so long. That is the right way round for
-// a tool whose whole job here is to stop flattering itself.
+// **One raster, one algorithm.** A room is sampled onto a 2ft lattice inside
+// its own bounding box and meshed, which makes the tiles an *inscribed*
+// approximation: a diagonal wall keeps its stair-step, and the walk along it
+// comes out a foot or so long. That is the right way round for a tool whose
+// whole job here is to stop flattering itself. (Until Phase 12 there were two
+// rasters through here, because there were two kinds of room. There is one
+// kind of room now, and the lattice half of this file went with it.)
 //
-// **What a tile may not span.** Two cells of one flood region can sit either
-// side of a wall — a C-shaped corridor wraps around one — so growing a
-// rectangle checks the lattice edge between every pair of cells it swallows,
-// and a polygon's tiles check the ring segments the same way. A tile that
-// spanned a wall would be a hole punched through the building.
+// **What a tile may not span.** Two samples of one room can sit either side of
+// a wall — a C-shaped corridor wraps around one — so growing a rectangle
+// checks the ring segments between every pair of samples it swallows. A tile
+// that spanned a wall would be a hole punched through the building.
 //
 // **Gates.** Where two tiles of one room meet along an open span, a gate node
 // sits at the middle of it. Tile-to-tile is therefore tile → gate → tile, and
@@ -38,8 +37,8 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/navmesh.test.mjs.
 
-import { CELL, cellIdx, edgeHIdx, edgeVIdx, EDGE_NONE } from './grid.js';
-import { shapesOf, shapeAt, shapeBBox, segEnds } from './shapes.js';
+import { CELL } from './grid.js';
+import { shapesOf, shapeBBox, segEnds, pointInShape } from './shapes.js';
 
 // How finely a polygon room is sampled. Half a lattice cell: fine enough that
 // a 3ft door reveal and a 4ft jog in a wall both survive, coarse enough that
@@ -131,48 +130,10 @@ export function tileGate(a, b, open) {
 // ---------- the two rasters ----------
 
 // A raster is a window onto one room: where its origin is in world feet, how
-// big a cell is, and the two questions greedy meshing asks. Both halves of the
-// room model produce one, and nothing downstream of here knows which is which.
+// big a cell is, and the two questions greedy meshing asks.
 const rasterOf = (ox, oz, step, w, h, walkable, open) => ({
   ox, oz, step, w, h, walkable, open,
 });
-
-// Every lattice room on one storey, as a raster each. The bounding box per
-// room is found in one pass so that meshing a hundred rooms is one pass over
-// the floor rather than a hundred.
-function latticeRasters(floor, fr) {
-  const boxes = new Map();
-  for (let y = 0; y < floor.h; y++) {
-    for (let x = 0; x < floor.w; x++) {
-      const idx = fr.cellRoom[cellIdx(floor, x, y)];
-      if (idx < 0) continue;
-      const b = boxes.get(idx);
-      if (!b) boxes.set(idx, { x0: x, y0: y, x1: x, y1: y });
-      else {
-        if (x < b.x0) b.x0 = x;
-        if (x > b.x1) b.x1 = x;
-        if (y < b.y0) b.y0 = y;
-        if (y > b.y1) b.y1 = y;
-      }
-    }
-  }
-  const out = [];
-  for (const [idx, b] of boxes) {
-    const room = fr.rooms[idx];
-    if (!room) continue;
-    const w = b.x1 - b.x0 + 1;
-    const h = b.y1 - b.y0 + 1;
-    const walkable = (x, y) => fr.cellRoom[cellIdx(floor, b.x0 + x, b.y0 + y)] === idx;
-    out.push({
-      room,
-      raster: rasterOf(b.x0 * CELL, b.y0 * CELL, CELL, w, h, walkable, {
-        right: (x, y) => floor.edgesV[edgeVIdx(floor, b.x0 + x + 1, b.y0 + y)] === EDGE_NONE,
-        down: (x, y) => floor.edgesH[edgeHIdx(floor, b.x0 + x, b.y0 + y + 1)] === EDGE_NONE,
-      }),
-    });
-  }
-  return out;
-}
 
 // Does the walk between two sample points leave the polygon? Any ring segment
 // crossed says yes — a wall, a glazed side and an open side alike, because
@@ -194,19 +155,39 @@ function crossesRing(shape, ax, az, bx, bz) {
   return false;
 }
 
+// Every room on one storey, as a raster each.
+//
+// The overlap rule is `shapeAt`'s — a room drawn on top of another claims the
+// shared ground, because that is what `roomIdAt` will say about a point
+// standing there. Asking `shapeAt` per sample would be quadratic in rooms and
+// a storey now holds every one of them, so the rooms that could possibly
+// overlap this one are found once from their bounding boxes and only those are
+// re-tested.
 function shapeRasters(floor, fr, floorIndex) {
   const out = [];
-  for (const shape of shapesOf(floor)) {
-    const room = fr.rooms.find((r) => r.rep === 'shape' && r.id === `r${floorIndex}:s${shape.id}`);
-    if (!room) continue;
+  const list = shapesOf(floor);
+  list.forEach((shape, si) => {
+    const room = fr.rooms.find((r) => r.id === `r${floorIndex}:s${shape.id}`);
+    if (!room) return;
     const bb = shapeBBox(shape);
+    // Only later rooms can take ground off this one, and only those whose
+    // bounding box actually reaches it.
+    const over = [];
+    for (let j = si + 1; j < list.length; j++) {
+      const ob = shapeBBox(list[j]);
+      if (ob.x1 < bb.x0 || ob.x0 > bb.x1 || ob.z1 < bb.z0 || ob.z0 > bb.z1) continue;
+      over.push(list[j]);
+    }
     const w = Math.max(1, Math.ceil((bb.x1 - bb.x0) / MESH_STEP));
     const h = Math.max(1, Math.ceil((bb.z1 - bb.z0) / MESH_STEP));
     const cx = (x) => bb.x0 + (x + 0.5) * MESH_STEP;
     const cz = (y) => bb.z0 + (y + 0.5) * MESH_STEP;
-    // `shapeAt` rather than `pointInShape`, so a room drawn on top of another
-    // claims the overlap exactly the way `roomIdAt` says it does.
-    const walkable = (x, y) => shapeAt(floor, cx(x), cz(y)) === shape;
+    const walkable = (x, y) => {
+      const px = cx(x), pz = cz(y);
+      if (!pointInShape(shape, px, pz)) return false;
+      for (const other of over) if (pointInShape(other, px, pz)) return false;
+      return true;
+    };
     out.push({
       room,
       raster: rasterOf(bb.x0, bb.z0, MESH_STEP, w, h, walkable, {
@@ -214,7 +195,7 @@ function shapeRasters(floor, fr, floorIndex) {
         down: (x, y) => !crossesRing(shape, cx(x), cz(y), cx(x), cz(y + 1)),
       }),
     });
-  }
+  });
   return out;
 }
 
@@ -230,7 +211,7 @@ export function meshFloor(state, floorIndex, fr) {
   const byRoom = new Map();
   if (!floor) return { tiles, gates, byRoom, floor: null };
 
-  const rasters = [...shapeRasters(floor, fr, floorIndex), ...latticeRasters(floor, fr)];
+  const rasters = shapeRasters(floor, fr, floorIndex);
   for (const { room, raster } of rasters) {
     const rects = greedyRects(raster.w, raster.h, raster.walkable, raster.open);
     const mine = [];
@@ -254,7 +235,7 @@ export function meshFloor(state, floorIndex, fr) {
       tiles.push(tile);
       mine.push(tile);
     }
-    // A polygon too small or too thin to hold a single sample still has to be
+    // A room too small or too thin to hold a single sample still has to be
     // somewhere: it gets one tile the size of its own bounding box, which is
     // the answer the hub-and-portal graph gave for every room.
     if (!mine.length) {

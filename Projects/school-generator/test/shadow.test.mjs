@@ -5,7 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CELL, createState, setTile, addFloor } from '../js/grid.js';
+import { CELL, createState, addFloor } from '../js/grid.js';
+import { cellsOn } from './build.mjs';
 import { addShape } from '../js/shapes.js';
 import { buildSampleSchool } from '../js/sample.js';
 import {
@@ -16,9 +17,9 @@ import {
 
 function twoStorey(lower, upper) {
   const s = createState(20, 20);
-  for (const [x, y] of lower) setTile(s.floors[0], x, y, true);
+  cellsOn(s, 0, lower);
   addFloor(s);
-  for (const [x, y] of upper) setTile(s.floors[1], x, y, true);
+  cellsOn(s, 1, upper);
   return s;
 }
 
@@ -86,8 +87,8 @@ test('a polygon on the storey below supports the storey above', () => {
     { x: 40, z: 40 }, { x: 80, z: 40 }, { x: 80, z: 80 }, { x: 40, z: 80 },
   ], { name: 'Wing' });
   addFloor(s);
-  setTile(s.floors[1], 12, 12, true);   // inside the polygon
-  setTile(s.floors[1], 3, 3, true);     // outside it
+  cellsOn(s, 1, [[12, 12]]);   // inside the polygon
+  cellsOn(s, 1, [[3, 3]]);     // outside it
   assert.equal(cellSupported(s, 1, 12, 12), true);
   assert.equal(cellSupported(s, 1, 3, 3), false);
   const r = floorOverhang(s, 1);
@@ -135,9 +136,9 @@ test('the sample school stacks cleanly, and one stray cell says so', () => {
   assert.equal(clean.cells, 0);
   assert.equal(clean.findings[0].level, 'ok');
 
-  setTile(s.floors[1], 2, 2, true);
-  setTile(s.floors[1], 3, 2, true);
-  setTile(s.floors[1], 2, 3, true);
+  cellsOn(s, 1, [[2, 2]]);
+  cellsOn(s, 1, [[3, 2]]);
+  cellsOn(s, 1, [[2, 3]]);
   const dirty = buildingOverhang(s);
   assert.equal(dirty.cells, 3);
   assert.equal(dirty.area, 3 * CELL_AREA);
@@ -155,7 +156,7 @@ test('a large share of unsupported storey escalates to a warning', () => {
 
 test('a single-storey building has nothing to say either way', () => {
   const s = createState(10, 10);
-  setTile(s.floors[0], 2, 2, true);
+  cellsOn(s, 0, [[2, 2]]);
   const r = buildingOverhang(s);
   assert.equal(r.floors.length, 0);
   assert.equal(r.findings.length, 0);
@@ -164,7 +165,7 @@ test('a single-storey building has nothing to say either way', () => {
 test('a floor with no storey under it at all is entirely unsupported', () => {
   const s = createState(10, 10);
   addFloor(s);
-  setTile(s.floors[1], 4, 4, true);
+  cellsOn(s, 1, [[4, 4]]);
   const r = floorOverhang(s, 1);
   assert.equal(r.count, 1);
   assert.equal(r.ratio, 1);

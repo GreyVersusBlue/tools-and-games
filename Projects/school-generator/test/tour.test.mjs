@@ -333,7 +333,7 @@ test('a design with no tour in it writes no tours key', async () => {
   const { serialize, SAVE_VERSION } = await import('../js/save-load.js');
   const { createState } = await import('../js/grid.js');
   const state = createState(10, 10);
-  assert.equal(SAVE_VERSION, 10);
+  assert.equal(SAVE_VERSION, 11);
   const json = JSON.parse(serialize(state));
   assert.ok(!('tours' in json), 'a v9 design still round-trips as the same bytes');
   state.tours = [];
@@ -378,5 +378,5 @@ test('a v9 file loads as a design with no tours in it', async () => {
     version: 9, w: 12, h: 12, floorHt: 12, floors: [], currentFloor: 0, props: [], links: [],
   }));
   assert.equal(state.tours, undefined);
-  assert.equal(state.version, 10);
+  assert.equal(state.version, 11);
 });

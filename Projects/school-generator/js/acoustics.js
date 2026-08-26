@@ -37,7 +37,7 @@
 // Pure module: no three.js, no Web Audio. audio.js turns what comes out of
 // here into a convolver; test/acoustics.test.mjs checks the physics.
 
-import { CELL, WALL_H, floodRegion, getCell, cellIdx, wallHeightOf } from './grid.js';
+import { WALL_H, wallHeightOf } from './grid.js';
 import {
   shapesOf, shapeAt, shapeArea, shapeBBox, segEnds, segLength, pointInShape,
   floorSolidAt, interiorPoint,
@@ -109,22 +109,7 @@ export function finishAlpha(key) {
 
 // ---------- the room under a point ----------
 
-// A grid region's perimeter in feet: every cell edge with no cell of the same
-// region on the other side. `floodRegion` already stopped at walls and doors,
-// so this is the room's boundary and not the building's.
-function regionPerimeter(cells) {
-  const inRegion = new Set(cells.map((c) => `${c.x},${c.y}`));
-  let n = 0;
-  for (const c of cells) {
-    if (!inRegion.has(`${c.x - 1},${c.y}`)) n++;
-    if (!inRegion.has(`${c.x + 1},${c.y}`)) n++;
-    if (!inRegion.has(`${c.x},${c.y - 1}`)) n++;
-    if (!inRegion.has(`${c.x},${c.y + 1}`)) n++;
-  }
-  return n * CELL;
-}
-
-// A polygon room's perimeter, outer ring plus every hole — a courtyard's wall
+// A room's perimeter, outer ring plus every hole — a courtyard's wall
 // is as much of this room's boundary as the outside wall is. Arcs are measured
 // chord to chord, the same approximation the collider walks.
 function shapePerimeter(shape) {
@@ -264,34 +249,7 @@ export function roomAt(state, floorIndex, x, z) {
     };
   }
 
-  const gx = Math.floor(x / CELL), gy = Math.floor(z / CELL);
-  if (!getCell(floor, gx, gy)) return outsideRoom();
-  const cells = floodRegion(floor, gx, gy);
-  if (!cells.length) return outsideRoom();
-  const keys = new Set(cells.map((c) => `${c.x},${c.y}`));
-  let name = null, fin = null;
-  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-  for (const c of cells) {
-    const cell = floor.cells[cellIdx(floor, c.x, c.y)];
-    if (!name && cell && cell.room) name = cell.room;
-    if (!fin && cell && cell.fin) fin = cell.fin;
-    x0 = Math.min(x0, c.x * CELL); x1 = Math.max(x1, (c.x + 1) * CELL);
-    z0 = Math.min(z0, c.y * CELL); z1 = Math.max(z1, (c.y + 1) * CELL);
-  }
-  return {
-    kind: 'grid',
-    // Regions have no id of their own — the standing grid tax the retrospective
-    // describes — so the lowest cell in the region names it. It is stable for
-    // as long as the region is, which is exactly as long as the identity is.
-    id: `g${floorIndex}:${cells.reduce((lo, c) => Math.min(lo, cellIdx(floor, c.x, c.y)), Infinity)}`,
-    floor: floorIndex,
-    name,
-    fin: fin || DEFAULT_FINISH,
-    area: cells.length * CELL * CELL,
-    perimeter: regionPerimeter(cells),
-    bbox: { x0, x1, z0, z1 },
-    contains: (px, pz) => keys.has(`${Math.floor(px / CELL)},${Math.floor(pz / CELL)}`),
-  };
+  return outsideRoom();
 }
 
 // Outdoors. Not a room with a very long reverb — a room with none, which is a
@@ -495,17 +453,6 @@ export function roomsOnFloor(state, floorIndex, catalogEntry = () => null) {
     // in the notch, and a point outside the room finds the wrong room.
     const p = interiorPoint(shape);
     add(p.x, p.z);
-  }
-  // The grid pass floods each region once and marks its cells off, so this is
-  // linear in cells rather than one flood per cell.
-  const done = new Set();
-  for (let y = 0; y < floor.h; y++) {
-    for (let x = 0; x < floor.w; x++) {
-      const i = cellIdx(floor, x, y);
-      if (done.has(i) || !getCell(floor, x, y)) continue;
-      for (const c of floodRegion(floor, x, y)) done.add(cellIdx(floor, c.x, c.y));
-      add((x + 0.5) * CELL, (y + 0.5) * CELL);
-    }
   }
   return out;
 }

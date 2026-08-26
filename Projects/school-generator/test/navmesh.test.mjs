@@ -6,9 +6,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  createState, setTile, edgeHIdx, edgeVIdx, CELL, EDGE_WALL, EDGE_DOOR,
-} from '../js/grid.js';
+import { createState, CELL } from '../js/grid.js';
+import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import { addShape } from '../js/shapes.js';
 import { buildSampleSchool } from '../js/sample.js';
 import { floorRooms } from '../js/navgraph.js';
@@ -65,14 +65,14 @@ test('a gate sits in the open run of a shared edge, not in its middle', () => {
 // south off its west end.
 function lRoom() {
   const s = createState(14, 10);
-  const f = s.floors[0];
-  for (let y = 1; y <= 2; y++) for (let x = 1; x <= 8; x++) setTile(f, x, y, true);
-  for (let y = 3; y <= 6; y++) for (let x = 1; x <= 2; x++) setTile(f, x, y, true);
-  for (const c of f.cells) if (c) c.room = 'Hall';
+  const f = sheet(s, 0);
+  f.fill(1, 1, 8, 2).fill(1, 3, 2, 6);
+  f.label(1, 1, 8, 2, { name: 'Hall' }).label(1, 3, 2, 6, { name: 'Hall' });
+  f.bake();
   return s;
 }
 
-test('an L-shaped lattice room meshes into tiles joined by a gate', () => {
+test('an L-shaped room meshes into tiles joined by a gate', () => {
   const s = lRoom();
   const fr = floorRooms(s, 0);
   const mesh = meshFloor(s, 0, fr);
@@ -88,10 +88,9 @@ test('an L-shaped lattice room meshes into tiles joined by a gate', () => {
 
 test('two rooms either side of a wall never share a tile', () => {
   const s = createState(12, 8);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 9; x++) setTile(f, x, y, true);
-  for (let y = 1; y <= 4; y++) f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
-  f.edgesV[edgeVIdx(f, 5, 2)] = EDGE_DOOR;
+  const f = sheet(s, 0);
+  f.fill(1, 1, 9, 4).vrun(5, 1, 4, EDGE_WALL).edgeV(5, 2, EDGE_DOOR);
+  f.bake();
   const fr = floorRooms(s, 0);
   const mesh = meshFloor(s, 0, fr);
   assert.equal(fr.rooms.length, 2);
@@ -105,14 +104,15 @@ test('two rooms either side of a wall never share a tile', () => {
 
 test('a C-shaped region does not get a tile through the wall it wraps', () => {
   // A corridor that runs east, turns south, and comes back west under itself,
-  // with a wall between the two arms. `floodRegion` calls it one room; a
-  // rectangle spanning the wall would be a hole punched through the building.
+  // with a wall between the two arms. It bakes to one room, wrapped around a
+  // wall stub; a rectangle spanning that wall would be a hole punched through
+  // the building.
   const s = createState(14, 10);
-  const f = s.floors[0];
-  for (let x = 1; x <= 8; x++) { setTile(f, x, 1, true); setTile(f, x, 3, true); }
-  for (let y = 1; y <= 3; y++) setTile(f, 8, y, true);
-  for (let x = 1; x <= 7; x++) f.edgesH[edgeHIdx(f, x, 2)] = EDGE_WALL;
-  for (const c of f.cells) if (c) c.room = 'Hall';
+  const f = sheet(s, 0);
+  f.fill(1, 1, 8, 1).fill(1, 3, 8, 3).fill(8, 1, 8, 3);
+  f.hrun(1, 7, 2, EDGE_WALL);
+  f.label(1, 1, 8, 3, { name: 'Hall' });
+  f.bake();
   const fr = floorRooms(s, 0);
   assert.equal(fr.rooms.length, 1, 'it is one region');
   const mesh = meshFloor(s, 0, fr);

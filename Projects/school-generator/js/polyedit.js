@@ -21,13 +21,13 @@
 // touching it.
 
 import * as THREE from 'three';
-import { CELL, inGrid, activeFloor, floorBaseY } from './grid.js';
+import { activeFloor, floorBaseY } from './grid.js';
 import { pointSupported } from './shadow.js';
 import { wrapAngle, addProp } from './props.js';
 import {
   MIN_SEG,
   addShape, addHole, removeShape, enclosingShape, shapeAt, shapeById,
-  segEnds, shapeArea, shapeBBox, cleanRing, convertRegion, cloneShape,
+  segEnds, shapeArea, shapeBBox, cleanRing, cloneShape,
   pointInShape, rotateShape90, mirrorShapeX, rotatePoint90, mirrorPointX, addShapeCopy,
   snapPoint, constrainAngle, insertVertex, deleteVertex, moveVertex,
 } from './shapes.js';
@@ -385,28 +385,13 @@ export function initPolyEdit({ getState, renderApi, host }) {
         refresh();
         return true;
       }
-      // Nothing polygonal here, but clicking a *grid* room with the shape
-      // editor means the same thing: let me edit this room's outline. So the
-      // region is promoted to a polygon in place, keeping its name, colour,
-      // walls and doors. This is the migration path — one room at a time, when
-      // the grid stops being enough for it, rather than a flag day. A
-      // shift-click on empty ground has nothing to add to the selection, so
-      // it's left alone rather than tried against the grid.
-      const gx = Math.floor(p.x / CELL), gy = Math.floor(p.z / CELL);
-      if (!e.shiftKey && inGrid(floor, gx, gy)) {
-        host.pushUndo();
-        const made = convertRegion(getState(), getState().currentFloor, gx, gy);
-        if (made) {
-          selectedIds = new Set([made.id]);
-          host.changed();
-          host.status(`${made.name || 'Grid room'} is a polygon room now — ${made.rings[0].pts.length} corners, ${Math.round(shapeArea(made))} ft². Drag them.`);
-          refresh();
-          return true;
-        }
-        host.dropUndo();
-      }
+      // No room here. Until Phase 12 this was where a *grid* room got promoted
+      // to a polygon so its outline could be dragged — the migration path, one
+      // room at a time. Every room is a polygon on load now, so there is
+      // nothing left to promote and clicking empty ground simply clears the
+      // selection.
       if (!e.shiftKey) selectedIds = new Set();
-      host.status('Edit — click a room to select it. A grid room becomes a polygon when you do. Shift-click to select several.');
+      host.status('Edit — click a room to select it and drag its corners. Shift-click to select several.');
       refresh();
       return true;
     }

@@ -5,7 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createState, setTile, addFloor, removeFloor, FLOOR_H } from '../js/grid.js';
+import { createState, addFloor, removeFloor, FLOOR_H } from '../js/grid.js';
+import { slabOn } from './build.mjs';
 import { addShape } from '../js/shapes.js';
 import { serialize, deserialize } from '../js/save-load.js';
 import { buildSampleSchool } from '../js/sample.js';
@@ -14,7 +15,7 @@ import {
   stairRun, stairMetrics, stairWidth, openingSize, cutStart,
   localToWorld, worldToLocal, footprintBox, cutBox, rectCorners,
   footprintPolygon, cutPolygon, pointInPolygon,
-  floorCuts, inFloorCut, cellCut, openingRails,
+  floorCuts, inFloorCut, openingRails,
   stairSurfaceAt, stairUnder, linkAt, linkById, linksFrom, addStair, stairsOf,
   floorSolidAt,
   RAMP_SLOPE, RAMP_W, MIN_RAMP_SLOPE, MAX_RAMP_SLOPE, ELEV_W, ELEV_D,
@@ -162,17 +163,13 @@ test('the hole belongs to the storey above, not the one the stair stands on', ()
   assert.ok(!pointInPolygon(cut, 40, 40 - 1), 'nothing is cut behind the bottom step');
 });
 
-test('inFloorCut and cellCut agree about where the floor is missing', () => {
+test('inFloorCut says where the floor is missing', () => {
   const s = twoFloors();
   addStair(s, 0, { type: 'opening', x: 40, z: 40, w: 8, d: 8 });
   const cuts = floorCuts(s, 1);
   assert.ok(inFloorCut(cuts, 40, 40));
   assert.ok(!inFloorCut(cuts, 40, 60));
   // (10, 10) in cells is 40..44ft — it overlaps the 36..44ft hole.
-  assert.ok(cellCut(cuts, 9, 9), 'a cell wholly inside is cut');
-  assert.ok(cellCut(cuts, 10, 10), 'and so is one only partly over the hole');
-  assert.ok(!cellCut(cuts, 12, 12), 'a cell clear of it is left alone');
-  assert.ok(!cellCut([], 9, 9), 'no cuts, no holes');
 });
 
 // ---------- railings ----------
@@ -293,7 +290,7 @@ test('stairs survive a save round-trip with their width and heading', () => {
 
 test('a hostile links table loads as far as it can and no further', () => {
   const s = twoFloors();
-  setTile(s.floors[0], 0, 0, true);
+  slabOn(s, 0, [0, 0, 0, 0]);
   const json = JSON.stringify({
     ...s,
     links: [
@@ -334,10 +331,15 @@ test('the sample school has a stair that lands on its upper floor', () => {
 
 test('the sample school glazes a wall on each storey', () => {
   const s = buildSampleSchool();
+  const glazed = (floor) => floor.shapes.some(
+    (sh) => sh.rings.some((r) => r.walls.includes(2)));
   const [ground, upper] = s.floors;
-  assert.ok(ground.edgesH.some((v) => v === 3), 'glass downstairs');
-  assert.ok(upper.edgesH.some((v) => v === 3), 'and up');
-  assert.ok(ground.shapes[0].rings[0].walls.includes(2), 'and a glazed polygon segment');
+  assert.ok(glazed(ground), 'glass downstairs');
+  assert.ok(glazed(upper), 'and up');
+  // ...and one of them is on the free-drawn room, which is where the curtain
+  // wall is rather than an office front.
+  const commons = ground.shapes.find((sh) => sh.name === 'Learning Commons');
+  assert.ok(commons && commons.rings[0].walls.includes(2), 'and a glazed polygon segment');
 });
 
 test('the sample school opens a railed atrium through both storeys', () => {
@@ -353,7 +355,6 @@ test('the sample school opens a railed atrium through both storeys', () => {
   const cuts = floorCuts(s, 1);
   assert.ok(inFloorCut(cuts, atrium.x, atrium.z), 'the upper slab is open over the hall');
   assert.ok(!inFloorCut(floorCuts(s, 0), atrium.x, atrium.z), 'the hall floor itself is not');
-  assert.ok(cellCut(cuts, Math.floor(atrium.x / 4), Math.floor(atrium.z / 4)));
   assert.ok(!floorSolidAt(null, 0, 0));
   assert.ok(floorSolidAt(ground, atrium.x, atrium.z), 'and you can still walk under it');
 });
@@ -362,10 +363,10 @@ test('a rail is not hung in mid-air where the floor above stops short', () => {
   const s = createState(20, 20);
   addFloor(s);
   const [ground, upper] = s.floors;
-  for (let x = 0; x < 10; x++) for (let y = 0; y < 10; y++) setTile(ground, x, y, true);
+  slabOn(s, 0, [0, 0, 9, 9]);
   // The upper storey covers only the north half, so an opening on its edge has
   // floor on one side of it and forty feet of nothing on the other.
-  for (let x = 0; x < 10; x++) for (let y = 0; y < 5; y++) setTile(upper, x, y, true);
+  slabOn(s, 1, [0, 0, 9, 4]);
   const { link } = addStair(s, 0, { type: 'opening', x: 20, z: 16, w: 8, d: 8 });
   const m = stairMetrics(s);
   assert.equal(openingRails(link, m).length, 4, 'all four sides, asked bluntly');

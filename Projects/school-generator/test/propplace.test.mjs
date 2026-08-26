@@ -4,7 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CELL, createState, edgeHIdx, edgeVIdx } from '../js/grid.js';
+import { CELL, createState } from '../js/grid.js';
+import { sheet } from './build.mjs';
 import { addShape, setSegWall } from '../js/shapes.js';
 import {
   footprintOf, pointInProp, pickPropAt, propsInBox, faceDirection,
@@ -59,11 +60,17 @@ test('faceDirection points local +Z at the given world direction', () => {
 
 // ---------- wall snapping ----------
 
-test('wallSnap lands flush on a grid wall, facing the side the cursor was on', () => {
+// A room whose north wall runs along z = 20, x in [16, 24].
+function wallAt20() {
   const s = createState(10, 10);
-  const f = s.floors[0];
-  // A horizontal wall along z = 20 (edge row y=5), x in [16, 24].
-  f.edgesH[edgeHIdx(f, 4, 5)] = 1;
+  const f = sheet(s, 0);
+  f.box(4, 5, 4, 6);
+  f.bake();
+  return s.floors[0];
+}
+
+test('wallSnap lands flush on a wall, facing the side the cursor was on', () => {
+  const f = wallAt20();
   // Cursor a bit south of the wall (larger z) -> should face +Z.
   const hit = wallSnap(f, 18, 21, 0.3, 2);
   assert.ok(hit, 'found the wall');
@@ -74,7 +81,7 @@ test('wallSnap lands flush on a grid wall, facing the side the cursor was on', (
   assert.equal(hit2.rotationY, faceDirection(0, -1));
 });
 
-test('wallSnap works against a polygon wall too, and ignores non-wall segments', () => {
+test('wallSnap ignores a segment carrying no wall', () => {
   const s = createState(20, 20);
   const shape = addShape(s, 0, [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 10 }, { x: 0, z: 10 }], {});
   const hit = wallSnap(s.floors[0], 5, -1, 0.3, 2);
@@ -118,9 +125,7 @@ test('gridSnap snaps onto the furniture lattice within tolerance', () => {
 // ---------- composed snapProp ----------
 
 test('snapProp prefers wall snapping for wall-mounted types', () => {
-  const s = createState(10, 10);
-  const f = s.floors[0];
-  f.edgesH[edgeHIdx(f, 4, 5)] = 1;
+  const f = wallAt20();
   const hit = snapProp(f, [], 0, TV, prop({ type: 'tv', mount: 'wall' }), 18, 21, 0, { tol: 2, catalogGet });
   assert.equal(hit.kind, 'wall');
   assert.equal(hit.mount, 'wall');
@@ -143,9 +148,7 @@ test('snapProp falls back through row -> grid -> free', () => {
 });
 
 test('snapProp with opts.free skips every tier (Alt = ignore snapping)', () => {
-  const s = createState(10, 10);
-  const f = s.floors[0];
-  f.edgesH[edgeHIdx(f, 4, 5)] = 1;
+  const f = wallAt20();
   const hit = snapProp(f, [], 0, TV, prop({ type: 'tv', mount: 'wall' }), 18, 20.02, Math.PI, { free: true, catalogGet });
   assert.deepEqual(hit, { x: 18, z: 20.02, rotationY: Math.PI, mount: 'wall', kind: 'free' });
 });
