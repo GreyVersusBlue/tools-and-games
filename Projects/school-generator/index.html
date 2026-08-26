@@ -16,11 +16,30 @@
   </script>
   <style>
     :root {
+      /* chrome */
       --panel: rgba(22, 26, 34, 0.88);
+      --panel-2: rgba(255, 255, 255, 0.06);   /* nested wells inside a panel */
       --panel-border: rgba(255, 255, 255, 0.09);
       --text: #e8ecf2;
       --text-dim: #9aa5b5;
       --accent: #4da3ff;
+      --accent-soft: var(--accent-soft);
+      /* semantic status — one spelling each, everywhere. The minimap keeps its
+         own darker ink variants because it draws on white paper, not on a
+         panel; everything else reads these three. js/theme.js mirrors them
+         and test/theme.test.mjs fails if the two drift. */
+      --ok: #5db07a;
+      --warn: #e8a33d;
+      --fail: #e05c48;
+      /* type scale — five stops; anything larger is a heading and says so */
+      --fs-xs: 10px;
+      --fs-sm: 11px;
+      --fs-md: 12px;
+      --fs-lg: 13px;
+      --fs-title: 14px;
+      /* rhythm */
+      --sp-1: 4px; --sp-2: 8px; --sp-3: 12px;
+      --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; }
@@ -35,7 +54,7 @@
     .panel {
       background: var(--panel);
       border: 1px solid var(--panel-border);
-      border-radius: 12px;
+      border-radius: var(--r-lg);
       backdrop-filter: blur(8px);
       box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
     }
@@ -46,14 +65,14 @@
       display: flex; align-items: center; gap: 8px;
       padding: 8px 12px; z-index: 10;
     }
-    #topbar h1 { font-size: 14px; font-weight: 650; letter-spacing: 0.02em; margin-right: 6px; white-space: nowrap; }
+    #topbar h1 { font-size: var(--fs-title); font-weight: 650; letter-spacing: 0.02em; margin-right: 6px; white-space: nowrap; }
     #topbar h1 span { color: var(--text-dim); font-weight: 500; }
 
     button {
       font: inherit; color: var(--text);
       background: rgba(255, 255, 255, 0.07);
       border: 1px solid var(--panel-border);
-      border-radius: 8px; padding: 7px 11px;
+      border-radius: var(--r-md); padding: 7px 11px;
       cursor: pointer; white-space: nowrap;
     }
     button:hover { background: rgba(255, 255, 255, 0.14); }
@@ -101,25 +120,25 @@
        worse. */
     #toolbar .tool {
       width: 86px; display: flex; flex-direction: column; align-items: center; gap: 0;
-      padding: 4px 4px; font-size: 11px; color: var(--text-dim);
+      padding: 4px 4px; font-size: var(--fs-sm); color: var(--text-dim);
     }
     #toolbar .tool .icon { font-size: 16px; line-height: 1.05; }
-    #toolbar .tool.active { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
-    #toolbar .key { font-size: 10px; opacity: 0.55; }
+    #toolbar .tool.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+    #toolbar .key { font-size: var(--fs-xs); opacity: 0.55; }
 
     /* room panel */
     #room-panel {
       position: fixed; left: 114px; top: 74px;
       padding: 12px; z-index: 10; width: 180px;
     }
-    #room-panel label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+    #room-panel label { display: block; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 4px; }
     #room-name {
       width: 100%; font: inherit; color: var(--text);
       background: rgba(0, 0, 0, 0.3); border: 1px solid var(--panel-border);
-      border-radius: 6px; padding: 6px 8px; margin-bottom: 10px;
+      border-radius: var(--r-sm); padding: 6px 8px; margin-bottom: 10px;
     }
     #swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-    .swatch { aspect-ratio: 1; border-radius: 6px; border: 2px solid transparent; padding: 0; }
+    .swatch { aspect-ratio: 1; border-radius: var(--r-sm); border: 2px solid transparent; padding: 0; }
     .swatch.active { border-color: #fff; }
 
     /* wall, door & stair panels — same slot and look as the room panel */
@@ -128,24 +147,24 @@
       padding: 12px; z-index: 10; width: 196px;
     }
     #wall-panel label, #stair-panel label, #door-panel > label {
-      display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 6px;
+      display: block; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 6px;
     }
     #wall-kinds, #stair-kinds, #door-kinds { display: flex; flex-direction: column; gap: 4px; }
     /* door options: checkboxes and the two hand toggles */
     #door-opts { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
     #door-opts label.opt {
       display: flex; align-items: center; gap: 6px;
-      font-size: 11px; color: var(--text-dim); margin: 0; cursor: pointer;
+      font-size: var(--fs-sm); color: var(--text-dim); margin: 0; cursor: pointer;
     }
     #door-opts input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; }
     #door-opts .flip { display: flex; gap: 4px; }
     #door-opts .flip button {
-      flex: 1; font-size: 11px; padding: 4px 2px;
+      flex: 1; font-size: var(--fs-sm); padding: 4px 2px;
       background: rgba(255, 255, 255, 0.06); border: 1px solid var(--panel-border);
       border-radius: 5px; color: var(--text-dim); cursor: pointer;
     }
     #door-opts .flip button:hover { color: var(--text); }
-    #door-sill-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); }
+    #door-sill-row { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-dim); }
     #door-sill { width: 56px; }
     /* room finishes */
     #finish-row { margin-top: 12px; }
@@ -153,17 +172,17 @@
     #paint-swatches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
     .kind-item {
       display: flex; align-items: center; gap: 8px;
-      justify-content: flex-start; width: 100%; font-size: 12px; padding: 6px 8px;
+      justify-content: flex-start; width: 100%; font-size: var(--fs-md); padding: 6px 8px;
       color: var(--text-dim);
     }
     .kind-item .icon { font-size: 15px; line-height: 1; width: 16px; text-align: center; }
-    .kind-item.active { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
+    .kind-item.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
     #wall-panel .keys, #stair-panel .keys, #door-panel .keys {
       margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
-      font-size: 10.5px; line-height: 1.7; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.7; color: var(--text-dim);
     }
     #stair-panel .readout {
-      margin-top: 10px; font-size: 10.5px; line-height: 1.6; color: var(--text-dim);
+      margin-top: 10px; font-size: var(--fs-sm); line-height: 1.6; color: var(--text-dim);
     }
 
     /* prop panel */
@@ -173,15 +192,15 @@
       max-height: calc(100vh - 100px); overflow-y: auto;
     }
     #palette-search {
-      width: 100%; margin-bottom: 8px; font-size: 12px; padding: 6px 8px;
+      width: 100%; margin-bottom: 8px; font-size: var(--fs-md); padding: 6px 8px;
       background: rgba(255, 255, 255, 0.05); color: var(--text);
-      border: 1px solid var(--panel-border); border-radius: 6px;
+      border: 1px solid var(--panel-border); border-radius: var(--r-sm);
     }
     .palette-group { margin-top: 8px; border-top: 1px solid var(--panel-border); padding-top: 4px; }
     .palette-group:first-child { margin-top: 0; border-top: none; padding-top: 0; }
     .palette-head {
       display: flex; align-items: center; gap: 6px; width: 100%;
-      font-size: 10.5px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.05em; text-transform: uppercase;
       background: none; border: none; padding: 5px 2px; cursor: pointer;
     }
@@ -192,24 +211,24 @@
     .palette-row { display: flex; flex-direction: column; gap: 3px; }
     .palette-item {
       display: flex; align-items: center; gap: 8px;
-      justify-content: flex-start; width: 100%; font-size: 12px; padding: 6px 8px;
+      justify-content: flex-start; width: 100%; font-size: var(--fs-md); padding: 6px 8px;
       color: var(--text-dim);
     }
     .palette-item .icon { font-size: 15px; line-height: 1; width: 16px; text-align: center; }
-    .palette-item.active { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
+    .palette-item.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
     #prop-panel .keys {
       margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
-      font-size: 10.5px; line-height: 1.7; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.7; color: var(--text-dim);
     }
     /* prop paint — the same swatch row the room panel uses, at the size the
        narrower prop panel has room for */
     #prop-paint { margin-top: 10px; border-top: 1px solid var(--panel-border); padding-top: 9px; }
-    #prop-paint select { width: 100%; font-size: 12px; margin-bottom: 8px; }
-    #decor-note { font-size: 10px; line-height: 1.5; color: var(--text-dim); margin: -3px 0 7px; }
+    #prop-paint select { width: 100%; font-size: var(--fs-md); margin-bottom: 8px; }
+    #decor-note { font-size: var(--fs-xs); line-height: 1.5; color: var(--text-dim); margin: -3px 0 7px; }
     #decor-note:empty { display: none; }
     #prop-paint .paint-head {
       display: flex; align-items: center; gap: 6px;
-      font-size: 10.5px; color: var(--text-dim); letter-spacing: 0.04em;
+      font-size: var(--fs-sm); color: var(--text-dim); letter-spacing: 0.04em;
       text-transform: uppercase; margin-bottom: 6px;
     }
     #prop-paint-chip {
@@ -221,10 +240,10 @@
 
     /* polygon extras, shown inside the room panel for the polygon tool */
     #poly-extra { margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px; }
-    #hole-btn { width: 100%; font-size: 12px; }
+    #hole-btn { width: 100%; font-size: var(--fs-md); }
     #hole-btn.on { background: rgba(255, 207, 90, 0.24); border-color: #ffcf5a; color: var(--text); }
     #poly-extra .keys {
-      margin-top: 8px; font-size: 10.5px; line-height: 1.7; color: var(--text-dim);
+      margin-top: 8px; font-size: var(--fs-sm); line-height: 1.7; color: var(--text-dim);
     }
 
     /* template panel — same slot and look as the prop panel */
@@ -235,7 +254,7 @@
     }
     #template-panel .keys {
       margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
-      font-size: 10.5px; line-height: 1.7; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.7; color: var(--text-dim);
     }
 
     /* site panel — same slot as the prop and template panels */
@@ -245,23 +264,23 @@
       max-height: calc(100vh - 100px); overflow-y: auto;
     }
     #site-panel h2 {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase;
       margin: 14px 0 7px; padding-top: 10px; border-top: 1px solid var(--panel-border);
     }
     #site-panel label {
-      display: block; font-size: 10.5px; color: var(--text-dim);
+      display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
     }
     #site-panel label:first-child { margin-top: 0; }
-    #site-panel select { width: 100%; font-size: 12px; }
+    #site-panel select { width: 100%; font-size: var(--fs-md); }
     #site-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
     #site-panel .readout {
-      margin-top: 10px; font-size: 10.5px; line-height: 1.6; color: var(--text-dim);
+      margin-top: 10px; font-size: var(--fs-sm); line-height: 1.6; color: var(--text-dim);
     }
     #site-panel .keys {
       margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
-      font-size: 10.5px; line-height: 1.7; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.7; color: var(--text-dim);
     }
 
     /* floor panel */
@@ -276,23 +295,23 @@
       margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--panel-border);
     }
     #floor-shadow-readout {
-      font-size: 10.5px; color: var(--text-dim); line-height: 1.45; margin-top: 5px;
+      font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.45; margin-top: 5px;
     }
     #floor-panel h2 {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
     }
     #floor-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
     #floor-list .floor {
       display: flex; justify-content: space-between; align-items: baseline; gap: 6px;
-      padding: 5px 8px; font-size: 12px; color: var(--text-dim); text-align: left;
+      padding: 5px 8px; font-size: var(--fs-md); color: var(--text-dim); text-align: left;
     }
-    #floor-list .floor .count { font-size: 9.5px; opacity: 0.7; white-space: nowrap; }
+    #floor-list .floor .count { font-size: var(--fs-xs); opacity: 0.7; white-space: nowrap; }
     #floor-list .floor.active {
-      background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text);
+      background: var(--accent-soft); border-color: var(--accent); color: var(--text);
     }
     #floor-actions { display: flex; gap: 4px; }
-    #floor-actions button { flex: 1; padding: 5px 0; font-size: 13px; }
+    #floor-actions button { flex: 1; padding: 5px 0; font-size: var(--fs-lg); }
 
     /* The sheet: how big the drawing surface is. Under the storey list because
        every storey shares one footprint — it is a fact about the design, not
@@ -302,18 +321,18 @@
     }
     #sheet-row { display: flex; align-items: center; gap: 4px; }
     #sheet-row input {
-      width: 46px; padding: 3px 4px; font-size: 11.5px; text-align: right;
+      width: 46px; padding: 3px 4px; font-size: var(--fs-md); text-align: right;
     }
     #sheet-row .sheet-label, #sheet-row .sheet-x, #sheet-row .sheet-unit {
-      font-size: 10px; color: var(--text-dim); letter-spacing: 0.04em;
+      font-size: var(--fs-xs); color: var(--text-dim); letter-spacing: 0.04em;
     }
     #sheet-row .sheet-label { text-transform: uppercase; font-weight: 600; }
-    #sheet-row button { padding: 3px 6px; font-size: 11px; margin-left: auto; }
+    #sheet-row button { padding: 3px 6px; font-size: var(--fs-sm); margin-left: auto; }
     /* Empty whenever the sheet covers everything, which is the usual case —
        this column is shared with the toolbar and a line that says "all is
        well" costs a tool button its place. */
     #sheet-readout:not(:empty) {
-      font-size: 10.5px; color: var(--text-dim); line-height: 1.45; margin-top: 5px;
+      font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.45; margin-top: 5px;
     }
 
     /* layers panel — toggling what's drawn while editing, not tied to a tool */
@@ -322,12 +341,12 @@
       padding: 10px 12px; z-index: 10; width: 192px;
     }
     #layers-panel h2 {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
     }
     #layers-panel label {
       display: flex; align-items: center; gap: 7px;
-      font-size: 12px; color: var(--text); padding: 3px 0; cursor: pointer;
+      font-size: var(--fs-md); color: var(--text); padding: 3px 0; cursor: pointer;
     }
     #layers-panel input { accent-color: var(--accent); width: 14px; height: 14px; }
 
@@ -349,33 +368,33 @@
       padding: 10px 12px; width: 230px;
     }
     #env-panel h2 {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
     }
     #env-panel label {
-      display: block; font-size: 10.5px; color: var(--text-dim);
+      display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
     }
     #env-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
     #env-panel select { width: 100%; }
     .env-presets { display: flex; flex-wrap: wrap; gap: 4px; }
     .env-presets button {
-      flex: 1 1 auto; padding: 4px 6px; font-size: 11px; min-width: 0;
+      flex: 1 1 auto; padding: 4px 6px; font-size: var(--fs-sm); min-width: 0;
     }
     .env-row { display: flex; gap: 6px; align-items: center; }
     .env-row > * { flex: 1; min-width: 0; }
     .env-value {
-      font-size: 11px; color: var(--text); font-variant-numeric: tabular-nums;
+      font-size: var(--fs-sm); color: var(--text); font-variant-numeric: tabular-nums;
       float: right; font-weight: 500;
     }
     #env-readout {
       margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
-      font-size: 10.5px; line-height: 1.65; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.65; color: var(--text-dim);
     }
     #env-readout b { color: var(--text); font-weight: 600; }
     .seg { display: flex; gap: 4px; }
-    .seg button { flex: 1; padding: 4px 0; font-size: 11px; }
-    .seg button.active { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
+    .seg button { flex: 1; padding: 4px 0; font-size: var(--fs-sm); }
+    .seg button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
 
     /* life panel — who is in the building, and what the clock is doing to
        them. Same rail and same rules as the sky and the sound: an editor
@@ -383,11 +402,11 @@
        people in it is worth watching from both. */
     #life-panel { padding: 10px 12px; width: 234px; }
     #life-panel h2 {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
     }
     #life-panel label {
-      display: block; font-size: 10.5px; color: var(--text-dim);
+      display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
     }
     #life-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
@@ -396,28 +415,28 @@
       gap: 8px; margin-bottom: 8px;
     }
     #life-time { font-size: 19px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
-    #life-block { font-size: 10.5px; color: var(--text-dim); text-align: right; line-height: 1.35; }
-    #life-block .bell { color: #e8a33d; }
+    #life-block { font-size: var(--fs-sm); color: var(--text-dim); text-align: right; line-height: 1.35; }
+    #life-block .bell { color: var(--warn); }
     .life-acts { display: flex; gap: 4px; margin-top: 8px; }
-    .life-acts button { flex: 1; padding: 5px 0; font-size: 11px; }
-    .life-acts button.on { background: rgba(77, 163, 255, 0.22); border-color: var(--accent); color: var(--text); }
-    .life-acts button.drill.on { background: rgba(217, 90, 60, 0.28); border-color: #d95a3c; }
+    .life-acts button { flex: 1; padding: 5px 0; font-size: var(--fs-sm); }
+    .life-acts button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+    .life-acts button.drill.on { background: rgba(217, 90, 60, 0.28); border-color: var(--fail); }
     .life-acts button.wide { flex: 3; }
     #life-readout {
       margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
-      font-size: 10.5px; line-height: 1.65; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.65; color: var(--text-dim);
     }
     #life-readout b { color: var(--text); font-weight: 600; }
     /* The timetable's own line. It says which school day the crowd is walking
        — generated, imported or none — because a population that looks the same
        either way needs to say which one it is. */
     #life-tt-state {
-      font-size: 10.5px; line-height: 1.5; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.5; color: var(--text-dim);
       padding: 5px 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.04);
     }
     #life-tt-state b { color: var(--text); font-weight: 600; }
-    #life-tt-state .warn { color: #e8a33d; font-weight: 600; }
-    #life-readout .warn { color: #e8a33d; font-weight: 600; }
+    #life-tt-state .warn { color: var(--warn); font-weight: 600; }
+    #life-readout .warn { color: var(--warn); font-weight: 600; }
     /* A photograph of an empty building is a different picture from one with a
        crowd in it, so the panel goes away but the people stay. */
     body.photo #life-panel { display: none !important; }
@@ -432,16 +451,16 @@
        egress table are two views of the same sentence. */
     #report-panel { padding: 10px 12px; width: 268px; }
     #report-panel h2 {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
       display: flex; justify-content: space-between; align-items: center; gap: 8px;
     }
     #report-panel label {
-      display: block; font-size: 10.5px; color: var(--text-dim);
+      display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
     }
     #report-panel label.opt {
-      display: flex; align-items: center; gap: 7px; font-size: 11px;
+      display: flex; align-items: center; gap: 7px; font-size: var(--fs-sm);
       color: var(--text); cursor: pointer; margin: 8px 0 0;
     }
     #report-panel label.opt input { accent-color: var(--accent); width: 14px; height: 14px; }
@@ -449,22 +468,22 @@
       display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px;
     }
     #report-verdict .mark { font-size: 17px; }
-    #report-verdict .line { font-size: 11.5px; color: var(--text); line-height: 1.35; }
-    #report-verdict.fail .mark { color: #e05c48; }
-    #report-verdict.warn .mark { color: #e8a33d; }
-    #report-verdict.ok .mark { color: #5db07a; }
+    #report-verdict .line { font-size: var(--fs-md); color: var(--text); line-height: 1.35; }
+    #report-verdict.fail .mark { color: var(--fail); }
+    #report-verdict.warn .mark { color: var(--warn); }
+    #report-verdict.ok .mark { color: var(--ok); }
     #report-acts { display: flex; gap: 4px; margin-top: 10px; }
-    #report-acts button { flex: 1; padding: 5px 0; font-size: 11px; }
+    #report-acts button { flex: 1; padding: 5px 0; font-size: var(--fs-sm); }
     #report-findings { margin-top: 9px; display: flex; flex-direction: column; gap: 6px; }
     .finding {
       border-left: 2px solid var(--panel-border); padding: 1px 0 1px 7px;
-      font-size: 10.5px; line-height: 1.5; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.5; color: var(--text-dim);
     }
     .finding b { color: var(--text); font-weight: 600; display: block; }
-    .finding.fail { border-left-color: #e05c48; }
-    .finding.warn { border-left-color: #e8a33d; }
+    .finding.fail { border-left-color: var(--fail); }
+    .finding.warn { border-left-color: var(--warn); }
     .finding.note { border-left-color: #6d7f96; }
-    .finding.ok { border-left-color: #5db07a; }
+    .finding.ok { border-left-color: var(--ok); }
     .finding .why { display: none; }
     .finding.open .why { display: block; margin-top: 2px; }
     .finding button {
@@ -473,7 +492,7 @@
     .finding button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     #report-readout {
       margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
-      font-size: 10.5px; line-height: 1.6; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.6; color: var(--text-dim);
     }
     #report-readout b { color: var(--text); font-weight: 600; }
     #report-readout .row { display: flex; justify-content: space-between; gap: 8px; }
@@ -482,11 +501,11 @@
     }
     #report-readout .sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
     #report-readout .k {
-      font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em;
-      color: #7d8898; margin-bottom: 2px;
+      font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--text-dim); margin-bottom: 2px;
     }
     #report-stale {
-      font-size: 10px; color: #e8a33d; font-weight: 600; text-transform: none;
+      font-size: var(--fs-xs); color: var(--warn); font-weight: 600; text-transform: none;
       letter-spacing: 0;
     }
     /* A report is not part of the photograph, same as the crowd panel. */
@@ -498,47 +517,47 @@
        seeing where somebody else is standing is most of the point. */
     #session-panel { padding: 10px 12px; width: 236px; }
     #session-panel h2 {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
     }
     #session-panel label {
-      display: block; font-size: 10.5px; color: var(--text-dim);
+      display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
     }
-    #session-panel input[type="text"] { width: 100%; padding: 4px 6px; font-size: 11.5px; }
+    #session-panel input[type="text"] { width: 100%; padding: 4px 6px; font-size: var(--fs-md); }
     #session-state {
-      font-size: 10.5px; line-height: 1.55; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.55; color: var(--text-dim);
       padding-bottom: 7px; border-bottom: 1px solid var(--panel-border);
     }
     #session-state b { color: var(--text); font-weight: 600; }
-    #session-state .live { color: #7ce0a0; font-weight: 600; }
-    #session-state .warn { color: #e8a33d; font-weight: 600; }
+    #session-state .live { color: var(--ok); font-weight: 600; }
+    #session-state .warn { color: var(--warn); font-weight: 600; }
     .sess-acts { display: flex; gap: 4px; margin-top: 8px; }
-    .sess-acts button { flex: 1; padding: 5px 0; font-size: 11px; }
+    .sess-acts button { flex: 1; padding: 5px 0; font-size: var(--fs-sm); }
     .sess-row { display: flex; gap: 4px; align-items: center; }
     .sess-row input { flex: 1; min-width: 0; }
-    .sess-row button { padding: 4px 7px; font-size: 11px; white-space: nowrap; }
+    .sess-row button { padding: 4px 7px; font-size: var(--fs-sm); white-space: nowrap; }
     .sess-row code {
-      flex: 1; font-size: 12px; letter-spacing: 0.08em; color: var(--text);
+      flex: 1; font-size: var(--fs-md); letter-spacing: 0.08em; color: var(--text);
       background: rgba(255, 255, 255, 0.05); padding: 4px 6px; border-radius: 4px;
       overflow: hidden; text-overflow: ellipsis;
     }
     #session-peers { margin-top: 9px; }
     #session-peers .peer {
       display: flex; align-items: center; gap: 7px;
-      font-size: 11px; color: var(--text); padding: 3px 0;
+      font-size: var(--fs-sm); color: var(--text); padding: 3px 0;
     }
     #session-peers .dot {
       width: 9px; height: 9px; border-radius: 50%; flex: none;
       box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
     }
-    #session-peers .peer .doing { color: var(--text-dim); font-size: 10px; margin-left: auto; }
+    #session-peers .peer .doing { color: var(--text-dim); font-size: var(--fs-xs); margin-left: auto; }
     #session-server { margin-top: 9px; border-top: 1px solid var(--panel-border); padding-top: 7px; }
     #session-server summary {
-      font-size: 10.5px; color: var(--text-dim); cursor: pointer; letter-spacing: 0.02em;
+      font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; letter-spacing: 0.02em;
     }
     #session-note {
-      margin-top: 8px; font-size: 10px; line-height: 1.5; color: var(--text-dim);
+      margin-top: 8px; font-size: var(--fs-xs); line-height: 1.5; color: var(--text-dim);
     }
     #session-note b { color: var(--text); font-weight: 600; }
     /* A photograph of a building is not a photograph of who was drawing it. */
@@ -563,42 +582,42 @@
        about where you are standing. */
     #audio-panel { padding: 10px 12px; width: 230px; }
     #audio-panel h2 {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
     }
     #audio-panel label {
-      display: block; font-size: 10.5px; color: var(--text-dim);
+      display: block; font-size: var(--fs-sm); color: var(--text-dim);
       margin: 9px 0 3px; letter-spacing: 0.02em;
     }
     #audio-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
     #audio-shots { display: flex; gap: 4px; margin-top: 10px; }
-    #audio-shots button { flex: 1; padding: 5px 0; font-size: 11px; }
+    #audio-shots button { flex: 1; padding: 5px 0; font-size: var(--fs-sm); }
     #audio-readout {
       margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
-      font-size: 10.5px; line-height: 1.65; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.65; color: var(--text-dim);
     }
     #audio-readout b { color: var(--text); font-weight: 600; }
-    #audio-readout .over { color: #e8a33d; font-weight: 600; }
+    #audio-readout .over { color: var(--warn); font-weight: 600; }
     #audio-readout .rooms { margin-top: 6px; }
     #audio-readout .rooms div { display: flex; justify-content: space-between; gap: 8px; }
     #photo-panel h2 {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
     }
     #photo-panel label {
-      display: block; font-size: 10.5px; color: var(--text-dim); margin: 9px 0 3px;
+      display: block; font-size: var(--fs-sm); color: var(--text-dim); margin: 9px 0 3px;
     }
     #photo-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
     #photo-panel .keys { margin-top: 9px; }
     #photo-shots { display: flex; gap: 4px; margin-top: 10px; }
-    #photo-shots button { flex: 1; padding: 5px 0; font-size: 11px; }
+    #photo-shots button { flex: 1; padding: 5px 0; font-size: var(--fs-sm); }
 
     /* status */
     /* The polygon tools report corner counts and square footage here, so this
        has to hold more than a one-line hint. */
     #status {
       position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
-      padding: 7px 14px; font-size: 12.5px; color: var(--text-dim);
+      padding: 7px 14px; font-size: var(--fs-lg); color: var(--text-dim);
       z-index: 10; max-width: min(70vw, 720px); text-align: center; line-height: 1.5;
     }
 
@@ -618,7 +637,7 @@
       max-height: 92vh; overflow-y: auto;
     }
     #walk-overlay h2 { font-size: 18px; margin-bottom: 10px; }
-    #walk-overlay p { font-size: 13px; color: var(--text-dim); line-height: 1.6; margin-bottom: 18px; }
+    #walk-overlay p { font-size: var(--fs-lg); color: var(--text-dim); line-height: 1.6; margin-bottom: 18px; }
     #walk-overlay .row {
       display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
       position: sticky; bottom: 0; margin: 0 -34px; padding: 14px 34px;
@@ -651,66 +670,66 @@
       display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px;
     }
     #share-overlay p.hint, #models-overlay p.hint, #model-overlay p.hint {
-      font-size: 11.5px; color: var(--text-dim); line-height: 1.5; margin-top: 4px;
+      font-size: var(--fs-md); color: var(--text-dim); line-height: 1.5; margin-top: 4px;
     }
     #model-overlay label {
-      display: block; font-size: 11px; font-weight: 600; color: var(--text-dim);
+      display: block; font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin: 12px 0 5px;
     }
     #model-overlay label.opt {
-      display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 0;
+      display: flex; align-items: center; gap: 8px; font-size: var(--fs-lg); padding: 5px 0;
       cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400;
       color: var(--text);
     }
     #model-overlay #model-dims label { text-transform: none; letter-spacing: 0; font-weight: 400; }
     #model-overlay input[type="text"], #model-overlay select, #models-list input {
       font: inherit; color: var(--text); background: rgba(0, 0, 0, 0.3);
-      border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 8px;
+      border: 1px solid var(--panel-border); border-radius: var(--r-sm); padding: 6px 8px;
     }
     #model-overlay input[type="text"], #model-overlay select { width: 100%; box-sizing: border-box; }
     #model-overlay input[type="number"] {
       font: inherit; color: var(--text); background: rgba(0, 0, 0, 0.3);
-      border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 8px;
+      border: 1px solid var(--panel-border); border-radius: var(--r-sm); padding: 6px 8px;
     }
     #share-overlay textarea {
       color: var(--text); background: rgba(0, 0, 0, 0.3);
-      border: 1px solid var(--panel-border); border-radius: 6px; padding: 8px 9px;
+      border: 1px solid var(--panel-border); border-radius: var(--r-sm); padding: 8px 9px;
     }
     #designs-overlay .save-row { display: flex; gap: 8px; margin-bottom: 14px; }
     #designs-overlay .save-row input {
       flex: 1; font: inherit; color: var(--text);
       background: rgba(0, 0, 0, 0.3); border: 1px solid var(--panel-border);
-      border-radius: 6px; padding: 7px 9px;
+      border-radius: var(--r-sm); padding: 7px 9px;
     }
     #designs-list {
       display: flex; flex-direction: column; gap: 6px;
       max-height: 44vh; overflow-y: auto; margin-bottom: 14px;
     }
-    #designs-list .empty { font-size: 12.5px; color: var(--text-dim); padding: 6px 2px; }
+    #designs-list .empty { font-size: var(--fs-lg); color: var(--text-dim); padding: 6px 2px; }
     #designs-list .design-row {
       display: flex; align-items: center; gap: 8px;
-      padding: 8px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.04);
+      padding: 8px 10px; border-radius: var(--r-md); background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--panel-border);
     }
     #designs-list .design-info { flex: 1; min-width: 0; }
     #designs-list .design-name {
-      font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: var(--fs-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    #designs-list .design-meta { font-size: 10.5px; color: var(--text-dim); }
-    #designs-list .design-row button { padding: 5px 8px; font-size: 12px; }
+    #designs-list .design-meta { font-size: var(--fs-sm); color: var(--text-dim); }
+    #designs-list .design-row button { padding: 5px 8px; font-size: var(--fs-md); }
     #export-overlay label.opt {
-      display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 0; cursor: pointer;
+      display: flex; align-items: center; gap: 8px; font-size: var(--fs-lg); padding: 5px 0; cursor: pointer;
     }
     #export-overlay .radio-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-    #export-overlay .radio-group label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+    #export-overlay .radio-group label { display: flex; align-items: center; gap: 8px; font-size: var(--fs-lg); cursor: pointer; }
     #export-overlay .section-label {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin: 12px 0 6px;
     }
     /* Four buttons is one more than 420px holds in a row, and a button that
        overflows the panel is a button the backdrop swallows. */
     #export-overlay .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
-    #export-overlay p.hint { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; margin-top: 4px; }
+    #export-overlay p.hint { font-size: var(--fs-md); color: var(--text-dim); line-height: 1.5; margin-top: 4px; }
     /* generate & measure dialogs — same slot and look as the export sheet */
     #gen-overlay .panel {
       padding: 22px 26px; width: 460px; max-width: 92vw;
@@ -719,43 +738,43 @@
     #measure-overlay .panel { padding: 20px 24px; width: 340px; max-width: 90vw; }
     #gen-overlay h2, #measure-overlay h2 { font-size: 16px; margin-bottom: 12px; }
     #gen-overlay .section-label, #measure-overlay .section-label {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin: 14px 0 6px;
     }
     #gen-overlay textarea, #gen-overlay input, #gen-overlay select,
     #measure-overlay input {
       font: inherit; color: var(--text); background: rgba(0, 0, 0, 0.3);
-      border: 1px solid var(--panel-border); border-radius: 6px; padding: 7px 9px;
+      border: 1px solid var(--panel-border); border-radius: var(--r-sm); padding: 7px 9px;
     }
     #gen-overlay textarea { width: 100%; resize: vertical; min-height: 52px; line-height: 1.45; }
     #gen-overlay .fields {
       display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px;
     }
-    #gen-overlay .fields label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+    #gen-overlay .fields label { display: block; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 3px; }
     #gen-overlay .fields input, #gen-overlay .fields select { width: 100%; }
     #gen-overlay label.opt, #measure-overlay label.opt {
-      display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; cursor: pointer;
+      display: flex; align-items: center; gap: 8px; font-size: var(--fs-lg); padding: 4px 0; cursor: pointer;
     }
     #gen-overlay .opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
     #gen-overlay .row, #measure-overlay .row {
       display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px;
     }
     #gen-overlay p.hint, #measure-overlay p.hint {
-      font-size: 11.5px; color: var(--text-dim); line-height: 1.5; margin-top: 6px;
+      font-size: var(--fs-md); color: var(--text-dim); line-height: 1.5; margin-top: 6px;
     }
-    #gen-echo { font-size: 12px; line-height: 1.5; margin-top: 8px; }
+    #gen-echo { font-size: var(--fs-md); line-height: 1.5; margin-top: 8px; }
     #gen-echo .read { color: var(--text); }
-    #gen-echo .ignored { color: var(--warn, #f0a44a); }
+    #gen-echo .ignored { color: var(--warn); }
     /* What the brief asked about where two rooms sit. Chips rather than a
        list, because it is a short list and each entry is three words. */
     #gen-adjacency { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
     #gen-adjacency.hidden { display: none; }
     #gen-adjacency .rule {
-      font-size: 11px; padding: 2px 8px; border-radius: 10px;
-      background: var(--panel-2, rgba(127,127,127,0.12)); color: var(--text);
+      font-size: var(--fs-sm); padding: 2px 8px; border-radius: 10px;
+      background: var(--panel-2); color: var(--text);
     }
     #gen-adjacency .rule button {
-      background: none; border: 0; padding: 0 0 0 6px; font-size: 12px;
+      background: none; border: 0; padding: 0 0 0 6px; font-size: var(--fs-md);
       color: var(--text-dim); cursor: pointer;
     }
 
@@ -768,70 +787,70 @@
     }
     #cost-overlay h2 { font-size: 16px; margin-bottom: 10px; }
     #cost-overlay .section-label {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin: 16px 0 6px;
     }
-    #cost-overlay p.hint { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; margin: 4px 0; }
+    #cost-overlay p.hint { font-size: var(--fs-md); color: var(--text-dim); line-height: 1.5; margin: 4px 0; }
     #cost-overlay input, #cost-overlay select {
       font: inherit; color: var(--text); background: rgba(0, 0, 0, 0.3);
-      border: 1px solid var(--panel-border); border-radius: 6px; padding: 5px 8px;
+      border: 1px solid var(--panel-border); border-radius: var(--r-sm); padding: 5px 8px;
     }
     #cost-overlay .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
     #cost-overlay .acts { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; }
-    #cost-overlay .acts button { font-size: 12px; padding: 5px 9px; }
+    #cost-overlay .acts button { font-size: var(--fs-md); padding: 5px 9px; }
     #cost-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; }
-    #cost-meta label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+    #cost-meta label { display: block; font-size: var(--fs-sm); color: var(--text-dim); margin-bottom: 3px; }
     #cost-meta input, #cost-meta select { width: 100%; box-sizing: border-box; }
     #cost-meta .wide { grid-column: span 2; }
     /* The banner the whole sheet leads with while nobody has touched a rate.
        It is the one piece of UI in this build whose job is to be in the way. */
     #cost-warning {
-      font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 8px;
+      font-size: var(--fs-md); line-height: 1.5; padding: 8px 10px; border-radius: var(--r-md);
       background: rgba(232, 163, 61, 0.14); border: 1px solid rgba(232, 163, 61, 0.4);
-      color: #e8a33d; margin: 10px 0 0;
+      color: var(--warn); margin: 10px 0 0;
     }
     #cost-warning.hidden { display: none; }
-    #cost-rows { max-height: 34vh; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 8px; }
+    #cost-rows { max-height: 34vh; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: var(--r-md); }
     #cost-rows .grp {
-      font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
       color: var(--text-dim); padding: 8px 10px 4px;
     }
     #cost-rows .rate-row {
       display: grid; grid-template-columns: 1fr 96px 88px 108px 1fr;
-      gap: 8px; align-items: center; padding: 3px 10px; font-size: 12px;
+      gap: 8px; align-items: center; padding: 3px 10px; font-size: var(--fs-md);
     }
     #cost-rows .rate-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #cost-rows .rate-row .qty { color: var(--text-dim); font-size: 11px; text-align: right; }
+    #cost-rows .rate-row .qty { color: var(--text-dim); font-size: var(--fs-sm); text-align: right; }
     #cost-rows .rate-row input[type="number"] { width: 100%; box-sizing: border-box; text-align: right; }
-    #cost-rows .rate-row input[type="text"] { width: 100%; box-sizing: border-box; font-size: 11px; }
+    #cost-rows .rate-row input[type="text"] { width: 100%; box-sizing: border-box; font-size: var(--fs-sm); }
     #cost-rows .rate-row.used { background: rgba(255, 255, 255, 0.04); }
-    #cost-readout { font-size: 12px; line-height: 1.6; margin-top: 8px; }
+    #cost-readout { font-size: var(--fs-md); line-height: 1.6; margin-top: 8px; }
     #cost-readout .row { display: flex; justify-content: space-between; gap: 10px; margin: 0; }
     #cost-readout b { color: var(--text); font-weight: 600; }
-    #cost-readout .warn { color: #e8a33d; }
+    #cost-readout .warn { color: var(--warn); }
     #phase-list { display: flex; flex-direction: column; gap: 6px; }
     #phase-list .phase-row {
       display: flex; align-items: center; gap: 8px; padding: 7px 9px;
-      border-radius: 8px; background: rgba(255, 255, 255, 0.04);
+      border-radius: var(--r-md); background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--panel-border);
     }
     #phase-list .phase-row input[type="text"] { flex: 1; min-width: 0; }
-    #phase-list .phase-meta { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
-    #phase-list .phase-row button { padding: 4px 7px; font-size: 12px; }
-    #phase-list .empty { font-size: 12px; color: var(--text-dim); padding: 4px 2px; }
+    #phase-list .phase-meta { font-size: var(--fs-sm); color: var(--text-dim); white-space: nowrap; }
+    #phase-list .phase-row button { padding: 4px 7px; font-size: var(--fs-md); }
+    #phase-list .empty { font-size: var(--fs-md); color: var(--text-dim); padding: 4px 2px; }
     #phase-rooms { max-height: 26vh; overflow-y: auto; margin-top: 8px; }
     #phase-rooms .grp {
-      font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
       color: var(--text-dim); padding: 8px 2px 4px;
     }
     #phase-rooms .room-row {
-      display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 2px 2px;
+      display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); padding: 2px 2px;
     }
     #phase-rooms .room-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #phase-rooms .room-row select { width: 170px; font-size: 11.5px; }
+    #phase-rooms .room-row select { width: 170px; font-size: var(--fs-md); }
     #gen-schedule {
       max-height: 30vh; overflow-y: auto; margin-top: 6px;
-      font-size: 11.5px; line-height: 1.55; color: var(--text-dim);
+      font-size: var(--fs-md); line-height: 1.55; color: var(--text-dim);
     }
     #gen-schedule .row-line { display: flex; justify-content: space-between; gap: 10px; }
     #gen-schedule .row-line span:first-child { color: var(--text); }
@@ -847,27 +866,27 @@
       width: 232px; padding: 12px 14px; z-index: 10;
       max-height: calc(100vh - 110px); overflow-y: auto;
     }
-    #overlay-panel label { display: block; font-size: 11px; color: var(--text-dim); margin: 10px 0 4px; }
+    #overlay-panel label { display: block; font-size: var(--fs-sm); color: var(--text-dim); margin: 10px 0 4px; }
     #overlay-panel label:first-of-type { margin-top: 0; }
     #overlay-panel label.opt {
-      display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text); margin: 8px 0 0;
+      display: flex; align-items: center; gap: 8px; font-size: var(--fs-lg); color: var(--text); margin: 8px 0 0;
     }
     #overlay-panel input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
-    #overlay-panel select { width: 100%; font-size: 12px; }
+    #overlay-panel select { width: 100%; font-size: var(--fs-md); }
     #overlay-panel .readout {
       margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
-      font-size: 11.5px; color: var(--text-dim); line-height: 1.5;
+      font-size: var(--fs-md); color: var(--text-dim); line-height: 1.5;
     }
     #overlay-panel .keys {
       margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
-      font-size: 11px; color: var(--text-dim); line-height: 1.6;
+      font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.6;
     }
     #overlay-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
-    #overlay-buttons button { flex: 1; min-width: 64px; padding: 6px 4px; font-size: 12px; }
+    #overlay-buttons button { flex: 1; min-width: 64px; padding: 6px 4px; font-size: var(--fs-md); }
 
     kbd {
       background: rgba(255, 255, 255, 0.1); border: 1px solid var(--panel-border);
-      border-radius: 4px; padding: 1px 5px; font-size: 11px; font-family: inherit;
+      border-radius: 4px; padding: 1px 5px; font-size: var(--fs-sm); font-family: inherit;
     }
 
     #crosshair {
@@ -917,8 +936,8 @@
       position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
       z-index: 15; display: none; pointer-events: none;
       background: var(--panel); border: 1px solid var(--panel-border);
-      border-radius: 6px; padding: 5px 12px;
-      font-size: 12px; color: var(--text-dim); white-space: nowrap;
+      border-radius: var(--r-sm); padding: 5px 12px;
+      font-size: var(--fs-md); color: var(--text-dim); white-space: nowrap;
     }
     body[data-mode="walk"] #walk-hud { display: block; }
     body[data-mode="walk"] #toolbar,
@@ -947,12 +966,12 @@
       position: fixed; left: 12px; top: 58px; z-index: 15; display: none;
       width: 226px; padding: 9px 11px; pointer-events: none;
       max-height: calc(100vh - 310px); overflow: hidden;
-      font-size: 11.5px; line-height: 1.5;
+      font-size: var(--fs-md); line-height: 1.5;
     }
     body[data-mode="walk"].hunting #hunt-panel { display: block; }
     body.photo #hunt-panel { display: none !important; }
     #hunt-panel h2 {
-      font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+      font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.05em;
       text-transform: uppercase; color: var(--text-dim); margin: 0 0 6px;
       display: flex; align-items: center; gap: 6px;
     }
@@ -970,8 +989,8 @@
     #hunt-list { list-style: none; margin: 0; padding: 0; }
     #hunt-list li { display: flex; gap: 6px; padding: 2px 0; color: var(--text-dim); }
     #hunt-list li .ic { width: 15px; text-align: center; }
-    #hunt-list li.found { color: #6fbf8a; text-decoration: line-through; opacity: 0.7; }
-    #hunt-done { margin: 7px 0 0; color: #6fbf8a; font-weight: 600; }
+    #hunt-list li.found { color: var(--ok); text-decoration: line-through; opacity: 0.7; }
+    #hunt-done { margin: 7px 0 0; color: var(--ok); font-weight: 600; }
     #hunt-done:empty { display: none; }
 
     /* --- Phase 9 --- */
@@ -992,7 +1011,7 @@
     #minimap-bar {
       display: flex; gap: 4px; margin-top: 6px; line-height: 1.4;
     }
-    #minimap-bar button { flex: 1; padding: 3px 0; font-size: 10.5px; }
+    #minimap-bar button { flex: 1; padding: 3px 0; font-size: var(--fs-sm); }
     #minimap-bar.finds { margin-top: 4px; }
     #minimap-bar.finds button:first-child { flex: 3; }
     #minimap-bar.finds button.on { background: var(--accent, #4da3ff); color: #fff; }
@@ -1000,17 +1019,20 @@
        the panel beside it prints the whole thing, and this is the label on a
        highlight rather than the finding itself. */
     #minimap-finding {
-      font-size: 10px; line-height: 1.4; margin-top: 4px; max-width: 168px;
+      font-size: var(--fs-xs); line-height: 1.4; margin-top: 4px; max-width: 168px;
       text-align: center; color: var(--text);
     }
     #minimap-finding.hidden { display: none; }
     #minimap-finding .lv { font-weight: 600; }
-    #minimap-finding .fail { color: #d34a41; }
-    #minimap-finding .warn { color: #b97016; }
-    #minimap-finding .note { color: #2860aa; }
-    #minimap-finding .ok { color: #2c784e; }
+    /* The caption sits on the dark panel below the paper canvas, so it reads
+       the shared status tokens; the sheet-ink variants belong to the canvas
+       drawing itself, which is on white paper. */
+    #minimap-finding .fail { color: var(--fail); }
+    #minimap-finding .warn { color: var(--warn); }
+    #minimap-finding .note { color: var(--accent); }
+    #minimap-finding .ok { color: var(--ok); }
     #minimap-note {
-      font-size: 10px; color: var(--text-dim); margin-top: 4px; line-height: 1.4;
+      font-size: var(--fs-xs); color: var(--text-dim); margin-top: 4px; line-height: 1.4;
       text-align: center;
     }
 
@@ -1024,32 +1046,32 @@
     body[data-mode="walk"].tours #tour-panel { display: block; }
     body.photo #tour-panel { display: none !important; }
     #tour-panel h2 {
-      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim);
       letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
     }
     #tour-panel select, #tour-panel input[type="text"] {
       width: 100%; box-sizing: border-box; margin: 0 0 6px;
     }
     #tour-acts { display: flex; gap: 4px; margin: 6px 0; flex-wrap: wrap; }
-    #tour-acts button { flex: 1 1 auto; padding: 5px 6px; font-size: 11px; white-space: nowrap; }
+    #tour-acts button { flex: 1 1 auto; padding: 5px 6px; font-size: var(--fs-sm); white-space: nowrap; }
     #tour-stops { max-height: 190px; overflow-y: auto; margin: 6px 0; }
     #tour-stops .stop {
       display: flex; align-items: center; gap: 5px; padding: 3px 4px;
-      border-radius: 4px; font-size: 10.5px; color: var(--text-dim);
+      border-radius: 4px; font-size: var(--fs-sm); color: var(--text-dim);
     }
     #tour-stops .stop:nth-child(odd) { background: rgba(255, 255, 255, 0.04); }
-    #tour-stops .stop.at { background: rgba(77, 163, 255, 0.22); color: var(--text); }
+    #tour-stops .stop.at { background: var(--accent-soft); color: var(--text); }
     #tour-stops .stop .n { width: 16px; color: var(--text); font-weight: 600; }
     #tour-stops .stop .where { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #tour-stops .stop button { padding: 1px 5px; font-size: 10px; }
+    #tour-stops .stop button { padding: 1px 5px; font-size: var(--fs-xs); }
     #tour-readout {
       margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--panel-border);
-      font-size: 10.5px; line-height: 1.6; color: var(--text-dim);
+      font-size: var(--fs-sm); line-height: 1.6; color: var(--text-dim);
     }
     #tour-readout b { color: var(--text); font-weight: 600; }
-    #tour-panel .keys { margin-top: 9px; font-size: 10px; line-height: 1.7; color: var(--text-dim); }
-    #tour-panel label.opt { font-size: 11px; }
-    #tour-readout .rec { color: #e8556f; font-weight: 600; }
+    #tour-panel .keys { margin-top: 9px; font-size: var(--fs-xs); line-height: 1.7; color: var(--text-dim); }
+    #tour-panel label.opt { font-size: var(--fs-sm); }
+    #tour-readout .rec { color: var(--fail); font-weight: 600; }
 
     /* A tour that is playing owns the screen: the HUD and the crosshair are
        not part of the film. */
@@ -1060,28 +1082,28 @@
     /* Imported models: the row under the furniture palette, and the dialog
        that manages what has been brought in. */
     #model-row { display: flex; gap: 4px; margin-top: 8px; }
-    #model-row button { flex: 1; padding: 5px 6px; font-size: 11px; }
+    #model-row button { flex: 1; padding: 5px 6px; font-size: var(--fs-sm); }
     #models-list .model {
       display: flex; align-items: center; gap: 8px; padding: 7px 4px;
-      border-bottom: 1px solid var(--panel-border); font-size: 12px;
+      border-bottom: 1px solid var(--panel-border); font-size: var(--fs-md);
     }
     #models-list .model .name { flex: 1; }
-    #models-list .model .name small { display: block; color: var(--text-dim); font-size: 10.5px; }
+    #models-list .model .name small { display: block; color: var(--text-dim); font-size: var(--fs-sm); }
     #models-list .model input[type="number"] { width: 56px; }
-    #models-list .empty { color: var(--text-dim); font-size: 12px; padding: 10px 2px; }
+    #models-list .empty { color: var(--text-dim); font-size: var(--fs-md); padding: 10px 2px; }
     #model-dims { display: flex; gap: 6px; align-items: flex-end; }
-    #model-dims label { flex: 1; font-size: 10.5px; color: var(--text-dim); }
+    #model-dims label { flex: 1; font-size: var(--fs-sm); color: var(--text-dim); }
     #model-dims input { width: 100%; box-sizing: border-box; }
 
     /* Sharing: one long link, and the two sentences that have to go with it. */
     #share-link {
       width: 100%; box-sizing: border-box; height: 74px; resize: vertical;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-sm);
       word-break: break-all;
     }
-    #share-note { font-size: 12px; color: var(--text-dim); margin: 8px 0 0; line-height: 1.55; }
-    #share-note.warn { color: #e8a33d; }
-    #share-note.bad { color: #e8556f; }
+    #share-note { font-size: var(--fs-md); color: var(--text-dim); margin: 8px 0 0; line-height: 1.55; }
+    #share-note.warn { color: var(--warn); }
+    #share-note.bad { color: var(--fail); }
 
     .hidden { display: none !important; }
     /* Screen-reader-only text: an associated label for a control whose visual
