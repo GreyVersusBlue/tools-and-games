@@ -142,7 +142,18 @@
       width: 86px; display: flex; flex-direction: column; align-items: center; gap: 0;
       padding: 4px 4px; font-size: var(--fs-sm); color: var(--text-dim);
     }
-    #toolbar .tool .icon { font-size: 16px; line-height: 1.05; }
+    /* Sprite icons: stroke inherits currentColor, so state tints them. */
+    svg.icon {
+      width: 18px; height: 18px; flex: none;
+      fill: none; stroke: currentColor; stroke-width: 1.7;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    #toolbar .tool svg.icon { margin-bottom: 2px; }
+    #topbar button svg.icon, #topbar h1 svg.icon {
+      width: 15px; height: 15px; vertical-align: -3px; margin-right: 5px;
+      display: inline-block;
+    }
+    #topbar h1 svg.icon { color: var(--accent); stroke-width: 1.9; }
     #toolbar .tool.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
     #toolbar .key { font-size: var(--fs-xs); opacity: 0.55; }
 
@@ -1127,55 +1138,87 @@
   </style>
 </head>
 <body data-mode="edit">
+  <!-- Icon sprite. One stroke weight, one grid, currentColor throughout — so
+       the toolbar's active/hover states tint the icons the way they always
+       tinted the labels, which the old emoji never did. Same <symbol>
+       pattern as the site board's seal glyphs. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+    <symbol id="i-school" viewBox="0 0 24 24"><path d="M3.5 11 12 4.5l8.5 6.5"/><path d="M5.5 10.2v9.3h13v-9.3"/><path d="M10.2 19.5v-4.4h3.6v4.4"/><path d="M12 4.5V2h3.4v1.7H12"/></symbol>
+    <symbol id="i-floor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 9.3h16M4 14.6h16M9.3 4v16M14.6 4v16"/></symbol>
+    <symbol id="i-wall" viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="12" rx="1"/><path d="M3.5 10h17M3.5 14h17"/><path d="M9 6v4M15 6v4M6.5 10v4M12 10v4M17.5 10v4M9 14v4M15 14v4"/></symbol>
+    <symbol id="i-door" viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M6.5 19V5.5"/><path d="M6.5 5.5A13.5 13.5 0 0 1 20 19"/></symbol>
+    <symbol id="i-room" viewBox="0 0 24 24"><path d="M12.5 3.5h8v8l-9 9-8-8z"/><circle cx="16.3" cy="7.7" r="1.5"/></symbol>
+    <symbol id="i-erase" viewBox="0 0 24 24"><path d="M7.8 17.5 4 13.7a1.5 1.5 0 0 1 0-2.1l7.7-7.7a1.5 1.5 0 0 1 2.1 0l6.3 6.3a1.5 1.5 0 0 1 0 2.1l-5.2 5.2z"/><path d="M14.9 17.5H7.8"/><path d="M4.5 20.5h15"/></symbol>
+    <symbol id="i-poly" viewBox="0 0 24 24"><path d="M12 4 19.6 9.5 16.7 18.4H7.3L4.4 9.5z"/><circle cx="12" cy="4" r="1.3"/><circle cx="19.6" cy="9.5" r="1.3"/><circle cx="7.3" cy="18.4" r="1.3"/></symbol>
+    <symbol id="i-vertex" viewBox="0 0 24 24"><path d="M5 19V8.5L12 5l7 4.5V19z"/><rect x="3.2" y="17.2" width="3.6" height="3.6"/><rect x="17.2" y="17.2" width="3.6" height="3.6"/><rect x="10.2" y="3.2" width="3.6" height="3.6"/></symbol>
+    <symbol id="i-chair" viewBox="0 0 24 24"><path d="M8 3.5v17"/><path d="M8 13.5h8v7"/><path d="M8 17h8"/></symbol>
+    <symbol id="i-stair" viewBox="0 0 24 24"><path d="M3.5 20.5h4.2v-4.2h4.2v-4.2h4.2V7.9h4.4V3.5"/></symbol>
+    <symbol id="i-layout" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="15" rx="1.5"/><path d="M4 11.5h16M11.5 11.5v8"/></symbol>
+    <symbol id="i-tree" viewBox="0 0 24 24"><circle cx="12" cy="9" r="5.5"/><path d="M12 14.5v6"/><path d="M9 20.5h6"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M6 18.5l5-5 3 3 2.5-2.5 3.5 3.5"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M7.5 5 4 8.5 7.5 12"/><path d="M4 8.5h9a6 6 0 0 1 0 12H8"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="M16.5 5 20 8.5 16.5 12"/><path d="M20 8.5h-9a6 6 0 0 0 0 12h5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4l2 2.5h8a1.5 1.5 0 0 1 1.5 1.5v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M11 3.5 12.7 9.3 18.5 11l-5.8 1.7L11 18.5 9.3 12.7 3.5 11l5.8-1.7z"/><path d="m18.5 15.5.7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7z"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M6.5 9V3.5h11V9"/><path d="M6.5 16.5h-2A1.5 1.5 0 0 1 3 15v-4.5A1.5 1.5 0 0 1 4.5 9h15A1.5 1.5 0 0 1 21 10.5V15a1.5 1.5 0 0 1-1.5 1.5h-2"/><rect x="6.5" y="13.5" width="11" height="7" rx="1"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4.2 4.2 0 0 0 6 0l3-3a4.24 4.24 0 0 0-6-6l-1.5 1.5"/><path d="M14 10a4.2 4.2 0 0 0-6 0l-3 3a4.24 4.24 0 0 0 6 6l1.5-1.5"/></symbol>
+    <symbol id="i-panes" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="12.5" height="12.5" rx="2"/><path d="M20.5 8.5v10a2 2 0 0 1-2 2h-10"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M4.9 4.9 6.7 6.7M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5z"/><path d="M15 9a4.5 4.5 0 0 1 0 6"/><path d="M17.5 6.5a8 8 0 0 1 0 11"/></symbol>
+    <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c.5-3.5 2.7-5.5 5.5-5.5s5 2 5.5 5.5"/><circle cx="16.8" cy="9" r="2.6"/><path d="M16 14.7c2.6.2 4 2 4.5 5.3"/></symbol>
+    <symbol id="i-report" viewBox="0 0 24 24"><rect x="5" y="4.5" width="14" height="17" rx="1.5"/><path d="M9.5 4.5v-1h5v1"/><path d="M8.5 10h7M8.5 13.5h7M8.5 17h4.5"/></symbol>
+    <symbol id="i-walk" viewBox="0 0 24 24"><circle cx="13.2" cy="4.3" r="1.8"/><path d="M12.8 7.2 10.8 11.8l2.5 2.8.8 6"/><path d="M10.8 11.8 7.8 20.5"/><path d="M11.5 9.4 15 11.8l2.8.7"/><path d="M10.8 11.8 7.2 10.6 5.5 12.9"/></symbol>
+  </defs></svg>
+
   <canvas id="view"></canvas>
 
   <div id="topbar" class="panel">
     <div class="tb-group" role="group" aria-label="School Generator">
-      <h1>🏫 School Generator</h1>
+      <h1><svg class="icon" aria-hidden="true"><use href="#i-school"/></svg>School Generator</h1>
     </div>
     <div class="tb-group" role="group" aria-label="History">
-      <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo">↩︎</button>
-      <button id="redo-btn" title="Redo (Ctrl+Y)" aria-label="Redo">↪︎</button>
+      <button id="undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg></button>
+      <button id="redo-btn" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="icon" aria-hidden="true"><use href="#i-redo"/></svg></button>
     </div>
     <div class="tb-group" role="group" aria-label="File">
       <button id="new-btn" title="New empty school">New</button>
       <button id="save-btn" title="Download design as JSON">Save</button>
       <button id="load-btn" title="Load a JSON design">Load</button>
-      <button id="designs-btn" title="Named designs saved in this browser">🗂 Designs</button>
+      <button id="designs-btn" title="Named designs saved in this browser"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Designs</button>
     </div>
     <div class="tb-group" role="group" aria-label="Make">
-      <button id="gen-btn" title="Generate a whole school from a brief">✨ Generate</button>
+      <button id="gen-btn" title="Generate a whole school from a brief"><svg class="icon" aria-hidden="true"><use href="#i-sparkle"/></svg>Generate</button>
     </div>
     <div class="tb-group" role="group" aria-label="Out">
-      <button id="export-btn" title="Printable top-down floor plan (PNG / PDF)">🖨 Export</button>
-      <button id="share-btn" title="Put this whole design in a link">🔗 Share</button>
-      <button id="session-btn" title="Draw this school with somebody else" aria-pressed="false">🤝 Session</button>
+      <button id="export-btn" title="Printable top-down floor plan (PNG / PDF)"><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>Export</button>
+      <button id="share-btn" title="Put this whole design in a link"><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg>Share</button>
+      <button id="session-btn" title="Draw this school with somebody else" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-panes"/></svg>Session</button>
     </div>
     <div class="tb-group toggles" role="group" aria-label="View panels">
       <button id="fx-btn" title="Toggle post-processing" aria-pressed="true">FX</button>
-      <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true">☀ Sky</button>
-      <button id="audio-btn" title="Sound, and how the room you're in rings (U)" aria-pressed="false">🔊 Sound</button>
-      <button id="life-btn" title="People in the building, and the bell schedule (L)" aria-pressed="false">👥 Life</button>
-      <button id="report-btn" title="Occupancy, egress, access, daylight and materials (M)" aria-pressed="false">📋 Report</button>
+      <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg>Sky</button>
+      <button id="audio-btn" title="Sound, and how the room you're in rings (U)" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-sound"/></svg>Sound</button>
+      <button id="life-btn" title="People in the building, and the bell schedule (L)" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-people"/></svg>Life</button>
+      <button id="report-btn" title="Occupancy, egress, access, daylight and materials (M)" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-report"/></svg>Report</button>
     </div>
     <div class="tb-group" role="group" aria-label="Mode">
-      <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)">🚶 Walk Through</button>
+      <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)"><svg class="icon" aria-hidden="true"><use href="#i-walk"/></svg>Walk Through</button>
     </div>
   </div>
 
   <div id="toolbar" class="panel" role="group" aria-label="Tools">
-    <button class="tool active" data-tool="floor" aria-pressed="true"><span class="icon">▦</span>Floor<span class="key">1</span></button>
-    <button class="tool" data-tool="wall" aria-pressed="false"><span class="icon">▬</span>Wall<span class="key">2</span></button>
-    <button class="tool" data-tool="door" aria-pressed="false"><span class="icon">🚪</span>Door<span class="key">3</span></button>
-    <button class="tool" data-tool="room" aria-pressed="false"><span class="icon">🎨</span>Room<span class="key">4</span></button>
-    <button class="tool" data-tool="erase" aria-pressed="false"><span class="icon">⌫</span>Erase<span class="key">5</span></button>
-    <button class="tool" data-tool="poly" aria-pressed="false"><span class="icon">⬠</span>Polygon<span class="key">6</span></button>
-    <button class="tool" data-tool="vertex" aria-pressed="false"><span class="icon">✥</span>Shape<span class="key">7</span></button>
-    <button class="tool" data-tool="prop" aria-pressed="false"><span class="icon">🪑</span>Furniture<span class="key">8</span></button>
-    <button class="tool" data-tool="stair" aria-pressed="false"><span class="icon">🪜</span>Stairs<span class="key">9</span></button>
-    <button class="tool" data-tool="template" aria-pressed="false"><span class="icon">🏫</span>Layout<span class="key">0</span></button>
-    <button class="tool" data-tool="site" aria-pressed="false"><span class="icon">🌳</span>Site<span class="key">-</span></button>
-    <button class="tool" data-tool="overlay" aria-pressed="false"><span class="icon">🖼</span>Overlay<span class="key">=</span></button>
+    <button class="tool active" data-tool="floor" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#i-floor"/></svg>Floor<span class="key">1</span></button>
+    <button class="tool" data-tool="wall" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-wall"/></svg>Wall<span class="key">2</span></button>
+    <button class="tool" data-tool="door" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-door"/></svg>Door<span class="key">3</span></button>
+    <button class="tool" data-tool="room" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-room"/></svg>Room<span class="key">4</span></button>
+    <button class="tool" data-tool="erase" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-erase"/></svg>Erase<span class="key">5</span></button>
+    <button class="tool" data-tool="poly" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-poly"/></svg>Polygon<span class="key">6</span></button>
+    <button class="tool" data-tool="vertex" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-vertex"/></svg>Shape<span class="key">7</span></button>
+    <button class="tool" data-tool="prop" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-chair"/></svg>Furniture<span class="key">8</span></button>
+    <button class="tool" data-tool="stair" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-stair"/></svg>Stairs<span class="key">9</span></button>
+    <button class="tool" data-tool="template" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-layout"/></svg>Layout<span class="key">0</span></button>
+    <button class="tool" data-tool="site" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-tree"/></svg>Site<span class="key">-</span></button>
+    <button class="tool" data-tool="overlay" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg>Overlay<span class="key">=</span></button>
   </div>
 
   <div id="room-panel" class="panel tool-slot hidden">
@@ -2005,7 +2048,7 @@
 
       <div class="row">
         <button id="gen-cancel">Cancel</button>
-        <button id="gen-go" class="primary">✨ Generate</button>
+        <button id="gen-go" class="primary"><svg class="icon" aria-hidden="true"><use href="#i-sparkle"/></svg>Generate</button>
       </div>
       <p class="hint">
         This replaces the design you have open — save it first if you want it.
