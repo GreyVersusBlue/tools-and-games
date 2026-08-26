@@ -21,6 +21,7 @@ import {
   shapeArea, ringIsCCW, segEnds, openingSpec, pointInShape,
   LEAF_SINGLE, LEAF_DOUBLE, LEAF_NONE, OP_WINDOW, MAX_SHAPES,
 } from '../js/shapes.js';
+import { segLeaves, leafEnd, gridDoorSpec } from '../js/openings.js';
 
 // A lattice with one solid block of cells drawn on it, walls all round.
 function boxLattice(w = 8, h = 8, x0 = 0, y0 = 0, x1 = 3, y1 = 2) {
@@ -287,6 +288,56 @@ test('baked ids come off the state counter and never repeat', () => {
   assert.equal(new Set(ids).size, 3);
   assert.ok(ids.every((id) => id >= before));
   assert.ok(s.nextId > Math.max(...ids));
+});
+
+// The one thing about a baked door that is not obvious from its record: which
+// jamb its leaf hangs on. The lattice had no winding — a horizontal edge ran
+// +X and a vertical one ran +Z — so `hand`/`sw` meant one fixed thing per
+// edge; half of a ring's segments run the other way. Both fields flip on those,
+// and the leaf comes out on the jamb it was on and swinging the way it swung.
+// (It cost a third of a fire drill to notice, which is why it is two tests.)
+function bakedLeaf(edgeKind, place) {
+  const s = createState(10, 10);
+  const lat = boxLattice(10, 10, 0, 0, 3, 2);
+  place(lat);
+  bake(s, 0, lat);
+  const shape = s.floors[0].shapes[0];
+  const o = allOpenings(shape)[0];
+  const [a, b] = segEnds(shape.rings[o.ring], o.seg);
+  return segLeaves(openingSpec(o), a, b)[0];
+}
+
+// What the lattice itself would have hung on that edge: its runs are always
+// +X for a horizontal edge and +Z for a vertical one.
+function latticeLeaf(edgeKind, a, b) {
+  return segLeaves(gridDoorSpec(edgeKind), a, b)[0];
+}
+
+test('a baked door hangs on the jamb the lattice hung it on, north and south', () => {
+  // North wall: the ring runs +X there, the same way the lattice edge did.
+  const north = bakedLeaf(EDGE_DOOR, (lat) => { lat.edgesH[edgeHIdx(lat, 1, 0)] = EDGE_DOOR; });
+  const wantN = latticeLeaf(EDGE_DOOR, { x: 4, z: 0 }, { x: 8, z: 0 });
+  assert.ok(Math.abs(north.hx - wantN.hx) < 1e-9, `hinge x ${north.hx} vs ${wantN.hx}`);
+  assert.equal(north.hz, wantN.hz);
+  // South wall: the ring runs −X, so both fields flip and the hinge lands back
+  // on the same jamb.
+  const south = bakedLeaf(EDGE_DOOR, (lat) => { lat.edgesH[edgeHIdx(lat, 1, 3)] = EDGE_DOOR; });
+  const wantS = latticeLeaf(EDGE_DOOR, { x: 4, z: 12 }, { x: 8, z: 12 });
+  assert.ok(Math.abs(south.hx - wantS.hx) < 1e-9, `hinge x ${south.hx} vs ${wantS.hx}`);
+  assert.equal(south.hz, wantS.hz);
+});
+
+test('a baked door swings the way the lattice swung it, east and west', () => {
+  for (const [name, place, a, b] of [
+    ['west', (lat) => { lat.edgesV[edgeVIdx(lat, 0, 1)] = EDGE_DOOR; }, { x: 0, z: 4 }, { x: 0, z: 8 }],
+    ['east', (lat) => { lat.edgesV[edgeVIdx(lat, 4, 1)] = EDGE_DOOR; }, { x: 16, z: 4 }, { x: 16, z: 8 }],
+  ]) {
+    const baked = bakedLeaf(EDGE_DOOR, place);
+    const want = latticeLeaf(EDGE_DOOR, a, b);
+    const got = leafEnd(baked, 1), wanted = leafEnd(want, 1);
+    assert.ok(Math.hypot(got.x - wanted.x, got.z - wanted.z) < 1e-6,
+      `${name}: open leaf ends at (${got.x}, ${got.z}), wanted (${wanted.x}, ${wanted.z})`);
+  }
 });
 
 test('the per-floor cap refuses rather than overflows, and says how many', () => {

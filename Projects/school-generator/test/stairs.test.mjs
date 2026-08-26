@@ -334,10 +334,15 @@ test('the sample school has a stair that lands on its upper floor', () => {
 
 test('the sample school glazes a wall on each storey', () => {
   const s = buildSampleSchool();
+  const glazed = (floor) => floor.shapes.some(
+    (sh) => sh.rings.some((r) => r.walls.includes(2)));
   const [ground, upper] = s.floors;
-  assert.ok(ground.edgesH.some((v) => v === 3), 'glass downstairs');
-  assert.ok(upper.edgesH.some((v) => v === 3), 'and up');
-  assert.ok(ground.shapes[0].rings[0].walls.includes(2), 'and a glazed polygon segment');
+  assert.ok(glazed(ground), 'glass downstairs');
+  assert.ok(glazed(upper), 'and up');
+  // ...and one of them is on the free-drawn room, which is where the curtain
+  // wall is rather than an office front.
+  const commons = ground.shapes.find((sh) => sh.name === 'Learning Commons');
+  assert.ok(commons && commons.rings[0].walls.includes(2), 'and a glazed polygon segment');
 });
 
 test('the sample school opens a railed atrium through both storeys', () => {

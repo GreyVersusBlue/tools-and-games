@@ -287,6 +287,8 @@ export function takeoff(state, opts = {}) {
   }
 
   const sum = (pick) => floors.reduce((n, f) => n + pick(f), 0);
+  const exteriorLf = sum((f) => f.walls.filter((w) => w.exterior).reduce((n, w) => n + w.lf, 0));
+  const interiorLf = sum((f) => f.walls.filter((w) => !w.exterior).reduce((n, w) => n + w.lf, 0));
   return {
     floors,
     links,
@@ -298,9 +300,14 @@ export function takeoff(state, opts = {}) {
     totals: {
       storeys: floors.length,
       slab: sum((f) => f.slab),
-      wallLf: sum((f) => f.walls.reduce((n, w) => n + w.lf, 0)),
-      exteriorLf: sum((f) => f.walls.filter((w) => w.exterior).reduce((n, w) => n + w.lf, 0)),
-      interiorLf: sum((f) => f.walls.filter((w) => !w.exterior).reduce((n, w) => n + w.lf, 0)),
+      // Added rather than summed a third time: a bill of materials whose
+      // total is a rounding error away from its own two lines is a bill
+      // somebody has to explain. Since Phase 12 a wall is one polygon run
+      // rather than a cell's worth of edge, so the two orders of addition
+      // stopped agreeing in the last bit.
+      wallLf: exteriorLf + interiorLf,
+      exteriorLf,
+      interiorLf,
       paintArea: sum((f) => f.paintArea),
       facadeArea: sum((f) => f.facadeArea),
       glazing: sum((f) => f.glazing),

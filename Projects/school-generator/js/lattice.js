@@ -53,7 +53,8 @@ import {
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   MAX_SHAPES, MAX_RING_PTS,
-  ringSignedArea, orientRing, writeOpening, takeId,
+  ringSignedArea, orientRing, writeOpening, takeId, segEnds,
+  openingSpec, isDoorOpening,
   OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE,
   WINDOW_SILL, WINDOW_H,
 } from './shapes.js';
@@ -358,9 +359,37 @@ export function regionToShape(state, lat, cells, claimed = new Set()) {
       for (const o of sg.openings) ring.openings.push(writeOpening(i, o.t, o.w, o.opts));
     });
     orientRing(ring, li === 0);
+    rehangLeaves(ring);
     shape.rings.push(ring);
   });
   return shape;
+}
+
+// **A baked door hangs on the jamb the lattice hung it on.**
+//
+// The lattice had no direction to speak of: a horizontal edge ran +X and a
+// vertical one ran +Z, always, so `hand: +1` (hinge on the start of the run)
+// and `sw: +1` (swing toward the run's left-hand normal) meant one fixed thing
+// per edge. A ring has a winding, and half of its segments run the *other*
+// way — the south wall of a room wound counter-clockwise runs −X — so the same
+// two fields on the same door would put the hinge on the far jamb and swing
+// the leaf into the room instead of out of it.
+//
+// Flipping both keeps `turn` (= hand × sw) exactly what it was and moves the
+// hinge back to the jamb it was on. It is done from the *finished* ring rather
+// than from the trace, because `orientRing` may have reversed the loop under
+// us, and asking the geometry which way a segment ends up running cannot be
+// wrong about it.
+//
+// It is not cosmetic. A leaf hung on the wrong jamb sweeps the other half of
+// its doorway, which is the half a walker approaching off-centre is standing
+// in — a fire drill on the sample school lost a third of the building to it.
+function rehangLeaves(ring) {
+  for (const o of ring.openings) {
+    if (!isDoorOpening(o) || openingSpec(o).leaf === LEAF_NONE) continue;
+    const [a, b] = segEnds(ring, o.seg);
+    if (b.x - a.x < -1e-9 || b.z - a.z < -1e-9) { o.hand = -1; o.sw = -1; }
+  }
 }
 
 // Every region on the raster, as rooms on `state.floors[floorIndex]`.

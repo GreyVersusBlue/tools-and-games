@@ -1,8 +1,9 @@
 // sample.js — the first-run demo school.
 //
-// Lives outside grid.js because it draws from every representation the editor
-// has: a rectilinear grid core (fast to lay out, and what the grid is for), one
-// polygon room hung off the east end of the hall, furniture in Room 101, and —
+// Lives outside grid.js because it draws with every gesture the editor has: a
+// rectilinear core laid out on the 4ft lattice (fast, and what the lattice is
+// for), one free-drawn polygon room hung off the east end of the hall — the
+// one thing the lattice cannot say — furniture in Room 101, and —
 // since Phase 4 — a second storey reached by a real staircase, with a railed
 // mezzanine over the main hall and glazed partitions on both levels. Opening
 // the tool should show you what it can do, not a blank lattice.
@@ -21,9 +22,12 @@
 // every marking on them is computed rather than placed.
 
 import {
-  ROOM_COLORS, createState, setTile, floodRegion, cellIdx, edgeHIdx, edgeVIdx,
-  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_WINDOW, addFloor,
+  ROOM_COLORS, createState, addFloor,
+  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_WINDOW,
 } from './grid.js';
+import {
+  createLattice, setTile, floodRegion, cellIdx, edgeHIdx, edgeVIdx, bake,
+} from './lattice.js';
 import {
   addShape, setSegWall, addOpening, curveSegment, SEG_GLASS, LEAF_SINGLE, OP_WINDOW,
 } from './shapes.js';
@@ -62,9 +66,9 @@ function edgeRunV(f, x, y0, y1, val) {
   for (let y = y0; y <= y1; y++) f.edgesV[edgeVIdx(f, x, y)] = val;
 }
 
-// Name, tint and finish a whole grid region at once — the same four fields the
-// room tool writes, since a grid room is a flood-fill label rather than an
-// object to hang them on.
+// Name, tint and finish a whole region of the scratch lattice at once. The
+// four fields ride on the cells only as far as the bake, which lifts them onto
+// the room record they belong to.
 function assignRoom(f, x, y, name, color, fin = null, paint = null) {
   for (const c of floodRegion(f, x, y)) {
     const cell = f.cells[cellIdx(f, c.x, c.y)];
@@ -76,7 +80,10 @@ function assignRoom(f, x, y, name, color, fin = null, paint = null) {
 
 export function buildSampleSchool() {
   const s = createState();
-  const f = s.floors[0];
+  // The rectilinear core is drawn on a scratch lattice and baked into rooms —
+  // exactly what the paint brush does, and what a pre-Phase-12 save file goes
+  // through on the way in. See lattice.js.
+  const f = createLattice(s.w, s.h);
   // Main hall: x 6..33, y 13..15
   floorRect(f, 6, 13, 33, 15);
   // Classrooms north of the hall: four 7x6 rooms, y 7..12
@@ -134,8 +141,13 @@ export function buildSampleSchool() {
   assignRoom(f, 16, 18, 'Room 105', ROOM_COLORS[5]);
   assignRoom(f, 28, 18, 'Room 106', ROOM_COLORS[6]);
 
+  // The doorway from the hall out to the room below, cut before the bake so
+  // the hall's east wall carries it.
+  f.edgesV[edgeVIdx(f, 34, 14)] = EDGE_DOOR;
+  bake(s, 0, f);
+
   // A polygon room off the east end of the hall: five walls, none of them
-  // square to the grid. Its west wall lands exactly on the grid's east shell
+  // square to the grid. Its west wall lands exactly on the baked shell
   // (x = 34 cells = 136ft), so the two systems share one line — the grid keeps
   // that wall and the doorway through it, and the polygon leaves the segment
   // open rather than drawing a second wall in the same place.
@@ -164,7 +176,6 @@ export function buildSampleSchool() {
     // happens to have a lot of corners — which is exactly the point.
     curveSegment(commons, 0, (shared + 3) % n0, 0.3);
   }
-  f.edgesV[edgeVIdx(f, 34, 14)] = 2;
 
   // Room 101 (x 24-52ft, z 28-52ft) gets furnished — a first exercise of the
   // prop layer, and proof it renders before anything else gets built on top of
@@ -236,7 +247,7 @@ export function buildSampleSchool() {
 function buildUpperLevel(s) {
   const at = addFloor(s);
   if (at < 0) return;
-  const up = s.floors[at];
+  const up = createLattice(s.w, s.h);
 
   floorRect(up, 6, 13, 33, 15);                                   // upper hall
   for (let r = 0; r < 4; r++) floorRect(up, 6 + r * 7, 7, 12 + r * 7, 12);
@@ -266,6 +277,8 @@ function buildUpperLevel(s) {
   assignRoom(up, 8, 14, 'Upper Hall', '#e9e4da', 'terrazzo');
   assignRoom(up, 10, 18, 'Room 205', ROOM_COLORS[5]);
   assignRoom(up, 24, 18, 'Room 206', ROOM_COLORS[6]);
+
+  bake(s, at, up);
 
   // The upper hall gets its own speaker — a PA that only reaches one storey is
   // half a PA, and it is the second source in the design far enough from the
