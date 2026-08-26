@@ -661,11 +661,33 @@
        "Click to Walk" button you have to scroll to find is a walkthrough you
        cannot start. */
     #walk-overlay .panel {
-      padding: 28px 34px 0; text-align: center; max-width: 420px;
+      padding: 28px 34px 0; text-align: center; max-width: 520px;
       max-height: 92vh; overflow-y: auto;
     }
-    #walk-overlay h2 { font-size: 18px; margin-bottom: 10px; }
+    #walk-overlay h2 { font-size: 18px; margin-bottom: 14px; }
     #walk-overlay p { font-size: var(--fs-lg); color: var(--text-dim); line-height: 1.6; margin-bottom: 18px; }
+    /* The key bindings, as a cheat sheet rather than a paragraph: four
+       headed columns of kbd → action rows, scannable in the five seconds
+       before the pointer lock takes the mouse away. */
+    #walk-keys {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px;
+      margin-bottom: 16px; text-align: left;
+    }
+    #walk-keys h3 {
+      font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 5px;
+    }
+    #walk-keys ul { list-style: none; margin: 0; padding: 0; }
+    #walk-keys li { font-size: var(--fs-md); color: var(--text); line-height: 2; }
+    #walk-keys li .what { color: var(--text-dim); }
+    /* The prose lives behind a native disclosure. First visit it arrives
+       open; after that main.js starts it closed (sg-walk-seen). */
+    #walk-more { text-align: left; margin-bottom: 16px; }
+    #walk-more summary {
+      cursor: pointer; font-size: var(--fs-lg); color: var(--accent);
+      margin-bottom: 10px;
+    }
+    #walk-more summary:hover { text-decoration: underline; }
     #walk-overlay .row {
       display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
       position: sticky; bottom: 0; margin: 0 -34px; padding: 14px 34px;
@@ -908,8 +930,10 @@
     #overlay-buttons button { flex: 1; min-width: 64px; padding: 6px 4px; font-size: var(--fs-md); }
 
     kbd {
-      background: rgba(255, 255, 255, 0.1); border: 1px solid var(--panel-border);
-      border-radius: 4px; padding: 1px 5px; font-size: var(--fs-sm); font-family: inherit;
+      background: var(--panel-2); border: 1px solid var(--panel-border);
+      border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px;
+      font-size: var(--fs-sm);
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
     }
 
     #crosshair {
@@ -1181,6 +1205,7 @@
     <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 19V5L7.5 9.5z"/><path d="M15 9a4.5 4.5 0 0 1 0 6"/><path d="M17.5 6.5a8 8 0 0 1 0 11"/></symbol>
     <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c.5-3.5 2.7-5.5 5.5-5.5s5 2 5.5 5.5"/><circle cx="16.8" cy="9" r="2.6"/><path d="M16 14.7c2.6.2 4 2 4.5 5.3"/></symbol>
     <symbol id="i-report" viewBox="0 0 24 24"><rect x="5" y="4.5" width="14" height="17" rx="1.5"/><path d="M9.5 4.5v-1h5v1"/><path d="M8.5 10h7M8.5 13.5h7M8.5 17h4.5"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/></symbol>
     <symbol id="i-walk" viewBox="0 0 24 24"><circle cx="13.2" cy="4.3" r="1.8"/><path d="M12.8 7.2 10.8 11.8l2.5 2.8.8 6"/><path d="M10.8 11.8 7.8 20.5"/><path d="M11.5 9.4 15 11.8l2.8.7"/><path d="M10.8 11.8 7.2 10.6 5.5 12.9"/></symbol>
   </defs></svg>
 
@@ -1216,7 +1241,7 @@
       <button id="report-btn" title="Occupancy, egress, access, daylight and materials (M)" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-report"/></svg>Report</button>
     </div>
     <div class="tb-group" role="group" aria-label="Mode">
-      <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)"><svg class="icon" aria-hidden="true"><use href="#i-walk"/></svg>Walk Through</button>
+      <button id="mode-btn" class="primary" title="Toggle walkthrough (Tab)"><svg class="icon" aria-hidden="true"><use id="mode-btn-icon" href="#i-walk"/></svg><span id="mode-btn-label">Walk Through</span></button>
     </div>
   </div>
 
@@ -1716,18 +1741,48 @@
   <div id="walk-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="walk-overlay-title">
     <div class="panel">
       <h2 id="walk-overlay-title">Walkthrough Mode</h2>
-      <p id="walk-controls-hint">
-        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; <kbd>Shift</kbd> sprint<br />
-        <kbd>Space</kbd> jump &nbsp;·&nbsp; <kbd>F</kbd> ghost mode (no-clip, <kbd>Space</kbd>/<kbd>C</kbd> to fly)<br />
-        <kbd>E</kbd> call the lift, from inside it or at its doors &nbsp;·&nbsp; <kbd>P</kbd> photo mode<br />
-        <kbd>G</kbd> start or stop the scavenger hunt<br />
-        <kbd>B</kbd> ring the bell &nbsp;·&nbsp; <kbd>N</kbd> PA announcement &nbsp;·&nbsp; <kbd>U</kbd> sound panel<br />
-        <kbd>L</kbd> school life &nbsp;·&nbsp; <kbd>V</kbd> follow somebody &nbsp;·&nbsp; <kbd>K</kbd> fire drill &nbsp;·&nbsp; <kbd>H</kbd> heatmap<br />
-        <kbd>M</kbd> the report — occupancy, egress, access, daylight<br />
-        <kbd>J</kbd> the minimap &nbsp;·&nbsp; <kbd>O</kbd> its findings &nbsp;·&nbsp;
-        <kbd>[</kbd> <kbd>]</kbd> step through them<br />
-        <kbd>Esc</kbd> release mouse
+      <div id="walk-keys" aria-label="Walkthrough keys">
+        <div>
+          <h3>Move</h3>
+          <ul>
+            <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span class="what">move · mouse look</span></li>
+            <li><kbd>Shift</kbd> <span class="what">sprint</span> · <kbd>Space</kbd> <span class="what">jump</span></li>
+            <li><kbd>F</kbd> <span class="what">ghost mode (<kbd>Space</kbd>/<kbd>C</kbd> fly)</span></li>
+            <li><kbd>E</kbd> <span class="what">call the lift, at its doors</span></li>
+            <li><kbd>Esc</kbd> <span class="what">release the mouse</span></li>
+          </ul>
+        </div>
+        <div>
+          <h3>People &amp; time</h3>
+          <ul>
+            <li><kbd>L</kbd> <span class="what">school life</span> · <kbd>V</kbd> <span class="what">follow somebody</span></li>
+            <li><kbd>K</kbd> <span class="what">fire drill</span> · <kbd>H</kbd> <span class="what">heatmap</span></li>
+            <li><kbd>B</kbd> <span class="what">bell</span> · <kbd>N</kbd> <span class="what">PA</span> · <kbd>U</kbd> <span class="what">sound</span></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Measure</h3>
+          <ul>
+            <li><kbd>M</kbd> <span class="what">the report</span></li>
+            <li><kbd>J</kbd> <span class="what">minimap</span> · <kbd>O</kbd> <span class="what">its findings</span></li>
+            <li><kbd>[</kbd> <kbd>]</kbd> <span class="what">step through them</span></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Capture &amp; play</h3>
+          <ul>
+            <li><kbd>P</kbd> <span class="what">photo mode</span></li>
+            <li><kbd>G</kbd> <span class="what">scavenger hunt</span></li>
+          </ul>
+        </div>
+      </div>
+      <p>
+        Walls stop you, doors open as you approach, stairs and the lift take
+        you between storeys. Everything else this mode can do — people,
+        sound, findings on the minimap, the generator — is below.
       </p>
+      <details id="walk-more" open>
+        <summary>What else can it do?</summary>
       <p>
         Walls, glass, railings, windows and furniture stop you; doors open as you
         approach and shut behind you. You start on the floor you were editing —
@@ -1801,6 +1856,7 @@
         one and the garlands, wreaths, pumpkins and paper cutouts arrive
         already wearing that time of year.
       </p>
+      </details>
       <div class="row">
         <button id="walk-start" class="primary">Click to Walk</button>
         <button id="walk-hunt" title="Hide eight things around the building and go and find them">🎒 Scavenger hunt</button>

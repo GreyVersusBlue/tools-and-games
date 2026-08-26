@@ -450,6 +450,18 @@ rebuild();
 
 // --- mode toggle ---
 const walkOverlay = $('walk-overlay');
+
+// The overlay's prose is behind a disclosure. It arrives open the first time
+// this browser ever sees the walkthrough and closed after that — the keys
+// grid is what a returning visitor needs, and it fits without scrolling.
+function openWalkOverlay() {
+  const more = $('walk-more');
+  let seen = false;
+  try { seen = localStorage.getItem('sg-walk-seen') === '1'; } catch { /* fine */ }
+  if (more) more.open = !seen;
+  try { localStorage.setItem('sg-walk-seen', '1'); } catch { /* fine */ }
+  openModal(walkOverlay, $('walk-start'));
+}
 let mode = 'edit';
 
 function setMode(m) {
@@ -468,10 +480,11 @@ function setMode(m) {
     invalidateMinimap();
     updateMinimapButtons();
     renderTourPanel();
-    openModal(walkOverlay, $('walk-start'));
+    openWalkOverlay();
     closeModal($('designs-overlay'));
     closeModal($('export-overlay'));
-    $('mode-btn').textContent = '✏️ Edit Mode';
+    $('mode-btn-label').textContent = 'Edit Mode';
+    $('mode-btn-icon').setAttribute('href', '#i-pencil');
   } else {
     setPhotoMode(false);
     tourStop();
@@ -483,7 +496,8 @@ function setMode(m) {
     document.body.classList.remove('touch-walk');
     resetTouchWalkUI();
     editor.setEnabled(true);
-    $('mode-btn').textContent = '🚶 Walk Through';
+    $('mode-btn-label').textContent = 'Walk Through';
+    $('mode-btn-icon').setAttribute('href', '#i-walk');
   }
   if (!lifePanel.classList.contains('hidden')) renderLifePanel();
 }
@@ -510,7 +524,7 @@ walk.controls.addEventListener('lock', () => closeModal(walkOverlay));
 walk.controls.addEventListener('unlock', () => {
   // In photo mode the released pointer is the point — you let it go to reach
   // the lens controls — so the overlay stays down.
-  if (mode === 'walk' && !photoMode) openModal(walkOverlay, $('walk-start'));
+  if (mode === 'walk' && !photoMode) openWalkOverlay();
 });
 
 // --- tool buttons ---
@@ -3858,7 +3872,7 @@ function setPhotoMode(on) {
     closeModal(walkOverlay);
     renderPhotoPanel();
   } else if (mode === 'walk' && !isTouch && !walk.controls.isLocked) {
-    openModal(walkOverlay, $('walk-start'));
+    openWalkOverlay();
   }
 }
 
@@ -5640,7 +5654,7 @@ async function enterVR() {
         walk.disableXR();
         document.body.classList.remove('xr');
         $('walk-vr').textContent = '🥽 Enter VR';
-        if (mode === 'walk') openModal(walkOverlay, $('walk-start'));
+        if (mode === 'walk') openWalkOverlay();
       },
     });
     xrSession = session;
