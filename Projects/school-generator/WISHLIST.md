@@ -1736,16 +1736,21 @@ which is the right state for it to be in. What follows is not a plan; it is
 the shortest honest list of what the standing backlog above still says,
 grouped by the sentence each group is missing.
 
-**"A drawing is a set of sheets, not a picture."** The blueprint draws on
-canvas and is exercised by hand — the specification sheet and the site plan
-both are. This is still the largest untested surface in the codebase, but it
-is no longer untouched, and Phase 18 changed what the first move should be
-twice over. The blueprint suite now has a recording 2D context that can assert
-*arrangement* — what was drawn, how many times, inside which box — which is
-cheap and catches a whole class of mistake. And the renderer was checked in a
-real browser with Playwright for the first time, which is the move that
-actually answers this sentence: a sheet's canvas in a real browser, compared
-against a picture of it, is a day's work and would close this outright.
+**"A drawing is a set of sheets, not a picture."** Closed, mostly:
+`test/visual/` is the day's work this sentence asked for — the floor plan and
+the site plan drawn from the sample school in a real browser and compared
+pixel-for-pixel against committed baselines, alongside four captures of the
+editor chrome (the rail folded and unfolded, the walkthrough cheat sheet,
+the narrow layout). It is optional tooling outside `node --test` — a machine
+without Playwright loses the pictures, not the suite — and its README says
+what it deliberately does not capture: the 3D viewport (a software
+rasterizer and a GPU do not agree on pixels) and the specification sheet,
+which still wants the report's numbers and would need a pure entry point to
+the report pipeline before it can sit in the harness. That entry point is
+what remains of this sentence. The blueprint suite's recording 2D context
+(arrangement: what was drawn, how many times, inside which box) still stands
+underneath, for the class of mistake a picture diff reports but cannot
+explain.
 
 **"A design has a history somebody else can read."** Undo is a diff and a
 session is a stream, but neither is a record: there is no way to ask what
