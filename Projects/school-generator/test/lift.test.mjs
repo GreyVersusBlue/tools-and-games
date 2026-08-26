@@ -26,6 +26,7 @@ import {
   makeLift, makeLifts, liftFor, liftStop, liftLanding,
   callLift, canBoard, boardLift, canAlight, leaveLift, nextStop,
   stepLift, stepLifts, liftReport, liftText,
+  otherStop, makeRider, liftAtHand, pressRider, stepRider, cancelRider,
 } from '../js/lift.js';
 
 const LINK = { id: 7, type: 'elevator', from: 0, to: 1, x: 40, z: 20, rotationY: 0 };
@@ -177,6 +178,144 @@ test('the report and the one-liner describe what the car is doing', () => {
   assert.equal(r.cars, lifts.size);
   assert.equal(r.waiting, 1);
   assert.equal(liftText(null), 'no lift');
+});
+
+// ---------- the person at the doors who is not an agent ----------
+//
+// The walkthrough camera's whole side of a ride. This is the half of the
+// backlog item the crowd never covered: `E` teleported, and every one of
+// these assertions would have passed vacuously against a teleport because a
+// teleport never has a state at all.
+
+// One rider, one car, driven the way a frame drives them: press once, then
+// step until something happens or the clock runs out.
+function ride(c, rider, seconds, inside, floorIndex, dt = 1 / 30) {
+  const seen = [];
+  for (let t = 0; t < seconds; t += dt) {
+    stepLift(c, dt);
+    const out = stepRider(rider, c, dt, {
+      floorIndex: typeof floorIndex === 'function' ? floorIndex(c, rider) : floorIndex,
+      inside: typeof inside === 'function' ? inside(c, rider) : inside,
+    });
+    seen.push(out);
+    if (out.arrived) break;
+  }
+  return { seen, last: seen[seen.length - 1] };
+}
+
+test('the far end of a two-storey lift is the other one', () => {
+  const c = car();
+  assert.equal(otherStop(c, 0), 1);
+  assert.equal(otherStop(c, 1), 0);
+});
+
+test('a rider who has pressed nothing is not in a lift', () => {
+  const rider = makeRider();
+  assert.equal(rider.state, 'away');
+  assert.deepEqual(stepRider(rider, car(), 0.1, { inside: true, floorIndex: 0 }),
+    { state: 'away' });
+});
+
+test('pressing at the landing calls the car and pressing in it picks the floor', () => {
+  const c = car({ at: 1 });
+  const rider = makeRider();
+  assert.equal(pressRider(rider, c, 0), true);
+  assert.equal(rider.want, 1, 'from the ground, the button means up');
+  assert.ok(c.calls.has(0), 'the car was called to where the person is');
+  // ...and from the top it means down, off the same key.
+  const back = makeRider();
+  pressRider(back, car({ at: 0 }), 1);
+  assert.equal(back.want, 0);
+  assert.equal(pressRider(rider, null, 0), false);
+});
+
+test('a ride is a ride: the doors open, you get in, and you arrive', () => {
+  const c = car({ at: 1 });          // the car is upstairs; we are not
+  const rider = makeRider();
+  pressRider(rider, c, 0);
+  // Standing in the shaft on the ground floor the whole time. The floor we
+  // are on only changes when the car puts us somewhere else.
+  const { seen, last } = ride(c, rider, 30, true, 0);
+  assert.ok(last.arrived, 'the ride ended');
+  assert.equal(last.floor, 1, 'upstairs, which is what the button meant');
+  assert.ok(seen.some((s) => s.boarded), 'there was a moment of getting in');
+  assert.ok(seen.some((s) => s.state === 'waiting'), 'and a wait before it');
+  // The car came down for us before it took us up: a ride that never moved
+  // toward the person is a teleport with a delay on it.
+  assert.ok(seen.filter((s) => s.state === 'riding').length > 1);
+  assert.equal(rider.state, 'away');
+  assert.equal(c.riders.size, 0, 'and we got out of it');
+});
+
+test('the floor under a rider is the car, not the storey they left', () => {
+  const c = car({ at: 0 });
+  const rider = makeRider();
+  pressRider(rider, c, 0);
+  const { seen } = ride(c, rider, 30, true, 0);
+  const moving = seen.filter((s) => s.state === 'riding' && s.y > 0 && s.y < FLOOR_HT);
+  assert.ok(moving.length > 3, 'the ride passes through the space between storeys');
+  for (const s of moving) assert.ok(s.y >= 0 && s.y <= FLOOR_HT);
+});
+
+test('standing at the landing rather than in the car does not board you', () => {
+  const c = car({ at: 0 });
+  const rider = makeRider();
+  pressRider(rider, c, 0);
+  const { last } = ride(c, rider, 20, false, 0);
+  assert.equal(last.state, 'waiting', 'the doors opened and we stayed outside');
+  assert.ok(last.wait > 1);
+  assert.equal(c.riders.size, 0);
+  // ...and the doors were held open for us the whole time we stood there,
+  // up to the hold, which is what pressing the button at an open car means.
+  assert.ok(c.held > 0);
+});
+
+test('walking away gets you out of the car and off the button', () => {
+  const c = car({ at: 0 });
+  const rider = makeRider();
+  pressRider(rider, c, 0);
+  ride(c, rider, 6, true, 0);
+  const wasAboard = c.riders.size;
+  assert.equal(cancelRider(rider, c), true);
+  assert.equal(rider.state, 'away');
+  assert.equal(c.riders.size, 0);
+  assert.ok(wasAboard >= 0);
+  assert.equal(cancelRider(rider, c), false, 'and again is nothing');
+  assert.equal(cancelRider(null, c), false);
+});
+
+test('a rider whose car was taken away stands on the nearest storey', () => {
+  const c = car({ at: 0 });
+  const rider = makeRider();
+  pressRider(rider, c, 0);
+  ride(c, rider, 6, true, 0);
+  // The lifts were rebuilt underneath the ride — an edit, a restart. The
+  // rider is put down rather than left holding a seat in a car that is gone.
+  const out = stepRider(rider, car({ at: 1 }), 0.1, { inside: true, floorIndex: 0 });
+  assert.equal(out.state, 'away');
+  assert.equal(rider.state, 'away');
+});
+
+test('liftAtHand tells being in the car from standing at its doors', () => {
+  const state = buildSampleSchool();
+  const lifts = makeLifts(state);
+  const one = [...lifts.values()][0];
+  const stop = liftStop(one.link, 0, one.floorHt);
+  const landing = liftLanding(one.link, 0, one.floorHt);
+
+  const inCar = liftAtHand(lifts, stop.x, stop.z, 0);
+  assert.ok(inCar && inCar.inside, 'in the middle of the shaft is in the car');
+  assert.equal(inCar.car, one);
+
+  const atDoors = liftAtHand(lifts, landing.x, landing.z, 0);
+  assert.ok(atDoors && !atDoors.inside, 'at the landing is at the doors');
+  assert.equal(atDoors.car, one);
+
+  // Across the corridor is neither, and a storey this lift does not serve is
+  // not a lift at hand no matter where you stand.
+  assert.equal(liftAtHand(lifts, stop.x + 60, stop.z + 60, 0), null);
+  assert.equal(liftAtHand(lifts, stop.x, stop.z, one.high + 1), null);
+  assert.equal(liftAtHand(null, 0, 0, 0), null);
 });
 
 // ---------- the crowd in front of it ----------

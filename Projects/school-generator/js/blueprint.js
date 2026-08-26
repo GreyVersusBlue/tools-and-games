@@ -713,40 +713,91 @@ function drawScaleAndNorth(ctx, plan, layout, canvasW, canvasH) {
   ctx.fillText('N', nx, ny - 18);
 }
 
-// ---------- the code panel ----------
+// ---------- the sheet panels ----------
 //
-// Phase 7's last unticked item, ticked in Phase 16: the numbers an authority
-// having jurisdiction asks for, in the corner of the sheet, beside the
-// occupancy tags that phase already put on the plan.
+// Phase 16's code panel, and now the school-day panel beside it. Both are the
+// same object drawn the same way — a title, a verdict badge, a line of
+// context, a column of key/value rows, a per-storey block that says which
+// sheet you are holding, and a caveat in small type — so there is **one**
+// drawer and two shapes fed to it, rather than the second panel being the
+// first one copied. The one piece of judgement here is what it does when a
+// panel says the building fails: it prints that, in the panel, in red. A
+// drawing set that quietly omits its own analysis is worse than one that has
+// none.
 //
-// It draws `report.js`'s `codePanel()` and invents nothing. The one piece of
-// judgement here is what it does when the report says the building fails: it
-// prints that, in the panel, in red. A drawing set that quietly omits its own
-// analysis is worse than one that has none.
-const CODE_PANEL_W = 232;
+// Both shapes are built from `report.js` records and invent nothing. Neither
+// of them computes: this module has no business building a nav graph, and the
+// caller already has one report for the whole set.
+const PANEL_W = 232;
+const PANEL_PAD = 9;
+const PANEL_LINE = 14;
+// The gap between two stacked panels, and between the topmost and the title
+// block above it.
+const PANEL_GAP = 10;
 
-function drawCodePanel(ctx, panel, layout, canvasW) {
-  if (!panel) return;
-  const pad = 9;
-  const lineH = 14;
-  const rows = panel.rows.length;
-  const storeys = panel.storeys.length;
-  // The caveat wraps, so the box has to be measured rather than guessed at —
-  // a panel whose last line falls outside its own border is a panel that says
-  // the tool cannot be trusted about rectangles either.
+const badgeOf = (p, ok) => (p.verdict === 'fail' ? `${p.fails} FAIL`
+  : p.verdict === 'warn' ? `${p.warns} REVIEW` : ok);
+
+// `report.js`'s `codePanel()`, as a panel this file can draw.
+const codeShape = (p) => ({
+  title: p.title,
+  badge: badgeOf(p, 'PASSES'),
+  verdict: p.verdict,
+  sub: `${p.edition} · ${p.sprinklered ? 'sprinklered' : 'unsprinklered'}`,
+  rows: p.rows,
+  storeyHead: ['BY STOREY', 'AREA · LOAD · EXITS'],
+  storeys: p.storeys.map((st) => ({
+    label: st.label,
+    current: st.current,
+    text: `${Math.round(st.area).toLocaleString()} ft² · ${st.occ} · ${st.exits}`,
+  })),
+  caveat: p.caveat,
+});
+
+// ...and `report.js`'s `dayPanel()`. "WORKS" rather than "PASSES" because
+// nothing here is a code check: a building that suits its timetable has not
+// passed anything, it has been found to fit.
+const dayShape = (p) => ({
+  title: p.title,
+  badge: badgeOf(p, 'WORKS'),
+  verdict: p.verdict,
+  sub: `${p.edition} · ${p.passing} min between bells`,
+  rows: p.rows,
+  storeyHead: ['BY STOREY', 'ROOMS USED · IDLE'],
+  storeys: p.storeys.map((st) => ({
+    label: st.label,
+    current: st.current,
+    text: `${st.used} of ${st.rooms} · ${st.idle}`,
+  })),
+  caveat: p.caveat,
+});
+
+// How tall this panel will come out, measured rather than guessed at — a
+// panel whose last line falls outside its own border is a panel that says the
+// tool cannot be trusted about rectangles either, and a second panel stacked
+// under a mis-measured first one lands on top of it.
+function panelHeight(ctx, panel) {
   ctx.font = '9px system-ui, sans-serif';
-  const caveat = wrapLines(ctx, panel.caveat, CODE_PANEL_W - pad * 2);
-  const bodyH = 30 + rows * lineH + (storeys ? 23 + storeys * lineH : 0)
+  const caveat = wrapLines(ctx, panel.caveat, PANEL_W - PANEL_PAD * 2);
+  const storeys = panel.storeys.length;
+  const bodyH = 30 + panel.rows.length * PANEL_LINE
+    + (storeys ? 23 + storeys * PANEL_LINE : 0)
     + 16 + (caveat.length - 1) * 10 + 4;
-  const boxH = pad * 2 + bodyH;
-  const x0 = canvasW - CODE_PANEL_W - 12;
-  const y0 = layout.titleH + 12;
+  return { boxH: PANEL_PAD * 2 + bodyH, caveat };
+}
+
+// Draws one panel with its top-left corner at (x0, y0), and answers with the
+// y its bottom edge came out at so the next one can stack under it.
+function drawPanel(ctx, panel, x0, y0) {
+  const pad = PANEL_PAD;
+  const lineH = PANEL_LINE;
+  const { boxH, caveat } = panelHeight(ctx, panel);
 
   ctx.fillStyle = 'rgba(255,255,255,0.94)';
-  ctx.fillRect(x0, y0, CODE_PANEL_W, boxH);
+  ctx.fillRect(x0, y0, PANEL_W, boxH);
   ctx.strokeStyle = '#9aa5b5';
   ctx.lineWidth = 1;
-  ctx.strokeRect(x0 + 0.5, y0 + 0.5, CODE_PANEL_W - 1, boxH - 1);
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, PANEL_W - 1, boxH - 1);
 
   let y = y0 + pad + 10;
   ctx.textAlign = 'left';
@@ -756,16 +807,14 @@ function drawCodePanel(ctx, panel, layout, canvasW) {
   ctx.textAlign = 'right';
   ctx.fillStyle = panel.verdict === 'fail' ? '#b33a3a'
     : panel.verdict === 'warn' ? '#a26a1e' : '#3d7a4a';
-  ctx.fillText(panel.verdict === 'fail' ? `${panel.fails} FAIL`
-    : panel.verdict === 'warn' ? `${panel.warns} REVIEW` : 'PASSES', x0 + CODE_PANEL_W - pad, y);
+  ctx.fillText(panel.badge, x0 + PANEL_W - pad, y);
   y += 6;
 
   ctx.font = '10px system-ui, sans-serif';
   ctx.textAlign = 'left';
   ctx.fillStyle = '#5a6472';
   y += lineH;
-  ctx.fillText(`${panel.edition} · ${panel.sprinklered ? 'sprinklered' : 'unsprinklered'}`,
-    x0 + pad, y);
+  ctx.fillText(panel.sub, x0 + pad, y);
 
   for (const [k, v] of panel.rows) {
     y += lineH;
@@ -774,23 +823,23 @@ function drawCodePanel(ctx, panel, layout, canvasW) {
     ctx.fillText(k, x0 + pad, y);
     ctx.textAlign = 'right';
     ctx.fillStyle = '#1a2029';
-    ctx.fillText(v, x0 + CODE_PANEL_W - pad, y);
+    ctx.fillText(v, x0 + PANEL_W - pad, y);
   }
 
-  if (storeys) {
+  if (panel.storeys.length) {
     y += 10;
     ctx.strokeStyle = '#e0e3e8';
     ctx.beginPath();
     ctx.moveTo(x0 + pad, y + 0.5);
-    ctx.lineTo(x0 + CODE_PANEL_W - pad, y + 0.5);
+    ctx.lineTo(x0 + PANEL_W - pad, y + 0.5);
     ctx.stroke();
     y += 13;
     ctx.textAlign = 'left';
     ctx.fillStyle = '#5a6472';
     ctx.font = '600 9px system-ui, sans-serif';
-    ctx.fillText('BY STOREY', x0 + pad, y);
+    ctx.fillText(panel.storeyHead[0], x0 + pad, y);
     ctx.textAlign = 'right';
-    ctx.fillText('AREA · LOAD · EXITS', x0 + CODE_PANEL_W - pad, y);
+    ctx.fillText(panel.storeyHead[1], x0 + PANEL_W - pad, y);
     ctx.font = '10px system-ui, sans-serif';
     for (const st of panel.storeys) {
       y += lineH;
@@ -800,8 +849,7 @@ function drawCodePanel(ctx, panel, layout, canvasW) {
       ctx.textAlign = 'left';
       ctx.fillText(st.current ? `▸ ${st.label}` : st.label, x0 + pad, y);
       ctx.textAlign = 'right';
-      ctx.fillText(`${Math.round(st.area).toLocaleString()} ft² · ${st.occ} · ${st.exits}`,
-        x0 + CODE_PANEL_W - pad, y);
+      ctx.fillText(st.text, x0 + PANEL_W - pad, y);
     }
   }
 
@@ -810,6 +858,19 @@ function drawCodePanel(ctx, panel, layout, canvasW) {
   ctx.fillStyle = '#8a93a3';
   ctx.font = '9px system-ui, sans-serif';
   caveat.forEach((text, i) => ctx.fillText(text, x0 + pad, y + i * 10));
+  return y0 + boxH;
+}
+
+// Every panel the sheet was asked for, stacked down the right-hand margin in
+// the order a set is read: what the code says about the building first, then
+// what the school does in it. A sheet asked for neither draws neither and
+// costs nothing.
+function drawSheetPanels(ctx, layout, canvasW, opts) {
+  const x0 = canvasW - PANEL_W - 12;
+  let y = layout.titleH + 12;
+  if (opts.codePanel) y = drawPanel(ctx, codeShape(opts.codePanel), x0, y) + PANEL_GAP;
+  if (opts.dayPanel) y = drawPanel(ctx, dayShape(opts.dayPanel), x0, y) + PANEL_GAP;
+  return y;
 }
 
 // Canvas has no text wrapping, and a caveat that runs off the edge of a panel
@@ -872,10 +933,10 @@ export function drawFloorPlan(ctx, plan, layout, opts = {}) {
     drawFinishLegend(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
   }
   drawScaleAndNorth(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
-  // Phase 16. The report, on the sheet. Passed in rather than computed: this
-  // module has no business building a nav graph, and the caller already has
-  // one report for the whole set.
-  if (opts.codePanel) drawCodePanel(ctx, opts.codePanel, layout, ctx.canvas.width);
+  // The report, on the sheet. Passed in rather than computed: this module has
+  // no business building a nav graph, and the caller already has one report
+  // for the whole set.
+  drawSheetPanels(ctx, layout, ctx.canvas.width, opts);
   drawTitleBlock(ctx, plan, layout, ctx.canvas.width, opts);
 }
 
@@ -1091,7 +1152,7 @@ export function drawSitePlan(ctx, plan, layout, opts = {}) {
   drawSiteLabels(ctx, plan, layout);
   if (opts.showFinishes !== false) drawSiteLegend(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
   drawScaleAndNorth(ctx, plan, layout, ctx.canvas.width, ctx.canvas.height);
-  if (opts.codePanel) drawCodePanel(ctx, opts.codePanel, layout, ctx.canvas.width);
+  drawSheetPanels(ctx, layout, ctx.canvas.width, opts);
   drawTitleBlock(ctx, plan, layout, ctx.canvas.width, { ...opts, sheet: 'Site Plan' });
 }
 

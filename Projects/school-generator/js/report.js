@@ -319,6 +319,100 @@ export function codePanel(report, opts = {}) {
   };
 }
 
+// ---------- the title-block school-day panel ----------
+//
+// Phase 16 put the report on the sheet and left exactly one section off it,
+// and said so in the same breath: *"The school-day section is still not on the
+// sheet, and now it is the only one that isn't."* This is that section, in the
+// same shape as `codePanel` and for the same reason — a set of drawings that
+// quotes an occupant load and says nothing about the school timetabled into it
+// has told half the story, and the half it left out is the one the building
+// was drawn for.
+//
+// **Null rather than an empty panel when there is no timetable**, which is the
+// distinction `reportCSV` already makes by leaving its own School day block
+// out entirely. A design nobody has described a day for does not have a school
+// day of no length, and a box of zeroes on a sheet reads as a school that
+// never uses its rooms.
+export function dayPanel(report, opts = {}) {
+  const u = report && report.utilisation;
+  if (!u || !u.has) return null;
+  const s = u.summary;
+  const t = u.travel.summary;
+  const here = Number.isFinite(opts.floor) ? opts.floor : null;
+
+  const rows = [
+    ['Groups', `${s.cohorts} · ${s.students} students`],
+    ['Sections', `${s.placed} of ${s.sections} in a room`],
+    ['Room use', `${Math.round(s.utilisation * 100)}% of ${s.rooms} rooms`],
+  ];
+  if (s.peak) {
+    rows.push(['Busiest period', `${s.peak.period} · ${s.peak.seated} seated`]);
+    rows.push(['Empty at that bell', `${s.idleAtPeak} of ${s.rooms}`]);
+  }
+  rows.push(['Walk per student', `${Math.round(t.perDay)} ft a day`]);
+  rows.push(['Over a school year', `${Math.round(t.milesPerYear)} miles`]);
+  if (t.worst) {
+    rows.push(['Longest move', `${Math.round(t.worst.dist)} ft · ${Math.round(t.worst.seconds)} s`]);
+  }
+  // Printed whether or not anything fails it, because "none late" is a result
+  // rather than an absence — and because it is the one claim on this panel
+  // somebody can check with a stopwatch and the bell schedule.
+  rows.push(['Late for the bell', t.late
+    ? `${t.late} of ${t.moves} moves`
+    : `none of ${t.moves} moves`]);
+  const tight = u.corridors && u.corridors.worst;
+  if (tight && Number.isFinite(tight.perHead)) {
+    rows.push(['Tightest corridor', `${Math.round(tight.perHead)} ft² a head`]);
+  }
+  if (s.over) rows.push(['Class over the load', `${s.over} section${s.over === 1 ? '' : 's'}`]);
+
+  // Which sheet you are holding, the same trick the code panel plays with
+  // area and exits: a storey's teaching rooms, how many of them work at all,
+  // and how many stand empty in the period the building is fullest. An idle
+  // room at peak is the most expensive thing a school can own, and which
+  // *floor* it is on is a fact about the sheet in your hand.
+  const byFloor = new Map();
+  for (const r of u.rooms) {
+    let row = byFloor.get(r.floor);
+    if (!row) {
+      row = { floor: r.floor, label: floorLabel(r.floor), rooms: 0, used: 0, idle: 0 };
+      byFloor.set(r.floor, row);
+    }
+    row.rooms++;
+    if (r.used > 0) row.used++;
+  }
+  for (const r of u.idleAtPeak) {
+    const row = byFloor.get(r.floor);
+    if (row) row.idle++;
+  }
+  const storeys = [...byFloor.values()]
+    .sort((a, b) => a.floor - b.floor)
+    .map((r) => ({ ...r, current: here !== null && r.floor === here }));
+
+  const findings = u.findings || [];
+  const fails = findings.filter((f) => f.level === 'fail').length;
+  const warns = findings.filter((f) => f.level === 'warn').length;
+  return {
+    title: 'THE SCHOOL DAY',
+    // The two facts every number below is read against, on one line under the
+    // title — the same place the code panel puts its edition.
+    edition: `${s.periods} period${s.periods === 1 ? '' : 's'}`,
+    passing: Math.round(u.travel.allowed / 60),
+    rows,
+    storeys,
+    verdict: fails ? 'fail' : warns ? 'warn' : 'ok',
+    fails,
+    warns,
+    // The caveat that matters here is not about the code, it is about which
+    // two things were measured against each other. A timetable is not part of
+    // a building — it is in the file beside it — so a sheet that prints these
+    // numbers has to say that either one of them could have moved.
+    caveat: 'Measured over this timetable and this building as drawn. A timetable is not ' +
+      'part of the building: change either and these numbers change.',
+  };
+}
+
 // ---------- the spreadsheet ----------
 
 const round = (n, places = 1) => {

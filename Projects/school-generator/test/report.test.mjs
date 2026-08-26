@@ -12,7 +12,10 @@ import { sheet } from './build.mjs';
 import { buildSampleSchool } from '../js/sample.js';
 import { buildNav } from '../js/navgraph.js';
 import { buildingOccupancy } from '../js/occupancy.js';
-import { LEVELS, buildReport, reportCSV, acousticsSection, codePanel } from '../js/report.js';
+import {
+  LEVELS, buildReport, reportCSV, acousticsSection, codePanel, dayPanel,
+} from '../js/report.js';
+import { roomPool, buildTimetable } from '../js/timetable.js';
 import { exampleRates, emptyRates, setRate } from '../js/rates.js';
 import { phaseByStorey } from '../js/phasing.js';
 
@@ -263,6 +266,88 @@ test('the area per storey adds up to the building area', () => {
   assert.ok(Math.abs(area - REPORT.summary.area) < 1e-6);
   const occ = panel.storeys.reduce((n, s) => n + s.occ, 0);
   assert.equal(occ, REPORT.summary.occupants);
+});
+
+// ---------- the title-block school-day panel ----------
+
+// The one section the sheet used to leave out. Built over the same sample
+// school with a timetable put on it, because a school day is the one reading
+// in the report that cannot be taken from a building on its own.
+const DAY_SAMPLE = (() => {
+  const s = buildSampleSchool();
+  const nav = buildNav(s);
+  s.timetable = buildTimetable(
+    roomPool(nav, { occupancy: buildingOccupancy(s, { nav }) }),
+    { students: 200, classSize: 25, periods: 6, band: 'middle', seed: 3, teachers: 20 });
+  return s;
+})();
+const DAY_REPORT = buildReport(DAY_SAMPLE);
+
+test('a design with no timetable gets no school-day panel at all', () => {
+  // Not an empty panel, and not a panel of zeroes: the sheet draws nothing,
+  // the same call `reportCSV` makes when it leaves its own block out.
+  assert.equal(REPORT.utilisation, null);
+  assert.equal(dayPanel(REPORT, { floor: 0 }), null);
+  assert.equal(dayPanel(null), null);
+  assert.equal(dayPanel({ utilisation: { has: false } }), null);
+});
+
+test('the school-day panel prints the timetable the report actually read', () => {
+  const panel = dayPanel(DAY_REPORT, { floor: 0 });
+  const u = DAY_REPORT.utilisation;
+  assert.ok(u && u.has, 'the fixture has a timetable');
+  const rows = new Map(panel.rows);
+  assert.equal(rows.get('Groups'), `${u.summary.cohorts} · ${u.summary.students} students`);
+  assert.equal(rows.get('Sections'), `${u.summary.placed} of ${u.summary.sections} in a room`);
+  assert.ok(rows.get('Room use').includes(String(Math.round(u.summary.utilisation * 100))));
+  assert.equal(panel.edition, `${u.summary.periods} periods`);
+  // The passing time is minutes on the sheet and seconds in the analysis.
+  assert.equal(panel.passing, Math.round(u.travel.allowed / 60));
+});
+
+test('the panel says how far a student walks, in both units it was asked in', () => {
+  const rows = new Map(dayPanel(DAY_REPORT, { floor: 0 }).rows);
+  const t = DAY_REPORT.utilisation.travel.summary;
+  assert.equal(rows.get('Walk per student'), `${Math.round(t.perDay)} ft a day`);
+  assert.equal(rows.get('Over a school year'), `${Math.round(t.milesPerYear)} miles`);
+});
+
+test('"none late" is printed as a result rather than left off', () => {
+  const rows = new Map(dayPanel(DAY_REPORT, { floor: 0 }).rows);
+  const t = DAY_REPORT.utilisation.travel.summary;
+  const line = rows.get('Late for the bell');
+  assert.ok(line, 'the row is always there');
+  assert.equal(line, t.late ? `${t.late} of ${t.moves} moves` : `none of ${t.moves} moves`);
+});
+
+test('the school-day panel knows which sheet it is printed on', () => {
+  const ground = dayPanel(DAY_REPORT, { floor: 0 });
+  const upper = dayPanel(DAY_REPORT, { floor: 1 });
+  assert.deepEqual(ground.storeys.map((s) => s.current), [true, false]);
+  assert.deepEqual(upper.storeys.map((s) => s.current), [false, true]);
+  assert.deepEqual(dayPanel(DAY_REPORT).storeys.map((s) => s.current), [false, false]);
+});
+
+test('the rooms per storey add up to the rooms the day was measured over', () => {
+  const panel = dayPanel(DAY_REPORT, { floor: 0 });
+  const u = DAY_REPORT.utilisation;
+  const rooms = panel.storeys.reduce((n, s) => n + s.rooms, 0);
+  assert.equal(rooms, u.summary.rooms);
+  const used = panel.storeys.reduce((n, s) => n + s.used, 0);
+  assert.equal(used, u.summary.used);
+  const idle = panel.storeys.reduce((n, s) => n + s.idle, 0);
+  assert.equal(idle, u.summary.idleAtPeak);
+  // Every storey the panel names is a storey the building has.
+  for (const st of panel.storeys) assert.equal(st.label, floorLabel(st.floor));
+});
+
+test('the panel carries the school day\'s own verdict, not the code verdict', () => {
+  const panel = dayPanel(DAY_REPORT, { floor: 0 });
+  const f = DAY_REPORT.utilisation.findings;
+  assert.equal(panel.fails, f.filter((x) => x.level === 'fail').length);
+  assert.equal(panel.warns, f.filter((x) => x.level === 'warn').length);
+  assert.equal(panel.verdict, panel.fails ? 'fail' : panel.warns ? 'warn' : 'ok');
+  assert.ok(/timetable is not part of the building/.test(panel.caveat));
 });
 
 // ---------- the spreadsheet grew three sections ----------

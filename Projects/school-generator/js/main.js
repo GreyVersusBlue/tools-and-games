@@ -49,7 +49,7 @@ import {
   renderFloorPlanCanvas, renderSitePlanCanvas, renderSpecSheetCanvas, downloadCanvasPNG,
   computeFloorPlan, drawPlanBody,
 } from './blueprint.js';
-import { buildReport, reportCSV, codePanel } from './report.js';
+import { buildReport, reportCSV, codePanel, dayPanel } from './report.js';
 // --- Phase 16 ---
 import {
   assemblies, systemEntry, normalizeRates, emptyRates, exampleRates,
@@ -1487,8 +1487,9 @@ function exportScope() {
 function exportOpts() {
   const wantsCode = $('export-code').checked;
   const wantsSpec = $('export-spec').checked;
+  const wantsDay = $('export-day').checked;
   let data = null;
-  if (wantsCode || wantsSpec) {
+  if (wantsCode || wantsSpec || wantsDay) {
     if (report.stale || !report.data) reportBuild();
     data = report.data;
   }
@@ -1499,18 +1500,26 @@ function exportOpts() {
     showOccupancy: $('export-occupancy').checked,
     contours: $('export-contours').checked,
     report: data,
-    // The panel is per sheet — it says which storey you are holding — so what
+    // A panel is per sheet — it says which storey you are holding — so what
     // travels in the options is the report, and each sheet asks it for its own.
     wantsCode,
+    wantsDay,
     spec: wantsSpec && data ? data.spec : null,
   };
 }
 
-// The plan options for one storey: the shared set, plus that storey's own code
-// panel when it was asked for.
-const sheetOpts = (opts, floorIndex) => (opts.wantsCode && opts.report
-  ? { ...opts, codePanel: codePanel(opts.report, { floor: floorIndex }) }
-  : opts);
+// The plan options for one storey: the shared set, plus that storey's own
+// panels when they were asked for. `dayPanel` answers null for a design with
+// no timetable, which is what keeps the checkbox honest — ticking it on a
+// school nobody has described a day for draws nothing rather than a box of
+// zeroes.
+const sheetOpts = (opts, floorIndex) => {
+  if (!opts.report) return opts;
+  const out = { ...opts };
+  if (opts.wantsCode) out.codePanel = codePanel(opts.report, { floor: floorIndex });
+  if (opts.wantsDay) out.dayPanel = dayPanel(opts.report, { floor: floorIndex });
+  return out;
+};
 
 // The site plan is a sheet, not a floor — it has no storey — so it rides
 // alongside the floor scope rather than inside it.
@@ -2475,6 +2484,10 @@ function lifeStart() {
   // that invalidates the crowd's world invalidates the walker's, which is the
   // first time in this codebase that has been true.
   walk.setColliders(lifeColliderFor);
+  // ...and the cars with them, for the same reason: the lift the camera
+  // presses the button for has to be the lift forty people are queueing for,
+  // or the doors it holds open are a different object's doors.
+  walk.setLifts(() => (life.ctx ? life.ctx.lifts : null));
   walk.setFollow(null);
   renderLifePanel();
   return life.on;
@@ -2487,6 +2500,7 @@ function lifeStop() {
   life.followIdx = -1;
   walk.setBodies(null);
   walk.setColliders(null);
+  walk.setLifts(null);
   walk.setFollow(null);
   renderApi.clearCrowd();
   renderApi.setHeat(null);
@@ -5720,6 +5734,12 @@ function loop() {
   // periods over a plan you are drawing, is half of what this phase is for —
   // and the other half is meeting one of them in a corridor.
   lifeUpdate(dt);
+  // The lifts, wherever they are being stepped from. There is one Map per
+  // walk — the crowd's when a crowd is running, the walker's own otherwise —
+  // and posing is reading it, so posing the same one twice would cost a
+  // couple of assignments and change nothing. `walk.lifts` is that Map while
+  // walking, and the crowd's is the one that matters while editing.
+  renderApi.poseLifts(mode === 'walk' ? walk.lifts : (life.ctx && life.ctx.lifts));
   // Everybody else in the session: their edits, their cameras and this one's,
   // on a timer of its own. Costs nothing at all when there is no session.
   if (collab.wire) sessionTick(performance.now());
