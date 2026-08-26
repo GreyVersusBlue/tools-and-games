@@ -24,10 +24,18 @@
 // just standing there. Doors swing open as you approach and shut behind you —
 // the leaves live on the collider (see openings.js), this file only advances
 // them once a frame and hands the result to the renderer to pose. And an
-// elevator moves you: step into a car, press E, and you are on the other
-// storey. That is the whole of "teleport with doors", and it is deliberately
-// not an animation — a lift that takes eight seconds to arrive is realism
-// nobody inspecting a floor plan asked for.
+// elevator moves you: press E at the doors and the car comes.
+//
+// That last one was a teleport for fifteen phases, and the reason given was
+// that "a lift that takes eight seconds to arrive is realism nobody
+// inspecting a floor plan asked for". Phase 15 built the car anyway — for the
+// crowd, because a timetable makes forty people want one at nine minutes past
+// nine — and left the camera teleporting past it, which is the standing
+// backlog's *"the walkthrough's own `E` key still teleports"*. It doesn't any
+// more. Pressing E calls the car; when its doors open you step in; the floor
+// under you is the car's own height until it puts you down. The state machine
+// is lift.js's `stepRider` and none of it is here, for the reason nothing
+// testable is ever here.
 
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
@@ -36,6 +44,10 @@ import { shapesOf, shapeArea, shapeBBox, interiorPoint } from './shapes.js';
 import { catalogEntry } from './catalog.js';
 import { finishAt } from './finish.js';
 import { stairUnder, elevatorAt } from './stairs.js';
+import {
+  makeLifts, liftFor, liftAtHand, makeRider, pressRider, stepRider, cancelRider,
+  stepLifts, liftText,
+} from './lift.js';
 import { stride, footstepFor } from './sound.js';
 import { terrainField, emptyField, groundAt } from './terrain.js';
 import { siteSurfaceAt, surfaceEntry } from './site.js';
@@ -95,6 +107,18 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   // somebody — the wishlist's "day in the life", which turns out to be the
   // camera giving up its own body rather than growing a new feature.
   let follow = null;
+
+  // The cars, and this camera's own side of a ride. `liftSource` is the same
+  // arrangement `colliderSource` has and for the same reason: when a crowd is
+  // running it owns the lifts, because two sets of cars for one shaft means a
+  // queue waiting on a door that a different object is holding open. With no
+  // crowd this file builds its own at walk-start and steps them itself.
+  let liftSource = null;
+  let lifts = null;
+  const rider = makeRider();
+  // What the lift is doing, for the HUD — it is the one thing in a walk that
+  // takes seconds and gives no other sign that it heard you.
+  let riding = '';
 
   const fwdV = new THREE.Vector3();
 
@@ -172,7 +196,9 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       ? storeyAt(world, feet, groundAt(site, body.x, body.z)) + 1 : 1;
     const text = follow && follow.agent
       ? `Level ${level} · following ${follow.agent.name} (${follow.mode === 'fps' ? 'first person' : 'over the shoulder'})`
-      : `Level ${level} · ${ghost ? 'ghost (no-clip)' : 'walking'}`;
+      : riding
+        ? `Level ${level} · ${riding}`
+        : `Level ${level} · ${ghost ? 'ghost (no-clip)' : 'walking'}`;
     if (text === hudText) return;
     hudText = text;
     opts.onHud(text);
@@ -193,19 +219,81 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     camera.lookAt(agent.x + fx * 6, eye - 0.4, agent.z + fz * 6);
   }
 
-  // Ride the elevator you are standing in. Nothing happens if you aren't in
-  // one, which is why this is a key rather than a prompt: the answer to "am I
-  // in a lift" is a point-in-box test, not a state machine.
+  // Which storey the body is standing on, by the same rule everything else
+  // in this file uses.
+  const storeyHere = () => (world
+    ? storeyAt(world, body.y - EYE_H, groundAt(site, body.x, body.z)) : 0);
+
+  // Press the lift button. Works from inside the car *and* from the landing
+  // outside it, which is the difference between a lift and a teleport you
+  // have to be standing on: a person waiting for a lift is not in the shaft.
+  //
+  // Nothing happens if there is no lift within reach — which is why this is a
+  // key rather than a prompt.
   function rideElevator() {
     if (!world) return false;
-    const feet = body.y - EYE_H;
-    const car = elevatorAt(world, body.x, body.z, storeyAt(world, feet));
-    if (!car) return false;
-    body.y = car.y + EYE_H;
+    const floorIndex = storeyHere();
+    const at = liftAtHand(lifts, body.x, body.z, floorIndex);
+    if (at) {
+      pressRider(rider, at.car, floorIndex);
+      riding = liftText(at.car);
+      hudText = '';
+      reportHud();
+      return true;
+    }
+    // **The teleport, kept as a fallback and only as one.** A design whose
+    // lifts were never built — a caller that handed in no source and a walk
+    // that started before `enable()` made its own — still has a working `E`
+    // rather than a dead key. Every path that has a car takes the car.
+    const shaft = elevatorAt(world, body.x, body.z, floorIndex);
+    if (!shaft) return false;
+    body.y = shaft.y + EYE_H;
     vy = 0;
     grounded = true;
     hudText = '';
     reportHud();
+    return true;
+  }
+
+  // The lift, once a frame. Returns true when the car is carrying the body,
+  // in which case the walker's own physics stand down for this frame: a lift
+  // is a small box and what is under your feet in one is the car.
+  function updateLift(dt) {
+    if (!lifts) return false;
+    // Whoever owns the cars steps them. When a crowd is running, agents.js
+    // has already done it this frame.
+    if (!liftSource) stepLifts(lifts, dt);
+    if (rider.state === 'away') { riding = ''; return false; }
+    const car = lifts.get(rider.car);
+    const floorIndex = storeyHere();
+    const at = liftAtHand(lifts, body.x, body.z, floorIndex);
+    // Walked off, or over to a different shaft. Not a failure and not a
+    // message — you changed your mind, and the seat you were holding goes
+    // back to the queue rather than being held from across the corridor.
+    if (rider.state === 'waiting' && (!at || at.car !== car)) {
+      cancelRider(rider, car);
+      riding = '';
+      return false;
+    }
+    const out = stepRider(rider, car, dt, {
+      floorIndex,
+      inside: !!(at && at.inside),
+    });
+    riding = out.state === 'away' ? '' : liftText(car);
+    if (out.state !== 'riding') {
+      if (out.arrived) {
+        body.y = (out.y ?? body.y - EYE_H) + EYE_H;
+        vy = 0;
+        grounded = true;
+      }
+      return false;
+    }
+    // Being carried. The doors are shut around you and the walls of the shaft
+    // are the collider's, so there is nothing to resolve against — the one
+    // thing that moves is the floor.
+    body.y = out.y + EYE_H;
+    vy = 0;
+    grounded = true;
     return true;
   }
 
@@ -379,7 +467,10 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     // `updateWalk` takes its heading from the camera's own world direction,
     // which in a session is the direction the head is actually facing — so
     // "forward" means what a person wearing it expects, with no extra term.
-    if (world) updateWalk(dt, -stick.y, stick.x, speed);
+    // A headset rides the same car off the same state machine — there is no
+    // E key in one, so the ride is started by the same `rideElevator` a touch
+    // button calls, and this only has to let the car carry the rig.
+    if (!updateLift(dt) && world) updateWalk(dt, -stick.y, stick.x, speed);
     updateDoors(dt);
     if (xr.onPose) xr.onPose({ x: body.x, y: body.y - EYE_H, z: body.z, yaw: xr.yaw });
     reportHud();
@@ -426,6 +517,10 @@ export function initWalkthrough(camera, domElement, opts = {}) {
         floor: world ? storeyAt(world, feet, groundAt(site, body.x, body.z)) : 0,
       };
     },
+    // The cars, for the renderer to pose. Read-only, and the same objects the
+    // rider above is queueing for — neither module describes a lift to the
+    // other, exactly the arrangement `poseDoors` has with openings.js.
+    get lifts() { return lifts; },
     // Whose eyes. `null` gives the camera its own body back where it stands.
     get following() { return follow ? follow.agent : null; },
     get followMode() { return follow ? follow.mode : null; },
@@ -445,12 +540,28 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       colliderSource = fn || null;
       colliders = new Map();
     },
+    // ...and where the cars come from. Same bargain as the colliders: when a
+    // crowd is running it owns them, so the car the camera queues for is the
+    // car forty people are queueing for. Null gives this file its own back,
+    // built from the design the walk is standing in.
+    setLifts(fn) {
+      cancelRider(rider, lifts && lifts.get(rider.car));
+      liftSource = fn || null;
+      lifts = liftSource ? liftSource() : (world ? makeLifts(world) : null);
+      riding = '';
+    },
     enable(state) {
       active = true;
       world = state;
       site = terrainField(state);
       keys.clear();
       colliders = new Map();
+      // A car halfway between two storeys of a building that has just been
+      // re-drawn is a car in a shaft that may not exist — so the cars have
+      // exactly the lifetime the colliders do, and for the same reason.
+      lifts = liftSource ? liftSource() : makeLifts(state);
+      cancelRider(rider, null);
+      riding = '';
       ghost = false;
       vy = 0;
       grounded = false;
@@ -476,6 +587,9 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       site = emptyField();
       keys.clear();
       colliders = new Map();
+      cancelRider(rider, lifts && lifts.get(rider.car));
+      lifts = liftSource ? liftSource() : null;
+      riding = '';
       touchActive = false;
       moveAxes.x = 0; moveAxes.y = 0;
       lookPointerId = null;
@@ -554,6 +668,14 @@ export function initWalkthrough(camera, domElement, opts = {}) {
         reportHud();
         return;
       }
+      // The lift first, because being carried by one is the one case where
+      // the walker's own physics have nothing to say: a car between two
+      // storeys is not a surface `supportAt` knows about, and a body resolved
+      // against the storey it left would be dropped down the shaft it is
+      // currently riding up. Ghost mode still flies — a no-clip camera is not
+      // a passenger — so a rider is put down before it takes off.
+      if (ghost && rider.state !== 'away') cancelRider(rider, lifts && lifts.get(rider.car));
+      if (!ghost && updateLift(dt)) { updateDoors(dt); reportHud(); return; }
       const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED;
       const fwd = touchActive ? moveAxes.y : (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
       const right = touchActive ? moveAxes.x : (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);

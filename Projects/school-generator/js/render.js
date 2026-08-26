@@ -3360,6 +3360,73 @@ export function initRender(canvas) {
     return doors;
   }
 
+  // ---------- the lift, which is the other part of the building that moves ----------
+  //
+  // Same arrangement as the door leaves above and for the same reason: a
+  // sliding door and a car are the two pieces of an elevator that are
+  // somewhere different from one frame to the next, so they are their own
+  // Groups rather than triangles merged into a storey. `poseLifts` reads
+  // lift.js's own car records — the same objects the walker is queueing for
+  // and the crowd is riding — and neither file describes a lift to the other.
+  //
+  // Keyed by link id, and the leaves additionally by storey, because a lift
+  // has a set of doors at every landing and only one of them is ever open.
+  const liftDoors = new Map();   // `${link.id}|${floorIndex}` → { left, right, park, shut }
+  const liftCars = new Map();    // link.id → the cab Group
+
+  // The two leaves at one landing, on a Group carrying the link's own plan
+  // position and rotation, so sliding one is setting a local x.
+  function buildLiftDoors(link, floorIndex, baseY, dims, group) {
+    const { doorW, jambW, hd, t } = dims;
+    const pivot = new THREE.Group();
+    pivot.position.set(link.x, baseY, link.z);
+    pivot.rotation.y = link.rotationY || 0;
+    const leafW = doorW / 2 - 0.1;
+    // One geometry, two meshes: the pair is symmetrical about the centre
+    // line, so what differs between them is a sign on a position.
+    const geo = box(leafW, DOOR_H - 0.1, 0.12, 0, (DOOR_H - 0.1) / 2, -hd + t / 2 + 0.2,
+      _railPost);
+    const leaves = [];
+    for (const sx of [-1, 1]) {
+      const mesh = new THREE.Mesh(geo, railMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      pivot.add(mesh);
+      leaves.push({ mesh, sx });
+    }
+    group.add(pivot);
+    liftDoors.set(`${link.id}|${floorIndex}`, {
+      pivot,
+      leaves,
+      // Shut, the pair meets on the centre line with a reveal between them;
+      // open, each is back over its own jamb, which is exactly where they
+      // used to be drawn and stay.
+      shut: doorW / 4,
+      park: doorW / 2 + jambW / 2,
+    });
+    return pivot;
+  }
+
+  // The cab: a floor and a ceiling, a hair off the slab so they read as a car
+  // rather than as part of the storey. One per lift, and its whole job is to
+  // be at `car.y`.
+  function buildLiftCar(link, baseY, dims, group) {
+    const { w, d, t } = dims;
+    const cab = new THREE.Group();
+    cab.position.set(link.x, baseY, link.z);
+    cab.rotation.y = link.rotationY || 0;
+    const floorMesh = new THREE.Mesh(
+      box(w - t * 2, 0.08, d - t * 2, 0, 0.06, 0, _tread), stairMat);
+    floorMesh.receiveShadow = true;
+    const ceilMesh = new THREE.Mesh(
+      box(w - t * 2, 0.12, d - t * 2, 0, WALL_H - 0.4, 0, _railCap), railMat);
+    cab.add(floorMesh);
+    cab.add(ceilMesh);
+    group.add(cab);
+    liftCars.set(link.id, cab);
+    return cab;
+  }
+
   function buildFloor(floor, baseY, wallH, group, ceil, labels, ctx = {}) {
     // Floor geometry is bucketed by finish rather than pooled: one mesh per
     // material present on the storey. Everything else still merges into one
@@ -3650,6 +3717,10 @@ export function initRender(canvas) {
       target.push(g);
     };
 
+    // Filled in below if this storey has any lifts on it — the moving parts go
+    // in here rather than straight onto the storey.
+    let liftGroup = null;
+
     const buildStairRun = (link) => {
       if (!metrics) return;
       const w = stairWidth(link);
@@ -3714,8 +3785,16 @@ export function initRender(canvas) {
     // An elevator, drawn on *both* the storeys it serves — it is the one link
     // that is a room on each of them rather than a run between them. Three
     // shaft walls, a lintel over the opening, a metal frame around it and a
-    // call panel beside it; the car doors are drawn parked in their pockets,
-    // since a sliding door that shuts is a door you can't board.
+    // call panel beside it, all of which stand still and merge into the
+    // storey's own mesh.
+    //
+    // Two things don't stand still, and until Phase 15 built the car neither
+    // of them had anything to move for: *"the car doors are drawn parked in
+    // their pockets, since a sliding door that shuts is a door you can't
+    // board"*. They shut now. The leaves are their own Groups, keyed by lift
+    // and storey the way door leaves are keyed by opening — `poseLifts` reads
+    // lift.js's own cars and slides them, and neither module describes a lift
+    // to the other.
     const buildElevator = (link) => {
       const { w, d } = elevatorSize(link);
       const doorW = elevatorDoorWidth(link);
@@ -3733,28 +3812,44 @@ export function initRender(canvas) {
       if (headH > 0.05) {
         localBox(link, doorW, headH, t, 0, DOOR_H + headH / 2, -hd + t / 2, shaft, wallGeos);
       }
-      // Brushed frame and the two parked door panels.
+      // Brushed frame around the opening, and the jamb posts either side.
       localBox(link, doorW + 0.5, 0.3, t + 0.3, 0, DOOR_H + 0.15, -hd + t / 2,
         _railPost, railGeos);
       for (const sx of [-1, 1]) {
         localBox(link, 0.3, DOOR_H, t + 0.24, sx * (doorW / 2 + 0.15), DOOR_H / 2, -hd + t / 2,
           _railPost, railGeos);
-        localBox(link, doorW / 2 - 0.1, DOOR_H - 0.1, 0.12,
-          sx * (doorW / 2 + jambW / 2), (DOOR_H - 0.1) / 2, -hd + t / 2 + 0.2,
-          _railPost, railGeos);
       }
       // Call panel, on the jamb you can actually see from outside.
       localBox(link, 0.5, 0.9, 0.08, -(doorW / 2 + jambW / 2), 4, -hd - 0.02,
         _nosing, wallGeos);
-      // Car floor and ceiling, a hair off the slab so they read as a cab.
-      localBox(link, w - t * 2, 0.08, d - t * 2, 0, 0.06, 0, _tread, stairGeos);
-      localBox(link, w - t * 2, 0.12, d - t * 2, 0, WALL_H - 0.4, 0, _railCap, railGeos);
+      // The two leaves, on their own pivot so they can slide. Built in the
+      // link's local frame — the Group carries the rotation and the plan
+      // position, so posing one is setting an x and nothing is rebuilt.
+      buildLiftDoors(link, group.userData.floor, baseY, { doorW, jambW, hd, t }, liftGroup);
+      // The car. Built once per lift rather than once per storey it serves,
+      // and parked on the *lower* of them, because there is one car and it is
+      // somewhere: a cab drawn at both landings was the same fiction as doors
+      // that never shut, and it is visible the moment somebody rides between
+      // the two.
+      if (group.userData.floor === Math.min(link.from, link.to)) {
+        buildLiftCar(link, baseY, { w, d, t }, liftGroup);
+      }
     };
 
     for (const link of ctx.risers || []) {
       if (link.type === 'stair' || link.type === 'ramp') buildStairRun(link);
     }
-    for (const link of ctx.elevators || []) buildElevator(link);
+    // The moving parts of every lift on this storey, in one Group — so the
+    // visibility rules can treat them exactly the way they treat door leaves,
+    // which is the same problem: their own meshes on a shared material, which
+    // cannot take the ghost pass, and a solid door floating over the plan you
+    // are editing reads as a mistake.
+    if ((ctx.elevators || []).length) {
+      liftGroup = new THREE.Group();
+      for (const link of ctx.elevators) buildElevator(link);
+      group.add(liftGroup);
+      group.userData.liftGroup = liftGroup;
+    }
     // Guardrails around every hole in *this* floor, minus the side a stair
     // arrives on — see openingRails() for why that one is left open.
     for (const link of ctx.guarded || []) {
@@ -4147,6 +4242,12 @@ export function initRender(canvas) {
       // the plan you're editing reads as a mistake.
       if (g.userData.doorGroup) {
         g.userData.doorGroup.visible = structureOn && !ghost;
+      }
+      // The lift's doors and its car are the same kind of thing as a door
+      // leaf — their own meshes, a shared material, no ghost pass — so they
+      // follow the same rule rather than a second one.
+      if (g.userData.liftGroup) {
+        g.userData.liftGroup.visible = structureOn && !ghost;
       }
     }
     for (const g of labelGroup.children) {
@@ -4805,6 +4906,8 @@ export function initRender(canvas) {
     const plan = buildRoofGroup(state);
     // Pivots are per-build: the Groups they point at are about to be disposed.
     doorPivots.clear();
+    liftDoors.clear();
+    liftCars.clear();
     // ...and so are the prop instances a shove would move.
     propInstances.clear();
     shoved.clear();
@@ -5306,6 +5409,27 @@ export function initRender(canvas) {
       for (const leaf of leaves) {
         const pivot = doorPivots.get(leaf.key);
         if (pivot) pivot.rotation.y = -leafAngle(leaf, leaf.open);
+      }
+    },
+    // Slide the lift doors and put the car where it is. `lifts` is lift.js's
+    // own Map — whichever one is being stepped this frame, the crowd's or the
+    // walkthrough's — and this reads it and never writes to it, the same deal
+    // `poseDoors` has with openings.js's leaves.
+    poseLifts(lifts) {
+      if (!lifts) return;
+      for (const car of lifts.values()) {
+        const cab = liftCars.get(car.id);
+        if (cab) cab.position.y = car.y;
+        // A landing's doors are open only where the car actually is. Every
+        // other set on that shaft is shut, which is what makes a shaft read
+        // as a shaft: `car.doors` is one number and there is one car.
+        for (let f = car.low; f <= car.high; f++) {
+          const set = liftDoors.get(`${car.id}|${f}`);
+          if (!set) continue;
+          const open = car.at === f && car.state !== 'moving' ? car.doors : 0;
+          const x = set.shut + (set.park - set.shut) * open;
+          for (const leaf of set.leaves) leaf.mesh.position.x = leaf.sx * x;
+        }
       }
     },
   };

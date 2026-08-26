@@ -1615,7 +1615,7 @@
       <p id="walk-controls-hint">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; <kbd>Shift</kbd> sprint<br />
         <kbd>Space</kbd> jump &nbsp;·&nbsp; <kbd>F</kbd> ghost mode (no-clip, <kbd>Space</kbd>/<kbd>C</kbd> to fly)<br />
-        <kbd>E</kbd> ride the elevator you're standing in &nbsp;·&nbsp; <kbd>P</kbd> photo mode<br />
+        <kbd>E</kbd> call the lift, from inside it or at its doors &nbsp;·&nbsp; <kbd>P</kbd> photo mode<br />
         <kbd>G</kbd> start or stop the scavenger hunt<br />
         <kbd>B</kbd> ring the bell &nbsp;·&nbsp; <kbd>N</kbd> PA announcement &nbsp;·&nbsp; <kbd>U</kbd> sound panel<br />
         <kbd>L</kbd> school life &nbsp;·&nbsp; <kbd>V</kbd> follow somebody &nbsp;·&nbsp; <kbd>K</kbd> fire drill &nbsp;·&nbsp; <kbd>H</kbd> heatmap<br />
@@ -1627,9 +1627,11 @@
       <p>
         Walls, glass, railings, windows and furniture stop you; doors open as you
         approach and shut behind you. You start on the floor you were editing —
-        walk onto a staircase or a ramp to climb it, step into an elevator and
-        press <kbd>E</kbd>, and you'll stop at the edge of a mezzanine rather
-        than walk off it.
+        walk onto a staircase or a ramp to climb it, and you'll stop at the edge
+        of a mezzanine rather than walk off it. The lift is a lift: press
+        <kbd>E</kbd> at its doors and the car comes, the doors open, you step
+        in and it takes you. If there are people in the building you queue for
+        it with them, in the same car, with the same eight seats.
       </p>
       <p>
         And it can have people in it. The school life panel (<kbd>L</kbd>)
@@ -1735,6 +1737,7 @@
       <label class="opt"><input type="checkbox" id="export-site" checked /> Site plan sheet</label>
       <label class="opt"><input type="checkbox" id="export-contours" checked /> Contour lines on the site plan</label>
       <label class="opt"><input type="checkbox" id="export-code" /> Code panel in the title block</label>
+      <label class="opt"><input type="checkbox" id="export-day" /> School-day panel in the title block</label>
       <label class="opt"><input type="checkbox" id="export-spec" /> Specification sheet</label>
       <p class="hint">
         PNG downloads one image per sheet. Print / Save as PDF opens your
@@ -1742,8 +1745,11 @@
         there for a PDF file. The site plan is one extra sheet, drawn from the
         same model at a wider scale. The code panel prints the occupant load,
         the exits, the travel distance and the area of each storey beside the
-        drawing; the specification sheet is one more page saying what each
-        assembly is and what this tool does and does not know about it.
+        drawing; the school-day panel prints what the timetable does with the
+        building — room use, the busiest period, how far a student walks — and
+        draws nothing at all if this design has no timetable; the specification
+        sheet is one more page saying what each assembly is and what this tool
+        does and does not know about it.
       </p>
       <div class="section-label">The building itself</div>
       <label class="opt"><input type="checkbox" id="export-glb-site" checked /> Site and landscape</label>
@@ -2004,7 +2010,7 @@
     </div>
     <div id="touch-actions">
       <button id="touch-sprint" type="button" aria-pressed="false" aria-label="Toggle sprint">🏃</button>
-      <button id="touch-lift" type="button" aria-label="Ride the elevator you are standing in">🛗</button>
+      <button id="touch-lift" type="button" aria-label="Call the lift">🛗</button>
       <button id="touch-jump" type="button" aria-label="Jump">⤒</button>
     </div>
     <button id="touch-exit" class="panel" type="button" aria-label="Exit walkthrough">✕</button>

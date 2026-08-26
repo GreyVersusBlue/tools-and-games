@@ -24,7 +24,7 @@
 // Pure module: no three.js, no DOM. Exercised by test/lift.test.mjs.
 
 import { FLOOR_H } from './grid.js';
-import { elevatorSize, localToWorld } from './stairs.js';
+import { elevatorSize, localToWorld, worldToLocal } from './stairs.js';
 
 // The five states a car is ever in, and nothing between them. `doors` is 0
 // (shut) to 1 (fully open) and is the only continuous thing here besides the
@@ -172,6 +172,134 @@ export function leaveLift(car, riderId) {
 // Is this rider's floor the one the doors are open at?
 export const canAlight = (car, riderId) =>
   !!car && car.state === 'open' && car.riders.get(riderId) === car.at;
+
+// ---------- one person's side of it ----------
+//
+// agents.js has a rider braided into its steering — press, wait, board,
+// alight — because somebody on a route is always in the middle of one, and
+// every one of those four moments has a waypoint attached to it. The
+// walkthrough camera is not on a route. It knows two things: a key was
+// pressed, and where the body is standing. Same four moments, none of the
+// steering, and it lives here rather than in walkthrough.js for the reason
+// every pure module in this codebase does — walkthrough.js cannot be tested
+// and this can.
+//
+// It is deliberately *not* shared with agents.js. The two riders want
+// different things from the same car: an agent has a floor it was routed to
+// and a body that has to keep being resolved against a crowd while it waits,
+// and a camera has neither. Folding them together would mean one function
+// with a steering branch in it, which is the shape this file was written to
+// avoid.
+
+// The far end. A lift in this model joins exactly two storeys, which is what
+// makes "press the button" an unambiguous instruction rather than a panel.
+export const otherStop = (car, from) => (from === car.high ? car.low : car.high);
+
+export const RIDER = 'walker';
+
+export function makeRider(id = RIDER) {
+  return { id, car: null, want: null, state: 'away', wait: 0 };
+}
+
+// Which car is at hand, and whether the body is in it. Two answers rather
+// than one because they mean different things to a person: inside the shaft
+// you are in the car, outside it you are at the landing, and pressing the
+// button means the same thing from either — it is *boarding* that needs you
+// to be in there.
+export function liftAtHand(lifts, x, z, floorIndex, opts = {}) {
+  if (!lifts) return null;
+  const inset = opts.inset ?? 0.4;
+  const reach = opts.reach ?? BOARD_REACH * 2.5;
+  let landing = null;
+  for (const car of lifts.values()) {
+    if (floorIndex < car.low || floorIndex > car.high) continue;
+    const { w, d } = elevatorSize(car.link);
+    const { lx, lz } = worldToLocal(car.link, x, z);
+    if (Math.abs(lx) <= w / 2 - inset && Math.abs(lz) <= d / 2 - inset) {
+      return { car, inside: true };
+    }
+    // Not in it — but standing at the doors is close enough to press the
+    // button, which is the whole difference between this and Phase 2's
+    // point-in-box test. Nearest landing wins, so two shafts side by side
+    // answer with the one you are actually facing.
+    const at = liftLanding(car.link, floorIndex, car.floorHt);
+    const dist = Math.hypot(at.x - x, at.z - z);
+    if (dist <= reach && (!landing || dist < landing.dist)) landing = { car, inside: false, dist };
+  }
+  return landing;
+}
+
+// The button. Outside a car it calls it; inside one standing open it is the
+// floor button, and the floor is the other one. Idempotent, because a person
+// waiting for a lift presses it more than once.
+export function pressRider(rider, car, floorIndex) {
+  if (!rider || !car) return false;
+  // Already aboard and already going somewhere: pressing again is somebody
+  // jabbing at a panel, which a lift is entitled to ignore.
+  if (car.riders.has(rider.id)) return true;
+  rider.car = car.id;
+  rider.want = otherStop(car, floorIndex);
+  rider.state = 'waiting';
+  rider.wait = 0;
+  callLift(car, floorIndex);
+  return true;
+}
+
+// One rider, one tick. `inside` is whether the body is in the car's footprint
+// — the caller's business, because only the caller knows where the body is.
+// Answers what the caller has to do about it and nothing else: `y` is where
+// the floor under this person is, and `state` is whether they are being
+// carried by it.
+export function stepRider(rider, car, dt, opts = {}) {
+  if (!rider || rider.state === 'away') return { state: 'away' };
+  if (!car || rider.car !== car.id) { resetRider(rider); return { state: 'away' }; }
+  const floorIndex = opts.floorIndex ?? car.at;
+  const step = Math.max(0, Math.min(dt, 0.25));
+
+  if (rider.state === 'riding') {
+    // The car forgot us — the only way this happens is a caller that reset
+    // the lifts underneath a ride, and the honest answer is to stand on the
+    // storey the car is nearest rather than to keep claiming a seat in it.
+    if (!car.riders.has(rider.id)) {
+      resetRider(rider);
+      return { state: 'away', arrived: true, floor: car.floorIndex ?? car.at };
+    }
+    if (canAlight(car, rider.id)) {
+      leaveLift(car, rider.id);
+      resetRider(rider);
+      return { state: 'away', arrived: true, floor: car.at, y: car.at * car.floorHt };
+    }
+    return { state: 'riding', y: car.y, floor: car.floorIndex ?? car.at };
+  }
+
+  // Waiting. Keep pressing — everybody at a landing does, the hold in
+  // `callLift` is what stops that becoming a livelock, and it is what makes
+  // the doors wait for you while you walk the last two feet.
+  rider.wait += step;
+  callLift(car, floorIndex);
+  if (opts.inside && canBoard(car, floorIndex) && boardLift(car, rider.id, rider.want)) {
+    rider.state = 'riding';
+    return { state: 'riding', y: car.y, boarded: true, floor: car.at };
+  }
+  return { state: 'waiting', wait: rider.wait };
+}
+
+// Walked away, or the walk ended. Gets out of the car if it was in one, so
+// the seat it was holding goes back to the queue.
+export function cancelRider(rider, car) {
+  if (!rider) return false;
+  const was = rider.state !== 'away';
+  if (car && car.riders.has(rider.id)) leaveLift(car, rider.id);
+  resetRider(rider);
+  return was;
+}
+
+function resetRider(rider) {
+  rider.car = null;
+  rider.want = null;
+  rider.state = 'away';
+  rider.wait = 0;
+}
 
 // ---------- where it is going next ----------
 

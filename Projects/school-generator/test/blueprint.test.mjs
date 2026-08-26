@@ -1,7 +1,14 @@
 // Tests for blueprint.js — the pure half of the printable floor plan
-// (`computeFloorPlan`). No canvas/DOM here, so this runs under `node --test`
-// the same as every other model module; the drawing half only runs in a
-// browser and is exercised by hand (see WISHLIST.md Phase 7).
+// (`computeFloorPlan`). No real canvas here, so this runs under `node --test`
+// the same as every other model module; what a sheet *looks like* is still
+// exercised by hand (see WISHLIST.md Phase 7).
+//
+// One exception at the bottom of this file, added when the two title-block
+// panels were folded into one drawer: a recording stub of a 2D context, which
+// cannot say whether a sheet is legible but can say that every panel the
+// caller asked for was drawn, once, inside its own box. That is the test a
+// refactor needs — "every existing test still passes" would have been just as
+// green with the second panel drawn on top of the first.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +26,11 @@ import { addStair } from '../js/stairs.js';
 import { applyFinish } from '../js/finish.js';
 import { addProp } from '../js/props.js';
 import { catalogEntry } from '../js/catalog.js';
-import { computeFloorPlan, computeSitePlan } from '../js/blueprint.js';
+import { computeFloorPlan, computeSitePlan, drawFloorPlan } from '../js/blueprint.js';
+import { buildReport, codePanel, dayPanel } from '../js/report.js';
+import { buildNav } from '../js/navgraph.js';
+import { buildingOccupancy } from '../js/occupancy.js';
+import { roomPool, buildTimetable } from '../js/timetable.js';
 import { regionsOf } from '../js/site.js';
 import { buildSampleSchool } from '../js/sample.js';
 
@@ -335,4 +346,103 @@ test('contours can be turned off without touching anything else', () => {
   assert.ok(on.contours.length);
   assert.deepEqual(off.contours, []);
   assert.equal(off.regions.length, on.regions.length);
+});
+
+// ---------- the sheet, drawn ----------
+
+// A 2D context that draws nothing and remembers everything that mattered:
+// where text was put, and where boxes were stroked. Everything else no-ops,
+// because the assertions below are about arrangement rather than appearance.
+function recordingCtx(w = 1200, h = 900) {
+  const texts = [];
+  const rects = [];
+  const ctx = {
+    canvas: { width: w, height: h },
+    font: '', fillStyle: '', strokeStyle: '', lineWidth: 1, lineCap: '', textAlign: '',
+    fillText: (t, x, y) => texts.push({ text: String(t), x, y }),
+    strokeRect: (x, y, rw, rh) => rects.push({ x, y, w: rw, h: rh }),
+    fillRect: () => {},
+    // Ten pixels a character is close enough for a wrap that only has to
+    // happen at all — the real widths are a browser's business.
+    measureText: (t) => ({ width: String(t).length * 5 }),
+    beginPath: () => {}, closePath: () => {}, moveTo: () => {}, lineTo: () => {},
+    arc: () => {}, roundRect: () => {}, fill: () => {}, stroke: () => {}, clip: () => {},
+    save: () => {}, restore: () => {}, translate: () => {}, rotate: () => {},
+    setLineDash: () => {},
+  };
+  return { ctx, texts, rects };
+}
+
+const LAYOUT = { scale: 8, margin: 40, titleH: 56 };
+
+// The sample school with a timetable on it, so there is a school day to print.
+function dayReport() {
+  const s = buildSampleSchool();
+  const nav = buildNav(s);
+  s.timetable = buildTimetable(
+    roomPool(nav, { occupancy: buildingOccupancy(s, { nav }) }),
+    { students: 200, classSize: 25, periods: 6, band: 'middle', seed: 3, teachers: 20 });
+  return { state: s, report: buildReport(s) };
+}
+
+test('a sheet asked for no panels draws none', () => {
+  const s = buildSampleSchool();
+  const plan = computeFloorPlan(s, 0);
+  const { ctx, texts } = recordingCtx();
+  drawFloorPlan(ctx, plan, LAYOUT, {});
+  assert.equal(texts.filter((t) => t.text === 'CODE INFORMATION').length, 0);
+  assert.equal(texts.filter((t) => t.text === 'THE SCHOOL DAY').length, 0);
+});
+
+test('each panel the sheet was asked for is drawn exactly once', () => {
+  const { state, report } = dayReport();
+  const plan = computeFloorPlan(state, 0);
+  const { ctx, texts } = recordingCtx();
+  drawFloorPlan(ctx, plan, LAYOUT, {
+    codePanel: codePanel(report, { floor: 0 }),
+    dayPanel: dayPanel(report, { floor: 0 }),
+  });
+  assert.equal(texts.filter((t) => t.text === 'CODE INFORMATION').length, 1);
+  assert.equal(texts.filter((t) => t.text === 'THE SCHOOL DAY').length, 1);
+});
+
+test('two panels stack rather than land on each other', () => {
+  const { state, report } = dayReport();
+  const plan = computeFloorPlan(state, 0);
+  const { ctx, texts, rects } = recordingCtx();
+  drawFloorPlan(ctx, plan, LAYOUT, {
+    codePanel: codePanel(report, { floor: 0 }),
+    dayPanel: dayPanel(report, { floor: 0 }),
+  });
+  const code = texts.find((t) => t.text === 'CODE INFORMATION');
+  const day = texts.find((t) => t.text === 'THE SCHOOL DAY');
+  assert.ok(day.y > code.y, 'the school day goes under the code panel');
+  // The two boxes are the same width, in the same margin, and do not overlap.
+  const boxes = rects.filter((r) => Math.abs(r.w - 231) < 2).sort((a, b) => a.y - b.y);
+  assert.equal(boxes.length, 2);
+  assert.equal(boxes[0].x, boxes[1].x);
+  assert.ok(boxes[0].y + boxes[0].h <= boxes[1].y,
+    'the first panel ends before the second begins');
+  // ...and every line of each panel is inside its own box, which is what the
+  // measured height is for.
+  for (const box of boxes) {
+    const inside = texts.filter((t) => t.x >= box.x && t.x <= box.x + box.w
+      && t.y >= box.y && t.y <= box.y + box.h + 1);
+    assert.ok(inside.length > 6, 'a panel with lines in it');
+  }
+});
+
+test('a design with no timetable draws the code panel and nothing under it', () => {
+  const s = buildSampleSchool();
+  const report = buildReport(s);
+  const plan = computeFloorPlan(s, 0);
+  const { ctx, texts } = recordingCtx();
+  // This is the call main.js makes: `dayPanel` answers null, and the sheet
+  // draws one panel rather than an empty second box under the first.
+  drawFloorPlan(ctx, plan, LAYOUT, {
+    codePanel: codePanel(report, { floor: 0 }),
+    dayPanel: dayPanel(report, { floor: 0 }),
+  });
+  assert.equal(texts.filter((t) => t.text === 'CODE INFORMATION').length, 1);
+  assert.equal(texts.filter((t) => t.text === 'THE SCHOOL DAY').length, 0);
 });
