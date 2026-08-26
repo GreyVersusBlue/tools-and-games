@@ -14,6 +14,15 @@
 // over a circle-plus-a-height-test is ducking under a table, which nobody
 // wants to do in a floor-plan tool.
 //
+// Since Phase 17 there *is* a height test, and it is the "plus" in that
+// sentence rather than a second body: `overheadAt` is `supportAt` looking the
+// other way. Both arcs skipped it and both were right to — a building of flat
+// slabs has twelve feet of air over every point of it — but a stair hall has a
+// run in it, and the underside of a run is somewhere a walker can currently
+// stand with their head in the concrete. A campus adds outdoor stairs and
+// soffits to that list. It is one function and one comparison, over the
+// surfaces this module already knew how to find.
+//
 // Pure module: no three.js. walkthrough.js owns the camera, the keys and the
 // timestep; everything geometric is here so it can be unit-tested headless,
 // the same split shapes.js/polyedit.js and propplace.js/propedit.js use.
@@ -31,7 +40,7 @@
 //   Which storey that is comes off the height of your feet (`storeyAt`), so a
 //   run of stairs hands you over to the level above exactly when you arrive.
 
-import { WALL_T, FLOOR_H } from './grid.js';
+import { WALL_T, FLOOR_H, WALL_H } from './grid.js';
 import { shapesOf, segEnds, isBuilt, isDoorOpening } from './shapes.js';
 import { propsOnFloor } from './props.js';
 import { footprintOf } from './propplace.js';
@@ -75,6 +84,16 @@ export const MIN_OBSTACLE_H = 0.75; // ft
 // terrain in it, which is what `groundAt(null, ...)` returns and what every
 // caller that doesn't hand `supportAt` a site field still gets.
 export const GROUND_Y = 0;        // ft
+// The top of a walker's head, above their feet. A shade under six feet, which
+// is a tall adult and about the sixtieth percentile of "will I duck".
+export const HEAD_H = 5.9;        // ft
+// How thick the underside of a stair run is. A slab has *no* thickness in this
+// model — `floorBaseY` is the walking surface and `cutStart` sizes the hole a
+// run opens against the bare storey height — so giving one here would quietly
+// contradict `stairs.js`'s own `HEADROOM`, which is the rule that says a run
+// clears the floor above by 6.8ft. A run is drawn as treads on air, and a foot
+// of structure under them is the honest allowance.
+export const SOFFIT_T = 1;        // ft
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -635,6 +654,70 @@ export function supportAt(state, x, z, feetY, opts = {}) {
   return best;
 }
 
+// The lowest thing over a walker's head at (x, z), given where their feet are:
+// the ceiling of the storey they are standing in, the underside of any slab
+// oversailing them, or the soffit of a stair run they are walking under. Null
+// when there is nothing above them at all, which outdoors is the usual answer.
+//
+// The mirror of `supportAt`, and deliberately the same shape: a `consider`
+// that keeps the *nearest* candidate rather than the highest, over the same
+// three sources.
+// `opts.structural` leaves the ceiling plane out of the answer, and that is
+// what a *step* is tested against. The ceiling is drawn across the whole
+// storey and cut only where the slab above is cut, so a stair run climbs
+// through it: half way up a flight the tile grid is five feet over your head
+// and the air above the treads is not. What actually stops a body is
+// structure — a slab it would walk under, the underside of a run — and
+// charging it for the ceiling instead strands the whole school on the fourth
+// tread. (Which is how this was found. Second time a fire drill has found a
+// bug in this file.)
+export function overheadAt(state, x, z, feetY, opts = {}) {
+  const ht = state.floorHt || FLOOR_H;
+  let best = null;
+  const consider = (y, kind, floor) => {
+    if (y <= feetY + 1e-6) return;
+    if (!best || y < best.y) best = { y, kind, floor };
+  };
+
+  // The ceiling of the storey you are standing in — the plane the renderer
+  // draws at `WALL_H`, not the slab two feet above it, because the thing you
+  // walk into is the ceiling.
+  //
+  // The hole in it is the one in the slab *above*, not the one in the slab you
+  // are standing on — which is the same pair `render.js` hands `buildFloor` as
+  // `cuts` and `ceilCuts`.
+  const here = storeyAt(state, feetY, opts.groundY ?? 0);
+  const floor = state.floors[here];
+  if (!opts.structural && floor && floorSolidAt(floor, x, z)
+      && !inFloorCut(floorCuts(state, here + 1), x, z)) {
+    consider(here * ht + WALL_H, 'ceiling', here);
+  }
+  // ...and the underside of anything oversailing you, which is what you are
+  // standing under when you are outside and there is a storey over your head.
+  for (let i = here + 1; i < state.floors.length; i++) {
+    if (!floorSolidAt(state.floors[i], x, z)) continue;
+    if (inFloorCut(floorCuts(state, i), x, z)) continue;
+    consider(i * ht, 'slab', i);
+    break;
+  }
+
+  const metrics = stairMetrics(state);
+  for (const link of stairsOf(state)) {
+    const h = stairSurfaceAt(link, metrics, x, z);
+    if (h === null) continue;
+    consider(link.from * ht + h - SOFFIT_T, 'soffit', link.from);
+  }
+  return best;
+}
+
+// How much air there is over a walker's head, in feet. `Infinity` under the
+// open sky, which is the honest answer and the one that makes every caller's
+// comparison read the right way round.
+export function headroomAt(state, x, z, feetY, opts = {}) {
+  const over = overheadAt(state, x, z, feetY, opts);
+  return over ? over.y - feetY : Infinity;
+}
+
 // ---------- moving ----------
 
 // One horizontal step, fully resolved: null if it can't be taken at all.
@@ -652,6 +735,14 @@ export function tryStep(state, collider, pos, dx, dz, opts = {}) {
   // Grounded, a drop is an edge you stop at rather than fall off. Airborne
   // (a jump, or dropping out of ghost mode), there is nothing to stop at.
   if (opts.grounded !== false && support.y < pos.y - (opts.stepDown ?? STEP_DOWN)) return null;
+  // ...and a step that puts your head inside a stair run is a step you don't
+  // take. Measured from where your feet would *land*, not from where they are:
+  // walking up a ramp toward a soffit, the question is how much air is left at
+  // the top of the step.
+  if (opts.headroom !== false) {
+    const need = opts.headH ?? HEAD_H;
+    if (headroomAt(state, p.x, p.z, support.y, { ...o, structural: true }) < need) return null;
+  }
   return { x: p.x, z: p.z, support };
 }
 

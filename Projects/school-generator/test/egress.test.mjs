@@ -15,10 +15,14 @@ import { buildSampleSchool } from '../js/sample.js';
 import { buildNav, egressField, MIN_ACCESSIBLE_W, clearWidth } from '../js/navgraph.js';
 import { buildingOccupancy } from '../js/occupancy.js';
 import {
-  egressAnalysis, accessibleAnalysis, requiredExits, requiredWidth,
+  egressAnalysis, accessibleAnalysis, dischargeAnalysis, requiredExits, requiredWidth,
   roomSamples, farthestFrom,
   TRAVEL_LIMIT, DEAD_END_LIMIT, LEVEL_IN_PER_OCC, STAIR_IN_PER_OCC, SINGLE_EXIT_OCC,
+  DISCHARGE_NOTE,
 } from '../js/egress.js';
+import { addRegion } from '../js/site.js';
+import { ensureTerrain, raiseTerrain } from '../js/terrain.js';
+import { ACCESSIBLE_GRADE, MAX_RAMP_GRADE } from '../js/sitemesh.js';
 
 const has = (findings, code) => findings.some((f) => f.code === code);
 const find = (findings, code) => findings.find((f) => f.code === code) || null;
@@ -339,4 +343,104 @@ test('an empty design says nothing rather than throwing', () => {
   const a = accessibleAnalysis(createState(8, 8));
   assert.equal(a.rooms.length, 0);
   assert.ok(has(a.findings, 'no-accessible-entrance'));
+});
+
+// ---------- exit discharge ----------
+//
+// Phase 7 could not make this finding and said so: the graph flattened the
+// outdoors into one node, so a door discharged the moment you crossed the
+// threshold. Everything below is what the site mesh bought.
+
+const rectPts = (x0, z0, x1, z1) => [
+  { x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 },
+];
+
+test('a discharge is measured from the door to the public way', () => {
+  const s = corridorSchool({ len: 6 });
+  const r = dischargeAnalysis(s);
+  assert.equal(r.rows.length, 1, 'one exterior door, one discharge');
+  const row = r.rows[0];
+  assert.ok(row.reaches);
+  assert.ok(row.dist > 0, 'the walk out is a distance rather than nothing');
+  assert.ok(row.way, 'and it comes out somewhere on the boundary');
+  assert.equal(r.summary.stranded, 0);
+  assert.equal(r.summary.reaching, 1);
+});
+
+test('paving that reaches the boundary is the public way; a fence line is only said to be', () => {
+  const s = corridorSchool({ len: 6 });
+  const grass = dischargeAnalysis(s);
+  assert.equal(grass.summary.rule, 'boundary');
+  // A drive from the west door out to the edge of the site.
+  addRegion(s, rectPts(-300, -300, 300, 300), { surf: 'turf', name: 'Lawn' });
+  addRegion(s, rectPts(-300, 8, 4, 24), { surf: 'asphalt', name: 'Drive' });
+  const paved = dischargeAnalysis(s);
+  assert.equal(paved.summary.rule, 'paved');
+  assert.ok(paved.rows[0].way.paved);
+});
+
+test('a door that opens into an enclosure is not an exit, and the finding says so', () => {
+  // Every way out bricked up except one that opens into a planting bed with a
+  // ring of planting bed around it: there is ground outside the door and no
+  // route off the property from it.
+  const s = corridorSchool({ len: 6 });
+  addRegion(s, rectPts(-400, -400, 400, 400), { surf: 'garden', name: 'Bed' });
+  const r = dischargeAnalysis(s);
+  assert.equal(r.summary.reaching, 0);
+  assert.ok(has(r.findings, 'discharge-blocked') || has(r.findings, 'discharge-unknown'),
+    'a door onto nowhere is a finding');
+});
+
+test('a discharge route steeper than a ramp may be is a failure, not a note', () => {
+  const s = corridorSchool({ len: 6 });
+  addRegion(s, rectPts(-300, -300, 300, 300), { surf: 'turf', name: 'Lawn' });
+  const level = dischargeAnalysis(s);
+  assert.ok(level.rows[0].grade < ACCESSIBLE_GRADE);
+  assert.ok(!has(level.findings, 'discharge-grade'));
+
+  // ...and now tilt the ground away west of the door, which is the direction
+  // it discharges in. Gently enough to still be walkable — a bank steeper than
+  // 25% is not in the mesh at all, and a route that goes round a bank is not a
+  // steep route, which is the right answer and the wrong test.
+  ensureTerrain(s);
+  raiseTerrain(s.terrain, -150, 18, 200, -25);
+  const steep = dischargeAnalysis(s);
+  assert.ok(steep.rows[0].grade > MAX_RAMP_GRADE,
+    `the walk out runs down a bank (${steep.rows[0].grade})`);
+  const f = find(steep.findings, 'discharge-grade');
+  assert.ok(f && f.level === 'fail');
+});
+
+test('the egress report carries the walk after the door as well as the one before it', () => {
+  const s = buildSampleSchool();
+  const r = egressAnalysis(s);
+  assert.ok(r.discharge, 'the analysis has a discharge half');
+  assert.equal(r.discharge.rows.length, r.exits.length);
+  // The two halves are added into one number for the reader who wants to know
+  // how far it is out of here — and it is longer than either half alone.
+  if (r.summary.worst && r.summary.toPublicWay !== null) {
+    assert.ok(r.summary.toPublicWay > r.summary.worst.travel);
+  }
+  // ...and the discharge findings are in the same list as the rest.
+  const codes = r.findings.map((f) => f.code);
+  assert.ok(codes.some((c) => c.startsWith('discharge')), codes.join(','));
+});
+
+test('a sealed building has no discharge to report, and does not invent one', () => {
+  const s = corridorSchool({ exit: false });
+  const r = dischargeAnalysis(s);
+  assert.equal(r.rows.length, 0);
+  assert.deepEqual(r.findings, []);
+  // ...and the egress analysis still says the one thing that matters.
+  const e = egressAnalysis(s);
+  assert.equal(e.findings.length, 1);
+  assert.equal(e.findings[0].code, 'no-exits');
+});
+
+test('the note about a long discharge is a note, because no code sets a limit', () => {
+  assert.ok(DISCHARGE_NOTE > 0);
+  const s = buildSampleSchool();
+  const r = dischargeAnalysis(s);
+  const long = find(r.findings, 'discharge-distance');
+  if (long) assert.equal(long.level, 'note');
 });

@@ -44,6 +44,12 @@ export const INSET = 1.8;         // ft
 // is the middle of it, and two hiding places in one small room would sit on
 // top of each other.
 export const MIN_TILE_SIDE = 5;   // ft
+// ...and what one wants out on the site, where the tiles are eight feet across
+// and a sixteen-foot walk between two car parks is a piece of ground with two
+// ends and no corners. Twenty feet is somewhere you could lose a kickball.
+export const MIN_YARD_SIDE = 20;  // ft
+// The largest share of a hunt that may be outdoors — see `hidingPlaces`.
+export const OUTDOOR_SHARE = 0.25;
 // A storey climbed, in feet of apparent distance, for the warmth reading only.
 // Warmth is a straight line and a straight line through a slab is a lie the
 // other way — without this the thing directly under your feet reads as
@@ -111,12 +117,17 @@ export function quadrantOf(bounds, x, z) {
 }
 
 // The hint itself. Deliberately a place and not a route.
-export function describePlace(bounds, x, z, roomName, floorIndex, floorCount = 1) {
-  const room = roomName || 'an unnamed room';
+//
+// `opts.outdoors` is Phase 17's one change to it: a hiding place on the site
+// is on no storey at all, so "on Level 1" would be wrong and a silence would
+// send a child indoors to look for it. It says "outside" instead.
+export function describePlace(bounds, x, z, roomName, floorIndex, floorCount = 1, opts = {}) {
+  const room = roomName || (opts.outdoors ? 'the grounds' : 'an unnamed room');
   const q = quadrantOf(bounds, x, z);
   const where = !q ? `the middle of ${room}`
     : q.includes('-') ? `the ${q} corner of ${room}`
       : `the ${q} end of ${room}`;
+  if (opts.outdoors) return `${where}, outside`;
   return floorCount > 1 ? `${where}, on Level ${floorIndex + 1}` : where;
 }
 
@@ -140,6 +151,8 @@ function spotsOn(tile) {
 
 const bigEnough = (t) =>
   t.rect && (t.x1 - t.x0) >= MIN_TILE_SIDE && (t.z1 - t.z0) >= MIN_TILE_SIDE;
+const bigEnoughOutside = (t) =>
+  t.rect && (t.x1 - t.x0) >= MIN_YARD_SIDE && (t.z1 - t.z0) >= MIN_YARD_SIDE;
 
 // Every room that has somewhere to hide something, biggest tile first within
 // each. Rooms rather than tiles is the unit on purpose: eight things in eight
@@ -164,6 +177,46 @@ export function huntCandidates(nav) {
         bounds: roomBounds(mesh, roomId),
       });
     }
+  }
+  return [...out, ...yardCandidates(nav)];
+}
+
+// ...and the same question asked of the site. Phase 11 could not ask it: the
+// mesh covered rooms and the outdoors was one node, so "hidden on the playing
+// field" had no place in it to be and no name to be called. `sitemesh.js` cuts
+// the ground into tiles the same way, and a *named site region* is exactly the
+// unit a hint wants — "the north-east corner of the Playing Field" is a
+// sentence a seven-year-old will act on for the same reason "the north-west
+// corner of the Library" is.
+//
+// Unnamed ground is left out on purpose. A hunt that sends somebody to "the
+// south end of the lawn" on a nine-acre site is a hunt about wandering.
+export function yardCandidates(nav) {
+  const yard = nav && nav.yard;
+  if (!yard || !yard.tiles.length) return [];
+  const byRegion = new Map();
+  for (const t of yard.tiles) {
+    if (!t.name || !bigEnoughOutside(t)) continue;
+    if (!byRegion.has(t.name)) byRegion.set(t.name, []);
+    byRegion.get(t.name).push(t);
+  }
+  const out = [];
+  for (const [name, tiles] of byRegion) {
+    const usable = tiles.slice().sort((a, b) => b.area - a.area);
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const t of usable) {
+      x0 = Math.min(x0, t.x0); z0 = Math.min(z0, t.z0);
+      x1 = Math.max(x1, t.x1); z1 = Math.max(z1, t.z1);
+    }
+    out.push({
+      floor: 0,
+      outdoors: true,
+      room: `y:${usable[0].region}`,
+      name,
+      area: usable.reduce((a, t) => a + t.area, 0),
+      tiles: usable,
+      bounds: { x0, z0, x1, z1 },
+    });
   }
   return out;
 }
@@ -195,11 +248,20 @@ export function hidingPlaces(nav, opts = {}) {
     const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
   }
 
+  // How much of a hunt may be outdoors. A playing field is a hundred times the
+  // area of a gym, so the area-weighted pool above puts the whole site at the
+  // front of it and a hunt sorted honestly is a hunt around a car park. The
+  // grounds are *part* of the school rather than most of it, so they get a
+  // share of the hunt rather than a place in the queue.
+  const outsideCap = Math.max(1, Math.round(count * OUTDOOR_SHARE));
+  let outside = 0;
+
   const places = [];
   const used = new Set();          // "room|x|z", so a second pass can't repeat
   for (let pass = 0; pass < 2 && places.length < count; pass++) {
     for (const r of pool) {
       if (places.length >= count) break;
+      if (r.outdoors && outside >= outsideCap) continue;
       const tile = r.tiles[Math.min(pass, r.tiles.length - 1)];
       const spots = spotsOn(tile);
       const start = Math.floor(rand() * spots.length);
@@ -214,6 +276,7 @@ export function hidingPlaces(nav, opts = {}) {
         break;
       }
       if (!spot) continue;
+      if (r.outdoors) outside++;
       const item = HUNT_ITEMS[places.length % HUNT_ITEMS.length];
       places.push({
         id: `h${places.length}`,
@@ -223,10 +286,12 @@ export function hidingPlaces(nav, opts = {}) {
         floor: r.floor,
         room: r.room,
         roomName: r.name,
+        outdoors: !!r.outdoors,
         tile: tile.id,
         x: spot.x,
         z: spot.z,
-        hint: describePlace(r.bounds, spot.x, spot.z, r.name, r.floor, floorCount),
+        hint: describePlace(r.bounds, spot.x, spot.z, r.name, r.floor, floorCount,
+          { outdoors: r.outdoors }),
       });
     }
   }

@@ -11,7 +11,7 @@ import {
   toBytes, base64ToBytes, bytesToBase64,
   parseGLB, isGLB, parseModelFile, mulMat, composeTRS, normalMatrix,
   readAccessor, readModel, computeNormals, modelBBox, fitModel, bakeFit,
-  loadModel, writeGLB,
+  loadModel, writeGLB, EXT_INSTANCING,
 } from '../js/gltf.js';
 
 // A unit triangle standing on the xz plane, in the shape `writeGLB` takes.
@@ -409,4 +409,85 @@ test('readAccessor with no bufferView reads as zeroes, per the spec', () => {
 test('the caps are the ones the UI quotes', () => {
   assert.equal(MAX_MODEL_BYTES, 8 * 1024 * 1024);
   assert.ok(MAX_VERTICES >= 100000);
+});
+
+// ---------- instancing ----------
+//
+// Phase 9 wrote every copy of every desk out in full, on a stated argument:
+// an extension is a thing the importer at the other end may not have. Phase 17
+// made it a choice instead, because a furnished campus is four megabytes of
+// the same chair. The tests are about the two halves of that: what the file
+// says, and that the old file is still one argument away.
+
+const instancedTri = (n = 3) => ({
+  ...tri({ name: 'chairs' }),
+  instances: {
+    count: n,
+    translation: Float32Array.from(
+      Array.from({ length: n }, (_, i) => [i * 10, 0, i * 4]).flat()),
+    rotation: Float32Array.from(
+      Array.from({ length: n }, () => [0, 0, 0, 1]).flat()),
+    scale: Float32Array.from(
+      Array.from({ length: n }, () => [1, 1, 1]).flat()),
+  },
+});
+
+test('a mesh with instances writes its geometry once and its copies beside it', () => {
+  const { json } = parseGLB(writeGLB([instancedTri(4)]));
+  assert.equal(json.meshes.length, 1, 'one mesh, whatever the count');
+  const node = json.nodes.find((nd) => nd.extensions && nd.extensions[EXT_INSTANCING]);
+  assert.ok(node, 'the node carries the extension');
+  const attrs = node.extensions[EXT_INSTANCING].attributes;
+  assert.ok(attrs.TRANSLATION !== undefined && attrs.ROTATION !== undefined && attrs.SCALE !== undefined);
+  for (const [name, type] of [['TRANSLATION', 'VEC3'], ['ROTATION', 'VEC4'], ['SCALE', 'VEC3']]) {
+    const acc = json.accessors[attrs[name]];
+    assert.equal(acc.count, 4, `${name} has one entry per copy`);
+    assert.equal(acc.type, type);
+    assert.equal(acc.componentType, 5126);
+  }
+});
+
+test('the extension is declared required, not merely used', () => {
+  // An importer that does not know it would otherwise read one desk where
+  // there are eight hundred and say nothing. A file that quietly loses most of
+  // its contents is worse than one that refuses to open.
+  const { json } = parseGLB(writeGLB([instancedTri()]));
+  assert.deepEqual(json.extensionsUsed, [EXT_INSTANCING]);
+  assert.deepEqual(json.extensionsRequired, [EXT_INSTANCING]);
+});
+
+test('a file with nothing instanced in it declares no extension at all', () => {
+  const { json } = parseGLB(writeGLB([tri()]));
+  assert.equal(json.extensionsUsed, undefined);
+  assert.equal(json.extensionsRequired, undefined);
+  assert.ok(!json.nodes.some((nd) => nd.extensions));
+});
+
+test('the instance transforms come back out as they went in', () => {
+  const mesh = instancedTri(3);
+  const { json, bin } = parseGLB(writeGLB([mesh]));
+  const node = json.nodes.find((nd) => nd.extensions);
+  const attrs = node.extensions[EXT_INSTANCING].attributes;
+  const t = readAccessor(json, [bin], attrs.TRANSLATION);
+  assert.deepEqual(Array.from(t), Array.from(mesh.instances.translation));
+  const r = readAccessor(json, [bin], attrs.ROTATION);
+  assert.equal(r.length, 12, 'a quaternion each');
+});
+
+test('an empty instance list is a mesh, not an instanced mesh', () => {
+  const { json } = parseGLB(writeGLB([{ ...tri(), instances: { count: 0 } }]));
+  assert.ok(!json.nodes.some((nd) => nd.extensions));
+  assert.equal(json.extensionsRequired, undefined);
+  assert.equal(json.meshes.length, 1);
+});
+
+test('the instanced node is still under the one root that carries the units', () => {
+  // Instance translations are in the node's own space, so the root's
+  // feet-to-metres scale has to still apply to them.
+  const { json } = parseGLB(writeGLB([instancedTri()]));
+  const root = json.nodes[json.scenes[0].nodes[0]];
+  assert.ok(root.children.length >= 1);
+  const child = json.nodes[root.children[0]];
+  assert.ok(child.extensions && child.extensions[EXT_INSTANCING]);
+  assert.deepEqual(root.scale, [FT_TO_M, FT_TO_M, FT_TO_M]);
 });

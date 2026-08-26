@@ -291,6 +291,17 @@ export function codePanel(report, opts = {}) {
       ? `${Math.round(e.deadEnds[0].depth)} ft / ${e.limits.deadEnd} ft`
       : `none / ${e.limits.deadEnd} ft`],
   ];
+  // The half of the walk that used to stop at the threshold. No limit column,
+  // because the code sets no number for it — but a panel that quotes a travel
+  // distance and says nothing about the two hundred feet of car park after the
+  // door has told half the story.
+  const dis = e.discharge;
+  if (dis && dis.summary.worst) {
+    rows.push(['Exit discharge', `${Math.round(dis.summary.worst.dist)} ft to the ` +
+      `${dis.summary.rule === 'paved' ? 'paved boundary' : 'site boundary'}`]);
+  } else if (dis && dis.summary.stranded) {
+    rows.push(['Exit discharge', `${dis.summary.stranded} of ${dis.summary.exits} reach nothing`]);
+  }
   return {
     title: 'CODE INFORMATION',
     edition: report.editionLabel,

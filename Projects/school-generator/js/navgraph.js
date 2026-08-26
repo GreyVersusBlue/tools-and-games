@@ -29,11 +29,22 @@
 // one more tile, and a route that merely passes through a room no longer
 // visits it.
 //
-// **The outside is one node.** Every exterior door on the ground floor lands
-// on it. That is a deliberate flattening: the site is open ground and Phase 5
-// gave it a heightfield rather than obstacles, so routing across it is a
-// straight line and a graph would only add nodes with nothing to say. An
-// exterior door above the ground floor is not an exit — it is a door onto a
+// **The outside used to be one node**, and every exterior door on the ground
+// floor landed on it at a flat forty-five feet. That was a deliberate
+// flattening with a stated reason — the site was open ground, so routing
+// across it was a straight line — and it stopped being true once the ground
+// grew regions, a heightfield and, with Phase 17's campus, a second building
+// to walk to. So the outdoors is now `sitemesh.js`'s tiles, wired exactly as a
+// storey's are: an exterior door stands on the piece of ground outside it, and
+// two doors forty feet apart are forty feet apart rather than ninety.
+//
+// The `out` node survives, and means what it always should have: **off the
+// property**. Every tile that reaches the public way runs into it, one way
+// only — nothing routes *through* the street to get somewhere else in the
+// school, which is the same rule that kept a fire drill from leaving by one
+// door and coming back in another.
+//
+// An exterior door above the ground floor is not an exit — it is a door onto a
 // roof or a future balcony — and is left out rather than guessed at.
 //
 // **A hole is not a way up.** Stairs, ramps and elevators are links you can
@@ -45,6 +56,8 @@ import {
   shapesOf, shapeArea, segEnds, isBuilt, isDoorOpening, interiorPoint, shapeAt,
 } from './shapes.js';
 import { meshFloor, tileFor } from './navmesh.js';
+import { meshSite, yardTileFor } from './sitemesh.js';
+import { MinHeap } from './heap.js';
 import {
   stairsOf, stairMetrics, runLength, localToWorld, elevatorSize, isRun, isElevator,
   LANDING,
@@ -74,6 +87,18 @@ export const RAMP_COST = 1.25;
 export const ELEVATOR_COST = 45;   // ft-equivalent, wait included
 // Changing storeys at all is worth avoiding when the alternative is level.
 export const FLOOR_PENALTY = 8;    // ft-equivalent per storey climbed
+// What it costs to step outside, per exterior doorway a route uses. The same
+// kind of number as `STAIR_COST` and for the same reason: a route across the
+// site is a real route and a shorter one is genuinely shorter, but going out
+// is a door, a coat and the weather, and a graph with no charge on it walks a
+// spine school's whole passing period through the light courts because that
+// saves forty feet. Sixty a door means out-and-back has to save two hundred
+// before anybody takes it — and it costs a campus nothing, because a campus
+// has no indoor alternative to compare it with.
+//
+// It is charged on `cost` and not on `dist`. Every distance this tool prints
+// is still the distance somebody walks.
+export const OUTDOOR_COST = 60;    // ft-equivalent per exterior doorway
 
 // ---------- the accessible graph ----------
 //
@@ -144,11 +169,21 @@ export function floorRooms(state, floorIndex) {
 // hub, and a reader threading a route has no other way to know which side of
 // a doorway it came out on. `room` is null for the two edges that lie in no
 // room at all — a door onto the outside, and the climb inside a stair.
-function addEdge(adj, a, b, cost, dist = cost, room = null) {
+function addEdge(adj, a, b, cost, dist = cost, room = null, extra = null) {
   if (!adj.has(a)) adj.set(a, []);
   if (!adj.has(b)) adj.set(b, []);
-  adj.get(a).push({ to: b, cost, dist, room });
-  adj.get(b).push({ to: a, cost, dist, room });
+  adj.get(a).push({ to: b, cost, dist, room, ...extra });
+  adj.get(b).push({ to: a, cost, dist, room, ...extra });
+}
+
+// One edge, one way. The only thing in the graph that needs it is the step off
+// the property: the public way is where a route *ends*, and an undirected edge
+// into it would make the street a corridor joining every door in the school to
+// every other at no cost — which is precisely the flattening this phase took
+// out of the front door.
+function addArc(adj, a, b, cost, dist = cost, extra = null) {
+  if (!adj.has(a)) adj.set(a, []);
+  adj.get(a).push({ to: b, cost, dist, room: null, ...extra });
 }
 
 // One doorway, as the two rooms it joins and the point you pass through.
@@ -191,6 +226,11 @@ export function buildNav(state, opts = {}) {
   const mesh = [];
   const tiles = new Map();
   const floorHt = (state && state.floorHt) || FLOOR_H;
+  // The outdoors, meshed — built on demand, because a sealed building has no
+  // outside at all and meshing a site nobody can reach is thirty milliseconds
+  // spent on nothing.
+  let yard = null;
+  const ways = [];
 
   const put = (node) => { nodes.set(node.id, node); return node; };
 
@@ -257,10 +297,14 @@ export function buildNav(state, opts = {}) {
   const ensureOutside = () => {
     if (outside) return outside;
     outside = put({
-      id: 'out', kind: 'outside', floor: 0, name: 'Outside',
+      id: 'out', kind: 'outside', outdoors: true, floor: 0, name: 'Outside',
       x: 0, z: 0, area: 0,
     });
+    // Nothing is ever pushed into this list. `out` is a sink: you reach the
+    // public way and you are done, and a route that wanted to come back would
+    // have to come back through the ground it left over.
     adj.set(outside.id, []);
+    yard = opts.yard || meshSite(state, { field: opts.siteField });
     return outside;
   };
 
@@ -303,12 +347,20 @@ export function buildNav(state, opts = {}) {
     if (a) attach(floorIndex, a, portal.id, pa.x, pa.z);
     if (b) attach(floorIndex, b, portal.id, pb.x, pb.z);
     if (exterior) {
-      // The outside hub has no position of its own worth trusting, so the
-      // cost of leaving is the walk to the muster point rather than to a
-      // notional centre of the site.
-      // Reaching the door is reaching the exit, so the walk out to the muster
-      // point costs a route something and measures as nothing.
-      addEdge(adj, portal.id, ensureOutside().id, MUSTER_FT, 0, null);
+      // A door onto the site stands on the piece of ground outside it, exactly
+      // as an interior door stands on the floor either side of it. That one
+      // line is what replaced the forty-five-foot flat charge onto a hub: the
+      // tile's own wiring joins this door to every other door, gate and public
+      // way standing on the same patch of ground, at the distance between
+      // them.
+      ensureOutside();
+      const out = a ? pb : pa;
+      const found = yardTileFor(yard, out.x, out.z);
+      if (found) {
+        found.tile.anchors.push({
+          id: portal.id, x: out.x, z: out.z, extra: OUTDOOR_COST, span: 0,
+        });
+      }
       exits.push(portal);
     }
     return portal;
@@ -396,14 +448,47 @@ export function buildNav(state, opts = {}) {
     // the node list so a reader can say so, but it is not a route.
   }
 
+  // ---- the outdoors ----
+  //
+  // The same two things a storey contributes, and for the same two reasons: a
+  // gate is where two tiles of walkable ground meet, and it is the one thing
+  // out here that becomes a node; a way node is where a tile reaches the
+  // public way, and it is where a route out of the building ends.
+  if (yard) {
+    for (const g of yard.gates) {
+      put(g);
+      gates.push(g);
+      adj.set(g.id, []);
+      for (const tid of [g.a, g.b]) {
+        const t = yard.byId.get(tid);
+        if (t) t.anchors.push({ id: g.id, x: g.x, z: g.z, extra: 0, span: 0 });
+      }
+    }
+    for (const w of yard.ways) {
+      put(w);
+      ways.push(w);
+      adj.set(w.id, []);
+      const t = yard.byId.get(w.tile);
+      if (t) t.anchors.push({ id: w.id, x: w.x, z: w.z, extra: 0, span: 0 });
+      // ...and off the property. One way only — see `addArc`.
+      addArc(adj, w.id, ensureOutside().id, 0, 0);
+    }
+  }
+
   // ---- the tiles, wired ----
   //
   // Everything standing on one convex rectangle is joined to everything else
   // standing on it, at the straight line between them — which is the true
   // walking distance, because there is nothing in a tile to walk round. This
   // one loop is the whole of what replaced the hub.
-  for (const m of mesh) {
-    for (const t of m.tiles) {
+  //
+  // Since Phase 17 the outdoors is in the same loop, because the outdoors is
+  // the same thing: convex rectangles of somewhere you can stand. A yard edge
+  // carries the tile it crosses under `yard` rather than under `room`, so a
+  // reader threading a route can say which piece of ground it walked over
+  // without the site turning up in a list of rooms.
+  const wire = (list, roomOf, extraOf) => {
+    for (const t of list) {
       const as = t.anchors;
       for (let i = 0; i < as.length; i++) {
         for (let j = i + 1; j < as.length; j++) {
@@ -412,11 +497,13 @@ export function buildNav(state, opts = {}) {
           addEdge(adj, as[i].id, as[j].id,
             d + as[i].extra + as[j].extra,
             d + as[i].span + as[j].span,
-            t.room);
+            roomOf(t), extraOf ? extraOf(t) : null);
         }
       }
     }
-  }
+  };
+  for (const m of mesh) wire(m.tiles, (t) => t.room);
+  if (yard) wire(yard.tiles, () => null, (t) => ({ yard: t.id }));
 
   // Which doorways and links belong to a room, by construction rather than by
   // walking the graph. A door at the far end of a long room is no longer a
@@ -442,6 +529,10 @@ export function buildNav(state, opts = {}) {
     nodes, adj,
     rooms, portals, links, exits, gates,
     mesh,
+    // The outdoors: the mesh itself, and the nodes on it that mean "the
+    // street". Both are null-safe — a sealed building has neither.
+    yard,
+    ways,
     outside: outside ? outside.id : null,
     perFloor,
     roomIdAt,
@@ -451,6 +542,14 @@ export function buildNav(state, opts = {}) {
       if (!id) return null;
       const found = tileFor(mesh[floorIndex], id, x, z);
       return found && found.inside ? found.tile : null;
+    },
+    // The piece of ground a point is standing on, for a caller out on the
+    // site. Nearest rather than null when the point is in a flower bed: a
+    // walker who got somewhere the mesh calls unwalkable still has to be able
+    // to walk out of it.
+    yardTile: (x, z) => {
+      const found = yardTileFor(yard, x, z);
+      return found ? found.tile : null;
     },
     portalsOf: (roomId) => portalsByRoom.get(roomId) || [],
     linksOf: (roomId) => linksByRoom.get(roomId) || [],
@@ -481,6 +580,17 @@ export function nodeAt(nav, floorIndex, x, z) {
   const id = nav.roomIdAt(floorIndex, x, z);
   return id || nav.outside;
 }
+
+// Is this node out on the site? The one question three readers ask — the
+// egress field (which may not pass through the outdoors), a route printer
+// (which may want to say so), and the discharge walk below (which may go
+// nowhere else).
+export const outdoors = (nav, id) => {
+  if (!nav || !id) return false;
+  if (id === nav.outside) return true;
+  const n = nav.nodes.get(id);
+  return !!(n && n.outdoors);
+};
 
 // ---------- routing ----------
 
@@ -516,15 +626,17 @@ export function findPath(nav, fromId, toId, opts = {}) {
 
   const g = new Map([[fromId, 0]]);
   const came = new Map();
-  // A school's graph is a few hundred nodes, so the open set is a sorted
-  // array rather than a heap — the constant factor on a binary heap costs
-  // more to read than it saves to run at this size.
-  const open = [{ id: fromId, f: h(fromId) }];
+  // The open set is a binary heap. It was a sorted array until Phase 17, on a
+  // stated measurement — a school's graph was a few hundred nodes and the sort
+  // cost less to run than a heap costs to read. A campus with a meshed site
+  // round it is a few thousand, which is past where that trade turns over, and
+  // sorting the whole open set on every pop is the term that does the turning.
+  const open = new MinHeap();
+  open.push({ id: fromId }, h(fromId));
   const done = new Set();
 
-  while (open.length) {
-    open.sort((a, b) => a.f - b.f);
-    const cur = open.shift();
+  while (open.size) {
+    const cur = open.pop();
     if (cur.id === toId) {
       const path = [toId];
       let at = toId;
@@ -539,7 +651,7 @@ export function findPath(nav, fromId, toId, opts = {}) {
       if (tentative >= (g.get(e.to) ?? Infinity)) continue;
       g.set(e.to, tentative);
       came.set(e.to, cur.id);
-      open.push({ id: e.to, f: tentative + h(e.to) });
+      open.push({ id: e.to }, tentative + h(e.to));
     }
   }
   return null;
@@ -555,14 +667,20 @@ export function findPath(nav, fromId, toId, opts = {}) {
 // named room, which is a path, and a number about the school day that quoted
 // the lift's wait in feet would be a number about nothing.
 export function pathDistance(nav, path, opts = {}) {
-  if (!nav || !path || path.length < 2) return { dist: 0, cost: 0, rooms: [], links: 0 };
-  let dist = 0, cost = 0, links = 0;
+  if (!nav || !path || path.length < 2) {
+    return { dist: 0, cost: 0, rooms: [], links: 0, outdoor: 0 };
+  }
+  let dist = 0, cost = 0, links = 0, outdoor = 0;
   const rooms = [];
   for (let i = 1; i < path.length; i++) {
     const e = edgeOn(nav, path[i - 1], path[i], opts);
     if (!e) continue;
     dist += e.dist;
     cost += e.cost;
+    // How much of the walk is out on the site. Zero for every design before
+    // Phase 17 and for every scheme but the campus after it — where it is the
+    // number that says what the scheme costs you in February.
+    if (e.yard) outdoor += e.dist;
     if (e.room && rooms[rooms.length - 1] !== e.room) rooms.push(e.room);
   }
   // How many times the route changed storey — a stair, a ramp or a lift, each
@@ -571,7 +689,21 @@ export function pathDistance(nav, path, opts = {}) {
     const n = nodeOf(nav, id, opts);
     if (n && n.kind === 'link') links++;
   }
-  return { dist, cost, rooms, links };
+  return { dist, cost, rooms, links, outdoor };
+}
+
+// Does this route leave the building? True for a step across the site as well
+// as for a node standing on it — two doors on one piece of ground are joined
+// directly, so a path between two blocks of a campus can go outdoors without
+// visiting a single outdoor *node*.
+export function goesOutdoors(nav, path, opts = {}) {
+  if (!nav || !path || path.length < 2) return false;
+  for (let i = 1; i < path.length; i++) {
+    if (outdoors(nav, path[i])) return true;
+    const e = edgeOn(nav, path[i - 1], path[i], opts);
+    if (e && e.yard) return true;
+  }
+  return false;
 }
 
 // A node path, as somewhere to put your feet. Gates and room nodes contribute
@@ -649,14 +781,21 @@ export function waypoints(nav, path, opts = {}) {
 // behind, and the cheapest one to remove.
 export function pointEntry(nav, from) {
   const roomId = nav.roomIdAt(from.floor ?? 0, from.x, from.z);
-  if (!roomId) return nav.outside ? { id: nav.outside } : null;
-  const found = tileFor(nav.mesh[from.floor ?? 0], roomId, from.x, from.z);
-  if (!found || !found.tile.anchors.length) return { id: roomId };
+  // Outdoors, the same trick over the same kind of tile: somebody standing in
+  // the car park is joined to the doors and gates on that piece of ground at
+  // the straight line to each, rather than teleported onto a hub that was
+  // forty-five feet from every door in the school.
+  const found = roomId
+    ? tileFor(nav.mesh[from.floor ?? 0], roomId, from.x, from.z)
+    : yardTileFor(nav.yard, from.x, from.z);
+  if (!roomId && !found) return nav.outside ? { id: nav.outside } : null;
+  if (!found || !found.tile.anchors.length) return { id: roomId || nav.outside };
   const id = '@';
   const node = { id, kind: 'point', floor: from.floor ?? 0, x: from.x, z: from.z, room: roomId };
+  if (!roomId) node.outdoors = true;
   const edges = found.tile.anchors.map((a) => {
     const d = Math.hypot(a.x - from.x, a.z - from.z);
-    return { to: a.id, cost: d + a.extra, dist: d + a.span, room: found.tile.room };
+    return { to: a.id, cost: d + a.extra, dist: d + a.span, room: found.tile.room || null };
   });
   return {
     id,
@@ -696,27 +835,28 @@ export function egressField(nav, opts = {}) {
   const dist = new Map();
   const via = new Map();
   if (!nav || !nav.exits.length) return { dist, via, reached: 0, metric };
-  const open = [];
+  const open = new MinHeap();
   for (const e of nav.exits) {
     dist.set(e.id, 0);
     via.set(e.id, e.id);
-    open.push({ id: e.id, d: 0 });
+    open.push({ id: e.id, d: 0 }, 0);
   }
   const done = new Set();
-  while (open.length) {
-    open.sort((a, b) => a.d - b.d);
-    const cur = open.shift();
+  while (open.size) {
+    const cur = open.pop();
     if (done.has(cur.id)) continue;
     done.add(cur.id);
     for (const e of nav.adj.get(cur.id) || []) {
-      // The outside is where you are going, not somewhere you pass through: a
+      // The outdoors is where you are going, not somewhere you pass through: a
       // route that leaves by one door and comes back in another is not egress.
-      if (e.to === nav.outside) continue;
+      // That was one comparison against the outside hub until Phase 17 gave
+      // the site real tiles; it is the same rule, asked of all of them.
+      if (outdoors(nav, e.to)) continue;
       const d = cur.d + weight(e);
       if (d >= (dist.get(e.to) ?? Infinity)) continue;
       dist.set(e.to, d);
       via.set(e.to, via.get(cur.id));
-      open.push({ id: e.to, d });
+      open.push({ id: e.to, d }, d);
     }
   }
   return { dist, via, reached: dist.size, metric };
@@ -761,6 +901,70 @@ export function nearestExit(nav, field, floorIndex, x, z) {
   return { exit, dist: at.dist };
 }
 
+// ---------- exit discharge ----------
+
+// How far it is from every exterior door to the public way, over the ground
+// rather than through it. Multi-source Dijkstra from the way nodes, the same
+// shape as `egressField` and for the same reason: one queue rather than one
+// search per door.
+//
+// **It never goes back inside.** A discharge route that entered one door and
+// left by another would be a corridor with a lawn in it. So the walk relaxes
+// into outdoor nodes and into exterior doorways, and an exterior doorway is
+// settled rather than expanded — you have arrived at it, and what is on the
+// far side of it is the building's problem, not the site's.
+//
+// How steep the walk is is deliberately *not* here. It is a property of the
+// route that comes out rather than of the search, and charging it per edge
+// would mean charging the steepest cell of a five-hundred-foot lawn to a route
+// that crosses one corner of it. `sitemesh.js`'s `pathGrade` measures the line
+// the route actually walks, once, afterwards.
+export function dischargeField(nav) {
+  const dist = new Map();
+  const via = new Map();
+  const prev = new Map();
+  const ways = (nav && nav.ways) || [];
+  if (!ways.length) return { dist, via, prev, ways: 0 };
+  const open = new MinHeap();
+  for (const w of ways) {
+    dist.set(w.id, 0);
+    via.set(w.id, w.id);
+    open.push({ id: w.id, d: 0 }, 0);
+  }
+  const done = new Set();
+  while (open.size) {
+    const cur = open.pop();
+    if (done.has(cur.id)) continue;
+    done.add(cur.id);
+    const here = nav.nodes.get(cur.id);
+    // A doorway is where the site stops.
+    if (here && here.kind === 'portal') continue;
+    for (const e of nav.adj.get(cur.id) || []) {
+      if (e.to === nav.outside) continue;
+      const n = nav.nodes.get(e.to);
+      if (!n) continue;
+      if (!n.outdoors && !(n.kind === 'portal' && n.exterior)) continue;
+      const d = cur.d + e.dist;
+      if (d >= (dist.get(e.to) ?? Infinity)) continue;
+      dist.set(e.to, d);
+      via.set(e.to, via.get(cur.id));
+      prev.set(e.to, cur.id);
+      open.push({ id: e.to, d }, d);
+    }
+  }
+  return { dist, via, prev, ways: ways.length };
+}
+
+// The route itself, as node ids from the door to the public way. Read off the
+// field's own back-pointers rather than searched for again.
+export function dischargePath(field, exitId) {
+  if (!field || !field.dist.has(exitId)) return null;
+  const path = [exitId];
+  let at = exitId;
+  while (field.prev.has(at)) { at = field.prev.get(at); path.push(at); }
+  return path;
+}
+
 // Rooms with no way out at all, for a caller that wants to say so.
 export function unreachableRooms(nav, field) {
   return nav.rooms.filter((r) => !field.dist.has(r.id));
@@ -782,6 +986,10 @@ export function navSummary(nav) {
     tiles: nav.mesh.reduce((n, m) => n + m.tiles.length, 0),
     gates: nav.gates.length,
     outside: !!nav.outside,
+    // ...and what the outdoors came out as, since Phase 17. Zero of both on a
+    // sealed building, which is the one design that genuinely has no outside.
+    yard: nav.yard ? nav.yard.tiles.length : 0,
+    ways: nav.ways ? nav.ways.length : 0,
   };
 }
 

@@ -18,7 +18,7 @@ import { buildNav } from '../js/navgraph.js';
 import {
   HUNT_ITEMS, WARMTH_BANDS, DEFAULT_COUNT, MIN_COUNT, MAX_COUNT,
   FIND_R, REVEAL_R, MIN_TILE_SIDE, FLOOR_FEET,
-  roomBounds, quadrantOf, describePlace, huntCandidates, hidingPlaces,
+  roomBounds, quadrantOf, describePlace, huntCandidates, yardCandidates, hidingPlaces,
   startHunt, checkFind, huntWarmth, nearestHidden, revealAt, huntSummary,
   bandFor, apparentDistance, unfound,
 } from '../js/hunt.js';
@@ -182,10 +182,16 @@ test('a spot the caller refuses is never used', () => {
 test('a hiding place sits inside the room it names', () => {
   const nav = navOf(school());
   for (const p of hidingPlaces(nav, { seed: 9 })) {
-    const b = roomBounds(nav.mesh[p.floor], p.room);
+    // Since Phase 17 a place may be out on the site, where the thing it names
+    // is a region rather than a room — so the bounds come from whichever mesh
+    // it belongs to. Both answers are "the tiles this place is made of".
+    const b = p.outdoors
+      ? yardCandidates(nav).find((c) => c.room === p.room).bounds
+      : roomBounds(nav.mesh[p.floor], p.room);
     assert.ok(p.x >= b.x0 && p.x <= b.x1 && p.z >= b.z0 && p.z <= b.z1,
       `${p.name} is inside ${p.roomName || p.room}`);
     assert.ok(p.hint.includes(p.roomName || 'an unnamed room'), 'and the hint says so');
+    if (p.outdoors) assert.ok(p.hint.endsWith('outside'), 'and an outdoor hint says outside');
   }
 });
 

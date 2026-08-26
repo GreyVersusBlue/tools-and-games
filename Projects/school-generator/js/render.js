@@ -4895,11 +4895,20 @@ export function initRender(canvas) {
   // since Phase 1 of the first arc; gltf.js scales the root node into metres
   // so the school arrives in Blender at the size it says it is.
   //
-  // Instances are expanded rather than exported as glTF's own instancing
-  // extension: `EXT_mesh_gpu_instancing` is an extension, and an extension is
+  // Instances went out expanded until Phase 17, for a reason Phase 9 stated
+  // and meant: `EXT_mesh_gpu_instancing` is an extension, and an extension is
   // a thing the importer at the other end may not have. A school of ten
-  // thousand desks is a bigger file this way and it opens everywhere.
+  // thousand desks was a bigger file that way and it opened everywhere.
+  //
+  // What changed is the size. A furnished campus expands to four megabytes of
+  // the same chair, and an export nobody waits for is not an export that opens
+  // everywhere either. So it is a choice now: `opts.instancing` (default on)
+  // writes each prop's geometry once and its copies as node instancing;
+  // unticking the box gives back exactly the file Phase 9 wrote.
   const _exportMatrix = new THREE.Matrix4();
+  const _exportPos = new THREE.Vector3();
+  const _exportQuat = new THREE.Quaternion();
+  const _exportScale = new THREE.Vector3();
   const _exportNormalMat = new THREE.Matrix3();
   const _exportV = new THREE.Vector3();
 
@@ -4933,11 +4942,79 @@ export function initRender(canvas) {
     out.push({ name, position, normal, color, index: index || null });
   }
 
+  // The same mesh, written once with its copies alongside it. The geometry
+  // stays in its own space — that is the whole saving — and each instance
+  // carries the world transform it would have been baked with.
+  //
+  // Keyed by the geometry *object*, not by name: `getPropGeometry` caches one
+  // geometry per prop type and hands the same object to every storey, so a
+  // three-storey school writes one chair rather than three. Identity is the
+  // right test precisely because the cache is what makes it true.
+  function pushInstancedMesh(seen, obj, name, fallbackColor) {
+    const found = seen.get(obj.geometry);
+    if (found) {
+      appendInstances(found, obj);
+      return;
+    }
+    const geometry = obj.geometry;
+    const posAttr = geometry.getAttribute('position');
+    if (!posAttr) return;
+    const count = posAttr.count;
+    const position = new Float32Array(count * 3);
+    const normal = new Float32Array(count * 3);
+    const color = new Float32Array(count * 3);
+    const nrmAttr = geometry.getAttribute('normal');
+    const colAttr = geometry.getAttribute('color');
+    for (let i = 0; i < count; i++) {
+      position[i * 3] = posAttr.getX(i);
+      position[i * 3 + 1] = posAttr.getY(i);
+      position[i * 3 + 2] = posAttr.getZ(i);
+      if (nrmAttr) {
+        normal[i * 3] = nrmAttr.getX(i);
+        normal[i * 3 + 1] = nrmAttr.getY(i);
+        normal[i * 3 + 2] = nrmAttr.getZ(i);
+      }
+      if (colAttr) {
+        color[i * 3] = colAttr.getX(i); color[i * 3 + 1] = colAttr.getY(i); color[i * 3 + 2] = colAttr.getZ(i);
+      } else {
+        color[i * 3] = fallbackColor.r; color[i * 3 + 1] = fallbackColor.g; color[i * 3 + 2] = fallbackColor.b;
+      }
+    }
+    const idx = geometry.getIndex();
+    const row = {
+      name,
+      position,
+      normal,
+      color,
+      index: idx ? Uint32Array.from(idx.array) : null,
+      // Accumulated as plain arrays and packed once the whole scene has been
+      // walked, because the same geometry turns up again on the next storey.
+      instances: { count: 0, translation: [], rotation: [], scale: [] },
+    };
+    seen.set(obj.geometry, row);
+    appendInstances(row, obj);
+  }
+
+  function appendInstances(row, obj) {
+    const inst = row.instances;
+    for (let i = 0; i < obj.count; i++) {
+      obj.getMatrixAt(i, _exportMatrix);
+      _exportMatrix.premultiply(obj.matrixWorld);
+      _exportMatrix.decompose(_exportPos, _exportQuat, _exportScale);
+      inst.translation.push(_exportPos.x, _exportPos.y, _exportPos.z);
+      inst.rotation.push(_exportQuat.x, _exportQuat.y, _exportQuat.z, _exportQuat.w);
+      inst.scale.push(_exportScale.x, _exportScale.y, _exportScale.z);
+      inst.count++;
+    }
+  }
+
   const _exportColor = new THREE.Color();
 
   function collectExport(opts = {}) {
     scene.updateMatrixWorld(true);
     const out = [];
+    // One row per distinct instanced geometry, filled as the scene is walked.
+    const instanced = new Map();
     const groups = [
       { group: buildingGroup, name: 'Structure' },
       { group: roofGroup, name: 'Roof' },
@@ -4949,7 +5026,9 @@ export function initRender(canvas) {
         if (!obj.isMesh || !obj.geometry || obj.isSprite) return;
         if (!obj.visible) return;
         _exportColor.set(obj.material && obj.material.color ? obj.material.color : 0xffffff);
-        if (obj.isInstancedMesh) {
+        if (obj.isInstancedMesh && opts.instancing !== false) {
+          pushInstancedMesh(instanced, obj, `${name}-${obj.id}`, _exportColor);
+        } else if (obj.isInstancedMesh) {
           for (let i = 0; i < obj.count; i++) {
             obj.getMatrixAt(i, _exportMatrix);
             _exportMatrix.premultiply(obj.matrixWorld);
@@ -4967,6 +5046,18 @@ export function initRender(canvas) {
       _exportColor.set(0xffffff);
       pushExportMesh(out, terrainMesh.geometry, terrainMesh.matrixWorld, 'Terrain', _exportColor);
     }
+    for (const row of instanced.values()) {
+      const inst = row.instances;
+      out.push({
+        ...row,
+        instances: {
+          count: inst.count,
+          translation: Float32Array.from(inst.translation),
+          rotation: Float32Array.from(inst.rotation),
+          scale: Float32Array.from(inst.scale),
+        },
+      });
+    }
     return out;
   }
 
@@ -4975,12 +5066,28 @@ export function initRender(canvas) {
   // advance is the difference between a progress note and a hung tab.
   function exportStats(opts = {}) {
     const meshes = collectExport(opts);
-    let vertices = 0, triangles = 0;
+    let vertices = 0, triangles = 0, instances = 0, drawn = 0;
     for (const m of meshes) {
-      vertices += m.position.length / 3;
-      triangles += (m.index ? m.index.length : m.position.length / 3) / 3;
+      const v = m.position.length / 3;
+      const t = (m.index ? m.index.length : v) / 3;
+      const n = m.instances ? m.instances.count : 1;
+      vertices += v;
+      triangles += t;
+      instances += m.instances ? n : 0;
+      // What the *scene* holds, as opposed to what the file carries: the two
+      // are the same number without instancing and a factor of a hundred apart
+      // with it, and a panel that quoted only one of them would be saying
+      // either "this is a small file" or "this is a big model" and never both.
+      drawn += t * n;
     }
-    return { meshes: meshes.length, vertices, triangles, bytes: vertices * 36 + triangles * 12 };
+    return {
+      meshes: meshes.length,
+      vertices,
+      triangles,
+      instances,
+      drawn,
+      bytes: vertices * 36 + triangles * 12 + instances * 40,
+    };
   }
 
   function exportGLB(opts = {}) {
@@ -4991,6 +5098,7 @@ export function initRender(canvas) {
       generator: 'School Generator (gltf.js)',
       unitScale: opts.unitScale === undefined ? FT_TO_M : opts.unitScale,
     });
+
   }
 
   function downloadGLB(filename = 'school.glb', opts = {}) {

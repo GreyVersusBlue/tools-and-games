@@ -9,25 +9,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createState, addFloor, CELL, DOOR_W, WALL_T, FLOOR_H, WALL_T_INT, WALL_T_EXT } from '../js/grid.js';
+import { createState, addFloor, CELL, DOOR_W, WALL_T, FLOOR_H, WALL_H, WALL_T_INT, WALL_T_EXT } from '../js/grid.js';
 import {
   EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_RAIL,
   EDGE_WINDOW, EDGE_OPENING,
 } from '../js/lattice.js';
-import { sheet } from './build.mjs';
+import { sheet, boxRoom } from './build.mjs';
 import {
   addShape, setSegWall, addOpening, SEG_WALL, SEG_NONE, SEG_GLASS,
   LEAF_SINGLE, LEAF_DOUBLE, OP_WINDOW,
 } from '../js/shapes.js';
 import { addProp } from '../js/props.js';
-import { addStair, stairMetrics } from '../js/stairs.js';
+import {
+  addStair, stairMetrics, stairsOf, isRun, runLength, localToWorld, stairSurfaceAt, HEADROOM,
+} from '../js/stairs.js';
 import { catalogEntry } from '../js/catalog.js';
 import { buildSampleSchool } from '../js/sample.js';
 import {
   WALKER_R, WALL_PAD, STEP_UP, STEP_DOWN, MIN_OBSTACLE_H, GROUND_Y,
+  HEAD_H, SOFFIT_T,
   solidSpans, segsCross, wallSegments, propObstacles, buildCollider, updateDoors,
   resolvePoint, crossesWall, storeyAt, supportAt, tryStep, moveWalker,
-  openingRailSegments, elevatorSegments, doorSegments,
+  openingRailSegments, elevatorSegments, doorSegments, emptyCollider,
+  overheadAt, headroomAt,
 } from '../js/collide.js';
 import { elevatorSize } from '../js/stairs.js';
 import {
@@ -721,4 +725,110 @@ test('the sample school\'s berm is walkable, not a cliff', () => {
   }
   assert.ok(worst <= STEP_UP + 1e-6, `the biggest step was ${worst.toFixed(2)}ft`);
   assert.ok(pos.x > 200, `and it crossed onto the field (x = ${pos.x.toFixed(0)})`);
+});
+
+// ---------- what is over your head ----------
+//
+// Phase 17's one addition to the walker, and the smallest thing that could
+// have been: `overheadAt` is `supportAt` looking the other way, and one
+// comparison in `tryStep` against it. Both arcs skipped it and both were right
+// to — a building of flat slabs has twelve feet of air over every point of it
+// — but a stair hall has a run in it.
+
+test('a room has a ceiling, the site has sky, and a step is tested against neither', () => {
+  const s = createState(20, 20);
+  boxRoom(s, 0, 2, 2, 8, 8, { name: 'Room' });
+  // Inside, the plane the renderer draws at `WALL_H`...
+  const inside = overheadAt(s, 5 * CELL, 5 * CELL, 0);
+  assert.equal(inside.kind, 'ceiling');
+  assert.equal(inside.y, WALL_H);
+  // ...which is not what stops a body: a ceiling is a tile grid, and a run
+  // climbs through it, so a *step* is tested against structure only. On one
+  // storey there is none.
+  assert.equal(overheadAt(s, 5 * CELL, 5 * CELL, 0, { structural: true }), null);
+  assert.equal(headroomAt(s, 5 * CELL, 5 * CELL, 0, { structural: true }), Infinity);
+  // Out on the site there is nothing overhead at all.
+  assert.equal(overheadAt(s, 60 * CELL, 60 * CELL, 0), null);
+
+  addFloor(s, 1);
+  boxRoom(s, 1, 2, 2, 8, 8, { name: 'Upstairs' });
+  // The slab has no thickness in this model — `cutStart` sizes a stair's hole
+  // against the bare storey height, so giving one here would contradict it.
+  const structural = overheadAt(s, 5 * CELL, 5 * CELL, 0, { structural: true });
+  assert.equal(structural.kind, 'slab');
+  assert.equal(structural.y, s.floorHt || FLOOR_H);
+});
+
+test('the underside of a stair run is somewhere you cannot stand', () => {
+  const s = createState(30, 20);
+  boxRoom(s, 0, 1, 1, 20, 10, { name: 'Hall' });
+  addFloor(s, 1);
+  boxRoom(s, 1, 1, 1, 20, 10, { name: 'Upper Hall' });
+  const { link } = addStair(s, 0, { type: 'stair', x: 20, z: 20, rotationY: 0, width: 4 });
+  assert.ok(link);
+  const metrics = stairMetrics(s);
+  const run = runLength(link, metrics);
+  // Walk the ground under the run from its foot to its head and find where the
+  // soffit comes down to head height. It has to happen somewhere: a run climbs
+  // twelve feet, and a body is under six.
+  let blocked = 0, standing = 0;
+  for (let t = 1; t < run; t += 1) {
+    const p = localToWorld(link, 0, t);
+    const support = supportAt(s, p.x, p.z, 0);
+    if (!support || support.y > STEP_UP) { standing++; continue; }
+    const head = headroomAt(s, p.x, p.z, support.y, { structural: true });
+    if (head < HEAD_H) blocked++;
+  }
+  assert.ok(blocked > 0, 'the low end of a run is not a doorway');
+  // ...and the same points refuse a step into them.
+  const under = localToWorld(link, 0, 3);
+  const step = tryStep(s, emptyCollider(), { x: under.x - 3, y: 0, z: under.z },
+    3, 0, { grounded: true });
+  assert.equal(step, null, 'you do not walk into the underside of a stair');
+  const allowed = tryStep(s, emptyCollider(), { x: under.x - 3, y: 0, z: under.z },
+    3, 0, { grounded: true, headroom: false });
+  assert.ok(allowed, '...unless the caller says heads do not matter');
+});
+
+test('a stair the model draws always clears the head of the walker on it', () => {
+  // The invariant that keeps the head test from stopping everybody on the
+  // fourth tread: `stairs.js` sizes the hole in the slab above so a run has
+  // `HEADROOM` (6.8ft) of clearance, and a walker is `HEAD_H` (5.9ft) tall.
+  // The first number being the larger one is not a coincidence, it is the
+  // reason a compliant stair is walkable.
+  assert.ok(HEADROOM > HEAD_H, `${HEADROOM} > ${HEAD_H}`);
+  const s = buildSampleSchool();
+  const metrics = stairMetrics(s);
+  for (const link of stairsOf(s)) {
+    if (!isRun(link)) continue;
+    const run = runLength(link, metrics);
+    for (let t = 0; t <= run; t += 0.5) {
+      const p = localToWorld(link, 0, t);
+      const surf = stairSurfaceAt(link, metrics, p.x, p.z);
+      if (surf === null) continue;
+      const y = link.from * (s.floorHt || 12) + surf;
+      const head = headroomAt(s, p.x, p.z, y, { structural: true });
+      assert.ok(head >= HEAD_H,
+        `link ${link.id} at ${t.toFixed(1)}ft along has ${head.toFixed(2)}ft of headroom`);
+    }
+  }
+});
+
+test('a stairwell is a hole in the ceiling, not a lid on it', () => {
+  // Getting this the other way round — asking the slab you stand on where its
+  // holes are, rather than the slab above — puts a ceiling across the void a
+  // run climbs through, and a fire drill stops half way up.
+  const s = createState(30, 20);
+  boxRoom(s, 0, 1, 1, 20, 10, { name: 'Hall' });
+  addFloor(s, 1);
+  boxRoom(s, 1, 1, 1, 20, 10, { name: 'Upper Hall' });
+  const { link } = addStair(s, 0, { type: 'stair', x: 20, z: 20, rotationY: 0, width: 4 });
+  const metrics = stairMetrics(s);
+  const run = runLength(link, metrics);
+  // Near the top of the run, where the slab above is open.
+  const top = localToWorld(link, 0, run - 1);
+  const surf = stairSurfaceAt(link, metrics, top.x, top.z);
+  const over = overheadAt(s, top.x, top.z, link.from * (s.floorHt || 12) + surf);
+  assert.ok(!over || over.y - surf >= HEAD_H, 'there is sky, or at least air, above the top of a run');
+  assert.ok(SOFFIT_T > 0, 'and a run is drawn as treads on air, so its underside is an allowance');
 });

@@ -1670,11 +1670,14 @@
         student count and a grade band into a whole school — corridors,
         classroom wings, a gym and a cafeteria, stairs where the travel
         distance says they go, every room furnished from its own name, and a
-        car park sized to the staff. Three schemes lay it out three ways: a
-        <b>spine and wings</b>, a <b>courtyard</b> round an open court, or a
+        car park sized to the staff. Four schemes lay it out four ways: a
+        <b>spine and wings</b>, a <b>courtyard</b> round an open court, a
         <b>compact block</b> with the smallest footprint and the worst inner
-        daylight. Run the same brief through all three and read the report on
-        each — that comparison is what the word "generate" is for. What comes out is an ordinary design:
+        daylight, or a <b>campus</b> — a front building, a quadrangle and a row
+        of separate teaching pavilions, the one scheme where getting to your
+        next class means going outside. Run the same brief through all four and
+        read the report on each — that comparison is what the word "generate"
+        is for. What comes out is an ordinary design:
         nothing is marked as generated, and the first thing to do with it is
         move a wall. If you have a plan already, the <b>🖼 Overlay</b> tool
         puts it under the grid — measure something on it, say how long that
@@ -1746,6 +1749,7 @@
       <label class="opt"><input type="checkbox" id="export-glb-site" checked /> Site and landscape</label>
       <label class="opt"><input type="checkbox" id="export-glb-terrain" /> Graded ground</label>
       <label class="opt"><input type="checkbox" id="export-glb-ceilings" /> Ceilings (hides the interior from above)</label>
+      <label class="opt"><input type="checkbox" id="export-glb-instancing" checked /> Instanced furniture (much smaller; needs an importer that knows EXT_mesh_gpu_instancing)</label>
       <p class="hint" id="export-glb-note">
         A .glb file of everything on screen, in metres, with the colours baked
         into the vertices — open it in Blender, or anything else that reads
@@ -1903,7 +1907,7 @@
       <p class="hint">
         There is no language model behind this box — it is a table of phrases.
         It reads student counts, grade bands, storey counts, a seed, which of
-        the three schemes to lay out, whether you want a gym, a cafeteria, a
+        the four schemes to lay out, whether you want a gym, a cafeteria, a
         library or a site, and where you want two rooms kept apart or put
         together — and it tells you every word it ignored. The controls below
         are the actual input; the sentence just fills them in.

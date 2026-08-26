@@ -120,6 +120,12 @@ export const MAX_STUDENTS = 4000;
 // everything; the courtyard is the shortest walk with an outdoor room in the
 // middle of it; the compact block has the smallest footprint, the shortest
 // corridors and the worst inner daylight, and the daylight section will say so.
+//
+// The fourth arrived with Phase 17 and disagrees with all three about
+// something none of them could: the campus is not one connected building. It
+// could not have been written before the site was meshed, because a route
+// between two of its blocks is a walk across the ground and until then the
+// ground was a single node forty-five feet from every door in the school.
 export const SCHEMES = [
   {
     key: 'spine',
@@ -137,7 +143,14 @@ export const SCHEMES = [
     key: 'compact',
     label: 'Compact block',
     note: 'One deep rectangle: two corridors, three bands of rooms and a hall at ' +
-      'each end. The smallest footprint of the three, and the one with rooms that never see a window.',
+      'each end. The smallest footprint of the four, and the one with rooms that never see a window.',
+  },
+  {
+    key: 'campus',
+    label: 'Campus',
+    note: 'A front building at the street — admin, gym, cafeteria, library — then a ' +
+      'quadrangle, then a row of separate teaching pavilions. The only scheme where ' +
+      'getting from one class to the next means going outside.',
   },
 ];
 export const DEFAULT_SCHEME = 'spine';

@@ -48,17 +48,25 @@ export const MIN_REGION_AREA = 25;      // ft² — smaller than a parking stall
 // not stop at the door and a courtyard walled on three sides is a real room.
 // `step` names the footstep voice, out of sound.js's existing set, so walking
 // off the terrazzo onto gravel sounds like walking onto gravel.
+//
+// Two more columns since Phase 17, and both are about routing rather than
+// about looks. `walk` is whether the site mesh may cross this surface at all:
+// a planting bed is a thing you walk *around*, and a discharge route measured
+// through the shrubs is a discharge route nobody takes. `paved` is whether it
+// is a made surface — which is what tells the public way from the fence line,
+// because a code means a street or a walk that leads to one and a gap in a
+// hedge at the back of the playing field is not one.
 export const SITE_SURFACES = [
-  { key: 'asphalt', label: 'Asphalt paving', color: '#4a4b4f', grain: 'speck', tile: 8, hatch: 'plain', absorb: 0.04, step: 'hard' },
-  { key: 'concrete', label: 'Concrete walk', color: '#9d9c96', grain: 'speck', tile: 6, hatch: 'grid', absorb: 0.02, step: 'hard' },
-  { key: 'court', label: 'Sport court coating', color: '#3f6a72', grain: 'speck', tile: 10, hatch: 'plain', absorb: 0.05, step: 'hard' },
-  { key: 'track', label: 'Running track', color: '#9c4a34', grain: 'speck', tile: 6, hatch: 'lines', absorb: 0.12, step: 'soft' },
-  { key: 'turf', label: 'Lawn', color: '#5d7c46', grain: 'fiber', tile: 12, hatch: 'dots', absorb: 0.35, step: 'soft' },
-  { key: 'field', label: 'Athletic field', color: '#4f7a3f', grain: 'mow', tile: 24, hatch: 'dots', absorb: 0.40, step: 'soft' },
-  { key: 'mulch', label: 'Playground mulch', color: '#6d5238', grain: 'chip', tile: 5, hatch: 'chips', absorb: 0.50, step: 'soft' },
-  { key: 'gravel', label: 'Gravel', color: '#8a8478', grain: 'chip', tile: 4, hatch: 'dots', absorb: 0.25, step: 'gravel' },
-  { key: 'sand', label: 'Sand', color: '#c4b287', grain: 'speck', tile: 4, hatch: 'dots', absorb: 0.40, step: 'gravel' },
-  { key: 'garden', label: 'Planting bed', color: '#4a3a2c', grain: 'chip', tile: 3, hatch: 'chips', absorb: 0.45, step: 'soft' },
+  { key: 'asphalt', label: 'Asphalt paving', color: '#4a4b4f', grain: 'speck', tile: 8, hatch: 'plain', absorb: 0.04, step: 'hard', walk: true, paved: true },
+  { key: 'concrete', label: 'Concrete walk', color: '#9d9c96', grain: 'speck', tile: 6, hatch: 'grid', absorb: 0.02, step: 'hard', walk: true, paved: true },
+  { key: 'court', label: 'Sport court coating', color: '#3f6a72', grain: 'speck', tile: 10, hatch: 'plain', absorb: 0.05, step: 'hard', walk: true, paved: true },
+  { key: 'track', label: 'Running track', color: '#9c4a34', grain: 'speck', tile: 6, hatch: 'lines', absorb: 0.12, step: 'soft', walk: true, paved: true },
+  { key: 'turf', label: 'Lawn', color: '#5d7c46', grain: 'fiber', tile: 12, hatch: 'dots', absorb: 0.35, step: 'soft', walk: true, paved: false },
+  { key: 'field', label: 'Athletic field', color: '#4f7a3f', grain: 'mow', tile: 24, hatch: 'dots', absorb: 0.40, step: 'soft', walk: true, paved: false },
+  { key: 'mulch', label: 'Playground mulch', color: '#6d5238', grain: 'chip', tile: 5, hatch: 'chips', absorb: 0.50, step: 'soft', walk: true, paved: false },
+  { key: 'gravel', label: 'Gravel', color: '#8a8478', grain: 'chip', tile: 4, hatch: 'dots', absorb: 0.25, step: 'gravel', walk: true, paved: false },
+  { key: 'sand', label: 'Sand', color: '#c4b287', grain: 'speck', tile: 4, hatch: 'dots', absorb: 0.40, step: 'gravel', walk: true, paved: false },
+  { key: 'garden', label: 'Planting bed', color: '#4a3a2c', grain: 'chip', tile: 3, hatch: 'chips', absorb: 0.45, step: 'soft', walk: false, paved: false },
 ];
 
 export const SURFACE_KEYS = SITE_SURFACES.map((s) => s.key);

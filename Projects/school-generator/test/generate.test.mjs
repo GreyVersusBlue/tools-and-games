@@ -18,7 +18,10 @@ import {
 import { buildProgram, SCHEMES, normalizeBrief } from '../js/program.js';
 import { parseBrief } from '../js/brief.js';
 import { serialize, deserialize } from '../js/save-load.js';
-import { buildNav, navSummary, floorRooms, egressField, unreachableRooms, findPath } from '../js/navgraph.js';
+import {
+  buildNav, navSummary, floorRooms, egressField, unreachableRooms, findPath,
+  goesOutdoors, pathDistance,
+} from '../js/navgraph.js';
 import { buildReport } from '../js/report.js';
 import { buildingOccupancy } from '../js/occupancy.js';
 import { buildingOverhang } from '../js/shadow.js';
@@ -320,8 +323,8 @@ test('a whole sweep of briefs builds something the report can read', () => {
 
 const SCHEME_KEYS = SCHEMES.map((s) => s.key);
 
-test('the brief carries a scheme, and only one of the three', () => {
-  assert.deepEqual(SCHEME_KEYS, ['spine', 'courtyard', 'compact']);
+test('the brief carries a scheme, and only one of the four', () => {
+  assert.deepEqual(SCHEME_KEYS, ['spine', 'courtyard', 'compact', 'campus']);
   assert.equal(normalizeBrief({}).scheme, 'spine');
   assert.equal(normalizeBrief({ scheme: 'courtyard' }).scheme, 'courtyard');
   assert.equal(normalizeBrief({ scheme: 'pyramid' }).scheme, 'spine');
@@ -355,14 +358,57 @@ test('every scheme builds a school you can walk round', () => {
       assert.ok(nav.exits.length > 0, `${scheme} has a way out`);
       assert.equal(unreachableRooms(nav, field).length, 0,
         `${scheme} on ${storeys} storeys strands nobody`);
-      // ...and the whole of it is one building rather than two that met: every
-      // room can be walked to from every other, without going outside.
+      // ...and every room can be walked to from every other. Until Phase 17
+      // that also meant *without going outside*, because there was only ever
+      // one connected building; the campus is the scheme where it does not,
+      // and the site mesh is what makes the walk between its blocks a route
+      // rather than a forty-five-foot flat charge onto a hub.
       const from = nav.rooms[0];
+      let outdoors = 0;
       for (const room of nav.rooms) {
-        assert.ok(findPath(nav, from.id, room.id), `${scheme}: ${room.name} is reachable inside`);
+        const path = findPath(nav, from.id, room.id);
+        assert.ok(path, `${scheme}: ${room.name} is reachable`);
+        if (goesOutdoors(nav, path)) outdoors++;
+      }
+      if (scheme === 'campus') {
+        assert.ok(outdoors > 0, 'a campus is more than one building, and the walk between them is outdoors');
+      } else {
+        assert.equal(outdoors, 0,
+          `${scheme} on ${storeys} storeys is one building: nobody has to go outside to cross it`);
       }
     }
   }
+});
+
+test('a campus is separate buildings, joined only by the ground between them', () => {
+  const state = buildSchool(layoutSchool({ ...BRIEF, storeys: 2, scheme: 'campus' }), { furnish: false });
+  const nav = buildNav(state);
+  // Every pavilion is internally whole — you can walk from any room in a
+  // building to any other room in it without stepping outside...
+  const buildingOf = new Map();
+  for (const a of nav.rooms) {
+    if (buildingOf.has(a.id)) continue;
+    const group = `b${buildingOf.size}`;
+    buildingOf.set(a.id, group);
+    for (const b of nav.rooms) {
+      if (buildingOf.has(b.id) || b.floor !== a.floor) continue;
+      const path = findPath(nav, a.id, b.id);
+      if (path && !goesOutdoors(nav, path)) buildingOf.set(b.id, group);
+    }
+  }
+  const groups = new Set(buildingOf.values());
+  assert.ok(groups.size > 1, `a campus is more than one building, found ${groups.size}`);
+  // ...and the walk between two of them is measured over the site rather than
+  // charged at a flat rate: two rooms in different pavilions are further apart
+  // than the muster distance the old outside hub would have quoted.
+  const ids = [...buildingOf.entries()];
+  const a = ids.find(([, g]) => g === 'b0');
+  const other = ids.find(([, g]) => g !== 'b0');
+  const path = findPath(nav, a[0], other[0]);
+  assert.ok(path && goesOutdoors(nav, path));
+  const walk = pathDistance(nav, path);
+  assert.ok(walk.outdoor > 0, 'and the site is a measured part of it');
+  assert.ok(walk.outdoor <= walk.dist);
 });
 
 test('a corridor cut into compartments keeps the junction at its far end', () => {
@@ -378,7 +424,7 @@ test('a corridor cut into compartments keeps the junction at its far end', () =>
   assert.ok(north && south);
   const path = findPath(nav, north.id, south.id);
   assert.ok(path, 'the ring is a ring');
-  assert.ok(!path.includes(nav.outside), 'and you do not have to go outside to walk it');
+  assert.ok(!goesOutdoors(nav, path), 'and you do not have to go outside to walk it');
 });
 
 test('every storey of every scheme stands on the one below it', () => {
@@ -389,10 +435,10 @@ test('every storey of every scheme stands on the one below it', () => {
   }
 });
 
-test('the three schemes are three different buildings', () => {
+test('the four schemes are four different buildings', () => {
   const plans = SCHEME_KEYS.map((scheme) => layoutSchool({ ...BRIEF, scheme }));
   const shapes = plans.map((p) => `${p.footprint.w}x${p.footprint.h}`);
-  assert.equal(new Set(shapes).size, 3, `three footprints, got ${shapes.join(' ')}`);
+  assert.equal(new Set(shapes).size, 4, `four footprints, got ${shapes.join(' ')}`);
   // The courtyard is the one with a hole in it, and the hole is not built on.
   const court = plans[1].court;
   assert.ok(court && court.w > 0 && court.h > 0);
@@ -507,4 +553,59 @@ test('applyAdjacency swaps what a room is, never where it is', () => {
   assert.equal(music.x0, 60, 'the band room is now the far slot');
   assert.equal(music.name, 'Band Room', 'and it took its name with it');
   assert.equal(report[0].done, true);
+});
+
+// ---------- the campus ----------
+//
+// The fourth scheme, and the first where the building is not one connected
+// thing. What the tests below are for is the *contract*: Phase 8 said a fourth
+// scheme would be a fourth function against `rects`, `links`, `exits`,
+// `footprint`, `entry`, `envelope` and `style`, and this is the phase that
+// finds out whether that was true.
+
+test('a campus is separate buildings on a common quadrangle', () => {
+  const plan = layoutSchool({ ...BRIEF, storeys: 2, scheme: 'campus' });
+  assert.equal(plan.scheme, 'campus');
+  assert.ok(plan.pavilions >= 2, 'more than one teaching building');
+  assert.ok(plan.pavRows >= 1);
+  assert.ok(plan.quad && plan.quad.h > 0, 'and a quadrangle between them');
+  // The paving that joins them is the scheme's one addition to the contract.
+  assert.ok(Array.isArray(plan.walks) && plan.walks.length >= 2);
+  for (const w of plan.walks) {
+    assert.ok(w.x1 > w.x0 && w.y1 >= w.y0, 'a walk is a rectangle in cells');
+  }
+  // ...and no other scheme asks for any.
+  for (const scheme of ['spine', 'courtyard', 'compact']) {
+    const other = layoutSchool({ ...BRIEF, scheme });
+    assert.ok(!other.walks, `${scheme} lays no walks`);
+  }
+});
+
+test('the campus places every room it is given, across the range of briefs', () => {
+  for (const students of [120, 600, 1200]) {
+    for (const storeys of [1, 2, 3]) {
+      const plan = layoutSchool({ students, storeys, seed: 2, band: 'middle', scheme: 'campus' });
+      assert.equal(plan.unplaced.length, 0,
+        `${students} students on ${storeys} storeys leaves ${plan.unplaced.length} rooms out`);
+      assert.ok(plan.footprint.w <= 200 && plan.footprint.h <= 200);
+    }
+  }
+});
+
+test('a campus grows a building rather than a corridor when the rooms do not fit', () => {
+  // The other three schemes lengthen a corridor; this one has no corridor to
+  // lengthen, so the lever is the number of pavilions.
+  const small = layoutSchool({ students: 150, storeys: 2, seed: 2, scheme: 'campus' });
+  const big = layoutSchool({ students: 1200, storeys: 2, seed: 2, scheme: 'campus' });
+  assert.ok(big.pavilions > small.pavilions,
+    `${big.pavilions} buildings for 1200, ${small.pavilions} for 150`);
+});
+
+test('every storey of a campus stands on the one below it', () => {
+  // Its front building is one storey and its pavilions are all of them, which
+  // is what makes this true by construction rather than by check.
+  for (const storeys of [2, 3]) {
+    const state = buildSchool(layoutSchool({ ...BRIEF, storeys, scheme: 'campus' }), { furnish: false });
+    assert.equal(buildingOverhang(state).area, 0);
+  }
 });

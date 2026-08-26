@@ -19,7 +19,18 @@
 //           down the tree; base colour taken from the material factor and
 //           baked into vertex colours, because a prop in this build is one
 //           vertex-coloured material and nothing else.
-//   write — one buffer, one material, N meshes, as .glb.
+//   write — one buffer, one material, N meshes, as .glb, with optional
+//           `EXT_mesh_gpu_instancing` on the nodes that want it.
+//
+// The one extension it does handle is `EXT_mesh_gpu_instancing`, and Phase 9
+// deliberately did not: *"an extension is a thing the importer at the other
+// end may not have. A school of ten thousand desks is a bigger file this way
+// and it opens everywhere."* That was the right call for a school. It is the
+// wrong call for a campus, where "a bigger file" is four megabytes of the same
+// chair written out eight hundred times, and it is the difference between an
+// export you can open and one you wait for. So it is a *choice* now rather
+// than a policy: `opts.instancing` on the writer, a checkbox on the panel, and
+// the expanded form still one click away for an importer that needs it.
 //
 // What it does not handle, deliberately: textures (the prop material has no
 // map — see render.js's `propMat`), skins, morph targets, animations, sparse
@@ -44,6 +55,9 @@ export const MAX_VERTICES = 250000;
 export const MAX_TRIANGLES = 250000;
 
 export const FT_TO_M = 0.3048;
+
+// The one extension this writer speaks.
+export const EXT_INSTANCING = 'EXT_mesh_gpu_instancing';
 
 const GLB_MAGIC = 0x46546c67; // 'glTF', little-endian
 const CHUNK_JSON = 0x4e4f534a; // 'JSON'
@@ -525,6 +539,12 @@ const pad4 = (n) => (n + 3) & ~3;
 // name }` in this build's own coordinates (feet, y up); `unitScale` is the
 // root node's scale, which is what turns feet into the metres every other
 // tool assumes.
+//
+// A mesh may also carry `instances` — `{ count, translation, rotation, scale }`
+// as flat arrays of 3, 4 and 3 floats each — and then its geometry is written
+// once and the copies go out as `EXT_mesh_gpu_instancing` on the node. The
+// geometry has to be in its *own* space for that: an instanced mesh's vertices
+// are not pre-transformed, which is the whole saving.
 export function writeGLB(meshes, opts = {}) {
   const list = (meshes || []).filter((m) => m && m.position && m.position.length >= 9);
   if (!list.length) throw new Error('Nothing to export');
@@ -563,6 +583,7 @@ export function writeGLB(meshes, opts = {}) {
 
   const gltfMeshes = [];
   const nodes = [];
+  let usesInstancing = false;
   for (const m of list) {
     const pos = m.position instanceof Float32Array ? m.position : Float32Array.from(m.position);
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -599,7 +620,30 @@ export function writeGLB(meshes, opts = {}) {
       prim.indices = accessors.length - 1;
     }
     gltfMeshes.push({ ...(m.name ? { name: m.name } : {}), primitives: [prim] });
-    nodes.push({ mesh: gltfMeshes.length - 1, ...(m.name ? { name: m.name } : {}) });
+    const node = { mesh: gltfMeshes.length - 1, ...(m.name ? { name: m.name } : {}) };
+    // The copies, if there are any. Per the extension: one accessor per
+    // attribute, all of the same count, on a node that carries the mesh and
+    // no children of its own.
+    const inst = m.instances;
+    if (inst && inst.count > 0) {
+      const attributes = {};
+      const add = (arr, type, expect) => {
+        if (!arr || arr.length !== inst.count * expect) return null;
+        const f = arr instanceof Float32Array ? arr : Float32Array.from(arr);
+        return addAttribute(f, type);
+      };
+      const t = add(inst.translation, 'VEC3', 3);
+      const r = add(inst.rotation, 'VEC4', 4);
+      const sc = add(inst.scale, 'VEC3', 3);
+      if (t !== null) attributes.TRANSLATION = t;
+      if (r !== null) attributes.ROTATION = r;
+      if (sc !== null) attributes.SCALE = sc;
+      if (Object.keys(attributes).length) {
+        node.extensions = { [EXT_INSTANCING]: { attributes } };
+        usesInstancing = true;
+      }
+    }
+    nodes.push(node);
   }
 
   // One root, so the unit conversion is a single scale rather than a factor
@@ -614,6 +658,13 @@ export function writeGLB(meshes, opts = {}) {
 
   const json = {
     asset: { version: '2.0', generator: opts.generator || 'School Generator' },
+    // Declared *required* as well as used, on purpose. An importer that does
+    // not know the extension would otherwise read one desk where there are
+    // eight hundred and say nothing — and a file that quietly loses most of
+    // its contents is worse than one that refuses to open.
+    ...(usesInstancing
+      ? { extensionsUsed: [EXT_INSTANCING], extensionsRequired: [EXT_INSTANCING] }
+      : {}),
     scene: 0,
     scenes: [{ nodes: [nodes.length - 1] }],
     nodes,
