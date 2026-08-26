@@ -10,14 +10,19 @@ that made every number it prints true, and a last one that made the building
 fun to be in rather than only accurate to stand in. The third opens with the
 one piece of surgery both of the others deferred — **there is one kind of room
 now, and it has an id** — and then stops to fix what a session with a real
-floor plan found, which is that **the sheet you draw on was a constant**.
+floor plan found, which is that **the sheet you draw on was a constant**. It
+goes on to two people editing one plan, and then to the sentence the whole arc
+was named for: **the tool knew everything about the building except who it was
+for**, and now it knows that too.
 
 **Everything on both of the first two lists has now shipped.** The last
 holdout was real-time collaboration, deferred by every arc for the same good
 reason and built in Phase 14 — the client half of it entirely, and the server
-half as a contract, because a static site cannot host a relay. Twenty-two
-phases, 65 modules, ~37,200 lines, 1,174 tests, eleven save-format versions and
-no build step.
+half as a contract, because a static site cannot host a relay. Phase 15 then
+did the thing arc three was named for: the building is full of *this* school
+rather than a plausible one, and the tool will say whether the building suits
+it. Twenty-three phases, 68 modules, ~39,500 lines, 1,237 tests, eleven
+save-format versions and no build step.
 
 This document is two things, and the rule for a builder is the same as it has
 always been: read the first part before touching anything, and add to the
@@ -27,7 +32,7 @@ second part rather than starting a third list.
   emerged, the conventions a new builder has to know before their first edit,
   what the twenty phases shipped, what fought back, and the standing backlog no
   phase has claimed.
-- **Part two — arc three.** Five phases plus one that was not planned, three
+- **Part two — arc three.** Five phases plus one that was not planned, four
   of them done. Not a spec — a scoped list to pull from and refine before
   beginning each piece.
 
@@ -63,6 +68,14 @@ worst-first, saying which rule it applied and what it measured — and it will
 generate the whole building from a student count and a sentence, three ways,
 so the loop is: seed a plan, read the report, move a door, read it again.
 
+Since Phase 15 it reads the *school* as well as the building. Give it a
+timetable — generated from the rooms it has, or read out of the spreadsheet a
+school office already keeps — and it answers the questions no drawing can:
+which rooms are empty while the science block is double-booked, which class is
+in a room too small for it, how far 9th grade walks between second and third
+period every day for a year, and which corridor carries three cohorts at one
+bell.
+
 ## The architecture that emerged
 
 **One pure module per question, one thin tool on top of it, one `node --test`
@@ -86,20 +99,22 @@ that ever changed a shape).
 What it derives: `navgraph.js` + `navmesh.js` (the walkable surface as convex
 tiles, and the graph over it) · `collide.js` (what stops you, what holds you
 up) · `occupancy.js` / `egress.js` / `daylight.js` / `takeoff.js` /
-`acoustics.js` / `report.js` (the analysis, none of it stored) ·
+`acoustics.js` / `utilisation.js` / `report.js` (the analysis, none of it
+stored) ·
 `lights.js` / `sky.js` / `sound.js` (which props emit, where the sun is, what
 there is to hear) · `shadow.js` (what an upper storey is standing on) ·
 `blueprint.js` (the printable sheet) · `minimap.js`.
 
 What it generates: `program.js` (how many rooms of what kind) · `brief.js`
-(a sentence read into that program) · `generate.js` (where the rooms go, three
+(a sentence read into that program) · `timetable.js` (which class is in which
+room in which period, and what would not fit) · `generate.js` (where the rooms go, three
 schemes) · `autofurnish.js` + `templates.js` (which layout a room's name asks
 for) · `sample.js`.
 
 What it plays: `schedule.js` (the day as five numbers) · `agents.js` (a seeded
 population with timetables) · `shove.js` (bump a chair and it scoots) ·
 `hunt.js` (eight things hidden on the mesh) · `decor.js` (a season as a
-palette).
+palette) · `lift.js` (a car with a call button, and the queue at its doors).
 
 What it shows and shares: `render.js` (the three.js scene — by far the largest
 file) · `audio.js` (the Web Audio graph, held the way `render.js` holds the
@@ -127,7 +142,7 @@ Read these before the first edit. Every one of them was learned by getting it
 wrong.
 
 - **Add a pure module and its test suite together.** No exceptions. It is why
-  this codebase stays debuggable at 34,700 lines.
+  this codebase stays debuggable at 39,500 lines.
 - **There is one kind of room, and it has an id.** A room is a polygon with a
   record: `{ id, name, color, fin, paint, group, load }`. The 4ft lattice is a
   *drawing surface* (lattice.js, paint.js) and nothing else — everything that
@@ -158,6 +173,13 @@ wrong.
   slide the *thing* onto the positive quadrant, then grow the sheet — and that
   growing is always safe while shrinking can clip a room the brush later
   repaints. See `footprint.js`.
+- **Anything outside the file that names a room names its id, and keeps the
+  name it bound by.** A timetable's section carries `room` (the id, which wins
+  and survives a rename) *and* `roomName` (what it was bound by, which is what
+  rescues it when the building was redrawn from scratch). Bind by id, then by
+  name, then by room number — "104" and "Room 104" are the same room to
+  everybody except a string comparison — and never drop what you could not
+  bind: report it. See `bindRoom` in `timetable.js`.
 - **Selection lives in tools, never in the file.** So does anything that is a
   decision about this editing session rather than about the building: whether
   overhangs are allowed, which decoration pack is open, where a shoved chair
@@ -172,8 +194,9 @@ wrong.
 - **Ctrl-combos route through `main.js`,** not through the tools' generic key
   handling. Tools only ever see Escape, Delete, Enter and friends.
 - **Undo restores a snapshot with `Object.assign`, which only ever adds.** Any
-  *optional* record on the state (`terrain`, `site`, `roof`, `life`, `overlay`,
-  `models`, `tours`) has to be deleted when the snapshot doesn't have it, or
+  *optional* record on the state (`terrain`, `site`, `roof`, `life`,
+  `timetable`, `overlay`, `models`, `tours`) has to be deleted when the
+  snapshot doesn't have it, or
   undoing past the moment it was first written silently does nothing.
 - **A `PlaneGeometry` flattened with `rotateX(-π/2)` has its extents in local X
   and Z.** `scale.set(w, d, 1)` gives a plane one unit deep. Four ghost
@@ -240,6 +263,7 @@ accessibility.
 | 12 | Identity | One kind of room, with an id; the lattice demoted to a drawing surface; a room record; delta undo | v11 |
 | 13 | The sheet | A plan you can resize, a tracing image the sheet fits itself to, a grid that is the shape it says it is, and a wall drag that stays on one wall | — |
 | 14 | Two people | The design as a log of records, last-write-wins per record on a Lamport clock, id blocks, presence, three transports, and a cloud-store client | — |
+| 15 | A real school day | A timetable that packs and says what would not fit, a CSV in and out, utilisation and passing-period travel in the report, a crowd that moves in cohorts, and a lift with a queue | v11+ |
 
 The two phases that turned out to matter most to everything after them were
 **Phase 1**, which shipped first and out of order and which every later phase
@@ -249,7 +273,7 @@ most obviously was **Phase 10**: measured over the mesh instead of over room
 hubs, a generated three-storey high school lost a mean of 9ft of travel
 distance per room and 60ft off its worst one — numbers nobody had ever walked.
 
-## What fought back, across twenty-two phases
+## What fought back, across twenty-three phases
 
 - **A constant nobody could reach is a limit, not a default, and it took a
   stranger's floor plan to find one.** The drawing surface was 160 x 120ft from
@@ -319,6 +343,20 @@ distance per room and 60ft off its worst one — numbers nobody had ever walked.
   counter that only goes up, plus a tie-break, is four lines and buys the
   property that matters: not that the right person wins, but that both screens
   agree about who did.
+- **Two numbers with the same units are the hardest kind of bug, because both
+  of them are right.** An occupant load says how many people a room may hold; a
+  roll says how many children can be given a lesson in one. They are both "how
+  many students", they differ by nearly a factor of two, and using the first
+  where the second was meant produced a page of findings that were every one of
+  them arithmetically true and collectively useless. The fix was never a fudge
+  factor: it was giving each number its own function, its own citation and its
+  own button. Phase 16 is about to introduce a third one.
+- **A queue that can hold a door open needs a bound on the holding.** Everybody
+  waiting for a lift presses the button on every frame they are not aboard,
+  which is what people do — and a car that answers each press, either by
+  re-opening or by extending its dwell, never departs at all. It is not a rare
+  race: it is the *normal* case the moment more people want the car than fit in
+  it, and it took a fixture with the stair deleted to make it happen even once.
 
 ## The standing backlog
 
@@ -329,8 +367,11 @@ them; the rest are unclaimed and can ride along with whatever is open.
 **Model and geometry**
 - Switchback ramps — one straight run means an ADA-compliant ramp is 144ft
   long and rarely placeable indoors.
-- An elevator that moves. The car teleports with `E`; there is no ride, no call
-  button, and the doors are drawn parked open. → *Phase 15 wants the queue.*
+- ~~An elevator that moves~~ — done in Phase 15 for the crowd: the car has a
+  height, a call button and a state machine, and agents queue for it. Two
+  halves are still open. The walkthrough's own `E` key still teleports, and the
+  shaft's door leaves are still *drawn* parked open — that one is a renderer
+  change and the only part of the item with no headless test.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is one colour per wall, not per face — splitting it is a renderer
@@ -353,7 +394,8 @@ them; the rest are unclaimed and can ride along with whatever is open.
 - Accessibility stops at routes: no turning circles, reach ranges or counter
   heights.
 - The report doesn't print. A title-block code panel on the blueprint is its
-  natural other half. → *Phase 16.*
+  natural other half. → *Phase 16.* The school-day section is not on the sheet
+  either, for the same reason and by the same fix.
 - ~~Sprinklered is a checkbox rather than a property of the design~~ — done in
   Phase 12, along with the code edition, the occupancy group and a design
   occupant load. What is *still* a session setting is nothing: every question
@@ -364,9 +406,21 @@ them; the rest are unclaimed and can ride along with whatever is open.
   to differ between them — which is fine until somebody picks one that does.
 
 **The crowd**
-- The timetable is random: nothing balances class sizes, matches subjects to
-  rooms, or keeps a cohort together. → *Phase 15.*
-- The crowd doesn't know the occupant load the report computed. → *Phase 15.*
+- ~~The timetable is random~~ — done in Phase 15. What is still random is the
+  *fallback*: a design with no timetable in it gets Phase 6's intake, which is
+  correct and is the reason every earlier suite still reads the same answer.
+- ~~The crowd doesn't know the occupant load the report computed~~ — done in
+  Phase 15, and it turned into a distinction rather than a wire: a roll and an
+  occupant load answer different questions and now have a rule each.
+- An imported timetable has no teachers, because the `Tools/` CSV has no
+  teacher column. So "no teacher free" never fires on one, and a real school's
+  own staffing is the one thing an import cannot bring with it.
+- Lunch is still `pickLunchroom` — the largest common room — rather than a
+  sitting the timetable schedules. A school with three lunch periods is a
+  school this model draws as one.
+- The corridor crush rule is a facilities rule of thumb (10 ft² a head is
+  tight, 5 is a crush), not a code limit. Egress width is the code question and
+  `egress.js` answers it; nothing reconciles the two.
 - The last fifth of an evacuation is a tail — a few agents work their way out
   of a corner the crowd shuffled them into.
 - Nobody carries anything, opens a locker, or talks.
@@ -534,8 +588,9 @@ walkthrough of the real tool with a real floor plan turned up, and the list is
 better for having been interrupted by it — the sentence under it is *the sheet
 you draw on was a constant, and the tool never said so*.
 
-**What is left is Phase 15, Phase 16 and Phase 17**, and none of the three is
-blocked on anything any more.
+**Phase 15 is done**, and it is the one the arc was named for: the tool now
+knows who the building is for. **What is left is Phase 16 and Phase 17**, and
+neither is blocked on anything.
 
 ## Phase 12 — Identity ✅
 
@@ -820,60 +875,172 @@ to ship a store this small.
 *Save:* none. A session id and a log live beside the file, and a design that
 has never been in a session is byte-identical to one from Phase 13.
 
-## Phase 15 — A real school day
+## Phase 15 — A real school day ✅
 
-**The building is full of a plausible school. It has never been full of *this*
-school.**
+**The building was full of a plausible school. It is now full of *this*
+school** — and it will tell you whether the building suits it.
 
-`agents.js` gives every student a room per period that isn't the one they were
-just in. Nothing balances class sizes, matches a subject to a room that suits
-it, or keeps a cohort together — and Phase 6 said so at the time, and said the
+`agents.js` gave every student a room per period that wasn't the one they were
+just in. Nothing balanced class sizes, matched a subject to a room that suited
+it, or kept a cohort together — and Phase 6 said so at the time, and said the
 real timetable belonged with the generator because it is the same problem as
-laying out the building.
+laying out the building. It was right on both counts: `timetable.js` is a
+packing with a scarcity, a preference and a report on what it could not
+satisfy, which is `generate.js` with rooms and periods where it had rectangles
+and a footprint.
 
-It is also the phase that connects this tool to the rest of the repository it
-lives in. `Tools/` already holds a schedule browser, a schedule visualiser and
-a seating-chart generator, all of which read a real school's real timetable.
-The school generator has never met any of them.
+It is also the phase that connected this tool to the rest of the repository it
+lives in. `Tools/` holds a schedule browser, a schedule visualiser and a
+seating-chart generator, all of which read a real school's real timetable in a
+CSV of one row per group and one column per period. The school generator now
+reads exactly that file.
 
-The prize is a question no drawing can answer and this tool nearly can: **does
-this building work for this timetable?** Not "how far is it to an exit" but
-"how far does 9th grade walk between second and third period, every day, for a
-year", and "which four rooms are empty at 10am while the science block is
-double-booked".
+- [x] **A real timetable.** `timetable.js`. Cohorts sized so they add up to the
+  roll, teachers who cannot be in two places, and one section per group per
+  period packed into a room of the kind the subject wants — best fit, biggest
+  class first, and the starting group rotated by the period so the same cohort
+  is not always at the front of the queue. **A school teaches what it has rooms
+  for**: a building with no gym does not timetable PE and then file a finding
+  about it. `timetableIssues` recomputes, against the building as it stands,
+  every way the day does not work — no room, a room that has since been
+  deleted, a class bigger than the room's occupant load, a lab subject in a
+  room that is not a lab, a section nobody is free to teach, and the three
+  kinds of double booking a generated timetable cannot produce and an imported
+  one can.
+- [x] **Import one.** `importTimetableCSV` reads the `Tools/schedule` template
+  — `Name, Grade, Color, Students`, then a column per period — and binds each
+  cell **by id first, then by name, then by room number**, which is the
+  difference Phase 12 makes: a binding that goes by id survives a rename, and
+  the name is what rescues it when the building was redrawn. A blank cell is a
+  free period, not an error. Everything it could not bind comes back beside the
+  timetable and is printed, because an import that silently loses four rooms
+  answers a question about a school that is not the one in the file.
+  `timetableCSV` writes it back out in the same shape, and the suite
+  round-trips a generated day through a spreadsheet and back.
+- [x] **Utilisation, in the report.** `utilisation.js`, as a section with the
+  same shape as every other — a finding, a rule, a measurement, worst-first.
+  Room-periods filled over room-periods available; which rooms stand empty in
+  the period the school is fullest; every class in a room smaller than its
+  occupant load; and the low-utilisation note that says a building is working
+  two days a week.
+- [x] **The crowd at the real occupant load.** `crowdSize` — and the one line
+  it took is not the interesting part. **The building holds two different
+  numbers that both look like "how many students"** and using one where the
+  other was meant is the whole of what this item was about: the ⚖ button
+  under the slider sets the roll to the occupant load of every classroom, lab
+  and studio (teaching spaces only — a gym, a cafeteria and an auditorium each
+  hold the *same* crowd, and counting all three counts the school four times),
+  while a *generated* timetable is sized by `rollFor`, which is `program.js`'s
+  own arithmetic run backwards: rooms × class size × utilisation. The fire
+  drill's stragglers are cross-checked against the travel-distance table in the
+  same breath — the drill readout now says "clear in 2.3× the 41 s the
+  travel-distance table implies", which is the other half of a finding Phase 7
+  has had half of since it wrote the distances down.
+- [x] **Passing-period travel, measured.** Room to room, over Phase 10's mesh,
+  for every cohort at every bell: the longest move, the mean, the walk per
+  student per day and the miles per year, and the one claim a stopwatch can
+  check — **does this group get there before the bell**, at the pace the crowd
+  actually walks, against the passing minutes the bell schedule actually
+  allows. `corridorLoad` then adds up whose route crosses which corridor at the
+  same bell and how many square feet each of those people gets while it
+  happens.
+- [x] **A lift with a queue.** `lift.js`. A car with a height between its two
+  storeys, a call button that remembers which landing pressed it, and five
+  states in a ring — idle, opening, open, closing, moving. Agents walk to the
+  landing, press, wait, board while there is room, ride, and step out at their
+  own floor; a rider is snapped to the car and is not a body anybody can walk
+  into, because they are inside a shaft. `ctx.lifts` absent is the Phase 2
+  teleport back, verbatim, which is what let every suite that predates this
+  keep reading the same answer.
 
-- [ ] **A real timetable.** Sections, teachers, cohorts and rooms, generated
-  from the program the way the building is: a section needs a room of a kind,
-  a cohort has to be somewhere every period, and a teacher cannot be in two
-  places. Same shape of problem as `generate.js`'s packing, and it should
-  report what it could not satisfy rather than quietly fudging it.
-- [ ] **Import one.** A CSV out of the schedule tools in `Tools/` binds
-  sections to rooms by name — and, now that Phase 12 has shipped, by id, which
-  is the difference between a binding that survives a renamed room and one that
-  does not. This is the item that makes the whole phase worth doing for somebody who
-  already has a timetable and wants to know whether their building suits it.
-- [ ] **Utilisation, in the report.** Rooms empty when the school is at
-  capacity; rooms over their occupant load; the corridor that carries three
-  cohorts at once. All of it is the existing report's shape — a finding, a
-  rule, a measurement, worst-first — over a new reading.
-- [ ] **The crowd at the real occupant load.** The report works out what the
-  building holds, room by room, and `life.students` is still a slider.
-  Populating it with exactly what the analysis says is one line, and
-  cross-checking the fire drill's stragglers against the travel-distance table
-  is the other half of a finding the tool already half has.
-- [ ] **Passing-period travel, measured.** The nav mesh made distance honest in
-  Phase 10; a timetable is what turns one honest distance into a number about
-  the school day. This is the analysis that could not exist before either.
-- [ ] **A lift with a queue.** Once the timetable is real, so is the crush at
-  the lift between periods, and the teleport-with-doors stops being good
-  enough. The car gets a position, a call button and a state machine.
+### What it cost, and what it taught
 
-*Leans on:* `schedule.js`, `agents.js`, `program.js`, `report.js`, and Phase
-12's room ids for the binding;
-*collides with:* the report, which grows a section, and the life panel, which
-grows a source.
-*Save:* a timetable is a thing about the design and belongs in the file — an
-append to v11, not a bump of its own.
+**Three new modules, one new panel block, one save append, and one new function
+on the graph.** `timetable.js` (the model, the packing and the CSV),
+`utilisation.js` (the reading) and `lift.js` (the car), with a suite each.
+`navgraph.js` grew `pathDistance`; `report.js` grew a section and three blocks
+of spreadsheet; `agents.js` grew a population built from a plan and the ride
+path; `save-load.js` grew a key; `session.js` grew a field so a timetable
+travels between two people editing one plan. No geometry module changed.
+
+**The queue at the lift doors was a livelock, and it was a livelock twice.**
+Everybody still waiting presses the button on every frame they are not aboard —
+which is exactly what people do — so a car that re-opened for each press never
+departed, and once that was capped, a car whose *dwell* was extended by each
+press never departed either. The first eight people got in, the ninth held the
+doors, and the eight inside rode nowhere for the rest of the school day. One
+accumulator (`held`, capped at eight seconds) fixes both halves, and the two
+caps are the least obvious four lines in the phase. The general shape is worth
+naming: **a queue that can hold a door open needs a bound on the holding, and
+the bound is not a nicety, it is the difference between a lift and a livelock.**
+
+**The fixture that found it was the one that took the stair away.** In the
+sample school a lift costs forty-five feet-equivalent of waiting and the stair
+does not, so `findPath` never routes anybody through the car, and a suite built
+on that building would have asserted precisely nothing about three hundred
+lines of new code. Delete the stair and the floor opening and the lift is the
+only way upstairs — a real building, and the state the ride path actually runs
+in. This is Phase 11's lesson word for word, four phases later: *a pure module
+is only as honest as the state its tests put it in.* It cost one line in a
+fixture and it was the whole difference between a tested feature and a feature
+that passed its tests.
+
+**Cost is not distance, and the number this phase exists to produce is
+distance.** `findPath` optimises `cost`, which has the stair penalty and the
+lift's wait folded into it; a passing-period walk quoted in those units would
+be a number about nothing. Every edge has carried `dist` beside `cost` since
+Phase 10 and nothing had ever needed to add them up, so `pathDistance` is
+twelve lines that should have existed for five phases. The suite asserts the
+two are *different* on any route with a stair in it, which is the assertion
+that fails the day somebody optimises the wrong one.
+
+**`teachingRooms` predates the occupancy table, and it shows.** It filters by
+size and name, because when it was written there was nothing else to filter by
+— which let a 300 ft² Main Office through as somewhere to hold a maths lesson.
+A class in a library or a cafeteria is a real school making do; a class in the
+principal's office is the packing having run out of ideas and not said so.
+`TEACHABLE` is the list of uses a lesson can go in, read off `classify` rather
+than invented, and it is the second time this codebase has fixed something by
+deleting a room from a list rather than adding a rule.
+
+**The plan the crowd walks is plain data, on purpose.** `timetable.js` imports
+`rng` from `agents.js`, the way `generate.js` and `hunt.js` do, so `agents.js`
+cannot import `timetable.js` back. `timetablePlan` hands over two arrays of
+room ids and nothing else, and `makePopulation` reads them without ever
+learning that a timetable exists — the same split that has kept the crowd
+ignorant of the generator since Phase 8. A cycle avoided by making the
+interface smaller is a better outcome than a cycle resolved.
+
+**A free period is spent where you were, not nowhere.** The first plan left a
+gap as null, and an agent with a null goal stands still — in a corridor,
+because that is where the bell caught them. Filling forward from the last real
+room is one line and is the difference between a school and a car park.
+
+**Sizing the day is where "generate" and "analyse" disagree in public.** The
+first draft sized a generated timetable from the occupant load, produced
+seventeen cohorts for a building with eleven teaching rooms, and filed
+thirty-five findings about sections with nowhere to be. Every one of them was
+arithmetically true and the page was useless. The fix was not a fudge factor:
+it was noticing that a roll and an occupant load answer different questions,
+giving each its own rule with its own citation, and putting them behind
+different buttons.
+
+**What is left.** The car has a position, a state machine and a queue in the
+model, and the shaft's door leaves are still drawn parked open in `render.js` —
+animating them is a renderer change, it is the one part of the item with no
+headless test, and shipping unverifiable render code is worse than a door that
+does not move. The walkthrough's own `E` key still teleports; only the crowd
+queues. An imported timetable has no teachers, because the `Tools/` template
+has no teacher column, so the "no teacher free" check stays quiet on one — real
+and worth saying rather than papering over. Lunch is still `pickLunchroom`
+rather than a timetabled sitting. And a section is not something you can drag:
+a timetable is generated, imported or cleared, which is why it travels as one
+record rather than as a list of them.
+
+*Save:* an **append to v11**, exactly as this list predicted — `timetable`, and
+a design that has never been given one writes no key at all, so every file
+written before this phase round-trips through it as the same bytes. Eleventh
+time that rule has been applied and the eleventh time nobody has lost a design.
 
 ## Phase 16 — What it costs
 
@@ -976,18 +1143,25 @@ is what turned up the id-allocator hole in an afternoon rather than in a bug
 report. It also cost nothing anywhere else — no geometry module changed —
 which is what a transport phase should look like.
 
-**Now whichever of 15 and 16 the appetite is for.** They do not touch each
-other. 15 is the one that makes the tool useful to somebody who already has a
-school; 16 is the safest and the most obviously finishable. Neither is blocked
-on anything.
+**Phase 15 is done**, and doing it before 16 was the right way round for a
+reason the list did not predict: it is the one that turned up a distinction the
+tool had been quietly conflating — a roll and an occupant load are not the same
+number — and 16 is about to price a building room by room, which is a third
+number that looks like the other two. Better to have had that argument before
+there was money in it.
+
+**16 next, then.** It is the safest of what is left and the most obviously
+finishable, and everything it needs already exists.
 
 **17 whenever.** It is independent of all of them, it clears six backlog items
 between them, and it is the only one of the five that could be started tomorrow
 against the code exactly as it stands today.
 
-**On save versions:** Phase 12 spent the expensive one, and spent it on a
-shape change rather than an append — which should be the last time that is ever
-necessary. Phase 13 changed a design's dimensions without touching the format
+**On save versions:** Phase 15 spent none of its own — a timetable is an
+append to v11, exactly as this section predicted, and a design that has never
+been given one writes no key at all. Phase 12 spent the expensive one, and
+spent it on a shape change rather than an append — which should be the last
+time that is ever necessary. Phase 13 changed a design's dimensions without touching the format
 at all, because `w` and `h` have been in the file since v1 and the loader has
 always read them against the same range the editor now writes. Phase 14 spent
 none either, and could not have: a session is a thing that happens *to* a

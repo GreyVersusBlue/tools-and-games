@@ -353,3 +353,71 @@ test('a simulated minute costs a sane amount of work', () => {
   // catch an accidental O(n²) sweep, not to benchmark the machine.
   assert.ok(ms < 8000, `600 frames of 72 agents took ${ms}ms`);
 });
+
+// ---------- Phase 15: a population out of a timetable ----------
+
+test('a plan makes cohorts that stay together all day, and a teacher who follows their sections', async () => {
+  const { roomPool, buildTimetable, timetablePlan } = await import('../js/timetable.js');
+  const { buildingOccupancy } = await import('../js/occupancy.js');
+  const state = buildSampleSchool();
+  const nav = buildNav(state);
+  const pool = roomPool(nav, { occupancy: buildingOccupancy(state, { nav }) });
+  const schedule = normalizeSchedule({ periods: 6 });
+  const tt = buildTimetable(pool, {
+    students: 120, classSize: 25, periods: 6, seed: 3, teachers: 20,
+  });
+  const plan = timetablePlan(tt, schedule);
+  const agents = makePopulation(state, nav, { seed: 5, students: 120, schedule, plan });
+
+  assert.ok(agents.length > 0);
+  const students = agents.filter((a) => a.kind === 'student');
+  const teachers = agents.filter((a) => a.kind === 'teacher');
+  assert.ok(students.length > 0 && teachers.length > 0);
+
+  // Everybody in a cohort has that cohort's day, and not a random one.
+  const byCohort = new Map(plan.cohorts.map((c) => [c.id, c]));
+  for (const a of students) {
+    assert.ok(a.cohort && byCohort.has(a.cohort), 'a student with no group');
+    assert.deepEqual(a.timetable, byCohort.get(a.cohort).rooms,
+      `${a.group}: a student walking a day that is not their cohort's`);
+  }
+  // A teacher's day is their own sections rather than one room from bell to
+  // bell, and they carry the name the timetable gave them.
+  const named = new Set(tt.teachers.map((t) => t.name));
+  for (const a of teachers) {
+    assert.ok(named.has(a.name), `${a.name} is not a teacher this timetable has`);
+    assert.equal(a.timetable.length, schedule.periods + 1);
+  }
+  assert.ok(teachers.some((a) => new Set(a.timetable).size > 1),
+    'every teacher stood in one room all day, which is the thing a timetable replaced');
+});
+
+test('the roll scales every cohort rather than dropping the last ones', async () => {
+  const { roomPool, buildTimetable, timetablePlan } = await import('../js/timetable.js');
+  const { buildingOccupancy } = await import('../js/occupancy.js');
+  const state = buildSampleSchool();
+  const nav = buildNav(state);
+  const pool = roomPool(nav, { occupancy: buildingOccupancy(state, { nav }) });
+  const schedule = normalizeSchedule({ periods: 6 });
+  const tt = buildTimetable(pool, { students: 200, classSize: 25, periods: 6, seed: 3, teachers: 20 });
+  const plan = timetablePlan(tt, schedule);
+  const half = makePopulation(state, nav, { seed: 5, students: 100, schedule, plan });
+  const groups = new Set(half.filter((a) => a.kind === 'student').map((a) => a.cohort));
+  assert.equal(groups.size, plan.cohorts.length,
+    'half a school should be every group at half strength, not half the groups');
+  assert.ok(half.filter((a) => a.kind === 'student').length <= 100);
+});
+
+test('a plan whose rooms belong to another building falls back to the random intake', async () => {
+  const { timetablePlan, normalizeTimetable } = await import('../js/timetable.js');
+  const state = buildSampleSchool();
+  const nav = buildNav(state);
+  const schedule = normalizeSchedule({});
+  const ghost = timetablePlan(normalizeTimetable({
+    cohorts: [{ id: 'c1', name: '9-1', size: 20 }],
+    sections: [{ id: 's1', period: 1, cohort: 'c1', room: 'r9:s999' }],
+  }), schedule);
+  const agents = makePopulation(state, nav, { seed: 5, students: 20, schedule, plan: ghost });
+  assert.ok(agents.length > 0, 'a school standing in the car park is not the fallback');
+  for (const a of agents) assert.equal(a.cohort, null);
+});
