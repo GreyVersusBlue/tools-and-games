@@ -67,3 +67,7 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# The school generator's own server keeps designs on disk; the default
+# directory is beside it and is somebody's data, not the project's.
+Projects/school-generator/data/

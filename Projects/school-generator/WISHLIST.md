@@ -25,8 +25,16 @@ rather than a plausible one, and the tool will say whether the building suits
 it. Phase 16 priced it without ever holding a price, and Phase 17 meshed the
 ground around it — which turned out to be one change that lifted four separate
 refusals, the fourth layout scheme among them. **Arc three is finished.**
-Twenty-four phases, 74 modules, ~43,800 lines, 1,406 tests, eleven save-format
-versions and no build step.
+
+Phase 18 came after it and is not part of it: somebody read this document and
+asked whether anything was actually unfinished, and the honest answer was that
+three items on the standing backlog had a "still" on them rather than a
+reason. The lift the camera teleported past, the one report section that never
+reached a sheet, and the server neither contract had. All three are closed,
+and the last of them is why the sentence above about a static site is now only
+half true — the site is still static, and `server/` is the thing you run
+beside it. Twenty-five phases, 78 modules, ~45,200 lines, 1,473 tests, eleven
+save-format versions and no build step.
 
 This document is two things, and the rule for a builder is the same as it has
 always been: read the first part before touching anything, and add to the
@@ -36,9 +44,10 @@ second part rather than starting a third list.
   emerged, the conventions a new builder has to know before their first edit,
   what the twenty phases shipped, what fought back, and the standing backlog no
   phase has claimed.
-- **Part two — arc three.** Five phases plus one that was not planned, four
-  of them done. Not a spec — a scoped list to pull from and refine before
-  beginning each piece.
+- **Part two — arc three, and what came after it.** Five phases plus one that
+  was not planned, then a sixth that is not part of the arc at all and says so.
+  Not a spec — a scoped list to pull from and refine before beginning each
+  piece.
 
 Each phase used to have its own retrospective here — what shipped, how it
 landed, what fought back, what was left. The first nineteen are condensed below
@@ -385,11 +394,13 @@ them; the rest are unclaimed and can ride along with whatever is open.
 **Model and geometry**
 - Switchback ramps — one straight run means an ADA-compliant ramp is 144ft
   long and rarely placeable indoors.
-- ~~An elevator that moves~~ — done in Phase 15 for the crowd: the car has a
-  height, a call button and a state machine, and agents queue for it. Two
-  halves are still open. The walkthrough's own `E` key still teleports, and the
-  shaft's door leaves are still *drawn* parked open — that one is a renderer
-  change and the only part of the item with no headless test.
+- ~~An elevator that moves~~ — done in Phase 15 for the crowd and **finished
+  in Phase 18** for everybody else. The walkthrough's `E` key calls the car
+  rather than teleporting, from the landing as well as from inside the shaft;
+  the leaves shut and slide; the cab is one object that is somewhere rather
+  than one drawn at each landing. What is still not modelled is a lift with
+  more than two stops, and a shaft you can fall down: standing in an empty one
+  puts you on the storey's slab, which is what it always did.
 - Curvature isn't stored, so re-bending a wall after a reload starts from its
   chords. Curved walls are chords in the collider too.
 - Wall paint is one colour per wall, not per face — splitting it is a renderer
@@ -421,10 +432,13 @@ them; the rest are unclaimed and can ride along with whatever is open.
 - Common path of egress travel is a constant that nothing measures.
 - Accessibility stops at routes: no turning circles, reach ranges or counter
   heights.
-- ~~The report doesn't print~~ — done in Phase 16: `codePanel()` puts occupant
-  load, exits, travel distance and area per storey in the title block of every
-  sheet, and the specification prints as a sheet of its own. The school-day
-  section is still not on the sheet, and now it is the only one that isn't.
+- ~~The report doesn't print~~ — done in Phase 16, and **finished in Phase 18**:
+  `codePanel()` puts occupant load, exits, travel distance and area per storey
+  in the title block of every sheet, `dayPanel()` puts the school day under it,
+  and the specification prints as a sheet of its own. Every section of the
+  report is now on a sheet somewhere. What no sheet says is what a *finding*
+  says — the panels carry a verdict and a count, and the findings themselves
+  are still only in the report panel and the CSV.
 - ~~Sprinklered is a checkbox rather than a property of the design~~ — done in
   Phase 12, along with the code edition, the occupancy group and a design
   occupant load. What is *still* a session setting is nothing: every question
@@ -551,11 +565,14 @@ them; the rest are unclaimed and can ride along with whatever is open.
   the first place to look if a delta ever comes out surprisingly large.
 
 **The session, after Phase 14**
-- **No server ships.** The relay and the design store are both addresses
-  somebody types into the Server box, and until one is there a session reaches
-  the other windows of one browser and a design stays in this browser and its
-  files. The contracts are in `wire.js` and `cloud.js` and are each about a
-  page of code; deploying one is the whole of what is missing.
+- ~~**No server ships.**~~ — done in Phase 18. `server/` is the other half of
+  both contracts in one process with no dependencies: the store over HTTP, the
+  relay over a WebSocket, and `ws.js` because RFC 6455 without a dependency is
+  two hundred lines. `node server/index.mjs` and an address in the Server box
+  is the whole of the setup. What is still not shipped is a *deployment* —
+  somebody has to run it somewhere, and putting TLS in front of it is the one
+  step that is neither in the code nor optional, because a page on `https:`
+  cannot call an `http:` store.
 - A storey has no id, so adding or removing one is a whole-design resync. On
   the receiving side that replaces the building, which will discard an edit a
   peer had made in the same third of a second. Giving storeys ids is a save
@@ -596,12 +613,12 @@ them; the rest are unclaimed and can ride along with whatever is open.
   comment predicted the crossover would be.
 - A tour moves the camera and does nothing else — no bell at a stop, no hour
   scrubbed between two, no audio on the recording.
-- Cloud saves have a client and a contract (Phase 14) and no server. Four
-  endpoints, and every copy of the tool is unconfigured until somebody types
-  an address. The same is true of the relay: without one, a session reaches
-  the other windows of one browser and no further. **This is the only thing
-  left on either of the first two lists, and it is a deployment rather than a
-  feature.**
+- ~~Cloud saves have a client and a contract (Phase 14) and no server.~~ —
+  done in Phase 18, and it turned out to be about half a feature after all:
+  the four endpoints were an afternoon and the WebSocket under the relay was
+  the rest of it. Every copy of the tool is still unconfigured until somebody
+  types an address, which is right — a tool that phones somewhere by default
+  is a different tool.
 
 ---
 
@@ -1464,6 +1481,137 @@ to add nothing to the file, and the reason is the same one `navmesh.js` and
 `terrainField` gave: a site mesh is derived, and re-deriving it after an edit
 is the whole of keeping it correct.
 
+## Phase 18 — The three that were left ✅
+
+Not a phase by this document's own rule, and worth saying so at the top: a
+phase has one sentence behind it, and this has three. What it has instead is a
+*question* — somebody read Part one and asked whether anything was actually
+unfinished — and the honest answer was that of everything on the standing
+backlog, exactly three items were left **incomplete** rather than left
+**deliberately**. Every other line up there has a reason attached. These three
+had a "still".
+
+**The lift.** Phase 15 built the car — a height, a call button, a state
+machine, a queue — because a timetable makes forty people want one at nine
+minutes past nine. It built it for the crowd and left the camera teleporting
+straight past it, and the backlog said so in two halves. Both are closed.
+`lift.js` grows one person's side of a ride: `makeRider`, `pressRider`,
+`stepRider`, `cancelRider`, and `liftAtHand`, which answers *which car, and
+am I in it* — because pressing the button from the landing rather than from
+inside the shaft is the difference between a lift and a teleport you have to
+be standing on.
+
+**It is deliberately not shared with agents.js**, and that was the one real
+decision in the phase. The two riders want different things from the same car:
+an agent has a floor it was routed to and a body that has to keep being
+resolved against a crowd while it waits, and a camera has neither. Folding
+them together would have produced one function with a steering branch in it,
+which is the shape `lift.js` was written to avoid in the first place. Two
+riders, one car, and the car is the only thing they share — which is also
+literally true when a crowd is running, because the crowd owns the cars and
+hands them over, exactly the bargain the colliders struck in Phase 6.
+
+**The renderer half** was the smaller change and the more visible one. The
+leaves are their own Groups now, keyed by lift and storey the way door leaves
+are keyed by opening, and `poseLifts` reads lift.js's own records and slides
+them. The car went with them, and that was not in the item: a cab drawn at
+each landing was the same fiction as doors that never shut, invisible for
+fifteen phases because you could only ever see into a shaft through open
+doors — and visible the instant somebody rides between two storeys and finds
+no floor under them. One cab, parked on the lower storey it serves, at
+`car.y`.
+
+**The school day on the sheet.** Phase 16 put the report in the title block
+and left one section off it, and said which one. `dayPanel()` is that section:
+groups, sections placed, room use, the busiest period and what stands empty
+during it, how far a student walks in a day and in a year, the longest move,
+whether anything misses the bell, the tightest corridor. Null rather than an
+empty panel when the design has no timetable — not a box of zeroes, which
+would read as a school that never uses its rooms, and which is the same call
+`reportCSV` already made by leaving its own block out.
+
+The drawing half is where the work actually went, and it is a **refactor
+rather than a copy**: the code panel and the day panel are the same object
+drawn the same way — title, verdict badge, a line of context, key/value rows,
+a per-storey block that says which sheet you are holding, a caveat in small
+type — so there is one drawer and two shapes fed to it, and they stack down
+the right-hand margin with a measured gap.
+
+**The server.** The oldest line in the file, and the last one on either of the
+first two lists: *no server ships*. `server/` is the other half of both
+contracts in one process, no dependencies, four files — `store.js` (every
+decision, no disk), `relay.js` (the rooms, and who a frame goes to), `ws.js`
+(RFC 6455) and `index.mjs` (sockets, disk, and the order things happen in).
+The three pure ones have suites; the fourth is exercised end to end.
+
+Two things about it are worth carrying forward. The first is that **the
+protocol was the phase** — the store's four endpoints were an afternoon, and
+the WebSocket under the relay was everything else, because "one page of
+anybody's favourite server" is true only once you have a WebSocket to relay
+over. The second is that the two things most likely to make a deployment look
+broken are neither of them in `wire.js`'s four-line contract: **CORS**, without
+which the store works perfectly from curl and not at all from the tool, and
+**TLS**, without which a page on `https:` cannot call it at all. The first is
+in the code. The second is in the README, because it cannot be.
+
+### What it cost, and what it taught
+
+**The end-to-end suite earned its place in its first run.** `ws.js` had three
+green suites of arithmetic about a protocol and a one-character error in the
+handshake GUID, and every unit test agreed with it because every unit test was
+asserting against the same wrong constant. `test/server.test.mjs` boots the
+real server on a real port and drives it through `cloud.js`'s own four
+functions and `wire.js`'s own `socketWire`, and it failed instantly with
+*"Incorrect hash received in Sec-WebSocket-Accept header"* — from Node's own
+WebSocket client, which is to say from a real implementation of the document
+the module was written against. **That is now four phases in a row where the
+thing that runs it caught what the arithmetic could not**, and the first one
+where the arithmetic was not merely silent but actively wrong in chorus.
+
+The corollary is sharper than the usual version of this lesson. Testing a
+module you wrote against a spec you half-remember cannot find the places you
+half-remembered it — the test and the code share the mistake. The only witness
+that helps is one that did not read your memory: a real client, a real
+browser, somebody else's implementation.
+
+**The renderer half was checked in a browser, and it should have been all
+along.** Every previous phase's renderer work has been "exercised by hand",
+which is a phrase that means nobody checked it after the day it was written.
+This one was driven with Playwright against the real page: a generated school,
+into the walkthrough, press E at a landing, and assert that the camera
+boarded, passed through the space between storeys and got out twelve feet
+higher. That is thirty lines and it is the first time in this codebase that a
+claim about the *renderer* has been checked by anything but a person looking
+at it. The fourth arc's first sentence — *"nothing headless checks what any
+sheet looks like, and that is the largest untested surface left"* — has an
+obvious first move now, and it is not headless: it is a browser.
+
+The blueprint suite took the cheap half of that immediately. A recording 2D
+context cannot say whether a sheet is legible, but it can say that each panel
+was drawn once, inside its own measured box, with the second under the first
+rather than on top of it — which is precisely the assertion the panel refactor
+needed and which "every existing test still passes" would not have made.
+
+**A phase with three theses is three phases, and this one got away with it
+because none of the three touched the others.** `lift.js` and `walkthrough.js`
+and `render.js`; `report.js` and `blueprint.js`; `server/`. Not one shared
+file between the three groups, and the only shared *idea* was the one in the
+question that started it. That is the exception that proves the rule rather
+than a counter-example to it: the reason Phase 10 and Phase 11 had to be split
+was that their two theses were fighting over the same modules.
+
+**On save versions: none, and none was possible.** A ride is a thing that
+happens to a walker, a panel is a reading of a report, and a server holds the
+file rather than changing it. Twenty-five phases, eleven save versions, and
+nobody has lost a design.
+
+**What is still not done, stated plainly:** nobody has deployed the server.
+It runs, it is tested, and it is somebody's decision where to put it — which
+is genuinely the last thing, and it is the only item in this document that
+cannot be closed by writing code.
+
+---
+
 ## Suggested build order
 
 **Phase 12 is done**, and doing it first, alone, and reviewing it as its own
@@ -1549,6 +1697,15 @@ had the shortest of the lot — *the outdoors is somewhere, with distances in it
 that is the signal that it is two phases, which is exactly how Phase 10 and
 Phase 11 came to be split, and that split was the right call both times.
 
+**18 is not in this order and could not have been.** It is not a phase that
+was planned and then built; it is the three items a reader found by asking
+what was still open, and the whole of its scoping was reading Part one and
+noticing which lines had a "still" on them rather than a reason. Which is an
+argument for the shape of this document rather than for anything in the phase:
+**a backlog that says why each thing was left is a backlog somebody can audit
+in an afternoon.** Seven phases in this arc found their scope in a brief; this
+one found it in the honesty of the list.
+
 **On refactors, now that one has been done:** a phase whose deliverable is
 subtraction needs a test that would fail if the subtraction were wrong, and
 "every existing test still passes" is not that test. Phase 12's regression sat
@@ -1563,15 +1720,22 @@ where the simulation caught what the arithmetic could not.
 
 ## Where a fourth arc would start
 
-Arc three is finished and this document has no next phase in it, which is the
-right state for it to be in. What follows is not a plan; it is the shortest
-honest list of what the standing backlog above still says, grouped by the
-sentence each group is missing.
+Arc three is finished, Phase 18 closed the three things that were left over
+rather than left deliberately, and this document has no next phase in it —
+which is the right state for it to be in. What follows is not a plan; it is
+the shortest honest list of what the standing backlog above still says,
+grouped by the sentence each group is missing.
 
 **"A drawing is a set of sheets, not a picture."** The blueprint draws on
-canvas and is exercised by hand — the code panel, the specification sheet and
-the site plan all are. Nothing headless checks what any sheet *looks like*, and
-that is the largest untested surface left in the codebase.
+canvas and is exercised by hand — the specification sheet and the site plan
+both are. This is still the largest untested surface in the codebase, but it
+is no longer untouched, and Phase 18 changed what the first move should be
+twice over. The blueprint suite now has a recording 2D context that can assert
+*arrangement* — what was drawn, how many times, inside which box — which is
+cheap and catches a whole class of mistake. And the renderer was checked in a
+real browser with Playwright for the first time, which is the move that
+actually answers this sentence: a sheet's canvas in a real browser, compared
+against a picture of it, is a day's work and would close this outright.
 
 **"A design has a history somebody else can read."** Undo is a diff and a
 session is a stream, but neither is a record: there is no way to ask what
@@ -1583,6 +1747,14 @@ a number where they should answer with a range — daylight is a glazing ratio
 rather than a daylight factor, acoustics is Sabine and nothing else, and the
 cost has no contingency in it because it has no idea how uncertain it is.
 Every one of those is labelled honestly today; none of them is *quantified*.
+
+**"Two people is not two windows."** Phase 18 shipped a relay, which means the
+Phase 14 backlog under **The session** stopped being theoretical: storeys have
+no ids so adding one is a whole-design resync, the tracing image and the model
+library travel only in a snapshot, nothing is acknowledged and nothing is
+retried, and undo is local and wins. Every one of those was written down as a
+deliberate deferral by a phase that could not test them against a real
+network. There is one now.
 
 The rule for whoever picks this up is unchanged and is the first thing in this
 document: read part one before touching anything, and add to part two rather

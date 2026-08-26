@@ -1531,6 +1531,16 @@
         <button id="cloud-put" type="button" title="Put this design in the store and make a link">☁ Upload</button>
       </div>
       <div id="session-note"></div>
+      <p class="hint">
+        Both of these are addresses of something running somewhere, and one
+        ships with this tool: <code>server/index.mjs</code> is the relay and
+        the store in one process, with no dependencies —
+        <code>node server/index.mjs</code> and then
+        <code>http://localhost:8787</code> in the box above. See
+        <code>server/README.md</code>. Whoever runs a relay sees the designs
+        that pass through it, and anybody with a store link can read that
+        design.
+      </p>
     </details>
 
     <div class="keys">
