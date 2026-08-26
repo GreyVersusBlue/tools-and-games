@@ -31,7 +31,7 @@
 //   Which storey that is comes off the height of your feet (`storeyAt`), so a
 //   run of stairs hands you over to the level above exactly when you arrive.
 
-import { CELL, WALL_T, FLOOR_H, isDoorEdge } from './grid.js';
+import { WALL_T, FLOOR_H } from './grid.js';
 import { shapesOf, segEnds, isBuilt, isDoorOpening } from './shapes.js';
 import { propsOnFloor } from './props.js';
 import { footprintOf } from './propplace.js';
@@ -43,7 +43,7 @@ import { wallProbe } from './walls.js';
 import { terrainField, emptyField, groundAt } from './terrain.js';
 import {
   collectDoorLeaves, leafSegment, updateLeaves, updateLeavesFor, closeAll,
-  gridOpeningWidth, LEAF_T,
+  LEAF_T,
 } from './openings.js';
 
 // Body radius. A person is about 1.5ft across the shoulders; 0.9 leaves a
@@ -173,26 +173,6 @@ export function wallSegments(floor, probe = null) {
       out.push({ ax: ax + ux * s, az: az + uz * s, bx: ax + ux * e, bz: az + uz * e, t, pad });
     }
   };
-
-  // A lattice edge's opening, if it has one, is always centred: an edge is a
-  // whole cell wide and has nowhere to record a position along itself.
-  const edge = (val, ax, az, bx, bz) => {
-    const w = isDoorEdge(val) ? gridOpeningWidth(val) : 0;
-    run(ax, az, bx, bz, w > 0 ? [{ a: (CELL - w) / 2, b: (CELL + w) / 2 }] : null);
-  };
-
-  for (let y = 0; y <= floor.h; y++) {
-    for (let x = 0; x < floor.w; x++) {
-      const v = floor.edgesH[y * floor.w + x];
-      if (v) edge(v, x * CELL, y * CELL, (x + 1) * CELL, y * CELL);
-    }
-  }
-  for (let y = 0; y < floor.h; y++) {
-    for (let x = 0; x <= floor.w; x++) {
-      const v = floor.edgesV[y * (floor.w + 1) + x];
-      if (v) edge(v, x * CELL, y * CELL, x * CELL, (y + 1) * CELL);
-    }
-  }
 
   for (const shape of shapesOf(floor)) {
     for (const ring of shape.rings) {

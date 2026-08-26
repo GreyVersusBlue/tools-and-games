@@ -1006,8 +1006,10 @@
       <kbd>G</kbd> cycle type &nbsp; <kbd>,</kbd> <kbd>.</kbd> curve<br />
       Glass and railings bound a room the same way a solid wall does — a
       doorway through one is still a doorway.<br />
-      Point at a <em>polygon</em> wall and press <kbd>,</kbd> or <kbd>.</kbd> to
-      bend it into an arc; keep pressing to open or tighten the same curve.
+      Point at a wall and press <kbd>,</kbd> or <kbd>.</kbd> to bend it into an
+      arc; keep pressing to open or tighten the same curve. A curved room can
+      no longer be painted with the 4ft brush — reshape it with the vertex
+      tool instead.
       Walls are drawn 0.4ft thick between two rooms and 0.8ft where the
       building meets the outside — that's read off the plan, not set here.
     </div>
@@ -1029,7 +1031,7 @@
       </div>
     </div>
     <div class="keys">
-      Click a wall edge, or anywhere along a polygon wall.<br />
+      Click anywhere along a wall — a 30ft run can hold several.<br />
       Clicking the same kind again removes it; clicking a different one swaps it.<br />
       A window glazes the wall rather than opening it — you can see through one,
       never walk through it. In the walkthrough, doors swing open as you come
@@ -1252,6 +1254,17 @@
       <input type="checkbox" id="report-sprinklered" checked />
       Sprinklered building
     </label>
+    <label class="opt" style="gap: 6px">
+      Code
+      <select id="report-edition" style="flex: 1">
+        <option value="ibc2021">IBC 2021</option>
+        <option value="ibc2018">IBC 2018</option>
+        <option value="ibc2024">IBC 2024</option>
+      </select>
+    </label>
+    <p class="note" style="margin: 4px 0 0">
+      Both are facts about the building, so both are saved with it.
+    </p>
 
     <div id="report-acts">
       <button id="report-refresh" title="Re-read the model">↻ Refresh</button>

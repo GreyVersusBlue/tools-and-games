@@ -21,13 +21,10 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/daylight.test.mjs.
 
-import {
-  CELL, WALL_H, EDGE_GLASS, EDGE_WINDOW, floorLabel,
-} from './grid.js';
+import { WALL_H, floorLabel } from './grid.js';
 import {
   shapesOf, segEnds, openingSpec, isWindowOpening, SEG_GLASS,
 } from './shapes.js';
-import { gridWindowSpec, gridOpeningWidth } from './openings.js';
 import { buildNav, PROBE } from './navgraph.js';
 import { buildingOccupancy } from './occupancy.js';
 
@@ -46,17 +43,6 @@ export const NEEDS_LIGHT = new Set([
 
 // ---------- reading the glass off a storey ----------
 
-// The area a grid edge is glazed by. A window is a band; a glass edge is the
-// whole wall, floor to ceiling, which is what a curtain wall is.
-function gridGlazing(v) {
-  if (v === EDGE_WINDOW) {
-    const spec = gridWindowSpec();
-    return gridOpeningWidth(v) * spec.h;
-  }
-  if (v === EDGE_GLASS) return CELL * WALL_H;
-  return 0;
-}
-
 function addGlazing(rows, id, area, exterior) {
   const row = rows.get(id);
   if (!row) return;
@@ -66,8 +52,7 @@ function addGlazing(rows, id, area, exterior) {
 
 // Every glazed thing on one storey, attributed to the room behind it. Both
 // wall systems answer here — a lattice edge and a polygon segment are the same
-// question asked of two representations, which is the standing tax this
-// codebase pays on every feature and pays here too.
+// question, asked once, of the one kind of room there is.
 export function daylightOnFloor(state, floorIndex, opts = {}) {
   const nav = opts.nav || buildNav(state);
   const fr = nav.perFloor && nav.perFloor[floorIndex];
@@ -93,32 +78,6 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
     nav.roomIdAt(floorIndex, x - nx * PROBE, z - nz * PROBE),
   ];
 
-  const gridEdge = (v, x, z, nx, nz) => {
-    const area = gridGlazing(v);
-    if (area <= 0) return;
-    const [a, b] = sides(x, z, nx, nz);
-    if (a && b) { addGlazing(rows, a, area, false); addGlazing(rows, b, area, false); return; }
-    const inner = a || b;
-    if (inner) addGlazing(rows, inner, area, true);
-  };
-
-  for (let y = 0; y <= floor.h; y++) {
-    for (let x = 0; x < floor.w; x++) {
-      const v = floor.edgesH[y * floor.w + x];
-      if (v === EDGE_GLASS || v === EDGE_WINDOW) {
-        gridEdge(v, (x + 0.5) * CELL, y * CELL, 0, 1);
-      }
-    }
-  }
-  for (let y = 0; y < floor.h; y++) {
-    for (let x = 0; x <= floor.w; x++) {
-      const v = floor.edgesV[y * (floor.w + 1) + x];
-      if (v === EDGE_GLASS || v === EDGE_WINDOW) {
-        gridEdge(v, x * CELL, (y + 0.5) * CELL, 1, 0);
-      }
-    }
-  }
-
   for (const shape of shapesOf(floor)) {
     const id = `r${floorIndex}:s${shape.id}`;
     for (const ring of shape.rings) {
@@ -129,23 +88,30 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
         const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
         const mid = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
         const [s0, s1] = sides(mid.x, mid.z, -uz, ux);
-        // The far side is whichever of the two probes isn't this room. A
-        // segment shared with the lattice reads as interior, which it is.
+        // The far side is whichever of the two probes isn't this room.
         const other = s0 === id ? s1 : s0;
         const exterior = !other;
+        // **Both sides of an interior pane are credited.** Since Phase 12 a
+        // partition belongs to exactly one of the two rooms it divides, so
+        // "whose glass is this?" has an owner and a neighbour rather than two
+        // equal claimants — and borrowed light is borrowed in both directions
+        // however the boundary happens to be written down.
+        const lit = (area) => {
+          addGlazing(rows, id, area, exterior);
+          if (!exterior && other) addGlazing(rows, other, area, false);
+        };
         if (ring.walls[i] === SEG_GLASS) {
           // A curtain wall is glazed for its whole length and height; a
           // doorway through one is a hole in the glass, so it comes off.
           const doors = ring.openings
             .filter((o) => o.seg === i && !isWindowOpening(o))
             .reduce((w, o) => w + (o.w || 0), 0);
-          const glass = Math.max(0, len - doors) * WALL_H;
-          addGlazing(rows, id, glass, exterior);
+          lit(Math.max(0, len - doors) * WALL_H);
         }
         for (const o of ring.openings) {
           if (o.seg !== i || !isWindowOpening(o)) continue;
           const spec = openingSpec(o);
-          addGlazing(rows, id, spec.w * spec.h, exterior);
+          lit(spec.w * spec.h);
         }
       }
     }

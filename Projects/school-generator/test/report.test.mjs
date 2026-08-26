@@ -6,9 +6,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  createState, setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR2, floorLabel,
-} from '../js/grid.js';
+import { createState, floorLabel } from '../js/grid.js';
+import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR2 } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import { buildSampleSchool } from '../js/sample.js';
 import { buildNav } from '../js/navgraph.js';
 import { buildingOccupancy } from '../js/occupancy.js';
@@ -79,18 +79,9 @@ test('the sample school fails on egress, which is the point of the phase', () =>
 
 test('a bare room with a door passes every check this tool makes', () => {
   const s = createState(12, 10);
-  const f = s.floors[0];
-  for (let y = 1; y <= 3; y++) for (let x = 1; x <= 3; x++) setTile(f, x, y, true);
-  for (let x = 1; x <= 3; x++) {
-    f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, 4)] = EDGE_WALL;
-  }
-  for (let y = 1; y <= 3; y++) {
-    f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, 4, y)] = EDGE_WALL;
-  }
-  f.edgesV[edgeVIdx(f, 1, 2)] = EDGE_DOOR2;
-  for (let y = 1; y <= 3; y++) for (let x = 1; x <= 3; x++) f.cells[y * f.w + x].room = 'Corridor';
+  const f = sheet(s, 0);
+  f.box(1, 1, 3, 3, { name: 'Corridor' }).edgeV(1, 2, EDGE_DOOR2);
+  f.bake();
   const r = buildReport(s);
   assert.equal(r.summary.fails, 0);
   assert.ok(r.findings.some((f) => f.level === 'ok'));
@@ -98,8 +89,7 @@ test('a bare room with a door passes every check this tool makes', () => {
 
 test('an unnamed room is a note about the input, not a finding about the building', () => {
   const s = createState(12, 10);
-  const f = s.floors[0];
-  for (let y = 1; y <= 5; y++) for (let x = 1; x <= 5; x++) setTile(f, x, y, true);
+  sheet(s, 0).fill(1, 1, 5, 5).bake();
   const r = buildReport(s);
   const note = r.findings.find((x) => x.code === 'unnamed-rooms');
   assert.ok(note);

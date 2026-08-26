@@ -10,7 +10,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createState, setTile, edgeHIdx, edgeVIdx, EDGE_WALL, CELL } from '../js/grid.js';
+import { createState, CELL } from '../js/grid.js';
+import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import { buildSampleSchool } from '../js/sample.js';
 import { buildNav } from '../js/navgraph.js';
 import {
@@ -28,8 +30,8 @@ const navOf = (s) => buildNav(s);
 // are: cells 2..11 in both axes, so 8ft in from x = 8 and z = 8.
 function oneRoom() {
   const s = createState(20, 20);
-  const f = s.floors[0];
-  for (let y = 2; y <= 11; y++) for (let x = 2; x <= 11; x++) setTile(f, x, y, true);
+  const f = sheet(s, 0);
+  f.fill(2, 2, 11, 11);
   for (let x = 2; x <= 11; x++) {
     f.edgesH[edgeHIdx(f, x, 2)] = EDGE_WALL;
     f.edgesH[edgeHIdx(f, x, 12)] = EDGE_WALL;
@@ -38,6 +40,7 @@ function oneRoom() {
     f.edgesV[edgeVIdx(f, 2, y)] = EDGE_WALL;
     f.edgesV[edgeVIdx(f, 12, y)] = EDGE_WALL;
   }
+  f.bake();
   return s;
 }
 

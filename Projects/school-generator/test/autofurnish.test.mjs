@@ -5,7 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CELL, createState, setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR } from '../js/grid.js';
+import { CELL, createState } from '../js/grid.js';
+import { EDGE_DOOR } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import { addShape, addOpening, LEAF_SINGLE } from '../js/shapes.js';
 import { buildSampleSchool } from '../js/sample.js';
 import { floorRooms } from '../js/navgraph.js';
@@ -16,27 +18,19 @@ import {
   templateForRoom, roomGeometry, furnishRoom, furnishPlan,
 } from '../js/autofurnish.js';
 
-// A single walled grid room with one door on the given side.
-function oneRoom(x0, y0, x1, y1, name, door = 'south') {
+// A single walled room with one door on the given side, painted with the 4ft
+// brush and baked — see build.mjs.
+function oneRoom(x0, y0, x1, y1, name, door = 'south', extra = null) {
   const s = createState(30, 30);
-  const f = s.floors[0];
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) setTile(f, x, y, true);
-  for (let x = x0; x <= x1; x++) {
-    f.edgesH[edgeHIdx(f, x, y0)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, y1 + 1)] = EDGE_WALL;
-  }
-  for (let y = y0; y <= y1; y++) {
-    f.edgesV[edgeVIdx(f, x0, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, x1 + 1, y)] = EDGE_WALL;
-  }
+  const sh = sheet(s, 0);
+  sh.box(x0, y0, x1, y1, { name });
   const mx = Math.floor((x0 + x1) / 2), my = Math.floor((y0 + y1) / 2);
-  if (door === 'south') f.edgesH[edgeHIdx(f, mx, y1 + 1)] = EDGE_DOOR;
-  if (door === 'north') f.edgesH[edgeHIdx(f, mx, y0)] = EDGE_DOOR;
-  if (door === 'west') f.edgesV[edgeVIdx(f, x0, my)] = EDGE_DOOR;
-  if (door === 'east') f.edgesV[edgeVIdx(f, x1 + 1, my)] = EDGE_DOOR;
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) f.cells[y * f.w + x].room = name;
-  }
+  if (door === 'south') sh.edgeH(mx, y1 + 1, EDGE_DOOR);
+  if (door === 'north') sh.edgeH(mx, y0, EDGE_DOOR);
+  if (door === 'west') sh.edgeV(x0, my, EDGE_DOOR);
+  if (door === 'east') sh.edgeV(x1 + 1, my, EDGE_DOOR);
+  if (extra) extra(sh);
+  sh.bake();
   return s;
 }
 
@@ -83,10 +77,10 @@ test('the classroom row sits below the traps that contain its words', () => {
 
 // ---------- shape ----------
 
-test('a grid room reports its own cells, box and doors', () => {
+test('a painted room reports its own outline, box and doors', () => {
   const s = oneRoom(4, 4, 10, 9, 'Room 101', 'south');
   const geo = roomGeometry(s, 0, roomOf(s));
-  assert.equal(geo.rep, 'grid');
+  assert.equal(geo.rep, 'shape');
   assert.deepEqual(geo.box, { x0: 16, z0: 16, x1: 44, z1: 40 });
   assert.equal(geo.inside(20, 20), true);
   assert.equal(geo.inside(60, 20), false, 'outside the room is outside');
@@ -94,7 +88,7 @@ test('a grid room reports its own cells, box and doors', () => {
   assert.ok(geo.doors[0].z > 36, 'the door is on the south wall');
 });
 
-test('a polygon room reports its ring and its openings', () => {
+test('a free-drawn room reports its ring and its openings', () => {
   const s = createState(30, 30);
   const shape = addShape(s, 0, [
     { x: 20, z: 20 }, { x: 60, z: 20 }, { x: 60, z: 52 }, { x: 20, z: 52 },
@@ -107,13 +101,13 @@ test('a polygon room reports its ring and its openings', () => {
   assert.equal(geo.doors.length, 1);
 });
 
-test('a flood that would leak through a wall does not', () => {
+test('a room next door is not part of this one', () => {
   // Two rooms side by side with a solid wall between them: the geometry of
   // one must not include the other.
-  const s = oneRoom(2, 2, 6, 6, 'Room 101', 'south');
-  const f = s.floors[0];
-  for (let y = 2; y <= 6; y++) setTile(f, 8, y, true);
-  for (let y = 2; y <= 6; y++) f.edgesV[edgeVIdx(f, 8, y)] = EDGE_WALL;
+  const s = oneRoom(2, 2, 6, 6, 'Room 101', 'south', (sh) => {
+    for (let y = 2; y <= 6; y++) sh.tile(8, y);
+    sh.vrun(8, 2, 6);
+  });
   const geo = roomGeometry(s, 0, roomOf(s));
   assert.equal(geo.inside(8.5 * CELL, 4.5 * CELL), false);
 });

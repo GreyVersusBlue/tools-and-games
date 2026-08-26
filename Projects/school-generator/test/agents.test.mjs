@@ -314,10 +314,14 @@ test('the fire drill empties the building, and says who did not get out', () => 
 
 test('a drill in a sealed building strands everybody rather than pretending', () => {
   const state = buildSampleSchool();
-  // Brick up both exterior doors: the main entrance pair and the commons door.
-  const f = state.floors[0];
-  for (let i = 0; i < f.edgesV.length; i++) if (f.edgesV[i] === 6) f.edgesV[i] = 1;
-  for (const shape of f.shapes) for (const ring of shape.rings) ring.openings.length = 0;
+  // Brick up every way out: one line now that a doorway is an opening on a
+  // room's own ring wherever it is, rather than an edge value on one half of
+  // the model and a record on the other.
+  for (const floor of state.floors) {
+    for (const shape of floor.shapes) {
+      for (const ring of shape.rings) ring.openings.length = 0;
+    }
+  }
   const { ctx, agents } = harness({ state, students: 8 });
   ctx.mode = 'drill';
   ctx.egress = null;

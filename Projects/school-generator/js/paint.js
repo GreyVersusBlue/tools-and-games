@@ -281,6 +281,8 @@ const newRoom = (state, opts) => ({
   color: opts.color || null,
   fin: opts.fin || null,
   paint: opts.paint || null,
+  group: opts.group || null,
+  load: null,
   rings: [],
 });
 

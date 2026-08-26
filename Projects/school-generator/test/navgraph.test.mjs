@@ -5,10 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  createState, setTile, edgeHIdx, edgeVIdx, addFloor,
-  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_WINDOW, CELL,
-} from '../js/grid.js';
+import { createState, addFloor, CELL } from '../js/grid.js';
+import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_WINDOW } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import { addShape, addOpening, setSegWall, LEAF_SINGLE, OP_WINDOW } from '../js/shapes.js';
 import { addStair } from '../js/stairs.js';
 import { buildSampleSchool } from '../js/sample.js';
@@ -21,19 +20,15 @@ import {
 
 // Two rooms side by side inside one shell, with a doorway between them and
 // (optionally) one to the outside. Cells 1..4 and 6..9 on row 1..4.
-function twoRooms({ exterior = true } = {}) {
+function twoRooms({ exterior = true, extra = null } = {}) {
   const s = createState(12, 8);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) {
-    for (let x = 1; x <= 9; x++) setTile(f, x, y, true);
-  }
-  // shell
-  for (let x = 1; x <= 9; x++) { f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL; f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL; }
-  for (let y = 1; y <= 4; y++) { f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL; f.edgesV[edgeVIdx(f, 10, y)] = EDGE_WALL; }
+  const f = sheet(s, 0);
+  f.box(1, 1, 9, 4);
   // partition at x = 5, with a doorway in it
-  for (let y = 1; y <= 4; y++) f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
-  f.edgesV[edgeVIdx(f, 5, 2)] = EDGE_DOOR;
-  if (exterior) f.edgesV[edgeVIdx(f, 1, 3)] = EDGE_DOOR2;
+  f.vrun(5, 1, 4, EDGE_WALL).edgeV(5, 2, EDGE_DOOR);
+  if (exterior) f.edgeV(1, 3, EDGE_DOOR2);
+  if (extra) extra(f);
+  f.bake();
   return s;
 }
 
@@ -75,19 +70,20 @@ test('an exterior door is an exit, and carries somewhere to muster', () => {
 });
 
 test('a window is not a way through, and neither is glass', () => {
-  const s = twoRooms({ exterior: false });
-  const f = s.floors[0];
-  f.edgesV[edgeVIdx(f, 5, 3)] = EDGE_WINDOW;
-  f.edgesV[edgeVIdx(f, 5, 4)] = EDGE_GLASS;
+  const s = twoRooms({
+    exterior: false,
+    extra: (f) => f.edgeV(5, 3, EDGE_WINDOW).edgeV(5, 4, EDGE_GLASS),
+  });
   const nav = buildNav(s);
   assert.equal(nav.portals.length, 1);
 });
 
 test('a doorway with the same room on both sides is not a portal', () => {
-  const s = twoRooms({ exterior: false });
-  const f = s.floors[0];
-  // A "door" in the middle of the left room, with floor on both sides.
-  f.edgesV[edgeVIdx(f, 3, 2)] = EDGE_DOOR;
+  // A "door" in the middle of the left room, with floor on both sides. Since
+  // Phase 12 the bake drops it before the graph ever sees it — a doorway
+  // through nothing is a boundary of no room — which is the same answer for a
+  // better reason.
+  const s = twoRooms({ exterior: false, extra: (f) => f.edgeV(3, 2, EDGE_DOOR) });
   const nav = buildNav(s);
   assert.equal(nav.portals.length, 1, 'still just the partition door');
 });
@@ -126,9 +122,8 @@ test('a route from a point already in the target room is a route to it, not thro
 });
 
 test('there is no route into a room with no door', () => {
-  const s = twoRooms({ exterior: false });
-  const f = s.floors[0];
-  f.edgesV[edgeVIdx(f, 5, 2)] = EDGE_WALL;   // brick the doorway up
+  // Brick the doorway up.
+  const s = twoRooms({ exterior: false, extra: (f) => f.edgeV(5, 2, EDGE_WALL) });
   const nav = buildNav(s);
   const [a, b] = nav.rooms;
   assert.equal(findPath(nav, a.id, b.id), null);
@@ -137,10 +132,9 @@ test('there is no route into a room with no door', () => {
 test('a stair joins the storeys, and the graph knows which end is which', () => {
   const s = twoRooms();
   addFloor(s, 1);
-  const upper = s.floors[1];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 9; x++) setTile(upper, x, y, true);
-  for (let x = 1; x <= 9; x++) { upper.edgesH[edgeHIdx(upper, x, 1)] = EDGE_WALL; upper.edgesH[edgeHIdx(upper, x, 5)] = EDGE_WALL; }
-  for (let y = 1; y <= 4; y++) { upper.edgesV[edgeVIdx(upper, 1, y)] = EDGE_WALL; upper.edgesV[edgeVIdx(upper, 10, y)] = EDGE_WALL; }
+  const upper = sheet(s, 1);
+  upper.box(1, 1, 9, 4);
+  upper.bake();
   // Along +x (rotationY = pi/2), so a nineteen-foot run and its landing both
   // fit inside a building that is only five cells deep.
   const { link } = addStair(s, 0, { x: 2 * CELL, z: 3 * CELL, rotationY: Math.PI / 2, type: 'stair' });
@@ -197,9 +191,8 @@ test('egress: every room reaches the exit, and the distances are sane', () => {
 });
 
 test('egress: a room nobody can get out of says so rather than guessing', () => {
-  const s = twoRooms();
-  const f = s.floors[0];
-  f.edgesV[edgeVIdx(f, 5, 2)] = EDGE_WALL;    // seal the inner room
+  // Seal the inner room.
+  const s = twoRooms({ extra: (f) => f.edgeV(5, 2, EDGE_WALL) });
   const nav = buildNav(s);
   const field = egressField(nav);
   const stranded = unreachableRooms(nav, field);
@@ -215,9 +208,8 @@ test('egress: a building with no exterior door has no egress at all', () => {
 });
 
 test('an exit route does not leave by one door and come back in another', () => {
-  const s = twoRooms();
-  const f = s.floors[0];
-  f.edgesV[edgeVIdx(f, 10, 3)] = EDGE_DOOR;   // a second way out, far side
+  // A second way out, far side.
+  const s = twoRooms({ extra: (f) => f.edgeV(10, 3, EDGE_DOOR) });
   const nav = buildNav(s);
   const field = egressField(nav);
   // Each room's nearest exit is the one on its own side of the partition.
@@ -228,13 +220,12 @@ test('an exit route does not leave by one door and come back in another', () => 
   }
 });
 
-test('a polygon room joins the lattice through its own opening', () => {
+test('a free-drawn room joins a painted one through its own opening', () => {
   const s = createState(12, 8);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 5; x++) setTile(f, x, y, true);
-  for (let x = 1; x <= 5; x++) { f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL; f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL; }
-  for (let y = 1; y <= 4; y++) { f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL; f.edgesV[edgeVIdx(f, 6, y)] = EDGE_WALL; }
-  f.edgesV[edgeVIdx(f, 6, 2)] = EDGE_DOOR;     // lattice door onto the polygon
+  const f = sheet(s, 0);
+  f.box(1, 1, 5, 4);
+  f.edgeV(6, 2, EDGE_DOOR);     // the painted room's door onto the drawn one
+  f.bake();
   const shape = addShape(s, 0, [
     { x: 6 * CELL, z: 1 * CELL }, { x: 10 * CELL, z: 1 * CELL },
     { x: 10 * CELL, z: 5 * CELL }, { x: 6 * CELL, z: 5 * CELL },
@@ -365,14 +356,10 @@ test('the accessible graph drops stairs and narrow doors, keeps everything else'
 
 test('a 2ft doorway is a route on foot and not on wheels', () => {
   const s = createState(20, 12);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 9; x++) setTile(f, x, y, true);
-  for (let x = 1; x <= 9; x++) { f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL; f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL; }
-  for (let y = 1; y <= 4; y++) {
-    f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, 10, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
-  }
+  const f = sheet(s, 0);
+  f.box(1, 1, 9, 4);
+  f.vrun(5, 1, 4, EDGE_WALL);
+  f.bake();
   const shape = addShape(s, 0, [
     { x: 44, z: 4 }, { x: 64, z: 4 }, { x: 64, z: 20 }, { x: 44, z: 20 },
   ], { name: 'Narrow' });
@@ -406,31 +393,20 @@ test('the metric field measures feet where the cost field measures cost', () => 
 
 // One long corridor with three doors off it: two rooms side by side at the
 // west end, and one at the far east end.
-function longCorridor(len = 30) {
+function longCorridor(len = 30, extra = null) {
   const s = createState(len + 4, 12);
-  const f = s.floors[0];
-  for (let x = 1; x <= len; x++) setTile(f, x, 5, true);
-  for (let x = 1; x <= len; x++) {
-    f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, 6)] = EDGE_WALL;
-  }
-  f.edgesV[edgeVIdx(f, 1, 5)] = EDGE_WALL;
-  f.edgesV[edgeVIdx(f, len + 1, 5)] = EDGE_WALL;
-  for (let x = 1; x <= len; x++) f.cells[5 * f.w + x].room = 'Hall';
+  const f = sheet(s, 0);
+  f.box(1, 5, len, 5).label(1, 5, len, 5, { name: 'Hall' });
   // Three rooms north of it, at x = 2, x = 4 and x = len - 1.
   const room = (x, name) => {
-    for (let y = 2; y <= 4; y++) setTile(f, x, y, true);
-    for (let y = 2; y <= 4; y++) {
-      f.edgesV[edgeVIdx(f, x, y)] = EDGE_WALL;
-      f.edgesV[edgeVIdx(f, x + 1, y)] = EDGE_WALL;
-    }
-    f.edgesH[edgeHIdx(f, x, 2)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, 5)] = EDGE_DOOR;
-    for (let y = 2; y <= 4; y++) f.cells[y * f.w + x].room = name;
+    f.box(x, 2, x, 4, { name });
+    f.edgeH(x, 5, EDGE_DOOR);
   };
   room(2, 'A');
   room(4, 'B');
   room(len - 1, 'C');
+  if (extra) extra(f);
+  f.bake();
   return s;
 }
 
@@ -483,11 +459,11 @@ test('portalsOf finds a door at the far end, where adjacency would not', () => {
 
 test('an L-shaped room gets a gate, and a route round it goes through it', () => {
   const s = createState(16, 16);
-  const f = s.floors[0];
+  const f = sheet(s, 0);
   // An L: an arm east along row 1, and a leg south at x = 1..2.
-  for (let x = 1; x <= 10; x++) for (let y = 1; y <= 2; y++) setTile(f, x, y, true);
-  for (let y = 3; y <= 10; y++) for (let x = 1; x <= 2; x++) setTile(f, x, y, true);
-  for (const c of f.cells) if (c) c.room = 'Bend';
+  f.fill(1, 1, 10, 2).fill(1, 3, 2, 10);
+  f.label(1, 1, 10, 2, { name: 'Bend' }).label(1, 3, 2, 10, { name: 'Bend' });
+  f.bake();
   const nav = buildNav(s);
   assert.ok(nav.gates.length >= 1, 'the corner is a gate');
   for (const g of nav.gates) assert.equal(nav.node(g.id).kind, 'gate');
@@ -512,8 +488,8 @@ test('a route starts from where the walker is, not from the middle of the room',
 });
 
 test('pointField measures from a point rather than from a room', () => {
-  const s = longCorridor(30);
-  s.floors[0].edgesV[edgeVIdx(s.floors[0], 1, 5)] = EDGE_DOOR2;   // a way out, west end
+  // A way out at the west end.
+  const s = longCorridor(30, (f) => f.edgeV(1, 5, EDGE_DOOR2));
   const nav = buildNav(s);
   const field = egressField(nav, { metric: true });
   const west = pointField(nav, field, 0, 2 * CELL, 5.5 * CELL);
@@ -527,8 +503,7 @@ test('pointField measures from a point rather than from a room', () => {
 });
 
 test('nearestExit answers for a point, and pointEntry hangs one on the mesh', () => {
-  const s = longCorridor(30);
-  s.floors[0].edgesV[edgeVIdx(s.floors[0], 1, 5)] = EDGE_DOOR2;
+  const s = longCorridor(30, (f) => f.edgeV(1, 5, EDGE_DOOR2));
   const nav = buildNav(s);
   const field = egressField(nav, { metric: true });
   const at = nearestExit(nav, field, 0, 20 * CELL, 5.5 * CELL);

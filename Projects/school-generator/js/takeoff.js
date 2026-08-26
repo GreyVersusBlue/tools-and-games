@@ -21,7 +21,7 @@
 // Pure module: no three.js, no DOM. Exercised by test/takeoff.test.mjs.
 
 import {
-  CELL, WALL_H, floorLabel, floorCellCount, wallHeightOf,
+  CELL, WALL_H, floorLabel, wallHeightOf,
 } from './grid.js';
 import { totalShapeArea } from './shapes.js';
 import { WALL_T_EXT } from './walls.js';
@@ -136,7 +136,7 @@ export function floorTakeoff(state, floorIndex, opts = {}) {
   const walls = wallRows(plan, height);
   const openings = openingRows(plan);
   const props = propRows(state, floorIndex, catalogGet);
-  const slab = floorCellCount(floor) * CELL * CELL + totalShapeArea(floor);
+  const slab = totalShapeArea(floor);
 
   const glazing = walls.filter((w) => w.kind === 'glass').reduce((n, w) => n + w.area, 0)
     + openings.filter((o) => o.kind === 'window')

@@ -19,6 +19,11 @@
 //   v9 — `overlay`: a scaled tracing image under the plan (see overlay.js)
 //   v10 — `tours` (recorded camera paths, see tour.js) and `models` (imported
 //        glTF files wearing catalog rows, see models.js)
+//   v11 — **the first bump that changes a shape rather than adding to one.**
+//        A floor no longer carries `cells`, `edgesH` or `edgesV`: every room
+//        is a polygon with an id (see lattice.js and shapes.js). A room record
+//        grows `group` and `load`, and the design grows `code` — the two
+//        questions Phase 7's analysis had nowhere to keep an answer to.
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
 // polygon rooms in it, a v3 one has no glass and no stairs, a v4 one has no
@@ -55,6 +60,27 @@
 // leaf. Nothing about the file changed; the building simply has a roof now. A
 // design that wants the old silhouette back says `roof: { style: 'flat' }`.
 //
+// ## The v11 migration
+//
+// Ten versions of "read the extra field if it is there" end here, and the
+// promise this file has kept since v5 — that an older design round-trips as
+// the same bytes it went in as — cannot be kept across it. What replaces it is
+// the promise that actually mattered: **an older design opens as the same
+// building.**
+//
+// A pre-v11 floor's cells and edges are read onto a scratch lattice and baked
+// (see lattice.js): one flood region becomes one room, walls merge into runs,
+// every lattice opening kind becomes an opening at a point along the run it
+// sat in, and each partition is built by exactly one of the two rooms it
+// divides. Baked rooms go *under* the file's own polygon rooms, which is where
+// the lattice always sat, so a room drawn on top of the grid is still on top
+// of it.
+//
+// One thing does not survive, and `deserialize` reports it rather than hiding
+// it: a lattice wall with no room on either side. It is the only thing the
+// polygon model cannot say, and the count comes back through `opts.onMigrate`
+// so a caller can tell somebody how many.
+//
 // The autosave key is deliberately unchanged so an in-progress design survives
 // the upgrade — that was true of the v2 bump and stays true here.
 //
@@ -63,7 +89,9 @@
 // a save-format change, so nothing here invalidates an older file or an
 // in-progress autosave.
 
-import { CELL, FLOOR_H, MAX_FLOORS, EDGE_KINDS, createFloor, createState } from './grid.js';
+import { CELL, FLOOR_H, MAX_FLOORS, createFloor, createState } from './grid.js';
+import { EDGE_KINDS, createLattice, bake } from './lattice.js';
+import { normalizeCode, isDefaultCode } from './occupancy.js';
 import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from './props.js';
 import { normalizeShape, MAX_SHAPES } from './shapes.js';
 import { readFinish, readPaint } from './finish.js';
@@ -106,7 +134,7 @@ import { normalizeModels, librarySize } from './models.js';
 // survive a round trip untouched, so re-importing the same file under the
 // same id brings a room's worth of chairs back rather than leaving holes.
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 const MIN_DIM = 4;
 const MAX_DIM = 200;
@@ -143,11 +171,17 @@ export function serialize(state, opts = {}) {
   if (tours.length) out.tours = tours; else delete out.tours;
   const models = opts.omitModels ? [] : normalizeModels(out.models);
   if (models.length) out.models = models; else delete out.models;
+  // v11's one design-wide record, on the same terms as the nine above it: a
+  // building nobody has answered a code question about writes no `code` key.
+  if (isDefaultCode(out.code)) delete out.code; else out.code = normalizeCode(out.code);
   return JSON.stringify(out);
 }
 
 const clampDim = (v) => Math.min(MAX_DIM, Math.max(MIN_DIM, Math.floor(v)));
 
+// A pre-v11 floor's cells, onto the scratch lattice they are about to be baked
+// off. The record is the same four fields it always was; it now lives for
+// exactly as long as the migration does.
 function copyCells(src, dst) {
   if (!Array.isArray(src)) return;
   for (let i = 0; i < Math.min(src.length, dst.length); i++) {
@@ -174,28 +208,45 @@ function copyEdges(src, dst) {
   }
 }
 
-// One floor record out of whatever the file offered for it.
+// One floor record out of whatever the file offered for it, plus the scratch
+// lattice a pre-v11 file wants baking — or null if it has not got one.
 function readFloor(raw, w, h) {
   const f = createFloor(w, h);
+  let lat = null;
   if (raw && typeof raw === 'object') {
-    copyCells(raw.cells, f.cells);
-    copyEdges(raw.edgesH, f.edgesH);
-    copyEdges(raw.edgesV, f.edgesV);
+    if (Array.isArray(raw.cells) || Array.isArray(raw.edgesH) || Array.isArray(raw.edgesV)) {
+      lat = createLattice(w, h);
+      copyCells(raw.cells, lat.cells);
+      copyEdges(raw.edgesH, lat.edgesH);
+      copyEdges(raw.edgesV, lat.edgesV);
+    }
     if (Array.isArray(raw.shapes)) {
       for (const rs of raw.shapes.slice(0, MAX_SHAPES)) {
-        // Polygon rooms are unbounded by the footprint on purpose — a wing can
-        // stick out past the lattice — so they're clamped to a sane extent
+        // Rooms are unbounded by the footprint on purpose — a wing can stick
+        // out past the drawing surface — so they are clamped to a sane extent
         // rather than to w x h.
         const shape = normalizeShape(rs, Math.max(w, h) * CELL * 4);
-        if (shape) f.shapes.push(shape);
+        if (!shape) continue;
+        // shapes.js validates a finish by shape rather than against finish.js's
+        // table, so that it stays a module that imports only the grid. The
+        // table lives here, so this is where an unknown key becomes null — the
+        // room falls back to the default material rather than to no floor at
+        // all, which is the promise the cell path used to keep.
+        shape.fin = readFinish(shape.fin);
+        shape.paint = readPaint(shape.paint);
+        f.shapes.push(shape);
       }
     }
   }
-  return f;
+  return { floor: f, lat };
 }
 
 // Validate + normalize loaded data; returns a state object or throws.
-export function deserialize(json) {
+// `opts.onMigrate(info)` is called once when a pre-v11 file was baked, with
+// `{ from, rooms, orphans }` — which version it came from, how many rooms came
+// out of the lattice, and how many built boundaries had no room on either side
+// to belong to and so could not come with them.
+export function deserialize(json, opts = {}) {
   const d = typeof json === 'string' ? JSON.parse(json) : json;
   if (!d || typeof d !== 'object') throw new Error('Not a school-generator save file');
 
@@ -213,7 +264,8 @@ export function deserialize(json) {
     : FLOOR_H;
 
   const rawFloors = legacy ? [d] : d.floors.slice(0, MAX_FLOORS);
-  state.floors = (rawFloors.length ? rawFloors : [null]).map((rf) => readFloor(rf, w, h));
+  const read = (rawFloors.length ? rawFloors : [null]).map((rf) => readFloor(rf, w, h));
+  state.floors = read.map((r) => r.floor);
 
   const top = state.floors.length - 1;
   state.currentFloor = typeof d.currentFloor === 'number'
@@ -243,6 +295,11 @@ export function deserialize(json) {
   }
   const roof = normalizeRoof(d.roof);
   if (!isDefaultRoof(roof)) state.roof = roof;
+  // v11's code settings: which edition the analysis is read against, and
+  // whether the building is sprinklered. Absent means the defaults, which are
+  // what every reader assumed before there was anywhere to say otherwise.
+  const code = normalizeCode(d.code);
+  if (!isDefaultCode(code)) state.code = code;
   // v8's population settings, on the same terms as everything above: an
   // unreadable one is the default one, and a file from before v8 simply has
   // the default school in it.
@@ -290,6 +347,25 @@ export function deserialize(json) {
   for (const t of (state.tours || [])) {
     if (!t.id || t.id >= state.nextId) t.id = state.nextId++;
   }
+
+  // ...and only now the migration, because a baked room takes its id off the
+  // same counter and every id already in the file has to be spoken for first.
+  let migrated = null;
+  read.forEach((r, i) => {
+    if (!r.lat) return;
+    // Baked rooms go under the file's own polygon rooms, which is where the
+    // lattice always sat: a room drawn over the grid is still drawn over it.
+    const drawn = r.floor.shapes;
+    r.floor.shapes = [];
+    const out = bake(state, i, r.lat);
+    r.floor.shapes.push(...drawn);
+    if (!migrated) {
+      migrated = { from: Number.isFinite(d.version) ? d.version : 1, rooms: 0, orphans: 0 };
+    }
+    migrated.rooms += out.shapes.length;
+    migrated.orphans += out.orphans;
+  });
+  if (migrated && typeof opts.onMigrate === 'function') opts.onMigrate(migrated);
   return state;
 }
 
@@ -303,8 +379,8 @@ export function downloadSave(state, filename = 'school.json') {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-export function loadFromFile(file) {
-  return file.text().then((text) => deserialize(text));
+export function loadFromFile(file, opts = {}) {
+  return file.text().then((text) => deserialize(text, opts));
 }
 
 let autosaveTimer = null;
@@ -347,10 +423,10 @@ export function autosaveNow(state) {
   return writeAutosave(state);
 }
 
-export function loadAutosave() {
+export function loadAutosave(opts = {}) {
   try {
     const json = localStorage.getItem(AUTOSAVE_KEY);
-    return json ? deserialize(json) : null;
+    return json ? deserialize(json, opts) : null;
   } catch (e) {
     return null;
   }
@@ -433,11 +509,11 @@ export function saveDesign(state, name, id = null) {
   return slot.id;
 }
 
-export function loadDesign(id) {
+export function loadDesign(id, opts = {}) {
   let json = null;
   try { json = localStorage.getItem(SLOT_PREFIX + id); } catch (e) { /* ignore */ }
   if (!json) throw new Error('That saved design is missing, or was deleted in another tab.');
-  return deserialize(json);
+  return deserialize(json, opts);
 }
 
 export function deleteDesign(id) {

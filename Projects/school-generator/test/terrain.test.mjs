@@ -11,7 +11,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createState, CELL, setTile } from '../js/grid.js';
+import { createState, CELL } from '../js/grid.js';
+import { slabOn } from './build.mjs';
 import { addShape } from '../js/shapes.js';
 import {
   POST_FT, SITE_MARGIN, MAX_ELEV, PAD_APRON, PAD_BLEND, MIN_BRUSH, MAX_BRUSH, CONTOUR_FT,
@@ -28,7 +29,7 @@ const near = (a, b, eps, msg) =>
 // press into.
 function withBuilding(cells = 4, grid = 20) {
   const s = createState(grid, grid);
-  for (let y = 0; y < cells; y++) for (let x = 0; x < cells; x++) setTile(s.floors[0], x, y, true);
+  slabOn(s, 0, [0, 0, cells - 1, cells - 1]);
   return s;
 }
 
@@ -168,7 +169,7 @@ test('moving the building moves its pad — nothing is baked', () => {
   const before = groundAt(terrainField(s), 150, 150);
   assert.ok(before > 1, 'the far corner is graded');
   // Extend the building out over it and the pad follows.
-  for (let y = 0; y < 50; y++) for (let x = 0; x < 50; x++) setTile(s.floors[0], x, y, true);
+  slabOn(s, 0, [0, 0, 49, 49]);
   near(groundAt(terrainField(s), 150, 150), 0, 1e-9, 'now it is slab');
 });
 

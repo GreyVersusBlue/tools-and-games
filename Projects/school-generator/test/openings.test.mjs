@@ -4,10 +4,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { CELL, DOOR_W, DOOR_H, WALL_H, createState } from '../js/grid.js';
 import {
-  CELL, DOOR_W, DOOR_H, WALL_H, EDGE_DOOR, EDGE_DOOR2, EDGE_WINDOW,
-  createState, setTile, edgeHIdx, edgeVIdx,
-} from '../js/grid.js';
+  EDGE_DOOR, EDGE_DOOR2, EDGE_WINDOW, gridOpeningWidth, edgeOpeningOpts,
+} from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import {
   addShape, addOpening, toggleOpening, flipOpening, openingSpec, writeOpening,
   isWindowOpening, isDoorOpening, defaultOpeningWidth, segEnds,
@@ -18,7 +19,7 @@ import { serialize, deserialize } from '../js/save-load.js';
 import {
   segLeaves, leafEnd, leafSegment, leafAngle, leafDistanceTo, sideOfWall,
   collectDoorLeaves, updateLeaves, closeAll, mullionPositions, windowBand,
-  gridOpeningWidth, gridDoorSpec, SWING_MAX, OPEN_NEAR, OPEN_FAR,
+  SWING_MAX, OPEN_NEAR, OPEN_FAR,
 } from '../js/openings.js';
 
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -181,23 +182,24 @@ test('a cased opening and a window hang nothing at all', () => {
 
 function roomWithDoor(edge = EDGE_DOOR) {
   const s = createState(8, 8);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 4; x++) setTile(f, x, y, true);
-  f.edgesH[edgeHIdx(f, 2, 1)] = edge;
+  const f = sheet(s, 0);
+  f.fill(1, 1, 4, 4);
+  f.edgeH(2, 1, edge);
+  f.bake();
   return s;
 }
 
-test('every grid door hangs a leaf, and a window hangs none', () => {
+test('every door kind bakes to a leaf, and a window hangs none', () => {
   assert.equal(collectDoorLeaves(roomWithDoor(EDGE_DOOR), 0).length, 1);
   assert.equal(collectDoorLeaves(roomWithDoor(EDGE_DOOR2), 0).length, 2);
   assert.equal(collectDoorLeaves(roomWithDoor(EDGE_WINDOW), 0).length, 0);
   assert.equal(gridOpeningWidth(EDGE_DOOR), DOOR_W);
   assert.equal(gridOpeningWidth(EDGE_DOOR2), CELL);
   assert.ok(gridOpeningWidth(EDGE_WINDOW) < CELL);
-  assert.equal(gridDoorSpec(EDGE_DOOR2).leaf, LEAF_DOUBLE);
+  assert.equal(edgeOpeningOpts(EDGE_DOOR2).leaf, LEAF_DOUBLE);
 });
 
-test('leaf keys are stable and unique across both halves of the room model', () => {
+test('leaf keys are stable and unique across a storey', () => {
   const s = roomWithDoor(EDGE_DOOR);
   const shape = addShape(s, 0, [
     { x: 24, z: 4 }, { x: 40, z: 4 }, { x: 40, z: 20 }, { x: 24, z: 20 },

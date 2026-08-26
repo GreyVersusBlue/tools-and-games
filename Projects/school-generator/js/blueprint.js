@@ -3,7 +3,7 @@
 // (no canvas/DOM), so it's unit-tested the same way every other model module
 // is; the drawing half below it only runs in the browser.
 //
-// A plan reads the same model everything else does — cells/edges, polygon
+// A plan reads the same model everything else does — rooms, polygon
 // rooms, props, and stairs/links — and turns it into architectural-style
 // symbols: walls by kind, a door swing arc at every opening, a tread-and-arrow
 // stair symbol (or a dashed hole for the floor a stair opens into), room
@@ -18,8 +18,7 @@
 // is what a site plan is: the ground, and where the building sits on it.
 
 import {
-  CELL, EDGE_WALL, EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW,
-  isDoorEdge, computeLabels, floorLabel,
+  CELL, floorLabel,
 } from './grid.js';
 import {
   shapesOf, segEnds, shapeArea, interiorPoint, openingSpec, isWindowOpening,
@@ -36,12 +35,11 @@ import { footprintOf } from './propplace.js';
 import { wallProbe } from './walls.js';
 import { finishSchedule } from './finish.js';
 import { floorOccupancy } from './occupancy.js';
-import { segLeaves, leafEnd, leafAngle, gridDoorSpec, gridWindowSpec, gridOpeningWidth } from './openings.js';
+import { segLeaves, leafEnd, leafAngle } from './openings.js';
 import { regionsOf, markingsFor, surfaceEntry, markingEntry, siteSchedule, regionArea } from './site.js';
 import { terrainField, contours, terrainRange, CONTOUR_FT } from './terrain.js';
 import { roofMask, maskOutlines } from './roof.js';
 
-const EDGE_KIND_NAME = { [EDGE_WALL]: 'wall', [EDGE_GLASS]: 'glass', [EDGE_RAIL]: 'rail' };
 const SEG_KIND_NAME = { [SEG_WALL]: 'wall', [SEG_GLASS]: 'glass', [SEG_RAIL]: 'rail' };
 
 function pushWallRun(walls, kind, ax, az, bx, bz, t) {
@@ -80,47 +78,10 @@ function pushOpening(openings, spec, a, b, t) {
   });
 }
 
-function addGridEdge(v, ax, az, bx, bz, walls, openings, thick) {
-  const kind = EDGE_KIND_NAME[v];
-  const a = { x: ax, z: az }, b = { x: bx, z: bz };
-  const t = thick(ax, az, bx, bz);
-  if (isDoorEdge(v) || v === EDGE_WINDOW) {
-    const len = Math.hypot(bx - ax, bz - az);
-    const w = gridOpeningWidth(v);
-    const jamb = (CELL - w) / 2;
-    const ux = (bx - ax) / len, uz = (bz - az) / len;
-    // A grid opening is centred in its cell, so the two jambs are the same
-    // length; either can be zero (a double door fills the whole edge).
-    pushWallRun(walls, 'wall', ax, az, ax + ux * jamb, az + uz * jamb, t);
-    pushWallRun(walls, 'wall', ax + ux * (jamb + w), az + uz * (jamb + w), bx, bz, t);
-    const spec = v === EDGE_WINDOW
-      ? { ...gridWindowSpec(), t: 0.5, w }
-      : { ...gridDoorSpec(v), t: 0.5, w };
-    pushOpening(openings, spec, a, b, t);
-  } else if (kind) {
-    pushWallRun(walls, kind, ax, az, bx, bz, t);
-  }
-}
-
-function gridWalls(floor, walls, openings, thick) {
-  for (let y = 0; y <= floor.h; y++) {
-    for (let x = 0; x < floor.w; x++) {
-      const v = floor.edgesH[y * floor.w + x];
-      if (v) addGridEdge(v, x * CELL, y * CELL, (x + 1) * CELL, y * CELL, walls, openings, thick);
-    }
-  }
-  for (let y = 0; y < floor.h; y++) {
-    for (let x = 0; x <= floor.w; x++) {
-      const v = floor.edgesV[y * (floor.w + 1) + x];
-      if (v) addGridEdge(v, x * CELL, y * CELL, x * CELL, (y + 1) * CELL, walls, openings, thick);
-    }
-  }
-}
-
-// Polygon walls reuse `solidSpans` — the same cut-the-run-at-each-opening
-// logic the walkthrough collider uses — so a plan's gaps line up with the
-// doorways you can actually walk through.
-function polyWalls(floor, walls, openings, thick) {
+// Walls reuse `solidSpans` — the same cut-the-run-at-each-opening logic the
+// walkthrough collider uses — so a plan's gaps line up with the doorways you
+// can actually walk through.
+function roomWalls(floor, walls, openings, thick) {
   for (const shape of shapesOf(floor)) {
     for (const ring of shape.rings) {
       for (let i = 0; i < ring.pts.length; i++) {
@@ -153,7 +114,7 @@ function polyWalls(floor, walls, openings, thick) {
 
 function ringToPts(ring) { return ring.pts.map((p) => ({ x: p.x, z: p.z })); }
 
-function polyRooms(floor) {
+function planRooms(floor) {
   return shapesOf(floor).map((shape) => {
     const label = interiorPoint(shape);
     return {
@@ -166,17 +127,6 @@ function polyRooms(floor) {
       labelZ: label.z,
     };
   });
-}
-
-function gridCellFills(floor) {
-  const out = [];
-  for (let y = 0; y < floor.h; y++) {
-    for (let x = 0; x < floor.w; x++) {
-      const c = floor.cells[y * floor.w + x];
-      if (c) out.push({ x: x * CELL, z: y * CELL, color: c.color });
-    }
-  }
-  return out;
 }
 
 function planProps(state, floorIndex) {
@@ -272,17 +222,14 @@ export function computeFloorPlan(state, floorIndex, opts = {}) {
   // probe is a point-in-polygon walk apiece.
   const thick = wallProbe(floor);
   const walls = [], openings = [];
-  gridWalls(floor, walls, openings, thick);
-  polyWalls(floor, walls, openings, thick);
-  const rooms = polyRooms(floor);
+  roomWalls(floor, walls, openings, thick);
+  const rooms = planRooms(floor);
   const propsList = planProps(state, floorIndex);
   const stairs = stairSymbols(state, floorIndex);
   return {
     floorIndex,
     label: floorLabel(floorIndex),
     bounds: computeBounds(floor, rooms, propsList, stairs),
-    cellFills: gridCellFills(floor),
-    gridLabels: computeLabels(floor),
     rooms,
     walls,
     // Doors *and* windows, each carrying its own leaves. Kept under the name
@@ -293,8 +240,8 @@ export function computeFloorPlan(state, floorIndex, opts = {}) {
     props: propsList,
     stairs,
     // Every room the occupancy reader can price, at the same interior point
-    // `polyRooms` labels a polygon room at — so the tag lands in the room
-    // rather than beside it, on both representations.
+    // `planRooms` labels it at — so the tag lands in the room rather than
+    // beside it.
     occupancy: opts.occupancy
       ? floorOccupancy(state, floorIndex).rooms.filter((r) => r.occ > 0)
       : null,
@@ -390,12 +337,6 @@ function fillPath(ctx, plan, layout, pts) {
 }
 
 function drawRooms(ctx, plan, layout) {
-  for (const c of plan.cellFills) {
-    const a = toPx(plan, layout, c.x, c.z);
-    const s = CELL * layout.scale;
-    ctx.fillStyle = c.color ? c.color + '33' : 'rgba(120,130,145,0.10)';
-    ctx.fillRect(a.x, a.y, s, s);
-  }
   for (const r of plan.rooms) {
     ctx.fillStyle = (r.color || '#cccccc') + '40';
     ctx.save();
@@ -431,7 +372,6 @@ function drawLabels(ctx, plan, layout) {
     ctx.fillStyle = '#5a6472';
     ctx.fillText(`${Math.round(sqft).toLocaleString()} ft²`, p.x, areaY);
   };
-  for (const l of plan.gridLabels) draw(l.name, l.count * CELL * CELL, l.cx, l.cz);
   for (const r of plan.rooms) if (r.name) draw(r.name, r.sqft, r.labelX, r.labelZ);
 }
 

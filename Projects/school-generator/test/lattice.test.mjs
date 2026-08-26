@@ -6,22 +6,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  CELL, DOOR_W, createState,
-  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW,
-  EDGE_OPENING,
-} from '../js/grid.js';
+import { CELL, DOOR_W, createState } from '../js/grid.js';
 import {
   createLattice, setTile, getCell, floodRegion, allRegions, latticeCellCount,
   edgeHIdx, edgeVIdx, traceRegion, bake, gridOpeningWidth,
   GRID_DOOR2_W, GRID_WINDOW_W,
+  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW,
+  EDGE_OPENING,
 } from '../js/lattice.js';
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt,
   shapeArea, ringIsCCW, segEnds, openingSpec, pointInShape,
   LEAF_SINGLE, LEAF_DOUBLE, LEAF_NONE, OP_WINDOW, MAX_SHAPES,
 } from '../js/shapes.js';
-import { segLeaves, leafEnd, gridDoorSpec } from '../js/openings.js';
+import { segLeaves, leafEnd } from '../js/openings.js';
 
 // A lattice with one solid block of cells drawn on it, walls all round.
 function boxLattice(w = 8, h = 8, x0 = 0, y0 = 0, x1 = 3, y1 = 2) {
@@ -273,6 +271,25 @@ test('a wall with no room on either side is counted, not lost in silence', () =>
   assert.equal(out.orphans, 3);
 });
 
+test('a stub that pokes into a room without dividing it is counted the same way', () => {
+  // Half a partition: the flood runs round the end of it, so it is a boundary
+  // of nothing and the polygon model has nowhere to put it.
+  const s = createState(10, 8);
+  const lat = boxLattice(10, 8, 0, 0, 5, 3);
+  lat.edgesV[edgeVIdx(lat, 3, 0)] = EDGE_WALL;
+  lat.edgesV[edgeVIdx(lat, 3, 1)] = EDGE_WALL;
+  const out = bake(s, 0, lat);
+  assert.equal(out.shapes.length, 1, 'still one room — the stub divides nothing');
+  assert.equal(out.orphans, 2);
+  // ...and the same wall carried all the way across is a partition, kept.
+  const s2 = createState(10, 8);
+  const lat2 = boxLattice(10, 8, 0, 0, 5, 3);
+  for (let y = 0; y <= 3; y++) lat2.edgesV[edgeVIdx(lat2, 3, y)] = EDGE_WALL;
+  const out2 = bake(s2, 0, lat2);
+  assert.equal(out2.shapes.length, 2);
+  assert.equal(out2.orphans, 0);
+});
+
 test('baked ids come off the state counter and never repeat', () => {
   const s = createState(12, 6);
   const lat = createLattice(12, 6);
@@ -307,10 +324,12 @@ function bakedLeaf(edgeKind, place) {
   return segLeaves(openingSpec(o), a, b)[0];
 }
 
-// What the lattice itself would have hung on that edge: its runs are always
-// +X for a horizontal edge and +Z for a vertical one.
+// What the lattice itself hung on that edge: its runs were always +X for a
+// horizontal edge and +Z for a vertical one, with `hand` and `sw` both +1 and
+// the opening fixed at the middle of the cell.
 function latticeLeaf(edgeKind, a, b) {
-  return segLeaves(gridDoorSpec(edgeKind), a, b)[0];
+  const spec = openingSpec({ seg: 0, t: 0.5, w: DOOR_W, leaf: LEAF_SINGLE });
+  return segLeaves(spec, a, b)[0];
 }
 
 test('a baked door hangs on the jamb the lattice hung it on, north and south', () => {

@@ -15,9 +15,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  createState, setTile, edgeHIdx, edgeVIdx, EDGE_WALL, CELL,
-} from '../js/grid.js';
+import { createState, CELL } from '../js/grid.js';
+import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import { addProp } from '../js/props.js';
 import { catalogEntry } from '../js/catalog.js';
 import { buildCollider, WALKER_R, propObstacles } from '../js/collide.js';
@@ -29,8 +29,8 @@ import {
 // can't. Cells x 2..12, y 2..12 — 44ft square at 4ft cells.
 function room() {
   const s = createState(20, 20);
-  const f = s.floors[0];
-  for (let y = 2; y <= 12; y++) for (let x = 2; x <= 12; x++) setTile(f, x, y, true);
+  const f = sheet(s, 0);
+  f.fill(2, 2, 12, 12);
   for (let x = 2; x <= 12; x++) {
     f.edgesH[edgeHIdx(f, x, 2)] = EDGE_WALL;
     f.edgesH[edgeHIdx(f, x, 13)] = EDGE_WALL;
@@ -39,6 +39,7 @@ function room() {
     f.edgesV[edgeVIdx(f, 2, y)] = EDGE_WALL;
     f.edgesV[edgeVIdx(f, 13, y)] = EDGE_WALL;
   }
+  f.bake();
   return s;
 }
 

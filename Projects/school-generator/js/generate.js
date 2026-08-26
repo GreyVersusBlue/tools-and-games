@@ -46,12 +46,10 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/generate.test.mjs.
 
-import {
-  CELL, ROOM_COLORS, MAX_FLOORS, createState, addFloor,
-  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_WINDOW, EDGE_GLASS, EDGE_OPENING,
-} from './grid.js';
+import { CELL, ROOM_COLORS, MAX_FLOORS, createState, addFloor } from './grid.js';
 import {
   createLattice, setTile, cellIdx, edgeHIdx, edgeVIdx, bake,
+  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_WINDOW, EDGE_GLASS, EDGE_OPENING,
 } from './lattice.js';
 import { shapesOf, segEnds, isBuilt, isDoorOpening } from './shapes.js';
 import { wallProbe } from './walls.js';

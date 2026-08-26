@@ -9,12 +9,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { createState, addFloor, CELL, DOOR_W, WALL_T, FLOOR_H, WALL_T_INT, WALL_T_EXT } from '../js/grid.js';
 import {
-  createState, setTile, addFloor, CELL, DOOR_W, WALL_T, FLOOR_H,
-  WALL_T_INT, WALL_T_EXT,
-  edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_RAIL,
+  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_RAIL,
   EDGE_WINDOW, EDGE_OPENING,
-} from '../js/grid.js';
+} from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import {
   addShape, setSegWall, addOpening, SEG_WALL, SEG_NONE, SEG_GLASS,
   LEAF_SINGLE, LEAF_DOUBLE, OP_WINDOW,
@@ -36,20 +36,23 @@ import {
 
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 
-// A room of floor cells with a wall all the way round it, on the ground floor.
-function walledRoom(x0 = 2, y0 = 2, x1 = 6, y1 = 5) {
+// A room with a wall all the way round it, on the ground floor — painted with
+// the 4ft brush and baked, which is the state the editor actually produces.
+// `extra` gets the sheet before the bake.
+function walledRoom(x0 = 2, y0 = 2, x1 = 6, y1 = 5, extra = null) {
   const s = createState(20, 20);
-  const f = s.floors[0];
-  for (let y = y0; y <= y1; y++)
-    for (let x = x0; x <= x1; x++) setTile(f, x, y, true);
-  for (let x = x0; x <= x1; x++) {
-    f.edgesH[edgeHIdx(f, x, y0)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, y1 + 1)] = EDGE_WALL;
-  }
-  for (let y = y0; y <= y1; y++) {
-    f.edgesV[edgeVIdx(f, x0, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, x1 + 1, y)] = EDGE_WALL;
-  }
+  const sh = sheet(s, 0);
+  sh.box(x0, y0, x1, y1);
+  if (extra) extra(sh);
+  sh.bake();
+  return s;
+}
+
+// A slab of bare floor with no walls on it, for the tests about edges.
+function slabOn(s, floorIndex, x0, y0, x1, y1) {
+  const sh = sheet(s, floorIndex);
+  sh.fill(x0, y0, x1, y1);
+  sh.bake();
   return s;
 }
 
@@ -84,23 +87,27 @@ test('an opening the length of the run leaves nothing solid', () => {
 
 // ---------- segment enumeration ----------
 
-test('every built boundary kind blocks, and an empty edge does not', () => {
+test('every built boundary kind blocks, and an unbuilt side does not', () => {
+  // One cell with three of its four sides built out of three different things.
   const s = createState(6, 6);
-  const f = s.floors[0];
-  f.edgesH[edgeHIdx(f, 1, 1)] = EDGE_WALL;
-  f.edgesH[edgeHIdx(f, 2, 1)] = EDGE_GLASS;
-  f.edgesV[edgeVIdx(f, 1, 2)] = EDGE_RAIL;
-  const segs = wallSegments(f);
+  const sh = sheet(s, 0);
+  sh.tile(1, 1).edgeH(1, 1, EDGE_WALL).edgeH(1, 2, EDGE_GLASS).edgeV(1, 1, EDGE_RAIL);
+  sh.bake();
+  const segs = wallSegments(s.floors[0]);
   assert.equal(segs.length, 3, 'glass and railing stop a body just as drywall does');
-  f.edgesH[edgeHIdx(f, 1, 1)] = 0;
-  assert.equal(wallSegments(f).length, 2);
+  const kinds = new Set(segs.map((g) => g.t));
+  assert.ok(kinds.size >= 1);
+  // The fourth side was never built, so nothing stands on it.
+  const ring = s.floors[0].shapes[0].rings[0];
+  assert.equal(ring.walls.filter((w) => w === 0).length, 1);
 });
 
-test('a grid door leaves a gap a walker actually fits through', () => {
+test('a door leaves a gap a walker actually fits through', () => {
   const s = createState(6, 6);
-  const f = s.floors[0];
-  f.edgesH[edgeHIdx(f, 0, 1)] = EDGE_DOOR;
-  const segs = wallSegments(f);
+  const sh = sheet(s, 0);
+  sh.tile(0, 1).edgeH(0, 1, EDGE_DOOR);
+  sh.bake();
+  const segs = wallSegments(s.floors[0]);
   assert.equal(segs.length, 2, 'two jambs, one opening');
   const inner = [Math.max(segs[0].ax, segs[0].bx), Math.min(segs[1].ax, segs[1].bx)].sort((a, b) => a - b);
   const gap = inner[1] - inner[0];
@@ -211,7 +218,7 @@ test('a slab holds you up at its own level, and the ground holds you outside', (
 test('an upper storey holds you up at its own height', () => {
   const s = walledRoom();
   addFloor(s);
-  for (let y = 2; y <= 5; y++) for (let x = 2; x <= 6; x++) setTile(s.floors[1], x, y, true);
+  slabOn(s, 1, 2, 2, 6, 5);
   const up = supportAt(s, 16, 14, FLOOR_H);
   assert.equal(up.kind, 'floor');
   assert.equal(up.y, FLOOR_H);
@@ -223,7 +230,7 @@ test('an upper storey holds you up at its own height', () => {
 test('a floor opening is not floor: over the hole, the support is the level below', () => {
   const s = walledRoom();
   addFloor(s);
-  for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) setTile(s.floors[1], x, y, true);
+  slabOn(s, 1, 0, 0, 19, 19);
   const { link } = addStair(s, 0, { type: 'opening', x: 16, z: 14, w: 8, d: 8 });
   assert.ok(link);
   const overHole = supportAt(s, 16, 14, FLOOR_H);
@@ -283,9 +290,8 @@ test('walking at a wall on the diagonal slides along it', () => {
 });
 
 test('a doorway is walkable, and the wall either side of it is not', () => {
-  const s = walledRoom(2, 2, 6, 5);
-  const f = s.floors[0];
-  f.edgesH[edgeHIdx(f, 4, 2)] = EDGE_DOOR;   // door in the north wall, cell x=4
+  // Door in the north wall, cell x = 4.
+  const s = walledRoom(2, 2, 6, 5, (sh) => sh.edgeH(4, 2, EDGE_DOOR));
   const c = collide(s);
   const doorX = (4 + 0.5) * CELL;
   let pos = feetAt(doorX, 10);
@@ -324,7 +330,7 @@ test('a grounded walker stops at the edge of a floor instead of falling off it',
   addFloor(s);
   // A partial upper storey: cells x 2..6, y 2..5, no walls, so the only thing
   // that can stop you is the edge itself.
-  for (let y = 2; y <= 5; y++) for (let x = 2; x <= 6; x++) setTile(s.floors[1], x, y, true);
+  slabOn(s, 1, 2, 2, 6, 5);
   const c = collide(s, 1);
   let pos = feetAt(16, 10, FLOOR_H);   // upper slab, two cells in from its north edge
   for (let i = 0; i < 30; i++) {
@@ -339,7 +345,7 @@ test('a grounded walker stops at the edge of a floor instead of falling off it',
 test('the same step is allowed in mid-air — a jump off a mezzanine is deliberate', () => {
   const s = walledRoom();
   addFloor(s);
-  for (let y = 2; y <= 5; y++) for (let x = 2; x <= 6; x++) setTile(s.floors[1], x, y, true);
+  slabOn(s, 1, 2, 2, 6, 5);
   const c = collide(s, 1);
   const airborne = tryStep(s, c, feetAt(16, 8.2, FLOOR_H + 1), 0, -1, { grounded: false });
   assert.ok(airborne, 'nothing to stop at when your feet are already off the floor');
@@ -355,9 +361,7 @@ test('a step up onto a kerb is fine; a step up onto a storey is not', () => {
 });
 
 test('walking off the ground floor slab onto the site is not a fall', () => {
-  const s = walledRoom(2, 2, 6, 5);
-  const f = s.floors[0];
-  f.edgesH[edgeHIdx(f, 4, 2)] = EDGE_DOOR;
+  const s = walledRoom(2, 2, 6, 5, (sh) => sh.edgeH(4, 2, EDGE_DOOR));
   const c = collide(s);
   const out = moveWalker(s, c, feetAt((4 + 0.5) * CELL, 7.5), 0, -1, { grounded: true });
   assert.equal(out.blocked, false);
@@ -431,8 +435,8 @@ test('STEP_UP and STEP_DOWN are steps, not storeys', () => {
 test('the guardrail around a mezzanine void stops you before the edge does', () => {
   const s = createState(20, 20);
   addFloor(s);
-  for (const f of s.floors)
-    for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) setTile(f, x, y, true);
+  slabOn(s, 0, 0, 0, 19, 19);
+  slabOn(s, 1, 0, 0, 19, 19);
   const { link } = addStair(s, 0, { type: 'opening', x: 40, z: 40, w: 8, d: 8 });
   assert.ok(link);
 
@@ -452,8 +456,8 @@ test('the guardrail around a mezzanine void stops you before the edge does', () 
 test('a stair leaves its landing side open — the rail is not a gate', () => {
   const s = createState(20, 20);
   addFloor(s);
-  for (const f of s.floors)
-    for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) setTile(f, x, y, true);
+  slabOn(s, 0, 0, 0, 19, 19);
+  slabOn(s, 1, 0, 0, 19, 19);
   const { link } = addStair(s, 0, { type: 'stair', x: 30, z: 20, rotationY: 0 });
   assert.ok(link);
   const rails = openingRailSegments(s, 1);
@@ -472,14 +476,12 @@ test('a stair leaves its landing side open — the rail is not a gate', () => {
 // ---------- windows are not doors ----------
 
 test('a window glazes a wall; it never opens a hole you can walk through', () => {
-  const s = walledRoom(2, 2, 6, 5);
-  const f = s.floors[0];
-  const solid = wallSegments(f).length;
-  f.edgesH[edgeHIdx(f, 4, 2)] = EDGE_WINDOW;
-  // The run is split into two jambs the way a door's is — the wall is drawn in
-  // pieces — but the gap between them is glass, so the collider keeps it shut.
-  const withWindow = wallSegments(f);
-  assert.ok(withWindow.length >= solid, 'the wall is still there');
+  const solid = wallSegments(walledRoom(2, 2, 6, 5).floors[0]).length;
+  const s = walledRoom(2, 2, 6, 5, (sh) => sh.edgeH(4, 2, EDGE_WINDOW));
+  // The wall carries straight on through the glazing, so the run isn't even
+  // split — which is the same answer a free-drawn wall gives.
+  const withWindow = wallSegments(s.floors[0]);
+  assert.equal(withWindow.length, solid, 'the wall is still there, in one piece');
 
   const doorX = (4 + 0.5) * CELL;
   const c = collide(s);
@@ -492,7 +494,7 @@ test('a window glazes a wall; it never opens a hole you can walk through', () =>
   assert.ok(pos.z >= 8, `a window is not a way out (ended at z=${pos.z.toFixed(2)})`);
 });
 
-test('a window on a polygon wall leaves the run unbroken', () => {
+test('a window on a free-drawn wall leaves the run unbroken too', () => {
   const s = createState(20, 20);
   const shape = addShape(s, 0, [
     { x: 10, z: 10 }, { x: 40, z: 10 }, { x: 40, z: 30 }, { x: 10, z: 30 },
@@ -506,11 +508,8 @@ test('a window on a polygon wall leaves the run unbroken', () => {
 
 // ---------- door leaves ----------
 
-function roomWithLeafDoor(edge = EDGE_DOOR) {
-  const s = walledRoom(2, 2, 6, 5);
-  s.floors[0].edgesH[edgeHIdx(s.floors[0], 4, 2)] = edge;
-  return s;
-}
+const roomWithLeafDoor = (edge = EDGE_DOOR) =>
+  walledRoom(2, 2, 6, 5, (sh) => sh.edgeH(4, 2, edge));
 
 test('a shut door is as solid as the wall it hangs in', () => {
   const s = roomWithLeafDoor();
@@ -585,8 +584,7 @@ test('a shaft keeps you in the car and lets you in one way', () => {
   const s = createState(20, 20);
   addFloor(s);
   s.currentFloor = 0;
-  const f = s.floors[0];
-  for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) setTile(f, x, y, true);
+  slabOn(s, 0, 0, 0, 11, 11);
   const { link } = addStair(s, 0, { type: 'elevator', x: 24, z: 24, rotationY: 0 });
   const segs = elevatorSegments(s, 0);
   assert.equal(segs.length, 5);
@@ -607,12 +605,14 @@ test('a shaft keeps you in the car and lets you in one way', () => {
 
 test('the collider pads each wall by its own half-thickness', () => {
   const s = createState(20, 20);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 8; x++) setTile(f, x, y, true);
-  f.edgesH[edgeHIdx(f, 3, 1)] = EDGE_WALL;   // the north face — nothing beyond it
-  f.edgesH[edgeHIdx(f, 3, 3)] = EDGE_WALL;   // a partition, rooms both sides
-  const segs = wallSegments(f);
-  const pads = segs.map((x) => x.pad).sort();
+  const sh = sheet(s, 0);
+  // Two rooms side by side: the shell has weather outside it, the partition
+  // between them has a room on each side, and nobody said which is which.
+  sh.box(1, 1, 8, 4);
+  sh.vrun(5, 1, 4, EDGE_WALL);
+  sh.bake();
+  const segs = wallSegments(s.floors[0]);
+  const pads = [...new Set(segs.map((x) => x.pad))].sort();
   assert.deepEqual(pads, [WALL_T_INT / 2, WALL_T_EXT / 2]);
   assert.ok(segs.every((x) => x.t === x.pad * 2));
 });

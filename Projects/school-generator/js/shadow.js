@@ -26,7 +26,7 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/shadow.test.mjs.
 
-import { CELL, getCell, floorAt, floorLabel } from './grid.js';
+import { CELL, floorAt, floorLabel } from './grid.js';
 import { shapesOf, pointInShape, shapeBBox } from './shapes.js';
 
 // A cell's area, which is the unit every number below is counted in.
@@ -42,7 +42,7 @@ export const OVERHANG_WARN = 0.12;   // fraction of the storey's own footprint
 
 // ---------- bounds ----------
 //
-// Polygon rooms are unbounded by the lattice on purpose (a wing can stick out
+// Rooms are unbounded by the drawing surface on purpose (a wing can stick out
 // past it), so a mask that only covered 0..w, 0..h would quietly agree that
 // everything outside was unsupported *and* unbuilt. Bounds are therefore in
 // cell coordinates that may go negative, taken from whatever the floor
@@ -52,16 +52,6 @@ export function floorBounds(floor) {
   if (!floor) return null;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   let any = false;
-  for (let y = 0; y < floor.h; y++) {
-    for (let x = 0; x < floor.w; x++) {
-      if (!getCell(floor, x, y)) continue;
-      any = true;
-      if (x < x0) x0 = x;
-      if (y < y0) y0 = y;
-      if (x > x1) x1 = x;
-      if (y > y1) y1 = y;
-    }
-  }
   for (const shape of shapesOf(floor)) {
     const bb = shapeBBox(shape);
     if (!bb) continue;
@@ -98,9 +88,6 @@ export function footprintMask(floor, bounds) {
     cells[(cy - b.y0) * b.w + (cx - b.x0)] = 1;
   };
   if (floor) {
-    for (let y = 0; y < floor.h; y++) {
-      for (let x = 0; x < floor.w; x++) if (getCell(floor, x, y)) set(x, y);
-    }
     for (const shape of shapesOf(floor)) {
       const bb = shapeBBox(shape);
       if (!bb) continue;
@@ -134,7 +121,6 @@ export function cellSupported(state, floorIndex, cx, cy) {
   if (!state || floorIndex <= 0) return true;
   const below = floorAt(state, floorIndex - 1);
   if (!below) return false;
-  if (cx >= 0 && cy >= 0 && cx < below.w && cy < below.h && getCell(below, cx, cy)) return true;
   const x = (cx + 0.5) * CELL, z = (cy + 0.5) * CELL;
   for (const shape of shapesOf(below)) if (pointInShape(shape, x, z)) return true;
   return false;
@@ -146,9 +132,7 @@ export function pointSupported(state, floorIndex, x, z) {
   if (!state || floorIndex <= 0) return true;
   const below = floorAt(state, floorIndex - 1);
   if (!below) return false;
-  for (const shape of shapesOf(below)) if (pointInShape(shape, x, z)) return true;
-  const cx = Math.floor(x / CELL), cy = Math.floor(z / CELL);
-  return cx >= 0 && cy >= 0 && cx < below.w && cy < below.h && !!getCell(below, cx, cy);
+  return shapesOf(below).some((shape) => pointInShape(shape, x, z));
 }
 
 // Whether every corner and the centre of a rectangle stands on something —

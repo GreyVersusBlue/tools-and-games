@@ -17,24 +17,31 @@ import {
   isOutside, propFace, propAlpha, furnitureSabins, roomAcoustics, reverbSpec,
   wetFraction, roomsOnFloor,
 } from '../js/acoustics.js';
-import { createState, setTile, CELL, WALL_H, FLOOR_H, EDGE_WALL, edgeVIdx } from '../js/grid.js';
+import { createState, CELL, WALL_H, FLOOR_H } from '../js/grid.js';
+import { sheet } from './build.mjs';
 import { addShape } from '../js/shapes.js';
 import { addProp, addLink } from '../js/props.js';
 
 const near = (a, b, eps, msg) =>
   assert.ok(Math.abs(a - b) <= eps, `${msg}: ${a} vs ${b} (±${eps})`);
 
-// A one-storey building with a rectangle of floor laid from (0,0).
-function slab(wCells, hCells, floors = 1) {
+// A building with a rectangle of floor laid from (0,0) on every storey, drawn
+// on a scratch lattice and baked into rooms — see build.mjs. `draw` gets the
+// sheet before the bake, for the fixtures that want a partition or a finish.
+function slab(wCells, hCells, floors = 1, draw = null) {
   const s = createState(Math.max(wCells + 2, 8), Math.max(hCells + 2, 8));
-  for (let i = 1; i < floors; i++) s.floors.push(structuredClone(s.floors[0]));
+  for (let i = 1; i < floors; i++) s.floors.push({ w: s.w, h: s.h, shapes: [] });
   for (let f = 0; f < floors; f++) {
-    for (let y = 0; y < hCells; y++) {
-      for (let x = 0; x < wCells; x++) setTile(s.floors[f], x, y, true);
-    }
+    const sh = sheet(s, f);
+    sh.fill(0, 0, wCells - 1, hCells - 1);
+    if (draw) draw(sh);
+    sh.bake();
   }
   return s;
 }
+
+// The same, with one finish written across every cell before the bake.
+const finished = (w, h, fin) => slab(w, h, 1, (sh) => sh.label(0, 0, w - 1, h - 1, { fin }));
 
 const table = {
   desk: { type: 'desk', name: 'Desk', category: 'Tables & Desks', w: 2, d: 2, h: 2.5, mount: 'floor' },
@@ -103,31 +110,28 @@ test('a prop absorbs over the face it presents', () => {
 
 // ---------- rooms ----------
 
-test('a room is the polygon if there is one, the flooded region otherwise', () => {
+test('a room is the room its outline says it is', () => {
   const s = slab(10, 10);
-  const grid = roomAt(s, 0, 6, 6);
-  assert.equal(grid.kind, 'grid');
-  assert.equal(grid.area, 100 * CELL * CELL);
-  // A 10x10 block of cells has a 40-cell perimeter.
-  assert.equal(grid.perimeter, 40 * CELL);
-  assert.ok(grid.contains(6, 6));
-  assert.ok(!grid.contains(-20, -20));
+  const room = roomAt(s, 0, 6, 6);
+  assert.equal(room.kind, 'shape');
+  assert.equal(room.area, 100 * CELL * CELL);
+  // A 10x10 block of cells bakes to a 40-cell perimeter.
+  assert.equal(room.perimeter, 40 * CELL);
+  assert.ok(room.contains(6, 6));
+  assert.ok(!room.contains(-20, -20));
 
   addShape(s, 0, [{ x: 0, z: 0 }, { x: 20, z: 0 }, { x: 20, z: 20 }, { x: 0, z: 20 }],
     { name: 'Commons', fin: 'carpet' });
-  const poly = roomAt(s, 0, 6, 6);
-  assert.equal(poly.kind, 'shape', 'a polygon room drawn over cells is the room');
-  assert.equal(poly.name, 'Commons');
-  assert.equal(poly.fin, 'carpet');
-  assert.equal(poly.area, 400);
-  assert.equal(poly.perimeter, 80);
+  const over = roomAt(s, 0, 6, 6);
+  assert.equal(over.name, 'Commons', 'a room drawn on top of another is the room');
+  assert.equal(over.fin, 'carpet');
+  assert.equal(over.area, 400);
+  assert.equal(over.perimeter, 80);
 });
 
 test('a wall cuts one region into two', () => {
-  const s = slab(10, 10);
-  const f = s.floors[0];
   // A full-height wall down the middle: every vertical edge at x = 5.
-  for (let y = 0; y < 10; y++) f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
+  const s = slab(10, 10, 1, (sh) => sh.vrun(5, 0, 9));
   const west = roomAt(s, 0, 2 * CELL, 2 * CELL);
   const east = roomAt(s, 0, 8 * CELL, 2 * CELL);
   assert.notEqual(west.id, east.id);
@@ -189,8 +193,7 @@ test('carpet and furniture both shorten the tail; nothing lengthens it', () => {
   const bare = slab(8, 8);
   const hard = roomAcoustics(bare, 0, 10, 10, entry);
 
-  const soft = slab(8, 8);
-  for (const c of soft.floors[0].cells) if (c) c.fin = 'carpet';
+  const soft = finished(8, 8, 'carpet');
   const carpeted = roomAcoustics(soft, 0, 10, 10, entry);
   assert.ok(carpeted.rt60 < hard.rt60, 'carpet is absorption');
 
@@ -225,8 +228,7 @@ test('an acoustic panel is worth many times its size in ordinary furniture', () 
 
 test('a big hard room is over the ANSI limit and says so', () => {
   // 40x40ft of sealed concrete with a tile ceiling: about 16,000 ft^3.
-  const s = slab(10, 10);
-  for (const c of s.floors[0].cells) if (c) c.fin = 'concrete';
+  const s = finished(10, 10, 'concrete');
   const ac = roomAcoustics(s, 0, 20, 20, entry);
   assert.equal(ac.volume, 100 * CELL * CELL * WALL_H);
   assert.equal(ac.limit, 0.7);
@@ -248,8 +250,7 @@ test('the pre-delay is the mean free path at the speed of sound', () => {
   near(spec.predelay, Math.min(0.09, ac.mfp / SPEED_OF_SOUND), 1e-9, 'and the delay is it, over c');
   assert.ok(spec.rt60 === ac.rt60);
   // A dead room's tail loses its highs; a hard one keeps them.
-  const soft = slab(12, 12);
-  for (const c of soft.floors[0].cells) if (c) c.fin = 'carpet';
+  const soft = finished(12, 12, 'carpet');
   assert.ok(reverbSpec(roomAcoustics(soft, 0, 20, 20, entry)).hf < spec.hf);
 });
 
@@ -268,13 +269,11 @@ test('the wet share grows with distance and never reaches all of it', () => {
 // ---------- the storey roll-up ----------
 
 test('a storey rolls up to one entry per room, however it is drawn', () => {
-  const s = slab(10, 10);
-  const f = s.floors[0];
-  for (let y = 0; y < 10; y++) f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
+  const s = slab(10, 10, 1, (sh) => sh.vrun(5, 0, 9));
   addShape(s, 0, [{ x: 60, z: 0 }, { x: 90, z: 0 }, { x: 90, z: 30 }, { x: 60, z: 30 }],
     { name: 'Gym' });
   const rooms = roomsOnFloor(s, 0, entry);
-  // Two grid regions and one polygon, each counted once.
+  // Two baked rooms and one drawn by hand, each counted once.
   assert.equal(rooms.length, 3);
   assert.equal(new Set(rooms.map((r) => r.id)).size, 3);
   assert.ok(rooms.some((r) => r.name === 'Gym'));

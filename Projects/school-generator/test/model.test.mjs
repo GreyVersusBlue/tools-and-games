@@ -1,18 +1,20 @@
-// Data-model tests for the parts of School Generator that don't need a browser:
-// grid.js, props.js and the save format. Polygon rooms have their own file
-// (shapes.test.mjs). Run `node --test` from Projects/school-generator
-// (no dependencies, no build step).
+// Data-model tests for the parts of School Generator that don't need a
+// browser: grid.js, props.js and the save format. Rooms have their own file
+// (shapes.test.mjs), the 4ft brush has two more (lattice, paint), and the v11
+// migration has migrate.test.mjs. Run `node --test` from
+// Projects/school-generator (no dependencies, no build step).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  CELL, FLOOR_H, MAX_FLOORS, EDGE_WALL, EDGE_GLASS, EDGE_RAIL,
-  createState, createFloor,
-  activeFloor, floorBaseY, topOfBuilding, wallHeightOf, floorCellCount,
+  CELL, FLOOR_H, MAX_FLOORS, createState, createFloor, activeFloor, floorBaseY,
+  topOfBuilding, wallHeightOf, floorShapeCount,
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
-  setTile, getCell, floodRegion, computeLabels, cellIdx, edgeHIdx,
 } from '../js/grid.js';
+import { EDGE_WALL, EDGE_GLASS, EDGE_RAIL, EDGE_DOOR } from '../js/lattice.js';
+import { totalShapeArea, shapeArea } from '../js/shapes.js';
+import { sheet } from './build.mjs';
 import { buildSampleSchool } from '../js/sample.js';
 import {
   addProp, removeProp, getProp, propsOnFloor, propCell,
@@ -37,38 +39,43 @@ test('a new state is one empty floor on a shared footprint', () => {
   assert.equal(s.currentFloor, 0);
   assert.deepEqual([s.w, s.h], [10, 8]);
   assert.deepEqual([s.floors[0].w, s.floors[0].h], [10, 8]);
-  assert.equal(floorCellCount(s.floors[0]), 0);
+  assert.equal(floorShapeCount(s.floors[0]), 0);
+  assert.deepEqual(Object.keys(s.floors[0]).sort(), ['h', 'shapes', 'w'],
+    'a floor is its footprint and its rooms — no cells, no edge arrays');
   assert.deepEqual(s.props, []);
   assert.deepEqual(s.links, []);
 });
 
-test('flood fill and labels operate on a single floor', () => {
+test('rooms belong to one storey and nothing leaks between them', () => {
   const s = createState(8, 8);
   addFloor(s);
+  sheet(s, 0).fill(0, 0, 3, 3).label(0, 0, 3, 3, { name: 'Gym', color: '#b8dfa2' }).bake();
+  sheet(s, 1).fill(0, 0, 0, 0).bake();
+
   const [ground, upper] = s.floors;
-  for (let x = 0; x < 4; x++) for (let y = 0; y < 4; y++) setTile(ground, x, y, true);
-  setTile(upper, 0, 0, true);
-
-  assert.equal(floodRegion(ground, 0, 0).length, 16);
-  assert.equal(floodRegion(upper, 0, 0).length, 1);
-  assert.equal(floodRegion(upper, 1, 1).length, 0, 'upper floor is otherwise empty');
-
-  ground.cells[cellIdx(ground, 0, 0)].room = 'Gym';
-  ground.cells[cellIdx(ground, 0, 0)].color = '#b8dfa2';
-  assert.deepEqual(computeLabels(ground).map((l) => l.name), ['Gym']);
-  assert.deepEqual(computeLabels(upper), []);
+  assert.equal(floorShapeCount(ground), 1);
+  assert.equal(floorShapeCount(upper), 1);
+  assert.equal(ground.shapes[0].name, 'Gym');
+  assert.equal(ground.shapes[0].color, '#b8dfa2');
+  assert.equal(upper.shapes[0].name, null);
+  assert.equal(totalShapeArea(ground), 16 * CELL * CELL);
+  assert.equal(totalShapeArea(upper), CELL * CELL);
+  assert.notEqual(ground.shapes[0].id, upper.shapes[0].id, 'ids are unique building-wide');
 });
 
 test('a wall on one floor does not bound the floor above', () => {
   const s = createState(6, 6);
   addFloor(s);
-  const [ground, upper] = s.floors;
-  for (const f of [ground, upper])
-    for (let x = 0; x < 4; x++) for (let y = 0; y < 4; y++) setTile(f, x, y, true);
-  for (let x = 0; x < 4; x++) ground.edgesH[edgeHIdx(ground, x, 2)] = 1;
-
-  assert.equal(floodRegion(ground, 0, 0).length, 8, 'wall splits the ground floor');
-  assert.equal(floodRegion(upper, 0, 0).length, 16, 'upper floor is untouched');
+  const walled = (i, wall) => {
+    const f = sheet(s, i);
+    f.fill(0, 0, 3, 3);
+    if (wall) f.hrun(0, 3, 2, EDGE_WALL);
+    f.bake();
+  };
+  walled(0, true);
+  walled(1, false);
+  assert.equal(floorShapeCount(s.floors[0]), 2, 'the wall splits the ground floor');
+  assert.equal(floorShapeCount(s.floors[1]), 1, 'the upper floor is untouched');
 });
 
 // ---------- floor stacking ----------
@@ -92,22 +99,23 @@ test('adding a floor selects it and caps out at MAX_FLOORS', () => {
   assert.equal(s.floors.length, MAX_FLOORS);
 });
 
-test('duplicating a floor copies structure without sharing it', () => {
+test('duplicating a floor copies its rooms without sharing them', () => {
   const s = createState(6, 6);
+  sheet(s, 0).box(1, 1, 2, 2, { name: 'Room 101' }).edgeH(1, 1, EDGE_DOOR).bake();
   const ground = s.floors[0];
-  setTile(ground, 1, 1, true);
-  ground.cells[cellIdx(ground, 1, 1)].room = 'Room 101';
-  ground.edgesH[edgeHIdx(ground, 1, 1)] = 2;
 
   assert.equal(duplicateFloor(s, 0), 1);
   const upper = s.floors[1];
-  assert.equal(upper.cells[cellIdx(upper, 1, 1)].room, 'Room 101');
-  assert.equal(upper.edgesH[edgeHIdx(upper, 1, 1)], 2);
+  assert.equal(upper.shapes.length, 1);
+  assert.equal(upper.shapes[0].name, 'Room 101');
+  assert.equal(upper.shapes[0].rings[0].openings.length, 1, 'the doorway came too');
+  assert.notEqual(upper.shapes[0].id, ground.shapes[0].id,
+    'a copied room is a new room, with an id of its own');
 
-  upper.cells[cellIdx(upper, 1, 1)].room = 'Room 201';
-  setTile(upper, 2, 2, true);
-  assert.equal(ground.cells[cellIdx(ground, 1, 1)].room, 'Room 101', 'cells are cloned');
-  assert.equal(getCell(ground, 2, 2), null, 'edits do not leak downward');
+  upper.shapes[0].name = 'Room 201';
+  upper.shapes[0].rings[0].pts[0].x = 99;
+  assert.equal(ground.shapes[0].name, 'Room 101', 'records are cloned');
+  assert.notEqual(ground.shapes[0].rings[0].pts[0].x, 99, 'and so are their points');
 });
 
 test('inserting a floor renumbers the props and links above it', () => {
@@ -238,8 +246,7 @@ test('a design round-trips unchanged, polygon rooms included', () => {
   assert.equal(back.version, SAVE_VERSION);
   assert.equal(back.floors.length, s.floors.length);
   assert.equal(back.currentFloor, 1);
-  assert.deepEqual(back.floors[0].cells, s.floors[0].cells);
-  assert.deepEqual(back.floors[1].edgesV, s.floors[1].edgesV);
+  assert.deepEqual(back.floors[1].shapes, s.floors[1].shapes);
   assert.deepEqual(back.props, s.props);
   assert.deepEqual(back.links, s.links);
   assert.deepEqual(back.floors[0].shapes, s.floors[0].shapes);
@@ -247,7 +254,9 @@ test('a design round-trips unchanged, polygon rooms included', () => {
 });
 
 test('a v1 save loads as a one-floor current-version design', () => {
-  // Exactly the shape v1 wrote: flat grid, no floors/props/links.
+  // Exactly the shape v1 wrote: flat lattice, no floors/props/links. Since
+  // Phase 12 it arrives as rooms — see migrate.test.mjs for the whole of what
+  // the bake does with an old file; this is the version handshake only.
   const v1 = {
     version: 1,
     cellFt: 4,
@@ -258,8 +267,6 @@ test('a v1 save loads as a one-floor current-version design', () => {
   };
   v1.cells[7] = { room: 'Room 101', color: '#f5d491' };
   v1.cells[8] = { room: null, color: null };
-  v1.edgesH[7] = 1;
-  v1.edgesV[9] = 2;
 
   const s = deserialize(JSON.stringify(v1));
   assert.equal(s.version, SAVE_VERSION);
@@ -267,14 +274,16 @@ test('a v1 save loads as a one-floor current-version design', () => {
   assert.equal(s.currentFloor, 0);
   assert.deepEqual(s.props, []);
   assert.deepEqual(s.links, []);
-  // A v1 cell arrives with Phase 2's finish fields present and empty — the
-  // room is still VCT and off-white, it just now says so by not saying so.
-  assert.deepEqual(s.floors[0].cells[7],
-    { room: 'Room 101', color: '#f5d491', fin: null, paint: null });
-  assert.equal(s.floors[0].edgesH[7], 1);
-  assert.equal(s.floors[0].edgesV[9], 2);
-  assert.equal(floorCellCount(s.floors[0]), 2);
-  assert.deepEqual(s.floors[0].shapes, [], 'an old design simply has no polygon rooms');
+  assert.equal(floorShapeCount(s.floors[0]), 1, 'two adjoining cells are one room');
+  const room = s.floors[0].shapes[0];
+  assert.equal(room.name, 'Room 101');
+  assert.equal(room.color, '#f5d491');
+  assert.ok(room.id > 0, 'and it has an id, which a v1 design could not have had');
+  assert.equal(shapeArea(room), 2 * CELL * CELL);
+  // Phase 2's finish fields arrive present and empty — the room is still VCT
+  // and off-white, it just now says so by not saying so.
+  assert.equal(room.fin, null);
+  assert.equal(room.paint, null);
 });
 
 test('load rejects hostile or malformed content instead of trusting it', () => {
@@ -296,7 +305,8 @@ test('load rejects hostile or malformed content instead of trusting it', () => {
   assert.equal(s.currentFloor, MAX_FLOORS - 1);
   assert.equal(s.props.length, 1, 'unusable props dropped');
   assert.equal(s.links.length, 1, 'unknown link kinds dropped');
-  assert.equal(s.floors[0].cells.length, 200 * 4, 'floors reallocated to the clamped footprint');
+  assert.deepEqual([s.floors[0].w, s.floors[0].h], [200, 4],
+    'floors reallocated to the clamped footprint');
 });
 
 test('ids from a loaded file are never reused by new placements', () => {
@@ -312,42 +322,25 @@ test('ids from a loaded file are never reused by new placements', () => {
   assert.equal(reseedIds(s), 79);
 });
 
-test('cell and edge counts follow the shared footprint on every floor', () => {
+test('a footprint is shared by every floor', () => {
   const s = createState(12, 9);
   addFloor(s);
-  for (const f of s.floors) {
-    assert.equal(f.cells.length, 12 * 9);
-    assert.equal(f.edgesH.length, 12 * 10);
-    assert.equal(f.edgesV.length, 13 * 9);
-  }
+  for (const f of s.floors) assert.deepEqual([f.w, f.h], [12, 9]);
+  assert.deepEqual([s.w, s.h], [12, 9]);
 });
 
-// ---------- edge kinds ----------
+// ---------- boundary kinds ----------
 
-test('glass and railings bound a region the way a wall does', () => {
-  const s = createState(6, 6);
-  const f = s.floors[0];
-  for (let x = 0; x < 4; x++) for (let y = 0; y < 4; y++) setTile(f, x, y, true);
-  assert.equal(floodRegion(f, 0, 0).length, 16);
-
+test('glass and railings bound a room the way a wall does', () => {
   for (const kind of [EDGE_WALL, EDGE_GLASS, EDGE_RAIL]) {
-    for (let x = 0; x < 4; x++) f.edgesH[edgeHIdx(f, x, 2)] = kind;
-    assert.equal(floodRegion(f, 0, 0).length, 8,
+    const s = createState(6, 6);
+    sheet(s, 0).fill(0, 0, 3, 3).hrun(0, 3, 2, kind).bake();
+    assert.equal(floorShapeCount(s.floors[0]), 2,
       `kind ${kind} splits the room — a glazed partition separates two rooms, a railing is the floor's edge`);
+    for (const shape of s.floors[0].shapes) {
+      assert.equal(shapeArea(shape), 8 * CELL * CELL);
+    }
   }
-});
-
-test('an edge kind from a newer build loads as a wall, not as a gap', () => {
-  const s = createState(6, 6);
-  const f = s.floors[0];
-  f.edgesH[edgeHIdx(f, 0, 0)] = EDGE_GLASS;
-  const json = JSON.parse(serialize(s));
-  json.floors[0].edgesH[1] = 9;    // a kind this build has never heard of
-  json.floors[0].edgesH[2] = -3;
-  const back = deserialize(JSON.stringify(json));
-  assert.equal(back.floors[0].edgesH[0], EDGE_GLASS, 'known kinds come through as themselves');
-  assert.equal(back.floors[0].edgesH[1], EDGE_WALL, 'and unknown ones fall back to solid');
-  assert.equal(back.floors[0].edgesH[2], EDGE_WALL);
 });
 
 // ---------- v6: the environment ----------
@@ -389,7 +382,7 @@ test('a hostile environment is clamped rather than believed', () => {
 test('the environment survives every other kind of edit round-tripping', () => {
   const s = createState(10, 10);
   s.env = { month: 1, day: 8, minutes: 1020, lat: -33.9, north: 215, lights: 'on' };
-  setTile(s.floors[0], 2, 2, true);
+  sheet(s, 0).fill(2, 2, 2, 2).bake();
   addProp(s, 'troffer-2x4', { floor: 0, x: 10, z: 10, y: 9.5 });
   const back = deserialize(serialize(s));
   assert.deepEqual(back.env, {

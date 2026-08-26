@@ -90,35 +90,14 @@ export function faceDirection(dx, dz) {
 
 // ---------- wall snapping ----------
 //
-// Wall-mounted props (TVs, smart boards) snap onto the nearest wall — a
-// polygon wall segment or a grid edge, whichever is closer — flush against
-// its face and turned to look into the room the cursor was on the side of.
+// Wall-mounted props (TVs, smart boards) snap onto the nearest wall segment,
+// flush against its face and turned to look into the room the cursor was on
+// the side of.
 
-function nearestGridWall(floor, x, z, maxDist) {
-  let best = null;
-  for (let y = 0; y <= floor.h; y++) {
-    for (let gx = 0; gx < floor.w; gx++) {
-      if (floor.edgesH[y * floor.w + gx] !== 1) continue;
-      const a = { x: gx * CELL, z: y * CELL }, b = { x: (gx + 1) * CELL, z: y * CELL };
-      const p = projectOnSeg(a, b, x, z);
-      if (p.dist <= maxDist && (!best || p.dist < best.dist)) best = { a, b, x: p.x, z: p.z, dist: p.dist };
-    }
-  }
-  for (let gy = 0; gy < floor.h; gy++) {
-    for (let gx = 0; gx <= floor.w; gx++) {
-      if (floor.edgesV[gy * (floor.w + 1) + gx] !== 1) continue;
-      const a = { x: gx * CELL, z: gy * CELL }, b = { x: gx * CELL, z: (gy + 1) * CELL };
-      const p = projectOnSeg(a, b, x, z);
-      if (p.dist <= maxDist && (!best || p.dist < best.dist)) best = { a, b, x: p.x, z: p.z, dist: p.dist };
-    }
-  }
-  return best;
-}
-
-// Same idea for polygon rooms, but only segments actually carrying a wall —
-// `nearestSegment` in shapes.js answers "closest boundary", walled or not,
-// which isn't what a TV should hang on.
-function nearestPolyWall(floor, x, z, maxDist) {
+// Only segments actually carrying a wall — `nearestSegment` in shapes.js
+// answers "closest boundary", walled or not, which isn't what a TV should
+// hang on.
+function nearestWall(floor, x, z, maxDist) {
   let best = null;
   for (const shape of shapesOf(floor)) {
     shape.rings.forEach((ring) => {
@@ -131,14 +110,6 @@ function nearestPolyWall(floor, x, z, maxDist) {
     });
   }
   return best;
-}
-
-function nearestWall(floor, x, z, maxDist) {
-  const g = nearestGridWall(floor, x, z, maxDist);
-  const p = nearestPolyWall(floor, x, z, maxDist);
-  if (!g) return p;
-  if (!p) return g;
-  return g.dist <= p.dist ? g : p;
 }
 
 // {x, z, rotationY} flush against the nearest wall within `tol`, facing into

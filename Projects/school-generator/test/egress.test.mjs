@@ -6,10 +6,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  createState, setTile, edgeHIdx, edgeVIdx, addFloor,
-  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, CELL,
-} from '../js/grid.js';
+import { createState, addFloor, CELL } from '../js/grid.js';
+import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR, EDGE_DOOR2 } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import { addShape, addOpening, LEAF_SINGLE } from '../js/shapes.js';
 import { addStair } from '../js/stairs.js';
 import { buildSampleSchool } from '../js/sample.js';
@@ -26,9 +25,9 @@ const find = (findings, code) => findings.find((f) => f.code === code) || null;
 
 // A corridor running east with rooms off it, and a door at the west end.
 // `len` cells of corridor; the room hangs off the far end.
-function corridorSchool({ len = 6, exit = true, doorKind = EDGE_DOOR2 } = {}) {
+function corridorSchool({ len = 6, exit = true, doorKind = EDGE_DOOR2, extra = null } = {}) {
   const s = createState(Math.max(12, len + 6), 10);
-  const f = s.floors[0];
+  const f = sheet(s, 0);
   // corridor along row 4, x = 1..len
   for (let x = 1; x <= len; x++) setTile(f, x, 4, true);
   // a classroom above the east end
@@ -46,10 +45,10 @@ function corridorSchool({ len = 6, exit = true, doorKind = EDGE_DOOR2 } = {}) {
   f.edgesV[edgeVIdx(f, len + 1, 4)] = EDGE_WALL;
   f.edgesH[edgeHIdx(f, len - 1, 4)] = EDGE_DOOR;      // classroom into the corridor
   if (exit) f.edgesV[edgeVIdx(f, 1, 4)] = doorKind;   // out at the west end
-  for (let x = 1; x <= len; x++) f.cells[4 * f.w + x].room = 'Corridor';
-  for (let y = 1; y <= 3; y++) {
-    for (let x = len - 3; x <= len; x++) f.cells[y * f.w + x].room = 'Room 101';
-  }
+  f.label(1, 4, len, 4, { name: 'Corridor' });
+  f.label(len - 3, 1, len, 3, { name: 'Room 101' });
+  if (extra) extra(f);
+  f.bake();
   return s;
 }
 
@@ -125,17 +124,11 @@ test('an unsprinklered building is held to the tighter limits', () => {
 });
 
 test('a room with no way out at all is reported as stranded', () => {
-  const s = corridorSchool({ len: 6 });
-  const f = s.floors[0];
   // A sealed room in the corner: floor, walls, no door.
-  for (let x = 1; x <= 2; x++) setTile(f, x, 7, true);
-  for (let x = 1; x <= 2; x++) {
-    f.edgesH[edgeHIdx(f, x, 7)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, 8)] = EDGE_WALL;
-    f.cells[7 * f.w + x].room = 'Room 102';
-  }
-  f.edgesV[edgeVIdx(f, 1, 7)] = EDGE_WALL;
-  f.edgesV[edgeVIdx(f, 3, 7)] = EDGE_WALL;
+  const s = corridorSchool({
+    len: 6,
+    extra: (f) => f.box(1, 7, 2, 7, { name: 'Room 102' }),
+  });
   const r = egressAnalysis(s);
   const sealed = r.rooms.find((x) => x.name === 'Room 102');
   assert.ok(!sealed.reached);
@@ -158,12 +151,10 @@ test('exit capacity is measured in clear width, not in doors', () => {
 // occupant-load threshold with the same building.
 function oneBigRoom(name) {
   const s = createState(30, 20);
-  const f = s.floors[0];
-  for (let y = 1; y <= 10; y++) for (let x = 1; x <= 10; x++) setTile(f, x, y, true);
-  for (let x = 1; x <= 10; x++) { f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL; f.edgesH[edgeHIdx(f, x, 11)] = EDGE_WALL; }
-  for (let y = 1; y <= 10; y++) { f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL; f.edgesV[edgeVIdx(f, 11, y)] = EDGE_WALL; }
-  f.edgesV[edgeVIdx(f, 1, 5)] = EDGE_DOOR;
-  for (let y = 1; y <= 10; y++) for (let x = 1; x <= 10; x++) f.cells[y * f.w + x].room = name;
+  const f = sheet(s, 0);
+  f.box(1, 1, 10, 10, { name });
+  f.edgeV(1, 5, EDGE_DOOR);
+  f.bake();
   return s;
 }
 
@@ -199,9 +190,8 @@ test('a door too narrow for the crowd behind it is its own finding', () => {
 });
 
 test('a corridor with a way out at both ends is not a dead end', () => {
-  const s = corridorSchool({ len: 10 });
-  const f = s.floors[0];
-  f.edgesV[edgeVIdx(f, 11, 4)] = EDGE_DOOR2;   // a second door at the east end
+  // A second door at the east end.
+  const s = corridorSchool({ len: 10, extra: (f) => f.edgeV(11, 4, EDGE_DOOR2) });
   const r = egressAnalysis(s);
   assert.equal(r.deadEnds.length, 0);
 });
@@ -213,11 +203,14 @@ test('a corridor stub past the last door is a dead end, measured from it', () =>
   assert.ok(dead, 'the corridor runs on past the classroom door');
   assert.ok(dead.depth > DEAD_END_LIMIT.sprinklered);
   // ...and it is measured from the doorway that leads onward, so it can never
-  // be longer than the corridor itself.
-  assert.ok(dead.depth <= 30 * CELL);
+  // be longer than the corridor's own diagonal. (Since Phase 12 a room is
+  // sampled at the corners of its outline rather than at its cell centres, so
+  // the far corner really is the far corner — a couple of feet further than
+  // the middle of the last cell used to be.)
+  assert.ok(dead.depth <= Math.hypot(30 * CELL, 4 * CELL));
 });
 
-test('room samples cover both representations, and the farthest point is inside', () => {
+test('every room is sampled, and the farthest point is inside it', () => {
   const s = buildSampleSchool();
   const nav = buildNav(s);
   const samples = roomSamples(nav);
@@ -246,10 +239,9 @@ test('stairs are priced at 0.3in a head and a lift carries nobody out', () => {
 test('upper storeys with no stair at all is a failure, not a warning', () => {
   const s = corridorSchool({ len: 6 });
   addFloor(s, 1);
-  const up = s.floors[1];
-  for (let y = 1; y <= 3; y++) {
-    for (let x = 1; x <= 4; x++) { setTile(up, x, y, true); up.cells[y * up.w + x].room = 'Room 201'; }
-  }
+  const up = sheet(s, 1);
+  up.fill(1, 1, 4, 3).label(1, 1, 4, 3, { name: 'Room 201' });
+  up.bake();
   const r = egressAnalysis(s);
   assert.ok(r.summary.upper > 0);
   assert.ok(has(r.findings, 'no-stairs'));
@@ -290,12 +282,10 @@ test('take the lift out and the upper floor is stairs-only', () => {
 
 test('a doorway under 3ft is not on the accessible route', () => {
   const s = createState(20, 12);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 8; x++) setTile(f, x, y, true);
-  for (let x = 1; x <= 8; x++) { f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL; f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL; }
-  for (let y = 1; y <= 4; y++) { f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL; f.edgesV[edgeVIdx(f, 9, y)] = EDGE_WALL; }
-  f.edgesV[edgeVIdx(f, 1, 2)] = EDGE_DOOR2;
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 8; x++) f.cells[y * f.w + x].room = 'Room 101';
+  const f = sheet(s, 0);
+  f.box(1, 1, 8, 4, { name: 'Room 101' });
+  f.edgeV(1, 2, EDGE_DOOR2);
+  f.bake();
   // A polygon room hanging off the east wall, reached through a 2ft opening.
   const narrow = addShape(s, 0, [
     { x: 36, z: 4 }, { x: 56, z: 4 }, { x: 56, z: 20 }, { x: 36, z: 20 },

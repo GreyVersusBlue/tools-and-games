@@ -8,20 +8,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  CELL, WALL_T_INT, WALL_T_EXT, createState, setTile,
-} from '../js/grid.js';
+import { CELL, WALL_T_INT, WALL_T_EXT, createState } from '../js/grid.js';
+import { CELL as CELL_FT } from '../js/grid.js';
+import { slabOn } from './build.mjs';
 import { addShape, SEG_WALL } from '../js/shapes.js';
 import {
-  solidBeside, isExteriorSeg, segThickness, wallProbe, fixedProbe, gridEdgeSeg,
+  solidBeside, isExteriorSeg, segThickness, wallProbe, fixedProbe,
 } from '../js/walls.js';
 
-// A block of floored cells from (x0, y0) to (x1, y1) inclusive.
+// A block of floor from (x0, y0) to (x1, y1) inclusive, painted and baked.
 function tiles(state, x0, y0, x1, y1, floor = 0) {
-  const f = state.floors[floor];
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) setTile(f, x, y, true);
-  return f;
+  slabOn(state, floor, [x0, y0, x1, y1]);
+  return state.floors[floor];
 }
+
+// A lattice edge as the segment the probe wants — the one thing the lattice
+// still says about a boundary, kept here because these tests are *about*
+// boundaries on the 4ft grid. `horizontal` runs along +X between two rows.
+const gridEdgeSeg = (x, y, horizontal, cell = CELL_FT) => (horizontal
+  ? { ax: x * cell, az: y * cell, bx: (x + 1) * cell, bz: y * cell }
+  : { ax: x * cell, az: y * cell, bx: x * cell, bz: (y + 1) * cell });
 
 test('a wall with rooms on both sides is a partition; one with air is not', () => {
   const s = createState(12, 12);
@@ -47,7 +53,7 @@ test('the same wall becomes interior when a room is built behind it', () => {
   assert.equal(ask(), WALL_T_INT, 'and now there is — with no field to update');
 });
 
-test('a polygon room counts as floor on either side, same as cells do', () => {
+test('a free-drawn room counts as floor on either side, same as a painted one', () => {
   const s = createState(20, 20);
   const f = s.floors[0];
   addShape(s, 0, [

@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import {
   createState, ROOM_COLORS, MAX_FLOORS, CELL, EYE_H, floorBaseY,
-  floorLabel, floorCellCount, floorShapeCount,
+  floorLabel, floorShapeCount,
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
 } from './grid.js';
 import { totalShapeArea } from './shapes.js';
@@ -50,6 +50,7 @@ import {
   computeFloorPlan, drawPlanBody,
 } from './blueprint.js';
 import { buildReport, reportCSV } from './report.js';
+import { codeOf, normalizeCode, isDefaultCode } from './occupancy.js';
 import { isTouchCapable, joystickAxes } from './touch.js';
 // --- Phase 8 ---
 import {
@@ -105,7 +106,30 @@ function closeModal(overlay) {
 }
 
 // --- state ---
-let state = loadAutosave() || buildSampleSchool();
+//
+// **What a pre-v11 file lost on the way in.** Phase 12 made the polygon the
+// only representation of a room, so a design saved before it is *baked* on
+// load rather than appended to (see save-load.js). Almost everything survives
+// exactly; the one thing that cannot is a boundary that bounded no room — a
+// wall drawn across empty cells, or a stub poking into a room without dividing
+// it. `deserialize` counts those and hands the count back, and this is what
+// says so, because a building that quietly lost two walls is worse than one
+// that says it did.
+let migrationNote = null;
+const onMigrate = (info) => {
+  const rooms = `${info.rooms} room${info.rooms === 1 ? '' : 's'}`;
+  migrationNote = info.orphans
+    ? `Opened a version ${info.from} design — ${rooms}. ` +
+      `${info.orphans} wall${info.orphans === 1 ? '' : 's'} bounded no room and could not come with it.`
+    : `Opened a version ${info.from} design — ${rooms}, everything kept.`;
+};
+const sayIfMigrated = () => {
+  if (!migrationNote) return;
+  $('status').textContent = migrationNote;
+  migrationNote = null;
+};
+
+let state = loadAutosave({ onMigrate }) || buildSampleSchool();
 
 const renderApi = initRender(canvas);
 
@@ -410,11 +434,11 @@ const TOOL_KEYS = {
   Equal: 'overlay', NumpadAdd: 'overlay',
 };
 const HINTS = {
-  floor: 'Floor — click / drag to lay floor tiles',
-  wall: 'Wall — drag along cell edges, or click a polygon wall to raise it. G switches between solid, glass and railing; , and . curve a polygon wall into an arc.',
-  door: 'Door — pick single, double, cased opening or window, then click a wall edge or anywhere along a polygon wall. Clicking the same kind again removes it.',
-  room: 'Room — pick a name, color, floor finish and wall paint, then click a floor area to apply them',
-  erase: 'Eraser — drag to remove walls, doors, and floor; click a polygon room to delete it',
+  floor: 'Floor — click / drag to lay floor in 4ft cells. A cell joins the room it can walk to, or starts one.',
+  wall: 'Wall — click or drag along a room boundary to raise a wall on it. G switches between solid, glass and railing; , and . curve one into an arc.',
+  door: 'Door — pick single, double, cased opening or window, then click anywhere along a wall. Clicking the same kind again removes it.',
+  room: 'Room — pick a name, color, floor finish and wall paint, then click a room to apply them',
+  erase: 'Eraser — drag to remove walls, doors, and floor a cell at a time; click a free-drawn room to delete it',
   poly: 'Polygon — click to place corners, click the first one (or Enter) to close. Alt = ignore snapping, Shift = 15° steps.',
   vertex: 'Shape — click a room to select it, Shift-click to select several. Drag a corner, Alt-click removes one. Delete removes the selection, R/⇧R rotates it 90°, M mirrors it, Ctrl+C/V/D copy/paste/duplicate it (with any props inside).',
   prop: 'Furniture — pick a piece, click to place. Click/drag a piece to move it, drag empty space to box-select. R rotates, Delete removes, Ctrl+C/V/D copy/paste/duplicate.',
@@ -751,8 +775,8 @@ const templatePalette = $('template-palette');
 });
 
 // --- wall type panel ---
-// The wall tool builds one of three things. Which one is editor state (the grid
-// and the polygon rooms spell each differently), so the buttons just set it.
+// The wall tool builds one of three things. Which one is editor state rather
+// than design state, so the buttons just set it.
 const wallKinds = $('wall-kinds');
 function renderWallKinds() {
   wallKinds.querySelectorAll('.kind-item').forEach((b) => {
@@ -921,7 +945,7 @@ function renderFloorList() {
     // reporting, and the stairs panel gives the precise tally for the storey
     // you're actually editing.
     const stairs = linksFrom(state, i).filter((l) => l.type === 'stair').length;
-    const sqft = floorCellCount(state.floors[i]) * CELL * CELL + totalShapeArea(state.floors[i]);
+    const sqft = totalShapeArea(state.floors[i]);
     count.textContent = `${Math.round(sqft).toLocaleString()} ft²` +
       (shapes ? ` · ${shapes} poly` : '') +
       (stairs ? ` · ${stairs} stair` : '');
@@ -1058,6 +1082,7 @@ function adoptState(next, opts = {}) {
   renderEnvPanel();
   renderSitePanel();
   renderOverlayPanel();
+  renderCodePanel();
   adoptedByAudio();
   reportInvalidate();
   // A different design is a different plan under the minimap and a different
@@ -1079,7 +1104,8 @@ $('file-input').addEventListener('change', async (e) => {
   if (!file) return;
   try {
     editor.pushUndo();
-    adoptState(await loadFromFile(file));
+    adoptState(await loadFromFile(file, { onMigrate }));
+    sayIfMigrated();
   } catch (err) {
     alert('Could not load that file: ' + err.message);
   }
@@ -1124,7 +1150,8 @@ function renderDesignsList() {
     loadBtn.addEventListener('click', () => {
       try {
         editor.pushUndo();
-        adoptState(loadDesign(d.id));
+        adoptState(loadDesign(d.id, { onMigrate }));
+        sayIfMigrated();
         designsOverlay.classList.add('hidden');
         $('status').textContent = `Loaded "${d.name}"`;
       } catch (err) {
@@ -2412,7 +2439,6 @@ const reportPanel = $('report-panel');
 const report = {
   data: null,
   stale: true,
-  sprinklered: true,
   timer: 0,
 };
 
@@ -2432,7 +2458,9 @@ function reportInvalidate() {
 
 function reportBuild() {
   clearTimeout(report.timer);
-  report.data = buildReport(state, { sprinklered: report.sprinklered });
+  // No `sprinklered` option: since v11 it is a field on the design, and the
+  // checkbox below writes it there rather than holding it for the session.
+  report.data = buildReport(state);
   report.stale = false;
   renderReportPanel();
 }
@@ -2565,9 +2593,29 @@ $('report-btn').addEventListener('click', () => {
 
 $('report-refresh').addEventListener('click', () => reportBuild());
 
-$('report-sprinklered').addEventListener('change', (e) => {
-  report.sprinklered = e.target.checked;
+// The two code settings are part of the design, so changing one is an edit:
+// it goes on the undo stack, it autosaves, and it travels with the file.
+function setCode(patch) {
+  editor.pushUndo();
+  state.code = normalizeCode({ ...codeOf(state), ...patch });
+  if (isDefaultCode(state.code)) delete state.code;
+  autosave(state);
   reportBuild();
+  updateUndoButtons();
+}
+
+function renderCodePanel() {
+  const code = codeOf(state);
+  $('report-sprinklered').checked = code.sprinklered;
+  $('report-edition').value = code.edition;
+}
+
+$('report-sprinklered').addEventListener('change', (e) => {
+  setCode({ sprinklered: e.target.checked });
+});
+
+$('report-edition').addEventListener('change', (e) => {
+  setCode({ edition: e.target.value });
 });
 
 $('report-csv').addEventListener('click', () => {
@@ -3256,11 +3304,14 @@ async function openSharedDesign() {
   if (!payload) return;
   try {
     const json = await decodeShare(payload);
-    const shared = deserialize(json);
+    const shared = deserialize(json, { onMigrate });
     // The autosave is left alone until the shared design is edited, so
     // opening somebody's link doesn't cost you your own work in progress.
     adoptState(shared, { keepAutosave: true });
-    $('status').textContent = 'Opened a shared design — save it to keep it.';
+    $('status').textContent = migrationNote
+      ? `${migrationNote} Save it to keep it.`
+      : 'Opened a shared design — save it to keep it.';
+    migrationNote = null;
   } catch (err) {
     $('status').textContent = `That link could not be opened: ${err.message}`;
   }
@@ -4153,11 +4204,14 @@ renderFloorList();
 renderStairReadout();
 renderEnvPanel();
 renderSitePanel();
+renderCodePanel();
 renderAudioPanel();
 renderLifePanel();
 audio.setWorld(state);
 updateUndoButtons();
 loop();
+// ...and if the autosave was from before v11, say what the bake did with it.
+sayIfMigrated();
 // A design that arrived in the address bar, opened last so it replaces
 // whatever the autosave restored rather than racing it.
 openSharedDesign();

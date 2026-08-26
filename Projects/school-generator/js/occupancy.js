@@ -11,6 +11,19 @@
 // is no `occ` field on a room, nothing to keep in step with an edit, and
 // renaming "Room 104" to "Art Studio" re-prices the room on the next rebuild.
 //
+// **Phase 12 gives the derivation somewhere to be overruled.** A room record
+// now carries `group` — the occupancy group a person decided this space is,
+// when the label guessed wrong — and `load`, a design occupant load somebody
+// typed because they know something the area does not. Both default to null,
+// which means "derive it", so nothing changes for a design that answers
+// neither question. That is the whole of the difference identity makes here:
+// there was previously nowhere to write the answer down.
+//
+// The design as a whole grows `code` for the same reason — which edition the
+// analysis is read against, and whether the building is sprinklered. Phase 7
+// asked both as *session* settings, because nothing about the analysis was
+// saved; they are facts about the building and they belong in the file.
+//
 // **The classification is a guess made out loud.** A building code assigns a
 // use to a space because a person decided what the space is for; all this file
 // has is a label somebody typed and a floor area. So every row says which rule
@@ -105,6 +118,52 @@ export const USES = [
 
 const BY_KEY = new Map(USES.map((u) => [u.key, u]));
 
+// The groups a person can pick from when the label guessed wrong. Same keys
+// the table above uses, so `group` is "which of these rows applies" rather
+// than a second vocabulary to keep in step.
+export const GROUP_KEYS = USES.map((u) => u.key);
+export const isGroup = (k) => BY_KEY.has(k);
+
+// ---------- what the analysis is read against ----------
+//
+// Two facts about the building, not about this editing session. `edition`
+// names the code the numbers are quoted from — nothing here computes
+// differently for one or another, and printing which one a table came from is
+// the point: a sheet that says 250ft without saying under what is a sheet
+// nobody can check. `sprinklered` genuinely changes the answer (see
+// egress.js's travel and dead-end limits) and has been a checkbox with
+// nowhere to live since Phase 7.
+export const CODE_EDITIONS = [
+  { key: 'ibc2021', label: 'IBC 2021' },
+  { key: 'ibc2018', label: 'IBC 2018' },
+  { key: 'ibc2024', label: 'IBC 2024' },
+];
+export const DEFAULT_EDITION = 'ibc2021';
+export const editionEntry = (k) =>
+  CODE_EDITIONS.find((e) => e.key === k) || CODE_EDITIONS[0];
+
+// A school is a sprinklered building unless somebody says otherwise, which is
+// the assumption every reader made before there was anywhere to record it.
+export const defaultCode = () => ({ edition: DEFAULT_EDITION, sprinklered: true });
+
+export function normalizeCode(raw) {
+  const d = defaultCode();
+  if (!raw || typeof raw !== 'object') return d;
+  return {
+    edition: CODE_EDITIONS.some((e) => e.key === raw.edition) ? raw.edition : d.edition,
+    sprinklered: raw.sprinklered === false ? false : true,
+  };
+}
+
+export const isDefaultCode = (c) => {
+  const n = normalizeCode(c);
+  const d = defaultCode();
+  return n.edition === d.edition && n.sprinklered === d.sprinklered;
+};
+
+// What a reader should use, whether or not the design has ever said.
+export const codeOf = (state) => normalizeCode(state && state.code);
+
 // The use a room falls into when its name says nothing — or when it has no
 // name at all. Deliberately not `classroom`: guessing "classroom" fills a
 // building with occupants nobody put there, and this number is meant to be
@@ -129,17 +188,23 @@ export function classify(name) {
 }
 
 // One room's occupant load. `room` is a `floorRooms` row — a name, an area, a
-// hub — so this works on grid regions and polygon rooms alike without caring
-// which it has.
+// group somebody picked, a load somebody typed.
+//
+// The order of precedence is the order of how much a person said: the room's
+// own `load` beats everything, its own `group` beats the label, and the label
+// is what is left. `opts.use` sits above all three because it is a caller
+// asking a hypothetical ("what would this be as a lab?").
 export function roomOccupancy(room, opts = {}) {
   const forced = opts.use && BY_KEY.has(opts.use) ? opts.use : null;
-  const key = forced || classify(room.name);
+  const chosen = isGroup(room.group) ? room.group : null;
+  const key = forced || chosen || classify(room.name);
   const use = key ? BY_KEY.get(key) : UNASSIGNED;
   const area = Math.max(0, room.area || 0);
   const tiny = !key && area < MIN_OCCUPIABLE;
   // Round *up*: a code's occupant load is the number of people the space is
   // designed to hold, and half a person leaving the building is a whole one.
-  const occ = use.factor > 0 && !tiny ? Math.ceil(area / use.factor) : 0;
+  const stated = Number.isFinite(room.load) && room.load > 0 ? Math.round(room.load) : null;
+  const occ = stated === null ? (use.factor > 0 && !tiny ? Math.ceil(area / use.factor) : 0) : stated;
   return {
     id: room.id,
     floor: room.floor,
@@ -154,6 +219,12 @@ export function roomOccupancy(room, opts = {}) {
     // True when nothing about the room said what it was — the number below is
     // a placeholder, and a reader should say so rather than print it plain.
     guess: !key,
+    // ...and the other way round: true when a person answered rather than the
+    // label, which is the one case a reader should *stop* hedging about.
+    chosen: !!chosen,
+    // The load somebody typed, or null when this is the area's own answer. A
+    // reader that prints "34 occupants" wants to be able to say which.
+    stated,
     // True when the room carries other rooms' people rather than its own.
     circulation: use.circulation === true,
     tiny,

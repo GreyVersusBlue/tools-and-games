@@ -37,7 +37,7 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/egress.test.mjs.
 
-import { CELL, cellIdx, floorLabel } from './grid.js';
+import { floorLabel } from './grid.js';
 import { shapesOf } from './shapes.js';
 import { stairsOf, stairWidth, isRun, isElevator, elevatorDoorWidth } from './stairs.js';
 import {
@@ -84,8 +84,7 @@ const limitsFor = (sprinklered) => ({
 
 // ---------- how far it is across a room ----------
 
-// Somewhere to measure to. A room's own extent, as points: every cell centre
-// for a lattice region, every corner for a polygon one. Built once per
+// Somewhere to measure to: every corner of a room's outline. Built once per
 // analysis because both the travel distance and the dead-end length ask the
 // same question from two different starting points.
 export function roomSamples(nav) {
@@ -98,16 +97,6 @@ export function roomSamples(nav) {
     for (const shape of shapesOf(fr.floor)) {
       const pts = by.get(`r${i}:s${shape.id}`);
       if (pts) for (const p of shape.rings[0].pts) pts.push({ x: p.x, z: p.z });
-    }
-    const floor = fr.floor;
-    for (let y = 0; y < floor.h; y++) {
-      for (let x = 0; x < floor.w; x++) {
-        const idx = fr.cellRoom[cellIdx(floor, x, y)];
-        if (idx < 0) continue;
-        const room = fr.rooms[idx];
-        const pts = by.get(room.id);
-        if (pts) pts.push({ x: (x + 0.5) * CELL, z: (y + 0.5) * CELL });
-      }
     }
   }
   return by;

@@ -1,11 +1,17 @@
-// grid.js — grid data model, pure helpers (no three.js imports)
-// Units are feet. One cell = 4ft x 4ft. Walls live on cell edges.
+// grid.js — the design's own dimensions, and the storeys it is made of.
 //
-// State shape (v9):
+// Units are feet. Until Phase 12 this file also held the 4ft cell lattice a
+// room used to be — cells, wall edges, flood fill — and every module in the
+// codebase carried a branch for it. The lattice is now a *drawing surface*
+// rather than a representation (see lattice.js), so what is left here is what
+// was always true of the design as a whole: how big it is, how many levels it
+// has, how high they stand, and the constants everything measures against.
+//
+// State shape (v11):
 //   { version, cellFt, floorHt, w, h,
-//     floors: [ { w, h, cells[], edgesH[], edgesV[], shapes[] }, ... ],
-//     currentFloor, props: [], links: [], env, roof, terrain?, site?, life?,
-//     overlay?, nextId }
+//     floors: [ { w, h, shapes[] }, ... ],
+//     currentFloor, props: [], links: [], env, code?, roof?, terrain?, site?,
+//     life?, overlay?, tours?, models?, nextId }
 //
 // `env` is Phase 3's one addition: the date, hour, latitude and compass
 // orientation the design is lit by, plus whether its own lights are burning.
@@ -14,23 +20,23 @@
 // a view setting — and it defaults to a bright mid-morning, which is the fixed
 // rig every earlier version drew with. See sky.js.
 //
-// A floor carries two room representations side by side. The cell grid is the
-// fast rectangular mode — most of a school is rectangles, and laying them on a
-// 4ft lattice is quicker than drawing them. `shapes[]` (see shapes.js) holds
-// polygon rooms for everything the lattice can't say: angled corners, alcoves,
-// breakout rooms, courtyards. Neither is going away; `convertRegion()` in
-// shapes.js promotes a grid region to a polygon when a room outgrows the grid.
+// A floor is a list of **rooms**, and every room is a polygon with an id (see
+// shapes.js). There is one kind of room. That sentence is the whole of Phase
+// 12, and the reason this file is a third of the length it was.
 //
-// All floors share one footprint (w x h) and one grid origin. That is a
-// deliberate constraint: stairs, mezzanine openings and floor cuts all need
-// to line up between levels, and a shared origin makes "same (x, y) cell on
-// the level above" a trivial lookup instead of a coordinate transform.
-// Each floor record still carries its own w/h so every pure helper below
-// takes a *floor* and reads exactly the fields the v1 state had.
+// All floors share one footprint (w x h) and one origin. That is a deliberate
+// constraint: stairs, mezzanine openings and floor cuts all need to line up
+// between levels, and a shared origin makes "the same place on the level
+// above" a trivial lookup instead of a coordinate transform. Each floor record
+// still carries its own w/h so every pure helper below takes a *floor* and
+// reads exactly the fields the v1 state had.
 
 import { defaultEnv } from './sky.js';
 
-export const CELL = 4;        // ft per grid cell
+// The drawing lattice's pitch, and the unit the footprint's w/h are counted
+// in. It is no longer what a room is made of; it is still what a plan is drawn
+// on, what the brush snaps to, and what a scheme's rectangles are measured in.
+export const CELL = 4;        // ft
 export const WALL_H = 10;     // wall height (ceiling plane), ft
 // Guardrail height. Waist-high on purpose: a railing has to read as an edge you
 // can see over, never as an enclosure the way a wall does.
@@ -49,37 +55,6 @@ export const DOOR_H = 7;      // door opening height, ft
 export const DOUBLE_DOOR_W = 6; // ft — a corridor/egress pair
 export const EYE_H = 5.5;     // first-person eye height, ft
 
-// Edge kinds on the lattice. 0-2 are v1's vocabulary and can't move; glass and
-// railing are appended, so an old save reads exactly as it did. Everything
-// non-zero bounds a region for flood fill, which is the point of the ordering:
-// `if (edge)` still means "something is in the way", and only the renderer and
-// the walkthrough care which kind of something it is.
-export const EDGE_NONE = 0;
-export const EDGE_WALL = 1;
-export const EDGE_DOOR = 2;
-export const EDGE_GLASS = 3;
-export const EDGE_RAIL = 4;
-// Phase 2 appends two more, on the same terms: a window is a wall with a
-// glazed band in it (solid to a walker, which is what keeps it out of the
-// `EDGE_DOOR` family), and a double door is the corridor pair. The lattice has
-// nowhere to put per-opening options — an edge is a value, not a record — so
-// each variant that a polygon room spells with fields is its own kind here.
-export const EDGE_WINDOW = 5;
-export const EDGE_DOOR2 = 6;
-// A cased opening: the hole without the door. The lattice needs its own kind
-// for it because `EDGE_DOOR` now hangs a leaf, and a corridor arch that swings
-// shut when you walk at it is not what anyone drew.
-export const EDGE_OPENING = 7;
-export const EDGE_KINDS = [
-  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
-  EDGE_WINDOW, EDGE_DOOR2, EDGE_OPENING,
-];
-// The kinds you can walk through. Everything else on a boundary stops a body,
-// which is why this is a short list rather than an exception in six places.
-// (A window is emphatically not on it — see the note in `wallSegments`.)
-export const EDGE_DOORS = [EDGE_DOOR, EDGE_DOOR2, EDGE_OPENING];
-export const isDoorEdge = (v) => EDGE_DOORS.includes(v);
-
 export const DEFAULT_W = 40;  // cells
 export const DEFAULT_H = 30;  // cells
 export const MAX_FLOORS = 8;
@@ -95,27 +70,16 @@ export const ROOM_COLORS = [
 export function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
   return {
     w, h,
-    // cells[i] = null (no floor), or a room record:
-    //   { room, color, fin, paint }
-    // `room`/`color` are the label and its plan tint (v1); `fin`/`paint` are
-    // the floor finish key and wall colour Phase 2 added (see finish.js).
-    // A grid room has no identity of its own — it's a flood-fill label — so
-    // all four live on every cell and the room tool writes them across a
-    // region at once.
-    cells: new Array(w * h).fill(null),
-    // edgesH[y*w + x] = edge between cell (x,y-1) and (x,y), y in 0..h. See EDGE_* above.
-    edgesH: new Array(w * (h + 1)).fill(0),
-    // edgesV[y*(w+1) + x] = edge between cell (x-1,y) and (x,y), x in 0..w. See EDGE_* above.
-    edgesV: new Array((w + 1) * h).fill(0),
-    // Polygon rooms on this storey — see shapes.js. Free-floating outlines in
-    // world feet, not tied to the lattice above.
+    // Every room on this storey, as a polygon with an id — see shapes.js.
+    // Rooms are free-floating outlines in world feet; the footprint above is
+    // what the *drawing* surface covers, not a box a room has to fit inside.
     shapes: [],
   };
 }
 
 export function createState(w = DEFAULT_W, h = DEFAULT_H) {
   return {
-    version: 10,
+    version: 11,
     cellFt: CELL,
     floorHt: FLOOR_H,
     w, h,
@@ -128,13 +92,15 @@ export function createState(w = DEFAULT_W, h = DEFAULT_H) {
     links: [],
     // When and where this building stands, for the sun. See sky.js.
     env: defaultEnv(),
-    // `roof` (roof.js), `terrain` (terrain.js) and `site` (site.js) are
-    // deliberately *not* here — and neither are `tours` (tour.js) or `models`
-    // (models.js), for the same reason. All five are absent until somebody
-    // grades something, draws something, asks for a roof other than the
-    // default, records a camera path or imports a file, which is what keeps a
-    // design that has none of them byte-identical to a pre-Phase-5 one — and
-    // it is why grid.js stays a leaf module that imports only the sky.
+    // `code` (occupancy.js — which edition the analysis is read against and
+    // whether the building is sprinklered), `roof` (roof.js), `terrain`
+    // (terrain.js) and `site` (site.js) are deliberately *not* here, and
+    // neither are `tours` (tour.js) or `models` (models.js). All of them are
+    // absent until somebody answers a question about the code, grades
+    // something, draws something, asks for a roof other than the default,
+    // records a camera path or imports a file — which is what keeps a design
+    // that has none of them byte-identical to an older one, and why grid.js
+    // stays a leaf module that imports only the sky.
     nextId: 1,
   };
 }
@@ -152,106 +118,13 @@ export const topOfBuilding = (s) => floorBaseY(s, s.floors.length - 1) + WALL_H;
 // so the building has no gap band between storeys when seen from outside.
 export const wallHeightOf = (s, i) => (i < s.floors.length - 1 ? (s.floorHt || FLOOR_H) : WALL_H);
 
-// ---------- cell / edge helpers (operate on a single floor) ----------
-
-export const cellIdx  = (f, x, y) => y * f.w + x;
-export const edgeHIdx = (f, x, y) => y * f.w + x;         // x in 0..w-1, y in 0..h
-export const edgeVIdx = (f, x, y) => y * (f.w + 1) + x;   // x in 0..w,   y in 0..h-1
-
+// Is a cell inside the drawing surface? The lattice is not a room any more,
+// but it is still the sheet the plan is laid out on.
 export const inGrid = (f, x, y) => x >= 0 && y >= 0 && x < f.w && y < f.h;
-
-export function getCell(f, x, y) {
-  return inGrid(f, x, y) ? f.cells[cellIdx(f, x, y)] : null;
-}
-
-export function setTile(f, x, y, on) {
-  if (!inGrid(f, x, y)) return false;
-  const i = cellIdx(f, x, y);
-  if (on && !f.cells[i]) { f.cells[i] = { room: null, color: null, fin: null, paint: null }; return true; }
-  if (!on && f.cells[i]) { f.cells[i] = null; return true; }
-  return false;
-}
-
-// Can we walk/flood from (x,y) to its neighbor in direction d?
-// Every edge kind bounds a room region — a glass partition separates two rooms
-// as surely as a plastered one does, and a railing is the edge of the floor.
-const DIRS = [
-  { dx: 1, dy: 0 },  // east  -> edgesV(x+1, y)
-  { dx: -1, dy: 0 }, // west  -> edgesV(x, y)
-  { dx: 0, dy: 1 },  // south -> edgesH(x, y+1)
-  { dx: 0, dy: -1 }, // north -> edgesH(x, y)
-];
-
-export function edgeBetween(f, x, y, dx, dy) {
-  if (dx === 1)  return { arr: f.edgesV, i: edgeVIdx(f, x + 1, y) };
-  if (dx === -1) return { arr: f.edgesV, i: edgeVIdx(f, x, y) };
-  if (dy === 1)  return { arr: f.edgesH, i: edgeHIdx(f, x, y + 1) };
-  return { arr: f.edgesH, i: edgeHIdx(f, x, y) };
-}
-
-// Flood fill from (x,y) across floored cells, bounded by any edge kind.
-// Returns array of {x, y} cells in the region (empty if start has no floor).
-export function floodRegion(f, x, y) {
-  if (!getCell(f, x, y)) return [];
-  const seen = new Set([cellIdx(f, x, y)]);
-  const out = [];
-  const stack = [{ x, y }];
-  while (stack.length) {
-    const c = stack.pop();
-    out.push(c);
-    for (const d of DIRS) {
-      const nx = c.x + d.dx, ny = c.y + d.dy;
-      if (!inGrid(f, nx, ny)) continue;
-      const ni = cellIdx(f, nx, ny);
-      if (seen.has(ni) || !f.cells[ni]) continue;
-      const e = edgeBetween(f, c.x, c.y, d.dx, d.dy);
-      if (e.arr[e.i] !== EDGE_NONE) continue; // anything on the edge stops the region
-      seen.add(ni);
-      stack.push({ x: nx, y: ny });
-    }
-  }
-  return out;
-}
-
-// All labeled regions on one floor: [{ name, color, cx, cz (world ft), count }]
-export function computeLabels(f) {
-  const visited = new Set();
-  const labels = [];
-  for (let y = 0; y < f.h; y++) {
-    for (let x = 0; x < f.w; x++) {
-      const i = cellIdx(f, x, y);
-      if (visited.has(i) || !f.cells[i]) continue;
-      const region = floodRegion(f, x, y);
-      let name = null, color = null, sx = 0, sy = 0;
-      for (const c of region) {
-        const ci = cellIdx(f, c.x, c.y);
-        visited.add(ci);
-        const cell = f.cells[ci];
-        if (!name && cell.room) { name = cell.room; color = cell.color; }
-        sx += c.x + 0.5; sy += c.y + 0.5;
-      }
-      if (name) {
-        labels.push({
-          name, color,
-          cx: (sx / region.length) * CELL,
-          cz: (sy / region.length) * CELL,
-          count: region.length,
-        });
-      }
-    }
-  }
-  return labels;
-}
-
-export function floorCellCount(f) {
-  let n = 0;
-  for (let i = 0; i < f.cells.length; i++) if (f.cells[i]) n++;
-  return n;
-}
 
 export const floorShapeCount = (f) => (f && Array.isArray(f.shapes) ? f.shapes.length : 0);
 
-// Ids for props, links and polygon rooms all come off one monotonic counter so
+// Ids for props, links and rooms all come off one monotonic counter so
 // nothing in a save file can collide.
 function nextShapeId(s) {
   const id = Math.max(1, Math.floor(s.nextId || 1));
@@ -282,7 +155,7 @@ export function addFloor(s, index = s.currentFloor + 1) {
   return at;
 }
 
-// Copy an existing floor's structure onto a new level above it.
+// Copy an existing floor's rooms onto a new level above it.
 export function duplicateFloor(s, index = s.currentFloor) {
   if (s.floors.length >= MAX_FLOORS) return -1;
   const src = s.floors[index];
@@ -290,18 +163,18 @@ export function duplicateFloor(s, index = s.currentFloor) {
   const at = index + 1;
   s.floors.splice(at, 0, {
     w: src.w, h: src.h,
-    cells: src.cells.map((c) => (c ? { ...c } : null)),
-    edgesH: src.edgesH.slice(),
-    edgesV: src.edgesV.slice(),
-    // Copied polygon rooms are new rooms: same outline, fresh ids, so a tool
-    // holding a selection can't end up editing both storeys at once. Cloned
-    // here rather than through shapes.js so grid.js stays a leaf module.
+    // Copied rooms are new rooms: same outline, fresh ids, so a tool holding a
+    // selection can't end up editing both storeys at once — and so nothing
+    // outside the file can name one room and reach two. Cloned here rather
+    // than through shapes.js so grid.js stays a leaf module.
     shapes: (src.shapes || []).map((sh) => ({
       id: nextShapeId(s),
       name: sh.name,
       color: sh.color,
       fin: sh.fin || null,
       paint: sh.paint || null,
+      group: sh.group || null,
+      load: Number.isFinite(sh.load) ? sh.load : null,
       rings: sh.rings.map((r) => ({
         pts: r.pts.map((p) => ({ x: p.x, z: p.z })),
         walls: r.walls.slice(),

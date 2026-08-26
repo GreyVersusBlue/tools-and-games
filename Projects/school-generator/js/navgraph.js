@@ -40,11 +40,10 @@
 // travel; a plain `opening` link is a hole in a slab, and walking into one is
 // what railings exist to prevent. Only the first three become edges.
 
-import { CELL, cellIdx, getCell, floodRegion, isDoorEdge, FLOOR_H } from './grid.js';
+import { FLOOR_H } from './grid.js';
 import {
   shapesOf, shapeArea, segEnds, isBuilt, isDoorOpening, interiorPoint, shapeAt,
 } from './shapes.js';
-import { gridOpeningWidth } from './openings.js';
 import { meshFloor, tileFor } from './navmesh.js';
 import {
   stairsOf, stairMetrics, runLength, localToWorld, elevatorSize, isRun, isElevator,
@@ -100,19 +99,19 @@ export const clearWidth = (w, leafed = true) =>
 
 // ---------- rooms ----------
 
-// Every distinct room on one storey, and a lookup from a point to whichever of
-// them contains it.
+// Every distinct room on one storey. Since Phase 12 that is exactly
+// `floor.shapes`, in order, and the row carries the room's own record along
+// with it — the name, the occupancy group somebody picked, the design load
+// somebody typed — so `occupancy.js` never has to go back to the file.
 //
-// The two representations answer in the order they always do: a polygon room
-// wins over the lattice under it, the same rule `shapeAt`, `finishAt` and
-// `roomAt` follow. The grid half is flood-filled once per region rather than
-// once per cell, and the region's cells are marked off as it goes — so this is
-// linear in cells, and the map it leaves behind turns the point lookup into an
-// array index.
+// The `r<floor>:s<id>` node id is a room's name outside the file, and it is
+// stable now for as long as the room is rather than for as long as its lowest
+// cell happens to be. That sentence is what Phase 13's session log and Phase
+// 14's timetable binding were both waiting on.
 export function floorRooms(state, floorIndex) {
   const floor = state && state.floors ? state.floors[floorIndex] : null;
   const rooms = [];
-  if (!floor) return { rooms, cellRoom: new Int32Array(0), floor: null };
+  if (!floor) return { rooms, floor: null };
 
   for (const shape of shapesOf(floor)) {
     const p = interiorPoint(shape);
@@ -121,55 +120,18 @@ export function floorRooms(state, floorIndex) {
       kind: 'room',
       rep: 'shape',
       floor: floorIndex,
+      roomId: shape.id,
       name: shape.name || null,
+      group: shape.group || null,
+      load: Number.isFinite(shape.load) ? shape.load : null,
       x: p.x, z: p.z,
       area: shapeArea(shape),
       shape,
     });
   }
-
-  const cellRoom = new Int32Array(floor.w * floor.h).fill(-1);
-  for (let y = 0; y < floor.h; y++) {
-    for (let x = 0; x < floor.w; x++) {
-      const i = cellIdx(floor, x, y);
-      if (cellRoom[i] >= 0 || !getCell(floor, x, y)) continue;
-      const cells = floodRegion(floor, x, y);
-      if (!cells.length) continue;
-      const idx = rooms.length;
-      let sx = 0, sz = 0, name = null, lowest = Infinity;
-      for (const c of cells) {
-        const ci = cellIdx(floor, c.x, c.y);
-        cellRoom[ci] = idx;
-        lowest = Math.min(lowest, ci);
-        sx += c.x + 0.5; sz += c.y + 0.5;
-        const cell = floor.cells[ci];
-        if (!name && cell && cell.room) name = cell.room;
-      }
-      // The hub is the *cell* nearest the centroid, not the centroid: a wing
-      // shaped like a T has its centre of area in the wall.
-      const cx = sx / cells.length, cz = sz / cells.length;
-      let best = cells[0], bestD = Infinity;
-      for (const c of cells) {
-        const d = (c.x + 0.5 - cx) ** 2 + (c.y + 0.5 - cz) ** 2;
-        if (d < bestD) { bestD = d; best = c; }
-      }
-      rooms.push({
-        // A grid region has no id of its own — the standing tax the
-        // retrospective describes — so its lowest cell names it, which is
-        // stable for exactly as long as the region is.
-        id: `r${floorIndex}:g${lowest}`,
-        kind: 'room',
-        rep: 'grid',
-        floor: floorIndex,
-        name,
-        x: (best.x + 0.5) * CELL, z: (best.y + 0.5) * CELL,
-        area: cells.length * CELL * CELL,
-        cells: cells.length,
-      });
-    }
-  }
-  return { rooms, cellRoom, floor };
+  return { rooms, floor };
 }
+
 
 // ---------- the graph ----------
 
@@ -203,7 +165,7 @@ function makePortal(id, x, z, nx, nz, w, floor, a, b, opts = {}) {
     pa: opts.pa,
     pb: opts.pb,
     exterior: opts.exterior === true,
-    rep: opts.rep || 'grid',
+    rep: opts.rep || 'shape',
     muster: opts.muster || null,
   };
 }
@@ -285,11 +247,7 @@ export function buildNav(state, opts = {}) {
     const fr = perFloor[floorIndex];
     if (!fr || !fr.floor) return null;
     const shape = shapeAt(fr.floor, x, z);
-    if (shape) return `r${floorIndex}:s${shape.id}`;
-    const gx = Math.floor(x / CELL), gy = Math.floor(z / CELL);
-    if (gx < 0 || gy < 0 || gx >= fr.floor.w || gy >= fr.floor.h) return null;
-    const idx = fr.cellRoom[cellIdx(fr.floor, gx, gy)];
-    return idx >= 0 ? fr.rooms[idx].id : null;
+    return shape ? `r${floorIndex}:s${shape.id}` : null;
   };
 
   // The outside, made only if something opens onto it. A design with no
@@ -359,25 +317,8 @@ export function buildNav(state, opts = {}) {
   for (let i = 0; i < floorCount; i++) {
     const floor = state.floors[i];
     if (!floor) continue;
-    // The lattice. A grid doorway is always centred on its edge — an edge is a
-    // whole cell wide and has nowhere to record a position along itself.
-    for (let y = 0; y <= floor.h; y++) {
-      for (let x = 0; x < floor.w; x++) {
-        const v = floor.edgesH[y * floor.w + x];
-        if (!isDoorEdge(v)) continue;
-        joinPortal((x + 0.5) * CELL, y * CELL, 0, 1, gridOpeningWidth(v), i, 'grid');
-      }
-    }
-    for (let y = 0; y < floor.h; y++) {
-      for (let x = 0; x <= floor.w; x++) {
-        const v = floor.edgesV[y * (floor.w + 1) + x];
-        if (!isDoorEdge(v)) continue;
-        joinPortal(x * CELL, (y + 0.5) * CELL, 1, 0, gridOpeningWidth(v), i, 'grid');
-      }
-    }
-    // Polygon rooms. Same call, a different way of finding the point: an
-    // opening records where along its run it sits, so the normal comes off the
-    // segment rather than off the axis.
+    // An opening records where along its run it sits, so the normal comes off
+    // the segment rather than off an axis.
     for (const shape of shapesOf(floor)) {
       for (const ring of shape.rings) {
         for (let s = 0; s < ring.pts.length; s++) {
@@ -388,7 +329,7 @@ export function buildNav(state, opts = {}) {
           const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
           for (const o of ring.openings) {
             if (o.seg !== s || !isDoorOpening(o)) continue;
-            joinPortal(a.x + ux * o.t * len, a.z + uz * o.t * len, -uz, ux, o.w, i, 'shape');
+            joinPortal(a.x + ux * o.t * len, a.z + uz * o.t * len, -uz, ux, o.w, i);
           }
         }
       }

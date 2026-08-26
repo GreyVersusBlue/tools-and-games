@@ -20,7 +20,7 @@
 import { floorLabel } from './grid.js';
 import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 import { buildNav, navSummary } from './navgraph.js';
-import { buildingOccupancy } from './occupancy.js';
+import { buildingOccupancy, codeOf, editionEntry } from './occupancy.js';
 import { egressAnalysis, accessibleAnalysis } from './egress.js';
 import { daylightAnalysis } from './daylight.js';
 import { takeoff, takeoffCSV, csvRows } from './takeoff.js';
@@ -110,7 +110,13 @@ export function buildReport(state, opts = {}) {
   // five modules itself.
   const nav = opts.nav || buildNav(state);
   const occupancy = buildingOccupancy(state, { nav });
-  const sprinklered = opts.sprinklered !== false;
+  // Which code the numbers are read against, and whether the building is
+  // sprinklered. Both are facts about the design and live in the file since
+  // v11 (see occupancy.js); `opts` still overrides, for a caller asking a
+  // hypothetical rather than reading the design.
+  const code = codeOf(state);
+  const sprinklered = opts.sprinklered === undefined ? code.sprinklered : opts.sprinklered !== false;
+  const edition = editionEntry(code.edition);
 
   const egress = egressAnalysis(state, { nav, occupancy, sprinklered });
   const accessible = accessibleAnalysis(state, { nav, occupancy, field: egress.field });
@@ -154,6 +160,10 @@ export function buildReport(state, opts = {}) {
   return {
     nav: navSummary(nav),
     sprinklered,
+    // Printed beside every table that quotes a limit: a sheet that says 250ft
+    // without saying under what is a sheet nobody can check.
+    edition: edition.key,
+    editionLabel: edition.label,
     occupancy,
     egress,
     accessible,

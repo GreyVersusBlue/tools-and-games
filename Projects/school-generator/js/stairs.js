@@ -265,26 +265,10 @@ export function floorCuts(state, floorIndex) {
     .filter(Boolean);
 }
 
-// Is (x, z) inside a hole in this storey's floor? Grid cells and polygon slabs
-// both ask this before drawing themselves.
+// Is (x, z) inside a hole in this storey's floor? Every room's slab asks this
+// before drawing itself.
 export function inFloorCut(cuts, x, z) {
   for (const c of cuts) if (pointInPolygon(c, x, z)) return true;
-  return false;
-}
-
-// A cell is cut if any of it is missing — testing the centre alone leaves half
-// a cell hanging over the void, which reads as a mistake from below.
-export function cellCut(cuts, gx, gy, cell = CELL) {
-  if (!cuts.length) return false;
-  const x0 = gx * cell, z0 = gy * cell;
-  const pad = cell * 0.28;
-  for (const [x, z] of [
-    [x0 + cell / 2, z0 + cell / 2],
-    [x0 + pad, z0 + pad], [x0 + cell - pad, z0 + pad],
-    [x0 + pad, z0 + cell - pad], [x0 + cell - pad, z0 + cell - pad],
-  ]) {
-    if (inFloorCut(cuts, x, z)) return true;
-  }
   return false;
 }
 

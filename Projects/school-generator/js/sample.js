@@ -21,12 +21,10 @@
 // — every one of them is a region anyone could draw with the site tool, and
 // every marking on them is computed rather than placed.
 
-import {
-  ROOM_COLORS, createState, addFloor,
-  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_WINDOW,
-} from './grid.js';
+import { ROOM_COLORS, createState, addFloor } from './grid.js';
 import {
   createLattice, setTile, floodRegion, cellIdx, edgeHIdx, edgeVIdx, bake,
+  EDGE_WALL, EDGE_DOOR, EDGE_DOOR2, EDGE_GLASS, EDGE_WINDOW,
 } from './lattice.js';
 import {
   addShape, setSegWall, addOpening, curveSegment, SEG_GLASS, LEAF_SINGLE, OP_WINDOW,

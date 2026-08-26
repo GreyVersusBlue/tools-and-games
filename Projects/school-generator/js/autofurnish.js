@@ -34,7 +34,7 @@
 //
 // Pure module: no three.js, no DOM. Exercised by test/autofurnish.test.mjs.
 
-import { CELL, getCell, edgeHIdx, edgeVIdx, isDoorEdge, floorAt } from './grid.js';
+import { floorAt } from './grid.js';
 import { shapeById, shapeBBox, pointInShape, segEnds, isDoorOpening } from './shapes.js';
 import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 import { templateByKey, templatePlacements, ROOM_TEMPLATES } from './templates.js';
@@ -84,38 +84,9 @@ export function templateForRoom(name) {
 // ---------- what shape the room is ----------
 //
 // A `floorRooms` row plus the floor it came from is enough to answer "is this
-// point in the room" for either representation, which is all the culling
-// needs. Grid regions are the awkward half, as always: the row carries a cell
-// *count* and a hub, not the cells, so the region is re-flooded from the hub.
-// The standing tax, collected again.
-
-function gridCellsOf(floor, room) {
-  const cx = Math.floor(room.x / CELL), cy = Math.floor(room.z / CELL);
-  const seen = new Set();
-  const cells = [];
-  const stack = [[cx, cy]];
-  const key = (x, y) => y * floor.w + x;
-  if (!getCell(floor, cx, cy)) return cells;
-  seen.add(key(cx, cy));
-  while (stack.length) {
-    const [x, y] = stack.pop();
-    cells.push({ x, y });
-    const step = (nx, ny, edge) => {
-      if (nx < 0 || ny < 0 || nx >= floor.w || ny >= floor.h) return;
-      if (edge) return;                       // a boundary of any kind stops the flood
-      if (!getCell(floor, nx, ny)) return;
-      const k = key(nx, ny);
-      if (seen.has(k)) return;
-      seen.add(k);
-      stack.push([nx, ny]);
-    };
-    step(x - 1, y, floor.edgesV[edgeVIdx(floor, x, y)]);
-    step(x + 1, y, floor.edgesV[edgeVIdx(floor, x + 1, y)]);
-    step(x, y - 1, floor.edgesH[edgeHIdx(floor, x, y)]);
-    step(x, y + 1, floor.edgesH[edgeHIdx(floor, x, y + 1)]);
-  }
-  return cells;
-}
+// point in the room", which is all the culling needs. Until Phase 12 this
+// section was twice the length and half of it re-flooded a grid region out of
+// a hub, because a lattice room had no outline to ask. It has one now.
 
 // `{ inside(x, z), box, doors }` for one room. `box` is world feet, `doors`
 // are the midpoints of every opening on the room's boundary — which is what
@@ -124,55 +95,26 @@ export function roomGeometry(state, floorIndex, room) {
   const floor = floorAt(state, floorIndex);
   if (!floor || !room) return null;
 
-  if (room.rep === 'shape') {
-    const shape = room.shape || shapeById(floor, Number(String(room.id).split(':s')[1]));
-    if (!shape) return null;
-    const bb = shapeBBox(shape);
-    const doors = [];
-    for (const ring of shape.rings) {
-      for (const op of ring.openings || []) {
-        if (!isDoorOpening(op)) continue;
-        const [a, b] = segEnds(ring, op.seg);
-        if (!a || !b) continue;
-        doors.push({ x: a.x + (b.x - a.x) * op.t, z: a.z + (b.z - a.z) * op.t });
-      }
-    }
-    return {
-      rep: 'shape',
-      box: { x0: bb.x0, z0: bb.z0, x1: bb.x1, z1: bb.z1 },
-      inside: (x, z) => pointInShape(shape, x, z),
-      doors,
-    };
-  }
-
-  const cells = gridCellsOf(floor, room);
-  if (!cells.length) return null;
-  const set = new Set(cells.map((c) => c.y * floor.w + c.x));
-  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  const shape = room.shape || shapeById(floor, Number(String(room.id).split(':s')[1]));
+  if (!shape) return null;
+  const bb = shapeBBox(shape);
   const doors = [];
-  for (const c of cells) {
-    x0 = Math.min(x0, c.x * CELL); x1 = Math.max(x1, (c.x + 1) * CELL);
-    z0 = Math.min(z0, c.y * CELL); z1 = Math.max(z1, (c.y + 1) * CELL);
-    if (isDoorEdge(floor.edgesH[edgeHIdx(floor, c.x, c.y)]))
-      doors.push({ x: (c.x + 0.5) * CELL, z: c.y * CELL });
-    if (isDoorEdge(floor.edgesH[edgeHIdx(floor, c.x, c.y + 1)]))
-      doors.push({ x: (c.x + 0.5) * CELL, z: (c.y + 1) * CELL });
-    if (isDoorEdge(floor.edgesV[edgeVIdx(floor, c.x, c.y)]))
-      doors.push({ x: c.x * CELL, z: (c.y + 0.5) * CELL });
-    if (isDoorEdge(floor.edgesV[edgeVIdx(floor, c.x + 1, c.y)]))
-      doors.push({ x: (c.x + 1) * CELL, z: (c.y + 0.5) * CELL });
+  for (const ring of shape.rings) {
+    for (const op of ring.openings || []) {
+      if (!isDoorOpening(op)) continue;
+      const [a, b] = segEnds(ring, op.seg);
+      if (!a || !b) continue;
+      doors.push({ x: a.x + (b.x - a.x) * op.t, z: a.z + (b.z - a.z) * op.t });
+    }
   }
   return {
-    rep: 'grid',
-    box: { x0, z0, x1, z1 },
-    inside: (x, z) => {
-      const cx = Math.floor(x / CELL), cy = Math.floor(z / CELL);
-      if (cx < 0 || cy < 0 || cx >= floor.w || cy >= floor.h) return false;
-      return set.has(cy * floor.w + cx);
-    },
+    rep: 'shape',
+    box: { x0: bb.x0, z0: bb.z0, x1: bb.x1, z1: bb.z1 },
+    inside: (x, z) => pointInShape(shape, x, z),
     doors,
   };
 }
+
 
 // ---------- aiming the layout ----------
 

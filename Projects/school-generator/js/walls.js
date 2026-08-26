@@ -15,19 +15,19 @@
 // thing every time: no migration, no stale field, no invalid state.
 //
 // The one cost is that this runs over every boundary on a storey during a
-// rebuild, and each probe is a `floorSolidAt` — a cell lookup plus a
-// point-in-polygon walk. `wallProbe()` hands back a memoized probe so a
+// rebuild, and each probe is a `floorSolidAt` — a point-in-polygon walk. `wallProbe()` hands back a memoized probe so a
 // rebuild pays for each distinct boundary once rather than once per consumer.
 //
 // Pure module: no three.js. Exercised by test/walls.test.mjs.
 
-import { CELL, WALL_T_INT, WALL_T_EXT } from './grid.js';
+import { WALL_T_INT, WALL_T_EXT } from './grid.js';
 import { floorSolidAt } from './shapes.js';
 
 export { WALL_T_INT, WALL_T_EXT };
 
-// How far off a boundary to look for floor. Under half a cell, so the sample
-// clears the wall itself and still lands inside the 4ft cell next door.
+// How far off a boundary to look for floor. Under half the drawing lattice's
+// pitch, so the sample clears the wall itself and still lands well inside the
+// room on the other side of it.
 export const PROBE = 1.2;        // ft
 // Where along the run to take those samples. A wall is one thing along its
 // whole length here — openings have already split a run into spans by the time
@@ -95,12 +95,4 @@ export function fixedProbe(t) {
   const fn = () => t;
   fn.exterior = () => t === WALL_T_EXT;
   return fn;
-}
-
-// A grid edge, as the segment the probe wants. `horizontal` matches the
-// lattice's own convention: edgesH run along +X between two rows.
-export function gridEdgeSeg(x, y, horizontal, cell = CELL) {
-  return horizontal
-    ? { ax: x * cell, az: y * cell, bx: (x + 1) * cell, bz: y * cell }
-    : { ax: x * cell, az: y * cell, bx: x * cell, bz: (y + 1) * cell };
 }

@@ -107,9 +107,9 @@ export const isDefaultRoof = (roof) => {
 
 // ---------- 1. the footprint mask ----------
 
-// The storey's covered cells, on a lattice that can start left of and above
-// the building grid — polygon rooms are allowed outside the footprint, and a
-// roof that stopped at the grid edge would leave one wing bare.
+// The storey's covered cells, on a raster that can start left of and above the
+// drawing surface — a room is allowed outside the footprint, and a roof that
+// stopped at the grid edge would leave one wing bare.
 export function roofMask(floor, gridW, gridH) {
   if (!floor) return { cx0: 0, cy0: 0, w: 0, h: 0, on: new Uint8Array(0) };
   let cx0 = 0, cy0 = 0, cx1 = floor.w ?? gridW ?? 0, cy1 = floor.h ?? gridH ?? 0;
@@ -125,11 +125,10 @@ export function roofMask(floor, gridW, gridH) {
   for (let r = 0; r < h; r++) {
     for (let c = 0; c < w; c++) {
       const gx = cx0 + c, gy = cy0 + r;
-      let covered = gx >= 0 && gy >= 0 && gx < floor.w && gy < floor.h &&
-        !!floor.cells[gy * floor.w + gx];
-      if (!covered) {
-        // A polygon room covers a cell if it covers the middle of it. Coarse
-        // by construction — the mask is the roof's resolution, and a roof does
+      let covered = false;
+      {
+        // A room covers a cell if it covers the middle of it. Coarse by
+        // construction — the mask is the roof's resolution, and a roof does
         // not follow a 4ft jog in a wall.
         const x = (gx + 0.5) * CELL, z = (gy + 0.5) * CELL;
         for (const { shape, b } of boxes) {

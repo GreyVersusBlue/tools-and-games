@@ -5,17 +5,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  CELL, DOOR_W, createState, setTile, floodRegion, cellIdx, edgeHIdx, edgeVIdx,
-  duplicateFloor, addFloor,
-} from '../js/grid.js';
+import { CELL, DOOR_W, createState, duplicateFloor, addFloor } from '../js/grid.js';
+import { EDGE_GLASS, EDGE_RAIL, EDGE_DOOR } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt, canOpen, MAX_SHAPES,
   addShape, addHole, removeShape, makeShape, cleanRing,
   ringSignedArea, ringIsCCW, pointInShape, shapeArea, shapeBBox, interiorPoint,
   shapeAt, shapeById, nearestSegment, nearestVertex, segEnds, segLength,
   insertVertex, deleteVertex, moveVertex, setSegWall, addOpening, toggleOpening, orientRing,
-  snapPoint, constrainAngle, enclosingShape, regionToPolygon, convertRegion,
+  snapPoint, constrainAngle, enclosingShape,
   arcGeometry, arcPoints, curveSegment, straightenRun, MAX_BULGE, MIN_ARC_CHORD,
   ringLen, LEAF_SINGLE,
   normalizeShape, cloneShape,
@@ -256,17 +255,20 @@ test('a loaded file keeps the kind of each wall, and guesses safely at the rest'
   );
 });
 
-test('wall kinds survive a save round-trip on both representations', () => {
+test('wall kinds survive a save round-trip, drawn or painted', () => {
   const s = createState(10, 10);
-  const shape = addShape(s, 0, RECT, {});
-  setSegWall(shape, 0, 0, SEG_GLASS);
-  setSegWall(shape, 0, 2, SEG_RAIL);
-  s.floors[0].edgesH[edgeHIdx(s.floors[0], 2, 2)] = 3;  // glass
-  s.floors[0].edgesV[edgeVIdx(s.floors[0], 3, 3)] = 4;  // railing
+  const drawn = addShape(s, 0, RECT, {});
+  setSegWall(drawn, 0, 0, SEG_GLASS);
+  setSegWall(drawn, 0, 2, SEG_RAIL);
+  const f = sheet(s, 0);
+  f.box(6, 6, 8, 8).hrun(6, 8, 6, EDGE_GLASS).vrun(6, 6, 8, EDGE_RAIL);
+  f.bake();
+  const painted = s.floors[0].shapes[1];
+  assert.ok(painted.rings[0].walls.includes(SEG_GLASS));
+  assert.ok(painted.rings[0].walls.includes(SEG_RAIL));
   const back = deserialize(serialize(s));
-  assert.deepEqual(back.floors[0].shapes[0].rings[0].walls, shape.rings[0].walls);
-  assert.equal(back.floors[0].edgesH[edgeHIdx(back.floors[0], 2, 2)], 3);
-  assert.equal(back.floors[0].edgesV[edgeVIdx(back.floors[0], 3, 3)], 4);
+  assert.deepEqual(back.floors[0].shapes[0].rings[0].walls, drawn.rings[0].walls);
+  assert.deepEqual(back.floors[0].shapes[1].rings[0].walls, painted.rings[0].walls);
 });
 
 // ---------- snapping ----------
@@ -305,88 +307,53 @@ test('the angle constraint holds the run to 15 degree steps', () => {
   assert.ok(Math.abs(d.x - d.z) < 1e-9, 'nearly-diagonal becomes 45°');
 });
 
-// ---------- grid -> polygon migration ----------
+// ---------- what the 4ft brush bakes ----------
+//
+// The tracer itself has its own suite (test/lattice.test.mjs). What is checked
+// here is the seam: that a room painted with the brush comes out of it as an
+// ordinary room, indistinguishable to everything in this file from one drawn
+// by hand.
 
-const layout = () => {
+test('a painted room is an ordinary room with an id, a name and an outline', () => {
   // Two rooms side by side sharing one partition, inside an outer shell.
   const s = createState(20, 20);
-  const f = s.floors[0];
-  for (let y = 2; y <= 5; y++) for (let x = 2; x <= 9; x++) setTile(f, x, y, true);
-  for (let x = 2; x <= 9; x++) {
-    f.edgesH[edgeHIdx(f, x, 2)] = 1;
-    f.edgesH[edgeHIdx(f, x, 6)] = 1;
-  }
-  for (let y = 2; y <= 5; y++) {
-    f.edgesV[edgeVIdx(f, 2, y)] = 1;
-    f.edgesV[edgeVIdx(f, 10, y)] = 1;
-    f.edgesV[edgeVIdx(f, 6, y)] = 1;      // the shared partition
-  }
-  f.edgesV[edgeVIdx(f, 6, 3)] = 2;        // with a door through it
-  f.edgesH[edgeHIdx(f, 3, 2)] = 2;        // and one to the outside
-  for (const c of floodRegion(f, 3, 3)) {
-    f.cells[cellIdx(f, c.x, c.y)].room = 'Room 101';
-    f.cells[cellIdx(f, c.x, c.y)].color = '#f5d491';
-  }
-  return s;
-};
+  const f = sheet(s, 0);
+  f.box(2, 2, 9, 5);
+  f.vrun(6, 2, 5).edgeV(6, 3, EDGE_DOOR);      // the partition, with a door
+  f.edgeH(3, 2, EDGE_DOOR);                    // and one to the outside
+  f.label(2, 2, 5, 5, { name: 'Room 101', color: '#f5d491' });
+  f.label(6, 2, 9, 5, { name: 'Room 102' });
+  f.bake();
 
-test('a grid region traces to a polygon outline in feet', () => {
-  const s = layout();
-  const f = s.floors[0];
-  const loops = regionToPolygon(f, floodRegion(f, 3, 3));
-  assert.equal(loops.length, 1);
-  const xs = loops[0].pts.map((p) => p.x);
-  const zs = loops[0].pts.map((p) => p.z);
-  assert.deepEqual([Math.min(...xs), Math.max(...xs)], [2 * CELL, 6 * CELL]);
-  assert.deepEqual([Math.min(...zs), Math.max(...zs)], [2 * CELL, 6 * CELL]);
-  // Straight runs collapse; the door keeps its own 4ft segment, and so does
-  // the shared partition, which is why this isn't a plain rectangle.
-  assert.ok(loops[0].pts.length > 4, 'walls that differ do not merge into one run');
-  assert.ok(loops[0].segs.some((sg) => sg.shared), 'the partition is flagged as shared');
-  assert.ok(loops[0].segs.some((sg) => sg.val === 2), 'the doorway survives the trace');
+  const [west, east] = s.floors[0].shapes;
+  assert.equal(west.name, 'Room 101');
+  assert.equal(west.color, '#f5d491');
+  assert.ok(west.id > 0 && east.id > 0 && west.id !== east.id);
+  assert.equal(shapeArea(west), 16 * CELL * CELL);
+  assert.equal(shapeAt(s.floors[0], 3.5 * CELL, 3.5 * CELL).id, west.id);
+
+  // The partition is built by exactly one of them; the other leaves that side
+  // open rather than drawing a second wall in the same place.
+  assert.ok(west.rings[0].walls.some((w) => w !== SEG_NONE));
+  assert.ok(east.rings[0].walls.includes(SEG_NONE),
+    'the room that did not build the partition leaves it open');
+  // Both doorways survive the trace, wherever they ended up living.
+  const doors = s.floors[0].shapes
+    .flatMap((sh) => sh.rings.flatMap((r) => r.openings)).length;
+  assert.equal(doors, 2);
 });
 
-test('a region with a hole in it traces an inner loop too', () => {
+test('a painted room with a courtyard in it bakes to a ring and a hole', () => {
   const s = createState(20, 20);
-  const f = s.floors[0];
-  for (let y = 0; y <= 6; y++) for (let x = 0; x <= 6; x++) setTile(f, x, y, true);
-  setTile(f, 3, 3, false);                        // a courtyard in the middle
-  const loops = regionToPolygon(f, floodRegion(f, 0, 0));
-  assert.equal(loops.length, 2, 'outer boundary plus the courtyard');
-  assert.ok(Math.abs(ringSignedArea(loops[0].pts)) > Math.abs(ringSignedArea(loops[1].pts)),
-    'the outer loop comes first');
-  assert.equal(loops[1].pts.length, 4, 'the courtyard is a square');
-});
-
-test('converting a grid room hands over its cells, walls and doors', () => {
-  const s = layout();
-  const f = s.floors[0];
-  const before = floodRegion(f, 3, 3).length;
-  assert.ok(before > 0);
-
-  const shape = convertRegion(s, 0, 3, 3);
-  assert.ok(shape, 'the region became a polygon');
-  assert.equal(shape.name, 'Room 101', 'name and colour come along');
-  assert.equal(shape.color, '#f5d491');
-  assert.equal(shapeArea(shape), before * CELL * CELL, 'same floor area, now as a polygon');
-  assert.equal(floodRegion(f, 3, 3).length, 0, 'the cells were handed back');
-
-  // The exterior walls moved onto the polygon...
-  assert.equal(f.edgesV[edgeVIdx(f, 2, 3)], 0, 'exterior grid wall cleared');
-  assert.equal(f.edgesH[edgeHIdx(f, 3, 2)], 0, 'exterior door cleared');
-  assert.ok(shape.rings[0].openings.length >= 1, 'and the door came with it');
-  // ...but the partition it shares with Room 102 stays on the grid, drawn once.
-  assert.equal(f.edgesV[edgeVIdx(f, 6, 4)], 1, 'shared partition left alone');
-  const sharedSeg = shape.rings[0].walls.filter((w) => w === SEG_NONE).length;
-  assert.ok(sharedSeg >= 1, 'the polygon leaves that side open rather than doubling it');
-  assert.equal(shapeAt(f, 3.5 * CELL, 3.5 * CELL).id, shape.id);
-});
-
-test('converting nothing is a no-op', () => {
-  const s = createState(10, 10);
-  assert.equal(convertRegion(s, 0, 1, 1), null, 'no floor there');
-  assert.equal(convertRegion(s, 5, 1, 1), null, 'no such storey');
-  assert.deepEqual(s.floors[0].shapes, []);
+  const f = sheet(s, 0);
+  f.fill(0, 0, 6, 6).tile(3, 3, false);          // a courtyard in the middle
+  f.bake();
+  const shape = s.floors[0].shapes[0];
+  assert.equal(shape.rings.length, 2, 'outer boundary plus the courtyard');
+  assert.ok(Math.abs(ringSignedArea(shape.rings[0].pts)) >
+    Math.abs(ringSignedArea(shape.rings[1].pts)), 'the outer ring comes first');
+  assert.equal(shape.rings[1].pts.length, 4, 'the courtyard is a square');
+  assert.equal(shapeArea(shape), 48 * CELL * CELL);
 });
 
 // ---------- state, floors and persistence ----------

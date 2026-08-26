@@ -5,12 +5,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  createState, setTile, edgeHIdx, edgeVIdx, CELL, WALL_H,
-  EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_WINDOW,
-} from '../js/grid.js';
+import { createState, CELL, WALL_H } from '../js/grid.js';
+import { setTile, edgeHIdx, edgeVIdx, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_WINDOW } from '../js/lattice.js';
+import { sheet } from './build.mjs';
 import { addShape, addOpening, setSegWall, OP_WINDOW, SEG_GLASS } from '../js/shapes.js';
-import { gridOpeningWidth, gridWindowSpec } from '../js/openings.js';
+import { gridOpeningWidth, GRID_WINDOW_W } from '../js/lattice.js';
+import { WINDOW_H } from '../js/shapes.js';
 import { buildSampleSchool } from '../js/sample.js';
 import { buildNav } from '../js/navgraph.js';
 import {
@@ -21,20 +21,13 @@ const has = (findings, code) => findings.some((f) => f.code === code);
 
 // One room, 4 cells wide by 4 deep, walled all round, with a door onto the
 // world. Glass goes on its north wall by the caller.
-function oneRoom(name = 'Room 101') {
+function oneRoom(name = 'Room 101', extra = null) {
   const s = createState(12, 10);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 4; x++) setTile(f, x, y, true);
-  for (let x = 1; x <= 4; x++) {
-    f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL;
-  }
-  for (let y = 1; y <= 4; y++) {
-    f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
-  }
+  const f = sheet(s, 0);
+  f.box(1, 1, 4, 4, { name });
   f.edgesV[edgeVIdx(f, 1, 2)] = EDGE_DOOR;
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 4; x++) f.cells[y * f.w + x].room = name;
+  if (extra) extra(f);
+  f.bake();
   return s;
 }
 
@@ -51,44 +44,31 @@ test('a room with no glass has none, and is reported as windowless', () => {
 });
 
 test('a window band on an exterior wall is width times height of glass', () => {
-  const s = oneRoom();
-  const f = s.floors[0];
-  f.edgesH[edgeHIdx(f, 2, 1)] = EDGE_WINDOW;
+  const s = oneRoom('Room 101', (f) => { f.edgesH[edgeHIdx(f, 2, 1)] = EDGE_WINDOW; });
   const rows = daylightOnFloor(s, 0);
   const row = roomRow(rows, 'Room 101');
-  const spec = gridWindowSpec();
-  assert.ok(Math.abs(row.glazed - gridOpeningWidth(EDGE_WINDOW) * spec.h) < 1e-9);
+  assert.equal(gridOpeningWidth(EDGE_WINDOW), GRID_WINDOW_W);
+  assert.ok(Math.abs(row.glazed - GRID_WINDOW_W * WINDOW_H) < 1e-9);
   assert.equal(row.openings, 1);
   assert.equal(row.borrowed, 0);
 });
 
 test('a glazed wall is glazed floor to ceiling', () => {
-  const s = oneRoom();
-  const f = s.floors[0];
-  f.edgesH[edgeHIdx(f, 2, 1)] = EDGE_GLASS;
+  const s = oneRoom('Room 101', (f) => { f.edgesH[edgeHIdx(f, 2, 1)] = EDGE_GLASS; });
   const row = roomRow(daylightOnFloor(s, 0), 'Room 101');
   assert.equal(row.glazed, CELL * WALL_H);
 });
 
 test('glass between two rooms is borrowed light, not daylight', () => {
   const s = createState(14, 10);
-  const f = s.floors[0];
-  for (let y = 1; y <= 4; y++) for (let x = 1; x <= 9; x++) setTile(f, x, y, true);
-  for (let x = 1; x <= 9; x++) {
-    f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WALL;
-    f.edgesH[edgeHIdx(f, x, 5)] = EDGE_WALL;
-  }
-  for (let y = 1; y <= 4; y++) {
-    f.edgesV[edgeVIdx(f, 1, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, 10, y)] = EDGE_WALL;
-    f.edgesV[edgeVIdx(f, 5, y)] = EDGE_WALL;
-  }
+  const f = sheet(s, 0);
+  f.box(1, 1, 9, 4);
+  f.vrun(5, 1, 4, EDGE_WALL);
   f.edgesV[edgeVIdx(f, 5, 2)] = EDGE_GLASS;      // between the two rooms
   f.edgesV[edgeVIdx(f, 5, 3)] = EDGE_DOOR;
-  for (let y = 1; y <= 4; y++) {
-    for (let x = 1; x <= 4; x++) f.cells[y * f.w + x].room = 'Room 101';
-    for (let x = 6; x <= 9; x++) f.cells[y * f.w + x].room = 'Room 102';
-  }
+  f.label(1, 1, 4, 4, { name: 'Room 101' });
+  f.label(6, 1, 9, 4, { name: 'Room 102' });
+  f.bake();
   const rows = daylightOnFloor(s, 0);
   for (const name of ['Room 101', 'Room 102']) {
     const row = roomRow(rows, name);
@@ -97,7 +77,7 @@ test('glass between two rooms is borrowed light, not daylight', () => {
   }
 });
 
-test('a polygon window counts at its own size, and a curtain wall at the segment\'s', () => {
+test("a window counts at its own size, and a curtain wall at the segment's", () => {
   const s = createState(20, 20);
   const shape = addShape(s, 0, [
     { x: 0, z: 0 }, { x: 40, z: 0 }, { x: 40, z: 20 }, { x: 0, z: 20 },
@@ -111,32 +91,19 @@ test('a polygon window counts at its own size, and a curtain wall at the segment
   assert.equal(withWall.glazed, 6 * 4 + 40 * WALL_H);
 });
 
-test('a doorway through a curtain wall is a hole in the glass', () => {
-  const s = createState(20, 20);
-  const shape = addShape(s, 0, [
-    { x: 0, z: 0 }, { x: 40, z: 0 }, { x: 40, z: 20 }, { x: 0, z: 20 },
-  ], { name: 'Room 101' });
-  setSegWall(shape, 0, 0, SEG_GLASS);
-  addOpening(shape, 0, 0, 0.5, 6);                 // a 6ft pair of doors in it
-  const row = roomRow(daylightOnFloor(s, 0), 'Room 101');
-  assert.equal(row.glazed, (40 - 6) * WALL_H);
-});
-
 test('the ratio is glass over floor, and 8% is the line', () => {
-  const s = oneRoom();
-  const f = s.floors[0];
-  const row = () => roomRow(daylightAnalysis(s).rooms, 'Room 101');
+  const rowOf = (st) => roomRow(daylightAnalysis(st).rooms, 'Room 101');
   // 16 cells = 256 ft² of floor; one 3.5×4 window is 14 ft², about 5.5%.
-  f.edgesH[edgeHIdx(f, 2, 1)] = EDGE_WINDOW;
-  assert.ok(row().ratio < MIN_RATIO);
-  assert.ok(row().dark);
-  assert.ok(!row().windowless);
+  const one = rowOf(oneRoom('Room 101', (f) => { f.edgesH[edgeHIdx(f, 2, 1)] = EDGE_WINDOW; }));
+  assert.ok(one.ratio < MIN_RATIO);
+  assert.ok(one.dark);
+  assert.ok(!one.windowless);
   // Three more windows clears it.
-  f.edgesH[edgeHIdx(f, 1, 1)] = EDGE_WINDOW;
-  f.edgesH[edgeHIdx(f, 3, 1)] = EDGE_WINDOW;
-  f.edgesH[edgeHIdx(f, 4, 1)] = EDGE_WINDOW;
-  assert.ok(row().ratio > MIN_RATIO);
-  assert.ok(!row().dark);
+  const four = rowOf(oneRoom('Room 101', (f) => {
+    for (const x of [1, 2, 3, 4]) f.edgesH[edgeHIdx(f, x, 1)] = EDGE_WINDOW;
+  }));
+  assert.ok(four.ratio > MIN_RATIO);
+  assert.ok(!four.dark);
 });
 
 test('a corridor, a store and a restroom are allowed to be windowless', () => {

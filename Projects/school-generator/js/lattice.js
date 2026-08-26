@@ -35,30 +35,19 @@
 // is the same rule `convertRegion` has always applied to a promoted room's
 // shared walls — it just no longer has a lattice to leave the wall on.
 //
-// **A boundary with no room on either side cannot survive.** A free-standing
-// lattice wall — one drawn across empty cells, with nothing to bound — is the
-// one thing the polygon model has no way to say: a wall is a room's boundary
-// here, and inventing a room to hold it would put floor, ceiling and
-// occupancy where the design has none. `bake()` counts them and hands the
-// count back rather than dropping them silently, and since the wall tool now
-// writes to a room's own ring, no new one can be made.
+// **A boundary that bounds no room cannot survive.** Two lattice walls are
+// like this: one drawn across empty cells with nothing on either side of it,
+// and a *stub* that pokes into a room without dividing it — a wing wall, half
+// a partition. Both are the one thing the polygon model has no way to say: a
+// wall is a room's boundary here, and there is no room whose boundary either
+// of those is. Inventing one would put floor, ceiling and occupancy where the
+// design has none. `bake()` counts them and hands the count back rather than
+// dropping them silently, and since the wall tool now writes to a room's own
+// ring, no new one can be made.
 //
 // Pure module: no three.js. Exercised by test/lattice.test.mjs.
 
-import {
-  CELL, DOOR_W,
-  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
-  EDGE_WINDOW, EDGE_DOOR2, EDGE_OPENING, EDGE_KINDS, EDGE_DOORS, isDoorEdge,
-} from './grid.js';
-
-// The edge vocabulary belongs to the drawing surface, so it is re-exported
-// from here: everything that still speaks lattice — the save loader reading a
-// pre-v11 file, the generator, the paint brush — imports it from this module
-// and not from grid.js, which no longer has a lattice on it.
-export {
-  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
-  EDGE_WINDOW, EDGE_DOOR2, EDGE_OPENING, EDGE_KINDS, EDGE_DOORS, isDoorEdge,
-};
+import { CELL, DOOR_W } from './grid.js';
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   MAX_SHAPES, MAX_RING_PTS,
@@ -67,6 +56,39 @@ import {
   OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE,
   WINDOW_SILL, WINDOW_H,
 } from './shapes.js';
+
+// ---------- the edge vocabulary ----------
+//
+// What can sit on a lattice edge. 0-2 were v1's whole language and can't move;
+// glass and railing were appended in v4, windows, double doors and the cased
+// opening in v5, so an old save reads exactly as it did. Everything non-zero
+// bounds a region for flood fill, which is the point of the ordering: `if
+// (edge)` still means "something is in the way".
+//
+// These lived in grid.js until Phase 12 and belong here now, because a floor
+// has no edges on it any more. What still speaks this language is the save
+// loader reading a pre-v11 file, the generator laying a school out, and the
+// paint brush — all three of which draw on a lattice and bake it.
+export const EDGE_NONE = 0;
+export const EDGE_WALL = 1;
+export const EDGE_DOOR = 2;
+export const EDGE_GLASS = 3;
+export const EDGE_RAIL = 4;
+// A window is a wall with a glazed band in it (solid to a walker, which is
+// what keeps it out of the door family), a double door is the corridor pair,
+// and a cased opening is the hole without the leaf. The lattice has nowhere to
+// put per-opening options — an edge is a value, not a record — so each variant
+// a polygon room spells with fields is its own kind here.
+export const EDGE_WINDOW = 5;
+export const EDGE_DOOR2 = 6;
+export const EDGE_OPENING = 7;
+export const EDGE_KINDS = [
+  EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL,
+  EDGE_WINDOW, EDGE_DOOR2, EDGE_OPENING,
+];
+// The kinds you can walk through. A window is emphatically not on it.
+export const EDGE_DOORS = [EDGE_DOOR, EDGE_DOOR2, EDGE_OPENING];
+export const isDoorEdge = (v) => EDGE_DOORS.includes(v);
 
 // The width the lattice gives each of its opening kinds. A double door fills
 // its cell — that is what the kind exists for — and a window keeps a jamb
@@ -95,10 +117,10 @@ export function edgeSegKind(val) {
   return SEG_WALL;
 }
 
-// The options a lattice opening carries, as a polygon opening would record
-// them. These are exactly the answers `gridDoorSpec` gave in openings.js —
-// the two had to agree, because a design baked by this file has to hang the
-// same leaves the lattice used to hang.
+// The options a lattice opening carries, as a room's own opening records them.
+// These are the answers `gridDoorSpec` used to give in openings.js, which is
+// now the only place they are said: a design baked by this file has to hang
+// the same leaves the lattice used to hang.
 export function edgeOpeningOpts(val) {
   if (val === EDGE_DOOR2) return { leaf: LEAF_DOUBLE, lite: true, bar: true };
   if (val === EDGE_OPENING) return { leaf: LEAF_NONE };
@@ -360,7 +382,9 @@ export function regionToShape(state, lat, cells, claimed = new Set()) {
     if (!name && cell.room) { name = cell.room; color = cell.color; }
   }
 
-  const shape = { id: takeId(state), name, color, fin, paint, rings: [] };
+  // `group` and `load` are v11's two room fields; a baked room has never been
+  // asked either question, so both are the default "work it out".
+  const shape = { id: takeId(state), name, color, fin, paint, group: null, load: null, rings: [] };
   loops.forEach((loop, li) => {
     const ring = { pts: loop.pts, walls: [], openings: [] };
     loop.segs.forEach((sg, i) => {
