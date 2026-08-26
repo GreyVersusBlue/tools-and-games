@@ -273,6 +273,26 @@ const editor = initEditor({
   // The polygon tools have more to say than a fixed per-tool hint — how many
   // corners are down, how big the room is — so they drive the status line.
   onStatus: (text) => { $('status').textContent = text; },
+  // The same line, riding the pointer while a stroke is live. It lingers a
+  // beat after the stroke ends so a click's worth of feedback (a door cut,
+  // a room named) is readable, then gets out of the way.
+  onLiveMeasure: (() => {
+    const chip = $('measure');
+    let linger = 0;
+    return (text, x, y) => {
+      clearTimeout(linger);
+      if (text == null) {
+        linger = setTimeout(() => chip.classList.add('hidden'), 900);
+        return;
+      }
+      chip.textContent = text;
+      chip.classList.remove('hidden');
+      const pad = 16;
+      const cx = Math.min(x + pad, window.innerWidth - chip.offsetWidth - 8);
+      const cy = Math.min(y + pad, window.innerHeight - chip.offsetHeight - 8);
+      chip.style.transform = `translate(${cx}px, ${cy}px)`;
+    };
+  })(),
   onHoleMode: (on) => {
     $('hole-btn').classList.toggle('on', on);
     $('hole-btn').setAttribute('aria-pressed', String(on));

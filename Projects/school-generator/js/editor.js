@@ -56,7 +56,17 @@ export const DOOR_KINDS = [
 ];
 const doorKindOf = (k) => DOOR_KINDS.find((d) => d.kind === k) || DOOR_KINDS[0];
 
-export function initEditor({ canvas, renderApi, getState, onChange, onStatus, onHoleMode, onMeasure }) {
+export function initEditor({ canvas, renderApi, getState, onChange, onStatus, onHoleMode, onMeasure, onLiveMeasure }) {
+  // The status line teaches; the measurement rides the cursor. Everything a
+  // tool says goes to the status line as it always has, and while a stroke
+  // is live the same line is offered to `onLiveMeasure` with the pointer it
+  // belongs to, so the chrome can put the number where the eye already is.
+  let lastClient = null;
+  let strokeLive = false;
+  const say = (text) => {
+    if (onStatus) onStatus(text);
+    if (strokeLive && lastClient && onLiveMeasure) onLiveMeasure(text, lastClient.x, lastClient.y);
+  };
   let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair | template | site | overlay
   let roomName = 'Room 101';
   let roomColor = ROOM_COLORS[0];
@@ -292,7 +302,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     host: {
       pushUndo, dropUndo,
       changed: (info = {}) => fire({ structural: true, ...info }),
-      status: (text) => onStatus && onStatus(text),
+      status: (text) => say(text),
       holeModeChanged: (v) => onHoleMode && onHoleMode(v),
       cursorStyle: (v) => { canvas.style.cursor = v; },
       roomName: () => roomName || 'Room',
@@ -312,7 +322,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     host: {
       pushUndo, dropUndo,
       changed: (info = {}) => fire({ structural: true, ...info }),
-      status: (text) => onStatus && onStatus(text),
+      status: (text) => say(text),
     },
   });
 
@@ -325,7 +335,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     host: {
       pushUndo, dropUndo,
       changed: (info = {}) => fire({ structural: true, ...info }),
-      status: (text) => onStatus && onStatus(text),
+      status: (text) => say(text),
     },
   });
 
@@ -338,7 +348,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     host: {
       pushUndo, dropUndo,
       changed: (info = {}) => fire({ structural: true, ...info }),
-      status: (text) => onStatus && onStatus(text),
+      status: (text) => say(text),
     },
   });
 
@@ -350,7 +360,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     host: {
       pushUndo, dropUndo,
       changed: (info = {}) => fire({ structural: true, ...info }),
-      status: (text) => onStatus && onStatus(text),
+      status: (text) => say(text),
     },
   });
 
@@ -363,7 +373,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     host: {
       pushUndo, dropUndo,
       changed: (info = {}) => fire({ structural: false, overlay: true, ...info }),
-      status: (text) => onStatus && onStatus(text),
+      status: (text) => say(text),
       setOverlay: (o, info = {}) => {
         const st = getState();
         if (o) st.overlay = o;
@@ -419,7 +429,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       if (setSegWall(seg.shape, seg.ring, seg.seg, kind.seg)) {
         strokeChanged = true;
         const [a, b] = segEnds(seg.shape.rings[seg.ring], seg.seg);
-        onStatus && onStatus(`Wall — ${kind.label.toLowerCase()}, ${segLength(a, b).toFixed(1)}ft.`);
+        say(`Wall — ${kind.label.toLowerCase()}, ${segLength(a, b).toFixed(1)}ft.`);
       }
     } else if (tool === 'door') {
       if (!isClick) return; // doors place on click, not drag
@@ -433,7 +443,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       if (dk.kind === 'window') opts.sill = doorOpts.sill;
       const cut = toggleOpening(seg.shape, seg.ring, seg.seg, seg.t, null, opts);
       strokeChanged = true;
-      onStatus && onStatus(cut
+      say(cut
         ? `${dk.label} — ${cut.w.toFixed(1)}ft, cut into a ${segLength(...segEnds(seg.shape.rings[seg.ring], seg.seg)).toFixed(1)}ft wall.`
         : `${dk.label} removed.`);
     } else if (tool === 'room') {
@@ -449,7 +459,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       const said = [`${Math.round(shapeArea(shape)).toLocaleString()} ft²`];
       if (roomGroup) said.push(`read as ${roomGroup}`);
       if (roomLoad) said.push(`${roomLoad} occupants`);
-      onStatus && onStatus(`${shape.name} — ${said.join(', ')}.`);
+      say(`${shape.name} — ${said.join(', ')}.`);
     } else if (tool === 'erase') {
       const seg = nearestSegment(f, wx, wz, SEG_GRAB);
       if (seg) {
@@ -581,7 +591,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
         ? null
         : { ...curveMemo, bulge: next, count };
       fire({ structural: true, commit: true });
-      onStatus && onStatus(Math.abs(next) < 0.01
+      say(Math.abs(next) < 0.01
         ? 'Wall straightened.'
         : `Curved wall — ${count} segments, rise ${(next * 100).toFixed(0)}% of the chord. , and . adjust.`);
       return true;
@@ -589,7 +599,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
 
     const seg = nearestSegment(f, hoverWorld.x, hoverWorld.z, SEG_GRAB);
     if (!seg) {
-      onStatus && onStatus('Curve — point at a polygon wall first. The lattice only builds straight edges.');
+      say('Curve — point at a polygon wall first. The lattice only builds straight edges.');
       return true;
     }
     pushUndo();
@@ -598,12 +608,12 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     const count = curveSegment(seg.shape, seg.ring, seg.seg, delta);
     if (count <= 1) {
       dropUndo();
-      onStatus && onStatus(`Curve — that wall is only ${segLength(a, b).toFixed(1)}ft; there's no room to bend it.`);
+      say(`Curve — that wall is only ${segLength(a, b).toFixed(1)}ft; there's no room to bend it.`);
       return true;
     }
     curveMemo = { shape: seg.shape, ring: seg.ring, seg: seg.seg, count, bulge: delta };
     fire({ structural: true, commit: true });
-    onStatus && onStatus(had
+    say(had
       ? `Curved wall — ${count} segments. The doorway in it was dropped: a 2ft chord has nowhere to put a 3ft door.`
       : `Curved wall — ${count} segments. , and . adjust, and they re-bend this same wall rather than stacking arcs.`);
     return true;
@@ -723,7 +733,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     else if (strokeOffSheet) reportOffSheet();
     else if (strokeOverhang) {
       const area = strokeOverhang * CELL * CELL;
-      onStatus && onStatus(`Overhang — ${area.toLocaleString()} ft² of this storey now ` +
+      say(`Overhang — ${area.toLocaleString()} ft² of this storey now ` +
         'stands on nothing below.');
     }
   }
@@ -733,7 +743,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   // does want that room. Same register as the overhang note below — a line in
   // the status bar, no interruption.
   function reportFrozen() {
-    onStatus && onStatus(`${strokeFrozen} cell${strokeFrozen === 1 ? '' : 's'} skipped — ` +
+    say(`${strokeFrozen} cell${strokeFrozen === 1 ? '' : 's'} skipped — ` +
       'a free-drawn room is there. Use the vertex tool (V) to reshape it.');
   }
 
@@ -744,7 +754,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   function reportSkewed() {
     const n = strokeSkewed.size;
     strokeSkewed.clear();
-    onStatus && onStatus(`${n === 1 ? 'A wall' : `${n} walls`} at an angle to this one ` +
+    say(`${n === 1 ? 'A wall' : `${n} walls`} at an angle to this one ` +
       'left alone — a drag follows one wall round a curve, but not round a corner. ' +
       'Draw across them separately.');
   }
@@ -756,7 +766,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   function reportOffSheet() {
     const cells = strokeOffSheet;
     strokeOffSheet = 0;
-    onStatus && onStatus(
+    say(
       `${cells === 1 ? 'That cell is' : `${cells} cells are`} off the plan — ` +
       'the drawing surface ends there. Make it bigger with Plan in the Floors panel.');
   }
@@ -768,7 +778,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   function reportRefusal() {
     const cells = overhangRefused;
     overhangRefused = 0;
-    onStatus && onStatus(
+    say(
       `${cells === 1 ? 'That cell is' : `${cells} cells are`} outside the storey below — ` +
       'turn on “Allow overhangs” in the Layers panel to build there anyway.');
   }
@@ -830,6 +840,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   }
 
   function commitPendingTouch() {
+    strokeLive = true;
     if (!pendingTouch) return;
     clearTimeout(pendingTouch.timer);
     const { id, e } = pendingTouch;
@@ -861,6 +872,7 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   function touchPointerDown(e) {
     if (!enabled) return;
     touchPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    lastClient = { x: e.clientX, y: e.clientY };
     canvas.setPointerCapture(e.pointerId);
     // A tool interaction (or a gesture) is already under way — an extra
     // finger (a resting palm, a stray touch) is simply tracked and ignored,
@@ -885,11 +897,19 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     }
     if (committedTouchId === e.pointerId) {
       updateCursor(e);
+      lastClient = { x: e.clientX, y: e.clientY };
       dispatchPointerMove(e, pointerToWorld(e));
     }
   }
 
   function endTouch(id) {
+    try { endTouchInner(id); } finally {
+      strokeLive = false;
+      if (onLiveMeasure) onLiveMeasure(null);
+    }
+  }
+
+  function endTouchInner(id) {
     // commitPendingTouch() reads this touch's last position out of touchPts,
     // so the entry has to survive until after it runs — delete it last.
     if (pendingTouch && pendingTouch.id === id) {
@@ -922,6 +942,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
     if (e.button !== 0) return;
     const p = pointerToWorld(e);
     if (!p) return;
+    lastClient = { x: e.clientX, y: e.clientY };
+    strokeLive = true;
     dispatchPointerDown(e, p);
   });
 
@@ -937,16 +959,23 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
       return;
     }
     updateCursor(e);
+    lastClient = { x: e.clientX, y: e.clientY };
     dispatchPointerMove(e, pointerToWorld(e));
   });
 
   canvas.addEventListener('pointerup', (e) => {
     if (e.pointerType === 'touch') { endTouch(e.pointerId); return; }
+    // The dispatch runs first: a click's action (a door cut, a room named)
+    // says its line on the way up, and the chip should still catch it.
     dispatchPointerUp();
+    strokeLive = false;
+    if (onLiveMeasure) onLiveMeasure(null);
   });
   canvas.addEventListener('pointercancel', (e) => {
     if (e.pointerType === 'touch') { endTouch(e.pointerId); return; }
     dispatchPointerUp();
+    strokeLive = false;
+    if (onLiveMeasure) onLiveMeasure(null);
   });
   canvas.addEventListener('pointerleave', () => {
     cellCursor.visible = edgeCursor.visible = false;

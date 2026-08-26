@@ -628,12 +628,26 @@
 
     /* status */
     /* The polygon tools report corner counts and square footage here, so this
-       has to hold more than a one-line hint. */
+       has to hold more than a one-line hint. It is the teaching surface, so
+       it reads at full text color, not dim. */
     #status {
       position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
-      padding: 7px 14px; font-size: var(--fs-lg); color: var(--text-dim);
+      padding: 7px 14px; font-size: var(--fs-lg); color: var(--text);
       z-index: 10; max-width: min(70vw, 720px); text-align: center; line-height: 1.5;
     }
+    /* The measurement chip rides the pointer during a stroke — the same line
+       the status pill carries, but where the eye already is. Positioned by a
+       transform per pointermove: one style write, no layout. */
+    #measure {
+      position: fixed; left: 0; top: 0; z-index: 11; pointer-events: none;
+      padding: 3px 8px; white-space: nowrap;
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      font-size: var(--fs-md); font-weight: 500; color: var(--text);
+      background: var(--panel); border: 1px solid var(--panel-border);
+      border-radius: var(--r-sm);
+    }
+    #measure.hidden { display: none; }
+    body[data-mode="walk"] #measure { display: none; }
 
     /* walkthrough overlay */
     #walk-overlay {
@@ -1697,6 +1711,7 @@
   </div>
 
   <div id="status" class="panel" role="status" aria-live="polite">Floor — click / drag to lay floor tiles</div>
+  <div id="measure" class="hidden" aria-hidden="true"></div>
 
   <div id="walk-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="walk-overlay-title">
     <div class="panel">
