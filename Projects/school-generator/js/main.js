@@ -64,6 +64,12 @@ import {
   makeOverlay, setOverlay, calibrate, describeOverlay, centreOn, showsOn,
 } from './overlay.js';
 import { floorOverhang, floorBounds } from './shadow.js';
+// --- Phase 13 ---
+import {
+  MIN_FT, MAX_FT, cellsForFt, footprintFt, planBounds, overlayBounds,
+  unionBounds, coversBounds, resizeFootprint, growToCover, fitToOverlay,
+  describeFootprint,
+} from './footprint.js';
 // --- Phase 9 ---
 import { registerRows } from './catalog.js';
 import { loadModel as readModelFile, FT_TO_M } from './gltf.js';
@@ -997,7 +1003,147 @@ function renderFloorList() {
   $('floor-dup').disabled = state.floors.length >= MAX_FLOORS;
   $('floor-del').disabled = state.floors.length <= 1;
   renderShadowReadout();
+  renderSheetPanel();
+  reserveForFloorPanel();
 }
+
+// The toolbar and the floor panel share the left-hand column, one hung from
+// the top and the other from the bottom, and the floor panel is the one whose
+// height moves: a storey added, an overhang readout, and since Phase 13 the
+// plan size. It was a constant in the stylesheet and the twelve-tool column
+// had been quietly sliding under it on a laptop screen for two phases. So the
+// stylesheet gets told the real number, every time the panel is redrawn.
+function reserveForFloorPanel() {
+  const h = $('floor-panel').offsetHeight;
+  if (h > 0) document.documentElement.style.setProperty('--floor-panel-h', `${h}px`);
+}
+
+// --- the sheet ---
+//
+// Phase 13. The drawing surface was 160 x 120 ft and there was no way to
+// change it: `createState` picked 40 x 30 cells, `save-load` clamped a loaded
+// design to somewhere between 4 and 200, and nothing in between could set a
+// number. Anybody who arrived with a plan of a real school — which is what the
+// tracing overlay is *for* — measured their image, found it three hundred feet
+// across, and discovered that two thirds of it lay off the sheet where the
+// brush could not reach.
+//
+// So: two numbers in feet, and a Fit button. Feet rather than cells because a
+// plan is dimensioned in feet and nobody thinks in fours; rounded out to whole
+// cells on the way in, because the brush cannot paint two thirds of one.
+//
+// The origin never moves. The sheet starts at (0, 0) and grows +x and +z —
+// see footprint.js for why that is a constraint rather than an oversight, and
+// what follows from it when a picture has to be fitted onto it.
+const sheetW = $('sheet-w');
+const sheetD = $('sheet-d');
+
+function renderSheetPanel() {
+  const f = footprintFt(state);
+  if (document.activeElement !== sheetW) sheetW.value = String(f.w);
+  if (document.activeElement !== sheetD) sheetD.value = String(f.d);
+  sheetW.min = sheetD.min = String(MIN_FT);
+  sheetW.max = sheetD.max = String(MAX_FT);
+  // The two fields already say how big the sheet is, so the readout says only
+  // what they cannot — whether anything is off it. Silence means everything
+  // fits, which is worth the silence: this column is shared with the toolbar.
+  //
+  // Two different facts can put something off the sheet, and only one of them
+  // is a problem. A room outside it is *allowed* — a room is a free-floating
+  // polygon in world feet, and grid.js has said since v1 that the footprint is
+  // what the drawing surface covers, not a box a room has to fit inside; the
+  // sample school's Learning Commons has stuck out past it since Phase 12, on
+  // purpose. So that is reported as a measurement. A tracing image outside it
+  // *is* a problem, because the only thing an image is for is drawing on top
+  // of, so that is reported as something to do — and it is what Fit is for.
+  const el = $('sheet-readout');
+  const drawn = planBounds(state);
+  const picture = overlayBounds(state.overlay);
+  const lines = [];
+  if (picture && !coversBounds(state, picture)) {
+    lines.push('Part of the tracing image is off it, where the brush cannot reach — Fit covers it.');
+  } else if (drawn && !coversBounds(state, drawn)) {
+    lines.push(`The plan reaches ${Math.round(Math.max(drawn.x1, f.w))} × ` +
+      `${Math.round(Math.max(drawn.z1, f.d))} ft. The 4ft brush stops at the edge; ` +
+      'the vertex tool does not.');
+  }
+  $('sheet-fit').disabled = coversBounds(state, unionBounds(drawn, picture));
+  el.textContent = lines.join(' ');
+}
+
+// One resize, through undo, with the rebuild and the readouts that follow it.
+// `note` is what the status line says when it worked.
+function applySheet(mutate, note, opts = {}) {
+  // `open: true` means the caller has an edit of its own in flight — a
+  // measurement, which has just written the overlay — and the resize belongs
+  // in the same undo step rather than in one of its own. `pushUndo()` closes
+  // whatever is open (see editor.js), so the whole of joining them is not
+  // calling it.
+  if (!opts.open) editor.pushUndo();
+  const out = mutate();
+  if (!out || !out.changed) { renderSheetPanel(); return out; }
+  rebuild();
+  renderApi.refreshOverlay(state);
+  editor.refreshOverlay();
+  renderFloorList();     // ...which redraws the plan-size row and its readout
+  renderOverlayPanel();  // ...and the tracing image's own Fit, which this may
+                         //    have just satisfied
+  reportInvalidate();
+  autosave(state);
+  updateUndoButtons();
+  const said = [typeof note === 'function' ? note(out) : note];
+  // Shrinking is the one direction that can cost something: a room hanging off
+  // the edge of the sheet comes back from the next repaint clipped, because
+  // the brush rasterizes a storey onto a lattice the size of the footprint.
+  // Said plainly rather than refused — the fix is one undo away.
+  if (out.risk && out.risk.length) {
+    said.push(`${out.risk.length} room${out.risk.length === 1 ? '' : 's'} now hang` +
+      `${out.risk.length === 1 ? 's' : ''} off the sheet — the 4ft brush will clip ` +
+      'them if you paint that storey again.');
+  }
+  if (out.clamped) said.push(`A plan is held between ${MIN_FT} and ${MAX_FT} ft.`);
+  $('status').textContent = said.filter(Boolean).join(' ');
+  return out;
+}
+
+// The fields are in feet and the sheet is in cells, so what comes back is
+// rarely exactly what was typed: 250ft is 63 cells is 252ft. `resizeFootprint`
+// is handed cells that are already in range, so whether the *typed* number was
+// out of range is a question only this side can answer.
+function sheetFromInputs() {
+  const w = Number(sheetW.value), d = Number(sheetD.value);
+  const out = resizeFootprint(state, cellsForFt(w), cellsForFt(d));
+  const outOfRange = (v) => !Number.isFinite(v) || v < MIN_FT || v > MAX_FT;
+  out.clamped = out.clamped || outOfRange(w) || outOfRange(d);
+  return out;
+}
+
+for (const input of [sheetW, sheetD]) {
+  input.addEventListener('change', () => {
+    applySheet(sheetFromInputs, (out) => `Plan is ${out.w * CELL} × ${out.h * CELL} ft.`);
+    // What the sheet actually became, which is not always what was typed.
+    sheetW.value = String(state.w * CELL);
+    sheetD.value = String(state.h * CELL);
+  });
+  // Enter commits without waiting for the field to lose focus.
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+  });
+}
+
+// Grow until everything — every room on every storey, and the tracing image —
+// is on the sheet. Never shrinks, and never moves the image: this button is
+// reached from a design that has already been drawn in, where the picture is
+// what the walls were traced from. (The overlay panel's own Fit will move an
+// untraced picture; see there.)
+$('sheet-fit').addEventListener('click', () => {
+  applySheet(
+    () => growToCover(state, unionBounds(planBounds(state), overlayBounds(state.overlay))),
+    (out) => `Plan grown to ${out.w * CELL} × ${out.h * CELL} ft.` +
+      (out.covered ? '' : ' Part of it is at negative coordinates, which no sheet reaches — ' +
+        'move it back onto the plan first.'),
+  );
+});
 
 // --- the structural shadow ---
 //
@@ -1462,6 +1608,38 @@ $('overlay-file').addEventListener('change', async (e) => {
   renderOverlayPanel();
 });
 
+// The overlay panel's own Fit, which is the one that will *move* the picture.
+//
+// Two moves, and which of them is allowed is the whole of the decision (see
+// footprint.js): slide the image onto the positive quadrant, then grow the
+// sheet to cover it. Sliding is safe exactly while nothing has been traced
+// from it — a wall drawn over the picture would come away from the line it was
+// traced from — so a design with rooms in it, or a locked overlay, only grows.
+function fitPlanToOverlay(opts = {}) {
+  const o = overlayOf();
+  if (!o) return null;
+  const out = applySheet(() => fitToOverlay(state), (r) => {
+    const said = [];
+    if (opts.lead) said.push(opts.lead);
+    said.push(`The plan is now ${r.w * CELL} × ${r.h * CELL} ft` +
+      (r.moved ? ', with the image slid onto it' : '') + '.');
+    if (!r.covered) {
+      said.push(o.locked
+        ? 'Part of it is still off the plan — unlock the image and fit again to slide it on.'
+        : 'Part of it is still off the plan: something is drawn here already, so the image ' +
+          'was left where it is. Move it with the overlay tool, or fit again on an empty plan.');
+    }
+    return said.join(' ');
+  }, opts);
+  renderOverlayPanel();
+  return out;
+}
+
+$('overlay-fit').addEventListener('click', () => {
+  if (!overlayOf()) return;
+  fitPlanToOverlay({ lead: 'Plan fitted to the tracing image.' });
+});
+
 $('overlay-clear').addEventListener('click', () => {
   if (!overlayOf()) return;
   editor.pushUndo();
@@ -1530,6 +1708,8 @@ function applyOverlayChange() {
 function renderOverlayPanel() {
   const o = overlayOf();
   $('overlay-clear').disabled = !o;
+  // Nothing to fit to, or nothing left to gain by fitting.
+  $('overlay-fit').disabled = !o || coversBounds(state, overlayBounds(o));
   $('overlay-lock').checked = !!(o && o.locked);
   $('overlay-lock').disabled = !o;
   $('overlay-opacity').disabled = !o;
@@ -1565,6 +1745,13 @@ function renderOverlayPanel() {
   if (o && !o.cal) {
     lines.push('Measure something on it and the scale follows. Until then the ' +
       'size above is a placeholder, not a reading.');
+  }
+  // Phase 13's own line. A picture bigger than the sheet is the state this
+  // whole feature exists for, and it used to be silent: you found out by
+  // dragging the brush across the bottom of the image and nothing happening.
+  if (o && !coversBounds(state, overlayBounds(o))) {
+    lines.push('Part of this image is off the plan, where the brush cannot reach it — ' +
+      'Fit plan grows the sheet to cover it.');
   }
   $('overlay-readout').textContent = lines.join(' ');
 }
@@ -1614,8 +1801,24 @@ $('measure-ok').addEventListener('click', () => {
   applyOverlayChange();
   closeMeasure();
   renderOverlayPanel();
-  $('status').textContent = `Scaled — the image is now ${Math.round(r.size.w).toLocaleString()} × ` +
+  const scaled = `Scaled — the image is now ${Math.round(r.size.w).toLocaleString()} × ` +
     `${Math.round(r.size.d).toLocaleString()} ft.` + (r.reason ? ` ${r.reason}` : '');
+  // The moment the sheet was too small, every time: a measurement is what
+  // turns a picture of unknown size into three hundred feet of school, and
+  // until Phase 13 the plan stayed 160 x 120 and said nothing about it. So the
+  // fit happens here rather than waiting to be asked — it is undoable, it is
+  // reported, and it only ever grows.
+  if (!coversBounds(state, overlayBounds(state.overlay))) {
+    const fitted = fitPlanToOverlay({ lead: scaled, open: true });
+    if (fitted && fitted.changed) {
+      // The picture has just changed size and probably moved; framing the
+      // whole plan is what you would do next by hand anyway.
+      renderApi.fitEditView(state);
+      rebuild();
+      return;
+    }
+  }
+  $('status').textContent = scaled;
 });
 $('measure-ft').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); $('measure-ok').click(); }
@@ -3044,7 +3247,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('beforeunload', () => autosaveNow(state));
-window.addEventListener('resize', () => renderApi.resize());
+window.addEventListener('resize', () => { renderApi.resize(); reserveForFloorPanel(); });
 
 
 // ============================================================

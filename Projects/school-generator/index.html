@@ -81,13 +81,24 @@
       position: fixed; left: 12px; top: 74px;
       display: flex; flex-direction: column; gap: 5px;
       padding: 7px; z-index: 10;
-      max-height: calc(100vh - 208px); overflow-y: auto;
+      /* Stop above the floor panel, which shares this column and is anchored
+         to the bottom. Its height is not a constant — it grows with every
+         storey, and since Phase 13 it also carries the plan size — so the
+         reserve is measured (see `reserveForFloorPanel` in main.js) rather
+         than guessed. The fallback is a one-storey panel, for the frame
+         before the first measurement. 98px is this panel's own top offset
+         plus the gaps at both ends. */
+      max-height: calc(100vh - 98px - var(--floor-panel-h, 200px));
+      overflow-y: auto;
     }
     /* Twelve tools as of Phase 8, which is two more than the column had room
        for at the old size. Rather than let the last two scroll out of sight
        — Overlay in particular being a tool nobody would think to look for —
        the buttons lose a few pixels each and the whole set fits again on a
-       laptop screen. */
+       laptop screen. Since Phase 13 the reserve above is honest rather than
+       optimistic, so on a short window the last tool or two really do scroll
+       now; they had been sitting *underneath* the floor panel, which is
+       worse. */
     #toolbar .tool {
       width: 86px; display: flex; flex-direction: column; align-items: center; gap: 0;
       padding: 4px 4px; font-size: 11px; color: var(--text-dim);
@@ -282,6 +293,28 @@
     }
     #floor-actions { display: flex; gap: 4px; }
     #floor-actions button { flex: 1; padding: 5px 0; font-size: 13px; }
+
+    /* The sheet: how big the drawing surface is. Under the storey list because
+       every storey shares one footprint — it is a fact about the design, not
+       about the level you happen to be on. */
+    #sheet-group {
+      margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--panel-border);
+    }
+    #sheet-row { display: flex; align-items: center; gap: 4px; }
+    #sheet-row input {
+      width: 46px; padding: 3px 4px; font-size: 11.5px; text-align: right;
+    }
+    #sheet-row .sheet-label, #sheet-row .sheet-x, #sheet-row .sheet-unit {
+      font-size: 10px; color: var(--text-dim); letter-spacing: 0.04em;
+    }
+    #sheet-row .sheet-label { text-transform: uppercase; font-weight: 600; }
+    #sheet-row button { padding: 3px 6px; font-size: 11px; margin-left: auto; }
+    /* Empty whenever the sheet covers everything, which is the usual case —
+       this column is shared with the toolbar and a line that says "all is
+       well" costs a tool button its place. */
+    #sheet-readout:not(:empty) {
+      font-size: 10.5px; color: var(--text-dim); line-height: 1.45; margin-top: 5px;
+    }
 
     /* layers panel — toggling what's drawn while editing, not tied to a tool */
     #layers-panel {
@@ -1104,6 +1137,7 @@
   <div id="overlay-panel" class="panel hidden" role="group" aria-label="Tracing overlay">
     <div id="overlay-buttons">
       <button id="overlay-load" type="button" title="Load a PNG, JPEG or WebP to trace over">📂 Image…</button>
+      <button id="overlay-fit" type="button" title="Grow the plan until the whole image is drawable">⤢ Fit plan</button>
       <button id="overlay-clear" type="button" title="Remove the tracing image">🗑 Clear</button>
     </div>
     <input id="overlay-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/bmp" class="hidden" />
@@ -1171,6 +1205,20 @@
       <button id="floor-add" title="Add an empty floor above this one" aria-label="Add floor">＋</button>
       <button id="floor-dup" title="Copy this floor to a new level above" aria-label="Duplicate floor">⧉</button>
       <button id="floor-del" title="Delete this floor" aria-label="Delete floor">🗑</button>
+    </div>
+    <div id="sheet-group" role="group" aria-label="Plan size">
+      <div id="sheet-row">
+        <span class="sheet-label">Plan</span>
+        <input id="sheet-w" type="number" min="16" max="800" step="4" value="160"
+               aria-label="Plan width in feet" />
+        <span class="sheet-x">×</span>
+        <input id="sheet-d" type="number" min="16" max="800" step="4" value="120"
+               aria-label="Plan depth in feet" />
+        <span class="sheet-unit">ft</span>
+        <button id="sheet-fit" type="button"
+                title="Grow the plan until everything drawn — and the tracing image — fits on it">Fit</button>
+      </div>
+      <div id="sheet-readout" role="status"></div>
     </div>
   </div>
 

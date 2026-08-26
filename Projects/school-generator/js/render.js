@@ -774,7 +774,9 @@ export function initRender(canvas) {
   scene.add(buildingGroup, ceilingGroup, labelGroup, siteGroup, roofGroup,
     overlayGroup, shadowGroup);
 
-  let gridHelper = null;
+  // The drawing surface under the plan — see buildSheet(). Rebuilt only when
+  // the design changes size.
+  let sheetGrid = null;
   let built = null;         // last state passed to buildFromState
   // The graded ground, swept once per rebuild and shared by the terrain mesh,
   // the site surfaces and every prop that stands on the site.
@@ -805,7 +807,16 @@ export function initRender(canvas) {
   function fitEditView(state) {
     editView.x = (state.w * CELL) / 2;
     editView.z = (state.h * CELL) / 2;
-    editView.height = state.h * CELL * 1.15;
+    // Both dimensions, since Phase 13 — the sheet is a size somebody sets now,
+    // and framing a 600 x 120ft plan by its depth alone put two thirds of it
+    // off either side of the screen. The camera is orthographic and driven by
+    // its half-height, so a wide sheet is fitted by dividing its width by the
+    // aspect ratio and framing whichever of the two is taller.
+    const aspect = canvas.clientWidth / Math.max(1, canvas.clientHeight);
+    editView.height = Math.max(
+      state.h * CELL,
+      (state.w * CELL) / Math.max(0.2, aspect),
+    ) * 1.15;
     editView.camY = 200 + topOfBuilding(state);
   }
 
@@ -946,7 +957,7 @@ export function initRender(canvas) {
     if (edit && photo.on) photo.on = false;
     applyPhotoCamera();
     ceilingGroup.visible = !edit;
-    if (gridHelper) gridHelper.visible = edit;
+    if (sheetGrid) sheetGrid.visible = edit;
     scene.fog = edit ? null : walkFog;
     // The edit floor above only applies while editing, so switching modes
     // changes the answer even though the environment hasn't moved.
@@ -3150,6 +3161,53 @@ export function initRender(canvas) {
     return geo;
   }
 
+  // The drawing surface, as a rectangle of the size it actually is.
+  //
+  // This was a `THREE.GridHelper` for twelve phases, and a GridHelper is
+  // square — so a 40x30 design drew a 160ft *square* of grid lines and a
+  // quarter of what looked like the sheet was ground you could not paint,
+  // could not erase and could not put a wall on. Nobody hit it while a design
+  // was 40x30 and started at the middle; everybody hits it the moment they
+  // trace a photograph, which is how it was finally found.
+  //
+  // Three weights of line, which is the other half of the fix: 4ft cells, a
+  // heavier line every 20ft to count by, and a brighter border so the edge of
+  // what you can draw on is a thing you can see rather than a thing you
+  // discover.
+  const SHEET_MINOR = new THREE.Color(0x2a3340);
+  const SHEET_MAJOR = new THREE.Color(0x3a4a5c);
+  const SHEET_EDGE = new THREE.Color(0x5c7590);
+  const SHEET_MAJOR_EVERY = 5;    // cells — a 20ft rule
+
+  function buildSheet(wCells, hCells) {
+    const w = Math.max(1, wCells) * CELL, h = Math.max(1, hCells) * CELL;
+    const pos = [], col = [];
+    const line = (x0, z0, x1, z1, c) => {
+      pos.push(x0, 0, z0, x1, 0, z1);
+      col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    };
+    const weight = (i, n) => (i === 0 || i === n ? SHEET_EDGE
+      : i % SHEET_MAJOR_EVERY === 0 ? SHEET_MAJOR : SHEET_MINOR);
+    for (let i = 0; i <= wCells; i++) line(i * CELL, 0, i * CELL, h, weight(i, wCells));
+    for (let j = 0; j <= hCells; j++) line(0, j * CELL, w, j * CELL, weight(j, hCells));
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55 });
+    const group = new THREE.Group();
+    group.add(new THREE.LineSegments(geo, mat));
+    return group;
+  }
+
+  // The sheet owns its geometry *and* its material — unlike everything
+  // disposeGroup frees, where the material is shared and outlives the mesh.
+  function disposeSheet(group) {
+    for (const child of group.children) {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    }
+  }
+
   // Recursive: these groups now nest one level deep (a subgroup per storey),
   // and a rebuild runs on every edit stroke, so nothing may be left behind.
   // Surface materials are shared and reused; only per-sprite ones are freed.
@@ -4095,7 +4153,7 @@ export function initRender(canvas) {
       g.visible = !edit || g.userData.floor === cur;
     }
     labelledFloor = -1;   // let walk mode recompute from the camera
-    if (gridHelper) gridHelper.position.y = floorBaseY(built, cur) + 0.04;
+    if (sheetGrid) sheetGrid.position.y = floorBaseY(built, cur) + 0.04;
     // Phase 8's underlays follow the storey being edited, so switching floors
     // moves the tracing paper up with you and redraws the shadow you are now
     // standing on.
@@ -4774,18 +4832,15 @@ export function initRender(canvas) {
       labelGroup.add(labels);
     });
 
-    // grid helper + sun sized to the grid
+    // the drawing surface, and the sun that swings around it
     const gw = state.w * CELL, gh = state.h * CELL;
-    if (!gridHelper || gridHelper.userData.w !== state.w || gridHelper.userData.h !== state.h) {
-      if (gridHelper) { scene.remove(gridHelper); gridHelper.geometry.dispose(); }
-      const div = Math.max(state.w, state.h);
-      gridHelper = new THREE.GridHelper(div * CELL, div, 0x33404f, 0x2a3340);
-      gridHelper.material.transparent = true;
-      gridHelper.material.opacity = 0.55;
-      gridHelper.position.set((div * CELL) / 2, 0.04, (div * CELL) / 2);
-      gridHelper.userData = { w: state.w, h: state.h };
-      gridHelper.visible = mode === 'edit';
-      scene.add(gridHelper);
+    if (!sheetGrid || sheetGrid.userData.w !== state.w || sheetGrid.userData.h !== state.h) {
+      if (sheetGrid) { scene.remove(sheetGrid); disposeSheet(sheetGrid); }
+      sheetGrid = buildSheet(state.w, state.h);
+      sheetGrid.position.set(0, 0.04, 0);
+      sheetGrid.userData = { w: state.w, h: state.h };
+      sheetGrid.visible = mode === 'edit';
+      scene.add(sheetGrid);
     }
 
     // The site the sun swings around. Kept on the module rather than baked

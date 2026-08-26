@@ -89,7 +89,9 @@
 // a save-format change, so nothing here invalidates an older file or an
 // in-progress autosave.
 
-import { CELL, FLOOR_H, MAX_FLOORS, createFloor, createState } from './grid.js';
+import {
+  CELL, FLOOR_H, MAX_FLOORS, MIN_CELLS, MAX_CELLS, createFloor, createState,
+} from './grid.js';
 import { EDGE_KINDS, createLattice, bake } from './lattice.js';
 import { normalizeCode, isDefaultCode } from './occupancy.js';
 import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from './props.js';
@@ -136,8 +138,11 @@ import { normalizeModels, librarySize } from './models.js';
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
 export const SAVE_VERSION = 11;
 
-const MIN_DIM = 4;
-const MAX_DIM = 200;
+// The drawing surface's range. grid.js owns it since Phase 13, because the
+// editor can resize a design now and a file has to be read against the same
+// two numbers the editor writes against.
+const MIN_DIM = MIN_CELLS;
+const MAX_DIM = MAX_CELLS;
 
 // Everything a design hasn't actually used is left out. The rule is one rule,
 // applied four times now — a plain doorway records no options, a mid-morning
