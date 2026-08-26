@@ -70,6 +70,20 @@ import {
   unionBounds, coversBounds, resizeFootprint, growToCover, fitToOverlay,
   describeFootprint,
 } from './footprint.js';
+// --- Phase 14 ---
+import {
+  createSession, adoptIds, blockOf, blocksClash, makeSite, describeOps,
+} from './session.js';
+import {
+  createRoster, presenceOf, worthSending, peerColor, peerLabel,
+  describeRoster, describePeer, TTL,
+} from './presence.js';
+import {
+  makeRoom, validRoom, readSessionFragment, sessionURL,
+  channelWire, socketWire, canChannel,
+} from './wire.js';
+import * as cloud from './cloud.js';
+import { clone as deepClone } from './history.js';
 // --- Phase 9 ---
 import { registerRows } from './catalog.js';
 import { loadModel as readModelFile, FT_TO_M } from './gltf.js';
@@ -85,7 +99,7 @@ import {
   toursOf, tourSummary, tourDuration, sampleTour, startPlayback, stepPlayback,
 } from './tour.js';
 import {
-  MINI_SIZE, MIN_RANGE, MAX_RANGE, minimapView, worldToMini, viewCone,
+  MINI_SIZE, MIN_RANGE, MAX_RANGE, minimapView, worldToMini, viewCone, inView,
   markerAngle, scaleBar, nextMode, nextOrient, describeMinimap,
   findingMarks, markAt, markOnFloor, describeMark, markFill, markLine,
 } from './minimap.js';
@@ -154,60 +168,89 @@ function rebuild(throttled = false) {
   renderApi.buildFromState(state);
 }
 
+// --- Phase 14: the shared session ---
+//
+// Declared up here rather than beside the rest of it, because `designChanged`
+// below is the one thing in the file that has to know a session exists, and
+// what it does about it is one line: mark the design as having moved. Nothing
+// in the editing path sends anything.
+const collab = {
+  wire: null,          // the pipe, or null when this design is yours alone
+  session: null,       // the log and the clock — see session.js
+  roster: createRoster(),
+  mirror: null,        // the design as the other people last heard it
+  moved: false,        // something changed since the last flush
+  pending: [],         // ops that arrived mid-gesture, waiting for the pointer
+  room: '', relay: '', name: '',
+  presence: null, presenceAt: 0, flushAt: 0, panelAt: 0,
+  waiting: 0,          // when a joiner asked for the building, so it can give up
+  note: '',            // what the wire last said about itself
+};
+
+// What everything downstream of an edit has to be told, in one function so
+// that an edit which arrived from somebody else (Phase 14) goes through the
+// same door as one made here. It was the editor's `onChange` closure until a
+// second caller needed it.
+function designChanged(info = {}) {
+  // Phase 9. An undo can restore (or take away) the whole model library and
+  // a tour list, so both are checked against what is registered before the
+  // rebuild that would otherwise draw stand-in boxes. The check is an
+  // identity comparison, not a re-parse: models.js never mutates a record
+  // or its array in place, so a changed library is a different array.
+  syncModelsIfChanged();
+  rebuild(!!info.throttled);
+  // ...and any structural edit is a different plan under the minimap.
+  if (!info.throttled) invalidateMinimap();
+  autosave(state);
+  updateUndoButtons();
+  renderFloorList();
+  renderStairReadout();
+  renderSiteReadout();
+  // The tracing image is part of the design, so undo and redo can move it,
+  // fade it or take it away entirely — and the panel has to follow.
+  if (editor.tool === 'overlay') renderOverlayPanel();
+  // Placing or deleting a fixture changes what the light budget is doing,
+  // and the sky panel is the only place that says so.
+  renderEnvReadout();
+  // The code settings are part of the design too, so an undo can put them
+  // back and the two controls have to follow.
+  renderCodePanel();
+  // A prop placed, painted, deleted or undone can change which swatch is
+  // lit and what colour the chip shows.
+  if (editor.tool === 'prop') syncPropPaint();
+  // A hunt's hints name rooms and its hiding places stand on tiles, and a
+  // structural edit is a different set of both. Rather than quietly leave
+  // the hamster inside a wall somebody has just drawn, the hunt ends.
+  if (hunt && info.structural !== false) huntStop();
+  // Same for sound: a diffuser placed, a room's finish changed or a wall
+  // moved all change what there is to hear and how long it rings, and both
+  // answers are derived rather than stored, so re-deriving is the whole
+  // update. Skipped mid-drag — a stroke ends in an unthrottled call.
+  if (!info.throttled) { audio.setWorld(state); renderAudioReadout(); }
+  // ...and the same for the people. The graph is derived from the model, so
+  // an edited model is a stale graph — and the colliders the crowd walks
+  // against were built once, from the building that used to be there.
+  if (!info.throttled && life.on) {
+    lifeRebuildWorld();
+    retargetAll(life.ctx, life.agents);
+    renderLifeReadout();
+  }
+  // ...and the report, which is the most derived thing in the building: an
+  // edit invalidates every number in it. It is a second of arithmetic on a
+  // real school, so it is marked stale now and rebuilt when the drawing hand
+  // stops rather than on every cell of a drag.
+  if (!info.throttled) reportInvalidate();
+  // ...and anybody sharing this design has to hear about it. Deliberately
+  // last, and deliberately not a send: it marks the design as having moved,
+  // and the loop decides when a packet is worth it. See sessionFlush.
+  if (collab.wire) collab.moved = true;
+}
+
 const editor = initEditor({
   canvas,
   renderApi,
   getState: () => state,
-  onChange: (info = {}) => {
-    // Phase 9. An undo can restore (or take away) the whole model library and
-    // a tour list, so both are checked against what is registered before the
-    // rebuild that would otherwise draw stand-in boxes. The check is an
-    // identity comparison, not a re-parse: models.js never mutates a record
-    // or its array in place, so a changed library is a different array.
-    syncModelsIfChanged();
-    rebuild(!!info.throttled);
-    // ...and any structural edit is a different plan under the minimap.
-    if (!info.throttled) invalidateMinimap();
-    autosave(state);
-    updateUndoButtons();
-    renderFloorList();
-    renderStairReadout();
-    renderSiteReadout();
-    // The tracing image is part of the design, so undo and redo can move it,
-    // fade it or take it away entirely — and the panel has to follow.
-    if (editor.tool === 'overlay') renderOverlayPanel();
-    // Placing or deleting a fixture changes what the light budget is doing,
-    // and the sky panel is the only place that says so.
-    renderEnvReadout();
-    // The code settings are part of the design too, so an undo can put them
-    // back and the two controls have to follow.
-    renderCodePanel();
-    // A prop placed, painted, deleted or undone can change which swatch is
-    // lit and what colour the chip shows.
-    if (editor.tool === 'prop') syncPropPaint();
-    // A hunt's hints name rooms and its hiding places stand on tiles, and a
-    // structural edit is a different set of both. Rather than quietly leave
-    // the hamster inside a wall somebody has just drawn, the hunt ends.
-    if (hunt && info.structural !== false) huntStop();
-    // Same for sound: a diffuser placed, a room's finish changed or a wall
-    // moved all change what there is to hear and how long it rings, and both
-    // answers are derived rather than stored, so re-deriving is the whole
-    // update. Skipped mid-drag — a stroke ends in an unthrottled call.
-    if (!info.throttled) { audio.setWorld(state); renderAudioReadout(); }
-    // ...and the same for the people. The graph is derived from the model, so
-    // an edited model is a stale graph — and the colliders the crowd walks
-    // against were built once, from the building that used to be there.
-    if (!info.throttled && life.on) {
-      lifeRebuildWorld();
-      retargetAll(life.ctx, life.agents);
-      renderLifeReadout();
-    }
-    // ...and the report, which is the most derived thing in the building: an
-    // edit invalidates every number in it. It is a second of arithmetic on a
-    // real school, so it is marked stale now and rebuilt when the drawing hand
-    // stops rather than on every cell of a drag.
-    if (!info.throttled) reportInvalidate();
-  },
+  onChange: designChanged,
   // The polygon tools have more to say than a fixed per-tool hint — how many
   // corners are down, how big the room is — so they drive the status line.
   onStatus: (text) => { $('status').textContent = text; },
@@ -1259,7 +1302,11 @@ function adoptState(next, opts = {}) {
   // rebuild draws a stand-in box for every imported prop and then has to be
   // told to do it again.
   syncModels({ quiet: true });
-  renderApi.fitEditView(state);
+  // A design that arrived from somebody else mid-session is the *same*
+  // building being re-stated, so the camera stays where it was — re-framing
+  // the plan under somebody's hands because a peer added a storey would be
+  // the rudest thing this phase could do.
+  if (!opts.keepView) renderApi.fitEditView(state);
   rebuild();
   editor.refreshOverlay();
   renderApi.refreshOverlay(state);
@@ -3566,6 +3613,570 @@ async function openSharedDesign() {
   }
 }
 
+
+// --- Phase 14: two people, one plan ---
+//
+// The rule this whole section is built on: **nothing below changes what the
+// tool does when there is no session.** `collab.wire` is null until somebody
+// deliberately opens one, every function here returns immediately while it is,
+// and the design on the disk is the same file it always was.
+//
+// The pieces are session.js (what an edit is, and who wins), presence.js (who
+// is here) and wire.js (the pipe). What is left for the shell is the four
+// things a shell is for: when to send, what to do with what arrives, where to
+// draw the other people, and what to say about all of it.
+
+const sessionOn = () => !!collab.wire;
+
+// The design, minus the two records that are megabytes and never travel in an
+// op — the same pair editor.js holds out of the undo diff, for the same
+// reason. Both go in a snapshot instead, once, at the join.
+function sessionDesign() {
+  const { overlay, models, ...rest } = state;
+  return rest;
+}
+
+const sessionStatus = (text) => { $('status').textContent = text; };
+
+// How long a joiner waits for somebody to send it the building before
+// deciding it is the first one here. Two seconds is long enough for a relay
+// on the other side of an ocean and short enough not to look broken.
+const SNAPSHOT_WAIT = 2200;
+// How often the design is checked for changes worth sending. A flush walks
+// the records and compares them, which is the same arithmetic an undo step
+// costs, so it happens on a timer rather than on every mutation.
+const FLUSH_MS = 350;
+
+// ---------- starting, joining, leaving ----------
+
+function sessionStart({ room, relay = '', joining = false } = {}) {
+  sessionLeave({ quiet: true });
+  const id = validRoom(room) ? room : makeRoom();
+  const site = makeSite();
+  let wire;
+  try {
+    wire = relay ? socketWire(relay, id, site) : channelWire(id, site);
+  } catch (err) {
+    sessionStatus(`Could not open a session: ${err.message}`);
+    return false;
+  }
+  collab.wire = wire;
+  collab.session = createSession({ site, name: collab.name, room: id });
+  collab.room = id;
+  collab.relay = relay;
+  collab.roster.clear();
+  collab.pending.length = 0;
+  collab.presence = null;
+  collab.moved = false;
+  collab.note = '';
+  collab.waiting = joining ? performance.now() : 0;
+  // From here on, anything this browser creates is numbered out of this
+  // site's own block, so two people drawing at once cannot mint the same id
+  // for two different rooms. Ids already in the design are left alone.
+  adoptIds(state, site);
+  collab.session.baseline(sessionDesign());
+  collab.mirror = deepClone(sessionDesign());
+
+  wire.onMessage(onSessionMessage);
+  wire.onStatus((st, note) => {
+    collab.note = st === 'open' ? '' : st === 'waiting' ? `reconnecting in ${note}` : st;
+    renderSessionPanel();
+  });
+  wire.start();
+  wire.send('hello', { name: collab.name, block: blockOf(site), want: joining ? 1 : 0 });
+
+  history.replaceState(null, '', sessionURL(location.href, id, relay));
+  renderSessionPanel();
+  sessionStatus(joining
+    ? `Joined session ${id} — waiting for the building…`
+    : `Session ${id} — send the link and they can draw with you.`);
+  return true;
+}
+
+function sessionLeave({ quiet = false } = {}) {
+  if (!collab.wire) return;
+  try { collab.wire.send('bye', {}); } catch { /* the pipe may already be gone */ }
+  collab.wire.close();
+  collab.wire = null;
+  collab.session = null;
+  collab.mirror = null;
+  collab.roster.clear();
+  collab.pending.length = 0;
+  collab.presence = null;
+  clearPeerMarkers();
+  if (!quiet) {
+    history.replaceState(null, '', location.href.split('#')[0]);
+    renderSessionPanel();
+    sessionStatus('Left the session. The design is yours, exactly as it stands.');
+  }
+}
+
+// ---------- what arrives ----------
+
+function onSessionMessage(msg) {
+  if (!sessionOn()) return;
+  const now = performance.now();
+  const me = collab.session.site;
+
+  if (msg.k === 'hello') {
+    // Two sites in one id block would allocate the same ids for different
+    // things. One in four thousand, caught here rather than discovered later:
+    // the higher site id re-rolls, which is cheap because it has barely
+    // allocated anything yet.
+    if (blocksClash(me, msg.s) && me > msg.s) {
+      sessionStatus('Two of us drew the same id block — taking another one.');
+      sessionStart({ room: collab.room, relay: collab.relay, joining: false });
+      return;
+    }
+    collab.roster.see(msg.s, { name: msg.name, block: msg.block }, now);
+    // Answer, so the newcomer sees everybody who was already here — but only
+    // to a first hello, or two tabs would greet each other forever.
+    if (!msg.re) collab.wire.send('hello', { name: collab.name, block: blockOf(me), re: 1 });
+    if (msg.want) sendSnapshot(msg.s);
+    renderSessionPanel();
+    return;
+  }
+
+  if (msg.k === 'bye') {
+    const peer = collab.roster.get(msg.s);
+    collab.roster.drop(msg.s);
+    if (peer) sessionStatus(`${peerLabel(peer)} left the session.`);
+    renderSessionPanel();
+    return;
+  }
+
+  if (msg.k === 'pres') {
+    collab.roster.see(msg.s, { p: msg.p }, now);
+    return;
+  }
+
+  if (msg.k === 'want') { sendSnapshot(msg.s); return; }
+
+  if (msg.k === 'snap') {
+    // Addressed to somebody: only they take it, and only if they are still
+    // waiting — three people answering one joiner is three snapshots.
+    // Addressed to nobody: it is a resync, and everybody takes it.
+    if (msg.to && msg.to !== me) return;
+    if (msg.to && !collab.waiting) return;
+    collab.roster.see(msg.s, {}, now);
+    takeSnapshot(msg);
+    return;
+  }
+
+  if (msg.k === 'ops') {
+    // Somebody whose hello went missing is still somebody in the session.
+    collab.roster.see(msg.s, {}, now);
+    // Mid-gesture, an arriving edit waits: applying it would close the stroke
+    // somebody has their hand on and split it into two undo steps.
+    if (pointerBusy) { collab.pending.push(...msg.ops); return; }
+    applyRemoteOps(msg.ops, msg.s);
+  }
+}
+
+function applyRemoteOps(ops, from) {
+  if (!sessionOn() || !ops || !ops.length) return;
+  // Whatever this browser has drawn and not yet sent goes first, so that the
+  // mirror below is a design everybody has already heard about. Without this,
+  // an edit made in the last third of a second would be swallowed.
+  sessionFlush();
+  const res = collab.session.receive(state, ops);
+  if (!res.applied) return;
+  collab.mirror = deepClone(sessionDesign());
+  // Their edit is not an entry in your undo stack. Undo is for what you did.
+  editor.markClean();
+  designChanged({ structural: true });
+  collab.moved = false;
+  const who = peerLabel(collab.roster.get(from) || { site: from });
+  sessionStatus(`${who} changed ${describeOps(ops)}.`);
+  renderSessionPanel();
+}
+
+// ---------- snapshots ----------
+//
+// The log carries edits; a snapshot carries the building. It is sent in three
+// situations and no others: somebody has just joined, somebody added or
+// removed a storey (which is the one change a record-addressed log cannot
+// say), or an edit touched so much of the design that saying it record by
+// record would cost more than saying it whole.
+
+function sendSnapshot(to = null) {
+  if (!sessionOn()) return false;
+  let json;
+  try {
+    json = serialize(state);
+  } catch (err) {
+    sessionStatus(`Could not send the design: ${err.message}`);
+    return false;
+  }
+  collab.mirror = deepClone(sessionDesign());
+  return collab.wire.send('snap', { to, design: json, meta: collab.session.snapshotMeta() });
+}
+
+function takeSnapshot(msg) {
+  // Joining is arriving at somebody else's building, so the view goes with
+  // it. A resync mid-session is the same building re-stated, so it does not.
+  const joining = !!collab.waiting;
+  try {
+    const next = deserialize(msg.design, { onMigrate });
+    collab.waiting = 0;
+    // Their bookkeeping as well as their building: a joiner that started its
+    // clock at zero would lose every argument for the first few edits.
+    collab.session.adoptMeta(msg.meta);
+    // ...and its own ids stay its own. `deserialize` renumbers from what is in
+    // the file, so the block has to be re-claimed on the way in.
+    adoptState(next, { keepAutosave: true, keepView: !joining });
+    adoptIds(state, collab.session.site);
+    collab.mirror = deepClone(sessionDesign());
+    collab.moved = false;
+    const who = peerLabel(collab.roster.get(msg.s) || { site: msg.s });
+    const line = joining
+      ? `Opened ${who}'s building — you are drawing on the same plan.`
+      : `${who} changed something a log cannot say — the whole plan came across.`;
+    sessionStatus(migrationNote ? `${migrationNote} ${line}` : line);
+    migrationNote = null;
+    renderSessionPanel();
+  } catch (err) {
+    sessionStatus(`The building that arrived could not be opened: ${err.message}`);
+  }
+}
+
+// ---------- what goes out ----------
+
+function sessionFlush() {
+  if (!sessionOn() || !collab.mirror) return;
+  collab.moved = false;
+  const live = sessionDesign();
+  const out = collab.session.emit(collab.mirror, live);
+  if (out.resync) {
+    sendSnapshot(null);
+    return;
+  }
+  if (!out.ops.length) return;
+  // The mirror moves *before* the send, not after. A transport is free to
+  // deliver the answer synchronously — the loopback one in the suites does —
+  // and a mirror still holding the old design when that reply lands makes the
+  // reply's flush say everything a second time.
+  collab.mirror = deepClone(live);
+  collab.wire.send('ops', { ops: out.ops });
+}
+
+// Where this browser is looking, for everybody else's map. The two modes
+// answer it differently on purpose: walking, it is where you are standing;
+// drawing, it is the middle of what you are looking at, which is the closest
+// thing a plan view has to a position.
+function sessionPresence(now) {
+  if (!sessionOn()) return;
+  let view;
+  if (mode === 'walk') {
+    const cam = renderApi.walkCamera;
+    const e = new THREE.Euler().setFromQuaternion(cam.quaternion, 'YXZ');
+    view = {
+      x: cam.position.x, z: cam.position.z, yaw: e.y,
+      floor: storeyAt(state, cam.position.y - EYE_H), mode: 'walk',
+    };
+  } else {
+    const v = renderApi.editView;
+    view = { x: v.x, z: v.z, yaw: 0, floor: state.currentFloor, mode: 'plan' };
+  }
+  const p = presenceOf(view);
+  if (!worthSending(collab.presence, p, now, collab.presenceAt)) return;
+  collab.presence = p;
+  collab.presenceAt = now;
+  collab.wire.send('pres', { p });
+}
+
+// Called once per frame. Everything time-based about a session is here, so
+// there is one place to look when a session is doing something surprising.
+function sessionTick(now) {
+  if (!sessionOn()) return;
+  if (collab.pending.length && !pointerBusy) {
+    const ops = collab.pending.splice(0);
+    applyRemoteOps(ops, ops[0] && ops[0].site);
+  }
+  if (collab.moved && now - collab.flushAt > FLUSH_MS && !pointerBusy) {
+    collab.flushAt = now;
+    sessionFlush();
+  }
+  sessionPresence(now);
+  const gone = collab.roster.prune(now);
+  if (gone.length) {
+    sessionStatus(`${gone.map(peerLabel).join(' and ')} ${gone.length === 1 ? 'has' : 'have'} gone.`);
+    renderSessionPanel();
+  }
+  // Where the peers are is on the panel as words, and words go stale. Once a
+  // second, and only while somebody is looking at it.
+  if (now - collab.panelAt > 1000 && !$('session-panel').classList.contains('hidden')) {
+    collab.panelAt = now;
+    renderSessionPanel();
+  }
+  // A joiner that nobody answered is the first one here, which is a perfectly
+  // good thing to be — it keeps the design it already had.
+  if (collab.waiting && now - collab.waiting > SNAPSHOT_WAIT) {
+    collab.waiting = 0;
+    sessionStatus(`Nobody else is in session ${collab.room} yet — this design is the one they will get.`);
+    renderSessionPanel();
+  }
+  updatePeerMarkers();
+}
+
+// The pointer being down is the one thing that makes an arriving edit wait,
+// so it is tracked here rather than reached for inside the editor.
+let pointerBusy = false;
+canvas.addEventListener('pointerdown', () => { pointerBusy = true; });
+canvas.addEventListener('pointerup', () => { pointerBusy = false; });
+canvas.addEventListener('pointercancel', () => { pointerBusy = false; });
+
+// ---------- where everybody else is standing ----------
+//
+// One flat arrow per peer, in their colour, on the storey they are on. Drawn
+// without depth testing on purpose: a collaborator behind a wall is exactly
+// the person you want to be able to see.
+
+const peerLayer = new THREE.Group();
+peerLayer.renderOrder = 620;
+renderApi.scene.add(peerLayer);
+const peerMarkers = new Map();
+
+const PEER_ARROW = (() => {
+  const g = new THREE.BufferGeometry();
+  // A 3ft arrow lying on the floor, pointing down -Z, which is the direction
+  // a yaw of zero looks in.
+  g.setAttribute('position', new THREE.Float32BufferAttribute([
+    0, 0, -2.2, 1.5, 0, 1.4, 0, 0, 0.5,
+    0, 0, 0.5, -1.5, 0, 1.4, 0, 0, -2.2,
+  ], 3));
+  g.computeVertexNormals();
+  return g;
+})();
+const PEER_PIN = new THREE.CylinderGeometry(0.16, 0.16, 5.4, 6);
+
+function makePeerMarker(color) {
+  const group = new THREE.Group();
+  const tint = new THREE.Color(color);
+  const arrow = new THREE.Mesh(PEER_ARROW, new THREE.MeshBasicMaterial({
+    color: tint, transparent: true, opacity: 0.85, depthTest: false, side: THREE.DoubleSide,
+  }));
+  arrow.renderOrder = 621;
+  const pin = new THREE.Mesh(PEER_PIN, new THREE.MeshBasicMaterial({
+    color: tint, transparent: true, opacity: 0.4, depthTest: false,
+  }));
+  pin.position.y = 2.7;
+  pin.renderOrder = 622;
+  group.add(arrow, pin);
+  return group;
+}
+
+function clearPeerMarkers() {
+  for (const m of peerMarkers.values()) peerLayer.remove(m);
+  peerMarkers.clear();
+}
+
+function updatePeerMarkers() {
+  const live = new Set();
+  for (const peer of collab.roster.list()) {
+    if (!peer.moved) continue;   // nothing to draw until they have said where
+    live.add(peer.site);
+    let marker = peerMarkers.get(peer.site);
+    if (!marker) {
+      marker = makePeerMarker(peer.color);
+      peerMarkers.set(peer.site, marker);
+      peerLayer.add(marker);
+    }
+    marker.position.set(peer.x, floorBaseY(state, Math.min(peer.f, state.floors.length - 1)) + 0.12, peer.z);
+    marker.rotation.y = peer.yaw;
+    // On the plan, only the storey being drawn; walking, everybody, because a
+    // colleague one floor up is worth knowing about.
+    marker.visible = mode === 'walk' || peer.f === state.currentFloor;
+  }
+  for (const [site, marker] of peerMarkers) {
+    if (live.has(site)) continue;
+    peerLayer.remove(marker);
+    peerMarkers.delete(site);
+  }
+}
+
+// ---------- the panel ----------
+
+function renderSessionPanel() {
+  const stateLine = $('session-state');
+  const on = sessionOn();
+  $('session-start').classList.toggle('hidden', on);
+  $('session-leave').classList.toggle('hidden', !on);
+  $('session-link-row').classList.toggle('hidden', !on);
+  $('session-btn').classList.toggle('on', on);
+
+  if (!on) {
+    stateLine.innerHTML = 'Not in a session — this design is yours alone. ' +
+      (canChannel() ? '' : '<span class="warn">This browser cannot share between windows.</span>');
+  } else {
+    const others = collab.roster.list();
+    const where = collab.relay ? esc(collab.relay) : 'the other windows of this browser';
+    const trouble = collab.note ? ` <span class="warn">${esc(collab.note)}</span>` : '';
+    stateLine.innerHTML =
+      `<span class="live">Live</span> in <b>${esc(collab.room)}</b>, over ${where}.${trouble}<br />` +
+      `${esc(describeRoster(others))}`;
+    $('session-link').textContent = sessionURL(location.href, collab.room, collab.relay);
+  }
+
+  const list = $('session-peers');
+  const rows = sessionOn() ? collab.roster.list() : [];
+  list.innerHTML = rows.map((peer) => {
+    const floor = peer.f < state.floors.length ? floorLabel(peer.f) : `Level ${peer.f + 1}`;
+    return `<div class="peer"><span class="dot" style="background:${esc(peer.color)}"></span>` +
+      `${esc(peerLabel(peer))}<span class="doing">${esc(describePeer(peer, floor))}</span></div>`;
+  }).join('');
+
+  const cfg = cloud.readConfig();
+  $('session-note').textContent = cloud.describeCloud(cfg);
+}
+
+// ---------- the controls ----------
+
+$('session-btn').addEventListener('click', () => {
+  const panel = $('session-panel');
+  const hidden = panel.classList.toggle('hidden');
+  if (!hidden) renderSessionPanel();
+  $('session-btn').setAttribute('aria-pressed', String(!hidden));
+});
+
+$('session-start').addEventListener('click', () => {
+  const cfg = cloud.readConfig();
+  sessionStart({ room: makeRoom(), relay: cfg.relay, joining: false });
+});
+
+$('session-leave').addEventListener('click', () => sessionLeave());
+
+$('session-name').addEventListener('change', () => {
+  collab.name = $('session-name').value.trim().slice(0, 24);
+  const cfg = cloud.readConfig();
+  cloud.writeConfig({ ...cfg, name: collab.name });
+  if (sessionOn()) collab.wire.send('hello', { name: collab.name, block: blockOf(collab.session.site), re: 1 });
+  renderSessionPanel();
+});
+
+$('session-copy').addEventListener('click', async () => {
+  const link = $('session-link').textContent;
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    $('session-copy').textContent = '✓';
+    setTimeout(() => { $('session-copy').textContent = 'Copy'; }, 1500);
+  } catch {
+    sessionStatus(`Copy this: ${link}`);
+  }
+});
+
+// A session id, or a whole link with one in it — both are things somebody
+// will paste in here, so both are read.
+function roomFromInput(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  const cut = raw.indexOf('#');
+  const frag = cut >= 0 ? readSessionFragment(raw.slice(cut)) : null;
+  if (frag) return frag;
+  return validRoom(raw) ? { room: raw, relay: '' } : null;
+}
+
+$('session-go').addEventListener('click', () => {
+  const found = roomFromInput($('session-join').value);
+  if (!found) {
+    sessionStatus('That is not a session id — it is eight letters, or the whole link.');
+    return;
+  }
+  const cfg = cloud.readConfig();
+  sessionStart({ room: found.room, relay: found.relay || cfg.relay, joining: true });
+  $('session-join').value = '';
+});
+
+$('session-server-save').addEventListener('click', () => {
+  const cfg = cloud.writeConfig({
+    base: $('session-store').value,
+    relay: $('session-relay').value || cloud.impliedRelay($('session-store').value),
+    name: collab.name,
+  });
+  $('session-store').value = cfg.base;
+  $('session-relay').value = cfg.relay;
+  renderSessionPanel();
+  sessionStatus(cfg.base || cfg.relay
+    ? 'Addresses saved. A session started from now on will use the relay.'
+    : 'Cleared — sessions stay between the windows of this browser.');
+});
+
+$('cloud-put').addEventListener('click', async () => {
+  const cfg = cloud.readConfig();
+  if (!cloud.cloudReady(cfg)) {
+    sessionStatus('No design store is set — put its address in the Server box first.');
+    return;
+  }
+  const btn = $('cloud-put');
+  btn.disabled = true;
+  try {
+    const id = cloudId || cloud.newDesignId();
+    const key = cloud.keyFor(id) || cloud.newWriteKey();
+    const json = serialize(state);
+    await cloud.putDesign(cfg.base, id, key, json, {});
+    cloud.rememberKey(id, key, 'design');
+    cloudId = id;
+    const link = cloud.cloudURL(location.href, id, cfg.base);
+    try { await navigator.clipboard.writeText(link); } catch { /* say it instead */ }
+    sessionStatus(`Uploaded — the link is on your clipboard: ${link}`);
+  } catch (err) {
+    sessionStatus(`Could not upload: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Which design in the store this one is, once it has been up there — so a
+// second upload replaces it rather than making a second copy.
+let cloudId = '';
+
+// A design that came out of a store, and a session that was in the address
+// bar. Both run at startup, after the autosave has been restored, and in that
+// order: open the building first, then join the people.
+async function openCloudDesign() {
+  const found = cloud.readCloudFragment(location.hash);
+  if (!found) return false;
+  const cfg = cloud.readConfig();
+  const base = found.base || cfg.base;
+  if (!base) {
+    sessionStatus('That link points at a design store this browser has no address for.');
+    return false;
+  }
+  try {
+    const json = await cloud.getDesign(base, found.id, {});
+    adoptState(deserialize(json, { onMigrate }), { keepAutosave: true });
+    cloudId = found.id;
+    if (!cfg.base) cloud.writeConfig({ ...cfg, base, relay: cfg.relay || cloud.impliedRelay(base) });
+    sessionStatus(migrationNote
+      ? `${migrationNote} Opened from the store.`
+      : 'Opened from the store — save it to keep a copy of your own.');
+    migrationNote = null;
+    return true;
+  } catch (err) {
+    sessionStatus(`That design could not be opened: ${err.message}`);
+    return false;
+  }
+}
+
+function joinFromFragment() {
+  const found = readSessionFragment(location.hash);
+  if (!found) return false;
+  const cfg = cloud.readConfig();
+  sessionStart({ room: found.room, relay: found.relay || cfg.relay, joining: true });
+  return true;
+}
+
+// The saved addresses and name, into the panel, once.
+function initSessionPanel() {
+  const cfg = cloud.readConfig();
+  collab.name = cfg.name;
+  $('session-name').value = cfg.name;
+  $('session-store').value = cfg.base;
+  $('session-relay').value = cfg.relay;
+  renderSessionPanel();
+}
+
 // --- the building, as a 3D file ---
 
 $('export-glb').addEventListener('click', () => {
@@ -4120,6 +4731,31 @@ function drawMinimap() {
   miniCtx.stroke();
   miniCtx.restore();
 
+  // ...and everybody else, on this storey. Smaller than the marker above and
+  // in their own colour, because the question a shared plan has to answer at
+  // a glance is "where is the other person", not "who is that".
+  if (collab.wire) {
+    for (const peer of collab.roster.onFloor(floorIndex)) {
+      if (!peer.moved) continue;
+      const at = worldToMini(view, peer.x, peer.z);
+      if (!inView(view, peer.x, peer.z, 8)) continue;
+      miniCtx.save();
+      miniCtx.translate(at.x, at.y);
+      miniCtx.rotate(markerAngle(view, peer.yaw));
+      miniCtx.beginPath();
+      miniCtx.moveTo(0, -5);
+      miniCtx.lineTo(3.4, 4);
+      miniCtx.lineTo(-3.4, 4);
+      miniCtx.closePath();
+      miniCtx.fillStyle = peer.color;
+      miniCtx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      miniCtx.lineWidth = 1;
+      miniCtx.fill();
+      miniCtx.stroke();
+      miniCtx.restore();
+    }
+  }
+
   // The scale bar, bottom-left, so a window of feet reads as a distance.
   const bar = scaleBar(view);
   miniCtx.strokeStyle = 'rgba(26, 32, 41, 0.75)';
@@ -4431,6 +5067,9 @@ function loop() {
   // periods over a plan you are drawing, is half of what this phase is for —
   // and the other half is meeting one of them in a corridor.
   lifeUpdate(dt);
+  // Everybody else in the session: their edits, their cameras and this one's,
+  // on a timer of its own. Costs nothing at all when there is no session.
+  if (collab.wire) sessionTick(performance.now());
   renderApi.render(dt);
   // Drawn after the 3D frame so the map is over it, and only while walking —
   // it is a thing you carry, not a thing on the drawing board.
@@ -4462,8 +5101,15 @@ loop();
 // ...and if the autosave was from before v11, say what the bake did with it.
 sayIfMigrated();
 // A design that arrived in the address bar, opened last so it replaces
-// whatever the autosave restored rather than racing it.
-openSharedDesign();
+// whatever the autosave restored rather than racing it. Three kinds of link
+// can be in there now, and they are read in the order they replace things:
+// a design in the link itself, a design in a store, then the session to join
+// — which is last because joining hands the building over to whoever is
+// already in there.
+initSessionPanel();
+openSharedDesign()
+  .then(() => openCloudDesign())
+  .then(() => joinFromFragment());
 
 // debug/test hook
 window.app = {
@@ -4480,4 +5126,8 @@ window.app = {
   // --- Phase 11 ---
   huntBegin, huntStop,
   get hunt() { return hunt; },
+  // --- Phase 14 ---
+  sessionStart, sessionLeave, sessionFlush, sendSnapshot,
+  get collab() { return collab; },
+  get peers() { return collab.roster.list(); },
 };

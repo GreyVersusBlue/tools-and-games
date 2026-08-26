@@ -483,6 +483,58 @@
     /* A report is not part of the photograph, same as the crowd panel. */
     body.photo #report-panel { display: none !important; }
 
+    /* session panel — Phase 14. The one panel that is not about the building
+       at all: who else is in it with you. It lives on the right rail with the
+       sun and the report because presence has to survive the walkthrough —
+       seeing where somebody else is standing is most of the point. */
+    #session-panel { padding: 10px 12px; width: 236px; }
+    #session-panel h2 {
+      font-size: 11px; font-weight: 600; color: var(--text-dim);
+      letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 7px;
+    }
+    #session-panel label {
+      display: block; font-size: 10.5px; color: var(--text-dim);
+      margin: 9px 0 3px; letter-spacing: 0.02em;
+    }
+    #session-panel input[type="text"] { width: 100%; padding: 4px 6px; font-size: 11.5px; }
+    #session-state {
+      font-size: 10.5px; line-height: 1.55; color: var(--text-dim);
+      padding-bottom: 7px; border-bottom: 1px solid var(--panel-border);
+    }
+    #session-state b { color: var(--text); font-weight: 600; }
+    #session-state .live { color: #7ce0a0; font-weight: 600; }
+    #session-state .warn { color: #e8a33d; font-weight: 600; }
+    .sess-acts { display: flex; gap: 4px; margin-top: 8px; }
+    .sess-acts button { flex: 1; padding: 5px 0; font-size: 11px; }
+    .sess-row { display: flex; gap: 4px; align-items: center; }
+    .sess-row input { flex: 1; min-width: 0; }
+    .sess-row button { padding: 4px 7px; font-size: 11px; white-space: nowrap; }
+    .sess-row code {
+      flex: 1; font-size: 12px; letter-spacing: 0.08em; color: var(--text);
+      background: rgba(255, 255, 255, 0.05); padding: 4px 6px; border-radius: 4px;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    #session-peers { margin-top: 9px; }
+    #session-peers .peer {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 11px; color: var(--text); padding: 3px 0;
+    }
+    #session-peers .dot {
+      width: 9px; height: 9px; border-radius: 50%; flex: none;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+    }
+    #session-peers .peer .doing { color: var(--text-dim); font-size: 10px; margin-left: auto; }
+    #session-server { margin-top: 9px; border-top: 1px solid var(--panel-border); padding-top: 7px; }
+    #session-server summary {
+      font-size: 10.5px; color: var(--text-dim); cursor: pointer; letter-spacing: 0.02em;
+    }
+    #session-note {
+      margin-top: 8px; font-size: 10px; line-height: 1.5; color: var(--text-dim);
+    }
+    #session-note b { color: var(--text); font-weight: 600; }
+    /* A photograph of a building is not a photograph of who was drawing it. */
+    body.photo #session-panel { display: none !important; }
+
     /* photo mode — a walkthrough-only panel, and the one place the HUD and the
        crosshair get out of the way on purpose. */
     #photo-panel {
@@ -988,6 +1040,7 @@
     <button id="gen-btn" title="Generate a whole school from a brief">✨ Generate</button>
     <button id="export-btn" title="Printable top-down floor plan (PNG / PDF)">🖨 Export</button>
     <button id="share-btn" title="Put this whole design in a link">🔗 Share</button>
+    <button id="session-btn" title="Draw this school with somebody else" aria-pressed="false">🤝 Session</button>
     <button id="fx-btn" title="Toggle post-processing" aria-pressed="true">FX</button>
     <button id="env-btn" title="Sun, sky and the building's lights (Y)" aria-pressed="true">☀ Sky</button>
     <button id="audio-btn" title="Sound, and how the room you're in rings (U)" aria-pressed="false">🔊 Sound</button>
@@ -1336,6 +1389,56 @@
 
     <div id="report-findings"></div>
     <div id="report-readout"></div>
+  </div>
+
+  <div id="session-panel" class="panel hidden" role="group" aria-label="Shared session">
+    <h2>Session</h2>
+
+    <div id="session-state">Not in a session — this design is yours alone.</div>
+
+    <div class="sess-acts">
+      <button id="session-start" class="primary" type="button"
+        title="Open this design to somebody else">🤝 Start</button>
+      <button id="session-leave" type="button" title="Leave the session — the design stays">Leave</button>
+    </div>
+
+    <label for="session-name">Your name</label>
+    <input id="session-name" type="text" maxlength="24" placeholder="Who you are" />
+
+    <div id="session-link-row">
+      <label for="session-link">Send them this</label>
+      <div class="sess-row">
+        <code id="session-link" title="The session link"></code>
+        <button id="session-copy" type="button" title="Copy the link">Copy</button>
+      </div>
+    </div>
+
+    <label for="session-join">Join a session</label>
+    <div class="sess-row">
+      <input id="session-join" type="text" maxlength="120" placeholder="Session id or link" />
+      <button id="session-go" type="button" title="Join">Join</button>
+    </div>
+
+    <div id="session-peers"></div>
+
+    <details id="session-server">
+      <summary>Server</summary>
+      <label for="session-relay">Relay, for somebody in another building</label>
+      <input id="session-relay" type="text" maxlength="200" placeholder="wss://…" />
+      <label for="session-store">Design store, for a design that outlives the tab</label>
+      <input id="session-store" type="text" maxlength="200" placeholder="https://…" />
+      <div class="sess-acts">
+        <button id="session-server-save" type="button" title="Remember these addresses">Save addresses</button>
+        <button id="cloud-put" type="button" title="Put this design in the store and make a link">☁ Upload</button>
+      </div>
+      <div id="session-note"></div>
+    </details>
+
+    <div class="keys">
+      With no relay, a session reaches the other windows of this browser —
+      side by side on one laptop, which is what this is for. Edits merge by
+      record, newest wins. Nothing here changes the file you save.
+    </div>
   </div>
   </div>
 

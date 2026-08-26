@@ -12,9 +12,11 @@ one piece of surgery both of the others deferred — **there is one kind of room
 now, and it has an id** — and then stops to fix what a session with a real
 floor plan found, which is that **the sheet you draw on was a constant**.
 
-**Everything on the first two lists shipped, bar one item: real-time
-collaboration, which needs a server and is picked up below.** Twenty-one
-phases, 61 modules, ~35,300 lines, 1,084 tests, eleven save-format versions and
+**Everything on both of the first two lists has now shipped.** The last
+holdout was real-time collaboration, deferred by every arc for the same good
+reason and built in Phase 14 — the client half of it entirely, and the server
+half as a contract, because a static site cannot host a relay. Twenty-two
+phases, 65 modules, ~37,200 lines, 1,174 tests, eleven save-format versions and
 no build step.
 
 This document is two things, and the rule for a builder is the same as it has
@@ -25,8 +27,9 @@ second part rather than starting a third list.
   emerged, the conventions a new builder has to know before their first edit,
   what the twenty phases shipped, what fought back, and the standing backlog no
   phase has claimed.
-- **Part two — arc three.** Five phases, one of them done. Not a spec — a
-  scoped list to pull from and refine before beginning each piece.
+- **Part two — arc three.** Five phases plus one that was not planned, three
+  of them done. Not a spec — a scoped list to pull from and refine before
+  beginning each piece.
 
 Each phase used to have its own retrospective here — what shipped, how it
 landed, what fought back, what was left. The first nineteen are condensed below
@@ -104,6 +107,14 @@ three.js one) · `walkthrough.js` / `xr.js` / `touch.js` (three input paths, one
 physics) · `gltf.js` + `models.js` (glTF read and written by hand) ·
 `share.js` (a design deflated into a URL fragment) · `tour.js` ·
 `overlay.js`.
+
+What it shares with another person, all of it added by Phase 14 and none of it
+reached by anything else in the tool: `session.js` (a design as records, and
+which of two edits to the same record wins) · `presence.js` (who else is here
+and where they are standing) · `wire.js` (the pipe — in memory, between the
+windows of a browser, or over a relay) · `cloud.js` (a design store, as a
+client and a four-endpoint contract). The test for whether this stays clean is
+simple: **no module above this paragraph imports any module in it.**
 
 The editor is `editor.js` plus one tool per verb — `polyedit`, `propedit`,
 `stairedit`, `templateedit`, `siteedit`, `overlayedit` — each of them thin over
@@ -228,6 +239,7 @@ accessibility.
 |---|-------|---------------|------|
 | 12 | Identity | One kind of room, with an id; the lattice demoted to a drawing surface; a room record; delta undo | v11 |
 | 13 | The sheet | A plan you can resize, a tracing image the sheet fits itself to, a grid that is the shape it says it is, and a wall drag that stays on one wall | — |
+| 14 | Two people | The design as a log of records, last-write-wins per record on a Lamport clock, id blocks, presence, three transports, and a cloud-store client | — |
 
 The two phases that turned out to matter most to everything after them were
 **Phase 1**, which shipped first and out of order and which every later phase
@@ -237,7 +249,7 @@ most obviously was **Phase 10**: measured over the mesh instead of over room
 hubs, a generated three-storey high school lost a mean of 9ft of travel
 distance per room and 60ft off its worst one — numbers nobody had ever walked.
 
-## What fought back, across twenty-one phases
+## What fought back, across twenty-two phases
 
 - **A constant nobody could reach is a limit, not a default, and it took a
   stranger's floor plan to find one.** The drawing surface was 160 x 120ft from
@@ -293,6 +305,20 @@ distance per room and 60ft off its worst one — numbers nobody had ever walked.
   subtracting a window's width from its wall's length, and travel distance was
   measured to cell centres rather than to corners. "Both halves agreed" was
   never true; it was only never asked.
+- **The hard part of collaboration was a counter, not a network.** Phase 14
+  went in expecting the transport to be the risk. The transport was three
+  small files. What would have shipped broken is `state.nextId`: one counter,
+  correct for as long as there was exactly one person, and the reason two
+  peers drawing at once would have merged a chair into a corridor. The general
+  form is worth carrying forward — before adding a second writer, go looking
+  for the state that was quietly single-writer, because it will not announce
+  itself.
+- **Any rule with "last" in it needs a clock that is not a clock.** Stamping
+  edits with `Date.now()` is the obvious reading of last-write-wins and hands
+  the building to whichever laptop is fast, permanently and invisibly. A
+  counter that only goes up, plus a tie-break, is four lines and buys the
+  property that matters: not that the right person wins, but that both screens
+  agree about who did.
 
 ## The standing backlog
 
@@ -432,6 +458,37 @@ them; the rest are unclaimed and can ride along with whatever is open.
   appended far more often than inserted, so this is the right trade — and it is
   the first place to look if a delta ever comes out surprisingly large.
 
+**The session, after Phase 14**
+- **No server ships.** The relay and the design store are both addresses
+  somebody types into the Server box, and until one is there a session reaches
+  the other windows of one browser and a design stays in this browser and its
+  files. The contracts are in `wire.js` and `cloud.js` and are each about a
+  page of code; deploying one is the whole of what is missing.
+- A storey has no id, so adding or removing one is a whole-design resync. On
+  the receiving side that replaces the building, which will discard an edit a
+  peer had made in the same third of a second. Giving storeys ids is a save
+  bump and would close this properly.
+- The tracing image and the model library travel **only in a snapshot** —
+  at the join, or at a resync. Import a model mid-session and the other person
+  does not have it until one of those happens. Both are megabytes, which is
+  why they are out of the log; a chunked transfer on its own message kind is
+  the honest fix.
+- Nothing is acknowledged and nothing is retried. A dropped op is a record
+  that is stale until somebody touches it again, and rejoining repairs it.
+  Sequence numbers and gap detection are the beginning of a real protocol and
+  were deliberately not started.
+- **Undo is local, and it wins.** Undoing your own edit re-states the record
+  with a newer stamp, so it beats somebody else's later change to that same
+  record. It is the conflict rule behaving exactly as written and it is still
+  the thing most likely to surprise two people working closely.
+- An op carries the whole record, so dragging a vertex of a 200-point
+  free-drawn room sends the whole outline. Bounded by the 350ms flush rather
+  than by size, and fine at school scale; it is the first thing to measure if
+  a session ever feels heavy.
+- Whoever runs the relay sees the designs that pass through it, and anybody
+  with a store link can read that design. Both are stated in the panel; making
+  either private needs accounts, which is a different project.
+
 **Files and performance**
 - glTF textures, PBR materials, skins, morph targets and Draco are each a
   refusal with a sentence attached in `gltf.js`.
@@ -441,9 +498,12 @@ them; the rest are unclaimed and can ride along with whatever is open.
   wrong at three thousand. → *Phase 17.*
 - A tour moves the camera and does nothing else — no bell at a stop, no hour
   scrubbed between two, no audio on the recording.
-- Cloud saves: the first item that needs a server, and now with a measured
-  reason to want one, since a design with a tracing image or imported models
-  cannot travel in a link at all. → *Phase 14.*
+- Cloud saves have a client and a contract (Phase 14) and no server. Four
+  endpoints, and every copy of the tool is unconfigured until somebody types
+  an address. The same is true of the relay: without one, a session reaches
+  the other windows of one browser and no further. **This is the only thing
+  left on either of the first two lists, and it is a deployment rather than a
+  feature.**
 
 ---
 
@@ -464,14 +524,18 @@ is scenery, the discharge route ends at the threshold, and every scheme makes
 exactly one connected thing.
 
 **Phase 12 is done**, which is the first sentence above in the past tense and
-the prerequisite off the front of three of the other four. Phase 17 is
-independent of all of them and is the one to reach for when the appetite is for
-a self-contained win.
+the prerequisite off the front of three of the other four. **Phase 14 is done
+as well**, and it is the one that cashed Phase 12 in: a room with an id is a
+thing two people can edit at once. Phase 17 is independent of all of them and
+is the one to reach for when the appetite is for a self-contained win.
 
 **Phase 13 is done as well, and it was never on either list.** It is what a
 walkthrough of the real tool with a real floor plan turned up, and the list is
 better for having been interrupted by it — the sentence under it is *the sheet
 you draw on was a constant, and the tool never said so*.
+
+**What is left is Phase 15, Phase 16 and Phase 17**, and none of the three is
+blocked on anything any more.
 
 ## Phase 12 — Identity ✅
 
@@ -635,47 +699,126 @@ is measured now.
 
 *Save:* none — see above.
 
-## Phase 14 — Two people, one plan
+## Phase 14 — Two people, one plan ✅
 
-**The one item on either list that was never built.**
+**The one item on either list that was never built.** It is built.
 
-Every arc has named it and every arc has been right to defer it. Phase 9 was
-the one that made the reason precise: it is not blocked on a CRDT library, it
-is blocked on there being nothing to name. **Phase 12 removed that**, and what
-is left is genuinely a networking phase — the first thing in this project that
-needs a server, and the second is right beside it.
+Every arc named it and every arc was right to defer it. Phase 9 made the
+reason precise: it was never blocked on a CRDT library, it was blocked on
+there being nothing to name. **Phase 12 removed that**, and what was left was
+genuinely a networking phase — which turned out to mean four small modules and
+not one line of changed geometry.
 
-The honest scope is small. Two teachers round a laptop is the real use; a
-design studio with twelve people in it is not what this tool is for.
+- [x] **The design as a log, not a snapshot.** `session.js`. An edit is a list
+  of **records**: `room 27`, `prop 41`, `design env`, each carrying the whole
+  of itself. `opsBetween(before, after)` reads two designs as record maps and
+  says what moved; `applyOps` puts them onto a design somewhere else. A room
+  that moved storeys is one record, not a delete and an add that can arrive in
+  either order. Two fields never travel — `currentFloor` and `nextId` are
+  about the person, not the building.
+- [x] **A conflict rule anybody can predict.** Last write wins, per record,
+  where "last" is a Lamport counter rather than a wall clock — two laptops
+  disagree about the time by whole minutes, and a rule built on `Date.now()`
+  hands the building to whichever machine is fast. Ties break on site id, so
+  two people who saw the same two edits in opposite orders end up with the
+  same building. That is the property, and the suite asserts it directly.
+- [x] **Ids in blocks.** Not on the original list, and the phase does not work
+  without it: `state.nextId` is one counter, so two peers both mint id 27 and
+  the log merges a chair into a corridor. A site hashes into one of 4096
+  blocks a million ids wide; a clash is one in four thousand, is checked for
+  at the join, and the later arrival re-rolls.
+- [x] **Presence.** `presence.js`. A peer is a body with a name on it: colour
+  hashed from the site id so a reconnection is the same colour on every
+  screen, a roster that evicts on a timeout rather than waiting to be told,
+  and a send policy that is a foot of travel, three degrees of turn, a change
+  of storey or mode, or one heartbeat. Drawn as an arrow on the plan, in the
+  walkthrough and on the minimap.
+- [x] **A wire with three ends.** `wire.js`. Loopback for the suites;
+  `BroadcastChannel` between the windows of one browser, which is the
+  wishlist's own use case — two teachers round one laptop — with no server at
+  all; and a WebSocket relay for two teachers in two buildings. Five message
+  kinds, no acknowledgements, no retries: an op that goes missing is a record
+  that is stale until somebody touches it, and a joiner asking for a snapshot
+  is the repair mechanism.
+- [x] **Cloud saves, as a client and a contract.** `cloud.js`. Four endpoints,
+  a design id in the link and a write key that never leaves the browser that
+  made it. **The server itself is the one part of this phase that could not be
+  built here** — this repository is a static site — so what ships is the half
+  that can be: every call, every refusal, and a contract narrow enough to
+  implement over a lunch break. Unconfigured, the panel says so in a sentence.
+- [x] **Offline is the normal case.** `collab.wire` is null until somebody
+  opens a session, every function in the section returns immediately while it
+  is, and no save version was spent. A session is a thing you opt into, and
+  leaving one changes nothing about the design in front of you.
 
-- [ ] **The design as a log, not a snapshot.** An edit becomes an operation
-  against a room id, a prop id or a link id — `move`, `rename`, `restyle`,
-  `add`, `remove`. The file stays what it is; the log is what travels. Phase
-  12's `history.js` is most of this already: an edit is a patch, both
-  directions, and a patch is plain JSON that goes on a wire without the module
-  knowing that is what happened to it. What is missing is *addressing* — a
-  patch says "floors[0].shapes[4]", where the log needs "room 27".
-- [ ] **A conflict rule anybody can predict.** Last-write-wins per record. Two
-  people editing one *building* is the whole point; two people editing the same
-  room in the same second is rare enough that losing one of the two edits is a
-  fair price for a rule that fits in a sentence. No merge UI, no three-way
-  anything — if it needs explaining, it is the wrong rule.
-- [ ] **Presence.** Whose camera is where, in plan and in the walkthrough. This
-  is nearly free — the crowd already draws bodies and the minimap already draws
-  a cone of view — and it is most of what makes collaboration *feel* like it is
-  working.
-- [ ] **Cloud saves**, because the same server does both, and because a design
-  with a tracing image or imported models cannot travel in a link at all today
-  and says so in a dialog. A saved design becomes a URL that survives the tab.
-- [ ] **Offline is the normal case.** The tool works with no network, exactly
-  as it does now; a session is something you opt into. Anything that makes the
-  file-only path worse is out of scope by construction.
+### What it cost, and what it taught
 
-*Leans on:* Phase 12's ids and `history.js`, `save-load.js`'s serializer,
-`share.js`;
-*collides with:* nothing in the model — this phase adds a transport, and the
-strongest sign it is going right is that no geometry module changes.
-*Save:* none to the design. A session id and a log live beside the file.
+**The strongest sign it went right is the diff.** Four new modules, one new
+panel, and the only edits to existing files are an import block, a session
+section in `main.js`, and two lines elsewhere: `onChange` became a named
+function so an edit that arrived from somebody else could go through the same
+door, and `adoptState` learned not to re-frame the camera. No geometry module
+changed, which is exactly what the phase's own plan predicted and the first
+time this project has been able to say that about a whole phase.
+
+**A record is the unit, and sending the whole record is what makes the rule
+one sentence.** The obvious design is to send `history.js`'s patch — it exists,
+it is small, it is already both directions. It is also addressed by *path*,
+and a path is a statement about an array index, so two people who both insert
+a room produce patches that are individually correct and jointly nonsense. The
+moment the unit became "the whole of room 27", the merge stopped needing to
+understand anything: newest stamp wins, apply, done. A room outline is a few
+hundred bytes. That is the entire cost of not having to write a merge.
+
+**Two people editing one building needed an id allocator before it needed a
+network.** This was not on the list and is the item the phase would have
+shipped broken without. `nextId` has been a single counter since v1 and it was
+right for as long as there was one person. The fix is arithmetic rather than
+protocol — hash the site into a block — and it is worth naming because it is
+the shape of most collaboration bugs: not the transport, but a piece of state
+that was quietly single-writer.
+
+**The clock had to stop being a clock.** The first draft stamped ops with
+`Date.now()`, which is the obvious reading of "last write wins" and is wrong
+in a way that never shows up in a test: two machines minutes apart hand the
+building to whichever one is fast, permanently, and the person losing every
+argument has no way to tell. A Lamport counter plus a tie-break on site id is
+four lines and gives the property that actually matters — not that the right
+person wins, but that **both screens agree about who did**.
+
+**A storey has no id, and that is the one hole Phase 12 left.** Rooms, props,
+links and tours are identified; storeys are an array index, and removing one
+renumbers everything below it. So adding or removing a storey is not an op at
+all: it asks for a resync, and the whole building goes across as a save file.
+The same escape hatch covers the other case a log is wrong for — a generated
+school is thousands of records, and saying it record by record would be slower
+*and* larger than saying it whole. `RESYNC_OPS` is where the log gives up, and
+it is the only place it does.
+
+**The mirror has to move before the send.** A transport is free to deliver the
+other end's reply synchronously — the loopback one in the suites does — and a
+mirror still holding the old design when that reply lands makes the reply's
+flush say everything a second time. Found by the integration suite on its
+first run, in a code path a browser would have hidden for months, which is the
+argument for keeping one suite that simulates rather than calculates.
+
+**What the shell had to decide, and what it must not.** Three things turned
+out to belong to `main.js` and nowhere else. An arriving edit **waits while
+the pointer is down**, because applying it would close the stroke somebody has
+their hand on and split it into two undo steps. Local edits are **flushed
+before remote ones are applied**, or an edit made in the last third of a
+second is swallowed by the mirror. And somebody else's edit is **not an entry
+in your undo stack** — `markClean()` after applying, because undo is for what
+you did.
+
+**Anybody with the link can read a cloud design, and the panel says so.** The
+security model is two ids: one in the link, one that never leaves the browser
+that made the design. That is not accounts and it is not permissions, and
+writing it down as a limitation rather than burying it is the only honest way
+to ship a store this small.
+
+*Save:* none. A session id and a log live beside the file, and a design that
+has never been in a session is byte-identical to one from Phase 13.
 
 ## Phase 15 — A real school day
 
@@ -826,11 +969,17 @@ somebody using the thing. Which is the argument for keeping a phase's worth of
 room for whatever a real session turns up, rather than working the list
 straight down.
 
-**Now whichever of 14, 15 and 16 the appetite is for.** They do not touch each
+**Phase 14 is done as well**, and it was worth doing before 15 and 16 for a
+reason that was not obvious from the list: it is the only one of the three
+whose *prerequisite* was Phase 12, and doing it while the id work was recent
+is what turned up the id-allocator hole in an afternoon rather than in a bug
+report. It also cost nothing anywhere else — no geometry module changed —
+which is what a transport phase should look like.
+
+**Now whichever of 15 and 16 the appetite is for.** They do not touch each
 other. 15 is the one that makes the tool useful to somebody who already has a
-school; 16 is the safest and the most obviously finishable; 14 is the one that
-has been on the list longest and the only one that needs infrastructure this
-project has never had.
+school; 16 is the safest and the most obviously finishable. Neither is blocked
+on anything.
 
 **17 whenever.** It is independent of all of them, it clears six backlog items
 between them, and it is the only one of the five that could be started tomorrow
@@ -840,7 +989,10 @@ against the code exactly as it stands today.
 shape change rather than an append — which should be the last time that is ever
 necessary. Phase 13 changed a design's dimensions without touching the format
 at all, because `w` and `h` have been in the file since v1 and the loader has
-always read them against the same range the editor now writes. A timetable (15)
+always read them against the same range the editor now writes. Phase 14 spent
+none either, and could not have: a session is a thing that happens *to* a
+design rather than a thing in it, and the day the file has to record one is
+the day something has gone wrong with the split. A timetable (15)
 and a rate table (16) are appends to v11, which is the Phase 5 lesson (terrain,
 site and roof all landed in v7 together) applied deliberately rather than
 discovered halfway through.
