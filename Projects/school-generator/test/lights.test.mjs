@@ -313,3 +313,72 @@ test('the default spot cap is the fixed pool size', () => {
   const { litSpots } = budgetFor(design(spread), testCatalog, { x: 90, y: 6, z: 0 }, { floorHt: 12 });
   assert.ok(litSpots.length <= MAX_SPOT_LIGHTS);
 });
+
+// ---------- the ceiling's own troffers (Phase 20) ----------
+
+import { sheet } from './build.mjs';
+import { addStair } from '../js/stairs.js';
+import { trofferSources, GENERIC_TROFFER } from '../js/lights.js';
+import { WALL_H } from '../js/grid.js';
+
+// A walled, baked room — the state the paint brush actually produces, which
+// is the state the renderer bakes its ceiling pans from.
+function roomState(x0 = 0, y0 = 0, x1 = 3, y1 = 3, floors = 1) {
+  const s = createState(20, 20);
+  while (s.floors.length < floors) s.floors.push({ ...s.floors[0], shapes: [] });
+  sheet(s, 0).box(x0, y0, x1, y1).bake();
+  return s;
+}
+
+test('a baked room grows pans on the renderer\'s own 8ft rhythm', () => {
+  // Cells 0..3 both ways: odd lattice indices 1 and 3 → a 2x2 grid of pans.
+  const src = trofferSources(roomState());
+  assert.equal(src.length, 4);
+  const xs = [...new Set(src.map((t) => t.x))].sort((a, b) => a - b);
+  assert.deepEqual(xs, [6, 14], 'centre of the odd 4ft cells');
+  for (const t of src) {
+    assert.equal(t.y, WALL_H - 0.3, 'hung just under the ceiling plane');
+    assert.equal(t.lm, GENERIC_TROFFER.lm);
+    assert.equal(t.kind, 'point');
+    assert.ok(!t.outdoor);
+  }
+});
+
+test('a design with no rooms has no ceiling to light', () => {
+  assert.deepEqual(trofferSources(createState(10, 10)), []);
+  assert.deepEqual(trofferSources(null), []);
+  assert.deepEqual(trofferSources({ props: [] }), []);
+});
+
+test('no pan hangs over a stairwell', () => {
+  const s = roomState(0, 0, 3, 3, 2);
+  const before = trofferSources(s).filter((t) => t.floor === 0).length;
+  // A stair up from floor 0 cuts a hole in floor 1's slab — which is floor
+  // 0's ceiling, so the pans over the well go with it.
+  addStair(s, 0, { type: 'stair', x: 6, z: 0, rotationY: 0 });
+  const after = trofferSources(s).filter((t) => t.floor === 0).length;
+  assert.ok(after < before, 'the pan over the well is gone');
+});
+
+test('the budget carries the ceiling by default, and can be asked not to', () => {
+  const s = roomState();
+  const withCeiling = budgetFor(s, testCatalog, { x: 8, y: 6, z: 8 }, { floorHt: 12 });
+  assert.equal(withCeiling.sources, 0, 'nothing placed');
+  assert.equal(withCeiling.troffers, 4, 'but the ceiling counts');
+  assert.ok(withCeiling.lit.length > 0, 'and it lights the room');
+  const bare = budgetFor(s, testCatalog, { x: 8, y: 6, z: 8 }, { floorHt: 12, troffers: false });
+  assert.equal(bare.troffers, 0);
+  assert.equal(bare.lit.length, 0);
+});
+
+test('a room\'s pans cluster into one source in the middle of it', () => {
+  const clusters = clusterSources(trofferSources(roomState()), CLUSTER_FT);
+  assert.equal(clusters.length, 1, 'four pans, one light');
+  assert.equal(clusters[0].count, 4);
+  assert.equal(clusters[0].lm, GENERIC_TROFFER.lm * 4, 'no lumens go missing');
+  assert.ok(clusters[0].x > 6 && clusters[0].x < 14, 'and it sits among them');
+});
+
+test('pans read dimmer than a real placed troffer, so fixtures still matter', () => {
+  assert.ok(GENERIC_TROFFER.lm < emitOf(catalogEntry('troffer-2x4')).lm);
+});

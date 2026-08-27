@@ -399,3 +399,43 @@ test('plan north turns the moon with the rest of the sky', () => {
   assert.ok(Math.abs(m0.altitude - m90.altitude) < 1e-9);
   assert.ok(Math.abs(m0.dir.y - m90.dir.y) < 1e-9);
 });
+
+// ---------- moods (Phase 20) ----------
+
+import { MOODS, moodEntry, applyMood } from '../js/sky.js';
+
+test('five moods, each a preset the clock already knows how to reach', () => {
+  assert.equal(MOODS.length, 5);
+  assert.deepEqual(MOODS.map((m) => m.key), ['morning', 'noon', 'golden', 'dusk', 'night']);
+  for (const m of MOODS) {
+    assert.ok(SUN_PRESETS.some((p) => p.key === m.preset), `${m.key} hangs off a real preset`);
+    assert.ok(LIGHT_MODES.includes(m.lights), `${m.key} settles the lights to a real mode`);
+  }
+});
+
+test('a mood writes the time and settles the lights, in one click', () => {
+  const e = at({ minutes: 300, lights: 'off' });
+  const noon = applyMood(e, 'noon');
+  assert.equal(noon.minutes, presetMinutes('noon', e));
+  assert.equal(noon.lights, 'auto', 'a daylight mood hands the lights back to the sun');
+  const night = applyMood(e, 'night');
+  assert.equal(night.minutes, presetMinutes('night', e));
+  assert.equal(night.lights, 'on', 'night is a lit school, whatever the toggle said');
+});
+
+test('a mood never mutates the env it was handed, and survives nonsense', () => {
+  const e = at({ minutes: 300 });
+  const out = applyMood(e, 'dusk');
+  assert.equal(e.minutes, 300, 'the original is untouched');
+  assert.notEqual(out.minutes, 300);
+  // An unknown mood is the env back, normalized — not a throw, not a null.
+  assert.deepEqual(applyMood(e, 'apocalypse'), e);
+  assert.deepEqual(applyMood(null, 'noon').month, DEFAULT_ENV.month);
+  assert.equal(moodEntry('nope'), null);
+});
+
+test('the golden mood lands in golden hour, which is the screenshot the phase is for', () => {
+  const g = applyMood(defaultEnv(), 'golden');
+  const alt = solarPosition(g).altitude;
+  assert.ok(alt > -6 && alt < 10, `golden hour sun sits low: ${alt}°`);
+});

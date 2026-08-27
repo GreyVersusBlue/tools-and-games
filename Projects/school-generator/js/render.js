@@ -181,6 +181,63 @@ function grayTex(size, draw) {
   return t;
 }
 
+// Phase 20: a finish family's own sheen, not VCT's. Every finish shipped
+// sharing `makeFloorRoughness` — the semi-gloss vinyl map — so carpet had a
+// waxed-tile shine and terrazzo was no glossier than the corridor. One map
+// per grain family, structured like its albedo: per-plank sheen on wood,
+// polish with matte chips on terrazzo, dead-flat pile on carpet. Grey value
+// *is* roughness here (the material's own roughness stays 1.0 and the map
+// does the talking), so the families read as different materials under the
+// same raking sun rather than as one floor in five colours.
+function makeFinishRoughness(entry) {
+  if (entry.grain === 'tile') return makeFloorRoughness();
+  if (entry.grain === 'fiber') {
+    // Carpet: matte through and through, with only fibre-level flutter.
+    return grayTex(256, (ctx, S) => {
+      ctx.fillStyle = 'rgb(238,238,238)';
+      ctx.fillRect(0, 0, S, S);
+      speckle(ctx, S, 2600, ['rgb(228,228,228)', 'rgb(248,248,248)'], 0.4, 1.4);
+    });
+  }
+  if (entry.grain === 'plank') {
+    // Sealed wood: a satin base, each plank finished a little differently,
+    // grain streaks breaking the sheen along the board.
+    return grayTex(256, (ctx, S) => {
+      const rows = 8, hgt = S / rows;
+      for (let r = 0; r < rows; r++) {
+        const v = 138 + Math.round((Math.random() - 0.5) * 34);
+        ctx.fillStyle = `rgb(${v},${v},${v})`;
+        ctx.fillRect(0, r * hgt, S, hgt);
+        ctx.strokeStyle = 'rgb(120,120,120)';
+        ctx.lineWidth = 1;
+        for (let g = 0; g < 4; g++) {
+          const y = r * hgt + 3 + Math.random() * (hgt - 6);
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.bezierCurveTo(S / 3, y + 2, (2 * S) / 3, y - 2, S, y);
+          ctx.stroke();
+        }
+      }
+    });
+  }
+  if (entry.grain === 'chip') {
+    // Ground-and-polished terrazzo: the glossiest floor a school owns, with
+    // the aggregate chips each taking the polish a shade differently.
+    return grayTex(256, (ctx, S) => {
+      ctx.fillStyle = 'rgb(84,84,84)';
+      ctx.fillRect(0, 0, S, S);
+      speckle(ctx, S, 700, ['rgb(64,64,64)', 'rgb(112,112,112)'], 1.5, 4.5);
+      speckle(ctx, S, 2000, ['rgb(96,96,96)'], 0.4, 1.2);
+    });
+  }
+  // Sealed concrete and everything unnamed: matte with a light burnish.
+  return grayTex(256, (ctx, S) => {
+    ctx.fillStyle = 'rgb(190,190,190)';
+    ctx.fillRect(0, 0, S, S);
+    speckle(ctx, S, 1400, ['rgb(165,165,165)', 'rgb(210,210,210)'], 0.5, 2.2);
+  });
+}
+
 // The joints between the VCT tiles, as relief: the one thing raking light
 // picks out of a tile floor. Drawn from the same 4x4 grid the albedo draws.
 function makeFloorBump() {
@@ -556,6 +613,114 @@ export function initRender(canvas) {
   moonDisc.visible = false;
   scene.add(moonDisc);
 
+  // --- clouds ---
+  //
+  // Phase 20. The backlog ruled a canvas smear out — "reads worse than a
+  // clean gradient" — so this is the other branch of that judgement: a
+  // fragment shader on a second shell of the same dome, doing four octaves of
+  // value-noise fbm over the view direction projected onto a high plane. No
+  // texture, no asset, no extra pass — the shell renders in the ordinary
+  // transparent pass, its fragments depth-test against the building, and the
+  // whole cost is a handful of hash lookups on the pixels that are actually
+  // sky. The colours are not its own: `setEnvironment` hands it the palette's
+  // sun and zenith, so a dusk cloud goes amber and a night cloud is a darker
+  // patch on a dark sky, from the same table everything else reads.
+  const cloudUniforms = {
+    uTime: { value: 0 },
+    uCover: { value: 0.44 },        // how much of the sky is cloud, 0..1
+    uTint: { value: new THREE.Color('#ffffff') },   // the lit face
+    uShade: { value: new THREE.Color('#9fb4c8') },  // the flat base
+    uOpacity: { value: 0.85 },
+  };
+  const cloudShell = new THREE.Mesh(
+    new THREE.SphereGeometry(985, 24, 16),
+    new THREE.ShaderMaterial({
+      uniforms: cloudUniforms,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.BackSide,
+      fog: false,
+      vertexShader: /* glsl */`
+        varying vec3 vDir;
+        void main() {
+          vDir = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */`
+        precision highp float;
+        varying vec3 vDir;
+        uniform float uTime, uCover, uOpacity;
+        uniform vec3 uTint, uShade;
+        // The standard sine-free 2D hash — cheap enough for a phone, stable
+        // enough that the same sky never shimmers between frames.
+        float hash(vec2 p) {
+          p = fract(p * vec2(127.1, 311.7));
+          p += dot(p, p + 34.45);
+          return fract(p.x * p.y);
+        }
+        float vnoise(vec2 p) {
+          vec2 i = floor(p), f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x),
+                     mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+        }
+        float fbm(vec2 p) {
+          float v = 0.0, a = 0.5;
+          for (int i = 0; i < 4; i++) {
+            v += a * vnoise(p);
+            p = p * 2.03 + vec2(17.3, 9.1);
+            a *= 0.5;
+          }
+          return v;
+        }
+        void main() {
+          vec3 dir = normalize(vDir);
+          // Clouds live on a plane overhead: project the view ray onto it, so
+          // cover recedes toward the horizon the way a real deck does.
+          float up = max(dir.y, 0.001);
+          vec2 uv = dir.xz / (up + 0.18) * 1.6 + vec2(uTime * 0.006, uTime * 0.0022);
+          float n = fbm(uv);
+          // A second, finer read breaks the blobs' edges up.
+          n += 0.22 * (fbm(uv * 3.1 + 4.7) - 0.5);
+          float edge = 1.0 - uCover;
+          float body = smoothstep(edge, edge + 0.22, n);
+          // Fade at the horizon (the fog owns that band) and off below it.
+          float fade = smoothstep(0.02, 0.14, dir.y);
+          if (body * fade < 0.004) discard;
+          // Thicker cloud reads darker: the base shade wins toward the middle.
+          vec3 col = mix(uTint, uShade, smoothstep(edge + 0.05, edge + 0.42, n) * 0.75);
+          gl_FragColor = vec4(col, body * fade * uOpacity);
+        }
+      `,
+    }),
+  );
+  cloudShell.renderOrder = 2;
+  skyDome.add(cloudShell);
+
+  // Drift, not animation: a deck that crosses the sky in minutes. Under
+  // prefers-reduced-motion it stands still — the same courtesy the sun-study
+  // play button pays.
+  const cloudStill = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const _cloudTint = new THREE.Color();
+  const _cloudShade = new THREE.Color();
+  const _cloudSun = new THREE.Color();
+  const _cloudWhite = new THREE.Color('#ffffff');
+  function placeClouds() {
+    const pal = envState.palette;
+    // How lit the deck is: full day is white-on-grey, a low sun stains the
+    // lit face with its own colour, night is a darker patch on a dark sky.
+    const day = Math.max(0, Math.min(1, (envState.sun.altitude + 4) / 16));
+    _cloudTint.set(pal.horizon).lerp(_cloudWhite, 0.25 + 0.75 * day);
+    _cloudTint.lerp(_cloudSun.set(pal.sun), (1 - day) * 0.55);
+    _cloudShade.set(pal.zenith).multiplyScalar(0.55 + 0.35 * day);
+    cloudUniforms.uTint.value.copy(_cloudTint);
+    cloudUniforms.uShade.value.copy(_cloudShade);
+    cloudUniforms.uOpacity.value = 0.55 + 0.3 * day;
+  }
+
   // --- lights ---
   //
   // Every number below is now written by setEnvironment() out of sky.js's
@@ -761,11 +926,14 @@ export function initRender(canvas) {
     map.anisotropy = Math.min(8, maxAniso);
     map.repeat.set(1 / entry.tile, 1 / entry.tile);
     const bump = makeFinishBump(entry);
+    // Phase 20: the family's own sheen map does the talking — see
+    // makeFinishRoughness. Roughness stays 1.0 so the map's grey *is* the
+    // answer rather than a fraction of one.
     const solid = new THREE.MeshStandardMaterial({
       map,
-      roughnessMap: makeFloorRoughness(),
+      roughnessMap: makeFinishRoughness(entry),
       ...(bump ? { bumpMap: bump, bumpScale: 0.6 } : {}),
-      roughness: entry.grain === 'fiber' ? 1.0 : 0.92,
+      roughness: 1.0,
       metalness: 0.0,
       vertexColors: true,
     });
@@ -823,9 +991,13 @@ export function initRender(canvas) {
       bump.anisotropy = Math.min(8, maxAniso);
       bump.repeat.copy(map.repeat);
     }
+    // Phase 20: standing-seam metal is painted steel, not masonry — it takes
+    // a low-sun glint the way brick never does. Everything else stays matte.
+    const metal = entry.grain === 'rib';
     m = new THREE.MeshStandardMaterial({
       map, ...(bump ? { bumpMap: bump, bumpScale: 0.8 } : {}),
-      roughness: 0.92, metalness: 0, vertexColors: true,
+      roughness: metal ? 0.58 : 0.92, metalness: metal ? 0.18 : 0,
+      vertexColors: true,
     });
     facadeMats.set(key, m);
     return m;
@@ -1244,6 +1416,7 @@ export function initRender(canvas) {
     for (const m of lampMats.values()) m.emissiveIntensity = lampLevel * LAMP_GLOW;
 
     placeSun();
+    placeClouds();
     markLightsDirty();
     applyAmbient();
     return envState;
@@ -1254,11 +1427,13 @@ export function initRender(canvas) {
   //   baseAmbient   the sky's own contribution, written by the palette, on the
   //                 sky-coloured `ambient`
   //   fillAmbient   the building's, on the lamp-coloured `houseAmbient` — the
-  //                 unbudgeted fixtures' spill, plus a modest house term so an
-  //                 *unfurnished* school at night is dim rather than pitch
-  //                 black (a design with no fixtures in it still has a ceiling
-  //                 full of the generic troffers `buildFloor` bakes in, and
-  //                 this is them)
+  //                 unbudgeted fixtures' spill. Since Phase 20 the generic
+  //                 ceiling troffers are real sources in the budget
+  //                 (lights.js's `trofferSources`), so the flat house guess
+  //                 that used to stand in for them (`HOUSE_FILL`, 0.32 of
+  //                 made-up light) is gone: an unfurnished school at night is
+  //                 lit by its own ceiling's spill, which the budget counts
+  //                 rather than invents
   //   the edit floor, below
   //
   // The edit floor is the one concession the sun makes to the tool. A floor
@@ -1277,7 +1452,6 @@ export function initRender(canvas) {
   let baseAmbient = 0.35;
   let baseHemi = 1.15;
   let fillAmbient = 0;
-  const HOUSE_FILL = 0.32;
   const EDIT_MIN_AMBIENT = 0.62;
   const EDIT_MIN_HEMI = 0.85;
   const EDIT_TINT = 0.6;
@@ -1363,7 +1537,7 @@ export function initRender(canvas) {
       l.penumbra = c.penumbra ?? 0.4;
       l.intensity = c.lm * LUMENS_TO_CANDELA * LIGHT_GAIN * lampLevel;
     }
-    fillAmbient = (spillAmbient(spillLm) + HOUSE_FILL) * lampLevel;
+    fillAmbient = spillAmbient(spillLm) * lampLevel;
     applyAmbient();
   }
 
@@ -1377,9 +1551,13 @@ export function initRender(canvas) {
   // gym's high bays light the gym.
   const LIGHT_GAIN = 0.14;
 
-  function render() {
+  function render(dt = 0) {
     if (mode === 'edit') applyEditCamera();
     else updateWalkLabels();
+    // The cloud deck drifts on the frame clock — slowly enough that a
+    // screenshot and its retake match, fast enough that a long stand still
+    // isn't a matte painting.
+    if (!cloudStill) cloudUniforms.uTime.value += Math.min(dt, 0.1);
     const cam = mode === 'edit' ? editCamera : walkCamera;
     // The pool is ranked from wherever you are actually looking from — the
     // orthographic camera's own position while editing (200ft up, so almost
@@ -5578,11 +5756,14 @@ export function initRender(canvas) {
     // the sun is doing the work.
     lightReport(eye) {
       const cap = lightPool.length;
-      if (!built) return { sources: 0, clustered: 0, lit: 0, cap, burning: false };
+      if (!built) return { sources: 0, troffers: 0, clustered: 0, lit: 0, cap, burning: false };
       const at = eye || (mode === 'walk' ? walkCamera.position : { x: editView.x, y: 12, z: editView.z });
       const r = budgetFor(built, catalogEntry, at, { floorHt: built.floorHt, cap });
       return {
         sources: r.sources,
+        // Phase 20: the ceiling's own pans, counted apart from what somebody
+        // placed — the readout keeps the two honest about each other.
+        troffers: r.troffers,
         clustered: r.clustered,
         lit: lampLevel > 0 ? r.lit.length : 0,
         cap,

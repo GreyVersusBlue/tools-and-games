@@ -194,11 +194,18 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     const feet = body.y - EYE_H;
     const level = world
       ? storeyAt(world, feet, groundAt(site, body.x, body.z)) + 1 : 1;
+    // Phase 19: the lift's call panel says its own key. E is listed nowhere a
+    // walker can see once the pointer is locked, and the lift is the one
+    // thing in a walk you have to *ask* for — so standing at its doors, the
+    // HUD is the panel and it names the button.
+    const atLift = !riding && !ghost && lifts
+      && liftAtHand(lifts, body.x, body.z, level - 1);
     const text = follow && follow.agent
       ? `Level ${level} · following ${follow.agent.name} (${follow.mode === 'fps' ? 'first person' : 'over the shoulder'})`
       : riding
         ? `Level ${level} · ${riding}`
-        : `Level ${level} · ${ghost ? 'ghost (no-clip)' : 'walking'}`;
+        : `Level ${level} · ${ghost ? 'ghost (no-clip)' : 'walking'}` +
+          (atLift ? ' · at the lift — E calls it' : '');
     if (text === hudText) return;
     hudText = text;
     opts.onHud(text);

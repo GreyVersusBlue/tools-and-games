@@ -38,7 +38,9 @@
 //
 // Pure module: no three.js. Exercised by test/lights.test.mjs.
 
-import { FLOOR_H } from './grid.js';
+import { FLOOR_H, WALL_H, CELL } from './grid.js';
+import { shapesOf, shapeBBox, pointInShape } from './shapes.js';
+import { floorCuts, inFloorCut } from './stairs.js';
 
 // How many real lights the scene will carry at once. The pool is fixed rather
 // than grown and shrunk on demand: three.js compiles a shader program per
@@ -136,6 +138,57 @@ export function lightSources(state, catalogEntry, floorHt = null) {
       count: 1,
     });
   }
+  return out;
+}
+
+// ---------- the ceiling's own troffers ----------
+//
+// Phase 20. Every room's ceiling has carried generic recessed troffers since
+// Phase 1 — the renderer bakes one emissive pan per 8ft lattice bay, clipped
+// to the room — and for seventeen phases they glowed without emitting: the
+// only light they shed was a flat ambient guess (`HOUSE_FILL`, render-side).
+// This makes them sources like any placed fixture, walking the *same* 8ft
+// lattice the renderer bakes (odd cells both ways, centre of the cell,
+// skipping stair cuts), so the light in a room comes from exactly the pans
+// you can see in its ceiling. The clustering stage then does what it has
+// always done — a classroom's four pans merge into one source in the middle
+// of the room — which is the "clustered per room" the budget was built for.
+//
+// The output per pan is deliberately below a real 2x4 troffer's 4,000lm:
+// these are the building's unspecified base lighting, and a placed fixture
+// should always read brighter than the wallpaper it is competing with.
+// Tuned against the night walkthrough rather than a photometry table: a pan
+// per 8ft bay at a real troffer's 4,000lm blew a corridor out to white the
+// moment the clusters, the spill and the night exposure lift all arrived at
+// once. 1,000lm a pan puts a four-pan classroom cluster at about one real
+// 2x4's output, which is what the eye actually expects of base lighting.
+export const GENERIC_TROFFER = { lm: 1000, color: '#fff4e2', range: 22 };
+
+export function trofferSources(state, floorHt = null) {
+  if (!state || !Array.isArray(state.floors)) return [];
+  const ht = floorHt || state.floorHt || FLOOR_H;
+  const out = [];
+  state.floors.forEach((floor, i) => {
+    const ceilCuts = floorCuts(state, i + 1);
+    for (const shape of shapesOf(floor)) {
+      const bb = shapeBBox(shape);
+      for (let z = Math.floor(bb.z0 / CELL) | 0; z <= Math.ceil(bb.z1 / CELL); z++) {
+        for (let x = Math.floor(bb.x0 / CELL) | 0; x <= Math.ceil(bb.x1 / CELL); x++) {
+          if (x % 2 !== 1 || z % 2 !== 1) continue;
+          const cx = (x + 0.5) * CELL, cz = (z + 0.5) * CELL;
+          if (!pointInShape(shape, cx, cz)) continue;
+          if (inFloorCut(ceilCuts, cx, cz)) continue;
+          out.push({
+            id: 0, type: 'ceiling-troffer', floor: i,
+            x: cx, y: i * ht + WALL_H - 0.3, z: cz,
+            lm: GENERIC_TROFFER.lm, color: GENERIC_TROFFER.color,
+            range: GENERIC_TROFFER.range, kind: 'point',
+            outdoor: false, count: 1,
+          });
+        }
+      }
+    }
+  });
   return out;
 }
 
@@ -262,12 +315,19 @@ export function budgetLights(clusters, eye, cap = MAX_DYNAMIC_LIGHTS, spotCap = 
 }
 
 // The whole budget in one call, for a renderer that just wants the answer.
+//
+// Since Phase 20 the ceiling's generic troffers are in it by default —
+// `opts.troffers: false` is for a caller asking only about placed fixtures.
+// `sources` still counts what somebody placed; `troffers` counts the pans
+// the building came with, so a readout can keep the two apart.
 export function budgetFor(state, catalogEntry, eye, opts = {}) {
   const sources = lightSources(state, catalogEntry, opts.floorHt);
-  const clusters = clusterSources(sources, opts.cellFt);
+  const troffers = opts.troffers === false ? [] : trofferSources(state, opts.floorHt);
+  const clusters = clusterSources(sources.concat(troffers), opts.cellFt);
   const out = budgetLights(clusters, eye, opts.cap ?? MAX_DYNAMIC_LIGHTS,
     opts.spotCap ?? MAX_SPOT_LIGHTS);
   out.sources = sources.length;
+  out.troffers = troffers.length;
   return out;
 }
 
@@ -275,8 +335,14 @@ export function budgetFor(state, catalogEntry, eye, opts = {}) {
 // this is the term that keeps an unbudgeted corridor from going black, not a
 // global illumination solution, and letting it run with total lumens would
 // wash the whole building out the moment somebody stamped fifty troffers.
+//
+// Phase 20 lowered the ceiling on it: with the generic troffers in the
+// budget, every school saturates the spill — a whole building's ceiling is
+// always over SPILL_FULL_LM — so the cap *is* the night-time fill level, and
+// 0.55 on top of twelve real lights washed the interior out. 0.30 sits where
+// the old flat house guess (0.32) sat, now earned instead of invented.
 export const SPILL_FULL_LM = 60000;   // lumens at which the fill is maxed out
-export const SPILL_MAX = 0.55;
+export const SPILL_MAX = 0.30;
 
 export function spillAmbient(spillLm) {
   const lm = Number.isFinite(spillLm) && spillLm > 0 ? spillLm : 0;

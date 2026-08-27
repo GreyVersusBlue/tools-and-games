@@ -1,7 +1,7 @@
 # School Generator — Feature Wishlist
 
-**Status: three arcs — eighteen phases — are shipped; arc four, Phases 19–24,
-is planned below and none of it is started.** Three arcs took a grid editor
+**Status: twenty phases are shipped — three arcs plus the first two phases of
+arc four. Phases 21–24 are planned below and not started.** Three arcs took a grid editor
 to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -191,9 +191,8 @@ and add to this list rather than starting a new one.
   heights.
 - The code edition is printed, not applied — three editions are offered and
   none changes a factor or limit.
-- Findings themselves are still only in the report panel and the CSV; the
-  title-block panels carry a verdict and a count, not the finding text.
-  → *Phase 19.*
+- A title-block panel prints its three worst findings and counts the rest;
+  the full list still lives only in the report panel and the CSV.
 
 **The crowd**
 - An imported timetable has no teachers (the `Tools/` CSV has no teacher
@@ -228,15 +227,16 @@ and add to this list rather than starting a new one.
   its own half-width. → *the footprint half: Phase 22.*
 
 **Light, sound and picture**
-- Generic ceiling troffers don't emit (twelve-light budget), and there are
-  no shadows from the building's own lights; light doesn't respect geometry,
-  only distance. → *the troffers: Phase 20.*
-- No clouds — a canvas smear reads worse than a clean gradient, and real
-  clouds are a shader project. → *Phase 20.*
+- There are still no shadows from the building's own lights, and light
+  doesn't respect geometry, only distance — a troffer shines through the
+  wall its range crosses.
+- The cloud deck is one coverage and one drift everywhere — no weather, no
+  wind, no overcast day.
 - Transmission loss is one number per situation rather than a ray cast, and
   there are no early reflections. → *the ray: Phase 24.*
-- Photo mode and the minimap are both desktop-shaped, not laid out for a
-  phone. → *Phase 19.*
+- The phone got photo mode and the minimap (and, it turned out, the ability
+  to boot at all — a missing element had been a TypeError on every touch
+  device); the topbar and the tool panels are still desktop-shaped.
 
 **The room model**
 - A boundary that bounds no room cannot be drawn (a free-standing garden
@@ -316,7 +316,7 @@ surgery — runs on Claude Fable 5; surface work — DOM wiring, CSS, render
 presets — runs on Claude Opus 5 or Claude Sonnet 5. No phase in this arc is
 small enough for Haiku, and that is a judgment, not an oversight.
 
-## Phase 19 — The first five minutes
+## Phase 19 — The first five minutes *(shipped)*
 
 **The tool rewards the hundredth hour and punishes the first five minutes.**
 
@@ -329,33 +329,40 @@ of one sentence — are hidden behind knowing they exist. The phase is judged
 by one test: somebody who has never seen the tool reaches a walkable school
 in five minutes without opening this file.
 
-- [ ] **An opening moment.** First visit with no autosave offers three doors —
+- [x] **An opening moment.** First visit with no autosave offers three doors —
   walk a sample school, generate one from a sentence, start with a blank
   sheet — the existing `sample.js` and `brief.js`/`generate.js` behind three
   buttons instead of an empty lattice.
-- [ ] **A command palette.** Ctrl-K, fuzzy-matched over every tool, verb and
+- [x] **A command palette.** Ctrl-K, fuzzy-matched over every tool, verb and
   toggle `main.js` already wires; every result shows its hotkey, so the
   palette *is* the cheat-sheet tutor.
-- [ ] **One hint at a time.** The per-tool `<kbd>` panels become progressive:
-  surface the single next-useful hint at the moment it applies (first prop
-  placed → "R rotates"), never forty rows at once.
-- [ ] **The walk-mode sheet gets an audit.** Hotkeys grouped by how often a
-  guest needs them; anything listed nowhere but the sheet gets a second
-  surface in the world — the lift can say its own key on its own call panel.
-- [ ] **Photo mode and the minimap learn the phone.** Both are desktop-shaped
-  today; lay them out for a narrow viewport.
-- [ ] **Findings go where the eye is.** The title-block panels carry finding
-  text, not just a verdict and a count, and a finding clicks through to its
-  room.
+- [x] **One hint at a time.** The per-tool `<kbd>` panels fold behind a
+  "Keys & tips" disclosure, and a coach surfaces the single next-useful hint
+  on the status line at the moment it applies (first prop placed →
+  "R rotates"), once per browser.
+- [x] **The walk-mode sheet gets an audit.** Hotkeys grouped by how soon a
+  guest needs them (First steps / Seeing more / People & time / Play &
+  capture); the lift says its own E on the HUD when you stand at its doors.
+- [x] **Photo mode and the minimap learn the phone.** The photo panel is a
+  two-column top sheet on a narrow viewport; the minimap shrinks and, on a
+  touch walk, moves out from under the joystick.
+- [x] **Findings go where the eye is.** The title-block panels print their
+  three worst findings in words (`panelFindings` in report.js), and an open
+  finding in the report panel carries "⌖ Show it on the plan" — the editor
+  pans to the room, the walkthrough lights it on the minimap.
 
-*Leans on:* `main.js`'s key routing, the per-tool panels in `index.html`,
-`sample.js`, `generate.js`; *collides with:* the "Ctrl-combos route through
-`main.js`" convention — the palette must route through the same table, not
-grow a rival one. *Save:* — none (a first-run flag is a fact about this
-browser, so `localStorage`, never the file). *Model:* **Claude Opus 5** —
-product judgment across the whole surface; no pure-module work.
+*What fought back:* running the tool on an actual phone found that it never
+booted on one — `main.js` had written a touch hint into an element two
+redesigns had removed, a TypeError before init finished. And the chrome pass
+found `--accent-soft` defined as `var(--accent-soft)`: every active-state
+wash had been transparent for two phases. Both are the kind of bug only
+*looking* finds, which is what the phase was. *Save:* — none, as planned;
+three localStorage flags (`sg-welcome-seen`, `sg-hints-said`, and the visual
+harness pre-seeds the first). The palette routes through the same handlers
+the hotkeys call — no rival keymap — and is under the visual harness as
+`chrome-cmdk`, with the opening moment as `chrome-welcome`.
 
-## Phase 20 — Worth a screenshot
+## Phase 20 — Worth a screenshot *(shipped)*
 
 **The picture is honest. Honest is not yet worth looking at.**
 
@@ -366,26 +373,32 @@ belongs to the pictures the tool makes. Everything here writes state that
 already exists: the `env` record already knows the sun, the date and the
 exposure, and this phase gives it five good answers instead of six sliders.
 
-- [ ] **Time-of-day moods, one click each.** Morning / noon / golden hour /
-  dusk / night as presets that write the existing `env` record.
-- [ ] **Troffers that light.** The generic ceiling troffers finally emit,
-  clustered per room inside the twelve-light budget the way `lights.js`
-  already clusters other emitters.
-- [ ] **Clouds worth having, or none.** A shader-noise sky layer; the backlog
-  already ruled that a canvas smear reads worse than a clean gradient.
-- [ ] **Materials with grain.** Procedural roughness and tone variation per
-  finish family — generated, not downloaded; the no-dependencies stance
-  holds.
-- [ ] **The chrome earns the scene.** A deliberate CSS pass over
-  `index.html`: type scale, spacing, panel hierarchy, dark chrome around the
-  canvas.
+- [x] **Time-of-day moods, one click each.** Morning / noon / golden hour /
+  dusk / night — `MOODS`/`applyMood` in sky.js write the existing `env`
+  record whole (the time *and* the lights settled), and the row renders in
+  both the sky panel and photo mode.
+- [x] **Troffers that light.** `trofferSources` in lights.js walks the same
+  8ft lattice the renderer bakes its ceiling pans on, and the budget carries
+  them by default — clustered per room, ranked against placed fixtures, the
+  unbudgeted rest spilling into the ambient fill honestly. The flat
+  `HOUSE_FILL` guess is gone: the night fill is now the ceiling's own spill.
+- [x] **Clouds worth having, or none.** A four-octave value-noise fbm shader
+  on a second shell of the sky dome — no texture, no pass, colours from the
+  same palette table as everything else, still under prefers-reduced-motion.
+- [x] **Materials with grain.** `makeFinishRoughness` gives each finish
+  family its own sheen map (matte pile on carpet, per-plank satin on wood,
+  polish with matte chips on terrazzo) where every floor had shipped wearing
+  VCT's semi-gloss; standing-seam metal facades take a low-sun glint.
+- [x] **The chrome earns the scene.** Panels read as dark glass (hairline
+  top light, deeper drop), native selects and scrollbars claimed, active
+  states actually visible — see the `--accent-soft` bug under Phase 19.
 
-*Leans on:* `sky.js`, `lights.js`, the composer in `render.js`, the `env`
-record; *collides with:* the twelve-light budget and frame time on a phone —
-every mood must hold 60fps wherever the current scene does. *Save:* — none
-(presets write fields v11 already has). *Model:* **Claude Sonnet 5** — craft
-against a visual checklist, render-side and CSS only; nothing touches the
-model layer.
+*What fought back:* the first night walkthrough was white. Real troffers per
+pan plus a spill that every school now saturates plus the night exposure
+lift stacked into a washout, and the tune that landed is stated in
+lights.js: 1,000lm a pan (a four-pan cluster ≈ one real 2x4) and `SPILL_MAX`
+down to 0.30 — the level the old invented house fill sat at, now earned.
+*Save:* — none, as planned; a mood writes fields v11 already has.
 
 ## Phase 21 — Line of sight
 

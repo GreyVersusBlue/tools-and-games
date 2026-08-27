@@ -20,7 +20,7 @@ import { SITE_SURFACES, SITE_MARKINGS, surfaceEntry, markingEntry, regionArea, s
 import { terrainField, terrainRange, ensureTerrain, groundAt } from './terrain.js';
 import { ROOF_STYLES, ensureRoof, normalizeRoof, isPitched, roofPlan } from './roof.js';
 import {
-  SUN_PRESETS, MONTH_NAMES, MAX_LAT, normalizeEnv, presetMinutes, daysInMonth,
+  MOODS, applyMood, MONTH_NAMES, MAX_LAT, normalizeEnv, daysInMonth,
   formatClock, formatDate, formatLat, skyState,
 } from './sky.js';
 import { initWalkthrough } from './walkthrough.js';
@@ -168,7 +168,11 @@ const sayIfMigrated = () => {
   migrationNote = null;
 };
 
-let state = loadAutosave({ onMigrate }) || buildSampleSchool();
+// Whether this browser had work in it decides more than the starting state:
+// a first visit gets the opening moment (Phase 19), a returning one gets its
+// design back and no ceremony.
+const restoredAutosave = loadAutosave({ onMigrate });
+let state = restoredAutosave || buildSampleSchool();
 
 const renderApi = initRender(canvas);
 
@@ -254,6 +258,9 @@ function designChanged(info = {}) {
     retargetAll(life.ctx, life.agents);
     renderLifeReadout();
   }
+  // One hint, at the moment it first applies — see coachTick. After the
+  // stroke lands, never during one.
+  if (!info.throttled) coachTick();
   // ...and the report, which is the most derived thing in the building: an
   // edit invalidates every number in it. It is a second of arithmetic on a
   // real school, so it is marked stale now and rebuilt when the drawing hand
@@ -435,10 +442,13 @@ function resetTouchWalkUI() {
 }
 
 if (isTouch) {
+  // The body class hides the keyboard sheet; the hint line replaces it with
+  // the four gestures a thumb actually has.
+  document.body.classList.add('touch');
   $('walk-start').textContent = 'Tap to Walk';
   $('walk-controls-hint').innerHTML =
     'Left joystick to move &nbsp;·&nbsp; drag anywhere else to look<br />' +
-    '🏃 toggles sprint &nbsp;·&nbsp; ⤒ jumps<br />' +
+    '🏃 toggles sprint &nbsp;·&nbsp; ⤒ jumps &nbsp;·&nbsp; 🛗 calls the lift<br />' +
     '👥 Life fills the building with people<br />' +
     '✕ (top right) exits';
 }
@@ -523,8 +533,9 @@ $('touch-exit').addEventListener('click', () => setMode('edit'));
 walk.controls.addEventListener('lock', () => closeModal(walkOverlay));
 walk.controls.addEventListener('unlock', () => {
   // In photo mode the released pointer is the point — you let it go to reach
-  // the lens controls — so the overlay stays down.
-  if (mode === 'walk' && !photoMode) openWalkOverlay();
+  // the lens controls — so the overlay stays down. Same when the command
+  // palette asked for the pointer: it hands the overlay back itself.
+  if (mode === 'walk' && !photoMode && !cmdkIsOpen()) openWalkOverlay();
 });
 
 // --- tool buttons ---
@@ -552,6 +563,62 @@ const HINTS = {
   site: 'Site — lay hardscape and fields, or grade the ground. Region: click corners, close the loop. Grade: drag to raise, ⇧ to lower, Alt to smooth.',
   overlay: 'Overlay — a plan or a sketch to trace over. Load an image, measure something you know the length of, say what it is, and the picture is scaled to match. Drag to move, R to turn.',
 };
+
+// --- one hint at a time (Phase 19) ---
+//
+// The per-tool panels used to teach with a block of kbd rows — everything at
+// once, which is the same as nothing. The rows are now folded behind a
+// "Keys & tips" disclosure in index.html, and this is the other half: the
+// single next-useful hint, surfaced on the status line at the moment it
+// first applies (first prop placed → "R rotates"), once per browser. Said
+// hints live in localStorage because what somebody has already been told is
+// a fact about their browser, never about a design.
+const COACH_KEY = 'sg-hints-said';
+let coachSaid = {};
+try { coachSaid = JSON.parse(localStorage.getItem(COACH_KEY) || '{}'); } catch { coachSaid = {}; }
+
+function coach(key, text) {
+  if (coachSaid[key]) return false;
+  coachSaid[key] = 1;
+  try { localStorage.setItem(COACH_KEY, JSON.stringify(coachSaid)); } catch { /* fine */ }
+  $('status').textContent = `💡 ${text}`;
+  return true;
+}
+
+// The milestones, checked after an edit lands. Each is cheap arithmetic on
+// the state, guarded by the tool that just did the thing — so the hint
+// arrives exactly when its subject is on the board, and never again.
+function coachTick() {
+  const t = editor.tool;
+  const props = (state.props || []).length;
+  if (t === 'prop' && props === 1) {
+    coach('prop-first', 'First piece placed. R rotates it, drag moves it, Delete removes it.');
+    return;
+  }
+  if (t === 'prop' && props === 4) {
+    coach('prop-many', 'Drag across empty floor to box-select — Ctrl+C/V/D copy, paste and duplicate.');
+    return;
+  }
+  if (t === 'stair' && linksFrom(state, state.currentFloor).length === 1) {
+    coach('stair-first', 'Drag the run to move it. The blue outline is the hole it opens in the level above.');
+    return;
+  }
+  if (t === 'door') {
+    const doors = state.floors.reduce((n, fl) => n + (fl.shapes || []).reduce(
+      (m, sh) => m + sh.rings.reduce((k, r) => k + r.openings.length, 0), 0), 0);
+    if (doors === 1) {
+      coach('door-first', 'Click the same spot again to remove it — a different kind swaps it.');
+      return;
+    }
+  }
+  if (t === 'wall') {
+    coach('wall-first', 'G cycles solid / glass / railing, and , or . bends a wall into an arc.');
+    return;
+  }
+  if (state.floors.length === 2) {
+    coach('floor-second', '[ and ] switch storeys — the level below ghosts through so walls line up.');
+  }
+}
 
 function selectTool(t) {
   editor.setTool(t);
@@ -2203,21 +2270,36 @@ function envChanged() {
   autosave(state);
 }
 
-const envPresets = $('env-presets');
-SUN_PRESETS.forEach((p) => {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.dataset.preset = p.key;
-  b.title = `Jump to ${p.label.toLowerCase()} on this date, at this latitude`;
-  b.innerHTML = `<span aria-hidden="true">${p.icon}</span> ${p.label}`;
-  b.addEventListener('click', () => {
-    state.env.minutes = presetMinutes(p.key, state.env);
-    envChanged();
-    $('status').textContent =
-      `Sky — ${p.label.toLowerCase()}, ${formatClock(state.env.minutes)} on ${formatDate(state.env.month, state.env.day)}.`;
+// Phase 20: five moods, one click each. A mood writes the whole look — the
+// time on this date at this latitude, and the lights settled to match — so
+// the row is a choice of pictures rather than a scrubber with seven detents.
+// The same row is rendered into photo mode, because that is where the
+// pictures get taken; both rows call this one function.
+function setMood(key) {
+  const mood = MOODS.find((m) => m.key === key);
+  if (!mood) return;
+  state.env = applyMood(state.env, key);
+  envChanged();
+  if (photoMode) renderPhotoPanel();
+  $('status').textContent =
+    `Sky — ${mood.label.toLowerCase()}, ${formatClock(state.env.minutes)} on ${formatDate(state.env.month, state.env.day)}.`;
+}
+
+function buildMoodRow(host) {
+  MOODS.forEach((m) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.preset = m.key;
+    b.title = `${m.label} on this date, at this latitude — time and lights in one click`;
+    b.innerHTML = `<span aria-hidden="true">${m.icon}</span> ${m.label}`;
+    b.addEventListener('click', () => setMood(m.key));
+    host.appendChild(b);
   });
-  envPresets.appendChild(b);
-});
+}
+
+const envPresets = $('env-presets');
+buildMoodRow(envPresets);
+buildMoodRow($('photo-moods'));
 
 const envMonth = $('env-month');
 MONTH_NAMES.forEach((name, i) => {
@@ -2359,10 +2441,15 @@ function renderEnvReadout() {
   const burning = lights.burning
     ? `${lights.lit} lit here now`
     : (sky.daylight ? 'off — daylight' : 'off');
-  const fixtures = lights.sources
-    ? `${lights.sources} fixture${lights.sources === 1 ? '' : 's'} · ` +
-      `${lights.clustered} group${lights.clustered === 1 ? '' : 's'}, ${lights.cap} live at once · ${burning}`
-    : `No fixtures placed — the ceiling's own troffers are ${lights.burning ? 'on' : 'off'}.`;
+  // Phase 20: the ceiling's generic troffers are in the budget now, counted
+  // apart from placed fixtures so the line stays honest about which is which.
+  const fixtures = lights.sources || lights.troffers
+    ? [
+      lights.sources ? `${lights.sources} fixture${lights.sources === 1 ? '' : 's'}` : null,
+      lights.troffers ? `${lights.troffers} ceiling troffer${lights.troffers === 1 ? '' : 's'}` : null,
+    ].filter(Boolean).join(' + ') +
+      ` · ${lights.clustered} group${lights.clustered === 1 ? '' : 's'}, ${lights.cap} live at once · ${burning}`
+    : `Nothing here emits yet — draw a room and its ceiling lights come with it.`;
   $('env-readout').innerHTML =
     `<b>${sky.phase}</b><br />` +
     `Sun ${sky.sun.altitude.toFixed(0)}° up, bearing ${sky.sun.azimuth.toFixed(0)}° (${bearingName(sky.sun.azimuth)})<br />` +
@@ -3173,11 +3260,64 @@ const VERDICTS = {
   ok: { mark: '✓', line: () => 'Passes every check this tool knows how to make.' },
 };
 
+// Phase 19: a finding that names somewhere can take you there. Rooms carry
+// ids the nav graph resolves to a point; doors and exits carry the point
+// itself. A finding about the design as a whole (three exits where four are
+// needed) has nowhere to go and gets no button — same rule findingMarks
+// applies on the minimap.
+function findingPlace(f) {
+  const room = (f.rooms || []).find((r) => r && r.id) || null;
+  const door = [...(f.doors || []), ...(f.exits || [])]
+    .find((d) => d && Number.isFinite(d.x) && Number.isFinite(d.z)) || null;
+  return room || door ? { room, door } : null;
+}
+
 function findingHTML(f, i) {
+  const goable = !!findingPlace(f);
   return `<div class="finding ${f.level}" data-finding="${i}">` +
     `<button type="button" aria-expanded="false">` +
     `<b>${esc(f.title)}</b><span class="why">${esc(f.detail)}</span>` +
-    `</button></div>`;
+    `</button>` +
+    (goable
+      ? `<button type="button" class="goto" data-goto="${i}">⌖ Show it on the plan</button>`
+      : '') +
+    `</div>`;
+}
+
+// Take the eye to a finding: while editing, the plan pans to the room it
+// names and switches to its storey; while walking, the map in your hand
+// lights up with exactly that finding.
+function showFinding(i) {
+  const f = report.data && report.data.findings[i];
+  if (!f) return;
+  const place = findingPlace(f);
+  if (!place) return;
+  if (mode === 'walk') {
+    miniOn = true;
+    setMiniFindings(true);
+    refreshMiniMarks();
+    const idx = miniMarks.findIndex((m) => m.title === f.title);
+    if (idx >= 0) miniMarkIndex = idx;
+    updateMinimapButtons();
+    return;
+  }
+  let at = null, floor = 0;
+  if (place.room) {
+    const nav = buildNav(state);
+    const node = nav.node(place.room.id);
+    if (node) { at = { x: node.x, z: node.z }; floor = place.room.floor ?? 0; }
+  }
+  if (!at && place.door) {
+    at = { x: place.door.x, z: place.door.z };
+    floor = place.door.floor ?? 0;
+  }
+  if (!at) return;
+  goToFloor(floor);
+  renderApi.editView.x = at.x;
+  renderApi.editView.z = at.z;
+  renderApi.editView.height = Math.min(renderApi.editView.height, 140);
+  $('status').textContent = `${f.title} — ` +
+    `${place.room && place.room.name ? place.room.name : 'here'}, ${floorLabel(floor)}.`;
 }
 
 // Exit discharge, as the one or two rows a panel has room for. Empty for a
@@ -3350,8 +3490,11 @@ function renderReportPanel() {
   $('report-readout').innerHTML = reportSections(r);
 }
 
-// A finding is a headline until you ask it why.
+// A finding is a headline until you ask it why — and since Phase 19, an
+// address once you ask where.
 $('report-findings').addEventListener('click', (e) => {
+  const goto = e.target.closest('.goto');
+  if (goto) { showFinding(Number(goto.dataset.goto)); return; }
   const btn = e.target.closest('button');
   const host = btn && btn.closest('.finding');
   if (!host) return;
@@ -3965,6 +4108,17 @@ for (const [id, scale] of [['photo-1x', 1], ['photo-2x', 2], ['photo-4x', 4]]) {
 
 // --- keyboard shortcuts ---
 document.addEventListener('keydown', (e) => {
+  // The palette's own key, first and in both modes — Ctrl-K is the one
+  // shortcut that must work even while something else has the keyboard.
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === 'KeyK') {
+    e.preventDefault();
+    cmdkIsOpen() ? cmdkClose() : cmdkOpen();
+    return;
+  }
+  if (e.code === 'Escape' && cmdkIsOpen()) { cmdkClose(); return; }
+  if (e.code === 'Escape' && !$('welcome-overlay').classList.contains('hidden')) {
+    closeModal($('welcome-overlay')); return;
+  }
   if (e.code === 'Escape' && !designsOverlay.classList.contains('hidden')) {
     closeModal(designsOverlay); return;
   }
@@ -4087,6 +4241,210 @@ document.addEventListener('keydown', (e) => {
 
 window.addEventListener('beforeunload', () => autosaveNow(state));
 window.addEventListener('resize', () => { renderApi.resize(); reserveForFloorPanel(); });
+
+// --- the command palette (Phase 19) ---
+//
+// Ctrl-K, fuzzy-matched over every tool, verb and toggle this file wires.
+// The one rule, from the wishlist's own collision note: the palette routes
+// through the same handlers the hotkeys route through — every `run` below is
+// the click or the call the key already makes, so there is exactly one
+// keymap and the palette is its index. Each result prints its hotkey, which
+// is what makes the palette the cheat-sheet tutor rather than a rival to it.
+
+const cmdkOverlay = $('cmdk-overlay');
+const cmdkInput = $('cmdk-input');
+const cmdkList = $('cmdk-list');
+
+const TOOL_NAMES = {
+  floor: 'Floor', wall: 'Wall', door: 'Door', room: 'Room', erase: 'Erase',
+  poly: 'Polygon', vertex: 'Shape', prop: 'Furniture', stair: 'Stairs',
+  template: 'Layout', site: 'Site', overlay: 'Overlay',
+};
+const TOOL_HOTKEY = {
+  floor: '1', wall: '2', door: '3', room: '4', erase: '5', poly: '6',
+  vertex: '7', prop: '8', stair: '9', template: '0', site: '-', overlay: '=',
+};
+
+// Built fresh at each opening: half the labels depend on where you are
+// standing (Walk vs Edit, Populate vs Clear), and forty objects is nothing.
+function cmdkCommands() {
+  const out = [];
+  const walkFirst = (fn) => () => { if (mode !== 'walk') setMode('walk'); fn(); };
+  for (const [t, key] of Object.entries(TOOL_HOTKEY)) {
+    out.push({
+      name: `Tool: ${TOOL_NAMES[t]}`, hint: HINTS[t], keys: [key],
+      run: () => { if (mode !== 'edit') setMode('edit'); selectTool(t); },
+    });
+  }
+  out.push(
+    { name: mode === 'walk' ? 'Back to the editor' : 'Walk through the building',
+      hint: 'First person — walls stop you, doors open, stairs climb', keys: ['Tab'],
+      run: () => setMode(mode === 'edit' ? 'walk' : 'edit') },
+    { name: 'Generate a school…', hint: 'A whole building from a student count and a sentence',
+      keys: [], run: () => $('gen-btn').click() },
+    { name: 'New empty school', hint: 'A blank sheet — the current design stays in undo',
+      keys: [], run: () => $('new-btn').click() },
+    { name: 'Save design to a file', hint: 'Download the whole design as JSON',
+      keys: [], run: () => $('save-btn').click() },
+    { name: 'Load a design file', hint: 'Open a saved JSON design',
+      keys: [], run: () => $('load-btn').click() },
+    { name: 'Saved designs…', hint: 'Named designs kept in this browser',
+      keys: [], run: () => $('designs-btn').click() },
+    { name: 'Export plans…', hint: 'Printable sheets — PNG, PDF, or the building as glTF',
+      keys: [], run: () => $('export-btn').click() },
+    { name: 'Share a link…', hint: 'The whole design in a URL, nothing uploaded',
+      keys: [], run: () => $('share-btn').click() },
+    { name: 'Session — draw with somebody', hint: 'Two people, one plan',
+      keys: [], run: () => $('session-btn').click() },
+    { name: 'Costs & phasing…', hint: 'The rate table, the estimate, the build order',
+      keys: [], run: () => $('cost-open').click() },
+    { name: 'Undo', hint: 'Take the last edit back', keys: ['Ctrl', 'Z'],
+      run: () => $('undo-btn').click() },
+    { name: 'Redo', hint: 'Put it back again', keys: ['Ctrl', 'Y'],
+      run: () => $('redo-btn').click() },
+    { name: 'Report panel', hint: 'Occupancy, egress, daylight, acoustics — the verdicts',
+      keys: ['M'], run: () => $('report-btn').click() },
+    { name: 'Sky panel', hint: 'The sun, the date, the building’s lights',
+      keys: ['Y'], run: () => $('env-btn').click() },
+    { name: 'Sound panel', hint: 'The mix, and how the room you’re in rings',
+      keys: ['U'], run: () => $('audio-btn').click() },
+    { name: 'School life panel', hint: 'People in the building, on a bell schedule',
+      keys: ['L'], run: () => $('life-btn').click() },
+    { name: life.on ? 'Clear the crowd' : 'Populate the building',
+      hint: 'Students and staff walking their timetable', keys: [],
+      run: () => $('life-toggle').click() },
+    { name: life.drill ? 'End the fire drill' : 'Fire drill',
+      hint: 'Sound the alarm, route everyone to the nearest exit', keys: ['K'],
+      run: () => lifeSetDrill(!life.drill) },
+    { name: 'Crowd heatmap', hint: 'Where the crowd has been', keys: ['H'],
+      run: () => $('life-heat').click() },
+    { name: 'Ring the bell', hint: 'From the bells the design holds, or where you stand',
+      keys: ['B'], run: () => $('audio-bell').click() },
+    { name: 'PA announcement', hint: 'Play one over the speakers', keys: ['N'],
+      run: () => $('audio-pa').click() },
+    { name: 'Toggle post-processing', hint: 'Bloom, ambient occlusion, depth of field',
+      keys: [], run: () => $('fx-btn').click() },
+    { name: 'Floor up', hint: 'Edit the storey above', keys: [']'],
+      run: () => goToFloor(state.currentFloor + 1) },
+    { name: 'Floor down', hint: 'Edit the storey below', keys: ['['],
+      run: () => goToFloor(state.currentFloor - 1) },
+    { name: 'Photo mode', hint: 'A lens on the walkthrough — FOV, focus, exposure',
+      keys: ['P'], run: walkFirst(() => setPhotoMode(true)) },
+    { name: 'Minimap', hint: 'The plan in your hand, while walking', keys: ['J'],
+      run: walkFirst(() => { miniOn = !miniOn; updateMinimapButtons(); }) },
+    { name: 'Findings on the minimap', hint: 'The report drawn onto the plan, worst first',
+      keys: ['O'], run: walkFirst(() => setMiniFindings(!miniFindings)) },
+    { name: 'Scavenger hunt', hint: 'Eight things hidden around the building',
+      keys: ['G'], run: walkFirst(() => $('walk-hunt').click()) },
+    { name: 'Guided tours', hint: 'Record a camera path, play it, film it',
+      keys: ['T'], run: walkFirst(() => {
+        if (document.body.classList.toggle('tours')) renderTourPanel();
+      }) },
+  );
+  for (const m of MOODS) {
+    out.push({
+      name: `Sky: ${m.label.toLowerCase()}`, hint: 'Time and lights in one click',
+      keys: [], run: () => setMood(m.key),
+    });
+  }
+  return out;
+}
+
+// Subsequence fuzzy match: every query character in order, scored toward
+// word starts and unbroken runs. Small on purpose — the list is forty rows,
+// not a codebase.
+function fuzzyScore(query, text) {
+  const q = query.toLowerCase().replace(/\s+/g, '');
+  const t = String(text || '').toLowerCase();
+  if (!q) return 0;
+  let ti = 0, score = 0, streak = 0;
+  for (const ch of q) {
+    const at = t.indexOf(ch, ti);
+    if (at < 0) return -1;
+    streak = at === ti && ti > 0 ? streak + 1 : 1;
+    const wordStart = at === 0 || ' :…—-'.includes(t[at - 1]);
+    score += streak * 2 + (wordStart ? 3 : 0) - Math.min(3, (at - ti) * 0.1);
+    ti = at + 1;
+  }
+  return score;
+}
+
+let cmdkItems = [];
+let cmdkSel = 0;
+
+function cmdkRender() {
+  const q = cmdkInput.value.trim();
+  const all = cmdkCommands();
+  cmdkItems = q
+    ? all
+      .map((c) => ({ c, s: Math.max(fuzzyScore(q, c.name) * 2, fuzzyScore(q, c.hint)) }))
+      .filter((r) => r.s >= 0)
+      .sort((a, b) => b.s - a.s)
+      .map((r) => r.c)
+    : all;
+  cmdkItems = cmdkItems.slice(0, 12);
+  cmdkSel = Math.min(cmdkSel, Math.max(0, cmdkItems.length - 1));
+  cmdkList.innerHTML = cmdkItems.length
+    ? cmdkItems.map((c, i) =>
+      `<button type="button" class="cmd${i === cmdkSel ? ' sel' : ''}" role="option" ` +
+      `aria-selected="${i === cmdkSel}" data-cmd="${i}">` +
+      `<span>${esc(c.name)}</span><span class="hint">${esc(c.hint || '')}</span>` +
+      `<span class="keys">${(c.keys || []).map((k) => `<kbd>${esc(k)}</kbd>`).join('')}</span>` +
+      `</button>`).join('')
+    : '<div class="empty">Nothing matches — the twelve tools are all under "Tool:".</div>';
+}
+
+function cmdkOpen() {
+  cmdkInput.value = '';
+  cmdkSel = 0;
+  cmdkRender();
+  // A locked pointer can't aim at a palette. Released here, and the unlock
+  // listener knows not to raise the walk overlay over it — the palette
+  // hands the walk overlay back when it closes instead.
+  if (mode === 'walk' && walk.controls.isLocked) walk.controls.unlock();
+  openModal(cmdkOverlay, cmdkInput);
+}
+const cmdkIsOpen = () => !cmdkOverlay.classList.contains('hidden');
+
+// After the palette leaves a walkthrough, the way back to the pointer lock
+// is the walk overlay's Click to Walk — so it comes back up unless a command
+// took us somewhere else (the editor, photo mode, a touch walk).
+function cmdkRestoreWalk() {
+  if (mode === 'walk' && !photoMode && !isTouch && !walk.controls.isLocked
+    && !document.body.classList.contains('touch-walk')) openWalkOverlay();
+}
+
+function cmdkClose() {
+  closeModal(cmdkOverlay);
+  cmdkRestoreWalk();
+}
+
+function cmdkRun(i) {
+  const c = cmdkItems[i];
+  closeModal(cmdkOverlay);
+  if (c) c.run();
+  cmdkRestoreWalk();
+}
+
+cmdkInput.addEventListener('input', () => { cmdkSel = 0; cmdkRender(); });
+cmdkInput.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const n = cmdkItems.length;
+    if (n) cmdkSel = (cmdkSel + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+    cmdkRender();
+    const sel = cmdkList.querySelector('.sel');
+    if (sel) sel.scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  if (e.key === 'Enter') { e.preventDefault(); cmdkRun(cmdkSel); return; }
+  if (e.key === 'Escape') { e.stopPropagation(); cmdkClose(); }
+});
+cmdkList.addEventListener('click', (e) => {
+  const btn = e.target.closest('.cmd');
+  if (btn) cmdkRun(Number(btn.dataset.cmd));
+});
+cmdkOverlay.addEventListener('click', (e) => { if (e.target === cmdkOverlay) cmdkClose(); });
 
 
 // ============================================================
@@ -5913,6 +6271,45 @@ initSessionPanel();
 openSharedDesign()
   .then(() => openCloudDesign())
   .then(() => joinFromFragment());
+
+// --- the opening moment (Phase 19) ---
+//
+// First visit, no autosave, no link that already knows where it is going:
+// three doors instead of a blank stare. Each door is something the tool has
+// had for phases — the sample school, the generator, the empty sheet — and
+// the whole feature is the introduction, not the thing introduced. The
+// first-run flag is a fact about this browser, so localStorage, never the
+// file.
+{
+  const overlay = $('welcome-overlay');
+  const seen = () => {
+    try { return localStorage.getItem('sg-welcome-seen') === '1'; } catch { return true; }
+  };
+  const close = () => closeModal(overlay);
+  if (!restoredAutosave && !location.hash && !seen()) {
+    // Marked seen at the showing, not at the choosing — a dismissed welcome
+    // stays dismissed.
+    try { localStorage.setItem('sg-welcome-seen', '1'); } catch { /* fine */ }
+    openModal(overlay, $('welcome-walk'));
+  }
+  $('welcome-walk').addEventListener('click', () => {
+    close();
+    // The sample school is already the state a fresh browser starts with.
+    setMode('walk');
+  });
+  $('welcome-generate').addEventListener('click', () => {
+    close();
+    openGenerator();
+  });
+  $('welcome-blank').addEventListener('click', () => {
+    close();
+    adoptState(createState());
+    selectTool('floor');
+    $('status').textContent =
+      'A blank sheet. Floor lays tiles — and Ctrl+K lists every tool with its key.';
+  });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+}
 
 // debug/test hook
 window.app = {

@@ -271,6 +271,40 @@ export function presetMinutes(key, env) {
   }
 }
 
+// ---------- moods ----------
+//
+// Phase 20. A preset above answers one question — what time is it — and
+// leaves the rest of the record alone. A *mood* is the whole look in one
+// click: the five answers worth a screenshot, each writing the time *and*
+// settling the lights, so "Night" is a lit school under a dark sky rather
+// than whatever the lights toggle happened to be left at. Five rather than
+// the presets' seven on purpose: a mood row is a choice, not a scrubber, and
+// dawn/afternoon are times of day rather than looks.
+//
+// A mood writes fields v11 already has — nothing here touches the save
+// format, and `applyMood` answers a fresh normalized env rather than
+// mutating the one it was handed.
+export const MOODS = [
+  { key: 'morning', label: 'Morning', icon: '🌄', preset: 'morning', lights: 'auto' },
+  { key: 'noon', label: 'Noon', icon: '☀️', preset: 'noon', lights: 'auto' },
+  { key: 'golden', label: 'Golden', icon: '🌇', preset: 'golden', lights: 'auto' },
+  { key: 'dusk', label: 'Dusk', icon: '🌆', preset: 'dusk', lights: 'auto' },
+  { key: 'night', label: 'Night', icon: '🌙', preset: 'night', lights: 'on' },
+];
+
+export const moodEntry = (key) => MOODS.find((m) => m.key === key) || null;
+
+export function applyMood(env, key) {
+  const e = normalizeEnv(env);
+  const mood = moodEntry(key);
+  if (!mood) return e;
+  return normalizeEnv({
+    ...e,
+    minutes: presetMinutes(mood.preset, e),
+    lights: mood.lights,
+  });
+}
+
 // ---------- the palette ----------
 //
 // Keyed on altitude, because that is what the sky answers to. The `day`
