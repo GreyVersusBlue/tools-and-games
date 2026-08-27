@@ -122,6 +122,7 @@ import { normalizeModels, librarySize } from './models.js';
 import { normalizeTimetable, isEmptyTimetable } from './timetable.js';
 import { normalizeRates, isEmptyRates } from './rates.js';
 import { normalizePhasing, isEmptyPhasing } from './phasing.js';
+import { normalizeHaunt, isDefaultHaunt } from './haunt.js';
 
 // v9 is the first bump that is not free.
 //
@@ -153,7 +154,7 @@ import { normalizePhasing, isEmptyPhasing } from './phasing.js';
 // survive a round trip untouched, so re-importing the same file under the
 // same id brings a room's worth of chairs back rather than leaving holes.
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 
 // The drawing surface's range. grid.js owns it since Phase 13, because the
 // editor can resize a design now and a file has to be read against the same
@@ -209,6 +210,11 @@ export function serialize(state, opts = {}) {
   if (isEmptyRates(rates)) delete out.rates; else out.rates = rates;
   const phasing = normalizePhasing(out.phasing);
   if (isEmptyPhasing(phasing)) delete out.phasing; else out.phasing = phasing;
+  // v12's one record, the cheap append kind, and the fourteenth application
+  // of the one rule: a building nobody has haunted writes no `haunt` key, so
+  // every file written before this build round-trips through it unchanged.
+  const haunt = normalizeHaunt(out.haunt);
+  if (isDefaultHaunt(haunt)) delete out.haunt; else out.haunt = haunt;
   return JSON.stringify(out);
 }
 
@@ -355,6 +361,10 @@ export function deserialize(json, opts = {}) {
   // the default school in it.
   const life = normalizeLife(d.life);
   if (!isDefaultLife(life)) state.life = life;
+  // v12's haunt, on the same terms: an unreadable haunt is a building with
+  // no haunt in it, never a design that won't open.
+  const haunt = normalizeHaunt(d.haunt);
+  if (!isDefaultHaunt(haunt)) state.haunt = haunt;
   // v9, on the same terms as everything above it: an unreadable overlay is a
   // design with no overlay, never a design that won't open. An image type this
   // build can't decode, a data URL over the size cap, a missing pixel size —

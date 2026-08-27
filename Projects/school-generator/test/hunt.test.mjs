@@ -258,3 +258,75 @@ test('a token fades in over the last stretch and never through a slab', () => {
   assert.ok(half > 0.4 && half < 0.6, `halfway is halfway (${half})`);
   assert.equal(revealAt(p, { x: 0, z: 0, floor: 0 }), 0, 'a storey away is invisible');
 });
+
+// ---------- distance, routed (Phase 24) ----------
+
+import { routedDistance, WARMTH_STEP } from '../js/hunt.js';
+
+test('without a graph the routed distance is the straight line, exactly', () => {
+  const place = { floor: 1, room: 'r1', x: 30, z: 40 };
+  const at = { x: 0, z: 0, floor: 0 };
+  assert.equal(routedDistance(null, at, place), apparentDistance(place, at));
+});
+
+test('the routed distance walks the building instead of flying through it', () => {
+  const s = school();
+  const nav = navOf(s);
+  const hunt = startHunt(nav, { seed: 5 });
+  assert.ok(hunt.places.length > 0);
+  const at = { x: hunt.places[0].x + 1, z: hunt.places[0].z + 1, floor: hunt.places[0].floor };
+  let differed = 0;
+  for (const p of hunt.places) {
+    const routed = routedDistance(nav, at, p);
+    assert.ok(Number.isFinite(routed) && routed >= 0, `${p.id} routes to a number`);
+    if (p.floor === at.floor) {
+      const line = Math.hypot(p.x - at.x, p.z - at.z);
+      assert.ok(routed >= line - 1e-9,
+        `${p.id}: a walk (${routed.toFixed(1)}) is never shorter than the flight (${line.toFixed(1)})`);
+      if (routed > line + 4) differed++;
+    }
+  }
+  assert.ok(differed > 0, 'somewhere in a school, a wall makes the walk longer than the flight');
+});
+
+test('warmth takes the graph, caches by position, and answers the same twice', () => {
+  const s = school();
+  const nav = navOf(s);
+  const hunt = startHunt(nav, { seed: 5, indoors: true });
+  assert.ok(hunt.places.length > 0 && hunt.places.every((p) => !p.outdoors),
+    'an indoors hunt stays indoors');
+  // Standing exactly on the nearest one — a corner place's neighbourhood may
+  // be through the exterior wall, and the routed answer would rightly charge
+  // the walk around to the front door for a point out there.
+  const at = { x: hunt.places[0].x, z: hunt.places[0].z, floor: hunt.places[0].floor };
+  const opts = { nav };
+  const a = huntWarmth(hunt, at, opts);
+  assert.ok(a && a.key, 'a reading');
+  assert.ok(opts._routed && opts._routed.d.size > 0, 'the routes were cached on the opts');
+  const cachedKey = opts._routed.key;
+  const b = huntWarmth(hunt, at, opts);
+  assert.equal(opts._routed.key, cachedKey, 'standing still re-keys nothing');
+  assert.equal(b.dist, a.dist);
+  assert.equal(b.place.id, a.place.id);
+  // Standing on top of the nearest one still reads burning — the routed answer
+  // agrees with the straight one when there is nothing between you and it.
+  assert.equal(a.key, 'burning');
+  // Moving far enough re-keys the cache.
+  huntWarmth(hunt, { ...at, x: at.x + WARMTH_STEP * 3 }, opts);
+  assert.notEqual(opts._routed.key, cachedKey);
+});
+
+test('a caller may deal its own items, one row and all', () => {
+  const nav = navOf(school());
+  const star = { key: 'star', name: 'a gold star', icon: '⭐' };
+  const places = hidingPlaces(nav, { seed: 3, count: 6, items: [star] });
+  assert.equal(places.length, 6);
+  for (const p of places) {
+    assert.equal(p.item, 'star');
+    assert.equal(p.name, star.name);
+    assert.equal(p.icon, star.icon);
+  }
+  // And the default deal is untouched: distinct lost property, in seed order.
+  const dflt = hidingPlaces(nav, { seed: 3, count: 6 });
+  assert.ok(new Set(dflt.map((p) => p.item)).size > 1);
+});

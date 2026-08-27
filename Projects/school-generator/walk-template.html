@@ -157,6 +157,19 @@
     #touch-menu { left: 14px; top: 14px; }
     body.touch-walk #walk-hud { bottom: auto; top: 16px; left: 50%; max-width: 70vw; }
 
+    /* Phase 24 — shown only when the design asks for it */
+    #glitch {
+      position: fixed; inset: 0; z-index: 60; pointer-events: none;
+      width: 100vw; height: 100vh;
+    }
+    #haunt-end {
+      position: fixed; left: 50%; top: 45%; transform: translate(-50%, -50%);
+      max-width: 420px; padding: 24px 28px; z-index: 55; text-align: center;
+      background: #06070a; border: 1px solid #232a34;
+      border-radius: var(--r-lg); line-height: 1.6; color: #c9ced6;
+    }
+    #haunt-end h2 { font-size: 16px; margin-bottom: 8px; color: #e8e4d8; }
+
     /* a design that would not open */
     #boot-error {
       position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%);
@@ -204,6 +217,7 @@
       <div class="row">
         <button id="walk-start" class="primary">Click to Walk</button>
         <button id="walk-life">👥 People</button>
+        <button id="walk-hunt" class="hidden">⭐ Star hunt — find the hidden stars</button>
       </div>
       <p style="font-size:11px">
         Made with <a href="https://greyversusblue.com/Projects/school-generator/" style="color:var(--accent)">School Generator</a> —
@@ -251,6 +265,15 @@
     <button id="touch-sprint" class="touch-btn" aria-label="Sprint" aria-pressed="false">🏃</button>
     <button id="touch-lift" class="touch-btn" aria-label="Call the lift">🛗</button>
     <button id="touch-menu" class="touch-btn" aria-label="Menu">≡</button>
+  </div>
+
+  <canvas id="glitch" class="hidden" aria-hidden="true"></canvas>
+  <div id="haunt-end" class="hidden" role="dialog" aria-label="You got out">
+    <h2>You got out.</h2>
+    <p id="haunt-end-line"></p>
+    <div class="row" style="justify-content:center">
+      <button id="haunt-end-close">Walk the building again</button>
+    </div>
   </div>
 
   <div id="boot-error" class="hidden" role="alert"></div>
@@ -55022,7 +55045,7 @@ function createFloor(w = DEFAULT_W, h = DEFAULT_H) {
 
 function createState(w = DEFAULT_W, h = DEFAULT_H) {
   return {
-    version: 11,
+    version: 12,
     cellFt: CELL,
     floorHt: FLOOR_H,
     w, h,
@@ -68461,6 +68484,7 @@ return { AGENT_R, SPEED, SPEED_VAR, ARRIVE, ARRIVE_SEAT, SEAT_APPROACH, ARRIVE_D
 // ---- js/hunt.js ----
 const __m_js_hunt_js = (() => {
 const { rng } = __m_js_agents_js;
+const { route } = __m_js_navgraph_js;
 // hunt.js — the scavenger hunt.
 //
 // Phase 11's reason for a kid to walk around the building a parent just
@@ -68485,6 +68509,7 @@ const { rng } = __m_js_agents_js;
 // Pure module: no three.js, no DOM, no clock. The caller owns the frame loop
 // and hands positions in; everything here is a function of the design, the
 // seed and where you are standing.
+
 
 
 
@@ -68513,11 +68538,17 @@ const MIN_TILE_SIDE = 5;   // ft
 const MIN_YARD_SIDE = 20;  // ft
 // The largest share of a hunt that may be outdoors — see `hidingPlaces`.
 const OUTDOOR_SHARE = 0.25;
-// A storey climbed, in feet of apparent distance, for the warmth reading only.
-// Warmth is a straight line and a straight line through a slab is a lie the
-// other way — without this the thing directly under your feet reads as
-// burning, and you spend a minute looking at the floor.
+// A storey climbed, in feet of apparent distance, for the straight-line
+// fallback only. Warmth as a straight line through a slab is a lie the other
+// way — without this the thing directly under your feet reads as burning, and
+// you spend a minute looking at the floor. Since Phase 24 a caller with a
+// navgraph gets the routed answer instead — see `routedDistance` — and this
+// constant only speaks when there is no graph to ask.
 const FLOOR_FEET = 26;     // ft
+// How coarsely the routed warmth remembers where you are. Rerouting every
+// unfound place is an A* apiece, so the reading refreshes when you have moved
+// this far rather than every frame — a band's worth of walking, not a frame's.
+const WARMTH_STEP = 4;     // ft
 
 // What is hidden. Nine rows of school lost-property, cycled in seed order, so
 // a hunt is a list of *things* rather than a list of numbered markers — "the
@@ -68696,6 +68727,13 @@ function hidingPlaces(nav, opts = {}) {
   const count = clampInt(opts.count, MIN_COUNT, MAX_COUNT, DEFAULT_COUNT);
   const rand = rng(clampInt(opts.seed, 1, 0xffffffff, 1));
   const clear = typeof opts.clear === 'function' ? opts.clear : null;
+  // What the hunt deals. The lost-property rows unless the caller brings its
+  // own — a single-row list hides `count` of the same thing, which is what a
+  // hunt for "the hidden stars" is.
+  const items = Array.isArray(opts.items) && opts.items.length ? opts.items : HUNT_ITEMS;
+  // `opts.indoors` keeps the whole hunt inside the building — for the caller
+  // whose game does not go outside.
+  const indoors = opts.indoors === true;
   const floorCount = (nav && nav.mesh && nav.mesh.length) || 1;
   const rooms = huntCandidates(nav);
   if (!rooms.length) return [];
@@ -68724,7 +68762,7 @@ function hidingPlaces(nav, opts = {}) {
   for (let pass = 0; pass < 2 && places.length < count; pass++) {
     for (const r of pool) {
       if (places.length >= count) break;
-      if (r.outdoors && outside >= outsideCap) continue;
+      if (r.outdoors && (indoors || outside >= outsideCap)) continue;
       const tile = r.tiles[Math.min(pass, r.tiles.length - 1)];
       const spots = spotsOn(tile);
       const start = Math.floor(rand() * spots.length);
@@ -68740,7 +68778,7 @@ function hidingPlaces(nav, opts = {}) {
       }
       if (!spot) continue;
       if (r.outdoors) outside++;
-      const item = HUNT_ITEMS[places.length % HUNT_ITEMS.length];
+      const item = items[places.length % items.length];
       places.push({
         id: `h${places.length}`,
         item: item.key,
@@ -68781,17 +68819,71 @@ const unfound = (hunt) =>
   (hunt ? hunt.places : []).filter((p) => !hunt.found.has(p.id));
 
 // Apparent distance from a point to a place: the plan distance, plus a fixed
-// charge per storey between the two. See FLOOR_FEET.
+// charge per storey between the two. See FLOOR_FEET. This is the answer when
+// nobody hands in a graph, and the answer of last resort when a route fails —
+// a place the graph cannot reach still deserves a temperature.
 function apparentDistance(place, at) {
   const df = Math.abs((place.floor || 0) - (at.floor || 0));
   return Math.hypot(place.x - at.x, place.z - at.z) + df * FLOOR_FEET;
 }
 
+// The same question, walked rather than flown: the length of the route the
+// navgraph would take from `at` to the place, in feet of actual corridor and
+// stair, plus the last leg across the room the place hides in. This is the
+// Phase 24 answer — a thing one wall away reads *warm* through the doorway
+// and *cool* around the long way, which is what a temperature is for — and
+// the creature's "how close is it really" shares it, so the warmth and the
+// dread never disagree about the building.
+//
+// Distances, not costs. `route`'s waypoints already paid the stair penalties
+// and the lift's wait in *cost*; summing the legs in feet is the same route
+// measured honestly, per the pathDistance convention.
+function routedDistance(nav, at, place) {
+  if (!nav || !place) return apparentDistance(place, at);
+  // The graph's outdoors is one node, so a place in the yard has nothing to
+  // route *with* — and a yard has no walls for the straight line to lie
+  // through. The flight stays the answer out there.
+  const toId = place.outdoors ? null : place.room;
+  if (!toId) return apparentDistance(place, at);
+  const wp = route(nav, at, toId);
+  if (!wp) return apparentDistance(place, at);
+  // The route ends at the room's own node — the middle of the room — and the
+  // place is in a corner of it. Walking to the middle first would charge a
+  // detour nobody takes, so the last leg runs from the doorway straight to
+  // the place; a route wholly inside one room is just the straight line.
+  if (wp.length && wp[wp.length - 1].node === toId) wp.pop();
+  let d = 0, px = at.x, pz = at.z;
+  for (const w of wp) {
+    d += Math.hypot(w.x - px, w.z - pz);
+    px = w.x; pz = w.z;
+  }
+  return d + Math.hypot(place.x - px, place.z - pz);
+}
+
 // The nearest thing still hidden, and how near. Null once everything is found.
-function nearestHidden(hunt, at) {
+//
+// `opts.nav` routes the answer; without it the straight line stands. The
+// caller passes the *same* opts object every frame — the cache lives on it,
+// keyed on a WARMTH_STEP-quantised position, so standing still costs nothing
+// and walking costs one round of routes per few feet rather than per frame.
+function nearestHidden(hunt, at, opts = {}) {
+  const nav = opts.nav || null;
+  let dists = null;
+  if (nav) {
+    const key = `${Math.round(at.x / WARMTH_STEP)},${Math.round(at.z / WARMTH_STEP)},${at.floor || 0}`;
+    let c = opts._routed;
+    if (!c || c.key !== key) { c = { key, d: new Map() }; opts._routed = c; }
+    dists = c.d;
+  }
   let best = null, bestD = Infinity;
   for (const p of unfound(hunt)) {
-    const d = apparentDistance(p, at);
+    let d;
+    if (dists) {
+      d = dists.get(p.id);
+      if (d === undefined) { d = routedDistance(nav, at, p); dists.set(p.id, d); }
+    } else {
+      d = apparentDistance(p, at);
+    }
     if (d < bestD) { bestD = d; best = p; }
   }
   return best ? { place: best, dist: bestD } : null;
@@ -68803,8 +68895,8 @@ function bandFor(dist) {
 }
 
 // What the panel says while you walk: how close the nearest one is, in words.
-function huntWarmth(hunt, at) {
-  const near = nearestHidden(hunt, at);
+function huntWarmth(hunt, at, opts = {}) {
+  const near = nearestHidden(hunt, at, opts);
   if (!near) return null;
   return { ...bandFor(near.dist), dist: near.dist, place: near.place };
 }
@@ -68841,7 +68933,7 @@ function huntSummary(hunt) {
   return { found, total, done: total > 0 && found >= total };
 }
 
-return { DEFAULT_COUNT, MIN_COUNT, MAX_COUNT, FIND_R, REVEAL_R, INSET, MIN_TILE_SIDE, MIN_YARD_SIDE, OUTDOOR_SHARE, FLOOR_FEET, HUNT_ITEMS, WARMTH_BANDS, roomBounds, quadrantOf, describePlace, huntCandidates, yardCandidates, hidingPlaces, startHunt, unfound, apparentDistance, nearestHidden, bandFor, huntWarmth, checkFind, revealAt, huntSummary };
+return { DEFAULT_COUNT, MIN_COUNT, MAX_COUNT, FIND_R, REVEAL_R, INSET, MIN_TILE_SIDE, MIN_YARD_SIDE, OUTDOOR_SHARE, FLOOR_FEET, WARMTH_STEP, HUNT_ITEMS, WARMTH_BANDS, roomBounds, quadrantOf, describePlace, huntCandidates, yardCandidates, hidingPlaces, startHunt, unfound, apparentDistance, routedDistance, nearestHidden, bandFor, huntWarmth, checkFind, revealAt, huntSummary };
 })();
 // ---- js/overlay.js ----
 const __m_js_overlay_js = (() => {
@@ -72708,6 +72800,57 @@ function initRender(canvas) {
 
   const markLightsDirty = () => { lightsDirty = true; };
 
+  // --- Phase 24: the flicker ---
+  //
+  // A multiplier applied *after* the budget, never through `lampLevel`: the
+  // early-return above trips on `lampLevel !== lastLampLevel`, so modulating
+  // the level itself would re-rank every fixture in the building per frame.
+  // Instead the budget's answers are cached as base intensities and the
+  // haunt's curve multiplies them at pool-write time — same twelve lights,
+  // same shader, zero recompiles. `fn(i, t)` is haunt.js's `flickerAt`
+  // curried by the caller; index -1 is "the room", for the spill and the
+  // fixture glow, so a corridor dies *with* its lights rather than staying
+  // lit while they fail.
+  let lampFlickerFn = null;
+  let flickClock = 0;
+  const litBase = new Float32Array(MAX_DYNAMIC_LIGHTS);
+  const spotBase = new Float32Array(MAX_SPOT_LIGHTS);
+  let fillBase = 0;
+
+  function cacheLightBases() {
+    for (let i = 0; i < lightPool.length; i++) litBase[i] = lightPool[i].intensity;
+    for (let i = 0; i < spotPool.length; i++) spotBase[i] = spotPool[i].intensity;
+    fillBase = fillAmbient;
+  }
+
+  function applyLampFlicker(dt) {
+    if (!lampFlickerFn) return;
+    flickClock += Math.min(dt, 0.1);
+    const t = flickClock;
+    for (let i = 0; i < lightPool.length; i++) {
+      lightPool[i].intensity = litBase[i] * lampFlickerFn(i, t);
+    }
+    for (let i = 0; i < spotPool.length; i++) {
+      spotPool[i].intensity = spotBase[i] * lampFlickerFn(64 + i, t);
+    }
+    const g = lampFlickerFn(-1, t);
+    houseAmbient.intensity = fillBase * g;
+    fixtureMat.emissiveIntensity = FIXTURE_GLOW * lampLevel * g;
+    for (const m of lampMats.values()) m.emissiveIntensity = lampLevel * LAMP_GLOW * g;
+  }
+
+  function setLampFlicker(fn) {
+    lampFlickerFn = typeof fn === 'function' ? fn : null;
+    if (!lampFlickerFn) {
+      // Steady light back, exactly as the budget left it.
+      for (let i = 0; i < lightPool.length; i++) lightPool[i].intensity = litBase[i];
+      for (let i = 0; i < spotPool.length; i++) spotPool[i].intensity = spotBase[i];
+      houseAmbient.intensity = fillBase;
+      fixtureMat.emissiveIntensity = FIXTURE_GLOW * lampLevel;
+      for (const m of lampMats.values()) m.emissiveIntensity = lampLevel * LAMP_GLOW;
+    }
+  }
+
   function updateDynamicLights(eye) {
     const moved = (eye.x - lastLightEye.x) ** 2 + (eye.y - lastLightEye.y) ** 2 +
       (eye.z - lastLightEye.z) ** 2;
@@ -72721,6 +72864,7 @@ function initRender(canvas) {
       for (const l of spotPool) l.intensity = 0;
       fillAmbient = 0;
       applyAmbient();
+      cacheLightBases();
       return;
     }
 
@@ -72757,6 +72901,7 @@ function initRender(canvas) {
     }
     fillAmbient = spillAmbient(spillLm) * lampLevel;
     applyAmbient();
+    cacheLightBases();
   }
 
   // Candela out of the conversion, scaled to this scene's exposure.
@@ -72784,6 +72929,10 @@ function initRender(canvas) {
     updateDynamicLights(mode === 'edit'
       ? { x: editView.x, y: 12, z: editView.z }
       : cam.position);
+    // Phase 24's multiply — after the budget, walk mode only; edit mode is a
+    // drafting table and drafting tables do not flicker.
+    if (mode !== 'edit') applyLampFlicker(dt);
+    updateWritingFade(dt);
     // The sky dome and the sun disc travel with the camera so a 1,000ft sphere
     // never has to be bigger than the far plane, and always face it.
     skyDome.position.copy(cam.position);
@@ -76256,6 +76405,98 @@ function initRender(canvas) {
   scene.add(huntGroup);
   let huntPlaces = [];
   let huntSpin = 0;
+
+  // --- Phase 24: the writing on the walls ---
+  //
+  // One small plane per writing, textured by `writingTex` off the same
+  // canvas machinery every other surface in the building comes from, inset
+  // off its wall by haunt.js's placement. All start invisible; the haunt
+  // reveals the first n in deal order and each fades in over a couple of
+  // seconds — long enough that you are never sure it wasn't there before.
+  const writeGroup = new THREE.Group();
+  writeGroup.visible = false;
+  scene.add(writeGroup);
+  let writeShown = 0;
+
+  function writingTex(text, seedIdx) {
+    const lines = String(text).split('\n');
+    return canvasTex(256, (ctx, S) => {
+      ctx.clearRect(0, 0, S, S);
+      ctx.fillStyle = 'rgba(24, 17, 14, 0.88)';
+      ctx.strokeStyle = 'rgba(24, 17, 14, 0.5)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const lineH = Math.min(64, (S - 40) / lines.length);
+      lines.forEach((line, li) => {
+        const size = Math.min(lineH * 0.8, (S * 1.6) / Math.max(6, line.length));
+        ctx.font = `${size}px "Comic Sans MS", "Segoe Print", cursive`;
+        const y = S / 2 + (li - (lines.length - 1) / 2) * lineH;
+        // Per-glyph jitter off the writing's own index — a hand wrote this,
+        // and not a steady one. Deterministic: no Math.random in the scene.
+        let x = S / 2 - (ctx.measureText(line).width / 2);
+        for (let g = 0; g < line.length; g++) {
+          const ch = line[g];
+          const wob = Math.sin(seedIdx * 13.7 + li * 5.1 + g * 2.3);
+          const cw = ctx.measureText(ch).width;
+          ctx.save();
+          ctx.translate(x + cw / 2, y + wob * 3);
+          ctx.rotate(wob * 0.07);
+          ctx.fillText(ch, 0, 0);
+          ctx.restore();
+          x += cw;
+        }
+      });
+    });
+  }
+
+  // `list` is haunt.js's `writingPlaces` output, verbatim; empty ends it.
+  function setWritings(list) {
+    for (const child of [...writeGroup.children]) {
+      writeGroup.remove(child);
+      child.geometry.dispose();
+      child.material.map?.dispose();
+      child.material.dispose();
+    }
+    writeShown = 0;
+    const places = list || [];
+    if (!places.length) { writeGroup.visible = false; return 0; }
+    for (const p of places) {
+      const mat = new THREE.MeshBasicMaterial({
+        map: writingTex(p.text, p.order),
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(p.w, 2.4), mat);
+      mesh.position.set(p.x, floorBaseY(built, p.floor) + 4.6, p.z);
+      mesh.rotation.y = p.yaw;
+      mesh.visible = false;
+      mesh.userData.order = p.order;
+      writeGroup.add(mesh);
+    }
+    writeGroup.visible = true;
+    return places.length;
+  }
+
+  // How many of them are revealed. The fade itself runs in `render` — see
+  // `updateWritingFade` — so a reveal is a target, not a snap.
+  function updateWritings(n) {
+    writeShown = Math.max(0, n | 0);
+  }
+
+  function updateWritingFade(dt) {
+    if (!writeGroup.visible) return;
+    for (const mesh of writeGroup.children) {
+      const want = mesh.userData.order < writeShown ? 0.92 : 0;
+      const o = mesh.material.opacity;
+      if (Math.abs(o - want) < 0.01) { mesh.material.opacity = want; }
+      else mesh.material.opacity = o + (want - o) * Math.min(1, dt * 0.8);
+      mesh.visible = mesh.material.opacity > 0.01;
+    }
+  }
   let crowdMeshes = null;
   let heatMesh = null;
   const _crowdColor = new THREE.Color();
@@ -77060,6 +77301,12 @@ function initRender(canvas) {
     setLabelGate(fn) { labelGate = fn || null; },
     // --- Phase 11: the scavenger hunt ---
     setHunt, updateHunt,
+    // --- Phase 24: lights out ---
+    //
+    // `setLampFlicker` takes haunt.js's curve, curried; null restores steady
+    // light. The writings are haunt.js's placement, drawn here and revealed
+    // by count — one write and one read, the usual arrangement.
+    setLampFlicker, setWritings, updateWritings,
     get crowdVisible() { return crowdGroup.visible; },
     set crowdVisible(v) { crowdGroup.visible = !!v; },
     // Swing the doors. `leaves` is openings.js's own list — the same one
@@ -77274,6 +77521,8 @@ return { PointerLockControls };
 // ---- js/sound.js ----
 const __m_js_sound_js = (() => {
 const { FLOOR_H } = __m_js_grid_js;
+const { segsCross } = __m_js_collide_js;
+const { leafSegment } = __m_js_openings_js;
 // sound.js — what makes noise, how loud it is where you are standing, and
 // which of it the mixer can afford to play.
 //
@@ -77312,6 +77561,8 @@ const { FLOOR_H } = __m_js_grid_js;
 // at the reference distance — and lets the panner do the rest.
 //
 // Pure module: no three.js, no Web Audio. Exercised by test/sound.test.mjs.
+
+
 
 
 
@@ -77428,11 +77679,16 @@ function tagRooms(sources, roomIdAt) {
 
 // ---------- what a wall costs ----------
 
-// How much of a source survives the trip to an ear in a different room. This
-// is deliberately one number per situation rather than a count of walls: the
-// model could tell us how many partitions a straight line crosses, but the
-// real path through a school is under a door and down a corridor, and a
-// careful ray cast would give a *more precise* answer to the wrong question.
+// How much of a source survives the trip to an ear in a different room. For
+// twenty phases this was deliberately one number per situation rather than a
+// count of walls, on the argument that the real path through a school is
+// under a door and down a corridor, and a careful ray would price the wrong
+// path. Phase 24 reverses that argument — see `pathLossRay` below — because
+// sight's segments already have the doorways cut out of them, so the ray
+// *is* the under-the-door path now, and hearing something one corridor over
+// is a question a constant cannot answer. `pathLoss` stays as the
+// no-geometry fallback and the cross-floor answer: a slab has no doorway in
+// it, and a plan-view cast has nothing to say about one.
 //
 // The figures are one partition's worth of transmission loss as it actually
 // arrives — a gypsum wall is rated near STC 40, but the door in it and the
@@ -77455,6 +77711,53 @@ function pathLoss(src, ear) {
   return PATH_SHELL;
 }
 
+// ---------- the ray ----------
+
+// What one wall in the direct path costs. Less than PATH_WALL, because
+// PATH_WALL was pricing a wall *and* its unknown surroundings at once; a ray
+// that actually counts the partitions can afford to charge each one honestly
+// and let the count do the arguing.
+const RAY_WALL_DB = 14;
+// Each wall after the first. Diminishing because the flanking paths that let
+// sound around one wall let it around three of them too.
+const RAY_WALL_MORE = 7;
+// The most a same-storey path may lose. Silence has a floor: a building is
+// one connected volume, and nothing in it is ever *gone*.
+const RAY_MAX_DB = 38;
+// The low-pass corner by crossings: a wall keeps the thump and eats the hiss,
+// and every further wall eats a little deeper. Index clamps at the end.
+const RAY_CORNERS = [20000, 900, 500, 350];
+
+// `pathLoss`, finally by ray. `segs` is sightline.js's `sightBlockers` for
+// the storey both stand on — the segments with the doorways already cut out,
+// so an open doorway prices the path at zero the way a corridor really does —
+// and `leaves` is the collider's live door list, each occluding at whatever
+// angle it hangs right now: a shut door is one more wall, an open one is a
+// jamb-width sliver the cast almost never clips. Cross-storey stays
+// `PATH_SLAB` (a plan cast knows nothing about a slab), and no segments at
+// all falls back to the constant — the pre-Phase-24 answer, kept so a caller
+// without geometry still gets one.
+function pathLossRay(src, ear, segs, leaves) {
+  if (!src || !ear) return PATH_OPEN;
+  if ((src.floor || 0) !== (ear.floor || 0)) return PATH_SLAB;
+  if (!segs) return pathLoss(src, ear);
+  let n = 0;
+  for (const s of segs) {
+    if (segsCross(src.x, src.z, ear.x, ear.z, s.ax, s.az, s.bx, s.bz)) n++;
+  }
+  if (leaves) {
+    for (const leaf of leaves) {
+      const s = leafSegment(leaf);
+      if (segsCross(src.x, src.z, ear.x, ear.z, s.ax, s.az, s.bx, s.bz)) n++;
+    }
+  }
+  if (!n) return PATH_OPEN;
+  return {
+    db: Math.min(RAY_MAX_DB, RAY_WALL_DB + (n - 1) * RAY_WALL_MORE),
+    hz: RAY_CORNERS[Math.min(n, RAY_CORNERS.length - 1)],
+  };
+}
+
 // ---------- the budget ----------
 
 const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -77470,12 +77773,16 @@ const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 function budgetSounds(sources, ear, opts = {}) {
   const cap = opts.cap ?? MAX_VOICES;
   const floorDb = opts.floorDb ?? FLOOR_DB;
+  // `opts.pathFor(src, ear)` lets a caller with geometry hand in the ray —
+  // curried over the storey's segments and live leaves — while a caller
+  // without one keeps the constant. The budget itself doesn't care which.
+  const pathFor = typeof opts.pathFor === 'function' ? opts.pathFor : pathLoss;
   const at = ear && Number.isFinite(ear.x) ? ear : { x: 0, y: 0, z: 0, floor: 0, room: null };
 
   const ranked = [];
   for (const s of sources) {
     const d = dist3(s, at);
-    const path = pathLoss(s, at);
+    const path = pathFor(s, at);
     const db = dbAt(s.db, d) - path.db;
     ranked.push({ src: s, dist: d, db, path });
   }
@@ -77618,7 +77925,7 @@ const PA_DB = 88;
 // down a corridor sounds like an announcement rather than like a person.
 const PA_BAND = { lo: 320, hi: 3200 };
 
-return { REF_DIST, REF_DB, FLOOR_DB, COMPRESS, MAX_VOICES, STRIDE_FT, dbAt, gainAtRef, SOUND_KINDS, LOOPED_KINDS, soundOf, isSource, soundSources, tagRooms, PATH_OPEN, PATH_WALL, PATH_SLAB, PATH_SHELL, pathLoss, dist3, budgetSounds, FOOTSTEPS, STAIR_STEP, GROUND_STEP, SITE_STEPS, footstepFor, stride, doorEvents, DOOR_LATCH, DOOR_SHUT, BELL_PARTIALS, BELL_HZ, BELL_DB, BELL_RINGS, BELL_GAP, PA_CHIME, PA_DB, PA_BAND };
+return { REF_DIST, REF_DB, FLOOR_DB, COMPRESS, MAX_VOICES, STRIDE_FT, dbAt, gainAtRef, SOUND_KINDS, LOOPED_KINDS, soundOf, isSource, soundSources, tagRooms, PATH_OPEN, PATH_WALL, PATH_SLAB, PATH_SHELL, pathLoss, RAY_WALL_DB, RAY_WALL_MORE, RAY_MAX_DB, RAY_CORNERS, pathLossRay, dist3, budgetSounds, FOOTSTEPS, STAIR_STEP, GROUND_STEP, SITE_STEPS, footstepFor, stride, doorEvents, DOOR_LATCH, DOOR_SHUT, BELL_PARTIALS, BELL_HZ, BELL_DB, BELL_RINGS, BELL_GAP, PA_CHIME, PA_DB, PA_BAND };
 })();
 // ---- js/shove.js ----
 const __m_js_shove_js = (() => {
@@ -79068,6 +79375,294 @@ function roomsOnFloor(state, floorIndex, catalogEntry = () => null) {
 
 return { SPEED_OF_SOUND, SABINE, ALPHA, CATEGORY_ALPHA, DEFAULT_PROP_ALPHA, MIN_RT60, MAX_RT60, finishAlpha, ceilingAt, CEILING_SAMPLES, roomCeiling, roomAt, outsideRoom, isOutside, propFace, propAlpha, furnitureSabins, sabineRT60, ansiLimit, verdict, roomAcoustics, wetFraction, reverbSpec, roomsOnFloor };
 })();
+// ---- js/sightline.js ----
+const __m_js_sightline_js = (() => {
+const { shapesOf, segEnds, isBuilt, isDoorOpening, openingSpec, shapeAt, SEG_WALL } = __m_js_shapes_js;
+const { EYE_H } = __m_js_grid_js;
+const { solidSpans, segsCross, elevatorSegments } = __m_js_collide_js;
+const { leafSegment, windowBand } = __m_js_openings_js;
+// sightline.js — is that door visible from here?
+//
+// Phase 21. Room labels are `depthTest:false` sprites, which is right for
+// readability and wrong for honesty: in walk mode they named rooms through
+// the walls that hide them. This module is the gate that makes a label
+// something the walker earned — and it is the module Phase 24 has been
+// promised, because a creature that prefers the corridor you are not looking
+// down asks exactly this question with the arguments swapped.
+//
+// The question is answered in plan: 2D segment casts against one storey's
+// occluders, storey-aware because the caller asks per storey. Sight has its
+// own idea of what a wall is, and it is deliberately *not* collide.js's:
+//
+//   - **Glass and railings stop a body and not a look.** `wallSegments` puts
+//     a curtain wall in the collider with drywall, which is right for walking
+//     and would be a lie here — a room you can see into through its glazed
+//     partition is a room you have seen.
+//   - **A window is a hole in the elevation**, so whether sight passes
+//     depends on where the eye is in it: a 3ft-sill classroom window lets a
+//     5.5ft eye through, a clerestory does not. The body never fits either
+//     way, which is why collide.js never cuts one.
+//   - **A door leaf occludes at whatever angle it is hanging right now.** A
+//     closed leaf spans its doorway and blocks it; an open one stands along
+//     the jamb and blocks almost nothing — both fall out of casting against
+//     `leafSegment` at the leaf's live `open`, so an agent holding a door
+//     open is see-through-able *because* the crowd is holding it open. The
+//     caller hands in the collider's own leaves, never a fresh collection:
+//     the leaf's state is the walk's, not the plan's.
+//
+// Pure module: no three.js, no DOM. The segment-crossing primitive is
+// collide.js's `segsCross` — one implementation of "do two segments cross"
+// in the codebase, not two that disagree at the endpoints.
+//
+// `makeLabelGate` at the bottom is the session half: which rooms a walk has
+// earned, refreshed a few casts per frame round-robin, because the walker
+// moves at walking speed and nothing needs a fresh answer every 16ms. It is
+// still pure state-machine over the geometry above — the tests drive it
+// headless, the way every tool-shaped module here is driven.
+
+
+
+
+
+
+// How far either side of a doorway to probe when asking which rooms it
+// joins — clear of the thickest exterior wall, inside anything a door could
+// reasonably open into. The same job navgraph.js's portal probe does.
+const DOOR_PROBE = 2;      // ft
+// How far past a doorway's centreline the cast reaches. The target has to be
+// on the *far* side of the wall or a shut leaf lying exactly on the line
+// would never strictly cross the ray that ends on it.
+const DOOR_PAST = 0.6;     // ft
+
+// ---------- what occludes ----------
+
+// One storey's sight-blocking segments, from the same rings collide.js walks.
+// Only solid walls block; door openings are holes (their leaves are cast
+// separately, live); a window is a hole only where the eye height falls
+// within its band. No trim on the spans — sight has no radius.
+function sightSegments(floor, opts = {}) {
+  const eyeH = opts.eyeH ?? EYE_H;
+  const out = [];
+  if (!floor) return out;
+
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings) {
+      for (let i = 0; i < ring.pts.length; i++) {
+        const kind = ring.walls[i];
+        if (!isBuilt(kind)) continue;
+        // Glass and railings pass sight whole — nothing of them to emit.
+        if (kind !== SEG_WALL) continue;
+        const [a, b] = segEnds(ring, i);
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        if (len < 0.01) continue;
+        const cuts = [];
+        for (const o of ring.openings) {
+          if (o.seg !== i) continue;
+          const spec = openingSpec(o);
+          if (!isDoorOpening(o)) {
+            // A window: see through it only if the eye is within the band.
+            const band = windowBand(spec);
+            if (eyeH < band.sill || eyeH > band.head) continue;
+          }
+          cuts.push({ a: spec.t * len - spec.w / 2, b: spec.t * len + spec.w / 2 });
+        }
+        if (!cuts.length) { out.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z }); continue; }
+        const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+        for (const [s, e] of solidSpans(len, cuts, 0)) {
+          out.push({ ax: a.x + ux * s, az: a.z + uz * s, bx: a.x + ux * e, bz: a.z + uz * e });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// The storey's occluders with the lift shafts added — three sheet-metal walls
+// a look does not pass through. This is the list a caller casts against.
+function sightBlockers(state, floorIndex, opts = {}) {
+  const floor = state && state.floors ? state.floors[floorIndex] : null;
+  const out = sightSegments(floor, opts);
+  for (const s of elevatorSegments(state, floorIndex)) {
+    out.push({ ax: s.ax, az: s.az, bx: s.bx, bz: s.bz });
+  }
+  return out;
+}
+
+// ---------- the cast ----------
+
+// Does an unobstructed line run from (x0, z0) to (x1, z1)? `leaves` is the
+// collider's live list for the same storey — pass it or the doors don't
+// exist, which is the pre-walk plan rather than the walk.
+function sightClear(segs, leaves, x0, z0, x1, z1) {
+  for (const s of segs) {
+    if (segsCross(x0, z0, x1, z1, s.ax, s.az, s.bx, s.bz)) return false;
+  }
+  if (leaves) {
+    for (const leaf of leaves) {
+      const s = leafSegment(leaf);
+      if (segsCross(x0, z0, x1, z1, s.ax, s.az, s.bx, s.bz)) return false;
+    }
+  }
+  return true;
+}
+
+// ---------- the doors ----------
+
+// Every doorway on one storey: its centre, its wall's unit normal, and the
+// rooms either side of it (by shape id; null for the outdoors). A door on a
+// shared partition belongs to the sight of *both* rooms it joins, whichever
+// ring happens to carry the record — the partition-ownership convention is
+// about who builds the wall, not about who may be seen through the hole.
+function doorPoints(state, floorIndex) {
+  const floor = state && state.floors ? state.floors[floorIndex] : null;
+  const out = [];
+  if (!floor) return out;
+
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings) {
+      for (const o of ring.openings) {
+        if (!isDoorOpening(o)) continue;
+        if (!isBuilt(ring.walls[o.seg])) continue;
+        const [a, b] = segEnds(ring, o.seg);
+        const dx = b.x - a.x, dz = b.z - a.z;
+        const len = Math.hypot(dx, dz);
+        if (len < 0.01) continue;
+        const x = a.x + dx * o.t, z = a.z + dz * o.t;
+        const nx = -dz / len, nz = dx / len;
+        const ra = shapeAt(floor, x + nx * DOOR_PROBE, z + nz * DOOR_PROBE);
+        const rb = shapeAt(floor, x - nx * DOOR_PROBE, z - nz * DOOR_PROBE);
+        out.push({
+          x, z, nx, nz, w: o.w,
+          rooms: [ra ? ra.id : null, rb ? rb.id : null],
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// Is this door visible from the eye? The cast reaches just *past* the
+// doorway's centreline, on the far side from the eye — through the hole the
+// wall spans leave, through (or into) whatever leaf is hanging in it.
+function doorSeen(segs, leaves, eye, door, opts = {}) {
+  const past = opts.past ?? DOOR_PAST;
+  const side = Math.sign((eye.x - door.x) * door.nx + (eye.z - door.z) * door.nz) || 1;
+  return sightClear(segs, leaves, eye.x, eye.z,
+    door.x - door.nx * side * past, door.z - door.nz * side * past);
+}
+
+// ---------- the gate ----------
+
+const LABEL_MODES = ['earned', 'strict', 'all', 'none'];
+
+// The walk's memory of what it has seen. One per walk — earned labels last
+// exactly as long as the colliders do, and are forgotten with them.
+//
+//   update(eye, leaves, mode)      a few casts, round-robin; returns rooms
+//                                  newly seen this call
+//   visible(floor, roomId, mode)   should this room's label show?
+//
+// `eye` is `{ x, z, floor }`; `leaves` is the collider's live door list for
+// that storey. Two modes do work: *earned* casts only for rooms not yet
+// seen — a label learned is a label kept — and *strict* keeps refreshing
+// every room on the storey, so a label lasts only as long as its door stays
+// in sight. *all* and *none* cast nothing and answer flatly.
+function makeLabelGate(state, opts = {}) {
+  const eyeH = opts.eyeH ?? EYE_H;
+  // Casts per update. Walking speed is 12ft/s and a frame is 16ms — four
+  // rooms a frame walks the whole round-robin faster than a doorway crosses
+  // the view.
+  const budget = opts.budget ?? 4;
+  const floors = new Map();     // floorIndex -> { segs, rooms, doorsOf }
+  const seen = new Set();       // `${floor}:${roomId}`, for the walk
+  const lit = new Map();        // same key -> currently-in-sight, for strict
+  let cursor = 0;
+
+  const key = (floorIndex, roomId) => `${floorIndex}:${roomId}`;
+
+  // Derived once per storey per walk — editing and walking are exclusive, so
+  // nothing under this can change until the gate is thrown away.
+  const floorData = (i) => {
+    let fd = floors.get(i);
+    if (fd) return fd;
+    const floor = state.floors[i] || null;
+    const doorsOf = new Map();
+    for (const d of doorPoints(state, i)) {
+      for (const id of d.rooms) {
+        if (id === null || id === undefined) continue;
+        let list = doorsOf.get(id);
+        if (!list) { list = []; doorsOf.set(id, list); }
+        list.push(d);
+      }
+    }
+    fd = {
+      floor,
+      segs: sightBlockers(state, i, { eyeH }),
+      rooms: floor ? shapesOf(floor).map((s) => s.id) : [],
+      doorsOf,
+    };
+    floors.set(i, fd);
+    return fd;
+  };
+
+  const roomSeen = (fd, eye, leaves, roomId) => {
+    const doors = fd.doorsOf.get(roomId);
+    if (!doors) return false;
+    // Nearest first: the door you are looking at is almost always the one
+    // that answers, and the first clear cast ends the question.
+    const sorted = doors.length > 1
+      ? [...doors].sort((p, q) =>
+        Math.hypot(p.x - eye.x, p.z - eye.z) - Math.hypot(q.x - eye.x, q.z - eye.z))
+      : doors;
+    for (const d of sorted) {
+      if (doorSeen(fd.segs, leaves, eye, d)) return true;
+    }
+    return false;
+  };
+
+  return {
+    seen,
+    update(eye, leaves, mode = 'earned') {
+      if (mode !== 'earned' && mode !== 'strict') return [];
+      const fd = floorData(eye.floor);
+      if (!fd.floor) return [];
+      const fresh = [];
+      const mark = (roomId) => {
+        const k = key(eye.floor, roomId);
+        lit.set(k, true);
+        if (!seen.has(k)) { seen.add(k); fresh.push(roomId); }
+      };
+      // The room underfoot is earned by standing in it — the spawn room, and
+      // any room with no door at all that a ghost drifted into.
+      const here = shapeAt(fd.floor, eye.x, eye.z);
+      if (here) mark(here.id);
+      // Round-robin over what still needs an answer: everything unseen
+      // (earned), or everything (strict, which is re-earned every lap).
+      const todo = mode === 'earned'
+        ? fd.rooms.filter((id) => !seen.has(key(eye.floor, id)))
+        : fd.rooms;
+      if (!todo.length) return fresh;
+      const n = Math.min(budget, todo.length);
+      for (let c = 0; c < n; c++) {
+        const roomId = todo[(cursor + c) % todo.length];
+        if (here && roomId === here.id) continue;
+        if (roomSeen(fd, eye, leaves, roomId)) mark(roomId);
+        else lit.set(key(eye.floor, roomId), false);
+      }
+      cursor = (cursor + n) % Math.max(1, todo.length);
+      return fresh;
+    },
+    visible(floorIndex, roomId, mode = 'earned') {
+      if (mode === 'all') return true;
+      if (mode === 'none') return false;
+      if (mode === 'strict') return lit.get(key(floorIndex, roomId)) === true;
+      return seen.has(key(floorIndex, roomId));
+    },
+  };
+}
+
+return { DOOR_PROBE, DOOR_PAST, sightSegments, sightBlockers, sightClear, doorPoints, doorSeen, LABEL_MODES, makeLabelGate };
+})();
 // ---- js/audio.js ----
 const __m_js_audio_js = (() => {
 const THREE = __m_libs_three_module_js;
@@ -79075,7 +79670,8 @@ const { EYE_H, FLOOR_H } = __m_js_grid_js;
 const { catalogEntry: defaultCatalogEntry } = __m_js_catalog_js;
 const { storeyAt } = __m_js_collide_js;
 const { roomAcoustics, roomAt, reverbSpec, wetFraction, isOutside } = __m_js_acoustics_js;
-const { MAX_VOICES, REF_DIST, BELL_PARTIALS, BELL_HZ, BELL_DB, BELL_RINGS, BELL_GAP, PA_CHIME, PA_DB, PA_BAND, soundSources, tagRooms, budgetSounds, gainAtRef, dbAt, pathLoss, DOOR_LATCH, DOOR_SHUT } = __m_js_sound_js;
+const { MAX_VOICES, REF_DIST, BELL_PARTIALS, BELL_HZ, BELL_DB, BELL_RINGS, BELL_GAP, PA_CHIME, PA_DB, PA_BAND, soundSources, tagRooms, budgetSounds, gainAtRef, dbAt, pathLoss, pathLossRay, DOOR_LATCH, DOOR_SHUT } = __m_js_sound_js;
+const { sightBlockers } = __m_js_sightline_js;
 // audio.js — the school makes a noise.
 //
 // Everything you hear in this build is synthesized. There is not a single
@@ -79126,6 +79722,7 @@ const { MAX_VOICES, REF_DIST, BELL_PARTIALS, BELL_HZ, BELL_DB, BELL_RINGS, BELL_
 
 
 
+
 // How often the budget and the listener's room are recomputed. Both cost a
 // flood fill or a sort, neither changes meaningfully inside a tenth of a
 // second, and a walker crossing a threshold wants the room to follow within
@@ -79166,6 +79763,20 @@ function initAudio(camera, opts = {}) {
   // the next edit, which is the same bargain the collider's build-once
   // lifecycle makes.
   let roomCache = new Map();
+  // Phase 24: transmission by ray. The storey's sight-blocking segments are
+  // derived once per storey per world — the same cache bargain the room
+  // acoustics make — and `leavesSource` is the shell's window onto the live
+  // door leaves, so a shut door muffles what is behind it *now*. When either
+  // is missing the constant answers, exactly as it did for twenty phases.
+  let segsCache = new Map();
+  let leavesSource = null;      // (floorIndex) => the collider's live leaves
+  // How wrong the building runs, in cents. Applied to every tuned node the
+  // loops own — at 35 cents nobody can name what changed, only that it did.
+  let detuneCents = 0;
+  // The creature's own persistent voice, and the failing fixture's buzz.
+  // Each holds one of the eight voices while it lives — see `voiceCap`.
+  let lurker = null;
+  let buzzer = null;
   // Everything the sound panel prints. `heard`/`dropped`/`muted` are about the
   // continuous sources only — a bell is not "audible", it is silent until it
   // is rung — so `machines` is beside them and the counts add up.
@@ -79303,6 +79914,7 @@ function initAudio(camera, opts = {}) {
   function startLoop(src, level, path, wet) {
     const ch = makeChannel(src, 0, path, wet);
     const nodes = [];
+    const tuned = [];        // every detune AudioParam this voice owns
     const t = ctx.currentTime;
 
     if (src.kind === 'hum') {
@@ -79312,6 +79924,8 @@ function initAudio(camera, opts = {}) {
         const o = ctx.createOscillator();
         o.type = 'sine';
         o.frequency.value = src.hz * mult;
+        o.detune.value = detuneCents;
+        tuned.push(o.detune);
         const og = ctx.createGain();
         og.gain.value = 0.32 * g;
         o.connect(og); og.connect(ch.input);
@@ -79321,6 +79935,8 @@ function initAudio(camera, opts = {}) {
       const n = noiseNode();
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass'; bp.frequency.value = src.hz * 6; bp.Q.value = 0.9;
+      bp.detune.value = detuneCents;
+      tuned.push(bp.detune);
       const ng = ctx.createGain(); ng.gain.value = 0.1;
       n.connect(bp); bp.connect(ng); ng.connect(ch.input);
       n.start(t + Math.random() * 1.5);
@@ -79334,6 +79950,8 @@ function initAudio(camera, opts = {}) {
       bp.type = 'bandpass';
       bp.frequency.value = src.hz;
       bp.Q.value = src.q;
+      bp.detune.value = detuneCents;
+      tuned.push(bp.detune);
       n.connect(bp); bp.connect(ch.input);
       n.start(t + Math.random() * 1.5);
       nodes.push(n);
@@ -79350,7 +79968,7 @@ function initAudio(camera, opts = {}) {
     }
 
     ch.gain.gain.setTargetAtTime(level, t, VOICE_FADE / 3);
-    return { ch, nodes, src, level };
+    return { ch, nodes, src, level, tuned };
   }
 
   function stopVoice(v) {
@@ -79409,13 +80027,28 @@ function initAudio(camera, opts = {}) {
     };
   }
 
+  // What the trip from a source to the ear costs — by ray where there is a
+  // storey's geometry to cast against, by the old constant where there isn't
+  // (no world, or a different storey, where the slab answers). This one
+  // function is what Phase 24 gives the *daytime* for free: every hum, tick
+  // and footstep now arrives through the walls actually between you and it.
+  function rayPath(src, e) {
+    if (world && (src.floor ?? 0) === (e.floor ?? 0)) {
+      const f = src.floor ?? 0;
+      let segs = segsCache.get(f);
+      if (segs === undefined) { segs = sightBlockers(world, f); segsCache.set(f, segs); }
+      return pathLossRay(src, e, segs, leavesSource ? leavesSource(f) : null);
+    }
+    return pathLoss(src, e);
+  }
+
   // A one-shot at a place: work out how loud it arrives, how muffled, and how
   // much of it is room rather than source, then hand back a channel to play
   // into. Null when it isn't worth playing at all.
   function shotChannel(at, db, opts = {}) {
     const e = ear();
     const src = { x: at.x, y: at.y, z: at.z, floor: at.floor ?? e.floor, room: at.room ?? null };
-    const path = opts.path || pathLoss(src, e);
+    const path = opts.path || rayPath(src, e);
     const dist = Math.hypot(src.x - e.x, src.y - e.y, src.z - e.z);
     if (dbAt(db, dist) - path.db < 10) return null;
     const wet = opts.wet ?? wetFraction(room, dist);
@@ -79520,7 +80153,10 @@ function initAudio(camera, opts = {}) {
   function refreshBudget() {
     if (!ctx || !active) return;
     const e = ear();
-    const b = budgetSounds(sources.filter((s) => s.loop), e, { cap: MAX_VOICES });
+    // The creature's voice and the buzz each hold one of the eight while
+    // they live — the budget honoured, stated rather than hoped.
+    const cap = Math.max(1, MAX_VOICES - (lurker ? 1 : 0) - (buzzer ? 1 : 0));
+    const b = budgetSounds(sources.filter((s) => s.loop), e, { cap, pathFor: rayPath });
     const keep = new Set();
     for (const r of b.heard) {
       keep.add(r.src.id);
@@ -79602,10 +80238,16 @@ function initAudio(camera, opts = {}) {
     setWorld(state) {
       world = state;
       roomCache = new Map();
+      segsCache = new Map();
       roomKey = '';
       rebuildSources();
       if (started) { applyRoom(true); refreshBudget(); }
     },
+
+    // The shell's window onto the live door leaves, per storey — the same
+    // handoff the label gate gets. Without it the ray casts against the
+    // pre-walk plan, which has no doors in motion.
+    setLeavesSource(fn) { leavesSource = typeof fn === 'function' ? fn : null; },
 
     // Entering or leaving the walkthrough. Leaving stops every voice rather
     // than muting them: an editor that is silent because its gain is zero is
@@ -79656,15 +80298,18 @@ function initAudio(camera, opts = {}) {
     },
 
     // A door latch releasing, or a leaf coming to rest against its stop.
-    door(kind, at) {
+    // `force` is Phase 24's one addition: a leaf driven shut at slam rate
+    // hits its stop harder than one drifting closed, and the bang says so.
+    door(kind, at, force = 1) {
       if (!this.running) return;
+      const f = clamp(force, 0.5, 2);
       const spec = kind === 'shut' ? DOOR_SHUT : DOOR_LATCH;
-      const ch = shotChannel(at, spec.db);
+      const ch = shotChannel(at, spec.db + 6 * (f - 1));
       if (!ch) return;
       if (kind === 'shut') {
-        tone(ch, { hz: spec.hz, level: 0.55, decay: spec.decay, bend: 0.5 });
-        burst(ch, { hz: 1100, q: 0.6, level: 0.5, decay: spec.decay });
-        burst(ch, { hz: 3400, q: 3, level: 0.3, decay: 0.05, delay: 0.02 });
+        tone(ch, { hz: spec.hz, level: 0.55 * f, decay: spec.decay * f, bend: 0.5 });
+        burst(ch, { hz: 1100, q: 0.6, level: 0.5 * f, decay: spec.decay });
+        burst(ch, { hz: 3400, q: 3, level: 0.3 * f, decay: 0.05, delay: 0.02 });
       } else {
         burst(ch, { hz: spec.hz, q: 4, level: 0.6, decay: spec.decay });
       }
@@ -79690,6 +80335,126 @@ function initAudio(camera, opts = {}) {
       if (!ch) return;
       burst(ch, { hz: 300, q: 0.5, level: 0.34 * f, decay: 0.17 });
       burst(ch, { hz: 1500, q: 1.3, level: 0.11 * f, decay: 0.09, delay: 0.012 });
+    },
+
+    // --- Phase 24: the night's voices ---
+
+    // How wrong the building runs. ±50 cents at the very most — at 35 nobody
+    // can name what changed, only that something did, which is the point.
+    // Applied to every tuned node the loops own, and to the ones started
+    // after; 0 puts the building back in tune.
+    setDetune(cents) {
+      detuneCents = clamp(Number.isFinite(cents) ? cents : 0, -50, 50);
+      if (!ctx) return;
+      const t = ctx.currentTime;
+      for (const v of voices.values()) {
+        for (const p of v.tuned || []) p.setTargetAtTime(detuneCents, t, 1.5);
+      }
+    },
+
+    // Something heavy, one corridor over. The whole game is hearing this
+    // through `rayPath`'s walls: close and unobstructed it is a footfall of
+    // something too big, far and muffled it is the building settling. Maybe.
+    thud(at, force = 1) {
+      if (!this.running) return;
+      const f = clamp(force, 0.2, 1.5);
+      const ch = shotChannel(at, 60 + 8 * f);
+      if (!ch) return;
+      tone(ch, { hz: 55, level: 0.85 * f, decay: 0.5, bend: 0.55 });
+      burst(ch, { hz: 130, q: 0.5, level: 0.35 * f, decay: 0.3, delay: 0.01 });
+    },
+
+    // A found star. Two soft sines a sixth apart — the one unambiguously
+    // friendly sound this file makes, which is what makes it a trap.
+    chime(at) {
+      if (!this.running) return;
+      const e = ear();
+      const ch = shotChannel(at || e, 66);
+      if (!ch) return;
+      tone(ch, { hz: 880, level: 0.3, decay: 0.5 });
+      tone(ch, { hz: 1480, level: 0.22, decay: 0.7, delay: 0.09 });
+    },
+
+    // The creature's own persistent voice — the eighth voice, reserved while
+    // it lives (see `refreshBudget`). `spec` is `{ at, mode }`: 'lurk' is a
+    // slow breath of banded noise, 'chase' brings up a beating drone under
+    // it. Null stops it and gives the voice back.
+    creatureVoice(spec) {
+      if (!spec) {
+        if (lurker) {
+          const t = ctx.currentTime;
+          lurker.ch.gain.gain.setTargetAtTime(0, t, 0.4);
+          for (const n of lurker.nodes) { try { n.stop(t + 1.5); } catch { /* stopped */ } }
+          lurker = null;
+        }
+        return;
+      }
+      if (!this.running) return;
+      const t = ctx.currentTime;
+      if (!lurker) {
+        const ch = makeChannel(spec.at, 0, { db: 0, hz: 4000 }, 0.5);
+        const nodes = [];
+        // The breath: banded noise gated at a slow, wrong rhythm.
+        const n = noiseNode();
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass'; bp.frequency.value = 340; bp.Q.value = 1.4;
+        const bg = ctx.createGain(); bg.gain.value = 0.2;
+        const lfo = ctx.createOscillator();
+        lfo.type = 'sine'; lfo.frequency.value = 0.21;
+        const depth = ctx.createGain(); depth.gain.value = 0.12;
+        lfo.connect(depth); depth.connect(bg.gain);
+        n.connect(bp); bp.connect(bg); bg.connect(ch.input);
+        n.start(t); lfo.start(t);
+        nodes.push(n, lfo);
+        // The drone: two low saws a hair apart, beating. Silent until a chase.
+        const dg = ctx.createGain(); dg.gain.value = 0;
+        for (const hz of [46, 46.7]) {
+          const o = ctx.createOscillator();
+          o.type = 'sawtooth'; o.frequency.value = hz;
+          const og = ctx.createGain(); og.gain.value = 0.24;
+          o.connect(og); og.connect(dg);
+          o.start(t);
+          nodes.push(o);
+        }
+        const dlp = ctx.createBiquadFilter();
+        dlp.type = 'lowpass'; dlp.frequency.value = 160;
+        dg.connect(dlp); dlp.connect(ch.input);
+        lurker = { ch, nodes, drone: dg };
+        ch.gain.gain.setTargetAtTime(1, t, 0.6);
+      }
+      movePanner(lurker.ch, spec.at);
+      lurker.drone.gain.setTargetAtTime(spec.mode === 'chase' ? 0.5 : 0, t, 0.3);
+    },
+
+    // The failing fixture's ballast, 120 Hz and narrow, gated by the same
+    // flicker curve that drives its light — they fail together or the trick
+    // reads as two tricks. `gain` is 0..1; 0 releases the voice.
+    buzz(at, gain = 0) {
+      if (!this.running) return;
+      const g = clamp(gain, 0, 1);
+      const t = ctx.currentTime;
+      if (!buzzer) {
+        if (g <= 0) return;
+        const ch = makeChannel(at, 0, { db: 0, hz: 4000 }, 0.35);
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth'; o.frequency.value = 120;
+        const f = ctx.createBiquadFilter();
+        f.type = 'bandpass'; f.frequency.value = 120; f.Q.value = 8;
+        const o2 = ctx.createOscillator();
+        o2.type = 'sine'; o2.frequency.value = 240;
+        const g2 = ctx.createGain(); g2.gain.value = 0.4;
+        o.connect(f); f.connect(ch.input);
+        o2.connect(g2); g2.connect(ch.input);
+        o.start(t); o2.start(t);
+        buzzer = { ch, nodes: [o, o2] };
+      }
+      movePanner(buzzer.ch, at);
+      buzzer.ch.gain.gain.setTargetAtTime(g * 0.22, t, 0.08);
+      if (g <= 0) {
+        const b = buzzer;
+        buzzer = null;
+        for (const n of b.nodes) { try { n.stop(t + 0.6); } catch { /* stopped */ } }
+      }
     },
 
     // --- the things the building does ---
@@ -79790,7 +80555,7 @@ function initAudio(camera, opts = {}) {
       if (s._next === undefined) s._next = now + Math.random() * s.every;
       if (s._next > now + 1) continue;
       const e = ear();
-      const path = pathLoss(s, e);
+      const path = rayPath(s, e);
       const dist = Math.hypot(s.x - e.x, s.y - e.y, s.z - e.z);
       if (dbAt(s.db, dist) - path.db >= 14) {
         const ch = makeChannel(s, gainAtRef(s.db - path.db), path, wetFraction(room, dist));
@@ -85174,6 +85939,460 @@ function phasingCSV(plan) {
 
 return { MAX_PHASES, MAX_PHASE_ROOMS, isRoomId, roomFloor, roomIdOf, roomIdsOnFloor, allRoomIds, emptyPhasing, isEmptyPhasing, normalizePhasing, phasingOf, phaseByStorey, addPhase, removePhase, movePhase, renamePhase, claimShared, assignRooms, pruneToDesign, phasingCosts, phasingCSV };
 })();
+// ---- js/haunt.js ----
+const __m_js_haunt_js = (() => {
+const { shapesOf, segEnds, isBuilt, isDoorOpening, openingSpec, shapeAt, SEG_WALL } = __m_js_shapes_js;
+const { solidSpans } = __m_js_collide_js;
+const { rng } = __m_js_agents_js;
+const { pointEntry, findPath, pathDistance, nearestExit } = __m_js_navgraph_js;
+// haunt.js — how bad is it right now, and what does that look like?
+//
+// Phase 24. A building that can host a school day can host a bad night, and
+// this module is the night's clock: the save record that arms it, the stage
+// machine that paces it, the knobs each stage turns, the writing that appears
+// on the walls, and the numbers behind the two set pieces — the flicker and
+// the fake crash.
+//
+// The whole mode is a pure function of (finds, elapsed, seed, intensity).
+// That is not a nicety, it is the design: the export this ships in opens as
+// an innocent walk demo, and everything that makes it stop being one has to
+// be deterministic enough to test headless and gradual enough that nobody
+// can point at the frame where it turned.
+//
+// Two invariants the suite pins, because the WISHLIST states them:
+//   - The crowd and the creature never share a frame. `stageKnobs` never
+//     answers `crowd && creature` at any (stage, t).
+//   - The stages only ratchet forward. Finds don't come back and time
+//     doesn't either, so `stageFor` is monotone in both.
+//
+// Pure module: no three.js, no DOM, no clock — the caller owns the frame
+// loop and hands elapsed seconds in. Exercised by test/haunt.test.mjs.
+
+
+
+
+
+
+// ---------- the record ----------
+
+// What a save file may carry: whether the night is armed, whose night it is,
+// and how hard it leans. Everything else is session — a creature's position
+// is a fact about a walk, not about a building.
+const DEFAULT_HAUNT = { on: false, seed: 1, intensity: 0.5 };
+
+const clampInt = (v, lo, hi, dflt) =>
+  (Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : dflt);
+const clamp01 = (v, dflt) =>
+  (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : dflt);
+
+function normalizeHaunt(raw) {
+  const h = raw && typeof raw === 'object' ? raw : {};
+  return {
+    on: h.on === true,
+    seed: clampInt(h.seed, 1, 0xffffffff, DEFAULT_HAUNT.seed),
+    intensity: clamp01(h.intensity, DEFAULT_HAUNT.intensity),
+  };
+}
+
+// An off haunt writes no key — the "delete if default" rule save-load.js
+// applies to every optional record. The seed and intensity of a night nobody
+// armed are not worth a byte.
+const isDefaultHaunt = (h) => !h || h.on !== true;
+
+// ---------- the stages ----------
+
+// The arc, in order. `day` is the innocent demo; `dismissal` is the final
+// bell and the building emptying; `dusk` is the sun going and the first
+// fixture failing; `company` is no longer being alone; `flight` is the way
+// out, and every door but one refusing.
+const STAGES = ['day', 'dismissal', 'dusk', 'company', 'flight'];
+
+// When time alone drags each stage in, in seconds at intensity 0.5 — the
+// finds usually get there first, which is the point of gating on both: the
+// player paces the descent, and a player who stalls still sinks. Flight is
+// Infinity on purpose: the last stage is an achievement, never an ambush —
+// the objective has to be met.
+const STAGE_TIMES = [0, 210, 420, 660, Infinity];
+// How long the drift inside the last two stages takes to bottom out.
+const DRIFT_S = 180;
+
+// How many stars the haunted hunt deals, and what it deals. Six is enough
+// building to learn before the turn and short enough to finish scared.
+const HAUNT_COUNT = 6;
+const HAUNT_ITEM = { key: 'star', name: 'a gold star', icon: '⭐' };
+
+// Which stage `progress` has earned. `progress` is `{ finds, total,
+// elapsed }` — finds out of the hunt, elapsed seconds since it started.
+// Intensity scales the clock: a hard night sinks half again as fast.
+// Returns `{ index, key, t }`, t being the 0..1 drift within the stage.
+function stageFor(haunt, progress) {
+  const h = normalizeHaunt(haunt);
+  const finds = Math.max(0, progress && progress.finds || 0);
+  const total = Math.max(0, progress && progress.total || 0);
+  const elapsed = Math.max(0, progress && progress.elapsed || 0);
+  const te = elapsed * (0.5 + h.intensity);
+
+  let timeIdx = 0;
+  for (let i = 1; i < STAGES.length; i++) if (te >= STAGE_TIMES[i]) timeIdx = i;
+
+  let findIdx = 0;
+  if (total > 0) {
+    if (finds >= total) findIdx = 4;
+    else if (finds >= Math.ceil(total * 0.7)) findIdx = 3;
+    else if (finds >= Math.ceil(total * 0.4)) findIdx = 2;
+    else if (finds >= 1) findIdx = 1;
+  }
+
+  const index = Math.max(timeIdx, findIdx);
+  const t0 = STAGE_TIMES[index];
+  const span = index < 3 ? STAGE_TIMES[index + 1] - t0 : DRIFT_S;
+  const from = Number.isFinite(t0) ? t0 : STAGE_TIMES[3];
+  const t = Math.min(1, Math.max(0, (te - from) / span));
+  return { index, key: STAGES[index], t };
+}
+
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// What each stage asks of the building. One object, every knob, so the
+// caller reads a state rather than asking five questions — and so one test
+// can sweep the whole (stage, t) plane and hold the invariants.
+//
+//   crowd / creature / chaseArmed   who is in the building, and how it feels
+//                                   about being looked at
+//   lockExits                       flight only: every exterior door but the
+//                                   chosen one refuses
+//   sunMinutes                      where the caller should drift env.minutes
+//                                   to (null = leave the design's sky alone)
+//   lampScale                       global dimming of what the fixtures give
+//   flickerHz / flickerDepth        for `flickerAt` below
+//   detuneCents                     how wrong the building's hum runs
+//   writings                        0..1 — how much of the written set shows
+//   failing                         seeded index of the one fixture that dies
+//                                   first and buzzes while it does
+//   hud                             the one line the HUD may print, or null
+function stageKnobs(stage, t, haunt) {
+  const h = normalizeHaunt(haunt);
+  const index = typeof stage === 'number' ? stage : (stage && stage.index) || 0;
+  const k = {
+    stage: index, key: STAGES[index] || 'day', t,
+    seed: h.seed, intensity: h.intensity,
+    crowd: index <= 1,
+    creature: index >= 3,
+    chaseArmed: index === 4 || (index === 3 && t > 0.5),
+    lockExits: index === 4,
+    sunMinutes: null,
+    lampScale: 1,
+    flickerHz: 0,
+    flickerDepth: 0,
+    detuneCents: 0,
+    writings: 0,
+    failing: Math.floor(hash01(h.seed) * 12),
+    hud: null,
+  };
+  switch (index) {
+    case 1:   // dismissal — the light goes long while the building empties
+      k.sunMinutes = Math.round(lerp(1020, 1120, t));
+      break;
+    case 2:   // dusk — the sun goes, the first fixture starts to die
+      k.sunMinutes = Math.round(lerp(1120, 1270, t));
+      k.lampScale = lerp(1, 0.85, t);
+      k.flickerHz = lerp(0.4, 1.0, t);
+      k.flickerDepth = lerp(0.1, 0.3, t);
+      k.detuneCents = lerp(0, 10, t);
+      k.writings = 0.25 * t;
+      break;
+    case 3:   // company — you are not alone in here
+      k.sunMinutes = 1340;
+      k.lampScale = lerp(0.8, 0.65, t);
+      k.flickerHz = lerp(1.2, 2.0, t);
+      k.flickerDepth = lerp(0.3, 0.5, t);
+      k.detuneCents = lerp(10, 25, t);
+      k.writings = lerp(0.25, 0.75, t);
+      break;
+    case 4:   // flight — get out
+      k.sunMinutes = 1340;
+      k.lampScale = lerp(0.55, 0.4, t);
+      k.flickerHz = 2.4;
+      k.flickerDepth = lerp(0.5, 0.7, t);
+      k.detuneCents = lerp(25, 35, t);
+      k.writings = 1;
+      k.hud = 'Get out.';
+      break;
+    default:  // day — nothing is wrong. nothing is wrong.
+      break;
+  }
+  return k;
+}
+
+// ---------- the flicker ----------
+
+// A deterministic integer hash onto [0, 1). Not `rng` — flicker is asked per
+// light per frame and must answer the same for the same (seed, light, time)
+// without carrying a stream between callers.
+function hash01(n) {
+  let x = (n | 0) + 0x9e3779b9;
+  x = Math.imul(x ^ (x >>> 16), 0x21f0aaad);
+  x = Math.imul(x ^ (x >>> 15), 0x735a2d97);
+  x = (x ^ (x >>> 15)) >>> 0;
+  return x / 4294967296;
+}
+
+// The multiplier one light wears right now, 0..1. A curve rather than a
+// random walk: time is bucketed at `flickerHz`, each (seed, light, bucket)
+// hashes to whether this bucket dips and how deep, so two runs on one seed
+// flicker identically and the failing fixture is the same fixture all
+// night — it dips more often and all the way down. Light index -1 is "the
+// room": the caller uses it for ambient and spill, shallower than any one
+// fixture so the corridor dies *with* its lights rather than before them.
+function flickerAt(knobs, timeS, lightIndex) {
+  if (!knobs || !(knobs.flickerDepth > 0)) return 1;
+  const hz = Math.max(0.1, knobs.flickerHz || 1);
+  const bucket = Math.floor(timeS * hz);
+  const i = lightIndex | 0;
+  const failing = i === knobs.failing;
+  const h = hash01(knobs.seed * 7 + i * 131 + bucket * 8191);
+  const gate = failing ? 0.55 : 0.1 + knobs.flickerDepth * 0.25;
+  if (h >= gate) return 1;
+  const h2 = hash01(bucket * 977 + i * 31 + knobs.seed * 3 + 1);
+  let depth = knobs.flickerDepth * (failing ? 1 : 0.75);
+  if (i === -1) depth *= 0.5;
+  return Math.max(0.05, 1 - depth * (0.4 + 0.6 * h2));
+}
+
+// ---------- the writing on the walls ----------
+
+// The written set. PG-13 and school-flavoured on purpose — this is a
+// school-building tool and somebody's kid may open the file. Unease, not
+// gore: tallies, wrong arrows, a roll with one name left. The order is the
+// reveal order after `writingPlaces` shuffles it per seed.
+const WRITINGS = [
+  'DON’T BE HERE AFTER THE BELL',
+  'it takes attendance',
+  'hall pass EXPIRED',
+  'I stayed for detention. I’m still here.',
+  'who turned off the lights\nwho turned them on',
+  'the janitor locks 7 doors. count them.',
+  'room 1B is not on the map',
+  'STOP FINDING THE STARS',
+  'it liked the school better full',
+  'do not look down the long hall',
+  'I can hear you counting',
+  'class dismissed.',
+  'EXIT ← (this way is wrong)',
+  'you are here →',
+  'no running. it hears running.',
+  'the stars were a mistake',
+  'IIII IIII IIII IIII II',
+  'absent: everyone.\npresent: you.',
+  'the doors remember being slammed',
+  'ALL FOUND. ALL FOUND. ALL FOUND.',
+];
+
+// How long a wall run must be to carry a writing, and how the plane sits.
+const WRITING_MIN_RUN = 6;    // ft
+const WRITING_W = 7;          // ft, capped by the run it sits on
+const WRITING_INSET = 0.4;    // ft off the wall face, clear of the trim
+
+// Where the writings go: seeded, one per room at most, on a solid interior
+// wall run long enough to read. Walks the same rings sightline.js walks and
+// cuts the openings out the same way, so a writing never spans a doorway.
+// Returns [{ floor, room, x, z, nx, nz, yaw, w, text, order }] sorted by
+// `order` — the caller shows the first `ceil(fraction * length)` of them.
+function writingPlaces(state, seed, count = WRITINGS.length) {
+  const out = [];
+  if (!state || !Array.isArray(state.floors)) return out;
+  const rand = rng(clampInt(seed, 1, 0xffffffff, 1));
+
+  const rooms = [];
+  for (let f = 0; f < state.floors.length; f++) {
+    const floor = state.floors[f];
+    if (!floor) continue;
+    for (const shape of shapesOf(floor)) {
+      const runs = [];
+      for (const ring of shape.rings) {
+        for (let i = 0; i < ring.pts.length; i++) {
+          if (!isBuilt(ring.walls[i])) continue;
+          if (ring.walls[i] !== SEG_WALL) continue;
+          const [a, b] = segEnds(ring, i);
+          const len = Math.hypot(b.x - a.x, b.z - a.z);
+          if (len < WRITING_MIN_RUN) continue;
+          const cuts = [];
+          for (const o of ring.openings) {
+            if (o.seg !== i) continue;
+            const spec = openingSpec(o);
+            // A window is as bad a place for a writing as a doorway is.
+            cuts.push({ a: spec.t * len - spec.w / 2, b: spec.t * len + spec.w / 2 });
+          }
+          const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+          for (const [s, e] of solidSpans(len, cuts, 0)) {
+            if (e - s < WRITING_MIN_RUN) continue;
+            runs.push({ a, ux, uz, s, e, len: e - s });
+          }
+        }
+      }
+      if (runs.length) rooms.push({ floor: f, floorObj: floor, shape, runs });
+    }
+  }
+  if (!rooms.length) return out;
+
+  // Seeded shuffle of the rooms and of the lines, then deal one line per
+  // room until either runs out.
+  for (let i = rooms.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const t = rooms[i]; rooms[i] = rooms[j]; rooms[j] = t;
+  }
+  const lines = WRITINGS.slice();
+  for (let i = lines.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const t = lines[i]; lines[i] = lines[j]; lines[j] = t;
+  }
+
+  const n = Math.min(count, rooms.length, lines.length);
+  for (let k = 0; k < n; k++) {
+    const r = rooms[k];
+    const run = r.runs[Math.floor(rand() * r.runs.length)];
+    const w = Math.min(WRITING_W, run.len * 0.8);
+    const at = run.s + w / 2 + rand() * Math.max(0, run.len - w);
+    const wx = run.a.x + run.ux * at, wz = run.a.z + run.uz * at;
+    // The wall's two faces: the writing goes on the side that is inside this
+    // room, found by asking which side of the wall the room is on.
+    let nx = -run.uz, nz = run.ux;
+    const probe = shapeAt(r.floorObj, wx + nx, wz + nz);
+    if (!probe || probe.id !== r.shape.id) { nx = -nx; nz = -nz; }
+    out.push({
+      floor: r.floor,
+      room: r.shape.id,
+      x: wx + nx * WRITING_INSET,
+      z: wz + nz * WRITING_INSET,
+      nx, nz,
+      yaw: Math.atan2(nx, nz),
+      w,
+      text: lines[k],
+      order: k,
+    });
+  }
+  return out;
+}
+
+// ---------- the fake crash ----------
+
+// How long being caught takes, screen-time. Long enough to read as a real
+// crash for one honest second, short enough that nobody reaches for the
+// power button.
+const CRASH_S = 2.6;
+
+// The crash as numbers, so the canvas that draws it stays a dumb painter
+// and this curve gets a test. Phases: `tear` (the frame shears), `static`
+// (rolling noise), `black` (the fake error card on black), `wake` (back in
+// the building, ringing).
+function crashCurve(t) {
+  if (t >= CRASH_S) return { phase: 'wake', noise: 0, bars: 0, text: false };
+  const s = Math.max(0, t);
+  if (s < 0.5) {
+    const k = s / 0.5;
+    return { phase: 'tear', noise: 0.15 + 0.45 * k, bars: 2 + Math.floor(k * 6), text: false };
+  }
+  if (s < 1.3) {
+    return { phase: 'static', noise: 0.85, bars: 10, text: false };
+  }
+  if (s < 2.2) {
+    return { phase: 'black', noise: 0.03, bars: 0, text: true };
+  }
+  const k = (s - 2.2) / 0.4;
+  return { phase: 'wake', noise: Math.max(0, 0.12 * (1 - k)), bars: 0, text: false };
+}
+
+// ---------- doors that slam ----------
+
+// Which doorway the player just fled through: the segment of their last step
+// crossed the door's plane inside its width. `doors` is sightline.js's
+// `doorPoints` for the storey. Returns the door, or null — the runtime slams
+// the leaf it maps to; the geometry here just names it.
+const SLAM_HALF_W = 2.2;   // ft either side of the centreline
+function slamCandidate(doors, prevAt, at) {
+  if (!doors || !prevAt || !at) return null;
+  for (const d of doors) {
+    const s0 = (prevAt.x - d.x) * d.nx + (prevAt.z - d.z) * d.nz;
+    const s1 = (at.x - d.x) * d.nx + (at.z - d.z) * d.nz;
+    if ((s0 <= 0) === (s1 <= 0)) continue;         // never crossed the plane
+    // Where the step crossed it, and whether that is inside the doorway.
+    const k = s0 / (s0 - s1);
+    const cx = prevAt.x + (at.x - prevAt.x) * k - d.x;
+    const cz = prevAt.z + (at.z - prevAt.z) * k - d.z;
+    const along = Math.hypot(cx, cz);
+    if (along > Math.max(SLAM_HALF_W, (d.w || 3) / 2 + 0.5)) continue;
+    return d;
+  }
+  return null;
+}
+
+// ---------- where you come back, and the way out ----------
+
+// The entrance: the exterior door nearest the walk's spawn, stepped just
+// inside. Where a caught player wakes — finds kept, dignity optional.
+function respawnPoint(nav, field, spawn) {
+  const from = spawn || { x: 0, z: 0, floor: 0 };
+  const near = nav && field
+    ? nearestExit(nav, field, from.floor || 0, from.x, from.z) : null;
+  const exit = near && near.exit;
+  if (!exit) return { x: from.x, z: from.z, floor: from.floor || 0 };
+  // `pa` is the standing point on the room's side of the doorway — an
+  // exterior portal's `b` is the outdoors, so `pa` is always inside.
+  const p = exit.pa || exit;
+  return { x: p.x, z: p.z, floor: exit.floor || 0 };
+}
+
+// Where the creature goes after a catch: the reachable room node the longest
+// walk away from the player. A banished creature starts its stalk from the
+// far side of the building, which is the respawn's mercy — and the price of
+// an A* per room is paid at most once per catch.
+function banishNode(nav, from) {
+  if (!nav || !nav.nodes) return null;
+  const entry = pointEntry(nav, from);
+  if (!entry) return null;
+  const opts = entry.opts || {};
+  let best = null, bestD = -1;
+  for (const n of nav.nodes.values()) {
+    if (n.kind !== 'room') continue;
+    const path = findPath(nav, entry.id, n.id, opts);
+    if (!path) continue;
+    const d = pathDistance(nav, path, opts).dist;
+    if (d > bestD) { bestD = d; best = n; }
+  }
+  return best ? { x: best.x, z: best.z, floor: best.floor, id: best.id, dist: bestD } : null;
+}
+
+// The one exterior door that opens during the flight. Rank every exterior
+// doorway by the *routed* walk from where the player stood when the flight
+// began, keep the `spread` farthest, and let the seed pick one — across the
+// building from you, but not always the very far corner, so a second
+// playthrough can't head straight for it. Everything else refuses with the
+// locked line. A design with one exterior door locks nothing.
+const ESCAPE_SPREAD = 5;
+function escapeDoor(nav, from, seed, opts = {}) {
+  if (!nav || !nav.exits || !nav.exits.length) return null;
+  const spread = Math.max(1, opts.spread || ESCAPE_SPREAD);
+  const entry = pointEntry(nav, from);
+  if (!entry) return nav.exits[0] || null;
+  const eopts = entry.opts || {};
+  const ranked = [];
+  for (const e of nav.exits) {
+    const path = findPath(nav, entry.id, e.id, eopts);
+    if (!path) continue;
+    ranked.push({ exit: e, dist: pathDistance(nav, path, eopts).dist });
+  }
+  if (!ranked.length) return nav.exits[0];
+  ranked.sort((a, b) => b.dist - a.dist || String(a.exit.id).localeCompare(String(b.exit.id)));
+  const top = ranked.slice(0, Math.min(spread, ranked.length));
+  const rand = rng(clampInt(seed, 1, 0xffffffff, 1) ^ 0x5ca1e);
+  return top[Math.floor(rand() * top.length)].exit;
+}
+
+// The locked line, stated once so the HUD and the tests agree on it.
+const LOCKED_TEXT = 'The door appears to be locked. Find another way.';
+
+return { DEFAULT_HAUNT, normalizeHaunt, isDefaultHaunt, STAGES, STAGE_TIMES, DRIFT_S, HAUNT_COUNT, HAUNT_ITEM, stageFor, stageKnobs, hash01, flickerAt, WRITINGS, WRITING_MIN_RUN, WRITING_W, WRITING_INSET, writingPlaces, CRASH_S, crashCurve, SLAM_HALF_W, slamCandidate, respawnPoint, banishNode, ESCAPE_SPREAD, escapeDoor, LOCKED_TEXT };
+})();
 // ---- js/save-load.js ----
 const __m_js_save_load_js = (() => {
 const { CELL, FLOOR_H, MAX_FLOORS, MIN_CELLS, MAX_CELLS, createFloor, createState } = __m_js_grid_js;
@@ -85193,6 +86412,7 @@ const { normalizeModels, librarySize } = __m_js_models_js;
 const { normalizeTimetable, isEmptyTimetable } = __m_js_timetable_js;
 const { normalizeRates, isEmptyRates } = __m_js_rates_js;
 const { normalizePhasing, isEmptyPhasing } = __m_js_phasing_js;
+const { normalizeHaunt, isDefaultHaunt } = __m_js_haunt_js;
 // save-load.js — JSON serialization, file download/upload, localStorage autosave.
 //
 // Save format history:
@@ -85316,6 +86536,7 @@ const { normalizePhasing, isEmptyPhasing } = __m_js_phasing_js;
 
 
 
+
 // v9 is the first bump that is not free.
 //
 // Every version before it added fields measured in bytes: an environment is
@@ -85346,7 +86567,7 @@ const { normalizePhasing, isEmptyPhasing } = __m_js_phasing_js;
 // survive a round trip untouched, so re-importing the same file under the
 // same id brings a room's worth of chairs back rather than leaving holes.
 const AUTOSAVE_KEY = 'school-generator-autosave-v1';
-const SAVE_VERSION = 11;
+const SAVE_VERSION = 12;
 
 // The drawing surface's range. grid.js owns it since Phase 13, because the
 // editor can resize a design now and a file has to be read against the same
@@ -85402,6 +86623,11 @@ function serialize(state, opts = {}) {
   if (isEmptyRates(rates)) delete out.rates; else out.rates = rates;
   const phasing = normalizePhasing(out.phasing);
   if (isEmptyPhasing(phasing)) delete out.phasing; else out.phasing = phasing;
+  // v12's one record, the cheap append kind, and the fourteenth application
+  // of the one rule: a building nobody has haunted writes no `haunt` key, so
+  // every file written before this build round-trips through it unchanged.
+  const haunt = normalizeHaunt(out.haunt);
+  if (isDefaultHaunt(haunt)) delete out.haunt; else out.haunt = haunt;
   return JSON.stringify(out);
 }
 
@@ -85548,6 +86774,10 @@ function deserialize(json, opts = {}) {
   // the default school in it.
   const life = normalizeLife(d.life);
   if (!isDefaultLife(life)) state.life = life;
+  // v12's haunt, on the same terms: an unreadable haunt is a building with
+  // no haunt in it, never a design that won't open.
+  const haunt = normalizeHaunt(d.haunt);
+  if (!isDefaultHaunt(haunt)) state.haunt = haunt;
   // v9, on the same terms as everything above it: an unreadable overlay is a
   // design with no overlay, never a design that won't open. An image type this
   // build can't decode, a data URL over the size cap, a missing pixel size —
@@ -85985,293 +87215,318 @@ function omissionNote(state) {
 
 return { COMFORT_CHARS, MAX_CHARS, SHARE_KEY, bytesToBase64url, base64urlToBytes, canCompress, deflate, inflate, encodeShare, decodeShare, shareFragment, readShareFragment, shareURL, shareStatus, shareOmissions, omissionNote };
 })();
-// ---- js/sightline.js ----
-const __m_js_sightline_js = (() => {
-const { shapesOf, segEnds, isBuilt, isDoorOpening, openingSpec, shapeAt, SEG_WALL } = __m_js_shapes_js;
+// ---- js/creature.js ----
+const __m_js_creature_js = (() => {
+const { rng } = __m_js_agents_js;
+const { route, nodeAt } = __m_js_navgraph_js;
+const { moveWalker } = __m_js_collide_js;
+const { sightClear } = __m_js_sightline_js;
 const { EYE_H } = __m_js_grid_js;
-const { solidSpans, segsCross, elevatorSegments } = __m_js_collide_js;
-const { leafSegment, windowBand } = __m_js_openings_js;
-// sightline.js — is that door visible from here?
+// creature.js — where does it go, and when does it come for you?
 //
-// Phase 21. Room labels are `depthTest:false` sprites, which is right for
-// readability and wrong for honesty: in walk mode they named rooms through
-// the walls that hide them. This module is the gate that makes a label
-// something the walker earned — and it is the module Phase 24 has been
-// promised, because a creature that prefers the corridor you are not looking
-// down asks exactly this question with the arguments swapped.
+// Phase 24's one body. Not an agent: agents.js is fourteen hundred lines of
+// timetable society — seats, lunch queues, door-yielding politeness — and
+// the creature has no schedule, no seat and no manners. Its goal model is a
+// sightline query re-asked every couple of seconds: it prefers the corridor
+// you are *not* looking down (Phase 21 inverted, the same cast with the
+// arguments swapped), it stops the moment you see it, it closes when you
+// don't, and stared at too long — with the chase armed — it comes at a speed
+// no sprint outruns. You escape by breaking its line of sight, or by a door
+// slamming between you; never by cardio.
 //
-// The question is answered in plan: 2D segment casts against one storey's
-// occluders, storey-aware because the caller asks per storey. Sight has its
-// own idea of what a wall is, and it is deliberately *not* collide.js's:
+// What it genuinely shares, it imports: the crowd's seeded `rng`, the
+// navgraph's routes, the collider's `moveWalker` (through an injected
+// `colliderFor`, the same bargain the crowd struck), and sightline's cast.
+// Everything else it does with one switch statement.
 //
-//   - **Glass and railings stop a body and not a look.** `wallSegments` puts
-//     a curtain wall in the collider with drywall, which is right for walking
-//     and would be a lie here — a room you can see into through its glazed
-//     partition is a room you have seen.
-//   - **A window is a hole in the elevation**, so whether sight passes
-//     depends on where the eye is in it: a 3ft-sill classroom window lets a
-//     5.5ft eye through, a clerestory does not. The body never fits either
-//     way, which is why collide.js never cuts one.
-//   - **A door leaf occludes at whatever angle it is hanging right now.** A
-//     closed leaf spans its doorway and blocks it; an open one stands along
-//     the jamb and blocks almost nothing — both fall out of casting against
-//     `leafSegment` at the leaf's live `open`, so an agent holding a door
-//     open is see-through-able *because* the crowd is holding it open. The
-//     caller hands in the collider's own leaves, never a fresh collection:
-//     the leaf's state is the walk's, not the plan's.
-//
-// Pure module: no three.js, no DOM. The segment-crossing primitive is
-// collide.js's `segsCross` — one implementation of "do two segments cross"
-// in the codebase, not two that disagree at the endpoints.
-//
-// `makeLabelGate` at the bottom is the session half: which rooms a walk has
-// earned, refreshed a few casts per frame round-robin, because the walker
-// moves at walking speed and nothing needs a fresh answer every 16ms. It is
-// still pure state-machine over the geometry above — the tests drive it
-// headless, the way every tool-shaped module here is driven.
+// Pure module: no three.js, no DOM, no clock. `makeCreatureCtx` takes only
+// functions, so the tests drive the whole hunt headless — the way every
+// tool-shaped module here is driven.
 
 
 
 
 
 
-// How far either side of a doorway to probe when asking which rooms it
-// joins — clear of the thickest exterior wall, inside anything a door could
-// reasonably open into. The same job navgraph.js's portal probe does.
-const DOOR_PROBE = 2;      // ft
-// How far past a doorway's centreline the cast reaches. The target has to be
-// on the *far* side of the wall or a shut leaf lying exactly on the line
-// would never strictly cross the ray that ends on it.
-const DOOR_PAST = 0.6;     // ft
 
-// ---------- what occludes ----------
+// ---------- the numbers ----------
 
-// One storey's sight-blocking segments, from the same rings collide.js walks.
-// Only solid walls block; door openings are holes (their leaves are cast
-// separately, live); a window is a hole only where the eye height falls
-// within its band. No trim on the spans — sight has no radius.
-function sightSegments(floor, opts = {}) {
-  const eyeH = opts.eyeH ?? EYE_H;
-  const out = [];
-  if (!floor) return out;
+const CREATURE_R = 1.1;    // ft — broader than a walker, on purpose
+const CREATURE_H = 6.9;    // ft — reads wrong in a 10ft corridor
+const LURK_SPEED = 4.6;    // ft/s — anyone's walk, until it isn't
+const CHASE_SPEED = 26;    // ft/s — a hair past SPRINT_SPEED's 24:
+                                  // you break sight, you don't outrun it
+const CATCH_R = 2.2;       // ft
+const SEEN_FOV = 0.45;     // cos of the half-angle that counts as
+                                  // "looking at it" — generous, because the
+                                  // corner of your eye is the whole genre
+const STARE_S = 1.6;       // s of being seen before the chase, at
+                                  // intensity 0.5 — harder nights snap sooner
+const LOS_BREAK_S = 2.5;   // s unseen mid-chase before it gives up
+const RELAX_S = 0.6;       // s unseen in a freeze before it moves again
+const DOOR_LOCKOUT_S = 3;  // s a slammed door costs it
+const SLAM_REACH = 8;      // ft — a slam this close breaks the chase
+const REPATH_S = 0.7;      // s between chase repaths — a hunter
+                                  // repaths like a hunter
+const THINK_S = 1.8;       // s between lurk retargets
+const THUD_EVERY = 6;      // s, roughly, between being audible at all
+// How near the player the lurk is allowed to orbit, by intensity: the band's
+// near edge tightens as the night leans harder.
+const BAND_FAR = 120;      // ft
+const BAND_NEAR_SOFT = 60; // ft at intensity 0
+const BAND_NEAR_HARD = 24; // ft at intensity 1
+// How many candidate nodes a think may cast at — the label gate's budget
+// idea: sight is cheap, but not per-node-per-frame cheap.
+const THINK_CASTS = 8;
 
-  for (const shape of shapesOf(floor)) {
-    for (const ring of shape.rings) {
-      for (let i = 0; i < ring.pts.length; i++) {
-        const kind = ring.walls[i];
-        if (!isBuilt(kind)) continue;
-        // Glass and railings pass sight whole — nothing of them to emit.
-        if (kind !== SEG_WALL) continue;
-        const [a, b] = segEnds(ring, i);
-        const len = Math.hypot(b.x - a.x, b.z - a.z);
-        if (len < 0.01) continue;
-        const cuts = [];
-        for (const o of ring.openings) {
-          if (o.seg !== i) continue;
-          const spec = openingSpec(o);
-          if (!isDoorOpening(o)) {
-            // A window: see through it only if the eye is within the band.
-            const band = windowBand(spec);
-            if (eyeH < band.sill || eyeH > band.head) continue;
-          }
-          cuts.push({ a: spec.t * len - spec.w / 2, b: spec.t * len + spec.w / 2 });
-        }
-        if (!cuts.length) { out.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z }); continue; }
-        const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
-        for (const [s, e] of solidSpans(len, cuts, 0)) {
-          out.push({ ax: a.x + ux * s, az: a.z + uz * s, bx: a.x + ux * e, bz: a.z + uz * e });
-        }
-      }
-    }
-  }
-  return out;
+// ---------- making one ----------
+
+// The creature, as a body the crowd's renderer already knows how to pose:
+// x/z/y/floor/facing/gait/height and the three colours, all of them wrong.
+function makeCreature(opts = {}) {
+  const seed = Number.isFinite(opts.seed) ? Math.max(1, Math.round(opts.seed)) : 1;
+  const at = opts.at || { x: 0, z: 0, floor: 0 };
+  return {
+    id: -666,
+    x: at.x, z: at.z, y: 0, floor: at.floor || 0,
+    facing: 0, gait: 0, walked: 0,
+    height: CREATURE_H,
+    shirt: '#0b0d10', trousers: '#0b0d10', skin: '#141019',
+    state: 'lurk',              // lurk | freeze | chase
+    wp: null, i: 0,
+    seenS: 0, unseenS: 0, lockout: 0,
+    thinkAcc: THINK_S,          // think immediately on the first step
+    repathAcc: 0, thudAcc: 0,
+    rand: rng(seed),
+  };
 }
 
-// The storey's occluders with the lift shafts added — three sheet-metal walls
-// a look does not pass through. This is the list a caller casts against.
-function sightBlockers(state, floorIndex, opts = {}) {
-  const floor = state && state.floors ? state.floors[floorIndex] : null;
-  const out = sightSegments(floor, opts);
-  for (const s of elevatorSegments(state, floorIndex)) {
-    out.push({ ax: s.ax, az: s.az, bx: s.bx, bz: s.bz });
-  }
-  return out;
+// Everything the brain is allowed to know, as injected functions — the
+// `makeContext` pattern. `chaseArmed` and `intensity` are the caller's to
+// retune every frame from the stage knobs.
+function makeCreatureCtx(nav, opts = {}) {
+  return {
+    nav,
+    state: opts.state || null,
+    colliderFor: opts.colliderFor || (() => ({ floor: 0, segs: [], props: [], doors: [], bodies: [] })),
+    sightSegsFor: opts.sightSegsFor || (() => []),
+    leavesFor: opts.leavesFor || ((f) => {
+      const c = (opts.colliderFor || (() => null))(f);
+      return (c && c.doors) || null;
+    }),
+    playerAt: opts.playerAt || (() => ({ x: 0, z: 0, floor: 0 })),
+    // The direction the player faces, as a unit {x, z} in plan.
+    playerLook: opts.playerLook || (() => ({ x: 0, z: 1 })),
+    chaseArmed: opts.chaseArmed === true,
+    intensity: Number.isFinite(opts.intensity) ? Math.min(1, Math.max(0, opts.intensity)) : 0.5,
+  };
 }
 
-// ---------- the cast ----------
+// ---------- being seen ----------
 
-// Does an unobstructed line run from (x0, z0) to (x1, z1)? `leaves` is the
-// collider's live list for the same storey — pass it or the doors don't
-// exist, which is the pre-walk plan rather than the walk.
-function sightClear(segs, leaves, x0, z0, x1, z1) {
-  for (const s of segs) {
-    if (segsCross(x0, z0, x1, z1, s.ax, s.az, s.bx, s.bz)) return false;
+// Both halves of "seen": the creature is inside the player's view cone AND
+// an unobstructed line runs eye to creature — sightline's cast with the
+// arguments the label gate never swaps. Different storeys are never seen;
+// the slab is the one occluder nobody argues with.
+function creatureSeen(ctx, c) {
+  const eye = ctx.playerAt();
+  if ((eye.floor || 0) !== (c.floor || 0)) return false;
+  const dx = c.x - eye.x, dz = c.z - eye.z;
+  const d = Math.hypot(dx, dz);
+  if (d < 1e-6) return true;
+  const look = ctx.playerLook();
+  if ((dx / d) * look.x + (dz / d) * look.z < SEEN_FOV) return false;
+  return sightClear(ctx.sightSegsFor(eye.floor || 0), ctx.leavesFor(eye.floor || 0),
+    eye.x, eye.z, c.x, c.z);
+}
+
+// ---------- choosing where to lurk ----------
+
+const bandNear = (intensity) =>
+  BAND_NEAR_SOFT + (BAND_NEAR_HARD - BAND_NEAR_SOFT) * intensity;
+
+// The corridor you are not looking down: room nodes on the player's storey,
+// inside the band, scored by whether the *player* can see them — at most
+// THINK_CASTS casts, seeded sample. Unseen candidates close on the player;
+// if everything in the band is watched, it drifts to the far edge and waits.
+function pickLurkTarget(ctx, c) {
+  const nav = ctx.nav;
+  if (!nav || !nav.nodes) return null;
+  const eye = ctx.playerAt();
+  const near = bandNear(ctx.intensity);
+  const pool = [];
+  for (const n of nav.nodes.values()) {
+    if (n.kind !== 'room' || n.floor !== (eye.floor || 0)) continue;
+    const d = Math.hypot(n.x - eye.x, n.z - eye.z);
+    if (d < near * 0.5 || d > BAND_FAR) continue;
+    pool.push({ n, d });
   }
-  if (leaves) {
-    for (const leaf of leaves) {
-      const s = leafSegment(leaf);
-      if (segsCross(x0, z0, x1, z1, s.ax, s.az, s.bx, s.bz)) return false;
-    }
+  if (!pool.length) return null;
+  // Seeded sample, then the casts.
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(c.rand() * (i + 1));
+    const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
   }
+  const sample = pool.slice(0, THINK_CASTS);
+  const segs = ctx.sightSegsFor(eye.floor || 0);
+  const leaves = ctx.leavesFor(eye.floor || 0);
+  let best = null, bestScore = -Infinity;
+  for (const cand of sample) {
+    const watched = sightClear(segs, leaves, eye.x, eye.z, cand.n.x, cand.n.z);
+    // Unseen and near beats unseen and far; watched anything comes last, far
+    // end first — out of view is where it lives.
+    const score = watched
+      ? -1000 + cand.d * 0.5 + c.rand()
+      : 100 - Math.abs(cand.d - near) + c.rand() * 8;
+    if (score > bestScore) { bestScore = score; best = cand.n; }
+  }
+  return best;
+}
+
+// ---------- the step ----------
+
+// Follow the current waypoints at `speed` through the collider. A waypoint
+// on another storey is a stair the creature takes in one stride — it gains
+// on you in stairwells, which is both a simplification and a fact about
+// stairwells.
+function walkAlong(ctx, c, speed, dt) {
+  if (!c.wp || c.i >= c.wp.length) return 0;
+  let target = c.wp[c.i];
+  if ((target.floor ?? c.floor) !== c.floor) {
+    c.floor = target.floor;
+    c.x = target.x; c.z = target.z;
+    c.i++;
+    return 0;
+  }
+  const dx = target.x - c.x, dz = target.z - c.z;
+  const d = Math.hypot(dx, dz);
+  if (d < 1) { c.i++; return 0; }
+  const step = Math.min(speed * dt, d);
+  const collider = ctx.colliderFor(c.floor);
+  const moved = moveWalker(ctx.state, collider,
+    { x: c.x, y: c.y, z: c.z }, (dx / d) * step, (dz / d) * step,
+    { grounded: true, radius: CREATURE_R, skip: c.id });
+  const walked = Math.hypot(moved.x - c.x, moved.z - c.z);
+  c.x = moved.x; c.z = moved.z;
+  if (moved.support) c.y = moved.support.y;
+  c.walked += walked;
+  c.gait += walked * 1.1;
+  if (walked > 1e-4) c.facing = Math.atan2(dx, dz);
+  // Held up by geometry — a door still swinging, a desk: skip the waypoint
+  // rather than re-plan, the crowd's own lesson.
+  if (walked < step * 0.2) { c.stuckS = (c.stuckS || 0) + dt; if (c.stuckS > 1.2) { c.stuckS = 0; c.i++; } }
+  else c.stuckS = 0;
+  return walked;
+}
+
+const retarget = (ctx, c, node) => {
+  if (!node) { c.wp = null; return; }
+  c.wp = route(ctx.nav, { x: c.x, z: c.z, floor: c.floor }, node.id || node);
+  c.i = 0;
+};
+
+// Did it get you? Same storey, and inside its reach.
+const checkCaught = (c, at) =>
+  (c.floor || 0) === (at.floor || 0) && Math.hypot(c.x - at.x, c.z - at.z) <= CATCH_R;
+
+// A door just slammed at (x, z): if it is anywhere near the creature — its
+// face, most likely — the chase breaks and the leaf is dead to it for a
+// while. The caller detects the slam (haunt.js's `slamCandidate`); this is
+// only the creature's side of the bargain.
+function noteSlam(ctx, c, at) {
+  if ((at.floor ?? c.floor) !== c.floor) return false;
+  if (Math.hypot(c.x - at.x, c.z - at.z) > SLAM_REACH) return false;
+  c.lockout = DOOR_LOCKOUT_S;
   return true;
 }
 
-// ---------- the doors ----------
+// One frame of the brain. Returns the events the caller turns into audio
+// and consequences: 'thud' (heard through walls — the whole game), 'freeze',
+// 'chase-start', 'chase-break', 'caught'.
+function stepCreature(ctx, c, dt) {
+  const events = [];
+  const eye = ctx.playerAt();
+  c.lockout = Math.max(0, c.lockout - dt);
+  const seen = creatureSeen(ctx, c);
 
-// Every doorway on one storey: its centre, its wall's unit normal, and the
-// rooms either side of it (by shape id; null for the outdoors). A door on a
-// shared partition belongs to the sight of *both* rooms it joins, whichever
-// ring happens to carry the record — the partition-ownership convention is
-// about who builds the wall, not about who may be seen through the hole.
-function doorPoints(state, floorIndex) {
-  const floor = state && state.floors ? state.floors[floorIndex] : null;
-  const out = [];
-  if (!floor) return out;
-
-  for (const shape of shapesOf(floor)) {
-    for (const ring of shape.rings) {
-      for (const o of ring.openings) {
-        if (!isDoorOpening(o)) continue;
-        if (!isBuilt(ring.walls[o.seg])) continue;
-        const [a, b] = segEnds(ring, o.seg);
-        const dx = b.x - a.x, dz = b.z - a.z;
-        const len = Math.hypot(dx, dz);
-        if (len < 0.01) continue;
-        const x = a.x + dx * o.t, z = a.z + dz * o.t;
-        const nx = -dz / len, nz = dx / len;
-        const ra = shapeAt(floor, x + nx * DOOR_PROBE, z + nz * DOOR_PROBE);
-        const rb = shapeAt(floor, x - nx * DOOR_PROBE, z - nz * DOOR_PROBE);
-        out.push({
-          x, z, nx, nz, w: o.w,
-          rooms: [ra ? ra.id : null, rb ? rb.id : null],
-        });
+  if (c.state === 'lurk') {
+    if (seen) {
+      c.state = 'freeze';
+      c.seenS = 0; c.unseenS = 0;
+      c.wp = null;
+      events.push({ kind: 'freeze', x: c.x, z: c.z, floor: c.floor });
+    } else {
+      c.thinkAcc += dt;
+      if (c.thinkAcc >= THINK_S || !c.wp || c.i >= c.wp.length) {
+        c.thinkAcc = 0;
+        retarget(ctx, c, pickLurkTarget(ctx, c));
+      }
+      walkAlong(ctx, c, LURK_SPEED * (0.8 + 0.5 * ctx.intensity), dt);
+      c.thudAcc += dt;
+      if (c.thudAcc >= THUD_EVERY * (0.6 + 0.8 * c.rand())) {
+        c.thudAcc = 0;
+        events.push({ kind: 'thud', x: c.x, z: c.z, floor: c.floor });
+      }
+    }
+  } else if (c.state === 'freeze') {
+    if (seen) {
+      c.unseenS = 0;
+      c.seenS += dt;
+      // Face what is looking at it. Slowly.
+      c.facing = Math.atan2(eye.x - c.x, eye.z - c.z);
+      if (ctx.chaseArmed && c.seenS > STARE_S / (0.5 + ctx.intensity)) {
+        c.state = 'chase';
+        c.repathAcc = REPATH_S;
+        c.unseenS = 0;
+        events.push({ kind: 'chase-start', x: c.x, z: c.z, floor: c.floor });
+      }
+    } else {
+      c.seenS = 0;
+      c.unseenS += dt;
+      if (c.unseenS > RELAX_S) {
+        c.state = 'lurk';
+        c.thinkAcc = THINK_S;
+      }
+    }
+  } else if (c.state === 'chase') {
+    c.unseenS = seen ? 0 : c.unseenS + dt;
+    if (c.unseenS > LOS_BREAK_S || c.lockout > 0) {
+      c.state = 'lurk';
+      c.wp = null;
+      c.thinkAcc = THINK_S;
+      events.push({ kind: 'chase-break', x: c.x, z: c.z, floor: c.floor });
+    } else {
+      c.repathAcc += dt;
+      if (c.repathAcc >= REPATH_S) {
+        c.repathAcc = 0;
+        const node = nodeAt(ctx.nav, eye.floor || 0, eye.x, eye.z);
+        if (node) retarget(ctx, c, node);
+        // Run at the player, not at the middle of their room: the route gets
+        // it through the doors; the last leg is the straight line.
+        if (c.wp) c.wp = [...c.wp, { x: eye.x, z: eye.z, floor: eye.floor || 0, kind: 'walk' }];
+      }
+      walkAlong(ctx, c, CHASE_SPEED, dt);
+      if (checkCaught(c, eye)) {
+        c.state = 'lurk';
+        c.wp = null;
+        events.push({ kind: 'caught', x: c.x, z: c.z, floor: c.floor });
       }
     }
   }
-  return out;
+  return events;
 }
 
-// Is this door visible from the eye? The cast reaches just *past* the
-// doorway's centreline, on the far side from the eye — through the hole the
-// wall spans leave, through (or into) whatever leaf is hanging in it.
-function doorSeen(segs, leaves, eye, door, opts = {}) {
-  const past = opts.past ?? DOOR_PAST;
-  const side = Math.sign((eye.x - door.x) * door.nx + (eye.z - door.z) * door.nz) || 1;
-  return sightClear(segs, leaves, eye.x, eye.z,
-    door.x - door.nx * side * past, door.z - door.nz * side * past);
+// After a catch the caller banishes it — haunt.js knows where — and this
+// puts the body there with its head clear.
+function placeCreature(c, at) {
+  c.x = at.x; c.z = at.z; c.floor = at.floor || 0;
+  c.wp = null; c.i = 0;
+  c.state = 'lurk';
+  c.seenS = 0; c.unseenS = 0; c.lockout = 0;
+  c.thinkAcc = THINK_S; c.thudAcc = 0;
 }
 
-// ---------- the gate ----------
-
-const LABEL_MODES = ['earned', 'strict', 'all', 'none'];
-
-// The walk's memory of what it has seen. One per walk — earned labels last
-// exactly as long as the colliders do, and are forgotten with them.
-//
-//   update(eye, leaves, mode)      a few casts, round-robin; returns rooms
-//                                  newly seen this call
-//   visible(floor, roomId, mode)   should this room's label show?
-//
-// `eye` is `{ x, z, floor }`; `leaves` is the collider's live door list for
-// that storey. Two modes do work: *earned* casts only for rooms not yet
-// seen — a label learned is a label kept — and *strict* keeps refreshing
-// every room on the storey, so a label lasts only as long as its door stays
-// in sight. *all* and *none* cast nothing and answer flatly.
-function makeLabelGate(state, opts = {}) {
-  const eyeH = opts.eyeH ?? EYE_H;
-  // Casts per update. Walking speed is 12ft/s and a frame is 16ms — four
-  // rooms a frame walks the whole round-robin faster than a doorway crosses
-  // the view.
-  const budget = opts.budget ?? 4;
-  const floors = new Map();     // floorIndex -> { segs, rooms, doorsOf }
-  const seen = new Set();       // `${floor}:${roomId}`, for the walk
-  const lit = new Map();        // same key -> currently-in-sight, for strict
-  let cursor = 0;
-
-  const key = (floorIndex, roomId) => `${floorIndex}:${roomId}`;
-
-  // Derived once per storey per walk — editing and walking are exclusive, so
-  // nothing under this can change until the gate is thrown away.
-  const floorData = (i) => {
-    let fd = floors.get(i);
-    if (fd) return fd;
-    const floor = state.floors[i] || null;
-    const doorsOf = new Map();
-    for (const d of doorPoints(state, i)) {
-      for (const id of d.rooms) {
-        if (id === null || id === undefined) continue;
-        let list = doorsOf.get(id);
-        if (!list) { list = []; doorsOf.set(id, list); }
-        list.push(d);
-      }
-    }
-    fd = {
-      floor,
-      segs: sightBlockers(state, i, { eyeH }),
-      rooms: floor ? shapesOf(floor).map((s) => s.id) : [],
-      doorsOf,
-    };
-    floors.set(i, fd);
-    return fd;
-  };
-
-  const roomSeen = (fd, eye, leaves, roomId) => {
-    const doors = fd.doorsOf.get(roomId);
-    if (!doors) return false;
-    // Nearest first: the door you are looking at is almost always the one
-    // that answers, and the first clear cast ends the question.
-    const sorted = doors.length > 1
-      ? [...doors].sort((p, q) =>
-        Math.hypot(p.x - eye.x, p.z - eye.z) - Math.hypot(q.x - eye.x, q.z - eye.z))
-      : doors;
-    for (const d of sorted) {
-      if (doorSeen(fd.segs, leaves, eye, d)) return true;
-    }
-    return false;
-  };
-
-  return {
-    seen,
-    update(eye, leaves, mode = 'earned') {
-      if (mode !== 'earned' && mode !== 'strict') return [];
-      const fd = floorData(eye.floor);
-      if (!fd.floor) return [];
-      const fresh = [];
-      const mark = (roomId) => {
-        const k = key(eye.floor, roomId);
-        lit.set(k, true);
-        if (!seen.has(k)) { seen.add(k); fresh.push(roomId); }
-      };
-      // The room underfoot is earned by standing in it — the spawn room, and
-      // any room with no door at all that a ghost drifted into.
-      const here = shapeAt(fd.floor, eye.x, eye.z);
-      if (here) mark(here.id);
-      // Round-robin over what still needs an answer: everything unseen
-      // (earned), or everything (strict, which is re-earned every lap).
-      const todo = mode === 'earned'
-        ? fd.rooms.filter((id) => !seen.has(key(eye.floor, id)))
-        : fd.rooms;
-      if (!todo.length) return fresh;
-      const n = Math.min(budget, todo.length);
-      for (let c = 0; c < n; c++) {
-        const roomId = todo[(cursor + c) % todo.length];
-        if (here && roomId === here.id) continue;
-        if (roomSeen(fd, eye, leaves, roomId)) mark(roomId);
-        else lit.set(key(eye.floor, roomId), false);
-      }
-      cursor = (cursor + n) % Math.max(1, todo.length);
-      return fresh;
-    },
-    visible(floorIndex, roomId, mode = 'earned') {
-      if (mode === 'all') return true;
-      if (mode === 'none') return false;
-      if (mode === 'strict') return lit.get(key(floorIndex, roomId)) === true;
-      return seen.has(key(floorIndex, roomId));
-    },
-  };
-}
-
-return { DOOR_PROBE, DOOR_PAST, sightSegments, sightBlockers, sightClear, doorPoints, doorSeen, LABEL_MODES, makeLabelGate };
+return { CREATURE_R, CREATURE_H, LURK_SPEED, CHASE_SPEED, CATCH_R, SEEN_FOV, STARE_S, LOS_BREAK_S, RELAX_S, DOOR_LOCKOUT_S, SLAM_REACH, REPATH_S, THINK_S, THUD_EVERY, BAND_FAR, BAND_NEAR_SOFT, BAND_NEAR_HARD, THINK_CASTS, makeCreature, makeCreatureCtx, creatureSeen, pickLurkTarget, checkCaught, noteSlam, stepCreature, placeCreature };
 })();
 // ---- js/minimap.js ----
 const __m_js_minimap_js = (() => {
@@ -86590,9 +87845,12 @@ const { doorEvents } = __m_js_sound_js;
 const { MAX_SHOVE } = __m_js_shove_js;
 const { deserialize } = __m_js_save_load_js;
 const { decodeShare } = __m_js_share_js;
-const { makeLabelGate, LABEL_MODES } = __m_js_sightline_js;
+const { makeLabelGate, LABEL_MODES, sightBlockers, doorPoints } = __m_js_sightline_js;
 const { MOODS, applyMood } = __m_js_sky_js;
-const { buildCollider, storeyAt, WALKER_R } = __m_js_collide_js;
+const { buildCollider, storeyAt, WALKER_R, updateDoorsFor } = __m_js_collide_js;
+const { startHunt, checkFind, huntWarmth, huntSummary } = __m_js_hunt_js;
+const { normalizeHaunt, stageFor, stageKnobs, flickerAt, writingPlaces, crashCurve, CRASH_S, slamCandidate, banishNode, escapeDoor, LOCKED_TEXT, HAUNT_COUNT, HAUNT_ITEM } = __m_js_haunt_js;
+const { makeCreature, makeCreatureCtx, stepCreature, noteSlam, placeCreature, CREATURE_R } = __m_js_creature_js;
 const { terrainField, groundAt } = __m_js_terrain_js;
 const { buildNav } = __m_js_navgraph_js;
 const { makePopulation, makeContext, retargetAll, stepAgents, bodiesOn, makeCrowdField, clearCrowd, normalizeLife } = __m_js_agents_js;
@@ -86624,6 +87882,9 @@ const { floorBounds } = __m_js_shadow_js;
 // The one convention that matters most here is inherited rather than new:
 // this file is a *shell*, thin over the same modules main.js is thin over.
 // Anything smart enough to test belongs in one of them, not here.
+
+
+
 
 
 
@@ -86891,6 +88152,401 @@ function boot() {
   function lifeFollowTick() {
     const who = walk.following;
     if (who && who.state === 'out') walk.setFollow(null);
+  }
+
+  // ---------- Phase 24: lights out ----------
+  //
+  // The whole mode rides one optional save record. An export whose design
+  // carries `haunt: { on: true }` shows one extra overlay button — a star
+  // hunt — and the hunt is the trap: each find (and, more slowly, the clock)
+  // ratchets haunt.js's stage machine, and everything below is just this
+  // shell turning the knobs that machine hands back. An export without the
+  // record shows nothing new at all: stealth holds in both directions.
+  //
+  // The pieces are the pure modules': hunt.js deals the stars, haunt.js
+  // paces the night and places the writings, creature.js is the one body.
+  // This file only wires — the same bargain the crowd struck, including the
+  // collider handoff: when the building empties, the haunt owns them.
+  const hauntRec = normalizeHaunt(state.haunt);
+  const haunt = {
+    armed: hauntRec.on, seed: hauntRec.seed, intensity: hauntRec.intensity,
+    on: false, ended: false,
+    stage: 0, knobs: null, elapsed: 0,
+    hunt: null, nav: null, site: null, warmOpts: null,
+    colliders: new Map(), segs: new Map(), doorPts: new Map(),
+    creature: null, cctx: null,
+    writings: [],
+    escape: null, lockedDoors: [],
+    slammed: new Map(),
+    crash: -1, crashDone: false,
+    prevAt: null, spawn: null, exodus: 0,
+    envAcc: 0, buzzAcc: 0, warmAcc: 0, lastDetune: 0,
+  };
+
+  function hauntColliderFor(i) {
+    let c = haunt.colliders.get(i);
+    if (!c) {
+      c = buildCollider(state, i, catalogEntry, { site: haunt.site });
+      haunt.colliders.set(i, c);
+    }
+    return c;
+  }
+  const hauntSegsFor = (f) => {
+    let s = haunt.segs.get(f);
+    if (!s) { s = sightBlockers(state, f); haunt.segs.set(f, s); }
+    return s;
+  };
+  const hauntDoorsFor = (f) => {
+    let d = haunt.doorPts.get(f);
+    if (!d) { d = doorPoints(state, f); haunt.doorPts.set(f, d); }
+    return d;
+  };
+
+  const playerEye = () => {
+    const at = walk.at;
+    return { x: at.x, z: at.z, floor: at.floor };
+  };
+  const _lookV = new THREE.Vector3();
+  function playerLook() {
+    renderApi.walkCamera.getWorldDirection(_lookV);
+    const d = Math.hypot(_lookV.x, _lookV.z) || 1;
+    return { x: _lookV.x / d, z: _lookV.z / d };
+  }
+  const earY = () => renderApi.walkCamera.position.y;
+
+  function hauntStart() {
+    if (haunt.on) return;
+    haunt.on = true;
+    haunt.site = terrainField(state);
+    haunt.nav = buildNav(state, { siteField: haunt.site });
+    haunt.hunt = startHunt(haunt.nav, {
+      seed: haunt.seed, count: HAUNT_COUNT, items: [HAUNT_ITEM], indoors: true,
+    });
+    haunt.warmOpts = { nav: haunt.nav };
+    haunt.writings = writingPlaces(state, haunt.seed);
+    haunt.spawn = playerEye();
+    renderApi.setHunt(haunt.hunt.places);
+    renderApi.setWritings(haunt.writings);
+    // One closure for the whole night: it reads the live knobs, so the
+    // renderer is handed a function once rather than a policy per frame.
+    renderApi.setLampFlicker((i, t) => {
+      const k = haunt.knobs;
+      if (!k || (k.lampScale >= 1 && !(k.flickerDepth > 0))) return 1;
+      return k.lampScale * flickerAt(k, t, i);
+    });
+    // Stage 0 wants the school day at its liveliest.
+    if (!life.on) lifeStart();
+    const n = haunt.hunt.places.length;
+    walkHud.textContent =
+      `⭐ ${n} gold stars are hidden in the building — the HUD reads warmer as you close in.`;
+    const btn = $('walk-hunt');
+    if (btn) btn.classList.add('hidden');
+  }
+
+  // The exodus is over — or never happened — and the haunt owns the
+  // colliders now, the same bargain the crowd struck.
+  function hauntTakeBuilding() {
+    if (life.on) lifeStop();
+    walk.setColliders(hauntColliderFor);
+    walk.setLifts(null);
+  }
+
+  function hauntEnterStage(index, knobs) {
+    haunt.stage = index;
+    if (index >= 1 && life.on) life.rate = 0;   // the night owns the clock now
+    if (index === 1) {
+      // The final bell, and everyone files out. The drill machinery, re-aimed
+      // — deliberately without the klaxon or the PA: a dismissal is a bell.
+      audio.ring();
+      if (life.on && life.ctx) {
+        life.drill = true;
+        life.ctx.mode = 'drill';
+        life.ctx.egress = null;
+        life.ctx.elapsed = 0;
+        clearCrowd(life.crowd);
+        retargetAll(life.ctx, life.agents);
+      }
+      haunt.exodus = 75;
+      walkHud.textContent = '🔔 That’s the last bell.';
+    } else if (index === 2) {
+      hauntTakeBuilding();
+      walkHud.textContent = 'The building is empty again.';
+    } else if (index === 3 && !haunt.creature) {
+      haunt.cctx = makeCreatureCtx(haunt.nav, {
+        state,
+        colliderFor: hauntColliderFor,
+        sightSegsFor: hauntSegsFor,
+        leavesFor: (f) => hauntColliderFor(f).doors,
+        playerAt: playerEye,
+        playerLook,
+        intensity: haunt.intensity,
+      });
+      const far = banishNode(haunt.nav, playerEye());
+      haunt.creature = makeCreature({ seed: haunt.seed, at: far || playerEye() });
+      // One more body: it pushes on the camera and it opens doors, through
+      // the same walkthrough calls the crowd used.
+      walk.setBodies((f) => (haunt.creature && haunt.creature.floor === f
+        ? [{ id: haunt.creature.id, x: haunt.creature.x, z: haunt.creature.z, r: CREATURE_R, open: true }]
+        : null));
+    } else if (index === 4) {
+      haunt.escape = escapeDoor(haunt.nav, playerEye(), haunt.seed);
+      haunt.lockedDoors = [];
+      for (const e of haunt.nav.exits) {
+        if (haunt.escape && e.id === haunt.escape.id) continue;
+        const collider = hauntColliderFor(e.floor || 0);
+        const leaves = (collider.doors || []).filter((l) =>
+          Math.hypot(l.cx - e.x, l.cz - e.z) <= ((e.w || 3) / 2 + 2));
+        haunt.lockedDoors.push({ exit: e, leaves, toast: 0 });
+      }
+      walkHud.textContent = knobs.hud || 'Get out.';
+    }
+  }
+
+  function hauntSlam(door, floorIndex) {
+    const collider = hauntColliderFor(floorIndex);
+    const leaves = (collider.doors || []).filter((l) =>
+      Math.hypot(l.cx - door.x, l.cz - door.z) <= ((door.w || 3) / 2 + 1.5));
+    if (!leaves.length) return;
+    for (const l of leaves) haunt.slammed.set(l, 3.2);
+    if (haunt.cctx && haunt.creature) {
+      noteSlam(haunt.cctx, haunt.creature, { x: door.x, z: door.z, floor: floorIndex });
+    }
+    audio.door('shut', { x: door.x, y: earY() - 1, z: door.z }, 1.9);
+  }
+
+  function hauntCreatureTick(dt, knobs) {
+    const c = haunt.creature;
+    if (!c) return;
+    haunt.cctx.chaseArmed = knobs.chaseArmed;
+    const at = walk.at;
+    // The walkthrough drives the player's storey's doors with the creature
+    // merged in; a creature elsewhere drives its own — the crowd's
+    // skipFloors bargain, one body wide.
+    if (c.floor !== at.floor) {
+      const collider = hauntColliderFor(c.floor);
+      if (updateDoorsFor(collider, [{ x: c.x, z: c.z, open: true }], dt)) {
+        renderApi.poseDoors(collider.doors);
+      }
+    }
+    for (const ev of stepCreature(haunt.cctx, c, dt)) {
+      const pos = { x: ev.x, y: earY(), z: ev.z };
+      if (ev.kind === 'thud') audio.thud(pos, 0.8);
+      else if (ev.kind === 'chase-start') audio.thud(pos, 1.5);
+      else if (ev.kind === 'caught') hauntCaught();
+    }
+    audio.creatureVoice({
+      at: { x: c.x, y: c.y + 4, z: c.z },
+      mode: c.state === 'chase' ? 'chase' : 'lurk',
+    });
+    if (c.state === 'chase' && haunt.prevAt && haunt.prevAt.floor === at.floor
+        && Math.hypot(c.x - at.x, c.z - at.z) < 30) {
+      const door = slamCandidate(hauntDoorsFor(at.floor), haunt.prevAt, at);
+      if (door) hauntSlam(door, at.floor);
+    }
+    // The creature rides the crowd's meshes — they never share a frame, by
+    // the stage machine's own invariant, and this guard says so.
+    if (!life.on) {
+      renderApi.setCrowd([{ ...c, state: c.state === 'freeze' ? 'idle' : 'walk' }],
+        { recolor: true });
+    }
+  }
+
+  function hauntFlightTick(dt) {
+    const at = walk.at;
+    for (const d of haunt.lockedDoors) {
+      for (const l of d.leaves) l.open = 0;
+      d.toast = Math.max(0, d.toast - dt);
+      if ((d.exit.floor || 0) === at.floor && d.toast <= 0
+          && Math.hypot(d.exit.x - at.x, d.exit.z - at.z) < 5) {
+        d.toast = 6;
+        walkHud.textContent = LOCKED_TEXT;
+        audio.door('latch', { x: d.exit.x, y: earY() - 1, z: d.exit.z }, 1.6);
+      }
+    }
+    if (at.floor === 0 && haunt.nav.roomIdAt(0, at.x, at.z) === null) hauntEscaped();
+  }
+
+  function hauntEscaped() {
+    if (haunt.ended) return;
+    haunt.ended = true;
+    audio.creatureVoice(null);
+    audio.setDetune(0);
+    renderApi.setLampFlicker(null);
+    renderApi.setCrowd([], {});
+    const sum = huntSummary(haunt.hunt);
+    $('haunt-end-line').textContent =
+      `${sum.found} star${sum.found === 1 ? '' : 's'}, and the one door that still opens.`;
+    $('haunt-end').classList.remove('hidden');
+    if (walk.controls.isLocked) walk.controls.unlock();
+  }
+
+  // ---------- the fake crash ----------
+  //
+  // Caught. The screen tears into static, holds one honest second of error
+  // card on black, and wakes at the entrance — finds kept, creature banished
+  // to the far side of the building. haunt.js's `crashCurve` is the numbers;
+  // this canvas is only the painter. `prefers-reduced-motion` runs the whole
+  // thing at double speed, which halves the static.
+  const glitch = $('glitch');
+  const glitchCtx = glitch ? glitch.getContext('2d') : null;
+  const reducedMotion = typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function drawGlitch(c) {
+    if (!glitchCtx) return;
+    const w = window.innerWidth, h = window.innerHeight;
+    if (glitch.width !== w) glitch.width = w;
+    if (glitch.height !== h) glitch.height = h;
+    glitchCtx.clearRect(0, 0, w, h);
+    if (c.phase === 'black') {
+      glitchCtx.fillStyle = '#000';
+      glitchCtx.fillRect(0, 0, w, h);
+      if (c.text) {
+        glitchCtx.fillStyle = '#c9ced6';
+        glitchCtx.font = '15px system-ui, sans-serif';
+        glitchCtx.textAlign = 'center';
+        glitchCtx.fillText('school-walk.html is not responding', w / 2, h / 2 - 12);
+        glitchCtx.fillStyle = '#7d838c';
+        glitchCtx.font = '12px system-ui, sans-serif';
+        glitchCtx.fillText('An error report has been saved.', w / 2, h / 2 + 12);
+      }
+      return;
+    }
+    if (c.noise > 0) {
+      const cell = 6;
+      for (let y = 0; y < h; y += cell) {
+        for (let x = 0; x < w; x += cell) {
+          if (Math.random() > c.noise) continue;
+          const v = Math.floor(Math.random() * 255);
+          glitchCtx.fillStyle = `rgb(${v},${v},${v})`;
+          glitchCtx.fillRect(x, y, cell, cell);
+        }
+      }
+    }
+    for (let i = 0; i < c.bars; i++) {
+      const y = Math.random() * h;
+      const bh = 4 + Math.random() * 26;
+      glitchCtx.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,0.85)' : 'rgba(210,214,220,0.6)';
+      glitchCtx.fillRect(0, y, w, bh);
+    }
+  }
+
+  function hauntCaught() {
+    if (haunt.crash >= 0) return;
+    haunt.crash = 0;
+    haunt.crashDone = false;
+    const at = walk.at;
+    audio.thud({ x: at.x, y: earY(), z: at.z }, 1.5);
+  }
+
+  function hauntRespawn() {
+    const p = haunt.spawn || { x: 0, z: 0, floor: 0 };
+    renderApi.walkCamera.position.set(
+      p.x, (p.floor || 0) * (state.floorHt || 12) + EYE_H, p.z);
+    if (haunt.creature && haunt.nav) {
+      const far = banishNode(haunt.nav, p);
+      if (far) placeCreature(haunt.creature, far);
+    }
+    walkHud.textContent = '…the stars you found are still found.';
+  }
+
+  function hauntCrashTick(dt) {
+    haunt.crash += dt * (reducedMotion ? 2 : 1);
+    const c = crashCurve(haunt.crash);
+    if (glitch) glitch.classList.remove('hidden');
+    drawGlitch(c);
+    if (!haunt.crashDone && (c.phase === 'black' || c.phase === 'wake')) {
+      haunt.crashDone = true;
+      hauntRespawn();
+    }
+    if (haunt.crash >= CRASH_S) {
+      haunt.crash = -1;
+      if (glitch) glitch.classList.add('hidden');
+    }
+  }
+
+  // ---------- the night, once a frame ----------
+  function hauntUpdate(dt) {
+    if (haunt.crash >= 0) { hauntCrashTick(dt); return; }
+    if (!haunt.on || haunt.ended) return;
+    haunt.elapsed += dt;
+    const sum = huntSummary(haunt.hunt);
+    const st = stageFor(haunt, { finds: sum.found, total: sum.total, elapsed: haunt.elapsed });
+    const knobs = stageKnobs(st.index, st.t, haunt);
+    haunt.knobs = knobs;
+    if (st.index !== haunt.stage) hauntEnterStage(st.index, knobs);
+
+    const at = walk.at;
+    const found = checkFind(haunt.hunt, at);
+    if (found) {
+      audio.chime({ x: found.x, y: earY(), z: found.z });
+      const s2 = huntSummary(haunt.hunt);
+      walkHud.textContent = s2.done
+        ? '⭐ That’s all of them.'
+        : `⭐ ${s2.found} of ${s2.total}.`;
+      haunt.warmAcc = -4;
+    }
+    renderApi.updateHunt(at, haunt.hunt.found, dt);
+
+    // The warmth line, every few seconds while stars are still out — routed
+    // over the navgraph, so a star one wall away reads cool the long way round.
+    haunt.warmAcc += dt;
+    if (haunt.warmAcc >= 4 && !sum.done && haunt.stage < 4) {
+      haunt.warmAcc = 0;
+      const w = huntWarmth(haunt.hunt, at, haunt.warmOpts);
+      if (w) walkHud.textContent = `⭐ ${sum.found}/${sum.total} · ${w.label} — ${w.place.hint}`;
+    }
+
+    // The sun, drifted — throttled, because each env write re-runs the light
+    // budget, fine at a half hertz and ruinous at sixty.
+    if (knobs.sunMinutes !== null) {
+      haunt.envAcc += dt;
+      if (haunt.envAcc >= 2 && state.env.minutes < knobs.sunMinutes) {
+        // Four game-minutes a second: a whole afternoon dies in about three
+        // real minutes, which is one dusk stage — fast enough to be *going*,
+        // slow enough that nobody sees a sun move.
+        state.env.minutes = Math.min(knobs.sunMinutes,
+          state.env.minutes + Math.ceil(haunt.envAcc * 4));
+        haunt.envAcc = 0;
+        renderApi.setEnvironment(state.env);
+      }
+    }
+
+    renderApi.updateWritings(Math.round(knobs.writings * haunt.writings.length));
+    if (Math.abs(knobs.detuneCents - haunt.lastDetune) > 1.5) {
+      haunt.lastDetune = knobs.detuneCents;
+      audio.setDetune(knobs.detuneCents);
+    }
+
+    // The failing fixture's ballast, overhead, gated by the same curve that
+    // dims it — light and sound fail together or the trick reads as two.
+    haunt.buzzAcc += dt;
+    if (haunt.buzzAcc >= 0.1) {
+      haunt.buzzAcc = 0;
+      const dip = knobs.flickerDepth > 0
+        ? 1 - flickerAt(knobs, haunt.elapsed, knobs.failing) : 0;
+      audio.buzz({ x: at.x, y: earY() + 4, z: at.z }, Math.min(1, dip * 2.2));
+    }
+
+    // Slammed leaves stay shut until their lockout decays.
+    for (const [l, s] of [...haunt.slammed]) {
+      l.open = 0;
+      if (s - dt <= 0) haunt.slammed.delete(l);
+      else haunt.slammed.set(l, s - dt);
+    }
+
+    // The dismissal's tail: when the last of the crowd is out — or 75s pass,
+    // stragglers vanishing under the first long blackout — the building is
+    // the haunt's.
+    if (haunt.stage === 1 && life.on) {
+      haunt.exodus -= dt;
+      const inside = life.agents.some((a) => a.state !== 'out');
+      if (haunt.exodus <= 0 || !inside) hauntTakeBuilding();
+    }
+
+    if (knobs.creature) hauntCreatureTick(dt, knobs);
+    if (knobs.lockExits) hauntFlightTick(dt);
+    haunt.prevAt = { x: at.x, z: at.z, floor: at.floor };
   }
 
   // ---------- the minimap ----------
@@ -87215,9 +88871,34 @@ function boot() {
     $('walk-life').textContent = life.on ? '👥 Empty the building' : '👥 People';
   });
 
+  // The star hunt's one button — in the overlay only when the design armed
+  // it, and gone the moment it is pressed. An unarmed export never shows it.
+  const walkHuntBtn = $('walk-hunt');
+  if (walkHuntBtn) {
+    if (haunt.armed) walkHuntBtn.classList.remove('hidden');
+    walkHuntBtn.addEventListener('click', () => {
+      audio.setActive(true);
+      hauntStart();
+      if (isTouch) {
+        walk.enableTouch();
+        document.body.classList.add('touch-walk');
+        walkOverlay.classList.add('hidden');
+      } else {
+        walk.controls.lock();
+      }
+    });
+  }
+  const hauntEndBtn = $('haunt-end-close');
+  if (hauntEndBtn) {
+    hauntEndBtn.addEventListener('click', () => {
+      $('haunt-end').classList.add('hidden');
+      openWalkOverlay();
+    });
+  }
+
   walk.controls.addEventListener('lock', () => walkOverlay.classList.add('hidden'));
   walk.controls.addEventListener('unlock', () => {
-    if (!photoMode) openWalkOverlay();
+    if (!photoMode && !haunt.ended) openWalkOverlay();
   });
 
   // ---------- keys ----------
@@ -87256,6 +88937,7 @@ function boot() {
     audio.update(dt);
     labelGateUpdate();
     lifeUpdate(dt);
+    hauntUpdate(dt);
     renderApi.poseLifts(walk.lifts || (life.ctx && life.ctx.lifts));
     renderApi.render(dt);
     if (miniOn && !photoMode) drawMinimap();
@@ -87263,7 +88945,10 @@ function boot() {
   loop();
 
   // debug/test hook — the visual harness and the export smoke test read this.
-  window.walkApp = { get state() { return state; }, renderApi, walk, audio, life, setPhotoMode };
+  window.walkApp = {
+    get state() { return state; }, renderApi, walk, audio, life, setPhotoMode,
+    haunt, hauntStart, hauntUpdate,
+  };
 }
 
 // The async edge of the whole file: the codec inflates through

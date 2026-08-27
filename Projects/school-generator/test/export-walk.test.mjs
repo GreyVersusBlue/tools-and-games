@@ -66,6 +66,11 @@ test('the graph closes, and it is the walk severed from the editor', () => {
   assert.ok(files.includes('libs/three.module.js'), 'three rides along');
   assert.ok(files.includes('js/save-load.js'), 'the export embeds its own deserializer');
   assert.ok(files.includes('js/share.js'), '…and its own codec');
+  // Phase 24: the night travels with the file. All three are pure, which is
+  // what lets them join the graph at all.
+  assert.ok(files.includes('js/hunt.js'), 'the star hunt is in it');
+  assert.ok(files.includes('js/haunt.js'), '…and the night’s clock');
+  assert.ok(files.includes('js/creature.js'), '…and the one body');
   assert.equal(files[files.length - 1], 'js/walk-main.js', 'entry evaluates last');
   // The severance the twenty-phase discipline paid for: nothing the walk
   // doesn't need came along. A new import in a walk module that drags one of
@@ -123,4 +128,21 @@ test('the sample school splices in, and the payload it carries opens again', asy
   assert.ok(m, 'the design rides in its own text script tag');
   const state = deserialize(await decodeShare(m[1]));
   assert.equal(state.floors.length, buildSampleSchool().floors.length);
+});
+
+test('an armed haunt travels inside the payload — no marker, no new slot, no trace', async () => {
+  const school = buildSampleSchool();
+  school.haunt = { on: true, seed: 21, intensity: 0.7 };
+  const payload = await encodeShare(serialize(school, { omitOverlay: true }));
+  const exported = spliceDesign(built.html, payload);
+  const m = exported.match(/<script id="sg-design" type="text\/plain">([^<]*)<\/script>/);
+  const back = deserialize(await decodeShare(m[1]));
+  assert.deepEqual(back.haunt, { on: true, seed: 21, intensity: 0.7 },
+    'the night arrives with the design, through the codec the bundle carries');
+  // And an unarmed export is byte-identical in structure: same shell, same
+  // bundle — the record is the only difference, which is the stealth holding.
+  const plain = await encodeShare(serialize(buildSampleSchool(), { omitOverlay: true }));
+  const exportedPlain = spliceDesign(built.html, plain);
+  assert.equal(exported.replace(payload, ''), exportedPlain.replace(plain, ''),
+    'armed and unarmed exports differ only in the design they carry');
 });

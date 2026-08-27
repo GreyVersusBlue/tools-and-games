@@ -257,7 +257,7 @@ test('modelDataURL and modelSize agree about what a record costs', () => {
 test('a design with no imported models writes no models key', async () => {
   const { serialize, SAVE_VERSION } = await import('../js/save-load.js');
   const { createState } = await import('../js/grid.js');
-  assert.equal(SAVE_VERSION, 11);
+  assert.equal(SAVE_VERSION, 12);
   const json = JSON.parse(serialize(createState(10, 10)));
   assert.ok(!('models' in json));
 });
@@ -308,5 +308,5 @@ test('a v9 file loads as a design with nothing imported', async () => {
     version: 9, w: 12, h: 12, floorHt: 12, floors: [], currentFloor: 0, props: [], links: [],
   }));
   assert.equal(state.models, undefined);
-  assert.equal(state.version, 11);
+  assert.equal(state.version, 12);
 });
