@@ -1,11 +1,13 @@
 # School Generator — Feature Wishlist
 
-**Status: all eighteen planned phases are shipped.** Three arcs, a grid editor
+**Status: three arcs — eighteen phases — are shipped; arc four, Phases 19–24,
+is planned below and none of it is started.** Three arcs took a grid editor
 to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
-were — lives in `git log -p WISHLIST.md`; this file keeps only what a builder
-needs going forward: the architecture, the conventions that were learned the
-hard way, and the standing backlog.
+were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
+needs going forward — the architecture, the conventions that were learned the
+hard way, and the standing backlog — and now ends with the planned arc
+rather than only a backlog.
 
 ## What it is
 
@@ -191,6 +193,7 @@ and add to this list rather than starting a new one.
   none changes a factor or limit.
 - Findings themselves are still only in the report panel and the CSV; the
   title-block panels carry a verdict and a count, not the finding text.
+  → *Phase 19.*
 
 **The crowd**
 - An imported timetable has no teachers (the `Tools/` CSV has no teacher
@@ -219,21 +222,21 @@ and add to this list rather than starting a new one.
 - A hunt cannot survive a structural edit — hints name rooms that may no
   longer exist.
 - Warmth is a straight line plus a per-storey charge, not routed, so
-  something thirty feet away through a wall reads as hot.
+  something thirty feet away through a wall reads as hot. → *Phase 24.*
 - A colour variant cannot recolour an imported model; a prop has one paint.
 - The crowd cannot shove anything, and a shove treats a prop as a circle of
-  its own half-width.
+  its own half-width. → *the footprint half: Phase 22.*
 
 **Light, sound and picture**
 - Generic ceiling troffers don't emit (twelve-light budget), and there are
   no shadows from the building's own lights; light doesn't respect geometry,
-  only distance.
+  only distance. → *the troffers: Phase 20.*
 - No clouds — a canvas smear reads worse than a clean gradient, and real
-  clouds are a shader project.
+  clouds are a shader project. → *Phase 20.*
 - Transmission loss is one number per situation rather than a ray cast, and
-  there are no early reflections.
+  there are no early reflections. → *the ray: Phase 24.*
 - Photo mode and the minimap are both desktop-shaped, not laid out for a
-  phone.
+  phone. → *Phase 19.*
 
 **The room model**
 - A boundary that bounds no room cannot be drawn (a free-standing garden
@@ -286,28 +289,282 @@ and add to this list rather than starting a new one.
 - A tour moves the camera and does nothing else — no bell at a stop, no hour
   scrubbed, no audio on the recording.
 
-## Where a fourth arc would start
+## Arc four — the guest
 
-Not a plan — the shortest honest list of what the backlog above still says,
-grouped by the sentence each group is missing.
+Three arcs built a tool for the person who draws it; nothing yet is built
+for the person who is handed the result. Every phase so far assumed the
+builder — somebody who found the cheat sheet, learned twelve tools, and has
+the file open in a tab of their own. The six phases below share the other
+person: the visitor in their first five minutes (Phase 19), the eye that
+decides whether to stay (Phase 20), the walker who should learn the building
+by walking it rather than reading it (Phases 21 and 22), the friend with no
+tool at all (Phase 23), and — as an *and also*, the way arc two ended on
+Play — the player in the dark (Phase 24).
 
-**"A drawing is a set of sheets, not a picture."** Mostly closed:
-`test/visual/` compares the floor plan and site plan against committed
-baselines in a real browser. What's left is a pure entry point to the report
-pipeline, so the specification sheet (which needs the report's numbers) can
-join the harness too.
+**Phase 19 is the self-contained win** — reach for it any time; it leans on
+nothing below it. **Phase 21 is the quiet prerequisite:** its sightline
+module is the thing Phase 24 hunts you with. **Phase 23 is the architectural
+risk of the arc** — the biggest single piece of surgery since the nav mesh.
+**Phase 24 is an and-also: skip it and the arc still closes.** Two of the
+six phases claim no backlog item at all — the guest was never on the list.
 
-**"A design has a history somebody else can read."** Undo is a diff and a
-session is a stream, but neither is a record — there's no way to ask what
-changed between two versions of a design, which two people editing one plan
-concurrently now genuinely need.
+One convention is new with this arc, and it is about phases rather than
+code: **each phase names the Claude model that should run it.** The rule is
+that anything touching the model layer — a new pure module, the save format,
+the collider contract, visibility math, the export bundler's module
+surgery — runs on Claude Fable 5; surface work — DOM wiring, CSS, render
+presets — runs on Claude Opus 5 or Claude Sonnet 5. No phase in this arc is
+small enough for Haiku, and that is a judgment, not an oversight.
 
-**"The model knows what it does not know."** Several readers still answer
-with a number where they should answer with a range — daylight is a glazing
-ratio rather than a daylight factor, acoustics is Sabine and nothing else,
-and cost has no contingency because it has no idea how uncertain it is. Every
-one of those is labelled honestly today; none of them is *quantified*.
+## Phase 19 — The first five minutes
 
-**"Two people is not two windows."** With a relay now shipped, the session
-backlog above (storey ids, snapshot-only assets, no retry, local-wins undo)
-stopped being theoretical — there's a real network to test it against.
+**The tool rewards the hundredth hour and punishes the first five minutes.**
+
+Twelve tools, four analysis panels, and dozens of walk-mode hotkeys exist,
+and every one of them is taught the same way: a `<kbd>` cheat sheet you must
+already know to look for. A new visitor gets a blank 4ft lattice and a
+toolbar of nouns, while the two best first experiences the tool owns — the
+sample school in `sample.js`, and `generate.js` reading a whole building out
+of one sentence — are hidden behind knowing they exist. The phase is judged
+by one test: somebody who has never seen the tool reaches a walkable school
+in five minutes without opening this file.
+
+- [ ] **An opening moment.** First visit with no autosave offers three doors —
+  walk a sample school, generate one from a sentence, start with a blank
+  sheet — the existing `sample.js` and `brief.js`/`generate.js` behind three
+  buttons instead of an empty lattice.
+- [ ] **A command palette.** Ctrl-K, fuzzy-matched over every tool, verb and
+  toggle `main.js` already wires; every result shows its hotkey, so the
+  palette *is* the cheat-sheet tutor.
+- [ ] **One hint at a time.** The per-tool `<kbd>` panels become progressive:
+  surface the single next-useful hint at the moment it applies (first prop
+  placed → "R rotates"), never forty rows at once.
+- [ ] **The walk-mode sheet gets an audit.** Hotkeys grouped by how often a
+  guest needs them; anything listed nowhere but the sheet gets a second
+  surface in the world — the lift can say its own key on its own call panel.
+- [ ] **Photo mode and the minimap learn the phone.** Both are desktop-shaped
+  today; lay them out for a narrow viewport.
+- [ ] **Findings go where the eye is.** The title-block panels carry finding
+  text, not just a verdict and a count, and a finding clicks through to its
+  room.
+
+*Leans on:* `main.js`'s key routing, the per-tool panels in `index.html`,
+`sample.js`, `generate.js`; *collides with:* the "Ctrl-combos route through
+`main.js`" convention — the palette must route through the same table, not
+grow a rival one. *Save:* — none (a first-run flag is a fact about this
+browser, so `localStorage`, never the file). *Model:* **Claude Opus 5** —
+product judgment across the whole surface; no pure-module work.
+
+## Phase 20 — Worth a screenshot
+
+**The picture is honest. Honest is not yet worth looking at.**
+
+The composer already runs SSAO, bloom and depth of field; what is missing is
+not another pass but character — materials with grain, light with a time of
+day, a sky that is more than a gradient, and chrome that looks like it
+belongs to the pictures the tool makes. Everything here writes state that
+already exists: the `env` record already knows the sun, the date and the
+exposure, and this phase gives it five good answers instead of six sliders.
+
+- [ ] **Time-of-day moods, one click each.** Morning / noon / golden hour /
+  dusk / night as presets that write the existing `env` record.
+- [ ] **Troffers that light.** The generic ceiling troffers finally emit,
+  clustered per room inside the twelve-light budget the way `lights.js`
+  already clusters other emitters.
+- [ ] **Clouds worth having, or none.** A shader-noise sky layer; the backlog
+  already ruled that a canvas smear reads worse than a clean gradient.
+- [ ] **Materials with grain.** Procedural roughness and tone variation per
+  finish family — generated, not downloaded; the no-dependencies stance
+  holds.
+- [ ] **The chrome earns the scene.** A deliberate CSS pass over
+  `index.html`: type scale, spacing, panel hierarchy, dark chrome around the
+  canvas.
+
+*Leans on:* `sky.js`, `lights.js`, the composer in `render.js`, the `env`
+record; *collides with:* the twelve-light budget and frame time on a phone —
+every mood must hold 60fps wherever the current scene does. *Save:* — none
+(presets write fields v11 already has). *Model:* **Claude Sonnet 5** — craft
+against a visual checklist, render-side and CSS only; nothing touches the
+model layer.
+
+## Phase 21 — Line of sight
+
+**A label the walker did not earn is information through a wall.**
+
+Room labels are `depthTest:false` sprites filtered to the camera's storey —
+in walk mode they name rooms you have never seen, through the walls that
+hide them. The proposal: in walk mode a room's label is gated on unobstructed
+line of sight to that room's door. Doors are already known to `openings.js`
+and the navgraph; the walls that occlude are already derived as segments by
+`collide.js`; what is new is one pure module. It is worth saying now that
+Phase 24 is waiting for exactly this module.
+
+- [ ] **`sightline.js`, pure, with its suite.** Given an eye point and the
+  storey's wall-and-opening segments `collide.js` already derives, answer
+  "is this door visible?" — 2D segment casts in plan, storey-aware; a closed
+  leaf occludes, an open one doesn't.
+- [ ] **Labels earned by sight, and a strict mode beside it.** The walk-mode
+  default is *earned*: a label fades in when its room's nearest door is
+  first seen and stays learned for the rest of the walk — wayfinding, not a
+  memory test. A *strict* toggle shows a label only while its door is
+  currently in sight, and *all* / *none* remain as overrides. Sprites keep
+  `depthTest:false` for readability; the honesty now comes from the gate,
+  not the depth buffer.
+- [ ] **Edit mode unchanged.** The drawing board keeps always-on labels; the
+  walk-mode setting is a session decision that lives in the tool, never the
+  file.
+- [ ] **Throttle it honestly.** Cast only for ungated labels on the walker's
+  storey, a few per frame round-robin — the walker moves at walking speed
+  and nothing needs an answer every 16ms.
+
+*Leans on:* `collide.js`'s segment derivation, `openings.js`, the navgraph's
+door points, the label sprites and storey filter in `render.js`; *collides
+with:* the crowd — an agent holding a door open makes an opening, and the
+module has to read the leaf's state, not the plan's. *Save:* — none.
+*Model:* **Claude Fable 5** — a new pure geometry module; visibility math is
+modeling.
+
+## Phase 22 — Hands
+
+**In walk mode you have feet and no hands.**
+
+All placement is edit-mode-only through `propedit.js`, yet the pure half —
+`propplace.js`'s picking and three snap tiers — has never known what mode it
+is in. The real obstacle is a convention, and this phase renegotiates it in
+the open rather than sneaking past it: *the walkthrough collider is built
+once at walk-start* gains an invalidation clause for props, and *editing and
+walking are exclusive* narrows to structure. Rooms, walls and storeys stay
+edit-only; furniture becomes something you can do with your hands from
+inside the building.
+
+- [ ] **A carry slot.** Point at a prop, one key picks it up — a real prop,
+  unlike `shove.js`'s session-only scoot — it ghosts along in front of the
+  view, and sets down through `snapProp` with the same three tiers the
+  editor gets.
+- [ ] **A walk palette.** A short ring of catalog favourites placeable from
+  inside; the full catalog stays an edit-mode affordance.
+- [ ] **The collider learns invalidation.** Placing or removing a blocking
+  prop rebuilds that storey's prop colliders (walls stay built-once), and
+  reaches the crowd's collider too, or agents walk through the new desk. The
+  convention bullet gets rewritten, not violated.
+- [ ] **It writes the file.** A walk placement is a props edit like any
+  other — history diff, undo (from edit mode), autosave, session op if a
+  peer is connected — where a shove stays a session fact.
+- [ ] **You can trap yourself, and that's allowed.** Placement refuses only
+  overlap, not consequence; step-up and shove are the ways out, and the fire
+  drill will tell you what your barricade did.
+- [ ] **A shove learns the real footprint.** While hands come to walk mode,
+  the push stops treating every prop as a circle of its own half-width.
+  Crowd-shoves stay open on the backlog.
+
+*Leans on:* `propplace.js` (already mode-blind), `props.js`, `catalog.js`'s
+blocking flags, `history.js`; *collides with:* two conventions at once —
+collider-built-once and edit/walk exclusivity — which is why the checkboxes
+name their replacements. *Save:* — none (existing props records; no schema
+change). *Model:* **Claude Fable 5** — it rewrites the collider contract,
+and the collider is model.
+
+## Phase 23 — The walk you can hand to somebody
+
+**Sharing the school still means sharing the tool.**
+
+`share.js` proved a design travels without a server — but the link opens the
+whole editor, toolbar and all. The ask is one self-contained `.html`: the
+design, a walk-only runtime, and three.js, in a single file that opens from
+`file://` with no network — walkable, not editable. The codebase has no
+build step and this phase does not add one; it adds a bundler the codebase
+writes itself, and the twenty-phase discipline that pure modules never
+import three.js is exactly what makes the import graph severable. The honest
+obstacle is `render.js`: 5,600 lines owning both edit and walk. The phase
+may carry it whole or split scene-build from edit-only, and should refuse to
+do more surgery than the export needs.
+
+- [ ] **`walk-main.js`, a second entry point.** Boots straight to
+  pointer-lock walk from an embedded design: deserialize → build → walk.
+  Keeps collision, doors, the lift, footsteps and acoustics, the sun,
+  labels-by-sight, shove, the minimap, photo mode, the crowd toggle. Leaves
+  every editor tool, generation, analysis, the session stack — and Phase
+  22's hands, which write a file that doesn't exist there.
+- [ ] **`tools/export-walk.mjs`, the house bundler.** Walks the static
+  import graph from the entry point, topologically sorts it, strips imports
+  and rewrites exports into one `<script type="module">` with
+  `libs/three.module.js` inlined, and embeds the design with the
+  deflate-base64url codec `share.js` already has. A `node --test` suite
+  bundles the sample school and asserts the graph closed and the output
+  parses.
+- [ ] **An export button, no node in sight.** The runtime template ships
+  inside the deployed tool — built by the same script, committed like a
+  fixture with a staleness test — and the button splices the current design
+  in and downloads.
+- [ ] **A budget, stated.** three.js is over a megabyte of source; state the
+  target out loud — an exported file a chat client will accept, opening from
+  `file://` with zero network requests and zero console errors.
+- [ ] **Old exports open forever.** The exported file embeds its own
+  deserializer; a v12 tool must keep producing exports that don't care what
+  v13 looks like.
+
+*Leans on:* `share.js`'s codec, `save-load.js`'s `deserialize`, and the
+never-import-three discipline that makes the graph cuttable; *collides
+with:* `render.js`'s size — the walk drags the whole scene builder with it
+unless split, and the split must be exactly as large as the export needs.
+*Save:* — none (embeds v11 as-is). *Model:* **Claude Fable 5** — module
+surgery over the entire graph; the bundler has to understand the model layer
+to sever it.
+
+## Phase 24 — Lights out *(an "and also")*
+
+**A building that can host a school day can host a bad night.**
+
+This is the arc's *and also*, the way arc two ended on Play: nothing later
+leans on it, skipping it costs the arc nothing, and it ships off by default
+behind its own switch. The argument for planning it anyway is that horror is
+the cheapest total conversion this codebase could buy. It already owns a
+crowd that pathfinds, positional audio with per-room reverb, a sun that
+sets, doors that open on approach, seasonal decals — and, after Phase 21, a
+module that knows what you can see. Combined with Phase 23, the payoff line
+writes itself: hand a friend a haunted school as one file.
+
+- [ ] **A `haunt` record, additive, off by default.** `{ on, seed,
+  intensity }` — save v12, the cheap append kind — and it joins the undo
+  delete-list of optional records, per the `Object.assign` convention.
+- [ ] **Something in the building.** One creature that walks the navgraph
+  like anyone else, except it prefers the corridor you are not looking
+  down — `sightline.js` inverted. Seen, it stops; unseen, it closes.
+- [ ] **Chase, flee, and doors as a mechanic.** Caught looking too long and
+  it comes at sprint speed over the navgraph, broken by line of sight and by
+  doors — they already open for agents; let them slam for you.
+- [ ] **The writing on the walls.** Seeded canvas-texture decals from a
+  written set (disturbing, and PG-13 — it is a school-building tool), placed
+  by `decor.js`'s pack machinery pointed somewhere colder.
+- [ ] **Sound through walls, finally by ray.** Hearing it one corridor over
+  is the whole game: a cast through sightline's segments prices the wall
+  between you and a source, and daytime acoustics inherit the upgrade for
+  free.
+- [ ] **Distance, routed.** The hunt's warmth and "how close is it really"
+  share one routed answer over the navgraph instead of a straight line
+  through walls.
+- [ ] **Flicker inside the budgets.** Failing fixtures, a downed sun, buzz
+  and silence — all within the existing twelve-light and voice budgets; the
+  mode costs atmosphere, not frame rate.
+
+*Leans on:* `agents.js`, `sightline.js` (Phase 21 is the prerequisite),
+`sound.js`, `decor.js`, `lift.js` (a lift at night is free horror), Phase 23
+for delivery; *collides with:* the crowd — a haunt implies an empty
+building, and the school day and the creature never share one — and the
+tool's tone: off by default, invisible until asked for. *Save:* v12 — one
+optional record, the cheap kind. *Model:* **Claude Fable 5** — chase and
+hearing are navgraph and occlusion math; the writing set is the only line of
+it any model could do.
+
+### What this arc leaves for a fifth
+
+Arc four deliberately turns outward, toward the person handed the result.
+What the backlog still says underneath it is unchanged, and it is the honest
+start of a fifth arc rather than this one: a pure entry point to the report
+pipeline so the specification sheet can join the visual harness ("a drawing
+is a set of sheets, not a picture"); a way to ask what changed between two
+versions of a design ("a design has a history somebody else can read"); the
+readers that answer with a number where they should answer with a range
+("the model knows what it does not know"); and the session hardening —
+storey ids, snapshot-only assets, no retry, local-wins undo — that a shipped
+relay made real ("two people is not two windows").
