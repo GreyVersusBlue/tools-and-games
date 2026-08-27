@@ -24,6 +24,7 @@
 // seed and where you are standing.
 
 import { rng } from './agents.js';
+import { route } from './navgraph.js';
 
 // How many things are hidden, and the bounds a caller may ask for.
 export const DEFAULT_COUNT = 8;
@@ -50,11 +51,17 @@ export const MIN_TILE_SIDE = 5;   // ft
 export const MIN_YARD_SIDE = 20;  // ft
 // The largest share of a hunt that may be outdoors — see `hidingPlaces`.
 export const OUTDOOR_SHARE = 0.25;
-// A storey climbed, in feet of apparent distance, for the warmth reading only.
-// Warmth is a straight line and a straight line through a slab is a lie the
-// other way — without this the thing directly under your feet reads as
-// burning, and you spend a minute looking at the floor.
+// A storey climbed, in feet of apparent distance, for the straight-line
+// fallback only. Warmth as a straight line through a slab is a lie the other
+// way — without this the thing directly under your feet reads as burning, and
+// you spend a minute looking at the floor. Since Phase 24 a caller with a
+// navgraph gets the routed answer instead — see `routedDistance` — and this
+// constant only speaks when there is no graph to ask.
 export const FLOOR_FEET = 26;     // ft
+// How coarsely the routed warmth remembers where you are. Rerouting every
+// unfound place is an A* apiece, so the reading refreshes when you have moved
+// this far rather than every frame — a band's worth of walking, not a frame's.
+export const WARMTH_STEP = 4;     // ft
 
 // What is hidden. Nine rows of school lost-property, cycled in seed order, so
 // a hunt is a list of *things* rather than a list of numbered markers — "the
@@ -233,6 +240,13 @@ export function hidingPlaces(nav, opts = {}) {
   const count = clampInt(opts.count, MIN_COUNT, MAX_COUNT, DEFAULT_COUNT);
   const rand = rng(clampInt(opts.seed, 1, 0xffffffff, 1));
   const clear = typeof opts.clear === 'function' ? opts.clear : null;
+  // What the hunt deals. The lost-property rows unless the caller brings its
+  // own — a single-row list hides `count` of the same thing, which is what a
+  // hunt for "the hidden stars" is.
+  const items = Array.isArray(opts.items) && opts.items.length ? opts.items : HUNT_ITEMS;
+  // `opts.indoors` keeps the whole hunt inside the building — for the caller
+  // whose game does not go outside.
+  const indoors = opts.indoors === true;
   const floorCount = (nav && nav.mesh && nav.mesh.length) || 1;
   const rooms = huntCandidates(nav);
   if (!rooms.length) return [];
@@ -261,7 +275,7 @@ export function hidingPlaces(nav, opts = {}) {
   for (let pass = 0; pass < 2 && places.length < count; pass++) {
     for (const r of pool) {
       if (places.length >= count) break;
-      if (r.outdoors && outside >= outsideCap) continue;
+      if (r.outdoors && (indoors || outside >= outsideCap)) continue;
       const tile = r.tiles[Math.min(pass, r.tiles.length - 1)];
       const spots = spotsOn(tile);
       const start = Math.floor(rand() * spots.length);
@@ -277,7 +291,7 @@ export function hidingPlaces(nav, opts = {}) {
       }
       if (!spot) continue;
       if (r.outdoors) outside++;
-      const item = HUNT_ITEMS[places.length % HUNT_ITEMS.length];
+      const item = items[places.length % items.length];
       places.push({
         id: `h${places.length}`,
         item: item.key,
@@ -318,17 +332,71 @@ export const unfound = (hunt) =>
   (hunt ? hunt.places : []).filter((p) => !hunt.found.has(p.id));
 
 // Apparent distance from a point to a place: the plan distance, plus a fixed
-// charge per storey between the two. See FLOOR_FEET.
+// charge per storey between the two. See FLOOR_FEET. This is the answer when
+// nobody hands in a graph, and the answer of last resort when a route fails —
+// a place the graph cannot reach still deserves a temperature.
 export function apparentDistance(place, at) {
   const df = Math.abs((place.floor || 0) - (at.floor || 0));
   return Math.hypot(place.x - at.x, place.z - at.z) + df * FLOOR_FEET;
 }
 
+// The same question, walked rather than flown: the length of the route the
+// navgraph would take from `at` to the place, in feet of actual corridor and
+// stair, plus the last leg across the room the place hides in. This is the
+// Phase 24 answer — a thing one wall away reads *warm* through the doorway
+// and *cool* around the long way, which is what a temperature is for — and
+// the creature's "how close is it really" shares it, so the warmth and the
+// dread never disagree about the building.
+//
+// Distances, not costs. `route`'s waypoints already paid the stair penalties
+// and the lift's wait in *cost*; summing the legs in feet is the same route
+// measured honestly, per the pathDistance convention.
+export function routedDistance(nav, at, place) {
+  if (!nav || !place) return apparentDistance(place, at);
+  // The graph's outdoors is one node, so a place in the yard has nothing to
+  // route *with* — and a yard has no walls for the straight line to lie
+  // through. The flight stays the answer out there.
+  const toId = place.outdoors ? null : place.room;
+  if (!toId) return apparentDistance(place, at);
+  const wp = route(nav, at, toId);
+  if (!wp) return apparentDistance(place, at);
+  // The route ends at the room's own node — the middle of the room — and the
+  // place is in a corner of it. Walking to the middle first would charge a
+  // detour nobody takes, so the last leg runs from the doorway straight to
+  // the place; a route wholly inside one room is just the straight line.
+  if (wp.length && wp[wp.length - 1].node === toId) wp.pop();
+  let d = 0, px = at.x, pz = at.z;
+  for (const w of wp) {
+    d += Math.hypot(w.x - px, w.z - pz);
+    px = w.x; pz = w.z;
+  }
+  return d + Math.hypot(place.x - px, place.z - pz);
+}
+
 // The nearest thing still hidden, and how near. Null once everything is found.
-export function nearestHidden(hunt, at) {
+//
+// `opts.nav` routes the answer; without it the straight line stands. The
+// caller passes the *same* opts object every frame — the cache lives on it,
+// keyed on a WARMTH_STEP-quantised position, so standing still costs nothing
+// and walking costs one round of routes per few feet rather than per frame.
+export function nearestHidden(hunt, at, opts = {}) {
+  const nav = opts.nav || null;
+  let dists = null;
+  if (nav) {
+    const key = `${Math.round(at.x / WARMTH_STEP)},${Math.round(at.z / WARMTH_STEP)},${at.floor || 0}`;
+    let c = opts._routed;
+    if (!c || c.key !== key) { c = { key, d: new Map() }; opts._routed = c; }
+    dists = c.d;
+  }
   let best = null, bestD = Infinity;
   for (const p of unfound(hunt)) {
-    const d = apparentDistance(p, at);
+    let d;
+    if (dists) {
+      d = dists.get(p.id);
+      if (d === undefined) { d = routedDistance(nav, at, p); dists.set(p.id, d); }
+    } else {
+      d = apparentDistance(p, at);
+    }
     if (d < bestD) { bestD = d; best = p; }
   }
   return best ? { place: best, dist: bestD } : null;
@@ -340,8 +408,8 @@ export function bandFor(dist) {
 }
 
 // What the panel says while you walk: how close the nearest one is, in words.
-export function huntWarmth(hunt, at) {
-  const near = nearestHidden(hunt, at);
+export function huntWarmth(hunt, at, opts = {}) {
+  const near = nearestHidden(hunt, at, opts);
   if (!near) return null;
   return { ...bandFor(near.dist), dist: near.dist, place: near.place };
 }

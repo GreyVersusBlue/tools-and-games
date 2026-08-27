@@ -1,15 +1,12 @@
 # School Generator — Feature Wishlist
 
-**Status: twenty-four phases are shipped — three arcs, the first five phases
-of arc four, and Phase 25 out of order. Phase 24 is planned below and not
-started; Phase 25 shipped ahead of it because it is a fix to the drawing
-tools rather than an addition to the game, and the arc's "and also" was
-never a prerequisite for anything.** Three arcs took a grid editor
-to a walkable, furnished, generated, priced, networked school. Full history —
+**Status: twenty-five phases are shipped — three arcs, all of arc four, and
+one after it.** Three arcs took a grid editor to a walkable, furnished,
+generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
 needs going forward — the architecture, the conventions that were learned the
-hard way, and the standing backlog — and now ends with the planned arc
+hard way, and the standing backlog — and now ends with the shipped arc
 rather than only a backlog.
 
 ## What it is
@@ -48,7 +45,7 @@ inter-floor links) · `catalog.js` (every placeable type, as data) ·
 window bands, floor/paint) · `stairs.js` (runs, landings, the holes they cut)
 · `terrain.js` / `site.js` / `roof.js` (ground, site drawing, roof) ·
 `rates.js` (cost vocabulary) · `history.js` (an edit as a diff) ·
-`save-load.js` (v11, one migration that ever changed a shape).
+`save-load.js` (v12, one migration that ever changed a shape).
 
 What it derives: `navgraph.js` + `navmesh.js` (walkable surface as convex
 tiles, graph over it) · `sitemesh.js` (the same, over the outdoors) ·
@@ -67,7 +64,8 @@ into that program) · `timetable.js` (class/room/period packing) ·
 What it plays: `schedule.js` (the day as five numbers) · `agents.js` (a
 seeded population with timetables) · `shove.js` (bump a chair) · `hunt.js`
 (scavenger hunt) · `decor.js` (seasonal palette) · `lift.js` (a car with a
-call button and a queue).
+call button and a queue) · `haunt.js` (Phase 24's night: the stage machine,
+the writings, the crash, the way out) · `creature.js` (the one body in it).
 
 What it shows and shares: `render.js` (the three.js scene) · `audio.js` (Web
 Audio graph) · `walkthrough.js` / `xr.js` / `touch.js` (three input paths,
@@ -129,9 +127,9 @@ wrong.
   handling.
 - **Undo restores a snapshot with `Object.assign`, which only ever adds.**
   Any *optional* record on the state (`terrain`, `site`, `roof`, `life`,
-  `timetable`, `overlay`, `models`, `tours`) has to be deleted when the
-  snapshot doesn't have it, or undoing past the moment it was first written
-  silently does nothing.
+  `timetable`, `overlay`, `models`, `tours`, `haunt`) has to be deleted when
+  the snapshot doesn't have it, or undoing past the moment it was first
+  written silently does nothing.
 - **A `PlaneGeometry` flattened with `rotateX(-π/2)` has its extents in
   local X and Z.** `scale.set(w, d, 1)` gives a plane one unit deep.
 - **Handing a bare `'#rrggbb'` string to a colour buffer silently writes
@@ -231,8 +229,10 @@ and add to this list rather than starting a new one.
 **Play**
 - A hunt cannot survive a structural edit — hints name rooms that may no
   longer exist.
-- Warmth is a straight line plus a per-storey charge, not routed, so
-  something thirty feet away through a wall reads as hot. → *Phase 24.*
+- ~~Warmth is a straight line plus a per-storey charge, not routed, so
+  something thirty feet away through a wall reads as hot.~~ *Done, Phase 24:
+  `routedDistance` walks the navgraph; the straight line survives only as the
+  no-graph fallback and the outdoors' answer.*
 - A colour variant cannot recolour an imported model; a prop has one paint.
 - The crowd cannot shove anything.
 - Hands are desktop-only — touch has no Q, and the palette ring belongs on
@@ -244,8 +244,10 @@ and add to this list rather than starting a new one.
   wall its range crosses.
 - The cloud deck is one coverage and one drift everywhere — no weather, no
   wind, no overcast day.
-- Transmission loss is one number per situation rather than a ray cast, and
-  there are no early reflections. → *the ray: Phase 24.*
+- Transmission loss ~~is one number per situation rather than a ray cast~~
+  *(the ray landed in Phase 24 — `pathLossRay` counts sightline's segments
+  and the live leaves; the constant survives as the cross-slab and
+  no-geometry answer)*, and there are still no early reflections.
 - The phone got photo mode and the minimap (and, it turned out, the ability
   to boot at all — a missing element had been a TypeError on every touch
   device); the topbar and the tool panels are still desktop-shaped.
@@ -592,7 +594,89 @@ viewport: a SwiftShader artifact, identical on both sides, and the export's
 scene draws fine where the tool's does. *Save:* — none, as planned (embeds
 v11 as-is). *Model:* **Claude Fable 5**, as named.
 
-## Phase 25 — The point you meant *(shipped, ahead of Phase 24)*
+## Phase 24 — Lights out *(shipped)*
+
+**A building that can host a school day can host a bad night.**
+
+This is the arc's *and also*, the way arc two ended on Play: nothing later
+leans on it, skipping it costs the arc nothing, and it ships off by default
+behind its own switch. The argument for planning it anyway is that horror is
+the cheapest total conversion this codebase could buy. It already owns a
+crowd that pathfinds, positional audio with per-room reverb, a sun that
+sets, doors that open on approach, seasonal decals — and, after Phase 21, a
+module that knows what you can see. Combined with Phase 23, the payoff line
+writes itself: hand a friend a haunted school as one file.
+
+- [x] **A `haunt` record, additive, off by default.** `{ on, seed,
+  intensity }` — save v12, the cheap append kind — and it joins the undo
+  delete-list of optional records, per the `Object.assign` convention.
+- [x] **Something in the building.** One creature that walks the navgraph
+  like anyone else, except it prefers the corridor you are not looking
+  down — `sightline.js` inverted. Seen, it stops; unseen, it closes.
+- [x] **Chase, flee, and doors as a mechanic.** Caught looking too long and
+  it comes at sprint speed over the navgraph, broken by line of sight and by
+  doors — they already open for agents; let them slam for you.
+- [x] **The writing on the walls.** Seeded canvas-texture decals from a
+  written set (disturbing, and PG-13 — it is a school-building tool), placed
+  by `decor.js`'s pack machinery pointed somewhere colder.
+- [x] **Sound through walls, finally by ray.** Hearing it one corridor over
+  is the whole game: a cast through sightline's segments prices the wall
+  between you and a source, and daytime acoustics inherit the upgrade for
+  free.
+- [x] **Distance, routed.** The hunt's warmth and "how close is it really"
+  share one routed answer over the navgraph instead of a straight line
+  through walls.
+- [x] **Flicker inside the budgets.** Failing fixtures, a downed sun, buzz
+  and silence — all within the existing twelve-light and voice budgets; the
+  mode costs atmosphere, not frame rate.
+
+*Leans on:* `agents.js`, `sightline.js` (Phase 21 is the prerequisite),
+`sound.js`, `decor.js`, `lift.js` (a lift at night is free horror), Phase 23
+for delivery; *collides with:* the crowd — a haunt implies an empty
+building, and the school day and the creature never share one — and the
+tool's tone: off by default, invisible until asked for. *Save:* v12 — one
+optional record, the cheap kind. *Model:* **Claude Fable 5** — chase and
+hearing are navgraph and occlusion math; the writing set is the only line of
+it any model could do.
+
+*How it shipped:* two new pure modules — `haunt.js` (the record, a
+five-stage machine `day → dismissal → dusk → company → flight` that is a
+pure function of `(finds, elapsed, seed, intensity)`, the flicker as a
+deterministic curve, the writings and their placement, the fake-crash curve,
+the slam geometry, and the way out) and `creature.js` (a lean stepper, *not*
+an agent — the crowd's fourteen hundred lines are timetable society, and the
+creature's goal model is a sightline query; it imports `rng`, the navgraph's
+routes, `moveWalker` and `sightClear` and does the rest with one switch).
+The objective is the delivery mechanism: the export's star hunt is
+`hunt.js` re-skinned (`opts.items`, `opts.indoors`), each find ratchets the
+stage, the last flips the objective to *get out* — with every exterior door
+but one locked ("The door appears to be locked. Find another way."), the
+open one a seeded pick from the five pathing-farthest, so it lands across
+the building. Caught is a fake crash — tear, static, one honest second of
+error card, wake at the entrance, finds kept. Doors slam *behind the fleeing
+player* (crossing a doorway mid-chase drives the leaf shut; a shut leaf
+breaks pursuit and sight with one rule), so no new hotkey was spent.
+
+*What fought back:* the flicker trap was real — `updateDynamicLights`
+early-returns on `lampLevel`, so the seam multiplies *cached base
+intensities after the budget* and never touches the level; the spill and
+fixture glow ride the same curve or a corridor stays lit while its lights
+die. The routed warmth's first cut charged a detour to the middle of the
+destination room (the room node), and its second discovered that a corner
+place's next-door test point was *outside the building* — both times the
+routed answer was right and the fixture was lying. The exodus reuses the
+drill with the klaxon deliberately unplugged (a dismissal is a bell), capped
+at 75s with stragglers vanishing under the first blackout. The one scope
+call against the plan: the haunt *runtime* lives only in the walk export —
+the tool arms the record (one palette command, a native prompt, "· haunted"
+on the export note) and never turns itself; playtesting is downloading the
+export, which is one click and is the artefact that ships anyway. Headless
+Chromium walked the whole arc from `file://` — crowd of 102 at day, empty at
+dusk, creature lurking at company, one of two exits locked at flight — with
+zero network requests and zero console errors, and the same seed twice is
+the same night to the inch.
+
+## Phase 25 — The point you meant *(shipped)*
 
 **Every drawing tool in this editor guessed, and three of them guessed
 wrong.**
@@ -608,7 +692,11 @@ arithmetic. And the drawing grid was 4ft whether the screen showed six
 hundred feet of site or thirty feet of one room — a grey wash at one end, and
 coarser than the thing being drawn at the other.
 
-Two of the arc's own findings are closed here too. The backlog's "a boundary
+This is the first phase after arc four, and it is a *fix* rather than an
+addition: nothing here is new capability, all of it is the tool no longer
+guessing on your behalf.
+
+Two of the backlog's own findings are closed here too. Its "a boundary
 that bounds no room cannot be drawn" wanted a boundary belonging to the
 *storey*; that is `floor.walls`. And selecting an elevator threw before it
 could be described, moved or deleted, because `cutBox` returns null for the
@@ -659,56 +747,12 @@ actually care about *boundaries* — the renderer, the collider, the plan
 sheet, the door leaves, the takeoff (through the plan), the eraser, the door
 tool and the session log. Openings on a wall line are pinned to `seg: 0`
 precisely so that every consumer that already filters a ring's openings by
-segment index needed no new branch at all. *Save:* v11 still, additive —
-a storey with no free-standing wall writes no `walls` key, so every file
-written before this build round-trips through it as the same bytes, for the
-fourteenth time. *Model:* **Claude Fable 5** — two pure modules, a schema
+segment index needed no new branch at all. *Save:* v12 still, additive —
+and the first append that is per *storey* rather than design-wide: a level
+with no free-standing wall writes no `walls` key, so every file written
+before this build round-trips through it as the same bytes, for the
+fifteenth time. *Model:* **Claude Fable 5** — two pure modules, a schema
 append, and the collider contract.
-
-## Phase 24 — Lights out *(an "and also")*
-
-**A building that can host a school day can host a bad night.**
-
-This is the arc's *and also*, the way arc two ended on Play: nothing later
-leans on it, skipping it costs the arc nothing, and it ships off by default
-behind its own switch. The argument for planning it anyway is that horror is
-the cheapest total conversion this codebase could buy. It already owns a
-crowd that pathfinds, positional audio with per-room reverb, a sun that
-sets, doors that open on approach, seasonal decals — and, after Phase 21, a
-module that knows what you can see. Combined with Phase 23, the payoff line
-writes itself: hand a friend a haunted school as one file.
-
-- [ ] **A `haunt` record, additive, off by default.** `{ on, seed,
-  intensity }` — save v12, the cheap append kind — and it joins the undo
-  delete-list of optional records, per the `Object.assign` convention.
-- [ ] **Something in the building.** One creature that walks the navgraph
-  like anyone else, except it prefers the corridor you are not looking
-  down — `sightline.js` inverted. Seen, it stops; unseen, it closes.
-- [ ] **Chase, flee, and doors as a mechanic.** Caught looking too long and
-  it comes at sprint speed over the navgraph, broken by line of sight and by
-  doors — they already open for agents; let them slam for you.
-- [ ] **The writing on the walls.** Seeded canvas-texture decals from a
-  written set (disturbing, and PG-13 — it is a school-building tool), placed
-  by `decor.js`'s pack machinery pointed somewhere colder.
-- [ ] **Sound through walls, finally by ray.** Hearing it one corridor over
-  is the whole game: a cast through sightline's segments prices the wall
-  between you and a source, and daytime acoustics inherit the upgrade for
-  free.
-- [ ] **Distance, routed.** The hunt's warmth and "how close is it really"
-  share one routed answer over the navgraph instead of a straight line
-  through walls.
-- [ ] **Flicker inside the budgets.** Failing fixtures, a downed sun, buzz
-  and silence — all within the existing twelve-light and voice budgets; the
-  mode costs atmosphere, not frame rate.
-
-*Leans on:* `agents.js`, `sightline.js` (Phase 21 is the prerequisite),
-`sound.js`, `decor.js`, `lift.js` (a lift at night is free horror), Phase 23
-for delivery; *collides with:* the crowd — a haunt implies an empty
-building, and the school day and the creature never share one — and the
-tool's tone: off by default, invisible until asked for. *Save:* v12 — one
-optional record, the cheap kind. *Model:* **Claude Fable 5** — chase and
-hearing are navgraph and occlusion math; the writing set is the only line of
-it any model could do.
 
 ### What this arc leaves for a fifth
 

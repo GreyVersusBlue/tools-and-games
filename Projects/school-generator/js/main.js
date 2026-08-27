@@ -28,6 +28,7 @@ import { buildNav, navSummary } from './navgraph.js';
 import {
   startHunt, huntWarmth, checkFind, huntSummary, DEFAULT_COUNT,
 } from './hunt.js';
+import { normalizeHaunt } from './haunt.js';
 import {
   blockAt, bellsBetween, nextBell, clockText, countdownText, wrapMinutes,
   normalizeSchedule,
@@ -4794,6 +4795,11 @@ function cmdkCommands() {
       keys: ['O'], run: walkFirst(() => setMiniFindings(!miniFindings)) },
     { name: 'Scavenger hunt', hint: 'Eight things hidden around the building',
       keys: ['G'], run: walkFirst(() => $('walk-hunt').click()) },
+    { name: normalizeHaunt(state.haunt).on
+        ? 'Lights out: armed — disarm the haunted export'
+        : 'Lights out — haunt the walk export…',
+      hint: 'The exported walk becomes something else after dark. Off by default.',
+      keys: [], run: hauntArmDialog },
     { name: hands ? 'Set down what you are carrying' : 'Pick up furniture',
       hint: 'Walk-mode hands — carry a prop, or a palette piece on 1–8; R turns it, X cancels',
       keys: ['Q'], run: walkFirst(handsAction) },
@@ -5246,7 +5252,10 @@ async function downloadWalkExport() {
     a.download = 'school-walk.html';
     a.click();
     URL.revokeObjectURL(url);
-    note.textContent = `${Math.round(html.length / 1024)} KB — opens anywhere, even offline.`;
+    // The one visible trace of an armed haunt outside the palette: whoever
+    // is about to send this file deserves to know which file it is.
+    note.textContent = `${Math.round(html.length / 1024)} KB — opens anywhere, even offline.`
+      + (normalizeHaunt(state.haunt).on ? ' · haunted' : '');
   } catch (err) {
     // The likeliest failure is file:// — this page opened from disk cannot
     // fetch a sibling file, which is the one thing the no-server stance
@@ -5260,6 +5269,44 @@ async function downloadWalkExport() {
 }
 
 $('share-walk').addEventListener('click', downloadWalkExport);
+
+// --- Phase 24: arming the night ---
+//
+// The whole of the tool-side UX, on purpose: one command in the palette, a
+// native prompt, and the word "haunted" on the export note. No toolbar
+// button, no panel — the WISHLIST's tone clause says off by default and
+// invisible until asked for, and the palette is the asking. The record is
+// an ordinary optional-record write, the same terms the life panel's are:
+// set it, autosave, and the undo snapshots carry it from there. What it
+// *does* lives entirely in the exported walk — the tool itself never turns.
+function hauntArmDialog() {
+  const cur = normalizeHaunt(state.haunt);
+  if (cur.on) {
+    if (confirm('The walk export is haunted. Disarm it?')) {
+      delete state.haunt;
+      autosave(state);
+      $('status').textContent = 'Lights back on — the walk export is an ordinary walk again.';
+    }
+    return;
+  }
+  const a = prompt(
+    'Lights out.\n\n'
+    + 'The next walk export opens as an ordinary demo and slowly stops being '
+    + 'one: a star hunt that turns, an emptying building, a failing sun, and '
+    + 'something on the navgraph that prefers the corridor you are not looking '
+    + 'down. Hand the file to somebody without further comment.\n\n'
+    + 'Intensity, 0 to 1 (Enter for 0.5):', '0.5');
+  if (a === null) return;
+  const n = parseFloat(a);
+  state.haunt = {
+    on: true,
+    seed: 1 + Math.floor(Math.random() * 0xfffffe),
+    intensity: Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5,
+  };
+  autosave(state);
+  $('status').textContent =
+    'Lights out — the next walk export carries the night. Share → Download walkable .html, then hand it over. (Run the command again to disarm.)';
+}
 
 // A link that was *opened* rather than made. Runs once, after everything else
 // is wired, and replaces whatever the autosave restored — which is the right
@@ -6619,6 +6666,9 @@ $('walk-vr').addEventListener('click', () => {
 let hunt = null;
 let huntWarm = '';          // the band last printed, so a frame that hasn't
                             // changed it doesn't rebuild the line
+let huntWarmOpts = null;    // Phase 24: the nav rides along, so the warmth is
+                            // routed — a hamster one wall away reads cool the
+                            // long way round, the way a temperature should
 
 const huntPanel = $('hunt-panel');
 const huntList = $('hunt-list');
@@ -6644,6 +6694,7 @@ function huntClearance() {
 function huntStop(quiet = false) {
   hunt = null;
   huntWarm = '';
+  huntWarmOpts = null;
   renderApi.setHunt([]);
   document.body.classList.remove('hunting');
   if (!quiet) $('status').textContent = 'Scavenger hunt ended.';
@@ -6656,6 +6707,7 @@ function huntBegin() {
     count: DEFAULT_COUNT,
     clear: huntClearance(),
   });
+  huntWarmOpts = { nav };
   if (!hunt.places.length) {
     hunt = null;
     $('status').textContent =
@@ -6700,7 +6752,7 @@ function huntUpdate(dt) {
   }
   // The band changes rarely and the distance changes every frame, so the line
   // is built once per band and only the number is written after that.
-  const warm = huntWarmth(hunt, at);
+  const warm = huntWarmth(hunt, at, huntWarmOpts || {});
   if (!warm) {
     if (huntWarm !== 'done') { huntWarm = 'done'; huntWarmthEl.textContent = ''; }
   } else {

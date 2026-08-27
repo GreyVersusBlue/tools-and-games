@@ -319,3 +319,68 @@ test('the PA is a telephone-band device playing a descending triad', () => {
   assert.equal(catalogEntry('speaker-pa').sound.kind, 'pa');
   assert.equal(catalogEntry('speaker-ceiling').sound.kind, 'pa');
 });
+
+// ---------- the ray ----------
+
+// Phase 24: transmission loss counted off the geometry instead of guessed at.
+// The fixtures are bare segments because that is all the function reads — the
+// honest ones come from sightline.js, whose own suite proves they have the
+// doorways cut out.
+import { pathLossRay, RAY_WALL_DB, RAY_WALL_MORE, RAY_MAX_DB, RAY_CORNERS }
+  from '../js/sound.js';
+
+const wallAt = (x, z0 = -6, z1 = 6) => ({ ax: x, az: z0, bx: x, bz: z1 });
+// A leaf hinged at (0,-1.5) swinging from "across the corridor" (shut) to
+// "flat along the jamb" (open) — the same record openings.js builds.
+const rayLeaf = (open) => ({ hx: 0, hz: -1.5, ang0: Math.PI / 2, turn: 1, len: 3, open });
+const src0 = { x: -10, y: 4, z: 0, floor: 0, room: 'a', db: 60 };
+const ear0 = { x: 10, y: 5.5, z: 0, floor: 0, room: 'b' };
+
+test('no geometry falls back to the constant, and a slab is still a slab', () => {
+  assert.deepEqual(pathLossRay(src0, ear0, null, null), pathLoss(src0, ear0));
+  assert.deepEqual(
+    pathLossRay(src0, { ...ear0, floor: 1 }, [wallAt(0)], null), PATH_SLAB,
+    'a plan cast has nothing to say about a slab');
+  assert.deepEqual(pathLossRay(null, ear0, [], null), PATH_OPEN);
+});
+
+test('the ray charges by walls crossed, diminishing, with a floor under the silence', () => {
+  assert.deepEqual(pathLossRay(src0, ear0, [], null), PATH_OPEN, 'clear air is free');
+  const one = pathLossRay(src0, ear0, [wallAt(0)], null);
+  assert.equal(one.db, RAY_WALL_DB);
+  assert.equal(one.hz, RAY_CORNERS[1]);
+  const two = pathLossRay(src0, ear0, [wallAt(-3), wallAt(3)], null);
+  assert.equal(two.db, RAY_WALL_DB + RAY_WALL_MORE, 'the second wall costs less than the first');
+  assert.ok(two.hz < one.hz, 'and eats a little deeper');
+  const many = pathLossRay(src0, ear0,
+    [wallAt(-8), wallAt(-4), wallAt(0), wallAt(4), wallAt(8)], null);
+  assert.equal(many.db, RAY_MAX_DB, 'silence has a floor — the building is one volume');
+  assert.equal(many.hz, RAY_CORNERS[RAY_CORNERS.length - 1]);
+  // A wall the path never touches is free.
+  assert.deepEqual(pathLossRay(src0, ear0, [wallAt(0, 8, 20)], null), PATH_OPEN);
+});
+
+test('a doorway is a hole, and its leaf occludes at its live angle', () => {
+  // The wall with the doorway cut out: two spans either side of a 3ft opening.
+  const spans = [wallAt(0, -6, -1.5), wallAt(0, 1.5, 6)];
+  assert.deepEqual(pathLossRay(src0, ear0, spans, null), PATH_OPEN,
+    'under the door and down the corridor prices itself');
+  const shut = pathLossRay(src0, ear0, spans, [rayLeaf(0)]);
+  assert.equal(shut.db, RAY_WALL_DB, 'a shut leaf is one more wall');
+  assert.deepEqual(pathLossRay(src0, ear0, spans, [rayLeaf(1)]), PATH_OPEN,
+    'an open one stands along the jamb and blocks almost nothing');
+});
+
+test('the budget takes the ray when a caller has one', () => {
+  const near = { id: 1, x: 6, y: 4, z: 0, floor: 0, room: 'b', db: 50, kind: 'hum' };
+  const far = { id: 2, x: -14, y: 4, z: 0, floor: 0, room: 'b', db: 50, kind: 'hum' };
+  const ear = { x: 10, y: 5.5, z: 0, floor: 0, room: 'b' };
+  const segs = [wallAt(0)];
+  const flat = budgetSounds([near, far], ear, {});
+  assert.equal(flat.heard.length, 2, 'same room, the constant charges neither');
+  const rayed = budgetSounds([near, far], ear,
+    { pathFor: (s, e) => pathLossRay(s, e, segs, null) });
+  assert.equal(rayed.heard[0].src.id, 1);
+  assert.ok(rayed.heard.length < 2 || rayed.heard[1].db < flat.heard[1].db,
+    'the wall between them now costs what a wall costs');
+});

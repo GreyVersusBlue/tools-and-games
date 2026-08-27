@@ -51,9 +51,10 @@ import {
 import {
   MAX_VOICES, REF_DIST, BELL_PARTIALS, BELL_HZ, BELL_DB, BELL_RINGS, BELL_GAP,
   PA_CHIME, PA_DB, PA_BAND,
-  soundSources, tagRooms, budgetSounds, gainAtRef, dbAt, pathLoss,
+  soundSources, tagRooms, budgetSounds, gainAtRef, dbAt, pathLoss, pathLossRay,
   DOOR_LATCH, DOOR_SHUT,
 } from './sound.js';
+import { sightBlockers } from './sightline.js';
 
 // How often the budget and the listener's room are recomputed. Both cost a
 // flood fill or a sort, neither changes meaningfully inside a tenth of a
@@ -95,6 +96,20 @@ export function initAudio(camera, opts = {}) {
   // the next edit, which is the same bargain the collider's build-once
   // lifecycle makes.
   let roomCache = new Map();
+  // Phase 24: transmission by ray. The storey's sight-blocking segments are
+  // derived once per storey per world — the same cache bargain the room
+  // acoustics make — and `leavesSource` is the shell's window onto the live
+  // door leaves, so a shut door muffles what is behind it *now*. When either
+  // is missing the constant answers, exactly as it did for twenty phases.
+  let segsCache = new Map();
+  let leavesSource = null;      // (floorIndex) => the collider's live leaves
+  // How wrong the building runs, in cents. Applied to every tuned node the
+  // loops own — at 35 cents nobody can name what changed, only that it did.
+  let detuneCents = 0;
+  // The creature's own persistent voice, and the failing fixture's buzz.
+  // Each holds one of the eight voices while it lives — see `voiceCap`.
+  let lurker = null;
+  let buzzer = null;
   // Everything the sound panel prints. `heard`/`dropped`/`muted` are about the
   // continuous sources only — a bell is not "audible", it is silent until it
   // is rung — so `machines` is beside them and the counts add up.
@@ -232,6 +247,7 @@ export function initAudio(camera, opts = {}) {
   function startLoop(src, level, path, wet) {
     const ch = makeChannel(src, 0, path, wet);
     const nodes = [];
+    const tuned = [];        // every detune AudioParam this voice owns
     const t = ctx.currentTime;
 
     if (src.kind === 'hum') {
@@ -241,6 +257,8 @@ export function initAudio(camera, opts = {}) {
         const o = ctx.createOscillator();
         o.type = 'sine';
         o.frequency.value = src.hz * mult;
+        o.detune.value = detuneCents;
+        tuned.push(o.detune);
         const og = ctx.createGain();
         og.gain.value = 0.32 * g;
         o.connect(og); og.connect(ch.input);
@@ -250,6 +268,8 @@ export function initAudio(camera, opts = {}) {
       const n = noiseNode();
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass'; bp.frequency.value = src.hz * 6; bp.Q.value = 0.9;
+      bp.detune.value = detuneCents;
+      tuned.push(bp.detune);
       const ng = ctx.createGain(); ng.gain.value = 0.1;
       n.connect(bp); bp.connect(ng); ng.connect(ch.input);
       n.start(t + Math.random() * 1.5);
@@ -263,6 +283,8 @@ export function initAudio(camera, opts = {}) {
       bp.type = 'bandpass';
       bp.frequency.value = src.hz;
       bp.Q.value = src.q;
+      bp.detune.value = detuneCents;
+      tuned.push(bp.detune);
       n.connect(bp); bp.connect(ch.input);
       n.start(t + Math.random() * 1.5);
       nodes.push(n);
@@ -279,7 +301,7 @@ export function initAudio(camera, opts = {}) {
     }
 
     ch.gain.gain.setTargetAtTime(level, t, VOICE_FADE / 3);
-    return { ch, nodes, src, level };
+    return { ch, nodes, src, level, tuned };
   }
 
   function stopVoice(v) {
@@ -338,13 +360,28 @@ export function initAudio(camera, opts = {}) {
     };
   }
 
+  // What the trip from a source to the ear costs — by ray where there is a
+  // storey's geometry to cast against, by the old constant where there isn't
+  // (no world, or a different storey, where the slab answers). This one
+  // function is what Phase 24 gives the *daytime* for free: every hum, tick
+  // and footstep now arrives through the walls actually between you and it.
+  function rayPath(src, e) {
+    if (world && (src.floor ?? 0) === (e.floor ?? 0)) {
+      const f = src.floor ?? 0;
+      let segs = segsCache.get(f);
+      if (segs === undefined) { segs = sightBlockers(world, f); segsCache.set(f, segs); }
+      return pathLossRay(src, e, segs, leavesSource ? leavesSource(f) : null);
+    }
+    return pathLoss(src, e);
+  }
+
   // A one-shot at a place: work out how loud it arrives, how muffled, and how
   // much of it is room rather than source, then hand back a channel to play
   // into. Null when it isn't worth playing at all.
   function shotChannel(at, db, opts = {}) {
     const e = ear();
     const src = { x: at.x, y: at.y, z: at.z, floor: at.floor ?? e.floor, room: at.room ?? null };
-    const path = opts.path || pathLoss(src, e);
+    const path = opts.path || rayPath(src, e);
     const dist = Math.hypot(src.x - e.x, src.y - e.y, src.z - e.z);
     if (dbAt(db, dist) - path.db < 10) return null;
     const wet = opts.wet ?? wetFraction(room, dist);
@@ -449,7 +486,10 @@ export function initAudio(camera, opts = {}) {
   function refreshBudget() {
     if (!ctx || !active) return;
     const e = ear();
-    const b = budgetSounds(sources.filter((s) => s.loop), e, { cap: MAX_VOICES });
+    // The creature's voice and the buzz each hold one of the eight while
+    // they live — the budget honoured, stated rather than hoped.
+    const cap = Math.max(1, MAX_VOICES - (lurker ? 1 : 0) - (buzzer ? 1 : 0));
+    const b = budgetSounds(sources.filter((s) => s.loop), e, { cap, pathFor: rayPath });
     const keep = new Set();
     for (const r of b.heard) {
       keep.add(r.src.id);
@@ -531,10 +571,16 @@ export function initAudio(camera, opts = {}) {
     setWorld(state) {
       world = state;
       roomCache = new Map();
+      segsCache = new Map();
       roomKey = '';
       rebuildSources();
       if (started) { applyRoom(true); refreshBudget(); }
     },
+
+    // The shell's window onto the live door leaves, per storey — the same
+    // handoff the label gate gets. Without it the ray casts against the
+    // pre-walk plan, which has no doors in motion.
+    setLeavesSource(fn) { leavesSource = typeof fn === 'function' ? fn : null; },
 
     // Entering or leaving the walkthrough. Leaving stops every voice rather
     // than muting them: an editor that is silent because its gain is zero is
@@ -585,15 +631,18 @@ export function initAudio(camera, opts = {}) {
     },
 
     // A door latch releasing, or a leaf coming to rest against its stop.
-    door(kind, at) {
+    // `force` is Phase 24's one addition: a leaf driven shut at slam rate
+    // hits its stop harder than one drifting closed, and the bang says so.
+    door(kind, at, force = 1) {
       if (!this.running) return;
+      const f = clamp(force, 0.5, 2);
       const spec = kind === 'shut' ? DOOR_SHUT : DOOR_LATCH;
-      const ch = shotChannel(at, spec.db);
+      const ch = shotChannel(at, spec.db + 6 * (f - 1));
       if (!ch) return;
       if (kind === 'shut') {
-        tone(ch, { hz: spec.hz, level: 0.55, decay: spec.decay, bend: 0.5 });
-        burst(ch, { hz: 1100, q: 0.6, level: 0.5, decay: spec.decay });
-        burst(ch, { hz: 3400, q: 3, level: 0.3, decay: 0.05, delay: 0.02 });
+        tone(ch, { hz: spec.hz, level: 0.55 * f, decay: spec.decay * f, bend: 0.5 });
+        burst(ch, { hz: 1100, q: 0.6, level: 0.5 * f, decay: spec.decay });
+        burst(ch, { hz: 3400, q: 3, level: 0.3 * f, decay: 0.05, delay: 0.02 });
       } else {
         burst(ch, { hz: spec.hz, q: 4, level: 0.6, decay: spec.decay });
       }
@@ -619,6 +668,126 @@ export function initAudio(camera, opts = {}) {
       if (!ch) return;
       burst(ch, { hz: 300, q: 0.5, level: 0.34 * f, decay: 0.17 });
       burst(ch, { hz: 1500, q: 1.3, level: 0.11 * f, decay: 0.09, delay: 0.012 });
+    },
+
+    // --- Phase 24: the night's voices ---
+
+    // How wrong the building runs. ±50 cents at the very most — at 35 nobody
+    // can name what changed, only that something did, which is the point.
+    // Applied to every tuned node the loops own, and to the ones started
+    // after; 0 puts the building back in tune.
+    setDetune(cents) {
+      detuneCents = clamp(Number.isFinite(cents) ? cents : 0, -50, 50);
+      if (!ctx) return;
+      const t = ctx.currentTime;
+      for (const v of voices.values()) {
+        for (const p of v.tuned || []) p.setTargetAtTime(detuneCents, t, 1.5);
+      }
+    },
+
+    // Something heavy, one corridor over. The whole game is hearing this
+    // through `rayPath`'s walls: close and unobstructed it is a footfall of
+    // something too big, far and muffled it is the building settling. Maybe.
+    thud(at, force = 1) {
+      if (!this.running) return;
+      const f = clamp(force, 0.2, 1.5);
+      const ch = shotChannel(at, 60 + 8 * f);
+      if (!ch) return;
+      tone(ch, { hz: 55, level: 0.85 * f, decay: 0.5, bend: 0.55 });
+      burst(ch, { hz: 130, q: 0.5, level: 0.35 * f, decay: 0.3, delay: 0.01 });
+    },
+
+    // A found star. Two soft sines a sixth apart — the one unambiguously
+    // friendly sound this file makes, which is what makes it a trap.
+    chime(at) {
+      if (!this.running) return;
+      const e = ear();
+      const ch = shotChannel(at || e, 66);
+      if (!ch) return;
+      tone(ch, { hz: 880, level: 0.3, decay: 0.5 });
+      tone(ch, { hz: 1480, level: 0.22, decay: 0.7, delay: 0.09 });
+    },
+
+    // The creature's own persistent voice — the eighth voice, reserved while
+    // it lives (see `refreshBudget`). `spec` is `{ at, mode }`: 'lurk' is a
+    // slow breath of banded noise, 'chase' brings up a beating drone under
+    // it. Null stops it and gives the voice back.
+    creatureVoice(spec) {
+      if (!spec) {
+        if (lurker) {
+          const t = ctx.currentTime;
+          lurker.ch.gain.gain.setTargetAtTime(0, t, 0.4);
+          for (const n of lurker.nodes) { try { n.stop(t + 1.5); } catch { /* stopped */ } }
+          lurker = null;
+        }
+        return;
+      }
+      if (!this.running) return;
+      const t = ctx.currentTime;
+      if (!lurker) {
+        const ch = makeChannel(spec.at, 0, { db: 0, hz: 4000 }, 0.5);
+        const nodes = [];
+        // The breath: banded noise gated at a slow, wrong rhythm.
+        const n = noiseNode();
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass'; bp.frequency.value = 340; bp.Q.value = 1.4;
+        const bg = ctx.createGain(); bg.gain.value = 0.2;
+        const lfo = ctx.createOscillator();
+        lfo.type = 'sine'; lfo.frequency.value = 0.21;
+        const depth = ctx.createGain(); depth.gain.value = 0.12;
+        lfo.connect(depth); depth.connect(bg.gain);
+        n.connect(bp); bp.connect(bg); bg.connect(ch.input);
+        n.start(t); lfo.start(t);
+        nodes.push(n, lfo);
+        // The drone: two low saws a hair apart, beating. Silent until a chase.
+        const dg = ctx.createGain(); dg.gain.value = 0;
+        for (const hz of [46, 46.7]) {
+          const o = ctx.createOscillator();
+          o.type = 'sawtooth'; o.frequency.value = hz;
+          const og = ctx.createGain(); og.gain.value = 0.24;
+          o.connect(og); og.connect(dg);
+          o.start(t);
+          nodes.push(o);
+        }
+        const dlp = ctx.createBiquadFilter();
+        dlp.type = 'lowpass'; dlp.frequency.value = 160;
+        dg.connect(dlp); dlp.connect(ch.input);
+        lurker = { ch, nodes, drone: dg };
+        ch.gain.gain.setTargetAtTime(1, t, 0.6);
+      }
+      movePanner(lurker.ch, spec.at);
+      lurker.drone.gain.setTargetAtTime(spec.mode === 'chase' ? 0.5 : 0, t, 0.3);
+    },
+
+    // The failing fixture's ballast, 120 Hz and narrow, gated by the same
+    // flicker curve that drives its light — they fail together or the trick
+    // reads as two tricks. `gain` is 0..1; 0 releases the voice.
+    buzz(at, gain = 0) {
+      if (!this.running) return;
+      const g = clamp(gain, 0, 1);
+      const t = ctx.currentTime;
+      if (!buzzer) {
+        if (g <= 0) return;
+        const ch = makeChannel(at, 0, { db: 0, hz: 4000 }, 0.35);
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth'; o.frequency.value = 120;
+        const f = ctx.createBiquadFilter();
+        f.type = 'bandpass'; f.frequency.value = 120; f.Q.value = 8;
+        const o2 = ctx.createOscillator();
+        o2.type = 'sine'; o2.frequency.value = 240;
+        const g2 = ctx.createGain(); g2.gain.value = 0.4;
+        o.connect(f); f.connect(ch.input);
+        o2.connect(g2); g2.connect(ch.input);
+        o.start(t); o2.start(t);
+        buzzer = { ch, nodes: [o, o2] };
+      }
+      movePanner(buzzer.ch, at);
+      buzzer.ch.gain.gain.setTargetAtTime(g * 0.22, t, 0.08);
+      if (g <= 0) {
+        const b = buzzer;
+        buzzer = null;
+        for (const n of b.nodes) { try { n.stop(t + 0.6); } catch { /* stopped */ } }
+      }
     },
 
     // --- the things the building does ---
@@ -719,7 +888,7 @@ export function initAudio(camera, opts = {}) {
       if (s._next === undefined) s._next = now + Math.random() * s.every;
       if (s._next > now + 1) continue;
       const e = ear();
-      const path = pathLoss(s, e);
+      const path = rayPath(s, e);
       const dist = Math.hypot(s.x - e.x, s.y - e.y, s.z - e.z);
       if (dbAt(s.db, dist) - path.db >= 14) {
         const ch = makeChannel(s, gainAtRef(s.db - path.db), path, wetFraction(room, dist));
