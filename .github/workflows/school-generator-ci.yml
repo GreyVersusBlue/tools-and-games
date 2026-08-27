@@ -65,11 +65,27 @@ jobs:
         with:
           node-version: 22
 
+      # Pinned, and pinned to *this* version on purpose: a screenshot baseline
+      # is only meaningful against the browser build that made it. The
+      # committed baselines match Playwright 1.56.1's Chromium (build 1194)
+      # exactly — every capture, zero pixels. The first version of this job
+      # installed 1.62.1, whose Chromium 1234 rasterizes text differently
+      # enough to move 6,896 px on the floor-plan sheet and 13,591 on the
+      # welcome dialog: under the tolerance for most captures, right on the
+      # line for that one, so it passed on the PR and failed on main with the
+      # same tree. Bumping this is a deliberate act that comes with
+      # regenerating the baselines (`node test/visual/run.mjs --update`) on the
+      # same build, never on a desk.
       - name: Install Playwright and its Chromium
-        run: npm install --no-save --no-package-lock playwright@1.62.1
+        run: npm install --no-save --no-package-lock playwright@1.56.1
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+
+      # Printed so a future mismatch is one line in the log rather than a
+      # week of "why is chrome-welcome flaky".
+      - name: Say which browser is comparing
+        run: npx playwright --version
 
       - name: Visual regression
         run: node test/visual/run.mjs

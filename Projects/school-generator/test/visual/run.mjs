@@ -169,6 +169,39 @@ async function captureSheet(context, port, which) {
   return Buffer.from(dataUrl.split(',')[1], 'base64');
 }
 
+// The chrome's five faces, loaded before anything is photographed.
+//
+// index.html declares all of them `font-display: swap`, which is right for a
+// person — a frame of system-ui while they arrive beats a frame of nothing —
+// and wrong for a camera: text paints in the fallback face and *re-paints*
+// when the webfont lands, so a screenshot taken between those two moments is
+// a different picture from one taken after. On a machine that has the files
+// in cache (a desk, and the machine the baselines were made on) the second
+// paint happens long before the shutter and nothing ever noticed. On a cold
+// CI runner fetching them fresh it is a race, and `chrome-welcome` — the most
+// text in the largest panel — lost it, at 0.894% of pixels against a 0.1%
+// tolerance.
+//
+// The sheet harness above has always done this explicitly for its own canvas
+// text. This is the same wait, for the chrome.
+const CHROME_FACES = [
+  '400 13px "Public Sans"',
+  '700 13px "Public Sans"',
+  '600 15px "Space Grotesk"',
+  '400 11px "IBM Plex Mono"',
+  '500 11px "IBM Plex Mono"',
+];
+
+async function waitForChromeFonts(page) {
+  await page.evaluate(async (faces) => {
+    // load() each face by name: `fonts.ready` alone only settles what has
+    // already started loading, and a face used by a panel that is still
+    // hidden may not have started.
+    await Promise.all(faces.map((f) => document.fonts.load(f).catch(() => {})));
+    await document.fonts.ready;
+  }, CHROME_FACES);
+}
+
 async function capturePage(context, port, cap) {
   const page = await context.newPage();
   await page.setViewportSize({ width: cap.width, height: cap.height });
@@ -183,6 +216,7 @@ async function capturePage(context, port, cap) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' });
+  await waitForChromeFonts(page);
   await page.waitForTimeout(1200);
   if (cap.prep) await page.evaluate(cap.prep);
   await page.waitForTimeout(cap.settle || 400);
@@ -258,6 +292,17 @@ if (!pw) {
 const server = await startServer();
 const port = server.address().port;
 const browser = await pw.chromium.launch();
+
+// Which browser is doing the comparing, said out loud.
+//
+// A baseline is only meaningful against the build that made it, and this
+// harness deliberately finds Playwright wherever it can — a local install, or
+// the global one. Those can be different versions with different Chromiums,
+// and the failure that teaches you so is a capture that drifts a few thousand
+// pixels and sits on the tolerance line: green one run, red the next, same
+// tree. One line in the log is the whole cure.
+console.log(`comparing with chromium ${browser.version()}`);
+
 const results = [];
 
 try {

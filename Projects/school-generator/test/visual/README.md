@@ -23,6 +23,25 @@ install chromium`, or any environment that already has both — the harness
 finds a global install by itself). No `package.json` appears in this project;
 the runtime stays build-free and this stays optional tooling.
 
+## A baseline belongs to one browser
+
+**These baselines were made with Playwright 1.56.1's Chromium (build 1194),
+and only match that build.** Chromium rasterizes text a little differently
+between releases — enough to move 6,896 pixels on the floor-plan sheet and
+13,591 on the welcome dialog when CI first ran this against 1.62.1's Chromium
+1234. Most captures absorbed that under the 0.1% tolerance; `chrome-welcome`,
+the most text in the largest panel, landed *on* the line and went green on one
+run and red on the next with an identical tree.
+
+So `.github/workflows/school-generator-ci.yml` pins the Playwright version,
+and the harness prints the Chromium it is comparing with on every run. If that
+line ever disagrees with the pin, the diffs are telling you about the browser,
+not about the chrome.
+
+Changing the pin is a deliberate two-step: bump the workflow, then regenerate
+the baselines with `--update` **on that same build** — on CI, or in a container
+matching it, never on a desk that happens to have a different Chromium.
+
 A run exits 0 when every capture matches, 1 when any differs (the candidate
 and a red-on-grey diff land in `failures/`, which git ignores), and 2 when
 Playwright is missing.
