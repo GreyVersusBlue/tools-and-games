@@ -37,6 +37,8 @@ import {
   bodiesOn, makeCrowdField, crowdCells, clearCrowd, normalizeLife, MAX_POP, SPEED,
 } from './agents.js';
 import { buildCollider, storeyAt, resolvePoint, WALKER_R } from './collide.js';
+// --- Phase 21 ---
+import { makeLabelGate, LABEL_MODES } from './sightline.js';
 import { initAudio } from './audio.js';
 import { doorEvents } from './sound.js';
 import { roomsOnFloor, isOutside } from './acoustics.js';
@@ -376,6 +378,49 @@ const walk = initWalkthrough(renderApi.walkCamera, canvas, {
   },
 });
 
+// --- room labels earned by sight (Phase 21) ---
+//
+// The mode is a session decision that lives in the tool, never the file — a
+// browser preference like the walk overlay's disclosure. The *gate* is per
+// walk: built fresh in setMode('walk') so what a walk has learned lasts
+// exactly as long as its colliders do, and no longer.
+const LABEL_MODE_TEXT = {
+  earned: 'Room labels: earned — a room joins the map when you first see its door',
+  strict: 'Room labels: line of sight only',
+  all: 'Room labels: all',
+  none: 'Room labels: none',
+};
+let labelMode = 'earned';
+try {
+  const kept = localStorage.getItem('sg-labels');
+  if (LABEL_MODES.includes(kept)) labelMode = kept;
+} catch { /* fine */ }
+let labelGate = null;
+renderApi.setLabelMode(labelMode);
+// One closure for the whole session; setMode only swaps what it reads.
+renderApi.setLabelGate((floorIndex, roomId) =>
+  (labelGate ? labelGate.visible(floorIndex, roomId, labelMode) : false));
+
+function setLabelMode(m) {
+  labelMode = LABEL_MODES.includes(m) ? m : 'earned';
+  renderApi.setLabelMode(labelMode);
+  try { localStorage.setItem('sg-labels', labelMode); } catch { /* fine */ }
+  if (mode === 'walk') walkHud.textContent = LABEL_MODE_TEXT[labelMode];
+}
+
+const cycleLabelMode = () =>
+  setLabelMode(LABEL_MODES[(LABEL_MODES.indexOf(labelMode) + 1) % LABEL_MODES.length]);
+
+// A few sight casts, once a frame while walking. The leaves handed over are
+// the walk collider's own — an agent holding a door open is exactly the
+// opening the gate should see through.
+function labelGateUpdate() {
+  if (!labelGate || (labelMode !== 'earned' && labelMode !== 'strict')) return;
+  const at = walk.at;
+  labelGate.update({ x: at.x, z: at.z, floor: at.floor },
+    walk.colliderAt(at.floor).doors, labelMode);
+}
+
 // --- touch walkthrough controls ---
 // A touch device has no pointer to lock, so walking there skips Pointer Lock
 // entirely (see walkthrough.js's enableTouch()) in favor of an on-screen
@@ -483,6 +528,8 @@ function setMode(m) {
     editor.setEnabled(false);
     walk.enable(state);
     doorState = new Map();
+    // A fresh walk starts with a fresh memory of what it has seen.
+    labelGate = makeLabelGate(state);
     if (life.on) walk.setBodies((i) => bodiesOn(life.agents, i));
     audio.setWorld(state);
     // The map is drawn from the plan, and the plan may have changed since the
@@ -501,6 +548,7 @@ function setMode(m) {
     document.body.classList.remove('tours');
     walk.setFollow(null);
     walk.disable();
+    labelGate = null;
     audio.setActive(false);
     closeModal(walkOverlay);
     document.body.classList.remove('touch-walk');
@@ -4178,6 +4226,9 @@ document.addEventListener('keydown', (e) => {
     }
     if (e.code === 'KeyJ') { miniOn = !miniOn; updateMinimapButtons(); return; }
     if (e.code === 'KeyR') { tourMark(); return; }
+    // Phase 21's one: how room labels are earned. I as in "what am I looking
+    // at" — cycles earned → line-of-sight → all → none.
+    if (e.code === 'KeyI') { cycleLabelMode(); return; }
     // Phase 10's one: the findings, on the map in your hand. Bracket keys
     // step through them, which is the same gesture as the report panel's own
     // list read top-down.
@@ -4332,6 +4383,8 @@ function cmdkCommands() {
       keys: ['P'], run: walkFirst(() => setPhotoMode(true)) },
     { name: 'Minimap', hint: 'The plan in your hand, while walking', keys: ['J'],
       run: walkFirst(() => { miniOn = !miniOn; updateMinimapButtons(); }) },
+    { name: `Room labels: ${labelMode}`, hint: 'Earned by sight, strict line-of-sight, all, or none',
+      keys: ['I'], run: walkFirst(cycleLabelMode) },
     { name: 'Findings on the minimap', hint: 'The report drawn onto the plan, worst first',
       keys: ['O'], run: walkFirst(() => setMiniFindings(!miniFindings)) },
     { name: 'Scavenger hunt', hint: 'Eight things hidden around the building',
@@ -6053,6 +6106,7 @@ async function enterVR() {
         walk.update(dt);
         audio.update(dt);
         lifeUpdate(dt);
+        labelGateUpdate();
       },
       onEnd: () => {
         xrSession = null;
@@ -6217,6 +6271,9 @@ function loop() {
     // A tour has the camera too, and a hunt found by a camera flying itself
     // around is not a hunt.
     if (!tourPlay) huntUpdate(dt);
+    // Labels earn themselves from wherever the eye is — a tour's camera
+    // learns the building the same way a walker's does.
+    labelGateUpdate();
   }
   // The school runs in both modes. A crowd seen from 200ft up, moving between
   // periods over a plan you are drawing, is half of what this phase is for —
@@ -6326,6 +6383,10 @@ window.app = {
   // --- Phase 11 ---
   huntBegin, huntStop,
   get hunt() { return hunt; },
+  // --- Phase 21 ---
+  setLabelMode,
+  get labelMode() { return labelMode; },
+  get labelGate() { return labelGate; },
   // --- Phase 14 ---
   sessionStart, sessionLeave, sessionFlush, sendSnapshot,
   get collab() { return collab; },

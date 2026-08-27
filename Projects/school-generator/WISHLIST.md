@@ -1,7 +1,7 @@
 # School Generator — Feature Wishlist
 
-**Status: twenty phases are shipped — three arcs plus the first two phases of
-arc four. Phases 21–24 are planned below and not started.** Three arcs took a grid editor
+**Status: twenty-one phases are shipped — three arcs plus the first three
+phases of arc four. Phases 22–24 are planned below and not started.** Three arcs took a grid editor
 to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -302,8 +302,8 @@ tool at all (Phase 23), and — as an *and also*, the way arc two ended on
 Play — the player in the dark (Phase 24).
 
 **Phase 19 is the self-contained win** — reach for it any time; it leans on
-nothing below it. **Phase 21 is the quiet prerequisite:** its sightline
-module is the thing Phase 24 hunts you with. **Phase 23 is the architectural
+nothing below it. **Phase 21 was the quiet prerequisite, and it is shipped:**
+its sightline module is the thing Phase 24 hunts you with. **Phase 23 is the architectural
 risk of the arc** — the biggest single piece of surgery since the nav mesh.
 **Phase 24 is an and-also: skip it and the arc still closes.** Two of the
 six phases claim no backlog item at all — the guest was never on the list.
@@ -400,42 +400,53 @@ lights.js: 1,000lm a pan (a four-pan cluster ≈ one real 2x4) and `SPILL_MAX`
 down to 0.30 — the level the old invented house fill sat at, now earned.
 *Save:* — none, as planned; a mood writes fields v11 already has.
 
-## Phase 21 — Line of sight
+## Phase 21 — Line of sight *(shipped)*
 
 **A label the walker did not earn is information through a wall.**
 
 Room labels are `depthTest:false` sprites filtered to the camera's storey —
-in walk mode they name rooms you have never seen, through the walls that
-hide them. The proposal: in walk mode a room's label is gated on unobstructed
+in walk mode they named rooms you have never seen, through the walls that
+hide them. The fix: in walk mode a room's label is gated on unobstructed
 line of sight to that room's door. Doors are already known to `openings.js`
 and the navgraph; the walls that occlude are already derived as segments by
 `collide.js`; what is new is one pure module. It is worth saying now that
 Phase 24 is waiting for exactly this module.
 
-- [ ] **`sightline.js`, pure, with its suite.** Given an eye point and the
-  storey's wall-and-opening segments `collide.js` already derives, answer
-  "is this door visible?" — 2D segment casts in plan, storey-aware; a closed
-  leaf occludes, an open one doesn't.
-- [ ] **Labels earned by sight, and a strict mode beside it.** The walk-mode
-  default is *earned*: a label fades in when its room's nearest door is
-  first seen and stays learned for the rest of the walk — wayfinding, not a
-  memory test. A *strict* toggle shows a label only while its door is
-  currently in sight, and *all* / *none* remain as overrides. Sprites keep
-  `depthTest:false` for readability; the honesty now comes from the gate,
-  not the depth buffer.
-- [ ] **Edit mode unchanged.** The drawing board keeps always-on labels; the
+- [x] **`sightline.js`, pure, with its suite.** Given an eye point and one
+  storey's occluders, answer "is this door visible?" — 2D segment casts in
+  plan, storey-aware; a closed leaf occludes, an open one doesn't (the cast
+  runs against `leafSegment` at the leaf's live angle, so both fall out of
+  one rule). `doorPoints` names the rooms either side of every doorway;
+  `makeLabelGate` is the walk's memory of what it has seen.
+- [x] **Labels earned by sight, and a strict mode beside it.** The walk-mode
+  default is *earned*: a label fades in when its room's door is first seen
+  and stays learned for the rest of the walk — wayfinding, not a memory
+  test. *Strict* shows a label only while its door is currently in sight,
+  and *all* / *none* remain as overrides — `I` cycles the four, in the
+  palette and on the walk sheet. Sprites keep `depthTest:false` for
+  readability; the honesty now comes from the gate, not the depth buffer.
+- [x] **Edit mode unchanged.** The drawing board keeps always-on labels; the
   walk-mode setting is a session decision that lives in the tool, never the
-  file.
-- [ ] **Throttle it honestly.** Cast only for ungated labels on the walker's
-  storey, a few per frame round-robin — the walker moves at walking speed
-  and nothing needs an answer every 16ms.
+  file, and the gate itself is rebuilt per walk — earned labels last exactly
+  as long as the colliders do.
+- [x] **Throttle it honestly.** Casts only for ungated labels on the
+  walker's storey, four per frame round-robin (`budget`), nearest door
+  first — the walker moves at walking speed and nothing needs an answer
+  every 16ms.
 
-*Leans on:* `collide.js`'s segment derivation, `openings.js`, the navgraph's
-door points, the label sprites and storey filter in `render.js`; *collides
-with:* the crowd — an agent holding a door open makes an opening, and the
-module has to read the leaf's state, not the plan's. *Save:* — none.
-*Model:* **Claude Fable 5** — a new pure geometry module; visibility math is
-modeling.
+*What fought back:* two things, both geometric. A cast aimed *at* a doorway's
+centreline never strictly crosses the shut leaf lying exactly along it —
+`segsCross` is strict at endpoints, correctly — so the cast reaches
+`DOOR_PAST` beyond the wall, through the hole or into the leaf. And the plan's
+"the segments collide.js already derives" did not survive contact: sight has
+its own idea of a wall. `wallSegments` puts glass and railings in with
+drywall (right for a body, a lie for an eye) and never cuts a window, so
+`sightSegments` derives its own occluders — glass and rails pass whole, a
+window is a hole only where the eye height falls within its band, and a
+clerestory stays a wall. A door on a shared partition belongs to one room's
+ring and to *both* rooms' sight, which is `doorPoints` probing both sides the
+way the navgraph's portals do. *Save:* — none, as planned; one localStorage
+preference (`sg-labels`). *Model:* **Claude Fable 5**, as named.
 
 ## Phase 22 — Hands
 
