@@ -171,6 +171,20 @@ export function collectDoorLeaves(state, floorIndex) {
       });
     });
   }
+  // Phase 25's free-standing walls. One segment each, openings pinned to
+  // segment zero (see wallrun.js), so a door in a garden wall hangs and swings
+  // exactly like a door in a classroom's — the id namespace is the only thing
+  // that has to be kept apart, and `w` rather than `s` does that.
+  for (const line of (Array.isArray(floor.walls) ? floor.walls : [])) {
+    if (!Array.isArray(line.openings)) continue;
+    const a = { x: line.ax, z: line.az }, b = { x: line.bx, z: line.bz };
+    line.openings.forEach((o, oi) => {
+      if (!isDoorOpening(o)) return;
+      const spec = openingSpec(o);
+      if (spec.leaf === LEAF_NONE) return;
+      for (const leaf of segLeaves(spec, a, b, `f${floorIndex}:w:${line.id}:${oi}`)) out.push(leaf);
+    });
+  }
   return out;
 }
 

@@ -58148,6 +58148,9 @@ function reseedIds(state) {
   for (const l of state.links) max = Math.max(max, l.id);
   for (const f of state.floors || []) {
     for (const s of f.shapes || []) max = Math.max(max, s.id || 0);
+    // Phase 25's free-standing walls take ids off this same counter, so a wall
+    // line and a room can never name the same number.
+    for (const l of f.walls || []) max = Math.max(max, l.id || 0);
   }
   state.nextId = max + 1;
   return state.nextId;
@@ -62073,6 +62076,460 @@ function fixedProbe(t) {
 
 return { PROBE, solidBeside, isExteriorSeg, segThickness, wallProbe, fixedProbe, WALL_T_INT, WALL_T_EXT };
 })();
+// ---- js/wallrun.js ----
+const __m_js_wallrun_js = (() => {
+const { MIN_SEG, SEG_WALL, SEG_KINDS, isBuilt, canOpen, MIN_DOOR_W, MAX_DOOR_W, defaultOpeningWidth, writeOpening, openingSpec, shapesOf, segEnds, unitDir, parallelDirs, projectOnSeg, insertVertex, setSegWall, takeId } = __m_js_shapes_js;
+// wallrun.js — a wall drawn from one point to another.
+//
+// Until this module the wall tool had no way to say how long a wall was. You
+// pointed at a room's boundary and the *whole* of whichever run was nearest
+// became a wall — so the length was whatever the polygon happened to have
+// between two of its corners, and a 30ft classroom side could not be walled
+// for eight feet of its length without first going and inserting two vertices
+// by hand with a different tool. The tool guessed, and the guess was the
+// polygon's, not yours.
+//
+// A wall is now drawn the way the overlay's measurement is taken: click one
+// end, click the other. Which leaves this module one question to answer —
+// **what does a run from A to B actually build?** — and the answer is in two
+// parts, because a school has two kinds of wall in it:
+//
+//   along a room's boundary   the run splits the ring at both ends and sets
+//                             the covered piece. That keeps every derived
+//                             thing right: the room is still bounded there,
+//                             the thickness probe still sees a room on each
+//                             side, a door still cuts into a ring segment.
+//
+//   anywhere else             a **wall line**: a free-standing run in world
+//                             feet, kept on the floor as `walls[]`. A garden
+//                             wall, a corridor screen, the start of a wing —
+//                             things a school has that are not the side of a
+//                             room and never were.
+//
+// One drawn run can be both: draw across a courtyard from one wing to the
+// other and the two ends land on ring boundaries while the middle does not.
+// `drawWallRun` works out which is which and returns what it did.
+//
+// The record, on `floor.walls`:
+//
+//   { id, ax, az, bx, bz, kind, openings?: [{ seg: 0, t, w, ... }] }
+//
+// `openings` is deliberately the same record `shapes.js` puts on a ring, with
+// `seg` pinned to 0 — a wall line is one segment, so every consumer that
+// already filters a ring's openings by segment index reads a wall line's with
+// no new branch at all.
+//
+// The floor grows no `walls` key until one is drawn (see save-load.js), which
+// is the same promise every optional record in this codebase keeps: a design
+// with no wall lines round-trips as the bytes it went in as.
+//
+// Pure module: no three.js. Exercised by test/wallrun.test.mjs.
+
+
+
+// Per floor. The same order of magnitude as MAX_SHAPES: a wall line is a
+// cheaper record than a room, and a plan that wants five hundred of them is
+// drawing a fence, which is a fair thing to want.
+const MAX_WALL_LINES = 512;
+
+// How far off an existing boundary a drawn run may be and still count as being
+// *on* it. Under half the 4ft cell, so a run snapped one grid step away from a
+// wall is a second wall rather than a re-statement of the first.
+const ON_LINE_TOL = 0.9;          // ft
+// ...and how far off parallel. Tighter than shapes.js's PARALLEL_TOL (36°),
+// which exists to let a drag follow a tessellated curve: a run either lies
+// along a boundary or it crosses it, and 6° is generous for the first.
+const ON_LINE_ANGLE = Math.PI / 30;   // 6°
+
+// A drawn run shorter than this is a mis-click, not a wall.
+const MIN_RUN = Math.max(MIN_SEG * 2, 0.5);   // ft
+
+const wallLinesOf = (floor) => (floor && Array.isArray(floor.walls) ? floor.walls : []);
+
+const lineEnds = (line) => [{ x: line.ax, z: line.az }, { x: line.bx, z: line.bz }];
+const lineLength = (line) => Math.hypot(line.bx - line.ax, line.bz - line.az);
+const lineKind = (line) => (SEG_KINDS.includes(line && line.kind) && isBuilt(line.kind)
+  ? line.kind : SEG_WALL);
+const lineOpenings = (line) =>
+  (line && Array.isArray(line.openings) ? line.openings : []);
+
+// ---------- the records ----------
+
+function makeWallLine(id, a, b, kind = SEG_WALL) {
+  return {
+    id,
+    ax: a.x, az: a.z, bx: b.x, bz: b.z,
+    kind: SEG_KINDS.includes(kind) && isBuilt(kind) ? kind : SEG_WALL,
+  };
+}
+
+function addWallLine(state, floorIndex, a, b, kind = SEG_WALL) {
+  const floor = state && state.floors ? state.floors[floorIndex] : null;
+  if (!floor) return null;
+  if (Math.hypot(b.x - a.x, b.z - a.z) < MIN_RUN) return null;
+  if (!Array.isArray(floor.walls)) floor.walls = [];
+  if (floor.walls.length >= MAX_WALL_LINES) return null;
+  const line = makeWallLine(takeId(state), a, b, kind);
+  floor.walls.push(line);
+  return line;
+}
+
+function removeWallLine(floor, id) {
+  const list = wallLinesOf(floor);
+  const i = list.findIndex((l) => l.id === id);
+  if (i < 0) return false;
+  list.splice(i, 1);
+  // A floor with no wall lines left carries no key, so it writes none.
+  if (!list.length && floor.walls) delete floor.walls;
+  return true;
+}
+
+// The wall line nearest a world point, as { line, t, x, z, dist }.
+function wallLineAt(floor, x, z, maxDist = ON_LINE_TOL) {
+  let best = null;
+  for (const line of wallLinesOf(floor)) {
+    const [a, b] = lineEnds(line);
+    const p = projectOnSeg(a, b, x, z);
+    if (p.dist > maxDist || (best && p.dist >= best.dist)) continue;
+    best = { line, t: p.t, x: p.x, z: p.z, dist: p.dist };
+  }
+  return best;
+}
+
+// ---------- doorways in a wall line ----------
+//
+// Mirrors shapes.js's `addOpening`/`toggleOpening` against a record that has
+// one segment instead of a ring of them. Kept here rather than generalized
+// over there because a ring's openings are bookkeeping — they move when a
+// vertex is inserted, they are dropped when a segment is cleared — and a wall
+// line has none of that to keep.
+
+function addLineOpening(line, t, w = null, opts = {}) {
+  if (!line || !canOpen(lineKind(line))) return null;
+  const len = lineLength(line);
+  const want = Number.isFinite(w) ? w : defaultOpeningWidth(opts);
+  const width = Math.min(MAX_DOOR_W, Math.max(MIN_DOOR_W, want));
+  if (len < width + 0.5) return null;
+  const half = (width / 2 + 0.25) / len;
+  const at = Math.min(1 - half, Math.max(half, t));
+  const list = lineOpenings(line);
+  if (list.some((o) => Math.abs(o.t - at) * len < (width + o.w) / 2)) return null;
+  const opening = writeOpening(0, at, width, opts);
+  if (!Array.isArray(line.openings)) line.openings = [];
+  line.openings.push(opening);
+  return opening;
+}
+
+function toggleLineOpening(line, t, w = null, opts = {}) {
+  if (!line) return null;
+  const len = lineLength(line);
+  const list = lineOpenings(line);
+  const hit = list.find((o) => Math.abs(o.t - t) * len <= o.w / 2 + 0.5);
+  if (hit) {
+    const same = openingSpec(hit), next = openingSpec(writeOpening(0, hit.t, hit.w, opts));
+    line.openings.splice(line.openings.indexOf(hit), 1);
+    if (!line.openings.length) delete line.openings;
+    if (same.kind === next.kind && same.leaf === next.leaf &&
+        same.lite === next.lite && same.bar === next.bar &&
+        same.hand === next.hand && same.sw === next.sw) {
+      return null;    // the same thing clicked twice is a removal
+    }
+    return addLineOpening(line, hit.t, hit.w, opts);
+  }
+  return addLineOpening(line, t, w, opts);
+}
+
+// ---------- what a run lies along ----------
+
+const dot = (ux, uz, px, pz) => ux * px + uz * pz;
+const cross = (ux, uz, px, pz) => ux * pz - uz * px;
+
+// Where p->q sits on the *line* the run a->(a + u * len) lies on, or null if
+// it is not on that line at all. `overlap` is how much of the run it actually
+// shares — negative when the two are collinear but apart, which is the
+// difference between a wall drawn end to end with this one and a wall drawn
+// somewhere else along the same street.
+function alongRun(a, u, len, p, q, tol = ON_LINE_TOL, angleTol = ON_LINE_ANGLE) {
+  const v = unitDir(p, q);
+  if (!v || !parallelDirs(u, v, angleTol)) return null;
+  const pdx = p.x - a.x, pdz = p.z - a.z;
+  const qdx = q.x - a.x, qdz = q.z - a.z;
+  if (Math.abs(cross(u.x, u.z, pdx, pdz)) > tol) return null;
+  if (Math.abs(cross(u.x, u.z, qdx, qdz)) > tol) return null;
+  const sp = dot(u.x, u.z, pdx, pdz), sq = dot(u.x, u.z, qdx, qdz);
+  const s0 = Math.min(sp, sq), s1 = Math.max(sp, sq);
+  return { s0, s1, overlap: Math.min(len, s1) - Math.max(0, s0) };
+}
+
+// The stretch of the run p->q actually covers, as a pair of distances from
+// `a`, or null if it does not cover a usable length of it.
+function coverOf(a, u, len, p, q, tol = ON_LINE_TOL, angleTol = ON_LINE_ANGLE) {
+  const on = alongRun(a, u, len, p, q, tol, angleTol);
+  if (!on || on.overlap < MIN_RUN) return null;
+  return { c0: Math.max(0, on.s0), c1: Math.min(len, on.s1) };
+}
+
+// Every ring segment the run lies along, as { shape, ring, seg, c0, c1 }.
+function ringCovers(floor, a, b, tol = ON_LINE_TOL) {
+  const u = unitDir(a, b);
+  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  const out = [];
+  if (!u) return out;
+  for (const shape of shapesOf(floor)) {
+    shape.rings.forEach((ring, ri) => {
+      for (let i = 0; i < ring.pts.length; i++) {
+        const [p, q] = segEnds(ring, i);
+        const c = coverOf(a, u, len, p, q, tol);
+        if (c) out.push({ shape, ring: ri, seg: i, c0: c.c0, c1: c.c1 });
+      }
+    });
+  }
+  return out;
+}
+
+// The stretches of [0, len] that nothing covers. `spans` and the answer are
+// both [start, end] pairs measured from the start of the run.
+function gapsOf(spans, len, min = MIN_RUN) {
+  const sorted = [...spans].sort((x, y) => x[0] - y[0]);
+  const gaps = [];
+  let at = 0;
+  for (const [s, e] of sorted) {
+    if (s - at >= min) gaps.push([at, s]);
+    at = Math.max(at, e);
+  }
+  if (len - at >= min) gaps.push([at, len]);
+  return gaps;
+}
+
+// ---------- writing the run onto a ring ----------
+
+// Split ring segment `seg` so that the stretch the run covers is a segment of
+// its own, and set it. Returns { seg, changed }, or null if the ring would not
+// take the split (it is already at MAX_RING_PTS, or the cut lands on a corner).
+function setCoveredPiece(shape, ringIdx, seg, a, u, c0, c1, kind) {
+  const ring = shape.rings[ringIdx];
+  if (!ring) return null;
+  const [p, q] = segEnds(ring, seg);
+  const C0 = { x: a.x + u.x * c0, z: a.z + u.z * c0 };
+  const C1 = { x: a.x + u.x * c1, z: a.z + u.z * c1 };
+  const t0 = projectOnSeg(p, q, C0.x, C0.z).t;
+  const t1 = projectOnSeg(p, q, C1.x, C1.z).t;
+  // The run and the ring segment may point opposite ways — the ring is wound,
+  // the run is drawn — so order by the *segment's* parameter, not the run's.
+  const lo = Math.min(t0, t1), hi = Math.max(t0, t1);
+  const loPt = lo === t0 ? C0 : C1;
+  const hiPt = hi === t0 ? C0 : C1;
+
+  let target = seg;
+  let hiT = hi;
+  if (lo > 0.001) {
+    const at = insertVertex(shape, ringIdx, seg, loPt.x, loPt.z);
+    // A cut that lands on a corner is not a cut: the whole segment is the
+    // covered piece already, which is exactly the behaviour every version before this one had and
+    // is right here rather than a failure.
+    if (at >= 0) { target = at; hiT = (hi - lo) / (1 - lo); }
+  }
+  if (hiT < 0.999) insertVertex(shape, ringIdx, target, hiPt.x, hiPt.z);
+  const changed = setSegWall(shape, ringIdx, target, kind);
+  return { seg: target, changed };
+}
+
+// ---------- writing the run as free-standing line ----------
+
+// Cut `span` out of an existing line, returning what is left of it (0, 1 or 2
+// pieces) as pairs of world points. Used when a run of a different kind is
+// drawn over part of one.
+function remainderOf(line, a, u, c0, c1) {
+  const [p, q] = lineEnds(line);
+  const sp = dot(u.x, u.z, p.x - a.x, p.z - a.z);
+  const sq = dot(u.x, u.z, q.x - a.x, q.z - a.z);
+  const lo = Math.min(sp, sq), hi = Math.max(sp, sq);
+  const at = (s) => ({ x: a.x + u.x * s, z: a.z + u.z * s });
+  const out = [];
+  if (c0 - lo >= MIN_RUN) out.push([at(lo), at(c0)]);
+  if (hi - c1 >= MIN_RUN) out.push([at(c1), at(hi)]);
+  return out;
+}
+
+// ---------- the whole gesture ----------
+
+// Draw a wall from `a` to `b` on one storey. Returns what it did:
+//
+//   { ok, reason?, length, onRings, lines, replaced }
+//
+// `onRings` counts room boundaries that were split and set; `lines` is the
+// free-standing runs added. Nothing is drawn twice: a stretch already covered
+// by a boundary or by an existing line of the same kind is left alone rather
+// than doubled, which matters because two coincident walls read as one wall of
+// twice the thickness in every derived thing downstream.
+function drawWallRun(state, floorIndex, a, b, kind = SEG_WALL, opts = {}) {
+  const floor = state && state.floors ? state.floors[floorIndex] : null;
+  if (!floor) return { ok: false, reason: 'no floor', length: 0, onRings: 0, lines: [], replaced: 0 };
+  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  const u = unitDir(a, b);
+  if (!u || len < MIN_RUN) {
+    return {
+      ok: false,
+      reason: `A wall needs two different points — that one is ${len.toFixed(1)}ft long.`,
+      length: len, onRings: 0, lines: [], replaced: 0,
+    };
+  }
+  const want = SEG_KINDS.includes(kind) && isBuilt(kind) ? kind : SEG_WALL;
+  const tol = Number.isFinite(opts.tol) ? opts.tol : ON_LINE_TOL;
+
+  // 1. Room boundaries the run lies along. Processed per ring in descending
+  //    segment order: inserting a vertex renumbers every segment above it, and
+  //    walking down means the indices still waiting are all below.
+  const covers = ringCovers(floor, a, b, tol);
+  const byRing = new Map();
+  for (const c of covers) {
+    const key = `${c.shape.id}:${c.ring}`;
+    if (!byRing.has(key)) byRing.set(key, []);
+    byRing.get(key).push(c);
+  }
+  let onRings = 0, alreadyBuilt = 0;
+  for (const list of byRing.values()) {
+    list.sort((x, y) => y.seg - x.seg);
+    for (const c of list) {
+      const out = setCoveredPiece(c.shape, c.ring, c.seg, a, u, c.c0, c.c1, want);
+      if (!out) continue;
+      if (out.changed) onRings++; else alreadyBuilt++;
+    }
+  }
+
+  // 2. Existing wall lines along the same run. Same kind: absorbed, so drawing
+  //    over one extends rather than stacks. Different kind: the drawn run
+  //    wins over the stretch it covers, and what is left of the old line
+  //    stays as one or two shorter pieces.
+  const spans = covers.map((c) => [c.c0, c.c1]);
+  let replaced = 0;
+  let lo = 0, hi = len;
+  for (const line of [...wallLinesOf(floor)]) {
+    const [p, q] = lineEnds(line);
+    const on = alongRun(a, u, len, p, q, tol);
+    // Same kind: touching is enough, so two runs drawn end to end come out as
+    // one wall. A different kind has to genuinely overlap before the drawn run
+    // takes any of it away.
+    if (!on || on.overlap < (lineKind(line) === want ? -tol : MIN_RUN)) continue;
+    const sp = on.s0, sq = on.s1;
+    if (lineKind(line) === want) {
+      // Absorb it: the drawn run grows to cover both, and the old record goes.
+      // Deliberately *not* added to `spans` — an absorbed line is one this
+      // gesture is re-laying, not one already standing that it should leave
+      // alone, and counting it as covered would leave the wall deleted.
+      lo = Math.min(lo, sp, sq);
+      hi = Math.max(hi, sp, sq);
+      removeWallLine(floor, line.id);
+      replaced++;
+      continue;
+    }
+    const c0 = Math.max(0, on.s0), c1 = Math.min(len, on.s1);
+    const rest = remainderOf(line, a, u, c0, c1);
+    removeWallLine(floor, line.id);
+    replaced++;
+    for (const [ra, rb] of rest) {
+      const kept = addWallLine(state, floorIndex, ra, rb, lineKind(line));
+      if (kept && Array.isArray(line.openings)) {
+        // A doorway only survives if it is still inside the piece it was cut
+        // into — an opening halfway along a wall that has been cut in two has
+        // no wall left to be an opening in.
+        const keptLen = lineLength(kept);
+        for (const o of line.openings) {
+          const worldT = { x: p.x + (q.x - p.x) * o.t, z: p.z + (q.z - p.z) * o.t };
+          const pr = projectOnSeg(ra, rb, worldT.x, worldT.z);
+          if (pr.dist < 0.05 && pr.t * keptLen > o.w / 2 && (1 - pr.t) * keptLen > o.w / 2) {
+            addLineOpening(kept, pr.t, o.w, o);
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Everything the run covers that nothing else does becomes a wall line.
+  //    Measured against the absorbed extent, so a run drawn end-to-end with an
+  //    existing one of the same kind comes out as a single record.
+  const shifted = spans.map(([s, e]) => [s - lo, e - lo]);
+  const gaps = gapsOf(shifted, hi - lo);
+  const at = (s) => ({ x: a.x + u.x * (s + lo), z: a.z + u.z * (s + lo) });
+  const lines = [];
+  for (const [s, e] of gaps) {
+    const line = addWallLine(state, floorIndex, at(s), at(e), want);
+    if (line) lines.push(line);
+  }
+
+  const ok = onRings > 0 || lines.length > 0 || replaced > 0;
+  return {
+    ok,
+    reason: ok ? null
+      : alreadyBuilt ? 'That run is already built along its whole length.'
+      : 'Nothing to build there.',
+    length: len, onRings, lines, replaced, alreadyBuilt,
+  };
+}
+
+// ---------- erasing ----------
+
+// Take out whatever a run of wall the cursor is over: a free-standing line
+// whole, since a line *is* one wall. Returns the record removed, or null.
+function eraseWallLineAt(floor, x, z, tol = ON_LINE_TOL) {
+  const hit = wallLineAt(floor, x, z, tol);
+  if (!hit) return null;
+  removeWallLine(floor, hit.line.id);
+  return hit.line;
+}
+
+// ---------- load-time validation ----------
+
+const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v)
+  ? Math.min(hi, Math.max(lo, v)) : null);
+
+function readOpening(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = num(raw.t, 0, 1);
+  const w = num(raw.w, MIN_DOOR_W, MAX_DOOR_W);
+  if (t === null || w === null) return null;
+  return writeOpening(0, t, w, raw);
+}
+
+// One floor's wall lines out of whatever a save file offered. An unreadable
+// record is dropped rather than repaired: a wall with one end missing is not a
+// wall, and the alternative — guessing where it went — would put geometry in
+// the building that nobody drew.
+function normalizeWallLines(raw, extent = 4000, nextId = null) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const r of raw.slice(0, MAX_WALL_LINES)) {
+    if (!r || typeof r !== 'object') continue;
+    const ax = num(r.ax, -extent, extent), az = num(r.az, -extent, extent);
+    const bx = num(r.bx, -extent, extent), bz = num(r.bz, -extent, extent);
+    if (ax === null || az === null || bx === null || bz === null) continue;
+    if (Math.hypot(bx - ax, bz - az) < MIN_RUN) continue;
+    const line = {
+      id: Math.round(num(r.id, 0, Number.MAX_SAFE_INTEGER) || 0),
+      ax, az, bx, bz,
+      // An unknown kind reads as a solid wall, never as nothing: the standing
+      // rule is that an unknown boundary defaults to *more* solid, not less.
+      kind: SEG_KINDS.includes(r.kind) && isBuilt(r.kind) ? r.kind : SEG_WALL,
+    };
+    if (!line.id && typeof nextId === 'function') line.id = nextId();
+    const openings = Array.isArray(r.openings)
+      ? r.openings.map(readOpening).filter(Boolean) : [];
+    if (openings.length) line.openings = openings;
+    out.push(line);
+  }
+  return out;
+}
+
+// Total built length of the free-standing walls on a storey, in feet — what a
+// takeoff wants and what the floor panel counts by.
+function wallLineFootage(floor) {
+  let ft = 0;
+  for (const line of wallLinesOf(floor)) ft += lineLength(line);
+  return ft;
+}
+
+return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, addLineOpening, toggleLineOpening, alongRun, coverOf, ringCovers, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
+})();
 // ---- js/terrain.js ----
 const __m_js_terrain_js = (() => {
 const { CELL } = __m_js_grid_js;
@@ -62744,6 +63201,20 @@ function collectDoorLeaves(state, floorIndex) {
       });
     });
   }
+  // Phase 25's free-standing walls. One segment each, openings pinned to
+  // segment zero (see wallrun.js), so a door in a garden wall hangs and swings
+  // exactly like a door in a classroom's — the id namespace is the only thing
+  // that has to be kept apart, and `w` rather than `s` does that.
+  for (const line of (Array.isArray(floor.walls) ? floor.walls : [])) {
+    if (!Array.isArray(line.openings)) continue;
+    const a = { x: line.ax, z: line.az }, b = { x: line.bx, z: line.bz };
+    line.openings.forEach((o, oi) => {
+      if (!isDoorOpening(o)) return;
+      const spec = openingSpec(o);
+      if (spec.leaf === LEAF_NONE) return;
+      for (const leaf of segLeaves(spec, a, b, `f${floorIndex}:w:${line.id}:${oi}`)) out.push(leaf);
+    });
+  }
   return out;
 }
 
@@ -62908,6 +63379,7 @@ const { propsOnFloor } = __m_js_props_js;
 const { footprintOf } = __m_js_propplace_js;
 const { stairsOf, stairMetrics, stairSurfaceAt, floorCuts, inFloorCut, floorSolidAt, openingRails, elevatorsOn, elevatorWalls } = __m_js_stairs_js;
 const { wallProbe } = __m_js_walls_js;
+const { wallLinesOf, lineOpenings } = __m_js_wallrun_js;
 const { terrainField, emptyField, groundAt } = __m_js_terrain_js;
 const { collectDoorLeaves, leafSegment, updateLeaves, updateLeavesFor, closeAll, LEAF_T } = __m_js_openings_js;
 // collide.js — the walkthrough's physics: what stops you, and what holds you up.
@@ -62951,6 +63423,7 @@ const { collectDoorLeaves, leafSegment, updateLeaves, updateLeavesFor, closeAll,
 // * **You collide with the storey you're standing on.** Not with all eight.
 //   Which storey that is comes off the height of your feet (`storeyAt`), so a
 //   run of stairs hands you over to the level above exactly when you arrive.
+
 
 
 
@@ -63111,6 +63584,18 @@ function wallSegments(floor, probe = null) {
         run(a.x, a.z, b.x, b.z, cuts);
       }
     }
+  }
+
+  // Phase 25's free-standing walls (wallrun.js). One segment each, with the
+  // same openings record a ring carries — so they arrive here as one more
+  // call to the same `run` every room boundary goes through, and everything
+  // downstream of a collider segment needed no change at all.
+  for (const line of wallLinesOf(floor)) {
+    const len = Math.hypot(line.bx - line.ax, line.bz - line.az);
+    const cuts = lineOpenings(line)
+      .filter(isDoorOpening)
+      .map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
+    run(line.ax, line.az, line.bx, line.bz, cuts);
   }
 
   return out;
@@ -68843,6 +69328,128 @@ function huntSummary(hunt) {
 
 return { DEFAULT_COUNT, MIN_COUNT, MAX_COUNT, FIND_R, REVEAL_R, INSET, MIN_TILE_SIDE, MIN_YARD_SIDE, OUTDOOR_SHARE, FLOOR_FEET, HUNT_ITEMS, WARMTH_BANDS, roomBounds, quadrantOf, describePlace, huntCandidates, yardCandidates, hidingPlaces, startHunt, unfound, apparentDistance, nearestHidden, bandFor, huntWarmth, checkFind, revealAt, huntSummary };
 })();
+// ---- js/snapgrid.js ----
+const __m_js_snapgrid_js = (() => {
+const { CELL } = __m_js_grid_js;
+// snapgrid.js — the drawing grid you aim at, and how fine it is.
+//
+// Until this module the 4ft lattice was the only thing a drawing tool could
+// snap to, and it was 4ft whether the screen showed six hundred feet of site
+// or thirty feet of one classroom. Both ends of that are wrong: zoomed out,
+// 4ft lines are a grey wash nobody reads; zoomed in, 4ft is coarser than the
+// thing being drawn — you cannot put a wall a foot off a column with it.
+//
+// So the grid has a *pitch* now, and the pitch is a function of the zoom. It
+// steps through a ladder of round numbers rather than sliding, because a grid
+// you can count on ("that's three squares, so twelve feet") stops being a
+// measuring instrument the moment its squares are 3.7ft. The ladder is in
+// feet and doubles: half a foot to thirty-two.
+//
+// The rule is one line: **pick the finest pitch that still leaves the view
+// legible.** `MAX_LINES` is what "legible" means — how many grid lines may
+// cross the shorter axis of the viewport before the next pitch up takes over.
+// The 4ft cell (grid.js `CELL`) is still the unit rooms are painted in and
+// still the pitch at the default zoom; it is no longer the only one.
+//
+// Pure module: no three.js, no DOM. Exercised by test/snapgrid.test.mjs.
+
+
+
+// The ladder, in feet. Every step is a whole number of the one below it and
+// 4ft (the paint brush's cell) is on it, so a finer grid always subdivides
+// the cells rather than cutting across them.
+const PITCHES = [0.5, 1, 2, 4, 8, 16, 32];
+
+// How many lines may cross the view's height before the grid coarsens. Sized
+// from the two ends it has to survive: at the closest zoom (30ft of view) it
+// must not force a pitch finer than a foot, and at the default (140ft) it must
+// still land on the 4ft cell every earlier version drew.
+const MAX_LINES = 56;
+
+const MIN_PITCH = PITCHES[0];
+const MAX_PITCH = PITCHES[PITCHES.length - 1];
+
+// The pitch to draw and snap to for a given view height, in feet. Monotonic in
+// `viewHeight`: zooming in never coarsens the grid.
+function gridPitch(viewHeight, maxLines = MAX_LINES) {
+  const h = Number.isFinite(viewHeight) && viewHeight > 0 ? viewHeight : CELL * 35;
+  const lines = Math.max(4, maxLines);
+  for (const p of PITCHES) if (h / p <= lines) return p;
+  return MAX_PITCH;
+}
+
+// Which of the drawn lines carry weight. The 20ft rule the sheet has always
+// counted by, expressed against whatever the pitch is: once the grid is finer
+// than a cell the heavy line falls on the cell, so the 4ft module stays
+// readable underneath the finer one.
+function majorEvery(pitch) {
+  const p = pitch > 0 ? pitch : CELL;
+  if (p < CELL) return Math.max(2, Math.round(CELL / p));
+  return 5;
+}
+
+// ---------- snapping ----------
+
+const snapValue = (v, pitch) => (pitch > 0 ? Math.round(v / pitch) * pitch : v);
+
+// The nearest intersection of the grid to a world point.
+const snapToGrid = (x, z, pitch) => ({ x: snapValue(x, pitch), z: snapValue(z, pitch) });
+
+// How far the snap moved the cursor — what a tool shows a snap indicator for.
+const snapDistance = (x, z, pitch) => {
+  const p = snapToGrid(x, z, pitch);
+  return Math.hypot(p.x - x, p.z - z);
+};
+
+// Hold `b` on the grid-parallel axis through `a` — the "snap parallel to the
+// grid" toggle. Whichever of the two deltas is longer survives; the other goes
+// to zero, so the run is axis-aligned and both ends stay on the grid.
+function orthoPoint(a, b) {
+  if (!a) return { x: b.x, z: b.z };
+  const dx = b.x - a.x, dz = b.z - a.z;
+  return Math.abs(dx) >= Math.abs(dz)
+    ? { x: b.x, z: a.z }
+    : { x: a.x, z: b.z };
+}
+
+// The whole pipeline a point-target tool runs a raw cursor through: snap to
+// the nearest intersection, then — if the parallel toggle is on and there is
+// an anchor to be parallel *to* — square it up against that anchor.
+//
+// Squaring after snapping is deliberate and is why an ortho run still lands on
+// intersections: `orthoPoint` only ever copies one coordinate from a point
+// that is already on the grid.
+function targetPoint(x, z, opts = {}) {
+  const pitch = opts.pitch > 0 ? opts.pitch : CELL;
+  const p = opts.snap === false ? { x, z } : snapToGrid(x, z, pitch);
+  return opts.ortho && opts.from ? orthoPoint(opts.from, p) : p;
+}
+
+// ---------- reading a run back ----------
+
+const runLength = (a, b) => Math.hypot(b.x - a.x, b.z - a.z);
+
+// The run's bearing in degrees, measured from +x toward +z and normalized to
+// [0, 360). Reported rather than stored — it is a thing to read off the status
+// line while drawing, never a field on anything.
+function runAngle(a, b) {
+  const deg = (Math.atan2(b.z - a.z, b.x - a.x) * 180) / Math.PI;
+  return (deg + 360) % 360;
+}
+
+// "24 ft · 90°" — the live readout the wall tool rides on the cursor with.
+function runLabel(a, b) {
+  const len = runLength(a, b);
+  return `${len.toFixed(len < 10 ? 1 : 0)} ft · ${Math.round(runAngle(a, b))}°`;
+}
+
+// Is this run square to the grid? A drawn wall that came out axis-aligned by
+// hand should read the same as one the toggle squared up.
+const isAxisRun = (a, b, tol = 1e-6) =>
+  Math.abs(b.x - a.x) <= tol || Math.abs(b.z - a.z) <= tol;
+
+return { PITCHES, MAX_LINES, MIN_PITCH, MAX_PITCH, gridPitch, majorEvery, snapValue, snapToGrid, snapDistance, orthoPoint, targetPoint, runLength, runAngle, runLabel, isAxisRun };
+})();
 // ---- js/overlay.js ----
 const __m_js_overlay_js = (() => {
 
@@ -71183,6 +71790,8 @@ const { catalogEntry, propColor, variantKey } = __m_js_catalog_js;
 const { revealAt } = __m_js_hunt_js;
 const { stairMetrics, stairsOf, openingRails, runMetrics, elevatorSize, elevatorDoorWidth, elevatorsOn, floorCuts, inFloorCut, stairWidth } = __m_js_stairs_js;
 const { wallProbe, solidBeside } = __m_js_walls_js;
+const { wallLinesOf, lineEnds, lineKind, lineOpenings } = __m_js_wallrun_js;
+const { gridPitch, majorEvery } = __m_js_snapgrid_js;
 const { overlaySize, showsOn } = __m_js_overlay_js;
 const { floorBounds, unionBounds, footprintMask } = __m_js_shadow_js;
 const { finishEntry, wallPaint, DEFAULT_FINISH, DEFAULT_PAINT, facadeEntry, ROOF_MEMBRANE, ROOF_SHINGLE } = __m_js_finish_js;
@@ -71200,6 +71809,8 @@ const { collectDoorLeaves, leafAngle, mullionPositions, windowBand, LEAF_T, MULL
 // since real CC0 PBR sets can drop into /assets/textures later). Materials are
 // MeshStandardMaterial so swapping in albedo/normal/roughness maps is a
 // one-line change per material.
+
+
 
 
 
@@ -72294,9 +72905,10 @@ function initRender(canvas) {
   scene.add(buildingGroup, ceilingGroup, labelGroup, siteGroup, roofGroup,
     overlayGroup, shadowGroup);
 
-  // The drawing surface under the plan — see buildSheet(). Rebuilt only when
-  // the design changes size.
+  // The drawing surface under the plan — see buildSheet(). Rebuilt when the
+  // design changes size, and (Phase 25) when the zoom changes the grid's pitch.
   let sheetGrid = null;
+  let sheetPlan = null;     // { w, h } in cells, from the last rebuild
   let built = null;         // last state passed to buildFromState
   // The graded ground, swept once per rebuild and shared by the terrain mesh,
   // the site surfaces and every prop that stands on the site.
@@ -72770,7 +73382,7 @@ function initRender(canvas) {
   const LIGHT_GAIN = 0.14;
 
   function render(dt = 0) {
-    if (mode === 'edit') applyEditCamera();
+    if (mode === 'edit') { applyEditCamera(); syncSheet(); }
     else updateWalkLabels(dt);
     // The cloud deck drifts on the frame clock — slowly enough that a
     // screenshot and its retake match, fast enough that a long stand still
@@ -74768,26 +75380,34 @@ function initRender(canvas) {
   // was 40x30 and started at the middle; everybody hits it the moment they
   // trace a photograph, which is how it was finally found.
   //
-  // Three weights of line, which is the other half of the fix: 4ft cells, a
-  // heavier line every 20ft to count by, and a brighter border so the edge of
+  // Three weights of line, which is the other half of the fix: the grid's own
+  // pitch, a heavier line to count by, and a brighter border so the edge of
   // what you can draw on is a thing you can see rather than a thing you
   // discover.
+  //
+  // Phase 25: the pitch is no longer always the 4ft cell. `gridPitch`
+  // (snapgrid.js) reads it off the zoom, so the sheet subdivides as you come
+  // in and coarsens as you pull back — and `majorEvery` keeps the heavy line
+  // on the 4ft module underneath a finer grid, so the thing the brush paints
+  // in stays countable however far in you are.
   const SHEET_MINOR = new THREE.Color(0x2a3340);
   const SHEET_MAJOR = new THREE.Color(0x3a4a5c);
   const SHEET_EDGE = new THREE.Color(0x5c7590);
-  const SHEET_MAJOR_EVERY = 5;    // cells — a 20ft rule
 
-  function buildSheet(wCells, hCells) {
+  function buildSheet(wCells, hCells, pitch = CELL) {
     const w = Math.max(1, wCells) * CELL, h = Math.max(1, hCells) * CELL;
+    const p = pitch > 0 ? pitch : CELL;
+    const nx = Math.round(w / p), nz = Math.round(h / p);
+    const every = majorEvery(p);
     const pos = [], col = [];
     const line = (x0, z0, x1, z1, c) => {
       pos.push(x0, 0, z0, x1, 0, z1);
       col.push(c.r, c.g, c.b, c.r, c.g, c.b);
     };
     const weight = (i, n) => (i === 0 || i === n ? SHEET_EDGE
-      : i % SHEET_MAJOR_EVERY === 0 ? SHEET_MAJOR : SHEET_MINOR);
-    for (let i = 0; i <= wCells; i++) line(i * CELL, 0, i * CELL, h, weight(i, wCells));
-    for (let j = 0; j <= hCells; j++) line(0, j * CELL, w, j * CELL, weight(j, hCells));
+      : i % every === 0 ? SHEET_MAJOR : SHEET_MINOR);
+    for (let i = 0; i <= nx; i++) line(i * p, 0, i * p, h, weight(i, nx));
+    for (let j = 0; j <= nz; j++) line(0, j * p, w, j * p, weight(j, nz));
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -74795,6 +75415,24 @@ function initRender(canvas) {
     const group = new THREE.Group();
     group.add(new THREE.LineSegments(geo, mat));
     return group;
+  }
+
+  // Rebuild the drawing surface if the plan's size or the zoom's pitch has
+  // moved since it was last drawn. Called from the rebuild *and* from the
+  // frame loop, because the pitch changes on a wheel scroll rather than on an
+  // edit — and it is a bucketed value off a ladder of seven, so the frame-loop
+  // call is a number comparison that almost always does nothing.
+  function syncSheet() {
+    if (!sheetPlan) return;
+    const pitch = gridPitch(editView.height);
+    const u = sheetGrid && sheetGrid.userData;
+    if (u && u.w === sheetPlan.w && u.h === sheetPlan.h && u.pitch === pitch) return;
+    if (sheetGrid) { scene.remove(sheetGrid); disposeSheet(sheetGrid); }
+    sheetGrid = buildSheet(sheetPlan.w, sheetPlan.h, pitch);
+    sheetGrid.position.set(0, 0.04, 0);
+    sheetGrid.userData = { w: sheetPlan.w, h: sheetPlan.h, pitch };
+    sheetGrid.visible = mode === 'edit';
+    scene.add(sheetGrid);
   }
 
   // The sheet owns its geometry *and* its material — unlike everything
@@ -75498,6 +76136,18 @@ function initRender(canvas) {
         }
       }
     });
+
+    // ---- walls that are nobody's room ----
+    //
+    // Phase 25. A run drawn between two points that no room's boundary lies
+    // along (wallrun.js) is built here, through the same `buildSegWall` every
+    // ring segment goes through — so a garden wall gets the same thickness
+    // probe, the same paint, the same door leaves and the same facade as the
+    // side of a classroom does, because it is the same code.
+    for (const line of wallLinesOf(floor)) {
+      const [a, b] = lineEnds(line);
+      buildSegWall(a, b, lineOpenings(line), lineKind(line));
+    }
 
     if (ctx.leaves && ctx.leaves.length) buildDoorGroup(ctx.leaves, baseY, group);
 
@@ -76584,14 +77234,8 @@ function initRender(canvas) {
 
     // the drawing surface, and the sun that swings around it
     const gw = state.w * CELL, gh = state.h * CELL;
-    if (!sheetGrid || sheetGrid.userData.w !== state.w || sheetGrid.userData.h !== state.h) {
-      if (sheetGrid) { scene.remove(sheetGrid); disposeSheet(sheetGrid); }
-      sheetGrid = buildSheet(state.w, state.h);
-      sheetGrid.position.set(0, 0.04, 0);
-      sheetGrid.userData = { w: state.w, h: state.h };
-      sheetGrid.visible = mode === 'edit';
-      scene.add(sheetGrid);
-    }
+    sheetPlan = { w: state.w, h: state.h };
+    syncSheet();
 
     // The site the sun swings around. Kept on the module rather than baked
     // into the light, because the sun now moves every time the clock does and
@@ -78032,32 +78676,58 @@ function initWalkthrough(camera, domElement, opts = {}) {
   let lookLast = null;
   const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
-  function onTouchLookDown(e) {
-    if (!touchActive || e.pointerType !== 'touch' || lookPointerId !== null) return;
-    lookPointerId = e.pointerId;
-    lookLast = { x: e.clientX, y: e.clientY };
-    domElement.setPointerCapture(e.pointerId);
-  }
-  function onTouchLookMove(e) {
-    if (e.pointerId !== lookPointerId) return;
-    const dx = e.clientX - lookLast.x, dy = e.clientY - lookLast.y;
-    lookLast = { x: e.clientX, y: e.clientY };
+  // ...and Phase 25's third input path, for the case nobody planned for:
+  // **a desktop where Pointer Lock does not happen.** An iframe without
+  // `allow="pointer-lock"`, a browser that refuses the request, a user who
+  // dismissed the permission — in every one of them `controls.lock()` quietly
+  // does nothing, `isLocked` stays false, and `update()`'s guard meant walk
+  // mode was not merely mouse-less: WASD did nothing either, because the whole
+  // step was skipped. A walkthrough you cannot walk is worse than no
+  // walkthrough, so there is now a fallback: drag anywhere on the canvas to
+  // look, and WASD moves whether or not anything is locked.
+  //
+  // It is a fallback rather than an option. Pointer Lock is the better gesture
+  // by a distance — you can turn further than the window is wide — so it is
+  // still asked for first, and this only takes over when the ask comes back
+  // empty. `mouseLook` says it has.
+  let mouseLook = false;
+
+  const applyLook = (dx, dy) => {
     lookEuler.setFromQuaternion(camera.quaternion);
     const next = lookEulerDelta(
       { x: lookEuler.x, y: lookEuler.y }, dx, dy,
       controls.pointerSpeed, controls.minPolarAngle, controls.maxPolarAngle);
     lookEuler.x = next.x; lookEuler.y = next.y;
     camera.quaternion.setFromEuler(lookEuler);
+  };
+
+  // One drag-to-look path, shared by the touchscreen and the unlocked mouse.
+  const dragLooks = (e) => (touchActive && e.pointerType === 'touch') ||
+    (mouseLook && active && !controls.isLocked && e.pointerType !== 'touch');
+
+  function onLookDown(e) {
+    if (!dragLooks(e) || lookPointerId !== null) return;
+    lookPointerId = e.pointerId;
+    lookLast = { x: e.clientX, y: e.clientY };
+    domElement.setPointerCapture(e.pointerId);
+    if (e.pointerType !== 'touch') domElement.style.cursor = 'grabbing';
   }
-  function onTouchLookUp(e) {
+  function onLookMove(e) {
+    if (e.pointerId !== lookPointerId) return;
+    const dx = e.clientX - lookLast.x, dy = e.clientY - lookLast.y;
+    lookLast = { x: e.clientX, y: e.clientY };
+    applyLook(dx, dy);
+  }
+  function onLookUp(e) {
     if (e.pointerId !== lookPointerId) return;
     lookPointerId = null;
     lookLast = null;
+    domElement.style.cursor = mouseLook && active ? 'grab' : '';
   }
-  domElement.addEventListener('pointerdown', onTouchLookDown);
-  domElement.addEventListener('pointermove', onTouchLookMove);
-  domElement.addEventListener('pointerup', onTouchLookUp);
-  domElement.addEventListener('pointercancel', onTouchLookUp);
+  domElement.addEventListener('pointerdown', onLookDown);
+  domElement.addEventListener('pointermove', onLookMove);
+  domElement.addEventListener('pointerup', onLookUp);
+  domElement.addEventListener('pointercancel', onLookUp);
 
   // Where a storey's collider comes from. Normally this file builds its own
   // and caches it for the length of the walk — editing and walking are
@@ -78482,6 +79152,8 @@ function initWalkthrough(camera, domElement, opts = {}) {
       strideAcc = 0;
       hudText = '';
       touchActive = false;
+      mouseLook = false;
+      domElement.style.cursor = '';
       moveAxes.x = 0; moveAxes.y = 0;
       lookPointerId = null;
       lookLast = null;
@@ -78505,6 +79177,8 @@ function initWalkthrough(camera, domElement, opts = {}) {
       lifts = liftSource ? liftSource() : null;
       riding = '';
       touchActive = false;
+      mouseLook = false;
+      domElement.style.cursor = '';
       moveAxes.x = 0; moveAxes.y = 0;
       lookPointerId = null;
       lookLast = null;
@@ -78518,6 +79192,15 @@ function initWalkthrough(camera, domElement, opts = {}) {
       moveAxes.x = 0; moveAxes.y = 0;
       reportHud();
     },
+    // Walk without a locked pointer: drag to look, WASD to move. What the
+    // shell turns on when `controls.lock()` came back with nothing.
+    enableMouseLook(on = true) {
+      mouseLook = !!on;
+      if (!mouseLook) { lookPointerId = null; lookLast = null; }
+      domElement.style.cursor = mouseLook && active ? 'grab' : '';
+      reportHud();
+    },
+    get mouseLook() { return mouseLook; },
     // The joystick's own axes, already signed to match WASD (+y forward,
     // +x right) — see touch.js's joystickAxes for the pixel-to-axis math.
     setMoveAxes(x, y) { moveAxes.x = x; moveAxes.y = y; },
@@ -78571,7 +79254,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
       // A session drives its own frames off the headset's clock; the page's
       // loop stands down while one is running (see render.js's enterXR).
       if (xr) { xrStep(dt); return; }
-      if (!controls.isLocked && !touchActive) return;
+      if (!controls.isLocked && !touchActive && !mouseLook) return;
       // Riding along with somebody. The camera stops steering itself and
       // becomes a property of the agent — which is why this is four lines
       // rather than a mode: everything about *where* it goes is already being
@@ -81096,6 +81779,30 @@ function roomWalls(floor, walls, openings, thick) {
         for (const o of here) pushOpening(openings, openingSpec(o), a, b, t);
       }
     }
+  }
+  // Phase 25's free-standing walls (wallrun.js). One segment each, with the
+  // same openings record a ring carries — so the plan draws a garden wall and
+  // the door in it through exactly the same two calls a room's side goes
+  // through, and `solidSpans` cuts it the same way.
+  for (const line of (Array.isArray(floor.walls) ? floor.walls : [])) {
+    const kind = SEG_KIND_NAME[line.kind] || SEG_KIND_NAME[1];
+    const a = { x: line.ax, z: line.az }, b = { x: line.bx, z: line.bz };
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    if (len < 0.01) continue;
+    const t = thick(a.x, a.z, b.x, b.z);
+    const here = Array.isArray(line.openings) ? line.openings : [];
+    const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+    if (!here.length) {
+      pushWallRun(walls, kind, a.x, a.z, b.x, b.z, t);
+      continue;
+    }
+    const cuts = here
+      .filter((o) => !isWindowOpening(o))
+      .map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
+    for (const [s2, e2] of solidSpans(len, cuts, 0)) {
+      pushWallRun(walls, kind, a.x + ux * s2, a.z + uz * s2, a.x + ux * e2, a.z + uz * e2, t);
+    }
+    for (const o of here) pushOpening(openings, openingSpec(o), a, b, t);
   }
 }
 
@@ -85181,6 +85888,7 @@ const { EDGE_KINDS, createLattice, bake } = __m_js_lattice_js;
 const { normalizeCode, isDefaultCode } = __m_js_occupancy_js;
 const { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } = __m_js_props_js;
 const { normalizeShape, MAX_SHAPES } = __m_js_shapes_js;
+const { normalizeWallLines } = __m_js_wallrun_js;
 const { readFinish, readPaint } = __m_js_finish_js;
 const { normalizeEnv, isDefaultEnv } = __m_js_sky_js;
 const { normalizeTerrain, packTerrain } = __m_js_terrain_js;
@@ -85316,6 +86024,7 @@ const { normalizePhasing, isEmptyPhasing } = __m_js_phasing_js;
 
 
 
+
 // v9 is the first bump that is not free.
 //
 // Every version before it added fields measured in bytes: an environment is
@@ -85402,6 +86111,18 @@ function serialize(state, opts = {}) {
   if (isEmptyRates(rates)) delete out.rates; else out.rates = rates;
   const phasing = normalizePhasing(out.phasing);
   if (isEmptyPhasing(phasing)) delete out.phasing; else out.phasing = phasing;
+  // Phase 25, and the fourteenth time the same rule has been applied: a storey
+  // with no free-standing walls writes no `walls` key, so every file written
+  // before this build round-trips through it as the same bytes. Copied rather
+  // than deleted in place — `out` is a shallow spread and its floors are the
+  // live records the editor is still holding.
+  if (Array.isArray(out.floors) && out.floors.some((f) => f && f.walls && !f.walls.length)) {
+    out.floors = out.floors.map((f) => {
+      if (!f || !f.walls || f.walls.length) return f;
+      const { walls, ...rest } = f;
+      return rest;
+    });
+  }
   return JSON.stringify(out);
 }
 
@@ -85465,6 +86186,11 @@ function readFloor(raw, w, h) {
         f.shapes.push(shape);
       }
     }
+    // Phase 25's one append: walls drawn between two points that are not the
+    // side of any room (see wallrun.js). Absent from every file written before
+    // it, and absent again from any design nobody has drawn one on.
+    const lines = normalizeWallLines(raw.walls, Math.max(w, h) * CELL * 4);
+    if (lines.length) f.walls = lines;
   }
   return { floor: f, lat };
 }
@@ -85579,6 +86305,7 @@ function deserialize(json, opts = {}) {
   for (const p of state.props) if (!p.id) p.id = state.nextId++;
   for (const l of state.links) if (!l.id) l.id = state.nextId++;
   for (const f of state.floors) for (const sh of f.shapes) if (!sh.id) sh.id = state.nextId++;
+  for (const f of state.floors) for (const l of f.walls || []) if (!l.id) l.id = state.nextId++;
   // Site regions take ids off the same counter everything else does, so a
   // region and a room can never collide.
   for (const r of (state.site ? state.site.regions : [])) {

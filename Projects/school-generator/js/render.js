@@ -36,6 +36,8 @@ import {
   floorCuts, inFloorCut, stairWidth,
 } from './stairs.js';
 import { wallProbe, solidBeside } from './walls.js';
+import { wallLinesOf, lineEnds, lineKind, lineOpenings } from './wallrun.js';
+import { gridPitch, majorEvery } from './snapgrid.js';
 import { overlaySize, showsOn } from './overlay.js';
 import { floorBounds, unionBounds, footprintMask } from './shadow.js';
 import {
@@ -1119,9 +1121,10 @@ export function initRender(canvas) {
   scene.add(buildingGroup, ceilingGroup, labelGroup, siteGroup, roofGroup,
     overlayGroup, shadowGroup);
 
-  // The drawing surface under the plan — see buildSheet(). Rebuilt only when
-  // the design changes size.
+  // The drawing surface under the plan — see buildSheet(). Rebuilt when the
+  // design changes size, and (Phase 25) when the zoom changes the grid's pitch.
   let sheetGrid = null;
+  let sheetPlan = null;     // { w, h } in cells, from the last rebuild
   let built = null;         // last state passed to buildFromState
   // The graded ground, swept once per rebuild and shared by the terrain mesh,
   // the site surfaces and every prop that stands on the site.
@@ -1595,7 +1598,7 @@ export function initRender(canvas) {
   const LIGHT_GAIN = 0.14;
 
   function render(dt = 0) {
-    if (mode === 'edit') applyEditCamera();
+    if (mode === 'edit') { applyEditCamera(); syncSheet(); }
     else updateWalkLabels(dt);
     // The cloud deck drifts on the frame clock — slowly enough that a
     // screenshot and its retake match, fast enough that a long stand still
@@ -3593,26 +3596,34 @@ export function initRender(canvas) {
   // was 40x30 and started at the middle; everybody hits it the moment they
   // trace a photograph, which is how it was finally found.
   //
-  // Three weights of line, which is the other half of the fix: 4ft cells, a
-  // heavier line every 20ft to count by, and a brighter border so the edge of
+  // Three weights of line, which is the other half of the fix: the grid's own
+  // pitch, a heavier line to count by, and a brighter border so the edge of
   // what you can draw on is a thing you can see rather than a thing you
   // discover.
+  //
+  // Phase 25: the pitch is no longer always the 4ft cell. `gridPitch`
+  // (snapgrid.js) reads it off the zoom, so the sheet subdivides as you come
+  // in and coarsens as you pull back — and `majorEvery` keeps the heavy line
+  // on the 4ft module underneath a finer grid, so the thing the brush paints
+  // in stays countable however far in you are.
   const SHEET_MINOR = new THREE.Color(0x2a3340);
   const SHEET_MAJOR = new THREE.Color(0x3a4a5c);
   const SHEET_EDGE = new THREE.Color(0x5c7590);
-  const SHEET_MAJOR_EVERY = 5;    // cells — a 20ft rule
 
-  function buildSheet(wCells, hCells) {
+  function buildSheet(wCells, hCells, pitch = CELL) {
     const w = Math.max(1, wCells) * CELL, h = Math.max(1, hCells) * CELL;
+    const p = pitch > 0 ? pitch : CELL;
+    const nx = Math.round(w / p), nz = Math.round(h / p);
+    const every = majorEvery(p);
     const pos = [], col = [];
     const line = (x0, z0, x1, z1, c) => {
       pos.push(x0, 0, z0, x1, 0, z1);
       col.push(c.r, c.g, c.b, c.r, c.g, c.b);
     };
     const weight = (i, n) => (i === 0 || i === n ? SHEET_EDGE
-      : i % SHEET_MAJOR_EVERY === 0 ? SHEET_MAJOR : SHEET_MINOR);
-    for (let i = 0; i <= wCells; i++) line(i * CELL, 0, i * CELL, h, weight(i, wCells));
-    for (let j = 0; j <= hCells; j++) line(0, j * CELL, w, j * CELL, weight(j, hCells));
+      : i % every === 0 ? SHEET_MAJOR : SHEET_MINOR);
+    for (let i = 0; i <= nx; i++) line(i * p, 0, i * p, h, weight(i, nx));
+    for (let j = 0; j <= nz; j++) line(0, j * p, w, j * p, weight(j, nz));
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -3620,6 +3631,24 @@ export function initRender(canvas) {
     const group = new THREE.Group();
     group.add(new THREE.LineSegments(geo, mat));
     return group;
+  }
+
+  // Rebuild the drawing surface if the plan's size or the zoom's pitch has
+  // moved since it was last drawn. Called from the rebuild *and* from the
+  // frame loop, because the pitch changes on a wheel scroll rather than on an
+  // edit — and it is a bucketed value off a ladder of seven, so the frame-loop
+  // call is a number comparison that almost always does nothing.
+  function syncSheet() {
+    if (!sheetPlan) return;
+    const pitch = gridPitch(editView.height);
+    const u = sheetGrid && sheetGrid.userData;
+    if (u && u.w === sheetPlan.w && u.h === sheetPlan.h && u.pitch === pitch) return;
+    if (sheetGrid) { scene.remove(sheetGrid); disposeSheet(sheetGrid); }
+    sheetGrid = buildSheet(sheetPlan.w, sheetPlan.h, pitch);
+    sheetGrid.position.set(0, 0.04, 0);
+    sheetGrid.userData = { w: sheetPlan.w, h: sheetPlan.h, pitch };
+    sheetGrid.visible = mode === 'edit';
+    scene.add(sheetGrid);
   }
 
   // The sheet owns its geometry *and* its material — unlike everything
@@ -4323,6 +4352,18 @@ export function initRender(canvas) {
         }
       }
     });
+
+    // ---- walls that are nobody's room ----
+    //
+    // Phase 25. A run drawn between two points that no room's boundary lies
+    // along (wallrun.js) is built here, through the same `buildSegWall` every
+    // ring segment goes through — so a garden wall gets the same thickness
+    // probe, the same paint, the same door leaves and the same facade as the
+    // side of a classroom does, because it is the same code.
+    for (const line of wallLinesOf(floor)) {
+      const [a, b] = lineEnds(line);
+      buildSegWall(a, b, lineOpenings(line), lineKind(line));
+    }
 
     if (ctx.leaves && ctx.leaves.length) buildDoorGroup(ctx.leaves, baseY, group);
 
@@ -5409,14 +5450,8 @@ export function initRender(canvas) {
 
     // the drawing surface, and the sun that swings around it
     const gw = state.w * CELL, gh = state.h * CELL;
-    if (!sheetGrid || sheetGrid.userData.w !== state.w || sheetGrid.userData.h !== state.h) {
-      if (sheetGrid) { scene.remove(sheetGrid); disposeSheet(sheetGrid); }
-      sheetGrid = buildSheet(state.w, state.h);
-      sheetGrid.position.set(0, 0.04, 0);
-      sheetGrid.userData = { w: state.w, h: state.h };
-      sheetGrid.visible = mode === 'edit';
-      scene.add(sheetGrid);
-    }
+    sheetPlan = { w: state.w, h: state.h };
+    syncSheet();
 
     // The site the sun swings around. Kept on the module rather than baked
     // into the light, because the sun now moves every time the clock does and

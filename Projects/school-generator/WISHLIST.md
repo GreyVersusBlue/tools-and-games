@@ -1,7 +1,10 @@
 # School Generator — Feature Wishlist
 
-**Status: twenty-three phases are shipped — three arcs plus the first five
-phases of arc four. Phase 24 is planned below and not started.** Three arcs took a grid editor
+**Status: twenty-four phases are shipped — three arcs, the first five phases
+of arc four, and Phase 25 out of order. Phase 24 is planned below and not
+started; Phase 25 shipped ahead of it because it is a fix to the drawing
+tools rather than an addition to the game, and the arc's "and also" was
+never a prerequisite for anything.** Three arcs took a grid editor
 to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -35,8 +38,11 @@ geometry never touches three.js; the tools never do geometry.
 
 The model, bottom-up: `grid.js` (footprint and storeys) · `footprint.js`
 (sheet size, what has to fit on it) · `shapes.js` (rooms: rings, holes,
-per-segment walls) · `lattice.js` (the 4ft drawing surface, and `bake()`, the
-one door out of it) · `paint.js` (the brush) · `props.js` (object layer,
+per-segment walls) · `wallrun.js` (a wall drawn point to point, and the
+free-standing ones a room's boundary cannot say) · `snapgrid.js` (the
+drawing grid's pitch, and the point a tool aims at) · `lattice.js` (the 4ft
+drawing surface, and `bake()`, the one door out of it) · `paint.js` (the
+brush) · `props.js` (object layer,
 inter-floor links) · `catalog.js` (every placeable type, as data) ·
 `walls.js` / `openings.js` / `finish.js` (derived thickness, door leaves,
 window bands, floor/paint) · `stairs.js` (runs, landings, the holes they cut)
@@ -245,9 +251,12 @@ and add to this list rather than starting a new one.
   device); the topbar and the tool panels are still desktop-shaped.
 
 **The room model**
-- A boundary that bounds no room cannot be drawn (a free-standing garden
-  wall, a wing wall that stops halfway). The fix is a boundary that belongs
-  to the *storey* rather than a room — a schema addition.
+- ~~A boundary that bounds no room cannot be drawn.~~ *Closed by Phase 25:*
+  `floor.walls` is a boundary that belongs to the storey. What it still does
+  not do is bound anything — a wall line drawn across a room does not divide
+  it for flood fill, egress or daylight, because it is not part of any ring.
+  Draw a room's own boundary and the run lands on the ring instead, which is
+  where dividing a room actually happens.
 - The brush refuses a free-drawn room rather than straightening it, so a
   curved room can never be painted again. A "straighten this room back onto
   the lattice" verb would close the loop.
@@ -264,8 +273,9 @@ and add to this list rather than starting a new one.
   missing verb is "move everything on this storey by (dx, dz)".
 - A design's dimensions aren't part of what a scheme generates against — the
   generator always sizes a fresh state from its own plan.
-- The wall drag's parallel-segment fix deliberately isn't applied to the
-  erase tool, which has the same corner problem.
+- ~~The wall drag's parallel-segment fix isn't applied to the erase tool.~~
+  *Moot since Phase 25:* there is no wall drag. The eraser still strokes,
+  and still takes whichever boundary is nearest each sample.
 - Undo is a diff and arrays diff by index, so splicing out of the middle of
   a long list re-states everything after it — first place to look if a delta
   ever comes out surprisingly large.
@@ -581,6 +591,79 @@ viewport in the headless smoke test — chased into the *tool*, where
 viewport: a SwiftShader artifact, identical on both sides, and the export's
 scene draws fine where the tool's does. *Save:* — none, as planned (embeds
 v11 as-is). *Model:* **Claude Fable 5**, as named.
+
+## Phase 25 — The point you meant *(shipped, ahead of Phase 24)*
+
+**Every drawing tool in this editor guessed, and three of them guessed
+wrong.**
+
+The wall tool did not ask how long a wall was. You pointed at a room's
+boundary and *the whole run between two of its corners* became a wall — so
+the length was the polygon's, not yours, and walling eight feet of a
+thirty-foot classroom side meant going and inserting two vertices by hand
+with a different tool first. The floor brush laid one 4ft cell at a time,
+which is the right gesture for an alcove and the wrong one for a classroom:
+dragging a rectangle out cell by cell is the tool asking you to do its
+arithmetic. And the drawing grid was 4ft whether the screen showed six
+hundred feet of site or thirty feet of one room — a grey wash at one end, and
+coarser than the thing being drawn at the other.
+
+Two of the arc's own findings are closed here too. The backlog's "a boundary
+that bounds no room cannot be drawn" wanted a boundary belonging to the
+*storey*; that is `floor.walls`. And selecting an elevator threw before it
+could be described, moved or deleted, because `cutBox` returns null for the
+one link that cuts no hole and two call sites read the null's `.x1` — which
+is the whole of "there is no way to delete a lift".
+
+- [x] **A wall is two points.** `wallrun.js` + `test/wallrun.test.mjs`. Click
+  one end, click the other, exactly the way the overlay's measurement is
+  taken and for the same reason (you zoom between the two clicks, and a drag
+  cannot survive that). The run's far end becomes the next anchor, so a
+  corridor is four clicks; Esc ends the run.
+- [x] **Where the run lands is worked out, not assumed.** A stretch that lies
+  along a room's boundary splits that ring at both ends and sets the covered
+  piece — so the room stays bounded, the thickness probe still sees a room on
+  each side, and a door still cuts into a ring segment. A stretch that lies
+  along nothing becomes a **wall line** on `floor.walls`. One drawn run can be
+  both. Drawing over an existing wall of the same kind absorbs it rather than
+  stacking a second wall on top of the first.
+- [x] **A drawing grid that follows the zoom.** `snapgrid.js` +
+  `test/snapgrid.test.mjs`. A ladder of round pitches from half a foot to
+  thirty-two, the finest that still leaves the view legible; the heavy line
+  falls back onto the 4ft cell once the grid is finer than one, so the module
+  the brush paints in stays countable. Both ends of every run land on an
+  intersection, and a toggle (`S`) holds the run square to the grid — Shift
+  for one free run, Alt to ignore the grid outright.
+- [x] **The floor tool draws rectangles.** Drag a corner to a corner and every
+  4ft cell inside is laid at once; `R` puts the brush back, and the eraser
+  shares the switch, because it rubs out the same cells.
+- [x] **Vertical links you can find.** The stairs panel lists every stair,
+  ramp, lift and floor opening the storey can act on, lights the selected
+  one, and gives select / rotate / nudge / delete a button each — through the
+  same functions the pointer and the keyboard already called. An elevator is
+  selectable from *either* level it serves, which is what `linkAt` always
+  said and what `selected()` did not.
+- [x] **A walkthrough that walks without Pointer Lock.** An iframe without
+  `allow="pointer-lock"`, a browser that refuses, a dismissed permission —
+  `lock()` reports none of it, and `update()`'s guard meant walk mode was not
+  merely mouse-less but frozen: WASD did nothing either. Pointer Lock is
+  still asked for first; when it does not arrive, the mouse steers by drag
+  and WASD moves regardless.
+
+*What fought back:* the free-standing wall wanted to be a room with a
+two-point ring, which would have been one line in `shapes.js` and a branch in
+every one of the forty modules that walk `shapesOf(floor)` treating each
+shape as a room. A separate per-storey array is additive in the save file,
+invisible to everything that counts rooms, and reaches the eight places that
+actually care about *boundaries* — the renderer, the collider, the plan
+sheet, the door leaves, the takeoff (through the plan), the eraser, the door
+tool and the session log. Openings on a wall line are pinned to `seg: 0`
+precisely so that every consumer that already filters a ring's openings by
+segment index needed no new branch at all. *Save:* v11 still, additive —
+a storey with no free-standing wall writes no `walls` key, so every file
+written before this build round-trips through it as the same bytes, for the
+fourteenth time. *Model:* **Claude Fable 5** — two pure modules, a schema
+append, and the collider contract.
 
 ## Phase 24 — Lights out *(an "and also")*
 

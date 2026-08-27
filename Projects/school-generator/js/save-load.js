@@ -110,6 +110,7 @@ import { EDGE_KINDS, createLattice, bake } from './lattice.js';
 import { normalizeCode, isDefaultCode } from './occupancy.js';
 import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from './props.js';
 import { normalizeShape, MAX_SHAPES } from './shapes.js';
+import { normalizeWallLines } from './wallrun.js';
 import { readFinish, readPaint } from './finish.js';
 import { normalizeEnv, isDefaultEnv } from './sky.js';
 import { normalizeTerrain, packTerrain } from './terrain.js';
@@ -209,6 +210,18 @@ export function serialize(state, opts = {}) {
   if (isEmptyRates(rates)) delete out.rates; else out.rates = rates;
   const phasing = normalizePhasing(out.phasing);
   if (isEmptyPhasing(phasing)) delete out.phasing; else out.phasing = phasing;
+  // Phase 25, and the fourteenth time the same rule has been applied: a storey
+  // with no free-standing walls writes no `walls` key, so every file written
+  // before this build round-trips through it as the same bytes. Copied rather
+  // than deleted in place — `out` is a shallow spread and its floors are the
+  // live records the editor is still holding.
+  if (Array.isArray(out.floors) && out.floors.some((f) => f && f.walls && !f.walls.length)) {
+    out.floors = out.floors.map((f) => {
+      if (!f || !f.walls || f.walls.length) return f;
+      const { walls, ...rest } = f;
+      return rest;
+    });
+  }
   return JSON.stringify(out);
 }
 
@@ -272,6 +285,11 @@ function readFloor(raw, w, h) {
         f.shapes.push(shape);
       }
     }
+    // Phase 25's one append: walls drawn between two points that are not the
+    // side of any room (see wallrun.js). Absent from every file written before
+    // it, and absent again from any design nobody has drawn one on.
+    const lines = normalizeWallLines(raw.walls, Math.max(w, h) * CELL * 4);
+    if (lines.length) f.walls = lines;
   }
   return { floor: f, lat };
 }
@@ -386,6 +404,7 @@ export function deserialize(json, opts = {}) {
   for (const p of state.props) if (!p.id) p.id = state.nextId++;
   for (const l of state.links) if (!l.id) l.id = state.nextId++;
   for (const f of state.floors) for (const sh of f.shapes) if (!sh.id) sh.id = state.nextId++;
+  for (const f of state.floors) for (const l of f.walls || []) if (!l.id) l.id = state.nextId++;
   // Site regions take ids off the same counter everything else does, so a
   // region and a room can never collide.
   for (const r of (state.site ? state.site.regions : [])) {

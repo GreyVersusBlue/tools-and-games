@@ -832,3 +832,25 @@ test('a stairwell is a hole in the ceiling, not a lid on it', () => {
   assert.ok(!over || over.y - surf >= HEAD_H, 'there is sky, or at least air, above the top of a run');
   assert.ok(SOFFIT_T > 0, 'and a run is drawn as treads on air, so its underside is an allowance');
 });
+
+// ---------- free-standing walls (Phase 25) ----------
+
+test('a wall drawn between two points stops a body like any other', async () => {
+  const { drawWallRun } = await import('../js/wallrun.js');
+  const s = createState(20, 20);
+  const before = wallSegments(s.floors[0]).length;
+  drawWallRun(s, 0, { x: 8, z: 20 }, { x: 48, z: 20 });
+  const segs = wallSegments(s.floors[0]);
+  assert.equal(segs.length, before + 1);
+  assert.equal(segs[segs.length - 1].az, 20);
+  assert.ok(segs[segs.length - 1].t > 0, 'and carries a thickness to be inflated by');
+});
+
+test('a doorway in one is a gap you can walk through', async () => {
+  const { drawWallRun, wallLinesOf, addLineOpening } = await import('../js/wallrun.js');
+  const s = createState(20, 20);
+  drawWallRun(s, 0, { x: 8, z: 20 }, { x: 48, z: 20 });
+  const line = wallLinesOf(s.floors[0])[0];
+  addLineOpening(line, 0.5);
+  assert.equal(wallSegments(s.floors[0]).length, 2, 'one wall became two jambs');
+});

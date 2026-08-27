@@ -143,32 +143,58 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   let lookLast = null;
   const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
-  function onTouchLookDown(e) {
-    if (!touchActive || e.pointerType !== 'touch' || lookPointerId !== null) return;
-    lookPointerId = e.pointerId;
-    lookLast = { x: e.clientX, y: e.clientY };
-    domElement.setPointerCapture(e.pointerId);
-  }
-  function onTouchLookMove(e) {
-    if (e.pointerId !== lookPointerId) return;
-    const dx = e.clientX - lookLast.x, dy = e.clientY - lookLast.y;
-    lookLast = { x: e.clientX, y: e.clientY };
+  // ...and Phase 25's third input path, for the case nobody planned for:
+  // **a desktop where Pointer Lock does not happen.** An iframe without
+  // `allow="pointer-lock"`, a browser that refuses the request, a user who
+  // dismissed the permission — in every one of them `controls.lock()` quietly
+  // does nothing, `isLocked` stays false, and `update()`'s guard meant walk
+  // mode was not merely mouse-less: WASD did nothing either, because the whole
+  // step was skipped. A walkthrough you cannot walk is worse than no
+  // walkthrough, so there is now a fallback: drag anywhere on the canvas to
+  // look, and WASD moves whether or not anything is locked.
+  //
+  // It is a fallback rather than an option. Pointer Lock is the better gesture
+  // by a distance — you can turn further than the window is wide — so it is
+  // still asked for first, and this only takes over when the ask comes back
+  // empty. `mouseLook` says it has.
+  let mouseLook = false;
+
+  const applyLook = (dx, dy) => {
     lookEuler.setFromQuaternion(camera.quaternion);
     const next = lookEulerDelta(
       { x: lookEuler.x, y: lookEuler.y }, dx, dy,
       controls.pointerSpeed, controls.minPolarAngle, controls.maxPolarAngle);
     lookEuler.x = next.x; lookEuler.y = next.y;
     camera.quaternion.setFromEuler(lookEuler);
+  };
+
+  // One drag-to-look path, shared by the touchscreen and the unlocked mouse.
+  const dragLooks = (e) => (touchActive && e.pointerType === 'touch') ||
+    (mouseLook && active && !controls.isLocked && e.pointerType !== 'touch');
+
+  function onLookDown(e) {
+    if (!dragLooks(e) || lookPointerId !== null) return;
+    lookPointerId = e.pointerId;
+    lookLast = { x: e.clientX, y: e.clientY };
+    domElement.setPointerCapture(e.pointerId);
+    if (e.pointerType !== 'touch') domElement.style.cursor = 'grabbing';
   }
-  function onTouchLookUp(e) {
+  function onLookMove(e) {
+    if (e.pointerId !== lookPointerId) return;
+    const dx = e.clientX - lookLast.x, dy = e.clientY - lookLast.y;
+    lookLast = { x: e.clientX, y: e.clientY };
+    applyLook(dx, dy);
+  }
+  function onLookUp(e) {
     if (e.pointerId !== lookPointerId) return;
     lookPointerId = null;
     lookLast = null;
+    domElement.style.cursor = mouseLook && active ? 'grab' : '';
   }
-  domElement.addEventListener('pointerdown', onTouchLookDown);
-  domElement.addEventListener('pointermove', onTouchLookMove);
-  domElement.addEventListener('pointerup', onTouchLookUp);
-  domElement.addEventListener('pointercancel', onTouchLookUp);
+  domElement.addEventListener('pointerdown', onLookDown);
+  domElement.addEventListener('pointermove', onLookMove);
+  domElement.addEventListener('pointerup', onLookUp);
+  domElement.addEventListener('pointercancel', onLookUp);
 
   // Where a storey's collider comes from. Normally this file builds its own
   // and caches it for the length of the walk — editing and walking are
@@ -593,6 +619,8 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       strideAcc = 0;
       hudText = '';
       touchActive = false;
+      mouseLook = false;
+      domElement.style.cursor = '';
       moveAxes.x = 0; moveAxes.y = 0;
       lookPointerId = null;
       lookLast = null;
@@ -616,6 +644,8 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       lifts = liftSource ? liftSource() : null;
       riding = '';
       touchActive = false;
+      mouseLook = false;
+      domElement.style.cursor = '';
       moveAxes.x = 0; moveAxes.y = 0;
       lookPointerId = null;
       lookLast = null;
@@ -629,6 +659,15 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       moveAxes.x = 0; moveAxes.y = 0;
       reportHud();
     },
+    // Walk without a locked pointer: drag to look, WASD to move. What the
+    // shell turns on when `controls.lock()` came back with nothing.
+    enableMouseLook(on = true) {
+      mouseLook = !!on;
+      if (!mouseLook) { lookPointerId = null; lookLast = null; }
+      domElement.style.cursor = mouseLook && active ? 'grab' : '';
+      reportHud();
+    },
+    get mouseLook() { return mouseLook; },
     // The joystick's own axes, already signed to match WASD (+y forward,
     // +x right) — see touch.js's joystickAxes for the pixel-to-axis math.
     setMoveAxes(x, y) { moveAxes.x = x; moveAxes.y = y; },
@@ -682,7 +721,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       // A session drives its own frames off the headset's clock; the page's
       // loop stands down while one is running (see render.js's enterXR).
       if (xr) { xrStep(dt); return; }
-      if (!controls.isLocked && !touchActive) return;
+      if (!controls.isLocked && !touchActive && !mouseLook) return;
       // Riding along with somebody. The camera stops steering itself and
       // becomes a property of the agent — which is why this is four lines
       // rather than a mode: everything about *where* it goes is already being
