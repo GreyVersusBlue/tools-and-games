@@ -129,6 +129,10 @@ window.__fp = () => {
     rings: sh.reduce((n, x) => n + x.rings.length, 0),
     openings: sh.reduce((n, x) => n + x.rings.reduce((k, r) => k + r.openings.length, 0), 0),
     walls: (f.walls || []).length,
+    // Openings cut into free-standing walls — the ones a room's rings know
+    // nothing about, and the ones "put a door in the wall I just drew" is made
+    // of. Counted apart from the rings' own openings for exactly that reason.
+    lineOpenings: (f.walls || []).reduce((n, l) => n + (l.openings || []).length, 0),
     props: (s.props || []).length,
     links: (s.links || []).length,
     floors: s.floors.length,
@@ -474,6 +478,225 @@ const CHECKS = [
       if (after.json !== before.json) throw new Error('a drag with no image changed the design');
       if (!/[Ll]oad an image/.test(status)) {
         throw new Error(`no instruction offered: ${status}`);
+      }
+    },
+  },
+  // ---------- Phase 26: putting things in, and taking them out again ----------
+  //
+  // Five checks against four sentences of feedback: *"we need a way to delete
+  // placed walls, staircases, elevators"*, *"I'd like to be able to place
+  // doors on existing walls — same with windows"*, *"walking mode still does
+  // not respond to WASD"*, and *"I'd also like to select a starting point"*.
+  // They are driven here rather than reasoned about in the pure suite because
+  // every one of them is a gesture: the arithmetic underneath all four was
+  // already right, and every one of the four was reported as broken anyway.
+  {
+    name: 'door-on-a-drawn-wall',
+    what: 'a wall drawn between two points takes a door, then a window',
+    async run(d) {
+      await d.pick('wall');
+      await d.assertClear([[36, 56], [76, 56]]);
+      await d.click(36, 56);
+      await d.click(76, 56);
+      await d.page.keyboard.press('Escape');       // end the run, keep the wall
+      const drawn = await d.fp();
+      await d.pick('door');
+      await d.page.evaluate(`window.app.editor.setDoorKind('single'); 1`);
+      await d.click(48, 56);
+      const doored = await d.fp();
+      await d.page.evaluate(`window.app.editor.setDoorKind('window'); 1`);
+      await d.click(64, 56);
+      return { drawn, doored };
+    },
+    expect: ({ ctx, after, status }) => {
+      if (ctx.drawn.walls <= 0) throw new Error('the wall tool drew no free-standing wall');
+      if (ctx.doored.lineOpenings <= ctx.drawn.lineOpenings) {
+        throw new Error('a click on the drawn wall cut no door into it');
+      }
+      if (after.lineOpenings <= ctx.doored.lineOpenings) {
+        throw new Error('a click on the drawn wall cut no window into it');
+      }
+      if (!/cut into a .* wall/.test(status)) {
+        throw new Error(`the window said nothing about the wall it went in: ${status}`);
+      }
+    },
+  },
+  {
+    name: 'door-with-nothing-under-it',
+    what: 'a door click that lands on no wall says so instead of doing nothing',
+    async run(d) {
+      await d.pick('door');
+      await d.assertClear([[36, 40]]);
+      await d.click(36, 40);
+    },
+    expect: ({ before, after, status }) => {
+      if (after.json !== before.json) throw new Error('a miss changed the design');
+      if (!/no wall there/i.test(status)) {
+        throw new Error(`a missed door click said nothing: ${status}`);
+      }
+    },
+  },
+  {
+    name: 'erase-anything',
+    what: 'one eraser click deletes a wall, a stair and a piece of furniture',
+    async run(d) {
+      // A wall of its own to take away, well clear of everything else drawn.
+      await d.pick('wall');
+      await d.assertClear([[36, 72], [76, 72]]);
+      await d.click(36, 72);
+      await d.click(76, 72);
+      await d.page.keyboard.press('Escape');
+      const withWall = await d.fp();
+
+      await d.pick('erase');
+      await d.click(56, 72);
+      const noWall = await d.fp();
+
+      // A stair, placed by its own tool and deleted by the eraser — which is
+      // the whole point: you should not have to remember which tool made it.
+      await d.pick('stair');
+      await d.assertClear([[100, 56]]);
+      await d.click(100, 56);
+      const withStair = await d.fp();
+      await d.pick('erase');
+      await d.click(100, 56);
+      const noStair = await d.fp();
+
+      await d.pick('prop');
+      await d.page.evaluate(`window.app.editor.setPropType('student-desk'); 1`);
+      await d.assertClear([[108, 20]]);
+      await d.click(108, 20);
+      const withProp = await d.fp();
+      await d.pick('erase');
+      await d.click(108, 20);
+      return { withWall, noWall, withStair, noStair, withProp };
+    },
+    expect: ({ ctx, after, status }) => {
+      if (ctx.noWall.walls >= ctx.withWall.walls) {
+        throw new Error('the eraser left the free-standing wall standing');
+      }
+      if (ctx.withStair.links <= ctx.noWall.links) throw new Error('no stair was placed to erase');
+      if (ctx.noStair.links >= ctx.withStair.links) {
+        throw new Error('the eraser left the staircase where it was');
+      }
+      if (ctx.withProp.props <= ctx.noStair.props) throw new Error('no prop was placed to erase');
+      if (after.props >= ctx.withProp.props) throw new Error('the eraser left the furniture');
+      if (!/Deleted —/.test(status)) throw new Error(`the eraser said nothing: ${status}`);
+    },
+  },
+  {
+    name: 'walk-moves',
+    what: 'a frame with a movement key held spends the whole of its own elapsed time',
+    async run(d) {
+      // Ghost mode, so what is being measured is the timestep rather than the
+      // furniture: a walker who bumps into a desk has still walked.
+      await d.page.evaluate(`document.getElementById('mode-btn').click(); 1`);
+      await d.page.waitForTimeout(600);
+      await d.page.evaluate(`document.getElementById('walk-start').click(); 1`);
+      await d.page.waitForTimeout(1200);
+      await d.page.keyboard.press('KeyF');
+      await d.page.waitForTimeout(300);
+      // **What is asserted, and why it is not distance over wall-clock time.**
+      // A CI runner rasterizing a whole school in software can take *five
+      // seconds* to draw one frame, and no timestep can hand back movement in
+      // a frame that never ran — so "did you walk 36ft in three seconds" is a
+      // question about the rasterizer, not about the walker.
+      //
+      // The walker's own promise is per frame: given a frame that really took
+      // `wall` seconds with a movement key held, spend `min(wall, 0.5)` of
+      // them at walking pace. That is exactly what was broken — every frame
+      // spent a tenth of a second however long it took — and it is true or
+      // false in one frame, at any frame rate.
+      //
+      // `wall` is timed here rather than read off the argument on purpose.
+      // The argument *was* the bug: the page's loop handed the walker
+      // `min(delta, 0.1)`, so a harness that trusted it would have measured a
+      // tenth of a second, found a tenth of a second's movement, and declared
+      // the starved walker healthy.
+      await d.page.evaluate(`(() => {
+        const w = window.app.walk;
+        const inner = w.update.bind(w);
+        window.__log = [];
+        window.__last = performance.now();
+        w.update = (dt) => {
+          const now = performance.now();
+          const wall = (now - window.__last) / 1000;
+          window.__last = now;
+          const p = window.app.renderApi.walkCamera.position;
+          const x0 = p.x, z0 = p.z;
+          const out = inner(dt);
+          window.__log.push({ wall, gone: Math.hypot(p.x - x0, p.z - z0) });
+          return out;
+        };
+      })(); 1`);
+      const leg = async (key, ms) => {
+        await d.page.evaluate('window.__log.length = 0; 1');
+        await d.page.keyboard.down(key);
+        await d.page.waitForTimeout(ms);
+        await d.page.keyboard.up(key);
+        return d.page.evaluate('window.__log');
+      };
+      // Long holds: at a fifth of a frame a second, a short one can end
+      // inside the frame it started in and measure nothing at all.
+      const w = await leg('KeyW', 4000);
+      // ...and the arrows are the same four keys.
+      const left = await leg('ArrowLeft', 4000);
+      await d.page.evaluate(`document.getElementById('walk-exit').click(); 1`);
+      await d.page.waitForTimeout(600);
+      return { w, left };
+    },
+    expect: ({ ctx }) => {
+      for (const [name, frames] of [['W', ctx.w], ['the left arrow', ctx.left]]) {
+        const moved = frames.filter((f) => f.gone > 0.01);
+        if (!moved.length) {
+          throw new Error(
+            `${name} held across ${frames.length} frames moved the camera in none of them`);
+        }
+        for (const f of moved) {
+          // 12 ft/s is the walking speed; 0.5s is the walker's catch-up bound.
+          const owed = 12 * Math.min(f.wall, 0.5);
+          if (f.gone < owed * 0.6) {
+            throw new Error(
+              `a ${f.wall.toFixed(2)}s frame with ${name} held moved ${f.gone.toFixed(1)}ft, ` +
+              `not the ${owed.toFixed(1)}ft it was owed. The timestep is starving the walker.`);
+          }
+        }
+      }
+    },
+  },
+  {
+    name: 'walk-start-point',
+    what: 'a chosen start point is where the next walk begins',
+    async run(d) {
+      // The overlay fills the list when it opens, so walk first and read after.
+      // The last entry is the smallest room on the storey — precisely the one
+      // the default "biggest room" rule would never choose.
+      await d.page.evaluate(`document.getElementById('mode-btn').click(); 1`);
+      await d.page.waitForTimeout(600);
+      const sel = await d.page.evaluate(`(() => {
+        const el = document.getElementById('walk-spawn-room');
+        const last = el.options[el.options.length - 1];
+        el.value = last.value;
+        el.dispatchEvent(new Event('change'));
+        return last.value;
+      })()`);
+      await d.page.waitForTimeout(400);
+      const spawn = await d.page.evaluate(`(() => {
+        const s = window.app.state;
+        return s.floors[s.currentFloor].spawn || null;
+      })()`);
+      const cam = await d.page.evaluate(
+        `(() => { const p = window.app.renderApi.walkCamera.position; return [p.x, p.z]; })()`);
+      await d.page.evaluate(`document.getElementById('walk-exit').click(); 1`);
+      await d.page.waitForTimeout(500);
+      return { sel, spawn, cam };
+    },
+    expect: ({ ctx }) => {
+      if (!ctx.spawn) throw new Error('choosing a room in the overlay recorded no start point');
+      const off = Math.hypot(ctx.cam[0] - ctx.spawn.x, ctx.cam[1] - ctx.spawn.z);
+      if (off > 1) {
+        throw new Error(
+          `the walk stands ${off.toFixed(1)}ft from the start point it was told to use`);
       }
     },
   },

@@ -32,6 +32,10 @@ import {
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
 } from './shapes.js';
 import { paintCell, frozenAt } from './paint.js';
+import { linkAt, stairMetrics, footprintBox } from './stairs.js';
+import { removeLink, removeProp } from './props.js';
+import { pickPropAt } from './propplace.js';
+import { catalogEntry } from './catalog.js';
 import { gridPitch, targetPoint, runLabel, runLength } from './snapgrid.js';
 import {
   drawWallRun, wallLineAt, eraseWallLineAt, toggleLineOpening,
@@ -50,7 +54,16 @@ import { pinchZoomHeight } from './touch.js';
 
 const MAX_UNDO = 100;
 
-// How close to a polygon wall counts as clicking it, in feet.
+// How close to a wall counts as clicking it, in feet.
+//
+// This was a constant 1.6ft for twenty-five phases, and a constant is the
+// wrong shape for it: a tolerance in *feet* is a tolerance in pixels that
+// shrinks as you zoom out. At the zoom that fits a whole school on the screen
+// 1.6ft is about two pixels, so "click the wall to put a door in it" asked for
+// an aim nobody has — which is the whole of *"I'd like to be able to place
+// doors on existing walls"*. It follows the zoom now, the same way the
+// polygon handles, the stair tool's grab box and the drawing grid all do, and
+// the floor is the old constant so nothing gets *harder* to hit up close.
 const SEG_GRAB = 1.6;
 
 // The wall tool builds one of three things. The table survives Phase 12 with
@@ -118,6 +131,9 @@ export function initEditor({
   // The floor tool draws rectangles rather than painting cell by cell. Also
   // the eraser's, since it rubs out the same cells.
   let floorRect = true;
+  // Where an eraser press landed, held until the pointer comes up so that a
+  // press can be told from a drag. Tool state, never saved state.
+  let eraseDown = null;
   // Per-door options the panel sets and every new opening inherits. `hand` is
   // which jamb the leaf hangs on, `sw` which side it swings toward; both are
   // toggles rather than validated values, since neither can be wrong.
@@ -209,6 +225,8 @@ export function initEditor({
   renderApi.scene.add(cellCursor, edgeCursor, draftLine, anchorDot, targetDot, rectCursor);
 
   const handleSize = () => Math.min(2.4, Math.max(0.25, renderApi.editView.height * 0.006));
+  // ...and the wall-grab tolerance, off the same number. See SEG_GRAB above.
+  const segGrab = () => Math.min(6, Math.max(SEG_GRAB, renderApi.editView.height * 0.012));
   // The grid the point target lands on, right now. One number off the zoom —
   // see snapgrid.js.
   const pitch = () => gridPitch(renderApi.editView.height);
@@ -480,12 +498,20 @@ export function initEditor({
       const dk = doorKindOf(doorKind);
       // An opening is cut where you clicked along the run rather than at the
       // middle of anything — a 30ft wall can hold several.
-      const seg = nearestSegment(f, wx, wz, SEG_GRAB);
+      const seg = nearestSegment(f, wx, wz, segGrab());
       if (!seg) {
         // Not on a room's boundary — but a free-standing wall (wallrun.js) is
         // still a wall, and a wall you cannot put a door in is half a wall.
-        const hit = wallLineAt(f, wx, wz, SEG_GRAB);
-        if (!hit) return;
+        const hit = wallLineAt(f, wx, wz, segGrab());
+        // Nothing under the cursor at all. A tool that does nothing and says
+        // nothing reads as a broken tool — and "I clicked my wall and no door
+        // appeared" is exactly what a silent miss looks like from outside.
+        if (!hit) {
+          say(`${dk.label} — no wall there. ` +
+            'Doors and windows cut into a wall you have already drawn: ' +
+            'click along the wall itself.');
+          return;
+        }
         const lopts = { ...dk.opts, hand: doorOpts.hand, sw: doorOpts.sw };
         if (dk.kind === 'single') { lopts.lite = doorOpts.lite; lopts.bar = doorOpts.bar; }
         if (dk.kind === 'window') lopts.sill = doorOpts.sill;
@@ -519,6 +545,14 @@ export function initEditor({
       if (roomLoad) said.push(`${roomLoad} occupants`);
       say(`${shape.name} — ${said.join(', ')}.`);
     } else if (tool === 'erase') {
+      // This is the *stroke* half of the eraser — a brush sample, or one cell
+      // centre of a rubbed-out rectangle. A deliberate click is handled before
+      // a stroke ever starts; see `eraseObjectAt`.
+      //
+      // Hence the tight constant rather than the zoom-scaled grab: `applyRect`
+      // walks its cell centres through here, and a tolerance that grew with
+      // the zoom would take walls several feet outside the rectangle with it.
+      //
       // A free-standing wall goes whole — a wall line *is* one wall, so there
       // is no half of it to rub out.
       if (eraseWallLineAt(f, wx, wz, SEG_GRAB)) { strokeChanged = true; return; }
@@ -736,6 +770,97 @@ export function initEditor({
     return r;
   }
 
+  // --- the eraser as a delete key ---
+  //
+  // For twenty-five phases the eraser rubbed out *floor*: cells, and the walls
+  // that happened to bound them. Everything else you could place — a stair, a
+  // lift, a ramp, a floor opening, a chair, a whole laid-out classroom — was
+  // deleted from inside the tool that placed it, by selecting it and pressing
+  // Delete. That is a fine second way to do it and a poor only way: the tool
+  // labelled *Erase* is the first place anybody looks for "get rid of that",
+  // and it answered "not my department" by doing nothing at all.
+  //
+  // It answers now. One click with the eraser removes whatever is under the
+  // cursor, whichever tool put it there. Dragging still rubs out floor, which
+  // is the gesture that was already right for the one thing you erase by the
+  // square foot.
+  //
+  // The order is tightest-hit first: a wall is a line and a stair is a box, so
+  // testing the line first is what lets you take a wall off the edge of a
+  // staircase without taking the staircase.
+  const LINK_NOUN = {
+    stair: 'Staircase', ramp: 'Ramp', elevator: 'Elevator', opening: 'Floor opening',
+  };
+
+  // What is under (wx, wz), as the noun the status line will use and the
+  // function that removes it. Null when the cursor is over nothing removable.
+  function objectUnder(s, f, wx, wz) {
+    const grab = segGrab();
+    const onLine = wallLineAt(f, wx, wz, grab);
+    if (onLine) {
+      const kind = onLine.line.kind;
+      const noun = (kind === 'glass' && 'Glass wall') || (kind === 'rail' && 'Railing') || 'Wall';
+      return {
+        what: `${noun} — ${lineLength(onLine.line).toFixed(1)}ft`,
+        remove: () => eraseWallLineAt(f, wx, wz, grab),
+      };
+    }
+    const seg = nearestSegment(f, wx, wz, grab);
+    if (seg) {
+      const len = segLength(...segEnds(seg.shape.rings[seg.ring], seg.seg));
+      return {
+        what: `Wall — ${len.toFixed(1)}ft of ${seg.shape.name || 'a room'}'s boundary`,
+        // A doorway is an opening *in* this wall; with the wall gone there is
+        // nothing left for it to be an opening in, so it goes too. That is
+        // what `setSegWall(..., SEG_NONE)` has always done.
+        remove: () => setSegWall(seg.shape, seg.ring, seg.seg, SEG_NONE),
+      };
+    }
+    // A vertical link. `linkAt` already knows that an elevator stands on both
+    // of the storeys it serves and so can be picked from either.
+    const link = linkAt(s, s.currentFloor, wx, wz);
+    if (link) {
+      const box = footprintBox(link, stairMetrics(s));
+      return {
+        what: `${LINK_NOUN[link.type] || 'Link'} — ` +
+          `${Math.round(box.x1 - box.x0)} × ${Math.round(box.z1 - box.z0)} ft`,
+        remove: () => removeLink(s, link.id),
+      };
+    }
+    const prop = pickPropAt(s.props, s.currentFloor, catalogEntry, wx, wz);
+    if (prop) {
+      const entry = catalogEntry(prop.type);
+      return {
+        what: (entry && entry.name) || 'Furniture',
+        remove: () => removeProp(s, prop.id),
+      };
+    }
+    // A whole free-drawn room, on a deliberate click only — which this is.
+    const frozen = frozenAt(s, s.currentFloor, ...cellXY(f, wx, wz));
+    if (frozen) {
+      return {
+        what: `${frozen.name || 'Room'} — ${Math.round(shapeArea(frozen)).toLocaleString()} ft²`,
+        remove: () => removeShape(f, frozen.id),
+      };
+    }
+    return null;
+  }
+
+  // The click half of the eraser. Returns true when it removed something, in
+  // which case the caller does *not* start a floor-rubbing stroke: a click on
+  // a staircase means the staircase, not the slab it stands on.
+  function eraseObjectAt(wx, wz) {
+    const s = getState();
+    const f = activeFloor(s);
+    const hit = objectUnder(s, f, wx, wz);
+    if (!hit) return false;
+    pushUndo();
+    if (!hit.remove()) { dropUndo(); return false; }
+    fire({ structural: true, commit: true });
+    say(`Deleted — ${hit.what}.`);
+    return true;
+  }
+
   // --- hover feedback ---
   let hoverWorld = null;   // last cursor position in world feet, for the curve keys
 
@@ -752,6 +877,7 @@ export function initEditor({
       return;
     }
     const isErase = tool === 'erase';
+    if (isErase) canvas.style.cursor = '';
     // The wall cursor takes the colour of the thing it would build, so glass
     // and railing are distinguishable before you commit to one.
     const color = isErase ? 0xff5f56
@@ -779,11 +905,11 @@ export function initEditor({
     // is also the only honest preview, since a wall can run at any angle and
     // be any length.
     const seg = (tool === 'door' || isErase)
-      ? nearestSegment(f, p.x, p.z, SEG_GRAB)
+      ? nearestSegment(f, p.x, p.z, segGrab())
       : null;
     // ...and a free-standing wall is a boundary too, so both tools reach one.
     const line = !seg && (tool === 'door' || isErase)
-      ? wallLineAt(f, p.x, p.z, SEG_GRAB) : null;
+      ? wallLineAt(f, p.x, p.z, segGrab()) : null;
     if (line) {
       const [la, lb] = lineEnds(line.line);
       const len = lineLength(line.line);
@@ -808,6 +934,13 @@ export function initEditor({
       // Nothing within reach: say so by showing nothing rather than by
       // offering a lattice edge there is no longer any such thing as.
       edgeCursor.visible = cellCursor.visible = false;
+    } else if (isErase && objectUnder(s, f, p.x, p.z)) {
+      // Over something a click would delete whole — a stair, a lift, a chair,
+      // a free-drawn room. Show no cell: the cell cursor promises "this 4ft
+      // square", and this click is not going to take a 4ft square.
+      edgeCursor.visible = cellCursor.visible = false;
+      canvas.style.cursor = 'pointer';
+      return;
     } else {
       const c = cellAt(f, p.x, p.z);
       edgeCursor.visible = false;
@@ -855,7 +988,7 @@ export function initEditor({
       return true;
     }
 
-    const seg = nearestSegment(f, hoverWorld.x, hoverWorld.z, SEG_GRAB);
+    const seg = nearestSegment(f, hoverWorld.x, hoverWorld.z, segGrab());
     if (!seg) {
       say('Curve — point at a polygon wall first. The lattice only builds straight edges.');
       return true;
@@ -962,6 +1095,24 @@ export function initEditor({
       wallPointerDown(p, e);
       return;
     }
+    // The eraser answers for everything on the storey, not just the floor:
+    // a *click* that lands on a wall, a stair, a lift, a ramp, a floor
+    // opening, a piece of furniture or a free-drawn room removes that and
+    // stops there.
+    //
+    // A click, though, and not a drag — which is why the rectangle eraser
+    // decides on the way back up rather than here. Rubbing out a block of
+    // floor that happens to *start* on a wall is a thing people do constantly,
+    // and a press that deleted the wall instead would make the rectangle
+    // eraser unusable along any edge of a room. The brush has no such
+    // ambiguity (its stroke is cells all the way down), so it decides now.
+    if (tool === 'erase' && p) {
+      if (!floorRect) {
+        if (eraseObjectAt(p.x, p.z)) { canvas.setPointerCapture(e.pointerId); return; }
+      } else {
+        eraseDown = { x: p.x, z: p.z };
+      }
+    }
     pushUndo();
     // Any ordinary edit ends the run of curve adjustments — the memo points at
     // a segment index the edit may well have moved.
@@ -1023,6 +1174,19 @@ export function initEditor({
       const g = rectGesture;
       rectGesture = null;
       rectCursor.visible = false;
+      // A rectangle one cell across is not a rectangle, it is a click — and a
+      // click with something under it is a delete. See the note in
+      // `dispatchPointerDown`.
+      const down = eraseDown;
+      eraseDown = null;
+      if (tool === 'erase' && down) {
+        const one = rectCells(g.a, g.b);
+        if (one.w === 1 && one.h === 1 && eraseObjectAt(down.x, down.z)) {
+          strokeActive = false;
+          lastWorld = null;
+          return;
+        }
+      }
       const r = applyRect(g.a, g.b);
       strokeActive = false;
       lastWorld = null;
@@ -1330,6 +1494,7 @@ export function initEditor({
       wallAnchor = null;
       wallHover = null;
       rectGesture = null;
+      eraseDown = null;
       rectCursor.visible = false;
       refreshDraft();
       if (onLiveMeasure) onLiveMeasure(null);

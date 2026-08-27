@@ -3,9 +3,11 @@
 Draw a school in plan, then walk through it.
 
 Storeys, rooms, walls, doors and windows, stairs and ramps and lifts, a graded
-site, a roof. The walkthrough has collision, gravity, footsteps, room
-acoustics, a positioned sun, and a school's worth of people walking their
-timetable. It reads what you have drawn — occupant load, travel distance,
+site, a roof. Draw four walls, then cut the doors and windows into them; the
+eraser deletes anything you click, whichever tool placed it. The walkthrough
+has collision, gravity, footsteps, room acoustics, a positioned sun, a start
+point you choose, and a school's worth of people walking their timetable. It
+reads what you have drawn — occupant load, travel distance,
 accessible route, glazing ratio, reverberation time — and it will generate a
 whole building from a student count and a sentence.
 
@@ -39,7 +41,7 @@ suite.
 ```
 node --test 'test/*.test.mjs'      # 1,700+ assertions over every pure module
 node test/visual/run.mjs           # the printed sheets and the editor chrome
-node test/tools/run.mjs            # the twelve drawing tools, on the real page
+node test/tools/run.mjs            # the drawing tools and the walk, on the real page
 ```
 
 The glob in the first one is not decoration: `node --test test/` resolves the

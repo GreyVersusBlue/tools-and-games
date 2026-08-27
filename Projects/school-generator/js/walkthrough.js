@@ -71,6 +71,26 @@ const RIDE_BAND = 7;     // ft
 // "blocked" rather than as teleporting through it; capping it here means a
 // dropped frame costs you distance instead of stopping you dead.
 const MAX_STEP = 1.5;    // ft
+// ...which is the other half of a bargain that only works if the frames keep
+// coming. `MAX_STEP` caps *one* step; the page's loop caps `dt` at a tenth of
+// a second; and together they mean that a browser drawing this building at
+// eight frames a second simulates 0.8 of every second, and one drawing it at
+// two frames a second simulates a fifth. What that looks like from a chair is
+// **WASD not working**: you hold W, the building creeps, and you conclude the
+// key is dead. Measured on a software rasterizer here: three seconds of held
+// W moved the camera 2.4ft, when 12 ft/s says it owed you 36.
+//
+// So the walker no longer takes the frame's word for how much time passed. It
+// keeps its own accumulator and spends it in fixed steps, however many of them
+// this frame can afford — the physics run at a constant rate whatever the
+// renderer manages, which is also what makes a step never skip a wall.
+const FIXED_STEP = 1 / 60;   // s of simulated time per physics step
+// ...bounded, because catching up is not the same as replaying. A tab that was
+// hidden for a minute, a laptop that came out of sleep, a stall on a big
+// rebuild: the walker owes you the movement you were asking for, not sixty
+// seconds of it arriving at once through the wall of the room you are in.
+const MAX_CATCHUP = 0.5;     // s of simulated time per frame
+const MAX_STEPS = Math.ceil(MAX_CATCHUP / FIXED_STEP);
 // Following somebody: their own eye height, and where the over-the-shoulder
 // camera sits relative to them. Far enough back to see them walk, near enough
 // that a corridor doesn't put a wall between you.
@@ -98,6 +118,8 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   // walked rather than off a timer: walking slowly makes slower footsteps for
   // free, and stopping mid-stride keeps the fraction for when you start again.
   let strideAcc = 0;
+  // Simulated time owed to the body but not yet spent — see FIXED_STEP.
+  let stepAcc = 0;
   // Phase 6. The other people in the building, if there are any: a function
   // the caller hands over that answers "who else is on this storey", which is
   // all this file ever needs to know about a crowd. Nobody by default, which
@@ -331,20 +353,49 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     return true;
   }
 
+  // The arrows are WASD. Not everybody who opens a floor-plan tool has played
+  // a first-person game, and "walking mode does not respond to WASD" is a
+  // report that reads the same whether the keys were dead or whether the four
+  // being pressed were the arrows. They are free — nothing else in a walk
+  // claims them — so they are the same four keys under a different name,
+  // normalized here so that nothing downstream needs to know there are two.
+  const MOVE_ALIAS = {
+    ArrowUp: 'KeyW', ArrowDown: 'KeyS', ArrowLeft: 'KeyA', ArrowRight: 'KeyD',
+  };
+  const moveCode = (code) => MOVE_ALIAS[code] || code;
+
   document.addEventListener('keydown', (e) => {
     if (!active) return;
     if (e.code === 'KeyF') { ghost = !ghost; vy = 0; grounded = false; reportHud(); return; }
     if (e.code === 'KeyE') { rideElevator(); return; }
-    keys.add(e.code);
-    if (e.code === 'Space') e.preventDefault();
+    keys.add(moveCode(e.code));
+    // The arrows scroll the page and Space scrolls it further; neither is
+    // wanted while you are inside the building.
+    if (e.code === 'Space' || MOVE_ALIAS[e.code]) e.preventDefault();
   });
-  document.addEventListener('keyup', (e) => keys.delete(e.code));
+  document.addEventListener('keyup', (e) => keys.delete(moveCode(e.code)));
 
-  // Where a walk starts: the deepest point inside the storey's biggest room,
-  // looking along the building's longer axis toward whichever side has more
-  // room to walk into. `interiorPoint` rather than a centroid, because the
-  // centre of area of an L-shaped corridor is in the wall beside it.
+  // Where a walk starts.
+  //
+  // Two answers, in order. If the storey carries a `spawn` record — a point
+  // somebody chose, either by naming a room in the walk overlay or by standing
+  // somewhere and saying "here" — that is where the walk starts and which way
+  // it faces, full stop. A tool that always drops you in the biggest room is a
+  // tool that makes you walk the length of the building every time you want to
+  // look at the front door again.
+  //
+  // Otherwise: the deepest point inside the storey's biggest room, looking
+  // along the building's longer axis toward whichever side has more room to
+  // walk into. `interiorPoint` rather than a centroid, because the centre of
+  // area of an L-shaped corridor is in the wall beside it.
   function spawnPoint(f) {
+    const chosen = f && f.spawn;
+    if (chosen && Number.isFinite(chosen.x) && Number.isFinite(chosen.z)) {
+      const yaw = Number.isFinite(chosen.yaw) ? chosen.yaw : 0;
+      // `yaw` is the compass bearing the walk faces, in the same convention
+      // agents.js uses: 0 looks down +Z, and it turns the short way round.
+      return { x: chosen.x, z: chosen.z, lookX: Math.sin(yaw), lookZ: Math.cos(yaw) };
+    }
     const rooms = shapesOf(f);
     const biggest = rooms.reduce(
       (best, s2) => (!best || shapeArea(s2) > shapeArea(best) ? s2 : best), null);
@@ -362,6 +413,24 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       return { x: p.x, z: p.z, lookX: maxX - p.x >= p.x - minX ? 1 : -1, lookZ: 0 };
     }
     return { x: p.x, z: p.z, lookX: 0, lookZ: maxZ - p.z >= p.z - minZ ? 1 : -1 };
+  }
+
+  // Stand the walker on the storey's start point. One function so that
+  // entering a walk and re-choosing the start point mid-walk cannot disagree
+  // about what "the start point" means.
+  function placeAtSpawn() {
+    const state = world;
+    if (!state) return;
+    const p = spawnPoint(activeFloor(state));
+    const eye = floorBaseY(state, state.currentFloor) + EYE_H;
+    ceiling = topOfBuilding(state) + 40;
+    camera.position.set(p.x, eye, p.z);
+    camera.lookAt(p.x + p.lookX * 20, eye, p.z + p.lookZ * 20);
+    if (body !== camera.position) body.copy(camera.position);
+    vy = 0;
+    grounded = false;
+    stepAcc = 0;
+    strideAcc = 0;
   }
 
   // Ghost flight: exactly what the camera did before this phase — no
@@ -617,6 +686,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       vy = 0;
       grounded = false;
       strideAcc = 0;
+      stepAcc = 0;
       hudText = '';
       touchActive = false;
       mouseLook = false;
@@ -624,17 +694,36 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       moveAxes.x = 0; moveAxes.y = 0;
       lookPointerId = null;
       lookLast = null;
-      // Start on the floor you were just editing, not always the ground.
-      const p = spawnPoint(activeFloor(state));
-      const eye = floorBaseY(state, state.currentFloor) + EYE_H;
-      ceiling = topOfBuilding(state) + 40;
-      camera.position.set(p.x, eye, p.z);
-      camera.lookAt(p.x + p.lookX * 20, eye, p.z + p.lookZ * 20);
-      if (body !== camera.position) body.copy(camera.position);
+      placeAtSpawn();
       reportHud();
+    },
+    // Put the walker back on the storey's start point, wherever that now is.
+    // The overlay calls this when the start point changes under a walk that
+    // has already begun — choosing "start in the gym" and then having to
+    // leave and re-enter to be in the gym is the sort of thing that makes a
+    // setting feel broken.
+    respawn() {
+      if (!active || !world) return;
+      placeAtSpawn();
+      reportHud();
+    },
+    // Where the walker is standing, which way it is facing, and which storey
+    // it is on — a `spawn` record plus the one field that says where to put
+    // it. What "start here next time" is made of.
+    //
+    // `floor` is the storey under the feet rather than the one being edited:
+    // walk up the stairs and "here" is upstairs, which is the only reading of
+    // the word that is ever true.
+    get standing() {
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      return {
+        x: body.x, z: body.z, yaw: Math.atan2(dir.x, dir.z), floor: storeyHere(),
+      };
     },
     disable() {
       active = false;
+      stepAcc = 0;
       follow = null;
       world = null;
       site = emptyField();
@@ -743,8 +832,26 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED;
       const fwd = touchActive ? moveAxes.y : (keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0);
       const right = touchActive ? moveAxes.x : (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
-      if (ghost || !world) updateGhost(dt, fwd, right, speed);
-      else updateWalk(dt, fwd, right, speed);
+      // The frame's whole elapsed time, spent in fixed steps — see FIXED_STEP.
+      // The doors and the HUD are once-a-frame things and stay outside the
+      // loop; only the body is stepped, because the body is the only part of
+      // this that a long frame was quietly stealing from.
+      stepAcc = Math.min(stepAcc + Math.max(0, dt), MAX_CATCHUP);
+      let steps = 0;
+      while (stepAcc >= FIXED_STEP && steps < MAX_STEPS) {
+        stepAcc -= FIXED_STEP;
+        steps++;
+        if (ghost || !world) updateGhost(FIXED_STEP, fwd, right, speed);
+        else updateWalk(FIXED_STEP, fwd, right, speed);
+      }
+      // A frame shorter than one step still has to *look* like it moved, or a
+      // 200fps machine would stutter as the accumulator filled. Spend it.
+      if (!steps && stepAcc > 0) {
+        const rest = stepAcc;
+        stepAcc = 0;
+        if (ghost || !world) updateGhost(rest, fwd, right, speed);
+        else updateWalk(rest, fwd, right, speed);
+      }
       updateDoors(dt);
       reportHud();
     },

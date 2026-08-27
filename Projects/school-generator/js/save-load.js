@@ -222,10 +222,17 @@ export function serialize(state, opts = {}) {
   // this build round-trips through it as the same bytes. Copied rather than
   // deleted in place — `out` is a shallow spread and its floors are the live
   // records the editor is still holding.
-  if (Array.isArray(out.floors) && out.floors.some((f) => f && f.walls && !f.walls.length)) {
+  //
+  // Phase 26 adds the second per-storey record to the same pass: a `spawn`
+  // that was set and then cleared leaves a null behind, and a null is a key.
+  const emptyWalls = (f) => f && f.walls && !f.walls.length;
+  const deadSpawn = (f) => f && 'spawn' in f && !f.spawn;
+  if (Array.isArray(out.floors) && out.floors.some((f) => emptyWalls(f) || deadSpawn(f))) {
     out.floors = out.floors.map((f) => {
-      if (!f || !f.walls || f.walls.length) return f;
-      const { walls, ...rest } = f;
+      if (!emptyWalls(f) && !deadSpawn(f)) return f;
+      const rest = { ...f };
+      if (emptyWalls(f)) delete rest.walls;
+      if (deadSpawn(f)) delete rest.spawn;
       return rest;
     });
   }
@@ -297,9 +304,40 @@ function readFloor(raw, w, h) {
     // it, and absent again from any design nobody has drawn one on.
     const lines = normalizeWallLines(raw.walls, Math.max(w, h) * CELL * 4);
     if (lines.length) f.walls = lines;
+    // ...and Phase 26's, on exactly the same terms: where a walk of this
+    // storey starts, when somebody has said. A storey nobody has chosen a
+    // start point on writes no `spawn` key.
+    const spawn = readSpawn(raw.spawn, Math.max(w, h) * CELL * 4);
+    if (spawn) f.spawn = spawn;
   }
   return { floor: f, lat };
 }
+
+// A storey's chosen start point, or null. Four fields and all of them
+// optional-with-a-floor: a bad one reads as "no start point chosen" rather
+// than as a walk that begins outside the building.
+function readSpawn(raw, extent) {
+  if (!raw || typeof raw !== 'object') return null;
+  // `typeof`, not `Number()`: a NaN written into JSON comes back as `null`,
+  // and `Number(null)` is a perfectly finite zero — which would turn a broken
+  // record into a walk that starts in the corner of the site.
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const x = num(raw.x), z = num(raw.z);
+  if (x === null || z === null) return null;
+  if (Math.abs(x) > extent || Math.abs(z) > extent) return null;
+  const yaw = num(raw.yaw);
+  const out = { x, z, yaw: yaw === null ? 0 : wrapYaw(yaw) };
+  // Which room it was picked from, when it was picked from one — display
+  // only, so an id that no longer names a room costs the label, not the point.
+  const room = num(raw.room);
+  if (room !== null && room > 0) out.room = Math.round(room);
+  return out;
+}
+
+const wrapYaw = (a) => {
+  const t = Math.PI * 2;
+  return ((a % t) + t + Math.PI) % t - Math.PI;
+};
 
 // Validate + normalize loaded data; returns a state object or throws.
 // `opts.onMigrate(info)` is called once when a pre-v11 file was baked, with
