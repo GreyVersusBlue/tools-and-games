@@ -57407,6 +57407,54 @@ function nearestVertex(floor, x, z, maxDist = Infinity) {
   return best;
 }
 
+// ---------- naming ----------
+//
+// A room's *number*, read off the end of its name: "Room 101" is 101, "Lab
+// 204b" is 204. Deliberately the same reading `bindRoom` does in
+// timetable.js, because the two questions are one question — what number is
+// this room, for the purpose of telling it apart from the others.
+const ROOM_NUM = /(\d{1,4})[a-z]?\s*$/i;
+const roomNumberOf = (name) => {
+  const m = ROOM_NUM.exec(String(name ?? '').trim());
+  return m ? Number(m[1]) : null;
+};
+
+// The storey's hundred-block: 101 on the ground, 201 above it, and so on —
+// the convention `nameFor` in generate.js already numbers a generated school
+// by. Anything past the eighth storey keeps counting rather than wrapping.
+const storeyBase = (floorIndex) => (Math.max(0, floorIndex | 0) + 1) * 100;
+
+// The next room name nobody has used yet, for a room about to be drawn on
+// this storey.
+//
+// This exists because the room-name field used to be seeded with the literal
+// string 'Room 101' and never advanced, so every room anyone drew by hand was
+// called Room 101 — three rectangles, three rooms, one name. That is worse
+// than untidy: `bindRoom` resolves an imported timetable's room token by
+// exact name, and a duplicate makes that answer a coin toss.
+//
+// Numbers are taken as used across the *whole building*, not just this
+// storey, for exactly that reason — a name has to identify a room among all
+// of them, and a stray "Room 201" typed on the ground floor should still push
+// the first floor's suggestion past it.
+function nextRoomName(state, floorIndex = null) {
+  const floors = (state && Array.isArray(state.floors)) ? state.floors : [];
+  const i = floorIndex == null
+    ? Math.max(0, Math.min(floors.length - 1, state?.currentFloor | 0))
+    : floorIndex;
+  const used = new Set();
+  for (const floor of floors) {
+    for (const shape of shapesOf(floor)) {
+      const n = roomNumberOf(shape.name);
+      if (n != null) used.add(n);
+    }
+  }
+  const base = storeyBase(i);
+  let n = base + 1;
+  while (used.has(n)) n += 1;
+  return `Room ${n}`;
+}
+
 // ---------- construction ----------
 
 // Ids come off the same monotonic counter props and links use, so a shape, a
@@ -58001,7 +58049,7 @@ function addShapeCopy(state, floorIndex, shape, dx = 0, dz = 0) {
   return clone;
 }
 
-return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
+return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
 })();
 // ---- js/props.js ----
 const __m_js_props_js = (() => {
@@ -69529,18 +69577,157 @@ function runAngle(a, b) {
   return (deg + 360) % 360;
 }
 
-// "24 ft · 90°" — the live readout the wall tool rides on the cursor with.
-function runLabel(a, b) {
-  const len = runLength(a, b);
-  return `${len.toFixed(len < 10 ? 1 : 0)} ft · ${Math.round(runAngle(a, b))}°`;
-}
-
 // Is this run square to the grid? A drawn wall that came out axis-aligned by
 // hand should read the same as one the toggle squared up.
 const isAxisRun = (a, b, tol = 1e-6) =>
   Math.abs(b.x - a.x) <= tol || Math.abs(b.z - a.z) <= tol;
 
-return { PITCHES, MAX_LINES, MIN_PITCH, MAX_PITCH, gridPitch, majorEvery, snapValue, snapToGrid, snapDistance, orthoPoint, targetPoint, runLength, runAngle, runLabel, isAxisRun };
+// "24 ft · 90°" — the live readout the wall tool rides on the cursor with.
+//
+// The angle is rounded, and a rounded angle is a small lie in exactly the
+// case that matters: a run a hair off square still prints "90°", so the one
+// reading that would have warned you looks identical to the one that
+// wouldn't. When the rounding *would* claim square and the run isn't, the
+// label spends a decimal place saying so instead. This is what `isAxisRun`
+// was written for; until now nothing asked it.
+function runLabel(a, b) {
+  const len = runLength(a, b);
+  const deg = runAngle(a, b);
+  // Both forms re-normalize after rounding: runAngle answers in [0, 360), but
+  // a bearing a whisker under 360 rounds *up* and out of it, and "360°" is
+  // not a bearing this readout is allowed to print.
+  const wrap = (n) => ((n % 360) + 360) % 360;
+  const rounded = wrap(Math.round(deg));
+  const angle = rounded % 90 === 0 && !isAxisRun(a, b)
+    ? `${wrap(Math.round(deg * 10) / 10).toFixed(1)}°`
+    : `${rounded}°`;
+  return `${len.toFixed(len < 10 ? 1 : 0)} ft · ${angle}`;
+}
+
+return { PITCHES, MAX_LINES, MIN_PITCH, MAX_PITCH, gridPitch, majorEvery, snapValue, snapToGrid, snapDistance, orthoPoint, targetPoint, runLength, runAngle, isAxisRun, runLabel };
+})();
+// ---- js/bootcheck.js ----
+const __m_js_bootcheck_js = (() => {
+
+// bootcheck.js — why the tool did not start, in words somebody can act on.
+//
+// Until this file existed, every way of failing to boot looked identical and
+// looked *fine*: the chrome is plain HTML and paints whether or not a line of
+// JavaScript ever runs, so a page with no WebGL, or one opened straight off
+// the disk, drew the whole toolbar, lit the status line with "Floor — click /
+// drag to lay floor tiles", and then did nothing at all, for ever, silently.
+// A tool that is broken should say so; a tool that is broken for a reason the
+// person can fix should say which.
+//
+// Four ways it can happen, and they need different sentences:
+//
+//   file-url      the page was opened from disk, so the browser refused every
+//                 ES module before one of them ran. Nothing on the page works
+//                 and nothing ever will until it is served over http.
+//   no-webgl      the browser has no WebGL context to give. There is no 2D
+//                 fallback and there is not going to be one — the whole tool
+//                 is a 3D scene.
+//   context-lost  there *was* a context and the driver took it back: waking
+//                 from sleep, a GPU reset, a phone under memory pressure. The
+//                 scene is gone; a reload gets it back.
+//   crashed       something threw during boot. We can't be more specific than
+//                 the error itself, so the error itself is what we show.
+//
+// This module is pure — no DOM, no globals, no `window`. It holds the words
+// and the decision; index.html's inline guard and main.js hold the two hands
+// that put them on the screen. The guard has to be a classic inline script
+// rather than an import of this file, because the one case it exists to catch
+// is precisely the one where no module can load — so it carries its own copy
+// of the two sentences it needs and `test/bootcheck.test.mjs` reads
+// index.html and fails if the two ever drift. Same bargain, and for the same
+// reason, as theme.js and the `:root` block.
+
+const BOOT_FAILURES = {
+  'file-url': {
+    title: 'This page has to be served, not opened from a file.',
+    detail:
+      'Browsers refuse to load ES modules over file:// , so none of the ' +
+      'tool’s code ran. Everything you can see is the empty page ' +
+      'underneath it.',
+    remedy:
+      'Run any static server from the school-generator folder — for ' +
+      'example `npx serve`, or `python3 -m http.server` — and open the ' +
+      'address it prints. Or just use the deployed copy.',
+  },
+  'no-webgl': {
+    title: 'This browser can’t give the tool a 3D view.',
+    detail:
+      'The School Generator draws everything — the plan as well as the ' +
+      'walkthrough — with WebGL, and this browser has no WebGL context ' +
+      'available. There is no 2D fallback.',
+    remedy:
+      'Turn hardware acceleration back on in your browser’s settings, ' +
+      'or open the tool in a different browser. On a managed machine this is ' +
+      'sometimes switched off by policy.',
+  },
+  'context-lost': {
+    title: 'The 3D view was lost.',
+    detail:
+      'The browser took the graphics context back — usually a machine ' +
+      'waking from sleep, a driver reset, or a phone short on memory. Your ' +
+      'design is safe: it is autosaved in this browser.',
+    remedy: 'Reload the page and it will come back with your work in it.',
+  },
+  crashed: {
+    title: 'The tool hit an error while starting up.',
+    detail:
+      'Something threw before the editor finished loading, so nothing on ' +
+      'this page is connected to anything.',
+    remedy:
+      'Reload the page. If it keeps happening, the message below is the ' +
+      'thing worth reporting.',
+  },
+};
+
+// What went wrong, from what the page can observe about itself. Returns a key
+// of BOOT_FAILURES, or null when there is nothing to complain about.
+//
+//   protocol  location.protocol, e.g. 'https:' or 'file:'
+//   webgl     did a WebGL context come back? null/undefined = not probed yet
+//   error     the thing that threw during boot, if anything did
+//
+// Order matters and is the order of certainty. A file:// page cannot probe
+// anything meaningful — its modules never ran — so that answer comes first
+// and the rest is not consulted. A missing WebGL context explains a boot
+// error, so it is preferred over the error it caused.
+function diagnose(env = {}) {
+  if (env.protocol === 'file:') return 'file-url';
+  if (env.webgl === false) return 'no-webgl';
+  if (env.error) return 'crashed';
+  return null;
+}
+
+// The three lines for a failure, or null for a code nobody defined. Callers
+// paint these; nothing here knows what an element is.
+function failureText(code) {
+  return BOOT_FAILURES[code] || null;
+}
+
+// Is there a WebGL context to be had? Takes the canvas-maker rather than
+// reaching for `document`, so the suite can hand it a stub and this file can
+// stay a module the tests can load.
+//
+// The probe canvas is deliberately its own throwaway element: asking the real
+// one for a context here would take the only context the renderer is about to
+// want, and a canvas hands out exactly one.
+function probeWebGL(makeCanvas) {
+  try {
+    const c = makeCanvas();
+    const gl = c.getContext('webgl2') || c.getContext('webgl');
+    if (!gl) return false;
+    // Some environments hand back a context object that is already lost.
+    return !(typeof gl.isContextLost === 'function' && gl.isContextLost());
+  } catch {
+    return false;
+  }
+}
+
+return { BOOT_FAILURES, diagnose, failureText, probeWebGL };
 })();
 // ---- js/overlay.js ----
 const __m_js_overlay_js = (() => {
@@ -71884,6 +72071,7 @@ const { stairMetrics, stairsOf, openingRails, runMetrics, elevatorSize, elevator
 const { wallProbe, solidBeside } = __m_js_walls_js;
 const { wallLinesOf, lineEnds, lineKind, lineOpenings } = __m_js_wallrun_js;
 const { gridPitch, majorEvery } = __m_js_snapgrid_js;
+const { failureText } = __m_js_bootcheck_js;
 const { overlaySize, showsOn } = __m_js_overlay_js;
 const { floorBounds, unionBounds, footprintMask } = __m_js_shadow_js;
 const { finishEntry, wallPaint, DEFAULT_FINISH, DEFAULT_PAINT, facadeEntry, ROOF_MEMBRANE, ROOF_SHINGLE } = __m_js_finish_js;
@@ -71901,6 +72089,7 @@ const { collectDoorLeaves, leafAngle, mullionPositions, windowBand, LEAF_T, MULL
 // since real CC0 PBR sets can drop into /assets/textures later). Materials are
 // MeshStandardMaterial so swapping in albedo/normal/roughness maps is a
 // one-line change per material.
+
 
 
 
@@ -72390,8 +72579,39 @@ function makeGroundAlbedo() {
 
 // ---------- render module ----------
 
+// How long a lost WebGL context gets to come back before the page says it is
+// gone. Generous on purpose: a driver reset on a laptop waking from sleep can
+// take a second or two, and a false alarm covers a design somebody is drawing.
+const CONTEXT_RESTORE_GRACE = 4000;   // ms
+
 function initRender(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+
+  // A context can be taken back after it has been given: a machine waking
+  // from sleep, a driver reset, a phone short on memory. Without this the
+  // canvas freezes on its last frame while the chrome keeps responding to
+  // every click, which reads as "the tool is broken" rather than "the view
+  // went away".
+  //
+  // three.js already asks for the context back (its own listener calls
+  // preventDefault and its restore handler re-uploads everything), so the
+  // loss is often survivable and saying so immediately would be crying wolf.
+  // What is *not* survivable is a loss that never comes back — so this waits
+  // out the restore and only speaks if one doesn't arrive. Deliberately not a
+  // data question: the design is autosaved either way. See js/bootcheck.js.
+  let restoreWait = null;
+  canvas.addEventListener('webglcontextlost', () => {
+    clearTimeout(restoreWait);
+    restoreWait = setTimeout(() => {
+      const t = failureText('context-lost');
+      window.__sgFail?.(t.title, t.detail, t.remedy);
+    }, CONTEXT_RESTORE_GRACE);
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    clearTimeout(restoreWait);
+    restoreWait = null;
+  });
+
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -84816,9 +85036,18 @@ function bindRoom(pool, token, opts = {}) {
   const list = pool || [];
   const byId = list.find((r) => r.id === raw);
   if (byId) return byId;
+  // A name is only an answer if it is *the* answer. Two rooms called the same
+  // thing used to bind to whichever came first in the array and report
+  // success, which is a wrong room reported as a right one — the worst
+  // available outcome, and strictly worse than saying "I couldn't tell". The
+  // number branch below has always refused ambiguity for exactly this reason;
+  // the name branch now refuses it too. (The editor no longer *makes*
+  // duplicates — see nextRoomName in shapes.js — but a design drawn before
+  // that, or one with deliberately repeated names, still arrives here.)
   const want = normName(raw);
-  const exact = list.find((r) => normName(r.name) === want);
-  if (exact) return exact;
+  const named = list.filter((r) => normName(r.name) === want);
+  if (named.length === 1) return named[0];
+  if (named.length > 1) return null;
   if (opts.byNumber === false) return null;
   const num = roomNumber(raw);
   if (!num) return null;
@@ -88664,6 +88893,16 @@ function bootError(message) {
   panel.textContent = message;
   panel.classList.remove('hidden');
   walkOverlay.classList.add('hidden');
+}
+
+// The editor's boot guard lives in index.html and is not part of this bundle,
+// but render.js calls `window.__sgFail` when a WebGL context is lost and never
+// comes back — so the exported walkthrough answers on the same name, through
+// the panel it already has. Without this the message would be dropped and a
+// dead canvas would go back to being unexplained.
+if (typeof window !== 'undefined' && !window.__sgFail) {
+  window.__sgFail = (title, body, remedy) => bootError([title, body, remedy]
+    .filter(Boolean).join(' '));
 }
 
 let state = null;

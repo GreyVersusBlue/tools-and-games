@@ -18,6 +18,7 @@ import {
   arcGeometry, arcPoints, curveSegment, straightenRun, MAX_BULGE, MIN_ARC_CHORD,
   ringLen, LEAF_SINGLE, segDir, unitDir, parallelDirs, PARALLEL_TOL,
   normalizeShape, cloneShape,
+  nextRoomName, storeyBase,
   translateShape, rotateShape90, mirrorShapeX, rotatePoint90, mirrorPointX,
   addShapeCopy, totalShapeArea,
 } from '../js/shapes.js';
@@ -718,4 +719,98 @@ test('a curved room saves and loads as the polygon it now is', () => {
   assert.deepEqual(back.floors[0].shapes, s.floors[0].shapes);
   assert.equal(ringLen(back.floors[0].shapes[0].rings[0]), 3 + n,
     'no schema for curvature means nothing extra to migrate');
+});
+
+// ---------- room names ----------
+//
+// The field that offers these used to be seeded with the literal 'Room 101'
+// and never advanced, so every room drawn by hand came out with that name.
+// Three rectangles, three rooms, one name — and `bindRoom` resolving an
+// imported timetable by exact name then had a coin toss to make.
+
+test('a storey numbers from its own hundred block', () => {
+  assert.equal(storeyBase(0), 100);
+  assert.equal(storeyBase(1), 200);
+  assert.equal(storeyBase(7), 800);
+  // Past the eighth storey it keeps counting rather than wrapping.
+  assert.equal(storeyBase(11), 1200);
+  assert.equal(storeyBase(-3), 100, 'and a nonsense index reads as the ground');
+});
+
+test('an empty storey offers the first number in its block', () => {
+  const s = createState(30, 30);
+  assert.equal(nextRoomName(s), 'Room 101');
+  addFloor(s);
+  assert.equal(nextRoomName(s, 1), 'Room 201');
+});
+
+test('each room drawn pushes the suggestion past it', () => {
+  const s = createState(40, 40);
+  const box = (x) => [
+    { x, z: 0 }, { x: x + 10, z: 0 }, { x: x + 10, z: 10 }, { x, z: 10 },
+  ];
+  assert.equal(nextRoomName(s), 'Room 101');
+  addShape(s, 0, box(0), { name: nextRoomName(s) });
+  assert.equal(nextRoomName(s), 'Room 102');
+  addShape(s, 0, box(12), { name: nextRoomName(s) });
+  addShape(s, 0, box(24), { name: nextRoomName(s) });
+  assert.equal(nextRoomName(s), 'Room 104');
+  const names = s.floors[0].shapes.map((sh) => sh.name);
+  assert.deepEqual(names, ['Room 101', 'Room 102', 'Room 103'],
+    'three rectangles, three different names');
+});
+
+test('a gap in the numbering is filled before the run is continued', () => {
+  const s = createState(40, 40);
+  const box = (x) => [
+    { x, z: 0 }, { x: x + 8, z: 0 }, { x: x + 8, z: 8 }, { x, z: 8 },
+  ];
+  addShape(s, 0, box(0), { name: 'Room 101' });
+  addShape(s, 0, box(10), { name: 'Room 103' });
+  assert.equal(nextRoomName(s), 'Room 102');
+});
+
+test('a number used on another storey is still used', () => {
+  // Names have to tell a room apart from every other room in the building,
+  // not just from its neighbours — bindRoom searches the whole pool.
+  const s = createState(30, 30);
+  addFloor(s);
+  const box = [{ x: 0, z: 0 }, { x: 8, z: 0 }, { x: 8, z: 8 }, { x: 0, z: 8 }];
+  addShape(s, 0, box, { name: 'Room 201' });
+  assert.equal(nextRoomName(s, 1), 'Room 202',
+    'a stray 201 on the ground pushes the first floor past it');
+});
+
+test('names that are not numbers are simply not numbers', () => {
+  const s = createState(30, 30);
+  const box = (x) => [
+    { x, z: 0 }, { x: x + 8, z: 0 }, { x: x + 8, z: 8 }, { x, z: 8 },
+  ];
+  addShape(s, 0, box(0), { name: 'Learning Commons' });
+  addShape(s, 0, box(10), { name: null });
+  assert.equal(nextRoomName(s), 'Room 101');
+});
+
+test('a room number reads off the end of the name, suffix and all', () => {
+  const s = createState(30, 30);
+  const box = (x) => [
+    { x, z: 0 }, { x: x + 8, z: 0 }, { x: x + 8, z: 8 }, { x, z: 8 },
+  ];
+  addShape(s, 0, box(0), { name: 'Science Lab 101' });
+  addShape(s, 0, box(10), { name: 'Room 102b' });
+  assert.equal(nextRoomName(s), 'Room 103');
+});
+
+test('nextRoomName follows the storey it is asked about', () => {
+  const s = createState(30, 30);
+  addFloor(s);
+  s.currentFloor = 1;
+  assert.equal(nextRoomName(s), 'Room 201', 'no argument means the current storey');
+  assert.equal(nextRoomName(s, 0), 'Room 101');
+});
+
+test('nextRoomName survives a state it has no business being handed', () => {
+  assert.equal(nextRoomName(null), 'Room 101');
+  assert.equal(nextRoomName({}), 'Room 101');
+  assert.equal(nextRoomName({ floors: [] }), 'Room 101');
 });

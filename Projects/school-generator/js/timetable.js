@@ -580,9 +580,18 @@ export function bindRoom(pool, token, opts = {}) {
   const list = pool || [];
   const byId = list.find((r) => r.id === raw);
   if (byId) return byId;
+  // A name is only an answer if it is *the* answer. Two rooms called the same
+  // thing used to bind to whichever came first in the array and report
+  // success, which is a wrong room reported as a right one — the worst
+  // available outcome, and strictly worse than saying "I couldn't tell". The
+  // number branch below has always refused ambiguity for exactly this reason;
+  // the name branch now refuses it too. (The editor no longer *makes*
+  // duplicates — see nextRoomName in shapes.js — but a design drawn before
+  // that, or one with deliberately repeated names, still arrives here.)
   const want = normName(raw);
-  const exact = list.find((r) => normName(r.name) === want);
-  if (exact) return exact;
+  const named = list.filter((r) => normName(r.name) === want);
+  if (named.length === 1) return named[0];
+  if (named.length > 1) return null;
   if (opts.byNumber === false) return null;
   const num = roomNumber(raw);
   if (!num) return null;

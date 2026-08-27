@@ -94,6 +94,62 @@
     }
     #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
+    /* The boot failure surface. Every way of failing to start used to look
+       identical to succeeding — the chrome below is plain HTML and paints
+       whether or not a line of JavaScript ever runs, so a page with no WebGL
+       drew the whole toolbar and then did nothing, silently, for ever. This
+       covers the chrome completely rather than sitting over it: a toolbar you
+       can still half-see is a toolbar you will still try to click. See
+       js/bootcheck.js for the four ways and the words for each. */
+    #boot-fail {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #161b23;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      user-select: text;
+      overflow-y: auto;
+    }
+    #boot-fail[hidden] { display: none; }
+    #boot-fail .bf-box { max-width: 46ch; }
+    #boot-fail h1 {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.3;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+    #boot-fail p {
+      font-size: var(--fs-lg);
+      line-height: 1.65;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+    #boot-fail .bf-remedy { color: var(--text); }
+    #boot-fail .bf-detail {
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      font-size: var(--fs-sm);
+      line-height: 1.6;
+      color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--r-sm);
+      padding: 10px 12px;
+      margin-top: 16px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-x: auto;
+    }
+    #boot-fail .bf-detail[hidden] { display: none; }
+    #boot-fail .bf-rule {
+      width: 34px;
+      height: 2px;
+      background: var(--fail);
+      margin-bottom: 18px;
+    }
+
     /* Phase 20's chrome pass: the panels get a hairline top light and a
        deeper drop, so the chrome reads as dark glass *over* the scene rather
        than as grey rectangles beside it. The scene is the picture; the
@@ -2599,6 +2655,90 @@
   </div>
 
   <input id="file-input" type="file" accept=".json,application/json" class="hidden" />
+
+  <!-- Painted only when the tool fails to start; see js/bootcheck.js. -->
+  <div id="boot-fail" role="alert" hidden>
+    <div class="bf-box">
+      <div class="bf-rule"></div>
+      <h1 id="bf-title"></h1>
+      <p id="bf-body"></p>
+      <p class="bf-remedy" id="bf-remedy"></p>
+      <pre class="bf-detail" id="bf-detail" hidden></pre>
+    </div>
+  </div>
+
+  <!-- The boot guard. A classic script on purpose: the one failure it exists
+       to catch is a page opened from disk, where the browser refuses every ES
+       module before one of them runs, so this cannot be an import of
+       js/bootcheck.js. It therefore carries its own copy of the two sentences
+       it needs — and test/bootcheck.test.mjs reads this file and fails if
+       that copy ever drifts from the module, exactly as theme.test.mjs holds
+       the :root block to js/theme.js. -->
+  <script>
+    (function () {
+      var box = document.getElementById('boot-fail');
+      // The one hand that puts a failure on the screen. main.js and render.js
+      // call this too, with text they read from js/bootcheck.js.
+      window.__sgFail = function (title, body, remedy, detail) {
+        if (!box || !box.hidden) return;          // first failure wins
+        document.getElementById('bf-title').textContent = title;
+        document.getElementById('bf-body').textContent = body;
+        document.getElementById('bf-remedy').textContent = remedy;
+        var d = document.getElementById('bf-detail');
+        if (detail) { d.textContent = detail; d.hidden = false; }
+        box.hidden = false;
+        document.title = 'School Generator — did not start';
+        clearInterval(poll);      // hoisted; nothing left to wait for
+      };
+
+      if (location.protocol === 'file:') {
+        window.__sgFail(
+          'This page has to be served, not opened from a file.',
+          'Browsers refuse to load ES modules over file:// , so none of the tool’s code ran. Everything you can see is the empty page underneath it.',
+          'Run any static server from the school-generator folder — for example `npx serve`, or `python3 -m http.server` — and open the address it prints. Or just use the deployed copy.');
+        return;
+      }
+
+      // Anything that goes wrong on the way up — a module that threw while
+      // evaluating, and (the reason for `true` below) a module that never
+      // arrived at all. A failed fetch fires its error on the <script>
+      // element and does not bubble, so only a capturing listener sees it;
+      // without one, a single 404 among ninety-nine modules is silent.
+      //
+      // Disarmed the moment the editor exists: after that a stray error is a
+      // bug to fix, not a reason to blank the design somebody is drawing.
+      function onBootError(e) {
+        if (window.app) return teardown();
+        var el = e && e.target;
+        var detail = el && el !== window && el.tagName
+          ? 'Failed to load ' + (el.src || el.href || el.tagName)
+          : null;
+        if (!detail) {
+          var err = (e && (e.error || e.reason)) || null;
+          detail = err ? String(err.stack || err) : (e && e.message) || 'Unknown error';
+        }
+        window.__sgFail(
+          'The tool hit an error while starting up.',
+          'Something threw before the editor finished loading, so nothing on this page is connected to anything.',
+          'Reload the page. If it keeps happening, the message below is the thing worth reporting.',
+          detail);
+      }
+      function teardown() {
+        window.removeEventListener('error', onBootError, true);
+        window.removeEventListener('unhandledrejection', onBootError);
+      }
+      window.addEventListener('error', onBootError, true);
+      window.addEventListener('unhandledrejection', onBootError);
+      // The editor announces itself by defining window.app; poll for it
+      // rather than asking main.js to call back, so the guard stays something
+      // main.js does not have to know about.
+      var poll = setInterval(function () {
+        if (!window.app) return;
+        clearInterval(poll);
+        teardown();
+      }, 250);
+    }());
+  </script>
 
   <script type="module" src="./js/main.js"></script>
 </body>

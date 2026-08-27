@@ -6,7 +6,7 @@ import {
   floorLabel, floorShapeCount,
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
 } from './grid.js';
-import { totalShapeArea } from './shapes.js';
+import { totalShapeArea, nextRoomName } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
 import { catalogByCategory, catalogEntry, PROP_PAINTS } from './catalog.js';
 import { DECOR_PACKS, packByKey, packPaint, packTypes } from './decor.js';
@@ -83,7 +83,6 @@ import {
   bandEntry,
 } from './program.js';
 import { parseBrief } from './brief.js';
-import { layoutSchool, buildSchool, generationSummary } from './generate.js';
 import { AUTO_ENTRY, AUTO_KEY } from './templateedit.js';
 import {
   ALL_FLOORS, MAX_PIXELS, MAX_BYTES,
@@ -130,9 +129,29 @@ import {
   findingMarks, markAt, markOnFloor, describeMark, markFill, markLine,
 } from './minimap.js';
 import { xrAvailability, rigPosition } from './xr.js';
+import { probeWebGL, failureText } from './bootcheck.js';
+import { lazy } from './lazy.js';
+
+// The generator is the single largest module in the tool (109 KB) and is
+// wanted exactly once, when somebody presses Go in the Generate dialog — so
+// it is fetched then rather than on every load. See js/lazy.js.
+const generateModule = lazy(() => import('./generate.js'));
 
 const canvas = document.getElementById('view');
 const $ = (id) => document.getElementById(id);
+
+// --- can this browser run the tool at all? ---
+//
+// Asked before initRender rather than after it throws, so the answer is the
+// specific one ("no WebGL here") rather than the generic one the boot guard
+// would otherwise show ("something threw"). The probe uses a throwaway canvas
+// because a canvas hands out exactly one context and the renderer wants the
+// real one. See js/bootcheck.js; index.html's guard owns __sgFail.
+if (!probeWebGL(() => document.createElement('canvas'))) {
+  const t = failureText('no-webgl');
+  window.__sgFail?.(t.title, t.detail, t.remedy);
+  throw new Error('School Generator: no WebGL context available.');
+}
 
 // --- modal focus management ---
 // A keyboard/AT user needs focus to land inside a dialog when it opens (a
@@ -248,6 +267,11 @@ function designChanged(info = {}) {
   // A prop placed, painted, deleted or undone can change which swatch is
   // lit and what colour the chip shows.
   if (editor.tool === 'prop') syncPropPaint();
+  // A room drawn takes the number the field was offering, so the field has to
+  // offer the next one. Skipped mid-drag like everything else derived here —
+  // a stroke ends in an unthrottled call, which is when the room it baked
+  // actually exists to be counted.
+  if (!info.throttled) suggestRoomName();
   // A hunt's hints name rooms and its hiding places stand on tiles, and a
   // structural edit is a different set of both. Rather than quietly leave
   // the hamster inside a wall somebody has just drawn, the hunt ends.
@@ -1039,8 +1063,31 @@ ROOM_COLORS.forEach((c, i) => {
   });
   swatches.appendChild(b);
 });
-$('room-name').value = editor.roomName;
-$('room-name').addEventListener('input', (e) => editor.setRoom(e.target.value, editor.roomColor));
+// --- the room name, and why it moves on by itself ---
+//
+// The field used to be seeded with the literal 'Room 101' and left there, so
+// every room anybody drew by hand came out called Room 101. `nextRoomName`
+// reads the building and answers with a number nobody has used; this keeps
+// the field on that answer as rooms appear, and — the whole point — gets out
+// of the way the moment somebody types a name of their own.
+//
+// `suggested` is the last thing this function put in the box. If the box
+// still holds it, nobody has touched it and it is ours to advance; if it
+// holds anything else, it is theirs and we leave it exactly alone.
+let suggested = null;
+function suggestRoomName({ force = false } = {}) {
+  const box = $('room-name');
+  if (!force && suggested !== null && box.value !== suggested) return;
+  const next = nextRoomName(state);
+  if (box.value === next) { suggested = next; return; }
+  suggested = next;
+  box.value = next;
+  editor.setRoom(next, editor.roomColor);
+}
+$('room-name').addEventListener('input', (e) => {
+  editor.setRoom(e.target.value, editor.roomColor);
+});
+suggestRoomName({ force: true });
 
 // --- room finishes ---
 // The label tint above says which wing a room is in; these say what it's made
@@ -1835,6 +1882,9 @@ function goToFloor(i) {
   editor.refreshOverlay();   // handles belong to the storey you're editing
   renderFloorList();
   renderStairReadout();
+  // Room numbers are per-storey — 101 on the ground, 201 above it — so
+  // changing which storey you are drawing on changes what to suggest.
+  suggestRoomName();
   autosave(state);
   $('status').textContent = `${floorLabel(state.currentFloor)} — editing this floor`;
 }
@@ -1913,6 +1963,11 @@ function adoptState(next, opts = {}) {
   renderSitePanel();
   renderOverlayPanel();
   renderCodePanel();
+  // A different building is a different set of room numbers, and the name in
+  // the box belongs to the one that just left. Forced, unlike the nudge in
+  // designChanged: a custom name carried over from another design is exactly
+  // as wrong as a stale suggestion.
+  suggestRoomName({ force: true });
   adoptedByAudio();
   reportInvalidate();
   // A different design is a different plan under the minimap and a different
@@ -4428,9 +4483,12 @@ $('gen-go').addEventListener('click', () => {
   const furnish = $('gen-furnish').checked;
   $('gen-go').disabled = true;
   $('status').textContent = 'Generating…';
-  // One frame, so the status line paints before a second of arithmetic.
-  requestAnimationFrame(() => {
+  // One frame, so the status line paints before a second of arithmetic — and
+  // before the generator itself is fetched, which is the other thing that
+  // makes this button take a moment the first time.
+  requestAnimationFrame(async () => {
     try {
+      const { layoutSchool, buildSchool, generationSummary } = await generateModule();
       const plan = layoutSchool(genBrief);
       const next = buildSchool(plan, { furnish });
       adoptState(next);

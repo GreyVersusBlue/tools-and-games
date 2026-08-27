@@ -123,6 +123,20 @@ export function initPropEdit({ getState, renderApi, host }) {
     return out;
   }
 
+  // What the status line says about a selection. One piece is worth naming —
+  // it is the answer to "what did I just click on" — and several are worth
+  // counting, which is the sentence shift-click and the marquee already use.
+  function selectionNote(s) {
+    const items = liveSelected(s);
+    if (!items.length) return 'Nothing selected.';
+    if (items.length === 1) {
+      const entry = catalogEntry(items[0].type);
+      const name = (entry && entry.name) || 'Piece';
+      return `${name} selected — R rotates it, drag moves it, Delete removes it.`;
+    }
+    return `${items.length} props selected.`;
+  }
+
   function refresh() {
     for (const l of selPool) l.visible = false;
     const s = getState();
@@ -278,7 +292,16 @@ export function initPropEdit({ getState, renderApi, host }) {
     if (gesture.mode === 'drag') {
       const moved = gesture.moved;
       gesture = null;
-      if (!moved) { host.dropUndo(); refresh(); return true; }
+      // A press that didn't travel is a selection, not a move — and it was
+      // the one selection in this file that said nothing at all, which reads
+      // as a click the tool ignored. Shift-click and the marquee have always
+      // reported their count; this one now does too.
+      if (!moved) {
+        host.dropUndo();
+        host.status(selectionNote(getState()));
+        refresh();
+        return true;
+      }
       const s = getState();
       const p = getProp(s, [...selected][0]);
       host.changed({ commit: true });
