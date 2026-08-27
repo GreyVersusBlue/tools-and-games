@@ -49,6 +49,7 @@ import {
   openingRails, elevatorsOn, elevatorWalls,
 } from './stairs.js';
 import { wallProbe } from './walls.js';
+import { wallLinesOf, lineOpenings } from './wallrun.js';
 import { terrainField, emptyField, groundAt } from './terrain.js';
 import {
   collectDoorLeaves, leafSegment, updateLeaves, updateLeavesFor, closeAll,
@@ -205,6 +206,18 @@ export function wallSegments(floor, probe = null) {
         run(a.x, a.z, b.x, b.z, cuts);
       }
     }
+  }
+
+  // Phase 25's free-standing walls (wallrun.js). One segment each, with the
+  // same openings record a ring carries — so they arrive here as one more
+  // call to the same `run` every room boundary goes through, and everything
+  // downstream of a collider segment needed no change at all.
+  for (const line of wallLinesOf(floor)) {
+    const len = Math.hypot(line.bx - line.ax, line.bz - line.az);
+    const cuts = lineOpenings(line)
+      .filter(isDoorOpening)
+      .map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
+    run(line.ax, line.az, line.bx, line.bz, cuts);
   }
 
   return out;

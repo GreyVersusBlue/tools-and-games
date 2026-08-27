@@ -111,6 +111,30 @@ function roomWalls(floor, walls, openings, thick) {
       }
     }
   }
+  // Phase 25's free-standing walls (wallrun.js). One segment each, with the
+  // same openings record a ring carries — so the plan draws a garden wall and
+  // the door in it through exactly the same two calls a room's side goes
+  // through, and `solidSpans` cuts it the same way.
+  for (const line of (Array.isArray(floor.walls) ? floor.walls : [])) {
+    const kind = SEG_KIND_NAME[line.kind] || SEG_KIND_NAME[1];
+    const a = { x: line.ax, z: line.az }, b = { x: line.bx, z: line.bz };
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    if (len < 0.01) continue;
+    const t = thick(a.x, a.z, b.x, b.z);
+    const here = Array.isArray(line.openings) ? line.openings : [];
+    const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+    if (!here.length) {
+      pushWallRun(walls, kind, a.x, a.z, b.x, b.z, t);
+      continue;
+    }
+    const cuts = here
+      .filter((o) => !isWindowOpening(o))
+      .map((o) => ({ a: o.t * len - o.w / 2, b: o.t * len + o.w / 2 }));
+    for (const [s2, e2] of solidSpans(len, cuts, 0)) {
+      pushWallRun(walls, kind, a.x + ux * s2, a.z + uz * s2, a.x + ux * e2, a.z + uz * e2, t);
+    }
+    for (const o of here) pushOpening(openings, openingSpec(o), a, b, t);
+  }
 }
 
 function ringToPts(ring) { return ring.pts.map((p) => ({ x: p.x, z: p.z })); }

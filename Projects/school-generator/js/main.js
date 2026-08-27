@@ -313,6 +313,9 @@ const editor = initEditor({
       chip.style.transform = `translate(${cx}px, ${cy}px)`;
     };
   })(),
+  // Phase 25: the vertical-link panel lists what is on the storey and lights
+  // whichever one is selected, so a selection made on the plan has to reach it.
+  onStairSelect: () => { if (editor.tool === 'stair') renderStairList(); },
   onHoleMode: (on) => {
     $('hole-btn').classList.toggle('on', on);
     $('hole-btn').setAttribute('aria-pressed', String(on));
@@ -779,6 +782,7 @@ function setMode(m) {
     audio.setActive(false);
     closeModal(walkOverlay);
     document.body.classList.remove('touch-walk');
+    document.body.classList.remove('drag-walk');
     resetTouchWalkUI();
     editor.setEnabled(true);
     $('mode-btn-label').textContent = 'Walk Through';
@@ -800,12 +804,48 @@ $('walk-start').addEventListener('click', () => {
     closeModal(walkOverlay);
   } else {
     walk.controls.lock();
+    // Pointer Lock can simply not happen: an iframe without
+    // `allow="pointer-lock"`, a browser that refuses, a dismissed permission.
+    // `lock()` reports none of that — it returns nothing and the `lock` event
+    // never fires — so the only honest test is to look a moment later. If the
+    // pointer is not ours by then, walk anyway: drag to look, WASD to move.
+    setTimeout(() => {
+      if (mode !== 'walk' || walk.controls.isLocked || isTouch) return;
+      startMouseLookWalk();
+    }, 400);
   }
+});
+
+// The fallback walk. Not offered as a choice — Pointer Lock is the better
+// gesture and is always asked for first — but never left as a dead end either.
+function startMouseLookWalk() {
+  if (walk.mouseLook) return;
+  walk.enableMouseLook(true);
+  document.body.classList.add('drag-walk');
+  $('walk-drag-note').classList.remove('hidden');
+  $('walk-start').textContent = 'Drag to Walk';
+  closeModal(walkOverlay);
+  $('status').textContent =
+    'Walking — drag to look, WASD to move, Shift to run, Space to jump. ' +
+    'Your browser would not hand over the pointer, so the mouse steers by drag.';
+}
+
+// A refused request arrives here rather than as a missing `lock` event, on the
+// browsers that report it at all.
+document.addEventListener('pointerlockerror', () => {
+  if (mode === 'walk' && !isTouch) startMouseLookWalk();
 });
 $('walk-exit').addEventListener('click', () => setMode('edit'));
 $('touch-exit').addEventListener('click', () => setMode('edit'));
 
-walk.controls.addEventListener('lock', () => closeModal(walkOverlay));
+walk.controls.addEventListener('lock', () => {
+  // The real thing arrived after all — put the fallback away.
+  walk.enableMouseLook(false);
+  document.body.classList.remove('drag-walk');
+  $('walk-drag-note').classList.add('hidden');
+  $('walk-start').textContent = 'Click to Walk';
+  closeModal(walkOverlay);
+});
 walk.controls.addEventListener('unlock', () => {
   // In photo mode the released pointer is the point — you let it go to reach
   // the lens controls — so the overlay stays down. Same when the command
@@ -825,11 +865,11 @@ const TOOL_KEYS = {
   Equal: 'overlay', NumpadAdd: 'overlay',
 };
 const HINTS = {
-  floor: 'Floor — click / drag to lay floor in 4ft cells. A cell joins the room it can walk to, or starts one.',
-  wall: 'Wall — click or drag along a room boundary to raise a wall on it. G switches between solid, glass and railing; , and . curve one into an arc.',
+  floor: 'Floor — drag out a rectangle of floor. R switches to the 4ft brush. Cells join the room they can walk to, or start one.',
+  wall: 'Wall — click one end, then the other; the run you draw is the wall you get. S squares it to the grid, Alt draws off the grid, Esc stops the run. G switches between solid, glass and railing.',
   door: 'Door — pick single, double, cased opening or window, then click anywhere along a wall. Clicking the same kind again removes it.',
   room: 'Room — pick a name, color, floor finish and wall paint, then click a room to apply them',
-  erase: 'Eraser — drag to remove walls, doors, and floor a cell at a time; click a free-drawn room to delete it',
+  erase: 'Eraser — drag out a rectangle to clear floor, or switch to the brush with R. A stroke also takes walls and doors; click a free-drawn room to delete it.',
   poly: 'Polygon — click to place corners, click the first one (or Enter) to close. Alt = ignore snapping, Shift = 15° steps.',
   vertex: 'Shape — click a room to select it, Shift-click to select several. Drag a corner, Alt-click removes one. Delete removes the selection, R/⇧R rotates it 90°, M mirrors it, Ctrl+C/V/D copy/paste/duplicate it (with any props inside).',
   prop: 'Furniture — pick a piece, click to place. Click/drag a piece to move it, drag empty space to box-select. R rotates, Delete removes, Ctrl+C/V/D copy/paste/duplicate.',
@@ -908,11 +948,16 @@ function selectTool(t) {
   $('poly-extra').classList.toggle('hidden', t !== 'poly');
   $('prop-panel').classList.toggle('hidden', t !== 'prop');
   $('wall-panel').classList.toggle('hidden', t !== 'wall');
+  // The floor tool and the eraser share one panel: they draw and undraw the
+  // same cells, so one rectangle/brush switch governs both.
+  $('floor-tool-panel').classList.toggle('hidden', t !== 'floor' && t !== 'erase');
   $('door-panel').classList.toggle('hidden', t !== 'door');
   $('stair-panel').classList.toggle('hidden', t !== 'stair');
   $('template-panel').classList.toggle('hidden', t !== 'template');
   $('site-panel').classList.toggle('hidden', t !== 'site');
   $('overlay-panel').classList.toggle('hidden', t !== 'overlay');
+  if (t === 'wall') renderWallModes();
+  if (t === 'floor' || t === 'erase') renderFloorModes();
   if (t === 'stair') renderStairReadout();
   if (t === 'site') renderSitePanel();
   if (t === 'overlay') renderOverlayPanel();
@@ -924,6 +969,52 @@ function selectTool(t) {
 }
 
 $('hole-btn').addEventListener('click', () => editor.setHoleMode(!editor.holeMode));
+
+// --- how the drawing tools aim (Phase 25) ---
+//
+// Two toggles, one shape: a pair of buttons where exactly one is pressed, and
+// a readout under the wall's pair that says what the grid is doing right now.
+// Both settings live on the editor rather than on the design — they are
+// decisions about the drawing session, not facts about the building.
+function renderWallModes() {
+  const on = editor.wallOrtho;
+  $('wall-ortho').setAttribute('aria-pressed', String(on));
+  $('wall-free').setAttribute('aria-pressed', String(!on));
+  renderGridReadout();
+}
+function renderGridReadout() {
+  const p = editor.gridPitch;
+  const ft = p >= 1 ? `${p} ft` : `${Math.round(p * 12)} in`;
+  $('wall-grid-readout').innerHTML =
+    `Snapping to a <strong>${ft}</strong> grid — it gets finer as you zoom in.` +
+    (editor.wallOrtho ? '<br />Hold <kbd>Shift</kbd> for one run off the square.' : '');
+}
+$('wall-ortho').addEventListener('click', () => { editor.setWallOrtho(true); renderWallModes(); });
+$('wall-free').addEventListener('click', () => { editor.setWallOrtho(false); renderWallModes(); });
+
+function renderFloorModes() {
+  const on = editor.floorRect;
+  $('floor-rect').setAttribute('aria-pressed', String(on));
+  $('floor-brush').setAttribute('aria-pressed', String(!on));
+}
+$('floor-rect').addEventListener('click', () => { editor.setFloorRect(true); renderFloorModes(); });
+$('floor-brush').addEventListener('click', () => { editor.setFloorRect(false); renderFloorModes(); });
+
+// Whatever the active tool's panel shows about *itself*, brought back into
+// step after a key changed it underneath.
+function syncToolPanels() {
+  const t = editor.tool;
+  if (t === 'wall') renderWallModes();
+  else if (t === 'floor' || t === 'erase') renderFloorModes();
+  else if (t === 'stair') renderStairList();
+}
+
+// The grid's pitch is a function of the zoom, so the readout under the wall
+// toggles moves when the wheel does. Passive and cheap: the editor's own
+// handler has already changed the view height by the time this runs.
+canvas.addEventListener('wheel', () => {
+  if (editor.tool === 'wall') renderGridReadout();
+}, { passive: true });
 
 document.querySelectorAll('#toolbar .tool').forEach((b) =>
   b.addEventListener('click', () => selectTool(b.dataset.tool)));
@@ -1367,10 +1458,75 @@ STAIR_KINDS.forEach((k) => {
 });
 renderStairKinds();
 
+// --- what is already on this storey (Phase 25) ---
+//
+// The tool could always select, drag, rotate and delete a stair; there was
+// simply nothing on screen that said so, and a footprint you cannot find is a
+// stair you cannot remove. This lists them, lights the selected one, and gives
+// the three verbs a button each — the same three the pointer and the keyboard
+// call, through the same functions, so the two can never disagree.
+const STAIR_ICON = {
+  stair: '🪜', ramp: '📐', elevator: '🛗', opening: '⬛',
+};
+const STAIR_NOUN = {
+  stair: 'Staircase', ramp: 'Ramp', elevator: 'Elevator', opening: 'Floor opening',
+};
+
+function renderStairList() {
+  const host = $('stair-list');
+  const list = editor.stairList();
+  const selectedId = editor.stairSelectedId;
+  host.textContent = '';
+  if (!list.length) {
+    const p = document.createElement('p');
+    p.className = 'empty';
+    p.textContent = 'Nothing yet — click the plan to place one.';
+    host.appendChild(p);
+  }
+  list.forEach((link, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    const on = link.id === selectedId;
+    b.setAttribute('aria-pressed', String(on));
+    const n = list.filter((l, j) => l.type === link.type && j <= i).length;
+    // An elevator selected from the level it arrives at is still that
+    // elevator; saying which way it runs is the honest label for it.
+    const serves = link.from === state.currentFloor
+      ? `→ ${floorLabel(link.to)}` : `← ${floorLabel(link.from)}`;
+    b.innerHTML = `<span class="icon">${STAIR_ICON[link.type] || '·'}</span>` +
+      `<span>${STAIR_NOUN[link.type] || link.type} ${n}</span>` +
+      `<span class="where">${serves} · at ${Math.round(link.x)}, ${Math.round(link.z)} ft</span>`;
+    b.addEventListener('click', () => {
+      editor.stairSelect(link.id);
+      renderStairList();
+    });
+    host.appendChild(b);
+  });
+  $('stair-actions').classList.toggle('hidden', !selectedId);
+}
+
+function afterStairEdit() {
+  renderStairList();
+  renderStairReadout();
+  afterEdit();
+}
+
+$('stair-delete').addEventListener('click', () => {
+  if (editor.stairDelete()) afterStairEdit();
+});
+$('stair-rot-cw').addEventListener('click', () => { editor.stairRotate(false); afterStairEdit(); });
+$('stair-rot-ccw').addEventListener('click', () => { editor.stairRotate(true); afterStairEdit(); });
+const NUDGE = CELL;
+$('stair-nudge-up').addEventListener('click', () => { editor.stairNudge(0, -NUDGE); afterStairEdit(); });
+$('stair-nudge-down').addEventListener('click', () => { editor.stairNudge(0, NUDGE); afterStairEdit(); });
+$('stair-nudge-left').addEventListener('click', () => { editor.stairNudge(-NUDGE, 0); afterStairEdit(); });
+$('stair-nudge-right').addEventListener('click', () => { editor.stairNudge(NUDGE, 0); afterStairEdit(); });
+
 // The run a stair will have is fixed by the floor-to-floor height, so it can be
 // reported before anything is placed — the number that decides whether a
 // staircase fits the room you meant to put it in.
 function renderStairReadout() {
+  if (editor.tool === 'stair') renderStairList();
   const m = stairMetrics(state);
   const here = linksFrom(state, state.currentFloor);
   const above = state.floors[state.currentFloor + 1];
@@ -4484,6 +4640,14 @@ document.addEventListener('keydown', (e) => {
     }
     // Escape stops a tour before it stops the walkthrough.
     if (e.code === 'Escape' && tourPlay) { tourStop(); e.preventDefault(); return; }
+    // With a locked pointer Escape releases it and the `unlock` listener puts
+    // the overlay back. There is nothing to release in the drag fallback, so
+    // the same key has to raise the overlay itself.
+    if (e.code === 'Escape' && walk.mouseLook && !photoMode) {
+      openWalkOverlay();
+      e.preventDefault();
+      return;
+    }
   }
   if (mode !== 'edit' || typing) return;
   // Enter / Escape / Backspace / Delete belong to the polygon tools while one
@@ -4492,6 +4656,9 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     autosave(state);
     updateUndoButtons();
+    // S, R and the stair tool's keys change settings and selections the tool
+    // panels display. The editor owns them; the panels have to catch up.
+    syncToolPanels();
     return;
   }
   // Copy/paste/duplicate for whichever selection owns them — the prop tool's

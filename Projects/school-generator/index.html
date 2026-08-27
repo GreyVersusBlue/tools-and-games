@@ -287,9 +287,55 @@
       margin-top: 12px; border-top: 1px solid var(--panel-border); padding-top: 10px;
       font-size: var(--fs-sm); line-height: 1.7; color: var(--text-dim);
     }
-    #stair-panel .readout {
+    #stair-panel .readout, #wall-panel .readout {
       margin-top: 10px; font-size: var(--fs-sm); line-height: 1.6; color: var(--text-dim);
     }
+    /* Phase 25: the two drawing-mode toggles, and the vertical-link manager. */
+    .seg-toggle { display: flex; gap: 4px; }
+    .seg-toggle button {
+      flex: 1 1 0; min-width: 0; font-size: var(--fs-sm); padding: 5px 4px;
+      background: rgba(255, 255, 255, 0.06); border: 1px solid var(--panel-border);
+      border-radius: 5px; color: var(--text-dim); cursor: pointer;
+      line-height: 1.3;
+    }
+    .seg-toggle button:hover { color: var(--text); }
+    .seg-toggle button[aria-pressed="true"] {
+      background: var(--accent-soft); border-color: var(--accent); color: var(--text);
+    }
+    #stair-list { display: flex; flex-direction: column; gap: 3px; }
+    #stair-list .empty { font-size: var(--fs-sm); color: var(--text-dim); padding: 2px 0; }
+    #stair-list button {
+      display: grid; grid-template-columns: auto 1fr; gap: 1px 7px; width: 100%;
+      text-align: left; font-size: var(--fs-sm); padding: 5px 7px; cursor: pointer;
+      color: var(--text-dim); background: rgba(255, 255, 255, 0.04);
+      border: 1px solid transparent; border-radius: 5px;
+    }
+    #stair-list button .icon { grid-row: 1 / span 2; align-self: center; }
+    #stair-list button:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+    #stair-list button[aria-pressed="true"] {
+      background: var(--accent-soft); border-color: var(--accent); color: var(--text);
+    }
+    #stair-list .where {
+      opacity: 0.65; font-size: var(--fs-xs, 11px);
+      font-variant-numeric: tabular-nums; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    #stair-actions { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+    #stair-actions .flip { display: flex; gap: 4px; }
+    #stair-actions button {
+      flex: 1; font-size: var(--fs-sm); padding: 4px 2px;
+      background: rgba(255, 255, 255, 0.06); border: 1px solid var(--panel-border);
+      border-radius: 5px; color: var(--text-dim); cursor: pointer;
+    }
+    #stair-actions button:hover { color: var(--text); }
+    #stair-actions button.danger:hover { color: #ff8b84; border-color: #ff5f56; }
+    #stair-actions .nudge {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+    }
+    #stair-actions .nudge #stair-nudge-up { grid-area: 1 / 2; }
+    #stair-actions .nudge #stair-nudge-left { grid-area: 2 / 1; }
+    #stair-actions .nudge #stair-nudge-down { grid-area: 2 / 2; }
+    #stair-actions .nudge #stair-nudge-right { grid-area: 2 / 3; }
 
     /* prop panel */
     #palette-search {
@@ -766,6 +812,13 @@
       font-size: var(--fs-md); line-height: 1.7;
     }
     #walk-controls-hint:empty { display: none; }
+    #walk-drag-note {
+      font-size: var(--fs-md); color: var(--text-dim); line-height: 1.55;
+      background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-border);
+      border-radius: var(--r-sm); padding: 8px 10px; margin-bottom: 14px;
+    }
+    /* The drag fallback has a cursor to show; the locked pointer has none. */
+    body.drag-walk #view { cursor: grab; }
     /* On a touch device the keyboard sheet teaches keys nobody has. */
     body.touch #walk-keys { display: none; }
 
@@ -1164,6 +1217,7 @@
     body[data-mode="walk"] #overlay-panel,
     body[data-mode="walk"] #room-panel,
     body[data-mode="walk"] #wall-panel,
+    body[data-mode="walk"] #floor-tool-panel,
     body[data-mode="walk"] #door-panel,
     body[data-mode="walk"] #stair-panel,
     body[data-mode="walk"] #prop-panel,
@@ -1530,16 +1584,47 @@
   <div id="wall-panel" class="panel tool-slot hidden">
     <label>Wall type</label>
     <div id="wall-kinds"></div>
+    <label style="margin-top:12px">Drawing</label>
+    <div class="seg-toggle">
+      <button id="wall-ortho" type="button" aria-pressed="true"
+              title="Hold every run square to the grid (S)">⊾ Square to grid</button>
+      <button id="wall-free" type="button" aria-pressed="false"
+              title="Draw at any angle (S)">⟋ Freeform</button>
+    </div>
+    <div id="wall-grid-readout" class="readout"></div>
     <details class="keys"><summary>Keys &amp; tips</summary><div>
-      <kbd>G</kbd> cycle type &nbsp; <kbd>,</kbd> <kbd>.</kbd> curve<br />
+      Click one end of the wall, then the other — the run you draw is the wall
+      you get. Keep clicking to carry the run on; <kbd>Esc</kbd> stops it.<br />
+      <kbd>S</kbd> square/free &nbsp; <kbd>Shift</kbd> one free run<br />
+      <kbd>Alt</kbd> ignore the grid &nbsp; <kbd>G</kbd> cycle type<br />
+      <kbd>,</kbd> <kbd>.</kbd> curve the wall under the cursor<br />
+      Both ends land on the nearest grid intersection, and the grid gets finer
+      as you zoom in.<br />
       Glass and railings bound a room the same way a solid wall does — a
       doorway through one is still a doorway.<br />
-      Point at a wall and press <kbd>,</kbd> or <kbd>.</kbd> to bend it into an
-      arc; keep pressing to open or tighten the same curve. A curved room can
-      no longer be painted with the 4ft brush — reshape it with the vertex
-      tool instead.
+      A run drawn along a room's own boundary becomes that boundary's wall,
+      split to exactly the length you drew. A run anywhere else is a
+      free-standing wall you can still hang a door in.<br />
       Walls are drawn 0.4ft thick between two rooms and 0.8ft where the
       building meets the outside — that's read off the plan, not set here.
+    </div></details>
+  </div>
+
+  <div id="floor-tool-panel" class="panel tool-slot hidden">
+    <label>Drawing</label>
+    <div class="seg-toggle">
+      <button id="floor-rect" type="button" aria-pressed="true"
+              title="Drag out a whole rectangle of floor (R)">▭ Rectangle</button>
+      <button id="floor-brush" type="button" aria-pressed="false"
+              title="Paint one 4ft cell at a time (R)">✎ 4ft brush</button>
+    </div>
+    <details class="keys"><summary>Keys &amp; tips</summary><div>
+      <kbd>R</kbd> rectangle / brush<br />
+      A rectangle is dragged from one corner to the other and lays every 4ft
+      cell inside it at once. The brush is the older gesture and is still the
+      right one for an odd shape.<br />
+      Cells join whichever room they can walk to, or start a new one — which is
+      as true of a rectangle as it was of a stroke.
     </div></details>
   </div>
 
@@ -1570,12 +1655,28 @@
   <div id="stair-panel" class="panel tool-slot hidden">
     <label>Place</label>
     <div id="stair-kinds"></div>
+    <label style="margin-top:12px">On this level</label>
+    <div id="stair-list"></div>
+    <div id="stair-actions" class="hidden">
+      <div class="flip">
+        <button id="stair-rot-ccw" type="button" title="Turn 15° counter-clockwise (⇧R)">⟲</button>
+        <button id="stair-rot-cw" type="button" title="Turn 15° clockwise (R)">⟳</button>
+        <button id="stair-delete" type="button" class="danger" title="Remove it (Del)">🗑 Delete</button>
+      </div>
+      <div class="nudge">
+        <button id="stair-nudge-up" type="button" title="Move it 4 ft north">↑</button>
+        <button id="stair-nudge-left" type="button" title="Move it 4 ft west">←</button>
+        <button id="stair-nudge-down" type="button" title="Move it 4 ft south">↓</button>
+        <button id="stair-nudge-right" type="button" title="Move it 4 ft east">→</button>
+      </div>
+    </div>
     <div id="stair-readout" class="readout"></div>
     <details class="keys"><summary>Keys &amp; tips</summary><div>
-      Click to place &nbsp; <kbd>R</kbd>/<kbd>⇧R</kbd> rotate<br />
-      <kbd>Del</kbd> remove &nbsp; <kbd>Alt</kbd> ignore snapping<br />
-      Drag a run to move it. The blue outline is the hole it opens
-      in the level above.
+      Click empty ground to place &nbsp; <kbd>R</kbd>/<kbd>⇧R</kbd> rotate<br />
+      <kbd>Del</kbd> remove &nbsp; <kbd>Esc</kbd> deselect &nbsp; <kbd>Alt</kbd> ignore snapping<br />
+      Click one in the list above to select it wherever it is, then drag it on
+      the plan or nudge it with the arrows. An elevator can be picked from
+      either of the two levels it serves.
     </div></details>
   </div>
 
@@ -2034,6 +2135,11 @@
            visit; everything below it can wait until you want it. Keys that
            appear nowhere else get a second surface in the world — the lift
            says its own E on the HUD when you stand at its doors. -->
+      <p id="walk-drag-note" class="hidden">
+        Your browser will not hand this page the mouse pointer, so looking
+        around is a <strong>drag</strong> rather than a free mouse. Everything
+        else is the same.
+      </p>
       <div id="walk-keys" aria-label="Walkthrough keys">
         <div>
           <h3>First steps</h3>

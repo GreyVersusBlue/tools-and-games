@@ -163,6 +163,9 @@ export function reseedIds(state) {
   for (const l of state.links) max = Math.max(max, l.id);
   for (const f of state.floors || []) {
     for (const s of f.shapes || []) max = Math.max(max, s.id || 0);
+    // Phase 25's free-standing walls take ids off this same counter, so a wall
+    // line and a room can never name the same number.
+    for (const l of f.walls || []) max = Math.max(max, l.id || 0);
   }
   state.nextId = max + 1;
   return state.nextId;

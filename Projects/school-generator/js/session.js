@@ -149,6 +149,16 @@ export function recordsOf(design) {
       if (!sh || !sh.id) continue;
       out.set(recordKey('room', sh.id), { k: 'room', id: sh.id, f, v: sh });
     }
+    // Phase 25's free-standing walls (wallrun.js). Per-storey and id-keyed
+    // exactly as a room is, so they travel the same way and take the same
+    // newest-wins rule — a wall somebody else drew has to reach you, and a
+    // record kind this file did not know about would have been silently
+    // dropped from every op batch.
+    const lines = Array.isArray(floors[f].walls) ? floors[f].walls : [];
+    for (const line of lines) {
+      if (!line || !line.id) continue;
+      out.set(recordKey('wall', line.id), { k: 'wall', id: line.id, f, v: line });
+    }
   }
   for (const { kind, field } of LISTS) {
     const list = Array.isArray(design[field]) ? design[field] : [];
@@ -194,13 +204,13 @@ export function opsBetween(before, after) {
     // identical, which is why the floor is compared as well as the value.
     if (was && was.f === rec.f && same(was.v, rec.v)) continue;
     const op = { k: rec.k, id: rec.id, v: clone(rec.v) };
-    if (rec.k === 'room') op.f = rec.f;
+    if (rec.k === 'room' || rec.k === 'wall') op.f = rec.f;
     ops.push(op);
   }
   for (const [key, rec] of a) {
     if (b.has(key)) continue;
     const op = { k: rec.k, id: rec.id, v: null };
-    if (rec.k === 'room') op.f = rec.f;
+    if (rec.k === 'room' || rec.k === 'wall') op.f = rec.f;
     ops.push(op);
   }
   if (ops.length > RESYNC_OPS) {
@@ -218,27 +228,33 @@ function findIn(list, id) {
   return -1;
 }
 
-function applyRoom(design, op) {
+// A record that lives on one storey: a room (`shapes`) or a free-standing wall
+// (`walls`). One function for both, because "which storey is it on" is the
+// only thing either of them needs beyond an id.
+function applyOnFloor(design, op, field) {
   const floors = Array.isArray(design.floors) ? design.floors : [];
   let moved = false;
   // Off whatever storey it is on now — which is how a room that has been
   // dragged to another level travels as one record rather than as a delete
   // and an add that can arrive in either order.
   for (let f = 0; f < floors.length; f++) {
-    const at = findIn(floors[f].shapes, op.id);
+    const at = findIn(floors[f][field], op.id);
     if (at < 0) continue;
     if (op.v && f === op.f) {
-      floors[f].shapes[at] = clone(op.v);
+      floors[f][field][at] = clone(op.v);
       return true;
     }
-    floors[f].shapes.splice(at, 1);
+    floors[f][field].splice(at, 1);
+    // A storey with no free-standing walls left carries no key, so it writes
+    // none — the promise save-load.js keeps for the same array.
+    if (field === 'walls' && !floors[f].walls.length) delete floors[f].walls;
     moved = true;
   }
   if (!op.v) return moved;
   const f = Math.max(0, Math.min(floors.length - 1, Math.floor(op.f || 0)));
   if (!floors[f]) return moved;
-  if (!Array.isArray(floors[f].shapes)) floors[f].shapes = [];
-  floors[f].shapes.push(clone(op.v));
+  if (!Array.isArray(floors[f][field])) floors[f][field] = [];
+  floors[f][field].push(clone(op.v));
   return true;
 }
 
@@ -292,7 +308,8 @@ function applyDesignField(design, op) {
 // One op onto a design, in place. Returns whether anything moved.
 export function applyOp(design, op) {
   if (!isObj(design) || !isObj(op)) return false;
-  if (op.k === 'room') return applyRoom(design, op);
+  if (op.k === 'room') return applyOnFloor(design, op, 'shapes');
+  if (op.k === 'wall') return applyOnFloor(design, op, 'walls');
   if (op.k === 'design') return applyDesignField(design, op);
   const list = LISTS.find((l) => l.kind === op.k);
   if (!list) return false;
