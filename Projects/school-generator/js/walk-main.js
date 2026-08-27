@@ -88,6 +88,16 @@ function bootError(message) {
   walkOverlay.classList.add('hidden');
 }
 
+// The editor's boot guard lives in index.html and is not part of this bundle,
+// but render.js calls `window.__sgFail` when a WebGL context is lost and never
+// comes back — so the exported walkthrough answers on the same name, through
+// the panel it already has. Without this the message would be dropped and a
+// dead canvas would go back to being unexplained.
+if (typeof window !== 'undefined' && !window.__sgFail) {
+  window.__sgFail = (title, body, remedy) => bootError([title, body, remedy]
+    .filter(Boolean).join(' '));
+}
+
 let state = null;
 
 // ---------- everything below runs only once the design decodes ----------

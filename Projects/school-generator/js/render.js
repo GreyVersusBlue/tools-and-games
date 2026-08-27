@@ -38,6 +38,7 @@ import {
 import { wallProbe, solidBeside } from './walls.js';
 import { wallLinesOf, lineEnds, lineKind, lineOpenings } from './wallrun.js';
 import { gridPitch, majorEvery } from './snapgrid.js';
+import { failureText } from './bootcheck.js';
 import { overlaySize, showsOn } from './overlay.js';
 import { floorBounds, unionBounds, footprintMask } from './shadow.js';
 import {
@@ -514,8 +515,39 @@ function makeGroundAlbedo() {
 
 // ---------- render module ----------
 
+// How long a lost WebGL context gets to come back before the page says it is
+// gone. Generous on purpose: a driver reset on a laptop waking from sleep can
+// take a second or two, and a false alarm covers a design somebody is drawing.
+const CONTEXT_RESTORE_GRACE = 4000;   // ms
+
 export function initRender(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+
+  // A context can be taken back after it has been given: a machine waking
+  // from sleep, a driver reset, a phone short on memory. Without this the
+  // canvas freezes on its last frame while the chrome keeps responding to
+  // every click, which reads as "the tool is broken" rather than "the view
+  // went away".
+  //
+  // three.js already asks for the context back (its own listener calls
+  // preventDefault and its restore handler re-uploads everything), so the
+  // loss is often survivable and saying so immediately would be crying wolf.
+  // What is *not* survivable is a loss that never comes back — so this waits
+  // out the restore and only speaks if one doesn't arrive. Deliberately not a
+  // data question: the design is autosaved either way. See js/bootcheck.js.
+  let restoreWait = null;
+  canvas.addEventListener('webglcontextlost', () => {
+    clearTimeout(restoreWait);
+    restoreWait = setTimeout(() => {
+      const t = failureText('context-lost');
+      window.__sgFail?.(t.title, t.detail, t.remedy);
+    }, CONTEXT_RESTORE_GRACE);
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    clearTimeout(restoreWait);
+    restoreWait = null;
+  });
+
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;

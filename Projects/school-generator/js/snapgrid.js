@@ -104,13 +104,29 @@ export function runAngle(a, b) {
   return (deg + 360) % 360;
 }
 
-// "24 ft · 90°" — the live readout the wall tool rides on the cursor with.
-export function runLabel(a, b) {
-  const len = runLength(a, b);
-  return `${len.toFixed(len < 10 ? 1 : 0)} ft · ${Math.round(runAngle(a, b))}°`;
-}
-
 // Is this run square to the grid? A drawn wall that came out axis-aligned by
 // hand should read the same as one the toggle squared up.
 export const isAxisRun = (a, b, tol = 1e-6) =>
   Math.abs(b.x - a.x) <= tol || Math.abs(b.z - a.z) <= tol;
+
+// "24 ft · 90°" — the live readout the wall tool rides on the cursor with.
+//
+// The angle is rounded, and a rounded angle is a small lie in exactly the
+// case that matters: a run a hair off square still prints "90°", so the one
+// reading that would have warned you looks identical to the one that
+// wouldn't. When the rounding *would* claim square and the run isn't, the
+// label spends a decimal place saying so instead. This is what `isAxisRun`
+// was written for; until now nothing asked it.
+export function runLabel(a, b) {
+  const len = runLength(a, b);
+  const deg = runAngle(a, b);
+  // Both forms re-normalize after rounding: runAngle answers in [0, 360), but
+  // a bearing a whisker under 360 rounds *up* and out of it, and "360°" is
+  // not a bearing this readout is allowed to print.
+  const wrap = (n) => ((n % 360) + 360) % 360;
+  const rounded = wrap(Math.round(deg));
+  const angle = rounded % 90 === 0 && !isAxisRun(a, b)
+    ? `${wrap(Math.round(deg * 10) / 10).toFixed(1)}°`
+    : `${rounded}°`;
+  return `${len.toFixed(len < 10 ? 1 : 0)} ft · ${angle}`;
+}

@@ -435,6 +435,54 @@ export function nearestVertex(floor, x, z, maxDist = Infinity) {
   return best;
 }
 
+// ---------- naming ----------
+//
+// A room's *number*, read off the end of its name: "Room 101" is 101, "Lab
+// 204b" is 204. Deliberately the same reading `bindRoom` does in
+// timetable.js, because the two questions are one question — what number is
+// this room, for the purpose of telling it apart from the others.
+const ROOM_NUM = /(\d{1,4})[a-z]?\s*$/i;
+const roomNumberOf = (name) => {
+  const m = ROOM_NUM.exec(String(name ?? '').trim());
+  return m ? Number(m[1]) : null;
+};
+
+// The storey's hundred-block: 101 on the ground, 201 above it, and so on —
+// the convention `nameFor` in generate.js already numbers a generated school
+// by. Anything past the eighth storey keeps counting rather than wrapping.
+export const storeyBase = (floorIndex) => (Math.max(0, floorIndex | 0) + 1) * 100;
+
+// The next room name nobody has used yet, for a room about to be drawn on
+// this storey.
+//
+// This exists because the room-name field used to be seeded with the literal
+// string 'Room 101' and never advanced, so every room anyone drew by hand was
+// called Room 101 — three rectangles, three rooms, one name. That is worse
+// than untidy: `bindRoom` resolves an imported timetable's room token by
+// exact name, and a duplicate makes that answer a coin toss.
+//
+// Numbers are taken as used across the *whole building*, not just this
+// storey, for exactly that reason — a name has to identify a room among all
+// of them, and a stray "Room 201" typed on the ground floor should still push
+// the first floor's suggestion past it.
+export function nextRoomName(state, floorIndex = null) {
+  const floors = (state && Array.isArray(state.floors)) ? state.floors : [];
+  const i = floorIndex == null
+    ? Math.max(0, Math.min(floors.length - 1, state?.currentFloor | 0))
+    : floorIndex;
+  const used = new Set();
+  for (const floor of floors) {
+    for (const shape of shapesOf(floor)) {
+      const n = roomNumberOf(shape.name);
+      if (n != null) used.add(n);
+    }
+  }
+  const base = storeyBase(i);
+  let n = base + 1;
+  while (used.has(n)) n += 1;
+  return `Room ${n}`;
+}
+
 // ---------- construction ----------
 
 // Ids come off the same monotonic counter props and links use, so a shape, a

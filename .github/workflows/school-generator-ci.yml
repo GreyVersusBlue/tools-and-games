@@ -1,0 +1,86 @@
+# Checks for the School Generator. The tool is a build-free static page that is
+# deployed by copying files, so nothing in the deploy path ever executes a line
+# of its JavaScript — without this job a commit that breaks the whole suite
+# reaches production unremarked. See school-generator-audit-2026-08.md, 01.
+#
+# Three passes, in the order they get cheaper to debug:
+#
+#   suite   the pure modules — no browser, no dependencies, ~20s
+#   visual  the printed sheets and the editor chrome, against committed
+#           baselines — needs Playwright's Chromium
+#   tools   the twelve drawing tools driven with real pointer events on the
+#           real page — same browser, same optional-tooling bargain
+#
+# The two browser passes install Playwright at a pinned version rather than
+# through a package.json: the project deliberately has none, and this job is
+# not the place to introduce one.
+name: School Generator CI
+
+on:
+  pull_request:
+    paths:
+      - "Projects/school-generator/**"
+      - ".github/workflows/school-generator-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Projects/school-generator/**"
+      - ".github/workflows/school-generator-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: school-generator-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: Projects/school-generator
+
+jobs:
+  suite:
+    name: node --test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The glob, not the directory: `node --test test/` resolves the path as a
+      # module on Node 22 and dies with MODULE_NOT_FOUND before running a thing.
+      - name: Unit suite
+        run: node --test 'test/*.test.mjs'
+
+  browser:
+    name: visual baselines + tool smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright and its Chromium
+        run: npm install --no-save --no-package-lock playwright@1.62.1
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Visual regression
+        run: node test/visual/run.mjs
+
+      - name: Tool smoke test
+        run: node test/tools/run.mjs
+
+      - name: Keep the failing captures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: school-generator-failures
+          path: Projects/school-generator/test/visual/failures/
+          if-no-files-found: ignore

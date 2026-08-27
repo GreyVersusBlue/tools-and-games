@@ -256,3 +256,72 @@ rasterizer, so timings are pessimistic and state changes are not.
 
 **Not covered.** The walkthrough, VR and audio paths were exercised only as far
 as boot — they are not in the tool matrix above.
+
+---
+
+# Resolution
+
+All five findings and all five smaller marks were addressed in the same pass
+that produced this report. What changed, in the order the findings are ranked
+above.
+
+**01 — CI.** `.github/workflows/school-generator-ci.yml` runs on every pull
+request touching `Projects/school-generator/**` and on merges to `main`. Two
+jobs: the unit suite on bare Node, and the two browser passes (visual
+baselines, tool smoke) on a pinned Playwright. Failing captures upload as an
+artifact.
+
+**02 — Boot failure.** `js/bootcheck.js` holds the four ways the tool can fail
+to start and the words for each; `index.html` carries an inline classic-script
+guard that paints them over the chrome, and `test/bootcheck.test.mjs` fails if
+the guard's copy of the two sentences it must hard-code ever drifts from the
+module — the same drift alarm `theme.test.mjs` already holds over the `:root`
+block. `main.js` probes WebGL before `initRender` so the message is specific,
+and `render.js` now waits out a lost context and says so if it never comes
+back. All five paths were verified in a browser: no WebGL, `file://`, a module
+that throws while evaluating, a module that 404s, and — the one that must stay
+quiet — an error hours into a healthy session.
+
+**03 — Room naming.** `nextRoomName` in `shapes.js` reads the whole building
+and answers with a number nobody has used, per storey, filling gaps. The panel
+follows it as rooms appear and gets out of the way the moment somebody types a
+name of their own. Separately, `bindRoom` now refuses an ambiguous *name* the
+way it always refused an ambiguous number: two rooms called the same thing
+bind to neither, rather than to whichever came first.
+
+**04 — The tool layer.** `test/tools/run.mjs` drives all twelve tools with real
+pointer events on the real page and asserts the state delta, on the same
+optional-tooling terms as `test/visual/`. It carries a regression check for
+each of the two behavioural fixes above, and an `assertClear` guard so a
+gesture that would land on a floating panel fails loudly instead of passing
+quietly. This does not make the tool layer *unit*-testable — that still wants
+each `*edit.js` split into a pure half and a THREE half — but it does mean a
+tool that stops working now fails a check.
+
+**05 — Load weight.** Partly. `js/lazy.js` is the mechanism and `generate.js`
+— at 108 KB the largest deferrable module — now arrives when somebody presses
+Go: measured 3,616 KB → 3,531 KB and one request fewer. The rest of the 512 KB
+turned out to be pinned eager by the import graph rather than by the lack of a
+mechanism: `blueprint.js` by the minimap's per-frame calls, eight more modules
+by `save-load.js` normalizing their records, `report.js` and its tail by
+`main.js`'s synchronous panel renderers, and the collab stack by ~50 call sites
+including one at module top level. Each is a real change in untested UI code,
+so the map of what pins what is now in the WISHLIST backlog for a pass that can
+sit behind the new tool harness. The caching half is blocked on the same thing
+it was before — `libs/` is 1.3 MB and carries no version in its path, so it
+cannot be cached hard without renaming the directory.
+
+**The smaller marks.** Selecting a prop by clicking it now names the piece
+instead of saying nothing. `isAxisRun` is wired into `runLabel`, which no
+longer rounds a near-miss into a right angle — a run a hair off square prints
+`90.0°` rather than the `90°` that means something different. The suite's
+working invocation is documented in the new `README.md` and in the WISHLIST's
+conventions. `main.js` and `render.js` were left alone: the finding said not
+urgent and not a bug, and splitting them without the tool harness underneath
+would have been the least safe change in the set.
+
+**Verification.** 1,655 unit assertions pass (up from 1,622 — the new suites
+cover `bootcheck`, `lazy`, room numbering and binding ambiguity), all 8 visual
+baselines are unchanged at zero pixels moved, and the tool harness's seventeen
+checks are green across all twelve tools. `walk-template.html` was regenerated, which its own
+staleness check in the suite duly demanded after `render.js` changed.

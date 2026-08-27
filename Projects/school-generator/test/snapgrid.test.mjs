@@ -112,3 +112,28 @@ test('square runs are recognised however they were drawn', () => {
   assert.ok(isAxisRun({ x: 4, z: 0 }, { x: 4, z: 20 }));
   assert.ok(!isAxisRun({ x: 0, z: 0 }, { x: 20, z: 4 }));
 });
+
+test('the readout does not round a near-miss into a right angle', () => {
+  const a = { x: 0, z: 0 };
+  // Genuinely square: the round number is the truth, so print it.
+  assert.equal(runLabel(a, { x: 24, z: 0 }), '24 ft · 0°');
+  assert.equal(runLabel(a, { x: 0, z: 24 }), '24 ft · 90°');
+  // A hair off square rounds to 90 too — and that is the one reading a
+  // rounded angle must not give, because it is indistinguishable from the
+  // reading above and means something different.
+  const off = { x: 0.004, z: 24 };
+  assert.ok(!isAxisRun(a, off));
+  assert.equal(Math.round(runAngle(a, off)), 90, 'rounding alone would have said 90');
+  assert.equal(runLabel(a, off), '24 ft · 90.0°', 'so it spends a decimal saying it is not');
+  // An angle that was never going to round to a right angle is untouched.
+  assert.equal(runLabel(a, { x: 20, z: 20 }), '28 ft · 45°');
+});
+
+test('a run that comes back to 360 reads as 0, not as 360', () => {
+  // runAngle normalizes to [0, 360), so a bearing a whisker under 360 rounds
+  // up and out of the range the label is supposed to speak in.
+  const a = { x: 0, z: 0 };
+  const almost = { x: 20, z: -0.01 };
+  assert.ok(runAngle(a, almost) > 359.9);
+  assert.equal(runLabel(a, almost), '20 ft · 0.0°');
+});

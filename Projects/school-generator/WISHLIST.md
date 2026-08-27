@@ -12,9 +12,15 @@ rather than only a backlog.
 ## What it is
 
 A single-page tool at `Projects/school-generator/index.html`. No build step,
-no dependencies beyond a vendored three.js, no server required (though one
-exists — see `server/`). Open the file and it works; push the file and it is
-deployed.
+no dependencies beyond a vendored three.js, and nothing to install — push the
+file and it is deployed.
+
+It does need to be **served**, which this file used to claim it did not: the
+tool is ES modules, and a browser refuses those over `file://`, so opening
+`index.html` off the disk gets you the chrome and nothing behind it. Any
+static server will do — `npx serve`, `python3 -m http.server`, whatever is
+already on the machine. (The `server/` directory is a different thing
+entirely: the design store and the session relay, both optional.)
 
 It draws a school in plan and walks through it in first person: storeys,
 **rooms** (polygons with ids), walls, doors, windows, stairs/ramps/lifts, a
@@ -146,6 +152,16 @@ wrong.
   do. Keep at least one test per arc that *runs the thing* rather than
   calculates about it; three separate phases have shipped a regression that
   every calculating suite missed and only a simulating one caught.
+- **There are three test passes, and a tool belongs to the third.** `node
+  --test 'test/*.test.mjs'` is the numbers (and the glob is not decoration —
+  `node --test test/` dies with `MODULE_NOT_FOUND` on Node 22).
+  `test/visual/run.mjs` is the pictures. `test/tools/run.mjs` is the *tools*:
+  the twelve of them driven with real pointer events on the real page,
+  because `editor.js` and the six `*edit.js` modules all import three.js and
+  so cannot be loaded in Node at all. If you change what a tool does to the
+  state, that is the pass that will tell you. All three run in CI on every PR
+  that touches this directory; the last two need Playwright and are optional
+  locally — a machine without a browser loses them, not the suite.
 - **A partition belongs to exactly one of the two rooms it divides.** One
   builds a wall on it, the other leaves the segment open, decided by reading
   order at bake time. Anything that has to be true of *both* sides (borrowed
@@ -309,6 +325,26 @@ and add to this list rather than starting a new one.
 - The walk export ships three.js as source — 2.6 MB that would be a quarter
   of that gzipped, if a compressed variant is ever worth the complication —
   and leaves the headset out: `xr.js` rides the bundle but no VR button does.
+- **Most of the tool still loads before the first frame.** `lazy.js` exists
+  and `generate.js` (the largest module, 108 KB) now arrives when somebody
+  presses Go, but the boot payload is still ~3.5 MB over a hundred requests.
+  What stops the rest is not the mechanism, it is the import graph — the
+  obvious candidates are each pinned eager by something on the boot path:
+
+  | module | pinned by | what it would take |
+  | --- | --- | --- |
+  | `blueprint.js` (54 KB) | the **minimap**, which calls `computeFloorPlan` / `drawPlanBody` every frame in walk mode | a plan cache the minimap can fill asynchronously, or its own tiny plan builder |
+  | `agents.js` (61 KB), `timetable.js`, `phasing.js`, `rates.js`, `tour.js`, `models.js`, `haunt.js`, `occupancy.js` | `save-load.js`, which normalizes each of their records on load | a registry the loader consults, so a record is normalized by the module that owns it once that module is present |
+  | `gltf.js` (29 KB), `hunt.js`, `xr.js` | `render.js` | the scene asking for them at the moment it draws one, not at import |
+  | `report.js` and its tail (`cost`, `spec`, `egress`, `daylight`, `utilisation`, `takeoff`) | `main.js`'s panel renderers, which are synchronous | the panels becoming async, which is the same shape of change as the Generate button |
+  | the collab stack — `session`, `wire`, `presence`, `cloud` (54 KB) | ~50 call sites in `main.js`, one of them (`createRoster()`) at module top level | a `collab` object built on first use rather than at load |
+
+  None of it is hard; all of it is in the untested tool/UI layer, so do it
+  behind `test/tools/run.mjs` rather than in front of it.
+- The vendored `libs/` are 1.3 MB — 36% of the payload — and cannot be cached
+  hard because the paths carry no version. Putting the version in the
+  directory name would buy an `immutable` year on every return visit, and
+  costs one edit to the import map plus a rebuild of `walk-template.html`.
 
 ## Arc four — the guest
 

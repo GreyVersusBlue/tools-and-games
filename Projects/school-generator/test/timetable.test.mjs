@@ -212,6 +212,34 @@ test('a room binds by id first, then by name, then by room number', () => {
   assert.equal(bindRoom(pool, null), null);
 });
 
+test('two rooms with one name bind to neither, rather than to whichever came first', () => {
+  // A wrong room reported as a right one is the worst available outcome, and
+  // strictly worse than "I couldn't tell" — so an ambiguous name is refused
+  // exactly as an ambiguous number always has been. Designs drawn before
+  // nextRoomName existed are full of rooms called "Room 101".
+  const pool = fullPool(3);
+  const dupe = { ...pool[1], id: 'r0:sdupe', name: pool[1].name };
+  const withDupe = [...pool, dupe];
+  assert.equal(bindRoom(pool, pool[1].name).id, pool[1].id, 'one match still binds');
+  assert.equal(bindRoom(withDupe, pool[1].name), null, 'two matches bind to nothing');
+  // ...and an ambiguous *name* does not fall through to the number branch and
+  // guess from there either.
+  assert.equal(bindRoom(withDupe, pool[1].name, { byNumber: true }), null);
+});
+
+test('an unbindable section keeps its name so a later rebinding can find it', () => {
+  const pool = fullPool(3);
+  const dupe = { ...pool[1], id: 'r0:sdupe', name: pool[1].name };
+  const { timetable, bound, lost } = bindTimetable(
+    { sections: [{ id: 's1', cohort: 'c1', period: 1, room: null, roomName: pool[1].name }],
+      cohorts: [{ id: 'c1' }] },
+    [...pool, dupe]);
+  assert.equal(bound, 0);
+  assert.equal(lost, 1);
+  assert.equal(timetable.sections[0].room, null);
+  assert.equal(timetable.sections[0].roomName, pool[1].name, 'nothing is dropped');
+});
+
 test('a binding survives a rename, which is the whole point of the id', () => {
   const pool = fullPool(3);
   const tt = buildTimetable(pool, { students: 60, classSize: 25, periods: 4, seed: 1, teachers: 20 });
