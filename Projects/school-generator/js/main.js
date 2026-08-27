@@ -5036,6 +5036,64 @@ $('share-copy').addEventListener('click', async () => {
   }
 });
 
+// --- Phase 23: the walk you can hand to somebody ---
+//
+// The other door out of this dialog: not a link back into the tool but one
+// self-contained .html — the design, the walk-only runtime and three.js —
+// that opens from file:// with no network and no tool. The runtime template
+// is built by tools/export-walk.mjs, committed like a fixture (a staleness
+// test keeps it honest), and deployed beside index.html; all this button
+// does is fetch it, splice the current design into its slot, and download.
+// No node in sight — the bundling already happened, at commit time.
+//
+// The marker is the one string this file and the bundler have to agree on;
+// test/export-walk.test.mjs pins it on that side.
+const WALK_DESIGN_MARKER = '<!--SG-DESIGN-->';
+let walkTemplate = null;   // fetched once per session — it never changes under us
+
+async function downloadWalkExport() {
+  const note = $('share-walk-note');
+  const btn = $('share-walk');
+  btn.disabled = true;
+  note.textContent = 'Bundling…';
+  note.className = '';
+  try {
+    if (!walkTemplate) {
+      const resp = await fetch('./walk-template.html');
+      if (!resp.ok) throw new Error(`the walk template is missing (HTTP ${resp.status})`);
+      walkTemplate = await resp.text();
+      if (!walkTemplate.includes(WALK_DESIGN_MARKER)) {
+        walkTemplate = null;
+        throw new Error('the walk template has no design slot');
+      }
+    }
+    // The tracing image never draws in a walk, so it stays home; imported
+    // models do draw, so unlike the link they come along — a file has no
+    // 60 KB ceiling.
+    const payload = await encodeShare(serialize(state, { omitOverlay: true }));
+    const html = walkTemplate.replace(WALK_DESIGN_MARKER, () => payload);
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'school-walk.html';
+    a.click();
+    URL.revokeObjectURL(url);
+    note.textContent = `${Math.round(html.length / 1024)} KB — opens anywhere, even offline.`;
+  } catch (err) {
+    // The likeliest failure is file:// — this page opened from disk cannot
+    // fetch a sibling file, which is the one thing the no-server stance
+    // cannot paper over here.
+    note.textContent = `Could not build the file: ${err.message}. ` +
+      '(Opened from file:? Use the deployed tool, or run node tools/export-walk.mjs --design.)';
+    note.className = 'bad';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$('share-walk').addEventListener('click', downloadWalkExport);
+
 // A link that was *opened* rather than made. Runs once, after everything else
 // is wired, and replaces whatever the autosave restored — which is the right
 // way round: somebody who clicked a link wants the school in the link.

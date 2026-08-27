@@ -1,7 +1,7 @@
 # School Generator — Feature Wishlist
 
-**Status: twenty-two phases are shipped — three arcs plus the first four
-phases of arc four. Phases 23–24 are planned below and not started.** Three arcs took a grid editor
+**Status: twenty-three phases are shipped — three arcs plus the first five
+phases of arc four. Phase 24 is planned below and not started.** Three arcs took a grid editor
 to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -294,6 +294,9 @@ and add to this list rather than starting a new one.
   refusal with a sentence attached in `gltf.js`.
 - A tour moves the camera and does nothing else — no bell at a stop, no hour
   scrubbed, no audio on the recording.
+- The walk export ships three.js as source — 2.6 MB that would be a quarter
+  of that gzipped, if a compressed variant is ever worth the complication —
+  and leaves the headset out: `xr.js` rides the bundle but no VR button does.
 
 ## Arc four — the guest
 
@@ -309,8 +312,10 @@ Play — the player in the dark (Phase 24).
 
 **Phase 19 is the self-contained win** — reach for it any time; it leans on
 nothing below it. **Phase 21 was the quiet prerequisite, and it is shipped:**
-its sightline module is the thing Phase 24 hunts you with. **Phase 23 is the architectural
-risk of the arc** — the biggest single piece of surgery since the nav mesh.
+its sightline module is the thing Phase 24 hunts you with. **Phase 23 was
+called the architectural risk of the arc — the biggest single piece of
+surgery since the nav mesh — and shipped without needing the surgery:** see
+its closing note for why the risk never materialised.
 **Phase 24 is an and-also: skip it and the arc still closes.** Two of the
 six phases claim no backlog item at all — the guest was never on the list.
 
@@ -509,7 +514,7 @@ physics agree, because they are read from the same place. *Save:* — none,
 as planned (existing props records; no schema change). *Model:* **Claude
 Fable 5**, as named.
 
-## Phase 23 — The walk you can hand to somebody
+## Phase 23 — The walk you can hand to somebody *(shipped)*
 
 **Sharing the school still means sharing the tool.**
 
@@ -524,37 +529,58 @@ obstacle is `render.js`: 5,600 lines owning both edit and walk. The phase
 may carry it whole or split scene-build from edit-only, and should refuse to
 do more surgery than the export needs.
 
-- [ ] **`walk-main.js`, a second entry point.** Boots straight to
+- [x] **`walk-main.js`, a second entry point.** Boots straight to
   pointer-lock walk from an embedded design: deserialize → build → walk.
   Keeps collision, doors, the lift, footsteps and acoustics, the sun,
-  labels-by-sight, shove, the minimap, photo mode, the crowd toggle. Leaves
-  every editor tool, generation, analysis, the session stack — and Phase
-  22's hands, which write a file that doesn't exist there.
-- [ ] **`tools/export-walk.mjs`, the house bundler.** Walks the static
-  import graph from the entry point, topologically sorts it, strips imports
-  and rewrites exports into one `<script type="module">` with
-  `libs/three.module.js` inlined, and embeds the design with the
-  deflate-base64url codec `share.js` already has. A `node --test` suite
-  bundles the sample school and asserts the graph closed and the output
-  parses.
-- [ ] **An export button, no node in sight.** The runtime template ships
-  inside the deployed tool — built by the same script, committed like a
-  fixture with a staleness test — and the button splices the current design
-  in and downloads.
-- [ ] **A budget, stated.** three.js is over a megabyte of source; state the
-  target out loud — an exported file a chat client will accept, opening from
-  `file://` with zero network requests and zero console errors.
-- [ ] **Old exports open forever.** The exported file embeds its own
-  deserializer; a v12 tool must keep producing exports that don't care what
-  v13 looks like.
+  labels-by-sight, shove, the minimap, photo mode, the crowd toggle — and
+  with the crowd, the fire drill (K), follow (V), the bell and the PA, plus
+  Phase 20's moods riding the photo panel. Leaves every editor tool,
+  generation, analysis, the session stack — and Phase 22's hands, which
+  write a file that doesn't exist there. The minimap came without its
+  findings layer for the same reason: findings are the report's, and the
+  report is analysis.
+- [x] **`tools/export-walk.mjs`, the house bundler.** Walks the static
+  import graph from the entry point, topologically sorts it, and rewrites
+  each module into an IIFE returning its exports — imports become const
+  destructures of the modules already evaluated, `libs/three.module.js` and
+  its addons ride along as modules like any other — into one
+  `<script type="module">` spliced into `tools/walk-shell.html`. The design
+  travels as `share.js`'s deflate-base64url payload in its own text script
+  tag. `test/export-walk.test.mjs` bundles on every run and asserts the
+  graph closed, severed cleanly (editor, generator, session and analysis
+  all stayed home), and parses as one strict script.
+- [x] **An export button, no node in sight.** `walk-template.html` ships
+  beside index.html — built by the same script, committed like a fixture,
+  with a byte-for-byte staleness test that says exactly what to run when it
+  drifts — and the Share dialog's "Download walkable .html" fetches it,
+  splices the current design in at the one marker both sides pin, and
+  downloads. The tracing image stays home (it never draws in a walk);
+  imported models come along, because a file has no 60 KB ceiling.
+- [x] **A budget, stated.** The committed template must stay under 4 MB
+  (`TEMPLATE_BUDGET`, enforced by the suite); it landed at 2.6 MB — 67
+  modules, half of them three.js — so a finished export with a generated
+  school's ~50 KB payload passes any chat client's file limit with room to
+  spare. The real targets held too: the exported file opens from `file://`
+  with zero network requests and zero console errors, verified in headless
+  Chromium.
+- [x] **Old exports open forever.** The exported file embeds its own
+  deserializer and its own codec — the graph test pins `save-load.js` and
+  `share.js` into the bundle — so a v12 tool keeps producing exports that
+  don't care what v13 looks like.
 
-*Leans on:* `share.js`'s codec, `save-load.js`'s `deserialize`, and the
-never-import-three discipline that makes the graph cuttable; *collides
-with:* `render.js`'s size — the walk drags the whole scene builder with it
-unless split, and the split must be exactly as large as the export needs.
-*Save:* — none (embeds v11 as-is). *Model:* **Claude Fable 5** — module
-surgery over the entire graph; the bundler has to understand the model layer
-to sever it.
+*What fought back:* less than the plan feared, and the plan gets the credit:
+twenty phases of house style meant the graph had no default exports, no
+re-exports, no `export let` and no cycles anywhere in the walk's reach, and
+the vendored three keeps its hundreds of exports in one final statement — so
+the "biggest single piece of surgery since the nav mesh" was four regexes
+against a discipline, and `render.js` was carried whole rather than split
+(2.6 of the 4 MB budget said the split wasn't needed, and the phase was told
+to refuse surgery the export didn't need). The one real scare was a black
+viewport in the headless smoke test — chased into the *tool*, where
+`test/visual`'s own chrome-edit baseline turns out to have the same black
+viewport: a SwiftShader artifact, identical on both sides, and the export's
+scene draws fine where the tool's does. *Save:* — none, as planned (embeds
+v11 as-is). *Model:* **Claude Fable 5**, as named.
 
 ## Phase 24 — Lights out *(an "and also")*
 
