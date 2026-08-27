@@ -3,10 +3,12 @@
 import * as THREE from 'three';
 import {
   createState, ROOM_COLORS, MAX_FLOORS, CELL, EYE_H, floorBaseY,
-  floorLabel, floorShapeCount,
+  floorLabel, floorShapeCount, activeFloor,
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
 } from './grid.js';
-import { totalShapeArea, nextRoomName } from './shapes.js';
+import {
+  totalShapeArea, nextRoomName, shapesOf, shapeArea, interiorPoint,
+} from './shapes.js';
 import { buildSampleSchool } from './sample.js';
 import { catalogByCategory, catalogEntry, PROP_PAINTS } from './catalog.js';
 import { DECOR_PACKS, packByKey, packPaint, packTypes } from './decor.js';
@@ -766,6 +768,9 @@ function openWalkOverlay() {
   try { seen = localStorage.getItem('sg-walk-seen') === '1'; } catch { /* fine */ }
   if (more) more.open = !seen;
   try { localStorage.setItem('sg-walk-seen', '1'); } catch { /* fine */ }
+  // The start-point row is read off the storey every time the overlay opens:
+  // rooms get drawn, named and deleted between one walk and the next.
+  renderSpawnPanel();
   openModal(walkOverlay, $('walk-start'));
 }
 let mode = 'edit';
@@ -815,6 +820,107 @@ function setMode(m) {
   if (!lifePanel.classList.contains('hidden')) renderLifePanel();
 }
 
+// --- where the walk starts (Phase 26) ---
+//
+// Every walk before this one began in the same place: the deepest point inside
+// the storey's biggest room. That is a good guess and a bad rule — the biggest
+// room in a school is the gym, and "show me the entrance" then costs you the
+// length of the building at 12 ft/s, every single time.
+//
+// So a storey can carry a start point. It is one record on the floor
+// (`floor.spawn`, additive in the save file exactly like `floor.walls`), and
+// there are two ways to set it, because there are two ways people think about
+// where they want to be: *by room* — a list you pick "Gymnasium" out of — and
+// *by standing there* — you walked to the front door, and the front door is
+// where you want to arrive next time. Both write the same three numbers.
+const spawnRoomSel = $('walk-spawn-room');
+
+// Rooms on the storey, biggest first, so the list opens with the ones somebody
+// is likely to want and the cupboards are at the bottom.
+function spawnRooms() {
+  return shapesOf(activeFloor(state))
+    .map((sh) => ({ sh, area: shapeArea(sh) }))
+    .filter((r) => r.area > 0)
+    .sort((a, b) => b.area - a.area);
+}
+
+function renderSpawnPanel() {
+  const f = activeFloor(state);
+  const spawn = f && f.spawn;
+  const rooms = spawnRooms();
+  spawnRoomSel.innerHTML = '';
+  const add = (value, label) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = label;
+    spawnRoomSel.appendChild(o);
+  };
+  add('', rooms.length
+    ? `the biggest room — ${rooms[0].sh.name || 'unnamed'}`
+    : 'the middle of the level');
+  for (const { sh, area } of rooms) {
+    add(String(sh.id), `${sh.name || 'Room'} — ${Math.round(area).toLocaleString()} ft²`);
+  }
+  // A point somebody stood on rather than a room they named has no id to
+  // select, so the list grows an entry for it while it exists.
+  if (spawn && !spawn.room) add('spot', 'the spot you chose');
+  spawnRoomSel.value = spawn ? (spawn.room ? String(spawn.room) : 'spot') : '';
+  // ...and if the room it named has since been deleted, the record is still a
+  // point and still where the walk starts; say so rather than silently
+  // showing the default.
+  if (spawn && spawn.room && spawnRoomSel.value !== String(spawn.room)) {
+    add('spot', 'the spot you chose');
+    spawnRoomSel.value = 'spot';
+  }
+  $('walk-spawn-where').textContent = spawn
+    ? `${floorLabel(state.currentFloor)} starts at ${Math.round(spawn.x)}, ${Math.round(spawn.z)} ft.`
+    : `${floorLabel(state.currentFloor)} has no start point of its own — pick a room, ` +
+      'or walk somewhere and say "start here".';
+  $('walk-spawn-clear').disabled = !spawn;
+}
+
+// Write one. `move` is whether the walker should be stood on it now — true
+// when the point was chosen from the room list (you asked to be somewhere
+// else), false when it was taken from where the walker already is.
+function setSpawn(spawn, { floor = state.currentFloor, move = true } = {}) {
+  const f = state.floors[floor];
+  if (!f) return;
+  if (spawn) f.spawn = spawn; else delete f.spawn;
+  autosave(state);
+  renderSpawnPanel();
+  if (move && floor === state.currentFloor) walk.respawn();
+}
+
+spawnRoomSel.addEventListener('change', () => {
+  const v = spawnRoomSel.value;
+  if (v === 'spot') { renderSpawnPanel(); return; }   // already the spot
+  if (!v) { setSpawn(null); $('status').textContent = 'Walks start in the biggest room again.'; return; }
+  const room = shapesOf(activeFloor(state)).find((sh) => String(sh.id) === v);
+  if (!room) { renderSpawnPanel(); return; }
+  const p = interiorPoint(room);
+  // Facing is kept from whatever was there, or squared to the grid — a room
+  // has no natural direction to look in, and guessing one badly is worse than
+  // looking north.
+  const was = activeFloor(state).spawn;
+  setSpawn({ x: p.x, z: p.z, yaw: was ? was.yaw : 0, room: room.id });
+  $('status').textContent = `Walks of ${floorLabel(state.currentFloor)} start in ${room.name || 'that room'}.`;
+});
+
+$('walk-spawn-here').addEventListener('click', () => {
+  const at = walk.standing;
+  if (!at || !state.floors[at.floor]) return;
+  setSpawn({ x: at.x, z: at.z, yaw: at.yaw }, { floor: at.floor, move: false });
+  $('status').textContent = at.floor === state.currentFloor
+    ? `Walks of ${floorLabel(at.floor)} will start here, facing this way.`
+    : `${floorLabel(at.floor)} will start here — you walked up, so that is the ` +
+      `storey it was recorded on.`;
+});
+
+$('walk-spawn-clear').addEventListener('click', () => {
+  setSpawn(null);
+  $('status').textContent = 'Walks start in the biggest room again.';
+});
+
 $('mode-btn').addEventListener('click', () => setMode(mode === 'edit' ? 'walk' : 'edit'));
 $('walk-start').addEventListener('click', () => {
   // An AudioContext may only start inside a user gesture, and this click is
@@ -840,9 +946,16 @@ $('walk-start').addEventListener('click', () => {
   }
 });
 
+// The eight keys that mean "walk". WASD and the arrows, which walkthrough.js
+// treats as the same four (see MOVE_ALIAS there).
+const WALK_MOVE_KEYS = new Set([
+  'KeyW', 'KeyA', 'KeyS', 'KeyD',
+  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+]);
+
 // The fallback walk. Not offered as a choice — Pointer Lock is the better
 // gesture and is always asked for first — but never left as a dead end either.
-function startMouseLookWalk() {
+function startMouseLookWalk(why = 'refused') {
   if (walk.mouseLook) return;
   walk.enableMouseLook(true);
   document.body.classList.add('drag-walk');
@@ -850,9 +963,24 @@ function startMouseLookWalk() {
   $('walk-start').textContent = 'Drag to Walk';
   closeModal(walkOverlay);
   $('status').textContent =
-    'Walking — drag to look, WASD to move, Shift to run, Space to jump. ' +
-    'Your browser would not hand over the pointer, so the mouse steers by drag.';
+    'Walking — drag to look, WASD or the arrows to move, Shift to run, Space to jump.' +
+    (why === 'refused'
+      ? ' Your browser would not hand over the pointer, so the mouse steers by drag.'
+      : '');
 }
+
+// A drag on the canvas in walk mode, when nothing is armed, means the same
+// thing a movement key does: walk. Capture phase, so this runs before
+// walkthrough.js's own look handler on the same element and the drag that
+// arms the fallback is also the drag that turns the camera — otherwise the
+// first gesture is always swallowed.
+$('view').addEventListener('pointerdown', (e) => {
+  if (mode !== 'walk' || isTouch || photoMode) return;
+  if (walk.controls.isLocked || walk.mouseLook) return;
+  if (e.pointerType === 'touch' || e.button !== 0) return;
+  if (!walkOverlay.classList.contains('hidden')) return;   // the overlay is up
+  startMouseLookWalk('drag');
+}, true);
 
 // A refused request arrives here rather than as a missing `lock` event, on the
 // browsers that report it at all.
@@ -891,9 +1019,9 @@ const TOOL_KEYS = {
 const HINTS = {
   floor: 'Floor — drag out a rectangle of floor. R switches to the 4ft brush. Cells join the room they can walk to, or start one.',
   wall: 'Wall — click one end, then the other; the run you draw is the wall you get. S squares it to the grid, Alt draws off the grid, Esc stops the run. G switches between solid, glass and railing.',
-  door: 'Door — pick single, double, cased opening or window, then click anywhere along a wall. Clicking the same kind again removes it.',
+  door: 'Door — pick single, double, cased opening or window, then click anywhere along a wall you have already drawn. Draw the four walls first, then cut the openings. Clicking the same kind again removes it.',
   room: 'Room — pick a name, color, floor finish and wall paint, then click a room to apply them',
-  erase: 'Eraser — drag out a rectangle to clear floor, or switch to the brush with R. A stroke also takes walls and doors; click a free-drawn room to delete it.',
+  erase: 'Eraser — click anything to delete it: a wall, a staircase, a lift, a ramp, a floor opening, a piece of furniture, a whole room. Drag out a rectangle to clear floor instead, or switch to the brush with R.',
   poly: 'Polygon — click to place corners, click the first one (or Enter) to close. Alt = ignore snapping, Shift = 15° steps.',
   vertex: 'Shape — click a room to select it, Shift-click to select several. Drag a corner, Alt-click removes one. Delete removes the selection, R/⇧R rotates it 90°, M mirrors it, Ctrl+C/V/D copy/paste/duplicate it (with any props inside).',
   prop: 'Furniture — pick a piece, click to place. Click/drag a piece to move it, drag empty space to box-select. R rotates, Delete removes, Ctrl+C/V/D copy/paste/duplicate.',
@@ -4660,6 +4788,23 @@ document.addEventListener('keydown', (e) => {
   }
   // --- Phase 9's three, all walkthrough-only ---
   if (mode === 'walk' && !typing && !e.ctrlKey && !e.metaKey) {
+    // **The last resort, and the one that had been missing.** Walking is armed
+    // by one of three things: a pointer lock that arrived, the 400ms probe
+    // below `walk-start` that notices when one did not, or a touch. Every one
+    // of them can be missed — a lock that resolved after the probe and was
+    // then released, a page that was never given the pointer and whose
+    // `pointerlockerror` the browser did not fire, an overlay dismissed some
+    // other way — and when they all are, walk mode is *input-dead*: WASD does
+    // nothing, the mouse does nothing, and there is nothing on screen that
+    // says why. A movement key is an unambiguous statement that the person
+    // meant to walk, so it arms the drag fallback itself rather than being
+    // eaten.
+    if (WALK_MOVE_KEYS.has(e.code) && !isTouch && !photoMode
+        && !walk.controls.isLocked && !walk.mouseLook) {
+      startMouseLookWalk('key');
+      // Not returned: the key is also a movement key, and walkthrough.js's own
+      // listener has to see it to start moving on this very press.
+    }
     // Phase 22's hands, first: while something is carried, R belongs to the
     // thing in your hands rather than to the tour recorder.
     if (e.code === 'KeyQ' && !photoMode && !tourPlay) { handsAction(); return; }
@@ -6834,7 +6979,15 @@ $('walk-hunt').addEventListener('click', () => {
 const clock = new THREE.Clock();
 function loop() {
   requestAnimationFrame(loop);
-  const dt = Math.min(clock.getDelta(), 0.1);
+  // Two numbers, deliberately. `dt` is the clamped one everything that
+  // *animates* wants — a tab that was hidden for a minute should not advance
+  // the school day by a minute in one frame. `raw` is the frame's real elapsed
+  // time, and the walker gets that one: it does its own clamping and spends
+  // what it is given in fixed physics steps, which is the difference between
+  // a slow machine walking slowly and a slow machine looking like the keyboard
+  // is broken. See FIXED_STEP in walkthrough.js.
+  const raw = clock.getDelta();
+  const dt = Math.min(raw, 0.1);
   // A headset drives its own frames off its own clock (see render.js's
   // enterXR), so the page's loop does nothing at all while one is running —
   // including the render call, which has to happen inside an XR frame.
@@ -6842,7 +6995,7 @@ function loop() {
   if (mode === 'walk') {
     // A tour has the camera; the walker does not get a vote while one plays.
     if (tourPlay) tourUpdate(dt);
-    else walk.update(dt);
+    else walk.update(raw);
     audio.update(dt);
     // A tour has the camera too, and a hunt found by a camera flying itself
     // around is not a hunt.

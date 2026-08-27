@@ -790,6 +790,86 @@ before this build round-trips through it as the same bytes, for the
 fifteenth time. *Model:* **Claude Fable 5** — two pure modules, a schema
 append, and the collider contract.
 
+## Phase 26 — Take it out again *(shipped)*
+
+**Three sentences of feedback, and every one of them was about a thing the
+build could already do and could not be asked to do.**
+
+*"We need a way to delete placed walls, staircases, elevators, etc."* Every
+one of those could be deleted, and each from inside the tool that placed it:
+select it with the stairs tool and press Delete, select it with the furniture
+tool and press Delete. The tool actually labelled **Erase** rubbed out floor
+and nothing else — so a click on a staircase with the eraser selected did
+precisely nothing, which is indistinguishable from a build with no way to
+delete a staircase. That is the whole finding: a verb that exists but is not
+where anybody looks for it is a verb that does not exist.
+
+*"I'd like to be able to place doors on existing walls. Same with windows."*
+The door tool has cut openings into free-standing walls since Phase 25 and
+into room boundaries since Phase 1. What it could not do was be *hit*: its
+grab tolerance was a constant 1.6 feet, which at the zoom that fits a school
+on a screen is about two pixels of aim. And a click that landed on nothing
+said nothing, so the tool's answer to a near miss was silence — which reads
+as "this tool does not work", because from the chair it is the same thing.
+
+*"Walking mode still does not respond to WASD movement and mouse controls."*
+Measured, on a machine drawing this building with a software rasterizer:
+three seconds of held W moved the camera **2.4 feet**. Walking speed is 12
+ft/s, so it owed 36. The cause is two clamps that are individually reasonable
+and jointly ruinous — the page's loop hands the walker `min(delta, 0.1)`, and
+the walker refuses a step longer than 1.5ft — so a browser managing two
+frames a second simulates a fifth of every second and one managing eight
+simulates four fifths. Nothing is broken; the clock is. From a chair, a
+building that creeps when you hold W is a keyboard that does not work.
+
+- [x] **The eraser is a delete key.** One click with **Erase** removes
+  whatever is under it, whichever tool put it there: a free-standing wall, a
+  room's own boundary, a staircase, a ramp, an elevator, a plain floor
+  opening, a piece of furniture, a whole free-drawn room. Dragging still rubs
+  out floor by the rectangle, which is the gesture that was always right for
+  the one thing you erase by the square foot — so the decision is made on the
+  way *back up*: a press that travelled less than a cell is a click, and a
+  click with something under it is a delete. The status line says what went.
+- [x] **A grab tolerance that follows the zoom.** The door and eraser tools
+  size their reach off the view height, the same way the polygon handles, the
+  stair tool's grab box and the drawing grid already did — the old 1.6ft is
+  the floor, so nothing got harder to hit close up. And a door click that
+  lands on no wall now says so, and says what a door needs.
+- [x] **A walker with its own clock.** `walkthrough.js` accumulates the
+  frame's *real* elapsed time and spends it in fixed 1/60s physics steps,
+  however many this frame can afford, bounded at half a second of catch-up so
+  a tab that was hidden for a minute does not arrive through a wall. Movement
+  is now proportional to wall-clock time at any frame rate, and collision got
+  more honest for free: a step is never longer than a fifth of a foot.
+- [x] **Every way into a walk is armed.** Walking used to be armed by exactly
+  three things — a Pointer Lock that arrived, the 400ms probe that notices
+  when one did not, and a touch — and when all three were missed, walk mode
+  was *input-dead* with nothing on screen to say why. A movement key now arms
+  the drag fallback itself, and so does a drag on the canvas. The arrow keys
+  are the same four keys as WASD, because not everybody who opens a
+  floor-plan tool has played a first-person game.
+- [x] **A walk starts where you say.** Every walk began at the deepest point
+  inside the storey's biggest room — a good guess and a bad rule, since the
+  biggest room in a school is the gym and "show me the entrance" then costs
+  you the length of the building at 12 ft/s, every time. A storey can now
+  carry a start point: pick a room out of the walk overlay's list, or stand
+  somewhere and press **📍 Start here next time**. Changing it moves you
+  there straight away rather than at the next walk.
+
+*What fought back:* the eraser's press-or-drag ambiguity. Claiming the
+*press* for the object under it is one line and makes the rectangle eraser
+unusable along any edge of a room, because rubbing out a block of floor that
+starts on a wall is a thing people do constantly. Deferring to the pointer-up
+costs a held candidate and a second `pushUndo` — which is free, because
+`commit()` diffs and an empty diff pushes nothing. *Save:* v12 still,
+additive, and the sixteenth application of the one rule — a storey nobody has
+chosen a start point on writes no `spawn` key, so every file written before
+this build round-trips through it as the same bytes. *Tests:*
+`test/spawn.test.mjs` for the record, and five new checks in
+`test/tools/run.mjs` for the gestures — the erase, the door, the window, the
+pace of a held W and the start point are all things only a real pointer and a
+real keyboard can prove.
+
 ### What this arc leaves for a fifth
 
 Arc four deliberately turns outward, toward the person handed the result.

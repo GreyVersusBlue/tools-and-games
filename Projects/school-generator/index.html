@@ -873,6 +873,16 @@
       background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-border);
       border-radius: var(--r-sm); padding: 8px 10px; margin-bottom: 14px;
     }
+    /* Where the walk begins. One row above the keys sheet, because it is a
+       decision you make before you walk rather than a key you press while you
+       are walking. */
+    #walk-spawn {
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+      justify-content: center; margin-bottom: 16px;
+      font-size: var(--fs-md); color: var(--text-dim);
+    }
+    #walk-spawn select { max-width: 320px; }
+    #walk-spawn .where { flex-basis: 100%; font-size: var(--fs-sm); }
     /* The drag fallback has a cursor to show; the locked pointer has none. */
     body.drag-walk #view { cursor: grab; }
     /* On a touch device the keyboard sheet teaches keys nobody has. */
@@ -2196,11 +2206,18 @@
         around is a <strong>drag</strong> rather than a free mouse. Everything
         else is the same.
       </p>
+      <div id="walk-spawn">
+        <label for="walk-spawn-room">Start in</label>
+        <select id="walk-spawn-room"></select>
+        <button id="walk-spawn-here" title="Remember where you are standing right now as this level's start point">📍 Start here next time</button>
+        <button id="walk-spawn-clear" title="Go back to starting in the biggest room on the level">Clear</button>
+        <span class="where" id="walk-spawn-where"></span>
+      </div>
       <div id="walk-keys" aria-label="Walkthrough keys">
         <div>
           <h3>First steps</h3>
           <ul>
-            <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span class="what">move · mouse look</span></li>
+            <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span class="what">or the arrow keys — move · mouse look</span></li>
             <li><kbd>Shift</kbd> <span class="what">sprint</span> · <kbd>Space</kbd> <span class="what">jump</span></li>
             <li><kbd>E</kbd> <span class="what">call the lift, at its doors</span></li>
             <li><kbd>Esc</kbd> <span class="what">release the mouse</span> · <kbd>Tab</kbd> <span class="what">back to the editor</span></li>
