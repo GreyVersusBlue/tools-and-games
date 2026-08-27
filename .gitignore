@@ -71,3 +71,7 @@ node_modules/
 # The school generator's own server keeps designs on disk; the default
 # directory is beside it and is somebody's data, not the project's.
 Projects/school-generator/data/
+
+# A walk export built locally with --design (walk-template.html, the design-
+# less template, IS committed — this is the one with somebody's school in it).
+Projects/school-generator/walk.html
