@@ -1533,6 +1533,57 @@ export function initRender(canvas) {
 
   const markLightsDirty = () => { lightsDirty = true; };
 
+  // --- Phase 24: the flicker ---
+  //
+  // A multiplier applied *after* the budget, never through `lampLevel`: the
+  // early-return above trips on `lampLevel !== lastLampLevel`, so modulating
+  // the level itself would re-rank every fixture in the building per frame.
+  // Instead the budget's answers are cached as base intensities and the
+  // haunt's curve multiplies them at pool-write time — same twelve lights,
+  // same shader, zero recompiles. `fn(i, t)` is haunt.js's `flickerAt`
+  // curried by the caller; index -1 is "the room", for the spill and the
+  // fixture glow, so a corridor dies *with* its lights rather than staying
+  // lit while they fail.
+  let lampFlickerFn = null;
+  let flickClock = 0;
+  const litBase = new Float32Array(MAX_DYNAMIC_LIGHTS);
+  const spotBase = new Float32Array(MAX_SPOT_LIGHTS);
+  let fillBase = 0;
+
+  function cacheLightBases() {
+    for (let i = 0; i < lightPool.length; i++) litBase[i] = lightPool[i].intensity;
+    for (let i = 0; i < spotPool.length; i++) spotBase[i] = spotPool[i].intensity;
+    fillBase = fillAmbient;
+  }
+
+  function applyLampFlicker(dt) {
+    if (!lampFlickerFn) return;
+    flickClock += Math.min(dt, 0.1);
+    const t = flickClock;
+    for (let i = 0; i < lightPool.length; i++) {
+      lightPool[i].intensity = litBase[i] * lampFlickerFn(i, t);
+    }
+    for (let i = 0; i < spotPool.length; i++) {
+      spotPool[i].intensity = spotBase[i] * lampFlickerFn(64 + i, t);
+    }
+    const g = lampFlickerFn(-1, t);
+    houseAmbient.intensity = fillBase * g;
+    fixtureMat.emissiveIntensity = FIXTURE_GLOW * lampLevel * g;
+    for (const m of lampMats.values()) m.emissiveIntensity = lampLevel * LAMP_GLOW * g;
+  }
+
+  function setLampFlicker(fn) {
+    lampFlickerFn = typeof fn === 'function' ? fn : null;
+    if (!lampFlickerFn) {
+      // Steady light back, exactly as the budget left it.
+      for (let i = 0; i < lightPool.length; i++) lightPool[i].intensity = litBase[i];
+      for (let i = 0; i < spotPool.length; i++) spotPool[i].intensity = spotBase[i];
+      houseAmbient.intensity = fillBase;
+      fixtureMat.emissiveIntensity = FIXTURE_GLOW * lampLevel;
+      for (const m of lampMats.values()) m.emissiveIntensity = lampLevel * LAMP_GLOW;
+    }
+  }
+
   function updateDynamicLights(eye) {
     const moved = (eye.x - lastLightEye.x) ** 2 + (eye.y - lastLightEye.y) ** 2 +
       (eye.z - lastLightEye.z) ** 2;
@@ -1546,6 +1597,7 @@ export function initRender(canvas) {
       for (const l of spotPool) l.intensity = 0;
       fillAmbient = 0;
       applyAmbient();
+      cacheLightBases();
       return;
     }
 
@@ -1582,6 +1634,7 @@ export function initRender(canvas) {
     }
     fillAmbient = spillAmbient(spillLm) * lampLevel;
     applyAmbient();
+    cacheLightBases();
   }
 
   // Candela out of the conversion, scaled to this scene's exposure.
@@ -1609,6 +1662,10 @@ export function initRender(canvas) {
     updateDynamicLights(mode === 'edit'
       ? { x: editView.x, y: 12, z: editView.z }
       : cam.position);
+    // Phase 24's multiply — after the budget, walk mode only; edit mode is a
+    // drafting table and drafting tables do not flicker.
+    if (mode !== 'edit') applyLampFlicker(dt);
+    updateWritingFade(dt);
     // The sky dome and the sun disc travel with the camera so a 1,000ft sphere
     // never has to be bigger than the far plane, and always face it.
     skyDome.position.copy(cam.position);
@@ -5081,6 +5138,98 @@ export function initRender(canvas) {
   scene.add(huntGroup);
   let huntPlaces = [];
   let huntSpin = 0;
+
+  // --- Phase 24: the writing on the walls ---
+  //
+  // One small plane per writing, textured by `writingTex` off the same
+  // canvas machinery every other surface in the building comes from, inset
+  // off its wall by haunt.js's placement. All start invisible; the haunt
+  // reveals the first n in deal order and each fades in over a couple of
+  // seconds — long enough that you are never sure it wasn't there before.
+  const writeGroup = new THREE.Group();
+  writeGroup.visible = false;
+  scene.add(writeGroup);
+  let writeShown = 0;
+
+  function writingTex(text, seedIdx) {
+    const lines = String(text).split('\n');
+    return canvasTex(256, (ctx, S) => {
+      ctx.clearRect(0, 0, S, S);
+      ctx.fillStyle = 'rgba(24, 17, 14, 0.88)';
+      ctx.strokeStyle = 'rgba(24, 17, 14, 0.5)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const lineH = Math.min(64, (S - 40) / lines.length);
+      lines.forEach((line, li) => {
+        const size = Math.min(lineH * 0.8, (S * 1.6) / Math.max(6, line.length));
+        ctx.font = `${size}px "Comic Sans MS", "Segoe Print", cursive`;
+        const y = S / 2 + (li - (lines.length - 1) / 2) * lineH;
+        // Per-glyph jitter off the writing's own index — a hand wrote this,
+        // and not a steady one. Deterministic: no Math.random in the scene.
+        let x = S / 2 - (ctx.measureText(line).width / 2);
+        for (let g = 0; g < line.length; g++) {
+          const ch = line[g];
+          const wob = Math.sin(seedIdx * 13.7 + li * 5.1 + g * 2.3);
+          const cw = ctx.measureText(ch).width;
+          ctx.save();
+          ctx.translate(x + cw / 2, y + wob * 3);
+          ctx.rotate(wob * 0.07);
+          ctx.fillText(ch, 0, 0);
+          ctx.restore();
+          x += cw;
+        }
+      });
+    });
+  }
+
+  // `list` is haunt.js's `writingPlaces` output, verbatim; empty ends it.
+  function setWritings(list) {
+    for (const child of [...writeGroup.children]) {
+      writeGroup.remove(child);
+      child.geometry.dispose();
+      child.material.map?.dispose();
+      child.material.dispose();
+    }
+    writeShown = 0;
+    const places = list || [];
+    if (!places.length) { writeGroup.visible = false; return 0; }
+    for (const p of places) {
+      const mat = new THREE.MeshBasicMaterial({
+        map: writingTex(p.text, p.order),
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(p.w, 2.4), mat);
+      mesh.position.set(p.x, floorBaseY(built, p.floor) + 4.6, p.z);
+      mesh.rotation.y = p.yaw;
+      mesh.visible = false;
+      mesh.userData.order = p.order;
+      writeGroup.add(mesh);
+    }
+    writeGroup.visible = true;
+    return places.length;
+  }
+
+  // How many of them are revealed. The fade itself runs in `render` — see
+  // `updateWritingFade` — so a reveal is a target, not a snap.
+  function updateWritings(n) {
+    writeShown = Math.max(0, n | 0);
+  }
+
+  function updateWritingFade(dt) {
+    if (!writeGroup.visible) return;
+    for (const mesh of writeGroup.children) {
+      const want = mesh.userData.order < writeShown ? 0.92 : 0;
+      const o = mesh.material.opacity;
+      if (Math.abs(o - want) < 0.01) { mesh.material.opacity = want; }
+      else mesh.material.opacity = o + (want - o) * Math.min(1, dt * 0.8);
+      mesh.visible = mesh.material.opacity > 0.01;
+    }
+  }
   let crowdMeshes = null;
   let heatMesh = null;
   const _crowdColor = new THREE.Color();
@@ -5885,6 +6034,12 @@ export function initRender(canvas) {
     setLabelGate(fn) { labelGate = fn || null; },
     // --- Phase 11: the scavenger hunt ---
     setHunt, updateHunt,
+    // --- Phase 24: lights out ---
+    //
+    // `setLampFlicker` takes haunt.js's curve, curried; null restores steady
+    // light. The writings are haunt.js's placement, drawn here and revealed
+    // by count — one write and one read, the usual arrangement.
+    setLampFlicker, setWritings, updateWritings,
     get crowdVisible() { return crowdGroup.visible; },
     set crowdVisible(v) { crowdGroup.visible = !!v; },
     // Swing the doors. `leaves` is openings.js's own list — the same one

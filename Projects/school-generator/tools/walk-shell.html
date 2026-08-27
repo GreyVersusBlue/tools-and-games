@@ -157,6 +157,19 @@
     #touch-menu { left: 14px; top: 14px; }
     body.touch-walk #walk-hud { bottom: auto; top: 16px; left: 50%; max-width: 70vw; }
 
+    /* Phase 24 — shown only when the design asks for it */
+    #glitch {
+      position: fixed; inset: 0; z-index: 60; pointer-events: none;
+      width: 100vw; height: 100vh;
+    }
+    #haunt-end {
+      position: fixed; left: 50%; top: 45%; transform: translate(-50%, -50%);
+      max-width: 420px; padding: 24px 28px; z-index: 55; text-align: center;
+      background: #06070a; border: 1px solid #232a34;
+      border-radius: var(--r-lg); line-height: 1.6; color: #c9ced6;
+    }
+    #haunt-end h2 { font-size: 16px; margin-bottom: 8px; color: #e8e4d8; }
+
     /* a design that would not open */
     #boot-error {
       position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%);
@@ -204,6 +217,7 @@
       <div class="row">
         <button id="walk-start" class="primary">Click to Walk</button>
         <button id="walk-life">👥 People</button>
+        <button id="walk-hunt" class="hidden">⭐ Star hunt — find the hidden stars</button>
       </div>
       <p style="font-size:11px">
         Made with <a href="https://greyversusblue.com/Projects/school-generator/" style="color:var(--accent)">School Generator</a> —
@@ -251,6 +265,15 @@
     <button id="touch-sprint" class="touch-btn" aria-label="Sprint" aria-pressed="false">🏃</button>
     <button id="touch-lift" class="touch-btn" aria-label="Call the lift">🛗</button>
     <button id="touch-menu" class="touch-btn" aria-label="Menu">≡</button>
+  </div>
+
+  <canvas id="glitch" class="hidden" aria-hidden="true"></canvas>
+  <div id="haunt-end" class="hidden" role="dialog" aria-label="You got out">
+    <h2>You got out.</h2>
+    <p id="haunt-end-line"></p>
+    <div class="row" style="justify-content:center">
+      <button id="haunt-end-close">Walk the building again</button>
+    </div>
   </div>
 
   <div id="boot-error" class="hidden" role="alert"></div>

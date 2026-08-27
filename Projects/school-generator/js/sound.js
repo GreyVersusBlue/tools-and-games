@@ -38,6 +38,8 @@
 // Pure module: no three.js, no Web Audio. Exercised by test/sound.test.mjs.
 
 import { FLOOR_H } from './grid.js';
+import { segsCross } from './collide.js';
+import { leafSegment } from './openings.js';
 
 // ---------- the units ----------
 
@@ -152,11 +154,16 @@ export function tagRooms(sources, roomIdAt) {
 
 // ---------- what a wall costs ----------
 
-// How much of a source survives the trip to an ear in a different room. This
-// is deliberately one number per situation rather than a count of walls: the
-// model could tell us how many partitions a straight line crosses, but the
-// real path through a school is under a door and down a corridor, and a
-// careful ray cast would give a *more precise* answer to the wrong question.
+// How much of a source survives the trip to an ear in a different room. For
+// twenty phases this was deliberately one number per situation rather than a
+// count of walls, on the argument that the real path through a school is
+// under a door and down a corridor, and a careful ray would price the wrong
+// path. Phase 24 reverses that argument — see `pathLossRay` below — because
+// sight's segments already have the doorways cut out of them, so the ray
+// *is* the under-the-door path now, and hearing something one corridor over
+// is a question a constant cannot answer. `pathLoss` stays as the
+// no-geometry fallback and the cross-floor answer: a slab has no doorway in
+// it, and a plan-view cast has nothing to say about one.
 //
 // The figures are one partition's worth of transmission loss as it actually
 // arrives — a gypsum wall is rated near STC 40, but the door in it and the
@@ -179,6 +186,53 @@ export function pathLoss(src, ear) {
   return PATH_SHELL;
 }
 
+// ---------- the ray ----------
+
+// What one wall in the direct path costs. Less than PATH_WALL, because
+// PATH_WALL was pricing a wall *and* its unknown surroundings at once; a ray
+// that actually counts the partitions can afford to charge each one honestly
+// and let the count do the arguing.
+export const RAY_WALL_DB = 14;
+// Each wall after the first. Diminishing because the flanking paths that let
+// sound around one wall let it around three of them too.
+export const RAY_WALL_MORE = 7;
+// The most a same-storey path may lose. Silence has a floor: a building is
+// one connected volume, and nothing in it is ever *gone*.
+export const RAY_MAX_DB = 38;
+// The low-pass corner by crossings: a wall keeps the thump and eats the hiss,
+// and every further wall eats a little deeper. Index clamps at the end.
+export const RAY_CORNERS = [20000, 900, 500, 350];
+
+// `pathLoss`, finally by ray. `segs` is sightline.js's `sightBlockers` for
+// the storey both stand on — the segments with the doorways already cut out,
+// so an open doorway prices the path at zero the way a corridor really does —
+// and `leaves` is the collider's live door list, each occluding at whatever
+// angle it hangs right now: a shut door is one more wall, an open one is a
+// jamb-width sliver the cast almost never clips. Cross-storey stays
+// `PATH_SLAB` (a plan cast knows nothing about a slab), and no segments at
+// all falls back to the constant — the pre-Phase-24 answer, kept so a caller
+// without geometry still gets one.
+export function pathLossRay(src, ear, segs, leaves) {
+  if (!src || !ear) return PATH_OPEN;
+  if ((src.floor || 0) !== (ear.floor || 0)) return PATH_SLAB;
+  if (!segs) return pathLoss(src, ear);
+  let n = 0;
+  for (const s of segs) {
+    if (segsCross(src.x, src.z, ear.x, ear.z, s.ax, s.az, s.bx, s.bz)) n++;
+  }
+  if (leaves) {
+    for (const leaf of leaves) {
+      const s = leafSegment(leaf);
+      if (segsCross(src.x, src.z, ear.x, ear.z, s.ax, s.az, s.bx, s.bz)) n++;
+    }
+  }
+  if (!n) return PATH_OPEN;
+  return {
+    db: Math.min(RAY_MAX_DB, RAY_WALL_DB + (n - 1) * RAY_WALL_MORE),
+    hz: RAY_CORNERS[Math.min(n, RAY_CORNERS.length - 1)],
+  };
+}
+
 // ---------- the budget ----------
 
 export const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -194,12 +248,16 @@ export const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 export function budgetSounds(sources, ear, opts = {}) {
   const cap = opts.cap ?? MAX_VOICES;
   const floorDb = opts.floorDb ?? FLOOR_DB;
+  // `opts.pathFor(src, ear)` lets a caller with geometry hand in the ray —
+  // curried over the storey's segments and live leaves — while a caller
+  // without one keeps the constant. The budget itself doesn't care which.
+  const pathFor = typeof opts.pathFor === 'function' ? opts.pathFor : pathLoss;
   const at = ear && Number.isFinite(ear.x) ? ear : { x: 0, y: 0, z: 0, floor: 0, room: null };
 
   const ranked = [];
   for (const s of sources) {
     const d = dist3(s, at);
-    const path = pathLoss(s, at);
+    const path = pathFor(s, at);
     const db = dbAt(s.db, d) - path.db;
     ranked.push({ src: s, dist: d, db, path });
   }

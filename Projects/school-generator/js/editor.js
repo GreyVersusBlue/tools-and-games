@@ -253,8 +253,8 @@ export function initEditor({ canvas, renderApi, getState, onChange, onStatus, on
   // moment something was *first* written — the first site region, the first
   // grading stroke, the first tracing image — leaves that record behind and
   // the undo silently does nothing. Every optional record on the state
-  // (terrain, site, roof, code, life, timetable, overlay, tours, models) is
-  // one of these.
+  // (terrain, site, roof, code, life, timetable, overlay, tours, models,
+  // haunt) is one of these.
   function restore(data, held) {
     const s = getState();
     const next = { ...data };

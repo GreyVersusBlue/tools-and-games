@@ -30,9 +30,19 @@ import { doorEvents } from './sound.js';
 import { MAX_SHOVE } from './shove.js';
 import { deserialize } from './save-load.js';
 import { decodeShare } from './share.js';
-import { makeLabelGate, LABEL_MODES } from './sightline.js';
+import { makeLabelGate, LABEL_MODES, sightBlockers, doorPoints } from './sightline.js';
 import { MOODS, applyMood } from './sky.js';
-import { buildCollider, storeyAt, WALKER_R } from './collide.js';
+import { buildCollider, storeyAt, WALKER_R, updateDoorsFor } from './collide.js';
+import { startHunt, checkFind, huntWarmth, huntSummary } from './hunt.js';
+import {
+  normalizeHaunt, stageFor, stageKnobs, flickerAt, writingPlaces,
+  crashCurve, CRASH_S, slamCandidate, banishNode, escapeDoor,
+  LOCKED_TEXT, HAUNT_COUNT, HAUNT_ITEM,
+} from './haunt.js';
+import {
+  makeCreature, makeCreatureCtx, stepCreature, noteSlam, placeCreature,
+  CREATURE_R,
+} from './creature.js';
 import { terrainField, groundAt } from './terrain.js';
 import { buildNav } from './navgraph.js';
 import {
@@ -292,6 +302,401 @@ function boot() {
   function lifeFollowTick() {
     const who = walk.following;
     if (who && who.state === 'out') walk.setFollow(null);
+  }
+
+  // ---------- Phase 24: lights out ----------
+  //
+  // The whole mode rides one optional save record. An export whose design
+  // carries `haunt: { on: true }` shows one extra overlay button — a star
+  // hunt — and the hunt is the trap: each find (and, more slowly, the clock)
+  // ratchets haunt.js's stage machine, and everything below is just this
+  // shell turning the knobs that machine hands back. An export without the
+  // record shows nothing new at all: stealth holds in both directions.
+  //
+  // The pieces are the pure modules': hunt.js deals the stars, haunt.js
+  // paces the night and places the writings, creature.js is the one body.
+  // This file only wires — the same bargain the crowd struck, including the
+  // collider handoff: when the building empties, the haunt owns them.
+  const hauntRec = normalizeHaunt(state.haunt);
+  const haunt = {
+    armed: hauntRec.on, seed: hauntRec.seed, intensity: hauntRec.intensity,
+    on: false, ended: false,
+    stage: 0, knobs: null, elapsed: 0,
+    hunt: null, nav: null, site: null, warmOpts: null,
+    colliders: new Map(), segs: new Map(), doorPts: new Map(),
+    creature: null, cctx: null,
+    writings: [],
+    escape: null, lockedDoors: [],
+    slammed: new Map(),
+    crash: -1, crashDone: false,
+    prevAt: null, spawn: null, exodus: 0,
+    envAcc: 0, buzzAcc: 0, warmAcc: 0, lastDetune: 0,
+  };
+
+  function hauntColliderFor(i) {
+    let c = haunt.colliders.get(i);
+    if (!c) {
+      c = buildCollider(state, i, catalogEntry, { site: haunt.site });
+      haunt.colliders.set(i, c);
+    }
+    return c;
+  }
+  const hauntSegsFor = (f) => {
+    let s = haunt.segs.get(f);
+    if (!s) { s = sightBlockers(state, f); haunt.segs.set(f, s); }
+    return s;
+  };
+  const hauntDoorsFor = (f) => {
+    let d = haunt.doorPts.get(f);
+    if (!d) { d = doorPoints(state, f); haunt.doorPts.set(f, d); }
+    return d;
+  };
+
+  const playerEye = () => {
+    const at = walk.at;
+    return { x: at.x, z: at.z, floor: at.floor };
+  };
+  const _lookV = new THREE.Vector3();
+  function playerLook() {
+    renderApi.walkCamera.getWorldDirection(_lookV);
+    const d = Math.hypot(_lookV.x, _lookV.z) || 1;
+    return { x: _lookV.x / d, z: _lookV.z / d };
+  }
+  const earY = () => renderApi.walkCamera.position.y;
+
+  function hauntStart() {
+    if (haunt.on) return;
+    haunt.on = true;
+    haunt.site = terrainField(state);
+    haunt.nav = buildNav(state, { siteField: haunt.site });
+    haunt.hunt = startHunt(haunt.nav, {
+      seed: haunt.seed, count: HAUNT_COUNT, items: [HAUNT_ITEM], indoors: true,
+    });
+    haunt.warmOpts = { nav: haunt.nav };
+    haunt.writings = writingPlaces(state, haunt.seed);
+    haunt.spawn = playerEye();
+    renderApi.setHunt(haunt.hunt.places);
+    renderApi.setWritings(haunt.writings);
+    // One closure for the whole night: it reads the live knobs, so the
+    // renderer is handed a function once rather than a policy per frame.
+    renderApi.setLampFlicker((i, t) => {
+      const k = haunt.knobs;
+      if (!k || (k.lampScale >= 1 && !(k.flickerDepth > 0))) return 1;
+      return k.lampScale * flickerAt(k, t, i);
+    });
+    // Stage 0 wants the school day at its liveliest.
+    if (!life.on) lifeStart();
+    const n = haunt.hunt.places.length;
+    walkHud.textContent =
+      `⭐ ${n} gold stars are hidden in the building — the HUD reads warmer as you close in.`;
+    const btn = $('walk-hunt');
+    if (btn) btn.classList.add('hidden');
+  }
+
+  // The exodus is over — or never happened — and the haunt owns the
+  // colliders now, the same bargain the crowd struck.
+  function hauntTakeBuilding() {
+    if (life.on) lifeStop();
+    walk.setColliders(hauntColliderFor);
+    walk.setLifts(null);
+  }
+
+  function hauntEnterStage(index, knobs) {
+    haunt.stage = index;
+    if (index >= 1 && life.on) life.rate = 0;   // the night owns the clock now
+    if (index === 1) {
+      // The final bell, and everyone files out. The drill machinery, re-aimed
+      // — deliberately without the klaxon or the PA: a dismissal is a bell.
+      audio.ring();
+      if (life.on && life.ctx) {
+        life.drill = true;
+        life.ctx.mode = 'drill';
+        life.ctx.egress = null;
+        life.ctx.elapsed = 0;
+        clearCrowd(life.crowd);
+        retargetAll(life.ctx, life.agents);
+      }
+      haunt.exodus = 75;
+      walkHud.textContent = '🔔 That’s the last bell.';
+    } else if (index === 2) {
+      hauntTakeBuilding();
+      walkHud.textContent = 'The building is empty again.';
+    } else if (index === 3 && !haunt.creature) {
+      haunt.cctx = makeCreatureCtx(haunt.nav, {
+        state,
+        colliderFor: hauntColliderFor,
+        sightSegsFor: hauntSegsFor,
+        leavesFor: (f) => hauntColliderFor(f).doors,
+        playerAt: playerEye,
+        playerLook,
+        intensity: haunt.intensity,
+      });
+      const far = banishNode(haunt.nav, playerEye());
+      haunt.creature = makeCreature({ seed: haunt.seed, at: far || playerEye() });
+      // One more body: it pushes on the camera and it opens doors, through
+      // the same walkthrough calls the crowd used.
+      walk.setBodies((f) => (haunt.creature && haunt.creature.floor === f
+        ? [{ id: haunt.creature.id, x: haunt.creature.x, z: haunt.creature.z, r: CREATURE_R, open: true }]
+        : null));
+    } else if (index === 4) {
+      haunt.escape = escapeDoor(haunt.nav, playerEye(), haunt.seed);
+      haunt.lockedDoors = [];
+      for (const e of haunt.nav.exits) {
+        if (haunt.escape && e.id === haunt.escape.id) continue;
+        const collider = hauntColliderFor(e.floor || 0);
+        const leaves = (collider.doors || []).filter((l) =>
+          Math.hypot(l.cx - e.x, l.cz - e.z) <= ((e.w || 3) / 2 + 2));
+        haunt.lockedDoors.push({ exit: e, leaves, toast: 0 });
+      }
+      walkHud.textContent = knobs.hud || 'Get out.';
+    }
+  }
+
+  function hauntSlam(door, floorIndex) {
+    const collider = hauntColliderFor(floorIndex);
+    const leaves = (collider.doors || []).filter((l) =>
+      Math.hypot(l.cx - door.x, l.cz - door.z) <= ((door.w || 3) / 2 + 1.5));
+    if (!leaves.length) return;
+    for (const l of leaves) haunt.slammed.set(l, 3.2);
+    if (haunt.cctx && haunt.creature) {
+      noteSlam(haunt.cctx, haunt.creature, { x: door.x, z: door.z, floor: floorIndex });
+    }
+    audio.door('shut', { x: door.x, y: earY() - 1, z: door.z }, 1.9);
+  }
+
+  function hauntCreatureTick(dt, knobs) {
+    const c = haunt.creature;
+    if (!c) return;
+    haunt.cctx.chaseArmed = knobs.chaseArmed;
+    const at = walk.at;
+    // The walkthrough drives the player's storey's doors with the creature
+    // merged in; a creature elsewhere drives its own — the crowd's
+    // skipFloors bargain, one body wide.
+    if (c.floor !== at.floor) {
+      const collider = hauntColliderFor(c.floor);
+      if (updateDoorsFor(collider, [{ x: c.x, z: c.z, open: true }], dt)) {
+        renderApi.poseDoors(collider.doors);
+      }
+    }
+    for (const ev of stepCreature(haunt.cctx, c, dt)) {
+      const pos = { x: ev.x, y: earY(), z: ev.z };
+      if (ev.kind === 'thud') audio.thud(pos, 0.8);
+      else if (ev.kind === 'chase-start') audio.thud(pos, 1.5);
+      else if (ev.kind === 'caught') hauntCaught();
+    }
+    audio.creatureVoice({
+      at: { x: c.x, y: c.y + 4, z: c.z },
+      mode: c.state === 'chase' ? 'chase' : 'lurk',
+    });
+    if (c.state === 'chase' && haunt.prevAt && haunt.prevAt.floor === at.floor
+        && Math.hypot(c.x - at.x, c.z - at.z) < 30) {
+      const door = slamCandidate(hauntDoorsFor(at.floor), haunt.prevAt, at);
+      if (door) hauntSlam(door, at.floor);
+    }
+    // The creature rides the crowd's meshes — they never share a frame, by
+    // the stage machine's own invariant, and this guard says so.
+    if (!life.on) {
+      renderApi.setCrowd([{ ...c, state: c.state === 'freeze' ? 'idle' : 'walk' }],
+        { recolor: true });
+    }
+  }
+
+  function hauntFlightTick(dt) {
+    const at = walk.at;
+    for (const d of haunt.lockedDoors) {
+      for (const l of d.leaves) l.open = 0;
+      d.toast = Math.max(0, d.toast - dt);
+      if ((d.exit.floor || 0) === at.floor && d.toast <= 0
+          && Math.hypot(d.exit.x - at.x, d.exit.z - at.z) < 5) {
+        d.toast = 6;
+        walkHud.textContent = LOCKED_TEXT;
+        audio.door('latch', { x: d.exit.x, y: earY() - 1, z: d.exit.z }, 1.6);
+      }
+    }
+    if (at.floor === 0 && haunt.nav.roomIdAt(0, at.x, at.z) === null) hauntEscaped();
+  }
+
+  function hauntEscaped() {
+    if (haunt.ended) return;
+    haunt.ended = true;
+    audio.creatureVoice(null);
+    audio.setDetune(0);
+    renderApi.setLampFlicker(null);
+    renderApi.setCrowd([], {});
+    const sum = huntSummary(haunt.hunt);
+    $('haunt-end-line').textContent =
+      `${sum.found} star${sum.found === 1 ? '' : 's'}, and the one door that still opens.`;
+    $('haunt-end').classList.remove('hidden');
+    if (walk.controls.isLocked) walk.controls.unlock();
+  }
+
+  // ---------- the fake crash ----------
+  //
+  // Caught. The screen tears into static, holds one honest second of error
+  // card on black, and wakes at the entrance — finds kept, creature banished
+  // to the far side of the building. haunt.js's `crashCurve` is the numbers;
+  // this canvas is only the painter. `prefers-reduced-motion` runs the whole
+  // thing at double speed, which halves the static.
+  const glitch = $('glitch');
+  const glitchCtx = glitch ? glitch.getContext('2d') : null;
+  const reducedMotion = typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function drawGlitch(c) {
+    if (!glitchCtx) return;
+    const w = window.innerWidth, h = window.innerHeight;
+    if (glitch.width !== w) glitch.width = w;
+    if (glitch.height !== h) glitch.height = h;
+    glitchCtx.clearRect(0, 0, w, h);
+    if (c.phase === 'black') {
+      glitchCtx.fillStyle = '#000';
+      glitchCtx.fillRect(0, 0, w, h);
+      if (c.text) {
+        glitchCtx.fillStyle = '#c9ced6';
+        glitchCtx.font = '15px system-ui, sans-serif';
+        glitchCtx.textAlign = 'center';
+        glitchCtx.fillText('school-walk.html is not responding', w / 2, h / 2 - 12);
+        glitchCtx.fillStyle = '#7d838c';
+        glitchCtx.font = '12px system-ui, sans-serif';
+        glitchCtx.fillText('An error report has been saved.', w / 2, h / 2 + 12);
+      }
+      return;
+    }
+    if (c.noise > 0) {
+      const cell = 6;
+      for (let y = 0; y < h; y += cell) {
+        for (let x = 0; x < w; x += cell) {
+          if (Math.random() > c.noise) continue;
+          const v = Math.floor(Math.random() * 255);
+          glitchCtx.fillStyle = `rgb(${v},${v},${v})`;
+          glitchCtx.fillRect(x, y, cell, cell);
+        }
+      }
+    }
+    for (let i = 0; i < c.bars; i++) {
+      const y = Math.random() * h;
+      const bh = 4 + Math.random() * 26;
+      glitchCtx.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,0.85)' : 'rgba(210,214,220,0.6)';
+      glitchCtx.fillRect(0, y, w, bh);
+    }
+  }
+
+  function hauntCaught() {
+    if (haunt.crash >= 0) return;
+    haunt.crash = 0;
+    haunt.crashDone = false;
+    const at = walk.at;
+    audio.thud({ x: at.x, y: earY(), z: at.z }, 1.5);
+  }
+
+  function hauntRespawn() {
+    const p = haunt.spawn || { x: 0, z: 0, floor: 0 };
+    renderApi.walkCamera.position.set(
+      p.x, (p.floor || 0) * (state.floorHt || 12) + EYE_H, p.z);
+    if (haunt.creature && haunt.nav) {
+      const far = banishNode(haunt.nav, p);
+      if (far) placeCreature(haunt.creature, far);
+    }
+    walkHud.textContent = '…the stars you found are still found.';
+  }
+
+  function hauntCrashTick(dt) {
+    haunt.crash += dt * (reducedMotion ? 2 : 1);
+    const c = crashCurve(haunt.crash);
+    if (glitch) glitch.classList.remove('hidden');
+    drawGlitch(c);
+    if (!haunt.crashDone && (c.phase === 'black' || c.phase === 'wake')) {
+      haunt.crashDone = true;
+      hauntRespawn();
+    }
+    if (haunt.crash >= CRASH_S) {
+      haunt.crash = -1;
+      if (glitch) glitch.classList.add('hidden');
+    }
+  }
+
+  // ---------- the night, once a frame ----------
+  function hauntUpdate(dt) {
+    if (haunt.crash >= 0) { hauntCrashTick(dt); return; }
+    if (!haunt.on || haunt.ended) return;
+    haunt.elapsed += dt;
+    const sum = huntSummary(haunt.hunt);
+    const st = stageFor(haunt, { finds: sum.found, total: sum.total, elapsed: haunt.elapsed });
+    const knobs = stageKnobs(st.index, st.t, haunt);
+    haunt.knobs = knobs;
+    if (st.index !== haunt.stage) hauntEnterStage(st.index, knobs);
+
+    const at = walk.at;
+    const found = checkFind(haunt.hunt, at);
+    if (found) {
+      audio.chime({ x: found.x, y: earY(), z: found.z });
+      const s2 = huntSummary(haunt.hunt);
+      walkHud.textContent = s2.done
+        ? '⭐ That’s all of them.'
+        : `⭐ ${s2.found} of ${s2.total}.`;
+      haunt.warmAcc = -4;
+    }
+    renderApi.updateHunt(at, haunt.hunt.found, dt);
+
+    // The warmth line, every few seconds while stars are still out — routed
+    // over the navgraph, so a star one wall away reads cool the long way round.
+    haunt.warmAcc += dt;
+    if (haunt.warmAcc >= 4 && !sum.done && haunt.stage < 4) {
+      haunt.warmAcc = 0;
+      const w = huntWarmth(haunt.hunt, at, haunt.warmOpts);
+      if (w) walkHud.textContent = `⭐ ${sum.found}/${sum.total} · ${w.label} — ${w.place.hint}`;
+    }
+
+    // The sun, drifted — throttled, because each env write re-runs the light
+    // budget, fine at a half hertz and ruinous at sixty.
+    if (knobs.sunMinutes !== null) {
+      haunt.envAcc += dt;
+      if (haunt.envAcc >= 2 && state.env.minutes < knobs.sunMinutes) {
+        // Four game-minutes a second: a whole afternoon dies in about three
+        // real minutes, which is one dusk stage — fast enough to be *going*,
+        // slow enough that nobody sees a sun move.
+        state.env.minutes = Math.min(knobs.sunMinutes,
+          state.env.minutes + Math.ceil(haunt.envAcc * 4));
+        haunt.envAcc = 0;
+        renderApi.setEnvironment(state.env);
+      }
+    }
+
+    renderApi.updateWritings(Math.round(knobs.writings * haunt.writings.length));
+    if (Math.abs(knobs.detuneCents - haunt.lastDetune) > 1.5) {
+      haunt.lastDetune = knobs.detuneCents;
+      audio.setDetune(knobs.detuneCents);
+    }
+
+    // The failing fixture's ballast, overhead, gated by the same curve that
+    // dims it — light and sound fail together or the trick reads as two.
+    haunt.buzzAcc += dt;
+    if (haunt.buzzAcc >= 0.1) {
+      haunt.buzzAcc = 0;
+      const dip = knobs.flickerDepth > 0
+        ? 1 - flickerAt(knobs, haunt.elapsed, knobs.failing) : 0;
+      audio.buzz({ x: at.x, y: earY() + 4, z: at.z }, Math.min(1, dip * 2.2));
+    }
+
+    // Slammed leaves stay shut until their lockout decays.
+    for (const [l, s] of [...haunt.slammed]) {
+      l.open = 0;
+      if (s - dt <= 0) haunt.slammed.delete(l);
+      else haunt.slammed.set(l, s - dt);
+    }
+
+    // The dismissal's tail: when the last of the crowd is out — or 75s pass,
+    // stragglers vanishing under the first long blackout — the building is
+    // the haunt's.
+    if (haunt.stage === 1 && life.on) {
+      haunt.exodus -= dt;
+      const inside = life.agents.some((a) => a.state !== 'out');
+      if (haunt.exodus <= 0 || !inside) hauntTakeBuilding();
+    }
+
+    if (knobs.creature) hauntCreatureTick(dt, knobs);
+    if (knobs.lockExits) hauntFlightTick(dt);
+    haunt.prevAt = { x: at.x, z: at.z, floor: at.floor };
   }
 
   // ---------- the minimap ----------
@@ -616,9 +1021,34 @@ function boot() {
     $('walk-life').textContent = life.on ? '👥 Empty the building' : '👥 People';
   });
 
+  // The star hunt's one button — in the overlay only when the design armed
+  // it, and gone the moment it is pressed. An unarmed export never shows it.
+  const walkHuntBtn = $('walk-hunt');
+  if (walkHuntBtn) {
+    if (haunt.armed) walkHuntBtn.classList.remove('hidden');
+    walkHuntBtn.addEventListener('click', () => {
+      audio.setActive(true);
+      hauntStart();
+      if (isTouch) {
+        walk.enableTouch();
+        document.body.classList.add('touch-walk');
+        walkOverlay.classList.add('hidden');
+      } else {
+        walk.controls.lock();
+      }
+    });
+  }
+  const hauntEndBtn = $('haunt-end-close');
+  if (hauntEndBtn) {
+    hauntEndBtn.addEventListener('click', () => {
+      $('haunt-end').classList.add('hidden');
+      openWalkOverlay();
+    });
+  }
+
   walk.controls.addEventListener('lock', () => walkOverlay.classList.add('hidden'));
   walk.controls.addEventListener('unlock', () => {
-    if (!photoMode) openWalkOverlay();
+    if (!photoMode && !haunt.ended) openWalkOverlay();
   });
 
   // ---------- keys ----------
@@ -657,6 +1087,7 @@ function boot() {
     audio.update(dt);
     labelGateUpdate();
     lifeUpdate(dt);
+    hauntUpdate(dt);
     renderApi.poseLifts(walk.lifts || (life.ctx && life.ctx.lifts));
     renderApi.render(dt);
     if (miniOn && !photoMode) drawMinimap();
@@ -664,7 +1095,10 @@ function boot() {
   loop();
 
   // debug/test hook — the visual harness and the export smoke test read this.
-  window.walkApp = { get state() { return state; }, renderApi, walk, audio, life, setPhotoMode };
+  window.walkApp = {
+    get state() { return state; }, renderApi, walk, audio, life, setPhotoMode,
+    haunt, hauntStart, hauntUpdate,
+  };
 }
 
 // The async edge of the whole file: the codec inflates through
