@@ -278,8 +278,11 @@ export function elevatorSegments(state, floorIndex) {
 }
 
 // Everything on one storey that a walker can hit, built once when walkthrough
-// mode starts. Editing can't happen while you're walking, so `segs` and
-// `props` are a cache with exactly one invalidation point: entering the mode.
+// mode starts. Structural editing can't happen while you're walking, so
+// `segs` is a cache with exactly one invalidation point: entering the mode.
+// `props` had the same lifetime for four arcs; since Phase 22 the walk's
+// hands can place and remove furniture, so it gained a second one —
+// `refreshProps` below.
 //
 // `doors` is the exception, and it is worth being precise about what kind of
 // exception it is. It is not a hole in the cache — the leaves it lists were
@@ -321,6 +324,27 @@ export function buildCollider(state, floorIndex, catalogGet, opts = {}) {
 export const emptyCollider = () => ({
   floor: -1, segs: [], props: [], doors: [], bodies: [], index: null, site: emptyField(),
 });
+
+// Phase 22: the invalidation clause. "The collider is built once at
+// walk-start" held for four arcs because nothing could change mid-walk; hands
+// can now place and remove furniture, so the *prop* half of the cache gets
+// one more invalidation point. The walls stay built-once — nothing in walk
+// mode edits structure — and the door leaves stay the very objects a walker
+// (or an agent) may be holding open: only `props` is re-derived from the
+// design, and the index rebuilt over the same wall segments.
+//
+// `skipId` leaves one prop out — the one in the walker's hands, which stops
+// blocking the spot it was picked up from the moment it is carried.
+export function refreshProps(state, collider, catalogGet, opts = {}) {
+  let props = propObstacles(state, collider.floor, catalogGet);
+  if (opts.skipId !== undefined) {
+    props = props.filter((p) => p.id !== opts.skipId);
+    props.forEach((p, i) => { p.idx = i; });
+  }
+  collider.props = props;
+  if (collider.index) collider.index = buildIndex(collider.segs, collider.props);
+  return collider;
+}
 
 // ---------- the spatial index ----------
 //
@@ -508,6 +532,80 @@ export function pushOutOfSeg(s, px, pz, r) {
     x: c.x + ((px - c.x) / c.d) * wallR,
     z: c.z + ((pz - c.z) / c.d) * wallR,
   };
+}
+
+// ---------- footprint overlap (Phase 22) ----------
+//
+// Everything above resolves a *circle* against the world, which is the right
+// body for a walker. A prop being set down (carry.js) or shoved (shove.js) is
+// not a circle: a bench is twelve times wider than it is deep, and a circle of
+// its half-depth walks its ends through walls. These answer overlap for the
+// rotated rectangle the footprint actually is — yes/no only, no push-out,
+// because both callers refuse a placement rather than resolving one.
+
+// Distance from a point to an axis-aligned box centred at the origin; zero
+// inside it.
+function ptBoxDist(x, z, hw, hd) {
+  const dx = Math.max(Math.abs(x) - hw, 0);
+  const dz = Math.max(Math.abs(z) - hd, 0);
+  return Math.hypot(dx, dz);
+}
+
+// Distance from segment a->b to that same box, both in the box's own frame.
+function segBoxDist(ax, az, bx, bz, hw, hd) {
+  if ((Math.abs(ax) <= hw && Math.abs(az) <= hd)
+    || (Math.abs(bx) <= hw && Math.abs(bz) <= hd)) return 0;
+  const corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]];
+  for (let i = 0; i < 4; i++) {
+    const [cx, cz] = corners[i];
+    const [nx, nz] = corners[(i + 1) % 4];
+    if (segsCross(ax, az, bx, bz, cx, cz, nx, nz)) return 0;
+  }
+  let best = Math.min(ptBoxDist(ax, az, hw, hd), ptBoxDist(bx, bz, hw, hd));
+  for (const [cx, cz] of corners) {
+    best = Math.min(best, closestOnSeg(ax, az, bx, bz, cx, cz).d);
+  }
+  return best;
+}
+
+// Does a rotated box { x, z, hw, hd, rotationY } overlap a wall segment,
+// inflated by the segment's own half-thickness? Exactly touching is not
+// overlapping — a prop wall-snapped flush against a face has to be legal.
+export function boxOverlapsSeg(box, s) {
+  const pad = s.pad ?? WALL_PAD;
+  const c = Math.cos(box.rotationY || 0), si = Math.sin(box.rotationY || 0);
+  const ax = s.ax - box.x, az = s.az - box.z;
+  const bx = s.bx - box.x, bz = s.bz - box.z;
+  return segBoxDist(
+    ax * c - az * si, ax * si + az * c,
+    bx * c - bz * si, bx * si + bz * c,
+    box.hw, box.hd) < pad - 1e-9;
+}
+
+// Two rotated boxes, by separating axes — the four face normals are the only
+// candidates in 2D. `eps` makes exactly-flush (a row-snapped desk against its
+// neighbour) come out as separated rather than at the mercy of float noise.
+export function boxesOverlap(a, b, eps = 1e-6) {
+  const corners = (o) => {
+    const c = Math.cos(o.rotationY || 0), s = Math.sin(o.rotationY || 0);
+    return [[-o.hw, -o.hd], [o.hw, -o.hd], [o.hw, o.hd], [-o.hw, o.hd]]
+      .map(([lx, lz]) => [o.x + lx * c + lz * s, o.z - lx * s + lz * c]);
+  };
+  // Local x and z axes in world, under the shared rotation convention.
+  const axes = (o) => {
+    const c = Math.cos(o.rotationY || 0), s = Math.sin(o.rotationY || 0);
+    return [[c, -s], [s, c]];
+  };
+  const A = corners(a), B = corners(b);
+  for (const o of [a, b]) {
+    for (const [ux, uz] of axes(o)) {
+      let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+      for (const [x, z] of A) { const p = x * ux + z * uz; a0 = Math.min(a0, p); a1 = Math.max(a1, p); }
+      for (const [x, z] of B) { const p = x * ux + z * uz; b0 = Math.min(b0, p); b1 = Math.max(b1, p); }
+      if (a1 <= b0 + eps || b1 <= a0 + eps) return false;
+    }
+  }
+  return true;
 }
 
 // Push a circle out of another circle — a body out of a body. Half the

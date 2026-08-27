@@ -36,9 +36,13 @@ import {
   makePopulation, makeContext, retargetAll, stepAgents, census, drillReport,
   bodiesOn, makeCrowdField, crowdCells, clearCrowd, normalizeLife, MAX_POP, SPEED,
 } from './agents.js';
-import { buildCollider, storeyAt, resolvePoint, WALKER_R } from './collide.js';
+import { buildCollider, storeyAt, resolvePoint, WALKER_R, refreshProps } from './collide.js';
 // --- Phase 21 ---
 import { makeLabelGate, LABEL_MODES } from './sightline.js';
+// --- Phase 22 ---
+import { pickAhead, carryPoint, setDown, WALK_PALETTE } from './carry.js';
+import { footprintOf, faceDirection } from './propplace.js';
+import { addProp, getProp, wrapAngle, MAX_PROPS } from './props.js';
 import { initAudio } from './audio.js';
 import { doorEvents } from './sound.js';
 import { roomsOnFloor, isOutside } from './acoustics.js';
@@ -255,7 +259,13 @@ function designChanged(info = {}) {
   // ...and the same for the people. The graph is derived from the model, so
   // an edited model is a stale graph — and the colliders the crowd walks
   // against were built once, from the building that used to be there.
-  if (!info.throttled && life.on) {
+  //
+  // Phase 22's exception: a walk-mode prop placement (`propsOnly`) is an
+  // obstacle, not a different building. The nav graph, the seats and
+  // everyone's routes are untouched; the storey's prop colliders are
+  // refreshed in place by walkPropsChanged, which reaches the crowd's
+  // colliders too because they are the same objects.
+  if (!info.throttled && life.on && !info.propsOnly) {
     lifeRebuildWorld();
     retargetAll(life.ctx, life.agents);
     renderLifeReadout();
@@ -421,6 +431,219 @@ function labelGateUpdate() {
     walk.colliderAt(at.floor).doors, labelMode);
 }
 
+// --- hands (Phase 22) ---
+//
+// In walk mode you had feet and no hands. The pure half is carry.js — picking
+// along the view ray, the same three snap tiers the editor gets, and an
+// overlap-only fitting test; this block is the thin tool on top: the carry
+// slot, the ghost, the keys, and the part that makes a walk placement a real
+// edit. Structure stays edit-only; furniture is now something you can do from
+// inside the building.
+//
+// `hands` is the slot: null, { kind: 'move', id, ... } for a prop picked up
+// off the floor, or { kind: 'add', type } for a fresh one off the walk
+// palette. Like every selection, it lives in the tool and never in the file —
+// what reaches the file is only a committed set-down.
+let hands = null;
+let handsTarget = null;   // last frame's setDown answer, plus its storey
+
+const HANDS_OK = 0x7ce0a0;
+const HANDS_BAD = 0xff5f56;
+const HANDS_ROT = Math.PI / 12; // 15°, the editor's own rotate step
+
+// The ghost is the editor's placement ghost grown a walk-mode job: footprint
+// plane plus a "front" tick, standing at the snapped set-down spot, green
+// when it fits and red when it overlaps.
+const handsGhost = new THREE.Group();
+const handsGhostMat = new THREE.MeshBasicMaterial({
+  color: HANDS_OK, transparent: true, opacity: 0.35, depthTest: false,
+});
+{
+  const planeGeo = new THREE.PlaneGeometry(1, 1);
+  planeGeo.rotateX(-Math.PI / 2);
+  const plane = new THREE.Mesh(planeGeo, handsGhostMat);
+  plane.renderOrder = 620;
+  const tickGeo = new THREE.BufferGeometry();
+  tickGeo.setAttribute('position', new THREE.Float32BufferAttribute(
+    [-0.35, 0, 0, 0.35, 0, 0, 0, 0, 0.7], 3));
+  tickGeo.setIndex([0, 1, 2]);
+  const tick = new THREE.Mesh(tickGeo, new THREE.MeshBasicMaterial({
+    color: 0x1c2430, transparent: true, opacity: 0.85, depthTest: false,
+  }));
+  tick.renderOrder = 621;
+  tick.name = 'tick';
+  handsGhost.add(plane, tick);
+  handsGhost.visible = false;
+  renderApi.scene.add(handsGhost);
+}
+
+// Transient walk-mode feedback rides the HUD line, the way the label-mode
+// announcement does — the next real HUD change takes it back.
+const walkSay = (text) => { walkHud.textContent = text; };
+
+// The invalidation clause, in one place. A prop was placed, removed or picked
+// up, so every collider a body is resolving against re-derives its prop
+// obstacles from the design — the walker's own cache, and, when a crowd is
+// running, the shared per-storey colliders the camera and the agents already
+// resolve against (one refresh reaches both, because they are the same
+// objects). Walls and door leaves stay exactly what they were.
+function walkPropsChanged(opts = {}) {
+  if (life.on && life.colliders) {
+    for (const c of life.colliders.values()) refreshProps(state, c, catalogEntry, opts);
+  }
+  walk.propsChanged(opts);
+}
+
+const handsEntry = () => (hands
+  ? catalogEntry(hands.kind === 'add' ? hands.type : (getProp(state, hands.id) || {}).type)
+  : null);
+
+const _handsDir = new THREE.Vector3();
+function handsView() {
+  renderApi.walkCamera.getWorldDirection(_handsDir);
+  return { x: _handsDir.x, z: _handsDir.z };
+}
+
+// Once a frame while carrying: where would it land, and does it fit. The
+// carried prop is the *real* prop (or, for a palette piece, only the ghost)
+// posed at the answer — you are looking at exactly what a set-down commits.
+function handsUpdate() {
+  if (!hands || mode !== 'walk' || photoMode || tourPlay) {
+    handsGhost.visible = false;
+    return;
+  }
+  const entry = handsEntry();
+  if (!entry) { handsReset(); return; }
+  const at = walk.at;
+  const dir = handsView();
+  const p = carryPoint({ x: at.x, z: at.z }, dir);
+  const prop = hands.kind === 'move' ? getProp(state, hands.id) : null;
+  handsTarget = setDown(
+    state.floors[at.floor], walk.colliderAt(at.floor), state.props, at.floor,
+    entry, prop, p.x, p.z, hands.rotationY,
+    { catalogGet: catalogEntry, tol: 0.9, excludeId: prop ? prop.id : undefined });
+  handsTarget.floor = at.floor;
+  const { hw, hd } = footprintOf(entry, prop);
+  const baseY = floorBaseY(state, at.floor);
+  handsGhost.visible = true;
+  handsGhost.position.set(handsTarget.x, baseY + 0.1, handsTarget.z);
+  handsGhost.rotation.y = handsTarget.rotationY;
+  handsGhost.children[0].scale.set(hw * 2, 1, hd * 2);
+  handsGhost.getObjectByName('tick').position.set(0, 0.02, hd);
+  handsGhostMat.color.setHex(handsTarget.clear ? HANDS_OK : HANDS_BAD);
+  if (hands.kind === 'move' && prop) {
+    renderApi.moveProps([{
+      id: prop.id, x: handsTarget.x, z: handsTarget.z,
+      y: baseY + (prop.y || 0), rotationY: handsTarget.rotationY,
+    }]);
+  }
+}
+
+// Q with empty hands: pick up whatever the view is pointing at, within reach.
+function handsPick() {
+  const at = walk.at;
+  const hit = pickAhead(state.props, at.floor, catalogEntry,
+    { x: at.x, z: at.z }, handsView());
+  if (!hit) { walkSay('Nothing in reach to pick up.'); return; }
+  const entry = catalogEntry(hit.type);
+  hands = { kind: 'move', id: hit.id, rotationY: hit.rotationY || 0 };
+  // The spot it was standing on stops blocking the moment it is in your
+  // hands — for you and for the crowd.
+  walkPropsChanged({ skipId: hit.id });
+  walkSay(`Carrying ${entry ? entry.name : hit.type} — Q sets it down, R turns it, X puts it back.`);
+}
+
+// Q with full hands: the set-down. Refused only for overlap — a barricade is
+// a legal placement, and the fire drill will tell you what it did. A commit
+// is a props edit like any other: it closes into the same undo history,
+// autosaves, and travels to a session peer, exactly as if propedit had done
+// it — where a shove stays a session fact and never touches the file.
+function handsPlace() {
+  const t = handsTarget;
+  const entry = handsEntry();
+  if (!t || !entry) return;
+  if (!t.clear) {
+    walkSay(entry.mount === 'wall'
+      ? 'A wall piece needs a wall — face one, within reach.'
+      : "It won't fit there — it overlaps something.");
+    return;
+  }
+  editor.pushUndo();
+  let name = entry.name;
+  if (hands.kind === 'move') {
+    const p = getProp(state, hands.id);
+    if (!p) { handsReset(); return; }
+    p.x = t.x;
+    p.z = t.z;
+    p.rotationY = wrapAngle(t.rotationY);
+    p.floor = t.floor;
+    p.mount = t.mount;
+  } else {
+    if (state.props.length >= MAX_PROPS) { walkSay('Prop limit reached — nothing placed.'); return; }
+    const added = addProp(state, hands.type, {
+      floor: t.floor, x: t.x, z: t.z, y: entry.y || 0,
+      rotationY: wrapAngle(t.rotationY), mount: t.mount, scale: 1,
+    });
+    if (!added) { walkSay('Could not place that.'); return; }
+  }
+  hands = null;
+  handsTarget = null;
+  handsGhost.visible = false;
+  designChanged({ structural: false, propsOnly: true });
+  walkPropsChanged();
+  walkSay(`${name} set down${t.kind !== 'free' ? ` — snapped to ${t.kind}` : ''}.`);
+}
+
+const handsAction = () => (hands ? handsPlace() : handsPick());
+
+// 1–8: the walk palette. A short ring of favourites, one per digit — the full
+// catalog stays an edit-mode affordance. Arms the carry slot with a fresh
+// piece; nothing exists anywhere until it is set down.
+function handsArm(i) {
+  const type = WALK_PALETTE[i];
+  const entry = type ? catalogEntry(type) : null;
+  if (!entry) return;
+  if (hands && hands.kind === 'move') {
+    walkSay('Hands full — Q sets it down, X puts it back.');
+    return;
+  }
+  const dir = handsView();
+  hands = {
+    kind: 'add', type,
+    rotationY: hands ? hands.rotationY : faceDirection(dir.x, dir.z),
+  };
+  walkSay(`In hand: ${entry.name} — Q sets it down, R turns it, X empties your hands. 1–8 picks another.`);
+}
+
+function handsRotate(delta) {
+  if (!hands) return;
+  hands.rotationY = wrapAngle(hands.rotationY + delta);
+}
+
+// X: change your mind. A picked-up prop never left the file, so putting it
+// back is putting the *instance* back where the design says it stands; a
+// palette piece simply never was.
+function handsCancel() {
+  if (!hands) return;
+  if (hands.kind === 'move') {
+    const p = getProp(state, hands.id);
+    if (p) {
+      renderApi.moveProps([{ id: p.id, x: p.x, z: p.z, rotationY: p.rotationY }]);
+    }
+  }
+  handsReset();
+  walkPropsChanged();
+  walkSay('Hands empty.');
+}
+
+// The quiet reset — leaving walk mode, or a carried prop vanishing under an
+// undo that arrived from a peer.
+function handsReset() {
+  hands = null;
+  handsTarget = null;
+  handsGhost.visible = false;
+}
+
 // --- touch walkthrough controls ---
 // A touch device has no pointer to lock, so walking there skips Pointer Lock
 // entirely (see walkthrough.js's enableTouch()) in favor of an on-screen
@@ -549,6 +772,9 @@ function setMode(m) {
     walk.setFollow(null);
     walk.disable();
     labelGate = null;
+    // Anything still in hand goes back where the file says it stands —
+    // render.js's restoreProps does the visual half on the same mode switch.
+    handsReset();
     audio.setActive(false);
     closeModal(walkOverlay);
     document.body.classList.remove('touch-walk');
@@ -4219,6 +4445,18 @@ document.addEventListener('keydown', (e) => {
   }
   // --- Phase 9's three, all walkthrough-only ---
   if (mode === 'walk' && !typing && !e.ctrlKey && !e.metaKey) {
+    // Phase 22's hands, first: while something is carried, R belongs to the
+    // thing in your hands rather than to the tour recorder.
+    if (e.code === 'KeyQ' && !photoMode && !tourPlay) { handsAction(); return; }
+    if (e.code === 'KeyX' && hands) { handsCancel(); return; }
+    if (e.code === 'KeyR' && hands) {
+      handsRotate(e.shiftKey ? -HANDS_ROT : HANDS_ROT);
+      return;
+    }
+    {
+      const dig = /^Digit([1-8])$/.exec(e.code);
+      if (dig && !photoMode && !tourPlay) { handsArm(Number(dig[1]) - 1); return; }
+    }
     if (e.code === 'KeyT') {
       const on = document.body.classList.toggle('tours');
       if (on) renderTourPanel();
@@ -4389,6 +4627,9 @@ function cmdkCommands() {
       keys: ['O'], run: walkFirst(() => setMiniFindings(!miniFindings)) },
     { name: 'Scavenger hunt', hint: 'Eight things hidden around the building',
       keys: ['G'], run: walkFirst(() => $('walk-hunt').click()) },
+    { name: hands ? 'Set down what you are carrying' : 'Pick up furniture',
+      hint: 'Walk-mode hands — carry a prop, or a palette piece on 1–8; R turns it, X cancels',
+      keys: ['Q'], run: walkFirst(handsAction) },
     { name: 'Guided tours', hint: 'Record a camera path, play it, film it',
       keys: ['T'], run: walkFirst(() => {
         if (document.body.classList.toggle('tours')) renderTourPanel();
@@ -6274,6 +6515,9 @@ function loop() {
     // Labels earn themselves from wherever the eye is — a tour's camera
     // learns the building the same way a walker's does.
     labelGateUpdate();
+    // The thing in your hands, if anything: where it would land, whether it
+    // fits, and the ghost that says so.
+    handsUpdate();
   }
   // The school runs in both modes. A crowd seen from 200ft up, moving between
   // periods over a plan you are drawing, is half of what this phase is for —
@@ -6387,6 +6631,10 @@ window.app = {
   setLabelMode,
   get labelMode() { return labelMode; },
   get labelGate() { return labelGate; },
+  // --- Phase 22 ---
+  get hands() { return hands; },
+  get handsTarget() { return handsTarget; },
+  handsAction, handsArm, handsCancel, walkPropsChanged,
   // --- Phase 14 ---
   sessionStart, sessionLeave, sessionFlush, sendSnapshot,
   get collab() { return collab; },

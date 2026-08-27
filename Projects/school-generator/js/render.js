@@ -1241,13 +1241,19 @@ export function initRender(canvas) {
   // own output — the obstacle records it moved — and nothing about the design
   // has changed, which is exactly why this exists: a rebuild would put every
   // chair back, because `state.props` never learned that any of them moved.
+  //
+  // Phase 22 rides the same call for a *carried* prop: the walk's hands move
+  // the real instance to wherever the set-down ghost stands, sixty times a
+  // second, and a record may now say its own `y` — a prop carried up a stair
+  // is posed on the storey it is going to, not the one it came from. A record
+  // without one keeps the instance's build height, which is every shove.
   function moveProps(list) {
     if (!list || !list.length) return 0;
     let n = 0;
     for (const m of list) {
       const inst = propInstances.get(m.id);
       if (!inst) continue;
-      _dummy.position.set(m.x, inst.y, m.z);
+      _dummy.position.set(m.x, m.y === undefined ? inst.y : m.y, m.z);
       _dummy.rotation.set(0, m.rotationY || 0, 0);
       _dummy.scale.set(inst.scale, inst.scale, inst.scale);
       _dummy.updateMatrix();
