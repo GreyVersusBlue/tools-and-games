@@ -275,6 +275,18 @@ test('a chair does not slide inside a desk', () => {
   assert.equal(obstacleFor(c, chair.id).z, before.z, 'the desk is in the way');
 });
 
+test('shoveClear knows the real footprint, not a circle of its half-width', () => {
+  // Phase 22: a hand-built collider, no walls — just a long thin prop and a
+  // box off to the side of its end. A circle of min(hw, hd) at the centre
+  // never reaches the box; the real footprint's end lands inside it.
+  const long = { id: 1, x: 0, z: 0, hw: 3, hd: 0.5, rotationY: 0, light: true };
+  const other = { id: 2, x: 2.5, z: 2, hw: 0.5, hd: 0.5, rotationY: 0 };
+  const c = { segs: [], props: [long, other], doors: [], index: null };
+  assert.equal(shoveClear(c, long, 0, 2), false,
+    'slid alongside, its far end is inside the other box');
+  assert.equal(shoveClear(c, long, 0, 0.5), true, 'clear floor is still clear');
+});
+
 test('shoveClear says no through a wall and yes in open floor', () => {
   const s = room();
   const chair = addProp(s, 'student-chair', { floor: 0, x: 20, z: 20 });

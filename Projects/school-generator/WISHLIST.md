@@ -1,7 +1,7 @@
 # School Generator — Feature Wishlist
 
-**Status: twenty-one phases are shipped — three arcs plus the first three
-phases of arc four. Phases 22–24 are planned below and not started.** Three arcs took a grid editor
+**Status: twenty-two phases are shipped — three arcs plus the first four
+phases of arc four. Phases 23–24 are planned below and not started.** Three arcs took a grid editor
 to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -112,8 +112,13 @@ wrong.
   decision about the editing session rather than the building. Anything that
   is a fact about the *building* (occupancy group, design occupant load, code
   edition, sprinkler answer) belongs in the file.
-- **The walkthrough collider is built once at walk-start.** Editing and
-  walking are exclusive. The crowd owns the colliders when it is running.
+- **The walkthrough collider's walls are built once at walk-start; its props
+  can be invalidated.** *Structural* editing and walking are exclusive —
+  rooms, walls and storeys still never change mid-walk. Furniture can (Phase
+  22's hands), and `refreshProps` in collide.js is the one door for it: prop
+  obstacles re-derived from the design in place, walls and the live door
+  leaves untouched. The crowd owns the colliders when it is running — which
+  is exactly what makes one refresh reach the camera and every agent at once.
 - **Ctrl-combos route through `main.js`,** not through the tools' generic key
   handling.
 - **Undo restores a snapshot with `Object.assign`, which only ever adds.**
@@ -223,8 +228,9 @@ and add to this list rather than starting a new one.
 - Warmth is a straight line plus a per-storey charge, not routed, so
   something thirty feet away through a wall reads as hot. → *Phase 24.*
 - A colour variant cannot recolour an imported model; a prop has one paint.
-- The crowd cannot shove anything, and a shove treats a prop as a circle of
-  its own half-width. → *the footprint half: Phase 22.*
+- The crowd cannot shove anything.
+- Hands are desktop-only — touch has no Q, and the palette ring belongs on
+  the touch HUD beside the joystick it doesn't yet have.
 
 **Light, sound and picture**
 - There are still no shadows from the building's own lights, and light
@@ -448,45 +454,60 @@ ring and to *both* rooms' sight, which is `doorPoints` probing both sides the
 way the navgraph's portals do. *Save:* — none, as planned; one localStorage
 preference (`sg-labels`). *Model:* **Claude Fable 5**, as named.
 
-## Phase 22 — Hands
+## Phase 22 — Hands *(shipped)*
 
 **In walk mode you have feet and no hands.**
 
-All placement is edit-mode-only through `propedit.js`, yet the pure half —
+All placement was edit-mode-only through `propedit.js`, yet the pure half —
 `propplace.js`'s picking and three snap tiers — has never known what mode it
-is in. The real obstacle is a convention, and this phase renegotiates it in
+is in. The real obstacle was a convention, and this phase renegotiated it in
 the open rather than sneaking past it: *the walkthrough collider is built
-once at walk-start* gains an invalidation clause for props, and *editing and
-walking are exclusive* narrows to structure. Rooms, walls and storeys stay
-edit-only; furniture becomes something you can do with your hands from
+once at walk-start* gained an invalidation clause for props, and *editing and
+walking are exclusive* narrowed to structure. Rooms, walls and storeys stay
+edit-only; furniture became something you can do with your hands from
 inside the building.
 
-- [ ] **A carry slot.** Point at a prop, one key picks it up — a real prop,
-  unlike `shove.js`'s session-only scoot — it ghosts along in front of the
-  view, and sets down through `snapProp` with the same three tiers the
-  editor gets.
-- [ ] **A walk palette.** A short ring of catalog favourites placeable from
-  inside; the full catalog stays an edit-mode affordance.
-- [ ] **The collider learns invalidation.** Placing or removing a blocking
-  prop rebuilds that storey's prop colliders (walls stay built-once), and
-  reaches the crowd's collider too, or agents walk through the new desk. The
-  convention bullet gets rewritten, not violated.
-- [ ] **It writes the file.** A walk placement is a props edit like any
+- [x] **A carry slot.** Point at a prop, Q picks it up — a real prop, unlike
+  `shove.js`'s session-only scoot — it stands at its snapped set-down spot
+  ahead of the view (`carry.js`, pure, with its suite), and sets down
+  through `snapProp` with the same three tiers the editor gets. R turns it,
+  X puts it back.
+- [x] **A walk palette.** A short ring of catalog favourites on the digit
+  keys (`WALK_PALETTE`, eight floor-standing pieces); the full catalog stays
+  an edit-mode affordance.
+- [x] **The collider learns invalidation.** Placing or removing a blocking
+  prop rebuilds the cached storeys' prop colliders (`refreshProps` —
+  walls and door leaves stay built-once), and reaches the crowd's collider
+  too because they are the same objects. The convention bullet got
+  rewritten, not violated.
+- [x] **It writes the file.** A walk placement is a props edit like any
   other — history diff, undo (from edit mode), autosave, session op if a
   peer is connected — where a shove stays a session fact.
-- [ ] **You can trap yourself, and that's allowed.** Placement refuses only
-  overlap, not consequence; step-up and shove are the ways out, and the fire
-  drill will tell you what your barricade did.
-- [ ] **A shove learns the real footprint.** While hands come to walk mode,
-  the push stops treating every prop as a circle of its own half-width.
-  Crowd-shoves stay open on the backlog.
+- [x] **You can trap yourself, and that's allowed.** Placement refuses only
+  overlap, not consequence — `placementClear` tests the real rotated
+  footprint against walls, live door leaves and blocking props, and nothing
+  else; step-up and shove are the ways out, and the fire drill will tell
+  you what your barricade did.
+- [x] **A shove learns the real footprint.** `shoveClear` now tests the
+  rotated box (shrunk a shade so flush contact can still slide) through the
+  same overlap helpers the set-down uses, instead of a circle of the prop's
+  half-width. Crowd-shoves stay open on the backlog.
 
-*Leans on:* `propplace.js` (already mode-blind), `props.js`, `catalog.js`'s
-blocking flags, `history.js`; *collides with:* two conventions at once —
-collider-built-once and edit/walk exclusivity — which is why the checkboxes
-name their replacements. *Save:* — none (existing props records; no schema
-change). *Model:* **Claude Fable 5** — it rewrites the collider contract,
-and the collider is model.
+*What fought back:* the rotation convention, again — under it local +x
+swings toward −z, and the first overlap test was written for the other
+handedness (read the note atop propplace.js *before* the test, not after it
+fails). Escape turned out not to be cancellable: under pointer lock the
+browser owns Esc, so putting a carried prop back is X. And the carried
+ghost is not a floating prop but the real instance standing at its snapped
+target — you look at exactly what a set-down commits, the editor's
+footprint-plane ghost says whether it fits, and `moveProps` learned an
+explicit `y` so a prop carried up a stair poses on the storey it is going
+to. One deliberate consequence: a committed placement redraws the scene
+from the file and refreshes the colliders from the file, so everything the
+walk had *shoved* snaps back where it was drawn — the picture and the
+physics agree, because they are read from the same place. *Save:* — none,
+as planned (existing props records; no schema change). *Model:* **Claude
+Fable 5**, as named.
 
 ## Phase 23 — The walk you can hand to somebody
 

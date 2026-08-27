@@ -54,6 +54,7 @@ import { siteSurfaceAt, surfaceEntry } from './site.js';
 import {
   GRAVITY, TERMINAL_V, JUMP_V, STEP_UP,
   buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoorsFor,
+  refreshProps,
 } from './collide.js';
 import { shoveProps } from './shove.js';
 import { lookEulerDelta } from './touch.js';
@@ -533,6 +534,18 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     // crowd is running an agent may be holding one open, and a fresh
     // collection would be the plan's doors rather than the walk's.
     colliderAt: (i) => colliderFor(i),
+    // Phase 22: the invalidation clause. Hands placed or removed a prop, so
+    // every cached storey re-derives its prop obstacles from the design —
+    // walls and door leaves stay the objects they were (see collide.js's
+    // refreshProps). When a crowd owns the colliders this is a no-op here:
+    // whoever handed them over refreshes the same shared objects, so the
+    // camera and the agents keep agreeing about where the new desk is.
+    // `opts.skipId` names the prop currently in the walker's hands, which
+    // stops blocking the spot it was picked up from.
+    propsChanged(opts = {}) {
+      if (!world || colliderSource) return;
+      for (const c of colliders.values()) refreshProps(world, c, catalogEntry, opts);
+    },
     // Whose eyes. `null` gives the camera its own body back where it stands.
     get following() { return follow ? follow.agent : null; },
     get followMode() { return follow ? follow.mode : null; },

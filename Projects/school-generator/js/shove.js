@@ -35,7 +35,10 @@
 //   before you walked into the furniture. Leave the walkthrough and every
 //   chair is back where it was drawn.
 
-import { WALKER_R, candidates, pushOutOfBox, pushOutOfSeg, doorSegments } from './collide.js';
+import {
+  WALKER_R, candidates, pushOutOfBox, doorSegments,
+  boxOverlapsSeg, boxesOverlap,
+} from './collide.js';
 
 // How far a prop may travel in one frame. A walking step is about a sixth of
 // this at sixty frames a second, so the cap never bites during ordinary
@@ -74,19 +77,32 @@ export function shoveWeight(entry) {
   return 0;
 }
 
-// Is there room for `p` at (x, z)? The prop is treated as a circle of its own
-// half-width for this test — light props are small and roughly square (a
-// chair, a stool, a bin), and the alternative is a box-vs-box pass that would
-// be the solver this file is not. `p` itself is skipped, so a prop never
-// blocks itself.
+// How much a footprint is shrunk before the clearance test, as a fraction of
+// itself. A shove pressed flush along a wall or a desk should still be able to
+// slide *parallel* to it; testing the exact footprint makes flush contact a
+// refusal, and a chair that snapped against a desk becomes a chair that can
+// never move again.
+export const SHOVE_SLACK = 0.95;
+
+// Is there room for `p` at (x, z)? Phase 22: the test is the prop's real
+// rotated footprint (shrunk a shade — see SHOVE_SLACK), not a circle of its
+// half-width. The circle was fine for a stool and a lie for anything long: a
+// bean-bag-light bench tested as a 15in circle could put four feet of itself
+// through a wall. collide.js's overlap helpers are yes/no only, which is
+// still not a solver — an overlapping candidate is refused, never resolved.
+// `p` itself is skipped, so a prop never blocks itself.
 export function shoveClear(collider, p, x, z) {
-  const r = Math.min(p.hw, p.hd) * 0.9;
+  const box = {
+    x, z, rotationY: p.rotationY || 0,
+    hw: p.hw * SHOVE_SLACK, hd: p.hd * SHOVE_SLACK,
+  };
+  const r = Math.hypot(box.hw, box.hd);
   const near = candidates(collider, x - r, z - r, x + r, z + r);
-  for (const s of near.segs) if (pushOutOfSeg(s, x, z, r)) return false;
-  for (const s of doorSegments(collider)) if (pushOutOfSeg(s, x, z, r)) return false;
+  for (const s of near.segs) if (boxOverlapsSeg(box, s)) return false;
+  for (const s of doorSegments(collider)) if (boxOverlapsSeg(box, s)) return false;
   for (const o of near.props) {
     if (o === p) continue;
-    if (pushOutOfBox(o, x, z, r)) return false;
+    if (boxesOverlap(box, o)) return false;
   }
   return true;
 }
