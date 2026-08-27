@@ -367,3 +367,40 @@ test('an unpriced design writes the spec but no cost table', () => {
   assert.ok(csv.includes('System,Assembly,What it is'));
   assert.ok(!csv.includes('Cost estimate'));
 });
+
+// ---------- findings on the panels (Phase 19) ----------
+
+import { panelFindings } from '../js/report.js';
+
+test('a panel carries its worst findings in words, capped, with the remainder counted', () => {
+  const findings = [
+    { level: 'fail', title: 'No way out' },
+    { level: 'warn', title: 'Too dark' },
+    { level: 'note', title: 'Unnamed rooms' },
+    { level: 'warn', title: 'Rings too long' },
+    { level: 'warn', title: 'Corridor tight' },
+    { level: 'ok', title: 'Fine' },
+  ];
+  const p = panelFindings(findings);
+  assert.equal(p.lines.length, 3, 'three lines, not the whole report');
+  assert.deepEqual(p.lines.map((l) => l.title), ['No way out', 'Too dark', 'Rings too long'],
+    'notes and oks are not sheet material');
+  assert.equal(p.more, 1, 'and the rest are counted rather than dropped');
+  assert.deepEqual(panelFindings([]), { lines: [], more: 0 });
+  assert.deepEqual(panelFindings(null), { lines: [], more: 0 });
+});
+
+test('the code panel says what its badge counts', () => {
+  const panel = codePanel(REPORT, { floor: 0 });
+  assert.ok(panel.findings, 'the panel carries findings now');
+  assert.ok(Array.isArray(panel.findings.lines));
+  for (const l of panel.findings.lines) {
+    assert.ok(l.level === 'fail' || l.level === 'warn');
+    assert.ok(typeof l.title === 'string' && l.title.length);
+  }
+  // The lines are the report's own worst-first order, so the first line on
+  // the sheet is the first finding in the panel.
+  const worth = REPORT.findings.filter((f) => f.level === 'fail' || f.level === 'warn');
+  assert.deepEqual(panel.findings.lines.map((l) => l.title),
+    worth.slice(0, 3).map((f) => f.title));
+});

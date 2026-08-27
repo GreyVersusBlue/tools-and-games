@@ -125,6 +125,21 @@ const CAPTURES = [
     prep: `${hideView}`,
   },
   {
+    // Phase 19's opening moment: the one capture that *keeps* the first-run
+    // state every other chrome capture pre-seeds away.
+    name: 'chrome-welcome', width: 1600, height: 950, firstRun: true,
+    prep: `${hideView}`,
+  },
+  {
+    // ...and the command palette, opened by its own key so the capture
+    // exercises the binding as well as the box.
+    name: 'chrome-cmdk', width: 1600, height: 950,
+    prep: `
+      document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', ctrlKey: true, bubbles: true }));
+      ${hideView}`,
+    settle: 600,
+  },
+  {
     name: 'chrome-rail', width: 1600, height: 950,
     // All five rail panels open, then the sky panel folded — exercises the
     // reorder, the folds and the aria state in one picture.
@@ -157,6 +172,14 @@ async function captureSheet(context, port, which) {
 async function capturePage(context, port, cap) {
   const page = await context.newPage();
   await page.setViewportSize({ width: cap.width, height: cap.height });
+  // A fresh context is a first visit, and since Phase 19 a first visit gets
+  // the opening moment. Every chrome capture pre-seeds the first-run flag so
+  // it photographs the chrome it is named for — except the capture whose
+  // whole subject *is* the first run.
+  if (!cap.firstRun) {
+    await page.addInitScript(
+      `try { localStorage.setItem('sg-welcome-seen', '1'); } catch {}`);
+  }
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' });

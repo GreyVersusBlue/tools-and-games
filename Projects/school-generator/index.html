@@ -60,7 +60,13 @@
       --text: #e8ecf2;
       --text-dim: #9aa5b5;
       --accent: #4da3ff;
-      --accent-soft: var(--accent-soft);
+      /* The active-state wash. This token spent two phases defined as itself
+         (`var(--accent-soft)`), which resolves to nothing — every .active
+         tool and segment button was drawing a transparent background and
+         leaning on its border alone. Phase 20's chrome pass is where it got
+         caught, because a pass over the panels is when you finally stare at
+         one. */
+      --accent-soft: rgba(77, 163, 255, 0.22);
       /* semantic status — one spelling each, everywhere. The minimap keeps its
          own darker ink variants because it draws on white paper, not on a
          panel; everything else reads these three. js/theme.js mirrors them
@@ -82,19 +88,39 @@
     html, body { height: 100%; overflow: hidden; }
     body {
       font-family: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-      background: #1a2029;
+      background: #161b23;
       color: var(--text);
       user-select: none;
     }
     #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
+    /* Phase 20's chrome pass: the panels get a hairline top light and a
+       deeper drop, so the chrome reads as dark glass *over* the scene rather
+       than as grey rectangles beside it. The scene is the picture; the
+       chrome's whole job is to sit back from it. */
     .panel {
       background: var(--panel);
       border: 1px solid var(--panel-border);
       border-radius: var(--r-lg);
       backdrop-filter: blur(8px);
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 28px rgba(0, 0, 0, 0.42);
     }
+
+    /* Native selects arrive light-on-white and were the one control the dark
+       chrome never claimed. Claimed. */
+    select {
+      font: inherit; font-size: var(--fs-md); color: var(--text);
+      background: rgba(0, 0, 0, 0.3); border: 1px solid var(--panel-border);
+      border-radius: var(--r-sm); padding: 5px 6px;
+    }
+    select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* The panels scroll; the scrollbars stopped looking borrowed. */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.24); }
+    ::-webkit-scrollbar-track { background: transparent; }
+    * { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
 
     /* top bar */
     /* Sixteen buttons no longer fit one row on a laptop, so the bar wraps
@@ -137,6 +163,7 @@
       border: 1px solid var(--panel-border);
       border-radius: var(--r-md); padding: 7px 11px;
       cursor: pointer; white-space: nowrap;
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
     }
     button:hover { background: rgba(255, 255, 255, 0.14); }
     button:disabled { opacity: 0.4; cursor: default; }
@@ -560,6 +587,14 @@
       all: unset; cursor: pointer; display: block; width: 100%;
     }
     .finding button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    /* Phase 19: the way from a finding to the room it is about. Only shown
+       once the finding is open — a closed headline stays one click. */
+    .finding button.goto {
+      display: none; width: auto; margin-top: 3px;
+      font-size: var(--fs-xs); color: var(--accent);
+    }
+    .finding.open button.goto { display: block; }
+    .finding button.goto:hover { text-decoration: underline; }
     #report-readout {
       margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border);
       font-size: var(--fs-sm); line-height: 1.6; color: var(--text-dim);
@@ -726,6 +761,14 @@
     #walk-keys ul { list-style: none; margin: 0; padding: 0; }
     #walk-keys li { font-size: var(--fs-md); color: var(--text); line-height: 2; }
     #walk-keys li .what { color: var(--text-dim); }
+    /* The touch controls line, written by main.js on a touch device only. */
+    #walk-controls-hint {
+      font-size: var(--fs-md); line-height: 1.7;
+    }
+    #walk-controls-hint:empty { display: none; }
+    /* On a touch device the keyboard sheet teaches keys nobody has. */
+    body.touch #walk-keys { display: none; }
+
     /* The prose lives behind a native disclosure. First visit it arrives
        open; after that main.js starts it closed (sg-walk-seen). */
     #walk-more { text-align: left; margin-bottom: 16px; }
@@ -739,6 +782,79 @@
       position: sticky; bottom: 0; margin: 0 -34px; padding: 14px 34px;
       background: rgba(22, 26, 34, 0.97);
       border-top: 1px solid var(--panel-border);
+    }
+
+    /* The command palette (Phase 19). Hung high rather than centred — the
+       list below the input grows and shrinks as you type, and a centred box
+       would bounce its own input line up and down while you aim at it. */
+    #cmdk-overlay {
+      position: fixed; inset: 0; z-index: 32;
+      display: flex; align-items: flex-start; justify-content: center;
+      padding-top: 14vh;
+      background: rgba(10, 13, 18, 0.5);
+    }
+    #cmdk { width: 480px; max-width: 92vw; padding: 10px; }
+    #cmdk-input {
+      width: 100%; font: inherit; font-size: var(--fs-title); color: var(--text);
+      background: rgba(0, 0, 0, 0.3); border: 1px solid var(--panel-border);
+      border-radius: var(--r-md); padding: 10px 12px;
+    }
+    #cmdk-list { margin-top: 8px; max-height: 46vh; overflow-y: auto; }
+    #cmdk-list .cmd {
+      display: flex; align-items: baseline; gap: 10px; width: 100%;
+      padding: 7px 10px; border-radius: var(--r-md); cursor: pointer;
+      background: none; border: 1px solid transparent; text-align: left;
+      font-size: var(--fs-lg); color: var(--text);
+    }
+    #cmdk-list .cmd .hint {
+      color: var(--text-dim); font-size: var(--fs-sm);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+    }
+    #cmdk-list .cmd .keys { margin-left: auto; white-space: nowrap; flex: none; }
+    #cmdk-list .cmd .keys kbd { margin-left: 3px; }
+    #cmdk-list .cmd.sel { background: var(--accent-soft); border-color: var(--accent); }
+    #cmdk-list .empty {
+      padding: 10px 12px; font-size: var(--fs-md); color: var(--text-dim);
+    }
+    #cmdk-foot {
+      margin-top: 7px; padding: 6px 10px 2px; border-top: 1px solid var(--panel-border);
+      font-size: var(--fs-xs); color: var(--text-dim);
+    }
+    #cmdk-foot kbd { margin-right: 2px; }
+
+    /* The opening moment (Phase 19): the tool's own front door, shown once.
+       Same modal shape as everything else; the doors are cards, not buttons
+       in a row, because each one is a whole different first five minutes. */
+    #welcome-overlay {
+      position: fixed; inset: 0; z-index: 30;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(10, 13, 18, 0.6);
+    }
+    #welcome-overlay .panel {
+      padding: 26px 30px; width: 480px; max-width: 92vw;
+      max-height: 92vh; overflow-y: auto;
+    }
+    #welcome-overlay h2 {
+      font-family: 'Space Grotesk', inherit; font-size: 19px; margin-bottom: 10px;
+      display: flex; align-items: center; gap: 9px;
+    }
+    #welcome-overlay h2 svg.icon { width: 22px; height: 22px; color: var(--accent); }
+    #welcome-overlay p.hint {
+      font-size: var(--fs-lg); color: var(--text-dim); line-height: 1.55; margin-bottom: 16px;
+    }
+    #welcome-overlay p.hint#welcome-note { margin: 14px 0 0; font-size: var(--fs-sm); }
+    #welcome-doors { display: flex; flex-direction: column; gap: 10px; }
+    #welcome-doors .door {
+      display: flex; align-items: flex-start; gap: 12px; text-align: left;
+      padding: 13px 15px; border-radius: var(--r-lg);
+      background: rgba(255, 255, 255, 0.05);
+    }
+    #welcome-doors .door:hover { background: rgba(77, 163, 255, 0.14); border-color: var(--accent); }
+    #welcome-doors .door .ic { font-size: 22px; line-height: 1.2; }
+    #welcome-doors .door .door-body { display: block; white-space: normal; }
+    #welcome-doors .door b { display: block; font-size: var(--fs-title); margin-bottom: 2px; }
+    #welcome-doors .door .what {
+      display: block; font-size: var(--fs-md); color: var(--text-dim); line-height: 1.5;
     }
 
     /* designs & export overlays — same full-screen modal shape as walkthrough's */
@@ -975,6 +1091,17 @@
     #overlay-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
     #overlay-buttons button { flex: 1; min-width: 64px; padding: 6px 4px; font-size: var(--fs-md); }
 
+    /* Phase 19: the per-tool key sheets fold behind a disclosure. The
+       teaching surface is the status line and its one-hint-at-a-time coach;
+       the full sheet stays one click away for whoever wants all of it. */
+    .tool-slot details.keys summary {
+      cursor: pointer; font-size: var(--fs-xs); font-weight: 600;
+      letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-dim);
+      list-style-position: inside;
+    }
+    .tool-slot details.keys summary:hover { color: var(--text); }
+    .tool-slot details.keys[open] summary { margin-bottom: 6px; }
+
     kbd {
       background: var(--panel-2); border: 1px solid var(--panel-border);
       border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px;
@@ -1206,6 +1333,45 @@
       overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
     }
 
+    /* Phase 19: the map and the lens learn the phone. On a touch walk the
+       joystick owns the bottom-left corner the minimap has always sat in, so
+       the map moves to the top-right, under the exit button, out of both
+       thumbs' way. */
+    body.touch-walk #minimap-wrap {
+      left: auto; right: 12px; top: 56px; bottom: auto;
+    }
+    body.touch-walk #tour-panel, body.touch-walk #photo-panel, body.touch-walk #hunt-panel {
+      max-height: calc(100vh - 240px);
+    }
+
+    /* A phone-sized viewport. Both walkthrough panels were desktop-shaped —
+       a fixed column hung off the top-left that a 380px screen can't hold
+       beside anything else. The photo panel becomes a top sheet with its
+       sliders in two columns; the minimap gives back some size (the canvas
+       is still drawn at full resolution and scaled, so it sharpens rather
+       than blurs). */
+    @media (max-width: 640px) {
+      #photo-panel {
+        left: 8px; right: 8px; top: 52px; width: auto;
+        max-height: 44vh; overflow-y: auto;
+        display: none;
+      }
+      body[data-mode="walk"].photo #photo-panel {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px;
+        align-items: end;
+      }
+      #photo-panel h2, #photo-moods, #photo-shots, #photo-panel .keys {
+        grid-column: 1 / -1;
+      }
+      #photo-panel .keys { display: none; }
+      #minimap { width: 128px; height: 128px; }
+      #minimap-finding { max-width: 128px; }
+      #minimap-bar button { padding: 6px 0; }
+      #tour-panel { width: 210px; }
+      #welcome-overlay .panel { padding: 18px 16px; }
+      #cmdk-overlay { padding-top: 8vh; }
+    }
+
     /* A narrow desktop window — a small laptop, a half-screen snap. The bar
        already wraps and everything hangs from its measured height; the side
        chrome just gives back a little width, and the toggle cluster drops
@@ -1353,18 +1519,18 @@
     </div>
     <div id="poly-extra" class="hidden">
       <button id="hole-btn" type="button" aria-pressed="false" title="Draw inside a room to carve an opening (H)">✂︎ Cut hole (H)</button>
-      <div class="keys">
+      <details class="keys"><summary>Keys &amp; tips</summary><div>
         <kbd>Enter</kbd> close &nbsp; <kbd>Esc</kbd> cancel<br />
         <kbd>⌫</kbd> undo last corner<br />
         <kbd>Alt</kbd> free placement &nbsp; <kbd>Shift</kbd> 15°
-      </div>
+      </div></details>
     </div>
   </div>
 
   <div id="wall-panel" class="panel tool-slot hidden">
     <label>Wall type</label>
     <div id="wall-kinds"></div>
-    <div class="keys">
+    <details class="keys"><summary>Keys &amp; tips</summary><div>
       <kbd>G</kbd> cycle type &nbsp; <kbd>,</kbd> <kbd>.</kbd> curve<br />
       Glass and railings bound a room the same way a solid wall does — a
       doorway through one is still a doorway.<br />
@@ -1374,7 +1540,7 @@
       tool instead.
       Walls are drawn 0.4ft thick between two rooms and 0.8ft where the
       building meets the outside — that's read off the plan, not set here.
-    </div>
+    </div></details>
   </div>
 
   <div id="door-panel" class="panel tool-slot hidden">
@@ -1392,25 +1558,25 @@
         <input id="door-sill" type="number" min="0" max="9" step="0.5" value="3" /> ft
       </div>
     </div>
-    <div class="keys">
+    <details class="keys"><summary>Keys &amp; tips</summary><div>
       Click anywhere along a wall — a 30ft run can hold several.<br />
       Clicking the same kind again removes it; clicking a different one swaps it.<br />
       A window glazes the wall rather than opening it — you can see through one,
       never walk through it. In the walkthrough, doors swing open as you come
       and always away from you.
-    </div>
+    </div></details>
   </div>
 
   <div id="stair-panel" class="panel tool-slot hidden">
     <label>Place</label>
     <div id="stair-kinds"></div>
     <div id="stair-readout" class="readout"></div>
-    <div class="keys">
+    <details class="keys"><summary>Keys &amp; tips</summary><div>
       Click to place &nbsp; <kbd>R</kbd>/<kbd>⇧R</kbd> rotate<br />
       <kbd>Del</kbd> remove &nbsp; <kbd>Alt</kbd> ignore snapping<br />
       Drag a run to move it. The blue outline is the hole it opens
       in the level above.
-    </div>
+    </div></details>
   </div>
 
   <div id="prop-panel" class="panel tool-slot hidden">
@@ -1430,22 +1596,22 @@
       </div>
       <div id="prop-swatches"></div>
     </div>
-    <div class="keys">
+    <details class="keys"><summary>Keys &amp; tips</summary><div>
       Click to place &nbsp; <kbd>R</kbd>/<kbd>⇧R</kbd> rotate<br />
       <kbd>Del</kbd> remove &nbsp; <kbd>Alt</kbd> ignore snapping<br />
       <kbd>⇧</kbd> add to selection &nbsp; drag empty = box-select<br />
       <kbd>Ctrl C/V/D</kbd> copy / paste / duplicate
-    </div>
+    </div></details>
   </div>
 
   <div id="template-panel" class="panel tool-slot hidden">
     <div id="template-palette" class="palette-row"></div>
-    <div class="keys">
+    <details class="keys"><summary>Keys &amp; tips</summary><div>
       Click to stamp the whole layout &nbsp; <kbd>R</kbd>/<kbd>⇧R</kbd> rotates it first<br />
       <kbd>Alt</kbd> ignore grid snapping<br />
       Each piece lands as an ordinary prop — move, rotate or delete them
       individually afterward with the Furniture tool.
-    </div>
+    </div></details>
   </div>
 
   <div id="overlay-panel" class="panel tool-slot hidden" role="group" aria-label="Tracing overlay">
@@ -1468,13 +1634,13 @@
     <label class="opt"><input type="checkbox" id="overlay-lock" /> Lock in place</label>
 
     <div id="overlay-readout" class="readout"></div>
-    <div class="keys">
+    <details class="keys"><summary>Keys &amp; tips</summary><div>
       <kbd>R</kbd> turn 5° &nbsp; <kbd>⇧R</kbd> 0.25° &nbsp; <kbd>⌥R</kbd> back<br />
       <kbd>←↑↓→</kbd> nudge a foot &nbsp; <kbd>⇧</kbd> three inches<br />
       Measure needs two clicks — one at each end of something you know the
       length of — and then it asks you what that length is. Everything after
       that is one division, so measure the longest thing you can find.
-    </div>
+    </div></details>
   </div>
 
   <div id="site-panel" class="panel tool-slot hidden" role="group" aria-label="Site">
@@ -1502,14 +1668,14 @@
     <select id="site-facade" aria-label="Facade material"></select>
 
     <div id="site-readout" class="readout"></div>
-    <div class="keys">
+    <details class="keys"><summary>Keys &amp; tips</summary><div>
       <b>Region</b> click corners, click the first (or <kbd>Enter</kbd>) to close<br />
       Click a region to select it &nbsp; <kbd>Del</kbd> removes it<br />
       <kbd>Alt</kbd> ignore grid snapping &nbsp; <kbd>Esc</kbd> cancel<br />
       <b>Grade</b> drag to raise &nbsp; <kbd>⇧</kbd> lower &nbsp; <kbd>Alt</kbd> smooth<br />
       <kbd>L</kbd> levels the ground under the brush. The building holds its
       own pad, so grading under a slab does nothing.
-    </div>
+    </div></details>
   </div>
 
   <div id="floor-panel" class="panel">
@@ -1739,6 +1905,9 @@
 
   <div id="photo-panel" class="panel" role="group" aria-label="Photo mode">
     <h2>📷 Photo</h2>
+    <!-- Phase 20: the five moods, where the pictures get taken. Same row as
+         the sky panel's, built by the same function. -->
+    <div class="env-presets" id="photo-moods"></div>
     <label for="photo-fov">Field of view <span class="env-value" id="photo-fov-value">60°</span></label>
     <input id="photo-fov" type="range" min="18" max="110" step="1" value="60" />
 
@@ -1803,21 +1972,84 @@
     <div id="minimap-finding" class="hidden"></div>
   </div>
 
+  <!-- Phase 19: the command palette. Ctrl-K, fuzzy over every tool, verb and
+       toggle main.js wires — each result runs the exact handler its hotkey
+       runs, and prints that hotkey, so the palette is the cheat-sheet tutor
+       rather than a rival keymap. -->
+  <div id="cmdk-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div id="cmdk" class="panel">
+      <input id="cmdk-input" type="text" placeholder="Type a tool, a panel, a verb…"
+             autocomplete="off" spellcheck="false" aria-label="Search commands"
+             role="combobox" aria-expanded="true" aria-controls="cmdk-list" />
+      <div id="cmdk-list" role="listbox" aria-label="Commands"></div>
+      <div id="cmdk-foot"><kbd>↑</kbd><kbd>↓</kbd> pick · <kbd>Enter</kbd> run · <kbd>Esc</kbd> close</div>
+    </div>
+  </div>
+
+  <!-- Phase 19: the opening moment. First visit with no autosave, three
+       doors in — nothing here exists anywhere else, it is the tool's own
+       front door. A first-run flag in localStorage keeps it to one showing;
+       nothing about it touches the file. -->
+  <div id="welcome-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+    <div class="panel">
+      <h2 id="welcome-title"><svg class="icon" aria-hidden="true"><use href="#i-school"/></svg> School Generator</h2>
+      <p class="hint">
+        Draw a school in plan, read what works and what doesn't, then walk
+        through it in first person. Three ways in:
+      </p>
+      <div id="welcome-doors">
+        <button id="welcome-walk" class="door">
+          <span class="ic" aria-hidden="true">🚶</span>
+          <span class="door-body"><b>Walk a school</b>
+          <span class="what">A sample school is already on the board — see what
+          one feels like from inside before you draw a wall.</span></span>
+        </button>
+        <button id="welcome-generate" class="door">
+          <span class="ic" aria-hidden="true">✨</span>
+          <span class="door-body"><b>Generate one from a sentence</b>
+          <span class="what">"a two-storey courtyard middle school for 600"
+          becomes a whole building — rooms, stairs, furniture, a car park.</span></span>
+        </button>
+        <button id="welcome-blank" class="door">
+          <span class="ic" aria-hidden="true">▦</span>
+          <span class="door-body"><b>Start with a blank sheet</b>
+          <span class="what">An empty plan and twelve tools.
+          <kbd>Ctrl</kbd><kbd>K</kbd> lists every one of them, with its key.</span></span>
+        </button>
+      </div>
+      <p class="hint" id="welcome-note">
+        This only shows once — all three doors stay reachable from the top bar.
+      </p>
+    </div>
+  </div>
+
   <div id="status" class="panel" role="status" aria-live="polite">Floor — click / drag to lay floor tiles</div>
   <div id="measure" class="hidden" aria-hidden="true"></div>
 
   <div id="walk-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="walk-overlay-title">
     <div class="panel">
       <h2 id="walk-overlay-title">Walkthrough Mode</h2>
+      <!-- Phase 19's audit: grouped by how soon a guest needs each key, not
+           by which phase shipped it. The first column is the whole first
+           visit; everything below it can wait until you want it. Keys that
+           appear nowhere else get a second surface in the world — the lift
+           says its own E on the HUD when you stand at its doors. -->
       <div id="walk-keys" aria-label="Walkthrough keys">
         <div>
-          <h3>Move</h3>
+          <h3>First steps</h3>
           <ul>
             <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span class="what">move · mouse look</span></li>
             <li><kbd>Shift</kbd> <span class="what">sprint</span> · <kbd>Space</kbd> <span class="what">jump</span></li>
-            <li><kbd>F</kbd> <span class="what">ghost mode (<kbd>Space</kbd>/<kbd>C</kbd> fly)</span></li>
             <li><kbd>E</kbd> <span class="what">call the lift, at its doors</span></li>
-            <li><kbd>Esc</kbd> <span class="what">release the mouse</span></li>
+            <li><kbd>Esc</kbd> <span class="what">release the mouse</span> · <kbd>Tab</kbd> <span class="what">back to the editor</span></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Seeing more</h3>
+          <ul>
+            <li><kbd>J</kbd> <span class="what">minimap</span> · <kbd>M</kbd> <span class="what">the report</span></li>
+            <li><kbd>O</kbd> <span class="what">findings on the map</span> · <kbd>[</kbd> <kbd>]</kbd> <span class="what">step through them</span></li>
+            <li><kbd>Y</kbd> <span class="what">sun &amp; sky</span> · <kbd>P</kbd> <span class="what">photo mode</span></li>
           </ul>
         </div>
         <div>
@@ -1829,21 +2061,20 @@
           </ul>
         </div>
         <div>
-          <h3>Measure</h3>
+          <h3>Play &amp; capture</h3>
           <ul>
-            <li><kbd>M</kbd> <span class="what">the report</span></li>
-            <li><kbd>J</kbd> <span class="what">minimap</span> · <kbd>O</kbd> <span class="what">its findings</span></li>
-            <li><kbd>[</kbd> <kbd>]</kbd> <span class="what">step through them</span></li>
-          </ul>
-        </div>
-        <div>
-          <h3>Capture &amp; play</h3>
-          <ul>
-            <li><kbd>P</kbd> <span class="what">photo mode</span></li>
-            <li><kbd>G</kbd> <span class="what">scavenger hunt</span></li>
+            <li><kbd>G</kbd> <span class="what">scavenger hunt</span> · <kbd>T</kbd> <span class="what">tours</span></li>
+            <li><kbd>F</kbd> <span class="what">ghost mode (<kbd>Space</kbd>/<kbd>C</kbd> fly)</span></li>
           </ul>
         </div>
       </div>
+      <!-- Filled by main.js on a touch device, in place of the keyboard
+           sheet above (which touch hides). Empty on desktop, so the :empty
+           rule keeps it out of the way. main.js wrote here for two phases
+           while the element itself was missing — which on any touch device
+           was a TypeError before the app finished booting. Phase 19's phone
+           work is what finally ran the tool on one and found it. -->
+      <p id="walk-controls-hint"></p>
       <p>
         Walls stop you, doors open as you approach, stairs and the lift take
         you between storeys. Everything else this mode can do — people,

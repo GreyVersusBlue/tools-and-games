@@ -745,6 +745,7 @@ const codeShape = (p) => ({
   badge: badgeOf(p, 'PASSES'),
   verdict: p.verdict,
   sub: `${p.edition} · ${p.sprinklered ? 'sprinklered' : 'unsprinklered'}`,
+  findings: p.findings || null,
   rows: p.rows,
   storeyHead: ['BY STOREY', 'AREA · LOAD · EXITS'],
   storeys: p.storeys.map((st) => ({
@@ -763,6 +764,7 @@ const dayShape = (p) => ({
   badge: badgeOf(p, 'WORKS'),
   verdict: p.verdict,
   sub: `${p.edition} · ${p.passing} min between bells`,
+  findings: p.findings || null,
   rows: p.rows,
   storeyHead: ['BY STOREY', 'ROOMS USED · IDLE'],
   storeys: p.storeys.map((st) => ({
@@ -780,11 +782,26 @@ const dayShape = (p) => ({
 function panelHeight(ctx, panel) {
   ctx.font = '9px "Public Sans", system-ui, sans-serif';
   const caveat = wrapLines(ctx, panel.caveat, PANEL_W - PANEL_PAD * 2);
+  // Phase 19: the finding text, wrapped now so the box is measured rather
+  // than guessed at — each finding is a bullet plus as many 10px lines as
+  // its title needs, and a "+N more" line when the report ran past three.
+  const findingLines = [];
+  if (panel.findings && panel.findings.lines.length) {
+    ctx.font = '9px "Public Sans", system-ui, sans-serif';
+    for (const f of panel.findings.lines) {
+      findingLines.push({ level: f.level, lines: wrapLines(ctx, f.title, PANEL_W - PANEL_PAD * 2 - 10) });
+    }
+  }
+  const findingsH = findingLines.length
+    ? 10 + findingLines.reduce((n, f) => n + f.lines.length * 10 + 3, 0)
+      + (panel.findings.more ? 10 : 0)
+    : 0;
   const storeys = panel.storeys.length;
   const bodyH = 30 + panel.rows.length * PANEL_LINE
+    + findingsH
     + (storeys ? 23 + storeys * PANEL_LINE : 0)
     + 16 + (caveat.length - 1) * 10 + 4;
-  return { boxH: PANEL_PAD * 2 + bodyH, caveat };
+  return { boxH: PANEL_PAD * 2 + bodyH, caveat, findingLines };
 }
 
 // Draws one panel with its top-left corner at (x0, y0), and answers with the
@@ -792,7 +809,7 @@ function panelHeight(ctx, panel) {
 function drawPanel(ctx, panel, x0, y0) {
   const pad = PANEL_PAD;
   const lineH = PANEL_LINE;
-  const { boxH, caveat } = panelHeight(ctx, panel);
+  const { boxH, caveat, findingLines } = panelHeight(ctx, panel);
 
   ctx.fillStyle = 'rgba(255,255,255,0.94)';
   ctx.fillRect(x0, y0, PANEL_W, boxH);
@@ -825,6 +842,28 @@ function drawPanel(ctx, panel, x0, y0) {
     ctx.textAlign = 'right';
     ctx.fillStyle = INK.line;
     ctx.fillText(v, x0 + PANEL_W - pad, y);
+  }
+
+  // Phase 19: what the badge is counting, in words — a bullet in the level's
+  // own ink and the finding's title, wrapped. The sheet leaves the room; the
+  // count alone never survived the trip.
+  if (findingLines.length) {
+    y += 10;
+    ctx.font = '9px "Public Sans", system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    for (const f of findingLines) {
+      ctx.fillStyle = f.level === 'fail' ? '#b33a3a' : '#a26a1e';
+      ctx.fillText('■', x0 + pad, y + 9);
+      ctx.fillStyle = INK.line;
+      f.lines.forEach((line, i) => ctx.fillText(line, x0 + pad + 10, y + 9 + i * 10));
+      y += f.lines.length * 10 + 3;
+    }
+    if (panel.findings.more) {
+      ctx.fillStyle = '#8a93a3';
+      ctx.fillText(`+ ${panel.findings.more} more in the report`, x0 + pad + 10, y + 9);
+      y += 10;
+    }
+    ctx.font = '10px "Public Sans", system-ui, sans-serif';
   }
 
   if (panel.storeys.length) {

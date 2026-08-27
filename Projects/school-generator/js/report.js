@@ -260,6 +260,22 @@ export function buildReport(state, opts = {}) {
 // This returns *data*, not pixels. `blueprint.js` draws it, and the split is
 // the same one `computeFloorPlan` made: the module that knows the numbers has
 // no canvas in it, and the module with the canvas in it makes up no numbers.
+// The findings a title block has room to say out loud: the worst few, title
+// only. Phase 19's "findings go where the eye is" — the panels carried a
+// verdict and a count, and the count made somebody open a different tool to
+// learn what the "2 FAIL" actually were. Three is the editorial judgement:
+// the panel is a title block, not the report, and the report is one M away.
+const PANEL_FINDINGS = 3;
+
+export function panelFindings(findings, opts = {}) {
+  const max = opts.max ?? PANEL_FINDINGS;
+  const worth = (findings || []).filter((f) => f.level === 'fail' || f.level === 'warn');
+  return {
+    lines: worth.slice(0, max).map((f) => ({ level: f.level, title: f.title })),
+    more: Math.max(0, worth.length - max),
+  };
+}
+
 export function codePanel(report, opts = {}) {
   const s = report.summary;
   const e = report.egress;
@@ -311,6 +327,9 @@ export function codePanel(report, opts = {}) {
     verdict: s.verdict,
     fails: s.fails,
     warns: s.warns,
+    // Phase 19: the finding text itself, not just the count of it — the worst
+    // few, worst first, the order buildReport already sorted them into.
+    findings: panelFindings(report.findings),
     // Printed small under the panel. The tool has said this in the report
     // panel since Phase 7; a sheet that leaves the room goes without it, and
     // a sheet is the thing that ends up in front of somebody with authority.
@@ -404,6 +423,8 @@ export function dayPanel(report, opts = {}) {
     verdict: fails ? 'fail' : warns ? 'warn' : 'ok',
     fails,
     warns,
+    // Phase 19, same as the code panel's: this panel's own findings, in text.
+    findings: panelFindings(findings),
     // The caveat that matters here is not about the code, it is about which
     // two things were measured against each other. A timetable is not part of
     // a building — it is in the file beside it — so a sheet that prints these
