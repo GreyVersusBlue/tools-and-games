@@ -528,6 +528,11 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     // rider above is queueing for — neither module describes a lift to the
     // other, exactly the arrangement `poseDoors` has with openings.js.
     get lifts() { return lifts; },
+    // One storey's collider, read-only — Phase 21's label gate casts sight
+    // against its live door leaves, which have to be *these* leaves: when a
+    // crowd is running an agent may be holding one open, and a fresh
+    // collection would be the plan's doors rather than the walk's.
+    colliderAt: (i) => colliderFor(i),
     // Whose eyes. `null` gives the camera its own body back where it stands.
     get following() { return follow ? follow.agent : null; },
     get followMode() { return follow ? follow.mode : null; },

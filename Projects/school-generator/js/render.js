@@ -1126,7 +1126,6 @@ export function initRender(canvas) {
   // The graded ground, swept once per rebuild and shared by the terrain mesh,
   // the site surfaces and every prop that stands on the site.
   let siteField = emptyField();
-  let labelledFloor = -1;   // storey whose labels walk mode is currently showing
 
   // Phase 6 layers panel: what's drawn while editing. Ghosting the floor below
   // is the v1-through-5 default (it's what lines walls up between storeys);
@@ -1304,6 +1303,9 @@ export function initRender(canvas) {
     ceilingGroup.visible = !edit;
     if (sheetGrid) sheetGrid.visible = edit;
     scene.fog = edit ? null : walkFog;
+    // The drawing board keeps always-on labels; a walk starts with them
+    // unearned and lets the gate fade in what the walker actually sees.
+    setLabelOpacity(edit || labelMode === 'all' ? 1 : 0);
     // The edit floor above only applies while editing, so switching modes
     // changes the answer even though the environment hasn't moved.
     applyAmbient();
@@ -1322,14 +1324,49 @@ export function initRender(canvas) {
 
   // In walkthrough, only label the storey the camera is standing on —
   // otherwise every room name on every floor stacks up in the same corridor.
-  function updateWalkLabels() {
+  //
+  // Phase 21: on that storey, a label is *earned*. `labelGate` is main.js's
+  // window onto sightline.js — asked per room, answered from casts the gate
+  // has already done — and `labelMode` is the session's setting ('earned' /
+  // 'strict' / 'all' / 'none'). The sprites keep `depthTest:false` for
+  // readability; the honesty comes from the gate, not the depth buffer. A
+  // label never pops: it fades toward where the gate says it belongs, faster
+  // in than out so strict mode reads as wayfinding rather than flicker.
+  const LABEL_FADE_IN = 3.2;    // opacity per second
+  const LABEL_FADE_OUT = 1.6;
+  let labelMode = 'earned';
+  let labelGate = null;         // (floorIndex, roomId) => bool, or null
+
+  function setLabelOpacity(v) {
+    for (const g of labelGroup.children) {
+      for (const sprite of g.children) {
+        sprite.material.opacity = v;
+        sprite.visible = v > 0.02;
+      }
+    }
+  }
+
+  function updateWalkLabels(dt) {
     if (!built) return;
     const ht = built.floorHt || FLOOR_H;
     const i = Math.min(built.floors.length - 1,
       Math.max(0, Math.floor((walkCamera.position.y + 1) / ht)));
-    if (i === labelledFloor) return;
-    labelledFloor = i;
-    for (const g of labelGroup.children) g.visible = g.userData.floor === i;
+    for (const g of labelGroup.children) {
+      const on = g.userData.floor === i;
+      g.visible = on;
+      if (!on) continue;
+      for (const sprite of g.children) {
+        const want = labelMode === 'all' ? 1
+          : labelMode === 'none' ? 0
+            : (labelGate && labelGate(i, sprite.userData.roomId)) ? 1 : 0;
+        const o = sprite.material.opacity;
+        const next = want > o
+          ? Math.min(want, o + dt * LABEL_FADE_IN)
+          : Math.max(want, o - dt * LABEL_FADE_OUT);
+        sprite.material.opacity = next;
+        sprite.visible = next > 0.02;
+      }
+    }
   }
 
   // ---------- the environment: sun, sky, and the building's own lights ----------
@@ -1553,7 +1590,7 @@ export function initRender(canvas) {
 
   function render(dt = 0) {
     if (mode === 'edit') applyEditCamera();
-    else updateWalkLabels();
+    else updateWalkLabels(dt);
     // The cloud deck drifts on the frame clock — slowly enough that a
     // screenshot and its retake match, fast enough that a long stand still
     // isn't a matte painting.
@@ -4337,6 +4374,9 @@ export function initRender(canvas) {
       const p = interiorPoint(shape);
       const sprite = makeLabelSprite(shape.name, shape.color);
       sprite.position.set(p.x, baseY + WALL_H + 2.5, p.z);
+      // The room's id, so walk mode's sight gate can ask about this sprite —
+      // rooms are named by id from outside the file, labels included.
+      sprite.userData.roomId = shape.id;
       labels.add(sprite);
     }
   }
@@ -4680,7 +4720,6 @@ export function initRender(canvas) {
     for (const g of labelGroup.children) {
       g.visible = !edit || g.userData.floor === cur;
     }
-    labelledFloor = -1;   // let walk mode recompute from the camera
     if (sheetGrid) sheetGrid.position.y = floorBaseY(built, cur) + 0.04;
     // Phase 8's underlays follow the storey being edited, so switching floors
     // moves the tracing paper up with you and redraws the shadow you are now
@@ -5705,6 +5744,9 @@ export function initRender(canvas) {
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
       if (xrOnFrame) xrOnFrame(dt, session);
+      // The page loop is standing down, so the storey filter and the label
+      // gate's fades run here — a headset earns labels the same way.
+      updateWalkLabels(dt);
       renderer.render(scene, walkCamera);
     });
     return session;
@@ -5827,6 +5869,14 @@ export function initRender(canvas) {
     // renderer reads the simulation's records directly, the same arrangement
     // `poseDoors` has with openings.js's leaves.
     setCrowd, clearCrowd, setHeat,
+    // --- Phase 21: labels earned by sight ---
+    //
+    // The gate is main.js's — built per walk over sightline.js — and this
+    // only asks it per sprite. Setting a mode outside a walk is harmless:
+    // edit mode never gates.
+    get labelMode() { return labelMode; },
+    setLabelMode(m) { labelMode = m; },   // the per-frame fade does the rest
+    setLabelGate(fn) { labelGate = fn || null; },
     // --- Phase 11: the scavenger hunt ---
     setHunt, updateHunt,
     get crowdVisible() { return crowdGroup.visible; },
