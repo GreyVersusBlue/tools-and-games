@@ -5455,6 +5455,242 @@ export function initRender(canvas) {
     };
   }
 
+  // ---------- the creature ----------
+  //
+  // Phase 24's body, no longer borrowed. The first cut posed the creature
+  // through `setCrowd` — one more pedestrian, dyed black and scaled up — and
+  // it read as exactly that: a big blocky person, uncanny for two seconds and
+  // silly for the rest of the night. What stalks the corridors now is its own
+  // puppet: a gaunt digitigrade thing, hunched low over long knuckle-dragging
+  // forelimbs, a bare tapered skull carried out in front of the chest, a row
+  // of spines where a spine should be. Same discipline as the crowd — rigid
+  // parts, no skinning — but hung on a hierarchy of pivots rather than an
+  // InstancedMesh, because there is exactly one of it and per-joint pivots
+  // are what let the pose be *animal*: reverse-hocked legs, a skull that
+  // lifts off the floor to look at you, a whole spine that rears in a freeze.
+  //
+  // The eyes are the one unlit material in the body. MeshBasicMaterial
+  // ignores the failing lamps, so two pale points hang in the dark long
+  // before anything around them resolves — and they go red when the stare
+  // turns into the chase, which is all the telegraphing the chase gets.
+  const CREATURE_INK = '#101216';    // the body: darker than any shadow here
+  const CREATURE_BONE = '#2a2c33';   // spines, claws, horns — catch the light
+  const CREATURE_EYES = {
+    lurk: '#b9d4ea', freeze: '#f3e9cf', chase: '#ff4732',
+  };
+  const creatureGroup = new THREE.Group();
+  creatureGroup.visible = false;
+  scene.add(creatureGroup);
+  let creaturePuppet = null;
+  let creatureClock = 0;
+  const _eyeColor = new THREE.Color();
+
+  function buildCreaturePuppet() {
+    if (creaturePuppet) return creaturePuppet;
+    const B = CREATURE_INK, N = CREATURE_BONE;
+    const part = (...geos) => {
+      const m = new THREE.Mesh(
+        geos.length > 1 ? mergeGeometries(geos) : geos[0], propMat);
+      m.castShadow = true;
+      return m;
+    };
+    const pivot = (parent, x, y, z) => {
+      const g = new THREE.Group();
+      g.position.set(x, y, z);
+      parent.add(g);
+      return g;
+    };
+
+    const root = new THREE.Group();
+    // Everything hangs off the hips; their height is animated — the crouch
+    // and the rear-up are both a hip move first.
+    const hips = pivot(root, 0, 0, 0);
+    hips.add(part(box(0.95, 0.8, 0.75, 0, 0.1, -0.1, B)));
+
+    // The tail: two tapered segments off the back of the pelvis, held up and
+    // swept by the gait. Nothing about it is load-bearing; everything about
+    // it says "not a person" from every angle at once.
+    const tail1 = pivot(hips, 0, 0.25, -0.4);
+    tail1.add(part(cylT(0.1, 0.16, 1.5, 5, 0, 0, -0.7, B, -Math.PI / 2)));
+    const tail2 = pivot(tail1, 0, 0, -1.4);
+    tail2.add(part(cylT(0.02, 0.09, 1.3, 5, 0, 0, -0.6, B, -Math.PI / 2)));
+
+    // The spine leans forward from the hips — the hunch is this one pivot —
+    // with the chest deeper than it is wide, a shoulder hump above it, and
+    // the spines riding the back line.
+    const spine = pivot(hips, 0, 0.3, 0.05);
+    const backSpikes = [];
+    for (let i = 0; i < 5; i++) {
+      const y = 0.55 + i * 0.42;
+      const h = 0.45 + Math.sin((i / 4) * Math.PI) * 0.45;
+      backSpikes.push(cylT(0, 0.08, h, 4, 0, y + h * 0.3, -0.52 - i * 0.02, N, -0.65));
+    }
+    spine.add(part(
+      box(0.85, 0.95, 0.75, 0, 0.45, 0.05, B),          // gut, drawn tight
+      box(1.1, 1.25, 1.0, 0, 1.4, 0.1, B),              // chest
+      box(0.9, 0.5, 0.8, 0, 2.0, -0.08, B),             // the hump
+      ...backSpikes,
+    ));
+
+    // Neck and skull: the neck carries the head out in front of the chest,
+    // and the skull pivot is what looks up. Long snout, underslung jaw, two
+    // horns swept back — a silhouette that reads wrong before it reads at
+    // all, which is the whole brief.
+    const neck = pivot(spine, 0, 2.0, 0.4);
+    neck.add(part(cyl(0.16, 0.26, 0.9, 7, 0, 0.4, 0, B)));
+    const skull = pivot(neck, 0, 0.85, 0.1);
+    skull.add(part(
+      box(0.52, 0.48, 0.62, 0, 0.08, 0.02, B),                         // cranium
+      cylT(0.06, 0.24, 0.95, 5, 0, -0.02, 0.68, B, Math.PI / 2),       // snout
+      boxT(0.26, 0.12, 0.72, 0, -0.26, 0.34, B, 0.3),                  // jaw, ajar
+      cylT(0, 0.06, 0.55, 4, 0.2, 0.42, -0.28, N, -0.95),              // horns
+      cylT(0, 0.06, 0.55, 4, -0.2, 0.42, -0.28, N, -0.95),
+    ));
+    const eyeMat = new THREE.MeshBasicMaterial({ color: CREATURE_EYES.lurk });
+    const eyeGeo = new THREE.SphereGeometry(0.075, 8, 6);
+    const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeL.position.set(0.17, 0.14, 0.3);
+    const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeR.position.set(-0.17, 0.14, 0.3);
+    skull.add(eyeL, eyeR);
+
+    // Forelimbs: too long, on purpose — hunched over them the knuckles ride
+    // near the floor, and in a chase they swing like a second pair of legs.
+    // Claws in the bone shade, splayed a few degrees apart.
+    const arms = [];
+    for (const side of [1, -1]) {
+      const shoulder = pivot(spine, side * 0.68, 1.62, 0.12);
+      shoulder.add(part(cyl(0.13, 0.19, 1.8, 6, 0, -0.9, 0, B)));
+      const elbow = pivot(shoulder, 0, -1.78, 0);
+      elbow.add(part(
+        cyl(0.09, 0.14, 1.7, 6, 0, -0.85, 0, B),
+        cylT(0, 0.05, 0.6, 4, 0.11, -1.75, 0.12, N, 2.55, side * 0.18),
+        cylT(0, 0.05, 0.65, 4, 0, -1.8, 0.14, N, 2.6),
+        cylT(0, 0.05, 0.6, 4, -0.11, -1.75, 0.12, N, 2.55, -side * 0.18),
+      ));
+      arms.push({ shoulder, elbow });
+    }
+
+    // Hindlegs, reverse-hocked: thigh forward-down, shank swept back, then a
+    // long metatarsal down to two toe claws — the dog-leg zigzag that no
+    // person's leg makes, which is what sells the rest.
+    const legs = [];
+    for (const side of [1, -1]) {
+      const hip = pivot(hips, side * 0.42, 0, -0.05);
+      hip.add(part(cyl(0.16, 0.24, 1.9, 6, 0, -0.95, 0, B)));
+      const knee = pivot(hip, 0, -1.85, 0);
+      knee.add(part(cyl(0.1, 0.15, 1.75, 6, 0, -0.87, 0, B)));
+      const ankle = pivot(knee, 0, -1.72, 0);
+      ankle.add(part(
+        cyl(0.08, 0.11, 1.05, 5, 0, -0.5, 0, B),
+        cylT(0, 0.06, 0.5, 4, 0.09, -1.0, 0.14, N, 1.25),
+        cylT(0, 0.06, 0.5, 4, -0.09, -1.0, 0.14, N, 1.25),
+      ));
+      legs.push({ hip, knee, ankle });
+    }
+
+    creatureGroup.add(root);
+    creaturePuppet = {
+      root, hips, spine, neck, skull, tail1, tail2, arms, legs, eyeMat,
+      // The pose that is, eased toward the pose the state wants — so a freeze
+      // is the body *rising*, over half a second, rather than snapping.
+      pose: { crouch: 0, hunch: 0.62, neckPitch: 0.45, amp: 0.42, eye: new THREE.Color(CREATURE_EYES.lurk) },
+    };
+    return creaturePuppet;
+  }
+
+  // What each state holds itself like. Lurk is the prowl — folded low, head
+  // level, limbs walking. Freeze unfolds the legs and the spine together and
+  // stops every limb dead: the thing you catch sight of down a corridor is
+  // *standing up*, facing you, taller than it was. Chase folds deeper than
+  // the lurk and swings twice as hard. `crouch` drives the leg angles, and
+  // the hip height falls out of the chain — see the cosine sum below — so
+  // the toes plant on the floor in every stance instead of at one blessed
+  // height.
+  const CREATURE_POSES = {
+    lurk: { crouch: 0, hunch: 0.62, neckPitch: 0.45, amp: 0.42 },
+    freeze: { crouch: -0.55, hunch: 0.12, neckPitch: 0.02, amp: 0 },
+    chase: { crouch: 0.4, hunch: 0.95, neckPitch: 0.3, amp: 0.85 },
+  };
+  // The rest-pose leg chain, as functions of the crouch: segment lengths are
+  // the built geometry's, angles fold as the body drops and unfold as it
+  // rears.
+  const CREATURE_LEG = { thigh: 1.85, shank: 1.72, foot: 1.0 };
+  function creatureLegRest(crouch) {
+    const thigh = -0.5 - crouch * 0.3;
+    const knee = 1.1 + crouch * 0.8;
+    const ankle = -1.0 - crouch * 0.4;
+    const a1 = thigh, a2 = a1 + knee, a3 = a2 + ankle;
+    const hipY = CREATURE_LEG.thigh * Math.cos(a1)
+      + CREATURE_LEG.shank * Math.cos(a2)
+      + CREATURE_LEG.foot * Math.cos(a3);
+    return { thigh, knee, ankle, hipY };
+  }
+
+  // Once a frame while the creature exists; null hides it. `c` is
+  // creature.js's own record — x/z/y/floor/facing/gait/state — read and never
+  // written, the same deal `setCrowd` has with agents.
+  function setCreature(c, dt = 0) {
+    if (!c) { creatureGroup.visible = false; return; }
+    const p = buildCreaturePuppet();
+    creatureGroup.visible = true;
+    creatureClock += dt;
+
+    const want = CREATURE_POSES[c.state] || CREATURE_POSES.lurk;
+    const k = 1 - Math.exp(-dt * 5);
+    const pose = p.pose;
+    pose.crouch += (want.crouch - pose.crouch) * k;
+    pose.hunch += (want.hunch - pose.hunch) * k;
+    pose.neckPitch += (want.neckPitch - pose.neckPitch) * k;
+    pose.amp += (want.amp - pose.amp) * k;
+    _eyeColor.set(CREATURE_EYES[c.state] || CREATURE_EYES.lurk);
+    pose.eye.lerp(_eyeColor, k);
+    p.eyeMat.color.copy(pose.eye);
+
+    // The gait phase is walked distance, creature.js's own accumulator, so
+    // the limbs move exactly when the body does; the breath is wall-clock,
+    // so a frozen body still isn't a statue.
+    const ph = c.gait * 0.85;
+    const swing = Math.sin(ph) * pose.amp;
+    const breath = Math.sin(creatureClock * 1.9) * 0.03;
+    const rest = creatureLegRest(pose.crouch);
+
+    p.root.position.set(c.x, c.y, c.z);
+    p.root.rotation.y = c.facing;
+    p.hips.position.y = rest.hipY + Math.abs(Math.sin(ph)) * 0.09 * pose.amp + breath;
+    p.spine.rotation.x = pose.hunch + Math.sin(ph * 2) * 0.03 * pose.amp;
+    p.neck.rotation.x = pose.neckPitch;
+    // The skull unwinds the lean so the snout stays on the horizontal —
+    // prowling, it hunts along the floor; reared, it is simply looking at
+    // you. A touch of side-to-side sweep while it walks.
+    p.skull.rotation.x = -(pose.hunch + pose.neckPitch) + 0.12;
+    p.skull.rotation.y = Math.sin(ph * 0.5) * 0.14 * pose.amp;
+
+    // Legs alternate about the reverse-hock rest pose; the shank tucks a
+    // little harder on the swing-through.
+    for (let i = 0; i < 2; i++) {
+      const s = i === 0 ? swing : -swing;
+      const leg = p.legs[i];
+      leg.hip.rotation.x = rest.thigh + s;
+      leg.knee.rotation.x = rest.knee + Math.max(0, -s) * 0.6;
+      leg.ankle.rotation.x = rest.ankle - Math.max(0, s) * 0.3;
+    }
+    // Arms answer the legs, half a beat behind, elbows breaking on the
+    // reach; frozen, they just hang.
+    for (let i = 0; i < 2; i++) {
+      const s = (i === 0 ? -swing : swing) * 0.7;
+      const arm = p.arms[i];
+      arm.shoulder.rotation.x = -0.12 + s;
+      arm.elbow.rotation.x = 0.3 + Math.max(0, -s) * 0.5;
+    }
+    // The tail rides the gait sideways and settles when the body does; the
+    // tip curls down a touch so it hangs rather than skewers.
+    p.tail1.rotation.x = 0.35;
+    p.tail1.rotation.y = Math.sin(ph * 0.5) * 0.3 * pose.amp + Math.sin(creatureClock * 0.7) * 0.08;
+    p.tail2.rotation.x = -0.28;
+    p.tail2.rotation.y = Math.sin(ph * 0.5 - 0.9) * 0.35 * pose.amp;
+  }
+
   // The hiding places, as things in the world. `places` is hunt.js's own list;
   // nothing is stored anywhere, and calling this with an empty list is how a
   // hunt ends.
@@ -6107,6 +6343,10 @@ export function initRender(canvas) {
     // light. The writings are haunt.js's placement, drawn here and revealed
     // by count — one write and one read, the usual arrangement.
     setLampFlicker, setWritings, updateWritings,
+    // ...and the one body in it, posed from creature.js's record; null
+    // banishes it from the scene. Its own puppet, not a crowd instance —
+    // see the creature section.
+    setCreature,
     get crowdVisible() { return crowdGroup.visible; },
     set crowdVisible(v) { crowdGroup.visible = !!v; },
     // Swing the doors. `leaves` is openings.js's own list — the same one

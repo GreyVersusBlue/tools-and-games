@@ -503,12 +503,10 @@ function boot() {
       const door = slamCandidate(hauntDoorsFor(at.floor), haunt.prevAt, at);
       if (door) hauntSlam(door, at.floor);
     }
-    // The creature rides the crowd's meshes — they never share a frame, by
-    // the stage machine's own invariant, and this guard says so.
-    if (!life.on) {
-      renderApi.setCrowd([{ ...c, state: c.state === 'freeze' ? 'idle' : 'walk' }],
-        { recolor: true });
-    }
+    // Its own puppet now — see render.js's creature section — so nothing
+    // here borrows the crowd's meshes any more, and the freeze reads as the
+    // rear-up it is rather than as a pedestrian standing still.
+    renderApi.setCreature(c, dt);
   }
 
   function hauntFlightTick(dt) {
@@ -533,6 +531,7 @@ function boot() {
     audio.setDetune(0);
     renderApi.setLampFlicker(null);
     renderApi.setCrowd([], {});
+    renderApi.setCreature(null);
     const sum = huntSummary(haunt.hunt);
     $('haunt-end-line').textContent =
       `${sum.found} star${sum.found === 1 ? '' : 's'}, and the one door that still opens.`;
