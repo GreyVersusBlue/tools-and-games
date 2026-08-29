@@ -701,6 +701,29 @@ const CHECKS = [
     },
   },
   {
+    name: 'baked-light',
+    what: 'entering a walk bakes the light in a worker, and the editor takes it off again',
+    async run(d) {
+      await d.page.evaluate(`document.getElementById('mode-btn').click(); 1`);
+      // The bake runs in a module worker and lands whenever it lands — poll
+      // the renderer rather than the clock. Ten seconds is an eternity for a
+      // building this size; on a hit in IndexedDB it is one lap.
+      let worn = false;
+      for (let i = 0; i < 40 && !worn; i++) {
+        await d.page.waitForTimeout(250);
+        worn = await d.page.evaluate('window.app.renderApi.bakeWorn');
+      }
+      await d.page.evaluate(`document.getElementById('walk-exit').click(); 1`);
+      await d.page.waitForTimeout(400);
+      const shed = await d.page.evaluate('window.app.renderApi.bakeWorn');
+      return { worn, shed };
+    },
+    expect: ({ ctx }) => {
+      if (!ctx.worn) throw new Error('the walk never wore a bake — worker, store or key broke');
+      if (ctx.shed) throw new Error("the drafting board is wearing the walk's bake");
+    },
+  },
+  {
     name: 'undo-redo',
     what: 'undo and redo round-trip the design byte for byte',
     async run(d) {

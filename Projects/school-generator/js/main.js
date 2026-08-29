@@ -49,6 +49,8 @@ import { addProp, getProp, wrapAngle, MAX_PROPS } from './props.js';
 import { initAudio } from './audio.js';
 import { doorEvents } from './sound.js';
 import { roomsOnFloor, isOutside } from './acoustics.js';
+import { bakeKey, unpackBake, encodeBakeText } from './bakelight.js';
+import { saveBake, loadBake } from './bakestore.js';
 import {
   downloadSave, loadFromFile, autosave, autosaveNow, loadAutosave, clearAutosave,
   listDesigns, saveDesign, loadDesign, deleteDesign, renameDesign,
@@ -278,6 +280,11 @@ function designChanged(info = {}) {
   // structural edit is a different set of both. Rather than quietly leave
   // the hamster inside a wall somebody has just drawn, the hunt ends.
   if (hunt && info.structural !== false) huntStop();
+  // Phase 27: a structural edit is a different building under the baked
+  // light — the worker is cancelled outright and the picture drops back to
+  // live lighting rather than showing a half-true one. Cheap when nothing
+  // is baked; the keyed cache means an undo straight back is still a hit.
+  if (info.structural !== false) bakeInvalidate();
   // Same for sound: a diffuser placed, a room's finish changed or a wall
   // moved all change what there is to hear and how long it rings, and both
   // answers are derived rather than stored, so re-deriving is the whole
@@ -775,6 +782,115 @@ function openWalkOverlay() {
 }
 let mode = 'edit';
 
+// --- Phase 27: light that stops at walls ---
+//
+// The bake belongs to the walk: entering walk mode asks for one, and the
+// renderer wears it the moment it exists. The editor never sees it — a
+// drafting table wants legible light, and every structural edit would
+// invalidate it anyway. The pieces:
+//
+//   bakelight.js   the illumination model, pure, in a worker
+//   bakeworker.js  the thread it runs on — terminated, never asked, when a
+//                  structural edit lands
+//   bakestore.js   IndexedDB beside the autosave, keyed on the structural
+//                  hash, so re-walking an unchanged building is a cache hit
+//
+// `bakeObtain` is the one path: memory, then the store, then the worker —
+// the walk and the export both go through it, which is why an export made
+// after a walk splices the very bake the walk was wearing.
+const bake = { key: null, packed: null, data: null, worker: null };
+let bakeFlight = null;   // { key, p } — the one in-flight obtain
+
+function bakeCancel() {
+  if (bake.worker) {
+    bake.worker.terminate();
+    bake.worker = null;
+  }
+}
+
+// Any structural edit: the worker dies mid-cast, the walk (if one is on)
+// drops back to live lighting rather than wearing a half-true picture. The
+// memory cache stays — it is keyed, and an undo straight back is a hit.
+function bakeInvalidate() {
+  bakeCancel();
+  renderApi.setBake(null);
+  if (mode === 'walk') bakeEnsure();
+}
+
+// The worker run, as a promise: packed bake, or null for a build that
+// failed or was cancelled — both of which mean "stay live", never "throw".
+function bakeRun(key) {
+  return new Promise((resolve) => {
+    let worker;
+    try {
+      worker = new Worker(new URL('./bakeworker.js', import.meta.url), { type: 'module' });
+    } catch {
+      resolve(null);   // no module workers — the live path is the picture
+      return;
+    }
+    bake.worker = worker;
+    const finish = (packed) => {
+      if (bake.worker === worker) bake.worker = null;
+      worker.terminate();
+      resolve(packed);
+    };
+    worker.onmessage = (e) => {
+      const msg = e.data || {};
+      if (msg.type === 'progress') {
+        $('status').textContent = `Baking light — ${Math.round(msg.frac * 100)}%`;
+      } else if (msg.type === 'done') {
+        finish(msg.bake && msg.bake.key === key ? msg.bake : null);
+      } else if (msg.type === 'error') {
+        $('status').textContent = `Light bake failed — staying live. (${msg.message})`;
+        finish(null);
+      }
+    };
+    worker.onerror = () => finish(null);
+    worker.postMessage({ design: serialize(state, { omitOverlay: true, omitModels: true }) });
+    $('status').textContent = 'Baking light…';
+  });
+}
+
+// A packed bake for this structural key: memory, then the store, then the
+// worker. Adopts and stores whatever it finds, so the next asker is cheaper.
+function bakeObtain(key) {
+  if (bake.packed && bake.key === key) return Promise.resolve(bake.packed);
+  if (bakeFlight && bakeFlight.key === key) return bakeFlight.p;
+  bakeCancel();
+  const p = (async () => {
+    const stored = await loadBake(key);
+    if (stored) {
+      const data = unpackBake(stored);
+      if (data && data.key === key) {
+        bake.key = key; bake.packed = stored; bake.data = data;
+        return stored;
+      }
+    }
+    // Still wanted? A structural edit while the store answered means this
+    // key no longer names the building.
+    if (bakeKey(state, catalogEntry) !== key) return null;
+    const packed = await bakeRun(key);
+    if (!packed) return null;
+    const data = unpackBake(packed);
+    if (!data) return null;
+    bake.key = key; bake.packed = packed; bake.data = data;
+    saveBake(packed);   // fire and forget — a refusal is weather
+    return packed;
+  })();
+  bakeFlight = { key, p };
+  p.finally(() => { if (bakeFlight && bakeFlight.p === p) bakeFlight = null; });
+  return p;
+}
+
+async function bakeEnsure() {
+  const key = bakeKey(state, catalogEntry);
+  const packed = await bakeObtain(key);
+  if (!packed || mode !== 'walk') return;
+  if (bakeKey(state, catalogEntry) !== key) return;   // it moved on
+  renderApi.setBake(bake.data);
+  $('status').textContent = 'Light baked in — walls cast, corridors pool, rooms go dark.';
+}
+
 function setMode(m) {
   if (m === mode) return;
   mode = m;
@@ -793,6 +909,9 @@ function setMode(m) {
     invalidateMinimap();
     updateMinimapButtons();
     renderTourPanel();
+    // Phase 27: ask for the baked light — a cache hit wears it now, a fresh
+    // building bakes in the worker and wears it when it lands.
+    bakeEnsure();
     openWalkOverlay();
     closeModal($('designs-overlay'));
     closeModal($('export-overlay'));
@@ -5425,6 +5544,10 @@ $('share-copy').addEventListener('click', async () => {
 // The marker is the one string this file and the bundler have to agree on;
 // test/export-walk.test.mjs pins it on that side.
 const WALK_DESIGN_MARKER = '<!--SG-DESIGN-->';
+// Phase 27: the second slot — a current bake rides along, so the handed
+// file opens with the good light and computes nothing. Pinned by
+// test/export-walk.test.mjs on the bundler's side.
+const WALK_BAKE_MARKER = '<!--SG-BAKE-->';
 let walkTemplate = null;   // fetched once per session — it never changes under us
 
 async function downloadWalkExport() {
@@ -5447,7 +5570,20 @@ async function downloadWalkExport() {
     // models do draw, so unlike the link they come along — a file has no
     // 60 KB ceiling.
     const payload = await encodeShare(serialize(state, { omitOverlay: true }));
-    const html = walkTemplate.replace(WALK_DESIGN_MARKER, () => payload);
+    // Phase 27: the light goes with the building. A bake the walk already
+    // wore (or the store still holds) splices straight in; a design that was
+    // never walked bakes now, in the worker, while the note says so. A bake
+    // that fails is a file that opens on live lighting — never a blocked
+    // export.
+    let bakeText = '';
+    try {
+      note.textContent = 'Baking light…';
+      const packed = await bakeObtain(bakeKey(state, catalogEntry));
+      if (packed) bakeText = await encodeShare(encodeBakeText(packed));
+    } catch { /* live light, then */ }
+    note.textContent = 'Bundling…';
+    const html = walkTemplate.replace(WALK_DESIGN_MARKER, () => payload)
+      .replace(WALK_BAKE_MARKER, () => bakeText);
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -5458,6 +5594,7 @@ async function downloadWalkExport() {
     // The one visible trace of an armed haunt outside the palette: whoever
     // is about to send this file deserves to know which file it is.
     note.textContent = `${Math.round(html.length / 1024)} KB — opens anywhere, even offline.`
+      + (bakeText ? ' · light baked in' : '')
       + (normalizeHaunt(state.haunt).on ? ' · haunted' : '');
   } catch (err) {
     // The likeliest failure is file:// — this page opened from disk cannot

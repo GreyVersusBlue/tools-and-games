@@ -1,7 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: twenty-six phases are shipped — three arcs, all of arc four, and
-two after it. Arc five is planned below and open.** Three arcs took a grid
+**Status: twenty-seven phases are shipped — three arcs, all of arc four,
+two after it, and arc five is underway: Phase 27 has shipped and Phases
+28–34 are open below.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -59,6 +60,9 @@ tiles, graph over it) · `sitemesh.js` (the same, over the outdoors) ·
 `daylight.js` / `takeoff.js` / `acoustics.js` / `utilisation.js` / `cost.js` /
 `spec.js` / `phasing.js` / `report.js` (analysis, none of it stored) ·
 `lights.js` / `sky.js` / `sound.js` (emitters, sun, audio sources) ·
+`bakelight.js` (illumination baked against sightline's occluders, off the
+main thread in `bakeworker.js`, cached by `bakestore.js` beside the
+autosave — never in the file) ·
 `shadow.js` (what an upper storey stands on) · `blueprint.js` (printable
 sheet) · `minimap.js`.
 
@@ -255,9 +259,13 @@ and add to this list rather than starting a new one.
   the touch HUD beside the joystick it doesn't yet have.
 
 **Light, sound and picture**
-- There are still no shadows from the building's own lights, and light
+- ~~There are still no shadows from the building's own lights, and light
   doesn't respect geometry, only distance — a troffer shines through the
-  wall its range crosses.
+  wall its range crosses.~~ *Done, Phase 27, for the walk: the bake casts
+  every fixture against sightline's occluders and the renderer wears it.
+  The editor's live path still lights by distance alone — a drafting table
+  wants legible — and props still take the flat lift rather than the field,
+  since instanced geometry shares its vertices across the storey.*
 - The cloud deck is one coverage and one drift everywhere — no weather, no
   wind, no overcast day.
 - Transmission loss ~~is one number per situation rather than a ray cast~~
@@ -915,7 +923,7 @@ main with CI green, and the closing report names the **next open phase's
 number and its named model** — so whoever is running the arc always knows
 which session to open next without opening this file.
 
-## Phase 27 — Light that stops at walls
+## Phase 27 — Light that stops at walls *(shipped)*
 
 **A troffer shines through the wall its range crosses, and everyone has
 agreed not to look.**
@@ -932,31 +940,71 @@ around their corners, light pooling under the pans, rooms that go actually
 dark when the sun leaves them — this is the largest single jump in visual
 fidelity the tool has left, and all of it is bought off the frame.
 
-- [ ] **`bakelight.js`, pure, with its suite.** Sample points over the
-  built surfaces; occluders derived by sightline's rules; direct light plus
-  one gathered bounce; deterministic for a given design — and banked in
-  channels, the sun's contribution and the fixtures' kept separate, so a
-  Phase 20 mood *recombines* the bake rather than re-running it.
-- [ ] **A worker runs it.** A module worker, transferable buffers, progress
-  on the status line, cancelled by any structural edit; the page never
-  stutters. The editor keeps live lighting; the bake belongs to the walk.
-- [ ] **The renderer wears it.** Baked light modulates the vertex colours
-  the geometry already carries; indoor point lights stand down to their
-  glow when a bake is current; the live path stays whole for the machine
-  that never baked.
-- [ ] **Staleness is honest.** A bake is keyed on a hash of the structural
-  state and stored beside the autosave in IndexedDB, never in the file — a
-  cache, not a fact about the building. Any structural edit drops back to
-  live lighting rather than showing a half-true picture.
-- [ ] **The export carries it.** A current bake rides the walk export, so
-  the handed file opens with the good light and no compute; the template
-  budget test learns the new ceiling.
+- [x] **`bakelight.js`, pure, with its suite.** One 2ft field per storey,
+  sampled at desk height; occluders derived by sightline's rules (a wall
+  blocks, glass and rails pass, a window passes at its band, a doorway is a
+  hole, lift shafts added); every fixture the live budget counts — placed
+  emitters and the generic troffer lattice — cast individually, plus one
+  gathered bounce: a short diffusion of the direct field through the
+  openings between cells, so a doorway pools and borrowed light crosses an
+  interior window. Deterministic for a given design, and banked in
+  channels: `day` is directionless sky *access* (which is what lets a mood
+  recombine it), `fix` is the fixtures' RGB. `bakedTint` is the one place
+  they meet.
+- [x] **A worker runs it.** `bakeworker.js` — a module worker fed the
+  design as save-load JSON (never a structured-clone of the live state),
+  progress on the status line, the packed result handed back in
+  transferable buffers. Cancellation is termination, not a message: any
+  structural edit kills it mid-cast. The editor keeps live lighting; the
+  bake belongs to the walk, asked for on every entry into walk mode.
+- [x] **The renderer wears it.** Baked light multiplies the vertex colours
+  the merged storey meshes already carry — sampled per vertex, offset
+  along the face normal so the two sides of one wall can be lit and dark —
+  over a stashed copy, so shedding the bake is a restore, not a rebuild.
+  Indoor clusters stand down to their glow (the flat fill becomes the lift
+  the tint carves darkness into); the site's fixtures stay real lights;
+  with no bake set, not a line of the live path changes.
+- [x] **Staleness is honest.** `bakeKey` hashes exactly what the light
+  depends on — rings, openings, links, storey height, emitting props —
+  and nothing else, so a rename, a repaint or a moved chair keeps the
+  cache and an undo straight back is a hit. Stored packed (a byte a
+  channel) in IndexedDB beside the autosave by `bakestore.js`, newest four
+  kept, never in the file. Any structural edit terminates the worker and
+  drops the walk back to live lighting.
+- [x] **The export carries it.** A second splice marker (`<!--SG-BAKE-->`)
+  on the design marker's exact terms: the button bakes if it must, the CLI
+  bakes in Node (the module is pure), and the handed file verifies the
+  bake's key against the design beside it before wearing it — a
+  hand-edited export falls back to live light, never a wrong picture. The
+  template grew by one pure module and stays a quarter under its 4 MB
+  budget; the suite now pins the second marker too.
 
 *Leans on:* `sightline.js`'s occluder rules, `lights.js`'s troffer lattice,
 Phase 20's moods. *Collides with:* nothing — the live path remains. *Save:*
 none — a bake is a cache keyed on the structure that made it. *Model:*
 **Claude Fable 5** — an illumination model, a worker protocol, and the
 renderer contract.
+
+*What fought back:* where the brightness comes from. A tint can only
+*darken* — it multiplies albedo — so at night a lamplit room has nothing to
+multiply: the answer is that wearing a bake swaps the spill's modest flat
+fill for a full one (`BAKE_FILL`) and lets the tint carve the darkness in,
+which is also why the indoor clusters can stand down without the building
+going flat. And the day channel had to stop being the sun: a baked sun
+patch is wrong the moment the mood moves the clock, so what is banked is
+directionless daylight *access*, recombined against the palette's sun level
+per environment write — a mood click re-tints a hundred thousand vertices
+in milliseconds and the bake itself never re-runs. Ceilings turned out to
+be load-bearing for the trick: they had no vertex colours at all, and a
+dark corridor under a bright ceiling reads as a lie, so `ceilMat` grew
+white vertex colours that multiply to nothing until a bake has something
+darker to say. *Tests:* `test/bakelight.test.mjs` (the model, the key, the
+codecs, and the sample school baked end to end), `test/bakestore.test.mjs`
+(the store against a fake IndexedDB, both faces), two new promises in
+`test/export-walk.test.mjs` (the bake slot round-trips; the worker stays
+out of the bundle), and a `baked-light` check in `test/tools/run.mjs` —
+the real page enters a walk, the worker lands, the renderer wears it, and
+the drafting board takes it off again.
 
 ## Phase 28 — A school you can hear
 
