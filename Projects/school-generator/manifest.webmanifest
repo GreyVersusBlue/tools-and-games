@@ -1,0 +1,27 @@
+{
+  "name": "School Generator",
+  "short_name": "Schools",
+  "description": "Draw a school in plan, read what works and what doesn't, then walk through it in first person.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#141a22",
+  "theme_color": "#141a22",
+  "categories": ["productivity", "education", "graphics"],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

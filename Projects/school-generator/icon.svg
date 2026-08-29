@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="School Generator">
+  <!-- The favicon the page has always carried, drawn at app-icon size and with
+       a safe zone: a maskable icon is cropped to a circle on some launchers, so
+       nothing that matters goes within 51px of an edge. Vector rather than a
+       pair of PNGs — the house rule is that pictures in this project are drawn,
+       not shipped. -->
+  <rect width="512" height="512" fill="#233042"/>
+  <g transform="translate(256 268) scale(11.2) translate(-16 -16)">
+    <rect x="6" y="12" width="20" height="14" fill="#e9e6df"/>
+    <polygon points="16,4 4,12 28,12" fill="#c96f5f"/>
+    <rect x="13" y="18" width="6" height="8" fill="#5a4632"/>
+    <rect x="8" y="15" width="4" height="4" fill="#4da3ff"/>
+    <rect x="20" y="15" width="4" height="4" fill="#4da3ff"/>
+  </g>
+</svg>

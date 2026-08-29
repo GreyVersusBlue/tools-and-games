@@ -56,7 +56,7 @@ import { roomsOnFloor, isOutside } from './acoustics.js';
 import { bakeKey, unpackBake, encodeBakeText } from './bakelight.js';
 import { saveBake, loadBake } from './bakestore.js';
 import {
-  downloadSave, loadFromFile, autosave, autosaveNow, loadAutosave, clearAutosave,
+  downloadSave, loadFromFile, autosave as autosaveStore, autosaveNow, loadAutosave, clearAutosave,
   listDesigns, saveDesign, loadDesign, deleteDesign, renameDesign,
   serialize, deserialize,
 } from './save-load.js';
@@ -139,14 +139,47 @@ import {
 import { xrAvailability, rigPosition } from './xr.js';
 import { probeWebGL, failureText } from './bootcheck.js';
 import { lazy } from './lazy.js';
+// --- Phase 30 ---
+import { galleryCards, thumbPaths } from './gallery.js';
+import { REV as OFFLINE_REV, registrable, offlineStatus, INSTALL_LABEL } from './offline.js';
+import {
+  fileMode, modeNote, makeFileSession, noteOpened, noteSaved, noteEdited,
+  hasFile, suggestName, savePickerOptions, openPickerOptions, docTitle,
+  saveHint, shouldWarnOnClose, fileErrorText, AUTOSAVE_NOTE, FILE_EXT,
+} from './filestore.js';
+import { demoById, demoSpot, demoEvents, demoBounds, demoCommands } from './demo.js';
 
 // The generator is the single largest module in the tool (109 KB) and is
 // wanted exactly once, when somebody presses Go in the Generate dialog — so
 // it is fetched then rather than on every load. See js/lazy.js.
 const generateModule = lazy(() => import('./generate.js'));
+// The gallery's three schools are 90 KB of share payloads and are wanted on
+// exactly one load in a browser's life — the first one. Same bargain.
+const galleryStock = lazy(() => import('./gallerystock.js'));
 
 const canvas = document.getElementById('view');
 const $ = (id) => document.getElementById(id);
+
+// --- Phase 30: the design as a document ---
+//
+// Declared up here rather than beside its buttons because the autosave wrapper
+// below is the tool's *one* signal that a design has been edited, and it is
+// called from forty places, several of which are further up this file than the
+// file panel is. See filestore.js for what a session is and why the handle
+// never leaves this module.
+let fileSession = makeFileSession('new');
+const fileWorld = fileMode({ window });
+
+// Every autosave is also the moment the file behind the design went stale.
+// Wrapping the import is one edit; marking dirty at forty call sites is forty
+// chances to miss one — and the one missed is the one where somebody loses an
+// afternoon. `autosaveNow` is deliberately *not* wrapped: adoptState calls it
+// to write a design that has just arrived, which is clean by definition.
+function autosave(st, onResult = null) {
+  const next = noteEdited(fileSession);
+  if (next !== fileSession) { fileSession = next; syncFileChrome(); }
+  return autosaveStore(st, onResult);
+}
 
 // --- can this browser run the tool at all? ---
 //
@@ -2240,21 +2273,111 @@ function adoptState(next, opts = {}) {
   updateUndoButtons();
 }
 
-$('save-btn').addEventListener('click', () => downloadSave(state, 'school.json'));
+// --- Phase 30: a real Save ---
+//
+// The design is a document now: `Save` writes back to the file it came from,
+// `Save As` asks where, `Open` reads one, and the autosave is the safety net
+// under all three rather than the place the work lives. Every decision about
+// what that means — dirty, named, warned about on close — is filestore.js;
+// what is here is the two live browser objects it deliberately does not hold:
+// the file handle, and the DOM.
+//
+// Where the File System Access API is absent the same three verbs are a
+// download, a download, and a file input. Nothing above this line knows which.
 
-$('load-btn').addEventListener('click', () => $('file-input').click());
+// The name a Save As dialog opens holding, when the file has none of its own:
+// the school's own name, which is the name the PA says inside it and the name
+// on its gallery card. One seed, one school, one name.
+const designName = () => {
+  try { return paScript(lifeSettings().seed).school; } catch { return ''; }
+};
+
+function syncFileChrome() {
+  document.title = docTitle(fileSession);
+  const hint = saveHint(fileSession, fileWorld);
+  const save = $('save-btn');
+  save.title = hint;
+  save.classList.toggle('dirty', !!fileSession.dirty && hasFile(fileSession));
+  $('saveas-btn').title = fileWorld === 'direct'
+    ? 'Write the design to a file you choose (Ctrl+Shift+S)'
+    : 'Download the design (Ctrl+Shift+S)';
+  $('load-btn').title = fileWorld === 'direct'
+    ? `Open a ${FILE_EXT} design from disk (Ctrl+O)`
+    : 'Read a design from a file (Ctrl+O)';
+}
+
+async function writeDesign(handle) {
+  const writable = await handle.createWritable();
+  await writable.write(new Blob([serialize(state)], { type: 'application/json' }));
+  await writable.close();
+}
+
+async function fileSave({ as = false } = {}) {
+  const name = suggestName(fileSession, designName());
+  if (fileWorld !== 'direct') {
+    downloadSave(state, name);
+    fileSession = noteSaved(fileSession, { name });
+    syncFileChrome();
+    $('status').textContent = `Downloaded ${fileSession.name}. ${AUTOSAVE_NOTE}`;
+    return;
+  }
+  try {
+    const handle = (!as && fileSession.handle)
+      || await window.showSaveFilePicker(savePickerOptions(name));
+    await writeDesign(handle);
+    fileSession = noteSaved(fileSession, { name: handle.name, handle });
+    syncFileChrome();
+    $('status').textContent = `Saved to ${fileSession.name}.`;
+  } catch (err) {
+    // A cancelled picker says nothing: the person pressed Escape, and a tool
+    // that scolds them for it has opinions about its own dialogs.
+    const text = fileErrorText(err, 'save');
+    if (text) $('status').textContent = text;
+  }
+}
+
+// The design that arrived, whichever door it came through. Kept in one place
+// so a file, a link, a card and a slot cannot disagree about what happens to
+// the undo stack or to the session behind them.
+function adoptOpened(next, { name = null, handle = null, source = 'file', undoable = true } = {}) {
+  if (undoable) editor.pushUndo();
+  adoptState(next, { undoable });
+  fileSession = noteOpened(fileSession, { name, handle, source });
+  syncFileChrome();
+}
+
+async function fileOpen() {
+  if (fileWorld !== 'direct') { $('file-input').click(); return; }
+  try {
+    const [handle] = await window.showOpenFilePicker(openPickerOptions());
+    const file = await handle.getFile();
+    adoptOpened(await loadFromFile(file, { onMigrate }),
+      { name: file.name, handle, source: 'file' });
+    sayIfMigrated();
+    $('status').textContent = `Opened ${fileSession.name}. Ctrl+S writes straight back to it.`;
+  } catch (err) {
+    const text = fileErrorText(err, 'open');
+    if (text) $('status').textContent = text;
+  }
+}
+
+$('save-btn').addEventListener('click', () => fileSave());
+$('saveas-btn').addEventListener('click', () => fileSave({ as: true }));
+$('load-btn').addEventListener('click', () => fileOpen());
 $('file-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
   try {
-    editor.pushUndo();
-    adoptState(await loadFromFile(file, { onMigrate }), { undoable: true });
+    // No handle: a file input hands over bytes and a name, never a way back
+    // to the file, which is exactly the gap `showOpenFilePicker` closes.
+    adoptOpened(await loadFromFile(file, { onMigrate }), { name: file.name, source: 'file' });
     sayIfMigrated();
   } catch (err) {
     alert('Could not load that file: ' + err.message);
   }
 });
+syncFileChrome();
 
 // --- named designs (localStorage slots, on top of the single autosave) ---
 const designsOverlay = $('designs-overlay');
@@ -2296,6 +2419,12 @@ function renderDesignsList() {
       try {
         editor.pushUndo();
         adoptState(loadDesign(d.id, { onMigrate }), { undoable: true });
+        // Phase 30: a slot is not a file. Carrying the previous document's
+        // handle over here would make the next Ctrl+S overwrite one design
+        // with another — which is the whole footgun `noteOpened` exists to
+        // disarm.
+        fileSession = noteOpened(fileSession, { name: d.name, source: 'store' });
+        syncFileChrome();
         sayIfMigrated();
         designsOverlay.classList.add('hidden');
         $('status').textContent = `Loaded "${d.name}"`;
@@ -2460,6 +2589,8 @@ $('new-btn').addEventListener('click', () => {
   editor.pushUndo();
   clearAutosave();
   adoptState(createState(), { keepAutosave: true, undoable: true });
+  fileSession = makeFileSession('new');
+  syncFileChrome();
 });
 
 $('fx-btn').addEventListener('click', () => {
@@ -4881,6 +5012,10 @@ $('gen-go').addEventListener('click', () => {
       const plan = layoutSchool(genBrief);
       const next = buildSchool(plan, { furnish });
       adoptState(next);
+      // A generated school is a new document with no file behind it, whatever
+      // was open before it.
+      fileSession = makeFileSession('new');
+      syncFileChrome();
       const sum = generationSummary(plan, next);
       const bits = [
         `${sum.schemeLabel.toLowerCase()}`,
@@ -4994,6 +5129,12 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.code === 'Escape' && cmdkIsOpen()) { cmdkClose(); return; }
+  // Phase 30. First, above every overlay: a demonstration has the pointer,
+  // and Escape is what a person presses when something is moving on its own.
+  if (e.code === 'Escape' && demoRunning()) {
+    demoStop('Stopped. Ctrl+Z takes back whatever it drew.');
+    return;
+  }
   if (e.code === 'Escape' && !$('welcome-overlay').classList.contains('hidden')) {
     closeModal($('welcome-overlay')); return;
   }
@@ -5143,6 +5284,20 @@ document.addEventListener('keydown', (e) => {
     autosave(state); updateUndoButtons();
     return;
   }
+  // Phase 30. The three keys every program that owns a document has had for
+  // thirty years, and the reason they route through here rather than through
+  // a tool: Ctrl-combos are main.js's, and a browser that keeps its own Save
+  // dialog for Ctrl+S has to be told, every time, that this page has one.
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+    e.preventDefault();
+    fileSave({ as: e.shiftKey });
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyO') {
+    e.preventDefault();
+    fileOpen();
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
     e.preventDefault();
     e.shiftKey ? editor.redo() : editor.undo();
@@ -5160,7 +5315,16 @@ document.addEventListener('keydown', (e) => {
   if (TOOL_KEYS[e.code]) selectTool(TOOL_KEYS[e.code]);
 });
 
-window.addEventListener('beforeunload', () => autosaveNow(state));
+window.addEventListener('beforeunload', (e) => {
+  autosaveNow(state);
+  // Only ever when a *file* would lose something: the autosave has covered
+  // everything else since v1, and a tool that asks "are you sure" over work it
+  // has already kept is a tool crying wolf. See filestore.js.
+  if (shouldWarnOnClose(fileSession, fileWorld)) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 window.addEventListener('resize', () => { renderApi.resize(); reserveForFloorPanel(); });
 
 // --- the command palette (Phase 19) ---
@@ -5205,10 +5369,14 @@ function cmdkCommands() {
       keys: [], run: () => $('gen-btn').click() },
     { name: 'New empty school', hint: 'A blank sheet — the current design stays in undo',
       keys: [], run: () => $('new-btn').click() },
-    { name: 'Save design to a file', hint: 'Download the whole design as JSON',
-      keys: [], run: () => $('save-btn').click() },
-    { name: 'Load a design file', hint: 'Open a saved JSON design',
-      keys: [], run: () => $('load-btn').click() },
+    { name: 'Walk a finished school…', hint: 'Three of them, embedded — one click to walking',
+      keys: [], run: openWelcome },
+    { name: 'Save', hint: saveHint(fileSession, fileWorld), keys: ['Ctrl', 'S'],
+      run: () => fileSave() },
+    { name: 'Save As…', hint: `Write the design to a ${FILE_EXT} file you choose`,
+      keys: ['Ctrl', '⇧', 'S'], run: () => fileSave({ as: true }) },
+    { name: 'Open a design…', hint: modeNote(fileWorld), keys: ['Ctrl', 'O'],
+      run: () => fileOpen() },
     { name: 'Saved designs…', hint: 'Named designs kept in this browser',
       keys: [], run: () => $('designs-btn').click() },
     { name: 'Export plans…', hint: 'Printable sheets — PNG, PDF, or the building as glTF',
@@ -5272,6 +5440,21 @@ function cmdkCommands() {
         if (document.body.classList.toggle('tours')) renderTourPanel();
       }) },
   );
+  // Phase 30. The lesson is the smoke test with the labels back on — see
+  // demo.js — so a tool that stops answering the gesture fails CI rather than
+  // teaching somebody the wrong thing.
+  for (const d of demoCommands()) {
+    out.push({ name: d.name, hint: d.hint, keys: [], run: () => demoStart(d.id) });
+  }
+  if (demoRunning()) {
+    out.push({ name: 'Stop the demonstration', hint: 'Give the pointer back', keys: ['Esc'],
+      run: () => demoStop('Stopped. Ctrl+Z takes back whatever it drew.') });
+  }
+  out.push(offline.prompt
+    ? { name: INSTALL_LABEL, hint: 'A window of its own, and it opens with the network off',
+      keys: [], run: installApp }
+    : { name: 'Offline status', hint: offlineStatus(offline), keys: [],
+      run: () => { $('status').textContent = offlineStatus(offline); } });
   for (const m of MOODS) {
     out.push({
       name: `Sky: ${m.label.toLowerCase()}`, hint: 'Time and lights in one click',
@@ -5809,6 +5992,11 @@ async function openSharedDesign() {
     // The autosave is left alone until the shared design is edited, so
     // opening somebody's link doesn't cost you your own work in progress.
     adoptState(shared, { keepAutosave: true });
+    // A link has no file behind it, and Phase 30's Save has to ask where
+    // rather than silently inventing one — which is how somebody loses the
+    // school they were sent.
+    fileSession = noteOpened(fileSession, { source: 'link' });
+    syncFileChrome();
     $('status').textContent = migrationNote
       ? `${migrationNote} Save it to keep it.`
       : 'Opened a shared design — save it to keep it.';
@@ -6351,6 +6539,8 @@ async function openCloudDesign() {
   try {
     const json = await cloud.getDesign(base, found.id, {});
     adoptState(deserialize(json, { onMigrate }), { keepAutosave: true });
+    fileSession = noteOpened(fileSession, { name: found.name || null, source: 'store' });
+    syncFileChrome();
     cloudId = found.id;
     if (!cfg.base) cloud.writeConfig({ ...cfg, base, relay: cfg.relay || cloud.impliedRelay(base) });
     sessionStatus(migrationNote
@@ -7347,43 +7537,308 @@ openSharedDesign()
   .then(() => openCloudDesign())
   .then(() => joinFromFragment());
 
-// --- the opening moment (Phase 19) ---
+// --- the opening moment (Phase 19, rebuilt in Phase 30) ---
 //
 // First visit, no autosave, no link that already knows where it is going:
-// three doors instead of a blank stare. Each door is something the tool has
-// had for phases — the sample school, the generator, the empty sheet — and
-// the whole feature is the introduction, not the thing introduced. The
-// first-run flag is a fact about this browser, so localStorage, never the
-// file.
+// doors instead of a blank stare. Phase 19's three were the sample school,
+// the generator and the empty sheet — each something the tool already had,
+// the feature being the introduction rather than the thing introduced.
+//
+// Phase 30 kept that and changed which door is first. Two of the three opened
+// onto *work*, and the fastest possible first minute is neither drawing nor
+// describing: it is walking a building somebody else already finished. So the
+// gallery goes on top, the generator and the blank sheet stay below it, and
+// the sample-school door becomes the fallback for a build whose stock file
+// never arrived. The first-run flag is still a fact about this browser, so
+// localStorage, never the file.
+const welcomeOverlay = $('welcome-overlay');
+const welcomeClose = () => closeModal(welcomeOverlay);
+// Declared before the block that opens the welcome on a first visit: `let` is
+// not hoisted the way a function is, and `openWelcome` reaches for this on the
+// one code path — the very first load — that no seeded harness ever takes.
+let galleryFilled = false;
+
+function openWelcome() {
+  fillGallery();
+  openModal(welcomeOverlay, $('welcome-generate'));
+}
+
 {
-  const overlay = $('welcome-overlay');
   const seen = () => {
     try { return localStorage.getItem('sg-welcome-seen') === '1'; } catch { return true; }
   };
-  const close = () => closeModal(overlay);
   if (!restoredAutosave && !location.hash && !seen()) {
     // Marked seen at the showing, not at the choosing — a dismissed welcome
     // stays dismissed.
     try { localStorage.setItem('sg-welcome-seen', '1'); } catch { /* fine */ }
-    openModal(overlay, $('welcome-walk'));
+    openWelcome();
   }
   $('welcome-walk').addEventListener('click', () => {
-    close();
+    welcomeClose();
     // The sample school is already the state a fresh browser starts with.
     setMode('walk');
   });
   $('welcome-generate').addEventListener('click', () => {
-    close();
+    welcomeClose();
     openGenerator();
   });
   $('welcome-blank').addEventListener('click', () => {
-    close();
+    welcomeClose();
     adoptState(createState());
+    fileSession = makeFileSession('new');
+    syncFileChrome();
     selectTool('floor');
     $('status').textContent =
-      'A blank sheet. Floor lays tiles — and Ctrl+K lists every tool with its key.';
+      'A blank sheet. Floor lays tiles — Ctrl+K lists every tool with its key, and “Show me” will draw one for you.';
   });
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  welcomeOverlay.addEventListener('click', (e) => { if (e.target === welcomeOverlay) welcomeClose(); });
+}
+
+// --- Phase 30: a gallery on the welcome ---
+//
+// Three finished schools, each an embedded share payload, one click from
+// walking. The stock is 90 KB and is fetched the first time the welcome opens
+// rather than on every load — the cards render from their thumbnails (which
+// are geometry, and live in gallery.js's own module) the moment it lands.
+//
+// A build whose stock file failed to arrive shows no gallery and falls back to
+// the Phase 19 door it replaced: the sample school is already on the board,
+// and walking it costs nothing at all.
+
+function galleryCardEl(card) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'card';
+  const { size, paths } = thumbPaths(card.thumb, 100);
+  const svg = `<svg class="thumb" viewBox="0 0 ${size} ${size}" aria-hidden="true">`
+    + paths.map((p) => `<path d="${p.d}" fill="${p.fill}" fill-rule="evenodd"/>`).join('')
+    + '</svg>';
+  btn.innerHTML = `${svg}<span class="card-body">`
+    + `<b>${esc(card.title)}</b>`
+    + `<span class="what">${esc(card.line)}</span>`
+    + `<span class="facts">${esc(card.factLine)}</span></span>`;
+  btn.addEventListener('click', () => { welcomeClose(); openCard(card); });
+  return btn;
+}
+
+async function fillGallery() {
+  if (galleryFilled) return;
+  galleryFilled = true;
+  const rail = $('welcome-gallery');
+  try {
+    const { STOCK } = await galleryStock();
+    const cards = galleryCards(STOCK);
+    if (!cards.length) throw new Error('no usable cards');
+    rail.textContent = '';
+    for (const card of cards) rail.appendChild(galleryCardEl(card));
+    rail.classList.remove('hidden');
+    $('welcome-or').classList.remove('hidden');
+    $('welcome-walk').classList.add('hidden');
+    // The modal opened before the stock landed, so focus is on the first door
+    // below. Move it to the first card — but only if nobody has moved it
+    // themselves in the meantime, which is the whole difference between
+    // helping and grabbing.
+    if (document.activeElement === $('welcome-generate')) rail.firstChild.focus();
+  } catch {
+    // Not an error worth a sentence: the tool's own sample school is one
+    // click away in the door this was meant to replace, so show that instead.
+    galleryFilled = false;
+    rail.classList.add('hidden');
+    $('welcome-or').classList.add('hidden');
+    $('welcome-walk').classList.remove('hidden');
+  }
+}
+
+async function openCard(card) {
+  $('status').textContent = `Opening ${card.title}…`;
+  try {
+    const design = deserialize(await decodeShare(card.payload), { onMigrate });
+    // Same door a shared link comes through, and for the same reason: the
+    // autosave is left alone until the card is edited, so trying one out
+    // does not cost somebody the design they had open.
+    adoptState(design, { keepAutosave: true });
+    fileSession = noteOpened(fileSession, { name: card.title, source: 'card' });
+    syncFileChrome();
+    migrationNote = null;
+    setMode('walk');
+    $('status').textContent =
+      `${card.title} — ${card.factLine}. Walk it; Tab goes back to the plan, and Save keeps it.`;
+  } catch (err) {
+    $('status').textContent = `That school could not be opened: ${err.message}`;
+  }
+}
+
+// --- Phase 30: installable, and offline ---
+//
+// The registration is deliberately fire-and-forget and deliberately loud about
+// nothing: a browser without module service workers rejects it, the tool is
+// exactly what it was, and the one place that says so is the offline row in
+// the palette. See offline.js for every decision the worker makes; see sw.js
+// for the three listeners that are all it is.
+
+const offline = {
+  registered: false, controlling: false, error: '', rev: OFFLINE_REV, prompt: null,
+};
+
+{
+  const can = registrable({});
+  if (!can.ok) {
+    offline.error = can.why;
+  } else {
+    // `updateViaCache: 'none'`: the default is `'imports'`, under which the
+    // worker itself is always fetched fresh but the module it imports comes
+    // out of the HTTP cache — and this worker keeps *every* decision it makes
+    // in that module, so a stale `offline.js` is a stale worker wearing a
+    // fresh one's name.
+    navigator.serviceWorker.register('./sw.js',
+      { type: 'module', scope: './', updateViaCache: 'none' })
+      .then(() => {
+        offline.registered = true;
+        offline.controlling = !!navigator.serviceWorker.controller;
+        navigator.serviceWorker.addEventListener(
+          'controllerchange', () => { offline.controlling = true; });
+      })
+      .catch((err) => {
+        offline.error = err && err.message
+          ? err.message
+          : 'the browser would not register the worker';
+      });
+  }
+}
+
+// Fires on exactly one engine family and never on the rest, which is why the
+// palette row it enables is created by the event rather than waiting for it.
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  offline.prompt = e;
+});
+window.addEventListener('appinstalled', () => { offline.prompt = null; });
+
+async function installApp() {
+  if (!offline.prompt) { $('status').textContent = offlineStatus(offline); return; }
+  const prompt = offline.prompt;
+  offline.prompt = null;
+  try {
+    await prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    $('status').textContent = outcome === 'accepted'
+      ? 'Installed — it opens in a window of its own, with or without a network.'
+      : offlineStatus(offline);
+  } catch {
+    $('status').textContent = offlineStatus(offline);
+  }
+}
+
+// --- Phase 30: Show me ---
+//
+// The tools harness drives the twelve tools with scripted pointer events on
+// the real page; this is the same machinery aimed at teaching. demo.js
+// compiles a lesson into timed events and knows nothing about pixels; what is
+// here is the projection (world feet to client pixels, through the live edit
+// camera — the same four lines `test/tools/run.mjs` installs), the ghost, and
+// the one browser API that can tell a synthetic pointer from a real one.
+
+let demoPlay = null;
+
+const demoRunning = () => !!demoPlay;
+
+function demoPoint(x, z) {
+  const v = new THREE.Vector3(x, 0, z).project(renderApi.editCamera);
+  const r = canvas.getBoundingClientRect();
+  return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
+}
+
+function demoPointer(type, pt, buttons) {
+  canvas.dispatchEvent(new PointerEvent(type, {
+    bubbles: true, cancelable: true, composed: true,
+    clientX: pt.x, clientY: pt.y,
+    button: 0, buttons, pointerId: 1, pointerType: 'mouse', isPrimary: true,
+  }));
+}
+
+function demoGhost(pt, down) {
+  const el = $('ghost');
+  el.classList.remove('hidden');
+  el.classList.toggle('down', !!down);
+  el.style.transform = `translate(${pt.x}px, ${pt.y}px)`;
+}
+
+function demoStop(note = '') {
+  if (!demoPlay) return;
+  for (const t of demoPlay.timers) clearTimeout(t);
+  // A gesture interrupted mid-drag would leave the editor holding a stroke
+  // whose pointer has vanished, which is a state a person cannot get out of.
+  if (demoPlay.down) demoPointer('pointerup', demoPlay.at || { x: 0, y: 0 }, 0);
+  // The capture stub goes back on the shelf: `delete` restores the prototype
+  // method rather than leaving an own property shadowing it forever.
+  delete canvas.setPointerCapture;
+  delete canvas.releasePointerCapture;
+  $('ghost').classList.add('hidden');
+  document.body.classList.remove('demoing');
+  demoPlay = null;
+  if (note) $('status').textContent = note;
+}
+
+function demoStart(id) {
+  const demo = demoById(id);
+  if (!demo) return null;
+  demoStop();
+  if (mode !== 'edit') setMode('edit');
+
+  // Where the lesson goes: clear floor on this storey, and the sheet grown to
+  // cover it if there was none. Growing is always safe (footprint.js).
+  const spot = demoSpot(state);
+  const plan = demoEvents(demo, spot);
+  const bounds = demoBounds(plan);
+  if (spot.grown && bounds) {
+    applySheet(
+      () => growToCover(state, { ...bounds, x1: bounds.x1 + 8, z1: bounds.z1 + 8 }),
+      (out) => `Plan grown to ${out.w * CELL} × ${out.h * CELL} ft to make room for the lesson.`,
+    );
+  }
+  // The demo draws where it says it draws, so the camera has to be looking at
+  // it — a lesson happening off-screen is not one.
+  renderApi.fitEditView(state);
+
+  // A synthetic pointer is not a live one, and `setPointerCapture` is the
+  // single API that can tell: it throws `NotFoundError` for a pointerId the
+  // browser never issued. Stubbed for the length of the playback rather than
+  // worked around in editor.js, because a real hand should keep real capture.
+  canvas.setPointerCapture = () => {};
+  canvas.releasePointerCapture = () => {};
+  document.body.classList.add('demoing');
+
+  demoPlay = { id: demo.id, plan, timers: [], down: false, at: null };
+  for (const e of plan.events) {
+    demoPlay.timers.push(setTimeout(() => {
+      if (!demoPlay) return;
+      if (e.kind === 'say') { $('status').textContent = e.text; return; }
+      if (e.kind === 'tool') { selectTool(e.tool); return; }
+      const pt = demoPoint(e.x, e.z);
+      demoPlay.at = pt;
+      if (e.kind === 'move') {
+        demoPointer('pointermove', pt, demoPlay.down ? 1 : 0);
+        demoGhost(pt, demoPlay.down);
+        return;
+      }
+      if (e.kind === 'down') {
+        demoPlay.down = true;
+        demoPointer('pointermove', pt, 0);
+        demoPointer('pointerdown', pt, 1);
+        demoGhost(pt, true);
+        return;
+      }
+      demoPlay.down = false;
+      demoPointer('pointerup', pt, 0);
+      demoGhost(pt, false);
+    }, e.t));
+  }
+  demoPlay.timers.push(setTimeout(() => {
+    demoStop();
+    $('status').textContent =
+      `${demo.title}: that was the whole gesture. Ctrl+Z takes it back, Ctrl+K has the rest.`;
+  }, plan.duration + 400));
+  return demoPlay;
 }
 
 // debug/test hook
@@ -7413,4 +7868,12 @@ window.app = {
   sessionStart, sessionLeave, sessionFlush, sendSnapshot,
   get collab() { return collab; },
   get peers() { return collab.roster.list(); },
+  // --- Phase 30 ---
+  openWelcome, fillGallery, openCard,
+  demoStart, demoStop,
+  get demoing() { return demoRunning(); },
+  fileSave, fileOpen,
+  get file() { return fileSession; },
+  get fileWorld() { return fileWorld; },
+  get offline() { return offline; },
 };

@@ -129,6 +129,12 @@ const CAPTURES = [
     // state every other chrome capture pre-seeds away.
     name: 'chrome-welcome', width: 1600, height: 950, firstRun: true,
     prep: `${hideView}`,
+    // Phase 30 hung a gallery in it, and the gallery's 90 KB of stock is
+    // fetched when the welcome opens rather than at load. Waited for
+    // explicitly: `networkidle` covers a request that has *started*, and on a
+    // cold runner the shutter can beat the module to the page. Same class of
+    // race the webfonts lost above, and the same fix.
+    ready: `document.querySelectorAll('#welcome-gallery .card').length === 3`,
   },
   {
     // ...and the command palette, opened by its own key so the capture
@@ -219,6 +225,7 @@ async function capturePage(context, port, cap) {
   await waitForChromeFonts(page);
   await page.waitForTimeout(1200);
   if (cap.prep) await page.evaluate(cap.prep);
+  if (cap.ready) await page.waitForFunction(cap.ready, { timeout: 60000 });
   await page.waitForTimeout(cap.settle || 400);
   if (errors.length) throw new Error(`${cap.name}: page errors — ${errors.join(' | ')}`);
   // CDP rather than page.screenshot(): under a software renderer the

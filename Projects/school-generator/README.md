@@ -1,6 +1,7 @@
 # School Generator
 
-Draw a school in plan, then walk through it.
+Draw a school in plan, then walk through it — or open one of the three
+finished schools on the front door and be inside it in a click.
 
 Storeys, rooms, walls, doors and windows, stairs and ramps and lifts, a graded
 site, a roof. Draw four walls, then cut the doors and windows into them; the
@@ -11,7 +12,9 @@ reads what you have drawn — occupant load, travel distance,
 accessible route, glazing ratio, reverberation time — and it will generate a
 whole building from a student count and a sentence.
 
-A single page, no build step, no dependencies beyond a vendored three.js.
+A single page, no build step, no dependencies beyond a vendored three.js. It
+installs, it runs with the network off, and it saves to `.school` files on
+your own disk — Ctrl+S writes back to the one you opened.
 
 ## Running it
 
@@ -55,13 +58,20 @@ All three run on every pull request that touches this directory — see
 
 ```
 index.html      the page: chrome, styles, and the boot guard
-js/             the tool — one module per question, ~80 of them
+sw.js           the service worker — three listeners over js/offline.js
+manifest.webmanifest, icon.svg    what makes it installable
+js/             the tool — one module per question, ~85 of them
 libs/           vendored three.js and the addons it uses
 test/           one suite per pure module, plus visual/ and tools/
 server/         the optional design store and session relay
-tools/          the walkthrough exporter
+tools/          the walkthrough exporter, and the gallery baker
 assets/         textures and imported models
 ```
+
+`js/gallerystock.js` is generated, not written: it holds the front door's
+three schools as `share.js` payloads, and `node tools/make-gallery.mjs`
+rebuilds it from the recipes in `js/gallery.js`. The suite fails if the
+committed file has drifted from what those recipes make.
 
 The architecture, the conventions that were learned the hard way, and the
 standing backlog are all in **[WISHLIST.md](WISHLIST.md)** — read the

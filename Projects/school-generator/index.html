@@ -12,6 +12,11 @@
   <meta property="og:image" content="https://greyversusblue.com/assets/og/school-generator.jpg" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="https://greyversusblue.com/assets/og/school-generator.jpg" />
+  <!-- Phase 30: installable, and offline. The worker is registered from
+       main.js (and only where a secure origin allows it); this is the half a
+       browser reads before any script runs. -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#141a22" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23233042'/%3E%3Crect x='6' y='12' width='20' height='14' fill='%23e9e6df'/%3E%3Cpolygon points='16,4 4,12 28,12' fill='%23c96f5f'/%3E%3Crect x='13' y='18' width='6' height='8' fill='%235a4632'/%3E%3C/svg%3E" />
   <script type="importmap">
   {
@@ -978,6 +983,65 @@
       display: block; font-size: var(--fs-md); color: var(--text-dim); line-height: 1.5;
     }
 
+    /* The gallery (Phase 30). Three finished schools, each with its ground
+       floor drawn from the geometry gallery.js reduced it to — a plan, not a
+       picture of one, so it is crisp at any size and costs a few hundred
+       bytes. Same card shape as the doors below it, with the thumbnail where
+       the doors have an emoji. */
+    #welcome-gallery { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    #welcome-gallery .card {
+      display: flex; align-items: center; gap: 13px; text-align: left;
+      padding: 11px 13px; border-radius: var(--r-lg);
+      background: rgba(255, 255, 255, 0.05);
+    }
+    #welcome-gallery .card:hover { background: rgba(77, 163, 255, 0.14); border-color: var(--accent); }
+    #welcome-gallery .thumb {
+      width: 76px; height: 76px; flex: 0 0 76px; border-radius: var(--r-sm);
+      background: rgba(0, 0, 0, 0.22);
+    }
+    /* Hairline strokes so a corridor reads apart from the rooms on it. In
+       user units: the viewBox is 100 wide however big the element is. */
+    #welcome-gallery .thumb path {
+      stroke: rgba(10, 13, 18, 0.55); stroke-width: 0.7; stroke-linejoin: round;
+    }
+    #welcome-gallery .card-body { display: block; white-space: normal; }
+    #welcome-gallery .card b { display: block; font-size: var(--fs-title); margin-bottom: 2px; }
+    #welcome-gallery .card .what {
+      display: block; font-size: var(--fs-md); color: var(--text-dim); line-height: 1.45;
+    }
+    #welcome-gallery .card .facts {
+      display: block; margin-top: 4px; font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      font-size: var(--fs-sm); color: var(--text-dim); opacity: 0.85;
+    }
+    #welcome-or { margin-bottom: 10px !important; font-size: var(--fs-md) !important; }
+
+    /* The "Show me" ghost (Phase 30). A pointer that is not yours, made
+       obviously not yours: it has no shadow, it is the accent colour, and it
+       pulses closed on a press. Above every panel, and never in the way —
+       pointer-events: none, or the gesture it is illustrating would hit it. */
+    #ghost {
+      position: fixed; top: 0; left: 0; z-index: 60; pointer-events: none;
+      width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%;
+      border: 2px solid var(--accent);
+      background: rgba(77, 163, 255, 0.22);
+      transition: transform 60ms linear, width 90ms, height 90ms, background 90ms;
+    }
+    #ghost.down {
+      width: 12px; height: 12px; margin: -6px 0 0 -6px;
+      background: rgba(77, 163, 255, 0.62);
+    }
+    /* While a demonstration has the pointer, the real cursor gets out of the
+       way — two pointers on one canvas is the confusing part, not the ghost. */
+    body.demoing #view { cursor: none; }
+
+    /* A design with unsaved changes and a file to lose them from (Phase 30).
+       Nothing at all when there is no file: the autosave has always covered
+       that, and a dot over work already kept is a dot crying wolf. */
+    #save-btn.dirty { border-color: var(--accent); }
+    #save-btn.dirty::after {
+      content: '•'; margin-left: 5px; color: var(--accent); font-size: 15px; line-height: 0;
+    }
+
     /* designs & export overlays — same full-screen modal shape as walkthrough's */
     #designs-overlay, #export-overlay, #gen-overlay, #measure-overlay,
     #share-overlay, #models-overlay, #model-overlay, #cost-overlay {
@@ -1574,8 +1638,9 @@
     </div>
     <div class="tb-group" role="group" aria-label="File">
       <button id="new-btn" title="New empty school">New</button>
-      <button id="save-btn" title="Download design as JSON">Save</button>
-      <button id="load-btn" title="Load a JSON design">Load</button>
+      <button id="save-btn" title="Save the design (Ctrl+S)">Save</button>
+      <button id="saveas-btn" title="Save the design to a file you choose (Ctrl+Shift+S)">Save As</button>
+      <button id="load-btn" title="Open a design from disk (Ctrl+O)">Open</button>
       <button id="designs-btn" title="Named designs saved in this browser"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Designs</button>
     </div>
     <div class="tb-group" role="group" aria-label="Make">
@@ -2167,8 +2232,16 @@
       <h2 id="welcome-title"><svg class="icon" aria-hidden="true"><use href="#i-school"/></svg> School Generator</h2>
       <p class="hint">
         Draw a school in plan, read what works and what doesn't, then walk
-        through it in first person. Three ways in:
+        through it in first person. The fastest way in is somebody else's
+        finished building — pick one and you are inside it:
       </p>
+      <!-- Phase 30: the gallery. Three finished schools, each an embedded
+           share payload, filled in by main.js the first time this opens. The
+           thumbnails are drawn from geometry (gallery.js), not shipped as
+           images. A build whose stock file did not arrive hides this and
+           shows the Phase 19 door below instead. -->
+      <div id="welcome-gallery" class="hidden"></div>
+      <p class="hint hidden" id="welcome-or">Or start from your own end of it:</p>
       <div id="welcome-doors">
         <button id="welcome-walk" class="door">
           <span class="ic" aria-hidden="true">🚶</span>
@@ -2190,7 +2263,9 @@
         </button>
       </div>
       <p class="hint" id="welcome-note">
-        This only shows once — all three doors stay reachable from the top bar.
+        This only shows once — every door here stays reachable from the top bar,
+        and <kbd>Ctrl</kbd><kbd>K</kbd> reopens the gallery any time. Nothing is
+        uploaded and nothing is downloaded: the schools are in the page.
       </p>
     </div>
   </div>
@@ -2676,7 +2751,13 @@
     <button id="touch-exit" class="panel" type="button" aria-label="Exit walkthrough">✕</button>
   </div>
 
-  <input id="file-input" type="file" accept=".json,application/json" class="hidden" />
+  <input id="file-input" type="file" accept=".school,.json,application/json" class="hidden" />
+
+  <!-- Phase 30: the ghost the "Show me" verb drives. A pointer that is not
+       yours, made obviously not yours — see js/demo.js. It sits in the page
+       rather than on the canvas because it has to be over every panel the
+       gesture passes under. -->
+  <div id="ghost" class="hidden" aria-hidden="true"></div>
 
   <!-- Painted only when the tool fails to start; see js/bootcheck.js. -->
   <div id="boot-fail" role="alert" hidden>
