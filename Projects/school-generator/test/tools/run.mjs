@@ -391,6 +391,94 @@ const CHECKS = [
     },
   },
   {
+    name: 'repeat',
+    what: 'a marquee catches a room, Ctrl+V pastes it under a ghost, a drag stamps a row, and the storey slides',
+    async run(d) {
+      // Phase 32, end to end on the real page: draw a classroom, box-select
+      // it, copy, paste one at the pointer, stamp a row of three, then slide
+      // the storey out and back. Everything placed here is deleted again so
+      // the later checks meet the storey they expect.
+      await d.pick('poly');
+      await d.page.evaluate(`window.app.editor.setRoom('Repeat Room', '#88ccff'); 1`);
+      const loop = [[60, 96], [76, 96], [76, 108], [60, 108]];
+      await d.assertClear(loop);
+      for (const [x, z] of loop) await d.click(x, z);
+      await d.click(60, 96);                    // close on the first corner
+      const drawn = await d.fp();
+
+      await d.pick('vertex');
+      await d.assertClear([[56, 92], [80, 112]]);
+      await d.drag([[56, 92], [80, 112]]);      // the marquee
+      const selStatus = await d.status();
+
+      await d.page.keyboard.press('Control+c');
+      const copyStatus = await d.status();
+      await d.page.keyboard.press('Control+v');
+      await d.assertClear([[104, 102]]);
+      await d.click(104, 102);                  // the ghost lands where you click
+      const pasted = await d.fp();
+
+      // The clipboard survives a paste: paste again, and this time drag —
+      // a 16ft-wide room dragged 36ft east is a row of three at 16ft pitch.
+      await d.page.keyboard.press('Control+v');
+      await d.assertClear([[64, 118], [100, 118]]);
+      await d.drag([[64, 118], [100, 118]]);
+      const stamped = await d.fp();
+      const stampStatus = await d.status();
+
+      // Tidy up: the stamp left its row selected; the paste and the original
+      // are one marquee each.
+      await d.page.keyboard.press('Delete');
+      await d.drag([[92, 92], [116, 110]]);
+      await d.page.keyboard.press('Delete');
+      await d.drag([[56, 92], [80, 112]]);
+      await d.page.keyboard.press('Delete');
+
+      // The storey slides as one set, and slides back.
+      const before = await d.shapes();
+      const slide = async (dx) => d.page.evaluate(`
+        document.getElementById('slide-dx').value = '${dx}';
+        document.getElementById('slide-dz').value = '0';
+        document.getElementById('sheet-slide').click(); 1`);
+      await slide(8);
+      const slid = await d.shapes();
+      const slideStatus = await d.status();
+      await slide(-8);
+      const home = await d.shapes();
+      return { drawn, selStatus, copyStatus, pasted, stamped, stampStatus, before, slid, slideStatus, home };
+    },
+    expect: ({ ctx, before, after }) => {
+      if (ctx.drawn.shapes !== before.shapes + 1) throw new Error('the classroom was not drawn');
+      if (!/1 room selected/.test(ctx.selStatus)) {
+        throw new Error(`the marquee did not report a selection: ${ctx.selStatus}`);
+      }
+      if (!/Copied 1 room/.test(ctx.copyStatus)) {
+        throw new Error(`nothing reported copied: ${ctx.copyStatus}`);
+      }
+      if (ctx.pasted.shapes !== ctx.drawn.shapes + 1) throw new Error('the ghost paste placed nothing');
+      if (ctx.stamped.shapes !== ctx.pasted.shapes + 3) {
+        throw new Error(`the stamp made ${ctx.stamped.shapes - ctx.pasted.shapes} rooms, expected a row of 3`);
+      }
+      if (!/Stamped 3 copies/.test(ctx.stampStatus)) {
+        throw new Error(`the stamp did not say what it did: ${ctx.stampStatus}`);
+      }
+      if (after.shapes !== before.shapes) {
+        throw new Error(`the check did not tidy up after itself: ${before.shapes} -> ${after.shapes} rooms`);
+      }
+      if (!/Slid Level 1/.test(ctx.slideStatus)) {
+        throw new Error(`the slide did not report itself: ${ctx.slideStatus}`);
+      }
+      const was = ctx.before[0], moved = ctx.slid.find((s) => s.id === was.id),
+        back = ctx.home.find((s) => s.id === was.id);
+      if (!moved || Math.abs(moved.pts[0][0] - was.pts[0][0] - 8) > 1e-6) {
+        throw new Error('sliding the storey did not move its rooms by 8ft');
+      }
+      if (!back || Math.abs(back.pts[0][0] - was.pts[0][0]) > 1e-6) {
+        throw new Error('sliding back did not bring the rooms home');
+      }
+    },
+  },
+  {
     name: 'prop',
     what: 'a click on clear floor places the selected piece of furniture',
     async run(d) {
