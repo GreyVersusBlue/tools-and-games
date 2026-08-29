@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: twenty-five phases are shipped — three arcs, all of arc four, and
-one after it.** Three arcs took a grid editor to a walkable, furnished,
-generated, priced, networked school. Full history —
+**Status: twenty-six phases are shipped — three arcs, all of arc four, and
+two after it. Arc five is planned below and open.** Three arcs took a grid
+editor to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
 needs going forward — the architecture, the conventions that were learned the
@@ -882,3 +882,304 @@ readers that answer with a number where they should answer with a range
 ("the model knows what it does not know"); and the session hardening —
 storey ids, snapshot-only assets, no retry, local-wins undo — that a shipped
 relay made real ("two people is not two windows").
+
+Arc five now exists, below, and claims the second of these — the history.
+The report entry point, the ranges, and the session hardening stay open in
+the backlog above, honestly unclaimed: the arc that was planned went where
+the impact was.
+
+## Arc five — the living school
+
+Arc four turned to the person handed the result; arc five turns to the
+building itself. Twenty-six phases built a school that is drawn, walked,
+peopled, priced and handed over — and it is still, in three specific ways, a
+model being displayed rather than a place being run: interior light ignores
+the walls that were drawn to stop it, the space between bells is digital
+silence, and it has never once rained. The phases below are **ranked by
+impact, and the order is the recommendation** — the first three are the
+headliners (one for fidelity, one for immersion, one for both), the middle
+three make the tool easier to arrive at, look at and draw with, and the
+last two close loops the backlog has held open for arcs. Nothing here needs
+a server: every phase runs entirely in the page, which is what static
+hosting requires and what the walk export promises.
+
+Two decisions stand over the whole arc. **VR is abandoned as a concept** —
+no phase here or anywhere later builds a headset path; `xr.js` survives
+only until a phase that touches the export finds deleting it cheaper than
+carrying it, and that deletion is pre-approved. And **each phase ships the
+same way**: the model-naming convention carries forward from arc four
+(anything touching the model layer runs on Claude Fable 5; surface work
+runs on Claude Opus 5 or Claude Sonnet 5), and a phase is *finished* only
+when its branch has become a pull request, the pull request has merged to
+main with CI green, and the closing report names the **next open phase's
+number and its named model** — so whoever is running the arc always knows
+which session to open next without opening this file.
+
+## Phase 27 — Light that stops at walls
+
+**A troffer shines through the wall its range crosses, and everyone has
+agreed not to look.**
+
+The backlog has said it for three arcs: no shadows from the building's own
+lights, light that respects distance and never geometry. Real-time shadow
+maps for dozens of interior lights would spend the frame budget the whole
+renderer is built to protect — but this tool's buildings *hold still*. The
+static answer is to bake: a worker computes illumination offline against
+the same occluder rules `sightline.js` already knows (a wall blocks, glass
+and rails pass, a window passes at the heights of its band), and the
+renderer wears the result at zero per-frame cost. Corridors that darken
+around their corners, light pooling under the pans, rooms that go actually
+dark when the sun leaves them — this is the largest single jump in visual
+fidelity the tool has left, and all of it is bought off the frame.
+
+- [ ] **`bakelight.js`, pure, with its suite.** Sample points over the
+  built surfaces; occluders derived by sightline's rules; direct light plus
+  one gathered bounce; deterministic for a given design — and banked in
+  channels, the sun's contribution and the fixtures' kept separate, so a
+  Phase 20 mood *recombines* the bake rather than re-running it.
+- [ ] **A worker runs it.** A module worker, transferable buffers, progress
+  on the status line, cancelled by any structural edit; the page never
+  stutters. The editor keeps live lighting; the bake belongs to the walk.
+- [ ] **The renderer wears it.** Baked light modulates the vertex colours
+  the geometry already carries; indoor point lights stand down to their
+  glow when a bake is current; the live path stays whole for the machine
+  that never baked.
+- [ ] **Staleness is honest.** A bake is keyed on a hash of the structural
+  state and stored beside the autosave in IndexedDB, never in the file — a
+  cache, not a fact about the building. Any structural edit drops back to
+  live lighting rather than showing a half-true picture.
+- [ ] **The export carries it.** A current bake rides the walk export, so
+  the handed file opens with the good light and no compute; the template
+  budget test learns the new ceiling.
+
+*Leans on:* `sightline.js`'s occluder rules, `lights.js`'s troffer lattice,
+Phase 20's moods. *Collides with:* nothing — the live path remains. *Save:*
+none — a bake is a cache keyed on the structure that made it. *Model:*
+**Claude Fable 5** — an illumination model, a worker protocol, and the
+renderer contract.
+
+## Phase 28 — A school you can hear
+
+**The simulation knows where every person is. The air has no idea.**
+
+Footsteps, bells, the PA, per-room reverb, and — since Phase 24 — sound
+priced through walls by ray: the plumbing is all installed, and what runs
+through it is still mostly the walker's own shoes. A school is the loudest
+quiet building there is, and every source of that noise is already a number
+the model holds: which rooms hold a class this period, how many are at
+lunch, who is in the corridor between bells. This phase turns occupancy
+into air.
+
+- [ ] **`murmur.js`, pure, with its suite.** From occupancy, the timetable
+  and the hour, derive the storey's sound emitters — lecture murmur behind
+  a shut door, the gym's whistle and shoe-squeak, cafeteria chatter scaled
+  by the actual headcount, passing-period rush in the corridors — as data:
+  positions, levels, kinds. No audio in the module.
+- [ ] **Priced through the existing ray.** Emitters route through
+  `pathLossRay` like any other source, so a closed door muffles a lesson
+  and an open one lets it spill into the corridor; the voice budget holds —
+  the nearest few emitters get real voices, the rest pool.
+- [ ] **Room tone.** A near-silent HVAC bed per room from volume and
+  finish, so the quiet between periods is a building's quiet rather than a
+  muted channel.
+- [ ] **The PA learns to talk.** Morning announcements through the Web
+  Speech API — seeded from the school's name, the date and the day's
+  rooms, spoken through the existing PA path and its reverb. A machine
+  with no voices gets the chime and the text on the HUD. Zero bytes
+  shipped, zero server.
+- [ ] **Agents that talk to each other.** Paired agents pause and murmur —
+  positional walla, never synthesized words — with a speech sprite gated by
+  the same sightline rules as labels.
+
+*Leans on:* `occupancy.js`, `timetable.js`, `agents.js`, `sound.js`'s
+voice budget, Phase 24's `pathLossRay`. *Collides with:* the haunt —
+murmur emitters are the crowd's, and the haunted night has no crowd; its
+silence is the point. *Save:* none. *Model:* **Claude Fable 5** — the
+emitter derivation and its routing are occupancy and occlusion math; the
+announcement copy is the one line of it any model could write.
+
+## Phase 29 — Weather
+
+**The cloud deck is one coverage and one drift everywhere, and nothing has
+ever fallen out of it.**
+
+The backlog's own words, claimed whole. Phase 20 gave the sky moods and
+clouds worth having; what the sky still cannot do is *do* anything. Rain is
+the cheapest total mood shift the renderer can buy — it changes the light,
+the ground, the sound and the reason to be indoors, all at once — and every
+piece of it lands on machinery that already exists.
+
+- [ ] **`weather.js`, pure, with its suite.** A state — kind, intensity,
+  wind — and its consequences as numbers: drift speed, sky dim, wet
+  darkening, accumulation depth, all deterministic from seed and hour.
+- [ ] **Rain and snow that fall outside.** GPU particles clipped to the
+  outdoors the renderer already distinguishes from the rooms; under
+  prefers-reduced-motion the ground states arrive without the falling.
+- [ ] **Ground that remembers.** Wet paving darkens and takes a low sheen;
+  snow lies as a shader blend on site and roof and deepens while you
+  watch.
+- [ ] **Weather you can hear.** Rain loudest on the top storey — the
+  cross-slab constant is already in the acoustics — and against the
+  glazing; thunder rare, far, and seeded.
+- [ ] **One click, beside the moods.** Overcast, rain and snow join the
+  mood row in the sky panel and photo mode; the walk export carries the
+  sky it was given.
+
+*Leans on:* `sky.js`'s mood machinery, the acoustics' cross-slab path,
+`terrain.js` and `sitemesh.js` for what counts as outdoors. *Save:* v12
+still, additive — a design with no weather writes no key. *Model:*
+**Claude Fable 5** — a pure state module, two shaders, and the acoustic
+coupling.
+
+## Phase 30 — The first click
+
+**Phase 19 fixed the first five minutes for the visitor who arrived. The
+tool still assumes they arrived with a network, and leave nothing behind.**
+
+The welcome's three doors work; two of them open onto *work* (draw, or
+describe) when the fastest possible first minute — walking a finished
+school — is one embedded payload away. And the tool that runs entirely in
+the page still behaves like a website: gone without a connection, saving
+only to a browser's own storage.
+
+- [ ] **A gallery on the welcome.** Three finished schools as cards —
+  thumbnail, one sentence, one click to walking — each an embedded
+  `share.js` payload, no server anywhere; the blank sheet stays the fourth
+  door.
+- [ ] **Installable, and offline.** A manifest and a service worker; the
+  worker versions the vendored `libs/` by its own revision, which closes
+  the WISHLIST's immutable-cache complaint without touching a single
+  import path.
+- [ ] **A real Save.** File System Access where the browser has it — Save
+  and Save As to a `.school` file, Open from disk, autosave demoted to the
+  safety net it always was; download and upload stand in where the API is
+  absent.
+- [ ] **Show me.** A palette verb that replays a tool's gesture on the
+  live canvas with a ghost cursor — the same scripted-pointer machinery
+  `test/tools/run.mjs` already proves, aimed at teaching instead of
+  testing. A tutorial that cannot rot, because it *is* the smoke test.
+
+*Leans on:* `share.js`, `sample.js` and `generate.js` for gallery stock,
+the tools harness. *Save:* none — a `.school` file is the serialization
+that already exists. *Model:* **Claude Opus 5** — all of it is surface and
+platform wiring; nothing touches the model layer.
+
+## Phase 31 — Surfaces worth touching
+
+**Every wall in the building is flatter than the floor it stands on.**
+
+Phase 20 gave the floors grain and the facades glint, and stopped there:
+walls are still one flat colour, windows are tinted holes, the crowd is
+uniform, and the building says nothing about itself. None of what follows
+downloads an asset — the house rule that textures are generated, not
+shipped, holds throughout.
+
+- [ ] **Relief, procedurally.** Canvas-generated normal maps per finish
+  family — CMU coursing, brick, carpet pile, terrazzo chips — paired with
+  Phase 20's roughness, generated at boot.
+- [ ] **Glass that refracts.** Physical transmission on windows and
+  borrowed lights, a frosted variant among the finishes; the budget is
+  counted in materials, and it is small.
+- [ ] **Signage derived, never placed.** Room placards from names and
+  numbers, exit signs standing over the egress graph's own exit doors,
+  emissive — wayfinding for the walker, and the haunted night gets its
+  glowing EXITs for free. `signage.js` is pure and comes with its suite.
+- [ ] **People with wardrobes.** Seeded variety in the crowd — height,
+  build, palette, backpacks — and a two-beat walk bob; the creature stays
+  exactly what it is.
+
+*Leans on:* Phase 20's finish families, `egress.js`, `agents.js`. *Save:*
+none. *Model:* **Claude Opus 5** — render presets, canvas textures and one
+small pure reader; surface work by the arc's own rule.
+
+## Phase 32 — Rooms that repeat
+
+**Schools are the most repetitive building type there is, and the tool
+cannot repeat anything.**
+
+Twenty classrooms means drawing twenty classrooms. The furniture layer has
+had templates since arc two; the rooms themselves have nothing — no copy,
+no array, no mirror, and no way to select two things at once to try.
+
+- [ ] **Copy and paste.** A room to the clipboard — geometry, openings,
+  finishes, props — and back down at the pointer under a live ghost,
+  snapped to the lattice, R to rotate honouring the counter-rotation
+  convention.
+- [ ] **Stamp a wing.** Array paste: n copies at a spacing along a
+  direction, which makes a classroom corridor two clicks.
+- [ ] **Mirror.** Reflect a selection across an axis. The hard part is
+  already named in the conventions: `hand` and `sw` are relative to a
+  run's direction, and a mirrored opening flips both or hangs on the wrong
+  jamb.
+- [ ] **Select more than one thing.** The marquee the shape tool never
+  had; selection stays in the tool and never in the file, per the
+  convention.
+- [ ] **Move everything on this storey by (dx, dz).** The backlog's
+  missing verb, claimed here because it is the same machinery — a
+  transform over a set of records — and it un-strands the rooms a shrunk
+  sheet left behind.
+
+*Leans on:* `shapes.js`, `props.js`, the rotation conventions. *Save:*
+none — records are copied and moved, never reshaped. *Model:* **Claude
+Fable 5** — ring and opening transforms with the hand/sw flip are exactly
+the geometry the conventions warn about.
+
+## Phase 33 — The director's cut
+
+**A tour moves the camera and does nothing else.**
+
+The backlog's own sentence, and around it sit all the parts of a film crew
+hired separately: moods with one click, a recorder that already writes
+video, a PA that (after Phase 28) can talk, and a timetable that knows
+where everyone should be. This phase introduces them to each other — and
+spends the leftovers on the game the analysis was always pointing at.
+
+- [ ] **Stops learn the clock.** A tour stop optionally carries an hour, a
+  mood and a weather; playback eases between them, so a sunrise flythrough
+  is three stops and no editing.
+- [ ] **Narration.** A stop carries a sentence; Web Speech reads it on
+  arrival through the PA path, and it lands as a caption on the machine
+  with no voices — which is also the honest answer for film, below.
+- [ ] **One-click film.** Play a tour straight into the existing
+  MediaRecorder path with the UI hidden, and download the clip. What the
+  recording can carry is stated, not fudged: the Web Audio graph records;
+  `speechSynthesis` cannot be routed into it, so narration rides the film
+  as burned-in captions and the voice stays live-only.
+- [ ] **Late for class.** Hand the walker a timetable row and a tardy
+  bell: warmth by `routedDistance` to the room's door, score in seconds to
+  spare — `hunt.js` re-aimed the way the haunt already re-aimed it, in the
+  tool and in the export.
+
+*Leans on:* `tour.js`, Phase 20's moods, Phase 29's weather (softly — hour
+and mood suffice), `hunt.js` and `routedDistance`, `timetable.js`. *Save:*
+the tours record gains optional fields — additive, the cheap kind.
+*Model:* **Claude Sonnet 5** — sequencing, capture wiring and a re-skin
+over shipped machinery; the one pure bit (a stop schedule and its easing)
+is small and tested like anything else.
+
+## Phase 34 — A history somebody else can read
+
+**The file remembers everything and can answer nothing.**
+
+The fifth-arc note asked for this by name: a design has a history somebody
+else can read. Autosave holds exactly one past; undo holds one session's;
+and the question every real project asks — *what changed since Tuesday* —
+has no answer anywhere in the tool.
+
+- [ ] **Named snapshots.** Save a version with a name into IndexedDB
+  beside the autosave, thumbnail from the canvas the share card already
+  draws.
+- [ ] **A timeline.** Browse the snapshots, preview one, restore one —
+  restoring is an edit, and undo undoes it.
+- [ ] **`designdiff.js`, pure, with its suite.** Two serialized designs
+  in; out, sentences a person can read — which rooms appeared, vanished,
+  grew or moved, walls and doors and stairs likewise — and a paintable
+  overlay set.
+- [ ] **The diff on the sheet.** Added in green, removed in red, changed
+  in amber, over the blueprint, between any two snapshots; printable,
+  because a drawing that changed is a drawing.
+
+*Leans on:* `save-load.js`, `blueprint.js`, `share.js`'s thumbnail.
+*Save:* none — snapshots are the save format stored beside itself.
+*Model:* **Claude Fable 5** — a differ over the save format is model-layer
+by definition.
