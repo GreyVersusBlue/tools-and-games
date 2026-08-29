@@ -198,6 +198,22 @@ test('a glazing row is a physical material, and frosted is the scattered one', (
   assert.ok(frosted.transmission > 0.8);
 });
 
+test('a pane still reads as its own glazing without a transmission pass', () => {
+  // The property that lets refraction be a photo-mode luxury: most frames
+  // never render the second scene pass, and in those frames the *only* thing
+  // separating the two glazings is `blend`. If these ever converge, an
+  // ordinary walk shows a restroom window you can see through.
+  const clear = glazingEntry('clear'), frosted = glazingEntry('frosted');
+  for (const row of [clear, frosted]) {
+    assert.ok(row.blend > 0 && row.blend < 1, `${row.key} blend ${row.blend}`);
+  }
+  assert.ok(frosted.blend > clear.blend * 1.5,
+    `frosted (${frosted.blend}) is not visibly milkier than clear (${clear.blend})`);
+  // Clear is the alpha the glass has had since v1 — a design with no private
+  // room in it renders exactly as it always did.
+  assert.equal(clear.blend, 0.26);
+});
+
 test('privacy is the only reason a school frosts a pane', () => {
   assert.equal(glazingForUse('restroom'), 'frosted');
   assert.equal(glazingForUse('locker'), 'frosted');

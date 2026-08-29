@@ -92,10 +92,18 @@ export const readFacade = (v) => (typeof v === 'string' && FACADE_BY_KEY.has(v) 
 // same way wall thickness is probed rather than stored. Frost a pane because
 // the room behind it is a restroom, and a restroom that is renamed to a
 // classroom un-frosts itself on the next rebuild.
+//
+// `blend` is the same pane's plain alpha, for every frame that is not paying
+// for refraction — see the note on `applyGlassMode` in render.js. It carries
+// the one thing that must survive without a transmission pass: you can see
+// through a window and you cannot see through a frosted one. Clear's 0.26 is
+// the alpha the glass has had since v1, so a design with no private room in it
+// renders exactly as it did.
 export const GLAZINGS = [
   {
     key: 'clear', label: 'Clear glazing',
     color: '#cfe4ee', transmission: 0.92, roughness: 0.06, ior: 1.52, thickness: 0.22,
+    blend: 0.26,
   },
   {
     key: 'frosted', label: 'Frosted glazing',
@@ -103,6 +111,7 @@ export const GLAZINGS = [
     // almost all of it, which is what privacy glass is for. Thicker on
     // purpose — the scattering reads as depth rather than as a dirty pane.
     color: '#dde8ea', transmission: 0.86, roughness: 0.62, ior: 1.52, thickness: 0.5,
+    blend: 0.58,
   },
 ];
 

@@ -799,7 +799,7 @@ const CHECKS = [
   },
   {
     name: 'signage',
-    what: 'rooms sign themselves, the way out glows, and the glass refracts only in the walk',
+    what: 'rooms sign themselves, the way out glows, and the glass refracts only for a photograph',
     // Phase 31's four claims on the real page, because every one of them is a
     // fact about the *scene* rather than about the state: signage.js and
     // relief.js are proved arithmetically by their own suites, and nothing
@@ -816,10 +816,22 @@ const CHECKS = [
       await d.page.waitForTimeout(400);
 
       const editing = await d.page.evaluate('window.app.renderApi.signReport()');
-      // Into the walk: the exit signs and the refraction both arrive there.
+      // Into the walk: the exit signs arrive there, and the glass does *not*
+      // start refracting — see the shutter, below.
       await d.page.evaluate(`document.getElementById('mode-btn').click(); 1`);
       await d.page.waitForTimeout(1200);
       const walking = await d.page.evaluate('window.app.renderApi.signReport()');
+      // Open the shutter: refraction is a photo-mode luxury, because a
+      // transmissive material costs a second scene render and that more than
+      // doubles the cost of a walk on a fill-bound machine. Measured, not
+      // guessed — 547ms to 1,186ms a frame on the rasterizer this harness
+      // runs on, which is why `walk-moves` went red the one time it wasn't.
+      await d.page.evaluate('window.app.renderApi.setPhoto({ on: true })');
+      await d.page.waitForTimeout(1500);
+      const shooting = await d.page.evaluate('window.app.renderApi.signReport()');
+      await d.page.evaluate('window.app.renderApi.setPhoto({ on: false })');
+      await d.page.waitForTimeout(800);
+      const shutClosed = await d.page.evaluate('window.app.renderApi.signReport()');
       // ...and the relief. Counted off the live scene rather than off the
       // module, so a map that was built and never attached fails here.
       //
@@ -846,10 +858,10 @@ const CHECKS = [
       await d.page.evaluate(`document.getElementById('walk-exit').click(); 1`);
       await d.page.waitForTimeout(600);
       const back = await d.page.evaluate('window.app.renderApi.signReport()');
-      return { editing, walking, back, relief };
+      return { editing, walking, shooting, shutClosed, back, relief };
     },
     expect: ({ ctx }) => {
-      const { editing, walking, back, relief } = ctx;
+      const { editing, walking, shooting, shutClosed, back, relief } = ctx;
       if (!(editing.placards > 0)) {
         throw new Error('a building full of named rooms put no plate on any door');
       }
@@ -858,7 +870,13 @@ const CHECKS = [
       // pay for a sign nobody is at eye level to read.
       if (editing.exits !== 0) throw new Error('the drawing board built the egress graph');
       if (!(walking.exits > 0)) throw new Error('the walk found no way out to sign');
-      if (!walking.refracting) throw new Error('the glass never started refracting');
+      // The cost rule, from both sides. An ordinary walk must not be paying
+      // for a second scene render; a photograph must be.
+      if (walking.refracting) {
+        throw new Error('an ordinary walk is paying for the transmission pass');
+      }
+      if (!shooting.refracting) throw new Error('photo mode did not refract the glass');
+      if (shutClosed.refracting) throw new Error('closing the shutter left transmission on');
       if (back.refracting) throw new Error('the drawing board is still paying for transmission');
       if (!walking.glazings.includes('frosted')) {
         throw new Error(`a restroom did not frost its glass: ${walking.glazings.join(', ')}`);

@@ -224,6 +224,13 @@ wrong.
   Everybody waiting for a lift presses the button every frame they are not
   aboard; a car that answers each press never departs. See `lift.js`'s
   `held` accumulator.
+- **A cost written into a comment is not a cost anybody has checked.** Phase
+  31 shipped a transmission pass into the walkthrough with an honest note
+  beside it saying it costs a second scene render — and it cost 117% of a
+  frame, which the note did not say because nobody had timed it. Anything
+  that adds a render pass, a second traversal or a per-pixel fetch to the
+  *walk* gets measured on the software rasterizer before it lands: it is one
+  script, and the walkthrough is what the tool is for.
 - **A cost that is not a distance is how this codebase says "yes, but".**
   `OUTDOOR_COST`, `STAIR_COST`, `ELEVATOR_COST` and `FLOOR_PENALTY` all
   charge `cost` and never `dist`, so a route can be discouraged from a path
@@ -1299,7 +1306,8 @@ shipped, holds throughout.
 - [x] **Glass that refracts.** Physical transmission on windows and
   borrowed lights, with a frosted variant among the finishes — derived, not
   chosen, from what the room behind the pane *is*. Two glazings, two
-  materials, and a school with no restroom in it builds one of them.
+  materials, and a school with no restroom in it builds one of them. The
+  refraction itself is photo mode's, for a measured reason: see below.
 - [x] **Signage derived, never placed.** Room placards from names and
   numbers, exit signs standing over the egress graph's own exit doors,
   emissive — wayfinding for the walker, and the haunted night gets its
@@ -1349,14 +1357,34 @@ seeded harness takes, which is precisely the mistake that phase had already
 made once with `galleryFilled`. It is declared above the materials now, with
 the reason written beside it.
 
-And one cost, stated rather than hidden: a transmissive material makes
-three.js render the whole scene a second time into a target the pane samples.
-So transmission follows SSAO and depth of field — on in the walkthrough, off
-at the drafting table, where the camera is 200ft up and a window is a line.
-The panes are `FrontSide` for a related reason: a pane is a closed box, so
-its back faces were never visible, and a *DoubleSide* transmissive material
-makes the renderer flip `needsUpdate` on it twice a frame to draw its own
-backside. *Tests:* `test/relief.test.mjs` (the two sign conventions on
+And a fourth, which is the one the phase actually got wrong first and is
+worth stating at length, because it is the mistake a "surface" phase is most
+likely to make again. A transmissive material makes three.js render the whole
+scene a second time into a target the pane samples. That was known and written
+down here as a cost — and *taken on in the walkthrough anyway*, on the
+reasoning that walking is where you look at glass. Then CI went red on
+`walk-moves`, a check that does nothing but render walk frames: 122 seconds on
+main, over the 180-second ceiling here. Measured on the same software
+rasterizer, over a corridor, the answer was not marginal — **547ms a frame
+became 1,186ms.** Refraction more than doubled the cost of a walk, on a tool
+that runs on phones and in a headset. (The relief maps, the same view, the
+same run: 13%. The expensive half was never the one with eleven new textures
+in it.)
+
+So refraction went where depth of field already lives, for the reason already
+written beside it — *it is a second scene render, so it is paid for only while
+a photograph is being composed.* An ordinary walk keeps the blended pane it
+has always had, and keeps the one thing that must survive without a
+transmission pass: that you can see through a window and not through a frosted
+one, which is `blend` in the glazing table and a test of its own. The walk
+measures 441ms again. The lesson is not "transmission is expensive" — it is
+that a cost written into a comment is not a cost anybody has checked, and the
+number took one afternoon script to get.
+
+The panes are `FrontSide` for a related reason: a pane is a closed box, so its
+back faces were never visible, and a *DoubleSide* transmissive material makes
+the renderer flip `needsUpdate` on it twice a frame to draw its own backside.
+*Tests:* `test/relief.test.mjs` (the two sign conventions on
 hand-made ramps, unit-length normals, the encoder proved to wrap by rolling
 the field and the map together, every family bounded, deterministic and
 tiling, coursed families that actually have courses, and a drift alarm that
@@ -1367,10 +1395,11 @@ the building and under the slab, a placard number that is the number
 `bindRoom` binds by, and the sample school's own coverage), plus the glazing
 in `test/finish.test.mjs` and the wardrobe and the bob in
 `test/agents.test.mjs` — and a `signage` check in `test/tools/run.mjs`: the
-real page names a restroom, finds plates on its walls, walks in, finds the
-glass refracting and a frosted material built, finds the EXITs the drawing
-board deliberately did not build, walks out, and finds the transmission
-switched off again.
+real page names a restroom, finds plates on its walls, walks in, finds a
+frosted material built and the EXITs the drawing board deliberately did not
+build, opens the shutter and finds the glass refracting, shuts it, and walks
+out — holding the cost rule from both sides, since a walk that quietly starts
+paying for a second scene render is exactly what went wrong the first time.
 
 ## Phase 32 — Rooms that repeat
 

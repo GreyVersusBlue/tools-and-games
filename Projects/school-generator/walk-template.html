@@ -71306,10 +71306,18 @@ const readFacade = (v) => (typeof v === 'string' && FACADE_BY_KEY.has(v) ? v : n
 // same way wall thickness is probed rather than stored. Frost a pane because
 // the room behind it is a restroom, and a restroom that is renamed to a
 // classroom un-frosts itself on the next rebuild.
+//
+// `blend` is the same pane's plain alpha, for every frame that is not paying
+// for refraction — see the note on `applyGlassMode` in render.js. It carries
+// the one thing that must survive without a transmission pass: you can see
+// through a window and you cannot see through a frosted one. Clear's 0.26 is
+// the alpha the glass has had since v1, so a design with no private room in it
+// renders exactly as it did.
 const GLAZINGS = [
   {
     key: 'clear', label: 'Clear glazing',
     color: '#cfe4ee', transmission: 0.92, roughness: 0.06, ior: 1.52, thickness: 0.22,
+    blend: 0.26,
   },
   {
     key: 'frosted', label: 'Frosted glazing',
@@ -71317,6 +71325,7 @@ const GLAZINGS = [
     // almost all of it, which is what privacy glass is for. Thicker on
     // purpose — the scattering reads as depth rather than as a dirty pane.
     color: '#dde8ea', transmission: 0.86, roughness: 0.62, ior: 1.52, thickness: 0.5,
+    blend: 0.58,
   },
 ];
 
@@ -78666,12 +78675,29 @@ function initRender(canvas) {
     spotPool.push(l);
   }
 
-  // Which camera is driving. Declared up here rather than beside the composer
-  // it mostly serves, because the glazing below reads it while it is being
-  // built — and a `let` read before its declaration is a TDZ error on the one
-  // path nobody automates, which is a mistake this codebase has already made
-  // once (see Phase 30's `galleryFilled`).
+  // Which camera is driving, and whether a photograph is being composed.
+  //
+  // Both are declared up here rather than beside the composer they mostly
+  // serve, because the glazing below reads them while it is being built — and
+  // a `let` read before its declaration is a TDZ error on the one path nobody
+  // automates, which is a mistake this codebase has already made once (see
+  // Phase 30's `galleryFilled`).
   let mode = 'edit';
+
+  // Photo mode. A small bundle of camera settings that only exist while you
+  // are composing a shot: field of view, an exposure nudge on top of whatever
+  // the sky's own palette asked for, the depth-of-field pass, and (since
+  // Phase 31) whether the glass refracts. Everything here is view state — none
+  // of it is saved with the design, because a photograph is not part of the
+  // building.
+  const photo = {
+    on: false,
+    fov: 60,
+    focus: 30,
+    aperture: 2.8,
+    dof: true,
+    bloom: 0.14,
+  };
 
   // --- materials ---
   const floorMat = new THREE.MeshStandardMaterial({
@@ -78772,14 +78798,23 @@ function initRender(canvas) {
   // finish.js beside the floors and the facades, because what a material is
   // has lived there since the second arc.
   //
-  // **What it costs, stated.** A transmissive material makes three.js render
-  // the scene a second time into a target the pane samples. That is the same
-  // bargain SSAO and depth of field already take here, and it is taken the
-  // same way: on in the walkthrough, off at the drafting table — see
-  // `applyGlassMode`. `side` is FrontSide rather than DoubleSide, and that is
-  // not a detail: a pane is a closed box, so the back faces were never
-  // visible, and a DoubleSide transmissive material makes the renderer flip
-  // `needsUpdate` on it twice a frame to draw its own backside.
+  // **What it costs, measured.** A transmissive material makes three.js render
+  // the whole scene a second time into a target the pane samples, and on a
+  // fill-bound renderer that is not a rounding error: timed over a corridor on
+  // the software rasterizer CI uses, it took a frame from 547ms to 1,186ms —
+  // **it more than doubles the cost of a walk**. (The relief maps, on the same
+  // view, cost 13%.) So it lives exactly where depth of field lives, for
+  // exactly the reason stated there: it is a second scene render, so it is
+  // paid for only while a photograph is actually being composed. Ordinary
+  // walking keeps the blended pane it has always had — and keeps the one thing
+  // that has to survive without a transmission pass, which is that you can see
+  // through a window and not through a frosted one; that is `blend` in the
+  // glazing table. See `applyGlassMode`.
+  //
+  // `side` is FrontSide rather than DoubleSide, and that is not a detail: a
+  // pane is a closed box, so the back faces were never visible, and a
+  // DoubleSide transmissive material makes the renderer flip `needsUpdate` on
+  // it twice a frame to draw its own backside.
   const glassMats = new Map();
   function glassMaterials(key) {
     const k = glazingEntry(key).key;
@@ -78813,21 +78848,25 @@ function initRender(canvas) {
     return pair;
   }
 
-  // A pane refracts while you are walking through the building and blends
-  // cheaply while you are drawing it. In edit mode the camera is 200ft up and
-  // a window is a line; paying for a second scene render to refract it would
-  // be paying for nothing.
+  // A pane refracts while a photograph is being composed, and blends the rest
+  // of the time. Two reasons, and the second is the one that decided it: at
+  // the drafting table the camera is 200ft up and a window is a line, so a
+  // second scene render would buy nothing at all; and in an ordinary walk it
+  // would buy refraction at more than double the frame cost, on a tool that
+  // runs on phones and in a headset. Photo mode is where somebody is looking
+  // at the glass rather than walking past it, and it is already paying for a
+  // second render for the depth of field.
   function applyGlassMode(m) {
     const g = m.userData.glazing;
     if (!g || m.userData.flat) return;
-    const walking = mode !== 'edit';
-    const want = walking ? g.transmission : 0;
-    const opacity = walking ? 1 : 0.26;
+    const refract = mode !== 'edit' && photo.on;
+    const want = refract ? g.transmission : 0;
+    const opacity = refract ? 1 : g.blend;
     if (m.transmission === want && m.opacity === opacity) return;
     m.transmission = want;
     m.opacity = opacity;
     // Crossing zero adds or drops USE_TRANSMISSION, which is a recompile — so
-    // it happens once per mode switch and never per frame.
+    // it happens when the shutter opens and never per frame.
     m.needsUpdate = true;
   }
 
@@ -79167,19 +79206,6 @@ function initRender(canvas) {
   let fxEnabled = true;
   let dofPass = null;
 
-  // Photo mode. A small bundle of camera settings that only exist while you
-  // are composing a shot: field of view, an exposure nudge on top of whatever
-  // the sky's own palette asked for, and the depth-of-field pass. Everything
-  // here is view state — none of it is saved with the design, because a
-  // photograph is not part of the building.
-  const photo = {
-    on: false,
-    fov: 60,
-    focus: 30,
-    aperture: 2.8,
-    dof: true,
-    bloom: 0.14,
-  };
   let exposureBias = 1;
   const WALK_FOV = 72;
 
@@ -79304,9 +79330,8 @@ function initRender(canvas) {
     // board restores the unlit vertex colours and wakes the live lights;
     // stepping into a walk that has a current bake puts it on.
     applyBakeTint(bakeWorn());
-    // Phase 31: glass refracts in the walk and blends on the drawing board.
-    // Same rule as SSAO two paragraphs of code above — an effect that costs a
-    // second scene render lives where you can see what it buys.
+    // Phase 31: leaving a walk turns photo mode off, so the glass has to be
+    // told the shutter closed.
     applyGlassToAll();
     // ...and the exits announce themselves to the person who is inside.
     if (!edit) ensureExitSigns();
@@ -84819,6 +84844,9 @@ function initRender(canvas) {
       // Only the passes' *existence* needs a rebuild; focus and f-number are
       // uniforms and take effect on the next frame.
       if (photo.on !== wasOn || photo.dof !== hadDof || 'bloom' in patch) buildComposer();
+      // Phase 31: the glass refracts for the photograph and not for the walk.
+      // Same second scene render, same bargain as the depth of field above.
+      if (photo.on !== wasOn) applyGlassToAll();
       applyPhotoCamera();
       return { ...photo };
     },
