@@ -103,6 +103,8 @@ import {
   unionBounds, coversBounds, resizeFootprint, growToCover, fitToOverlay,
   describeFootprint,
 } from './footprint.js';
+// --- Phase 32 ---
+import { moveStorey } from './section.js';
 // --- Phase 14 ---
 import {
   createSession, adoptIds, blockOf, blocksClash, makeSite, describeOps,
@@ -2117,6 +2119,40 @@ $('sheet-fit').addEventListener('click', () => {
       (out.covered ? '' : ' Part of it is at negative coordinates, which no sheet reaches — ' +
         'move it back onto the plan first.'),
   );
+});
+
+// Phase 32: the backlog's missing verb, "move everything on this storey by
+// (dx, dz)". Shrinking the sheet can strand a room past the edge where the
+// brush cannot reach it, and the origin never moves — so the way back is to
+// slide the storey, not the sheet. Rooms, free-standing walls and props all
+// go together (section.js); stairs and lifts stand on two storeys at once
+// and stay put, which the status line says out loud rather than leaving a
+// stair floating somewhere surprising.
+const slideDx = $('slide-dx');
+const slideDz = $('slide-dz');
+$('sheet-slide').addEventListener('click', () => {
+  const dx = Number(slideDx.value) || 0;
+  const dz = Number(slideDz.value) || 0;
+  if (!dx && !dz) {
+    $('status').textContent = 'Slide — give it a distance in feet ' +
+      '(negative moves toward the origin).';
+    return;
+  }
+  applySheet(
+    () => moveStorey(state, state.currentFloor, dx, dz),
+    (out) => {
+      const moved = [
+        `${out.rooms} room${out.rooms === 1 ? '' : 's'}`,
+        out.walls ? `${out.walls} wall${out.walls === 1 ? '' : 's'}` : null,
+        out.props ? `${out.props} prop${out.props === 1 ? '' : 's'}` : null,
+      ].filter(Boolean).join(', ');
+      return `Slid ${floorLabel(state.currentFloor)} by (${dx}, ${dz}) ft — ${moved}.` +
+        (out.links ? ` ${out.links === 1 ? 'A stair or lift connects' :
+          `${out.links} stairs or lifts connect`} it to another storey and stayed put.` : '');
+    },
+  );
+  slideDx.value = '0';
+  slideDz.value = '0';
 });
 
 // --- the structural shadow ---

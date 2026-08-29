@@ -16,7 +16,7 @@ import {
   insertVertex, deleteVertex, moveVertex, setSegWall, addOpening, toggleOpening, orientRing,
   snapPoint, constrainAngle, enclosingShape,
   arcGeometry, arcPoints, curveSegment, straightenRun, MAX_BULGE, MIN_ARC_CHORD,
-  ringLen, LEAF_SINGLE, segDir, unitDir, parallelDirs, PARALLEL_TOL,
+  ringLen, LEAF_SINGLE, openingSpec, segDir, unitDir, parallelDirs, PARALLEL_TOL,
   normalizeShape, cloneShape,
   nextRoomName, storeyBase,
   translateShape, rotateShape90, mirrorShapeX, rotatePoint90, mirrorPointX,
@@ -503,6 +503,73 @@ test('mirroring a room flips its winding and keeps it a valid outline', () => {
   assert.ok(ringIsCCW(shape.rings[0].pts), 're-oriented outward after the flip');
   assert.equal(shape.rings[0].openings.length, 1, 'the doorway survives the flip');
   assert.deepEqual(mirrorPointX({ x: 4, z: 9 }, 10), { x: 16, z: 9 });
+});
+
+// Where a door's leaf physically is, read the way every renderer reads it:
+// the hinge jamb half a width from the opening's centre toward the start of
+// the run for hand = +1, and the swing probing one foot toward the run's
+// left-hand side for sw = +1 (the same normal arcGeometry calls "left").
+// `hand` and `sw` are *relative to the run*, so this is the only honest way
+// to compare a door before and after a transform that re-winds the ring.
+function doorPhysics(shape, ri = 0, oi = 0) {
+  const ring = shape.rings[ri];
+  const o = ring.openings[oi];
+  const spec = openingSpec(o);
+  const [a, b] = segEnds(ring, o.seg);
+  const L = segLength(a, b);
+  const ux = (b.x - a.x) / L, uz = (b.z - a.z) / L;
+  const cx = a.x + ux * spec.t * L, cz = a.z + uz * spec.t * L;
+  return {
+    hinge: { x: cx - spec.hand * ux * (spec.w / 2), z: cz - spec.hand * uz * (spec.w / 2) },
+    swing: { x: cx + spec.sw * -uz, z: cz + spec.sw * ux },
+  };
+}
+
+test('re-winding a ring never moves a door leaf', () => {
+  // Reversal renumbers segments and flips t — and it flips `hand` and `sw`
+  // with them, because both are relative to a run that now points the other
+  // way. A reversal is a re-parameterization, not an edit: the physical
+  // hinge and the physical swing side must come through untouched.
+  const shape = makeShape(RECT);
+  addOpening(shape, 0, 0, 0.25, 3, { leaf: LEAF_SINGLE, sw: -1 });
+  const before = doorPhysics(shape);
+  orientRing(shape.rings[0], false);
+  const flipped = doorPhysics(shape);
+  assert.ok(Math.abs(flipped.hinge.x - before.hinge.x) < 1e-9 &&
+    Math.abs(flipped.hinge.z - before.hinge.z) < 1e-9, 'the hinge stayed on its jamb');
+  assert.ok(Math.abs(flipped.swing.x - before.swing.x) < 1e-9 &&
+    Math.abs(flipped.swing.z - before.swing.z) < 1e-9, 'the leaf still swings the same way');
+  orientRing(shape.rings[0], true);
+  const back = shape.rings[0].openings[0];
+  assert.equal(back.hand, undefined, 'the canonical record comes back canonical');
+  assert.equal(back.sw, -1);
+});
+
+test('a mirrored door hangs on the mirrored jamb and swings to the mirrored side', () => {
+  // The conventions' own warning, and what Phase 32 exists to get right: a
+  // reflection reverses handedness, so a door mirrored without its fields
+  // minded hangs on the wrong jamb. Checked physically — hinge point and
+  // swing side — rather than on the stored signs, which re-winding scrambles.
+  const shape = makeShape(RECT);
+  // South wall (z = 0), centred at x = 5: hinge toward the west end, swinging
+  // toward +z, which is into the room.
+  addOpening(shape, 0, 0, 0.25, 3, { leaf: LEAF_SINGLE });
+  const before = doorPhysics(shape);
+  assert.ok(Math.abs(before.hinge.x - 3.5) < 1e-9, 'hinge west of the 5ft-centre door');
+  assert.ok(before.swing.z > 0, 'swinging into the room');
+
+  mirrorShapeX(shape, 10);
+  const after = doorPhysics(shape);
+  assert.ok(Math.abs(after.hinge.x - 16.5) < 1e-9, 'the hinge mirrored with the wall');
+  assert.ok(Math.abs(after.hinge.z) < 1e-9);
+  assert.ok(after.swing.z > 0, 'and the leaf still swings into the room');
+
+  // Mirroring back restores the door exactly, canonical record included.
+  mirrorShapeX(shape, 10);
+  const home = doorPhysics(shape);
+  assert.ok(Math.abs(home.hinge.x - 3.5) < 1e-9);
+  assert.equal(shape.rings[0].openings[0].hand, undefined);
+  assert.equal(shape.rings[0].openings[0].sw, undefined);
 });
 
 test('addShapeCopy makes an independent, offset room with a fresh id', () => {

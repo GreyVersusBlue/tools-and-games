@@ -517,15 +517,17 @@
     #sheet-group {
       margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--panel-border);
     }
-    #sheet-row { display: flex; align-items: center; gap: 4px; }
-    #sheet-row input {
+    #sheet-row, #slide-row { display: flex; align-items: center; gap: 4px; }
+    #slide-row { margin-top: 4px; }
+    #sheet-row input, #slide-row input {
       width: 46px; padding: 3px 4px; font-size: var(--fs-md); text-align: right;
     }
-    #sheet-row .sheet-label, #sheet-row .sheet-x, #sheet-row .sheet-unit {
+    #sheet-row .sheet-label, #sheet-row .sheet-x, #sheet-row .sheet-unit,
+    #slide-row .sheet-label, #slide-row .sheet-x, #slide-row .sheet-unit {
       font-size: var(--fs-xs); color: var(--text-dim); letter-spacing: 0.04em;
     }
-    #sheet-row .sheet-label { text-transform: uppercase; font-weight: 600; }
-    #sheet-row button { padding: 3px 6px; font-size: var(--fs-sm); margin-left: auto; }
+    #sheet-row .sheet-label, #slide-row .sheet-label { text-transform: uppercase; font-weight: 600; }
+    #sheet-row button, #slide-row button { padding: 3px 6px; font-size: var(--fs-sm); margin-left: auto; }
     /* Empty whenever the sheet covers everything, which is the usual case —
        this column is shared with the toolbar and a line that says "all is
        well" costs a tool button its place. */
@@ -1931,6 +1933,17 @@
         <span class="sheet-unit">ft</span>
         <button id="sheet-fit" type="button"
                 title="Grow the plan until everything drawn — and the tracing image — fits on it">Fit</button>
+      </div>
+      <div id="slide-row">
+        <span class="sheet-label">Slide</span>
+        <input id="slide-dx" type="number" step="4" value="0"
+               aria-label="Slide this storey east or west, in feet" />
+        <span class="sheet-x">,</span>
+        <input id="slide-dz" type="number" step="4" value="0"
+               aria-label="Slide this storey north or south, in feet" />
+        <span class="sheet-unit">ft</span>
+        <button id="sheet-slide" type="button"
+                title="Move every room, wall and prop on this storey by this much — the way back onto the sheet for a room a shrunk plan stranded">Go</button>
       </div>
       <div id="sheet-readout" role="status"></div>
     </div>

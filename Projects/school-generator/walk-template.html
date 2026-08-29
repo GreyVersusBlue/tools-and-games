@@ -57210,6 +57210,12 @@ function ringSignedArea(pts) {
 
 const ringIsCCW = (pts) => ringSignedArea(pts) > 0;
 
+// Flip one of an opening's run-relative signs, keeping the record canonical:
+// -1 is written, +1 is the absent default (see writeOpening).
+const flipRunSign = (o, key) => {
+  if (sign(o[key]) === -1) delete o[key]; else o[key] = -1;
+};
+
 // Reversing a ring renumbers its segments: new segment j is old segment
 // (n-2-j) walked backwards, so wall states and door positions move with it.
 function reverseRing(ring) {
@@ -57220,6 +57226,13 @@ function reverseRing(ring) {
   for (const o of ring.openings) {
     o.seg = (n - 2 - o.seg + n) % n;
     o.t = 1 - o.t;
+    // `hand` and `sw` are relative to the run, and the run now points the
+    // other way — both flip, so the leaf keeps hanging on the same physical
+    // jamb and swinging toward the same physical side. Re-winding a ring is a
+    // re-parameterization, never a change to the building (Phase 32; a mirror
+    // used to hang every door on the wrong jamb through this line).
+    flipRunSign(o, 'hand');
+    flipRunSign(o, 'sw');
   }
   return ring;
 }
@@ -58026,7 +58039,17 @@ function mirrorPointX(p, cx) {
 }
 
 function mirrorShapeX(shape, cx) {
-  return transformShapePoints(shape, (p) => mirrorPointX(p, cx));
+  transformShapePoints(shape, (p) => mirrorPointX(p, cx));
+  // A reflection reverses handedness: the side of the wall that was left of a
+  // run is right of its image. The re-orientation above already flipped both
+  // `hand` and `sw` when it re-wound each ring (a physical no-op — see
+  // reverseRing); the mirror owes one more `sw` flip on top of that, so the
+  // net effect is the mirrored door: hinged on the mirrored jamb, swinging
+  // toward the mirrored side.
+  for (const ring of shape.rings) {
+    for (const o of ring.openings) flipRunSign(o, 'sw');
+  }
+  return shape;
 }
 
 // Usable floor area across every room on a storey — most of the math a

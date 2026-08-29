@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: thirty-one phases are shipped — three arcs, all of arc four,
-two after it, and arc five is underway: Phases 27–31 have shipped and
-Phases 32–34 are open below.** Three arcs took a grid
+**Status: thirty-two phases are shipped — three arcs, all of arc four,
+two after it, and arc five is underway: Phases 27–32 have shipped and
+Phases 33–34 are open below.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -108,7 +108,10 @@ module in it.**
 
 The editor is `editor.js` plus one tool per verb — `polyedit`, `propedit`,
 `stairedit`, `templateedit`, `siteedit`, `overlayedit` — each thin over a
-pure module, and `main.js` wires all of it to the DOM.
+pure module, and `main.js` wires all of it to the DOM. The vertex tool's
+whole-section gestures sit on `section.js` (Phase 32: a set of records,
+repeated — the marquee's hit test, the room clipboard with the props inside
+it, the stamped row, and the storey-wide move).
 
 ## Conventions a new builder must know
 
@@ -213,7 +216,21 @@ wrong.
   ring is wound, so half its segments run the other way; a door copied onto
   one without flipping both fields hangs on the far jamb. `bake()` and
   `paint.js` both correct for it; anything else that moves an opening
-  between segments must too.
+  between segments must too. Since Phase 32 `reverseRing` corrects for it as
+  well — re-winding a ring is a re-parameterization, never an edit, so both
+  fields flip and the leaf stays on its physical jamb — and a mirror owes
+  one extra `sw` flip on top of that, because a reflection reverses
+  handedness. Prove a door transform *physically* — where the hinge is,
+  which side the leaf swings — never by the stored signs, which a re-wind
+  legitimately scrambles (see `doorPhysics` in shapes.test.mjs).
+- **A phase's premise is checked against the tree, not against this file.**
+  Phase 32 was scoped as "the tool cannot repeat anything" — and Phase 6
+  had already shipped shift-click multi-select, Ctrl+C/V/D, R and M on
+  whole sections. What was actually missing was narrower and better: the
+  paste that lands at the pointer instead of at a fixed offset, the array,
+  the marquee, the storey move, and the mirror bug the conventions had
+  predicted. The backlog remembers the tool it was written against;
+  `git log -p` remembers the tool.
 - **Two numbers with the same units are the hardest kind of bug, because
   both of them are right.** An occupant load and a roll both mean "how many
   students" and differ by nearly a factor of two; a takeoff quantity and an
@@ -347,8 +364,11 @@ and add to this list rather than starting a new one.
 **The sheet**
 - The drawing surface has a size but no origin, so a plan cannot extend into
   negative feet.
-- Shrinking the sheet can strand a lattice-aligned room outside it; the
-  missing verb is "move everything on this storey by (dx, dz)".
+- ~~Shrinking the sheet can strand a lattice-aligned room outside it; the
+  missing verb is "move everything on this storey by (dx, dz)".~~ *Closed by
+  Phase 32: the Slide row on the floor panel moves a storey's rooms,
+  free-standing walls and props as one set; stairs and lifts stand on two
+  storeys at once, so they stay put and the status line says so.*
 - A design's dimensions aren't part of what a scheme generates against — the
   generator always sizes a fresh state from its own plan.
 - ~~The wall drag's parallel-segment fix isn't applied to the erase tool.~~
@@ -1401,37 +1421,113 @@ build, opens the shutter and finds the glass refracting, shuts it, and walks
 out — holding the cost rule from both sides, since a walk that quietly starts
 paying for a second scene render is exactly what went wrong the first time.
 
-## Phase 32 — Rooms that repeat
+## Phase 32 — Rooms that repeat *(shipped)*
 
 **Schools are the most repetitive building type there is, and the tool
 cannot repeat anything.**
 
 Twenty classrooms means drawing twenty classrooms. The furniture layer has
 had templates since arc two; the rooms themselves have nothing — no copy,
-no array, no mirror, and no way to select two things at once to try.
+no array, no mirror, and no way to select two things at once to try. (So
+this phase believed when it was scoped; what was actually missing was
+narrower — see below — and the mirror it inherited was wrong in exactly
+the way the conventions predicted.)
 
-- [ ] **Copy and paste.** A room to the clipboard — geometry, openings,
+- [x] **Copy and paste.** A room to the clipboard — geometry, openings,
   finishes, props — and back down at the pointer under a live ghost,
   snapped to the lattice, R to rotate honouring the counter-rotation
-  convention.
-- [ ] **Stamp a wing.** Array paste: n copies at a spacing along a
-  direction, which makes a classroom corridor two clicks.
-- [ ] **Mirror.** Reflect a selection across an axis. The hard part is
-  already named in the conventions: `hand` and `sw` are relative to a
-  run's direction, and a mirrored opening flips both or hangs on the wrong
-  jamb.
-- [ ] **Select more than one thing.** The marquee the shape tool never
+  convention. Ctrl+C existed (Phase 6); the ghost is what didn't — a paste
+  used to land at a fixed 3ft offset and then get dragged. The clipboard
+  and the placement are `section.js`; Ctrl+D keeps the old instant manner,
+  because "another one of these, here" is a different gesture from "these,
+  over there".
+- [x] **Stamp a wing.** Array paste: press where the first copy goes and
+  drag; copies fill the row at the clipboard's own pitch — its extent
+  along the drag's axis, rounded out to whole cells, so classrooms butt
+  edge-to-edge on the lattice. A classroom corridor is one Ctrl+V and one
+  drag. A drag shorter than one pitch is a single paste, not a refusal,
+  and a row that hits `MAX_SHAPES` mid-stamp reports how far it got.
+- [x] **Mirror.** M existed too (Phase 6) — and every mirrored door hung
+  on the wrong jamb, which is the bug this item was written about. Fixed
+  in the model, not the tool: `reverseRing` now flips `hand` and `sw` when
+  it re-winds a ring (a re-parameterization is never an edit), and the
+  mirror flips `sw` once more because a reflection reverses handedness.
+- [x] **Select more than one thing.** The marquee the shape tool never
   had; selection stays in the tool and never in the file, per the
-  convention.
-- [ ] **Move everything on this storey by (dx, dz).** The backlog's
+  convention. Whether a press was a box or a click is decided at release,
+  the same way the rectangle eraser decides — so a marquee may start on a
+  room, which is where most marquees start.
+- [x] **Move everything on this storey by (dx, dz).** The backlog's
   missing verb, claimed here because it is the same machinery — a
   transform over a set of records — and it un-strands the rooms a shrunk
-  sheet left behind.
+  sheet left behind. Rooms, free-standing wall lines and props move as one
+  set; a stair stands on two storeys at once, so it stays put and is
+  *reported*, never silently dragged off the level it still serves.
 
 *Leans on:* `shapes.js`, `props.js`, the rotation conventions. *Save:*
 none — records are copied and moved, never reshaped. *Model:* **Claude
 Fable 5** — ring and opening transforms with the hand/sw flip are exactly
 the geometry the conventions warn about.
+
+*What fought back:* the phase's own premise, first. "The tool cannot
+repeat anything" was true when the sentence was drafted against memory and
+false against the tree: Phase 6 had shipped shift-click multi-select,
+Ctrl+C/V/D, R and M on whole sections, and this file had forgotten. The
+honest scope was found by reading polyedit.js before extending it — the
+ghost, the stamp, the marquee, the storey move, and one real bug — and the
+lesson is now a convention above: a phase's premise is checked against the
+tree, not against this file.
+
+The bug is the one worth the retelling. The conventions have warned since
+Phase 6 that `hand` and `sw` are relative to a run's direction — and the
+code path those words were written about still got it wrong, for
+twenty-six phases, because `reverseRing` renumbered segments and flipped
+`t` when a ring re-wound and left `hand` and `sw` alone. Nothing noticed
+for so long because rings are normalized at load and stay normalized;
+the one operation that re-winds a live ring is the mirror, and nobody had
+tested what a mirrored *door* did, only that it survived. Worked through
+on paper: a re-wind on its own must be a physical no-op, so it flips both
+fields; a reflection reverses handedness, so the mirror owes one more
+`sw` flip on top. The net effect on the stored record is that `hand`
+flips and `sw` comes back to the value it started with — which is why
+"flips both" was half-remembered and wholly wrong, and why the suite now
+proves the door *physically* (`doorPhysics`: where the hinge stands,
+which side the leaf swings toward) rather than by the stored signs, which
+a re-wind legitimately scrambles.
+
+Two smaller fights, both about when to decide. The marquee cannot decide
+at the press — a press on a room used to mean "select it", and a box that
+refused to start on a room would be useless, since a box around several
+rooms usually starts on one. So the press starts a *potential* marquee
+and the release decides click from drag, which is the same call the
+rectangle eraser already makes for the same reason, and single-click
+selection moved to the release with nobody noticing. And the stamp's
+count cannot be a number anybody types — the pitch is the clipboard's own
+extent rounded out to cells, the count is how far you dragged, and the
+anchor is always the first offset, so the degenerate drag is a paste
+rather than an error.
+
+The storey move is the one item that refuses part of its own job, on
+purpose. A stair or lift stands on two storeys at once; sliding one
+storey under it would either tear it off the other or move it somewhere
+neither storey expects. So `moveStorey` carries rooms, wall lines and
+props, counts the links it left standing, and the status line says so —
+never drop what you could not carry: say so.
+
+*Tests:* `test/section.test.mjs` (the marquee's three catches — a corner
+in the box, the box in the room, and a crossing edge with neither, which
+is why the hit test clips segments; clipboard independence from the
+originals; the counter-rotation coming home in four quarter turns; a
+paste aimed at another storey landing there, props included; refusals
+counted rather than thrown at the shape cap; the pitch rounding out to
+cells; the storey move and the stair that stayed), the two door-physics
+suites in `test/shapes.test.mjs` (re-winding never moves a leaf; a
+mirrored door hangs on the mirrored jamb and swings to the mirrored
+side), and a `repeat` check in `test/tools/run.mjs`: the real page draws
+a classroom, box-selects it, pastes one under the ghost, stamps a row of
+three at 16ft pitch, slides the storey 8ft out and 8ft home, and deletes
+everything it placed so the checks after it meet the storey they expect.
+`walk-template.html` regenerated, since shapes.js rides in it.
 
 ## Phase 33 — The director's cut
 
