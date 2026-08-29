@@ -31,7 +31,9 @@ import { MAX_SHOVE } from './shove.js';
 import { deserialize } from './save-load.js';
 import { decodeShare } from './share.js';
 import { decodeBakeText, unpackBake, bakeKey } from './bakelight.js';
-import { makeLabelGate, LABEL_MODES, sightBlockers, doorPoints } from './sightline.js';
+import { makeLabelGate, LABEL_MODES, sightBlockers, sightClear, doorPoints } from './sightline.js';
+import { murmurEmitters, paScript } from './murmur.js';
+import { buildingOccupancy } from './occupancy.js';
 import { MOODS, applyMood } from './sky.js';
 import { buildCollider, storeyAt, WALKER_R, updateDoorsFor } from './collide.js';
 import { startHunt, checkFind, huntWarmth, huntSummary } from './hunt.js';
@@ -188,7 +190,58 @@ function boot() {
     on: false, agents: [], nav: null, ctx: null,
     colliders: new Map(), site: null, crowd: makeCrowdField(),
     rate: 1, drill: false, clockAcc: 0, plan: null,
+    occRooms: null, murmurAcc: 0,
   };
+
+  // Phase 28: the classified rooms the murmur derivation reads — occupancy's
+  // own rows, derived once per walk (the design here never changes).
+  function occRooms() {
+    if (!life.occRooms) {
+      life.occRooms = buildingOccupancy(state, { nav: life.nav || undefined }).rooms;
+    }
+    return life.occRooms;
+  }
+
+  // The sightline gate for the speech bubbles — the same rule the labels
+  // obey: no clear cast from the eye, no 💬. Segments are cached per storey
+  // for the walk, the labels' own bargain.
+  const chatSegs = new Map();
+  function chatSeenGate() {
+    const at = walk.at;
+    let segs = chatSegs.get(at.floor);
+    if (!segs) { segs = sightBlockers(state, at.floor); chatSegs.set(at.floor, segs); }
+    const leaves = walk.colliderAt(at.floor).doors;
+    return (a) => (a.floorIndex ?? 0) === at.floor
+      && sightClear(segs, leaves, at.x, at.z, a.x, a.z);
+  }
+
+  // The PA learns to talk (Phase 28): murmur.js writes the script — the
+  // school's name from the seed, today's date, the day's rooms — the Web
+  // Speech API reads it, and the chime, key-click and reverb come out of the
+  // PA path it always had. A machine with no voice keeps the chime and gets
+  // the words on the HUD, which every machine gets anyway.
+  function paAnnounce(kind) {
+    const script = paScript(normalizeLife(state.life).seed, {
+      date: new Date(),
+      rooms: occRooms().filter((r) => r.name && !r.circulation).map((r) => r.name),
+      kind,
+    });
+    const text = script.lines.join(' ');
+    const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
+    const voice = !!synth && !audio.muted;
+    audio.announce({ voice });
+    if (voice) {
+      try {
+        synth.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 0.95;
+        u.volume = audio.volume;
+        // After the chime, the way a real PA waits for its own gong.
+        setTimeout(() => { try { synth.speak(u); } catch { /* HUD carries it */ } }, 1100);
+      } catch { /* the chime and the HUD line carry it */ }
+    }
+    walkHud.textContent = `📢 ${text}`;
+  }
 
   function lifeColliderFor(i) {
     let c = life.colliders.get(i);
@@ -241,6 +294,9 @@ function boot() {
     walk.setLifts(null);
     walk.setFollow(null);
     renderApi.clearCrowd();
+    // The crowd's emitters leave with the crowd — which is the haunt's
+    // silence arriving on schedule, not a special case for it.
+    audio.setMurmur([]);
     walkHud.textContent = 'The building is empty again.';
   }
 
@@ -257,6 +313,8 @@ function boot() {
     for (const bell of bellsBetween(life.ctx.schedule, before, next)) {
       if (audio.running) audio.ring();
       walkHud.textContent = `🔔 ${bell.label} — ${clockText(next)}`;
+      // The first bell of the day is when the PA clears its throat.
+      if (bell.kind === 'arrival' && audio.running) paAnnounce();
     }
     const blockBefore = blockAt(life.ctx.schedule, before);
     state.env.minutes = next;
@@ -277,8 +335,18 @@ function boot() {
       skipFloors: new Set([floorIndex]),
     });
     for (const collider of life.ctx.doorsMoved || []) renderApi.poseDoors(collider.doors);
-    renderApi.setCrowd(life.agents, { recolor: true });
+    renderApi.setCrowd(life.agents, { recolor: true, chatSeen: chatSeenGate() });
     lifeFollowTick();
+    // Phase 28: the crowd, as air. A few times a second, never per frame —
+    // the budget refresh it feeds runs at the same order of cadence.
+    life.murmurAcc += dt;
+    if (life.murmurAcc >= 0.35) {
+      life.murmurAcc = 0;
+      if (audio.running) {
+        audio.setMurmur(murmurEmitters(occRooms(), life.agents, life.ctx.schedule,
+          state.env.minutes, { floorHt: state.floorHt }));
+      }
+    }
   }
 
   function lifeSetDrill(on) {
@@ -290,7 +358,7 @@ function boot() {
     if (on) {
       clearCrowd(life.crowd);
       for (const a of life.agents) { a.state = a.state === 'out' ? 'walk' : a.state; a.outAt = null; }
-      if (audio.running) audio.announce();
+      if (audio.running) paAnnounce('drill');
     }
     retargetAll(life.ctx, life.agents);
     walkHud.textContent = on

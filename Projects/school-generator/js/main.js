@@ -41,7 +41,8 @@ import {
 } from './agents.js';
 import { buildCollider, storeyAt, resolvePoint, WALKER_R, refreshProps } from './collide.js';
 // --- Phase 21 ---
-import { makeLabelGate, LABEL_MODES } from './sightline.js';
+import { makeLabelGate, LABEL_MODES, sightBlockers, sightClear } from './sightline.js';
+import { murmurEmitters, paScript } from './murmur.js';
 // --- Phase 22 ---
 import { pickAhead, carryPoint, setDown, WALK_PALETTE } from './carry.js';
 import { footprintOf, faceDirection } from './propplace.js';
@@ -928,6 +929,9 @@ function setMode(m) {
     // render.js's restoreProps does the visual half on the same mode switch.
     handsReset();
     audio.setActive(false);
+    // The PA's voice rides outside the audio graph, so it has to be shown
+    // the door separately.
+    if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch { /* gone */ } }
     closeModal(walkOverlay);
     document.body.classList.remove('touch-walk');
     document.body.classList.remove('drag-walk');
@@ -3265,11 +3269,13 @@ function roomLines(ac) {
 // panel's light budget makes: say what was dropped rather than let the cap be
 // something you find out about by wondering why the corridor went quiet.
 function mixLines(r) {
-  if (r.total === 0) {
+  if (r.total === 0 && !r.murmurs) {
     return 'Nothing in this design makes a noise yet.<br />' +
       'No bells placed — <b>B</b> rings one where you stand.';
   }
   const bits = [];
+  // Phase 28: the crowd's own emitters — lessons, chatter, the corridor rush.
+  if (r.murmurs) bits.push(`${plural(r.murmurs, 'murmur emitter')} from the crowd`);
   // The continuous sources, whose counts add up: every machine is either
   // audible from here, over the voice budget, or out of earshot.
   if (r.machines) {
@@ -3315,7 +3321,7 @@ $('audio-volume').addEventListener('input', (e) => {
   $('audio-volume-value').textContent = `${Math.round(audio.volume * 100)}%`;
 });
 $('audio-bell').addEventListener('click', () => { audio.ring(); renderAudioReadout(); });
-$('audio-pa').addEventListener('click', () => { audio.announce(); renderAudioReadout(); });
+$('audio-pa').addEventListener('click', () => { paAnnounce(); });
 
 $('audio-btn').addEventListener('click', () => {
   const hidden = audioPanel.classList.toggle('hidden');
@@ -3359,6 +3365,10 @@ const life = {
   plan: null,
   heatAt: 0,
   clockAcc: 0,
+  // Phase 28: occupancy's classified rooms (the murmur derivation reads
+  // them) and the murmur feed's own throttle. Both derived, neither saved.
+  occRooms: null,
+  murmurAcc: 0,
 };
 
 const lifePanel = $('life-panel');
@@ -3381,6 +3391,8 @@ function lifeRebuildWorld() {
   life.site = terrainField(state);
   life.nav = buildNav(state, { siteField: life.site });
   life.colliders = new Map();
+  life.occRooms = null;
+  chatSegs.clear();
   if (life.ctx) {
     life.ctx.nav = life.nav;
     life.ctx.site = life.site;
@@ -3397,6 +3409,79 @@ function lifeColliderFor(i) {
     life.colliders.set(i, c);
   }
   return c;
+}
+
+// ---------- Phase 28: the crowd as sound ----------
+
+// Occupancy's classified rooms, on the crowd's own graph, derived once per
+// world — the same cache bargain the colliders make, torn down by the same
+// rebuild.
+function lifeOccRooms() {
+  if (!life.occRooms) {
+    if (!life.nav) lifeRebuildWorld();
+    life.occRooms = buildingOccupancy(state, { nav: life.nav }).rooms;
+  }
+  return life.occRooms;
+}
+
+// The murmur feed: who is where, handed to the mixer as emitters a few times
+// a second. Everything from here on is sound.js's existing plumbing — the
+// same budget, the same ray through the same walls.
+function murmurTick(dt) {
+  life.murmurAcc += dt;
+  if (life.murmurAcc < 0.35) return;
+  life.murmurAcc = 0;
+  if (!audio.running || !life.on) { audio.setMurmur([]); return; }
+  audio.setMurmur(murmurEmitters(lifeOccRooms(), life.agents, life.ctx.schedule,
+    state.env.minutes, { floorHt: state.floorHt }));
+}
+
+// The sightline gate for the speech bubbles — the same rule the labels obey:
+// no clear cast from the eye to the pair, no 💬 through a wall. Segments per
+// storey, cached until the world rebuilds.
+const chatSegs = new Map();
+function chatSeenGate() {
+  if (mode !== 'walk') return null;
+  const eye = renderApi.walkCamera.position;
+  const f = storeyAt(state, eye.y - EYE_H);
+  let segs = chatSegs.get(f);
+  if (!segs) { segs = sightBlockers(state, f); chatSegs.set(f, segs); }
+  const collider = life.colliders ? life.colliders.get(f) : null;
+  const leaves = collider ? collider.doors : null;
+  return (a) => (a.floorIndex ?? 0) === f
+    && sightClear(segs, leaves, eye.x, eye.z, a.x, a.z);
+}
+
+// The PA learns to talk: murmur.js writes the morning script — the school's
+// name from the crowd's seed, today's date, the day's rooms — and the Web
+// Speech API reads it over the chime the speakers already play. The chime,
+// the key-click and their reverb ride the PA path as ever; the words cannot
+// (speech synthesis never enters the Web Audio graph), so they ride on top,
+// and a machine with no voice keeps the chime and gets the words on the HUD
+// — which every machine gets anyway. Zero bytes shipped, zero server.
+function paAnnounce(kind) {
+  const script = paScript(lifeSettings().seed, {
+    date: new Date(),
+    rooms: lifeOccRooms().filter((r) => r.name && !r.circulation).map((r) => r.name),
+    kind,
+  });
+  const text = script.lines.join(' ');
+  const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
+  const voice = !!synth && !audio.muted;
+  audio.announce({ voice });
+  if (voice) {
+    try {
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95;
+      u.volume = audio.volume;
+      // After the chime, the way a real PA waits for its own gong.
+      setTimeout(() => { try { synth.speak(u); } catch { /* the HUD carries it */ } }, 1100);
+    } catch { /* the chime and the HUD line carry it */ }
+  }
+  if (mode === 'walk') walkSay(`📢 ${text}`);
+  else $('status').textContent = `📢 ${text}`;
+  renderAudioReadout();
 }
 
 function lifeStart() {
@@ -3447,6 +3532,7 @@ function lifeStop() {
   life.agents = [];
   life.drill = false;
   life.followIdx = -1;
+  audio.setMurmur([]);
   walk.setBodies(null);
   walk.setColliders(null);
   walk.setLifts(null);
@@ -3477,6 +3563,8 @@ function lifeAdvanceClock(dt) {
   for (const bell of bellsBetween(life.ctx.schedule, before, next)) {
     if (audio.running) audio.ring();
     lifeFlashBell(bell);
+    // The first bell of the day is when the PA clears its throat.
+    if (bell.kind === 'arrival' && audio.running) paAnnounce();
   }
   const blockBefore = blockAt(life.ctx.schedule, before);
   state.env.minutes = next;
@@ -3521,7 +3609,9 @@ function lifeUpdate(dt) {
     // walking through the slab you are drawing on. Same rule the props follow.
     hideAbove: mode === 'edit' ? state.currentFloor : undefined,
     recolor: true,
+    chatSeen: chatSeenGate(),
   });
+  murmurTick(dt);
   lifeFollowTick();
   lifeHeatTick(dt);
   if (bellFlash > 0) bellFlash -= dt;
@@ -3612,7 +3702,7 @@ function lifeSetDrill(on) {
   if (on) {
     clearCrowd(life.crowd);
     for (const a of life.agents) { a.state = a.state === 'out' ? 'walk' : a.state; a.outAt = null; }
-    if (audio.running) audio.announce();
+    if (audio.running) paAnnounce('drill');
   }
   retargetAll(life.ctx, life.agents);
   $('life-drill').classList.toggle('on', life.drill);
@@ -4886,7 +4976,7 @@ document.addEventListener('keydown', (e) => {
     audio.ring(); renderAudioReadout(); return;
   }
   if (e.code === 'KeyN' && !typing && !e.ctrlKey && !e.metaKey) {
-    audio.announce(); renderAudioReadout(); return;
+    paAnnounce(); return;
   }
   if (e.code === 'KeyP' && !typing && !e.ctrlKey && !e.metaKey && mode === 'walk') {
     setPhotoMode(!photoMode);

@@ -22,7 +22,7 @@ import {
   makeContext, retargetAll, stepAgents, goalRoomFor, speedFor,
   makeCrowdField, crowdAdd, crowdCells, clearCrowd,
   census, drillReport, bodiesOn, bodiesNear,
-  SPEED, AGENT_R, MAX_POP,
+  SPEED, AGENT_R, MAX_POP, CHAT_RANGE,
 } from '../js/agents.js';
 
 // One sample school, built once and shared by the read-only tests. The
@@ -243,7 +243,7 @@ test('a class settles: people arrive, and the ones with chairs sit on them', () 
   run(ctx, agents, 90);
   const c = census(agents);
   assert.equal(c.total, agents.length);
-  assert.ok(c.walking + c.seated + c.idle + c.out === c.total);
+  assert.ok(c.walking + c.seated + c.idle + c.out + c.chatting === c.total);
   const arrived = agents.filter((a) => nav.roomIdAt(a.floorIndex, a.x, a.z) === a.goal).length;
   assert.ok(arrived > agents.length * 0.5, `only ${arrived}/${agents.length} reached their room`);
   // The one furnished classroom in the sample gets used.
@@ -420,4 +420,89 @@ test('a plan whose rooms belong to another building falls back to the random int
   const agents = makePopulation(state, nav, { seed: 5, students: 20, schedule, plan: ghost });
   assert.ok(agents.length > 0, 'a school standing in the car park is not the fallback');
   for (const a of agents) assert.equal(a.cohort, null);
+});
+
+// ---------- talking (Phase 28) ----------
+
+test('two people who meet stop and talk, in pairs, and pick the day back up', () => {
+  // A passing period is when the corridors have people in them, which is when
+  // meetings happen. The clock is held inside the passing block on purpose:
+  // the property under test is the pairing, not the bell.
+  const { ctx, agents } = harness({ students: 40, minutes: 9 * 60 + 20 });
+  retargetAll(ctx, agents);
+  run(ctx, agents, 30);
+  const passing = blocks(ctx.schedule).find((b) => b.kind === 'passing' && b.start > 9 * 60 + 20);
+  ctx.minutes = passing.start + 1;
+  retargetAll(ctx, agents);
+
+  const byId = new Map(agents.map((a) => [a.id, a]));
+  let sawChat = 0;
+  const dt = 1 / 30;
+  for (let t = 0; t < Math.round(120 / dt); t++) {
+    stepAgents(ctx, agents, dt);
+    const chatting = agents.filter((a) => a.state === 'chat');
+    if (!chatting.length) continue;
+    sawChat = Math.max(sawChat, chatting.length);
+    // Conversations are mutual and even: everyone talking is talking to
+    // somebody who is talking back.
+    assert.equal(chatting.length % 2, 0, 'chats come in pairs');
+    for (const a of chatting) {
+      assert.ok(a.chat, 'a chatting person knows who with');
+      const partner = byId.get(a.chat.with);
+      assert.equal(partner.state, 'chat');
+      assert.equal(partner.chat.with, a.id, 'the conversation is mutual');
+      assert.ok(Math.hypot(partner.x - a.x, partner.z - a.z) < CHAT_RANGE * 3,
+        'they are actually standing together');
+    }
+  }
+  assert.ok(sawChat > 0, 'a forty-student passing period produces at least one conversation');
+  assert.equal(census(agents).total, agents.length);
+  // Whoever talked is on cooldown or talking — nobody's counter went rogue.
+  for (const a of agents) {
+    if (a.chat) continue;
+    assert.ok(Number.isFinite(a.chatIn));
+  }
+});
+
+test('nobody stops to chat during a fire drill', () => {
+  const { ctx, agents } = harness({ students: 40, minutes: 9 * 60 + 20 });
+  retargetAll(ctx, agents);
+  // Make everyone willing right now, so the only thing stopping them is the drill.
+  for (const a of agents) a.chatIn = 0;
+  ctx.mode = 'drill';
+  ctx.egress = null;
+  ctx.elapsed = 0;
+  retargetAll(ctx, agents);
+  run(ctx, agents, 30);
+  assert.equal(census(agents).chatting, 0);
+});
+
+test('a retarget ends every conversation cleanly', () => {
+  const { ctx, agents } = harness({ students: 40, minutes: 9 * 60 + 20 });
+  retargetAll(ctx, agents);
+  const passing = blocks(ctx.schedule).find((b) => b.kind === 'passing' && b.start > 9 * 60 + 20);
+  ctx.minutes = passing.start + 1;
+  for (const a of agents) a.chatIn = 0;
+  retargetAll(ctx, agents);
+  run(ctx, agents, 20);
+  retargetAll(ctx, agents);
+  for (const a of agents) assert.equal(a.chat, null, 'no half-open conversations survive a retarget');
+});
+
+test('the same seed makes the same friends stop at the same moments', () => {
+  const trace = () => {
+    const { ctx, agents } = harness({ students: 30, minutes: 9 * 60 + 20 });
+    retargetAll(ctx, agents);
+    const passing = blocks(ctx.schedule).find((b) => b.kind === 'passing' && b.start > 9 * 60 + 20);
+    ctx.minutes = passing.start + 1;
+    retargetAll(ctx, agents);
+    const out = [];
+    const dt = 1 / 30;
+    for (let t = 0; t < Math.round(60 / dt); t++) {
+      stepAgents(ctx, agents, dt);
+      if (t % 30 === 0) out.push(census(agents).chatting);
+    }
+    return out;
+  };
+  assert.deepEqual(trace(), trace());
 });

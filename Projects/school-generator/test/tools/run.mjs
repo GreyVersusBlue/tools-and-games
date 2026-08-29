@@ -724,6 +724,34 @@ const CHECKS = [
     },
   },
   {
+    name: 'crowd-talks',
+    what: 'a walk with the crowd on runs the murmur wiring, and people pair up to chat',
+    async run(d) {
+      await d.page.evaluate(`document.getElementById('mode-btn').click(); 1`);
+      await d.page.waitForTimeout(400);
+      const on = await d.page.evaluate('window.app.lifeStart()');
+      // Everyone willing to stop right now, so the check waits on the pairing
+      // logic rather than on the seeded cooldowns.
+      await d.page.evaluate(
+        'window.app.life.agents.forEach((a) => { a.chatIn = 0; }); 1');
+      let chatting = 0;
+      for (let i = 0; i < 40 && !chatting; i++) {
+        await d.page.waitForTimeout(250);
+        chatting = await d.page.evaluate(
+          `window.app.life.agents.filter((a) => a.state === 'chat').length`);
+      }
+      await d.page.evaluate('window.app.lifeStop(); 1');
+      await d.page.evaluate(`document.getElementById('walk-exit').click(); 1`);
+      await d.page.waitForTimeout(400);
+      return { on, chatting };
+    },
+    expect: ({ ctx }) => {
+      if (!ctx.on) throw new Error('the crowd never started — the drawn school has no teaching rooms');
+      if (!ctx.chatting) throw new Error('ten seconds of willing people produced no conversation');
+      if (ctx.chatting % 2) throw new Error(`chats come in pairs, not ${ctx.chatting}`);
+    },
+  },
+  {
     name: 'undo-redo',
     what: 'undo and redo round-trip the design byte for byte',
     async run(d) {

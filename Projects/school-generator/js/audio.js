@@ -55,6 +55,7 @@ import {
   DOOR_LATCH, DOOR_SHUT,
 } from './sound.js';
 import { sightBlockers } from './sightline.js';
+import { roomToneSpec } from './murmur.js';
 
 // How often the budget and the listener's room are recomputed. Both cost a
 // flood fill or a sort, neither changes meaningfully inside a tenth of a
@@ -84,6 +85,11 @@ export function initAudio(camera, opts = {}) {
 
   let world = null;
   let sources = [];            // every noise-making prop in the design
+  // Phase 28: the crowd's emitters, replaced wholesale by `setMurmur` a few
+  // times a second. They ride the same budget as the props — same ranking,
+  // same ray, same voice cap — which is the entire design: murmur is not a
+  // second mixer, it is more sources.
+  let murmurs = [];
   let voices = new Map();      // source id -> live loop voice
   let bed = null;              // { inside, outside, insideGain, outsideGain }
   let acc = 0;                 // seconds since the last budget refresh
@@ -115,7 +121,7 @@ export function initAudio(camera, opts = {}) {
   // is rung — so `machines` is beside them and the counts add up.
   let report = {
     running: false, room: null, heard: 0, dropped: 0, muted: 0,
-    total: 0, machines: 0, clocks: 0, bells: 0, speakers: 0,
+    total: 0, machines: 0, clocks: 0, bells: 0, speakers: 0, murmurs: 0,
   };
 
   // ---------- the graph ----------
@@ -241,16 +247,91 @@ export function initAudio(camera, opts = {}) {
     ch.panner.positionZ.value = at.z;
   }
 
+  // Phase 28: how each murmur kind is voiced. All of them are the same
+  // recipe — noise through a band, two vocal formants when people are
+  // talking, slow modulation so the crowd swells and lulls — differing only
+  // in proportions, exactly the way the machines differ below. `syllable`
+  // is the modulation rate: a lecture breathes in paragraphs, a cafeteria
+  // babbles, a corridor is mostly feet (no formants, fast tremolo).
+  const WALLA = {
+    lesson:  { formants: true,  syllable: 0.45, depth: 0.4, extra: null },
+    chat:    { formants: true,  syllable: 0.8,  depth: 0.45, extra: null },
+    chatter: { formants: true,  syllable: 1.7,  depth: 0.3, extra: { hz: 2400, q: 2, g: 0.06 } },
+    gym:     { formants: false, syllable: 1.1,  depth: 0.5, extra: { hz: 2600, q: 9, g: 0.16 } },
+    rush:    { formants: false, syllable: 6.5,  depth: 0.3, extra: { hz: 300, q: 0.6, g: 0.2 } },
+  };
+
+  // A crowd: noise shaped into voices. Never words — the formants make it
+  // vocal, the band-limit keeps it unintelligible, which is what walla is.
+  function startWalla(src, ch, nodes, tuned, t) {
+    const spec = WALLA[src.kind];
+    const n = noiseNode();
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = src.hz;
+    bp.Q.value = src.q;
+    bp.detune.value = detuneCents;
+    tuned.push(bp.detune);
+    const vg = ctx.createGain();
+    vg.gain.value = 0.5;
+    if (spec.formants) {
+      // The two peaks that turn noise into vowels — same pair `speak` uses.
+      const f1 = ctx.createBiquadFilter();
+      f1.type = 'peaking'; f1.frequency.value = 620; f1.Q.value = 4; f1.gain.value = 10;
+      const f2 = ctx.createBiquadFilter();
+      f2.type = 'peaking'; f2.frequency.value = 1500; f2.Q.value = 5; f2.gain.value = 8;
+      n.connect(bp); bp.connect(f1); f1.connect(f2); f2.connect(vg);
+    } else {
+      n.connect(bp); bp.connect(vg);
+    }
+    vg.connect(ch.input);
+    // The swell and lull. The LFO rides the band's gain, never to zero — a
+    // crowd breathes, it doesn't gate.
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = spec.syllable * (0.85 + Math.random() * 0.3);
+    const depth = ctx.createGain();
+    depth.gain.value = 0.5 * spec.depth;
+    lfo.connect(depth); depth.connect(vg.gain);
+    n.start(t + Math.random() * 1.5);
+    lfo.start(t);
+    nodes.push(n, lfo);
+    // The kind's own garnish: squeak for the gym, feet for the rush, a
+    // bright edge for the cafeteria. Its own noise, so it doesn't phase.
+    if (spec.extra) {
+      const en = noiseNode();
+      const eb = ctx.createBiquadFilter();
+      eb.type = 'bandpass';
+      eb.frequency.value = spec.extra.hz;
+      eb.Q.value = spec.extra.q;
+      const eg = ctx.createGain();
+      eg.gain.value = spec.extra.g;
+      en.connect(eb); eb.connect(eg); eg.connect(ch.input);
+      const elfo = ctx.createOscillator();
+      elfo.type = 'sine';
+      elfo.frequency.value = spec.syllable * 1.9;
+      const ed = ctx.createGain();
+      ed.gain.value = spec.extra.g * 0.8;
+      elfo.connect(ed); ed.connect(eg.gain);
+      en.start(t + Math.random() * 1.5);
+      elfo.start(t);
+      nodes.push(en, elfo);
+    }
+  }
+
   // A continuous machine: a hum, a hiss or a burble. All three are the same
   // three ingredients in different proportions, which is why they are one
   // function — a compressor is mostly tone and a diffuser is mostly air.
+  // Phase 28 adds the crowd's kinds on the same terms; see `startWalla`.
   function startLoop(src, level, path, wet) {
     const ch = makeChannel(src, 0, path, wet);
     const nodes = [];
     const tuned = [];        // every detune AudioParam this voice owns
     const t = ctx.currentTime;
 
-    if (src.kind === 'hum') {
+    if (WALLA[src.kind]) {
+      startWalla(src, ch, nodes, tuned, t);
+    } else if (src.kind === 'hum') {
       // A motor: its line frequency and the octave above it, plus a little
       // broadband from the fan that shares the housing.
       for (const [mult, g] of [[1, 1], [2, 0.42], [3, 0.16]]) {
@@ -406,7 +487,7 @@ export function initAudio(camera, opts = {}) {
       s.gain.value = 0.25;
       g.connect(s); s.connect(sendBus);
       n.start(t + Math.random());
-      return { n, g, lvl };
+      return { n, f, g, lvl };
     };
     bed = {
       inside: make(220, 0.7, BED_LEVEL),
@@ -436,7 +517,14 @@ export function initAudio(camera, opts = {}) {
     if (!bed) return;
     const t = ctx.currentTime;
     const out = isOutside(room);
-    bed.inside.g.gain.setTargetAtTime(out ? 0 : bed.inside.lvl, t, 0.5);
+    // Phase 28: the inside bed is *this room's* HVAC, not a building-wide
+    // constant — a big hard gym breathes more plant and brighter, a small
+    // carpeted office barely registers. Derived from the same acoustics
+    // record the reverb reads, so the two always describe the same room.
+    const tone = out ? null : roomToneSpec(room);
+    const lvl = tone ? bed.inside.lvl * tone.gain : bed.inside.lvl;
+    if (tone) bed.inside.f.frequency.setTargetAtTime(tone.hz, t, 0.5);
+    bed.inside.g.gain.setTargetAtTime(out ? 0 : lvl, t, 0.5);
     bed.outside.g.gain.setTargetAtTime(out ? bed.outside.lvl : bed.outside.lvl * 0.12, t, 0.5);
   }
 
@@ -489,7 +577,11 @@ export function initAudio(camera, opts = {}) {
     // The creature's voice and the buzz each hold one of the eight while
     // they live — the budget honoured, stated rather than hoped.
     const cap = Math.max(1, MAX_VOICES - (lurker ? 1 : 0) - (buzzer ? 1 : 0));
-    const b = budgetSounds(sources.filter((s) => s.loop), e, { cap, pathFor: rayPath });
+    // The crowd's emitters and the design's machines, one list, one ranking:
+    // the cafeteria at lunch out-shouts the vending machine beside it and
+    // takes its voice, which is the budget doing exactly its job.
+    const b = budgetSounds([...sources.filter((s) => s.loop), ...murmurs], e,
+      { cap, pathFor: rayPath });
     const keep = new Set();
     for (const r of b.heard) {
       keep.add(r.src.id);
@@ -502,6 +594,9 @@ export function initAudio(camera, opts = {}) {
         continue;
       }
       const t = ctx.currentTime;
+      // A machine stands still; a knot of walkers doesn't. Following the
+      // emitter is free, and a prop's position simply never changes.
+      movePanner(v.ch, r.src);
       v.ch.gain.gain.setTargetAtTime(level, t, 0.2);
       v.ch.lp.frequency.setTargetAtTime(clamp(r.path.hz, 200, 20000), t, 0.2);
       v.ch.send.gain.setTargetAtTime(wet, t, 0.2);
@@ -582,6 +677,15 @@ export function initAudio(camera, opts = {}) {
     // pre-walk plan, which has no doors in motion.
     setLeavesSource(fn) { leavesSource = typeof fn === 'function' ? fn : null; },
 
+    // Phase 28: the crowd's emitters, replaced wholesale — murmur.js derives
+    // them, the shell hands them over on its own cadence, and the next
+    // budget refresh voices the ones worth voicing. An empty list is a quiet
+    // building; the fade-outs are the budget's ordinary fade-outs.
+    setMurmur(emitters) {
+      murmurs = Array.isArray(emitters) ? emitters : [];
+      report.murmurs = murmurs.length;
+    },
+
     // Entering or leaving the walkthrough. Leaving stops every voice rather
     // than muting them: an editor that is silent because its gain is zero is
     // still an editor doing FFTs in the background.
@@ -598,7 +702,8 @@ export function initAudio(camera, opts = {}) {
       } else if (started) {
         stopAllVoices();
         stopBed();
-        report.heard = 0; report.dropped = 0; report.muted = 0;
+        murmurs = [];
+        report.heard = 0; report.dropped = 0; report.muted = 0; report.murmurs = 0;
       }
     },
 
@@ -829,7 +934,12 @@ export function initAudio(camera, opts = {}) {
     // syllable envelope on it — an intercom is a telephone-band device, and
     // once you take everything above 3 kHz away, that is most of what makes a
     // voice down a corridor sound like a voice down a corridor.
-    announce() {
+    //
+    // Phase 28: when the shell has a real voice to play (the Web Speech API,
+    // reading murmur.js's script), `opts.voice` keeps the mumble out of its
+    // way — the key-click and the chime still come out of every speaker,
+    // through the room's own reverb, and the words ride over them.
+    announce(opts = {}) {
       ensure();
       if (!ctx || ctx.state !== 'running') return false;
       const speakers = fixtures('pa');
@@ -843,7 +953,7 @@ export function initAudio(camera, opts = {}) {
         PA_CHIME.forEach((hz, i) => {
           tone(ch, { hz, level: 0.3, decay: 0.75, type: 'triangle', delay: 0.06 + i * 0.3 });
         });
-        speak(ch, 1.1);
+        if (!opts.voice) speak(ch, 1.1);
       }
       return speakers.length > 0;
     },

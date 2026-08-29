@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: twenty-seven phases are shipped — three arcs, all of arc four,
-two after it, and arc five is underway: Phase 27 has shipped and Phases
-28–34 are open below.** Three arcs took a grid
+**Status: twenty-eight phases are shipped — three arcs, all of arc four,
+two after it, and arc five is underway: Phases 27 and 28 have shipped and
+Phases 29–34 are open below.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -75,7 +75,9 @@ What it plays: `schedule.js` (the day as five numbers) · `agents.js` (a
 seeded population with timetables) · `shove.js` (bump a chair) · `hunt.js`
 (scavenger hunt) · `decor.js` (seasonal palette) · `lift.js` (a car with a
 call button and a queue) · `haunt.js` (Phase 24's night: the stage machine,
-the writings, the crash, the way out) · `creature.js` (the one body in it).
+the writings, the crash, the way out) · `creature.js` (the one body in it) ·
+`murmur.js` (Phase 28: the crowd as sound — emitters from occupancy, the
+room tone, the PA's script).
 
 What it shows and shares: `render.js` (the three.js scene) · `audio.js` (Web
 Audio graph) · `walkthrough.js` / `xr.js` / `touch.js` (three input paths,
@@ -232,7 +234,8 @@ and add to this list rather than starting a new one.
   limit) are never reconciled.
 - The last fifth of an evacuation is a tail — a few agents work out of a
   corner the crowd shuffled them into.
-- Nobody carries anything, opens a locker, or talks.
+- Nobody carries anything or opens a locker. ~~Or talks.~~ *Closed by Phase
+  28: pairs stop and chat, and every occupied room murmurs.*
 
 **Generation**
 - Adjacency cannot move a room into a bigger slot — only same-sized rooms
@@ -1006,7 +1009,7 @@ out of the bundle), and a `baked-light` check in `test/tools/run.mjs` —
 the real page enters a walk, the worker lands, the renderer wears it, and
 the drafting board takes it off again.
 
-## Phase 28 — A school you can hear
+## Phase 28 — A school you can hear *(shipped)*
 
 **The simulation knows where every person is. The air has no idea.**
 
@@ -1018,33 +1021,72 @@ the model holds: which rooms hold a class this period, how many are at
 lunch, who is in the corridor between bells. This phase turns occupancy
 into air.
 
-- [ ] **`murmur.js`, pure, with its suite.** From occupancy, the timetable
-  and the hour, derive the storey's sound emitters — lecture murmur behind
-  a shut door, the gym's whistle and shoe-squeak, cafeteria chatter scaled
-  by the actual headcount, passing-period rush in the corridors — as data:
-  positions, levels, kinds. No audio in the module.
-- [ ] **Priced through the existing ray.** Emitters route through
-  `pathLossRay` like any other source, so a closed door muffles a lesson
-  and an open one lets it spill into the corridor; the voice budget holds —
-  the nearest few emitters get real voices, the rest pool.
-- [ ] **Room tone.** A near-silent HVAC bed per room from volume and
-  finish, so the quiet between periods is a building's quiet rather than a
-  muted channel.
-- [ ] **The PA learns to talk.** Morning announcements through the Web
-  Speech API — seeded from the school's name, the date and the day's
-  rooms, spoken through the existing PA path and its reverb. A machine
-  with no voices gets the chime and the text on the HUD. Zero bytes
-  shipped, zero server.
-- [ ] **Agents that talk to each other.** Paired agents pause and murmur —
-  positional walla, never synthesized words — with a speech sprite gated by
-  the same sightline rules as labels.
+- [x] **`murmur.js`, pure, with its suite.** From who is actually where —
+  occupancy's classified rooms, the agents' own states, the block the
+  clock is in — the storeys' sound emitters, as data: a lesson behind a
+  shut door (one teaching voice, near-flat in class size), cafeteria
+  chatter summed at +3 dB per doubling of the real headcount, the gym
+  loud whatever the clock says, passing-period rush as clustered knots of
+  walkers (a 20 ft cell needs three before it is a sound), a chatting
+  pair as one source. Positions, levels in dBA at 3 ft, kinds — and not
+  a line of audio in the module.
+- [x] **Priced through the existing ray.** The emitters *are* sound.js
+  sources — same shape, same `budgetSounds` ranking, same `pathLossRay`
+  through the same walls — so a shut door muffles a lesson and an open
+  one spills it into the corridor with zero new rules, and the voice
+  budget holds: the cafeteria at lunch out-shouts the vending machine
+  beside it and takes its voice, which is the budget doing exactly its
+  job. The walla itself is noise through a band and two vocal formants,
+  swelling on a slow LFO — voices, never words.
+- [x] **Room tone.** `roomToneSpec` reads the same acoustics record the
+  reverb reads: the listener bed's level and lowpass corner now follow
+  the room's volume and absorption, so a big hard gym breathes more
+  plant and brighter, a carpeted office barely registers, and the quiet
+  between periods is *this building's* quiet.
+- [x] **The PA learns to talk.** `paScript` writes the morning
+  announcement — the school's name (seeded, when nobody ever named one),
+  the date, the day's rooms, deterministic per seed — and the Web Speech
+  API reads it on the arrival bell, on **N**, and (its own script) when
+  the drill starts. The chime, the key-click and their reverb ride the
+  PA path as ever; a machine with no voices keeps the chime and gets the
+  words on the HUD, which every machine gets anyway. Zero bytes shipped,
+  zero server.
+- [x] **Agents that talk to each other.** Two willing people close enough
+  stop and talk: a seeded `social` appetite and a cooldown, no dice — the
+  same seed makes the same friends stop at the same lockers. They face
+  each other, hold their ground like any standing body, and pick the
+  route back up a few seconds later; never during a drill, never through
+  a partition. The pair is one positional walla emitter, and the speech
+  bubble over their heads shows only when a sightline cast from the eye
+  is clear — the labels' own rule.
 
 *Leans on:* `occupancy.js`, `timetable.js`, `agents.js`, `sound.js`'s
 voice budget, Phase 24's `pathLossRay`. *Collides with:* the haunt —
-murmur emitters are the crowd's, and the haunted night has no crowd; its
-silence is the point. *Save:* none. *Model:* **Claude Fable 5** — the
+murmur emitters are the crowd's, and the stages that empty the building
+get their silence for free: the emitters leave with the people. *Save:*
+none. *Model:* **Claude Fable 5** — the
 emitter derivation and its routing are occupancy and occlusion math; the
 announcement copy is the one line of it any model could write.
+
+*What fought back:* the Web Speech API's one hard wall — synthesized
+speech never enters the Web Audio graph, so the announcement's words
+cannot literally pass the convolver: the chime and key-click carry the
+room's reverb and the voice rides dry over them, and it has to be shown
+the door separately on the way out of a walk, because no bus owns it.
+"Which room is this person in" wanted to stay cheap: a seated agent's
+room is the `goal` it answered the bell to, never a flood fill per head
+per tick, and the corridor's walkers are clustered by cell rather than
+voiced each — the budget was never going to give forty walkers forty
+voices anyway. And the crowd's census turned out to be load-bearing:
+two suites (agents, lifts) enumerate every state a person can be in and
+assert the sum, and both had to learn the new word before anything else
+would pass. *Tests:* `test/murmur.test.mjs` (the crowd-sum law, the
+kinds, the clustering, the cap, the room tone, the script, and the
+sample school simulated into emitters end to end), four new promises in
+`test/agents.test.mjs` (pairs are mutual and even, drills forbid it,
+retargets end it cleanly, the same seed stops the same friends), and a
+`crowd-talks` check in `test/tools/run.mjs` — the real page enters a
+walk, the crowd pairs up, and the murmur wiring runs clean.
 
 ## Phase 29 — Weather
 
@@ -1178,7 +1220,7 @@ the geometry the conventions warn about.
 
 The backlog's own sentence, and around it sit all the parts of a film crew
 hired separately: moods with one click, a recorder that already writes
-video, a PA that (after Phase 28) can talk, and a timetable that knows
+video, a PA that (since Phase 28) can talk, and a timetable that knows
 where everyone should be. This phase introduces them to each other — and
 spends the leftovers on the game the analysis was always pointing at.
 
