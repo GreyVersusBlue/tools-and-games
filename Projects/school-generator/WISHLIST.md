@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: thirty phases are shipped — three arcs, all of arc four,
-two after it, and arc five is underway: Phases 27–30 have shipped and
-Phases 31–34 are open below.** Three arcs took a grid
+**Status: thirty-one phases are shipped — three arcs, all of arc four,
+two after it, and arc five is underway: Phases 27–31 have shipped and
+Phases 32–34 are open below.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -64,7 +64,9 @@ tiles, graph over it) · `sitemesh.js` (the same, over the outdoors) ·
 main thread in `bakeworker.js`, cached by `bakestore.js` beside the
 autosave — never in the file) ·
 `shadow.js` (what an upper storey stands on) · `blueprint.js` (printable
-sheet) · `minimap.js`.
+sheet) · `minimap.js` · `signage.js` (Phase 31: the plate beside a door and
+the glowing EXIT over it, both read off the model — which door, which jamb,
+which side, how high).
 
 What it generates: `program.js` (room counts) · `brief.js` (a sentence read
 into that program) · `timetable.js` (class/room/period packing) ·
@@ -79,7 +81,10 @@ the writings, the crash, the way out) · `creature.js` (the one body in it) ·
 `murmur.js` (Phase 28: the crowd as sound — emitters from occupancy, the
 room tone, the PA's script).
 
-What it shows and shares: `render.js` (the three.js scene) · `audio.js` (Web
+What it shows and shares: `render.js` (the three.js scene) · `relief.js`
+(Phase 31: what shape a material is — a tileable height field per grain
+family and the tangent-space normals that fall out of it, arithmetic rather
+than canvas) · `audio.js` (Web
 Audio graph) · `walkthrough.js` / `xr.js` / `touch.js` (three input paths,
 one physics) · `gltf.js` + `models.js` (glTF read/written by hand) ·
 `share.js` (a design deflated into a URL fragment) · `tour.js` · `overlay.js`
@@ -190,6 +195,20 @@ wrong.
   builds a wall on it, the other leaves the segment open, decided by reading
   order at bake time. Anything that has to be true of *both* sides (borrowed
   light) has to say so explicitly.
+- **...and so does the door in it, which is why nothing may look for a
+  room's doors on a room's own rings.** Half the classrooms in any real plan
+  have none: theirs is recorded on the corridor that shares the wall. Walk
+  every opening on the *storey* and let `shapeAt` say which rooms each one
+  divides — `signage.js` does, and the first cut of it signed six rooms out
+  of eleven and looked like a placement bug.
+- **What a person looks like is drawn apart from what a person does.** The
+  crowd's appearance comes off its own generator, seeded from the
+  population's seed and the agent's id (`wardrobeOf`), because a field added
+  to `makeAgent` shifts every draw after it — so a purely cosmetic addition
+  moves where everybody spawns and how fast they walk. Anything the renderer
+  needs per frame that the agent can know (`bob`) is *written onto the
+  record* by `stepAgents` rather than recomputed in render.js: the scene
+  reads the crowd and never knows a formula.
 - **`hand` and `sw` are relative to the run, and a run has a direction.** A
   ring is wound, so half its segments run the other way; a door copied onto
   one without flipping both fields hangs on the far jamb. `bake()` and
@@ -205,6 +224,13 @@ wrong.
   Everybody waiting for a lift presses the button every frame they are not
   aboard; a car that answers each press never departs. See `lift.js`'s
   `held` accumulator.
+- **A cost written into a comment is not a cost anybody has checked.** Phase
+  31 shipped a transmission pass into the walkthrough with an honest note
+  beside it saying it costs a second scene render — and it cost 117% of a
+  frame, which the note did not say because nobody had timed it. Anything
+  that adds a render pass, a second traversal or a per-pixel fetch to the
+  *walk* gets measured on the software rasterizer before it lands: it is one
+  script, and the walkthrough is what the tool is for.
 - **A cost that is not a distance is how this codebase says "yes, but".**
   `OUTDOOR_COST`, `STAIR_COST`, `ELEVATOR_COST` and `FLOOR_PENALTY` all
   charge `cost` and never `dist`, so a route can be discouraged from a path
@@ -253,7 +279,10 @@ and add to this list rather than starting a new one.
 - The last fifth of an evacuation is a tail — a few agents work out of a
   corner the crowd shuffled them into.
 - Nobody carries anything or opens a locker. ~~Or talks.~~ *Closed by Phase
-  28: pairs stop and chat, and every occupied room murmurs.*
+  28: pairs stop and chat, and every occupied room murmurs.* Half-answered by
+  Phase 31, and only half: most of them now have a bag on their back, but a
+  bag that is worn is not a thing that is carried — nothing is ever picked
+  up, put down, or taken out of one.*
 
 **Generation**
 - Adjacency cannot move a room into a bigger slot — only same-sized rooms
@@ -1258,7 +1287,7 @@ into a card, `document` watches a design go from opened to unsaved, and
 `offline` waits for the worker to take control and finds three.js in its
 cache.
 
-## Phase 31 — Surfaces worth touching
+## Phase 31 — Surfaces worth touching *(shipped)*
 
 **Every wall in the building is flatter than the floor it stands on.**
 
@@ -1268,23 +1297,109 @@ uniform, and the building says nothing about itself. None of what follows
 downloads an asset — the house rule that textures are generated, not
 shipped, holds throughout.
 
-- [ ] **Relief, procedurally.** Canvas-generated normal maps per finish
-  family — CMU coursing, brick, carpet pile, terrazzo chips — paired with
-  Phase 20's roughness, generated at boot.
-- [ ] **Glass that refracts.** Physical transmission on windows and
-  borrowed lights, a frosted variant among the finishes; the budget is
-  counted in materials, and it is small.
-- [ ] **Signage derived, never placed.** Room placards from names and
+- [x] **Relief, procedurally.** Normal maps per grain family — CMU
+  coursing, brick, carpet pile, terrazzo chips, and the six families that
+  had nothing — paired with Phase 20's roughness and built at boot. The
+  shapes and the encoding are `relief.js`, which is arithmetic rather than
+  canvas: a height field per family, tileable by construction, and the
+  tangent-space normals that fall out of it.
+- [x] **Glass that refracts.** Physical transmission on windows and
+  borrowed lights, with a frosted variant among the finishes — derived, not
+  chosen, from what the room behind the pane *is*. Two glazings, two
+  materials, and a school with no restroom in it builds one of them. The
+  refraction itself is photo mode's, for a measured reason: see below.
+- [x] **Signage derived, never placed.** Room placards from names and
   numbers, exit signs standing over the egress graph's own exit doors,
   emissive — wayfinding for the walker, and the haunted night gets its
-  glowing EXITs for free. `signage.js` is pure and comes with its suite.
-- [ ] **People with wardrobes.** Seeded variety in the crowd — height,
-  build, palette, backpacks — and a two-beat walk bob; the creature stays
-  exactly what it is.
+  glowing EXITs for free. `signage.js` is pure and comes with its suite;
+  a whole school's plates are one atlas and one draw call.
+- [x] **People with wardrobes.** Seeded variety in the crowd — hair, build
+  and backpacks over the palette Phase 6 already had — and a two-beat walk
+  bob; the creature stays exactly what it is.
 
 *Leans on:* Phase 20's finish families, `egress.js`, `agents.js`. *Save:*
 none. *Model:* **Claude Opus 5** — render presets, canvas textures and one
 small pure reader; surface work by the arc's own rule.
+
+*What fought back:* three things, and each of them was a rule the codebase
+had already written down and this phase read too quickly.
+
+The first is the one that would have shipped looking like a placement bug.
+Signing a room from *its own* openings signs about half a school — because
+**a partition belongs to exactly one of the two rooms it divides**, so a
+classroom whose door was recorded on the corridor's ring has no opening of
+its own at all. The sample school signed six rooms out of eleven and every
+one of the missing five looked like a geometry error. The fix is to collect
+every door on the storey from wherever it happens to be recorded, and let
+`shapeAt` say which rooms it divides — which is the same convention read the
+right way round, and is now the first thing the suite asserts against a real
+building. The same rule decides the frosting: a borrowed light is frosted if
+*either* room wants privacy, because "the first side with an opinion" is a
+coin toss on ring winding.
+
+The second is a rule about phases rather than about code. The wardrobe
+started as three more draws inside `makeAgent` — and every draw after them
+moved, so a purely cosmetic addition changed where everybody spawned and how
+fast they walked. Nothing failed except the one *simulating* test in the
+crowd's suite, which found two fewer people had reached their classroom in
+ninety seconds; a threshold one person the other side of the line and the
+phase would have shipped a silently different school. Appearance now comes
+off its own generator seeded from the population's seed and the person's own
+id (`wardrobeOf`), and the suite pins the property directly: dressing the
+crowd moves nobody. Its companion, `walkBob`, went the other way — the bob is
+*written onto the record* by `stepAgents` rather than computed in render.js,
+so the renderer keeps reading the crowd and never has to know the formula.
+
+The third was a near-miss of Phase 30's own retrospective. The glazing reads
+`mode` while the materials are being built, and `let mode` sat two hundred
+lines below them — a TDZ error on the very first load and on no path a
+seeded harness takes, which is precisely the mistake that phase had already
+made once with `galleryFilled`. It is declared above the materials now, with
+the reason written beside it.
+
+And a fourth, which is the one the phase actually got wrong first and is
+worth stating at length, because it is the mistake a "surface" phase is most
+likely to make again. A transmissive material makes three.js render the whole
+scene a second time into a target the pane samples. That was known and written
+down here as a cost — and *taken on in the walkthrough anyway*, on the
+reasoning that walking is where you look at glass. Then CI went red on
+`walk-moves`, a check that does nothing but render walk frames: 122 seconds on
+main, over the 180-second ceiling here. Measured on the same software
+rasterizer, over a corridor, the answer was not marginal — **547ms a frame
+became 1,186ms.** Refraction more than doubled the cost of a walk, on a tool
+that runs on phones and in a headset. (The relief maps, the same view, the
+same run: 13%. The expensive half was never the one with eleven new textures
+in it.)
+
+So refraction went where depth of field already lives, for the reason already
+written beside it — *it is a second scene render, so it is paid for only while
+a photograph is being composed.* An ordinary walk keeps the blended pane it
+has always had, and keeps the one thing that must survive without a
+transmission pass: that you can see through a window and not through a frosted
+one, which is `blend` in the glazing table and a test of its own. The walk
+measures 441ms again. The lesson is not "transmission is expensive" — it is
+that a cost written into a comment is not a cost anybody has checked, and the
+number took one afternoon script to get.
+
+The panes are `FrontSide` for a related reason: a pane is a closed box, so its
+back faces were never visible, and a *DoubleSide* transmissive material makes
+the renderer flip `needsUpdate` on it twice a frame to draw its own backside.
+*Tests:* `test/relief.test.mjs` (the two sign conventions on
+hand-made ramps, unit-length normals, the encoder proved to wrap by rolling
+the field and the map together, every family bounded, deterministic and
+tiling, coursed families that actually have courses, and a drift alarm that
+fails if a material table grows a grain this file has never met),
+`test/signage.test.mjs` (the latch-side rule off the leaf's own `hand`, the
+plate outside the room and facing out of it, the exit sign facing back into
+the building and under the slab, a placard number that is the number
+`bindRoom` binds by, and the sample school's own coverage), plus the glazing
+in `test/finish.test.mjs` and the wardrobe and the bob in
+`test/agents.test.mjs` — and a `signage` check in `test/tools/run.mjs`: the
+real page names a restroom, finds plates on its walls, walks in, finds a
+frosted material built and the EXITs the drawing board deliberately did not
+build, opens the shutter and finds the glass refracting, shuts it, and walks
+out — holding the cost rule from both sides, since a walk that quietly starts
+paying for a second scene render is exactly what went wrong the first time.
 
 ## Phase 32 — Rooms that repeat
 

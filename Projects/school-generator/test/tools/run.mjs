@@ -798,6 +798,98 @@ const CHECKS = [
     },
   },
   {
+    name: 'signage',
+    what: 'rooms sign themselves, the way out glows, and the glass refracts only for a photograph',
+    // Phase 31's four claims on the real page, because every one of them is a
+    // fact about the *scene* rather than about the state: signage.js and
+    // relief.js are proved arithmetically by their own suites, and nothing
+    // there can tell you whether a plate ended up on a wall.
+    async run(d) {
+      // The building the earlier checks drew, plus a room whose name asks for
+      // privacy — which is the only way a frosted material is ever built.
+      await d.pick('room');
+      const sh = (await d.shapes())[0];
+      const [cx, cz] = d.centre(sh);
+      await d.page.evaluate(`window.app.editor.setRoom('Girls Restroom', '#88aacc'); 1`);
+      await d.assertClear([[cx, cz]]);
+      await d.click(cx, cz);
+      await d.page.waitForTimeout(400);
+
+      const editing = await d.page.evaluate('window.app.renderApi.signReport()');
+      // Into the walk: the exit signs arrive there, and the glass does *not*
+      // start refracting — see the shutter, below.
+      await d.page.evaluate(`document.getElementById('mode-btn').click(); 1`);
+      await d.page.waitForTimeout(1200);
+      const walking = await d.page.evaluate('window.app.renderApi.signReport()');
+      // Open the shutter: refraction is a photo-mode luxury, because a
+      // transmissive material costs a second scene render and that more than
+      // doubles the cost of a walk on a fill-bound machine. Measured, not
+      // guessed — 547ms to 1,186ms a frame on the rasterizer this harness
+      // runs on, which is why `walk-moves` went red the one time it wasn't.
+      await d.page.evaluate('window.app.renderApi.setPhoto({ on: true })');
+      await d.page.waitForTimeout(1500);
+      const shooting = await d.page.evaluate('window.app.renderApi.signReport()');
+      await d.page.evaluate('window.app.renderApi.setPhoto({ on: false })');
+      await d.page.waitForTimeout(800);
+      const shutClosed = await d.page.evaluate('window.app.renderApi.signReport()');
+      // ...and the relief. Counted off the live scene rather than off the
+      // module, so a map that was built and never attached fails here.
+      //
+      // The population asked about is *the surfaces that already carried a
+      // sheen map* — floors, finishes and walls, the three that have a
+      // `roughnessMap` — because those are exactly the ones Phase 20 gave a
+      // roughness and did not give a shape. A sign, a sprite, the sky and the
+      // contact blob are textured too and have no business with either.
+      const relief = await d.page.evaluate(`(() => {
+        const out = { flat: [], maps: 0 };
+        const seen = new Set(), normals = new Set();
+        window.app.renderApi.scene.traverse((o) => {
+          const list = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+          for (const m of list) {
+            if (seen.has(m.uuid)) continue;
+            seen.add(m.uuid);
+            if (m.normalMap) normals.add(m.normalMap.uuid);
+            if (m.roughnessMap && !m.normalMap) out.flat.push(m.type);
+          }
+        });
+        out.maps = normals.size;
+        return out;
+      })()`);
+      await d.page.evaluate(`document.getElementById('walk-exit').click(); 1`);
+      await d.page.waitForTimeout(600);
+      const back = await d.page.evaluate('window.app.renderApi.signReport()');
+      return { editing, walking, shooting, shutClosed, back, relief };
+    },
+    expect: ({ ctx }) => {
+      const { editing, walking, shooting, shutClosed, back, relief } = ctx;
+      if (!(editing.placards > 0)) {
+        throw new Error('a building full of named rooms put no plate on any door');
+      }
+      // The lazy half, and the reason it is lazy: building the egress graph on
+      // every wall drag is twenty milliseconds the drawing board should not
+      // pay for a sign nobody is at eye level to read.
+      if (editing.exits !== 0) throw new Error('the drawing board built the egress graph');
+      if (!(walking.exits > 0)) throw new Error('the walk found no way out to sign');
+      // The cost rule, from both sides. An ordinary walk must not be paying
+      // for a second scene render; a photograph must be.
+      if (walking.refracting) {
+        throw new Error('an ordinary walk is paying for the transmission pass');
+      }
+      if (!shooting.refracting) throw new Error('photo mode did not refract the glass');
+      if (shutClosed.refracting) throw new Error('closing the shutter left transmission on');
+      if (back.refracting) throw new Error('the drawing board is still paying for transmission');
+      if (!walking.glazings.includes('frosted')) {
+        throw new Error(`a restroom did not frost its glass: ${walking.glazings.join(', ')}`);
+      }
+      if (relief.flat.length) {
+        throw new Error(`${relief.flat.length} surfaces have a sheen map and no shape: ` +
+          relief.flat.slice(0, 4).join(', '));
+      }
+      // Floors, walls and ground at the very least, each its own family.
+      if (relief.maps < 3) throw new Error(`only ${relief.maps} relief maps are in the scene`);
+    },
+  },
+  {
     name: 'undo-redo',
     what: 'undo and redo round-trip the design byte for byte',
     async run(d) {

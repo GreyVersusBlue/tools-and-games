@@ -23,6 +23,7 @@ import {
   makeCrowdField, crowdAdd, crowdCells, clearCrowd,
   census, drillReport, bodiesOn, bodiesNear,
   SPEED, AGENT_R, MAX_POP, CHAT_RANGE,
+  wardrobeOf, walkBob, HAIRS, BAGS, BUILD_MIN, BUILD_MAX, BOB_AMPLITUDE, BAG_ODDS,
 } from '../js/agents.js';
 
 // One sample school, built once and shared by the read-only tests. The
@@ -505,4 +506,106 @@ test('the same seed makes the same friends stop at the same moments', () => {
     return out;
   };
   assert.deepEqual(trace(), trace());
+});
+
+// ---------- Phase 31: the wardrobe ----------
+
+test('a wardrobe is a hair colour, a build and a bag or no bag', () => {
+  for (let id = 1; id <= 40; id++) {
+    const w = wardrobeOf(id, 7, false);
+    assert.ok(HAIRS.includes(w.hair), `id ${id} hair ${w.hair}`);
+    assert.ok(w.build >= BUILD_MIN && w.build <= BUILD_MAX, `id ${id} build ${w.build}`);
+    assert.ok(w.bag === null || BAGS.includes(w.bag), `id ${id} bag ${w.bag}`);
+  }
+});
+
+test('the wardrobe is seeded: same seed and id, same person', () => {
+  assert.deepEqual(wardrobeOf(12, 3, false), wardrobeOf(12, 3, false));
+  // Two schools are two different schools...
+  assert.notDeepEqual(
+    Array.from({ length: 20 }, (_, i) => wardrobeOf(i + 1, 1, false).hair),
+    Array.from({ length: 20 }, (_, i) => wardrobeOf(i + 1, 2, false).hair));
+  // ...and two people in one school are two different people.
+  const one = Array.from({ length: 60 }, (_, i) => wardrobeOf(i + 1, 4, false));
+  assert.ok(new Set(one.map((w) => w.hair)).size > 4, 'a school is not all one head');
+  assert.ok(new Set(one.map((w) => w.build)).size === one.length, 'no two builds coincide');
+});
+
+test('most students carry a bag and most teachers do not', () => {
+  const rate = (teacher) => {
+    let n = 0;
+    for (let id = 1; id <= 500; id++) if (wardrobeOf(id, 11, teacher).bag) n++;
+    return n / 500;
+  };
+  const students = rate(false), teachers = rate(true);
+  assert.ok(Math.abs(students - BAG_ODDS.student) < 0.08, `students carried at ${students}`);
+  assert.ok(Math.abs(teachers - BAG_ODDS.teacher) < 0.08, `teachers carried at ${teachers}`);
+  assert.ok(students > teachers * 2);
+});
+
+test('the wardrobe is drawn apart, so it moves nobody', () => {
+  // The property that makes this safe to grow: hair, build and bags come off
+  // their own generator, so the population's own sequence — where everybody
+  // spawns, how fast they walk, what their timetable is — is untouched by
+  // anything this phase or a later one adds to the wardrobe.
+  const { agents } = harness({ students: 24, seed: 5 });
+  const before = agents.map((a) => [a.x, a.z, a.speed, a.gait, a.lane, a.social]);
+  const { agents: again } = harness({ students: 24, seed: 5 });
+  assert.deepEqual(again.map((a) => [a.x, a.z, a.speed, a.gait, a.lane, a.social]), before);
+  // ...and everybody in it is dressed.
+  for (const a of agents) {
+    assert.ok(HAIRS.includes(a.hair));
+    assert.ok(a.build >= BUILD_MIN && a.build <= BUILD_MAX);
+    assert.ok(a.bag === null || BAGS.includes(a.bag));
+  }
+  assert.ok(agents.some((a) => a.bag), 'somebody in a school has a backpack');
+});
+
+test('a population dresses its teachers and its students differently', () => {
+  const { agents } = harness({ students: 90, seed: 3 });
+  const carried = (kind) => {
+    const list = agents.filter((a) => a.kind === kind);
+    return list.length ? list.filter((a) => a.bag).length / list.length : 0;
+  };
+  assert.ok(carried('student') > carried('teacher'));
+});
+
+// ---------- ...and the walk ----------
+
+test('the bob happens twice per stride, not once', () => {
+  // The single thing that separates a walk from a glide. One full stride is
+  // 2π of gait, and the body should rise and fall through it twice.
+  const walker = (gait) => ({ state: 'walk', gait, height: 1 });
+  let peaks = 0;
+  const N = 720;
+  for (let i = 1; i < N - 1; i++) {
+    const g = (i / N) * Math.PI * 2;
+    const step = (Math.PI * 2) / N;
+    const here = walkBob(walker(g));
+    if (here > walkBob(walker(g - step)) && here > walkBob(walker(g + step))) peaks++;
+  }
+  assert.equal(peaks, 2, `found ${peaks} rises in one stride`);
+});
+
+test('the bob is a rise, never a sink, and it lands at heel strike', () => {
+  const at = (gait) => walkBob({ state: 'walk', gait, height: 1 });
+  // Lowest at both heel strikes, where the legs are furthest apart.
+  assert.equal(at(0), 0);
+  assert.ok(Math.abs(at(Math.PI)) < 1e-12);
+  // Highest at mid-stance, and that is the whole amplitude.
+  assert.ok(Math.abs(at(Math.PI / 2) - BOB_AMPLITUDE) < 1e-12);
+  for (let g = 0; g < 20; g += 0.13) assert.ok(at(g) >= -1e-12 && at(g) <= BOB_AMPLITUDE + 1e-12);
+});
+
+test('the bob scales with the body and stops when the body does', () => {
+  const g = Math.PI / 2;
+  assert.ok(walkBob({ state: 'walk', gait: g, height: 1.1 })
+    > walkBob({ state: 'walk', gait: g, height: 0.85 }));
+  for (const state of ['idle', 'sit', 'out', 'chat', undefined]) {
+    assert.equal(walkBob({ state, gait: g, height: 1 }), 0, String(state));
+  }
+  assert.equal(walkBob(null), 0);
+  // A body with nothing said about it is still a body.
+  assert.ok(walkBob({ state: 'walk', gait: g }) > 0);
+  assert.equal(walkBob({ state: 'walk' }), 0);
 });
