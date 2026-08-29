@@ -67770,6 +67770,18 @@ const PATIENCE = 8;           // s
 // across a threshold is a body pacing a corridor.
 const REPATH_COOLDOWN = 5;    // s
 const MAX_POP = 600;
+
+// ---------- talking (Phase 28) ----------
+//
+// Two people who meet in a corridor sometimes stop and talk. The pairing is
+// deterministic — no dice: everyone carries a seeded `social` appetite and a
+// `chatIn` countdown, and a conversation starts when two willing people are
+// simply close enough. The same seed makes the same friends stop at the same
+// lockers, which is what keeps a replayed school the same school.
+const CHAT_RANGE = 3.2;       // ft — close enough to talk
+const CHAT_MIN_S = 2.5;       // the shortest conversation worth stopping for
+const CHAT_MAX_S = 5.5;       // ...and the longest before the bell wins
+const CHAT_COOLDOWN = 18;     // s, scaled by how social each person is
 // Seats an agent will consider in its room. Beyond this the nearest-free scan
 // costs more than sitting somewhere sensible is worth.
 const SEAT_SCAN = 400;
@@ -67959,6 +67971,13 @@ function makeAgent(id, kind, rand, room, opts = {}) {
     // in a single-storey school is everybody.
     lift: null,
     liftWait: 0,
+    // Whether this person stops to talk (Phase 28). `social` is fixed at
+    // spawn — some people always have a minute, some never do; `chatIn`
+    // counts down to the next time they are willing; `chat` is the
+    // conversation they are in ({ with, t, x, z }), or null.
+    social: rand(),
+    chatIn: 4 + rand() * 24,
+    chat: null,
     yielding: false,
     yielded: 0,
     lastX: 0, lastZ: 0,
@@ -68418,9 +68437,29 @@ function stepAgent(ctx, agent, dt, bodies) {
   const floorIndex = storeyAt(ctx.state, agent.y, ground);
   agent.floorIndex = floorIndex;
   if (agent.state === 'out') return;
+  if (agent.chatIn > 0) agent.chatIn -= dt;
 
   const collider = ctx.colliderFor(floorIndex);
   const target = agent.path && agent.path[agent.wp];
+
+  if (agent.state === 'chat') {
+    // Stopped to talk. Face the other person, hold your ground the way any
+    // standing body does (a crowd pushing past still moves you), and when
+    // the conversation runs out pick the day back up where it was — the
+    // route is untouched, only the clock on it slipped a few seconds.
+    const c = agent.chat;
+    if (c && c.t > 0) {
+      c.t -= dt;
+      agent.facing = angleLerp(agent.facing,
+        Math.atan2(c.x - agent.x, c.z - agent.z), Math.min(1, dt * 5));
+      const out = resolvePoint(collider, agent.x, agent.z, AGENT_R, 2, { bodies, skip: agent.id });
+      agent.x = out.x;
+      agent.z = out.z;
+      agent.y = supportOf(ctx, agent, floorIndex);
+      return;
+    }
+    endChat(agent);
+  }
 
   if (agent.state === 'sit') {
     // Sitting is not standing still: the seat is where the body is, and the
@@ -68832,6 +68871,10 @@ function makeContext(state, nav, opts = {}) {
 function retargetAll(ctx, agents) {
   for (const agent of agents) {
     if (agent.state === 'out') continue;
+    // A new block, a drill, a rebuilt world — whatever brought us here ends
+    // every conversation: the states below are assigned fresh, and a `chat`
+    // left set would be a pair whose other half no longer exists.
+    if (agent.chat) { agent.chat = null; agent.state = 'idle'; }
     releaseSeat(ctx, agent);
     if (ctx.mode === 'drill') {
       headForTheDoor(ctx, agent);
@@ -68891,6 +68934,51 @@ function headForTheDoor(ctx, agent) {
   agent.state = agent.path ? 'walk' : 'idle';
 }
 
+// The conversation is over. The route was never dropped, so resuming is
+// just being a walker again; the cooldown is what keeps one sociable pair
+// from spending the whole passing period three feet apart, stopping.
+function endChat(agent) {
+  agent.chat = null;
+  agent.chatIn = CHAT_COOLDOWN * (0.6 + agent.social);
+  agent.state = agent.path && agent.wp < agent.path.length ? 'walk' : 'idle';
+}
+
+// Two willing people close enough to talk, paired. Runs off the same
+// neighbour buckets the collision pass built, so finding a partner costs a
+// look at the nine cells around you rather than at the school. Never during
+// a drill — nobody stops to chat under the alarm.
+function pairChats(ctx, agents, map) {
+  const byId = new Map();
+  for (const a of agents) byId.set(a.id, a);
+  const willing = (a) => a && !a.chat && a.chatIn <= 0
+    && (a.state === 'walk' || a.state === 'idle');
+  for (const a of agents) {
+    if (!willing(a)) continue;
+    const f = a.floorIndex ?? 0;
+    let best = null, bestD = CHAT_RANGE;
+    for (const b of neighbours(map, f, a.x, a.z)) {
+      // Bodies here include the camera and anything else the caller handed
+      // in; a partner is a real agent with a real id, and not yourself.
+      if (typeof b.id !== 'number' || b.id <= 0 || b.id === a.id) continue;
+      const other = byId.get(b.id);
+      if (!willing(other) || (other.floorIndex ?? 0) !== f) continue;
+      const d = Math.hypot(other.x - a.x, other.z - a.z);
+      if (d >= bestD) continue;
+      // Three feet apart can still be two sides of a partition. Same room —
+      // and outdoors counts as one big room — or no conversation.
+      if (ctx.nav.roomIdAt(f, a.x, a.z) !== ctx.nav.roomIdAt(f, other.x, other.z)) continue;
+      bestD = d; best = other;
+    }
+    if (!best) continue;
+    // How long they talk is who they are, not a die roll.
+    const t = CHAT_MIN_S + ((a.social + best.social) / 2) * (CHAT_MAX_S - CHAT_MIN_S);
+    a.chat = { with: best.id, t, x: best.x, z: best.z };
+    best.chat = { with: a.id, t, x: a.x, z: a.z };
+    a.state = 'chat';
+    best.state = 'chat';
+  }
+}
+
 function stepAgents(ctx, agents, dt, opts = {}) {
   ctx.elapsed += dt;
   ctx.speed = speedFor(ctx.schedule, ctx.minutes, ctx.mode);
@@ -68903,6 +68991,7 @@ function stepAgents(ctx, agents, dt, opts = {}) {
     const near = neighbours(map, agent.floorIndex ?? 0, agent.x, agent.z);
     stepAgent(ctx, agent, dt, near);
   }
+  if (ctx.mode !== 'drill') pairChats(ctx, agents, map);
   if (ctx.crowd) ctx.crowd.seconds += dt;
   // The cars run whether or not anybody is in them: a lift somebody called and
   // then walked away from still has to come, open, wait and shut, which is
@@ -68981,7 +69070,7 @@ function bodiesNear(agents, floorIndex, x, z, radius = 30, extra = null) {
 function census(agents) {
   const out = {
     total: agents.length, walking: 0, seated: 0, idle: 0, out: 0, teachers: 0,
-    queueing: 0, riding: 0,
+    queueing: 0, riding: 0, chatting: 0,
   };
   for (const a of agents) {
     if (a.kind === 'teacher') out.teachers++;
@@ -68990,6 +69079,7 @@ function census(agents) {
     else if (a.state === 'out') out.out++;
     else if (a.state === 'queue') out.queueing++;
     else if (a.state === 'ride') out.riding++;
+    else if (a.state === 'chat') out.chatting++;
     else out.idle++;
   }
   return out;
@@ -69015,7 +69105,7 @@ function drillReport(agents, elapsed) {
   };
 }
 
-return { AGENT_R, SPEED, SPEED_VAR, ARRIVE, ARRIVE_SEAT, SEAT_APPROACH, ARRIVE_DOOR, STUCK_S, BODY_PUSH, SHUFFLE_S, SHUFFLE_ANGLE, SIDESTEP_ANGLE, SIDESTEP_HOLD, FOLLOW_NEAR, FOLLOW_FAR, FOLLOW_CONE, FOLLOW_ALIGN, CREEP, DOOR_REACH, DOOR_YIELD, DOOR_MOUTH, YIELD_MAX, PATIENCE, REPATH_COOLDOWN, MAX_POP, SEAT_SCAN, SHIRTS, TROUSERS, SKINS, TEACHER_SHIRTS, DEFAULT_LIFE, normalizeLife, defaultLife, isDefaultLife, rng, SEAT_GEOS, seatOf, isSeat, seatsIn, makePopulation, pickLunchroom, goalRoomFor, speedFor, makeCrowdField, crowdAdd, crowdCells, clearCrowd, repath, makeContext, retargetAll, stepAgents, bodiesOn, bodiesNear, census, drillReport };
+return { AGENT_R, SPEED, SPEED_VAR, ARRIVE, ARRIVE_SEAT, SEAT_APPROACH, ARRIVE_DOOR, STUCK_S, BODY_PUSH, SHUFFLE_S, SHUFFLE_ANGLE, SIDESTEP_ANGLE, SIDESTEP_HOLD, FOLLOW_NEAR, FOLLOW_FAR, FOLLOW_CONE, FOLLOW_ALIGN, CREEP, DOOR_REACH, DOOR_YIELD, DOOR_MOUTH, YIELD_MAX, PATIENCE, REPATH_COOLDOWN, MAX_POP, CHAT_RANGE, CHAT_MIN_S, CHAT_MAX_S, CHAT_COOLDOWN, SEAT_SCAN, SHIRTS, TROUSERS, SKINS, TEACHER_SHIRTS, DEFAULT_LIFE, normalizeLife, defaultLife, isDefaultLife, rng, SEAT_GEOS, seatOf, isSeat, seatsIn, makePopulation, pickLunchroom, goalRoomFor, speedFor, makeCrowdField, crowdAdd, crowdCells, clearCrowd, repath, makeContext, retargetAll, stepAgents, bodiesOn, bodiesNear, census, drillReport };
 })();
 // ---- js/hunt.js ----
 const __m_js_hunt_js = (() => {
@@ -78397,6 +78487,51 @@ function initRender(canvas) {
     return crowdMeshes;
   }
 
+  // --- Phase 28: the speech sprite ---
+  //
+  // Two people who stopped to talk get a bubble over their heads — the one
+  // visual that says the pause is a conversation and not a pathfinding bug.
+  // A small pool of Sprites (they billboard themselves) sharing one canvas
+  // texture; whether a bubble *shows* is the caller's sightline gate, the
+  // same rule the room labels obey, so a wall never leaks a 💬 through it.
+  let chatSprites = null;
+  const CHAT_SPRITES = 32;
+
+  function buildChatSprites() {
+    if (chatSprites) return chatSprites;
+    const c = document.createElement('canvas');
+    c.width = 96; c.height = 80;
+    const g = c.getContext('2d');
+    g.fillStyle = 'rgba(248,249,252,0.92)';
+    g.strokeStyle = 'rgba(30,34,44,0.85)';
+    g.lineWidth = 4;
+    g.beginPath();
+    g.roundRect(6, 6, 84, 52, 16);
+    g.fill(); g.stroke();
+    // The tail, aimed down at whoever is talking.
+    g.beginPath();
+    g.moveTo(38, 56); g.lineTo(30, 74); g.lineTo(54, 56);
+    g.closePath();
+    g.fillStyle = 'rgba(248,249,252,0.92)';
+    g.fill();
+    g.fillStyle = 'rgba(30,34,44,0.85)';
+    for (const x of [30, 48, 66]) {
+      g.beginPath(); g.arc(x, 32, 5.5, 0, Math.PI * 2); g.fill();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+    chatSprites = [];
+    for (let i = 0; i < CHAT_SPRITES; i++) {
+      const sp = new THREE.Sprite(mat);
+      sp.scale.set(1.15, 0.96, 1);
+      sp.visible = false;
+      crowdGroup.add(sp);
+      chatSprites.push(sp);
+    }
+    return chatSprites;
+  }
+
   // Place one part: its joint in world space, its own swing, the body's
   // facing. Rotation order is YXZ so the swing happens in the body's frame
   // rather than the world's — turn first, then lift the leg.
@@ -78414,14 +78549,20 @@ function initRender(canvas) {
   // openings.js's leaves.
   function setCrowd(agents, opts = {}) {
     const meshes = buildCrowdMeshes();
+    const bubbles = buildChatSprites();
     if (!agents || !agents.length) {
       for (const m of Object.values(meshes)) m.count = 0;
+      for (const sp of bubbles) sp.visible = false;
       crowdGroup.visible = false;
       return 0;
     }
     crowdGroup.visible = true;
     const recolor = opts.recolor !== false;
     const hideFloor = opts.hideAbove;      // edit mode draws one storey at a time
+    // `opts.chatSeen(agent)` is the sightline gate for the speech bubbles;
+    // absent, a chat shows its bubble plainly (the editor's overhead view).
+    const chatSeen = typeof opts.chatSeen === 'function' ? opts.chatSeen : null;
+    let bubbleN = 0;
     let n = 0;
     for (const a of agents) {
       if (a.state === 'out') continue;
@@ -78478,8 +78619,14 @@ function initRender(canvas) {
         _crowdColor.set(a.skin);
         meshes.head.setColorAt(n, _crowdColor);
       }
+      if (a.state === 'chat' && bubbleN < CHAT_SPRITES && (!chatSeen || chatSeen(a))) {
+        const sp = bubbles[bubbleN++];
+        sp.position.set(a.x, hipY + (BODY.torso + BODY.head) * s + 1.05, a.z);
+        sp.visible = true;
+      }
       n++;
     }
+    for (let i = bubbleN; i < CHAT_SPRITES; i++) bubbles[i].visible = false;
     for (const m of Object.values(meshes)) {
       m.count = n;
       m.instanceMatrix.needsUpdate = true;
@@ -81617,6 +81764,330 @@ function roomsOnFloor(state, floorIndex, catalogEntry = () => null) {
 
 return { SPEED_OF_SOUND, SABINE, ALPHA, CATEGORY_ALPHA, DEFAULT_PROP_ALPHA, MIN_RT60, MAX_RT60, finishAlpha, ceilingAt, CEILING_SAMPLES, roomCeiling, roomAt, outsideRoom, isOutside, propFace, propAlpha, furnitureSabins, sabineRT60, ansiLimit, verdict, roomAcoustics, wetFraction, reverbSpec, roomsOnFloor };
 })();
+// ---- js/murmur.js ----
+const __m_js_murmur_js = (() => {
+const { FLOOR_H } = __m_js_grid_js;
+const { blockAt } = __m_js_schedule_js;
+const { rng } = __m_js_agents_js;
+// murmur.js — the crowd as sound.
+//
+// The simulation knows where every person is. The air, until Phase 28, had no
+// idea: the walker's shoes, the doors and the machinery were the whole of the
+// daytime soundtrack, in a building whose model can already say which rooms
+// hold a class this period, how many are at lunch, and who is in the corridor
+// between bells. This module turns that occupancy into *emitters* — positions,
+// levels, kinds — and stops there. No audio, no three.js, no Web Audio: what a
+// murmur emitter sounds like is audio.js's business, exactly the way sound.js
+// describes a bell without ringing one.
+//
+// The shape it hands back is deliberately sound.js's own source shape
+// (`{ id, kind, floor, x, y, z, db, hz, q, room, loop }`), because the whole
+// point is that these ride the existing plumbing: the same `budgetSounds`
+// ranking, the same voice cap, the same `pathLossRay` pricing through walls —
+// so a lesson behind a shut door is muffled by the door being shut, and an
+// open one lets it spill into the corridor, with not one new rule anywhere.
+//
+// **Levels are dBA at three feet**, like every source in sound.js, and the
+// crowd's arithmetic is the real one: n incoherent talkers are
+// `10·log10(n)` dB over one talker — +3 dB per doubling — which is why a
+// cafeteria at thirty is a presence and at three hundred is a roar, without a
+// single hand-tuned "cafeteria volume" anywhere.
+//
+// Three smaller answers live here too, because they are all "derive it from
+// the model" answers to sound questions:
+//   `roomToneSpec` — the near-silent HVAC bed a room deserves, from its
+//                    volume and finishes;
+//   `paScript`     — the morning announcement, as text, seeded from the
+//                    school's name, the date and the day's rooms;
+//   the chat pair  — two agents who stopped to talk, as one emitter.
+//
+// Pure module. Exercised by test/murmur.test.mjs.
+
+
+
+
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// ---------- the kinds ----------
+
+// Five ways a crowd sounds, and no more: a room being taught in, a room
+// talking over itself, a gym, a corridor at passing, and two people who
+// stopped in the hall. Everything a school's people do lands in one of them.
+const MURMUR_KINDS = ['lesson', 'chatter', 'gym', 'rush', 'chat'];
+
+// The voice each kind gets — centre frequency and how peaky it is — stated
+// here beside the levels so the whole voicing of the crowd is one table.
+// A lesson is one adult voice, low and narrow; chatter is many voices wide;
+// a gym is shouts and shoe-squeak, bright; a rush is mostly feet.
+const MURMUR_VOICES = {
+  lesson:  { hz: 420, q: 1.1 },
+  chatter: { hz: 800, q: 0.8 },
+  gym:     { hz: 1300, q: 0.6 },
+  rush:    { hz: 950, q: 0.7 },
+  chat:    { hz: 520, q: 1.2 },
+};
+
+// ---------- the levels ----------
+
+// One talker at conversational effort is about 54 dBA at three feet; a
+// teacher pitching to the back row runs louder. The formulas below are the
+// crowd sum over those two numbers, per kind:
+//
+//   lesson   one raised voice, plus the rustle of n listeners — the rustle
+//            counts a twentieth of a talker each, which is what keeps a
+//            lecture for five and a lecture for thirty within a few dB.
+//   chatter  half the room talking at once (the other half is listening,
+//            for now), summed incoherently.
+//   gym      everybody making noise — shouting, bouncing, squeaking — at a
+//            level per head that starts above conversation, because nobody
+//            uses a gym quietly.
+//   rush     a knot of walkers: feet and cross-talk, per head over a low base.
+//   chat     exactly two people, flat.
+const TALK_DB = 54;      // one conversational voice, dBA at 3ft
+const LESSON_DB = 58;    // one teaching voice, dBA at 3ft
+const GYM_HEAD_DB = 60;  // one person's worth of gym, dBA at 3ft
+const RUSH_HEAD_DB = 48; // one walker's worth of corridor, dBA at 3ft
+const CHAT_DB = 50;      // two people keeping it down
+
+function murmurDb(kind, count) {
+  const n = Math.max(1, Math.round(count || 1));
+  switch (kind) {
+    case 'lesson': return LESSON_DB + 10 * Math.log10(1 + n * 0.05);
+    case 'chatter': return TALK_DB + 10 * Math.log10(Math.max(1, n / 2));
+    case 'gym': return GYM_HEAD_DB + 10 * Math.log10(n);
+    case 'rush': return RUSH_HEAD_DB + 10 * Math.log10(n);
+    case 'chat': return CHAT_DB;
+    default: return 0;
+  }
+}
+
+// Which kind a room full of people is. The gym is the gym whatever the clock
+// says — PE is a class and it is still loud. Every other room is a lesson
+// while a class block is running (one voice, everyone else listening) and
+// chatter the rest of the time: homeroom, lunch, the minutes either side of
+// a bell — the difference between a school at ten past nine and at noon is
+// exactly this line.
+function murmurKindFor(use, blockKind) {
+  if (use === 'gym') return 'gym';
+  return blockKind === 'class' ? 'lesson' : 'chatter';
+}
+
+// ---------- the emitters ----------
+
+// Where a mouth is, above the storey's floor. Seated and standing split the
+// difference; nothing at ear-level cares about the half-foot.
+const MOUTH_H = 4;       // ft
+
+// The corridor rush is clustered rather than per-person: forty walkers are
+// a handful of knots of crowd, not forty voices. The cell is about a
+// corridor-width; a cell needs this many walkers before it is a sound.
+const RUSH_CELL = 20;    // ft
+const RUSH_MIN = 3;
+
+// The most emitters worth handing to the budget. It only ever voices a
+// handful; past this the rest were never going to place, and the sort they
+// cost the mixer four times a second is real.
+const MURMUR_CAP = 48;
+
+// The storeys' sound emitters, from who is where and what the clock says.
+//
+// `rooms` is occupancy.js's own rows (`buildingOccupancy(...).rooms` — id,
+// floor, x, z, use), because the classification problem is already solved
+// there and solving it twice would give the two answers Phase 12 warned
+// about. `agents` is agents.js's own array, read and never written. The
+// hour arrives as `sched` + `minutes`, the same pair every schedule reader
+// takes.
+//
+// Who counts where:
+//   sit / idle   the room they answered the bell to (`goal`, falling back
+//                to `home`) — seated bodies are that room's headcount;
+//   walk / queue the corridor: clustered into rush knots per storey;
+//   chat         a pair emitter at the midpoint, once per pair;
+//   out / ride   nobody — outdoors is the wind's, and a lift car is a box.
+function murmurEmitters(rooms, agents, sched, minutes, opts = {}) {
+  const floorHt = opts.floorHt || FLOOR_H;
+  const cap = opts.cap ?? MURMUR_CAP;
+  const block = blockAt(sched, minutes);
+
+  const roomRows = new Map();
+  for (const r of rooms || []) roomRows.set(r.id, r);
+  const byId = new Map();
+  for (const a of agents || []) byId.set(a.id, a);
+
+  const seated = new Map();     // roomId -> headcount
+  const rush = new Map();       // `${floor}|${cx}|${cz}` -> { floor, sx, sz, n }
+  const out = [];
+
+  for (const a of agents || []) {
+    if (a.state === 'sit' || a.state === 'idle') {
+      const roomId = a.goal ?? a.home;
+      if (roomId === null || roomId === undefined || !roomRows.has(roomId)) continue;
+      seated.set(roomId, (seated.get(roomId) || 0) + 1);
+    } else if (a.state === 'walk' || a.state === 'queue') {
+      const f = a.floorIndex ?? 0;
+      const key = `${f}|${Math.floor(a.x / RUSH_CELL)}|${Math.floor(a.z / RUSH_CELL)}`;
+      let cell = rush.get(key);
+      if (!cell) { cell = { key, floor: f, sx: 0, sz: 0, n: 0 }; rush.set(key, cell); }
+      cell.sx += a.x; cell.sz += a.z; cell.n++;
+    } else if (a.state === 'chat' && a.chat) {
+      // One emitter per pair, claimed by the lower id so it is emitted once
+      // and its identity is stable for the whole conversation.
+      if (a.chat.with < a.id && byId.has(a.chat.with)) continue;
+      const b = byId.get(a.chat.with);
+      const bx = b ? b.x : a.chat.x, bz = b ? b.z : a.chat.z;
+      out.push({
+        id: `chat:${Math.min(a.id, a.chat.with)}~${Math.max(a.id, a.chat.with)}`,
+        kind: 'chat',
+        floor: a.floorIndex ?? 0,
+        x: (a.x + bx) / 2,
+        y: (a.floorIndex ?? 0) * floorHt + MOUTH_H,
+        z: (a.z + bz) / 2,
+        db: murmurDb('chat', 2),
+        hz: MURMUR_VOICES.chat.hz, q: MURMUR_VOICES.chat.q,
+        count: 2, room: null, loop: true,
+      });
+    }
+  }
+
+  for (const [roomId, n] of seated) {
+    const r = roomRows.get(roomId);
+    const kind = murmurKindFor(r.use, block.kind);
+    const v = MURMUR_VOICES[kind];
+    out.push({
+      id: `mur:${r.floor}:${roomId}`,
+      kind,
+      floor: r.floor,
+      x: r.x,
+      y: r.floor * floorHt + MOUTH_H,
+      z: r.z,
+      db: murmurDb(kind, n),
+      hz: v.hz, q: v.q,
+      count: n, room: roomId, loop: true,
+    });
+  }
+
+  for (const cell of rush.values()) {
+    if (cell.n < RUSH_MIN) continue;
+    out.push({
+      id: `rush:${cell.key}`,
+      kind: 'rush',
+      floor: cell.floor,
+      x: cell.sx / cell.n,
+      y: cell.floor * floorHt + MOUTH_H,
+      z: cell.sz / cell.n,
+      db: murmurDb('rush', cell.n),
+      hz: MURMUR_VOICES.rush.hz, q: MURMUR_VOICES.rush.q,
+      count: cell.n, room: null, loop: true,
+    });
+  }
+
+  if (out.length > cap) {
+    out.sort((a, b) => b.db - a.db || (a.id < b.id ? -1 : 1));
+    out.length = cap;
+  }
+  return out;
+}
+
+// ---------- room tone ----------
+
+// The near-silent HVAC bed a room deserves, as a scale on the listener bed
+// audio.js already runs: `gain` multiplies the bed's level, `hz` moves the
+// lowpass corner. Derived from the acoustics record the reverb already
+// derives (`roomAcoustics`), so the quiet between periods is *this* room's
+// quiet: a big hard gym breathes more plant, brighter; a small carpeted
+// office barely registers, and dull. Null outdoors — outside there is wind,
+// and the bed's crossfade already owns that.
+function roomToneSpec(ac) {
+  if (!ac || !(ac.volume > 0)) return null;
+  // The same 0..1 "how big" handle reverbSpec keeps.
+  const size = clamp(Math.cbrt(ac.volume / 100000), 0, 1);
+  const alpha = clamp(ac.meanAlpha || 0, 0, 0.6);
+  return {
+    // Bigger rooms carry more air; soft rooms swallow what there is.
+    gain: clamp((0.55 + 0.65 * size) * (1 - 0.75 * alpha), 0.2, 1.2),
+    // Absorption eats the hiss first, so a soft room's tone is duller.
+    hz: clamp(360 - 420 * alpha, 160, 360),
+  };
+}
+
+// ---------- the PA's script ----------
+
+// A school that has never been named gets one from the seed, so the morning
+// announcement is about *a* school rather than about a software project —
+// and the same seed names it the same thing tomorrow.
+const SCHOOL_NAMES = [
+  'Kestrel Ridge', 'Fair Harbor', 'Maple Hollow', 'Ninth Street',
+  'Granite Bay', 'Larkspur', 'Cedar Field', 'Whitewater',
+];
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+  'Friday', 'Saturday'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+// The middle of the announcement: one or two of these, rooms spliced in.
+// Written to survive any room name a design holds — the room is quoted, not
+// parsed.
+const NOTICES = [
+  (r) => `${r} is closed for cleaning during lunch today.`,
+  (r) => `Chess club meets after school in ${r}.`,
+  (r) => `Yearbook photos continue this week in ${r}.`,
+  (r) => `Please keep the corridor outside ${r} clear this morning.`,
+  (r) => `Lost property may be collected from ${r} at lunch.`,
+  (r) => `Auditions sign-up sheets are posted outside ${r}.`,
+];
+
+// The morning announcement, as text. Deterministic for a seed and a date:
+// the same school says the same things on the same morning, which is what
+// makes it the school's voice rather than a random-line generator. `kind`
+// 'drill' swaps the notices for the one announcement a drill makes.
+//
+// `opts`: { school, date (a Date), rooms (names), kind }
+function paScript(seed, opts = {}) {
+  const rand = rng(((seed ?? 1) >>> 0) * 7919 + 17);
+  const pick = (arr) => arr[Math.floor(rand() * arr.length)];
+  const school = (typeof opts.school === 'string' && opts.school.trim())
+    ? opts.school.trim()
+    : `${pick(SCHOOL_NAMES)} School`;
+
+  if (opts.kind === 'drill') {
+    return {
+      school,
+      lines: [
+        'Attention please. This is a fire drill.',
+        'Leave by the nearest exit and gather at the muster point.',
+        'Walk, do not run.',
+      ],
+    };
+  }
+
+  const lines = [`Good morning, students of ${school}.`];
+  const d = opts.date instanceof Date && !Number.isNaN(opts.date.getTime())
+    ? opts.date : null;
+  if (d) {
+    lines.push(`Today is ${WEEKDAYS[d.getDay()]}, `
+      + `${MONTHS[d.getMonth()]} ${d.getDate()}.`);
+  }
+  const rooms = (opts.rooms || []).filter((r) => typeof r === 'string' && r.trim());
+  const notices = Math.min(rooms.length, 2);
+  // Deal notices and rooms without repeats: the rand walks both lists.
+  const dealtN = new Set(); const dealtR = new Set();
+  for (let i = 0; i < notices; i++) {
+    let ni = Math.floor(rand() * NOTICES.length);
+    while (dealtN.has(ni)) ni = (ni + 1) % NOTICES.length;
+    dealtN.add(ni);
+    let ri = Math.floor(rand() * rooms.length);
+    while (dealtR.has(ri)) ri = (ri + 1) % rooms.length;
+    dealtR.add(ri);
+    lines.push(NOTICES[ni](rooms[ri].trim()));
+  }
+  lines.push('Have a good day.');
+  return { school, lines };
+}
+
+return { MURMUR_KINDS, MURMUR_VOICES, TALK_DB, LESSON_DB, GYM_HEAD_DB, RUSH_HEAD_DB, CHAT_DB, murmurDb, murmurKindFor, MOUTH_H, RUSH_CELL, RUSH_MIN, MURMUR_CAP, murmurEmitters, roomToneSpec, SCHOOL_NAMES, paScript };
+})();
 // ---- js/audio.js ----
 const __m_js_audio_js = (() => {
 const THREE = __m_libs_three_module_js;
@@ -81626,6 +82097,7 @@ const { storeyAt } = __m_js_collide_js;
 const { roomAcoustics, roomAt, reverbSpec, wetFraction, isOutside } = __m_js_acoustics_js;
 const { MAX_VOICES, REF_DIST, BELL_PARTIALS, BELL_HZ, BELL_DB, BELL_RINGS, BELL_GAP, PA_CHIME, PA_DB, PA_BAND, soundSources, tagRooms, budgetSounds, gainAtRef, dbAt, pathLoss, pathLossRay, DOOR_LATCH, DOOR_SHUT } = __m_js_sound_js;
 const { sightBlockers } = __m_js_sightline_js;
+const { roomToneSpec } = __m_js_murmur_js;
 // audio.js — the school makes a noise.
 //
 // Everything you hear in this build is synthesized. There is not a single
@@ -81677,6 +82149,7 @@ const { sightBlockers } = __m_js_sightline_js;
 
 
 
+
 // How often the budget and the listener's room are recomputed. Both cost a
 // flood fill or a sort, neither changes meaningfully inside a tenth of a
 // second, and a walker crossing a threshold wants the room to follow within
@@ -81705,6 +82178,11 @@ function initAudio(camera, opts = {}) {
 
   let world = null;
   let sources = [];            // every noise-making prop in the design
+  // Phase 28: the crowd's emitters, replaced wholesale by `setMurmur` a few
+  // times a second. They ride the same budget as the props — same ranking,
+  // same ray, same voice cap — which is the entire design: murmur is not a
+  // second mixer, it is more sources.
+  let murmurs = [];
   let voices = new Map();      // source id -> live loop voice
   let bed = null;              // { inside, outside, insideGain, outsideGain }
   let acc = 0;                 // seconds since the last budget refresh
@@ -81736,7 +82214,7 @@ function initAudio(camera, opts = {}) {
   // is rung — so `machines` is beside them and the counts add up.
   let report = {
     running: false, room: null, heard: 0, dropped: 0, muted: 0,
-    total: 0, machines: 0, clocks: 0, bells: 0, speakers: 0,
+    total: 0, machines: 0, clocks: 0, bells: 0, speakers: 0, murmurs: 0,
   };
 
   // ---------- the graph ----------
@@ -81862,16 +82340,91 @@ function initAudio(camera, opts = {}) {
     ch.panner.positionZ.value = at.z;
   }
 
+  // Phase 28: how each murmur kind is voiced. All of them are the same
+  // recipe — noise through a band, two vocal formants when people are
+  // talking, slow modulation so the crowd swells and lulls — differing only
+  // in proportions, exactly the way the machines differ below. `syllable`
+  // is the modulation rate: a lecture breathes in paragraphs, a cafeteria
+  // babbles, a corridor is mostly feet (no formants, fast tremolo).
+  const WALLA = {
+    lesson:  { formants: true,  syllable: 0.45, depth: 0.4, extra: null },
+    chat:    { formants: true,  syllable: 0.8,  depth: 0.45, extra: null },
+    chatter: { formants: true,  syllable: 1.7,  depth: 0.3, extra: { hz: 2400, q: 2, g: 0.06 } },
+    gym:     { formants: false, syllable: 1.1,  depth: 0.5, extra: { hz: 2600, q: 9, g: 0.16 } },
+    rush:    { formants: false, syllable: 6.5,  depth: 0.3, extra: { hz: 300, q: 0.6, g: 0.2 } },
+  };
+
+  // A crowd: noise shaped into voices. Never words — the formants make it
+  // vocal, the band-limit keeps it unintelligible, which is what walla is.
+  function startWalla(src, ch, nodes, tuned, t) {
+    const spec = WALLA[src.kind];
+    const n = noiseNode();
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = src.hz;
+    bp.Q.value = src.q;
+    bp.detune.value = detuneCents;
+    tuned.push(bp.detune);
+    const vg = ctx.createGain();
+    vg.gain.value = 0.5;
+    if (spec.formants) {
+      // The two peaks that turn noise into vowels — same pair `speak` uses.
+      const f1 = ctx.createBiquadFilter();
+      f1.type = 'peaking'; f1.frequency.value = 620; f1.Q.value = 4; f1.gain.value = 10;
+      const f2 = ctx.createBiquadFilter();
+      f2.type = 'peaking'; f2.frequency.value = 1500; f2.Q.value = 5; f2.gain.value = 8;
+      n.connect(bp); bp.connect(f1); f1.connect(f2); f2.connect(vg);
+    } else {
+      n.connect(bp); bp.connect(vg);
+    }
+    vg.connect(ch.input);
+    // The swell and lull. The LFO rides the band's gain, never to zero — a
+    // crowd breathes, it doesn't gate.
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = spec.syllable * (0.85 + Math.random() * 0.3);
+    const depth = ctx.createGain();
+    depth.gain.value = 0.5 * spec.depth;
+    lfo.connect(depth); depth.connect(vg.gain);
+    n.start(t + Math.random() * 1.5);
+    lfo.start(t);
+    nodes.push(n, lfo);
+    // The kind's own garnish: squeak for the gym, feet for the rush, a
+    // bright edge for the cafeteria. Its own noise, so it doesn't phase.
+    if (spec.extra) {
+      const en = noiseNode();
+      const eb = ctx.createBiquadFilter();
+      eb.type = 'bandpass';
+      eb.frequency.value = spec.extra.hz;
+      eb.Q.value = spec.extra.q;
+      const eg = ctx.createGain();
+      eg.gain.value = spec.extra.g;
+      en.connect(eb); eb.connect(eg); eg.connect(ch.input);
+      const elfo = ctx.createOscillator();
+      elfo.type = 'sine';
+      elfo.frequency.value = spec.syllable * 1.9;
+      const ed = ctx.createGain();
+      ed.gain.value = spec.extra.g * 0.8;
+      elfo.connect(ed); ed.connect(eg.gain);
+      en.start(t + Math.random() * 1.5);
+      elfo.start(t);
+      nodes.push(en, elfo);
+    }
+  }
+
   // A continuous machine: a hum, a hiss or a burble. All three are the same
   // three ingredients in different proportions, which is why they are one
   // function — a compressor is mostly tone and a diffuser is mostly air.
+  // Phase 28 adds the crowd's kinds on the same terms; see `startWalla`.
   function startLoop(src, level, path, wet) {
     const ch = makeChannel(src, 0, path, wet);
     const nodes = [];
     const tuned = [];        // every detune AudioParam this voice owns
     const t = ctx.currentTime;
 
-    if (src.kind === 'hum') {
+    if (WALLA[src.kind]) {
+      startWalla(src, ch, nodes, tuned, t);
+    } else if (src.kind === 'hum') {
       // A motor: its line frequency and the octave above it, plus a little
       // broadband from the fan that shares the housing.
       for (const [mult, g] of [[1, 1], [2, 0.42], [3, 0.16]]) {
@@ -82027,7 +82580,7 @@ function initAudio(camera, opts = {}) {
       s.gain.value = 0.25;
       g.connect(s); s.connect(sendBus);
       n.start(t + Math.random());
-      return { n, g, lvl };
+      return { n, f, g, lvl };
     };
     bed = {
       inside: make(220, 0.7, BED_LEVEL),
@@ -82057,7 +82610,14 @@ function initAudio(camera, opts = {}) {
     if (!bed) return;
     const t = ctx.currentTime;
     const out = isOutside(room);
-    bed.inside.g.gain.setTargetAtTime(out ? 0 : bed.inside.lvl, t, 0.5);
+    // Phase 28: the inside bed is *this room's* HVAC, not a building-wide
+    // constant — a big hard gym breathes more plant and brighter, a small
+    // carpeted office barely registers. Derived from the same acoustics
+    // record the reverb reads, so the two always describe the same room.
+    const tone = out ? null : roomToneSpec(room);
+    const lvl = tone ? bed.inside.lvl * tone.gain : bed.inside.lvl;
+    if (tone) bed.inside.f.frequency.setTargetAtTime(tone.hz, t, 0.5);
+    bed.inside.g.gain.setTargetAtTime(out ? 0 : lvl, t, 0.5);
     bed.outside.g.gain.setTargetAtTime(out ? bed.outside.lvl : bed.outside.lvl * 0.12, t, 0.5);
   }
 
@@ -82110,7 +82670,11 @@ function initAudio(camera, opts = {}) {
     // The creature's voice and the buzz each hold one of the eight while
     // they live — the budget honoured, stated rather than hoped.
     const cap = Math.max(1, MAX_VOICES - (lurker ? 1 : 0) - (buzzer ? 1 : 0));
-    const b = budgetSounds(sources.filter((s) => s.loop), e, { cap, pathFor: rayPath });
+    // The crowd's emitters and the design's machines, one list, one ranking:
+    // the cafeteria at lunch out-shouts the vending machine beside it and
+    // takes its voice, which is the budget doing exactly its job.
+    const b = budgetSounds([...sources.filter((s) => s.loop), ...murmurs], e,
+      { cap, pathFor: rayPath });
     const keep = new Set();
     for (const r of b.heard) {
       keep.add(r.src.id);
@@ -82123,6 +82687,9 @@ function initAudio(camera, opts = {}) {
         continue;
       }
       const t = ctx.currentTime;
+      // A machine stands still; a knot of walkers doesn't. Following the
+      // emitter is free, and a prop's position simply never changes.
+      movePanner(v.ch, r.src);
       v.ch.gain.gain.setTargetAtTime(level, t, 0.2);
       v.ch.lp.frequency.setTargetAtTime(clamp(r.path.hz, 200, 20000), t, 0.2);
       v.ch.send.gain.setTargetAtTime(wet, t, 0.2);
@@ -82203,6 +82770,15 @@ function initAudio(camera, opts = {}) {
     // pre-walk plan, which has no doors in motion.
     setLeavesSource(fn) { leavesSource = typeof fn === 'function' ? fn : null; },
 
+    // Phase 28: the crowd's emitters, replaced wholesale — murmur.js derives
+    // them, the shell hands them over on its own cadence, and the next
+    // budget refresh voices the ones worth voicing. An empty list is a quiet
+    // building; the fade-outs are the budget's ordinary fade-outs.
+    setMurmur(emitters) {
+      murmurs = Array.isArray(emitters) ? emitters : [];
+      report.murmurs = murmurs.length;
+    },
+
     // Entering or leaving the walkthrough. Leaving stops every voice rather
     // than muting them: an editor that is silent because its gain is zero is
     // still an editor doing FFTs in the background.
@@ -82219,7 +82795,8 @@ function initAudio(camera, opts = {}) {
       } else if (started) {
         stopAllVoices();
         stopBed();
-        report.heard = 0; report.dropped = 0; report.muted = 0;
+        murmurs = [];
+        report.heard = 0; report.dropped = 0; report.muted = 0; report.murmurs = 0;
       }
     },
 
@@ -82450,7 +83027,12 @@ function initAudio(camera, opts = {}) {
     // syllable envelope on it — an intercom is a telephone-band device, and
     // once you take everything above 3 kHz away, that is most of what makes a
     // voice down a corridor sound like a voice down a corridor.
-    announce() {
+    //
+    // Phase 28: when the shell has a real voice to play (the Web Speech API,
+    // reading murmur.js's script), `opts.voice` keeps the mumble out of its
+    // way — the key-click and the chime still come out of every speaker,
+    // through the room's own reverb, and the words ride over them.
+    announce(opts = {}) {
       ensure();
       if (!ctx || ctx.state !== 'running') return false;
       const speakers = fixtures('pa');
@@ -82464,7 +83046,7 @@ function initAudio(camera, opts = {}) {
         PA_CHIME.forEach((hz, i) => {
           tone(ch, { hz, level: 0.3, decay: 0.75, type: 'triangle', delay: 0.06 + i * 0.3 });
         });
-        speak(ch, 1.1);
+        if (!opts.voice) speak(ch, 1.1);
       }
       return speakers.length > 0;
     },
@@ -89892,7 +90474,9 @@ const { MAX_SHOVE } = __m_js_shove_js;
 const { deserialize } = __m_js_save_load_js;
 const { decodeShare } = __m_js_share_js;
 const { decodeBakeText, unpackBake, bakeKey } = __m_js_bakelight_js;
-const { makeLabelGate, LABEL_MODES, sightBlockers, doorPoints } = __m_js_sightline_js;
+const { makeLabelGate, LABEL_MODES, sightBlockers, sightClear, doorPoints } = __m_js_sightline_js;
+const { murmurEmitters, paScript } = __m_js_murmur_js;
+const { buildingOccupancy } = __m_js_occupancy_js;
 const { MOODS, applyMood } = __m_js_sky_js;
 const { buildCollider, storeyAt, WALKER_R, updateDoorsFor } = __m_js_collide_js;
 const { startHunt, checkFind, huntWarmth, huntSummary } = __m_js_hunt_js;
@@ -89929,6 +90513,8 @@ const { floorBounds } = __m_js_shadow_js;
 // The one convention that matters most here is inherited rather than new:
 // this file is a *shell*, thin over the same modules main.js is thin over.
 // Anything smart enough to test belongs in one of them, not here.
+
+
 
 
 
@@ -90085,7 +90671,58 @@ function boot() {
     on: false, agents: [], nav: null, ctx: null,
     colliders: new Map(), site: null, crowd: makeCrowdField(),
     rate: 1, drill: false, clockAcc: 0, plan: null,
+    occRooms: null, murmurAcc: 0,
   };
+
+  // Phase 28: the classified rooms the murmur derivation reads — occupancy's
+  // own rows, derived once per walk (the design here never changes).
+  function occRooms() {
+    if (!life.occRooms) {
+      life.occRooms = buildingOccupancy(state, { nav: life.nav || undefined }).rooms;
+    }
+    return life.occRooms;
+  }
+
+  // The sightline gate for the speech bubbles — the same rule the labels
+  // obey: no clear cast from the eye, no 💬. Segments are cached per storey
+  // for the walk, the labels' own bargain.
+  const chatSegs = new Map();
+  function chatSeenGate() {
+    const at = walk.at;
+    let segs = chatSegs.get(at.floor);
+    if (!segs) { segs = sightBlockers(state, at.floor); chatSegs.set(at.floor, segs); }
+    const leaves = walk.colliderAt(at.floor).doors;
+    return (a) => (a.floorIndex ?? 0) === at.floor
+      && sightClear(segs, leaves, at.x, at.z, a.x, a.z);
+  }
+
+  // The PA learns to talk (Phase 28): murmur.js writes the script — the
+  // school's name from the seed, today's date, the day's rooms — the Web
+  // Speech API reads it, and the chime, key-click and reverb come out of the
+  // PA path it always had. A machine with no voice keeps the chime and gets
+  // the words on the HUD, which every machine gets anyway.
+  function paAnnounce(kind) {
+    const script = paScript(normalizeLife(state.life).seed, {
+      date: new Date(),
+      rooms: occRooms().filter((r) => r.name && !r.circulation).map((r) => r.name),
+      kind,
+    });
+    const text = script.lines.join(' ');
+    const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
+    const voice = !!synth && !audio.muted;
+    audio.announce({ voice });
+    if (voice) {
+      try {
+        synth.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 0.95;
+        u.volume = audio.volume;
+        // After the chime, the way a real PA waits for its own gong.
+        setTimeout(() => { try { synth.speak(u); } catch { /* HUD carries it */ } }, 1100);
+      } catch { /* the chime and the HUD line carry it */ }
+    }
+    walkHud.textContent = `📢 ${text}`;
+  }
 
   function lifeColliderFor(i) {
     let c = life.colliders.get(i);
@@ -90138,6 +90775,9 @@ function boot() {
     walk.setLifts(null);
     walk.setFollow(null);
     renderApi.clearCrowd();
+    // The crowd's emitters leave with the crowd — which is the haunt's
+    // silence arriving on schedule, not a special case for it.
+    audio.setMurmur([]);
     walkHud.textContent = 'The building is empty again.';
   }
 
@@ -90154,6 +90794,8 @@ function boot() {
     for (const bell of bellsBetween(life.ctx.schedule, before, next)) {
       if (audio.running) audio.ring();
       walkHud.textContent = `🔔 ${bell.label} — ${clockText(next)}`;
+      // The first bell of the day is when the PA clears its throat.
+      if (bell.kind === 'arrival' && audio.running) paAnnounce();
     }
     const blockBefore = blockAt(life.ctx.schedule, before);
     state.env.minutes = next;
@@ -90174,8 +90816,18 @@ function boot() {
       skipFloors: new Set([floorIndex]),
     });
     for (const collider of life.ctx.doorsMoved || []) renderApi.poseDoors(collider.doors);
-    renderApi.setCrowd(life.agents, { recolor: true });
+    renderApi.setCrowd(life.agents, { recolor: true, chatSeen: chatSeenGate() });
     lifeFollowTick();
+    // Phase 28: the crowd, as air. A few times a second, never per frame —
+    // the budget refresh it feeds runs at the same order of cadence.
+    life.murmurAcc += dt;
+    if (life.murmurAcc >= 0.35) {
+      life.murmurAcc = 0;
+      if (audio.running) {
+        audio.setMurmur(murmurEmitters(occRooms(), life.agents, life.ctx.schedule,
+          state.env.minutes, { floorHt: state.floorHt }));
+      }
+    }
   }
 
   function lifeSetDrill(on) {
@@ -90187,7 +90839,7 @@ function boot() {
     if (on) {
       clearCrowd(life.crowd);
       for (const a of life.agents) { a.state = a.state === 'out' ? 'walk' : a.state; a.outAt = null; }
-      if (audio.running) audio.announce();
+      if (audio.running) paAnnounce('drill');
     }
     retargetAll(life.ctx, life.agents);
     walkHud.textContent = on

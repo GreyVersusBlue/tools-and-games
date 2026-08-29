@@ -137,6 +137,18 @@ export const PATIENCE = 8;           // s
 // across a threshold is a body pacing a corridor.
 export const REPATH_COOLDOWN = 5;    // s
 export const MAX_POP = 600;
+
+// ---------- talking (Phase 28) ----------
+//
+// Two people who meet in a corridor sometimes stop and talk. The pairing is
+// deterministic — no dice: everyone carries a seeded `social` appetite and a
+// `chatIn` countdown, and a conversation starts when two willing people are
+// simply close enough. The same seed makes the same friends stop at the same
+// lockers, which is what keeps a replayed school the same school.
+export const CHAT_RANGE = 3.2;       // ft — close enough to talk
+export const CHAT_MIN_S = 2.5;       // the shortest conversation worth stopping for
+export const CHAT_MAX_S = 5.5;       // ...and the longest before the bell wins
+export const CHAT_COOLDOWN = 18;     // s, scaled by how social each person is
 // Seats an agent will consider in its room. Beyond this the nearest-free scan
 // costs more than sitting somewhere sensible is worth.
 export const SEAT_SCAN = 400;
@@ -326,6 +338,13 @@ function makeAgent(id, kind, rand, room, opts = {}) {
     // in a single-storey school is everybody.
     lift: null,
     liftWait: 0,
+    // Whether this person stops to talk (Phase 28). `social` is fixed at
+    // spawn — some people always have a minute, some never do; `chatIn`
+    // counts down to the next time they are willing; `chat` is the
+    // conversation they are in ({ with, t, x, z }), or null.
+    social: rand(),
+    chatIn: 4 + rand() * 24,
+    chat: null,
     yielding: false,
     yielded: 0,
     lastX: 0, lastZ: 0,
@@ -785,9 +804,29 @@ function stepAgent(ctx, agent, dt, bodies) {
   const floorIndex = storeyAt(ctx.state, agent.y, ground);
   agent.floorIndex = floorIndex;
   if (agent.state === 'out') return;
+  if (agent.chatIn > 0) agent.chatIn -= dt;
 
   const collider = ctx.colliderFor(floorIndex);
   const target = agent.path && agent.path[agent.wp];
+
+  if (agent.state === 'chat') {
+    // Stopped to talk. Face the other person, hold your ground the way any
+    // standing body does (a crowd pushing past still moves you), and when
+    // the conversation runs out pick the day back up where it was — the
+    // route is untouched, only the clock on it slipped a few seconds.
+    const c = agent.chat;
+    if (c && c.t > 0) {
+      c.t -= dt;
+      agent.facing = angleLerp(agent.facing,
+        Math.atan2(c.x - agent.x, c.z - agent.z), Math.min(1, dt * 5));
+      const out = resolvePoint(collider, agent.x, agent.z, AGENT_R, 2, { bodies, skip: agent.id });
+      agent.x = out.x;
+      agent.z = out.z;
+      agent.y = supportOf(ctx, agent, floorIndex);
+      return;
+    }
+    endChat(agent);
+  }
 
   if (agent.state === 'sit') {
     // Sitting is not standing still: the seat is where the body is, and the
@@ -1199,6 +1238,10 @@ export function makeContext(state, nav, opts = {}) {
 export function retargetAll(ctx, agents) {
   for (const agent of agents) {
     if (agent.state === 'out') continue;
+    // A new block, a drill, a rebuilt world — whatever brought us here ends
+    // every conversation: the states below are assigned fresh, and a `chat`
+    // left set would be a pair whose other half no longer exists.
+    if (agent.chat) { agent.chat = null; agent.state = 'idle'; }
     releaseSeat(ctx, agent);
     if (ctx.mode === 'drill') {
       headForTheDoor(ctx, agent);
@@ -1258,6 +1301,51 @@ function headForTheDoor(ctx, agent) {
   agent.state = agent.path ? 'walk' : 'idle';
 }
 
+// The conversation is over. The route was never dropped, so resuming is
+// just being a walker again; the cooldown is what keeps one sociable pair
+// from spending the whole passing period three feet apart, stopping.
+function endChat(agent) {
+  agent.chat = null;
+  agent.chatIn = CHAT_COOLDOWN * (0.6 + agent.social);
+  agent.state = agent.path && agent.wp < agent.path.length ? 'walk' : 'idle';
+}
+
+// Two willing people close enough to talk, paired. Runs off the same
+// neighbour buckets the collision pass built, so finding a partner costs a
+// look at the nine cells around you rather than at the school. Never during
+// a drill — nobody stops to chat under the alarm.
+function pairChats(ctx, agents, map) {
+  const byId = new Map();
+  for (const a of agents) byId.set(a.id, a);
+  const willing = (a) => a && !a.chat && a.chatIn <= 0
+    && (a.state === 'walk' || a.state === 'idle');
+  for (const a of agents) {
+    if (!willing(a)) continue;
+    const f = a.floorIndex ?? 0;
+    let best = null, bestD = CHAT_RANGE;
+    for (const b of neighbours(map, f, a.x, a.z)) {
+      // Bodies here include the camera and anything else the caller handed
+      // in; a partner is a real agent with a real id, and not yourself.
+      if (typeof b.id !== 'number' || b.id <= 0 || b.id === a.id) continue;
+      const other = byId.get(b.id);
+      if (!willing(other) || (other.floorIndex ?? 0) !== f) continue;
+      const d = Math.hypot(other.x - a.x, other.z - a.z);
+      if (d >= bestD) continue;
+      // Three feet apart can still be two sides of a partition. Same room —
+      // and outdoors counts as one big room — or no conversation.
+      if (ctx.nav.roomIdAt(f, a.x, a.z) !== ctx.nav.roomIdAt(f, other.x, other.z)) continue;
+      bestD = d; best = other;
+    }
+    if (!best) continue;
+    // How long they talk is who they are, not a die roll.
+    const t = CHAT_MIN_S + ((a.social + best.social) / 2) * (CHAT_MAX_S - CHAT_MIN_S);
+    a.chat = { with: best.id, t, x: best.x, z: best.z };
+    best.chat = { with: a.id, t, x: a.x, z: a.z };
+    a.state = 'chat';
+    best.state = 'chat';
+  }
+}
+
 export function stepAgents(ctx, agents, dt, opts = {}) {
   ctx.elapsed += dt;
   ctx.speed = speedFor(ctx.schedule, ctx.minutes, ctx.mode);
@@ -1270,6 +1358,7 @@ export function stepAgents(ctx, agents, dt, opts = {}) {
     const near = neighbours(map, agent.floorIndex ?? 0, agent.x, agent.z);
     stepAgent(ctx, agent, dt, near);
   }
+  if (ctx.mode !== 'drill') pairChats(ctx, agents, map);
   if (ctx.crowd) ctx.crowd.seconds += dt;
   // The cars run whether or not anybody is in them: a lift somebody called and
   // then walked away from still has to come, open, wait and shut, which is
@@ -1348,7 +1437,7 @@ export function bodiesNear(agents, floorIndex, x, z, radius = 30, extra = null) 
 export function census(agents) {
   const out = {
     total: agents.length, walking: 0, seated: 0, idle: 0, out: 0, teachers: 0,
-    queueing: 0, riding: 0,
+    queueing: 0, riding: 0, chatting: 0,
   };
   for (const a of agents) {
     if (a.kind === 'teacher') out.teachers++;
@@ -1357,6 +1446,7 @@ export function census(agents) {
     else if (a.state === 'out') out.out++;
     else if (a.state === 'queue') out.queueing++;
     else if (a.state === 'ride') out.riding++;
+    else if (a.state === 'chat') out.chatting++;
     else out.idle++;
   }
   return out;

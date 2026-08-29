@@ -5464,6 +5464,51 @@ export function initRender(canvas) {
     return crowdMeshes;
   }
 
+  // --- Phase 28: the speech sprite ---
+  //
+  // Two people who stopped to talk get a bubble over their heads — the one
+  // visual that says the pause is a conversation and not a pathfinding bug.
+  // A small pool of Sprites (they billboard themselves) sharing one canvas
+  // texture; whether a bubble *shows* is the caller's sightline gate, the
+  // same rule the room labels obey, so a wall never leaks a 💬 through it.
+  let chatSprites = null;
+  const CHAT_SPRITES = 32;
+
+  function buildChatSprites() {
+    if (chatSprites) return chatSprites;
+    const c = document.createElement('canvas');
+    c.width = 96; c.height = 80;
+    const g = c.getContext('2d');
+    g.fillStyle = 'rgba(248,249,252,0.92)';
+    g.strokeStyle = 'rgba(30,34,44,0.85)';
+    g.lineWidth = 4;
+    g.beginPath();
+    g.roundRect(6, 6, 84, 52, 16);
+    g.fill(); g.stroke();
+    // The tail, aimed down at whoever is talking.
+    g.beginPath();
+    g.moveTo(38, 56); g.lineTo(30, 74); g.lineTo(54, 56);
+    g.closePath();
+    g.fillStyle = 'rgba(248,249,252,0.92)';
+    g.fill();
+    g.fillStyle = 'rgba(30,34,44,0.85)';
+    for (const x of [30, 48, 66]) {
+      g.beginPath(); g.arc(x, 32, 5.5, 0, Math.PI * 2); g.fill();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+    chatSprites = [];
+    for (let i = 0; i < CHAT_SPRITES; i++) {
+      const sp = new THREE.Sprite(mat);
+      sp.scale.set(1.15, 0.96, 1);
+      sp.visible = false;
+      crowdGroup.add(sp);
+      chatSprites.push(sp);
+    }
+    return chatSprites;
+  }
+
   // Place one part: its joint in world space, its own swing, the body's
   // facing. Rotation order is YXZ so the swing happens in the body's frame
   // rather than the world's — turn first, then lift the leg.
@@ -5481,14 +5526,20 @@ export function initRender(canvas) {
   // openings.js's leaves.
   function setCrowd(agents, opts = {}) {
     const meshes = buildCrowdMeshes();
+    const bubbles = buildChatSprites();
     if (!agents || !agents.length) {
       for (const m of Object.values(meshes)) m.count = 0;
+      for (const sp of bubbles) sp.visible = false;
       crowdGroup.visible = false;
       return 0;
     }
     crowdGroup.visible = true;
     const recolor = opts.recolor !== false;
     const hideFloor = opts.hideAbove;      // edit mode draws one storey at a time
+    // `opts.chatSeen(agent)` is the sightline gate for the speech bubbles;
+    // absent, a chat shows its bubble plainly (the editor's overhead view).
+    const chatSeen = typeof opts.chatSeen === 'function' ? opts.chatSeen : null;
+    let bubbleN = 0;
     let n = 0;
     for (const a of agents) {
       if (a.state === 'out') continue;
@@ -5545,8 +5596,14 @@ export function initRender(canvas) {
         _crowdColor.set(a.skin);
         meshes.head.setColorAt(n, _crowdColor);
       }
+      if (a.state === 'chat' && bubbleN < CHAT_SPRITES && (!chatSeen || chatSeen(a))) {
+        const sp = bubbles[bubbleN++];
+        sp.position.set(a.x, hipY + (BODY.torso + BODY.head) * s + 1.05, a.z);
+        sp.visible = true;
+      }
       n++;
     }
+    for (let i = bubbleN; i < CHAT_SPRITES; i++) bubbles[i].visible = false;
     for (const m of Object.values(meshes)) {
       m.count = n;
       m.instanceMatrix.needsUpdate = true;

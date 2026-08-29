@@ -355,7 +355,7 @@ test('a school day with lifts in it never loses anybody, and never leaves a ghos
   const c = census(agents);
   assert.equal(c.total, agents.length);
   // Everybody is in exactly one of the states this file knows about.
-  assert.equal(c.walking + c.seated + c.idle + c.out + c.queueing + c.riding, c.total);
+  assert.equal(c.walking + c.seated + c.idle + c.out + c.queueing + c.riding + c.chatting, c.total);
   const aboard = new Set();
   for (const car of ctx.lifts.values()) {
     assert.ok(car.riders.size <= car.capacity, 'more people in the car than fit in it');
