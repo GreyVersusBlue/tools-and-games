@@ -30,6 +30,7 @@ import { doorEvents } from './sound.js';
 import { MAX_SHOVE } from './shove.js';
 import { deserialize } from './save-load.js';
 import { decodeShare } from './share.js';
+import { decodeBakeText, unpackBake, bakeKey } from './bakelight.js';
 import { makeLabelGate, LABEL_MODES, sightBlockers, doorPoints } from './sightline.js';
 import { MOODS, applyMood } from './sky.js';
 import { buildCollider, storeyAt, WALKER_R, updateDoorsFor } from './collide.js';
@@ -72,14 +73,15 @@ const walkOverlay = $('walk-overlay');
 // button) spliced in. The deserializer embedded in this bundle is the one
 // this build shipped with, so an export made today opens forever — it never
 // asks the tool that made it, or any newer one, what v-anything looks like.
-function embeddedPayload() {
-  const el = $('sg-design');
+function embeddedText(id) {
+  const el = $(id);
   const text = el ? el.textContent.trim() : '';
-  // The committed template ships with a marker where a design would be, so
+  // The committed template ships with a marker where a payload would be, so
   // an unspliced template says what it is rather than throwing.
   if (!text || text.startsWith('<!--')) return null;
   return text;
 }
+const embeddedPayload = () => embeddedText('sg-design');
 
 function bootError(message) {
   const panel = $('boot-error');
@@ -99,6 +101,11 @@ if (typeof window !== 'undefined' && !window.__sgFail) {
 }
 
 let state = null;
+// Phase 27: the baked light this export carried, when it carried one and it
+// still matches the design — decoded in the boot IIFE, worn right after the
+// scene builds. Absent, mismatched or damaged all mean the same thing: live
+// lighting, exactly what every export before this phase shipped.
+let bakedLight = null;
 
 // ---------- everything below runs only once the design decodes ----------
 
@@ -1080,6 +1087,7 @@ function boot() {
   renderApi.setMode('walk');
   document.body.dataset.mode = 'walk';
   renderApi.buildFromState(state);
+  if (bakedLight) renderApi.setBake(bakedLight);
   walk.enable(state);
   audio.setWorld(state);
   renderMoods();
@@ -1126,5 +1134,15 @@ function boot() {
     bootError(`Could not open the design this file carries: ${err.message}`);
     return;
   }
+  // The bake, if one rode along. Verified against the design's own
+  // structural key — a hand-edited file wears nothing rather than the wrong
+  // light — and any failure here is a shrug, never a boot error.
+  try {
+    const bakeText = embeddedText('sg-bake');
+    if (bakeText) {
+      const data = unpackBake(decodeBakeText(await decodeShare(bakeText)));
+      if (data && data.key === bakeKey(state, catalogEntry)) bakedLight = data;
+    }
+  } catch { /* live lighting */ }
   boot();
 })();

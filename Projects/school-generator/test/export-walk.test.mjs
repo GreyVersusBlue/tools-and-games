@@ -11,12 +11,17 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 import {
-  buildBundle, buildTemplate, spliceDesign,
-  DESIGN_MARKER, TEMPLATE_BUDGET, TEMPLATE_PATH, resolveSpec, parseModule, bindingFor,
+  buildBundle, buildTemplate, spliceDesign, spliceBake,
+  DESIGN_MARKER, BAKE_MARKER, TEMPLATE_BUDGET, TEMPLATE_PATH,
+  resolveSpec, parseModule, bindingFor,
 } from '../tools/export-walk.mjs';
 import { serialize, deserialize } from '../js/save-load.js';
 import { encodeShare, decodeShare } from '../js/share.js';
 import { buildSampleSchool } from '../js/sample.js';
+import { catalogEntry } from '../js/catalog.js';
+import {
+  bakeLight, bakeKey, packBake, unpackBake, encodeBakeText, decodeBakeText,
+} from '../js/bakelight.js';
 
 // The bundle is the expensive half, so it is built once and every test reads
 // the same run — which is also the determinism the staleness test relies on.
@@ -71,6 +76,12 @@ test('the graph closes, and it is the walk severed from the editor', () => {
   assert.ok(files.includes('js/hunt.js'), 'the star hunt is in it');
   assert.ok(files.includes('js/haunt.js'), '…and the night’s clock');
   assert.ok(files.includes('js/creature.js'), '…and the one body');
+  // Phase 27: the bake *reader* rides (an export wears its light), but the
+  // worker never does — an exported walk carries its bake as data and
+  // computes nothing.
+  assert.ok(files.includes('js/bakelight.js'), 'the bake reader is in it');
+  assert.ok(!files.includes('js/bakeworker.js'), 'the bake worker stayed home');
+  assert.ok(!files.includes('js/bakestore.js'), '…and so did its store');
   assert.equal(files[files.length - 1], 'js/walk-main.js', 'entry evaluates last');
   // The severance the twenty-phase discipline paid for: nothing the walk
   // doesn't need came along. A new import in a walk module that drags one of
@@ -109,6 +120,7 @@ test('the committed template is the one this tree builds (stale? run: node tools
 
 test('the template keeps its design slot, and stays under the stated budget', () => {
   assert.ok(built.html.includes(DESIGN_MARKER), 'the design marker survives bundling');
+  assert.ok(built.html.includes(BAKE_MARKER), 'so does the bake slot (Phase 27)');
   assert.ok(built.html.length <= TEMPLATE_BUDGET,
     `template is ${built.html.length} bytes, budget ${TEMPLATE_BUDGET}`);
 });
@@ -128,6 +140,27 @@ test('the sample school splices in, and the payload it carries opens again', asy
   assert.ok(m, 'the design rides in its own text script tag');
   const state = deserialize(await decodeShare(m[1]));
   assert.equal(state.floors.length, buildSampleSchool().floors.length);
+});
+
+// Phase 27: the light rides its own slot, through the same codec, and the
+// embedded page can verify it against the design it came with. An export
+// that never baked leaves the marker standing, which the shell reads as
+// live lighting — the template itself never obliges anybody to bake.
+test('a bake splices into its slot and round-trips against its design', async () => {
+  const school = buildSampleSchool();
+  const packed = packBake(bakeLight(school, catalogEntry));
+  const designed = spliceDesign(built.html, await encodeShare(serialize(school, { omitOverlay: true })));
+  const exported = spliceBake(designed, await encodeShare(encodeBakeText(packed)));
+  assert.ok(!exported.includes(BAKE_MARKER), 'the marker was replaced');
+  const m = exported.match(/<script id="sg-bake" type="text\/plain">([^<]*)<\/script>/);
+  assert.ok(m, 'the bake rides in its own text script tag');
+  const back = unpackBake(decodeBakeText(await decodeShare(m[1])));
+  assert.ok(back, 'it decodes through the same codec the bundle carries');
+  assert.equal(back.key, bakeKey(school, catalogEntry),
+    'and the key still names the design beside it');
+  // A design spliced without a bake keeps the marker — the "no bake" case is
+  // the template's default, not a special one.
+  assert.ok(designed.includes(BAKE_MARKER));
 });
 
 test('an armed haunt travels inside the payload — no marker, no new slot, no trace', async () => {

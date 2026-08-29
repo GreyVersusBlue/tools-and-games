@@ -59,8 +59,11 @@ const SHELL_PATH = join(HERE, 'walk-shell.html');
 const ENTRY = join(PROJECT, 'js', 'walk-main.js');
 
 // The design marker, shared with the export button in main.js — the one
-// string both sides have to agree on.
+// string both sides have to agree on. Phase 27 adds a second on the same
+// terms: the baked light rides its own slot, and a template whose bake
+// marker is never spliced opens on live lighting.
 export const DESIGN_MARKER = '<!--SG-DESIGN-->';
+export const BAKE_MARKER = '<!--SG-BAKE-->';
 const BUNDLE_MARKER = '<!--SG-BUNDLE-->';
 
 // The stated ceiling for the committed template, bytes. See the header.
@@ -221,7 +224,8 @@ export async function buildBundle(entryPath = ENTRY) {
 
 export async function buildTemplate() {
   const shell = await readFile(SHELL_PATH, 'utf8');
-  if (!shell.includes(BUNDLE_MARKER) || !shell.includes(DESIGN_MARKER)) {
+  if (!shell.includes(BUNDLE_MARKER) || !shell.includes(DESIGN_MARKER)
+      || !shell.includes(BAKE_MARKER)) {
     throw new Error('walk-shell.html has lost a splice marker');
   }
   const { bundle, files } = await buildBundle();
@@ -233,9 +237,14 @@ export async function buildTemplate() {
 
 // A design payload (share.js's `z1.…` form) into a template. Used by the
 // suite and by `--design`; the export button in the tool does the same
-// replace in the browser.
+// replace in the browser. The bake rides the same way — its own slot, same
+// codec — and an export that never had one leaves the marker standing,
+// which walk-main.js reads as "live lighting".
 export const spliceDesign = (template, payload) =>
   template.replace(DESIGN_MARKER, () => payload);
+
+export const spliceBake = (template, payload) =>
+  template.replace(BAKE_MARKER, () => payload);
 
 // ---------- CLI ----------
 
@@ -264,9 +273,18 @@ async function main() {
     } else {
       json = await readFile(which, 'utf8');
     }
+    // Phase 27: the CLI export gets the baked light the button gets —
+    // bakelight.js is pure, so Node bakes it as readily as the worker does.
+    const { deserialize } = await import(pathToFileURL(join(PROJECT, 'js', 'save-load.js')));
+    const { catalogEntry } = await import(pathToFileURL(join(PROJECT, 'js', 'catalog.js')));
+    const { bakeLight, packBake, encodeBakeText } =
+      await import(pathToFileURL(join(PROJECT, 'js', 'bakelight.js')));
+    const packed = packBake(bakeLight(deserialize(json), catalogEntry));
     const out = join(PROJECT, 'walk.html');
-    await writeFile(out, spliceDesign(html, await encodeShare(json)));
-    console.log(`walk.html — ${which === 'sample' ? 'the sample school' : which} embedded`);
+    await writeFile(out, spliceBake(
+      spliceDesign(html, await encodeShare(json)),
+      await encodeShare(encodeBakeText(packed))));
+    console.log(`walk.html — ${which === 'sample' ? 'the sample school' : which} embedded, light baked in`);
   }
 }
 

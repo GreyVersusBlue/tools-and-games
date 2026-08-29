@@ -49,6 +49,7 @@ import { terrainField, groundAt, emptyField } from './terrain.js';
 import { regionsOf, surfaceEntry, markingsFor } from './site.js';
 import { roofPlan, roofTop, PARAPET_H, COPING_T } from './roof.js';
 // --- Phase 9 ---
+import { sampleBake, bakedTint } from './bakelight.js';
 import { loadModel, writeGLB, FT_TO_M } from './gltf.js';
 import { modelBytes, modelsOf } from './models.js';
 import { REFERENCE_SPACES, XR_MODE, rigPosition } from './xr.js';
@@ -839,6 +840,9 @@ export function initRender(canvas) {
     map: makeCeilingAlbedo(),
     roughness: 0.95,
     metalness: 0.0,
+    // Phase 27: all-white until a bake writes darkness into them — a dark
+    // corridor with a bright ceiling would give the trick away overhead.
+    vertexColors: true,
   });
   const groundMat = new THREE.MeshStandardMaterial({
     map: makeGroundAlbedo(),
@@ -1350,6 +1354,11 @@ export function initRender(canvas) {
     // The edit floor above only applies while editing, so switching modes
     // changes the answer even though the environment hasn't moved.
     applyAmbient();
+    // Phase 27: the bake belongs to the walk. Stepping back to the drawing
+    // board restores the unlit vertex colours and wakes the live lights;
+    // stepping into a walk that has a current bake puts it on.
+    applyBakeTint(bakeWorn());
+    markLightsDirty();
     applyFloorVisibility();
     buildComposer();
   }
@@ -1497,6 +1506,9 @@ export function initRender(canvas) {
     placeClouds();
     markLightsDirty();
     applyAmbient();
+    // Phase 27: the hour moved, so the bake recombines — day × the new sun,
+    // fix × the new lamp ramp. A re-tint, never a re-bake.
+    if (bakeWorn()) applyBakeTint(true);
     return envState;
   }
 
@@ -1619,6 +1631,85 @@ export function initRender(canvas) {
     }
   }
 
+  // --- Phase 27: the bake the renderer wears ---
+  //
+  // `bakeData` is bakelight.js's unpacked field: per-storey grids of
+  // daylight access and fixture light, computed off the frame against the
+  // occluders sightline knows. Wearing it is one multiply: every merged
+  // storey mesh already carries vertex colours (paint, facade, finish), so
+  // baked light is sampled per vertex — offset along the face normal, which
+  // is what lets the two sides of one wall be lit and dark — and written
+  // into the same attribute, over a stashed copy of the unlit colours so
+  // dropping the bake is a restore rather than a rebuild.
+  //
+  // The two channels recombine here, per environment write, never per
+  // frame: day × how hard the sky is on, fix × sky.js's lamp ramp. A mood
+  // click re-tints a hundred thousand vertices in a few milliseconds; the
+  // bake itself never re-runs for anything short of a structural edit.
+  //
+  // The editor never wears it — a drafting table wants legible, not honest —
+  // and the live path stays whole for the machine that never baked: with
+  // `bakeData` null nothing below changes a thing.
+  const BAKE_NORMAL_OFF = 1.2;   // ft off the face, into the room it looks at
+  const BAKE_FILL = 0.85;        // the flat lift the tint carves darkness into
+  const DAY_FULL_SUN = 1.8;      // palette sunIntensity at full day (sky.js's table)
+  let bakeData = null;
+  const _bakeSample = { day: 1, r: 0, g: 0, b: 0 };
+  const _bakeTint = { r: 0, g: 0, b: 0 };
+
+  const bakeWorn = () => !!bakeData && mode !== 'edit';
+
+  function tintMesh(mesh, floorIndex, on) {
+    const geo = mesh.geometry;
+    const col = geo.attributes.color;
+    if (!col) return;
+    let base = geo.userData.bakeBase;
+    if (!on) {
+      if (base) {
+        col.array.set(base);
+        col.needsUpdate = true;
+        geo.userData.bakeBase = null;
+      }
+      return;
+    }
+    if (!base) {
+      base = col.array.slice();
+      geo.userData.bakeBase = base;
+    }
+    const pos = geo.attributes.position;
+    const nor = geo.attributes.normal;
+    const dayLevel = Math.max(0, Math.min(1, envState.palette.sunIntensity / DAY_FULL_SUN));
+    for (let i = 0; i < pos.count; i++) {
+      const nx = nor ? nor.getX(i) : 0;
+      const nz = nor ? nor.getZ(i) : 0;
+      sampleBake(bakeData, floorIndex,
+        pos.getX(i) + nx * BAKE_NORMAL_OFF,
+        pos.getZ(i) + nz * BAKE_NORMAL_OFF, _bakeSample);
+      bakedTint(_bakeSample, dayLevel, lampLevel, _bakeTint);
+      col.array[i * 3] = base[i * 3] * _bakeTint.r;
+      col.array[i * 3 + 1] = base[i * 3 + 1] * _bakeTint.g;
+      col.array[i * 3 + 2] = base[i * 3 + 2] * _bakeTint.b;
+    }
+    col.needsUpdate = true;
+  }
+
+  function applyBakeTint(on) {
+    for (const host of [buildingGroup, ceilingGroup]) {
+      for (const group of host.children) {
+        const f = group.userData.floor;
+        for (const child of group.children) {
+          if (child.isMesh && child.userData.baked) tintMesh(child, f, on);
+        }
+      }
+    }
+  }
+
+  function setBake(bake) {
+    bakeData = bake || null;
+    applyBakeTint(bakeWorn());
+    markLightsDirty();
+  }
+
   function updateDynamicLights(eye) {
     const moved = (eye.x - lastLightEye.x) ** 2 + (eye.y - lastLightEye.y) ** 2 +
       (eye.z - lastLightEye.z) ** 2;
@@ -1641,9 +1732,19 @@ export function initRender(canvas) {
       cap: lightPool.length,
       spotCap: spotPool.length,
     });
+    // Phase 27: with a bake worn, the indoor fixtures stand down to their
+    // glow — their light is already in the vertex colours, and burning them
+    // as real point lights too would pour it through the very walls the bake
+    // just taught it to respect. The site's fixtures stay real: the outdoors
+    // has no bake to wear. Their output doesn't join the spill either, for
+    // the same double-counting reason; the flat fill becomes BAKE_FILL, the
+    // lift the tint carves its darkness into.
+    const worn = bakeWorn();
+    const litP = worn ? lit.filter((c) => c.outdoor) : lit;
+    const litS = worn ? litSpots.filter((c) => c.outdoor) : litSpots;
     for (let i = 0; i < lightPool.length; i++) {
       const l = lightPool[i];
-      const c = lit[i];
+      const c = litP[i];
       if (!c) { l.intensity = 0; continue; }
       l.position.set(c.x, c.y, c.z);
       l.color.set(c.color);
@@ -1656,7 +1757,7 @@ export function initRender(canvas) {
     }
     for (let i = 0; i < spotPool.length; i++) {
       const l = spotPool[i];
-      const c = litSpots ? litSpots[i] : null;
+      const c = litS ? litS[i] : null;
       if (!c) { l.intensity = 0; continue; }
       l.position.set(c.x, c.y, c.z);
       l.target.position.set(c.x, c.y - 10, c.z);
@@ -1667,7 +1768,7 @@ export function initRender(canvas) {
       l.penumbra = c.penumbra ?? 0.4;
       l.intensity = c.lm * LUMENS_TO_CANDELA * LIGHT_GAIN * lampLevel;
     }
-    fillAmbient = spillAmbient(spillLm) * lampLevel;
+    fillAmbient = (worn ? BAKE_FILL : spillAmbient(spillLm)) * lampLevel;
     applyAmbient();
     cacheLightBases();
   }
@@ -4416,6 +4517,9 @@ export function initRender(canvas) {
 
       const ceilGeo = shapeSlabGeometry(shape, true, ceilCuts);
       ceilGeo.translate(0, baseY + WALL_H - lift, 0);
+      // White vertex colours so ceilMat's vertexColors multiply by 1 until a
+      // bake has something darker to say.
+      coloredGeo(ceilGeo, _white);
       ceilGeos.push(ceilGeo);
 
       for (const ring of shape.rings) {
@@ -4462,6 +4566,11 @@ export function initRender(canvas) {
       const mesh = new THREE.Mesh(mergeGeometries(geos), mats.solid);
       mesh.receiveShadow = true;
       mesh.userData.mats = mats;
+      // Phase 27: the merged storey meshes are the surfaces a bake may tint —
+      // their vertices sit in world feet, so the light field can be sampled
+      // straight at them. Props (shared instanced geometry) and door leaves
+      // (posed pivots) stay out; they keep the live path's light.
+      mesh.userData.baked = true;
       group.add(mesh);
     }
     if (wallGeos.length) {
@@ -4469,6 +4578,7 @@ export function initRender(canvas) {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData.mats = { solid: wallMat, ghost: wallMatGhost };
+      mesh.userData.baked = true;
       group.add(mesh);
     }
     if (glassGeos.length) {
@@ -4485,6 +4595,7 @@ export function initRender(canvas) {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData.mats = { solid: railMat, ghost: railMatGhost };
+      mesh.userData.baked = true;
       group.add(mesh);
     }
     if (stairGeos.length) {
@@ -4492,11 +4603,13 @@ export function initRender(canvas) {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.userData.mats = { solid: stairMat, ghost: stairMatGhost };
+      mesh.userData.baked = true;
       group.add(mesh);
     }
     if (ceilGeos.length) {
       const mesh = new THREE.Mesh(mergeGeometries(ceilGeos), ceilMat);
       mesh.receiveShadow = true;
+      mesh.userData.baked = true;
       ceil.add(mesh);
     }
     if (fixtureGeos.length) {
@@ -5879,7 +5992,9 @@ export function initRender(canvas) {
     // The tallest thing that casts a shadow is now the ridge, not the wall top.
     site.top = Math.max(topOfBuilding(state), roofTop(plan));
     // The environment travels with the design, so a rebuild is also where a
-    // loaded file's own date, hour and latitude take effect.
+    // loaded file's own date, hour and latitude take effect — and where a
+    // bake still worn re-applies to the fresh geometry, inside the same
+    // call. The caller is responsible for having dropped a stale one first.
     setEnvironment(state.env);
 
     editView.camY = 200 + Math.max(topOfBuilding(state), roofTop(plan));
@@ -6247,6 +6362,14 @@ export function initRender(canvas) {
     // renderer has already asked for.
     setEnvironment,
     get environment() { return envState; },
+    // --- Phase 27: light that stops at walls ---
+    //
+    // One write, same shape as everything else here: hand it bakelight.js's
+    // unpacked field and the walk wears it (vertex tint on, indoor fixtures
+    // stood down); hand it null and the live path is back, byte for byte.
+    // The editor never wears one either way.
+    setBake,
+    get bakeWorn() { return bakeWorn(); },
     // What the budget is doing, for the sky panel's readout — a line that says
     // "24 fixtures, 9 groups, 12 live at once" is the difference between
     // trusting the cap and wondering about it.
