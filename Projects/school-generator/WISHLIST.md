@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: twenty-nine phases are shipped — three arcs, all of arc four,
-two after it, and arc five is underway: Phases 27–29 have shipped and
-Phases 30–34 are open below.** Three arcs took a grid
+**Status: thirty phases are shipped — three arcs, all of arc four,
+two after it, and arc five is underway: Phases 27–30 have shipped and
+Phases 31–34 are open below.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -82,7 +82,17 @@ room tone, the PA's script).
 What it shows and shares: `render.js` (the three.js scene) · `audio.js` (Web
 Audio graph) · `walkthrough.js` / `xr.js` / `touch.js` (three input paths,
 one physics) · `gltf.js` + `models.js` (glTF read/written by hand) ·
-`share.js` (a design deflated into a URL fragment) · `tour.js` · `overlay.js`.
+`share.js` (a design deflated into a URL fragment) · `tour.js` · `overlay.js`
+· `gallery.js` (Phase 30: the front door's three finished schools — the
+recipes, the plan thumbnails and the counted facts, with the payloads
+themselves generated into `gallerystock.js` by `tools/make-gallery.mjs`).
+
+What it is, as a program rather than a page (Phase 30): `offline.js` (which
+requests the service worker keeps, and for how long — `sw.js` is its three
+listeners and nothing else) · `filestore.js` (the design as a document: a
+session, a dirty flag, a filename, and which failures deserve a sentence) ·
+`demo.js` (a tool's own gesture as timed pointer events, so the tutorial and
+the smoke test are one artifact).
 
 What it shares with another person: `session.js` (a design as records, and
 which of two edits wins) · `presence.js` (who else is here) · `wire.js` (the
@@ -168,6 +178,14 @@ wrong.
   state, that is the pass that will tell you. All three run in CI on every PR
   that touches this directory; the last two need Playwright and are optional
   locally — a machine without a browser loses them, not the suite.
+- **A generated source file needs a tool that writes it and a suite that
+  proves it has not drifted.** `js/gallerystock.js` is 90 KB of committed
+  bytes nobody will ever read; what makes it trustworthy is that
+  `tools/make-gallery.mjs` regenerates it from recipes that live in
+  `gallery.js`, and `test/gallery.test.mjs` rebuilds those recipes and fails
+  if the committed facts or thumbnails are no longer what the generator
+  makes. Payloads are compared by what they *decode to*, never byte for byte
+  — two deflates of the same bytes are allowed to differ.
 - **A partition belongs to exactly one of the two rooms it divides.** One
   builds a wall on it, the other leaves the segment open, decided by reading
   order at bake time. Anything that has to be true of *both* sides (borrowed
@@ -354,10 +372,15 @@ and add to this list rather than starting a new one.
 
   None of it is hard; all of it is in the untested tool/UI layer, so do it
   behind `test/tools/run.mjs` rather than in front of it.
-- The vendored `libs/` are 1.3 MB — 36% of the payload — and cannot be cached
-  hard because the paths carry no version. Putting the version in the
+- ~~The vendored `libs/` are 1.3 MB — 36% of the payload — and cannot be
+  cached hard because the paths carry no version. Putting the version in the
   directory name would buy an `immutable` year on every return visit, and
-  costs one edit to the import map plus a rebuild of `walk-template.html`.
+  costs one edit to the import map plus a rebuild of
+  `walk-template.html`.~~ *Closed, Phase 30, and more cheaply than that: the
+  service worker's cache is named for the worker's own revision, so within a
+  revision `libs/` is answered from disk with no network at all and bumping
+  `REV` invalidates the lot. Not one import path moved, and the walk template
+  was never rebuilt. See `offline.js`.*
 
 ## Arc four — the guest
 
@@ -1146,7 +1169,7 @@ a `weather` check in `test/tools/run.mjs` — the real page clicks rain,
 the deck thickens, the ground wets, the walk compiles the precip shaders
 clean, and the same click puts the sky back.
 
-## Phase 30 — The first click
+## Phase 30 — The first click *(shipped)*
 
 **Phase 19 fixed the first five minutes for the visitor who arrived. The
 tool still assumes they arrived with a network, and leave nothing behind.**
@@ -1157,27 +1180,83 @@ school — is one embedded payload away. And the tool that runs entirely in
 the page still behaves like a website: gone without a connection, saving
 only to a browser's own storage.
 
-- [ ] **A gallery on the welcome.** Three finished schools as cards —
+- [x] **A gallery on the welcome.** Three finished schools as cards —
   thumbnail, one sentence, one click to walking — each an embedded
   `share.js` payload, no server anywhere; the blank sheet stays the fourth
-  door.
-- [ ] **Installable, and offline.** A manifest and a service worker; the
-  worker versions the vendored `libs/` by its own revision, which closes
-  the WISHLIST's immutable-cache complaint without touching a single
-  import path.
-- [ ] **A real Save.** File System Access where the browser has it — Save
+  door. `gallery.js` holds the recipes (each card names the brief it was
+  generated from), the thumbnail reduction and the counted facts;
+  `tools/make-gallery.mjs` turns those recipes into `gallerystock.js`, 90 KB
+  of payloads and geometry that main.js fetches the first time the welcome
+  opens and never on a load that does not show it. The names on the cards
+  are `paScript`'s, off the seed the design carries — so the school on the
+  card is the school the PA greets you by inside it.
+- [x] **Installable, and offline.** A manifest, an SVG app icon, and a
+  service worker; the worker versions the vendored `libs/` by its own
+  revision, which closes the WISHLIST's immutable-cache complaint without
+  touching a single import path. Every decision the worker makes is
+  `offline.js` — three routes, `bypass`/`immutable`/`fresh`, as a pure
+  function of a URL and a method — and `sw.js` is the three listeners that
+  are all that is left.
+- [x] **A real Save.** File System Access where the browser has it — Save
   and Save As to a `.school` file, Open from disk, autosave demoted to the
   safety net it always was; download and upload stand in where the API is
-  absent.
-- [ ] **Show me.** A palette verb that replays a tool's gesture on the
+  absent. `filestore.js` owns the session: what dirty means, what the title
+  bar says, what the picker is handed, which errors deserve a sentence, and
+  when a close is worth arguing about (only ever with a file open and unsaved
+  — the autosave has covered the rest since v1).
+- [x] **Show me.** A palette verb that replays a tool's gesture on the
   live canvas with a ghost cursor — the same scripted-pointer machinery
   `test/tools/run.mjs` already proves, aimed at teaching instead of
-  testing. A tutorial that cannot rot, because it *is* the smoke test.
+  testing. A tutorial that cannot rot, because it *is* the smoke test: every
+  demo in `demo.js` declares the delta it should leave in the harness's own
+  fingerprint, and the `show-me` check plays each one on the real page and
+  asserts exactly that.
 
 *Leans on:* `share.js`, `sample.js` and `generate.js` for gallery stock,
 the tools harness. *Save:* none — a `.school` file is the serialization
 that already exists. *Model:* **Claude Opus 5** — all of it is surface and
 platform wiring; nothing touches the model layer.
+
+*What fought back:* the service worker's one hard wall, which is the same
+shape as Phase 28's speech synthesis. A worker that imports a pure module
+has to be a *module* worker, and module workers are not a thing every
+engine has; there is no build step here to bundle one flat, and the
+alternative — a second copy of the routing rules inside a classic `sw.js`,
+where nothing can test them — is exactly the failure the conventions
+warn about. So the registration is attempted with `{ type: 'module' }`,
+a rejection is caught and reported in the palette's offline row, and an
+engine without them gets the tool it had before this phase: online,
+working, and saying so. The suite pins the arrangement from the other side
+— it reads `sw.js` as text and fails if a path rule ever grows in it.
+The demo ran into the one browser API that can tell a synthetic pointer
+from a real one: `setPointerCapture` throws `NotFoundError` for a
+`pointerId` the browser never issued, and every tool in `editor.js` calls
+it on the way down. Stubbed for the length of a playback and `delete`d
+after — a real hand keeps real capture — rather than softened in
+editor.js, where the check is load-bearing for touch. Two smaller ones:
+a first draft of `sanitizeName` reserved `[ -<...]` as a *range*, which
+runs from space to `<` and eats the digits, so "Room 101" saved as
+"Room ---" (the suite's first assertion is now that one); and the welcome's
+`let galleryFilled` sat below the block that opens the welcome, which is
+fine on every path a seeded harness takes and a TDZ error on the one path
+nobody automates — the very first load. The visual pass caught it, which
+is the third pass doing precisely the job it was built for.
+*Tests:* `test/gallery.test.mjs` (the stock decodes to the design it
+promises, the committed bytes are still what the recipe makes, a card is a
+share link and not a second format, the thumbnail is the plan at the plan's
+proportions and keeps its holes, and a card that cannot be shown is left out
+rather than rendered broken), `test/offline.test.mjs` (the collab server is
+never cached, the worker never serves its own predecessor, only this tool's
+stale caches are ever dropped, and the manifest is valid, in scope and
+points at an icon that exists), `test/filestore.test.mjs` (the dirty flag,
+the filename, both pickers agreeing, and the cancelled dialog that says
+nothing), `test/demo.test.mjs` (presses balanced, drags sampled as paths,
+and a lesson that never draws on a room somebody already has), plus four
+checks in `test/tools/run.mjs` — `show-me` plays every lesson on the real
+page and holds it to its own claim, `gallery` fills the welcome and walks
+into a card, `document` watches a design go from opened to unsaved, and
+`offline` waits for the worker to take control and finds three.js in its
+cache.
 
 ## Phase 31 — Surfaces worth touching
 

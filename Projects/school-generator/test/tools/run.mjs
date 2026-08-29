@@ -85,6 +85,9 @@ const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.css': 'text/css', '.woff2': 'font/woff2', '.png': 'image/png',
   '.svg': 'image/svg+xml', '.json': 'application/json',
+  // Phase 30: the app manifest, so the install path is served the way a real
+  // host serves it rather than as a blob the browser declines to parse.
+  '.webmanifest': 'application/manifest+json',
 };
 
 function startServer() {
@@ -158,6 +161,15 @@ window.__clear = (x, z) => {
 // page is what costs, and a drag used to pay for one per waypoint.
 window.__path = (pts) => pts.map(([x, z]) => window.__w2c(x, z));
 window.__allClear = (pts) => pts.map(([x, z]) => window.__clear(x, z));
+// Phase 30. The lessons, read out of the module that declares them, so the
+// check below asserts each demo's *own* claim rather than a copy of it kept
+// here — which is the whole reason the tutorial cannot rot.
+window.__demos = async () => {
+  const m = await import('./js/demo.js');
+  return m.DEMOS.map((d) => ({
+    id: d.id, title: d.title, changes: d.changes, duration: m.demoEvents(d).duration,
+  }));
+};
 1`;
 
 // ---------- the driver ----------
@@ -801,6 +813,170 @@ const CHECKS = [
       if (ctx.undone === ctx.at) throw new Error('six undos changed nothing');
       if (after.json !== ctx.at) {
         throw new Error(`redo landed on ${after.json} bytes, not the ${ctx.at} it started from`);
+      }
+    },
+  },
+  // ---------- Phase 30 ----------
+  //
+  // Deliberately last. The lessons draw on the sheet and the gallery replaces
+  // the design outright, and neither is a state the checks above should have
+  // to be written around.
+  {
+    name: 'show-me',
+    what: 'every lesson in the palette draws, on the real canvas, what it claims to draw',
+    async run(d) {
+      // The claim is read out of demo.js, not restated here — that is what
+      // makes the tutorial and the smoke test one artifact rather than two
+      // that agree until they don't.
+      const demos = await d.page.evaluate('window.__demos()');
+      if (!demos.length) throw new Error('the palette offers no lessons');
+      const runs = [];
+      for (const demo of demos) {
+        const before = await d.fp();
+        const started = await d.page.evaluate(`!!window.app.demoStart(${JSON.stringify(demo.id)})`);
+        if (!started) throw new Error(`${demo.id} would not start`);
+        await d.page.waitForFunction('!window.app.demoing', { timeout: demo.duration + 30000 });
+        await d.page.waitForTimeout(700);
+        runs.push({ demo, before, after: await d.fp(), status: await d.status() });
+      }
+      // ...and Escape gives the pointer back mid-gesture, which is the one
+      // thing a person watching something move on its own will reach for.
+      await d.page.evaluate(`window.app.demoStart(${JSON.stringify(demos[0].id)}); 1`);
+      await d.page.waitForTimeout(900);
+      const during = await d.page.evaluate('window.app.demoing');
+      await d.page.keyboard.press('Escape');
+      await d.page.waitForTimeout(400);
+      const stopped = !(await d.page.evaluate('window.app.demoing'));
+      const ghostGone = await d.page.evaluate(
+        `document.getElementById('ghost').classList.contains('hidden')`);
+      return { runs, during, stopped, ghostGone };
+    },
+    expect: ({ ctx }) => {
+      for (const { demo, before, after, status } of ctx.runs) {
+        for (const [key, delta] of Object.entries(demo.changes)) {
+          const got = after[key] - before[key];
+          if (got < delta) {
+            throw new Error(
+              `${demo.id} claims ${key} +${delta} and drew ${key} +${got} — `
+              + `the lesson has rotted (status: ${status})`);
+          }
+        }
+      }
+      if (!ctx.during) throw new Error('a lesson ended before Escape could reach it');
+      if (!ctx.stopped) throw new Error('Escape did not give the pointer back');
+      if (!ctx.ghostGone) throw new Error('the ghost is still on screen');
+    },
+  },
+  {
+    name: 'gallery',
+    what: 'the welcome fills with three embedded schools and one click walks into one',
+    async run(d) {
+      await d.page.evaluate('window.app.openWelcome(); 1');
+      await d.page.waitForFunction(
+        `document.querySelectorAll('#welcome-gallery .card').length === 3`, { timeout: 60000 });
+      const titles = await d.page.evaluate(
+        `[...document.querySelectorAll('#welcome-gallery .card b')].map((b) => b.textContent)`);
+      // The thumbnails are geometry, not images: a card with no paths in it
+      // shipped a picture of nothing.
+      const paths = await d.page.evaluate(
+        `document.querySelectorAll('#welcome-gallery .thumb path').length`);
+      const facts = await d.page.evaluate(
+        `[...document.querySelectorAll('#welcome-gallery .facts')].map((f) => f.textContent)`);
+      await d.page.evaluate(`document.querySelector('#welcome-gallery .card').click(); 1`);
+      await d.page.waitForFunction(
+        `window.app.file && window.app.file.source === 'card'`, { timeout: 90000 });
+      await d.page.waitForTimeout(2500);
+      const mode = await d.page.evaluate('document.body.dataset.mode');
+      const after = await d.fp();
+      await d.page.evaluate(`document.getElementById('walk-exit').click(); 1`);
+      await d.page.waitForTimeout(600);
+      return { titles, paths, facts, mode, after };
+    },
+    expect: ({ ctx }) => {
+      if (new Set(ctx.titles).size !== 3) {
+        throw new Error(`three cards, ${new Set(ctx.titles).size} names: ${ctx.titles.join(', ')}`);
+      }
+      if (ctx.paths < 30) throw new Error(`only ${ctx.paths} rooms drawn across three thumbnails`);
+      for (const f of ctx.facts) {
+        if (!/\d+ rooms on \w+ storeys? · [\d,]+ sq ft/.test(f)) {
+          throw new Error(`a card counted nothing: "${f}"`);
+        }
+      }
+      if (ctx.mode !== 'walk') throw new Error(`a card landed in ${ctx.mode}, not in a walk`);
+      if (ctx.after.shapes < 20) {
+        throw new Error(`the card opened a design with ${ctx.after.shapes} rooms on the storey`);
+      }
+    },
+  },
+  {
+    name: 'document',
+    what: 'the design is a document: opening one is clean, editing it is not, and the title says so',
+    async run(d) {
+      // Runs straight after `gallery`, which has just adopted a card — a
+      // design that arrived, has a name, and has been edited by nobody.
+      const opened = await d.page.evaluate(
+        '({ title: document.title, dirty: window.app.file.dirty, name: window.app.file.name,'
+        + ' source: window.app.file.source, world: window.app.fileWorld })');
+      // An edit with no aim in it: the same rain button the weather check
+      // proves, so this check is about the file session rather than about
+      // hitting a canvas under a panel.
+      await d.page.evaluate(
+        `document.querySelector('#env-weather button[data-weather="rain"]').click(); 1`);
+      await d.page.waitForTimeout(400);
+      const edited = await d.page.evaluate(
+        '({ title: document.title, dirty: window.app.file.dirty })');
+      await d.page.evaluate(
+        `document.querySelector('#env-weather button[data-weather="rain"]').click(); 1`);
+      await d.page.waitForTimeout(200);
+      return { opened, edited };
+    },
+    expect: ({ ctx }) => {
+      if (ctx.opened.source !== 'card') throw new Error(`the session says ${ctx.opened.source}`);
+      if (ctx.opened.dirty) throw new Error('a design nobody has edited is already dirty');
+      if (!ctx.opened.name) throw new Error('the opened card left the document unnamed');
+      if (!ctx.opened.title.startsWith(ctx.opened.name)) {
+        throw new Error(`the title bar says "${ctx.opened.title}", not "${ctx.opened.name}"`);
+      }
+      if (!ctx.edited.dirty) throw new Error('an edit did not reach the file session');
+      if (!/^• /.test(ctx.edited.title)) {
+        throw new Error(`the title bar does not mark the unsaved design: "${ctx.edited.title}"`);
+      }
+      if (!['direct', 'download'].includes(ctx.opened.world)) {
+        throw new Error(`the file world is "${ctx.opened.world}"`);
+      }
+    },
+  },
+  {
+    name: 'offline',
+    what: 'the page registers its worker, it takes control, and the vendored libs are in its cache',
+    async run(d) {
+      // 127.0.0.1 is a secure context, so the registration this page makes at
+      // boot is the real one — not a stub the harness arranges.
+      await d.page.waitForFunction(
+        'window.app.offline.registered || window.app.offline.error', { timeout: 60000 });
+      const offline = await d.page.evaluate('({ ...window.app.offline, prompt: undefined })');
+      const controlled = await d.page.waitForFunction(
+        'navigator.serviceWorker.controller !== null', { timeout: 60000 })
+        .then(() => true).catch(() => false);
+      const cached = await d.page.evaluate(`(async () => {
+        const names = await caches.keys();
+        const cache = await caches.open(names.find((n) => n.startsWith('school-generator-')));
+        const keys = await cache.keys();
+        return { names, urls: keys.map((r) => new URL(r.url).pathname) };
+      })()`);
+      return { offline, controlled, cached };
+    },
+    expect: ({ ctx }) => {
+      if (ctx.offline.error) throw new Error(`registration failed: ${ctx.offline.error}`);
+      if (!ctx.offline.registered) throw new Error('the worker never registered');
+      if (!ctx.controlled) throw new Error('the worker registered but never took control');
+      if (!ctx.cached.names.some((n) => n.startsWith('school-generator-'))) {
+        throw new Error(`no cache of this tool's own: ${ctx.cached.names.join(', ')}`);
+      }
+      // The complaint this phase closes: `libs/` cached hard, by the worker's
+      // own revision rather than by a version in the path.
+      if (!ctx.cached.urls.some((u) => u.includes('/libs/three.module.js'))) {
+        throw new Error('three.js is not in the cache, which was the whole point');
       }
     },
   },
