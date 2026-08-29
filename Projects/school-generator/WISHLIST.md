@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: twenty-eight phases are shipped — three arcs, all of arc four,
-two after it, and arc five is underway: Phases 27 and 28 have shipped and
-Phases 29–34 are open below.** Three arcs took a grid
+**Status: twenty-nine phases are shipped — three arcs, all of arc four,
+two after it, and arc five is underway: Phases 27–29 have shipped and
+Phases 30–34 are open below.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -139,9 +139,9 @@ wrong.
   handling.
 - **Undo restores a snapshot with `Object.assign`, which only ever adds.**
   Any *optional* record on the state (`terrain`, `site`, `roof`, `life`,
-  `timetable`, `overlay`, `models`, `tours`, `haunt`) has to be deleted when
-  the snapshot doesn't have it, or undoing past the moment it was first
-  written silently does nothing.
+  `timetable`, `overlay`, `models`, `tours`, `haunt`, `weather`) has to be
+  deleted when the snapshot doesn't have it, or undoing past the moment it
+  was first written silently does nothing.
 - **A `PlaneGeometry` flattened with `rotateX(-π/2)` has its extents in
   local X and Z.** `scale.set(w, d, 1)` gives a plane one unit deep.
 - **Handing a bare `'#rrggbb'` string to a colour buffer silently writes
@@ -269,8 +269,10 @@ and add to this list rather than starting a new one.
   The editor's live path still lights by distance alone — a drafting table
   wants legible — and props still take the flat lift rather than the field,
   since instanced geometry shares its vertices across the storey.*
-- The cloud deck is one coverage and one drift everywhere — no weather, no
-  wind, no overcast day.
+- ~~The cloud deck is one coverage and one drift everywhere — no weather, no
+  wind, no overcast day.~~ *Done, Phase 29: `weather.js` — overcast, rain and
+  snow, one click beside the moods, with the deck, the light, the ground and
+  the soundtrack all reading the same derivation.*
 - Transmission loss ~~is one number per situation rather than a ray cast~~
   *(the ray landed in Phase 24 — `pathLossRay` counts sightline's segments
   and the live leaves; the constant survives as the cross-slab and
@@ -1088,7 +1090,7 @@ retargets end it cleanly, the same seed stops the same friends), and a
 `crowd-talks` check in `test/tools/run.mjs` — the real page enters a
 walk, the crowd pairs up, and the murmur wiring runs clean.
 
-## Phase 29 — Weather
+## Phase 29 — Weather *(shipped)*
 
 **The cloud deck is one coverage and one drift everywhere, and nothing has
 ever fallen out of it.**
@@ -1099,19 +1101,19 @@ the cheapest total mood shift the renderer can buy — it changes the light,
 the ground, the sound and the reason to be indoors, all at once — and every
 piece of it lands on machinery that already exists.
 
-- [ ] **`weather.js`, pure, with its suite.** A state — kind, intensity,
+- [x] **`weather.js`, pure, with its suite.** A state — kind, intensity,
   wind — and its consequences as numbers: drift speed, sky dim, wet
   darkening, accumulation depth, all deterministic from seed and hour.
-- [ ] **Rain and snow that fall outside.** GPU particles clipped to the
+- [x] **Rain and snow that fall outside.** GPU particles clipped to the
   outdoors the renderer already distinguishes from the rooms; under
   prefers-reduced-motion the ground states arrive without the falling.
-- [ ] **Ground that remembers.** Wet paving darkens and takes a low sheen;
+- [x] **Ground that remembers.** Wet paving darkens and takes a low sheen;
   snow lies as a shader blend on site and roof and deepens while you
   watch.
-- [ ] **Weather you can hear.** Rain loudest on the top storey — the
+- [x] **Weather you can hear.** Rain loudest on the top storey — the
   cross-slab constant is already in the acoustics — and against the
   glazing; thunder rare, far, and seeded.
-- [ ] **One click, beside the moods.** Overcast, rain and snow join the
+- [x] **One click, beside the moods.** Overcast, rain and snow join the
   mood row in the sky panel and photo mode; the walk export carries the
   sky it was given.
 
@@ -1120,6 +1122,29 @@ piece of it lands on machinery that already exists.
 still, additive — a design with no weather writes no key. *Model:*
 **Claude Fable 5** — a pure state module, two shaders, and the acoustic
 coupling.
+
+*What fought back:* the temptation to invent a second cross-slab number.
+The rain's attenuation *is* `PATH_SLAB` — importing the constant instead of
+coining one is what keeps "rain loudest on the top storey" and "a hum
+through the ceiling" the same physics, and the suite pins the equality so
+the two can never drift apart. Clipping the falling to the outdoors turned
+out to already have an owner: `floorSolidAt`, the same question the site
+skin asks, sampled once per column at seed time with a stride of margin so
+a swaying flake still lands outside the eave — the GPU never has to know
+the building exists. Snow's "deterministic from seed and hour" met "deepens
+while you watch" without a stored history: depth is a function of the
+design's own clock (scrub the hour and the site whitens), and the renderer
+eases two shared uniforms toward the derivation so the arrival is watched
+rather than snapped. And the weather record needed no handoff to the mixer
+at all — audio.js reads `world.weather` off the same state object a mood
+click writes, so the rain bed, the glazing leak and the seeded thunder
+clock follow the button with no new wire. *Tests:*
+`test/weather.test.mjs` (the record's hostile-input law, the byte-free
+default in the save file, determinism in seed and hour, the slab equality,
+the glazing read off a baked storey, and thunder rare/far/immovable), plus
+a `weather` check in `test/tools/run.mjs` — the real page clicks rain,
+the deck thickens, the ground wets, the walk compiles the precip shaders
+clean, and the same click puts the sky back.
 
 ## Phase 30 — The first click
 

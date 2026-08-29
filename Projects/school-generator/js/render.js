@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { skyState, defaultEnv, mixHex, starVisibility, moonState } from './sky.js';
+import { normalizeWeather, weatherState, CLEAR_COVER } from './weather.js';
 import {
   budgetFor, spillAmbient, emitOf, LUMENS_TO_CANDELA, MAX_DYNAMIC_LIGHTS,
   MAX_SPOT_LIGHTS,
@@ -752,8 +753,241 @@ export function initRender(canvas) {
     _cloudTint.lerp(_cloudSun.set(pal.sun), (1 - day) * 0.55);
     _cloudShade.set(pal.zenith).multiplyScalar(0.55 + 0.35 * day);
     cloudUniforms.uTint.value.copy(_cloudTint);
+    // Weather thickens the deck: more cover is also more opacity and a
+    // flatter, darker base — an overcast is a lid, not a lace curtain.
+    const thick = Math.max(0, wx.cover - CLEAR_COVER);
+    _cloudShade.multiplyScalar(1 - wx.skyDim * 0.35);
     cloudUniforms.uShade.value.copy(_cloudShade);
-    cloudUniforms.uOpacity.value = 0.55 + 0.3 * day;
+    cloudUniforms.uOpacity.value = Math.min(0.96, (0.55 + 0.3 * day) * (1 + thick * 0.8));
+    cloudUniforms.uCover.value = wx.cover;
+  }
+
+  // --- weather (Phase 29) ---
+  //
+  // One optional record on the design, weather.js's derivation, and three
+  // kinds of consequence wired here: the deck's cover and drift (written
+  // into the cloud uniforms above), the light's dimming (applied inside
+  // setEnvironment, which re-derives the weather on every scrub so snow can
+  // deepen with the clock), and the two *surface* levels — wet and snow —
+  // that the ground-facing materials read as shared uniforms. The surface
+  // levels ease toward the derivation's answer a little each frame rather
+  // than jumping, which is what "snow deepens while you watch" costs: two
+  // lerps.
+  let wxRecord = normalizeWeather(null);
+  let wx = weatherState(wxRecord);
+  const wxSurf = { wet: { value: 0 }, snow: { value: 0 } };
+  const wxSeed = () => (built && built.life && Number.isFinite(built.life.seed)
+    ? built.life.seed : 1);
+
+  // The wet darkening and the snow blend, injected into a standard material.
+  // Every patched material shares the two uniform objects above, so the whole
+  // site changes state on two writes. The blend keys on the *world* up of the
+  // surface — snow lies on what faces the sky, which is what puts it on the
+  // paving and the roof and keeps it off the facades for free.
+  function weatherize(mat) {
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uWxWet = wxSurf.wet;
+      shader.uniforms.uWxSnow = wxSurf.snow;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying float vWxUp;')
+        .replace('#include <beginnormal_vertex>',
+          '#include <beginnormal_vertex>\n'
+          + 'vWxUp = normalize(mat3(modelMatrix) * objectNormal).y;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>',
+          '#include <common>\nuniform float uWxWet, uWxSnow;\nvarying float vWxUp;')
+        .replace('#include <color_fragment>', /* glsl */`#include <color_fragment>
+          float wxUp = smoothstep(0.35, 0.75, vWxUp);
+          float wxSnow = uWxSnow * smoothstep(0.45, 0.8, vWxUp);
+          diffuseColor.rgb *= 1.0 - 0.48 * uWxWet * wxUp;
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.93, 0.96), wxSnow);`)
+        .replace('#include <roughnessmap_fragment>', /* glsl */`#include <roughnessmap_fragment>
+          roughnessFactor = mix(roughnessFactor, 0.3, 0.8 * uWxWet * wxUp);
+          roughnessFactor = mix(roughnessFactor, 0.85, wxSnow);`);
+    };
+  }
+
+  // What falls. Two fixed pools — rain as line-segment streaks, snow as soft
+  // points — animated entirely in the vertex shader: each drop's column is
+  // seeded once, clipped to the outdoors at seed time (the renderer already
+  // knows what the building covers — floorSolidAt, the site skin's own rule),
+  // and the GPU loops it from the deck to its own patch of ground forever.
+  // Under prefers-reduced-motion neither pool is ever built: the ground
+  // states arrive without the falling, which is the phase's own promise.
+  const PRECIP_N = 3200;
+  let rainFall = null, snowFall = null;
+
+  const wxCovered = (x, z) => {
+    if (!built) return false;
+    for (const f of built.floors) if (floorSolidAt(f, x, z)) return true;
+    return false;
+  };
+
+  // One column: outdoors at the point and a stride around it, so a drop that
+  // sways or slants near a wall still reads as landing outside the eave.
+  function wxSpawn() {
+    const half = site.span * 0.55;
+    for (let tries = 0; tries < 10; tries++) {
+      const x = site.x + (Math.random() * 2 - 1) * half;
+      const z = site.z + (Math.random() * 2 - 1) * half;
+      if (wxCovered(x, z) || wxCovered(x + 3, z) || wxCovered(x - 3, z)
+        || wxCovered(x, z + 3) || wxCovered(x, z - 3)) continue;
+      return { x, z, y: groundAt(siteField, x, z) };
+    }
+    return null;
+  }
+
+  function seedPool(pool) {
+    if (!pool) return;
+    const { pos, seeds, per } = pool;
+    for (let i = 0; i < PRECIP_N; i++) {
+      const at = wxSpawn() || { x: site.x, z: site.z - site.span, y: -500 };
+      const s = Math.random();
+      for (let v = 0; v < per; v++) {
+        const j = i * per + v;
+        pos[j * 3] = at.x; pos[j * 3 + 1] = at.y; pos[j * 3 + 2] = at.z;
+        seeds[j] = s;
+      }
+    }
+    pool.geo.attributes.position.needsUpdate = true;
+    pool.geo.attributes.aSeed.needsUpdate = true;
+    pool.uniforms.uSpan.value = site.top + 25;
+  }
+
+  const wxPoolUniforms = () => ({
+    uTime: { value: 0 },
+    uSpeed: { value: 30 },
+    uSpan: { value: 60 },
+    uSlant: { value: 0 },
+    uAmp: { value: 0 },
+    uLen: { value: 1.6 },
+    uSize: { value: 2.4 },
+    uOpacity: { value: 0.4 },
+    uColor: { value: new THREE.Color('#b9c6d4') },
+  });
+
+  function makeRainPool() {
+    const per = 2;
+    const pos = new Float32Array(PRECIP_N * per * 3);
+    const seeds = new Float32Array(PRECIP_N * per);
+    const tops = new Float32Array(PRECIP_N * per);
+    for (let i = 0; i < PRECIP_N; i++) tops[i * 2 + 1] = 1;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+    geo.setAttribute('aTop', new THREE.BufferAttribute(tops, 1));
+    const uniforms = wxPoolUniforms();
+    const mesh = new THREE.LineSegments(geo, new THREE.ShaderMaterial({
+      uniforms,
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+      vertexShader: /* glsl */`
+        uniform float uTime, uSpeed, uSpan, uSlant, uLen;
+        attribute float aSeed, aTop;
+        void main() {
+          vec3 p = position;
+          float drop = mod(aSeed * uSpan - uTime * uSpeed, uSpan);
+          // The wind lays the whole column over; the streak leans with it.
+          p.x += uSlant * (drop / uSpan - 0.5) * 2.0 + aTop * uSlant * 0.1;
+          p.y += drop + aTop * uLen;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */`
+        precision mediump float;
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        void main() { gl_FragColor = vec4(uColor, uOpacity); }
+      `,
+    }));
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 3;
+    mesh.visible = false;
+    scene.add(mesh);
+    return { mesh, geo, pos, seeds, per, uniforms };
+  }
+
+  function makeSnowPool() {
+    const per = 1;
+    const pos = new Float32Array(PRECIP_N * 3);
+    const seeds = new Float32Array(PRECIP_N);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+    const uniforms = wxPoolUniforms();
+    uniforms.uColor.value.set('#eef2f7');
+    const mesh = new THREE.Points(geo, new THREE.ShaderMaterial({
+      uniforms,
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+      vertexShader: /* glsl */`
+        uniform float uTime, uSpeed, uSpan, uSlant, uAmp, uSize;
+        attribute float aSeed;
+        void main() {
+          vec3 p = position;
+          float drop = mod(aSeed * uSpan - uTime * uSpeed, uSpan);
+          p.x += uSlant * (drop / uSpan - 0.5) * 2.0
+            + uAmp * sin(uTime * (0.5 + aSeed * 0.7) + aSeed * 37.0);
+          p.z += uAmp * 0.7 * cos(uTime * (0.4 + aSeed * 0.6) + aSeed * 11.0);
+          p.y += drop;
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          gl_PointSize = uSize * clamp(160.0 / max(8.0, -mv.z), 0.6, 5.0);
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: /* glsl */`
+        precision mediump float;
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        void main() {
+          float d = length(gl_PointCoord - 0.5);
+          if (d > 0.5) discard;
+          gl_FragColor = vec4(uColor, uOpacity * (1.0 - d * 1.6));
+        }
+      `,
+    }));
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 3;
+    mesh.visible = false;
+    scene.add(mesh);
+    return { mesh, geo, pos, seeds, per, uniforms };
+  }
+
+  // Point the pools at the current weather: build what has become needed,
+  // hide what has stopped falling, and write the derivation's numbers into
+  // the uniforms. `amount` runs the draw range, so a drizzle is fewer drops
+  // rather than fainter ones.
+  function aimPrecip() {
+    const fall = cloudStill || mode === 'edit' ? null : wx.fall;
+    const wantRain = !!fall && fall.kind === 'rain';
+    const wantSnow = !!fall && fall.kind === 'snow';
+    if (wantRain && !rainFall) { rainFall = makeRainPool(); seedPool(rainFall); }
+    if (wantSnow && !snowFall) { snowFall = makeSnowPool(); seedPool(snowFall); }
+    if (rainFall) {
+      rainFall.mesh.visible = wantRain;
+      if (wantRain) {
+        const u = rainFall.uniforms;
+        u.uSpeed.value = fall.speed;
+        u.uLen.value = Math.min(3.2, fall.speed * 0.055);
+        u.uSlant.value = Math.min(4, fall.slant * 8);
+        u.uOpacity.value = 0.22 + 0.2 * fall.amount;
+        rainFall.geo.setDrawRange(0, 2 * Math.floor(PRECIP_N * fall.amount));
+      }
+    }
+    if (snowFall) {
+      snowFall.mesh.visible = wantSnow;
+      if (wantSnow) {
+        const u = snowFall.uniforms;
+        u.uSpeed.value = fall.speed;
+        u.uSize.value = fall.size;
+        u.uAmp.value = fall.sway;
+        u.uSlant.value = Math.min(4, fall.slant * 8);
+        u.uOpacity.value = 0.55 + 0.25 * fall.amount;
+        snowFall.geo.setDrawRange(0, Math.floor(PRECIP_N * fall.amount));
+      }
+    }
   }
 
   // --- lights ---
@@ -947,6 +1181,12 @@ export function initRender(canvas) {
     if (m.map) m.map.anisotropy = Math.min(8, maxAniso);
   }
 
+  // Phase 29: the ground takes the weather. Only what faces the sky ever
+  // shows it (the blend keys on world up), so patching the ground here and
+  // the site, roof and marking materials at their builders covers everything
+  // that gets rained on without touching a single interior floor.
+  weatherize(groundMat);
+
   // --- floor finishes ---
   //
   // The default finish reuses the material this scene has always had, so a
@@ -1010,6 +1250,7 @@ export function initRender(canvas) {
       // shimmering against the ground it is painted on at a hundred feet.
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     });
+    weatherize(m);
     siteMats.set(key, m);
     return m;
   }
@@ -1053,6 +1294,7 @@ export function initRender(canvas) {
     m = new THREE.MeshStandardMaterial({
       map, roughness: 0.95, metalness: 0, vertexColors: true, side: THREE.DoubleSide,
     });
+    weatherize(m);
     roofMats.set(key, m);
     return m;
   }
@@ -1063,6 +1305,7 @@ export function initRender(canvas) {
     color: 0xffffff, roughness: 0.9, metalness: 0, vertexColors: true,
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
   });
+  weatherize(markMat);
 
   // --- the ground ---
   //
@@ -1360,6 +1603,10 @@ export function initRender(canvas) {
     applyBakeTint(bakeWorn());
     markLightsDirty();
     applyFloorVisibility();
+    // Phase 29: the falling half of the weather belongs to the walk — the
+    // drafting table keeps the darker deck and the wet ground, not the rain
+    // across its own plan view.
+    aimPrecip();
     buildComposer();
   }
 
@@ -1457,8 +1704,10 @@ export function initRender(canvas) {
     sun.shadow.camera.far = SUN_DIST * 2 + site.top;
     sun.shadow.camera.updateProjectionMatrix();
     // Below the horizon there is nothing to cast, and leaving the map running
-    // costs a full extra scene render for a black texture.
-    sun.castShadow = envState.daylight;
+    // costs a full extra scene render for a black texture. A full overcast is
+    // the same bargain by another road: shadowless light casts nothing worth
+    // a second render.
+    sun.castShadow = envState.daylight && !wx.flat;
 
     sunDisc.visible = d.y > -0.08;
     sunDisc.position.set(site.x + d.x * 900, d.y * 900, site.z + d.z * 900);
@@ -1483,18 +1732,25 @@ export function initRender(canvas) {
 
   function setEnvironment(env) {
     envState = skyState(env);
+    // Phase 29: the weather is re-derived on every env write, because two of
+    // its numbers ride the clock — the snow deepens through the day, and a
+    // scrub should show it doing so.
+    wx = weatherState(wxRecord, { seed: wxSeed(), minutes: envState.env.minutes });
     const pal = envState.palette;
+    const dim = wx.skyDim;
 
-    baseHemi = pal.hemiIntensity;
-    baseAmbient = pal.ambientIntensity;
+    baseHemi = pal.hemiIntensity * (1 - dim * 0.4);
+    baseAmbient = pal.ambientIntensity * (1 - dim * 0.22);
     sun.color.set(pal.sun);
-    sun.intensity = pal.sunIntensity;
+    sun.intensity = pal.sunIntensity * (1 - dim);
 
-    paintSky(pal.zenith, pal.horizon);
+    // Under a heavy deck the gradient flattens toward the horizon's grey —
+    // most of what shows between the clouds should not be a blue day.
+    paintSky(dim > 0 ? mixHex(pal.zenith, pal.horizon, dim * 0.6) : pal.zenith, pal.horizon);
     walkFog.color.set(pal.horizon);
-    walkFog.near = pal.fogNear;
-    walkFog.far = pal.fogFar;
-    renderer.toneMappingExposure = pal.exposure * exposureBias;
+    walkFog.near = pal.fogNear * wx.fogScale;
+    walkFog.far = pal.fogFar * wx.fogScale;
+    renderer.toneMappingExposure = pal.exposure * (1 - dim * 0.08) * exposureBias;
 
     // The fixtures. `lightLevel` is a ramp, not a switch, so scrubbing through
     // dusk fades the building up instead of snapping it on between two frames.
@@ -1504,12 +1760,23 @@ export function initRender(canvas) {
 
     placeSun();
     placeClouds();
+    aimPrecip();
     markLightsDirty();
     applyAmbient();
     // Phase 27: the hour moved, so the bake recombines — day × the new sun,
     // fix × the new lamp ramp. A re-tint, never a re-bake.
     if (bakeWorn()) applyBakeTint(true);
     return envState;
+  }
+
+  // Phase 29's one write, the same shape as setEnvironment's: hand it the
+  // design's weather record (or nothing) and every consequence — the deck,
+  // the dimming, the falling, the ground — follows from the derivation. It
+  // rides through setEnvironment because the two share most of their outputs.
+  function setWeather(record) {
+    wxRecord = normalizeWeather(record);
+    setEnvironment(envState.env);
+    return wx;
   }
 
   // The flat fill is three terms on two lights, and keeping them apart matters:
@@ -1788,8 +2055,22 @@ export function initRender(canvas) {
     else updateWalkLabels(dt);
     // The cloud deck drifts on the frame clock — slowly enough that a
     // screenshot and its retake match, fast enough that a long stand still
-    // isn't a matte painting.
-    if (!cloudStill) cloudUniforms.uTime.value += Math.min(dt, 0.1);
+    // isn't a matte painting. The weather's wind multiplies the drift, and
+    // the falling pools ride the same clock.
+    if (!cloudStill) {
+      const wdt = Math.min(dt, 0.1);
+      cloudUniforms.uTime.value += wdt * wx.drift;
+      if (rainFall && rainFall.mesh.visible) rainFall.uniforms.uTime.value += wdt;
+      if (snowFall && snowFall.mesh.visible) snowFall.uniforms.uTime.value += wdt;
+    }
+    // The ground takes the weather gradually — wet paving darkens over a few
+    // seconds, snow deepens while you watch — which is two eased uniforms
+    // every material patched by `weatherize` reads.
+    {
+      const k = 1 - Math.exp(-Math.min(dt, 0.1) * 0.6);
+      wxSurf.wet.value += (wx.wet - wxSurf.wet.value) * k;
+      wxSurf.snow.value += (wx.snow - wxSurf.snow.value) * k;
+    }
     const cam = mode === 'edit' ? editCamera : walkCamera;
     // The pool is ranked from wherever you are actually looking from — the
     // orthographic camera's own position while editing (200ft up, so almost
@@ -6053,6 +6334,11 @@ export function initRender(canvas) {
     // bake still worn re-applies to the fresh geometry, inside the same
     // call. The caller is responsible for having dropped a stale one first.
     setEnvironment(state.env);
+    // ...and the weather travels the same way. A rebuild is a different set
+    // of covered ground, so the falling pools re-seed their columns too.
+    setWeather(state.weather);
+    seedPool(rainFall);
+    seedPool(snowFall);
 
     editView.camY = 200 + Math.max(topOfBuilding(state), roofTop(plan));
     applyFloorVisibility();
@@ -6419,6 +6705,13 @@ export function initRender(canvas) {
     // renderer has already asked for.
     setEnvironment,
     get environment() { return envState; },
+    // --- Phase 29: weather ---
+    //
+    // Same arrangement one paragraph up: `setWeather` is the one write (the
+    // design's optional record, or nothing for a clear day), and `weather`
+    // reads back the derivation the renderer is acting on.
+    setWeather,
+    get weather() { return wx; },
     // --- Phase 27: light that stops at walls ---
     //
     // One write, same shape as everything else here: hand it bakelight.js's

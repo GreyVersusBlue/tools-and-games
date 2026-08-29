@@ -591,6 +591,8 @@
     .env-presets button {
       flex: 1 1 auto; padding: 4px 6px; font-size: var(--fs-sm); min-width: 0;
     }
+    /* Phase 29: the weather row is three toggles, and a toggle shows its state. */
+    .env-presets button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
     .env-row { display: flex; gap: 6px; align-items: center; }
     .env-row > * { flex: 1; min-width: 0; }
     .env-value {
@@ -1480,7 +1482,7 @@
         display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px;
         align-items: end;
       }
-      #photo-panel h2, #photo-moods, #photo-shots, #photo-panel .keys {
+      #photo-panel h2, #photo-moods, #photo-weather, #photo-shots, #photo-panel .keys {
         grid-column: 1 / -1;
       }
       #photo-panel .keys { display: none; }
@@ -1923,6 +1925,8 @@
   <div id="env-panel" class="panel rail-panel" role="group" aria-label="Sun and sky">
     <h2><button class="rail-fold" aria-expanded="true">Sun &amp; Sky</button></h2>
     <div class="env-presets" id="env-presets"></div>
+    <!-- Phase 29: the weather, one click, beside the moods. -->
+    <div class="env-presets" id="env-weather"></div>
 
     <label for="env-time">Time of day <span class="env-value" id="env-time-value">10:00 am</span></label>
     <div class="env-row">
@@ -2075,6 +2079,7 @@
     <!-- Phase 20: the five moods, where the pictures get taken. Same row as
          the sky panel's, built by the same function. -->
     <div class="env-presets" id="photo-moods"></div>
+    <div class="env-presets" id="photo-weather"></div>
     <label for="photo-fov">Field of view <span class="env-value" id="photo-fov-value">60°</span></label>
     <input id="photo-fov" type="range" min="18" max="110" step="1" value="60" />
 

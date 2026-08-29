@@ -32,6 +32,9 @@ import {
 } from './hunt.js';
 import { normalizeHaunt } from './haunt.js';
 import {
+  WEATHER_MOODS, applyWeatherMood, normalizeWeather, isDefaultWeather, weatherLabel,
+} from './weather.js';
+import {
   blockAt, bellsBetween, nextBell, clockText, countdownText, wrapMinutes,
   normalizeSchedule,
 } from './schedule.js';
@@ -3038,6 +3041,50 @@ const envPresets = $('env-presets');
 buildMoodRow(envPresets);
 buildMoodRow($('photo-moods'));
 
+// Phase 29: the weather, one click, beside the moods — and like a sky
+// change, it autosaves and skips the undo stack: nobody wants Ctrl+Z to
+// walk back through a shower. The record is optional the way `haunt` is —
+// a clear day deletes the key, so a design with no weather writes none.
+function weatherChanged() {
+  if (state.weather && isDefaultWeather(state.weather)) delete state.weather;
+  else if (state.weather) state.weather = normalizeWeather(state.weather);
+  renderApi.setWeather(state.weather);
+  renderWeatherRows();
+  autosave(state);
+}
+
+function setWeatherMood(key) {
+  const next = applyWeatherMood(state.weather, key);
+  if (isDefaultWeather(next)) delete state.weather; else state.weather = next;
+  weatherChanged();
+  $('status').textContent = `Sky — ${weatherLabel(state.weather).toLowerCase()}.`;
+}
+
+function buildWeatherRow(host) {
+  if (!host) return;
+  WEATHER_MOODS.forEach((m) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.weather = m.key;
+    b.title = `${m.label} — the same click puts the sky back`;
+    b.innerHTML = `<span aria-hidden="true">${m.icon}</span> ${m.label}`;
+    b.addEventListener('click', () => setWeatherMood(m.key));
+    host.appendChild(b);
+  });
+}
+
+function renderWeatherRows() {
+  const kind = normalizeWeather(state.weather).kind;
+  document.querySelectorAll('button[data-weather]').forEach((b) => {
+    const on = b.dataset.weather === kind;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+}
+
+buildWeatherRow($('env-weather'));
+buildWeatherRow($('photo-weather'));
+
 const envMonth = $('env-month');
 MONTH_NAMES.forEach((name, i) => {
   const o = document.createElement('option');
@@ -3155,6 +3202,11 @@ function renderEnvPanel() {
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
   }
+  // Phase 29: the weather rides the same panel refresh, so a loaded file's
+  // rain (or an undo that took it away) lights the right button. The scene
+  // itself needs no write here — every path that changes the record either
+  // clicked it (weatherChanged) or rebuilt the world (buildFromState).
+  renderWeatherRows();
   renderEnvReadout();
 }
 
@@ -5224,6 +5276,13 @@ function cmdkCommands() {
     out.push({
       name: `Sky: ${m.label.toLowerCase()}`, hint: 'Time and lights in one click',
       keys: [], run: () => setMood(m.key),
+    });
+  }
+  for (const m of WEATHER_MOODS) {
+    out.push({
+      name: `Weather: ${m.label.toLowerCase()}`,
+      hint: 'One click beside the moods — the same click puts the sky back',
+      keys: [], run: () => setWeatherMood(m.key),
     });
   }
   return out;
