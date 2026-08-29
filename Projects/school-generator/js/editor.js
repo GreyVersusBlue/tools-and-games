@@ -331,7 +331,7 @@ export function initEditor({
   // grading stroke, the first tracing image — leaves that record behind and
   // the undo silently does nothing. Every optional record on the state
   // (terrain, site, roof, code, life, timetable, overlay, tours, models,
-  // haunt) is one of these.
+  // haunt, weather) is one of these.
   function restore(data, held) {
     const s = getState();
     const next = { ...data };

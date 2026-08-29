@@ -35,6 +35,9 @@ import { makeLabelGate, LABEL_MODES, sightBlockers, sightClear, doorPoints } fro
 import { murmurEmitters, paScript } from './murmur.js';
 import { buildingOccupancy } from './occupancy.js';
 import { MOODS, applyMood } from './sky.js';
+import {
+  WEATHER_MOODS, applyWeatherMood, normalizeWeather, isDefaultWeather,
+} from './weather.js';
 import { buildCollider, storeyAt, WALKER_R, updateDoorsFor } from './collide.js';
 import { startHunt, checkFind, huntWarmth, huntSummary } from './hunt.js';
 import {
@@ -972,6 +975,10 @@ function boot() {
 
   // Phase 20's one-click times of day, on the photo panel — the walk export
   // has no sky panel, and golden hour is most of what a photograph wants.
+  // Phase 29 adds the weather on the same row: the export carries the sky it
+  // was given, and these buttons are how a guest tries another one. The
+  // record is written in memory only — nothing in this file saves, so the
+  // design a walk export carries stays read-only the way it always was.
   function renderMoods() {
     const host = $('photo-moods');
     for (const m of MOODS) {
@@ -984,6 +991,25 @@ function boot() {
       });
       host.appendChild(b);
     }
+    const wxBtns = [];
+    const paint = () => {
+      const kind = normalizeWeather(state.weather).kind;
+      for (const [b, key] of wxBtns) b.classList.toggle('active', key === kind);
+    };
+    for (const m of WEATHER_MOODS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = `${m.icon} ${m.label}`;
+      b.addEventListener('click', () => {
+        const next = applyWeatherMood(state.weather, m.key);
+        if (isDefaultWeather(next)) delete state.weather; else state.weather = next;
+        renderApi.setWeather(state.weather);
+        paint();
+      });
+      wxBtns.push([b, m.key]);
+      host.appendChild(b);
+    }
+    paint();
   }
 
   $('photo-fov').addEventListener('input', (e) => {

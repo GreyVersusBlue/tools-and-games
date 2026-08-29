@@ -56,6 +56,9 @@ import {
 } from './sound.js';
 import { sightBlockers } from './sightline.js';
 import { roomToneSpec } from './murmur.js';
+import {
+  normalizeWeather, rainSound, glazeSegments, glazeDistance, nextThunder,
+} from './weather.js';
 
 // How often the budget and the listener's room are recomputed. Both cost a
 // flood fill or a sort, neither changes meaningfully inside a tenth of a
@@ -116,6 +119,16 @@ export function initAudio(camera, opts = {}) {
   // Each holds one of the eight voices while it lives — see `voiceCap`.
   let lurker = null;
   let buzzer = null;
+  // Phase 29: the weather. The record is read straight off the world (it is
+  // the design's own optional `weather` key, so a mood click reaches here
+  // with no handoff at all), the level and corner come out of weather.js's
+  // one pure answer, and the thunder is that module's seeded schedule kept
+  // against a clock that only runs while it rains. The rain itself is a
+  // fourth bed, not a voice: it is everywhere, which is what a bed is for.
+  let rainBed = null;           // { n, f, g }
+  let wxClock = 0;              // s of rain so far — the thunder's clock
+  let strike = null;            // the next scheduled thunder, or null
+  let glazeCache = new Map();   // floorIndex -> exterior glass segments
   // Everything the sound panel prints. `heard`/`dropped`/`muted` are about the
   // continuous sources only — a bell is not "audible", it is silent until it
   // is rung — so `machines` is beside them and the counts add up.
@@ -528,6 +541,109 @@ export function initAudio(camera, opts = {}) {
     bed.outside.g.gain.setTargetAtTime(out ? bed.outside.lvl : bed.outside.lvl * 0.12, t, 0.5);
   }
 
+  // ---------- the weather ----------
+
+  // What the walker's ear knows about the rain: standing in it, or how many
+  // slabs are overhead (the top storey is one — the roof deck), and how far
+  // the nearest exterior glazing is. weather.js prices the trip; this only
+  // gathers the three facts and writes the answer into the bed.
+  function aimRain() {
+    if (!ctx) return;
+    const w = world ? normalizeWeather(world.weather) : null;
+    const raining = active && w && w.kind === 'rain';
+    const t = ctx.currentTime;
+    if (!raining) {
+      if (rainBed) {
+        rainBed.g.gain.setTargetAtTime(0, t, 0.5);
+        try { rainBed.n.stop(t + 2); } catch { /* already stopped */ }
+        rainBed = null;
+      }
+      strike = null;
+      return;
+    }
+    if (!rainBed) {
+      const n = noiseNode();
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 1200;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      n.connect(f); f.connect(g); g.connect(dryBus);
+      // A touch of the room on it: rain heard indoors is the building's
+      // surfaces answering the roof, and bone-dry noise reads as a hiss.
+      const s = ctx.createGain();
+      s.gain.value = 0.18;
+      g.connect(s); s.connect(sendBus);
+      n.start(t + Math.random());
+      rainBed = { n, f, g };
+    }
+    const e = ear();
+    const outside = isOutside(room);
+    const slabs = Math.max(1, (world.floors ? world.floors.length : 1) - (e.floor || 0));
+    let segs = glazeCache.get(e.floor || 0);
+    if (segs === undefined) {
+      segs = glazeSegments(world, e.floor || 0);
+      glazeCache.set(e.floor || 0, segs);
+    }
+    const spec = rainSound(w, {
+      outside,
+      slabsAbove: slabs,
+      glazeDist: glazeDistance(segs, e.x, e.z),
+    });
+    rainBed.g.gain.setTargetAtTime(gainAtRef(spec.db), t, 0.5);
+    rainBed.f.frequency.setTargetAtTime(clamp(spec.hz, 120, 8000), t, 0.5);
+  }
+
+  // One roll of thunder — far by construction (weather.js never schedules a
+  // strike under half a mile), so it arrives as a swell of very low noise,
+  // panned to its side of the sky, never a crack.
+  function rumble(s) {
+    const t = ctx.currentTime;
+    const n = noiseNode();
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    // The further the strike, the deeper the rumble — the air has eaten the
+    // brightness on the way, the same story every wall in this file tells.
+    f.frequency.setValueAtTime(clamp(60 + 260 * (1 - s.dist / 9000), 50, 320), t);
+    f.frequency.exponentialRampToValueAtTime(42, t + 3.2);
+    const g = ctx.createGain();
+    const lvl = gainAtRef(s.db) * 2.4;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(lvl, t + 0.5);
+    g.gain.linearRampToValueAtTime(lvl * 0.5, t + 1.4);
+    g.gain.exponentialRampToValueAtTime(0.0006, t + 3.8);
+    n.connect(f);
+    let out = g;
+    if (typeof ctx.createStereoPanner === 'function') {
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = s.pan * 0.75;
+      g.connect(pan);
+      out = pan;
+    }
+    f.connect(g);
+    out.connect(dryBus);
+    const send = ctx.createGain();
+    send.gain.value = 0.3;
+    g.connect(send); send.connect(sendBus);
+    n.start(t, Math.random() * 0.8);
+    try { n.stop(t + 4.2); } catch { /* fine */ }
+  }
+
+  // The clock only runs while it rains, so a design toggled dry and wet
+  // again resumes the same storm where it left off rather than re-rolling
+  // its first strike.
+  function thunderTick(dt) {
+    if (!rainBed || !world) return;
+    wxClock += dt;
+    const seed = world.life && Number.isFinite(world.life.seed) ? world.life.seed : 1;
+    const w = normalizeWeather(world.weather);
+    if (!strike) strike = nextThunder(seed, wxClock, w.intensity);
+    if (wxClock >= strike.at) {
+      if (ctx && ctx.state === 'running' && !muted) rumble(strike);
+      strike = nextThunder(seed, wxClock, w.intensity);
+    }
+  }
+
   // ---------- the room ----------
 
   // Re-derive the listener's acoustics, and rebuild the convolver when the
@@ -667,9 +783,11 @@ export function initAudio(camera, opts = {}) {
       world = state;
       roomCache = new Map();
       segsCache = new Map();
+      glazeCache = new Map();
+      strike = null;
       roomKey = '';
       rebuildSources();
-      if (started) { applyRoom(true); refreshBudget(); }
+      if (started) { applyRoom(true); refreshBudget(); aimRain(); }
     },
 
     // The shell's window onto the live door leaves, per storey — the same
@@ -698,10 +816,12 @@ export function initAudio(camera, opts = {}) {
         applyRoom(true);
         if (!bed) startBed();
         aimBed();
+        aimRain();
         refreshBudget();
       } else if (started) {
         stopAllVoices();
         stopBed();
+        aimRain();   // active is false, so this is the rain standing down
         murmurs = [];
         report.heard = 0; report.dropped = 0; report.muted = 0; report.murmurs = 0;
       }
@@ -713,11 +833,16 @@ export function initAudio(camera, opts = {}) {
       // before anything is placed against it. `walk.update()` has already
       // moved the camera this frame; the renderer hasn't run yet.
       camera.updateMatrixWorld(true);
+      thunderTick(dt);
       acc += dt;
       if (acc < 1 / BUDGET_HZ) return;
       acc = 0;
       applyRoom();
       refreshBudget();
+      // The rain follows the walker on the budget's own cadence — a window
+      // seat is louder than the aisle, and the glazing distance moves with
+      // every stride.
+      aimRain();
       tick();
     },
 

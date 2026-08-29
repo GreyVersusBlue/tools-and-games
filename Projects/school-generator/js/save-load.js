@@ -124,6 +124,7 @@ import { normalizeTimetable, isEmptyTimetable } from './timetable.js';
 import { normalizeRates, isEmptyRates } from './rates.js';
 import { normalizePhasing, isEmptyPhasing } from './phasing.js';
 import { normalizeHaunt, isDefaultHaunt } from './haunt.js';
+import { normalizeWeather, isDefaultWeather } from './weather.js';
 
 // v9 is the first bump that is not free.
 //
@@ -216,6 +217,11 @@ export function serialize(state, opts = {}) {
   // every file written before this build round-trips through it unchanged.
   const haunt = normalizeHaunt(out.haunt);
   if (isDefaultHaunt(haunt)) delete out.haunt; else out.haunt = haunt;
+  // Phase 29's one record, the same cheap append: a design with no weather
+  // writes no `weather` key — v12 still, and every file written before this
+  // build round-trips through it unchanged.
+  const weather = normalizeWeather(out.weather);
+  if (isDefaultWeather(weather)) delete out.weather; else out.weather = weather;
   // Phase 25, and the fifteenth application of the same rule — the first one
   // that is per *storey* rather than design-wide: a level with no
   // free-standing walls writes no `walls` key, so every file written before
@@ -422,6 +428,10 @@ export function deserialize(json, opts = {}) {
   // no haunt in it, never a design that won't open.
   const haunt = normalizeHaunt(d.haunt);
   if (!isDefaultHaunt(haunt)) state.haunt = haunt;
+  // Phase 29's weather, on the same terms: an unreadable weather is a clear
+  // day, never a design that won't open.
+  const weather = normalizeWeather(d.weather);
+  if (!isDefaultWeather(weather)) state.weather = weather;
   // v9, on the same terms as everything above it: an unreadable overlay is a
   // design with no overlay, never a design that won't open. An image type this
   // build can't decode, a data URL over the size cap, a missing pixel size —

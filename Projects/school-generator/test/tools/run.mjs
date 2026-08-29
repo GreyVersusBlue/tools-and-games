@@ -752,6 +752,40 @@ const CHECKS = [
     },
   },
   {
+    name: 'weather',
+    what: 'one click of rain thickens the deck and wets the ground; the same click clears it',
+    async run(d) {
+      const btn = `document.querySelector('#env-weather button[data-weather="rain"]')`;
+      await d.page.evaluate(`${btn}.click(); 1`);
+      await d.page.waitForTimeout(300);
+      const rec = await d.page.evaluate('window.app.state.weather || null');
+      const wx = await d.page.evaluate(`(() => {
+        const w = window.app.renderApi.weather;
+        return { kind: w.kind, wet: w.wet, cover: w.cover, fall: w.fall ? w.fall.kind : null };
+      })()`);
+      // Into the walk and back: the falling half belongs there, and the real
+      // point of the lap is that the precip shaders and the weatherized
+      // ground compile clean on the page (a GLSL error lands in pageErrors).
+      await d.page.evaluate(`document.getElementById('mode-btn').click(); 1`);
+      await d.page.waitForTimeout(900);
+      await d.page.evaluate(`document.getElementById('walk-exit').click(); 1`);
+      await d.page.waitForTimeout(400);
+      await d.page.evaluate(`${btn}.click(); 1`);
+      await d.page.waitForTimeout(200);
+      const cleared = await d.page.evaluate('window.app.state.weather || null');
+      return { rec, wx, cleared };
+    },
+    expect: ({ ctx }) => {
+      if (!ctx.rec || ctx.rec.kind !== 'rain') {
+        throw new Error('clicking the rain button wrote no weather record');
+      }
+      if (!(ctx.wx.wet > 0)) throw new Error('rain left the paving dry');
+      if (!(ctx.wx.cover > 0.7)) throw new Error(`rain under a fair-weather deck (cover ${ctx.wx.cover})`);
+      if (ctx.wx.fall !== 'rain') throw new Error('nothing scheduled to fall');
+      if (ctx.cleared) throw new Error('the same click did not put the sky back');
+    },
+  },
+  {
     name: 'undo-redo',
     what: 'undo and redo round-trip the design byte for byte',
     async run(d) {
