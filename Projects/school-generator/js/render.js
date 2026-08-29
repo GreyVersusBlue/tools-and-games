@@ -27,7 +27,7 @@ import {
 import {
   SEG_WALL, SEG_GLASS, SEG_RAIL, isBuilt,
   shapesOf, segEnds, segLength, shapeBBox, pointInShape, interiorPoint,
-  floorSolidAt, openingSpec,
+  floorSolidAt, openingSpec, shapeAt,
 } from './shapes.js';
 import { catalogEntry, propColor, variantKey } from './catalog.js';
 import { revealAt } from './hunt.js';
@@ -45,7 +45,11 @@ import { floorBounds, unionBounds, footprintMask } from './shadow.js';
 import {
   finishEntry, wallPaint, DEFAULT_FINISH, DEFAULT_PAINT,
   facadeEntry, ROOF_MEMBRANE, ROOF_SHINGLE,
+  glazingEntry, glazingForUse, DEFAULT_GLAZING,
 } from './finish.js';
+import { reliefFor } from './relief.js';
+import { placardsFor, exitSignsFor, EXIT_W, EXIT_H } from './signage.js';
+import { classify, isGroup } from './occupancy.js';
 import { terrainField, groundAt, emptyField } from './terrain.js';
 import { regionsOf, surfaceEntry, markingsFor } from './site.js';
 import { roofPlan, roofTop, PARAPET_H, COPING_T } from './roof.js';
@@ -186,6 +190,47 @@ function grayTex(size, draw) {
   return t;
 }
 
+// ---------- relief (Phase 31) ----------
+//
+// Every finish family's *shape*, as a tangent-space normal map. The bytes come
+// from relief.js — where the height fields and the two sign conventions are
+// pinned by a suite — and this is the four lines that make one a texture.
+//
+// A `DataTexture` rather than a canvas: the map is not a picture and never
+// wants a colour space, and pushing bytes straight at the GPU skips the
+// canvas readback the albedos pay for. The filters are set by hand because
+// `DataTexture` defaults to nearest with no mipmaps, which on a floor seen at
+// a hundred feet is a field of sparkling noise.
+//
+// One per grain family, built the first time a material asks and kept for the
+// life of the page — the same bargain `finishMats` makes. Eleven families at
+// 128², four bytes each, is 700 KB of GPU memory if a design somehow uses
+// every one of them; a school uses four.
+const reliefTextures = new Map();
+function reliefTexture(grain) {
+  const r = reliefFor(grain);
+  let t = reliefTextures.get(r.grain);
+  if (t) return t;
+  t = new THREE.DataTexture(r.texels, r.size, r.size, THREE.RGBAFormat);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.needsUpdate = true;
+  reliefTextures.set(r.grain, t);
+  return t;
+}
+
+// The same map, as a clone that can carry its own repeat. Two materials that
+// tile a family at different sizes — brick at 4ft and shingle at 3ft — cannot
+// share one texture object, because the repeat lives on the texture; a clone
+// shares the uploaded image and costs only the descriptor.
+function reliefMap(grain, repeat) {
+  const t = reliefTexture(grain).clone();   // `copy` already asks for an upload
+  if (repeat) t.repeat.copy(repeat);
+  return t;
+}
+
 // Phase 20: a finish family's own sheen, not VCT's. Every finish shipped
 // sharing `makeFloorRoughness` — the semi-gloss vinyl map — so carpet had a
 // waxed-tile shine and terrazzo was no glossier than the corridor. One map
@@ -243,78 +288,11 @@ function makeFinishRoughness(entry) {
   });
 }
 
-// The joints between the VCT tiles, as relief: the one thing raking light
-// picks out of a tile floor. Drawn from the same 4x4 grid the albedo draws.
-function makeFloorBump() {
-  return grayTex(256, (ctx, S) => {
-    ctx.fillStyle = 'rgb(128,128,128)';
-    ctx.fillRect(0, 0, S, S);
-    const tile = S / 4;
-    ctx.strokeStyle = 'rgb(84,84,84)';
-    ctx.lineWidth = 2;
-    for (let i = 0; i <= 4; i++) {
-      ctx.beginPath(); ctx.moveTo(i * tile, 0); ctx.lineTo(i * tile, S); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, i * tile); ctx.lineTo(S, i * tile); ctx.stroke();
-    }
-  });
-}
-
-// A finish's relief, matching its albedo's structure: plank seams, tile
-// joints. Carpet and terrazzo are flat and return null.
-function makeFinishBump(entry) {
-  if (entry.grain === 'plank') {
-    return grayTex(256, (ctx, S) => {
-      ctx.fillStyle = 'rgb(128,128,128)';
-      ctx.fillRect(0, 0, S, S);
-      const rows = 8, hgt = S / rows;
-      ctx.strokeStyle = 'rgb(90,90,90)';
-      ctx.lineWidth = 1.5;
-      for (let r = 0; r <= rows; r++) {
-        ctx.beginPath(); ctx.moveTo(0, r * hgt); ctx.lineTo(S, r * hgt); ctx.stroke();
-      }
-    });
-  }
-  if (entry.grain === 'tile') return makeFloorBump();
-  return null;
-}
-
-// The facade's relief: raked mortar joints on brick and block, the seam
-// shadow on standing-seam metal. Stucco keeps its tooth in the albedo alone.
-function makeFacadeBump(entry) {
-  if (entry.grain === 'brick' || entry.grain === 'block') {
-    const courses = entry.grain === 'brick' ? 18 : 6;
-    const across = entry.grain === 'brick' ? 6 : 3;
-    return grayTex(256, (ctx, S) => {
-      ctx.fillStyle = 'rgb(140,140,140)';
-      ctx.fillRect(0, 0, S, S);
-      const ch = S / courses, bw = S / across;
-      ctx.strokeStyle = 'rgb(70,70,70)';
-      ctx.lineWidth = entry.grain === 'brick' ? 2 : 2.5;
-      for (let r = 0; r <= courses; r++) {
-        ctx.beginPath(); ctx.moveTo(0, r * ch); ctx.lineTo(S, r * ch); ctx.stroke();
-        const off = (r % 2) * bw * 0.5;
-        for (let c = -1; c <= across; c++) {
-          const x = c * bw + off;
-          ctx.beginPath(); ctx.moveTo(x, r * ch); ctx.lineTo(x, (r + 1) * ch); ctx.stroke();
-        }
-      }
-    });
-  }
-  if (entry.grain === 'rib') {
-    return grayTex(256, (ctx, S) => {
-      ctx.fillStyle = 'rgb(128,128,128)';
-      ctx.fillRect(0, 0, S, S);
-      const ribs = 12, rw = S / ribs;
-      for (let i = 0; i < ribs; i++) {
-        ctx.fillStyle = 'rgb(190,190,190)';
-        ctx.fillRect(i * rw, 0, rw * 0.18, S);
-        ctx.fillStyle = 'rgb(80,80,80)';
-        ctx.fillRect(i * rw + rw * 0.18, 0, rw * 0.12, S);
-      }
-    });
-  }
-  return null;
-}
+// Phase 20 gave four families a bump map — tile joints, plank seams, mortar,
+// the standing seam — and left carpet, terrazzo, stucco, precast, shingle and
+// painted drywall dead flat. Phase 31 replaced the lot with `reliefMap`, which
+// has an answer for every family and carries a *direction* rather than a
+// slope: see the note beside it, and relief.js for the shapes themselves.
 
 // Painted drywall is not one sheen: scuffs and roller passes break the
 // constant 0.92 up under a low sun, which is most of what a wall shows.
@@ -1049,14 +1027,20 @@ export function initRender(canvas) {
     spotPool.push(l);
   }
 
+  // Which camera is driving. Declared up here rather than beside the composer
+  // it mostly serves, because the glazing below reads it while it is being
+  // built — and a `let` read before its declaration is a TDZ error on the one
+  // path nobody automates, which is a mistake this codebase has already made
+  // once (see Phase 30's `galleryFilled`).
+  let mode = 'edit';
+
   // --- materials ---
   const floorMat = new THREE.MeshStandardMaterial({
     map: makeFloorAlbedo(),
     roughnessMap: makeFloorRoughness(),
     // The tile joints as relief — raking light picks them out, which is most
     // of what a floor shows at walkthrough eye height.
-    bumpMap: makeFloorBump(),
-    bumpScale: 0.6,
+    normalMap: reliefMap('tile'),
     roughness: 1.0,
     metalness: 0.0,
     vertexColors: true,
@@ -1066,6 +1050,11 @@ export function initRender(canvas) {
     // The map's mean grey lands at the old constant 0.92; the variation is
     // scuffs and roller passes breaking the sheen up under a low sun.
     roughnessMap: makeWallRoughness(),
+    // Phase 31: painted drywall is not a sheet of card either. The shallowest
+    // relief in the table — orange peel, and the ridge where two roller passes
+    // overlap — which is invisible until the sun is nearly along the wall and
+    // is the whole of what a wall shows when it is.
+    normalMap: reliefMap('paint'),
     roughness: 1.0,
     metalness: 0.0,
     vertexColors: true,
@@ -1080,6 +1069,9 @@ export function initRender(canvas) {
   });
   const groundMat = new THREE.MeshStandardMaterial({
     map: makeGroundAlbedo(),
+    // Tiled forty times across the plane, so the relief has to be too or the
+    // ground is a photograph of gravel with one enormous pebble on it.
+    normalMap: reliefMap('speck', new THREE.Vector2(40, 40)),
     roughness: 0.97,
     metalness: 0.0,
   });
@@ -1133,16 +1125,82 @@ export function initRender(canvas) {
   // Glazing. Transparent surfaces don't write depth — otherwise a pane hides
   // whatever is behind it from every later draw, which is exactly the thing a
   // window is for not doing — and they draw after the opaque pass.
-  const glassMat = new THREE.MeshPhysicalMaterial({
-    color: 0xcfe4ee,
-    transparent: true,
-    opacity: 0.26,
-    roughness: 0.05,
-    metalness: 0.0,
-    reflectivity: 0.6,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  });
+  //
+  // Phase 31 makes it real glass: `transmission` rather than `opacity`, with
+  // an index of refraction and a thickness, so a pane bends what is behind it
+  // and a *frosted* one scatters it — which is the entire mechanism by which
+  // a restroom's borrowed light stops being a green window. The rows are in
+  // finish.js beside the floors and the facades, because what a material is
+  // has lived there since the second arc.
+  //
+  // **What it costs, stated.** A transmissive material makes three.js render
+  // the scene a second time into a target the pane samples. That is the same
+  // bargain SSAO and depth of field already take here, and it is taken the
+  // same way: on in the walkthrough, off at the drafting table — see
+  // `applyGlassMode`. `side` is FrontSide rather than DoubleSide, and that is
+  // not a detail: a pane is a closed box, so the back faces were never
+  // visible, and a DoubleSide transmissive material makes the renderer flip
+  // `needsUpdate` on it twice a frame to draw its own backside.
+  const glassMats = new Map();
+  function glassMaterials(key) {
+    const k = glazingEntry(key).key;
+    let pair = glassMats.get(k);
+    if (pair) return pair;
+    const g = glazingEntry(k);
+    const solid = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(g.color),
+      transparent: true,
+      opacity: 1,
+      transmission: 0,          // switched on by `applyGlassMode` below
+      ior: g.ior,
+      thickness: g.thickness,
+      roughness: g.roughness,
+      metalness: 0.0,
+      specularIntensity: 1,
+      side: THREE.FrontSide,
+      depthWrite: false,
+    });
+    solid.userData.glazing = g;
+    // The ghosted storey below never refracts: it is a tracing of the floor
+    // underneath, and a tracing that bends the room behind it is a puzzle.
+    const ghost = solid.clone();
+    ghost.userData.glazing = g;
+    ghost.transmission = 0;
+    ghost.opacity = 0.12;
+    ghost.userData.flat = true;
+    pair = { solid, ghost };
+    glassMats.set(k, pair);
+    applyGlassMode(solid);
+    return pair;
+  }
+
+  // A pane refracts while you are walking through the building and blends
+  // cheaply while you are drawing it. In edit mode the camera is 200ft up and
+  // a window is a line; paying for a second scene render to refract it would
+  // be paying for nothing.
+  function applyGlassMode(m) {
+    const g = m.userData.glazing;
+    if (!g || m.userData.flat) return;
+    const walking = mode !== 'edit';
+    const want = walking ? g.transmission : 0;
+    const opacity = walking ? 1 : 0.26;
+    if (m.transmission === want && m.opacity === opacity) return;
+    m.transmission = want;
+    m.opacity = opacity;
+    // Crossing zero adds or drops USE_TRANSMISSION, which is a recompile — so
+    // it happens once per mode switch and never per frame.
+    m.needsUpdate = true;
+  }
+
+  // Every pane in the building follows the camera, in one call.
+  function applyGlassToAll() {
+    for (const { solid } of glassMats.values()) applyGlassMode(solid);
+  }
+
+  // Clear glazing exists from the start, so a design with no private room in
+  // it ever builds exactly one glass material — the same bargain `finishMats`
+  // makes with the default floor finish one paragraph down.
+  glassMaterials(DEFAULT_GLAZING);
   // Guardrails and handrails: brushed metal posts with a wood-toned cap, both
   // baked into the vertex colors the way props are.
   const railMat = new THREE.MeshStandardMaterial({
@@ -1162,7 +1220,6 @@ export function initRender(canvas) {
   // up walls between storeys without the lower floor competing for attention.
   const floorMatGhost = floorMat.clone();
   const wallMatGhost = wallMat.clone();
-  const glassMatGhost = glassMat.clone();
   const railMatGhost = railMat.clone();
   const stairMatGhost = stairMat.clone();
   for (const m of [floorMatGhost, wallMatGhost, railMatGhost, stairMatGhost]) {
@@ -1174,11 +1231,13 @@ export function initRender(canvas) {
   wallMatGhost.opacity = 0.22;
   railMatGhost.opacity = 0.28;
   stairMatGhost.opacity = 0.30;
-  glassMatGhost.opacity = 0.12;
 
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
   for (const m of [floorMat, wallMat, ceilMat, groundMat]) {
     if (m.map) m.map.anisotropy = Math.min(8, maxAniso);
+    // The relief has to be filtered as hard as the colour is, or a floor at a
+    // hundred feet is a sheet of glitter where the joints alias.
+    if (m.normalMap) m.normalMap.anisotropy = Math.min(8, maxAniso);
   }
 
   // Phase 29: the ground takes the weather. Only what faces the sky ever
@@ -1203,22 +1262,21 @@ export function initRender(canvas) {
     const map = makeFinishAlbedo(entry);
     map.anisotropy = Math.min(8, maxAniso);
     map.repeat.set(1 / entry.tile, 1 / entry.tile);
-    const bump = makeFinishBump(entry);
     // Phase 20: the family's own sheen map does the talking — see
     // makeFinishRoughness. Roughness stays 1.0 so the map's grey *is* the
-    // answer rather than a fraction of one.
+    // answer rather than a fraction of one. Phase 31 adds the family's own
+    // *shape* on the same terms, tiled with the albedo so a carpet's pile and
+    // a carpet's colour are the same size as each other.
+    const normal = reliefMap(entry.grain, map.repeat);
+    normal.anisotropy = Math.min(8, maxAniso);
     const solid = new THREE.MeshStandardMaterial({
       map,
       roughnessMap: makeFinishRoughness(entry),
-      ...(bump ? { bumpMap: bump, bumpScale: 0.6 } : {}),
+      normalMap: normal,
       roughness: 1.0,
       metalness: 0.0,
       vertexColors: true,
     });
-    if (bump) {
-      bump.anisotropy = Math.min(8, maxAniso);
-      bump.repeat.copy(map.repeat);
-    }
     const ghost = solid.clone();
     ghost.transparent = true;
     ghost.depthWrite = false;
@@ -1242,8 +1300,11 @@ export function initRender(canvas) {
     const map = makeSiteAlbedo(entry);
     map.anisotropy = Math.min(8, maxAniso);
     map.repeat.set(1 / entry.tile, 1 / entry.tile);
+    const normal = reliefMap(entry.grain, map.repeat);
+    normal.anisotropy = Math.min(8, maxAniso);
     m = new THREE.MeshStandardMaterial({
-      map, roughness: entry.grain === 'fiber' || entry.grain === 'mow' ? 1.0 : 0.95,
+      map, normalMap: normal,
+      roughness: entry.grain === 'fiber' || entry.grain === 'mow' ? 1.0 : 0.95,
       metalness: 0, vertexColors: true,
       // Every site surface is a skin laid on the terrain a few inches above
       // it. Depth offset rather than height is what keeps a court from
@@ -1264,17 +1325,16 @@ export function initRender(canvas) {
     map.anisotropy = Math.min(8, maxAniso);
     map.repeat.set(1 / entry.tile, 1 / entry.tile);
     // Mortar joints and seams as relief, from the same courses the albedo
-    // draws — brick under a raking sun stops reading as wallpaper.
-    const bump = makeFacadeBump(entry);
-    if (bump) {
-      bump.anisotropy = Math.min(8, maxAniso);
-      bump.repeat.copy(map.repeat);
-    }
+    // draws — brick under a raking sun stops reading as wallpaper. Since
+    // Phase 31 stucco and precast have one too: a fine tooth, which is what
+    // stops a whole elevation of EIFS reading as a painted board.
+    const normal = reliefMap(entry.grain, map.repeat);
+    normal.anisotropy = Math.min(8, maxAniso);
     // Phase 20: standing-seam metal is painted steel, not masonry — it takes
     // a low-sun glint the way brick never does. Everything else stays matte.
     const metal = entry.grain === 'rib';
     m = new THREE.MeshStandardMaterial({
-      map, ...(bump ? { bumpMap: bump, bumpScale: 0.8 } : {}),
+      map, normalMap: normal,
       roughness: metal ? 0.58 : 0.92, metalness: metal ? 0.18 : 0,
       vertexColors: true,
     });
@@ -1291,8 +1351,13 @@ export function initRender(canvas) {
     const map = makeRoofAlbedo(entry, shingle);
     map.anisotropy = Math.min(8, maxAniso);
     map.repeat.set(1 / entry.tile, 1 / entry.tile);
+    // A shingle roof is courses of tabs, each throwing a shadow on the one
+    // below; a membrane is a flat sheet with a tooth. Both are in the table.
+    const normal = reliefMap(entry.grain, map.repeat);
+    normal.anisotropy = Math.min(8, maxAniso);
     m = new THREE.MeshStandardMaterial({
-      map, roughness: 0.95, metalness: 0, vertexColors: true, side: THREE.DoubleSide,
+      map, normalMap: normal,
+      roughness: 0.95, metalness: 0, vertexColors: true, side: THREE.DoubleSide,
     });
     weatherize(m);
     roofMats.set(key, m);
@@ -1460,7 +1525,6 @@ export function initRender(canvas) {
 
   // --- post-processing ---
   let composer = null;
-  let mode = 'edit';
   let fxEnabled = true;
   let dofPass = null;
 
@@ -1601,6 +1665,12 @@ export function initRender(canvas) {
     // board restores the unlit vertex colours and wakes the live lights;
     // stepping into a walk that has a current bake puts it on.
     applyBakeTint(bakeWorn());
+    // Phase 31: glass refracts in the walk and blends on the drawing board.
+    // Same rule as SSAO two paragraphs of code above — an effect that costs a
+    // second scene render lives where you can see what it buys.
+    applyGlassToAll();
+    // ...and the exits announce themselves to the person who is inside.
+    if (!edit) ensureExitSigns();
     markLightsDirty();
     applyFloorVisibility();
     // Phase 29: the falling half of the weather belongs to the walk — the
@@ -4142,6 +4212,14 @@ export function initRender(canvas) {
       // that outlives any single rebuild — freeing it here would leave every
       // other instance of that type pointing at disposed GPU buffers.
       if (child.geometry && !child.userData.sharedGeo) child.geometry.dispose();
+      // A material built for this rebuild alone — the placard atlas is the
+      // only one, and it holds a canvas the size of the storey's room names,
+      // so leaving it behind leaks a texture per edit rather than per page.
+      // Everything else here shares a cached material that outlives the mesh.
+      if (child.userData.ownMaterial && child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
       if (child.isSprite && child.material) {
         if (child.material.map) child.material.map.dispose();
         child.material.dispose();
@@ -4356,7 +4434,17 @@ export function initRender(canvas) {
     // mesh apiece, exactly as before.
     const floorGeosBy = new Map();
     const ceilGeos = [], wallGeos = [], fixtureGeos = [];
-    const glassGeos = [], railGeos = [], stairGeos = [];
+    // Glazing is bucketed by kind for the same reason floors are bucketed by
+    // finish: one mesh per material actually present. A school with no
+    // restroom in it never builds a frosted material at all.
+    const glassGeosBy = new Map();
+    const railGeos = [], stairGeos = [];
+    const pushGlass = (key, geo) => {
+      const k = glazingEntry(key).key;
+      let list = glassGeosBy.get(k);
+      if (!list) { list = []; glassGeosBy.set(k, list); }
+      list.push(geo);
+    };
     const cuts = ctx.cuts || [];
     const ceilCuts = ctx.ceilCuts || [];
     const metrics = ctx.metrics || null;
@@ -4382,6 +4470,39 @@ export function initRender(canvas) {
       if (hex === DEFAULT_PAINT) return _white;
       _paint.set(hex);
       return _paint;
+    };
+
+    // Phase 31's glazing, derived exactly as paint and thickness are: from
+    // what is on either side of the boundary, never from a field.
+    //
+    // **Both sides, not the first one with an opinion.** A borrowed light is a
+    // hole between two rooms and it is frosted if *either* of them wants
+    // privacy — a restroom whose window onto the corridor is clear is not a
+    // restroom, whichever way the ring happens to be wound. That is the
+    // convention about a partition belonging to one room and a fact that has
+    // to be true of both, said out loud.
+    const useAt = (x, z) => {
+      const shape = shapeAt(floor, x, z);
+      if (!shape) return null;
+      return isGroup(shape.group) ? shape.group : classify(shape.name);
+    };
+    const glazeCache = new Map();
+    const glazingOf = (ax, az, bx, bz) => {
+      const dx = bx - ax, dz = bz - az;
+      const len = Math.hypot(dx, dz);
+      if (len < 1e-6) return DEFAULT_GLAZING;
+      const key = `${Math.round((ax + bx) * 5)},${Math.round((az + bz) * 5)},` +
+        `${Math.round(dx * 5)},${Math.round(dz * 5)}`;
+      let v = glazeCache.get(key);
+      if (v !== undefined) return v;
+      // The same probe distance finish.js paints with: clear of the wall, well
+      // inside the room on the other side of it.
+      const mx = ax + dx / 2, mz = az + dz / 2;
+      const nx = (-dz / len) * 1.2, nz = (dx / len) * 1.2;
+      v = [useAt(mx + nx, mz + nz), useAt(mx - nx, mz - nz)]
+        .some((u) => glazingForUse(u) !== DEFAULT_GLAZING) ? 'frosted' : DEFAULT_GLAZING;
+      glazeCache.set(key, v);
+      return v;
     };
 
     // Phase 5's facade, and the smallest honest way to have one. An exterior
@@ -4461,7 +4582,7 @@ export function initRender(canvas) {
     // frame is ordinary wall geometry; only the pane goes in the transparent
     // pile, so glass costs one extra draw call per storey and no sorting
     // headaches for anything else.
-    const glazedRun = (p0, p1, len, angle, h, y0 = baseY, t = WALL_T) => {
+    const glazedRun = (p0, p1, len, angle, h, y0 = baseY, t = WALL_T, glaze = DEFAULT_GLAZING) => {
       const cx = (p0.x + p1.x) / 2, cz = (p0.z + p1.z) / 2;
       addOriented(len, GLASS_SILL, t, cx, y0 + GLASS_SILL / 2, cz, angle, _glassFrame);
       addOriented(len, GLASS_HEAD, t, cx, y0 + h - GLASS_HEAD / 2, cz, angle, _glassFrame);
@@ -4477,14 +4598,14 @@ export function initRender(canvas) {
       const pane = new THREE.BoxGeometry(len, paneH, t * 0.35);
       pane.rotateY(-angle);
       pane.translate(cx, y0 + GLASS_SILL + paneH / 2, cz);
-      glassGeos.push(pane);
+      pushGlass(glaze, pane);
     };
 
     // A window: the band of glazing that sits in the middle of a wall, with
     // the wall itself carrying on above and below it. Same construction as the
     // curtain wall above — frame, mullions, one pane — at a tighter spacing,
     // because a punched window is a smaller thing than a storefront bay.
-    const windowRun = (p0, p1, len, angle, band, t, color, face = 0) => {
+    const windowRun = (p0, p1, len, angle, band, t, color, face = 0, glaze = DEFAULT_GLAZING) => {
       const cx = (p0.x + p1.x) / 2, cz = (p0.z + p1.z) / 2;
       const ux = (p1.x - p0.x) / len, uz = (p1.z - p0.z) / len;
       // Wall under the sill and over the head — this is the line that makes a
@@ -4515,7 +4636,7 @@ export function initRender(canvas) {
       const pane = new THREE.BoxGeometry(len, paneH - 0.2, t * 0.3);
       pane.rotateY(-angle);
       pane.translate(cx, baseY + band.sill + paneH / 2, cz);
-      glassGeos.push(pane);
+      pushGlass(glaze, pane);
     };
 
     // A guardrail: posts, a cap you could put a hand on, and one mid rail so it
@@ -4535,11 +4656,11 @@ export function initRender(canvas) {
 
     // One full-height piece of boundary, whichever kind it is. Everything that
     // knows about doorways calls this and stays out of the material business.
-    const fillSpan = (kind, p0, p1, angle, h, t, color, face = 0) => {
+    const fillSpan = (kind, p0, p1, angle, h, t, color, face = 0, glaze = DEFAULT_GLAZING) => {
       const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
       if (len < 0.02) return;
       if (kind === SEG_RAIL) railRun(p0, p1, len, angle);
-      else if (kind === SEG_GLASS) glazedRun(p0, p1, len, angle, h, baseY, t);
+      else if (kind === SEG_GLASS) glazedRun(p0, p1, len, angle, h, baseY, t, glaze);
       else {
         addOriented(len, h, t, (p0.x + p1.x) / 2, baseY + h / 2, (p0.z + p1.z) / 2,
           angle, color, wallGeos, face);
@@ -4566,6 +4687,9 @@ export function initRender(canvas) {
       // run for the same reason thickness and paint are: a door's jamb is the
       // same wall as the door, and cladding one and not the other is a seam.
       const face = kind === SEG_WALL ? outwardFace(a.x, a.z, b.x, b.z) : 0;
+      // ...and which glazing, on the same terms and for the same reason: a
+      // window and the borrowed light beside it are the same wall.
+      const glaze = glazingOf(a.x, a.z, b.x, b.z);
       const at = (v, pad = 0) => ({ x: a.x + ux * (v * L + pad), z: a.z + uz * (v * L + pad) });
       // Overhang the outer ends by half a wall thickness so corners close.
       const ends = (t0, t1, grow = 0) => [
@@ -4574,7 +4698,7 @@ export function initRender(canvas) {
       ];
       const span = (t0, t1) => {
         const [p0, p1] = ends(t0, t1);
-        fillSpan(kind, p0, p1, angle, h, t, color, face);
+        fillSpan(kind, p0, p1, angle, h, t, color, face, glaze);
       };
       const header = (t0, t1, hh, cy, col, depth = t, grow = 0) => {
         const [p0, p1] = ends(t0, t1, grow);
@@ -4606,7 +4730,7 @@ export function initRender(canvas) {
           const [p0, p1] = ends(c.t0, c.t1);
           const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
           if (len > 0.05 && kind !== SEG_RAIL) {
-            windowRun(p0, p1, len, angle, windowBand(c.spec), t, color, face);
+            windowRun(p0, p1, len, angle, windowBand(c.spec), t, color, face, glaze);
           }
         } else {
           // A gap in a railing is just a gap — there is nothing to hang a
@@ -4862,13 +4986,15 @@ export function initRender(canvas) {
       mesh.userData.baked = true;
       group.add(mesh);
     }
-    if (glassGeos.length) {
-      const mesh = new THREE.Mesh(mergeGeometries(glassGeos), glassMat);
+    for (const [key, geos] of glassGeosBy) {
+      if (!geos.length) continue;
+      const mats = glassMaterials(key);
+      const mesh = new THREE.Mesh(mergeGeometries(geos), mats.solid);
       mesh.renderOrder = 10;   // after the opaque pass, so it blends over it
       // A pane that cast a shadow would be a window that darkens the room it
       // lights. The frame around it, which is ordinary wall geometry, still does.
       mesh.userData.noShadow = true;
-      mesh.userData.mats = { solid: glassMat, ghost: glassMatGhost };
+      mesh.userData.mats = mats;
       group.add(mesh);
     }
     if (railGeos.length) {
@@ -4909,6 +5035,231 @@ export function initRender(canvas) {
       sprite.userData.roomId = shape.id;
       labels.add(sprite);
     }
+  }
+
+  // ---------- signage (Phase 31) ----------
+  //
+  // What the building already knows about itself, on the wall. signage.js
+  // decides *where* — which door, which jamb, which side, how high — and this
+  // draws it; nothing here has an opinion about a room, and there is no
+  // signage tool, because there is nothing to place.
+  //
+  // **Two materials for a whole school.** Every room placard on a storey goes
+  // into one canvas atlas and one merged mesh, so a forty-classroom building
+  // is one draw call and one texture rather than forty of each; every exit
+  // sign in the building shares one emissive material and one texture, since
+  // they all say the same word. That is the budget the phase was written
+  // against, and it is counted in materials.
+
+  // How the atlas is laid out. **A cell has the plate's own aspect** — 8x6in,
+  // so 4:3 — because the whole cell is stretched onto the whole plate, and a
+  // square cell on a landscape plate prints every room number a third wider
+  // than it is tall. Eight across keeps the sheet square-ish for any school,
+  // and 160px across a six-inch plate is more resolution than a plate read
+  // from three feet away has ever needed.
+  const PLACARD_COLS = 8;
+  const PLACARD_CELL_W = 160;
+  const PLACARD_CELL_H = 120;
+  // What one storey will draw — sixty-four rooms, since a room gets at most
+  // two. Past this a plan has more doors than a school, and an atlas has a
+  // size the GPU will not take.
+  const PLACARD_MAX = 128;
+
+  // The plate itself: a dark anodised sign with the number large and whatever
+  // is left of the name under it. A room with no number in its name gets the
+  // name across the middle instead, which is what a real plate does.
+  function drawPlacard(ctx, x, y, w, h, sign) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = '#2b2f36';
+    ctx.fillRect(0, 0, w, h);
+    // A bevel, so the plate reads as a plate at a glance and not as a sticker.
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(0, 0, w, 3);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, h - 3, w, 3);
+    ctx.fillStyle = '#eef1f5';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Shrink to fit rather than clip: "Learning Commons" on a six-inch plate
+    // is a real room name and a clipped one reads as a rendering fault.
+    const fit = (text, size, weight) => {
+      let s = size;
+      ctx.font = `${weight} ${s}px "Helvetica Neue", Arial, sans-serif`;
+      while (s > 6 && ctx.measureText(text).width > w - 14) {
+        s -= 1;
+        ctx.font = `${weight} ${s}px "Helvetica Neue", Arial, sans-serif`;
+      }
+    };
+    if (sign.number) {
+      fit(sign.number, Math.round(h * 0.46), '700');
+      ctx.fillText(sign.number, w / 2, sign.label ? h * 0.40 : h * 0.5);
+      if (sign.label) {
+        ctx.fillStyle = '#aeb7c2';
+        fit(sign.label.toUpperCase(), Math.round(h * 0.19), '500');
+        ctx.fillText(sign.label.toUpperCase(), w / 2, h * 0.76);
+      }
+    } else {
+      fit(sign.name.toUpperCase(), Math.round(h * 0.28), '600');
+      ctx.fillText(sign.name.toUpperCase(), w / 2, h * 0.5);
+    }
+    ctx.restore();
+  }
+
+  // One plane per sign, turned to face out of its wall, with its UVs pointed
+  // at its own cell of the atlas. `rows` is what the atlas came out as.
+  function signPlane(sign, baseY, col, row, rows) {
+    const g = new THREE.PlaneGeometry(sign.w, sign.h);
+    const uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) {
+      // A CanvasTexture is flipped, so canvas row 0 is the *top* of the image
+      // and therefore the highest v. Getting this backwards prints every
+      // placard upside down, which is at least a loud kind of wrong.
+      uv.setXY(i,
+        (col + uv.getX(i)) / PLACARD_COLS,
+        1 - (row + 1 - uv.getY(i)) / rows);
+    }
+    g.rotateY(sign.yaw);
+    g.translate(sign.x, baseY + sign.y, sign.z);
+    coloredGeo(g, _white);
+    return g;
+  }
+
+  // The one texture every exit sign in the building shares: white letters on
+  // the red a US school's signs are, with the housing drawn around them.
+  let exitTexture = null;
+  let exitMat = null;
+  function exitMaterial() {
+    if (exitMat) return exitMat;
+    // Drawn at the sign's own proportions — 12x8in, so 3:2 — for the same
+    // reason the placard atlas is: the canvas is stretched onto the plane, so
+    // a square one prints EXIT squat.
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = Math.round(256 * (EXIT_H / EXIT_W));
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#171a1f';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = '#b8121a';
+    ctx.fillRect(c.width * 0.05, c.height * 0.09, c.width * 0.90, c.height * 0.82);
+    ctx.fillStyle = '#fff3ef';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 ${Math.round(c.height * 0.52)}px "Helvetica Neue", Arial, sans-serif`;
+    ctx.fillText('EXIT', c.width / 2, c.height * 0.52);
+    exitTexture = new THREE.CanvasTexture(c);
+    exitTexture.colorSpace = THREE.SRGBColorSpace;
+    exitTexture.wrapS = exitTexture.wrapT = THREE.ClampToEdgeWrapping;
+    exitTexture.anisotropy = Math.min(8, maxAniso);
+    exitMat = new THREE.MeshStandardMaterial({
+      map: exitTexture,
+      // Internally illuminated, which is what an exit sign is — so it wears
+      // its own picture as its glow and never goes out. The intensity
+      // overshoots the bloom pass's 0.88 threshold for the same reason the
+      // lamp lenses do: a sign that doesn't bloom doesn't look switched on.
+      emissive: 0xffffff,
+      emissiveMap: exitTexture,
+      emissiveIntensity: 1.35,
+      roughness: 0.6,
+      metalness: 0,
+      // The haunted night gets its glowing EXITs out of this line and no
+      // other: nothing here reads the hour, the bake or the stage machine.
+      toneMapped: true,
+    });
+    return exitMat;
+  }
+
+  // **The two halves are built at different moments, and on purpose.**
+  // Placards come out of the storey's own doors — a `shapeAt` probe apiece,
+  // which is what a rebuild is already made of — so they are built with the
+  // storey. Exit signs stand over the *egress graph's* exits, and building
+  // that graph is twenty milliseconds the drawing board should not pay on
+  // every wall drag. So they arrive when the walk does, which is also the only
+  // time anybody is at eye level to read one; the same lazy bargain the
+  // minimap's own nav takes in main.js.
+  let exitSignsBuilt = false;
+  // What the building is showing, for the readout and for the tools pass —
+  // which has no other way to ask whether a plate came out on a wall.
+  let placardCount = 0;
+  let exitSignCount = 0;
+
+  // Every room placard on one storey, as one mesh, in the storey's own sign
+  // group. The group is what `applyFloorVisibility` reaches for: a sign is
+  // part of the structure, cannot wear the ghost material (it is its own
+  // atlas), and so follows the door leaves' rule — a ghosted storey simply
+  // does not draw them.
+  function signGroupFor(group) {
+    let signs = group.userData.signGroup;
+    if (!signs) {
+      signs = new THREE.Group();
+      group.add(signs);
+      group.userData.signGroup = signs;
+    }
+    return signs;
+  }
+
+  function buildPlacards(state, floorIndex, baseY, group) {
+    const placards = placardsFor(state, floorIndex, { max: PLACARD_MAX });
+    if (placards.length) {
+      const rows = Math.ceil(placards.length / PLACARD_COLS);
+      const canvas = document.createElement('canvas');
+      canvas.width = PLACARD_COLS * PLACARD_CELL_W;
+      canvas.height = rows * PLACARD_CELL_H;
+      const ctx = canvas.getContext('2d');
+      const geos = [];
+      placards.forEach((sign, i) => {
+        const col = i % PLACARD_COLS, row = (i / PLACARD_COLS) | 0;
+        drawPlacard(ctx, col * PLACARD_CELL_W, row * PLACARD_CELL_H,
+          PLACARD_CELL_W, PLACARD_CELL_H, sign);
+        geos.push(signPlane(sign, baseY, col, row, rows));
+      });
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = Math.min(8, maxAniso);
+      const mat = new THREE.MeshStandardMaterial({
+        map: tex, roughness: 0.55, metalness: 0.1, vertexColors: true,
+      });
+      const mesh = new THREE.Mesh(mergeGeometries(geos), mat);
+      // Built for this rebuild and thrown away with it — see disposeGroup.
+      mesh.userData.ownMaterial = true;
+      // A plate in a dark corridor is a dark plate: the bake tints it like
+      // any other surface, which is what its white vertex colours are for.
+      mesh.userData.baked = true;
+      mesh.userData.noShadow = true;
+      signGroupFor(group).add(mesh);
+    }
+    placardCount += placards.length;
+    return placards.length;
+  }
+
+  // ...and the glowing EXITs, once, on the way into a walk.
+  function ensureExitSigns() {
+    if (exitSignsBuilt || !built) return 0;
+    exitSignsBuilt = true;
+    const signs = exitSignsFor(built);
+    if (!signs.length) return 0;
+    const mat = exitMaterial();
+    let n = 0;
+    for (const group of buildingGroup.children) {
+      const i = group.userData.floor;
+      const onFloor = signs.filter((s) => s.floor === i);
+      if (!onFloor.length) continue;
+      const baseY = floorBaseY(built, i);
+      const geos = onFloor.map((sign) => {
+        const g = new THREE.PlaneGeometry(sign.w, sign.h);
+        g.rotateY(sign.yaw);
+        g.translate(sign.x, baseY + sign.y, sign.z);
+        return g;
+      });
+      const mesh = new THREE.Mesh(mergeGeometries(geos), mat);
+      mesh.userData.noShadow = true;
+      // Not `baked`: an exit sign is lit from inside and a bake that darkened
+      // one would be a bake that switched it off.
+      signGroupFor(group).add(mesh);
+      n += onFloor.length;
+    }
+    exitSignCount = n;
+    return n;
   }
 
   // The contact blob: a soft radial shadow on a small plane under each
@@ -5246,6 +5597,12 @@ export function initRender(canvas) {
       if (g.userData.liftGroup) {
         g.userData.liftGroup.visible = structureOn && !ghost;
       }
+      // ...and so do the signs, for the same two reasons: they are their own
+      // atlas rather than a material that ghosts, and a lit EXIT floating
+      // over the plan you are editing reads as a mistake.
+      if (g.userData.signGroup) {
+        g.userData.signGroup.visible = structureOn && !ghost;
+      }
     }
     for (const g of labelGroup.children) {
       g.visible = !edit || g.userData.floor === cur;
@@ -5552,10 +5909,10 @@ export function initRender(canvas) {
   // ---------- the crowd ----------
   //
   // Phase 6 puts people in the building, and they are drawn the way everything
-  // else that repeats is drawn here: instanced. A person is eight rigid parts
-  // — head, torso, two thighs, two shins, two arms — and each part is one
-  // `InstancedMesh` shared by the whole school, so a hundred and fifty people
-  // cost eight draw calls rather than twelve hundred.
+  // else that repeats is drawn here: instanced. A person is ten rigid parts
+  // — head, hair, torso, two thighs, two shins, two arms, and a bag — and each
+  // part is one `InstancedMesh` shared by the whole school, so a hundred and
+  // fifty people cost ten draw calls rather than fifteen hundred.
   //
   // **No skinning, and no skeleton.** A rigid-part puppet instances trivially
   // (a skinned one does not, without a texture of bone matrices), and at the
@@ -5570,6 +5927,17 @@ export function initRender(canvas) {
   // per instance (`setColorAt`), which is why the geometries are baked white:
   // `propMat` has `vertexColors` on, so white × instance colour is the
   // instance colour.
+  //
+  // **Phase 31: the wardrobe.** Every one of those hundred and fifty people
+  // was the same person in a different shirt — the same height give or take a
+  // tenth, the same width exactly, the same bare head, and nothing on their
+  // back. Three things fix it and none of them costs a draw call: `build`
+  // scales the body *across* while `height` scales it up (two axes, not one,
+  // which is what stops a school reading as one person photographed at six
+  // sizes), a hair cap and a backpack join the parts list — and the backpack's
+  // instance count is only the people carrying one, so a room of teachers
+  // draws none — and the body bobs twice per stride, which agents.js works out
+  // in `walkBob` because the gait is the agent's.
   const CROWD_MAX = 640;
   // A body, in feet, at scale 1. Sizes are a person: 5.8ft to the crown, 2.9ft
   // to the hip, a 13in shoulder width.
@@ -5714,7 +6082,14 @@ export function initRender(canvas) {
       // Hung off a neck-length offset instead, it floats — which is precisely
       // what the first version of this did, to everybody, all day.
       head: sph(BODY.head, 0, BODY.head * 0.86, 0, w, 10),
+      // The hair sits on the same pivot as the head and is a shade bigger, so
+      // it is a cap over the crown rather than a second skull inside it. A
+      // little forward, because a hairline is not centred on the ears.
+      hair: sph(BODY.head * 1.06, 0, BODY.head * 0.98, -0.03, w, 10),
       torso: box(1.15, BODY.torso, 0.66, 0, BODY.torso / 2, 0, w),
+      // The bag hangs off the shoulders and sticks out behind — local -Z is
+      // behind a body facing +Z, the same frame every limb above is posed in.
+      bag: box(0.86, 1.15, 0.42, 0, -0.52, -0.5, w),
       thighL: box(0.42, BODY.thigh, 0.42, 0, -BODY.thigh / 2, 0, w),
       thighR: box(0.42, BODY.thigh, 0.42, 0, -BODY.thigh / 2, 0, w),
       shinL: box(0.36, BODY.shin, 0.4, 0, -BODY.shin / 2, 0, '#c8c8c8'),
@@ -5793,11 +6168,17 @@ export function initRender(canvas) {
   // Place one part: its joint in world space, its own swing, the body's
   // facing. Rotation order is YXZ so the swing happens in the body's frame
   // rather than the world's — turn first, then lift the leg.
-  function poseCrowdPart(mesh, i, jx, jy, jz, facing, swing, scale) {
+  //
+  // Two scales, not one (Phase 31): `up` is how tall this person is and
+  // `across` is how broadly they are built. The scale is applied in the part's
+  // own frame, which is why it has to be here rather than on the instance's
+  // position — a broad person's arms hang further out *from their shoulders*,
+  // and the shoulder itself is placed by the caller.
+  function poseCrowdPart(mesh, i, jx, jy, jz, facing, swing, up, across = up) {
     _crowdE.set(swing, facing, 0);
     _crowdQ.setFromEuler(_crowdE);
     _crowdV.set(jx, jy, jz);
-    _crowdS.set(scale, scale, scale);
+    _crowdS.set(across, up, across);
     _dummy.matrix.compose(_crowdV, _crowdQ, _crowdS);
     mesh.setMatrixAt(i, _dummy.matrix);
   }
@@ -5822,13 +6203,25 @@ export function initRender(canvas) {
     const chatSeen = typeof opts.chatSeen === 'function' ? opts.chatSeen : null;
     let bubbleN = 0;
     let n = 0;
+    // The bags are counted apart: only the people carrying one take a slot, so
+    // the instance count is the number of backpacks in the building rather
+    // than the number of people in it.
+    let bagN = 0;
     for (const a of agents) {
       if (a.state === 'out') continue;
       if (hideFloor !== undefined && (a.floorIndex ?? 0) > hideFloor) continue;
       if (n >= CROWD_MAX) break;
       const s = a.height || 1;
+      // How broad, as against how tall. A record from before Phase 31 — or a
+      // hand-made one in a test — has no build, and one is exactly the width
+      // the crowd has always been drawn at.
+      const bw = s * (a.build > 0 ? a.build : 1);
       const sit = a.state === 'sit';
-      const y = a.y + (sit && a.seat ? a.seat.h - BODY.hip * s : 0);
+      // ...and how high off their own feet, which agents.js worked out in
+      // `walkBob` and wrote onto the record. Somebody sitting is on a chair,
+      // not mid-stride, so the seat's own datum wins.
+      const bob = sit ? 0 : (a.bob || 0);
+      const y = a.y + (sit && a.seat ? a.seat.h - BODY.hip * s : bob);
       const f = a.facing || 0;
       const cos = Math.cos(f), sin = Math.sin(f);
       // Right-hand axis in the body's frame, for the parts that come in pairs.
@@ -5848,21 +6241,36 @@ export function initRender(canvas) {
       const armSwing = moving ? -swing * 0.8 : (sit ? -0.35 : 0.05);
       const lean = moving ? 0.06 : 0;
 
-      const hipLX = a.x + rx * BODY.hipX * s, hipLZ = a.z + rz * BODY.hipX * s;
-      const hipRX = a.x - rx * BODY.hipX * s, hipRZ = a.z - rz * BODY.hipX * s;
-      const shX = BODY.shoulderX * s;
+      // Hips and shoulders sit further apart on a broad body, so the offsets
+      // that place them take the width and the parts that hang from them take
+      // it too.
+      const hipLX = a.x + rx * BODY.hipX * bw, hipLZ = a.z + rz * BODY.hipX * bw;
+      const hipRX = a.x - rx * BODY.hipX * bw, hipRZ = a.z - rz * BODY.hipX * bw;
+      const shX = BODY.shoulderX * bw;
 
-      poseCrowdPart(meshes.torso, n, a.x, hipY, a.z, f, lean, s);
-      poseCrowdPart(meshes.head, n, a.x, hipY + BODY.torso * s, a.z, f, sit ? 0.1 : lean, s);
-      poseCrowdPart(meshes.thighL, n, hipLX, hipY, hipLZ, f, thighL, s);
-      poseCrowdPart(meshes.thighR, n, hipRX, hipY, hipRZ, f, thighR, s);
+      poseCrowdPart(meshes.torso, n, a.x, hipY, a.z, f, lean, s, bw);
+      const headY = hipY + BODY.torso * s;
+      poseCrowdPart(meshes.head, n, a.x, headY, a.z, f, sit ? 0.1 : lean, s, bw);
+      poseCrowdPart(meshes.hair, n, a.x, headY, a.z, f, sit ? 0.1 : lean, s, bw);
+      poseCrowdPart(meshes.thighL, n, hipLX, hipY, hipLZ, f, thighL, s, bw);
+      poseCrowdPart(meshes.thighR, n, hipRX, hipY, hipRZ, f, thighR, s, bw);
       // The knee is wherever the thigh's far end ended up.
       const kneeL = kneeAt(hipLX, hipY, hipLZ, f, thighL, BODY.thigh * s);
       const kneeR = kneeAt(hipRX, hipY, hipRZ, f, thighR, BODY.thigh * s);
-      poseCrowdPart(meshes.shinL, n, kneeL.x, kneeL.y, kneeL.z, f, shinL, s);
-      poseCrowdPart(meshes.shinR, n, kneeR.x, kneeR.y, kneeR.z, f, shinR, s);
-      poseCrowdPart(meshes.armL, n, a.x + rx * shX, shoulderY, a.z + rz * shX, f, armSwing, s);
-      poseCrowdPart(meshes.armR, n, a.x - rx * shX, shoulderY, a.z - rz * shX, f, -armSwing, s);
+      poseCrowdPart(meshes.shinL, n, kneeL.x, kneeL.y, kneeL.z, f, shinL, s, bw);
+      poseCrowdPart(meshes.shinR, n, kneeR.x, kneeR.y, kneeR.z, f, shinR, s, bw);
+      poseCrowdPart(meshes.armL, n, a.x + rx * shX, shoulderY, a.z + rz * shX, f, armSwing, s, bw);
+      poseCrowdPart(meshes.armR, n, a.x - rx * shX, shoulderY, a.z - rz * shX, f, -armSwing, s, bw);
+      // The bag rides the shoulders and leans with the body, and only the
+      // people who have one take a slot in its mesh.
+      if (a.bag && bagN < CROWD_MAX) {
+        poseCrowdPart(meshes.bag, bagN, a.x, shoulderY, a.z, f, lean, s, bw);
+        if (recolor) {
+          _crowdColor.set(a.bag);
+          meshes.bag.setColorAt(bagN, _crowdColor);
+        }
+        bagN++;
+      }
 
       if (recolor) {
         _crowdColor.set(a.shirt);
@@ -5876,6 +6284,10 @@ export function initRender(canvas) {
         meshes.shinR.setColorAt(n, _crowdColor);
         _crowdColor.set(a.skin);
         meshes.head.setColorAt(n, _crowdColor);
+        // A record with no hair on it is a record from before this phase, and
+        // a bald school is a stranger sight than a dark-haired one.
+        _crowdColor.set(a.hair || '#2e211a');
+        meshes.hair.setColorAt(n, _crowdColor);
       }
       if (a.state === 'chat' && bubbleN < CHAT_SPRITES && (!chatSeen || chatSeen(a))) {
         const sp = bubbles[bubbleN++];
@@ -5885,8 +6297,8 @@ export function initRender(canvas) {
       n++;
     }
     for (let i = bubbleN; i < CHAT_SPRITES; i++) bubbles[i].visible = false;
-    for (const m of Object.values(meshes)) {
-      m.count = n;
+    for (const [name, m] of Object.entries(meshes)) {
+      m.count = name === 'bag' ? bagN : n;
       m.instanceMatrix.needsUpdate = true;
       if (recolor && m.instanceColor) m.instanceColor.needsUpdate = true;
     }
@@ -6292,6 +6704,10 @@ export function initRender(canvas) {
     // ...and so are the prop instances a shove would move.
     propInstances.clear();
     shoved.clear();
+    // The signs went with the storeys that carried them.
+    exitSignsBuilt = false;
+    placardCount = 0;
+    exitSignCount = 0;
     state.floors.forEach((floor, i) => {
       const group = new THREE.Group();
       const ceil = new THREE.Group();
@@ -6307,6 +6723,9 @@ export function initRender(canvas) {
         elevators: elevatorsOn(state, i),
         leaves: collectDoorLeaves(state, i),
       });
+      // The room placards, off the storey's own doors. The exit signs come
+      // later — see the note beside `ensureExitSigns`.
+      buildPlacards(state, i, floorBaseY(state, i), group);
       const propsGroup = new THREE.Group();
       buildPropsGroup(state, i, floorBaseY(state, i), propsGroup, siteField);
       group.add(propsGroup);
@@ -6341,6 +6760,12 @@ export function initRender(canvas) {
     seedPool(snowFall);
 
     editView.camY = 200 + Math.max(topOfBuilding(state), roofTop(plan));
+    // A rebuild took the storeys the exit signs were standing on. Normally the
+    // next `setMode('walk')` puts them back — but a rebuild can happen while
+    // the walk is already running (a design adopted straight into one, the
+    // haunt redressing the building), and a walker who watched every EXIT in
+    // the school go out would be right to file a bug.
+    if (mode !== 'edit') ensureExitSigns();
     applyFloorVisibility();
   }
 
@@ -6775,6 +7200,21 @@ export function initRender(canvas) {
     enterXR, exitXR, setXRRig, xrHeadLocal,
     get xrPresenting() { return !!xrSession; },
     get mode() { return mode; },
+    // --- Phase 31: what the surfaces are wearing ---
+    //
+    // One read, no writes, the arrangement everything since the third phase
+    // has settled on. `placards` is what the storeys came out with; `exits` is
+    // zero until the first walk, because that is when the graph that finds
+    // them is built (see `ensureExitSigns`); `refracting` is whether the glass
+    // is paying for its second scene render this moment.
+    signReport() {
+      return {
+        placards: placardCount,
+        exits: exitSignCount,
+        refracting: [...glassMats.values()].some((g) => g.solid.transmission > 0),
+        glazings: [...glassMats.keys()],
+      };
+    },
     get fxEnabled() { return fxEnabled; },
     set fxEnabled(v) { fxEnabled = v; },
     // Layers panel: which parts of the design are drawn while editing. A

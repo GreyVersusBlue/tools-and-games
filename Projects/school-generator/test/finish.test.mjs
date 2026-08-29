@@ -13,7 +13,9 @@ import {
   FLOOR_FINISHES, FINISH_KEYS, DEFAULT_FINISH, DEFAULT_PAINT,
   finishEntry, readFinish, readPaint, finishAt, paintAt, wallPaint,
   applyFinish, finishSchedule,
+  GLAZINGS, GLAZING_KEYS, DEFAULT_GLAZING, glazingEntry, glazingForUse, PRIVATE_USES,
 } from '../js/finish.js';
+import { classify, GROUP_KEYS } from '../js/occupancy.js';
 
 // A block of painted cells, baked into the room they describe. Returns the
 // storey, which is what every caller here goes on to read.
@@ -164,4 +166,70 @@ test('the schedule totals area by finish and names the rooms using it', () => {
 test('an empty floor schedules nothing at all', () => {
   assert.deepEqual(finishSchedule(createState(6, 6).floors[0]), []);
   assert.deepEqual(finishSchedule(null), []);
+});
+
+// ---------- Phase 31: what a pane is made of ----------
+
+test('there are two glazings and clear is the one nobody asked for', () => {
+  assert.deepEqual(GLAZING_KEYS, ['clear', 'frosted']);
+  assert.equal(DEFAULT_GLAZING, 'clear');
+  assert.equal(glazingEntry('frosted').key, 'frosted');
+  // Unknown, missing and hostile all land on clear: a pane you cannot see
+  // through is a bigger surprise than one you can.
+  for (const bad of ['leaded', '', null, undefined, 7, {}]) {
+    assert.equal(glazingEntry(bad).key, 'clear', String(bad));
+  }
+});
+
+test('a glazing row is a physical material, and frosted is the scattered one', () => {
+  const clear = glazingEntry('clear'), frosted = glazingEntry('frosted');
+  for (const row of [clear, frosted]) {
+    assert.ok(row.transmission > 0 && row.transmission <= 1, row.key);
+    assert.ok(row.roughness >= 0 && row.roughness <= 1, row.key);
+    assert.ok(row.thickness > 0, row.key);
+    // Soda-lime glass, both of them — etching a pane does not change what it
+    // is made of.
+    assert.equal(row.ior, 1.52, row.key);
+    assert.equal(readPaint(row.color), row.color, `${row.key} colour is a colour`);
+  }
+  assert.ok(frosted.roughness > clear.roughness * 5,
+    'frosting is scattering, and it is not subtle');
+  // ...and it is still a window: nearly as much light gets through.
+  assert.ok(frosted.transmission > 0.8);
+});
+
+test('privacy is the only reason a school frosts a pane', () => {
+  assert.equal(glazingForUse('restroom'), 'frosted');
+  assert.equal(glazingForUse('locker'), 'frosted');
+  for (const use of ['classroom', 'office', 'gym', 'library', 'lab',
+    'circulation', 'kitchen', 'storage', null, undefined, '']) {
+    assert.equal(glazingForUse(use), 'clear', String(use));
+  }
+  assert.deepEqual(PRIVATE_USES, ['restroom', 'locker']);
+});
+
+test('every use occupancy.js can name gets a glazing, and it is a real key', () => {
+  // The drift alarm: a new occupancy group must not fall through to a glazing
+  // that isn't in the table.
+  for (const key of GROUP_KEYS) {
+    assert.ok(GLAZING_KEYS.includes(glazingForUse(key)), key);
+  }
+  // ...and the two that matter are named by rooms called what rooms are called.
+  assert.equal(glazingForUse(classify('Girls Restroom')), 'frosted');
+  assert.equal(glazingForUse(classify('Boys Locker Room')), 'frosted');
+  assert.equal(glazingForUse(classify('Room 104')), 'clear');
+});
+
+test('glazing is derived, so it writes nothing to the file', () => {
+  const s = createState(10, 10);
+  // Not "Staff Restroom": occupancy.js reads `staff` as an office and its
+  // row sits above the restroom's, which is the table's own precedence and
+  // not this test's business to argue with.
+  room(s, 1, 1, 3, 3, { name: 'Girls Restroom' });
+  const bytes = JSON.stringify(serialize(s));
+  assert.ok(!/glaz|frost/i.test(bytes), 'a design should carry no glazing field');
+  // ...and the derivation survives the round trip, because the name does.
+  const back = deserialize(serialize(s));
+  const shape = back.floors[0].shapes[0];
+  assert.equal(glazingForUse(classify(shape.name)), 'frosted');
 });

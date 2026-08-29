@@ -164,6 +164,74 @@ export const SHIRTS = [
 export const TROUSERS = ['#2c3038', '#3a4250', '#4a3f36', '#26303a', '#514a42'];
 export const SKINS = ['#e8c49a', '#d6a97a', '#b98253', '#8d5a34', '#6b4226', '#f0d5b8'];
 export const TEACHER_SHIRTS = ['#2c3e50', '#4b3b52', '#3d5a4c', '#5a3f34'];
+// Phase 31: the rest of the wardrobe. Hair is the one part of a person that
+// was the same on all hundred and fifty of them — a school of identical heads
+// reads as a school of clones from the far end of a corridor, which is the
+// distance a school is mostly looked at from.
+export const HAIRS = [
+  '#1b1614', '#2e211a', '#4a3220', '#6b4a2a', '#8c6b3f', '#b08d55',
+  '#5a5350', '#8d8783', '#c9542f', '#3b2f46',
+];
+// A backpack is the one thing every student in the world is carrying and
+// nobody in this building was. Teachers mostly are not.
+export const BAGS = [
+  '#2f4858', '#7a3b3b', '#3f5f3a', '#5a4a7a', '#8a5a2a', '#33404d', '#6b2f4f',
+];
+export const BAG_ODDS = { student: 0.72, teacher: 0.18 };
+// How much narrower or wider than the standard body a person is built. Applied
+// across the body only — a tall person is `height`, a broad one is `build`,
+// and conflating the two gives you a school of people scaled like photographs.
+export const BUILD_MIN = 0.86;
+export const BUILD_MAX = 1.16;
+
+// The wardrobe: hair, how broadly somebody is built, and whether there is a
+// bag on their back.
+//
+// **Drawn off its own generator, seeded from the population's seed and this
+// person's id** — not from the sequence everything else comes out of. That is
+// a rule about *phases* rather than about people. Adding a field to the agent
+// record shifts every draw after it, so a purely cosmetic addition moves where
+// everybody spawns and how fast they walk; the first cut of this phase did
+// exactly that, and the suite's one *simulating* test caught it as two fewer
+// people reaching their classroom. A side generator means the wardrobe can
+// grow forever and the crowd still walks the walk it walked before — while
+// two different seeds still dress two different schools, because the seed is
+// half of what mixes into it.
+export function wardrobeOf(id, seed = 1, teacher = false) {
+  const rand = rng((Math.imul(seed >>> 0, 0x9e3779b1) ^ Math.imul(id | 0, 0x85ebca6b)) >>> 0);
+  const hair = pick(rand, HAIRS);
+  const build = BUILD_MIN + rand() * (BUILD_MAX - BUILD_MIN);
+  // A colour is drawn whether or not it is worn, so the two kinds of person
+  // leave this little sequence in the same place.
+  const colour = pick(rand, BAGS);
+  return {
+    hair,
+    build,
+    bag: rand() < (teacher ? BAG_ODDS.teacher : BAG_ODDS.student) ? colour : null,
+  };
+}
+
+// How far the pelvis rises and falls over one stride, in feet at full height.
+// Real walking is about two inches; this is a shade more, because a rigid-part
+// puppet has no spine to absorb the rest of it.
+export const BOB_AMPLITUDE = 0.19;
+
+// **Twice per stride, not once.** The single thing that separates a walk from
+// a glide: the body is at its highest in the middle of each step, when the
+// stance leg is vertical, and at its lowest at both heel strikes — so the rise
+// and fall happens at twice the frequency the legs swing at. Bob a body once
+// per stride and it limps; don't bob it at all and it hovers, which is what
+// every version of the crowd before Phase 31 did.
+//
+// Lives here rather than in render.js for the same reason the palette does:
+// the gait is the agent's, and a headless test can hold the phase to the leg
+// it belongs to.
+export function walkBob(agent) {
+  if (!agent || agent.state !== 'walk') return 0;
+  const g = Number.isFinite(agent.gait) ? agent.gait : 0;
+  const h = Number.isFinite(agent.height) && agent.height > 0 ? agent.height : 1;
+  return BOB_AMPLITUDE * h * (1 - Math.cos(2 * g)) * 0.5;
+}
 
 const FIRST_NAMES = [
   'Ada', 'Ben', 'Cruz', 'Dara', 'Eli', 'Faye', 'Gus', 'Hana', 'Ivo', 'Jae',
@@ -314,6 +382,9 @@ function makeAgent(id, kind, rand, room, opts = {}) {
     trousers: pick(rand, TROUSERS),
     skin: pick(rand, SKINS),
     height: teacher ? 0.98 + rand() * 0.08 : 0.82 + rand() * 0.16,
+    // Hair, build and the bag — see `wardrobeOf`, and note that not one of
+    // them is drawn from `rand`.
+    ...wardrobeOf(id, opts.seed, teacher),
     home: room ? room.id : null,
     lunch: opts.lunch || null,
     timetable: opts.timetable || [],
@@ -330,6 +401,9 @@ function makeAgent(id, kind, rand, room, opts = {}) {
     state: 'idle',        // idle | walk | sit | out
     seat: null,
     gait: rand() * Math.PI * 2,
+    // How far off their own feet this body is riding — see `walkBob`. Zero
+    // until somebody takes a step.
+    bob: 0,
     lane: rand() * 2 - 1,
     stuck: 0,
     wait: 0,
@@ -372,7 +446,8 @@ function makeAgent(id, kind, rand, room, opts = {}) {
 // everybody goes, and this file has never known that a generator exists.
 export function makePopulation(state, nav, opts = {}) {
   const sched = normalizeSchedule(opts.schedule);
-  const rand = rng(opts.seed ?? 1);
+  const seed = opts.seed ?? 1;
+  const rand = rng(seed);
   const floorHt = state.floorHt || FLOOR_H;
   const teaching = teachingRooms(nav);
   const common = commonRooms(nav);
@@ -382,7 +457,7 @@ export function makePopulation(state, nav, opts = {}) {
   const lunchRoom = pickLunchroom(common, teaching);
   const wanted = Math.max(0, Math.min(MAX_POP, Math.round(opts.students ?? 90)));
   const plan = planFor(opts.plan, nav, sched);
-  if (plan) return fromPlan(state, nav, plan, { rand, floorHt, sched, lunchRoom, wanted });
+  if (plan) return fromPlan(state, nav, plan, { rand, seed, floorHt, sched, lunchRoom, wanted });
 
   const teacherCount = Math.max(0, Math.min(teaching.length,
     Math.round(opts.teachers ?? teaching.length)));
@@ -391,6 +466,7 @@ export function makePopulation(state, nav, opts = {}) {
   for (let i = 0; i < teacherCount; i++) {
     const room = teaching[i];
     agents.push(makeAgent(id++, 'teacher', rand, room, {
+      seed,
       floorHt,
       timetable: fixedTimetable(room.id, sched),
       lunch: room.id,
@@ -405,6 +481,7 @@ export function makePopulation(state, nav, opts = {}) {
     const home = roomIds[i % roomIds.length];
     const room = nav.node(home);
     agents.push(makeAgent(id++, 'student', rand, room, {
+      seed,
       floorHt,
       timetable: makeTimetable(rand, roomIds, sched, { home }),
       lunch: lunchRoom,
@@ -428,7 +505,7 @@ function planFor(plan, nav, sched) {
 // students slider meaningful with a timetable loaded: at half the roll you get
 // every cohort at half strength rather than half the cohorts at full.
 function fromPlan(state, nav, plan, ctx) {
-  const { rand, floorHt, sched, lunchRoom, wanted } = ctx;
+  const { rand, seed, floorHt, sched, lunchRoom, wanted } = ctx;
   const agents = [];
   const periods = normalizeSchedule(sched).periods;
   // A plan's rooms are indexed by *its* period count; a design whose bell
@@ -453,7 +530,7 @@ function fromPlan(state, nav, plan, ctx) {
     const room = home ? nav.node(home) : null;
     if (!room) continue;
     agents.push(makeAgent(id++, 'teacher', rand, room, {
-      floorHt, timetable, lunch: home, cohort: null, person: teacher.name,
+      seed, floorHt, timetable, lunch: home, cohort: null, person: teacher.name,
     }));
   }
 
@@ -471,7 +548,7 @@ function fromPlan(state, nav, plan, ctx) {
     const size = Math.min(budget, Math.max(1, Math.round(Math.max(1, cohort.size || 0) * scale)));
     for (let i = 0; i < size; i++) {
       agents.push(makeAgent(id++, 'student', rand, room, {
-        floorHt, timetable, lunch: lunchRoom, cohort: cohort.id, group: cohort.name,
+        seed, floorHt, timetable, lunch: lunchRoom, cohort: cohort.id, group: cohort.name,
       }));
       budget--;
       if (budget <= 0) break;
@@ -1359,6 +1436,12 @@ export function stepAgents(ctx, agents, dt, opts = {}) {
     stepAgent(ctx, agent, dt, near);
   }
   if (ctx.mode !== 'drill') pairChats(ctx, agents, map);
+  // How high off their own feet each body is riding this instant. Written onto
+  // the record here rather than worked out by the renderer, so the crowd stays
+  // a thing the scene *reads* and never a formula the scene has to know — the
+  // same deal `shirt` and `facing` have had since Phase 6. After `pairChats`,
+  // because somebody who has just stopped to talk has stopped bobbing.
+  for (const agent of agents) agent.bob = walkBob(agent);
   if (ctx.crowd) ctx.crowd.seconds += dt;
   // The cars run whether or not anybody is in them: a lift somebody called and
   // then walked away from still has to come, open, wait and shut, which is

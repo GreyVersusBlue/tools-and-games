@@ -78,6 +78,52 @@ const FACADE_BY_KEY = new Map(FACADE_MATERIALS.map((f) => [f.key, f]));
 export const facadeEntry = (key) => FACADE_BY_KEY.get(key) || FACADE_BY_KEY.get(DEFAULT_FACADE);
 export const readFacade = (v) => (typeof v === 'string' && FACADE_BY_KEY.has(v) ? v : null);
 
+// ---------- what a pane is made of ----------
+//
+// Phase 31. Glazing is the third material table and the shortest, because a
+// school glazes in exactly two ways: you can see through it, or you can't.
+// The columns are what a physically-based material wants — `transmission` is
+// how much light goes through, `roughness` scatters it on the way (which is
+// the entire difference between clear and frosted), `ior` is glass, and
+// `thickness` is how far the light travels inside the pane before it leaves.
+//
+// **Nothing chooses this.** There is no glazing knob and no glazing field in
+// the save file: `glazingForUse` below reads it off what the room *is*, the
+// same way wall thickness is probed rather than stored. Frost a pane because
+// the room behind it is a restroom, and a restroom that is renamed to a
+// classroom un-frosts itself on the next rebuild.
+export const GLAZINGS = [
+  {
+    key: 'clear', label: 'Clear glazing',
+    color: '#cfe4ee', transmission: 0.92, roughness: 0.06, ior: 1.52, thickness: 0.22,
+  },
+  {
+    key: 'frosted', label: 'Frosted glazing',
+    // Acid-etched or sandblasted: it passes nearly as much light and scatters
+    // almost all of it, which is what privacy glass is for. Thicker on
+    // purpose — the scattering reads as depth rather than as a dirty pane.
+    color: '#dde8ea', transmission: 0.86, roughness: 0.62, ior: 1.52, thickness: 0.5,
+  },
+];
+
+export const GLAZING_KEYS = GLAZINGS.map((g) => g.key);
+export const DEFAULT_GLAZING = 'clear';
+const GLAZING_BY_KEY = new Map(GLAZINGS.map((g) => [g.key, g]));
+export const glazingEntry = (key) =>
+  GLAZING_BY_KEY.get(key) || GLAZING_BY_KEY.get(DEFAULT_GLAZING);
+
+// The occupancy uses a school actually frosts. Locker rooms and restrooms, and
+// that is the list — an office has a vision panel in its door on purpose, and
+// a classroom with a frosted borrowed light is a classroom nobody can be
+// supervised in, which is the opposite of what the glass is there for.
+export const PRIVATE_USES = ['restroom', 'locker'];
+
+// Which glazing an occupancy use calls for. Takes the key occupancy.js's
+// `classify` hands back (or a room's own `group`), so this file needs to know
+// nothing about room names and imports nothing to answer.
+export const glazingForUse = (use) =>
+  (typeof use === 'string' && PRIVATE_USES.includes(use) ? 'frosted' : DEFAULT_GLAZING);
+
 // What a roof deck is covered in. Not a knob: a flat roof is a membrane and a
 // pitched one is shingled, because that is what they are — one fewer thing to
 // choose and one fewer invalid combination to guard.
