@@ -130,9 +130,16 @@ export function edgeOpeningOpts(val) {
 
 // ---------- the raster ----------
 
-export function createLattice(w, h) {
+// `pitch` is what one cell is worth in feet and (x0, z0) is where cell (0, 0)'s
+// low corner sits. Both default to what every lattice was until Phase 35 — the
+// 4ft module starting at the corner of the sheet — so a caller that has no
+// opinion (the save migration, the generator) writes exactly the bytes it did
+// before. The paint brush has an opinion: see `rasterOf` in paint.js.
+export function createLattice(w, h, pitch = CELL, x0 = 0, z0 = 0) {
   return {
     w, h,
+    pitch: pitch > 0 ? pitch : CELL,
+    x0, z0,
     // cells[i] = null (nothing drawn), or the label a room tool wrote across
     // the region: { room, color, fin, paint }. It is a *scratch* record — the
     // moment this is baked, those four fields live on a shape instead.
@@ -239,6 +246,11 @@ const edgeKey = (h, idx) => (h ? 'H' : 'V') + idx;
 
 export function traceRegion(lat, cells, claimed = new Set()) {
   if (!cells || !cells.length) return [];
+  // What a cell is worth and where the raster starts. A lattice written before
+  // Phase 35 — or by anything that still draws on the 4ft module — carries
+  // neither, and reads as the module starting at the corner.
+  const pitch = lat.pitch > 0 ? lat.pitch : CELL;
+  const ox = lat.x0 || 0, oz = lat.z0 || 0;
   const region = new Set(cells.map((c) => c.y * lat.w + c.x));
   const edges = [];
 
@@ -329,9 +341,9 @@ export function traceRegion(lat, cells, claimed = new Set()) {
         runs.unshift(runs.pop());
       }
     }
-    const pts = runs.map((r) => ({ x: r.start[0] * CELL, z: r.start[1] * CELL }));
+    const pts = runs.map((r) => ({ x: ox + r.start[0] * pitch, z: oz + r.start[1] * pitch }));
     const segs = runs.map((r) => {
-      const len = r.edges.length * CELL;
+      const len = r.edges.length * pitch;
       const openings = [];
       if (r.mine) {
         r.edges.forEach((e, i) => {

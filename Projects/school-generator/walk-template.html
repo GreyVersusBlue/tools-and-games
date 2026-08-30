@@ -57844,6 +57844,14 @@ function straightenRun(shape, ringIdx, seg, count) {
 // brush, so the lattice is a snap target even though a room doesn't live on
 // it. Order of preference: an existing vertex, a lattice corner, a point on an
 // existing wall, then a single lattice axis.
+//
+// Phase 35: the lattice has a phase. `opts.origin` is where the drawing grid
+// starts (gridref.js) and defaults to the corner of the sheet, which is where
+// it started for every version before it — so the reason this snap exists
+// survives a design whose grid was indexed off a traced photograph, and a
+// hand-drawn room still butts cleanly against a painted one. The *pitch* is
+// deliberately still the 4ft cell rather than the zoom's: a free-drawing tool
+// that snapped to 32ft corners when you pulled back would be unusable.
 
 function snapPoint(floor, x, z, tol = 1.5, opts = {}) {
   const skip = opts.skip || null;
@@ -57864,7 +57872,10 @@ function snapPoint(floor, x, z, tol = 1.5, opts = {}) {
     if (best) return best;
   }
 
-  const gx = Math.round(x / CELL) * CELL, gz = Math.round(z / CELL) * CELL;
+  const ox = opts.origin && Number.isFinite(opts.origin.x) ? opts.origin.x : 0;
+  const oz = opts.origin && Number.isFinite(opts.origin.z) ? opts.origin.z : 0;
+  const gx = ox + Math.round((x - ox) / CELL) * CELL;
+  const gz = oz + Math.round((z - oz) / CELL) * CELL;
   const onX = Math.abs(gx - x) <= tol, onZ = Math.abs(gz - z) <= tol;
   if (opts.grid !== false && onX && onZ) {
     return { x: gx, z: gz, d: Math.hypot(gx - x, gz - z), kind: 'corner' };
@@ -70518,7 +70529,8 @@ return { DEFAULT_COUNT, MIN_COUNT, MAX_COUNT, FIND_R, REVEAL_R, INSET, MIN_TILE_
 // ---- js/snapgrid.js ----
 const __m_js_snapgrid_js = (() => {
 const { CELL } = __m_js_grid_js;
-// snapgrid.js — the drawing grid you aim at, and how fine it is.
+// snapgrid.js — the drawing grid you aim at, how fine it is, and where it
+// starts.
 //
 // Until this module the 4ft lattice was the only thing a drawing tool could
 // snap to, and it was 4ft whether the screen showed six hundred feet of site
@@ -70530,13 +70542,37 @@ const { CELL } = __m_js_grid_js;
 // steps through a ladder of round numbers rather than sliding, because a grid
 // you can count on ("that's three squares, so twelve feet") stops being a
 // measuring instrument the moment its squares are 3.7ft. The ladder is in
-// feet and doubles: half a foot to thirty-two.
+// feet and doubles: two feet to thirty-two.
 //
 // The rule is one line: **pick the finest pitch that still leaves the view
 // legible.** `MAX_LINES` is what "legible" means — how many grid lines may
 // cross the shorter axis of the viewport before the next pitch up takes over.
 // The 4ft cell (grid.js `CELL`) is still the unit rooms are painted in and
 // still the pitch at the default zoom; it is no longer the only one.
+//
+// ## Two feet is the floor
+//
+// The ladder used to start at six inches, which was a number chosen because
+// it was the finest thing the *wall* tool could conceivably want. Nothing is
+// drawn at six inches: a wall lands on a point, and a floor lands on a
+// *square*, and a six-inch square of floor is not a thing anybody places. Two
+// feet is the smallest square a building is made of — half a 4ft module, a
+// third of a corridor, the width of a door leaf — so that is where the ladder
+// stops. Every step above it is a whole multiple of it, which is what lets one
+// raster hold a plan drawn at every zoom (see paint.js).
+//
+// ## The grid has a phase
+//
+// A grid is a pitch *and an origin*, and for thirty-four phases the origin was
+// silently (0, 0) — the corner of the sheet. That is the right default and the
+// wrong only answer the moment somebody traces a photograph: a scan's column
+// lines fall where they fall, and a grid that cannot be slid onto them is a
+// grid you end up fighting. So every function here takes an origin, defaulting
+// to the corner it always used, and `gridref.js` is what decides where it is.
+//
+// The *sheet* still starts at the origin and grows +x and +z — that is
+// footprint.js's constraint and nothing here changes it. What moves is the
+// grid's phase across it.
 //
 // Pure module: no three.js, no DOM. Exercised by test/snapgrid.test.mjs.
 
@@ -70545,16 +70581,26 @@ const { CELL } = __m_js_grid_js;
 // The ladder, in feet. Every step is a whole number of the one below it and
 // 4ft (the paint brush's cell) is on it, so a finer grid always subdivides
 // the cells rather than cutting across them.
-const PITCHES = [0.5, 1, 2, 4, 8, 16, 32];
+const PITCHES = [2, 4, 8, 16, 32];
 
 // How many lines may cross the view's height before the grid coarsens. Sized
 // from the two ends it has to survive: at the closest zoom (30ft of view) it
-// must not force a pitch finer than a foot, and at the default (140ft) it must
+// must land on the finest pitch there is, and at the default (140ft) it must
 // still land on the 4ft cell every earlier version drew.
 const MAX_LINES = 56;
 
 const MIN_PITCH = PITCHES[0];
 const MAX_PITCH = PITCHES[PITCHES.length - 1];
+
+// Where the grid starts when nobody has said otherwise: the corner of the
+// sheet, which is what every version before this one assumed.
+const ORIGIN = Object.freeze({ x: 0, z: 0 });
+
+// Read an origin off anything — a point, a partial one, a null. Every entry
+// point below takes one, so this is the only place that has to be careful.
+const asOrigin = (o) => (o && Number.isFinite(o.x) && Number.isFinite(o.z)
+  ? { x: o.x, z: o.z }
+  : ORIGIN);
 
 // The pitch to draw and snap to for a given view height, in feet. Monotonic in
 // `viewHeight`: zooming in never coarsens the grid.
@@ -70577,14 +70623,22 @@ function majorEvery(pitch) {
 
 // ---------- snapping ----------
 
-const snapValue = (v, pitch) => (pitch > 0 ? Math.round(v / pitch) * pitch : v);
+// The nearest line of the grid to one coordinate. `origin` is where the grid
+// starts; leave it out and it starts at zero, which is what every caller
+// before the reference point wanted.
+const snapValue = (v, pitch, origin = 0) => (pitch > 0
+  ? origin + Math.round((v - origin) / pitch) * pitch
+  : v);
 
 // The nearest intersection of the grid to a world point.
-const snapToGrid = (x, z, pitch) => ({ x: snapValue(x, pitch), z: snapValue(z, pitch) });
+const snapToGrid = (x, z, pitch, origin) => {
+  const o = asOrigin(origin);
+  return { x: snapValue(x, pitch, o.x), z: snapValue(z, pitch, o.z) };
+};
 
 // How far the snap moved the cursor — what a tool shows a snap indicator for.
-const snapDistance = (x, z, pitch) => {
-  const p = snapToGrid(x, z, pitch);
+const snapDistance = (x, z, pitch, origin) => {
+  const p = snapToGrid(x, z, pitch, origin);
   return Math.hypot(p.x - x, p.z - z);
 };
 
@@ -70608,8 +70662,64 @@ function orthoPoint(a, b) {
 // that is already on the grid.
 function targetPoint(x, z, opts = {}) {
   const pitch = opts.pitch > 0 ? opts.pitch : CELL;
-  const p = opts.snap === false ? { x, z } : snapToGrid(x, z, pitch);
+  const p = opts.snap === false ? { x, z } : snapToGrid(x, z, pitch, opts.origin);
   return opts.ortho && opts.from ? orthoPoint(opts.from, p) : p;
+}
+
+// ---------- tiles ----------
+//
+// A wall lands on a *point* and a floor lands on a *square*, and those are two
+// different questions about the same grid. Everything above answers the first;
+// the six below answer the second.
+//
+// A tile is named by the two whole numbers that index it from the origin, so
+// tiles are comparable, hashable and — the reason it is an index pair rather
+// than a rectangle — the same tile whichever corner of it the cursor is in.
+
+// Which tile a world point falls in. A point exactly on a line belongs to the
+// tile on its + side, which is the rule `Math.floor` has always given the 4ft
+// cell.
+const tileAt = (x, z, pitch, origin) => {
+  const o = asOrigin(origin);
+  const p = pitch > 0 ? pitch : CELL;
+  return { ix: Math.floor((x - o.x) / p), iz: Math.floor((z - o.z) / p) };
+};
+
+// ...and back: the square that tile covers, in world feet.
+const tileBounds = (ix, iz, pitch, origin) => {
+  const o = asOrigin(origin);
+  const p = pitch > 0 ? pitch : CELL;
+  return { x0: o.x + ix * p, z0: o.z + iz * p, x1: o.x + (ix + 1) * p, z1: o.z + (iz + 1) * p };
+};
+
+const tileCentre = (ix, iz, pitch, origin) => {
+  const b = tileBounds(ix, iz, pitch, origin);
+  return { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2 };
+};
+
+// The square under the cursor, which is what a floor tool actually wants: one
+// call instead of `tileBounds(...tileAt(...))` at every call site.
+const tileUnder = (x, z, pitch, origin) => {
+  const t = tileAt(x, z, pitch, origin);
+  return tileBounds(t.ix, t.iz, pitch, origin);
+};
+
+// Every tile between two corners, as the rectangle of indices a drag covers.
+// Inclusive at both ends: a drag that never leaves one square still lays it.
+function tileSpan(a, b, pitch, origin) {
+  const ta = tileAt(a.x, a.z, pitch, origin);
+  const tb = tileAt(b.x, b.z, pitch, origin);
+  const ix0 = Math.min(ta.ix, tb.ix), ix1 = Math.max(ta.ix, tb.ix);
+  const iz0 = Math.min(ta.iz, tb.iz), iz1 = Math.max(ta.iz, tb.iz);
+  return { ix0, ix1, iz0, iz1, w: ix1 - ix0 + 1, h: iz1 - iz0 + 1 };
+}
+
+// The world rectangle a span covers — what the rectangle cursor is drawn from
+// and what the brush is handed.
+function spanBounds(span, pitch, origin) {
+  const a = tileBounds(span.ix0, span.iz0, pitch, origin);
+  const b = tileBounds(span.ix1, span.iz1, pitch, origin);
+  return { x0: a.x0, z0: a.z0, x1: b.x1, z1: b.z1 };
 }
 
 // ---------- reading a run back ----------
@@ -70651,130 +70761,7 @@ function runLabel(a, b) {
   return `${len.toFixed(len < 10 ? 1 : 0)} ft · ${angle}`;
 }
 
-return { PITCHES, MAX_LINES, MIN_PITCH, MAX_PITCH, gridPitch, majorEvery, snapValue, snapToGrid, snapDistance, orthoPoint, targetPoint, runLength, runAngle, isAxisRun, runLabel };
-})();
-// ---- js/bootcheck.js ----
-const __m_js_bootcheck_js = (() => {
-
-// bootcheck.js — why the tool did not start, in words somebody can act on.
-//
-// Until this file existed, every way of failing to boot looked identical and
-// looked *fine*: the chrome is plain HTML and paints whether or not a line of
-// JavaScript ever runs, so a page with no WebGL, or one opened straight off
-// the disk, drew the whole toolbar, lit the status line with "Floor — click /
-// drag to lay floor tiles", and then did nothing at all, for ever, silently.
-// A tool that is broken should say so; a tool that is broken for a reason the
-// person can fix should say which.
-//
-// Four ways it can happen, and they need different sentences:
-//
-//   file-url      the page was opened from disk, so the browser refused every
-//                 ES module before one of them ran. Nothing on the page works
-//                 and nothing ever will until it is served over http.
-//   no-webgl      the browser has no WebGL context to give. There is no 2D
-//                 fallback and there is not going to be one — the whole tool
-//                 is a 3D scene.
-//   context-lost  there *was* a context and the driver took it back: waking
-//                 from sleep, a GPU reset, a phone under memory pressure. The
-//                 scene is gone; a reload gets it back.
-//   crashed       something threw during boot. We can't be more specific than
-//                 the error itself, so the error itself is what we show.
-//
-// This module is pure — no DOM, no globals, no `window`. It holds the words
-// and the decision; index.html's inline guard and main.js hold the two hands
-// that put them on the screen. The guard has to be a classic inline script
-// rather than an import of this file, because the one case it exists to catch
-// is precisely the one where no module can load — so it carries its own copy
-// of the two sentences it needs and `test/bootcheck.test.mjs` reads
-// index.html and fails if the two ever drift. Same bargain, and for the same
-// reason, as theme.js and the `:root` block.
-
-const BOOT_FAILURES = {
-  'file-url': {
-    title: 'This page has to be served, not opened from a file.',
-    detail:
-      'Browsers refuse to load ES modules over file:// , so none of the ' +
-      'tool’s code ran. Everything you can see is the empty page ' +
-      'underneath it.',
-    remedy:
-      'Run any static server from the school-generator folder — for ' +
-      'example `npx serve`, or `python3 -m http.server` — and open the ' +
-      'address it prints. Or just use the deployed copy.',
-  },
-  'no-webgl': {
-    title: 'This browser can’t give the tool a 3D view.',
-    detail:
-      'The School Generator draws everything — the plan as well as the ' +
-      'walkthrough — with WebGL, and this browser has no WebGL context ' +
-      'available. There is no 2D fallback.',
-    remedy:
-      'Turn hardware acceleration back on in your browser’s settings, ' +
-      'or open the tool in a different browser. On a managed machine this is ' +
-      'sometimes switched off by policy.',
-  },
-  'context-lost': {
-    title: 'The 3D view was lost.',
-    detail:
-      'The browser took the graphics context back — usually a machine ' +
-      'waking from sleep, a driver reset, or a phone short on memory. Your ' +
-      'design is safe: it is autosaved in this browser.',
-    remedy: 'Reload the page and it will come back with your work in it.',
-  },
-  crashed: {
-    title: 'The tool hit an error while starting up.',
-    detail:
-      'Something threw before the editor finished loading, so nothing on ' +
-      'this page is connected to anything.',
-    remedy:
-      'Reload the page. If it keeps happening, the message below is the ' +
-      'thing worth reporting.',
-  },
-};
-
-// What went wrong, from what the page can observe about itself. Returns a key
-// of BOOT_FAILURES, or null when there is nothing to complain about.
-//
-//   protocol  location.protocol, e.g. 'https:' or 'file:'
-//   webgl     did a WebGL context come back? null/undefined = not probed yet
-//   error     the thing that threw during boot, if anything did
-//
-// Order matters and is the order of certainty. A file:// page cannot probe
-// anything meaningful — its modules never ran — so that answer comes first
-// and the rest is not consulted. A missing WebGL context explains a boot
-// error, so it is preferred over the error it caused.
-function diagnose(env = {}) {
-  if (env.protocol === 'file:') return 'file-url';
-  if (env.webgl === false) return 'no-webgl';
-  if (env.error) return 'crashed';
-  return null;
-}
-
-// The three lines for a failure, or null for a code nobody defined. Callers
-// paint these; nothing here knows what an element is.
-function failureText(code) {
-  return BOOT_FAILURES[code] || null;
-}
-
-// Is there a WebGL context to be had? Takes the canvas-maker rather than
-// reaching for `document`, so the suite can hand it a stub and this file can
-// stay a module the tests can load.
-//
-// The probe canvas is deliberately its own throwaway element: asking the real
-// one for a context here would take the only context the renderer is about to
-// want, and a canvas hands out exactly one.
-function probeWebGL(makeCanvas) {
-  try {
-    const c = makeCanvas();
-    const gl = c.getContext('webgl2') || c.getContext('webgl');
-    if (!gl) return false;
-    // Some environments hand back a context object that is already lost.
-    return !(typeof gl.isContextLost === 'function' && gl.isContextLost());
-  } catch {
-    return false;
-  }
-}
-
-return { BOOT_FAILURES, diagnose, failureText, probeWebGL };
+return { PITCHES, MAX_LINES, MIN_PITCH, MAX_PITCH, ORIGIN, asOrigin, gridPitch, majorEvery, snapValue, snapToGrid, snapDistance, orthoPoint, targetPoint, tileAt, tileBounds, tileCentre, tileUnder, tileSpan, spanBounds, runLength, runAngle, isAxisRun, runLabel };
 })();
 // ---- js/overlay.js ----
 const __m_js_overlay_js = (() => {
@@ -71075,6 +71062,333 @@ function describeOverlay(o) {
 }
 
 return { TYPES, MAX_BYTES, MAX_PIXELS, MIN_SCALE, MAX_SCALE, MIN_CAL_PX, MIN_CAL_FT, MAX_CAL_FT, ALL_FLOORS, DEFAULT_OPACITY, imageTypeOf, isSupportedImage, makeOverlay, normalizeOverlay, hasOverlay, overlaySize, imageToWorld, worldToImage, overlayCorners, calibrate, calibrationOf, moveOverlay, rotateOverlay, setOverlay, centreOn, showsOn, describeOverlay };
+})();
+// ---- js/gridref.js ----
+const __m_js_gridref_js = (() => {
+const { imageToWorld, worldToImage } = __m_js_overlay_js;
+const { ORIGIN, asOrigin } = __m_js_snapgrid_js;
+// gridref.js — the point the drawing grid indexes off.
+//
+// A grid is a pitch and an origin. `snapgrid.js` owns the pitch, which follows
+// the zoom; this file owns the origin, which for thirty-four phases was
+// silently the corner of the sheet and had no way to be anything else.
+//
+// That is fine right up until somebody traces a photograph. A scan of a real
+// floor plan has its own module — column lines at 24ft, a corridor that starts
+// 3ft 6in from the left edge of the paper — and none of it lands on the
+// corner of *our* sheet. Snapping then fights the picture instead of helping
+// with it: every wall you draw is a foot off the line you drew it on, and the
+// grid is something to switch off rather than something to aim at.
+//
+// So: **click a point on the tracing image and the grid starts there.** A
+// column centre, the inside face of an exterior wall, the corner of the
+// building — whatever the plan itself counts from. Everything the drawing
+// tools snap to shifts onto it, and the sheet does not move at all (the sheet
+// starts at the origin and grows +x and +z; that is footprint.js's constraint
+// and this file does not touch it). What moves is the grid's *phase*.
+//
+// ## Before anything is drawn, and not after
+//
+// Re-phasing the grid under a plan that already exists would be a quiet
+// catastrophe: every room and every wall was drawn on the old phase, and the
+// moment the origin moves they are all off-grid — the brush freezes them (see
+// `latticeAligned` in paint.js), the wall tool cannot meet them, and there is
+// no gesture that puts it back. So the reference point can only be set while
+// the design has **no rooms and no free-standing walls on any storey**, and
+// `gridLocked` is that test. It is a real restriction and it is the honest
+// one: this is a decision you make when you start tracing, in the same minute
+// you measure the image's scale.
+//
+// ## Anchored to the picture, resolved to the world
+//
+// The record keeps both: `{ x, z }` in world feet, which is what everything
+// snaps against, and `{ u, v }` in *image* pixels when the point was picked on
+// an overlay, which is what survives the picture being nudged, turned or
+// re-measured. `reanchorGridRef` re-resolves the world point from the image
+// one — and refuses once the grid is locked, so aligning a scan after the
+// building is drawn moves the picture and never the plan.
+//
+// Pure module: no three.js, no DOM. Exercised by test/gridref.test.mjs.
+
+
+
+
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// The same range an overlay's own position is held in, for the same reason:
+// a coordinate outside it is not a place on any sheet anybody will draw.
+const LIMIT = 100000;
+
+// ---------- the record ----------
+
+// Never throws, never half-reads: a reference that isn't usable comes back as
+// null and the design simply indexes off the corner, which is what every
+// design before this one did. Same promise `normalizeOverlay` makes.
+function normalizeGridRef(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const x = num(raw.x), z = num(raw.z);
+  if (x === null || z === null) return null;
+  const out = { x: clamp(x, -LIMIT, LIMIT), z: clamp(z, -LIMIT, LIMIT) };
+  // The image anchor is optional and is dropped whole if either half of it is
+  // unreadable — half an anchor would re-resolve to somewhere nobody clicked.
+  const u = num(raw.u), v = num(raw.v);
+  if (u !== null && v !== null) { out.u = u; out.v = v; }
+  return out;
+}
+
+const gridRefOf = (state) => (state ? normalizeGridRef(state.gridRef) : null);
+
+// Is this reference the default one? A design whose grid starts at the corner
+// writes no `gridRef` key, which is the rule every optional record on the
+// state follows.
+const isDefaultGridRef = (ref) => !ref || (ref.x === 0 && ref.z === 0);
+
+// ---------- what the tools ask ----------
+
+// Where the drawing grid starts, in world feet. The one function every tool
+// and the sheet renderer call; everything else here exists to set it.
+function gridOrigin(state) {
+  const ref = gridRefOf(state);
+  return ref ? { x: ref.x, z: ref.z } : { ...ORIGIN };
+}
+
+// ---------- the lock ----------
+
+// How much of a storey is already committed to the grid it was drawn on.
+// Rooms and free-standing walls, and deliberately nothing else: a prop, a
+// stair or a site region is placed in world feet and is not snapped to this
+// grid, so none of them is a reason to refuse.
+const drawnOn = (floor) => (floor
+  ? (Array.isArray(floor.shapes) ? floor.shapes.length : 0) +
+    (Array.isArray(floor.walls) ? floor.walls.length : 0)
+  : 0);
+
+function drawnCount(state) {
+  if (!state || !Array.isArray(state.floors)) return 0;
+  let n = 0;
+  for (const f of state.floors) n += drawnOn(f);
+  return n;
+}
+
+// Once anything is drawn the phase is what it was drawn on, and moving it
+// would strand every one of them off-grid. See the note at the top.
+const gridLocked = (state) => drawnCount(state) > 0;
+
+// ---------- setting it ----------
+
+// A reference point from a click in world feet, carrying the image anchor when
+// there is a picture under it — `worldToImage` is exact, so a point picked
+// anywhere on the plan still records where it fell on the scan.
+function makeGridRef(x, z, overlay = null) {
+  const base = { x: num(x), z: num(z) };
+  if (base.x === null || base.z === null) return null;
+  if (!overlay || !overlay.src) return normalizeGridRef(base);
+  const p = worldToImage(overlay, base.x, base.z);
+  return normalizeGridRef({ ...base, u: p.u, v: p.v });
+}
+
+// Set it, or say why not. The refusal is the whole safety of this feature, so
+// it is a value the caller has to look at rather than a silent no-op.
+function setGridRef(state, ref) {
+  if (!state) return { ok: false, reason: 'No design to set a grid on.' };
+  const next = normalizeGridRef(ref);
+  if (!next) return { ok: false, reason: 'That is not a point on the plan.' };
+  if (gridLocked(state)) {
+    return {
+      ok: false,
+      locked: true,
+      reason: 'The grid is already indexed off what is drawn — the reference point ' +
+        'can only be set on an empty plan, before the first floor or wall.',
+    };
+  }
+  state.gridRef = next;
+  return { ok: true, ref: next };
+}
+
+// Back to the corner of the sheet. Allowed on the same terms as setting it,
+// because it moves the grid exactly as far.
+function clearGridRef(state) {
+  if (!state) return { ok: false, reason: 'No design to clear a grid on.' };
+  if (!state.gridRef) return { ok: true, ref: null };
+  if (gridLocked(state)) {
+    return {
+      ok: false,
+      locked: true,
+      reason: 'The grid is already indexed off what is drawn — clearing the reference ' +
+        'point would move it out from under every room on the plan.',
+    };
+  }
+  delete state.gridRef;
+  return { ok: true, ref: null };
+}
+
+// Re-resolve the world point from the image anchor, after the picture has been
+// moved, turned or re-measured. A no-op without an anchor, without an overlay,
+// or once the grid is locked — which is what keeps aligning a scan late in a
+// design from dragging the grid off the building.
+function reanchorGridRef(state) {
+  const ref = gridRefOf(state);
+  if (!ref || ref.u === undefined) return false;
+  const o = state && state.overlay;
+  if (!o || !o.src) return false;
+  if (gridLocked(state)) return false;
+  const p = imageToWorld(o, ref.u, ref.v);
+  if (Math.abs(p.x - ref.x) < 1e-9 && Math.abs(p.z - ref.z) < 1e-9) return false;
+  state.gridRef = normalizeGridRef({ ...ref, x: p.x, z: p.z });
+  return true;
+}
+
+// ---------- saying it ----------
+
+const ft = (v) => (Math.abs(v - Math.round(v)) < 0.05
+  ? String(Math.round(v))
+  : v.toFixed(2).replace(/0$/, ''));
+
+// One line for the panel: where the grid starts, whether it is pinned to the
+// picture, and whether it can still be moved.
+function describeGridRef(state) {
+  const ref = gridRefOf(state);
+  const locked = gridLocked(state);
+  if (!ref) {
+    return locked
+      ? 'The grid starts at the corner of the plan. Something is drawn already, so it stays there.'
+      : 'The grid starts at the corner of the plan. Click a point on the tracing image ' +
+        'to index it off that instead.';
+  }
+  const where = `The grid starts at ${ft(ref.x)}, ${ft(ref.z)} ft`;
+  const pinned = ref.u !== undefined ? ', pinned to a point on the tracing image' : '';
+  return `${where}${pinned}.` + (locked
+    ? ' It is fixed there now — the plan has been drawn on it.'
+    : ' Click again to move it, or Clear to go back to the corner.');
+}
+
+
+
+return { normalizeGridRef, gridRefOf, isDefaultGridRef, gridOrigin, drawnOn, drawnCount, gridLocked, makeGridRef, setGridRef, clearGridRef, reanchorGridRef, describeGridRef, ORIGIN, asOrigin };
+})();
+// ---- js/bootcheck.js ----
+const __m_js_bootcheck_js = (() => {
+
+// bootcheck.js — why the tool did not start, in words somebody can act on.
+//
+// Until this file existed, every way of failing to boot looked identical and
+// looked *fine*: the chrome is plain HTML and paints whether or not a line of
+// JavaScript ever runs, so a page with no WebGL, or one opened straight off
+// the disk, drew the whole toolbar, lit the status line with "Floor — click /
+// drag to lay floor tiles", and then did nothing at all, for ever, silently.
+// A tool that is broken should say so; a tool that is broken for a reason the
+// person can fix should say which.
+//
+// Four ways it can happen, and they need different sentences:
+//
+//   file-url      the page was opened from disk, so the browser refused every
+//                 ES module before one of them ran. Nothing on the page works
+//                 and nothing ever will until it is served over http.
+//   no-webgl      the browser has no WebGL context to give. There is no 2D
+//                 fallback and there is not going to be one — the whole tool
+//                 is a 3D scene.
+//   context-lost  there *was* a context and the driver took it back: waking
+//                 from sleep, a GPU reset, a phone under memory pressure. The
+//                 scene is gone; a reload gets it back.
+//   crashed       something threw during boot. We can't be more specific than
+//                 the error itself, so the error itself is what we show.
+//
+// This module is pure — no DOM, no globals, no `window`. It holds the words
+// and the decision; index.html's inline guard and main.js hold the two hands
+// that put them on the screen. The guard has to be a classic inline script
+// rather than an import of this file, because the one case it exists to catch
+// is precisely the one where no module can load — so it carries its own copy
+// of the two sentences it needs and `test/bootcheck.test.mjs` reads
+// index.html and fails if the two ever drift. Same bargain, and for the same
+// reason, as theme.js and the `:root` block.
+
+const BOOT_FAILURES = {
+  'file-url': {
+    title: 'This page has to be served, not opened from a file.',
+    detail:
+      'Browsers refuse to load ES modules over file:// , so none of the ' +
+      'tool’s code ran. Everything you can see is the empty page ' +
+      'underneath it.',
+    remedy:
+      'Run any static server from the school-generator folder — for ' +
+      'example `npx serve`, or `python3 -m http.server` — and open the ' +
+      'address it prints. Or just use the deployed copy.',
+  },
+  'no-webgl': {
+    title: 'This browser can’t give the tool a 3D view.',
+    detail:
+      'The School Generator draws everything — the plan as well as the ' +
+      'walkthrough — with WebGL, and this browser has no WebGL context ' +
+      'available. There is no 2D fallback.',
+    remedy:
+      'Turn hardware acceleration back on in your browser’s settings, ' +
+      'or open the tool in a different browser. On a managed machine this is ' +
+      'sometimes switched off by policy.',
+  },
+  'context-lost': {
+    title: 'The 3D view was lost.',
+    detail:
+      'The browser took the graphics context back — usually a machine ' +
+      'waking from sleep, a driver reset, or a phone short on memory. Your ' +
+      'design is safe: it is autosaved in this browser.',
+    remedy: 'Reload the page and it will come back with your work in it.',
+  },
+  crashed: {
+    title: 'The tool hit an error while starting up.',
+    detail:
+      'Something threw before the editor finished loading, so nothing on ' +
+      'this page is connected to anything.',
+    remedy:
+      'Reload the page. If it keeps happening, the message below is the ' +
+      'thing worth reporting.',
+  },
+};
+
+// What went wrong, from what the page can observe about itself. Returns a key
+// of BOOT_FAILURES, or null when there is nothing to complain about.
+//
+//   protocol  location.protocol, e.g. 'https:' or 'file:'
+//   webgl     did a WebGL context come back? null/undefined = not probed yet
+//   error     the thing that threw during boot, if anything did
+//
+// Order matters and is the order of certainty. A file:// page cannot probe
+// anything meaningful — its modules never ran — so that answer comes first
+// and the rest is not consulted. A missing WebGL context explains a boot
+// error, so it is preferred over the error it caused.
+function diagnose(env = {}) {
+  if (env.protocol === 'file:') return 'file-url';
+  if (env.webgl === false) return 'no-webgl';
+  if (env.error) return 'crashed';
+  return null;
+}
+
+// The three lines for a failure, or null for a code nobody defined. Callers
+// paint these; nothing here knows what an element is.
+function failureText(code) {
+  return BOOT_FAILURES[code] || null;
+}
+
+// Is there a WebGL context to be had? Takes the canvas-maker rather than
+// reaching for `document`, so the suite can hand it a stub and this file can
+// stay a module the tests can load.
+//
+// The probe canvas is deliberately its own throwaway element: asking the real
+// one for a context here would take the only context the renderer is about to
+// want, and a canvas hands out exactly one.
+function probeWebGL(makeCanvas) {
+  try {
+    const c = makeCanvas();
+    const gl = c.getContext('webgl2') || c.getContext('webgl');
+    if (!gl) return false;
+    // Some environments hand back a context object that is already lost.
+    return !(typeof gl.isContextLost === 'function' && gl.isContextLost());
+  } catch {
+    return false;
+  }
+}
+
+return { BOOT_FAILURES, diagnose, failureText, probeWebGL };
 })();
 // ---- js/shadow.js ----
 const __m_js_shadow_js = (() => {
@@ -77765,7 +78079,8 @@ const { revealAt } = __m_js_hunt_js;
 const { stairMetrics, stairsOf, openingRails, runMetrics, elevatorSize, elevatorDoorWidth, elevatorsOn, floorCuts, inFloorCut, stairWidth } = __m_js_stairs_js;
 const { wallProbe, solidBeside } = __m_js_walls_js;
 const { wallLinesOf, lineEnds, lineKind, lineOpenings } = __m_js_wallrun_js;
-const { gridPitch, majorEvery } = __m_js_snapgrid_js;
+const { gridPitch, majorEvery, ORIGIN, asOrigin } = __m_js_snapgrid_js;
+const { gridOrigin } = __m_js_gridref_js;
 const { failureText } = __m_js_bootcheck_js;
 const { overlaySize, showsOn } = __m_js_overlay_js;
 const { floorBounds, unionBounds, footprintMask } = __m_js_shadow_js;
@@ -77788,6 +78103,7 @@ const { collectDoorLeaves, leafAngle, mullionPositions, windowBand, LEAF_T, MULL
 // since real CC0 PBR sets can drop into /assets/textures later). Materials are
 // MeshStandardMaterial so swapping in albedo/normal/roughness maps is a
 // one-line change per material.
+
 
 
 
@@ -81929,20 +82245,44 @@ function initRender(canvas) {
   const SHEET_MAJOR = new THREE.Color(0x3a4a5c);
   const SHEET_EDGE = new THREE.Color(0x5c7590);
 
-  function buildSheet(wCells, hCells, pitch = CELL) {
+  // Phase 35: the grid has a phase as well as a pitch. Lines are counted from
+  // the reference point (gridref.js) rather than from the corner of the sheet,
+  // and the sheet's own border is drawn separately — with an origin somebody
+  // put on a traced photograph, the border is no longer a grid line, and a
+  // sheet you cannot see the edge of is the bug Phase 13 fixed.
+  function buildSheet(wCells, hCells, pitch = CELL, origin = ORIGIN) {
     const w = Math.max(1, wCells) * CELL, h = Math.max(1, hCells) * CELL;
     const p = pitch > 0 ? pitch : CELL;
-    const nx = Math.round(w / p), nz = Math.round(h / p);
+    const o = asOrigin(origin);
     const every = majorEvery(p);
     const pos = [], col = [];
     const line = (x0, z0, x1, z1, c) => {
       pos.push(x0, 0, z0, x1, 0, z1);
       col.push(c.r, c.g, c.b, c.r, c.g, c.b);
     };
-    const weight = (i, n) => (i === 0 || i === n ? SHEET_EDGE
-      : i % every === 0 ? SHEET_MAJOR : SHEET_MINOR);
-    for (let i = 0; i <= nx; i++) line(i * p, 0, i * p, h, weight(i, nx));
-    for (let j = 0; j <= nz; j++) line(0, j * p, w, j * p, weight(j, nz));
+    const EPS = 1e-9;
+    const weight = (i) => (i % every === 0 ? SHEET_MAJOR : SHEET_MINOR);
+    // A grid line that lands exactly on the border is *not* drawn: the border
+    // is drawn below, and two coincident transparent lines read as a third
+    // colour. With the grid on the sheet's own corner — the default, and every
+    // design written before this — that skips exactly the four lines the edge
+    // weight used to claim, so nothing about the default picture changes.
+    const onEdge = (v, lo, hi) => Math.abs(v - lo) < EPS || Math.abs(v - hi) < EPS;
+    const i0 = Math.ceil((0 - o.x) / p - EPS), i1 = Math.floor((w - o.x) / p + EPS);
+    const j0 = Math.ceil((0 - o.z) / p - EPS), j1 = Math.floor((h - o.z) / p + EPS);
+    for (let i = i0; i <= i1; i++) {
+      const x = o.x + i * p;
+      if (!onEdge(x, 0, w)) line(x, 0, x, h, weight(i));
+    }
+    for (let j = j0; j <= j1; j++) {
+      const z = o.z + j * p;
+      if (!onEdge(z, 0, h)) line(0, z, w, z, weight(j));
+    }
+    // ...and the four edges of what you may draw on.
+    line(0, 0, 0, h, SHEET_EDGE);
+    line(w, 0, w, h, SHEET_EDGE);
+    line(0, 0, w, 0, SHEET_EDGE);
+    line(0, h, w, h, SHEET_EDGE);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -81960,12 +82300,14 @@ function initRender(canvas) {
   function syncSheet() {
     if (!sheetPlan) return;
     const pitch = gridPitch(editView.height);
+    const o = sheetPlan.origin;
     const u = sheetGrid && sheetGrid.userData;
-    if (u && u.w === sheetPlan.w && u.h === sheetPlan.h && u.pitch === pitch) return;
+    if (u && u.w === sheetPlan.w && u.h === sheetPlan.h && u.pitch === pitch &&
+        u.ox === o.x && u.oz === o.z) return;
     if (sheetGrid) { scene.remove(sheetGrid); disposeSheet(sheetGrid); }
-    sheetGrid = buildSheet(sheetPlan.w, sheetPlan.h, pitch);
+    sheetGrid = buildSheet(sheetPlan.w, sheetPlan.h, pitch, o);
     sheetGrid.position.set(0, 0.04, 0);
-    sheetGrid.userData = { w: sheetPlan.w, h: sheetPlan.h, pitch };
+    sheetGrid.userData = { w: sheetPlan.w, h: sheetPlan.h, pitch, ox: o.x, oz: o.z };
     sheetGrid.visible = mode === 'edit';
     scene.add(sheetGrid);
   }
@@ -84515,7 +84857,7 @@ function initRender(canvas) {
 
     // the drawing surface, and the sun that swings around it
     const gw = state.w * CELL, gh = state.h * CELL;
-    sheetPlan = { w: state.w, h: state.h };
+    sheetPlan = { w: state.w, h: state.h, origin: gridOrigin(state) };
     syncSheet();
 
     // The site the sun swings around. Kept on the module rather than baked
@@ -88440,9 +88782,16 @@ function edgeOpeningOpts(val) {
 
 // ---------- the raster ----------
 
-function createLattice(w, h) {
+// `pitch` is what one cell is worth in feet and (x0, z0) is where cell (0, 0)'s
+// low corner sits. Both default to what every lattice was until Phase 35 — the
+// 4ft module starting at the corner of the sheet — so a caller that has no
+// opinion (the save migration, the generator) writes exactly the bytes it did
+// before. The paint brush has an opinion: see `rasterOf` in paint.js.
+function createLattice(w, h, pitch = CELL, x0 = 0, z0 = 0) {
   return {
     w, h,
+    pitch: pitch > 0 ? pitch : CELL,
+    x0, z0,
     // cells[i] = null (nothing drawn), or the label a room tool wrote across
     // the region: { room, color, fin, paint }. It is a *scratch* record — the
     // moment this is baked, those four fields live on a shape instead.
@@ -88549,6 +88898,11 @@ const edgeKey = (h, idx) => (h ? 'H' : 'V') + idx;
 
 function traceRegion(lat, cells, claimed = new Set()) {
   if (!cells || !cells.length) return [];
+  // What a cell is worth and where the raster starts. A lattice written before
+  // Phase 35 — or by anything that still draws on the 4ft module — carries
+  // neither, and reads as the module starting at the corner.
+  const pitch = lat.pitch > 0 ? lat.pitch : CELL;
+  const ox = lat.x0 || 0, oz = lat.z0 || 0;
   const region = new Set(cells.map((c) => c.y * lat.w + c.x));
   const edges = [];
 
@@ -88639,9 +88993,9 @@ function traceRegion(lat, cells, claimed = new Set()) {
         runs.unshift(runs.pop());
       }
     }
-    const pts = runs.map((r) => ({ x: r.start[0] * CELL, z: r.start[1] * CELL }));
+    const pts = runs.map((r) => ({ x: ox + r.start[0] * pitch, z: oz + r.start[1] * pitch }));
     const segs = runs.map((r) => {
-      const len = r.edges.length * CELL;
+      const len = r.edges.length * pitch;
       const openings = [];
       if (r.mine) {
         r.edges.forEach((e, i) => {
@@ -91294,6 +91648,8 @@ const { normalizeRegion, MAX_REGIONS } = __m_js_site_js;
 const { normalizeRoof, isDefaultRoof } = __m_js_roof_js;
 const { normalizeLife, isDefaultLife } = __m_js_agents_js;
 const { normalizeOverlay } = __m_js_overlay_js;
+const { normalizeGridRef, isDefaultGridRef } = __m_js_gridref_js;
+const { PITCHES } = __m_js_snapgrid_js;
 const { normalizeTours } = __m_js_tour_js;
 const { normalizeModels, librarySize } = __m_js_models_js;
 const { normalizeTimetable, isEmptyTimetable } = __m_js_timetable_js;
@@ -91341,6 +91697,14 @@ const { normalizeWeather, isDefaultWeather } = __m_js_weather_js;
 //        reason: a rate table is a fact *about this design* — the prices that
 //        produced this estimate are half of what the estimate means — and a
 //        phasing plan is a set of references to rooms v11 gave ids to.
+//   v12+ — `gridRef`: the point the drawing grid indexes off, in world feet
+//        plus the image pixel it was picked on (see gridref.js) — and, beside
+//        it, `cellFt` finally meaning something. `cellFt` has been written
+//        into every file since v1 saying 4; a design drawn at the finest grid
+//        pitch says 2 instead, and a design that has not is byte-identical to
+//        what this build wrote before. Another append on the timetable's
+//        terms: a design whose grid starts at the corner of the sheet writes
+//        no `gridRef` key at all.
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
 // polygon rooms in it, a v3 one has no glass and no stairs, a v4 one has no
@@ -91405,6 +91769,8 @@ const { normalizeWeather, isDefaultWeather } = __m_js_weather_js;
 // autosave and the file-based Save/Load — a separate localStorage index, not
 // a save-format change, so nothing here invalidates an older file or an
 // in-progress autosave.
+
+
 
 
 
@@ -91518,6 +91884,14 @@ function serialize(state, opts = {}) {
   // every file written before this build round-trips through it unchanged.
   const haunt = normalizeHaunt(out.haunt);
   if (isDefaultHaunt(haunt)) delete out.haunt; else out.haunt = haunt;
+  // Phase 35's one record, and the same rule again: a design whose grid starts
+  // at the corner of the sheet — every design written before this build, and
+  // every design nobody has traced a photograph with — writes no `gridRef`
+  // key. `cellFt` needs no such care: it has been on the state since v1 and
+  // has said 4 in every file ever written, so a design nobody has drawn at
+  // 2ft still writes exactly the four it always did.
+  const gridRef = normalizeGridRef(out.gridRef);
+  if (isDefaultGridRef(gridRef)) delete out.gridRef; else out.gridRef = gridRef;
   // Phase 29's one record, the same cheap append: a design with no weather
   // writes no `weather` key — v12 still, and every file written before this
   // build round-trips through it unchanged.
@@ -91667,6 +92041,12 @@ function deserialize(json, opts = {}) {
   state.floorHt = typeof d.floorHt === 'number' && d.floorHt > 0
     ? Math.min(60, Math.max(CELL, d.floorHt))
     : FLOOR_H;
+  // What one raster cell of the paint brush is worth (paint.js). It has been
+  // on the state since v1 saying 4; Phase 35 lets a design that has been drawn
+  // at the finest grid pitch say 2 instead. Anything else — a hostile number,
+  // a value off the ladder, a coarser cell that would strand rooms already
+  // drawn on a finer one — reads as the 4ft module.
+  state.cellFt = PITCHES.includes(d.cellFt) ? Math.min(d.cellFt, CELL) : CELL;
 
   const rawFloors = legacy ? [d] : d.floors.slice(0, MAX_FLOORS);
   const read = (rawFloors.length ? rawFloors : [null]).map((rf) => readFloor(rf, w, h));
@@ -91733,6 +92113,11 @@ function deserialize(json, opts = {}) {
   // day, never a design that won't open.
   const weather = normalizeWeather(d.weather);
   if (!isDefaultWeather(weather)) state.weather = weather;
+  // Phase 35's reference point, on the same terms as everything above it: an
+  // unreadable one is a design whose grid starts at the corner of the sheet,
+  // which is where every design's grid started before this build.
+  const gridRef = normalizeGridRef(d.gridRef);
+  if (!isDefaultGridRef(gridRef)) state.gridRef = gridRef;
   // v9, on the same terms as everything above it: an unreadable overlay is a
   // design with no overlay, never a design that won't open. An image type this
   // build can't decode, a data URL over the size cap, a missing pixel size —

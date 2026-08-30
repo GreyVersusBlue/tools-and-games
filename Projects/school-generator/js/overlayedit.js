@@ -13,10 +13,18 @@
 //   move     drag the picture, R turns it, and that is all it does.
 //   measure  click one end of something you know the length of, click the
 //            other, and type what it is. The scale falls out of one division.
+//   origin   click the point the drawing grid should start from — a column
+//            centre, the corner of the building, whatever the plan itself
+//            counts off. See gridref.js for why this is a thing, and why it
+//            is only allowed on a plan nobody has drawn on yet.
 //
 // The measure gesture is two clicks rather than a drag on purpose. You are
 // usually zooming between the clicks — find one end of the wall, zoom out,
 // pan, zoom in on the other end — and a drag can't survive that.
+//
+// The origin gesture is one click and no drag at all, which is the whole of
+// it: there is nothing to be dragged, and a reference point you can nudge by
+// accident is worse than one you re-click.
 
 import * as THREE from 'three';
 import { floorBaseY } from './grid.js';
@@ -24,9 +32,13 @@ import {
   imageToWorld, worldToImage, overlayCorners, calibrationOf,
   moveOverlay, rotateOverlay, setOverlay, showsOn,
 } from './overlay.js';
+import {
+  gridOrigin, gridRefOf, gridLocked, makeGridRef, setGridRef, describeGridRef,
+} from './gridref.js';
 
 const MEASURE_COLOR = 0xf0a44a;
 const MOVE_COLOR = 0x4da3ff;
+const ORIGIN_COLOR = 0x7ce0a0;
 const ROTATE_STEP = Math.PI / 36;    // 5° — an overlay is aligned, not placed
 const FINE_STEP = Math.PI / 720;     // 0.25° with Shift, for squaring a scan up
 
@@ -34,7 +46,7 @@ const handleSize = (viewHeight) => Math.min(6, Math.max(0.5, viewHeight * 0.009)
 
 export function initOverlayEdit({ getState, renderApi, host }) {
   let tool = null;              // 'overlay' | null
-  let mode = 'move';            // 'move' | 'measure'
+  let mode = 'move';            // 'move' | 'measure' | 'origin'
   let drag = null;              // { from: {x,z}, start: {x,z} }
   // The measurement in progress: the first click, in *image* pixels, so it
   // stays on the same spot of the picture if the picture moves underneath it.
@@ -77,6 +89,29 @@ export function initOverlayEdit({ getState, renderApi, host }) {
     return m;
   });
 
+  // The grid's reference point: a crosshair, not a dot, because what it marks
+  // is the *intersection* the grid counts from and a filled circle hides it.
+  // Drawn whenever there is one and the overlay tool is up, in either mode —
+  // you set it in Move as often as you check it in Origin.
+  const originMat = new THREE.LineBasicMaterial({
+    color: ORIGIN_COLOR, depthTest: false, transparent: true, opacity: 0.95,
+  });
+  const originMark = new THREE.LineSegments(new THREE.BufferGeometry(), originMat);
+  originMark.renderOrder = 615;
+  originMark.visible = false;
+  group.add(originMark);
+
+  function setOriginMark(p, r) {
+    const y = baseY() + 0.02;
+    const arr = new Float32Array([
+      p.x - r, y, p.z, p.x + r, y, p.z,
+      p.x, y, p.z - r, p.x, y, p.z + r,
+    ]);
+    const geo = originMark.geometry;
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+    geo.computeBoundingSphere();
+  }
+
   const overlayOf = () => {
     const s = getState();
     return s && s.overlay ? s.overlay : null;
@@ -98,8 +133,23 @@ export function initOverlayEdit({ getState, renderApi, host }) {
   function refresh() {
     const s = getState();
     const o = overlayOf();
-    const on = tool === 'overlay' && o && showsOn(o, s.currentFloor);
-    group.visible = !!on;
+    const up = tool === 'overlay';
+    group.visible = up;
+
+    // The reference point is a fact about the *design*, not about the picture,
+    // so it is drawn whenever the tool is up — including on a design whose
+    // image has since been cleared, and including while the crosshair is the
+    // only thing in the group.
+    const ref = gridRefOf(s);
+    if (up && ref) {
+      setOriginMark(gridOrigin(s), handleSize(renderApi.editView.height) * 0.9);
+      originMat.color.setHex(gridLocked(s) ? 0x7a8390 : ORIGIN_COLOR);
+      originMark.visible = true;
+    } else {
+      originMark.visible = false;
+    }
+
+    const on = up && o && showsOn(o, s.currentFloor);
     if (!on) {
       outline.visible = measureLine.visible = false;
       dots.forEach((d) => { d.visible = false; });
@@ -143,6 +193,10 @@ export function initOverlayEdit({ getState, renderApi, host }) {
   function pointerDown(p, e) {
     if (tool !== 'overlay') return false;
     const o = overlayOf();
+    // The one gesture that does not need a picture: a reference point is a
+    // point on the *plan*, and picking it off an image is the common case
+    // rather than the only one.
+    if (mode === 'origin') { setOrigin(p); return true; }
     if (!o) { host.status('Load an image first — the Overlay panel has the button.'); return true; }
     if (mode === 'measure') {
       const pt = worldToImage(o, p.x, p.z);
@@ -166,8 +220,29 @@ export function initOverlayEdit({ getState, renderApi, host }) {
     return true;
   }
 
+  // One click, one reference point. The refusal comes back from gridref.js
+  // rather than being decided here, so the tool and the panel say the same
+  // sentence about it.
+  function setOrigin(p) {
+    const s = getState();
+    host.pushUndo();
+    const out = setGridRef(s, makeGridRef(p.x, p.z, overlayOf()));
+    if (!out.ok) {
+      host.dropUndo();
+      host.status(out.reason);
+      refresh();
+      return;
+    }
+    // A structural change: the sheet's grid is redrawn off it, and so is
+    // everything the brush and the wall tool aim at.
+    host.changed({ structural: true, commit: true });
+    host.status(describeGridRef(s));
+    refresh();
+  }
+
   function pointerMove(p, e) {
     if (tool !== 'overlay') return false;
+    if (mode === 'origin') return true;
     if (mode === 'measure') {
       if (pending) { hover = { x: p.x, z: p.z }; refresh(); }
       return true;
@@ -189,6 +264,7 @@ export function initOverlayEdit({ getState, renderApi, host }) {
   }
 
   function pointerUp() {
+    if (tool === 'overlay' && mode === 'origin') return true;
     if (tool !== 'overlay' || !drag) return false;
     const moved = drag.moved;
     drag = null;
@@ -241,11 +317,14 @@ export function initOverlayEdit({ getState, renderApi, host }) {
     get tool() { return tool; },
     get mode() { return mode; },
     setMode(m) {
-      mode = m === 'measure' ? 'measure' : 'move';
+      mode = m === 'measure' || m === 'origin' ? m : 'move';
       pending = null;
       hover = null;
       refresh();
     },
+    // The reference point, for the panel: what it is, whether it can still be
+    // moved, and the one gesture that puts it back at the corner.
+    setOriginAt: (x, z) => setOrigin({ x, z }),
     get measuring() { return !!pending; },
     cancelMeasure() { pending = null; hover = null; refresh(); },
     pointerDown, pointerMove, pointerUp, key,

@@ -32,6 +32,7 @@ import {
   startLate, checkLate, lateWarmth, lateScore, lateResult,
 } from './hunt.js';
 import { normalizeHaunt } from './haunt.js';
+import { clearGridRef, describeGridRef, reanchorGridRef } from './gridref.js';
 import {
   WEATHER_MOODS, applyWeatherMood, normalizeWeather, isDefaultWeather, weatherLabel,
 } from './weather.js';
@@ -1179,7 +1180,7 @@ const TOOL_KEYS = {
   Equal: 'overlay', NumpadAdd: 'overlay',
 };
 const HINTS = {
-  floor: 'Floor — drag out a rectangle of floor. R switches to the 4ft brush. Cells join the room they can walk to, or start one.',
+  floor: 'Floor — drag out a rectangle of grid tiles. R switches to the brush. Tiles join the room they can walk to, or start one.',
   wall: 'Wall — click one end, then the other; the run you draw is the wall you get. S squares it to the grid, Alt draws off the grid, Esc stops the run. G switches between solid, glass and railing.',
   door: 'Door — pick single, double, cased opening or window, then click anywhere along a wall you have already drawn. Draw the four walls first, then cut the openings. Clicking the same kind again removes it.',
   room: 'Room — pick a name, color, floor finish and wall paint, then click a room to apply them',
@@ -1299,8 +1300,15 @@ function renderWallModes() {
 function renderGridReadout() {
   const p = editor.gridPitch;
   const ft = p >= 1 ? `${p} ft` : `${Math.round(p * 12)} in`;
+  // Phase 35: the grid has an origin as well as a pitch, and a grid that is
+  // not where you expect it is exactly the thing a readout is for.
+  const r = editor.gridRef;
+  const ref = r
+    ? `<br />Counted from the reference point${r.u === undefined ? '' : ' on the tracing image'}.`
+    : '';
   $('wall-grid-readout').innerHTML =
-    `Snapping to a <strong>${ft}</strong> grid — it gets finer as you zoom in.` +
+    `Snapping to a <strong>${ft}</strong> grid — it gets finer as you zoom in, ` +
+    'down to 2 ft.' + ref +
     (editor.wallOrtho ? '<br />Hold <kbd>Shift</kbd> for one run off the square.' : '');
 }
 $('wall-ortho').addEventListener('click', () => { editor.setWallOrtho(true); renderWallModes(); });
@@ -2041,7 +2049,7 @@ function renderSheetPanel() {
     lines.push('Part of the tracing image is off it, where the brush cannot reach — Fit covers it.');
   } else if (drawn && !coversBounds(state, drawn)) {
     lines.push(`The plan reaches ${Math.round(Math.max(drawn.x1, f.w))} × ` +
-      `${Math.round(Math.max(drawn.z1, f.d))} ft. The 4ft brush stops at the edge; ` +
+      `${Math.round(Math.max(drawn.z1, f.d))} ft. The floor brush stops at the edge; ` +
       'the vertex tool does not.');
   }
   $('sheet-fit').disabled = coversBounds(state, unionBounds(drawn, picture));
@@ -2075,7 +2083,7 @@ function applySheet(mutate, note, opts = {}) {
   // Said plainly rather than refused — the fix is one undo away.
   if (out.risk && out.risk.length) {
     said.push(`${out.risk.length} room${out.risk.length === 1 ? '' : 's'} now hang` +
-      `${out.risk.length === 1 ? 's' : ''} off the sheet — the 4ft brush will clip ` +
+      `${out.risk.length === 1 ? 's' : ''} off the sheet — the floor brush will clip ` +
       'them if you paint that storey again.');
   }
   if (out.clamped) said.push(`A plan is held between ${MIN_FT} and ${MAX_FT} ft.`);
@@ -2673,22 +2681,33 @@ for (const [id, key] of LAYER_CHECKBOXES) {
 const OVERLAY_MODES = [
   { key: 'move', label: 'Move' },
   { key: 'measure', label: 'Measure' },
+  { key: 'origin', label: 'Reference' },
 ];
+
+const OVERLAY_MODE_TITLES = {
+  move: 'Drag the image into place',
+  measure: 'Click the two ends of something you know the length of',
+  origin: 'Click the point the drawing grid should start from',
+};
+
+const OVERLAY_MODE_HINTS = {
+  measure: 'Measure — click one end of something you know the length of, then the other.',
+  origin: 'Reference — click the point the drawing grid should count from. ' +
+    'A column centre, a corner of the building, whatever the plan itself is dimensioned off.',
+};
 
 const overlayModes = $('overlay-modes');
 OVERLAY_MODES.forEach((m) => {
   const b = document.createElement('button');
   b.type = 'button';
   b.textContent = m.label;
-  b.title = m.key === 'measure'
-    ? 'Click the two ends of something you know the length of'
-    : 'Drag the image into place';
+  b.title = OVERLAY_MODE_TITLES[m.key] || '';
   b.addEventListener('click', () => {
     editor.setOverlayMode(m.key);
     renderOverlayPanel();
-    $('status').textContent = m.key === 'measure'
-      ? 'Measure — click one end of something you know the length of, then the other.'
-      : HINTS.overlay;
+    $('status').textContent = m.key === 'origin' && editor.gridLocked
+      ? editor.gridRefText
+      : (OVERLAY_MODE_HINTS[m.key] || HINTS.overlay);
   });
   overlayModes.appendChild(b);
 });
@@ -2799,6 +2818,22 @@ $('overlay-fit').addEventListener('click', () => {
   fitPlanToOverlay({ lead: 'Plan fitted to the tracing image.' });
 });
 
+// Back to the corner of the sheet. Allowed on exactly the terms setting it is
+// — gridref.js decides, and says why when it says no.
+$('overlay-origin-clear').addEventListener('click', () => {
+  editor.pushUndo();
+  const out = clearGridRef(state);
+  if (!out.ok) {
+    editor.dropUndo();
+    $('status').textContent = out.reason;
+    renderOverlayPanel();
+    return;
+  }
+  designChanged({ structural: true, commit: true });
+  $('status').textContent = describeGridRef(state);
+  renderOverlayPanel();
+});
+
 $('overlay-clear').addEventListener('click', () => {
   if (!overlayOf()) return;
   editor.pushUndo();
@@ -2851,6 +2886,10 @@ function autosaveNote(result) {
 // handles, and autosave — which is the call that can fail on a full
 // localStorage, so it is also the one place that says so.
 function applyOverlayChange() {
+  // A reference point picked on the picture rides with it, while that is still
+  // allowed — see gridref.js. Nothing to redraw beyond the grid itself, which
+  // `refreshOverlay` reaches through the renderer's own sheet sync.
+  reanchorGridRef(state);
   renderApi.refreshOverlay(state);
   editor.refreshOverlay();
   updateUndoButtons();
@@ -2892,10 +2931,14 @@ function renderOverlayPanel() {
   });
   sel.value = want;
 
-  for (const b of overlayModes.children) {
-    const on = b.textContent === (editor.overlayMode === 'measure' ? 'Measure' : 'Move');
-    b.classList.toggle('active', on);
-  }
+  const modeLabel = (OVERLAY_MODES.find((m) => m.key === editor.overlayMode) || OVERLAY_MODES[0]).label;
+  for (const b of overlayModes.children) b.classList.toggle('active', b.textContent === modeLabel);
+
+  // Phase 35's row: where the drawing grid starts, and the one button that
+  // puts it back. Both go grey the moment anything is drawn, because that is
+  // the moment the grid stops being movable — see gridref.js.
+  $('overlay-origin-clear').disabled = !editor.gridRef || editor.gridLocked;
+  $('overlay-grid-readout').textContent = editor.gridRefText;
 
   const lines = [describeOverlay(o)];
   if (o && !showsOn(o, state.currentFloor)) {

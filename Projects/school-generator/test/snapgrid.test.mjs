@@ -5,9 +5,10 @@ import assert from 'node:assert/strict';
 
 import { CELL } from '../js/grid.js';
 import {
-  PITCHES, MAX_LINES, MIN_PITCH, MAX_PITCH,
+  PITCHES, MAX_LINES, MIN_PITCH, MAX_PITCH, ORIGIN, asOrigin,
   gridPitch, majorEvery, snapValue, snapToGrid, snapDistance,
   orthoPoint, targetPoint, runLength, runAngle, runLabel, isAxisRun,
+  tileAt, tileBounds, tileCentre, tileUnder, tileSpan, spanBounds,
 } from '../js/snapgrid.js';
 
 test('the ladder doubles and carries the 4ft cell', () => {
@@ -20,6 +21,13 @@ test('the ladder doubles and carries the 4ft cell', () => {
 test('the default zoom still draws the 4ft cell', () => {
   // render.js frames a fresh 40x30 plan at about 138ft of view height.
   assert.equal(gridPitch(140), CELL);
+});
+
+test('two feet is the floor, and it is the smallest square a plan is made of', () => {
+  assert.equal(MIN_PITCH, 2);
+  assert.equal(PITCHES[0], 2, 'nothing finer is on the ladder');
+  // However far in you go, the tile stays something you could stand in.
+  for (let h = 1; h <= 40; h += 1) assert.ok(gridPitch(h) >= 2);
 });
 
 test('zooming in subdivides, zooming out coarsens', () => {
@@ -52,10 +60,12 @@ test('a nonsense view height falls back rather than throwing', () => {
 });
 
 test('the heavy line falls on the 4ft cell once the grid is finer than one', () => {
-  assert.equal(majorEvery(1) * 1, CELL);
   assert.equal(majorEvery(2) * 2, CELL);
-  assert.equal(majorEvery(0.5) * 0.5, CELL);
   assert.equal(majorEvery(CELL) * CELL, 20, 'at the cell it is the 20ft rule');
+});
+
+test('every step of the ladder is a whole number of the finest one', () => {
+  for (const p of PITCHES) assert.equal(p % MIN_PITCH, 0, `${p}ft does not subdivide ${MIN_PITCH}ft`);
 });
 
 test('snapping lands on intersections of the pitch', () => {
@@ -64,6 +74,27 @@ test('snapping lands on intersections of the pitch', () => {
   assert.equal(snapValue(-2.1, 1), -2);
   assert.deepEqual(snapToGrid(9.4, 10.1, 4), { x: 8, z: 12 });
   assert.equal(snapValue(7, 0), 7, 'a zero pitch is no grid at all');
+});
+
+test('the grid can start somewhere other than the corner', () => {
+  // A 4ft grid counted from x = 1.5 has lines at 1.5, 5.5, 9.5...
+  assert.equal(snapValue(5.4, 4, 1.5), 5.5);
+  assert.equal(snapValue(3.4, 4, 1.5), 1.5);
+  assert.deepEqual(snapToGrid(5.4, 3.4, 4, { x: 1.5, z: 1.5 }), { x: 5.5, z: 1.5 });
+  // ...and no origin is the corner, which is what every caller before it meant.
+  assert.deepEqual(snapToGrid(9.4, 10.1, 4), snapToGrid(9.4, 10.1, 4, ORIGIN));
+  assert.deepEqual(asOrigin(null), ORIGIN);
+  assert.deepEqual(asOrigin({ x: NaN, z: 1 }), ORIGIN);
+  assert.deepEqual(asOrigin({ x: 2, z: 3 }), { x: 2, z: 3 });
+});
+
+test('an ortho run off a moved grid still lands on it', () => {
+  const o = { x: 1.5, z: 1.5 };
+  const from = targetPoint(5.4, 3.4, { pitch: 4, origin: o });
+  assert.deepEqual(from, { x: 5.5, z: 1.5 });
+  const to = targetPoint(25.2, 4.9, { pitch: 4, origin: o, from, ortho: true });
+  assert.deepEqual(to, { x: 25.5, z: 1.5 });
+  assert.equal(snapValue(to.x, 4, o.x), to.x);
 });
 
 test('the snap distance is how far the cursor was moved', () => {
@@ -136,4 +167,51 @@ test('a run that comes back to 360 reads as 0, not as 360', () => {
   const almost = { x: 20, z: -0.01 };
   assert.ok(runAngle(a, almost) > 359.9);
   assert.equal(runLabel(a, almost), '20 ft · 0.0°');
+});
+
+// ---------- tiles ----------
+
+test('a point falls in exactly one tile, whichever corner it is near', () => {
+  assert.deepEqual(tileAt(0.1, 0.1, 4), { ix: 0, iz: 0 });
+  assert.deepEqual(tileAt(3.9, 3.9, 4), { ix: 0, iz: 0 });
+  // A point on a line belongs to the tile on its + side, as Math.floor says.
+  assert.deepEqual(tileAt(4, 4, 4), { ix: 1, iz: 1 });
+  assert.deepEqual(tileAt(-0.1, -0.1, 4), { ix: -1, iz: -1 });
+});
+
+test('a tile is a square of the pitch, wherever the grid starts', () => {
+  assert.deepEqual(tileBounds(2, 1, 4), { x0: 8, z0: 4, x1: 12, z1: 8 });
+  assert.deepEqual(tileCentre(2, 1, 4), { x: 10, z: 6 });
+  assert.deepEqual(tileBounds(0, 0, 2, { x: 1.5, z: 1.5 }),
+    { x0: 1.5, z0: 1.5, x1: 3.5, z1: 3.5 });
+});
+
+test('the tile under the cursor is the one the cursor is in', () => {
+  const t = tileUnder(9.4, 10.1, 4);
+  assert.deepEqual(t, { x0: 8, z0: 8, x1: 12, z1: 12 });
+  const off = tileUnder(9.4, 10.1, 4, { x: 1.5, z: 1.5 });
+  assert.ok(off.x0 <= 9.4 && off.x1 > 9.4);
+  assert.equal(off.x1 - off.x0, 4);
+});
+
+test('a drag covers whole tiles at both ends, and never fewer than one', () => {
+  const a = { x: 5, z: 5 }, b = { x: 13, z: 9 };
+  const span = tileSpan(a, b, 4);
+  assert.deepEqual(span, { ix0: 1, ix1: 3, iz0: 1, iz1: 2, w: 3, h: 2 });
+  assert.deepEqual(spanBounds(span, 4), { x0: 4, z0: 4, x1: 16, z1: 12 });
+  // A drag that never leaves one square still lays that square.
+  const one = tileSpan(a, { x: 5.5, z: 5.5 }, 4);
+  assert.equal(one.w, 1);
+  assert.equal(one.h, 1);
+});
+
+test('a span is the same whichever corner the drag started in', () => {
+  const a = { x: 5, z: 5 }, b = { x: 13, z: 9 };
+  assert.deepEqual(tileSpan(a, b, 4), tileSpan(b, a, 4));
+});
+
+test('at the finest pitch a tile is 2ft square', () => {
+  const t = tileUnder(7.1, 3.2, MIN_PITCH);
+  assert.equal(t.x1 - t.x0, 2);
+  assert.equal(t.z1 - t.z0, 2);
 });

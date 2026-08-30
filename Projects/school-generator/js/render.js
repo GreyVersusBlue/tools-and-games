@@ -38,7 +38,8 @@ import {
 } from './stairs.js';
 import { wallProbe, solidBeside } from './walls.js';
 import { wallLinesOf, lineEnds, lineKind, lineOpenings } from './wallrun.js';
-import { gridPitch, majorEvery } from './snapgrid.js';
+import { gridPitch, majorEvery, ORIGIN, asOrigin } from './snapgrid.js';
+import { gridOrigin } from './gridref.js';
 import { failureText } from './bootcheck.js';
 import { overlaySize, showsOn } from './overlay.js';
 import { floorBounds, unionBounds, footprintMask } from './shadow.js';
@@ -4167,20 +4168,44 @@ export function initRender(canvas) {
   const SHEET_MAJOR = new THREE.Color(0x3a4a5c);
   const SHEET_EDGE = new THREE.Color(0x5c7590);
 
-  function buildSheet(wCells, hCells, pitch = CELL) {
+  // Phase 35: the grid has a phase as well as a pitch. Lines are counted from
+  // the reference point (gridref.js) rather than from the corner of the sheet,
+  // and the sheet's own border is drawn separately — with an origin somebody
+  // put on a traced photograph, the border is no longer a grid line, and a
+  // sheet you cannot see the edge of is the bug Phase 13 fixed.
+  function buildSheet(wCells, hCells, pitch = CELL, origin = ORIGIN) {
     const w = Math.max(1, wCells) * CELL, h = Math.max(1, hCells) * CELL;
     const p = pitch > 0 ? pitch : CELL;
-    const nx = Math.round(w / p), nz = Math.round(h / p);
+    const o = asOrigin(origin);
     const every = majorEvery(p);
     const pos = [], col = [];
     const line = (x0, z0, x1, z1, c) => {
       pos.push(x0, 0, z0, x1, 0, z1);
       col.push(c.r, c.g, c.b, c.r, c.g, c.b);
     };
-    const weight = (i, n) => (i === 0 || i === n ? SHEET_EDGE
-      : i % every === 0 ? SHEET_MAJOR : SHEET_MINOR);
-    for (let i = 0; i <= nx; i++) line(i * p, 0, i * p, h, weight(i, nx));
-    for (let j = 0; j <= nz; j++) line(0, j * p, w, j * p, weight(j, nz));
+    const EPS = 1e-9;
+    const weight = (i) => (i % every === 0 ? SHEET_MAJOR : SHEET_MINOR);
+    // A grid line that lands exactly on the border is *not* drawn: the border
+    // is drawn below, and two coincident transparent lines read as a third
+    // colour. With the grid on the sheet's own corner — the default, and every
+    // design written before this — that skips exactly the four lines the edge
+    // weight used to claim, so nothing about the default picture changes.
+    const onEdge = (v, lo, hi) => Math.abs(v - lo) < EPS || Math.abs(v - hi) < EPS;
+    const i0 = Math.ceil((0 - o.x) / p - EPS), i1 = Math.floor((w - o.x) / p + EPS);
+    const j0 = Math.ceil((0 - o.z) / p - EPS), j1 = Math.floor((h - o.z) / p + EPS);
+    for (let i = i0; i <= i1; i++) {
+      const x = o.x + i * p;
+      if (!onEdge(x, 0, w)) line(x, 0, x, h, weight(i));
+    }
+    for (let j = j0; j <= j1; j++) {
+      const z = o.z + j * p;
+      if (!onEdge(z, 0, h)) line(0, z, w, z, weight(j));
+    }
+    // ...and the four edges of what you may draw on.
+    line(0, 0, 0, h, SHEET_EDGE);
+    line(w, 0, w, h, SHEET_EDGE);
+    line(0, 0, w, 0, SHEET_EDGE);
+    line(0, h, w, h, SHEET_EDGE);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -4198,12 +4223,14 @@ export function initRender(canvas) {
   function syncSheet() {
     if (!sheetPlan) return;
     const pitch = gridPitch(editView.height);
+    const o = sheetPlan.origin;
     const u = sheetGrid && sheetGrid.userData;
-    if (u && u.w === sheetPlan.w && u.h === sheetPlan.h && u.pitch === pitch) return;
+    if (u && u.w === sheetPlan.w && u.h === sheetPlan.h && u.pitch === pitch &&
+        u.ox === o.x && u.oz === o.z) return;
     if (sheetGrid) { scene.remove(sheetGrid); disposeSheet(sheetGrid); }
-    sheetGrid = buildSheet(sheetPlan.w, sheetPlan.h, pitch);
+    sheetGrid = buildSheet(sheetPlan.w, sheetPlan.h, pitch, o);
     sheetGrid.position.set(0, 0.04, 0);
-    sheetGrid.userData = { w: sheetPlan.w, h: sheetPlan.h, pitch };
+    sheetGrid.userData = { w: sheetPlan.w, h: sheetPlan.h, pitch, ox: o.x, oz: o.z };
     sheetGrid.visible = mode === 'edit';
     scene.add(sheetGrid);
   }
@@ -6753,7 +6780,7 @@ export function initRender(canvas) {
 
     // the drawing surface, and the sun that swings around it
     const gw = state.w * CELL, gh = state.h * CELL;
-    sheetPlan = { w: state.w, h: state.h };
+    sheetPlan = { w: state.w, h: state.h, origin: gridOrigin(state) };
     syncSheet();
 
     // The site the sun swings around. Kept on the module rather than baked

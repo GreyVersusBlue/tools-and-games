@@ -109,6 +109,36 @@ test('a migrated design round-trips through v11 byte for byte', () => {
   }
 });
 
+// ---------- Phase 35's two ----------
+
+test('a design nobody has re-gridded writes no gridRef and the cellFt it always did', () => {
+  for (const name of FIXTURES) {
+    const json = JSON.parse(serialize(load(name)));
+    assert.equal('gridRef' in json, false, `${name} grew a gridRef key it never asked for`);
+    assert.equal(json.cellFt, CELL, `${name} changed what a cell is worth`);
+  }
+});
+
+test('a reference point and a refined raster survive a round trip', () => {
+  const s = load('plan-v5');
+  s.gridRef = { x: 3.25, z: -1.5, u: 120, v: 64 };
+  s.cellFt = 2;
+  const back = deserialize(serialize(s));
+  assert.deepEqual(back.gridRef, { x: 3.25, z: -1.5, u: 120, v: 64 });
+  assert.equal(back.cellFt, 2);
+  assert.equal(serialize(back), serialize(deserialize(serialize(back))));
+});
+
+test('a hostile grid record opens as the design it always was', () => {
+  const s = load('plan-v5');
+  const json = JSON.parse(serialize(s));
+  json.gridRef = { x: 'somewhere' };
+  json.cellFt = 999;
+  const back = deserialize(JSON.stringify(json));
+  assert.equal(back.gridRef, undefined);
+  assert.equal(back.cellFt, CELL);
+});
+
 // ---------- what the building still says about itself ----------
 
 test('the doorways, windows and glass a file drew all come through', () => {

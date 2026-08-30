@@ -1,4 +1,5 @@
-// snapgrid.js — the drawing grid you aim at, and how fine it is.
+// snapgrid.js — the drawing grid you aim at, how fine it is, and where it
+// starts.
 //
 // Until this module the 4ft lattice was the only thing a drawing tool could
 // snap to, and it was 4ft whether the screen showed six hundred feet of site
@@ -10,13 +11,37 @@
 // steps through a ladder of round numbers rather than sliding, because a grid
 // you can count on ("that's three squares, so twelve feet") stops being a
 // measuring instrument the moment its squares are 3.7ft. The ladder is in
-// feet and doubles: half a foot to thirty-two.
+// feet and doubles: two feet to thirty-two.
 //
 // The rule is one line: **pick the finest pitch that still leaves the view
 // legible.** `MAX_LINES` is what "legible" means — how many grid lines may
 // cross the shorter axis of the viewport before the next pitch up takes over.
 // The 4ft cell (grid.js `CELL`) is still the unit rooms are painted in and
 // still the pitch at the default zoom; it is no longer the only one.
+//
+// ## Two feet is the floor
+//
+// The ladder used to start at six inches, which was a number chosen because
+// it was the finest thing the *wall* tool could conceivably want. Nothing is
+// drawn at six inches: a wall lands on a point, and a floor lands on a
+// *square*, and a six-inch square of floor is not a thing anybody places. Two
+// feet is the smallest square a building is made of — half a 4ft module, a
+// third of a corridor, the width of a door leaf — so that is where the ladder
+// stops. Every step above it is a whole multiple of it, which is what lets one
+// raster hold a plan drawn at every zoom (see paint.js).
+//
+// ## The grid has a phase
+//
+// A grid is a pitch *and an origin*, and for thirty-four phases the origin was
+// silently (0, 0) — the corner of the sheet. That is the right default and the
+// wrong only answer the moment somebody traces a photograph: a scan's column
+// lines fall where they fall, and a grid that cannot be slid onto them is a
+// grid you end up fighting. So every function here takes an origin, defaulting
+// to the corner it always used, and `gridref.js` is what decides where it is.
+//
+// The *sheet* still starts at the origin and grows +x and +z — that is
+// footprint.js's constraint and nothing here changes it. What moves is the
+// grid's phase across it.
 //
 // Pure module: no three.js, no DOM. Exercised by test/snapgrid.test.mjs.
 
@@ -25,16 +50,26 @@ import { CELL } from './grid.js';
 // The ladder, in feet. Every step is a whole number of the one below it and
 // 4ft (the paint brush's cell) is on it, so a finer grid always subdivides
 // the cells rather than cutting across them.
-export const PITCHES = [0.5, 1, 2, 4, 8, 16, 32];
+export const PITCHES = [2, 4, 8, 16, 32];
 
 // How many lines may cross the view's height before the grid coarsens. Sized
 // from the two ends it has to survive: at the closest zoom (30ft of view) it
-// must not force a pitch finer than a foot, and at the default (140ft) it must
+// must land on the finest pitch there is, and at the default (140ft) it must
 // still land on the 4ft cell every earlier version drew.
 export const MAX_LINES = 56;
 
 export const MIN_PITCH = PITCHES[0];
 export const MAX_PITCH = PITCHES[PITCHES.length - 1];
+
+// Where the grid starts when nobody has said otherwise: the corner of the
+// sheet, which is what every version before this one assumed.
+export const ORIGIN = Object.freeze({ x: 0, z: 0 });
+
+// Read an origin off anything — a point, a partial one, a null. Every entry
+// point below takes one, so this is the only place that has to be careful.
+export const asOrigin = (o) => (o && Number.isFinite(o.x) && Number.isFinite(o.z)
+  ? { x: o.x, z: o.z }
+  : ORIGIN);
 
 // The pitch to draw and snap to for a given view height, in feet. Monotonic in
 // `viewHeight`: zooming in never coarsens the grid.
@@ -57,14 +92,22 @@ export function majorEvery(pitch) {
 
 // ---------- snapping ----------
 
-export const snapValue = (v, pitch) => (pitch > 0 ? Math.round(v / pitch) * pitch : v);
+// The nearest line of the grid to one coordinate. `origin` is where the grid
+// starts; leave it out and it starts at zero, which is what every caller
+// before the reference point wanted.
+export const snapValue = (v, pitch, origin = 0) => (pitch > 0
+  ? origin + Math.round((v - origin) / pitch) * pitch
+  : v);
 
 // The nearest intersection of the grid to a world point.
-export const snapToGrid = (x, z, pitch) => ({ x: snapValue(x, pitch), z: snapValue(z, pitch) });
+export const snapToGrid = (x, z, pitch, origin) => {
+  const o = asOrigin(origin);
+  return { x: snapValue(x, pitch, o.x), z: snapValue(z, pitch, o.z) };
+};
 
 // How far the snap moved the cursor — what a tool shows a snap indicator for.
-export const snapDistance = (x, z, pitch) => {
-  const p = snapToGrid(x, z, pitch);
+export const snapDistance = (x, z, pitch, origin) => {
+  const p = snapToGrid(x, z, pitch, origin);
   return Math.hypot(p.x - x, p.z - z);
 };
 
@@ -88,8 +131,64 @@ export function orthoPoint(a, b) {
 // that is already on the grid.
 export function targetPoint(x, z, opts = {}) {
   const pitch = opts.pitch > 0 ? opts.pitch : CELL;
-  const p = opts.snap === false ? { x, z } : snapToGrid(x, z, pitch);
+  const p = opts.snap === false ? { x, z } : snapToGrid(x, z, pitch, opts.origin);
   return opts.ortho && opts.from ? orthoPoint(opts.from, p) : p;
+}
+
+// ---------- tiles ----------
+//
+// A wall lands on a *point* and a floor lands on a *square*, and those are two
+// different questions about the same grid. Everything above answers the first;
+// the six below answer the second.
+//
+// A tile is named by the two whole numbers that index it from the origin, so
+// tiles are comparable, hashable and — the reason it is an index pair rather
+// than a rectangle — the same tile whichever corner of it the cursor is in.
+
+// Which tile a world point falls in. A point exactly on a line belongs to the
+// tile on its + side, which is the rule `Math.floor` has always given the 4ft
+// cell.
+export const tileAt = (x, z, pitch, origin) => {
+  const o = asOrigin(origin);
+  const p = pitch > 0 ? pitch : CELL;
+  return { ix: Math.floor((x - o.x) / p), iz: Math.floor((z - o.z) / p) };
+};
+
+// ...and back: the square that tile covers, in world feet.
+export const tileBounds = (ix, iz, pitch, origin) => {
+  const o = asOrigin(origin);
+  const p = pitch > 0 ? pitch : CELL;
+  return { x0: o.x + ix * p, z0: o.z + iz * p, x1: o.x + (ix + 1) * p, z1: o.z + (iz + 1) * p };
+};
+
+export const tileCentre = (ix, iz, pitch, origin) => {
+  const b = tileBounds(ix, iz, pitch, origin);
+  return { x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2 };
+};
+
+// The square under the cursor, which is what a floor tool actually wants: one
+// call instead of `tileBounds(...tileAt(...))` at every call site.
+export const tileUnder = (x, z, pitch, origin) => {
+  const t = tileAt(x, z, pitch, origin);
+  return tileBounds(t.ix, t.iz, pitch, origin);
+};
+
+// Every tile between two corners, as the rectangle of indices a drag covers.
+// Inclusive at both ends: a drag that never leaves one square still lays it.
+export function tileSpan(a, b, pitch, origin) {
+  const ta = tileAt(a.x, a.z, pitch, origin);
+  const tb = tileAt(b.x, b.z, pitch, origin);
+  const ix0 = Math.min(ta.ix, tb.ix), ix1 = Math.max(ta.ix, tb.ix);
+  const iz0 = Math.min(ta.iz, tb.iz), iz1 = Math.max(ta.iz, tb.iz);
+  return { ix0, ix1, iz0, iz1, w: ix1 - ix0 + 1, h: iz1 - iz0 + 1 };
+}
+
+// The world rectangle a span covers — what the rectangle cursor is drawn from
+// and what the brush is handed.
+export function spanBounds(span, pitch, origin) {
+  const a = tileBounds(span.ix0, span.iz0, pitch, origin);
+  const b = tileBounds(span.ix1, span.iz1, pitch, origin);
+  return { x0: a.x0, z0: a.z0, x1: b.x1, z1: b.z1 };
 }
 
 // ---------- reading a run back ----------
