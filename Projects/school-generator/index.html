@@ -1794,15 +1794,20 @@
       <button id="floor-rect" type="button" aria-pressed="true"
               title="Drag out a whole rectangle of floor (R)">▭ Rectangle</button>
       <button id="floor-brush" type="button" aria-pressed="false"
-              title="Paint one 4ft cell at a time (R)">✎ 4ft brush</button>
+              title="Paint one grid tile at a time (R)">✎ Brush</button>
     </div>
     <details class="keys"><summary>Keys &amp; tips</summary><div>
       <kbd>R</kbd> rectangle / brush<br />
-      A rectangle is dragged from one corner to the other and lays every 4ft
-      cell inside it at once. The brush is the older gesture and is still the
-      right one for an odd shape.<br />
-      Cells join whichever room they can walk to, or start a new one — which is
-      as true of a rectangle as it was of a stroke.
+      A tile is one square of the drawing grid, so it follows the zoom: 4 ft at
+      the usual working distance, down to 2 ft as you come in and up to 32 ft
+      as you pull back. What the sheet draws is what a click lays.<br />
+      A rectangle is dragged from one corner to the other and lays every tile
+      inside it at once. The brush is the older gesture and is still the right
+      one for an odd shape.<br />
+      Tiles join whichever room they can walk to, or start a new one — which is
+      as true of a rectangle as it was of a stroke.<br />
+      Where the grid <em>starts</em> is set on the Overlay panel — a reference
+      point on a plan you are tracing, before the first floor or wall.
     </div></details>
   </div>
 

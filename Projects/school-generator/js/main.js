@@ -1180,18 +1180,18 @@ const TOOL_KEYS = {
   Equal: 'overlay', NumpadAdd: 'overlay',
 };
 const HINTS = {
-  floor: 'Floor — drag out a rectangle of floor. Every tile lands on one square of the drawing grid, which gets finer as you zoom in, down to 2ft. R switches to the brush. Tiles join the room they can walk to, or start one.',
+  floor: 'Floor — drag out a rectangle of grid tiles. R switches to the brush. Tiles join the room they can walk to, or start one.',
   wall: 'Wall — click one end, then the other; the run you draw is the wall you get. S squares it to the grid, Alt draws off the grid, Esc stops the run. G switches between solid, glass and railing.',
   door: 'Door — pick single, double, cased opening or window, then click anywhere along a wall you have already drawn. Draw the four walls first, then cut the openings. Clicking the same kind again removes it.',
   room: 'Room — pick a name, color, floor finish and wall paint, then click a room to apply them',
-  erase: 'Eraser — click anything to delete it: a wall, a staircase, a lift, a ramp, a floor opening, a piece of furniture, a whole room. Drag out a rectangle of grid tiles to clear floor instead, or switch to the brush with R.',
+  erase: 'Eraser — click anything to delete it: a wall, a staircase, a lift, a ramp, a floor opening, a piece of furniture, a whole room. Drag out a rectangle to clear floor instead, or switch to the brush with R.',
   poly: 'Polygon — click to place corners, click the first one (or Enter) to close. Alt = ignore snapping, Shift = 15° steps.',
   vertex: 'Shape — click a room to select it, Shift-click to select several. Drag a corner, Alt-click removes one. Delete removes the selection, R/⇧R rotates it 90°, M mirrors it, Ctrl+C/V/D copy/paste/duplicate it (with any props inside).',
   prop: 'Furniture — pick a piece, click to place. Click/drag a piece to move it, drag empty space to box-select. R rotates, Delete removes, Ctrl+C/V/D copy/paste/duplicate.',
   stair: 'Vertical — stairs, ramps, elevators and plain floor openings. Click to place one up to the next level. R rotates, drag to move, Delete removes.',
   template: 'Layout — pick a preset, click to stamp its whole furniture list at once. R/⇧R rotates it before you place it.',
   site: 'Site — lay hardscape and fields, or grade the ground. Region: click corners, close the loop. Grade: drag to raise, ⇧ to lower, Alt to smooth.',
-  overlay: 'Overlay — a plan or a sketch to trace over. Load an image, measure something you know the length of, say what it is, and the picture is scaled to match. Drag to move, R to turn. Reference sets where the drawing grid starts — before the first floor or wall, not after.',
+  overlay: 'Overlay — a plan or a sketch to trace over. Load an image, measure something you know the length of, say what it is, and the picture is scaled to match. Drag to move, R to turn.',
 };
 
 // --- one hint at a time (Phase 19) ---
@@ -2049,7 +2049,7 @@ function renderSheetPanel() {
     lines.push('Part of the tracing image is off it, where the brush cannot reach — Fit covers it.');
   } else if (drawn && !coversBounds(state, drawn)) {
     lines.push(`The plan reaches ${Math.round(Math.max(drawn.x1, f.w))} × ` +
-      `${Math.round(Math.max(drawn.z1, f.d))} ft. The 4ft brush stops at the edge; ` +
+      `${Math.round(Math.max(drawn.z1, f.d))} ft. The floor brush stops at the edge; ` +
       'the vertex tool does not.');
   }
   $('sheet-fit').disabled = coversBounds(state, unionBounds(drawn, picture));
@@ -2083,7 +2083,7 @@ function applySheet(mutate, note, opts = {}) {
   // Said plainly rather than refused — the fix is one undo away.
   if (out.risk && out.risk.length) {
     said.push(`${out.risk.length} room${out.risk.length === 1 ? '' : 's'} now hang` +
-      `${out.risk.length === 1 ? 's' : ''} off the sheet — the 4ft brush will clip ` +
+      `${out.risk.length === 1 ? 's' : ''} off the sheet — the floor brush will clip ` +
       'them if you paint that storey again.');
   }
   if (out.clamped) said.push(`A plan is held between ${MIN_FT} and ${MAX_FT} ft.`);
