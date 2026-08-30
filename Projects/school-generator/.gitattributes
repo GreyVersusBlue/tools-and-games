@@ -1,0 +1,5 @@
+# The committed walk template is byte-compared against a fresh build by
+# test/export-walk.test.mjs, so a checkout must never rewrite its line
+# endings — least of all on Windows, where core.autocrlf would hand it
+# back as CRLF and the comparison could never hold.
+walk-template.html text eol=lf
