@@ -26,12 +26,39 @@
 // camera turning from 170° to -170° turns twenty degrees rather than three
 // hundred and forty; pitch is plain linear and clamped, because a tour that
 // rolls past straight up is a bug in every playback engine ever written.
+//
+// Phase 33 gives a stop three more things to carry, all optional: an `hour`
+// (env's own `minutes` field, so nothing downstream has to translate), a
+// `mood` key (sky.js's, purely a label plus a `lights` hint — the *hour* is
+// what actually moves the sun) and a `weather` record (weather.js's, kind
+// plus intensity plus wind). `sampleClock` answers where the tour's clock
+// stands at time t the same way `sampleTour` answers where the camera is: the
+// hour eased the short way round between the nearest defined stops on either
+// side (it is an angle around a 24-hour clock face, so `lerpAngle` is the
+// right tool twice in this file), mood and weather held from the last
+// defined stop and flipped at the midpoint to the next — the storey
+// convention again, because a mood or a weather kind is no more a continuous
+// quantity than a floor number is. A stop that sets none of the three leaves
+// the tour's clock exactly where the drawing board had it, which is what
+// lets an old tour keep meaning what it always meant.
+//
+// `narration` is a fourth, simpler thing: a sentence a stop carries and the
+// caller reads once, on arrival — the PA path already knows how to speak one
+// and caption it when nothing can.
+//
+// Both imports below are pure siblings, the same bargain weather.js struck
+// with sound.js and shapes.js: nothing here is a dependency this module
+// couldn't afford to keep pure.
+import { MOODS } from './sky.js';
+import { WEATHER_KINDS, normalizeWeather } from './weather.js';
 
 export const MAX_TOURS = 12;
 export const MAX_KEYS = 64;
 export const MIN_SEC = 0.2;
 export const MAX_SEC = 60;
 export const MAX_HOLD = 30;
+export const MAX_NARRATION = 200;
+export const DAY_MINUTES = 1440;
 
 // Default travel speed when a stop is recorded, in feet per second. A little
 // slower than a walk (walkthrough.js walks at 12) because a tour is being
@@ -78,6 +105,27 @@ export const applyEase = (kind, u) => (kind === 'linear' ? clamp(u, 0, 1) : ease
 
 // ---------- the records ----------
 
+// An hour is `null` (this stop says nothing about the clock) or a minute of
+// the day, 0..1439 — env's own range, so nothing downstream has to translate.
+function normHour(v) {
+  return Number.isFinite(v) ? Math.round(clamp(v, 0, DAY_MINUTES - 1)) : null;
+}
+
+// A mood is '' (no opinion) or one of sky.js's keys — validated here rather
+// than trusted, the same as `ease` two lines below it.
+function normMood(v) {
+  return typeof v === 'string' && MOODS.some((m) => m.key === v) ? v : '';
+}
+
+// Weather is `null` (no opinion) or a normalized weather.js record. The kind
+// has to be named explicitly — an object with no recognizable `kind` is not
+// "clear weather asked for", it is nothing asked for at all, so it stays
+// null rather than becoming a silent `{ kind: 'clear', ... }`.
+function normWeather(v) {
+  if (!v || typeof v !== 'object' || !WEATHER_KINDS.includes(v.kind)) return null;
+  return normalizeWeather(v);
+}
+
 export function makeKey(cam = {}, opts = {}) {
   return {
     x: num(cam.x),
@@ -93,6 +141,12 @@ export function makeKey(cam = {}, opts = {}) {
     hold: clamp(num(opts.hold, 0), 0, MAX_HOLD),
     ease: EASES.includes(opts.ease) ? opts.ease : 'smooth',
     label: typeof opts.label === 'string' ? opts.label.slice(0, 40) : '',
+    // Phase 33: the clock a stop optionally carries, and the sentence it
+    // optionally says on arrival.
+    hour: normHour(opts.hour),
+    mood: normMood(opts.mood),
+    weather: normWeather(opts.weather),
+    narration: typeof opts.narration === 'string' ? opts.narration.slice(0, MAX_NARRATION) : '',
   };
 }
 
@@ -310,6 +364,71 @@ export function samplePath(tour, step = 0.25, cap = 2000) {
     if (at) out.push({ x: at.x, y: at.y, z: at.z });
   }
   return out;
+}
+
+// ---------- the clock a tour optionally carries ----------
+
+// Every stop that actually says something about hour, mood or weather, in
+// timeline order. A tour with none of them (every existing tour, and most
+// new ones) is an empty list, which is what makes `sampleClock` a no-op for
+// them.
+function clockStops(tour) {
+  const keys = tour && Array.isArray(tour.keys) ? tour.keys : [];
+  const { stops } = timeline(tour);
+  const out = [];
+  keys.forEach((k, i) => {
+    if (k.hour == null && !k.mood && !k.weather) return;
+    out.push({ at: stops[i] ? stops[i].arrive : 0, hour: k.hour, mood: k.mood, weather: k.weather });
+  });
+  return out;
+}
+
+// Where the tour's clock stands at time t — `null`/''/`null` in every field
+// a tour never mentions, so a caller can tell "say nothing" from "say clear
+// at 10am" and leave the live sky alone in the first case. See the file
+// header for why hour eases and mood/weather hold-and-flip.
+export function sampleClock(tour, t) {
+  const stops = clockStops(tour);
+  if (!stops.length) return { hour: null, mood: '', weather: null };
+
+  const duration = tourDuration(tour);
+  let time = clamp(num(t), 0, duration);
+  if (tour && tour.loop && duration > 0) time = ((num(t) % duration) + duration) % duration;
+
+  let prev = stops[0], next = null;
+  for (const s of stops) {
+    if (s.at <= time) prev = s;
+    else { next = s; break; }
+  }
+  if (!next) return { hour: prev.hour, mood: prev.mood || '', weather: prev.weather };
+
+  const span = Math.max(1e-6, next.at - prev.at);
+  const u = clamp((time - prev.at) / span, 0, 1);
+
+  let hour = prev.hour;
+  if (prev.hour != null && next.hour != null) {
+    const a = (prev.hour / DAY_MINUTES) * Math.PI * 2;
+    const b = (next.hour / DAY_MINUTES) * Math.PI * 2;
+    const mixed = lerpAngle(a, b, u);
+    hour = (((mixed / (Math.PI * 2)) * DAY_MINUTES) % DAY_MINUTES + DAY_MINUTES) % DAY_MINUTES;
+  } else if (prev.hour == null && next.hour != null) {
+    hour = next.hour;
+  }
+
+  const mood = u < 0.5 ? (prev.mood || '') : (next.mood || prev.mood || '');
+
+  let weather = prev.weather || null;
+  if (prev.weather && next.weather && prev.weather.kind === next.weather.kind) {
+    weather = {
+      kind: prev.weather.kind,
+      intensity: prev.weather.intensity + (next.weather.intensity - prev.weather.intensity) * u,
+      wind: prev.weather.wind + (next.weather.wind - prev.weather.wind) * u,
+    };
+  } else {
+    weather = u < 0.5 ? (prev.weather || null) : (next.weather || prev.weather || null);
+  }
+
+  return { hour, mood, weather };
 }
 
 // ---------- playback ----------

@@ -22,13 +22,14 @@ import { SITE_SURFACES, SITE_MARKINGS, surfaceEntry, markingEntry, regionArea, s
 import { terrainField, terrainRange, ensureTerrain, groundAt } from './terrain.js';
 import { ROOF_STYLES, ensureRoof, normalizeRoof, isPitched, roofPlan } from './roof.js';
 import {
-  MOODS, applyMood, MONTH_NAMES, MAX_LAT, normalizeEnv, daysInMonth,
+  MOODS, applyMood, moodEntry, MONTH_NAMES, MAX_LAT, normalizeEnv, daysInMonth,
   formatClock, formatDate, formatLat, skyState,
 } from './sky.js';
 import { initWalkthrough } from './walkthrough.js';
 import { buildNav, navSummary } from './navgraph.js';
 import {
   startHunt, huntWarmth, checkFind, huntSummary, DEFAULT_COUNT,
+  startLate, checkLate, lateWarmth, lateScore, lateResult,
 } from './hunt.js';
 import { normalizeHaunt } from './haunt.js';
 import {
@@ -130,8 +131,8 @@ import {
   encodeShare, decodeShare, shareURL, readShareFragment, shareStatus, omissionNote,
 } from './share.js';
 import {
-  MAX_TOURS, MAX_KEYS, makeTour, addKey, removeKey, moveKey, updateKey,
-  toursOf, tourSummary, tourDuration, sampleTour, startPlayback, stepPlayback,
+  MAX_TOURS, MAX_KEYS, MAX_NARRATION, makeTour, addKey, removeKey, moveKey, updateKey,
+  toursOf, tourSummary, tourDuration, sampleTour, sampleClock, startPlayback, stepPlayback,
 } from './tour.js';
 import {
   MINI_SIZE, MIN_RANGE, MAX_RANGE, minimapView, worldToMini, viewCone, inView,
@@ -3170,11 +3171,25 @@ const envPanel = $('env-panel');
 // is not an undoable *edit* the way drawing a wall is — nobody wants Ctrl+Z to
 // walk backwards through the sixty positions a slider passed through. So it
 // autosaves and skips the undo stack, the same call floor switching makes.
+// Phase 33: what a tour stop captures when it records the sky along with the
+// camera — the tour panel's own "🌅 capture the sky too" checkbox reads this.
+// Never saved on its own; it is a fact about the sky panel's last click, not
+// about the design. Declared ahead of `envChanged`, which reads it on every
+// call: this file has twice shipped a `let` sitting below the function that
+// reads it and landed a TDZ error on the one path nothing automates — see
+// Phase 30 and Phase 31's own retrospectives.
+let lastMoodKey = '';
+
 function envChanged() {
   state.env = normalizeEnv(state.env);
   renderApi.setEnvironment(state.env);
   renderEnvPanel();
   autosave(state);
+  // Any raw scrub of the sky panel means the last named mood no longer
+  // describes what is showing — `setMood` sets this back right after calling
+  // here, which is what keeps "was the sky panel's last word a mood, or a
+  // scrub" honest for a tour stop that wants to capture it.
+  lastMoodKey = '';
 }
 
 // Phase 20: five moods, one click each. A mood writes the whole look — the
@@ -3187,6 +3202,7 @@ function setMood(key) {
   if (!mood) return;
   state.env = applyMood(state.env, key);
   envChanged();
+  lastMoodKey = key;
   if (photoMode) renderPhotoPanel();
   $('status').textContent =
     `Sky — ${mood.label.toLowerCase()}, ${formatClock(state.env.minutes)} on ${formatDate(state.env.month, state.env.day)}.`;
@@ -5463,6 +5479,8 @@ function cmdkCommands() {
       keys: ['O'], run: walkFirst(() => setMiniFindings(!miniFindings)) },
     { name: 'Scavenger hunt', hint: 'Eight things hidden around the building',
       keys: ['G'], run: walkFirst(() => $('walk-hunt').click()) },
+    { name: 'Late for class', hint: 'A timetable row and a tardy bell — beat the clock there',
+      keys: [], run: walkFirst(() => $('walk-late').click()) },
     { name: normalizeHaunt(state.haunt).on
         ? 'Lights out: armed — disarm the haunted export'
         : 'Lights out — haunt the walk export…',
@@ -6693,6 +6711,19 @@ function applyStop(at) {
   cam.quaternion.setFromEuler(new THREE.Euler(at.pitch, at.yaw, 0, 'YXZ'));
 }
 
+// Phase 33: what a stop captures of the sky, the same way `cameraStop`
+// captures the camera — the live design's own hour, the mood that put it
+// there (if that is how it got there), and any weather standing over it. A
+// sunrise flythrough is set up on the sky panel itself, one mood per stop,
+// with nothing to fill in afterwards.
+function skyStop() {
+  return {
+    hour: state.env.minutes,
+    mood: lastMoodKey,
+    weather: state.weather && !isDefaultWeather(state.weather) ? state.weather : null,
+  };
+}
+
 function renderTourPanel() {
   const list = tours();
   const pick = $('tour-pick');
@@ -6739,9 +6770,10 @@ function renderTourPanel() {
     const where = document.createElement('span');
     where.className = 'where';
     where.textContent = k.label || `Level ${k.floor + 1} · ${Math.round(k.x)}, ${Math.round(k.z)} ft`;
-    where.title = i === 0
-      ? 'The tour starts here'
-      : `${k.sec.toFixed(1)}s to get here${k.hold ? `, then holds ${k.hold.toFixed(1)}s` : ''}`;
+    const hasClock = k.hour != null || k.mood || k.weather;
+    where.title = (i === 0 ? 'The tour starts here' : `${k.sec.toFixed(1)}s to get here${k.hold ? `, then holds ${k.hold.toFixed(1)}s` : ''}`)
+      + (hasClock ? ` · sky: ${k.hour != null ? formatClock(k.hour) : 'as before'}${k.mood ? `, ${k.mood}` : ''}${k.weather ? `, ${weatherLabel(k.weather)}` : ''}` : '')
+      + (k.narration ? ` · says: "${k.narration}"` : '');
     const go = document.createElement('button');
     go.textContent = '↦';
     go.title = 'Stand here';
@@ -6758,11 +6790,38 @@ function renderTourPanel() {
       replaceTour(updateKey(currentTour(), i, { hold: (k.hold || 0) + 1 > 6 ? 0 : (k.hold || 0) + 1 }));
       afterTourEdit();
     });
+    // Phase 33: the clock this stop carries, captured off the sky panel the
+    // same way the camera is captured off the walk — one click sets it to
+    // whatever the sky panel shows right now, another clears it.
+    const sky = document.createElement('button');
+    sky.textContent = hasClock ? '☀' : '☾';
+    sky.className = hasClock ? 'has-sky' : '';
+    sky.title = hasClock
+      ? 'This stop sets the sky — click to stop it doing that'
+      : 'Set this stop\'s sky to what the sky panel shows now';
+    sky.addEventListener('click', () => {
+      replaceTour(updateKey(currentTour(), i, hasClock
+        ? { hour: null, mood: '', weather: null }
+        : skyStop()));
+      afterTourEdit();
+    });
+    // ...and the sentence it optionally says, native-prompted the same way a
+    // design is renamed — one field, asked for once.
+    const say = document.createElement('button');
+    say.textContent = '💬';
+    say.className = k.narration ? 'has-sky' : '';
+    say.title = k.narration ? `Says: "${k.narration}" — click to change or clear` : 'Say something on arrival';
+    say.addEventListener('click', () => {
+      const next = prompt('Say this on arrival (blank to clear):', k.narration || '');
+      if (next == null) return;
+      replaceTour(updateKey(currentTour(), i, { narration: next.slice(0, MAX_NARRATION) }));
+      afterTourEdit();
+    });
     const del = document.createElement('button');
     del.textContent = '✕';
     del.title = 'Remove this stop';
     del.addEventListener('click', () => { replaceTour(removeKey(currentTour(), i)); afterTourEdit(); });
-    row.append(n, where, go, up, hold, del);
+    row.append(n, where, go, up, hold, sky, say, del);
     stops.appendChild(row);
   });
 
@@ -6833,7 +6892,7 @@ function tourMark() {
   } else {
     editor.pushUndo();
   }
-  replaceTour(addKey(tour, cameraStop()));
+  replaceTour(addKey(tour, cameraStop(), $('tour-clock').checked ? skyStop() : {}));
   afterTourEdit();
   $('status').textContent = `Stop ${currentTour().keys.length} recorded`;
 }
@@ -6855,11 +6914,67 @@ function tourStop() {
   tourShown = -1;
   document.body.classList.remove('touring');
   stopTourRecording();
+  restoreTourClock();
+  clearTimeout(tourCaptionTimer);
+  tourCaption = '';
   renderTourPanel();
 }
 
 $('tour-play').addEventListener('click', () => (tourPlay ? tourStop() : tourStart(false)));
 $('tour-record').addEventListener('click', () => { if (!tourPlay) tourStart(true); });
+
+// --- Phase 33: a stop's clock ---
+//
+// Playing a stop's hour, mood and weather is not an edit — the design's own
+// sky is exactly what it was before the tour started, and Ctrl+Z has no
+// business walking back through a flythrough. So this never touches
+// `state.env` or `state.weather`; it hands the renderer a transient record
+// and remembers what to put back. `sampleClock` returns nulls when a tour
+// says nothing about the clock, which is the common case (every tour before
+// this phase, and most new ones) and costs one object compare a frame.
+let tourClockSaved = null;
+
+function applyTourClock(clock) {
+  if (clock.hour == null && !clock.mood && !clock.weather) return;
+  if (!tourClockSaved) {
+    tourClockSaved = { env: { ...normalizeEnv(state.env) }, weather: state.weather ? { ...state.weather } : null };
+  }
+  let env = normalizeEnv(state.env);
+  if (clock.hour != null) env = { ...env, minutes: clock.hour };
+  const mood = clock.mood && moodEntry(clock.mood);
+  if (mood) env = { ...env, lights: mood.lights };
+  renderApi.setEnvironment(env);
+  if (clock.weather) renderApi.setWeather(normalizeWeather(clock.weather));
+}
+
+function restoreTourClock() {
+  if (!tourClockSaved) return;
+  renderApi.setEnvironment(normalizeEnv(tourClockSaved.env));
+  renderApi.setWeather(tourClockSaved.weather);
+  tourClockSaved = null;
+}
+
+// --- Phase 33: narration ---
+//
+// A stop's sentence, read once on arrival through the same PA path the
+// morning announcement uses, and shown as a caption for the machine with no
+// voices — which, since a recorded clip cannot carry synthesized speech (see
+// `startTourRecording`), is every machine watching the film back rather than
+// the walk.
+let tourCaption = '';
+let tourCaptionTimer = null;
+
+function tourNarrate(text) {
+  if (!text) return;
+  const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
+  if (synth && !audio.muted) {
+    try { synth.cancel(); synth.speak(new SpeechSynthesisUtterance(text)); } catch { /* the caption carries it */ }
+  }
+  tourCaption = text;
+  clearTimeout(tourCaptionTimer);
+  tourCaptionTimer = setTimeout(() => { tourCaption = ''; }, 6000);
+  $('status').textContent = `🎬 ${text}`;
+}
 
 // The video, from the canvas the tour is already being drawn on. No new
 // dependency: `captureStream` plus `MediaRecorder` is the whole of it, and the
@@ -6872,11 +6987,49 @@ function videoType() {
 }
 const canRecordVideo = () => !!videoType() && typeof canvas.captureStream === 'function';
 
+// The film canvas: a plain 2D canvas the same size as the WebGL one, redrawn
+// from it every frame while recording and captured instead of it. That one
+// extra blit is what lets a caption land *in* the file — `canvas` itself is
+// the only thing `captureStream` ever sees, and a DOM caption over it is
+// invisible to a stream taken from the canvas underneath. The Web Audio graph
+// rides the same recorder without this trick (it is not tied to a canvas at
+// all); synthesized speech is the one thing this file genuinely cannot carry,
+// which is what makes the burned-in caption the honest answer rather than a
+// missing one.
+let filmCanvas = null;
+let filmCtx = null;
+
+function filmCaptionFont(h) {
+  return `600 ${Math.max(14, Math.round(h * 0.032))}px system-ui, sans-serif`;
+}
+
+function drawFilmFrame() {
+  if (!filmCtx) return;
+  filmCtx.drawImage(canvas, 0, 0, filmCanvas.width, filmCanvas.height);
+  if (!tourCaption) return;
+  const w = filmCanvas.width, h = filmCanvas.height;
+  filmCtx.font = filmCaptionFont(h);
+  filmCtx.textAlign = 'center';
+  filmCtx.textBaseline = 'alphabetic';
+  const pad = Math.round(h * 0.02);
+  const textW = Math.min(w - pad * 4, filmCtx.measureText(tourCaption).width);
+  const boxH = Math.round(h * 0.07);
+  const y = h - pad * 3;
+  filmCtx.fillStyle = 'rgba(10, 12, 16, 0.72)';
+  filmCtx.fillRect((w - textW) / 2 - pad, y - boxH + pad, textW + pad * 2, boxH);
+  filmCtx.fillStyle = '#fff';
+  filmCtx.fillText(tourCaption, w / 2, y, w - pad * 4);
+}
+
 function startTourRecording() {
   const type = videoType();
   if (!type) return;
   try {
-    const stream = canvas.captureStream(60);
+    filmCanvas = document.createElement('canvas');
+    filmCanvas.width = canvas.width;
+    filmCanvas.height = canvas.height;
+    filmCtx = filmCanvas.getContext('2d');
+    const stream = filmCanvas.captureStream(60);
     tourChunks = [];
     tourRecorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 12000000 });
     tourRecorder.ondataavailable = (e) => { if (e.data && e.data.size) tourChunks.push(e.data); };
@@ -6892,16 +7045,28 @@ function startTourRecording() {
       $('status').textContent = `Saved ${(blob.size / 1048576).toFixed(1)} MB of video`;
     };
     tourRecorder.start();
+    // One-click film: the whole tool steps out of the way for the length of
+    // the shot — every panel, the topbar, the toolbar — because the point of
+    // pressing one button is a clip that looks like it was never wearing a
+    // drawing program at all. None of this reaches the file either way
+    // (a DOM layer is never part of `captureStream`); it is the live view
+    // that gets to stop being the editor while the camera is running.
+    document.body.classList.add('filming');
   } catch (err) {
     tourRecorder = null;
+    filmCanvas = null;
+    filmCtx = null;
     alert(`Could not record: ${err.message}`);
   }
 }
 
 function stopTourRecording() {
+  document.body.classList.remove('filming');
   if (!tourRecorder) return;
   if (tourRecorder.state !== 'inactive') tourRecorder.stop();
   tourRecorder = null;
+  filmCanvas = null;
+  filmCtx = null;
 }
 
 // One frame of a tour. Called from the main loop instead of walk.update, and
@@ -6911,6 +7076,16 @@ function tourUpdate(dt) {
   tourPlay = stepPlayback(tourPlay, dt);
   const at = sampleTour(tourPlay.tour, tourPlay.t);
   if (at) applyStop(at);
+  applyTourClock(sampleClock(tourPlay.tour, tourPlay.t));
+  // The panel follows the playhead, and a stop with something to say, says it
+  // — both only on the frame the playhead actually arrives at a new stop, not
+  // every frame it sits there.
+  if (at && at.index !== tourShown) {
+    tourShown = at.index;
+    renderTourPanel();
+    const key = tourPlay.tour.keys[at.index];
+    if (key && key.narration) tourNarrate(key.narration);
+  }
   if (!tourPlay.playing && !tourEnding) {
     // A recorder needs the last frames to have been drawn before it is asked
     // to stop, so the stop is deferred — once, which is what the flag is for.
@@ -7416,6 +7591,7 @@ function huntStop(quiet = false) {
 }
 
 function huntBegin() {
+  if (late) lateStop(true);
   const nav = buildNav(state);
   hunt = startHunt(nav, {
     seed: 1 + Math.floor(Math.random() * 0xfffffe),
@@ -7487,6 +7663,142 @@ $('walk-hunt').addEventListener('click', () => {
   if (huntBegin()) closeModal(walkOverlay);
 });
 
+// --- late for class (Phase 33) ---
+//
+// The scavenger hunt re-aimed: one destination out of the timetable instead
+// of a dealt set, a tardy bell instead of a warmth band with nothing riding
+// on it. Nothing here is stored either — the same bargain the hunt strikes,
+// for the same reason. It borrows the hunt's own glowing marker in the scene
+// (`renderApi.setHunt`/`updateHunt` take any list of `{x, z, floor, id}`
+// places, and a room the timetable named is exactly that) rather than
+// teaching render.js a second one.
+let late = null;
+let lateElapsed = 0;    // seconds on this round's own clock, since lateBegin
+let lateWarmOpts = null;
+let lateWarm = '';
+const EMPTY_SET = new Set();
+
+const latePanel = $('late-panel');
+const lateClockEl = $('late-clock');
+const lateTargetEl = $('late-target');
+const lateWarmthEl = $('late-warmth');
+const lateResultEl = $('late-result');
+
+// The next bell that actually starts a class, skipping over lunch and
+// dismissal — nextBell alone answers "what rings next", and what a tardy
+// game wants is specifically the one a passing period ends with.
+function nextPeriodBell(sched, minutes) {
+  let m = minutes;
+  for (let i = 0; i < 8; i++) {
+    const b = nextBell(sched, m);
+    if (!b) return null;
+    if (b.kind === 'period') return b;
+    m = b.at;
+  }
+  return null;
+}
+
+function lateStop(quiet = false) {
+  late = null;
+  lateWarmOpts = null;
+  lateWarm = '';
+  renderApi.setHunt([]);
+  document.body.classList.remove('late');
+  if (!quiet) $('status').textContent = 'Late for class ended.';
+}
+
+function lateBegin() {
+  if (hunt) huntStop(true);
+  const tt = timetableOf(state);
+  if (isEmptyTimetable(tt)) {
+    $('status').textContent = 'No timetable to be late for — build one in the Life panel first.';
+    return false;
+  }
+  const sched = normalizeSchedule(lifeSettings().schedule);
+  const bell = nextPeriodBell(sched, state.env.minutes);
+  if (!bell) {
+    $('status').textContent = 'No more periods today — nothing to be late for.';
+    return false;
+  }
+  const passing = blockAt(sched, bell.at);
+  const deadline = (bell.in + sched.passingMin) * 60;
+  const plan = timetablePlan(tt, sched);
+  const { nav } = timetableWorld();
+  // A cohort actually changing rooms for the period ahead, preferred over one
+  // that would just be staying put — "late for class" with nowhere to walk to
+  // is not the game.
+  const moving = plan.cohorts.filter((c) => c.rooms[passing.index] && c.rooms[passing.index] !== c.rooms[0]);
+  const choices = moving.length ? moving : plan.cohorts.filter((c) => c.rooms[passing.index]);
+  if (!choices.length) {
+    $('status').textContent = 'Nobody has a room booked next period — nothing to be late for.';
+    return false;
+  }
+  const pick = choices[Math.floor(Math.random() * choices.length)];
+  late = startLate(nav, pick.rooms[passing.index], { deadline, now: 0, roomName: pick.name });
+  if (!late) {
+    $('status').textContent = 'That room is not on the walkable mesh — try again.';
+    return false;
+  }
+  lateElapsed = 0;
+  lateWarmOpts = { nav };
+  lateWarm = '';
+  renderApi.setHunt([late.place]);
+  document.body.classList.add('late');
+  renderLatePanel();
+  return true;
+}
+
+function renderLatePanel() {
+  if (!late) return;
+  lateTargetEl.textContent = `${pickLabel(late)} — ${late.place.hint}.`;
+  lateResultEl.className = '';
+  lateResultEl.textContent = late.arrivedAt == null ? '' : lateResult(late);
+  if (late.arrivedAt != null) {
+    lateResultEl.classList.add(lateScore(late) >= 0 ? 'ok' : 'fail');
+    lateWarmthEl.textContent = '';
+    lateClockEl.textContent = '';
+  }
+}
+
+// The room name reads off the timetable row rather than the place — a hunt's
+// hint already names the room, but "class" is a fact about who is meeting
+// there, which `classPlace` never claimed to know.
+function pickLabel(l) {
+  return l.place.roomName ? `Class in ${l.place.roomName}` : 'Your next class';
+}
+
+function lateUpdate(dt) {
+  // Once you have arrived there is nothing left to track — the marker is
+  // already gone and the score is already final.
+  if (!late || late.arrivedAt != null) return;
+  lateElapsed += dt;
+  const at = walk.at;
+  const left = late.deadline - lateElapsed;
+  lateClockEl.textContent = left >= 0 ? `${Math.ceil(left)}s` : `${Math.ceil(-left)}s late`;
+  lateClockEl.classList.toggle('overdue', left < 0);
+  const arrived = checkLate(late, { ...at, now: lateElapsed });
+  if (arrived) {
+    renderApi.setHunt([]);
+    $('walk-hud').textContent = lateResult(late);
+    renderLatePanel();
+    return;
+  }
+  const warm = lateWarmth(late, at, lateWarmOpts || {});
+  if (warm && warm.key !== lateWarm) {
+    lateWarm = warm.key;
+    lateWarmthEl.innerHTML =
+      `<span class="band ${warm.key}">${warm.label}</span> — <span id="late-dist"></span>ft to go`;
+  }
+  const d = lateWarmthEl.querySelector('#late-dist');
+  if (d && warm) d.textContent = String(Math.round(warm.dist));
+  renderApi.updateHunt(at, EMPTY_SET, dt);
+}
+
+$('walk-late').addEventListener('click', () => {
+  if (late) { lateStop(); return; }
+  if (lateBegin()) closeModal(walkOverlay);
+});
+
 // --- main loop ---
 const clock = new THREE.Clock();
 function loop() {
@@ -7511,7 +7823,7 @@ function loop() {
     audio.update(dt);
     // A tour has the camera too, and a hunt found by a camera flying itself
     // around is not a hunt.
-    if (!tourPlay) huntUpdate(dt);
+    if (!tourPlay) { huntUpdate(dt); lateUpdate(dt); }
     // Labels earn themselves from wherever the eye is — a tour's camera
     // learns the building the same way a walker's does.
     labelGateUpdate();
@@ -7536,14 +7848,10 @@ function loop() {
   // Drawn after the 3D frame so the map is over it, and only while walking —
   // it is a thing you carry, not a thing on the drawing board.
   if (mode === 'walk' && miniOn && !document.body.classList.contains('photo')) drawMinimap();
-  // The panel follows the playhead, but only when the playhead has actually
-  // moved to another stop — rebuilding a list of DOM nodes sixty times a
-  // second to highlight the same row is the sort of thing that shows up as a
-  // dropped frame in the video being recorded.
-  if (tourPlay) {
-    const at = sampleTour(tourPlay.tour, tourPlay.t);
-    if (at && at.index !== tourShown) { tourShown = at.index; renderTourPanel(); }
-  }
+  // The film canvas, one blit behind the frame that was just drawn — see
+  // `startTourRecording` for why a caption has to land here rather than in
+  // the DOM. A no-op (one `if`) on every frame that isn't being recorded.
+  drawFilmFrame();
 }
 
 selectTool('floor');
@@ -7888,10 +8196,14 @@ window.app = {
   syncModels, buildShareLink, enterVR,
   get tours() { return toursOf(state); },
   tourMark, tourStart, tourStop,
+  get tourCaption() { return tourCaption; },
   get xrStatus() { return xrStatus; },
   // --- Phase 11 ---
   huntBegin, huntStop,
   get hunt() { return hunt; },
+  // --- Phase 33 ---
+  lateBegin, lateStop,
+  get late() { return late; },
   // --- Phase 21 ---
   setLabelMode,
   get labelMode() { return labelMode; },

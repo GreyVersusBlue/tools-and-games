@@ -1401,6 +1401,39 @@
     #hunt-done { margin: 7px 0 0; color: var(--ok); font-weight: 600; }
     #hunt-done:empty { display: none; }
 
+    /* Late for class (Phase 33). Same slot the scavenger hunt uses — the two
+       never run together, so there is never a reason to give this its own
+       corner of the screen. */
+    #late-panel {
+      position: fixed; left: 12px; top: 58px; z-index: 15; display: none;
+      width: 226px; padding: 9px 11px; pointer-events: none;
+      font-size: var(--fs-md); line-height: 1.5;
+    }
+    body[data-mode="walk"].late #late-panel { display: block; }
+    body.photo #late-panel { display: none !important; }
+    #late-panel h2 {
+      font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--text-dim); margin: 0 0 6px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    #late-clock { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text); }
+    #late-clock.overdue { color: var(--fail); }
+    #late-target { margin: 0 0 6px; }
+    #late-warmth {
+      margin: 0 0 7px; padding: 4px 7px; border-radius: 5px;
+      background: rgba(255, 255, 255, 0.06); color: var(--text);
+    }
+    #late-warmth .band { font-weight: 600; }
+    #late-warmth .burning { color: #ff8b52; }
+    #late-warmth .hot { color: #ffab5c; }
+    #late-warmth .warm { color: #ffd873; }
+    #late-warmth .cool { color: #8fc7ea; }
+    #late-warmth .cold, #late-warmth .freezing { color: #7fa6d0; }
+    #late-result { margin: 7px 0 0; font-weight: 600; }
+    #late-result:empty { display: none; }
+    #late-result.ok { color: var(--ok); }
+    #late-result.fail { color: var(--fail); }
+
     /* --- Phase 9 --- */
 
     /* The minimap: the blueprint renderer at thumbnail size, bottom-left,
@@ -1480,12 +1513,20 @@
     #tour-panel .keys { margin-top: 9px; font-size: var(--fs-xs); line-height: 1.7; color: var(--text-dim); }
     #tour-panel label.opt { font-size: var(--fs-sm); }
     #tour-readout .rec { color: var(--fail); font-weight: 600; }
+    #tour-stops .stop button.has-sky { color: var(--accent); border-color: var(--accent); }
 
     /* A tour that is playing owns the screen: the HUD and the crosshair are
        not part of the film. */
     body.touring #crosshair, body.touring #walk-hud { display: none !important; }
     body.touring #tour-panel { opacity: 0.35; }
     body.touring #tour-panel:hover { opacity: 1; }
+
+    /* Phase 33: one-click film. Recording steps the whole tool out of the
+       way — every panel, gone from the live view, for as long as the camera
+       is running — because none of it is what pressing one button was for.
+       None of this reaches the clip either way (see startTourRecording for
+       why); it is only ever the person watching who gets the clean view. */
+    body.filming .panel, body.filming #touch-controls { display: none !important; }
 
     /* Imported models: the row under the furniture palette, and the dialog
        that manages what has been brought in. */
@@ -2196,10 +2237,14 @@
       <button id="tour-delete" type="button" title="Delete this tour">🗑</button>
     </div>
     <label class="opt"><input type="checkbox" id="tour-loop" /> Loop back to the first stop</label>
+    <label class="opt"><input type="checkbox" id="tour-clock" />
+      🌅 Also capture the sky panel's hour, mood and weather here</label>
     <div id="tour-stops"></div>
     <div id="tour-readout"></div>
     <div class="keys">
       <kbd>T</kbd> hide this panel &nbsp;·&nbsp; <kbd>R</kbd> add a stop &nbsp;·&nbsp; <kbd>Enter</kbd> play<br />
+      ☀/☾ sets or clears a stop's sky, off whatever the sky panel shows now
+      &nbsp;·&nbsp; 💬 gives it a sentence to say on arrival.<br />
       A tour is saved with the design.
     </div>
   </div>
@@ -2426,7 +2471,10 @@
         every chair is back where you drew it the moment you leave. The
         <b>🎒 Scavenger hunt</b> (<kbd>G</kbd>) hides eight things around the
         building and tells you roughly where each of them is: it names a room
-        and a corner and a storey, and says how warm you are getting. And the
+        and a corner and a storey, and says how warm you are getting. If the
+        design carries a timetable, <b>🏃 Late for class</b> hands you a
+        real room and a real bell instead: get there before it rings, and the
+        panel keeps score in seconds to spare. And the
         Furniture tool's <b>Paint</b> row will recolour anything you place —
         which is what the seasonal <b>decoration packs</b> above it are: pick
         one and the garlands, wreaths, pumpkins and paper cutouts arrive
@@ -2436,6 +2484,7 @@
       <div class="row">
         <button id="walk-start" class="primary">Click to Walk</button>
         <button id="walk-hunt" title="Hide eight things around the building and go and find them">🎒 Scavenger hunt</button>
+        <button id="walk-late" title="A timetable row and a tardy bell — beat the clock to the room">🏃 Late for class</button>
         <button id="walk-vr" title="Walk the building at 1:1 in a VR headset">🥽 Enter VR</button>
         <button id="walk-exit">Back to Editor</button>
       </div>
@@ -2748,6 +2797,13 @@
     <p id="hunt-warmth"></p>
     <ul id="hunt-list"></ul>
     <p id="hunt-done"></p>
+  </div>
+
+  <div id="late-panel" class="panel" role="status" aria-live="polite">
+    <h2>🏃 Late for Class <span id="late-clock"></span></h2>
+    <p id="late-target"></p>
+    <p id="late-warmth"></p>
+    <p id="late-result"></p>
   </div>
 
   <div id="walk-hud" role="status" aria-live="polite">Level 1 · walking</div>
