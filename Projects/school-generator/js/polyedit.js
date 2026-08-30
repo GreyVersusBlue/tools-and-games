@@ -29,6 +29,7 @@
 import * as THREE from 'three';
 import { CELL, activeFloor, floorBaseY } from './grid.js';
 import { pointSupported } from './shadow.js';
+import { gridOrigin } from './gridref.js';
 import { wrapAngle } from './props.js';
 import {
   MIN_SEG,
@@ -285,7 +286,8 @@ export function initPolyEdit({ getState, renderApi, host }) {
     if (e && e.shiftKey && tool === 'poly' && draft.length) {
       pt = constrainAngle(draft[draft.length - 1], p, 15);
     }
-    return snapPoint(floor, pt.x, pt.z, snapTol(renderApi.editView.height), { skip });
+    return snapPoint(floor, pt.x, pt.z, snapTol(renderApi.editView.height),
+      { skip, origin: gridOrigin(getState()) });
   }
 
   function handleAt(x, z) {

@@ -33,7 +33,8 @@
 
 import { CELL, MIN_CELLS, MAX_CELLS } from './grid.js';
 import { shapesOf, shapeBBox } from './shapes.js';
-import { latticeAligned } from './paint.js';
+import { latticeAligned, rasterOf } from './paint.js';
+import { reanchorGridRef } from './gridref.js';
 import { overlayCorners, moveOverlay } from './overlay.js';
 
 // The sheet's range, in cells — grid.js's, re-exported here so that everything
@@ -127,8 +128,9 @@ export function atRisk(state, w, h) {
   const x1 = clampCells(w) * CELL, z1 = clampCells(h) * CELL;
   const out = [];
   (state.floors || []).forEach((floor, fi) => {
+    const raster = rasterOf(state, fi);
     for (const shape of shapesOf(floor)) {
-      if (!latticeAligned(shape)) continue;
+      if (!latticeAligned(shape, raster)) continue;
       const b = shapeBBox(shape);
       if (!b) continue;
       if (b.x0 < -1e-6 || b.z0 < -1e-6 || b.x1 > x1 + 1e-6 || b.z1 > z1 + 1e-6) {
@@ -207,6 +209,11 @@ export function fitToOverlay(state, opts = {}) {
         state.overlay = next;
         moved = { dx, dz };
         bounds = overlayBounds(next);
+        // The grid's reference point rides on the picture when it was picked
+        // there, so sliding the picture slides the grid with it — while the
+        // plan is still empty, which is the only time this branch runs and the
+        // only time gridref.js allows it. See gridref.js's `reanchorGridRef`.
+        reanchorGridRef(state);
       }
     }
   }

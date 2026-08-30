@@ -23,7 +23,7 @@
 
 import * as THREE from 'three';
 import {
-  CELL, WALL_H, WALL_T, ROOM_COLORS, inGrid, activeFloor, floorBaseY,
+  CELL, WALL_H, WALL_T, ROOM_COLORS, activeFloor, floorBaseY,
 } from './grid.js';
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
@@ -31,12 +31,18 @@ import {
   curveSegment, straightenRun, segEnds, segLength, shapeArea,
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
 } from './shapes.js';
-import { paintCell, frozenAt } from './paint.js';
+import { paintTiles, frozenAt, frozenAtPoint } from './paint.js';
 import { linkAt, stairMetrics, footprintBox } from './stairs.js';
 import { removeLink, removeProp } from './props.js';
 import { pickPropAt } from './propplace.js';
 import { catalogEntry } from './catalog.js';
-import { gridPitch, targetPoint, runLabel, runLength } from './snapgrid.js';
+import {
+  gridPitch, targetPoint, runLabel, runLength,
+  tileBounds, tileUnder, tileSpan, spanBounds,
+} from './snapgrid.js';
+import {
+  gridOrigin, gridRefOf, gridLocked, describeGridRef, reanchorGridRef,
+} from './gridref.js';
 import {
   drawWallRun, wallLineAt, eraseWallLineAt, toggleLineOpening,
   lineEnds, lineLength,
@@ -49,10 +55,18 @@ import { initStairEdit } from './stairedit.js';
 import { initTemplateEdit } from './templateedit.js';
 import { initSiteEdit } from './siteedit.js';
 import { initOverlayEdit } from './overlayedit.js';
-import { cellSupported } from './shadow.js';
+import { pointSupported } from './shadow.js';
 import { pinchZoomHeight } from './touch.js';
 
 const MAX_UNDO = 100;
+
+// A length in feet for a status line. Every grid pitch is a whole number of
+// feet, so a tile's side always is too — but a rectangle read off a grid
+// phased onto a traced photograph is not, and "13.0000001 ft" is not a
+// measurement anybody wants to read.
+const ftLabel = (v) => (Math.abs(v - Math.round(v)) < 0.005
+  ? String(Math.round(v))
+  : v.toFixed(1));
 
 // How close to a wall counts as clicking it, in feet.
 //
@@ -152,9 +166,12 @@ export function initEditor({
   // overhang is a fact about the design that shadow.js reads back off the
   // geometry, not a flag the file carries.
   let allowOverhang = false;
-  let overhangRefused = 0;   // cells this stroke declined to build
-  let strokeOverhang = 0;    // ...and cells it built outside the shadow anyway
-  // ...and cells that were off the drawing surface altogether. Phase 13: the
+  let overhangRefused = 0;   // tiles this stroke declined to build
+  // ...and how much floor it laid outside the shadow anyway, in ft². Kept as
+  // an area rather than a tile count because a tile is no longer one size: the
+  // brush lays whatever square the drawing grid is showing.
+  let overhangArea = 0;
+  // ...and tiles that were off the drawing surface altogether. Phase 13: the
   // sheet is a size somebody sets now, so "nothing happened when I painted
   // there" has an answer — and it is the same answer whether the plan needs
   // growing or the cursor simply wandered off the edge of it.
@@ -172,13 +189,15 @@ export function initEditor({
   const redoStack = [];
   let strokeActive = false;
   let strokeChanged = false;
-  let strokeFrozen = 0;   // cells this stroke declined because a free-drawn
+  let strokeFrozen = 0;   // tiles this stroke declined because a free-drawn
                           // room was under them — see paint.js
   let enabled = true;
 
   // --- hover cursors ---
+  // A unit square, scaled to the grid's pitch every time it is shown — the
+  // tile the floor tool would lay is whatever square the zoom is drawing.
   const cellCursor = new THREE.Mesh(
-    new THREE.PlaneGeometry(CELL, CELL),
+    new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({ color: 0x4da3ff, transparent: true, opacity: 0.35, depthTest: false })
   );
   cellCursor.rotation.x = -Math.PI / 2;
@@ -227,9 +246,13 @@ export function initEditor({
   const handleSize = () => Math.min(2.4, Math.max(0.25, renderApi.editView.height * 0.006));
   // ...and the wall-grab tolerance, off the same number. See SEG_GRAB above.
   const segGrab = () => Math.min(6, Math.max(SEG_GRAB, renderApi.editView.height * 0.012));
-  // The grid the point target lands on, right now. One number off the zoom —
-  // see snapgrid.js.
+  // The grid the tools land on, right now: how fine it is, and where it
+  // starts. The pitch is one number off the zoom (snapgrid.js); the origin is
+  // the reference point somebody set on the tracing image, or the corner of
+  // the sheet if nobody has (gridref.js). Both are read fresh at every use —
+  // the zoom changes on a wheel scroll, between one pointer event and the next.
   const pitch = () => gridPitch(renderApi.editView.height);
+  const origin = () => gridOrigin(getState());
 
   // --- picking ---
   const raycaster = new THREE.Raycaster();
@@ -245,11 +268,19 @@ export function initEditor({
   }
   function pointerToWorld(e) { return pointerToWorldXY(e.clientX, e.clientY); }
 
-  // Which 4ft cell of the drawing surface a world point is over. The editor
-  // only ever touches the storey currently selected in the floor panel.
-  function cellAt(f, wx, wz) {
-    const x = Math.floor(wx / CELL), y = Math.floor(wz / CELL);
-    return inGrid(f, x, y) ? { x, y } : null;
+  // Which square of the drawing grid a world point is over, in world feet,
+  // with its centre — the one thing the floor tool and the eraser both aim at.
+  //
+  // The tile is the grid's, not the lattice's: it is `gridPitch` feet across
+  // and starts where `gridOrigin` says, so what the sheet draws and what the
+  // brush lays are the same square. A tile counts as on the plan when its
+  // *centre* is, which is the only test that stays stable as the grid's phase
+  // slides under the sheet's corner.
+  function tileAtCursor(f, wx, wz) {
+    const t = tileUnder(wx, wz, pitch(), origin());
+    const cx = (t.x0 + t.x1) / 2, cz = (t.z0 + t.z1) / 2;
+    if (cx < 0 || cz < 0 || cx > f.w * CELL || cz > f.h * CELL) return null;
+    return { ...t, cx, cz };
   }
 
   // --- undo/redo ---
@@ -457,7 +488,11 @@ export function initEditor({
       setOverlay: (o, info = {}) => {
         const st = getState();
         if (o) st.overlay = o;
-        fire({ structural: false, overlay: true, ...info });
+        // A reference point picked on the picture rides with it. Refused once
+        // anything is drawn, which is what stops aligning a scan late in a
+        // design from dragging the grid off the building — see gridref.js.
+        const moved = reanchorGridRef(st);
+        fire({ structural: moved, overlay: true, ...info });
       },
       // Both ends of a measurement, in image pixels. The shell puts up the
       // "how many feet is that?" prompt, because a dialog is not a tool's job.
@@ -471,28 +506,30 @@ export function initEditor({
     const s = getState();
     const f = activeFloor(s);
     if (tool === 'floor') {
-      const c = cellAt(f, wx, wz);
-      if (!c) { strokeOffSheet++; return; }
+      const t = tileAtCursor(f, wx, wz);
+      if (!t) { strokeOffSheet++; return; }
       // Phase 8's structural shadow. An upper storey is limited to the
       // footprint of the one below it by default — you cannot lay slab over
       // thin air by accident — and overhangs are switched on rather than
       // switched off, because a cantilever is something somebody decides to
       // draw. The refusal is a status line and nothing else: no dialog, no
       // beep, no red flash. See the note on `allowOverhang` below.
-      if (!allowOverhang && !cellSupported(s, s.currentFloor, c.x, c.y)) {
+      if (!allowOverhang && !pointSupported(s, s.currentFloor, t.cx, t.cz)) {
         overhangRefused++;
         return;
       }
       // The brush paints a room's ring, not a cell in a file — see paint.js.
-      // A cell joins whichever room it can walk to, or starts one.
-      const out = paintCell(s, s.currentFloor, c.x, c.y, true, {
-        name: roomName || 'Room', color: roomColor, fin: roomFinish, paint: roomPaint,
-      });
-      if (out.refused) { strokeFrozen++; return; }
-      if (out.changed) {
-        strokeChanged = true;
-        if (allowOverhang && !cellSupported(s, s.currentFloor, c.x, c.y)) strokeOverhang++;
+      // A tile joins whichever room it can walk to, or starts one. It is
+      // *queued* rather than laid: see `flushTiles`.
+      // Counted here rather than after the fact, and only for a tile that is
+      // not already floor: the flush cannot say *which* squares were new, and
+      // "you have just built 400 ft² over nothing" is a lie if 390 of it was
+      // already there.
+      if (allowOverhang && !shapeAt(f, t.cx, t.cz) &&
+          !pointSupported(s, s.currentFloor, t.cx, t.cz)) {
+        overhangArea += (t.x1 - t.x0) * (t.z1 - t.z0);
       }
+      queueTile(t);
     } else if (tool === 'door') {
       if (!isClick) return; // doors place on click, not drag
       const dk = doorKindOf(doorKind);
@@ -566,31 +603,59 @@ export function initEditor({
       // A whole free-drawn room is a lot to lose to a stray drag, so one only
       // goes on a deliberate click. A painted one rubs out a cell at a time,
       // which is how it was drawn.
-      const frozen = isClick ? frozenAt(s, s.currentFloor, ...cellXY(f, wx, wz)) : null;
+      const frozen = isClick ? frozenAtPoint(s, s.currentFloor, wx, wz) : null;
       if (frozen) {
         removeShape(f, frozen.id);
         strokeChanged = true;
         return;
       }
-      const c = cellAt(f, wx, wz);
-      if (!c) { strokeOffSheet++; return; }
-      const out = paintCell(s, s.currentFloor, c.x, c.y, false);
-      if (out.changed) strokeChanged = true;
+      const t = tileAtCursor(f, wx, wz);
+      if (!t) { strokeOffSheet++; return; }
+      queueTile(t);
     }
   }
 
-  // The cell a world point is over, as the two arguments `frozenAt` wants.
-  function cellXY(f, wx, wz) {
-    return [Math.floor(wx / CELL), Math.floor(wz / CELL)];
+  // --- the tile queue ---
+  //
+  // Floor and eraser gestures collect the squares they touched and lay them in
+  // one call. That is not a micro-optimisation: `paintTiles` rasterizes the
+  // whole storey, re-traces every region on it and puts every doorway back
+  // (see paint.js), so a stroke that repainted per sample was doing all of
+  // that forty times a second, and a rectangle was doing it once per square.
+  // One gesture is one repaint.
+  let strokeTiles = null;    // Map of "x0,z0" -> tile, so a stroke that
+                             // crosses its own path costs one entry
+
+  function queueTile(t) {
+    if (!strokeTiles) strokeTiles = new Map();
+    strokeTiles.set(`${t.x0.toFixed(4)},${t.z0.toFixed(4)}`, t);
   }
 
-  // Sample along the drag path so fast strokes don't skip cells/edges
+  // Lay (or rub out) everything queued. Returns what the brush did, or null if
+  // the gesture never touched a square it was allowed to touch.
+  function flushTiles(on) {
+    if (!strokeTiles || !strokeTiles.size) { strokeTiles = null; return null; }
+    const tiles = [...strokeTiles.values()];
+    strokeTiles = null;
+    const s = getState();
+    const out = paintTiles(s, s.currentFloor, tiles, on, on
+      ? { name: roomName || 'Room', color: roomColor, fin: roomFinish, paint: roomPaint }
+      : {});
+    strokeFrozen += out.frozenTiles;
+    strokeOffSheet += out.offSheetTiles;
+    if (out.changed) strokeChanged = true;
+    return out;
+  }
+
+  // Sample along the drag path so fast strokes don't skip tiles or edges. The
+  // step follows the grid: at a fine pitch a fast drag has more squares to
+  // cross, and a step sized off the 4ft cell would jump over them.
   let lastWorld = null;
   function applyStroke(wx, wz, isClick) {
     if (lastWorld && !isClick) {
       const dx = wx - lastWorld.x, dz = wz - lastWorld.z;
       const dist = Math.hypot(dx, dz);
-      const steps = Math.max(1, Math.ceil(dist / (CELL * 0.4)));
+      const steps = Math.max(1, Math.ceil(dist / (pitch() * 0.4)));
       for (let i = 1; i <= steps; i++) {
         applyAt(lastWorld.x + (dx * i) / steps, lastWorld.z + (dz * i) / steps, false);
       }
@@ -598,6 +663,7 @@ export function initEditor({
       applyAt(wx, wz, isClick);
     }
     lastWorld = { x: wx, z: wz };
+    flushTiles(tool !== 'erase');
   }
 
   // --- the point target (Phase 25) ---
@@ -613,6 +679,7 @@ export function initEditor({
   function targetAt(p, e) {
     return targetPoint(p.x, p.z, {
       pitch: pitch(),
+      origin: origin(),
       snap: !(e && e.altKey),
       from: wallAnchor,
       ortho: wallOrtho && !(e && e.shiftKey),
@@ -739,10 +806,18 @@ export function initEditor({
   // rectangles and does not need to.
   let rectGesture = null;    // { a: {x,z}, b: {x,z} }
 
-  const rectCells = (a, b) => {
-    const x0 = Math.floor(Math.min(a.x, b.x) / CELL), x1 = Math.floor(Math.max(a.x, b.x) / CELL);
-    const z0 = Math.floor(Math.min(a.z, b.z) / CELL), z1 = Math.floor(Math.max(a.z, b.z) / CELL);
-    return { x0, x1, z0, z1, w: x1 - x0 + 1, h: z1 - z0 + 1 };
+  // The block a drag covers, in whole grid tiles — snapped the same way one
+  // click is, so a rectangle laid at this zoom sits on the same lines as a
+  // tile laid at it.
+  const rectSpan = (a, b) => tileSpan(a, b, pitch(), origin());
+
+  // ...and what that is in feet, which is what the cursor is drawn from, what
+  // the status line reads out, and what the brush is handed.
+  const rectBounds = (span) => spanBounds(span, pitch(), origin());
+
+  const rectSize = (span) => {
+    const b = rectBounds(span);
+    return { w: b.x1 - b.x0, d: b.z1 - b.z0, area: (b.x1 - b.x0) * (b.z1 - b.z0) };
   };
 
   function refreshRect() {
@@ -751,23 +826,31 @@ export function initEditor({
       rectCursor.visible = false;
       return;
     }
-    const r = rectCells(rectGesture.a, rectGesture.b);
+    const b = rectBounds(rectSpan(rectGesture.a, rectGesture.b));
     rectCursor.visible = true;
     rectCursor.material.color.setHex(tool === 'erase' ? 0xff5f56 : 0x4da3ff);
-    rectCursor.scale.set(r.w * CELL, r.h * CELL, 1);
+    rectCursor.scale.set(b.x1 - b.x0, b.z1 - b.z0, 1);
     rectCursor.position.set(
-      (r.x0 + r.w / 2) * CELL,
+      (b.x0 + b.x1) / 2,
       floorBaseY(s, s.currentFloor) + 0.09,
-      (r.z0 + r.h / 2) * CELL,
+      (b.z0 + b.z1) / 2,
     );
   }
 
+  // Walk the block's tile centres through `applyAt` — which queues the floor
+  // part and, for the eraser, takes the walls inside the block as it goes —
+  // and then lay the whole thing in one call.
   function applyRect(a, b) {
-    const r = rectCells(a, b);
-    for (let y = r.z0; y <= r.z1; y++) {
-      for (let x = r.x0; x <= r.x1; x++) applyAt((x + 0.5) * CELL, (y + 0.5) * CELL, false);
+    const span = rectSpan(a, b);
+    const p = pitch(), o = origin();
+    for (let j = span.iz0; j <= span.iz1; j++) {
+      for (let i = span.ix0; i <= span.ix1; i++) {
+        const t = tileBounds(i, j, p, o);
+        applyAt((t.x0 + t.x1) / 2, (t.z0 + t.z1) / 2, false);
+      }
     }
-    return r;
+    flushTiles(tool !== 'erase');
+    return span;
   }
 
   // --- the eraser as a delete key ---
@@ -836,7 +919,7 @@ export function initEditor({
       };
     }
     // A whole free-drawn room, on a deliberate click only — which this is.
-    const frozen = frozenAt(s, s.currentFloor, ...cellXY(f, wx, wz));
+    const frozen = frozenAtPoint(s, s.currentFloor, wx, wz);
     if (frozen) {
       return {
         what: `${frozen.name || 'Room'} — ${Math.round(shapeArea(frozen)).toLocaleString()} ft²`,
@@ -942,15 +1025,18 @@ export function initEditor({
       canvas.style.cursor = 'pointer';
       return;
     } else {
-      const c = cellAt(f, p.x, p.z);
+      const t = tileAtCursor(f, p.x, p.z);
       edgeCursor.visible = false;
-      cellCursor.visible = !!c;
-      if (c) {
+      cellCursor.visible = !!t;
+      if (t) {
         // Red over a room the brush will not touch, so the refusal is visible
         // before the click rather than only in the status line after it.
-        const frozen = (tool === 'floor' || isErase) && frozenAt(s, s.currentFloor, c.x, c.y);
+        const frozen = (tool === 'floor' || isErase) &&
+          frozenAtPoint(s, s.currentFloor, t.cx, t.cz);
         cellCursor.material.color.setHex(frozen ? 0x8a94a6 : color);
-        cellCursor.position.set((c.x + 0.5) * CELL, baseY + 0.08, (c.y + 0.5) * CELL);
+        // The square the click would lay, at whatever the zoom's pitch is.
+        cellCursor.scale.set(t.x1 - t.x0, t.z1 - t.z0, 1);
+        cellCursor.position.set(t.cx, baseY + 0.08, t.cz);
       }
     }
   }
@@ -1042,9 +1128,10 @@ export function initEditor({
 
   function setFloorRect(v) {
     floorRect = !!v;
+    const p = pitch();
     say(floorRect
-      ? 'Floor — drag a rectangle. R goes back to the 4ft brush.'
-      : 'Floor — the 4ft brush, a cell at a time. R draws rectangles instead.');
+      ? `Floor — drag a rectangle in ${p}ft tiles. R goes back to the brush.`
+      : `Floor — the brush, one ${p}ft tile at a time. R draws rectangles instead.`);
   }
 
   // --- pointer events ---
@@ -1121,7 +1208,7 @@ export function initEditor({
     strokeChanged = false;
     strokeFrozen = 0;
     overhangRefused = 0;
-    strokeOverhang = 0;
+    overhangArea = 0;
     strokeOffSheet = 0;
     lastWorld = null;
     // A rectangle waits for the pointer to come up before it lays anything
@@ -1150,9 +1237,9 @@ export function initEditor({
       if (!p) return;
       rectGesture.b = { x: p.x, z: p.z };
       refreshRect();
-      const r = rectCells(rectGesture.a, rectGesture.b);
+      const r = rectSize(rectSpan(rectGesture.a, rectGesture.b));
       say(`${tool === 'erase' ? 'Erase' : 'Floor'} — ` +
-        `${r.w * CELL} × ${r.h * CELL} ft (${(r.w * r.h * CELL * CELL).toLocaleString()} ft²).`);
+        `${ftLabel(r.w)} × ${ftLabel(r.d)} ft (${Math.round(r.area).toLocaleString()} ft²).`);
       return;
     }
     if (!strokeActive || !p) return;
@@ -1180,21 +1267,20 @@ export function initEditor({
       const down = eraseDown;
       eraseDown = null;
       if (tool === 'erase' && down) {
-        const one = rectCells(g.a, g.b);
+        const one = rectSpan(g.a, g.b);
         if (one.w === 1 && one.h === 1 && eraseObjectAt(down.x, down.z)) {
           strokeActive = false;
           lastWorld = null;
           return;
         }
       }
-      const r = applyRect(g.a, g.b);
+      const size = rectSize(applyRect(g.a, g.b));
       strokeActive = false;
       lastWorld = null;
       if (strokeChanged) {
         fire({ structural: true, commit: true });
-        const area = r.w * r.h * CELL * CELL;
-        say(`${tool === 'erase' ? 'Erased' : 'Floor'} — ${r.w * CELL} × ${r.h * CELL} ft, ` +
-          `${area.toLocaleString()} ft².`);
+        say(`${tool === 'erase' ? 'Erased' : 'Floor'} — ${ftLabel(size.w)} × ${ftLabel(size.d)} ft, ` +
+          `${Math.round(size.area).toLocaleString()} ft².`);
       }
       if (overhangRefused) reportRefusal();
       else if (strokeFrozen) reportFrozen();
@@ -1217,9 +1303,8 @@ export function initEditor({
     if (overhangRefused) reportRefusal();
     else if (strokeFrozen) reportFrozen();
     else if (strokeOffSheet) reportOffSheet();
-    else if (strokeOverhang) {
-      const area = strokeOverhang * CELL * CELL;
-      say(`Overhang — ${area.toLocaleString()} ft² of this storey now ` +
+    else if (overhangArea) {
+      say(`Overhang — ${Math.round(overhangArea).toLocaleString()} ft² of this storey now ` +
         'stands on nothing below.');
     }
   }
@@ -1229,7 +1314,7 @@ export function initEditor({
   // does want that room. Same register as the overhang note below — a line in
   // the status bar, no interruption.
   function reportFrozen() {
-    say(`${strokeFrozen} cell${strokeFrozen === 1 ? '' : 's'} skipped — ` +
+    say(`${strokeFrozen} tile${strokeFrozen === 1 ? '' : 's'} skipped — ` +
       'a free-drawn room is there. Use the vertex tool (V) to reshape it.');
   }
 
@@ -1238,10 +1323,10 @@ export function initEditor({
   // is exactly how a 160 x 120ft plan under a 300ft tracing image reads as a
   // broken tool.
   function reportOffSheet() {
-    const cells = strokeOffSheet;
+    const n = strokeOffSheet;
     strokeOffSheet = 0;
     say(
-      `${cells === 1 ? 'That cell is' : `${cells} cells are`} off the plan — ` +
+      `${n === 1 ? 'That tile is' : `${n} tiles are`} off the plan — ` +
       'the drawing surface ends there. Make it bigger with Plan in the Floors panel.');
   }
 
@@ -1250,10 +1335,10 @@ export function initEditor({
   // verdict, and a tool that argued with you about a canopy would be worse
   // than one that let you draw a classroom in mid-air.
   function reportRefusal() {
-    const cells = overhangRefused;
+    const n = overhangRefused;
     overhangRefused = 0;
     say(
-      `${cells === 1 ? 'That cell is' : `${cells} cells are`} outside the storey below — ` +
+      `${n === 1 ? 'That tile is' : `${n} tiles are`} outside the storey below — ` +
       'turn on “Allow overhangs” in the Layers panel to build there anyway.');
   }
 
@@ -1564,9 +1649,14 @@ export function initEditor({
     get wallOrtho() { return wallOrtho; },
     setFloorRect,
     get floorRect() { return floorRect; },
-    // The grid the point target is landing on right now, in feet — what the
-    // chrome reports beside the toggle so the number is never a mystery.
+    // The grid the tools are landing on right now: how fine, and where it
+    // starts — what the chrome reports beside the toggle so neither number is
+    // ever a mystery.
     get gridPitch() { return pitch(); },
+    get gridOrigin() { return origin(); },
+    get gridRef() { return gridRefOf(getState()); },
+    get gridLocked() { return gridLocked(getState()); },
+    get gridRefText() { return describeGridRef(getState()); },
     cancelWallRun,
     // What the door tool cuts, and how the leaf in it hangs.
     setDoorKind(k) { doorKind = doorKindOf(k).kind; curveMemo = null; updateCursor(null); },

@@ -44,9 +44,11 @@ The model, bottom-up: `grid.js` (footprint and storeys) · `footprint.js`
 (sheet size, what has to fit on it) · `shapes.js` (rooms: rings, holes,
 per-segment walls) · `wallrun.js` (a wall drawn point to point, and the
 free-standing ones a room's boundary cannot say) · `snapgrid.js` (the
-drawing grid's pitch, and the point a tool aims at) · `lattice.js` (the 4ft
-drawing surface, and `bake()`, the one door out of it) · `paint.js` (the
-brush) · `props.js` (object layer,
+drawing grid's pitch, its phase, the point a wall aims at and the tile a
+floor lands in) · `gridref.js` (where the grid starts, and the one rule that
+keeps moving it safe) · `lattice.js` (the drawing raster, and `bake()`, the
+one door out of it) · `paint.js` (the
+brush, and the raster it draws on) · `props.js` (object layer,
 inter-floor links) · `catalog.js` (every placeable type, as data) ·
 `walls.js` / `openings.js` / `finish.js` (derived thickness, door leaves,
 window bands, floor/paint) · `stairs.js` (runs, landings, the holes they cut)
@@ -139,6 +141,22 @@ wrong.
   never an origin — fitting something onto it is two moves: slide the thing
   onto the positive quadrant, then grow the sheet. Growing is always safe;
   shrinking can clip a room the brush later repaints. See `footprint.js`.
+- **The *grid* has a phase, and the sheet still does not.** Phase 35 lets
+  somebody index the drawing grid off a point on a traced photograph
+  (`gridref.js`); the sheet's corner does not move, the grid's lines slide
+  across it. The reference point can only be set while nothing is drawn,
+  because re-phasing a grid under an existing plan takes every room off it —
+  `gridLocked` is that test, and it is a refusal with a sentence, never a
+  silent no-op.
+- **A floor lands on a square, a wall lands on a point.** Both are read off
+  the same grid at the same pitch, so what the sheet draws is what the brush
+  lays. The paint raster may be *refined* under a plan (4ft to 2ft) and never
+  coarsened: a finer raster accepts every room a coarser one did, and the
+  reverse would strand them. See `rasterOf` / `refineRaster` in `paint.js`.
+- **A repaint is O(the storey), so a gesture is one repaint.** `paintTiles`
+  takes the whole list of squares a stroke or a rectangle touched. Calling it
+  per square — which is what the brush did until Phase 35 — rasterizes the
+  storey, re-traces every region and re-hangs every door once per square.
 - **Anything outside the file that names a room names its id, and keeps the
   name it bound by.** Bind by id, then by name, then by room number — never
   drop what you could not bind: report it. See `bindRoom` in `timetable.js`.
@@ -1678,3 +1696,71 @@ has no answer anywhere in the tool.
 *Save:* none — snapshots are the save format stored beside itself.
 *Model:* **Claude Fable 5** — a differ over the save format is model-layer
 by definition.
+
+## Phase 35 — The square you pointed at *(shipped)*
+
+**Phase 25 gave the grid a pitch that follows the zoom, and then let two of
+the three tools ignore it.**
+
+The wall tool aimed at the grid. The floor tool did not: it laid a 4ft cell
+whatever the zoom was showing, so zooming in subdivided the sheet under a
+brush that could not use the subdivision, and zooming out drew a grid whose
+squares were bigger than what a click actually placed. Watching the grid
+change and the tile not is the whole complaint, and it is a real one — the
+grid stopped being the thing you aim at and became decoration.
+
+Under that sat a second thing nobody had said out loud: **a grid is a pitch
+and an origin**, and the origin had always been the corner of the sheet.
+That is fine for a plan drawn from nothing and useless the moment somebody
+traces a photograph, because a scan's own module — column lines at 24ft, an
+exterior face 3ft 6in off the edge of the paper — lands nowhere near our
+corner. Snapping then fights the picture: every wall is a foot off the line
+you drew it on, and the grid becomes something to switch off.
+
+- [x] **A floor tile is a grid tile.** The floor tool and the eraser lay the
+  square the grid is drawing, at whatever pitch the zoom is at — 2ft close
+  in, 32ft right out — and the hover cursor is that square rather than a
+  fixed 4ft one. What the sheet shows and what a click places are now the
+  same rectangle at every zoom.
+- [x] **Two feet is the floor of the ladder.** `PITCHES` starts at 2 rather
+  than at half a foot. Six inches was a number chosen for the wall tool and
+  nothing was ever drawn at it; two feet is the smallest square a building is
+  made of, and — the property the rest of this phase rests on — every step
+  above it is a whole multiple of it.
+- [x] **The paint raster has a pitch, and it only ever gets finer.**
+  `rasterOf` / `refineRaster` in `paint.js`, on `state.cellFt` — a field that
+  has been in every save file since v1 saying 4 and meaning nothing. Drawing
+  at 2ft refines the design's raster once; 4ft and everything coarser needs
+  nothing. Refining is safe in the one direction that matters: a 4ft point is
+  a 2ft point, so every room already drawn is still exactly on the raster and
+  still the brush's to repaint. Coarsening is refused outright.
+- [x] **A reference point on the tracing image.** `gridref.js` +
+  `test/gridref.test.mjs`, and a third mode on the Overlay tool. Click the
+  point the plan itself counts from — a column centre, the corner of the
+  building — and the drawing grid, the sheet's own lines and the paint raster
+  all start there. The record keeps the world point *and* the image pixel, so
+  the grid rides the picture through a nudge, a turn or a re-measure.
+- [x] **...and it is set before the first floor or wall, or not at all.**
+  Re-phasing a grid under an existing plan takes every room off it: the brush
+  would freeze them, the wall tool could not meet them, and no gesture puts
+  it back. `gridLocked` refuses with a sentence rather than doing it quietly,
+  and refuses the clear as well, because putting the grid back on the corner
+  moves it exactly as far.
+- [x] **One gesture is one repaint.** `paintTiles` takes the whole list of
+  squares a stroke or a rectangle touched. The old brush called `paintCell`
+  once per square, and each of those rasterized the storey, re-traced every
+  region and re-hung every door — so a 20 × 20 rectangle was four hundred
+  full repaints. This is what pays for the finer raster and then some.
+
+*What fought back:* the raster's *phase*, not its pitch. A pitch change is a
+subdivision and nothing notices; an origin that is not a whole number of
+pitches from the corner means the raster overhangs the sheet by up to one
+tile on each edge, `latticeAligned` stops accepting rooms drawn on the old
+phase, and the sheet's border stops being a grid line — which is why
+`buildSheet` now draws the four edges itself and why the lock exists at all.
+The overhang readout was the small honest one: batching the stroke lost the
+per-cell "did this square actually change", so it is counted at queue time
+against `shapeAt` instead, because "you have just built 400 ft² over
+nothing" is a lie when 390 of it was already there. And `traceRegion` had
+`CELL` baked into the two lines that turn cells back into feet, which is the
+sort of constant that reads as arithmetic until the day it is a parameter.

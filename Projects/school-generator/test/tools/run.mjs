@@ -581,6 +581,81 @@ const CHECKS = [
       }
     },
   },
+  // ---------- Phase 35: the square you pointed at ----------
+  //
+  // Both of these are gestures rather than arithmetic, which is why they are
+  // here: `snapgrid.js`, `gridref.js` and `paint.js` all have suites that
+  // prove the numbers, and neither of the two things a person actually
+  // notices — the tile following the zoom, and the grid refusing to move
+  // under a plan — is visible from Node.
+  {
+    name: 'floor-tile-follows-the-zoom',
+    what: 'a floor tile is one square of the drawing grid, however far in you are',
+    async run(d) {
+      await d.pick('floor');
+      await d.page.evaluate('window.app.editor.setFloorRect(true); 1');
+      // Right in, on an empty corner of the sheet: the finest pitch is 2ft.
+      const view = await d.page.evaluate(`(() => {
+        const v = window.app.renderApi.editView;
+        const was = { x: v.x, z: v.z, height: v.height };
+        v.x = 140; v.z = 100; v.height = 30;
+        return was;
+      })()`);
+      await d.page.waitForTimeout(300);
+      const pitch = await d.page.evaluate('window.app.editor.gridPitch');
+      if (pitch !== 2) throw new Error(`the closest zoom drew a ${pitch}ft grid, not a 2ft one`);
+      await d.assertClear([[141, 101]]);
+      await d.click(141, 101);
+      await d.page.waitForTimeout(200);
+      const laid = await d.page.evaluate(`(() => {
+        const s = window.app.state;
+        const sh = s.floors[s.currentFloor].shapes;
+        const last = sh[sh.length - 1];
+        const xs = last.rings[0].pts.map((p) => p.x), zs = last.rings[0].pts.map((p) => p.z);
+        return {
+          cellFt: s.cellFt,
+          w: Math.max(...xs) - Math.min(...xs),
+          d: Math.max(...zs) - Math.min(...zs),
+        };
+      })()`);
+      // ...and put the design and the view back, so nothing after this has to
+      // be written around a 2ft cupboard in the corner.
+      await d.page.evaluate('window.app.editor.undo(); 1');
+      await d.page.evaluate((v) => {
+        Object.assign(window.app.renderApi.editView, v);
+        return 1;
+      }, view);
+      await d.page.waitForTimeout(300);
+      const back = await d.page.evaluate('window.app.state.cellFt');
+      return { laid, back };
+    },
+    expect: ({ ctx, before, after }) => {
+      if (ctx.laid.w !== 2 || ctx.laid.d !== 2) {
+        throw new Error(`a click at the 2ft grid laid a ${ctx.laid.w} x ${ctx.laid.d} ft tile`);
+      }
+      if (ctx.laid.cellFt !== 2) throw new Error('the design did not refine its raster to hold it');
+      if (ctx.back !== 4) throw new Error('undo left the raster refined');
+      if (after.json !== before.json) throw new Error('the tile survived its own undo');
+    },
+  },
+  {
+    name: 'grid-reference-is-refused-once-drawn',
+    what: 'the grid will not re-phase itself under a plan somebody has already drawn',
+    async run(d) {
+      await d.pick('overlay');
+      await d.page.evaluate(`window.app.editor.setOverlayMode('origin'); 1`);
+      await d.assertClear([[140, 100]]);
+      await d.click(140, 100);
+    },
+    // The whole safety of the feature: moving the grid under an existing plan
+    // takes every room off it, and there is no gesture that puts it back.
+    expect: ({ before, after, status }) => {
+      if (after.json !== before.json) throw new Error('a locked grid moved anyway');
+      if (!/empty plan|first floor or wall/.test(status)) {
+        throw new Error(`no refusal offered: ${status}`);
+      }
+    },
+  },
   // ---------- Phase 26: putting things in, and taking them out again ----------
   //
   // Five checks against four sentences of feedback: *"we need a way to delete

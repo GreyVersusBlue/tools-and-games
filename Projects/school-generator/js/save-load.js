@@ -38,6 +38,14 @@
 //        reason: a rate table is a fact *about this design* — the prices that
 //        produced this estimate are half of what the estimate means — and a
 //        phasing plan is a set of references to rooms v11 gave ids to.
+//   v12+ — `gridRef`: the point the drawing grid indexes off, in world feet
+//        plus the image pixel it was picked on (see gridref.js) — and, beside
+//        it, `cellFt` finally meaning something. `cellFt` has been written
+//        into every file since v1 saying 4; a design drawn at the finest grid
+//        pitch says 2 instead, and a design that has not is byte-identical to
+//        what this build wrote before. Another append on the timetable's
+//        terms: a design whose grid starts at the corner of the sheet writes
+//        no `gridRef` key at all.
 //
 // Older files keep loading forever: a v1 or v2 design is simply one with no
 // polygon rooms in it, a v3 one has no glass and no stairs, a v4 one has no
@@ -118,6 +126,8 @@ import { normalizeRegion, MAX_REGIONS } from './site.js';
 import { normalizeRoof, isDefaultRoof } from './roof.js';
 import { normalizeLife, isDefaultLife } from './agents.js';
 import { normalizeOverlay } from './overlay.js';
+import { normalizeGridRef, isDefaultGridRef } from './gridref.js';
+import { PITCHES } from './snapgrid.js';
 import { normalizeTours } from './tour.js';
 import { normalizeModels, librarySize } from './models.js';
 import { normalizeTimetable, isEmptyTimetable } from './timetable.js';
@@ -217,6 +227,14 @@ export function serialize(state, opts = {}) {
   // every file written before this build round-trips through it unchanged.
   const haunt = normalizeHaunt(out.haunt);
   if (isDefaultHaunt(haunt)) delete out.haunt; else out.haunt = haunt;
+  // Phase 35's one record, and the same rule again: a design whose grid starts
+  // at the corner of the sheet — every design written before this build, and
+  // every design nobody has traced a photograph with — writes no `gridRef`
+  // key. `cellFt` needs no such care: it has been on the state since v1 and
+  // has said 4 in every file ever written, so a design nobody has drawn at
+  // 2ft still writes exactly the four it always did.
+  const gridRef = normalizeGridRef(out.gridRef);
+  if (isDefaultGridRef(gridRef)) delete out.gridRef; else out.gridRef = gridRef;
   // Phase 29's one record, the same cheap append: a design with no weather
   // writes no `weather` key — v12 still, and every file written before this
   // build round-trips through it unchanged.
@@ -366,6 +384,12 @@ export function deserialize(json, opts = {}) {
   state.floorHt = typeof d.floorHt === 'number' && d.floorHt > 0
     ? Math.min(60, Math.max(CELL, d.floorHt))
     : FLOOR_H;
+  // What one raster cell of the paint brush is worth (paint.js). It has been
+  // on the state since v1 saying 4; Phase 35 lets a design that has been drawn
+  // at the finest grid pitch say 2 instead. Anything else — a hostile number,
+  // a value off the ladder, a coarser cell that would strand rooms already
+  // drawn on a finer one — reads as the 4ft module.
+  state.cellFt = PITCHES.includes(d.cellFt) ? Math.min(d.cellFt, CELL) : CELL;
 
   const rawFloors = legacy ? [d] : d.floors.slice(0, MAX_FLOORS);
   const read = (rawFloors.length ? rawFloors : [null]).map((rf) => readFloor(rf, w, h));
@@ -432,6 +456,11 @@ export function deserialize(json, opts = {}) {
   // day, never a design that won't open.
   const weather = normalizeWeather(d.weather);
   if (!isDefaultWeather(weather)) state.weather = weather;
+  // Phase 35's reference point, on the same terms as everything above it: an
+  // unreadable one is a design whose grid starts at the corner of the sheet,
+  // which is where every design's grid started before this build.
+  const gridRef = normalizeGridRef(d.gridRef);
+  if (!isDefaultGridRef(gridRef)) state.gridRef = gridRef;
   // v9, on the same terms as everything above it: an unreadable overlay is a
   // design with no overlay, never a design that won't open. An image type this
   // build can't decode, a data URL over the size cap, a missing pixel size —

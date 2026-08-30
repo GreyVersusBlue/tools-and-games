@@ -117,10 +117,10 @@ export const DEMOS = [
   {
     id: 'floor',
     title: 'the Floor brush',
-    blurb: 'Drag a room out in 4ft tiles — the walls bake themselves',
+    blurb: 'Drag a room out in grid tiles — the walls bake themselves',
     changes: { shapes: 1 },
     steps: [
-      ['say', 'Floor is the brush: drag, and it lays 4ft tiles.'],
+      ['say', 'Floor lays tiles of the drawing grid — 4ft here, finer as you zoom in.'],
       ['tool', 'floor'],
       ['to', 0, 0],
       ['down'],

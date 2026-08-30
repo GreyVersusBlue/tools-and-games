@@ -53,6 +53,8 @@ import {
   createLattice, setTile, cellIdx, edgeHIdx, edgeVIdx, inGrid,
   traceRegion, EDGE_NONE, EDGE_WALL, EDGE_GLASS, EDGE_RAIL,
 } from './lattice.js';
+import { PITCHES, MIN_PITCH } from './snapgrid.js';
+import { gridOrigin } from './gridref.js';
 import {
   shapesOf, shapeBBox, pointInShape, segEnds, segLength, isBuilt, projectOnSeg,
   orientRing, takeId, writeOpening, openingSpec, isDoorOpening,
@@ -67,18 +69,104 @@ const EPS = 1e-6;
 // and the one it replaced.
 export const OPENING_SNAP = 0.6;   // ft
 
+// ---------- the raster a storey is painted on ----------
+//
+// The brush used to draw on one raster forever: 4ft cells starting at the
+// corner of the sheet. Phase 35 gives it two degrees of freedom, and both of
+// them come from the *drawing grid* rather than from here.
+//
+// **Pitch.** The grid subdivides as you zoom in (snapgrid.js), and a floor
+// tile is now one of those squares rather than always a 4ft one. Everything on
+// the ladder from 4ft up is a whole number of 4ft cells, so those need nothing
+// from the raster; 2ft does, and `state.cellFt` is where the design records
+// that it has been drawn at that scale. It only ever gets finer, and only ever
+// by whole subdivisions, so a room drawn on the 4ft module is still exactly on
+// the raster after a refinement — which is the property that makes this safe
+// to do to a plan that already exists.
+//
+// **Origin.** `gridref.js` lets somebody index the grid off a point on a
+// traced photograph. The raster starts where the grid does, which is what
+// keeps a painted tile and a drawn wall meeting on the same line. Moving it is
+// refused once anything is drawn, for the reason gridref.js gives at length.
+//
+// The raster always covers the whole sheet — [0, w·CELL] x [0, h·CELL] — and,
+// when the origin is not a whole number of pitches from the corner, up to one
+// tile past each edge of it. That overhang is the honest answer: the tile the
+// grid draws over the sheet's corner is a tile, and refusing to paint it would
+// make the corner of a traced plan unreachable.
+
+// What one raster cell is worth in feet. `cellFt` has been on the state since
+// v1 and meant nothing until now; an old file says 4 and reads as 4.
+export function rasterPitch(state) {
+  const v = state && Number(state.cellFt);
+  if (!Number.isFinite(v) || !PITCHES.includes(v)) return CELL;
+  return Math.min(v, CELL);
+}
+
+// The raster for one storey: pitch, where cell (0, 0)'s low corner sits, and
+// how many cells it takes to cover the sheet from there.
+export function rasterOf(state, floorIndex) {
+  const floor = state && state.floors ? state.floors[floorIndex] : null;
+  const pitch = rasterPitch(state);
+  const o = gridOrigin(state);
+  const W = (floor ? floor.w : 0) * CELL, H = (floor ? floor.h : 0) * CELL;
+  const i0 = Math.floor((0 - o.x) / pitch + EPS);
+  const j0 = Math.floor((0 - o.z) / pitch + EPS);
+  const i1 = Math.ceil((W - o.x) / pitch - EPS);
+  const j1 = Math.ceil((H - o.z) / pitch - EPS);
+  return {
+    pitch,
+    x0: o.x + i0 * pitch,
+    z0: o.z + j0 * pitch,
+    w: Math.max(0, i1 - i0),
+    h: Math.max(0, j1 - j0),
+  };
+}
+
+// The raster every caller that has no state gets: the 4ft module at the
+// corner, which is what this file drew on for thirty-four phases.
+const DEFAULT_RASTER = Object.freeze({ pitch: CELL, x0: 0, z0: 0 });
+const asRaster = (r) => (r && r.pitch > 0 ? r : DEFAULT_RASTER);
+
+// A raster cell's centre, in world feet — what "is this cell inside that room"
+// is actually asked about.
+export const cellCentre = (r, x, y) => ({
+  x: r.x0 + (x + 0.5) * r.pitch,
+  z: r.z0 + (y + 0.5) * r.pitch,
+});
+
+// Refine the design's raster so a tile this big can be drawn on it. One way
+// only: a raster never coarsens, because coarsening would strand every room
+// already drawn on the finer one. Returns true if the design changed.
+export function refineRaster(state, tileFt) {
+  if (!state || !(tileFt > 0)) return false;
+  const want = Math.max(MIN_PITCH, Math.min(CELL, tileFt));
+  if (!PITCHES.includes(want)) return false;
+  if (rasterPitch(state) <= want) return false;
+  state.cellFt = want;
+  return true;
+}
+
 // ---------- which rooms the brush may touch ----------
 
-const onLattice = (v) => Math.abs(v / CELL - Math.round(v / CELL)) < EPS;
+const onLattice = (v, origin, pitch) =>
+  Math.abs((v - origin) / pitch - Math.round((v - origin) / pitch)) < EPS;
 
-// A room the 4ft brush can rasterize without changing it: every vertex on the
-// lattice, every segment along one of its axes.
-export function latticeAligned(shape) {
+// A room the brush can rasterize without changing it: every vertex on the
+// raster, every segment along one of its axes.
+//
+// `raster` defaults to the 4ft module at the corner, so a caller with no
+// design in hand asks exactly the question this used to ask. A *finer* raster
+// only ever accepts more rooms — 4ft points are 2ft points — which is why
+// refining one is safe; a *re-phased* one accepts fewer, which is why moving
+// the origin is refused the moment anything is drawn (see gridref.js).
+export function latticeAligned(shape, raster) {
+  const r = asRaster(raster);
   if (!shape || !Array.isArray(shape.rings) || !shape.rings.length) return false;
   for (const ring of shape.rings) {
     for (let i = 0; i < ring.pts.length; i++) {
       const p = ring.pts[i];
-      if (!onLattice(p.x) || !onLattice(p.z)) return false;
+      if (!onLattice(p.x, r.x0, r.pitch) || !onLattice(p.z, r.z0, r.pitch)) return false;
       const [a, b] = segEnds(ring, i);
       const dx = Math.abs(a.x - b.x), dz = Math.abs(a.z - b.z);
       if (dx > EPS && dz > EPS) return false;
@@ -99,21 +187,23 @@ const edgeForSeg = (v) => (v === SEG_GLASS ? EDGE_GLASS : v === SEG_RAIL ? EDGE_
 export function rasterize(state, floorIndex) {
   const floor = state && state.floors ? state.floors[floorIndex] : null;
   if (!floor) return null;
-  const lat = createLattice(floor.w, floor.h);
-  const owner = new Int32Array(floor.w * floor.h).fill(-1);
-  const frozenCell = new Uint8Array(floor.w * floor.h);
+  const R = rasterOf(state, floorIndex);
+  const lat = createLattice(R.w, R.h, R.pitch, R.x0, R.z0);
+  const owner = new Int32Array(R.w * R.h).fill(-1);
+  const frozenCell = new Uint8Array(R.w * R.h);
   const rooms = [], frozen = [];
-  for (const shape of shapesOf(floor)) (latticeAligned(shape) ? rooms : frozen).push(shape);
+  for (const shape of shapesOf(floor)) (latticeAligned(shape, R) ? rooms : frozen).push(shape);
 
   const eachCell = (shape, fn) => {
     const bb = shapeBBox(shape);
-    const x0 = Math.max(0, Math.floor(bb.x0 / CELL));
-    const x1 = Math.min(floor.w - 1, Math.ceil(bb.x1 / CELL));
-    const y0 = Math.max(0, Math.floor(bb.z0 / CELL));
-    const y1 = Math.min(floor.h - 1, Math.ceil(bb.z1 / CELL));
+    const x0 = Math.max(0, Math.floor((bb.x0 - R.x0) / R.pitch));
+    const x1 = Math.min(R.w - 1, Math.ceil((bb.x1 - R.x0) / R.pitch));
+    const y0 = Math.max(0, Math.floor((bb.z0 - R.z0) / R.pitch));
+    const y1 = Math.min(R.h - 1, Math.ceil((bb.z1 - R.z0) / R.pitch));
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
-        if (pointInShape(shape, (x + 0.5) * CELL, (y + 0.5) * CELL)) fn(x, y);
+        const c = cellCentre(R, x, y);
+        if (pointInShape(shape, c.x, c.z)) fn(x, y);
       }
     }
   };
@@ -137,26 +227,26 @@ export function rasterize(state, floorIndex) {
         const [a, b] = segEnds(ring, i);
         const val = edgeForSeg(ring.walls[i]);
         if (Math.abs(a.z - b.z) < EPS) {
-          const y = Math.round(a.z / CELL);
-          const lo = Math.round(Math.min(a.x, b.x) / CELL);
-          const hi = Math.round(Math.max(a.x, b.x) / CELL);
-          if (y < 0 || y > floor.h) continue;
+          const y = Math.round((a.z - R.z0) / R.pitch);
+          const lo = Math.round((Math.min(a.x, b.x) - R.x0) / R.pitch);
+          const hi = Math.round((Math.max(a.x, b.x) - R.x0) / R.pitch);
+          if (y < 0 || y > R.h) continue;
           for (let x = lo; x < hi; x++) {
-            if (x >= 0 && x < floor.w) lat.edgesH[edgeHIdx(lat, x, y)] = val;
+            if (x >= 0 && x < R.w) lat.edgesH[edgeHIdx(lat, x, y)] = val;
           }
         } else {
-          const x = Math.round(a.x / CELL);
-          const lo = Math.round(Math.min(a.z, b.z) / CELL);
-          const hi = Math.round(Math.max(a.z, b.z) / CELL);
-          if (x < 0 || x > floor.w) continue;
+          const x = Math.round((a.x - R.x0) / R.pitch);
+          const lo = Math.round((Math.min(a.z, b.z) - R.z0) / R.pitch);
+          const hi = Math.round((Math.max(a.z, b.z) - R.z0) / R.pitch);
+          if (x < 0 || x > R.w) continue;
           for (let y = lo; y < hi; y++) {
-            if (y >= 0 && y < floor.h) lat.edgesV[edgeVIdx(lat, x, y)] = val;
+            if (y >= 0 && y < R.h) lat.edgesV[edgeVIdx(lat, x, y)] = val;
           }
         }
       }
     }
   }
-  return { floor, lat, owner, rooms, frozen, frozenCell };
+  return { floor, lat, owner, rooms, frozen, frozenCell, raster: R };
 }
 
 // ---------- regions, by owner ----------
@@ -338,13 +428,18 @@ function assignOwners(lat, owner, pending, rooms, state, opts, made) {
   }
 }
 
-// Draw or erase a list of 4ft cells on one storey.
+// Draw or erase a list of raster cells on one storey.
 //
-// Returns `{ changed, refused, rooms, added, removed }` — how many cells the
-// stroke actually moved, how many it declined (off the lattice, or inside a
-// free-drawn room), and what the storey's room list did.
+// Returns `{ changed, refused, frozen, offSheet, rooms, added, removed }` —
+// how many cells the stroke actually moved, how many it declined and for which
+// of the two reasons, and what the storey's room list did.
+//
+// The two reasons are counted apart because they are two different sentences:
+// "a free-drawn room is there, use the vertex tool" and "the drawing surface
+// ends there, make the plan bigger". `refused` is still their sum, which is
+// what every caller before Phase 35 read.
 export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
-  const out = { changed: 0, refused: 0, rooms: 0, added: 0, removed: 0 };
+  const out = { changed: 0, refused: 0, frozen: 0, offSheet: 0, rooms: 0, added: 0, removed: 0 };
   const R = rasterize(state, floorIndex);
   if (!R) return out;
   const { floor, lat, owner, rooms, frozen, frozenCell } = R;
@@ -352,10 +447,10 @@ export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
   const pending = new Set();
   for (const c of cells || []) {
     const x = Math.floor(c.x), y = Math.floor(c.y);
-    if (!inGrid(lat, x, y)) { out.refused++; continue; }
+    if (!inGrid(lat, x, y)) { out.refused++; out.offSheet++; continue; }
     const i = cellIdx(lat, x, y);
     // A free-drawn room is the vertex tool's business, not the brush's.
-    if (frozenCell[i]) { out.refused++; continue; }
+    if (frozenCell[i]) { out.refused++; out.frozen++; continue; }
     if (on) {
       if (lat.cells[i]) continue;
       setTile(lat, x, y, true);
@@ -433,19 +528,105 @@ export function paintCells(state, floorIndex, cells, on = true, opts = {}) {
   return out;
 }
 
-// The one-cell case, which is what a pointer actually produces.
+// The one-cell case, which is what a pointer used to produce.
 export const paintCell = (state, floorIndex, x, y, on = true, opts = {}) =>
   paintCells(state, floorIndex, [{ x, y }], on, opts);
 
-// Is there a room the brush would refuse to touch under this cell? The editor
+// ---------- the brush, in world feet ----------
+//
+// What the *tools* call, and the reason the raster above is nobody else's
+// business. A tool has a grid tile — a square of the drawing grid, at whatever
+// pitch the zoom is showing — and hands over its corners in feet; how many
+// raster cells that turns out to be, and whether the design has to be refined
+// to hold it, are answered here.
+//
+// Rectangles rather than cells is not a convenience. A drag used to call
+// `paintCell` once per 4ft square it crossed, and every one of those calls
+// rasterized the whole storey and traced every region on it — so a 20 x 20
+// rectangle was four hundred full repaints. One call is one repaint.
+
+// The tiles, as raster cells. A tile is a whole number of raster cells and
+// starts on one, so the rounding here is exact rather than tolerant.
+function tileCells(R, tiles) {
+  const out = [];
+  const seen = new Set();
+  for (const t of tiles || []) {
+    if (!t) continue;
+    const i0 = Math.round((Math.min(t.x0, t.x1) - R.x0) / R.pitch);
+    const i1 = Math.round((Math.max(t.x0, t.x1) - R.x0) / R.pitch);
+    const j0 = Math.round((Math.min(t.z0, t.z1) - R.z0) / R.pitch);
+    const j1 = Math.round((Math.max(t.z0, t.z1) - R.z0) / R.pitch);
+    for (let y = j0; y < Math.max(j1, j0 + 1); y++) {
+      for (let x = i0; x < Math.max(i1, i0 + 1); x++) {
+        const k = `${x},${y}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push({ x, y });
+      }
+    }
+  }
+  return out;
+}
+
+// The smallest side any of these tiles has, which is what the raster has to be
+// fine enough to hold.
+function finestTile(tiles) {
+  let min = Infinity;
+  for (const t of tiles || []) {
+    if (!t) continue;
+    min = Math.min(min, Math.abs(t.x1 - t.x0), Math.abs(t.z1 - t.z0));
+  }
+  return Number.isFinite(min) ? min : CELL;
+}
+
+// Draw or erase a list of world-feet squares on one storey. `tiles` are
+// `{ x0, z0, x1, z1 }` — grid tiles, from `tileBounds`/`spanBounds` in
+// snapgrid.js — and the design's raster is refined first if one of them is
+// finer than the raster currently is.
+export function paintTiles(state, floorIndex, tiles, on = true, opts = {}) {
+  const list = (tiles || []).filter(Boolean);
+  if (!list.length) {
+    return {
+      changed: 0, refused: 0, frozen: 0, offSheet: 0,
+      frozenTiles: 0, offSheetTiles: 0, rooms: 0, added: 0, removed: 0,
+    };
+  }
+  const side = finestTile(list);
+  refineRaster(state, side);
+  const R = rasterOf(state, floorIndex);
+  const out = paintCells(state, floorIndex, tileCells(R, list), on, opts);
+  // The refusals count raster cells, and a caller that handed over tiles wants
+  // to hear about tiles. Every tile in one gesture is the same size — it is
+  // one zoom's worth of grid — so this is a division rather than a tally.
+  //
+  // The two round differently on purpose. A tile a free-drawn room sits in is
+  // refused whole, so `frozen` is always a multiple of `per` and rounding is
+  // exact. A tile is *clipped* rather than refused when it straddles the edge
+  // of the sheet — which is what a coarse tile at the border does, and what
+  // any tile at the border does on a grid phased onto a photograph — so a part
+  // count floors to nothing and only a tile wholly off the plan is reported.
+  const per = Math.max(1, Math.round((side / R.pitch) ** 2));
+  out.frozenTiles = Math.round(out.frozen / per);
+  out.offSheetTiles = Math.floor(out.offSheet / per);
+  return out;
+}
+
+// Is there a room the brush would refuse to touch at this point? The editor
 // asks so it can say why nothing happened.
-export function frozenAt(state, floorIndex, x, y) {
+export function frozenAtPoint(state, floorIndex, wx, wz) {
   const floor = state && state.floors ? state.floors[floorIndex] : null;
   if (!floor) return null;
-  const cx = (Math.floor(x) + 0.5) * CELL, cz = (Math.floor(y) + 0.5) * CELL;
+  const R = rasterOf(state, floorIndex);
   for (const shape of shapesOf(floor)) {
-    if (latticeAligned(shape)) continue;
-    if (pointInShape(shape, cx, cz)) return shape;
+    if (latticeAligned(shape, R)) continue;
+    if (pointInShape(shape, wx, wz)) return shape;
   }
   return null;
+}
+
+// The same question about a raster cell, which is how it was always asked.
+export function frozenAt(state, floorIndex, x, y) {
+  const R = rasterOf(state, floorIndex);
+  const c = cellCentre(R, Math.floor(x), Math.floor(y));
+  return frozenAtPoint(state, floorIndex, c.x, c.z);
 }

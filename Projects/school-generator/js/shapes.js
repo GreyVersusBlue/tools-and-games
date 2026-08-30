@@ -865,6 +865,14 @@ export function straightenRun(shape, ringIdx, seg, count) {
 // brush, so the lattice is a snap target even though a room doesn't live on
 // it. Order of preference: an existing vertex, a lattice corner, a point on an
 // existing wall, then a single lattice axis.
+//
+// Phase 35: the lattice has a phase. `opts.origin` is where the drawing grid
+// starts (gridref.js) and defaults to the corner of the sheet, which is where
+// it started for every version before it — so the reason this snap exists
+// survives a design whose grid was indexed off a traced photograph, and a
+// hand-drawn room still butts cleanly against a painted one. The *pitch* is
+// deliberately still the 4ft cell rather than the zoom's: a free-drawing tool
+// that snapped to 32ft corners when you pulled back would be unusable.
 
 export function snapPoint(floor, x, z, tol = 1.5, opts = {}) {
   const skip = opts.skip || null;
@@ -885,7 +893,10 @@ export function snapPoint(floor, x, z, tol = 1.5, opts = {}) {
     if (best) return best;
   }
 
-  const gx = Math.round(x / CELL) * CELL, gz = Math.round(z / CELL) * CELL;
+  const ox = opts.origin && Number.isFinite(opts.origin.x) ? opts.origin.x : 0;
+  const oz = opts.origin && Number.isFinite(opts.origin.z) ? opts.origin.z : 0;
+  const gx = ox + Math.round((x - ox) / CELL) * CELL;
+  const gz = oz + Math.round((z - oz) / CELL) * CELL;
   const onX = Math.abs(gx - x) <= tol, onZ = Math.abs(gz - z) <= tol;
   if (opts.grid !== false && onX && onZ) {
     return { x: gx, z: gz, d: Math.hypot(gx - x, gz - z), kind: 'corner' };
