@@ -10,7 +10,7 @@ import {
   totalShapeArea, nextRoomName, shapesOf, shapeArea, interiorPoint,
 } from './shapes.js';
 import { buildSampleSchool } from './sample.js';
-import { catalogByCategory, catalogEntry, PROP_PAINTS } from './catalog.js';
+import { catalogByCategory, catalogEntry, PROP_PAINTS, PROP_CATALOG, registeredRows } from './catalog.js';
 import { DECOR_PACKS, packByKey, packPaint, packTypes } from './decor.js';
 import { MAX_SHOVE } from './shove.js';
 import { ROOM_TEMPLATES } from './templates.js';
@@ -49,7 +49,7 @@ import { buildCollider, storeyAt, resolvePoint, WALKER_R, refreshProps } from '.
 import { makeLabelGate, LABEL_MODES, sightBlockers, sightClear } from './sightline.js';
 import { murmurEmitters, paScript } from './murmur.js';
 // --- Phase 22 ---
-import { pickAhead, carryPoint, setDown, WALK_PALETTE } from './carry.js';
+import { pickAhead, carryPoint, setDown, searchCatalog, WALK_PALETTE } from './carry.js';
 import { footprintOf, faceDirection } from './propplace.js';
 import { addProp, getProp, wrapAngle, MAX_PROPS } from './props.js';
 import { initAudio } from './audio.js';
@@ -674,11 +674,10 @@ function handsPlace() {
 
 const handsAction = () => (hands ? handsPlace() : handsPick());
 
-// 1–8: the walk palette. A short ring of favourites, one per digit — the full
-// catalog stays an edit-mode affordance. Arms the carry slot with a fresh
-// piece; nothing exists anywhere until it is set down.
-function handsArm(i) {
-  const type = WALK_PALETTE[i];
+// 1–8: the walk palette, a short ring of favourites, one per digit. 9 opens
+// the whole catalog (Phase 36) — both roads end here, arming the carry slot
+// with a fresh piece; nothing exists anywhere until it is set down.
+function handsArmType(type) {
   const entry = type ? catalogEntry(type) : null;
   if (!entry) return;
   if (hands && hands.kind === 'move') {
@@ -690,8 +689,10 @@ function handsArm(i) {
     kind: 'add', type,
     rotationY: hands ? hands.rotationY : faceDirection(dir.x, dir.z),
   };
-  walkSay(`In hand: ${entry.name} — Q sets it down, R turns it, X empties your hands. 1–8 picks another.`);
+  walkSay(`In hand: ${entry.name} — Q sets it down, R turns it, X empties your hands. 1–8 picks another, 9 the whole catalog.`);
 }
+
+const handsArm = (i) => handsArmType(WALK_PALETTE[i]);
 
 function handsRotate(delta) {
   if (!hands) return;
@@ -1164,8 +1165,9 @@ walk.controls.addEventListener('lock', () => {
 walk.controls.addEventListener('unlock', () => {
   // In photo mode the released pointer is the point — you let it go to reach
   // the lens controls — so the overlay stays down. Same when the command
-  // palette asked for the pointer: it hands the overlay back itself.
-  if (mode === 'walk' && !photoMode && !cmdkIsOpen()) openWalkOverlay();
+  // palette or the catalog picker asked for the pointer: each hands the
+  // overlay back itself.
+  if (mode === 'walk' && !photoMode && !cmdkIsOpen() && !walkPickIsOpen()) openWalkOverlay();
 });
 
 // --- tool buttons ---
@@ -1272,6 +1274,7 @@ function selectTool(t) {
   $('site-panel').classList.toggle('hidden', t !== 'site');
   $('overlay-panel').classList.toggle('hidden', t !== 'overlay');
   if (t === 'wall') renderWallModes();
+  if (t === 'door') renderDoorModes();
   if (t === 'floor' || t === 'erase') renderFloorModes();
   if (t === 'stair') renderStairReadout();
   if (t === 'site') renderSitePanel();
@@ -1314,6 +1317,25 @@ function renderGridReadout() {
 $('wall-ortho').addEventListener('click', () => { editor.setWallOrtho(true); renderWallModes(); });
 $('wall-free').addEventListener('click', () => { editor.setWallOrtho(false); renderWallModes(); });
 
+// The door tool's pair (Phase 36): whether an opening slides along its wall
+// in grid steps or freely. Same shape, same rule — session state, never saved.
+function renderDoorModes() {
+  const on = editor.doorSnap;
+  $('door-snap').setAttribute('aria-pressed', String(on));
+  $('door-free').setAttribute('aria-pressed', String(!on));
+  renderDoorGridReadout();
+}
+function renderDoorGridReadout() {
+  const p = editor.gridPitch;
+  const ft = p >= 1 ? `${p} ft` : `${Math.round(p * 12)} in`;
+  $('door-grid-readout').innerHTML = editor.doorSnap
+    ? `Openings land on <strong>${ft}</strong> marks along the wall — finer as you zoom in.` +
+      '<br />Hold <kbd>Alt</kbd> for one free placement; drag an opening to slide it.'
+    : 'Openings slide freely along the wall — drag one to move it.';
+}
+$('door-snap').addEventListener('click', () => { editor.setDoorSnap(true); renderDoorModes(); });
+$('door-free').addEventListener('click', () => { editor.setDoorSnap(false); renderDoorModes(); });
+
 function renderFloorModes() {
   const on = editor.floorRect;
   $('floor-rect').setAttribute('aria-pressed', String(on));
@@ -1327,6 +1349,7 @@ $('floor-brush').addEventListener('click', () => { editor.setFloorRect(false); r
 function syncToolPanels() {
   const t = editor.tool;
   if (t === 'wall') renderWallModes();
+  else if (t === 'door') renderDoorModes();
   else if (t === 'floor' || t === 'erase') renderFloorModes();
   else if (t === 'stair') renderStairList();
 }
@@ -1336,6 +1359,7 @@ function syncToolPanels() {
 // handler has already changed the view height by the time this runs.
 canvas.addEventListener('wheel', () => {
   if (editor.tool === 'wall') renderGridReadout();
+  if (editor.tool === 'door') renderDoorGridReadout();
 }, { passive: true });
 
 document.querySelectorAll('#toolbar .tool').forEach((b) =>
@@ -5313,6 +5337,9 @@ document.addEventListener('keydown', (e) => {
     {
       const dig = /^Digit([1-8])$/.exec(e.code);
       if (dig && !photoMode && !tourPlay) { handsArm(Number(dig[1]) - 1); return; }
+      // ...and 9, the whole catalog (Phase 36). Free in walk mode — it is the
+      // stair tool's key only while editing.
+      if (e.code === 'Digit9' && !photoMode && !tourPlay) { walkPickOpen(); return; }
     }
     if (e.code === 'KeyT') {
       const on = document.body.classList.toggle('tours');
@@ -5532,6 +5559,9 @@ function cmdkCommands() {
     { name: hands ? 'Set down what you are carrying' : 'Pick up furniture',
       hint: 'Walk-mode hands — carry a prop, or a palette piece on 1–8; R turns it, X cancels',
       keys: ['Q'], run: walkFirst(handsAction) },
+    { name: 'Browse the catalog in walk mode',
+      hint: 'Search every prop there is and take one in hand — 1–8 stay the quick ring',
+      keys: ['9'], run: walkFirst(walkPickOpen) },
     { name: 'Guided tours', hint: 'Record a camera path, play it, film it',
       keys: ['T'], run: walkFirst(() => {
         if (document.body.classList.toggle('tours')) renderTourPanel();
@@ -5663,6 +5693,78 @@ cmdkList.addEventListener('click', (e) => {
   if (btn) cmdkRun(Number(btn.dataset.cmd));
 });
 cmdkOverlay.addEventListener('click', (e) => { if (e.target === cmdkOverlay) cmdkClose(); });
+
+// --- Phase 36: the walk-mode catalog picker ---
+//
+// 9, in walk mode: the whole catalog, not just the digit ring. This is the
+// command palette's pointer-lock dance pointed at props — opening releases
+// the lock, closing hands the walk overlay back, and Click to Walk restores
+// the lock with the armed ghost already waiting. The search itself is
+// carry.js's `searchCatalog`, pure and tested; this is only the box it types
+// into.
+const walkPickOverlay = $('walkpick-overlay');
+const walkPickInput = $('walkpick-input');
+const walkPickList = $('walkpick-list');
+let walkPickItems = [];
+let walkPickSel = 0;
+
+function walkPickRender() {
+  walkPickItems = searchCatalog(PROP_CATALOG.concat(registeredRows()), walkPickInput.value, 30);
+  walkPickSel = Math.min(walkPickSel, Math.max(0, walkPickItems.length - 1));
+  walkPickList.innerHTML = walkPickItems.length
+    ? walkPickItems.map((r, i) =>
+      `<button type="button" class="cmd${i === walkPickSel ? ' sel' : ''}" role="option" ` +
+      `aria-selected="${i === walkPickSel}" data-row="${i}">` +
+      `<span>${esc(`${r.icon || '▫'} ${r.name}`)}</span>` +
+      `<span class="hint">${esc(`${r.category} · ${r.w}×${r.d} ft · ${r.mount}`)}</span>` +
+      `</button>`).join('')
+    : '<div class="empty">Nothing in the catalog answers to that.</div>';
+}
+
+function walkPickOpen() {
+  if (hands && hands.kind === 'move') {
+    walkSay('Hands full — Q sets it down, X puts it back.');
+    return;
+  }
+  walkPickInput.value = '';
+  walkPickSel = 0;
+  walkPickRender();
+  if (mode === 'walk' && walk.controls.isLocked) walk.controls.unlock();
+  openModal(walkPickOverlay, walkPickInput);
+}
+const walkPickIsOpen = () => !walkPickOverlay.classList.contains('hidden');
+
+function walkPickClose() {
+  closeModal(walkPickOverlay);
+  cmdkRestoreWalk();
+}
+
+function walkPickTake(i) {
+  const r = walkPickItems[i];
+  closeModal(walkPickOverlay);
+  if (r) handsArmType(r.type);
+  cmdkRestoreWalk();
+}
+
+walkPickInput.addEventListener('input', () => { walkPickSel = 0; walkPickRender(); });
+walkPickInput.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const n = walkPickItems.length;
+    if (n) walkPickSel = (walkPickSel + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+    walkPickRender();
+    const sel = walkPickList.querySelector('.sel');
+    if (sel) sel.scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  if (e.key === 'Enter') { e.preventDefault(); walkPickTake(walkPickSel); return; }
+  if (e.key === 'Escape') { e.stopPropagation(); walkPickClose(); }
+});
+walkPickList.addEventListener('click', (e) => {
+  const btn = e.target.closest('.cmd');
+  if (btn) walkPickTake(Number(btn.dataset.row));
+});
+walkPickOverlay.addEventListener('click', (e) => { if (e.target === walkPickOverlay) walkPickClose(); });
 
 
 // ============================================================

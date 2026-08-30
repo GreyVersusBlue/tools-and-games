@@ -696,6 +696,26 @@ export function toggleOpening(shape, ringIdx, seg, t, w = null, opts = {}) {
   return addOpening(shape, ringIdx, seg, t, w, opts);
 }
 
+// Slide a doorway along the wall it is already cut into. The same jamb clamp
+// and neighbour test `addOpening` runs, minus the opening itself — a door may
+// not overlap its neighbours but is allowed to overlap where it used to be.
+// Mutates `t` in place rather than rebuilding the record, so the optional
+// fields and the minimal on-disk form ride along untouched. Returns the
+// clamped t, or null (t unchanged) when the target spot is refused.
+export function moveOpening(shape, ringIdx, opening, t) {
+  const ring = shape.rings[ringIdx];
+  if (!ring || !ring.openings.includes(opening)) return null;
+  const [a, b] = segEnds(ring, opening.seg);
+  const len = segLength(a, b);
+  const half = (opening.w / 2 + 0.25) / len;
+  const at = Math.min(1 - half, Math.max(half, t));
+  const blocked = openingsOnSeg(ring, opening.seg)
+    .some((o) => o !== opening && Math.abs(o.t - at) * len < (opening.w + o.w) / 2);
+  if (blocked) return null;
+  opening.t = at;
+  return at;
+}
+
 // Flip a door's hinge jamb, or the side it swings toward. Both are one field
 // each and neither can be wrong, so they toggle rather than validate.
 export function flipOpening(opening, what = 'hand') {

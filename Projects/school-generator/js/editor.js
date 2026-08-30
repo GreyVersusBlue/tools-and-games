@@ -28,6 +28,7 @@ import {
 import {
   SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL,
   nearestSegment, shapeAt, setSegWall, toggleOpening, removeShape,
+  moveOpening, openingsOnSeg, defaultOpeningWidth, isWindowOpening,
   curveSegment, straightenRun, segEnds, segLength, shapeArea,
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, WINDOW_SILL,
 } from './shapes.js';
@@ -37,7 +38,7 @@ import { removeLink, removeProp } from './props.js';
 import { pickPropAt } from './propplace.js';
 import { catalogEntry } from './catalog.js';
 import {
-  gridPitch, targetPoint, runLabel, runLength,
+  gridPitch, targetPoint, runLabel, runLength, snapAlongSeg,
   tileBounds, tileUnder, tileSpan, spanBounds,
 } from './snapgrid.js';
 import {
@@ -45,7 +46,7 @@ import {
 } from './gridref.js';
 import {
   drawWallRun, wallLineAt, eraseWallLineAt, toggleLineOpening,
-  lineEnds, lineLength,
+  moveLineOpening, lineOpenings, lineEnds, lineLength,
 } from './wallrun.js';
 import { step, apply, clone } from './history.js';
 import { applyFinish, DEFAULT_FINISH } from './finish.js';
@@ -152,6 +153,14 @@ export function initEditor({
   // which jamb the leaf hangs on, `sw` which side it swings toward; both are
   // toggles rather than validated values, since neither can be wrong.
   const doorOpts = { hand: 1, sw: 1, lite: false, bar: false, sill: WINDOW_SILL };
+  // Openings slide along their wall and land on the drawing grid, the same
+  // grid the wall's own endpoints were placed on. Off is one key away for the
+  // door that has to line up with something the grid doesn't know about.
+  // Tool state, never saved state — the same rule wallOrtho follows.
+  let doorSnap = true;
+  // A press on an existing opening, held until the pointer decides whether it
+  // was a click (toggle, as ever) or a drag (slide it along the wall).
+  let doorDrag = null;   // { where, shape, ring, seg, line, opening, len, moved, downX, downY }
 
   // The arc the wall tool laid down last, so pressing the curve key again
   // re-curves the same chord instead of curving one of its own chords. Tool
@@ -211,6 +220,17 @@ export function initEditor({
   edgeCursor.renderOrder = 501;
   edgeCursor.visible = false;
 
+  // The door tool's own ghost: the opening itself, at the spot on the wall a
+  // click would cut it, riding the snapped point while the whole-segment
+  // highlight above fades back to context. A preview that snaps differently
+  // from the commit is worse than no preview, so both read `doorTargetAt`.
+  const openCursor = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 0.7, WALL_T + 0.9),
+    new THREE.MeshBasicMaterial({ color: 0xd9a05b, transparent: true, opacity: 0.9, depthTest: false })
+  );
+  openCursor.renderOrder = 502;
+  openCursor.visible = false;
+
   // The point-target overlay: the run being drawn, a dot on each end of it,
   // and the block the rectangle brush would lay. All four are sized off the
   // view height so they read the same however far you have zoomed — the same
@@ -241,7 +261,7 @@ export function initEditor({
   rectCursor.renderOrder = 500;
   rectCursor.visible = false;
 
-  renderApi.scene.add(cellCursor, edgeCursor, draftLine, anchorDot, targetDot, rectCursor);
+  renderApi.scene.add(cellCursor, edgeCursor, openCursor, draftLine, anchorDot, targetDot, rectCursor);
 
   const handleSize = () => Math.min(2.4, Math.max(0.25, renderApi.editView.height * 0.006));
   // ...and the wall-grab tolerance, off the same number. See SEG_GRAB above.
@@ -530,43 +550,6 @@ export function initEditor({
         overhangArea += (t.x1 - t.x0) * (t.z1 - t.z0);
       }
       queueTile(t);
-    } else if (tool === 'door') {
-      if (!isClick) return; // doors place on click, not drag
-      const dk = doorKindOf(doorKind);
-      // An opening is cut where you clicked along the run rather than at the
-      // middle of anything — a 30ft wall can hold several.
-      const seg = nearestSegment(f, wx, wz, segGrab());
-      if (!seg) {
-        // Not on a room's boundary — but a free-standing wall (wallrun.js) is
-        // still a wall, and a wall you cannot put a door in is half a wall.
-        const hit = wallLineAt(f, wx, wz, segGrab());
-        // Nothing under the cursor at all. A tool that does nothing and says
-        // nothing reads as a broken tool — and "I clicked my wall and no door
-        // appeared" is exactly what a silent miss looks like from outside.
-        if (!hit) {
-          say(`${dk.label} — no wall there. ` +
-            'Doors and windows cut into a wall you have already drawn: ' +
-            'click along the wall itself.');
-          return;
-        }
-        const lopts = { ...dk.opts, hand: doorOpts.hand, sw: doorOpts.sw };
-        if (dk.kind === 'single') { lopts.lite = doorOpts.lite; lopts.bar = doorOpts.bar; }
-        if (dk.kind === 'window') lopts.sill = doorOpts.sill;
-        const made = toggleLineOpening(hit.line, hit.t, null, lopts);
-        strokeChanged = true;
-        say(made
-          ? `${dk.label} — ${made.w.toFixed(1)}ft, cut into a ${lineLength(hit.line).toFixed(1)}ft wall.`
-          : `${dk.label} removed.`);
-        return;
-      }
-      const opts = { ...dk.opts, hand: doorOpts.hand, sw: doorOpts.sw };
-      if (dk.kind === 'single') { opts.lite = doorOpts.lite; opts.bar = doorOpts.bar; }
-      if (dk.kind === 'window') opts.sill = doorOpts.sill;
-      const cut = toggleOpening(seg.shape, seg.ring, seg.seg, seg.t, null, opts);
-      strokeChanged = true;
-      say(cut
-        ? `${dk.label} — ${cut.w.toFixed(1)}ft, cut into a ${segLength(...segEnds(seg.shape.rings[seg.ring], seg.seg)).toFixed(1)}ft wall.`
-        : `${dk.label} removed.`);
     } else if (tool === 'room') {
       if (!isClick) return;
       const shape = shapeAt(f, wx, wz);
@@ -955,7 +938,7 @@ export function initEditor({
     if (p) hoverWorld = p;
     if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop' ||
         tool === 'stair' || tool === 'template' || tool === 'site') {
-      cellCursor.visible = edgeCursor.visible = rectCursor.visible = false;
+      cellCursor.visible = edgeCursor.visible = openCursor.visible = rectCursor.visible = false;
       if (tool !== 'wall') { wallHover = null; refreshDraft(); }
       return;
     }
@@ -971,34 +954,67 @@ export function initEditor({
     // The wall tool draws its own overlay now — a dot on the grid and the run
     // to it — so it wants none of the segment highlight below.
     if (tool === 'wall') {
-      cellCursor.visible = edgeCursor.visible = false;
+      cellCursor.visible = edgeCursor.visible = openCursor.visible = false;
       wallHover = targetAt(p, e);
       refreshDraft();
       return;
     }
     // A rectangle in progress owns the cursor; the cell block *is* the preview.
     if (rectGesture) {
-      cellCursor.visible = edgeCursor.visible = false;
+      cellCursor.visible = edgeCursor.visible = openCursor.visible = false;
       refreshRect();
       return;
     }
 
-    // The door and erase tools act on a room's own boundary, so the cursor
-    // follows the segment they would act on rather than a lattice edge — which
-    // is also the only honest preview, since a wall can run at any angle and
-    // be any length.
-    const seg = (tool === 'door' || isErase)
-      ? nearestSegment(f, p.x, p.z, segGrab())
-      : null;
-    // ...and a free-standing wall is a boundary too, so both tools reach one.
-    const line = !seg && (tool === 'door' || isErase)
-      ? wallLineAt(f, p.x, p.z, segGrab()) : null;
+    // The door tool previews the opening itself, not just the wall it would
+    // cut into (Phase 36): the whole segment fades back to context and the
+    // ghost rides the snapped point the click would use — one target for
+    // hover and commit, the same rule the wall tool's point target follows.
+    if (tool === 'door') {
+      const target = doorTargetAt(f, p, e);
+      cellCursor.visible = false;
+      if (!target) {
+        // Nothing within reach: say so by showing nothing rather than by
+        // offering a lattice edge there is no longer any such thing as.
+        edgeCursor.visible = openCursor.visible = false;
+        canvas.style.cursor = '';
+        return;
+      }
+      const { a, b, len } = target;
+      const yaw = -Math.atan2(b.z - a.z, b.x - a.x);
+      edgeCursor.visible = true;
+      edgeCursor.material.color.setHex(color);
+      edgeCursor.material.opacity = 0.22;
+      edgeCursor.rotation.y = yaw;
+      edgeCursor.scale.set(Math.max(0.2, len / (CELL + WALL_T)), 1, 1);
+      edgeCursor.position.set((a.x + b.x) / 2, baseY + WALL_H + 0.5, (a.z + b.z) / 2);
+      // Over an existing opening the ghost sits on *it* and reads white — a
+      // click removes it, a drag slides it, and the hand cursor says so.
+      const o = target.opening;
+      const w = o ? o.w : defaultOpeningWidth(doorKindOf(doorKind).opts);
+      const gx = o ? a.x + (b.x - a.x) * o.t : target.x;
+      const gz = o ? a.z + (b.z - a.z) * o.t : target.z;
+      openCursor.visible = true;
+      openCursor.material.color.setHex(o ? 0xffffff : color);
+      openCursor.rotation.y = yaw;
+      openCursor.scale.set(w, 1, 1);
+      openCursor.position.set(gx, baseY + WALL_H + 0.55, gz);
+      canvas.style.cursor = doorDrag && doorDrag.moved ? 'grabbing' : o ? 'grab' : '';
+      return;
+    }
+    // The eraser acts on a room's own boundary, so the cursor follows the
+    // segment it would act on rather than a lattice edge — which is also the
+    // only honest preview, since a wall can run at any angle and be any length.
+    const seg = isErase ? nearestSegment(f, p.x, p.z, segGrab()) : null;
+    // ...and a free-standing wall is a boundary too, so the eraser reaches one.
+    const line = !seg && isErase ? wallLineAt(f, p.x, p.z, segGrab()) : null;
     if (line) {
       const [la, lb] = lineEnds(line.line);
       const len = lineLength(line.line);
       edgeCursor.visible = true;
       cellCursor.visible = false;
       edgeCursor.material.color.setHex(color);
+      edgeCursor.material.opacity = 0.55;
       edgeCursor.rotation.y = -Math.atan2(lb.z - la.z, lb.x - la.x);
       edgeCursor.scale.set(Math.max(0.2, len / (CELL + WALL_T)), 1, 1);
       edgeCursor.position.set((la.x + lb.x) / 2, baseY + WALL_H + 0.5, (la.z + lb.z) / 2);
@@ -1010,13 +1026,10 @@ export function initEditor({
       edgeCursor.visible = true;
       cellCursor.visible = false;
       edgeCursor.material.color.setHex(color);
+      edgeCursor.material.opacity = 0.55;
       edgeCursor.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
       edgeCursor.scale.set(Math.max(0.2, len / (CELL + WALL_T)), 1, 1);
       edgeCursor.position.set((a.x + b.x) / 2, baseY + WALL_H + 0.5, (a.z + b.z) / 2);
-    } else if (tool === 'door') {
-      // Nothing within reach: say so by showing nothing rather than by
-      // offering a lattice edge there is no longer any such thing as.
-      edgeCursor.visible = cellCursor.visible = false;
     } else if (isErase && objectUnder(s, f, p.x, p.z)) {
       // Over something a click would delete whole — a stair, a lift, a chair,
       // a free-drawn room. Show no cell: the cell cursor promises "this 4ft
@@ -1110,12 +1123,32 @@ export function initEditor({
       if (e.code === 'KeyR') { setFloorRect(!floorRect); return true; }
       return false;
     }
+    if (tool === 'door') {
+      if (e.code === 'KeyS') { setDoorSnap(!doorSnap); return true; }
+      if (e.code === 'Escape' && doorDrag) {
+        // The opening stays where the last legal move put it; Ctrl-Z is the
+        // way back. Dropping the mid-drag state is what Escape promises.
+        doorDrag = null;
+        canvas.style.cursor = '';
+        return true;
+      }
+      return false;
+    }
     if (tool !== 'wall') return false;
     if (e.code === 'KeyS') { setWallOrtho(!wallOrtho); return true; }
     if (e.code === 'Escape') return cancelWallRun();
     if (e.code === 'Period') return curveUnderCursor(CURVE_STEP);
     if (e.code === 'Comma') return curveUnderCursor(-CURVE_STEP);
     return false;
+  }
+
+  function setDoorSnap(v) {
+    doorSnap = !!v;
+    updateCursor(null);
+    say(doorSnap
+      ? `Openings snap to the grid along the wall — ${pitch()} ft marks right now, ` +
+        'finer as you zoom in. S sets them free; hold Alt for one free placement.'
+      : 'Openings slide freely along the wall. S snaps them back to the grid.');
   }
 
   function setWallOrtho(v) {
@@ -1132,6 +1165,154 @@ export function initEditor({
     say(floorRect
       ? `Floor — drag a rectangle in ${p}ft tiles. R goes back to the brush.`
       : `Floor — the brush, one ${p}ft tile at a time. R draws rectangles instead.`);
+  }
+
+  // --- the door tool's target and gesture (Phase 36) ---
+  //
+  // One function turns the cursor into the spot on a wall the tool will act
+  // on, and the hover ghost, the click and the drag all read it — the same
+  // rule the wall tool's point target follows, and for the same reason: a
+  // preview that snaps differently from the commit is worse than no preview.
+  //
+  // The snapped position and the *raw* one travel together. The snap decides
+  // where a new opening lands; the raw projection decides which existing
+  // opening is under the cursor, so a door placed off-grid stays clickable
+  // and grabbable while snapping is on.
+  function doorTargetAt(f, p, e) {
+    const snapOn = doorSnap && !(e && e.altKey);
+    const near = (list, len, ...ts) => {
+      for (const t of ts) {
+        const hit = list.find((o) => Math.abs(o.t - t) * len <= o.w / 2 + 0.5);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    const seg = nearestSegment(f, p.x, p.z, segGrab());
+    if (seg) {
+      const ring = seg.shape.rings[seg.ring];
+      const [a, b] = segEnds(ring, seg.seg);
+      const len = segLength(a, b);
+      const hit = snapAlongSeg(a, b, p.x, p.z, pitch(), { snap: snapOn, origin: origin() });
+      return {
+        where: 'ring', shape: seg.shape, ring: seg.ring, seg: seg.seg,
+        a, b, len, rawT: seg.t, t: hit.t, x: hit.x, z: hit.z,
+        opening: near(openingsOnSeg(ring, seg.seg), len, seg.t, hit.t),
+      };
+    }
+    // Not on a room's boundary — but a free-standing wall (wallrun.js) is
+    // still a wall, and a wall you cannot put a door in is half a wall.
+    const line = wallLineAt(f, p.x, p.z, segGrab());
+    if (line) {
+      const [a, b] = lineEnds(line.line);
+      const len = lineLength(line.line);
+      const hit = snapAlongSeg(a, b, p.x, p.z, pitch(), { snap: snapOn, origin: origin() });
+      return {
+        where: 'line', line: line.line,
+        a, b, len, rawT: line.t, t: hit.t, x: hit.x, z: hit.z,
+        opening: near(lineOpenings(line.line), len, line.t, hit.t),
+      };
+    }
+    return null;
+  }
+
+  // What the current door kind records — the panel's options folded in.
+  function doorCutOpts() {
+    const dk = doorKindOf(doorKind);
+    const opts = { ...dk.opts, hand: doorOpts.hand, sw: doorOpts.sw };
+    if (dk.kind === 'single') { opts.lite = doorOpts.lite; opts.bar = doorOpts.bar; }
+    if (dk.kind === 'window') opts.sill = doorOpts.sill;
+    return opts;
+  }
+
+  // A press has to travel this many screen pixels before it stops being a
+  // click — the same discrimination the rectangle eraser makes on the way up.
+  const DOOR_DRAG_PX = 4;
+
+  function doorPointerDown(p, e) {
+    const s = getState();
+    const f = activeFloor(s);
+    const dk = doorKindOf(doorKind);
+    const target = doorTargetAt(f, p, e);
+    if (!target) {
+      // Nothing under the cursor at all. A tool that does nothing and says
+      // nothing reads as a broken tool — and "I clicked my wall and no door
+      // appeared" is exactly what a silent miss looks like from outside.
+      say(`${dk.label} — no wall there. ` +
+        'Doors and windows cut into a wall you have already drawn: ' +
+        'click along the wall itself.');
+      return;
+    }
+    pushUndo();
+    curveMemo = null;
+    if (target.opening) {
+      // Click or drag — the pointer decides on the way out. Held rather than
+      // acted on, so a plain click still toggles the way it always has.
+      doorDrag = {
+        where: target.where, shape: target.shape, ring: target.ring, seg: target.seg,
+        line: target.line, opening: target.opening, len: target.len,
+        moved: false, downX: e.clientX, downY: e.clientY,
+      };
+      return;
+    }
+    const made = target.where === 'ring'
+      ? toggleOpening(target.shape, target.ring, target.seg, target.t, null, doorCutOpts())
+      : toggleLineOpening(target.line, target.t, null, doorCutOpts());
+    fire({ structural: true, commit: true });
+    say(made
+      ? `${dk.label} — ${made.w.toFixed(1)}ft, cut into a ${target.len.toFixed(1)}ft wall.`
+      : `${dk.label} — no room for it there.`);
+  }
+
+  function doorPointerMove(p, e) {
+    if (!doorDrag || !p) return;
+    const d = doorDrag;
+    if (!d.moved) {
+      if (Math.hypot(e.clientX - d.downX, e.clientY - d.downY) < DOOR_DRAG_PX) return;
+      d.moved = true;
+      canvas.style.cursor = 'grabbing';
+    }
+    // The drag is one-dimensional by design: an opening slides along the wall
+    // it is cut into and never migrates to another one mid-gesture.
+    const [a, b] = d.where === 'ring'
+      ? segEnds(d.shape.rings[d.ring], d.seg)
+      : lineEnds(d.line);
+    const snapOn = doorSnap && !e.altKey;
+    const hit = snapAlongSeg(a, b, p.x, p.z, pitch(), { snap: snapOn, origin: origin() });
+    const before = d.opening.t;
+    const at = d.where === 'ring'
+      ? moveOpening(d.shape, d.ring, d.opening, hit.t)
+      : moveLineOpening(d.line, d.opening, hit.t);
+    if (at === null || at === before) return;
+    fire({ structural: true, throttled: true });
+    say(`${isWindowOpening(d.opening) ? 'Window' : 'Door'} — ` +
+      `${(at * d.len).toFixed(1)} ft along its ${d.len.toFixed(1)} ft wall` +
+      (snapOn ? ` (${pitch()} ft grid).` : ' (free).'));
+  }
+
+  function doorPointerUp() {
+    if (!doorDrag) return false;
+    const d = doorDrag;
+    doorDrag = null;
+    canvas.style.cursor = '';
+    if (!d.moved) {
+      // It was a click after all: the toggle it has always been — remove the
+      // one you clicked, or re-cut it as the kind the panel has picked.
+      const dk = doorKindOf(doorKind);
+      const res = d.where === 'ring'
+        ? toggleOpening(d.shape, d.ring, d.seg, d.opening.t, null, doorCutOpts())
+        : toggleLineOpening(d.line, d.opening.t, null, doorCutOpts());
+      fire({ structural: true, commit: true });
+      say(res
+        ? `${dk.label} — ${res.w.toFixed(1)}ft, cut into a ${d.len.toFixed(1)}ft wall.`
+        : `${dk.label} removed.`);
+      return true;
+    }
+    // A drag whose every move was refused diffs to nothing and costs no
+    // history — the pushUndo-then-no-op convention.
+    fire({ structural: true, commit: true });
+    say(`${isWindowOpening(d.opening) ? 'Window' : 'Door'} — ` +
+      `slid to ${(d.opening.t * d.len).toFixed(1)} ft along its wall.`);
+    return true;
   }
 
   // --- pointer events ---
@@ -1180,6 +1361,14 @@ export function initEditor({
     if (tool === 'wall') {
       canvas.setPointerCapture(e.pointerId);
       wallPointerDown(p, e);
+      return;
+    }
+    // The door tool is a target too (Phase 36): a press on bare wall cuts at
+    // the snapped spot, a press on an existing opening waits to learn whether
+    // it was a click (toggle) or a drag (slide).
+    if (tool === 'door') {
+      canvas.setPointerCapture(e.pointerId);
+      doorPointerDown(p, e);
       return;
     }
     // The eraser answers for everything on the storey, not just the floor:
@@ -1233,6 +1422,7 @@ export function initEditor({
     if (tool === 'site') { if (p) siteTool.pointerMove(p, e); return; }
     if (tool === 'overlay') { if (p) overlayTool.pointerMove(p, e); return; }
     if (tool === 'wall') { if (p) wallPointerMove(p, e); return; }
+    if (tool === 'door') { doorPointerMove(p, e); return; }
     if (rectGesture) {
       if (!p) return;
       rectGesture.b = { x: p.x, z: p.z };
@@ -1251,6 +1441,7 @@ export function initEditor({
 
   function dispatchPointerUp() {
     if (panning) { panning = false; panLast = null; }
+    if (doorPointerUp()) return;
     if (poly.pointerUp()) return;
     if (propTool.pointerUp()) return;
     if (stairTool.pointerUp()) return;
@@ -1537,7 +1728,7 @@ export function initEditor({
     if (onLiveMeasure) onLiveMeasure(null);
   });
   canvas.addEventListener('pointerleave', () => {
-    cellCursor.visible = edgeCursor.visible = false;
+    cellCursor.visible = edgeCursor.visible = openCursor.visible = false;
     wallHover = null;
     refreshDraft();
     poly.clearHover();
@@ -1580,6 +1771,7 @@ export function initEditor({
       wallHover = null;
       rectGesture = null;
       eraseDown = null;
+      doorDrag = null;
       rectCursor.visible = false;
       refreshDraft();
       if (onLiveMeasure) onLiveMeasure(null);
@@ -1658,6 +1850,10 @@ export function initEditor({
     get gridLocked() { return gridLocked(getState()); },
     get gridRefText() { return describeGridRef(getState()); },
     cancelWallRun,
+    // Phase 36: whether openings snap to the grid along their wall. Session
+    // state on the same terms as wallOrtho — never written to a file.
+    setDoorSnap,
+    get doorSnap() { return doorSnap; },
     // What the door tool cuts, and how the leaf in it hangs.
     setDoorKind(k) { doorKind = doorKindOf(k).kind; curveMemo = null; updateCursor(null); },
     get doorKind() { return doorKind; },

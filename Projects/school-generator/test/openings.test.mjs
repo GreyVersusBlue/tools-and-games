@@ -10,7 +10,7 @@ import {
 } from '../js/lattice.js';
 import { sheet } from './build.mjs';
 import {
-  addShape, addOpening, toggleOpening, flipOpening, openingSpec, writeOpening,
+  addShape, addOpening, toggleOpening, flipOpening, moveOpening, openingSpec, writeOpening,
   isWindowOpening, isDoorOpening, defaultOpeningWidth, segEnds,
   OP_DOOR, OP_WINDOW, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE,
   WINDOW_SILL, WINDOW_H, SEG_WALL,
@@ -313,4 +313,63 @@ test('a leaf segment is the leaf, hinge first', () => {
   assert.ok(near(seg.ax, leaf.hx) && near(seg.az, leaf.hz));
   const e = leafEnd(leaf, 0.5);
   assert.ok(near(seg.bx, e.x) && near(seg.bz, e.z));
+});
+
+// ---------- sliding an opening along its wall ----------
+
+test('a doorway slides along its wall', () => {
+  const s = createState(20, 20);
+  const shape = addShape(s, 0, RECT, { name: 'Hall' });
+  const o = addOpening(shape, 0, 0, 0.3);
+  assert.equal(moveOpening(shape, 0, o, 0.6), 0.6);
+  assert.equal(o.t, 0.6);
+  assert.equal(openingSpec(o).t, 0.6, 'every consumer reads the moved position');
+});
+
+test('the slide clamps at the jambs, same as placement', () => {
+  const s = createState(20, 20);
+  const shape = addShape(s, 0, RECT, { name: 'Hall' });
+  const o = addOpening(shape, 0, 0, 0.5);            // seg 0 is 20ft
+  const half = (o.w / 2 + 0.25) / 20;
+  assert.equal(moveOpening(shape, 0, o, 1.5), 1 - half);
+  assert.equal(moveOpening(shape, 0, o, -3), half);
+});
+
+test('a slide into a neighbour is refused and moves nothing', () => {
+  const s = createState(20, 20);
+  const shape = addShape(s, 0, RECT, { name: 'Hall' });
+  const a = addOpening(shape, 0, 0, 0.25);
+  addOpening(shape, 0, 0, 0.75);
+  assert.equal(moveOpening(shape, 0, a, 0.74), null);
+  assert.equal(a.t, 0.25, 'the refused door stays where it was');
+});
+
+test('a door may slide across the spot it is leaving', () => {
+  const s = createState(20, 20);
+  const shape = addShape(s, 0, RECT, { name: 'Hall' });
+  const o = addOpening(shape, 0, 0, 0.4);
+  // A move that overlaps the opening's own current position must not be
+  // refused as a collision with itself.
+  assert.equal(moveOpening(shape, 0, o, 0.41), 0.41);
+});
+
+test('the optional fields and the minimal record survive a slide', () => {
+  const s = createState(20, 20);
+  const shape = addShape(s, 0, RECT, { name: 'Hall' });
+  const o = addOpening(shape, 0, 0, 0.3, 6, { leaf: LEAF_DOUBLE, bar: true, sw: -1 });
+  moveOpening(shape, 0, o, 0.6);
+  assert.equal(o.leaf, LEAF_DOUBLE);
+  assert.equal(o.bar, true);
+  assert.equal(o.sw, -1);
+  const back = deserialize(serialize(s));
+  const kept = back.floors[0].shapes[0].rings[0].openings[0];
+  assert.deepEqual(kept, { seg: 0, t: 0.6, w: 6, leaf: LEAF_DOUBLE, bar: true, sw: -1 },
+    'nothing extra was written, nothing optional was lost');
+});
+
+test('an opening from some other ring cannot be slid here', () => {
+  const s = createState(20, 20);
+  const shape = addShape(s, 0, RECT, { name: 'Hall' });
+  const stray = { seg: 0, t: 0.5, w: 3 };
+  assert.equal(moveOpening(shape, 0, stray, 0.6), null);
 });
