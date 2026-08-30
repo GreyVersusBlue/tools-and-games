@@ -1752,6 +1752,15 @@ you drew it on, and the grid becomes something to switch off.
   region and re-hung every door — so a 20 × 20 rectangle was four hundred
   full repaints. This is what pays for the finer raster and then some.
 
+*Leans on:* `snapgrid.js`, `paint.js`, `lattice.js`, `overlay.js`.
+*Save:* `gridRef` as an append on the timetable's terms, and `cellFt` — in
+every file since v1 — finally meaning something.
+*Model:* **Claude Fable 5** by the arc-four rule — a new pure module and a
+save-format change are both model layer. It ran on **Claude Opus 5**, which
+was the session it was asked in and not a reading of this file. Recorded
+rather than quietly fixed: the convention is only worth anything if the times
+it was missed are in the record too.
+
 *What fought back:* the raster's *phase*, not its pitch. A pitch change is a
 subdivision and nothing notices; an origin that is not a whole number of
 pitches from the corner means the raster overhangs the sheet by up to one
