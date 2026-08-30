@@ -9,6 +9,7 @@ import {
   gridPitch, majorEvery, snapValue, snapToGrid, snapDistance,
   orthoPoint, targetPoint, runLength, runAngle, runLabel, isAxisRun,
   tileAt, tileBounds, tileCentre, tileUnder, tileSpan, spanBounds,
+  snapAlongSeg,
 } from '../js/snapgrid.js';
 
 test('the ladder doubles and carries the 4ft cell', () => {
@@ -158,6 +159,66 @@ test('the readout does not round a near-miss into a right angle', () => {
   assert.equal(runLabel(a, off), '24 ft · 90.0°', 'so it spends a decimal saying it is not');
   // An angle that was never going to round to a right angle is untouched.
   assert.equal(runLabel(a, { x: 20, z: 20 }), '28 ft · 45°');
+});
+
+test('sliding along an axis wall lands on true grid intersections', () => {
+  const a = { x: 4, z: 8 }, b = { x: 28, z: 8 };
+  const hit = snapAlongSeg(a, b, 13.3, 9.1, 2);
+  assert.equal(hit.x, 14);
+  assert.equal(hit.z, 8);
+  assert.equal(hit.s, 10);
+  assert.ok(Math.abs(hit.t - 10 / 24) < 1e-9);
+});
+
+test('an off-grid axis wall still snaps to the world grid, not its own ends', () => {
+  // Drawn with Alt: starts at x=4.7. The marks are still the world's, so the
+  // snapped x is a grid multiple even though no distance-from-start is.
+  const a = { x: 4.7, z: 8 }, b = { x: 28.7, z: 8 };
+  const hit = snapAlongSeg(a, b, 13.3, 8, 2);
+  assert.equal(hit.x, 14);
+  assert.ok(Math.abs(hit.s - 9.3) < 1e-9);
+});
+
+test('a diagonal wall snaps to pitch multiples measured from its own start', () => {
+  // A 45° wall crosses no intersections; the ruler is distance-from-start.
+  const a = { x: 0, z: 0 }, b = { x: 24, z: 24 };
+  const hit = snapAlongSeg(a, b, 5, 6, 4);
+  assert.equal(snapValue(hit.s, 4), hit.s, 'the along-wall distance is a pitch multiple');
+  assert.ok(Math.abs(hit.x - hit.z) < 1e-9, 'and the point stays on the wall');
+});
+
+test('the slide clamps at both ends of the wall', () => {
+  const a = { x: 4, z: 8 }, b = { x: 16, z: 8 };
+  assert.equal(snapAlongSeg(a, b, -50, 8, 2).s, 0);
+  assert.equal(snapAlongSeg(a, b, 90, 8, 2).s, 12);
+  assert.equal(snapAlongSeg(a, b, 90, 8, 2).t, 1);
+});
+
+test('a finer pitch offers finer marks on the same wall', () => {
+  const a = { x: 0, z: 0 }, b = { x: 20, z: 0 };
+  assert.equal(snapAlongSeg(a, b, 5.3, 0, 4).x, 4);
+  assert.equal(snapAlongSeg(a, b, 5.3, 0, 2).x, 6);
+  assert.equal(snapAlongSeg(a, b, 4.9, 0, 2).x, 4);
+});
+
+test('the slide follows the grid reference point, like every other snap', () => {
+  // Phase 35 gave the grid a movable origin; the marks on the wall move with
+  // it, so a door lines up with the same lines the floor tiles do.
+  const a = { x: 0, z: 0 }, b = { x: 20, z: 0 };
+  assert.equal(snapAlongSeg(a, b, 5.3, 0, 4, { origin: { x: 1, z: 0 } }).x, 5);
+  assert.equal(snapAlongSeg(a, b, 5.3, 0, 4, { origin: { x: -1, z: 7 } }).x, 7);
+});
+
+test('the slide can run free of the grid outright', () => {
+  const a = { x: 0, z: 0 }, b = { x: 20, z: 0 };
+  const hit = snapAlongSeg(a, b, 5.3, 2.2, 4, { snap: false });
+  assert.ok(Math.abs(hit.s - 5.3) < 1e-9, 'free mode is the raw projection');
+  assert.equal(hit.z, 0, 'but still on the wall');
+});
+
+test('a zero-length wall answers its own single point', () => {
+  const a = { x: 6, z: 6 };
+  assert.deepEqual(snapAlongSeg(a, a, 30, 30, 4), { t: 0, s: 0, x: 6, z: 6 });
 });
 
 test('a run that comes back to 360 reads as 0, not as 360', () => {

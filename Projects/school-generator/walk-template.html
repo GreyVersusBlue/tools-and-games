@@ -57675,6 +57675,26 @@ function toggleOpening(shape, ringIdx, seg, t, w = null, opts = {}) {
   return addOpening(shape, ringIdx, seg, t, w, opts);
 }
 
+// Slide a doorway along the wall it is already cut into. The same jamb clamp
+// and neighbour test `addOpening` runs, minus the opening itself — a door may
+// not overlap its neighbours but is allowed to overlap where it used to be.
+// Mutates `t` in place rather than rebuilding the record, so the optional
+// fields and the minimal on-disk form ride along untouched. Returns the
+// clamped t, or null (t unchanged) when the target spot is refused.
+function moveOpening(shape, ringIdx, opening, t) {
+  const ring = shape.rings[ringIdx];
+  if (!ring || !ring.openings.includes(opening)) return null;
+  const [a, b] = segEnds(ring, opening.seg);
+  const len = segLength(a, b);
+  const half = (opening.w / 2 + 0.25) / len;
+  const at = Math.min(1 - half, Math.max(half, t));
+  const blocked = openingsOnSeg(ring, opening.seg)
+    .some((o) => o !== opening && Math.abs(o.t - at) * len < (opening.w + o.w) / 2);
+  if (blocked) return null;
+  opening.t = at;
+  return at;
+}
+
 // Flip a door's hinge jamb, or the side it swings toward. Both are one field
 // each and neither can be wrong, so they toggle rather than validate.
 function flipOpening(opening, what = 'hand') {
@@ -58090,7 +58110,7 @@ function addShapeCopy(state, floorIndex, shape, dx = 0, dz = 0) {
   return clone;
 }
 
-return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
+return { MAX_SHAPES, MAX_RING_PTS, MAX_HOLES, MIN_SEG, MIN_AREA, MIN_DOOR_W, MAX_DOOR_W, OP_DOOR, OP_WINDOW, OP_KINDS, LEAF_NONE, LEAF_SINGLE, LEAF_DOUBLE, LEAF_KINDS, WINDOW_SILL, WINDOW_H, WINDOW_W, MIN_SILL, MAX_SILL, MIN_OPEN_H, openingSpec, isWindowOpening, isDoorOpening, writeOpening, defaultOpeningWidth, SEG_NONE, SEG_WALL, SEG_GLASS, SEG_RAIL, SEG_KINDS, isBuilt, canOpen, segLength, projectOnSeg, unitDir, PARALLEL_TOL, parallelDirs, ringLen, segEnds, segDir, ringSignedArea, ringIsCCW, orientRing, orientShape, cleanRing, makeRing, shapesOf, pointInRing, pointInShape, shapeArea, shapeBBox, ringCentroid, distToBoundary, interiorPoint, shapeAt, shapeById, floorSolidAt, nearestSegment, nearestVertex, storeyBase, nextRoomName, takeId, makeShape, addShape, removeShape, addHole, enclosingShape, moveVertex, insertVertex, deleteVertex, setSegWall, openingsOnSeg, copyOpening, addOpening, toggleOpening, moveOpening, flipOpening, MAX_BULGE, MIN_ARC_CHORD, MAX_ARC_STEPS, ARC_CHORD_FT, arcGeometry, arcPoints, curveSegment, straightenRun, snapPoint, constrainAngle, normalizeShape, cloneShape, translateShape, rotatePoint90, rotateShape90, mirrorPointX, mirrorShapeX, totalShapeArea, addShapeCopy };
 })();
 // ---- js/props.js ----
 const __m_js_props_js = (() => {
@@ -59250,6 +59270,23 @@ function toggleLineOpening(line, t, w = null, opts = {}) {
   return addLineOpening(line, t, w, opts);
 }
 
+// The one-segment twin of shapes.js's `moveOpening`: slide an opening along
+// its wall line, clamped to the jambs and refused on neighbour overlap, t
+// mutated in place. Returns the clamped t or null (t unchanged).
+function moveLineOpening(line, opening, t) {
+  if (!line) return null;
+  const list = lineOpenings(line);
+  if (!list.includes(opening)) return null;
+  const len = lineLength(line);
+  const half = (opening.w / 2 + 0.25) / len;
+  const at = Math.min(1 - half, Math.max(half, t));
+  const blocked = list
+    .some((o) => o !== opening && Math.abs(o.t - at) * len < (opening.w + o.w) / 2);
+  if (blocked) return null;
+  opening.t = at;
+  return at;
+}
+
 // ---------- what a run lies along ----------
 
 const dot = (ux, uz, px, pz) => ux * px + uz * pz;
@@ -59539,7 +59576,7 @@ function wallLineFootage(floor) {
   return ft;
 }
 
-return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, addLineOpening, toggleLineOpening, alongRun, coverOf, ringCovers, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
+return { MAX_WALL_LINES, ON_LINE_TOL, ON_LINE_ANGLE, MIN_RUN, wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings, makeWallLine, addWallLine, removeWallLine, wallLineAt, addLineOpening, toggleLineOpening, moveLineOpening, alongRun, coverOf, ringCovers, gapsOf, drawWallRun, eraseWallLineAt, normalizeWallLines, wallLineFootage };
 })();
 // ---- js/terrain.js ----
 const __m_js_terrain_js = (() => {
@@ -70722,6 +70759,46 @@ function spanBounds(span, pitch, origin) {
   return { x0: a.x0, z0: a.z0, x1: b.x1, z1: b.z1 };
 }
 
+// ---------- sliding along a segment ----------
+//
+// A point sliding along a wall snaps to the grid intersections the wall sits
+// on — with one deliberate stretch of the phrase. An axis-aligned wall truly
+// crosses intersections, and there the world coordinate along the run is
+// snapped, so the marks are real grid crossings even when the wall's own
+// endpoints were placed off-grid with Alt. A diagonal wall generally crosses
+// *no* intersections at all, so the literal rule would leave nothing to snap
+// to; instead the distance from the wall's own start is held to pitch
+// multiples. Since `targetPoint` puts drawn endpoints on the grid, those
+// multiples coincide with the drawing grid whenever the wall was gridded — a
+// ruler that always exists beats an exact rule that is usually empty.
+//
+// Returns the snapped centre as `{ t, s, x, z }`: fraction of the run,
+// distance from `a` in feet, and the world point. The projection is clamped
+// to the segment first, so a cursor past either end answers that end.
+const AXIS_EPS = 1e-6;
+
+function snapAlongSeg(a, b, x, z, pitch, opts = {}) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const len = Math.hypot(dx, dz);
+  if (!(len > 0)) return { t: 0, s: 0, x: a.x, z: a.z };
+  const p = pitch > 0 ? pitch : CELL;
+  const o = asOrigin(opts.origin);
+  const ux = dx / len, uz = dz / len;
+  const clamp = (v) => Math.min(len, Math.max(0, v));
+  let s = clamp((x - a.x) * ux + (z - a.z) * uz);
+  if (opts.snap !== false) {
+    if (Math.abs(dx) <= AXIS_EPS) {
+      s = (snapValue(a.z + uz * s, p, o.z) - a.z) / uz;
+    } else if (Math.abs(dz) <= AXIS_EPS) {
+      s = (snapValue(a.x + ux * s, p, o.x) - a.x) / ux;
+    } else {
+      s = snapValue(s, p);
+    }
+    s = clamp(s);
+  }
+  return { t: s / len, s, x: a.x + ux * s, z: a.z + uz * s };
+}
+
 // ---------- reading a run back ----------
 
 const runLength = (a, b) => Math.hypot(b.x - a.x, b.z - a.z);
@@ -70761,7 +70838,7 @@ function runLabel(a, b) {
   return `${len.toFixed(len < 10 ? 1 : 0)} ft · ${angle}`;
 }
 
-return { PITCHES, MAX_LINES, MIN_PITCH, MAX_PITCH, ORIGIN, asOrigin, gridPitch, majorEvery, snapValue, snapToGrid, snapDistance, orthoPoint, targetPoint, tileAt, tileBounds, tileCentre, tileUnder, tileSpan, spanBounds, runLength, runAngle, isAxisRun, runLabel };
+return { PITCHES, MAX_LINES, MIN_PITCH, MAX_PITCH, ORIGIN, asOrigin, gridPitch, majorEvery, snapValue, snapToGrid, snapDistance, orthoPoint, targetPoint, tileAt, tileBounds, tileCentre, tileUnder, tileSpan, spanBounds, snapAlongSeg, runLength, runAngle, isAxisRun, runLabel };
 })();
 // ---- js/overlay.js ----
 const __m_js_overlay_js = (() => {

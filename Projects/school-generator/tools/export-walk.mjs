@@ -74,18 +74,27 @@ export const TEMPLATE_BUDGET = 4 * 1024 * 1024;
 // The same three specifier forms index.html's import map serves, and no
 // others: 'three', 'three/addons/…', and a relative path.
 export function resolveSpec(spec, importerPath) {
-  if (spec === 'three') return join(PROJECT, 'libs', 'three.module.js');
+  if (spec === 'three') return posix(join(PROJECT, 'libs', 'three.module.js'));
   if (spec.startsWith('three/addons/')) {
-    return join(PROJECT, 'libs', 'addons', spec.slice('three/addons/'.length));
+    return posix(join(PROJECT, 'libs', 'addons', spec.slice('three/addons/'.length)));
   }
   if (spec.startsWith('./') || spec.startsWith('../')) {
-    return resolvePath(dirname(importerPath), spec);
+    return posix(resolvePath(dirname(importerPath), spec));
   }
   throw new Error(`Unresolvable import specifier '${spec}' in ${importerPath}`);
 }
 
+// Paths and line endings inside the output are the repo's, not the
+// platform's. The template is committed and byte-compared against a fresh
+// build (test/export-walk.test.mjs), so a build on Windows — where
+// node:path speaks backslash and a checkout may hand the sources over as
+// CRLF — must still produce the same bytes a Linux build does.
+const posix = (p) => p.split('\\').join('/');
+const rel = (p) => posix(relative(PROJECT, p));
+const unixText = (s) => s.replace(/\r\n/g, '\n');
+
 const moduleId = (path) =>
-  `__m_${relative(PROJECT, path).replace(/[^A-Za-z0-9]/g, '_')}`;
+  `__m_${rel(path).replace(/[^A-Za-z0-9]/g, '_')}`;
 
 // ---------- parsing one module ----------
 //
@@ -168,19 +177,19 @@ export async function buildBundle(entryPath = ENTRY) {
   async function visit(path, chain) {
     if (modules.has(path)) {
       if (inStack.has(path)) {
-        throw new Error(`Import cycle: ${[...chain, path].map((p) => relative(PROJECT, p)).join(' → ')}`);
+        throw new Error(`Import cycle: ${[...chain, path].map(rel).join(' → ')}`);
       }
       return;
     }
     inStack.add(path);
     let source;
     try {
-      source = await readFile(path, 'utf8');
+      source = unixText(await readFile(path, 'utf8'));
     } catch {
-      throw new Error(`Graph did not close: ${relative(PROJECT, path)} ` +
-        `(imported from ${relative(PROJECT, chain[chain.length - 1] || '?')}) is unreadable`);
+      throw new Error(`Graph did not close: ${rel(path)} ` +
+        `(imported from ${rel(chain[chain.length - 1] || '?')}) is unreadable`);
     }
-    const mod = parseModule(source, relative(PROJECT, path));
+    const mod = parseModule(source, rel(path));
     mod.deps = mod.imports.map((imp) => resolveSpec(imp.spec, path));
     modules.set(path, mod);
     for (const dep of mod.deps) await visit(dep, [...chain, path]);
@@ -188,7 +197,9 @@ export async function buildBundle(entryPath = ENTRY) {
     order.push(path);
   }
 
-  await visit(entryPath, []);
+  // The entry joins the graph under the same forward-slash key its imports
+  // would give it, so no file can ever appear under two spellings.
+  await visit(posix(entryPath), []);
 
   const pieces = [];
   for (const path of order) {
@@ -201,7 +212,7 @@ export async function buildBundle(entryPath = ENTRY) {
       .map((e) => (e.exported === e.local ? e.local : `${e.exported}: ${e.local}`))
       .join(', ');
     pieces.push(
-      `// ---- ${relative(PROJECT, path)} ----\n` +
+      `// ---- ${rel(path)} ----\n` +
       `const ${id} = (() => {\n${bindings}\n${mod.body}\nreturn { ${returns} };\n})();`,
     );
   }
@@ -217,13 +228,13 @@ export async function buildBundle(entryPath = ENTRY) {
     throw new Error('Bundle contains "</script>", which would end the tag it ships in');
   }
 
-  return { bundle, files: order.map((p) => relative(PROJECT, p)) };
+  return { bundle, files: order.map(rel) };
 }
 
 // ---------- the template ----------
 
 export async function buildTemplate() {
-  const shell = await readFile(SHELL_PATH, 'utf8');
+  const shell = unixText(await readFile(SHELL_PATH, 'utf8'));
   if (!shell.includes(BUNDLE_MARKER) || !shell.includes(DESIGN_MARKER)
       || !shell.includes(BAKE_MARKER)) {
     throw new Error('walk-shell.html has lost a splice marker');

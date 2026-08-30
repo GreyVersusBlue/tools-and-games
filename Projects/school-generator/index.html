@@ -915,40 +915,40 @@
     /* The command palette (Phase 19). Hung high rather than centred — the
        list below the input grows and shrinks as you type, and a centred box
        would bounce its own input line up and down while you aim at it. */
-    #cmdk-overlay {
+    #cmdk-overlay, #walkpick-overlay {
       position: fixed; inset: 0; z-index: 32;
       display: flex; align-items: flex-start; justify-content: center;
       padding-top: 14vh;
       background: rgba(10, 13, 18, 0.5);
     }
-    #cmdk { width: 480px; max-width: 92vw; padding: 10px; }
-    #cmdk-input {
+    #cmdk, #walkpick { width: 480px; max-width: 92vw; padding: 10px; }
+    #cmdk-input, #walkpick-input {
       width: 100%; font: inherit; font-size: var(--fs-title); color: var(--text);
       background: rgba(0, 0, 0, 0.3); border: 1px solid var(--panel-border);
       border-radius: var(--r-md); padding: 10px 12px;
     }
-    #cmdk-list { margin-top: 8px; max-height: 46vh; overflow-y: auto; }
-    #cmdk-list .cmd {
+    #cmdk-list, #walkpick-list { margin-top: 8px; max-height: 46vh; overflow-y: auto; }
+    #cmdk-list .cmd, #walkpick-list .cmd {
       display: flex; align-items: baseline; gap: 10px; width: 100%;
       padding: 7px 10px; border-radius: var(--r-md); cursor: pointer;
       background: none; border: 1px solid transparent; text-align: left;
       font-size: var(--fs-lg); color: var(--text);
     }
-    #cmdk-list .cmd .hint {
+    #cmdk-list .cmd .hint, #walkpick-list .cmd .hint {
       color: var(--text-dim); font-size: var(--fs-sm);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
     }
     #cmdk-list .cmd .keys { margin-left: auto; white-space: nowrap; flex: none; }
     #cmdk-list .cmd .keys kbd { margin-left: 3px; }
-    #cmdk-list .cmd.sel { background: var(--accent-soft); border-color: var(--accent); }
-    #cmdk-list .empty {
+    #cmdk-list .cmd.sel, #walkpick-list .cmd.sel { background: var(--accent-soft); border-color: var(--accent); }
+    #cmdk-list .empty, #walkpick-list .empty {
       padding: 10px 12px; font-size: var(--fs-md); color: var(--text-dim);
     }
-    #cmdk-foot {
+    #cmdk-foot, #walkpick-foot {
       margin-top: 7px; padding: 6px 10px 2px; border-top: 1px solid var(--panel-border);
       font-size: var(--fs-xs); color: var(--text-dim);
     }
-    #cmdk-foot kbd { margin-right: 2px; }
+    #cmdk-foot kbd, #walkpick-foot kbd { margin-right: 2px; }
 
     /* The opening moment (Phase 19): the tool's own front door, shown once.
        Same modal shape as everything else; the doors are cards, not buttons
@@ -1600,7 +1600,7 @@
       #minimap-bar button { padding: 6px 0; }
       #tour-panel { width: 210px; }
       #welcome-overlay .panel { padding: 18px 16px; }
-      #cmdk-overlay { padding-top: 8vh; }
+      #cmdk-overlay, #walkpick-overlay { padding-top: 8vh; }
     }
 
     /* A narrow desktop window — a small laptop, a half-screen snap. The bar
@@ -1826,8 +1826,19 @@
         <input id="door-sill" type="number" min="0" max="9" step="0.5" value="3" /> ft
       </div>
     </div>
+    <label style="margin-top:12px">Placement</label>
+    <div class="seg-toggle">
+      <button id="door-snap" type="button" aria-pressed="true"
+              title="Slide along the wall in grid steps (S)">⊞ Snap to grid</button>
+      <button id="door-free" type="button" aria-pressed="false"
+              title="Slide anywhere along the wall (S)">⟷ Free</button>
+    </div>
+    <div id="door-grid-readout" class="readout"></div>
     <details class="keys"><summary>Keys &amp; tips</summary><div>
-      Click anywhere along a wall — a 30ft run can hold several.<br />
+      Click anywhere along a wall — a 30ft run can hold several. The ghost
+      slides along the wall and lands on the grid marks the wall sits on;
+      <kbd>S</kbd> sets it free, <kbd>Alt</kbd> frees one placement.<br />
+      Drag a door or window to slide it along its wall.<br />
       Clicking the same kind again removes it; clicking a different one swaps it.<br />
       A window glazes the wall rather than opening it — you can see through one,
       never walk through it. In the walkthrough, doors swing open as you come
@@ -2299,6 +2310,20 @@
     </div>
   </div>
 
+  <!-- Phase 36: the walk-mode catalog picker. The command palette's pointer-
+       lock dance pointed at the prop catalog: 9 opens it while walking, Enter
+       or a click puts the piece in your hands, and Click to Walk brings the
+       pointer lock back with the armed ghost waiting. -->
+  <div id="walkpick-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Prop catalog">
+    <div id="walkpick" class="panel">
+      <input id="walkpick-input" type="text" placeholder="Type a prop — desk, kiln, clock…"
+             autocomplete="off" spellcheck="false" aria-label="Search the catalog"
+             role="combobox" aria-expanded="true" aria-controls="walkpick-list" />
+      <div id="walkpick-list" role="listbox" aria-label="Props"></div>
+      <div id="walkpick-foot"><kbd>↑</kbd><kbd>↓</kbd> pick · <kbd>Enter</kbd> take it in hand · <kbd>Esc</kbd> close</div>
+    </div>
+  </div>
+
   <!-- Phase 19: the opening moment. First visit with no autosave, three
        doors in — nothing here exists anywhere else, it is the tool's own
        front door. A first-run flag in localStorage keeps it to one showing;
@@ -2399,7 +2424,7 @@
         <div>
           <h3>Hands, play &amp; capture</h3>
           <ul>
-            <li><kbd>Q</kbd> <span class="what">pick up / set down</span> · <kbd>1</kbd>–<kbd>8</kbd> <span class="what">furniture in hand</span></li>
+            <li><kbd>Q</kbd> <span class="what">pick up / set down</span> · <kbd>1</kbd>–<kbd>8</kbd> <span class="what">furniture in hand</span> · <kbd>9</kbd> <span class="what">the whole catalog</span></li>
             <li><kbd>R</kbd> <span class="what">turn what you carry</span> · <kbd>X</kbd> <span class="what">put it back</span></li>
             <li><kbd>G</kbd> <span class="what">scavenger hunt</span> · <kbd>T</kbd> <span class="what">tours</span></li>
             <li><kbd>F</kbd> <span class="what">ghost mode (<kbd>Space</kbd>/<kbd>C</kbd> fly)</span></li>

@@ -22,9 +22,10 @@ import {
   WALL_PAD,
 } from '../js/collide.js';
 import {
-  pickAhead, carryPoint, placementClear, setDown,
+  pickAhead, carryPoint, placementClear, setDown, searchCatalog,
   WALK_PALETTE, REACH_FT, CARRY_FT,
 } from '../js/carry.js';
+import { PROP_CATALOG } from '../js/catalog.js';
 
 // The same fixture the shove suite walks: a walled 44ft room, cells 2..12,
 // interior world feet 8..52 — drawn on a scratch lattice and baked, the way
@@ -263,4 +264,44 @@ test('boxOverlapsSeg inflates by the wall half-thickness and no more', () => {
   assert.equal(boxOverlapsSeg(box(0.5 + WALL_PAD + 0.05), seg), false, 'outside it');
   assert.equal(boxOverlapsSeg(box(2, Math.PI / 2), seg), true,
     'turned end-on, the long axis crosses the line');
+});
+
+// ---------- the walk-mode picker's search (Phase 34) ----------
+
+test('a name prefix outranks a substring, which outranks a category hit', () => {
+  const rows = [
+    { type: 'a', name: 'Wall Clock', category: 'Fixtures' },
+    { type: 'b', name: 'Clock Tower', category: 'Outdoor' },
+    { type: 'c', name: 'Bell', category: 'Clockwork' },
+  ];
+  assert.deepEqual(searchCatalog(rows, 'clock').map((r) => r.type), ['b', 'a', 'c']);
+});
+
+test('ties keep catalog order, and the limit is respected', () => {
+  const rows = Array.from({ length: 9 }, (_, i) => ({ type: `t${i}`, name: `Chair ${i}` }));
+  const out = searchCatalog(rows, 'chair', 4);
+  assert.deepEqual(out.map((r) => r.type), ['t0', 't1', 't2', 't3']);
+});
+
+test('an empty query opens populated; a junk query answers nothing', () => {
+  assert.equal(searchCatalog(PROP_CATALOG, '').length, 50, 'the head of the list');
+  assert.equal(searchCatalog(PROP_CATALOG, '   ').length, 50, 'whitespace is empty');
+  assert.deepEqual(searchCatalog(PROP_CATALOG, 'zqxvblorp'), []);
+});
+
+test('every quick-slot type is findable by its own name', () => {
+  for (const type of WALK_PALETTE) {
+    const entry = catalogEntry(type);
+    const hits = searchCatalog(PROP_CATALOG, entry.name.toLowerCase());
+    assert.ok(hits.some((r) => r.type === type), `${type} answers to "${entry.name}"`);
+  }
+});
+
+test('a category query finds its rows', () => {
+  const hits = searchCatalog(PROP_CATALOG, 'restroom');
+  assert.ok(hits.length > 0);
+  assert.ok(hits.every((r) =>
+    r.category.toLowerCase().includes('restroom') ||
+    r.name.toLowerCase().includes('restroom') ||
+    r.type.includes('restroom')));
 });

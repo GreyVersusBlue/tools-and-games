@@ -191,6 +191,46 @@ export function spanBounds(span, pitch, origin) {
   return { x0: a.x0, z0: a.z0, x1: b.x1, z1: b.z1 };
 }
 
+// ---------- sliding along a segment ----------
+//
+// A point sliding along a wall snaps to the grid intersections the wall sits
+// on — with one deliberate stretch of the phrase. An axis-aligned wall truly
+// crosses intersections, and there the world coordinate along the run is
+// snapped, so the marks are real grid crossings even when the wall's own
+// endpoints were placed off-grid with Alt. A diagonal wall generally crosses
+// *no* intersections at all, so the literal rule would leave nothing to snap
+// to; instead the distance from the wall's own start is held to pitch
+// multiples. Since `targetPoint` puts drawn endpoints on the grid, those
+// multiples coincide with the drawing grid whenever the wall was gridded — a
+// ruler that always exists beats an exact rule that is usually empty.
+//
+// Returns the snapped centre as `{ t, s, x, z }`: fraction of the run,
+// distance from `a` in feet, and the world point. The projection is clamped
+// to the segment first, so a cursor past either end answers that end.
+const AXIS_EPS = 1e-6;
+
+export function snapAlongSeg(a, b, x, z, pitch, opts = {}) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const len = Math.hypot(dx, dz);
+  if (!(len > 0)) return { t: 0, s: 0, x: a.x, z: a.z };
+  const p = pitch > 0 ? pitch : CELL;
+  const o = asOrigin(opts.origin);
+  const ux = dx / len, uz = dz / len;
+  const clamp = (v) => Math.min(len, Math.max(0, v));
+  let s = clamp((x - a.x) * ux + (z - a.z) * uz);
+  if (opts.snap !== false) {
+    if (Math.abs(dx) <= AXIS_EPS) {
+      s = (snapValue(a.z + uz * s, p, o.z) - a.z) / uz;
+    } else if (Math.abs(dz) <= AXIS_EPS) {
+      s = (snapValue(a.x + ux * s, p, o.x) - a.x) / ux;
+    } else {
+      s = snapValue(s, p);
+    }
+    s = clamp(s);
+  }
+  return { t: s / len, s, x: a.x + ux * s, z: a.z + uz * s };
+}
+
 // ---------- reading a run back ----------
 
 export const runLength = (a, b) => Math.hypot(b.x - a.x, b.z - a.z);

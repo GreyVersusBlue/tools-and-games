@@ -32,14 +32,40 @@ export const CARRY_FT = 4;
 export const PICK_STEP = 0.5;
 
 // The walk palette: the short ring of favourites placeable from inside, one
-// per digit key. The full catalog stays an edit-mode affordance — these are
-// the pieces a walk actually reaches for, all floor-standing so every one of
-// them can land anywhere the ghost fits. catalog.test.mjs-style guarantees
+// per digit key — the pieces a walk actually reaches for, all floor-standing
+// so every one of them can land anywhere the ghost fits. Since Phase 36 the
+// digits are the quick ring rather than the whole reach: `searchCatalog`
+// below is the road to everything else. catalog.test.mjs-style guarantees
 // live in test/carry.test.mjs: every type exists and every one is floor-mount.
 export const WALK_PALETTE = [
   'student-chair', 'student-desk', 'table-round-4', 'bookshelf-low',
   'plant-floor', 'trash-can', 'sofa', 'floor-lamp',
 ];
+
+// Find rows in the catalog by name — the pure half of the walk-mode picker
+// (Phase 36 renegotiates Phase 22's "the full catalog stays an edit-mode
+// affordance": the *palette UI* stays there, but what your hands may hold no
+// longer does). Name-prefix beats name-substring beats a category or type hit,
+// ties keep catalog order, and an empty query returns the head of the list so
+// a picker opens populated instead of blank. The caller decides which rows to
+// offer — usually PROP_CATALOG plus the design's registered model rows.
+export function searchCatalog(rows, query, limit = 50) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return rows.slice(0, Math.max(0, limit));
+  const ranked = [];
+  rows.forEach((r, i) => {
+    const name = String(r.name || '').toLowerCase();
+    let rank;
+    if (name.startsWith(q)) rank = 0;
+    else if (name.includes(q)) rank = 1;
+    else if (String(r.category || '').toLowerCase().includes(q) ||
+             String(r.type || '').toLowerCase().includes(q)) rank = 2;
+    else return;
+    ranked.push({ r, rank, i });
+  });
+  ranked.sort((x, y) => x.rank - y.rank || x.i - y.i);
+  return ranked.slice(0, Math.max(0, limit)).map((x) => x.r);
+}
 
 // The prop the view is pointing at, within reach — the first hit walking the
 // flattened view ray out from the eye. `dir` need not be normalised (it is

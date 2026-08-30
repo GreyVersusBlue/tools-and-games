@@ -1773,3 +1773,67 @@ against `shapeAt` instead, because "you have just built 400 ft² over
 nothing" is a lie when 390 of it was already there. And `traceRegion` had
 `CELL` baked into the two lines that turn cells back into feet, which is the
 sort of constant that reads as arithmetic until the day it is a parameter.
+
+## Phase 36 — The door slides to the mark *(shipped)*
+
+**The last tool still aiming with a raw click, and the last catalog still
+behind a mode wall.**
+
+Two complaints, one phase. The door tool took the cursor's projection along
+the wall verbatim: no preview of where the opening would land, no snapping to
+anything, and no way to move a door an inch left except delete and re-place.
+Every other drawing tool had learned the grid by Phase 35; doors and windows
+were still guessing. And Phase 22's hands could place exactly eight things —
+the digit ring was the whole reach, so furnishing a lab from inside meant
+walking back to the editor for every kiln.
+
+- [x] **`snapAlongSeg` in snapgrid.js, pure, with its suite.** The opening's
+  centre slides along the wall and lands on the grid intersections the wall
+  sits on — with one deliberate stretch: an axis wall snaps the world
+  coordinate (true crossings, honouring Phase 35's origin), a diagonal wall
+  holds distance-from-start to pitch multiples, because a generic diagonal
+  crosses no intersections at all and a ruler that always exists beats an
+  exact rule that is usually empty. Pinned in tests so the definition cannot
+  drift.
+- [x] **`moveOpening` / `moveLineOpening`, pure, in shapes.js / wallrun.js.**
+  The jamb clamp and neighbour test `addOpening` runs, minus the opening
+  itself; `t` mutated in place so the optional fields and the minimal
+  on-disk record ride along untouched.
+- [x] **The door tool is a target now.** A ghost the width of the opening
+  rides the snapped point while the whole-segment highlight fades to
+  context; a press on bare wall cuts there; a press on an existing opening
+  waits four pixels to learn whether it was the old click (toggle, as ever)
+  or a drag (slide it along its wall, one undo step per gesture). Hover,
+  click and drag all read one `doorTargetAt`, because a preview that snaps
+  differently from the commit is worse than no preview.
+- [x] **Snap is a toggle, free is a key.** The wall panel's pair, cloned:
+  Snap to grid / Free on the door panel with the pitch readout under it,
+  `S` flips it, `Alt` frees a single placement. Session state on the
+  editor, never in the file — the same terms `wallOrtho` lives on.
+- [x] **9 is the whole catalog.** The digits stay the quick ring; 9 opens a
+  searchable picker — the command palette's pointer-lock dance pointed at
+  props — and Enter puts the piece in your hands. `searchCatalog` in
+  carry.js is the pure half: name-prefix over substring over category, ties
+  in catalog order, empty query opens populated. All three mounts allowed;
+  a wall clock refuses open space the same way it always has, at set-down.
+
+*Leans on:* `snapgrid.js`, `shapes.js`, `wallrun.js`, `carry.js`, the cmdk
+overlay's unlock/restore pattern.
+*Save:* none — a moved opening is the same three-field record with a
+different `t`, and both toggles are session state.
+*Model:* **Claude Fable 5** — two new pure functions with suites and a
+gesture rewrite are model layer, and this time it ran where the convention
+says it should.
+
+*What fought back:* upstream, not the feature. Phase 35 landed while this
+was being written and had already given the grid an origin and rebuilt the
+floor tool around tiles — so `snapAlongSeg` grew its origin parameter in
+the merge rather than after a bug report, which is the cheap time to learn
+it. The gesture's one real trap was the shared press: click-remove and
+drag-slide start identically, and the four-pixel discrimination is borrowed
+from the rectangle eraser rather than invented, because a threshold that
+already survived two years of real pointers is worth more than a fresh
+guess. The opening hit-test runs on the *raw* projection while the snap is
+on, so a door placed off-grid in a free moment stays clickable after the
+toggle goes back — the kind of case nobody files a bug for, they just call
+the tool flaky.

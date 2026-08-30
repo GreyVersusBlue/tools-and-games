@@ -163,6 +163,23 @@ export function toggleLineOpening(line, t, w = null, opts = {}) {
   return addLineOpening(line, t, w, opts);
 }
 
+// The one-segment twin of shapes.js's `moveOpening`: slide an opening along
+// its wall line, clamped to the jambs and refused on neighbour overlap, t
+// mutated in place. Returns the clamped t or null (t unchanged).
+export function moveLineOpening(line, opening, t) {
+  if (!line) return null;
+  const list = lineOpenings(line);
+  if (!list.includes(opening)) return null;
+  const len = lineLength(line);
+  const half = (opening.w / 2 + 0.25) / len;
+  const at = Math.min(1 - half, Math.max(half, t));
+  const blocked = list
+    .some((o) => o !== opening && Math.abs(o.t - at) * len < (opening.w + o.w) / 2);
+  if (blocked) return null;
+  opening.t = at;
+  return at;
+}
+
 // ---------- what a run lies along ----------
 
 const dot = (ux, uz, px, pz) => ux * px + uz * pz;

@@ -11,7 +11,7 @@ import {
   MAX_WALL_LINES, MIN_RUN, ON_LINE_TOL,
   wallLinesOf, lineEnds, lineLength, lineKind, lineOpenings,
   makeWallLine, addWallLine, removeWallLine, wallLineAt,
-  addLineOpening, toggleLineOpening,
+  addLineOpening, toggleLineOpening, moveLineOpening,
   coverOf, ringCovers, gapsOf, drawWallRun, eraseWallLineAt,
   normalizeWallLines, wallLineFootage,
 } from '../js/wallrun.js';
@@ -356,4 +356,21 @@ test('a wall the other person erased goes, and takes the key with it', async () 
   applyOps(mine, ops.map((o) => ({ ...o, t: 2, site: 'b' })));
   assert.deepEqual(wallLinesOf(mine.floors[0]), []);
   assert.equal(mine.floors[0].walls, undefined);
+});
+
+// ---------- sliding an opening along a wall line ----------
+
+test('an opening slides along its wall line, clamped and collision-checked', () => {
+  const s = createState(20, 20);
+  const line = addWallLine(s, 0, P(0, 0), P(20, 0));
+  const o = addLineOpening(line, 0.3);
+  assert.equal(moveLineOpening(line, o, 0.6), 0.6);
+  assert.equal(o.t, 0.6);
+  const half = (o.w / 2 + 0.25) / 20;
+  assert.equal(moveLineOpening(line, o, 2), 1 - half, 'clamped at the far jamb');
+  const other = addLineOpening(line, 0.2);
+  assert.equal(moveLineOpening(line, other, o.t), null, 'a neighbour refuses the spot');
+  assert.equal(other.t, 0.2);
+  assert.equal(moveLineOpening(line, { seg: 0, t: 0.5, w: 3 }, 0.6), null,
+    'an opening the line does not hold cannot be slid');
 });
