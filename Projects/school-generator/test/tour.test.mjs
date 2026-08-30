@@ -8,11 +8,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  MAX_TOURS, MAX_KEYS, MIN_SEC, MAX_SEC, MAX_HOLD, TOUR_SPEED, MAX_PITCH, EASES,
+  MAX_TOURS, MAX_KEYS, MIN_SEC, MAX_SEC, MAX_HOLD, MAX_NARRATION, DAY_MINUTES,
+  TOUR_SPEED, MAX_PITCH, EASES,
   wrapAngle, shortestArc, lerpAngle, easeInOut, applyEase,
   makeKey, makeTour, normalizeTour, normalizeTours, toursOf,
   legDistance, defaultSeconds, addKey, removeKey, updateKey, moveKey, retime,
-  timeline, tourDuration, tourSummary, sampleTour, samplePath,
+  timeline, tourDuration, tourSummary, sampleTour, samplePath, sampleClock,
   startPlayback, stepPlayback,
 } from '../js/tour.js';
 
@@ -71,6 +72,105 @@ test('a key clamps everything a camera can hand it', () => {
   const bare = makeKey({});
   assert.equal(bare.x, 0);
   assert.equal(bare.sec, 2);
+  assert.equal(bare.hour, null, 'a bare key says nothing about the clock');
+  assert.equal(bare.mood, '');
+  assert.equal(bare.weather, null);
+  assert.equal(bare.narration, '');
+});
+
+// ---------- the clock a stop optionally carries ----------
+
+test('an hour, a mood and a weather are all optional and validated', () => {
+  const k = makeKey({}, { hour: 1500, mood: 'nope', weather: { kind: 'rain', intensity: 9, wind: 9 } });
+  assert.equal(k.hour, DAY_MINUTES - 1, 'clamped into 0..1439');
+  assert.equal(k.mood, '', 'an unrecognized mood is no mood at all');
+  assert.equal(k.weather.kind, 'rain');
+  assert.ok(k.weather.intensity <= 1, 'the weather record is normalized, not trusted whole');
+
+  assert.equal(makeKey({}, { hour: 'noon' }).hour, null, 'an unreadable hour is no hour at all');
+  assert.equal(makeKey({}, { mood: 'golden' }).mood, 'golden', 'a real mood key is kept');
+  assert.equal(makeKey({}, { weather: { intensity: 0.5 } }).weather, null,
+    'a weather object with no recognizable kind is nothing asked for');
+  assert.equal(makeKey({}, { weather: 'rain' }).weather, null, 'a bare string is not a weather record');
+
+  const narrated = makeKey({}, { narration: 'x'.repeat(999) });
+  assert.equal(narrated.narration.length, MAX_NARRATION);
+});
+
+test('a tour that never mentions the clock samples as silence', () => {
+  const tour = walk([cam(0, 0), cam(0, 40)]);
+  for (let t = 0; t <= tourDuration(tour); t += 1) {
+    const c = sampleClock(tour, t);
+    assert.equal(c.hour, null);
+    assert.equal(c.mood, '');
+    assert.equal(c.weather, null);
+  }
+});
+
+test('a single defined hour holds across the whole tour', () => {
+  let tour = makeTour('T');
+  tour = addKey(tour, cam(0, 0), { sec: 1, hour: 400 });
+  tour = addKey(tour, cam(0, 40), { sec: 4 });
+  for (let t = 0; t <= tourDuration(tour); t += 0.5) {
+    assert.equal(sampleClock(tour, t).hour, 400);
+  }
+});
+
+test('the hour eases the short way round between two defined stops', () => {
+  let tour = makeTour('T');
+  tour = addKey(tour, cam(0, 0), { sec: 1, hour: 60 });
+  tour = addKey(tour, cam(0, 40), { sec: 10, hour: 120 });
+  const { stops } = timeline(tour);
+  const start = sampleClock(tour, stops[0].arrive).hour;
+  const mid = sampleClock(tour, (stops[0].arrive + stops[1].arrive) / 2).hour;
+  const end = sampleClock(tour, stops[1].arrive).hour;
+  assert.equal(start, 60);
+  assert.equal(end, 120);
+  assert.ok(mid > 60 && mid < 120, `expected 60 < ${mid} < 120`);
+});
+
+test('the hour turns the short way across midnight, exactly like yaw does', () => {
+  let tour = makeTour('T');
+  tour = addKey(tour, cam(0, 0), { sec: 1, hour: DAY_MINUTES - 20 });
+  tour = addKey(tour, cam(0, 40), { sec: 10, hour: 20 });
+  const { stops } = timeline(tour);
+  const mid = sampleClock(tour, (stops[0].arrive + stops[1].arrive) / 2).hour;
+  // The short way across midnight passes through minute 0, not back through
+  // the middle of the day the long way round.
+  assert.ok(mid > DAY_MINUTES - 20 || mid < 20, `went the long way: ${mid}`);
+});
+
+test('mood and weather hold, then flip at the midpoint of the leg — never eased through', () => {
+  let tour = makeTour('T');
+  tour = addKey(tour, cam(0, 0), { sec: 1, mood: 'morning', weather: { kind: 'overcast' } });
+  tour = addKey(tour, cam(0, 40), { sec: 10, mood: 'night', weather: { kind: 'snow' } });
+  const { stops } = timeline(tour);
+  const before = sampleClock(tour, stops[0].arrive + (stops[1].arrive - stops[0].arrive) * 0.4);
+  const after = sampleClock(tour, stops[0].arrive + (stops[1].arrive - stops[0].arrive) * 0.6);
+  assert.equal(before.mood, 'morning');
+  assert.equal(before.weather.kind, 'overcast');
+  assert.equal(after.mood, 'night');
+  assert.equal(after.weather.kind, 'snow');
+});
+
+test('two stops of the same weather kind crossfade intensity and wind', () => {
+  let tour = makeTour('T');
+  tour = addKey(tour, cam(0, 0), { sec: 1, weather: { kind: 'rain', intensity: 0.2, wind: 0.1 } });
+  tour = addKey(tour, cam(0, 40), { sec: 10, weather: { kind: 'rain', intensity: 0.8, wind: 0.5 } });
+  const { stops } = timeline(tour);
+  const mid = sampleClock(tour, (stops[0].arrive + stops[1].arrive) / 2).weather;
+  assert.equal(mid.kind, 'rain');
+  assert.ok(mid.intensity > 0.2 && mid.intensity < 0.8, `expected a crossfade, got ${mid.intensity}`);
+  assert.ok(mid.wind > 0.1 && mid.wind < 0.5);
+});
+
+test('a hostile time still returns something finite', () => {
+  let tour = makeTour('T');
+  tour = addKey(tour, cam(0, 0), { sec: 1, hour: 30 });
+  tour = addKey(tour, cam(0, 40), { sec: 4, hour: 90 });
+  assert.ok(Number.isFinite(sampleClock(tour, -999).hour));
+  assert.ok(Number.isFinite(sampleClock(tour, 999999).hour));
+  assert.equal(sampleClock(makeTour('none'), 5).hour, null);
 });
 
 test('an unreadable tour is a tour that is not there', () => {
@@ -345,8 +445,10 @@ test('a recorded tour survives a save round trip, with its id', async () => {
   const { createState } = await import('../js/grid.js');
   const state = createState(10, 10);
   let tour = makeTour('Open Day');
-  tour = addKey(tour, cam(10, 10, { yaw: 1.2, floor: 0 }), { hold: 2, label: 'Entrance' });
-  tour = addKey(tour, cam(40, 10, { yaw: -1.2, floor: 1 }), { sec: 4 });
+  tour = addKey(tour, cam(10, 10, { yaw: 1.2, floor: 0 }),
+    { hold: 2, label: 'Entrance', hour: 480, mood: 'morning', narration: 'Welcome in.' });
+  tour = addKey(tour, cam(40, 10, { yaw: -1.2, floor: 1 }),
+    { sec: 4, weather: { kind: 'rain', intensity: 0.6, wind: 0.4 } });
   tour.loop = true;
   state.tours = [tour];
 
@@ -360,6 +462,11 @@ test('a recorded tour survives a save round trip, with its id', async () => {
   assert.ok(Math.abs(back.tours[0].keys[0].yaw - 1.2) < 1e-9);
   assert.ok(back.tours[0].id > 0, 'ids come off the same counter as everything else');
   assert.ok(back.tours[0].id < back.nextId);
+  assert.equal(back.tours[0].keys[0].hour, 480);
+  assert.equal(back.tours[0].keys[0].mood, 'morning');
+  assert.equal(back.tours[0].keys[0].narration, 'Welcome in.');
+  assert.equal(back.tours[0].keys[1].weather.kind, 'rain');
+  assert.ok(Math.abs(back.tours[0].keys[1].weather.intensity - 0.6) < 1e-9);
 });
 
 test('a hostile tours key cannot stop a design from opening', async () => {

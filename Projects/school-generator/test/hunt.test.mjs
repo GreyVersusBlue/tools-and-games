@@ -21,6 +21,7 @@ import {
   roomBounds, quadrantOf, describePlace, huntCandidates, yardCandidates, hidingPlaces,
   startHunt, checkFind, huntWarmth, nearestHidden, revealAt, huntSummary,
   bandFor, apparentDistance, unfound,
+  classPlace, startLate, checkLate, lateWarmth, lateScore, lateResult,
 } from '../js/hunt.js';
 
 const school = () => buildSampleSchool(createState(40, 40));
@@ -329,4 +330,68 @@ test('a caller may deal its own items, one row and all', () => {
   // And the default deal is untouched: distinct lost property, in seed order.
   const dflt = hidingPlaces(nav, { seed: 3, count: 6 });
   assert.ok(new Set(dflt.map((p) => p.item)).size > 1);
+});
+
+// ---------- late for class (Phase 33) ----------
+
+test('a class place is dealt from a named room, not the shuffle', () => {
+  const nav = navOf(school());
+  const roomId = [...nav.mesh[0].byRoom.keys()][0];
+  const place = classPlace(nav, roomId);
+  assert.equal(place.room, roomId);
+  assert.equal(place.floor, 0);
+  assert.ok(!place.outdoors);
+  assert.ok(place.hint.length, 'the same hint machinery names it');
+  assert.equal(classPlace(nav, 'not-a-real-room'), null);
+  assert.equal(classPlace(null, 'x'), null);
+});
+
+test('starting late needs a real room and hands back nothing for a bad one', () => {
+  const nav = navOf(school());
+  const roomId = [...nav.mesh[0].byRoom.keys()][0];
+  const late = startLate(nav, roomId, { deadline: 90, now: 0 });
+  assert.ok(late);
+  assert.equal(late.deadline, 90);
+  assert.equal(late.arrivedAt, null);
+  assert.equal(startLate(nav, 'nope', { deadline: 90 }), null);
+});
+
+test('arriving needs the right storey and the right spot, and only counts once', () => {
+  const nav = navOf(school());
+  const roomId = [...nav.mesh[0].byRoom.keys()][0];
+  const late = startLate(nav, roomId, { deadline: 60, now: 0 });
+  const p = late.place;
+  assert.equal(checkLate(late, { x: p.x, z: p.z, floor: p.floor + 1, now: 40 }), false);
+  assert.equal(late.arrivedAt, null);
+  assert.equal(checkLate(late, { x: p.x + FIND_R + 0.5, z: p.z, floor: p.floor, now: 40 }), false);
+  assert.equal(checkLate(late, { x: p.x, z: p.z, floor: p.floor, now: 40 }), true);
+  assert.equal(late.arrivedAt, 40);
+  // Arriving again — say, wandering back through — does not re-time it.
+  assert.equal(checkLate(late, { x: p.x, z: p.z, floor: p.floor, now: 55 }), false);
+  assert.equal(late.arrivedAt, 40);
+});
+
+test('the score is seconds to spare, positive early and negative late', () => {
+  const nav = navOf(school());
+  const roomId = [...nav.mesh[0].byRoom.keys()][0];
+  const early = startLate(nav, roomId, { deadline: 100, now: 0 });
+  assert.equal(lateScore(early), null, 'no score before you arrive');
+  checkLate(early, { x: early.place.x, z: early.place.z, floor: early.place.floor, now: 70 });
+  assert.equal(lateScore(early), 30);
+  assert.match(lateResult(early), /30s to spare/);
+
+  const tardy = startLate(nav, roomId, { deadline: 100, now: 0 });
+  checkLate(tardy, { x: tardy.place.x, z: tardy.place.z, floor: tardy.place.floor, now: 140 });
+  assert.equal(lateScore(tardy), -40);
+  assert.match(lateResult(tardy), /Late by 40s/);
+});
+
+test('warmth reads toward the one room and stops once you have arrived', () => {
+  const nav = navOf(school());
+  const roomId = [...nav.mesh[0].byRoom.keys()][0];
+  const late = startLate(nav, roomId, { deadline: 100, now: 0 });
+  const p = late.place;
+  assert.equal(lateWarmth(late, { x: p.x, z: p.z, floor: p.floor }).key, 'burning');
+  checkLate(late, { x: p.x, z: p.z, floor: p.floor, now: 10 });
+  assert.equal(lateWarmth(late, { x: 0, z: 0, floor: 0 }), null, 'nothing left to be warm about');
 });

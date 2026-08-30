@@ -39,7 +39,10 @@ import {
   WEATHER_MOODS, applyWeatherMood, normalizeWeather, isDefaultWeather,
 } from './weather.js';
 import { buildCollider, storeyAt, WALKER_R, updateDoorsFor } from './collide.js';
-import { startHunt, checkFind, huntWarmth, huntSummary } from './hunt.js';
+import {
+  startHunt, checkFind, huntWarmth, huntSummary,
+  startLate, checkLate, lateWarmth, lateResult,
+} from './hunt.js';
 import {
   normalizeHaunt, stageFor, stageKnobs, flickerAt, writingPlaces,
   crashCurve, CRASH_S, slamCandidate, banishNode, escapeDoor,
@@ -55,7 +58,7 @@ import {
   makePopulation, makeContext, retargetAll, stepAgents,
   bodiesOn, makeCrowdField, clearCrowd, normalizeLife,
 } from './agents.js';
-import { blockAt, bellsBetween, wrapMinutes, clockText } from './schedule.js';
+import { blockAt, bellsBetween, wrapMinutes, clockText, nextBell } from './schedule.js';
 import { normalizeTimetable, isEmptyTimetable, timetablePlan } from './timetable.js';
 import { computeFloorPlan, drawPlanBody } from './blueprint.js';
 import {
@@ -301,6 +304,77 @@ function boot() {
     // silence arriving on schedule, not a special case for it.
     audio.setMurmur([]);
     walkHud.textContent = 'The building is empty again.';
+  }
+
+  // ---------- late for class (Phase 33) ----------
+  //
+  // hunt.js re-aimed exactly the way the haunt already re-aims it: one
+  // destination out of the timetable instead of a dealt set, a tardy bell
+  // instead of a warmth band with nothing riding on it. It borrows the same
+  // glowing marker the star hunt uses (`renderApi.setHunt`/`updateHunt` take
+  // any list of `{x, z, floor, id}` places) rather than teaching the renderer
+  // a second one, and needs `life.plan` and `life.nav` — which is why the
+  // button presses People first if nobody has yet.
+  let late = null;
+  let lateElapsed = 0;
+  let lateWarmOpts = null;
+  const EMPTY_LATE_SET = new Set();
+
+  function lateStop() {
+    late = null;
+    renderApi.setHunt([]);
+  }
+
+  function nextPeriodBell(sched, minutes) {
+    let m = minutes;
+    for (let i = 0; i < 8; i++) {
+      const b = nextBell(sched, m);
+      if (!b) return null;
+      if (b.kind === 'period') return b;
+      m = b.at;
+    }
+    return null;
+  }
+
+  function lateStart() {
+    if (!life.plan || !life.nav) {
+      walkHud.textContent = 'Nobody has a timetable — this design was never given one.';
+      return false;
+    }
+    const sched = life.ctx.schedule;
+    const bell = nextPeriodBell(sched, state.env.minutes);
+    if (!bell) { walkHud.textContent = 'No more periods today.'; return false; }
+    const passing = blockAt(sched, bell.at);
+    const deadline = (bell.in + sched.passingMin) * 60;
+    const moving = life.plan.cohorts.filter((c) => c.rooms[passing.index] && c.rooms[passing.index] !== c.rooms[0]);
+    const choices = moving.length ? moving : life.plan.cohorts.filter((c) => c.rooms[passing.index]);
+    if (!choices.length) { walkHud.textContent = 'Nobody has a room booked next period.'; return false; }
+    const pick = choices[Math.floor(Math.random() * choices.length)];
+    late = startLate(life.nav, pick.rooms[passing.index], { deadline, now: 0, roomName: pick.name });
+    if (!late) { walkHud.textContent = 'That room is not on the walkable mesh.'; return false; }
+    lateElapsed = 0;
+    lateWarmOpts = { nav: life.nav };
+    renderApi.setHunt([late.place]);
+    walkHud.textContent = `🏃 Get to ${late.place.roomName || 'class'} before the bell — ${late.place.hint}.`;
+    return true;
+  }
+
+  function lateUpdate(dt) {
+    if (!late || late.arrivedAt != null) return;
+    lateElapsed += dt;
+    const at = walk.at;
+    if (checkLate(late, { ...at, now: lateElapsed })) {
+      renderApi.setHunt([]);
+      walkHud.textContent = `🏃 ${lateResult(late)}`;
+      return;
+    }
+    const warm = lateWarmth(late, at, lateWarmOpts || {});
+    if (warm) {
+      const left = late.deadline - lateElapsed;
+      walkHud.textContent = `🏃 ${left >= 0 ? `${Math.ceil(left)}s to the bell` : `${Math.ceil(-left)}s late already`}`
+        + ` · ${warm.label} — ${warm.place.hint}`;
+    }
+    renderApi.updateHunt(at, EMPTY_LATE_SET, dt);
   }
 
   // The clock runs while the school does — whole minutes only, and the bells
@@ -1148,6 +1222,25 @@ function boot() {
       }
     });
   }
+  // Late for class's own button — shown only when the design carries a
+  // timetable at all, the same rule the star hunt follows for the haunt.
+  const walkLateBtn = $('walk-late');
+  if (walkLateBtn) {
+    if (!isEmptyTimetable(normalizeTimetable(state.timetable))) walkLateBtn.classList.remove('hidden');
+    walkLateBtn.addEventListener('click', () => {
+      if (late) { lateStop(); walkHud.textContent = 'Late for class ended.'; return; }
+      if (!life.plan) lifeStart();
+      if (!lateStart()) return;
+      audio.setActive(true);
+      if (isTouch) {
+        walk.enableTouch();
+        document.body.classList.add('touch-walk');
+        walkOverlay.classList.add('hidden');
+      } else {
+        walk.controls.lock();
+      }
+    });
+  }
   const hauntEndBtn = $('haunt-end-close');
   if (hauntEndBtn) {
     hauntEndBtn.addEventListener('click', () => {
@@ -1173,6 +1266,7 @@ function boot() {
       case 'KeyV': lifeFollow(); break;
       case 'KeyB': audio.ring(); break;
       case 'KeyN': audio.announce(); break;
+      case 'KeyG': if (!$('walk-late').classList.contains('hidden')) $('walk-late').click(); break;
       default: break;
     }
   });
@@ -1199,6 +1293,7 @@ function boot() {
     labelGateUpdate();
     lifeUpdate(dt);
     hauntUpdate(dt);
+    lateUpdate(dt);
     renderApi.poseLifts(walk.lifts || (life.ctx && life.ctx.lifts));
     renderApi.render(dt);
     if (miniOn && !photoMode) drawMinimap();
@@ -1209,6 +1304,7 @@ function boot() {
   window.walkApp = {
     get state() { return state; }, renderApi, walk, audio, life, setPhotoMode,
     haunt, hauntStart, hauntUpdate,
+    get late() { return late; }, lateStart,
   };
 }
 

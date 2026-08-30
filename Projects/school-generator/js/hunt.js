@@ -445,3 +445,92 @@ export function huntSummary(hunt) {
   const found = hunt ? hunt.found.size : 0;
   return { found, total, done: total > 0 && found >= total };
 }
+
+// ---------- late for class (Phase 33) ----------
+//
+// The scavenger hunt re-aimed the way the haunt already re-aimed it: one
+// destination instead of a dealt set, a clock against it instead of a warmth
+// band with no stakes. A timetable row hands over a room; the tardy bell
+// hands over a deadline; everything that finds it — `routedDistance`,
+// `bandFor`, `describePlace`, `roomBounds` — is the same machinery a
+// scavenger hunt already trusted, because "how close is the thing I'm
+// looking for, and which way" doesn't care whether the thing is hidden or
+// merely late.
+
+// A single hiding place, dealt from a *known* room instead of the shuffle —
+// the room a timetable row already named, at its biggest walkable tile so
+// the door of it is somewhere a person can actually stand rather than a
+// centroid nobody drew.
+export function classPlace(nav, roomId, opts = {}) {
+  const meshes = (nav && nav.mesh) || [];
+  for (let f = 0; f < meshes.length; f++) {
+    const mesh = meshes[f];
+    if (!mesh || !mesh.byRoom || !mesh.byRoom.has(roomId)) continue;
+    const tiles = (mesh.byRoom.get(roomId) || []).filter((t) => t.rect);
+    if (!tiles.length) return null;
+    const tile = tiles.slice().sort((a, b) => b.area - a.area)[0];
+    const bounds = roomBounds(mesh, roomId);
+    const node = nav.nodes ? nav.nodes.get(roomId) : null;
+    const name = (node && node.name) || opts.roomName || '';
+    return {
+      id: 'late', room: roomId, roomName: name, floor: f, outdoors: false,
+      x: tile.cx, z: tile.cz,
+      hint: describePlace(bounds, tile.cx, tile.cz, name, f, meshes.length),
+    };
+  }
+  return null;
+}
+
+// Runtime state, never saved — the same rule the scavenger hunt follows: this
+// is something you do in a building, not something the building is.
+// `opts.deadline` is a clock reading in seconds on the walk's own clock (the
+// caller's, not this module's — it never starts one), the moment the tardy
+// bell rings; `opts.now` is where that clock stands when the row is handed
+// over.
+export function startLate(nav, roomId, opts = {}) {
+  const place = classPlace(nav, roomId, opts);
+  if (!place) return null;
+  return {
+    place,
+    roomId,
+    deadline: Number.isFinite(opts.deadline) ? opts.deadline : 0,
+    startedAt: Number.isFinite(opts.now) ? opts.now : 0,
+    arrivedAt: null,
+  };
+}
+
+// Did standing here get you to class? Only on the room's own storey and only
+// within FIND_R of it, same as `checkFind` — and only once, the same way a
+// found scavenger item stays found.
+export function checkLate(late, at) {
+  if (!late || late.arrivedAt != null) return false;
+  if (late.place.floor !== (at.floor || 0)) return false;
+  if (Math.hypot(late.place.x - at.x, late.place.z - at.z) > FIND_R) return false;
+  late.arrivedAt = at.now ?? 0;
+  return true;
+}
+
+// How close, and how warm — `huntWarmth`'s own shape, for a single place
+// instead of the nearest of several. `null` once you have arrived: a warmth
+// reading for a bell you already made is not a reading anybody wants.
+export function lateWarmth(late, at, opts = {}) {
+  if (!late || late.arrivedAt != null) return null;
+  const dist = routedDistance(opts.nav || null, at, late.place);
+  return { ...bandFor(dist), dist, place: late.place };
+}
+
+// Seconds to spare: positive is early, negative is how late you were. `null`
+// until you arrive — a score is not a score before the bell has been beaten
+// or missed.
+export function lateScore(late) {
+  if (!late || late.arrivedAt == null) return null;
+  return late.deadline - late.arrivedAt;
+}
+
+// The line the panel prints once a score exists.
+export function lateResult(late) {
+  const score = lateScore(late);
+  if (score == null) return '';
+  if (score >= 0) return `Made it with ${Math.round(score)}s to spare.`;
+  return `Late by ${Math.round(-score)}s.`;
+}

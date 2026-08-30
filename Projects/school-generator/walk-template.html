@@ -212,6 +212,7 @@
             <li><kbd>P</kbd> <span class="what">photo mode</span> · <kbd>F</kbd> <span class="what">ghost (no-clip)</span></li>
             <li><kbd>L</kbd> <span class="what">people</span> · <kbd>V</kbd> <span class="what">follow somebody</span></li>
             <li><kbd>K</kbd> <span class="what">fire drill</span> · <kbd>B</kbd> <span class="what">bell</span> · <kbd>N</kbd> <span class="what">PA</span></li>
+            <li><kbd>G</kbd> <span class="what">late for class, once people are in the building</span></li>
           </ul>
         </div>
       </div>
@@ -220,6 +221,7 @@
         <button id="walk-start" class="primary">Click to Walk</button>
         <button id="walk-life">👥 People</button>
         <button id="walk-hunt" class="hidden">⭐ Star hunt — find the hidden stars</button>
+        <button id="walk-late" class="hidden">🏃 Late for class</button>
       </div>
       <p style="font-size:11px">
         Made with <a href="https://greyversusblue.com/Projects/school-generator/" style="color:var(--accent)">School Generator</a> —
@@ -70422,7 +70424,96 @@ function huntSummary(hunt) {
   return { found, total, done: total > 0 && found >= total };
 }
 
-return { DEFAULT_COUNT, MIN_COUNT, MAX_COUNT, FIND_R, REVEAL_R, INSET, MIN_TILE_SIDE, MIN_YARD_SIDE, OUTDOOR_SHARE, FLOOR_FEET, WARMTH_STEP, HUNT_ITEMS, WARMTH_BANDS, roomBounds, quadrantOf, describePlace, huntCandidates, yardCandidates, hidingPlaces, startHunt, unfound, apparentDistance, routedDistance, nearestHidden, bandFor, huntWarmth, checkFind, revealAt, huntSummary };
+// ---------- late for class (Phase 33) ----------
+//
+// The scavenger hunt re-aimed the way the haunt already re-aimed it: one
+// destination instead of a dealt set, a clock against it instead of a warmth
+// band with no stakes. A timetable row hands over a room; the tardy bell
+// hands over a deadline; everything that finds it — `routedDistance`,
+// `bandFor`, `describePlace`, `roomBounds` — is the same machinery a
+// scavenger hunt already trusted, because "how close is the thing I'm
+// looking for, and which way" doesn't care whether the thing is hidden or
+// merely late.
+
+// A single hiding place, dealt from a *known* room instead of the shuffle —
+// the room a timetable row already named, at its biggest walkable tile so
+// the door of it is somewhere a person can actually stand rather than a
+// centroid nobody drew.
+function classPlace(nav, roomId, opts = {}) {
+  const meshes = (nav && nav.mesh) || [];
+  for (let f = 0; f < meshes.length; f++) {
+    const mesh = meshes[f];
+    if (!mesh || !mesh.byRoom || !mesh.byRoom.has(roomId)) continue;
+    const tiles = (mesh.byRoom.get(roomId) || []).filter((t) => t.rect);
+    if (!tiles.length) return null;
+    const tile = tiles.slice().sort((a, b) => b.area - a.area)[0];
+    const bounds = roomBounds(mesh, roomId);
+    const node = nav.nodes ? nav.nodes.get(roomId) : null;
+    const name = (node && node.name) || opts.roomName || '';
+    return {
+      id: 'late', room: roomId, roomName: name, floor: f, outdoors: false,
+      x: tile.cx, z: tile.cz,
+      hint: describePlace(bounds, tile.cx, tile.cz, name, f, meshes.length),
+    };
+  }
+  return null;
+}
+
+// Runtime state, never saved — the same rule the scavenger hunt follows: this
+// is something you do in a building, not something the building is.
+// `opts.deadline` is a clock reading in seconds on the walk's own clock (the
+// caller's, not this module's — it never starts one), the moment the tardy
+// bell rings; `opts.now` is where that clock stands when the row is handed
+// over.
+function startLate(nav, roomId, opts = {}) {
+  const place = classPlace(nav, roomId, opts);
+  if (!place) return null;
+  return {
+    place,
+    roomId,
+    deadline: Number.isFinite(opts.deadline) ? opts.deadline : 0,
+    startedAt: Number.isFinite(opts.now) ? opts.now : 0,
+    arrivedAt: null,
+  };
+}
+
+// Did standing here get you to class? Only on the room's own storey and only
+// within FIND_R of it, same as `checkFind` — and only once, the same way a
+// found scavenger item stays found.
+function checkLate(late, at) {
+  if (!late || late.arrivedAt != null) return false;
+  if (late.place.floor !== (at.floor || 0)) return false;
+  if (Math.hypot(late.place.x - at.x, late.place.z - at.z) > FIND_R) return false;
+  late.arrivedAt = at.now ?? 0;
+  return true;
+}
+
+// How close, and how warm — `huntWarmth`'s own shape, for a single place
+// instead of the nearest of several. `null` once you have arrived: a warmth
+// reading for a bell you already made is not a reading anybody wants.
+function lateWarmth(late, at, opts = {}) {
+  if (!late || late.arrivedAt != null) return null;
+  const dist = routedDistance(opts.nav || null, at, late.place);
+  return { ...bandFor(dist), dist, place: late.place };
+}
+
+// Seconds to spare: positive is early, negative is how late you were. `null`
+// until you arrive — a score is not a score before the bell has been beaten
+// or missed.
+function lateScore(late) {
+  if (!late || late.arrivedAt == null) return null;
+  return late.deadline - late.arrivedAt;
+}
+
+// The line the panel prints once a score exists.
+function lateResult(late) {
+  const score = lateScore(late);
+  if (score == null) return '';
+  if (score >= 0) return `Made it with ${Math.round(score)}s to spare.`;
+  return `Late by ${Math.round(-score)}s.`;
+}
+
+return { DEFAULT_COUNT, MIN_COUNT, MAX_COUNT, FIND_R, REVEAL_R, INSET, MIN_TILE_SIDE, MIN_YARD_SIDE, OUTDOOR_SHARE, FLOOR_FEET, WARMTH_STEP, HUNT_ITEMS, WARMTH_BANDS, roomBounds, quadrantOf, describePlace, huntCandidates, yardCandidates, hidingPlaces, startHunt, unfound, apparentDistance, routedDistance, nearestHidden, bandFor, huntWarmth, checkFind, revealAt, huntSummary, classPlace, startLate, checkLate, lateWarmth, lateScore, lateResult };
 })();
 // ---- js/snapgrid.js ----
 const __m_js_snapgrid_js = (() => {
@@ -88679,7 +88770,8 @@ return { EDGE_NONE, EDGE_WALL, EDGE_DOOR, EDGE_GLASS, EDGE_RAIL, EDGE_WINDOW, ED
 })();
 // ---- js/tour.js ----
 const __m_js_tour_js = (() => {
-
+const { MOODS } = __m_js_sky_js;
+const { WEATHER_KINDS, normalizeWeather } = __m_js_weather_js;
 // tour.js — a camera path, recorded and played back.
 //
 // Phase 9's guided tours: stand somewhere in the building, press record, walk
@@ -88708,12 +88800,39 @@ const __m_js_tour_js = (() => {
 // camera turning from 170° to -170° turns twenty degrees rather than three
 // hundred and forty; pitch is plain linear and clamped, because a tour that
 // rolls past straight up is a bug in every playback engine ever written.
+//
+// Phase 33 gives a stop three more things to carry, all optional: an `hour`
+// (env's own `minutes` field, so nothing downstream has to translate), a
+// `mood` key (sky.js's, purely a label plus a `lights` hint — the *hour* is
+// what actually moves the sun) and a `weather` record (weather.js's, kind
+// plus intensity plus wind). `sampleClock` answers where the tour's clock
+// stands at time t the same way `sampleTour` answers where the camera is: the
+// hour eased the short way round between the nearest defined stops on either
+// side (it is an angle around a 24-hour clock face, so `lerpAngle` is the
+// right tool twice in this file), mood and weather held from the last
+// defined stop and flipped at the midpoint to the next — the storey
+// convention again, because a mood or a weather kind is no more a continuous
+// quantity than a floor number is. A stop that sets none of the three leaves
+// the tour's clock exactly where the drawing board had it, which is what
+// lets an old tour keep meaning what it always meant.
+//
+// `narration` is a fourth, simpler thing: a sentence a stop carries and the
+// caller reads once, on arrival — the PA path already knows how to speak one
+// and caption it when nothing can.
+//
+// Both imports below are pure siblings, the same bargain weather.js struck
+// with sound.js and shapes.js: nothing here is a dependency this module
+// couldn't afford to keep pure.
+
+
 
 const MAX_TOURS = 12;
 const MAX_KEYS = 64;
 const MIN_SEC = 0.2;
 const MAX_SEC = 60;
 const MAX_HOLD = 30;
+const MAX_NARRATION = 200;
+const DAY_MINUTES = 1440;
 
 // Default travel speed when a stop is recorded, in feet per second. A little
 // slower than a walk (walkthrough.js walks at 12) because a tour is being
@@ -88760,6 +88879,27 @@ const applyEase = (kind, u) => (kind === 'linear' ? clamp(u, 0, 1) : easeInOut(u
 
 // ---------- the records ----------
 
+// An hour is `null` (this stop says nothing about the clock) or a minute of
+// the day, 0..1439 — env's own range, so nothing downstream has to translate.
+function normHour(v) {
+  return Number.isFinite(v) ? Math.round(clamp(v, 0, DAY_MINUTES - 1)) : null;
+}
+
+// A mood is '' (no opinion) or one of sky.js's keys — validated here rather
+// than trusted, the same as `ease` two lines below it.
+function normMood(v) {
+  return typeof v === 'string' && MOODS.some((m) => m.key === v) ? v : '';
+}
+
+// Weather is `null` (no opinion) or a normalized weather.js record. The kind
+// has to be named explicitly — an object with no recognizable `kind` is not
+// "clear weather asked for", it is nothing asked for at all, so it stays
+// null rather than becoming a silent `{ kind: 'clear', ... }`.
+function normWeather(v) {
+  if (!v || typeof v !== 'object' || !WEATHER_KINDS.includes(v.kind)) return null;
+  return normalizeWeather(v);
+}
+
 function makeKey(cam = {}, opts = {}) {
   return {
     x: num(cam.x),
@@ -88775,6 +88915,12 @@ function makeKey(cam = {}, opts = {}) {
     hold: clamp(num(opts.hold, 0), 0, MAX_HOLD),
     ease: EASES.includes(opts.ease) ? opts.ease : 'smooth',
     label: typeof opts.label === 'string' ? opts.label.slice(0, 40) : '',
+    // Phase 33: the clock a stop optionally carries, and the sentence it
+    // optionally says on arrival.
+    hour: normHour(opts.hour),
+    mood: normMood(opts.mood),
+    weather: normWeather(opts.weather),
+    narration: typeof opts.narration === 'string' ? opts.narration.slice(0, MAX_NARRATION) : '',
   };
 }
 
@@ -88994,6 +89140,71 @@ function samplePath(tour, step = 0.25, cap = 2000) {
   return out;
 }
 
+// ---------- the clock a tour optionally carries ----------
+
+// Every stop that actually says something about hour, mood or weather, in
+// timeline order. A tour with none of them (every existing tour, and most
+// new ones) is an empty list, which is what makes `sampleClock` a no-op for
+// them.
+function clockStops(tour) {
+  const keys = tour && Array.isArray(tour.keys) ? tour.keys : [];
+  const { stops } = timeline(tour);
+  const out = [];
+  keys.forEach((k, i) => {
+    if (k.hour == null && !k.mood && !k.weather) return;
+    out.push({ at: stops[i] ? stops[i].arrive : 0, hour: k.hour, mood: k.mood, weather: k.weather });
+  });
+  return out;
+}
+
+// Where the tour's clock stands at time t — `null`/''/`null` in every field
+// a tour never mentions, so a caller can tell "say nothing" from "say clear
+// at 10am" and leave the live sky alone in the first case. See the file
+// header for why hour eases and mood/weather hold-and-flip.
+function sampleClock(tour, t) {
+  const stops = clockStops(tour);
+  if (!stops.length) return { hour: null, mood: '', weather: null };
+
+  const duration = tourDuration(tour);
+  let time = clamp(num(t), 0, duration);
+  if (tour && tour.loop && duration > 0) time = ((num(t) % duration) + duration) % duration;
+
+  let prev = stops[0], next = null;
+  for (const s of stops) {
+    if (s.at <= time) prev = s;
+    else { next = s; break; }
+  }
+  if (!next) return { hour: prev.hour, mood: prev.mood || '', weather: prev.weather };
+
+  const span = Math.max(1e-6, next.at - prev.at);
+  const u = clamp((time - prev.at) / span, 0, 1);
+
+  let hour = prev.hour;
+  if (prev.hour != null && next.hour != null) {
+    const a = (prev.hour / DAY_MINUTES) * Math.PI * 2;
+    const b = (next.hour / DAY_MINUTES) * Math.PI * 2;
+    const mixed = lerpAngle(a, b, u);
+    hour = (((mixed / (Math.PI * 2)) * DAY_MINUTES) % DAY_MINUTES + DAY_MINUTES) % DAY_MINUTES;
+  } else if (prev.hour == null && next.hour != null) {
+    hour = next.hour;
+  }
+
+  const mood = u < 0.5 ? (prev.mood || '') : (next.mood || prev.mood || '');
+
+  let weather = prev.weather || null;
+  if (prev.weather && next.weather && prev.weather.kind === next.weather.kind) {
+    weather = {
+      kind: prev.weather.kind,
+      intensity: prev.weather.intensity + (next.weather.intensity - prev.weather.intensity) * u,
+      wind: prev.weather.wind + (next.weather.wind - prev.weather.wind) * u,
+    };
+  } else {
+    weather = u < 0.5 ? (prev.weather || null) : (next.weather || prev.weather || null);
+  }
+
+  return { hour, mood, weather };
+}
+
 // ---------- playback ----------
 
 // The clock, as a record rather than as four variables in main.js. `rate` is
@@ -89017,7 +89228,7 @@ function stepPlayback(play, dt) {
   return { ...play, t: over ? play.duration : t, playing: !over };
 }
 
-return { MAX_TOURS, MAX_KEYS, MIN_SEC, MAX_SEC, MAX_HOLD, TOUR_SPEED, MIN_LEG, HALF_PI, MAX_PITCH, wrapAngle, shortestArc, lerpAngle, easeInOut, EASES, applyEase, makeKey, makeTour, normalizeTour, normalizeTours, toursOf, legDistance, defaultSeconds, addKey, removeKey, updateKey, moveKey, retime, timeline, tourDuration, tourSummary, sampleTour, samplePath, startPlayback, stepPlayback };
+return { MAX_TOURS, MAX_KEYS, MIN_SEC, MAX_SEC, MAX_HOLD, MAX_NARRATION, DAY_MINUTES, TOUR_SPEED, MIN_LEG, HALF_PI, MAX_PITCH, wrapAngle, shortestArc, lerpAngle, easeInOut, EASES, applyEase, makeKey, makeTour, normalizeTour, normalizeTours, toursOf, legDistance, defaultSeconds, addKey, removeKey, updateKey, moveKey, retime, timeline, tourDuration, tourSummary, sampleTour, samplePath, sampleClock, startPlayback, stepPlayback };
 })();
 // ---- js/rates.js ----
 const __m_js_rates_js = (() => {
@@ -92597,13 +92808,13 @@ const { buildingOccupancy } = __m_js_occupancy_js;
 const { MOODS, applyMood } = __m_js_sky_js;
 const { WEATHER_MOODS, applyWeatherMood, normalizeWeather, isDefaultWeather } = __m_js_weather_js;
 const { buildCollider, storeyAt, WALKER_R, updateDoorsFor } = __m_js_collide_js;
-const { startHunt, checkFind, huntWarmth, huntSummary } = __m_js_hunt_js;
+const { startHunt, checkFind, huntWarmth, huntSummary, startLate, checkLate, lateWarmth, lateResult } = __m_js_hunt_js;
 const { normalizeHaunt, stageFor, stageKnobs, flickerAt, writingPlaces, crashCurve, CRASH_S, slamCandidate, banishNode, escapeDoor, LOCKED_TEXT, HAUNT_COUNT, HAUNT_ITEM } = __m_js_haunt_js;
 const { makeCreature, makeCreatureCtx, stepCreature, noteSlam, placeCreature, CREATURE_R } = __m_js_creature_js;
 const { terrainField, groundAt } = __m_js_terrain_js;
 const { buildNav } = __m_js_navgraph_js;
 const { makePopulation, makeContext, retargetAll, stepAgents, bodiesOn, makeCrowdField, clearCrowd, normalizeLife } = __m_js_agents_js;
-const { blockAt, bellsBetween, wrapMinutes, clockText } = __m_js_schedule_js;
+const { blockAt, bellsBetween, wrapMinutes, clockText, nextBell } = __m_js_schedule_js;
 const { normalizeTimetable, isEmptyTimetable, timetablePlan } = __m_js_timetable_js;
 const { computeFloorPlan, drawPlanBody } = __m_js_blueprint_js;
 const { MINI_SIZE, minimapView, worldToMini, viewCone, markerAngle, scaleBar, describeMinimap, nextMode, nextOrient, MIN_RANGE, MAX_RANGE } = __m_js_minimap_js;
@@ -92898,6 +93109,77 @@ function boot() {
     // silence arriving on schedule, not a special case for it.
     audio.setMurmur([]);
     walkHud.textContent = 'The building is empty again.';
+  }
+
+  // ---------- late for class (Phase 33) ----------
+  //
+  // hunt.js re-aimed exactly the way the haunt already re-aims it: one
+  // destination out of the timetable instead of a dealt set, a tardy bell
+  // instead of a warmth band with nothing riding on it. It borrows the same
+  // glowing marker the star hunt uses (`renderApi.setHunt`/`updateHunt` take
+  // any list of `{x, z, floor, id}` places) rather than teaching the renderer
+  // a second one, and needs `life.plan` and `life.nav` — which is why the
+  // button presses People first if nobody has yet.
+  let late = null;
+  let lateElapsed = 0;
+  let lateWarmOpts = null;
+  const EMPTY_LATE_SET = new Set();
+
+  function lateStop() {
+    late = null;
+    renderApi.setHunt([]);
+  }
+
+  function nextPeriodBell(sched, minutes) {
+    let m = minutes;
+    for (let i = 0; i < 8; i++) {
+      const b = nextBell(sched, m);
+      if (!b) return null;
+      if (b.kind === 'period') return b;
+      m = b.at;
+    }
+    return null;
+  }
+
+  function lateStart() {
+    if (!life.plan || !life.nav) {
+      walkHud.textContent = 'Nobody has a timetable — this design was never given one.';
+      return false;
+    }
+    const sched = life.ctx.schedule;
+    const bell = nextPeriodBell(sched, state.env.minutes);
+    if (!bell) { walkHud.textContent = 'No more periods today.'; return false; }
+    const passing = blockAt(sched, bell.at);
+    const deadline = (bell.in + sched.passingMin) * 60;
+    const moving = life.plan.cohorts.filter((c) => c.rooms[passing.index] && c.rooms[passing.index] !== c.rooms[0]);
+    const choices = moving.length ? moving : life.plan.cohorts.filter((c) => c.rooms[passing.index]);
+    if (!choices.length) { walkHud.textContent = 'Nobody has a room booked next period.'; return false; }
+    const pick = choices[Math.floor(Math.random() * choices.length)];
+    late = startLate(life.nav, pick.rooms[passing.index], { deadline, now: 0, roomName: pick.name });
+    if (!late) { walkHud.textContent = 'That room is not on the walkable mesh.'; return false; }
+    lateElapsed = 0;
+    lateWarmOpts = { nav: life.nav };
+    renderApi.setHunt([late.place]);
+    walkHud.textContent = `🏃 Get to ${late.place.roomName || 'class'} before the bell — ${late.place.hint}.`;
+    return true;
+  }
+
+  function lateUpdate(dt) {
+    if (!late || late.arrivedAt != null) return;
+    lateElapsed += dt;
+    const at = walk.at;
+    if (checkLate(late, { ...at, now: lateElapsed })) {
+      renderApi.setHunt([]);
+      walkHud.textContent = `🏃 ${lateResult(late)}`;
+      return;
+    }
+    const warm = lateWarmth(late, at, lateWarmOpts || {});
+    if (warm) {
+      const left = late.deadline - lateElapsed;
+      walkHud.textContent = `🏃 ${left >= 0 ? `${Math.ceil(left)}s to the bell` : `${Math.ceil(-left)}s late already`}`
+        + ` · ${warm.label} — ${warm.place.hint}`;
+    }
+    renderApi.updateHunt(at, EMPTY_LATE_SET, dt);
   }
 
   // The clock runs while the school does — whole minutes only, and the bells
@@ -93745,6 +94027,25 @@ function boot() {
       }
     });
   }
+  // Late for class's own button — shown only when the design carries a
+  // timetable at all, the same rule the star hunt follows for the haunt.
+  const walkLateBtn = $('walk-late');
+  if (walkLateBtn) {
+    if (!isEmptyTimetable(normalizeTimetable(state.timetable))) walkLateBtn.classList.remove('hidden');
+    walkLateBtn.addEventListener('click', () => {
+      if (late) { lateStop(); walkHud.textContent = 'Late for class ended.'; return; }
+      if (!life.plan) lifeStart();
+      if (!lateStart()) return;
+      audio.setActive(true);
+      if (isTouch) {
+        walk.enableTouch();
+        document.body.classList.add('touch-walk');
+        walkOverlay.classList.add('hidden');
+      } else {
+        walk.controls.lock();
+      }
+    });
+  }
   const hauntEndBtn = $('haunt-end-close');
   if (hauntEndBtn) {
     hauntEndBtn.addEventListener('click', () => {
@@ -93770,6 +94071,7 @@ function boot() {
       case 'KeyV': lifeFollow(); break;
       case 'KeyB': audio.ring(); break;
       case 'KeyN': audio.announce(); break;
+      case 'KeyG': if (!$('walk-late').classList.contains('hidden')) $('walk-late').click(); break;
       default: break;
     }
   });
@@ -93796,6 +94098,7 @@ function boot() {
     labelGateUpdate();
     lifeUpdate(dt);
     hauntUpdate(dt);
+    lateUpdate(dt);
     renderApi.poseLifts(walk.lifts || (life.ctx && life.ctx.lifts));
     renderApi.render(dt);
     if (miniOn && !photoMode) drawMinimap();
@@ -93806,6 +94109,7 @@ function boot() {
   window.walkApp = {
     get state() { return state; }, renderApi, walk, audio, life, setPhotoMode,
     haunt, hauntStart, hauntUpdate,
+    get late() { return late; }, lateStart,
   };
 }
 

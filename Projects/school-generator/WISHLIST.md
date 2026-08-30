@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: thirty-two phases are shipped — three arcs, all of arc four,
-two after it, and arc five is underway: Phases 27–32 have shipped and
-Phases 33–34 are open below.** Three arcs took a grid
+**Status: thirty-three phases are shipped — three arcs, all of arc four,
+three after it, and arc five is underway: Phases 27–33 have shipped and
+Phase 34 is open below.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school. Full history —
 what each phase did, what fought back, why phases were ordered the way they
 were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
@@ -1529,7 +1529,7 @@ three at 16ft pitch, slides the storey 8ft out and 8ft home, and deletes
 everything it placed so the checks after it meet the storey they expect.
 `walk-template.html` regenerated, since shapes.js rides in it.
 
-## Phase 33 — The director's cut
+## Phase 33 — The director's cut *(shipped)*
 
 **A tour moves the camera and does nothing else.**
 
@@ -1539,18 +1539,18 @@ video, a PA that (since Phase 28) can talk, and a timetable that knows
 where everyone should be. This phase introduces them to each other — and
 spends the leftovers on the game the analysis was always pointing at.
 
-- [ ] **Stops learn the clock.** A tour stop optionally carries an hour, a
+- [x] **Stops learn the clock.** A tour stop optionally carries an hour, a
   mood and a weather; playback eases between them, so a sunrise flythrough
   is three stops and no editing.
-- [ ] **Narration.** A stop carries a sentence; Web Speech reads it on
+- [x] **Narration.** A stop carries a sentence; Web Speech reads it on
   arrival through the PA path, and it lands as a caption on the machine
   with no voices — which is also the honest answer for film, below.
-- [ ] **One-click film.** Play a tour straight into the existing
+- [x] **One-click film.** Play a tour straight into the existing
   MediaRecorder path with the UI hidden, and download the clip. What the
   recording can carry is stated, not fudged: the Web Audio graph records;
   `speechSynthesis` cannot be routed into it, so narration rides the film
   as burned-in captions and the voice stays live-only.
-- [ ] **Late for class.** Hand the walker a timetable row and a tardy
+- [x] **Late for class.** Hand the walker a timetable row and a tardy
   bell: warmth by `routedDistance` to the room's door, score in seconds to
   spare — `hunt.js` re-aimed the way the haunt already re-aimed it, in the
   tool and in the export.
@@ -1561,6 +1561,96 @@ the tours record gains optional fields — additive, the cheap kind.
 *Model:* **Claude Sonnet 5** — sequencing, capture wiring and a re-skin
 over shipped machinery; the one pure bit (a stop schedule and its easing)
 is small and tested like anything else.
+
+*How it shipped:* the clock lives on the key the same way the position
+does — `hour` (env's own `minutes`, so nothing downstream translates),
+`mood` (a sky.js key, purely a label plus a `lights` hint) and `weather`
+(a weather.js record), all optional and all validated in `makeKey` rather
+than trusted. `sampleClock` answers a tour's clock at time *t* the way
+`sampleTour` answers its camera: the hour eases the short way round
+between the nearest defined stops either side of it — `lerpAngle` doing
+double duty, because an hour is an angle around a 24-hour face exactly the
+way yaw is one around a compass — and mood/weather hold from the last
+defined stop and flip at the midpoint of the leg to the next, the storey
+convention read again: a mood or a weather kind is no more continuous a
+quantity than a floor number is. Weather goes one step further than floor
+ever needed to: two stops of the *same* kind crossfade intensity and wind,
+so a storm can build rather than only switch on. None of it touches
+`state.env`/`state.weather` while a tour plays — a played sky is a
+transient handed straight to the renderer and put back the moment the
+tour stops, the same bargain a shove physics or a scavenger hunt strikes,
+because Ctrl+Z has no business walking back through a flythrough.
+
+Recording a stop's sky is a capture, not a form: a "🌅 also capture the sky"
+checkbox beside **Add stop** reads the sky panel exactly where `cameraStop`
+already reads the camera, including which named mood put it there (tracked
+alongside the panel, reset the instant a slider is touched by hand rather
+than a mood button). Editing after the fact is two icon buttons per row —
+☀/☾ sets or clears a stop's captured sky off whatever the sky panel shows
+*now*, and 💬 native-prompts for the sentence to say, the same lightweight
+affordance the haunt's own arming dialog and a design's rename already use.
+
+Narration rides the existing PA speech path (`speechSynthesis`, cancel-then-
+speak) on arrival, which is where the film forced the honest answer the
+backlog asked for: `captureStream()` only ever sees the canvas it was
+called on, and a caption drawn in the DOM is invisible to it. So one-click
+film draws its own frame — a plain 2D canvas the same size as the WebGL
+one, blitted from it every frame while recording with the caption composited
+on top, and *that* canvas is what gets captured. The Web Audio graph rides
+the recorder unmodified (it was never tied to a canvas); synthesized
+speech is the one genuinely uncapturable thing, which is exactly why the
+caption has to be burned in rather than layered on. The live view goes
+further than the file needs to: a `filming` class blanks every panel while
+the recorder runs, because the point of one click was a clip that never
+looked like it came out of a drawing program, even though nothing on that
+screen was ever going to reach the file either way.
+
+Late for class turned out to need almost no new machinery, which is the
+whole reason it was believed to fit in the leftovers: `hunt.js` gained a
+single-target dealer (`classPlace`, off a room id instead of the shuffle)
+and a clock against it (`startLate`/`checkLate`/`lateScore`), and every
+other question — how close, which way, what the hint says — is the
+scavenger hunt's own `routedDistance`, `bandFor` and `describePlace`,
+unchanged. The tardy bell reads `schedule.js`'s own bell list rather than
+inventing a second clock: `nextBell` finds the next passing-period bell,
+`blockAt` on that minute hands back the passing block itself, and its
+`.end` is the moment the class actually starts — the deadline — with
+`.index` naming which period a `timetablePlan` cohort's room comes from.
+A cohort actually changing rooms is preferred over one staying in
+homeroom, so "late for class" is never a walk to where you already are.
+The marker in the world is the scavenger hunt's own glowing token
+(`renderApi.setHunt`/`updateHunt` take any list of `{x, z, floor, id}`
+places), reused rather than taught to render.js twice. The export carries
+the same feature off `life.plan`/`life.nav` once People has been pressed,
+behind a button the shell hides entirely on a design with no timetable —
+`hunt.js`'s re-aim serves both sides of the file the way it already served
+the haunt's star hunt in Phase 24.
+
+*What fought back:* the TDZ bug this file has now shipped three times.
+`lastMoodKey` — what a tour stop's sky checkbox actually captures — is read
+by `envChanged` on every call, and a `let` declared textually below the
+function that reads it is exactly the mistake Phase 30 and Phase 31 each
+made once; it is declared ahead of it here, with the reason written beside
+it, so a fourth phase does not get to rediscover the rule. The other real
+snag was believing the recorded clip already excluded the tool chrome —
+it does, `captureStream()` never sees the DOM — which meant the actual gap
+was narration, not layout: a caption is either burned into the pixels the
+recorder reads or it does not exist on the far side of Save As, and no
+amount of CSS fixes that.
+*Tests:* `test/tour.test.mjs` gained the clock — validation, the
+silence a tour with no clock samples as, holding a single defined hour,
+easing (including across midnight, the short way, the same claim yaw
+already had to prove), the storey-style hold-and-flip for mood and
+weather, and a same-kind weather crossfade — plus a save round trip
+carrying all four new fields. `test/hunt.test.mjs` gained late for class
+whole: a class place dealt from a named room, arrival gated by storey and
+radius exactly like a find, a score that is seconds to spare either way,
+and warmth that stops the moment you arrive. `node --test 'test/*.test.mjs'`
+runs clean at 1,869 tests, `test/export-walk.test.mjs` confirms the
+rebuilt template closed the same way it always has, and the visual suite's
+one expected difference — the walk overlay gained a fourth button — is the
+new committed baseline. *Next open phase:* **34 — Claude Fable 5** (a
+differ over the save format, model-layer by definition).
 
 ## Phase 34 — A history somebody else can read
 
