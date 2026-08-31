@@ -1,14 +1,15 @@
 # School Generator — Feature Wishlist
 
-**Status: thirty-three phases are shipped — three arcs, all of arc four,
-three after it, and arc five is underway: Phases 27–33 have shipped and
-Phase 34 is open below.** Three arcs took a grid
-editor to a walkable, furnished, generated, priced, networked school. Full history —
-what each phase did, what fought back, why phases were ordered the way they
-were — lives in `git log -p WISHLIST.md`; this file keeps what a builder
-needs going forward — the architecture, the conventions that were learned the
-hard way, and the standing backlog — and now ends with the shipped arc
-rather than only a backlog.
+**Status: thirty-five phases are shipped and one is open — Phase 34,
+below; arc six is planned below it and unstarted.** Three arcs took a grid
+editor to a walkable, furnished, generated, priced, networked school; arc
+four built for the person handed the result; arc five for the building
+itself; the phases between and after the arcs fixed what feedback found.
+Full history — each shipped phase's original plan, its task list, and the
+long form of how it landed — lives in `git log -p WISHLIST.md`; this file
+keeps what a builder needs going forward: the architecture, the
+conventions learned the hard way, the standing backlog, a compressed
+record of every shipped phase with its retrospective, and the open phases.
 
 ## What it is
 
@@ -451,67 +452,33 @@ and add to this list rather than starting a new one.
 
 ## Arc four — the guest
 
-Three arcs built a tool for the person who draws it; nothing yet is built
-for the person who is handed the result. Every phase so far assumed the
-builder — somebody who found the cheat sheet, learned twelve tools, and has
-the file open in a tab of their own. The six phases below share the other
-person: the visitor in their first five minutes (Phase 19), the eye that
-decides whether to stay (Phase 20), the walker who should learn the building
-by walking it rather than reading it (Phases 21 and 22), the friend with no
-tool at all (Phase 23), and — as an *and also*, the way arc two ended on
-Play — the player in the dark (Phase 24).
+Three arcs built a tool for the person who draws it; arc four built for the
+person who is handed the result — the visitor's first five minutes, the eye
+that decides whether to stay, the walker who learns the building by walking
+it rather than reading it, the friend with no tool at all, and, as an *and
+also*, the player in the dark. All six phases shipped.
 
-**Phase 19 is the self-contained win** — reach for it any time; it leans on
-nothing below it. **Phase 21 was the quiet prerequisite, and it is shipped:**
-its sightline module is the thing Phase 24 hunts you with. **Phase 23 was
-called the architectural risk of the arc — the biggest single piece of
-surgery since the nav mesh — and shipped without needing the surgery:** see
-its closing note for why the risk never materialised.
-**Phase 24 is an and-also: skip it and the arc still closes.** Two of the
-six phases claim no backlog item at all — the guest was never on the list.
-
-One convention is new with this arc, and it is about phases rather than
+One convention arrived with this arc, and it is about phases rather than
 code: **each phase names the Claude model that should run it.** The rule is
 that anything touching the model layer — a new pure module, the save format,
 the collider contract, visibility math, the export bundler's module
 surgery — runs on Claude Fable 5; surface work — DOM wiring, CSS, render
-presets — runs on Claude Opus 5 or Claude Sonnet 5. No phase in this arc is
+presets — runs on Claude Opus 5 or Claude Sonnet 5. No phase in this arc was
 small enough for Haiku, and that is a judgment, not an oversight.
 
 ## Phase 19 — The first five minutes *(shipped)*
 
 **The tool rewards the hundredth hour and punishes the first five minutes.**
 
-Twelve tools, four analysis panels, and dozens of walk-mode hotkeys exist,
-and every one of them is taught the same way: a `<kbd>` cheat sheet you must
-already know to look for. A new visitor gets a blank 4ft lattice and a
-toolbar of nouns, while the two best first experiences the tool owns — the
-sample school in `sample.js`, and `generate.js` reading a whole building out
-of one sentence — are hidden behind knowing they exist. The phase is judged
-by one test: somebody who has never seen the tool reaches a walkable school
-in five minutes without opening this file.
-
-- [x] **An opening moment.** First visit with no autosave offers three doors —
-  walk a sample school, generate one from a sentence, start with a blank
-  sheet — the existing `sample.js` and `brief.js`/`generate.js` behind three
-  buttons instead of an empty lattice.
-- [x] **A command palette.** Ctrl-K, fuzzy-matched over every tool, verb and
-  toggle `main.js` already wires; every result shows its hotkey, so the
-  palette *is* the cheat-sheet tutor.
-- [x] **One hint at a time.** The per-tool `<kbd>` panels fold behind a
-  "Keys & tips" disclosure, and a coach surfaces the single next-useful hint
-  on the status line at the moment it applies (first prop placed →
-  "R rotates"), once per browser.
-- [x] **The walk-mode sheet gets an audit.** Hotkeys grouped by how soon a
-  guest needs them (First steps / Seeing more / People & time / Play &
-  capture); the lift says its own E on the HUD when you stand at its doors.
-- [x] **Photo mode and the minimap learn the phone.** The photo panel is a
-  two-column top sheet on a narrow viewport; the minimap shrinks and, on a
-  touch walk, moves out from under the joystick.
-- [x] **Findings go where the eye is.** The title-block panels print their
-  three worst findings in words (`panelFindings` in report.js), and an open
-  finding in the report panel carries "⌖ Show it on the plan" — the editor
-  pans to the room, the walkthrough lights it on the minimap.
+Shipped the opening moment (first visit offers three doors — walk a sample
+school, generate one from a sentence, start blank), the Ctrl-K command
+palette fuzzy-matched over every verb `main.js` wires with each result
+showing its hotkey, a coach that surfaces one hint at a time, the walk-mode
+key sheet regrouped by how soon a guest needs it, a phone-sized photo panel
+and minimap, and findings put where the eye is — the title block prints its
+three worst in words, and an open report finding carries "⌖ Show it on the
+plan". Judged by one test: somebody who has never seen the tool reaches a
+walkable school in five minutes without opening this file.
 
 *What fought back:* running the tool on an actual phone found that it never
 booted on one — `main.js` had written a touch hint into an element two
@@ -528,32 +495,14 @@ the hotkeys call — no rival keymap — and is under the visual harness as
 
 **The picture is honest. Honest is not yet worth looking at.**
 
-The composer already runs SSAO, bloom and depth of field; what is missing is
-not another pass but character — materials with grain, light with a time of
-day, a sky that is more than a gradient, and chrome that looks like it
-belongs to the pictures the tool makes. Everything here writes state that
-already exists: the `env` record already knows the sun, the date and the
-exposure, and this phase gives it five good answers instead of six sliders.
-
-- [x] **Time-of-day moods, one click each.** Morning / noon / golden hour /
-  dusk / night — `MOODS`/`applyMood` in sky.js write the existing `env`
-  record whole (the time *and* the lights settled), and the row renders in
-  both the sky panel and photo mode.
-- [x] **Troffers that light.** `trofferSources` in lights.js walks the same
-  8ft lattice the renderer bakes its ceiling pans on, and the budget carries
-  them by default — clustered per room, ranked against placed fixtures, the
-  unbudgeted rest spilling into the ambient fill honestly. The flat
-  `HOUSE_FILL` guess is gone: the night fill is now the ceiling's own spill.
-- [x] **Clouds worth having, or none.** A four-octave value-noise fbm shader
-  on a second shell of the sky dome — no texture, no pass, colours from the
-  same palette table as everything else, still under prefers-reduced-motion.
-- [x] **Materials with grain.** `makeFinishRoughness` gives each finish
-  family its own sheen map (matte pile on carpet, per-plank satin on wood,
-  polish with matte chips on terrazzo) where every floor had shipped wearing
-  VCT's semi-gloss; standing-seam metal facades take a low-sun glint.
-- [x] **The chrome earns the scene.** Panels read as dark glass (hairline
-  top light, deeper drop), native selects and scrollbars claimed, active
-  states actually visible — see the `--accent-soft` bug under Phase 19.
+Gave the picture character without a new pass: five one-click time-of-day
+moods (`MOODS`/`applyMood` in sky.js, writing the existing `env` record
+whole), troffers that actually light off the ceiling-pan lattice with the
+invented `HOUSE_FILL` retired, four-octave value-noise clouds on a second
+sky shell, per-family finish roughness (`makeFinishRoughness` — matte pile
+on carpet, per-plank satin on wood, polish with matte chips on terrazzo, a
+low-sun glint on standing-seam metal), and chrome restyled as dark glass
+that belongs to the pictures the tool makes.
 
 *What fought back:* the first night walkthrough was white. Real troffers per
 pan plus a spill that every school now saturates plus the night exposure
@@ -566,35 +515,12 @@ down to 0.30 — the level the old invented house fill sat at, now earned.
 
 **A label the walker did not earn is information through a wall.**
 
-Room labels are `depthTest:false` sprites filtered to the camera's storey —
-in walk mode they named rooms you have never seen, through the walls that
-hide them. The fix: in walk mode a room's label is gated on unobstructed
-line of sight to that room's door. Doors are already known to `openings.js`
-and the navgraph; the walls that occlude are already derived as segments by
-`collide.js`; what is new is one pure module. It is worth saying now that
-Phase 24 is waiting for exactly this module.
-
-- [x] **`sightline.js`, pure, with its suite.** Given an eye point and one
-  storey's occluders, answer "is this door visible?" — 2D segment casts in
-  plan, storey-aware; a closed leaf occludes, an open one doesn't (the cast
-  runs against `leafSegment` at the leaf's live angle, so both fall out of
-  one rule). `doorPoints` names the rooms either side of every doorway;
-  `makeLabelGate` is the walk's memory of what it has seen.
-- [x] **Labels earned by sight, and a strict mode beside it.** The walk-mode
-  default is *earned*: a label fades in when its room's door is first seen
-  and stays learned for the rest of the walk — wayfinding, not a memory
-  test. *Strict* shows a label only while its door is currently in sight,
-  and *all* / *none* remain as overrides — `I` cycles the four, in the
-  palette and on the walk sheet. Sprites keep `depthTest:false` for
-  readability; the honesty now comes from the gate, not the depth buffer.
-- [x] **Edit mode unchanged.** The drawing board keeps always-on labels; the
-  walk-mode setting is a session decision that lives in the tool, never the
-  file, and the gate itself is rebuilt per walk — earned labels last exactly
-  as long as the colliders do.
-- [x] **Throttle it honestly.** Casts only for ungated labels on the
-  walker's storey, four per frame round-robin (`budget`), nearest door
-  first — the walker moves at walking speed and nothing needs an answer
-  every 16ms.
+`sightline.js`, pure with its suite: 2D occlusion casts in plan that gate
+walk-mode room labels on line of sight to the room's door — *earned* (a
+label learned when its door is first seen, the walk's default), *strict*,
+*all* and *none*, cycled on `I` — throttled to four casts a frame, nearest
+door first. Edit mode keeps always-on labels, and the gate is rebuilt per
+walk. This is the module Phase 24 later hunts you with.
 
 *What fought back:* two things, both geometric. A cast aimed *at* a doorway's
 centreline never strictly crosses the shut leaf lying exactly along it —
@@ -614,40 +540,16 @@ preference (`sg-labels`). *Model:* **Claude Fable 5**, as named.
 
 **In walk mode you have feet and no hands.**
 
-All placement was edit-mode-only through `propedit.js`, yet the pure half —
-`propplace.js`'s picking and three snap tiers — has never known what mode it
-is in. The real obstacle was a convention, and this phase renegotiated it in
-the open rather than sneaking past it: *the walkthrough collider is built
-once at walk-start* gained an invalidation clause for props, and *editing and
-walking are exclusive* narrowed to structure. Rooms, walls and storeys stay
-edit-only; furniture became something you can do with your hands from
-inside the building.
-
-- [x] **A carry slot.** Point at a prop, Q picks it up — a real prop, unlike
-  `shove.js`'s session-only scoot — it stands at its snapped set-down spot
-  ahead of the view (`carry.js`, pure, with its suite), and sets down
-  through `snapProp` with the same three tiers the editor gets. R turns it,
-  X puts it back.
-- [x] **A walk palette.** A short ring of catalog favourites on the digit
-  keys (`WALK_PALETTE`, eight floor-standing pieces); the full catalog stays
-  an edit-mode affordance.
-- [x] **The collider learns invalidation.** Placing or removing a blocking
-  prop rebuilds the cached storeys' prop colliders (`refreshProps` —
-  walls and door leaves stay built-once), and reaches the crowd's collider
-  too because they are the same objects. The convention bullet got
-  rewritten, not violated.
-- [x] **It writes the file.** A walk placement is a props edit like any
-  other — history diff, undo (from edit mode), autosave, session op if a
-  peer is connected — where a shove stays a session fact.
-- [x] **You can trap yourself, and that's allowed.** Placement refuses only
-  overlap, not consequence — `placementClear` tests the real rotated
-  footprint against walls, live door leaves and blocking props, and nothing
-  else; step-up and shove are the ways out, and the fire drill will tell
-  you what your barricade did.
-- [x] **A shove learns the real footprint.** `shoveClear` now tests the
-  rotated box (shrunk a shade so flush contact can still slide) through the
-  same overlap helpers the set-down uses, instead of a circle of the prop's
-  half-width. Crowd-shoves stay open on the backlog.
+Walk-mode placement: Q picks a real prop into a carry slot (`carry.js`,
+pure, with its suite), it stands at its snapped set-down spot ahead of the
+view through the editor's own `snapProp` tiers, R turns it, X puts it back;
+a walk palette of eight catalog favourites on the digit keys; and the
+collider convention renegotiated in the open — `refreshProps` re-derives
+prop obstacles in place while walls and door leaves stay built-once,
+reaching the crowd's collider too because they are the same objects. A walk
+placement writes the file like any other props edit; placement refuses only
+overlap, never consequence — you can trap yourself, and the fire drill will
+tell you what your barricade did.
 
 *What fought back:* the rotation convention, again — under it local +x
 swings toward −z, and the first overlap test was written for the other
@@ -669,55 +571,15 @@ Fable 5**, as named.
 
 **Sharing the school still means sharing the tool.**
 
-`share.js` proved a design travels without a server — but the link opens the
-whole editor, toolbar and all. The ask is one self-contained `.html`: the
-design, a walk-only runtime, and three.js, in a single file that opens from
-`file://` with no network — walkable, not editable. The codebase has no
-build step and this phase does not add one; it adds a bundler the codebase
-writes itself, and the twenty-phase discipline that pure modules never
-import three.js is exactly what makes the import graph severable. The honest
-obstacle is `render.js`: 5,600 lines owning both edit and walk. The phase
-may carry it whole or split scene-build from edit-only, and should refuse to
-do more surgery than the export needs.
-
-- [x] **`walk-main.js`, a second entry point.** Boots straight to
-  pointer-lock walk from an embedded design: deserialize → build → walk.
-  Keeps collision, doors, the lift, footsteps and acoustics, the sun,
-  labels-by-sight, shove, the minimap, photo mode, the crowd toggle — and
-  with the crowd, the fire drill (K), follow (V), the bell and the PA, plus
-  Phase 20's moods riding the photo panel. Leaves every editor tool,
-  generation, analysis, the session stack — and Phase 22's hands, which
-  write a file that doesn't exist there. The minimap came without its
-  findings layer for the same reason: findings are the report's, and the
-  report is analysis.
-- [x] **`tools/export-walk.mjs`, the house bundler.** Walks the static
-  import graph from the entry point, topologically sorts it, and rewrites
-  each module into an IIFE returning its exports — imports become const
-  destructures of the modules already evaluated, `libs/three.module.js` and
-  its addons ride along as modules like any other — into one
-  `<script type="module">` spliced into `tools/walk-shell.html`. The design
-  travels as `share.js`'s deflate-base64url payload in its own text script
-  tag. `test/export-walk.test.mjs` bundles on every run and asserts the
-  graph closed, severed cleanly (editor, generator, session and analysis
-  all stayed home), and parses as one strict script.
-- [x] **An export button, no node in sight.** `walk-template.html` ships
-  beside index.html — built by the same script, committed like a fixture,
-  with a byte-for-byte staleness test that says exactly what to run when it
-  drifts — and the Share dialog's "Download walkable .html" fetches it,
-  splices the current design in at the one marker both sides pin, and
-  downloads. The tracing image stays home (it never draws in a walk);
-  imported models come along, because a file has no 60 KB ceiling.
-- [x] **A budget, stated.** The committed template must stay under 4 MB
-  (`TEMPLATE_BUDGET`, enforced by the suite); it landed at 2.6 MB — 67
-  modules, half of them three.js — so a finished export with a generated
-  school's ~50 KB payload passes any chat client's file limit with room to
-  spare. The real targets held too: the exported file opens from `file://`
-  with zero network requests and zero console errors, verified in headless
-  Chromium.
-- [x] **Old exports open forever.** The exported file embeds its own
-  deserializer and its own codec — the graph test pins `save-load.js` and
-  `share.js` into the bundle — so a v12 tool keeps producing exports that
-  don't care what v13 looks like.
+One self-contained walkable `.html`: `walk-main.js` boots straight from an
+embedded design to pointer-lock walk — collision, doors, the lift,
+acoustics, labels-by-sight, the crowd and its drill, the moods; no editor,
+no analysis, no session stack — and `tools/export-walk.mjs`, the house
+bundler, walks the static import graph and rewrites it into one script
+spliced into `walk-template.html`, committed like a fixture with a
+byte-for-byte staleness test and a 4 MB budget it landed a third under.
+The exported file opens from `file://` with zero network requests and
+embeds its own deserializer and codec, so old exports open forever.
 
 *What fought back:* less than the plan feared, and the plan gets the credit:
 twenty phases of house style meant the graph had no default exports, no
@@ -737,64 +599,21 @@ v11 as-is). *Model:* **Claude Fable 5**, as named.
 
 **A building that can host a school day can host a bad night.**
 
-This is the arc's *and also*, the way arc two ended on Play: nothing later
-leans on it, skipping it costs the arc nothing, and it ships off by default
-behind its own switch. The argument for planning it anyway is that horror is
-the cheapest total conversion this codebase could buy. It already owns a
-crowd that pathfinds, positional audio with per-room reverb, a sun that
-sets, doors that open on approach, seasonal decals — and, after Phase 21, a
-module that knows what you can see. Combined with Phase 23, the payoff line
-writes itself: hand a friend a haunted school as one file.
+The haunted night, off by default behind an additive `haunt` record (save
+v12): `haunt.js` — a five-stage machine `day → dismissal → dusk → company →
+flight`, a pure function of `(finds, elapsed, seed, intensity)`, carrying
+the writings, the flicker curve, the fake crash and the way out — and
+`creature.js`, a lean stepper rather than an agent, that prefers the
+corridor you are not looking down (`sightline.js` inverted), stops when
+seen, closes when not, and is broken by the doors that slam behind the
+fleeing player. Sound finally went through walls by ray (`pathLossRay`,
+which daytime acoustics inherited free) and warmth went routed over the
+navgraph; the haunt runtime ships only in the walk export — the tool arms
+the record and never turns itself.
 
-- [x] **A `haunt` record, additive, off by default.** `{ on, seed,
-  intensity }` — save v12, the cheap append kind — and it joins the undo
-  delete-list of optional records, per the `Object.assign` convention.
-- [x] **Something in the building.** One creature that walks the navgraph
-  like anyone else, except it prefers the corridor you are not looking
-  down — `sightline.js` inverted. Seen, it stops; unseen, it closes.
-- [x] **Chase, flee, and doors as a mechanic.** Caught looking too long and
-  it comes at sprint speed over the navgraph, broken by line of sight and by
-  doors — they already open for agents; let them slam for you.
-- [x] **The writing on the walls.** Seeded canvas-texture decals from a
-  written set (disturbing, and PG-13 — it is a school-building tool), placed
-  by `decor.js`'s pack machinery pointed somewhere colder.
-- [x] **Sound through walls, finally by ray.** Hearing it one corridor over
-  is the whole game: a cast through sightline's segments prices the wall
-  between you and a source, and daytime acoustics inherit the upgrade for
-  free.
-- [x] **Distance, routed.** The hunt's warmth and "how close is it really"
-  share one routed answer over the navgraph instead of a straight line
-  through walls.
-- [x] **Flicker inside the budgets.** Failing fixtures, a downed sun, buzz
-  and silence — all within the existing twelve-light and voice budgets; the
-  mode costs atmosphere, not frame rate.
-
-*Leans on:* `agents.js`, `sightline.js` (Phase 21 is the prerequisite),
-`sound.js`, `decor.js`, `lift.js` (a lift at night is free horror), Phase 23
-for delivery; *collides with:* the crowd — a haunt implies an empty
-building, and the school day and the creature never share one — and the
-tool's tone: off by default, invisible until asked for. *Save:* v12 — one
-optional record, the cheap kind. *Model:* **Claude Fable 5** — chase and
-hearing are navgraph and occlusion math; the writing set is the only line of
-it any model could do.
-
-*How it shipped:* two new pure modules — `haunt.js` (the record, a
-five-stage machine `day → dismissal → dusk → company → flight` that is a
-pure function of `(finds, elapsed, seed, intensity)`, the flicker as a
-deterministic curve, the writings and their placement, the fake-crash curve,
-the slam geometry, and the way out) and `creature.js` (a lean stepper, *not*
-an agent — the crowd's fourteen hundred lines are timetable society, and the
-creature's goal model is a sightline query; it imports `rng`, the navgraph's
-routes, `moveWalker` and `sightClear` and does the rest with one switch).
-The objective is the delivery mechanism: the export's star hunt is
-`hunt.js` re-skinned (`opts.items`, `opts.indoors`), each find ratchets the
-stage, the last flips the objective to *get out* — with every exterior door
-but one locked ("The door appears to be locked. Find another way."), the
-open one a seeded pick from the five pathing-farthest, so it lands across
-the building. Caught is a fake crash — tear, static, one honest second of
-error card, wake at the entrance, finds kept. Doors slam *behind the fleeing
-player* (crossing a doorway mid-chase drives the leaf shut; a shut leaf
-breaks pursuit and sight with one rule), so no new hotkey was spent.
+*Save:* v12 — one optional record, the cheap kind. *Model:* **Claude Fable
+5** — chase and hearing are navgraph and occlusion math; the writing set is
+the only line of it any model could do.
 
 *What fought back:* the flicker trap was real — `updateDynamicLights`
 early-returns on `lampLevel`, so the seam multiplies *cached base
@@ -820,62 +639,14 @@ the same night to the inch.
 **Every drawing tool in this editor guessed, and three of them guessed
 wrong.**
 
-The wall tool did not ask how long a wall was. You pointed at a room's
-boundary and *the whole run between two of its corners* became a wall — so
-the length was the polygon's, not yours, and walling eight feet of a
-thirty-foot classroom side meant going and inserting two vertices by hand
-with a different tool first. The floor brush laid one 4ft cell at a time,
-which is the right gesture for an alcove and the wrong one for a classroom:
-dragging a rectangle out cell by cell is the tool asking you to do its
-arithmetic. And the drawing grid was 4ft whether the screen showed six
-hundred feet of site or thirty feet of one room — a grey wash at one end, and
-coarser than the thing being drawn at the other.
-
-This is the first phase after arc four, and it is a *fix* rather than an
-addition: nothing here is new capability, all of it is the tool no longer
-guessing on your behalf.
-
-Two of the backlog's own findings are closed here too. Its "a boundary
-that bounds no room cannot be drawn" wanted a boundary belonging to the
-*storey*; that is `floor.walls`. And selecting an elevator threw before it
-could be described, moved or deleted, because `cutBox` returns null for the
-one link that cuts no hole and two call sites read the null's `.x1` — which
-is the whole of "there is no way to delete a lift".
-
-- [x] **A wall is two points.** `wallrun.js` + `test/wallrun.test.mjs`. Click
-  one end, click the other, exactly the way the overlay's measurement is
-  taken and for the same reason (you zoom between the two clicks, and a drag
-  cannot survive that). The run's far end becomes the next anchor, so a
-  corridor is four clicks; Esc ends the run.
-- [x] **Where the run lands is worked out, not assumed.** A stretch that lies
-  along a room's boundary splits that ring at both ends and sets the covered
-  piece — so the room stays bounded, the thickness probe still sees a room on
-  each side, and a door still cuts into a ring segment. A stretch that lies
-  along nothing becomes a **wall line** on `floor.walls`. One drawn run can be
-  both. Drawing over an existing wall of the same kind absorbs it rather than
-  stacking a second wall on top of the first.
-- [x] **A drawing grid that follows the zoom.** `snapgrid.js` +
-  `test/snapgrid.test.mjs`. A ladder of round pitches from half a foot to
-  thirty-two, the finest that still leaves the view legible; the heavy line
-  falls back onto the 4ft cell once the grid is finer than one, so the module
-  the brush paints in stays countable. Both ends of every run land on an
-  intersection, and a toggle (`S`) holds the run square to the grid — Shift
-  for one free run, Alt to ignore the grid outright.
-- [x] **The floor tool draws rectangles.** Drag a corner to a corner and every
-  4ft cell inside is laid at once; `R` puts the brush back, and the eraser
-  shares the switch, because it rubs out the same cells.
-- [x] **Vertical links you can find.** The stairs panel lists every stair,
-  ramp, lift and floor opening the storey can act on, lights the selected
-  one, and gives select / rotate / nudge / delete a button each — through the
-  same functions the pointer and the keyboard already called. An elevator is
-  selectable from *either* level it serves, which is what `linkAt` always
-  said and what `selected()` did not.
-- [x] **A walkthrough that walks without Pointer Lock.** An iframe without
-  `allow="pointer-lock"`, a browser that refuses, a dismissed permission —
-  `lock()` reports none of it, and `update()`'s guard meant walk mode was not
-  merely mouse-less but frozen: WASD did nothing either. Pointer Lock is
-  still asked for first; when it does not arrive, the mouse steers by drag
-  and WASD moves regardless.
+A fix phase, the first after arc four: `wallrun.js` draws a wall as two
+points — landing on a room's ring where it lies along one, or as a
+free-standing **wall line** on the new per-storey `floor.walls` — and
+`snapgrid.js` gives the drawing grid a ladder of pitches that follows the
+zoom, square-held on `S`. The floor tool draws rectangles, the stairs panel
+lists every vertical link with select/rotate/nudge/delete buttons (which is
+what finally made an elevator deletable), and walk mode works without
+Pointer Lock — drag steering, and WASD regardless.
 
 *What fought back:* the free-standing wall wanted to be a room with a
 two-point ring, which would have been one line in `shapes.js` and a branch in
@@ -898,66 +669,14 @@ append, and the collider contract.
 **Three sentences of feedback, and every one of them was about a thing the
 build could already do and could not be asked to do.**
 
-*"We need a way to delete placed walls, staircases, elevators, etc."* Every
-one of those could be deleted, and each from inside the tool that placed it:
-select it with the stairs tool and press Delete, select it with the furniture
-tool and press Delete. The tool actually labelled **Erase** rubbed out floor
-and nothing else — so a click on a staircase with the eraser selected did
-precisely nothing, which is indistinguishable from a build with no way to
-delete a staircase. That is the whole finding: a verb that exists but is not
-where anybody looks for it is a verb that does not exist.
-
-*"I'd like to be able to place doors on existing walls. Same with windows."*
-The door tool has cut openings into free-standing walls since Phase 25 and
-into room boundaries since Phase 1. What it could not do was be *hit*: its
-grab tolerance was a constant 1.6 feet, which at the zoom that fits a school
-on a screen is about two pixels of aim. And a click that landed on nothing
-said nothing, so the tool's answer to a near miss was silence — which reads
-as "this tool does not work", because from the chair it is the same thing.
-
-*"Walking mode still does not respond to WASD movement and mouse controls."*
-Measured, on a machine drawing this building with a software rasterizer:
-three seconds of held W moved the camera **2.4 feet**. Walking speed is 12
-ft/s, so it owed 36. The cause is two clamps that are individually reasonable
-and jointly ruinous — the page's loop hands the walker `min(delta, 0.1)`, and
-the walker refuses a step longer than 1.5ft — so a browser managing two
-frames a second simulates a fifth of every second and one managing eight
-simulates four fifths. Nothing is broken; the clock is. From a chair, a
-building that creeps when you hold W is a keyboard that does not work.
-
-- [x] **The eraser is a delete key.** One click with **Erase** removes
-  whatever is under it, whichever tool put it there: a free-standing wall, a
-  room's own boundary, a staircase, a ramp, an elevator, a plain floor
-  opening, a piece of furniture, a whole free-drawn room. Dragging still rubs
-  out floor by the rectangle, which is the gesture that was always right for
-  the one thing you erase by the square foot — so the decision is made on the
-  way *back up*: a press that travelled less than a cell is a click, and a
-  click with something under it is a delete. The status line says what went.
-- [x] **A grab tolerance that follows the zoom.** The door and eraser tools
-  size their reach off the view height, the same way the polygon handles, the
-  stair tool's grab box and the drawing grid already did — the old 1.6ft is
-  the floor, so nothing got harder to hit close up. And a door click that
-  lands on no wall now says so, and says what a door needs.
-- [x] **A walker with its own clock.** `walkthrough.js` accumulates the
-  frame's *real* elapsed time and spends it in fixed 1/60s physics steps,
-  however many this frame can afford, bounded at half a second of catch-up so
-  a tab that was hidden for a minute does not arrive through a wall. Movement
-  is now proportional to wall-clock time at any frame rate, and collision got
-  more honest for free: a step is never longer than a fifth of a foot.
-- [x] **Every way into a walk is armed.** Walking used to be armed by exactly
-  three things — a Pointer Lock that arrived, the 400ms probe that notices
-  when one did not, and a touch — and when all three were missed, walk mode
-  was *input-dead* with nothing on screen to say why. A movement key now arms
-  the drag fallback itself, and so does a drag on the canvas. The arrow keys
-  are the same four keys as WASD, because not everybody who opens a
-  floor-plan tool has played a first-person game.
-- [x] **A walk starts where you say.** Every walk began at the deepest point
-  inside the storey's biggest room — a good guess and a bad rule, since the
-  biggest room in a school is the gym and "show me the entrance" then costs
-  you the length of the building at 12 ft/s, every time. A storey can now
-  carry a start point: pick a room out of the walk overlay's list, or stand
-  somewhere and press **📍 Start here next time**. Changing it moves you
-  there straight away rather than at the next walk.
+The eraser became a delete key — one click removes whatever is under it,
+whichever tool placed it, while a drag still rubs out floor by the
+rectangle; the door and eraser tools' grab tolerance follows the zoom, and
+a click that lands on no wall now says so; the walker got its own clock —
+real elapsed time spent in fixed 1/60s physics steps, so movement is
+proportional to wall-clock time at any frame rate; every way into a walk
+arms input (a movement key or a drag arms the fallback, and the arrow keys
+are WASD); and a storey can carry a chosen walk start point.
 
 *What fought back:* the eraser's press-or-drag ambiguity. Claiming the
 *press* for the object under it is one line and makes the rectangle eraser
@@ -967,118 +686,61 @@ costs a held candidate and a second `pushUndo` — which is free, because
 `commit()` diffs and an empty diff pushes nothing. *Save:* v12 still,
 additive, and the sixteenth application of the one rule — a storey nobody has
 chosen a start point on writes no `spawn` key, so every file written before
-this build round-trips through it as the same bytes. *Tests:*
-`test/spawn.test.mjs` for the record, and five new checks in
-`test/tools/run.mjs` for the gestures — the erase, the door, the window, the
-pace of a held W and the start point are all things only a real pointer and a
-real keyboard can prove.
+this build round-trips through it as the same bytes. The erase, the door,
+the window, the pace of a held W and the start point all landed as checks in
+`test/tools/run.mjs`, because they are things only a real pointer and a real
+keyboard can prove.
 
 ### What this arc leaves for a fifth
 
-Arc four deliberately turns outward, toward the person handed the result.
-What the backlog still says underneath it is unchanged, and it is the honest
-start of a fifth arc rather than this one: a pure entry point to the report
-pipeline so the specification sheet can join the visual harness ("a drawing
-is a set of sheets, not a picture"); a way to ask what changed between two
-versions of a design ("a design has a history somebody else can read"); the
-readers that answer with a number where they should answer with a range
-("the model knows what it does not know"); and the session hardening —
-storey ids, snapshot-only assets, no retry, local-wins undo — that a shipped
-relay made real ("two people is not two windows").
-
-Arc five now exists, below, and claims the second of these — the history.
-The report entry point, the ranges, and the session hardening stay open in
-the backlog above, honestly unclaimed: the arc that was planned went where
-the impact was.
+Four asks stood here at arc four's close: a pure entry point to the report
+pipeline, a design history somebody else can read, analyses that answer
+with ranges where they only pretend to a number, and the session hardening
+a shipped relay made real. Arc five claimed the history (Phase 34); arc six
+now claims the entry point (Phase 37) and the ranges (Phase 41); the
+session hardening stays open in the backlog, honestly unclaimed.
 
 ## Arc five — the living school
 
-Arc four turned to the person handed the result; arc five turns to the
-building itself. Twenty-six phases built a school that is drawn, walked,
-peopled, priced and handed over — and it is still, in three specific ways, a
-model being displayed rather than a place being run: interior light ignores
-the walls that were drawn to stop it, the space between bells is digital
-silence, and it has never once rained. The phases below are **ranked by
-impact, and the order is the recommendation** — the first three are the
-headliners (one for fidelity, one for immersion, one for both), the middle
-three make the tool easier to arrive at, look at and draw with, and the
-last two close loops the backlog has held open for arcs. Nothing here needs
-a server: every phase runs entirely in the page, which is what static
-hosting requires and what the walk export promises.
+Arc four turned to the person handed the result; arc five turned to the
+building itself — light that stops at the walls that were drawn to stop it,
+a school you can hear between the bells, weather, the first click, surfaces
+worth touching, rooms that repeat, and the director's cut. Ranked by
+impact, and shipped in that order; Phase 34, the history, is the one phase
+of the era still open.
 
-Two decisions stand over the whole arc. **VR is abandoned as a concept** —
-no phase here or anywhere later builds a headset path; `xr.js` survives
-only until a phase that touches the export finds deleting it cheaper than
-carrying it, and that deletion is pre-approved. And **each phase ships the
-same way**: the model-naming convention carries forward from arc four
-(anything touching the model layer runs on Claude Fable 5; surface work
-runs on Claude Opus 5 or Claude Sonnet 5), and a phase is *finished* only
-when its branch has become a pull request, the pull request has merged to
-main with CI green, and the closing report names the **next open phase's
-number and its named model** — so whoever is running the arc always knows
-which session to open next without opening this file.
+Two decisions stand over the arc and everything after it. **VR is abandoned
+as a concept** — no phase here or anywhere later builds a headset path;
+`xr.js` survives only until a phase that touches the export finds deleting
+it cheaper than carrying it, and that deletion is pre-approved. And **each
+phase ships the same way**: the model-naming convention carries forward
+from arc four (anything touching the model layer runs on Claude Fable 5;
+surface work runs on Claude Opus 5 or Claude Sonnet 5), and a phase is
+*finished* only when its branch has become a pull request, the pull request
+has merged to main with CI green, and the closing report names the **next
+open phase's number and its named model** — so whoever is running the arc
+always knows which session to open next without opening this file.
 
 ## Phase 27 — Light that stops at walls *(shipped)*
 
 **A troffer shines through the wall its range crosses, and everyone has
 agreed not to look.**
 
-The backlog has said it for three arcs: no shadows from the building's own
-lights, light that respects distance and never geometry. Real-time shadow
-maps for dozens of interior lights would spend the frame budget the whole
-renderer is built to protect — but this tool's buildings *hold still*. The
-static answer is to bake: a worker computes illumination offline against
-the same occluder rules `sightline.js` already knows (a wall blocks, glass
-and rails pass, a window passes at the heights of its band), and the
-renderer wears the result at zero per-frame cost. Corridors that darken
-around their corners, light pooling under the pans, rooms that go actually
-dark when the sun leaves them — this is the largest single jump in visual
-fidelity the tool has left, and all of it is bought off the frame.
+Baked light — the largest single jump in visual fidelity the tool had left,
+bought entirely off the frame. `bakelight.js` (pure, with its suite)
+computes a 2ft illumination field per storey against sightline's occluder
+rules — every budgeted fixture cast individually plus one gathered bounce,
+banked as directionless daylight *access* and fixture RGB so a mood can
+recombine it — off the main thread in `bakeworker.js`, cached packed in
+IndexedDB by `bakestore.js` under a key hashing exactly what light depends
+on. The renderer multiplies the result into the storey meshes' vertex
+colours on every entry into walk mode, any structural edit terminates the
+worker, and the export carries the bake behind a second splice marker it
+verifies against the design before wearing.
 
-- [x] **`bakelight.js`, pure, with its suite.** One 2ft field per storey,
-  sampled at desk height; occluders derived by sightline's rules (a wall
-  blocks, glass and rails pass, a window passes at its band, a doorway is a
-  hole, lift shafts added); every fixture the live budget counts — placed
-  emitters and the generic troffer lattice — cast individually, plus one
-  gathered bounce: a short diffusion of the direct field through the
-  openings between cells, so a doorway pools and borrowed light crosses an
-  interior window. Deterministic for a given design, and banked in
-  channels: `day` is directionless sky *access* (which is what lets a mood
-  recombine it), `fix` is the fixtures' RGB. `bakedTint` is the one place
-  they meet.
-- [x] **A worker runs it.** `bakeworker.js` — a module worker fed the
-  design as save-load JSON (never a structured-clone of the live state),
-  progress on the status line, the packed result handed back in
-  transferable buffers. Cancellation is termination, not a message: any
-  structural edit kills it mid-cast. The editor keeps live lighting; the
-  bake belongs to the walk, asked for on every entry into walk mode.
-- [x] **The renderer wears it.** Baked light multiplies the vertex colours
-  the merged storey meshes already carry — sampled per vertex, offset
-  along the face normal so the two sides of one wall can be lit and dark —
-  over a stashed copy, so shedding the bake is a restore, not a rebuild.
-  Indoor clusters stand down to their glow (the flat fill becomes the lift
-  the tint carves darkness into); the site's fixtures stay real lights;
-  with no bake set, not a line of the live path changes.
-- [x] **Staleness is honest.** `bakeKey` hashes exactly what the light
-  depends on — rings, openings, links, storey height, emitting props —
-  and nothing else, so a rename, a repaint or a moved chair keeps the
-  cache and an undo straight back is a hit. Stored packed (a byte a
-  channel) in IndexedDB beside the autosave by `bakestore.js`, newest four
-  kept, never in the file. Any structural edit terminates the worker and
-  drops the walk back to live lighting.
-- [x] **The export carries it.** A second splice marker (`<!--SG-BAKE-->`)
-  on the design marker's exact terms: the button bakes if it must, the CLI
-  bakes in Node (the module is pure), and the handed file verifies the
-  bake's key against the design beside it before wearing it — a
-  hand-edited export falls back to live light, never a wrong picture. The
-  template grew by one pure module and stays a quarter under its 4 MB
-  budget; the suite now pins the second marker too.
-
-*Leans on:* `sightline.js`'s occluder rules, `lights.js`'s troffer lattice,
-Phase 20's moods. *Collides with:* nothing — the live path remains. *Save:*
-none — a bake is a cache keyed on the structure that made it. *Model:*
-**Claude Fable 5** — an illumination model, a worker protocol, and the
-renderer contract.
+*Save:* none — a bake is a cache keyed on the structure that made it.
+*Model:* **Claude Fable 5** — an illumination model, a worker protocol, and
+the renderer contract.
 
 *What fought back:* where the brightness comes from. A tint can only
 *darken* — it multiplies albedo — so at night a lamplit room has nothing to
@@ -1093,72 +755,25 @@ in milliseconds and the bake itself never re-runs. Ceilings turned out to
 be load-bearing for the trick: they had no vertex colours at all, and a
 dark corridor under a bright ceiling reads as a lie, so `ceilMat` grew
 white vertex colours that multiply to nothing until a bake has something
-darker to say. *Tests:* `test/bakelight.test.mjs` (the model, the key, the
-codecs, and the sample school baked end to end), `test/bakestore.test.mjs`
-(the store against a fake IndexedDB, both faces), two new promises in
-`test/export-walk.test.mjs` (the bake slot round-trips; the worker stays
-out of the bundle), and a `baked-light` check in `test/tools/run.mjs` —
-the real page enters a walk, the worker lands, the renderer wears it, and
-the drafting board takes it off again.
+darker to say.
 
 ## Phase 28 — A school you can hear *(shipped)*
 
 **The simulation knows where every person is. The air has no idea.**
 
-Footsteps, bells, the PA, per-room reverb, and — since Phase 24 — sound
-priced through walls by ray: the plumbing is all installed, and what runs
-through it is still mostly the walker's own shoes. A school is the loudest
-quiet building there is, and every source of that noise is already a number
-the model holds: which rooms hold a class this period, how many are at
-lunch, who is in the corridor between bells. This phase turns occupancy
-into air.
+`murmur.js` (pure, with its suite) turns occupancy into air: a lesson as
+one teaching voice behind a shut door, cafeteria chatter summed at +3 dB
+per doubling of the real headcount, passing-period rush as clustered knots
+of walkers, a chatting pair as one source — emitters that *are* sound.js
+sources, priced through the same `pathLossRay` and ranked by the same
+voice budget as everything else. Room tone now follows the room's own
+acoustics record, `paScript` writes a seeded morning announcement the Web
+Speech API reads over the PA, and two willing agents stop and talk — the
+same seed makes the same friends stop at the same lockers.
 
-- [x] **`murmur.js`, pure, with its suite.** From who is actually where —
-  occupancy's classified rooms, the agents' own states, the block the
-  clock is in — the storeys' sound emitters, as data: a lesson behind a
-  shut door (one teaching voice, near-flat in class size), cafeteria
-  chatter summed at +3 dB per doubling of the real headcount, the gym
-  loud whatever the clock says, passing-period rush as clustered knots of
-  walkers (a 20 ft cell needs three before it is a sound), a chatting
-  pair as one source. Positions, levels in dBA at 3 ft, kinds — and not
-  a line of audio in the module.
-- [x] **Priced through the existing ray.** The emitters *are* sound.js
-  sources — same shape, same `budgetSounds` ranking, same `pathLossRay`
-  through the same walls — so a shut door muffles a lesson and an open
-  one spills it into the corridor with zero new rules, and the voice
-  budget holds: the cafeteria at lunch out-shouts the vending machine
-  beside it and takes its voice, which is the budget doing exactly its
-  job. The walla itself is noise through a band and two vocal formants,
-  swelling on a slow LFO — voices, never words.
-- [x] **Room tone.** `roomToneSpec` reads the same acoustics record the
-  reverb reads: the listener bed's level and lowpass corner now follow
-  the room's volume and absorption, so a big hard gym breathes more
-  plant and brighter, a carpeted office barely registers, and the quiet
-  between periods is *this building's* quiet.
-- [x] **The PA learns to talk.** `paScript` writes the morning
-  announcement — the school's name (seeded, when nobody ever named one),
-  the date, the day's rooms, deterministic per seed — and the Web Speech
-  API reads it on the arrival bell, on **N**, and (its own script) when
-  the drill starts. The chime, the key-click and their reverb ride the
-  PA path as ever; a machine with no voices keeps the chime and gets the
-  words on the HUD, which every machine gets anyway. Zero bytes shipped,
-  zero server.
-- [x] **Agents that talk to each other.** Two willing people close enough
-  stop and talk: a seeded `social` appetite and a cooldown, no dice — the
-  same seed makes the same friends stop at the same lockers. They face
-  each other, hold their ground like any standing body, and pick the
-  route back up a few seconds later; never during a drill, never through
-  a partition. The pair is one positional walla emitter, and the speech
-  bubble over their heads shows only when a sightline cast from the eye
-  is clear — the labels' own rule.
-
-*Leans on:* `occupancy.js`, `timetable.js`, `agents.js`, `sound.js`'s
-voice budget, Phase 24's `pathLossRay`. *Collides with:* the haunt —
-murmur emitters are the crowd's, and the stages that empty the building
-get their silence for free: the emitters leave with the people. *Save:*
-none. *Model:* **Claude Fable 5** — the
-emitter derivation and its routing are occupancy and occlusion math; the
-announcement copy is the one line of it any model could write.
+*Save:* none. *Model:* **Claude Fable 5** — the emitter derivation and its
+routing are occupancy and occlusion math; the announcement copy is the one
+line of it any model could write.
 
 *What fought back:* the Web Speech API's one hard wall — synthesized
 speech never enters the Web Audio graph, so the announcement's words
@@ -1172,46 +787,24 @@ voiced each — the budget was never going to give forty walkers forty
 voices anyway. And the crowd's census turned out to be load-bearing:
 two suites (agents, lifts) enumerate every state a person can be in and
 assert the sum, and both had to learn the new word before anything else
-would pass. *Tests:* `test/murmur.test.mjs` (the crowd-sum law, the
-kinds, the clustering, the cap, the room tone, the script, and the
-sample school simulated into emitters end to end), four new promises in
-`test/agents.test.mjs` (pairs are mutual and even, drills forbid it,
-retargets end it cleanly, the same seed stops the same friends), and a
-`crowd-talks` check in `test/tools/run.mjs` — the real page enters a
-walk, the crowd pairs up, and the murmur wiring runs clean.
+would pass.
 
 ## Phase 29 — Weather *(shipped)*
 
 **The cloud deck is one coverage and one drift everywhere, and nothing has
 ever fallen out of it.**
 
-The backlog's own words, claimed whole. Phase 20 gave the sky moods and
-clouds worth having; what the sky still cannot do is *do* anything. Rain is
-the cheapest total mood shift the renderer can buy — it changes the light,
-the ground, the sound and the reason to be indoors, all at once — and every
-piece of it lands on machinery that already exists.
+`weather.js`, pure with its suite — a state of kind, intensity and wind,
+with every consequence a deterministic number from seed and hour. Rain and
+snow fall as GPU particles clipped to the outdoors the renderer already
+distinguishes, wet paving darkens and snow deepens as shader blends on
+site and roof, rain lands loudest on the top storey through the acoustics'
+own cross-slab constant, and overcast, rain and snow sit one click beside
+the moods — in the sky panel, photo mode, and the walk export.
 
-- [x] **`weather.js`, pure, with its suite.** A state — kind, intensity,
-  wind — and its consequences as numbers: drift speed, sky dim, wet
-  darkening, accumulation depth, all deterministic from seed and hour.
-- [x] **Rain and snow that fall outside.** GPU particles clipped to the
-  outdoors the renderer already distinguishes from the rooms; under
-  prefers-reduced-motion the ground states arrive without the falling.
-- [x] **Ground that remembers.** Wet paving darkens and takes a low sheen;
-  snow lies as a shader blend on site and roof and deepens while you
-  watch.
-- [x] **Weather you can hear.** Rain loudest on the top storey — the
-  cross-slab constant is already in the acoustics — and against the
-  glazing; thunder rare, far, and seeded.
-- [x] **One click, beside the moods.** Overcast, rain and snow join the
-  mood row in the sky panel and photo mode; the walk export carries the
-  sky it was given.
-
-*Leans on:* `sky.js`'s mood machinery, the acoustics' cross-slab path,
-`terrain.js` and `sitemesh.js` for what counts as outdoors. *Save:* v12
-still, additive — a design with no weather writes no key. *Model:*
-**Claude Fable 5** — a pure state module, two shaders, and the acoustic
-coupling.
+*Save:* v12 still, additive — a design with no weather writes no key.
+*Model:* **Claude Fable 5** — a pure state module, two shaders, and the
+acoustic coupling.
 
 *What fought back:* the temptation to invent a second cross-slab number.
 The rain's attenuation *is* `PATH_SLAB` — importing the constant instead of
@@ -1228,61 +821,29 @@ eases two shared uniforms toward the derivation so the arrival is watched
 rather than snapped. And the weather record needed no handoff to the mixer
 at all — audio.js reads `world.weather` off the same state object a mood
 click writes, so the rain bed, the glazing leak and the seeded thunder
-clock follow the button with no new wire. *Tests:*
-`test/weather.test.mjs` (the record's hostile-input law, the byte-free
-default in the save file, determinism in seed and hour, the slab equality,
-the glazing read off a baked storey, and thunder rare/far/immovable), plus
-a `weather` check in `test/tools/run.mjs` — the real page clicks rain,
-the deck thickens, the ground wets, the walk compiles the precip shaders
-clean, and the same click puts the sky back.
+clock follow the button with no new wire.
 
 ## Phase 30 — The first click *(shipped)*
 
 **Phase 19 fixed the first five minutes for the visitor who arrived. The
 tool still assumes they arrived with a network, and leave nothing behind.**
 
-The welcome's three doors work; two of them open onto *work* (draw, or
-describe) when the fastest possible first minute — walking a finished
-school — is one embedded payload away. And the tool that runs entirely in
-the page still behaves like a website: gone without a connection, saving
-only to a browser's own storage.
+The tool became a program: a gallery of three finished schools on the
+welcome — recipes, counted facts and thumbnails in `gallery.js`, the
+payloads generated into `gallerystock.js` by `tools/make-gallery.mjs` and
+proven undrifted by the suite, each card named by `paScript` off the seed
+it carries; installable and fully offline, with every decision the service
+worker makes a pure function in `offline.js` and `sw.js` reduced to three
+listeners (which also closed the backlog's immutable-cache complaint
+without moving an import path); a real Save/Save As/Open to `.school`
+files through `filestore.js`, autosave demoted to the safety net it always
+was; and "Show me" — palette verbs that replay a tool's own gesture with a
+ghost cursor via `demo.js`, so the tutorial and the smoke test are one
+artifact that cannot rot.
 
-- [x] **A gallery on the welcome.** Three finished schools as cards —
-  thumbnail, one sentence, one click to walking — each an embedded
-  `share.js` payload, no server anywhere; the blank sheet stays the fourth
-  door. `gallery.js` holds the recipes (each card names the brief it was
-  generated from), the thumbnail reduction and the counted facts;
-  `tools/make-gallery.mjs` turns those recipes into `gallerystock.js`, 90 KB
-  of payloads and geometry that main.js fetches the first time the welcome
-  opens and never on a load that does not show it. The names on the cards
-  are `paScript`'s, off the seed the design carries — so the school on the
-  card is the school the PA greets you by inside it.
-- [x] **Installable, and offline.** A manifest, an SVG app icon, and a
-  service worker; the worker versions the vendored `libs/` by its own
-  revision, which closes the WISHLIST's immutable-cache complaint without
-  touching a single import path. Every decision the worker makes is
-  `offline.js` — three routes, `bypass`/`immutable`/`fresh`, as a pure
-  function of a URL and a method — and `sw.js` is the three listeners that
-  are all that is left.
-- [x] **A real Save.** File System Access where the browser has it — Save
-  and Save As to a `.school` file, Open from disk, autosave demoted to the
-  safety net it always was; download and upload stand in where the API is
-  absent. `filestore.js` owns the session: what dirty means, what the title
-  bar says, what the picker is handed, which errors deserve a sentence, and
-  when a close is worth arguing about (only ever with a file open and unsaved
-  — the autosave has covered the rest since v1).
-- [x] **Show me.** A palette verb that replays a tool's gesture on the
-  live canvas with a ghost cursor — the same scripted-pointer machinery
-  `test/tools/run.mjs` already proves, aimed at teaching instead of
-  testing. A tutorial that cannot rot, because it *is* the smoke test: every
-  demo in `demo.js` declares the delta it should leave in the harness's own
-  fingerprint, and the `show-me` check plays each one on the real page and
-  asserts exactly that.
-
-*Leans on:* `share.js`, `sample.js` and `generate.js` for gallery stock,
-the tools harness. *Save:* none — a `.school` file is the serialization
-that already exists. *Model:* **Claude Opus 5** — all of it is surface and
-platform wiring; nothing touches the model layer.
+*Save:* none — a `.school` file is the serialization that already exists.
+*Model:* **Claude Opus 5** — all of it is surface and platform wiring;
+nothing touches the model layer.
 
 *What fought back:* the service worker's one hard wall, which is the same
 shape as Phase 28's speech synthesis. A worker that imports a pure module
@@ -1308,56 +869,24 @@ runs from space to `<` and eats the digits, so "Room 101" saved as
 fine on every path a seeded harness takes and a TDZ error on the one path
 nobody automates — the very first load. The visual pass caught it, which
 is the third pass doing precisely the job it was built for.
-*Tests:* `test/gallery.test.mjs` (the stock decodes to the design it
-promises, the committed bytes are still what the recipe makes, a card is a
-share link and not a second format, the thumbnail is the plan at the plan's
-proportions and keeps its holes, and a card that cannot be shown is left out
-rather than rendered broken), `test/offline.test.mjs` (the collab server is
-never cached, the worker never serves its own predecessor, only this tool's
-stale caches are ever dropped, and the manifest is valid, in scope and
-points at an icon that exists), `test/filestore.test.mjs` (the dirty flag,
-the filename, both pickers agreeing, and the cancelled dialog that says
-nothing), `test/demo.test.mjs` (presses balanced, drags sampled as paths,
-and a lesson that never draws on a room somebody already has), plus four
-checks in `test/tools/run.mjs` — `show-me` plays every lesson on the real
-page and holds it to its own claim, `gallery` fills the welcome and walks
-into a card, `document` watches a design go from opened to unsaved, and
-`offline` waits for the worker to take control and finds three.js in its
-cache.
 
 ## Phase 31 — Surfaces worth touching *(shipped)*
 
 **Every wall in the building is flatter than the floor it stands on.**
 
-Phase 20 gave the floors grain and the facades glint, and stopped there:
-walls are still one flat colour, windows are tinted holes, the crowd is
-uniform, and the building says nothing about itself. None of what follows
-downloads an asset — the house rule that textures are generated, not
-shipped, holds throughout.
+Procedural relief per grain family (`relief.js` — height fields and their
+tangent-space normals as arithmetic rather than canvas, tileable by
+construction), glass with physical refraction — frosting *derived* from
+what the room behind the pane is, and the transmission pass confined to
+photo mode after measurement (see below); signage derived, never placed
+(`signage.js`, pure: placards from names and numbers, emissive EXITs
+standing over the egress graph's own exit doors, a whole school's plates
+one atlas and one draw call); and a seeded crowd wardrobe (`wardrobeOf`)
+with a two-beat walk bob. Not one texture downloaded — the house rule that
+textures are generated held throughout.
 
-- [x] **Relief, procedurally.** Normal maps per grain family — CMU
-  coursing, brick, carpet pile, terrazzo chips, and the six families that
-  had nothing — paired with Phase 20's roughness and built at boot. The
-  shapes and the encoding are `relief.js`, which is arithmetic rather than
-  canvas: a height field per family, tileable by construction, and the
-  tangent-space normals that fall out of it.
-- [x] **Glass that refracts.** Physical transmission on windows and
-  borrowed lights, with a frosted variant among the finishes — derived, not
-  chosen, from what the room behind the pane *is*. Two glazings, two
-  materials, and a school with no restroom in it builds one of them. The
-  refraction itself is photo mode's, for a measured reason: see below.
-- [x] **Signage derived, never placed.** Room placards from names and
-  numbers, exit signs standing over the egress graph's own exit doors,
-  emissive — wayfinding for the walker, and the haunted night gets its
-  glowing EXITs for free. `signage.js` is pure and comes with its suite;
-  a whole school's plates are one atlas and one draw call.
-- [x] **People with wardrobes.** Seeded variety in the crowd — hair, build
-  and backpacks over the palette Phase 6 already had — and a two-beat walk
-  bob; the creature stays exactly what it is.
-
-*Leans on:* Phase 20's finish families, `egress.js`, `agents.js`. *Save:*
-none. *Model:* **Claude Opus 5** — render presets, canvas textures and one
-small pure reader; surface work by the arc's own rule.
+*Save:* none. *Model:* **Claude Opus 5** — render presets, canvas textures
+and one small pure reader; surface work by the arc's own rule.
 
 *What fought back:* three things, and each of them was a rule the codebase
 had already written down and this phase read too quickly.
@@ -1405,9 +934,8 @@ reasoning that walking is where you look at glass. Then CI went red on
 main, over the 180-second ceiling here. Measured on the same software
 rasterizer, over a corridor, the answer was not marginal — **547ms a frame
 became 1,186ms.** Refraction more than doubled the cost of a walk, on a tool
-that runs on phones and in a headset. (The relief maps, the same view, the
-same run: 13%. The expensive half was never the one with eleven new textures
-in it.)
+that runs on phones. (The relief maps, the same view, the same run: 13%. The
+expensive half was never the one with eleven new textures in it.)
 
 So refraction went where depth of field already lives, for the reason already
 written beside it — *it is a second scene render, so it is paid for only while
@@ -1422,70 +950,26 @@ number took one afternoon script to get.
 The panes are `FrontSide` for a related reason: a pane is a closed box, so its
 back faces were never visible, and a *DoubleSide* transmissive material makes
 the renderer flip `needsUpdate` on it twice a frame to draw its own backside.
-*Tests:* `test/relief.test.mjs` (the two sign conventions on
-hand-made ramps, unit-length normals, the encoder proved to wrap by rolling
-the field and the map together, every family bounded, deterministic and
-tiling, coursed families that actually have courses, and a drift alarm that
-fails if a material table grows a grain this file has never met),
-`test/signage.test.mjs` (the latch-side rule off the leaf's own `hand`, the
-plate outside the room and facing out of it, the exit sign facing back into
-the building and under the slab, a placard number that is the number
-`bindRoom` binds by, and the sample school's own coverage), plus the glazing
-in `test/finish.test.mjs` and the wardrobe and the bob in
-`test/agents.test.mjs` — and a `signage` check in `test/tools/run.mjs`: the
-real page names a restroom, finds plates on its walls, walks in, finds a
-frosted material built and the EXITs the drawing board deliberately did not
-build, opens the shutter and finds the glass refracting, shuts it, and walks
-out — holding the cost rule from both sides, since a walk that quietly starts
-paying for a second scene render is exactly what went wrong the first time.
 
 ## Phase 32 — Rooms that repeat *(shipped)*
 
 **Schools are the most repetitive building type there is, and the tool
 cannot repeat anything.**
 
-Twenty classrooms means drawing twenty classrooms. The furniture layer has
-had templates since arc two; the rooms themselves have nothing — no copy,
-no array, no mirror, and no way to select two things at once to try. (So
-this phase believed when it was scoped; what was actually missing was
-narrower — see below — and the mirror it inherited was wrong in exactly
-the way the conventions predicted.)
+(So the phase believed when it was scoped; what was actually missing was
+narrower — see below.) `section.js`: the room clipboard — geometry,
+openings, finishes, props — pasted at the pointer under a live ghost, a
+wing stamped by dragging a row at the clipboard's own pitch, the marquee
+the shape tool never had, and the storey-wide move that un-strands the
+rooms a shrunk sheet left behind (stairs and lifts stand on two storeys at
+once, so they stay put and the status line says so). The real inherited
+bug was the mirror's: `reverseRing` now flips `hand` and `sw` when it
+re-winds a ring, and a mirror flips `sw` once more, so a mirrored door
+finally hangs on the mirrored jamb.
 
-- [x] **Copy and paste.** A room to the clipboard — geometry, openings,
-  finishes, props — and back down at the pointer under a live ghost,
-  snapped to the lattice, R to rotate honouring the counter-rotation
-  convention. Ctrl+C existed (Phase 6); the ghost is what didn't — a paste
-  used to land at a fixed 3ft offset and then get dragged. The clipboard
-  and the placement are `section.js`; Ctrl+D keeps the old instant manner,
-  because "another one of these, here" is a different gesture from "these,
-  over there".
-- [x] **Stamp a wing.** Array paste: press where the first copy goes and
-  drag; copies fill the row at the clipboard's own pitch — its extent
-  along the drag's axis, rounded out to whole cells, so classrooms butt
-  edge-to-edge on the lattice. A classroom corridor is one Ctrl+V and one
-  drag. A drag shorter than one pitch is a single paste, not a refusal,
-  and a row that hits `MAX_SHAPES` mid-stamp reports how far it got.
-- [x] **Mirror.** M existed too (Phase 6) — and every mirrored door hung
-  on the wrong jamb, which is the bug this item was written about. Fixed
-  in the model, not the tool: `reverseRing` now flips `hand` and `sw` when
-  it re-winds a ring (a re-parameterization is never an edit), and the
-  mirror flips `sw` once more because a reflection reverses handedness.
-- [x] **Select more than one thing.** The marquee the shape tool never
-  had; selection stays in the tool and never in the file, per the
-  convention. Whether a press was a box or a click is decided at release,
-  the same way the rectangle eraser decides — so a marquee may start on a
-  room, which is where most marquees start.
-- [x] **Move everything on this storey by (dx, dz).** The backlog's
-  missing verb, claimed here because it is the same machinery — a
-  transform over a set of records — and it un-strands the rooms a shrunk
-  sheet left behind. Rooms, free-standing wall lines and props move as one
-  set; a stair stands on two storeys at once, so it stays put and is
-  *reported*, never silently dragged off the level it still serves.
-
-*Leans on:* `shapes.js`, `props.js`, the rotation conventions. *Save:*
-none — records are copied and moved, never reshaped. *Model:* **Claude
-Fable 5** — ring and opening transforms with the hand/sw flip are exactly
-the geometry the conventions warn about.
+*Save:* none — records are copied and moved, never reshaped. *Model:*
+**Claude Fable 5** — ring and opening transforms with the hand/sw flip are
+exactly the geometry the conventions warn about.
 
 *What fought back:* the phase's own premise, first. "The tool cannot
 repeat anything" was true when the sentence was drafted against memory and
@@ -1532,117 +1016,25 @@ neither storey expects. So `moveStorey` carries rooms, wall lines and
 props, counts the links it left standing, and the status line says so —
 never drop what you could not carry: say so.
 
-*Tests:* `test/section.test.mjs` (the marquee's three catches — a corner
-in the box, the box in the room, and a crossing edge with neither, which
-is why the hit test clips segments; clipboard independence from the
-originals; the counter-rotation coming home in four quarter turns; a
-paste aimed at another storey landing there, props included; refusals
-counted rather than thrown at the shape cap; the pitch rounding out to
-cells; the storey move and the stair that stayed), the two door-physics
-suites in `test/shapes.test.mjs` (re-winding never moves a leaf; a
-mirrored door hangs on the mirrored jamb and swings to the mirrored
-side), and a `repeat` check in `test/tools/run.mjs`: the real page draws
-a classroom, box-selects it, pastes one under the ghost, stamps a row of
-three at 16ft pitch, slides the storey 8ft out and 8ft home, and deletes
-everything it placed so the checks after it meet the storey they expect.
-`walk-template.html` regenerated, since shapes.js rides in it.
-
 ## Phase 33 — The director's cut *(shipped)*
 
 **A tour moves the camera and does nothing else.**
 
-The backlog's own sentence, and around it sit all the parts of a film crew
-hired separately: moods with one click, a recorder that already writes
-video, a PA that (since Phase 28) can talk, and a timetable that knows
-where everyone should be. This phase introduces them to each other — and
-spends the leftovers on the game the analysis was always pointing at.
+Tour stops learned the clock — an optional hour eased the short way round
+like the angle it is, mood and weather held-and-flipped like a storey
+number, two stops of the same weather crossfading so a storm can build —
+and a sentence, spoken on arrival through the PA path, never touching
+`state.env` while a tour plays. One-click film plays a tour into the
+existing MediaRecorder with the UI hidden, drawing its own compositing
+canvas so narration rides the clip as burned-in captions — synthesized
+speech being the one genuinely uncapturable thing. And Late for Class
+re-aims `hunt.js` at a timetable row against `schedule.js`'s own bell
+list, in the tool and in the export.
 
-- [x] **Stops learn the clock.** A tour stop optionally carries an hour, a
-  mood and a weather; playback eases between them, so a sunrise flythrough
-  is three stops and no editing.
-- [x] **Narration.** A stop carries a sentence; Web Speech reads it on
-  arrival through the PA path, and it lands as a caption on the machine
-  with no voices — which is also the honest answer for film, below.
-- [x] **One-click film.** Play a tour straight into the existing
-  MediaRecorder path with the UI hidden, and download the clip. What the
-  recording can carry is stated, not fudged: the Web Audio graph records;
-  `speechSynthesis` cannot be routed into it, so narration rides the film
-  as burned-in captions and the voice stays live-only.
-- [x] **Late for class.** Hand the walker a timetable row and a tardy
-  bell: warmth by `routedDistance` to the room's door, score in seconds to
-  spare — `hunt.js` re-aimed the way the haunt already re-aimed it, in the
-  tool and in the export.
-
-*Leans on:* `tour.js`, Phase 20's moods, Phase 29's weather (softly — hour
-and mood suffice), `hunt.js` and `routedDistance`, `timetable.js`. *Save:*
-the tours record gains optional fields — additive, the cheap kind.
+*Save:* the tours record gained optional fields — additive, the cheap kind.
 *Model:* **Claude Sonnet 5** — sequencing, capture wiring and a re-skin
 over shipped machinery; the one pure bit (a stop schedule and its easing)
 is small and tested like anything else.
-
-*How it shipped:* the clock lives on the key the same way the position
-does — `hour` (env's own `minutes`, so nothing downstream translates),
-`mood` (a sky.js key, purely a label plus a `lights` hint) and `weather`
-(a weather.js record), all optional and all validated in `makeKey` rather
-than trusted. `sampleClock` answers a tour's clock at time *t* the way
-`sampleTour` answers its camera: the hour eases the short way round
-between the nearest defined stops either side of it — `lerpAngle` doing
-double duty, because an hour is an angle around a 24-hour face exactly the
-way yaw is one around a compass — and mood/weather hold from the last
-defined stop and flip at the midpoint of the leg to the next, the storey
-convention read again: a mood or a weather kind is no more continuous a
-quantity than a floor number is. Weather goes one step further than floor
-ever needed to: two stops of the *same* kind crossfade intensity and wind,
-so a storm can build rather than only switch on. None of it touches
-`state.env`/`state.weather` while a tour plays — a played sky is a
-transient handed straight to the renderer and put back the moment the
-tour stops, the same bargain a shove physics or a scavenger hunt strikes,
-because Ctrl+Z has no business walking back through a flythrough.
-
-Recording a stop's sky is a capture, not a form: a "🌅 also capture the sky"
-checkbox beside **Add stop** reads the sky panel exactly where `cameraStop`
-already reads the camera, including which named mood put it there (tracked
-alongside the panel, reset the instant a slider is touched by hand rather
-than a mood button). Editing after the fact is two icon buttons per row —
-☀/☾ sets or clears a stop's captured sky off whatever the sky panel shows
-*now*, and 💬 native-prompts for the sentence to say, the same lightweight
-affordance the haunt's own arming dialog and a design's rename already use.
-
-Narration rides the existing PA speech path (`speechSynthesis`, cancel-then-
-speak) on arrival, which is where the film forced the honest answer the
-backlog asked for: `captureStream()` only ever sees the canvas it was
-called on, and a caption drawn in the DOM is invisible to it. So one-click
-film draws its own frame — a plain 2D canvas the same size as the WebGL
-one, blitted from it every frame while recording with the caption composited
-on top, and *that* canvas is what gets captured. The Web Audio graph rides
-the recorder unmodified (it was never tied to a canvas); synthesized
-speech is the one genuinely uncapturable thing, which is exactly why the
-caption has to be burned in rather than layered on. The live view goes
-further than the file needs to: a `filming` class blanks every panel while
-the recorder runs, because the point of one click was a clip that never
-looked like it came out of a drawing program, even though nothing on that
-screen was ever going to reach the file either way.
-
-Late for class turned out to need almost no new machinery, which is the
-whole reason it was believed to fit in the leftovers: `hunt.js` gained a
-single-target dealer (`classPlace`, off a room id instead of the shuffle)
-and a clock against it (`startLate`/`checkLate`/`lateScore`), and every
-other question — how close, which way, what the hint says — is the
-scavenger hunt's own `routedDistance`, `bandFor` and `describePlace`,
-unchanged. The tardy bell reads `schedule.js`'s own bell list rather than
-inventing a second clock: `nextBell` finds the next passing-period bell,
-`blockAt` on that minute hands back the passing block itself, and its
-`.end` is the moment the class actually starts — the deadline — with
-`.index` naming which period a `timetablePlan` cohort's room comes from.
-A cohort actually changing rooms is preferred over one staying in
-homeroom, so "late for class" is never a walk to where you already are.
-The marker in the world is the scavenger hunt's own glowing token
-(`renderApi.setHunt`/`updateHunt` take any list of `{x, z, floor, id}`
-places), reused rather than taught to render.js twice. The export carries
-the same feature off `life.plan`/`life.nav` once People has been pressed,
-behind a button the shell hides entirely on a design with no timetable —
-`hunt.js`'s re-aim serves both sides of the file the way it already served
-the haunt's star hunt in Phase 24.
 
 *What fought back:* the TDZ bug this file has now shipped three times.
 `lastMoodKey` — what a tour stop's sky checkbox actually captures — is read
@@ -1654,20 +1046,7 @@ snag was believing the recorded clip already excluded the tool chrome —
 it does, `captureStream()` never sees the DOM — which meant the actual gap
 was narration, not layout: a caption is either burned into the pixels the
 recorder reads or it does not exist on the far side of Save As, and no
-amount of CSS fixes that.
-*Tests:* `test/tour.test.mjs` gained the clock — validation, the
-silence a tour with no clock samples as, holding a single defined hour,
-easing (including across midnight, the short way, the same claim yaw
-already had to prove), the storey-style hold-and-flip for mood and
-weather, and a same-kind weather crossfade — plus a save round trip
-carrying all four new fields. `test/hunt.test.mjs` gained late for class
-whole: a class place dealt from a named room, arrival gated by storey and
-radius exactly like a find, a score that is seconds to spare either way,
-and warmth that stops the moment you arrive. `node --test 'test/*.test.mjs'`
-runs clean at 1,869 tests, `test/export-walk.test.mjs` confirms the
-rebuilt template closed the same way it always has, and the visual suite's
-one expected difference — the walk overlay gained a fourth button — is the
-new committed baseline. *Next open phase:* **34 — Claude Fable 5** (a
+amount of CSS fixes that. *Next open phase:* **34 — Claude Fable 5** (a
 differ over the save format, model-layer by definition).
 
 ## Phase 34 — A history somebody else can read
@@ -1702,57 +1081,17 @@ by definition.
 **Phase 25 gave the grid a pitch that follows the zoom, and then let two of
 the three tools ignore it.**
 
-The wall tool aimed at the grid. The floor tool did not: it laid a 4ft cell
-whatever the zoom was showing, so zooming in subdivided the sheet under a
-brush that could not use the subdivision, and zooming out drew a grid whose
-squares were bigger than what a click actually placed. Watching the grid
-change and the tile not is the whole complaint, and it is a real one — the
-grid stopped being the thing you aim at and became decoration.
+The floor tool and the eraser now lay the square the grid is actually
+drawing, at whatever pitch the zoom is at — the ladder's floor moved to
+2ft, every step above it a whole multiple; the paint raster gained a pitch
+that only ever refines (`rasterOf`/`refineRaster` in paint.js, on the
+`cellFt` field every save since v1 had carried meaning nothing); and
+`gridref.js` gave the grid an *origin* — a reference point clicked on the
+tracing image, so a traced plan's own column lines land on the grid — set
+before the first floor or wall or not at all, `gridLocked` refusing with a
+sentence rather than re-phasing a drawn plan. A gesture became one repaint
+(`paintTiles`), which paid for the finer raster and then some.
 
-Under that sat a second thing nobody had said out loud: **a grid is a pitch
-and an origin**, and the origin had always been the corner of the sheet.
-That is fine for a plan drawn from nothing and useless the moment somebody
-traces a photograph, because a scan's own module — column lines at 24ft, an
-exterior face 3ft 6in off the edge of the paper — lands nowhere near our
-corner. Snapping then fights the picture: every wall is a foot off the line
-you drew it on, and the grid becomes something to switch off.
-
-- [x] **A floor tile is a grid tile.** The floor tool and the eraser lay the
-  square the grid is drawing, at whatever pitch the zoom is at — 2ft close
-  in, 32ft right out — and the hover cursor is that square rather than a
-  fixed 4ft one. What the sheet shows and what a click places are now the
-  same rectangle at every zoom.
-- [x] **Two feet is the floor of the ladder.** `PITCHES` starts at 2 rather
-  than at half a foot. Six inches was a number chosen for the wall tool and
-  nothing was ever drawn at it; two feet is the smallest square a building is
-  made of, and — the property the rest of this phase rests on — every step
-  above it is a whole multiple of it.
-- [x] **The paint raster has a pitch, and it only ever gets finer.**
-  `rasterOf` / `refineRaster` in `paint.js`, on `state.cellFt` — a field that
-  has been in every save file since v1 saying 4 and meaning nothing. Drawing
-  at 2ft refines the design's raster once; 4ft and everything coarser needs
-  nothing. Refining is safe in the one direction that matters: a 4ft point is
-  a 2ft point, so every room already drawn is still exactly on the raster and
-  still the brush's to repaint. Coarsening is refused outright.
-- [x] **A reference point on the tracing image.** `gridref.js` +
-  `test/gridref.test.mjs`, and a third mode on the Overlay tool. Click the
-  point the plan itself counts from — a column centre, the corner of the
-  building — and the drawing grid, the sheet's own lines and the paint raster
-  all start there. The record keeps the world point *and* the image pixel, so
-  the grid rides the picture through a nudge, a turn or a re-measure.
-- [x] **...and it is set before the first floor or wall, or not at all.**
-  Re-phasing a grid under an existing plan takes every room off it: the brush
-  would freeze them, the wall tool could not meet them, and no gesture puts
-  it back. `gridLocked` refuses with a sentence rather than doing it quietly,
-  and refuses the clear as well, because putting the grid back on the corner
-  moves it exactly as far.
-- [x] **One gesture is one repaint.** `paintTiles` takes the whole list of
-  squares a stroke or a rectangle touched. The old brush called `paintCell`
-  once per square, and each of those rasterized the storey, re-traced every
-  region and re-hung every door — so a 20 × 20 rectangle was four hundred
-  full repaints. This is what pays for the finer raster and then some.
-
-*Leans on:* `snapgrid.js`, `paint.js`, `lattice.js`, `overlay.js`.
 *Save:* `gridRef` as an append on the timetable's terms, and `cellFt` — in
 every file since v1 — finally meaning something.
 *Model:* **Claude Fable 5** by the arc-four rule — a new pure module and a
@@ -1779,46 +1118,17 @@ sort of constant that reads as arithmetic until the day it is a parameter.
 **The last tool still aiming with a raw click, and the last catalog still
 behind a mode wall.**
 
-Two complaints, one phase. The door tool took the cursor's projection along
-the wall verbatim: no preview of where the opening would land, no snapping to
-anything, and no way to move a door an inch left except delete and re-place.
-Every other drawing tool had learned the grid by Phase 35; doors and windows
-were still guessing. And Phase 22's hands could place exactly eight things —
-the digit ring was the whole reach, so furnishing a lab from inside meant
-walking back to the editor for every kiln.
+`snapAlongSeg` (snapgrid.js, pure, with its suite) slides an opening's
+centre along its wall to the grid crossings the wall sits on — held to
+pitch multiples of distance on a diagonal, where true crossings are
+usually empty — and `moveOpening`/`moveLineOpening` re-run `addOpening`'s
+jamb clamp and neighbour test without the opening itself. The door tool
+became a target: a ghost the width of the opening rides the snapped point,
+a press on an existing opening waits four pixels to learn click-toggle
+from drag-slide, and snap is a toggle with `Alt` to free one placement.
+And 9 opens a searchable whole-catalog picker into your walk-mode hands
+(`searchCatalog` in carry.js) — the digit ring stays the quick eight.
 
-- [x] **`snapAlongSeg` in snapgrid.js, pure, with its suite.** The opening's
-  centre slides along the wall and lands on the grid intersections the wall
-  sits on — with one deliberate stretch: an axis wall snaps the world
-  coordinate (true crossings, honouring Phase 35's origin), a diagonal wall
-  holds distance-from-start to pitch multiples, because a generic diagonal
-  crosses no intersections at all and a ruler that always exists beats an
-  exact rule that is usually empty. Pinned in tests so the definition cannot
-  drift.
-- [x] **`moveOpening` / `moveLineOpening`, pure, in shapes.js / wallrun.js.**
-  The jamb clamp and neighbour test `addOpening` runs, minus the opening
-  itself; `t` mutated in place so the optional fields and the minimal
-  on-disk record ride along untouched.
-- [x] **The door tool is a target now.** A ghost the width of the opening
-  rides the snapped point while the whole-segment highlight fades to
-  context; a press on bare wall cuts there; a press on an existing opening
-  waits four pixels to learn whether it was the old click (toggle, as ever)
-  or a drag (slide it along its wall, one undo step per gesture). Hover,
-  click and drag all read one `doorTargetAt`, because a preview that snaps
-  differently from the commit is worse than no preview.
-- [x] **Snap is a toggle, free is a key.** The wall panel's pair, cloned:
-  Snap to grid / Free on the door panel with the pitch readout under it,
-  `S` flips it, `Alt` frees a single placement. Session state on the
-  editor, never in the file — the same terms `wallOrtho` lives on.
-- [x] **9 is the whole catalog.** The digits stay the quick ring; 9 opens a
-  searchable picker — the command palette's pointer-lock dance pointed at
-  props — and Enter puts the piece in your hands. `searchCatalog` in
-  carry.js is the pure half: name-prefix over substring over category, ties
-  in catalog order, empty query opens populated. All three mounts allowed;
-  a wall clock refuses open space the same way it always has, at set-down.
-
-*Leans on:* `snapgrid.js`, `shapes.js`, `wallrun.js`, `carry.js`, the cmdk
-overlay's unlock/restore pattern.
 *Save:* none — a moved opening is the same three-field record with a
 different `t`, and both toggles are session state.
 *Model:* **Claude Fable 5** — two new pure functions with suites and a
@@ -1837,3 +1147,216 @@ guess. The opening hit-test runs on the *raw* projection while the snap is
 on, so a door placed off-grid in a free moment stays clickable after the
 toggle goes back — the kind of case nobody files a bug for, they just call
 the tool flaky.
+
+## Arc six — the design review
+
+Five arcs drew, walked, peopled, priced and handed over a school; nobody
+has yet had to sit across a table from it. Arc six builds for the person a
+real project cannot avoid — the reviewer: the one who asks for a section,
+reads the dimensions off the sheet, checks which code edition the numbers
+came from, arrives by bus, and sits in the chair. The phases are **ranked
+by impact and the order is the recommendation**; the last is an and-also
+for the machine rather than the reviewer, the way arc four ended on play.
+Phase 34, above, remains open and unclaimed by this arc — and it is the
+arc's natural companion, since a review is exactly the person "what
+changed since Tuesday" is for. Nothing here needs a server: every phase
+runs entirely in the page.
+
+The arc ships on arc five's terms, unchanged: anything touching the model
+layer runs on Claude Fable 5, surface work runs on Claude Opus 5 or Claude
+Sonnet 5, every phase below names its model, and a phase is *finished*
+only when its pull request has merged to main with CI green and the
+closing report names the next open phase's number and its named model.
+
+## Phase 37 — A drawing is a set of sheets
+
+**The blueprint is one sheet, and a building has never been a plan.**
+
+Everything vertical — storey heights, the roof line, a stair in section,
+what a facade actually looks like — exists only in the walkthrough, which
+is the one place a drawing reviewer will not go. The model already knows
+every number an elevation needs: wall heights from the storeys, sills and
+heads from the window bands, the roof from `roof.js`, the ground line from
+`terrain.js`. What is missing is the projection, and the arc-four closeout
+has asked once already for the entry point that would let the spec sheet
+join the visual harness — "a drawing is a set of sheets, not a picture" is
+its sentence, claimed whole here.
+
+- [ ] **`elevation.js`, pure, with its suite.** Orthographic projection of
+  the model onto a vertical plane: the four facades derived from storeys,
+  walls, openings, roof and grade — as 2D segments and fills on the
+  blueprint's own drawing terms, never a three.js import anywhere in it.
+- [ ] **A section is a cut, drawn like a wall.** Two points on the plan
+  (the wall tool's own gesture) define a named section line; the cut shows
+  poché through walls and slabs, stairs in profile, and openings in
+  elevation beyond — and the line itself prints on the plan sheet with its
+  name, because a section nobody can locate on the plan is only a picture.
+- [ ] **`blueprint.js` grows a set.** Sheets as a list — plans per storey,
+  four elevations, every named section, the spec sheet — numbered and
+  titled through the existing title block, one print dialog for the lot.
+- [ ] **The report pipeline gets its pure entry point.** The spec sheet
+  renders from a design without the DOM, so it joins the visual harness
+  beside the plan and a regression in it becomes a diffed picture.
+
+*Leans on:* `blueprint.js`, `shapes.js` / `walls.js` / `openings.js`,
+`roof.js`, `terrain.js`, `report.js`, `spec.js`. *Save:* section lines as
+an additive record — a drawn section is a fact about the drawing and has
+to survive a reload to print twice; a design with none writes no key.
+*Model:* **Claude Fable 5** — a projection module and a save append are
+model layer.
+
+## Phase 38 — Say it on the sheet
+
+**The sheet shows every wall and states not one number.**
+
+The overlay tool can measure, and a measurement evaporates when the tool
+changes; the printed plan carries rooms, doors and a title block and not a
+single dimension. A drawing nobody can build from is a picture with a
+scale bar. The house answer is already decided by the conventions: the
+number on a dimension is *derived* from the geometry it points at, never
+typed, so the sheet cannot disagree with the model it prints.
+
+- [ ] **`annotate.js`, pure, with its suite.** Two records: a dimension —
+  two anchor points and an offset, its text computed from the measured
+  distance at draw time — and a note: a point, a leader, a sentence.
+- [ ] **An annotation tool, thin over the module.** Anchors snap through
+  `snapgrid.js` (Phase 35's origin honoured), notes drag, Delete removes;
+  selection stays in the tool, records go in the file.
+- [ ] **The sheet draws them.** Extension lines, ticks and text at sheet
+  scale, on plans and — once Phase 37 lands — on sections and elevations
+  alike; the tracing overlay joins the print behind a checkbox, closing
+  the backlog's "edit-mode only" complaint.
+- [ ] **Chained dimensions along a run.** Click a wall and get its
+  openings and piers dimensioned end to end, read off `openings.js`,
+  which already knows every jamb.
+
+*Leans on:* `snapgrid.js`, `blueprint.js`, `overlay.js`, `openings.js`,
+Phase 37 softly — plans alone are worth it. *Save:* additive per-storey
+`dims` and `notes` records, absent when empty. *Model:* **Claude Fable
+5** — a save append and snap geometry are model layer.
+
+## Phase 39 — The school day starts at the curb
+
+**Everyone the building holds was teleported into homeroom before the
+first bell.**
+
+The crowd is born seated and dies at the last bell; the site outside is
+scenery with a mesh under it. A school's site is choreography — the bus
+loop, the drop-off, the walk in from the corner, four hundred people
+through six doors in fifteen minutes — and every piece of machinery it
+needs already exists: an outdoor mesh, agents that queue (the lift taught
+them), emitters that follow people, a PA with a morning script.
+
+- [ ] **The site learns its verbs.** Bus loop, drop-off and parking as
+  region kinds `siteedit.js` draws and `generate.js` can place, each
+  carrying the curb points it implies as data.
+- [ ] **Arrival and dismissal.** Agents enter across `sitemesh.js` from
+  the curb in a seeded stagger before the first bell and stream back out
+  after the last — the building fills and empties instead of switching
+  on, and the walk's best minute becomes standing at the front door at
+  7:40.
+- [ ] **Doors queue.** A doorway admits people at a rate; the morning
+  crush stacks outside it honestly — `lift.js`'s bounded-holding lesson
+  applied to a threshold.
+- [ ] **The air reads it for free.** Murmur emitters already follow the
+  people, so the curb chatters and dies down on its own; the PA's morning
+  script fires while the building is actually filling.
+
+*Leans on:* `sitemesh.js`, `agents.js`, `site.js`, `murmur.js`,
+`schedule.js`, `generate.js`. *Save:* new site region kinds on the
+existing site record — additive, a site with no curb writes nothing new.
+*Model:* **Claude Fable 5** — outdoor routing, the crowd's lifecycle and a
+schema append are model layer.
+
+## Phase 40 — The chair, not the checklist
+
+**The tool can find an accessible route and has never once sat in the
+chair.**
+
+"Accessibility stops at routes" — the backlog's own words: no turning
+circles, no reach ranges, no counter heights. And the walkthrough, the
+tool's best instrument of empathy, has exactly one body. The two gaps are
+one phase: the clearance geometry the analysis is missing is precisely
+what a seated walker collides with, so build it once and let the report
+and the first-person camera cite the same numbers.
+
+- [ ] **A seated walkthrough.** One toggle: eye at seated height, no
+  step-ups, stairs refuse the way walls refuse everyone — ramps and the
+  lift *are* the building now — with the refusal a sentence, never a
+  silent stop.
+- [ ] **Turning circles, measured.** The clearance circle tested against
+  real geometry everywhere the accessible route turns or dead-ends —
+  door approaches included — and painted on the plan where it fails.
+- [ ] **Reach and heights, read off the props.** The catalog already
+  knows every counter and shelf; reach-range findings land in the report
+  with "⌖ Show it on the plan" like any other.
+- [ ] **One contract, two readers.** The accessible-route analysis and
+  the seated collider derive from the same clearance module, so the
+  walkthrough and the report can never disagree about the same doorway.
+
+*Leans on:* `collide.js`, `navmesh.js`, `catalog.js`, `egress.js`,
+`report.js`. *Save:* none — every number is derived. *Model:* **Claude
+Fable 5** — the collider contract and clearance geometry are model layer.
+
+## Phase 41 — Numbers that know their edition
+
+**Three code editions are offered and not one of them changes a number.**
+
+Two backlog findings and one closeout ask, claimed together because they
+are the same disease: the edition is printed rather than applied, the
+common path of egress travel is a constant nothing measures, and the
+readers answer with a number where they should answer with a range — "the
+model knows what it does not know", in the arc-four closeout's words.
+
+- [ ] **Editions as data.** One table per offered edition of the factors
+  the analyses already use — occupant load factors, travel and
+  common-path limits, egress width per occupant — selected by the edition
+  the file already stores; the title block prints the edition it
+  *applied*, which is finally a true sentence.
+- [ ] **Common path, measured.** The distance to the point where two
+  genuinely separate ways out first exist, walked per room on the
+  navgraph — the backlog's constant retired.
+- [ ] **Ranges where the input is a guess.** An analysis whose input is
+  assumed rather than drawn — a load classification, an absorption
+  coefficient — answers low–high instead of a point, and the report says
+  which single input would narrow the range most.
+- [ ] **Worst-first keeps its shape.** A range sorts by its bad end, and
+  a finding cites its edition the way a cost already cites the rate
+  table — never a number without its provenance.
+
+*Leans on:* `egress.js`, `occupancy.js`, `daylight.js`, `acoustics.js`,
+`report.js`, `navgraph.js`. *Save:* none new — the code edition has lived
+in the file since the conventions said it belongs there. *Model:*
+**Claude Fable 5** — code factors, graph measurement and range arithmetic
+are model layer.
+
+## Phase 42 — The boot diet
+
+**Most of the tool still loads before the first frame, and the backlog has
+already written the diet.**
+
+The and-also, for the machine rather than the reviewer. The lazy-loading
+table in the backlog names every pinned module, what pins it, and its
+price of freedom; `lazy.js` exists and `generate.js` already proved the
+shape. This phase is that table, executed — and by the backlog's own note,
+all of it lives in the untested tool/UI layer, so it lands behind
+`test/tools/run.mjs` rather than in front of it.
+
+- [ ] **A normalization registry.** `save-load.js` consults a registry
+  instead of importing the eight record-owning modules; a record is
+  normalized by its owner once the owner is present, exactly once.
+- [ ] **Panels go async.** The report tail — `cost`, `spec`, `egress`,
+  `daylight`, `utilisation`, `takeoff` — arrives when a panel opens: the
+  Generate button's shape, repeated.
+- [ ] **Collab on first use.** The session/wire/presence/cloud stack
+  builds on the first collaborative gesture instead of at module load,
+  retiring the top-level `createRoster()`.
+- [ ] **The minimap gets its own plan.** A cache it fills asynchronously,
+  so `blueprint.js` unpins from walk mode's every-frame path.
+- [ ] **A budget, stated and enforced.** Boot bytes and request count
+  measured in the tools pass with a ceiling the suite holds — the walk
+  template's 4 MB rule, applied to the tool itself.
+
+*Leans on:* `lazy.js`, the backlog's own table, `test/tools/run.mjs`.
+*Save:* none. *Model:* **Claude Opus 5** — the backlog's own verdict:
+none of it is hard, all of it is wiring.
