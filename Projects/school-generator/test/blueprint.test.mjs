@@ -446,3 +446,72 @@ test('a design with no timetable draws the code panel and nothing under it', () 
   assert.equal(texts.filter((t) => t.text === 'CODE INFORMATION').length, 1);
   assert.equal(texts.filter((t) => t.text === 'THE SCHOOL DAY').length, 0);
 });
+
+// ---------- Phase 37: the set ----------
+
+test('the plan carries the drawn section lines, and none when none are drawn', async () => {
+  const { addSection } = await import('../js/elevation.js');
+  const s = createState(20, 20);
+  boxRoom(s, 0, 0, 0, 8, 6);
+  assert.deepEqual(computeFloorPlan(s, 0).sections, []);
+  addSection(s, { x: 0, z: 12 }, { x: 40, z: 12 });
+  const plan = computeFloorPlan(s, 0);
+  assert.equal(plan.sections.length, 1);
+  assert.equal(plan.sections[0].name, 'A');
+  // Design-wide: the same line prints on every storey's sheet.
+  addFloor(s);
+  assert.equal(computeFloorPlan(s, 1).sections.length, 1);
+});
+
+test('sheetSet binds the set in drawing order with discipline numbers', async () => {
+  const { sheetSet } = await import('../js/blueprint.js');
+  const { addSection } = await import('../js/elevation.js');
+  const s = createState(20, 20);
+  boxRoom(s, 0, 0, 0, 8, 6);
+  addFloor(s);
+  addSection(s, { x: 0, z: 12 }, { x: 40, z: 12 });
+  const set = sheetSet(s, { site: true, elevations: true, spec: true });
+  assert.deepEqual(set.map((e) => e.kind), [
+    'site', 'plan', 'plan', 'elevation', 'elevation', 'elevation', 'elevation',
+    'section', 'spec',
+  ]);
+  assert.equal(set[0].number, 'A-001');
+  assert.equal(set[1].number, 'A-101');
+  assert.equal(set[3].number, 'A-201');
+  assert.equal(set.find((e) => e.kind === 'section').number, 'A-301');
+  assert.equal(set.find((e) => e.kind === 'section').title, 'Section A-A');
+  assert.equal(set[set.length - 1].number, 'A-601');
+  // Asked for nothing extra, the set is the plans — plus the drawn section,
+  // because a drawn section is a fact about the drawing, not an option.
+  const bare = sheetSet(s, {});
+  assert.deepEqual(bare.map((e) => e.kind), ['plan', 'plan', 'section']);
+  assert.deepEqual(sheetSet(s, { sections: false }).map((e) => e.kind), ['plan', 'plan'],
+    'the one caller that wants them off says so');
+  // ...and a floor scope narrows the plans without touching the rest.
+  const one = sheetSet(s, { floors: [1] });
+  assert.equal(one.filter((e) => e.kind === 'plan').length, 1);
+  assert.equal(one[0].floorIndex, 1);
+});
+
+test('specLayout wraps and measures without a DOM anywhere near it', async () => {
+  const { specLayout } = await import('../js/blueprint.js');
+  const { specSheet } = await import('../js/spec.js');
+  const s = buildSampleSchool();
+  const spec = specSheet(s);
+  assert.ok(spec.lines.length > 5, 'the sample school has a real spec');
+  // Six pixels a character is a believable 11px face; the exact number only
+  // moves where lines wrap, not whether the layout holds together.
+  const sheet = specLayout(spec, (str) => String(str).length * 6);
+  assert.equal(sheet.rows.length, spec.lines.length);
+  for (const r of sheet.rows) {
+    const tallest = Math.max(...r.cells.map((c) => c.length));
+    assert.equal(r.h, tallest * sheet.lineH + sheet.rowPad * 2,
+      'each row is as tall as its tallest wrapped cell');
+  }
+  assert.ok(sheet.height > sheet.headH, 'the page has a height');
+  assert.equal(specLayout({ lines: [] }, () => 0), null, 'an empty spec is no sheet');
+  // A narrower measurer wraps more and the sheet grows — the layout actually
+  // listens to the measure it is handed.
+  const wide = specLayout(spec, (str) => String(str).length * 9);
+  assert.ok(wide.height >= sheet.height, 'more wrapping, taller sheet');
+});

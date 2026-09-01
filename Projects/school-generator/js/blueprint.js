@@ -39,6 +39,9 @@ import { segLeaves, leafEnd, leafAngle } from './openings.js';
 import { regionsOf, markingsFor, surfaceEntry, markingEntry, siteSchedule, regionArea } from './site.js';
 import { terrainField, contours, terrainRange, CONTOUR_FT } from './terrain.js';
 import { roofMask, maskOutlines } from './roof.js';
+import {
+  computeElevation, computeSection, sectionsOf, sectionLabel, FACADES, facadeEntry,
+} from './elevation.js';
 import { INK, withAlpha, paperTint } from './theme.js';
 
 const SEG_KIND_NAME = { [SEG_WALL]: 'wall', [SEG_GLASS]: 'glass', [SEG_RAIL]: 'rail' };
@@ -270,6 +273,12 @@ export function computeFloorPlan(state, floorIndex, opts = {}) {
     occupancy: opts.occupancy
       ? floorOccupancy(state, floorIndex).rooms.filter((r) => r.occ > 0)
       : null,
+    // Phase 37: the drawn section lines. They are design-wide — a cut goes
+    // through every storey — so every plan sheet prints all of them: a
+    // section nobody can locate on the plan is only a picture.
+    sections: sectionsOf(state).map((sec) => ({
+      name: sec.name, ax: sec.ax, az: sec.az, bx: sec.bx, bz: sec.bz,
+    })),
   };
 }
 
@@ -706,7 +715,49 @@ function drawDimensions(ctx, plan, layout) {
   ctx.restore();
 }
 
-function drawScaleAndNorth(ctx, plan, layout, canvasW, canvasH) {
+// The drawn section lines, printed on every plan sheet: the line itself in
+// dash-dot, a flag at each end pointing the way the cut looks (its right-hand
+// normal — see elevation.js), and the letter beside each flag, so "Section
+// A-A" on a later sheet can be found on this one.
+function drawSectionMarkers(ctx, plan, layout) {
+  if (!plan.sections || !plan.sections.length) return;
+  for (const sec of plan.sections) {
+    const a = toPx(plan, layout, sec.ax, sec.az);
+    const b = toPx(plan, layout, sec.bx, sec.bz);
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 2) continue;
+    const dx = (b.x - a.x) / len, dy = (b.y - a.y) / len;
+    // The cut's viewing direction: the right normal of a→b in world (x, z),
+    // which in canvas pixels is the *left* normal — +z runs down the page.
+    const nx = dy, ny = -dx;
+    ctx.strokeStyle = INK.line;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 4, 2, 4]);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = INK.line;
+    for (const [px, py, along] of [[a.x, a.y, 1], [b.x, b.y, -1]]) {
+      // The flag: a solid triangle at the line's end, pointing the way the
+      // section looks.
+      const s = 8;
+      ctx.beginPath();
+      ctx.moveTo(px + nx * s, py + ny * s);
+      ctx.lineTo(px + dx * along * s * 0.7, py + dy * along * s * 0.7);
+      ctx.lineTo(px - dx * along * s * 0.7, py - dy * along * s * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      // ...and its letter, on the other side of the line from the flag.
+      ctx.font = '600 11px "Public Sans", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(sec.name, px - nx * 10, py - ny * 10 + 4);
+    }
+  }
+}
+
+function drawScaleBar(ctx, layout, canvasW, canvasH) {
   const x0 = canvasW - 140, y0 = canvasH - 34;
   const ftPerTick = 10;
   const pxPerTick = ftPerTick * layout.scale;
@@ -724,8 +775,15 @@ function drawScaleAndNorth(ctx, plan, layout, canvasW, canvasH) {
     ctx.beginPath(); ctx.moveTo(x, y0 - 4); ctx.lineTo(x, y0 + 4); ctx.stroke();
     ctx.fillText(String(i * ftPerTick), x, y0 + 16);
   }
+}
+
+function drawScaleAndNorth(ctx, plan, layout, canvasW, canvasH) {
+  drawScaleBar(ctx, layout, canvasW, canvasH);
   // North arrow, pointing up canvas — the plan's own +z (world "south") runs
-  // down the page, matching the editor's top-down camera.
+  // down the page, matching the editor's top-down camera. An elevation sheet
+  // draws the bar alone: it has no plan north.
+  ctx.strokeStyle = INK.line;
+  ctx.fillStyle = INK.line;
   const nx = canvasW - 30, ny = canvasH - 70;
   ctx.beginPath();
   ctx.moveTo(nx, ny - 14);
@@ -968,6 +1026,17 @@ function drawTitleBlock(ctx, plan, layout, canvasW, opts) {
   ctx.fillStyle = INK.dim;
   ctx.fillText(`${plan.label} — ${opts.sheet || 'Floor Plan'}`, layout.margin, layout.titleH * 0.75);
   ctx.textAlign = 'right';
+  // Phase 37: a sheet in a set says which sheet it is. A sheet rendered on
+  // its own — the panel, the minimap's parents — carries no number and prints
+  // exactly as it always has.
+  if (opts.number) {
+    ctx.fillStyle = INK.line;
+    ctx.font = '600 12px "IBM Plex Mono", ui-monospace, monospace';
+    const of = opts.sheetCount ? `  ·  ${opts.sheetIndex} of ${opts.sheetCount}` : '';
+    ctx.fillText(`${opts.number}${of}`, canvasW - layout.margin, layout.titleH * 0.42);
+    ctx.fillStyle = INK.dim;
+    ctx.font = '12px "Public Sans", system-ui, sans-serif';
+  }
   ctx.fillText(opts.date || new Date().toLocaleDateString(), canvasW - layout.margin, layout.titleH * 0.75);
 }
 
@@ -985,6 +1054,10 @@ export function drawPlanBody(ctx, plan, layout, opts = {}) {
   if (opts.showLabels !== false) drawLabels(ctx, plan, layout);
   if (opts.showOccupancy) drawOccupancy(ctx, plan, layout);
   if (opts.showDimensions) drawDimensions(ctx, plan, layout);
+  // Drawn sections print whenever they exist — a cut nobody can find on the
+  // plan is only a picture. The minimap opts out: at thumbnail size a flag
+  // is bigger than a room.
+  if (opts.showSections !== false) drawSectionMarkers(ctx, plan, layout);
 }
 
 // Draws one floor's plan into a 2D context whose canvas is already sized for
@@ -1262,6 +1335,221 @@ export function renderSitePlanCanvas(state, opts = {}) {
   return canvas;
 }
 
+// ---------- elevations and sections (Phase 37) ----------
+//
+// The same pure-then-draw split as every sheet before them: elevation.js
+// computes, this draws. The sheet's y axis is world height, so `elevPx`
+// flips it — up the building is up the page.
+
+function elevPx(elev, layout, u, y) {
+  return {
+    x: layout.margin + (u - elev.bounds.minU) * layout.scale,
+    y: layout.margin + layout.titleH + (elev.bounds.maxY - y) * layout.scale,
+  };
+}
+
+function elevPath(ctx, elev, layout, pts, close = false) {
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const { x, y } = elevPx(elev, layout, p.u, p.y);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  if (close) ctx.closePath();
+}
+
+// One projected polygon, filled opaquely and outlined — the painter's whole
+// vocabulary. The fills are deliberately near-monochrome, the way the plan
+// sheets are: a drawing, not a rendering.
+const ELEV_FILLS = {
+  wall: '#f0eeea',
+  parapet: '#eae7e2',
+  roof: '#e2dfd8',
+  gable: '#eae7e2',
+  door: '#fbfaf8',
+  window: 'rgba(77, 163, 255, 0.16)',
+};
+
+function drawElevPaint(ctx, elev, layout, p) {
+  elevPath(ctx, elev, layout, p.poly, true);
+  ctx.fillStyle = ELEV_FILLS[p.kind] || ELEV_FILLS.wall;
+  ctx.fill();
+  if (p.kind === 'window') {
+    ctx.strokeStyle = INK.accent;
+    ctx.lineWidth = Math.max(1, layout.scale * 0.08);
+  } else {
+    ctx.strokeStyle = INK.line;
+    ctx.lineWidth = p.layer ? Math.max(1, layout.scale * 0.08) : Math.max(1.2, layout.scale * 0.12);
+  }
+  ctx.stroke();
+}
+
+// The storey datums: a faint dashed line at each level, labelled in the right
+// margin — the lines a reviewer lays a scale against.
+function drawElevLevels(ctx, elev, layout, canvasW) {
+  ctx.strokeStyle = INK.faint;
+  ctx.fillStyle = INK.dim;
+  ctx.lineWidth = 1;
+  ctx.font = '9px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.textAlign = 'right';
+  ctx.setLineDash([6, 4]);
+  for (const lv of elev.levels) {
+    const { y } = elevPx(elev, layout, 0, lv.y);
+    ctx.beginPath();
+    ctx.moveTo(layout.margin, y);
+    ctx.lineTo(canvasW - layout.margin, y);
+    ctx.stroke();
+    ctx.fillText(`${lv.label} · ${lv.y.toFixed(0)}'`, canvasW - layout.margin, y - 3);
+  }
+  ctx.setLineDash([]);
+}
+
+// The ground, drawn the way a section drawing draws it: a heavy earth line
+// with hatching under it.
+function drawElevGrade(ctx, elev, layout) {
+  if (!elev.grade.length) return;
+  ctx.strokeStyle = 'rgba(120, 96, 64, 0.9)';
+  ctx.lineWidth = 2.2;
+  elevPath(ctx, elev, layout, elev.grade);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(120, 96, 64, 0.45)';
+  ctx.beginPath();
+  for (let i = 0; i < elev.grade.length - 1; i++) {
+    const g = elev.grade[i];
+    const { x, y } = elevPx(elev, layout, g.u, g.y);
+    ctx.moveTo(x, y + 2);
+    ctx.lineTo(x - 5, y + 8);
+  }
+  ctx.stroke();
+}
+
+export function drawElevation(ctx, elev, layout, opts = {}) {
+  ctx.fillStyle = INK.paper;
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  for (const p of elev.paints) drawElevPaint(ctx, elev, layout, p);
+  drawElevGrade(ctx, elev, layout);
+  drawElevLevels(ctx, elev, layout, ctx.canvas.width);
+  drawScaleBar(ctx, layout, ctx.canvas.width, ctx.canvas.height);
+  drawSheetPanels(ctx, layout, ctx.canvas.width, opts);
+  drawTitleBlock(ctx, { label: 'Whole building' }, layout, ctx.canvas.width,
+    { ...opts, sheet: opts.sheet || elev.label });
+}
+
+export function drawSectionSheet(ctx, sec, layout, opts = {}) {
+  ctx.fillStyle = INK.paper;
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  // Far to near: what shows beyond the cut first, then the ground, then the
+  // poché — the cut plane is the nearest thing on the sheet by definition.
+  for (const p of sec.paints) drawElevPaint(ctx, sec, layout, p);
+  drawElevGrade(ctx, sec, layout);
+  for (const s of sec.slabs) {
+    elevPath(ctx, sec, layout, s.poly, true);
+    ctx.fillStyle = INK.line;
+    ctx.fill();
+  }
+  for (const c of sec.cuts) {
+    elevPath(ctx, sec, layout, c.poly, true);
+    // Glass in section is a thin accent line; a wall is solid poché.
+    ctx.fillStyle = c.glass ? INK.accent : INK.line;
+    ctx.fill();
+  }
+  ctx.strokeStyle = INK.line;
+  ctx.lineWidth = Math.max(1.2, layout.scale * 0.1);
+  for (const st of sec.stairs) {
+    elevPath(ctx, sec, layout, st.pts);
+    ctx.stroke();
+  }
+  ctx.lineWidth = Math.max(1.4, layout.scale * 0.12);
+  for (const line of sec.roofline) {
+    elevPath(ctx, sec, layout, line);
+    ctx.stroke();
+  }
+  drawElevLevels(ctx, sec, layout, ctx.canvas.width);
+  drawScaleBar(ctx, layout, ctx.canvas.width, ctx.canvas.height);
+  drawSheetPanels(ctx, layout, ctx.canvas.width, opts);
+  drawTitleBlock(ctx, { label: 'Whole building' }, layout, ctx.canvas.width,
+    { ...opts, sheet: opts.sheet || sec.label });
+}
+
+// The same sizing bargain the plan canvases strike: a stated scale, capped so
+// no sheet exceeds MAX_PX on a side.
+function elevCanvas(bounds, opts) {
+  const wFt = bounds.maxU - bounds.minU;
+  const hFt = bounds.maxY - bounds.minY;
+  let scale = opts.scale || 8;
+  const rawW = wFt * scale + MARGIN * 2;
+  const rawH = hFt * scale + MARGIN * 2 + TITLE_H;
+  if (rawW > MAX_PX || rawH > MAX_PX) scale *= Math.min(MAX_PX / rawW, MAX_PX / rawH);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(wFt * scale + MARGIN * 2);
+  canvas.height = Math.ceil(hFt * scale + MARGIN * 2 + TITLE_H);
+  return { canvas, layout: { scale, margin: MARGIN, titleH: TITLE_H } };
+}
+
+export function renderElevationCanvas(state, dir, opts = {}) {
+  const elev = computeElevation(state, dir);
+  if (!elev) return null;
+  const { canvas, layout } = elevCanvas(elev.bounds, opts);
+  drawElevation(canvas.getContext('2d'), elev, layout, opts);
+  return canvas;
+}
+
+export function renderSectionCanvas(state, sec, opts = {}) {
+  const cut = computeSection(state, sec);
+  if (!cut) return null;
+  const { canvas, layout } = elevCanvas(cut.bounds, opts);
+  drawSectionSheet(canvas.getContext('2d'), cut, layout, opts);
+  return canvas;
+}
+
+// ---------- the set ----------
+//
+// A drawing is a set of sheets, not a picture — the arc-four closeout's
+// sentence, claimed here. The set is a list: which sheets exist, in the order
+// a real set is bound (site, plans, elevations, sections, specification),
+// each with the number its discipline would give it. The caller renders each
+// entry through `renderSheetCanvas` and stamps `n of N` from the list itself.
+export function sheetSet(state, want = {}) {
+  const out = [];
+  const floors = want.floors || state.floors.map((_, i) => i);
+  if (want.site) out.push({ kind: 'site', number: 'A-001', title: 'Site Plan' });
+  for (const i of floors) {
+    if (!state.floors[i]) continue;
+    out.push({
+      kind: 'plan', floorIndex: i,
+      number: `A-${101 + i}`, title: `Floor Plan — ${floorLabel(i)}`,
+    });
+  }
+  if (want.elevations) {
+    FACADES.forEach((dir, i) => out.push({
+      kind: 'elevation', dir,
+      number: `A-${201 + i}`, title: facadeEntry(dir).label,
+    }));
+  }
+  if (want.sections !== false) {
+    sectionsOf(state).forEach((sec, i) => out.push({
+      kind: 'section', section: { ...sec },
+      number: `A-${301 + i}`, title: `Section ${sectionLabel(sec)}`,
+    }));
+  }
+  if (want.spec) out.push({ kind: 'spec', number: 'A-601', title: 'Specification' });
+  return out;
+}
+
+// One entry of the set, rendered. The spec sheet renders `opts.spec`, which
+// the caller computed (the report already built it — see main.js): this
+// module draws readings and never takes them, the rule the panels set, and
+// the reason blueprint.js imports no analysis module.
+export function renderSheetCanvas(state, entry, opts = {}) {
+  const o = { ...opts, sheet: entry.title, number: entry.number };
+  if (entry.kind === 'site') return renderSitePlanCanvas(state, o);
+  if (entry.kind === 'plan') return renderFloorPlanCanvas(state, entry.floorIndex, o);
+  if (entry.kind === 'elevation') return renderElevationCanvas(state, entry.dir, o);
+  if (entry.kind === 'section') return renderSectionCanvas(state, entry.section, o);
+  if (entry.kind === 'spec') return o.spec ? renderSpecSheetCanvas(o.spec, o) : null;
+  return null;
+}
+
 // ---------- the specification sheet ----------
 //
 // A sheet rather than a panel, which is the whole point of it: the takeoff
@@ -1300,28 +1588,43 @@ const specCell = (line, col) => (col.key === 'qty'
   ? `${Math.round(line.qty).toLocaleString()} ${line.unit}`
   : line[col.key] || '—');
 
-export function renderSpecSheetCanvas(spec, opts = {}) {
+// The pure half of the spec sheet (Phase 37): everything the drawing below
+// decides — which cell wraps where, how tall each row comes out, how tall the
+// page is — computed from the spec and a text measurer, with no canvas or DOM
+// anywhere in it. The browser hands it `ctx.measureText`; a test hands it
+// arithmetic; either way the sheet renders from a design without the DOM ever
+// being asked, which is what lets the report pipeline join the visual harness.
+export function specLayout(spec, measure) {
   if (!spec || !spec.lines.length) return null;
   const margin = 28;
   const rowPad = 7;
   const lineH = 13;
-  const measure = document.createElement('canvas').getContext('2d');
-  measure.font = '11px "Public Sans", system-ui, sans-serif';
-
+  const wrap = { measureText: (s) => ({ width: measure(s) }) };
   const rows = spec.lines.map((l) => {
     const cells = SPEC_COLS.map((c) => (c.wrap
-      ? wrapLines(measure, specCell(l, c), c.w - 12)
+      ? wrapLines(wrap, specCell(l, c), c.w - 12)
       : [specCell(l, c)]));
     return { line: l, cells, h: Math.max(...cells.map((x) => x.length)) * lineH + rowPad * 2 };
   });
-
   const headH = 26;
   const notesH = 18 + spec.disclaimer.length * 26;
   const bodyH = rows.reduce((n, r) => n + r.h, 0);
+  return {
+    margin, rowPad, lineH, rows, headH, notesH,
+    width: SPEC_W,
+    height: Math.min(MAX_PX, Math.ceil(TITLE_H + margin + headH + bodyH + notesH + margin)),
+  };
+}
+
+export function renderSpecSheetCanvas(spec, opts = {}) {
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = '11px "Public Sans", system-ui, sans-serif';
+  const sheet = specLayout(spec, (s) => measure.measureText(s).width);
+  if (!sheet) return null;
+  const { margin, rowPad, lineH, rows, notesH } = sheet;
   const canvas = document.createElement('canvas');
-  canvas.width = SPEC_W;
-  canvas.height = Math.min(MAX_PX,
-    Math.ceil(TITLE_H + margin + headH + bodyH + notesH + margin));
+  canvas.width = sheet.width;
+  canvas.height = sheet.height;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = INK.paper;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1338,7 +1641,7 @@ export function renderSpecSheetCanvas(spec, opts = {}) {
     ctx.textAlign = c.right ? 'right' : 'left';
     ctx.fillText(c.title.toUpperCase(), c.right ? xs[i] + c.w - 6 : xs[i], y + 12);
   });
-  y += headH;
+  y += sheet.headH;
   ctx.strokeStyle = INK.line;
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(margin, y - 6.5); ctx.lineTo(SPEC_W - margin, y - 6.5); ctx.stroke();

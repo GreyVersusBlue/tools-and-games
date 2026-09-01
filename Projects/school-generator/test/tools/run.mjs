@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// test/tools/run.mjs — the twelve drawing tools, driven on the real page.
+// test/tools/run.mjs — the thirteen drawing tools, driven on the real page.
 //
 //   node test/tools/run.mjs               run every check
 //   node test/tools/run.mjs --only wall   run one
@@ -138,6 +138,7 @@ window.__fp = () => {
     lineOpenings: (f.walls || []).reduce((n, l) => n + (l.openings || []).length, 0),
     props: (s.props || []).length,
     links: (s.links || []).length,
+    sections: (s.sections || []).length,
     floors: s.floors.length,
     names: sh.map((x) => x.name || '').join('|'),
     json: JSON.stringify(s).length,
@@ -315,6 +316,33 @@ const CHECKS = [
     expect: ({ before, after, status }) => {
       if (after.walls <= before.walls) throw new Error('no wall was added to the storey');
       if (!/\d+ ft/.test(status)) throw new Error(`no length reported: ${status}`);
+    },
+  },
+  {
+    name: 'section',
+    what: 'two clicks draw a named section line, and a third click on it removes it',
+    async run(d) {
+      await d.pick('section');
+      await d.assertClear([[100, 108], [128, 108]]);
+      await d.click(100, 108);
+      await d.click(128, 108);
+    },
+    expect: ({ before, after, status }) => {
+      if (after.sections !== before.sections + 1) throw new Error('no section line was recorded');
+      if (!/Section [A-L]-[A-L]/.test(status)) throw new Error(`the tool did not name the cut: ${status}`);
+    },
+  },
+  {
+    name: 'section-remove',
+    what: 'clicking a drawn section line takes it back off the design',
+    async run(d) {
+      await d.pick('section');
+      await d.assertClear([[114, 108]]);
+      await d.click(114, 108);
+    },
+    expect: ({ before, after, status }) => {
+      if (after.sections !== before.sections - 1) throw new Error('the line is still there');
+      if (!/removed/.test(status)) throw new Error(`the tool did not say so: ${status}`);
     },
   },
   {

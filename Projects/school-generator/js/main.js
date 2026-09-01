@@ -64,7 +64,7 @@ import {
 } from './save-load.js';
 import {
   renderFloorPlanCanvas, renderSitePlanCanvas, renderSpecSheetCanvas, downloadCanvasPNG,
-  computeFloorPlan, drawPlanBody,
+  computeFloorPlan, drawPlanBody, sheetSet, renderSheetCanvas,
 } from './blueprint.js';
 import { INK } from './theme.js';
 import { buildReport, reportCSV, codePanel, dayPanel } from './report.js';
@@ -1180,6 +1180,9 @@ const TOOL_KEYS = {
   Minus: 'site', NumpadSubtract: 'site',
   // ...and the twelfth, on the key after that one.
   Equal: 'overlay', NumpadAdd: 'overlay',
+  // The thirteenth ran out of number row; backslash sits under Backspace on
+  // the keyboards the row runs out on.
+  Backslash: 'section', IntlBackslash: 'section',
 };
 const HINTS = {
   floor: 'Floor — drag out a rectangle of grid tiles. R switches to the brush. Tiles join the room they can walk to, or start one.',
@@ -1194,6 +1197,7 @@ const HINTS = {
   template: 'Layout — pick a preset, click to stamp its whole furniture list at once. R/⇧R rotates it before you place it.',
   site: 'Site — lay hardscape and fields, or grade the ground. Region: click corners, close the loop. Grade: drag to raise, ⇧ to lower, Alt to smooth.',
   overlay: 'Overlay — a plan or a sketch to trace over. Load an image, measure something you know the length of, say what it is, and the picture is scaled to match. Drag to move, R to turn.',
+  section: 'Section — click one end of the cut, then the other; the drawn line prints on the plan and its cut prints with the set. Click a drawn line to remove it, Esc stops the gesture.',
 };
 
 // --- one hint at a time (Phase 19) ---
@@ -2614,41 +2618,56 @@ const wantsSite = () => $('export-site').checked;
 $('export-btn').addEventListener('click', () => openModal(exportOverlay));
 $('export-close').addEventListener('click', () => closeModal(exportOverlay));
 
+// Phase 37: the set. `sheetSet` decides which sheets exist and in what
+// order — site, plans, elevations, every drawn section, the specification —
+// and numbers each through the title block; this builds one entry's options
+// (the shared set, that storey's panels, and its place in the binding) and
+// renders it.
+function exportSheets(opts) {
+  const set = sheetSet(state, {
+    site: wantsSite(),
+    floors: exportScope(),
+    elevations: $('export-elev').checked,
+    spec: !!opts.spec,
+  });
+  return set.map((entry, i) => ({
+    entry,
+    render: () => renderSheetCanvas(state, entry, {
+      ...sheetOpts(opts, entry.kind === 'plan' ? entry.floorIndex : null),
+      sheetIndex: i + 1,
+      sheetCount: set.length,
+    }),
+  }));
+}
+
+const sheetSlug = (entry) =>
+  `school-${entry.number}-${entry.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+    .replace(/-+$/, '');
+
 $('export-png').addEventListener('click', () => {
   const opts = exportOpts();
-  for (const i of exportScope()) {
-    const canvas = renderFloorPlanCanvas(state, i, sheetOpts(opts, i));
-    if (canvas) downloadCanvasPNG(canvas, `school-floor-plan-level-${i + 1}.png`);
-  }
-  if (wantsSite()) {
-    const canvas = renderSitePlanCanvas(state, sheetOpts(opts, null));
-    if (canvas) downloadCanvasPNG(canvas, 'school-site-plan.png');
-  }
-  if (opts.spec) {
-    const canvas = renderSpecSheetCanvas(opts.spec, opts);
-    if (canvas) downloadCanvasPNG(canvas, 'school-specification.png');
+  for (const { entry, render } of exportSheets(opts)) {
+    const canvas = render();
+    if (canvas) downloadCanvasPNG(canvas, `${sheetSlug(entry)}.png`);
   }
 });
 
 $('export-print').addEventListener('click', () => {
   const opts = exportOpts();
   printArea.textContent = '';
-  const sheet = (canvas) => {
-    if (!canvas) return;
+  // One dialog for the lot, bound the way a real set is bound: the site
+  // leads, the plans follow, the elevations and cuts stand behind them, and
+  // the specification closes the book.
+  for (const { render } of exportSheets(opts)) {
+    const canvas = render();
+    if (!canvas) continue;
     const page = document.createElement('div');
     page.className = 'print-page';
     const img = document.createElement('img');
     img.src = canvas.toDataURL('image/png');
     page.appendChild(img);
     printArea.appendChild(page);
-  };
-  // The site plan leads, the way it does in a real set: you look at where the
-  // building sits before you look at what is inside it.
-  if (wantsSite()) sheet(renderSitePlanCanvas(state, sheetOpts(opts, null)));
-  for (const i of exportScope()) sheet(renderFloorPlanCanvas(state, i, sheetOpts(opts, i)));
-  // The specification goes last, the way it does in a set: the drawings say
-  // where things are, and the spec says what they are.
-  if (opts.spec) sheet(renderSpecSheetCanvas(opts.spec, opts));
+  }
   closeModal(exportOverlay);
   window.print();
 });
@@ -5465,11 +5484,12 @@ const cmdkList = $('cmdk-list');
 const TOOL_NAMES = {
   floor: 'Floor', wall: 'Wall', door: 'Door', room: 'Room', erase: 'Erase',
   poly: 'Polygon', vertex: 'Shape', prop: 'Furniture', stair: 'Stairs',
-  template: 'Layout', site: 'Site', overlay: 'Overlay',
+  template: 'Layout', site: 'Site', overlay: 'Overlay', section: 'Section',
 };
 const TOOL_HOTKEY = {
   floor: '1', wall: '2', door: '3', room: '4', erase: '5', poly: '6',
   vertex: '7', prop: '8', stair: '9', template: '0', site: '-', overlay: '=',
+  section: '\\',
 };
 
 // Built fresh at each opening: half the labels depend on where you are
@@ -7416,6 +7436,8 @@ function miniRasterFor(floorIndex, record, scale) {
     showFurniture: scale >= 1,
     showLabels: false,
     showDimensions: false,
+    // At minimap scale a section flag is bigger than a room.
+    showSections: false,
   });
   miniRasters.set(key, c);
   return c;

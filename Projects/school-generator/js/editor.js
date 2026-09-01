@@ -58,6 +58,7 @@ import { initSiteEdit } from './siteedit.js';
 import { initOverlayEdit } from './overlayedit.js';
 import { pointSupported } from './shadow.js';
 import { pinchZoomHeight } from './touch.js';
+import { addSection, removeSection, sectionAt, sectionsOf, sectionLabel } from './elevation.js';
 
 const MAX_UNDO = 100;
 
@@ -117,7 +118,7 @@ export function initEditor({
     if (onStatus) onStatus(text);
     if (strokeLive && lastClient && onLiveMeasure) onLiveMeasure(text, lastClient.x, lastClient.y);
   };
-  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair | template | site | overlay
+  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair | template | site | overlay | section
   let roomName = 'Room 101';
   let roomColor = ROOM_COLORS[0];
   let roomFinish = DEFAULT_FINISH;
@@ -143,6 +144,12 @@ export function initEditor({
   // school are, and off is one click away — a wing at an angle to the rest of
   // the building is a thing somebody draws on purpose.
   let wallOrtho = true;
+  // Phase 37: the section tool borrows the wall tool's whole gesture — two
+  // clicks, the same snap, the same rubber band — but not its anchor: a
+  // section is one line, never a chain, so the second click ends the gesture.
+  // Tool state, never saved state; what the second click *writes* is saved.
+  let sectAnchor = null;
+  let sectHover = null;
   // The floor tool draws rectangles rather than painting cell by cell. Also
   // the eraser's, since it rubs out the same cells.
   let floorRect = true;
@@ -261,7 +268,15 @@ export function initEditor({
   rectCursor.renderOrder = 500;
   rectCursor.visible = false;
 
-  renderApi.scene.add(cellCursor, edgeCursor, openCursor, draftLine, anchorDot, targetDot, rectCursor);
+  // The drawn section lines, shown while the section tool is active — the
+  // records live on the design (elevation.js), this is only their editor
+  // face. Rebuilt whole on every change; a dozen two-point lines cost nothing.
+  const sectionGroup = new THREE.Group();
+  sectionGroup.visible = false;
+  sectionGroup.renderOrder = 502;
+
+  renderApi.scene.add(cellCursor, edgeCursor, openCursor, draftLine, anchorDot, targetDot,
+    rectCursor, sectionGroup);
 
   const handleSize = () => Math.min(2.4, Math.max(0.25, renderApi.editView.height * 0.006));
   // ...and the wall-grab tolerance, off the same number. See SEG_GRAB above.
@@ -382,7 +397,7 @@ export function initEditor({
   // grading stroke, the first tracing image — leaves that record behind and
   // the undo silently does nothing. Every optional record on the state
   // (terrain, site, roof, code, life, timetable, overlay, tours, models,
-  // haunt, weather) is one of these.
+  // haunt, weather, sections) is one of these.
   function restore(data, held) {
     const s = getState();
     const next = { ...data };
@@ -395,6 +410,9 @@ export function initEditor({
     dirty = false;
     onChange({ structural: true });
     poly.refresh();
+    // An undo can put a section line back or take the last one away, and the
+    // record's editor face has to follow the record.
+    refreshSectionOverlay();
   }
 
   function undo() {
@@ -781,6 +799,141 @@ export function initEditor({
     if (wallAnchor) sayRun();
   }
 
+  // --- the section tool (Phase 37) ---
+  //
+  // The wall tool's gesture, drawing a different fact: two clicks lay a named
+  // section line on the design, a click on an existing line removes it, and
+  // the second click ends the gesture — a section is one line, not a chain.
+
+  const HINT_SECTION = 'Section — click one end of the cut, then the other. ' +
+    'The cut looks left along the line you draw; click a drawn line to remove it. ' +
+    'Sections print with the drawing set.';
+
+  function sectTargetAt(p, e) {
+    return targetPoint(p.x, p.z, {
+      pitch: pitch(),
+      origin: origin(),
+      snap: !(e && e.altKey),
+      from: sectAnchor,
+      ortho: wallOrtho && !(e && e.shiftKey),
+    });
+  }
+
+  function refreshSectionOverlay() {
+    const s = getState();
+    const on = enabled && tool === 'section';
+    sectionGroup.visible = on;
+    if (!on) return;
+    for (const child of sectionGroup.children) {
+      child.geometry.dispose();
+      child.material.dispose();
+    }
+    sectionGroup.clear();
+    const y = floorBaseY(s, s.currentFloor) + 0.6;
+    for (const sec of sectionsOf(s)) {
+      const arr = new Float32Array([sec.ax, y, sec.az, sec.bx, y, sec.bz]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+        color: 0xd9a05b, depthTest: false, transparent: true, opacity: 0.9,
+      }));
+      line.frustumCulled = false;
+      line.renderOrder = 502;
+      sectionGroup.add(line);
+    }
+  }
+
+  function refreshSectDraft() {
+    const s = getState();
+    const y = floorBaseY(s, s.currentFloor) + 0.5;
+    const r = handleSize();
+    const on = enabled && tool === 'section';
+    if (!on || !sectHover) {
+      if (tool !== 'wall') draftLine.visible = anchorDot.visible = targetDot.visible = false;
+      if (!on) sectAnchor = null;
+      return;
+    }
+    targetDot.position.set(sectHover.x, y, sectHover.z);
+    targetDot.scale.set(r, 1, r);
+    targetDot.visible = true;
+    if (!sectAnchor) {
+      draftLine.visible = anchorDot.visible = false;
+      return;
+    }
+    anchorDot.position.set(sectAnchor.x, y, sectAnchor.z);
+    anchorDot.scale.set(r * 1.15, 1, r * 1.15);
+    anchorDot.visible = true;
+    const arr = new Float32Array([
+      sectAnchor.x, y, sectAnchor.z, sectHover.x, y, sectHover.z,
+    ]);
+    draftLine.geometry.dispose();
+    draftLine.geometry = new THREE.BufferGeometry();
+    draftLine.geometry.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    draftLine.material.color.setHex(0xd9a05b);
+    draftLine.visible = true;
+  }
+
+  function cancelSection(quiet = false) {
+    if (!sectAnchor) return false;
+    sectAnchor = null;
+    refreshSectDraft();
+    if (onLiveMeasure) onLiveMeasure(null);
+    if (!quiet) say(HINT_SECTION);
+    return true;
+  }
+
+  function sectPointerDown(p, e) {
+    const s = getState();
+    const target = sectTargetAt(p, e);
+    sectHover = target;
+    if (!sectAnchor) {
+      // A click on a drawn line removes it — the door tool's toggle, for the
+      // same reason: the tool that places a thing is where you look to take
+      // it away.
+      const hit = sectionAt(s, p.x, p.z, segGrab());
+      if (hit) {
+        pushUndo();
+        removeSection(s, hit.id);
+        // A section line is drawing annotation, not building: nothing baked,
+        // walked or hunted changes with it.
+        fire({ structural: false, commit: true });
+        refreshSectionOverlay();
+        say(`Section ${sectionLabel(hit)} removed.`);
+        return;
+      }
+      sectAnchor = target;
+      refreshSectDraft();
+      say('Section — now click the other end of the cut.');
+      return;
+    }
+    if (runLength(sectAnchor, target) < 0.01) {
+      cancelSection();
+      return;
+    }
+    pushUndo();
+    const sec = addSection(s, sectAnchor, target);
+    sectAnchor = null;
+    if (!sec) {
+      dropUndo();
+      say('That cut is too short to slice anything — drag it across the building.');
+      refreshSectDraft();
+      return;
+    }
+    fire({ structural: false, commit: true });
+    refreshSectionOverlay();
+    refreshSectDraft();
+    say(`Section ${sectionLabel(sec)} drawn — it cuts every storey and prints with the set. ` +
+      'Click it to remove it.');
+  }
+
+  function sectPointerMove(p, e) {
+    sectHover = sectTargetAt(p, e);
+    refreshSectDraft();
+    if (sectAnchor && onStatus) {
+      onStatus(`Section — ${runLabel(sectAnchor, sectHover)}. Click to place the cut, Esc to stop.`);
+    }
+  }
+
   // --- the rectangle brush (Phase 25) ---
   //
   // The floor tool's drag lays a block rather than a trail. Kept as a gesture
@@ -951,6 +1104,14 @@ export function initEditor({
       : tool === 'wall' ? wallKindOf(wallKind).color
       : 0x4da3ff;
 
+    // The section tool rides the same overlay the wall tool draws — a dot on
+    // the grid and the run to it — and wants none of the highlight below.
+    if (tool === 'section') {
+      cellCursor.visible = edgeCursor.visible = openCursor.visible = false;
+      sectHover = sectTargetAt(p, e);
+      refreshSectDraft();
+      return;
+    }
     // The wall tool draws its own overlay now — a dot on the grid and the run
     // to it — so it wants none of the segment highlight below.
     if (tool === 'wall') {
@@ -1132,6 +1293,11 @@ export function initEditor({
         canvas.style.cursor = '';
         return true;
       }
+      return false;
+    }
+    if (tool === 'section') {
+      if (e.code === 'KeyS') { setWallOrtho(!wallOrtho); return true; }
+      if (e.code === 'Escape') return cancelSection();
       return false;
     }
     if (tool !== 'wall') return false;
@@ -1363,6 +1529,12 @@ export function initEditor({
       wallPointerDown(p, e);
       return;
     }
+    // The section tool shares the wall tool's two-click shape (Phase 37).
+    if (tool === 'section') {
+      canvas.setPointerCapture(e.pointerId);
+      sectPointerDown(p, e);
+      return;
+    }
     // The door tool is a target too (Phase 36): a press on bare wall cuts at
     // the snapped spot, a press on an existing opening waits to learn whether
     // it was a click (toggle) or a drag (slide).
@@ -1422,6 +1594,7 @@ export function initEditor({
     if (tool === 'site') { if (p) siteTool.pointerMove(p, e); return; }
     if (tool === 'overlay') { if (p) overlayTool.pointerMove(p, e); return; }
     if (tool === 'wall') { if (p) wallPointerMove(p, e); return; }
+    if (tool === 'section') { if (p) sectPointerMove(p, e); return; }
     if (tool === 'door') { doorPointerMove(p, e); return; }
     if (rectGesture) {
       if (!p) return;
@@ -1769,11 +1942,15 @@ export function initEditor({
       // unfinished polygon outline doesn't.
       wallAnchor = null;
       wallHover = null;
+      sectAnchor = null;
+      sectHover = null;
       rectGesture = null;
       eraseDown = null;
       doorDrag = null;
       rectCursor.visible = false;
       refreshDraft();
+      refreshSectDraft();
+      refreshSectionOverlay();
       if (onLiveMeasure) onLiveMeasure(null);
       poly.setTool(t);
       propTool.setTool(t);
@@ -1911,8 +2088,13 @@ export function initEditor({
     markClean,
     setEnabled(v) {
       enabled = v;
-      if (!v) { wallAnchor = null; wallHover = null; rectGesture = null; rectCursor.visible = false; }
+      if (!v) {
+        wallAnchor = null; wallHover = null; sectAnchor = null; sectHover = null;
+        rectGesture = null; rectCursor.visible = false;
+      }
       refreshDraft();
+      refreshSectDraft();
+      refreshSectionOverlay();
       // Walkthrough hides the overlay entirely; an unfinished outline doesn't
       // survive the round trip, which is the same deal the stroke tools get.
       poly.setTool(v ? tool : null);
