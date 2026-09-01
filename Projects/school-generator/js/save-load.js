@@ -135,6 +135,7 @@ import { normalizeRates, isEmptyRates } from './rates.js';
 import { normalizePhasing, isEmptyPhasing } from './phasing.js';
 import { normalizeHaunt, isDefaultHaunt } from './haunt.js';
 import { normalizeWeather, isDefaultWeather } from './weather.js';
+import { normalizeSections } from './elevation.js';
 
 // v9 is the first bump that is not free.
 //
@@ -240,6 +241,11 @@ export function serialize(state, opts = {}) {
   // build round-trips through it unchanged.
   const weather = normalizeWeather(out.weather);
   if (isDefaultWeather(weather)) delete out.weather; else out.weather = weather;
+  // Phase 37's one record, the same cheap append again: a drawn section line
+  // is a fact about the drawing — it has to survive a reload to print twice —
+  // and a design with none writes no `sections` key.
+  const sections = normalizeSections(out.sections, Math.max(out.w, out.h) * CELL * 8);
+  if (sections.length) out.sections = sections; else delete out.sections;
   // Phase 25, and the fifteenth application of the same rule — the first one
   // that is per *storey* rather than design-wide: a level with no
   // free-standing walls writes no `walls` key, so every file written before
@@ -461,6 +467,10 @@ export function deserialize(json, opts = {}) {
   // which is where every design's grid started before this build.
   const gridRef = normalizeGridRef(d.gridRef);
   if (!isDefaultGridRef(gridRef)) state.gridRef = gridRef;
+  // Phase 37's section lines, on the same terms: an unreadable line is one
+  // that isn't drawn, never a design that won't open.
+  const sections = normalizeSections(d.sections, Math.max(w, h) * CELL * 8);
+  if (sections.length) state.sections = sections;
   // v9, on the same terms as everything above it: an unreadable overlay is a
   // design with no overlay, never a design that won't open. An image type this
   // build can't decode, a data URL over the size cap, a missing pixel size —
@@ -503,6 +513,10 @@ export function deserialize(json, opts = {}) {
   // name the same number.
   for (const t of (state.tours || [])) {
     if (!t.id || t.id >= state.nextId) t.id = state.nextId++;
+  }
+  // ...and so is a section line.
+  for (const sec of (state.sections || [])) {
+    if (!sec.id || sec.id >= state.nextId) sec.id = state.nextId++;
   }
 
   // ...and only now the migration, because a baked room takes its id off the

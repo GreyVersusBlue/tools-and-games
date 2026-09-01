@@ -262,8 +262,9 @@
       max-height: calc(100vh - var(--topbar-h, 50px) - 48px - var(--floor-panel-h, 200px));
       overflow-y: auto;
     }
-    /* Twelve tools as of Phase 8, which is two more than the column had room
-       for at the old size. Rather than let the last two scroll out of sight
+    /* Thirteen tools as of Phase 37 (twelve since Phase 8), which is more
+       than the column had room
+       for at the old size. Rather than let the last few scroll out of sight
        — Overlay in particular being a tool nobody would think to look for —
        the buttons lose a few pixels each and the whole set fits again on a
        laptop screen. Since Phase 13 the reserve above is honest rather than
@@ -1656,6 +1657,7 @@
     <symbol id="i-layout" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="15" rx="1.5"/><path d="M4 11.5h16M11.5 11.5v8"/></symbol>
     <symbol id="i-tree" viewBox="0 0 24 24"><circle cx="12" cy="9" r="5.5"/><path d="M12 14.5v6"/><path d="M9 20.5h6"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M6 18.5l5-5 3 3 2.5-2.5 3.5 3.5"/></symbol>
+    <symbol id="i-section" viewBox="0 0 24 24"><path d="M4 12h3.2M9.8 12h4.4M16.8 12h3.2"/><path d="M4 12v-3.5M20 12v-3.5"/><path d="m4 8.5-1.8 1M20 8.5l1.8 1"/></symbol>
     <symbol id="i-undo" viewBox="0 0 24 24"><path d="M7.5 5 4 8.5 7.5 12"/><path d="M4 8.5h9a6 6 0 0 1 0 12H8"/></symbol>
     <symbol id="i-redo" viewBox="0 0 24 24"><path d="M16.5 5 20 8.5 16.5 12"/><path d="M20 8.5h-9a6 6 0 0 0 0 12h5"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4l2 2.5h8a1.5 1.5 0 0 1 1.5 1.5v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></symbol>
@@ -1721,6 +1723,7 @@
     <button class="tool" data-tool="template" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-layout"/></svg>Layout<span class="key">0</span></button>
     <button class="tool" data-tool="site" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-tree"/></svg>Site<span class="key">-</span></button>
     <button class="tool" data-tool="overlay" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg>Overlay<span class="key">=</span></button>
+    <button class="tool" data-tool="section" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-section"/></svg>Section<span class="key">\</span></button>
   </div>
 
   <div id="room-panel" class="panel tool-slot hidden">
@@ -2564,6 +2567,7 @@
       <label class="opt"><input type="checkbox" id="export-occupancy" /> Occupant load per room</label>
       <label class="opt"><input type="checkbox" id="export-site" checked /> Site plan sheet</label>
       <label class="opt"><input type="checkbox" id="export-contours" checked /> Contour lines on the site plan</label>
+      <label class="opt"><input type="checkbox" id="export-elev" checked /> Four elevations</label>
       <label class="opt"><input type="checkbox" id="export-code" /> Code panel in the title block</label>
       <label class="opt"><input type="checkbox" id="export-day" /> School-day panel in the title block</label>
       <label class="opt"><input type="checkbox" id="export-spec" /> Specification sheet</label>
@@ -2577,7 +2581,11 @@
         building — room use, the busiest period, how far a student walks — and
         draws nothing at all if this design has no timetable; the specification
         sheet is one more page saying what each assembly is and what this tool
-        does and does not know about it.
+        does and does not know about it. Elevations are the four facades
+        projected from the model — walls, windows, roof and ground; a section
+        drawn with the Section tool prints as its own sheet automatically, cut
+        through every storey. Every sheet in the set is numbered through its
+        title block.
       </p>
       <div class="section-label">The building itself</div>
       <label class="opt"><input type="checkbox" id="export-glb-site" checked /> Site and landscape</label>

@@ -1,10 +1,12 @@
 # School Generator — Feature Wishlist
 
-**Status: thirty-five phases are shipped and one is open — Phase 34,
-below; arc six is planned below it and unstarted.** Three arcs took a grid
+**Status: thirty-six phases are shipped and one is open — Phase 34,
+below; arc six is underway: Phase 37 has shipped, and Phase 38 — on Claude
+Fable 5 — is the next open phase in the arc's order.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school; arc
 four built for the person handed the result; arc five for the building
-itself; the phases between and after the arcs fixed what feedback found.
+itself; arc six builds for the reviewer; the phases between and after the
+arcs fixed what feedback found.
 Full history — each shipped phase's original plan, its task list, and the
 long form of how it landed — lives in `git log -p WISHLIST.md`; this file
 keeps what a builder needs going forward: the architecture, the
@@ -66,8 +68,12 @@ tiles, graph over it) · `sitemesh.js` (the same, over the outdoors) ·
 `bakelight.js` (illumination baked against sightline's occluders, off the
 main thread in `bakeworker.js`, cached by `bakestore.js` beside the
 autosave — never in the file) ·
-`shadow.js` (what an upper storey stands on) · `blueprint.js` (printable
-sheet) · `minimap.js` · `signage.js` (Phase 31: the plate beside a door and
+`shadow.js` (what an upper storey stands on) · `blueprint.js` (the printable
+set: plans per storey, four elevations, drawn sections, site and spec sheets,
+numbered through one title block) · `elevation.js` (Phase 37: the model
+projected onto a vertical plane — facades and section cuts as depth-sorted
+fills a painter draws far-to-near; also the stored section-line records) ·
+`minimap.js` · `signage.js` (Phase 31: the plate beside a door and
 the glowing EXIT over it, both read off the model — which door, which jamb,
 which side, how high).
 
@@ -1168,42 +1174,48 @@ Sonnet 5, every phase below names its model, and a phase is *finished*
 only when its pull request has merged to main with CI green and the
 closing report names the next open phase's number and its named model.
 
-## Phase 37 — A drawing is a set of sheets
+## Phase 37 — A drawing is a set of sheets *(shipped)*
 
-**The blueprint is one sheet, and a building has never been a plan.**
+**The blueprint was one sheet, and a building has never been a plan.**
 
-Everything vertical — storey heights, the roof line, a stair in section,
-what a facade actually looks like — exists only in the walkthrough, which
-is the one place a drawing reviewer will not go. The model already knows
-every number an elevation needs: wall heights from the storeys, sills and
-heads from the window bands, the roof from `roof.js`, the ground line from
-`terrain.js`. What is missing is the projection, and the arc-four closeout
-has asked once already for the entry point that would let the spec sheet
-join the visual harness — "a drawing is a set of sheets, not a picture" is
-its sentence, claimed whole here.
+`elevation.js` (pure, with its suite) projects the model onto a vertical
+plane: each storey's visible mass read off the same mask the roof reads,
+openings from the same specs the renderer hangs, the roof from `roofPlan`,
+the ground from `groundAt` — all of it 2D fills and lines in sheet feet,
+each carrying a `depth` and handed over sorted far-to-near, so the drawing
+half is a painter's algorithm and a near wing hides a far one with no
+hidden-line geometry anywhere. A section is the same projection with a
+knife in it: two points laid with the wall tool's own gesture (a
+thirteenth tool, on `\`), poché through walls and slabs split around any
+opening the plane slices, stairs climbing in risers, openings beyond in
+elevation — and the line itself prints on every plan sheet with its flags
+and letter, because a section nobody can locate on the plan is only a
+picture. `blueprint.js` grew the set: `sheetSet` binds site, plans, four
+elevations, every drawn section and the specification in a real set's
+order, numbered A-001 to A-601 through the existing title block, one print
+dialog for the lot. And the spec sheet's layout became `specLayout` — pure
+over an injected text measurer — so the report pipeline renders from a
+design with the DOM never asked, and the visual harness now diffs an
+elevation, a section and the spec sheet beside the two plans it already
+watched.
 
-- [ ] **`elevation.js`, pure, with its suite.** Orthographic projection of
-  the model onto a vertical plane: the four facades derived from storeys,
-  walls, openings, roof and grade — as 2D segments and fills on the
-  blueprint's own drawing terms, never a three.js import anywhere in it.
-- [ ] **A section is a cut, drawn like a wall.** Two points on the plan
-  (the wall tool's own gesture) define a named section line; the cut shows
-  poché through walls and slabs, stairs in profile, and openings in
-  elevation beyond — and the line itself prints on the plan sheet with its
-  name, because a section nobody can locate on the plan is only a picture.
-- [ ] **`blueprint.js` grows a set.** Sheets as a list — plans per storey,
-  four elevations, every named section, the spec sheet — numbered and
-  titled through the existing title block, one print dialog for the lot.
-- [ ] **The report pipeline gets its pure entry point.** The spec sheet
-  renders from a design without the DOM, so it joins the visual harness
-  beside the plan and a regression in it becomes a diffed picture.
+*Save:* section lines as an additive `sections` record — a drawn cut is a
+fact about the drawing and survives a reload to print twice; a design with
+none writes no key. *Model:* **Claude Fable 5** — a projection module and
+a save append are model layer, and that is where it ran.
 
-*Leans on:* `blueprint.js`, `shapes.js` / `walls.js` / `openings.js`,
-`roof.js`, `terrain.js`, `report.js`, `spec.js`. *Save:* section lines as
-an additive record — a drawn section is a fact about the drawing and has
-to survive a reload to print twice; a design with none writes no key.
-*Model:* **Claude Fable 5** — a projection module and a save append are
-model layer.
+*What fought back:* an import cycle, caught by the walk bundle's cycle
+check rather than by anything at runtime — `renderSheetCanvas` wanted to
+compute the spec it prints, and `blueprint.js → spec.js → rates.js →
+timetable.js → takeoff.js → blueprint.js` closed the loop. The fix was the
+rule the sheet panels had already set: this module draws readings and
+never takes them, so the caller hands the spec in. The other lesson was
+the ground line: it reads `groundAt`, the padded field the walker stands
+on, so a hill graded against the facade prints level at the threshold —
+which looked like a bug for one test run and is the building pad doing its
+job; the suite now pins it as a promise. Next in the arc: **Phase 38 — Say
+it on the sheet**, named model **Claude Fable 5**; Phase 34 stays open
+beside the arc.
 
 ## Phase 38 — Say it on the sheet
 

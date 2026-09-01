@@ -80,9 +80,25 @@ window.renderSheet = async (which) => {
   // The title block prints today's date by default — pinned here, or the
   // baselines would expire at midnight.
   const DATE = '1/1/2026';
-  const canvas = which === 'site'
-    ? bp.renderSitePlanCanvas(state, { date: DATE })
-    : bp.renderFloorPlanCanvas(state, Number(which), { showFurniture: true, showDimensions: true, date: DATE });
+  let canvas;
+  if (which === 'site') {
+    canvas = bp.renderSitePlanCanvas(state, { date: DATE });
+  } else if (which === 'elevation') {
+    // Phase 37: the projection sheets, from the same sample school. South
+    // sees the hall's window wall; the section is one cut straight through
+    // the middle of the building, drawn as the section tool would draw it.
+    canvas = bp.renderElevationCanvas(state, 'south', { date: DATE });
+  } else if (which === 'section') {
+    const { addSection } = await import('/js/elevation.js');
+    const sec = addSection(state,
+      { x: 0, z: state.h * 2 }, { x: state.w * 4, z: state.h * 2 });
+    canvas = bp.renderSectionCanvas(state, sec, { date: DATE });
+  } else if (which === 'spec') {
+    const { specSheet } = await import('/js/spec.js');
+    canvas = bp.renderSpecSheetCanvas(specSheet(state), { date: DATE });
+  } else {
+    canvas = bp.renderFloorPlanCanvas(state, Number(which), { showFurniture: true, showDimensions: true, date: DATE });
+  }
   return canvas.toDataURL('image/png');
 };
 window.__sheetReady = true;
@@ -120,6 +136,9 @@ const hideView = `document.getElementById('view').style.visibility = 'hidden';`;
 const CAPTURES = [
   { name: 'sheet-floor-plan', sheet: '0' },
   { name: 'sheet-site-plan', sheet: 'site' },
+  { name: 'sheet-elevation', sheet: 'elevation' },
+  { name: 'sheet-section', sheet: 'section' },
+  { name: 'sheet-spec', sheet: 'spec' },
   {
     name: 'chrome-edit', width: 1600, height: 950,
     prep: `${hideView}`,
