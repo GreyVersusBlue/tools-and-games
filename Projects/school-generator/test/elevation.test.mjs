@@ -354,3 +354,33 @@ test('a drawn section survives the file and an undrawn one is not in it', async 
   assert.ok(!('sections' in deserialize(JSON.stringify(json))));
   assert.ok(sec, 'the drawn one still exists in memory');
 });
+
+// ---------- Phase 38: dimensions on the vertical sheets ----------
+
+test('an elevation strings the dimensions parallel to it below the drawing', async () => {
+  const { addDim } = await import('../js/annotate.js');
+  const s = box(10, 5);   // 40 x 20 ft
+  const before = computeElevation(s, 'south');
+  assert.deepEqual(before.dims, []);
+  addDim(s, 0, { x: 0, z: 20 }, { x: 40, z: 20 }, 5);   // parallel to the facade
+  addDim(s, 0, { x: 0, z: 0 }, { x: 0, z: 20 }, 5);     // perpendicular — edge-on
+  const elev = computeElevation(s, 'south');
+  assert.equal(elev.dims.length, 1, 'the edge-on one stays on the plan');
+  const d = elev.dims[0];
+  assert.equal(d.label, `40'-0"`, 'the same number the plan prints');
+  near(d.u1 - d.u0, 40, 1e-6, 'the drawn span is the measured span');
+  assert.ok(d.y < 0, 'the string sits below the drawing');
+  assert.ok(elev.bounds.minY < before.bounds.minY, 'the sheet grew to hold it');
+});
+
+test('a section takes the dimensions parallel to its own cut', async () => {
+  const { addDim } = await import('../js/annotate.js');
+  const s = box(10, 5);
+  addSection(s, { x: -2, z: 10 }, { x: 42, z: 10 });
+  addDim(s, 0, { x: 0, z: 4 }, { x: 24, z: 4 }, 5);     // parallel to the cut
+  addDim(s, 0, { x: 8, z: 0 }, { x: 8, z: 16 }, 5);     // across it
+  const cut = computeSection(s, sectionsOf(s)[0]);
+  assert.equal(cut.dims.length, 1);
+  assert.equal(cut.dims[0].label, `24'-0"`);
+  near(cut.dims[0].u1 - cut.dims[0].u0, 24, 1e-6, 'measured in the cut\'s own frame');
+});

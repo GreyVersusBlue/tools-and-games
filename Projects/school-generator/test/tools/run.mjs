@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// test/tools/run.mjs — the thirteen drawing tools, driven on the real page.
+// test/tools/run.mjs — the fourteen drawing tools, driven on the real page.
 //
 //   node test/tools/run.mjs               run every check
 //   node test/tools/run.mjs --only wall   run one
@@ -139,6 +139,10 @@ window.__fp = () => {
     props: (s.props || []).length,
     links: (s.links || []).length,
     sections: (s.sections || []).length,
+    // Phase 38's per-storey annotations, summed across storeys the way a
+    // check wants them: one number that moves when a record lands.
+    dims: s.floors.reduce((n, fl) => n + (fl.dims || []).length, 0),
+    notes: s.floors.reduce((n, fl) => n + (fl.notes || []).length, 0),
     floors: s.floors.length,
     names: sh.map((x) => x.name || '').join('|'),
     json: JSON.stringify(s).length,
@@ -342,6 +346,55 @@ const CHECKS = [
     },
     expect: ({ before, after, status }) => {
       if (after.sections !== before.sections - 1) throw new Error('the line is still there');
+      if (!/removed/.test(status)) throw new Error(`the tool did not say so: ${status}`);
+    },
+  },
+  {
+    name: 'anno-dim',
+    what: 'three clicks hang a dimension whose number is measured, never typed',
+    async run(d) {
+      await d.pick('anno');
+      await d.assertClear([[96, 40], [124, 40], [110, 46]]);
+      await d.click(96, 40);
+      await d.click(124, 40);
+      await d.click(110, 46);
+    },
+    expect: ({ before, after, status }) => {
+      if (after.dims !== before.dims + 1) throw new Error('no dimension was recorded');
+      if (!/28'-0"/.test(status)) throw new Error(`the measured number is missing: ${status}`);
+    },
+  },
+  {
+    name: 'anno-note',
+    what: 'two clicks pin a note whose sentence comes from the panel',
+    async run(d) {
+      await d.pick('anno');
+      await d.page.evaluate(`window.app.editor.setAnnoMode('note');
+        const t = document.getElementById('anno-text');
+        t.value = 'existing column here';
+        t.dispatchEvent(new Event('change')); 1`);
+      await d.assertClear([[100, 52], [112, 56]]);
+      await d.click(100, 52);
+      await d.click(112, 56);
+    },
+    expect: ({ before, after, status }) => {
+      if (after.notes !== before.notes + 1) throw new Error('no note was recorded');
+      if (!/existing column here/.test(status)) throw new Error(`the sentence didn't make it: ${status}`);
+    },
+  },
+  {
+    name: 'anno-delete',
+    what: 'clicking a drawn dimension selects it and Delete removes it',
+    async run(d) {
+      await d.pick('anno');
+      // The dimension drawn by anno-dim stands 6ft off its anchors, at z=46.
+      await d.assertClear([[110, 46]]);
+      await d.click(110, 46);
+      await d.page.keyboard.press('Delete');
+      await d.page.waitForTimeout(260);
+    },
+    expect: ({ before, after, status }) => {
+      if (after.dims !== before.dims - 1) throw new Error('the dimension is still there');
       if (!/removed/.test(status)) throw new Error(`the tool did not say so: ${status}`);
     },
   },

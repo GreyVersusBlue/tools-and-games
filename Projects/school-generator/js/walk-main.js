@@ -916,6 +916,10 @@ function boot() {
       showFurniture: scale >= 1,
       showLabels: false,
       showDimensions: false,
+      // At minimap scale a section flag is bigger than a room, and a
+      // dimension string longer than a corridor.
+      showSections: false,
+      showAnnotations: false,
     });
     miniRasters.set(key, c);
     return c;

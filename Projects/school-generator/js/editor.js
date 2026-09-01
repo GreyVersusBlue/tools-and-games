@@ -56,6 +56,7 @@ import { initStairEdit } from './stairedit.js';
 import { initTemplateEdit } from './templateedit.js';
 import { initSiteEdit } from './siteedit.js';
 import { initOverlayEdit } from './overlayedit.js';
+import { initAnnoEdit } from './annoedit.js';
 import { pointSupported } from './shadow.js';
 import { pinchZoomHeight } from './touch.js';
 import { addSection, removeSection, sectionAt, sectionsOf, sectionLabel } from './elevation.js';
@@ -106,7 +107,7 @@ const doorKindOf = (k) => DOOR_KINDS.find((d) => d.kind === k) || DOOR_KINDS[0];
 
 export function initEditor({
   canvas, renderApi, getState, onChange, onStatus, onHoleMode, onMeasure,
-  onLiveMeasure, onStairSelect,
+  onLiveMeasure, onStairSelect, onAnnoSelect,
 }) {
   // The status line teaches; the measurement rides the cursor. Everything a
   // tool says goes to the status line as it always has, and while a stroke
@@ -118,7 +119,7 @@ export function initEditor({
     if (onStatus) onStatus(text);
     if (strokeLive && lastClient && onLiveMeasure) onLiveMeasure(text, lastClient.x, lastClient.y);
   };
-  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair | template | site | overlay | section
+  let tool = 'floor'; // floor | wall | door | room | erase | poly | vertex | prop | stair | template | site | overlay | section | anno
   let roomName = 'Room 101';
   let roomColor = ROOM_COLORS[0];
   let roomFinish = DEFAULT_FINISH;
@@ -411,8 +412,9 @@ export function initEditor({
     onChange({ structural: true });
     poly.refresh();
     // An undo can put a section line back or take the last one away, and the
-    // record's editor face has to follow the record.
+    // record's editor face has to follow the record. Same for an annotation.
     refreshSectionOverlay();
+    annoTool.refresh();
   }
 
   function undo() {
@@ -535,6 +537,20 @@ export function initEditor({
       // Both ends of a measurement, in image pixels. The shell puts up the
       // "how many feet is that?" prompt, because a dialog is not a tool's job.
       measured: (a, b) => onMeasure && onMeasure(a, b),
+    },
+  });
+
+  // annoedit writes the per-storey `dims` and `notes` records (Phase 38) —
+  // drawing annotation, not building, so nothing baked, walked or hunted
+  // changes with it: the same `structural: false` a section line commits with.
+  const annoTool = initAnnoEdit({
+    getState,
+    renderApi,
+    host: {
+      pushUndo, dropUndo,
+      changed: (info = {}) => fire({ structural: false, ...info }),
+      status: (text) => say(text),
+      selectionChanged: (sel) => onAnnoSelect && onAnnoSelect(sel),
     },
   });
 
@@ -1090,7 +1106,7 @@ export function initEditor({
     const p = e && pointerToWorld(e);
     if (p) hoverWorld = p;
     if (!enabled || !p || tool === 'poly' || tool === 'vertex' || tool === 'prop' ||
-        tool === 'stair' || tool === 'template' || tool === 'site') {
+        tool === 'stair' || tool === 'template' || tool === 'site' || tool === 'anno') {
       cellCursor.visible = edgeCursor.visible = openCursor.visible = rectCursor.visible = false;
       if (tool !== 'wall') { wallHover = null; refreshDraft(); }
       return;
@@ -1535,6 +1551,13 @@ export function initEditor({
       sectPointerDown(p, e);
       return;
     }
+    // The annotation tool (Phase 38) owns its own gestures the way the
+    // polygon and prop tools do.
+    if (tool === 'anno') {
+      canvas.setPointerCapture(e.pointerId);
+      annoTool.pointerDown(p, e);
+      return;
+    }
     // The door tool is a target too (Phase 36): a press on bare wall cuts at
     // the snapped spot, a press on an existing opening waits to learn whether
     // it was a click (toggle) or a drag (slide).
@@ -1595,6 +1618,7 @@ export function initEditor({
     if (tool === 'overlay') { if (p) overlayTool.pointerMove(p, e); return; }
     if (tool === 'wall') { if (p) wallPointerMove(p, e); return; }
     if (tool === 'section') { if (p) sectPointerMove(p, e); return; }
+    if (tool === 'anno') { if (p) annoTool.pointerMove(p, e); return; }
     if (tool === 'door') { doorPointerMove(p, e); return; }
     if (rectGesture) {
       if (!p) return;
@@ -1621,6 +1645,7 @@ export function initEditor({
     if (templateTool.pointerUp()) return;
     if (siteTool.pointerUp()) return;
     if (overlayTool.pointerUp()) return;
+    if (tool === 'anno' && annoTool.pointerUp()) return;
     if (rectGesture) {
       const g = rectGesture;
       rectGesture = null;
@@ -1910,6 +1935,7 @@ export function initEditor({
     templateTool.clearHover();
     siteTool.clearHover();
     overlayTool.clearHover();
+    annoTool.clearHover();
   });
 
   canvas.addEventListener('wheel', (e) => {
@@ -1931,6 +1957,7 @@ export function initEditor({
     templateTool.refresh();
     siteTool.refresh();
     overlayTool.refresh();
+    annoTool.refresh();
   }, { passive: false });
 
   return {
@@ -1958,6 +1985,7 @@ export function initEditor({
       templateTool.setTool(t);
       siteTool.setTool(t);
       overlayTool.setTool(t);
+      annoTool.setTool(t);
       updateCursor(null);
       if (t !== 'vertex') canvas.style.cursor = '';
     },
@@ -1965,12 +1993,14 @@ export function initEditor({
     // rotate/delete/escape/mirror). Returns true when one was used, so the
     // caller knows to stop handling it.
     handleKey: (e) => editorKey(e) || poly.key(e) || propTool.key(e) ||
-      stairTool.key(e) || templateTool.key(e) || siteTool.key(e) || overlayTool.key(e),
+      stairTool.key(e) || templateTool.key(e) || siteTool.key(e) || overlayTool.key(e) ||
+      annoTool.key(e),
     get holeMode() { return poly.holeMode; },
     setHoleMode: (v) => poly.setHoleMode(v),
     refreshOverlay: () => {
       poly.refresh(); propTool.refresh(); stairTool.refresh();
       templateTool.refresh(); siteTool.refresh(); overlayTool.refresh();
+      annoTool.refresh();
     },
     setRoom(name, color) { roomName = name; roomColor = color; },
     get roomName() { return roomName; },
@@ -2061,6 +2091,16 @@ export function initEditor({
     get overlayMode() { return overlayTool.mode; },
     get overlayMeasuring() { return overlayTool.measuring; },
     cancelMeasure: () => overlayTool.cancelMeasure(),
+    // The annotation tool's knobs (Phase 38): which of its three gestures is
+    // live, the sentence the next note gets, what is selected, and the
+    // panel's own delete button.
+    setAnnoMode: (m) => annoTool.setMode(m),
+    get annoMode() { return annoTool.mode; },
+    get annoHint() { return annoTool.hint(); },
+    setAnnoText: (text) => annoTool.setText(text),
+    get annoText() { return annoTool.text; },
+    get annoSelection() { return annoTool.selection; },
+    annoDelete: () => annoTool.deleteSelected(),
     setAllowOverhang(v) { allowOverhang = !!v; },
     get allowOverhang() { return allowOverhang; },
     // Ctrl combos never reach handleKey (see main.js), so copy/paste/duplicate
@@ -2103,6 +2143,7 @@ export function initEditor({
       templateTool.setTool(v ? tool : null);
       siteTool.setTool(v ? tool : null);
       overlayTool.setTool(v ? tool : null);
+      annoTool.setTool(v ? tool : null);
       if (!v) { cellCursor.visible = edgeCursor.visible = false; strokeActive = false; resetTouchState(); }
     },
   };
