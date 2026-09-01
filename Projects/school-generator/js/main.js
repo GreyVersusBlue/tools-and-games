@@ -18,7 +18,10 @@ import { initRender } from './render.js';
 import { initEditor, WALL_KINDS, DOOR_KINDS } from './editor.js';
 import { stairMetrics, linksFrom, elevatorsOn, RAMP_SLOPES } from './stairs.js';
 import { FLOOR_FINISHES, DEFAULT_FINISH, FACADE_MATERIALS, DEFAULT_FACADE } from './finish.js';
-import { SITE_SURFACES, SITE_MARKINGS, surfaceEntry, markingEntry, regionArea, siteSchedule } from './site.js';
+import {
+  SITE_SURFACES, SITE_MARKINGS, SITE_KINDS, surfaceEntry, markingEntry, kindEntry,
+  regionArea, siteSchedule, curbPointsFor,
+} from './site.js';
 import { terrainField, terrainRange, ensureTerrain, groundAt } from './terrain.js';
 import { ROOF_STYLES, ensureRoof, normalizeRoof, isPitched, roofPlan } from './roof.js';
 import {
@@ -3164,6 +3167,23 @@ const siteMarkingSel = $('site-marking');
   }
 }
 
+// Phase 39: what the region is *for*. A kind implies curb points — where a
+// bus's door opens, where a car pulls in, where a parked driver gets out —
+// which is where the crowd's day starts and ends.
+const siteKindSel = $('site-kind');
+{
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'None';
+  siteKindSel.appendChild(none);
+  for (const k of SITE_KINDS) {
+    const o = document.createElement('option');
+    o.value = k.key;
+    o.textContent = k.label;
+    siteKindSel.appendChild(o);
+  }
+}
+
 const SITE_MODES = [
   { mode: 'region', label: 'Region', title: 'Draw a paved, planted or playing surface' },
   { mode: 'grade', label: 'Grade', title: 'Raise, lower and smooth the ground' },
@@ -3203,11 +3223,14 @@ function siteStyleChanged() {
   // `setSiteStyle` restyles the selected region if there is one, and reports
   // whether it actually changed anything — so a picker that only sets the next
   // region's surface doesn't push an undo entry.
-  if (editor.setSiteStyle(siteSurfaceSel.value, siteMarkingSel.value || null)) {
+  if (editor.setSiteStyle(siteSurfaceSel.value, siteMarkingSel.value || null,
+    siteKindSel.value || null)) {
     $('status').textContent = 'Region restyled.';
   }
   renderSiteReadout();
 }
+
+siteKindSel.addEventListener('change', siteStyleChanged);
 
 siteSurfaceSel.addEventListener('change', () => {
   // Picking a marking implies a surface, so choosing one the other way round
@@ -3266,8 +3289,11 @@ function renderSiteReadout() {
   if (sel) {
     const entry = surfaceEntry(sel.surf);
     const m = sel.mark ? markingEntry(sel.mark) : null;
+    const k = sel.kind ? kindEntry(sel.kind) : null;
+    const curbs = k ? curbPointsFor(sel).length : 0;
     lines.push(`<b>${sel.name || entry.label}</b> — ${Math.round(regionArea(sel)).toLocaleString()} ft²` +
-      (m ? ` · ${m.label}` : ''));
+      (m ? ` · ${m.label}` : '') +
+      (k ? ` · ${k.label}, ${curbs} curb point${curbs === 1 ? '' : 's'}` : ''));
   }
   lines.push(rows.length
     ? `${editor.siteRegionCount} regions · ${Math.round(total).toLocaleString()} ft² ` +
@@ -3293,6 +3319,7 @@ function renderSitePanel() {
   $('site-grade-opts').classList.toggle('hidden', mode !== 'grade');
   siteSurfaceSel.value = editor.siteSurface;
   siteMarkingSel.value = editor.siteMarking || '';
+  siteKindSel.value = editor.siteKind || '';
   $('site-brush').value = String(editor.siteBrush);
   $('site-brush-value').textContent = `${editor.siteBrush} ft`;
   const roof = normalizeRoof(state.roof);
@@ -4146,8 +4173,14 @@ function renderLifeReadout() {
     `<b>${c.total}</b> people — ${c.teachers} staff · <b>${c.walking}</b> walking · ` +
     `<b>${c.seated}</b> seated · ${c.idle} standing`,
   ];
+  // Phase 39: the day's edges, when they show. `away` is the bus that
+  // hasn't come; `out` is the one that has gone; `queueing` covers the lift
+  // and the front door's morning crush alike.
+  if (c.away || c.out) {
+    lines.push(`<b>${c.away}</b> not arrived · <b>${c.out}</b> gone home`);
+  }
   if (c.queueing || c.riding) {
-    lines.push(`<b>${c.queueing}</b> waiting for the lift · <b>${c.riding}</b> in it`);
+    lines.push(`<b>${c.queueing}</b> queueing · <b>${c.riding}</b> in the lift`);
   }
   if (life.drill) {
     const r = drillReport(life.agents, life.ctx.elapsed);

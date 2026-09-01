@@ -26,7 +26,8 @@ import * as THREE from 'three';
 import { CELL } from './grid.js';
 import {
   addRegion, removeRegion, regionAt, regionById, regionsOf,
-  readSurface, readMarking, markingEntry, surfaceEntry, regionArea,
+  readSurface, readMarking, readKind, markingEntry, surfaceEntry, kindEntry,
+  regionArea, curbPointsFor,
   DEFAULT_SURFACE,
 } from './site.js';
 import {
@@ -58,6 +59,7 @@ export function initSiteEdit({ getState, renderApi, host }) {
   let mode = 'region';          // 'region' | 'grade'
   let surf = DEFAULT_SURFACE;
   let mark = null;
+  let kind = null;              // Phase 39: what the ground is for
   let brush = DEFAULT_BRUSH;
   let draft = [];               // corners placed so far, world feet
   let hover = null;             // { x, z } — snapped cursor
@@ -150,7 +152,7 @@ export function initSiteEdit({ getState, renderApi, host }) {
   function commitDraft() {
     if (draft.length < 3) { draft = []; refresh(); return; }
     host.pushUndo();
-    const region = addRegion(getState(), draft, { surf, mark });
+    const region = addRegion(getState(), draft, { surf, mark, kind });
     draft = [];
     if (!region) {
       host.dropUndo();
@@ -162,7 +164,11 @@ export function initSiteEdit({ getState, renderApi, host }) {
     host.changed();
     const entry = surfaceEntry(region.surf);
     const m = region.mark ? markingEntry(region.mark) : null;
-    host.status(`${entry.label}${m ? ` · ${m.label}` : ''} — ${Math.round(regionArea(region)).toLocaleString()} ft².`);
+    const k = region.kind ? kindEntry(region.kind) : null;
+    const curbs = k ? curbPointsFor(region).length : 0;
+    host.status(`${entry.label}${m ? ` · ${m.label}` : ''}` +
+      `${k ? ` · ${k.label}, ${curbs} curb point${curbs === 1 ? '' : 's'}` : ''}` +
+      ` — ${Math.round(regionArea(region)).toLocaleString()} ft².`);
     refresh();
   }
 
@@ -313,10 +319,15 @@ export function initSiteEdit({ getState, renderApi, host }) {
   function applyStyle() {
     const region = selectedId ? regionById(getState(), selectedId) : null;
     if (!region) return false;
-    if (region.surf === surf && (region.mark || null) === mark) return false;
+    if (region.surf === surf && (region.mark || null) === mark
+      && (region.kind || null) === kind) return false;
     host.pushUndo();
     region.surf = surf;
     region.mark = mark;
+    // The kind is a key only while it says something — see `makeRegion`, and
+    // the save promise both are keeping.
+    if (kind) region.kind = kind;
+    else delete region.kind;
     host.changed();
     refresh();
     return true;
@@ -343,9 +354,11 @@ export function initSiteEdit({ getState, renderApi, host }) {
     },
     get surface() { return surf; },
     get marking() { return mark; },
-    setStyle(nextSurf, nextMark) {
+    get kind() { return kind; },
+    setStyle(nextSurf, nextMark, nextKind) {
       if (nextSurf !== undefined) surf = readSurface(nextSurf) || DEFAULT_SURFACE;
       if (nextMark !== undefined) mark = readMarking(nextMark);
+      if (nextKind !== undefined) kind = readKind(nextKind);
       return applyStyle();
     },
     get brush() { return brush; },

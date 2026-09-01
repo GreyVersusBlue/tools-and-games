@@ -487,6 +487,105 @@ const MARK_BY_KEY = new Map(SITE_MARKINGS.map((m) => [m.key, m]));
 export const markingEntry = (key) => MARK_BY_KEY.get(key) || null;
 export const readMarking = (v) => (typeof v === 'string' && MARK_BY_KEY.has(v) ? v : null);
 
+// ---------- kinds (Phase 39) ----------
+//
+// A surface says what the ground is made of and a marking says what is painted
+// on it; a *kind* says what the ground is **for** — a bus loop, a drop-off
+// lane, a parking lot — and the whole reason to say so is the curb it implies:
+// the points where a person steps out of a vehicle and the school day starts.
+//
+// The kind is the one stored word. The curb points are derived from the
+// region's own geometry every time they are asked for, exactly the way a
+// basketball court's paint is: store the points and re-shaping the region
+// strands them; derive them and they follow the asphalt. A region with no
+// kind implies no curb, and a save with no kinds writes nothing new.
+//
+//   busloop  bays a bus length apart down the long axis — one bus's door per
+//            bay, which is what a stagger of arrivals spreads itself over.
+//   dropoff  car-length pull-ins, tighter, because a car is not a bus.
+//   parking  a point per stretch of aisle, spaced the way markStalls stripes
+//            it — a walker leaves a parked car in the aisle, not at a kerb.
+export const SITE_KINDS = [
+  { key: 'busloop', label: 'Bus loop', bay: 45, end: 18 },
+  { key: 'dropoff', label: 'Drop-off', bay: 26, end: 10 },
+  { key: 'parking', label: 'Parking', bay: 36, end: 10 },
+];
+
+export const KIND_KEYS = SITE_KINDS.map((k) => k.key);
+const KIND_BY_KEY = new Map(SITE_KINDS.map((k) => [k.key, k]));
+export const kindEntry = (key) => KIND_BY_KEY.get(key) || null;
+export const readKind = (v) => (typeof v === 'string' && KIND_BY_KEY.has(v) ? v : null);
+
+// A hostile or absurd region never implies a crowd of thousands.
+export const MAX_CURBS = 24;         // per region
+
+// The curb points one region implies, in world feet. Points are laid along
+// the region's own oriented rectangle — the same frame every marking is
+// authored in — and only the ones actually inside the ring survive, so a
+// loop with a bite out of it keeps its bays on the asphalt.
+export function curbPointsFor(region) {
+  const entry = region && region.kind ? kindEntry(region.kind) : null;
+  if (!entry || !region.pts || region.pts.length < 3) return [];
+  const rect = minAreaRect(region.pts);
+  if (!(rect.w > 1 && rect.d > 1)) return [];
+  const m = mapper(rect, 1);
+  const out = [];
+  const keep = (u, v) => {
+    if (out.length >= MAX_CURBS) return;
+    const p = m(u, v);
+    if (pointInRing(region.pts, p.x, p.z)) out.push({ x: p.x, z: p.z });
+  };
+  // Which lines the points sit on. A loop and a drop-off load along their own
+  // centre line — the vehicle stops in the lane and the door opens onto it —
+  // and a lot loads along each aisle of the same stall module markStalls
+  // stripes, because that is where a parked car lets you out.
+  const lanes = [];
+  if (entry.key === 'parking') {
+    const module = STALL.d * 2 + STALL.aisle;
+    const rows = Math.max(1, Math.floor(rect.d / module));
+    const v0 = -(rows * module) / 2;
+    for (let row = 0; row < rows; row++) {
+      lanes.push(v0 + row * module + STALL.d + STALL.aisle / 2);
+    }
+  } else {
+    lanes.push(0);
+  }
+  const span = rect.w - 2 * entry.end;
+  const n = Math.max(1, Math.floor(span / entry.bay));
+  for (const v of lanes) {
+    if (span <= 0) { keep(0, v); continue; }
+    // Centred: n bays spread over the span, each point mid-bay.
+    for (let i = 0; i < n; i++) {
+      keep(-span / 2 + (i + 0.5) * (span / n), v);
+    }
+  }
+  return out;
+}
+
+// Every curb point on the site, in region order, each carrying enough to be
+// named and found again: a stable id (the region's id and the point's index —
+// re-deriving after any edit that keeps the region names the same points),
+// the kind that implied it, and where it is. This is the list the crowd
+// arrives over and the graph hangs its curb nodes on, and it is derived on
+// both sides from this one function so they can never disagree.
+export function siteCurbs(state) {
+  const out = [];
+  for (const region of regionsOf(state)) {
+    const pts = curbPointsFor(region);
+    for (let i = 0; i < pts.length; i++) {
+      out.push({
+        id: `curb:${region.id}:${i}`,
+        x: pts[i].x,
+        z: pts[i].z,
+        kind: region.kind,
+        region: region.id,
+        name: region.name || kindEntry(region.kind).label,
+      });
+    }
+  }
+  return out;
+}
+
 // The paint on one region, in world feet. Everything downstream — the
 // renderer's stripe meshes and the site plan's strokes — draws this same list,
 // so a court you walk on is a court the plan draws.
@@ -512,6 +611,11 @@ export function makeRegion(pts, opts = {}) {
     name: typeof opts.name === 'string' && opts.name.trim() ? opts.name.trim().slice(0, 60) : null,
     pts: clean.map((p) => ({ x: p.x, z: p.z })),
   };
+  // Phase 39: what the ground is for. Present only when it says something —
+  // a region with no kind carries no key at all, which is what keeps every
+  // save from before this phase byte-identical through a round trip.
+  const kind = readKind(opts.kind);
+  if (kind) region.kind = kind;
   // Wound the same way rooms are, so a signed area is positive and every
   // consumer can assume it.
   if (ringSignedArea(region.pts) < 0) region.pts.reverse();
@@ -577,7 +681,7 @@ export function normalizeRegion(raw, extent = 4000) {
     if (!Number.isFinite(p.x) || !Number.isFinite(p.z)) continue;
     pts.push({ x: clamp(p.x, -extent, extent), z: clamp(p.z, -extent, extent) });
   }
-  const region = makeRegion(pts, { surf: raw.surf, mark: raw.mark, name: raw.name });
+  const region = makeRegion(pts, { surf: raw.surf, mark: raw.mark, name: raw.name, kind: raw.kind });
   if (!region) return null;
   const id = Math.floor(Number(raw.id));
   region.id = Number.isFinite(id) && id > 0 ? id : (_fallbackId += 1);

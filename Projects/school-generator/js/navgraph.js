@@ -57,6 +57,7 @@ import {
 } from './shapes.js';
 import { meshFloor, tileFor } from './navmesh.js';
 import { meshSite, yardTileFor } from './sitemesh.js';
+import { siteCurbs } from './site.js';
 import { MinHeap } from './heap.js';
 import {
   stairsOf, stairMetrics, runLength, localToWorld, elevatorSize, isRun, isElevator,
@@ -454,6 +455,7 @@ export function buildNav(state, opts = {}) {
   // gate is where two tiles of walkable ground meet, and it is the one thing
   // out here that becomes a node; a way node is where a tile reaches the
   // public way, and it is where a route out of the building ends.
+  const curbs = [];
   if (yard) {
     for (const g of yard.gates) {
       put(g);
@@ -472,6 +474,25 @@ export function buildNav(state, opts = {}) {
       if (t) t.anchors.push({ id: w.id, x: w.x, z: w.z, extra: 0, span: 0 });
       // ...and off the property. One way only — see `addArc`.
       addArc(adj, w.id, ensureOutside().id, 0, 0);
+    }
+    // Phase 39: the curb. A region kind that implies curb points — a bus
+    // loop's bays, a drop-off's pull-ins, a parking lot's aisles — hangs each
+    // of them on the piece of ground it stands on, exactly the way a doorway
+    // stands on the tile outside it. That one line is the whole of what lets
+    // a route *begin* at the curb in the morning and *end* at one after the
+    // last bell. The ids come off `siteCurbs` rather than being minted here,
+    // so the crowd (which assigns people their curb from the same list) and
+    // this graph can never name the same point differently.
+    for (const c of siteCurbs(state)) {
+      const found = yardTileFor(yard, c.x, c.z);
+      if (!found) continue;
+      const node = put({
+        id: c.id, kind: 'curb', outdoors: true, floor: 0,
+        name: c.name, x: c.x, z: c.z, region: c.region, curb: c.kind,
+      });
+      curbs.push(node);
+      adj.set(node.id, []);
+      found.tile.anchors.push({ id: node.id, x: c.x, z: c.z, extra: 0, span: 0 });
     }
   }
 
@@ -529,10 +550,12 @@ export function buildNav(state, opts = {}) {
     nodes, adj,
     rooms, portals, links, exits, gates,
     mesh,
-    // The outdoors: the mesh itself, and the nodes on it that mean "the
-    // street". Both are null-safe — a sealed building has neither.
+    // The outdoors: the mesh itself, the nodes on it that mean "the street",
+    // and the ones that mean "where a vehicle lets you out". All null-safe —
+    // a sealed building has none of them.
     yard,
     ways,
+    curbs,
     outside: outside ? outside.id : null,
     perFloor,
     roomIdAt,

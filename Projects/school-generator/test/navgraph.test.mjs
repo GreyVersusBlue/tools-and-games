@@ -11,6 +11,7 @@ import { sheet } from './build.mjs';
 import { addShape, addOpening, setSegWall, LEAF_SINGLE, OP_WINDOW } from '../js/shapes.js';
 import { addStair } from '../js/stairs.js';
 import { buildSampleSchool } from '../js/sample.js';
+import { addRegion, siteCurbs } from '../js/site.js';
 import {
   buildNav, floorRooms, nodeAt, findPath, waypoints, route,
   egressField, nearestExit, pointField, pointEntry, unreachableRooms, navSummary,
@@ -585,4 +586,67 @@ test('a discharge field is nothing at all without a way out', () => {
   const f = dischargeField(nav);
   assert.equal(f.ways, 0);
   assert.equal(f.dist.size, 0);
+});
+
+// ---------- the curb, since Phase 39 ----------
+//
+// A site region whose kind implies curb points — a bus loop's bays, a
+// drop-off's pull-ins, a parking lot's aisles — hangs each one on the ground
+// it stands on, so a school morning can *begin* at the curb and a dismissal
+// can end at one. The ids come off `siteCurbs`, the same list the crowd
+// assigns people their curb from, so the two can never disagree.
+
+test('a kinded region puts curb nodes on the yard, named off siteCurbs', () => {
+  const s = twoRooms();
+  addRegion(s, [
+    { x: -60, z: 4 }, { x: -4, z: 4 }, { x: -4, z: 28 }, { x: -60, z: 28 },
+  ], { surf: 'asphalt', kind: 'busloop', name: 'Loop' });
+  const nav = buildNav(s);
+  assert.ok(nav.curbs.length > 0, 'the loop implies bays');
+  const listed = siteCurbs(s);
+  assert.equal(nav.curbs.length, listed.length);
+  for (let i = 0; i < listed.length; i++) {
+    const node = nav.node(listed[i].id);
+    assert.ok(node && node.kind === 'curb' && node.outdoors, `${listed[i].id} is on the graph`);
+    assert.equal(node.x, listed[i].x);
+    assert.equal(node.z, listed[i].z);
+  }
+});
+
+test('the day can route in from the curb and back out to it', () => {
+  const s = twoRooms();
+  addRegion(s, [
+    { x: -60, z: 4 }, { x: -4, z: 4 }, { x: -4, z: 28 }, { x: -60, z: 28 },
+  ], { surf: 'asphalt', kind: 'dropoff' });
+  const nav = buildNav(s);
+  const curb = nav.curbs[0];
+  const room = nav.rooms[1];
+  const inbound = route(nav, { floor: 0, x: curb.x, z: curb.z }, room.id);
+  assert.ok(inbound && inbound.length, 'the morning walk exists');
+  assert.ok(inbound.some((w) => w.kind === 'door'), 'and comes in through a door');
+  const outbound = route(nav, { floor: 0, x: room.x, z: room.z }, curb.id);
+  assert.ok(outbound && outbound.length, 'so does the walk home');
+  assert.equal(outbound[outbound.length - 1].kind, 'curb', 'and it ends at the curb');
+});
+
+test('a sealed building and a kindless site imply no curb at all', () => {
+  assert.deepEqual(buildNav(twoRooms({ exterior: false })).curbs, []);
+  const s = twoRooms();
+  addRegion(s, [
+    { x: -60, z: 4 }, { x: -4, z: 4 }, { x: -4, z: 28 }, { x: -60, z: 28 },
+  ], { surf: 'asphalt' });
+  assert.deepEqual(buildNav(s).curbs, [], 'asphalt without a kind is just asphalt');
+});
+
+test('the sample school arrives by bus: its loop and lot both reach the graph', () => {
+  const nav = buildNav(buildSampleSchool());
+  const kinds = new Set(nav.curbs.map((c) => c.curb));
+  assert.ok(kinds.has('busloop'), 'the bus loop is a place to arrive');
+  assert.ok(kinds.has('parking'), 'so is the staff lot');
+  // Every curb can reach a room, which is what makes the morning walkable.
+  const room = nav.rooms.find((r) => r.name === 'Room 101');
+  for (const c of nav.curbs) {
+    const wp = route(nav, { floor: 0, x: c.x, z: c.z }, room.id);
+    assert.ok(wp && wp.length, `${c.id} routes in`);
+  }
 });

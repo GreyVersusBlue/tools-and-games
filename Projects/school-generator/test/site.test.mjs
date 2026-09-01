@@ -21,6 +21,7 @@ import {
   regionArea, regionBBox, pointInRegion, regionAt, siteSurfaceAt,
   convexHull, minAreaRect, clipToRing, markingsFor, normalizeRegion,
   siteSchedule, siteBounds,
+  SITE_KINDS, KIND_KEYS, MAX_CURBS, kindEntry, readKind, curbPointsFor, siteCurbs,
 } from '../js/site.js';
 
 const near = (a, b, eps, msg) =>
@@ -358,4 +359,85 @@ test('every marking key is unique and has a label', () => {
   assert.equal(new Set(MARKING_KEYS).size, MARKING_KEYS.length);
   for (const m of SITE_MARKINGS) assert.ok(m.label && m.label.length > 2, `${m.key} has a label`);
   assert.ok(MIN_REGION_AREA > 0);
+});
+
+// ---------- Phase 39: kinds and the curb ----------
+
+test('a kind is a stored word, present only when it says something', () => {
+  const none = makeRegion(rectPts(0, 0, 100, 40));
+  assert.ok(!('kind' in none), 'a kindless region carries no key at all');
+  const loop = makeRegion(rectPts(0, 0, 100, 40), { surf: 'asphalt', kind: 'busloop' });
+  assert.equal(loop.kind, 'busloop');
+  const junk = makeRegion(rectPts(0, 0, 100, 40), { kind: 'heliport' });
+  assert.ok(!('kind' in junk), 'an unknown kind is no kind');
+});
+
+test('a kind round-trips through the loader; its absence stays absent', () => {
+  const loop = normalizeRegion({ id: 3, surf: 'asphalt', kind: 'busloop', pts: rectPts(0, 0, 100, 40) });
+  assert.equal(loop.kind, 'busloop');
+  const plain = normalizeRegion({ id: 4, surf: 'turf', pts: rectPts(0, 0, 100, 40) });
+  assert.ok(!('kind' in plain), 'nothing new is written for a site with no curb');
+});
+
+test('a bus loop implies bays a bus apart, down its own long axis', () => {
+  const kind = kindEntry('busloop');
+  const region = makeRegion(rectPts(50, 30, 196, 44), { surf: 'asphalt', kind: 'busloop' });
+  const pts = curbPointsFor(region);
+  assert.ok(pts.length >= 3, `a 196ft loop holds a few buses, got ${pts.length}`);
+  for (const p of pts) {
+    assert.ok(pointInRegion(region, p.x, p.z), 'every bay is on the asphalt');
+    near(p.z, 30, 1e-6, 'on the centre line');
+  }
+  // ...and turning the region turns the bays with it, like every marking.
+  const turned = makeRegion(rectPts(50, 30, 196, 44, Math.PI / 2), { surf: 'asphalt', kind: 'busloop' });
+  const tp = curbPointsFor(turned);
+  assert.equal(tp.length, pts.length);
+  for (const p of tp) near(p.x, 50, 1e-6, 'the long axis is the long axis whichever way it points');
+  assert.ok(kind.bay > kindEntry('dropoff').bay, 'a bus is longer than a car');
+});
+
+test('a drop-off implies more, tighter pull-ins than a loop the same size', () => {
+  const loop = makeRegion(rectPts(0, 0, 150, 30), { surf: 'asphalt', kind: 'busloop' });
+  const drop = makeRegion(rectPts(0, 0, 150, 30), { surf: 'asphalt', kind: 'dropoff' });
+  assert.ok(curbPointsFor(drop).length > curbPointsFor(loop).length);
+});
+
+test('a parking lot lets people out along its aisles', () => {
+  const module = STALL.d * 2 + STALL.aisle;
+  const region = makeRegion(rectPts(0, 0, 180, module * 2 + 10), { surf: 'asphalt', kind: 'parking' });
+  const pts = curbPointsFor(region);
+  assert.ok(pts.length > 0);
+  // Two full modules fit, so the points sit on two distinct aisle lines.
+  const lanes = new Set(pts.map((p) => p.z.toFixed(1)));
+  assert.equal(lanes.size, 2, `aisle lines: ${[...lanes].join(', ')}`);
+  for (const p of pts) assert.ok(pointInRegion(region, p.x, p.z));
+});
+
+test('curb points are clipped to the ring, and capped', () => {
+  // An L-shaped loop: the long-axis line leaves the ring for part of its run.
+  const L = makeRegion([
+    { x: 0, z: 0 }, { x: 200, z: 0 }, { x: 200, z: 30 },
+    { x: 120, z: 30 }, { x: 120, z: 90 }, { x: 0, z: 90 },
+  ], { surf: 'asphalt', kind: 'busloop' });
+  for (const p of curbPointsFor(L)) assert.ok(pointInRegion(L, p.x, p.z));
+  assert.ok(curbPointsFor(L).length <= MAX_CURBS);
+  const kindless = makeRegion(rectPts(0, 0, 100, 40), { surf: 'asphalt' });
+  assert.equal(curbPointsFor(kindless).length, 0, 'no kind, no curb');
+});
+
+test('siteCurbs walks the whole site with stable, region-scoped ids', () => {
+  const s = createState(10, 10);
+  addRegion(s, rectPts(0, 0, 150, 40), { surf: 'asphalt', kind: 'busloop', name: 'Loop' });
+  addRegion(s, rectPts(0, 200, 150, 40), { surf: 'turf' });
+  addRegion(s, rectPts(300, 0, 100, 40), { surf: 'asphalt', kind: 'dropoff' });
+  const curbs = siteCurbs(s);
+  assert.ok(curbs.length > 0);
+  const loop = regionsOf(s)[0];
+  for (const c of curbs.filter((x) => x.region === loop.id)) {
+    assert.match(c.id, new RegExp(`^curb:${loop.id}:\\d+$`));
+    assert.equal(c.kind, 'busloop');
+    assert.equal(c.name, 'Loop');
+  }
+  assert.ok(curbs.some((c) => c.kind === 'dropoff'));
+  assert.ok(!curbs.some((c) => c.region === regionsOf(s)[1].id), 'the lawn implies nothing');
 });

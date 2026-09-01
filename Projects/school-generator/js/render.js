@@ -6251,7 +6251,8 @@ export function initRender(canvas) {
     // than the number of people in it.
     let bagN = 0;
     for (const a of agents) {
-      if (a.state === 'out') continue;
+      // Gone home, or (Phase 39) not brought by the bus yet: no body to draw.
+      if (a.state === 'out' || a.state === 'away') continue;
       if (hideFloor !== undefined && (a.floorIndex ?? 0) > hideFloor) continue;
       if (n >= CROWD_MAX) break;
       const s = a.height || 1;

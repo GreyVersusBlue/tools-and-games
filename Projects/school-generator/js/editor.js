@@ -2075,9 +2075,10 @@ export function initEditor({
     // selected region", which is why it reports whether it changed anything.
     setSiteMode: (m) => siteTool.setMode(m),
     get siteMode() { return siteTool.mode; },
-    setSiteStyle: (surf, mark) => siteTool.setStyle(surf, mark),
+    setSiteStyle: (surf, mark, kind) => siteTool.setStyle(surf, mark, kind),
     get siteSurface() { return siteTool.surface; },
     get siteMarking() { return siteTool.marking; },
+    get siteKind() { return siteTool.kind; },
     setSiteBrush: (v) => siteTool.setBrush(v),
     get siteBrush() { return siteTool.brush; },
     get siteSelection() { return siteTool.selected; },

@@ -16,7 +16,7 @@ import { catalogEntry } from '../js/catalog.js';
 import { buildCollider, supportAt } from '../js/collide.js';
 import { terrainField } from '../js/terrain.js';
 import { buildNav, teachingRooms } from '../js/navgraph.js';
-import { defaultSchedule, blocks, normalizeSchedule } from '../js/schedule.js';
+import { defaultSchedule, blocks, normalizeSchedule, dayEnd } from '../js/schedule.js';
 import {
   rng, seatOf, isSeat, seatsIn, makePopulation, pickLunchroom,
   makeContext, retargetAll, stepAgents, goalRoomFor, speedFor,
@@ -24,6 +24,7 @@ import {
   census, drillReport, bodiesOn, bodiesNear,
   SPEED, AGENT_R, MAX_POP, CHAT_RANGE,
   wardrobeOf, walkBob, HAIRS, BAGS, BUILD_MIN, BUILD_MAX, BOB_AMPLITUDE, BAG_ODDS,
+  arrivalOf,
 } from '../js/agents.js';
 
 // One sample school, built once and shared by the read-only tests. The
@@ -335,13 +336,28 @@ test('a drill in a sealed building strands everybody rather than pretending', ()
 });
 
 test('the school day empties the building after the last bell', () => {
-  const { ctx, agents } = harness({ students: 16, minutes: 9 * 60 + 20 });
+  const { ctx, agents, nav } = harness({ students: 16, minutes: 9 * 60 + 20 });
   retargetAll(ctx, agents);
   run(ctx, agents, 20);
   ctx.minutes = 22 * 60;               // long after dismissal
   retargetAll(ctx, agents);
   run(ctx, agents, 200);
+  // Since Phase 39 going home is a walk to the curb the day started at, not
+  // a vanish at the muster point — so the *building* is what empties first,
+  // and the site takes as long as the far end of the staff lot takes.
+  const indoors = agents.filter((a) => a.state !== 'out'
+    && nav.roomIdAt(a.floorIndex ?? 0, a.x, a.z) !== null).length;
+  assert.ok(indoors < agents.length * 0.3, `${indoors}/${agents.length} still in the building`);
+  run(ctx, agents, 300);
   assert.ok(census(agents).out > agents.length * 0.6, 'most of the school has gone home');
+  // ...and whoever went home did it at a curb, not at a classroom door. The
+  // bound is loose because the crowd resolution nudges a queue about.
+  const gone = agents.filter((a) => a.state === 'out' && a.curb);
+  assert.ok(gone.length > 0, 'somebody left by the curb');
+  for (const a of gone) {
+    assert.ok(Math.hypot(a.x - a.curb.x, a.z - a.curb.z) < 30,
+      `${a.id} went "out" ${Math.hypot(a.x - a.curb.x, a.z - a.curb.z).toFixed(0)}ft from their curb`);
+  }
 });
 
 test('a simulated minute costs a sane amount of work', () => {
@@ -608,4 +624,94 @@ test('the bob scales with the body and stops when the body does', () => {
   // A body with nothing said about it is still a body.
   assert.ok(walkBob({ state: 'walk', gait: g }) > 0);
   assert.equal(walkBob({ state: 'walk' }), 0);
+});
+
+// ---------- Phase 39: the school day starts at the curb ----------
+
+test('the arrival is drawn apart, so it moves nobody', () => {
+  // Same property as the wardrobe, same reason: when this person reaches the
+  // curb is cosmetic to the simulation's sequence, so it comes off its own
+  // generator and the crowd walks the walk it walked before the site had one.
+  assert.deepEqual(arrivalOf(12, 3), arrivalOf(12, 3));
+  assert.notDeepEqual(
+    Array.from({ length: 20 }, (_, i) => arrivalOf(i + 1, 1).when),
+    Array.from({ length: 20 }, (_, i) => arrivalOf(i + 1, 2).when));
+  const draws = Array.from({ length: 40 }, (_, i) => arrivalOf(i + 1, 7));
+  for (const d of draws) {
+    assert.ok(d.when >= 0 && d.when < 1);
+    assert.ok(d.curb >= 0 && d.curb < 1);
+    assert.ok(d.linger >= 0 && d.linger < 1);
+  }
+});
+
+test('everyone is assigned a curb and a morning, teachers ahead of the crowd', () => {
+  const { agents, ctx } = harness({ students: 24 });
+  const start = ctx.schedule.start;
+  for (const a of agents) {
+    assert.ok(a.curb && typeof a.curb.id === 'string', 'the sample school has a bus loop');
+    assert.ok(a.arriveMin !== null && a.arriveMin < start, 'everyone aims before the bell');
+    assert.ok(a.departMin >= dayEnd(ctx.schedule), 'and leaves after the last one');
+  }
+  const teachers = agents.filter((a) => a.kind === 'teacher').map((a) => a.arriveMin);
+  const students = agents.filter((a) => a.kind === 'student').map((a) => a.arriveMin);
+  const mean = (l) => l.reduce((n, v) => n + v, 0) / l.length;
+  assert.ok(mean(teachers) < mean(students), 'teachers come in ahead of the crowd');
+});
+
+test('before school the building fills from the curb, in the seeded stagger', () => {
+  const { ctx, agents, nav } = harness({ students: 24, minutes: 0 });
+  const start = ctx.schedule.start;
+  ctx.minutes = start - 30;
+  retargetAll(ctx, agents);
+  const early = census(agents);
+  assert.ok(early.away > agents.length * 0.5, `the bus has not come for most (${early.away} away)`);
+  // The last half hour, at four simulated seconds per minute of clock.
+  for (let m = start - 30; m < start + 3; m++) {
+    ctx.minutes = m;
+    run(ctx, agents, 4);
+  }
+  const c = census(agents);
+  assert.equal(c.away, 0, 'by the bell everyone has reached the site');
+  assert.equal(c.out, 0, 'and nobody has been sent home');
+  const inside = agents.filter((a) => nav.roomIdAt(a.floorIndex ?? 0, a.x, a.z) !== null).length;
+  assert.ok(inside > agents.length * 0.5, `the building is filling (${inside}/${agents.length} in)`);
+  // ...and the front door counted the morning: the crowd came in through an
+  // admitting threshold, not through the arithmetic.
+  const admitted = [...ctx.thresholds.values()].reduce((n, t) => n + t.admitted, 0);
+  assert.ok(admitted > agents.length * 0.4, `the doors admitted ${admitted}`);
+});
+
+test('a drill does not drill the people the bus has not brought', () => {
+  const { ctx, agents } = harness({ students: 12, minutes: 0 });
+  ctx.minutes = ctx.schedule.start - 30;
+  retargetAll(ctx, agents);
+  const away = census(agents).away;
+  assert.ok(away > 0);
+  ctx.mode = 'drill';
+  ctx.egress = null;
+  retargetAll(ctx, agents);
+  assert.equal(census(agents).away, away, 'the absent stay absent');
+  const report = drillReport(agents, 0);
+  assert.equal(report.stranded, 0, 'and are counted out of the building, not stranded in it');
+});
+
+test('a population with no curb keeps the born-in-homeroom lifecycle verbatim', () => {
+  // A sealed building: no exterior door, no outdoors, no way to arrive.
+  const state = buildSampleSchool();
+  for (const floor of state.floors) {
+    for (const shape of floor.shapes) {
+      for (const ring of shape.rings) {
+        ring.openings = ring.openings.filter((o) => o.kind === 'window');
+      }
+    }
+  }
+  delete state.site;
+  const { ctx, agents } = harness({ state, students: 8 });
+  for (const a of agents) {
+    assert.equal(a.curb, null);
+    assert.equal(a.arriveMin, null);
+  }
+  ctx.minutes = ctx.schedule.start - 30;
+  retargetAll(ctx, agents);
+  assert.equal(census(agents).away, 0, 'nobody waits for a bus that cannot exist');
 });

@@ -2283,10 +2283,12 @@ function buildSite(state, plan) {
     surf: 'turf', name: 'Lawn',
   });
 
-  // The bus loop comes in from the west to the main entrance.
+  // The bus loop comes in from the west to the main entrance. Its kind is
+  // what tells the crowd where the buses stop (Phase 39): the bays fall out
+  // of the region's own geometry, so nothing here places a single one.
   const entryZ = plan.entry.z;
   addRegion(state, siteRect(x0 - 200, entryZ - 22, x0 - 4, entryZ + 22), {
-    surf: 'asphalt', mark: 'lane', name: 'Bus loop',
+    surf: 'asphalt', mark: 'lane', kind: 'busloop', name: 'Bus loop',
   });
   addRegion(state, siteRect(x0 - 90, entryZ - 22, x0 - 76, entryZ + 22), {
     surf: 'asphalt', mark: 'crosswalk', name: 'Crossing',
@@ -2294,12 +2296,18 @@ function buildSite(state, plan) {
   addRegion(state, siteRect(x0 - 30, entryZ - 40, x0 - 2, entryZ + 40), {
     surf: 'concrete', name: 'Entry plaza',
   });
+  // A drop-off lane for the cars, just south of the loop, so the morning has
+  // both of a real school's arrivals: the bus crowd in threes and fours, and
+  // the car doors going one at a time.
+  addRegion(state, siteRect(x0 - 170, entryZ + 26, x0 - 8, entryZ + 58), {
+    surf: 'asphalt', kind: 'dropoff', name: 'Drop-off',
+  });
 
   // Staff and visitor parking, south-west of the entrance and clear of it.
   const lotX1 = x0 - 60;
   const lotZ0 = entryZ + 70;
   addRegion(state, siteRect(lotX1 - lot.w, lotZ0, lotX1, lotZ0 + lot.d), {
-    surf: 'asphalt', mark: 'stalls', name: 'Staff lot',
+    surf: 'asphalt', mark: 'stalls', kind: 'parking', name: 'Staff lot',
   });
   addRegion(state, siteRect(lotX1, entryZ + 30, lotX1 + 14, lotZ0 + lot.d), {
     surf: 'concrete', name: 'Lot walk',

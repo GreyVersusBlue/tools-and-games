@@ -326,12 +326,14 @@ function buildSampleSite(s) {
   addRegion(s, rect(-260, -240, 560, 420), { surf: 'turf', name: 'Lawn' });
 
   // The bus loop, running west to east up to the entrance, with a dashed
-  // centre line and a crossing where the walk cuts it.
-  addRegion(s, rect(-150, 40, 22, 78), { surf: 'asphalt', mark: 'lane', name: 'Bus loop' });
+  // centre line and a crossing where the walk cuts it. The `kind` is Phase
+  // 39's word for what the asphalt is *for*: it implies the bays a bus's door
+  // opens at, which is where the school day starts.
+  addRegion(s, rect(-150, 40, 22, 78), { surf: 'asphalt', mark: 'lane', kind: 'busloop', name: 'Bus loop' });
   addRegion(s, rect(-62, 40, -48, 78), { surf: 'asphalt', mark: 'crosswalk', name: 'Crossing' });
 
   // Staff and visitor parking, south of the loop.
-  addRegion(s, rect(-212, 110, -32, 250), { surf: 'asphalt', mark: 'stalls', name: 'Staff lot' });
+  addRegion(s, rect(-212, 110, -32, 250), { surf: 'asphalt', mark: 'stalls', kind: 'parking', name: 'Staff lot' });
   addRegion(s, rect(-48, 78, -32, 250), { surf: 'concrete', name: 'Lot walk' });
 
   // The entrance plaza and the walks off it.
