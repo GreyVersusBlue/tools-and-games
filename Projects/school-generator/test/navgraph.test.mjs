@@ -16,9 +16,10 @@ import {
   buildNav, floorRooms, nodeAt, findPath, waypoints, route,
   egressField, nearestExit, pointField, pointEntry, unreachableRooms, navSummary,
   teachingRooms, commonRooms, runLandings, DOOR_OFFSET, MUSTER_FT,
-  clearWidth, CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, STAIR_COST,
+  STAIR_COST,
   outdoors, goesOutdoors, pathDistance, dischargeField, OUTDOOR_COST,
 } from '../js/navgraph.js';
+import { clearWidth, CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W } from '../js/clearance.js';
 
 // Two rooms side by side inside one shell, with a doorway between them and
 // (optionally) one to the outside. Cells 1..4 and 6..9 on row 1..4.
@@ -649,4 +650,34 @@ test('the sample school arrives by bus: its loop and lot both reach the graph', 
     const wp = route(nav, { floor: 0, x: c.x, z: c.z }, room.id);
     assert.ok(wp && wp.length, `${c.id} routes in`);
   }
+});
+
+
+// ---------- Phase 40: what the accessible graph asks clearance.js ----------
+
+test('a ramp steeper than 1:12 is on the plain graph and off the accessible one', () => {
+  const s = createState(60, 30);
+  addFloor(s);
+  sheet(s, 0).box(1, 1, 50, 6, { name: 'Ground' }).bake();
+  sheet(s, 1).box(1, 1, 50, 6, { name: 'Upper' }).bake();
+  const { link } = addStair(s, 0, { type: 'ramp', x: 20, z: 14, rotationY: Math.PI / 2, slope: 8 });
+  assert.ok(link);
+  assert.ok(buildNav(s).links.some((l) => l.type === 'ramp'));
+  assert.ok(!buildNav(s, { accessible: true }).links.some((l) => l.type === 'ramp'));
+  link.data.slope = 12;
+  assert.ok(buildNav(s, { accessible: true }).links.some((l) => l.type === 'ramp'));
+});
+
+test('a portal carries the leaf its doorway hangs', () => {
+  const s = createState(20, 12);
+  const f = sheet(s, 0);
+  f.box(1, 1, 9, 4);
+  f.vrun(5, 1, 4, EDGE_WALL);
+  f.door(5, 2, false, EDGE_DOOR2);
+  f.bake();
+  const [p] = buildNav(s).portals;
+  assert.ok(p);
+  assert.equal(p.leaf, 2);
+  assert.equal(p.w, 4);
+  assert.equal(buildNav(s, { accessible: true }).portals.length, 1, 'a 4ft pair rolls, both leaves open');
 });

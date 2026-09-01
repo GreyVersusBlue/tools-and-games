@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: thirty-eight phases are shipped and one is open — Phase 34,
-below; arc six is underway: Phases 37, 38 and 39 have shipped, and Phase
-40 — on Claude Fable 5 — is the next open phase in the arc's order.** Three arcs took a grid
+**Status: thirty-nine phases are shipped and one is open — Phase 34,
+below; arc six is underway: Phases 37, 38, 39 and 40 have shipped, and Phase
+41 — on Claude Fable 5 — is the next open phase in the arc's order.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school; arc
 four built for the person handed the result; arc five for the building
 itself; arc six builds for the reviewer; the phases between and after the
@@ -61,7 +61,10 @@ window bands, floor/paint) · `stairs.js` (runs, landings, the holes they cut)
 
 What it derives: `navgraph.js` + `navmesh.js` (walkable surface as convex
 tiles, graph over it) · `sitemesh.js` (the same, over the outdoors) ·
-`collide.js` (what stops/holds you up) · `occupancy.js` / `egress.js` /
+`collide.js` (what stops/holds you up) · `clearance.js` (Phase 40: the chair —
+the door-width contract, the seated body as step rules, the turning circle and
+the reach ranges, one module the report and the walker both read) ·
+`occupancy.js` / `egress.js` /
 `daylight.js` / `takeoff.js` / `acoustics.js` / `utilisation.js` / `cost.js` /
 `spec.js` / `phasing.js` / `report.js` (analysis, none of it stored) ·
 `lights.js` / `sky.js` / `sound.js` (emitters, sun, audio sources) ·
@@ -285,6 +288,23 @@ wrong.
 - **A property of the answer is not always a property of the search that
   found it.** Measure things like steepest grade on the route once,
   afterwards, rather than threading a running value through the pathfinder.
+- **A rule two readers share belongs to neither of them.** Phase 40 needed
+  the accessible graph and the seated walker to agree about every doorway,
+  and the only way two modules can never disagree is to ask one function —
+  `clearance.js`'s `doorRolls` — from both sides. The door-width constants
+  had lived in `navgraph.js` since Phase 7; they moved, and every importer
+  moved with them, because a re-export is a second name for the same rule
+  and the walk bundler refuses re-exports anyway. Corollary for a body with
+  rules: a refusal that geometry would also have made has to be made *by
+  the rule first*, or it is silent — a chair too wide for a doorway is
+  stopped by the jambs like anybody, and the sentence is only owed if the
+  door rule is asked before the walls are.
+- **A generated school is checked by whatever the newest reader knows to
+  ask.** The chair's first pass over every generated school found the
+  corridor template standing its locker banks 1.4ft off each wall with a
+  bench down the middle, 33in between them — fine for a crowd of 1.8ft
+  bodies, impassable for a 32in one, and wrong for a real corridor either
+  way. The fix was the template, not the finding.
 
 ## The standing backlog
 
@@ -309,8 +329,17 @@ and add to this list rather than starting a new one.
 - Daylight is a glazing ratio, not a daylight factor — nothing knows about
   orientation, overhangs or room depth.
 - Common path of egress travel is a constant that nothing measures.
-- Accessibility stops at routes: no turning circles, reach ranges or counter
-  heights.
+- ~~Accessibility stops at routes: no turning circles, reach ranges or counter
+  heights.~~ *Done, Phase 40: `clearance.js` tests the 60in circle both sides
+  of every doorway on the route and somewhere in every room it reaches,
+  sweeps corridors for pinches under 36in, and reads counters, controls and
+  work surfaces off the catalog against the reach ranges.* What it still does
+  not do: a door's manoeuvring clearance is a circle beside the door rather
+  than ADA 404.2.4's rectangle with its 18in latch-side strip; a pair of
+  doors is judged with both leaves open (the code judges it by the active
+  leaf, so the lattice's 4ft pair passes here and would not on a plan check);
+  the outside of an exterior door is not tested; and knee and toe clearance
+  under a counter is not modelled at all.
 - The code edition is printed, not applied — three editions are offered and
   none changes a factor or limit.
 - A title-block panel prints its three worst findings and counts the rest;
@@ -349,6 +378,10 @@ and add to this list rather than starting a new one.
   dialog, at the sheet's own scale.*
 - The campus scheme is always the same shape (front building, quad, row of
   pavilions) where a real one wraps a hillside.
+- `autofurnish` keeps stamps four feet from a door since Phase 40, which is
+  a circle where the code wants a rectangle with a latch-side strip, and it
+  still stamps a stair room's furniture as if the run were floor. The chair
+  reports what is left.
 
 **Play**
 - A hunt cannot survive a structural edit — hints name rooms that may no
@@ -1360,7 +1393,7 @@ stuck-skip at least may no longer jump the gate on purpose. Next in the
 arc: **Phase 40 — The chair, not the checklist**, named model **Claude
 Fable 5**; Phase 34 stays open beside the arc.
 
-## Phase 40 — The chair, not the checklist
+## Phase 40 — The chair, not the checklist *(shipped)*
 
 **The tool can find an accessible route and has never once sat in the
 chair.**
@@ -1372,23 +1405,77 @@ one phase: the clearance geometry the analysis is missing is precisely
 what a seated walker collides with, so build it once and let the report
 and the first-person camera cite the same numbers.
 
-- [ ] **A seated walkthrough.** One toggle: eye at seated height, no
-  step-ups, stairs refuse the way walls refuse everyone — ramps and the
-  lift *are* the building now — with the refusal a sentence, never a
-  silent stop.
-- [ ] **Turning circles, measured.** The clearance circle tested against
-  real geometry everywhere the accessible route turns or dead-ends —
-  door approaches included — and painted on the plan where it fails.
-- [ ] **Reach and heights, read off the props.** The catalog already
-  knows every counter and shelf; reach-range findings land in the report
-  with "⌖ Show it on the plan" like any other.
-- [ ] **One contract, two readers.** The accessible-route analysis and
-  the seated collider derive from the same clearance module, so the
-  walkthrough and the report can never disagree about the same doorway.
+- [x] **A seated walkthrough.** `Z` in a walk (a button on the overlay for
+  touch, and in the exported walk): the eye drops to 48in, the feet stay
+  put, and the body becomes the chair's — 32in across, a half-inch
+  threshold up *or* down, 1:12 at most, and a stair refuses the way a wall
+  refuses everyone, with the refusal on the HUD as a sentence: *A stair.
+  Seated, the ramps and the lift are the way between storeys.* / *A 30 in
+  door. A chair needs 32 in clear, which is a 3 ft leaf.* / *Too steep for
+  a chair — 1:8, and 1:12 is the most a ramp may climb.* The lift is
+  unchanged, because the lift was always the building's answer.
+- [x] **Turning circles, measured.** `clearRadiusAt` grows a circle against
+  the collider's walls, rails, shaft walls and furniture (exact) and the
+  floor's edge, cuts and stair runs (sampled), and `turningAnalysis` asks
+  for ADA's 60in at both sides of every doorway the accessible graph kept
+  (sliding a little along and out from the wall, since a clearance is a
+  rectangle at the door rather than a point), somewhere on the floor of
+  every room the route reaches, and — swept along every door-to-door line
+  through a corridor, stepping sideways across it for room — 36in wherever
+  the route pinches. A failure is painted where it fails: on the minimap
+  behind `O`, and on the printed plan behind a new export checkbox, as the
+  circle that *does* fit inside the one that was wanted, with the shortfall
+  in inches.
+- [x] **Reach and heights, read off the props.** `REACH_RULES`, keyed on the
+  geometry family a row draws with: counters at 36in (904.4.1), sinks and
+  lavatories at 34in (606.3), a fountain's spout at 36in (602.4),
+  wall-mounted controls and hooks between 15 and 48in (308), one work
+  surface per room between 28 and 34in (902.3), and lockers — a note when
+  every bank is the tall kind (225.2.1). Every finding lands with "⌖ Show it
+  on the plan" like any other.
+- [x] **One contract, two readers.** `clearance.js` owns the door-width
+  constants navgraph.js had carried since Phase 7, plus `doorRolls`,
+  `rampRolls` and `seatedStep()`; the accessible graph keeps a doorway iff
+  `doorRolls` says so and drops a ramp `rampRolls` refuses, and the seated
+  walker is refused at a doorway by the *same function*, asked of the
+  collider's new doorway records before the jambs get a say. The suite
+  proves it the only way that counts: real baked rooms, real leaves, seven
+  widths by three leaf kinds, walked and routed, and the answers match.
 
-*Leans on:* `collide.js`, `navmesh.js`, `catalog.js`, `egress.js`,
-`report.js`. *Save:* none — every number is derived. *Model:* **Claude
-Fable 5** — the collider contract and clearance geometry are model layer.
+*Save:* none — every number is derived. *Model:* **Claude Fable 5** — the
+collider contract and clearance geometry are model layer, and that is where
+it ran.
+
+*What fought back:* the chair, on its first walk, rolled *under* the
+stairs. A run's treads are drawn on air over real floor, and a body whose
+reach is half an inch never sees a surface a foot up — so it was handed the
+slab underneath and went through the flight at floor level. The seated
+step now asks what a *standing* walker would be handed at the same spot,
+and refuses that. Then the door rule never fired at a pair of open leaves:
+they stand proud of the wall by half the opening and stop the body short of
+the plane, so a rule that waited for the plane was never asked; it looks a
+foot and a half past the body's front edge now, and at a single leaf too,
+because a refusal that geometry would also have made is only a *sentence*
+if the rule gets there first. Then the grade rule read a 1:8 ramp as 1:10
+from the flat floor at its foot; a ramp is judged by its own pitch now, and
+only ground is measured. And then the premise met the tree: the first pass
+over every generated school reported a hundred door approaches and a
+dozen pinches, and every one of them was true — the corridor template stood
+its locker banks 1.4ft off each wall with a bench down the middle, and
+33in is what was left. The template is fixed (banks on the walls, no bench
+in the fairway), `autofurnish` now keeps every floor-standing stamp four
+feet clear of every doorway into the room — reading the doors off the
+whole storey, since half of them are recorded on the corridor's ring — and
+the gallery stock is re-baked. The sample school's two genuine findings
+stand: a door onto the 4ft strip beside its mezzanine void, 18in to turn
+in, and a stair hall whose open stair leaves 19in between its foot and the
+wall, so the chair that reaches the lift's landing cannot reach the south
+door from it. Suite 2033 green (thirty new); the tools pass
+gained a seated step; two chrome baselines re-recorded on the pinned
+Chromium for the overlay's new button and the report's two new rows, the
+sheets byte-stable. Next in the arc: **Phase 41 — Numbers that know their
+edition**, named model **Claude Fable 5**; Phase 34 stays open beside the
+arc.
 
 ## Phase 41 — Numbers that know their edition
 

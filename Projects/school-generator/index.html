@@ -1348,6 +1348,8 @@
       background: var(--panel); border: 1px solid var(--panel-border);
       border-radius: var(--r-sm); padding: 5px 12px;
       font-size: var(--fs-md); color: var(--text-dim); white-space: nowrap;
+      /* Phase 40: a refusal is a sentence, and a sentence has to fit. */
+      max-width: min(92vw, 760px); white-space: normal; text-align: center;
     }
     body[data-mode="walk"] #walk-hud { display: block; }
     body[data-mode="walk"] #toolbar,
@@ -2440,6 +2442,7 @@
             <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span class="what">or the arrow keys — move · mouse look</span></li>
             <li><kbd>Shift</kbd> <span class="what">sprint</span> · <kbd>Space</kbd> <span class="what">jump</span></li>
             <li><kbd>E</kbd> <span class="what">call the lift, at its doors</span></li>
+            <li><kbd>Z</kbd> <span class="what">sit in the chair — a seated eye, a half-inch threshold, ramps and the lift</span></li>
             <li><kbd>Esc</kbd> <span class="what">release the mouse</span> · <kbd>Tab</kbd> <span class="what">back to the editor</span></li>
           </ul>
         </div>
@@ -2567,6 +2570,7 @@
         <button id="walk-start" class="primary">Click to Walk</button>
         <button id="walk-hunt" title="Hide eight things around the building and go and find them">🎒 Scavenger hunt</button>
         <button id="walk-late" title="A timetable row and a tardy bell — beat the clock to the room">🏃 Late for class</button>
+        <button id="walk-seated" aria-pressed="false" title="Walk it seated: eye at 48 in, a half-inch threshold, 1:12 at most, and only the doors a chair rolls through — the same rules the report's accessible route is read against">♿ Sit in the chair</button>
         <button id="walk-vr" title="Walk the building at 1:1 in a VR headset">🥽 Enter VR</button>
         <button id="walk-exit">Back to Editor</button>
       </div>
@@ -2603,6 +2607,7 @@
       <label class="opt"><input type="checkbox" id="export-furniture" checked /> Furniture</label>
       <label class="opt"><input type="checkbox" id="export-finishes" checked /> Floor finish schedule</label>
       <label class="opt"><input type="checkbox" id="export-occupancy" /> Occupant load per room</label>
+      <label class="opt"><input type="checkbox" id="export-clearance" /> Where a chair cannot turn</label>
       <label class="opt"><input type="checkbox" id="export-site" checked /> Site plan sheet</label>
       <label class="opt"><input type="checkbox" id="export-contours" checked /> Contour lines on the site plan</label>
       <label class="opt"><input type="checkbox" id="export-elev" checked /> Four elevations</label>
@@ -2615,7 +2620,8 @@
         there for a PDF file. The site plan is one extra sheet, drawn from the
         same model at a wider scale. The code panel prints the occupant load,
         the exits, the travel distance and the area of each storey beside the
-        drawing; the school-day panel prints what the timetable does with the
+        drawing; "where a chair cannot turn" paints the report's failed
+        turning circles on the plan at their true size, in red; the school-day panel prints what the timetable does with the
         building — room use, the busiest period, how far a student walks — and
         draws nothing at all if this design has no timetable; the specification
         sheet is one more page saying what each assembly is and what this tool

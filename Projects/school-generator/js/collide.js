@@ -41,12 +41,12 @@
 //   run of stairs hands you over to the level above exactly when you arrive.
 
 import { WALL_T, FLOOR_H, WALL_H } from './grid.js';
-import { shapesOf, segEnds, isBuilt, isDoorOpening } from './shapes.js';
+import { shapesOf, segEnds, isBuilt, isDoorOpening, openingSpec } from './shapes.js';
 import { propsOnFloor } from './props.js';
 import { footprintOf } from './propplace.js';
 import {
   stairsOf, stairMetrics, stairSurfaceAt, floorCuts, inFloorCut, floorSolidAt,
-  openingRails, elevatorsOn, elevatorWalls,
+  openingRails, elevatorsOn, elevatorWalls, rampSlope,
 } from './stairs.js';
 import { wallProbe } from './walls.js';
 import { wallLinesOf, lineOpenings } from './wallrun.js';
@@ -223,6 +223,46 @@ export function wallSegments(floor, probe = null) {
   return out;
 }
 
+// The doorways themselves — the span of each opening, jamb to jamb, with its
+// width and how it is hung. Phase 40: a seated walker is refused at a doorway
+// the accessible graph would not keep, and the rule that decides which is
+// `clearance.js`'s `doorRolls`; this only says where the doorways are so that
+// `tryStep` can tell when a step crossed one and hand it to whatever rule the
+// walker was given. A standing walker never asks. Windows are not doorways
+// for the same reason they are not cuts above.
+export function doorwaySegments(floor) {
+  const out = [];
+  if (!floor) return out;
+  const span = (ax, az, bx, bz, o) => {
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 0.01) return;
+    const ux = (bx - ax) / len, uz = (bz - az) / len;
+    const spec = openingSpec(o);
+    const c = spec.t * len;
+    out.push({
+      ax: ax + ux * (c - spec.w / 2), az: az + uz * (c - spec.w / 2),
+      bx: ax + ux * (c + spec.w / 2), bz: az + uz * (c + spec.w / 2),
+      w: spec.w, leaf: spec.leaf,
+    });
+  };
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings) {
+      for (const o of ring.openings) {
+        if (!isDoorOpening(o) || !isBuilt(ring.walls[o.seg])) continue;
+        const [a, b] = segEnds(ring, o.seg);
+        span(a.x, a.z, b.x, b.z, o);
+      }
+    }
+  }
+  for (const line of wallLinesOf(floor)) {
+    for (const o of lineOpenings(line)) {
+      if (!isDoorOpening(o)) continue;
+      span(line.ax, line.az, line.bx, line.bz, o);
+    }
+  }
+  return out;
+}
+
 // ---------- props ----------
 
 // The props on a storey you can walk into, as rotated boxes. Only
@@ -321,6 +361,10 @@ export function buildCollider(state, floorIndex, catalogGet, opts = {}) {
     segs,
     props,
     doors: closeAll(collectDoorLeaves(state, floorIndex)),
+    // Phase 40: where the doorways are, for a walker with a door rule. A
+    // handful per storey and asked about only by a seated body, so they are
+    // scanned rather than indexed.
+    doorways: doorwaySegments(floor),
     // Phase 6: one walker could afford a linear scan; a hundred cannot. The
     // index is built beside the arrays it indexes and never replaces them —
     // every function here still works against a collider that has none, which
@@ -335,7 +379,8 @@ export function buildCollider(state, floorIndex, catalogGet, opts = {}) {
 }
 
 export const emptyCollider = () => ({
-  floor: -1, segs: [], props: [], doors: [], bodies: [], index: null, site: emptyField(),
+  floor: -1, segs: [], props: [], doors: [], doorways: [], bodies: [], index: null,
+  site: emptyField(),
 });
 
 // Phase 22: the invalidation clause. "The collider is built once at
@@ -702,6 +747,16 @@ export function crossesWall(collider, x0, z0, x1, z1) {
   return false;
 }
 
+// The doorway a step passed through, if it passed through one — the record
+// `doorwaySegments` made, so a caller with a rule about doors has the width
+// and the leaf to apply it to. Null for a step that crossed none.
+export function crossesDoorway(collider, x0, z0, x1, z1) {
+  for (const d of (collider && collider.doorways) || []) {
+    if (segsCross(x0, z0, x1, z1, d.ax, d.az, d.bx, d.bz)) return d;
+  }
+  return null;
+}
+
 // ---------- what holds you up ----------
 
 // Which storey a pair of feet is on. Floors stack at fixed intervals, so this
@@ -730,9 +785,12 @@ export function supportAt(state, x, z, feetY, opts = {}) {
   const ht = state.floorHt || FLOOR_H;
   const reach = feetY + (opts.stepUp ?? STEP_UP) + 1e-6;
   let best = null;
-  const consider = (y, kind, floor) => {
+  // `link` is Phase 40's one addition to the answer: which run a stair
+  // surface belongs to, so a walker with a rule about stairs can tell a
+  // stair from a ramp — both are 'stair' here, because both are a run.
+  const consider = (y, kind, floor, link = null) => {
     if (y > reach) return;
-    if (!best || y > best.y) best = { y, kind, floor };
+    if (!best || y > best.y) best = { y, kind, floor, link };
   };
 
   for (let i = 0; i < state.floors.length; i++) {
@@ -747,7 +805,7 @@ export function supportAt(state, x, z, feetY, opts = {}) {
   for (const link of stairsOf(state)) {
     const h = stairSurfaceAt(link, metrics, x, z);
     if (h === null) continue;
-    consider(link.from * ht + h, 'stair', link.from);
+    consider(link.from * ht + h, 'stair', link.from, link);
   }
 
   // The site itself, considered last so that a slab laid on it wins the tie —
@@ -831,21 +889,105 @@ export function headroomAt(state, x, z, feetY, opts = {}) {
 
 // ---------- moving ----------
 
+// Phase 40: how far ahead a walker with a grade rule looks. See clearance.js's
+// `GRADE_PROBE`, which is what a seated walker passes; this is only the
+// fallback for a caller that set `maxGrade` and nothing else.
+export const GRADE_PROBE = 1;     // ft
+// ...and how far past its own front edge a walker with a door rule looks for
+// the doorway it is heading into. A pair of open leaves stands proud of the
+// wall by half the opening and stops a body short of the plane itself, so a
+// rule that waited for the plane would never be asked; a foot and a half
+// past the front edge sees the doorway from where the leaves stop you.
+export const DOOR_LOOK = 1.5;     // ft
+
 // One horizontal step, fully resolved: null if it can't be taken at all.
 // `pos.y` is the *feet*, not the eye — every height in this module is.
+//
+// Phase 40's options are the seated walker's, and every one of them is a
+// rule rather than a shape, because a chair is stopped by things a body
+// merely steps over. None is set by default, and a walker that sets none
+// takes exactly the step it always took:
+//
+//   noStairs    a stair run (not a ramp) is refused — reason 'stair'
+//   maxGrade    a rise or a drop steeper than this, measured over
+//               `gradeProbe` feet ahead rather than over the step itself so
+//               that creeping up a bank in tiny steps is still climbing a
+//               bank — reason 'grade'
+//   doorRule    a function of a doorway record; a step through a doorway it
+//               answers false for is refused — reason 'door'
+//   refusal     an object the reason is written onto, so the caller can say
+//               *why* in words rather than stopping silently
 export function tryStep(state, collider, pos, dx, dz, opts = {}) {
   const r = opts.radius ?? WALKER_R;
   // The collider already carries the site it was built against, so a caller
   // never has to remember to hand the ground to a function about walking.
   const o = opts.site || !collider || !collider.site ? opts : { ...opts, site: collider.site };
+  const refuse = (reason, extra) => {
+    if (opts.refusal) Object.assign(opts.refusal, { reason }, extra || null);
+    return null;
+  };
+  // The door rule is asked of the step *as wanted*, front edge included,
+  // before the walls have had their say: a body too wide for a doorway is
+  // stopped by the jambs like anybody, and would be stopped silently — the
+  // rule exists so that it is told why.
+  if (opts.doorRule) {
+    const len = Math.hypot(dx, dz);
+    const look = r + DOOR_LOOK;
+    const ex = pos.x + dx + (len > 1e-9 ? (dx / len) * look : 0);
+    const ez = pos.z + dz + (len > 1e-9 ? (dz / len) * look : 0);
+    const d = crossesDoorway(collider, pos.x, pos.z, ex, ez);
+    if (d && !opts.doorRule(d)) return refuse('door', { doorway: d });
+  }
   const p = resolvePoint(collider, pos.x + dx, pos.z + dz, r, opts.passes ?? 3,
     { bodies: opts.bodies, skip: opts.skip });
   if (crossesWall(collider, pos.x, pos.z, p.x, p.z)) return null;
-  const support = supportAt(state, p.x, p.z, pos.y, o);
+  let support = supportAt(state, p.x, p.z, pos.y, o);
   if (!support) return null;
+  const isStair = (s) => s && s.kind === 'stair' && s.link && s.link.type === 'stair';
+  const graded = Number.isFinite(opts.maxGrade);
+  // What a standing walker would be handed here — the surface a chair's own
+  // half-inch reach may have looked straight past. A run's treads are drawn
+  // on air over real floor, so a body with a small reach would otherwise
+  // roll *under* the stair at floor level, which is not a refusal so much as
+  // a hole in the building.
+  let ahead = support;
+  if (opts.noStairs || graded) {
+    const tall = supportAt(state, p.x, p.z, pos.y, { ...o, stepUp: STEP_UP });
+    if (tall && tall.y > support.y + 1e-9) ahead = tall;
+  }
+  if (opts.noStairs && isStair(ahead)) return refuse('stair', { link: ahead.link });
+  const rise = ahead.y - pos.y;
+  const stepDown = opts.stepDown ?? STEP_DOWN;
   // Grounded, a drop is an edge you stop at rather than fall off. Airborne
   // (a jump, or dropping out of ghost mode), there is nothing to stop at.
-  if (opts.grounded !== false && support.y < pos.y - (opts.stepDown ?? STEP_DOWN)) return null;
+  // Under a grade rule a drop is judged as a slope below, like a rise.
+  if (opts.grounded !== false && support.y < pos.y - stepDown && !graded) return null;
+  // The grade rule, asked a foot ahead rather than of this step: the step
+  // itself may be an inch long, and a bank crept up an inch at a time is
+  // still a bank.
+  if (graded) {
+    const len = Math.hypot(dx, dz);
+    if (len > 1e-9) {
+      const probe = opts.gradeProbe ?? GRADE_PROBE;
+      const far = supportAt(state, pos.x + (dx / len) * probe, pos.z + (dz / len) * probe,
+        pos.y, { ...o, stepUp: STEP_UP });
+      if (far) {
+        if (opts.noStairs && isStair(far)) return refuse('stair', { link: far.link });
+        // A ramp knows its own pitch, and is judged by it — measured from
+        // the flat floor at its foot, a 1:8 run reads as 1:10 for the first
+        // step, which is neither the rule nor the truth. Ground is measured.
+        const ramp = far.kind === 'stair' && far.link && far.link.type === 'ramp' ? far.link : null;
+        const grade = ramp ? 1 / rampSlope(ramp) : Math.abs(far.y - pos.y) / probe;
+        if (grade > opts.maxGrade + 1e-6) return refuse('grade', { grade, rise });
+      } else if (opts.grounded !== false && support.y < pos.y - stepDown) {
+        return refuse('grade', { rise });
+      }
+    }
+    // The slope passed, so the higher surface is the one to stand on — a
+    // 1:12 ramp rises more in a long step than a threshold allows, and it is
+    // the slope that was the rule, not the step.
+    if (ahead !== support) support = ahead;
+  }
   // ...and a step that puts your head inside a stair run is a step you don't
   // take. Measured from where your feet would *land*, not from where they are:
   // walking up a ramp toward a soffit, the question is how much air is left at
@@ -860,25 +1002,38 @@ export function tryStep(state, collider, pos, dx, dz, opts = {}) {
 // A step, and if it can't be taken whole, the same step along one axis — which
 // is what makes walking into a wall at an angle slide along it rather than
 // stop dead. Returns where you ended up and what is under you there.
+//
+// `refusal` on the answer is Phase 40's: null for a step a wall stopped or a
+// step that was taken, and `{ reason, ... }` when one of `tryStep`'s rules
+// refused it — so the walker can put the refusal in a sentence. Only a walker
+// that set a rule pays for the object; the crowd sets none.
 export function moveWalker(state, collider, pos, dx, dz, opts = {}) {
   const site = opts.site || (collider && collider.site) || null;
+  const ruled = !!(opts.doorRule || opts.noStairs || Number.isFinite(opts.maxGrade));
+  const refusal = ruled ? {} : null;
+  const o = ruled ? { ...opts, refusal } : opts;
   const stay = (blocked) => ({
     x: pos.x, z: pos.z, blocked,
     support: supportAt(state, pos.x, pos.z, pos.y, site ? { ...opts, site } : opts),
     slid: false,
+    refusal: refusal && refusal.reason ? refusal : null,
   });
   if (!dx && !dz) return stay(false);
 
-  const whole = tryStep(state, collider, pos, dx, dz, opts);
-  if (whole) return { ...whole, blocked: false, slid: false };
+  const whole = tryStep(state, collider, pos, dx, dz, o);
+  if (whole) return { ...whole, blocked: false, slid: false, refusal: null };
 
+  // A slide that succeeds keeps the reason the whole step was refused for:
+  // sliding along the foot of a stair you were trying to climb is still
+  // being refused the stair, and the sentence is still owed.
+  const why = () => (refusal && refusal.reason ? refusal : null);
   if (dx) {
-    const alongX = tryStep(state, collider, pos, dx, 0, opts);
-    if (alongX) return { ...alongX, blocked: false, slid: true };
+    const alongX = tryStep(state, collider, pos, dx, 0, o);
+    if (alongX) return { ...alongX, blocked: false, slid: true, refusal: why() };
   }
   if (dz) {
-    const alongZ = tryStep(state, collider, pos, 0, dz, opts);
-    if (alongZ) return { ...alongZ, blocked: false, slid: true };
+    const alongZ = tryStep(state, collider, pos, 0, dz, o);
+    if (alongZ) return { ...alongZ, blocked: false, slid: true, refusal: why() };
   }
   return stay(true);
 }

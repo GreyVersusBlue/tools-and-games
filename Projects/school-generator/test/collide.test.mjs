@@ -31,7 +31,7 @@ import {
   solidSpans, segsCross, wallSegments, propObstacles, buildCollider, updateDoors,
   resolvePoint, crossesWall, storeyAt, supportAt, tryStep, moveWalker,
   openingRailSegments, elevatorSegments, doorSegments, emptyCollider,
-  overheadAt, headroomAt,
+  overheadAt, headroomAt, doorwaySegments, crossesDoorway,
 } from '../js/collide.js';
 import { elevatorSize } from '../js/stairs.js';
 import {
@@ -853,4 +853,96 @@ test('a doorway in one is a gap you can walk through', async () => {
   const line = wallLinesOf(s.floors[0])[0];
   addLineOpening(line, 0.5);
   assert.equal(wallSegments(s.floors[0]).length, 2, 'one wall became two jambs');
+});
+
+
+// ---------- Phase 40: doorways as records, and the rules a step can carry ----------
+
+test('doorwaySegments spans each door jamb to jamb and says how it is hung', () => {
+  const s = walledRoom(2, 2, 6, 5, (sh) => sh.door(4, 2, true));
+  const list = doorwaySegments(s.floors[0]);
+  assert.equal(list.length, 1);
+  const d = list[0];
+  assert.ok(near(Math.hypot(d.bx - d.ax, d.bz - d.az), d.w), 'the span is the width');
+  assert.equal(d.w, DOOR_W);
+  assert.equal(d.leaf, LEAF_SINGLE);
+  assert.ok(near(d.az, 8) && near(d.bz, 8), 'on the wall it is cut in');
+  // ...and a window is not a doorway.
+  const s2 = walledRoom(2, 2, 6, 5, (sh) => sh.edgeH(4, 2, EDGE_WINDOW));
+  assert.equal(doorwaySegments(s2.floors[0]).length, 0);
+  assert.equal(doorwaySegments(null).length, 0);
+  // The collider carries them, and an empty one carries none.
+  assert.equal(collide(s).doorways.length, 1);
+  assert.deepEqual(emptyCollider().doorways, []);
+});
+
+test('crossesDoorway names the doorway a step went through', () => {
+  const s = walledRoom(2, 2, 6, 5, (sh) => sh.door(4, 2, true));
+  const c = collide(s);
+  const d = c.doorways[0];
+  const mx = (d.ax + d.bx) / 2, mz = (d.az + d.bz) / 2;
+  assert.equal(crossesDoorway(c, mx, mz - 1, mx, mz + 1), d);
+  assert.equal(crossesDoorway(c, mx + 5, mz - 1, mx + 5, mz + 1), null, 'through the wall beside it');
+  assert.equal(crossesDoorway(c, mx, mz - 3, mx, mz - 1), null, 'short of it');
+});
+
+test('a door rule refuses a step through a doorway it answers no to, with the reason', () => {
+  const s = walledRoom(2, 2, 6, 5, (sh) => sh.door(4, 2, true));
+  const c = collide(s);
+  const d = c.doorways[0];
+  const mx = (d.ax + d.bx) / 2, mz = (d.az + d.bz) / 2;
+  for (const leaf of c.doors) leaf.open = 1;
+  const pos = feetAt(mx, mz + 0.6);
+  const open = moveWalker(s, c, pos, 0, -1.2, { grounded: true, doorRule: () => true });
+  assert.ok(!open.blocked && open.z < mz, 'the rule said yes');
+  assert.equal(open.refusal, null);
+  const shut = moveWalker(s, c, pos, 0, -1.2, { grounded: true, doorRule: (w) => w.w > 10 });
+  assert.ok(shut.blocked);
+  assert.equal(shut.refusal.reason, 'door');
+  assert.equal(shut.refusal.doorway, d);
+  // No rule, no refusal object at all — the crowd pays nothing for this.
+  const plain = moveWalker(s, c, pos, 0, -1.2, { grounded: true });
+  assert.equal(plain.refusal, null);
+});
+
+test('noStairs refuses a run and names it; a ramp is not a stair', () => {
+  const s = createState(30, 30);
+  addFloor(s);
+  slabOn(s, 0, 0, 0, 29, 29);
+  slabOn(s, 1, 0, 0, 29, 29);
+  const { link } = addStair(s, 0, { type: 'stair', x: 20, z: 20, rotationY: 0 });
+  const c = collide(s);
+  const at = feetAt(20, 19.8);
+  assert.ok(tryStep(s, c, at, 0, 0.5, { grounded: true }), 'on foot it is a run');
+  const refusal = {};
+  assert.equal(tryStep(s, c, at, 0, 0.5, { grounded: true, noStairs: true, refusal }), null);
+  assert.equal(refusal.reason, 'stair');
+  assert.equal(refusal.link, link);
+  const m = moveWalker(s, c, at, 0, 0.5, { grounded: true, noStairs: true });
+  assert.ok(m.blocked && m.refusal && m.refusal.reason === 'stair');
+  // supportAt says which run a stair surface is.
+  const sup = supportAt(s, 20, 22, 0);
+  assert.equal(sup.kind, 'stair');
+  assert.equal(sup.link, link);
+  assert.equal(supportAt(s, 5, 5, 0).link, null);
+});
+
+test('maxGrade refuses a rise measured a probe ahead, and a drop the same way', () => {
+  const s = createState(60, 60);
+  addFloor(s);
+  slabOn(s, 0, 0, 0, 59, 59);
+  slabOn(s, 1, 0, 0, 59, 59);
+  addStair(s, 0, { type: 'ramp', x: 20, z: 20, rotationY: 0, slope: 6 });
+  const c = collide(s);
+  const up = feetAt(20, 19.9);
+  const r1 = {};
+  assert.equal(tryStep(s, c, up, 0, 0.05, { grounded: true, maxGrade: 1 / 12, refusal: r1 }), null);
+  assert.equal(r1.reason, 'grade');
+  assert.ok(r1.grade > 1 / 12);
+  assert.ok(tryStep(s, c, up, 0, 0.05, { grounded: true, maxGrade: 0.5 }), 'a gentler rule lets it by');
+  // From part way up, going down is the same slope the other way.
+  const down = { x: 20, y: 10 / 6, z: 30 };
+  const r2 = {};
+  assert.equal(tryStep(s, c, down, 0, -0.05, { grounded: true, maxGrade: 1 / 12, stepDown: 0.02, refusal: r2 }), null);
+  assert.equal(r2.reason, 'grade');
 });

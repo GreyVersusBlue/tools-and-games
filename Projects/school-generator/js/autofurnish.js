@@ -35,7 +35,7 @@
 // Pure module: no three.js, no DOM. Exercised by test/autofurnish.test.mjs.
 
 import { floorAt } from './grid.js';
-import { shapeById, shapeBBox, pointInShape, segEnds, isDoorOpening } from './shapes.js';
+import { shapesOf, shapeById, shapeBBox, pointInShape, segEnds, isDoorOpening } from './shapes.js';
 import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 import { templateByKey, templatePlacements, ROOM_TEMPLATES } from './templates.js';
 import { floorRooms } from './navgraph.js';
@@ -98,13 +98,27 @@ export function roomGeometry(state, floorIndex, room) {
   const shape = room.shape || shapeById(floor, Number(String(room.id).split(':s')[1]));
   if (!shape) return null;
   const bb = shapeBBox(shape);
+  // Every doorway *into* this room, wherever it is recorded: a partition
+  // belongs to one of the two rooms it divides, and half the classrooms in
+  // any real plan have their door on the corridor's ring (see the
+  // conventions). So every opening on the storey is walked, and one counts
+  // if a step through it either way lands in this room.
   const doors = [];
-  for (const ring of shape.rings) {
-    for (const op of ring.openings || []) {
-      if (!isDoorOpening(op)) continue;
-      const [a, b] = segEnds(ring, op.seg);
-      if (!a || !b) continue;
-      doors.push({ x: a.x + (b.x - a.x) * op.t, z: a.z + (b.z - a.z) * op.t });
+  for (const other of shapesOf(floor)) {
+    for (const ring of other.rings) {
+      for (const op of ring.openings || []) {
+        if (!isDoorOpening(op)) continue;
+        const [a, b] = segEnds(ring, op.seg);
+        if (!a || !b) continue;
+        const x = a.x + (b.x - a.x) * op.t, z = a.z + (b.z - a.z) * op.t;
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        if (len < 0.01) continue;
+        const nx = -(b.z - a.z) / len, nz = (b.x - a.x) / len;
+        if (pointInShape(shape, x + nx * DOOR_PROBE, z + nz * DOOR_PROBE)
+          || pointInShape(shape, x - nx * DOOR_PROBE, z - nz * DOOR_PROBE)) {
+          doors.push({ x, z });
+        }
+      }
     }
   }
   return {
@@ -181,9 +195,31 @@ function anchorsFor(tpl, geo, rotationY) {
   return out;
 }
 
+// How far off a doorway to stand when asking which room it opens into.
+// navgraph.js's PROBE, for the same reason: past the thickest wall, inside
+// the smallest room.
+const DOOR_PROBE = 1.4;   // ft
+// Phase 40: how much of the floor beside a doorway a floor-standing stamp
+// leaves alone. The chair's first pass over every generated school found
+// locker banks, library stacks and hallway benches stamped into the jambs of
+// doors, and a door with furniture in its approach is a door a wheelchair
+// cannot turn at (ADA 404.2.4 wants 60in in front of it and 18in beside the
+// latch). Four feet from the door's centre covers a 4ft door's approach.
+export const DOOR_CLEAR = 4;    // ft
+
+// Distance from a point to a rotated box, zero inside it — the same frame
+// collide.js pushes a body out of one in.
+function boxDist(x, z, pl, hw, hd) {
+  const c = Math.cos(pl.rotationY || 0), s = Math.sin(pl.rotationY || 0);
+  const wx = x - pl.x, wz = z - pl.z;
+  const lx = wx * c - wz * s, lz = wx * s + wz * c;
+  return Math.hypot(Math.max(Math.abs(lx) - hw, 0), Math.max(Math.abs(lz) - hd, 0));
+}
+
 // Is there room for this piece here? A floor-standing prop needs its own
-// footprint clear of the boundary; a wall or ceiling mount is *supposed* to
-// be against something, so it only has to be in the room at all.
+// footprint clear of the boundary and out of every doorway's approach; a
+// wall or ceiling mount is *supposed* to be against something, so it only
+// has to be in the room at all.
 function stampFits(pl, geo, entry) {
   if (!geo.inside(pl.x, pl.z)) return false;
   if (!entry || entry.mount !== 'floor') return true;
@@ -191,6 +227,9 @@ function stampFits(pl, geo, entry) {
   const hw = (entry.w || 1) / 2, hd = (entry.d || 1) / 2;
   for (const [ox, oz] of [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]) {
     if (!geo.inside(pl.x + ox * c + oz * s, pl.z - ox * s + oz * c)) return false;
+  }
+  for (const d of geo.doors || []) {
+    if (boxDist(d.x, d.z, pl, hw, hd) < DOOR_CLEAR) return false;
   }
   return true;
 }

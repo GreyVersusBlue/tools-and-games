@@ -21,7 +21,7 @@
 // Anything smart enough to test belongs in one of them, not here.
 
 import * as THREE from 'three';
-import { CELL, EYE_H } from './grid.js';
+import { CELL } from './grid.js';
 import { catalogEntry } from './catalog.js';
 import { initRender } from './render.js';
 import { initWalkthrough } from './walkthrough.js';
@@ -38,7 +38,7 @@ import { MOODS, applyMood } from './sky.js';
 import {
   WEATHER_MOODS, applyWeatherMood, normalizeWeather, isDefaultWeather,
 } from './weather.js';
-import { buildCollider, storeyAt, WALKER_R, updateDoorsFor } from './collide.js';
+import { buildCollider, WALKER_R, updateDoorsFor } from './collide.js';
 import {
   startHunt, checkFind, huntWarmth, huntSummary,
   startLate, checkLate, lateWarmth, lateResult,
@@ -52,7 +52,7 @@ import {
   makeCreature, makeCreatureCtx, stepCreature, noteSlam, placeCreature,
   CREATURE_R,
 } from './creature.js';
-import { terrainField, groundAt } from './terrain.js';
+import { terrainField } from './terrain.js';
 import { buildNav } from './navgraph.js';
 import {
   makePopulation, makeContext, retargetAll, stepAgents,
@@ -406,7 +406,7 @@ function boot() {
     if (!life.on || !life.ctx) return;
     lifeAdvanceClock(dt);
     const eye = renderApi.walkCamera.position;
-    const floorIndex = storeyAt(state, eye.y - EYE_H, groundAt(life.site, eye.x, eye.z));
+    const floorIndex = walk.at.floor;
     stepAgents(life.ctx, life.agents, Math.min(dt, 0.05), {
       bodies: [{ id: 'camera', x: eye.x, z: eye.z, r: WALKER_R, push: 1 }],
       skipFloors: new Set([floorIndex]),
@@ -753,7 +753,7 @@ function boot() {
   function hauntRespawn() {
     const p = haunt.spawn || { x: 0, z: 0, floor: 0 };
     renderApi.walkCamera.position.set(
-      p.x, (p.floor || 0) * (state.floorHt || 12) + EYE_H, p.z);
+      p.x, (p.floor || 0) * (state.floorHt || 12) + walk.eyeH, p.z);
     if (haunt.creature && haunt.nav) {
       const far = banishNode(haunt.nav, p);
       if (far) placeCreature(haunt.creature, far);
@@ -927,8 +927,7 @@ function boot() {
 
   function drawMinimap() {
     const cam = renderApi.walkCamera;
-    const floorIndex = Math.max(0, Math.min(state.floors.length - 1,
-      storeyAt(state, cam.position.y - EYE_H)));
+    const floorIndex = Math.max(0, Math.min(state.floors.length - 1, walk.at.floor));
     const record = miniPlanFor(floorIndex);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const size = MINI_SIZE;
@@ -1019,6 +1018,21 @@ function boot() {
     miniRange = Math.min(MAX_RANGE, Math.round(miniRange * 1.5));
     updateMinimapButtons();
   });
+
+  // ---------- Phase 40: the chair ----------
+  //
+  // The same toggle the tool has: the eye drops, the body becomes the
+  // chair's, and the ear reads its storey off the same height.
+  function setSeated(on) {
+    walk.setSeated(on);
+    audio.setEyeHeight(walk.eyeH);
+    const b = $('walk-seated');
+    if (b) {
+      b.setAttribute('aria-pressed', String(walk.seated));
+      b.textContent = walk.seated ? '♿ Seated — stand up' : '♿ Sit in the chair';
+    }
+  }
+  if ($('walk-seated')) $('walk-seated').addEventListener('click', () => setSeated(!walk.seated));
 
   // ---------- photo mode ----------
   let photoMode = false;
@@ -1271,6 +1285,7 @@ function boot() {
       case 'KeyB': audio.ring(); break;
       case 'KeyN': audio.announce(); break;
       case 'KeyG': if (!$('walk-late').classList.contains('hidden')) $('walk-late').click(); break;
+      case 'KeyZ': setSeated(!walk.seated); break;
       default: break;
     }
   });

@@ -9,7 +9,7 @@ import {
   makeThresholds, thresholdFor, stepThresholds, admit, thresholdReport,
   FLOW_PER_FT, CREDIT_MAX, HOLD_MAX, MIN_FLOW_W,
 } from '../js/threshold.js';
-import { CLEAR_LOSS } from '../js/navgraph.js';
+import { CLEAR_LOSS } from '../js/clearance.js';
 
 const portal = (id, w) => ({ id, w });
 

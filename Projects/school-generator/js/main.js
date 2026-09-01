@@ -2,7 +2,7 @@
 
 import * as THREE from 'three';
 import {
-  createState, ROOM_COLORS, MAX_FLOORS, CELL, EYE_H, floorBaseY,
+  createState, ROOM_COLORS, MAX_FLOORS, CELL, floorBaseY,
   floorLabel, floorShapeCount, activeFloor,
   addFloor, duplicateFloor, removeFloor, setCurrentFloor,
 } from './grid.js';
@@ -22,7 +22,7 @@ import {
   SITE_SURFACES, SITE_MARKINGS, SITE_KINDS, surfaceEntry, markingEntry, kindEntry,
   regionArea, siteSchedule, curbPointsFor,
 } from './site.js';
-import { terrainField, terrainRange, ensureTerrain, groundAt } from './terrain.js';
+import { terrainField, terrainRange, ensureTerrain } from './terrain.js';
 import { ROOF_STYLES, ensureRoof, normalizeRoof, isPitched, roofPlan } from './roof.js';
 import {
   MOODS, applyMood, moodEntry, MONTH_NAMES, MAX_LAT, normalizeEnv, daysInMonth,
@@ -47,7 +47,7 @@ import {
   makePopulation, makeContext, retargetAll, stepAgents, census, drillReport,
   bodiesOn, makeCrowdField, crowdCells, clearCrowd, normalizeLife, MAX_POP, SPEED,
 } from './agents.js';
-import { buildCollider, storeyAt, resolvePoint, WALKER_R, refreshProps } from './collide.js';
+import { buildCollider, resolvePoint, WALKER_R, refreshProps } from './collide.js';
 // --- Phase 21 ---
 import { makeLabelGate, LABEL_MODES, sightBlockers, sightClear } from './sightline.js';
 import { murmurEmitters, paScript } from './murmur.js';
@@ -2629,8 +2629,11 @@ function exportOpts() {
   const wantsCode = $('export-code').checked;
   const wantsSpec = $('export-spec').checked;
   const wantsDay = $('export-day').checked;
+  // Phase 40: the failed turning circles, painted on the plan. A reading of
+  // the same report, so it shares the one build.
+  const wantsClearance = $('export-clearance').checked;
   let data = null;
-  if (wantsCode || wantsSpec || wantsDay) {
+  if (wantsCode || wantsSpec || wantsDay || wantsClearance) {
     if (report.stale || !report.data) reportBuild();
     data = report.data;
   }
@@ -2641,6 +2644,11 @@ function exportOpts() {
     showFinishes: $('export-finishes').checked,
     showOccupancy: $('export-occupancy').checked,
     contours: $('export-contours').checked,
+    clearance: wantsClearance && data
+      ? data.accessible.turning.fails.map((c) => ({
+        id: c.id, floor: c.floor, x: c.x, z: c.z, r: c.clear, need: c.need,
+      }))
+      : null,
     report: data,
     // A panel is per sheet — it says which storey you are holding — so what
     // travels in the options is the report, and each sheet asks it for its own.
@@ -3853,8 +3861,7 @@ function murmurTick(dt) {
 const chatSegs = new Map();
 function chatSeenGate() {
   if (mode !== 'walk') return null;
-  const eye = renderApi.walkCamera.position;
-  const f = storeyAt(state, eye.y - EYE_H);
+  const f = walk.at.floor;
   let segs = chatSegs.get(f);
   if (!segs) { segs = sightBlockers(state, f); chatSegs.set(f, segs); }
   const collider = life.colliders ? life.colliders.get(f) : null;
@@ -4007,7 +4014,7 @@ function lifeUpdate(dt) {
   const opts = {};
   if (mode === 'walk') {
     const eye = renderApi.walkCamera.position;
-    const floorIndex = storeyAt(state, eye.y - EYE_H, groundAt(life.site, eye.x, eye.z));
+    const floorIndex = walk.at.floor;
     opts.bodies = [{ id: 'camera', x: eye.x, z: eye.z, r: WALKER_R, push: 1 }];
     opts.skipFloors = new Set([floorIndex]);
   }
@@ -4045,7 +4052,7 @@ function lifeHeatTick(dt) {
   life.heatAt = 0.75;
   const floorIndex = mode === 'edit'
     ? state.currentFloor
-    : storeyAt(state, renderApi.walkCamera.position.y - EYE_H);
+    : walk.at.floor;
   renderApi.setHeat(crowdCells(life.crowd, floorIndex), {
     cell: life.crowd.cell,
     baseY: floorBaseY(state, floorIndex),
@@ -4507,7 +4514,9 @@ const VERDICTS = {
 // applies on the minimap.
 function findingPlace(f) {
   const room = (f.rooms || []).find((r) => r && r.id) || null;
-  const door = [...(f.doors || []), ...(f.exits || [])]
+  // Phase 40's circles are points too — the centre of a turning circle that
+  // did not fit is exactly somewhere to go and look.
+  const door = [...(f.doors || []), ...(f.exits || []), ...(f.circles || [])]
     .find((d) => d && Number.isFinite(d.x) && Number.isFinite(d.z)) || null;
   return room || door ? { room, door } : null;
 }
@@ -4617,10 +4626,19 @@ function reportSections(r) {
   const a = r.accessible.summary;
   sec('Accessible route', [
     row(`${plural(a.entrances, 'entrance')} · ${plural(a.lifts, 'lift')}`,
-      `${a.ramps ? plural(a.ramps, 'ramp') : 'no ramps'}`),
+      `${a.ramps ? plural(a.ramps, 'ramp') : 'no ramps'}` +
+      (a.steepRamps ? ` · <span class="warn">${plural(a.steepRamps, 'ramp')} too steep</span>` : '')),
     row('Reachable on wheels', a.unreachable
       ? `<b>${a.reachable}</b> of ${a.reachable + a.unreachable}`
       : 'every room'),
+    // Phase 40: the chair, once it has arrived. Two numbers each, so a
+    // reader can tell "nothing fails" from "nothing was tried".
+    row('Room to turn', a.turningFails
+      ? `<span class="warn">${a.turningFails}</span> of ${plural(a.turningTested, 'place')} fail`
+      : (a.turningTested ? `clear at all ${plural(a.turningTested, 'place')}` : 'nowhere to try')),
+    row('Within reach', a.reachFails
+      ? `<span class="warn">${a.reachFails}</span> of ${a.reachTested} out of range`
+      : (a.reachTested ? `all ${a.reachTested} checked` : 'nothing to check')),
   ]);
 
   const d = r.daylight.summary;
@@ -5313,6 +5331,22 @@ function setPhotoMode(on) {
   }
 }
 
+// --- Phase 40: the chair ---
+//
+// One toggle, and everything it changes lives in walkthrough.js and
+// clearance.js: the eye, the body, the rules. What this file owes it is the
+// ear (audio reads the storey off the same eye height) and the button.
+function setSeated(on) {
+  walk.setSeated(on);
+  audio.setEyeHeight(walk.eyeH);
+  const b = $('walk-seated');
+  if (b) {
+    b.setAttribute('aria-pressed', String(walk.seated));
+    b.textContent = walk.seated ? '♿ Seated — stand up' : '♿ Sit in the chair';
+  }
+}
+$('walk-seated').addEventListener('click', () => setSeated(!walk.seated));
+
 function renderPhotoPanel() {
   const p = renderApi.photo;
   $('photo-fov').value = String(Math.round(p.fov));
@@ -5474,6 +5508,9 @@ document.addEventListener('keydown', (e) => {
     // back out to the overlay for it — the overlay costs you the pointer lock,
     // and losing the pointer lock in the middle of a hunt is losing the hunt.
     if (e.code === 'KeyG') { $('walk-hunt').click(); return; }
+    // Phase 40: the chair. Z because it was the last free letter, and
+    // because sitting down is the one gesture nothing else in a walk makes.
+    if (e.code === 'KeyZ') { setSeated(!walk.seated); return; }
     if (e.code === 'BracketLeft') { stepMiniFinding(-1); return; }
     if (e.code === 'BracketRight') { stepMiniFinding(1); return; }
     if (e.code === 'Enter' && document.body.classList.contains('tours')) {
@@ -5658,6 +5695,9 @@ function cmdkCommands() {
       run: () => goToFloor(state.currentFloor - 1) },
     { name: 'Photo mode', hint: 'A lens on the walkthrough — FOV, focus, exposure',
       keys: ['P'], run: walkFirst(() => setPhotoMode(true)) },
+    { name: walk.seated ? 'Stand up' : 'Sit in the chair',
+      hint: 'Seated walkthrough — eye at 48 in, a half-inch threshold, ramps and the lift, 32 in doors',
+      keys: ['Z'], run: walkFirst(() => setSeated(!walk.seated)) },
     { name: 'Minimap', hint: 'The plan in your hand, while walking', keys: ['J'],
       run: walkFirst(() => { miniOn = !miniOn; updateMinimapButtons(); }) },
     { name: `Room labels: ${labelMode}`, hint: 'Earned by sight, strict line-of-sight, all, or none',
@@ -6581,7 +6621,7 @@ function sessionPresence(now) {
     const e = new THREE.Euler().setFromQuaternion(cam.quaternion, 'YXZ');
     view = {
       x: cam.position.x, z: cam.position.z, yaw: e.y,
-      floor: storeyAt(state, cam.position.y - EYE_H), mode: 'walk',
+      floor: walk.at.floor, mode: 'walk',
     };
   } else {
     const v = renderApi.editView;
@@ -6963,7 +7003,7 @@ function cameraStop() {
   return {
     x: cam.position.x, y: cam.position.y, z: cam.position.z,
     yaw: e.y, pitch: e.x,
-    floor: storeyAt(state, cam.position.y - EYE_H),
+    floor: walk.at.floor,
   };
 }
 
@@ -7438,7 +7478,7 @@ function drawMiniMarks(view, floorIndex, size) {
   if (!miniNav) miniNav = buildNav(state);
   const here = markOnFloor(mark, floorIndex);
   const mesh = miniNav.mesh[floorIndex];
-  if (!here.rooms.length && !here.doors.length) return;
+  if (!here.rooms.length && !here.doors.length && !here.circles.length) return;
 
   miniCtx.save();
   miniCtx.translate(size / 2, size / 2);
@@ -7449,6 +7489,24 @@ function drawMiniMarks(view, floorIndex, size) {
   for (const r of here.rooms) {
     for (const t of (mesh && mesh.byRoom.get(r.id)) || []) {
       miniCtx.fillRect(t.x0, t.z0, t.x1 - t.x0, t.z1 - t.z0);
+    }
+  }
+  // Phase 40: a turning circle that did not fit, drawn in world feet — the
+  // circle that does (filled) inside the one that was wanted (dashed), so
+  // the shortfall is the ring between them.
+  if (here.circles.length) {
+    miniCtx.strokeStyle = markLine(mark.level);
+    miniCtx.lineWidth = 0.6;
+    for (const c of here.circles) {
+      miniCtx.setLineDash([0.8, 0.8]);
+      miniCtx.beginPath();
+      miniCtx.arc(c.x, c.z, Math.max(0.1, c.need), 0, Math.PI * 2);
+      miniCtx.stroke();
+      miniCtx.setLineDash([]);
+      miniCtx.beginPath();
+      miniCtx.arc(c.x, c.z, Math.max(0.1, c.r), 0, Math.PI * 2);
+      miniCtx.fill();
+      miniCtx.stroke();
     }
   }
   miniCtx.restore();
@@ -7545,7 +7603,7 @@ function miniRasterFor(floorIndex, record, scale) {
 function drawMinimap() {
   const cam = renderApi.walkCamera;
   const floorIndex = Math.max(0, Math.min(state.floors.length - 1,
-    storeyAt(state, cam.position.y - EYE_H)));
+    walk.at.floor));
   const record = miniPlanFor(floorIndex);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const size = MINI_SIZE;

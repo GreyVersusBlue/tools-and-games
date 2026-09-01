@@ -75,6 +75,7 @@ const VOICE_FADE = 0.35;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export function initAudio(camera, opts = {}) {
+  let eyeH = EYE_H;
   const catalogEntry = opts.catalogEntry || defaultCatalogEntry;
 
   let listener = null, ctx = null;
@@ -446,7 +447,7 @@ export function initAudio(camera, opts = {}) {
   // Where the ear is, in world feet, and which storey and room it is in — the
   // three things every level calculation below needs.
   function ear() {
-    const feet = camera.position.y - EYE_H;
+    const feet = camera.position.y - eyeH;
     return {
       x: camera.position.x, y: camera.position.y, z: camera.position.z,
       floor: world ? storeyAt(world, feet) : 0,
@@ -653,7 +654,7 @@ export function initAudio(camera, opts = {}) {
   // between them shouldn't hear the reverb re-seed.
   function applyRoom(force = false) {
     if (!ctx) return;
-    const feet = camera.position.y - EYE_H;
+    const feet = camera.position.y - eyeH;
     const floor = world ? storeyAt(world, feet) : 0;
     const here = world ? roomAt(world, floor, camera.position.x, camera.position.z) : null;
     const key = here ? `${floor}:${here.id}` : '';
@@ -794,6 +795,10 @@ export function initAudio(camera, opts = {}) {
     // handoff the label gate gets. Without it the ray casts against the
     // pre-walk plan, which has no doors in motion.
     setLeavesSource(fn) { leavesSource = typeof fn === 'function' ? fn : null; },
+    // Phase 40: where the ear is relative to the feet. A seated walker's eye
+    // is a foot and a half lower, and a storey read off the wrong eye height
+    // is the wrong room's reverb.
+    setEyeHeight(h) { eyeH = Number.isFinite(h) && h > 0 ? h : EYE_H; },
 
     // Phase 28: the crowd's emitters, replaced wholesale — murmur.js derives
     // them, the shell hands them over on its own cadence, and the next

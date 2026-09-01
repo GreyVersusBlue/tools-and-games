@@ -26,7 +26,9 @@ import { addStair } from '../js/stairs.js';
 import { applyFinish } from '../js/finish.js';
 import { addProp } from '../js/props.js';
 import { catalogEntry } from '../js/catalog.js';
-import { computeFloorPlan, computeSitePlan, drawFloorPlan } from '../js/blueprint.js';
+import {
+  computeFloorPlan, computeSitePlan, drawFloorPlan, drawPlanBody, drawClearance,
+} from '../js/blueprint.js';
 import { buildReport, codePanel, dayPanel } from '../js/report.js';
 import { buildNav } from '../js/navgraph.js';
 import { buildingOccupancy } from '../js/occupancy.js';
@@ -546,4 +548,32 @@ test('annotations are per storey: another floor prints its own and only its own'
   addDim(s, 1, { x: 0, z: 0 }, { x: 16, z: 0 }, 5);
   assert.equal(computeFloorPlan(s, 0).dims.length, 0);
   assert.equal(computeFloorPlan(s, 1).dims.length, 1);
+});
+
+
+// ---------- Phase 40: where a chair cannot turn, on the sheet ----------
+
+test('drawClearance paints each failed circle on its own storey with its size in inches', () => {
+  const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+  const s = buildSampleSchool();
+  const plan = computeFloorPlan(s, 1);
+  const arcs = [];
+  const { ctx, texts } = recordingCtx();
+  ctx.arc = (x, y, r) => arcs.push({ x, y, r });
+  drawClearance(ctx, plan, LAYOUT, [
+    { floor: 1, x: 66, z: 54.5, r: 1.25, need: 2.5 },
+    { floor: 0, x: 40, z: 40, r: 1, need: 2.5 },
+    { floor: 1, x: 'no', z: 1, r: 1 },
+  ]);
+  assert.equal(arcs.length, 2, 'two arcs — wanted and got — for the one circle on this storey');
+  assert.ok(near(arcs[0].r, 2.5 * LAYOUT.scale) && near(arcs[1].r, 1.25 * LAYOUT.scale));
+  assert.equal(texts.length, 1);
+  assert.equal(texts[0].text, '30 in');
+  // Nothing on the sheet, nothing drawn — and the body's draw order carries it.
+  const { ctx: c2, texts: t2 } = recordingCtx();
+  drawClearance(c2, plan, LAYOUT, []);
+  assert.equal(t2.length, 0);
+  const { ctx: c3, texts: t3 } = recordingCtx();
+  drawPlanBody(c3, plan, LAYOUT, { clearance: [{ floor: 1, x: 66, z: 54.5, r: 1.25, need: 2.5 }] });
+  assert.ok(t3.some((t) => t.text === '30 in'));
 });

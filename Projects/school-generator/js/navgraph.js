@@ -53,7 +53,7 @@
 
 import { FLOOR_H } from './grid.js';
 import {
-  shapesOf, shapeArea, segEnds, isBuilt, isDoorOpening, interiorPoint, shapeAt,
+  shapesOf, shapeArea, segEnds, isBuilt, isDoorOpening, interiorPoint, shapeAt, openingSpec,
 } from './shapes.js';
 import { meshFloor, tileFor } from './navmesh.js';
 import { meshSite, yardTileFor } from './sitemesh.js';
@@ -63,6 +63,7 @@ import {
   stairsOf, stairMetrics, runLength, localToWorld, elevatorSize, isRun, isElevator,
   LANDING,
 } from './stairs.js';
+import { MIN_ACCESSIBLE_W, doorRolls, rampRolls } from './clearance.js';
 
 // How far off a doorway to stand when asking which rooms it joins. Half a
 // lattice cell is 2ft and the thickest wall is 0.8, so 1.4 clears the wall and
@@ -105,23 +106,14 @@ export const OUTDOOR_COST = 60;    // ft-equivalent per exterior doorway
 //
 // Phase 7's one genuinely new piece of navigation, and it is an option rather
 // than a module: the accessible route is the same graph with the things a
-// wheelchair can't use left out of it. A stair is out; a ramp and a lift stay,
-// which is what Phase 2 built them for. A doorway too narrow to roll through
-// is out too, and that is a *width* question rather than a kind one.
-//
-// The clear width a doorway offers is not the hole in the wall: a leaf parked
-// at 90° and its stop eat into the opening, which is why a 36in door is the
-// smallest one that gives the 32in clear ADA asks for.
-export const CLEAR_LOSS = 0.33;    // ft — leaf and stop, off a doorway's width
-export const MIN_CLEAR_W = 32 / 12;  // ft — ADA 404.2.3
-// ...so the narrowest *opening* that passes, which is exactly a 3ft door.
-export const MIN_ACCESSIBLE_W = MIN_CLEAR_W + CLEAR_LOSS;
-
-// The clear width a doorway of this opening width actually offers. An opening
-// with no leaf in it (a cased opening, a corridor mouth) loses nothing.
-export const clearWidth = (w, leafed = true) =>
-  Math.max(0, w - (leafed ? CLEAR_LOSS : 0));
-
+// wheelchair can't use left out of it. A stair is out; a ramp stays if a chair
+// can climb it (Phase 40: 1:12, and a steeper one is a stair with no treads);
+// a lift stays, which is what Phase 2 built them for. A doorway too narrow to
+// roll through is out too, and that is a *width* question rather than a kind
+// one — and since Phase 40 a question this file no longer answers itself.
+// `clearance.js` owns the door-width contract (`doorRolls`) and the ramp rule
+// (`rampRolls`), and the seated walker reads the same two functions, which is
+// what makes the report and the walkthrough agree about every doorway.
 
 // ---------- rooms ----------
 
@@ -203,14 +195,20 @@ function makePortal(id, x, z, nx, nz, w, floor, a, b, opts = {}) {
     exterior: opts.exterior === true,
     rep: opts.rep || 'shape',
     muster: opts.muster || null,
+    // How it is hung — none, a single leaf, a pair — which is what decides
+    // its clear width (Phase 40, `clearance.js`).
+    leaf: Number.isInteger(opts.leaf) ? opts.leaf : 1,
   };
 }
 
 // `opts.accessible` builds the same graph with the routes a wheelchair can't
-// take left out of it — no stairs, and no doorway narrower than
-// `opts.minWidth` (default `MIN_ACCESSIBLE_W`). Everything else about it is
-// the graph the crowd walks, which is the point: an accessible route is not a
-// second model of the building, it is this one with two things removed.
+// take left out of it — no stairs, no ramp steeper than a chair climbs, and
+// no doorway `doorRolls` refuses (a 3ft leaf, a 6ft pair, a 32in cased
+// opening are the narrowest of each). `minWidth` is the plain graph's floor
+// under a doorway (a cupboard is not a route) and is reported on the
+// accessible one for what it is worth. Everything else about it is the graph
+// the crowd walks, which is the point: an accessible route is not a second
+// model of the building, it is this one with three things removed.
 export function buildNav(state, opts = {}) {
   const accessible = opts.accessible === true;
   const minWidth = Number.isFinite(opts.minWidth)
@@ -312,8 +310,8 @@ export function buildNav(state, opts = {}) {
   // ---- doorways ----
 
   let pn = 0;
-  const joinPortal = (x, z, nx, nz, w, floorIndex, rep) => {
-    if (w < minWidth) return null;
+  const joinPortal = (x, z, nx, nz, w, floorIndex, rep, leaf = 1) => {
+    if (accessible ? !doorRolls(w, leaf) : w < minWidth) return null;
     const a = roomIdAt(floorIndex, x + nx * PROBE, z + nz * PROBE);
     const b = roomIdAt(floorIndex, x - nx * PROBE, z - nz * PROBE);
     if (a && a === b) return null;              // a doorway inside one room
@@ -332,6 +330,7 @@ export function buildNav(state, opts = {}) {
       floorIndex, a || null, b || null, {
         exterior,
         rep,
+        leaf,
         pa,
         pb,
         muster: exterior
@@ -382,7 +381,8 @@ export function buildNav(state, opts = {}) {
           const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
           for (const o of ring.openings) {
             if (o.seg !== s || !isDoorOpening(o)) continue;
-            joinPortal(a.x + ux * o.t * len, a.z + uz * o.t * len, -uz, ux, o.w, i);
+            joinPortal(a.x + ux * o.t * len, a.z + uz * o.t * len, -uz, ux, o.w, i,
+              undefined, openingSpec(o).leaf);
           }
         }
       }
@@ -398,6 +398,8 @@ export function buildNav(state, opts = {}) {
     // accessible graph it is simply not there, and whatever it was the only
     // way to becomes unreachable — which is the finding Phase 7 is after.
     if (accessible && link.type === 'stair') continue;
+    // ...and a ramp steeper than 1:12 is a stair with no treads on it.
+    if (accessible && link.type === 'ramp' && !rampRolls(link)) continue;
     const lo = Math.min(link.from, link.to);
     const hi = Math.max(link.from, link.to);
     if (!state.floors[lo] || !state.floors[hi]) continue;

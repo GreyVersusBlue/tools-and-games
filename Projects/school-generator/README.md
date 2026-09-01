@@ -9,7 +9,8 @@ eraser deletes anything you click, whichever tool placed it. The walkthrough
 has collision, gravity, footsteps, room acoustics, a positioned sun, a start
 point you choose, and a school's worth of people walking their timetable. It
 reads what you have drawn — occupant load, travel distance,
-accessible route, glazing ratio, reverberation time — and it will generate a
+accessible route, whether a wheelchair can turn at each door and reach each
+counter, glazing ratio, reverberation time — and it will generate a
 whole building from a student count and a sentence.
 
 A single page, no build step, no dependencies beyond a vendored three.js. It

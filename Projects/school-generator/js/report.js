@@ -133,7 +133,7 @@ export function buildReport(state, opts = {}) {
   const edition = editionEntry(code.edition);
 
   const egress = egressAnalysis(state, { nav, occupancy, sprinklered });
-  const accessible = accessibleAnalysis(state, { nav, occupancy, field: egress.field });
+  const accessible = accessibleAnalysis(state, { nav, occupancy, field: egress.field, catalogGet });
   const daylight = daylightAnalysis(state, { nav, occupancy });
   const acoustics = opts.acoustics === false
     ? { rooms: [], summary: { rooms: 0, graded: 0, over: 0, worst: null }, findings: [] }
