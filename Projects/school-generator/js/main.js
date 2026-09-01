@@ -3861,6 +3861,7 @@ function murmurTick(dt) {
 const chatSegs = new Map();
 function chatSeenGate() {
   if (mode !== 'walk') return null;
+  const eye = renderApi.walkCamera.position;
   const f = walk.at.floor;
   let segs = chatSegs.get(f);
   if (!segs) { segs = sightBlockers(state, f); chatSegs.set(f, segs); }
