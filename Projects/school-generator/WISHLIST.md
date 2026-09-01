@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: thirty-six phases are shipped and one is open — Phase 34,
-below; arc six is underway: Phase 37 has shipped, and Phase 38 — on Claude
-Fable 5 — is the next open phase in the arc's order.** Three arcs took a grid
+**Status: thirty-seven phases are shipped and one is open — Phase 34,
+below; arc six is underway: Phases 37 and 38 have shipped, and Phase 39 —
+on Claude Fable 5 — is the next open phase in the arc's order.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school; arc
 four built for the person handed the result; arc five for the building
 itself; arc six builds for the reviewer; the phases between and after the
@@ -73,6 +73,10 @@ set: plans per storey, four elevations, drawn sections, site and spec sheets,
 numbered through one title block) · `elevation.js` (Phase 37: the model
 projected onto a vertical plane — facades and section cuts as depth-sorted
 fills a painter draws far-to-near; also the stored section-line records) ·
+`annotate.js` (Phase 38: what the sheet says — dimensions as two anchors
+and an offset whose number is derived at draw time, notes as a point, a
+leader and a sentence, and the chain that dimensions a wall jamb to jamb
+off its own opening records) ·
 `minimap.js` · `signage.js` (Phase 31: the plate beside a door and
 the glowing EXIT over it, both read off the model — which door, which jamb,
 which side, how high).
@@ -205,8 +209,8 @@ wrong.
   --test 'test/*.test.mjs'` is the numbers (and the glob is not decoration —
   `node --test test/` dies with `MODULE_NOT_FOUND` on Node 22).
   `test/visual/run.mjs` is the pictures. `test/tools/run.mjs` is the *tools*:
-  the twelve of them driven with real pointer events on the real page,
-  because `editor.js` and the six `*edit.js` modules all import three.js and
+  the fourteen of them driven with real pointer events on the real page,
+  because `editor.js` and the seven `*edit.js` modules all import three.js and
   so cannot be loaded in Node at all. If you change what a tool does to the
   state, that is the pass that will tell you. All three run in CI on every PR
   that touches this directory; the last two need Playwright and are optional
@@ -334,7 +338,9 @@ and add to this list rather than starting a new one.
 - The structural shadow is measured at 4ft, so a wing oversailing by three
   feet doesn't register; a room is refused or allowed wholesale rather than
   clipped.
-- The tracing overlay is edit-mode only — it isn't on the printed sheet.
+- ~~The tracing overlay is edit-mode only — it isn't on the printed sheet.~~
+  *Done, Phase 38: it prints under the plan behind a checkbox in the export
+  dialog, at the sheet's own scale.*
 - The campus scheme is always the same shape (front building, quad, row of
   pavilions) where a real one wraps a hillside.
 
@@ -1217,7 +1223,7 @@ job; the suite now pins it as a promise. Next in the arc: **Phase 38 — Say
 it on the sheet**, named model **Claude Fable 5**; Phase 34 stays open
 beside the arc.
 
-## Phase 38 — Say it on the sheet
+## Phase 38 — Say it on the sheet *(shipped)*
 
 **The sheet shows every wall and states not one number.**
 
@@ -1228,24 +1234,52 @@ scale bar. The house answer is already decided by the conventions: the
 number on a dimension is *derived* from the geometry it points at, never
 typed, so the sheet cannot disagree with the model it prints.
 
-- [ ] **`annotate.js`, pure, with its suite.** Two records: a dimension —
+- [x] **`annotate.js`, pure, with its suite.** Two records: a dimension —
   two anchor points and an offset, its text computed from the measured
   distance at draw time — and a note: a point, a leader, a sentence.
-- [ ] **An annotation tool, thin over the module.** Anchors snap through
+- [x] **An annotation tool, thin over the module.** Anchors snap through
   `snapgrid.js` (Phase 35's origin honoured), notes drag, Delete removes;
   selection stays in the tool, records go in the file.
-- [ ] **The sheet draws them.** Extension lines, ticks and text at sheet
-  scale, on plans and — once Phase 37 lands — on sections and elevations
-  alike; the tracing overlay joins the print behind a checkbox, closing
-  the backlog's "edit-mode only" complaint.
-- [ ] **Chained dimensions along a run.** Click a wall and get its
-  openings and piers dimensioned end to end, read off `openings.js`,
-  which already knows every jamb.
+- [x] **The sheet draws them.** Extension lines, ticks and text at sheet
+  scale, on plans and on sections and elevations alike; the tracing
+  overlay joins the print behind a checkbox, closing the backlog's
+  "edit-mode only" complaint.
+- [x] **Chained dimensions along a run.** Click a wall and get its
+  openings and piers dimensioned end to end, read off the opening records
+  the leaf hangs from, which already know every jamb.
 
-*Leans on:* `snapgrid.js`, `blueprint.js`, `overlay.js`, `openings.js`,
-Phase 37 softly — plans alone are worth it. *Save:* additive per-storey
-`dims` and `notes` records, absent when empty. *Model:* **Claude Fable
-5** — a save append and snap geometry are model layer.
+`annotate.js` holds both records and everything derived from them: the
+drawn parts of a dimension (extension lines with the drafting gap and
+overshoot, the line, the 45° ticks, where the text sits and *what it
+says* — `dimLabel` renders feet-and-inches in exactly one place, so the
+plan, the elevations and the status line can never print three spellings
+of one length), hit tests for the tool, the chain over `openingSpec`, and
+the loader's normalizers. The tool is a fourteenth toolbar entry (on `'`)
+with three gestures — dimension, chain, note — plus select/drag/Delete on
+anything drawn; its editor face is geometry without text, the number
+riding the status line, because the sheet is where an annotation's text
+belongs. `computeFloorPlan` grew `dims`/`notes` and its bounds grow to
+hold them; the vertical sheets print only the dimensions *parallel to
+their plane*, strung in stacked rows below the drawing.
+
+*Save:* additive per-storey `dims` and `notes` records, absent when
+empty — the third and fourth per-storey optionals, on `walls`' terms.
+*Model:* **Claude Fable 5** — a save append and snap geometry are model
+layer, and that is where it ran.
+
+*What fought back:* two things, both about promises rather than pixels.
+The round-trip suite caught the byte-identity claim over-reaching:
+annotate-then-clean removes the key, but `nextId` has still moved — an id
+was taken and given back — so the pin compares the design field-for-field
+minus the counter, and the phase record says so rather than pretending
+the bytes match. And the elevations forced a scope decision the mantra
+made for us: an oblique dimension projected onto a facade would draw a
+foreshortened line under an unforeshortened number — the sheet would
+disagree with itself — so a vertical sheet prints exactly the dimensions
+parallel to its plane and leaves the rest on the plan, and notes stay on
+the plan entirely, because a plan point has no height to hang a sentence
+at. Next in the arc: **Phase 39 — The school day starts at the curb**,
+named model **Claude Fable 5**; Phase 34 stays open beside the arc.
 
 ## Phase 39 — The school day starts at the curb
 

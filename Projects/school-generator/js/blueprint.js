@@ -43,6 +43,8 @@ import {
   computeElevation, computeSection, sectionsOf, sectionLabel, FACADES, facadeEntry,
 } from './elevation.js';
 import { INK, withAlpha, paperTint } from './theme.js';
+import { dimsOf, notesOf, dimGeometry } from './annotate.js';
+import { showsOn } from './overlay.js';
 
 const SEG_KIND_NAME = { [SEG_WALL]: 'wall', [SEG_GLASS]: 'glass', [SEG_RAIL]: 'rail' };
 
@@ -254,10 +256,32 @@ export function computeFloorPlan(state, floorIndex, opts = {}) {
   const rooms = planRooms(floor);
   const propsList = planProps(state, floorIndex);
   const stairs = stairSymbols(state, floorIndex);
+  // Phase 38: what the sheet says. The dimension's drawn parts — extension
+  // lines, line, ticks, and the *derived* label — come out of annotate.js
+  // here, in the pure half, so a test can read the number off the plan
+  // without a canvas. The bounds grow to hold them: a dimension clipped by
+  // the page margin is a dimension that wasn't drawn.
+  const dims = dimsOf(floor).map((d) => dimGeometry(d)).filter(Boolean);
+  const notes = notesOf(floor).map((n) => ({
+    x: n.x, z: n.z, tx: n.tx, tz: n.tz, text: n.text,
+  }));
+  const bounds = computeBounds(floor, rooms, propsList, stairs);
+  for (const g of dims) {
+    for (const p of [g.la, g.lb, ...g.ext[0], ...g.ext[1]]) extendBounds(bounds, p.x, p.z);
+  }
+  for (const n of notes) {
+    extendBounds(bounds, n.x, n.z);
+    // Rough room for the sentence itself — the pure half cannot measure text,
+    // so it reserves a sane width rather than none.
+    const side = n.tx >= n.x ? 1 : -1;
+    extendBounds(bounds, n.tx + side * Math.min(40, n.text.length * 0.62 + 1), n.tz);
+  }
   return {
     floorIndex,
     label: floorLabel(floorIndex),
-    bounds: computeBounds(floor, rooms, propsList, stairs),
+    bounds,
+    dims,
+    notes,
     rooms,
     walls,
     // Doors *and* windows, each carrying its own leaves. Kept under the name
@@ -757,6 +781,103 @@ function drawSectionMarkers(ctx, plan, layout) {
   }
 }
 
+// ---------- annotations (Phase 38) ----------
+//
+// The drawn dimensions and notes. All the geometry — extension lines, ticks,
+// the offset side, the derived label — came out of annotate.js in the pure
+// half; this only puts ink on it. Dimension line work is thin and secondary
+// (INK.dim), the way a drawn sheet keeps its strings lighter than its walls.
+
+function drawAnnotations(ctx, plan, layout) {
+  const dims = plan.dims || [];
+  const notes = plan.notes || [];
+  if (!dims.length && !notes.length) return;
+  const px = (p) => toPx(plan, layout, p.x, p.z);
+  const line = (p0, p1) => {
+    const a = px(p0), b = px(p1);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  };
+  const size = Math.max(8, Math.round(layout.scale * 0.85));
+  ctx.setLineDash([]);
+  ctx.lineCap = 'butt';
+  for (const g of dims) {
+    ctx.strokeStyle = INK.dim;
+    ctx.lineWidth = Math.max(0.8, layout.scale * 0.05);
+    for (const ext of g.ext) line(ext[0], ext[1]);
+    line(g.la, g.lb);
+    // The ticks read heavier — they are what the eye counts jambs by.
+    ctx.strokeStyle = INK.line;
+    ctx.lineWidth = Math.max(1, layout.scale * 0.09);
+    for (const tick of g.ticks) line(tick[0], tick[1]);
+    // The label rides the line, upright: text past vertical flips so no
+    // number on the sheet prints upside down.
+    const a = px(g.la), b = px(g.lb), mid = px(g.mid);
+    let ang = Math.atan2(b.y - a.y, b.x - a.x);
+    let up = -1;   // "above the line" in the rotated frame
+    if (ang > Math.PI / 2 || ang <= -Math.PI / 2) { ang += Math.PI; up = 1; }
+    ctx.save();
+    ctx.translate(mid.x, mid.y);
+    ctx.rotate(ang);
+    ctx.font = `${size}px "IBM Plex Mono", ui-monospace, monospace`;
+    ctx.textAlign = 'center';
+    const w = ctx.measureText(g.label).width;
+    const ty = up < 0 ? -size * 0.45 : size * 1.05;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(-w / 2 - 2, ty - size * 0.9, w + 4, size * 1.2);
+    ctx.fillStyle = INK.dim;
+    ctx.fillText(g.label, 0, ty);
+    ctx.restore();
+  }
+  for (const n of notes) {
+    const at = px(n), to = toPx(plan, layout, n.tx, n.tz);
+    // The anchor: a small filled dot, and the leader out to the sentence.
+    ctx.fillStyle = INK.line;
+    ctx.beginPath();
+    ctx.arc(at.x, at.y, Math.max(1.5, layout.scale * 0.14), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = INK.dim;
+    ctx.lineWidth = Math.max(0.8, layout.scale * 0.05);
+    ctx.beginPath();
+    ctx.moveTo(at.x, at.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    // The sentence sits on whichever side of the anchor the leader was
+    // dragged to, so it points back at the thing it is about.
+    const right = to.x >= at.x;
+    ctx.font = `${size}px "Public Sans", system-ui, sans-serif`;
+    ctx.textAlign = right ? 'left' : 'right';
+    const tx = to.x + (right ? 4 : -4);
+    const w = ctx.measureText(n.text).width;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(right ? tx - 2 : tx - w - 2, to.y - size * 0.85, w + 4, size * 1.2);
+    ctx.fillStyle = INK.line;
+    ctx.fillText(n.text, tx, to.y);
+  }
+}
+
+// The tracing image, on the printed sheet — the backlog's "edit-mode only"
+// complaint, closed. Drawn first, under everything, at the sheet's own scale:
+// the overlay's centre, rotation and ft-per-pixel are the same numbers the
+// editor positions it by, so what prints is what was traced over. The image
+// itself is decoded by the caller (a canvas cannot await), which is why it
+// arrives as `opts.trace = { overlay, image }` rather than being read off the
+// state here.
+function drawTraceImage(ctx, plan, layout, trace) {
+  const o = trace.overlay;
+  const c = toPx(plan, layout, o.x, o.z);
+  const w = o.w * o.scale * layout.scale;
+  const h = o.h * o.scale * layout.scale;
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.rotate(o.rot);
+  ctx.globalAlpha = o.opacity;
+  ctx.drawImage(trace.image, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
 function drawScaleBar(ctx, layout, canvasW, canvasH) {
   const x0 = canvasW - 140, y0 = canvasH - 34;
   const ftPerTick = 10;
@@ -1046,6 +1167,11 @@ function drawTitleBlock(ctx, plan, layout, canvasW, opts) {
 // emphatically does not want a title block, a legend or a north arrow drawn
 // over the top of a 168-pixel square.
 export function drawPlanBody(ctx, plan, layout, opts = {}) {
+  // The tracing paper prints under everything, when the caller decoded it and
+  // it shows on this storey — the same `showsOn` the editor draws by.
+  if (opts.trace && opts.trace.image && showsOn(opts.trace.overlay, plan.floorIndex)) {
+    drawTraceImage(ctx, plan, layout, opts.trace);
+  }
   drawRooms(ctx, plan, layout);
   drawWalls(ctx, plan, layout);
   drawDoors(ctx, plan, layout);
@@ -1058,6 +1184,9 @@ export function drawPlanBody(ctx, plan, layout, opts = {}) {
   // plan is only a picture. The minimap opts out: at thumbnail size a flag
   // is bigger than a room.
   if (opts.showSections !== false) drawSectionMarkers(ctx, plan, layout);
+  // ...and so do the drawn dimensions and notes (Phase 38), on the same
+  // terms: they are facts about the drawing, and the minimap opts out.
+  if (opts.showAnnotations !== false) drawAnnotations(ctx, plan, layout);
 }
 
 // Draws one floor's plan into a 2D context whose canvas is already sized for
@@ -1423,11 +1552,51 @@ function drawElevGrade(ctx, elev, layout) {
   ctx.stroke();
 }
 
+// The dimension strings under a vertical sheet (Phase 38). elevation.js
+// already picked the rows — only the ones parallel to the sheet's plane, so
+// every number here equals the one the plan prints for the same pair of
+// anchors — and gave each its own y; this puts ink on them.
+function drawElevDims(ctx, elev, layout) {
+  const dims = elev.dims || [];
+  if (!dims.length) return;
+  const size = Math.max(8, Math.round(layout.scale * 0.85));
+  ctx.setLineDash([]);
+  ctx.lineCap = 'butt';
+  ctx.textAlign = 'center';
+  ctx.font = `${size}px "IBM Plex Mono", ui-monospace, monospace`;
+  for (const d of dims) {
+    const a = elevPx(elev, layout, d.u0, d.y);
+    const b = elevPx(elev, layout, d.u1, d.y);
+    ctx.strokeStyle = INK.dim;
+    ctx.lineWidth = Math.max(0.8, layout.scale * 0.05);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    // The drafter's 45° tick at each end.
+    ctx.strokeStyle = INK.line;
+    ctx.lineWidth = Math.max(1, layout.scale * 0.09);
+    const r = Math.max(2.5, layout.scale * 0.5);
+    for (const p of [a, b]) {
+      ctx.beginPath();
+      ctx.moveTo(p.x - r * 0.7, p.y + r * 0.7);
+      ctx.lineTo(p.x + r * 0.7, p.y - r * 0.7);
+      ctx.stroke();
+    }
+    const w = ctx.measureText(d.label).width;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect((a.x + b.x) / 2 - w / 2 - 2, a.y - size * 1.35, w + 4, size * 1.2);
+    ctx.fillStyle = INK.dim;
+    ctx.fillText(d.label, (a.x + b.x) / 2, a.y - size * 0.45);
+  }
+}
+
 export function drawElevation(ctx, elev, layout, opts = {}) {
   ctx.fillStyle = INK.paper;
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   for (const p of elev.paints) drawElevPaint(ctx, elev, layout, p);
   drawElevGrade(ctx, elev, layout);
+  drawElevDims(ctx, elev, layout);
   drawElevLevels(ctx, elev, layout, ctx.canvas.width);
   drawScaleBar(ctx, layout, ctx.canvas.width, ctx.canvas.height);
   drawSheetPanels(ctx, layout, ctx.canvas.width, opts);
@@ -1464,6 +1633,7 @@ export function drawSectionSheet(ctx, sec, layout, opts = {}) {
     elevPath(ctx, sec, layout, line);
     ctx.stroke();
   }
+  drawElevDims(ctx, sec, layout);
   drawElevLevels(ctx, sec, layout, ctx.canvas.width);
   drawScaleBar(ctx, layout, ctx.canvas.width, ctx.canvas.height);
   drawSheetPanels(ctx, layout, ctx.canvas.width, opts);

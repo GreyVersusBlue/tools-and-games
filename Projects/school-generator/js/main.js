@@ -398,6 +398,9 @@ const editor = initEditor({
   // The dialog belongs to the shell, not to the tool — same division of
   // labour every other prompt in this file follows.
   onMeasure: (a, b) => askMeasurement(a, b),
+  // Phase 38: the annotation panel edits the selected note's sentence, so a
+  // selection made on the plan has to reach it — the stair panel's deal.
+  onAnnoSelect: () => { if (editor.tool === 'anno') renderAnnoPanel(); },
 });
 
 const walkHud = $('walk-hud');
@@ -1183,6 +1186,8 @@ const TOOL_KEYS = {
   // The thirteenth ran out of number row; backslash sits under Backspace on
   // the keyboards the row runs out on.
   Backslash: 'section', IntlBackslash: 'section',
+  // ...and the fourteenth takes the quote key, unclaimed until now.
+  Quote: 'anno',
 };
 const HINTS = {
   floor: 'Floor — drag out a rectangle of grid tiles. R switches to the brush. Tiles join the room they can walk to, or start one.',
@@ -1198,6 +1203,7 @@ const HINTS = {
   site: 'Site — lay hardscape and fields, or grade the ground. Region: click corners, close the loop. Grade: drag to raise, ⇧ to lower, Alt to smooth.',
   overlay: 'Overlay — a plan or a sketch to trace over. Load an image, measure something you know the length of, say what it is, and the picture is scaled to match. Drag to move, R to turn.',
   section: 'Section — click one end of the cut, then the other; the drawn line prints on the plan and its cut prints with the set. Click a drawn line to remove it, Esc stops the gesture.',
+  anno: 'Annotate — dimensions and notes that print with the sheet. Dimension: two anchors, then where the line stands; the number is measured, never typed. Chain: click a wall for its openings and piers end to end. Note: a point, a leader, a sentence.',
 };
 
 // --- one hint at a time (Phase 19) ---
@@ -1277,12 +1283,14 @@ function selectTool(t) {
   $('template-panel').classList.toggle('hidden', t !== 'template');
   $('site-panel').classList.toggle('hidden', t !== 'site');
   $('overlay-panel').classList.toggle('hidden', t !== 'overlay');
+  $('anno-panel').classList.toggle('hidden', t !== 'anno');
   if (t === 'wall') renderWallModes();
   if (t === 'door') renderDoorModes();
   if (t === 'floor' || t === 'erase') renderFloorModes();
   if (t === 'stair') renderStairReadout();
   if (t === 'site') renderSitePanel();
   if (t === 'overlay') renderOverlayPanel();
+  if (t === 'anno') renderAnnoPanel();
   // Hole mode is sticky, so coming back to the polygon tool has to say which
   // of the two things a loop is going to do.
   $('status').textContent = t === 'poly' && editor.holeMode
@@ -1345,6 +1353,45 @@ function renderFloorModes() {
   $('floor-rect').setAttribute('aria-pressed', String(on));
   $('floor-brush').setAttribute('aria-pressed', String(!on));
 }
+
+// The annotation tool's panel (Phase 38): which of its three gestures is
+// live, the sentence the next note gets, and what is selected right now. The
+// text field edits the *selected* note when there is one — the same field, so
+// there is exactly one place a sentence is ever typed.
+function renderAnnoPanel() {
+  const m = editor.annoMode;
+  $('anno-dim').setAttribute('aria-pressed', String(m === 'dim'));
+  $('anno-chain').setAttribute('aria-pressed', String(m === 'chain'));
+  $('anno-note').setAttribute('aria-pressed', String(m === 'note'));
+  const sel = editor.annoSelection;
+  if (sel && sel.kind === 'note') $('anno-text').value = sel.text;
+  $('anno-readout').textContent = !sel
+    ? 'Nothing selected — click a drawn dimension or note to adjust it.'
+    : sel.kind === 'note'
+      ? 'Note selected — the sentence above is its text; drag moves it, Delete removes it.'
+      : `Dimension selected — ${sel.label}, measured off its anchors. ` +
+        'Drag slides the line, Delete removes it.';
+  $('anno-delete').disabled = !sel;
+}
+for (const [btn, m] of [['anno-dim', 'dim'], ['anno-chain', 'chain'], ['anno-note', 'note']]) {
+  $(btn).addEventListener('click', () => {
+    editor.setAnnoMode(m);
+    renderAnnoPanel();
+  });
+}
+// `change`, not `input`: one undo step per edited sentence, not per keystroke.
+$('anno-text').addEventListener('change', () => {
+  editor.setAnnoText($('anno-text').value);
+  autosave(state);
+  updateUndoButtons();
+  renderAnnoPanel();
+});
+$('anno-delete').addEventListener('click', () => {
+  editor.annoDelete();
+  autosave(state);
+  updateUndoButtons();
+  renderAnnoPanel();
+});
 $('floor-rect').addEventListener('click', () => { editor.setFloorRect(true); renderFloorModes(); });
 $('floor-brush').addEventListener('click', () => { editor.setFloorRect(false); renderFloorModes(); });
 
@@ -1356,6 +1403,7 @@ function syncToolPanels() {
   else if (t === 'door') renderDoorModes();
   else if (t === 'floor' || t === 'erase') renderFloorModes();
   else if (t === 'stair') renderStairList();
+  else if (t === 'anno') renderAnnoPanel();
 }
 
 // The grid's pitch is a function of the zoom, so the readout under the wall
@@ -2585,6 +2633,7 @@ function exportOpts() {
   }
   return {
     showDimensions: $('export-dims').checked,
+    showAnnotations: $('export-anno').checked,
     showFurniture: $('export-furniture').checked,
     showFinishes: $('export-finishes').checked,
     showOccupancy: $('export-occupancy').checked,
@@ -2615,6 +2664,20 @@ const sheetOpts = (opts, floorIndex) => {
 // alongside the floor scope rather than inside it.
 const wantsSite = () => $('export-site').checked;
 
+// Phase 38: the tracing overlay on the printed sheet — the backlog's
+// "edit-mode only" complaint, closed behind a checkbox. The image has to be
+// decoded before a canvas can draw it, and a canvas cannot await, so the
+// shell decodes it here and hands blueprint.js `{ overlay, image }`. A design
+// with no overlay, an unticked box, or an image the browser cannot decode all
+// land on null — the sheet simply prints without the picture, as it always has.
+async function exportTrace() {
+  if (!$('export-trace').checked || !state.overlay || !state.overlay.src) return null;
+  const image = new Image();
+  image.src = state.overlay.src;
+  try { await image.decode(); } catch { return null; }
+  return { overlay: state.overlay, image };
+}
+
 $('export-btn').addEventListener('click', () => openModal(exportOverlay));
 $('export-close').addEventListener('click', () => closeModal(exportOverlay));
 
@@ -2644,16 +2707,16 @@ const sheetSlug = (entry) =>
   `school-${entry.number}-${entry.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
     .replace(/-+$/, '');
 
-$('export-png').addEventListener('click', () => {
-  const opts = exportOpts();
+$('export-png').addEventListener('click', async () => {
+  const opts = { ...exportOpts(), trace: await exportTrace() };
   for (const { entry, render } of exportSheets(opts)) {
     const canvas = render();
     if (canvas) downloadCanvasPNG(canvas, `${sheetSlug(entry)}.png`);
   }
 });
 
-$('export-print').addEventListener('click', () => {
-  const opts = exportOpts();
+$('export-print').addEventListener('click', async () => {
+  const opts = { ...exportOpts(), trace: await exportTrace() };
   printArea.textContent = '';
   // One dialog for the lot, bound the way a real set is bound: the site
   // leads, the plans follow, the elevations and cuts stand behind them, and
@@ -5485,11 +5548,12 @@ const TOOL_NAMES = {
   floor: 'Floor', wall: 'Wall', door: 'Door', room: 'Room', erase: 'Erase',
   poly: 'Polygon', vertex: 'Shape', prop: 'Furniture', stair: 'Stairs',
   template: 'Layout', site: 'Site', overlay: 'Overlay', section: 'Section',
+  anno: 'Annotate',
 };
 const TOOL_HOTKEY = {
   floor: '1', wall: '2', door: '3', room: '4', erase: '5', poly: '6',
   vertex: '7', prop: '8', stair: '9', template: '0', site: '-', overlay: '=',
-  section: '\\',
+  section: '\\', anno: `'`,
 };
 
 // Built fresh at each opening: half the labels depend on where you are
@@ -7436,8 +7500,10 @@ function miniRasterFor(floorIndex, record, scale) {
     showFurniture: scale >= 1,
     showLabels: false,
     showDimensions: false,
-    // At minimap scale a section flag is bigger than a room.
+    // At minimap scale a section flag is bigger than a room, and so is a
+    // dimension string.
     showSections: false,
+    showAnnotations: false,
   });
   miniRasters.set(key, c);
   return c;

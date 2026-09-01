@@ -515,3 +515,35 @@ test('specLayout wraps and measures without a DOM anywhere near it', async () =>
   const wide = specLayout(spec, (str) => String(str).length * 9);
   assert.ok(wide.height >= sheet.height, 'more wrapping, taller sheet');
 });
+
+// ---------- Phase 38: say it on the sheet ----------
+
+test('the plan carries its dimensions with the label derived, and bounds to hold them', async () => {
+  const { addDim, addNote } = await import('../js/annotate.js');
+  const s = createState(20, 20);
+  boxRoom(s, 0, 0, 0, 8, 6);
+  const bare = computeFloorPlan(s, 0);
+  assert.deepEqual(bare.dims, []);
+  assert.deepEqual(bare.notes, []);
+  // A dimension standing off the top edge of the sheet, so the bounds must
+  // grow to keep its line and text on the page.
+  addDim(s, 0, { x: 0, z: 0 }, { x: 32, z: 0 }, -8);
+  addNote(s, 0, { x: 8, z: 8 }, 20, 16, 'existing column here');
+  const plan = computeFloorPlan(s, 0);
+  assert.equal(plan.dims.length, 1);
+  assert.equal(plan.dims[0].label, `32'-0"`, 'the number is read off the anchors');
+  assert.equal(plan.notes.length, 1);
+  assert.equal(plan.notes[0].text, 'existing column here');
+  assert.ok(plan.bounds.minZ <= -8, 'the sheet grew to hold the string');
+  assert.ok(plan.bounds.minZ < bare.bounds.minZ);
+});
+
+test('annotations are per storey: another floor prints its own and only its own', async () => {
+  const { addDim } = await import('../js/annotate.js');
+  const s = createState(20, 20);
+  boxRoom(s, 0, 0, 0, 8, 6);
+  addFloor(s);
+  addDim(s, 1, { x: 0, z: 0 }, { x: 16, z: 0 }, 5);
+  assert.equal(computeFloorPlan(s, 0).dims.length, 0);
+  assert.equal(computeFloorPlan(s, 1).dims.length, 1);
+});

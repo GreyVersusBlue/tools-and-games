@@ -38,6 +38,11 @@
 //        reason: a rate table is a fact *about this design* — the prices that
 //        produced this estimate are half of what the estimate means — and a
 //        phasing plan is a set of references to rooms v11 gave ids to.
+//   v12+ — per-storey `dims` and `notes` (Phase 38): what the sheet says —
+//        dimensions as two anchors and an offset (the number on one is
+//        derived at draw time, never stored) and notes as a point, a leader
+//        and a sentence (see annotate.js). Appends on the timetable's terms:
+//        a storey with none writes neither key.
 //   v12+ — `gridRef`: the point the drawing grid indexes off, in world feet
 //        plus the image pixel it was picked on (see gridref.js) — and, beside
 //        it, `cellFt` finally meaning something. `cellFt` has been written
@@ -136,6 +141,7 @@ import { normalizePhasing, isEmptyPhasing } from './phasing.js';
 import { normalizeHaunt, isDefaultHaunt } from './haunt.js';
 import { normalizeWeather, isDefaultWeather } from './weather.js';
 import { normalizeSections } from './elevation.js';
+import { normalizeDims, normalizeNotes } from './annotate.js';
 
 // v9 is the first bump that is not free.
 //
@@ -255,14 +261,22 @@ export function serialize(state, opts = {}) {
   //
   // Phase 26 adds the second per-storey record to the same pass: a `spawn`
   // that was set and then cleared leaves a null behind, and a null is a key.
+  //
+  // Phase 38 adds the third and fourth — `dims` and `notes` — on the same
+  // terms: an annotated-then-cleaned storey writes the bytes it always did.
   const emptyWalls = (f) => f && f.walls && !f.walls.length;
   const deadSpawn = (f) => f && 'spawn' in f && !f.spawn;
-  if (Array.isArray(out.floors) && out.floors.some((f) => emptyWalls(f) || deadSpawn(f))) {
+  const emptyDims = (f) => f && f.dims && !f.dims.length;
+  const emptyNotes = (f) => f && f.notes && !f.notes.length;
+  const untidy = (f) => emptyWalls(f) || deadSpawn(f) || emptyDims(f) || emptyNotes(f);
+  if (Array.isArray(out.floors) && out.floors.some(untidy)) {
     out.floors = out.floors.map((f) => {
-      if (!emptyWalls(f) && !deadSpawn(f)) return f;
+      if (!untidy(f)) return f;
       const rest = { ...f };
       if (emptyWalls(f)) delete rest.walls;
       if (deadSpawn(f)) delete rest.spawn;
+      if (emptyDims(f)) delete rest.dims;
+      if (emptyNotes(f)) delete rest.notes;
       return rest;
     });
   }
@@ -339,6 +353,12 @@ function readFloor(raw, w, h) {
     // start point on writes no `spawn` key.
     const spawn = readSpawn(raw.spawn, Math.max(w, h) * CELL * 4);
     if (spawn) f.spawn = spawn;
+    // ...and Phase 38's two: what the sheet says about this storey. A bad
+    // record is one that isn't there, never a design that won't open.
+    const dims = normalizeDims(raw.dims, Math.max(w, h) * CELL * 4);
+    if (dims.length) f.dims = dims;
+    const notes = normalizeNotes(raw.notes, Math.max(w, h) * CELL * 4);
+    if (notes.length) f.notes = notes;
   }
   return { floor: f, lat };
 }
@@ -517,6 +537,12 @@ export function deserialize(json, opts = {}) {
   // ...and so is a section line.
   for (const sec of (state.sections || [])) {
     if (!sec.id || sec.id >= state.nextId) sec.id = state.nextId++;
+  }
+  // ...and so are a dimension and a note, off the same counter as everything
+  // else — an annotation and a room can never name the same number.
+  for (const f of state.floors) {
+    for (const d of f.dims || []) if (!d.id || d.id >= state.nextId) d.id = state.nextId++;
+    for (const n of f.notes || []) if (!n.id || n.id >= state.nextId) n.id = state.nextId++;
   }
 
   // ...and only now the migration, because a baked room takes its id off the

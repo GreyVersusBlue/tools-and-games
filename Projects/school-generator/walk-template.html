@@ -73071,6 +73071,368 @@ const roofTop = (plan) => plan.eaveY + plan.rise;
 
 return { PARAPET_H, COPING_T, EAVE, MIN_PITCH, MAX_PITCH, DEFAULT_PITCH, ROOF_STYLES, ROOF_STYLE_KEYS, roofStyleEntry, isPitched, DEFAULT_ROOF, defaultRoof, normalizeRoof, ensureRoof, isDefaultRoof, roofMask, maskAt, maskCount, maskOutlines, largestRect, maskRects, sideIsOuter, blockRoof, roofPlan, roofTop };
 })();
+// ---- js/annotate.js ----
+const __m_js_annotate_js = (() => {
+const { openingSpec, takeId } = __m_js_shapes_js;
+// annotate.js — what the sheet says: dimensions and notes.
+//
+// The overlay tool can measure, and a measurement evaporates when the tool
+// changes; the printed plan carries rooms, doors and a title block and not a
+// single dimension. A drawing nobody can build from is a picture with a scale
+// bar. This module is the two records that fix that, and everything derived
+// from them:
+//
+//   a dimension   two anchor points and an offset. The *number* on it is
+//                 computed from the measured distance between the anchors at
+//                 draw time, never typed and never stored — so the sheet
+//                 cannot disagree with the model it prints. Re-anchor the
+//                 dimension and the text follows; there is no way to make it
+//                 lie.
+//   a note        a point, a leader, a sentence. The one thing here somebody
+//                 *types*, because "align this jamb with the existing column"
+//                 is a fact the geometry cannot say.
+//
+// Both are per-storey records on the floor, beside Phase 25's `walls` and
+// Phase 26's `spawn`, and on the same terms: a storey with none writes no
+// key, so every file written before this build round-trips unchanged.
+//
+// The chain (`chainDims`) is the tool's best trick and is pure arithmetic
+// over the opening records a wall already carries: click a wall and its piers
+// and openings come out dimensioned end to end, jamb to jamb, the way a real
+// plan strings them. The jambs are read off `openingSpec` — the same record
+// the leaf hangs from and the collider cuts at, so the chain and the doorway
+// can never disagree about where the jamb is.
+//
+// Pure module: no three.js, no DOM. Anchors are snapped by the *tool* through
+// snapgrid.js before they arrive here; this file never guesses a grid.
+// Exercised by test/annotate.test.mjs.
+
+
+
+const MAX_DIMS = 240;      // per storey — a sheet, not a database
+const MAX_NOTES = 120;
+const MIN_DIM_LEN = 0.25;  // ft — shorter than that points at nothing
+const MAX_NOTE_TEXT = 240; // characters of sentence
+const MAX_DIM_OFF = 80;    // ft a dimension line may stand off its anchors
+const DIM_OFF = 5;         // ft — the default standoff a tool starts from
+
+// The drawn parts, in feet at world scale; the sheet multiplies by its own
+// px-per-ft. Gap: the air between an anchor and the start of its extension
+// line (drafting convention — the extension line never touches the thing it
+// measures). Over: how far the extension line runs past the dimension line.
+const EXT_GAP = 0.6;
+const EXT_OVER = 0.9;
+const TICK_R = 0.7;        // half-length of the 45° tick slash
+
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// ---------- the records on a storey ----------
+
+const dimsOf = (floor) =>
+  (floor && Array.isArray(floor.dims) ? floor.dims : []);
+
+const notesOf = (floor) =>
+  (floor && Array.isArray(floor.notes) ? floor.notes : []);
+
+// A dimension between two anchors, standing `off` feet to the left of the run
+// a→b (negative for the right). Returns the record, or null for a pair of
+// anchors too close to measure anything.
+function addDim(state, floorIndex, a, b, off = DIM_OFF) {
+  const floor = state.floors[floorIndex];
+  if (!floor) return null;
+  if (Math.hypot(b.x - a.x, b.z - a.z) < MIN_DIM_LEN) return null;
+  if (dimsOf(floor).length >= MAX_DIMS) return null;
+  if (!Array.isArray(floor.dims)) floor.dims = [];
+  const dim = {
+    id: takeId(state),
+    ax: a.x, az: a.z, bx: b.x, bz: b.z,
+    off: clamp(num(off) ?? DIM_OFF, -MAX_DIM_OFF, MAX_DIM_OFF),
+  };
+  floor.dims.push(dim);
+  return dim;
+}
+
+// A note: an anchor on the plan, the spot its sentence sits, and the sentence.
+function addNote(state, floorIndex, at, tx, tz, text) {
+  const floor = state.floors[floorIndex];
+  if (!floor) return null;
+  if (notesOf(floor).length >= MAX_NOTES) return null;
+  if (!Array.isArray(floor.notes)) floor.notes = [];
+  const note = {
+    id: takeId(state),
+    x: at.x, z: at.z,
+    tx: num(tx) ?? at.x, tz: num(tz) ?? at.z,
+    text: noteText(text),
+  };
+  floor.notes.push(note);
+  return note;
+}
+
+// Removing the last one removes the key — the promise every optional record
+// keeps, so a design annotated and then cleaned writes the same bytes as one
+// never annotated.
+function removeDim(state, floorIndex, id) {
+  const floor = state.floors[floorIndex];
+  const list = dimsOf(floor);
+  const i = list.findIndex((d) => d.id === id);
+  if (i < 0) return false;
+  list.splice(i, 1);
+  if (!list.length) delete floor.dims;
+  return true;
+}
+
+function removeNote(state, floorIndex, id) {
+  const floor = state.floors[floorIndex];
+  const list = notesOf(floor);
+  const i = list.findIndex((n) => n.id === id);
+  if (i < 0) return false;
+  list.splice(i, 1);
+  if (!list.length) delete floor.notes;
+  return true;
+}
+
+function setDimOffset(dim, off) {
+  dim.off = clamp(num(off) ?? dim.off, -MAX_DIM_OFF, MAX_DIM_OFF);
+  return dim.off;
+}
+
+function moveNote(note, tx, tz) {
+  const x = num(tx), z = num(tz);
+  if (x === null || z === null) return false;
+  note.tx = x;
+  note.tz = z;
+  return true;
+}
+
+const noteText = (text) => {
+  const t = typeof text === 'string' ? text.trim().slice(0, MAX_NOTE_TEXT) : '';
+  return t || 'Note';
+};
+
+function setNoteText(note, text) {
+  note.text = noteText(text);
+  return note.text;
+}
+
+// ---------- what the number says ----------
+
+const dimLength = (dim) => Math.hypot(dim.bx - dim.ax, dim.bz - dim.az);
+
+// A length as a drawing writes it: feet and inches, to the nearest inch.
+// `24'-6"`, `9'-0"`, `8"`. Rounded here and nowhere else, so the plan, the
+// elevation and the status line all print the same string for the same pair
+// of anchors.
+function dimLabel(lenFt) {
+  const ft = num(lenFt);
+  if (ft === null || ft < 0) return '0"';
+  let whole = Math.floor(ft);
+  let inches = Math.round((ft - whole) * 12);
+  if (inches === 12) { whole += 1; inches = 0; }
+  return whole > 0 ? `${whole}'-${inches}"` : `${inches}"`;
+}
+
+// ---------- the drawn parts ----------
+
+// Everything a sheet draws for one dimension, in world feet: the dimension
+// line, the two extension lines, the two 45° ticks, and where the text sits.
+// The label is derived from the anchors right here — the one rule of the
+// module, applied at the one place drawing happens.
+function dimGeometry(dim) {
+  const dx = dim.bx - dim.ax, dz = dim.bz - dim.az;
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-9) return null;
+  const ux = dx / len, uz = dz / len;
+  // The run's left-hand normal — the same normal `sideOfWall` and the plan's
+  // door swing read, so "left of the run" means one thing everywhere.
+  const nx = -uz, nz = ux;
+  const off = num(dim.off) ?? DIM_OFF;
+  const s = off >= 0 ? 1 : -1;
+  const la = { x: dim.ax + nx * off, z: dim.az + nz * off };
+  const lb = { x: dim.bx + nx * off, z: dim.bz + nz * off };
+  const extFor = (px, pz) => [
+    { x: px + nx * EXT_GAP * s, z: pz + nz * EXT_GAP * s },
+    { x: px + nx * (off + EXT_OVER * s), z: pz + nz * (off + EXT_OVER * s) },
+  ];
+  // The tick is the architect's slash: 45° across the dimension line, drawn
+  // along u+n so both ticks lean the same way.
+  const tx = (ux + nx) * TICK_R * 0.7071, tz = (uz + nz) * TICK_R * 0.7071;
+  const tickAt = (p) => [{ x: p.x - tx, z: p.z - tz }, { x: p.x + tx, z: p.z + tz }];
+  return {
+    a: { x: dim.ax, z: dim.az },
+    b: { x: dim.bx, z: dim.bz },
+    la, lb,
+    ext: [extFor(dim.ax, dim.az), extFor(dim.bx, dim.bz)],
+    ticks: [tickAt(la), tickAt(lb)],
+    mid: { x: (la.x + lb.x) / 2, z: (la.z + lb.z) / 2 },
+    // Which side of the dimension line the text stands on: away from the
+    // anchors, so the string never lies across the wall it measures.
+    tn: { x: nx * s, z: nz * s },
+    angle: Math.atan2(dz, dx),
+    len,
+    label: dimLabel(len),
+  };
+}
+
+// ---------- finding one under the cursor ----------
+
+const segDist = (px, pz, ax, az, bx, bz) => {
+  const dx = bx - ax, dz = bz - az;
+  const len2 = dx * dx + dz * dz;
+  if (len2 < 1e-9) return Math.hypot(px - ax, pz - az);
+  const t = clamp(((px - ax) * dx + (pz - az) * dz) / len2, 0, 1);
+  return Math.hypot(ax + dx * t - px, az + dz * t - pz);
+};
+
+// The dimension under a point — measured to the drawn line, not to the
+// anchors, because the line is what is on screen to be clicked.
+function dimAt(floor, x, z, tol = 2) {
+  let best = null, bestD = tol;
+  for (const dim of dimsOf(floor)) {
+    const g = dimGeometry(dim);
+    if (!g) continue;
+    const d = segDist(x, z, g.la.x, g.la.z, g.lb.x, g.lb.z);
+    if (d < bestD) { bestD = d; best = dim; }
+  }
+  return best;
+}
+
+// The note under a point: its text spot first (that is what a drag moves),
+// then its anchor.
+function noteAt(floor, x, z, tol = 2) {
+  let best = null, bestD = tol;
+  for (const note of notesOf(floor)) {
+    const d = Math.min(
+      Math.hypot(note.tx - x, note.tz - z),
+      Math.hypot(note.x - x, note.z - z));
+    if (d < bestD) { bestD = d; best = note; }
+  }
+  return best;
+}
+
+// ---------- the chain ----------
+
+// Where a run of wall breaks, as distances along it: the start, both jambs of
+// every opening, the end. Read off `openingSpec`, which is also what hangs
+// the leaf and cuts the collider — one description of a doorway, dimensioned
+// the same way it is built.
+function chainStations(len, openings = []) {
+  const pts = [0, len];
+  for (const o of openings) {
+    const spec = openingSpec(o);
+    const at = spec.t * len;
+    pts.push(clamp(at - spec.w / 2, 0, len));
+    pts.push(clamp(at + spec.w / 2, 0, len));
+  }
+  pts.sort((a, b) => a - b);
+  const out = [];
+  for (const p of pts) {
+    if (!out.length || p - out[out.length - 1] > 0.05) out.push(p);
+  }
+  return out;
+}
+
+// One dimension per pier and per opening, end to end along a→b, standing
+// `off` to the run's left (negative right). A wall with no openings chains to
+// its one overall dimension. Returns the records it added.
+function chainDims(state, floorIndex, a, b, openings = [], off = DIM_OFF) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const len = Math.hypot(dx, dz);
+  if (len < MIN_DIM_LEN) return [];
+  const ux = dx / len, uz = dz / len;
+  const at = (s) => ({ x: a.x + ux * s, z: a.z + uz * s });
+  const stations = chainStations(len, openings);
+  const out = [];
+  for (let i = 0; i + 1 < stations.length; i++) {
+    const dim = addDim(state, floorIndex, at(stations[i]), at(stations[i + 1]), off);
+    if (dim) out.push(dim);
+  }
+  return out;
+}
+
+// ---------- projection onto a vertical sheet ----------
+
+// The dimensions of one storey that are true on a sheet whose horizontal axis
+// is `uOf(x, z)`: exactly the ones drawn parallel to the sheet's plane, whose
+// projected span *is* their measured length. An oblique dimension would print
+// a foreshortened line under an unforeshortened number, so it stays on the
+// plan where it was drawn.
+function sheetDims(floor, uOf, tol = 0.05) {
+  const out = [];
+  for (const dim of dimsOf(floor)) {
+    const len = dimLength(dim);
+    if (len < MIN_DIM_LEN) continue;
+    const u0 = uOf(dim.ax, dim.az);
+    const u1 = uOf(dim.bx, dim.bz);
+    if (Math.abs(Math.abs(u1 - u0) - len) > tol) continue;
+    out.push({ u0: Math.min(u0, u1), u1: Math.max(u0, u1), len, label: dimLabel(len) });
+  }
+  return out;
+}
+
+// Stack a sheet's dimension strings into rows so overlapping spans never
+// print through each other: each takes the first row where it fits, with a
+// little air between neighbours. Sorted by left edge, so the rows come out
+// the way a drafter would stack them.
+function stackDims(dims, gap = 2) {
+  const rows = [];
+  const out = dims.slice().sort((p, q) => p.u0 - q.u0 || p.u1 - q.u1);
+  for (const d of out) {
+    let row = 0;
+    while ((rows[row] ?? -Infinity) > d.u0 - gap) row++;
+    rows[row] = d.u1;
+    d.row = row;
+  }
+  return out;
+}
+
+// ---------- the loader's half ----------
+
+// What the loader keeps of whatever a file offered. A bad record is one that
+// isn't there, never a design that won't open — the promise every optional
+// record keeps.
+function normalizeDims(raw, extent = 4000) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const r of raw.slice(0, MAX_DIMS)) {
+    if (!r || typeof r !== 'object') continue;
+    const ax = num(r.ax), az = num(r.az), bx = num(r.bx), bz = num(r.bz);
+    if (ax === null || az === null || bx === null || bz === null) continue;
+    if ([ax, az, bx, bz].some((v) => Math.abs(v) > extent)) continue;
+    if (Math.hypot(bx - ax, bz - az) < MIN_DIM_LEN) continue;
+    const id = num(r.id);
+    out.push({
+      id: id && id > 0 ? Math.round(id) : 0,
+      ax, az, bx, bz,
+      off: clamp(num(r.off) ?? DIM_OFF, -MAX_DIM_OFF, MAX_DIM_OFF),
+    });
+  }
+  return out;
+}
+
+function normalizeNotes(raw, extent = 4000) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const r of raw.slice(0, MAX_NOTES)) {
+    if (!r || typeof r !== 'object') continue;
+    const x = num(r.x), z = num(r.z);
+    if (x === null || z === null) continue;
+    if (Math.abs(x) > extent || Math.abs(z) > extent) continue;
+    const tx = num(r.tx), tz = num(r.tz);
+    const id = num(r.id);
+    out.push({
+      id: id && id > 0 ? Math.round(id) : 0,
+      x, z,
+      tx: tx === null || Math.abs(tx) > extent ? x : tx,
+      tz: tz === null || Math.abs(tz) > extent ? z : tz,
+      text: noteText(r.text),
+    });
+  }
+  return out;
+}
+
+return { MAX_DIMS, MAX_NOTES, MIN_DIM_LEN, MAX_NOTE_TEXT, MAX_DIM_OFF, DIM_OFF, EXT_GAP, EXT_OVER, TICK_R, dimsOf, notesOf, addDim, addNote, removeDim, removeNote, setDimOffset, moveNote, noteText, setNoteText, dimLength, dimLabel, dimGeometry, dimAt, noteAt, chainStations, chainDims, sheetDims, stackDims, normalizeDims, normalizeNotes };
+})();
 // ---- js/elevation.js ----
 const __m_js_elevation_js = (() => {
 const { CELL, WALL_H, RAIL_H, floorBaseY, wallHeightOf, floorLabel } = __m_js_grid_js;
@@ -73079,6 +73441,7 @@ const { solidBeside, wallProbe } = __m_js_walls_js;
 const { roofPlan, roofTop, roofMask, maskAt, PARAPET_H, COPING_T } = __m_js_roof_js;
 const { terrainField, groundAt } = __m_js_terrain_js;
 const { stairMetrics, linksFrom, runMetrics, localToWorld, footprintPolygon, isRun, floorCuts, inFloorCut, pointInPolygon } = __m_js_stairs_js;
+const { sheetDims, stackDims } = __m_js_annotate_js;
 // elevation.js — the building projected onto a vertical plane: the four
 // facades, and the cuts somebody has drawn through the plan.
 //
@@ -73119,6 +73482,20 @@ const { stairMetrics, linksFrom, runMetrics, localToWorld, footprintPolygon, isR
 
 
 
+
+
+// Phase 38: the drawn dimensions that are true on a vertical sheet — the ones
+// parallel to its plane, whose projected span *is* their measured length —
+// strung below the drawing in stacked rows. Every storey's records project,
+// because a facade has no storey of its own. Returns the rows and where the
+// lowest one sits, so the caller can grow its bounds to fit.
+const DIM_ROW_H = 2.6;   // ft of sheet between stacked strings
+function sheetDimRows(state, uOf, topY) {
+  const dims = stackDims(state.floors.flatMap((fl) => sheetDims(fl, uOf)));
+  for (const d of dims) d.y = topY - 1.6 - d.row * DIM_ROW_H;
+  const bottom = dims.length ? Math.min(...dims.map((d) => d.y)) - 1.6 : topY;
+  return { dims, bottom };
+}
 
 // ---------- the four facades ----------
 
@@ -73390,13 +73767,18 @@ function computeElevation(state, dir) {
   let minY = 0;
   for (const g of grade) minY = Math.min(minY, g.y);
 
+  // Phase 38: the drawn dimensions parallel to this facade, strung below the
+  // grade line the way a drafter strings them.
+  const { dims, bottom } = sheetDimRows(state, (x, z) => uOf(f, x, z), minY - 3);
+
   return {
     dir,
     label: f.label,
     paints,
     grade,
     levels,
-    bounds: { minU, maxU, minY: minY - 3, maxY: topY + 4 },
+    dims,
+    bounds: { minU, maxU, minY: bottom, maxY: topY + 4 },
   };
 }
 
@@ -73704,6 +74086,10 @@ function computeSection(state, sec) {
   let maxY = floorBaseY(state, state.floors.length - 1) + WALL_H;
   for (const segPts of roofline) for (const p of segPts) maxY = Math.max(maxY, p.y);
 
+  // Phase 38: the drawn dimensions parallel to the cut, on the same terms as
+  // the facades' — the cut's own (u, y) frame, strings below the drawing.
+  const { dims, bottom } = sheetDimRows(state, uAt, minY - 2);
+
   return {
     name: sec.name,
     label: `Section ${sectionLabel(sec)}`,
@@ -73715,7 +74101,8 @@ function computeSection(state, sec) {
     roofline,
     grade,
     levels,
-    bounds: { minU: -4, maxU: len + 4, minY: minY - 2, maxY: maxY + 4 },
+    dims,
+    bounds: { minU: -4, maxU: len + 4, minY: bottom, maxY: maxY + 4 },
   };
 }
 
@@ -73815,6 +74202,8 @@ const { terrainField, contours, terrainRange, CONTOUR_FT } = __m_js_terrain_js;
 const { roofMask, maskOutlines } = __m_js_roof_js;
 const { computeElevation, computeSection, sectionsOf, sectionLabel, FACADES, facadeEntry } = __m_js_elevation_js;
 const { INK, withAlpha, paperTint } = __m_js_theme_js;
+const { dimsOf, notesOf, dimGeometry } = __m_js_annotate_js;
+const { showsOn } = __m_js_overlay_js;
 // blueprint.js — the printable top-down floor plan, distinct from both the
 // editor's 3D top-down camera and the walkthrough. `computeFloorPlan` is pure
 // (no canvas/DOM), so it's unit-tested the same way every other model module
@@ -73833,6 +74222,8 @@ const { INK, withAlpha, paperTint } = __m_js_theme_js;
 // straight out of terrain.js's marching squares over the same field the walker
 // stands on. The building appears on it as an outline and nothing else, which
 // is what a site plan is: the ground, and where the building sits on it.
+
+
 
 
 
@@ -74061,10 +74452,32 @@ function computeFloorPlan(state, floorIndex, opts = {}) {
   const rooms = planRooms(floor);
   const propsList = planProps(state, floorIndex);
   const stairs = stairSymbols(state, floorIndex);
+  // Phase 38: what the sheet says. The dimension's drawn parts — extension
+  // lines, line, ticks, and the *derived* label — come out of annotate.js
+  // here, in the pure half, so a test can read the number off the plan
+  // without a canvas. The bounds grow to hold them: a dimension clipped by
+  // the page margin is a dimension that wasn't drawn.
+  const dims = dimsOf(floor).map((d) => dimGeometry(d)).filter(Boolean);
+  const notes = notesOf(floor).map((n) => ({
+    x: n.x, z: n.z, tx: n.tx, tz: n.tz, text: n.text,
+  }));
+  const bounds = computeBounds(floor, rooms, propsList, stairs);
+  for (const g of dims) {
+    for (const p of [g.la, g.lb, ...g.ext[0], ...g.ext[1]]) extendBounds(bounds, p.x, p.z);
+  }
+  for (const n of notes) {
+    extendBounds(bounds, n.x, n.z);
+    // Rough room for the sentence itself — the pure half cannot measure text,
+    // so it reserves a sane width rather than none.
+    const side = n.tx >= n.x ? 1 : -1;
+    extendBounds(bounds, n.tx + side * Math.min(40, n.text.length * 0.62 + 1), n.tz);
+  }
   return {
     floorIndex,
     label: floorLabel(floorIndex),
-    bounds: computeBounds(floor, rooms, propsList, stairs),
+    bounds,
+    dims,
+    notes,
     rooms,
     walls,
     // Doors *and* windows, each carrying its own leaves. Kept under the name
@@ -74564,6 +74977,103 @@ function drawSectionMarkers(ctx, plan, layout) {
   }
 }
 
+// ---------- annotations (Phase 38) ----------
+//
+// The drawn dimensions and notes. All the geometry — extension lines, ticks,
+// the offset side, the derived label — came out of annotate.js in the pure
+// half; this only puts ink on it. Dimension line work is thin and secondary
+// (INK.dim), the way a drawn sheet keeps its strings lighter than its walls.
+
+function drawAnnotations(ctx, plan, layout) {
+  const dims = plan.dims || [];
+  const notes = plan.notes || [];
+  if (!dims.length && !notes.length) return;
+  const px = (p) => toPx(plan, layout, p.x, p.z);
+  const line = (p0, p1) => {
+    const a = px(p0), b = px(p1);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  };
+  const size = Math.max(8, Math.round(layout.scale * 0.85));
+  ctx.setLineDash([]);
+  ctx.lineCap = 'butt';
+  for (const g of dims) {
+    ctx.strokeStyle = INK.dim;
+    ctx.lineWidth = Math.max(0.8, layout.scale * 0.05);
+    for (const ext of g.ext) line(ext[0], ext[1]);
+    line(g.la, g.lb);
+    // The ticks read heavier — they are what the eye counts jambs by.
+    ctx.strokeStyle = INK.line;
+    ctx.lineWidth = Math.max(1, layout.scale * 0.09);
+    for (const tick of g.ticks) line(tick[0], tick[1]);
+    // The label rides the line, upright: text past vertical flips so no
+    // number on the sheet prints upside down.
+    const a = px(g.la), b = px(g.lb), mid = px(g.mid);
+    let ang = Math.atan2(b.y - a.y, b.x - a.x);
+    let up = -1;   // "above the line" in the rotated frame
+    if (ang > Math.PI / 2 || ang <= -Math.PI / 2) { ang += Math.PI; up = 1; }
+    ctx.save();
+    ctx.translate(mid.x, mid.y);
+    ctx.rotate(ang);
+    ctx.font = `${size}px "IBM Plex Mono", ui-monospace, monospace`;
+    ctx.textAlign = 'center';
+    const w = ctx.measureText(g.label).width;
+    const ty = up < 0 ? -size * 0.45 : size * 1.05;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(-w / 2 - 2, ty - size * 0.9, w + 4, size * 1.2);
+    ctx.fillStyle = INK.dim;
+    ctx.fillText(g.label, 0, ty);
+    ctx.restore();
+  }
+  for (const n of notes) {
+    const at = px(n), to = toPx(plan, layout, n.tx, n.tz);
+    // The anchor: a small filled dot, and the leader out to the sentence.
+    ctx.fillStyle = INK.line;
+    ctx.beginPath();
+    ctx.arc(at.x, at.y, Math.max(1.5, layout.scale * 0.14), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = INK.dim;
+    ctx.lineWidth = Math.max(0.8, layout.scale * 0.05);
+    ctx.beginPath();
+    ctx.moveTo(at.x, at.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    // The sentence sits on whichever side of the anchor the leader was
+    // dragged to, so it points back at the thing it is about.
+    const right = to.x >= at.x;
+    ctx.font = `${size}px "Public Sans", system-ui, sans-serif`;
+    ctx.textAlign = right ? 'left' : 'right';
+    const tx = to.x + (right ? 4 : -4);
+    const w = ctx.measureText(n.text).width;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(right ? tx - 2 : tx - w - 2, to.y - size * 0.85, w + 4, size * 1.2);
+    ctx.fillStyle = INK.line;
+    ctx.fillText(n.text, tx, to.y);
+  }
+}
+
+// The tracing image, on the printed sheet — the backlog's "edit-mode only"
+// complaint, closed. Drawn first, under everything, at the sheet's own scale:
+// the overlay's centre, rotation and ft-per-pixel are the same numbers the
+// editor positions it by, so what prints is what was traced over. The image
+// itself is decoded by the caller (a canvas cannot await), which is why it
+// arrives as `opts.trace = { overlay, image }` rather than being read off the
+// state here.
+function drawTraceImage(ctx, plan, layout, trace) {
+  const o = trace.overlay;
+  const c = toPx(plan, layout, o.x, o.z);
+  const w = o.w * o.scale * layout.scale;
+  const h = o.h * o.scale * layout.scale;
+  ctx.save();
+  ctx.translate(c.x, c.y);
+  ctx.rotate(o.rot);
+  ctx.globalAlpha = o.opacity;
+  ctx.drawImage(trace.image, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
 function drawScaleBar(ctx, layout, canvasW, canvasH) {
   const x0 = canvasW - 140, y0 = canvasH - 34;
   const ftPerTick = 10;
@@ -74853,6 +75363,11 @@ function drawTitleBlock(ctx, plan, layout, canvasW, opts) {
 // emphatically does not want a title block, a legend or a north arrow drawn
 // over the top of a 168-pixel square.
 function drawPlanBody(ctx, plan, layout, opts = {}) {
+  // The tracing paper prints under everything, when the caller decoded it and
+  // it shows on this storey — the same `showsOn` the editor draws by.
+  if (opts.trace && opts.trace.image && showsOn(opts.trace.overlay, plan.floorIndex)) {
+    drawTraceImage(ctx, plan, layout, opts.trace);
+  }
   drawRooms(ctx, plan, layout);
   drawWalls(ctx, plan, layout);
   drawDoors(ctx, plan, layout);
@@ -74865,6 +75380,9 @@ function drawPlanBody(ctx, plan, layout, opts = {}) {
   // plan is only a picture. The minimap opts out: at thumbnail size a flag
   // is bigger than a room.
   if (opts.showSections !== false) drawSectionMarkers(ctx, plan, layout);
+  // ...and so do the drawn dimensions and notes (Phase 38), on the same
+  // terms: they are facts about the drawing, and the minimap opts out.
+  if (opts.showAnnotations !== false) drawAnnotations(ctx, plan, layout);
 }
 
 // Draws one floor's plan into a 2D context whose canvas is already sized for
@@ -75230,11 +75748,51 @@ function drawElevGrade(ctx, elev, layout) {
   ctx.stroke();
 }
 
+// The dimension strings under a vertical sheet (Phase 38). elevation.js
+// already picked the rows — only the ones parallel to the sheet's plane, so
+// every number here equals the one the plan prints for the same pair of
+// anchors — and gave each its own y; this puts ink on them.
+function drawElevDims(ctx, elev, layout) {
+  const dims = elev.dims || [];
+  if (!dims.length) return;
+  const size = Math.max(8, Math.round(layout.scale * 0.85));
+  ctx.setLineDash([]);
+  ctx.lineCap = 'butt';
+  ctx.textAlign = 'center';
+  ctx.font = `${size}px "IBM Plex Mono", ui-monospace, monospace`;
+  for (const d of dims) {
+    const a = elevPx(elev, layout, d.u0, d.y);
+    const b = elevPx(elev, layout, d.u1, d.y);
+    ctx.strokeStyle = INK.dim;
+    ctx.lineWidth = Math.max(0.8, layout.scale * 0.05);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    // The drafter's 45° tick at each end.
+    ctx.strokeStyle = INK.line;
+    ctx.lineWidth = Math.max(1, layout.scale * 0.09);
+    const r = Math.max(2.5, layout.scale * 0.5);
+    for (const p of [a, b]) {
+      ctx.beginPath();
+      ctx.moveTo(p.x - r * 0.7, p.y + r * 0.7);
+      ctx.lineTo(p.x + r * 0.7, p.y - r * 0.7);
+      ctx.stroke();
+    }
+    const w = ctx.measureText(d.label).width;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect((a.x + b.x) / 2 - w / 2 - 2, a.y - size * 1.35, w + 4, size * 1.2);
+    ctx.fillStyle = INK.dim;
+    ctx.fillText(d.label, (a.x + b.x) / 2, a.y - size * 0.45);
+  }
+}
+
 function drawElevation(ctx, elev, layout, opts = {}) {
   ctx.fillStyle = INK.paper;
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   for (const p of elev.paints) drawElevPaint(ctx, elev, layout, p);
   drawElevGrade(ctx, elev, layout);
+  drawElevDims(ctx, elev, layout);
   drawElevLevels(ctx, elev, layout, ctx.canvas.width);
   drawScaleBar(ctx, layout, ctx.canvas.width, ctx.canvas.height);
   drawSheetPanels(ctx, layout, ctx.canvas.width, opts);
@@ -75271,6 +75829,7 @@ function drawSectionSheet(ctx, sec, layout, opts = {}) {
     elevPath(ctx, sec, layout, line);
     ctx.stroke();
   }
+  drawElevDims(ctx, sec, layout);
   drawElevLevels(ctx, sec, layout, ctx.canvas.width);
   drawScaleBar(ctx, layout, ctx.canvas.width, ctx.canvas.height);
   drawSheetPanels(ctx, layout, ctx.canvas.width, opts);
@@ -92687,6 +93246,7 @@ const { normalizePhasing, isEmptyPhasing } = __m_js_phasing_js;
 const { normalizeHaunt, isDefaultHaunt } = __m_js_haunt_js;
 const { normalizeWeather, isDefaultWeather } = __m_js_weather_js;
 const { normalizeSections } = __m_js_elevation_js;
+const { normalizeDims, normalizeNotes } = __m_js_annotate_js;
 // save-load.js — JSON serialization, file download/upload, localStorage autosave.
 //
 // Save format history:
@@ -92727,6 +93287,11 @@ const { normalizeSections } = __m_js_elevation_js;
 //        reason: a rate table is a fact *about this design* — the prices that
 //        produced this estimate are half of what the estimate means — and a
 //        phasing plan is a set of references to rooms v11 gave ids to.
+//   v12+ — per-storey `dims` and `notes` (Phase 38): what the sheet says —
+//        dimensions as two anchors and an offset (the number on one is
+//        derived at draw time, never stored) and notes as a point, a leader
+//        and a sentence (see annotate.js). Appends on the timetable's terms:
+//        a storey with none writes neither key.
 //   v12+ — `gridRef`: the point the drawing grid indexes off, in world feet
 //        plus the image pixel it was picked on (see gridref.js) — and, beside
 //        it, `cellFt` finally meaning something. `cellFt` has been written
@@ -92799,6 +93364,7 @@ const { normalizeSections } = __m_js_elevation_js;
 // autosave and the file-based Save/Load — a separate localStorage index, not
 // a save-format change, so nothing here invalidates an older file or an
 // in-progress autosave.
+
 
 
 
@@ -92942,14 +93508,22 @@ function serialize(state, opts = {}) {
   //
   // Phase 26 adds the second per-storey record to the same pass: a `spawn`
   // that was set and then cleared leaves a null behind, and a null is a key.
+  //
+  // Phase 38 adds the third and fourth — `dims` and `notes` — on the same
+  // terms: an annotated-then-cleaned storey writes the bytes it always did.
   const emptyWalls = (f) => f && f.walls && !f.walls.length;
   const deadSpawn = (f) => f && 'spawn' in f && !f.spawn;
-  if (Array.isArray(out.floors) && out.floors.some((f) => emptyWalls(f) || deadSpawn(f))) {
+  const emptyDims = (f) => f && f.dims && !f.dims.length;
+  const emptyNotes = (f) => f && f.notes && !f.notes.length;
+  const untidy = (f) => emptyWalls(f) || deadSpawn(f) || emptyDims(f) || emptyNotes(f);
+  if (Array.isArray(out.floors) && out.floors.some(untidy)) {
     out.floors = out.floors.map((f) => {
-      if (!emptyWalls(f) && !deadSpawn(f)) return f;
+      if (!untidy(f)) return f;
       const rest = { ...f };
       if (emptyWalls(f)) delete rest.walls;
       if (deadSpawn(f)) delete rest.spawn;
+      if (emptyDims(f)) delete rest.dims;
+      if (emptyNotes(f)) delete rest.notes;
       return rest;
     });
   }
@@ -93026,6 +93600,12 @@ function readFloor(raw, w, h) {
     // start point on writes no `spawn` key.
     const spawn = readSpawn(raw.spawn, Math.max(w, h) * CELL * 4);
     if (spawn) f.spawn = spawn;
+    // ...and Phase 38's two: what the sheet says about this storey. A bad
+    // record is one that isn't there, never a design that won't open.
+    const dims = normalizeDims(raw.dims, Math.max(w, h) * CELL * 4);
+    if (dims.length) f.dims = dims;
+    const notes = normalizeNotes(raw.notes, Math.max(w, h) * CELL * 4);
+    if (notes.length) f.notes = notes;
   }
   return { floor: f, lat };
 }
@@ -93204,6 +93784,12 @@ function deserialize(json, opts = {}) {
   // ...and so is a section line.
   for (const sec of (state.sections || [])) {
     if (!sec.id || sec.id >= state.nextId) sec.id = state.nextId++;
+  }
+  // ...and so are a dimension and a note, off the same counter as everything
+  // else — an annotation and a room can never name the same number.
+  for (const f of state.floors) {
+    for (const d of f.dims || []) if (!d.id || d.id >= state.nextId) d.id = state.nextId++;
+    for (const n of f.notes || []) if (!n.id || n.id >= state.nextId) n.id = state.nextId++;
   }
 
   // ...and only now the migration, because a baked room takes its id off the
@@ -95150,6 +95736,10 @@ function boot() {
       showFurniture: scale >= 1,
       showLabels: false,
       showDimensions: false,
+      // At minimap scale a section flag is bigger than a room, and a
+      // dimension string longer than a corridor.
+      showSections: false,
+      showAnnotations: false,
     });
     miniRasters.set(key, c);
     return c;

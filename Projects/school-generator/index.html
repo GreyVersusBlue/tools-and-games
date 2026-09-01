@@ -1354,6 +1354,7 @@
     body[data-mode="walk"] #overlay-panel,
     body[data-mode="walk"] #room-panel,
     body[data-mode="walk"] #wall-panel,
+    body[data-mode="walk"] #anno-panel,
     body[data-mode="walk"] #floor-tool-panel,
     body[data-mode="walk"] #door-panel,
     body[data-mode="walk"] #stair-panel,
@@ -1658,6 +1659,7 @@
     <symbol id="i-tree" viewBox="0 0 24 24"><circle cx="12" cy="9" r="5.5"/><path d="M12 14.5v6"/><path d="M9 20.5h6"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M6 18.5l5-5 3 3 2.5-2.5 3.5 3.5"/></symbol>
     <symbol id="i-section" viewBox="0 0 24 24"><path d="M4 12h3.2M9.8 12h4.4M16.8 12h3.2"/><path d="M4 12v-3.5M20 12v-3.5"/><path d="m4 8.5-1.8 1M20 8.5l1.8 1"/></symbol>
+    <symbol id="i-anno" viewBox="0 0 24 24"><path d="M4 16h16"/><path d="M4 12.5v7M20 12.5v7"/><path d="m5.5 17.5 -3 -3M21.5 17.5l-3 -3"/><path d="M7 5h6"/><path d="M10 5v4"/></symbol>
     <symbol id="i-undo" viewBox="0 0 24 24"><path d="M7.5 5 4 8.5 7.5 12"/><path d="M4 8.5h9a6 6 0 0 1 0 12H8"/></symbol>
     <symbol id="i-redo" viewBox="0 0 24 24"><path d="M16.5 5 20 8.5 16.5 12"/><path d="M20 8.5h-9a6 6 0 0 0 0 12h5"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4l2 2.5h8a1.5 1.5 0 0 1 1.5 1.5v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></symbol>
@@ -1724,6 +1726,7 @@
     <button class="tool" data-tool="site" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-tree"/></svg>Site<span class="key">-</span></button>
     <button class="tool" data-tool="overlay" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg>Overlay<span class="key">=</span></button>
     <button class="tool" data-tool="section" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-section"/></svg>Section<span class="key">\</span></button>
+    <button class="tool" data-tool="anno" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-anno"/></svg>Annotate<span class="key">'</span></button>
   </div>
 
   <div id="room-panel" class="panel tool-slot hidden">
@@ -1788,6 +1791,37 @@
       free-standing wall you can still hang a door in.<br />
       Walls are drawn 0.4ft thick between two rooms and 0.8ft where the
       building meets the outside — that's read off the plan, not set here.
+    </div></details>
+  </div>
+
+  <div id="anno-panel" class="panel tool-slot hidden">
+    <label>Annotate</label>
+    <div class="seg-toggle">
+      <button id="anno-dim" type="button" aria-pressed="true"
+              title="Two anchors, then where the line stands — the number is measured, never typed">⇤⇥ Dimension</button>
+      <button id="anno-chain" type="button" aria-pressed="false"
+              title="Click a wall — its openings and piers come out dimensioned end to end">⧉ Chain</button>
+      <button id="anno-note" type="button" aria-pressed="false"
+              title="A point, a leader, a sentence">✎ Note</button>
+    </div>
+    <label style="margin-top:12px" for="anno-text">Note text</label>
+    <input id="anno-text" type="text" value="Note" maxlength="240"
+           placeholder="What the note should say" />
+    <div id="anno-readout" class="readout"></div>
+    <div class="row" style="margin-top:8px">
+      <button id="anno-delete" type="button" disabled
+              title="Remove the selected dimension or note (Delete)">✕ Delete selected</button>
+    </div>
+    <details class="keys"><summary>Keys &amp; tips</summary><div>
+      Dimensions and notes print with the sheet — plans, and sections and
+      elevations where a dimension runs parallel to the cut.<br />
+      The number on a dimension is measured off its anchors at draw time,
+      never typed, so the sheet cannot disagree with the model.<br />
+      Anchors land on the drawing grid; <kbd>Alt</kbd> ignores it,
+      <kbd>Shift</kbd> frees the second anchor from square.<br />
+      Click a drawn dimension or note to select it — drag slides a
+      dimension's line or moves a note's sentence, <kbd>Delete</kbd>
+      removes it, <kbd>Esc</kbd> backs out of a half-drawn one.
     </div></details>
   </div>
 
@@ -2562,6 +2596,8 @@
       </div>
       <div class="section-label">Show</div>
       <label class="opt"><input type="checkbox" id="export-dims" checked /> Dimensions</label>
+      <label class="opt"><input type="checkbox" id="export-anno" checked /> Drawn dimensions and notes</label>
+      <label class="opt"><input type="checkbox" id="export-trace" /> Tracing overlay on the plan</label>
       <label class="opt"><input type="checkbox" id="export-furniture" checked /> Furniture</label>
       <label class="opt"><input type="checkbox" id="export-finishes" checked /> Floor finish schedule</label>
       <label class="opt"><input type="checkbox" id="export-occupancy" /> Occupant load per room</label>

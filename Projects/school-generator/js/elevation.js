@@ -48,6 +48,20 @@ import {
   stairMetrics, linksFrom, runMetrics, localToWorld, footprintPolygon, isRun,
   floorCuts, inFloorCut, pointInPolygon,
 } from './stairs.js';
+import { sheetDims, stackDims } from './annotate.js';
+
+// Phase 38: the drawn dimensions that are true on a vertical sheet — the ones
+// parallel to its plane, whose projected span *is* their measured length —
+// strung below the drawing in stacked rows. Every storey's records project,
+// because a facade has no storey of its own. Returns the rows and where the
+// lowest one sits, so the caller can grow its bounds to fit.
+const DIM_ROW_H = 2.6;   // ft of sheet between stacked strings
+function sheetDimRows(state, uOf, topY) {
+  const dims = stackDims(state.floors.flatMap((fl) => sheetDims(fl, uOf)));
+  for (const d of dims) d.y = topY - 1.6 - d.row * DIM_ROW_H;
+  const bottom = dims.length ? Math.min(...dims.map((d) => d.y)) - 1.6 : topY;
+  return { dims, bottom };
+}
 
 // ---------- the four facades ----------
 
@@ -319,13 +333,18 @@ export function computeElevation(state, dir) {
   let minY = 0;
   for (const g of grade) minY = Math.min(minY, g.y);
 
+  // Phase 38: the drawn dimensions parallel to this facade, strung below the
+  // grade line the way a drafter strings them.
+  const { dims, bottom } = sheetDimRows(state, (x, z) => uOf(f, x, z), minY - 3);
+
   return {
     dir,
     label: f.label,
     paints,
     grade,
     levels,
-    bounds: { minU, maxU, minY: minY - 3, maxY: topY + 4 },
+    dims,
+    bounds: { minU, maxU, minY: bottom, maxY: topY + 4 },
   };
 }
 
@@ -633,6 +652,10 @@ export function computeSection(state, sec) {
   let maxY = floorBaseY(state, state.floors.length - 1) + WALL_H;
   for (const segPts of roofline) for (const p of segPts) maxY = Math.max(maxY, p.y);
 
+  // Phase 38: the drawn dimensions parallel to the cut, on the same terms as
+  // the facades' — the cut's own (u, y) frame, strings below the drawing.
+  const { dims, bottom } = sheetDimRows(state, uAt, minY - 2);
+
   return {
     name: sec.name,
     label: `Section ${sectionLabel(sec)}`,
@@ -644,6 +667,7 @@ export function computeSection(state, sec) {
     roofline,
     grade,
     levels,
-    bounds: { minU: -4, maxU: len + 4, minY: minY - 2, maxY: maxY + 4 },
+    dims,
+    bounds: { minU: -4, maxU: len + 4, minY: bottom, maxY: maxY + 4 },
   };
 }
